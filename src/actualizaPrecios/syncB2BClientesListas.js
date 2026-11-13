@@ -441,8 +441,11 @@ async function sincronizarB2BClientesListas() {
             SELECT bc.codigo_bunker_cliente, bc.usuario_id, clp.bunker_lista_precio_id as lista_id, COALESCE(bc.ver_stock, false) as ver_stock
             FROM bunker_clientes bc
             LEFT JOIN bunker_cliente_listas_precios clp ON clp.bunker_cliente_id = bc.id
-            WHERE (bc.email_portal IS NOT NULL AND (bc.email_portal = $1 OR bc.email_portal ILIKE $1))
+            WHERE (
+                  (bc.email_portal IS NOT NULL AND (bc.email_portal = $1 OR bc.email_portal ILIKE $1))
                OR ($2 <> '' AND bc.codigo_bunker_cliente = $2)
+            )
+              AND UPPER(COALESCE(bc.codigo_bunker_cliente, '')) NOT LIKE 'CB-NODO-%'
           `, [u.email || '', metaCid]);
 
           if (clientRes.rows.length > 0) {

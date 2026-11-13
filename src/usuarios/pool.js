@@ -1,21 +1,10 @@
 require('dotenv').config();
-const { Pool } = require('pg');
+const { getSharedPool } = require('../shared/pgPoolFactory');
 
-const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'etiquetas',
-  password: process.env.DB_PASSWORD || 'ta3Mionga',
-  port: parseInt(process.env.DB_PORT || '5432'),
-});
-
-// Catch pool errors to prevent process crashes on idle connection losses
-pool.on('error', (err) => {
-  console.error('⚠️ [DB-USUARIOS] Unexpected error on idle client:', err.message);
-});
+const pool = getSharedPool({ defaultMax: 10 });
 
 // Log de conexión con información del entorno
-console.log(`🔌 [DB-USUARIOS] Conectado a BD: ${process.env.DB_NAME || 'etiquetas'} (Entorno: ${process.env.NODE_ENV || 'production'})`);
+console.log(`🔌 [DB-USUARIOS] Conectado a BD: ${process.env.DB_NAME || 'etiquetas'} (Entorno: ${process.env.NODE_ENV || 'production'}, Pool max: ${pool.options.max})`);
 
 // Inicialización de la tabla de tarifas de colaboradores
 const inicializarTablaTarifas = async () => {

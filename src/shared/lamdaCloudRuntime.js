@@ -1521,6 +1521,15 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
     // 4. Inyección transparente de <script src="/lamda-cloud-runtime.js"></script> y reescritura /gw/300X/(js|css)/ en respuestas HTML (incluyendo express.static)
     app.use((req, res, next) => {
         const reqPathClean = String(req.path || req.url || '').split('?')[0].toLowerCase();
+        const rawHostHeader = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase().replace(/:\d+$/, '');
+        const publicNodosHost = String(process.env.NODOS_PUBLIC_HOST || 'tienda.lamdaser.com').trim().toLowerCase().replace(/:\d+$/, '');
+        if (
+            reqPathClean.startsWith('/tienda') ||
+            reqPathClean.startsWith('/gestor') ||
+            (rawHostHeader && (rawHostHeader === publicNodosHost || rawHostHeader === 'tienda.lamdaser.com' || rawHostHeader.startsWith('tienda.') || rawHostHeader.includes('.trycloudflare.com')))
+        ) {
+            return next();
+        }
         const isPotentialHtmlGet = req.method === 'GET' && (reqPathClean === '/' || reqPathClean.endsWith('.html'));
         if (isPotentialHtmlGet) {
             delete req.headers['if-none-match'];

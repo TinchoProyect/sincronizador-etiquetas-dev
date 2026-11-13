@@ -1,14 +1,8 @@
 const https = require('https');
-const { Pool } = require('pg');
 const { createClient } = require('@supabase/supabase-js');
+const { getSharedPool } = require('../../shared/pgPoolFactory');
 
-const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'etiquetas',
-  password: process.env.DB_PASSWORD || 'ta3Mionga',
-  port: process.env.DB_PORT || 5432
-});
+const pool = getSharedPool({ defaultMax: 20 });
 
 const isModoLaboratorio = String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas' || String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true';
 const supaUrl = isModoLaboratorio ? 'http://127.0.0.1:59999' : (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_B2B_URL || 'https://zysyxtbcvgswancxtpib.supabase.co');

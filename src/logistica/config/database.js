@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Pool } = require('pg');
+const { getSharedPool } = require('../../shared/pgPoolFactory');
 
 console.log('🔍 [LOGISTICA] Configurando conexión a base de datos...');
 
@@ -8,25 +8,10 @@ console.log('🔍 [LOGISTICA] Configurando conexión a base de datos...');
  * Base de datos compartida con el resto del sistema LAMDA
  * Respeta la lógica de switch entre producción (etiquetas) y pruebas (etiquetas_pruebas)
  */
-const pool = new Pool({
-    user: process.env.DB_USER || 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_NAME || 'etiquetas',
-    password: process.env.DB_PASSWORD || 'ta3Mionga',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    // Configuración de pool
-    max: 20, // Máximo de conexiones
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-});
-
-// Catch pool errors to prevent process crashes on idle connection losses
-pool.on('error', (err) => {
-    console.error('⚠️ [DB-LOGISTICA] Unexpected error on idle client:', err.message);
-});
+const pool = getSharedPool({ defaultMax: 20 });
 
 // Log de conexión con información del entorno
-console.log(`🔌 [LOGISTICA] Conectado a BD: ${process.env.DB_NAME || 'etiquetas'} (Entorno: ${process.env.NODE_ENV || 'production'})`);
+console.log(`🔌 [LOGISTICA] Conectado a BD: ${process.env.DB_NAME || 'etiquetas'} (Entorno: ${process.env.NODE_ENV || 'production'}, Pool max: ${pool.options.max})`);
 
 /**
  * Verificar conexión al iniciar

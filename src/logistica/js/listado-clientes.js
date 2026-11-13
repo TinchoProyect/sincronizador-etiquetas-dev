@@ -5253,10 +5253,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 </button>
             </div>
 
-            <!-- Estado del túnel público celular -->
+            <!-- Estado de conectividad pública celular -->
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; background:${data.es_tunel_https ? '#ecfdf5' : '#fef3c7'}; border:1px solid ${data.es_tunel_https ? '#86efac' : '#fcd34d'}; border-radius:9px; padding:7px 11px; margin-bottom:12px; font-size:11.5px;">
                 <span style="font-weight:800; color:${data.es_tunel_https ? '#166534' : '#92400e'};">
-                    ${data.es_tunel_https ? '🟢 Túnel HTTPS activo para celulares (4G/Wi-Fi)' : '📡 Red Wi-Fi local'}
+                    ${data.es_dominio_publico_fijo
+                        ? '🟢 Dominio Público HTTPS 24/7'
+                        : (data.es_tunel_https ? '🟢 Túnel HTTPS activo para celulares (4G/Wi-Fi)' : '📡 Red Wi-Fi local')}
                 </span>
                 <span style="font-family:monospace; font-size:11px; color:#334155; font-weight:700;">
                     👤 ${escHtmlNodo(nodo.gestor_nombre || '')}
@@ -5278,15 +5280,22 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
 
             <!-- Botones Principales de Acción -->
-            <div style="display:grid; grid-template-columns:1.25fr 0.85fr; gap:8px; margin-top:14px;">
+            <div style="display:grid; grid-template-columns:${esGestor ? '1.15fr 0.85fr 0.9fr' : '1.25fr 0.85fr'}; gap:8px; margin-top:14px;">
                 <button type="button" onclick="window.open('${escHtmlNodo(urlPcActiva)}', '_blank')"
-                    style="padding:11px 14px; border-radius:10px; border:none; background:${esGestor ? '#16a34a' : '#c2410c'}; color:#ffffff; font-size:12.5px; font-weight:800; cursor:pointer;">
-                    ${esGestor ? '🖥️ Abrir Panel del Gestor en esta PC' : '🖥️ Abrir Tienda Pública en esta PC'}
+                    style="padding:11px 12px; border-radius:10px; border:none; background:${esGestor ? '#16a34a' : '#c2410c'}; color:#ffffff; font-size:12px; font-weight:800; cursor:pointer;">
+                    ${esGestor ? '🖥️ Abrir en esta PC' : '🖥️ Abrir en esta PC'}
                 </button>
                 <button type="button" onclick="window.copiarLinkQrModal('${escHtmlNodo(urlMovilActiva)}', this)"
-                    style="padding:11px 14px; border-radius:10px; border:1px solid #0284c7; background:#e0f2fe; color:#0369a1; font-size:12.5px; font-weight:800; cursor:pointer;">
+                    style="padding:11px 12px; border-radius:10px; border:1px solid #0284c7; background:#e0f2fe; color:#0369a1; font-size:12px; font-weight:800; cursor:pointer;">
                     📋 Copiar link
                 </button>
+                ${esGestor ? `
+                    <button type="button" onclick="window.rotarTokenQrNodo(this)"
+                        style="padding:11px 10px; border-radius:10px; border:1px solid #f59e0b; background:#fffbeb; color:#b45309; font-size:12px; font-weight:800; cursor:pointer;"
+                        title="Invalida los QRs anteriores y emite un nuevo token de acceso para el Gestor">
+                        🔄 Rotar QR
+                    </button>
+                ` : ''}
             </div>
 
             ${esGestor ? `
@@ -5336,10 +5345,34 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!resp.ok || !data.ok) {
                 throw new Error(data.error || 'No se pudo generar el QR del Nodo.');
             }
-            _ultimoPayloadQrNodo = data;
-            _renderizarContenidoModalQrNodo(data, modoInicial);
+            _ultimoPayloadQrNodo = { ...data, _bunkerClienteId: bunkerClienteId };
+            _renderizarContenidoModalQrNodo(_ultimoPayloadQrNodo, modoInicial);
         } catch (err) {
             bodyEl.innerHTML = `<div style="padding:22px; text-align:center; color:#dc2626; font-weight:700;">⚠️ ${escHtmlNodo(err.message)}</div>`;
+        }
+    };
+
+    window.rotarTokenQrNodo = async function(btn) {
+        const cliId = _ultimoPayloadQrNodo?._bunkerClienteId || _ultimoPayloadQrNodo?.nodo?.bunker_cliente_id || _ultimoPayloadQrNodo?.nodo?.id;
+        if (!cliId) return;
+        const okConfirm = window.confirm('¿Rotar el token de acceso del Gestor? Los códigos QR anteriores dejarán de funcionar inmediatamente.');
+        if (!okConfirm) return;
+        const origHtml = btn ? btn.innerHTML : '';
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Rotando...'; }
+        try {
+            const resp = await fetch(`/api/logistica/bunker/clientes/${encodeURIComponent(cliId)}/qr-nodo/rotar`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.ok) {
+                throw new Error(data.error || 'No se pudo rotar el token QR.');
+            }
+            _ultimoPayloadQrNodo = { ...data, _bunkerClienteId: cliId };
+            _renderizarContenidoModalQrNodo(_ultimoPayloadQrNodo, 'GESTOR');
+        } catch (err) {
+            alert('Error rotando QR del Gestor: ' + err.message);
+            if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
         }
     };
 
@@ -5400,7 +5433,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; background:${data.es_tunel_https ? '#ecfdf5' : '#fef3c7'}; border:1px solid ${data.es_tunel_https ? '#86efac' : '#fcd34d'}; border-radius:9px; padding:7px 11px; margin-bottom:12px; font-size:11.5px;">
                     <span style="font-weight:800; color:${data.es_tunel_https ? '#166534' : '#92400e'};">
-                        ${data.es_tunel_https ? '🟢 Túnel HTTPS activo para escanear desde cualquier celular' : '📡 Red Wi-Fi local'}
+                        ${data.es_dominio_publico_fijo
+                            ? '🟢 Dominio Público HTTPS 24/7'
+                            : (data.es_tunel_https ? '🟢 Túnel HTTPS activo para escanear desde cualquier celular' : '📡 Red Wi-Fi local')}
                     </span>
                     <span style="font-size:11px; color:#047857; font-weight:800;">100% Marca Blanca</span>
                 </div>

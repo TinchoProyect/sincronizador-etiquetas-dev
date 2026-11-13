@@ -20,6 +20,7 @@ router.post('/nodos-pedidos/:pedidoId/nota-credito', clientesBunkerController.ap
 // Obtener estructura en Árbol y accesos QR de un Nodo Barrial (cuadratura en vivo + clientes vecinos)
 router.get('/:id/arbol-nodo', clientesBunkerController.obtenerArbolNodo);
 router.get('/:id/qr-nodo', clientesBunkerController.obtenerQrAccesoNodo);
+router.post('/:id/qr-nodo/rotar', clientesBunkerController.rotarQrAccesoNodo);
 
 // Obtener historial de artículos comprados/facturados por cliente
 router.get('/:id/articulos-comprados', clientesBunkerController.obtenerArticulosComprados);

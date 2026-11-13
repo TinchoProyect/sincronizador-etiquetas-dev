@@ -1,4 +1,4 @@
-const { Pool } = require('pg');
+const { getSharedPool } = require('../../shared/pgPoolFactory');
 
 console.log('🔍 [FACTURACION] Configurando conexión a base de datos...');
 
@@ -6,22 +6,7 @@ console.log('🔍 [FACTURACION] Configurando conexión a base de datos...');
  * Configuración de conexión a PostgreSQL
  * Base de datos compartida con el resto del sistema LAMDA
  */
-const pool = new Pool({
-    user: process.env.DB_USER || 'postgres',
-    host: process.env.DB_HOST || 'localhost',
-    database: process.env.DB_NAME || 'etiquetas',
-    password: process.env.DB_PASSWORD || 'ta3Mionga',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    // Configuración de pool
-    max: 20, // Máximo de conexiones
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000,
-});
-
-// Catch pool errors to prevent process crashes on idle connection losses
-pool.on('error', (err) => {
-    console.error('⚠️ [DB-FACTURACION] Unexpected error on idle client:', err.message);
-});
+const pool = getSharedPool({ defaultMax: 10 });
 
 /**
  * Verificar conexión al iniciar
@@ -33,17 +18,9 @@ pool.query('SELECT NOW() AT TIME ZONE $1 as now', ['America/Argentina/Buenos_Air
     } else {
         console.log('✅ [FACTURACION] Conexión a la base de datos establecida exitosamente');
         console.log('🕒 [FACTURACION] Timestamp de conexión (Argentina):', res.rows[0].now);
-        console.log('📊 [FACTURACION] Base de datos:', process.env.DB_NAME || 'etiquetas');
+        console.log(`📊 [FACTURACION] Base de datos: ${process.env.DB_NAME || 'etiquetas'} (Pool max: ${pool.options.max})`);
         console.log('🔌 [FACTURACION] Host:', process.env.DB_HOST || 'localhost');
     }
-});
-
-/**
- * Manejo de errores del pool
- */
-pool.on('error', (err, client) => {
-    console.error('❌ [FACTURACION] Error inesperado en el pool de conexiones:', err.message);
-    console.error('❌ [FACTURACION] Stack:', err.stack);
 });
 
 /**

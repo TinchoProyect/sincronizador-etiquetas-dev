@@ -1011,11 +1011,11 @@
 
     function detectarSlugInicial() {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('nodo')) return params.get('nodo');
+      if (params.get('nodo')) return params.get('nodo').trim();
       const parts = window.location.pathname.split('/').filter(Boolean);
       const idx = parts.indexOf('tienda');
-      if (idx !== -1 && parts[idx + 1]) return decodeURIComponent(parts[idx + 1]);
-      return 'lo-de-mati';
+      if (idx !== -1 && parts[idx + 1]) return decodeURIComponent(parts[idx + 1]).trim();
+      return '';
     }
 
     function calcularFechaSimuladaCorte() {
@@ -1034,6 +1034,20 @@
       const espejoBar = document.getElementById('tienda-espejo-bar');
       if (espejoBar) {
         espejoBar.style.display = esModoEspejoLocal() ? 'flex' : 'none';
+      }
+      if (!STATE.slug) {
+        const grid = document.getElementById('products-grid');
+        if (grid) {
+          grid.innerHTML = `
+            <div style="grid-column: 1/-1; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:32px; text-align:center;">
+              <h3 style="margin:0 0 8px 0;">Tienda Vecinal no disponible</h3>
+              <p style="color:var(--muted); font-size:0.9rem; max-width:500px; margin:0 auto;">
+                Verificá el enlace o escaneá el código QR provisto por tu nodo barrial.
+              </p>
+            </div>
+          `;
+        }
+        return;
       }
       const q = fechaSimuladaIso ? `?fecha_simulada=${encodeURIComponent(fechaSimuladaIso)}` : '';
       const resp = await fetch(`/api/produccion/nodos/portal/${encodeURIComponent(STATE.slug)}${q}`);
@@ -1742,6 +1756,11 @@
 
     let _ultimoPayloadWaTienda = null;
 
+    function copiarMensajeComprobanteTienda() {
+      if (!_ultimoPayloadWaTienda?.mensaje) return;
+      navigator.clipboard?.writeText(_ultimoPayloadWaTienda.mensaje).catch(() => {});
+    }
+
     async function enviarComprobanteWhatsAppPrueba(codigoPedido, vecinoNombre, nombreMarca, fechaEntrega, totalVecino, medioPago, aliasBancario, trackingToken = '') {
       const linkSeguimiento = trackingToken
         ? `${window.location.origin}/tienda/${encodeURIComponent(STATE.slug)}?seguimiento=${encodeURIComponent(trackingToken)}`
@@ -1768,6 +1787,41 @@
         lineasMsg.push(`📍 Seguí tu pedido en vivo acá: ${linkSeguimiento}`);
       }
       const mensaje = lineasMsg.join('\n');
+      const box = document.getElementById('etiqueta-confirmacion-preview');
+
+      const mostrarOpcionesWaDirecto = () => {
+        _ultimoPayloadWaTienda = { destinatario_nombre: nombreMarca, telefono_original: '', mensaje };
+        const telGestorClean = String(STATE.nodo?.gestor_telefono || '').replace(/\D/g, '');
+        const telGestorWa = telGestorClean ? (telGestorClean.startsWith('54') ? telGestorClean : `549${telGestorClean}`) : '';
+        const waShareUrl = `https://wa.me/${telGestorWa}?text=${encodeURIComponent(mensaje)}`;
+        if (box) {
+          box.innerHTML = `
+            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:10px; padding:12px; text-align:left; font-size:0.8rem; color:#0f172a; margin-top:8px;">
+              <div style="padding:8px 10px; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; color:#166534; margin-bottom:8px;">
+                📋 <strong>Comprobante listo para guardar o compartir por WhatsApp</strong>
+              </div>
+              <pre style="white-space:pre-wrap; margin:0 0 10px 0; padding:8px; background:#ffffff; border:1px solid #e2e8f0; border-radius:6px; font-family:inherit; font-size:0.75rem; color:#0f172a;">${esc(mensaje)}</pre>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <a href="${esc(waShareUrl)}" target="_blank" rel="noopener"
+                  style="flex:1; text-align:center; padding:10px; border-radius:8px; background:#16a34a; color:#ffffff; font-weight:900; font-size:0.84rem; text-decoration:none;">
+                  💬 Enviar / Guardar por WhatsApp
+                </a>
+                <button type="button" onclick="copiarMensajeComprobanteTienda(); this.textContent='✓ Copiado';"
+                  style="padding:10px 14px; border-radius:8px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; font-weight:800; font-size:0.82rem; cursor:pointer;">
+                  📋 Copiar
+                </button>
+              </div>
+            </div>
+          `;
+        }
+      };
+
+      const esEntornoLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      if (!esEntornoLocal) {
+        mostrarOpcionesWaDirecto();
+        return;
+      }
+
       const resp = await fetch('/api/produccion/nodos/whatsapp-prueba', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1778,10 +1832,13 @@
           solo_preview: true
         })
       });
+      if (resp.status === 403) {
+        mostrarOpcionesWaDirecto();
+        return;
+      }
       const data = await resp.json();
-      const box = document.getElementById('etiqueta-confirmacion-preview');
       if (!resp.ok || !data.ok) {
-        alert('Error al preparar el pedido para WhatsApp: ' + (data.error || 'Error interno'));
+        mostrarOpcionesWaDirecto();
         return;
       }
       _ultimoPayloadWaTienda = {
@@ -1851,7 +1908,9 @@
       const box = document.getElementById('etiqueta-confirmacion-preview');
       if (!box) return;
       box.innerHTML = `<div style="font-size:0.8rem; color:#64748b;">Generando etiqueta térmica del pedido...</div>`;
-      const resp = await fetch(`/api/produccion/nodos/pedidos/${pedidoId}/etiqueta`);
+      const tokSeg = String(STATE.ultimoPedidoConfirmado?.tracking_token || '').trim();
+      const qs = tokSeg ? `?tracking_token=${encodeURIComponent(tokSeg)}` : '';
+      const resp = await fetch(`/api/produccion/nodos/pedidos/${pedidoId}/etiqueta${qs}`);
       const data = await resp.json();
       if (data.ok && data.preview_rollo_base64) {
         box.innerHTML = `
