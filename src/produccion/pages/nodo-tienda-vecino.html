@@ -298,6 +298,26 @@
       min-width: 0;
       flex: 1;
     }
+    .prod-card.prod-card-destacado {
+      border: 2px solid var(--brand);
+      box-shadow: 0 10px 26px var(--brand-light);
+      background: linear-gradient(180deg, #fffaf6 0%, #ffffff 42%);
+    }
+    .prod-pres-row.prod-pres-destacado {
+      border-color: var(--brand);
+      background: var(--brand-light);
+    }
+    .badge-oferta-enfocada {
+      display: inline-block;
+      margin-bottom: 6px;
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--brand);
+      color: #fff;
+      letter-spacing: 0.02em;
+    }
     .prod-pres {
       display: inline-block;
       background: var(--surface-warm);
@@ -947,7 +967,10 @@
       vistaMiCuentaActiva: false,
       miCuentaData: null,
       ofertaIngredientesModalId: null,
-      ultimoPedidoConfirmado: null
+      ultimoPedidoConfirmado: null,
+      ofertaEnfocadaId: 0,
+      skuEnfocado: '',
+      _scrollOfertaHecho: false
     };
 
     function fmt(n) {
@@ -1072,6 +1095,17 @@
       STATE.nodosDisponibles = data.nodos_disponibles || [];
       STATE.proximaEntrega = data.proxima_entrega;
       STATE.productos = data.ofertas_publicadas || [];
+
+      if (STATE.ofertaEnfocadaId || STATE.skuEnfocado) {
+        const matchDirecto = STATE.productos.find(o =>
+          (STATE.ofertaEnfocadaId && Number(o.oferta_id) === Number(STATE.ofertaEnfocadaId)) ||
+          (STATE.skuEnfocado && String(o.sku_nodo || '').trim().toLowerCase() === String(STATE.skuEnfocado || '').trim().toLowerCase())
+        );
+        if (matchDirecto) {
+          STATE.ofertaEnfocadaId = Number(matchDirecto.oferta_id);
+          STATE.categoriaActiva = 'TODAS';
+        }
+      }
 
       // Aplicar paleta cálida personalizada del Nodo
       aplicarPaletaTienda(STATE.nodo.color_primario || '#a2553b');
@@ -1223,8 +1257,12 @@
       const renderFilaPresentacion = (p) => {
         const cant = Number(STATE.carrito[p.oferta_id] || 0);
         const pres = obtenerPresentacionItem(p) || 'Unidad';
+        const esPresEnfocada = Boolean(
+          (STATE.ofertaEnfocadaId && Number(p.oferta_id) === Number(STATE.ofertaEnfocadaId)) ||
+          (STATE.skuEnfocado && String(p.sku_nodo || '').trim().toLowerCase() === String(STATE.skuEnfocado || '').trim().toLowerCase())
+        );
         return `
-          <div class="prod-pres-row">
+          <div class="prod-pres-row${esPresEnfocada ? ' prod-pres-destacado' : ''}">
             <div class="prod-pres-label">${esc(pres)}</div>
             <div class="prod-pres-actions">
               <span class="prod-pres-price">${fmt(p.precio_venta_vecino)}</span>
@@ -1251,6 +1289,10 @@
           if (pa !== pb) return pa - pb;
           return Number(a.oferta_id || 0) - Number(b.oferta_id || 0);
         });
+        const esCardEnfocada = g.presentaciones.some(p =>
+          (STATE.ofertaEnfocadaId && Number(p.oferta_id) === Number(STATE.ofertaEnfocadaId)) ||
+          (STATE.skuEnfocado && String(p.sku_nodo || '').trim().toLowerCase() === String(STATE.skuEnfocado || '').trim().toLowerCase())
+        );
         const ofertaIng = permitirBotonNodo
           ? g.presentaciones.find(x =>
               x.mostrar_ingredientes !== false &&
@@ -1259,7 +1301,8 @@
             ) || null
           : null;
         return `
-          <div class="prod-card">
+          <div class="prod-card${esCardEnfocada ? ' prod-card-destacado' : ''}"${esCardEnfocada ? ' id="prod-card-enfocada"' : ''}>
+            ${esCardEnfocada ? '<div class="badge-oferta-enfocada">✨ Producto compartido</div>' : ''}
             <div class="prod-card-head">
               <div class="prod-head-info">
                 <div class="prod-cat">${esc(g.categoria_familiar)}</div>
@@ -1276,6 +1319,18 @@
           </div>
         `;
       }).join('');
+
+      if ((STATE.ofertaEnfocadaId || STATE.skuEnfocado) && !STATE._scrollOfertaHecho) {
+        const elDestacado = document.getElementById('prod-card-enfocada');
+        if (elDestacado) {
+          STATE._scrollOfertaHecho = true;
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              elDestacado.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 120);
+          });
+        }
+      }
     }
 
     function abrirModalIngredientesProducto(ofertaId) {
@@ -3546,6 +3601,14 @@
       STATE.slug = detectarSlugInicial();
       const params = new URLSearchParams(window.location.search);
       const tokInicial = (params.get('seguimiento') || '').trim();
+      const ofertaInicial = Number(params.get('oferta') || 0);
+      const skuInicial = (params.get('sku') || '').trim();
+      if (Number.isInteger(ofertaInicial) && ofertaInicial > 0) {
+        STATE.ofertaEnfocadaId = ofertaInicial;
+      }
+      if (skuInicial) {
+        STATE.skuEnfocado = skuInicial;
+      }
       const idGuardada = obtenerIdentidadVecinoLocal(STATE.slug);
       if (idGuardada.nombre_completo) window._savedVecinoNombre = idGuardada.nombre_completo;
       if (idGuardada.telefono_display || idGuardada.telefono_normalizado) {

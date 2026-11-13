@@ -372,8 +372,8 @@
         <a id="btn-abrir-tienda" href="#" target="_blank" class="btn-top">
           🏪 Ver Tienda
         </a>
-        <button type="button" class="btn-top brand" onclick="enviarLinkTiendaWhatsAppPrueba()">
-          📲 Compartir Tienda
+        <button type="button" class="btn-top brand" onclick="abrirModalDifusionTienda()">
+          📣 Difundir Tienda
         </button>
         <button type="button" class="btn-top" onclick="copiarLinkTiendaVecinos()">
           🔗 Copiar Link
@@ -389,9 +389,9 @@
   <!-- AVISO VISIBLE EN PANTALLA ANTE ÉXITO O FALLA DE COMUNICACIÓN -->
   <div id="gestor-aviso-flotante" style="display:none; position:fixed; top:14px; left:14px; right:14px; max-width:520px; margin:0 auto; z-index:2500; padding:12px 14px; border-radius:12px; box-shadow:0 12px 28px rgba(62,37,25,0.18); font-size:0.84rem; font-weight:700; line-height:1.4;"></div>
 
-  <!-- MODAL DE WHATSAPP / RECIBO DIGITAL MARCA BLANCA -->
-  <div id="modal-recibo-gestor" style="display:none; position:fixed; inset:0; background:rgba(62,37,25,0.52); z-index:2000; align-items:center; justify-content:center; padding:16px;">
-    <div style="background:#ffffff; border-radius:18px; max-width:460px; width:100%; overflow:hidden; box-shadow:0 20px 45px rgba(62,37,25,0.22); border:1px solid var(--border);">
+  <!-- MODAL DE WHATSAPP / DIFUSIÓN / RECIBO DIGITAL MARCA BLANCA -->
+  <div id="modal-recibo-gestor" onclick="if(event.target===this) cerrarModalReciboGestor()" style="display:none; position:fixed; inset:0; background:rgba(62,37,25,0.52); z-index:2000; align-items:center; justify-content:center; padding:16px;">
+    <div style="background:#ffffff; border-radius:18px; max-width:490px; width:100%; max-height:92vh; overflow-y:auto; box-shadow:0 20px 45px rgba(62,37,25,0.22); border:1px solid var(--border);">
       <div id="modal-recibo-gestor-body"></div>
     </div>
   </div>
@@ -399,15 +399,23 @@
   <script>
     const GSTATE = {
       slug: '',
-      vista: 'inicio', // 'inicio' | 'ofertas' | 'propuestas' | 'logistica' | 'pedidos' | 'ctacte' | 'liquidacion'
+      vista: 'inicio', // 'inicio' | 'ofertas' | 'propuestas' | 'logistica' | 'pedidos' | 'ctacte' | 'liquidacion' | 'compradores'
       filtroPagoPedidos: 'TODOS',
       filtroOperativoPedidos: 'TODOS',
+      filtroCompradores: 'TODOS',
+      busquedaCompradores: '',
       nodo: null,
       proximaEntrega: null,
       ofertas: [],
       catalogoBaseDisponible: [],
       propuestas: [],
       pedidos: [],
+      compradores: [],
+      compradoresResumen: { total_compradores: 0, con_pedido_activo: 0, recurrentes: 0 },
+      compradoresCargados: false,
+      compartirKit: null,
+      difusionModo: 'tienda',
+      difusionOfertaId: 0,
       movimientosCtaCte: [],
       ingredientesDisponibles: [],
       propCategoriaSel: '',
@@ -627,6 +635,24 @@
       GSTATE.pedidos = data.pedidos_nodo || [];
       GSTATE.movimientosCtaCte = data.movimientos_cta_cte || [];
       GSTATE.ingredientesDisponibles = Array.isArray(data.ingredientes_sugeribles) ? data.ingredientes_sugeribles : [];
+      GSTATE.compartirKit = null;
+
+      try {
+        const respComp = await fetchGestor(`/api/produccion/nodos/gestor/${Number(GSTATE.nodo.id)}/compradores`, { cache: 'no-store' });
+        const dataComp = await leerRespuestaJsonSegura(respComp);
+        if (respComp.ok && dataComp.ok) {
+          GSTATE.compradores = Array.isArray(dataComp.compradores) ? dataComp.compradores : [];
+          GSTATE.compradoresResumen = dataComp.resumen || {
+            total_compradores: GSTATE.compradores.length,
+            con_pedido_activo: GSTATE.compradores.filter(c => c.tiene_pedido_en_curso).length,
+            recurrentes: GSTATE.compradores.filter(c => c.es_recurrente).length
+          };
+          GSTATE.compradoresCargados = true;
+        }
+      } catch (_) {}
+
+      // Precargar kit de difusión público en segundo plano (sin bloquear UI)
+      cargarKitCompartirGestor(false).catch(() => {});
 
       if (GSTATE.ingredientesDisponibles.length > 0) {
         const cats = Array.from(new Set(GSTATE.ingredientesDisponibles.map(i => i.categoria_gestor)));
@@ -698,7 +724,7 @@
 
     window.addEventListener('popstate', () => {
       const hash = (window.location.hash || '').replace(/^#/, '');
-      if (['ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion'].includes(hash)) {
+      if (['ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(hash)) {
         GSTATE.vista = hash;
       } else {
         GSTATE.vista = 'inicio';
@@ -734,6 +760,8 @@
         box.innerHTML = envolverSeccionInterna('5. Cuentas Corrientes', renderSeccionCuentasCorrientes());
       } else if (GSTATE.vista === 'liquidacion') {
         box.innerHTML = envolverSeccionInterna('6. Liquidación', renderSeccionLiquidacion());
+      } else if (GSTATE.vista === 'compradores') {
+        box.innerHTML = envolverSeccionInterna('7. Compradores registrados', renderSeccionCompradores());
       } else {
         box.innerHTML = renderTableroPrincipal();
       }
@@ -809,6 +837,21 @@
           meta: canastos.length === 0
             ? 'Sin lotes cerrados para liquidar'
             : (lotesAbiertos > 0 ? `${lotesAbiertos} lote${lotesAbiertos === 1 ? '' : 's'} en curso para conciliar` : `${canastos.length} lote${canastos.length === 1 ? '' : 's'} liquidados`)
+        },
+        {
+          num: '7',
+          id: 'compradores',
+          titulo: 'Compradores registrados',
+          meta: (() => {
+            const tot = Number(GSTATE.compradoresResumen?.total_compradores || GSTATE.compradores?.length || 0);
+            const act = Number(GSTATE.compradoresResumen?.con_pedido_activo || 0);
+            const rec = Number(GSTATE.compradoresResumen?.recurrentes || 0);
+            if (tot === 0) return 'Se registran automáticamente con cada compra en tu tienda';
+            const extras = [];
+            if (act > 0) extras.push(`${act} con pedido activo`);
+            if (rec > 0) extras.push(`${rec} recurrente${rec === 1 ? '' : 's'}`);
+            return `${tot} comprador${tot === 1 ? '' : 'es'}${extras.length ? ` · ${extras.join(' · ')}` : ''}`;
+          })()
         }
       ];
 
@@ -834,12 +877,106 @@
     }
 
     // -------------------------------------------------------------------------
-    // WHATSAPP Y LINK DE TIENDA
+    // WHATSAPP, DIFUSIÓN MARCA BLANCA Y LINK DE TIENDA (Etapa A3)
     // -------------------------------------------------------------------------
+    async function cargarKitCompartirGestor(forzar = false) {
+      if (!GSTATE.nodo?.id) return null;
+      if (GSTATE.compartirKit && !forzar) return GSTATE.compartirKit;
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${Number(GSTATE.nodo.id)}/compartir-kit`, { cache: 'no-store' });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (resp.ok && data.ok) {
+          GSTATE.compartirKit = data;
+          return data;
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    function obtenerOfertasPublicadasDifusion() {
+      const kitOfertas = Array.isArray(GSTATE.compartirKit?.ofertas_publicadas)
+        ? GSTATE.compartirKit.ofertas_publicadas
+        : [];
+      if (kitOfertas.length > 0) return kitOfertas;
+
+      const base = obtenerUrlBaseTiendaFallback();
+      return (GSTATE.ofertas || [])
+        .filter(o => o.publicado_tienda)
+        .map(o => ({
+          oferta_id: Number(o.id),
+          sku_nodo: o.sku_nodo || '',
+          nombre_publico: o.nombre_publico || 'Producto',
+          categoria_familiar: o.categoria_familiar || 'Almacén',
+          presentacion_etiqueta: o.presentacion_etiqueta || '',
+          kilos_unidad: Number(o.kilos_unidad || 0),
+          precio_venta_vecino: Number(o.precio_venta_vecino || 0),
+          destacado_tienda: Boolean(o.destacado_tienda),
+          url_directa: `${base}?oferta=${Number(o.id)}`
+        }));
+    }
+
+    function obtenerUrlBaseTiendaFallback() {
+      if (GSTATE.compartirKit?.url_tienda_publica) {
+        return GSTATE.compartirKit.url_tienda_publica;
+      }
+      return `${window.location.origin}/tienda/${encodeURIComponent(GSTATE.slug || '')}`;
+    }
+
+    function obtenerUrlDifusionActual() {
+      const base = obtenerUrlBaseTiendaFallback();
+      if (GSTATE.difusionModo === 'oferta') {
+        const ofertas = obtenerOfertasPublicadasDifusion();
+        const of = ofertas.find(o => Number(o.oferta_id) === Number(GSTATE.difusionOfertaId)) || ofertas[0];
+        if (of) {
+          return of.url_directa || `${base}?oferta=${Number(of.oferta_id)}`;
+        }
+      }
+      return base;
+    }
+
+    function generarTextoSugeridoDifusion() {
+      const nombreMarca = GSTATE.compartirKit?.nodo?.nombre_marca || GSTATE.nodo?.nombre_marca || 'Nuestra tienda';
+      const url = obtenerUrlDifusionActual();
+      const prox = GSTATE.compartirKit?.proxima_entrega?.asignada?.label_completo
+        || GSTATE.proximaEntrega?.asignada?.label_completo
+        || '';
+      const corte = GSTATE.compartirKit?.proxima_entrega?.asignada?.label_corte
+        || GSTATE.proximaEntrega?.asignada?.label_corte
+        || '';
+
+      if (GSTATE.difusionModo === 'oferta') {
+        const ofertas = obtenerOfertasPublicadasDifusion();
+        const of = ofertas.find(o => Number(o.oferta_id) === Number(GSTATE.difusionOfertaId)) || ofertas[0];
+        if (of) {
+          const pres = String(of.presentacion_etiqueta || '').trim();
+          const descPres = pres && !String(of.nombre_publico || '').toLowerCase().includes(pres.toLowerCase())
+            ? ` (${pres})`
+            : '';
+          return [
+            `✨ *${nombreMarca}*`,
+            `¡Hola! Te comparto esta opción disponible hoy: *${of.nombre_publico}${descPres}* a *${fmt(of.precio_venta_vecino)}* 🛒`,
+            `Podés ver detalles y pedirlo directo acá:`,
+            url,
+            prox ? `📅 Próxima entrega: ${prox}${corte ? ` · Cierre: ${corte}` : ''}` : ''
+          ].filter(Boolean).join('\n');
+        }
+      }
+
+      return [
+        `✨ *${nombreMarca}*`,
+        `¡Hola! Te comparto el link de nuestra tienda para ver los productos disponibles y hacer tu pedido online:`,
+        url,
+        prox ? `📅 *Próxima entrega:* ${prox}` : '',
+        corte ? `⏰ *Cierre de pedidos:* ${corte}` : '',
+        `💬 Si querés consultar o sumar algo, respondeme por acá.`
+      ].filter(Boolean).join('\n');
+    }
+
     function copiarLinkTiendaVecinos() {
-      const url = `${window.location.origin}/tienda/${GSTATE.slug}`;
-      navigator.clipboard.writeText(url);
-      mostrarAvisoPantallaGestor(`✅ Link de tu tienda copiado: ${url}`, 'ok');
+      const url = obtenerUrlBaseTiendaFallback();
+      navigator.clipboard?.writeText(url)
+        .then(() => mostrarAvisoPantallaGestor(`✅ Link de tu tienda copiado: ${url}`, 'ok'))
+        .catch(() => abrirModalDifusionTienda(0));
     }
 
     let _ultimoPayloadWaGestor = null;
@@ -995,27 +1132,286 @@
       }
     }
 
-    async function enviarLinkTiendaWhatsAppPrueba() {
+    function abrirModalDifusionTienda(ofertaIdInicial = 0) {
       if (!GSTATE.nodo) return;
-      const url = `${window.location.origin}/tienda/${GSTATE.slug}`;
-      const prox = GSTATE.proximaEntrega?.asignada?.label_completo || 'próxima ventana semanal';
-      const corte = GSTATE.proximaEntrega?.asignada?.label_corte || '';
-      const mensaje = [
-        `🌿 *${GSTATE.nodo.nombre_marca}*`,
-        `¡Hola! Te comparto el link de nuestra tienda barrial para hacer tu pedido:`,
-        url,
-        `📅 *Próxima entrega:* ${prox}`,
-        corte ? `⏰ *Cierre de pedidos:* ${corte}` : '',
-        `Podés retirar por el Nodo (${GSTATE.nodo.direccion_retiro || ''}) o pedir envío en el barrio.`
-      ].filter(Boolean).join('\n');
+      const modal = document.getElementById('modal-recibo-gestor');
+      const body = document.getElementById('modal-recibo-gestor-body');
+      if (!modal || !body) return;
 
-      await abrirModalDespachoWhatsAppGestor({
-        destinatario_nombre: `Vecinos de ${GSTATE.nodo.nombre_marca}`,
-        telefono_original: '5492216615746',
-        mensaje,
-        titulo: 'Compartir Tienda por WhatsApp',
-        subtitulo: GSTATE.nodo.nombre_marca
-      });
+      const ofertasPub = obtenerOfertasPublicadasDifusion();
+      if (Number(ofertaIdInicial) > 0) {
+        GSTATE.difusionModo = 'oferta';
+        GSTATE.difusionOfertaId = Number(ofertaIdInicial);
+      } else {
+        GSTATE.difusionModo = 'tienda';
+        if (!GSTATE.difusionOfertaId && ofertasPub[0]) {
+          GSTATE.difusionOfertaId = Number(ofertasPub[0].oferta_id);
+        }
+      }
+
+      renderizarCuerpoModalDifusion(false);
+      modal.style.display = 'flex';
+
+      if (!GSTATE.compartirKit) {
+        cargarKitCompartirGestor(false).then(() => {
+          const modalActual = document.getElementById('modal-recibo-gestor');
+          if (modalActual && modalActual.style.display !== 'none') {
+            renderizarCuerpoModalDifusion(false);
+          }
+        });
+      }
+    }
+
+    function renderizarCuerpoModalDifusion(mostrarQrGrande = false) {
+      const body = document.getElementById('modal-recibo-gestor-body');
+      if (!body || !GSTATE.nodo) return;
+
+      const nombreMarca = GSTATE.compartirKit?.nodo?.nombre_marca || GSTATE.nodo?.nombre_marca || 'Tu Tienda';
+      const qrDataUrl = GSTATE.compartirKit?.qr_tienda_data_url || '';
+      const ofertasPub = obtenerOfertasPublicadasDifusion();
+      if (GSTATE.difusionModo === 'oferta' && ofertasPub.length > 0) {
+        const existeSel = ofertasPub.some(o => Number(o.oferta_id) === Number(GSTATE.difusionOfertaId));
+        if (!existeSel) {
+          GSTATE.difusionOfertaId = Number(ofertasPub[0].oferta_id);
+        }
+      }
+
+      if (mostrarQrGrande && qrDataUrl) {
+        body.innerHTML = `
+          <div style="background:var(--brand); color:#fff; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <div>
+              <div style="font-size:0.7rem; font-weight:800; text-transform:uppercase; opacity:0.88;">QR Público de Tienda</div>
+              <div style="font-size:1.1rem; font-weight:900;">${esc(nombreMarca)}</div>
+            </div>
+            <button type="button" onclick="renderizarCuerpoModalDifusion(false)"
+              style="background:rgba(255,255,255,0.2); border:none; color:#fff; padding:6px 12px; border-radius:999px; font-weight:800; cursor:pointer;">
+              ← Volver
+            </button>
+          </div>
+          <div style="padding:22px 20px; text-align:center; background:#fff;">
+            <p style="margin:0 0 12px 0; font-size:0.86rem; color:var(--muted);">
+              Escaneá este código con la cámara del celular para abrir la tienda online.
+            </p>
+            <img src="${qrDataUrl}" alt="QR Público ${esc(nombreMarca)}"
+              style="width:min(300px, 76vw); height:auto; border-radius:16px; border:1px solid var(--border); padding:10px; background:#fff; box-shadow:0 8px 24px rgba(0,0,0,0.08);">
+            <div style="margin-top:12px; font-size:0.78rem; color:var(--brand-dark); font-weight:800; word-break:break-all;">
+              ${esc(obtenerUrlBaseTiendaFallback())}
+            </div>
+            <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:16px;">
+              <button type="button" class="btn-primary" onclick="descargarQrTiendaMarcaBlanca()">
+                ⬇️ Descargar QR PNG
+              </button>
+              <button type="button" class="btn-soft" onclick="renderizarCuerpoModalDifusion(false)">
+                Cerrar vista grande
+              </button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      const urlActual = obtenerUrlDifusionActual();
+      const textoSugerido = generarTextoSugeridoDifusion();
+      const puedeNativo = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+
+      body.innerHTML = `
+        <div style="background:var(--surface-warm); color:var(--text); padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+          <div>
+            <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; color:var(--brand-dark);">Kit de Difusión</div>
+            <div style="font-size:1.08rem; font-weight:900; margin-top:2px;">📣 Difundir ${esc(nombreMarca)}</div>
+            <div style="font-size:0.78rem; color:var(--muted); margin-top:2px;">Elegí qué compartir, editá el texto si querés y enviá libremente por WhatsApp o redes.</div>
+          </div>
+          <button type="button" onclick="cerrarModalReciboGestor()"
+            style="background:#fff; border:1px solid var(--border); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer; flex-shrink:0;">✕</button>
+        </div>
+
+        <div style="padding:16px 20px; background:#fff; color:var(--text); display:grid; gap:14px;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button"
+              onclick="cambiarModoDifusionTienda('tienda')"
+              style="flex:1; min-width:130px; padding:9px 12px; border-radius:10px; font-weight:800; font-size:0.84rem; cursor:pointer; border:1px solid ${GSTATE.difusionModo === 'tienda' ? 'var(--brand)' : 'var(--border)'}; background:${GSTATE.difusionModo === 'tienda' ? 'var(--brand-soft)' : '#fff'}; color:${GSTATE.difusionModo === 'tienda' ? 'var(--brand-dark)' : 'var(--text)'};">
+              🏪 Tienda completa
+            </button>
+            <button type="button"
+              onclick="cambiarModoDifusionTienda('oferta')"
+              style="flex:1; min-width:130px; padding:9px 12px; border-radius:10px; font-weight:800; font-size:0.84rem; cursor:pointer; border:1px solid ${GSTATE.difusionModo === 'oferta' ? 'var(--brand)' : 'var(--border)'}; background:${GSTATE.difusionModo === 'oferta' ? 'var(--brand-soft)' : '#fff'}; color:${GSTATE.difusionModo === 'oferta' ? 'var(--brand-dark)' : 'var(--text)'};">
+              🛍️ Producto / oferta puntual
+            </button>
+          </div>
+
+          ${GSTATE.difusionModo === 'oferta' ? `
+            <div>
+              <label for="difusion-oferta-select" style="display:block; font-size:0.75rem; font-weight:800; color:var(--muted); margin-bottom:4px;">Elegí el producto publicado a promocionar</label>
+              ${ofertasPub.length > 0 ? `
+                <select id="difusion-oferta-select" onchange="seleccionarOfertaDifusionTienda(this.value)"
+                  style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; font-family:inherit; font-size:0.86rem; background:#fff;">
+                  ${ofertasPub.map(o => `
+                    <option value="${Number(o.oferta_id)}" ${Number(o.oferta_id) === Number(GSTATE.difusionOfertaId) ? 'selected' : ''}>
+                      ${esc(o.nombre_publico)}${o.presentacion_etiqueta ? ` (${esc(o.presentacion_etiqueta)})` : ''} — ${fmt(o.precio_venta_vecino)}
+                    </option>
+                  `).join('')}
+                </select>
+              ` : `
+                <div style="padding:10px 12px; border-radius:10px; background:var(--warn-soft); color:var(--warn); font-size:0.82rem; font-weight:700;">
+                  Todavía no tenés productos publicados en la tienda. Publicá al menos uno en "1. Mi Oferta y Márgenes".
+                </div>
+              `}
+            </div>
+          ` : ''}
+
+          <div>
+            <div style="font-size:0.75rem; font-weight:800; color:var(--muted); margin-bottom:4px;">Enlace público limpio</div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input id="difusion-link-input" type="text" readonly value="${esc(urlActual)}"
+                onclick="this.select()"
+                style="flex:1; min-width:0; padding:9px 11px; border:1px solid var(--border); border-radius:10px; background:var(--bg); font-size:0.8rem; color:var(--text);" />
+              <button type="button" class="btn-soft" onclick="copiarUrlDifusionDirecta()" style="padding:9px 12px; white-space:nowrap;">
+                📋 Copiar link
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <label for="difusion-texto-textarea" style="font-size:0.75rem; font-weight:800; color:var(--muted);">Mensaje sugerido (podés editarlo antes de enviar)</label>
+              <button type="button" onclick="restablecerTextoDifusionTienda()"
+                style="background:none; border:none; color:var(--brand-dark); font-size:0.74rem; font-weight:800; cursor:pointer; padding:0;">
+                ↺ Restablecer texto
+              </button>
+            </div>
+            <textarea id="difusion-texto-textarea" rows="5"
+              style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; font-family:inherit; font-size:0.82rem; line-height:1.45; resize:vertical; background:#fffdfb; color:var(--text);">${esc(textoSugerido)}</textarea>
+          </div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="btn-primary" onclick="abrirWhatsAppDifusionLibre()" style="flex:1; min-width:190px;">
+              💬 Compartir en WhatsApp (elegir contacto/grupo)
+            </button>
+            ${puedeNativo ? `
+              <button type="button" class="btn-soft" onclick="compartirKitNativo()" style="padding:10px 14px;">
+                📲 Más apps
+              </button>
+            ` : `
+              <button type="button" class="btn-soft" onclick="compartirKitNativo()" style="padding:10px 14px;">
+                📋 Copiar texto completo
+              </button>
+            `}
+          </div>
+
+          <div style="border-top:1px solid var(--border); padding-top:14px;">
+            <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; background:var(--surface-warm); border:1px solid var(--border); border-radius:14px; padding:12px 14px;">
+              <div style="width:92px; height:92px; border-radius:10px; background:#fff; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden;">
+                ${qrDataUrl
+                  ? `<img id="difusion-qr-img" src="${qrDataUrl}" alt="QR Público ${esc(nombreMarca)}" style="width:88px; height:88px; display:block;">`
+                  : `<span style="font-size:0.72rem; color:var(--muted); text-align:center; padding:6px;">Generando QR...</span>`
+                }
+              </div>
+              <div style="flex:1; min-width:180px;">
+                <div style="font-weight:900; font-size:0.88rem; color:var(--text);">QR Público para redes o mostrador</div>
+                <div style="font-size:0.76rem; color:var(--muted); margin-top:2px; line-height:1.4;">
+                  100% marca blanca de <strong>${esc(nombreMarca)}</strong>. Descargalo como imagen PNG o abrilo en grande para que lo escaneen directo.
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+                  <button type="button" class="btn-soft" onclick="descargarQrTiendaMarcaBlanca()" ${qrDataUrl ? '' : 'disabled'} style="font-size:0.76rem; padding:6px 10px;">
+                    ⬇️ Descargar PNG
+                  </button>
+                  <button type="button" class="btn-soft" onclick="verQrGrandeMarcaBlanca()" ${qrDataUrl ? '' : 'disabled'} style="font-size:0.76rem; padding:6px 10px;">
+                    🔍 Ver QR grande
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function cambiarModoDifusionTienda(modo) {
+      GSTATE.difusionModo = modo === 'oferta' ? 'oferta' : 'tienda';
+      if (GSTATE.difusionModo === 'oferta' && !GSTATE.difusionOfertaId) {
+        const first = obtenerOfertasPublicadasDifusion()[0];
+        if (first) GSTATE.difusionOfertaId = Number(first.oferta_id);
+      }
+      renderizarCuerpoModalDifusion(false);
+    }
+
+    function seleccionarOfertaDifusionTienda(ofertaId) {
+      GSTATE.difusionOfertaId = Number(ofertaId || 0);
+      renderizarCuerpoModalDifusion(false);
+    }
+
+    function restablecerTextoDifusionTienda() {
+      const ta = document.getElementById('difusion-texto-textarea');
+      if (ta) {
+        ta.value = generarTextoSugeridoDifusion();
+        mostrarAvisoPantallaGestor('Texto sugerido restablecido.', 'ok');
+      }
+    }
+
+    function copiarUrlDifusionDirecta() {
+      const inp = document.getElementById('difusion-link-input');
+      const url = (inp?.value || obtenerUrlDifusionActual()).trim();
+      navigator.clipboard?.writeText(url)
+        .then(() => mostrarAvisoPantallaGestor(`✅ Link copiado: ${url}`, 'ok'))
+        .catch(() => mostrarAvisoPantallaGestor('No se pudo copiar automáticamente; seleccionalo desde la casilla.', 'error'));
+    }
+
+    function abrirWhatsAppDifusionLibre() {
+      const ta = document.getElementById('difusion-texto-textarea');
+      const texto = (ta?.value || generarTextoSugeridoDifusion()).trim();
+      const waHref = `https://wa.me/?text=${encodeURIComponent(texto)}`;
+      window.open(waHref, '_blank', 'noopener');
+    }
+
+    async function compartirKitNativo() {
+      const ta = document.getElementById('difusion-texto-textarea');
+      const texto = (ta?.value || generarTextoSugeridoDifusion()).trim();
+      const url = obtenerUrlDifusionActual();
+      const nombreMarca = GSTATE.compartirKit?.nodo?.nombre_marca || GSTATE.nodo?.nombre_marca || 'Tienda';
+
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: nombreMarca,
+            text: texto,
+            url
+          });
+          return;
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
+        }
+      }
+
+      try {
+        await navigator.clipboard.writeText(texto);
+        mostrarAvisoPantallaGestor('✅ Mensaje + enlace copiados al portapapeles.', 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Copiá el mensaje desde el cuadro de texto.', 'error');
+      }
+    }
+
+    function descargarQrTiendaMarcaBlanca() {
+      const dataUrl = GSTATE.compartirKit?.qr_tienda_data_url || '';
+      if (!dataUrl) {
+        mostrarAvisoPantallaGestor('El QR todavía se está generando, probá en un segundo.', 'error');
+        return;
+      }
+      const slugClean = String(GSTATE.slug || 'tienda').replace(/[^a-zA-Z0-9_-]+/g, '-');
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `QR_${slugClean}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      mostrarAvisoPantallaGestor('✅ QR PNG descargado.', 'ok');
+    }
+
+    function verQrGrandeMarcaBlanca() {
+      renderizarCuerpoModalDifusion(true);
+    }
+
+    function enviarLinkTiendaWhatsAppPrueba() {
+      abrirModalDifusionTienda(0);
     }
 
     function formatearItemGestor(it) {
@@ -1121,6 +1517,12 @@
                         🥣 Ingredientes (${(of.ingredientes_comerciales || []).length})
                       </span>
                     </label>
+                  ` : ''}
+                  ${of.publicado_tienda ? `
+                    <button type="button" class="btn-soft" style="font-size:0.74rem; padding:4px 9px;"
+                      onclick="abrirModalDifusionTienda(${Number(of.id)})" title="Compartir este producto directo por WhatsApp o link">
+                      📣 Compartir
+                    </button>
                   ` : ''}
                   <label class="switch-label">
                     <input type="checkbox" ${of.publicado_tienda ? 'checked' : ''}
@@ -2862,10 +3264,317 @@
       }).join('');
     }
 
+    // -------------------------------------------------------------------------
+    // 7. COMPRADORES REGISTRADOS (Etapa A4)
+    // -------------------------------------------------------------------------
+    function normalizarTextoBusquedaComprador(txt) {
+      return String(txt || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+    }
+
+    function obtenerCompradoresFiltradosGestor() {
+      const lista = Array.isArray(GSTATE.compradores) ? GSTATE.compradores : [];
+      const filtro = String(GSTATE.filtroCompradores || 'TODOS').toUpperCase();
+      const q = normalizarTextoBusquedaComprador(GSTATE.busquedaCompradores);
+      const terminos = q ? q.split(/\s+/).filter(Boolean) : [];
+
+      return lista.filter(c => {
+        if (filtro === 'ACTIVOS' && !c.tiene_pedido_en_curso) return false;
+        if (filtro === 'RECURRENTES' && !c.es_recurrente) return false;
+        if (terminos.length > 0) {
+          const bolsa = normalizarTextoBusquedaComprador([
+            c.nombre_completo,
+            c.codigo_vecino,
+            c.telefono_whatsapp,
+            c.direccion_calle,
+            c.entrecalles_referencia,
+            c.notas_entrega,
+            c.ultimo_pedido?.codigo_pedido,
+            c.ultimo_pedido?.fecha_entrega_label
+          ].filter(Boolean).join(' '));
+          for (const t of terminos) {
+            if (!bolsa.includes(t)) return false;
+          }
+        }
+        return true;
+      });
+    }
+
+    function filtrarEstadoCompradoresGestor(filtro) {
+      GSTATE.filtroCompradores = filtro || 'TODOS';
+      renderVistaGestor();
+    }
+
+    function filtrarTextoCompradoresGestor(valor) {
+      GSTATE.busquedaCompradores = String(valor || '');
+      const listEl = document.getElementById('compradores-lista-container');
+      const countEl = document.getElementById('compradores-resultado-count');
+      const clearBtn = document.getElementById('compradores-clear-search');
+      if (listEl) {
+        listEl.innerHTML = renderizarListaCompradoresHtml();
+      }
+      if (countEl) {
+        const filtrados = obtenerCompradoresFiltradosGestor();
+        countEl.textContent = `${filtrados.length} de ${(GSTATE.compradores || []).length} compradores`;
+      }
+      if (clearBtn) {
+        clearBtn.style.display = GSTATE.busquedaCompradores.trim() ? 'inline-flex' : 'none';
+      }
+    }
+
+    function limpiarBusquedaCompradoresGestor() {
+      GSTATE.busquedaCompradores = '';
+      const inp = document.getElementById('compradores-search-input');
+      if (inp) {
+        inp.value = '';
+        inp.focus();
+      }
+      filtrarTextoCompradoresGestor('');
+    }
+
+    async function refrescarCompradoresGestor() {
+      if (!GSTATE.nodo?.id) return;
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${Number(GSTATE.nodo.id)}/compradores`, { cache: 'no-store' });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor(data.error || 'No se pudo actualizar la lista de compradores.', 'error');
+          return;
+        }
+        GSTATE.compradores = Array.isArray(data.compradores) ? data.compradores : [];
+        GSTATE.compradoresResumen = data.resumen || {
+          total_compradores: GSTATE.compradores.length,
+          con_pedido_activo: GSTATE.compradores.filter(c => c.tiene_pedido_en_curso).length,
+          recurrentes: GSTATE.compradores.filter(c => c.es_recurrente).length
+        };
+        GSTATE.compradoresCargados = true;
+        renderVistaGestor();
+        mostrarAvisoPantallaGestor('✅ Lista de compradores actualizada.', 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de comunicación al actualizar compradores.', 'error');
+      }
+    }
+
+    function formatearFechaCortaComprador(iso) {
+      if (!iso) return '';
+      try {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return '';
+        return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function abrirWhatsAppCompradorGestor(vecinoId) {
+      const comp = (GSTATE.compradores || []).find(c => Number(c.vecino_id) === Number(vecinoId));
+      if (!comp) return;
+      let telDigits = String(comp.telefono_whatsapp || comp.telefono_normalizado || '').replace(/\D/g, '');
+      if (!telDigits) {
+        mostrarAvisoPantallaGestor('Este comprador no tiene número de WhatsApp registrado.', 'error');
+        return;
+      }
+      if (!telDigits.startsWith('54')) {
+        telDigits = telDigits.replace(/^0+/, '');
+        if (telDigits.length > 10 && telDigits.startsWith('15')) {
+          telDigits = telDigits.slice(2);
+        }
+        telDigits = `549${telDigits}`;
+      }
+      const nombreMarca = GSTATE.nodo?.nombre_marca || 'nuestra tienda';
+      const primerNombre = String(comp.nombre_completo || '').trim().split(/\s+/)[0] || '';
+      const saludo = primerNombre ? `¡Hola ${primerNombre}!` : '¡Hola!';
+      const texto = `${saludo} Te escribo de *${nombreMarca}* 😊`;
+      window.open(`https://wa.me/${telDigits}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener');
+    }
+
+    function renderizarListaCompradoresHtml() {
+      const filtrados = obtenerCompradoresFiltradosGestor();
+      if ((GSTATE.compradores || []).length === 0) {
+        return `
+          <div class="card" style="text-align:center; padding:28px 20px; color:var(--muted);">
+            Todavía no hay compradores registrados en este Nodo.<br>
+            <span style="font-size:0.84rem;">Cuando alguien haga su primer pedido o se registre en tu tienda, aparecerá acá automáticamente.</span>
+          </div>
+        `;
+      }
+      if (filtrados.length === 0) {
+        return `
+          <div class="card" style="text-align:center; padding:24px 18px; color:var(--muted);">
+            No se encontraron compradores que coincidan con ese filtro o búsqueda.
+          </div>
+        `;
+      }
+
+      return filtrados.map(c => {
+        const up = c.ultimo_pedido || null;
+        const metaHito = up ? _obtenerMetaHitoGestor(up) : null;
+        const saldo = Number(c.saldo_actual || 0);
+        const esRecurrente = Boolean(c.es_recurrente);
+        const tieneActivo = Boolean(c.tiene_pedido_en_curso);
+        const fechaAlta = formatearFechaCortaComprador(c.created_at);
+        const cantTotales = Number(c.cantidad_pedidos_activos || 0) + Number(c.cantidad_pedidos_entregados || 0);
+        const telDisplay = String(c.telefono_whatsapp || '').trim();
+
+        return `
+          <div class="card" style="padding:14px 16px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+              <div style="min-width:0; flex:1;">
+                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                  <strong style="font-size:1rem; color:var(--text);">${esc(c.nombre_completo || 'Comprador')}</strong>
+                  ${c.codigo_vecino ? `<span style="font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:999px; background:var(--bg); border:1px solid var(--border); color:var(--muted);">${esc(c.codigo_vecino)}</span>` : ''}
+                  ${tieneActivo ? `<span style="font-size:0.72rem; font-weight:800; padding:2px 8px; border-radius:999px; background:var(--brand-soft); border:1px solid var(--brand-border); color:var(--brand-dark);">🚚 Pedido activo</span>` : ''}
+                  ${esRecurrente ? `<span style="font-size:0.72rem; font-weight:800; padding:2px 8px; border-radius:999px; background:var(--ok-soft); border:1px solid rgba(47,111,78,0.28); color:var(--ok);">⭐ Recurrente</span>` : ''}
+                </div>
+                <div style="font-size:0.8rem; color:var(--muted); margin-top:4px; line-height:1.45;">
+                  ${telDisplay ? `<span>📱 ${esc(telDisplay)}</span>` : '<span>📱 Sin teléfono</span>'}
+                  ${c.direccion_calle ? ` · <span>📍 ${esc(c.direccion_calle)}${c.entrecalles_referencia ? ` (${esc(c.entrecalles_referencia)})` : ''}</span>` : ''}
+                  ${fechaAlta ? ` · <span>Alta: ${esc(fechaAlta)}</span>` : ''}
+                </div>
+              </div>
+
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" class="btn-primary" style="padding:8px 12px; font-size:0.8rem;"
+                  onclick="abrirWhatsAppCompradorGestor(${Number(c.vecino_id)})" ${telDisplay ? '' : 'disabled'}>
+                  💬 WhatsApp
+                </button>
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-top:10px;">
+              <div style="background:#fffdfb; border:1px solid var(--border); border-radius:10px; padding:8px 10px;">
+                <div style="font-size:0.68rem; font-weight:800; text-transform:uppercase; color:var(--muted);">Total compras</div>
+                <div style="font-size:0.96rem; font-weight:900; color:var(--text); margin-top:2px;">${fmt(c.total_historico_comprado)}</div>
+              </div>
+              <div style="background:#fffdfb; border:1px solid var(--border); border-radius:10px; padding:8px 10px;">
+                <div style="font-size:0.68rem; font-weight:800; text-transform:uppercase; color:var(--muted);">Pedidos</div>
+                <div style="font-size:0.9rem; font-weight:800; color:var(--text); margin-top:2px;">
+                  ${cantTotales} (${Number(c.cantidad_pedidos_activos || 0)} act · ${Number(c.cantidad_pedidos_entregados || 0)} entr)
+                </div>
+              </div>
+              ${Math.abs(saldo) >= 1 ? `
+                <div style="background:${saldo > 0 ? '#fef2f2' : 'var(--ok-soft)'}; border:1px solid ${saldo > 0 ? '#fecaca' : 'rgba(47,111,78,0.28)'}; border-radius:10px; padding:8px 10px;">
+                  <div style="font-size:0.68rem; font-weight:800; text-transform:uppercase; color:${saldo > 0 ? '#991b1b' : 'var(--ok)'};">
+                    ${saldo > 0 ? 'Saldo pendiente' : 'Saldo a favor'}
+                  </div>
+                  <div style="font-size:0.96rem; font-weight:900; color:${saldo > 0 ? '#991b1b' : 'var(--ok)'}; margin-top:2px;">
+                    ${fmt(Math.abs(saldo))}
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+
+            ${up ? `
+              <div style="margin-top:10px; padding:9px 11px; border-radius:10px; background:var(--surface-warm); border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; font-size:0.79rem;">
+                <div>
+                  <strong>Último pedido ${esc(up.codigo_pedido || `#${up.id}`)}</strong>
+                  ${up.fecha_entrega_label ? ` · ${esc(up.fecha_entrega_label)}` : ''}
+                  · <strong>${fmt(up.total_vecino)}</strong>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                  ${metaHito ? `
+                    <span style="padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:800; background:${metaHito.bg}; color:${metaHito.fg}; border:1px solid ${metaHito.bd};">
+                      ${esc(metaHito.texto)}
+                    </span>
+                  ` : ''}
+                  <span style="padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:800; background:${up.pago_confirmado ? 'var(--ok-soft)' : 'var(--warn-soft)'}; color:${up.pago_confirmado ? 'var(--ok)' : 'var(--warn)'};">
+                    ${up.pago_confirmado ? '✅ Cobrado' : '⏳ Pend. cobro'}
+                  </span>
+                </div>
+              </div>
+            ` : `
+              <div style="margin-top:8px; font-size:0.77rem; color:var(--muted);">
+                Registrado en la tienda sin pedidos cargados aún.
+              </div>
+            `}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderSeccionCompradores() {
+      const lista = Array.isArray(GSTATE.compradores) ? GSTATE.compradores : [];
+      const total = Number(GSTATE.compradoresResumen?.total_compradores ?? lista.length);
+      const activos = Number(GSTATE.compradoresResumen?.con_pedido_activo ?? lista.filter(c => c.tiene_pedido_en_curso).length);
+      const recurrentes = Number(GSTATE.compradoresResumen?.recurrentes ?? lista.filter(c => c.es_recurrente).length);
+      const filtrados = obtenerCompradoresFiltradosGestor();
+      const filtro = String(GSTATE.filtroCompradores || 'TODOS').toUpperCase();
+
+      const btnEstilo = (id) => filtro === id
+        ? 'background:var(--brand); color:#fff; border:1px solid var(--brand);'
+        : 'background:#fff; color:var(--text); border:1px solid var(--border);';
+
+      return `
+        <div class="card" style="padding:14px 16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+            <div style="font-size:0.84rem; color:var(--muted);">
+              Clientes registrados en <strong>${esc(GSTATE.nodo?.nombre_marca || 'tu tienda')}</strong> sin carga manual.
+            </div>
+            <button type="button" class="btn-soft" onclick="refrescarCompradoresGestor()" style="padding:6px 11px; font-size:0.78rem;">
+              🔄 Actualizar
+            </button>
+          </div>
+
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap:8px; margin-bottom:12px;">
+            <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:10px 12px;">
+              <div style="font-size:0.7rem; font-weight:800; color:var(--muted); text-transform:uppercase;">Registrados</div>
+              <div style="font-size:1.2rem; font-weight:900; margin-top:2px;">${total}</div>
+            </div>
+            <div style="background:var(--brand-soft); border:1px solid var(--brand-border); border-radius:12px; padding:10px 12px;">
+              <div style="font-size:0.7rem; font-weight:800; color:var(--brand-dark); text-transform:uppercase;">Con pedido activo</div>
+              <div style="font-size:1.2rem; font-weight:900; color:var(--brand-dark); margin-top:2px;">${activos}</div>
+            </div>
+            <div style="background:var(--ok-soft); border:1px solid rgba(47,111,78,0.28); border-radius:12px; padding:10px 12px;">
+              <div style="font-size:0.7rem; font-weight:800; color:var(--ok); text-transform:uppercase;">Recurrentes</div>
+              <div style="font-size:1.2rem; font-weight:900; color:var(--ok); margin-top:2px;">${recurrentes}</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+            <button type="button" onclick="filtrarEstadoCompradoresGestor('TODOS')"
+              style="${btnEstilo('TODOS')} padding:7px 12px; border-radius:999px; font-size:0.78rem; font-weight:800; cursor:pointer;">
+              Todos (${total})
+            </button>
+            <button type="button" onclick="filtrarEstadoCompradoresGestor('ACTIVOS')"
+              style="${btnEstilo('ACTIVOS')} padding:7px 12px; border-radius:999px; font-size:0.78rem; font-weight:800; cursor:pointer;">
+              Con pedido activo (${activos})
+            </button>
+            <button type="button" onclick="filtrarEstadoCompradoresGestor('RECURRENTES')"
+              style="${btnEstilo('RECURRENTES')} padding:7px 12px; border-radius:999px; font-size:0.78rem; font-weight:800; cursor:pointer;">
+              Recurrentes (${recurrentes})
+            </button>
+          </div>
+
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="compradores-search-input" type="search"
+              value="${esc(GSTATE.busquedaCompradores || '')}"
+              oninput="filtrarTextoCompradoresGestor(this.value)"
+              placeholder="Buscar por nombre, WhatsApp, código, dirección o pedido..."
+              style="flex:1; min-width:0; padding:10px 12px; border:1px solid var(--border); border-radius:10px; font-family:inherit; font-size:0.86rem; background:#fff;" />
+            <button id="compradores-clear-search" type="button" class="btn-soft"
+              onclick="limpiarBusquedaCompradoresGestor()"
+              style="display:${GSTATE.busquedaCompradores?.trim() ? 'inline-flex' : 'none'}; padding:9px 11px;">
+              ✕
+            </button>
+          </div>
+          <div id="compradores-resultado-count" style="font-size:0.76rem; color:var(--muted); margin-top:6px;">
+            ${filtrados.length} de ${lista.length} compradores
+          </div>
+        </div>
+
+        <div id="compradores-lista-container">
+          ${renderizarListaCompradoresHtml()}
+        </div>
+      `;
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       GSTATE.slug = detectarSlugInicial();
       const hash = (window.location.hash || '').replace(/^#/, '');
-      if (['ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion'].includes(hash)) {
+      if (['ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(hash)) {
         GSTATE.vista = hash;
       }
       cargarPanelGestor();

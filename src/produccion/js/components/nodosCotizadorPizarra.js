@@ -36,6 +36,7 @@
         catalogoEditandoId: null,
         omitirAutoOrigenInicial: false,
         nodoEditandoId: null,
+        modoCreacionNuevo: false,
         ultimoPreviewEtiqueta: null
     };
 
@@ -151,14 +152,22 @@
         if (subTab === 'cotizador') {
             recalcularMesaCotizacionEnVivo();
         } else if (subTab === 'abm_nodos') {
-            const nodoInicial = ESTADO_NODOS.nodoEditandoId
-                ? ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(ESTADO_NODOS.nodoEditandoId))
-                : ESTADO_NODOS.nodos[0];
-            if (nodoInicial) {
-                cargarNodoEnFormularioAbm(nodoInicial.id);
-            } else {
+            if (ESTADO_NODOS.modoCreacionNuevo) {
+                resetearPreviewLogoAbm({ inicialesDefault: '' });
                 regenerarLogoZplEnVivo();
+            } else {
+                const nodoInicial = ESTADO_NODOS.nodoEditandoId
+                    ? ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(ESTADO_NODOS.nodoEditandoId))
+                    : ESTADO_NODOS.nodos[0];
+                if (nodoInicial) {
+                    cargarNodoEnFormularioAbm(nodoInicial.id);
+                } else {
+                    regenerarLogoZplEnVivo();
+                }
             }
+            asegurarGoogleMapsSdkAbm().then(ok => {
+                if (ok) vincularAutocompletePlacesAbm();
+            });
         }
     }
 
@@ -250,14 +259,22 @@
                 recalcularMesaCotizacionEnVivo();
             }
         } else if (ESTADO_NODOS.subTabActiva === 'abm_nodos') {
-            const nodoTarget = ESTADO_NODOS.nodoEditandoId
-                ? ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(ESTADO_NODOS.nodoEditandoId))
-                : ESTADO_NODOS.nodos[0];
-            if (nodoTarget && !ESTADO_NODOS.clienteMadreSeleccionadoId) {
-                cargarNodoEnFormularioAbm(nodoTarget.id);
-            } else if (!nodoTarget && !ESTADO_NODOS.clienteMadreSeleccionadoId) {
+            if (ESTADO_NODOS.modoCreacionNuevo) {
+                resetearPreviewLogoAbm({ inicialesDefault: '' });
                 regenerarLogoZplEnVivo();
+            } else {
+                const nodoTarget = ESTADO_NODOS.nodoEditandoId
+                    ? ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(ESTADO_NODOS.nodoEditandoId))
+                    : ESTADO_NODOS.nodos[0];
+                if (nodoTarget && !ESTADO_NODOS.clienteMadreSeleccionadoId) {
+                    cargarNodoEnFormularioAbm(nodoTarget.id);
+                } else if (!nodoTarget && !ESTADO_NODOS.clienteMadreSeleccionadoId) {
+                    regenerarLogoZplEnVivo();
+                }
             }
+            asegurarGoogleMapsSdkAbm().then(ok => {
+                if (ok) vincularAutocompletePlacesAbm();
+            });
         }
     }
 
@@ -1459,8 +1476,9 @@
                                         style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #38bdf8; background:#0f172a; color:#f8fafc; font-weight:700; box-sizing:border-box;">
                                 </div>
                                 <div>
-                                    <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Domicilio del Nodo (Texto Impreso / Vecinos)</label>
-                                    <input type="text" id="abm-direccion" placeholder="Calle y número de retiro"
+                                    <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Domicilio del Nodo (Texto Impreso / Mapa AR)</label>
+                                    <input type="text" id="abm-direccion" autocomplete="off"
+                                        placeholder="Calle, altura, ciudad y provincia (ej: Av. Colón 540, Córdoba)"
                                         oninput="window.NodosPizarra.simularEtiquetaZebra('estandar_pagado')"
                                         style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
                                 </div>
@@ -1472,9 +1490,9 @@
                             <!-- PANEL DESPLEGABLE INTERACTIVO GOOGLE MAPS -->
                             <div id="abm-mapa-panel" style="display:none; margin-top:10px; padding:10px; border-radius:9px; background:#0b1120; border:1px solid rgba(56,189,248,0.45);">
                                 <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-                                    <input type="text" id="abm-mapa-search-input"
+                                    <input type="text" id="abm-mapa-search-input" autocomplete="off"
                                         onkeydown="if(event.key==='Enter'){event.preventDefault(); window.NodosPizarra.buscarDireccionEnMapaAbm();}"
-                                        placeholder="🔎 Buscar otra dirección, esquina o localidad en Google Maps (ej: Calle 70 y 182 bis, La Plata)..."
+                                        placeholder="🔎 Escribí cualquier dirección, ciudad o provincia de Argentina (ej: Av. Colón 540, Córdoba / 9 de Julio 1200, Rosario)..."
                                         style="flex:1; min-width:220px; padding:6px 10px; border-radius:6px; border:1px solid #334155; background:#151e2e; color:#f8fafc; font-size:0.78rem;">
                                     <button type="button" onclick="window.NodosPizarra.buscarDireccionEnMapaAbm()"
                                         style="padding:6px 12px; border-radius:6px; font-size:0.75rem; font-weight:800; background:#0284c7; border:none; color:#fff; cursor:pointer;">
@@ -1618,7 +1636,7 @@
                                 <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                                     <label style="padding:6px 11px; border-radius:6px; font-size:0.75rem; font-weight:700; background:rgba(56,189,248,0.16); border:1px solid #38bdf8; color:#bae6fd; cursor:pointer;">
                                         📂 Subir / Cambiar Logo
-                                        <input type="file" accept="image/*" style="display:none;" onchange="window.NodosPizarra.subirArchivoLogo(event)">
+                                        <input type="file" id="abm-logo-file-input" accept="image/*" style="display:none;" onchange="window.NodosPizarra.subirArchivoLogo(event)">
                                     </label>
                                     <button type="button" onclick="window.NodosPizarra.quitarLogoImagenAbm()"
                                         style="padding:6px 10px; border-radius:6px; font-size:0.73rem; font-weight:700; background:rgba(248,113,113,0.12); border:1px solid rgba(248,113,113,0.4); color:#fca5a5; cursor:pointer;">
@@ -2417,17 +2435,49 @@
         return window.__cargandoGoogleMapsAbmPromise;
     }
 
-    function normalizarDireccionParaGeocoder(rawDir) {
+    function asegurarEstilosAutocompleteAbm() {
+        if (document.getElementById('nodos-abm-pac-style')) return;
+        const st = document.createElement('style');
+        st.id = 'nodos-abm-pac-style';
+        st.textContent = `.pac-container { z-index: 99999 !important; font-family: inherit; }`;
+        document.head.appendChild(st);
+    }
+
+    function pareceDireccionPlatense(rawDir) {
+        const txt = String(rawDir || '').trim();
+        if (!txt) return false;
+        const mencionaOtraJurisdiccion = /caba|capital federal|córdoba|cordoba|rosario|santa fe|mendoza|tucumán|tucuman|salta|neuquén|neuquen|mar del plata|bahía blanca|bahia blanca|tandil|paraná|parana|entre ríos|entre rios|corrientes|posadas|misiones|bariloche|río negro|rio negro|chubut|san juan|san luis|la rioja|catamarca|jujuy|chaco|formosa|santa cruz|tierra del fuego|santiago del estero|la pampa|quilmes|avellaneda|lanús|lanus|lomas de zamora|morón|moron|san isidro|tigre|pilar|olavarría|olavarria|necochea|junín|junin|pergamino|luján|lujan|campana|zárate|zarate|mercedes|san nicolás|san nicolas/i.test(txt);
+        if (mencionaOtraJurisdiccion) return false;
+        const mencionaGranLaPlata = /la plata|city bell|gonnet|villa elisa|olmos|los hornos|tolosa|ringuelet|berisso|ensenada|sicardi|arana|hernandez|hernández|gorina/i.test(txt);
+        if (mencionaGranLaPlata) return true;
+        const esFechaPatria = /^\s*(?:9\s+de\s+julio|25\s+de\s+mayo|3\s+de\s+febrero|12\s+de\s+octubre|20\s+de\s+junio|1\s+de\s+mayo|11\s+de\s+septiembre|17\s+de\s+agosto)\b/i.test(txt);
+        if (esFechaPatria) return false;
+        return /\(\s*e\/\s*esq\.?|\besq\.?\b|\be\/\s*\d+|\bbis\b|^\s*\d{1,3}\s*(?:y|e\/|esq\.?)\s*\d{1,3}/i.test(txt);
+    }
+
+    function normalizarDireccionParaGeocoder(rawDir, opciones = {}) {
         let txt = String(rawDir || '').trim();
         if (!txt) return '';
-        // Convertir expresiones típicas platenses ("70 ESQ 182 BIS 4374" o "72 (e/ Esq 182 bis)") a formato claro para Google Geocoder
-        txt = txt
-            .replace(/\(\s*e\/\s*esq\.?\s*([^)]+)\)/gi, 'y Calle $1')
-            .replace(/\besq\.?\b/gi, 'y Calle')
-            .replace(/^(\d+)\b/, 'Calle $1');
-        if (!/la plata|city bell|gonnet|villa elisa|olmos|los hornos|tolosa|berisso|ensenada|buenos aires/i.test(txt)) {
-            txt += ', La Plata, Provincia de Buenos Aires, Argentina';
-        } else if (!/argentina/i.test(txt)) {
+        const forzarLaPlata = Boolean(opciones.forzarLaPlata);
+        const esPlatense = forzarLaPlata || pareceDireccionPlatense(txt);
+        if (esPlatense) {
+            txt = txt
+                .replace(/\(\s*e\/\s*esq\.?\s*([^)]+)\)/gi, 'y Calle $1')
+                .replace(/\besq\.?\b/gi, 'y Calle')
+                .replace(/\be\/\s*(\d+)/gi, 'y Calle $1');
+            const empiezaConFechaPatria = /^\s*\d+\s+de\s+/i.test(txt);
+            const yaTienePrefijoVia = /^\s*(?:calle|av\.?|avenida|diag\.?|diagonal|bv\.?|boulevard|pasaje|pje\.?|ruta|camino)\b/i.test(txt);
+            if (!empiezaConFechaPatria && !yaTienePrefijoVia) {
+                txt = txt.replace(/^(\d{1,3})\b/, 'Calle $1');
+            }
+            if (!/la plata|city bell|gonnet|villa elisa|olmos|los hornos|tolosa|ringuelet|berisso|ensenada|buenos aires/i.test(txt)) {
+                txt += ', La Plata, Provincia de Buenos Aires, Argentina';
+            } else if (!/argentina/i.test(txt)) {
+                txt += ', Argentina';
+            }
+            return txt;
+        }
+        if (!/argentina/i.test(txt)) {
             txt += ', Argentina';
         }
         return txt;
@@ -2441,13 +2491,29 @@
         const barrio = buscar(['sublocality_level_1', 'sublocality', 'neighborhood']);
         const localidad = buscar(['locality', 'administrative_area_level_3']);
         const partido = buscar(['administrative_area_level_2']);
+        let provincia = buscar(['administrative_area_level_1']) || '';
+        provincia = provincia
+            .replace(/^Provincia de\s+/i, '')
+            .replace(/^(?:Ciudad Autónoma de Buenos Aires|Autonomous City of Buenos Aires)$/i, 'CABA')
+            .trim();
 
+        const ciudadBase = localidad || partido || '';
         const partes = [];
-        if (barrio) partes.push(barrio);
-        if (localidad && !partes.some(p => p.toLowerCase() === localidad.toLowerCase())) {
-            partes.push(localidad);
-        } else if (!localidad && partido && !partes.some(p => p.toLowerCase() === partido.toLowerCase())) {
-            partes.push(partido);
+        const agregarUnico = (val) => {
+            const v = String(val || '').trim();
+            if (!v) return;
+            if (!partes.some(p => p.toLowerCase() === v.toLowerCase())) {
+                partes.push(v);
+            }
+        };
+
+        agregarUnico(barrio);
+        agregarUnico(ciudadBase);
+        if (provincia && (!ciudadBase || provincia.toLowerCase() !== ciudadBase.toLowerCase())) {
+            const esLaPlataPba = /la plata/i.test(ciudadBase) && /buenos aires/i.test(provincia);
+            if (!esLaPlataPba) {
+                agregarUnico(provincia);
+            }
         }
 
         const calle = buscar(['route']);
@@ -2455,12 +2521,13 @@
         const calleFormateada = [calle, altura].filter(Boolean).join(' ').trim();
 
         return {
-            barrioLocalidad: partes.join(', ') || localidad || partido || '',
-            calleFormateada
+            barrioLocalidad: partes.join(', ') || ciudadBase || provincia || '',
+            calleFormateada,
+            tieneCalle: Boolean(calle || altura)
         };
     }
 
-    function actualizarBarraInfoMapaAbm({ barrio, calle, direccionFormateada, lat, lng, etiquetaOrigen }) {
+    function actualizarBarraInfoMapaAbm({ barrio, calle, direccionFormateada, lat, lng, etiquetaOrigen, esAproximada = false }) {
         abmUltimaSugerenciaMapa = {
             barrio: barrio || '',
             calle: calle || direccionFormateada || '',
@@ -2489,6 +2556,11 @@
                 <span style="color:#94a3b8;">Ref. Google:</span>
                 <span style="color:#e2e8f0;">${escaparHtml(direccionFormateada || calle || '-')}</span>
                 <span style="color:#64748b; font-family:monospace; font-size:0.7rem; margin-left:6px;">(📍 ${coordTxt})</span>
+                ${esAproximada ? `
+                    <div style="margin-top:5px; padding:4px 8px; border-radius:6px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.4); color:#fcd34d; font-size:0.72rem; font-weight:700;">
+                        ⚠️ Ubicación aproximada (nivel ciudad o zona). Si necesitás mayor exactitud, agregá calle/altura o arrastrá el pin rojo manualmente sobre el mapa.
+                    </div>
+                ` : ''}
             </div>
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 ${barrio ? `
@@ -2505,6 +2577,98 @@
                 ` : ''}
             </div>
         `;
+    }
+
+    function aplicarResultadoGoogleEnAbm(resultado, opciones = {}) {
+        const loc = resultado?.geometry?.location;
+        if (!loc) return false;
+        const lat = typeof loc.lat === 'function' ? loc.lat() : Number(loc.lat);
+        const lng = typeof loc.lng === 'function' ? loc.lng() : Number(loc.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+
+        const comps = Array.isArray(resultado.address_components) ? resultado.address_components : [];
+        const extraido = extraerBarrioYLocalidadDeComponentesGoogle(comps);
+        const locType = String(resultado?.geometry?.location_type || '').toUpperCase();
+        const esAproximada = locType === 'APPROXIMATE' || !extraido.tieneCalle;
+        const dirFmt = resultado.formatted_address || resultado.name || '';
+
+        if (abmGoogleMapInstance) {
+            abmGoogleMapInstance.setCenter({ lat, lng });
+            abmGoogleMapInstance.setZoom(esAproximada ? 13 : 16);
+        }
+        if (abmGoogleMarkerMain) {
+            abmGoogleMarkerMain.setPosition({ lat, lng });
+        }
+
+        actualizarBarraInfoMapaAbm({
+            barrio: extraido.barrioLocalidad,
+            calle: extraido.calleFormateada || dirFmt.split(',')[0],
+            direccionFormateada: dirFmt,
+            lat,
+            lng,
+            etiquetaOrigen: opciones.etiquetaOrigen || 'Ubicado en Argentina',
+            esAproximada
+        });
+
+        const barrioInput = document.getElementById('abm-barrio');
+        if (barrioInput && extraido.barrioLocalidad && (opciones.autocompletarBarrio || !barrioInput.value.trim())) {
+            barrioInput.value = extraido.barrioLocalidad;
+        }
+        if (opciones.actualizarDomicilioConFormato && dirFmt) {
+            const dirInput = document.getElementById('abm-direccion');
+            if (dirInput) {
+                dirInput.value = dirFmt.replace(/,\s*Argentina$/i, '').trim();
+                simularEtiquetaZebra('estandar_pagado');
+            }
+        }
+        return true;
+    }
+
+    function vincularAutocompletePlacesAbm() {
+        if (!window.google?.maps?.places?.Autocomplete) return;
+        asegurarEstilosAutocompleteAbm();
+
+        const enlazarInput = (inputId, opts) => {
+            const input = document.getElementById(inputId);
+            if (!input || input.dataset.pacBound === '1') return;
+            input.dataset.pacBound = '1';
+
+            const ac = new window.google.maps.places.Autocomplete(input, {
+                componentRestrictions: { country: 'ar' },
+                fields: ['geometry', 'formatted_address', 'address_components', 'name'],
+                types: ['geocode', 'establishment']
+            });
+
+            ac.addListener('place_changed', async () => {
+                const place = ac.getPlace();
+                if (!place?.geometry?.location) return;
+                if (opts.abrirPanelSiCerrado) {
+                    const panel = document.getElementById('abm-mapa-panel');
+                    if (panel && panel.style.display === 'none') {
+                        panel.style.display = 'block';
+                    }
+                    const lat = place.geometry.location.lat();
+                    const lng = place.geometry.location.lng();
+                    await asegurarInstanciaMapaAbm(lat, lng);
+                }
+                aplicarResultadoGoogleEnAbm(place, {
+                    autocompletarBarrio: true,
+                    actualizarDomicilioConFormato: Boolean(opts.actualizarDomicilioConFormato),
+                    etiquetaOrigen: opts.etiquetaOrigen
+                });
+            });
+        };
+
+        enlazarInput('abm-mapa-search-input', {
+            abrirPanelSiCerrado: true,
+            actualizarDomicilioConFormato: false,
+            etiquetaOrigen: 'Sugerencia Google Places AR'
+        });
+        enlazarInput('abm-direccion', {
+            abrirPanelSiCerrado: false,
+            actualizarDomicilioConFormato: true,
+            etiquetaOrigen: 'Dirección seleccionada (AR)'
+        });
     }
 
     async function resolverBarrioDesdeCoordenadasAbm(lat, lng, opciones = {}) {
@@ -2611,6 +2775,7 @@
             if (abmGoogleMarkerMain) abmGoogleMarkerMain.setPosition(center);
         }
 
+        vincularAutocompletePlacesAbm();
         return abmGoogleMapInstance;
     }
 
@@ -2693,40 +2858,39 @@
 
         await asegurarInstanciaMapaAbm();
 
-        abmGoogleGeocoder.geocode({ address: limpio, region: 'AR' }, (results, status) => {
-            if (status === 'OK' && Array.isArray(results) && results.length > 0) {
-                const loc = results[0].geometry?.location;
-                if (!loc) return;
-                const lat = loc.lat();
-                const lng = loc.lng();
-                if (abmGoogleMapInstance) {
-                    abmGoogleMapInstance.setCenter({ lat, lng });
-                    abmGoogleMapInstance.setZoom(16);
-                }
-                if (abmGoogleMarkerMain) {
-                    abmGoogleMarkerMain.setPosition({ lat, lng });
-                }
-                const extraido = extraerBarrioYLocalidadDeComponentesGoogle(results[0].address_components || []);
-                const dirFmt = results[0].formatted_address || '';
-                actualizarBarraInfoMapaAbm({
-                    barrio: extraido.barrioLocalidad,
-                    calle: extraido.calleFormateada || dirFmt.split(',')[0],
-                    direccionFormateada: dirFmt,
-                    lat,
-                    lng,
-                    etiquetaOrigen: opciones.etiquetaOrigen || 'Ubicado por dirección'
-                });
-                const barrioInput = document.getElementById('abm-barrio');
-                if (barrioInput && extraido.barrioLocalidad && (opciones.autocompletarBarrio || !barrioInput.value.trim())) {
-                    barrioInput.value = extraido.barrioLocalidad;
-                }
-            } else {
-                const bar = document.getElementById('abm-mapa-info-bar');
-                if (bar) {
-                    bar.innerHTML = `<span style="color:#fbbf24;">⚠️ No se encontró "${escaparHtml(rawTexto)}" de forma exacta. Puede buscar la esquina/barrio arriba o mover el pin rojo directamente en el mapa.</span>`;
-                }
-            }
+        const ejecutarGeocode = (queryAddr) => new Promise((resolve) => {
+            abmGoogleGeocoder.geocode(
+                { address: queryAddr, componentRestrictions: { country: 'AR' }, region: 'AR' },
+                (results, status) => resolve({ results, status })
+            );
         });
+
+        let { results, status } = await ejecutarGeocode(limpio);
+
+        // Fallback amigable únicamente si era una calle numérica corta sin localidad/provincia
+        if ((status !== 'OK' || !Array.isArray(results) || results.length === 0)
+            && !pareceDireccionPlatense(rawTexto)
+            && !String(rawTexto).includes(',')
+            && /^\s*\d{1,3}\b/.test(String(rawTexto))) {
+            const fallbackLp = normalizarDireccionParaGeocoder(rawTexto, { forzarLaPlata: true });
+            const resLp = await ejecutarGeocode(fallbackLp);
+            if (resLp.status === 'OK' && Array.isArray(resLp.results) && resLp.results.length > 0) {
+                results = resLp.results;
+                status = resLp.status;
+            }
+        }
+
+        if (status === 'OK' && Array.isArray(results) && results.length > 0) {
+            aplicarResultadoGoogleEnAbm(results[0], {
+                autocompletarBarrio: Boolean(opciones.autocompletarBarrio),
+                etiquetaOrigen: opciones.etiquetaOrigen || 'Ubicado en Argentina'
+            });
+        } else {
+            const bar = document.getElementById('abm-mapa-info-bar');
+            if (bar) {
+                bar.innerHTML = `<span style="color:#fbbf24;">⚠️ No se encontró "${escaparHtml(rawTexto)}" de forma exacta en Argentina. Probá sumar ciudad/provincia (ej: "${escaparHtml(rawTexto)}, Córdoba"), elegí una sugerencia del buscador o mové el pin rojo directamente en el mapa.</span>`;
+            }
+        }
     }
 
     async function togglePanelMapaAbm() {
@@ -2911,7 +3075,7 @@
                 imgColor.style.display = 'block';
                 emptyLbl.style.display = 'none';
             } else {
-                imgColor.src = '';
+                imgColor.removeAttribute('src');
                 imgColor.style.display = 'none';
                 emptyLbl.style.display = 'inline';
             }
@@ -2934,13 +3098,59 @@
         }
     }
 
+    function resetearPreviewLogoAbm(opciones = {}) {
+        const inicialesDefault = opciones.inicialesDefault !== undefined ? String(opciones.inicialesDefault) : '';
+        const thresholdDefault = Number(opciones.thresholdDefault || 138);
+
+        logoOriginalSubidoBase64 = null;
+        limpiarLogoOriginalPendiente = false;
+        actualizarPreviewLogoColorAbm(null);
+
+        const fileInput = document.getElementById('abm-logo-file-input');
+        if (fileInput) {
+            fileInput.value = '';
+        }
+
+        const imgPrev = document.getElementById('abm-logo-preview-img');
+        if (imgPrev) {
+            imgPrev.removeAttribute('src');
+        }
+
+        const rolloPrev = document.getElementById('abm-rollo-preview-img');
+        if (rolloPrev) {
+            rolloPrev.removeAttribute('src');
+        }
+
+        const gfaTxt = document.getElementById('abm-logo-zpl-gfa');
+        if (gfaTxt) gfaTxt.value = '';
+
+        const rolloCode = document.getElementById('abm-rollo-zpl-code');
+        if (rolloCode) rolloCode.value = '';
+
+        const iniEl = document.getElementById('abm-logo-iniciales');
+        if (iniEl) iniEl.value = inicialesDefault;
+
+        const modeEl = document.getElementById('abm-logo-mode');
+        if (modeEl) modeEl.value = 'threshold';
+
+        const thEl = document.getElementById('abm-logo-threshold');
+        if (thEl) thEl.value = String(thresholdDefault);
+
+        const thSpan = document.getElementById('abm-threshold-val');
+        if (thSpan) thSpan.textContent = String(thresholdDefault);
+    }
+
     function cargarNodoEnFormularioAbm(nodoId) {
         const nodo = ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(nodoId));
         if (!nodo) return;
+        ESTADO_NODOS.modoCreacionNuevo = false;
         ESTADO_NODOS.nodoEditandoId = Number(nodo.id);
         ESTADO_NODOS.clienteMadreSeleccionadoId = nodo.cliente_madre_bunker_id ? Number(nodo.cliente_madre_bunker_id) : null;
         logoOriginalSubidoBase64 = nodo.logo_original_base64 || null;
         limpiarLogoOriginalPendiente = false;
+
+        const fileInput = document.getElementById('abm-logo-file-input');
+        if (fileInput) fileInput.value = '';
 
         const setVal = (id, val) => {
             const el = document.getElementById(id);
@@ -2982,7 +3192,13 @@
 
         actualizarPreviewLogoColorAbm(nodo.logo_original_base64 || null);
         const imgPrev = document.getElementById('abm-logo-preview-img');
-        if (imgPrev && nodo.logo_mono_preview_base64) imgPrev.src = nodo.logo_mono_preview_base64;
+        if (imgPrev) {
+            if (nodo.logo_mono_preview_base64) {
+                imgPrev.src = nodo.logo_mono_preview_base64;
+            } else {
+                imgPrev.removeAttribute('src');
+            }
+        }
         setVal('abm-logo-zpl-gfa', nodo.logo_zpl_gfa || '');
 
         const listaBox = document.getElementById('abm-lista-clientes-titulares');
@@ -2992,15 +3208,23 @@
         if (resBox) resBox.innerHTML = renderizarResumenClienteTitularHtml(cliSel);
         if (cliSel) renderizarChipsDomiciliosClienteAbm(cliSel, 0);
 
-        simularEtiquetaZebra('estandar_pagado');
+        if (!nodo.logo_mono_preview_base64 || !nodo.logo_zpl_gfa) {
+            regenerarLogoZplEnVivo();
+        } else {
+            simularEtiquetaZebra('estandar_pagado');
+        }
     }
 
     function nuevoNodoFormulario() {
+        ESTADO_NODOS.modoCreacionNuevo = true;
         ESTADO_NODOS.nodoEditandoId = null;
         ESTADO_NODOS.clienteMadreSeleccionadoId = null;
         ESTADO_NODOS.busquedaClienteAbm = '';
-        logoOriginalSubidoBase64 = null;
-        limpiarLogoOriginalPendiente = false;
+        abmUltimaSugerenciaMapa = { barrio: '', calle: '', lat: null, lng: null };
+
+        // Re-renderizar la vista limpia para quitar selección de tarjeta previa y recrear inputs limpios
+        renderizarVistaNodosCompleta();
+
         const cfgCanal = ESTADO_NODOS.fuentes?.config_cuenta_canal || { alias_recaudador: 'pago.canasto' };
         const ids = [
             'abm-nodo-id',
@@ -3015,14 +3239,15 @@
             'abm-logo-iniciales',
             'abm-cliente-madre-id',
             'abm-cliente-madre-codigo',
-            'abm-buscador-cliente-input'
+            'abm-buscador-cliente-input',
+            'abm-mapa-search-input'
         ];
         ids.forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
         fijarColorPrimarioNodoAbm('#a2553b');
-        actualizarPreviewLogoColorAbm(null);
+        resetearPreviewLogoAbm({ inicialesDefault: '', thresholdDefault: 138 });
         const aliasEl = document.getElementById('abm-alias-display');
         if (aliasEl) aliasEl.value = cfgCanal.alias_recaudador || 'pago.canasto';
         const chkComp = document.getElementById('abm-cuenta-compartida');
@@ -3035,6 +3260,8 @@
         if (sub) sub.value = 'Alimentos Naturales y Frutos Secos - Entrega Barrial';
         const domSug = document.getElementById('abm-domicilios-sugeridos');
         if (domSug) domSug.innerHTML = '';
+        const mapPanel = document.getElementById('abm-mapa-panel');
+        if (mapPanel) mapPanel.style.display = 'none';
         const listaBox = document.getElementById('abm-lista-clientes-titulares');
         if (listaBox) listaBox.innerHTML = renderizarListaClientesTitularesHtml('', null);
         const resBox = document.getElementById('abm-cliente-titular-resumen');
@@ -3361,6 +3588,12 @@
     function quitarLogoImagenAbm() {
         logoOriginalSubidoBase64 = null;
         limpiarLogoOriginalPendiente = true;
+        const fileInput = document.getElementById('abm-logo-file-input');
+        if (fileInput) fileInput.value = '';
+        const thEl = document.getElementById('abm-logo-threshold');
+        const thSpan = document.getElementById('abm-threshold-val');
+        if (thEl) thEl.value = '138';
+        if (thSpan) thSpan.textContent = '138';
         actualizarPreviewLogoColorAbm(null);
         regenerarLogoZplEnVivo();
     }
@@ -3520,6 +3753,7 @@
             const data = await resp.json();
             if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar el Nodo');
 
+            ESTADO_NODOS.modoCreacionNuevo = false;
             ESTADO_NODOS.nodoEditandoId = data.nodo.id;
             await cargarDatosNodosBarriales(true);
             cargarNodoEnFormularioAbm(data.nodo.id);

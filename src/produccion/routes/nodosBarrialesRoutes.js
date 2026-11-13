@@ -211,7 +211,7 @@ async function obtenerBaseUrlAccesibleCelular(req) {
     if (publicBaseEnv) {
         return publicBaseEnv;
     }
-    const hostHeader = String(req?.headers?.host || '').trim();
+    const hostHeader = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').split(',')[0].trim();
     const proto = String(req?.headers?.['x-forwarded-proto'] || req?.protocol || 'http').split(',')[0].trim();
     const isPublicCloud = hostHeader && !/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostHeader);
     if (isPublicCloud) {
@@ -697,6 +697,71 @@ router.put('/gestor/:nodoId/config-logistica', autenticarGestorSiPublicoOToken, 
 });
 
 /**
+ * GET /api/produccion/nodos/gestor/:nodoId/compartir-kit
+ * Devuelve URL pública oficial Marca Blanca, QR PNG limpio y ofertas publicadas compartibles
+ * para difusión directa del Gestor (WhatsApp abierto, redes, descarga QR).
+ */
+router.get('/gestor/:nodoId/compartir-kit', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({
+                ok: false,
+                code: 'GESTOR_WRONG_NODE',
+                error: 'No autorizado para acceder al kit de difusión de otro Nodo.'
+            });
+        }
+        const [kit, baseMovil] = await Promise.all([
+            nodosService.obtenerKitCompartirNodo(req.params.nodoId),
+            obtenerUrlPublicaQrNodos(req)
+        ]);
+        const urlTiendaPublica = `${baseMovil}/tienda/${encodeURIComponent(kit.nodo.slug)}`;
+        const qrTiendaDataUrl = await QRCode.toDataURL(urlTiendaPublica, {
+            margin: 2,
+            width: 512,
+            errorCorrectionLevel: 'M'
+        });
+
+        res.json({
+            ok: true,
+            base_url_movil: baseMovil,
+            es_tunel_https: baseMovil.startsWith('https://'),
+            url_tienda_publica: urlTiendaPublica,
+            qr_tienda_data_url: qrTiendaDataUrl,
+            nodo: kit.nodo,
+            proxima_entrega: kit.proxima_entrega,
+            ofertas_publicadas: (kit.ofertas_publicadas || []).map(o => ({
+                ...o,
+                url_directa: `${urlTiendaPublica}?oferta=${encodeURIComponent(o.oferta_id)}`
+            }))
+        });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /gestor/:nodoId/compartir-kit:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/gestor/:nodoId/compradores
+ * Lista los compradores registrados en `nodos_vecinos` pertenecientes exclusivamente al Nodo autenticado.
+ */
+router.get('/gestor/:nodoId/compradores', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({
+                ok: false,
+                code: 'GESTOR_WRONG_NODE',
+                error: 'No autorizado para consultar compradores de otro Nodo.'
+            });
+        }
+        const data = await nodosService.obtenerCompradoresRegistradosNodo(req.params.nodoId);
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /gestor/:nodoId/compradores:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
  * POST /api/produccion/nodos/tienda/:slug/pedido
  * Registra el pedido de un vecino desde la Tienda Marca Blanca
  */
@@ -979,7 +1044,7 @@ async function obtenerUrlPublicaQrNodos(req) {
     if (publicBaseEnv) {
         return publicBaseEnv;
     }
-    const hostHeader = String(req?.headers?.host || '').trim();
+    const hostHeader = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').split(',')[0].trim();
     const proto = String(req?.headers?.['x-forwarded-proto'] || req?.protocol || 'http').split(',')[0].trim();
     const isPublicCloud = hostHeader && !/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostHeader);
     if (isPublicCloud) {

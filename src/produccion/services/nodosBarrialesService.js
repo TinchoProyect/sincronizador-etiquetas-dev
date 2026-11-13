@@ -11493,6 +11493,264 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
     };
 }
 
+/**
+ * Devuelve los datos Marca Blanca y catálogo publicado de un Nodo para construir
+ * el kit móvil de difusión (link público, ofertas compartibles y textos sugeridos).
+ */
+async function obtenerKitCompartirNodo(nodoId) {
+    await asegurarEsquemaNodosBarriales();
+
+    const nid = Number(nodoId || 0);
+    if (!Number.isFinite(nid) || nid <= 0) {
+        const err = new Error('Identificador de Nodo inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const [nodoRes, ofertasRes] = await Promise.all([
+        db.query(
+            `SELECT id, codigo_nodo, slug, nombre_marca, subtitulo_marca,
+                    gestor_nombre, barrio_zona, direccion_retiro,
+                    permitir_envio_barrial, cargo_envio_barrial,
+                    color_primario, config_ventanas_corte, activo
+             FROM public.nodos_maestro
+             WHERE id = $1::int
+             LIMIT 1`,
+            [nid]
+        ),
+        db.query(
+            `SELECT nog.id AS oferta_id,
+                    nog.precio_venta_vecino,
+                    nog.destacado_tienda,
+                    nac.sku_nodo,
+                    nac.nombre_publico,
+                    nac.categoria_familiar,
+                    nac.presentacion_etiqueta,
+                    nac.kilos_unidad
+             FROM public.nodos_ofertas_gestor nog
+             JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+             WHERE nog.nodo_id = $1::int
+               AND nog.publicado_tienda = true
+               AND nac.activo = true
+               AND nac.precio_base_nodo_final > 0
+             ORDER BY nog.destacado_tienda DESC, nac.categoria_familiar ASC, nac.nombre_publico ASC, nac.kilos_unidad ASC`,
+            [nid]
+        )
+    ]);
+
+    if (nodoRes.rows.length === 0) {
+        const err = new Error('Nodo no encontrado.');
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const n = nodoRes.rows[0];
+    const proximaEntrega = calcularProximaEntregaNodo(n.config_ventanas_corte);
+
+    return {
+        nodo: {
+            id: Number(n.id),
+            slug: n.slug,
+            nombre_marca: n.nombre_marca,
+            subtitulo_marca: n.subtitulo_marca || '',
+            gestor_nombre: n.gestor_nombre || '',
+            barrio_zona: n.barrio_zona || '',
+            direccion_retiro: n.direccion_retiro || '',
+            permitir_envio_barrial: Boolean(n.permitir_envio_barrial),
+            cargo_envio_barrial: Number(n.cargo_envio_barrial || 0),
+            color_primario: n.color_primario || '#a2553b'
+        },
+        proxima_entrega: proximaEntrega,
+        ofertas_publicadas: ofertasRes.rows.map(o => ({
+            oferta_id: Number(o.oferta_id),
+            sku_nodo: o.sku_nodo,
+            nombre_publico: o.nombre_publico,
+            categoria_familiar: o.categoria_familiar || 'Almacén Natural',
+            presentacion_etiqueta: o.presentacion_etiqueta || '',
+            kilos_unidad: Number(o.kilos_unidad || 0),
+            precio_venta_vecino: Number(o.precio_venta_vecino || 0),
+            destacado_tienda: Boolean(o.destacado_tienda)
+        }))
+    };
+}
+
+/**
+ * Lista los compradores registrados automáticamente en `nodos_vecinos` para un Nodo
+ * puntual, agregando su historial en `nodos_pedidos_vecinos` sin fugas cross-nodo.
+ */
+async function obtenerCompradoresRegistradosNodo(nodoId) {
+    await asegurarEsquemaNodosBarriales();
+
+    const nid = Number(nodoId || 0);
+    if (!Number.isFinite(nid) || nid <= 0) {
+        const err = new Error('Identificador de Nodo inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const [nodoRes, vecinosRes, pedidosRes] = await Promise.all([
+        db.query(
+            `SELECT id, slug, nombre_marca
+             FROM public.nodos_maestro
+             WHERE id = $1::int
+             LIMIT 1`,
+            [nid]
+        ),
+        db.query(
+            `SELECT id, nodo_id, codigo_vecino, nombre_completo,
+                    telefono_whatsapp, telefono_normalizado,
+                    direccion_calle, entrecalles_referencia, notas_entrega,
+                    saldo_actual, created_at, updated_at
+             FROM public.nodos_vecinos
+             WHERE nodo_id = $1::int
+               AND COALESCE(activo, true) = true
+             ORDER BY updated_at DESC, id DESC`,
+            [nid]
+        ),
+        db.query(
+            `SELECT id, codigo_pedido, vecino_id, vecino_telefono,
+                    modalidad_entrega, direccion_entrega, entrecalles_referencia,
+                    fecha_entrega_label, ventana_horaria_label,
+                    medio_pago, estado_pago, estado_operativo,
+                    total_vecino, impactado_cta_cte_pago,
+                    secuencia_operativa_lamda, tracking_token,
+                    hito_tracking_actual, created_at
+             FROM public.nodos_pedidos_vecinos
+             WHERE nodo_id = $1::int
+             ORDER BY id DESC`,
+            [nid]
+        )
+    ]);
+
+    if (nodoRes.rows.length === 0) {
+        const err = new Error('Nodo no encontrado.');
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const pedidosPorVecinoId = new Map();
+    const pedidosPorTelNorm = new Map();
+
+    for (const p of pedidosRes.rows) {
+        const vid = p.vecino_id ? Number(p.vecino_id) : 0;
+        if (vid > 0) {
+            if (!pedidosPorVecinoId.has(vid)) pedidosPorVecinoId.set(vid, []);
+            pedidosPorVecinoId.get(vid).push(p);
+        } else {
+            const telNorm = normalizarTelefonoVecinoNodo(p.vecino_telefono || '');
+            if (telNorm) {
+                if (!pedidosPorTelNorm.has(telNorm)) pedidosPorTelNorm.set(telNorm, []);
+                pedidosPorTelNorm.get(telNorm).push(p);
+            }
+        }
+    }
+
+    const compradores = vecinosRes.rows.map(v => {
+        const vid = Number(v.id);
+        const telNorm = String(v.telefono_normalizado || normalizarTelefonoVecinoNodo(v.telefono_whatsapp || '')).trim();
+        const pedidosVec = [
+            ...(pedidosPorVecinoId.get(vid) || []),
+            ...(telNorm ? (pedidosPorTelNorm.get(telNorm) || []) : [])
+        ].sort((a, b) => Number(b.id) - Number(a.id));
+
+        let cantidadActivos = 0;
+        let cantidadEntregados = 0;
+        let tienePedidoEnCurso = false;
+        let totalHistoricoComprado = 0;
+        let totalHistoricoPagado = 0;
+
+        for (const p of pedidosVec) {
+            const anulado = String(p.estado_operativo || '').toUpperCase() === 'ANULADO';
+            if (anulado) continue;
+
+            cantidadActivos++;
+            const monto = Number(p.total_vecino || 0);
+            totalHistoricoComprado += monto;
+
+            const pagado = Boolean(p.impactado_cta_cte_pago) ||
+                ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase());
+            if (pagado) totalHistoricoPagado += monto;
+
+            const hito = Number(p.hito_tracking_actual || resolverHitoDesdeEstadoOperativo(p.estado_operativo, p.secuencia_operativa_lamda));
+            if (hito >= 6) {
+                cantidadEntregados++;
+            } else {
+                tienePedidoEnCurso = true;
+            }
+        }
+
+        const ult = pedidosVec.find(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO') || pedidosVec[0] || null;
+        let ultimoPedido = null;
+        if (ult) {
+            const ultAnulado = String(ult.estado_operativo || '').toUpperCase() === 'ANULADO';
+            const ultHito = Number(ult.hito_tracking_actual || resolverHitoDesdeEstadoOperativo(ult.estado_operativo, ult.secuencia_operativa_lamda));
+            const ultPagado = Boolean(ult.impactado_cta_cte_pago) ||
+                ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(ult.estado_pago || '').toUpperCase());
+            ultimoPedido = {
+                id: Number(ult.id),
+                codigo_pedido: ult.codigo_pedido,
+                fecha_entrega_label: ult.fecha_entrega_label || '',
+                ventana_horaria_label: ult.ventana_horaria_label || '',
+                modalidad_entrega: ult.modalidad_entrega || 'RETIRO_NODO',
+                total_vecino: Number(ult.total_vecino || 0),
+                estado_operativo: ult.estado_operativo || 'RECIBIDO',
+                hito_tracking_actual: ultHito,
+                anulado: ultAnulado,
+                pago_confirmado: ultPagado,
+                tracking_token: ult.tracking_token || null,
+                created_at: ult.created_at
+            };
+        }
+
+        return {
+            vecino_id: vid,
+            codigo_vecino: v.codigo_vecino || formatearCodigoVecinoNodo(nid, vid),
+            nombre_completo: v.nombre_completo || 'Comprador',
+            telefono_whatsapp: v.telefono_whatsapp || '',
+            telefono_normalizado: telNorm,
+            direccion_calle: v.direccion_calle || '',
+            entrecalles_referencia: v.entrecalles_referencia || '',
+            notas_entrega: v.notas_entrega || '',
+            saldo_actual: Number(Number(v.saldo_actual || 0).toFixed(2)),
+            cantidad_pedidos_activos: cantidadActivos,
+            cantidad_pedidos_entregados: cantidadEntregados,
+            tiene_pedido_en_curso: tienePedidoEnCurso,
+            es_recurrente: cantidadActivos >= 2,
+            total_historico_comprado: Number(totalHistoricoComprado.toFixed(2)),
+            total_historico_pagado: Number(totalHistoricoPagado.toFixed(2)),
+            created_at: v.created_at,
+            updated_at: v.updated_at,
+            ultimo_pedido: ultimoPedido
+        };
+    });
+
+    compradores.sort((a, b) => {
+        if (a.tiene_pedido_en_curso !== b.tiene_pedido_en_curso) {
+            return a.tiene_pedido_en_curso ? -1 : 1;
+        }
+        const idA = Number(a.ultimo_pedido?.id || 0);
+        const idB = Number(b.ultimo_pedido?.id || 0);
+        if (idA !== idB) return idB - idA;
+        return Number(b.vecino_id) - Number(a.vecino_id);
+    });
+
+    const resumen = {
+        total_compradores: compradores.length,
+        con_pedido_activo: compradores.filter(c => c.tiene_pedido_en_curso).length,
+        recurrentes: compradores.filter(c => c.es_recurrente).length
+    };
+
+    return {
+        nodo: {
+            id: Number(nodoRes.rows[0].id),
+            slug: nodoRes.rows[0].slug,
+            nombre_marca: nodoRes.rows[0].nombre_marca
+        },
+        resumen,
+        compradores
+    };
+}
+
 module.exports = {
     asegurarEsquemaNodosBarriales,
     sincronizarHerenciaFiscalDesdeMadrePorId,
@@ -11547,6 +11805,8 @@ module.exports = {
     confirmarRecepcionLotePorGestor,
     actualizarEstadoEntregaVecinoPorGestor,
     obtenerDatosQrAccesoNodo,
+    obtenerKitCompartirNodo,
+    obtenerCompradoresRegistradosNodo,
     rotarGestorTokenNodo,
     generarGestorTokenNodo,
     resolverNodoPorTokenGestor,
