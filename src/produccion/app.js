@@ -24,6 +24,63 @@ const io = new Server(httpServer, {
 // Almacén de sesiones de inventario activas
 const inventarioSesiones = new Map();
 
+const NODOS_PUBLIC_HOST_CONFIG = String(process.env.NODOS_PUBLIC_HOST || 'tienda.lamdaser.com')
+    .trim()
+    .toLowerCase()
+    .replace(/:\d+$/, '');
+
+function extraerHostSinPuertoNodos(req) {
+    const rawHost = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase();
+    return rawHost.replace(/:\d+$/, '');
+}
+
+function esAccesoExternoNodos(req) {
+    const hostSinPuerto = extraerHostSinPuertoNodos(req);
+    if (!hostSinPuerto) return false;
+    if (hostSinPuerto.includes('.trycloudflare.com')) return true;
+    if (NODOS_PUBLIC_HOST_CONFIG && hostSinPuerto === NODOS_PUBLIC_HOST_CONFIG) return true;
+    if (hostSinPuerto === 'tienda.lamdaser.com' || hostSinPuerto.startsWith('tienda.')) return true;
+    return false;
+}
+
+// 🔒 Blindaje de aislamiento para accesos móviles externos (Dominio público HTTPS o túnel trycloudflare):
+// Se ejecuta ANTES de cualquier proxy (/api/presupuestos, /api/logistica) o middleware interno.
+app.use((req, res, next) => {
+    if (!esAccesoExternoNodos(req)) return next();
+
+    const p = String(req.path || '');
+    const esVistaPermitida =
+        /^\/(gestor|gestor-nodo|tienda)(\/[^/]+)?(\/mi-cuenta\/[^/]+)?\/?$/i.test(p) ||
+        /^\/(favicon\.ico|robots\.txt)$/i.test(p);
+
+    const esApiNodoPermitida =
+        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|ofertas-gestor\/\d+|gestor\/\d+\/(config-logistica|sumar-catalogo|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega)|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
+
+    if (esVistaPermitida || esApiNodoPermitida) {
+        return next();
+    }
+
+    if (p.startsWith('/api/')) {
+        return res.status(403).json({
+            ok: false,
+            error: 'Acceso restringido. Recurso no habilitado para el portal público del Nodo.'
+        });
+    }
+
+    return res.status(403).send(`<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Acceso Restringido</title></head>
+<body style="font-family:sans-serif;background:#0f172a;color:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;padding:20px;text-align:center;">
+  <div style="max-width:420px;background:#1e293b;border:1px solid #334155;border-radius:14px;padding:24px;">
+    <div style="font-size:2.2rem;margin-bottom:8px;">🔒</div>
+    <h2 style="margin:0 0 8px 0;font-size:1.15rem;">Sección Restringida</h2>
+    <p style="color:#94a3b8;font-size:0.88rem;line-height:1.5;margin:0;">
+      Este dominio está habilitado únicamente para la Tienda Vecinal y el Panel del Gestor de cada Nodo Barrial.
+    </p>
+  </div>
+</body></html>`);
+});
+
 // ✅ Middleware para interpretar JSON en los requests
 // NOTA: El proxy debe ir ANTES del body parser para que funcione correctamente el stream
 app.use('/api/presupuestos', createProxyMiddleware({
@@ -43,47 +100,6 @@ app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
-// 🔒 Blindaje de aislamiento para accesos móviles externos (Túnel trycloudflare.com):
-// Un Gestor o Vecino que entra desde el link externo del celular JAMÁS puede acceder
-// a la Pizarra de Costos, Mesa de Armado de Depósito, Liquidación Interna ni APIs mayoristas de LAMDA.
-app.use((req, res, next) => {
-    const host = String(req.headers.host || '').toLowerCase();
-    const esTunelMovilExterno = host.includes('.trycloudflare.com');
-    if (!esTunelMovilExterno) return next();
-
-    const p = String(req.path || '');
-    const esVistaPermitida =
-        /^\/(gestor|gestor-nodo|tienda)(\/[^/]+)?(\/mi-cuenta\/[^/]+)?\/?$/i.test(p) ||
-        /^\/favicon\.ico$/i.test(p);
-
-    const esApiNodoPermitida =
-        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|ofertas-gestor\/\d+|gestor\/\d+\/(config-logistica|sumar-catalogo|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega)|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago|whatsapp-prueba)\/?$/i.test(p);
-
-    if (esVistaPermitida || esApiNodoPermitida) {
-        return next();
-    }
-
-    if (p.startsWith('/api/')) {
-        return res.status(403).json({
-            ok: false,
-            error: 'Acceso restringido exclusivamente a la administración interna de LAMDA.'
-        });
-    }
-
-    return res.status(403).send(`<!DOCTYPE html>
-<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Acceso Restringido</title></head>
-<body style="font-family:sans-serif;background:#0f172a;color:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;padding:20px;text-align:center;">
-  <div style="max-width:420px;background:#1e293b;border:1px solid #334155;border-radius:14px;padding:24px;">
-    <div style="font-size:2.2rem;margin-bottom:8px;">🔒</div>
-    <h2 style="margin:0 0 8px 0;font-size:1.15rem;">Sección Interna de Administración</h2>
-    <p style="color:#94a3b8;font-size:0.88rem;line-height:1.5;margin:0;">
-      Este enlace externo corresponde únicamente al Panel del Gestor o a la Tienda Vecinal de tu Nodo. Las herramientas internas de costos y depósito no están disponibles desde este acceso.
-    </p>
-  </div>
-</body></html>`);
-});
-
 // 🛡️ Runtime Cloud 24/7 + Banner Modo Laboratorio + Bandeja Zebra
 const { attachLamdaCloudRuntime } = require('../shared/lamdaCloudRuntime');
 attachLamdaCloudRuntime(app, 3002);
@@ -96,12 +112,64 @@ app.use('/api/produccion/tiempos', tiemposRouter);
 app.use('/api/produccion/nodos', nodosBarrialesRouter);
 app.use('/api/produccion', produccionRoutes);
 
+async function validarYServirVistaNodoPublica(req, res, fileName) {
+    const slugSolicitado = String(req.params.nodoSlug || req.query.nodo || '').trim();
+    const esExterno = esAccesoExternoNodos(req);
+
+    if (!slugSolicitado) {
+        if (esExterno) {
+            return res.status(404).send(`<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nodo no encontrado</title></head>
+<body style="font-family:sans-serif;background:#faf8f5;color:#1e293b;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;padding:20px;text-align:center;">
+  <div style="max-width:420px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:26px;box-shadow:0 8px 24px rgba(15,23,42,0.06);">
+    <div style="font-size:2.2rem;margin-bottom:8px;">📍</div>
+    <h2 style="margin:0 0 8px 0;font-size:1.15rem;">Tienda o Nodo Barrial no encontrado</h2>
+    <p style="color:#64748b;font-size:0.9rem;line-height:1.5;margin:0;">
+      Verificá el enlace recibido o escaneá nuevamente el código QR provisto por tu nodo barrial.
+    </p>
+  </div>
+</body></html>`);
+        }
+        return res.sendFile(path.join(__dirname, 'pages', fileName));
+    }
+
+    try {
+        const { rows } = await db.query(
+            `SELECT id FROM public.nodos_maestro WHERE LOWER(slug) = LOWER($1) AND COALESCE(activo, true) = true LIMIT 1`,
+            [slugSolicitado]
+        );
+        if (rows.length === 0) {
+            return res.status(404).send(`<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nodo no encontrado</title></head>
+<body style="font-family:sans-serif;background:#faf8f5;color:#1e293b;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;padding:20px;text-align:center;">
+  <div style="max-width:420px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:26px;box-shadow:0 8px 24px rgba(15,23,42,0.06);">
+    <div style="font-size:2.2rem;margin-bottom:8px;">📍</div>
+    <h2 style="margin:0 0 8px 0;font-size:1.15rem;">Nodo Barrial no encontrado</h2>
+    <p style="color:#64748b;font-size:0.9rem;line-height:1.5;margin:0;">
+      No existe un punto de entrega activo para este enlace. Verificá la dirección o solicitá nuevamente el acceso QR.
+    </p>
+  </div>
+</body></html>`);
+        }
+    } catch (err) {
+        console.error('❌ [NODOS] Error validando slug público:', err.message);
+        return res.status(404).send('Nodo Barrial no encontrado.');
+    }
+
+    return res.sendFile(path.join(__dirname, 'pages', fileName));
+}
+
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+app.get('/robots.txt', (req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
+
 // 🏘️ Rutas amigables Etapas 2, 3 y 4: Tienda Vecino, Mi Cuenta Vecino, Panel Gestor, Mesa de Armado y Liquidación Cta. Cte.
 app.get(['/tienda', '/tienda/:nodoSlug', '/tienda/:nodoSlug/mi-cuenta/:portalToken'], (req, res) => {
-    res.sendFile(path.join(__dirname, 'pages', 'nodo-tienda-vecino.html'));
+    return validarYServirVistaNodoPublica(req, res, 'nodo-tienda-vecino.html');
 });
 app.get(['/gestor', '/gestor/:nodoSlug', '/gestor-nodo', '/gestor-nodo/:nodoSlug'], (req, res) => {
-    res.sendFile(path.join(__dirname, 'pages', 'nodo-panel-gestor.html'));
+    return validarYServirVistaNodoPublica(req, res, 'nodo-panel-gestor.html');
 });
 app.get(['/deposito-nodos', '/deposito-nodos/:nodoSlug'], (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'nodo-mesa-armado.html'));

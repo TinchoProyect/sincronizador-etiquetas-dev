@@ -366,11 +366,11 @@ async function asegurarClienteSombra(db, idClienteRaw) {
       email = lCli.email || null;
     }
 
-    // 3. Generar siguiente código secuencial CB-XXXX
+    // 3. Generar siguiente código secuencial CB-XXXX (ignora subcuentas CB-NODO-XXX)
     const maxRes = await db.query(`
       SELECT MAX(CAST(SUBSTRING(codigo_bunker_cliente FROM 4) AS INTEGER)) as max_val 
       FROM public.bunker_clientes 
-      WHERE codigo_bunker_cliente LIKE 'CB-%'
+      WHERE codigo_bunker_cliente ~ '^CB-[0-9]+$'
     `);
     const maxVal = maxRes.rows[0].max_val ? parseInt(maxRes.rows[0].max_val, 10) : 0;
     const nextVal = maxVal + 1;

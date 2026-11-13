@@ -495,9 +495,12 @@ async function auditarAutoCuracionOnboardingB2B() {
       SELECT DISTINCT bc.codigo_bunker_cliente, bc.email_portal_nombre, bc.whatsapp_facturas, bc.cliente_nombre, bc.razon_social, i.token
       FROM public.bunker_clientes bc
       LEFT JOIN public.portal_invitaciones i ON i.cliente_id = bc.codigo_bunker_cliente AND i.usado = false
-      WHERE bc.updated_at > NOW() - INTERVAL '30 minutes'
-         OR bc.created_at > NOW() - INTERVAL '30 minutes'
-         OR i.created_at > NOW() - INTERVAL '30 minutes'
+      WHERE UPPER(COALESCE(bc.codigo_bunker_cliente, '')) NOT LIKE 'CB-NODO-%'
+        AND (
+             bc.updated_at > NOW() - INTERVAL '30 minutes'
+          OR bc.created_at > NOW() - INTERVAL '30 minutes'
+          OR i.created_at > NOW() - INTERVAL '30 minutes'
+        )
     `);
 
     if (resRecent.rows.length > 0) {

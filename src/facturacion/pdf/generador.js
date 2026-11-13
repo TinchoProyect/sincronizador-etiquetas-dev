@@ -5,7 +5,7 @@
 
 const PDFDocument = require('pdfkit');
 const QRCode = require('qrcode');
-const { Pool } = require('pg');
+const { getSharedPool } = require('../../shared/pgPoolFactory');
 const { formatearFecha } = require('../config/timezone');
 const { formatearMoneda } = require('../utils/decimales');
 const { COMPANY_CONFIG } = require('../config/company');
@@ -15,13 +15,7 @@ const { buildBarcodePayload } = require('../utils/afip-barcode');
 const { generateBarcodeImage } = require('../utils/barcode-image');
 const { obtenerAlicuota, formatearPorcentaje, normalizarCodigo } = require('../utils/iva-helper');
 
-const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'etiquetas',
-  password: process.env.DB_PASSWORD || 'ta3Mionga',
-  port: parseInt(process.env.DB_PORT || '5432'),
-});
+const pool = getSharedPool({ defaultMax: 10 });
 
 console.log('🔍 [FACTURACION-PDF] Cargando generador de PDF...');
 

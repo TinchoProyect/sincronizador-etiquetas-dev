@@ -360,6 +360,85 @@ async function resolverIngredienteComercialDeterminista(runner, ingredienteId) {
 }
 
 /**
+ * Resuelve el desglose comercial de ingredientes para una oferta de Nodo Barrial,
+ * contemplando Líneas 3, 4, 5 (Barritas con pre-mezcla + miel/aceite en UP) y 6,
+ * incluso cuando el artículo de catálogo apunte a una pre-mezcla (#109 -> #141)
+ * o a un pack derivado (p. ej. BF6X50 / NB-BARRITA*) cuya receta comercial está en su artículo padre.
+ */
+async function resolverDesgloseIngredientesOfertaNodo(runner, oferta, catalogoIngredientes) {
+    if (!catalogoIngredientes || !oferta) return null;
+
+    const flujoNum = Number(oferta.flujo_lamda || 0);
+    const skuRaw = String(oferta.sku_nodo || '').trim();
+    const skuSinPrefijo = skuRaw.replace(/^NB-/i, '').trim();
+    const codigoOrigen = String(oferta.articulo_bunker_origen_codigo || '').trim();
+    const nombrePublico = String(oferta.nombre_publico || '').trim();
+    const pareceBarrita = flujoNum === 5
+        || /^(?:NB-)?BF(?:\d*X\d+|X\d*)/i.test(skuRaw)
+        || /^BF(?:\d*X\d+|X\d*)/i.test(codigoOrigen)
+        || /\bbarritas?\b/i.test(nombrePublico);
+
+    if (flujoNum > 0 && flujoNum < 3 && !pareceBarrita) {
+        return null;
+    }
+
+    const seleccionarMejor = (a, b) => {
+        if (!a) return b || null;
+        if (!b) return a;
+        const lnA = Number(a.linea_negocio || 0);
+        const lnB = Number(b.linea_negocio || 0);
+        if (pareceBarrita && lnB === 5 && lnA !== 5) return b;
+        if (lnB > lnA && Array.isArray(b.ingredientes) && b.ingredientes.length >= (a.ingredientes || []).length) {
+            return b;
+        }
+        return a;
+    };
+
+    let mejor = await obtenerDesgloseIngredientesParaItem(
+        {
+            sku_nodo: skuRaw,
+            articulo_codigo: skuSinPrefijo !== skuRaw ? skuSinPrefijo : undefined,
+            articulo_bunker_origen_codigo: codigoOrigen || undefined,
+            ingrediente_origen_id: oferta.ingrediente_origen_id
+        },
+        catalogoIngredientes,
+        runner
+    );
+
+    const ingOrigenId = Number(oferta.ingrediente_origen_id || 0);
+    if (ingOrigenId > 0 && (!mejor || (pareceBarrita && Number(mejor.linea_negocio || 0) !== 5))) {
+        const ingComercial = await resolverIngredienteComercialDeterminista(runner, ingOrigenId).catch(() => null);
+        if (ingComercial && ingComercial.id) {
+            const desdePuente = await obtenerDesgloseIngredientesParaItem(
+                {
+                    articulo_codigo: ingComercial.articulo_vinculado_numero || undefined,
+                    ingrediente_origen_id: ingComercial.id
+                },
+                catalogoIngredientes,
+                runner
+            );
+            mejor = seleccionarMejor(mejor, desdePuente);
+        }
+    }
+
+    if (pareceBarrita && (!mejor || Number(mejor.linea_negocio || 0) !== 5)) {
+        const itemsL5 = Object.values(catalogoIngredientes.items || {}).filter(
+            (it) => Number(it && it.linea_negocio) === 5 && Array.isArray(it.ingredientes) && it.ingredientes.length >= 2
+        );
+        const codigoBase = (codigoOrigen || skuSinPrefijo || skuRaw).toUpperCase();
+        const raizFamiliaMatch = codigoBase.match(/^([A-Z]{2,4}?)(?:\d+X\d+|X\d+)/);
+        const raizFamilia = raizFamiliaMatch ? raizFamiliaMatch[1] : '';
+        const matchFamilia = raizFamilia
+            ? itemsL5.find((it) => String(it.codigo || '').toUpperCase().startsWith(raizFamilia))
+            : null;
+        const fallbackL5 = matchFamilia || (itemsL5.length === 1 ? itemsL5[0] : null);
+        mejor = seleccionarMejor(mejor, fallbackL5);
+    }
+
+    return mejor;
+}
+
+/**
  * Deriva determinísticamente el SKU nativo LAMDA (sin prefijos de canal NB-) y la nomenclatura
  * posicional exacta a partir de un artículo hermano nativo de public.bunker_articulos.
  */
@@ -1987,7 +2066,12 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS codigo_bunker_cliente_madre VARCHAR(80),
                 ADD COLUMN IF NOT EXISTS latitud NUMERIC(12,8),
                 ADD COLUMN IF NOT EXISTS longitud NUMERIC(12,8),
-                ADD COLUMN IF NOT EXISTS mostrar_ingredientes_tienda BOOLEAN DEFAULT true;
+                ADD COLUMN IF NOT EXISTS mostrar_ingredientes_tienda BOOLEAN DEFAULT true,
+                ADD COLUMN IF NOT EXISTS gestor_token VARCHAR(80);
+
+            CREATE UNIQUE INDEX IF NOT EXISTS unq_nodos_maestro_gestor_token
+                ON public.nodos_maestro (gestor_token)
+                WHERE gestor_token IS NOT NULL;
 
             ALTER TABLE public.nodos_ofertas_gestor
                 ADD COLUMN IF NOT EXISTS mostrar_ingredientes BOOLEAN DEFAULT true;
@@ -2017,7 +2101,18 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS secuencia_operativa_lamda VARCHAR(40) DEFAULT 'Imprimir';
         `);
 
-        // Si algún Nodo con cuenta compartida quedó con el alias mayorista de LAMDA, migrarlo al alias neutro del canal
+        // Garantizar gestor_token criptográfico único en nodos existentes sin token
+        const nodosSinTokenRes = await client.query(
+            `SELECT id FROM public.nodos_maestro WHERE gestor_token IS NULL OR LENGTH(TRIM(gestor_token)) < 16`
+        );
+        for (const rTok of nodosSinTokenRes.rows) {
+            await client.query(
+                `UPDATE public.nodos_maestro SET gestor_token = $1 WHERE id = $2`,
+                [generarGestorTokenNodo(), rTok.id]
+            );
+        }
+
+        // Si algún Nodo con cuenta compartida quedó sin alias efectivo (o con alias LAMDA distinto al configurado en canal)
         await client.query(`
             UPDATE public.nodos_maestro nm
             SET alias_bancario_display = cfg.alias_recaudador,
@@ -2026,7 +2121,11 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             FROM public.nodos_configuracion_canal cfg
             WHERE cfg.id = 1
               AND COALESCE(nm.usa_cuenta_compartida, true) = true
-              AND (nm.alias_bancario_display IS NULL OR nm.alias_bancario_display = '' OR nm.alias_bancario_display ILIKE '%lamda%');
+              AND (
+                  nm.alias_bancario_display IS NULL
+                  OR nm.alias_bancario_display = ''
+                  OR (nm.alias_bancario_display ILIKE '%lamda%' AND COALESCE(cfg.alias_recaudador, '') NOT ILIKE '%lamda%')
+              );
         `);
 
         // Verificar si necesitamos poblar datos iniciales de Laboratorio (solo cuando se pide sembrarDemo explícitamente)
@@ -2578,17 +2677,10 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             listaNodosId = checkListaNodos.rows[0].id;
             await client.query(
                 `UPDATE public.bunker_listas_precios
-                 SET nombre = 'Lista Base Nodos Barriales',
-                     canal_comercial = 'NODOS',
-                     activa = true,
-                     salvavidas_habilitado = true,
-                     salvavidas_tasa_tem = 6.50,
-                     salvavidas_dias_gracia = 5,
-                     salvavidas_dias_estandar = 7,
-                     salvavidas_dias_cortesia = 2,
-                     descripcion = 'Lista oficial de transferencia LAMDA -> Gestor de Nodo Barrial. Incluye servicio de financiación de canasto en Cta. Cte. hasta liquidación de lote.',
+                 SET canal_comercial = 'NODOS',
                      updated_at = NOW()
-                 WHERE id = $1`,
+                 WHERE id = $1
+                   AND COALESCE(canal_comercial, '') <> 'NODOS'`,
                 [listaNodosId]
             );
         } else {
@@ -2667,9 +2759,9 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                     polId = checkPol.rows[0].id;
                     await client.query(
                         `UPDATE public.bunker_politicas_descuento
-                         SET descripcion = $1, bunker_lista_precio_id = $2, activo = true, updated_at = NOW()
-                         WHERE id = $3`,
-                        [pol.descripcion, listaNodosId, polId]
+                         SET bunker_lista_precio_id = $1, updated_at = NOW()
+                         WHERE id = $2 AND bunker_lista_precio_id IS NULL`,
+                        [listaNodosId, polId]
                     );
                 } else {
                     const insPol = await client.query(
@@ -3957,12 +4049,16 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
         let titularEfectivo = String(payload.titular_display || '').trim();
         let cuentaBancariaIdEfectiva = payload.cuenta_bancaria_id ? Number(payload.cuenta_bancaria_id) : (cfgCanal.cuenta_bancaria_id || null);
 
-        if (usaCuentaCompartida || !aliasEfectivo || /lamda/i.test(aliasEfectivo)) {
+        if (usaCuentaCompartida || !aliasEfectivo) {
             aliasEfectivo = cfgCanal.alias_recaudador || 'pago.canasto';
             cbuEfectivo = cfgCanal.cbu_recaudador || cbuEfectivo || '';
             titularEfectivo = cfgCanal.titular_recaudador || titularEfectivo || '';
             cuentaBancariaIdEfectiva = cfgCanal.cuenta_bancaria_id || null;
         }
+
+        const gestorTokenEfectivo = (existenteRow?.gestor_token && String(existenteRow.gestor_token).trim().length >= 16)
+            ? String(existenteRow.gestor_token).trim()
+            : generarGestorTokenNodo();
 
         const latVal = payload.latitud !== undefined && payload.latitud !== null && payload.latitud !== ''
             ? Number(payload.latitud)
@@ -4005,8 +4101,9 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     latitud = $28,
                     longitud = $29,
                     mostrar_ingredientes_tienda = COALESCE($30, mostrar_ingredientes_tienda),
+                    gestor_token = COALESCE(NULLIF(TRIM(gestor_token), ''), $31),
                     updated_at = NOW()
-                WHERE id = $31
+                WHERE id = $32
                 RETURNING *`,
                 [
                     slugBase,
@@ -4046,6 +4143,7 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     Number.isFinite(latVal) ? latVal : null,
                     Number.isFinite(lngVal) ? lngVal : null,
                     payload.mostrar_ingredientes_tienda !== undefined ? Boolean(payload.mostrar_ingredientes_tienda) : null,
+                    gestorTokenEfectivo,
                     Number(idExistente)
                 ]
             );
@@ -4061,9 +4159,9 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     permitir_envio_barrial, cargo_envio_barrial, margen_gestor_default_pct,
                     config_ventanas_corte, color_primario,
                     logo_original_base64, logo_mono_preview_base64, logo_zpl_gfa, logo_zpl_config,
-                    latitud, longitud, mostrar_ingredientes_tienda
+                    latitud, longitud, mostrar_ingredientes_tienda, gestor_token
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31
                 ) RETURNING *`,
                 [
                     codigoNodo,
@@ -4102,7 +4200,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     }),
                     Number.isFinite(latVal) ? latVal : null,
                     Number.isFinite(lngVal) ? lngVal : null,
-                    payload.mostrar_ingredientes_tienda !== false
+                    payload.mostrar_ingredientes_tienda !== false,
+                    gestorTokenEfectivo
                 ]
             );
             nodoGuardado = ins.rows[0];
@@ -4172,9 +4271,6 @@ async function actualizarConfiguracionCuentaCanalNodos(payload = {}) {
     const aliasRecaudador = String(payload.alias_recaudador || '').trim();
     if (!aliasRecaudador) {
         throw new Error('El alias recaudador compartido del canal Nodos no puede estar vacío.');
-    }
-    if (/lamda/i.test(aliasRecaudador)) {
-        throw new Error('Por criterio de Marca Blanca, el alias para vecinos no puede contener la palabra "LAMDA". Utilice un alias neutro (ej: pago.canasto).');
     }
 
     const bancoRecaudador = String(payload.banco_recaudador || 'Cuenta Recaudadora Canal Nodos').trim();
@@ -5582,6 +5678,8 @@ async function obtenerCatalogoIngredientesSolicitablesGestor() {
 async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opciones = {}) {
     await asegurarEsquemaNodosBarriales();
     const esVistaGestor = String(opciones?.vista || '').trim().toLowerCase() === 'gestor';
+    const cleanSlug = String(slug || '').trim();
+    const strictSlug = Boolean(opciones?.strictSlug);
 
     let nodoRes = await db.query(
         `SELECT nm.*,
@@ -5598,10 +5696,10 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
           AND cc_madre.nombre_cuenta = 'Cuenta Principal'
          WHERE LOWER(nm.slug) = LOWER($1)
          LIMIT 1`,
-        [String(slug || '').trim()]
+        [cleanSlug]
     );
 
-    if (nodoRes.rows.length === 0) {
+    if (nodoRes.rows.length === 0 && !cleanSlug && !strictSlug) {
         nodoRes = await db.query(
             `SELECT nm.*,
                     COALESCE(cc.saldo, 0)::numeric(14,2) AS saldo_cuenta_corriente,
@@ -5621,7 +5719,13 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
     }
 
     if (nodoRes.rows.length === 0) {
-        throw new Error('No hay Nodos Barriales configurados.');
+        const err = new Error(
+            cleanSlug
+                ? `Nodo Barrial "${cleanSlug}" no encontrado.`
+                : 'No hay Nodos Barriales configurados.'
+        );
+        err.statusCode = 404;
+        throw err;
     }
 
     const nodo = nodoRes.rows[0];
@@ -5742,17 +5846,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
 
     const ofertasConDesglose = await Promise.all(
         ofertasRes.rows.map(async (o) => {
-            const flujoNum = Number(o.flujo_lamda || 0);
-            const esLineaElaborada = flujoNum >= 3;
-            const desglose = (esLineaElaborada && catalogoIngredientes)
-                ? await obtenerDesgloseIngredientesParaItem(
-                    {
-                        sku_nodo: o.sku_nodo,
-                        articulo_bunker_origen_codigo: o.articulo_bunker_origen_codigo,
-                        ingrediente_origen_id: o.ingrediente_origen_id
-                    },
-                    catalogoIngredientes
-                )
+            const desglose = catalogoIngredientes
+                ? await resolverDesgloseIngredientesOfertaNodo(db, o, catalogoIngredientes)
                 : null;
             const listaIngredientes = (desglose && Array.isArray(desglose.ingredientes) && desglose.ingredientes.length >= 2)
                 ? desglose.ingredientes
@@ -5761,6 +5856,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             const mostrarEnOferta = o.mostrar_ingredientes !== false;
             return {
                 ...o,
+                linea_negocio: desglose ? Number(desglose.linea_negocio || 0) || null : null,
                 mostrar_ingredientes: mostrarEnOferta,
                 tiene_desglose_ingredientes: tieneDesgloseIngredientes,
                 ingredientes_comerciales: listaIngredientes
@@ -5784,6 +5880,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 categoria_familiar: o.categoria_familiar,
                 presentacion_etiqueta: o.presentacion_etiqueta,
                 kilos_unidad: Number(o.kilos_unidad),
+                flujo_lamda: Number(o.flujo_lamda || 0) || null,
+                linea_negocio: o.linea_negocio || null,
                 precio_venta_vecino: Number(o.precio_venta_vecino),
                 destacado_tienda: Boolean(o.destacado_tienda),
                 mostrar_ingredientes: habilitarBotonIng,
@@ -5791,8 +5889,9 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             };
         });
 
+    const { gestor_token: _omitGestorToken, ...nodoSinToken } = nodo;
     const nodoPublico = esVistaGestor
-        ? { ...nodo, mostrar_ingredientes_tienda: mostrarIngredientesNodo }
+        ? { ...nodoSinToken, mostrar_ingredientes_tienda: mostrarIngredientesNodo }
         : {
             id: nodo.id,
             codigo_nodo: nodo.codigo_nodo,
@@ -6468,10 +6567,13 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
             );
         }
 
-        // Coordenadas reales en City Bell / Gonnet para el Mapa de Logística (:3005)
+        // Usar coordenadas reales configuradas en el Nodo si existen; fallback a City Bell / Gonnet
+        const latReal = Number(nodo.latitud);
+        const lngReal = Number(nodo.longitud);
+        const tieneCoordsReales = Number.isFinite(latReal) && Number.isFinite(lngReal) && latReal !== 0 && lngReal !== 0;
         const esGonnet = String(nodo.barrio_zona || nodo.nombre_marca || '').toLowerCase().includes('gonnet');
-        const lat = esGonnet ? -34.8812 : -34.8625;
-        const lng = esGonnet ? -58.0195 : -58.0465;
+        const lat = tieneCoordsReales ? latReal : (esGonnet ? -34.8812 : -34.8625);
+        const lng = tieneCoordsReales ? lngReal : (esGonnet ? -58.0195 : -58.0465);
 
         const domCheck = await q.query(
             `SELECT id FROM public.clientes_domicilios
@@ -6504,15 +6606,21 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
             domicilioId = domCheck.rows[0].id;
             await q.query(
                 `UPDATE public.clientes_domicilios
-                 SET direccion = $1, localidad = $2, latitud = COALESCE(latitud, $3), longitud = COALESCE(longitud, $4),
-                     es_predeterminado = true, activo = true, coordenadas_validadas = true
+                 SET direccion = $1,
+                     localidad = $2,
+                     latitud = CASE WHEN $6 THEN $3 ELSE COALESCE(latitud, $3) END,
+                     longitud = CASE WHEN $6 THEN $4 ELSE COALESCE(longitud, $4) END,
+                     es_predeterminado = true,
+                     activo = true,
+                     coordenadas_validadas = true
                  WHERE id = $5`,
                 [
                     nodo.direccion_retiro || 'Calle Cantilo 452, City Bell',
                     nodo.barrio_zona || 'City Bell',
                     lat,
                     lng,
-                    domicilioId
+                    domicilioId,
+                    tieneCoordsReales
                 ]
             );
         }
@@ -8256,8 +8364,9 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
              AND cc_madre.nombre_cuenta = 'Cuenta Principal'
             LEFT JOIN public.bunker_listas_precios lp ON lp.id = nm.lista_precio_bunker_id
             WHERE nm.activo = true
+              AND ($1::int = 0 OR nm.id = $1::int)
             ORDER BY nm.id ASC
-        `),
+        `, [nodoIdFiltro]),
         db.query(`
             SELECT nle.*,
                    nm.codigo_nodo,
@@ -10915,6 +11024,94 @@ function generarPortalTokenVecinoNodo() {
     return crypto.randomBytes(14).toString('hex');
 }
 
+function generarGestorTokenNodo() {
+    return 'ngt_' + crypto.randomBytes(20).toString('hex');
+}
+
+async function resolverNodoPorTokenGestor(token) {
+    await asegurarEsquemaNodosBarriales();
+    const tok = String(token || '').trim();
+    if (!tok || tok.length < 16) return null;
+    const res = await db.query(
+        `SELECT id, codigo_nodo, slug, nombre_marca, gestor_nombre, activo
+         FROM public.nodos_maestro
+         WHERE gestor_token = $1
+           AND COALESCE(activo, true) = true
+         LIMIT 1`,
+        [tok]
+    );
+    return res.rows[0] || null;
+}
+
+async function asegurarOfertaPerteneceANodo(ofertaId, nodoId) {
+    const res = await db.query(
+        `SELECT id, nodo_id FROM public.nodos_ofertas_gestor WHERE id = $1 LIMIT 1`,
+        [Number(ofertaId)]
+    );
+    if (res.rows.length === 0) {
+        const err = new Error('Oferta de gestor no encontrada.');
+        err.statusCode = 404;
+        throw err;
+    }
+    if (Number(res.rows[0].nodo_id) !== Number(nodoId)) {
+        const err = new Error('No autorizado: la oferta pertenece a otro Nodo.');
+        err.statusCode = 403;
+        throw err;
+    }
+    return res.rows[0];
+}
+
+async function asegurarPedidoPerteneceANodo(pedidoId, nodoId) {
+    const res = await db.query(
+        `SELECT id, nodo_id, tracking_token, codigo_pedido FROM public.nodos_pedidos_vecinos WHERE id = $1 LIMIT 1`,
+        [Number(pedidoId)]
+    );
+    if (res.rows.length === 0) {
+        const err = new Error('Pedido vecinal no encontrado.');
+        err.statusCode = 404;
+        throw err;
+    }
+    if (Number(res.rows[0].nodo_id) !== Number(nodoId)) {
+        const err = new Error('No autorizado: el pedido pertenece a otro Nodo.');
+        err.statusCode = 403;
+        throw err;
+    }
+    return res.rows[0];
+}
+
+async function obtenerEtiquetaDePedidoAutorizada(pedidoId, auth = {}) {
+    await asegurarEsquemaNodosBarriales();
+    const pedRes = await db.query(
+        `SELECT id, nodo_id, tracking_token FROM public.nodos_pedidos_vecinos WHERE id = $1 LIMIT 1`,
+        [Number(pedidoId)]
+    );
+    if (pedRes.rows.length === 0) {
+        const err = new Error('Pedido vecinal no encontrado.');
+        err.statusCode = 404;
+        throw err;
+    }
+    const ped = pedRes.rows[0];
+    if (auth && auth.requerirAutorizacion) {
+        const tokGestor = String(auth.gestorToken || '').trim();
+        const tokTracking = String(auth.trackingToken || '').trim();
+        let autorizado = false;
+        if (tokTracking && ped.tracking_token && tokTracking === String(ped.tracking_token).trim()) {
+            autorizado = true;
+        } else if (tokGestor) {
+            const nodoAuth = await resolverNodoPorTokenGestor(tokGestor);
+            if (nodoAuth && Number(nodoAuth.id) === Number(ped.nodo_id)) {
+                autorizado = true;
+            }
+        }
+        if (!autorizado) {
+            const err = new Error('Se requiere autorización válida del Gestor o token de seguimiento del pedido.');
+            err.statusCode = 403;
+            throw err;
+        }
+    }
+    return generarEtiquetaDePedidoExistente(pedidoId);
+}
+
 function _sanitizarNumeroReciboMarcaBlanca(refRaw, codigoPedido, medioPago) {
     const esEfvo = String(medioPago || '').toUpperCase() === 'EFECTIVO';
     const fallback = `REC-${esEfvo ? 'EFVO' : 'TRF'}-${codigoPedido || 'NODO'}`;
@@ -10941,7 +11138,7 @@ async function obtenerDatosQrAccesoNodo(idOrSlug) {
     const res = await db.query(
         `SELECT id, codigo_nodo, slug, nombre_marca, subtitulo_marca,
                 gestor_nombre, gestor_telefono, barrio_zona, direccion_retiro,
-                color_primario, bunker_cliente_id, codigo_bunker_cliente, activo
+                color_primario, bunker_cliente_id, codigo_bunker_cliente, activo, gestor_token
          FROM public.nodos_maestro
          WHERE ($1::int > 0 AND (bunker_cliente_id = $1::int OR id = $1::int))
             OR LOWER(slug) = LOWER($2)
@@ -10957,12 +11154,22 @@ async function obtenerDatosQrAccesoNodo(idOrSlug) {
     }
 
     const n = res.rows[0];
+    let gestorToken = String(n.gestor_token || '').trim();
+    if (gestorToken.length < 16) {
+        gestorToken = generarGestorTokenNodo();
+        await db.query(
+            `UPDATE public.nodos_maestro SET gestor_token = $1, updated_at = NOW() WHERE id = $2::int`,
+            [gestorToken, Number(n.id)]
+        );
+    }
+
     return {
         id: Number(n.id),
         bunker_cliente_id: n.bunker_cliente_id ? Number(n.bunker_cliente_id) : null,
         codigo_nodo: n.codigo_nodo,
         codigo_bunker_cliente: n.codigo_bunker_cliente || null,
         slug: n.slug,
+        gestor_token: gestorToken,
         nombre_marca: n.nombre_marca,
         subtitulo_marca: n.subtitulo_marca || '',
         gestor_nombre: n.gestor_nombre || '',
@@ -10970,6 +11177,19 @@ async function obtenerDatosQrAccesoNodo(idOrSlug) {
         barrio_zona: n.barrio_zona || '',
         direccion_retiro: n.direccion_retiro || '',
         color_primario: n.color_primario || '#16a34a'
+    };
+}
+
+async function rotarGestorTokenNodo(idOrSlug) {
+    const actual = await obtenerDatosQrAccesoNodo(idOrSlug);
+    const nuevoToken = generarGestorTokenNodo();
+    await db.query(
+        `UPDATE public.nodos_maestro SET gestor_token = $1, updated_at = NOW() WHERE id = $2::int`,
+        [nuevoToken, Number(actual.id)]
+    );
+    return {
+        ...actual,
+        gestor_token: nuevoToken
     };
 }
 
@@ -11327,8 +11547,15 @@ module.exports = {
     confirmarRecepcionLotePorGestor,
     actualizarEstadoEntregaVecinoPorGestor,
     obtenerDatosQrAccesoNodo,
+    rotarGestorTokenNodo,
+    generarGestorTokenNodo,
+    resolverNodoPorTokenGestor,
+    asegurarOfertaPerteneceANodo,
+    asegurarPedidoPerteneceANodo,
+    obtenerEtiquetaDePedidoAutorizada,
     obtenerDatosQrAccesoVecino,
     obtenerPortalCuentaVecinoMarcaBlanca,
+    resolverDesgloseIngredientesOfertaNodo,
     convertirLogoAZplGfa,
     generarEtiquetaZplParNodo,
     generarPreviewVisualEtiquetaPar,

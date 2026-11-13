@@ -132,16 +132,85 @@ async function asegurarTunelCloudflareNodos() {
     return tunelCloudflareIniciandoPromise;
 }
 
-// Iniciar túnel en segundo plano al levantar el router de Nodos en Laboratorio
-setTimeout(() => {
-    asegurarTunelCloudflareNodos().catch(() => {});
-}, 800);
+const NODOS_PUBLIC_HOST_CONFIG = String(process.env.NODOS_PUBLIC_HOST || 'tienda.lamdaser.com')
+    .trim()
+    .toLowerCase()
+    .replace(/:\d+$/, '');
+
+function extraerHostSinPuertoNodos(req) {
+    const rawHost = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').split(',')[0].trim().toLowerCase();
+    return rawHost.replace(/:\d+$/, '');
+}
+
+function esSolicitudPublicaNodos(req) {
+    const h = extraerHostSinPuertoNodos(req);
+    if (!h) return false;
+    if (h.includes('.trycloudflare.com')) return true;
+    if (NODOS_PUBLIC_HOST_CONFIG && h === NODOS_PUBLIC_HOST_CONFIG) return true;
+    if (h === 'tienda.lamdaser.com' || h.startsWith('tienda.')) return true;
+    return false;
+}
+
+function extraerTokenGestorRequest(req) {
+    const headerTok = String(req?.headers?.['x-nodo-gestor-token'] || '').trim();
+    const queryTok = String(req?.query?.t || req?.query?.gestor_token || '').trim();
+    const bodyTok = String(req?.body?.gestor_token || '').trim();
+    return headerTok || queryTok || bodyTok || '';
+}
+
+function esModoLaboratorioWaSegura() {
+    return String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true'
+        && String(process.env.DB_NAME || '').trim() === 'etiquetas_pruebas';
+}
+
+async function autenticarGestorSiPublicoOToken(req, res, next) {
+    try {
+        const token = extraerTokenGestorRequest(req);
+        const esPublico = esSolicitudPublicaNodos(req);
+        if (!esPublico && !token) {
+            return next();
+        }
+        if (!token) {
+            return res.status(401).json({
+                ok: false,
+                code: 'GESTOR_TOKEN_REQUIRED',
+                error: 'Se requiere acceso autorizado del Gestor (reescaneá tu código QR de Gestor).'
+            });
+        }
+        const nodoAuth = await nodosService.resolverNodoPorTokenGestor(token);
+        if (!nodoAuth) {
+            return res.status(403).json({
+                ok: false,
+                code: 'GESTOR_TOKEN_INVALID',
+                error: 'El código QR o token del Gestor ya no es válido. Solicitá uno nuevo.'
+            });
+        }
+        req.nodoAuth = nodoAuth;
+        return next();
+    } catch (err) {
+        return res.status(500).json({ ok: false, error: err.message });
+    }
+}
+
+// Iniciar túnel efímero en segundo plano únicamente en Laboratorio Windows sin dominio público fijo
+const esLabWindowsConTunel = process.platform === 'win32'
+    && String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true'
+    && !String(process.env.NODOS_PUBLIC_BASE_URL || '').trim();
+if (esLabWindowsConTunel) {
+    setTimeout(() => {
+        asegurarTunelCloudflareNodos().catch(() => {});
+    }, 800);
+}
 
 router.get('/ping-movil', (req, res) => {
     res.json({ ok: true, ts: Date.now() });
 });
 
 async function obtenerBaseUrlAccesibleCelular(req) {
+    const publicBaseEnv = String(process.env.NODOS_PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+    if (publicBaseEnv) {
+        return publicBaseEnv;
+    }
     const hostHeader = String(req?.headers?.host || '').trim();
     const proto = String(req?.headers?.['x-forwarded-proto'] || req?.protocol || 'http').split(',')[0].trim();
     const isPublicCloud = hostHeader && !/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostHeader);
@@ -283,13 +352,20 @@ router.put('/config-cuenta-canal', async (req, res) => {
  * POST /api/produccion/nodos/propuestas
  * Crea una nueva solicitud/propuesta de fracción de un gestor de Nodo hacia LAMDA
  */
-router.post('/propuestas', async (req, res) => {
+router.post('/propuestas', autenticarGestorSiPublicoOToken, async (req, res) => {
     try {
-        const propuesta = await nodosService.crearPropuestaFraccion(req.body || {});
+        const body = { ...(req.body || {}) };
+        if (req.nodoAuth) {
+            if (body.nodo_solicitante_id && Number(body.nodo_solicitante_id) !== Number(req.nodoAuth.id)) {
+                return res.status(403).json({ ok: false, error: 'No autorizado para enviar propuestas en nombre de otro Nodo.' });
+            }
+            body.nodo_solicitante_id = req.nodoAuth.id;
+        }
+        const propuesta = await nodosService.crearPropuestaFraccion(body);
         res.json({ ok: true, propuesta });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error creando propuesta:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -297,10 +373,10 @@ router.post('/propuestas', async (req, res) => {
  * POST /api/produccion/nodos/propuestas/:id/anular
  * Permite al Gestor anular una solicitud propia mientras siga pendiente de cotización
  */
-router.post('/propuestas/:id/anular', async (req, res) => {
+router.post('/propuestas/:id/anular', autenticarGestorSiPublicoOToken, async (req, res) => {
     try {
-        const nodoId = req.body && req.body.nodo_id;
-        const nodoSlug = req.body && req.body.nodo_slug;
+        const nodoId = req.nodoAuth ? req.nodoAuth.id : (req.body && req.body.nodo_id);
+        const nodoSlug = req.nodoAuth ? req.nodoAuth.slug : (req.body && req.body.nodo_slug);
         const propuesta = await nodosService.anularODescartarPropuestaFraccion(req.params.id, {
             origen: 'GESTOR',
             nodo_id: nodoId,
@@ -309,7 +385,7 @@ router.post('/propuestas/:id/anular', async (req, res) => {
         res.json({ ok: true, propuesta });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error anulando propuesta desde Gestor:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -365,13 +441,16 @@ router.post('/recalcular-cascada', async (req, res) => {
  * PUT /api/produccion/nodos/ofertas-gestor/:id
  * Actualiza el margen del gestor y/o el estado de publicación para sus vecinos
  */
-router.put('/ofertas-gestor/:id', async (req, res) => {
+router.put('/ofertas-gestor/:id', autenticarGestorSiPublicoOToken, async (req, res) => {
     try {
+        if (req.nodoAuth) {
+            await nodosService.asegurarOfertaPerteneceANodo(req.params.id, req.nodoAuth.id);
+        }
         const oferta = await nodosService.actualizarOfertaGestor(req.params.id, req.body || {});
         res.json({ ok: true, oferta });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error actualizando oferta gestor:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -380,14 +459,17 @@ router.put('/ofertas-gestor/:id', async (req, res) => {
  * Permite al Gestor incorporar en 1 toque a Mi Oferta y Márgenes un artículo ya cotizado
  * en el Catálogo Base de Nodos, sin pedir nueva cotización.
  */
-router.post('/gestor/:nodoId/sumar-catalogo', async (req, res) => {
+router.post('/gestor/:nodoId/sumar-catalogo', autenticarGestorSiPublicoOToken, async (req, res) => {
     try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para modificar otro Nodo.' });
+        }
         const catalogoId = req.body && req.body.catalogo_id;
         const oferta = await nodosService.sumarArticuloCatalogoANodo(req.params.nodoId, catalogoId);
         res.json({ ok: true, oferta });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error incorporando artículo de catálogo al Nodo:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -399,16 +481,34 @@ router.post('/gestor/:nodoId/sumar-catalogo', async (req, res) => {
  * GET /api/produccion/nodos/portal/:slug
  * Devuelve el catálogo publicado, horarios de corte, próxima entrega, pedidos y ofertas del Nodo
  */
-router.get('/portal/:slug', async (req, res) => {
+router.get('/portal/:slug', async (req, res, next) => {
+    const vistaReq = String(req.query.vista || '').trim().toLowerCase();
+    if (vistaReq === 'gestor') {
+        return autenticarGestorSiPublicoOToken(req, res, () => {
+            if (req.nodoAuth && String(req.nodoAuth.slug || '').toLowerCase() !== String(req.params.slug || '').trim().toLowerCase()) {
+                return res.status(403).json({
+                    ok: false,
+                    code: 'GESTOR_WRONG_NODE',
+                    error: 'El token del Gestor no corresponde a este Nodo.'
+                });
+            }
+            return next();
+        });
+    }
+    return next();
+}, async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
         const fechaSimulada = req.query.fecha_simulada || null;
         const vista = req.query.vista || '';
-        const data = await nodosService.obtenerDatosPortalNodo(req.params.slug, fechaSimulada, { vista });
+        const data = await nodosService.obtenerDatosPortalNodo(req.params.slug, fechaSimulada, {
+            vista,
+            strictSlug: true
+        });
         res.json({ ok: true, ...data });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en GET /portal/:slug:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -496,12 +596,52 @@ router.post('/tienda/:slug/buscar-seguimiento', limitarConsultasPublicasSeguimie
     }
 });
 
+const _rateLimitPedidosPublicosMap = new Map();
+const RATE_LIMIT_PEDIDOS_VENTANA_MS = 60 * 1000;
+const RATE_LIMIT_PEDIDOS_MAX_POR_MINUTO = 20;
+
+function limitarPedidosPublicos(req, res, next) {
+    const ahora = Date.now();
+    if (_rateLimitPedidosPublicosMap.size > 500) {
+        for (const [k, v] of _rateLimitPedidosPublicosMap.entries()) {
+            if (ahora - v.inicio > RATE_LIMIT_PEDIDOS_VENTANA_MS) {
+                _rateLimitPedidosPublicosMap.delete(k);
+            }
+        }
+    }
+    const ipRaw = String(
+        req.headers['cf-connecting-ip'] ||
+        (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0] : '') ||
+        req.ip ||
+        req.socket?.remoteAddress ||
+        'anon'
+    ).trim();
+    let reg = _rateLimitPedidosPublicosMap.get(ipRaw);
+    if (!reg || (ahora - reg.inicio) >= RATE_LIMIT_PEDIDOS_VENTANA_MS) {
+        reg = { inicio: ahora, conteo: 0 };
+        _rateLimitPedidosPublicosMap.set(ipRaw, reg);
+    }
+    reg.conteo += 1;
+    if (reg.conteo > RATE_LIMIT_PEDIDOS_MAX_POR_MINUTO) {
+        const segRestantes = Math.max(1, Math.ceil((RATE_LIMIT_PEDIDOS_VENTANA_MS - (ahora - reg.inicio)) / 1000));
+        res.set('Retry-After', String(segRestantes));
+        return res.status(429).json({
+            ok: false,
+            error: `Demasiados pedidos seguidos desde esta conexión. Esperá ${segRestantes} segundos.`
+        });
+    }
+    next();
+}
+
 /**
  * POST /api/produccion/nodos/gestor/:nodoId/lotes/:canastoId/confirmar-recepcion
  * Confirmación de 1 toque de recepción física del lote en el Nodo (Hito 3 -> 4 + Débito CB-NODO-xxx)
  */
-router.post('/gestor/:nodoId/lotes/:canastoId/confirmar-recepcion', async (req, res) => {
+router.post('/gestor/:nodoId/lotes/:canastoId/confirmar-recepcion', autenticarGestorSiPublicoOToken, async (req, res) => {
     try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para confirmar lotes de otro Nodo.' });
+        }
         const resultado = await nodosService.confirmarRecepcionLotePorGestor(
             req.params.nodoId,
             req.params.canastoId,
@@ -510,7 +650,7 @@ router.post('/gestor/:nodoId/lotes/:canastoId/confirmar-recepcion', async (req, 
         res.json({ ok: true, ...resultado });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en confirmar-recepcion de lote:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -518,8 +658,14 @@ router.post('/gestor/:nodoId/lotes/:canastoId/confirmar-recepcion', async (req, 
  * POST /api/produccion/nodos/gestor/:nodoId/pedidos/:pedidoId/estado-entrega
  * Controles de 1 toque del Gestor: SALIO_REPARTO (Hito 5) y ENTREGADO (Hito 6 + cobro efectivo unificado)
  */
-router.post('/gestor/:nodoId/pedidos/:pedidoId/estado-entrega', async (req, res) => {
+router.post('/gestor/:nodoId/pedidos/:pedidoId/estado-entrega', autenticarGestorSiPublicoOToken, async (req, res) => {
     try {
+        if (req.nodoAuth) {
+            if (Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+                return res.status(403).json({ ok: false, error: 'No autorizado para modificar entregas de otro Nodo.' });
+            }
+            await nodosService.asegurarPedidoPerteneceANodo(req.params.pedidoId, req.nodoAuth.id);
+        }
         const resultado = await nodosService.actualizarEstadoEntregaVecinoPorGestor(
             req.params.nodoId,
             req.params.pedidoId,
@@ -528,7 +674,7 @@ router.post('/gestor/:nodoId/pedidos/:pedidoId/estado-entrega', async (req, res)
         res.json({ ok: true, ...resultado });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en estado-entrega de pedido vecinal:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -537,13 +683,16 @@ router.post('/gestor/:nodoId/pedidos/:pedidoId/estado-entrega', async (req, res)
  * Actualiza desde el Panel del Gestor los días de entrega, horarios de corte,
  * ventanas de retiro y costo de envío barrial (100% para el gestor).
  */
-router.put('/gestor/:nodoId/config-logistica', async (req, res) => {
+router.put('/gestor/:nodoId/config-logistica', autenticarGestorSiPublicoOToken, async (req, res) => {
     try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para configurar logística de otro Nodo.' });
+        }
         const nodo = await nodosService.actualizarConfiguracionGestorNodo(req.params.nodoId, req.body || {});
         res.json({ ok: true, nodo });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en PUT /gestor/:nodoId/config-logistica:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -551,7 +700,7 @@ router.put('/gestor/:nodoId/config-logistica', async (req, res) => {
  * POST /api/produccion/nodos/tienda/:slug/pedido
  * Registra el pedido de un vecino desde la Tienda Marca Blanca
  */
-router.post('/tienda/:slug/pedido', async (req, res) => {
+router.post('/tienda/:slug/pedido', limitarPedidosPublicos, async (req, res) => {
     try {
         const resultado = await nodosService.crearPedidoVecinoTienda(req.params.slug, req.body || {});
         res.json({ ok: true, ...resultado });
@@ -567,11 +716,18 @@ router.post('/tienda/:slug/pedido', async (req, res) => {
  */
 router.get('/pedidos/:pedidoId/etiqueta', async (req, res) => {
     try {
-        const etiqueta = await nodosService.generarEtiquetaDePedidoExistente(req.params.pedidoId);
+        const esPublico = esSolicitudPublicaNodos(req);
+        const gestorToken = extraerTokenGestorRequest(req);
+        const trackingToken = String(req.query?.tracking_token || '').trim();
+        const etiqueta = await nodosService.obtenerEtiquetaDePedidoAutorizada(req.params.pedidoId, {
+            requerirAutorizacion: esPublico || Boolean(gestorToken) || Boolean(trackingToken),
+            gestorToken,
+            trackingToken
+        });
         res.json({ ok: true, ...etiqueta });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en GET /pedidos/:pedidoId/etiqueta:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -676,15 +832,16 @@ router.post('/deposito/canastos/:canastoId/reabrir-prueba', async (req, res) => 
  * Devuelve los lotes, el cuadro de liquidación y compensación automática,
  * los titulares bancarios aprendidos y el libro mayor de Cuenta Corriente del Nodo.
  */
-router.get('/liquidacion/tablero', async (req, res) => {
+router.get('/liquidacion/tablero', autenticarGestorSiPublicoOToken, async (req, res) => {
     try {
+        const nodoIdSeguro = req.nodoAuth ? Number(req.nodoAuth.id) : (req.query.nodo_id || 0);
         const data = await nodosService.obtenerTableroLiquidacionCobros({
-            nodo_id: req.query.nodo_id || 0
+            nodo_id: nodoIdSeguro
         });
         res.json({ ok: true, ...data });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en GET /liquidacion/tablero:', error);
-        res.status(500).json({ ok: false, error: error.message });
+        res.status(error.statusCode || 500).json({ ok: false, error: error.message });
     }
 });
 
@@ -693,13 +850,23 @@ router.get('/liquidacion/tablero', async (req, res) => {
  * Concilia una transferencia vecinal en Banco LAMDA (acreditando a favor del Nodo y
  * aprendiendo el titular) o registra el cobro en efectivo en mano del Gestor.
  */
-router.post('/liquidacion/pedidos/:pedidoId/conciliar-pago', async (req, res) => {
+router.post('/liquidacion/pedidos/:pedidoId/conciliar-pago', autenticarGestorSiPublicoOToken, async (req, res) => {
     try {
+        if (req.nodoAuth) {
+            await nodosService.asegurarPedidoPerteneceANodo(req.params.pedidoId, req.nodoAuth.id);
+            const medio = String(req.body?.medio_pago || '').trim().toUpperCase();
+            if (medio !== 'EFECTIVO') {
+                return res.status(403).json({
+                    ok: false,
+                    error: 'Desde el Panel del Gestor solo se puede registrar cobro en efectivo en mano.'
+                });
+            }
+        }
         const tablero = await nodosService.conciliarPagoPedidoVecino(req.params.pedidoId, req.body || {});
         res.json({ ok: true, tablero });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en POST /liquidacion/pedidos/:pedidoId/conciliar-pago:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -808,6 +975,10 @@ router.get('/vecinos/:vecinoId/subcuenta', async (req, res) => {
  * garantizando que los códigos QR jamás apunten a `localhost`.
  */
 async function obtenerUrlPublicaQrNodos(req) {
+    const publicBaseEnv = String(process.env.NODOS_PUBLIC_BASE_URL || '').trim().replace(/\/+$/, '');
+    if (publicBaseEnv) {
+        return publicBaseEnv;
+    }
     const hostHeader = String(req?.headers?.host || '').trim();
     const proto = String(req?.headers?.['x-forwarded-proto'] || req?.protocol || 'http').split(',')[0].trim();
     const isPublicCloud = hostHeader && !/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostHeader);
@@ -823,6 +994,35 @@ async function obtenerUrlPublicaQrNodos(req) {
     }
     const lanIp = detectarIpLanWifiLocal();
     return `http://${lanIp}:3002`;
+}
+
+async function construirPayloadQrNodo(nodo, baseMovil) {
+    const slugEnc = encodeURIComponent(nodo.slug);
+    const tokenQ = nodo.gestor_token ? `?t=${encodeURIComponent(nodo.gestor_token)}` : '';
+    const urlMovilGestor = `${baseMovil}/gestor/${slugEnc}${tokenQ}`;
+    const urlMovilTienda = `${baseMovil}/tienda/${slugEnc}`;
+    const urlPcGestor = `http://localhost:3002/gestor/${slugEnc}${tokenQ}`;
+    const urlPcTienda = `http://localhost:3002/tienda/${slugEnc}`;
+
+    const [qrGestorDataUrl, qrTiendaDataUrl] = await Promise.all([
+        QRCode.toDataURL(urlMovilGestor, { margin: 2, width: 360, errorCorrectionLevel: 'M' }),
+        QRCode.toDataURL(urlMovilTienda, { margin: 2, width: 360, errorCorrectionLevel: 'M' })
+    ]);
+
+    return {
+        ok: true,
+        tipo: 'NODO_GESTOR',
+        base_url_movil: baseMovil,
+        es_dominio_publico_fijo: Boolean(String(process.env.NODOS_PUBLIC_BASE_URL || '').trim()),
+        es_tunel_https: baseMovil.startsWith('https://'),
+        nodo,
+        url_movil_gestor: urlMovilGestor,
+        url_pc_gestor: urlPcGestor,
+        qr_gestor_data_url: qrGestorDataUrl,
+        url_movil_tienda: urlMovilTienda,
+        url_pc_tienda: urlPcTienda,
+        qr_tienda_data_url: qrTiendaDataUrl
+    };
 }
 
 /**
@@ -853,32 +1053,28 @@ router.get('/accesos-qr/nodo/:idOrSlug', async (req, res) => {
             nodosService.obtenerDatosQrAccesoNodo(req.params.idOrSlug),
             obtenerUrlPublicaQrNodos(req)
         ]);
-        const slugEnc = encodeURIComponent(nodo.slug);
-        const urlMovilGestor = `${baseMovil}/gestor/${slugEnc}`;
-        const urlMovilTienda = `${baseMovil}/tienda/${slugEnc}`;
-        const urlPcGestor = `http://localhost:3002/gestor/${slugEnc}`;
-        const urlPcTienda = `http://localhost:3002/tienda/${slugEnc}`;
-
-        const [qrGestorDataUrl, qrTiendaDataUrl] = await Promise.all([
-            QRCode.toDataURL(urlMovilGestor, { margin: 2, width: 360, errorCorrectionLevel: 'M' }),
-            QRCode.toDataURL(urlMovilTienda, { margin: 2, width: 360, errorCorrectionLevel: 'M' })
-        ]);
-
-        res.json({
-            ok: true,
-            tipo: 'NODO_GESTOR',
-            base_url_movil: baseMovil,
-            es_tunel_https: baseMovil.startsWith('https://'),
-            nodo,
-            url_movil_gestor: urlMovilGestor,
-            url_pc_gestor: urlPcGestor,
-            qr_gestor_data_url: qrGestorDataUrl,
-            url_movil_tienda: urlMovilTienda,
-            url_pc_tienda: urlPcTienda,
-            qr_tienda_data_url: qrTiendaDataUrl
-        });
+        const payload = await construirPayloadQrNodo(nodo, baseMovil);
+        res.json(payload);
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en GET /accesos-qr/nodo/:idOrSlug:', error.message);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/accesos-qr/nodo/:idOrSlug/rotar-token
+ * Rota inmediatamente el gestor_token criptográfico e invalida los QRs anteriores del Gestor.
+ */
+router.post('/accesos-qr/nodo/:idOrSlug/rotar-token', async (req, res) => {
+    try {
+        const [nodo, baseMovil] = await Promise.all([
+            nodosService.rotarGestorTokenNodo(req.params.idOrSlug),
+            obtenerUrlPublicaQrNodos(req)
+        ]);
+        const payload = await construirPayloadQrNodo(nodo, baseMovil);
+        res.json(payload);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /accesos-qr/nodo/:idOrSlug/rotar-token:', error.message);
         res.status(400).json({ ok: false, error: error.message });
     }
 });
@@ -967,6 +1163,12 @@ router.post('/circuito-lamda/canastos/:canastoId/etapa', async (req, res) => {
  */
 router.post('/reset-pruebas', async (req, res) => {
     try {
+        if (esSolicitudPublicaNodos(req) || !esModoLaboratorioWaSegura()) {
+            return res.status(403).json({
+                ok: false,
+                error: 'Operación /reset-pruebas bloqueada fuera del Laboratorio aislado.'
+            });
+        }
         const conservarArticulosBase = req.body?.conservar_articulos_base !== false;
         const resultado = await nodosService.ponerACeroDatosNodosBarriales({ conservarArticulosBase });
         res.json({ ok: true, ...resultado });
@@ -984,6 +1186,12 @@ router.post('/reset-pruebas', async (req, res) => {
  */
 router.post('/whatsapp-prueba', async (req, res) => {
     try {
+        if (esSolicitudPublicaNodos(req) || !esModoLaboratorioWaSegura()) {
+            return res.status(403).json({
+                ok: false,
+                error: 'Endpoint de WhatsApp de laboratorio deshabilitado en Producción.'
+            });
+        }
         const telefonoPrueba = '5492216615746';
         const telefonoOriginal = String(req.body?.telefono_original || '').trim();
         const destinatarioNombre = String(req.body?.destinatario_nombre || 'Cliente / Vecino').trim();

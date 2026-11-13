@@ -996,6 +996,25 @@ exports.obtenerQrAccesoNodo = async (req, res) => {
     }
 };
 
+exports.rotarQrAccesoNodo = async (req, res) => {
+    try {
+        const idEnc = encodeURIComponent(req.params.id);
+        const upstream = await fetch(`http://127.0.0.1:3002/api/produccion/nodos/accesos-qr/nodo/${idEnc}/rotar-token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: AbortSignal.timeout(12000)
+        });
+        const data = await upstream.json();
+        if (!upstream.ok || !data.ok) {
+            throw new Error(data.error || 'No se pudo rotar el acceso QR del Nodo.');
+        }
+        res.json({ success: true, ...data });
+    } catch (error) {
+        console.error(`❌ [CLIENTES-BUNKER] Error en rotarQrAccesoNodo (${req.params.id}):`, error.message);
+        res.status(400).json({ success: false, ok: false, error: error.message });
+    }
+};
+
 /**
  * Obtener QR personal y enlace móvil Marca Blanca "Ver como Cliente" de un Vecino comprador (:3005 -> :3002 túnel Cloudflare)
  * GET /api/logistica/bunker/clientes/nodos-vecinos/:vecinoId/qr-acceso

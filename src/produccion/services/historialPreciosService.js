@@ -9,7 +9,7 @@
  */
 const path = require('path');
 const fs = require('fs');
-const { Pool } = require('pg');
+const { getSharedPool } = require('../../shared/pgPoolFactory');
 
 let puppeteer = null;
 try {
@@ -18,18 +18,8 @@ try {
     console.warn('Puppeteer no se pudo cargar:', e.message);
 }
 
-let poolInstance = null;
 function getPool() {
-    if (!poolInstance) {
-        poolInstance = new Pool({
-            user: process.env.DB_USER || 'postgres',
-            host: process.env.DB_HOST || 'localhost',
-            database: process.env.DB_NAME || 'etiquetas',
-            password: process.env.DB_PASSWORD || 'ta3Mionga',
-            port: parseInt(process.env.DB_PORT || '5432'),
-        });
-    }
-    return poolInstance;
+    return getSharedPool({ defaultMax: 15 });
 }
 
 /**

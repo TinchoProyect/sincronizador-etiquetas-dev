@@ -2856,10 +2856,6 @@
                     Swal.showValidationMessage('Ingrese un alias recaudador.');
                     return false;
                 }
-                if (/lamda/i.test(alias)) {
-                    Swal.showValidationMessage('Por criterio de Marca Blanca, el alias para vecinos no puede contener la palabra "LAMDA".');
-                    return false;
-                }
                 return {
                     alias_recaudador: alias,
                     banco_recaudador: document.getElementById('swal-canal-banco')?.value?.trim() || '',
@@ -3168,7 +3164,9 @@
             const nodo = ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(nodoId));
             if (!nodo) return;
             const origin = window.location.origin;
-            const urlGestor = `${origin}/gestor/${encodeURIComponent(nodo.slug)}`;
+            const urlGestor = nodo.gestor_token
+                ? `${origin}/gestor/${encodeURIComponent(nodo.slug)}?t=${encodeURIComponent(nodo.gestor_token)}`
+                : `${origin}/gestor/${encodeURIComponent(nodo.slug)}`;
             const urlTienda = `${origin}/tienda/${encodeURIComponent(nodo.slug)}`;
             const mensaje = [
                 `🌱 *Bienvenido/a a Nodos Barriales — ${nodo.nombre_marca}*`,
@@ -3183,7 +3181,7 @@
                 urlTienda
             ].join('\n');
 
-            // Paso 1: Generar vista previa y códigos QR sin despachar aún el mensaje
+            // En Producción, usar accesos QR oficiales + enlace wa.me directo (whatsapp-prueba es exclusivo de Laboratorio)
             const respPrev = await fetch('/api/produccion/nodos/whatsapp-prueba', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -3194,6 +3192,60 @@
                     solo_preview: true
                 })
             });
+            if (respPrev.status === 403) {
+                let urlG = urlGestor;
+                let urlT = urlTienda;
+                let qrG = '';
+                let qrT = '';
+                try {
+                    const rQr = await fetch(`/api/produccion/nodos/accesos-qr/nodo/${encodeURIComponent(nodo.id)}`);
+                    const dQr = await rQr.json();
+                    if (rQr.ok && dQr.ok) {
+                        urlG = dQr.url_movil_gestor || urlG;
+                        urlT = dQr.url_movil_tienda || urlT;
+                        qrG = dQr.qr_gestor_data_url || '';
+                        qrT = dQr.qr_tienda_data_url || '';
+                    }
+                } catch (_) {}
+                const msgFinalProd = [
+                    `🌱 *Bienvenido/a — ${nodo.nombre_marca}*`,
+                    `👤 Gestor/a: ${nodo.gestor_nombre}`,
+                    `📍 Punto de retiro: ${nodo.direccion_retiro || nodo.barrio_zona || '-'}`,
+                    ``,
+                    `📲 *1. Tu Panel de Gestor:*`,
+                    urlG,
+                    ``,
+                    `🛒 *2. Tu Tienda Vecinal:*`,
+                    urlT
+                ].join('\n');
+                const telClean = String(nodo.gestor_telefono || '').replace(/\D/g, '');
+                const telWa = telClean ? (telClean.startsWith('54') ? telClean : `549${telClean}`) : '';
+                const waUrl = `https://wa.me/${telWa}?text=${encodeURIComponent(msgFinalProd)}`;
+                if (window.Swal) {
+                    await Swal.fire({
+                        icon: 'info',
+                        width: 620,
+                        title: '📲 Links de Bienvenida (Producción HTTPS)',
+                        html: `
+                            <div style="text-align:left; font-size:0.83rem; line-height:1.45;">
+                                <p style="color:#94a3b8; margin-top:0;">Copiá o enviá por WhatsApp Web/App los accesos definitivos:</p>
+                                <pre style="white-space:pre-wrap; word-break:break-word; padding:10px; border-radius:8px; background:#0b1120; border:1px solid #1e293b; color:#e2e8f0; font-size:0.75rem; max-height:160px; overflow-y:auto;">${escaparHtml(msgFinalProd)}</pre>
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; text-align:center;">
+                                    ${qrG ? `<div style="padding:8px; background:#0f172a; border-radius:8px;"><div style="font-size:0.75rem; font-weight:800; color:#38bdf8; margin-bottom:4px;">🎛️ QR Gestor</div><img src="${qrG}" style="width:120px;height:120px;background:#fff;padding:4px;border-radius:6px;"></div>` : ''}
+                                    ${qrT ? `<div style="padding:8px; background:#0f172a; border-radius:8px;"><div style="font-size:0.75rem; font-weight:800; color:#34d399; margin-bottom:4px;">🛒 QR Tienda</div><img src="${qrT}" style="width:120px;height:120px;background:#fff;padding:4px;border-radius:6px;"></div>` : ''}
+                                </div>
+                                <div style="display:flex; gap:8px; margin-top:12px;">
+                                    <a href="${escaparHtml(waUrl)}" target="_blank" rel="noopener" style="flex:1; text-align:center; padding:9px; border-radius:8px; background:#16a34a; color:#fff; font-weight:800; text-decoration:none;">💬 Abrir en WhatsApp</a>
+                                </div>
+                            </div>
+                        `,
+                        confirmButtonText: 'Cerrar',
+                        background: '#151e2e',
+                        color: '#f8fafc'
+                    });
+                }
+                return;
+            }
             const dataPrev = await respPrev.json();
             if (!respPrev.ok || !dataPrev.ok) throw new Error(dataPrev.error || 'No se pudo preparar la vista previa de WhatsApp.');
 
@@ -3423,9 +3475,6 @@
 
             const usaComp = Boolean(document.getElementById('abm-cuenta-compartida')?.checked);
             const aliasEscrito = document.getElementById('abm-alias-display')?.value?.trim() || cfgCanal.alias_recaudador || 'pago.canasto';
-            if (/lamda/i.test(aliasEscrito)) {
-                throw new Error('Por criterio de Marca Blanca, el alias bancario para vecinos no puede mencionar a LAMDA.');
-            }
 
             const latVal = document.getElementById('abm-latitud')?.value;
             const lngVal = document.getElementById('abm-longitud')?.value;

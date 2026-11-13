@@ -359,6 +359,7 @@ async function sincronizarTodoElDirectorioB2B(customDbPool = null) {
                 email_facturas
             FROM public.bunker_clientes
             WHERE codigo_bunker_cliente IS NOT NULL
+              AND UPPER(codigo_bunker_cliente) NOT LIKE 'CB-NODO-%'
             ORDER BY codigo_bunker_cliente ASC
         `);
 
