@@ -806,6 +806,23 @@ router.put('/gestor/:nodoId/reparto/orden', autenticarGestorSiPublicoOToken, asy
 });
 
 /**
+ * PUT /api/produccion/nodos/gestor/:nodoId/reparto/seleccion
+ * Agrega (AGREGAR) o quita (QUITAR) pedidos arbitrarios de la Hoja de Ruta activa del Gestor.
+ */
+router.put('/gestor/:nodoId/reparto/seleccion', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para modificar la hoja de ruta de otro Nodo.' });
+        }
+        const resultado = await nodosService.actualizarSeleccionHojaRutaGestor(req.params.nodoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en PUT /gestor/:nodoId/reparto/seleccion:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
  * POST /api/produccion/nodos/gestor/:nodoId/reparto/iniciar
  * Pasa los pedidos de la Hoja de Ruta a EN_CAMINO_VECINO (Hito 5) preservando el orden establecido.
  */

@@ -54,7 +54,7 @@
     .top-bar {
       background: #fffdfb;
       border-bottom: 1px solid var(--border);
-      padding: 14px 16px;
+      padding: 9px 12px;
       position: sticky;
       top: 0;
       z-index: 50;
@@ -66,19 +66,19 @@
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 12px;
+      gap: 8px;
     }
     .brand-identity {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 9px;
       cursor: pointer;
       text-decoration: none;
       color: inherit;
     }
     .brand-emblem {
-      width: 52px;
-      height: 44px;
+      width: 40px;
+      height: 34px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -90,42 +90,42 @@
       object-fit: contain;
     }
     .brand-monogram {
-      width: 44px;
-      height: 44px;
-      border-radius: 12px;
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
       background: var(--brand-soft);
       border: 1px solid var(--brand-border);
       color: var(--brand-dark);
       font-weight: 900;
-      font-size: 0.95rem;
+      font-size: 0.85rem;
       display: flex;
       align-items: center;
       justify-content: center;
     }
     .brand-title {
-      font-size: 1.32rem;
+      font-size: 1.08rem;
       font-weight: 900;
       color: var(--text);
-      line-height: 1.18;
-      letter-spacing: -0.015em;
+      line-height: 1.15;
+      letter-spacing: -0.01em;
     }
     .brand-subtitle {
-      font-size: 0.9rem;
+      font-size: 0.8rem;
       color: var(--muted);
       font-weight: 700;
-      margin-top: 3px;
+      margin-top: 2px;
     }
 
     .top-actions {
       display: flex;
-      gap: 8px;
+      gap: 6px;
       flex-wrap: wrap;
     }
     .btn-top {
-      min-height: 48px;
-      padding: 10px 16px;
+      min-height: 38px;
+      padding: 6px 11px;
       border-radius: 999px;
-      font-size: 0.92rem;
+      font-size: 0.84rem;
       font-weight: 800;
       display: inline-flex;
       align-items: center;
@@ -136,9 +136,7 @@
       border: 1px solid var(--border);
       background: var(--surface);
       color: var(--text);
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
+      gap: 4px;
       transition: background 0.15s, border-color 0.15s;
     }
     .btn-top:hover {
@@ -156,79 +154,79 @@
     .container {
       max-width: 820px;
       margin: 0 auto;
-      padding: 22px 16px 36px;
+      padding: 13px 12px 26px;
     }
 
-    /* Tablero Principal Austero de 6 Bloques */
+    /* Tablero Principal Austero */
     .board-intro {
-      font-size: 0.82rem;
-      color: var(--muted);
-      font-weight: 700;
-      margin: 0 0 14px 2px;
+      font-size: 0.92rem;
+      color: var(--text);
+      font-weight: 800;
+      margin: 0 0 10px 2px;
     }
     .blocks-list {
       display: flex;
       flex-direction: column;
-      gap: 11px;
+      gap: 8px;
     }
     .block-btn {
       width: 100%;
-      min-height: 76px;
+      min-height: 54px;
       text-align: left;
       background: var(--surface);
-      border: 1.5px solid var(--border);
-      border-radius: 18px;
-      padding: 18px 18px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      padding: 10px 12px;
       cursor: pointer;
       font-family: inherit;
       color: var(--text);
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 14px;
-      box-shadow: 0 2px 8px rgba(62, 37, 25, 0.03);
+      gap: 10px;
+      box-shadow: 0 2px 6px rgba(62, 37, 25, 0.03);
       transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     }
     .block-btn:hover, .block-btn:active {
       border-color: var(--brand-border);
-      box-shadow: 0 4px 14px rgba(62, 37, 25, 0.07);
+      box-shadow: 0 3px 10px rgba(62, 37, 25, 0.06);
       transform: translateY(-1px);
     }
     .block-left {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 10px;
       min-width: 0;
     }
     .block-num {
-      width: 42px;
-      height: 42px;
-      border-radius: 12px;
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
       background: var(--brand-soft);
       color: var(--brand-dark);
       font-weight: 900;
-      font-size: 1.08rem;
+      font-size: 0.92rem;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
     }
     .block-title {
-      font-size: 1.15rem;
+      font-size: 0.98rem;
       font-weight: 900;
       color: var(--text);
-      line-height: 1.25;
+      line-height: 1.22;
     }
     .block-meta {
-      font-size: 0.95rem;
+      font-size: 0.82rem;
       color: var(--muted);
       font-weight: 700;
-      margin-top: 4px;
-      line-height: 1.35;
+      margin-top: 2px;
+      line-height: 1.3;
     }
     .block-arrow {
-      font-size: 1.35rem;
-      color: var(--brand);
+      font-size: 1.25rem;
+      color: var(--muted);
       font-weight: 800;
       flex-shrink: 0;
       line-height: 1;
@@ -239,21 +237,22 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      margin-bottom: 16px;
+      gap: 8px;
+      margin-bottom: 10px;
       flex-wrap: wrap;
     }
     .btn-back {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      padding: 8px 14px;
-      border-radius: 999px;
+      gap: 5px;
+      min-height: 38px;
+      padding: 6px 12px;
+      border-radius: 10px;
       border: 1px solid var(--border);
       background: var(--surface);
       color: var(--text);
       font-family: inherit;
-      font-size: 0.84rem;
+      font-size: 0.86rem;
       font-weight: 800;
       cursor: pointer;
     }
@@ -261,30 +260,31 @@
       background: var(--surface-warm);
     }
     .section-heading {
-      margin: 0 0 14px 0;
-      font-size: 1.15rem;
+      margin: 0 0 10px 0;
+      font-size: 1.12rem;
       font-weight: 900;
       color: var(--text);
+      line-height: 1.24;
     }
 
     /* Tarjetas y Controles Internos */
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 18px;
-      margin-bottom: 14px;
-      box-shadow: 0 2px 8px rgba(62, 37, 25, 0.025);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 2px 6px rgba(62, 37, 25, 0.025);
     }
     .input-sm {
-      min-height: 48px;
-      padding: 11px 14px;
-      border-radius: 11px;
+      min-height: 38px;
+      padding: 7px 10px;
+      border-radius: 9px;
       border: 1.5px solid var(--border);
       background: #fffdfb;
       color: var(--text);
       font-family: inherit;
-      font-size: 1rem;
+      font-size: 0.92rem;
       font-weight: 700;
       outline: none;
     }
@@ -300,16 +300,16 @@
       background: var(--brand);
       color: #ffffff;
       border: none;
-      min-height: 48px;
-      padding: 12px 20px;
-      border-radius: 12px;
+      min-height: 40px;
+      padding: 8px 14px;
+      border-radius: 10px;
       font-family: inherit;
       font-weight: 900;
-      font-size: 1rem;
+      font-size: 0.92rem;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 5px;
       cursor: pointer;
       transition: background 0.15s;
     }
@@ -319,99 +319,71 @@
     .btn-soft {
       background: var(--surface-warm);
       color: var(--text);
-      border: 1.5px solid var(--border);
-      min-height: 48px;
-      padding: 10px 14px;
-      border-radius: 11px;
+      border: 1px solid var(--border);
+      min-height: 38px;
+      padding: 6px 11px;
+      border-radius: 9px;
       font-family: inherit;
       font-weight: 800;
-      font-size: 0.92rem;
+      font-size: 0.84rem;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 5px;
+      gap: 4px;
       cursor: pointer;
     }
     .switch-label {
       display: flex;
       align-items: center;
-      gap: 11px;
-      min-height: 48px;
+      gap: 9px;
+      min-height: 38px;
       cursor: pointer;
       font-weight: 800;
-      font-size: 0.98rem;
-      line-height: 1.3;
+      font-size: 0.9rem;
+      line-height: 1.28;
       color: var(--text);
     }
     .switch-label input[type="checkbox"] {
-      width: 24px;
-      height: 24px;
+      width: 20px;
+      height: 20px;
       accent-color: var(--brand);
       flex-shrink: 0;
       cursor: pointer;
     }
 
-    /* === Ergonomía Móvil y Alto Contraste (Etapa B3) === */
-    html { font-size: 16px; }
-    body { font-size: 1rem; line-height: 1.48; }
-    body .board-intro {
-      font-size: 1.06rem;
-      font-weight: 800;
-      color: var(--text);
-      margin-bottom: 14px;
-    }
-    body .btn-back {
-      min-height: 48px;
-      padding: 10px 16px;
-      font-size: 0.96rem;
-      font-weight: 800;
-      border-radius: 12px;
-      border: 1.5px solid var(--border);
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-    body .section-heading {
-      font-size: 1.32rem;
-      font-weight: 900;
-      color: var(--text);
-      line-height: 1.25;
-    }
-    body .block-arrow {
-      font-size: 1.55rem;
-      color: var(--muted);
-      font-weight: 800;
-    }
+    /* === Escala Móvil Rebalanceada (Estándar limpio 14.5px) === */
+    html { font-size: 14.5px; }
+    body { font-size: 14.5px; line-height: 1.42; }
     .cta-difusion-hero {
       width: 100%;
-      min-height: 76px;
+      min-height: 54px;
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 10px;
       text-align: left;
-      padding: 16px 18px;
-      margin-bottom: 16px;
-      border-radius: 18px;
-      border: 2px solid #8a432b;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      border-radius: 13px;
+      border: 1.5px solid #8a432b;
       background: linear-gradient(135deg, #a2553b 0%, #7d3e28 100%);
       color: #ffffff;
       font-family: inherit;
       cursor: pointer;
-      box-shadow: 0 8px 20px rgba(125, 62, 40, 0.24);
+      box-shadow: 0 5px 14px rgba(125, 62, 40, 0.2);
       transition: transform 0.12s, box-shadow 0.15s;
     }
     .cta-difusion-hero:active {
       transform: scale(0.99);
     }
     .cta-difusion-icon {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
       background: rgba(255, 255, 255, 0.2);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.55rem;
+      font-size: 1.2rem;
       flex-shrink: 0;
     }
     .cta-difusion-body {
@@ -419,56 +391,57 @@
       min-width: 0;
     }
     .cta-difusion-title {
-      font-size: 1.12rem;
+      font-size: 0.98rem;
       font-weight: 900;
-      line-height: 1.22;
+      line-height: 1.2;
       color: #ffffff;
     }
     .cta-difusion-sub {
-      font-size: 0.92rem;
+      font-size: 0.8rem;
       font-weight: 600;
-      line-height: 1.35;
+      line-height: 1.28;
       color: rgba(255, 255, 255, 0.92);
-      margin-top: 3px;
+      margin-top: 2px;
     }
     .cta-difusion-arrow {
-      font-size: 1.65rem;
+      font-size: 1.35rem;
       font-weight: 900;
       color: #ffffff;
       flex-shrink: 0;
     }
     .cfg-switch-card {
-      padding: 10px 14px;
-      border-radius: 13px;
-      border: 1.5px solid var(--border);
+      padding: 8px 11px;
+      border-radius: 11px;
+      border: 1px solid var(--border);
       background: #fffdfb;
     }
     @media (max-width: 640px) {
       body .container {
-        padding: 16px 12px 34px;
+        padding: 10px 10px 24px;
       }
       body .brand-title {
-        font-size: 1.24rem;
+        font-size: 1.04rem;
       }
       body .brand-subtitle {
-        font-size: 0.88rem;
+        font-size: 0.78rem;
       }
       body .top-actions {
         width: 100%;
       }
       body .btn-top {
         flex: 1 1 auto;
-        min-height: 48px;
-        font-size: 0.9rem;
+        min-height: 36px;
+        font-size: 0.8rem;
+        padding: 5px 8px;
       }
       body .block-btn {
-        padding: 16px 14px;
+        padding: 10px 11px;
       }
       body .block-title {
-        font-size: 1.1rem;
+        font-size: 0.95rem;
       }
       body .block-meta {
-        font-size: 0.92rem;
+        font-size: 0.8rem;
       }
     }
 
@@ -488,22 +461,23 @@
       align-items: end;
     }
 
-    /* Hoja de Ruta y Conducción Nocturna (Etapas B4 + B5) */
+    /* Hoja de Ruta y Conducción Nocturna (Etapas B4 + B5 + Rebalanceo denso) */
     .cta-reparto-hero {
       width: 100%;
+      min-height: 54px;
       display: flex;
       align-items: center;
-      gap: 14px;
-      padding: 16px 18px;
-      margin-bottom: 16px;
-      border-radius: 18px;
-      border: 2px solid rgba(31, 111, 74, 0.35);
+      gap: 10px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      border-radius: 13px;
+      border: 1.5px solid rgba(31, 111, 74, 0.35);
       background: linear-gradient(135deg, #0f172a, #1e293b);
       color: #f8fafc;
       font-family: inherit;
       text-align: left;
       cursor: pointer;
-      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+      box-shadow: 0 5px 14px rgba(15, 23, 42, 0.18);
       transition: transform 0.1s ease;
     }
 
@@ -512,26 +486,26 @@
     }
 
     .reparto-stop-card {
-      background: var(--card);
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 14px 15px;
-      margin-bottom: 12px;
-      box-shadow: 0 3px 10px rgba(62, 37, 25, 0.05);
+      border-radius: 12px;
+      padding: 10px 11px;
+      margin-bottom: 8px;
+      box-shadow: 0 2px 6px rgba(62, 37, 25, 0.04);
     }
 
     .reparto-stop-card.same-door {
-      border-left: 5px solid #2563eb;
+      border-left: 4px solid #2563eb;
       background: #f8fbff;
     }
 
     .reparto-next-hero {
       background: linear-gradient(135deg, #ffffff, #eff6ff);
-      border: 2px solid #2563eb;
-      border-radius: 18px;
-      padding: 15px 16px;
-      margin-bottom: 14px;
-      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.14);
+      border: 1.5px solid #2563eb;
+      border-radius: 13px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 5px 14px rgba(37, 99, 235, 0.1);
     }
 
     .acomodar-modal {
@@ -549,25 +523,32 @@
       flex-shrink: 0;
       background: #0f172a;
       color: #ffffff;
-      padding: 10px 14px;
+      padding: 6px 10px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 10px;
-      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25);
+      gap: 6px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.22);
       z-index: 20;
     }
 
     .acomodar-map-wrap {
       position: relative;
       flex-shrink: 0;
-      height: 41vh;
-      min-height: 225px;
-      max-height: 390px;
+      height: clamp(190px, 31vh, 224px);
       width: 100%;
       background: #e2e8f0;
-      border-bottom: 2px solid #cbd5e1;
+      border-bottom: 1.5px solid #cbd5e1;
       z-index: 5;
+      transition: height 0.16s ease;
+    }
+
+    .acomodar-map-wrap.is-compact {
+      height: 130px;
+    }
+
+    .acomodar-map-wrap.is-wide {
+      height: 46vh;
     }
 
     .acomodar-map-canvas {
@@ -580,12 +561,12 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
+      gap: 6px;
+      padding: 4px 10px;
       background: #0f172a;
       color: #ffffff;
       border-bottom: 2px solid #22c55e;
-      font-size: 0.85rem;
+      font-size: 0.78rem;
       font-weight: 800;
       z-index: 12;
     }
@@ -594,19 +575,41 @@
       flex-shrink: 0;
       background: #ffffff;
       border-bottom: 1px solid #cbd5e1;
-      padding: 8px 10px;
+      padding: 4px 8px;
       display: flex;
-      gap: 8px;
+      gap: 5px;
       align-items: center;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      overflow-x: auto;
       z-index: 10;
+    }
+
+    .acomodar-tool-chip {
+      flex: 1;
+      min-width: 0;
+      min-height: 28px;
+      height: 28px;
+      padding: 0 7px;
+      border-radius: 8px;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #0f172a;
+      font-family: inherit;
+      font-weight: 800;
+      font-size: 0.76rem;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
     }
 
     .acomodar-pin-inline-bar {
       flex-shrink: 0;
       background: #fffbeb;
-      border-bottom: 2px solid #f59e0b;
-      padding: 10px 12px;
+      border-bottom: 1.5px solid #f59e0b;
+      padding: 7px 10px;
       z-index: 12;
     }
 
@@ -616,7 +619,7 @@
       -webkit-overflow-scrolling: touch;
       touch-action: pan-y;
       background: #f1f5f9;
-      padding: 8px 10px 96px;
+      padding: 5px 7px 10px;
       position: relative;
       z-index: 5;
     }
@@ -624,24 +627,25 @@
     .acomodar-row {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 6px;
       background: #ffffff;
-      border: 1.5px solid #e2e8f0;
-      border-radius: 14px;
-      padding: 10px 10px 10px 6px;
-      margin-bottom: 8px;
-      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);
-      transition: border-color 0.14s ease, background 0.14s ease;
+      border: 1px solid #cbd5e1;
+      border-radius: 9px;
+      padding: 4px 6px 4px 4px;
+      margin-bottom: 4px;
+      min-height: 43px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+      transition: border-color 0.12s ease, background 0.12s ease;
     }
 
     .acomodar-row.same-door {
-      border-left: 5px solid #2563eb;
+      border-left: 4px solid #2563eb;
     }
 
     .acomodar-row.is-highlighted {
       border-color: #f59e0b;
       background: #fffbeb;
-      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.22);
+      box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.22);
     }
 
     .acomodar-row.is-drag-placeholder {
@@ -657,7 +661,7 @@
       margin: 0 !important;
       border-color: #2563eb !important;
       background: #eff6ff !important;
-      box-shadow: 0 18px 36px rgba(15, 23, 42, 0.28) !important;
+      box-shadow: 0 14px 28px rgba(15, 23, 42, 0.25) !important;
     }
 
     .acomodar-drag-handle {
@@ -665,13 +669,14 @@
       user-select: none;
       -webkit-user-select: none;
       cursor: grab;
-      min-width: 44px;
-      min-height: 52px;
-      border-radius: 10px;
+      min-width: 30px;
+      width: 30px;
+      height: 34px;
+      border-radius: 7px;
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       color: #475569;
-      font-size: 1.35rem;
+      font-size: 1rem;
       font-weight: 900;
       display: flex;
       align-items: center;
@@ -687,27 +692,27 @@
 
     .acomodar-footer {
       flex-shrink: 0;
-      padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+      padding: 7px 10px calc(7px + env(safe-area-inset-bottom, 0px));
       background: #ffffff;
       border-top: 1px solid #cbd5e1;
-      box-shadow: 0 -4px 14px rgba(15, 23, 42, 0.08);
+      box-shadow: 0 -3px 10px rgba(15, 23, 42, 0.06);
       z-index: 20;
     }
 
     .acomodar-pin-badge {
       position: relative;
-      width: 34px;
-      height: 34px;
+      width: 30px;
+      height: 30px;
       border-radius: 50%;
       background: #2563eb;
       color: #ffffff;
-      border: 2.5px solid #ffffff;
-      box-shadow: 0 3px 10px rgba(15, 23, 42, 0.35);
+      border: 2px solid #ffffff;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.35);
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 900;
-      font-size: 0.96rem;
+      font-size: 0.85rem;
       font-family: 'Nunito', sans-serif;
     }
 
@@ -723,22 +728,22 @@
     .acomodar-pin-badge.highlighted {
       background: #f59e0b;
       color: #0f172a;
-      transform: scale(1.18);
-      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.35), 0 4px 12px rgba(15, 23, 42, 0.4);
+      transform: scale(1.16);
+      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35), 0 3px 10px rgba(15, 23, 42, 0.4);
     }
 
     .acomodar-pin-multi {
       position: absolute;
-      top: -7px;
-      right: -9px;
-      min-width: 19px;
-      height: 19px;
-      padding: 0 4px;
+      top: -6px;
+      right: -8px;
+      min-width: 17px;
+      height: 17px;
+      padding: 0 3px;
       border-radius: 999px;
       background: #f59e0b;
       color: #0f172a;
       border: 1.5px solid #ffffff;
-      font-size: 0.68rem;
+      font-size: 0.64rem;
       font-weight: 900;
       display: flex;
       align-items: center;
@@ -746,13 +751,13 @@
     }
 
     .acomodar-pin-nodo {
-      padding: 4px 9px;
+      padding: 3px 8px;
       border-radius: 999px;
       background: #0f172a;
       color: #ffffff;
-      border: 2px solid #ffffff;
-      box-shadow: 0 3px 10px rgba(15, 23, 42, 0.38);
-      font-size: 0.78rem;
+      border: 1.5px solid #ffffff;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.35);
+      font-size: 0.72rem;
       font-weight: 900;
       white-space: nowrap;
       font-family: 'Nunito', sans-serif;
@@ -766,25 +771,25 @@
       background: #0b1120;
       color: #f8fafc;
       overflow-y: auto;
-      padding: 14px 14px 28px;
+      padding: 10px 12px 14px;
       -webkit-tap-highlight-color: transparent;
     }
 
     .nocturno-btn {
       width: 100%;
-      min-height: 62px;
-      border-radius: 16px;
+      min-height: 42px;
+      border-radius: 11px;
       font-family: inherit;
-      font-size: 1.12rem;
+      font-size: 0.92rem;
       font-weight: 900;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 6px;
       text-decoration: none;
       cursor: pointer;
       border: none;
-      padding: 12px 16px;
+      padding: 8px 12px;
       box-sizing: border-box;
       text-align: center;
     }
@@ -866,6 +871,13 @@
 
   <!-- MODAL INTERACTIVO DE ACOMODAR RUTA (MAPA LEAFLET + LISTA TÁCTIL DESLIZABLE) -->
   <div id="modal-acomodar-ruta-gestor" class="acomodar-modal"></div>
+
+  <!-- MODAL PARA AGREGAR PEDIDOS A LA HOJA DE RUTA -->
+  <div id="modal-agregar-reparto-gestor" onclick="if(event.target===this) cerrarModalAgregarRepartoGestor()" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.62); z-index:4100; align-items:center; justify-content:center; padding:10px;">
+    <div style="background:#ffffff; border-radius:16px; max-width:520px; width:100%; max-height:90vh; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 22px 44px rgba(15,23,42,0.34); border:1px solid var(--border);">
+      <div id="modal-agregar-reparto-gestor-body" style="display:flex; flex-direction:column; max-height:90vh;"></div>
+    </div>
+  </div>
 
   <!-- VISTA OVERLAY FULLSCREEN DE CONDUCCIÓN NOCTURNA (ALTO CONTRASTE #0b1120) -->
   <div id="gestor-nocturno-overlay" class="nocturno-overlay"></div>
@@ -1349,11 +1361,7 @@
         }
       ];
 
-      const enviosListosReparto = pedidosActivos.filter(p =>
-        String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' &&
-        !p.ausente_pasa_retirar &&
-        [4, 5].includes(Number(p.hito_tracking_actual || 1))
-      );
+      const enviosListosReparto = pedidosActivos.filter(p => esPedidoEnHojaRutaActiva(p));
       const enviosEnHito3 = pedidosActivos.filter(p =>
         String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' &&
         !p.ausente_pasa_retirar &&
@@ -1374,7 +1382,7 @@
           </div>
           <div class="cta-difusion-arrow">›</div>
         </button>
-        ${puedeReparto ? `
+        ${(puedeReparto || enviosListosReparto.length > 0) ? `
           <button type="button" class="cta-reparto-hero" onclick="abrirSeccionGestor('reparto')">
             <div class="cta-difusion-icon" style="background:rgba(16,185,129,0.22); color:#34d399;">🚗</div>
             <div class="cta-difusion-body">
@@ -1384,7 +1392,7 @@
                   ? `${enviosListosReparto.length} entrega${enviosListosReparto.length === 1 ? '' : 's'} en ruta${enviosEnCamino > 0 ? ` (${enviosEnCamino} en camino)` : ' listas para salir'} · GPS y Conducción Nocturna`
                   : (enviosEnHito3.length > 0
                       ? `📥 ${enviosEnHito3.length} envío${enviosEnHito3.length === 1 ? '' : 's'} listo${enviosEnHito3.length === 1 ? '' : 's'} para recibir lote y armar ruta`
-                      : 'Ordená paradas, verificá ubicaciones y activá Conducción Nocturna')}
+                      : 'Armá la vuelta, ordená paradas y activá Conducción Nocturna')}
               </div>
             </div>
             <div class="cta-difusion-arrow" style="color:#34d399;">›</div>
@@ -3331,7 +3339,7 @@
               </div>
             </div>
             <button type="button" id="btn-recibir-lote-${l.canasto_id}" onclick="confirmarRecepcionLoteGestor(${l.canasto_id})"
-              style="min-height:52px; padding:13px 20px; border-radius:12px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.98rem; cursor:pointer; box-shadow:0 6px 16px rgba(22,163,74,0.24);">
+              style="min-height:40px; padding:8px 15px; border-radius:10px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer; box-shadow:0 4px 12px rgba(22,163,74,0.2);">
               📥 Confirmar que recibí el lote (${l.pedidos.length})
             </button>
           </div>
@@ -3341,7 +3349,7 @@
       const bannersPrepHtml = lotesEnPreparacion.map(l => {
         const listos = l.pedidos.filter(x => Number(x.hito_tracking_actual || 1) >= 3).length;
         return `
-          <div style="background:#fffbeb; border:1.5px solid #fcd34d; border-radius:12px; padding:12px 15px; margin-bottom:12px; font-size:0.94rem; color:#92400e; font-weight:700; line-height:1.4;">
+          <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:11px; padding:10px 12px; margin-bottom:10px; font-size:0.86rem; color:#92400e; font-weight:700; line-height:1.35;">
             🥣 <strong>${esc(l.codigo_canasto)} en preparación:</strong> ${listos} de ${l.pedidos.length} bolsas controladas y embolsadas. Cuando el lote esté completo vas a poder confirmar su recepción acá.
           </div>
         `;
@@ -3353,56 +3361,56 @@
 
         <div class="card">
           <!-- Filtros por etapa operativa -->
-          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('TODOS')"
-              style="min-height:48px; font-size:0.92rem; padding:10px 14px; ${GSTATE.filtroOperativoPedidos === 'TODOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'TODOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
               Todos (${todos.length})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('PREP')"
-              style="min-height:48px; font-size:0.92rem; padding:10px 14px; ${GSTATE.filtroOperativoPedidos === 'PREP' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'PREP' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
               🥣 Prep./Control (${cantPrep})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('EN_NODO')"
-              style="min-height:48px; font-size:0.92rem; padding:10px 14px; ${GSTATE.filtroOperativoPedidos === 'EN_NODO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'EN_NODO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
               🏡 En el Nodo (${cantEnNodo})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('REPARTO')"
-              style="min-height:48px; font-size:0.92rem; padding:10px 14px; ${GSTATE.filtroOperativoPedidos === 'REPARTO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'REPARTO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
               🛵 En camino (${cantReparto})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('ENTREGADOS')"
-              style="min-height:48px; font-size:0.92rem; padding:10px 14px; ${GSTATE.filtroOperativoPedidos === 'ENTREGADOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'ENTREGADOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
               ✅ Entregados (${cantEntregados})
             </button>
           </div>
 
           <!-- Filtros rápidos de cobro -->
-          <div style="display:flex; gap:8px; flex-wrap:wrap; padding-bottom:14px; margin-bottom:16px; border-bottom:1px solid var(--border);">
+          <div style="display:flex; gap:6px; flex-wrap:wrap; padding-bottom:10px; margin-bottom:12px; border-bottom:1px solid var(--border);">
             <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('TODOS')"
-              style="min-height:46px; font-size:0.9rem; padding:9px 13px; ${GSTATE.filtroPagoPedidos === 'TODOS' ? 'background:#25130b; color:#fff; border-color:#25130b;' : ''}">
+              style="min-height:36px; font-size:0.82rem; padding:5px 10px; ${GSTATE.filtroPagoPedidos === 'TODOS' ? 'background:#25130b; color:#fff; border-color:#25130b;' : ''}">
               Cobros: Todos
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('PENDIENTES')"
-              style="min-height:46px; font-size:0.9rem; padding:9px 13px; ${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? 'background:#25130b; color:#fff; border-color:#25130b;' : ''}">
+              style="min-height:36px; font-size:0.82rem; padding:5px 10px; ${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? 'background:#25130b; color:#fff; border-color:#25130b;' : ''}">
               💵 Pendientes de cobro (${pendientes.length})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('PAGADOS')"
-              style="min-height:46px; font-size:0.9rem; padding:9px 13px; ${GSTATE.filtroPagoPedidos === 'PAGADOS' ? 'background:#25130b; color:#fff; border-color:#25130b;' : ''}">
+              style="min-height:36px; font-size:0.82rem; padding:5px 10px; ${GSTATE.filtroPagoPedidos === 'PAGADOS' ? 'background:#25130b; color:#fff; border-color:#25130b;' : ''}">
               ✅ Pagados (${pagados.length})
             </button>
           </div>
 
           ${listaFiltrada.length === 0 ? `
-            <div style="text-align:center; padding:26px; color:var(--muted); font-size:1rem; font-weight:700; background:#fffdfb; border-radius:12px; border:1px dashed var(--border);">
+            <div style="text-align:center; padding:18px; color:var(--muted); font-size:0.9rem; font-weight:700; background:#fffdfb; border-radius:10px; border:1px dashed var(--border);">
               No hay pedidos registrados en este filtro.
             </div>
           ` : ''}
 
-          <div style="display:flex; flex-direction:column; gap:14px;">
+          <div style="display:flex; flex-direction:column; gap:10px;">
             ${listaFiltrada.map(p => {
               const pagado = Boolean(p.pago_confirmado);
               const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
-              const esEnvio = String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL';
+              const esEnvio = String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' || Boolean(p.incluido_reparto_manual);
               const hito = Number(p.hito_tracking_actual || 1);
               const metaHito = _obtenerMetaHitoGestor(p);
               const urlSeg = obtenerUrlSeguimientoPedidoGestor(p);
@@ -3410,67 +3418,67 @@
               const puedeMarcarEntregado = hito === 4 || hito === 5;
 
               return `
-                <div style="border:1.5px solid ${hito >= 6 ? 'rgba(22,163,74,0.45)' : (pagado ? 'rgba(47,111,78,0.4)' : 'var(--border)')}; border-radius:16px; padding:16px; background:#fffdfb;">
-                  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
-                    <div style="flex:1; min-width:210px;">
-                      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                        <span style="font-weight:900; font-size:1.1rem; color:var(--text);">#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</span>
-                        <span style="display:inline-block; padding:5px 12px; border-radius:999px; font-size:0.86rem; font-weight:800; background:${metaHito.bg}; color:${metaHito.fg}; border:1px solid ${metaHito.bd};">
+                <div style="border:1px solid ${hito >= 6 ? 'rgba(22,163,74,0.45)' : (pagado ? 'rgba(47,111,78,0.4)' : 'var(--border)')}; border-radius:12px; padding:12px; background:#fffdfb;">
+                  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+                    <div style="flex:1; min-width:190px;">
+                      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="font-weight:900; font-size:0.98rem; color:var(--text);">#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</span>
+                        <span style="display:inline-block; padding:3px 9px; border-radius:999px; font-size:0.78rem; font-weight:800; background:${metaHito.bg}; color:${metaHito.fg}; border:1px solid ${metaHito.bd};">
                           ${esc(metaHito.texto)}
                         </span>
                       </div>
-                      <div style="font-size:0.95rem; font-weight:700; color:var(--text); margin-top:6px; line-height:1.38;">
-                        ${esc(p.fecha_entrega_label)} · ${esEnvio ? `🛵 Envío: ${esc(p.direccion_entrega)}${p.entrecalles_referencia ? ` (${esc(p.entrecalles_referencia)})` : ''}` : '🏠 Retira en Nodo'}
+                      <div style="font-size:0.86rem; font-weight:700; color:var(--text); margin-top:4px; line-height:1.35;">
+                        ${esc(p.fecha_entrega_label)} · ${esEnvio ? `🛵 ${Boolean(p.incluido_reparto_manual) && String(p.modalidad_entrega || '').toUpperCase() === 'RETIRO_NODO' ? 'Reparto manual' : 'Envío'}: ${esc(p.direccion_entrega)}${p.entrecalles_referencia ? ` (${esc(p.entrecalles_referencia)})` : ''}` : '🏠 Retira en Nodo'}
                       </div>
                     </div>
                     <div style="text-align:right;">
-                      <div style="font-weight:900; font-size:1.2rem; color:var(--text);">${fmt(p.total_vecino)}</div>
-                      <span style="font-size:0.88rem; font-weight:800; color:${pagado ? 'var(--ok)' : 'var(--warn)'};">
+                      <div style="font-weight:900; font-size:1.05rem; color:var(--text);">${fmt(p.total_vecino)}</div>
+                      <span style="font-size:0.8rem; font-weight:800; color:${pagado ? 'var(--ok)' : 'var(--warn)'};">
                         ${pagado ? (esEfvo ? '✅ Pagado en efectivo' : '✅ Transferencia acreditada') : (esEfvo ? '💵 Cobra efectivo en entrega' : '🏦 Pendiente transferencia')}
                       </span>
                     </div>
                   </div>
 
-                  <div style="font-size:0.94rem; color:var(--text); margin-bottom:12px; line-height:1.45;">
-                    ${(p.items || []).map(it => `<span style="display:inline-block; background:var(--surface-warm); padding:5px 11px; border-radius:9px; margin:3px 5px 3px 0; font-weight:700;"><strong>${it.cantidad}x</strong> ${esc(formatearItemGestor(it))}</span>`).join('')}
+                  <div style="font-size:0.84rem; color:var(--text); margin-bottom:8px; line-height:1.38;">
+                    ${(p.items || []).map(it => `<span style="display:inline-block; background:var(--surface-warm); padding:3px 8px; border-radius:7px; margin:2px 4px 2px 0; font-weight:700;"><strong>${it.cantidad}x</strong> ${esc(formatearItemGestor(it))}</span>`).join('')}
                   </div>
 
                   <!-- Botonera contextual de 1 toque (Reparto / Entrega / Cobro / Seguimiento) -->
                   ${(puedeSalirReparto || puedeMarcarEntregado) ? `
-                    <div style="display:flex; gap:10px; flex-wrap:wrap; padding:10px; margin-bottom:12px; border-radius:12px; background:var(--surface-warm); border:1.5px solid var(--border);">
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; padding:8px; margin-bottom:8px; border-radius:10px; background:var(--surface-warm); border:1px solid var(--border);">
                       ${puedeSalirReparto ? `
                         <button type="button" onclick="avanzarEstadoEntregaGestor(${p.id}, 'SALIO_REPARTO', false)"
-                          style="flex:1; min-width:180px; min-height:52px; padding:12px 16px; border-radius:11px; border:1.5px solid #6d28d9; background:#7c3aed; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.98rem; cursor:pointer;">
+                          style="flex:1; min-width:150px; min-height:40px; padding:8px 12px; border-radius:9px; border:1px solid #6d28d9; background:#7c3aed; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.88rem; cursor:pointer;">
                           🛵 Salió a reparto
                         </button>
                       ` : ''}
                       ${puedeMarcarEntregado ? `
                         <button type="button" onclick="tocarBotonEntregadoGestor(${p.id})"
-                          style="flex:1; min-width:180px; min-height:52px; padding:12px 16px; border-radius:11px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.98rem; cursor:pointer;">
+                          style="flex:1; min-width:150px; min-height:40px; padding:8px 12px; border-radius:9px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.88rem; cursor:pointer;">
                           ${pagado ? '✅ Marcar Entregado' : `✅ Entregado${esEfvo ? ' / Cobrar' : ''}`}
                         </button>
                       ` : ''}
                     </div>
                   ` : ''}
 
-                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-top:1px solid var(--border); padding-top:12px;">
-                    <span style="font-size:0.94rem; font-weight:900; color:var(--ok);">Tu ganancia: +${fmt(p.ganancia_total_gestor)}</span>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-top:1px solid var(--border); padding-top:8px;">
+                    <span style="font-size:0.84rem; font-weight:900; color:var(--ok);">Tu ganancia: +${fmt(p.ganancia_total_gestor)}</span>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
                       ${!pagado ? `
-                        <button type="button" class="btn-primary" style="min-height:48px; padding:10px 15px; font-size:0.92rem;" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})">
+                        <button type="button" class="btn-primary" style="min-height:38px; padding:6px 12px; font-size:0.82rem;" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})">
                           💵 Cobrar Efectivo
                         </button>
                       ` : `
-                        <button type="button" class="btn-soft" style="min-height:48px; font-size:0.9rem; padding:10px 14px;" onclick="abrirModalReciboVecinoGestor(${p.id})">
+                        <button type="button" class="btn-soft" style="min-height:38px; font-size:0.82rem; padding:6px 10px;" onclick="abrirModalReciboVecinoGestor(${p.id})">
                           🧾 Recibo Digital
                         </button>
                       `}
                       ${urlSeg ? `
-                        <a href="${esc(urlSeg)}" target="_blank" rel="noopener" class="btn-soft" style="min-height:48px; font-size:0.9rem; padding:10px 14px; text-decoration:none;">
+                        <a href="${esc(urlSeg)}" target="_blank" rel="noopener" class="btn-soft" style="min-height:38px; font-size:0.82rem; padding:6px 10px; text-decoration:none;">
                           📍 Seguimiento
                         </a>
                       ` : ''}
-                      <button type="button" class="btn-soft" style="min-height:48px; font-size:0.9rem; padding:10px 14px;" onclick="enviarWhatsAppVecinoPedidoPrueba(${p.id})">
+                      <button type="button" class="btn-soft" style="min-height:38px; font-size:0.82rem; padding:6px 10px;" onclick="enviarWhatsAppVecinoPedidoPrueba(${p.id})">
                         📲 Detalle WA
                       </button>
                     </div>
@@ -4268,6 +4276,8 @@
           .reduce((acc, x) => acc + Number(x.total_vecino || 0), 0);
         const totalPedidos = g.pedidos.reduce((acc, x) => acc + Number(x.total_vecino || 0), 0);
         const todosPagados = g.pedidos.every(x => Boolean(x.pago_confirmado));
+        const tieneManual = g.pedidos.some(x => Boolean(x.incluido_reparto_manual) && String(x.modalidad_entrega || '').toUpperCase() === 'RETIRO_NODO');
+        const tieneHito3 = g.pedidos.some(x => Number(x.hito_tracking_actual || 1) === 3);
         return {
           ...g,
           direccion: principal?.direccion_entrega || 'Sin dirección especificada',
@@ -4276,7 +4286,9 @@
           codigosLabel,
           totalPendiente,
           totalPedidos,
-          todosPagados
+          todosPagados,
+          tieneManual,
+          tieneHito3
         };
       });
     }
@@ -4296,13 +4308,21 @@
       return Math.round(total);
     }
 
+    function esPedidoEnHojaRutaActiva(p) {
+      if (!p) return false;
+      const est = String(p.estado_operativo || '').toUpperCase();
+      if (est === 'ANULADO') return false;
+      if (Boolean(p.ausente_pasa_retirar)) return false;
+      if (p.en_hoja_ruta === false) return false;
+      const hito = Number(p.hito_tracking_actual || 1);
+      const mod = String(p.modalidad_entrega || '').toUpperCase();
+      if (mod === 'ENVIO_BARRIAL' && [4, 5].includes(hito)) return true;
+      if (Boolean(p.incluido_reparto_manual) && [3, 4, 5].includes(hito)) return true;
+      return false;
+    }
+
     function obtenerParadasRepartoActivasGestor() {
-      const lista = (GSTATE.pedidos || []).filter(p =>
-        String(p.estado_operativo || '').toUpperCase() !== 'ANULADO' &&
-        String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' &&
-        !Boolean(p.ausente_pasa_retirar) &&
-        [4, 5].includes(Number(p.hito_tracking_actual || 1))
-      );
+      const lista = (GSTATE.pedidos || []).filter(p => esPedidoEnHojaRutaActiva(p));
       lista.sort((a, b) => {
         const oa = a.orden_reparto != null ? Number(a.orden_reparto) : 999999;
         const ob = b.orden_reparto != null ? Number(b.orden_reparto) : 999999;
@@ -4315,15 +4335,62 @@
     function obtenerPedidosAusentesGestor() {
       return (GSTATE.pedidos || []).filter(p =>
         String(p.estado_operativo || '').toUpperCase() !== 'ANULADO' &&
-        String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' &&
         Boolean(p.ausente_pasa_retirar) &&
         Number(p.hito_tracking_actual || 1) < 6
       );
     }
 
+    function obtenerPedidosDisponiblesAgregarRepartoGestor() {
+      return (GSTATE.pedidos || []).filter(p => {
+        const est = String(p.estado_operativo || '').toUpperCase();
+        if (est === 'ANULADO') return false;
+        const hito = Number(p.hito_tracking_actual || 1);
+        if (![3, 4, 5].includes(hito)) return false;
+        if (esPedidoEnHojaRutaActiva(p)) return false;
+        return true;
+      }).map(p => {
+        const mod = String(p.modalidad_entrega || '').toUpperCase();
+        let categoria = 'ENVIO_FUERA';
+        if (Boolean(p.ausente_pasa_retirar)) categoria = 'AUSENTE';
+        else if (mod === 'RETIRO_NODO') categoria = 'RETIRO';
+        return { ...p, _categoriaAgregar: categoria };
+      });
+    }
+
+    function _sincronizarEstadoRepartoEnMemoria(data) {
+      const mods = Array.isArray(data?.pedidos_modificados) ? data.pedidos_modificados : [];
+      const ordenAct = Array.isArray(data?.orden_reparto_actual) ? data.orden_reparto_actual : [];
+      const modMap = new Map(mods.map(m => [Number(m.id), m]));
+      const ordenMap = new Map(ordenAct.map(o => [Number(o.id), o]));
+      (GSTATE.pedidos || []).forEach(p => {
+        const pid = Number(p.id);
+        const m = modMap.get(pid);
+        if (m) {
+          if (m.en_hoja_ruta !== undefined) p.en_hoja_ruta = Boolean(m.en_hoja_ruta);
+          if (m.incluido_reparto_manual !== undefined) p.incluido_reparto_manual = Boolean(m.incluido_reparto_manual);
+          if (m.ausente_pasa_retirar !== undefined) p.ausente_pasa_retirar = Boolean(m.ausente_pasa_retirar);
+          if (m.hito_tracking_actual !== undefined) p.hito_tracking_actual = Number(m.hito_tracking_actual);
+          if (m.estado_operativo !== undefined) p.estado_operativo = m.estado_operativo;
+          if (m.direccion_entrega !== undefined) p.direccion_entrega = m.direccion_entrega;
+          if (m.entrecalles_referencia !== undefined) p.entrecalles_referencia = m.entrecalles_referencia;
+          if (m.latitud != null) p.latitud = Number(m.latitud);
+          if (m.longitud != null) p.longitud = Number(m.longitud);
+          p.orden_reparto = m.orden_reparto != null ? Number(m.orden_reparto) : null;
+        }
+        const o = ordenMap.get(pid);
+        if (o) {
+          p.orden_reparto = o.orden_reparto != null ? Number(o.orden_reparto) : p.orden_reparto;
+          if (o.en_hoja_ruta !== undefined) p.en_hoja_ruta = Boolean(o.en_hoja_ruta);
+          if (o.incluido_reparto_manual !== undefined) p.incluido_reparto_manual = Boolean(o.incluido_reparto_manual);
+        }
+      });
+      GSTATE.repartoDistanciaMetros = 0;
+    }
+
     function renderSeccionReparto() {
       const paradas = obtenerParadasRepartoActivasGestor();
       const gruposPuerta = agruparParadasFisicasRepartoGestor(paradas);
+      const disponiblesAgregar = obtenerPedidosDisponiblesAgregarRepartoGestor();
       const ausentes = obtenerPedidosAusentesGestor();
       const hito3Envios = (GSTATE.pedidos || []).filter(p =>
         String(p.estado_operativo || '').toUpperCase() !== 'ANULADO' &&
@@ -4373,127 +4440,138 @@
 
       return `
         ${lotesHito3.map(l => `
-          <div class="card" style="background:#eff6ff; border:2px solid #93c5fd;">
-            <div style="font-size:0.86rem; font-weight:900; color:#1e3a8a; text-transform:uppercase;">
+          <div class="card" style="background:#eff6ff; border:1.5px solid #93c5fd;">
+            <div style="font-size:0.78rem; font-weight:900; color:#1e3a8a; text-transform:uppercase;">
               📥 Tenés ${l.cantidad} envío${l.cantidad === 1 ? '' : 's'} embolsado${l.cantidad === 1 ? '' : 's'} esperando recepción
             </div>
-            <div style="font-size:0.96rem; color:#1e40af; margin:4px 0 12px 0; font-weight:700;">
-              Lote <strong>${esc(l.codigo)}</strong>: confirmá que ya lo tenés en tu poder para cargarlo a la Hoja de Ruta.
+            <div style="font-size:0.86rem; color:#1e40af; margin:3px 0 8px 0; font-weight:700;">
+              Lote <strong>${esc(l.codigo)}</strong>: confirmá que ya lo tenés para habilitarlo en ruta.
             </div>
             <button type="button" id="btn-recibir-lote-${l.id}" onclick="confirmarRecepcionLoteGestor(${l.id})"
-              style="width:100%; min-height:52px; border-radius:14px; border:none; background:#1d4ed8; color:#ffffff; font-family:inherit; font-weight:900; font-size:1rem; cursor:pointer;">
+              style="width:100%; min-height:38px; border-radius:10px; border:none; background:#1d4ed8; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.88rem; cursor:pointer;">
               📥 Confirmar recepción del lote ${esc(l.codigo)}
             </button>
           </div>
         `).join('')}
 
-        <!-- CABECERA OPERATIVA PRINCIPAL -->
+        <!-- CABECERA OPERATIVA PRINCIPAL (ESTILO LOGÍSTICA LAMDA) -->
         <div class="card" style="background:linear-gradient(135deg, #0f172a, #1e293b); color:#f8fafc; border-color:#334155;">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
-            <div>
-              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                <span style="font-size:0.84rem; font-weight:800; color:#38bdf8; text-transform:uppercase;">
-                  Tanda Activa de Reparto Barrial
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+            <div style="min-width:0;">
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span style="font-size:0.75rem; font-weight:800; color:#38bdf8; text-transform:uppercase;">
+                  Hoja de Ruta Activa
                 </span>
-                <span style="padding:3px 9px; border-radius:999px; font-size:0.78rem; font-weight:900; background:${hayEnCamino ? 'rgba(16,185,129,0.22)' : 'rgba(56,189,248,0.18)'}; color:${hayEnCamino ? '#6ee7b7' : '#bae6fd'}; border:1px solid ${hayEnCamino ? '#10b981' : '#38bdf8'};">
-                  ${hayEnCamino ? '🛵 Reparto en marcha' : '📋 Lista para salir'}
+                <span style="padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:900; background:${hayEnCamino ? 'rgba(16,185,129,0.22)' : 'rgba(56,189,248,0.18)'}; color:${hayEnCamino ? '#6ee7b7' : '#bae6fd'}; border:1px solid ${hayEnCamino ? '#10b981' : '#38bdf8'};">
+                  ${hayEnCamino ? '🛵 En marcha' : '📋 Lista'}
                 </span>
               </div>
-              <div style="font-size:1.38rem; font-weight:900; margin-top:4px;">
-                ${paradas.length} pedido${paradas.length === 1 ? '' : 's'} · ${gruposPuerta.length} parada${gruposPuerta.length === 1 ? '' : 's'} física${gruposPuerta.length === 1 ? '' : 's'}
+              <div style="font-size:1.12rem; font-weight:900; margin-top:2px;">
+                ${paradas.length} pedido${paradas.length === 1 ? '' : 's'} · ${gruposPuerta.length} parada${gruposPuerta.length === 1 ? '' : 's'}
               </div>
-              <div style="font-size:0.92rem; color:#cbd5e1; margin-top:4px; font-weight:700; line-height:1.4;">
-                ${sinGpsCount > 0 ? `⚠️ ${sinGpsCount} sin pin GPS en el mapa` : '✅ Todas las casas ubicadas en el mapa'}
-                ${totalACobrarEfectivo > 0 ? ` · 💵 A cobrar: ${fmt(totalACobrarEfectivo)}` : ' · 🟢 Todo abonado'}
+              <div style="font-size:0.82rem; color:#cbd5e1; margin-top:2px; font-weight:700; line-height:1.35;">
+                ${sinGpsCount > 0 ? `⚠️ ${sinGpsCount} sin pin GPS` : '✅ Todas ubicadas'}
+                ${totalACobrarEfectivo > 0 ? ` · 💵 Cobrar: ${fmt(totalACobrarEfectivo)}` : ' · 🟢 Todo pago'}
                 ${distEstimadaMetros > 0 ? ` · 📏 ~${(distEstimadaMetros / 1000).toFixed(1)} km` : ''}
               </div>
             </div>
           </div>
 
-          <div style="display:grid; grid-template-columns:1fr; gap:10px; margin-top:14px;">
-            <button type="button" id="btn-abrir-acomodar-ruta" onclick="abrirModalAcomodarRutaGestor()" ${paradas.length === 0 ? 'disabled' : ''}
-              style="min-height:56px; border-radius:14px; border:2px solid #60a5fa; background:#2563eb; color:#ffffff; font-family:inherit; font-weight:900; font-size:1.08rem; cursor:pointer; box-shadow:0 8px 20px rgba(37,99,235,0.35);">
-              🗺️ Acomodar Ruta (Mapa + Deslizar)
-            </button>
+          <div style="display:flex; flex-direction:column; gap:7px; margin-top:10px;">
             <button type="button" id="btn-iniciar-hoja-ruta" onclick="iniciarYEntrarModoNocturnoGestor()" ${paradas.length === 0 ? 'disabled' : ''}
-              style="min-height:58px; border-radius:14px; border:none; background:linear-gradient(135deg, #16a34a, #15803d); color:#ffffff; font-family:inherit; font-weight:900; font-size:1.1rem; cursor:pointer; box-shadow:0 8px 20px rgba(22,163,74,0.35);">
-              ${hayEnCamino ? '🌙 Continuar Reparto (Conducción Nocturna)' : '🚀 Iniciar Hoja de Ruta'}
+              style="width:100%; min-height:42px; border-radius:10px; border:none; background:linear-gradient(135deg, #16a34a, #15803d); color:#ffffff; font-family:inherit; font-weight:900; font-size:0.95rem; cursor:pointer; box-shadow:0 4px 12px rgba(22,163,74,0.3); ${paradas.length === 0 ? 'opacity:0.5; cursor:not-allowed;' : ''}">
+              ${hayEnCamino ? '🌙 Continuar Reparto (Conducción Nocturna)' : '🚀 Iniciar Ruta'}
             </button>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:7px;">
+              <button type="button" id="btn-abrir-agregar-reparto" onclick="abrirModalAgregarRepartoGestor(false)"
+                style="min-height:40px; padding:0 8px; border-radius:10px; border:1.5px solid ${disponiblesAgregar.length > 0 ? '#fbbf24' : '#475569'}; background:${disponiblesAgregar.length > 0 ? '#1e293b' : '#1e293b'}; color:${disponiblesAgregar.length > 0 ? '#fde68a' : '#cbd5e1'}; font-family:inherit; font-weight:900; font-size:0.86rem; cursor:pointer;">
+                ➕ Agregar Pedidos${disponiblesAgregar.length > 0 ? ` (${disponiblesAgregar.length})` : ''}
+              </button>
+              <button type="button" id="btn-abrir-acomodar-ruta" onclick="abrirModalAcomodarRutaGestor()" ${paradas.length === 0 ? 'disabled' : ''}
+                style="min-height:40px; padding:0 8px; border-radius:10px; border:1.5px solid #60a5fa; background:#2563eb; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.86rem; cursor:pointer; ${paradas.length === 0 ? 'opacity:0.5; cursor:not-allowed;' : ''}">
+                🗺️ Acomodar Ruta
+              </button>
+            </div>
           </div>
         </div>
 
         ${primeraParada ? `
           <!-- TARJETA DESTACADA: PRIMERA / PRÓXIMA ENTREGA -->
           <div class="reparto-next-hero">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-              <span style="padding:4px 10px; border-radius:999px; font-size:0.82rem; font-weight:900; background:#1d4ed8; color:#ffffff; letter-spacing:0.02em;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:5px;">
+              <span style="padding:2px 8px; border-radius:999px; font-size:0.74rem; font-weight:900; background:#1d4ed8; color:#ffffff;">
                 ${hayEnCamino ? '🎯 PRÓXIMA ENTREGA · PARADA #1' : '🎯 PRIMERA ENTREGA · PARADA #1'}
               </span>
-              <span style="padding:5px 11px; border-radius:999px; font-size:0.86rem; font-weight:900; background:${primerGrupo?.todosPagados ? '#dcfce7' : '#fef3c7'}; color:${primerGrupo?.todosPagados ? '#15803d' : '#92400e'};">
+              <span style="padding:2px 8px; border-radius:999px; font-size:0.76rem; font-weight:900; background:${primerGrupo?.todosPagados ? '#dcfce7' : '#fef3c7'}; color:${primerGrupo?.todosPagados ? '#15803d' : '#92400e'};">
                 ${primerGrupo?.todosPagados
                   ? '🟢 YA PAGADO'
                   : `🟠 COBRAR ${fmt(primerGrupo && primerGrupo.pedidos.length > 1 ? primerGrupo.totalPendiente : primeraParada.total_vecino)}`}
               </span>
             </div>
 
-            <div style="font-size:1.28rem; font-weight:900; color:#0f172a; line-height:1.25;">
+            <div style="font-size:1.05rem; font-weight:900; color:#0f172a; line-height:1.22;">
               ${esc(primerGrupo && primerGrupo.pedidos.length > 1 ? primerGrupo.vecinosLabel : primeraParada.vecino_nombre)}
-              <span style="font-size:0.92rem; color:#475569; font-weight:800;">
+              <span style="font-size:0.82rem; color:#475569; font-weight:800;">
                 (${esc(primerGrupo && primerGrupo.pedidos.length > 1 ? primerGrupo.codigosLabel : `#${primeraParada.codigo_pedido}`)})
               </span>
             </div>
 
             ${primerGrupo && primerGrupo.pedidos.length > 1 ? `
-              <div style="margin-top:6px; padding:6px 10px; border-radius:10px; background:#dbeafe; color:#1e40af; font-size:0.88rem; font-weight:900;">
-                🏠 ¡Van ${primerGrupo.pedidos.length} pedidos en esta misma puerta! (${esc(primerGrupo.codigosLabel)})
+              <div style="margin-top:4px; padding:4px 8px; border-radius:8px; background:#dbeafe; color:#1e40af; font-size:0.78rem; font-weight:900;">
+                🏠 ${primerGrupo.pedidos.length} pedidos en esta misma puerta (${esc(primerGrupo.codigosLabel)})
               </div>
             ` : ''}
 
-            <div style="font-size:1.08rem; font-weight:800; color:#1e293b; margin-top:7px; line-height:1.35;">
+            <div style="font-size:0.9rem; font-weight:800; color:#1e293b; margin-top:4px; line-height:1.3;">
               📍 ${esc(primeraParada.direccion_entrega || 'Sin dirección especificada')}
             </div>
             ${primeraParada.entrecalles_referencia ? `
-              <div style="font-size:0.92rem; color:#475569; font-weight:700; margin-top:2px;">
+              <div style="font-size:0.8rem; color:#475569; font-weight:700; margin-top:1px;">
                 Ref: ${esc(primeraParada.entrecalles_referencia)}
               </div>
             ` : ''}
 
-            <div style="display:grid; grid-template-columns:1fr; gap:9px; margin-top:12px;">
+            <div style="display:flex; gap:7px; flex-wrap:wrap; margin-top:8px;">
               <a href="${esc(urlMapsPrimera)}" target="_blank" rel="noopener" id="btn-gps-proxima-entrega"
-                style="display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:54px; border-radius:14px; background:#2563eb; color:#ffffff; text-decoration:none; font-family:inherit; font-weight:900; font-size:1.08rem; box-shadow:0 6px 16px rgba(37,99,235,0.28);">
+                style="flex:1; min-width:160px; display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:40px; padding:0 12px; border-radius:10px; background:#2563eb; color:#ffffff; text-decoration:none; font-family:inherit; font-weight:900; font-size:0.9rem; box-shadow:0 4px 10px rgba(37,99,235,0.22);">
                 📍 Abrir GPS Domicilio
               </a>
-              <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <button type="button" onclick="iniciarYEntrarModoNocturnoGestor()"
-                  style="flex:1; min-height:48px; border-radius:12px; border:1.5px solid #0f766e; background:#f0fdfa; color:#0f766e; font-family:inherit; font-weight:900; font-size:0.95rem; cursor:pointer;">
-                  🌙 Modo Conducción (WhatsApp y Radar)
+              <button type="button" onclick="iniciarYEntrarModoNocturnoGestor()"
+                style="flex:1; min-width:150px; min-height:40px; padding:0 10px; border-radius:10px; border:1px solid #0f766e; background:#f0fdfa; color:#0f766e; font-family:inherit; font-weight:900; font-size:0.84rem; cursor:pointer;">
+                🌙 Conducción (WA/Radar)
+              </button>
+              ${!coordsPrimera ? `
+                <button type="button" onclick="abrirModalPinCasaGestor(${primeraParada.id})"
+                  style="min-height:40px; padding:0 10px; border-radius:10px; border:1px solid #f59e0b; background:#fffbeb; color:#92400e; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer;">
+                  📌 Fijar Pin
                 </button>
-                ${!coordsPrimera ? `
-                  <button type="button" onclick="abrirModalPinCasaGestor(${primeraParada.id})"
-                    style="min-height:48px; padding:0 14px; border-radius:12px; border:1.5px solid #f59e0b; background:#fffbeb; color:#92400e; font-family:inherit; font-weight:900; font-size:0.92rem; cursor:pointer;">
-                    📌 Fijar Pin
-                  </button>
-                ` : ''}
-              </div>
+              ` : ''}
             </div>
           </div>
         ` : ''}
 
         ${paradas.length === 0 ? `
-          <div class="card" style="text-align:center; padding:26px 16px;">
-            <div style="font-size:1.15rem; font-weight:900;">Sin envíos pendientes en Hoja de Ruta</div>
-            <p style="color:var(--muted); margin:6px 0 0 0;">
-              Cuando recibas pedidos con Envío Barrial en el Nodo aparecerán acá listos para ordenar y salir a repartir.
+          <div class="card" style="text-align:center; padding:18px 14px;">
+            <div style="font-size:1rem; font-weight:900;">Sin paradas cargadas en esta vuelta</div>
+            <p style="color:var(--muted); margin:5px 0 ${disponiblesAgregar.length > 0 ? '10px' : '0'} 0; font-size:0.86rem;">
+              ${disponiblesAgregar.length > 0
+                ? `Tenés ${disponiblesAgregar.length} pedido${disponiblesAgregar.length === 1 ? '' : 's'} disponible${disponiblesAgregar.length === 1 ? '' : 's'} para sumar manualmente a la Hoja de Ruta.`
+                : 'Cuando recibas pedidos con Envío Barrial en el Nodo aparecerán acá listos para ordenar y salir.'}
             </p>
+            ${disponiblesAgregar.length > 0 ? `
+              <button type="button" class="btn-primary" onclick="abrirModalAgregarRepartoGestor(false)">
+                ➕ Agregar Pedidos (${disponiblesAgregar.length})
+              </button>
+            ` : ''}
           </div>
         ` : `
-          <div style="display:flex; justify-content:space-between; align-items:center; margin:4px 2px 10px;">
-            <span style="font-size:0.86rem; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:0.03em;">
-              Secuencia completa (${paradas.length})
+          <div style="display:flex; justify-content:space-between; align-items:center; margin:2px 2px 7px;">
+            <span style="font-size:0.78rem; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:0.03em;">
+              Secuencia de la vuelta (${paradas.length})
             </span>
             <button type="button" onclick="abrirModalAcomodarRutaGestor()"
-              style="border:none; background:transparent; color:#2563eb; font-family:inherit; font-weight:900; font-size:0.88rem; cursor:pointer; padding:4px 6px;">
-              🗺️ Reordenar en mapa →
+              style="border:none; background:transparent; color:#2563eb; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer; padding:3px 5px;">
+              🗺️ Acomodar en mapa →
             </button>
           </div>
           ${paradas.map((p, idx) => {
@@ -4501,69 +4579,90 @@
             const cantPuerta = conteoPorPuerta.get(Number(p.id)) || 1;
             const puertaNro = numeroPuertaPorClave.get(Number(p.id)) || (idx + 1);
             const enCamino = Number(p.hito_tracking_actual || 1) === 5;
+            const esRetiroSumado = String(p.modalidad_entrega || '').toUpperCase() === 'RETIRO_NODO' && Boolean(p.incluido_reparto_manual);
+            const esHito3 = Number(p.hito_tracking_actual || 1) === 3;
             return `
               <div class="reparto-stop-card ${cantPuerta > 1 ? 'same-door' : ''}">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px;">
-                  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                    <span style="display:inline-flex; align-items:center; justify-content:center; min-width:34px; height:34px; padding:0 8px; border-radius:10px; background:#0f172a; color:#ffffff; font-weight:900; font-size:1rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:5px; flex-wrap:wrap;">
+                  <div style="display:flex; align-items:center; gap:6px; min-width:0; flex:1;">
+                    <span style="display:inline-flex; align-items:center; justify-content:center; min-width:26px; height:26px; padding:0 6px; border-radius:7px; background:#0f172a; color:#ffffff; font-weight:900; font-size:0.82rem; flex-shrink:0;">
                       #${idx + 1}
                     </span>
-                    <span style="font-size:1.12rem; font-weight:900; color:var(--text);">
+                    <span style="font-size:0.96rem; font-weight:900; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                       ${esc(p.vecino_nombre)}
                     </span>
-                    <span style="font-size:0.86rem; font-weight:800; color:var(--muted);">#${esc(p.codigo_pedido)}</span>
+                    <span style="font-size:0.78rem; font-weight:800; color:var(--muted); flex-shrink:0;">#${esc(p.codigo_pedido)}</span>
                   </div>
-                  <span style="padding:5px 10px; border-radius:999px; font-size:0.84rem; font-weight:900; background:${p.pago_confirmado ? '#dcfce7' : '#fef3c7'}; color:${p.pago_confirmado ? '#15803d' : '#92400e'};">
-                    ${p.pago_confirmado ? '🟢 PAGADO' : `🟠 COBRAR ${fmt(p.total_vecino)}`}
+                  <span style="padding:2px 8px; border-radius:999px; font-size:0.75rem; font-weight:900; background:${p.pago_confirmado ? '#dcfce7' : '#fef3c7'}; color:${p.pago_confirmado ? '#15803d' : '#92400e'};">
+                    ${p.pago_confirmado ? '🟢 PAGADO' : `🟠 ${fmt(p.total_vecino)}`}
                   </span>
                 </div>
 
-                ${cantPuerta > 1 ? `
-                  <div style="display:inline-block; padding:4px 10px; border-radius:8px; background:#dbeafe; color:#1e40af; font-size:0.84rem; font-weight:900; margin-bottom:7px;">
-                    🏠 Parada física #${puertaNro}: ${cantPuerta} pedidos en esta misma puerta
+                ${(cantPuerta > 1 || esRetiroSumado || esHito3) ? `
+                  <div style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:5px;">
+                    ${cantPuerta > 1 ? `
+                      <span style="padding:2px 7px; border-radius:6px; background:#dbeafe; color:#1e40af; font-size:0.74rem; font-weight:900;">
+                        🏠 Parada #${puertaNro}: ${cantPuerta} pedidos
+                      </span>
+                    ` : ''}
+                    ${esRetiroSumado ? `
+                      <span style="padding:2px 7px; border-radius:6px; background:#ede9fe; color:#5b21b6; font-size:0.74rem; font-weight:900;">
+                        🏠 Retiro sumado hoy (sin cargo envío)
+                      </span>
+                    ` : ''}
+                    ${esHito3 ? `
+                      <span style="padding:2px 7px; border-radius:6px; background:#fef3c7; color:#92400e; font-size:0.74rem; font-weight:900;">
+                        📦 En recepción de lote
+                      </span>
+                    ` : ''}
                   </div>
                 ` : ''}
 
-                <div style="font-size:1.06rem; font-weight:800; color:var(--text); line-height:1.35;">
+                <div style="font-size:0.88rem; font-weight:800; color:var(--text); line-height:1.3;">
                   📍 ${esc(p.direccion_entrega || 'Sin dirección especificada')}
                 </div>
                 ${p.entrecalles_referencia ? `
-                  <div style="font-size:0.92rem; color:var(--muted); font-weight:700; margin-top:2px;">
-                    Referencia: ${esc(p.entrecalles_referencia)}
+                  <div style="font-size:0.78rem; color:var(--muted); font-weight:700; margin-top:1px;">
+                    Ref: ${esc(p.entrecalles_referencia)}
                   </div>
                 ` : ''}
 
-                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px;">
-                  <span style="padding:4px 10px; border-radius:999px; font-size:0.82rem; font-weight:800; background:${coords ? '#ecfdf5' : '#fef3c7'}; color:${coords ? '#047857' : '#92400e'}; border:1px solid ${coords ? '#a7f3d0' : '#fcd34d'};">
-                    ${coords ? `📌 Con pin GPS (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})` : '⚠️ Sin pin GPS aún'}
+                <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:5px;">
+                  <span style="padding:2px 7px; border-radius:999px; font-size:0.72rem; font-weight:800; background:${coords ? '#ecfdf5' : '#fef3c7'}; color:${coords ? '#047857' : '#92400e'}; border:1px solid ${coords ? '#a7f3d0' : '#fcd34d'};">
+                    ${coords ? `📌 GPS (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})` : '⚠️ Sin pin GPS'}
                   </span>
                   ${enCamino ? `
-                    <span style="padding:4px 10px; border-radius:999px; font-size:0.82rem; font-weight:900; background:#ede9fe; color:#5b21b6;">
-                      🛵 En camino en vivo
+                    <span style="padding:2px 7px; border-radius:999px; font-size:0.72rem; font-weight:900; background:#ede9fe; color:#5b21b6;">
+                      🛵 En camino
                     </span>
                   ` : ''}
                 </div>
 
-                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+                <div style="display:flex; gap:5px; flex-wrap:wrap; margin-top:8px;">
                   <button type="button" class="btn-soft" onclick="moverParadaRepartoGestor(${p.id}, -1)" ${idx === 0 ? 'disabled' : ''}
-                    style="min-height:48px; min-width:50px; font-size:1rem;" title="Subir parada">
+                    style="min-height:36px; min-width:36px; padding:0 8px; font-size:0.86rem;" title="Subir parada">
                     ⬆️
                   </button>
                   <button type="button" class="btn-soft" onclick="moverParadaRepartoGestor(${p.id}, 1)" ${idx === paradas.length - 1 ? 'disabled' : ''}
-                    style="min-height:48px; min-width:50px; font-size:1rem;" title="Bajar parada">
+                    style="min-height:36px; min-width:36px; padding:0 8px; font-size:0.86rem;" title="Bajar parada">
                     ⬇️
                   </button>
                   <button type="button" class="btn-soft" onclick="abrirModalPinCasaGestor(${p.id})"
-                    style="flex:1; min-height:48px; font-size:0.92rem; border-color:#38bdf8; background:#f0f9ff; color:#0369a1;">
-                    📌 ${coords ? 'Corregir pin' : 'Fijar pin'}
+                    style="flex:1; min-height:36px; font-size:0.8rem; border-color:#38bdf8; background:#f0f9ff; color:#0369a1;">
+                    📌 ${coords ? 'Pin' : 'Fijar pin'}
                   </button>
                   <a href="${esc(armarUrlGoogleMapsNocturno(p))}" target="_blank" rel="noopener" class="btn-soft"
-                    style="min-height:48px; text-decoration:none; font-size:0.92rem; border-color:#93c5fd; background:#eff6ff; color:#1d4ed8;">
+                    style="min-height:36px; text-decoration:none; font-size:0.8rem; border-color:#93c5fd; background:#eff6ff; color:#1d4ed8;">
                     📍 GPS
                   </a>
                   <button type="button" class="btn-soft" onclick="abrirModalAusenteGestor(${p.id})"
-                    style="min-height:48px; font-size:0.92rem; border-color:#f59e0b; background:#fffbeb; color:#92400e;">
+                    style="min-height:36px; font-size:0.8rem; border-color:#f59e0b; background:#fffbeb; color:#92400e;">
                     🏡 Ausente
+                  </button>
+                  <button type="button" class="btn-soft btn-quitar-parada-reparto" data-pedido-id="${p.id}" onclick="quitarPedidosDeHojaRutaGestor([${p.id}])"
+                    style="min-height:36px; padding:0 9px; font-size:0.8rem; border-color:#fecaca; background:#fef2f2; color:#b91c1c;"
+                    title="Quitar de esta vuelta sin marcar ausente">
+                    ✕ Quitar
                   </button>
                 </div>
               </div>
@@ -4572,35 +4671,35 @@
         `}
 
         ${ausentes.length > 0 ? `
-          <div class="card" style="background:#fffbeb; border:2px solid #fcd34d; margin-top:16px;">
-            <div style="font-size:1.05rem; font-weight:900; color:#92400e; margin-bottom:10px;">
+          <div class="card" style="background:#fffbeb; border:1.5px solid #fcd34d; margin-top:12px;">
+            <div style="font-size:0.92rem; font-weight:900; color:#92400e; margin-bottom:8px;">
               🏡 Ausentes en reparto — Quedaron para retirar en ${esc(GSTATE.nodo?.nombre_marca || 'el Nodo')} (${ausentes.length})
             </div>
             ${ausentes.map(p => `
-              <div style="background:#ffffff; border:1px solid #fde68a; border-radius:14px; padding:13px; margin-bottom:10px;">
-                <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">
-                  <div style="font-weight:900; font-size:1.04rem; color:#0f172a;">
+              <div style="background:#ffffff; border:1px solid #fde68a; border-radius:10px; padding:10px; margin-bottom:8px;">
+                <div style="display:flex; justify-content:space-between; gap:6px; flex-wrap:wrap;">
+                  <div style="font-weight:900; font-size:0.92rem; color:#0f172a;">
                     #${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}
                   </div>
-                  <span style="padding:4px 10px; border-radius:999px; font-size:0.82rem; font-weight:900; background:${p.pago_confirmado ? '#dcfce7' : '#fef3c7'}; color:${p.pago_confirmado ? '#15803d' : '#92400e'};">
-                    ${p.pago_confirmado ? '🟢 Pagado' : `💵 Cobrar ${fmt(p.total_vecino)}`}
+                  <span style="padding:2px 8px; border-radius:999px; font-size:0.75rem; font-weight:900; background:${p.pago_confirmado ? '#dcfce7' : '#fef3c7'}; color:${p.pago_confirmado ? '#15803d' : '#92400e'};">
+                    ${p.pago_confirmado ? '🟢 Pagado' : `💵 ${fmt(p.total_vecino)}`}
                   </span>
                 </div>
-                <div style="font-size:0.9rem; color:#78350f; margin-top:4px; font-weight:700;">
-                  📍 ${esc(p.direccion_entrega || '')}${p.motivo_ausencia ? ` · Motivo: ${esc(p.motivo_ausencia)}` : ''}
+                <div style="font-size:0.82rem; color:#78350f; margin-top:3px; font-weight:700;">
+                  📍 ${esc(p.direccion_entrega || '')}${p.motivo_ausencia ? ` · ${esc(p.motivo_ausencia)}` : ''}
                 </div>
                 ${Number(p.cargo_envio_barrial || 0) > 0 ? `
-                  <div style="font-size:0.84rem; color:#92400e; margin-top:3px; font-weight:700;">
-                    ℹ️ Cargo de envío conservado (+${fmt(p.cargo_envio_barrial)}) por intento de entrega realizado.
+                  <div style="font-size:0.76rem; color:#92400e; margin-top:2px; font-weight:700;">
+                    ℹ️ Cargo de envío conservado (+${fmt(p.cargo_envio_barrial)}) por intento realizado.
                   </div>
                 ` : ''}
-                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+                <div style="display:flex; gap:7px; flex-wrap:wrap; margin-top:8px;">
                   <button type="button" onclick="tocarBotonEntregadoGestor(${p.id})"
-                    style="flex:1; min-height:48px; border-radius:12px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.95rem; cursor:pointer;">
+                    style="flex:1; min-height:38px; border-radius:9px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.84rem; cursor:pointer;">
                     ✅ Ya pasó a retirar
                   </button>
                   <button type="button" class="btn-soft" onclick="avanzarEstadoEntregaGestor(${p.id}, 'REINTEGRAR_REPARTO', false)"
-                    style="min-height:48px; font-size:0.92rem;">
+                    style="min-height:38px; font-size:0.84rem;">
                     🔄 Reintegrar a ruta
                   </button>
                 </div>
@@ -4609,6 +4708,302 @@
           </div>
         ` : ''}
       `;
+    }
+
+    async function quitarPedidosDeHojaRutaGestor(pedidoIds = [], opciones = {}) {
+      if (!GSTATE.nodo?.id) return;
+      const ids = Array.from(new Set((Array.isArray(pedidoIds) ? pedidoIds : []).map(x => Number(x)).filter(x => x > 0)));
+      if (ids.length === 0) return;
+
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/reparto/seleccion`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accion: 'QUITAR',
+            pedido_ids: ids
+          })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo quitar de la ruta: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+
+        _sincronizarEstadoRepartoEnMemoria(data);
+
+        if (_acomodarAbierto) {
+          const dropSet = new Set(ids);
+          const restantesOrdenados = [];
+          for (const grp of _acomodarParadasDraft) {
+            for (const ped of grp.pedidos) {
+              if (!dropSet.has(Number(ped.id))) {
+                restantesOrdenados.push(ped);
+              }
+            }
+          }
+          _acomodarParadasDraft = agruparParadasFisicasRepartoGestor(restantesOrdenados);
+          if (_acomodarParadasDraft.length === 0) {
+            cerrarModalAcomodarRutaGestor();
+          } else {
+            if (!(_acomodarParadasDraft.some(g => g.key === _acomodarHighlightKey))) {
+              _acomodarHighlightKey = _acomodarParadasDraft[0]?.key || null;
+            }
+            actualizarSubtituloAcomodarRuta();
+            _refrescarBotonAgregarAcomodar();
+            renderListaAcomodarRuta();
+            dibujarMapaAcomodarRuta(true);
+          }
+        }
+
+        renderVistaGestor();
+        mostrarAvisoPantallaGestor(
+          ids.length === 1
+            ? 'Pedido bajado de esta vuelta (queda disponible en ➕ Agregar Pedidos).'
+            : `${ids.length} pedidos bajados de esta vuelta (quedan en ➕ Agregar Pedidos).`,
+          'ok'
+        );
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de red al quitar pedido de la hoja de ruta.', 'error');
+      }
+    }
+
+    function cerrarModalAgregarRepartoGestor() {
+      const modal = document.getElementById('modal-agregar-reparto-gestor');
+      if (modal) modal.style.display = 'none';
+      const body = document.getElementById('modal-agregar-reparto-gestor-body');
+      if (body) body.innerHTML = '';
+    }
+
+    let _agregarSeleccionIds = new Set();
+    let _agregarDirsDraft = new Map();
+
+    function abrirModalAgregarRepartoGestor(desdeAcomodar = false) {
+      const disponibles = obtenerPedidosDisponiblesAgregarRepartoGestor();
+      _agregarSeleccionIds = new Set();
+      _agregarDirsDraft = new Map();
+      const dirNodo = String(GSTATE.nodo?.direccion_retiro || '').trim().toLowerCase();
+
+      disponibles.forEach(p => {
+        if (String(p.modalidad_entrega || '').toUpperCase() === 'RETIRO_NODO') {
+          const dPed = String(p.direccion_entrega || '').trim();
+          const dVec = String(p.vecino_direccion_calle || '').trim();
+          const pref = (dPed && dPed.toLowerCase() !== dirNodo) ? dPed : dVec;
+          _agregarDirsDraft.set(Number(p.id), pref);
+        }
+      });
+
+      const modal = document.getElementById('modal-agregar-reparto-gestor');
+      const body = document.getElementById('modal-agregar-reparto-gestor-body');
+      if (!modal || !body) return;
+
+      body.innerHTML = `
+        <div style="background:#0f172a; color:#ffffff; padding:10px 13px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-shrink:0;">
+          <div>
+            <div style="font-size:0.98rem; font-weight:900;">➕ Agregar Pedidos a la Ruta</div>
+            <div style="font-size:0.76rem; color:#93c5fd; font-weight:700;">
+              ${disponibles.length} disponible${disponibles.length === 1 ? '' : 's'} fuera de esta vuelta
+            </div>
+          </div>
+          <button type="button" onclick="cerrarModalAgregarRepartoGestor()" aria-label="Cerrar"
+            style="width:32px; height:32px; border-radius:8px; border:1px solid #475569; background:#1e293b; color:#ffffff; font-weight:900; cursor:pointer;">
+            ✕
+          </button>
+        </div>
+
+        <div style="padding:8px 10px; border-bottom:1px solid var(--border); background:#f8fafc; flex-shrink:0;">
+          <input type="text" id="agregar-reparto-buscar" oninput="renderListaModalAgregarReparto()"
+            placeholder="🔍 Buscar por vecino, #NB-... o dirección..."
+            class="input-sm" style="width:100%;" />
+        </div>
+
+        <div id="agregar-reparto-lista" style="flex:1; overflow-y:auto; padding:8px 10px; background:#f1f5f9;"></div>
+
+        <div style="padding:8px 10px; background:#ffffff; border-top:1px solid var(--border); display:flex; gap:8px; align-items:center; flex-shrink:0;">
+          <button type="button" class="btn-soft" onclick="cerrarModalAgregarRepartoGestor()" style="min-height:38px;">
+            Cancelar
+          </button>
+          <button type="button" id="btn-confirmar-agregar-reparto" onclick="confirmarAgregarSeleccionadosRepartoGestor(${Boolean(desdeAcomodar)})" disabled
+            style="flex:1; min-height:40px; border-radius:10px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer; opacity:0.5;">
+            ✅ Sumar seleccionados a la ruta
+          </button>
+        </div>
+      `;
+
+      modal.style.display = 'flex';
+      renderListaModalAgregarReparto();
+    }
+
+    function toggleCheckAgregarReparto(pedidoId, checked) {
+      const pid = Number(pedidoId);
+      if (checked) _agregarSeleccionIds.add(pid);
+      else _agregarSeleccionIds.delete(pid);
+      const btn = document.getElementById('btn-confirmar-agregar-reparto');
+      if (btn) {
+        const cant = _agregarSeleccionIds.size;
+        btn.disabled = cant === 0;
+        btn.style.opacity = cant > 0 ? '1' : '0.5';
+        btn.textContent = cant > 0
+          ? `✅ Sumar seleccionados a la ruta (${cant})`
+          : '✅ Sumar seleccionados a la ruta';
+      }
+    }
+
+    function actualizarDirRetiroAgregarReparto(pedidoId, val) {
+      _agregarDirsDraft.set(Number(pedidoId), String(val || ''));
+    }
+
+    function renderListaModalAgregarReparto() {
+      const box = document.getElementById('agregar-reparto-lista');
+      if (!box) return;
+      const q = String(document.getElementById('agregar-reparto-buscar')?.value || '').trim().toLowerCase();
+      const todos = obtenerPedidosDisponiblesAgregarRepartoGestor();
+
+      const filtrados = q
+        ? todos.filter(p => {
+            const bolsa = `${p.codigo_pedido || ''} ${p.vecino_nombre || ''} ${p.direccion_entrega || ''} ${p.vecino_direccion_calle || ''}`.toLowerCase();
+            return bolsa.includes(q);
+          })
+        : todos;
+
+      if (filtrados.length === 0) {
+        box.innerHTML = `
+          <div style="text-align:center; padding:20px 12px; color:var(--muted); font-size:0.86rem; font-weight:700;">
+            ${todos.length === 0
+              ? 'No hay pedidos fuera de ruta disponibles para agregar en este momento.'
+              : 'Ningún pedido coincide con tu búsqueda.'}
+          </div>
+        `;
+        return;
+      }
+
+      const secciones = [
+        { key: 'ENVIO_FUERA', titulo: '🚚 Envíos pendientes fuera de ruta' },
+        { key: 'AUSENTE', titulo: '🏡 Ausentes para reintentar' },
+        { key: 'RETIRO', titulo: '🏠 Pedidos de Retiro para llevar hoy' }
+      ];
+
+      box.innerHTML = secciones.map(sec => {
+        const items = filtrados.filter(p => p._categoriaAgregar === sec.key);
+        if (items.length === 0) return '';
+        return `
+          <div style="margin-bottom:10px;">
+            <div style="font-size:0.76rem; font-weight:900; color:#475569; text-transform:uppercase; margin:2px 2px 5px; letter-spacing:0.02em;">
+              ${sec.titulo} (${items.length})
+            </div>
+            ${items.map(p => {
+              const pid = Number(p.id);
+              const checked = _agregarSeleccionIds.has(pid);
+              const esRetiro = sec.key === 'RETIRO';
+              const dirDraft = esRetiro ? (_agregarDirsDraft.get(pid) ?? '') : (p.direccion_entrega || '');
+              const hito = Number(p.hito_tracking_actual || 1);
+              return `
+                <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:10px; padding:8px 10px; margin-bottom:6px;">
+                  <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer;">
+                    <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleCheckAgregarReparto(${pid}, this.checked)"
+                      style="width:19px; height:19px; margin-top:2px; accent-color:#16a34a; flex-shrink:0;" />
+                    <div style="flex:1; min-width:0;">
+                      <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="font-weight:900; font-size:0.88rem; color:#0f172a;">
+                          #${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}
+                        </span>
+                        <span style="padding:1px 7px; border-radius:999px; font-size:0.72rem; font-weight:900; background:${p.pago_confirmado ? '#dcfce7' : '#fef3c7'}; color:${p.pago_confirmado ? '#15803d' : '#92400e'};">
+                          ${p.pago_confirmado ? '🟢 Pagado' : fmt(p.total_vecino)}
+                        </span>
+                      </div>
+                      <div style="font-size:0.78rem; color:#475569; font-weight:700; margin-top:2px;">
+                        ${esRetiro
+                          ? `🏠 Original Retiro (conserva ${fmt(p.total_vecino)} intacto)`
+                          : `📍 ${esc(p.direccion_entrega || 'Sin dirección')}`}
+                        ${hito === 3 ? ' · 📦 En canasto (Hito 3)' : ''}
+                      </div>
+                    </div>
+                  </label>
+                  ${esRetiro ? `
+                    <div style="margin-top:6px; padding-left:27px;">
+                      <input type="text" id="agregar-dir-${pid}" value="${esc(dirDraft)}"
+                        oninput="actualizarDirRetiroAgregarReparto(${pid}, this.value)"
+                        placeholder="Calle y altura para entregar (opcional)..."
+                        class="input-sm" style="width:100%; min-height:34px; padding:5px 9px; font-size:0.82rem;" />
+                    </div>
+                  ` : ''}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function confirmarAgregarSeleccionadosRepartoGestor(desdeAcomodar = false) {
+      if (!GSTATE.nodo?.id || _agregarSeleccionIds.size === 0) return;
+      const btn = document.getElementById('btn-confirmar-agregar-reparto');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Sumando...';
+      }
+
+      const pedidoIds = Array.from(_agregarSeleccionIds);
+      const detalles = pedidoIds
+        .filter(pid => _agregarDirsDraft.has(pid) && String(_agregarDirsDraft.get(pid) || '').trim() !== '')
+        .map(pid => ({
+          pedido_id: pid,
+          direccion_entrega: String(_agregarDirsDraft.get(pid) || '').trim()
+        }));
+
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/reparto/seleccion`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accion: 'AGREGAR',
+            pedido_ids: pedidoIds,
+            detalles
+          })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudieron sumar pedidos: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          if (btn) { btn.disabled = false; btn.textContent = '✅ Sumar seleccionados a la ruta'; }
+          return;
+        }
+
+        _sincronizarEstadoRepartoEnMemoria(data);
+        cerrarModalAgregarRepartoGestor();
+
+        if (desdeAcomodar && _acomodarAbierto) {
+          // Conservar orden previo en borrador y anexar los recién sumados al final (agrupando puerta si coincide)
+          const prevOrderIds = _acomodarParadasDraft.flatMap(g => g.pedidos.map(x => Number(x.id)));
+          const addedSet = new Set(pedidoIds);
+          const allActivas = obtenerParadasRepartoActivasGestor();
+          const mapById = new Map(allActivas.map(p => [Number(p.id), p]));
+          const ordenFinalLista = [];
+          for (const pid of prevOrderIds) {
+            if (mapById.has(pid)) {
+              ordenFinalLista.push(mapById.get(pid));
+              mapById.delete(pid);
+            }
+          }
+          for (const p of allActivas) {
+            if (mapById.has(Number(p.id))) {
+              ordenFinalLista.push(p);
+              if (addedSet.has(Number(p.id))) _acomodarHighlightKey = null;
+            }
+          }
+          _acomodarParadasDraft = agruparParadasFisicasRepartoGestor(ordenFinalLista);
+          if (!_acomodarHighlightKey) _acomodarHighlightKey = _acomodarParadasDraft[_acomodarParadasDraft.length - 1]?.key || null;
+          actualizarSubtituloAcomodarRuta();
+          _refrescarBotonAgregarAcomodar();
+          renderListaAcomodarRuta();
+          dibujarMapaAcomodarRuta(true);
+        }
+
+        renderVistaGestor();
+        mostrarAvisoPantallaGestor(`✅ ${data.actualizados || pedidoIds.length} pedido(s) sumados a esta Hoja de Ruta.`, 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de red al sumar pedidos a la ruta.', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = '✅ Sumar seleccionados a la ruta'; }
+      }
     }
 
     async function sugerirOrdenOptimoRepartoGestor() {
@@ -4701,6 +5096,7 @@
     let _acomodarPinDraftCoords = null;
     let _acomodarDistanciaMetros = 0;
     let _acomodarDragCtx = null;
+    let _acomodarMapaCompacto = false;
 
     function _limpiarDragCtxAcomodar() {
       if (!_acomodarDragCtx) return;
@@ -4728,6 +5124,7 @@
       _acomodarPinTargetKey = null;
       _acomodarPinDraftCoords = null;
       _acomodarHighlightKey = null;
+      _acomodarMapaCompacto = false;
       if (_acomodarMap) {
         try { _acomodarMap.remove(); } catch (_) {}
       }
@@ -4739,6 +5136,36 @@
         modal.style.display = 'none';
         modal.innerHTML = '';
       }
+    }
+
+    function _refrescarBotonAgregarAcomodar() {
+      const btn = document.getElementById('btn-acomodar-agregar');
+      if (!btn) return;
+      const cantDisp = obtenerPedidosDisponiblesAgregarRepartoGestor().length;
+      btn.textContent = cantDisp > 0 ? `➕ Agregar (${cantDisp})` : '➕ Agregar';
+      btn.style.borderColor = cantDisp > 0 ? '#f59e0b' : '#cbd5e1';
+      btn.style.background = cantDisp > 0 ? '#fffbeb' : '#f8fafc';
+      btn.style.color = cantDisp > 0 ? '#92400e' : '#0f172a';
+    }
+
+    function toggleTamanoMapaAcomodar() {
+      _acomodarMapaCompacto = !_acomodarMapaCompacto;
+      const wrap = document.getElementById('acomodar-map-wrap');
+      const btn = document.getElementById('btn-acomodar-toggle-mapa');
+      if (wrap) {
+        wrap.classList.toggle('is-compact', _acomodarMapaCompacto);
+      }
+      if (btn) {
+        btn.textContent = _acomodarMapaCompacto ? '↕️ Mapa amplio' : '↕️ Lista amplia';
+      }
+      setTimeout(() => {
+        if (_acomodarMap) {
+          try {
+            _acomodarMap.invalidateSize();
+            dibujarMapaAcomodarRuta(true);
+          } catch (_) {}
+        }
+      }, 180);
     }
 
     function abrirModalAcomodarRutaGestor() {
@@ -4754,6 +5181,7 @@
       _acomodarTocarKeys = [];
       _acomodarPinTargetKey = null;
       _acomodarPinDraftCoords = null;
+      _acomodarMapaCompacto = false;
       _acomodarDistanciaMetros = calcularDistanciaTotalParadasGestor(_acomodarParadasDraft);
       _acomodarAbierto = true;
 
@@ -4762,36 +5190,42 @@
 
       modal.innerHTML = `
         <div class="acomodar-header">
-          <div style="min-width:0;">
-            <div style="font-size:1.08rem; font-weight:900; line-height:1.2;">🗺️ Acomodar Ruta</div>
-            <div id="acomodar-subtitulo-stats" style="font-size:0.8rem; color:#93c5fd; font-weight:800; margin-top:2px;"></div>
+          <div style="min-width:0; flex:1;">
+            <div style="font-size:0.94rem; font-weight:900; line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">🗺️ Acomodar Ruta</div>
+            <div id="acomodar-subtitulo-stats" style="font-size:0.72rem; color:#93c5fd; font-weight:800; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"></div>
           </div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <button type="button" onclick="centrarMapaAcomodarRutaGestor()"
-              style="min-height:38px; padding:0 10px; border-radius:10px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-family:inherit; font-weight:800; font-size:0.82rem; cursor:pointer;">
-              🎯 Ver todo
+          <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
+            <button type="button" id="btn-acomodar-toggle-mapa" onclick="toggleTamanoMapaAcomodar()"
+              style="min-height:30px; padding:0 8px; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-family:inherit; font-weight:800; font-size:0.73rem; cursor:pointer; white-space:nowrap;">
+              ↕️ Lista amplia
+            </button>
+            <button type="button" onclick="centrarMapaAcomodarRutaGestor()" title="Ver todo en mapa"
+              style="min-height:30px; width:30px; padding:0; border-radius:8px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-weight:800; font-size:0.82rem; cursor:pointer;">
+              🎯
             </button>
             <button type="button" onclick="cerrarModalAcomodarRutaGestor()" aria-label="Cerrar"
-              style="min-height:38px; width:38px; border-radius:10px; border:1px solid #475569; background:#1e293b; color:#ffffff; font-weight:900; font-size:1.1rem; cursor:pointer;">
+              style="min-height:30px; width:30px; border-radius:8px; border:1px solid #475569; background:#1e293b; color:#ffffff; font-weight:900; font-size:0.92rem; cursor:pointer;">
               ✕
             </button>
           </div>
         </div>
 
-        <div class="acomodar-map-wrap">
+        <div id="acomodar-map-wrap" class="acomodar-map-wrap">
           <div id="acomodar-leaflet-map" class="acomodar-map-canvas"></div>
         </div>
 
         <div id="acomodar-tocar-banner" class="acomodar-map-banner" style="display:none;"></div>
 
         <div class="acomodar-toolbar">
-          <button type="button" id="btn-acomodar-tocar-orden" onclick="toggleModoTocarOrdenAcomodar()"
-            style="flex:1; min-height:44px; padding:6px 10px; border-radius:11px; border:1.5px solid #cbd5e1; background:#f8fafc; color:#0f172a; font-family:inherit; font-weight:900; font-size:0.88rem; cursor:pointer;">
-            👆 Tocar pines en orden
+          <button type="button" id="btn-acomodar-vuelta-corta" class="acomodar-tool-chip" onclick="sugerirVueltaCortaEnAcomodarGestor()"
+            style="border-color:#0284c7; background:#e0f2fe; color:#0369a1;">
+            ⚡ Vuelta corta
           </button>
-          <button type="button" id="btn-acomodar-vuelta-corta" onclick="sugerirVueltaCortaEnAcomodarGestor()"
-            style="flex:1; min-height:44px; padding:6px 10px; border-radius:11px; border:1.5px solid #0284c7; background:#e0f2fe; color:#0369a1; font-family:inherit; font-weight:900; font-size:0.88rem; cursor:pointer;">
-            ⚡ Sugerir vuelta corta
+          <button type="button" id="btn-acomodar-tocar-orden" class="acomodar-tool-chip" onclick="toggleModoTocarOrdenAcomodar()">
+            👆 Tocar pines
+          </button>
+          <button type="button" id="btn-acomodar-agregar" class="acomodar-tool-chip" onclick="abrirModalAgregarRepartoGestor(true)">
+            ➕ Agregar
           </button>
         </div>
 
@@ -4803,7 +5237,7 @@
 
         <div class="acomodar-footer">
           <button type="button" id="btn-confirmar-acomodar-ruta" onclick="confirmarOrdenDesdeAcomodarGestor()"
-            style="width:100%; min-height:54px; border-radius:14px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:1.08rem; cursor:pointer; box-shadow:0 6px 16px rgba(22,163,74,0.28);">
+            style="width:100%; min-height:42px; border-radius:10px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.94rem; cursor:pointer; box-shadow:0 4px 12px rgba(22,163,74,0.24);">
             ✅ Confirmar Orden
           </button>
         </div>
@@ -4811,6 +5245,7 @@
 
       modal.style.display = 'flex';
       actualizarSubtituloAcomodarRuta();
+      _refrescarBotonAgregarAcomodar();
       renderBarraTocarOrdenAcomodar();
       renderListaAcomodarRuta();
       vincularTouchDragListaAcomodar();
@@ -5021,12 +5456,12 @@
       const banner = document.getElementById('acomodar-tocar-banner');
       if (btn) {
         if (_acomodarTocarOrdenActivo) {
-          btn.textContent = '✓ Salir de Tocar pines';
+          btn.textContent = '✓ Salir pines';
           btn.style.background = '#16a34a';
           btn.style.borderColor = '#15803d';
           btn.style.color = '#ffffff';
         } else {
-          btn.textContent = '👆 Tocar pines en orden';
+          btn.textContent = '👆 Tocar pines';
           btn.style.background = '#f8fafc';
           btn.style.borderColor = '#cbd5e1';
           btn.style.color = '#0f172a';
@@ -5184,7 +5619,7 @@
       } finally {
         if (btn) {
           btn.disabled = false;
-          btn.textContent = '⚡ Sugerir vuelta corta';
+          btn.textContent = '⚡ Vuelta corta';
         }
       }
     }
@@ -5366,6 +5801,55 @@
       dibujarMapaAcomodarRuta(false);
     }
 
+    function quitarParadaDesdeAcomodarGestor(key, ev) {
+      if (ev) ev.stopPropagation();
+      const g = _acomodarParadasDraft.find(x => x.key === key);
+      if (!g || g.pedidos.length === 0) return;
+
+      if (g.pedidos.length === 1) {
+        quitarPedidosDeHojaRutaGestor([Number(g.pedidos[0].id)], { desdeAcomodar: true });
+        return;
+      }
+
+      const modal = document.getElementById('modal-recibo-gestor');
+      const body = document.getElementById('modal-recibo-gestor-body');
+      if (!modal || !body) {
+        quitarPedidosDeHojaRutaGestor(g.pedidos.map(x => Number(x.id)), { desdeAcomodar: true });
+        return;
+      }
+
+      const todosIdsJson = JSON.stringify(g.pedidos.map(x => Number(x.id)));
+      body.innerHTML = `
+        <div style="background:#0f172a; color:#ffffff; padding:12px 14px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:0.74rem; font-weight:800; text-transform:uppercase; color:#93c5fd;">Parada Agrupada (×${g.pedidos.length})</div>
+            <div style="font-size:0.98rem; font-weight:900;">📍 ${esc(g.direccion)}</div>
+          </div>
+          <button type="button" onclick="cerrarModalReciboGestor()" style="background:rgba(255,255,255,0.14); border:none; color:#fff; width:30px; height:30px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+        </div>
+        <div style="padding:12px 14px; color:var(--text);">
+          <div style="font-size:0.84rem; font-weight:700; color:var(--muted); margin-bottom:9px;">
+            Esta puerta tiene ${g.pedidos.length} pedidos juntos. Elegí si querés bajar toda la parada o solo uno:
+          </div>
+          <div style="display:flex; flex-direction:column; gap:7px;">
+            <button type="button" onclick='cerrarModalReciboGestor(); quitarPedidosDeHojaRutaGestor(${todosIdsJson}, { desdeAcomodar: true })'
+              style="min-height:38px; padding:6px 12px; border-radius:9px; border:1px solid #fecaca; background:#dc2626; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.86rem; cursor:pointer;">
+              ✕ Quitar toda la parada (${g.pedidos.length} pedidos)
+            </button>
+            ${g.pedidos.map(ped => `
+              <button type="button" onclick="cerrarModalReciboGestor(); quitarPedidosDeHojaRutaGestor([${Number(ped.id)}], { desdeAcomodar: true })"
+                class="btn-soft" style="justify-content:space-between; border-color:#fecaca; background:#fef2f2; color:#991b1b;">
+                <span>✕ Bajar solo #${esc(ped.codigo_pedido)} · ${esc(ped.vecino_nombre)}</span>
+                <span style="font-size:0.78rem;">${ped.pago_confirmado ? 'Pagado' : fmt(ped.total_vecino)}</span>
+              </button>
+            `).join('')}
+            <button type="button" class="btn-soft" onclick="cerrarModalReciboGestor()">Cancelar</button>
+          </div>
+        </div>
+      `;
+      modal.style.display = 'flex';
+    }
+
     function renderListaAcomodarRuta() {
       const box = document.getElementById('acomodar-lista-items');
       if (!box) return;
@@ -5384,56 +5868,58 @@
                data-key="${esc(g.key)}" data-index="${idx}"
                onclick="seleccionarParadaEnAcomodarRuta('${esc(g.key)}', true)">
             <div class="acomodar-drag-handle" title="Deslizá para reordenar" onclick="event.stopPropagation()">☰</div>
-            <div style="flex:1; min-width:0;">
-              <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
-                <span class="acomodar-row-num"
-                  style="display:inline-flex; align-items:center; justify-content:center; min-width:28px; height:28px; padding:0 7px; border-radius:8px; background:${badgeBg}; color:#ffffff; font-weight:900; font-size:0.9rem;">
-                  ${esc(numTxt)}
-                </span>
-                <span style="font-size:0.98rem; font-weight:900; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px;">
-                  ${esc(g.vecinosLabel)}
-                </span>
-                <span style="font-size:0.78rem; font-weight:800; color:#64748b;">
-                  ${esc(g.codigosLabel)}
-                </span>
+            <div style="flex:1; min-width:0; line-height:1.18;">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+                <div style="display:flex; align-items:center; gap:4px; min-width:0; flex:1;">
+                  <span class="acomodar-row-num"
+                    style="display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 5px; border-radius:6px; background:${badgeBg}; color:#ffffff; font-weight:900; font-size:0.74rem; flex-shrink:0;">
+                    ${esc(numTxt)}
+                  </span>
+                  <span style="font-size:0.84rem; font-weight:800; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    ${esc(g.vecinosLabel)}
+                  </span>
+                  <span style="font-size:0.69rem; font-weight:700; color:#64748b; flex-shrink:0;">
+                    ${esc(g.codigosLabel)}
+                  </span>
+                </div>
+                <div style="display:flex; align-items:center; gap:3px; flex-shrink:0;">
+                  ${esMulti ? `<span style="padding:1px 5px; border-radius:5px; background:#dbeafe; color:#1e40af; font-size:0.67rem; font-weight:900;">×${g.pedidos.length}</span>` : ''}
+                  <span style="padding:1px 5px; border-radius:999px; font-size:0.69rem; font-weight:900; background:${g.todosPagados ? '#dcfce7' : '#fef3c7'}; color:${g.todosPagados ? '#15803d' : '#92400e'};">
+                    ${g.todosPagados ? 'Pag.' : fmt(g.totalPendiente)}
+                  </span>
+                </div>
               </div>
 
-              <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px; flex-wrap:wrap;">
-                <div style="font-size:0.84rem; font-weight:700; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:130px;">
-                  📍 ${esc(g.direccion)}
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:4px; margin-top:2px;">
+                <div style="font-size:0.73rem; font-weight:600; color:#475569; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0;">
+                  📍 ${esc(g.direccion)}${g.tieneManual ? ' · Retiro' : ''}
                 </div>
-                <span style="padding:2px 8px; border-radius:999px; font-size:0.75rem; font-weight:900; flex-shrink:0; background:${g.todosPagados ? '#dcfce7' : '#fef3c7'}; color:${g.todosPagados ? '#15803d' : '#92400e'};">
-                  ${g.todosPagados ? '🟢 Pagado' : `🟠 ${fmt(g.totalPendiente)}`}
-                </span>
+                ${!g.coords ? `
+                  <button type="button" onclick="iniciarUbicacionPinEnAcomodar('${esc(g.key)}', event)" title="Ubicar en el mapa"
+                    style="padding:1px 6px; border-radius:6px; border:1px solid #f59e0b; background:#fef3c7; color:#92400e; font-family:inherit; font-weight:900; font-size:0.68rem; cursor:pointer; flex-shrink:0;">
+                    📍 Ubicar
+                  </button>
+                ` : ''}
               </div>
-
-              ${(esMulti || !g.coords) ? `
-                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:5px;">
-                  ${esMulti ? `
-                    <span style="padding:2px 8px; border-radius:7px; background:#dbeafe; color:#1e40af; font-size:0.75rem; font-weight:900;">
-                      🏠 ${g.pedidos.length} pedidos en esta misma puerta
-                    </span>
-                  ` : ''}
-                  ${!g.coords ? `
-                    <button type="button" onclick="iniciarUbicacionPinEnAcomodar('${esc(g.key)}', event)"
-                      style="padding:4px 10px; border-radius:8px; border:1px solid #f59e0b; background:#fef3c7; color:#92400e; font-family:inherit; font-weight:900; font-size:0.78rem; cursor:pointer;">
-                      📍 Ubicar en el mapa
-                    </button>
-                  ` : ''}
-                </div>
-              ` : ''}
             </div>
 
-            <div style="display:flex; flex-direction:column; gap:4px; flex-shrink:0;" onclick="event.stopPropagation()">
-              <button type="button" onclick="moverGrupoAcomodarGestor(${idx}, -1, event)" ${idx === 0 ? 'disabled' : ''}
-                aria-label="Subir"
-                style="min-width:34px; min-height:28px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-weight:900; font-size:0.78rem; cursor:pointer;">
-                ▲
-              </button>
-              <button type="button" onclick="moverGrupoAcomodarGestor(${idx}, 1, event)" ${idx === _acomodarParadasDraft.length - 1 ? 'disabled' : ''}
-                aria-label="Bajar"
-                style="min-width:34px; min-height:28px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-weight:900; font-size:0.78rem; cursor:pointer;">
-                ▼
+            <div style="display:flex; align-items:center; gap:3px; flex-shrink:0;" onclick="event.stopPropagation()">
+              <div style="display:flex; flex-direction:column; gap:2px;">
+                <button type="button" onclick="moverGrupoAcomodarGestor(${idx}, -1, event)" ${idx === 0 ? 'disabled' : ''}
+                  aria-label="Subir"
+                  style="width:24px; height:16px; padding:0; border-radius:5px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-weight:900; font-size:0.6rem; line-height:1; cursor:pointer;">
+                  ▲
+                </button>
+                <button type="button" onclick="moverGrupoAcomodarGestor(${idx}, 1, event)" ${idx === _acomodarParadasDraft.length - 1 ? 'disabled' : ''}
+                  aria-label="Bajar"
+                  style="width:24px; height:16px; padding:0; border-radius:5px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-weight:900; font-size:0.6rem; line-height:1; cursor:pointer;">
+                  ▼
+                </button>
+              </div>
+              <button type="button" class="acomodar-row-quitar" onclick="quitarParadaDesdeAcomodarGestor('${esc(g.key)}', event)"
+                aria-label="Quitar de esta vuelta" title="Quitar de esta vuelta"
+                style="width:26px; height:34px; padding:0; border-radius:7px; border:1px solid #fecaca; background:#fef2f2; color:#b91c1c; font-weight:900; font-size:0.82rem; cursor:pointer;">
+                ✕
               </button>
             </div>
           </div>
@@ -5619,32 +6105,32 @@
       const queryInicial = [p.direccion_entrega, GSTATE.nodo.barrio_zona].filter(Boolean).join(', ');
 
       body.innerHTML = `
-        <div style="background:var(--brand); color:#ffffff; padding:15px 17px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="background:var(--brand); color:#ffffff; padding:12px 14px; display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <div style="font-size:0.78rem; font-weight:800; text-transform:uppercase; opacity:0.9;">Fijar Ubicación Exacta</div>
-            <div style="font-size:1.12rem; font-weight:900;">${esc(p.vecino_nombre)} · #${esc(p.codigo_pedido)}</div>
+            <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; opacity:0.9;">Fijar Ubicación Exacta</div>
+            <div style="font-size:1rem; font-weight:900;">${esc(p.vecino_nombre)} · #${esc(p.codigo_pedido)}</div>
           </div>
-          <button type="button" onclick="cerrarModalPinCasaGestor()" style="background:rgba(0,0,0,0.2); border:none; color:#fff; width:36px; height:36px; border-radius:999px; font-weight:900; font-size:1.1rem; cursor:pointer;">✕</button>
+          <button type="button" onclick="cerrarModalPinCasaGestor()" style="background:rgba(0,0,0,0.2); border:none; color:#fff; width:32px; height:32px; border-radius:999px; font-weight:900; font-size:0.95rem; cursor:pointer;">✕</button>
         </div>
-        <div style="padding:15px 16px; color:var(--text);">
-          <div style="display:flex; gap:8px; margin-bottom:10px;">
+        <div style="padding:12px 14px; color:var(--text);">
+          <div style="display:flex; gap:6px; margin-bottom:8px;">
             <input type="text" id="pin-casa-search-input" value="${esc(queryInicial)}"
               placeholder="Buscar calle, altura y localidad..."
-              style="flex:1; min-width:0; min-height:48px; padding:10px 12px; border-radius:12px; border:1px solid var(--border); font-size:1rem; font-family:inherit;" />
+              style="flex:1; min-width:0; min-height:40px; padding:8px 10px; border-radius:10px; border:1px solid var(--border); font-size:0.9rem; font-family:inherit;" />
             <button type="button" onclick="buscarDireccionPinCasaGestor()"
-              style="min-height:48px; padding:0 14px; border-radius:12px; border:none; background:#0f172a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.95rem; cursor:pointer;">
+              style="min-height:40px; padding:0 12px; border-radius:10px; border:none; background:#0f172a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.86rem; cursor:pointer;">
               🔎 Buscar
             </button>
           </div>
-          <div id="pin-casa-leaflet-map" style="width:100%; height:260px; border-radius:14px; border:1px solid var(--border); background:#f3efe9;"></div>
-          <div id="pin-casa-coords-label" style="font-size:0.86rem; font-weight:800; color:#0369a1; margin:8px 0 12px;">
+          <div id="pin-casa-leaflet-map" style="width:100%; height:220px; border-radius:12px; border:1px solid var(--border); background:#f3efe9;"></div>
+          <div id="pin-casa-coords-label" style="font-size:0.8rem; font-weight:800; color:#0369a1; margin:6px 0 10px;">
             ${coords
               ? `📍 Pin actual: ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`
               : '👆 Tocá el mapa, arrastrá el pin o buscá la dirección arriba.'}
           </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
             <button type="button" onclick="guardarPinCasaGestor(${p.id})"
-              style="flex:1; min-height:52px; border-radius:14px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:1rem; cursor:pointer;">
+              style="flex:1; min-height:42px; border-radius:10px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.92rem; cursor:pointer;">
               📌 Guardar ubicación de esta casa
             </button>
           </div>
@@ -5745,23 +6231,23 @@
       if (!modal || !body) return;
 
       body.innerHTML = `
-        <div style="background:#b45309; color:#ffffff; padding:16px 18px; display:flex; justify-content:space-between; align-items:center;">
+        <div style="background:#b45309; color:#ffffff; padding:12px 14px; display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <div style="font-size:0.78rem; text-transform:uppercase; font-weight:800; opacity:0.92;">Vecino Ausente en Domicilio</div>
-            <div style="font-size:1.12rem; font-weight:900; margin-top:2px;">#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</div>
+            <div style="font-size:0.72rem; text-transform:uppercase; font-weight:800; opacity:0.92;">Vecino Ausente en Domicilio</div>
+            <div style="font-size:1rem; font-weight:900; margin-top:2px;">#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</div>
           </div>
-          <button type="button" onclick="cerrarModalReciboGestor()" style="background:rgba(0,0,0,0.2); border:none; color:#fff; width:36px; height:36px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+          <button type="button" onclick="cerrarModalReciboGestor()" style="background:rgba(0,0,0,0.2); border:none; color:#fff; width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
         </div>
-        <div style="padding:18px; color:var(--text);">
-          <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:12px; padding:12px; margin-bottom:12px; font-size:0.92rem; color:#78350f; font-weight:700;">
+        <div style="padding:14px; color:var(--text);">
+          <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:10px; padding:10px; margin-bottom:10px; font-size:0.85rem; color:#78350f; font-weight:700;">
             El pedido pasará a <strong>Disponible para retirar en el Nodo</strong>. El cargo de envío (${fmt(p.cargo_envio_barrial)}) se conserva íntegro porque realizaste el viaje hasta la puerta.
           </div>
-          <label style="display:block; font-size:0.88rem; font-weight:800; margin-bottom:6px;">Observación breve (opcional):</label>
+          <label style="display:block; font-size:0.82rem; font-weight:800; margin-bottom:4px;">Observación breve (opcional):</label>
           <input type="text" id="ausente-motivo-input" value="Pasamos y no atendieron timbre/teléfono"
-            style="width:100%; min-height:48px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); font-family:inherit; font-size:0.98rem; margin-bottom:14px; box-sizing:border-box;" />
-          <div style="display:flex; flex-direction:column; gap:10px;">
+            style="width:100%; min-height:40px; padding:8px 10px; border-radius:10px; border:1px solid var(--border); font-family:inherit; font-size:0.9rem; margin-bottom:10px; box-sizing:border-box;" />
+          <div style="display:flex; flex-direction:column; gap:8px;">
             <button type="button" onclick="confirmarAusenteDesdeModalGestor(${p.id})"
-              style="width:100%; min-height:54px; border-radius:14px; border:none; background:#d97706; color:#ffffff; font-family:inherit; font-weight:900; font-size:1rem; cursor:pointer;">
+              style="width:100%; min-height:42px; border-radius:10px; border:none; background:#d97706; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.92rem; cursor:pointer;">
               🏡 Confirmar Ausente (Pasa a retirar por Nodo)
             </button>
             <button type="button" class="btn-soft" onclick="cerrarModalReciboGestor()">Cancelar</button>
@@ -6026,11 +6512,11 @@
       const paradas = obtenerParadasRepartoActivasGestor();
       if (paradas.length === 0) {
         ov.innerHTML = `
-          <div style="max-width:520px; margin:40px auto; text-align:center; padding:24px; background:#1e293b; border-radius:20px; border:1px solid #334155;">
-            <div style="font-size:2.4rem; margin-bottom:10px;">🏁</div>
-            <h2 style="margin:0 0 8px 0; font-size:1.5rem; font-weight:900;">¡Todas las paradas entregadas!</h2>
-            <p style="color:#cbd5e1; font-size:1.05rem;">Ya no quedan envíos pendientes en esta Hoja de Ruta.</p>
-            <button type="button" onclick="cerrarModoNocturno(false)" class="nocturno-btn" style="background:#10b981; color:#052e16; margin-top:16px;">
+          <div style="max-width:480px; margin:28px auto; text-align:center; padding:18px; background:#1e293b; border-radius:16px; border:1px solid #334155;">
+            <div style="font-size:2rem; margin-bottom:8px;">🏁</div>
+            <h2 style="margin:0 0 6px 0; font-size:1.2rem; font-weight:900;">¡Todas las paradas entregadas!</h2>
+            <p style="color:#cbd5e1; font-size:0.92rem; margin:0;">Ya no quedan envíos pendientes en esta Hoja de Ruta.</p>
+            <button type="button" onclick="cerrarModoNocturno(false)" class="nocturno-btn" style="background:#10b981; color:#052e16; margin-top:14px;">
               ← Volver al Panel del Gestor
             </button>
           </div>
@@ -6048,28 +6534,28 @@
       const urlWaPuerta = armarUrlWhatsAppNocturno(p, 'puerta');
 
       ov.innerHTML = `
-        <div style="max-width:560px; margin:0 auto;">
+        <div id="nocturno-inner-wrap" style="max-width:520px; margin:0 auto;">
           <!-- Barra superior Nocturna -->
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:8px;">
             <button type="button" onclick="cerrarModoNocturno(false)"
-              style="min-height:48px; padding:0 14px; border-radius:12px; border:1px solid #475569; background:#1e293b; color:#f8fafc; font-family:inherit; font-weight:900; font-size:0.95rem; cursor:pointer;">
+              style="min-height:38px; padding:0 12px; border-radius:10px; border:1px solid #475569; background:#1e293b; color:#f8fafc; font-family:inherit; font-weight:800; font-size:0.86rem; cursor:pointer;">
               ✕ Salir
             </button>
-            <div style="text-align:center;">
-              <div style="font-size:1.05rem; font-weight:900; color:#38bdf8;">
+            <div style="text-align:center; line-height:1.15;">
+              <div style="font-size:0.94rem; font-weight:900; color:#38bdf8;">
                 PARADA ${GSTATE.repartoIndice + 1} de ${paradas.length}
               </div>
-              <div id="nocturno-wakelock-pill" style="font-size:0.78rem; font-weight:800; color:${_nocturnoWakeLock ? '#86efac' : '#94a3b8'};">
+              <div id="nocturno-wakelock-pill" style="font-size:0.72rem; font-weight:800; color:${_nocturnoWakeLock ? '#86efac' : '#94a3b8'};">
                 ${_nocturnoWakeLock ? '🔆 Pantalla activa' : '💤 WakeLock standby'}
               </div>
             </div>
-            <div style="display:flex; gap:6px;">
+            <div style="display:flex; gap:5px;">
               <button type="button" onclick="moverIndiceNocturno(-1)" ${GSTATE.repartoIndice === 0 ? 'disabled' : ''}
-                style="min-height:48px; min-width:48px; border-radius:12px; border:1px solid #475569; background:#1e293b; color:#fff; font-weight:900; font-size:1.1rem; cursor:pointer;">
+                style="min-height:38px; min-width:38px; border-radius:10px; border:1px solid #475569; background:#1e293b; color:#fff; font-weight:900; font-size:0.95rem; cursor:pointer;">
                 ◀
               </button>
               <button type="button" onclick="moverIndiceNocturno(1)" ${GSTATE.repartoIndice >= paradas.length - 1 ? 'disabled' : ''}
-                style="min-height:48px; min-width:48px; border-radius:12px; border:1px solid #475569; background:#1e293b; color:#fff; font-weight:900; font-size:1.1rem; cursor:pointer;">
+                style="min-height:38px; min-width:38px; border-radius:10px; border:1px solid #475569; background:#1e293b; color:#fff; font-weight:900; font-size:0.95rem; cursor:pointer;">
                 ▶
               </button>
             </div>
@@ -6077,81 +6563,81 @@
 
           <!-- Toggle Radar en vivo -->
           <button type="button" id="nocturno-radar-btn" onclick="toggleRadarVivoNocturno()"
-            style="width:100%; min-height:48px; margin-bottom:12px; border-radius:12px; border:1px solid ${GSTATE.radarActivo ? '#34d399' : '#475569'}; background:${GSTATE.radarActivo ? 'rgba(16,185,129,0.25)' : 'rgba(148,163,184,0.14)'}; color:${GSTATE.radarActivo ? '#a7f3d0' : '#cbd5e1'}; font-family:inherit; font-weight:900; font-size:0.95rem; cursor:pointer;">
+            style="width:100%; min-height:36px; margin-bottom:8px; border-radius:10px; border:1px solid ${GSTATE.radarActivo ? '#34d399' : '#475569'}; background:${GSTATE.radarActivo ? 'rgba(16,185,129,0.25)' : 'rgba(148,163,184,0.14)'}; color:${GSTATE.radarActivo ? '#a7f3d0' : '#cbd5e1'}; font-family:inherit; font-weight:800; font-size:0.84rem; cursor:pointer;">
             ${GSTATE.radarActivo ? '📡 Radar EN VIVO (Tocar p/ pausar)' : '📡 Compartir radar en vivo (OFF)'}
           </button>
 
-          <!-- Tarjeta de parada gigante legible de noche -->
-          <div style="background:#111827; border:2px solid #334155; border-radius:20px; padding:16px; margin-bottom:14px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-              <span style="font-size:1.45rem; font-weight:900; color:#ffffff; line-height:1.2;">
+          <!-- Tarjeta de parada compacta y de alto contraste -->
+          <div style="background:#111827; border:1.5px solid #334155; border-radius:14px; padding:11px 12px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:4px;">
+              <span style="font-size:1.14rem; font-weight:900; color:#ffffff; line-height:1.15;">
                 ${esc(p.vecino_nombre)}
               </span>
-              <span style="font-size:1rem; font-weight:900; color:#93c5fd; background:#1e293b; padding:4px 10px; border-radius:8px;">
+              <span style="font-size:0.82rem; font-weight:900; color:#93c5fd; background:#1e293b; padding:2px 8px; border-radius:6px;">
                 #${esc(p.codigo_pedido)}
               </span>
             </div>
 
             ${hermanosPuerta.length > 1 ? `
-              <div style="padding:8px 11px; border-radius:10px; background:rgba(59,130,246,0.2); border:1px solid #60a5fa; color:#bfdbfe; font-size:0.95rem; font-weight:900; margin-bottom:10px;">
-                🏠 ¡Atención! Hay ${hermanosPuerta.length} pedidos en esta misma puerta (${hermanosPuerta.map(h => '#' + esc(h.codigo_pedido)).join(' · ')})
+              <div style="padding:5px 8px; border-radius:8px; background:rgba(59,130,246,0.2); border:1px solid #60a5fa; color:#bfdbfe; font-size:0.8rem; font-weight:800; margin-bottom:6px;">
+                🏠 Hay ${hermanosPuerta.length} pedidos en esta puerta (${hermanosPuerta.map(h => '#' + esc(h.codigo_pedido)).join(' · ')})
               </div>
             ` : ''}
 
-            <div style="font-size:1.25rem; font-weight:900; color:#f8fafc; line-height:1.3;">
+            <div style="font-size:1rem; font-weight:800; color:#f8fafc; line-height:1.25;">
               📍 ${esc(p.direccion_entrega || 'Dirección sin especificar')}
             </div>
             ${p.entrecalles_referencia ? `
-              <div style="font-size:1rem; color:#cbd5e1; font-weight:700; margin-top:4px;">
-                Entre / Ref: ${esc(p.entrecalles_referencia)}
+              <div style="font-size:0.82rem; color:#cbd5e1; font-weight:600; margin-top:2px;">
+                Ref: ${esc(p.entrecalles_referencia)}
               </div>
             ` : ''}
 
-            <!-- Indicador gigante de Pago -->
-            <div style="margin-top:14px; padding:14px; border-radius:14px; text-align:center; font-size:1.28rem; font-weight:900; ${p.pago_confirmado
-              ? 'background:rgba(22,163,74,0.22); border:2px solid #22c55e; color:#86efac;'
-              : 'background:rgba(245,158,11,0.22); border:2px solid #f59e0b; color:#fde68a;'}">
+            <!-- Indicador de Pago -->
+            <div style="margin-top:8px; padding:8px 10px; border-radius:10px; text-align:center; font-size:1rem; font-weight:900; ${p.pago_confirmado
+              ? 'background:rgba(22,163,74,0.22); border:1.5px solid #22c55e; color:#86efac;'
+              : 'background:rgba(245,158,11,0.22); border:1.5px solid #f59e0b; color:#fde68a;'}">
               ${p.pago_confirmado
                 ? `🟢 YA PAGADO (${fmt(p.total_vecino)}) · SOLO ENTREGAR`
                 : `🟠 COBRAR ${p.medio_pago === 'EFECTIVO' ? 'EFECTIVO' : 'SALDO'}: ${fmt(p.total_vecino)}`}
             </div>
 
-            <!-- Bolsa / Productos a bajar -->
-            <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #334155; font-size:0.98rem; color:#e2e8f0; line-height:1.5;">
+            <!-- Bolsa / Productos a bajar (compacto y con scroll interno si excede) -->
+            <div style="margin-top:8px; padding-top:6px; border-top:1px dashed #334155; font-size:0.84rem; color:#e2e8f0; line-height:1.35; max-height:76px; overflow-y:auto;">
               ${(p.items || []).map(it => `
                 <div>• <strong>${it.cantidad}x</strong> ${esc(formatearItemGestor(it))}</div>
               `).join('')}
             </div>
           </div>
 
-          <!-- 4 BOTONES GIGANTES (>= 60px) DE PULGAR -->
-          <div style="display:grid; grid-template-columns:1fr; gap:11px;">
+          <!-- Acciones táctiles compactas en 1 pantalla -->
+          <div style="display:grid; grid-template-columns:1fr; gap:8px;">
             <a href="${esc(urlMaps)}" target="_blank" rel="noopener" class="nocturno-btn"
               style="background:#2563eb; color:#ffffff;">
               🗺️ Ir con Google Maps
             </a>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
               <a href="${esc(urlWa5Min)}" target="_blank" rel="noopener" class="nocturno-btn"
-                style="background:#0f766e; color:#ffffff; font-size:0.98rem;">
+                style="background:#0f766e; color:#ffffff; font-size:0.84rem; padding:6px 8px;">
                 🚗 Llegando en 5 min
               </a>
               <a href="${esc(urlWaPuerta)}" target="_blank" rel="noopener" class="nocturno-btn"
-                style="background:#059669; color:#ffffff; font-size:0.98rem;">
+                style="background:#059669; color:#ffffff; font-size:0.84rem; padding:6px 8px;">
                 🔔 Estoy en la puerta
               </a>
             </div>
             <button type="button" onclick="tocarBotonEntregadoGestor(${p.id})" class="nocturno-btn"
-              style="background:#16a34a; color:#ffffff; font-size:1.18rem;">
+              style="background:#16a34a; color:#ffffff; min-height:44px; font-size:0.98rem;">
               ✅ Marcar Entregado
             </button>
             <button type="button" onclick="abrirModalAusenteGestor(${p.id})"
-              style="min-height:50px; border-radius:14px; border:1px solid #f59e0b; background:rgba(245,158,11,0.14); color:#fcd34d; font-family:inherit; font-weight:900; font-size:0.98rem; cursor:pointer;">
+              style="min-height:40px; border-radius:10px; border:1px solid #f59e0b; background:rgba(245,158,11,0.14); color:#fcd34d; font-family:inherit; font-weight:800; font-size:0.85rem; padding:6px 10px; cursor:pointer;">
               🏡 No respondió — Pasa a retirar por el Nodo
             </button>
           </div>
           ${GSTATE.modoLaboratorio ? `
-            <div style="margin-top:10px; text-align:center; font-size:0.8rem; color:#94a3b8; font-weight:700;">
-              🧪 Modo Laboratorio: WhatsApp abre app real redirigido a ${esc(GSTATE.telefonoPruebas)}
+            <div style="margin-top:6px; text-align:center; font-size:0.74rem; color:#94a3b8; font-weight:700;">
+              🧪 Lab: WhatsApp redirigido a ${esc(GSTATE.telefonoPruebas)}
             </div>
           ` : ''}
         </div>

@@ -2153,7 +2153,8 @@ function _calcularDistanciaMetrosGeo(lat1, lng1, lat2, lng2) {
  * - RETIRO_NODO: 5 hitos (1 -> 2 -> 3 -> 4 "¡Listo para retirar!" -> 6 "Entregado", sin viaje falso de reparto).
  */
 function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = []) {
-    const esEnvio = String(pedido.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL';
+    const esEnvio = String(pedido.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' ||
+        Boolean(pedido.incluido_reparto_manual);
     const marca = nodo.nombre_marca || 'Tu Nodo Barrial';
     const gestor = nodo.gestor_nombre || marca;
     const dirRetiro = nodo.direccion_retiro || nodo.barrio_zona || marca;
@@ -3836,7 +3837,9 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS orden_reparto INTEGER,
                 ADD COLUMN IF NOT EXISTS ausente_pasa_retirar BOOLEAN NOT NULL DEFAULT false,
                 ADD COLUMN IF NOT EXISTS fecha_ausente_reparto TIMESTAMP,
-                ADD COLUMN IF NOT EXISTS motivo_ausencia TEXT;
+                ADD COLUMN IF NOT EXISTS motivo_ausencia TEXT,
+                ADD COLUMN IF NOT EXISTS en_hoja_ruta BOOLEAN NOT NULL DEFAULT true,
+                ADD COLUMN IF NOT EXISTS incluido_reparto_manual BOOLEAN NOT NULL DEFAULT false;
 
             CREATE INDEX IF NOT EXISTS idx_nodos_pedidos_reparto
                 ON public.nodos_pedidos_vecinos (nodo_id, modalidad_entrega, hito_tracking_actual, orden_reparto, id);
@@ -6366,6 +6369,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                         nv.latitud AS vecino_latitud,
                         nv.longitud AS vecino_longitud,
                         nv.gps_origen AS vecino_gps_origen,
+                        nv.direccion_calle AS vecino_direccion_calle,
+                        nv.entrecalles_referencia AS vecino_entrecalles,
                         COALESCE(nv.gps_verificado_gestor, false) AS vecino_gps_verificado
                  FROM public.nodos_pedidos_vecinos npv
                  LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
@@ -6447,6 +6452,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             vecino_gps_verificado: Boolean(p.vecino_gps_verificado),
             orden_reparto: p.orden_reparto != null ? Number(p.orden_reparto) : null,
             ausente_pasa_retirar: Boolean(p.ausente_pasa_retirar),
+            en_hoja_ruta: p.en_hoja_ruta !== false,
+            incluido_reparto_manual: Boolean(p.incluido_reparto_manual),
             hito_tracking_actual: hitoActual,
             pago_confirmado: pagoConfirmado,
             items: itemsPorPedido.get(Number(p.id)) || []
@@ -6946,10 +6953,11 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 fecha_entrega_comprometida, fecha_entrega_label, ventana_horaria_label,
                 entrar_en_corte_actual, medio_pago, estado_pago, estado_operativo,
                 tracking_token, hito_tracking_actual,
+                en_hoja_ruta, incluido_reparto_manual,
                 subtotal_productos_vecino, cargo_envio_barrial, total_vecino,
                 total_base_lamda, ganancia_total_gestor, observaciones_vecino
              ) VALUES (
-                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'CONFIRMADO_VECINO',$18,1,$19,$20,$21,$22,$23,$24
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'CONFIRMADO_VECINO',$18,1,$25,false,$19,$20,$21,$22,$23,$24
              ) RETURNING *`,
             [
                 codigoPedido,
@@ -6975,7 +6983,8 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 totalVecino,
                 totalBaseLamda,
                 gananciaTotalGestor,
-                payload.observaciones_vecino || ''
+                payload.observaciones_vecino || '',
+                modalidad === 'ENVIO_BARRIAL'
             ]
         );
         const pedidoRow = insPed.rows[0];
@@ -11274,7 +11283,9 @@ async function obtenerSubcuentaVecinoDetalle(vecinoId) {
  * únicamente devuelve cuántas paradas faltan y un rango estimado en minutos cuando el radar está vigente (<= 4 min).
  */
 async function obtenerResumenRadarParaPedidoVecino(pedidoRow) {
-    if (!pedidoRow || String(pedidoRow.modalidad_entrega || '').toUpperCase() !== 'ENVIO_BARRIAL') {
+    const esRepartoDomicilio = pedidoRow &&
+        (String(pedidoRow.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' || Boolean(pedidoRow.incluido_reparto_manual));
+    if (!esRepartoDomicilio || pedidoRow.en_hoja_ruta === false) {
         return { disponible: false };
     }
     if (Boolean(pedidoRow.ausente_pasa_retirar) || String(pedidoRow.estado_operativo || '').toUpperCase() === 'ANULADO') {
@@ -11306,7 +11317,8 @@ async function obtenerResumenRadarParaPedidoVecino(pedidoRow) {
         `SELECT id, direccion_entrega, latitud, longitud
          FROM public.nodos_pedidos_vecinos
          WHERE nodo_id = $1::int
-           AND modalidad_entrega = 'ENVIO_BARRIAL'
+           AND (modalidad_entrega = 'ENVIO_BARRIAL' OR COALESCE(incluido_reparto_manual, false) = true)
+           AND COALESCE(en_hoja_ruta, true) = true
            AND UPPER(COALESCE(estado_operativo, '')) <> 'ANULADO'
            AND COALESCE(ausente_pasa_retirar, false) = false
            AND hito_tracking_actual IN (4, 5)
@@ -11648,7 +11660,7 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
     const esModoLab = esModoLaboratorioNodos();
     const pedidosArmados = await Promise.all(filasCoincidentes.map(async (p) => {
         const pid = Number(p.id);
-        const esEnvio = String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL';
+        const esEnvio = String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' || Boolean(p.incluido_reparto_manual);
         const dirPublicaOEnmascarada = esEnvio
             ? _enmascararDireccionSensibleMarcaBlanca(p.direccion_entrega || '')
             : (nodoPublico.direccion_retiro || nodoPublico.barrio_zona || '');
@@ -11891,10 +11903,12 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
     }
 
     const actor = String(payload.actor || ped.gestor_nombre || 'Gestor del Nodo').trim();
+    const llevaRepartoDomicilio = String(ped.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' ||
+        Boolean(ped.incluido_reparto_manual);
 
     if (accion === 'SALIO_REPARTO') {
-        if (String(ped.modalidad_entrega || '').toUpperCase() !== 'ENVIO_BARRIAL') {
-            throw new Error(`El pedido #${ped.codigo_pedido} es de retiro en el Nodo (no lleva viaje de reparto domiciliario).`);
+        if (!llevaRepartoDomicilio) {
+            throw new Error(`El pedido #${ped.codigo_pedido} es de retiro en el Nodo (sumalo primero a la Hoja de Ruta si lo vas a llevar).`);
         }
         if (hitoActual >= 6) {
             throw new Error(`El pedido #${ped.codigo_pedido} ya figura como entregado.`);
@@ -11902,6 +11916,7 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
         await db.query(
             `UPDATE public.nodos_pedidos_vecinos
              SET ausente_pasa_retirar = false,
+                 en_hoja_ruta = true,
                  updated_at = NOW()
              WHERE id = $1::int`,
             [pid]
@@ -11912,7 +11927,7 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
             detalle: `${actor} inició reparto barrial hacia ${ped.direccion_entrega || 'domicilio del vecino'}`
         });
     } else if (accion === 'AUSENTE_PASA_RETIRAR') {
-        if (String(ped.modalidad_entrega || '').toUpperCase() !== 'ENVIO_BARRIAL') {
+        if (!llevaRepartoDomicilio) {
             throw new Error(`El pedido #${ped.codigo_pedido} ya es de retiro en el Nodo.`);
         }
         if (hitoActual >= 6) {
@@ -11927,6 +11942,7 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
                  motivo_ausencia = $2,
                  hito_tracking_actual = 4,
                  estado_operativo = 'EN_PODER_GESTOR',
+                 en_hoja_ruta = false,
                  orden_reparto = NULL,
                  updated_at = NOW()
              WHERE id = $1::int`,
@@ -11944,7 +11960,7 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
             ]
         );
     } else if (accion === 'REINTEGRAR_REPARTO') {
-        if (String(ped.modalidad_entrega || '').toUpperCase() !== 'ENVIO_BARRIAL') {
+        if (!llevaRepartoDomicilio) {
             throw new Error(`El pedido #${ped.codigo_pedido} es de retiro en el Nodo.`);
         }
         if (hitoActual >= 6) {
@@ -11954,6 +11970,7 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
         await db.query(
             `UPDATE public.nodos_pedidos_vecinos
              SET ausente_pasa_retirar = false,
+                 en_hoja_ruta = true,
                  updated_at = NOW()
              WHERE id = $1::int`,
             [pid]
@@ -12200,10 +12217,13 @@ async function sugerirOrdenRepartoGestor(nodoId, payload = {}) {
          FROM public.nodos_pedidos_vecinos npv
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
          WHERE npv.nodo_id = $1::int
-           AND npv.modalidad_entrega = 'ENVIO_BARRIAL'
+           AND COALESCE(npv.en_hoja_ruta, true) = true
            AND UPPER(COALESCE(npv.estado_operativo, '')) <> 'ANULADO'
            AND COALESCE(npv.ausente_pasa_retirar, false) = false
-           AND npv.hito_tracking_actual IN (4, 5)
+           AND (
+                (npv.modalidad_entrega = 'ENVIO_BARRIAL' AND npv.hito_tracking_actual IN (4, 5))
+                OR (COALESCE(npv.incluido_reparto_manual, false) = true AND npv.hito_tracking_actual IN (3, 4, 5))
+           )
            AND ($2::int[] IS NULL OR npv.id = ANY($2::int[]))
          ORDER BY COALESCE(npv.orden_reparto, 999999) ASC, npv.id ASC`,
         [nid, filtroIds.length > 0 ? filtroIds : null]
@@ -12314,6 +12334,206 @@ async function guardarOrdenManualRepartoGestor(nodoId, payload = {}) {
     };
 }
 
+/**
+ * Permite al Gestor agregar (AGREGAR) o quitar (QUITAR) pedidos arbitrarios de su Hoja de Ruta activa:
+ *  - QUITAR: setea en_hoja_ruta = false, orden_reparto = NULL; si estaba en Hito 5 lo devuelve
+ *    silenciosamente a Hito 4 ('EN_PODER_GESTOR') sin marcar ausente_pasa_retirar ni emitir aviso de ausencia,
+ *    y recompacta orden_reparto = 1..N en los restantes.
+ *  - AGREGAR: acepta pedidos activos del nodo en hito IN (3, 4, 5) (envíos fuera de ruta, ausentes reactivados
+ *    o pedidos RETIRO_NODO sumados con incluido_reparto_manual = true sin alterar cargo_envio_barrial ni total_vecino),
+ *    asigna en_hoja_ruta = true y los anexa al final de orden_reparto vigente.
+ */
+async function actualizarSeleccionHojaRutaGestor(nodoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+    const nodo = await _obtenerNodoActivoParaGestor(nodoId);
+    const nid = Number(nodo.id);
+    const accion = String(payload.accion || '').trim().toUpperCase();
+
+    if (!['AGREGAR', 'QUITAR'].includes(accion)) {
+        const err = new Error('Acción inválida. Use AGREGAR o QUITAR.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const pedidoIds = Array.from(new Set(
+        (Array.isArray(payload.pedido_ids) ? payload.pedido_ids : [])
+            .map(x => Number(x))
+            .filter(x => Number.isFinite(x) && x > 0)
+    ));
+    if (pedidoIds.length === 0) {
+        const err = new Error('Debe indicar al menos un pedido válido.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const detallesPorId = new Map();
+    if (Array.isArray(payload.detalles)) {
+        for (const det of payload.detalles) {
+            const did = Number(det?.pedido_id || det?.id || 0);
+            if (did > 0) detallesPorId.set(did, det);
+        }
+    }
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+
+        let actualizados = [];
+
+        if (accion === 'QUITAR') {
+            const updRes = await client.query(
+                `UPDATE public.nodos_pedidos_vecinos
+                 SET en_hoja_ruta = false,
+                     orden_reparto = NULL,
+                     hito_tracking_actual = CASE WHEN COALESCE(hito_tracking_actual, 1) = 5 THEN 4 ELSE hito_tracking_actual END,
+                     estado_operativo = CASE WHEN COALESCE(hito_tracking_actual, 1) = 5 THEN 'EN_PODER_GESTOR' ELSE estado_operativo END,
+                     updated_at = NOW()
+                 WHERE nodo_id = $1::int
+                   AND id = ANY($2::int[])
+                   AND UPPER(COALESCE(estado_operativo, '')) <> 'ANULADO'
+                   AND COALESCE(hito_tracking_actual, 1) < 6
+                 RETURNING id, codigo_pedido, hito_tracking_actual, estado_operativo, en_hoja_ruta,
+                           incluido_reparto_manual, orden_reparto, ausente_pasa_retirar,
+                           cargo_envio_barrial, total_vecino`,
+                [nid, pedidoIds]
+            );
+            actualizados = updRes.rows;
+        } else {
+            const maxRes = await client.query(
+                `SELECT COALESCE(MAX(orden_reparto), 0)::int AS max_orden
+                 FROM public.nodos_pedidos_vecinos
+                 WHERE nodo_id = $1::int
+                   AND COALESCE(en_hoja_ruta, true) = true
+                   AND UPPER(COALESCE(estado_operativo, '')) <> 'ANULADO'
+                   AND COALESCE(ausente_pasa_retirar, false) = false
+                   AND (
+                        (modalidad_entrega = 'ENVIO_BARRIAL' AND hito_tracking_actual IN (4, 5))
+                        OR (COALESCE(incluido_reparto_manual, false) = true AND hito_tracking_actual IN (3, 4, 5))
+                   )`,
+                [nid]
+            );
+            let maxOrden = Number(maxRes.rows[0]?.max_orden || 0);
+
+            const elegiblesRes = await client.query(
+                `SELECT id, codigo_pedido, modalidad_entrega, hito_tracking_actual,
+                        incluido_reparto_manual, direccion_entrega, entrecalles_referencia,
+                        latitud, longitud, gps_origen, cargo_envio_barrial, total_vecino
+                 FROM public.nodos_pedidos_vecinos
+                 WHERE nodo_id = $1::int
+                   AND id = ANY($2::int[])
+                   AND UPPER(COALESCE(estado_operativo, '')) <> 'ANULADO'
+                   AND COALESCE(hito_tracking_actual, 1) IN (3, 4, 5)
+                 FOR UPDATE`,
+                [nid, pedidoIds]
+            );
+            const mapPorId = new Map(elegiblesRes.rows.map(r => [Number(r.id), r]));
+
+            for (const pid of pedidoIds) {
+                const ped = mapPorId.get(pid);
+                if (!ped) continue;
+
+                const esRetiro = String(ped.modalidad_entrega || '').toUpperCase() === 'RETIRO_NODO';
+                const incluirManual = Boolean(ped.incluido_reparto_manual) ||
+                    esRetiro ||
+                    Number(ped.hito_tracking_actual || 1) === 3;
+                const det = detallesPorId.get(pid) || null;
+                const dirNueva = det && typeof det.direccion_entrega === 'string'
+                    ? det.direccion_entrega.trim()
+                    : '';
+                const entreNueva = det && typeof det.entrecalles_referencia === 'string'
+                    ? det.entrecalles_referencia.trim()
+                    : '';
+                const coordsNuevas = det ? _sanitizarCoordenadasGeo(det.latitud, det.longitud) : null;
+
+                maxOrden += 1;
+                const updOne = await client.query(
+                    `UPDATE public.nodos_pedidos_vecinos
+                     SET en_hoja_ruta = true,
+                         ausente_pasa_retirar = false,
+                         incluido_reparto_manual = $1::boolean,
+                         orden_reparto = $2::int,
+                         direccion_entrega = CASE WHEN $3 <> '' THEN $3 ELSE direccion_entrega END,
+                         entrecalles_referencia = CASE WHEN $4 <> '' THEN $4 ELSE entrecalles_referencia END,
+                         latitud = COALESCE($5::numeric, latitud),
+                         longitud = COALESCE($6::numeric, longitud),
+                         gps_origen = CASE WHEN $5::numeric IS NOT NULL THEN 'GESTOR_MAPA' ELSE gps_origen END,
+                         updated_at = NOW()
+                     WHERE id = $7::int AND nodo_id = $8::int
+                     RETURNING id, codigo_pedido, modalidad_entrega, hito_tracking_actual, estado_operativo,
+                               en_hoja_ruta, incluido_reparto_manual, orden_reparto, ausente_pasa_retirar,
+                               direccion_entrega, entrecalles_referencia, latitud, longitud,
+                               cargo_envio_barrial, total_vecino`,
+                    [
+                        incluirManual,
+                        maxOrden,
+                        dirNueva,
+                        entreNueva,
+                        coordsNuevas ? coordsNuevas.lat : null,
+                        coordsNuevas ? coordsNuevas.lng : null,
+                        pid,
+                        nid
+                    ]
+                );
+                if (updOne.rows[0]) actualizados.push(updOne.rows[0]);
+            }
+        }
+
+        // Recompactar orden_reparto = 1..N en los pedidos activos restantes de la Hoja de Ruta
+        const activosRes = await client.query(
+            `SELECT id, codigo_pedido, modalidad_entrega, hito_tracking_actual, estado_operativo,
+                    en_hoja_ruta, incluido_reparto_manual, orden_reparto, ausente_pasa_retirar,
+                    direccion_entrega, latitud, longitud
+             FROM public.nodos_pedidos_vecinos
+             WHERE nodo_id = $1::int
+               AND COALESCE(en_hoja_ruta, true) = true
+               AND UPPER(COALESCE(estado_operativo, '')) <> 'ANULADO'
+               AND COALESCE(ausente_pasa_retirar, false) = false
+               AND (
+                    (modalidad_entrega = 'ENVIO_BARRIAL' AND hito_tracking_actual IN (4, 5))
+                    OR (COALESCE(incluido_reparto_manual, false) = true AND hito_tracking_actual IN (3, 4, 5))
+               )
+             ORDER BY COALESCE(orden_reparto, 999999) ASC, id ASC
+             FOR UPDATE`,
+            [nid]
+        );
+
+        const ordenFinal = [];
+        for (let i = 0; i < activosRes.rows.length; i++) {
+            const r = activosRes.rows[i];
+            const nuevoOrden = i + 1;
+            if (Number(r.orden_reparto || 0) !== nuevoOrden) {
+                await client.query(
+                    `UPDATE public.nodos_pedidos_vecinos
+                     SET orden_reparto = $1::int,
+                         updated_at = NOW()
+                     WHERE id = $2::int`,
+                    [nuevoOrden, Number(r.id)]
+                );
+            }
+            ordenFinal.push({
+                ...r,
+                id: Number(r.id),
+                orden_reparto: nuevoOrden,
+                latitud: r.latitud != null ? Number(r.latitud) : null,
+                longitud: r.longitud != null ? Number(r.longitud) : null
+            });
+        }
+
+        await client.query('COMMIT');
+        return {
+            accion,
+            actualizados: actualizados.length,
+            pedidos_modificados: actualizados,
+            orden_reparto_actual: ordenFinal
+        };
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
 async function actualizarCoordenadasPedidoYVecinoGestor(nodoId, pedidoId, payload = {}) {
     await asegurarEsquemaNodosBarriales();
     await _obtenerNodoActivoParaGestor(nodoId);
@@ -12384,7 +12604,7 @@ async function actualizarCoordenadasPedidoYVecinoGestor(nodoId, pedidoId, payloa
                  WHERE nodo_id = $1::int
                    AND vecino_id = $2::int
                    AND id <> $3::int
-                   AND modalidad_entrega = 'ENVIO_BARRIAL'
+                   AND (modalidad_entrega = 'ENVIO_BARRIAL' OR COALESCE(incluido_reparto_manual, false) = true)
                    AND COALESCE(hito_tracking_actual, 1) < 6
                    AND UPPER(COALESCE(estado_operativo, '')) <> 'ANULADO'`,
                 [nid, Number(ped.vecino_id), pid]
@@ -12439,17 +12659,20 @@ async function iniciarModoRepartoGestor(nodoId, payload = {}) {
         `SELECT id, codigo_pedido, hito_tracking_actual, direccion_entrega, orden_reparto
          FROM public.nodos_pedidos_vecinos
          WHERE nodo_id = $1::int
-           AND modalidad_entrega = 'ENVIO_BARRIAL'
+           AND COALESCE(en_hoja_ruta, true) = true
            AND UPPER(COALESCE(estado_operativo, '')) <> 'ANULADO'
            AND COALESCE(ausente_pasa_retirar, false) = false
-           AND hito_tracking_actual IN (4, 5)
+           AND (
+                (modalidad_entrega = 'ENVIO_BARRIAL' AND hito_tracking_actual IN (4, 5))
+                OR (COALESCE(incluido_reparto_manual, false) = true AND hito_tracking_actual IN (3, 4, 5))
+           )
            AND ($2::int[] IS NULL OR id = ANY($2::int[]))
          ORDER BY COALESCE(orden_reparto, 999999) ASC, id ASC`,
         [nid, filtroIds.length > 0 ? filtroIds : null]
     );
 
     if (resPed.rows.length === 0) {
-        throw new Error('No hay envíos a domicilio recibidos listos para salir a repartir.');
+        throw new Error('No hay pedidos cargados en la Hoja de Ruta para salir a repartir.');
     }
 
     const mapPorId = new Map(resPed.rows.map(r => [Number(r.id), r]));
@@ -13600,6 +13823,7 @@ module.exports = {
     optimizarOrdenParadasReparto,
     sugerirOrdenRepartoGestor,
     guardarOrdenManualRepartoGestor,
+    actualizarSeleccionHojaRutaGestor,
     actualizarCoordenadasPedidoYVecinoGestor,
     iniciarModoRepartoGestor,
     actualizarRadarRepartoGestor,

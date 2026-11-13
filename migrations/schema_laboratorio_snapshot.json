@@ -13893,6 +13893,26 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "en_hoja_ruta": {
+        "ordinal_position": 53,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "true"
+      },
+      "incluido_reparto_manual": {
+        "ordinal_position": 54,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
       }
     },
     "nodos_propuestas_fracciones": {
