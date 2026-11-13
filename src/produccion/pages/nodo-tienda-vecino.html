@@ -18,6 +18,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Leaflet 1.9.4 + OSM (Pin opcional liviano de entrega para el Vecino) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <style>
     :root {
       --brand: #a2553b;
@@ -1564,16 +1567,173 @@
       renderContenidoModalCheckout();
     }
 
+    function destruirMapaCheckoutVecino() {
+      if (window._chkLeafletMap) {
+        try { window._chkLeafletMap.remove(); } catch (_) {}
+      }
+      window._chkLeafletMap = null;
+      window._chkLeafletMarker = null;
+    }
+
     function cerrarModalCheckout() {
+      destruirMapaCheckoutVecino();
       document.getElementById('checkout-modal').style.display = 'none';
     }
 
+    function _normalizarDirCheckPin(txt = '') {
+      return String(txt || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    }
+
+    function onEditarDireccionCheckoutVecino(val) {
+      window._savedVecinoDir = val;
+      if (window._savedVecinoLat != null && _normalizarDirCheckPin(val) !== _normalizarDirCheckPin(window._savedVecinoDirPinBase || '')) {
+        window._savedVecinoLat = null;
+        window._savedVecinoLng = null;
+        window._savedVecinoGpsOrigen = null;
+        window._savedVecinoDirPinBase = '';
+        actualizarEstadoGpsCheckoutUI();
+      }
+    }
+
+    function actualizarEstadoGpsCheckoutUI() {
+      const statusEl = document.getElementById('chk-gps-status-txt');
+      const quitBtn = document.getElementById('chk-btn-quitar-pin');
+      const tiene = Number.isFinite(Number(window._savedVecinoLat)) && Number.isFinite(Number(window._savedVecinoLng)) && Number(window._savedVecinoLat) !== 0;
+      if (statusEl) {
+        if (tiene) {
+          statusEl.style.color = '#15803d';
+          statusEl.textContent = `✅ Ubicación lista (${Number(window._savedVecinoLat).toFixed(5)}, ${Number(window._savedVecinoLng).toFixed(5)}) — podés mover el pin si hace falta.`;
+        } else {
+          statusEl.style.color = 'var(--muted)';
+          statusEl.textContent = 'Si no compartís GPS no hay problema: repartimos con tu calle y entrecalles.';
+        }
+      }
+      if (quitBtn) {
+        quitBtn.style.display = tiene ? 'inline-flex' : 'none';
+      }
+    }
+
+    function limpiarUbicacionCheckoutVecino() {
+      window._savedVecinoLat = null;
+      window._savedVecinoLng = null;
+      window._savedVecinoGpsOrigen = null;
+      window._savedVecinoDirPinBase = '';
+      actualizarEstadoGpsCheckoutUI();
+      if (window._chkLeafletMarker && window._chkLeafletMap) {
+        const cLat = Number(STATE.nodo?.zona_centro_lat) || -34.92145;
+        const cLng = Number(STATE.nodo?.zona_centro_lng) || -57.95453;
+        window._chkLeafletMarker.setLatLng([cLat, cLng]);
+        window._chkLeafletMap.setView([cLat, cLng], 14);
+      }
+    }
+
+    async function inicializarMapaCheckoutVecino() {
+      const canvas = document.getElementById('chk-leaflet-map');
+      if (!canvas) return;
+      if (!window.L) {
+        canvas.innerHTML = '<div style="padding:14px; font-size:0.8rem; color:#92400e; text-align:center;">No se pudo cargar el mapa ahora. Podés confirmar tu pedido normalmente con tu dirección escrita.</div>';
+        return;
+      }
+
+      destruirMapaCheckoutVecino();
+      const tieneSaved = Number.isFinite(Number(window._savedVecinoLat)) && Number.isFinite(Number(window._savedVecinoLng)) && Number(window._savedVecinoLat) !== 0;
+      const centerLat = tieneSaved ? Number(window._savedVecinoLat) : (Number(STATE.nodo?.zona_centro_lat) || -34.92145);
+      const centerLng = tieneSaved ? Number(window._savedVecinoLng) : (Number(STATE.nodo?.zona_centro_lng) || -57.95453);
+
+      const mapa = window.L.map(canvas, { zoomControl: true }).setView([centerLat, centerLng], tieneSaved ? 16 : 14);
+      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 19
+      }).addTo(mapa);
+
+      const marker = window.L.marker([centerLat, centerLng], { draggable: true }).addTo(mapa);
+      const fijarDesdeMapa = (lat, lng) => {
+        window._savedVecinoLat = Number(Number(lat).toFixed(7));
+        window._savedVecinoLng = Number(Number(lng).toFixed(7));
+        window._savedVecinoGpsOrigen = 'VECINO_PIN_MAPA';
+        window._savedVecinoDirPinBase = document.getElementById('chk-direccion')?.value || window._savedVecinoDir || '';
+        marker.setLatLng([window._savedVecinoLat, window._savedVecinoLng]);
+        actualizarEstadoGpsCheckoutUI();
+      };
+
+      marker.on('dragend', () => {
+        const pos = marker.getLatLng();
+        if (pos) fijarDesdeMapa(pos.lat, pos.lng);
+      });
+      mapa.on('click', (ev) => {
+        if (ev?.latlng) fijarDesdeMapa(ev.latlng.lat, ev.latlng.lng);
+      });
+
+      window._chkLeafletMap = mapa;
+      window._chkLeafletMarker = marker;
+      setTimeout(() => { try { mapa.invalidateSize(); } catch (_) {} }, 160);
+    }
+
+    function toggleMapaPinCheckoutVecino() {
+      STATE.mostrarMapaCheckoutVecino = !STATE.mostrarMapaCheckoutVecino;
+      const wrap = document.getElementById('chk-mapa-wrapper');
+      const btn = document.getElementById('chk-btn-toggle-mapa');
+      if (wrap) wrap.style.display = STATE.mostrarMapaCheckoutVecino ? 'block' : 'none';
+      if (btn) btn.textContent = STATE.mostrarMapaCheckoutVecino ? '🗺️ Ocultar mapa' : '🗺️ Marcar pin en mapa';
+      if (STATE.mostrarMapaCheckoutVecino) {
+        inicializarMapaCheckoutVecino();
+      }
+    }
+
+    function capturarUbicacionActualCheckoutVecino() {
+      const btn = document.getElementById('chk-btn-gps-actual');
+      const statusEl = document.getElementById('chk-gps-status-txt');
+      if (!navigator.geolocation) {
+        if (statusEl) {
+          statusEl.style.color = '#b45309';
+          statusEl.textContent = 'Tu dispositivo no permite GPS automático desde el navegador. Podés confirmar igual con tu dirección.';
+        }
+        return;
+      }
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '📡 Buscando GPS...';
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '📍 Usar mi ubicación actual';
+          }
+          window._savedVecinoLat = Number(pos.coords.latitude.toFixed(7));
+          window._savedVecinoLng = Number(pos.coords.longitude.toFixed(7));
+          window._savedVecinoGpsOrigen = 'VECINO_GPS';
+          window._savedVecinoDirPinBase = document.getElementById('chk-direccion')?.value || window._savedVecinoDir || '';
+          STATE.mostrarMapaCheckoutVecino = true;
+          const wrap = document.getElementById('chk-mapa-wrapper');
+          const toggleBtn = document.getElementById('chk-btn-toggle-mapa');
+          if (wrap) wrap.style.display = 'block';
+          if (toggleBtn) toggleBtn.textContent = '🗺️ Ocultar mapa';
+          actualizarEstadoGpsCheckoutUI();
+          inicializarMapaCheckoutVecino();
+        },
+        () => {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = '📍 Usar mi ubicación actual';
+          }
+          if (statusEl) {
+            statusEl.style.color = '#b45309';
+            statusEl.textContent = 'No pudimos obtener tu ubicación automática (es 100% opcional: podés confirmar igual con tu calle escrita).';
+          }
+        },
+        { enableHighAccuracy: true, timeout: 9000, maximumAge: 60000 }
+      );
+    }
+
     function renderContenidoModalCheckout() {
+      destruirMapaCheckoutVecino();
       asegurarModalidadEntregaValida();
       const capEntrega = obtenerCapacidadesEntregaTienda();
       const res = calcularResumenCarrito();
       const prox = STATE.proximaEntrega?.asignada;
       const box = document.getElementById('checkout-card-content');
+      const tienePinActual = Number.isFinite(Number(window._savedVecinoLat)) && Number.isFinite(Number(window._savedVecinoLng)) && Number(window._savedVecinoLat) !== 0;
 
       box.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:14px;">
@@ -1631,11 +1791,45 @@
           <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:10px;">
             <div class="form-group">
               <label>Dirección de entrega en el barrio *</label>
-              <input type="text" id="chk-direccion" placeholder="Calle y número (ej: Calle 473 bis N° 1120)" value="${esc(window._savedVecinoDir || '')}" oninput="window._savedVecinoDir=this.value">
+              <input type="text" id="chk-direccion" placeholder="Calle y número (ej: Calle 473 bis N° 1120)" value="${esc(window._savedVecinoDir || '')}" oninput="onEditarDireccionCheckoutVecino(this.value)">
             </div>
             <div class="form-group">
               <label>Entrecalles / Referencia</label>
               <input type="text" id="chk-entrecalles" placeholder="Ej: entre 14b y 15, portón verde" value="${esc(window._savedVecinoRef || '')}" oninput="window._savedVecinoRef=this.value">
+            </div>
+          </div>
+          <div style="margin:-2px 0 14px; padding:10px 12px; border-radius:12px; background:#fffdfb; border:1px dashed var(--brand-border);">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+              <div style="flex:1; min-width:210px;">
+                <div style="font-size:0.8rem; color:var(--text); font-weight:800;">
+                  📍 Opcional: si estás en casa, podés sumar tu ubicación
+                </div>
+                <div id="chk-gps-status-txt" style="font-size:0.75rem; color:${tienePinActual ? '#15803d' : 'var(--muted)'}; font-weight:700; margin-top:2px;">
+                  ${tienePinActual
+                    ? `✅ Ubicación lista (${Number(window._savedVecinoLat).toFixed(5)}, ${Number(window._savedVecinoLng).toFixed(5)}) — podés mover el pin si hace falta.`
+                    : 'Si no compartís GPS no hay problema: repartimos con tu calle y entrecalles.'}
+                </div>
+              </div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" id="chk-btn-gps-actual" onclick="capturarUbicacionActualCheckoutVecino()"
+                  style="padding:7px 11px; border-radius:9px; border:1px solid #16a34a; background:#f0fdf4; color:#15803d; font-family:inherit; font-weight:800; font-size:0.76rem; cursor:pointer;">
+                  📍 Usar mi ubicación actual
+                </button>
+                <button type="button" id="chk-btn-toggle-mapa" onclick="toggleMapaPinCheckoutVecino()"
+                  style="padding:7px 11px; border-radius:9px; border:1px solid var(--brand-border); background:#ffffff; color:var(--brand-dark); font-family:inherit; font-weight:800; font-size:0.76rem; cursor:pointer;">
+                  🗺️ ${STATE.mostrarMapaCheckoutVecino ? 'Ocultar mapa' : 'Marcar pin en mapa'}
+                </button>
+                <button type="button" id="chk-btn-quitar-pin" onclick="limpiarUbicacionCheckoutVecino()"
+                  style="display:${tienePinActual ? 'inline-flex' : 'none'}; padding:7px 10px; border-radius:9px; border:1px solid #fecaca; background:#fef2f2; color:#b91c1c; font-family:inherit; font-weight:800; font-size:0.75rem; cursor:pointer;">
+                  ✕ Quitar pin
+                </button>
+              </div>
+            </div>
+            <div id="chk-mapa-wrapper" style="display:${STATE.mostrarMapaCheckoutVecino ? 'block' : 'none'}; margin-top:10px;">
+              <div id="chk-leaflet-map" style="width:100%; height:200px; border-radius:10px; border:1px solid var(--border); background:#f3efe9;"></div>
+              <div style="font-size:0.72rem; color:var(--muted); font-weight:700; margin-top:5px;">
+                Tocá el mapa o arrastrá el marcador si querés ajustar la puerta exacta.
+              </div>
             </div>
           </div>
         ` : ''}
@@ -1696,12 +1890,20 @@
         return;
       }
 
+      const dirCoincidePin = Number.isFinite(Number(window._savedVecinoLat)) &&
+        Number.isFinite(Number(window._savedVecinoLng)) &&
+        Number(window._savedVecinoLat) !== 0 &&
+        (!window._savedVecinoDirPinBase || _normalizarDirCheckPin(direccion) === _normalizarDirCheckPin(window._savedVecinoDirPinBase));
+
       const payload = {
         vecino_nombre: nombre,
         vecino_telefono: telefono,
         modalidad_entrega: STATE.modalidadEntrega,
         direccion_entrega: direccion,
         entrecalles_referencia: entrecalles,
+        latitud: (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && dirCoincidePin) ? Number(window._savedVecinoLat) : null,
+        longitud: (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && dirCoincidePin) ? Number(window._savedVecinoLng) : null,
+        gps_origen: (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && dirCoincidePin) ? (window._savedVecinoGpsOrigen || 'VECINO_GPS') : null,
         medio_pago: STATE.medioPago,
         fecha_hora_simulada: calcularFechaSimuladaCorte(),
         items: res.detalle.map(d => ({
@@ -2780,10 +2982,24 @@
       const linkCompartir = tieneTok
         ? `${window.location.origin}/tienda/${encodeURIComponent(nodo.slug || STATE.slug)}?seguimiento=${encodeURIComponent(ped.tracking_token)}`
         : '';
-      const telGestorDigits = String(nodo.gestor_telefono || '').replace(/\D+/g, '');
-      const waGestorHref = telGestorDigits
-        ? `https://wa.me/${telGestorDigits.startsWith('54') ? telGestorDigits : '549' + telGestorDigits}?text=${encodeURIComponent(`Hola ${nodo.gestor_nombre || ''}! Te consulto por mi pedido #${ped.codigo_pedido} en ${nodo.nombre_marca}.`)}`
+      const esModoLabTracking = Boolean(data.modo_laboratorio);
+      const telPruebasTracking = String(data.telefono_whatsapp_pruebas || '5492216615746').replace(/\D+/g, '') || '5492216615746';
+      const armarHrefWaGestor = (textoBase) => {
+        const telGestorDigits = String(nodo.gestor_telefono || '').replace(/\D+/g, '');
+        if (!telGestorDigits && !esModoLabTracking) return '';
+        if (esModoLabTracking) {
+          const msgLab = `[PRUEBA LAB · Aviso a Gestor: ${nodo.gestor_nombre || 'Gestor'} (${nodo.gestor_telefono || '-'})]\n\n${textoBase}`;
+          return `https://wa.me/${telPruebasTracking}?text=${encodeURIComponent(msgLab)}`;
+        }
+        const telWa = telGestorDigits.startsWith('54') ? telGestorDigits : `549${telGestorDigits}`;
+        return `https://wa.me/${telWa}?text=${encodeURIComponent(textoBase)}`;
+      };
+      const waGestorHref = armarHrefWaGestor(`Hola ${nodo.gestor_nombre || ''}! Te consulto por mi pedido #${ped.codigo_pedido} en ${nodo.nombre_marca}.`);
+      const waAusenteTempranoHref = (ped.modalidad_entrega === 'ENVIO_BARRIAL' && !seg.anulado && !esEntregado && !ped.ausente_pasa_retirar && !seg.ausente_pasa_retirar)
+        ? armarHrefWaGestor(`Hola ${nodo.gestor_nombre || ''}! Sobre mi pedido #${ped.codigo_pedido} (${nodo.nombre_marca}): hoy no voy a estar en casa a la hora del reparto. ¿Podemos coordinar otro horario o paso a retirarlo por el Nodo?`)
         : '';
+      const radar = data.radar_en_vivo || null;
+      const esAusenteRetirar = Boolean(ped.ausente_pasa_retirar || seg.ausente_pasa_retirar) && !seg.anulado && !esEntregado;
 
       const accionRefrescar = tieneTok
         ? `abrirSeguimientoPorToken('${esc(ped.tracking_token)}', true)`
@@ -2822,21 +3038,21 @@
         </div>
 
         <!-- Tarjeta Hero de Estado Actual (Estilo Mercado Libre) -->
-        <div class="trk-hero-box ${esEntregado ? 'completed' : ''}" style="${seg.anulado ? 'background:#fef2f2; border-color:#fecaca;' : ''}">
+        <div class="trk-hero-box ${esEntregado ? 'completed' : ''}" style="${seg.anulado ? 'background:#fef2f2; border-color:#fecaca;' : (esAusenteRetirar ? 'background:#fffbeb; border-color:#fcd34d;' : '')}">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
-            <span style="font-size:0.73rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; padding:3px 10px; border-radius:999px; background:${seg.anulado ? '#fee2e2' : (esEntregado ? '#dcfce7' : 'var(--brand-light)')}; color:${seg.anulado ? '#b91c1c' : (esEntregado ? '#15803d' : 'var(--brand-dark)')};">
-              ${seg.anulado ? 'Pedido Anulado' : `Paso ${Number(seg.paso_actual_orden || 1)} de ${Number(seg.total_pasos || 5)}`}
+            <span style="font-size:0.73rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; padding:3px 10px; border-radius:999px; background:${seg.anulado ? '#fee2e2' : (esAusenteRetirar ? '#fef3c7' : (esEntregado ? '#dcfce7' : 'var(--brand-light)'))}; color:${seg.anulado ? '#b91c1c' : (esAusenteRetirar ? '#b45309' : (esEntregado ? '#15803d' : 'var(--brand-dark)'))};">
+              ${seg.anulado ? 'Pedido Anulado' : (esAusenteRetirar ? 'Disponible para retirar en el Nodo' : `Paso ${Number(seg.paso_actual_orden || 1)} de ${Number(seg.total_pasos || 5)}`)}
             </span>
-            ${!seg.anulado && !esEntregado ? `
+            ${!seg.anulado && !esEntregado && !esAusenteRetirar ? `
               <span style="font-size:0.73rem; font-weight:800; color:#15803d;">
                 <span class="trk-live-dot"></span>En vivo
               </span>
             ` : ''}
           </div>
           <div style="display:flex; align-items:flex-start; gap:12px;">
-            <div style="font-size:2rem; line-height:1.1;">${seg.anulado ? '🚫' : esc(pasoActualObj.icono || '📦')}</div>
+            <div style="font-size:2rem; line-height:1.1;">${seg.anulado ? '🚫' : (esAusenteRetirar ? '🏡' : esc(pasoActualObj.icono || '📦'))}</div>
             <div style="flex:1;">
-              <div style="font-size:1.16rem; font-weight:900; color:${seg.anulado ? '#991b1b' : (esEntregado ? '#15803d' : 'var(--text)')}; line-height:1.22;">
+              <div style="font-size:1.16rem; font-weight:900; color:${seg.anulado ? '#991b1b' : (esAusenteRetirar ? '#92400e' : (esEntregado ? '#15803d' : 'var(--text)'))}; line-height:1.22;">
                 ${esc(seg.titulo_estado_actual)}
               </div>
               <div style="font-size:0.84rem; color:var(--muted); font-weight:700; margin-top:4px; line-height:1.38;">
@@ -2850,6 +3066,25 @@
             </div>
           ` : ''}
         </div>
+
+        ${(radar && radar.disponible && !seg.anulado && !esEntregado && !esAusenteRetirar) ? `
+          <div style="background:${radar.es_proxima_parada ? '#ecfdf5' : '#eff6ff'}; border:2px solid ${radar.es_proxima_parada ? '#10b981' : '#38bdf8'}; border-radius:14px; padding:12px 14px; margin-bottom:14px; display:flex; align-items:center; gap:11px;">
+            <div style="font-size:1.6rem; line-height:1;">${radar.es_proxima_parada ? '🔔' : '🚚'}</div>
+            <div style="flex:1;">
+              <div style="font-size:0.75rem; font-weight:900; text-transform:uppercase; color:${radar.es_proxima_parada ? '#047857' : '#0369a1'};">
+                Radar de proximidad en vivo
+              </div>
+              <div style="font-size:0.96rem; font-weight:900; color:#0f172a; margin-top:1px;">
+                ${esc(radar.rango_minutos_label || 'Reparto en curso hacia tu zona')}
+              </div>
+              <div style="font-size:0.74rem; color:#475569; font-weight:700; margin-top:2px;">
+                ${radar.es_proxima_parada
+                  ? `${esc(nodo.gestor_nombre || 'El repartidor')} ya está llegando hacia tu domicilio.`
+                  : 'Se actualiza automáticamente sin mostrar ubicaciones exactas por privacidad.'}
+              </div>
+            </div>
+          </div>
+        ` : ''}
 
         <!-- Línea de Tiempo Vertical Paso a Paso -->
         ${!seg.anulado ? `
@@ -2945,6 +3180,12 @@
 
         <!-- Acciones inferiores del vecino -->
         <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:space-between;">
+          ${waAusenteTempranoHref ? `
+            <a href="${esc(waAusenteTempranoHref)}" target="_blank" rel="noopener"
+              style="width:100%; padding:11px 12px; border-radius:10px; border:1px solid #f59e0b; background:#fffbeb; color:#92400e; font-weight:900; font-size:0.84rem; text-decoration:none; text-align:center;">
+              ⚠️ Hoy no estoy en casa / Coordinar entrega
+            </a>
+          ` : ''}
           ${tieneTok ? `
             <button type="button" onclick="navigator.clipboard.writeText('${esc(linkCompartir)}'); this.textContent='✅ ¡Enlace copiado!';"
               style="flex:1; min-width:150px; padding:10px 12px; border-radius:10px; border:1px solid var(--brand-border); background:#ffffff; color:var(--brand-dark); font-family:inherit; font-weight:800; font-size:0.82rem; cursor:pointer;">

@@ -18,6 +18,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+  <!-- Leaflet 1.9.4 + OSM (Hoja de Ruta y Pin de Casa del Vecino) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <style>
     :root {
       --brand: #a2553b;
@@ -485,6 +488,78 @@
       align-items: end;
     }
 
+    /* Hoja de Ruta y Conducción Nocturna (Etapas B4 + B5) */
+    .cta-reparto-hero {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 18px;
+      margin-bottom: 16px;
+      border-radius: 18px;
+      border: 2px solid rgba(31, 111, 74, 0.35);
+      background: linear-gradient(135deg, #0f172a, #1e293b);
+      color: #f8fafc;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+      transition: transform 0.1s ease;
+    }
+
+    .cta-reparto-hero:active {
+      transform: scale(0.99);
+    }
+
+    .reparto-stop-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 15px;
+      margin-bottom: 12px;
+      box-shadow: 0 3px 10px rgba(62, 37, 25, 0.05);
+    }
+
+    .reparto-stop-card.same-door {
+      border-left: 5px solid #2563eb;
+      background: #f8fbff;
+    }
+
+    .nocturno-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 3600;
+      background: #0b1120;
+      color: #f8fafc;
+      overflow-y: auto;
+      padding: 14px 14px 28px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .nocturno-btn {
+      width: 100%;
+      min-height: 62px;
+      border-radius: 16px;
+      font-family: inherit;
+      font-size: 1.12rem;
+      font-weight: 900;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      padding: 12px 16px;
+      box-sizing: border-box;
+      text-align: center;
+    }
+
+    .nocturno-btn:active {
+      transform: scale(0.985);
+    }
+
     @media (max-width: 640px) {
       .top-inner {
         flex-direction: column;
@@ -543,21 +618,33 @@
   <div id="gestor-aviso-flotante" style="display:none; position:fixed; top:14px; left:14px; right:14px; max-width:520px; margin:0 auto; z-index:2500; padding:12px 14px; border-radius:12px; box-shadow:0 12px 28px rgba(62,37,25,0.18); font-size:0.84rem; font-weight:700; line-height:1.4;"></div>
 
   <!-- MODAL DE WHATSAPP / DIFUSIÓN / RECIBO DIGITAL MARCA BLANCA -->
-  <div id="modal-recibo-gestor" onclick="if(event.target===this) cerrarModalReciboGestor()" style="display:none; position:fixed; inset:0; background:rgba(62,37,25,0.52); z-index:2000; align-items:center; justify-content:center; padding:16px;">
+  <div id="modal-recibo-gestor" onclick="if(event.target===this) cerrarModalReciboGestor()" style="display:none; position:fixed; inset:0; background:rgba(62,37,25,0.52); z-index:4200; align-items:center; justify-content:center; padding:16px;">
     <div style="background:#ffffff; border-radius:18px; max-width:490px; width:100%; max-height:92vh; overflow-y:auto; box-shadow:0 20px 45px rgba(62,37,25,0.22); border:1px solid var(--border);">
       <div id="modal-recibo-gestor-body"></div>
     </div>
   </div>
 
+  <!-- MODAL PARA FIJAR O CORREGIR PIN DE CASA DEL VECINO (LEAFLET + GEOREF) -->
+  <div id="modal-pin-reparto-gestor" onclick="if(event.target===this) cerrarModalPinCasaGestor()" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.68); z-index:4000; align-items:center; justify-content:center; padding:12px;">
+    <div style="background:#ffffff; border-radius:18px; max-width:540px; width:100%; max-height:94vh; overflow-y:auto; box-shadow:0 24px 48px rgba(15,23,42,0.34); border:1px solid var(--border);">
+      <div id="modal-pin-reparto-gestor-body"></div>
+    </div>
+  </div>
+
+  <!-- VISTA OVERLAY FULLSCREEN DE CONDUCCIÓN NOCTURNA (ALTO CONTRASTE #0b1120) -->
+  <div id="gestor-nocturno-overlay" class="nocturno-overlay"></div>
+
   <script>
     const GSTATE = {
       slug: '',
-      vista: 'inicio', // 'inicio' | 'ofertas' | 'propuestas' | 'logistica' | 'pedidos' | 'ctacte' | 'liquidacion' | 'compradores'
+      vista: 'inicio', // 'inicio' | 'reparto' | 'ofertas' | 'propuestas' | 'logistica' | 'pedidos' | 'ctacte' | 'liquidacion' | 'compradores'
       filtroPagoPedidos: 'TODOS',
       filtroOperativoPedidos: 'TODOS',
       filtroCompradores: 'TODOS',
       busquedaCompradores: '',
       nodo: null,
+      modoLaboratorio: false,
+      telefonoPruebas: '5492216615746',
       proximaEntrega: null,
       ofertas: [],
       catalogoBaseDisponible: [],
@@ -579,7 +666,13 @@
       propUnidadPesoManual: 'g',
       propNombreEditadoManual: false,
       propConfirmacionReciente: '',
-      liquidacionTablero: null
+      liquidacionTablero: null,
+      repartoOrdenManual: [],
+      repartoIndice: 0,
+      repartoDistanciaMetros: 0,
+      repartoPinPedidoId: null,
+      nocturnoAbierto: false,
+      radarActivo: false
     };
 
     function fmt(n) {
@@ -781,6 +874,8 @@
 
       GSTATE.nodo = data.nodo;
       GSTATE.slug = data.nodo.slug;
+      GSTATE.modoLaboratorio = Boolean(data.modo_laboratorio);
+      GSTATE.telefonoPruebas = String(data.telefono_whatsapp_pruebas || '5492216615746');
       GSTATE.proximaEntrega = data.proxima_entrega;
       GSTATE.ofertas = data.todas_ofertas_gestor || [];
       GSTATE.catalogoBaseDisponible = Array.isArray(data.catalogo_base_disponible) ? data.catalogo_base_disponible : [];
@@ -877,7 +972,7 @@
 
     window.addEventListener('popstate', () => {
       const hash = (window.location.hash || '').replace(/^#/, '');
-      if (['ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(hash)) {
+      if (['reparto', 'ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(hash)) {
         GSTATE.vista = hash;
       } else {
         GSTATE.vista = 'inicio';
@@ -901,7 +996,9 @@
       const box = document.getElementById('gestor-main-view');
       if (!box || !GSTATE.nodo) return;
 
-      if (GSTATE.vista === 'ofertas') {
+      if (GSTATE.vista === 'reparto') {
+        box.innerHTML = envolverSeccionInterna('🚗 Modo Reparto / Hoja de Ruta', renderSeccionReparto());
+      } else if (GSTATE.vista === 'ofertas') {
         box.innerHTML = envolverSeccionInterna('1. Mi Oferta y Márgenes', renderSeccionOfertas());
       } else if (GSTATE.vista === 'propuestas') {
         box.innerHTML = envolverSeccionInterna('2. Pedir Nueva Fracción', renderSeccionPropuestas());
@@ -917,6 +1014,9 @@
         box.innerHTML = envolverSeccionInterna('7. Compradores registrados', renderSeccionCompradores());
       } else {
         box.innerHTML = renderTableroPrincipal();
+      }
+      if (GSTATE.nocturnoAbierto) {
+        renderOverlayConduccionNocturna();
       }
     }
 
@@ -1013,6 +1113,19 @@
         }
       ];
 
+      const enviosListosReparto = pedidosActivos.filter(p =>
+        String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' &&
+        !p.ausente_pasa_retirar &&
+        [4, 5].includes(Number(p.hito_tracking_actual || 1))
+      );
+      const enviosEnHito3 = pedidosActivos.filter(p =>
+        String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' &&
+        !p.ausente_pasa_retirar &&
+        Number(p.hito_tracking_actual || 1) === 3 &&
+        p.lote_canasto_id
+      );
+      const enviosEnCamino = enviosListosReparto.filter(p => Number(p.hito_tracking_actual || 1) === 5).length;
+
       return `
         <div class="board-intro">
           Hola ${esc((GSTATE.nodo.gestor_nombre || '').split(' ')[0] || 'Gestor')}, elegí qué sección querés gestionar:
@@ -1025,6 +1138,22 @@
           </div>
           <div class="cta-difusion-arrow">›</div>
         </button>
+        ${puedeReparto ? `
+          <button type="button" class="cta-reparto-hero" onclick="abrirSeccionGestor('reparto')">
+            <div class="cta-difusion-icon" style="background:rgba(16,185,129,0.22); color:#34d399;">🚗</div>
+            <div class="cta-difusion-body">
+              <div class="cta-difusion-title" style="color:#ffffff;">Modo Reparto / Hoja de Ruta</div>
+              <div class="cta-difusion-sub" style="color:#cbd5e1;">
+                ${enviosListosReparto.length > 0
+                  ? `${enviosListosReparto.length} entrega${enviosListosReparto.length === 1 ? '' : 's'} en ruta${enviosEnCamino > 0 ? ` (${enviosEnCamino} en camino)` : ' listas para salir'} · GPS y Conducción Nocturna`
+                  : (enviosEnHito3.length > 0
+                      ? `📥 ${enviosEnHito3.length} envío${enviosEnHito3.length === 1 ? '' : 's'} listo${enviosEnHito3.length === 1 ? '' : 's'} para recibir lote y armar ruta`
+                      : 'Ordená paradas, verificá ubicaciones y activá Conducción Nocturna')}
+              </div>
+            </div>
+            <div class="cta-difusion-arrow" style="color:#34d399;">›</div>
+          </button>
+        ` : ''}
         <div class="blocks-list">
           ${bloques.map(b => `
             <button type="button" class="block-btn" onclick="abrirSeccionGestor('${b.id}')">
@@ -2868,6 +2997,10 @@
       const hito = Number(p.hito_tracking_actual || 1);
       const marca = GSTATE.nodo?.nombre_marca || 'el Nodo';
 
+      if (Boolean(p.ausente_pasa_retirar) && hito < 6) {
+        return { texto: `🏡 No estaba · Pasa a retirar por ${marca}`, bg: '#fef3c7', fg: '#92400e', bd: '#fcd34d' };
+      }
+
       if (hito <= 1) {
         return { texto: `📝 Confirmado (1/${totalPasos})`, bg: '#f1f5f9', fg: '#334155', bd: '#cbd5e1' };
       }
@@ -3191,9 +3324,9 @@
       modal.style.display = 'flex';
     }
 
-    async function avanzarEstadoEntregaGestor(pedidoId, accion, registrarCobroEfectivo = false) {
+    async function avanzarEstadoEntregaGestor(pedidoId, accion, registrarCobroEfectivo = false, opciones = {}) {
       const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
-      if (!p || !GSTATE.nodo?.id) return;
+      if (!p || !GSTATE.nodo?.id) return false;
 
       try {
         const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/pedidos/${pedidoId}/estado-entrega`, {
@@ -3202,29 +3335,55 @@
           body: JSON.stringify({
             accion,
             registrar_cobro_efectivo: Boolean(registrarCobroEfectivo),
+            motivo: opciones.motivo || '',
+            salir_a_reparto: Boolean(opciones.salirAReparto),
             actor: GSTATE.nodo.gestor_nombre || 'Gestor del Nodo'
           })
         });
         const data = await leerRespuestaJsonSegura(resp);
         if (!resp.ok || !data.ok) {
           mostrarAvisoPantallaGestor('No se pudo actualizar el estado del pedido: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
-          return;
+          return false;
         }
 
         const msgExito = accion === 'SALIO_REPARTO'
           ? `🛵 Pedido #${p.codigo_pedido} marcado "En camino a domicilio". El vecino ya lo ve en vivo.`
-          : (data.cobro_efectivo_registrado
-              ? `✅ Pedido #${p.codigo_pedido} entregado y cobrado en efectivo (${fmt(p.total_vecino)}).`
-              : `✅ Pedido #${p.codigo_pedido} marcado como entregado a ${p.vecino_nombre}.`);
+          : accion === 'AUSENTE_PASA_RETIRAR'
+            ? `🏡 Pedido #${p.codigo_pedido} pasado a "Ausente — Pasa a retirar por el Nodo" (se conserva envío).`
+            : accion === 'REINTEGRAR_REPARTO'
+              ? `🔄 Pedido #${p.codigo_pedido} reintegrado a la Hoja de Ruta.`
+              : (data.cobro_efectivo_registrado
+                  ? `✅ Pedido #${p.codigo_pedido} entregado y cobrado en efectivo (${fmt(p.total_vecino)}).`
+                  : `✅ Pedido #${p.codigo_pedido} marcado como entregado a ${p.vecino_nombre}.`);
         mostrarAvisoPantallaGestor(msgExito, 'ok');
 
         await cargarPanelGestor();
 
-        if (data.cobro_efectivo_registrado) {
+        if (GSTATE.nocturnoAbierto) {
+          const restantes = obtenerParadasRepartoActivasGestor();
+          if (restantes.length === 0) {
+            await apagarRadarVivoGestor(false);
+            cerrarModoNocturno(true);
+            mostrarAvisoPantallaGestor('🏁 ¡Completaste todas las entregas de tu Hoja de Ruta!', 'ok');
+          } else {
+            if (GSTATE.repartoIndice >= restantes.length) {
+              GSTATE.repartoIndice = 0;
+            }
+            renderOverlayConduccionNocturna();
+            if (GSTATE.radarActivo) {
+              enviarPingRadarVivoGestor(restantes[GSTATE.repartoIndice]?.id);
+            }
+          }
+          return true;
+        }
+
+        if (data.cobro_efectivo_registrado && !opciones.omitirRecibo) {
           abrirModalReciboVecinoGestor(pedidoId);
         }
+        return true;
       } catch (_) {
         mostrarAvisoPantallaGestor('Error de comunicación al actualizar el estado de entrega.', 'error');
+        return false;
       }
     }
 
@@ -3777,10 +3936,922 @@
       `;
     }
 
+    // =========================================================================
+    // ETAPAS B4 + B5: HOJA DE RUTA, PIN DE CASA, AUSENTES Y CONDUCCIÓN NOCTURNA
+    // =========================================================================
+    let _nocturnoWakeLock = null;
+    let _radarWatchId = null;
+    let _radarHeartbeatTimer = null;
+    let _radarUltPos = null;
+    let _radarUltimoEnvioMs = 0;
+    let _pinCasaLeafletMap = null;
+    let _pinCasaLeafletMarker = null;
+    let _pinCasaCoordsDraft = null;
+
+    function _normalizarDirPuertaGestor(txt = '') {
+      return String(txt || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function _resolverCoordsEfectivasPedidoGestor(p) {
+      const pLat = Number(p?.latitud);
+      const pLng = Number(p?.longitud);
+      if (Number.isFinite(pLat) && Number.isFinite(pLng) && pLat !== 0 && pLng !== 0) {
+        return { lat: pLat, lng: pLng, origen: p.gps_origen || 'PEDIDO' };
+      }
+      return null;
+    }
+
+    function _clavePuertaParadaGestor(p) {
+      const coords = _resolverCoordsEfectivasPedidoGestor(p);
+      if (coords) {
+        return `${coords.lat.toFixed(4)},${coords.lng.toFixed(4)}`;
+      }
+      const norm = _normalizarDirPuertaGestor(p?.direccion_entrega || '');
+      return norm || `ped-${p.id}`;
+    }
+
+    function obtenerParadasRepartoActivasGestor() {
+      const lista = (GSTATE.pedidos || []).filter(p =>
+        String(p.estado_operativo || '').toUpperCase() !== 'ANULADO' &&
+        String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' &&
+        !Boolean(p.ausente_pasa_retirar) &&
+        [4, 5].includes(Number(p.hito_tracking_actual || 1))
+      );
+      lista.sort((a, b) => {
+        const oa = a.orden_reparto != null ? Number(a.orden_reparto) : 999999;
+        const ob = b.orden_reparto != null ? Number(b.orden_reparto) : 999999;
+        if (oa !== ob) return oa - ob;
+        return Number(a.id) - Number(b.id);
+      });
+      return lista;
+    }
+
+    function obtenerPedidosAusentesGestor() {
+      return (GSTATE.pedidos || []).filter(p =>
+        String(p.estado_operativo || '').toUpperCase() !== 'ANULADO' &&
+        String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' &&
+        Boolean(p.ausente_pasa_retirar) &&
+        Number(p.hito_tracking_actual || 1) < 6
+      );
+    }
+
+    function renderSeccionReparto() {
+      const paradas = obtenerParadasRepartoActivasGestor();
+      const ausentes = obtenerPedidosAusentesGestor();
+      const hito3Envios = (GSTATE.pedidos || []).filter(p =>
+        String(p.estado_operativo || '').toUpperCase() !== 'ANULADO' &&
+        String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' &&
+        Number(p.hito_tracking_actual || 1) === 3 &&
+        p.lote_canasto_id
+      );
+
+      // Lotes únicos en Hito 3 para atajo directo de recepción
+      const lotesHito3 = [];
+      const vistoLote = new Set();
+      for (const p of hito3Envios) {
+        const lid = Number(p.lote_canasto_id);
+        if (!vistoLote.has(lid)) {
+          vistoLote.add(lid);
+          lotesHito3.push({
+            id: lid,
+            codigo: p.lote_codigo_canasto || `CAN-${lid}`,
+            cantidad: hito3Envios.filter(x => Number(x.lote_canasto_id) === lid).length
+          });
+        }
+      }
+
+      // Conteo por puerta física para detectar múltiples pedidos en la misma dirección
+      const conteoPorPuerta = new Map();
+      const numeroPuertaPorClave = new Map();
+      let seqPuerta = 0;
+      for (const p of paradas) {
+        const clv = _clavePuertaParadaGestor(p);
+        conteoPorPuerta.set(clv, (conteoPorPuerta.get(clv) || 0) + 1);
+        if (!numeroPuertaPorClave.has(clv)) {
+          seqPuerta += 1;
+          numeroPuertaPorClave.set(clv, seqPuerta);
+        }
+      }
+
+      const sinGpsCount = paradas.filter(p => !_resolverCoordsEfectivasPedidoGestor(p)).length;
+      const totalACobrarEfectivo = paradas
+        .filter(p => !p.pago_confirmado)
+        .reduce((acc, p) => acc + Number(p.total_vecino || 0), 0);
+
+      return `
+        ${lotesHito3.map(l => `
+          <div class="card" style="background:#eff6ff; border:2px solid #93c5fd;">
+            <div style="font-size:0.86rem; font-weight:900; color:#1e3a8a; text-transform:uppercase;">
+              📥 Tenés ${l.cantidad} envío${l.cantidad === 1 ? '' : 's'} embolsado${l.cantidad === 1 ? '' : 's'} esperando recepción
+            </div>
+            <div style="font-size:0.96rem; color:#1e40af; margin:4px 0 12px 0; font-weight:700;">
+              Lote <strong>${esc(l.codigo)}</strong>: confirmá que ya lo tenés en tu poder para cargarlo a la Hoja de Ruta.
+            </div>
+            <button type="button" id="btn-recibir-lote-${l.id}" onclick="confirmarRecepcionLoteGestor(${l.id})"
+              style="width:100%; min-height:52px; border-radius:14px; border:none; background:#1d4ed8; color:#ffffff; font-family:inherit; font-weight:900; font-size:1rem; cursor:pointer;">
+              📥 Confirmar recepción del lote ${esc(l.codigo)}
+            </button>
+          </div>
+        `).join('')}
+
+        <div class="card" style="background:linear-gradient(135deg, #0f172a, #1e293b); color:#f8fafc; border-color:#334155;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:0.84rem; font-weight:800; color:#38bdf8; text-transform:uppercase;">
+                Tanda Activa de Reparto Barrial
+              </div>
+              <div style="font-size:1.35rem; font-weight:900; margin-top:2px;">
+                ${paradas.length} parada${paradas.length === 1 ? '' : 's'} · ${seqPuerta} puerta${seqPuerta === 1 ? '' : 's'}
+              </div>
+              <div style="font-size:0.9rem; color:#cbd5e1; margin-top:3px; font-weight:700;">
+                ${sinGpsCount > 0 ? `⚠️ ${sinGpsCount} sin pin GPS en el mapa` : '✅ Todas las casas ubicadas en el mapa'}
+                ${totalACobrarEfectivo > 0 ? ` · 💵 A cobrar: ${fmt(totalACobrarEfectivo)}` : ' · 🟢 Todo abonado'}
+                ${GSTATE.repartoDistanciaMetros > 0 ? ` · 📏 ~${(GSTATE.repartoDistanciaMetros / 1000).toFixed(1)} km` : ''}
+              </div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr; gap:10px; margin-top:14px;">
+            <button type="button" onclick="sugerirOrdenOptimoRepartoGestor()" ${paradas.length === 0 ? 'disabled' : ''}
+              style="min-height:52px; border-radius:14px; border:1px solid #38bdf8; background:rgba(56,189,248,0.16); color:#bae6fd; font-family:inherit; font-weight:900; font-size:1rem; cursor:pointer;">
+              🧭 Sugerir Orden Óptimo (Ruta más corta)
+            </button>
+            <button type="button" onclick="iniciarYEntrarModoNocturnoGestor()" ${paradas.length === 0 ? 'disabled' : ''}
+              style="min-height:58px; border-radius:14px; border:none; background:linear-gradient(135deg, #16a34a, #15803d); color:#ffffff; font-family:inherit; font-weight:900; font-size:1.12rem; cursor:pointer; box-shadow:0 8px 20px rgba(22,163,74,0.35);">
+              🌙 Salir a Repartir (Conducción Nocturna)
+            </button>
+          </div>
+        </div>
+
+        ${paradas.length === 0 ? `
+          <div class="card" style="text-align:center; padding:26px 16px;">
+            <div style="font-size:1.15rem; font-weight:900;">Sin envíos pendientes en Hoja de Ruta</div>
+            <p style="color:var(--muted); margin:6px 0 0 0;">
+              Cuando recibas pedidos con Envío Barrial en el Nodo aparecerán acá listos para ordenar y salir a repartir.
+            </p>
+          </div>
+        ` : paradas.map((p, idx) => {
+          const coords = _resolverCoordsEfectivasPedidoGestor(p);
+          const clv = _clavePuertaParadaGestor(p);
+          const cantPuerta = conteoPorPuerta.get(clv) || 1;
+          const puertaNro = numeroPuertaPorClave.get(clv) || (idx + 1);
+          const enCamino = Number(p.hito_tracking_actual || 1) === 5;
+          return `
+            <div class="reparto-stop-card ${cantPuerta > 1 ? 'same-door' : ''}">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span style="display:inline-flex; align-items:center; justify-content:center; min-width:34px; height:34px; padding:0 8px; border-radius:10px; background:#0f172a; color:#ffffff; font-weight:900; font-size:1rem;">
+                    #${idx + 1}
+                  </span>
+                  <span style="font-size:1.12rem; font-weight:900; color:var(--text);">
+                    ${esc(p.vecino_nombre)}
+                  </span>
+                  <span style="font-size:0.86rem; font-weight:800; color:var(--muted);">#${esc(p.codigo_pedido)}</span>
+                </div>
+                <span style="padding:5px 10px; border-radius:999px; font-size:0.84rem; font-weight:900; background:${p.pago_confirmado ? '#dcfce7' : '#fef3c7'}; color:${p.pago_confirmado ? '#15803d' : '#92400e'};">
+                  ${p.pago_confirmado ? '🟢 PAGADO' : `🟠 COBRAR ${fmt(p.total_vecino)}`}
+                </span>
+              </div>
+
+              ${cantPuerta > 1 ? `
+                <div style="display:inline-block; padding:4px 10px; border-radius:8px; background:#dbeafe; color:#1e40af; font-size:0.84rem; font-weight:900; margin-bottom:7px;">
+                  🏠 Parada física #${puertaNro}: ${cantPuerta} pedidos en esta misma puerta
+                </div>
+              ` : ''}
+
+              <div style="font-size:1.06rem; font-weight:800; color:var(--text); line-height:1.35;">
+                📍 ${esc(p.direccion_entrega || 'Sin dirección especificada')}
+              </div>
+              ${p.entrecalles_referencia ? `
+                <div style="font-size:0.92rem; color:var(--muted); font-weight:700; margin-top:2px;">
+                  Referencia: ${esc(p.entrecalles_referencia)}
+                </div>
+              ` : ''}
+
+              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+                <span style="padding:4px 10px; border-radius:999px; font-size:0.82rem; font-weight:800; background:${coords ? '#ecfdf5' : '#fef3c7'}; color:${coords ? '#047857' : '#92400e'}; border:1px solid ${coords ? '#a7f3d0' : '#fcd34d'};">
+                  ${coords ? `📌 Con pin GPS (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})` : '⚠️ Sin pin GPS aún'}
+                </span>
+                ${enCamino ? `
+                  <span style="padding:4px 10px; border-radius:999px; font-size:0.82rem; font-weight:900; background:#ede9fe; color:#5b21b6;">
+                    🛵 En camino en vivo
+                  </span>
+                ` : ''}
+              </div>
+
+              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+                <button type="button" class="btn-soft" onclick="moverParadaRepartoGestor(${p.id}, -1)" ${idx === 0 ? 'disabled' : ''}
+                  style="min-height:48px; min-width:56px; font-size:1.05rem;">
+                  ⬆️
+                </button>
+                <button type="button" class="btn-soft" onclick="moverParadaRepartoGestor(${p.id}, 1)" ${idx === paradas.length - 1 ? 'disabled' : ''}
+                  style="min-height:48px; min-width:56px; font-size:1.05rem;">
+                  ⬇️
+                </button>
+                <button type="button" class="btn-soft" onclick="abrirModalPinCasaGestor(${p.id})"
+                  style="flex:1; min-height:48px; font-size:0.94rem; border-color:#38bdf8; background:#f0f9ff; color:#0369a1;">
+                  📌 ${coords ? 'Corregir pin de casa' : 'Fijar pin de esta casa'}
+                </button>
+                <button type="button" class="btn-soft" onclick="abrirModalAusenteGestor(${p.id})"
+                  style="min-height:48px; font-size:0.92rem; border-color:#f59e0b; background:#fffbeb; color:#92400e;">
+                  🏡 Ausente
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('')}
+
+        ${ausentes.length > 0 ? `
+          <div class="card" style="background:#fffbeb; border:2px solid #fcd34d; margin-top:16px;">
+            <div style="font-size:1.05rem; font-weight:900; color:#92400e; margin-bottom:10px;">
+              🏡 Ausentes en reparto — Quedaron para retirar en ${esc(GSTATE.nodo?.nombre_marca || 'el Nodo')} (${ausentes.length})
+            </div>
+            ${ausentes.map(p => `
+              <div style="background:#ffffff; border:1px solid #fde68a; border-radius:14px; padding:13px; margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                  <div style="font-weight:900; font-size:1.04rem; color:#0f172a;">
+                    #${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}
+                  </div>
+                  <span style="padding:4px 10px; border-radius:999px; font-size:0.82rem; font-weight:900; background:${p.pago_confirmado ? '#dcfce7' : '#fef3c7'}; color:${p.pago_confirmado ? '#15803d' : '#92400e'};">
+                    ${p.pago_confirmado ? '🟢 Pagado' : `💵 Cobrar ${fmt(p.total_vecino)}`}
+                  </span>
+                </div>
+                <div style="font-size:0.9rem; color:#78350f; margin-top:4px; font-weight:700;">
+                  📍 ${esc(p.direccion_entrega || '')}${p.motivo_ausencia ? ` · Motivo: ${esc(p.motivo_ausencia)}` : ''}
+                </div>
+                ${Number(p.cargo_envio_barrial || 0) > 0 ? `
+                  <div style="font-size:0.84rem; color:#92400e; margin-top:3px; font-weight:700;">
+                    ℹ️ Cargo de envío conservado (+${fmt(p.cargo_envio_barrial)}) por intento de entrega realizado.
+                  </div>
+                ` : ''}
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+                  <button type="button" onclick="tocarBotonEntregadoGestor(${p.id})"
+                    style="flex:1; min-height:48px; border-radius:12px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.95rem; cursor:pointer;">
+                    ✅ Ya pasó a retirar
+                  </button>
+                  <button type="button" class="btn-soft" onclick="avanzarEstadoEntregaGestor(${p.id}, 'REINTEGRAR_REPARTO', false)"
+                    style="min-height:48px; font-size:0.92rem;">
+                    🔄 Reintegrar a ruta
+                  </button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+      `;
+    }
+
+    async function sugerirOrdenOptimoRepartoGestor() {
+      if (!GSTATE.nodo?.id) return;
+      const paradas = obtenerParadasRepartoActivasGestor();
+      if (paradas.length === 0) return;
+
+      let origenLat = null;
+      let origenLng = null;
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: false, timeout: 2500, maximumAge: 60000 });
+          });
+          origenLat = pos.coords.latitude;
+          origenLng = pos.coords.longitude;
+        } catch (_) {}
+      }
+
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/reparto/sugerir-orden`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            origen_lat: origenLat,
+            origen_lng: origenLng,
+            guardar: true
+          })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo calcular la ruta óptima: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+        GSTATE.repartoDistanciaMetros = Number(data.distancia_total_metros || 0);
+        mostrarAvisoPantallaGestor(
+          `🧭 Ruta ordenada (${data.cantidad_con_gps} con GPS${data.cantidad_sin_gps > 0 ? `, ${data.cantidad_sin_gps} sin pin al final` : ''}).`,
+          'ok'
+        );
+        await cargarPanelGestor();
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error al calcular la ruta óptima.', 'error');
+      }
+    }
+
+    async function moverParadaRepartoGestor(pedidoId, delta) {
+      if (!GSTATE.nodo?.id) return;
+      const paradas = obtenerParadasRepartoActivasGestor();
+      const idx = paradas.findIndex(p => Number(p.id) === Number(pedidoId));
+      const nuevoIdx = idx + Number(delta);
+      if (idx < 0 || nuevoIdx < 0 || nuevoIdx >= paradas.length) return;
+
+      const copia = paradas.slice();
+      const [movido] = copia.splice(idx, 1);
+      copia.splice(nuevoIdx, 0, movido);
+      const ordenIds = copia.map(p => Number(p.id));
+
+      // Actualización optimista en pantalla + guardado backend
+      copia.forEach((p, i) => { p.orden_reparto = i + 1; });
+      renderVistaGestor();
+
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/reparto/orden`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orden_ids: ordenIds })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo guardar el orden: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          await cargarPanelGestor();
+        }
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de red al guardar el nuevo orden.', 'error');
+      }
+    }
+
+    function cerrarModalPinCasaGestor() {
+      if (_pinCasaLeafletMap) {
+        try { _pinCasaLeafletMap.remove(); } catch (_) {}
+      }
+      _pinCasaLeafletMap = null;
+      _pinCasaLeafletMarker = null;
+      const modal = document.getElementById('modal-pin-reparto-gestor');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function abrirModalPinCasaGestor(pedidoId) {
+      const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
+      if (!p || !GSTATE.nodo) return;
+
+      GSTATE.repartoPinPedidoId = Number(p.id);
+      const coords = _resolverCoordsEfectivasPedidoGestor(p);
+      const latIni = coords ? coords.lat : (Number(GSTATE.nodo.latitud) || -34.92145);
+      const lngIni = coords ? coords.lng : (Number(GSTATE.nodo.longitud) || -57.95453);
+      _pinCasaCoordsDraft = coords ? { lat: coords.lat, lng: coords.lng } : null;
+
+      const modal = document.getElementById('modal-pin-reparto-gestor');
+      const body = document.getElementById('modal-pin-reparto-gestor-body');
+      if (!modal || !body) return;
+
+      const queryInicial = [p.direccion_entrega, GSTATE.nodo.barrio_zona].filter(Boolean).join(', ');
+
+      body.innerHTML = `
+        <div style="background:var(--brand); color:#ffffff; padding:15px 17px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:0.78rem; font-weight:800; text-transform:uppercase; opacity:0.9;">Fijar Ubicación Exacta</div>
+            <div style="font-size:1.12rem; font-weight:900;">${esc(p.vecino_nombre)} · #${esc(p.codigo_pedido)}</div>
+          </div>
+          <button type="button" onclick="cerrarModalPinCasaGestor()" style="background:rgba(0,0,0,0.2); border:none; color:#fff; width:36px; height:36px; border-radius:999px; font-weight:900; font-size:1.1rem; cursor:pointer;">✕</button>
+        </div>
+        <div style="padding:15px 16px; color:var(--text);">
+          <div style="display:flex; gap:8px; margin-bottom:10px;">
+            <input type="text" id="pin-casa-search-input" value="${esc(queryInicial)}"
+              placeholder="Buscar calle, altura y localidad..."
+              style="flex:1; min-width:0; min-height:48px; padding:10px 12px; border-radius:12px; border:1px solid var(--border); font-size:1rem; font-family:inherit;" />
+            <button type="button" onclick="buscarDireccionPinCasaGestor()"
+              style="min-height:48px; padding:0 14px; border-radius:12px; border:none; background:#0f172a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.95rem; cursor:pointer;">
+              🔎 Buscar
+            </button>
+          </div>
+          <div id="pin-casa-leaflet-map" style="width:100%; height:260px; border-radius:14px; border:1px solid var(--border); background:#f3efe9;"></div>
+          <div id="pin-casa-coords-label" style="font-size:0.86rem; font-weight:800; color:#0369a1; margin:8px 0 12px;">
+            ${coords
+              ? `📍 Pin actual: ${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`
+              : '👆 Tocá el mapa, arrastrá el pin o buscá la dirección arriba.'}
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button type="button" onclick="guardarPinCasaGestor(${p.id})"
+              style="flex:1; min-height:52px; border-radius:14px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:1rem; cursor:pointer;">
+              📌 Guardar ubicación de esta casa
+            </button>
+          </div>
+        </div>
+      `;
+      modal.style.display = 'flex';
+
+      setTimeout(() => {
+        const canvas = document.getElementById('pin-casa-leaflet-map');
+        if (!canvas || !window.L) return;
+        const map = window.L.map(canvas, { zoomControl: true }).setView([latIni, lngIni], coords ? 16 : 14);
+        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap',
+          maxZoom: 19
+        }).addTo(map);
+        const marker = window.L.marker([latIni, lngIni], { draggable: true }).addTo(map);
+        const actualizarDraft = (lat, lng) => {
+          _pinCasaCoordsDraft = { lat: Number(lat.toFixed(7)), lng: Number(lng.toFixed(7)) };
+          marker.setLatLng([_pinCasaCoordsDraft.lat, _pinCasaCoordsDraft.lng]);
+          const lbl = document.getElementById('pin-casa-coords-label');
+          if (lbl) lbl.textContent = `📍 Pin seleccionado: ${_pinCasaCoordsDraft.lat.toFixed(6)}, ${_pinCasaCoordsDraft.lng.toFixed(6)}`;
+        };
+        marker.on('dragend', () => {
+          const pos = marker.getLatLng();
+          if (pos) actualizarDraft(pos.lat, pos.lng);
+        });
+        map.on('click', (ev) => {
+          if (ev?.latlng) actualizarDraft(ev.latlng.lat, ev.latlng.lng);
+        });
+        _pinCasaLeafletMap = map;
+        _pinCasaLeafletMarker = marker;
+        setTimeout(() => { try { map.invalidateSize(); } catch (_) {} }, 150);
+      }, 60);
+    }
+
+    async function buscarDireccionPinCasaGestor() {
+      const q = (document.getElementById('pin-casa-search-input')?.value || '').trim();
+      if (!q || !GSTATE.nodo?.id) return;
+      const lbl = document.getElementById('pin-casa-coords-label');
+      if (lbl) lbl.textContent = '🔎 Buscando en GeoRef AR / OSM...';
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/geocodificar?q=${encodeURIComponent(q)}`);
+        const data = await leerRespuestaJsonSegura(resp);
+        const item = Array.isArray(data?.resultados) ? data.resultados[0] : null;
+        if (!item) {
+          if (lbl) lbl.textContent = '⚠️ No encontramos coincidencia exacta. Mové el pin manualmente en el mapa.';
+          return;
+        }
+        _pinCasaCoordsDraft = { lat: Number(item.lat), lng: Number(item.lng) };
+        if (_pinCasaLeafletMap && _pinCasaLeafletMarker) {
+          _pinCasaLeafletMarker.setLatLng([_pinCasaCoordsDraft.lat, _pinCasaCoordsDraft.lng]);
+          _pinCasaLeafletMap.setView([_pinCasaCoordsDraft.lat, _pinCasaCoordsDraft.lng], 16);
+        }
+        if (lbl) lbl.textContent = `✅ Encontrado (${item.display_name}) · ${_pinCasaCoordsDraft.lat.toFixed(5)}, ${_pinCasaCoordsDraft.lng.toFixed(5)}`;
+      } catch (_) {
+        if (lbl) lbl.textContent = '❌ Error al consultar el geocodificador. Arrastrá el pin en el mapa.';
+      }
+    }
+
+    async function guardarPinCasaGestor(pedidoId) {
+      if (!GSTATE.nodo?.id) return;
+      let coords = _pinCasaCoordsDraft;
+      if (!coords && _pinCasaLeafletMarker) {
+        const pos = _pinCasaLeafletMarker.getLatLng();
+        if (pos) coords = { lat: Number(pos.lat.toFixed(7)), lng: Number(pos.lng.toFixed(7)) };
+      }
+      if (!coords) {
+        alert('Tocá el mapa o arrastrá el pin hasta la casa del vecino.');
+        return;
+      }
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/reparto/pedidos/${pedidoId}/coordenadas`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitud: coords.lat,
+            longitud: coords.lng
+          })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo guardar el pin: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+        cerrarModalPinCasaGestor();
+        mostrarAvisoPantallaGestor(`📌 Ubicación verificada y guardada para este vecino.`, 'ok');
+        await cargarPanelGestor();
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error al guardar la ubicación en la base de datos.', 'error');
+      }
+    }
+
+    function abrirModalAusenteGestor(pedidoId) {
+      const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
+      if (!p || !GSTATE.nodo) return;
+      const modal = document.getElementById('modal-recibo-gestor');
+      const body = document.getElementById('modal-recibo-gestor-body');
+      if (!modal || !body) return;
+
+      body.innerHTML = `
+        <div style="background:#b45309; color:#ffffff; padding:16px 18px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:0.78rem; text-transform:uppercase; font-weight:800; opacity:0.92;">Vecino Ausente en Domicilio</div>
+            <div style="font-size:1.12rem; font-weight:900; margin-top:2px;">#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</div>
+          </div>
+          <button type="button" onclick="cerrarModalReciboGestor()" style="background:rgba(0,0,0,0.2); border:none; color:#fff; width:36px; height:36px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+        </div>
+        <div style="padding:18px; color:var(--text);">
+          <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:12px; padding:12px; margin-bottom:12px; font-size:0.92rem; color:#78350f; font-weight:700;">
+            El pedido pasará a <strong>Disponible para retirar en el Nodo</strong>. El cargo de envío (${fmt(p.cargo_envio_barrial)}) se conserva íntegro porque realizaste el viaje hasta la puerta.
+          </div>
+          <label style="display:block; font-size:0.88rem; font-weight:800; margin-bottom:6px;">Observación breve (opcional):</label>
+          <input type="text" id="ausente-motivo-input" value="Pasamos y no atendieron timbre/teléfono"
+            style="width:100%; min-height:48px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); font-family:inherit; font-size:0.98rem; margin-bottom:14px; box-sizing:border-box;" />
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <button type="button" onclick="confirmarAusenteDesdeModalGestor(${p.id})"
+              style="width:100%; min-height:54px; border-radius:14px; border:none; background:#d97706; color:#ffffff; font-family:inherit; font-weight:900; font-size:1rem; cursor:pointer;">
+              🏡 Confirmar Ausente (Pasa a retirar por Nodo)
+            </button>
+            <button type="button" class="btn-soft" onclick="cerrarModalReciboGestor()">Cancelar</button>
+          </div>
+        </div>
+      `;
+      modal.style.display = 'flex';
+    }
+
+    async function confirmarAusenteDesdeModalGestor(pedidoId) {
+      const motivo = (document.getElementById('ausente-motivo-input')?.value || '').trim();
+      cerrarModalReciboGestor();
+      await avanzarEstadoEntregaGestor(pedidoId, 'AUSENTE_PASA_RETIRAR', false, { motivo });
+    }
+
+    async function solicitarWakeLockNocturno() {
+      if (!('wakeLock' in navigator) || !GSTATE.nocturnoAbierto) return false;
+      try {
+        _nocturnoWakeLock = await navigator.wakeLock.request('screen');
+        _nocturnoWakeLock.addEventListener('release', () => {
+          _nocturnoWakeLock = null;
+          actualizarIndicadorWakeLockNocturno();
+        });
+        actualizarIndicadorWakeLockNocturno();
+        return true;
+      } catch (_) {
+        actualizarIndicadorWakeLockNocturno();
+        return false;
+      }
+    }
+
+    function liberarWakeLockNocturno() {
+      if (_nocturnoWakeLock) {
+        try { _nocturnoWakeLock.release(); } catch (_) {}
+        _nocturnoWakeLock = null;
+      }
+      actualizarIndicadorWakeLockNocturno();
+    }
+
+    function actualizarIndicadorWakeLockNocturno() {
+      const el = document.getElementById('nocturno-wakelock-pill');
+      if (!el) return;
+      if (_nocturnoWakeLock) {
+        el.textContent = '🔆 Pantalla activa';
+        el.style.color = '#86efac';
+      } else {
+        el.textContent = '💤 WakeLock standby';
+        el.style.color = '#94a3b8';
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && GSTATE.nocturnoAbierto) {
+        solicitarWakeLockNocturno();
+      }
+    });
+
+    async function iniciarYEntrarModoNocturnoGestor() {
+      if (!GSTATE.nodo?.id) return;
+      const paradas = obtenerParadasRepartoActivasGestor();
+      if (paradas.length === 0) {
+        mostrarAvisoPantallaGestor('No tenés pedidos listos para salir a repartir.', 'error');
+        return;
+      }
+
+      const necesitaHito5 = paradas.some(p => Number(p.hito_tracking_actual || 1) === 4);
+      if (necesitaHito5) {
+        try {
+          const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/reparto/iniciar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              pedido_ids: paradas.map(p => Number(p.id)),
+              actor: GSTATE.nodo.gestor_nombre || 'Gestor del Nodo'
+            })
+          });
+          const data = await leerRespuestaJsonSegura(resp);
+          if (!resp.ok || !data.ok) {
+            mostrarAvisoPantallaGestor('No se pudo iniciar la tanda de reparto: ' + (data.error || `HTTP ${resp.status}`), 'error');
+            return;
+          }
+          await cargarPanelGestor();
+        } catch (_) {
+          mostrarAvisoPantallaGestor('Error al iniciar la salida de reparto.', 'error');
+          return;
+        }
+      }
+
+      GSTATE.nocturnoAbierto = true;
+      GSTATE.repartoIndice = 0;
+      renderOverlayConduccionNocturna();
+      await solicitarWakeLockNocturno();
+    }
+
+    function cerrarModoNocturno(omitirRed = false) {
+      GSTATE.nocturnoAbierto = false;
+      const ov = document.getElementById('gestor-nocturno-overlay');
+      if (ov) ov.style.display = 'none';
+      liberarWakeLockNocturno();
+      apagarRadarVivoGestor(omitirRed);
+    }
+
+    function moverIndiceNocturno(delta) {
+      const paradas = obtenerParadasRepartoActivasGestor();
+      if (paradas.length === 0) return;
+      GSTATE.repartoIndice = Math.max(0, Math.min(paradas.length - 1, Number(GSTATE.repartoIndice || 0) + delta));
+      renderOverlayConduccionNocturna();
+      if (GSTATE.radarActivo) {
+        enviarPingRadarVivoGestor(paradas[GSTATE.repartoIndice]?.id, true);
+      }
+    }
+
+    function armarUrlWhatsAppNocturno(p, tipo) {
+      const marca = GSTATE.nodo?.nombre_marca || 'Tu Nodo Barrial';
+      const gestor = GSTATE.nodo?.gestor_nombre || marca;
+      const primerNom = String(p.vecino_nombre || '').trim().split(/\s+/)[0] || 'vecino/a';
+      const dir = p.direccion_entrega || 'tu domicilio';
+
+      const textoReal = tipo === 'puerta'
+        ? `Hola ${primerNom}! Ya estoy en la puerta de ${dir} con tu pedido #${p.codigo_pedido} de ${marca}.`
+        : `Hola ${primerNom}! Soy ${gestor} de ${marca}. En unos 5 minutos llego a ${dir} con tu pedido #${p.codigo_pedido}.`;
+
+      if (GSTATE.modoLaboratorio) {
+        const telLab = String(GSTATE.telefonoPruebas || '5492216615746').replace(/\D+/g, '') || '5492216615746';
+        const textoLab = `[PRUEBA LAB · Vecino: ${p.vecino_nombre || '-'} ${p.vecino_telefono || '-'}]\n\n${textoReal}`;
+        return `https://wa.me/${telLab}?text=${encodeURIComponent(textoLab)}`;
+      }
+
+      const digs = String(p.vecino_telefono || '').replace(/\D+/g, '');
+      const waNum = digs ? (digs.startsWith('54') ? digs : `549${digs}`) : '';
+      return `https://wa.me/${waNum}?text=${encodeURIComponent(textoReal)}`;
+    }
+
+    function armarUrlGoogleMapsNocturno(p) {
+      const coords = _resolverCoordsEfectivasPedidoGestor(p);
+      if (coords) {
+        return `https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}&travelmode=driving`;
+      }
+      const destino = [p.direccion_entrega, GSTATE.nodo?.barrio_zona, 'Argentina'].filter(Boolean).join(', ');
+      return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destino)}&travelmode=driving`;
+    }
+
+    async function enviarPingRadarVivoGestor(pedidoActualId = null, forzar = false, useKeepalive = false) {
+      if (!GSTATE.nodo?.id || !GSTATE.radarActivo) return;
+      const ahora = Date.now();
+      if (!forzar && _radarUltimoEnvioMs && (ahora - _radarUltimoEnvioMs) < 18000) return;
+      _radarUltimoEnvioMs = ahora;
+
+      try {
+        await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/reparto/radar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          keepalive: Boolean(useKeepalive),
+          body: JSON.stringify({
+            activo: true,
+            latitud: _radarUltPos?.lat ?? null,
+            longitud: _radarUltPos?.lng ?? null,
+            precision_metros: _radarUltPos?.acc ?? null,
+            pedido_actual_id: pedidoActualId || null
+          })
+        });
+      } catch (_) {}
+    }
+
+    async function apagarRadarVivoGestor(useKeepalive = false) {
+      if (_radarWatchId != null && navigator.geolocation) {
+        try { navigator.geolocation.clearWatch(_radarWatchId); } catch (_) {}
+      }
+      _radarWatchId = null;
+      if (_radarHeartbeatTimer) {
+        clearInterval(_radarHeartbeatTimer);
+        _radarHeartbeatTimer = null;
+      }
+      const estabaActivo = GSTATE.radarActivo;
+      GSTATE.radarActivo = false;
+      renderOverlayRadarPillNocturno();
+
+      if (estabaActivo && GSTATE.nodo?.id) {
+        try {
+          await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/reparto/radar`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            keepalive: Boolean(useKeepalive),
+            body: JSON.stringify({ activo: false })
+          });
+        } catch (_) {}
+      }
+    }
+
+    async function toggleRadarVivoNocturno() {
+      if (GSTATE.radarActivo) {
+        await apagarRadarVivoGestor(false);
+        return;
+      }
+      GSTATE.radarActivo = true;
+      renderOverlayRadarPillNocturno();
+
+      const paradas = obtenerParadasRepartoActivasGestor();
+      const actualId = paradas[GSTATE.repartoIndice]?.id || null;
+
+      if (navigator.geolocation) {
+        _radarWatchId = navigator.geolocation.watchPosition(
+          (pos) => {
+            _radarUltPos = {
+              lat: Number(pos.coords.latitude.toFixed(7)),
+              lng: Number(pos.coords.longitude.toFixed(7)),
+              acc: Math.round(pos.coords.accuracy || 0)
+            };
+            const cur = obtenerParadasRepartoActivasGestor()[GSTATE.repartoIndice]?.id || actualId;
+            enviarPingRadarVivoGestor(cur, false);
+          },
+          () => {
+            // Si el navegador niega GPS igual enviamos parada actual para estimación por paradas restantes
+            enviarPingRadarVivoGestor(actualId, true);
+          },
+          { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 }
+        );
+      }
+
+      await enviarPingRadarVivoGestor(actualId, true);
+      if (_radarHeartbeatTimer) clearInterval(_radarHeartbeatTimer);
+      _radarHeartbeatTimer = setInterval(() => {
+        if (GSTATE.radarActivo && GSTATE.nocturnoAbierto) {
+          const cur = obtenerParadasRepartoActivasGestor()[GSTATE.repartoIndice]?.id || null;
+          enviarPingRadarVivoGestor(cur, true);
+        }
+      }, 45000);
+    }
+
+    function renderOverlayRadarPillNocturno() {
+      const btn = document.getElementById('nocturno-radar-btn');
+      if (!btn) return;
+      if (GSTATE.radarActivo) {
+        btn.textContent = '📡 Radar EN VIVO (Tocar p/ pausar)';
+        btn.style.background = 'rgba(16, 185, 129, 0.25)';
+        btn.style.borderColor = '#34d399';
+        btn.style.color = '#a7f3d0';
+      } else {
+        btn.textContent = '📡 Compartir radar en vivo (OFF)';
+        btn.style.background = 'rgba(148, 163, 184, 0.14)';
+        btn.style.borderColor = '#475569';
+        btn.style.color = '#cbd5e1';
+      }
+    }
+
+    window.addEventListener('pagehide', () => {
+      if (GSTATE.radarActivo && GSTATE.nodo?.id) {
+        apagarRadarVivoGestor(true);
+      }
+      liberarWakeLockNocturno();
+    });
+
+    function renderOverlayConduccionNocturna() {
+      const ov = document.getElementById('gestor-nocturno-overlay');
+      if (!ov) return;
+      if (!GSTATE.nocturnoAbierto) {
+        ov.style.display = 'none';
+        return;
+      }
+      ov.style.display = 'block';
+
+      const paradas = obtenerParadasRepartoActivasGestor();
+      if (paradas.length === 0) {
+        ov.innerHTML = `
+          <div style="max-width:520px; margin:40px auto; text-align:center; padding:24px; background:#1e293b; border-radius:20px; border:1px solid #334155;">
+            <div style="font-size:2.4rem; margin-bottom:10px;">🏁</div>
+            <h2 style="margin:0 0 8px 0; font-size:1.5rem; font-weight:900;">¡Todas las paradas entregadas!</h2>
+            <p style="color:#cbd5e1; font-size:1.05rem;">Ya no quedan envíos pendientes en esta Hoja de Ruta.</p>
+            <button type="button" onclick="cerrarModoNocturno(false)" class="nocturno-btn" style="background:#10b981; color:#052e16; margin-top:16px;">
+              ← Volver al Panel del Gestor
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      if (GSTATE.repartoIndice >= paradas.length) GSTATE.repartoIndice = 0;
+      if (GSTATE.repartoIndice < 0) GSTATE.repartoIndice = 0;
+      const p = paradas[GSTATE.repartoIndice];
+      const claveActual = _clavePuertaParadaGestor(p);
+      const hermanosPuerta = paradas.filter(x => _clavePuertaParadaGestor(x) === claveActual);
+      const urlMaps = armarUrlGoogleMapsNocturno(p);
+      const urlWa5Min = armarUrlWhatsAppNocturno(p, 'llegando');
+      const urlWaPuerta = armarUrlWhatsAppNocturno(p, 'puerta');
+
+      ov.innerHTML = `
+        <div style="max-width:560px; margin:0 auto;">
+          <!-- Barra superior Nocturna -->
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:12px;">
+            <button type="button" onclick="cerrarModoNocturno(false)"
+              style="min-height:48px; padding:0 14px; border-radius:12px; border:1px solid #475569; background:#1e293b; color:#f8fafc; font-family:inherit; font-weight:900; font-size:0.95rem; cursor:pointer;">
+              ✕ Salir
+            </button>
+            <div style="text-align:center;">
+              <div style="font-size:1.05rem; font-weight:900; color:#38bdf8;">
+                PARADA ${GSTATE.repartoIndice + 1} de ${paradas.length}
+              </div>
+              <div id="nocturno-wakelock-pill" style="font-size:0.78rem; font-weight:800; color:${_nocturnoWakeLock ? '#86efac' : '#94a3b8'};">
+                ${_nocturnoWakeLock ? '🔆 Pantalla activa' : '💤 WakeLock standby'}
+              </div>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button type="button" onclick="moverIndiceNocturno(-1)" ${GSTATE.repartoIndice === 0 ? 'disabled' : ''}
+                style="min-height:48px; min-width:48px; border-radius:12px; border:1px solid #475569; background:#1e293b; color:#fff; font-weight:900; font-size:1.1rem; cursor:pointer;">
+                ◀
+              </button>
+              <button type="button" onclick="moverIndiceNocturno(1)" ${GSTATE.repartoIndice >= paradas.length - 1 ? 'disabled' : ''}
+                style="min-height:48px; min-width:48px; border-radius:12px; border:1px solid #475569; background:#1e293b; color:#fff; font-weight:900; font-size:1.1rem; cursor:pointer;">
+                ▶
+              </button>
+            </div>
+          </div>
+
+          <!-- Toggle Radar en vivo -->
+          <button type="button" id="nocturno-radar-btn" onclick="toggleRadarVivoNocturno()"
+            style="width:100%; min-height:48px; margin-bottom:12px; border-radius:12px; border:1px solid ${GSTATE.radarActivo ? '#34d399' : '#475569'}; background:${GSTATE.radarActivo ? 'rgba(16,185,129,0.25)' : 'rgba(148,163,184,0.14)'}; color:${GSTATE.radarActivo ? '#a7f3d0' : '#cbd5e1'}; font-family:inherit; font-weight:900; font-size:0.95rem; cursor:pointer;">
+            ${GSTATE.radarActivo ? '📡 Radar EN VIVO (Tocar p/ pausar)' : '📡 Compartir radar en vivo (OFF)'}
+          </button>
+
+          <!-- Tarjeta de parada gigante legible de noche -->
+          <div style="background:#111827; border:2px solid #334155; border-radius:20px; padding:16px; margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+              <span style="font-size:1.45rem; font-weight:900; color:#ffffff; line-height:1.2;">
+                ${esc(p.vecino_nombre)}
+              </span>
+              <span style="font-size:1rem; font-weight:900; color:#93c5fd; background:#1e293b; padding:4px 10px; border-radius:8px;">
+                #${esc(p.codigo_pedido)}
+              </span>
+            </div>
+
+            ${hermanosPuerta.length > 1 ? `
+              <div style="padding:8px 11px; border-radius:10px; background:rgba(59,130,246,0.2); border:1px solid #60a5fa; color:#bfdbfe; font-size:0.95rem; font-weight:900; margin-bottom:10px;">
+                🏠 ¡Atención! Hay ${hermanosPuerta.length} pedidos en esta misma puerta (${hermanosPuerta.map(h => '#' + esc(h.codigo_pedido)).join(' · ')})
+              </div>
+            ` : ''}
+
+            <div style="font-size:1.25rem; font-weight:900; color:#f8fafc; line-height:1.3;">
+              📍 ${esc(p.direccion_entrega || 'Dirección sin especificar')}
+            </div>
+            ${p.entrecalles_referencia ? `
+              <div style="font-size:1rem; color:#cbd5e1; font-weight:700; margin-top:4px;">
+                Entre / Ref: ${esc(p.entrecalles_referencia)}
+              </div>
+            ` : ''}
+
+            <!-- Indicador gigante de Pago -->
+            <div style="margin-top:14px; padding:14px; border-radius:14px; text-align:center; font-size:1.28rem; font-weight:900; ${p.pago_confirmado
+              ? 'background:rgba(22,163,74,0.22); border:2px solid #22c55e; color:#86efac;'
+              : 'background:rgba(245,158,11,0.22); border:2px solid #f59e0b; color:#fde68a;'}">
+              ${p.pago_confirmado
+                ? `🟢 YA PAGADO (${fmt(p.total_vecino)}) · SOLO ENTREGAR`
+                : `🟠 COBRAR ${p.medio_pago === 'EFECTIVO' ? 'EFECTIVO' : 'SALDO'}: ${fmt(p.total_vecino)}`}
+            </div>
+
+            <!-- Bolsa / Productos a bajar -->
+            <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #334155; font-size:0.98rem; color:#e2e8f0; line-height:1.5;">
+              ${(p.items || []).map(it => `
+                <div>• <strong>${it.cantidad}x</strong> ${esc(formatearItemGestor(it))}</div>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- 4 BOTONES GIGANTES (>= 60px) DE PULGAR -->
+          <div style="display:grid; grid-template-columns:1fr; gap:11px;">
+            <a href="${esc(urlMaps)}" target="_blank" rel="noopener" class="nocturno-btn"
+              style="background:#2563eb; color:#ffffff;">
+              🗺️ Ir con Google Maps
+            </a>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <a href="${esc(urlWa5Min)}" target="_blank" rel="noopener" class="nocturno-btn"
+                style="background:#0f766e; color:#ffffff; font-size:0.98rem;">
+                🚗 Llegando en 5 min
+              </a>
+              <a href="${esc(urlWaPuerta)}" target="_blank" rel="noopener" class="nocturno-btn"
+                style="background:#059669; color:#ffffff; font-size:0.98rem;">
+                🔔 Estoy en la puerta
+              </a>
+            </div>
+            <button type="button" onclick="tocarBotonEntregadoGestor(${p.id})" class="nocturno-btn"
+              style="background:#16a34a; color:#ffffff; font-size:1.18rem;">
+              ✅ Marcar Entregado
+            </button>
+            <button type="button" onclick="abrirModalAusenteGestor(${p.id})"
+              style="min-height:50px; border-radius:14px; border:1px solid #f59e0b; background:rgba(245,158,11,0.14); color:#fcd34d; font-family:inherit; font-weight:900; font-size:0.98rem; cursor:pointer;">
+              🏡 No respondió — Pasa a retirar por el Nodo
+            </button>
+          </div>
+          ${GSTATE.modoLaboratorio ? `
+            <div style="margin-top:10px; text-align:center; font-size:0.8rem; color:#94a3b8; font-weight:700;">
+              🧪 Modo Laboratorio: WhatsApp abre app real redirigido a ${esc(GSTATE.telefonoPruebas)}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
       GSTATE.slug = detectarSlugInicial();
       const hash = (window.location.hash || '').replace(/^#/, '');
-      if (['ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(hash)) {
+      if (['reparto', 'ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(hash)) {
         GSTATE.vista = hash;
       }
       cargarPanelGestor();

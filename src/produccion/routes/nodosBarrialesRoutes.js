@@ -754,6 +754,116 @@ router.post('/gestor/:nodoId/pedidos/:pedidoId/estado-entrega', autenticarGestor
 });
 
 /**
+ * GET /api/produccion/nodos/gestor/:nodoId/geocodificar?q=...
+ * Geocodificador AR autenticado para corregir ubicaciones de vecinos desde el Panel del Gestor.
+ */
+router.get('/gestor/:nodoId/geocodificar', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para geocodificar en otro Nodo.' });
+        }
+        const q = String(req.query.q || '').trim();
+        const data = await nodosService.geocodificarDireccionParaGestor(req.params.nodoId, q);
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /gestor/:nodoId/geocodificar:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/gestor/:nodoId/reparto/sugerir-orden
+ * Calcula orden óptimo de paradas (Nearest-Neighbor + 2-opt) desde el Nodo o GPS actual.
+ */
+router.post('/gestor/:nodoId/reparto/sugerir-orden', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para ordenar repartos de otro Nodo.' });
+        }
+        const resultado = await nodosService.sugerirOrdenRepartoGestor(req.params.nodoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /gestor/:nodoId/reparto/sugerir-orden:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * PUT /api/produccion/nodos/gestor/:nodoId/reparto/orden
+ * Persiste orden manual de paradas desde botones táctiles Subir/Bajar.
+ */
+router.put('/gestor/:nodoId/reparto/orden', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para modificar el orden de otro Nodo.' });
+        }
+        const resultado = await nodosService.guardarOrdenManualRepartoGestor(req.params.nodoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en PUT /gestor/:nodoId/reparto/orden:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/gestor/:nodoId/reparto/iniciar
+ * Pasa los pedidos de la Hoja de Ruta a EN_CAMINO_VECINO (Hito 5) preservando el orden establecido.
+ */
+router.post('/gestor/:nodoId/reparto/iniciar', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para iniciar reparto de otro Nodo.' });
+        }
+        const resultado = await nodosService.iniciarModoRepartoGestor(req.params.nodoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /gestor/:nodoId/reparto/iniciar:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * PUT /api/produccion/nodos/gestor/:nodoId/reparto/pedidos/:pedidoId/coordenadas
+ * Guarda/corrige pin exacto en Leaflet para el pedido, el vecino y sus envíos pendientes iguales.
+ */
+router.put('/gestor/:nodoId/reparto/pedidos/:pedidoId/coordenadas', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth) {
+            if (Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+                return res.status(403).json({ ok: false, error: 'No autorizado para editar ubicaciones de otro Nodo.' });
+            }
+            await nodosService.asegurarPedidoPerteneceANodo(req.params.pedidoId, req.nodoAuth.id);
+        }
+        const resultado = await nodosService.actualizarCoordenadasPedidoYVecinoGestor(
+            req.params.nodoId,
+            req.params.pedidoId,
+            req.body || {}
+        );
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en PUT /gestor/:nodoId/reparto/pedidos/:pedidoId/coordenadas:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/gestor/:nodoId/reparto/radar
+ * Actualiza o apaga el radar en vivo de proximidad del Gestor (expira automáticamente en 4 min).
+ */
+router.post('/gestor/:nodoId/reparto/radar', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para actualizar radar de otro Nodo.' });
+        }
+        const resultado = await nodosService.actualizarRadarRepartoGestor(req.params.nodoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /gestor/:nodoId/reparto/radar:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
  * PUT /api/produccion/nodos/gestor/:nodoId/config-logistica
  * Actualiza desde el Panel del Gestor los días de entrega, horarios de corte,
  * ventanas de retiro y costo de envío barrial (100% para el gestor).

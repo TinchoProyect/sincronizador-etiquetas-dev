@@ -1361,12 +1361,14 @@
                         ` : ''}
                         ${nodosVisiblesAbm.map(n => {
                             const esArchivado = n.activo === false;
+                            const estaEditando = Number(ESTADO_NODOS.nodoEditandoId) === Number(n.id);
                             const puedeRet = n.permitir_retiro_nodo !== false;
                             const puedeRep = Boolean(n.permitir_reparto_propio ?? n.permitir_envio_barrial ?? true);
                             const puedeEnc = Boolean(n.permitir_encomienda);
                             return `
                             <div onclick="window.NodosPizarra.cargarNodoEnFormularioAbm(${n.id})"
-                                style="padding:12px; border-radius:10px; background:rgba(15,23,42,0.85); border:1px ${esArchivado ? 'dashed' : 'solid'} ${Number(ESTADO_NODOS.nodoEditandoId) === Number(n.id) ? '#a78bfa' : (esArchivado ? '#b45309' : '#334155')}; opacity:${esArchivado ? '0.78' : '1'}; cursor:pointer; display:flex; flex-direction:column; gap:8px;">
+                                data-abm-card-id="${n.id}"
+                                style="padding:12px; border-radius:10px; background:${estaEditando ? 'rgba(30,27,75,0.55)' : 'rgba(15,23,42,0.85)'}; border:${estaEditando ? '2px' : '1px'} ${esArchivado ? 'dashed' : 'solid'} ${estaEditando ? '#a78bfa' : (esArchivado ? '#b45309' : '#334155')}; opacity:${esArchivado ? '0.78' : '1'}; cursor:pointer; display:flex; flex-direction:column; gap:8px;">
                                 <div style="display:flex; gap:12px; align-items:center;">
                                     <div style="width:74px; height:44px; background:#faf7f3; border-radius:6px; border:1px solid #475569; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; padding:3px;">
                                         ${n.logo_original_base64
@@ -1377,12 +1379,20 @@
                                     </div>
                                     <div style="flex:1; min-width:0;">
                                         <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
-                                            <span style="font-weight:800; color:#f8fafc; font-size:0.9rem; display:inline-flex; align-items:center; gap:6px;">
+                                            <span style="font-weight:800; color:#f8fafc; font-size:0.9rem; display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">
                                                 <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${escaparHtml(n.color_primario || '#a2553b')}; border:1px solid rgba(255,255,255,0.4);"></span>
                                                 ${escaparHtml(n.nombre_marca)}
                                                 ${esArchivado ? `<span style="font-size:0.64rem; font-weight:900; padding:1px 6px; border-radius:4px; background:rgba(245,158,11,0.22); border:1px solid #f59e0b; color:#fcd34d;">ARCHIVADO</span>` : ''}
                                             </span>
-                                            <span style="font-size:0.68rem; font-family:monospace; color:#a78bfa; background:rgba(167,139,250,0.14); padding:2px 6px; border-radius:4px;">${escaparHtml(n.codigo_nodo)}</span>
+                                            <span style="display:inline-flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                                                <span data-abm-edit-chip="${n.id}"
+                                                    style="font-size:0.66rem; font-weight:800; padding:2px 7px; border-radius:999px; ${estaEditando
+                                                        ? 'background:rgba(167,139,250,0.28); border:1px solid #a78bfa; color:#ede9fe;'
+                                                        : 'background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.4); color:#bae6fd;'}">
+                                                    ${estaEditando ? '✏️ Editando actualmente' : '✏️ Editar'}
+                                                </span>
+                                                <span style="font-size:0.68rem; font-family:monospace; color:#a78bfa; background:rgba(167,139,250,0.14); padding:2px 6px; border-radius:4px;">${escaparHtml(n.codigo_nodo)}</span>
+                                            </span>
                                         </div>
                                         <div style="font-size:0.75rem; color:#cbd5e1; margin-top:2px;">
                                             👤 Gestor: <strong>${escaparHtml(n.gestor_nombre)}</strong> · 📍 ${escaparHtml(n.barrio_zona || n.direccion_retiro || '')}
@@ -1441,9 +1451,9 @@
                                 </div>
                             </div>
                             <div id="abm-nodo-form-actions" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                                <button type="button" onclick="window.NodosPizarra.guardarNodoAbm()"
+                                <button type="button" id="abm-btn-guardar-principal" onclick="window.NodosPizarra.guardarNodoAbm()"
                                     style="padding:8px 16px; border-radius:8px; font-weight:800; font-size:0.82rem; border:none; background:linear-gradient(135deg, #10b981, #059669); color:#052e16; cursor:pointer;">
-                                    💾 Guardar Nodo y Etiqueta ZPL
+                                    💾 Guardar Nuevo Nodo y Etiqueta ZPL
                                 </button>
                             </div>
                         </div>
@@ -2565,6 +2575,16 @@
             ? `${abmUltimaSugerenciaMapa.lat.toFixed(6)}, ${abmUltimaSugerenciaMapa.lng.toFixed(6)}`
             : 'Sin coordenadas';
 
+        const marcaEdicion = (() => {
+            const valInput = document.getElementById('abm-nombre-marca')?.value?.trim();
+            if (valInput) return valInput;
+            const nObj = ESTADO_NODOS.nodoEditandoId
+                ? ESTADO_NODOS.nodos.find(x => Number(x.id) === Number(ESTADO_NODOS.nodoEditandoId))
+                : null;
+            return nObj?.nombre_marca || 'este Nodo';
+        })();
+        const tieneCoords = Number.isFinite(abmUltimaSugerenciaMapa.lat) && Number.isFinite(abmUltimaSugerenciaMapa.lng);
+
         bar.innerHTML = `
             <div style="flex:1; min-width:240px; line-height:1.45;">
                 ${etiquetaOrigen ? `<span style="font-size:0.7rem; font-weight:800; color:#a78bfa; background:rgba(167,139,250,0.16); padding:1px 6px; border-radius:4px; margin-right:6px;">${escaparHtml(etiquetaOrigen)}</span>` : ''}
@@ -2580,17 +2600,25 @@
                     </div>
                 ` : ''}
             </div>
-            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
                 ${barrio ? `
                     <button type="button" onclick="window.NodosPizarra.aplicarBarrioSugeridoMapaAbm()"
-                        style="padding:4px 9px; border-radius:6px; font-size:0.72rem; font-weight:800; background:rgba(56,189,248,0.18); border:1px solid #38bdf8; color:#bae6fd; cursor:pointer;">
+                        style="padding:5px 10px; border-radius:6px; font-size:0.72rem; font-weight:800; background:rgba(56,189,248,0.18); border:1px solid #38bdf8; color:#bae6fd; cursor:pointer;">
                         ✅ Usar Barrio "${escaparHtml(barrio)}"
                     </button>
                 ` : ''}
                 ${(calle || direccionFormateada) ? `
                     <button type="button" onclick="window.NodosPizarra.aplicarCalleSugeridaMapaAbm()"
-                        style="padding:4px 9px; border-radius:6px; font-size:0.72rem; font-weight:700; background:rgba(16,185,129,0.16); border:1px solid #10b981; color:#6ee7b7; cursor:pointer;">
+                        style="padding:5px 10px; border-radius:6px; font-size:0.72rem; font-weight:700; background:rgba(16,185,129,0.16); border:1px solid #10b981; color:#6ee7b7; cursor:pointer;">
                         📝 Usar calle del mapa en Domicilio
+                    </button>
+                ` : ''}
+                ${tieneCoords ? `
+                    <button type="button" id="abm-btn-guardar-ubicacion-mapa" onclick="window.NodosPizarra.guardarNodoAbm()"
+                        style="padding:6px 12px; border-radius:7px; font-size:0.74rem; font-weight:900; border:none; background:linear-gradient(135deg, #10b981, #059669); color:#052e16; cursor:pointer; box-shadow:0 2px 8px rgba(16,185,129,0.3);">
+                        ${ESTADO_NODOS.nodoEditandoId
+                            ? `💾 Guardar esta ubicación en ${escaparHtml(marcaEdicion)}`
+                            : `💾 Guardar Nuevo Nodo con esta ubicación`}
                     </button>
                 ` : ''}
             </div>
@@ -2891,6 +2919,26 @@
         `;
     }
 
+    function construirQueryDomicilioConContextoAbm(direccionRaw, dom = null) {
+        const dir = String(direccionRaw || '').trim();
+        if (!dir) return '';
+        if (dir.includes(',')) return dir;
+
+        const barrioInput = String(document.getElementById('abm-barrio')?.value || '').trim();
+        const locDom = String(dom?.localidad || '').trim();
+        const contexto = (locDom && !/sin especificar/i.test(locDom))
+            ? locDom
+            : ((barrioInput && !/sin especificar/i.test(barrioInput)) ? barrioInput : '');
+
+        if (!contexto) return dir;
+        const dirNorm = normalizarTextoBusqueda(dir);
+        const ctxNorm = normalizarTextoBusqueda(contexto.split(',')[0] || contexto);
+        if (ctxNorm && dirNorm.includes(ctxNorm)) {
+            return dir;
+        }
+        return `${dir}, ${contexto}`;
+    }
+
     async function seleccionarDomicilioClienteEnAbm(indice, abrirPanelMapa = true) {
         const cli = (ESTADO_NODOS.fuentes.clientes_bunker || []).find(
             c => Number(c.id) === Number(ESTADO_NODOS.clienteMadreSeleccionadoId)
@@ -2919,11 +2967,12 @@
                 etiquetaOrigen: `${dom.etiqueta} (${dom.direccion})`
             });
         } else if (dom.direccion) {
+            const queryConContexto = construirQueryDomicilioConContextoAbm(dom.direccion, dom);
             const searchInput = document.getElementById('abm-mapa-search-input');
-            if (searchInput) searchInput.value = dom.direccion;
-            await geocodificarTextoEnMapaAbm(dom.direccion, {
-                autocompletarBarrio: true,
-                etiquetaOrigen: `${dom.etiqueta} (${dom.direccion})`
+            if (searchInput) searchInput.value = queryConContexto;
+            await geocodificarTextoEnMapaAbm(queryConContexto, {
+                autocompletarBarrio: !String(document.getElementById('abm-barrio')?.value || '').trim(),
+                etiquetaOrigen: `${dom.etiqueta} (${queryConContexto})`
             });
         }
     }
@@ -3220,13 +3269,38 @@
         cargoEl.style.opacity = chkRep.checked ? '1' : '0.45';
     }
 
+    function actualizarIndicadoresTarjetasAbm() {
+        document.querySelectorAll('[data-abm-card-id]').forEach(card => {
+            const cid = Number(card.getAttribute('data-abm-card-id'));
+            const esActiva = Number(ESTADO_NODOS.nodoEditandoId) === cid;
+            card.style.background = esActiva ? 'rgba(30,27,75,0.55)' : 'rgba(15,23,42,0.85)';
+            card.style.borderWidth = esActiva ? '2px' : '1px';
+            if (esActiva) {
+                card.style.borderColor = '#a78bfa';
+            } else {
+                const nObj = ESTADO_NODOS.nodos.find(x => Number(x.id) === cid);
+                card.style.borderColor = (nObj && nObj.activo === false) ? '#b45309' : '#334155';
+            }
+            const chip = card.querySelector(`[data-abm-edit-chip="${cid}"]`);
+            if (chip) {
+                chip.textContent = esActiva ? '✏️ Editando actualmente' : '✏️ Editar';
+                chip.style.background = esActiva ? 'rgba(167,139,250,0.28)' : 'rgba(56,189,248,0.14)';
+                chip.style.borderColor = esActiva ? '#a78bfa' : 'rgba(56,189,248,0.4)';
+                chip.style.color = esActiva ? '#ede9fe' : '#bae6fd';
+            }
+        });
+    }
+
     function actualizarEncabezadoFormularioAbm(nodo) {
         const titleEl = document.getElementById('abm-nodo-form-title');
         const subEl = document.getElementById('abm-nodo-form-sub');
         const actBox = document.getElementById('abm-nodo-form-actions');
 
+        actualizarIndicadoresTarjetasAbm();
+
         if (nodo) {
             const esArchivado = nodo.activo === false;
+            const nombreMarcaActual = document.getElementById('abm-nombre-marca')?.value?.trim() || nodo.nombre_marca || 'este Nodo';
             if (titleEl) {
                 titleEl.innerHTML = `
                     <span>✏️ Editando: ${escaparHtml(nodo.nombre_marca)}</span>
@@ -3253,9 +3327,9 @@
                             🗑️ Eliminar Prueba (Lab)
                         </button>
                     ` : ''}
-                    <button type="button" onclick="window.NodosPizarra.guardarNodoAbm()"
+                    <button type="button" id="abm-btn-guardar-principal" onclick="window.NodosPizarra.guardarNodoAbm()"
                         style="padding:8px 16px; border-radius:8px; font-weight:800; font-size:0.82rem; border:none; background:linear-gradient(135deg, #10b981, #059669); color:#052e16; cursor:pointer;">
-                        💾 Guardar Cambios
+                        💾 Guardar Cambios en ${escaparHtml(nombreMarcaActual)}
                     </button>
                 `;
             }
@@ -3268,9 +3342,9 @@
             }
             if (actBox) {
                 actBox.innerHTML = `
-                    <button type="button" onclick="window.NodosPizarra.guardarNodoAbm()"
+                    <button type="button" id="abm-btn-guardar-principal" onclick="window.NodosPizarra.guardarNodoAbm()"
                         style="padding:8px 16px; border-radius:8px; font-weight:800; font-size:0.82rem; border:none; background:linear-gradient(135deg, #10b981, #059669); color:#052e16; cursor:pointer;">
-                        💾 Guardar Nodo y Etiqueta ZPL
+                        💾 Guardar Nuevo Nodo y Etiqueta ZPL
                     </button>
                 `;
             }
@@ -3620,8 +3694,9 @@
                 await asegurarInstanciaMapaAbm(datos.latitud, datos.longitud);
             }
         } else if (datos.direccionPrincipal) {
-            await geocodificarTextoEnMapaAbm(datos.direccionPrincipal, {
-                autocompletarBarrio: true,
+            const queryConCtx = construirQueryDomicilioConContextoAbm(datos.direccionPrincipal);
+            await geocodificarTextoEnMapaAbm(queryConCtx, {
+                autocompletarBarrio: !String(document.getElementById('abm-barrio')?.value || '').trim(),
                 etiquetaOrigen: 'Domicilio en ficha'
             });
         }
@@ -3644,6 +3719,13 @@
         if (!ESTADO_NODOS.nodoEditandoId && iniInput && nombre) {
             const palabras = String(nombre).trim().split(/\s+/).filter(Boolean);
             iniInput.value = palabras.slice(0, 2).map(p => p[0]?.toUpperCase() || '').join('').slice(0, 3);
+        }
+        if (ESTADO_NODOS.nodoEditandoId) {
+            const nom = String(nombre || '').trim() || 'este Nodo';
+            const btnP = document.getElementById('abm-btn-guardar-principal');
+            if (btnP) btnP.textContent = `💾 Guardar Cambios en ${nom}`;
+            const btnM = document.getElementById('abm-btn-guardar-ubicacion-mapa');
+            if (btnM) btnM.textContent = `💾 Guardar esta ubicación en ${nom}`;
         }
         regenerarLogoZplEnVivo();
     }

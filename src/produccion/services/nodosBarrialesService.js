@@ -106,7 +106,10 @@ async function geocodificarDireccionArgentina(query, opciones = {}) {
     const partes = qNorm.split(',').map(p => p.trim()).filter(Boolean);
     const partePrincipal = partes[0] || qNorm;
     const partesResto = partes.slice(1);
+    const partePrincipalNorm = normalizarTokenTextoGeo(partePrincipal);
     const tieneAltura = /\b\d{1,5}\b/.test(partePrincipal) && !/^(diagonal\s+)?\d{1,3}$/i.test(partePrincipal);
+    const empiezaConTipoVia = /^(calle|av\.?|avenida|diagonal|diag\.?|boulevard|bv\.?|pasaje|pje\.?|ruta|camino|autopista)\s+/i.test(partePrincipal);
+    const priorizaLocalidadSobreCalle = !tieneAltura && !empiezaConTipoVia;
     const tokensResto = partesResto
         .join(' ')
         .split(/\s+/)
@@ -124,10 +127,11 @@ async function geocodificarDireccionArgentina(query, opciones = {}) {
         const lat = Number(item.lat);
         const lng = Number(item.lng);
         if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return;
-        const duplicado = candidatos.some(c =>
+        const nuevoScore = Number(item.score || 0);
+        const idxDuplicado = candidatos.findIndex(c =>
             Math.abs(c.lat - lat) < 0.0012 && Math.abs(c.lng - lng) < 0.0012
         );
-        if (!duplicado) {
+        if (idxDuplicado === -1) {
             candidatos.push({
                 display_name: String(item.display_name || '').trim(),
                 lat: Number(lat.toFixed(7)),
@@ -138,8 +142,10 @@ async function geocodificarDireccionArgentina(query, opciones = {}) {
                 partido: String(item.partido || '').trim(),
                 provincia: String(item.provincia || '').trim(),
                 fuente: item.fuente || 'georef',
-                score: Number(item.score || 0)
+                score: nuevoScore
             });
+        } else if (nuevoScore > candidatos[idxDuplicado].score) {
+            candidatos[idxDuplicado].score = nuevoScore;
         }
     };
 
@@ -256,6 +262,10 @@ async function geocodificarDireccionArgentina(query, opciones = {}) {
                 for (const tok of tokensResto) {
                     if (blobNorm.includes(tok)) coincidencias += 1;
                 }
+                const esExactoLoc = normalizarTokenTextoGeo(loc) === partePrincipalNorm;
+                const coincideZonaLoc = evaluarMatchZona(blobNorm);
+                const baseLoc = priorizaLocalidadSobreCalle ? (esExactoLoc ? 200 : 155) : (tieneAltura ? 40 : 90);
+                const penalizaZonaLoc = (tokensZona.length > 0 && !coincideZonaLoc) ? -75 : 0;
                 registrarCandidato({
                     display_name: etiqueta,
                     lat,
@@ -266,7 +276,7 @@ async function geocodificarDireccionArgentina(query, opciones = {}) {
                     partido: dep,
                     provincia: prov,
                     fuente: 'georef_localidades',
-                    score: (tieneAltura ? 40 : 85) + coincidencias * 20
+                    score: baseLoc + coincidencias * 20 + (tokensZona.length > 0 && coincideZonaLoc ? 30 : 0) + penalizaZonaLoc
                 });
             }
         }
@@ -276,7 +286,7 @@ async function geocodificarDireccionArgentina(query, opciones = {}) {
         c.score >= (tokensResto.length > 0 ? 110 : 85) &&
         evaluarMatchZona(normalizarTokenTextoGeo(c.display_name || ''))
     );
-    if (!tieneMatchFuerteGeoref || candidatos.length < 2 || /\by\b/i.test(partePrincipal)) {
+    if (!tieneMatchFuerteGeoref || (candidatos.length < 2 && !priorizaLocalidadSobreCalle) || /\by\b/i.test(partePrincipal)) {
         try {
             const ahora = Date.now();
             const espera = _ultimoHitNominatimMs ? Math.max(0, 1050 - (ahora - _ultimoHitNominatimMs)) : 0;
@@ -307,8 +317,10 @@ async function geocodificarDireccionArgentina(query, opciones = {}) {
                     const loc = addr.suburb || addr.town || addr.city || addr.village || addr.neighbourhood || '';
                     const dep = addr.state_district || addr.county || '';
                     const prov = addr.state || '';
+                    const nomClass = String(n.class || n.category || '').toLowerCase();
+                    const esLugarNominatim = !calle || ['place', 'boundary'].includes(nomClass);
                     const etiquetaLimpia = [
-                        [calle, altura].filter(Boolean).join(' '),
+                        esLugarNominatim ? '' : [calle, altura].filter(Boolean).join(' '),
                         loc,
                         dep && dep !== loc ? dep : '',
                         prov
@@ -319,15 +331,27 @@ async function geocodificarDireccionArgentina(query, opciones = {}) {
                         if (blobNorm.includes(tok)) coincidencias += 1;
                     }
                     const coincideZonaNom = evaluarMatchZona(blobNorm);
-                    const scoreNom = (tokensZona.length > 0 && !coincideZonaNom)
-                        ? 40 + coincidencias * 8
-                        : 85 + coincidencias * 25 + (tokensZona.length > 0 && coincideZonaNom ? 45 : 0);
+                    let scoreNom;
+                    if (tokensZona.length > 0 && !coincideZonaNom) {
+                        scoreNom = 35 + coincidencias * 8;
+                    } else if (priorizaLocalidadSobreCalle) {
+                        if (esLugarNominatim) {
+                            const esExactoNomLoc = normalizarTokenTextoGeo(loc || '') === partePrincipalNorm ||
+                                normalizarTokenTextoGeo((n.name || '')) === partePrincipalNorm;
+                            scoreNom = (esExactoNomLoc ? 185 : 145) + coincidencias * 22 + (tokensZona.length > 0 && coincideZonaNom ? 40 : 0);
+                        } else {
+                            // Búsqueda sin altura ni prefijo de vía: evitar que una calle homónima (ej: Calle Enrique Martínez en CABA) supere a una localidad
+                            scoreNom = 55 + coincidencias * 12 + (tokensZona.length > 0 && coincideZonaNom ? 25 : 0);
+                        }
+                    } else {
+                        scoreNom = 85 + coincidencias * 25 + (tokensZona.length > 0 && coincideZonaNom ? 45 : 0);
+                    }
                     registrarCandidato({
                         display_name: etiquetaLimpia,
                         lat: n.lat,
                         lng: n.lon,
-                        calle,
-                        altura,
+                        calle: esLugarNominatim ? '' : calle,
+                        altura: esLugarNominatim ? '' : altura,
                         localidad: loc,
                         partido: dep,
                         provincia: prov,
@@ -2090,6 +2114,39 @@ async function registrarTransicionHitoPedidoVecino(runner, pedidoId, nuevoHito, 
     return { avanzado: true, hito_anterior: hitoActual, hito_actual: hitoDestino, estado_operativo: nuevoEstado };
 }
 
+function _sanitizarCoordenadasGeo(latRaw, lngRaw) {
+    if (latRaw == null || lngRaw == null || latRaw === '' || lngRaw === '') return null;
+    const lat = Number(latRaw);
+    const lng = Number(lngRaw);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return null;
+    if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+    return {
+        lat: Number(lat.toFixed(7)),
+        lng: Number(lng.toFixed(7))
+    };
+}
+
+function _normalizarTextoDirCoordenadas(dirRaw = '') {
+    return String(dirRaw || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function _calcularDistanciaMetrosGeo(lat1, lng1, lat2, lng2) {
+    const R = 6371e3;
+    const rad = (v) => (Number(v) * Math.PI) / 180;
+    const dLat = rad(lat2 - lat1);
+    const dLng = rad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(rad(lat1)) * Math.cos(rad(lat2)) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
 /**
  * Construye la línea de tiempo Marca Blanca pura (cero menciones a LAMDA / costos / planta):
  * - ENVIO_BARRIAL: 6 hitos (1 -> 2 -> 3 -> 4 -> 5 -> 6).
@@ -2105,6 +2162,8 @@ function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = []) {
     const hitoActual = esAnulado
         ? 0
         : Number(pedido.hito_tracking_actual || resolverHitoDesdeEstadoOperativo(pedido.estado_operativo, pedido.secuencia_operativa_lamda));
+    const esAusentePasaRetirar = Boolean(pedido.ausente_pasa_retirar) && !esAnulado && hitoActual < 6;
+    const motivoAusencia = String(pedido.motivo_ausencia || '').trim();
 
     const mapaEventosTs = new Map();
     for (const ev of (eventosRows || [])) {
@@ -2139,23 +2198,32 @@ function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = []) {
             descripcion: 'Tus productos ya fueron controlados uno por uno y embolsados con tu nombre.',
             fecha_fallback: pedido.fecha_armado_bolsa
         },
-        esEnvio
+        esAusentePasaRetirar
             ? {
                 hito_numero: 4,
-                codigo: 'EN_PODER_GESTOR',
+                codigo: 'AUSENTE_PASA_RETIRAR',
                 icono: '🏡',
-                titulo: `Ya llegó a ${marca}`,
-                descripcion: `${gestor} ya recibió tu bolsa en el barrio y la prepara para salir hacia tu domicilio.`,
-                fecha_fallback: pedido.fecha_entrega_gestor
+                titulo: `No te encontramos — Retirá por ${marca}`,
+                descripcion: `Pasamos por ${dirVecino}${motivoAusencia ? ` (${motivoAusencia})` : ''} y no te encontramos. Tu pedido regresó a ${marca} (${dirRetiro}) para que pases a retirarlo (se conserva el cargo de envío del intento realizado).`,
+                fecha_fallback: pedido.fecha_ausente_reparto || pedido.fecha_entrega_gestor
             }
-            : {
-                hito_numero: 4,
-                codigo: 'EN_PODER_GESTOR',
-                icono: '🎉',
-                titulo: `¡Listo para retirar en ${marca}!`,
-                descripcion: `Ya podés pasar a retirarlo por ${dirRetiro}${pedido.ventana_horaria_label ? ` (${pedido.ventana_horaria_label})` : ''}.`,
-                fecha_fallback: pedido.fecha_entrega_gestor
-            }
+            : (esEnvio
+                ? {
+                    hito_numero: 4,
+                    codigo: 'EN_PODER_GESTOR',
+                    icono: '🏡',
+                    titulo: `Ya llegó a ${marca}`,
+                    descripcion: `${gestor} ya recibió tu bolsa en el barrio y la prepara para salir hacia tu domicilio.`,
+                    fecha_fallback: pedido.fecha_entrega_gestor
+                }
+                : {
+                    hito_numero: 4,
+                    codigo: 'EN_PODER_GESTOR',
+                    icono: '🎉',
+                    titulo: `¡Listo para retirar en ${marca}!`,
+                    descripcion: `Ya podés pasar a retirarlo por ${dirRetiro}${pedido.ventana_horaria_label ? ` (${pedido.ventana_horaria_label})` : ''}.`,
+                    fecha_fallback: pedido.fecha_entrega_gestor
+                })
     ];
 
     if (esEnvio) {
@@ -2178,7 +2246,7 @@ function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = []) {
         fecha_fallback: pedido.fecha_entregado_vecino
     });
 
-    const HITO_EFECTIVO = (!esEnvio && hitoActual === 5) ? 4 : hitoActual;
+    const HITO_EFECTIVO = esAusentePasaRetirar ? 4 : ((!esEnvio && hitoActual === 5) ? 4 : hitoActual);
 
     const pasos = definiciones.map((def, idx) => {
         const completado = !esAnulado && HITO_EFECTIVO >= def.hito_numero;
@@ -2201,6 +2269,8 @@ function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = []) {
     const pasoActualObj = pasos.find(p => p.es_actual) || pasos[0];
     return {
         anulado: esAnulado,
+        ausente_pasa_retirar: esAusentePasaRetirar,
+        motivo_ausencia: motivoAusencia || null,
         hito_actual: HITO_EFECTIVO,
         paso_actual_orden: esAnulado ? 0 : (pasoActualObj ? pasoActualObj.paso_orden : 1),
         total_pasos: pasos.length,
@@ -3750,6 +3820,38 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
 
             CREATE INDEX IF NOT EXISTS idx_nodos_eventos_tracking_pedido
                 ON public.nodos_pedidos_eventos_tracking (pedido_id, hito_numero, id);
+
+            -- 6) Etapas B4 y B5: Coordenadas de vecinos/pedidos, Hoja de Ruta, Ausente Pasa a Retirar y Radar en vivo
+            ALTER TABLE public.nodos_vecinos
+                ADD COLUMN IF NOT EXISTS latitud NUMERIC(10, 7),
+                ADD COLUMN IF NOT EXISTS longitud NUMERIC(10, 7),
+                ADD COLUMN IF NOT EXISTS gps_origen VARCHAR(30),
+                ADD COLUMN IF NOT EXISTS gps_verificado_gestor BOOLEAN NOT NULL DEFAULT false,
+                ADD COLUMN IF NOT EXISTS gps_updated_at TIMESTAMP;
+
+            ALTER TABLE public.nodos_pedidos_vecinos
+                ADD COLUMN IF NOT EXISTS latitud NUMERIC(10, 7),
+                ADD COLUMN IF NOT EXISTS longitud NUMERIC(10, 7),
+                ADD COLUMN IF NOT EXISTS gps_origen VARCHAR(30),
+                ADD COLUMN IF NOT EXISTS orden_reparto INTEGER,
+                ADD COLUMN IF NOT EXISTS ausente_pasa_retirar BOOLEAN NOT NULL DEFAULT false,
+                ADD COLUMN IF NOT EXISTS fecha_ausente_reparto TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS motivo_ausencia TEXT;
+
+            CREATE INDEX IF NOT EXISTS idx_nodos_pedidos_reparto
+                ON public.nodos_pedidos_vecinos (nodo_id, modalidad_entrega, hito_tracking_actual, orden_reparto, id);
+
+            CREATE TABLE IF NOT EXISTS public.nodos_reparto_radar (
+                id SERIAL PRIMARY KEY,
+                nodo_id INT NOT NULL REFERENCES public.nodos_maestro(id) ON DELETE CASCADE,
+                activo BOOLEAN NOT NULL DEFAULT false,
+                latitud NUMERIC(10, 7),
+                longitud NUMERIC(10, 7),
+                precision_metros INT,
+                pedido_actual_id INT REFERENCES public.nodos_pedidos_vecinos(id) ON DELETE SET NULL,
+                updated_at TIMESTAMP DEFAULT NOW(),
+                CONSTRAINT unq_nodos_reparto_radar_nodo UNIQUE (nodo_id)
+            );
         `);
 
         // Backfill determinista de tracking_token, hito real actual y eventos de auditoría para pedidos existentes (#NB-1001, #NB-1002, #NB-1003, etc.)
@@ -6260,12 +6362,17 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 `SELECT npv.*,
                         nle.codigo_canasto AS lote_codigo_canasto,
                         nle.estado_canasto AS lote_estado_canasto,
-                        COALESCE(nle.debito_cta_cte_registrado, false) AS lote_debito_registrado
+                        COALESCE(nle.debito_cta_cte_registrado, false) AS lote_debito_registrado,
+                        nv.latitud AS vecino_latitud,
+                        nv.longitud AS vecino_longitud,
+                        nv.gps_origen AS vecino_gps_origen,
+                        COALESCE(nv.gps_verificado_gestor, false) AS vecino_gps_verificado
                  FROM public.nodos_pedidos_vecinos npv
                  LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
+                 LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
                  WHERE npv.nodo_id = $1
                  ORDER BY npv.id DESC
-                 LIMIT 80`,
+                 LIMIT 120`,
                 [nodo.id]
             )
             : Promise.resolve({ rows: [] }),
@@ -6327,8 +6434,19 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         const pagoConfirmado = Boolean(p.impactado_cta_cte_pago) ||
             ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase());
         const hitoActual = Number(p.hito_tracking_actual || resolverHitoDesdeEstadoOperativo(p.estado_operativo, p.secuencia_operativa_lamda));
+        const latPedido = p.latitud != null ? Number(p.latitud) : null;
+        const lngPedido = p.longitud != null ? Number(p.longitud) : null;
+        const latVecino = p.vecino_latitud != null ? Number(p.vecino_latitud) : null;
+        const lngVecino = p.vecino_longitud != null ? Number(p.vecino_longitud) : null;
         return {
             ...p,
+            latitud: Number.isFinite(latPedido) ? latPedido : null,
+            longitud: Number.isFinite(lngPedido) ? lngPedido : null,
+            vecino_latitud: Number.isFinite(latVecino) ? latVecino : null,
+            vecino_longitud: Number.isFinite(lngVecino) ? lngVecino : null,
+            vecino_gps_verificado: Boolean(p.vecino_gps_verificado),
+            orden_reparto: p.orden_reparto != null ? Number(p.orden_reparto) : null,
+            ausente_pasa_retirar: Boolean(p.ausente_pasa_retirar),
             hito_tracking_actual: hitoActual,
             pago_confirmado: pagoConfirmado,
             items: itemsPorPedido.get(Number(p.id)) || []
@@ -6413,10 +6531,32 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             permitir_encomienda: puedeEncomiendaNodo,
             mostrar_ingredientes_tienda: mostrarIngredientesNodo,
             cargo_envio_barrial: nodo.cargo_envio_barrial,
+            zona_centro_lat: puedeRepartoPropio && nodo.latitud != null ? Number(nodo.latitud) : null,
+            zona_centro_lng: puedeRepartoPropio && nodo.longitud != null ? Number(nodo.longitud) : null,
             config_ventanas_corte: nodo.config_ventanas_corte,
             color_primario: nodo.color_primario,
             logo_original_base64: nodo.logo_original_base64
         };
+
+    let radarReparto = { activo: false };
+    if (esVistaGestor) {
+        const radRes = await db.query(
+            `SELECT activo, pedido_actual_id, updated_at,
+                    EXTRACT(EPOCH FROM (NOW() - updated_at)) AS edad_segundos
+             FROM public.nodos_reparto_radar
+             WHERE nodo_id = $1::int
+             LIMIT 1`,
+            [nodo.id]
+        );
+        const rad = radRes.rows[0];
+        if (rad) {
+            radarReparto = {
+                activo: Boolean(rad.activo) && Number(rad.edad_segundos || 0) <= 240,
+                pedido_actual_id: rad.pedido_actual_id ? Number(rad.pedido_actual_id) : null,
+                updated_at: rad.updated_at || null
+            };
+        }
+    }
 
     return {
         nodo: nodoPublico,
@@ -6439,6 +6579,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         propuestas_nodo: esVistaGestor ? propuestasRes.rows : [],
         pedidos_nodo: esVistaGestor ? pedidosConItems : [],
         movimientos_cta_cte: esVistaGestor ? movsRes.rows : [],
+        radar_reparto: esVistaGestor ? radarReparto : { activo: false },
         telefono_whatsapp_pruebas: '5492216615746',
         telefono_whatsapp_pruebas_display: '221 661 5746',
         modo_laboratorio: esModoLaboratorioNodos(),
@@ -6658,20 +6799,100 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
         if (!telNormVecino || telNormVecino.length < 7) {
             throw new Error('Por favor ingresá un número de WhatsApp válido con código de área (ej: 221 501-1101).');
         }
-        const dirVecino = payload.direccion_entrega || nodo.direccion_retiro || '';
+        const dirVecino = modalidad === 'ENVIO_BARRIAL'
+            ? String(payload.direccion_entrega || '').trim()
+            : (nodo.direccion_retiro || '');
         const entrecallesVecino = payload.entrecalles_referencia || '';
+        const coordsPayload = modalidad === 'ENVIO_BARRIAL'
+            ? _sanitizarCoordenadasGeo(payload.latitud, payload.longitud)
+            : null;
+        const gpsOrigenPayload = coordsPayload
+            ? String(payload.gps_origen || 'VECINO_GPS').trim().slice(0, 30)
+            : null;
+
+        const vecPrevRes = await client.query(
+            `SELECT id, direccion_calle, latitud, longitud, gps_origen, gps_verificado_gestor
+             FROM public.nodos_vecinos
+             WHERE nodo_id = $1::int AND telefono_normalizado = $2
+             LIMIT 1`,
+            [nodo.id, telNormVecino]
+        );
+        const vecPrevio = vecPrevRes.rows[0] || null;
+        const normNuevaDir = _normalizarTextoDirCoordenadas(dirVecino);
+        const normPrevDir = _normalizarTextoDirCoordenadas(vecPrevio?.direccion_calle || '');
+        const cambioDireccionEnvio = modalidad === 'ENVIO_BARRIAL' && Boolean(vecPrevio) && (
+            !normNuevaDir || !normPrevDir || normNuevaDir !== normPrevDir
+        );
+
+        let latPedidoFinal = null;
+        let lngPedidoFinal = null;
+        let gpsOrigenPedidoFinal = null;
+
+        if (modalidad === 'ENVIO_BARRIAL') {
+            if (coordsPayload) {
+                latPedidoFinal = coordsPayload.lat;
+                lngPedidoFinal = coordsPayload.lng;
+                gpsOrigenPedidoFinal = gpsOrigenPayload;
+            } else if (!cambioDireccionEnvio && vecPrevio && vecPrevio.latitud != null && vecPrevio.longitud != null) {
+                const coordsPrev = _sanitizarCoordenadasGeo(vecPrevio.latitud, vecPrevio.longitud);
+                if (coordsPrev) {
+                    latPedidoFinal = coordsPrev.lat;
+                    lngPedidoFinal = coordsPrev.lng;
+                    gpsOrigenPedidoFinal = vecPrevio.gps_verificado_gestor
+                        ? 'GESTOR_VERIFICADO'
+                        : (String(vecPrevio.gps_origen || 'VECINO_PREVIO').slice(0, 30));
+                }
+            }
+        }
+
         const upVec = await client.query(
             `INSERT INTO public.nodos_vecinos (
                 nodo_id, nombre_completo, telefono_whatsapp, telefono_normalizado,
-                direccion_calle, entrecalles_referencia, notas_entrega, activo
-             ) VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+                direccion_calle, entrecalles_referencia, notas_entrega,
+                latitud, longitud, gps_origen, gps_verificado_gestor, gps_updated_at, activo
+             ) VALUES (
+                $1, $2, $3, $4,
+                $5, $6, $7,
+                $8::numeric, $9::numeric, $10::varchar, false, CASE WHEN $8::numeric IS NOT NULL THEN NOW() ELSE NULL END, true
+             )
              ON CONFLICT (nodo_id, telefono_normalizado)
              DO UPDATE SET
                 nombre_completo = EXCLUDED.nombre_completo,
                 telefono_whatsapp = EXCLUDED.telefono_whatsapp,
-                direccion_calle = COALESCE(NULLIF(EXCLUDED.direccion_calle, ''), public.nodos_vecinos.direccion_calle),
-                entrecalles_referencia = COALESCE(NULLIF(EXCLUDED.entrecalles_referencia, ''), public.nodos_vecinos.entrecalles_referencia),
+                direccion_calle = CASE
+                    WHEN $11::boolean THEN COALESCE(NULLIF(EXCLUDED.direccion_calle, ''), public.nodos_vecinos.direccion_calle)
+                    ELSE public.nodos_vecinos.direccion_calle
+                END,
+                entrecalles_referencia = CASE
+                    WHEN $11::boolean THEN COALESCE(NULLIF(EXCLUDED.entrecalles_referencia, ''), public.nodos_vecinos.entrecalles_referencia)
+                    ELSE public.nodos_vecinos.entrecalles_referencia
+                END,
                 notas_entrega = COALESCE(NULLIF(EXCLUDED.notas_entrega, ''), public.nodos_vecinos.notas_entrega),
+                latitud = CASE
+                    WHEN $8::numeric IS NOT NULL THEN $8::numeric
+                    WHEN $12::boolean THEN NULL
+                    ELSE public.nodos_vecinos.latitud
+                END,
+                longitud = CASE
+                    WHEN $9::numeric IS NOT NULL THEN $9::numeric
+                    WHEN $12::boolean THEN NULL
+                    ELSE public.nodos_vecinos.longitud
+                END,
+                gps_origen = CASE
+                    WHEN $8::numeric IS NOT NULL THEN $10::varchar
+                    WHEN $12::boolean THEN NULL
+                    ELSE public.nodos_vecinos.gps_origen
+                END,
+                gps_verificado_gestor = CASE
+                    WHEN $8::numeric IS NOT NULL THEN false
+                    WHEN $12::boolean THEN false
+                    ELSE public.nodos_vecinos.gps_verificado_gestor
+                END,
+                gps_updated_at = CASE
+                    WHEN $8::numeric IS NOT NULL THEN NOW()
+                    WHEN $12::boolean THEN NULL
+                    ELSE public.nodos_vecinos.gps_updated_at
+                END,
                 activo = true,
                 updated_at = NOW()
              RETURNING id, codigo_vecino, portal_token`,
@@ -6680,9 +6901,14 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 vecinoNombre,
                 vecinoTelefono,
                 telNormVecino,
-                dirVecino,
-                entrecallesVecino,
-                payload.observaciones_vecino || ''
+                modalidad === 'ENVIO_BARRIAL' ? dirVecino : '',
+                modalidad === 'ENVIO_BARRIAL' ? entrecallesVecino : '',
+                payload.observaciones_vecino || '',
+                coordsPayload ? coordsPayload.lat : null,
+                coordsPayload ? coordsPayload.lng : null,
+                gpsOrigenPayload,
+                modalidad === 'ENVIO_BARRIAL',
+                cambioDireccionEnvio
             ]
         );
         const vecinoId = Number(upVec.rows[0].id);
@@ -6716,13 +6942,14 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             `INSERT INTO public.nodos_pedidos_vecinos (
                 codigo_pedido, nodo_id, vecino_id, vecino_nombre, vecino_telefono,
                 modalidad_entrega, direccion_entrega, entrecalles_referencia,
+                latitud, longitud, gps_origen,
                 fecha_entrega_comprometida, fecha_entrega_label, ventana_horaria_label,
                 entrar_en_corte_actual, medio_pago, estado_pago, estado_operativo,
                 tracking_token, hito_tracking_actual,
                 subtotal_productos_vecino, cargo_envio_barrial, total_vecino,
                 total_base_lamda, ganancia_total_gestor, observaciones_vecino
              ) VALUES (
-                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'CONFIRMADO_VECINO',$15,1,$16,$17,$18,$19,$20,$21
+                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'CONFIRMADO_VECINO',$18,1,$19,$20,$21,$22,$23,$24
              ) RETURNING *`,
             [
                 codigoPedido,
@@ -6733,6 +6960,9 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 modalidad,
                 direccionFinal,
                 payload.entrecalles_referencia || '',
+                latPedidoFinal,
+                lngPedidoFinal,
+                gpsOrigenPedidoFinal,
                 entregaAsignada.fecha_entrega_iso,
                 entregaAsignada.label_completo,
                 entregaAsignada.ventana_retiro,
@@ -11038,6 +11268,105 @@ async function obtenerSubcuentaVecinoDetalle(vecinoId) {
 // ETAPA B: SEGUIMIENTO EN VIVO MARCA BLANCA Y CONTROLES DE 1 TOQUE DEL GESTOR
 // ============================================================================
 
+/**
+ * Resumen público estrictamente anonimizado de proximidad durante reparto en curso.
+ * Nunca expone latitud/longitud del repartidor ni datos de otros vecinos:
+ * únicamente devuelve cuántas paradas faltan y un rango estimado en minutos cuando el radar está vigente (<= 4 min).
+ */
+async function obtenerResumenRadarParaPedidoVecino(pedidoRow) {
+    if (!pedidoRow || String(pedidoRow.modalidad_entrega || '').toUpperCase() !== 'ENVIO_BARRIAL') {
+        return { disponible: false };
+    }
+    if (Boolean(pedidoRow.ausente_pasa_retirar) || String(pedidoRow.estado_operativo || '').toUpperCase() === 'ANULADO') {
+        return { disponible: false };
+    }
+    const hito = Number(pedidoRow.hito_tracking_actual || 1);
+    if (hito !== 5) {
+        return { disponible: false };
+    }
+
+    const nid = Number(pedidoRow.nodo_id || 0);
+    const pid = Number(pedidoRow.id || 0);
+    if (!nid || !pid) return { disponible: false };
+
+    const radRes = await db.query(
+        `SELECT activo, pedido_actual_id, updated_at,
+                EXTRACT(EPOCH FROM (NOW() - updated_at)) AS edad_segundos
+         FROM public.nodos_reparto_radar
+         WHERE nodo_id = $1::int
+         LIMIT 1`,
+        [nid]
+    );
+    const radar = radRes.rows[0];
+    if (!radar || !radar.activo || Number(radar.edad_segundos || 9999) > 240) {
+        return { disponible: false };
+    }
+
+    const colaRes = await db.query(
+        `SELECT id, direccion_entrega, latitud, longitud
+         FROM public.nodos_pedidos_vecinos
+         WHERE nodo_id = $1::int
+           AND modalidad_entrega = 'ENVIO_BARRIAL'
+           AND UPPER(COALESCE(estado_operativo, '')) <> 'ANULADO'
+           AND COALESCE(ausente_pasa_retirar, false) = false
+           AND hito_tracking_actual IN (4, 5)
+         ORDER BY (CASE WHEN hito_tracking_actual = 5 THEN 0 ELSE 1 END) ASC,
+                  COALESCE(orden_reparto, 999999) ASC,
+                  id ASC`,
+        [nid]
+    );
+
+    const cola = colaRes.rows;
+    const idxPedido = cola.findIndex(r => Number(r.id) === pid);
+    if (idxPedido === -1) {
+        return { disponible: false };
+    }
+
+    let idxActual = 0;
+    if (radar.pedido_actual_id) {
+        const encontrado = cola.findIndex(r => Number(r.id) === Number(radar.pedido_actual_id));
+        if (encontrado >= 0) idxActual = encontrado;
+    }
+
+    const obtenerClavePuerta = (row) => (row.latitud != null && row.longitud != null)
+        ? `${Number(row.latitud).toFixed(4)},${Number(row.longitud).toFixed(4)}`
+        : _normalizarTextoDirCoordenadas(row.direccion_entrega || `p-${row.id}`);
+
+    const claveActual = obtenerClavePuerta(cola[idxActual]);
+    const clavePedido = obtenerClavePuerta(cola[idxPedido]);
+
+    if (idxPedido <= idxActual || clavePedido === claveActual) {
+        return {
+            disponible: true,
+            es_proxima_parada: true,
+            paradas_restantes: 0,
+            minutos_min: 1,
+            minutos_max: 6,
+            rango_minutos_label: 'Sos la próxima parada (~1 a 6 min)'
+        };
+    }
+
+    const puertasPrevias = new Set();
+    for (let i = idxActual; i < idxPedido; i++) {
+        const clavePuerta = obtenerClavePuerta(cola[i]);
+        if (clavePuerta !== clavePedido) {
+            puertasPrevias.add(clavePuerta);
+        }
+    }
+
+    const paradasRestantes = Math.max(1, puertasPrevias.size);
+    const minutosMin = Math.max(4, paradasRestantes * 5);
+    const minutosMax = Math.max(10, paradasRestantes * 10 + 5);
+    return {
+        disponible: true,
+        es_proxima_parada: false,
+        paradas_restantes: paradasRestantes,
+        minutos_min: minutosMin,
+        minutos_max: minutosMax,
+        rango_minutos_label: `Faltan ${paradasRestantes} ${paradasRestantes === 1 ? 'parada' : 'paradas'} antes (~${minutosMin} a ${minutosMax} min)`
+    };
+}
+
 async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
     const [itemsRes, evsRes] = await Promise.all([
         db.query(
@@ -11061,6 +11390,7 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
         ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(pedidoRow.estado_pago || '').toUpperCase());
 
     const timeline = construirTimelineMarcaBlancaPedido(pedidoRow, nodoRow, evsRes.rows);
+    const radarResumen = await obtenerResumenRadarParaPedidoVecino(pedidoRow);
 
     return {
         nodo: {
@@ -11088,6 +11418,9 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             ventana_horaria_label: pedidoRow.ventana_horaria_label || '',
             medio_pago: pedidoRow.medio_pago,
             pago_confirmado: pagoConfirmado,
+            ausente_pasa_retirar: Boolean(pedidoRow.ausente_pasa_retirar),
+            motivo_ausencia: pedidoRow.motivo_ausencia || '',
+            fecha_ausente_reparto: pedidoRow.fecha_ausente_reparto || null,
             subtotal_productos_vecino: Number(pedidoRow.subtotal_productos_vecino || 0),
             cargo_envio_barrial: Number(pedidoRow.cargo_envio_barrial || 0),
             monto_ajuste_credito: Number(pedidoRow.monto_ajuste_credito || 0),
@@ -11103,7 +11436,10 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             precio_unitario_vecino: Number(it.precio_unitario_vecino || 0),
             subtotal_vecino: Number(it.subtotal_vecino || 0)
         })),
-        seguimiento: timeline
+        seguimiento: timeline,
+        radar_en_vivo: radarResumen,
+        modo_laboratorio: esModoLaboratorioNodos(),
+        telefono_whatsapp_pruebas: '5492216615746'
     };
 }
 
@@ -11309,7 +11645,8 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
         titular_display: primera.titular_display || ''
     };
 
-    const pedidosArmados = filasCoincidentes.map(p => {
+    const esModoLab = esModoLaboratorioNodos();
+    const pedidosArmados = await Promise.all(filasCoincidentes.map(async (p) => {
         const pid = Number(p.id);
         const esEnvio = String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL';
         const dirPublicaOEnmascarada = esEnvio
@@ -11328,6 +11665,7 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
             nodoPublico,
             evsMap.get(pid) || []
         );
+        const radarResumen = await obtenerResumenRadarParaPedidoVecino(p);
 
         return {
             modo_privacidad_enmascarada: true,
@@ -11343,6 +11681,9 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
                 ventana_horaria_label: p.ventana_horaria_label || '',
                 medio_pago: p.medio_pago,
                 pago_confirmado: pagoConfirmado,
+                ausente_pasa_retirar: Boolean(p.ausente_pasa_retirar),
+                motivo_ausencia: p.motivo_ausencia || '',
+                fecha_ausente_reparto: p.fecha_ausente_reparto || null,
                 subtotal_productos_vecino: Number(p.subtotal_productos_vecino || 0),
                 cargo_envio_barrial: Number(p.cargo_envio_barrial || 0),
                 monto_ajuste_credito: Number(p.monto_ajuste_credito || 0),
@@ -11352,9 +11693,12 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
                 created_at: p.created_at
             },
             items: itemsMap.get(pid) || [],
-            seguimiento
+            seguimiento,
+            radar_en_vivo: radarResumen,
+            modo_laboratorio: esModoLab,
+            telefono_whatsapp_pruebas: '5492216615746'
         };
-    });
+    }));
 
     const pedidosEnTransito = pedidosArmados.filter(x => Number(x.seguimiento?.hito_actual || 1) < 6);
     const pedidosEntregados = pedidosArmados.filter(x => Number(x.seguimiento?.hito_actual || 1) >= 6);
@@ -11371,7 +11715,9 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
         pedidos_en_transito: pedidosEnTransito,
         pedidos_entregados: pedidosEntregados,
         pedidos_todos: pedidosArmados,
-        pedido_especifico: pedidoEspecifico
+        pedido_especifico: pedidoEspecifico,
+        modo_laboratorio: esModoLab,
+        telefono_whatsapp_pruebas: '5492216615746'
     };
 }
 
@@ -11512,12 +11858,13 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
     if (!nid || !pid) {
         throw new Error('Nodo y Pedido requeridos.');
     }
-    if (!['SALIO_REPARTO', 'ENTREGADO'].includes(accion)) {
-        throw new Error('Acción inválida. Use SALIO_REPARTO o ENTREGADO.');
+    if (!['SALIO_REPARTO', 'ENTREGADO', 'AUSENTE_PASA_RETIRAR', 'REINTEGRAR_REPARTO'].includes(accion)) {
+        throw new Error('Acción inválida. Use SALIO_REPARTO, ENTREGADO, AUSENTE_PASA_RETIRAR o REINTEGRAR_REPARTO.');
     }
 
     const pedRes = await db.query(
-        `SELECT npv.*, nm.nombre_marca, nm.gestor_nombre, nm.slug, nm.activo AS nodo_activo
+        `SELECT npv.*, nm.nombre_marca, nm.gestor_nombre, nm.slug, nm.activo AS nodo_activo,
+                nm.direccion_retiro AS nodo_direccion_retiro
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          WHERE npv.id = $1 AND npv.nodo_id = $2
@@ -11552,16 +11899,100 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
         if (hitoActual >= 6) {
             throw new Error(`El pedido #${ped.codigo_pedido} ya figura como entregado.`);
         }
+        await db.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET ausente_pasa_retirar = false,
+                 updated_at = NOW()
+             WHERE id = $1::int`,
+            [pid]
+        );
         await registrarTransicionHitoPedidoVecino(db, pid, 5, {
             origen: 'PANEL_GESTOR_REPARTO',
             actor,
             detalle: `${actor} inició reparto barrial hacia ${ped.direccion_entrega || 'domicilio del vecino'}`
         });
+    } else if (accion === 'AUSENTE_PASA_RETIRAR') {
+        if (String(ped.modalidad_entrega || '').toUpperCase() !== 'ENVIO_BARRIAL') {
+            throw new Error(`El pedido #${ped.codigo_pedido} ya es de retiro en el Nodo.`);
+        }
+        if (hitoActual >= 6) {
+            throw new Error(`El pedido #${ped.codigo_pedido} ya fue entregado.`);
+        }
+        const motivo = String(payload.motivo || 'No se encontraba en el domicilio al momento del reparto').trim().slice(0, 300);
+        // Se conserva íntegro cargo_envio_barrial y total_vecino porque el viaje al domicilio se realizó
+        await db.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET ausente_pasa_retirar = true,
+                 fecha_ausente_reparto = NOW(),
+                 motivo_ausencia = $2,
+                 hito_tracking_actual = 4,
+                 estado_operativo = 'EN_PODER_GESTOR',
+                 orden_reparto = NULL,
+                 updated_at = NOW()
+             WHERE id = $1::int`,
+            [pid, motivo]
+        );
+        await db.query(
+            `INSERT INTO public.nodos_pedidos_eventos_tracking (
+                pedido_id, nodo_id, hito_numero, estado_operativo, origen_evento, actor, detalle
+             ) VALUES ($1::int, $2::int, 4, 'AUSENTE_PASA_RETIRAR', 'MODO_REPARTO_AUSENTE', $3, $4)`,
+            [
+                pid,
+                nid,
+                actor,
+                `Domicilio ausente (${motivo}). Pedido disponible para retirar en ${ped.nombre_marca}. Se conserva el cargo de envío.`
+            ]
+        );
+    } else if (accion === 'REINTEGRAR_REPARTO') {
+        if (String(ped.modalidad_entrega || '').toUpperCase() !== 'ENVIO_BARRIAL') {
+            throw new Error(`El pedido #${ped.codigo_pedido} es de retiro en el Nodo.`);
+        }
+        if (hitoActual >= 6) {
+            throw new Error(`El pedido #${ped.codigo_pedido} ya fue entregado.`);
+        }
+        const salirAhora = Boolean(payload.salir_a_reparto);
+        await db.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET ausente_pasa_retirar = false,
+                 updated_at = NOW()
+             WHERE id = $1::int`,
+            [pid]
+        );
+        if (salirAhora) {
+            await registrarTransicionHitoPedidoVecino(db, pid, 5, {
+                origen: 'MODO_REPARTO_REINTEGRO',
+                actor,
+                detalle: `${actor} reintegró el pedido #${ped.codigo_pedido} a nueva tanda de reparto`
+            });
+        } else {
+            await db.query(
+                `INSERT INTO public.nodos_pedidos_eventos_tracking (
+                    pedido_id, nodo_id, hito_numero, estado_operativo, origen_evento, actor, detalle
+                 ) VALUES ($1::int, $2::int, 4, 'EN_PODER_GESTOR', 'MODO_REPARTO_REINTEGRO', $3, $4)`,
+                [
+                    pid,
+                    nid,
+                    actor,
+                    `Pedido #${ped.codigo_pedido} reintegrado a la Hoja de Ruta para próximo intento de entrega.`
+                ]
+            );
+        }
     } else if (accion === 'ENTREGADO') {
+        if (ped.ausente_pasa_retirar) {
+            await db.query(
+                `UPDATE public.nodos_pedidos_vecinos
+                 SET ausente_pasa_retirar = false,
+                     updated_at = NOW()
+                 WHERE id = $1::int`,
+                [pid]
+            );
+        }
         await registrarTransicionHitoPedidoVecino(db, pid, 6, {
-            origen: 'PANEL_GESTOR_ENTREGA',
+            origen: ped.ausente_pasa_retirar ? 'RETIRO_POST_AUSENCIA' : 'PANEL_GESTOR_ENTREGA',
             actor,
-            detalle: `Pedido #${ped.codigo_pedido} entregado a ${ped.vecino_nombre}`
+            detalle: ped.ausente_pasa_retirar
+                ? `Pedido #${ped.codigo_pedido} retirado en ${ped.nombre_marca} por ${ped.vecino_nombre} tras ausencia en reparto`
+                : `Pedido #${ped.codigo_pedido} entregado a ${ped.vecino_nombre}`
         });
     }
 
@@ -11586,6 +12017,540 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
         pedido: pedAct,
         cobro_efectivo_registrado: cobroRegistrado,
         seguimiento: seguimientoData.seguimiento
+    };
+}
+
+// ============================================================================
+// ETAPAS B4 y B5: HOJA DE RUTA DEL GESTOR, OPTIMIZADOR DE PARADAS Y RADAR EN VIVO
+// ============================================================================
+
+/**
+ * Optimiza el orden de paradas usando agrupamiento por puerta física, Nearest-Neighbor
+ * desde el origen y refinamiento 2-opt sobre distancia Haversine.
+ * Los pedidos sin coordenadas válidas se preservan ordenados al final manteniendo agrupación por dirección.
+ */
+function optimizarOrdenParadasReparto(paradas = [], origen = null) {
+    const lista = Array.isArray(paradas) ? paradas : [];
+    const clustersConGps = [];
+    const clustersSinGps = [];
+    const mapaSinGps = new Map();
+
+    for (const p of lista) {
+        const coords = _sanitizarCoordenadasGeo(p.latitud, p.longitud);
+        const normDir = _normalizarTextoDirCoordenadas(p.direccion_entrega || '');
+        if (coords) {
+            let grupo = clustersConGps.find(g =>
+                _calcularDistanciaMetrosGeo(g.lat, g.lng, coords.lat, coords.lng) <= 20 ||
+                (normDir && g.normDirs.has(normDir))
+            );
+            if (!grupo) {
+                grupo = {
+                    lat: coords.lat,
+                    lng: coords.lng,
+                    normDirs: new Set(normDir ? [normDir] : []),
+                    items: []
+                };
+                clustersConGps.push(grupo);
+            } else if (normDir) {
+                grupo.normDirs.add(normDir);
+            }
+            grupo.items.push(p);
+        } else {
+            const keyDir = normDir || `sin-dir-${p.id}`;
+            if (!mapaSinGps.has(keyDir)) {
+                const cl = { normDir: keyDir, items: [] };
+                mapaSinGps.set(keyDir, cl);
+                clustersSinGps.push(cl);
+            }
+            mapaSinGps.get(keyDir).items.push(p);
+        }
+    }
+
+    let rutaClusters = [];
+    let distanciaTotalMetros = 0;
+
+    if (clustersConGps.length > 0) {
+        const originCoords = _sanitizarCoordenadasGeo(origen?.lat, origen?.lng)
+            || { lat: clustersConGps[0].lat, lng: clustersConGps[0].lng };
+
+        // 1) Nearest-Neighbor desde el origen
+        const pendientes = clustersConGps.slice();
+        let currLat = originCoords.lat;
+        let currLng = originCoords.lng;
+        while (pendientes.length > 0) {
+            let bestIdx = 0;
+            let bestDist = Infinity;
+            for (let i = 0; i < pendientes.length; i++) {
+                const d = _calcularDistanciaMetrosGeo(currLat, currLng, pendientes[i].lat, pendientes[i].lng);
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestIdx = i;
+                }
+            }
+            const elegido = pendientes.splice(bestIdx, 1)[0];
+            rutaClusters.push(elegido);
+            currLat = elegido.lat;
+            currLng = elegido.lng;
+        }
+
+        // 2) Refinamiento 2-opt de trayectoria abierta desde el origen
+        const calcularLongitudRuta = (arr) => {
+            if (arr.length === 0) return 0;
+            let total = _calcularDistanciaMetrosGeo(originCoords.lat, originCoords.lng, arr[0].lat, arr[0].lng);
+            for (let i = 0; i < arr.length - 1; i++) {
+                total += _calcularDistanciaMetrosGeo(arr[i].lat, arr[i].lng, arr[i + 1].lat, arr[i + 1].lng);
+            }
+            return total;
+        };
+
+        let mejorDist = calcularLongitudRuta(rutaClusters);
+        if (rutaClusters.length >= 3) {
+            let huboMejora = true;
+            let iter = 0;
+            while (huboMejora && iter < 80) {
+                huboMejora = false;
+                iter += 1;
+                for (let i = 0; i < rutaClusters.length - 1; i++) {
+                    for (let j = i + 1; j < rutaClusters.length; j++) {
+                        const candidato = [
+                            ...rutaClusters.slice(0, i),
+                            ...rutaClusters.slice(i, j + 1).reverse(),
+                            ...rutaClusters.slice(j + 1)
+                        ];
+                        const distCand = calcularLongitudRuta(candidato);
+                        if (distCand < mejorDist - 5) {
+                            rutaClusters = candidato;
+                            mejorDist = distCand;
+                            huboMejora = true;
+                        }
+                    }
+                }
+            }
+        }
+        distanciaTotalMetros = mejorDist;
+    }
+
+    const todosClusters = [...rutaClusters, ...clustersSinGps];
+    const paradasOrdenadas = [];
+    for (const cl of todosClusters) {
+        cl.items.sort((a, b) => Number(a.id) - Number(b.id));
+        for (const it of cl.items) {
+            paradasOrdenadas.push(it);
+        }
+    }
+
+    return {
+        orden_ids: paradasOrdenadas.map(p => Number(p.id)),
+        paradas_ordenadas: paradasOrdenadas,
+        distancia_total_metros: Math.round(distanciaTotalMetros),
+        cantidad_con_gps: clustersConGps.reduce((acc, g) => acc + g.items.length, 0),
+        cantidad_sin_gps: clustersSinGps.reduce((acc, g) => acc + g.items.length, 0)
+    };
+}
+
+async function _obtenerNodoActivoParaGestor(nodoId) {
+    const nid = Number(nodoId || 0);
+    if (!nid) {
+        const err = new Error('Identificador de Nodo inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+    const res = await db.query(
+        `SELECT id, nombre_marca, gestor_nombre, barrio_zona, direccion_retiro,
+                latitud, longitud, permitir_reparto_propio, activo
+         FROM public.nodos_maestro
+         WHERE id = $1::int
+         LIMIT 1`,
+        [nid]
+    );
+    if (res.rows.length === 0) {
+        const err = new Error('Nodo Barrial no encontrado.');
+        err.statusCode = 404;
+        throw err;
+    }
+    const nodo = res.rows[0];
+    if (nodo.activo === false) {
+        const err = new Error('Este Nodo se encuentra archivado.');
+        err.statusCode = 403;
+        throw err;
+    }
+    return nodo;
+}
+
+async function geocodificarDireccionParaGestor(nodoId, query = '') {
+    await asegurarEsquemaNodosBarriales();
+    await _obtenerNodoActivoParaGestor(nodoId);
+    return geocodificarDireccionArgentina(query);
+}
+
+async function sugerirOrdenRepartoGestor(nodoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+    const nodo = await _obtenerNodoActivoParaGestor(nodoId);
+    const nid = Number(nodo.id);
+
+    const filtroIds = Array.isArray(payload.pedido_ids)
+        ? payload.pedido_ids.map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)
+        : [];
+
+    const resPed = await db.query(
+        `SELECT npv.id, npv.codigo_pedido, npv.vecino_nombre, npv.direccion_entrega,
+                npv.latitud, npv.longitud, npv.orden_reparto, npv.hito_tracking_actual,
+                nv.latitud AS vecino_latitud, nv.longitud AS vecino_longitud,
+                nv.direccion_calle AS vecino_direccion_calle
+         FROM public.nodos_pedidos_vecinos npv
+         LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
+         WHERE npv.nodo_id = $1::int
+           AND npv.modalidad_entrega = 'ENVIO_BARRIAL'
+           AND UPPER(COALESCE(npv.estado_operativo, '')) <> 'ANULADO'
+           AND COALESCE(npv.ausente_pasa_retirar, false) = false
+           AND npv.hito_tracking_actual IN (4, 5)
+           AND ($2::int[] IS NULL OR npv.id = ANY($2::int[]))
+         ORDER BY COALESCE(npv.orden_reparto, 999999) ASC, npv.id ASC`,
+        [nid, filtroIds.length > 0 ? filtroIds : null]
+    );
+
+    const paradasNormalizadas = resPed.rows.map(r => {
+        let coords = _sanitizarCoordenadasGeo(r.latitud, r.longitud);
+        if (!coords && r.vecino_latitud != null && r.vecino_longitud != null) {
+            const d1 = _normalizarTextoDirCoordenadas(r.direccion_entrega);
+            const d2 = _normalizarTextoDirCoordenadas(r.vecino_direccion_calle);
+            if (d1 && d2 && d1 === d2) {
+                coords = _sanitizarCoordenadasGeo(r.vecino_latitud, r.vecino_longitud);
+            }
+        }
+        return {
+            ...r,
+            latitud: coords ? coords.lat : null,
+            longitud: coords ? coords.lng : null
+        };
+    });
+
+    const origenCoords = _sanitizarCoordenadasGeo(payload.origen_lat, payload.origen_lng)
+        || _sanitizarCoordenadasGeo(nodo.latitud, nodo.longitud)
+        || null;
+
+    const resultado = optimizarOrdenParadasReparto(paradasNormalizadas, origenCoords);
+
+    if (payload.guardar !== false && resultado.orden_ids.length > 0) {
+        const client = await db.connect();
+        try {
+            await client.query('BEGIN');
+            for (let i = 0; i < resultado.orden_ids.length; i++) {
+                await client.query(
+                    `UPDATE public.nodos_pedidos_vecinos
+                     SET orden_reparto = $1::int,
+                         updated_at = NOW()
+                     WHERE id = $2::int AND nodo_id = $3::int`,
+                    [i + 1, resultado.orden_ids[i], nid]
+                );
+            }
+            await client.query('COMMIT');
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw err;
+        } finally {
+            client.release();
+        }
+    }
+
+    return {
+        orden_ids: resultado.orden_ids,
+        distancia_total_metros: resultado.distancia_total_metros,
+        cantidad_paradas: resultado.orden_ids.length,
+        cantidad_con_gps: resultado.cantidad_con_gps,
+        cantidad_sin_gps: resultado.cantidad_sin_gps,
+        origen_utilizado: origenCoords
+    };
+}
+
+async function guardarOrdenManualRepartoGestor(nodoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+    const nodo = await _obtenerNodoActivoParaGestor(nodoId);
+    const nid = Number(nodo.id);
+
+    const ordenIds = Array.from(new Set(
+        (Array.isArray(payload.orden_ids) ? payload.orden_ids : [])
+            .map(x => Number(x))
+            .filter(x => Number.isFinite(x) && x > 0)
+    ));
+    if (ordenIds.length === 0) {
+        throw new Error('Se requiere al menos un pedido para guardar el orden de reparto.');
+    }
+
+    const valRes = await db.query(
+        `SELECT id FROM public.nodos_pedidos_vecinos
+         WHERE nodo_id = $1::int AND id = ANY($2::int[])`,
+        [nid, ordenIds]
+    );
+    const validosSet = new Set(valRes.rows.map(r => Number(r.id)));
+    const idsFiltrados = ordenIds.filter(id => validosSet.has(id));
+    if (idsFiltrados.length === 0) {
+        throw new Error('Los pedidos indicados no pertenecen a este Nodo.');
+    }
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        for (let i = 0; i < idsFiltrados.length; i++) {
+            await client.query(
+                `UPDATE public.nodos_pedidos_vecinos
+                 SET orden_reparto = $1::int,
+                     updated_at = NOW()
+                 WHERE id = $2::int AND nodo_id = $3::int`,
+                [i + 1, idsFiltrados[i], nid]
+            );
+        }
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    return {
+        orden_ids: idsFiltrados,
+        actualizados: idsFiltrados.length
+    };
+}
+
+async function actualizarCoordenadasPedidoYVecinoGestor(nodoId, pedidoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+    await _obtenerNodoActivoParaGestor(nodoId);
+    const nid = Number(nodoId);
+    const pid = Number(pedidoId || 0);
+    if (!pid) {
+        throw new Error('Identificador de pedido inválido.');
+    }
+
+    const coords = _sanitizarCoordenadasGeo(payload.latitud, payload.longitud);
+    if (!coords) {
+        const err = new Error('Coordenadas geográficas inválidas.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const pedRes = await db.query(
+        `SELECT id, nodo_id, vecino_id, direccion_entrega
+         FROM public.nodos_pedidos_vecinos
+         WHERE id = $1::int AND nodo_id = $2::int
+         LIMIT 1`,
+        [pid, nid]
+    );
+    if (pedRes.rows.length === 0) {
+        const err = new Error('Pedido vecinal no encontrado en este Nodo.');
+        err.statusCode = 404;
+        throw err;
+    }
+    const ped = pedRes.rows[0];
+    const dirEditada = String(payload.direccion_entrega || '').trim();
+    const dirFinal = dirEditada || ped.direccion_entrega || '';
+    const normDirFinal = _normalizarTextoDirCoordenadas(dirFinal);
+
+    const client = await db.connect();
+    let pedidosSincronizados = 1;
+    try {
+        await client.query('BEGIN');
+
+        await client.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET latitud = $1::numeric,
+                 longitud = $2::numeric,
+                 gps_origen = 'GESTOR_MAPA',
+                 direccion_entrega = CASE WHEN $3 <> '' THEN $3 ELSE direccion_entrega END,
+                 updated_at = NOW()
+             WHERE id = $4::int AND nodo_id = $5::int`,
+            [coords.lat, coords.lng, dirEditada, pid, nid]
+        );
+
+        if (ped.vecino_id) {
+            await client.query(
+                `UPDATE public.nodos_vecinos
+                 SET latitud = $1::numeric,
+                     longitud = $2::numeric,
+                     gps_origen = 'GESTOR_MAPA',
+                     gps_verificado_gestor = true,
+                     gps_updated_at = NOW(),
+                     direccion_calle = CASE WHEN $3 <> '' THEN $3 ELSE direccion_calle END,
+                     updated_at = NOW()
+                 WHERE id = $4::int AND nodo_id = $5::int`,
+                [coords.lat, coords.lng, dirEditada, Number(ped.vecino_id), nid]
+            );
+
+            // Sincronizar otros pedidos abiertos del mismo vecino que compartan la misma puerta
+            const otrosRes = await client.query(
+                `SELECT id, direccion_entrega
+                 FROM public.nodos_pedidos_vecinos
+                 WHERE nodo_id = $1::int
+                   AND vecino_id = $2::int
+                   AND id <> $3::int
+                   AND modalidad_entrega = 'ENVIO_BARRIAL'
+                   AND COALESCE(hito_tracking_actual, 1) < 6
+                   AND UPPER(COALESCE(estado_operativo, '')) <> 'ANULADO'`,
+                [nid, Number(ped.vecino_id), pid]
+            );
+            for (const o of otrosRes.rows) {
+                const normO = _normalizarTextoDirCoordenadas(o.direccion_entrega || '');
+                if (!normDirFinal || !normO || normO === normDirFinal) {
+                    await client.query(
+                        `UPDATE public.nodos_pedidos_vecinos
+                         SET latitud = $1::numeric,
+                             longitud = $2::numeric,
+                             gps_origen = 'GESTOR_MAPA',
+                             updated_at = NOW()
+                         WHERE id = $3::int`,
+                        [coords.lat, coords.lng, Number(o.id)]
+                    );
+                    pedidosSincronizados += 1;
+                }
+            }
+        }
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    return {
+        pedido_id: pid,
+        vecino_id: ped.vecino_id ? Number(ped.vecino_id) : null,
+        latitud: coords.lat,
+        longitud: coords.lng,
+        gps_origen: 'GESTOR_MAPA',
+        gps_verificado_gestor: true,
+        pedidos_sincronizados: pedidosSincronizados
+    };
+}
+
+async function iniciarModoRepartoGestor(nodoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+    const nodo = await _obtenerNodoActivoParaGestor(nodoId);
+    const nid = Number(nodo.id);
+    const actor = String(payload.actor || nodo.gestor_nombre || 'Gestor del Nodo').trim();
+
+    const filtroIds = Array.isArray(payload.pedido_ids)
+        ? payload.pedido_ids.map(x => Number(x)).filter(x => Number.isFinite(x) && x > 0)
+        : [];
+
+    const resPed = await db.query(
+        `SELECT id, codigo_pedido, hito_tracking_actual, direccion_entrega, orden_reparto
+         FROM public.nodos_pedidos_vecinos
+         WHERE nodo_id = $1::int
+           AND modalidad_entrega = 'ENVIO_BARRIAL'
+           AND UPPER(COALESCE(estado_operativo, '')) <> 'ANULADO'
+           AND COALESCE(ausente_pasa_retirar, false) = false
+           AND hito_tracking_actual IN (4, 5)
+           AND ($2::int[] IS NULL OR id = ANY($2::int[]))
+         ORDER BY COALESCE(orden_reparto, 999999) ASC, id ASC`,
+        [nid, filtroIds.length > 0 ? filtroIds : null]
+    );
+
+    if (resPed.rows.length === 0) {
+        throw new Error('No hay envíos a domicilio recibidos listos para salir a repartir.');
+    }
+
+    const mapPorId = new Map(resPed.rows.map(r => [Number(r.id), r]));
+    const ordenFinal = [];
+    if (filtroIds.length > 0) {
+        for (const id of filtroIds) {
+            if (mapPorId.has(id) && !ordenFinal.some(x => Number(x.id) === id)) {
+                ordenFinal.push(mapPorId.get(id));
+            }
+        }
+    } else {
+        ordenFinal.push(...resPed.rows);
+    }
+
+    let pasadosAHito5 = 0;
+    for (let i = 0; i < ordenFinal.length; i++) {
+        const p = ordenFinal[i];
+        await db.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET orden_reparto = $1::int,
+                 updated_at = NOW()
+             WHERE id = $2::int`,
+            [i + 1, Number(p.id)]
+        );
+        if (Number(p.hito_tracking_actual || 4) === 4) {
+            const tr = await registrarTransicionHitoPedidoVecino(db, Number(p.id), 5, {
+                origen: 'MODO_REPARTO_LOTE',
+                actor,
+                detalle: `${actor} salió en hoja de ruta (#${i + 1}) hacia ${p.direccion_entrega || 'domicilio del vecino'}`
+            });
+            if (tr.avanzado) pasadosAHito5 += 1;
+        }
+    }
+
+    return {
+        total_paradas: ordenFinal.length,
+        iniciados_en_reparto: pasadosAHito5,
+        orden_ids: ordenFinal.map(p => Number(p.id))
+    };
+}
+
+async function actualizarRadarRepartoGestor(nodoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+    await _obtenerNodoActivoParaGestor(nodoId);
+    const nid = Number(nodoId);
+    const activo = Boolean(payload.activo);
+
+    if (!activo) {
+        await db.query(
+            `INSERT INTO public.nodos_reparto_radar (
+                nodo_id, activo, latitud, longitud, precision_metros, pedido_actual_id, updated_at
+             ) VALUES ($1::int, false, NULL, NULL, NULL, NULL, NOW())
+             ON CONFLICT (nodo_id)
+             DO UPDATE SET
+                activo = false,
+                pedido_actual_id = NULL,
+                updated_at = NOW()`,
+            [nid]
+        );
+        return { activo: false, expira_en_segundos: 240 };
+    }
+
+    const coords = _sanitizarCoordenadasGeo(payload.latitud, payload.longitud);
+    const precision = Number.isFinite(Number(payload.precision_metros))
+        ? Math.max(0, Math.min(5000, Math.round(Number(payload.precision_metros))))
+        : null;
+    const pedActualRaw = Number(payload.pedido_actual_id || 0);
+    let pedActualValidado = null;
+    if (pedActualRaw > 0) {
+        const chk = await db.query(
+            'SELECT id FROM public.nodos_pedidos_vecinos WHERE id = $1::int AND nodo_id = $2::int LIMIT 1',
+            [pedActualRaw, nid]
+        );
+        if (chk.rows.length > 0) pedActualValidado = pedActualRaw;
+    }
+
+    await db.query(
+        `INSERT INTO public.nodos_reparto_radar (
+            nodo_id, activo, latitud, longitud, precision_metros, pedido_actual_id, updated_at
+         ) VALUES ($1::int, true, $2::numeric, $3::numeric, $4::int, $5::int, NOW())
+         ON CONFLICT (nodo_id)
+         DO UPDATE SET
+            activo = true,
+            latitud = COALESCE($2::numeric, public.nodos_reparto_radar.latitud),
+            longitud = COALESCE($3::numeric, public.nodos_reparto_radar.longitud),
+            precision_metros = COALESCE($4::int, public.nodos_reparto_radar.precision_metros),
+            pedido_actual_id = $5::int,
+            updated_at = NOW()`,
+        [
+            nid,
+            coords ? coords.lat : null,
+            coords ? coords.lng : null,
+            precision,
+            pedActualValidado
+        ]
+    );
+
+    return {
+        activo: true,
+        pedido_actual_id: pedActualValidado,
+        expira_en_segundos: 240
     };
 }
 
@@ -12631,6 +13596,14 @@ module.exports = {
     buscarSeguimientoPublicoPorTelefonoYPedido,
     confirmarRecepcionLotePorGestor,
     actualizarEstadoEntregaVecinoPorGestor,
+    geocodificarDireccionParaGestor,
+    optimizarOrdenParadasReparto,
+    sugerirOrdenRepartoGestor,
+    guardarOrdenManualRepartoGestor,
+    actualizarCoordenadasPedidoYVecinoGestor,
+    iniciarModoRepartoGestor,
+    actualizarRadarRepartoGestor,
+    obtenerResumenRadarParaPedidoVecino,
     obtenerDatosQrAccesoNodo,
     obtenerKitCompartirNodo,
     obtenerCompradoresRegistradosNodo,

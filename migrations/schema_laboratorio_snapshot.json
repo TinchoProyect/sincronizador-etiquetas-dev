@@ -1,5 +1,5 @@
 {
-  "tableCount": 162,
+  "tableCount": 163,
   "tables": {
     "articulos": {
       "numero": {
@@ -13823,6 +13823,76 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "latitud": {
+        "ordinal_position": 46,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 7,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "longitud": {
+        "ordinal_position": 47,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 7,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "gps_origen": {
+        "ordinal_position": 48,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "orden_reparto": {
+        "ordinal_position": 49,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "ausente_pasa_retirar": {
+        "ordinal_position": 50,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "fecha_ausente_reparto": {
+        "ordinal_position": 51,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "motivo_ausencia": {
+        "ordinal_position": 52,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_propuestas_fracciones": {
@@ -14007,6 +14077,88 @@
         "column_default": "now()"
       }
     },
+    "nodos_reparto_radar": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_reparto_radar_id_seq'::regclass)"
+      },
+      "nodo_id": {
+        "ordinal_position": 2,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "activo": {
+        "ordinal_position": 3,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "latitud": {
+        "ordinal_position": 4,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 7,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "longitud": {
+        "ordinal_position": 5,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 7,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "precision_metros": {
+        "ordinal_position": 6,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "pedido_actual_id": {
+        "ordinal_position": 7,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "updated_at": {
+        "ordinal_position": 8,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "now()"
+      }
+    },
     "nodos_vecinos": {
       "id": {
         "ordinal_position": 1,
@@ -14153,6 +14305,56 @@
         "data_type": "character varying",
         "udt_name": "varchar",
         "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "latitud": {
+        "ordinal_position": 16,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 7,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "longitud": {
+        "ordinal_position": 17,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 7,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "gps_origen": {
+        "ordinal_position": 18,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "gps_verificado_gestor": {
+        "ordinal_position": 19,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "gps_updated_at": {
+        "ordinal_position": 20,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
         "is_nullable": "YES",
