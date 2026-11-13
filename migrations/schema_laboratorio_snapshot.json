@@ -12237,7 +12237,7 @@
         "character_maximum_length": 40,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "NO",
+        "is_nullable": "YES",
         "column_default": "'RENDICION_DIRECTA_NODO'::character varying"
       }
     },
@@ -12883,6 +12883,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "true"
+      },
+      "gestor_token": {
+        "ordinal_position": 36,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_movimientos_cta_cte": {
@@ -13711,7 +13721,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "NO",
+        "is_nullable": "YES",
         "column_default": "0.00"
       },
       "motivo_anulacion_ajuste": {
@@ -14095,7 +14105,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "NO",
+        "is_nullable": "YES",
         "column_default": "0.00"
       },
       "activo": {
@@ -14105,7 +14115,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "NO",
+        "is_nullable": "YES",
         "column_default": "true"
       },
       "portal_token": {
