@@ -23,6 +23,419 @@ const {
 
 let esquemaInicializado = false;
 
+const _geoCacheBusquedaAr = new Map();
+const _geoCacheInversaAr = new Map();
+const GEO_CACHE_TTL_MS = 15 * 60 * 1000;
+const GEO_CACHE_MAX_ENTRIES = 250;
+let _ultimoHitNominatimMs = 0;
+
+function esModoLaboratorioNodos() {
+    return String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true'
+        && String(process.env.DB_NAME || '').trim() === 'etiquetas_pruebas';
+}
+
+function setGeoCacheLimitado(cacheMap, clave, valor) {
+    if (cacheMap.size >= GEO_CACHE_MAX_ENTRIES) {
+        const firstKey = cacheMap.keys().next().value;
+        if (firstKey !== undefined) cacheMap.delete(firstKey);
+    }
+    cacheMap.set(clave, { ts: Date.now(), data: valor });
+}
+
+function getGeoCacheVigente(cacheMap, clave) {
+    const entry = cacheMap.get(clave);
+    if (!entry) return null;
+    if ((Date.now() - entry.ts) > GEO_CACHE_TTL_MS) {
+        cacheMap.delete(clave);
+        return null;
+    }
+    return entry.data;
+}
+
+function normalizarQueryGeocoderAr(rawQuery = '') {
+    let q = String(rawQuery || '').replace(/\s+/g, ' ').trim();
+    if (!q) return '';
+    // La Plata / diagonales: "Calle 7 nº 820" -> "7 820", "Diag. 74 n° 1500" -> "Diagonal 74 1500"
+    q = q
+        .replace(/\bdiag\.?\s*/gi, 'Diagonal ')
+        .replace(/\bav\.?\s+/gi, 'Avenida ')
+        .replace(/\bbv\.?\s+/gi, 'Boulevard ')
+        .replace(/\bcalle\s+(\d)/gi, '$1')
+        .replace(/\b(?:n[°ºo]|nro\.?)\s*(\d+)/gi, '$1')
+        .replace(/\s+,/g, ',')
+        .replace(/,\s*/g, ', ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return q;
+}
+
+function normalizarTokenTextoGeo(txt = '') {
+    return String(txt || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+async function fetchJsonConTimeout(url, opciones = {}, timeoutMs = 4800) {
+    const resp = await fetch(url, {
+        ...opciones,
+        signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+    }
+    return resp.json();
+}
+
+async function geocodificarDireccionArgentina(query, opciones = {}) {
+    const qOrig = String(query || '').trim();
+    if (qOrig.length < 3) {
+        return { resultados: [], query_normalizada: qOrig, fuente_principal: 'vacio' };
+    }
+
+    const qNorm = normalizarQueryGeocoderAr(qOrig);
+    const cacheKey = `${normalizarTokenTextoGeo(qNorm)}|${String(opciones.partido_hint || '').toLowerCase()}`;
+    const cached = getGeoCacheVigente(_geoCacheBusquedaAr, cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    const partes = qNorm.split(',').map(p => p.trim()).filter(Boolean);
+    const partePrincipal = partes[0] || qNorm;
+    const partesResto = partes.slice(1);
+    const tieneAltura = /\b\d{1,5}\b/.test(partePrincipal) && !/^(diagonal\s+)?\d{1,3}$/i.test(partePrincipal);
+    const tokensResto = partesResto
+        .join(' ')
+        .split(/\s+/)
+        .map(normalizarTokenTextoGeo)
+        .filter(t => t.length >= 3 && !['argentina', 'bs', 'as', 'prov', 'provincia'].includes(t));
+    const zonaEspecificaRaw = normalizarTokenTextoGeo(partesResto[0] || '');
+    const tokensZona = (zonaEspecificaRaw && zonaEspecificaRaw !== 'buenos aires')
+        ? zonaEspecificaRaw.split(/\s+/).filter(t => t.length >= 3 && !['del', 'las', 'los', 'prov', 'provincia', 'ciudad', 'argentina'].includes(t))
+        : [];
+    const evaluarMatchZona = (blobNorm = '') => tokensZona.length === 0 || tokensZona.every(tok => blobNorm.includes(tok));
+
+    const candidatos = [];
+
+    const registrarCandidato = (item) => {
+        const lat = Number(item.lat);
+        const lng = Number(item.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return;
+        const duplicado = candidatos.some(c =>
+            Math.abs(c.lat - lat) < 0.0012 && Math.abs(c.lng - lng) < 0.0012
+        );
+        if (!duplicado) {
+            candidatos.push({
+                display_name: String(item.display_name || '').trim(),
+                lat: Number(lat.toFixed(7)),
+                lng: Number(lng.toFixed(7)),
+                calle: String(item.calle || '').trim(),
+                altura: item.altura ? String(item.altura).trim() : '',
+                localidad: String(item.localidad || '').trim(),
+                partido: String(item.partido || '').trim(),
+                provincia: String(item.provincia || '').trim(),
+                fuente: item.fuente || 'georef',
+                score: Number(item.score || 0)
+            });
+        }
+    };
+
+    const promesasGeoref = [];
+
+    if (tieneAltura) {
+        const urlDir = new URL('https://apis.datos.gob.ar/georef/api/direcciones');
+        urlDir.searchParams.set('direccion', partePrincipal);
+        urlDir.searchParams.set('max', '8');
+        urlDir.searchParams.set('campos', 'estandar');
+        if (partesResto.length >= 2) {
+            urlDir.searchParams.set('provincia', partesResto[partesResto.length - 1]);
+        }
+        promesasGeoref.push(
+            fetchJsonConTimeout(urlDir.toString(), {}, 4500).then(data => ({ tipo: 'direcciones', data }))
+        );
+    }
+
+    // Buscar también localidades (ideal para "Martínez, Buenos Aires", "City Bell", etc.)
+    const urlLoc = new URL('https://apis.datos.gob.ar/georef/api/localidades');
+    urlLoc.searchParams.set('nombre', partePrincipal);
+    urlLoc.searchParams.set('max', '8');
+    urlLoc.searchParams.set('campos', 'estandar');
+    if (partesResto.length === 1 && !/la plata|san isidro|vicente lopez/i.test(partesResto[0])) {
+        urlLoc.searchParams.set('provincia', partesResto[0]);
+    } else if (partesResto.length >= 2) {
+        urlLoc.searchParams.set('provincia', partesResto[partesResto.length - 1]);
+    }
+    promesasGeoref.push(
+        fetchJsonConTimeout(urlLoc.toString(), {}, 4500).then(data => ({ tipo: 'localidades', data }))
+    );
+
+    const georefSettled = await Promise.allSettled(promesasGeoref);
+
+    for (const resItem of georefSettled) {
+        if (resItem.status !== 'fulfilled') continue;
+        const { tipo, data } = resItem.value || {};
+        if (tipo === 'direcciones' && Array.isArray(data?.direcciones)) {
+            for (const d of data.direcciones) {
+                const lat = d?.ubicacion?.lat;
+                const lon = d?.ubicacion?.lon;
+                if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lon))) continue;
+                const calle = d?.calle?.nombre || '';
+                const altura = d?.altura?.valor ? String(d.altura.valor) : '';
+                const loc = d?.localidad_censal?.nombre || '';
+                const dep = d?.departamento?.nombre || '';
+                const prov = d?.provincia?.nombre || '';
+                const etiqueta = [
+                    [calle, altura].filter(Boolean).join(' '),
+                    loc || dep,
+                    dep && dep !== loc ? dep : '',
+                    prov
+                ].filter(Boolean).join(', ');
+                const blobNorm = normalizarTokenTextoGeo(etiqueta);
+                let coincidencias = 0;
+                for (const tok of tokensResto) {
+                    if (blobNorm.includes(tok)) coincidencias += 1;
+                }
+                const coincideZona = evaluarMatchZona(blobNorm);
+                if (tokensZona.length > 0 && !coincideZona) {
+                    registrarCandidato({
+                        display_name: etiqueta,
+                        lat,
+                        lng: lon,
+                        calle,
+                        altura,
+                        localidad: loc,
+                        partido: dep,
+                        provincia: prov,
+                        fuente: 'georef_direcciones',
+                        score: 25 + coincidencias * 5
+                    });
+                } else if (tokensResto.length > 0 && coincidencias === 0 && !blobNorm.includes(normalizarTokenTextoGeo(partesResto.join(' ')))) {
+                    // Priorizar las que coinciden con partido/provincia si el usuario escribió coma
+                    registrarCandidato({
+                        display_name: etiqueta,
+                        lat,
+                        lng: lon,
+                        calle,
+                        altura,
+                        localidad: loc,
+                        partido: dep,
+                        provincia: prov,
+                        fuente: 'georef_direcciones',
+                        score: 20
+                    });
+                } else {
+                    registrarCandidato({
+                        display_name: etiqueta,
+                        lat,
+                        lng: lon,
+                        calle,
+                        altura,
+                        localidad: loc,
+                        partido: dep,
+                        provincia: prov,
+                        fuente: 'georef_direcciones',
+                        score: 110 + coincidencias * 25 + (tokensZona.length > 0 && coincideZona ? 35 : 0)
+                    });
+                }
+            }
+        }
+        if (tipo === 'localidades' && Array.isArray(data?.localidades)) {
+            for (const l of data.localidades) {
+                const lat = l?.centroide?.lat;
+                const lon = l?.centroide?.lon;
+                if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lon))) continue;
+                const loc = l?.nombre || '';
+                const dep = l?.departamento?.nombre || l?.municipio?.nombre || '';
+                const prov = l?.provincia?.nombre || '';
+                const etiqueta = [loc, dep && dep !== loc ? dep : '', prov].filter(Boolean).join(', ');
+                const blobNorm = normalizarTokenTextoGeo(etiqueta);
+                let coincidencias = 0;
+                for (const tok of tokensResto) {
+                    if (blobNorm.includes(tok)) coincidencias += 1;
+                }
+                registrarCandidato({
+                    display_name: etiqueta,
+                    lat,
+                    lng: lon,
+                    calle: '',
+                    altura: '',
+                    localidad: loc,
+                    partido: dep,
+                    provincia: prov,
+                    fuente: 'georef_localidades',
+                    score: (tieneAltura ? 40 : 85) + coincidencias * 20
+                });
+            }
+        }
+    }
+
+    const tieneMatchFuerteGeoref = candidatos.some(c =>
+        c.score >= (tokensResto.length > 0 ? 110 : 85) &&
+        evaluarMatchZona(normalizarTokenTextoGeo(c.display_name || ''))
+    );
+    if (!tieneMatchFuerteGeoref || candidatos.length < 2 || /\by\b/i.test(partePrincipal)) {
+        try {
+            const ahora = Date.now();
+            const espera = _ultimoHitNominatimMs ? Math.max(0, 1050 - (ahora - _ultimoHitNominatimMs)) : 0;
+            if (espera > 0 && espera <= 1100) {
+                await new Promise(r => setTimeout(r, espera));
+            }
+            _ultimoHitNominatimMs = Date.now();
+
+            const urlNom = new URL('https://nominatim.openstreetmap.org/search');
+            urlNom.searchParams.set('format', 'jsonv2');
+            urlNom.searchParams.set('countrycodes', 'ar');
+            urlNom.searchParams.set('limit', '6');
+            urlNom.searchParams.set('addressdetails', '1');
+            urlNom.searchParams.set('q', qNorm);
+
+            const nomRows = await fetchJsonConTimeout(urlNom.toString(), {
+                headers: {
+                    'User-Agent': 'LAMDA-Nodos-Barriales/1.0 (logistica@lamdaser.com)',
+                    'Accept-Language': 'es-AR,es;q=0.9'
+                }
+            }, 4800);
+
+            if (Array.isArray(nomRows)) {
+                for (const n of nomRows) {
+                    const addr = n.address || {};
+                    const calle = addr.road || addr.pedestrian || addr.footway || '';
+                    const altura = addr.house_number || '';
+                    const loc = addr.suburb || addr.town || addr.city || addr.village || addr.neighbourhood || '';
+                    const dep = addr.state_district || addr.county || '';
+                    const prov = addr.state || '';
+                    const etiquetaLimpia = [
+                        [calle, altura].filter(Boolean).join(' '),
+                        loc,
+                        dep && dep !== loc ? dep : '',
+                        prov
+                    ].filter(Boolean).join(', ') || n.display_name;
+                    const blobNorm = normalizarTokenTextoGeo(`${etiquetaLimpia} ${n.display_name || ''}`);
+                    let coincidencias = 0;
+                    for (const tok of tokensResto) {
+                        if (blobNorm.includes(tok)) coincidencias += 1;
+                    }
+                    const coincideZonaNom = evaluarMatchZona(blobNorm);
+                    const scoreNom = (tokensZona.length > 0 && !coincideZonaNom)
+                        ? 40 + coincidencias * 8
+                        : 85 + coincidencias * 25 + (tokensZona.length > 0 && coincideZonaNom ? 45 : 0);
+                    registrarCandidato({
+                        display_name: etiquetaLimpia,
+                        lat: n.lat,
+                        lng: n.lon,
+                        calle,
+                        altura,
+                        localidad: loc,
+                        partido: dep,
+                        provincia: prov,
+                        fuente: 'nominatim',
+                        score: scoreNom
+                    });
+                }
+            }
+        } catch (nomErr) {
+            console.warn('⚠️ [GeocoderAR] Fallback Nominatim omitido:', nomErr.message);
+        }
+    }
+
+    candidatos.sort((a, b) => b.score - a.score);
+    const topResultados = candidatos.slice(0, 8).map(({ score, ...rest }) => rest);
+    const salida = {
+        resultados: topResultados,
+        query_normalizada: qNorm,
+        fuente_principal: topResultados[0]?.fuente || 'sin_resultados'
+    };
+    if (topResultados.length > 0) {
+        setGeoCacheLimitado(_geoCacheBusquedaAr, cacheKey, salida);
+    }
+    return salida;
+}
+
+async function geocodificarInversoArgentina(latRaw, lngRaw) {
+    const lat = Number(latRaw);
+    const lng = Number(lngRaw);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        const err = new Error('Coordenadas geográficas inválidas.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const cacheKey = `${lat.toFixed(5)},${lng.toFixed(5)}`;
+    const cached = getGeoCacheVigente(_geoCacheInversaAr, cacheKey);
+    if (cached) {
+        return cached;
+    }
+
+    let calle = '';
+    let altura = '';
+    let localidad = '';
+    let partido = '';
+    let provincia = '';
+    let fuente = 'coordenadas';
+
+    const [georefRes, nomRes] = await Promise.allSettled([
+        fetchJsonConTimeout(`https://apis.datos.gob.ar/georef/api/ubicacion?lat=${lat}&lon=${lng}`, {}, 4000),
+        (async () => {
+            const ahora = Date.now();
+            if (_ultimoHitNominatimMs && (ahora - _ultimoHitNominatimMs) < 1050) {
+                await new Promise(r => setTimeout(r, 1050 - (ahora - _ultimoHitNominatimMs)));
+            }
+            _ultimoHitNominatimMs = Date.now();
+            return fetchJsonConTimeout(
+                `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1`,
+                {
+                    headers: {
+                        'User-Agent': 'LAMDA-Nodos-Barriales/1.0 (logistica@lamdaser.com)',
+                        'Accept-Language': 'es-AR,es;q=0.9'
+                    }
+                },
+                4500
+            );
+        })()
+    ]);
+
+    if (georefRes.status === 'fulfilled' && georefRes.value?.ubicacion) {
+        const u = georefRes.value.ubicacion;
+        partido = u.municipio?.nombre || u.departamento?.nombre || '';
+        provincia = u.provincia?.nombre || '';
+        fuente = 'georef_ubicacion';
+    }
+
+    if (nomRes.status === 'fulfilled' && nomRes.value) {
+        const addr = nomRes.value.address || {};
+        calle = addr.road || addr.pedestrian || addr.footway || '';
+        altura = addr.house_number || '';
+        localidad = addr.suburb || addr.town || addr.city || addr.village || addr.neighbourhood || localidad;
+        partido = partido || addr.state_district || addr.county || '';
+        provincia = provincia || addr.state || '';
+        fuente = calle ? 'nominatim+georef' : fuente;
+    }
+
+    const display_name = [
+        [calle, altura].filter(Boolean).join(' '),
+        localidad,
+        partido && partido !== localidad ? partido : '',
+        provincia
+    ].filter(Boolean).join(', ') || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+
+    const salida = {
+        lat: Number(lat.toFixed(7)),
+        lng: Number(lng.toFixed(7)),
+        display_name,
+        calle,
+        altura,
+        localidad,
+        partido,
+        provincia,
+        fuente
+    };
+    setGeoCacheLimitado(_geoCacheInversaAr, cacheKey, salida);
+    return salida;
+}
+
 /**
  * Clasifica un ingrediente o artículo en uno de los 6 Flujos del Modelo de Dominio LAMDA
  */
@@ -1831,6 +2244,9 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 cbu_display VARCHAR(40),
                 titular_display VARCHAR(180),
                 permitir_envio_barrial BOOLEAN DEFAULT true,
+                permitir_retiro_nodo BOOLEAN NOT NULL DEFAULT true,
+                permitir_reparto_propio BOOLEAN NOT NULL DEFAULT true,
+                permitir_encomienda BOOLEAN NOT NULL DEFAULT false,
                 mostrar_ingredientes_tienda BOOLEAN DEFAULT true,
                 cargo_envio_barrial NUMERIC(12,2) DEFAULT 0.00,
                 margen_gestor_default_pct NUMERIC(8,2) DEFAULT 28.00,
@@ -3283,6 +3699,30 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             await sincronizarHerenciaFiscalYContactosDesdeMadre(client, nRow.bunker_cliente_id, nRow.cliente_madre_bunker_id, nRow);
         }
 
+        // 4.b) Etapa B2: Capacidades modulares de entrega por Nodo (Retiro / Reparto Propio / Encomienda)
+        const colRepartoRes = await client.query(
+            `SELECT 1 FROM information_schema.columns
+             WHERE table_schema = 'public'
+               AND table_name = 'nodos_maestro'
+               AND column_name = 'permitir_reparto_propio'
+             LIMIT 1`
+        );
+        const yaTeniaColReparto = colRepartoRes.rows.length > 0;
+        await client.query(`
+            ALTER TABLE public.nodos_maestro
+                ADD COLUMN IF NOT EXISTS permitir_retiro_nodo BOOLEAN NOT NULL DEFAULT true,
+                ADD COLUMN IF NOT EXISTS permitir_reparto_propio BOOLEAN NOT NULL DEFAULT true,
+                ADD COLUMN IF NOT EXISTS permitir_encomienda BOOLEAN NOT NULL DEFAULT false;
+        `);
+        if (!yaTeniaColReparto) {
+            await client.query(`
+                UPDATE public.nodos_maestro
+                SET permitir_retiro_nodo = COALESCE(permitir_retiro_nodo, true),
+                    permitir_reparto_propio = COALESCE(permitir_envio_barrial, true),
+                    permitir_encomienda = COALESCE(permitir_encomienda, false)
+            `);
+        }
+
         // 5) Etapa B: Columnas de tracking criptográfico, hitos deterministas y bitácora inmutable nodos_pedidos_eventos_tracking
         await client.query(`
             ALTER TABLE public.nodos_pedidos_vecinos
@@ -3959,7 +4399,8 @@ async function obtenerEstadoCompletoNodos() {
         lista_precios_nodos_bunker: listaNodosRes.rows[0] || null,
         listas_mayoristas_bunker: listasMayoristasRes.rows,
         politicas_descuento_bunker: politicasRes.rows,
-        familias_bunker: familiasRes.rows
+        familias_bunker: familiasRes.rows,
+        modo_laboratorio: esModoLaboratorioNodos()
     };
 }
 
@@ -3989,6 +4430,22 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
     if (idExistente) {
         const exRes = await db.query('SELECT * FROM public.nodos_maestro WHERE id = $1 LIMIT 1', [Number(idExistente)]);
         existenteRow = exRes.rows[0] || null;
+    }
+
+    const permitirRetiro = payload.permitir_retiro_nodo !== undefined
+        ? Boolean(payload.permitir_retiro_nodo)
+        : (existenteRow ? existenteRow.permitir_retiro_nodo !== false : true);
+    const permitirReparto = payload.permitir_reparto_propio !== undefined
+        ? Boolean(payload.permitir_reparto_propio)
+        : (payload.permitir_envio_barrial !== undefined
+            ? Boolean(payload.permitir_envio_barrial)
+            : (existenteRow ? Boolean(existenteRow.permitir_reparto_propio ?? existenteRow.permitir_envio_barrial ?? true) : true));
+    const permitirEncomienda = payload.permitir_encomienda !== undefined
+        ? Boolean(payload.permitir_encomienda)
+        : (existenteRow ? Boolean(existenteRow.permitir_encomienda) : false);
+
+    if (!permitirRetiro && !permitirReparto) {
+        throw new Error('Debés habilitar al menos una modalidad activa de entrega (Retiro en el Nodo o Reparto Propio).');
     }
 
     const limpiarLogoOriginal = Boolean(payload.limpiar_logo_original);
@@ -4089,6 +4546,9 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     cbu_display = $16,
                     titular_display = $17,
                     permitir_envio_barrial = $18,
+                    permitir_retiro_nodo = $33,
+                    permitir_reparto_propio = $34,
+                    permitir_encomienda = $35,
                     cargo_envio_barrial = $19,
                     margen_gestor_default_pct = $20,
                     config_ventanas_corte = $21,
@@ -4123,7 +4583,7 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     aliasEfectivo,
                     cbuEfectivo,
                     titularEfectivo,
-                    payload.permitir_envio_barrial !== false,
+                    permitirReparto,
                     Number(payload.cargo_envio_barrial || 0),
                     Number(payload.margen_gestor_default_pct || 28),
                     JSON.stringify(ventanas),
@@ -4139,12 +4599,15 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                         invert: conversionLogo.invert,
                         iniciales: zplConfig.iniciales || ''
                     }),
-                    payload.activo !== undefined ? Boolean(payload.activo) : true,
+                    payload.activo !== undefined ? Boolean(payload.activo) : (existenteRow ? existenteRow.activo !== false : true),
                     Number.isFinite(latVal) ? latVal : null,
                     Number.isFinite(lngVal) ? lngVal : null,
                     payload.mostrar_ingredientes_tienda !== undefined ? Boolean(payload.mostrar_ingredientes_tienda) : null,
                     gestorTokenEfectivo,
-                    Number(idExistente)
+                    Number(idExistente),
+                    permitirRetiro,
+                    permitirReparto,
+                    permitirEncomienda
                 ]
             );
             nodoGuardado = upd.rows[0];
@@ -4156,12 +4619,13 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     bunker_cliente_id, codigo_bunker_cliente, cliente_madre_bunker_id, codigo_bunker_cliente_madre,
                     cuenta_bancaria_id, usa_cuenta_compartida,
                     alias_bancario_display, cbu_display, titular_display,
-                    permitir_envio_barrial, cargo_envio_barrial, margen_gestor_default_pct,
+                    permitir_envio_barrial, permitir_retiro_nodo, permitir_reparto_propio, permitir_encomienda,
+                    cargo_envio_barrial, margen_gestor_default_pct,
                     config_ventanas_corte, color_primario,
                     logo_original_base64, logo_mono_preview_base64, logo_zpl_gfa, logo_zpl_config,
                     latitud, longitud, mostrar_ingredientes_tienda, gestor_token
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31
                 ) RETURNING *`,
                 [
                     codigoNodo,
@@ -4182,7 +4646,7 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     aliasEfectivo,
                     cbuEfectivo,
                     titularEfectivo,
-                    payload.permitir_envio_barrial !== false,
+                    permitirReparto,
                     Number(payload.cargo_envio_barrial || 0),
                     Number(payload.margen_gestor_default_pct || 28),
                     JSON.stringify(ventanas),
@@ -4201,7 +4665,10 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     Number.isFinite(latVal) ? latVal : null,
                     Number.isFinite(lngVal) ? lngVal : null,
                     payload.mostrar_ingredientes_tienda !== false,
-                    gestorTokenEfectivo
+                    gestorTokenEfectivo,
+                    permitirRetiro,
+                    permitirReparto,
+                    permitirEncomienda
                 ]
             );
             nodoGuardado = ins.rows[0];
@@ -4503,10 +4970,15 @@ async function sumarArticuloCatalogoANodo(nodoId, catalogoId) {
     }
 
     const [nodoRes, catRes] = await Promise.all([
-        db.query('SELECT id, margen_gestor_default_pct FROM public.nodos_maestro WHERE id = $1 LIMIT 1', [nId]),
+        db.query('SELECT id, margen_gestor_default_pct, activo FROM public.nodos_maestro WHERE id = $1 LIMIT 1', [nId]),
         db.query('SELECT * FROM public.nodos_articulos_catalogo WHERE id = $1 AND activo = true LIMIT 1', [cId])
     ]);
     if (nodoRes.rows.length === 0) throw new Error('Nodo no encontrado.');
+    if (nodoRes.rows[0].activo === false) {
+        const err = new Error('Este Nodo se encuentra archivado.');
+        err.statusCode = 403;
+        throw err;
+    }
     if (catRes.rows.length === 0) throw new Error('El artículo seleccionado no está activo en el Catálogo Base de Nodos.');
 
     const nodo = nodoRes.rows[0];
@@ -5421,14 +5893,20 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
     await asegurarEsquemaNodosBarriales();
 
     const cur = await db.query(
-        `SELECT nog.*, nac.precio_base_nodo_final
+        `SELECT nog.*, nac.precio_base_nodo_final, nm.activo AS nodo_activo
          FROM public.nodos_ofertas_gestor nog
          JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+         JOIN public.nodos_maestro nm ON nm.id = nog.nodo_id
          WHERE nog.id = $1`,
         [Number(ofertaId)]
     );
     if (cur.rows.length === 0) {
         throw new Error('Oferta de Nodo no encontrada.');
+    }
+    if (cur.rows[0].nodo_activo === false) {
+        const err = new Error('Este Nodo se encuentra archivado y no permite editar ofertas.');
+        err.statusCode = 403;
+        throw err;
     }
 
     const row = cur.rows[0];
@@ -5695,6 +6173,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
            ON cc_madre.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
           AND cc_madre.nombre_cuenta = 'Cuenta Principal'
          WHERE LOWER(nm.slug) = LOWER($1)
+           AND COALESCE(nm.activo, true) = true
          LIMIT 1`,
         [cleanSlug]
     );
@@ -5713,16 +6192,28 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
              LEFT JOIN public.factura_cuentas_corrientes cc_madre
                ON cc_madre.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
               AND cc_madre.nombre_cuenta = 'Cuenta Principal'
+             WHERE COALESCE(nm.activo, true) = true
              ORDER BY nm.id ASC
              LIMIT 1`
         );
     }
 
     if (nodoRes.rows.length === 0) {
+        if (cleanSlug) {
+            const archCheck = await db.query(
+                `SELECT id FROM public.nodos_maestro WHERE LOWER(slug) = LOWER($1) AND activo = false LIMIT 1`,
+                [cleanSlug]
+            );
+            if (archCheck.rows.length > 0) {
+                const err = new Error(`El Nodo Barrial "${cleanSlug}" se encuentra pausado o archivado.`);
+                err.statusCode = 404;
+                throw err;
+            }
+        }
         const err = new Error(
             cleanSlug
                 ? `Nodo Barrial "${cleanSlug}" no encontrado.`
-                : 'No hay Nodos Barriales configurados.'
+                : 'No hay Nodos Barriales activos configurados.'
         );
         err.statusCode = 404;
         throw err;
@@ -5889,9 +6380,20 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             };
         });
 
+    const puedeRetiroNodo = nodo.permitir_retiro_nodo !== false;
+    const puedeRepartoPropio = Boolean(nodo.permitir_reparto_propio ?? nodo.permitir_envio_barrial ?? true);
+    const puedeEncomiendaNodo = Boolean(nodo.permitir_encomienda);
+
     const { gestor_token: _omitGestorToken, ...nodoSinToken } = nodo;
     const nodoPublico = esVistaGestor
-        ? { ...nodoSinToken, mostrar_ingredientes_tienda: mostrarIngredientesNodo }
+        ? {
+            ...nodoSinToken,
+            mostrar_ingredientes_tienda: mostrarIngredientesNodo,
+            permitir_retiro_nodo: puedeRetiroNodo,
+            permitir_reparto_propio: puedeRepartoPropio,
+            permitir_encomienda: puedeEncomiendaNodo,
+            permitir_envio_barrial: puedeRepartoPropio
+        }
         : {
             id: nodo.id,
             codigo_nodo: nodo.codigo_nodo,
@@ -5905,7 +6407,10 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             alias_bancario_display: nodo.alias_bancario_display,
             cbu_display: nodo.cbu_display,
             titular_display: nodo.titular_display,
-            permitir_envio_barrial: nodo.permitir_envio_barrial,
+            permitir_envio_barrial: puedeRepartoPropio,
+            permitir_retiro_nodo: puedeRetiroNodo,
+            permitir_reparto_propio: puedeRepartoPropio,
+            permitir_encomienda: puedeEncomiendaNodo,
             mostrar_ingredientes_tienda: mostrarIngredientesNodo,
             cargo_envio_barrial: nodo.cargo_envio_barrial,
             config_ventanas_corte: nodo.config_ventanas_corte,
@@ -5936,6 +6441,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         movimientos_cta_cte: esVistaGestor ? movsRes.rows : [],
         telefono_whatsapp_pruebas: '5492216615746',
         telefono_whatsapp_pruebas_display: '221 661 5746',
+        modo_laboratorio: esModoLaboratorioNodos(),
         ingredientes_sugeribles: esVistaGestor ? ingredientesSolicitables : []
     };
 }
@@ -5949,9 +6455,32 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
 
     const cur = await db.query('SELECT * FROM public.nodos_maestro WHERE id = $1', [Number(nodoId)]);
     if (cur.rows.length === 0) {
-        throw new Error('Nodo no encontrado.');
+        const err = new Error('Nodo no encontrado.');
+        err.statusCode = 404;
+        throw err;
     }
     const actual = cur.rows[0];
+    if (actual.activo === false) {
+        const err = new Error('Este Nodo se encuentra archivado y no puede modificar su configuración.');
+        err.statusCode = 403;
+        throw err;
+    }
+
+    const permitirRetiro = payload.permitir_retiro_nodo !== undefined
+        ? Boolean(payload.permitir_retiro_nodo)
+        : (actual.permitir_retiro_nodo !== false);
+    const permitirReparto = payload.permitir_reparto_propio !== undefined
+        ? Boolean(payload.permitir_reparto_propio)
+        : (payload.permitir_envio_barrial !== undefined
+            ? Boolean(payload.permitir_envio_barrial)
+            : Boolean(actual.permitir_reparto_propio ?? actual.permitir_envio_barrial ?? true));
+    const permitirEncomienda = payload.permitir_encomienda !== undefined
+        ? Boolean(payload.permitir_encomienda)
+        : Boolean(actual.permitir_encomienda);
+
+    if (!permitirRetiro && !permitirReparto) {
+        throw new Error('Debés mantener habilitada al menos una modalidad activa de entrega (Retiro en el Nodo o Reparto Propio).');
+    }
 
     const ventanas = Array.isArray(payload.config_ventanas_corte)
         ? payload.config_ventanas_corte
@@ -5967,6 +6496,9 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             direccion_retiro = COALESCE($6, direccion_retiro),
             alias_bancario_display = COALESCE($7, alias_bancario_display),
             permitir_envio_barrial = $8,
+            permitir_retiro_nodo = $14,
+            permitir_reparto_propio = $15,
+            permitir_encomienda = $16,
             cargo_envio_barrial = $9,
             config_ventanas_corte = $10,
             color_primario = COALESCE($11, color_primario),
@@ -5982,12 +6514,15 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             payload.barrio_zona ?? actual.barrio_zona,
             payload.direccion_retiro ?? actual.direccion_retiro,
             payload.alias_bancario_display ?? actual.alias_bancario_display,
-            payload.permitir_envio_barrial !== undefined ? Boolean(payload.permitir_envio_barrial) : actual.permitir_envio_barrial,
+            permitirReparto,
             payload.cargo_envio_barrial !== undefined ? Number(payload.cargo_envio_barrial) : Number(actual.cargo_envio_barrial),
             JSON.stringify(ventanas),
             payload.color_primario || actual.color_primario,
             payload.mostrar_ingredientes_tienda !== undefined ? Boolean(payload.mostrar_ingredientes_tienda) : (actual.mostrar_ingredientes_tienda !== false),
-            Number(nodoId)
+            Number(nodoId),
+            permitirRetiro,
+            permitirReparto,
+            permitirEncomienda
         ]
     );
 
@@ -6025,10 +6560,35 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             throw new Error('Tienda barrial no encontrada.');
         }
         const nodo = nodoRes.rows[0];
+        if (nodo.activo === false) {
+            throw new Error('Esta tienda barrial se encuentra temporalmente pausada o archivada y no recibe pedidos.');
+        }
 
-        const modalidad = payload.modalidad_entrega === 'ENVIO_BARRIAL' && nodo.permitir_envio_barrial
-            ? 'ENVIO_BARRIAL'
-            : 'RETIRO_NODO';
+        const puedeRetiro = nodo.permitir_retiro_nodo !== false;
+        const puedeReparto = Boolean(nodo.permitir_reparto_propio ?? nodo.permitir_envio_barrial);
+        const modReq = String(payload.modalidad_entrega || '').trim().toUpperCase();
+        let modalidad;
+        if (modReq === 'ENCOMIENDA') {
+            throw new Error('La modalidad Encomienda Nacional aún no se encuentra habilitada para compras.');
+        } else if (modReq === 'ENVIO_BARRIAL') {
+            if (!puedeReparto) {
+                throw new Error('Este Nodo no tiene habilitado el envío a domicilio en este momento.');
+            }
+            modalidad = 'ENVIO_BARRIAL';
+        } else if (modReq === 'RETIRO_NODO') {
+            if (!puedeRetiro) {
+                throw new Error('Este Nodo no tiene habilitado el retiro en puerta en este momento.');
+            }
+            modalidad = 'RETIRO_NODO';
+        } else {
+            if (puedeRetiro) {
+                modalidad = 'RETIRO_NODO';
+            } else if (puedeReparto) {
+                modalidad = 'ENVIO_BARRIAL';
+            } else {
+                throw new Error('Este Nodo no tiene modalidades de entrega habilitadas.');
+            }
+        }
 
         if (modalidad === 'ENVIO_BARRIAL' && !String(payload.direccion_entrega || '').trim()) {
             throw new Error('Por favor indicá tu dirección en el barrio para el envío a domicilio.');
@@ -6516,8 +7076,8 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
     const skuDesdeCotizador = opts.skuDesdeCotizador ? String(opts.skuDesdeCotizador).trim().toUpperCase() : null;
     const forzarPreciosNodos = Boolean(opts.forzarPreciosNodos);
 
-    // 1. Asegurar Clientes y Domicilios Geolocalizados por cada Nodo
-    const nodosRes = await q.query('SELECT * FROM public.nodos_maestro ORDER BY id ASC');
+    // 1. Asegurar Clientes y Domicilios Geolocalizados por cada Nodo activo
+    const nodosRes = await q.query('SELECT * FROM public.nodos_maestro WHERE COALESCE(activo, true) = true ORDER BY id ASC');
     const mapaClienteDomicilio = new Map();
 
     for (const nodo of nodosRes.rows) {
@@ -10574,6 +11134,7 @@ async function obtenerSeguimientoPublicoPedidoVecino(slug, trackingToken) {
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
          WHERE npv.tracking_token = $1
            AND ($2 = '' OR LOWER(nm.slug) = LOWER($2))
+           AND COALESCE(nm.activo, true) = true
          LIMIT 1`,
         [cleanToken, cleanSlug]
     );
@@ -10672,6 +11233,7 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
          WHERE ($1 = '' OR LOWER(nm.slug) = LOWER($1))
+           AND COALESCE(nm.activo, true) = true
            AND COALESCE(npv.estado_operativo, '') <> 'ANULADO'
            AND (
                nv.telefono_normalizado = $2
@@ -10846,6 +11408,7 @@ async function buscarSeguimientoPublicoPorTelefonoYPedido(slug, payload = {}) {
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
          WHERE UPPER(TRIM(npv.codigo_pedido)) = $1
            AND ($2 = '' OR LOWER(nm.slug) = LOWER($2))
+           AND COALESCE(nm.activo, true) = true
          LIMIT 5`,
         [codigoNormalizado, cleanSlug]
     );
@@ -10885,7 +11448,7 @@ async function confirmarRecepcionLotePorGestor(nodoId, canastoId, payload = {}) 
     }
 
     const canRes = await db.query(
-        `SELECT nle.*, nm.gestor_nombre, nm.slug
+        `SELECT nle.*, nm.gestor_nombre, nm.slug, nm.activo AS nodo_activo
          FROM public.nodos_lotes_estacion nle
          JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
          WHERE nle.id = $1 AND nle.nodo_id = $2
@@ -10896,6 +11459,11 @@ async function confirmarRecepcionLotePorGestor(nodoId, canastoId, payload = {}) 
         throw new Error('El lote seleccionado no pertenece a este Nodo.');
     }
     const canasto = canRes.rows[0];
+    if (canasto.nodo_activo === false) {
+        const err = new Error('Este Nodo se encuentra archivado.');
+        err.statusCode = 403;
+        throw err;
+    }
 
     // Validar que los pedidos activos del lote ya hayan sido controlados en Verificación (Hito >= 3)
     const pedsCheck = await db.query(
@@ -10949,7 +11517,7 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
     }
 
     const pedRes = await db.query(
-        `SELECT npv.*, nm.nombre_marca, nm.gestor_nombre, nm.slug
+        `SELECT npv.*, nm.nombre_marca, nm.gestor_nombre, nm.slug, nm.activo AS nodo_activo
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          WHERE npv.id = $1 AND npv.nodo_id = $2
@@ -10960,6 +11528,11 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
         throw new Error('Pedido vecinal no encontrado en este Nodo.');
     }
     const ped = pedRes.rows[0];
+    if (ped.nodo_activo === false) {
+        const err = new Error('Este Nodo se encuentra archivado.');
+        err.statusCode = 403;
+        throw err;
+    }
 
     if (String(ped.estado_operativo || '').toUpperCase() === 'ANULADO') {
         throw new Error('No se puede avanzar la entrega de un pedido anulado.');
@@ -11275,12 +11848,13 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
                 nm.gestor_nombre, nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro,
                 nm.color_primario, nm.logo_original_base64,
                 nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
-                nm.permitir_envio_barrial, nm.cargo_envio_barrial
+                nm.permitir_envio_barrial, nm.permitir_retiro_nodo, nm.permitir_reparto_propio, nm.permitir_encomienda, nm.cargo_envio_barrial
          FROM public.nodos_vecinos nv
          JOIN public.nodos_maestro nm ON nm.id = nv.nodo_id
          WHERE nv.portal_token = $1
            AND ($2 = '' OR LOWER(nm.slug) = LOWER($2))
            AND COALESCE(nv.activo, true) = true
+           AND COALESCE(nm.activo, true) = true
          LIMIT 1`,
         [cleanToken, cleanSlug]
     );
@@ -11304,7 +11878,10 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
         alias_bancario_display: row.alias_bancario_display || 'pago.canasto',
         cbu_display: row.cbu_display || '',
         titular_display: row.titular_display || '',
-        permitir_envio_barrial: Boolean(row.permitir_envio_barrial),
+        permitir_envio_barrial: Boolean(row.permitir_reparto_propio ?? row.permitir_envio_barrial),
+        permitir_retiro_nodo: row.permitir_retiro_nodo !== false,
+        permitir_reparto_propio: Boolean(row.permitir_reparto_propio ?? row.permitir_envio_barrial),
+        permitir_encomienda: Boolean(row.permitir_encomienda),
         cargo_envio_barrial: Number(row.cargo_envio_barrial || 0)
     };
 
@@ -11511,7 +12088,8 @@ async function obtenerKitCompartirNodo(nodoId) {
         db.query(
             `SELECT id, codigo_nodo, slug, nombre_marca, subtitulo_marca,
                     gestor_nombre, barrio_zona, direccion_retiro,
-                    permitir_envio_barrial, cargo_envio_barrial,
+                    permitir_envio_barrial, permitir_retiro_nodo, permitir_reparto_propio, permitir_encomienda,
+                    cargo_envio_barrial,
                     color_primario, config_ventanas_corte, activo
              FROM public.nodos_maestro
              WHERE id = $1::int
@@ -11545,7 +12123,13 @@ async function obtenerKitCompartirNodo(nodoId) {
     }
 
     const n = nodoRes.rows[0];
+    if (n.activo === false) {
+        const err = new Error('Este Nodo se encuentra archivado y su kit de difusión está pausado.');
+        err.statusCode = 403;
+        throw err;
+    }
     const proximaEntrega = calcularProximaEntregaNodo(n.config_ventanas_corte);
+    const puedeRepartoKit = Boolean(n.permitir_reparto_propio ?? n.permitir_envio_barrial);
 
     return {
         nodo: {
@@ -11556,7 +12140,10 @@ async function obtenerKitCompartirNodo(nodoId) {
             gestor_nombre: n.gestor_nombre || '',
             barrio_zona: n.barrio_zona || '',
             direccion_retiro: n.direccion_retiro || '',
-            permitir_envio_barrial: Boolean(n.permitir_envio_barrial),
+            permitir_envio_barrial: puedeRepartoKit,
+            permitir_retiro_nodo: n.permitir_retiro_nodo !== false,
+            permitir_reparto_propio: puedeRepartoKit,
+            permitir_encomienda: Boolean(n.permitir_encomienda),
             cargo_envio_barrial: Number(n.cargo_envio_barrial || 0),
             color_primario: n.color_primario || '#a2553b'
         },
@@ -11590,7 +12177,7 @@ async function obtenerCompradoresRegistradosNodo(nodoId) {
 
     const [nodoRes, vecinosRes, pedidosRes] = await Promise.all([
         db.query(
-            `SELECT id, slug, nombre_marca
+            `SELECT id, slug, nombre_marca, activo
              FROM public.nodos_maestro
              WHERE id = $1::int
              LIMIT 1`,
@@ -11625,6 +12212,11 @@ async function obtenerCompradoresRegistradosNodo(nodoId) {
     if (nodoRes.rows.length === 0) {
         const err = new Error('Nodo no encontrado.');
         err.statusCode = 404;
+        throw err;
+    }
+    if (nodoRes.rows[0].activo === false) {
+        const err = new Error('Este Nodo se encuentra archivado.');
+        err.statusCode = 403;
         throw err;
     }
 
@@ -11751,7 +12343,242 @@ async function obtenerCompradoresRegistradosNodo(nodoId) {
     };
 }
 
+/**
+ * Archiva o reactiva un Nodo Barrial sin eliminar historial contable ni de Liquidación.
+ */
+async function archivarOActivarNodoMaestro(nodoId, activo = false) {
+    await asegurarEsquemaNodosBarriales();
+    const nid = Number(nodoId || 0);
+    if (!Number.isFinite(nid) || nid <= 0) {
+        const err = new Error('Identificador de Nodo inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const nuevoActivo = Boolean(activo);
+    const res = await db.query(
+        `UPDATE public.nodos_maestro
+         SET activo = $1,
+             updated_at = NOW()
+         WHERE id = $2::int
+         RETURNING *`,
+        [nuevoActivo, nid]
+    );
+    if (res.rows.length === 0) {
+        const err = new Error('Nodo Barrial no encontrado.');
+        err.statusCode = 404;
+        throw err;
+    }
+    return res.rows[0];
+}
+
+/**
+ * Eliminación transaccional segura de un único Nodo de Prueba,
+ * habilitada EXCLUSIVAMENTE cuando LAMDA_MODO_LABORATORIO === 'true' y DB_NAME === 'etiquetas_pruebas'.
+ * Protege estrictamente el Cliente Titular Madre y no altera otros Nodos ni clientes mayoristas.
+ */
+async function eliminarNodoPruebaLaboratorio(nodoId, opciones = {}) {
+    await asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+
+    if (!esModoLaboratorioNodos()) {
+        const err = new Error('La eliminación física de Nodos solo está permitida en Modo Laboratorio sobre etiquetas_pruebas.');
+        err.statusCode = 403;
+        throw err;
+    }
+
+    const nid = Number(nodoId || 0);
+    if (!Number.isFinite(nid) || nid <= 0) {
+        const err = new Error('Identificador de Nodo inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const client = await db.connect();
+    let resumen;
+    try {
+        await client.query('BEGIN');
+
+        const nodoRes = await client.query(
+            'SELECT * FROM public.nodos_maestro WHERE id = $1::int FOR UPDATE',
+            [nid]
+        );
+        if (nodoRes.rows.length === 0) {
+            const err = new Error('Nodo Barrial no encontrado.');
+            err.statusCode = 404;
+            throw err;
+        }
+        const nodo = nodoRes.rows[0];
+        const clienteMadreBunkerId = nodo.cliente_madre_bunker_id ? Number(nodo.cliente_madre_bunker_id) : null;
+        const bunkerClienteHijoId = nodo.bunker_cliente_id ? Number(nodo.bunker_cliente_id) : null;
+        const codigoCbHijo = String(nodo.codigo_bunker_cliente || '').trim();
+        const clienteLomasId = 9000 + nid;
+
+        const [lotesRes, pedsRes, liqRes, ofCountRes, vecCountRes, propCountRes] = await Promise.all([
+            client.query('SELECT * FROM public.nodos_lotes_estacion WHERE nodo_id = $1::int', [nid]),
+            client.query('SELECT * FROM public.nodos_pedidos_vecinos WHERE nodo_id = $1::int', [nid]),
+            client.query('SELECT * FROM public.nodos_liquidaciones_lote WHERE nodo_id = $1::int', [nid]),
+            client.query('SELECT COUNT(*)::int AS total FROM public.nodos_ofertas_gestor WHERE nodo_id = $1::int', [nid]),
+            client.query('SELECT COUNT(*)::int AS total FROM public.nodos_vecinos WHERE nodo_id = $1::int', [nid]),
+            client.query('SELECT COUNT(*)::int AS total FROM public.nodos_propuestas_fracciones WHERE nodo_solicitante_id = $1::int AND articulo_catalogo_id IS NULL', [nid])
+        ]);
+
+        const presIds = Array.from(new Set([
+            ...lotesRes.rows.map(r => Number(r.presupuesto_id_local || 0)),
+            ...pedsRes.rows.map(r => Number(r.presupuesto_id_local || 0))
+        ].filter(v => Number.isFinite(v) && v > 0)));
+
+        const exts = Array.from(new Set([
+            ...lotesRes.rows.map(r => String(r.codigo_canasto || '').trim()),
+            ...pedsRes.rows.map(r => String(r.codigo_pedido || '').trim())
+        ].filter(Boolean)));
+
+        const madreCcMovIds = Array.from(new Set(
+            liqRes.rows.map(r => Number(r.movimiento_cc_madre_id || 0)).filter(v => Number.isFinite(v) && v > 0)
+        ));
+        const otrosCcMovIds = Array.from(new Set([
+            ...liqRes.rows.map(r => Number(r.movimiento_cc_id || 0)),
+            ...lotesRes.rows.map(r => Number(r.movimiento_cc_id || 0)),
+            ...pedsRes.rows.map(r => Number(r.movimiento_pago_cc_id || 0))
+        ].filter(v => Number.isFinite(v) && v > 0)));
+
+        // 1. Limpiar presupuestos y detalles vinculados únicamente a este Nodo
+        await client.query(
+            `DELETE FROM public.presupuestos_detalles
+             WHERE id_presupuesto IN (
+                 SELECT id FROM public.presupuestos
+                 WHERE id = ANY($1::int[])
+                    OR id_presupuesto_ext = ANY($2::text[])
+                    OR (id_cliente = $3::text AND agente = 'Nodo Barrial')
+             )
+             OR id_presupuesto_ext = ANY($2::text[])`,
+            [presIds, exts, String(clienteLomasId)]
+        );
+        const delPresRes = await client.query(
+            `DELETE FROM public.presupuestos
+             WHERE id = ANY($1::int[])
+                OR id_presupuesto_ext = ANY($2::text[])
+                OR (id_cliente = $3::text AND agente = 'Nodo Barrial')`,
+            [presIds, exts, String(clienteLomasId)]
+        );
+
+        // 2. Revertir movimientos de liquidación imputados sobre Cuenta Madre y recalcular su saldo (sin borrar Madre)
+        const ccMadreAfectadas = new Set();
+        if (madreCcMovIds.length > 0) {
+            const delMadreMovs = await client.query(
+                `DELETE FROM public.factura_cuenta_corriente_movimientos
+                 WHERE id = ANY($1::bigint[])
+                 RETURNING cuenta_corriente_id`,
+                [madreCcMovIds]
+            );
+            for (const m of delMadreMovs.rows) {
+                if (m.cuenta_corriente_id) ccMadreAfectadas.add(Number(m.cuenta_corriente_id));
+            }
+        }
+        if (otrosCcMovIds.length > 0) {
+            await client.query(
+                `DELETE FROM public.factura_cuenta_corriente_movimientos
+                 WHERE id = ANY($1::bigint[])`,
+                [otrosCcMovIds]
+            );
+        }
+
+        // 3. Eliminar subcuenta corriente hija CB-NODO-xxx exclusivamente
+        let cuentasHijasEliminadas = 0;
+        if (codigoCbHijo && /^CB-NODO-/i.test(codigoCbHijo)) {
+            await client.query(
+                `DELETE FROM public.factura_cuenta_corriente_movimientos
+                 WHERE cuenta_corriente_id IN (
+                     SELECT id FROM public.factura_cuentas_corrientes WHERE codigo_bunker_cliente = $1
+                 )`,
+                [codigoCbHijo]
+            );
+            const delCc = await client.query(
+                `DELETE FROM public.factura_cuentas_corrientes
+                 WHERE codigo_bunker_cliente = $1`,
+                [codigoCbHijo]
+            );
+            cuentasHijasEliminadas = delCc.rowCount || 0;
+        }
+
+        for (const ccMadreId of ccMadreAfectadas) {
+            await recalcularSaldosCuentaMadreBunker(client, ccMadreId);
+        }
+
+        // 4. Eliminar ficha hija CB-NODO-xxx en bunker_clientes protegiendo estrictamente cliente_madre_bunker_id
+        if (bunkerClienteHijoId && codigoCbHijo && /^CB-NODO-/i.test(codigoCbHijo) && bunkerClienteHijoId !== clienteMadreBunkerId) {
+            await client.query(
+                `DELETE FROM public.bunker_cliente_listas_precios WHERE bunker_cliente_id = $1::int`,
+                [bunkerClienteHijoId]
+            );
+            await client.query(
+                `DELETE FROM public.bunker_clientes
+                 WHERE id = $1::int
+                   AND codigo_bunker_cliente = $2
+                   AND codigo_bunker_cliente LIKE 'CB-NODO-%'
+                   AND ($3::int IS NULL OR id <> $3::int)`,
+                [bunkerClienteHijoId, codigoCbHijo, clienteMadreBunkerId]
+            );
+        }
+
+        // 5. Eliminar cliente operativo Lomas/Logística (cliente_id = 9000 + nodo.id) y sus domicilios
+        await client.query(
+            `DELETE FROM public.clientes_domicilios
+             WHERE id_cliente IN (SELECT id FROM public.clientes WHERE cliente_id = $1::int)`,
+            [clienteLomasId]
+        );
+        await client.query(
+            `DELETE FROM public.clientes WHERE cliente_id = $1::int`,
+            [clienteLomasId]
+        );
+
+        // 6. Limpiar propuestas pendientes exclusivas de este Nodo
+        await client.query(
+            `DELETE FROM public.nodos_propuestas_fracciones
+             WHERE nodo_solicitante_id = $1::int
+               AND articulo_catalogo_id IS NULL`,
+            [nid]
+        );
+
+        // 7. Eliminar el registro maestro del Nodo (ON DELETE CASCADE limpia ofertas, vecinos, pedidos, items, eventos, lotes, movs, liquidaciones, alias)
+        await client.query(
+            `DELETE FROM public.nodos_maestro WHERE id = $1::int`,
+            [nid]
+        );
+
+        await client.query('COMMIT');
+
+        resumen = {
+            id: nid,
+            codigo_nodo: nodo.codigo_nodo,
+            slug: nodo.slug,
+            nombre_marca: nodo.nombre_marca,
+            cliente_madre_bunker_id_preservado: clienteMadreBunkerId,
+            codigo_bunker_cliente_madre_preservado: nodo.codigo_bunker_cliente_madre || null,
+            ofertas_eliminadas: ofCountRes.rows[0]?.total || 0,
+            vecinos_eliminados: vecCountRes.rows[0]?.total || 0,
+            pedidos_eliminados: pedsRes.rows.length,
+            canastos_eliminados: lotesRes.rows.length,
+            propuestas_eliminadas: propCountRes.rows[0]?.total || 0,
+            presupuestos_eliminados: delPresRes.rowCount || 0,
+            subcuentas_hijas_eliminadas: cuentasHijasEliminadas,
+            motivo: String(opciones.motivo || 'ELIMINACION_LABORATORIO').trim()
+        };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    return { ok: true, eliminado: true, resumen };
+}
+
 module.exports = {
+    esModoLaboratorioNodos,
+    geocodificarDireccionArgentina,
+    geocodificarInversoArgentina,
+    archivarOActivarNodoMaestro,
+    eliminarNodoPruebaLaboratorio,
     asegurarEsquemaNodosBarriales,
     sincronizarHerenciaFiscalDesdeMadrePorId,
     ponerACeroDatosNodosBarriales,

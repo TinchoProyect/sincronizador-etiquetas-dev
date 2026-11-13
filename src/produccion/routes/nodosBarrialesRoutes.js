@@ -334,6 +334,81 @@ router.put('/maestro/:id', async (req, res) => {
 });
 
 /**
+ * GET /api/produccion/nodos/geocodificar-ar
+ * Geocodificador interno para ABM Pizarra (GeoRef AR oficial + Nominatim fallback + caché)
+ */
+router.get('/geocodificar-ar', async (req, res) => {
+    try {
+        if (esSolicitudPublicaNodos(req)) {
+            return res.status(403).json({ ok: false, error: 'Geocodificador restringido a administración interna.' });
+        }
+        const data = await nodosService.geocodificarDireccionArgentina(req.query.q || '', {
+            partido_hint: req.query.partido || ''
+        });
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /geocodificar-ar:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/geocodificar-inverso
+ * Geocodificación inversa interna al arrastrar/pinchar mapa Leaflet en ABM Pizarra
+ */
+router.get('/geocodificar-inverso', async (req, res) => {
+    try {
+        if (esSolicitudPublicaNodos(req)) {
+            return res.status(403).json({ ok: false, error: 'Geocodificador restringido a administración interna.' });
+        }
+        const data = await nodosService.geocodificarInversoArgentina(req.query.lat, req.query.lng);
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /geocodificar-inverso:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * PUT /api/produccion/nodos/maestro/:id/estado
+ * Archiva o reactiva un Nodo Barrial sin eliminar historial de Liquidación/Armado
+ */
+router.put('/maestro/:id/estado', async (req, res) => {
+    try {
+        if (esSolicitudPublicaNodos(req)) {
+            return res.status(403).json({ ok: false, error: 'Operación restringida a administración interna.' });
+        }
+        const nodo = await nodosService.archivarOActivarNodoMaestro(req.params.id, req.body?.activo);
+        res.json({ ok: true, nodo });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error actualizando estado del Nodo:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * DELETE /api/produccion/nodos/maestro/:id
+ * Eliminación transaccional segura de un Nodo de Prueba (EXCLUSIVA DE MODO LABORATORIO)
+ */
+router.delete('/maestro/:id', async (req, res) => {
+    try {
+        if (esSolicitudPublicaNodos(req) || !esModoLaboratorioWaSegura()) {
+            return res.status(403).json({
+                ok: false,
+                error: 'La eliminación de Nodos solo está permitida en Modo Laboratorio interno sobre etiquetas_pruebas.'
+            });
+        }
+        const resultado = await nodosService.eliminarNodoPruebaLaboratorio(req.params.id, {
+            motivo: (req.body && req.body.motivo) || req.query?.motivo || ''
+        });
+        res.json(resultado);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error eliminando Nodo de prueba:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
  * PUT /api/produccion/nodos/config-cuenta-canal
  * Actualiza el Alias/CBU/Titular compartido del Canal Nodos (Marca Blanca)
  * y lo propaga automáticamente a todos los Nodos que usan la cuenta recaudadora compartida.

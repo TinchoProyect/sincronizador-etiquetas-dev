@@ -12893,6 +12893,36 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "permitir_retiro_nodo": {
+        "ordinal_position": 37,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "true"
+      },
+      "permitir_reparto_propio": {
+        "ordinal_position": 38,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "true"
+      },
+      "permitir_encomienda": {
+        "ordinal_position": 39,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
       }
     },
     "nodos_movimientos_cta_cte": {

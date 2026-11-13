@@ -1082,7 +1082,7 @@
             <div style="grid-column: 1/-1; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:32px; text-align:center;">
               <h3 style="margin:0 0 8px 0;">Tienda Vecinal no disponible</h3>
               <p style="color:var(--muted); font-size:0.9rem; max-width:500px; margin:0 auto;">
-                Verificá el enlace compartido por el coordinador de tu barrio.
+                ${esc(data.error || 'Verificá el enlace compartido por el coordinador de tu barrio.')}
               </p>
             </div>
           `;
@@ -1095,6 +1095,7 @@
       STATE.nodosDisponibles = data.nodos_disponibles || [];
       STATE.proximaEntrega = data.proxima_entrega;
       STATE.productos = data.ofertas_publicadas || [];
+      asegurarModalidadEntregaValida();
 
       if (STATE.ofertaEnfocadaId || STATE.skuEnfocado) {
         const matchDirecto = STATE.productos.find(o =>
@@ -1496,7 +1497,28 @@
       }
     }
 
+    function obtenerCapacidadesEntregaTienda(nodoObj = STATE.nodo) {
+      const n = nodoObj || {};
+      const puedeRetiro = n.permitir_retiro_nodo !== false;
+      const puedeReparto = Boolean(n.permitir_reparto_propio ?? n.permitir_envio_barrial);
+      const puedeEncomienda = Boolean(n.permitir_encomienda);
+      return { puedeRetiro, puedeReparto, puedeEncomienda };
+    }
+
+    function asegurarModalidadEntregaValida() {
+      const cap = obtenerCapacidadesEntregaTienda();
+      if (STATE.modalidadEntrega === 'RETIRO_NODO' && cap.puedeRetiro) return 'RETIRO_NODO';
+      if (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && cap.puedeReparto) return 'ENVIO_BARRIAL';
+      if (cap.puedeRetiro) {
+        STATE.modalidadEntrega = 'RETIRO_NODO';
+      } else if (cap.puedeReparto) {
+        STATE.modalidadEntrega = 'ENVIO_BARRIAL';
+      }
+      return STATE.modalidadEntrega;
+    }
+
     function calcularResumenCarrito() {
+      asegurarModalidadEntregaValida();
       let unidades = 0;
       let subtotal = 0;
       const detalle = [];
@@ -1508,7 +1530,8 @@
           detalle.push({ ...p, cantidad: c, subtotal: c * Number(p.precio_venta_vecino) });
         }
       }
-      const costoEnvio = (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && STATE.nodo?.permitir_envio_barrial)
+      const cap = obtenerCapacidadesEntregaTienda();
+      const costoEnvio = (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && cap.puedeReparto)
         ? Number(STATE.nodo.cargo_envio_barrial || 0)
         : 0;
       return {
@@ -1546,6 +1569,8 @@
     }
 
     function renderContenidoModalCheckout() {
+      asegurarModalidadEntregaValida();
+      const capEntrega = obtenerCapacidadesEntregaTienda();
       const res = calcularResumenCarrito();
       const prox = STATE.proximaEntrega?.asignada;
       const box = document.getElementById('checkout-card-content');
@@ -1571,15 +1596,17 @@
           `).join('')}
         </div>
 
-        <!-- Elección de Retiro o Envío Barrial -->
+        <!-- Elección de Retiro o Envío Barrial (según capacidades activas del Nodo) -->
         <label style="display:block; font-size:0.8rem; font-weight:800; color:var(--text); margin-bottom:6px;">1. ¿Cómo preferís recibir tu pedido?</label>
         <div class="option-grid">
-          <div class="opt-card ${STATE.modalidadEntrega === 'RETIRO_NODO' ? 'active' : ''}"
-               onclick="STATE.modalidadEntrega='RETIRO_NODO'; renderContenidoModalCheckout();">
-            <div class="opt-title">🏠 Retiro por el Nodo (Gratis)</div>
-            <div class="opt-sub">${esc(STATE.nodo.direccion_retiro || STATE.nodo.barrio_zona)}</div>
-          </div>
-          ${STATE.nodo.permitir_envio_barrial ? `
+          ${capEntrega.puedeRetiro ? `
+            <div class="opt-card ${STATE.modalidadEntrega === 'RETIRO_NODO' ? 'active' : ''}"
+                 onclick="STATE.modalidadEntrega='RETIRO_NODO'; renderContenidoModalCheckout();">
+              <div class="opt-title">🏠 Retiro por el Nodo (Gratis)</div>
+              <div class="opt-sub">${esc(STATE.nodo.direccion_retiro || STATE.nodo.barrio_zona)}</div>
+            </div>
+          ` : ''}
+          ${capEntrega.puedeReparto ? `
             <div class="opt-card ${STATE.modalidadEntrega === 'ENVIO_BARRIAL' ? 'active' : ''}"
                  onclick="STATE.modalidadEntrega='ENVIO_BARRIAL'; renderContenidoModalCheckout();">
               <div class="opt-title">🛵 Envío a Domicilio (+${fmt(STATE.nodo.cargo_envio_barrial)})</div>

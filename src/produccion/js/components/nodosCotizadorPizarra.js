@@ -37,6 +37,8 @@
         omitirAutoOrigenInicial: false,
         nodoEditandoId: null,
         modoCreacionNuevo: false,
+        modoLaboratorio: false,
+        mostrarArchivadosAbm: false,
         ultimoPreviewEtiqueta: null
     };
 
@@ -110,6 +112,7 @@
             ESTADO_NODOS.ofertas_gestor = data.ofertas_gestor || [];
             ESTADO_NODOS.presentaciones_planta_disponibles = data.presentaciones_planta_disponibles || [];
             ESTADO_NODOS.fuentes = data.fuentes || ESTADO_NODOS.fuentes;
+            ESTADO_NODOS.modoLaboratorio = Boolean(data.modo_laboratorio);
             ESTADO_NODOS.inicializado = true;
 
             actualizarBadgePropuestasPendientes();
@@ -262,19 +265,21 @@
             if (ESTADO_NODOS.modoCreacionNuevo) {
                 resetearPreviewLogoAbm({ inicialesDefault: '' });
                 regenerarLogoZplEnVivo();
+                actualizarEncabezadoFormularioAbm(null);
             } else {
                 const nodoTarget = ESTADO_NODOS.nodoEditandoId
                     ? ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(ESTADO_NODOS.nodoEditandoId))
-                    : ESTADO_NODOS.nodos[0];
-                if (nodoTarget && !ESTADO_NODOS.clienteMadreSeleccionadoId) {
+                    : (ESTADO_NODOS.nodos.find(n => n.activo !== false) || ESTADO_NODOS.nodos[0]);
+                if (nodoTarget) {
                     cargarNodoEnFormularioAbm(nodoTarget.id);
-                } else if (!nodoTarget && !ESTADO_NODOS.clienteMadreSeleccionadoId) {
-                    regenerarLogoZplEnVivo();
+                } else {
+                    if (!ESTADO_NODOS.clienteMadreSeleccionadoId) {
+                        regenerarLogoZplEnVivo();
+                    }
+                    actualizarEncabezadoFormularioAbm(null);
                 }
             }
-            asegurarGoogleMapsSdkAbm().then(ok => {
-                if (ok) vincularAutocompletePlacesAbm();
-            });
+            vincularAutocompleteGeoAbm();
         }
     }
 
@@ -1318,14 +1323,19 @@
             cbu_recaudador: '0000000000000000000000'
         };
         const aliasCompartido = cfgCanal.alias_recaudador || 'pago.canasto';
+        const nodosTodos = ESTADO_NODOS.nodos || [];
+        const nodosArchivadosCount = nodosTodos.filter(n => n.activo === false).length;
+        const nodosVisiblesAbm = ESTADO_NODOS.mostrarArchivadosAbm
+            ? nodosTodos
+            : nodosTodos.filter(n => n.activo !== false);
 
         return `
             <div style="display:grid; grid-template-columns: 34% 65%; gap:16px; align-items:start;">
-                <!-- COLUMNA IZQUIERDA: LISTADO DE NODOS BARRIALES ACTIVOS -->
+                <!-- COLUMNA IZQUIERDA: LISTADO DE NODOS BARRIALES -->
                 <div class="card" style="padding:14px; background:#151e2e; border:1px solid #2e3c51; border-radius:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:6px; flex-wrap:wrap;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:6px; flex-wrap:wrap;">
                         <div>
-                            <div style="font-weight:700; font-size:0.95rem; color:#f8fafc;">🏘️ Nodos Barriales Activos</div>
+                            <div style="font-weight:700; font-size:0.95rem; color:#f8fafc;">🏘️ Nodos Barriales</div>
                             <div style="font-size:0.74rem; color:#94a3b8;">Seleccione un Nodo para editarlo o dé de alta uno nuevo</div>
                         </div>
                         <button onclick="window.NodosPizarra.nuevoNodoFormulario()"
@@ -1333,17 +1343,30 @@
                             ➕ Nuevo Nodo
                         </button>
                     </div>
+                    ${(nodosArchivadosCount > 0 || ESTADO_NODOS.mostrarArchivadosAbm) ? `
+                        <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.73rem; color:#cbd5e1; margin-bottom:10px; cursor:pointer; padding:4px 9px; border-radius:6px; background:#0f172a; border:1px solid #334155;">
+                            <input type="checkbox" ${ESTADO_NODOS.mostrarArchivadosAbm ? 'checked' : ''}
+                                onchange="window.NodosPizarra.toggleMostrarArchivadosAbm(this.checked)"
+                                style="accent-color:#f59e0b; cursor:pointer;">
+                            <span>Mostrar archivados (${nodosArchivadosCount})</span>
+                        </label>
+                    ` : ''}
 
                     <div style="display:flex; flex-direction:column; gap:10px;">
-                        ${ESTADO_NODOS.nodos.length === 0 ? `
+                        ${nodosVisiblesAbm.length === 0 ? `
                             <div style="padding:16px; border-radius:10px; background:rgba(15,23,42,0.7); border:1px dashed #475569; color:#cbd5e1; font-size:0.8rem; line-height:1.5;">
-                                <div style="font-weight:800; color:#38bdf8; margin-bottom:4px;">📋 Sin Nodos dados de alta actualmente</div>
+                                <div style="font-weight:800; color:#38bdf8; margin-bottom:4px;">📋 Sin Nodos activos para mostrar</div>
                                 Para crear un Nodo, busque y seleccione primero al <strong>Cliente Titular en el Padrón de LAMDA</strong> en el paso <code>1️⃣</code> de la derecha. Sus datos de contacto y domicilio se precargarán automáticamente para que solo complete el nombre comercial del Nodo y guarde.
                             </div>
                         ` : ''}
-                        ${ESTADO_NODOS.nodos.map(n => `
+                        ${nodosVisiblesAbm.map(n => {
+                            const esArchivado = n.activo === false;
+                            const puedeRet = n.permitir_retiro_nodo !== false;
+                            const puedeRep = Boolean(n.permitir_reparto_propio ?? n.permitir_envio_barrial ?? true);
+                            const puedeEnc = Boolean(n.permitir_encomienda);
+                            return `
                             <div onclick="window.NodosPizarra.cargarNodoEnFormularioAbm(${n.id})"
-                                style="padding:12px; border-radius:10px; background:rgba(15,23,42,0.85); border:1px solid ${Number(ESTADO_NODOS.nodoEditandoId) === Number(n.id) ? '#a78bfa' : '#334155'}; cursor:pointer; display:flex; flex-direction:column; gap:8px;">
+                                style="padding:12px; border-radius:10px; background:rgba(15,23,42,0.85); border:1px ${esArchivado ? 'dashed' : 'solid'} ${Number(ESTADO_NODOS.nodoEditandoId) === Number(n.id) ? '#a78bfa' : (esArchivado ? '#b45309' : '#334155')}; opacity:${esArchivado ? '0.78' : '1'}; cursor:pointer; display:flex; flex-direction:column; gap:8px;">
                                 <div style="display:flex; gap:12px; align-items:center;">
                                     <div style="width:74px; height:44px; background:#faf7f3; border-radius:6px; border:1px solid #475569; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; padding:3px;">
                                         ${n.logo_original_base64
@@ -1353,10 +1376,11 @@
                                                 : `<span style="color:#000; font-weight:800; font-size:0.75rem;">LOGO</span>`)}
                                     </div>
                                     <div style="flex:1; min-width:0;">
-                                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                                        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
                                             <span style="font-weight:800; color:#f8fafc; font-size:0.9rem; display:inline-flex; align-items:center; gap:6px;">
                                                 <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${escaparHtml(n.color_primario || '#a2553b')}; border:1px solid rgba(255,255,255,0.4);"></span>
                                                 ${escaparHtml(n.nombre_marca)}
+                                                ${esArchivado ? `<span style="font-size:0.64rem; font-weight:900; padding:1px 6px; border-radius:4px; background:rgba(245,158,11,0.22); border:1px solid #f59e0b; color:#fcd34d;">ARCHIVADO</span>` : ''}
                                             </span>
                                             <span style="font-size:0.68rem; font-family:monospace; color:#a78bfa; background:rgba(167,139,250,0.14); padding:2px 6px; border-radius:4px;">${escaparHtml(n.codigo_nodo)}</span>
                                         </div>
@@ -1366,7 +1390,12 @@
                                         <div style="font-size:0.72rem; color:#94a3b8; margin-top:3px; display:flex; gap:10px; flex-wrap:wrap;">
                                             <span>📒 Subcuenta <code>${escaparHtml(n.codigo_bunker_cliente || 'CB-NODO')}</code>: <strong style="color:#34d399;">${fmtMoneda(n.saldo_cuenta_corriente)}</strong></span>
                                             <span>🏦 Alias: <strong style="color:#38bdf8;">${escaparHtml(n.alias_bancario_display || 'pago.canasto')}</strong></span>
-                                            <span>🛵 Envío: <strong>${fmtMoneda(n.cargo_envio_barrial)}</strong></span>
+                                            <span>🛵 Envío: <strong>${puedeRep ? fmtMoneda(n.cargo_envio_barrial) : 'Deshabilitado'}</strong></span>
+                                        </div>
+                                        <div style="display:flex; gap:5px; flex-wrap:wrap; margin-top:4px;">
+                                            ${puedeRet ? `<span style="font-size:0.66rem; padding:1px 6px; border-radius:999px; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.35); color:#bae6fd;">🏠 Retiro en Nodo</span>` : ''}
+                                            ${puedeRep ? `<span style="font-size:0.66rem; padding:1px 6px; border-radius:999px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.35); color:#6ee7b7;">🚗 Reparto Propio</span>` : ''}
+                                            ${puedeEnc ? `<span style="font-size:0.66rem; padding:1px 6px; border-radius:999px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.35); color:#fcd34d;">📦 Encomienda (prevista)</span>` : ''}
                                         </div>
                                         ${n.codigo_bunker_cliente_madre ? `
                                             <div style="font-size:0.71rem; color:#6ee7b7; margin-top:4px; padding:3px 7px; border-radius:5px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.35); display:inline-block;">
@@ -1376,40 +1405,47 @@
                                     </div>
                                 </div>
                                 <div style="display:flex; justify-content:flex-end; gap:6px; padding-top:6px; border-top:1px solid rgba(51,65,85,0.6); flex-wrap:wrap;" onclick="event.stopPropagation();">
-                                    <button type="button" onclick="window.NodosPizarra.enviarLinksBienvenidaNodoWa(${n.id})"
-                                        style="padding:4px 9px; border-radius:6px; font-size:0.71rem; font-weight:700; background:rgba(16,185,129,0.2); border:1px solid #10b981; color:#6ee7b7; cursor:pointer;">
-                                        📲 Enviar Links por WA
-                                    </button>
-                                    <a href="/gestor/${escaparHtml(n.slug)}" target="_blank"
-                                        style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.71rem; font-weight:700; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.4); color:#bae6fd;">
-                                        🎛️ App Gestor ↗
-                                    </a>
-                                    <a href="/tienda/${escaparHtml(n.slug)}" target="_blank"
-                                        style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.71rem; font-weight:700; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#6ee7b7;">
-                                        🏪 Tienda Vecinos ↗
-                                    </a>
+                                    ${esArchivado ? `
+                                        <span style="font-size:0.71rem; color:#fcd34d; align-self:center; margin-right:auto;">Tienda y App bloqueadas hasta reactivar</span>
+                                    ` : `
+                                        <button type="button" onclick="window.NodosPizarra.enviarLinksBienvenidaNodoWa(${n.id})"
+                                            style="padding:4px 9px; border-radius:6px; font-size:0.71rem; font-weight:700; background:rgba(16,185,129,0.2); border:1px solid #10b981; color:#6ee7b7; cursor:pointer;">
+                                            📲 Enviar Links por WA
+                                        </button>
+                                        <a href="/gestor/${escaparHtml(n.slug)}" target="_blank"
+                                            style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.71rem; font-weight:700; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.4); color:#bae6fd;">
+                                            🎛️ App Gestor ↗
+                                        </a>
+                                        <a href="/tienda/${escaparHtml(n.slug)}" target="_blank"
+                                            style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.71rem; font-weight:700; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); color:#6ee7b7;">
+                                            🏪 Tienda Vecinos ↗
+                                        </a>
+                                    `}
                                 </div>
                             </div>
-                        `).join('')}
+                        `;
+                        }).join('')}
                     </div>
                 </div>
 
                 <!-- COLUMNA DERECHA: FORMULARIO ABM + LOGO TÉRMICO + SIMULADOR ETIQUETA ZEBRA -->
                 <div style="display:flex; flex-direction:column; gap:14px;">
                     <div class="card" style="padding:16px; background:#151e2e; border:1px solid rgba(167,139,250,0.4); border-radius:12px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2e3c51; padding-bottom:10px; margin-bottom:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #2e3c51; padding-bottom:12px; margin-bottom:12px;">
                             <div>
-                                <div style="font-size:0.98rem; font-weight:800; color:#f8fafc;" id="abm-nodo-form-title">
-                                    🏷️ Alta y Configuración del Nodo Barrial
+                                <div style="font-size:1.05rem; font-weight:800; color:#f8fafc; display:flex; align-items:center; gap:8px; flex-wrap:wrap;" id="abm-nodo-form-title">
+                                    ➕ Creando Nuevo Nodo Barrial
                                 </div>
-                                <div style="font-size:0.75rem; color:#94a3b8;">
+                                <div style="font-size:0.75rem; color:#94a3b8; margin-top:2px;" id="abm-nodo-form-sub">
                                     Todo Nodo parte de un Cliente Titular en LAMDA y opera sus canastos con una subcuenta aislada (<code>CB-NODO-xxx</code>).
                                 </div>
                             </div>
-                            <button type="button" onclick="window.NodosPizarra.guardarNodoAbm()"
-                                style="padding:8px 16px; border-radius:8px; font-weight:800; font-size:0.82rem; border:none; background:linear-gradient(135deg, #10b981, #059669); color:#052e16; cursor:pointer;">
-                                💾 Guardar Nodo y Etiqueta ZPL
-                            </button>
+                            <div id="abm-nodo-form-actions" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                                <button type="button" onclick="window.NodosPizarra.guardarNodoAbm()"
+                                    style="padding:8px 16px; border-radius:8px; font-weight:800; font-size:0.82rem; border:none; background:linear-gradient(135deg, #10b981, #059669); color:#052e16; cursor:pointer;">
+                                    💾 Guardar Nodo y Etiqueta ZPL
+                                </button>
+                            </div>
                         </div>
 
                         <input type="hidden" id="abm-nodo-id" value="">
@@ -1447,15 +1483,15 @@
                             </div>
                         </div>
 
-                        <!-- PASO 2: DATOS DE CONTACTO, PUNTO DE RETIRO Y HERRAMIENTA GOOGLE MAPS -->
+                        <!-- PASO 2: DATOS DE CONTACTO, PUNTO DE RETIRO Y MAPA INTERACTIVO AR (LEAFLET + GEOREF AR) -->
                         <div style="margin-bottom:12px; padding:11px 12px; border-radius:9px; background:rgba(15,23,42,0.65); border:1px solid #263244;">
                             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
                                 <div style="font-size:0.75rem; color:#cbd5e1; font-weight:800;">
-                                    2️⃣ Datos de Contacto y Punto de Retiro del Nodo <span style="font-weight:500; color:#94a3b8;">(precargados del Cliente y ajustables con Google Maps)</span>
+                                    2️⃣ Datos de Contacto y Punto de Retiro del Nodo <span style="font-weight:500; color:#94a3b8;">(precargados del Cliente y ajustables en Mapa AR)</span>
                                 </div>
                                 <button type="button" onclick="window.NodosPizarra.togglePanelMapaAbm()"
                                     style="padding:4px 10px; border-radius:6px; font-size:0.73rem; font-weight:800; background:rgba(56,189,248,0.16); border:1px solid #38bdf8; color:#bae6fd; cursor:pointer;">
-                                    🗺️ Ver / Ubicar en Google Maps
+                                    🗺️ Ver / Ubicar en Mapa
                                 </button>
                             </div>
 
@@ -1475,25 +1511,29 @@
                                     <input type="text" id="abm-barrio" placeholder="Barrio / Localidad"
                                         style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #38bdf8; background:#0f172a; color:#f8fafc; font-weight:700; box-sizing:border-box;">
                                 </div>
-                                <div>
+                                <div class="nodos-geo-suggest-wrap">
                                     <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Domicilio del Nodo (Texto Impreso / Mapa AR)</label>
                                     <input type="text" id="abm-direccion" autocomplete="off"
-                                        placeholder="Calle, altura, ciudad y provincia (ej: Av. Colón 540, Córdoba)"
+                                        placeholder="Calle, altura, ciudad (ej: Pellegrini 1419, Martínez, Buenos Aires)"
                                         oninput="window.NodosPizarra.simularEtiquetaZebra('estandar_pagado')"
                                         style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
+                                    <div id="abm-direccion-sugerencias" class="nodos-geo-suggest-dropdown"></div>
                                 </div>
                             </div>
 
                             <!-- OPCIONES DE DOMICILIOS DEL CLIENTE -->
                             <div id="abm-domicilios-sugeridos" style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px;"></div>
 
-                            <!-- PANEL DESPLEGABLE INTERACTIVO GOOGLE MAPS -->
+                            <!-- PANEL DESPLEGABLE INTERACTIVO LEAFLET + OSM + GEOREF AR -->
                             <div id="abm-mapa-panel" style="display:none; margin-top:10px; padding:10px; border-radius:9px; background:#0b1120; border:1px solid rgba(56,189,248,0.45);">
                                 <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-                                    <input type="text" id="abm-mapa-search-input" autocomplete="off"
-                                        onkeydown="if(event.key==='Enter'){event.preventDefault(); window.NodosPizarra.buscarDireccionEnMapaAbm();}"
-                                        placeholder="🔎 Escribí cualquier dirección, ciudad o provincia de Argentina (ej: Av. Colón 540, Córdoba / 9 de Julio 1200, Rosario)..."
-                                        style="flex:1; min-width:220px; padding:6px 10px; border-radius:6px; border:1px solid #334155; background:#151e2e; color:#f8fafc; font-size:0.78rem;">
+                                    <div class="nodos-geo-suggest-wrap" style="flex:1; min-width:240px;">
+                                        <input type="text" id="abm-mapa-search-input" autocomplete="off"
+                                            onkeydown="if(event.key==='Enter'){event.preventDefault(); window.NodosPizarra.buscarDireccionEnMapaAbm();}"
+                                            placeholder="🔎 Escribí cualquier calle, ciudad o provincia de Argentina (ej: Martínez, Buenos Aires / 7 820, La Plata)..."
+                                            style="width:100%; padding:6px 10px; border-radius:6px; border:1px solid #334155; background:#151e2e; color:#f8fafc; font-size:0.78rem; box-sizing:border-box;">
+                                        <div id="abm-mapa-sugerencias" class="nodos-geo-suggest-dropdown"></div>
+                                    </div>
                                     <button type="button" onclick="window.NodosPizarra.buscarDireccionEnMapaAbm()"
                                         style="padding:6px 12px; border-radius:6px; font-size:0.75rem; font-weight:800; background:#0284c7; border:none; color:#fff; cursor:pointer;">
                                         🔍 Buscar en Mapa
@@ -1504,13 +1544,13 @@
                                     </button>
                                 </div>
 
-                                <div id="abm-google-map-canvas" style="width:100%; height:265px; border-radius:8px; border:1px solid #334155; background:#0f172a; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.8rem;">
-                                    ⏳ Inicializando Google Maps...
+                                <div id="abm-google-map-canvas" style="width:100%; height:270px; border-radius:8px; border:1px solid #334155; background:#0f172a; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:0.8rem;">
+                                    ⏳ Inicializando mapa interactivo OpenStreetMap...
                                 </div>
 
                                 <div id="abm-mapa-info-bar" style="margin-top:8px; padding:8px 10px; border-radius:7px; background:#151e2e; border:1px solid #2e3c51; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; font-size:0.75rem; color:#cbd5e1;">
                                     <div>
-                                        🗺️ Haga clic en cualquiera de los domicilios del cliente arriba, busque una calle o haga clic / arrastre el pin rojo sobre el mapa para detectar el <strong>Barrio / Localidad</strong>.
+                                        🗺️ Haga clic en cualquiera de los domicilios del cliente arriba, busque una calle/localidad o haga clic / arrastre el pin sobre el mapa para detectar el <strong>Barrio / Localidad</strong>.
                                     </div>
                                 </div>
                             </div>
@@ -1614,6 +1654,36 @@
                                 <label style="display:block; font-size:0.72rem; color:#cbd5e1; margin-bottom:3px;">Margen Inicial (%)</label>
                                 <input type="number" id="abm-margen-default" step="0.5" value="28"
                                     style="width:100%; padding:7px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700; font-size:0.81rem; box-sizing:border-box;">
+                            </div>
+                        </div>
+
+                        <!-- CAPACIDADES MODULARES DE ENTREGA DEL NODO (B2) -->
+                        <div style="margin-bottom:10px; padding:10px 12px; border-radius:8px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.28);">
+                            <div style="font-size:0.74rem; font-weight:800; color:#bae6fd; margin-bottom:7px;">
+                                🚚 Modalidades de Entrega Habilitadas para este Nodo (combinables)
+                            </div>
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:10px;">
+                                <label style="display:flex; align-items:flex-start; gap:8px; padding:7px 9px; border-radius:7px; background:#0f172a; border:1px solid #334155; cursor:pointer; font-size:0.75rem; color:#f8fafc;">
+                                    <input type="checkbox" id="abm-permitir-retiro" checked style="margin-top:2px; width:15px; height:15px; accent-color:#38bdf8; cursor:pointer;">
+                                    <span>
+                                        <strong>🏠 Retiro por el Nodo</strong>
+                                        <span style="display:block; font-size:0.68rem; color:#94a3b8;">Vecino retira gratis en el punto del gestor</span>
+                                    </span>
+                                </label>
+                                <label style="display:flex; align-items:flex-start; gap:8px; padding:7px 9px; border-radius:7px; background:#0f172a; border:1px solid #334155; cursor:pointer; font-size:0.75rem; color:#f8fafc;">
+                                    <input type="checkbox" id="abm-permitir-reparto" checked onchange="window.NodosPizarra.alCambiarToggleRepartoAbm()" style="margin-top:2px; width:15px; height:15px; accent-color:#10b981; cursor:pointer;">
+                                    <span>
+                                        <strong>🚗 Reparto Propio a Domicilio</strong>
+                                        <span style="display:block; font-size:0.68rem; color:#94a3b8;">Habilita envío barrial + Hoja de Ruta móvil</span>
+                                    </span>
+                                </label>
+                                <label style="display:flex; align-items:flex-start; gap:8px; padding:7px 9px; border-radius:7px; background:#0f172a; border:1px dashed #475569; cursor:pointer; font-size:0.75rem; color:#cbd5e1;">
+                                    <input type="checkbox" id="abm-permitir-encomienda" style="margin-top:2px; width:15px; height:15px; accent-color:#f59e0b; cursor:pointer;">
+                                    <span>
+                                        <strong>📦 Encomienda Nacional</strong>
+                                        <span style="display:block; font-size:0.68rem; color:#fcd34d;">Previsión futura correo/paquetería (sin checkout aún)</span>
+                                    </span>
+                                </label>
                             </div>
                         </div>
 
@@ -2407,46 +2477,39 @@
     // FUNCIONES DEL ABM DE NODOS + LOGO TÉRMICO + SIMULADOR ETIQUETA
     // =========================================================================
     let logoOriginalSubidoBase64 = null;
-    let abmGoogleMapInstance = null;
-    let abmGoogleMarkerMain = null;
-    let abmGoogleMarkersSecundarios = [];
-    let abmGoogleGeocoder = null;
+    let abmLeafletMapInstance = null;
+    let abmLeafletMarker = null;
+    let abmGeoTimers = {};
     let abmUltimaSugerenciaMapa = { barrio: '', calle: '', lat: null, lng: null };
 
-    async function asegurarGoogleMapsSdkAbm() {
-        if (window.google && window.google.maps) return true;
-        const apiKey = ESTADO_NODOS.fuentes?.google_maps_api_key || '';
-        if (!apiKey) {
-            console.warn('[NODOS-MAPA] google_maps_api_key no disponible en fuentes');
-            return false;
-        }
-        if (window.__cargandoGoogleMapsAbmPromise) {
-            return window.__cargandoGoogleMapsAbmPromise;
-        }
-        window.__cargandoGoogleMapsAbmPromise = new Promise((resolve) => {
-            const script = document.createElement('script');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&language=es&region=AR`;
-            script.async = true;
-            script.defer = true;
-            script.onload = () => resolve(true);
-            script.onerror = () => resolve(false);
-            document.head.appendChild(script);
-        });
-        return window.__cargandoGoogleMapsAbmPromise;
-    }
+    function formatearBarrioLocalidadGeo(item = {}) {
+        const loc = String(item.localidad || '').trim();
+        const partido = String(item.partido || '').trim();
+        let prov = String(item.provincia || '').trim()
+            .replace(/^Provincia de\s+/i, '')
+            .replace(/^(?:Ciudad Autónoma de Buenos Aires|Autonomous City of Buenos Aires)$/i, 'CABA')
+            .trim();
 
-    function asegurarEstilosAutocompleteAbm() {
-        if (document.getElementById('nodos-abm-pac-style')) return;
-        const st = document.createElement('style');
-        st.id = 'nodos-abm-pac-style';
-        st.textContent = `.pac-container { z-index: 99999 !important; font-family: inherit; }`;
-        document.head.appendChild(st);
+        const partes = [];
+        const pushUnico = (v) => {
+            if (!v) return;
+            if (!partes.some(p => p.toLowerCase() === v.toLowerCase())) partes.push(v);
+        };
+        pushUnico(loc);
+        pushUnico(partido);
+        if (prov && (!partido || prov.toLowerCase() !== partido.toLowerCase())) {
+            const esLaPlataPba = /la plata/i.test(loc + ' ' + partido) && /buenos aires/i.test(prov);
+            if (!esLaPlataPba) {
+                pushUnico(prov);
+            }
+        }
+        return partes.join(', ') || partido || prov || '';
     }
 
     function pareceDireccionPlatense(rawDir) {
         const txt = String(rawDir || '').trim();
         if (!txt) return false;
-        const mencionaOtraJurisdiccion = /caba|capital federal|córdoba|cordoba|rosario|santa fe|mendoza|tucumán|tucuman|salta|neuquén|neuquen|mar del plata|bahía blanca|bahia blanca|tandil|paraná|parana|entre ríos|entre rios|corrientes|posadas|misiones|bariloche|río negro|rio negro|chubut|san juan|san luis|la rioja|catamarca|jujuy|chaco|formosa|santa cruz|tierra del fuego|santiago del estero|la pampa|quilmes|avellaneda|lanús|lanus|lomas de zamora|morón|moron|san isidro|tigre|pilar|olavarría|olavarria|necochea|junín|junin|pergamino|luján|lujan|campana|zárate|zarate|mercedes|san nicolás|san nicolas/i.test(txt);
+        const mencionaOtraJurisdiccion = /caba|capital federal|córdoba|cordoba|rosario|santa fe|mendoza|tucumán|tucuman|salta|neuquén|neuquen|mar del plata|bahía blanca|bahia blanca|tandil|paraná|parana|entre ríos|entre rios|corrientes|posadas|misiones|bariloche|río negro|rio negro|chubut|san juan|san luis|la rioja|catamarca|jujuy|chaco|formosa|santa cruz|tierra del fuego|santiago del estero|la pampa|quilmes|avellaneda|lanús|lanus|lomas de zamora|morón|moron|san isidro|vicente lopez|vicente lópez|martínez|martinez|olivos|tigre|pilar|olavarría|olavarria|necochea|junín|junin|pergamino|luján|lujan|campana|zárate|zarate|mercedes|san nicolás|san nicolas/i.test(txt);
         if (mencionaOtraJurisdiccion) return false;
         const mencionaGranLaPlata = /la plata|city bell|gonnet|villa elisa|olmos|los hornos|tolosa|ringuelet|berisso|ensenada|sicardi|arana|hernandez|hernández|gorina/i.test(txt);
         if (mencionaGranLaPlata) return true;
@@ -2462,69 +2525,24 @@
         const esPlatense = forzarLaPlata || pareceDireccionPlatense(txt);
         if (esPlatense) {
             txt = txt
-                .replace(/\(\s*e\/\s*esq\.?\s*([^)]+)\)/gi, 'y Calle $1')
-                .replace(/\besq\.?\b/gi, 'y Calle')
-                .replace(/\be\/\s*(\d+)/gi, 'y Calle $1');
-            const empiezaConFechaPatria = /^\s*\d+\s+de\s+/i.test(txt);
-            const yaTienePrefijoVia = /^\s*(?:calle|av\.?|avenida|diag\.?|diagonal|bv\.?|boulevard|pasaje|pje\.?|ruta|camino)\b/i.test(txt);
-            if (!empiezaConFechaPatria && !yaTienePrefijoVia) {
-                txt = txt.replace(/^(\d{1,3})\b/, 'Calle $1');
-            }
+                .replace(/\(\s*e\/\s*esq\.?\s*([^)]+)\)/gi, 'y $1')
+                .replace(/\besq\.?\b/gi, 'y')
+                .replace(/\be\/\s*(\d+)/gi, 'y $1');
             if (!/la plata|city bell|gonnet|villa elisa|olmos|los hornos|tolosa|ringuelet|berisso|ensenada|buenos aires/i.test(txt)) {
-                txt += ', La Plata, Provincia de Buenos Aires, Argentina';
-            } else if (!/argentina/i.test(txt)) {
-                txt += ', Argentina';
+                txt += ', La Plata, Buenos Aires';
             }
-            return txt;
-        }
-        if (!/argentina/i.test(txt)) {
-            txt += ', Argentina';
         }
         return txt;
     }
 
-    function extraerBarrioYLocalidadDeComponentesGoogle(components = []) {
-        const buscar = (tipos) => {
-            const comp = components.find(c => Array.isArray(c.types) && tipos.some(t => c.types.includes(t)));
-            return comp ? comp.long_name : '';
-        };
-        const barrio = buscar(['sublocality_level_1', 'sublocality', 'neighborhood']);
-        const localidad = buscar(['locality', 'administrative_area_level_3']);
-        const partido = buscar(['administrative_area_level_2']);
-        let provincia = buscar(['administrative_area_level_1']) || '';
-        provincia = provincia
-            .replace(/^Provincia de\s+/i, '')
-            .replace(/^(?:Ciudad Autónoma de Buenos Aires|Autonomous City of Buenos Aires)$/i, 'CABA')
-            .trim();
-
-        const ciudadBase = localidad || partido || '';
-        const partes = [];
-        const agregarUnico = (val) => {
-            const v = String(val || '').trim();
-            if (!v) return;
-            if (!partes.some(p => p.toLowerCase() === v.toLowerCase())) {
-                partes.push(v);
+    function ocultarDropdownsGeoAbm() {
+        ['abm-mapa-sugerencias', 'abm-direccion-sugerencias'].forEach(id => {
+            const box = document.getElementById(id);
+            if (box) {
+                box.style.display = 'none';
+                box.innerHTML = '';
             }
-        };
-
-        agregarUnico(barrio);
-        agregarUnico(ciudadBase);
-        if (provincia && (!ciudadBase || provincia.toLowerCase() !== ciudadBase.toLowerCase())) {
-            const esLaPlataPba = /la plata/i.test(ciudadBase) && /buenos aires/i.test(provincia);
-            if (!esLaPlataPba) {
-                agregarUnico(provincia);
-            }
-        }
-
-        const calle = buscar(['route']);
-        const altura = buscar(['street_number']);
-        const calleFormateada = [calle, altura].filter(Boolean).join(' ').trim();
-
-        return {
-            barrioLocalidad: partes.join(', ') || ciudadBase || provincia || '',
-            calleFormateada,
-            tieneCalle: Boolean(calle || altura)
-        };
+        });
     }
 
     function actualizarBarraInfoMapaAbm({ barrio, calle, direccionFormateada, lat, lng, etiquetaOrigen, esAproximada = false }) {
@@ -2553,12 +2571,12 @@
                 <span style="color:#94a3b8;">Barrio / Localidad en Mapa:</span>
                 <strong style="color:#38bdf8; font-size:0.82rem;">${escaparHtml(barrio || 'Sin especificar')}</strong>
                 <span style="color:#64748b; margin:0 6px;">|</span>
-                <span style="color:#94a3b8;">Ref. Google:</span>
+                <span style="color:#94a3b8;">Dirección detectada:</span>
                 <span style="color:#e2e8f0;">${escaparHtml(direccionFormateada || calle || '-')}</span>
                 <span style="color:#64748b; font-family:monospace; font-size:0.7rem; margin-left:6px;">(📍 ${coordTxt})</span>
                 ${esAproximada ? `
                     <div style="margin-top:5px; padding:4px 8px; border-radius:6px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.4); color:#fcd34d; font-size:0.72rem; font-weight:700;">
-                        ⚠️ Ubicación aproximada (nivel ciudad o zona). Si necesitás mayor exactitud, agregá calle/altura o arrastrá el pin rojo manualmente sobre el mapa.
+                        ⚠️ Ubicación aproximada (nivel localidad o zona). Si necesitás mayor exactitud, agregá calle/altura o arrastrá el pin manualmente sobre el mapa.
                     </div>
                 ` : ''}
             </div>
@@ -2579,153 +2597,177 @@
         `;
     }
 
-    function aplicarResultadoGoogleEnAbm(resultado, opciones = {}) {
-        const loc = resultado?.geometry?.location;
-        if (!loc) return false;
-        const lat = typeof loc.lat === 'function' ? loc.lat() : Number(loc.lat);
-        const lng = typeof loc.lng === 'function' ? loc.lng() : Number(loc.lng);
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    async function aplicarResultadoGeoEnAbm(item, opciones = {}) {
+        const lat = Number(item?.lat);
+        const lng = Number(item?.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat === 0 || lng === 0) return false;
 
-        const comps = Array.isArray(resultado.address_components) ? resultado.address_components : [];
-        const extraido = extraerBarrioYLocalidadDeComponentesGoogle(comps);
-        const locType = String(resultado?.geometry?.location_type || '').toUpperCase();
-        const esAproximada = locType === 'APPROXIMATE' || !extraido.tieneCalle;
-        const dirFmt = resultado.formatted_address || resultado.name || '';
+        const esAproximada = !item.altura && item.fuente === 'georef_localidades';
+        const barrioLocalidad = formatearBarrioLocalidadGeo(item);
+        const calleFormateada = [item.calle, item.altura].filter(Boolean).join(' ').trim();
+        const dirFmt = item.display_name || calleFormateada || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 
-        if (abmGoogleMapInstance) {
-            abmGoogleMapInstance.setCenter({ lat, lng });
-            abmGoogleMapInstance.setZoom(esAproximada ? 13 : 16);
-        }
-        if (abmGoogleMarkerMain) {
-            abmGoogleMarkerMain.setPosition({ lat, lng });
-        }
+        await asegurarInstanciaMapaAbm(lat, lng, esAproximada ? 13 : 16);
 
         actualizarBarraInfoMapaAbm({
-            barrio: extraido.barrioLocalidad,
-            calle: extraido.calleFormateada || dirFmt.split(',')[0],
+            barrio: barrioLocalidad,
+            calle: calleFormateada || dirFmt.split(',')[0],
             direccionFormateada: dirFmt,
             lat,
             lng,
-            etiquetaOrigen: opciones.etiquetaOrigen || 'Ubicado en Argentina',
+            etiquetaOrigen: opciones.etiquetaOrigen || (item.fuente === 'nominatim' ? 'OSM Nominatim AR' : 'GeoRef AR Oficial'),
             esAproximada
         });
 
         const barrioInput = document.getElementById('abm-barrio');
-        if (barrioInput && extraido.barrioLocalidad && (opciones.autocompletarBarrio || !barrioInput.value.trim())) {
-            barrioInput.value = extraido.barrioLocalidad;
+        if (barrioInput && barrioLocalidad && (opciones.autocompletarBarrio || !barrioInput.value.trim())) {
+            barrioInput.value = barrioLocalidad;
         }
-        if (opciones.actualizarDomicilioConFormato && dirFmt) {
+        if (opciones.actualizarDomicilioConFormato) {
             const dirInput = document.getElementById('abm-direccion');
             if (dirInput) {
-                dirInput.value = dirFmt.replace(/,\s*Argentina$/i, '').trim();
+                dirInput.value = calleFormateada ? `${calleFormateada}${item.localidad ? `, ${item.localidad}` : ''}` : dirFmt;
                 simularEtiquetaZebra('estandar_pagado');
             }
         }
         return true;
     }
 
-    function vincularAutocompletePlacesAbm() {
-        if (!window.google?.maps?.places?.Autocomplete) return;
-        asegurarEstilosAutocompleteAbm();
+    function vincularAutocompleteGeoAbm() {
+        if (!window.__nodosGeoOutsideClickBound) {
+            window.__nodosGeoOutsideClickBound = true;
+            document.addEventListener('click', (ev) => {
+                if (!ev.target?.closest?.('.nodos-geo-suggest-wrap')) {
+                    ocultarDropdownsGeoAbm();
+                }
+            });
+        }
 
-        const enlazarInput = (inputId, opts) => {
+        const enlazarInputGeo = (inputId, dropdownId, opts) => {
             const input = document.getElementById(inputId);
-            if (!input || input.dataset.pacBound === '1') return;
-            input.dataset.pacBound = '1';
+            const drop = document.getElementById(dropdownId);
+            if (!input || !drop || input.dataset.geoBound === '1') return;
+            input.dataset.geoBound = '1';
 
-            const ac = new window.google.maps.places.Autocomplete(input, {
-                componentRestrictions: { country: 'ar' },
-                fields: ['geometry', 'formatted_address', 'address_components', 'name'],
-                types: ['geocode', 'establishment']
+            input.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Escape') {
+                    drop.style.display = 'none';
+                }
             });
 
-            ac.addListener('place_changed', async () => {
-                const place = ac.getPlace();
-                if (!place?.geometry?.location) return;
-                if (opts.abrirPanelSiCerrado) {
-                    const panel = document.getElementById('abm-mapa-panel');
-                    if (panel && panel.style.display === 'none') {
-                        panel.style.display = 'block';
-                    }
-                    const lat = place.geometry.location.lat();
-                    const lng = place.geometry.location.lng();
-                    await asegurarInstanciaMapaAbm(lat, lng);
+            input.addEventListener('input', () => {
+                const val = input.value.trim();
+                clearTimeout(abmGeoTimers[inputId]);
+                if (val.length < 3) {
+                    drop.style.display = 'none';
+                    drop.innerHTML = '';
+                    return;
                 }
-                aplicarResultadoGoogleEnAbm(place, {
-                    autocompletarBarrio: true,
-                    actualizarDomicilioConFormato: Boolean(opts.actualizarDomicilioConFormato),
-                    etiquetaOrigen: opts.etiquetaOrigen
-                });
+                abmGeoTimers[inputId] = setTimeout(async () => {
+                    try {
+                        const qEnviar = normalizarDireccionParaGeocoder(val);
+                        const resp = await fetch(`/api/produccion/nodos/geocodificar-ar?q=${encodeURIComponent(qEnviar)}`);
+                        const data = await resp.json();
+                        const lista = Array.isArray(data?.resultados) ? data.resultados : [];
+                        if (lista.length === 0) {
+                            drop.innerHTML = `<div class="nodos-geo-suggest-item" style="color:#94a3b8; cursor:default;">Sin sugerencias automáticas (probá agregar ciudad o provincia)</div>`;
+                            drop.style.display = 'block';
+                            return;
+                        }
+                        drop._itemsGeo = lista;
+                        drop.innerHTML = lista.map((item, idx) => `
+                            <div class="nodos-geo-suggest-item" data-geo-idx="${idx}">
+                                <span>📍 ${escaparHtml(item.display_name)}</span>
+                                <span class="nodos-geo-suggest-fuente">${item.fuente === 'nominatim' ? 'OSM' : 'GeoRef AR'}</span>
+                            </div>
+                        `).join('');
+                        drop.querySelectorAll('.nodos-geo-suggest-item[data-geo-idx]').forEach(el => {
+                            el.addEventListener('click', async () => {
+                                const idx = Number(el.dataset.geoIdx);
+                                const elegido = drop._itemsGeo?.[idx];
+                                drop.style.display = 'none';
+                                if (!elegido) return;
+                                if (opts.abrirPanelSiCerrado) {
+                                    const panel = document.getElementById('abm-mapa-panel');
+                                    if (panel && panel.style.display === 'none') {
+                                        panel.style.display = 'block';
+                                    }
+                                }
+                                await aplicarResultadoGeoEnAbm(elegido, {
+                                    autocompletarBarrio: true,
+                                    actualizarDomicilioConFormato: Boolean(opts.actualizarDomicilioConFormato),
+                                    etiquetaOrigen: opts.etiquetaOrigen
+                                });
+                            });
+                        });
+                        drop.style.display = 'block';
+                    } catch (err) {
+                        drop.style.display = 'none';
+                    }
+                }, 340);
             });
         };
 
-        enlazarInput('abm-mapa-search-input', {
+        enlazarInputGeo('abm-mapa-search-input', 'abm-mapa-sugerencias', {
             abrirPanelSiCerrado: true,
             actualizarDomicilioConFormato: false,
-            etiquetaOrigen: 'Sugerencia Google Places AR'
+            etiquetaOrigen: 'Buscador GeoRef / OSM'
         });
-        enlazarInput('abm-direccion', {
+        enlazarInputGeo('abm-direccion', 'abm-direccion-sugerencias', {
             abrirPanelSiCerrado: false,
             actualizarDomicilioConFormato: true,
-            etiquetaOrigen: 'Dirección seleccionada (AR)'
+            etiquetaOrigen: 'Dirección AR seleccionada'
         });
     }
 
     async function resolverBarrioDesdeCoordenadasAbm(lat, lng, opciones = {}) {
-        const okSdk = await asegurarGoogleMapsSdkAbm();
-        if (!okSdk || !window.google?.maps) return null;
-        if (!abmGoogleGeocoder) abmGoogleGeocoder = new window.google.maps.Geocoder();
+        const latNum = Number(lat);
+        const lngNum = Number(lng);
+        if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return null;
 
-        return new Promise((resolve) => {
-            abmGoogleGeocoder.geocode({ location: { lat: Number(lat), lng: Number(lng) } }, (results, status) => {
-                if (status === 'OK' && Array.isArray(results) && results.length > 0) {
-                    // Combinar componentes de los primeros resultados para no perder sublocality/neighborhood
-                    const todosComponentes = [];
-                    results.slice(0, 3).forEach(r => {
-                        if (Array.isArray(r.address_components)) {
-                            todosComponentes.push(...r.address_components);
-                        }
-                    });
-                    const extraido = extraerBarrioYLocalidadDeComponentesGoogle(todosComponentes);
-                    const dirFmt = results[0].formatted_address || '';
+        try {
+            const resp = await fetch(`/api/produccion/nodos/geocodificar-inverso?lat=${encodeURIComponent(latNum)}&lng=${encodeURIComponent(lngNum)}`);
+            const data = await resp.json();
+            if (!resp.ok || !data?.ok) {
+                throw new Error(data?.error || 'Error geocodificando coordenadas');
+            }
+            const barrioLocalidad = formatearBarrioLocalidadGeo(data);
+            const calleFormateada = [data.calle, data.altura].filter(Boolean).join(' ').trim();
+            const dirFmt = data.display_name || `${latNum.toFixed(5)}, ${lngNum.toFixed(5)}`;
 
-                    actualizarBarraInfoMapaAbm({
-                        barrio: extraido.barrioLocalidad,
-                        calle: extraido.calleFormateada || dirFmt.split(',')[0],
-                        direccionFormateada: dirFmt,
-                        lat,
-                        lng,
-                        etiquetaOrigen: opciones.etiquetaOrigen || ''
-                    });
-
-                    // Si el campo Barrio / Localidad está vacío o se pidió autocompletar, completarlo
-                    const barrioInput = document.getElementById('abm-barrio');
-                    if (barrioInput && extraido.barrioLocalidad && (opciones.autocompletarBarrio || !barrioInput.value.trim())) {
-                        barrioInput.value = extraido.barrioLocalidad;
-                    }
-                    resolve({ ...extraido, formatted_address: dirFmt });
-                } else {
-                    actualizarBarraInfoMapaAbm({
-                        barrio: '',
-                        calle: '',
-                        direccionFormateada: 'Coordenadas seleccionadas',
-                        lat,
-                        lng,
-                        etiquetaOrigen: opciones.etiquetaOrigen || ''
-                    });
-                    resolve(null);
-                }
+            actualizarBarraInfoMapaAbm({
+                barrio: barrioLocalidad,
+                calle: calleFormateada || dirFmt.split(',')[0],
+                direccionFormateada: dirFmt,
+                lat: latNum,
+                lng: lngNum,
+                etiquetaOrigen: opciones.etiquetaOrigen || 'Pin en Mapa AR'
             });
-        });
+
+            const barrioInput = document.getElementById('abm-barrio');
+            if (barrioInput && barrioLocalidad && (opciones.autocompletarBarrio || !barrioInput.value.trim())) {
+                barrioInput.value = barrioLocalidad;
+            }
+            return { ...data, barrioLocalidad, calleFormateada };
+        } catch (err) {
+            actualizarBarraInfoMapaAbm({
+                barrio: document.getElementById('abm-barrio')?.value || '',
+                calle: '',
+                direccionFormateada: `${latNum.toFixed(5)}, ${lngNum.toFixed(5)}`,
+                lat: latNum,
+                lng: lngNum,
+                etiquetaOrigen: opciones.etiquetaOrigen || 'Coordenadas del Nodo'
+            });
+            return null;
+        }
     }
 
-    async function asegurarInstanciaMapaAbm(latInicial = -34.9214, lngInicial = -57.9545) {
+    async function asegurarInstanciaMapaAbm(latInicial = -34.9214, lngInicial = -57.9545, zoomInicial = 15) {
         const canvas = document.getElementById('abm-google-map-canvas');
         if (!canvas) return null;
 
-        const okSdk = await asegurarGoogleMapsSdkAbm();
-        if (!okSdk || !window.google?.maps) {
-            canvas.innerHTML = '<div style="padding:14px; text-align:center; color:#f87171;">⚠️ No se pudo cargar Google Maps SDK. Verifique la conexión o GOOGLE_MAPS_API_KEY.</div>';
+        if (!window.L) {
+            canvas.innerHTML = '<div style="padding:14px; text-align:center; color:#f87171;">⚠️ No se pudo cargar la librería Leaflet para mapas. Recargue la página o verifique la conexión.</div>';
             return null;
         }
 
@@ -2734,49 +2776,87 @@
             lng: Number.isFinite(Number(lngInicial)) && Number(lngInicial) !== 0 ? Number(lngInicial) : -57.9545
         };
 
-        if (!abmGoogleMapInstance || abmGoogleMapInstance.getDiv() !== canvas) {
+        if (abmLeafletMapInstance && abmLeafletMapInstance.getContainer() !== canvas) {
+            try { abmLeafletMapInstance.remove(); } catch (_) {}
+            abmLeafletMapInstance = null;
+            abmLeafletMarker = null;
+        }
+
+        if (!abmLeafletMapInstance) {
             canvas.innerHTML = '';
-            abmGoogleMapInstance = new window.google.maps.Map(canvas, {
-                center,
-                zoom: 15,
-                mapTypeControl: true,
-                streetViewControl: false,
-                fullscreenControl: true
-            });
+            abmLeafletMapInstance = window.L.map(canvas, { zoomControl: true }).setView([center.lat, center.lng], zoomInicial);
+            window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap · GeoRef AR',
+                maxZoom: 19
+            }).addTo(abmLeafletMapInstance);
 
-            abmGoogleMarkerMain = new window.google.maps.Marker({
-                position: center,
-                map: abmGoogleMapInstance,
+            abmLeafletMarker = window.L.marker([center.lat, center.lng], {
                 draggable: true,
-                title: 'Punto de Retiro del Nodo (arrastre para ajustar)'
-            });
+                title: 'Punto del Nodo (arrastrá para ajustar)'
+            }).addTo(abmLeafletMapInstance);
 
-            abmGoogleMarkerMain.addListener('dragend', () => {
-                const pos = abmGoogleMarkerMain.getPosition();
+            abmLeafletMarker.on('dragend', () => {
+                const pos = abmLeafletMarker.getLatLng();
                 if (pos) {
-                    resolverBarrioDesdeCoordenadasAbm(pos.lat(), pos.lng(), {
+                    resolverBarrioDesdeCoordenadasAbm(pos.lat, pos.lng, {
                         autocompletarBarrio: true,
                         etiquetaOrigen: 'Pin ajustado manualmente'
                     });
                 }
             });
 
-            abmGoogleMapInstance.addListener('click', (e) => {
-                if (e.latLng && abmGoogleMarkerMain) {
-                    abmGoogleMarkerMain.setPosition(e.latLng);
-                    resolverBarrioDesdeCoordenadasAbm(e.latLng.lat(), e.latLng.lng(), {
+            abmLeafletMapInstance.on('click', (e) => {
+                if (e.latlng && abmLeafletMarker) {
+                    abmLeafletMarker.setLatLng(e.latlng);
+                    resolverBarrioDesdeCoordenadasAbm(e.latlng.lat, e.latlng.lng, {
                         autocompletarBarrio: true,
                         etiquetaOrigen: 'Punto marcado en el mapa'
                     });
                 }
             });
         } else {
-            abmGoogleMapInstance.setCenter(center);
-            if (abmGoogleMarkerMain) abmGoogleMarkerMain.setPosition(center);
+            abmLeafletMapInstance.setView([center.lat, center.lng], zoomInicial);
+            if (abmLeafletMarker) {
+                abmLeafletMarker.setLatLng([center.lat, center.lng]);
+            }
         }
 
-        vincularAutocompletePlacesAbm();
-        return abmGoogleMapInstance;
+        setTimeout(() => {
+            if (abmLeafletMapInstance) abmLeafletMapInstance.invalidateSize();
+        }, 80);
+
+        vincularAutocompleteGeoAbm();
+        return abmLeafletMapInstance;
+    }
+
+    async function syncMapaSiPanelAbmAbierto(nodo) {
+        ocultarDropdownsGeoAbm();
+        const searchInput = document.getElementById('abm-mapa-search-input');
+        if (searchInput) searchInput.value = '';
+
+        const panel = document.getElementById('abm-mapa-panel');
+        if (!panel || panel.style.display === 'none') return;
+
+        const latVal = Number(nodo?.latitud || 0);
+        const lngVal = Number(nodo?.longitud || 0);
+        if (latVal && lngVal) {
+            await asegurarInstanciaMapaAbm(latVal, lngVal, 15);
+            actualizarBarraInfoMapaAbm({
+                barrio: nodo?.barrio_zona || '',
+                calle: nodo?.direccion_retiro || '',
+                direccionFormateada: nodo?.direccion_retiro || `${latVal.toFixed(5)}, ${lngVal.toFixed(5)}`,
+                lat: latVal,
+                lng: lngVal,
+                etiquetaOrigen: `Nodo: ${nodo?.nombre_marca || 'Guardado'}`
+            });
+        } else if (nodo?.direccion_retiro) {
+            await geocodificarTextoEnMapaAbm(nodo.direccion_retiro, {
+                autocompletarBarrio: !nodo.barrio_zona,
+                etiquetaOrigen: `Domicilio ${nodo?.nombre_marca || ''}`
+            });
+        } else {
+            await asegurarInstanciaMapaAbm(-34.9214, -57.9545, 13);
+        }
     }
 
     function renderizarChipsDomiciliosClienteAbm(cli, indiceActivo = 0) {
@@ -2833,7 +2913,7 @@
         }
 
         if (dom.tieneGps && Number.isFinite(dom.latitud) && Number.isFinite(dom.longitud)) {
-            await asegurarInstanciaMapaAbm(dom.latitud, dom.longitud);
+            await asegurarInstanciaMapaAbm(dom.latitud, dom.longitud, 16);
             await resolverBarrioDesdeCoordenadasAbm(dom.latitud, dom.longitud, {
                 autocompletarBarrio: true,
                 etiquetaOrigen: `${dom.etiqueta} (${dom.direccion})`
@@ -2850,45 +2930,35 @@
 
     async function geocodificarTextoEnMapaAbm(rawTexto, opciones = {}) {
         const limpio = normalizarDireccionParaGeocoder(rawTexto);
-        if (!limpio) return;
-
-        const okSdk = await asegurarGoogleMapsSdkAbm();
-        if (!okSdk || !window.google?.maps) return;
-        if (!abmGoogleGeocoder) abmGoogleGeocoder = new window.google.maps.Geocoder();
+        if (!limpio || limpio.length < 3) return;
 
         await asegurarInstanciaMapaAbm();
 
-        const ejecutarGeocode = (queryAddr) => new Promise((resolve) => {
-            abmGoogleGeocoder.geocode(
-                { address: queryAddr, componentRestrictions: { country: 'AR' }, region: 'AR' },
-                (results, status) => resolve({ results, status })
-            );
-        });
+        const ejecutarGeoApi = async (queryAddr) => {
+            const resp = await fetch(`/api/produccion/nodos/geocodificar-ar?q=${encodeURIComponent(queryAddr)}`);
+            const data = await resp.json();
+            return Array.isArray(data?.resultados) ? data.resultados : [];
+        };
 
-        let { results, status } = await ejecutarGeocode(limpio);
+        let resultados = await ejecutarGeoApi(limpio);
 
-        // Fallback amigable únicamente si era una calle numérica corta sin localidad/provincia
-        if ((status !== 'OK' || !Array.isArray(results) || results.length === 0)
+        if (resultados.length === 0
             && !pareceDireccionPlatense(rawTexto)
             && !String(rawTexto).includes(',')
             && /^\s*\d{1,3}\b/.test(String(rawTexto))) {
             const fallbackLp = normalizarDireccionParaGeocoder(rawTexto, { forzarLaPlata: true });
-            const resLp = await ejecutarGeocode(fallbackLp);
-            if (resLp.status === 'OK' && Array.isArray(resLp.results) && resLp.results.length > 0) {
-                results = resLp.results;
-                status = resLp.status;
-            }
+            resultados = await ejecutarGeoApi(fallbackLp);
         }
 
-        if (status === 'OK' && Array.isArray(results) && results.length > 0) {
-            aplicarResultadoGoogleEnAbm(results[0], {
+        if (resultados.length > 0) {
+            await aplicarResultadoGeoEnAbm(resultados[0], {
                 autocompletarBarrio: Boolean(opciones.autocompletarBarrio),
-                etiquetaOrigen: opciones.etiquetaOrigen || 'Ubicado en Argentina'
+                etiquetaOrigen: opciones.etiquetaOrigen || (resultados[0].fuente === 'nominatim' ? 'OSM Nominatim AR' : 'GeoRef AR Oficial')
             });
         } else {
             const bar = document.getElementById('abm-mapa-info-bar');
             if (bar) {
-                bar.innerHTML = `<span style="color:#fbbf24;">⚠️ No se encontró "${escaparHtml(rawTexto)}" de forma exacta en Argentina. Probá sumar ciudad/provincia (ej: "${escaparHtml(rawTexto)}, Córdoba"), elegí una sugerencia del buscador o mové el pin rojo directamente en el mapa.</span>`;
+                bar.innerHTML = `<span style="color:#fbbf24;">⚠️ No se encontró "${escaparHtml(rawTexto)}" de forma exacta en Argentina. Probá sumar ciudad/provincia (ej: "${escaparHtml(rawTexto)}, Buenos Aires"), elegí una sugerencia del buscador o mové el pin directamente en el mapa.</span>`;
             }
         }
     }
@@ -2908,7 +2978,7 @@
         const dirActual = document.getElementById('abm-direccion')?.value || '';
 
         if (latActual && lngActual) {
-            await asegurarInstanciaMapaAbm(latActual, lngActual);
+            await asegurarInstanciaMapaAbm(latActual, lngActual, 15);
             await resolverBarrioDesdeCoordenadasAbm(latActual, lngActual, {
                 autocompletarBarrio: false,
                 etiquetaOrigen: 'Ubicación actual del Nodo'
@@ -2919,11 +2989,12 @@
                 etiquetaOrigen: 'Domicilio escrito'
             });
         } else {
-            await asegurarInstanciaMapaAbm(-34.9214, -57.9545);
+            await asegurarInstanciaMapaAbm(-34.9214, -57.9545, 13);
         }
     }
 
     async function buscarDireccionEnMapaAbm() {
+        ocultarDropdownsGeoAbm();
         const q = document.getElementById('abm-mapa-search-input')?.value?.trim() || '';
         if (!q) return;
         await geocodificarTextoEnMapaAbm(q, {
@@ -2933,6 +3004,7 @@
     }
 
     async function ubicarTextoDomicilioActualEnMapaAbm() {
+        ocultarDropdownsGeoAbm();
         const dir = document.getElementById('abm-direccion')?.value?.trim() || '';
         const bar = document.getElementById('abm-barrio')?.value?.trim() || '';
         const q = [dir, bar].filter(Boolean).join(', ');
@@ -3140,6 +3212,178 @@
         if (thSpan) thSpan.textContent = String(thresholdDefault);
     }
 
+    function alCambiarToggleRepartoAbm() {
+        const chkRep = document.getElementById('abm-permitir-reparto');
+        const cargoEl = document.getElementById('abm-cargo-envio');
+        if (!chkRep || !cargoEl) return;
+        cargoEl.disabled = !chkRep.checked;
+        cargoEl.style.opacity = chkRep.checked ? '1' : '0.45';
+    }
+
+    function actualizarEncabezadoFormularioAbm(nodo) {
+        const titleEl = document.getElementById('abm-nodo-form-title');
+        const subEl = document.getElementById('abm-nodo-form-sub');
+        const actBox = document.getElementById('abm-nodo-form-actions');
+
+        if (nodo) {
+            const esArchivado = nodo.activo === false;
+            if (titleEl) {
+                titleEl.innerHTML = `
+                    <span>✏️ Editando: ${escaparHtml(nodo.nombre_marca)}</span>
+                    <span style="font-size:0.76rem; font-family:monospace; color:#c4b5fd; background:rgba(167,139,250,0.18); padding:2px 8px; border-radius:6px;">${escaparHtml(nodo.codigo_nodo || `NODO-${nodo.id}`)}</span>
+                    ${esArchivado ? `<span style="font-size:0.72rem; font-weight:900; padding:2px 8px; border-radius:6px; background:rgba(245,158,11,0.22); border:1px solid #f59e0b; color:#fcd34d;">ARCHIVADO</span>` : ''}
+                `;
+            }
+            if (subEl) {
+                subEl.innerHTML = `Modificando Nodo existente · Subcuenta aislada <code>${escaparHtml(nodo.codigo_bunker_cliente || 'CB-NODO-xxx')}</code> · Link tienda: <code>/tienda/${escaparHtml(nodo.slug)}</code>`;
+            }
+            if (actBox) {
+                actBox.innerHTML = `
+                    <button type="button" onclick="window.NodosPizarra.nuevoNodoFormulario()"
+                        style="padding:7px 11px; border-radius:7px; font-weight:700; font-size:0.76rem; border:1px solid #475569; background:#0f172a; color:#cbd5e1; cursor:pointer;">
+                        ➕ Nuevo / Salir de edición
+                    </button>
+                    <button type="button" onclick="window.NodosPizarra.toggleArchivarNodoAbm(${Number(nodo.id)}, ${esArchivado ? 'true' : 'false'})"
+                        style="padding:7px 11px; border-radius:7px; font-weight:700; font-size:0.76rem; border:1px solid ${esArchivado ? '#10b981' : '#f59e0b'}; background:${esArchivado ? 'rgba(16,185,129,0.18)' : 'rgba(245,158,11,0.16)'}; color:${esArchivado ? '#6ee7b7' : '#fcd34d'}; cursor:pointer;">
+                        ${esArchivado ? '♻️ Reactivar Nodo' : '⏸️ Archivar Nodo'}
+                    </button>
+                    ${ESTADO_NODOS.modoLaboratorio ? `
+                        <button type="button" onclick="window.NodosPizarra.eliminarNodoPruebaAbm(${Number(nodo.id)})"
+                            style="padding:7px 11px; border-radius:7px; font-weight:700; font-size:0.76rem; border:1px solid rgba(244,63,94,0.65); background:rgba(244,63,94,0.16); color:#fda4af; cursor:pointer;">
+                            🗑️ Eliminar Prueba (Lab)
+                        </button>
+                    ` : ''}
+                    <button type="button" onclick="window.NodosPizarra.guardarNodoAbm()"
+                        style="padding:8px 16px; border-radius:8px; font-weight:800; font-size:0.82rem; border:none; background:linear-gradient(135deg, #10b981, #059669); color:#052e16; cursor:pointer;">
+                        💾 Guardar Cambios
+                    </button>
+                `;
+            }
+        } else {
+            if (titleEl) {
+                titleEl.innerHTML = `➕ Creando Nuevo Nodo Barrial`;
+            }
+            if (subEl) {
+                subEl.innerHTML = `Alta nueva · Todo Nodo parte de un Cliente Titular en LAMDA y crea una subcuenta aislada (<code>CB-NODO-xxx</code>).`;
+            }
+            if (actBox) {
+                actBox.innerHTML = `
+                    <button type="button" onclick="window.NodosPizarra.guardarNodoAbm()"
+                        style="padding:8px 16px; border-radius:8px; font-weight:800; font-size:0.82rem; border:none; background:linear-gradient(135deg, #10b981, #059669); color:#052e16; cursor:pointer;">
+                        💾 Guardar Nodo y Etiqueta ZPL
+                    </button>
+                `;
+            }
+        }
+    }
+
+    function toggleMostrarArchivadosAbm(mostrar) {
+        ESTADO_NODOS.mostrarArchivadosAbm = Boolean(mostrar);
+        renderizarVistaNodosCompleta();
+    }
+
+    async function toggleArchivarNodoAbm(nodoId, activar) {
+        try {
+            const nodo = ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(nodoId));
+            const accionLabel = activar ? 'reactivar' : 'archivar';
+            if (window.Swal) {
+                const conf = await Swal.fire({
+                    icon: activar ? 'question' : 'warning',
+                    title: activar ? `♻️ ¿Reactivar "${escaparHtml(nodo?.nombre_marca || '')}"?` : `⏸️ ¿Archivar "${escaparHtml(nodo?.nombre_marca || '')}"?`,
+                    text: activar
+                        ? 'La tienda vecinal, el Panel Gestor y su circuito operativo volverán a estar disponibles.'
+                        : 'Bloqueará la tienda vecinal, el Panel del Gestor y el alta de pedidos, pero conservará intacto su historial contable y liquidaciones.',
+                    showCancelButton: true,
+                    confirmButtonText: `Sí, ${accionLabel}`,
+                    cancelButtonText: 'Cancelar',
+                    confirmButtonColor: activar ? '#10b981' : '#d97706',
+                    background: '#151e2e',
+                    color: '#f8fafc'
+                });
+                if (!conf.isConfirmed) return;
+            }
+            const resp = await fetch(`/api/produccion/nodos/maestro/${nodoId}/estado`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ activo: Boolean(activar) })
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo cambiar el estado del Nodo');
+            if (!activar) ESTADO_NODOS.mostrarArchivadosAbm = true;
+            await cargarDatosNodosBarriales(true);
+            cargarNodoEnFormularioAbm(nodoId);
+        } catch (err) {
+            alert('❌ ' + err.message);
+        }
+    }
+
+    async function eliminarNodoPruebaAbm(nodoId) {
+        try {
+            if (!ESTADO_NODOS.modoLaboratorio) {
+                alert('⚠️ Esta acción solo está disponible en Modo Laboratorio.');
+                return;
+            }
+            const nodo = ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(nodoId));
+            if (!nodo) return;
+            const resConfirm = window.Swal
+                ? await Swal.fire({
+                    icon: 'warning',
+                    title: `🗑️ ¿Eliminar Nodo de prueba "${escaparHtml(nodo.nombre_marca)}"?`,
+                    html: `
+                        <div style="text-align:left; font-size:0.84rem; line-height:1.5;">
+                            <p>Esta acción eliminará <strong>únicamente</strong> este Nodo de prueba (<code>${escaparHtml(nodo.codigo_nodo)}</code>), sus ofertas, vecinos, pedidos, canastos y subcuenta aislada <code>${escaparHtml(nodo.codigo_bunker_cliente || '')}</code> en <strong>etiquetas_pruebas</strong>.</p>
+                            <p style="color:#6ee7b7;">🛡️ El Cliente Titular Madre (<code>${escaparHtml(nodo.codigo_bunker_cliente_madre || 'N/A')}</code>) y los demás Nodos permanecerán intactos.</p>
+                        </div>
+                    `,
+                    input: 'text',
+                    inputLabel: `Escribí "${nodo.slug}" para confirmar`,
+                    inputPlaceholder: nodo.slug,
+                    showCancelButton: true,
+                    confirmButtonText: '🗑️ Eliminar definitivamente (Lab)',
+                    cancelButtonText: 'Cancelar',
+                    confirmButtonColor: '#dc2626',
+                    background: '#151e2e',
+                    color: '#f8fafc',
+                    preConfirm: (val) => {
+                        if (String(val || '').trim().toLowerCase() !== String(nodo.slug || '').trim().toLowerCase()) {
+                            Swal.showValidationMessage(`Debe escribir exactamente "${nodo.slug}"`);
+                            return false;
+                        }
+                        return true;
+                    }
+                })
+                : { isConfirmed: confirm(`¿Eliminar el Nodo de prueba ${nodo.nombre_marca} (${nodo.slug})?`) };
+
+            if (!resConfirm.isConfirmed) return;
+
+            const resp = await fetch(`/api/produccion/nodos/maestro/${nodoId}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ motivo: 'Eliminación manual desde ABM Lab' })
+            });
+            const data = await resp.json();
+            if (!resp.ok || !data.ok) throw new Error(data.error || 'Error eliminando Nodo de prueba');
+
+            ESTADO_NODOS.nodoEditandoId = null;
+            ESTADO_NODOS.modoCreacionNuevo = false;
+            ESTADO_NODOS.clienteMadreSeleccionadoId = null;
+            await cargarDatosNodosBarriales(true);
+
+            if (window.Swal && data.resumen) {
+                const r = data.resumen;
+                Swal.fire({
+                    icon: 'success',
+                    title: '🗑️ Nodo de prueba eliminado',
+                    html: `Se eliminó <strong>${escaparHtml(r.nombre_marca)}</strong> (${r.pedidos_eliminados} pedidos, ${r.vecinos_eliminados} vecinos, ${r.canastos_eliminados} canastos). Cliente Titular <code>${escaparHtml(r.codigo_bunker_cliente_madre_preservado || 'N/A')}</code> preservado.`,
+                    background: '#151e2e',
+                    color: '#f8fafc'
+                });
+            }
+        } catch (err) {
+            alert('❌ ' + err.message);
+        }
+    }
+
     function cargarNodoEnFormularioAbm(nodoId) {
         const nodo = ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(nodoId));
         if (!nodo) return;
@@ -3176,6 +3420,13 @@
         setVal('abm-cliente-madre-codigo', nodo.codigo_bunker_cliente_madre || '');
         const chkComp = document.getElementById('abm-cuenta-compartida');
         if (chkComp) chkComp.checked = nodo.usa_cuenta_compartida !== false;
+        const chkRet = document.getElementById('abm-permitir-retiro');
+        if (chkRet) chkRet.checked = nodo.permitir_retiro_nodo !== false;
+        const chkRep = document.getElementById('abm-permitir-reparto');
+        if (chkRep) chkRep.checked = Boolean(nodo.permitir_reparto_propio ?? nodo.permitir_envio_barrial ?? true);
+        const chkEnc = document.getElementById('abm-permitir-encomienda');
+        if (chkEnc) chkEnc.checked = Boolean(nodo.permitir_encomienda);
+        alCambiarToggleRepartoAbm();
         const chkIngTienda = document.getElementById('abm-mostrar-ingredientes-tienda');
         if (chkIngTienda) chkIngTienda.checked = nodo.mostrar_ingredientes_tienda !== false;
         setVal('abm-alias-display', nodo.alias_bancario_display || cfgCanal.alias_recaudador || 'pago.canasto');
@@ -3213,6 +3464,8 @@
         } else {
             simularEtiquetaZebra('estandar_pagado');
         }
+        actualizarEncabezadoFormularioAbm(nodo);
+        syncMapaSiPanelAbmAbierto(nodo);
     }
 
     function nuevoNodoFormulario() {
@@ -3252,6 +3505,13 @@
         if (aliasEl) aliasEl.value = cfgCanal.alias_recaudador || 'pago.canasto';
         const chkComp = document.getElementById('abm-cuenta-compartida');
         if (chkComp) chkComp.checked = true;
+        const chkRet = document.getElementById('abm-permitir-retiro');
+        if (chkRet) chkRet.checked = true;
+        const chkRep = document.getElementById('abm-permitir-reparto');
+        if (chkRep) chkRep.checked = true;
+        const chkEnc = document.getElementById('abm-permitir-encomienda');
+        if (chkEnc) chkEnc.checked = false;
+        alCambiarToggleRepartoAbm();
         const chkIngTienda = document.getElementById('abm-mostrar-ingredientes-tienda');
         if (chkIngTienda) chkIngTienda.checked = true;
         const slugEl = document.getElementById('abm-slug');
@@ -3266,6 +3526,8 @@
         if (listaBox) listaBox.innerHTML = renderizarListaClientesTitularesHtml('', null);
         const resBox = document.getElementById('abm-cliente-titular-resumen');
         if (resBox) resBox.innerHTML = renderizarResumenClienteTitularHtml(null);
+        ocultarDropdownsGeoAbm();
+        actualizarEncabezadoFormularioAbm(null);
         regenerarLogoZplEnVivo();
     }
 
@@ -3712,6 +3974,13 @@
             const latVal = document.getElementById('abm-latitud')?.value;
             const lngVal = document.getElementById('abm-longitud')?.value;
 
+            const permitirRetiro = Boolean(document.getElementById('abm-permitir-retiro')?.checked ?? true);
+            const permitirReparto = Boolean(document.getElementById('abm-permitir-reparto')?.checked ?? true);
+            const permitirEncomienda = Boolean(document.getElementById('abm-permitir-encomienda')?.checked ?? false);
+            if (!permitirRetiro && !permitirReparto) {
+                throw new Error('Debés habilitar al menos una modalidad activa de entrega (Retiro por el Nodo o Reparto Propio).');
+            }
+
             const payload = {
                 nombre_marca: document.getElementById('abm-nombre-marca')?.value || '',
                 slug: document.getElementById('abm-slug')?.value || '',
@@ -3729,6 +3998,10 @@
                 alias_bancario_display: usaComp ? (cfgCanal.alias_recaudador || aliasEscrito) : aliasEscrito,
                 cbu_display: cfgCanal.cbu_recaudador || '',
                 titular_display: cfgCanal.titular_recaudador || '',
+                permitir_retiro_nodo: permitirRetiro,
+                permitir_reparto_propio: permitirReparto,
+                permitir_encomienda: permitirEncomienda,
+                permitir_envio_barrial: permitirReparto,
                 cargo_envio_barrial: Number(document.getElementById('abm-cargo-envio')?.value || 0),
                 mostrar_ingredientes_tienda: Boolean(document.getElementById('abm-mostrar-ingredientes-tienda')?.checked ?? true),
                 margen_gestor_default_pct: Number(document.getElementById('abm-margen-default')?.value || 28),
@@ -3901,6 +4174,10 @@
         togglePublicacionOfertaGestor,
         cargarNodoEnFormularioAbm,
         nuevoNodoFormulario,
+        toggleMostrarArchivadosAbm,
+        toggleArchivarNodoAbm,
+        eliminarNodoPruebaAbm,
+        alCambiarToggleRepartoAbm,
         filtrarClientesTitularesAbm,
         seleccionarClienteTitularAbm,
         seleccionarDomicilioClienteEnAbm,
@@ -3937,6 +4214,7 @@
                         ESTADO_NODOS.ofertas_gestor = data.ofertas_gestor || [];
                         ESTADO_NODOS.presentaciones_planta_disponibles = data.presentaciones_planta_disponibles || [];
                         ESTADO_NODOS.fuentes = data.fuentes || ESTADO_NODOS.fuentes;
+                        ESTADO_NODOS.modoLaboratorio = Boolean(data.modo_laboratorio);
                         ESTADO_NODOS.inicializado = true;
                         actualizarBadgePropuestasPendientes();
 

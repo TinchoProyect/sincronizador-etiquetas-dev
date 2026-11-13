@@ -21,19 +21,19 @@
   <style>
     :root {
       --brand: #a2553b;
-      --brand-dark: #7d3e28;
-      --brand-soft: rgba(162, 85, 59, 0.10);
-      --brand-border: rgba(162, 85, 59, 0.28);
+      --brand-dark: #6b311d;
+      --brand-soft: rgba(162, 85, 59, 0.12);
+      --brand-border: rgba(162, 85, 59, 0.34);
       --bg: #faf7f3;
       --surface: #ffffff;
-      --surface-warm: #f5efe8;
-      --text: #3e2519;
-      --muted: #7d6a5f;
-      --border: #eae1d7;
-      --ok: #2f6f4e;
-      --ok-soft: #eaf4ee;
-      --warn: #a16207;
-      --warn-soft: #fef6e4;
+      --surface-warm: #f3ebe2;
+      --text: #25130b;
+      --muted: #57453b;
+      --border: #d9cbbd;
+      --ok: #1f5c3d;
+      --ok-soft: #e6f4ec;
+      --warn: #92400e;
+      --warn-soft: #fef3c7;
     }
 
     * { box-sizing: border-box; }
@@ -100,29 +100,33 @@
       justify-content: center;
     }
     .brand-title {
-      font-size: 1.24rem;
+      font-size: 1.32rem;
       font-weight: 900;
       color: var(--text);
-      line-height: 1.15;
-      letter-spacing: -0.01em;
+      line-height: 1.18;
+      letter-spacing: -0.015em;
     }
     .brand-subtitle {
-      font-size: 0.78rem;
+      font-size: 0.9rem;
       color: var(--muted);
       font-weight: 700;
-      margin-top: 2px;
+      margin-top: 3px;
     }
 
     .top-actions {
       display: flex;
-      gap: 6px;
+      gap: 8px;
       flex-wrap: wrap;
     }
     .btn-top {
-      padding: 7px 12px;
+      min-height: 48px;
+      padding: 10px 16px;
       border-radius: 999px;
-      font-size: 0.78rem;
+      font-size: 0.92rem;
       font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       font-family: inherit;
       text-decoration: none;
       cursor: pointer;
@@ -147,9 +151,9 @@
     }
 
     .container {
-      max-width: 780px;
+      max-width: 820px;
       margin: 0 auto;
-      padding: 20px 16px;
+      padding: 22px 16px 36px;
     }
 
     /* Tablero Principal Austero de 6 Bloques */
@@ -166,11 +170,12 @@
     }
     .block-btn {
       width: 100%;
+      min-height: 76px;
       text-align: left;
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 16px 18px;
+      border: 1.5px solid var(--border);
+      border-radius: 18px;
+      padding: 18px 18px;
       cursor: pointer;
       font-family: inherit;
       color: var(--text);
@@ -193,29 +198,30 @@
       min-width: 0;
     }
     .block-num {
-      width: 34px;
-      height: 34px;
-      border-radius: 10px;
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
       background: var(--brand-soft);
       color: var(--brand-dark);
       font-weight: 900;
-      font-size: 0.92rem;
+      font-size: 1.08rem;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
     }
     .block-title {
-      font-size: 1.02rem;
-      font-weight: 800;
+      font-size: 1.15rem;
+      font-weight: 900;
       color: var(--text);
       line-height: 1.25;
     }
     .block-meta {
-      font-size: 0.8rem;
+      font-size: 0.95rem;
       color: var(--muted);
-      font-weight: 600;
-      margin-top: 2px;
+      font-weight: 700;
+      margin-top: 4px;
+      line-height: 1.35;
     }
     .block-arrow {
       font-size: 1.35rem;
@@ -268,15 +274,21 @@
       box-shadow: 0 2px 8px rgba(62, 37, 25, 0.025);
     }
     .input-sm {
-      padding: 8px 11px;
-      border-radius: 10px;
-      border: 1px solid var(--border);
+      min-height: 48px;
+      padding: 11px 14px;
+      border-radius: 11px;
+      border: 1.5px solid var(--border);
       background: #fffdfb;
       color: var(--text);
       font-family: inherit;
-      font-size: 0.88rem;
+      font-size: 1rem;
       font-weight: 700;
       outline: none;
+    }
+    .input-sm:disabled {
+      background: #eee7df;
+      color: var(--muted);
+      cursor: not-allowed;
     }
     .input-sm:focus {
       border-color: var(--brand);
@@ -285,11 +297,16 @@
       background: var(--brand);
       color: #ffffff;
       border: none;
-      padding: 11px 18px;
-      border-radius: 11px;
+      min-height: 48px;
+      padding: 12px 20px;
+      border-radius: 12px;
       font-family: inherit;
-      font-weight: 800;
-      font-size: 0.9rem;
+      font-weight: 900;
+      font-size: 1rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
       cursor: pointer;
       transition: background 0.15s;
     }
@@ -299,21 +316,157 @@
     .btn-soft {
       background: var(--surface-warm);
       color: var(--text);
-      border: 1px solid var(--border);
-      padding: 7px 12px;
-      border-radius: 9px;
+      border: 1.5px solid var(--border);
+      min-height: 48px;
+      padding: 10px 14px;
+      border-radius: 11px;
       font-family: inherit;
       font-weight: 800;
-      font-size: 0.78rem;
+      font-size: 0.92rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
       cursor: pointer;
     }
     .switch-label {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-height: 48px;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 0.98rem;
+      line-height: 1.3;
+      color: var(--text);
+    }
+    .switch-label input[type="checkbox"] {
+      width: 24px;
+      height: 24px;
+      accent-color: var(--brand);
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    /* === Ergonomía Móvil y Alto Contraste (Etapa B3) === */
+    html { font-size: 16px; }
+    body { font-size: 1rem; line-height: 1.48; }
+    body .board-intro {
+      font-size: 1.06rem;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 14px;
+    }
+    body .btn-back {
+      min-height: 48px;
+      padding: 10px 16px;
+      font-size: 0.96rem;
+      font-weight: 800;
+      border-radius: 12px;
+      border: 1.5px solid var(--border);
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      cursor: pointer;
+    }
+    body .section-heading {
+      font-size: 1.32rem;
+      font-weight: 900;
+      color: var(--text);
+      line-height: 1.25;
+    }
+    body .block-arrow {
+      font-size: 1.55rem;
+      color: var(--muted);
       font-weight: 800;
-      font-size: 0.82rem;
+    }
+    .cta-difusion-hero {
+      width: 100%;
+      min-height: 76px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      text-align: left;
+      padding: 16px 18px;
+      margin-bottom: 16px;
+      border-radius: 18px;
+      border: 2px solid #8a432b;
+      background: linear-gradient(135deg, #a2553b 0%, #7d3e28 100%);
+      color: #ffffff;
+      font-family: inherit;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(125, 62, 40, 0.24);
+      transition: transform 0.12s, box-shadow 0.15s;
+    }
+    .cta-difusion-hero:active {
+      transform: scale(0.99);
+    }
+    .cta-difusion-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.55rem;
+      flex-shrink: 0;
+    }
+    .cta-difusion-body {
+      flex: 1;
+      min-width: 0;
+    }
+    .cta-difusion-title {
+      font-size: 1.12rem;
+      font-weight: 900;
+      line-height: 1.22;
+      color: #ffffff;
+    }
+    .cta-difusion-sub {
+      font-size: 0.92rem;
+      font-weight: 600;
+      line-height: 1.35;
+      color: rgba(255, 255, 255, 0.92);
+      margin-top: 3px;
+    }
+    .cta-difusion-arrow {
+      font-size: 1.65rem;
+      font-weight: 900;
+      color: #ffffff;
+      flex-shrink: 0;
+    }
+    .cfg-switch-card {
+      padding: 10px 14px;
+      border-radius: 13px;
+      border: 1.5px solid var(--border);
+      background: #fffdfb;
+    }
+    @media (max-width: 640px) {
+      body .container {
+        padding: 16px 12px 34px;
+      }
+      body .brand-title {
+        font-size: 1.24rem;
+      }
+      body .brand-subtitle {
+        font-size: 0.88rem;
+      }
+      body .top-actions {
+        width: 100%;
+      }
+      body .btn-top {
+        flex: 1 1 auto;
+        min-height: 48px;
+        font-size: 0.9rem;
+      }
+      body .block-btn {
+        padding: 16px 14px;
+      }
+      body .block-title {
+        font-size: 1.1rem;
+      }
+      body .block-meta {
+        font-size: 0.92rem;
+      }
     }
 
     /* Tarjeta de Producto en Mi Oferta (apta celular sin scroll lateral) */
@@ -775,9 +928,14 @@
       const totalOfertas = GSTATE.ofertas.length;
       const propPendientes = GSTATE.propuestas.filter(p => p.estado !== 'APROBADA').length;
       const proxTxt = GSTATE.proximaEntrega?.asignada?.label_completo || 'Configurar día y horario';
-      const envioTxt = GSTATE.nodo.permitir_envio_barrial
-        ? `Envío barrial ${fmt(GSTATE.nodo.cargo_envio_barrial)}`
-        : 'Solo retiro en Nodo';
+      const puedeRetiro = GSTATE.nodo.permitir_retiro_nodo !== false;
+      const puedeReparto = Boolean(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial ?? false);
+      const puedeEncomienda = Boolean(GSTATE.nodo.permitir_encomienda);
+      const modalidadesTxt = [];
+      if (puedeRetiro) modalidadesTxt.push('🏠 Retiro en Nodo');
+      if (puedeReparto) modalidadesTxt.push(`🚗 Reparto (${fmt(GSTATE.nodo.cargo_envio_barrial)})`);
+      if (puedeEncomienda) modalidadesTxt.push('📦 Encomienda prevista');
+      const envioTxt = modalidadesTxt.length ? modalidadesTxt.join(' · ') : '⚠️ Sin modalidad activa';
 
       const pedidosActivos = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO');
       const totalPedidos = pedidosActivos.length;
@@ -811,7 +969,7 @@
         {
           num: '3',
           id: 'logistica',
-          titulo: 'Días de Entrega, Corte y Envío Barrial',
+          titulo: 'Días de Entrega, Corte y Modalidades',
           meta: `${proxTxt} · ${envioTxt}`
         },
         {
@@ -859,6 +1017,14 @@
         <div class="board-intro">
           Hola ${esc((GSTATE.nodo.gestor_nombre || '').split(' ')[0] || 'Gestor')}, elegí qué sección querés gestionar:
         </div>
+        <button type="button" class="cta-difusion-hero" onclick="abrirModalDifusionTienda()">
+          <div class="cta-difusion-icon">📣</div>
+          <div class="cta-difusion-body">
+            <div class="cta-difusion-title">Difundir mi Tienda y Productos por WhatsApp</div>
+            <div class="cta-difusion-sub">Compartí tu enlace directo o armá mensajes de difusión en un toque</div>
+          </div>
+          <div class="cta-difusion-arrow">›</div>
+        </button>
         <div class="blocks-list">
           ${bloques.map(b => `
             <button type="button" class="block-btn" onclick="abrirSeccionGestor('${b.id}')">
@@ -2555,29 +2721,50 @@
 
           <hr style="border:none; border-top:1px solid var(--border); margin:14px 0;" />
 
-          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-bottom:16px;">
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin-bottom:18px;">
             <div>
-              <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Domicilio de retiro</label>
+              <label style="display:block; font-size:0.94rem; font-weight:800; margin-bottom:6px; color:var(--text);">Domicilio de retiro en el Nodo</label>
               <input type="text" id="cfg-direccion-retiro" class="input-sm" style="width:100%;" value="${esc(GSTATE.nodo.direccion_retiro || '')}" />
             </div>
-            <div>
-              <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Costo de envío barrial ($)</label>
-              <input type="number" step="100" id="cfg-cargo-envio" class="input-sm" style="width:100%;" value="${Number(GSTATE.nodo.cargo_envio_barrial || 0)}" />
-              <div style="font-size:0.72rem; color:var(--ok); font-weight:700; margin-top:3px;">100% acreditado a tu favor</div>
+            <div id="cfg-cargo-envio-wrap" style="${(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial) ? '' : 'opacity:0.48; transition:opacity 0.15s;'}">
+              <label style="display:block; font-size:0.94rem; font-weight:800; margin-bottom:6px; color:var(--text);">Costo de reparto propio a domicilio ($)</label>
+              <input type="number" step="100" id="cfg-cargo-envio" class="input-sm" style="width:100%;" value="${Number(GSTATE.nodo.cargo_envio_barrial || 0)}" ${(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial) ? '' : 'disabled'} />
+              <div style="font-size:0.86rem; color:var(--ok); font-weight:700; margin-top:5px;">100% acreditado a tu favor cuando activás reparto propio</div>
             </div>
-            <div style="display:flex; flex-direction:column; gap:10px; justify-content:center; padding-top:6px;">
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:18px;">
+            <div style="font-size:0.94rem; font-weight:900; color:var(--text);">Modalidades de entrega habilitadas en tu tienda</div>
+            <div class="cfg-switch-card">
               <label class="switch-label">
-                <input type="checkbox" id="cfg-permitir-envio" ${GSTATE.nodo.permitir_envio_barrial ? 'checked' : ''} />
-                Habilitar envío a domicilio en el barrio
+                <input type="checkbox" id="cfg-permitir-retiro" ${GSTATE.nodo.permitir_retiro_nodo !== false ? 'checked' : ''} />
+                <span>🏠 Habilitar retiro en el Nodo</span>
               </label>
+            </div>
+            <div class="cfg-switch-card">
+              <label class="switch-label">
+                <input type="checkbox" id="cfg-permitir-reparto" ${(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial) ? 'checked' : ''} onchange="actualizarEstadoCargoEnvioGestor()" />
+                <span>🚗 Habilitar reparto propio a domicilio</span>
+              </label>
+            </div>
+            <div class="cfg-switch-card">
+              <label class="switch-label">
+                <input type="checkbox" id="cfg-permitir-encomienda" ${GSTATE.nodo.permitir_encomienda ? 'checked' : ''} />
+                <span>📦 Encomienda nacional / correo <span style="font-weight:700; color:var(--muted);">(previsión futura)</span></span>
+              </label>
+              <div style="font-size:0.86rem; color:var(--muted); font-weight:600; padding-left:35px; margin-top:2px;">
+                Deja previsto el perfil postal del nodo para la próxima etapa de envíos.
+              </div>
+            </div>
+            <div class="cfg-switch-card">
               <label class="switch-label">
                 <input type="checkbox" id="cfg-mostrar-ingredientes" ${GSTATE.nodo.mostrar_ingredientes_tienda !== false ? 'checked' : ''} />
-                Mostrar botón "¿Qué contiene?" (ingredientes) en mi tienda
+                <span>🥗 Mostrar botón "¿Qué contiene?" (ingredientes) en mi tienda</span>
               </label>
             </div>
           </div>
 
-          <button type="button" class="btn-primary" onclick="guardarConfigLogisticaGestor()">
+          <button type="button" class="btn-primary" style="width:100%; max-width:340px;" onclick="guardarConfigLogisticaGestor()">
             Guardar Configuración
           </button>
         </div>
@@ -2612,12 +2799,31 @@
       renderVistaGestor();
     }
 
+    function actualizarEstadoCargoEnvioGestor() {
+      const chkReparto = document.getElementById('cfg-permitir-reparto');
+      const inputCargo = document.getElementById('cfg-cargo-envio');
+      const wrapCargo = document.getElementById('cfg-cargo-envio-wrap');
+      const activo = Boolean(chkReparto?.checked);
+      if (inputCargo) inputCargo.disabled = !activo;
+      if (wrapCargo) wrapCargo.style.opacity = activo ? '1' : '0.48';
+    }
+
     async function guardarConfigLogisticaGestor() {
+      const permitirRetiro = Boolean(document.getElementById('cfg-permitir-retiro')?.checked);
+      const permitirReparto = Boolean(document.getElementById('cfg-permitir-reparto')?.checked);
+      const permitirEncomienda = Boolean(document.getElementById('cfg-permitir-encomienda')?.checked);
+      if (!permitirRetiro && !permitirReparto) {
+        alert('Activá al menos Retiro en el Nodo o Reparto propio a domicilio para que tus vecinos puedan completar pedidos.');
+        return;
+      }
       const payload = {
         config_ventanas_corte: leerVentanasDesdeDom(),
         direccion_retiro: document.getElementById('cfg-direccion-retiro').value.trim(),
         cargo_envio_barrial: Number(document.getElementById('cfg-cargo-envio').value || 0),
-        permitir_envio_barrial: Boolean(document.getElementById('cfg-permitir-envio').checked),
+        permitir_retiro_nodo: permitirRetiro,
+        permitir_reparto_propio: permitirReparto,
+        permitir_encomienda: permitirEncomienda,
+        permitir_envio_barrial: permitirReparto,
         mostrar_ingredientes_tienda: Boolean(document.getElementById('cfg-mostrar-ingredientes')?.checked ?? true)
       };
 
@@ -2743,20 +2949,20 @@
 
       const bannersRecepcionHtml = lotesListosParaRecibir.map(l => `
         <div class="card" style="background:linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%); border:1.5px solid #4ade80; margin-bottom:14px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;">
             <div style="flex:1; min-width:220px;">
-              <div style="font-size:0.74rem; font-weight:900; color:#15803d; text-transform:uppercase; letter-spacing:0.03em;">
+              <div style="font-size:0.86rem; font-weight:900; color:#15803d; text-transform:uppercase; letter-spacing:0.03em;">
                 📦 Lote controlado · Listo para recibir en ${esc(GSTATE.nodo?.nombre_marca || 'tu Nodo')}
               </div>
-              <div style="font-size:1.05rem; font-weight:900; color:#14532d; margin-top:3px;">
+              <div style="font-size:1.15rem; font-weight:900; color:#14532d; margin-top:4px;">
                 ${esc(l.codigo_canasto)} (${l.pedidos.length} ${l.pedidos.length === 1 ? 'bolsa de vecino' : 'bolsas de vecinos'})
               </div>
-              <div style="font-size:0.8rem; color:#166534; margin-top:3px;">
+              <div style="font-size:0.94rem; color:#166534; font-weight:600; margin-top:4px; line-height:1.4;">
                 Al confirmar la recepción, los vecinos verán en vivo que su pedido ya llegó al barrio y podrás marcar salidas a reparto o entregas en 1 toque.
               </div>
             </div>
             <button type="button" id="btn-recibir-lote-${l.canasto_id}" onclick="confirmarRecepcionLoteGestor(${l.canasto_id})"
-              style="padding:12px 18px; border-radius:12px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer; box-shadow:0 6px 16px rgba(22,163,74,0.24);">
+              style="min-height:52px; padding:13px 20px; border-radius:12px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.98rem; cursor:pointer; box-shadow:0 6px 16px rgba(22,163,74,0.24);">
               📥 Confirmar que recibí el lote (${l.pedidos.length})
             </button>
           </div>
@@ -2766,7 +2972,7 @@
       const bannersPrepHtml = lotesEnPreparacion.map(l => {
         const listos = l.pedidos.filter(x => Number(x.hito_tracking_actual || 1) >= 3).length;
         return `
-          <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:12px; padding:10px 14px; margin-bottom:12px; font-size:0.8rem; color:#92400e; font-weight:700;">
+          <div style="background:#fffbeb; border:1.5px solid #fcd34d; border-radius:12px; padding:12px 15px; margin-bottom:12px; font-size:0.94rem; color:#92400e; font-weight:700; line-height:1.4;">
             🥣 <strong>${esc(l.codigo_canasto)} en preparación:</strong> ${listos} de ${l.pedidos.length} bolsas controladas y embolsadas. Cuando el lote esté completo vas a poder confirmar su recepción acá.
           </div>
         `;
@@ -2778,52 +2984,52 @@
 
         <div class="card">
           <!-- Filtros por etapa operativa -->
-          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('TODOS')"
-              style="font-size:0.76rem; padding:6px 11px; ${GSTATE.filtroOperativoPedidos === 'TODOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              style="min-height:48px; font-size:0.92rem; padding:10px 14px; ${GSTATE.filtroOperativoPedidos === 'TODOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
               Todos (${todos.length})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('PREP')"
-              style="font-size:0.76rem; padding:6px 11px; ${GSTATE.filtroOperativoPedidos === 'PREP' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              style="min-height:48px; font-size:0.92rem; padding:10px 14px; ${GSTATE.filtroOperativoPedidos === 'PREP' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
               🥣 Prep./Control (${cantPrep})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('EN_NODO')"
-              style="font-size:0.76rem; padding:6px 11px; ${GSTATE.filtroOperativoPedidos === 'EN_NODO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              style="min-height:48px; font-size:0.92rem; padding:10px 14px; ${GSTATE.filtroOperativoPedidos === 'EN_NODO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
               🏡 En el Nodo (${cantEnNodo})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('REPARTO')"
-              style="font-size:0.76rem; padding:6px 11px; ${GSTATE.filtroOperativoPedidos === 'REPARTO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              style="min-height:48px; font-size:0.92rem; padding:10px 14px; ${GSTATE.filtroOperativoPedidos === 'REPARTO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
               🛵 En camino (${cantReparto})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('ENTREGADOS')"
-              style="font-size:0.76rem; padding:6px 11px; ${GSTATE.filtroOperativoPedidos === 'ENTREGADOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+              style="min-height:48px; font-size:0.92rem; padding:10px 14px; ${GSTATE.filtroOperativoPedidos === 'ENTREGADOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
               ✅ Entregados (${cantEntregados})
             </button>
           </div>
 
           <!-- Filtros rápidos de cobro -->
-          <div style="display:flex; gap:6px; flex-wrap:wrap; padding-bottom:12px; margin-bottom:14px; border-bottom:1px solid var(--border);">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; padding-bottom:14px; margin-bottom:16px; border-bottom:1px solid var(--border);">
             <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('TODOS')"
-              style="font-size:0.74rem; padding:5px 10px; ${GSTATE.filtroPagoPedidos === 'TODOS' ? 'background:#3e2519; color:#fff; border-color:#3e2519;' : ''}">
+              style="min-height:46px; font-size:0.9rem; padding:9px 13px; ${GSTATE.filtroPagoPedidos === 'TODOS' ? 'background:#25130b; color:#fff; border-color:#25130b;' : ''}">
               Cobros: Todos
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('PENDIENTES')"
-              style="font-size:0.74rem; padding:5px 10px; ${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? 'background:#3e2519; color:#fff; border-color:#3e2519;' : ''}">
+              style="min-height:46px; font-size:0.9rem; padding:9px 13px; ${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? 'background:#25130b; color:#fff; border-color:#25130b;' : ''}">
               💵 Pendientes de cobro (${pendientes.length})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('PAGADOS')"
-              style="font-size:0.74rem; padding:5px 10px; ${GSTATE.filtroPagoPedidos === 'PAGADOS' ? 'background:#3e2519; color:#fff; border-color:#3e2519;' : ''}">
+              style="min-height:46px; font-size:0.9rem; padding:9px 13px; ${GSTATE.filtroPagoPedidos === 'PAGADOS' ? 'background:#25130b; color:#fff; border-color:#25130b;' : ''}">
               ✅ Pagados (${pagados.length})
             </button>
           </div>
 
           ${listaFiltrada.length === 0 ? `
-            <div style="text-align:center; padding:24px; color:var(--muted); font-size:0.88rem; background:#fffdfb; border-radius:12px; border:1px dashed var(--border);">
+            <div style="text-align:center; padding:26px; color:var(--muted); font-size:1rem; font-weight:700; background:#fffdfb; border-radius:12px; border:1px dashed var(--border);">
               No hay pedidos registrados en este filtro.
             </div>
           ` : ''}
 
-          <div style="display:flex; flex-direction:column; gap:12px;">
+          <div style="display:flex; flex-direction:column; gap:14px;">
             ${listaFiltrada.map(p => {
               const pagado = Boolean(p.pago_confirmado);
               const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
@@ -2835,67 +3041,67 @@
               const puedeMarcarEntregado = hito === 4 || hito === 5;
 
               return `
-                <div style="border:1.5px solid ${hito >= 6 ? 'rgba(22,163,74,0.4)' : (pagado ? 'rgba(47,111,78,0.35)' : 'var(--border)')}; border-radius:14px; padding:14px; background:#fffdfb;">
-                  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
-                    <div>
-                      <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
-                        <span style="font-weight:900; font-size:0.96rem;">#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</span>
-                        <span style="display:inline-block; padding:3px 9px; border-radius:999px; font-size:0.72rem; font-weight:800; background:${metaHito.bg}; color:${metaHito.fg}; border:1px solid ${metaHito.bd};">
+                <div style="border:1.5px solid ${hito >= 6 ? 'rgba(22,163,74,0.45)' : (pagado ? 'rgba(47,111,78,0.4)' : 'var(--border)')}; border-radius:16px; padding:16px; background:#fffdfb;">
+                  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+                    <div style="flex:1; min-width:210px;">
+                      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <span style="font-weight:900; font-size:1.1rem; color:var(--text);">#${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</span>
+                        <span style="display:inline-block; padding:5px 12px; border-radius:999px; font-size:0.86rem; font-weight:800; background:${metaHito.bg}; color:${metaHito.fg}; border:1px solid ${metaHito.bd};">
                           ${esc(metaHito.texto)}
                         </span>
                       </div>
-                      <div style="font-size:0.78rem; color:var(--muted); margin-top:4px;">
+                      <div style="font-size:0.95rem; font-weight:700; color:var(--text); margin-top:6px; line-height:1.38;">
                         ${esc(p.fecha_entrega_label)} · ${esEnvio ? `🛵 Envío: ${esc(p.direccion_entrega)}${p.entrecalles_referencia ? ` (${esc(p.entrecalles_referencia)})` : ''}` : '🏠 Retira en Nodo'}
                       </div>
                     </div>
                     <div style="text-align:right;">
-                      <div style="font-weight:900; font-size:1.02rem;">${fmt(p.total_vecino)}</div>
-                      <span style="font-size:0.72rem; font-weight:800; color:${pagado ? 'var(--ok)' : 'var(--warn)'};">
+                      <div style="font-weight:900; font-size:1.2rem; color:var(--text);">${fmt(p.total_vecino)}</div>
+                      <span style="font-size:0.88rem; font-weight:800; color:${pagado ? 'var(--ok)' : 'var(--warn)'};">
                         ${pagado ? (esEfvo ? '✅ Pagado en efectivo' : '✅ Transferencia acreditada') : (esEfvo ? '💵 Cobra efectivo en entrega' : '🏦 Pendiente transferencia')}
                       </span>
                     </div>
                   </div>
 
-                  <div style="font-size:0.82rem; color:var(--text); margin-bottom:10px;">
-                    ${(p.items || []).map(it => `<span style="display:inline-block; background:var(--surface-warm); padding:3px 9px; border-radius:8px; margin:2px 4px 2px 0;"><strong>${it.cantidad}x</strong> ${esc(formatearItemGestor(it))}</span>`).join('')}
+                  <div style="font-size:0.94rem; color:var(--text); margin-bottom:12px; line-height:1.45;">
+                    ${(p.items || []).map(it => `<span style="display:inline-block; background:var(--surface-warm); padding:5px 11px; border-radius:9px; margin:3px 5px 3px 0; font-weight:700;"><strong>${it.cantidad}x</strong> ${esc(formatearItemGestor(it))}</span>`).join('')}
                   </div>
 
                   <!-- Botonera contextual de 1 toque (Reparto / Entrega / Cobro / Seguimiento) -->
                   ${(puedeSalirReparto || puedeMarcarEntregado) ? `
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; padding:9px 10px; margin-bottom:10px; border-radius:11px; background:var(--surface-warm); border:1px solid var(--border);">
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; padding:10px; margin-bottom:12px; border-radius:12px; background:var(--surface-warm); border:1.5px solid var(--border);">
                       ${puedeSalirReparto ? `
                         <button type="button" onclick="avanzarEstadoEntregaGestor(${p.id}, 'SALIO_REPARTO', false)"
-                          style="flex:1; min-width:165px; padding:9px 13px; border-radius:10px; border:1.5px solid #6d28d9; background:#7c3aed; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer;">
+                          style="flex:1; min-width:180px; min-height:52px; padding:12px 16px; border-radius:11px; border:1.5px solid #6d28d9; background:#7c3aed; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.98rem; cursor:pointer;">
                           🛵 Salió a reparto
                         </button>
                       ` : ''}
                       ${puedeMarcarEntregado ? `
                         <button type="button" onclick="tocarBotonEntregadoGestor(${p.id})"
-                          style="flex:1; min-width:165px; padding:9px 13px; border-radius:10px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer;">
+                          style="flex:1; min-width:180px; min-height:52px; padding:12px 16px; border-radius:11px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.98rem; cursor:pointer;">
                           ${pagado ? '✅ Marcar Entregado' : `✅ Entregado${esEfvo ? ' / Cobrar' : ''}`}
                         </button>
                       ` : ''}
                     </div>
                   ` : ''}
 
-                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-top:1px solid var(--border); padding-top:10px;">
-                    <span style="font-size:0.78rem; font-weight:800; color:var(--ok);">Tu ganancia: +${fmt(p.ganancia_total_gestor)}</span>
-                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-top:1px solid var(--border); padding-top:12px;">
+                    <span style="font-size:0.94rem; font-weight:900; color:var(--ok);">Tu ganancia: +${fmt(p.ganancia_total_gestor)}</span>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
                       ${!pagado ? `
-                        <button type="button" class="btn-primary" style="padding:7px 11px; font-size:0.76rem;" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})">
+                        <button type="button" class="btn-primary" style="min-height:48px; padding:10px 15px; font-size:0.92rem;" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})">
                           💵 Cobrar Efectivo
                         </button>
                       ` : `
-                        <button type="button" class="btn-soft" style="font-size:0.76rem; padding:6px 10px;" onclick="abrirModalReciboVecinoGestor(${p.id})">
+                        <button type="button" class="btn-soft" style="min-height:48px; font-size:0.9rem; padding:10px 14px;" onclick="abrirModalReciboVecinoGestor(${p.id})">
                           🧾 Recibo Digital
                         </button>
                       `}
                       ${urlSeg ? `
-                        <a href="${esc(urlSeg)}" target="_blank" rel="noopener" class="btn-soft" style="font-size:0.76rem; padding:6px 10px; text-decoration:none;">
+                        <a href="${esc(urlSeg)}" target="_blank" rel="noopener" class="btn-soft" style="min-height:48px; font-size:0.9rem; padding:10px 14px; text-decoration:none;">
                           📍 Seguimiento
                         </a>
                       ` : ''}
-                      <button type="button" class="btn-soft" style="font-size:0.76rem; padding:6px 10px;" onclick="enviarWhatsAppVecinoPedidoPrueba(${p.id})">
+                      <button type="button" class="btn-soft" style="min-height:48px; font-size:0.9rem; padding:10px 14px;" onclick="enviarWhatsAppVecinoPedidoPrueba(${p.id})">
                         📲 Detalle WA
                       </button>
                     </div>
