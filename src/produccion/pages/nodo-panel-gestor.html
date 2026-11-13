@@ -525,6 +525,239 @@
       background: #f8fbff;
     }
 
+    .reparto-next-hero {
+      background: linear-gradient(135deg, #ffffff, #eff6ff);
+      border: 2px solid #2563eb;
+      border-radius: 18px;
+      padding: 15px 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 10px 24px rgba(37, 99, 235, 0.14);
+    }
+
+    .acomodar-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 3800;
+      background: #f8fafc;
+      flex-direction: column;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .acomodar-header {
+      flex-shrink: 0;
+      background: #0f172a;
+      color: #ffffff;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.25);
+      z-index: 20;
+    }
+
+    .acomodar-map-wrap {
+      position: relative;
+      flex-shrink: 0;
+      height: 41vh;
+      min-height: 225px;
+      max-height: 390px;
+      width: 100%;
+      background: #e2e8f0;
+      border-bottom: 2px solid #cbd5e1;
+      z-index: 5;
+    }
+
+    .acomodar-map-canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    .acomodar-map-banner {
+      flex-shrink: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: #0f172a;
+      color: #ffffff;
+      border-bottom: 2px solid #22c55e;
+      font-size: 0.85rem;
+      font-weight: 800;
+      z-index: 12;
+    }
+
+    .acomodar-toolbar {
+      flex-shrink: 0;
+      background: #ffffff;
+      border-bottom: 1px solid #cbd5e1;
+      padding: 8px 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      z-index: 10;
+    }
+
+    .acomodar-pin-inline-bar {
+      flex-shrink: 0;
+      background: #fffbeb;
+      border-bottom: 2px solid #f59e0b;
+      padding: 10px 12px;
+      z-index: 12;
+    }
+
+    .acomodar-lista-wrap {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+      background: #f1f5f9;
+      padding: 8px 10px 96px;
+      position: relative;
+      z-index: 5;
+    }
+
+    .acomodar-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #ffffff;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 10px 10px 10px 6px;
+      margin-bottom: 8px;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.05);
+      transition: border-color 0.14s ease, background 0.14s ease;
+    }
+
+    .acomodar-row.same-door {
+      border-left: 5px solid #2563eb;
+    }
+
+    .acomodar-row.is-highlighted {
+      border-color: #f59e0b;
+      background: #fffbeb;
+      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.22);
+    }
+
+    .acomodar-row.is-drag-placeholder {
+      opacity: 0.28;
+      border: 2px dashed #2563eb;
+      background: #dbeafe;
+    }
+
+    .acomodar-drag-ghost {
+      position: fixed;
+      z-index: 4800;
+      pointer-events: none;
+      margin: 0 !important;
+      border-color: #2563eb !important;
+      background: #eff6ff !important;
+      box-shadow: 0 18px 36px rgba(15, 23, 42, 0.28) !important;
+    }
+
+    .acomodar-drag-handle {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: grab;
+      min-width: 44px;
+      min-height: 52px;
+      border-radius: 10px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #475569;
+      font-size: 1.35rem;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .acomodar-drag-handle:active {
+      cursor: grabbing;
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .acomodar-footer {
+      flex-shrink: 0;
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+      background: #ffffff;
+      border-top: 1px solid #cbd5e1;
+      box-shadow: 0 -4px 14px rgba(15, 23, 42, 0.08);
+      z-index: 20;
+    }
+
+    .acomodar-pin-badge {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #2563eb;
+      color: #ffffff;
+      border: 2.5px solid #ffffff;
+      box-shadow: 0 3px 10px rgba(15, 23, 42, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 0.96rem;
+      font-family: 'Nunito', sans-serif;
+    }
+
+    .acomodar-pin-badge.tapped {
+      background: #16a34a;
+    }
+
+    .acomodar-pin-badge.pending {
+      background: #475569;
+      border-style: dashed;
+    }
+
+    .acomodar-pin-badge.highlighted {
+      background: #f59e0b;
+      color: #0f172a;
+      transform: scale(1.18);
+      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.35), 0 4px 12px rgba(15, 23, 42, 0.4);
+    }
+
+    .acomodar-pin-multi {
+      position: absolute;
+      top: -7px;
+      right: -9px;
+      min-width: 19px;
+      height: 19px;
+      padding: 0 4px;
+      border-radius: 999px;
+      background: #f59e0b;
+      color: #0f172a;
+      border: 1.5px solid #ffffff;
+      font-size: 0.68rem;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .acomodar-pin-nodo {
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: #0f172a;
+      color: #ffffff;
+      border: 2px solid #ffffff;
+      box-shadow: 0 3px 10px rgba(15, 23, 42, 0.38);
+      font-size: 0.78rem;
+      font-weight: 900;
+      white-space: nowrap;
+      font-family: 'Nunito', sans-serif;
+    }
+
     .nocturno-overlay {
       display: none;
       position: fixed;
@@ -615,7 +848,7 @@
   </main>
 
   <!-- AVISO VISIBLE EN PANTALLA ANTE ÉXITO O FALLA DE COMUNICACIÓN -->
-  <div id="gestor-aviso-flotante" style="display:none; position:fixed; top:14px; left:14px; right:14px; max-width:520px; margin:0 auto; z-index:2500; padding:12px 14px; border-radius:12px; box-shadow:0 12px 28px rgba(62,37,25,0.18); font-size:0.84rem; font-weight:700; line-height:1.4;"></div>
+  <div id="gestor-aviso-flotante" style="display:none; position:fixed; top:14px; left:14px; right:14px; max-width:520px; margin:0 auto; z-index:5000; padding:12px 14px; border-radius:12px; box-shadow:0 12px 28px rgba(62,37,25,0.18); font-size:0.84rem; font-weight:700; line-height:1.4;"></div>
 
   <!-- MODAL DE WHATSAPP / DIFUSIÓN / RECIBO DIGITAL MARCA BLANCA -->
   <div id="modal-recibo-gestor" onclick="if(event.target===this) cerrarModalReciboGestor()" style="display:none; position:fixed; inset:0; background:rgba(62,37,25,0.52); z-index:4200; align-items:center; justify-content:center; padding:16px;">
@@ -630,6 +863,9 @@
       <div id="modal-pin-reparto-gestor-body"></div>
     </div>
   </div>
+
+  <!-- MODAL INTERACTIVO DE ACOMODAR RUTA (MAPA LEAFLET + LISTA TÁCTIL DESLIZABLE) -->
+  <div id="modal-acomodar-ruta-gestor" class="acomodar-modal"></div>
 
   <!-- VISTA OVERLAY FULLSCREEN DE CONDUCCIÓN NOCTURNA (ALTO CONTRASTE #0b1120) -->
   <div id="gestor-nocturno-overlay" class="nocturno-overlay"></div>
@@ -3976,6 +4212,90 @@
       return norm || `ped-${p.id}`;
     }
 
+    function _distanciaMetrosGestor(lat1, lng1, lat2, lng2) {
+      const toRad = (deg) => (deg * Math.PI) / 180;
+      const R = 6371000;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function agruparParadasFisicasRepartoGestor(paradas) {
+      const lista = Array.isArray(paradas) ? paradas : [];
+      const grupos = [];
+
+      for (const p of lista) {
+        const coords = _resolverCoordsEfectivasPedidoGestor(p);
+        const normDir = _normalizarDirPuertaGestor(p?.direccion_entrega || '');
+        const claveFallback = _clavePuertaParadaGestor(p);
+
+        let grupo = grupos.find(g => {
+          if (coords && g.coords) {
+            return _distanciaMetrosGestor(g.coords.lat, g.coords.lng, coords.lat, coords.lng) <= 25;
+          }
+          if (!coords && !g.coords) {
+            return (normDir && g.normDir === normDir) || g.key === claveFallback;
+          }
+          return false;
+        });
+
+        if (!grupo) {
+          grupo = {
+            key: `grp-${p.id}`,
+            doorKey: claveFallback,
+            normDir,
+            coords: coords ? { ...coords } : null,
+            pedidos: []
+          };
+          grupos.push(grupo);
+        }
+        grupo.pedidos.push(p);
+      }
+
+      return grupos.map(g => {
+        const principal = g.pedidos[0];
+        const nombres = [];
+        for (const ped of g.pedidos) {
+          const nom = String(ped.vecino_nombre || 'Vecino').trim();
+          if (nom && !nombres.includes(nom)) nombres.push(nom);
+        }
+        const codigosLabel = g.pedidos.map(x => `#${x.codigo_pedido}`).join(' · ');
+        const totalPendiente = g.pedidos
+          .filter(x => !x.pago_confirmado)
+          .reduce((acc, x) => acc + Number(x.total_vecino || 0), 0);
+        const totalPedidos = g.pedidos.reduce((acc, x) => acc + Number(x.total_vecino || 0), 0);
+        const todosPagados = g.pedidos.every(x => Boolean(x.pago_confirmado));
+        return {
+          ...g,
+          direccion: principal?.direccion_entrega || 'Sin dirección especificada',
+          entrecalles: principal?.entrecalles_referencia || '',
+          vecinosLabel: nombres.join(' + ') || 'Vecino',
+          codigosLabel,
+          totalPendiente,
+          totalPedidos,
+          todosPagados
+        };
+      });
+    }
+
+    function calcularDistanciaTotalParadasGestor(grupos) {
+      const conGps = (Array.isArray(grupos) ? grupos : []).filter(g => g.coords);
+      if (conGps.length === 0) return 0;
+      const nLat = Number(GSTATE.nodo?.latitud);
+      const nLng = Number(GSTATE.nodo?.longitud);
+      const pts = (Number.isFinite(nLat) && Number.isFinite(nLng) && nLat !== 0 && nLng !== 0)
+        ? [{ lat: nLat, lng: nLng }, ...conGps.map(g => g.coords)]
+        : conGps.map(g => g.coords);
+      let total = 0;
+      for (let i = 0; i < pts.length - 1; i++) {
+        total += _distanciaMetrosGestor(pts[i].lat, pts[i].lng, pts[i + 1].lat, pts[i + 1].lng);
+      }
+      return Math.round(total);
+    }
+
     function obtenerParadasRepartoActivasGestor() {
       const lista = (GSTATE.pedidos || []).filter(p =>
         String(p.estado_operativo || '').toUpperCase() !== 'ANULADO' &&
@@ -4003,6 +4323,7 @@
 
     function renderSeccionReparto() {
       const paradas = obtenerParadasRepartoActivasGestor();
+      const gruposPuerta = agruparParadasFisicasRepartoGestor(paradas);
       const ausentes = obtenerPedidosAusentesGestor();
       const hito3Envios = (GSTATE.pedidos || []).filter(p =>
         String(p.estado_operativo || '').toUpperCase() !== 'ANULADO' &&
@@ -4026,23 +4347,29 @@
         }
       }
 
-      // Conteo por puerta física para detectar múltiples pedidos en la misma dirección
+      // Mapeo por puerta física para mostrar badges coherentes en la secuencia
       const conteoPorPuerta = new Map();
       const numeroPuertaPorClave = new Map();
-      let seqPuerta = 0;
-      for (const p of paradas) {
-        const clv = _clavePuertaParadaGestor(p);
-        conteoPorPuerta.set(clv, (conteoPorPuerta.get(clv) || 0) + 1);
-        if (!numeroPuertaPorClave.has(clv)) {
-          seqPuerta += 1;
-          numeroPuertaPorClave.set(clv, seqPuerta);
+      gruposPuerta.forEach((g, idxPuerta) => {
+        for (const ped of g.pedidos) {
+          conteoPorPuerta.set(Number(ped.id), g.pedidos.length);
+          numeroPuertaPorClave.set(Number(ped.id), idxPuerta + 1);
         }
-      }
+      });
 
       const sinGpsCount = paradas.filter(p => !_resolverCoordsEfectivasPedidoGestor(p)).length;
       const totalACobrarEfectivo = paradas
         .filter(p => !p.pago_confirmado)
         .reduce((acc, p) => acc + Number(p.total_vecino || 0), 0);
+      const hayEnCamino = paradas.some(p => Number(p.hito_tracking_actual || 1) === 5);
+      const distEstimadaMetros = GSTATE.repartoDistanciaMetros > 0
+        ? GSTATE.repartoDistanciaMetros
+        : calcularDistanciaTotalParadasGestor(gruposPuerta);
+
+      const primeraParada = paradas[0] || null;
+      const primerGrupo = gruposPuerta[0] || null;
+      const coordsPrimera = primeraParada ? _resolverCoordsEfectivasPedidoGestor(primeraParada) : null;
+      const urlMapsPrimera = primeraParada ? armarUrlGoogleMapsNocturno(primeraParada) : '#';
 
       return `
         ${lotesHito3.map(l => `
@@ -4060,34 +4387,97 @@
           </div>
         `).join('')}
 
+        <!-- CABECERA OPERATIVA PRINCIPAL -->
         <div class="card" style="background:linear-gradient(135deg, #0f172a, #1e293b); color:#f8fafc; border-color:#334155;">
           <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
             <div>
-              <div style="font-size:0.84rem; font-weight:800; color:#38bdf8; text-transform:uppercase;">
-                Tanda Activa de Reparto Barrial
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span style="font-size:0.84rem; font-weight:800; color:#38bdf8; text-transform:uppercase;">
+                  Tanda Activa de Reparto Barrial
+                </span>
+                <span style="padding:3px 9px; border-radius:999px; font-size:0.78rem; font-weight:900; background:${hayEnCamino ? 'rgba(16,185,129,0.22)' : 'rgba(56,189,248,0.18)'}; color:${hayEnCamino ? '#6ee7b7' : '#bae6fd'}; border:1px solid ${hayEnCamino ? '#10b981' : '#38bdf8'};">
+                  ${hayEnCamino ? '🛵 Reparto en marcha' : '📋 Lista para salir'}
+                </span>
               </div>
-              <div style="font-size:1.35rem; font-weight:900; margin-top:2px;">
-                ${paradas.length} parada${paradas.length === 1 ? '' : 's'} · ${seqPuerta} puerta${seqPuerta === 1 ? '' : 's'}
+              <div style="font-size:1.38rem; font-weight:900; margin-top:4px;">
+                ${paradas.length} pedido${paradas.length === 1 ? '' : 's'} · ${gruposPuerta.length} parada${gruposPuerta.length === 1 ? '' : 's'} física${gruposPuerta.length === 1 ? '' : 's'}
               </div>
-              <div style="font-size:0.9rem; color:#cbd5e1; margin-top:3px; font-weight:700;">
+              <div style="font-size:0.92rem; color:#cbd5e1; margin-top:4px; font-weight:700; line-height:1.4;">
                 ${sinGpsCount > 0 ? `⚠️ ${sinGpsCount} sin pin GPS en el mapa` : '✅ Todas las casas ubicadas en el mapa'}
                 ${totalACobrarEfectivo > 0 ? ` · 💵 A cobrar: ${fmt(totalACobrarEfectivo)}` : ' · 🟢 Todo abonado'}
-                ${GSTATE.repartoDistanciaMetros > 0 ? ` · 📏 ~${(GSTATE.repartoDistanciaMetros / 1000).toFixed(1)} km` : ''}
+                ${distEstimadaMetros > 0 ? ` · 📏 ~${(distEstimadaMetros / 1000).toFixed(1)} km` : ''}
               </div>
             </div>
           </div>
 
           <div style="display:grid; grid-template-columns:1fr; gap:10px; margin-top:14px;">
-            <button type="button" onclick="sugerirOrdenOptimoRepartoGestor()" ${paradas.length === 0 ? 'disabled' : ''}
-              style="min-height:52px; border-radius:14px; border:1px solid #38bdf8; background:rgba(56,189,248,0.16); color:#bae6fd; font-family:inherit; font-weight:900; font-size:1rem; cursor:pointer;">
-              🧭 Sugerir Orden Óptimo (Ruta más corta)
+            <button type="button" id="btn-abrir-acomodar-ruta" onclick="abrirModalAcomodarRutaGestor()" ${paradas.length === 0 ? 'disabled' : ''}
+              style="min-height:56px; border-radius:14px; border:2px solid #60a5fa; background:#2563eb; color:#ffffff; font-family:inherit; font-weight:900; font-size:1.08rem; cursor:pointer; box-shadow:0 8px 20px rgba(37,99,235,0.35);">
+              🗺️ Acomodar Ruta (Mapa + Deslizar)
             </button>
-            <button type="button" onclick="iniciarYEntrarModoNocturnoGestor()" ${paradas.length === 0 ? 'disabled' : ''}
-              style="min-height:58px; border-radius:14px; border:none; background:linear-gradient(135deg, #16a34a, #15803d); color:#ffffff; font-family:inherit; font-weight:900; font-size:1.12rem; cursor:pointer; box-shadow:0 8px 20px rgba(22,163,74,0.35);">
-              🌙 Salir a Repartir (Conducción Nocturna)
+            <button type="button" id="btn-iniciar-hoja-ruta" onclick="iniciarYEntrarModoNocturnoGestor()" ${paradas.length === 0 ? 'disabled' : ''}
+              style="min-height:58px; border-radius:14px; border:none; background:linear-gradient(135deg, #16a34a, #15803d); color:#ffffff; font-family:inherit; font-weight:900; font-size:1.1rem; cursor:pointer; box-shadow:0 8px 20px rgba(22,163,74,0.35);">
+              ${hayEnCamino ? '🌙 Continuar Reparto (Conducción Nocturna)' : '🚀 Iniciar Hoja de Ruta'}
             </button>
           </div>
         </div>
+
+        ${primeraParada ? `
+          <!-- TARJETA DESTACADA: PRIMERA / PRÓXIMA ENTREGA -->
+          <div class="reparto-next-hero">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+              <span style="padding:4px 10px; border-radius:999px; font-size:0.82rem; font-weight:900; background:#1d4ed8; color:#ffffff; letter-spacing:0.02em;">
+                ${hayEnCamino ? '🎯 PRÓXIMA ENTREGA · PARADA #1' : '🎯 PRIMERA ENTREGA · PARADA #1'}
+              </span>
+              <span style="padding:5px 11px; border-radius:999px; font-size:0.86rem; font-weight:900; background:${primerGrupo?.todosPagados ? '#dcfce7' : '#fef3c7'}; color:${primerGrupo?.todosPagados ? '#15803d' : '#92400e'};">
+                ${primerGrupo?.todosPagados
+                  ? '🟢 YA PAGADO'
+                  : `🟠 COBRAR ${fmt(primerGrupo && primerGrupo.pedidos.length > 1 ? primerGrupo.totalPendiente : primeraParada.total_vecino)}`}
+              </span>
+            </div>
+
+            <div style="font-size:1.28rem; font-weight:900; color:#0f172a; line-height:1.25;">
+              ${esc(primerGrupo && primerGrupo.pedidos.length > 1 ? primerGrupo.vecinosLabel : primeraParada.vecino_nombre)}
+              <span style="font-size:0.92rem; color:#475569; font-weight:800;">
+                (${esc(primerGrupo && primerGrupo.pedidos.length > 1 ? primerGrupo.codigosLabel : `#${primeraParada.codigo_pedido}`)})
+              </span>
+            </div>
+
+            ${primerGrupo && primerGrupo.pedidos.length > 1 ? `
+              <div style="margin-top:6px; padding:6px 10px; border-radius:10px; background:#dbeafe; color:#1e40af; font-size:0.88rem; font-weight:900;">
+                🏠 ¡Van ${primerGrupo.pedidos.length} pedidos en esta misma puerta! (${esc(primerGrupo.codigosLabel)})
+              </div>
+            ` : ''}
+
+            <div style="font-size:1.08rem; font-weight:800; color:#1e293b; margin-top:7px; line-height:1.35;">
+              📍 ${esc(primeraParada.direccion_entrega || 'Sin dirección especificada')}
+            </div>
+            ${primeraParada.entrecalles_referencia ? `
+              <div style="font-size:0.92rem; color:#475569; font-weight:700; margin-top:2px;">
+                Ref: ${esc(primeraParada.entrecalles_referencia)}
+              </div>
+            ` : ''}
+
+            <div style="display:grid; grid-template-columns:1fr; gap:9px; margin-top:12px;">
+              <a href="${esc(urlMapsPrimera)}" target="_blank" rel="noopener" id="btn-gps-proxima-entrega"
+                style="display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:54px; border-radius:14px; background:#2563eb; color:#ffffff; text-decoration:none; font-family:inherit; font-weight:900; font-size:1.08rem; box-shadow:0 6px 16px rgba(37,99,235,0.28);">
+                📍 Abrir GPS Domicilio
+              </a>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" onclick="iniciarYEntrarModoNocturnoGestor()"
+                  style="flex:1; min-height:48px; border-radius:12px; border:1.5px solid #0f766e; background:#f0fdfa; color:#0f766e; font-family:inherit; font-weight:900; font-size:0.95rem; cursor:pointer;">
+                  🌙 Modo Conducción (WhatsApp y Radar)
+                </button>
+                ${!coordsPrimera ? `
+                  <button type="button" onclick="abrirModalPinCasaGestor(${primeraParada.id})"
+                    style="min-height:48px; padding:0 14px; border-radius:12px; border:1.5px solid #f59e0b; background:#fffbeb; color:#92400e; font-family:inherit; font-weight:900; font-size:0.92rem; cursor:pointer;">
+                    📌 Fijar Pin
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        ` : ''}
 
         ${paradas.length === 0 ? `
           <div class="card" style="text-align:center; padding:26px 16px;">
@@ -4096,76 +4486,90 @@
               Cuando recibas pedidos con Envío Barrial en el Nodo aparecerán acá listos para ordenar y salir a repartir.
             </p>
           </div>
-        ` : paradas.map((p, idx) => {
-          const coords = _resolverCoordsEfectivasPedidoGestor(p);
-          const clv = _clavePuertaParadaGestor(p);
-          const cantPuerta = conteoPorPuerta.get(clv) || 1;
-          const puertaNro = numeroPuertaPorClave.get(clv) || (idx + 1);
-          const enCamino = Number(p.hito_tracking_actual || 1) === 5;
-          return `
-            <div class="reparto-stop-card ${cantPuerta > 1 ? 'same-door' : ''}">
-              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px;">
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                  <span style="display:inline-flex; align-items:center; justify-content:center; min-width:34px; height:34px; padding:0 8px; border-radius:10px; background:#0f172a; color:#ffffff; font-weight:900; font-size:1rem;">
-                    #${idx + 1}
+        ` : `
+          <div style="display:flex; justify-content:space-between; align-items:center; margin:4px 2px 10px;">
+            <span style="font-size:0.86rem; font-weight:900; color:var(--muted); text-transform:uppercase; letter-spacing:0.03em;">
+              Secuencia completa (${paradas.length})
+            </span>
+            <button type="button" onclick="abrirModalAcomodarRutaGestor()"
+              style="border:none; background:transparent; color:#2563eb; font-family:inherit; font-weight:900; font-size:0.88rem; cursor:pointer; padding:4px 6px;">
+              🗺️ Reordenar en mapa →
+            </button>
+          </div>
+          ${paradas.map((p, idx) => {
+            const coords = _resolverCoordsEfectivasPedidoGestor(p);
+            const cantPuerta = conteoPorPuerta.get(Number(p.id)) || 1;
+            const puertaNro = numeroPuertaPorClave.get(Number(p.id)) || (idx + 1);
+            const enCamino = Number(p.hito_tracking_actual || 1) === 5;
+            return `
+              <div class="reparto-stop-card ${cantPuerta > 1 ? 'same-door' : ''}">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px;">
+                  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <span style="display:inline-flex; align-items:center; justify-content:center; min-width:34px; height:34px; padding:0 8px; border-radius:10px; background:#0f172a; color:#ffffff; font-weight:900; font-size:1rem;">
+                      #${idx + 1}
+                    </span>
+                    <span style="font-size:1.12rem; font-weight:900; color:var(--text);">
+                      ${esc(p.vecino_nombre)}
+                    </span>
+                    <span style="font-size:0.86rem; font-weight:800; color:var(--muted);">#${esc(p.codigo_pedido)}</span>
+                  </div>
+                  <span style="padding:5px 10px; border-radius:999px; font-size:0.84rem; font-weight:900; background:${p.pago_confirmado ? '#dcfce7' : '#fef3c7'}; color:${p.pago_confirmado ? '#15803d' : '#92400e'};">
+                    ${p.pago_confirmado ? '🟢 PAGADO' : `🟠 COBRAR ${fmt(p.total_vecino)}`}
                   </span>
-                  <span style="font-size:1.12rem; font-weight:900; color:var(--text);">
-                    ${esc(p.vecino_nombre)}
-                  </span>
-                  <span style="font-size:0.86rem; font-weight:800; color:var(--muted);">#${esc(p.codigo_pedido)}</span>
                 </div>
-                <span style="padding:5px 10px; border-radius:999px; font-size:0.84rem; font-weight:900; background:${p.pago_confirmado ? '#dcfce7' : '#fef3c7'}; color:${p.pago_confirmado ? '#15803d' : '#92400e'};">
-                  ${p.pago_confirmado ? '🟢 PAGADO' : `🟠 COBRAR ${fmt(p.total_vecino)}`}
-                </span>
-              </div>
 
-              ${cantPuerta > 1 ? `
-                <div style="display:inline-block; padding:4px 10px; border-radius:8px; background:#dbeafe; color:#1e40af; font-size:0.84rem; font-weight:900; margin-bottom:7px;">
-                  🏠 Parada física #${puertaNro}: ${cantPuerta} pedidos en esta misma puerta
-                </div>
-              ` : ''}
-
-              <div style="font-size:1.06rem; font-weight:800; color:var(--text); line-height:1.35;">
-                📍 ${esc(p.direccion_entrega || 'Sin dirección especificada')}
-              </div>
-              ${p.entrecalles_referencia ? `
-                <div style="font-size:0.92rem; color:var(--muted); font-weight:700; margin-top:2px;">
-                  Referencia: ${esc(p.entrecalles_referencia)}
-                </div>
-              ` : ''}
-
-              <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px;">
-                <span style="padding:4px 10px; border-radius:999px; font-size:0.82rem; font-weight:800; background:${coords ? '#ecfdf5' : '#fef3c7'}; color:${coords ? '#047857' : '#92400e'}; border:1px solid ${coords ? '#a7f3d0' : '#fcd34d'};">
-                  ${coords ? `📌 Con pin GPS (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})` : '⚠️ Sin pin GPS aún'}
-                </span>
-                ${enCamino ? `
-                  <span style="padding:4px 10px; border-radius:999px; font-size:0.82rem; font-weight:900; background:#ede9fe; color:#5b21b6;">
-                    🛵 En camino en vivo
-                  </span>
+                ${cantPuerta > 1 ? `
+                  <div style="display:inline-block; padding:4px 10px; border-radius:8px; background:#dbeafe; color:#1e40af; font-size:0.84rem; font-weight:900; margin-bottom:7px;">
+                    🏠 Parada física #${puertaNro}: ${cantPuerta} pedidos en esta misma puerta
+                  </div>
                 ` : ''}
-              </div>
 
-              <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
-                <button type="button" class="btn-soft" onclick="moverParadaRepartoGestor(${p.id}, -1)" ${idx === 0 ? 'disabled' : ''}
-                  style="min-height:48px; min-width:56px; font-size:1.05rem;">
-                  ⬆️
-                </button>
-                <button type="button" class="btn-soft" onclick="moverParadaRepartoGestor(${p.id}, 1)" ${idx === paradas.length - 1 ? 'disabled' : ''}
-                  style="min-height:48px; min-width:56px; font-size:1.05rem;">
-                  ⬇️
-                </button>
-                <button type="button" class="btn-soft" onclick="abrirModalPinCasaGestor(${p.id})"
-                  style="flex:1; min-height:48px; font-size:0.94rem; border-color:#38bdf8; background:#f0f9ff; color:#0369a1;">
-                  📌 ${coords ? 'Corregir pin de casa' : 'Fijar pin de esta casa'}
-                </button>
-                <button type="button" class="btn-soft" onclick="abrirModalAusenteGestor(${p.id})"
-                  style="min-height:48px; font-size:0.92rem; border-color:#f59e0b; background:#fffbeb; color:#92400e;">
-                  🏡 Ausente
-                </button>
+                <div style="font-size:1.06rem; font-weight:800; color:var(--text); line-height:1.35;">
+                  📍 ${esc(p.direccion_entrega || 'Sin dirección especificada')}
+                </div>
+                ${p.entrecalles_referencia ? `
+                  <div style="font-size:0.92rem; color:var(--muted); font-weight:700; margin-top:2px;">
+                    Referencia: ${esc(p.entrecalles_referencia)}
+                  </div>
+                ` : ''}
+
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+                  <span style="padding:4px 10px; border-radius:999px; font-size:0.82rem; font-weight:800; background:${coords ? '#ecfdf5' : '#fef3c7'}; color:${coords ? '#047857' : '#92400e'}; border:1px solid ${coords ? '#a7f3d0' : '#fcd34d'};">
+                    ${coords ? `📌 Con pin GPS (${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)})` : '⚠️ Sin pin GPS aún'}
+                  </span>
+                  ${enCamino ? `
+                    <span style="padding:4px 10px; border-radius:999px; font-size:0.82rem; font-weight:900; background:#ede9fe; color:#5b21b6;">
+                      🛵 En camino en vivo
+                    </span>
+                  ` : ''}
+                </div>
+
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+                  <button type="button" class="btn-soft" onclick="moverParadaRepartoGestor(${p.id}, -1)" ${idx === 0 ? 'disabled' : ''}
+                    style="min-height:48px; min-width:50px; font-size:1rem;" title="Subir parada">
+                    ⬆️
+                  </button>
+                  <button type="button" class="btn-soft" onclick="moverParadaRepartoGestor(${p.id}, 1)" ${idx === paradas.length - 1 ? 'disabled' : ''}
+                    style="min-height:48px; min-width:50px; font-size:1rem;" title="Bajar parada">
+                    ⬇️
+                  </button>
+                  <button type="button" class="btn-soft" onclick="abrirModalPinCasaGestor(${p.id})"
+                    style="flex:1; min-height:48px; font-size:0.92rem; border-color:#38bdf8; background:#f0f9ff; color:#0369a1;">
+                    📌 ${coords ? 'Corregir pin' : 'Fijar pin'}
+                  </button>
+                  <a href="${esc(armarUrlGoogleMapsNocturno(p))}" target="_blank" rel="noopener" class="btn-soft"
+                    style="min-height:48px; text-decoration:none; font-size:0.92rem; border-color:#93c5fd; background:#eff6ff; color:#1d4ed8;">
+                    📍 GPS
+                  </a>
+                  <button type="button" class="btn-soft" onclick="abrirModalAusenteGestor(${p.id})"
+                    style="min-height:48px; font-size:0.92rem; border-color:#f59e0b; background:#fffbeb; color:#92400e;">
+                    🏡 Ausente
+                  </button>
+                </div>
               </div>
-            </div>
-          `;
-        }).join('')}
+            `;
+          }).join('')}
+        `}
 
         ${ausentes.length > 0 ? `
           <div class="card" style="background:#fffbeb; border:2px solid #fcd34d; margin-top:16px;">
@@ -4279,6 +4683,912 @@
         }
       } catch (_) {
         mostrarAvisoPantallaGestor('Error de red al guardar el nuevo orden.', 'error');
+      }
+    }
+
+    // =========================================================================
+    // MODAL INTERACTIVO: 🗺️ ACOMODAR RUTA (MAPA LEAFLET + TOUCH DRAG & DROP)
+    // =========================================================================
+    let _acomodarAbierto = false;
+    let _acomodarMap = null;
+    let _acomodarLayerGroup = null;
+    let _acomodarPinDraftLayer = null;
+    let _acomodarParadasDraft = [];
+    let _acomodarHighlightKey = null;
+    let _acomodarTocarOrdenActivo = false;
+    let _acomodarTocarKeys = [];
+    let _acomodarPinTargetKey = null;
+    let _acomodarPinDraftCoords = null;
+    let _acomodarDistanciaMetros = 0;
+    let _acomodarDragCtx = null;
+
+    function _limpiarDragCtxAcomodar() {
+      if (!_acomodarDragCtx) return;
+      try {
+        window.removeEventListener('pointermove', _acomodarDragCtx.onMove);
+        window.removeEventListener('pointerup', _acomodarDragCtx.onEnd);
+        window.removeEventListener('pointercancel', _acomodarDragCtx.onEnd);
+      } catch (_) {}
+      try {
+        if (_acomodarDragCtx.ghost && _acomodarDragCtx.ghost.parentNode) {
+          _acomodarDragCtx.ghost.parentNode.removeChild(_acomodarDragCtx.ghost);
+        }
+        if (_acomodarDragCtx.rowEl) {
+          _acomodarDragCtx.rowEl.classList.remove('is-drag-placeholder');
+        }
+      } catch (_) {}
+      _acomodarDragCtx = null;
+    }
+
+    function cerrarModalAcomodarRutaGestor() {
+      _limpiarDragCtxAcomodar();
+      _acomodarAbierto = false;
+      _acomodarTocarOrdenActivo = false;
+      _acomodarTocarKeys = [];
+      _acomodarPinTargetKey = null;
+      _acomodarPinDraftCoords = null;
+      _acomodarHighlightKey = null;
+      if (_acomodarMap) {
+        try { _acomodarMap.remove(); } catch (_) {}
+      }
+      _acomodarMap = null;
+      _acomodarLayerGroup = null;
+      _acomodarPinDraftLayer = null;
+      const modal = document.getElementById('modal-acomodar-ruta-gestor');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.innerHTML = '';
+      }
+    }
+
+    function abrirModalAcomodarRutaGestor() {
+      const paradas = obtenerParadasRepartoActivasGestor();
+      if (!GSTATE.nodo || paradas.length === 0) {
+        mostrarAvisoPantallaGestor('No tenés pedidos activos en Hoja de Ruta para acomodar.', 'error');
+        return;
+      }
+      _limpiarDragCtxAcomodar();
+      _acomodarParadasDraft = agruparParadasFisicasRepartoGestor(paradas);
+      _acomodarHighlightKey = _acomodarParadasDraft[0]?.key || null;
+      _acomodarTocarOrdenActivo = false;
+      _acomodarTocarKeys = [];
+      _acomodarPinTargetKey = null;
+      _acomodarPinDraftCoords = null;
+      _acomodarDistanciaMetros = calcularDistanciaTotalParadasGestor(_acomodarParadasDraft);
+      _acomodarAbierto = true;
+
+      const modal = document.getElementById('modal-acomodar-ruta-gestor');
+      if (!modal) return;
+
+      modal.innerHTML = `
+        <div class="acomodar-header">
+          <div style="min-width:0;">
+            <div style="font-size:1.08rem; font-weight:900; line-height:1.2;">🗺️ Acomodar Ruta</div>
+            <div id="acomodar-subtitulo-stats" style="font-size:0.8rem; color:#93c5fd; font-weight:800; margin-top:2px;"></div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button type="button" onclick="centrarMapaAcomodarRutaGestor()"
+              style="min-height:38px; padding:0 10px; border-radius:10px; border:1px solid #334155; background:#1e293b; color:#e2e8f0; font-family:inherit; font-weight:800; font-size:0.82rem; cursor:pointer;">
+              🎯 Ver todo
+            </button>
+            <button type="button" onclick="cerrarModalAcomodarRutaGestor()" aria-label="Cerrar"
+              style="min-height:38px; width:38px; border-radius:10px; border:1px solid #475569; background:#1e293b; color:#ffffff; font-weight:900; font-size:1.1rem; cursor:pointer;">
+              ✕
+            </button>
+          </div>
+        </div>
+
+        <div class="acomodar-map-wrap">
+          <div id="acomodar-leaflet-map" class="acomodar-map-canvas"></div>
+        </div>
+
+        <div id="acomodar-tocar-banner" class="acomodar-map-banner" style="display:none;"></div>
+
+        <div class="acomodar-toolbar">
+          <button type="button" id="btn-acomodar-tocar-orden" onclick="toggleModoTocarOrdenAcomodar()"
+            style="flex:1; min-height:44px; padding:6px 10px; border-radius:11px; border:1.5px solid #cbd5e1; background:#f8fafc; color:#0f172a; font-family:inherit; font-weight:900; font-size:0.88rem; cursor:pointer;">
+            👆 Tocar pines en orden
+          </button>
+          <button type="button" id="btn-acomodar-vuelta-corta" onclick="sugerirVueltaCortaEnAcomodarGestor()"
+            style="flex:1; min-height:44px; padding:6px 10px; border-radius:11px; border:1.5px solid #0284c7; background:#e0f2fe; color:#0369a1; font-family:inherit; font-weight:900; font-size:0.88rem; cursor:pointer;">
+            ⚡ Sugerir vuelta corta
+          </button>
+        </div>
+
+        <div id="acomodar-pin-inline-bar" class="acomodar-pin-inline-bar" style="display:none;"></div>
+
+        <div id="acomodar-lista-wrap" class="acomodar-lista-wrap">
+          <div id="acomodar-lista-items"></div>
+        </div>
+
+        <div class="acomodar-footer">
+          <button type="button" id="btn-confirmar-acomodar-ruta" onclick="confirmarOrdenDesdeAcomodarGestor()"
+            style="width:100%; min-height:54px; border-radius:14px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:1.08rem; cursor:pointer; box-shadow:0 6px 16px rgba(22,163,74,0.28);">
+            ✅ Confirmar Orden
+          </button>
+        </div>
+      `;
+
+      modal.style.display = 'flex';
+      actualizarSubtituloAcomodarRuta();
+      renderBarraTocarOrdenAcomodar();
+      renderListaAcomodarRuta();
+      vincularTouchDragListaAcomodar();
+
+      setTimeout(() => {
+        inicializarMapaAcomodarRuta();
+      }, 60);
+    }
+
+    function actualizarSubtituloAcomodarRuta() {
+      _acomodarDistanciaMetros = calcularDistanciaTotalParadasGestor(_acomodarParadasDraft);
+      const sub = document.getElementById('acomodar-subtitulo-stats');
+      if (!sub) return;
+      const conGps = _acomodarParadasDraft.filter(g => g.coords).length;
+      const sinGps = _acomodarParadasDraft.length - conGps;
+      const totPedidos = _acomodarParadasDraft.reduce((acc, g) => acc + g.pedidos.length, 0);
+      const distTxt = _acomodarDistanciaMetros > 0 ? ` · ~${(_acomodarDistanciaMetros / 1000).toFixed(1)} km` : '';
+      sub.textContent = `${_acomodarParadasDraft.length} parada${_acomodarParadasDraft.length === 1 ? '' : 's'} (${totPedidos} ped.)${sinGps > 0 ? ` · ${sinGps} sin GPS` : ''}${distTxt}`;
+    }
+
+    function inicializarMapaAcomodarRuta() {
+      const el = document.getElementById('acomodar-leaflet-map');
+      if (!el || !window.L) return;
+
+      const conGps = _acomodarParadasDraft.find(g => g.coords);
+      const latIni = Number(GSTATE.nodo?.latitud) || conGps?.coords?.lat || -34.92145;
+      const lngIni = Number(GSTATE.nodo?.longitud) || conGps?.coords?.lng || -57.95453;
+
+      if (_acomodarMap) {
+        try { _acomodarMap.remove(); } catch (_) {}
+      }
+
+      const map = window.L.map(el, { zoomControl: true, tap: true }).setView([latIni, lngIni], 14);
+      window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 19
+      }).addTo(map);
+
+      _acomodarLayerGroup = window.L.layerGroup().addTo(map);
+      _acomodarPinDraftLayer = window.L.layerGroup().addTo(map);
+      _acomodarMap = map;
+
+      map.on('click', (ev) => {
+        if (!_acomodarPinTargetKey || !ev?.latlng) return;
+        fijarBorradorPinInlineEnMapa(ev.latlng.lat, ev.latlng.lng);
+      });
+
+      dibujarMapaAcomodarRuta(true);
+      setTimeout(() => { try { map.invalidateSize(); } catch (_) {} }, 150);
+    }
+
+    function centrarMapaAcomodarRutaGestor() {
+      dibujarMapaAcomodarRuta(true);
+    }
+
+    function _obtenerNumeroVisibleGrupoAcomodar(g, idx) {
+      if (_acomodarTocarOrdenActivo) {
+        const posTap = _acomodarTocarKeys.indexOf(g.key);
+        return posTap >= 0 ? String(posTap + 1) : '?';
+      }
+      return String(idx + 1);
+    }
+
+    function dibujarMapaAcomodarRuta(fit = false) {
+      if (!_acomodarMap || !_acomodarLayerGroup || !window.L) return;
+      _acomodarLayerGroup.clearLayers();
+
+      const boundsPts = [];
+      const nLat = Number(GSTATE.nodo?.latitud);
+      const nLng = Number(GSTATE.nodo?.longitud);
+      const tieneNodo = Number.isFinite(nLat) && Number.isFinite(nLng) && nLat !== 0 && nLng !== 0;
+
+      if (tieneNodo) {
+        boundsPts.push([nLat, nLng]);
+        const nodoIcon = window.L.divIcon({
+          className: '',
+          html: `<div class="acomodar-pin-nodo">🏠 ${esc((GSTATE.nodo?.nombre_marca || 'Nodo').slice(0, 14))}</div>`,
+          iconSize: [96, 28],
+          iconAnchor: [48, 14]
+        });
+        window.L.marker([nLat, nLng], { icon: nodoIcon, zIndexOffset: 200 }).addTo(_acomodarLayerGroup);
+      }
+
+      // Puntos ordenados para la polilínea
+      let gruposRutaLine = [];
+      if (_acomodarTocarOrdenActivo) {
+        gruposRutaLine = _acomodarTocarKeys
+          .map(k => _acomodarParadasDraft.find(g => g.key === k))
+          .filter(g => g && g.coords);
+      } else {
+        gruposRutaLine = _acomodarParadasDraft.filter(g => g.coords);
+      }
+
+      const stopLatLngs = gruposRutaLine.map(g => [g.coords.lat, g.coords.lng]);
+
+      if (tieneNodo && stopLatLngs.length > 0) {
+        window.L.polyline([[nLat, nLng], stopLatLngs[0]], {
+          color: '#64748b',
+          weight: 3,
+          dashArray: '6, 8',
+          opacity: 0.8
+        }).addTo(_acomodarLayerGroup);
+      }
+
+      if (stopLatLngs.length > 1) {
+        const lineColor = _acomodarTocarOrdenActivo ? '#16a34a' : '#2563eb';
+        window.L.polyline(stopLatLngs, {
+          color: lineColor,
+          weight: 4.5,
+          opacity: 0.9
+        }).addTo(_acomodarLayerGroup);
+
+        // Flechas de dirección discretas en el punto medio de cada tramo
+        for (let i = 0; i < stopLatLngs.length - 1; i++) {
+          const p1 = stopLatLngs[i];
+          const p2 = stopLatLngs[i + 1];
+          const distSeg = _distanciaMetrosGestor(p1[0], p1[1], p2[0], p2[1]);
+          if (distSeg < 45) continue;
+          const midLat = (p1[0] + p2[0]) / 2;
+          const midLng = (p1[1] + p2[1]) / 2;
+          const angDeg = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) * (180 / Math.PI) - 90;
+          const arrowIcon = window.L.divIcon({
+            className: '',
+            html: `<div style="transform:rotate(${angDeg.toFixed(1)}deg); color:${lineColor}; font-size:13px; font-weight:900; text-shadow:0 0 3px #fff, 0 0 3px #fff; line-height:1;">➤</div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+          });
+          window.L.marker([midLat, midLng], { icon: arrowIcon, interactive: false }).addTo(_acomodarLayerGroup);
+        }
+      }
+
+      // Marcadores de paradas físicas
+      _acomodarParadasDraft.forEach((g, idx) => {
+        if (!g.coords) return;
+        boundsPts.push([g.coords.lat, g.coords.lng]);
+
+        const numTxt = _obtenerNumeroVisibleGrupoAcomodar(g, idx);
+        const esTapped = _acomodarTocarOrdenActivo && _acomodarTocarKeys.includes(g.key);
+        const esPendienteTap = _acomodarTocarOrdenActivo && !esTapped;
+        const esHighlight = _acomodarHighlightKey === g.key;
+        const cantPeds = g.pedidos.length;
+
+        const clases = [
+          'acomodar-pin-badge',
+          esTapped ? 'tapped' : '',
+          esPendienteTap ? 'pending' : '',
+          esHighlight ? 'highlighted' : ''
+        ].filter(Boolean).join(' ');
+
+        const multiBadge = cantPeds > 1 ? `<span class="acomodar-pin-multi">×${cantPeds}</span>` : '';
+        const icon = window.L.divIcon({
+          className: '',
+          html: `<div class="${clases}">${esc(numTxt)}${multiBadge}</div>`,
+          iconSize: [36, 36],
+          iconAnchor: [18, 18]
+        });
+
+        const marker = window.L.marker([g.coords.lat, g.coords.lng], {
+          icon,
+          zIndexOffset: esHighlight ? 900 : (500 - idx)
+        }).addTo(_acomodarLayerGroup);
+
+        marker.on('click', () => {
+          if (_acomodarPinTargetKey) {
+            // Si estaba ubicando otro pin en el mapa, no interrumpir con highlight
+            return;
+          }
+          if (_acomodarTocarOrdenActivo) {
+            tocarPinEnModoOrdenAcomodar(g.key);
+          } else {
+            seleccionarParadaEnAcomodarRuta(g.key, false);
+          }
+        });
+      });
+
+      if (fit && boundsPts.length > 0) {
+        try {
+          if (boundsPts.length === 1) {
+            _acomodarMap.setView(boundsPts[0], 15);
+          } else {
+            _acomodarMap.fitBounds(window.L.latLngBounds(boundsPts), { padding: [38, 38], maxZoom: 16 });
+          }
+        } catch (_) {}
+      }
+    }
+
+    function seleccionarParadaEnAcomodarRuta(key, panMap = true) {
+      _acomodarHighlightKey = key;
+      const g = _acomodarParadasDraft.find(x => x.key === key);
+      dibujarMapaAcomodarRuta(false);
+      renderListaAcomodarRuta();
+
+      if (panMap && g?.coords && _acomodarMap) {
+        try {
+          _acomodarMap.panTo([g.coords.lat, g.coords.lng], { animate: true });
+        } catch (_) {}
+      }
+      if (!panMap) {
+        const rowEl = document.querySelector(`#acomodar-lista-items .acomodar-row[data-key="${CSS.escape(key)}"]`);
+        if (rowEl) {
+          try { rowEl.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_) {}
+        }
+      }
+    }
+
+    function renderBarraTocarOrdenAcomodar() {
+      const btn = document.getElementById('btn-acomodar-tocar-orden');
+      const banner = document.getElementById('acomodar-tocar-banner');
+      if (btn) {
+        if (_acomodarTocarOrdenActivo) {
+          btn.textContent = '✓ Salir de Tocar pines';
+          btn.style.background = '#16a34a';
+          btn.style.borderColor = '#15803d';
+          btn.style.color = '#ffffff';
+        } else {
+          btn.textContent = '👆 Tocar pines en orden';
+          btn.style.background = '#f8fafc';
+          btn.style.borderColor = '#cbd5e1';
+          btn.style.color = '#0f172a';
+        }
+      }
+      if (banner) {
+        if (_acomodarTocarOrdenActivo) {
+          const totalConGps = _acomodarParadasDraft.filter(g => g.coords).length;
+          banner.style.display = 'flex';
+          banner.innerHTML = `
+            <span style="flex:1; min-width:0;">
+              👆 Tocá los pines en orden (${_acomodarTocarKeys.length}/${totalConGps})
+            </span>
+            <div style="display:flex; gap:6px; flex-shrink:0;">
+              <button type="button" onclick="deshacerUltimoTapOrdenAcomodar()" ${_acomodarTocarKeys.length === 0 ? 'disabled' : ''}
+                style="min-height:32px; padding:0 9px; border-radius:8px; border:1px solid #64748b; background:#1e293b; color:#ffffff; font-family:inherit; font-weight:800; font-size:0.78rem; cursor:pointer;">
+                ↺ Deshacer
+              </button>
+              <button type="button" onclick="toggleModoTocarOrdenAcomodar()"
+                style="min-height:32px; padding:0 9px; border-radius:8px; border:none; background:#22c55e; color:#052e16; font-family:inherit; font-weight:900; font-size:0.78rem; cursor:pointer;">
+                ✓ Listo
+              </button>
+            </div>
+          `;
+        } else {
+          banner.style.display = 'none';
+          banner.innerHTML = '';
+        }
+      }
+    }
+
+    function toggleModoTocarOrdenAcomodar() {
+      if (_acomodarPinTargetKey) cancelarPinInlineAcomodar();
+      const conGps = _acomodarParadasDraft.filter(g => g.coords);
+      if (conGps.length === 0) {
+        mostrarAvisoPantallaGestor('Primero ubicá al menos un pin en el mapa para ordenarlo tocando pines.', 'error');
+        return;
+      }
+      _acomodarTocarOrdenActivo = !_acomodarTocarOrdenActivo;
+      if (_acomodarTocarOrdenActivo) {
+        _acomodarTocarKeys = [];
+      }
+      renderBarraTocarOrdenAcomodar();
+      renderListaAcomodarRuta();
+      dibujarMapaAcomodarRuta(false);
+    }
+
+    function _aplicarSecuenciaTapSobreDraftAcomodar() {
+      const elegidos = _acomodarTocarKeys
+        .map(k => _acomodarParadasDraft.find(g => g.key === k))
+        .filter(Boolean);
+      const setElegidos = new Set(_acomodarTocarKeys);
+      const restantesConGps = _acomodarParadasDraft.filter(g => g.coords && !setElegidos.has(g.key));
+      const sinGps = _acomodarParadasDraft.filter(g => !g.coords && !setElegidos.has(g.key));
+      _acomodarParadasDraft = [...elegidos, ...restantesConGps, ...sinGps];
+    }
+
+    function tocarPinEnModoOrdenAcomodar(key) {
+      if (!_acomodarTocarOrdenActivo) return;
+      const idxExistente = _acomodarTocarKeys.indexOf(key);
+      if (idxExistente !== -1) {
+        if (idxExistente === _acomodarTocarKeys.length - 1) {
+          _acomodarTocarKeys.pop();
+        } else {
+          return;
+        }
+      } else {
+        _acomodarTocarKeys.push(key);
+      }
+      _acomodarHighlightKey = key;
+      _aplicarSecuenciaTapSobreDraftAcomodar();
+      actualizarSubtituloAcomodarRuta();
+      renderBarraTocarOrdenAcomodar();
+      renderListaAcomodarRuta();
+      dibujarMapaAcomodarRuta(false);
+
+      const totalConGps = _acomodarParadasDraft.filter(g => g.coords).length;
+      if (_acomodarTocarKeys.length >= totalConGps && totalConGps > 0) {
+        _acomodarTocarOrdenActivo = false;
+        _acomodarTocarKeys = [];
+        renderBarraTocarOrdenAcomodar();
+        renderListaAcomodarRuta();
+        dibujarMapaAcomodarRuta(false);
+        mostrarAvisoPantallaGestor('✅ Secuencia completa armada desde el mapa. Revisala o tocá Confirmar Orden.', 'ok');
+      }
+    }
+
+    function deshacerUltimoTapOrdenAcomodar() {
+      if (!_acomodarTocarOrdenActivo || _acomodarTocarKeys.length === 0) return;
+      _acomodarTocarKeys.pop();
+      _aplicarSecuenciaTapSobreDraftAcomodar();
+      actualizarSubtituloAcomodarRuta();
+      renderBarraTocarOrdenAcomodar();
+      renderListaAcomodarRuta();
+      dibujarMapaAcomodarRuta(false);
+    }
+
+    async function sugerirVueltaCortaEnAcomodarGestor() {
+      if (!GSTATE.nodo?.id || _acomodarParadasDraft.length === 0) return;
+      if (_acomodarTocarOrdenActivo) {
+        _acomodarTocarOrdenActivo = false;
+        _acomodarTocarKeys = [];
+        renderBarraTocarOrdenAcomodar();
+      }
+      const btn = document.getElementById('btn-acomodar-vuelta-corta');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Calculando...';
+      }
+
+      let origenLat = null;
+      let origenLng = null;
+      if (navigator.geolocation) {
+        try {
+          const pos = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: false, timeout: 2200, maximumAge: 60000 });
+          });
+          origenLat = pos.coords.latitude;
+          origenLng = pos.coords.longitude;
+        } catch (_) {}
+      }
+
+      try {
+        const pedidoIds = _acomodarParadasDraft.flatMap(g => g.pedidos.map(p => Number(p.id)));
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/reparto/sugerir-orden`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pedido_ids: pedidoIds,
+            origen_lat: origenLat,
+            origen_lng: origenLng,
+            guardar: false
+          })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok || !Array.isArray(data.orden_ids)) {
+          mostrarAvisoPantallaGestor('No se pudo calcular la vuelta corta: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+
+        const posPorPedido = new Map();
+        data.orden_ids.forEach((pid, i) => posPorPedido.set(Number(pid), i));
+        _acomodarParadasDraft.sort((a, b) => {
+          const minA = Math.min(...a.pedidos.map(p => posPorPedido.has(Number(p.id)) ? posPorPedido.get(Number(p.id)) : 999999));
+          const minB = Math.min(...b.pedidos.map(p => posPorPedido.has(Number(p.id)) ? posPorPedido.get(Number(p.id)) : 999999));
+          return minA - minB;
+        });
+        _acomodarHighlightKey = _acomodarParadasDraft[0]?.key || null;
+        actualizarSubtituloAcomodarRuta();
+        renderListaAcomodarRuta();
+        dibujarMapaAcomodarRuta(true);
+        mostrarAvisoPantallaGestor('⚡ Vuelta corta aplicada. Deslizá o retocá si querés antes de confirmar.', 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error al calcular la vuelta corta.', 'error');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '⚡ Sugerir vuelta corta';
+        }
+      }
+    }
+
+    function iniciarUbicacionPinEnAcomodar(key, ev) {
+      if (ev) ev.stopPropagation();
+      if (_acomodarTocarOrdenActivo) {
+        _acomodarTocarOrdenActivo = false;
+        _acomodarTocarKeys = [];
+        renderBarraTocarOrdenAcomodar();
+      }
+      const g = _acomodarParadasDraft.find(x => x.key === key);
+      if (!g) return;
+      _acomodarPinTargetKey = key;
+      _acomodarHighlightKey = key;
+      _acomodarPinDraftCoords = g.coords ? { lat: g.coords.lat, lng: g.coords.lng } : null;
+
+      if (_acomodarPinDraftLayer) _acomodarPinDraftLayer.clearLayers();
+      if (_acomodarPinDraftCoords) {
+        fijarBorradorPinInlineEnMapa(_acomodarPinDraftCoords.lat, _acomodarPinDraftCoords.lng);
+      }
+
+      const bar = document.getElementById('acomodar-pin-inline-bar');
+      if (bar) {
+        const queryDef = [g.direccion, GSTATE.nodo?.barrio_zona].filter(Boolean).join(', ');
+        bar.style.display = 'block';
+        bar.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;">
+            <div style="font-size:0.86rem; font-weight:900; color:#92400e;">
+              📍 Ubicando a ${esc(g.vecinosLabel)} (${esc(g.codigosLabel)})
+            </div>
+            <button type="button" onclick="cancelarPinInlineAcomodar()"
+              style="border:none; background:rgba(146,64,14,0.12); color:#78350f; border-radius:8px; padding:3px 9px; font-weight:900; cursor:pointer;">
+              ✕ Cancelar
+            </button>
+          </div>
+          <div style="display:flex; gap:6px; margin-bottom:6px;">
+            <input type="text" id="acomodar-pin-search-input" value="${esc(queryDef)}"
+              placeholder="Buscar calle y altura..."
+              style="flex:1; min-width:0; min-height:42px; padding:6px 10px; border-radius:10px; border:1px solid #f59e0b; background:#fff; font-family:inherit; font-size:0.95rem;" />
+            <button type="button" onclick="buscarGeoPinInlineAcomodar()"
+              style="min-height:42px; padding:0 12px; border-radius:10px; border:none; background:#0f172a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.88rem; cursor:pointer;">
+              🔎
+            </button>
+          </div>
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+            <div id="acomodar-pin-inline-estado" style="font-size:0.8rem; font-weight:800; color:#78350f; flex:1; min-width:160px;">
+              👆 Tocá la calle en el mapa o buscá arriba con 🔎
+            </div>
+            <button type="button" id="btn-guardar-pin-inline-acomodar" onclick="confirmarPinInlineAcomodar()" disabled
+              style="min-height:42px; padding:0 14px; border-radius:10px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.88rem; cursor:pointer; opacity:0.5;">
+              💾 Fijar pin aquí
+            </button>
+          </div>
+        `;
+      }
+      renderListaAcomodarRuta();
+    }
+
+    function fijarBorradorPinInlineEnMapa(lat, lng) {
+      _acomodarPinDraftCoords = { lat: Number(Number(lat).toFixed(7)), lng: Number(Number(lng).toFixed(7)) };
+      if (_acomodarPinDraftLayer && window.L) {
+        _acomodarPinDraftLayer.clearLayers();
+        const mk = window.L.marker([_acomodarPinDraftCoords.lat, _acomodarPinDraftCoords.lng], {
+          draggable: true,
+          zIndexOffset: 1200
+        }).addTo(_acomodarPinDraftLayer);
+        mk.on('dragend', () => {
+          const p = mk.getLatLng();
+          if (p) {
+            _acomodarPinDraftCoords = { lat: Number(p.lat.toFixed(7)), lng: Number(p.lng.toFixed(7)) };
+            const est = document.getElementById('acomodar-pin-inline-estado');
+            if (est) est.textContent = `📌 Pin listo (${_acomodarPinDraftCoords.lat.toFixed(5)}, ${_acomodarPinDraftCoords.lng.toFixed(5)}) · Podés arrastrarlo`;
+          }
+        });
+      }
+      const est = document.getElementById('acomodar-pin-inline-estado');
+      if (est) est.textContent = `📌 Pin listo (${_acomodarPinDraftCoords.lat.toFixed(5)}, ${_acomodarPinDraftCoords.lng.toFixed(5)}) · Arrastrá o guardá`;
+      const btn = document.getElementById('btn-guardar-pin-inline-acomodar');
+      if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      }
+    }
+
+    async function buscarGeoPinInlineAcomodar() {
+      const q = (document.getElementById('acomodar-pin-search-input')?.value || '').trim();
+      if (!q || !GSTATE.nodo?.id) return;
+      const est = document.getElementById('acomodar-pin-inline-estado');
+      if (est) est.textContent = '🔎 Buscando dirección...';
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/geocodificar?q=${encodeURIComponent(q)}`);
+        const data = await leerRespuestaJsonSegura(resp);
+        const item = Array.isArray(data?.resultados) ? data.resultados[0] : null;
+        if (!item) {
+          if (est) est.textContent = '⚠️ Sin coincidencia exacta. Tocá la cuadra directo en el mapa.';
+          return;
+        }
+        fijarBorradorPinInlineEnMapa(item.lat, item.lng);
+        if (_acomodarMap) {
+          _acomodarMap.setView([Number(item.lat), Number(item.lng)], 16);
+        }
+        if (est) est.textContent = `✅ ${item.display_name} · Confirmá con "💾 Fijar pin aquí"`;
+      } catch (_) {
+        if (est) est.textContent = '❌ Error al buscar. Tocá directamente la calle en el mapa.';
+      }
+    }
+
+    function cancelarPinInlineAcomodar() {
+      _acomodarPinTargetKey = null;
+      _acomodarPinDraftCoords = null;
+      if (_acomodarPinDraftLayer) _acomodarPinDraftLayer.clearLayers();
+      const bar = document.getElementById('acomodar-pin-inline-bar');
+      if (bar) {
+        bar.style.display = 'none';
+        bar.innerHTML = '';
+      }
+      renderListaAcomodarRuta();
+    }
+
+    async function confirmarPinInlineAcomodar() {
+      if (!GSTATE.nodo?.id || !_acomodarPinTargetKey || !_acomodarPinDraftCoords) return;
+      const g = _acomodarParadasDraft.find(x => x.key === _acomodarPinTargetKey);
+      if (!g || g.pedidos.length === 0) return;
+
+      const btn = document.getElementById('btn-guardar-pin-inline-acomodar');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Guardando...';
+      }
+
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/reparto/pedidos/${g.pedidos[0].id}/coordenadas`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            latitud: _acomodarPinDraftCoords.lat,
+            longitud: _acomodarPinDraftCoords.lng
+          })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo guardar el pin: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          if (btn) { btn.disabled = false; btn.textContent = '💾 Fijar pin aquí'; }
+          return;
+        }
+
+        // Actualizar en memoria tanto GSTATE.pedidos como el draft actual
+        const idsActualizados = new Set(g.pedidos.map(x => Number(x.id)));
+        (GSTATE.pedidos || []).forEach(ped => {
+          if (idsActualizados.has(Number(ped.id))) {
+            ped.latitud = _acomodarPinDraftCoords.lat;
+            ped.longitud = _acomodarPinDraftCoords.lng;
+            ped.gps_origen = 'GESTOR_PIN';
+          }
+        });
+        g.coords = { lat: _acomodarPinDraftCoords.lat, lng: _acomodarPinDraftCoords.lng, origen: 'GESTOR_PIN' };
+
+        cancelarPinInlineAcomodar();
+        actualizarSubtituloAcomodarRuta();
+        renderListaAcomodarRuta();
+        dibujarMapaAcomodarRuta(true);
+        mostrarAvisoPantallaGestor(`📌 Ubicación fijada para ${g.vecinosLabel}. Ya participa en el mapa numerado.`, 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error al guardar el pin en el servidor.', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Fijar pin aquí'; }
+      }
+    }
+
+    function moverGrupoAcomodarGestor(idx, delta, ev) {
+      if (ev) ev.stopPropagation();
+      const targetIdx = idx + Number(delta);
+      if (idx < 0 || targetIdx < 0 || targetIdx >= _acomodarParadasDraft.length) return;
+      const [movido] = _acomodarParadasDraft.splice(idx, 1);
+      _acomodarParadasDraft.splice(targetIdx, 0, movido);
+      _acomodarHighlightKey = movido.key;
+      actualizarSubtituloAcomodarRuta();
+      renderListaAcomodarRuta();
+      dibujarMapaAcomodarRuta(false);
+    }
+
+    function renderListaAcomodarRuta() {
+      const box = document.getElementById('acomodar-lista-items');
+      if (!box) return;
+
+      box.innerHTML = _acomodarParadasDraft.map((g, idx) => {
+        const esMulti = g.pedidos.length > 1;
+        const esHighlight = _acomodarHighlightKey === g.key;
+        const numTxt = _obtenerNumeroVisibleGrupoAcomodar(g, idx);
+        const esSinTap = _acomodarTocarOrdenActivo && numTxt === '?';
+        const badgeBg = _acomodarTocarOrdenActivo
+          ? (esSinTap ? '#64748b' : '#16a34a')
+          : (g.coords ? '#2563eb' : '#94a3b8');
+
+        return `
+          <div class="acomodar-row ${esMulti ? 'same-door' : ''} ${esHighlight ? 'is-highlighted' : ''}"
+               data-key="${esc(g.key)}" data-index="${idx}"
+               onclick="seleccionarParadaEnAcomodarRuta('${esc(g.key)}', true)">
+            <div class="acomodar-drag-handle" title="Deslizá para reordenar" onclick="event.stopPropagation()">☰</div>
+            <div style="flex:1; min-width:0;">
+              <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
+                <span class="acomodar-row-num"
+                  style="display:inline-flex; align-items:center; justify-content:center; min-width:28px; height:28px; padding:0 7px; border-radius:8px; background:${badgeBg}; color:#ffffff; font-weight:900; font-size:0.9rem;">
+                  ${esc(numTxt)}
+                </span>
+                <span style="font-size:0.98rem; font-weight:900; color:#0f172a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:210px;">
+                  ${esc(g.vecinosLabel)}
+                </span>
+                <span style="font-size:0.78rem; font-weight:800; color:#64748b;">
+                  ${esc(g.codigosLabel)}
+                </span>
+              </div>
+
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px; flex-wrap:wrap;">
+                <div style="font-size:0.84rem; font-weight:700; color:#334155; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:130px;">
+                  📍 ${esc(g.direccion)}
+                </div>
+                <span style="padding:2px 8px; border-radius:999px; font-size:0.75rem; font-weight:900; flex-shrink:0; background:${g.todosPagados ? '#dcfce7' : '#fef3c7'}; color:${g.todosPagados ? '#15803d' : '#92400e'};">
+                  ${g.todosPagados ? '🟢 Pagado' : `🟠 ${fmt(g.totalPendiente)}`}
+                </span>
+              </div>
+
+              ${(esMulti || !g.coords) ? `
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:5px;">
+                  ${esMulti ? `
+                    <span style="padding:2px 8px; border-radius:7px; background:#dbeafe; color:#1e40af; font-size:0.75rem; font-weight:900;">
+                      🏠 ${g.pedidos.length} pedidos en esta misma puerta
+                    </span>
+                  ` : ''}
+                  ${!g.coords ? `
+                    <button type="button" onclick="iniciarUbicacionPinEnAcomodar('${esc(g.key)}', event)"
+                      style="padding:4px 10px; border-radius:8px; border:1px solid #f59e0b; background:#fef3c7; color:#92400e; font-family:inherit; font-weight:900; font-size:0.78rem; cursor:pointer;">
+                      📍 Ubicar en el mapa
+                    </button>
+                  ` : ''}
+                </div>
+              ` : ''}
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:4px; flex-shrink:0;" onclick="event.stopPropagation()">
+              <button type="button" onclick="moverGrupoAcomodarGestor(${idx}, -1, event)" ${idx === 0 ? 'disabled' : ''}
+                aria-label="Subir"
+                style="min-width:34px; min-height:28px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-weight:900; font-size:0.78rem; cursor:pointer;">
+                ▲
+              </button>
+              <button type="button" onclick="moverGrupoAcomodarGestor(${idx}, 1, event)" ${idx === _acomodarParadasDraft.length - 1 ? 'disabled' : ''}
+                aria-label="Bajar"
+                style="min-width:34px; min-height:28px; border-radius:8px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-weight:900; font-size:0.78rem; cursor:pointer;">
+                ▼
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function vincularTouchDragListaAcomodar() {
+      const container = document.getElementById('acomodar-lista-items');
+      const scrollWrap = document.getElementById('acomodar-lista-wrap');
+      if (!container || !scrollWrap) return;
+
+      container.addEventListener('pointerdown', (ev) => {
+        const handle = ev.target.closest('.acomodar-drag-handle');
+        if (!handle || _acomodarDragCtx) return;
+        const rowEl = handle.closest('.acomodar-row');
+        if (!rowEl) return;
+
+        ev.preventDefault();
+        try { handle.setPointerCapture(ev.pointerId); } catch (_) {}
+
+        if (_acomodarTocarOrdenActivo) {
+          _acomodarTocarOrdenActivo = false;
+          _acomodarTocarKeys = [];
+          renderBarraTocarOrdenAcomodar();
+        }
+
+        const rect = rowEl.getBoundingClientRect();
+        const ghost = rowEl.cloneNode(true);
+        ghost.classList.add('acomodar-drag-ghost');
+        ghost.style.width = `${rect.width}px`;
+        ghost.style.left = `${rect.left}px`;
+        ghost.style.top = `${rect.top}px`;
+        document.body.appendChild(ghost);
+
+        rowEl.classList.add('is-drag-placeholder');
+
+        const ctx = {
+          pointerId: ev.pointerId,
+          startY: ev.clientY,
+          currentIdx: Number(rowEl.getAttribute('data-index') || 0),
+          rowEl,
+          ghost,
+          autoScrollSpeed: 0
+        };
+
+        const refrescarBadgesEnDom = () => {
+          const rows = Array.from(container.children);
+          rows.forEach((r, i) => {
+            r.setAttribute('data-index', String(i));
+            const numEl = r.querySelector('.acomodar-row-num');
+            if (numEl) numEl.textContent = String(i + 1);
+          });
+        };
+
+        const onMove = (moveEv) => {
+          if (moveEv.pointerId !== ctx.pointerId) return;
+          const dy = moveEv.clientY - ctx.startY;
+          ctx.ghost.style.transform = `translate3d(0, ${dy}px, 0) scale(1.02)`;
+
+          // Auto-scroll suave en los bordes de la lista deslizable
+          const wrapRect = scrollWrap.getBoundingClientRect();
+          if (moveEv.clientY < wrapRect.top + 48) {
+            scrollWrap.scrollTop = Math.max(0, scrollWrap.scrollTop - 10);
+          } else if (moveEv.clientY > wrapRect.bottom - 48) {
+            scrollWrap.scrollTop += 10;
+          }
+
+          const siblings = Array.from(container.children);
+          for (let i = 0; i < siblings.length; i++) {
+            const sib = siblings[i];
+            if (sib === ctx.rowEl) continue;
+            const sRect = sib.getBoundingClientRect();
+            const midY = sRect.top + (sRect.height / 2);
+            if (i < ctx.currentIdx && moveEv.clientY < midY) {
+              container.insertBefore(ctx.rowEl, sib);
+              const [movido] = _acomodarParadasDraft.splice(ctx.currentIdx, 1);
+              _acomodarParadasDraft.splice(i, 0, movido);
+              ctx.currentIdx = i;
+              _acomodarHighlightKey = movido.key;
+              refrescarBadgesEnDom();
+              actualizarSubtituloAcomodarRuta();
+              dibujarMapaAcomodarRuta(false);
+              break;
+            } else if (i > ctx.currentIdx && moveEv.clientY > midY) {
+              container.insertBefore(ctx.rowEl, sib.nextSibling);
+              const [movido] = _acomodarParadasDraft.splice(ctx.currentIdx, 1);
+              _acomodarParadasDraft.splice(i, 0, movido);
+              ctx.currentIdx = i;
+              _acomodarHighlightKey = movido.key;
+              refrescarBadgesEnDom();
+              actualizarSubtituloAcomodarRuta();
+              dibujarMapaAcomodarRuta(false);
+              break;
+            }
+          }
+        };
+
+        const onEnd = (endEv) => {
+          if (endEv && endEv.pointerId !== undefined && endEv.pointerId !== ctx.pointerId) return;
+          try { handle.releasePointerCapture(ctx.pointerId); } catch (_) {}
+          _limpiarDragCtxAcomodar();
+          actualizarSubtituloAcomodarRuta();
+          renderListaAcomodarRuta();
+          dibujarMapaAcomodarRuta(false);
+        };
+
+        ctx.onMove = onMove;
+        ctx.onEnd = onEnd;
+        _acomodarDragCtx = ctx;
+        window.addEventListener('pointermove', onMove, { passive: true });
+        window.addEventListener('pointerup', onEnd);
+        window.addEventListener('pointercancel', onEnd);
+      });
+    }
+
+    async function confirmarOrdenDesdeAcomodarGestor() {
+      if (!GSTATE.nodo?.id || _acomodarParadasDraft.length === 0) return;
+      const btn = document.getElementById('btn-confirmar-acomodar-ruta');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Guardando orden...';
+      }
+
+      const ordenIds = _acomodarParadasDraft.flatMap(g => g.pedidos.map(p => Number(p.id)));
+      const nuevaDist = calcularDistanciaTotalParadasGestor(_acomodarParadasDraft);
+
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/reparto/orden`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orden_ids: ordenIds })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo confirmar el orden: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Orden'; }
+          return;
+        }
+
+        const ordenMap = new Map();
+        ordenIds.forEach((pid, i) => ordenMap.set(Number(pid), i + 1));
+        (GSTATE.pedidos || []).forEach(p => {
+          if (ordenMap.has(Number(p.id))) {
+            p.orden_reparto = ordenMap.get(Number(p.id));
+          }
+        });
+        GSTATE.repartoDistanciaMetros = nuevaDist;
+        const cantPuertas = _acomodarParadasDraft.length;
+        cerrarModalAcomodarRutaGestor();
+        renderVistaGestor();
+        mostrarAvisoPantallaGestor(`✅ Orden guardado (${cantPuertas} parada${cantPuertas === 1 ? '' : 's'} física${cantPuertas === 1 ? '' : 's'}).`, 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de red al confirmar el orden.', 'error');
+        if (btn) { btn.disabled = false; btn.textContent = '✅ Confirmar Orden'; }
       }
     }
 
