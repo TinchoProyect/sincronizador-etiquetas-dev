@@ -101,6 +101,103 @@ let connectionStep = 0;
 let connectionStepText = '';
 let lastError = null;
 let initializeTimeout = null;
+let _reciclandoMotorPromise = null;
+let _fallosContextoConsecutivos = 0;
+
+/**
+ * Detecta errores fatales de contexto/frame desprendido en Puppeteer/Chromium
+ * (ej: cuando WhatsApp Web recarga internamente su iframe o service worker tras días activo
+ * sin disparar el evento 'disconnected').
+ */
+function esErrorContextoPuppeteerRoto(err) {
+    const msg = String((err && err.message) || err || '');
+    return /detached Frame|Execution context was destroyed|Target closed|Session closed|Protocol error|Cannot find context with specified id|Most likely the page has been closed|Browser has been closed/i.test(msg);
+}
+
+/**
+ * Espera hasta timeoutMs a que el motor pase de CONECTANDO a CONECTADO
+ */
+function esperarConexionLista(timeoutMs = 45000) {
+    if (connectionStatus === 'CONECTADO') return Promise.resolve(true);
+    return new Promise((resolve) => {
+        const inicio = Date.now();
+        const timer = setInterval(() => {
+            if (connectionStatus === 'CONECTADO') {
+                clearInterval(timer);
+                return resolve(true);
+            }
+            if (connectionStatus === 'DESCONECTADO' || connectionStatus === 'ESPERANDO_QR') {
+                if (Date.now() - inicio > 5000) {
+                    clearInterval(timer);
+                    return resolve(false);
+                }
+            }
+            if (Date.now() - inicio >= timeoutMs) {
+                clearInterval(timer);
+                return resolve(connectionStatus === 'CONECTADO');
+            }
+        }, 500);
+    });
+}
+
+/**
+ * Auto-repara en caliente el navegador headless de WhatsApp Web SIN borrar LocalAuth (no pide QR nuevamente).
+ */
+async function reciclarMotorSinPerderSesion(motivo = 'Contexto Puppeteer inválido', timeoutWaitMs = 45000) {
+    if (esModoLaboratorioWa()) return true;
+    if (_reciclandoMotorPromise) {
+        console.log(`⏳ [WHATSAPP-SELF-HEAL] Ya hay un reciclado en curso. Aguardando reconexión (${motivo})...`);
+        return _reciclandoMotorPromise;
+    }
+
+    _reciclandoMotorPromise = (async () => {
+        try {
+            console.warn(`♻️ [WHATSAPP-SELF-HEAL] Reciclando navegador interno de WhatsApp sin borrar sesión QR. Motivo: ${motivo}`);
+            if (monitorNoLeidosInterval) {
+                clearInterval(monitorNoLeidosInterval);
+                monitorNoLeidosInterval = null;
+            }
+            connectionStatus = 'CONECTANDO';
+            connectionStep = 1;
+            connectionStepText = 'Auto-reparando sesión interna de WhatsApp Web (sin requerir QR)...';
+            lastError = null;
+
+            await shutdown();
+            await killZombieChrome();
+            await inicializarWhatsApp(false, true);
+
+            const ok = await esperarConexionLista(timeoutWaitMs);
+            if (ok) {
+                console.log('✅ [WHATSAPP-SELF-HEAL] Motor de WhatsApp reconectado y operativo automáticamente.');
+            } else {
+                console.warn(`⚠️ [WHATSAPP-SELF-HEAL] El reciclado aún no alcanzó estado CONECTADO tras ${timeoutWaitMs}ms (estado actual: ${connectionStatus}).`);
+            }
+            return ok;
+        } catch (errHeal) {
+            console.error('❌ [WHATSAPP-SELF-HEAL] Error durante auto-reparación de WhatsApp:', errHeal.message);
+            return false;
+        } finally {
+            _reciclandoMotorPromise = null;
+        }
+    })();
+
+    return _reciclandoMotorPromise;
+}
+
+/**
+ * Garantiza que si el motor está en plena reconexión suave (CONECTANDO), los envíos esperen
+ * automáticamente a que termine en lugar de fallar de inmediato.
+ */
+async function asegurarMotorConectadoParaEnvio() {
+    if (connectionStatus === 'CONECTADO') return;
+    if (connectionStatus === 'CONECTANDO' || _reciclandoMotorPromise) {
+        console.log('⏳ [WHATSAPP-SERVICE] Envío en espera mientras finaliza la reconexión interna de WhatsApp...');
+        await esperarConexionLista(45000);
+    }
+    if (connectionStatus !== 'CONECTADO') {
+        throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule o reinicie el motor desde el panel de WhatsApp.');
+    }
+}
 
 /**
  * Limpiar lockfiles residuales físicos en disco de Chromium
@@ -141,16 +238,21 @@ const limpiarLockFiles = (sessionPath) => {
 };
 
 /**
- * Forzar el cierre de cualquier proceso de Chrome huérfano que retenga los candados
- * sobre el directorio de sesión session-lamda-billing en Windows.
+ * Forzar el cierre de cualquier proceso de Chrome/Chromium huérfano que retenga los candados
+ * sobre el directorio de sesión session-lamda-billing (Windows y Linux/Cloud).
  */
 const killZombieChrome = () => {
     return new Promise((resolve) => {
+        console.log('🧹 [WHATSAPP-SERVICE] Buscando procesos de Chrome/Chromium huérfanos con candados de sesión...');
+
         if (process.platform !== 'win32') {
-            return resolve();
+            const linuxCmd = `pkill -9 -f "[s]ession-lamda-billing" 2>/dev/null || true`;
+            exec(linuxCmd, () => {
+                console.log('✅ [WHATSAPP-SERVICE] Limpieza de procesos zombies de Chromium (Linux) completada.');
+                resolve();
+            });
+            return;
         }
-        
-        console.log('🧹 [WHATSAPP-SERVICE] Buscando procesos de Chrome huérfanos con candados de sesión...');
         
         // Buscamos procesos chrome.exe o chromium.exe que contengan 'session-lamda-billing' en su línea de comandos de lanzamiento
         const cmd = `powershell -Command "Get-CimInstance Win32_Process -Filter \\"Name = 'chrome.exe' OR Name = 'chromium.exe'\\" | Where-Object CommandLine -like '*session-lamda-billing*' | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"`;
@@ -541,7 +643,7 @@ const cerrarSesion = async () => {
 /**
  * Sanitizar número telefónico argentino y resolver JID canónico de WhatsApp
  */
-async function resolverChatId(numero) {
+async function resolverChatId(numero, permitirAutoHeal = true) {
     let sanitizado = String(numero).replace(/[^0-9]/g, '').trim();
     if (sanitizado.length === 10) {
         sanitizado = '549' + sanitizado;
@@ -568,6 +670,12 @@ async function resolverChatId(numero) {
         }
     } catch (idErr) {
         console.warn(`⚠️ [WHATSAPP-SERVICE] Error getNumberId para ${sanitizado}:`, idErr.message);
+        if (permitirAutoHeal && esErrorContextoPuppeteerRoto(idErr)) {
+            const reconectado = await reciclarMotorSinPerderSesion(`getNumberId(${sanitizado}): ${idErr.message}`);
+            if (reconectado) {
+                return resolverChatId(numero, false);
+            }
+        }
     }
     if (!numberExists) {
         throw new Error(`El número +${sanitizado} no tiene una cuenta de WhatsApp activa (verificá si es un teléfono fijo o si el contacto cambió de número).`);
@@ -576,18 +684,30 @@ async function resolverChatId(numero) {
 }
 
 /**
- * Envío resiliente en WhatsApp Web (WWebJS) con reintento automático sin sendSeen
- * y fallback al JID canónico @c.us si falla el JID @lid por caché/memoizer de WhatsApp Web.
+ * Envío resiliente en WhatsApp Web (WWebJS) con auto-curación ante frame desprendido,
+ * reintento automático sin sendSeen y fallback al JID canónico @c.us.
  */
-async function enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, content, options = {}) {
+async function enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, content, options = {}, permitirAutoHeal = true) {
     try {
         return await client.sendMessage(targetChatId, content, options);
     } catch (err1) {
+        if (permitirAutoHeal && esErrorContextoPuppeteerRoto(err1)) {
+            const reconectado = await reciclarMotorSinPerderSesion(`sendMessage(${targetChatId}): ${err1.message}`);
+            if (reconectado) {
+                return await enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, content, options, false);
+            }
+        }
         console.warn(`⚠️ [WHATSAPP-SERVICE] Primer intento de sendMessage a ${targetChatId} falló (${err1.message}). Reintentando con sendSeen: false...`);
         const optsNoSeen = { ...options, sendSeen: false };
         try {
             return await client.sendMessage(targetChatId, content, optsNoSeen);
         } catch (err2) {
+            if (permitirAutoHeal && esErrorContextoPuppeteerRoto(err2)) {
+                const reconectado = await reciclarMotorSinPerderSesion(`sendMessage retry(${targetChatId}): ${err2.message}`);
+                if (reconectado) {
+                    return await enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, content, optsNoSeen, false);
+                }
+            }
             if (canonicalChatId && canonicalChatId !== targetChatId) {
                 console.warn(`⚠️ [WHATSAPP-SERVICE] Fallback de sendMessage hacia canonicalChatId ${canonicalChatId}...`);
                 return await client.sendMessage(canonicalChatId, content, optsNoSeen);
@@ -609,9 +729,7 @@ async function enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, content,
 const enviarFacturaPdf = async (facturaId, pdfBuffer, numeros, nroComprobante = '', mensajeTextoCustom = null) => {
     const simRes = interceptarEnvioEnModoSeguro(numeros, "FACTURA_PDF", `Factura #${nroComprobante || facturaId}`);
     if (simRes) return simRes;
-    if (connectionStatus !== 'CONECTADO') {
-        throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule su dispositivo primero desde el panel.');
-    }
+    await asegurarMotorConectadoParaEnvio();
 
     if (!numeros || !numeros.trim()) {
         throw new Error('No se especificaron números telefónicos de destino.');
@@ -772,9 +890,7 @@ const enviarDocumentoPdf = async (pdfBuffer, numeros, filename, mensajeTexto = '
 
     const simRes = interceptarEnvioEnModoSeguro(numeros, "DOCUMENTO_PDF", filename);
     if (simRes) return simRes;
-    if (connectionStatus !== 'CONECTADO') {
-        throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule su dispositivo primero desde el panel.');
-    }
+    await asegurarMotorConectadoParaEnvio();
 
     console.log(`📱 [WHATSAPP-SERVICE] Enviando PDF genérico "${filename}" a ${listaNumeros.length} destinatarios.`);
 
@@ -895,9 +1011,7 @@ const enviarMensajeTexto = async (numeros, mensajeTexto) => {
 
     const simRes = interceptarEnvioEnModoSeguro(numeros, "MENSAJE_TEXTO", String(mensajeTexto || "").slice(0, 60));
     if (simRes) return simRes;
-    if (connectionStatus !== 'CONECTADO') {
-        throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule su dispositivo primero desde el panel.');
-    }
+    await asegurarMotorConectadoParaEnvio();
 
     const redirTxt = aplicarRedireccionSeguraWhatsApp(listaNumeros, mensajeTexto, 'MENSAJE DE TEXTO / AVISO RUTA');
     const listaEnvioTxt = redirTxt.listaFinal;
@@ -949,9 +1063,7 @@ const enviarMensajeTexto = async (numeros, mensajeTexto) => {
 const enviarImagenBase64 = async (numeros, base64Data, mimeType, filename, mensajeTexto = '') => {
     const simRes = interceptarEnvioEnModoSeguro(numeros, "IMAGEN_BASE64", filename);
     if (simRes) return simRes;
-    if (connectionStatus !== 'CONECTADO') {
-        throw new Error('El servicio de WhatsApp no está conectado. Por favor, vincule su dispositivo primero desde el panel.');
-    }
+    await asegurarMotorConectadoParaEnvio();
 
     if (!numeros || !numeros.trim()) {
         throw new Error('No se especificaron números telefónicos de destino.');
@@ -1087,6 +1199,7 @@ const sincronizarNoLeidosRapido = async () => {
             return lista;
         });
 
+        _fallosContextoConsecutivos = 0;
         await crmWhatsappDb.sincronizarEstadoNoLeidosDesdeWa(chatsNoLeidos || []);
 
         const umbralAudioRecienteSeg = Math.floor(Date.now() / 1000) - (24 * 3600);
@@ -1103,7 +1216,14 @@ const sincronizarNoLeidosRapido = async () => {
             }
         }
     } catch (e) {
-        // Silencioso en segundo plano
+        if (esErrorContextoPuppeteerRoto(e)) {
+            _fallosContextoConsecutivos++;
+            console.warn(`⚠️ [WHATSAPP-WATCHDOG] Frame/contexto de Chromium inválido (${_fallosContextoConsecutivos}/2): ${e.message}`);
+            if (_fallosContextoConsecutivos >= 2) {
+                _fallosContextoConsecutivos = 0;
+                reciclarMotorSinPerderSesion(`Watchdog 6s: ${e.message}`).catch(() => {});
+            }
+        }
     } finally {
         sincronizandoNoLeidos = false;
     }
@@ -1164,6 +1284,9 @@ const sincronizarChatsRecientes = async ({ maxChats = 45, mensajesPorChat = 15, 
             }, marcarVistoChatId);
             return { success: true, marcadoVisto: true };
         } catch (eV) {
+            if (esErrorContextoPuppeteerRoto(eV)) {
+                reciclarMotorSinPerderSesion(`marcarVisto: ${eV.message}`).catch(() => {});
+            }
             return { success: false, error: eV.message };
         }
     }
@@ -1358,6 +1481,9 @@ const sincronizarChatsRecientes = async ({ maxChats = 45, mensajesPorChat = 15, 
         };
     } catch (error) {
         console.error('❌ [WHATSAPP-SERVICE] Error en sincronizarChatsRecientes:', error.message);
+        if (esErrorContextoPuppeteerRoto(error)) {
+            reciclarMotorSinPerderSesion(`sincronizarChatsRecientes: ${error.message}`).catch(() => {});
+        }
         return {
             success: false,
             error: error.message
@@ -1508,6 +1634,9 @@ const transcribirAudiosDeChat = async ({ chatId, msgIds = [], maxAudios = 4 } = 
             resultados
         };
     } catch (err) {
+        if (esErrorContextoPuppeteerRoto(err)) {
+            reciclarMotorSinPerderSesion(`transcribirAudiosDeChat: ${err.message}`).catch(() => {});
+        }
         return {
             success: false,
             error: err.message
@@ -1516,10 +1645,30 @@ const transcribirAudiosDeChat = async ({ chatId, msgIds = [], maxAudios = 4 } = 
 };
 
 /**
+ * Reinicio suave solicitado manualmente desde la interfaz de Configuración de WhatsApp:
+ * recicla Chromium conservando las credenciales LocalAuth (no desvincula el celular ni pide QR).
+ */
+async function reiniciarMotorSuave() {
+    if (esModoLaboratorioWa()) {
+        return inicializarWhatsApp(false, false);
+    }
+    reciclarMotorSinPerderSesion('Reinicio suave manual desde panel').catch(() => {});
+    return {
+        success: true,
+        status: 'CONECTANDO',
+        message: 'Reinicio suave del navegador interno iniciado (se conserva la sesión vinculada sin pedir QR).'
+    };
+}
+
+/**
  * Apagar cliente de WhatsApp de forma ordenada y limpia
  */
 async function shutdown() {
     console.log('🔌 [WHATSAPP-SERVICE] Apagando cliente de WhatsApp...');
+    if (monitorNoLeidosInterval) {
+        clearInterval(monitorNoLeidosInterval);
+        monitorNoLeidosInterval = null;
+    }
     if (client) {
         try {
             await client.destroy();
@@ -1533,6 +1682,8 @@ async function shutdown() {
 
 module.exports = {
     inicializarWhatsApp,
+    reiniciarMotorSuave,
+    reciclarMotorSinPerderSesion,
     obtenerEstado,
     cerrarSesion,
     enviarFacturaPdf,

@@ -747,7 +747,8 @@ router.post('/crm/seguimientos/:id/enviar', async (req, res) => {
 
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
-                throw new Error(`Fallo en envío de burbuja ${i + 1}: ${errData.message || response.statusText}`);
+                const msgDet = errData?.detalles?.[0]?.error || errData?.error || errData?.message || response.statusText;
+                throw new Error(`Fallo en envío de burbuja ${i + 1}: ${msgDet}`);
             }
 
             // Si hay más de un mensaje, esperar 1.2 segundos entre burbujas para naturalidad
@@ -821,7 +822,8 @@ router.post('/crm/seguimientos/:id/enviar-prueba', async (req, res) => {
 
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
-                throw new Error(`Fallo en envío de burbuja de prueba #${i + 1}: ${errData.message || response.statusText}`);
+                const msgDet = errData?.detalles?.[0]?.error || errData?.error || errData?.message || response.statusText;
+                throw new Error(`Fallo en envío de burbuja de prueba #${i + 1}: ${msgDet}`);
             }
 
             if (i < mensajes.length - 1) {
@@ -874,7 +876,8 @@ router.post('/crm/seguimientos/enviar-prueba-directa', async (req, res) => {
 
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
-                throw new Error(`Fallo en envío de burbuja de prueba #${i + 1}: ${errData.message || response.statusText}`);
+                const msgDet = errData?.detalles?.[0]?.error || errData?.error || errData?.message || response.statusText;
+                throw new Error(`Fallo en envío de burbuja de prueba #${i + 1}: ${msgDet}`);
             }
 
             if (i < mensajes.length - 1) {

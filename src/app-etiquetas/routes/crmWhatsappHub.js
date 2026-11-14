@@ -802,7 +802,7 @@ router.post('/crm/whatsapp/chats/:id/enviar', async (req, res) => {
             })
         });
 
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.success) {
             let detalleError = (Array.isArray(data.detalles) && data.detalles[0]?.error)
                 ? data.detalles[0].error
@@ -810,7 +810,8 @@ router.post('/crm/whatsapp/chats/:id/enviar', async (req, res) => {
             if (/No LID for user/i.test(detalleError)) {
                 detalleError = `El número +${chat.telefono_normalizado} no tiene una cuenta de WhatsApp activa.`;
             }
-            return res.status(response.status || 500).json({
+            const safeStatus = [502, 503, 504].includes(response.status) ? 500 : (response.status || 500);
+            return res.status(safeStatus).json({
                 success: false,
                 error: detalleError,
                 detalles: data.detalles || []
@@ -867,7 +868,7 @@ router.post('/crm/whatsapp/enviar-directo', async (req, res) => {
             })
         });
 
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.success) {
             let detalleError = (Array.isArray(data.detalles) && data.detalles[0]?.error)
                 ? data.detalles[0].error
@@ -875,7 +876,8 @@ router.post('/crm/whatsapp/enviar-directo', async (req, res) => {
             if (/No LID for user/i.test(detalleError)) {
                 detalleError = `El número +${telLimpio} no tiene una cuenta de WhatsApp activa.`;
             }
-            return res.status(response.status || 500).json({
+            const safeStatus = [502, 503, 504].includes(response.status) ? 500 : (response.status || 500);
+            return res.status(safeStatus).json({
                 success: false,
                 error: detalleError,
                 detalles: data.detalles || []
@@ -930,12 +932,13 @@ router.post('/crm/whatsapp/enviar-documento', async (req, res) => {
             })
         });
 
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         if (!response.ok || !data.success) {
             let detalleError = (Array.isArray(data.detalles) && data.detalles[0]?.error)
                 ? data.detalles[0].error
                 : (data.error || data.message || 'No se pudo enviar el documento PDF por WhatsApp.');
-            return res.status(response.status || 500).json({
+            const safeStatus = [502, 503, 504].includes(response.status) ? 500 : (response.status || 500);
+            return res.status(safeStatus).json({
                 success: false,
                 error: detalleError,
                 detalles: data.detalles || []

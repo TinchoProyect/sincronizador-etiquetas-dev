@@ -8,6 +8,23 @@ const { generarPDF: generarPDFServicio } = require('../pdf/generador');
 const facturaService = require('../services/facturaService');
 
 /**
+ * Devuelve un JSON limpio ante fallo de envío evitando códigos 502/503/504
+ * que Cloudflare intercepta y reemplaza por páginas HTML genéricas ("502: Bad gateway").
+ */
+function responderFalloEnviosWhatsapp(res, envios) {
+    const detallePrincipal = (Array.isArray(envios) && envios.find(e => !e.success && e.error)?.error)
+        || 'Error al enviar por WhatsApp';
+    const esNumeroSinCuenta = /no tiene una cuenta de WhatsApp activa|No LID for user/i.test(detallePrincipal);
+    const httpStatus = esNumeroSinCuenta ? 422 : 500;
+    return res.status(httpStatus).json({
+        success: false,
+        error: detallePrincipal,
+        message: detallePrincipal,
+        detalles: envios
+    });
+}
+
+/**
  * Obtener estado de conexión y código QR de WhatsApp
  */
 const obtenerEstado = async (req, res) => {
@@ -186,11 +203,7 @@ const enviarFactura = async (req, res) => {
         
         if (fallidos.length === envios.length) {
             // Todos fallaron
-            return res.status(502).json({
-                success: false,
-                error: 'Error al enviar por WhatsApp',
-                detalles: envios
-            });
+            return responderFalloEnviosWhatsapp(res, envios);
         }
 
         // Marcar factura como enviada en DB
@@ -280,11 +293,7 @@ const enviarDocumento = async (req, res) => {
         
         if (fallidos.length === envios.length) {
             // Todos fallaron
-            return res.status(502).json({
-                success: false,
-                error: 'Error al enviar por WhatsApp',
-                detalles: envios
-            });
+            return responderFalloEnviosWhatsapp(res, envios);
         }
         
         res.json({
@@ -347,11 +356,7 @@ const enviarMensaje = async (req, res) => {
         
         if (fallidos.length === envios.length) {
             // Todos fallaron
-            return res.status(502).json({
-                success: false,
-                error: 'Error al enviar por WhatsApp',
-                detalles: envios
-            });
+            return responderFalloEnviosWhatsapp(res, envios);
         }
         
         res.json({
@@ -408,11 +413,7 @@ const enviarImagen = async (req, res) => {
         
         const fallidos = envios.filter(e => !e.success);
         if (fallidos.length === envios.length) {
-            return res.status(502).json({
-                success: false,
-                error: 'Error al enviar por WhatsApp',
-                detalles: envios
-            });
+            return responderFalloEnviosWhatsapp(res, envios);
         }
         
         res.json({
@@ -434,12 +435,20 @@ const enviarImagen = async (req, res) => {
 };
 
 /**
- * Iniciar o forzar la conexión de WhatsApp
+ * Iniciar, reiniciar suavemente (sin perder QR) o forzar la conexión de WhatsApp
  */
 const conectar = async (req, res) => {
     try {
         const force = req.body && req.body.force === true;
-        console.log(`📱 [WHATSAPP-CTRL] Petición de conexión (force: ${force})`);
+        const softRestart = req.body && req.body.softRestart === true;
+        console.log(`📱 [WHATSAPP-CTRL] Petición de conexión (force: ${force}, softRestart: ${softRestart})`);
+        if (softRestart && typeof whatsappService.reiniciarMotorSuave === 'function') {
+            const info = await whatsappService.reiniciarMotorSuave();
+            return res.json({
+                success: true,
+                message: info?.message || 'Reinicio suave de WhatsApp iniciado (sin desvincular sesión QR).'
+            });
+        }
         whatsappService.inicializarWhatsApp(force);
         res.json({
             success: true,
