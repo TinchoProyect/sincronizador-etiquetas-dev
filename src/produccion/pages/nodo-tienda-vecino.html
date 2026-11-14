@@ -964,7 +964,7 @@
 
       <!-- Buscador y Filtro de Categorías -->
       <div class="toolbar">
-        <input type="text" id="search-box" class="search-input" placeholder="🔍 Buscar almendras, nueces, mixes, granolas, barritas..." oninput="renderCatalogo()" />
+        <input type="text" id="search-box" class="search-input" placeholder="🔍 Buscar almendras, nueces, mixes, granolas, barritas..." oninput="renderCatalogo(); programarTelemetriaBusquedaLupa(this.value);" />
         <div class="cats-row" id="cats-row"></div>
       </div>
 
@@ -1027,6 +1027,226 @@
 
     function esc(s) {
       return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // =========================================================================
+    // TELEMETRÍA LIVIANA Y PROGRESIVA POR NODO (NO BLOQUEANTE)
+    // =========================================================================
+    const _TEL_DEDUPE_MAP = new Map();
+    let _telBusquedaDebounceTimer = null;
+    let _telUltimoSlugVistaEnviada = '';
+    const _URL_LAUNCH_PARAMS = (() => {
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        return {
+          utm_source: (sp.get('utm_source') || '').trim(),
+          utm_medium: (sp.get('utm_medium') || '').trim(),
+          utm_campaign: (sp.get('utm_campaign') || '').trim(),
+          ref: (sp.get('ref') || sp.get('origen') || '').trim(),
+          modo_admin_param: sp.has('modo_admin') ? String(sp.get('modo_admin') || '').trim() : null
+        };
+      } catch (_) {
+        return { utm_source: '', utm_medium: '', utm_campaign: '', ref: '', modo_admin_param: null };
+      }
+    })();
+
+    function obtenerVisitorIdTienda() {
+      const key = 'nodo_visitor_id_v1';
+      try {
+        let vid = (localStorage.getItem(key) || '').trim();
+        if (!vid || vid.length < 10) {
+          const rnd = (window.crypto && typeof window.crypto.randomUUID === 'function')
+            ? window.crypto.randomUUID().replace(/-/g, '')
+            : (Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2));
+          vid = 'nv_' + rnd.slice(0, 28);
+          localStorage.setItem(key, vid);
+        }
+        return vid;
+      } catch (_) {
+        if (!window.__fallbackVisitorId) {
+          window.__fallbackVisitorId = 'nv_mem_' + Math.random().toString(36).slice(2, 14);
+        }
+        return window.__fallbackVisitorId;
+      }
+    }
+
+    function obtenerSessionIdTienda() {
+      const key = 'nodo_session_id_v1';
+      try {
+        let sid = (sessionStorage.getItem(key) || '').trim();
+        if (!sid) {
+          sid = 'ns_' + Math.random().toString(36).slice(2, 12) + Date.now().toString(36).slice(-6);
+          sessionStorage.setItem(key, sid);
+        }
+        return sid;
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function esDispositivoAdminGestorTienda(slugRef = STATE.slug) {
+      try {
+        if (typeof esModoEspejoLocal === 'function' && esModoEspejoLocal()) return true;
+        const rol = String(localStorage.getItem('lamda_nodo_dispositivo_rol') || '').trim().toUpperCase();
+        if (rol === 'CLIENTE_FORZADO') return false;
+        if (rol === 'ADMIN' || rol === 'GESTOR') return true;
+        const sClean = String(slugRef || '').trim().toLowerCase();
+        if (sClean && localStorage.getItem('lamda_nodo_gestor_token_' + sClean)) return true;
+      } catch (_) {}
+      return false;
+    }
+
+    function aplicarParametroModoAdminInicial() {
+      const p = _URL_LAUNCH_PARAMS.modo_admin_param;
+      if (p === null) return;
+      try {
+        if (p === '1' || p.toLowerCase() === 'true') {
+          localStorage.setItem('lamda_nodo_dispositivo_rol', 'ADMIN');
+          if (!localStorage.getItem('lamda_nodo_dispositivo_etiqueta')) {
+            localStorage.setItem('lamda_nodo_dispositivo_etiqueta', 'Admin / Prueba Móvil');
+          }
+        } else if (p === '0' || p.toLowerCase() === 'false') {
+          localStorage.setItem('lamda_nodo_dispositivo_rol', 'CLIENTE_FORZADO');
+        }
+        const u = new URL(window.location.href);
+        u.searchParams.delete('modo_admin');
+        window.history.replaceState({}, document.title, u.pathname + (u.search ? u.search : '') + (u.hash || ''));
+      } catch (_) {}
+    }
+
+    function desactivarModoAdminGestorEnEsteNavegador() {
+      try {
+        localStorage.setItem('lamda_nodo_dispositivo_rol', 'CLIENTE_FORZADO');
+      } catch (_) {}
+      enviarTelemetriaTienda('marcar_admin_gestor', {
+        accion_admin_gestor: 'DESACTIVAR',
+        es_admin_gestor: false,
+        detalle: 'Cambio manual a modo Cliente Real'
+      }, 0);
+      renderizarBannerDispositivoAdminTienda();
+    }
+
+    function renderizarBannerDispositivoAdminTienda() {
+      let bar = document.getElementById('admin-device-telemetry-pill');
+      const activo = esDispositivoAdminGestorTienda(STATE.slug);
+      if (!activo) {
+        if (bar) bar.style.display = 'none';
+        return;
+      }
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'admin-device-telemetry-pill';
+        bar.style.cssText = 'background:#0f172a;color:#e2e8f0;font-size:0.74rem;font-weight:700;padding:5px 12px;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid #334155;';
+        document.body.insertBefore(bar, document.body.firstChild);
+      }
+      bar.style.display = 'flex';
+      bar.innerHTML = `
+        <span>🛠️ <strong>Dispositivo Admin / Gestor</strong> · Tus visitas están separadas y no alteran la conversión de vecinos</span>
+        <button type="button" onclick="desactivarModoAdminGestorEnEsteNavegador()"
+          style="background:#1e293b;color:#93c5fd;border:1px solid #475569;border-radius:999px;padding:2px 9px;font-family:inherit;font-size:0.7rem;font-weight:800;cursor:pointer;">
+          Cambiar a Cliente Real
+        </button>
+      `;
+    }
+
+    function construirSnapshotCarritoTelemetria() {
+      const snap = [];
+      let unidades = 0;
+      let subtotal = 0;
+      for (const p of (STATE.productos || [])) {
+        const cant = Number(STATE.carrito[p.oferta_id] || 0);
+        if (cant > 0) {
+          const precio = Number(p.precio_venta_vecino || 0);
+          const sub = Number((precio * cant).toFixed(2));
+          unidades += cant;
+          subtotal += sub;
+          snap.push({
+            oferta_id: Number(p.oferta_id),
+            sku: p.sku_nodo || '',
+            nombre: p.nombre_publico || '',
+            presentacion: (typeof obtenerPresentacionItem === 'function' ? obtenerPresentacionItem(p) : '') || '',
+            cantidad: cant,
+            precio,
+            subtotal: sub
+          });
+        }
+      }
+      return {
+        carrito_snapshot: snap,
+        carrito_unidades: unidades,
+        carrito_subtotal: Number(subtotal.toFixed(2))
+      };
+    }
+
+    function enviarTelemetriaTienda(tipoEvento, extra = {}, dedupeMs = 1500) {
+      try {
+        const slugTarget = String(extra.nodo_slug || STATE.slug || detectarSlugInicial() || '').trim();
+        if (!slugTarget) return;
+
+        const keyDedupe = `${slugTarget}:${tipoEvento}:${extra.categoria_nombre || ''}:${extra.termino_busqueda || ''}:${extra.oferta_id || ''}:${extra.cantidad || ''}`;
+        const ahora = Date.now();
+        if (dedupeMs > 0) {
+          const prevTs = _TEL_DEDUPE_MAP.get(keyDedupe) || 0;
+          if (ahora - prevTs < dedupeMs) return;
+          _TEL_DEDUPE_MAP.set(keyDedupe, ahora);
+        }
+
+        let idLocal = {};
+        try {
+          if (typeof obtenerIdentidadVecinoLocal === 'function') {
+            idLocal = obtenerIdentidadVecinoLocal(slugTarget) || {};
+          }
+        } catch (_) {}
+
+        let etiquetaDisp = '';
+        try {
+          etiquetaDisp = localStorage.getItem('lamda_nodo_dispositivo_etiqueta') || '';
+        } catch (_) {}
+
+        const body = {
+          tipo_evento: tipoEvento,
+          visitor_id: obtenerVisitorIdTienda(),
+          session_id: obtenerSessionIdTienda(),
+          es_admin_gestor: extra.es_admin_gestor !== undefined
+            ? Boolean(extra.es_admin_gestor)
+            : esDispositivoAdminGestorTienda(slugTarget),
+          etiqueta_dispositivo: etiquetaDisp || undefined,
+          utm_source: _URL_LAUNCH_PARAMS.utm_source || undefined,
+          utm_medium: _URL_LAUNCH_PARAMS.utm_medium || undefined,
+          utm_campaign: _URL_LAUNCH_PARAMS.utm_campaign || undefined,
+          ref: _URL_LAUNCH_PARAMS.ref || undefined,
+          referrer: document.referrer || undefined,
+          portal_token: STATE.portalToken || idLocal.portal_token || undefined,
+          vecino_nombre: extra.vecino_nombre || idLocal.nombre_completo || window._savedVecinoNombre || undefined,
+          vecino_telefono: extra.vecino_telefono || idLocal.telefono_display || idLocal.telefono_normalizado || window._savedVecinoTel || undefined,
+          ...extra
+        };
+
+        fetch(`/api/produccion/nodos/tienda/${encodeURIComponent(slugTarget)}/telemetria`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          keepalive: true
+        }).catch(() => {});
+      } catch (_) {}
+    }
+
+    function programarTelemetriaBusquedaLupa(valorRaw) {
+      if (_telBusquedaDebounceTimer) clearTimeout(_telBusquedaDebounceTimer);
+      const limpio = String(valorRaw || '').trim();
+      if (limpio.length < 2) return;
+      _telBusquedaDebounceTimer = setTimeout(() => {
+        enviarTelemetriaTienda('busqueda_lupa', { termino_busqueda: limpio.slice(0, 120) }, 2500);
+      }, 900);
+    }
+
+    function seleccionarCategoriaTienda(catNombre) {
+      STATE.categoriaActiva = catNombre;
+      renderCategorias();
+      renderCatalogo();
+      if (catNombre && catNombre !== 'TODAS') {
+        enviarTelemetriaTienda('categoria_seleccionada', { categoria_nombre: catNombre }, 1200);
+      }
     }
 
     function normalizarTextoBusqueda(txt) {
@@ -1251,6 +1471,28 @@
       renderCatalogo();
       actualizarBarraCarrito();
       refrescarBannerPedidosRecientes();
+      renderizarBannerDispositivoAdminTienda();
+
+      if (!fechaSimulada && _telUltimoSlugVistaEnviada !== STATE.slug) {
+        _telUltimoSlugVistaEnviada = STATE.slug;
+        const extraVista = {};
+        if (_URL_LAUNCH_PARAMS.modo_admin_param === '1') {
+          extraVista.accion_admin_gestor = 'ACTIVAR';
+          extraVista.es_admin_gestor = true;
+        } else if (_URL_LAUNCH_PARAMS.modo_admin_param === '0') {
+          extraVista.accion_admin_gestor = 'DESACTIVAR';
+          extraVista.es_admin_gestor = false;
+        }
+        if (STATE.ofertaEnfocadaId || STATE.skuEnfocado) {
+          const pFocus = STATE.productos.find(o => Number(o.oferta_id) === Number(STATE.ofertaEnfocadaId));
+          if (pFocus) {
+            extraVista.oferta_id = Number(pFocus.oferta_id);
+            extraVista.sku_nodo = pFocus.sku_nodo || '';
+            extraVista.producto_nombre = pFocus.nombre_publico || '';
+          }
+        }
+        enviarTelemetriaTienda('vista_tienda', extraVista, 3000);
+      }
     }
 
     function simularHorarioCorte(despues) {
@@ -1316,7 +1558,7 @@
       }
       row.innerHTML = Array.from(catsSet).map(cat => `
         <button type="button" class="cat-btn ${STATE.categoriaActiva === cat ? 'active' : ''}"
-          onclick="STATE.categoriaActiva='${esc(cat)}'; renderCategorias(); renderCatalogo();">
+          onclick="seleccionarCategoriaTienda('${esc(cat)}')">
           ${cat === 'TODAS' ? 'Todos los productos' : esc(cat)}
         </button>
       `).join('');
@@ -1466,6 +1708,12 @@
         modal.style.display = 'flex';
         modal.classList.add('open');
       }
+      enviarTelemetriaTienda('clic_que_contiene', {
+        oferta_id: Number(prod.oferta_id),
+        sku_nodo: prod.sku_nodo || '',
+        producto_nombre: prod.nombre_publico || '',
+        categoria_nombre: prod.categoria_familiar || ''
+      }, 1500);
     }
 
     function cerrarModalIngredientesProducto() {
@@ -1614,6 +1862,18 @@
           renderContenidoModalIngredientes();
         }
       }
+      if (nuevo !== actual) {
+        const prodRef = STATE.productos.find(x => Number(x.oferta_id) === Number(ofertaId));
+        const snap = construirSnapshotCarritoTelemetria();
+        enviarTelemetriaTienda(delta > 0 ? 'carrito_agregar' : 'carrito_quitar', {
+          oferta_id: Number(ofertaId),
+          sku_nodo: prodRef?.sku_nodo || '',
+          producto_nombre: prodRef?.nombre_publico || '',
+          categoria_nombre: prodRef?.categoria_familiar || '',
+          cantidad: nuevo,
+          ...snap
+        }, 250);
+      }
     }
 
     function obtenerCapacidadesEntregaTienda(nodoObj = STATE.nodo) {
@@ -1677,6 +1937,7 @@
     function abrirModalCheckout() {
       const res = calcularResumenCarrito();
       if (res.unidades === 0) return;
+      enviarTelemetriaTienda('inicio_checkout', construirSnapshotCarritoTelemetria(), 2000);
 
       const modal = document.getElementById('checkout-modal');
       modal.style.display = 'flex';
@@ -2012,6 +2273,7 @@
         (!window._savedVecinoDirPinBase || _normalizarDirCheckPin(direccion) === _normalizarDirCheckPin(window._savedVecinoDirPinBase));
 
       const payload = {
+        visitor_id: obtenerVisitorIdTienda(),
         vecino_nombre: nombre,
         vecino_telefono: telefono,
         modalidad_entrega: STATE.modalidadEntrega,
@@ -2071,6 +2333,16 @@
           });
           refrescarBannerPedidosRecientes();
         }
+        enviarTelemetriaTienda('pedido_confirmado', {
+          pedido_id: ped.id,
+          codigo_pedido: ped.codigo_pedido,
+          tracking_token: ped.tracking_token || undefined,
+          vecino_nombre: ped.vecino_nombre || nombre,
+          vecino_telefono: telefono || ped.vecino_telefono,
+          carrito_unidades: itemsConfirmados.reduce((acc, it) => acc + Number(it.cantidad || 1), 0),
+          carrito_subtotal: Number(ped.total_vecino || 0),
+          carrito_snapshot: []
+        }, 0);
       }
       const box = document.getElementById('checkout-card-content');
 
@@ -3012,9 +3284,10 @@
       }
 
       try {
+        const vidParam = encodeURIComponent(obtenerVisitorIdTienda());
         const endpointSeg = STATE.slug
-          ? `/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/seguimiento/${encodeURIComponent(cleanTok)}`
-          : `/api/produccion/nodos/seguimiento/${encodeURIComponent(cleanTok)}`;
+          ? `/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/seguimiento/${encodeURIComponent(cleanTok)}?vid=${vidParam}`
+          : `/api/produccion/nodos/seguimiento/${encodeURIComponent(cleanTok)}?vid=${vidParam}`;
         const resp = await fetch(endpointSeg, {
           cache: 'no-store'
         });
@@ -3033,6 +3306,16 @@
             telefono_display: data.identidad_vecino.telefono_whatsapp || '',
             nombre_completo: data.identidad_vecino.nombre_completo || data.pedido?.vecino_nombre || ''
           });
+        }
+        if (!silencioso && data.pedido) {
+          enviarTelemetriaTienda('vista_seguimiento', {
+            nodo_slug: data.nodo?.slug || STATE.slug,
+            pedido_id: data.pedido.id,
+            codigo_pedido: data.pedido.codigo_pedido,
+            tracking_token: cleanTok,
+            vecino_nombre: data.identidad_vecino?.nombre_completo || data.pedido.vecino_nombre,
+            vecino_telefono: data.identidad_vecino?.telefono_whatsapp || data.pedido.vecino_telefono
+          }, 4000);
         }
 
         guardarPedidoRecienteLocal({
@@ -3466,8 +3749,9 @@
       }
 
       try {
+        const vidParam = encodeURIComponent(obtenerVisitorIdTienda());
         const resp = await fetch(
-          `/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/mi-cuenta/${encodeURIComponent(STATE.portalToken)}`,
+          `/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/mi-cuenta/${encodeURIComponent(STATE.portalToken)}?vid=${vidParam}`,
           { cache: 'no-store' }
         );
         const data = await resp.json();
@@ -3988,6 +4272,7 @@
 
     document.addEventListener('DOMContentLoaded', async () => {
       STATE.slug = detectarSlugInicial();
+      aplicarParametroModoAdminInicial();
       const params = new URLSearchParams(window.location.search);
       const tokInicial = detectarTokenSeguimientoEnUrl();
       const ofertaInicial = Number(params.get('oferta') || 0);

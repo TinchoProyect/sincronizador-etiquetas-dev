@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Centro de Nodos y Analítica — Sistema LAMDA</title>
+  <script src="/lamda-cloud-runtime.js"></script>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --text: #0f172a;
+      --muted: #64748b;
+      --primary: #1e40af;
+      --primary-light: #eff6ff;
+      --emerald: #15803d;
+      --emerald-bg: #f0fdf4;
+      --amber: #b45309;
+      --amber-bg: #fffbeb;
+      --danger: #b91c1c;
+      --danger-bg: #fef2f2;
+      --violet: #6d28d9;
+      --violet-bg: #f5f3ff;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    .topbar {
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #f8fafc;
+      padding: 14px 22px;
+      border-bottom: 1px solid #334155;
+      position: sticky;
+      top: 0;
+      z-index: 80;
+      box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
+    }
+    .topbar-inner {
+      max-width: 1460px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .topbar-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .topbar-title h1 {
+      margin: 0;
+      font-size: 1.18rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+    }
+    .topbar-sub {
+      font-size: 0.78rem;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn-top {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-top:hover { background: #334155; color: #ffffff; }
+    .btn-top.primary { background: #2563eb; border-color: #3b82f6; color: #ffffff; }
+    .btn-top.primary:hover { background: #1d4ed8; }
+
+    .container {
+      max-width: 1460px;
+      margin: 0 auto;
+      padding: 18px 20px 44px;
+    }
+
+    .main-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 18px;
+      background: #e2e8f0;
+      padding: 5px;
+      border-radius: 12px;
+      width: fit-content;
+      max-width: 100%;
+      flex-wrap: wrap;
+    }
+    .main-tab-btn {
+      padding: 10px 18px;
+      border-radius: 9px;
+      border: none;
+      background: transparent;
+      color: #334155;
+      font-family: inherit;
+      font-size: 0.88rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.15s ease;
+    }
+    .main-tab-btn.active {
+      background: #ffffff;
+      color: #0f172a;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+    }
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    /* Node Selector Cards */
+    .nodos-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .nodo-selector-card {
+      background: var(--card);
+      border: 2px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: all 0.16s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .nodo-selector-card:hover {
+      border-color: #94a3b8;
+      transform: translateY(-1px);
+    }
+    .nodo-selector-card.selected {
+      border-color: #2563eb;
+      box-shadow: 0 6px 18px rgba(37, 99, 235, 0.12);
+      background: #fcfdff;
+    }
+    .nodo-accent-bar {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 5px;
+    }
+
+    /* Two-column Ficha layout */
+    .ficha-grid {
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+    @media (max-width: 1120px) {
+      .ficha-grid { grid-template-columns: 1fr; }
+    }
+
+    .panel-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    }
+    .panel-title {
+      margin: 0 0 12px 0;
+      font-size: 0.98rem;
+      font-weight: 800;
+      color: var(--text);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* QR Access Boxes */
+    .qr-access-box {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      background: #f8fafc;
+      margin-bottom: 12px;
+    }
+    .qr-access-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .qr-img-wrap {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .qr-img-wrap img {
+      width: 176px;
+      height: 176px;
+      object-fit: contain;
+      cursor: zoom-in;
+    }
+    .url-mono {
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.73rem;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 6px 8px;
+      color: #334155;
+      word-break: break-all;
+      margin-bottom: 8px;
+    }
+    .btn-row {
+      display: flex;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 7px 11px;
+      border-radius: 8px;
+      border: 1px solid var(--border-strong);
+      background: #ffffff;
+      color: #0f172a;
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.14s ease;
+    }
+    .btn:hover { background: #f1f5f9; }
+    .btn.solid-blue { background: #2563eb; border-color: #2563eb; color: #ffffff; }
+    .btn.solid-blue:hover { background: #1d4ed8; }
+    .btn.solid-green { background: #16a34a; border-color: #16a34a; color: #ffffff; }
+    .btn.solid-green:hover { background: #15803d; }
+    .btn.solid-dark { background: #0f172a; border-color: #0f172a; color: #ffffff; }
+    .btn.solid-dark:hover { background: #1e293b; }
+
+    /* KPIs Commercial & Radar */
+    .kpi-grid-4 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 11px;
+      margin-bottom: 16px;
+    }
+    .kpi-grid-5 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .kpi-box {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 13px 14px;
+    }
+    .kpi-label {
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--muted);
+    }
+    .kpi-val {
+      font-size: 1.48rem;
+      font-weight: 900;
+      color: var(--text);
+      margin: 4px 0 2px;
+    }
+    .kpi-sub {
+      font-size: 0.76rem;
+      color: var(--muted);
+    }
+
+    /* Subtabs inside Ficha */
+    .subtabs {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .subtab-btn {
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      color: #475569;
+      font-family: inherit;
+      font-size: 0.79rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .subtab-btn.active {
+      background: #0f172a;
+      border-color: #0f172a;
+      color: #ffffff;
+    }
+
+    /* Tables */
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.81rem;
+    }
+    th {
+      background: #f8fafc;
+      text-align: left;
+      padding: 9px 11px;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      color: #475569;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    td {
+      padding: 9px 11px;
+      border-bottom: 1px solid #f1f5f9;
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+
+    /* Radar Filter Toolbar */
+    .radar-toolbar {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 13px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .pill-filter-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .pill-btn {
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border-strong);
+      background: #ffffff;
+      color: #334155;
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .pill-btn.active {
+      background: #1e40af;
+      border-color: #1e40af;
+      color: #ffffff;
+    }
+
+    .insights-grid-3 {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 1100px) {
+      .insights-grid-3 { grid-template-columns: 1fr; }
+    }
+
+    /* Visitor Radar Accordion (B2B Style) */
+    .visitor-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #ffffff;
+      margin-bottom: 9px;
+      overflow: hidden;
+      transition: border-color 0.14s ease;
+    }
+    .visitor-card:hover { border-color: #94a3b8; }
+    .visitor-card.bought { border-left: 4px solid #16a34a; }
+    .visitor-card.abandoned { border-left: 4px solid #d97706; }
+    .visitor-card.admin-dev { border-left: 4px solid #64748b; background: #fafaf9; }
+    .visitor-summary {
+      padding: 12px 15px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      list-style: none;
+    }
+    .visitor-summary::-webkit-details-marker { display: none; }
+    .visitor-timeline {
+      border-top: 1px solid var(--border);
+      background: #f8fafc;
+      padding: 10px 16px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 0.73rem;
+      font-weight: 700;
+      border: 1px solid var(--border);
+      background: #f8fafc;
+      color: #334155;
+    }
+
+    /* Modal Zoom QR */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.65);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 300;
+      padding: 18px;
+    }
+    .modal-box {
+      background: #ffffff;
+      border-radius: 16px;
+      max-width: 460px;
+      width: 100%;
+      padding: 22px;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(15, 23, 42, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="topbar-title">
+        <div style="font-size:1.65rem;">🏘️</div>
+        <div>
+          <h1>Centro de Nodos y Analítica</h1>
+          <div class="topbar-sub">Fichas Contables Unificadas · Accesos QR Móviles · Radar de Tiendas y Conversión en Vivo</div>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <a href="http://localhost:3000/" class="btn-top">← Menú Principal</a>
+        <a href="http://localhost:3002/pages/pizarra-simulacion.html" class="btn-top">🎛️ Pizarra y ABM Nodos</a>
+        <a href="http://localhost:3002/deposito-nodos" class="btn-top">📦 Mesa de Armado</a>
+        <a href="http://localhost:3002/liquidacion-nodos" class="btn-top">💰 Liquidación y Cobros</a>
+        <button type="button" class="btn-top primary" onclick="recargarVistaActiva()">🔄 Actualizar</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+      <div class="main-tabs" style="margin-bottom:0;">
+        <button type="button" id="tab-btn-fichas" class="main-tab-btn active" onclick="cambiarTabPrincipal('fichas')">
+          📋 Fichas de Nodos, Cuentas y Accesos QR
+        </button>
+        <button type="button" id="tab-btn-radar" class="main-tab-btn" onclick="cambiarTabPrincipal('radar')">
+          📡 Radar en Vivo, Flujo de Nube y Estadísticas
+          <span id="badge-radar-live" class="badge-pill" style="background:#dcfce7; color:#166534;">EN VIVO</span>
+        </button>
+      </div>
+      <div id="status-pc-admin-box" style="display:flex; align-items:center; gap:8px; font-size:0.78rem;"></div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- VISTA A: FICHAS INTEGRALES Y ACCESOS RÁPIDOS / QR POR NODO            -->
+    <!-- ===================================================================== -->
+    <section id="vista-fichas">
+      <div id="nodos-cards-strip" class="nodos-strip">
+        <div class="panel-card" style="grid-column:1/-1; text-align:center; color:var(--muted);">⏳ Cargando nodos activos...</div>
+      </div>
+
+      <div id="ficha-integral-container"></div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- VISTA B: RADAR EN VIVO, FLUJO DE NUBE Y ESTADÍSTICAS POR NODO         -->
+    <!-- ===================================================================== -->
+    <section id="vista-radar" style="display:none;">
+      <div class="radar-toolbar">
+        <div class="pill-filter-group" id="radar-nodos-pills"></div>
+
+        <div class="pill-filter-group">
+          <select id="radar-rango-select" onchange="onCambioRangoRadar()"
+            style="padding:6px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.8rem; font-weight:700; background:#fff;">
+            <option value="hoy">📅 Día específico / Hoy</option>
+            <option value="7d">📆 Últimos 7 días</option>
+            <option value="30d">🗓️ Últimos 30 días</option>
+            <option value="todo">♾️ Histórico completo</option>
+          </select>
+
+          <select id="radar-fecha-select" onchange="cargarRadarAnalitica()"
+            style="padding:6px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.8rem; font-weight:700; background:#fff;">
+          </select>
+
+          <select id="radar-audiencia-select" onchange="cargarRadarAnalitica()"
+            style="padding:6px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.8rem; font-weight:800; background:#eff6ff; color:#1e3a8a;">
+            <option value="clientes">👥 Solo Clientes Reales (Conversión Pura)</option>
+            <option value="admin_gestor">🛠️ Solo Dispositivos Admin / Gestor</option>
+            <option value="todos">🌐 Todos los ingresos (Clientes + Admin + Bots)</option>
+          </select>
+
+          <button type="button" id="btn-modo-vista-radar" class="btn" onclick="alternarModoListadoRadar()">
+            📋 Ver Flujo Plano
+          </button>
+
+          <label style="display:inline-flex; align-items:center; gap:5px; font-size:0.77rem; font-weight:700; color:#475569; cursor:pointer; margin-left:4px;">
+            <input type="checkbox" id="chk-autorefresh-radar" checked onchange="configurarAutoRefreshRadar()" />
+            Auto 20s
+          </label>
+        </div>
+      </div>
+
+      <div id="radar-kpis-container" class="kpi-grid-5"></div>
+      <div id="radar-comparativa-nodos-box" style="margin-bottom:14px;"></div>
+      <div id="radar-insights-container" class="insights-grid-3"></div>
+      <div id="radar-feed-container" class="panel-card"></div>
+    </section>
+  </main>
+
+  <!-- Modal Zoom QR para escaneo cómodo desde el celular -->
+  <div id="qr-zoom-modal" class="modal-backdrop" onclick="if(event.target===this) cerrarModalQrZoom()">
+    <div class="modal-box" id="qr-zoom-content"></div>
+  </div>
+
+  <script>
+    const CSTATE = {
+      tabActiva: 'fichas',
+      nodos: [],
+      nodoSeleccionadoId: null,
+      fichaActual: null,
+      subtabFicha: 'contable',
+      verMovimientosMadreGlobal: false,
+      qrCachePorNodo: {},
+      modoQrTienda: 'directo', // 'directo' | 'afiche'
+      radar: {
+        nodoFiltro: 'todos',
+        rango: 'hoy',
+        fecha: '',
+        audiencia: 'clientes',
+        vistaPlana: false,
+        datos: null,
+        timer: null
+      }
+    };
+
+    function esc(s) {
+      return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function fmtMoneda(n) {
+      const val = Number(n || 0);
+      const abs = Math.abs(val).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+      return (val < 0 ? '-$' : '$') + abs;
+    }
+
+    function fmtFechaHora(iso) {
+      if (!iso) return '—';
+      try {
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return String(iso);
+        return d.toLocaleString('es-AR', {
+          timeZone: 'America/Argentina/Buenos_Aires',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+      } catch (_) {
+        return String(iso);
+      }
+    }
+
+    function copiarTextoPortapapeles(texto, btnEl) {
+      if (!texto) return;
+      navigator.clipboard?.writeText(texto).then(() => {
+        if (btnEl) {
+          const prev = btnEl.innerHTML;
+          btnEl.innerHTML = '✅ Copiado';
+          setTimeout(() => { btnEl.innerHTML = prev; }, 1600);
+        }
+      }).catch(() => {});
+    }
+
+    // =========================================================================
+    // CONTROL DE NAVEGADOR LOCAL COMO DISPOSITIVO ADMIN / GESTOR
+    // =========================================================================
+    function esteNavegadorEsAdminGestor() {
+      try {
+        const rol = String(localStorage.getItem('lamda_nodo_dispositivo_rol') || '').trim().toUpperCase();
+        return rol === 'ADMIN' || rol === 'GESTOR';
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function alternarEsteNavegadorAdmin() {
+      try {
+        if (esteNavegadorEsAdminGestor()) {
+          localStorage.setItem('lamda_nodo_dispositivo_rol', 'CLIENTE_FORZADO');
+        } else {
+          localStorage.setItem('lamda_nodo_dispositivo_rol', 'ADMIN');
+          localStorage.setItem('lamda_nodo_dispositivo_etiqueta', 'PC Panel Interno LAMDA');
+        }
+      } catch (_) {}
+      renderizarEstadoAdminPc();
+      if (CSTATE.fichaActual) renderizarFichaIntegral();
+    }
+
+    function renderizarEstadoAdminPc() {
+      const box = document.getElementById('status-pc-admin-box');
+      if (!box) return;
+      const activo = esteNavegadorEsAdminGestor();
+      box.innerHTML = activo
+        ? `<span class="badge-pill" style="background:#0f172a; color:#f8fafc; padding:5px 10px;">🛠️ Este navegador está marcado como Admin/Gestor (excluido de conversión)</span>
+           <button type="button" class="btn" style="padding:4px 9px; font-size:0.73rem;" onclick="alternarEsteNavegadorAdmin()">Cambiar a Cliente</button>`
+        : `<span class="badge-pill" style="background:#fef3c7; color:#92400e; padding:5px 10px;">👥 Este navegador simula un Cliente Real</span>
+           <button type="button" class="btn" style="padding:4px 9px; font-size:0.73rem;" onclick="alternarEsteNavegadorAdmin()">🛠️ Marcar como Admin/Gestor</button>`;
+    }
+
+    // =========================================================================
+    // NAVEGACIÓN PRINCIPAL
+    // =========================================================================
+    function cambiarTabPrincipal(tab) {
+      CSTATE.tabActiva = tab === 'radar' ? 'radar' : 'fichas';
+      document.getElementById('tab-btn-fichas').classList.toggle('active', CSTATE.tabActiva === 'fichas');
+      document.getElementById('tab-btn-radar').classList.toggle('active', CSTATE.tabActiva === 'radar');
+      document.getElementById('vista-fichas').style.display = CSTATE.tabActiva === 'fichas' ? 'block' : 'none';
+      document.getElementById('vista-radar').style.display = CSTATE.tabActiva === 'radar' ? 'block' : 'none';
+
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.set('tab', CSTATE.tabActiva);
+        window.history.replaceState({}, '', u.pathname + u.search);
+      } catch (_) {}
+
+      if (CSTATE.tabActiva === 'radar') {
+        cargarRadarAnalitica();
+        configurarAutoRefreshRadar();
+      } else {
+        detenerAutoRefreshRadar();
+      }
+    }
+
+    async function recargarVistaActiva() {
+      await cargarResumenNodos(false);
+      if (CSTATE.tabActiva === 'fichas' && CSTATE.nodoSeleccionadoId) {
+        await seleccionarNodoFicha(CSTATE.nodoSeleccionadoId, true);
+      } else if (CSTATE.tabActiva === 'radar') {
+        await cargarRadarAnalitica();
+      }
+    }
+
+    // =========================================================================
+    // VISTA A: RESUMEN DE NODOS, FICHA INTEGRAL Y QRs
+    // =========================================================================
+    async function cargarResumenNodos(seleccionarInicial = true) {
+      const resp = await fetch('/api/produccion/nodos/centro-analitica/resumen', { cache: 'no-store' });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) {
+        document.getElementById('nodos-cards-strip').innerHTML = `
+          <div class="panel-card" style="grid-column:1/-1; color:var(--danger); font-weight:700;">
+            ❌ Error cargando nodos: ${esc(data.error || 'No disponible')}
+          </div>`;
+        return;
+      }
+
+      CSTATE.nodos = Array.isArray(data.nodos) ? data.nodos : [];
+      renderizarPillsNodosRadar();
+
+      if (seleccionarInicial && CSTATE.nodos.length > 0 && !CSTATE.nodoSeleccionadoId) {
+        const params = new URLSearchParams(window.location.search);
+        const qNodo = (params.get('nodo') || '').trim().toLowerCase();
+        const match = qNodo
+          ? CSTATE.nodos.find(n => n.slug.toLowerCase() === qNodo || String(n.id) === qNodo || n.codigo_nodo.toLowerCase() === qNodo)
+          : null;
+        CSTATE.nodoSeleccionadoId = match ? match.id : CSTATE.nodos[0].id;
+      }
+
+      renderizarTarjetasSelectorNodos();
+      if (CSTATE.nodoSeleccionadoId && seleccionarInicial) {
+        await seleccionarNodoFicha(CSTATE.nodoSeleccionadoId, false);
+      }
+    }
+
+    function renderizarTarjetasSelectorNodos() {
+      const strip = document.getElementById('nodos-cards-strip');
+      if (!CSTATE.nodos.length) {
+        strip.innerHTML = `<div class="panel-card" style="grid-column:1/-1; text-align:center;">No hay nodos registrados.</div>`;
+        return;
+      }
+
+      strip.innerHTML = CSTATE.nodos.map(n => {
+        const sel = Number(n.id) === Number(CSTATE.nodoSeleccionadoId);
+        const usaMadre = n.contabilidad.usar_cuenta_madre_unificada;
+        const badgeContable = usaMadre
+          ? `<span class="badge-pill" style="background:#ede9fe; color:#5b21b6;">🔗 Madre Unificada (${esc(n.contabilidad.codigo_cuenta_operativa)})</span>`
+          : `<span class="badge-pill" style="background:#e0f2fe; color:#0369a1;">🏢 Subcuenta Propia (${esc(n.contabilidad.codigo_cuenta_operativa)})</span>`;
+
+        return `
+          <div class="nodo-selector-card ${sel ? 'selected' : ''}" onclick="seleccionarNodoFicha(${Number(n.id)}, false)">
+            <div class="nodo-accent-bar" style="background:${esc(n.color_primario || '#16a34a')};"></div>
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; padding-left:6px;">
+              <div>
+                <div style="font-size:0.72rem; font-weight:800; color:var(--muted);">
+                  ${esc(n.codigo_nodo)} · /tienda/${esc(n.slug)}
+                  ${n.slug_historico ? `<span title="Redirección 302 activa desde /${esc(n.slug_historico)}">↩️ ${esc(n.slug_historico)}</span>` : ''}
+                </div>
+                <div style="font-size:1.04rem; font-weight:900; color:var(--text); margin-top:2px;">
+                  ${esc(n.nombre_marca)}
+                </div>
+                <div style="font-size:0.78rem; color:var(--muted); margin-top:1px;">
+                  👤 ${esc(n.gestor_nombre || 'Sin gestor')} · 📍 ${esc(n.barrio_zona || 'Sin zona')}
+                </div>
+              </div>
+              ${n.activo
+                ? `<span class="badge-pill" style="background:#dcfce7; color:#166534;">ACTIVO</span>`
+                : `<span class="badge-pill" style="background:#f1f5f9; color:#64748b;">ARCHIVADO</span>`
+              }
+            </div>
+
+            <div style="margin-top:10px; padding-left:6px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+              ${badgeContable}
+              <span style="font-size:0.86rem; font-weight:900; color:${n.contabilidad.saldo_cuenta_operativa > 0 ? '#b45309' : '#15803d'};">
+                Saldo: ${fmtMoneda(n.contabilidad.saldo_cuenta_operativa)}
+              </span>
+            </div>
+
+            <div style="margin-top:9px; padding:8px 0 0 6px; border-top:1px dashed var(--border); display:flex; gap:8px; flex-wrap:wrap; font-size:0.74rem; font-weight:700; color:#475569;">
+              <span>📦 ${n.comercial.pedidos_activos} activos</span>
+              <span>·</span>
+              <span>🧺 ${n.comercial.canastos_en_curso} canastos</span>
+              <span>·</span>
+              <span>📡 ${n.comercial.visitantes_reales_hoy} visitas hoy</span>
+              ${n.comercial.carritos_sin_cerrar > 0 ? `<span style="color:#b45309;">· 🛒 ${n.comercial.carritos_sin_cerrar} en carrito</span>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function seleccionarNodoFicha(nodoId, forzarRecargaQr = false) {
+      CSTATE.nodoSeleccionadoId = Number(nodoId);
+      renderizarTarjetasSelectorNodos();
+      const box = document.getElementById('ficha-integral-container');
+      box.innerHTML = `<div class="panel-card" style="text-align:center; padding:32px; color:var(--muted); font-weight:700;">⏳ Cargando ficha integral y códigos QR del nodo...</div>`;
+
+      try {
+        const promesas = [
+          fetch(`/api/produccion/nodos/centro-analitica/nodo/${Number(nodoId)}/ficha`, { cache: 'no-store' }).then(r => r.json())
+        ];
+        if (forzarRecargaQr || !CSTATE.qrCachePorNodo[nodoId]) {
+          promesas.push(
+            fetch(`/api/produccion/nodos/accesos-qr/nodo/${Number(nodoId)}`, { cache: 'no-store' }).then(r => r.json())
+          );
+        }
+
+        const [fichaData, qrData] = await Promise.all(promesas);
+        if (!fichaData?.ok) {
+          box.innerHTML = `<div class="panel-card" style="color:var(--danger); font-weight:700;">❌ ${esc(fichaData?.error || 'No se pudo cargar la ficha.')}</div>`;
+          return;
+        }
+        if (qrData?.ok) {
+          CSTATE.qrCachePorNodo[nodoId] = qrData;
+        }
+        CSTATE.fichaActual = fichaData;
+        renderizarFichaIntegral();
+      } catch (e) {
+        box.innerHTML = `<div class="panel-card" style="color:var(--danger); font-weight:700;">❌ Error de red al cargar el nodo.</div>`;
+      }
+    }
+
+    async function rotarTokenGestorDesdeCentro(nodoId) {
+      if (!confirm('¿Rotar la clave secreta del QR de Gestor? El enlace anterior dejará de funcionar y deberás escanear el nuevo QR en el celular del Gestor.')) {
+        return;
+      }
+      const resp = await fetch(`/api/produccion/nodos/accesos-qr/nodo/${Number(nodoId)}/rotar-token`, { method: 'POST' });
+      const data = await resp.json();
+      if (resp.ok && data.ok) {
+        CSTATE.qrCachePorNodo[nodoId] = data;
+        renderizarFichaIntegral();
+      } else {
+        alert(data.error || 'No se pudo rotar el token del Gestor.');
+      }
+    }
+
+    function abrirModalQrZoom(titulo, subtitulo, dataUrl, linkUrl) {
+      const modal = document.getElementById('qr-zoom-modal');
+      const box = document.getElementById('qr-zoom-content');
+      box.innerHTML = `
+        <h3 style="margin:0 0 4px 0; font-size:1.12rem;">${esc(titulo)}</h3>
+        <div style="font-size:0.82rem; color:var(--muted); margin-bottom:14px;">${esc(subtitulo)}</div>
+        <div style="background:#fff; border:1px solid var(--border); border-radius:14px; padding:14px; display:inline-block; margin-bottom:12px;">
+          <img src="${esc(dataUrl)}" alt="QR" style="width:280px; height:280px; display:block;" />
+        </div>
+        <div class="url-mono">${esc(linkUrl)}</div>
+        <div style="display:flex; gap:8px; justify-content:center; margin-top:12px;">
+          <button type="button" class="btn solid-blue" onclick="copiarTextoPortapapeles('${esc(linkUrl)}', this)">📋 Copiar enlace</button>
+          <a href="${esc(linkUrl)}" target="_blank" rel="noopener" class="btn solid-green">🚀 Abrir en pestaña</a>
+          <button type="button" class="btn" onclick="cerrarModalQrZoom()">Cerrar</button>
+        </div>
+      `;
+      modal.style.display = 'flex';
+    }
+
+    function cerrarModalQrZoom() {
+      document.getElementById('qr-zoom-modal').style.display = 'none';
+    }
+
+    function renderizarFichaIntegral() {
+      const box = document.getElementById('ficha-integral-container');
+      const f = CSTATE.fichaActual;
+      if (!f || !f.nodo) return;
+
+      const n = f.nodo;
+      const qr = CSTATE.qrCachePorNodo[n.id] || {};
+      const cont = n.contabilidad;
+      const com = n.comercial;
+
+      const esQrAfiche = CSTATE.modoQrTienda === 'afiche';
+      const urlTiendaMostrar = esQrAfiche
+        ? (qr.url_movil_tienda_qr_afiche || qr.url_movil_tienda || `/tienda/${n.slug}?utm_source=qr&utm_medium=afiche`)
+        : (qr.url_movil_tienda || `/tienda/${n.slug}`);
+      const imgQrTienda = esQrAfiche ? (qr.qr_afiche_data_url || qr.qr_tienda_data_url) : qr.qr_tienda_data_url;
+
+      const urlGestorMostrar = qr.url_movil_gestor || `/gestor/${n.slug}`;
+      const urlAdminMovil = qr.url_movil_tienda_admin || `/tienda/${n.slug}?modo_admin=1`;
+      const urlClienteLimpioMovil = qr.url_movil_tienda_cliente_limpio || `/tienda/${n.slug}?modo_admin=0`;
+
+      box.innerHTML = `
+        <div class="ficha-grid">
+          <!-- COLUMNA IZQUIERDA: ACCESOS MÓVILES INMEDIATOS Y QRs -->
+          <div class="panel-card">
+            <div class="panel-title">
+              <span>📱 Accesos Móviles y Códigos QR</span>
+              <button type="button" class="btn" style="padding:4px 9px; font-size:0.74rem;"
+                onclick="CSTATE.radar.nodoFiltro='${Number(n.id)}'; cambiarTabPrincipal('radar');">
+                📡 Ver Radar de ${esc(n.slug)} →
+              </button>
+            </div>
+
+            <!-- 1. ENTRAR COMO CLIENTE -->
+            <div class="qr-access-box">
+              <div class="qr-access-head">
+                <div>
+                  <div style="font-weight:900; font-size:0.9rem; color:#15803d;">🛒 Entrar como Cliente (Tienda Vecinal)</div>
+                  <div style="font-size:0.75rem; color:var(--muted);">Vista pública de compra para vecinos de ${esc(n.nombre_marca)}</div>
+                </div>
+                <div style="display:flex; gap:4px;">
+                  <button type="button" class="btn ${!esQrAfiche ? 'solid-dark' : ''}" style="padding:3px 7px; font-size:0.69rem;"
+                    onclick="CSTATE.modoQrTienda='directo'; renderizarFichaIntegral();">Link limpio</button>
+                  <button type="button" class="btn ${esQrAfiche ? 'solid-dark' : ''}" style="padding:3px 7px; font-size:0.69rem;"
+                    onclick="CSTATE.modoQrTienda='afiche'; renderizarFichaIntegral();" title="Agrega utm_source=qr para medir escaneos de carteles en el Radar">QR Afiche</button>
+                </div>
+              </div>
+              ${imgQrTienda ? `
+                <div class="qr-img-wrap">
+                  <img src="${esc(imgQrTienda)}" alt="QR Tienda"
+                    onclick="abrirModalQrZoom('🛒 Tienda ${esc(n.nombre_marca)}', '${esQrAfiche ? 'QR con trazabilidad de Afiche (utm_source=qr)' : 'Enlace directo para Clientes'}', '${esc(imgQrTienda)}', '${esc(urlTiendaMostrar)}')" />
+                </div>
+              ` : ''}
+              <div class="url-mono">${esc(urlTiendaMostrar)}</div>
+              <div class="btn-row">
+                <a href="${esc(urlTiendaMostrar)}" target="_blank" rel="noopener" class="btn solid-green" style="flex:1;">🚀 Entrar como Cliente</a>
+                <button type="button" class="btn" onclick="copiarTextoPortapapeles('${esc(urlTiendaMostrar)}', this)">📋 Copiar URL</button>
+                ${imgQrTienda ? `<button type="button" class="btn" onclick="abrirModalQrZoom('🛒 Tienda ${esc(n.nombre_marca)}', 'Escaneá con la cámara de tu celular', '${esc(imgQrTienda)}', '${esc(urlTiendaMostrar)}')">🔍 QR</button>` : ''}
+              </div>
+            </div>
+
+            <!-- 2. ENTRAR COMO NODO / GESTOR -->
+            <div class="qr-access-box" style="background:#eff6ff; border-color:#bfdbfe;">
+              <div class="qr-access-head">
+                <div>
+                  <div style="font-weight:900; font-size:0.9rem; color:#1e40af;">🎛️ Entrar como Nodo / Gestor</div>
+                  <div style="font-size:0.75rem; color:#475569;">Panel operativo de ${esc(n.gestor_nombre || 'Gestor')} (marca automáticamente el celular como Gestor)</div>
+                </div>
+              </div>
+              ${qr.qr_gestor_data_url ? `
+                <div class="qr-img-wrap">
+                  <img src="${esc(qr.qr_gestor_data_url)}" alt="QR Gestor"
+                    onclick="abrirModalQrZoom('🎛️ Panel Gestor · ${esc(n.nombre_marca)}', 'Uso exclusivo de Gestor y Administración LAMDA', '${esc(qr.qr_gestor_data_url)}', '${esc(urlGestorMostrar)}')" />
+                </div>
+              ` : ''}
+              <div class="url-mono">${esc(urlGestorMostrar)}</div>
+              <div class="btn-row">
+                <a href="${esc(urlGestorMostrar)}" target="_blank" rel="noopener" class="btn solid-blue" style="flex:1;">🎛️ Entrar como Gestor</a>
+                <button type="button" class="btn" onclick="copiarTextoPortapapeles('${esc(urlGestorMostrar)}', this)">📋 Copiar</button>
+                ${qr.qr_gestor_data_url ? `<button type="button" class="btn" onclick="abrirModalQrZoom('🎛️ Panel Gestor · ${esc(n.nombre_marca)}', 'Escaneá desde el celular del Gestor', '${esc(qr.qr_gestor_data_url)}', '${esc(urlGestorMostrar)}')">🔍 QR</button>` : ''}
+                <button type="button" class="btn" title="Invalidar QR anterior y generar uno nuevo" onclick="rotarTokenGestorDesdeCentro(${Number(n.id)})">🔄</button>
+              </div>
+            </div>
+
+            <!-- 3. SEPARAR MI CELULAR / PRUEBAS COMO DISPOSITIVO ADMIN -->
+            <div class="qr-access-box" style="background:#f8fafc; border-style:dashed; margin-bottom:0;">
+              <div style="font-weight:900; font-size:0.84rem; color:#0f172a; margin-bottom:4px;">
+                🛠️ Identificar mi Celular como Dispositivo Admin / Prueba
+              </div>
+              <div style="font-size:0.75rem; color:var(--muted); margin-bottom:9px;">
+                Escaneá este QR una sola vez en tu celular para que tus visitas a <strong>/tienda/${esc(n.slug)}</strong> queden identificadas aparte y <strong>no distorsionen la tasa de conversión</strong> de vecinos reales.
+              </div>
+              <div class="btn-row">
+                ${qr.qr_tienda_admin_data_url ? `
+                  <button type="button" class="btn solid-dark" style="flex:1;"
+                    onclick="abrirModalQrZoom('🛠️ Marcar Celular como Admin / Gestor', 'Al abrirlo en tu celular, tus pruebas en la tienda no afectarán las métricas de clientes.', '${esc(qr.qr_tienda_admin_data_url)}', '${esc(urlAdminMovil)}')">
+                    📲 QR Marcar mi Celular Admin
+                  </button>
+                ` : ''}
+                <button type="button" class="btn" onclick="copiarTextoPortapapeles('${esc(urlAdminMovil)}', this)">📋 Link Admin</button>
+                <button type="button" class="btn" title="Copiar enlace para volver a simular un cliente real en el celular"
+                  onclick="copiarTextoPortapapeles('${esc(urlClienteLimpioMovil)}', this)">👥 Link Cliente Puro</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- COLUMNA DERECHA: FICHA CONTABLE Y RESUMEN COMERCIAL OPERATIVO -->
+          <div>
+            <!-- TARJETA MODALIDAD CONTABLE -->
+            <div class="panel-card" style="margin-bottom:14px; border-left:5px solid ${cont.usar_cuenta_madre_unificada ? '#7c3aed' : '#0284c7'};">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                <div>
+                  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <span class="badge-pill" style="background:${cont.usar_cuenta_madre_unificada ? '#ede9fe' : '#e0f2fe'}; color:${cont.usar_cuenta_madre_unificada ? '#5b21b6' : '#0369a1'}; font-size:0.78rem; padding:4px 10px;">
+                      ${cont.usar_cuenta_madre_unificada ? '🔗 CUENTA MADRE UNIFICADA' : '🏢 SUBCUENTA PROPIA AUTÓNOMA'}
+                    </span>
+                    <span style="font-size:0.8rem; font-weight:800; color:var(--muted);">
+                      Código Operativo: <strong style="color:var(--text);">${esc(cont.codigo_cuenta_operativa || '—')}</strong>
+                    </span>
+                    ${cont.usar_cuenta_madre_unificada && cont.codigo_subcuenta_nodo ? `
+                      <span class="badge-pill" style="background:#f1f5f9; color:#475569;" title="Oculta en buscadores de Tesorería, Cobros y Transferencias para evitar cuentas duplicadas">
+                        🛡️ ${esc(cont.codigo_subcuenta_nodo)}: ${esc(cont.estado_subcuenta_nodo)} (oculta en Tesorería)
+                      </span>
+                    ` : ''}
+                  </div>
+                  <div style="font-size:1.14rem; font-weight:900; margin-top:6px; color:var(--text);">
+                    ${esc(cont.titular_cuenta_operativa || n.nombre_marca)}
+                  </div>
+                  <div style="font-size:0.8rem; color:var(--muted); margin-top:2px;">
+                    ${cont.usar_cuenta_madre_unificada
+                      ? `Todos los canastos, remitos y liquidaciones de <strong>${esc(n.nombre_marca)}</strong> imputan directamente en la ficha histórica <strong>${esc(cont.codigo_cuenta_operativa)}</strong> con trazabilidad del nodo.`
+                      : `Este nodo opera con cuenta corriente independiente propia (<strong>${esc(cont.codigo_cuenta_operativa)}</strong>) separada de otros clientes.`
+                    }
+                  </div>
+                </div>
+
+                <div style="text-align:right; min-width:190px;">
+                  <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; color:var(--muted);">
+                    Saldo Actual (${esc(cont.codigo_cuenta_operativa)})
+                  </div>
+                  <div style="font-size:1.55rem; font-weight:900; color:${cont.saldo_cuenta_operativa > 0 ? '#b45309' : '#15803d'};">
+                    ${fmtMoneda(cont.saldo_cuenta_operativa)}
+                  </div>
+                  <div style="margin-top:6px; display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;">
+                    <a href="http://localhost:3003/pages/clientes-bunker.html" class="btn" style="padding:5px 10px; font-size:0.74rem;">
+                      📒 Ir a Clientes Búnker
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- RESUMEN COMERCIAL OPERATIVO -->
+            <div class="kpi-grid-4">
+              <div class="kpi-box">
+                <div class="kpi-label">📦 Pedidos Vecinales</div>
+                <div class="kpi-val">${com.pedidos_activos} <span style="font-size:0.84rem; font-weight:700; color:var(--muted);">activos</span></div>
+                <div class="kpi-sub">${com.pedidos_historicos} históricos · ${com.pedidos_hoy} hoy · ${com.vecinos_registrados} vecinos</div>
+              </div>
+              <div class="kpi-box">
+                <div class="kpi-label">📅 Próximo Corte / Entrega</div>
+                <div class="kpi-val" style="font-size:1.02rem; line-height:1.25; margin-top:6px;">
+                  ${esc(com.proxima_entrega?.label_completo || 'Sin ventana activa')}
+                </div>
+                <div class="kpi-sub">${esc(com.proxima_entrega?.corte_texto || `${com.ofertas_publicadas} ofertas publicadas`)}</div>
+              </div>
+              <div class="kpi-box">
+                <div class="kpi-label">🧺 Canastos / Lotes</div>
+                <div class="kpi-val">${com.canastos_en_curso} <span style="font-size:0.84rem; font-weight:700; color:var(--muted);">en curso</span></div>
+                <div class="kpi-sub">${com.canastos_totales} canastos acumulados · ${com.ofertas_publicadas} ofertas</div>
+              </div>
+              <div class="kpi-box">
+                <div class="kpi-label">💵 Facturación Acumulada</div>
+                <div class="kpi-val" style="color:#15803d;">${fmtMoneda(com.facturacion_vecinos)}</div>
+                <div class="kpi-sub">Base LAMDA: <strong>${fmtMoneda(com.facturacion_base_lamda)}</strong> · Margen Nodo: ${fmtMoneda(com.ganancia_gestor)}</div>
+              </div>
+            </div>
+
+            <!-- HISTORIAL INTEGRAL FILTRADO DEL NODO -->
+            <div class="panel-card">
+              <div class="subtabs">
+                <button type="button" class="subtab-btn ${CSTATE.subtabFicha === 'contable' ? 'active' : ''}"
+                  onclick="CSTATE.subtabFicha='contable'; renderizarTablaSubtabFicha();">
+                  📑 Movimientos Cta. Cte. (${f.movimientos_contables_nodo.length})
+                </button>
+                <button type="button" class="subtab-btn ${CSTATE.subtabFicha === 'pedidos' ? 'active' : ''}"
+                  onclick="CSTATE.subtabFicha='pedidos'; renderizarTablaSubtabFicha();">
+                  🛍️ Pedidos Vecinales (${f.pedidos_recientes.length})
+                </button>
+                <button type="button" class="subtab-btn ${CSTATE.subtabFicha === 'canastos' ? 'active' : ''}"
+                  onclick="CSTATE.subtabFicha='canastos'; renderizarTablaSubtabFicha();">
+                  🧺 Lotes / Canastos (${f.canastos.length})
+                </button>
+                <button type="button" class="subtab-btn ${CSTATE.subtabFicha === 'remitos' ? 'active' : ''}"
+                  onclick="CSTATE.subtabFicha='remitos'; renderizarTablaSubtabFicha();">
+                  📄 Remitos / Presupuestos (${f.remitos_presupuestos.length})
+                </button>
+                <button type="button" class="subtab-btn ${CSTATE.subtabFicha === 'liquidaciones' ? 'active' : ''}"
+                  onclick="CSTATE.subtabFicha='liquidaciones'; renderizarTablaSubtabFicha();">
+                  ⚖️ Liquidaciones (${f.liquidaciones.length})
+                </button>
+              </div>
+              <div id="subtab-ficha-body"></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      renderizarTablaSubtabFicha();
+    }
+
+    function renderizarTablaSubtabFicha() {
+      const container = document.getElementById('subtab-ficha-body');
+      const f = CSTATE.fichaActual;
+      if (!container || !f) return;
+      const n = f.nodo;
+      const usaMadre = n.contabilidad.usar_cuenta_madre_unificada;
+
+      if (CSTATE.subtabFicha === 'contable') {
+        const lista = (usaMadre && CSTATE.verMovimientosMadreGlobal)
+          ? (f.movimientos_generales_madre || [])
+          : (f.movimientos_contables_nodo || []);
+
+        const barraFiltroMadre = usaMadre ? `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px; padding:8px 12px; background:#f8fafc; border:1px solid var(--border); border-radius:9px; font-size:0.79rem;">
+            <div>
+              ${CSTATE.verMovimientosMadreGlobal
+                ? `Mostrando los <strong>últimos ${lista.length} movimientos globales</strong> de la Cuenta Madre <strong>${esc(n.contabilidad.codigo_cuenta_operativa)}</strong>.`
+                : `Mostrando únicamente asientos con referencia operativa a <strong>${esc(n.nombre_marca)}</strong> dentro de <strong>${esc(n.contabilidad.codigo_cuenta_operativa)}</strong> (Cargos Nodo: <strong>${fmtMoneda(f.resumen_contable_filtrado.total_cargos_nodo)}</strong> · Abonos Nodo: <strong>${fmtMoneda(f.resumen_contable_filtrado.total_abonos_nodo)}</strong>).`
+              }
+            </div>
+            <button type="button" class="btn" style="padding:4px 10px; font-size:0.74rem;"
+              onclick="CSTATE.verMovimientosMadreGlobal = !CSTATE.verMovimientosMadreGlobal; renderizarTablaSubtabFicha();">
+              ${CSTATE.verMovimientosMadreGlobal ? '🔍 Filtrar solo movimientos del Nodo' : `📒 Ver últimos generales de ${esc(n.contabilidad.codigo_cuenta_operativa)}`}
+            </button>
+          </div>
+        ` : '';
+
+        if (!lista.length) {
+          container.innerHTML = barraFiltroMadre + `
+            <div style="padding:24px; text-align:center; color:var(--muted); font-size:0.85rem;">
+              Aún no se registran asientos contables imputados con referencia de este Nodo en Cta. Cte.
+            </div>`;
+          return;
+        }
+
+        container.innerHTML = barraFiltroMadre + `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th>Comprobante</th>
+                  <th>Concepto / Referencia</th>
+                  <th style="text-align:right;">Monto</th>
+                  <th style="text-align:right;">Saldo Cta.</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${lista.map(m => {
+                  const esDebito = String(m.tipo_movimiento || '').toUpperCase() === 'DEBITO';
+                  return `
+                    <tr>
+                      <td style="white-space:nowrap;">${fmtFechaHora(m.fecha_movimiento || m.creado_en)}</td>
+                      <td>
+                        <span class="badge-pill" style="background:${esDebito ? '#fef2f2' : '#f0fdf4'}; color:${esDebito ? '#b91c1c' : '#15803d'};">
+                          ${esDebito ? 'CARGO' : 'ABONO'}
+                        </span>
+                      </td>
+                      <td>${esc(m.tipo_comprobante || m.origen_tipo || '—')}</td>
+                      <td>${esc(m.descripcion || '—')}</td>
+                      <td style="text-align:right; font-weight:800; color:${esDebito ? '#b91c1c' : '#15803d'};">
+                        ${esDebito ? '+' : '-'}${fmtMoneda(m.monto)}
+                      </td>
+                      <td style="text-align:right; font-weight:700;">${fmtMoneda(m.saldo_resultante)}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+        return;
+      }
+
+      if (CSTATE.subtabFicha === 'pedidos') {
+        const peds = f.pedidos_recientes || [];
+        if (!peds.length) {
+          container.innerHTML = `<div style="padding:24px; text-align:center; color:var(--muted);">Sin pedidos vecinales registrados en este Nodo.</div>`;
+          return;
+        }
+        container.innerHTML = `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Pedido</th>
+                  <th>Fecha</th>
+                  <th>Vecino/a</th>
+                  <th>Modalidad / Ventana</th>
+                  <th>Detalle</th>
+                  <th>Estado</th>
+                  <th style="text-align:right;">Total Vecino</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${peds.map(p => `
+                  <tr>
+                    <td><strong>${esc(p.codigo_pedido)}</strong>${p.codigo_canasto ? `<div style="font-size:0.7rem; color:var(--muted);">${esc(p.codigo_canasto)}</div>` : ''}</td>
+                    <td style="white-space:nowrap;">${fmtFechaHora(p.created_at)}</td>
+                    <td>
+                      <strong>${esc(p.vecino_nombre)}</strong>
+                      <div style="font-size:0.73rem; color:var(--muted);">${esc(p.vecino_telefono || '')}</div>
+                    </td>
+                    <td>
+                      <span class="badge-pill" style="background:#f1f5f9; color:#334155;">${p.modalidad_entrega === 'ENVIO_BARRIAL' ? '🚲 Envío' : '🏠 Retiro'}</span>
+                      <div style="font-size:0.73rem; color:var(--muted); margin-top:2px;">${esc(p.fecha_entrega_label || '')}</div>
+                    </td>
+                    <td style="max-width:280px; font-size:0.76rem; color:#334155;">${esc(p.resumen_items || `${p.total_unidades} u.`)}</td>
+                    <td>
+                      <span class="badge-pill" style="background:${p.estado_operativo === 'ENTREGADO_VECINO' ? '#dcfce7' : (p.estado_operativo === 'ANULADO' ? '#fee2e2' : '#eff6ff')}; color:${p.estado_operativo === 'ENTREGADO_VECINO' ? '#166534' : (p.estado_operativo === 'ANULADO' ? '#991b1b' : '#1e40af')};">
+                        ${esc(p.estado_operativo)}
+                      </span>
+                    </td>
+                    <td style="text-align:right; font-weight:900;">${fmtMoneda(p.total_vecino)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+        return;
+      }
+
+      if (CSTATE.subtabFicha === 'canastos') {
+        const lotes = f.canastos || [];
+        if (!lotes.length) {
+          container.innerHTML = `<div style="padding:24px; text-align:center; color:var(--muted);">No hay canastos / lotes generados para este Nodo.</div>`;
+          return;
+        }
+        container.innerHTML = `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Canasto</th>
+                  <th>Entrega</th>
+                  <th>Bolsas</th>
+                  <th>Estado Operativo</th>
+                  <th style="text-align:right;">Base LAMDA</th>
+                  <th style="text-align:right;">Venta Vecinos</th>
+                  <th>Liquidación</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${lotes.map(l => `
+                  <tr>
+                    <td><strong>${esc(l.codigo_canasto)}</strong>${l.id_presupuesto_ext ? `<div style="font-size:0.71rem; color:var(--muted);">Remito: ${esc(l.id_presupuesto_ext)}</div>` : ''}</td>
+                    <td>${esc(l.fecha_entrega_label || l.fecha_entrega_iso || '—')}</td>
+                    <td>${Number(l.bolsas_armadas || 0)} / ${Number(l.total_bolsas || 0)} (${Number(l.total_kilos_lote || 0).toFixed(2)} kg)</td>
+                    <td><span class="badge-pill" style="background:#eff6ff; color:#1e40af;">${esc(l.estado_canasto || l.secuencia_operativa_lamda || '—')}</span></td>
+                    <td style="text-align:right; font-weight:700;">${fmtMoneda(l.total_base_lamda)}</td>
+                    <td style="text-align:right; font-weight:800;">${fmtMoneda(l.total_venta_vecinos)}</td>
+                    <td>${l.liquidacion_cerrada ? '<span class="badge-pill" style="background:#dcfce7; color:#166534;">CERRADA</span>' : '<span class="badge-pill" style="background:#fef3c7; color:#92400e;">ABIERTA</span>'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+        return;
+      }
+
+      if (CSTATE.subtabFicha === 'remitos') {
+        const rems = f.remitos_presupuestos || [];
+        if (!rems.length) {
+          container.innerHTML = `<div style="padding:24px; text-align:center; color:var(--muted);">Sin remitos o presupuestos operativos vinculados todavía.</div>`;
+          return;
+        }
+        container.innerHTML = `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID / Código</th>
+                  <th>Fecha</th>
+                  <th>Comprobante</th>
+                  <th>Secuencia / Logística</th>
+                  <th>Nota / Referencia</th>
+                  <th style="text-align:right;">Importe</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rems.map(r => `
+                  <tr>
+                    <td><strong>#${r.id}</strong> · ${esc(r.id_presupuesto_ext || '')}</td>
+                    <td>${fmtFechaHora(r.fecha)}</td>
+                    <td>${esc(r.tipo_comprobante || 'Presupuesto')}</td>
+                    <td>${esc(r.secuencia || '—')} ${r.estado_logistico ? `(${esc(r.estado_logistico)})` : ''}</td>
+                    <td style="max-width:320px; font-size:0.76rem;">${esc(r.nota || '—')}</td>
+                    <td style="text-align:right; font-weight:800;">${fmtMoneda(r.importe_estimado)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+        return;
+      }
+
+      if (CSTATE.subtabFicha === 'liquidaciones') {
+        const liqs = f.liquidaciones || [];
+        if (!liqs.length) {
+          container.innerHTML = `<div style="padding:24px; text-align:center; color:var(--muted);">Sin liquidaciones cerradas para este Nodo.</div>`;
+          return;
+        }
+        container.innerHTML = `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Liquidación</th>
+                  <th>Canasto</th>
+                  <th>Fecha</th>
+                  <th style="text-align:right;">Venta Vecinos</th>
+                  <th style="text-align:right;">Base LAMDA</th>
+                  <th style="text-align:right;">Ganancia Gestor</th>
+                  <th>Compensación</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${liqs.map(lq => `
+                  <tr>
+                    <td><strong>${esc(lq.codigo_liquidacion)}</strong></td>
+                    <td>${esc(lq.codigo_canasto || '—')}</td>
+                    <td>${fmtFechaHora(lq.created_at)}</td>
+                    <td style="text-align:right;">${fmtMoneda(lq.total_venta_vecinos)}</td>
+                    <td style="text-align:right;">${fmtMoneda(lq.total_base_lamda)}</td>
+                    <td style="text-align:right; font-weight:800; color:#15803d;">${fmtMoneda(lq.ganancia_neta_gestor)}</td>
+                    <td>${esc(lq.direccion_compensacion || '')} (${fmtMoneda(lq.monto_compensacion_final)})</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+    }
+
+    // =========================================================================
+    // VISTA B: RADAR EN VIVO, FLUJO DE NUBE Y ESTADÍSTICAS
+    // =========================================================================
+    function renderizarPillsNodosRadar() {
+      const box = document.getElementById('radar-nodos-pills');
+      if (!box) return;
+      const actual = String(CSTATE.radar.nodoFiltro || 'todos');
+      const pills = [
+        `<button type="button" class="pill-btn ${actual === 'todos' ? 'active' : ''}"
+           onclick="CSTATE.radar.nodoFiltro='todos'; renderizarPillsNodosRadar(); cargarRadarAnalitica();">
+           🌐 Todos los Nodos
+         </button>`
+      ];
+      for (const n of CSTATE.nodos) {
+        const sel = actual === String(n.id) || actual.toLowerCase() === n.slug.toLowerCase();
+        pills.push(`
+          <button type="button" class="pill-btn ${sel ? 'active' : ''}"
+            onclick="CSTATE.radar.nodoFiltro='${Number(n.id)}'; renderizarPillsNodosRadar(); cargarRadarAnalitica();">
+            <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${esc(n.color_primario || '#16a34a')}; margin-right:4px;"></span>
+            ${esc(n.nombre_marca.split('·')[0].trim())}
+          </button>
+        `);
+      }
+      box.innerHTML = pills.join('');
+    }
+
+    function onCambioRangoRadar() {
+      const r = document.getElementById('radar-rango-select').value;
+      CSTATE.radar.rango = r;
+      document.getElementById('radar-fecha-select').style.display = r === 'hoy' ? 'inline-block' : 'none';
+      cargarRadarAnalitica();
+    }
+
+    function alternarModoListadoRadar() {
+      CSTATE.radar.vistaPlana = !CSTATE.radar.vistaPlana;
+      const btn = document.getElementById('btn-modo-vista-radar');
+      if (btn) {
+        btn.innerHTML = CSTATE.radar.vistaPlana ? '👤 Agrupar por Visitante' : '📋 Ver Flujo Plano';
+      }
+      renderizarFeedRadar();
+    }
+
+    function configurarAutoRefreshRadar() {
+      detenerAutoRefreshRadar();
+      const chk = document.getElementById('chk-autorefresh-radar');
+      if (chk && chk.checked && CSTATE.tabActiva === 'radar') {
+        CSTATE.radar.timer = setInterval(() => {
+          if (CSTATE.tabActiva === 'radar' && !document.hidden) {
+            cargarRadarAnalitica(true);
+          }
+        }, 20000);
+      }
+    }
+
+    function detenerAutoRefreshRadar() {
+      if (CSTATE.radar.timer) {
+        clearInterval(CSTATE.radar.timer);
+        CSTATE.radar.timer = null;
+      }
+    }
+
+    function iconoOrigenTrafico(origen) {
+      const o = String(origen || 'Directo').toLowerCase();
+      if (o.includes('whatsapp')) return '💬 WhatsApp';
+      if (o.includes('instagram')) return '📸 Instagram';
+      if (o.includes('tiktok')) return '🎵 TikTok';
+      if (o.includes('facebook')) return '📘 Facebook';
+      if (o.includes('qr')) return '🔳 QR Afiche';
+      if (o.includes('google')) return '🔎 Google';
+      if (o.includes('panel')) return '🛠️ Panel LAMDA';
+      return '🔗 ' + (origen || 'Directo');
+    }
+
+    function etiquetaLegibleEvento(ev) {
+      switch (ev.tipo_evento) {
+        case 'vista_tienda':
+          return ev.producto_nombre ? `Ingresó a tienda (foco: ${ev.producto_nombre})` : 'Ingresó a la tienda vecinal';
+        case 'vista_seguimiento':
+          return `Abrió seguimiento de pedido ${ev.codigo_pedido ? '#' + ev.codigo_pedido : ''}`;
+        case 'vista_mi_cuenta':
+          return 'Abrió su resumen personal Mi Cuenta';
+        case 'categoria_seleccionada':
+          return `Exploró rubro: ${ev.categoria_nombre || 'General'}`;
+        case 'busqueda_lupa':
+          return `Buscó en la lupa: "${ev.termino_busqueda || ''}"`;
+        case 'clic_que_contiene':
+          return `Consultó "¿Qué contiene?": ${ev.producto_nombre || ev.sku_nodo || ''}`;
+        case 'vista_producto':
+          return `Visualizó producto: ${ev.producto_nombre || ev.sku_nodo || ''}`;
+        case 'carrito_agregar':
+          return `Sumó al carrito: ${ev.producto_nombre || ev.sku_nodo || ''} (en carrito: ${ev.carrito_unidades} u. · ${fmtMoneda(ev.carrito_subtotal)})`;
+        case 'carrito_quitar':
+          return `Quitó del carrito: ${ev.producto_nombre || ev.sku_nodo || ''} (en carrito: ${ev.carrito_unidades} u.)`;
+        case 'inicio_checkout':
+          return `Inició Checkout de confirmación (${ev.carrito_unidades} u. · ${fmtMoneda(ev.carrito_subtotal)})`;
+        case 'pedido_confirmado':
+          return `✅ Confirmó Pedido ${ev.codigo_pedido ? '#' + ev.codigo_pedido : ''} (${fmtMoneda(ev.carrito_subtotal)})`;
+        case 'marcar_admin_gestor':
+          return `Actualizó rol de dispositivo (${ev.detalle || 'Admin/Gestor'})`;
+        default:
+          return ev.tipo_evento;
+      }
+    }
+
+    async function cargarRadarAnalitica(silencioso = false) {
+      const rango = document.getElementById('radar-rango-select')?.value || CSTATE.radar.rango || 'hoy';
+      const fechaSel = document.getElementById('radar-fecha-select')?.value || CSTATE.radar.fecha || '';
+      const audiencia = document.getElementById('radar-audiencia-select')?.value || 'clientes';
+      CSTATE.radar.rango = rango;
+      CSTATE.radar.audiencia = audiencia;
+
+      if (!silencioso && !CSTATE.radar.datos) {
+        document.getElementById('radar-feed-container').innerHTML = `<div style="padding:28px; text-align:center; color:var(--muted); font-weight:700;">⏳ Consultando telemetría de tiendas en tiempo real...</div>`;
+      }
+
+      const qs = new URLSearchParams({
+        nodo_id: String(CSTATE.radar.nodoFiltro || 'todos'),
+        rango,
+        audiencia
+      });
+      if (rango === 'hoy' && fechaSel) {
+        qs.set('fecha', fechaSel);
+      }
+
+      const resp = await fetch(`/api/produccion/nodos/centro-analitica/radar?${qs.toString()}`, { cache: 'no-store' });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) return;
+
+      CSTATE.radar.datos = data;
+      CSTATE.radar.fecha = data.filtros.fecha;
+
+      // Poblar selector de fechas con actividad
+      const selFecha = document.getElementById('radar-fecha-select');
+      if (selFecha) {
+        const fechasSet = new Map();
+        fechasSet.set(data.filtros.hoy_argentina, {
+          fecha: data.filtros.hoy_argentina,
+          label: `Hoy (${data.filtros.hoy_argentina})`
+        });
+        for (const fd of (data.fechas_disponibles || [])) {
+          const esHoy = fd.fecha === data.filtros.hoy_argentina;
+          fechasSet.set(fd.fecha, {
+            fecha: fd.fecha,
+            label: `${esHoy ? 'Hoy ' : ''}${fd.fecha} (${fd.visitantes_clientes} vec.${fd.visitantes_admin ? ` + ${fd.visitantes_admin} adm.` : ''})`
+          });
+        }
+        selFecha.innerHTML = Array.from(fechasSet.values()).map(f =>
+          `<option value="${esc(f.fecha)}" ${f.fecha === data.filtros.fecha ? 'selected' : ''}>${esc(f.label)}</option>`
+        ).join('');
+        selFecha.style.display = rango === 'hoy' ? 'inline-block' : 'none';
+      }
+
+      renderizarKpisRadar();
+      renderizarComparativaNodosRadar();
+      renderizarInsightsRadar();
+      renderizarFeedRadar();
+    }
+
+    function renderizarKpisRadar() {
+      const data = CSTATE.radar.datos;
+      if (!data) return;
+      const k = data.kpis;
+      const origenesTop = (data.origenes_trafico || []).slice(0, 4);
+
+      document.getElementById('radar-kpis-container').innerHTML = `
+        <div class="kpi-box">
+          <div class="kpi-label">👥 Visitantes Únicos</div>
+          <div class="kpi-val">${k.visitantes_unicos}</div>
+          <div class="kpi-sub">
+            <strong>${k.visitantes_identificados}</strong> identificados · ${k.visitantes_nuevos} nuevos · ${k.visitantes_recurrentes} recurrentes
+            ${k.visitantes_admin_gestor > 0 && data.filtros.audiencia === 'clientes' ? `<br><span style="color:#64748b;">(+${k.visitantes_admin_gestor} Admin/Gestor separados)</span>` : ''}
+          </div>
+        </div>
+
+        <div class="kpi-box">
+          <div class="kpi-label">🔎 Navegación e Interés</div>
+          <div class="kpi-val">${k.clics_categorias + k.busquedas_lupa + k.consultas_producto}</div>
+          <div class="kpi-sub">
+            ${k.ingresos_tienda} ingresos · ${k.clics_categorias} rubros · ${k.busquedas_lupa} búsquedas · ${k.consultas_producto} "¿Qué contiene?"
+          </div>
+        </div>
+
+        <div class="kpi-box" style="${k.carritos_sin_cerrar_total > 0 ? 'border-color:#fcd34d; background:#fffbeb;' : ''}">
+          <div class="kpi-label">🛒 Carritos Sin Cerrar</div>
+          <div class="kpi-val" style="color:${k.carritos_sin_cerrar_total > 0 ? '#b45309' : 'var(--text)'};">
+            ${k.carritos_sin_cerrar_total}
+            ${k.carritos_sin_cerrar_monto > 0 ? `<span style="font-size:0.9rem; font-weight:800;">(${fmtMoneda(k.carritos_sin_cerrar_monto)})</span>` : ''}
+          </div>
+          <div class="kpi-sub">
+            ${k.carritos_abandonados_total} abandonados (+10 min) · ${k.visitantes_con_carrito} armaron carrito · ${k.visitantes_checkout} en checkout
+          </div>
+        </div>
+
+        <div class="kpi-box" style="${k.pedidos_confirmados > 0 ? 'border-color:#86efac; background:#f0fdf4;' : ''}">
+          <div class="kpi-label">✅ Pedidos y Conversión</div>
+          <div class="kpi-val" style="color:#15803d;">
+            ${k.pedidos_confirmados} <span style="font-size:0.96rem; font-weight:800; color:#0f172a;">(${k.tasa_conversion_pct}%)</span>
+          </div>
+          <div class="kpi-sub">Tasa calculada sin distorsión de dispositivos Admin / Gestor</div>
+        </div>
+
+        <div class="kpi-box">
+          <div class="kpi-label">📲 Origen y Dispositivos</div>
+          <div style="margin:6px 0 4px; display:flex; gap:5px; flex-wrap:wrap;">
+            ${origenesTop.length > 0
+              ? origenesTop.map(o => `<span class="chip">${esc(iconoOrigenTrafico(o.origen))}: <strong>${o.visitantes}</strong></span>`).join('')
+              : '<span class="kpi-sub">Sin tráfico en este filtro</span>'
+            }
+          </div>
+          <div class="kpi-sub">📱 ${k.dispositivos.celulares} Celulares · 🖥️ ${k.dispositivos.pcs} PC${k.dispositivos.bots ? ` · 🤖 ${k.dispositivos.bots} previews` : ''}</div>
+        </div>
+      `;
+    }
+
+    function renderizarComparativaNodosRadar() {
+      const box = document.getElementById('radar-comparativa-nodos-box');
+      const data = CSTATE.radar.datos;
+      if (!box || !data) return;
+      if (String(data.filtros.nodo_id) !== 'todos' || !Array.isArray(data.por_nodo) || data.por_nodo.length <= 1) {
+        box.innerHTML = '';
+        return;
+      }
+
+      box.innerHTML = `
+        <div class="panel-card" style="padding:12px 16px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;">
+          <span style="font-size:0.76rem; font-weight:900; text-transform:uppercase; color:var(--muted);">Pulso por Nodo:</span>
+          ${data.por_nodo.map(pn => `
+            <button type="button" class="btn" onclick="CSTATE.radar.nodoFiltro='${Number(pn.nodo_id)}'; renderizarPillsNodosRadar(); cargarRadarAnalitica();">
+              <span style="width:9px; height:9px; border-radius:50%; background:${esc(pn.color_primario || '#16a34a')}; display:inline-block;"></span>
+              <strong>${esc(pn.nombre_marca.split('·')[0].trim())}</strong>:
+              ${pn.visitantes} vis. · ${pn.agregados_carrito} carr. · <span style="color:#15803d;">${pn.pedidos} ped.</span>
+            </button>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function renderizarInsightsRadar() {
+      const data = CSTATE.radar.datos;
+      if (!data) return;
+
+      const carts = data.carritos_sin_cerrar || [];
+      const cats = data.top_categorias || [];
+      const busq = data.top_busquedas || [];
+      const prods = data.top_productos_interes || [];
+
+      document.getElementById('radar-insights-container').innerHTML = `
+        <!-- PANEL 1: CARRITOS EN CURSO / ABANDONADOS -->
+        <div class="panel-card">
+          <div class="panel-title">
+            <span>🛒 Carritos Abiertos / Abandonados (${carts.length})</span>
+          </div>
+          ${carts.length === 0
+            ? `<div style="font-size:0.82rem; color:var(--muted); padding:10px 0;">No hay carritos pendientes sin confirmar en este momento.</div>`
+            : `<div style="display:flex; flex-direction:column; gap:9px; max-height:260px; overflow-y:auto;">
+                ${carts.map(c => {
+                  const telClean = String(c.vecino_telefono || '').replace(/\D+/g, '');
+                  const waHref = telClean ? `https://wa.me/${telClean.startsWith('54') ? telClean : '549' + telClean}` : '';
+                  return `
+                    <div style="border:1px solid ${c.estado_carrito === 'ABANDONADO' ? '#fcd34d' : '#cbd5e1'}; background:${c.estado_carrito === 'ABANDONADO' ? '#fffbeb' : '#f8fafc'}; border-radius:10px; padding:9px 11px; font-size:0.79rem;">
+                      <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <div>
+                          <strong>${c.identificado ? '👤 ' + esc(c.vecino_nombre) : '🕵️ Visitante ' + esc(c.alias_corto)}</strong>
+                          <span class="badge-pill" style="background:#fff; border:1px solid var(--border); margin-left:4px;">${esc((c.nodo_nombre || '').split('·')[0].trim())}</span>
+                        </div>
+                        <span class="badge-pill" style="background:${c.estado_carrito === 'ABANDONADO' ? '#fef3c7' : '#dcfce7'}; color:${c.estado_carrito === 'ABANDONADO' ? '#92400e' : '#166534'};">
+                          ${c.estado_carrito === 'ABANDONADO' ? `⚠️ Abandonado (hace ${c.minutos_inactivo}m)` : `🟢 En tienda (${c.minutos_inactivo}m)`}
+                        </span>
+                      </div>
+                      <div style="margin-top:5px; color:#334155;">
+                        ${c.items.map(it => `${Number(it.cantidad)}x ${esc(it.nombre)}${it.presentacion ? ' (' + esc(it.presentacion) + ')' : ''}`).join(' · ')}
+                      </div>
+                      <div style="margin-top:5px; display:flex; justify-content:space-between; align-items:center;">
+                        <strong style="color:#0f172a;">Subtotal: ${fmtMoneda(c.subtotal)} (${c.unidades} u.)</strong>
+                        ${waHref ? `<a href="${esc(waHref)}" target="_blank" rel="noopener" style="color:#15803d; font-weight:800; text-decoration:none;">💬 ${esc(c.vecino_telefono)}</a>` : `<span style="color:var(--muted);">${esc(iconoOrigenTrafico(c.origen_trafico))}</span>`}
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>`
+          }
+        </div>
+
+        <!-- PANEL 2: RUBROS Y BÚSQUEDAS EN LUPA -->
+        <div class="panel-card">
+          <div class="panel-title"><span>🏷️ Rubros Visitados y Lupa</span></div>
+          <div style="font-size:0.74rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:6px;">Categorías más elegidas</div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+            ${cats.length > 0
+              ? cats.map(c => `<span class="chip">📂 ${esc(c.categoria)} <strong>(${c.clics})</strong></span>`).join('')
+              : '<span style="font-size:0.8rem; color:var(--muted);">Sin clics de rubros registrados.</span>'
+            }
+          </div>
+          <div style="font-size:0.74rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:6px;">Textos buscados en la lupa</div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            ${busq.length > 0
+              ? busq.map(b => `<span class="chip" style="background:#eff6ff; border-color:#bfdbfe; color:#1e3a8a;">🔍 "${esc(b.termino)}" <strong>×${b.cantidad}</strong></span>`).join('')
+              : '<span style="font-size:0.8rem; color:var(--muted);">Sin búsquedas en este período.</span>'
+            }
+          </div>
+        </div>
+
+        <!-- PANEL 3: PRODUCTOS DE MAYOR INTERÉS -->
+        <div class="panel-card">
+          <div class="panel-title"><span>🥣 Productos con Mayor Interés</span></div>
+          ${prods.length === 0
+            ? `<div style="font-size:0.82rem; color:var(--muted);">Sin interacciones sobre productos específicos todavía.</div>`
+            : `<div style="display:flex; flex-direction:column; gap:6px; max-height:250px; overflow-y:auto;">
+                ${prods.slice(0, 8).map(p => `
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 8px; background:#f8fafc; border-radius:8px; font-size:0.79rem;">
+                    <div style="font-weight:700; color:#0f172a;">${esc(p.producto_nombre)}</div>
+                    <div style="white-space:nowrap; font-size:0.73rem; color:#475569;">
+                      ${p.vistas_detalle ? `🥣 ${p.vistas_detalle} ing.` : ''}
+                      ${p.veces_agregado ? ` · 🛒 <strong>+${p.veces_agregado}</strong>` : ''}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>`
+          }
+        </div>
+      `;
+    }
+
+    function renderizarFeedRadar() {
+      const container = document.getElementById('radar-feed-container');
+      const data = CSTATE.radar.datos;
+      if (!container || !data) return;
+
+      if (CSTATE.radar.vistaPlana) {
+        const flujo = data.flujo_cronologico || [];
+        container.innerHTML = `
+          <div class="panel-title">
+            <span>📋 Flujo Cronológico de Nube (${flujo.length} eventos)</span>
+          </div>
+          ${flujo.length === 0
+            ? `<div style="padding:24px; text-align:center; color:var(--muted);">Sin eventos para los filtros seleccionados.</div>`
+            : `<div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Hora</th>
+                      <th>Nodo</th>
+                      <th>Visitante / Vecino</th>
+                      <th>Origen / Disp.</th>
+                      <th>Acción en Tienda</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${flujo.map(ev => `
+                      <tr>
+                        <td style="white-space:nowrap; font-family:monospace;">${esc(ev.fecha_arg)} ${esc(ev.hora_arg)}</td>
+                        <td><span class="badge-pill" style="background:#f1f5f9;">${esc((ev.nodo_nombre || ev.nodo_slug || '').split('·')[0].trim())}</span></td>
+                        <td>
+                          ${ev.es_admin_gestor ? '🛠️ ' : (ev.vecino_nombre_resuelto ? '👤 ' : '🕵️ ')}
+                          <strong>${esc(ev.vecino_nombre_resuelto || (ev.es_admin_gestor ? (ev.etiqueta_dispositivo || 'Admin / Gestor') : '#' + String(ev.visitor_id).slice(-4).toUpperCase()))}</strong>
+                        </td>
+                        <td style="font-size:0.75rem;">${esc(iconoOrigenTrafico(ev.origen_trafico))} · ${ev.dispositivo_modo === 'Celular' ? '📱' : '🖥️'} ${esc(ev.sistema_operativo || '')}</td>
+                        <td>${esc(etiquetaLegibleEvento(ev))}</td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>`
+          }
+        `;
+        return;
+      }
+
+      const grupos = data.radar_visitantes || [];
+      container.innerHTML = `
+        <div class="panel-title">
+          <span>📡 Radar de Visitantes y Compradores (${grupos.length} sesiones agrupadas)</span>
+          <span style="font-size:0.76rem; font-weight:600; color:var(--muted);">Tocá una fila para desplegar el recorrido paso a paso</span>
+        </div>
+        ${grupos.length === 0
+          ? `<div style="padding:28px; text-align:center; color:var(--muted); font-size:0.88rem;">
+               No hay visitas registradas para este filtro. Abrí la tienda desde un enlace o cambiá el rango de fechas.
+             </div>`
+          : grupos.map(g => {
+              const claseEstado = g.es_admin_gestor
+                ? 'admin-dev'
+                : (g.compro_en_visita ? 'bought' : (g.carrito_actual_unidades > 0 ? 'abandoned' : ''));
+
+              const tituloQuien = g.es_admin_gestor
+                ? `🛠️ ${esc(g.etiqueta_dispositivo || (g.vecino_nombre ? g.vecino_nombre + ' (Admin/Gestor)' : 'Dispositivo Admin / Gestor'))}`
+                : (g.identificado
+                    ? `👤 ${esc(g.vecino_nombre)}${g.vecino_telefono ? ` · <span style="font-weight:700; color:#15803d;">${esc(g.vecino_telefono)}</span>` : ''}`
+                    : `🕵️ Visitante Anónimo ${esc(g.alias_visitante)}`);
+
+              const badgeConversion = g.compro_en_visita
+                ? `<span class="badge-pill" style="background:#dcfce7; color:#166534;">✅ COMPRÓ ${g.codigos_pedido.length ? '#' + esc(g.codigos_pedido.join(', #')) : ''}</span>`
+                : (g.carrito_actual_unidades > 0
+                    ? `<span class="badge-pill" style="background:#fef3c7; color:#92400e;">🛒 Dejó carrito (${g.carrito_actual_unidades} u. · ${fmtMoneda(g.carrito_actual_subtotal)})</span>`
+                    : (g.iniciaron_checkout
+                        ? `<span class="badge-pill" style="background:#ffedd5; color:#9a3412;">⏸️ Abrió Checkout sin confirmar</span>`
+                        : `<span class="badge-pill" style="background:#f1f5f9; color:#475569;">👀 Exploró (${g.eventos.length} ev.)</span>`));
+
+              return `
+                <details class="visitor-card ${claseEstado}">
+                  <summary class="visitor-summary">
+                    <div style="flex:1; min-width:260px;">
+                      <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
+                        <span style="font-size:0.93rem; font-weight:900; color:var(--text);">${tituloQuien}</span>
+                        ${!g.es_admin_gestor ? `
+                          <span class="badge-pill" style="background:${g.es_recurrente ? '#e0e7ff' : '#f1f5f9'}; color:${g.es_recurrente ? '#3730a3' : '#475569'};">
+                            ${g.es_recurrente ? `Recurrente (${g.total_sesiones_historicas} vis.)` : 'Nuevo'}
+                          </span>
+                        ` : ''}
+                        <span class="badge-pill" style="background:#fff; border:1px solid ${esc(g.nodo_color)}; color:#0f172a;">
+                          🏘️ ${esc((g.nodo_nombre || g.nodo_slug || '').split('·')[0].trim())}
+                        </span>
+                      </div>
+
+                      <div style="margin-top:5px; display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+                        <span class="chip">${esc(iconoOrigenTrafico(g.origen_trafico))}</span>
+                        <span class="chip">${g.dispositivo_modo === 'Celular' ? '📱' : '🖥️'} ${esc(g.sistema_operativo)}</span>
+                        ${g.categorias_vistas.map(c => `<span class="chip">📂 ${esc(c)}</span>`).join('')}
+                        ${g.busquedas.map(b => `<span class="chip" style="background:#eff6ff; color:#1e40af;">🔍 "${esc(b)}"</span>`).join('')}
+                        ${g.productos_interes.slice(0, 3).map(p => `<span class="chip" style="background:#f0fdf4; color:#166534;">🥣 ${esc(p)}</span>`).join('')}
+                      </div>
+                    </div>
+
+                    <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:5px;">
+                      ${badgeConversion}
+                      <div style="font-size:0.75rem; font-family:monospace; color:var(--muted);">
+                        🕒 ${esc(g.fecha_arg)} · ${esc(g.primera_hora.slice(0, 5))}${g.ultima_hora !== g.primera_hora ? ' → ' + esc(g.ultima_hora.slice(0, 5)) : ''} hs
+                      </div>
+                    </div>
+                  </summary>
+
+                  <div class="visitor-timeline">
+                    ${g.carrito_actual_items && g.carrito_actual_items.length > 0 ? `
+                      <div style="margin-bottom:8px; padding:7px 10px; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; font-size:0.78rem; color:#92400e;">
+                        <strong>🛒 Productos actualmente en su carrito:</strong>
+                        ${g.carrito_actual_items.map(it => `${Number(it.cantidad)}x ${esc(it.nombre)} (${fmtMoneda(it.subtotal)})`).join(' · ')}
+                      </div>
+                    ` : ''}
+                    <div style="display:flex; flex-direction:column; gap:5px;">
+                      ${g.eventos.slice().reverse().map(ev => `
+                        <div style="display:flex; gap:10px; font-size:0.79rem; padding:3px 0; border-bottom:1px dashed #e2e8f0;">
+                          <span style="font-family:monospace; color:#64748b; white-space:nowrap;">${esc(ev.hora)}</span>
+                          <span style="color:#0f172a; font-weight:${ev.tipo_evento === 'pedido_confirmado' ? '900' : '600'};">${esc(etiquetaLegibleEvento(ev))}</span>
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+                </details>
+              `;
+            }).join('')
+        }
+      `;
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      renderizarEstadoAdminPc();
+      const params = new URLSearchParams(window.location.search);
+      const tabInicial = (params.get('tab') || 'fichas').trim().toLowerCase();
+      const nodoQuery = (params.get('nodo') || '').trim();
+      if (nodoQuery) {
+        CSTATE.radar.nodoFiltro = nodoQuery;
+      }
+
+      await cargarResumenNodos(true);
+      if (tabInicial === 'radar') {
+        cambiarTabPrincipal('radar');
+      }
+    });
+  </script>
+</body>
+</html>

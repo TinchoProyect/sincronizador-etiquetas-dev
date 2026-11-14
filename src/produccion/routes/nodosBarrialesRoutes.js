@@ -6,6 +6,7 @@ const { spawn } = require('child_process');
 const QRCode = require('qrcode');
 const router = express.Router();
 const nodosService = require('../services/nodosBarrialesService');
+const nodosAnaliticaService = require('../services/nodosAnaliticaService');
 
 const CLOUDFLARED_EXE = 'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe';
 const TUNNEL_CACHE_FILE = path.join(os.tmpdir(), 'lamda_nodos_cloudflare_tunnel.json');
@@ -598,6 +599,21 @@ router.get('/tienda/:slug/seguimiento/:token', async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
         const data = await nodosService.obtenerSeguimientoPublicoPedidoVecino(req.params.slug, req.params.token);
+        const vid = String(req.query.vid || '').trim();
+        if (vid && data?.pedido) {
+            const ipReq = String(req.headers['cf-connecting-ip'] || (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0] : '') || req.ip || '').trim();
+            nodosAnaliticaService.vincularVisitanteConVecino({
+                visitorId: vid,
+                nodoId: data.pedido.nodo_id,
+                vecinoId: data.pedido.vecino_id,
+                vecinoNombre: data.identidad_vecino?.nombre_completo || data.pedido.vecino_nombre,
+                vecinoTelefono: data.identidad_vecino?.telefono_whatsapp || data.pedido.vecino_telefono,
+                telefonoNormalizado: data.identidad_vecino?.telefono_normalizado || null,
+                identificadoVia: 'SEGUIMIENTO_TOKEN',
+                ipOrigen: ipReq,
+                userAgent: req.headers['user-agent'] || ''
+            }).catch(() => {});
+        }
         res.json({ ok: true, ...data });
     } catch (error) {
         res.status(404).json({ ok: false, error: error.message });
@@ -612,6 +628,21 @@ router.get('/seguimiento/:token', async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
         const data = await nodosService.obtenerSeguimientoPublicoPedidoVecino('', req.params.token);
+        const vid = String(req.query.vid || '').trim();
+        if (vid && data?.pedido) {
+            const ipReq = String(req.headers['cf-connecting-ip'] || (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0] : '') || req.ip || '').trim();
+            nodosAnaliticaService.vincularVisitanteConVecino({
+                visitorId: vid,
+                nodoId: data.pedido.nodo_id,
+                vecinoId: data.pedido.vecino_id,
+                vecinoNombre: data.identidad_vecino?.nombre_completo || data.pedido.vecino_nombre,
+                vecinoTelefono: data.identidad_vecino?.telefono_whatsapp || data.pedido.vecino_telefono,
+                telefonoNormalizado: data.identidad_vecino?.telefono_normalizado || null,
+                identificadoVia: 'SEGUIMIENTO_TOKEN',
+                ipOrigen: ipReq,
+                userAgent: req.headers['user-agent'] || ''
+            }).catch(() => {});
+        }
         res.json({ ok: true, ...data });
     } catch (error) {
         res.status(404).json({ ok: false, error: error.message });
@@ -1285,12 +1316,18 @@ async function construirPayloadQrNodo(nodo, baseMovil) {
     const tokenQ = nodo.gestor_token ? `?t=${encodeURIComponent(nodo.gestor_token)}` : '';
     const urlMovilGestor = `${baseMovil}/gestor/${slugEnc}${tokenQ}`;
     const urlMovilTienda = `${baseMovil}/tienda/${slugEnc}`;
+    const urlMovilTiendaQrAfiche = `${baseMovil}/tienda/${slugEnc}?utm_source=qr&utm_medium=afiche`;
+    const urlMovilTiendaAdmin = `${baseMovil}/tienda/${slugEnc}?modo_admin=1`;
+    const urlMovilTiendaClienteLimpio = `${baseMovil}/tienda/${slugEnc}?modo_admin=0`;
     const urlPcGestor = `http://localhost:3002/gestor/${slugEnc}${tokenQ}`;
     const urlPcTienda = `http://localhost:3002/tienda/${slugEnc}`;
+    const urlPcTiendaAdmin = `http://localhost:3002/tienda/${slugEnc}?modo_admin=1`;
 
-    const [qrGestorDataUrl, qrTiendaDataUrl] = await Promise.all([
+    const [qrGestorDataUrl, qrTiendaDataUrl, qrAficheDataUrl, qrTiendaAdminDataUrl] = await Promise.all([
         QRCode.toDataURL(urlMovilGestor, { margin: 2, width: 360, errorCorrectionLevel: 'M' }),
-        QRCode.toDataURL(urlMovilTienda, { margin: 2, width: 360, errorCorrectionLevel: 'M' })
+        QRCode.toDataURL(urlMovilTienda, { margin: 2, width: 360, errorCorrectionLevel: 'M' }),
+        QRCode.toDataURL(urlMovilTiendaQrAfiche, { margin: 2, width: 360, errorCorrectionLevel: 'M' }),
+        QRCode.toDataURL(urlMovilTiendaAdmin, { margin: 2, width: 320, errorCorrectionLevel: 'M' })
     ]);
 
     return {
@@ -1305,7 +1342,13 @@ async function construirPayloadQrNodo(nodo, baseMovil) {
         qr_gestor_data_url: qrGestorDataUrl,
         url_movil_tienda: urlMovilTienda,
         url_pc_tienda: urlPcTienda,
-        qr_tienda_data_url: qrTiendaDataUrl
+        qr_tienda_data_url: qrTiendaDataUrl,
+        url_movil_tienda_qr_afiche: urlMovilTiendaQrAfiche,
+        qr_afiche_data_url: qrAficheDataUrl,
+        url_movil_tienda_admin: urlMovilTiendaAdmin,
+        url_pc_tienda_admin: urlPcTiendaAdmin,
+        qr_tienda_admin_data_url: qrTiendaAdminDataUrl,
+        url_movil_tienda_cliente_limpio: urlMovilTiendaClienteLimpio
     };
 }
 
@@ -1320,6 +1363,20 @@ router.get('/tienda/:slug/mi-cuenta/:portalToken', async (req, res) => {
             req.params.slug,
             req.params.portalToken
         );
+        const vid = String(req.query.vid || '').trim();
+        if (vid && data?.vecino) {
+            const ipReq = String(req.headers['cf-connecting-ip'] || (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0] : '') || req.ip || '').trim();
+            nodosAnaliticaService.vincularVisitanteConVecino({
+                visitorId: vid,
+                nodoId: data.nodo?.id || null,
+                vecinoId: data.vecino.id,
+                vecinoNombre: data.vecino.nombre_completo,
+                vecinoTelefono: data.vecino.telefono_whatsapp,
+                identificadoVia: 'MI_CUENTA',
+                ipOrigen: ipReq,
+                userAgent: req.headers['user-agent'] || ''
+            }).catch(() => {});
+        }
         res.json({ ok: true, ...data });
     } catch (error) {
         res.status(400).json({ ok: false, error: error.message });
@@ -1576,6 +1633,143 @@ router.post('/whatsapp-prueba', async (req, res) => {
         });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en POST /whatsapp-prueba:', error.message);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+// ============================================================================
+// TELEMETRÍA PÚBLICA DE TIENDA Y CENTRO INTERNO DE NODOS Y ANALÍTICA
+// ============================================================================
+
+const _rateLimitTelemetriaTiendaMap = new Map();
+const RATE_LIMIT_TEL_VENTANA_MS = 60 * 1000;
+const RATE_LIMIT_TEL_MAX_POR_MINUTO = 120;
+
+function extraerIpRealTelemetria(req) {
+    return String(
+        req.headers['cf-connecting-ip'] ||
+        (req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0] : '') ||
+        req.ip ||
+        req.socket?.remoteAddress ||
+        'anon'
+    ).trim();
+}
+
+function limitarTelemetriaPublicaTienda(req, res, next) {
+    const ahora = Date.now();
+    if (_rateLimitTelemetriaTiendaMap.size > 1500) {
+        for (const [k, v] of _rateLimitTelemetriaTiendaMap.entries()) {
+            if (ahora - v.inicio > RATE_LIMIT_TEL_VENTANA_MS) {
+                _rateLimitTelemetriaTiendaMap.delete(k);
+            }
+        }
+    }
+    const ip = extraerIpRealTelemetria(req);
+    let reg = _rateLimitTelemetriaTiendaMap.get(ip);
+    if (!reg || (ahora - reg.inicio) >= RATE_LIMIT_TEL_VENTANA_MS) {
+        reg = { inicio: ahora, conteo: 0 };
+        _rateLimitTelemetriaTiendaMap.set(ip, reg);
+    }
+    reg.conteo += 1;
+    if (reg.conteo > RATE_LIMIT_TEL_MAX_POR_MINUTO) {
+        return res.status(429).json({ ok: false, error: 'Límite de eventos por minuto alcanzado.' });
+    }
+    const rawSize = Number(req.headers['content-length'] || 0);
+    if (rawSize > 16384) {
+        return res.status(413).json({ ok: false, error: 'Payload de telemetría excede el tamaño máximo permitido.' });
+    }
+    return next();
+}
+
+function bloquearEnDominioPublicoTienda(req, res, next) {
+    if (esSolicitudPublicaNodos(req)) {
+        return res.status(403).json({
+            ok: false,
+            error: 'Acceso restringido. El Centro de Nodos y Analítica es exclusivo del entorno interno de LAMDA.'
+        });
+    }
+    return next();
+}
+
+/**
+ * POST /api/produccion/nodos/tienda/:slug/telemetria
+ * Único endpoint público de recepción liviana y no bloqueante de eventos de tienda y seguimiento.
+ */
+router.post('/tienda/:slug/telemetria', limitarTelemetriaPublicaTienda, async (req, res) => {
+    try {
+        const bodyObj = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};
+        if (JSON.stringify(bodyObj).length > 16384) {
+            return res.status(413).json({ ok: false, error: 'Payload excede el tamaño permitido.' });
+        }
+        const resultado = await nodosAnaliticaService.registrarEventoTelemetriaTienda(
+            req.params.slug,
+            bodyObj,
+            {
+                ip: extraerIpRealTelemetria(req),
+                userAgent: req.headers['user-agent'] || ''
+            }
+        );
+        return res.json({ ok: true, registrado: Boolean(resultado?.ok) });
+    } catch (error) {
+        console.warn('⚠️ [NodosTelemetria] Evento descartado sin bloquear tienda:', error.message);
+        return res.status(200).json({ ok: true, registrado: false });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/centro-analitica/resumen
+ * Vista A: Listado integral de Nodos (Modalidad Contable + Resumen Comercial + Pulso Hoy).
+ * Bloqueado estrictamente con HTTP 403 en tienda.lamdaser.com.
+ */
+router.get('/centro-analitica/resumen', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        const data = await nodosAnaliticaService.obtenerResumenCentroNodos({
+            calcularProximaEntregaFn: nodosService.calcularProximaEntregaNodo
+        });
+        res.json(data);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /centro-analitica/resumen:', error.message);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/centro-analitica/nodo/:id/ficha
+ * Vista A (Detalle): Movimientos contables filtrados por referencia del Nodo, Lotes, Remitos, Liquidaciones y Pedidos.
+ * Bloqueado estrictamente con HTTP 403 en tienda.lamdaser.com.
+ */
+router.get('/centro-analitica/nodo/:id/ficha', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        const data = await nodosAnaliticaService.obtenerFichaDetalleNodo(req.params.id, {
+            calcularProximaEntregaFn: nodosService.calcularProximaEntregaNodo
+        });
+        res.json(data);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /centro-analitica/nodo/:id/ficha:', error.message);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/centro-analitica/radar
+ * Vista B: Radar en Vivo, Flujo de Nube, Embudo, Búsquedas y Carritos Abandonados por Nodo.
+ * Bloqueado estrictamente con HTTP 403 en tienda.lamdaser.com.
+ */
+router.get('/centro-analitica/radar', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        const data = await nodosAnaliticaService.obtenerRadarAnaliticaNodos({
+            nodoId: req.query.nodo_id || 'todos',
+            rango: req.query.rango || 'hoy',
+            fecha: req.query.fecha || null,
+            audiencia: req.query.audiencia || 'clientes',
+            limiteEventos: req.query.limite || 400
+        });
+        res.json(data);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /centro-analitica/radar:', error.message);
         res.status(500).json({ ok: false, error: error.message });
     }
 });

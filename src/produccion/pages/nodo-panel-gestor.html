@@ -1212,6 +1212,10 @@
 
       GSTATE.nodo = data.nodo;
       GSTATE.slug = data.nodo.slug;
+      try {
+        localStorage.setItem('lamda_nodo_dispositivo_rol', 'GESTOR');
+        localStorage.setItem('lamda_nodo_dispositivo_etiqueta', `Gestor ${data.nodo.nombre_marca || data.nodo.slug}`);
+      } catch (_) {}
       GSTATE.modoLaboratorio = Boolean(data.modo_laboratorio);
       GSTATE.telefonoPruebas = String(data.telefono_whatsapp_pruebas || '5492216615746');
       GSTATE.proximaEntrega = data.proxima_entrega;

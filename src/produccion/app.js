@@ -56,7 +56,12 @@ app.use((req, res, next) => {
         /^\/img\/nodos\/[^/]+\/[a-z0-9._-]+\.(?:png|jpe?g|webp|svg|ico)$/i.test(p) ||
         /^\/(favicon\.ico|robots\.txt)$/i.test(p);
 
+    const esBeaconTelemetriaTienda =
+        req.method === 'POST' &&
+        /^\/api\/produccion\/nodos\/tienda\/[^/]+\/telemetria\/?$/i.test(p);
+
     const esApiNodoPermitida =
+        esBeaconTelemetriaTienda ||
         /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|ofertas-gestor\/\d+|gestor\/\d+\/(config-logistica|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
 
     if (esVistaPermitida || esApiNodoPermitida) {
@@ -333,6 +338,12 @@ app.get(['/deposito-nodos', '/deposito-nodos/:nodoSlug'], (req, res) => {
 });
 app.get(['/liquidacion-nodos', '/liquidacion-nodos/:nodoSlug'], (req, res) => {
     res.sendFile(path.join(__dirname, 'pages', 'nodo-liquidacion-cobros.html'));
+});
+app.get(['/centro-nodos', '/centro-nodos/:nodoSlug'], (req, res) => {
+    if (esAccesoExternoNodos(req)) {
+        return res.status(403).send('Acceso restringido al entorno interno de LAMDA.');
+    }
+    return res.sendFile(path.join(__dirname, 'pages', 'centro-nodos-analitica.html'));
 });
 
 // ✅ PROXY A SUPABASE (BYPASS DE CORS)

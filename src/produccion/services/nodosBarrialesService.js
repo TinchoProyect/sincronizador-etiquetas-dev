@@ -26,6 +26,10 @@ const {
     agregarReferenciaNodoADescripcion,
     obtenerOCrearCuentaPrincipalBunker
 } = require('../../shared/nodosCuentaUnificadaHelper');
+const {
+    asegurarEsquemaAnaliticaNodos,
+    vincularVisitanteConVecino
+} = require('./nodosAnaliticaService');
 
 let esquemaInicializado = false;
 
@@ -4448,6 +4452,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
 
         // Migración idempotente de identidad visual Paraíso para NODO-001 (sin tocar MANSO ni pedidos)
         await migrarNodoLoDeMatiAParaiso(client);
+        await asegurarEsquemaAnaliticaNodos(client);
 
         await client.query('COMMIT');
         esquemaInicializado = true;
@@ -7646,6 +7651,20 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
         );
         const saldoVecinoActual = await recalcularSaldoSubcuentaVecino(client, vecinoId);
 
+        if (payload.visitor_id) {
+            await vincularVisitanteConVecino({
+                visitorId: payload.visitor_id,
+                nodoId: nodo.id,
+                vecinoId,
+                vecinoNombre,
+                vecinoTelefono,
+                telefonoNormalizado: telNormVecino,
+                identificadoVia: 'PEDIDO',
+                pedidoConfirmado: true,
+                client
+            });
+        }
+
         await client.query('COMMIT');
 
         return {
@@ -10771,6 +10790,8 @@ async function ponerACeroDatosNodosBarriales(opciones = {}) {
         // 4. Vaciar todas las tablas operativas de Nodos y reiniciar sus secuencias a 1
         await client.query(`
             TRUNCATE TABLE
+                public.nodos_tienda_eventos,
+                public.nodos_tienda_visitantes,
                 public.nodos_vecinos_movimientos_cc,
                 public.nodos_liquidaciones_lote,
                 public.nodos_movimientos_cta_cte,
