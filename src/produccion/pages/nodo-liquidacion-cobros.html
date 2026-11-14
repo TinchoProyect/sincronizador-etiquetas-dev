@@ -704,23 +704,32 @@
                     <div style="padding:13px 16px; border-radius:11px; background:#0f172a; border:1px solid #334155; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
                         <div style="flex:1; min-width:280px; font-size:0.82rem; color:#cbd5e1; line-height:1.45;">
                             💡 <strong>Detalle de Compensación:</strong> ${esc(c.explicacion_compensacion)}
-                            ${lote.codigo_bunker_cliente_madre ? `
+                            ${lote.codigo_bunker_cliente_madre ? (lote.usar_cuenta_madre_unificada ? `
+                                <div style="margin-top:6px; padding:7px 10px; border-radius:7px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.4); color:#bae6fd; font-size:0.78rem;">
+                                    🔗 <strong>Cuenta Corriente Unificada (${esc(lote.codigo_bunker_cliente_madre)} — ${esc(lote.cliente_madre_razon_social || lote.cliente_madre_nombre || '')}):</strong>
+                                    Toda la operatoria de <strong>Nodo ${esc(lote.nombre_marca || '')}</strong> (canastos, transferencias y cobros) imputa directo en esta ficha única (Saldo actual: <strong>${Number(lote.saldo_cuenta_corriente_madre) < -0.01 ? fmtMoneda(Math.abs(Number(lote.saldo_cuenta_corriente_madre))) + ' a favor' : fmtMoneda(lote.saldo_cuenta_corriente_madre)}</strong> · subcuenta <code>${esc(lote.codigo_bunker_cliente)}</code> archivada sin duplicidad).
+                                </div>
+                            ` : `
                                 <div style="margin-top:6px; padding:7px 10px; border-radius:7px; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.35); color:#6ee7b7; font-size:0.78rem;">
                                     🔗 <strong>Cuenta Personal Aislada (${esc(lote.codigo_bunker_cliente_madre)} — ${esc(lote.cliente_madre_razon_social || lote.cliente_madre_nombre || '')}):</strong>
                                     Permanece aislada durante la operatoria diaria (Saldo actual: <strong>${Number(lote.saldo_cuenta_corriente_madre) < -0.01 ? fmtMoneda(Math.abs(Number(lote.saldo_cuenta_corriente_madre))) + ' a favor' : fmtMoneda(lote.saldo_cuenta_corriente_madre)}</strong>). Al cerrar el lote podés elegir <strong>Rendición Directa sobre ${esc(lote.codigo_bunker_cliente)}</strong> o <strong>Compensar contra ${esc(lote.codigo_bunker_cliente_madre)}</strong>.
                                 </div>
-                            ` : ''}
+                            `) : ''}
                         </div>
 
                         ${!cerrado ? `
                             <button type="button" class="btn-action"
                                 onclick="confirmarCierreLiquidacionLote(${lote.id})"
                                 style="background:linear-gradient(135deg, #10b981, #059669); color:#052e16; padding:12px 20px; font-size:0.88rem;">
-                                ✅ Cerrar Liquidación (${fmtMoneda(c.monto_compensacion_final)}) y Saldar ${esc(lote.codigo_bunker_cliente)} en $0
+                                ${lote.usar_cuenta_madre_unificada && lote.codigo_bunker_cliente_madre
+                                    ? `✅ Cerrar Liquidación de Lote (Cuenta Unificada ${esc(lote.codigo_bunker_cliente_madre)})`
+                                    : `✅ Cerrar Liquidación (${fmtMoneda(c.monto_compensacion_final)}) y Saldar ${esc(lote.codigo_bunker_cliente)} en $0`}
                             </button>
                         ` : `
                             <div style="padding:10px 16px; border-radius:9px; background:rgba(16,185,129,0.18); border:1px solid #10b981; color:#6ee7b7; font-weight:800; font-size:0.82rem;">
-                                🏁 Liquidación Cerrada (${esc(lote.liquidacion_oficial?.codigo_liquidacion || 'OK')} · ${lote.liquidacion_oficial?.modalidad_cierre === 'COMPENSACION_CUENTA_MADRE' ? `Compensada en ${esc(lote.codigo_bunker_cliente_madre)}` : `Rendición Directa en ${esc(lote.codigo_bunker_cliente)}`}) · Subcuenta Nodo: ${fmtMoneda(lote.saldo_cuenta_corriente)}
+                                ${lote.liquidacion_oficial?.modalidad_cierre === 'CUENTA_MADRE_UNIFICADA'
+                                    ? `🏁 Liquidación Cerrada (${esc(lote.liquidacion_oficial?.codigo_liquidacion || 'OK')} · Cuenta Unificada ${esc(lote.codigo_bunker_cliente_madre || '')}) · Saldo Titular: ${fmtMoneda(lote.saldo_cuenta_corriente_madre)}`
+                                    : `🏁 Liquidación Cerrada (${esc(lote.liquidacion_oficial?.codigo_liquidacion || 'OK')} · ${lote.liquidacion_oficial?.modalidad_cierre === 'COMPENSACION_CUENTA_MADRE' ? `Compensada en ${esc(lote.codigo_bunker_cliente_madre)}` : `Rendición Directa en ${esc(lote.codigo_bunker_cliente)}`}) · Subcuenta Nodo: ${fmtMoneda(lote.saldo_cuenta_corriente)}`}
                             </div>
                         `}
                     </div>
@@ -828,6 +837,7 @@
             if (!lote) return;
             const c = lote.cuadro_liquidacion;
             const tieneCuentaMadre = Boolean(lote.codigo_bunker_cliente_madre);
+            const esUnificada = Boolean(lote.usar_cuenta_madre_unificada && tieneCuentaMadre);
             const montoComp = Number(c.monto_compensacion_final || 0);
             const esSaldoAFavorGestor = c.direccion_compensacion === 'LAMDA_TRANSFIERE_A_GESTOR';
             const saldoMadreActual = Number(lote.saldo_cuenta_corriente_madre || 0);
@@ -858,46 +868,53 @@
                             <div>🏦 <strong>Transferencias en Banco LAMDA (CRÉDITO):</strong> -${fmtMoneda(c.transferencias_esperadas)}</div>
                             <div>💵 <strong>Efectivo en mano del Gestor:</strong> ${fmtMoneda(c.efectivo_esperado)}</div>
                             <div style="margin-top:6px; font-size:0.96rem; color:#38bdf8; font-weight:900;">
-                                🤝 ${esc(c.titulo_resultado)} → Subcuenta ${esc(lote.codigo_bunker_cliente)} queda en $0,00
+                                🤝 ${esc(c.titulo_resultado)} ${esUnificada ? `· Cuenta Unificada ${esc(lote.codigo_bunker_cliente_madre)}` : `→ Subcuenta ${esc(lote.codigo_bunker_cliente)} queda en $0,00`}
                             </div>
                         </div>
 
-                        <div style="font-size:0.78rem; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em;">
-                            Elegí la modalidad contable de cierre:
-                        </div>
-
-                        <label style="display:flex; gap:10px; align-items:flex-start; padding:11px 12px; border-radius:9px; background:#0f172a; border:2px solid #38bdf8; cursor:pointer;">
-                            <input type="radio" name="swal-modo-cierre" value="directo" checked style="margin-top:4px; accent-color:#38bdf8;">
-                            <div>
-                                <div style="font-weight:800; color:#f8fafc;">Opción A · Rendición / Liquidación directa sobre ${esc(lote.codigo_bunker_cliente)}</div>
-                                <div style="font-size:0.78rem; color:#cbd5e1; margin-top:2px;">
-                                    ${textoOpcionA}
-                                    ${tieneCuentaMadre ? `<br><span style="color:#94a3b8;">🔒 La Cuenta Personal <strong>${esc(lote.codigo_bunker_cliente_madre)}</strong> no se toca.</span>` : ''}
-                                </div>
+                        ${esUnificada ? `
+                            <div style="padding:12px; border-radius:9px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.45); color:#bae6fd; font-size:0.81rem;">
+                                <div style="font-weight:800; color:#e0f2fe; margin-bottom:4px;">🔗 Modalidad Cuenta Madre Unificada (${esc(lote.codigo_bunker_cliente_madre)} — ${esc(lote.cliente_madre_razon_social || lote.cliente_madre_nombre || '')})</div>
+                                <div>Tanto el costo base al retirar el canasto como las transferencias vecinales ya impactaron directamente sobre esta ficha única (Saldo actual: <strong>${saldoMadreActual < -0.01 ? fmtMoneda(Math.abs(saldoMadreActual)) + ' a favor' : fmtMoneda(saldoMadreActual)}</strong>). Al confirmar se cierra administrativamente el lote sin generar movimientos duplicados.</div>
                             </div>
-                        </label>
+                        ` : `
+                            <div style="font-size:0.78rem; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:0.04em;">
+                                Elegí la modalidad contable de cierre:
+                            </div>
 
-                        ${tieneCuentaMadre ? `
-                            <label style="display:flex; gap:10px; align-items:flex-start; padding:11px 12px; border-radius:9px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.45); cursor:pointer;">
-                                <input type="radio" name="swal-modo-cierre" value="compensar_madre" style="margin-top:4px; accent-color:#10b981;">
+                            <label style="display:flex; gap:10px; align-items:flex-start; padding:11px 12px; border-radius:9px; background:#0f172a; border:2px solid #38bdf8; cursor:pointer;">
+                                <input type="radio" name="swal-modo-cierre" value="directo" checked style="margin-top:4px; accent-color:#38bdf8;">
                                 <div>
-                                    <div style="font-weight:800; color:#6ee7b7;">Opción B · Compensar contra Cuenta Personal (${esc(lote.codigo_bunker_cliente_madre)} — ${esc(lote.cliente_madre_razon_social || lote.cliente_madre_nombre || '')})</div>
-                                    <div style="font-size:0.78rem; color:#d1fae5; margin-top:2px;">
-                                        ${textoOpcionB}
+                                    <div style="font-weight:800; color:#f8fafc;">Opción A · Rendición / Liquidación directa sobre ${esc(lote.codigo_bunker_cliente)}</div>
+                                    <div style="font-size:0.78rem; color:#cbd5e1; margin-top:2px;">
+                                        ${textoOpcionA}
+                                        ${tieneCuentaMadre ? `<br><span style="color:#94a3b8;">🔒 La Cuenta Personal <strong>${esc(lote.codigo_bunker_cliente_madre)}</strong> no se toca.</span>` : ''}
                                     </div>
                                 </div>
                             </label>
-                        ` : ''}
+
+                            ${tieneCuentaMadre ? `
+                                <label style="display:flex; gap:10px; align-items:flex-start; padding:11px 12px; border-radius:9px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.45); cursor:pointer;">
+                                    <input type="radio" name="swal-modo-cierre" value="compensar_madre" style="margin-top:4px; accent-color:#10b981;">
+                                    <div>
+                                        <div style="font-weight:800; color:#6ee7b7;">Opción B · Compensar contra Cuenta Personal (${esc(lote.codigo_bunker_cliente_madre)} — ${esc(lote.cliente_madre_razon_social || lote.cliente_madre_nombre || '')})</div>
+                                        <div style="font-size:0.78rem; color:#d1fae5; margin-top:2px;">
+                                            ${textoOpcionB}
+                                        </div>
+                                    </div>
+                                </label>
+                            ` : ''}
+                        `}
                     </div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: '✅ Confirmar Cierre y Saldar Lote en $0',
+                confirmButtonText: esUnificada ? '✅ Confirmar Cierre de Lote' : '✅ Confirmar Cierre y Saldar Lote en $0',
                 cancelButtonText: 'Cancelar',
                 confirmButtonColor: '#10b981',
                 preConfirm: () => {
                     const sel = document.querySelector('input[name="swal-modo-cierre"]:checked');
                     return {
-                        impactar_en_cuenta_madre: Boolean(tieneCuentaMadre && sel && sel.value === 'compensar_madre')
+                        impactar_en_cuenta_madre: Boolean(!esUnificada && tieneCuentaMadre && sel && sel.value === 'compensar_madre')
                     };
                 }
             });
@@ -921,10 +938,12 @@
 
                 Swal.fire({
                     icon: 'success',
-                    title: '✅ Lote Liquidado y Subcuenta en $0',
-                    text: confirm.value.impactar_en_cuenta_madre
-                        ? `El lote quedó saldado en $0,00 y el neto se compensó con asiento espejo en ${lote.codigo_bunker_cliente_madre}.`
-                        : `El lote quedó saldado en $0,00 mediante rendición directa sobre ${lote.codigo_bunker_cliente} (Cuenta Personal intacta).`,
+                    title: esUnificada ? '✅ Lote Cerrado (Cuenta Unificada)' : '✅ Lote Liquidado y Subcuenta en $0',
+                    text: esUnificada
+                        ? `El lote quedó cerrado y consolidado en la cuenta única ${lote.codigo_bunker_cliente_madre} sin duplicar asientos.`
+                        : (confirm.value.impactar_en_cuenta_madre
+                            ? `El lote quedó saldado en $0,00 y el neto se compensó con asiento espejo en ${lote.codigo_bunker_cliente_madre}.`
+                            : `El lote quedó saldado en $0,00 mediante rendición directa sobre ${lote.codigo_bunker_cliente} (Cuenta Personal intacta).`),
                     background: '#151e2e',
                     color: '#f8fafc'
                 });
@@ -1276,7 +1295,12 @@
                                                 </td>
                                                 <td>
                                                     <div>
-                                                        <span class="badge" style="background:#1e293b; color:#e2e8f0;">Subcuenta: ${esc(n.codigo_bunker_cliente || 'S/C')}</span>
+                                                        ${n.usar_cuenta_madre_unificada && n.codigo_bunker_cliente_madre ? `
+                                                            <span class="badge" style="background:rgba(56,189,248,0.18); color:#bae6fd; border:1px solid #38bdf8;">🔗 Unificada en ${esc(n.codigo_bunker_cliente_madre)}</span>
+                                                            <span class="badge" style="background:#1e293b; color:#64748b; margin-left:4px;">Subcuenta archivada: ${esc(n.codigo_bunker_cliente || 'S/C')}</span>
+                                                        ` : `
+                                                            <span class="badge" style="background:#1e293b; color:#e2e8f0;">Subcuenta: ${esc(n.codigo_bunker_cliente || 'S/C')}</span>
+                                                        `}
                                                         <span class="badge" style="background:#1e293b; color:#7dd3fc; margin-left:4px;">ID Logística: #${n.cliente_id_logistica || (9000 + Number(n.id))}</span>
                                                     </div>
                                                     ${n.codigo_bunker_cliente_madre ? `
@@ -1289,8 +1313,15 @@
                                                 </td>
                                                 <td style="font-size:0.78rem; color:#6ee7b7; font-weight:700;">${esc(n.lista_precio_nombre || 'Lista Base Nodos Barriales')}</td>
                                                 <td style="font-family:monospace; font-size:0.78rem; color:#fcd34d;">${esc(n.alias_bancario_display || 'S/A')}</td>
-                                                <td style="font-weight:900; color:${Number(n.saldo_cuenta_corriente) > 0.01 ? '#fb7185' : '#34d399'};">
-                                                    ${Number(n.saldo_cuenta_corriente) < -0.01 ? fmtMoneda(Math.abs(Number(n.saldo_cuenta_corriente))) + ' a favor' : fmtMoneda(n.saldo_cuenta_corriente)}
+                                                <td style="font-weight:900; color:${Number(n.usar_cuenta_madre_unificada && n.codigo_bunker_cliente_madre ? n.saldo_cuenta_corriente_madre : n.saldo_cuenta_corriente) > 0.01 ? '#fb7185' : '#34d399'};">
+                                                    ${(() => {
+                                                        const saldoMostrar = (n.usar_cuenta_madre_unificada && n.codigo_bunker_cliente_madre)
+                                                            ? n.saldo_cuenta_corriente_madre
+                                                            : n.saldo_cuenta_corriente;
+                                                        return Number(saldoMostrar) < -0.01
+                                                            ? fmtMoneda(Math.abs(Number(saldoMostrar))) + ' a favor'
+                                                            : fmtMoneda(saldoMostrar);
+                                                    })()}
                                                 </td>
                                             </tr>
                                         `).join('')}

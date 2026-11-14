@@ -7,6 +7,11 @@ const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { pool, ejecutarTransaccion } = require('../config/database');
 const CuentaCorrienteService = require('./cuentaCorrienteService');
+const {
+    agregarReferenciaNodoADescripcion,
+    resolverDestinoContableClienteBunker,
+    obtenerOCrearCuentaPrincipalBunker
+} = require('../../shared/nodosCuentaUnificadaHelper');
 
 const SUPABASE_URL = process.env.SUPABASE_B2B_URL;
 const SUPABASE_KEY = process.env.SUPABASE_B2B_SERVICE_KEY;
@@ -186,24 +191,24 @@ class PagosEfectivoService {
             }
             modoInteres = String(modoInteres).toUpperCase();
 
-            // 2. Obtener o auto-crear la Cuenta Corriente del cliente
-            let ccId;
-            const resCC = await client.query(
-                `SELECT id, saldo FROM public.factura_cuentas_corrientes WHERE codigo_bunker_cliente = $1 FOR UPDATE`,
-                [sobre.cliente_id]
-            );
-
-            if (resCC.rows.length === 0) {
-                console.log(`💳 [PAGOS-EFECTIVO-SERVICE] Auto-creando Cuenta Principal para cliente: ${sobre.cliente_id}`);
-                const resNewCC = await client.query(
-                    `INSERT INTO public.factura_cuentas_corrientes (codigo_bunker_cliente, nombre_cuenta, moneda, saldo, saldo_apertura)
-                     VALUES ($1, 'Cuenta Principal', 'ARS', 0.00, 0.00)
-                     RETURNING id, saldo`,
-                    [sobre.cliente_id]
+            // 2. Obtener o auto-crear la Cuenta Corriente del cliente (redirigiendo a Cuenta Madre si es subcuenta de Nodo unificado)
+            const destCuentaSobre = await resolverDestinoContableClienteBunker(client, {
+                codigoBunkerCliente: sobre.cliente_id
+            });
+            const codigoClienteSobreEfectivo = destCuentaSobre.unificada && destCuentaSobre.madreCodigoBunker
+                ? destCuentaSobre.madreCodigoBunker
+                : sobre.cliente_id;
+            const ccRow = await obtenerOCrearCuentaPrincipalBunker(client, codigoClienteSobreEfectivo, {
+                forUpdate: true,
+                crearSiNoExiste: true
+            });
+            const ccId = ccRow.id;
+            if (destCuentaSobre.unificada) {
+                await client.query(
+                    `UPDATE public.factura_pagos_efectivo SET cliente_id = $1 WHERE id = $2`,
+                    [codigoClienteSobreEfectivo, sobre.id]
                 );
-                ccId = resNewCC.rows[0].id;
-            } else {
-                ccId = resCC.rows[0].id;
+                sobre.cliente_id = codigoClienteSobreEfectivo;
             }
 
             // 3. Simular imputación FIFO antes de insertar los movimientos para detectar si cancela Interés de Financiación + Capital
@@ -474,7 +479,10 @@ class PagosEfectivoService {
                     baseMetadatosArqueo.financiacion_bonificada = true;
                     baseMetadatosArqueo.financiacion_bonificada_con_iva = simImputacion.financiacion_con_iva_cancelada;
                 }
-                const descMovimiento = `Pago en efectivo ensobrado - Sobre #${sobre.codigo_sobre}`;
+                const descBaseSobre = `Pago en efectivo ensobrado - Sobre #${sobre.codigo_sobre}`;
+                const descMovimiento = destCuentaSobre.unificada
+                    ? agregarReferenciaNodoADescripcion(descBaseSobre, destCuentaSobre.nombreMarca)
+                    : descBaseSobre;
                 const queryInsertMov = `
                     INSERT INTO public.factura_cuenta_corriente_movimientos (
                         cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
@@ -688,11 +696,21 @@ class PagosEfectivoService {
             throw new Error('El código o ID de cliente es obligatorio.');
         }
 
-        // 1. Resolver el cliente Búnker canónico para garantizar datos duros
+        // 1. Resolver el cliente Búnker canónico (y redirigir a Cuenta Madre si es subcuenta de Nodo unificado)
         const ClientesBunkerModel = require('../models/clientesBunkerModel');
-        const clienteBunker = await ClientesBunkerModel.obtenerPorId(clienteId);
+        let clienteBunker = await ClientesBunkerModel.obtenerPorId(clienteId);
         if (!clienteBunker) {
             throw new Error(`No se encontró el cliente con identificador: ${clienteId}`);
+        }
+        const destCuenta = await resolverDestinoContableClienteBunker(pool, {
+            bunkerClienteId: clienteBunker.id,
+            codigoBunkerCliente: clienteBunker.codigo_bunker_cliente
+        });
+        if (destCuenta.unificada && destCuenta.madreCodigoBunker) {
+            const clienteMadre = await ClientesBunkerModel.obtenerPorId(destCuenta.madreCodigoBunker);
+            if (clienteMadre) {
+                clienteBunker = clienteMadre;
+            }
         }
 
         const codigoBunkerCanónico = clienteBunker.codigo_bunker_cliente || clienteId;
@@ -740,7 +758,10 @@ class PagosEfectivoService {
             }
         }
 
-        const obs = (observaciones || '').trim() || null;
+        const obsBase = (observaciones || '').trim();
+        const obs = destCuenta.unificada
+            ? (agregarReferenciaNodoADescripcion(obsBase, destCuenta.nombreMarca) || null)
+            : (obsBase || null);
         const origen = (derivadoPor || '').trim() || 'Chofer / Móvil LAMDA';
 
         // 4. Inserción local en PostgreSQL

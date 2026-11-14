@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('./pool');
+const { sqlExcluirSubcuentasNodosUnificadas } = require('../shared/nodosCuentaUnificadaHelper');
 
 const { login } = require('./login');
 const { usuarioActual } = require('./usuarioActual');
@@ -710,9 +711,10 @@ router.post('/roles/:id/permisos', async (req, res) => {
 router.get('/bunker_clientes', async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, codigo_bunker_cliente, cliente_nombre, usuario_id
-      FROM public.bunker_clientes
-      ORDER BY cliente_nombre ASC
+      SELECT bc.id, bc.codigo_bunker_cliente, bc.cliente_nombre, bc.usuario_id
+      FROM public.bunker_clientes bc
+      WHERE ${sqlExcluirSubcuentasNodosUnificadas('bc')}
+      ORDER BY bc.cliente_nombre ASC
     `);
     res.json(result.rows);
   } catch (error) {

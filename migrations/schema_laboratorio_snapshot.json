@@ -12237,7 +12237,7 @@
         "character_maximum_length": 40,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'RENDICION_DIRECTA_NODO'::character varying"
       }
     },
@@ -12901,7 +12901,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "true"
       },
       "permitir_reparto_propio": {
@@ -12911,7 +12911,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "true"
       },
       "permitir_encomienda": {
@@ -12921,7 +12921,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "bajada_marca": {
@@ -12951,8 +12951,18 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'{}'::jsonb"
+      },
+      "usar_cuenta_madre_unificada": {
+        "ordinal_position": 43,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
       }
     },
     "nodos_movimientos_cta_cte": {
@@ -13781,7 +13791,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "motivo_anulacion_ajuste": {
@@ -13901,7 +13911,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "fecha_ausente_reparto": {
@@ -13931,7 +13941,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "true"
       },
       "incluido_reparto_manual": {
@@ -13941,7 +13951,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       }
     },
@@ -14337,7 +14347,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "activo": {
@@ -14347,7 +14357,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "true"
       },
       "portal_token": {
@@ -14397,7 +14407,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "gps_updated_at": {

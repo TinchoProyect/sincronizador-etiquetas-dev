@@ -5,6 +5,7 @@
  */
 
 const { pool } = require('../config/database');
+const { sqlExcluirSubcuentasNodosUnificadas } = require('../../shared/nodosCuentaUnificadaHelper');
 
 let _indicesClientesPromise = null;
 function asegurarIndicesClientesBunker() {
@@ -76,6 +77,7 @@ class ClientesBunkerModel {
                     saldo
                 FROM public.factura_cuentas_corrientes
                 WHERE codigo_bunker_cliente IS NOT NULL
+                  AND COALESCE(estado, 'ACTIVA') <> 'ARCHIVADA_UNIFICADA'
                 ORDER BY codigo_bunker_cliente,
                          CASE WHEN nombre_cuenta = 'Cuenta Principal' THEN 0 ELSE 1 END,
                          id ASC
@@ -189,21 +191,26 @@ class ClientesBunkerModel {
 
         if (cleanSearch) {
             query += `
-                WHERE c.codigo_bunker_cliente ILIKE $1 
-                   OR c.cliente_nombre ILIKE $1 
-                   OR c.razon_social ILIKE $1 
-                   OR c.lomas_soft_id ILIKE $1
-                   OR c.cuit_cuil ILIKE $1
-                   OR c.whatsapp_facturas ILIKE $1
-                   OR c.email_facturas ILIKE $1
-                   OR c.email_portal ILIKE $1
-                   OR c.email_portal_nombre ILIKE $1
-                   OR c.email_portal_cargo ILIKE $1
-                   OR c.domicilio_fiscal ILIKE $1
-                   OR COALESCE(da_bunker.domicilios_texto, '') ILIKE $1
-                   OR COALESCE(da_legacy.domicilios_texto, '') ILIKE $1
-                   OR (na.nodo_info IS NOT NULL AND COALESCE((na.nodo_info->>'vecinos_coincidentes')::int, 0) > 0)
+                WHERE ${sqlExcluirSubcuentasNodosUnificadas('c')}
+                  AND (
+                       c.codigo_bunker_cliente ILIKE $1 
+                    OR c.cliente_nombre ILIKE $1 
+                    OR c.razon_social ILIKE $1 
+                    OR c.lomas_soft_id ILIKE $1
+                    OR c.cuit_cuil ILIKE $1
+                    OR c.whatsapp_facturas ILIKE $1
+                    OR c.email_facturas ILIKE $1
+                    OR c.email_portal ILIKE $1
+                    OR c.email_portal_nombre ILIKE $1
+                    OR c.email_portal_cargo ILIKE $1
+                    OR c.domicilio_fiscal ILIKE $1
+                    OR COALESCE(da_bunker.domicilios_texto, '') ILIKE $1
+                    OR COALESCE(da_legacy.domicilios_texto, '') ILIKE $1
+                    OR (na.nodo_info IS NOT NULL AND COALESCE((na.nodo_info->>'vecinos_coincidentes')::int, 0) > 0)
+                  )
             `;
+        } else {
+            query += ` WHERE ${sqlExcluirSubcuentasNodosUnificadas('c')}`;
         }
 
         query += ` ORDER BY CASE WHEN na.nodo_info IS NOT NULL THEN 0 ELSE 1 END, c.cliente_nombre ASC`;
@@ -322,10 +329,11 @@ class ClientesBunkerModel {
     static async obtenerTodosPorCuit(cuit) {
         if (!cuit) return [];
         const result = await pool.query(
-            `SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social
-             FROM public.bunker_clientes
-             WHERE cuit_cuil = $1
-             ORDER BY id ASC`,
+            `SELECT bc.id, bc.codigo_bunker_cliente, bc.cliente_nombre, bc.razon_social
+             FROM public.bunker_clientes bc
+             WHERE bc.cuit_cuil = $1
+               AND ${sqlExcluirSubcuentasNodosUnificadas('bc')}
+             ORDER BY bc.id ASC`,
             [cuit]
         );
         return result.rows;

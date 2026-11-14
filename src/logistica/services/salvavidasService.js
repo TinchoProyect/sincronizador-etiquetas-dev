@@ -13,6 +13,7 @@
  */
 
 const { pool } = require('../config/database');
+const { sqlExcluirSubcuentasNodosUnificadas } = require('../../shared/nodosCuentaUnificadaHelper');
 try { delete require.cache[require.resolve('./composicionSaldoService')]; } catch (_) {}
 const composicionSaldoService = require('./composicionSaldoService');
 
@@ -688,9 +689,12 @@ async function obtenerDashboardMetricasSombra(db = pool) {
                cc.id as cuenta_id, COALESCE(cc.saldo, 0) as saldo,
                lp.salvavidas_habilitado as lista_salvavidas_habilitado
         FROM public.bunker_clientes c
-        LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = c.codigo_bunker_cliente
+        LEFT JOIN public.factura_cuentas_corrientes cc
+          ON cc.codigo_bunker_cliente = c.codigo_bunker_cliente
+         AND COALESCE(cc.estado, 'ACTIVA') <> 'ARCHIVADA_UNIFICADA'
         LEFT JOIN public.bunker_cliente_listas_precios clp ON clp.bunker_cliente_id = c.id
         LEFT JOIN public.bunker_listas_precios lp ON lp.id = clp.bunker_lista_precio_id
+        WHERE ${sqlExcluirSubcuentasNodosUnificadas('c')}
         ORDER BY c.id ASC
     `;
     const resClientes = await db.query(queryClientes);

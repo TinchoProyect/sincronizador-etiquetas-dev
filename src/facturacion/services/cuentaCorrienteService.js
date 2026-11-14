@@ -3,6 +3,12 @@
  * Se encarga de la integración automática de facturas emitidas con la cuenta corriente de Clientes Búnker.
  */
 
+const {
+    agregarReferenciaNodoADescripcion,
+    resolverDestinoContableClienteBunker,
+    obtenerOCrearCuentaPrincipalBunker
+} = require('../../shared/nodosCuentaUnificadaHelper');
+
 const TIPO_COMPROBANTE_MAP = {
     1: 'Factura A',
     2: 'Nota de Débito A',
@@ -46,36 +52,23 @@ const registrarFactura = async (factura, dbClient) => {
         }
 
         const cliente = resCliente.rows[0];
-        console.log(`👤 [CC-VINCULACION] Cliente Búnker identificado: ${cliente.cliente_nombre} (${cliente.codigo_bunker_cliente})`);
+        const destCuenta = await resolverDestinoContableClienteBunker(dbClient, {
+            bunkerClienteId: cliente.id,
+            codigoBunkerCliente: cliente.codigo_bunker_cliente
+        });
+        const codigoBunkerDestino = destCuenta.unificada
+            ? destCuenta.madreCodigoBunker
+            : cliente.codigo_bunker_cliente;
+        console.log(`👤 [CC-VINCULACION] Cliente Búnker identificado: ${cliente.cliente_nombre} (${cliente.codigo_bunker_cliente})${destCuenta.unificada ? ` -> Unificado en Madre ${codigoBunkerDestino} (${destCuenta.etiquetaNodo})` : ''}`);
 
-        // 2. Obtener o crear cuenta corriente "Cuenta Principal" para este cliente
-        let ccId;
-        let saldoActual = 0;
-
-        const queryCC = `
-            SELECT id, saldo 
-            FROM public.factura_cuentas_corrientes 
-            WHERE codigo_bunker_cliente = $1 AND nombre_cuenta = 'Cuenta Principal'
-            FOR UPDATE
-        `; // FOR UPDATE bloquea la fila para evitar race conditions en cálculos de saldo
-        const resCC = await dbClient.query(queryCC, [cliente.codigo_bunker_cliente]);
-
-        if (resCC.rows.length === 0) {
-            // Auto-apertura de la cuenta corriente principal
-            const queryCrearCC = `
-                INSERT INTO public.factura_cuentas_corrientes (codigo_bunker_cliente, nombre_cuenta, moneda, saldo)
-                VALUES ($1, 'Cuenta Principal', 'ARS', 0.00)
-                RETURNING id, saldo
-            `;
-            const resNuevaCC = await dbClient.query(queryCrearCC, [cliente.codigo_bunker_cliente]);
-            ccId = resNuevaCC.rows[0].id;
-            saldoActual = 0;
-            console.log(`💳 [CC-VINCULACION] Cuenta Corriente creada automáticamente para el cliente: ${cliente.codigo_bunker_cliente}`);
-        } else {
-            ccId = resCC.rows[0].id;
-            saldoActual = parseFloat(resCC.rows[0].saldo);
-            console.log(`💳 [CC-VINCULACION] Cuenta Corriente existente (ID: ${ccId}), Saldo Actual: ${saldoActual}`);
-        }
+        // 2. Obtener o crear cuenta corriente "Cuenta Principal" para este cliente (o su Cliente Madre Unificado)
+        const ccRow = await obtenerOCrearCuentaPrincipalBunker(dbClient, codigoBunkerDestino, {
+            forUpdate: true,
+            crearSiNoExiste: true
+        });
+        const ccId = ccRow.id;
+        const saldoActual = parseFloat(ccRow.saldo || 0);
+        console.log(`💳 [CC-VINCULACION] Cuenta Corriente destino (ID: ${ccId}, ${codigoBunkerDestino}), Saldo Actual: ${saldoActual}`);
 
         // 3. Determinar tipo de comprobante, movimiento y monto
         const esNotaCredito = [3, 8, 13].includes(parseInt(factura.tipo_cbte));
@@ -104,6 +97,10 @@ const registrarFactura = async (factura, dbClient) => {
             const ptoVtaPad = String(factura.pto_vta || '0').padStart(4, '0');
             const cbtePad = String(factura.nro_interno || factura.cbte_nro || '0').padStart(8, '0');
             desc = `${tipoCompText} Interna ${ptoVtaPad}-${cbtePad}`;
+        }
+
+        if (destCuenta.unificada) {
+            desc = agregarReferenciaNodoADescripcion(desc, destCuenta.nombreMarca);
         }
 
         if (resMovExistente.rows.length > 0) {
@@ -165,11 +162,19 @@ const registrarFactura = async (factura, dbClient) => {
         const queryInsertMov = `
             INSERT INTO public.factura_cuenta_corriente_movimientos (
                 cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante, 
-                tipo_comprobante, comprobante_id, descripcion, fecha_movimiento
-            ) VALUES ($1, $2, $3, 0.00, $4, $5, $6, $7)
+                tipo_comprobante, comprobante_id, descripcion, fecha_movimiento, metadatos
+            ) VALUES ($1, $2, $3, 0.00, $4, $5, $6, $7, $8)
             RETURNING id
         `;
         const fechaEmision = factura.fecha_emision || new Date();
+        const metaMovFactura = destCuenta.unificada
+            ? JSON.stringify({
+                nodo_id: destCuenta.nodoId,
+                codigo_nodo: destCuenta.codigoNodo,
+                nodo_marca: destCuenta.nombreMarca,
+                origen_subcuenta: cliente.codigo_bunker_cliente
+            })
+            : null;
         await dbClient.query(queryInsertMov, [
             ccId,
             tipoMovimiento,
@@ -177,7 +182,8 @@ const registrarFactura = async (factura, dbClient) => {
             esNotaCredito ? 'NOTA_CREDITO' : 'FACTURA',
             factura.id,
             desc,
-            fechaEmision
+            fechaEmision,
+            metaMovFactura
         ]);
         console.log(`➕ [CC-VINCULACION] Movimiento de ${tipoMovimiento} insertado. Monto: ${monto}.`);
 
@@ -219,27 +225,20 @@ const registrarEntregaDiferida = async (factura, dbClient) => {
         }
 
         const cliente = resCliente.rows[0];
+        const destCuenta = await resolverDestinoContableClienteBunker(dbClient, {
+            bunkerClienteId: cliente.id,
+            codigoBunkerCliente: cliente.codigo_bunker_cliente
+        });
+        const codigoBunkerDestino = destCuenta.unificada
+            ? destCuenta.madreCodigoBunker
+            : cliente.codigo_bunker_cliente;
 
         // Obtener o crear cuenta corriente
-        const queryCC = `
-            SELECT id, saldo 
-            FROM public.factura_cuentas_corrientes 
-            WHERE codigo_bunker_cliente = $1 AND nombre_cuenta = 'Cuenta Principal'
-            FOR UPDATE
-        `;
-        let resCC = await dbClient.query(queryCC, [cliente.codigo_bunker_cliente]);
-        let ccId;
-
-        if (resCC.rows.length === 0) {
-            const resNuevaCC = await dbClient.query(`
-                INSERT INTO public.factura_cuentas_corrientes (codigo_bunker_cliente, nombre_cuenta, moneda, saldo)
-                VALUES ($1, 'Cuenta Principal', 'ARS', 0.00)
-                RETURNING id, saldo
-            `, [cliente.codigo_bunker_cliente]);
-            ccId = resNuevaCC.rows[0].id;
-        } else {
-            ccId = resCC.rows[0].id;
-        }
+        const ccRow = await obtenerOCrearCuentaPrincipalBunker(dbClient, codigoBunkerDestino, {
+            forUpdate: true,
+            crearSiNoExiste: true
+        });
+        const ccId = ccRow.id;
 
         // Control de idempotencia
         const resMovExistente = await dbClient.query(`
@@ -253,14 +252,25 @@ const registrarEntregaDiferida = async (factura, dbClient) => {
         }
 
         const monto = parseFloat(factura.imp_total);
-        const desc = `Entrega Mercadería (Pendiente Facturación AFIP) - Borrador #${factura.id}`;
+        const descBase = `Entrega Mercadería (Pendiente Facturación AFIP) - Borrador #${factura.id}`;
+        const desc = destCuenta.unificada
+            ? agregarReferenciaNodoADescripcion(descBase, destCuenta.nombreMarca)
+            : descBase;
+        const metaMovDif = destCuenta.unificada
+            ? JSON.stringify({
+                nodo_id: destCuenta.nodoId,
+                codigo_nodo: destCuenta.codigoNodo,
+                nodo_marca: destCuenta.nombreMarca,
+                origen_subcuenta: cliente.codigo_bunker_cliente
+            })
+            : null;
 
         await dbClient.query(`
             INSERT INTO public.factura_cuenta_corriente_movimientos (
                 cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante, 
-                tipo_comprobante, comprobante_id, descripcion, fecha_movimiento
-            ) VALUES ($1, 'DEBITO', $2, 0.00, 'PENDIENTE_FACTURACION', $3, $4, NOW())
-        `, [ccId, monto, factura.id, desc]);
+                tipo_comprobante, comprobante_id, descripcion, fecha_movimiento, metadatos
+            ) VALUES ($1, 'DEBITO', $2, 0.00, 'PENDIENTE_FACTURACION', $3, $4, NOW(), $5)
+        `, [ccId, monto, factura.id, desc, metaMovDif]);
 
         console.log(`➕ [CC-VINCULACION] Débito de Entrega Diferida insertado: $${monto}`);
 

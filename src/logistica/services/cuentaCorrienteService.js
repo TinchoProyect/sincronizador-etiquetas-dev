@@ -4,6 +4,11 @@
  */
 
 const { pool, ejecutarTransaccion } = require('../config/database');
+const {
+    agregarReferenciaNodoADescripcion,
+    resolverDestinoContableClienteBunker,
+    obtenerOCrearCuentaPrincipalBunker
+} = require('../../shared/nodosCuentaUnificadaHelper');
 
 class CuentaCorrienteService {
     /**
@@ -169,20 +174,48 @@ class CuentaCorrienteService {
         }
         
         // La descripción es opcional. Si está vacía, se asigna una cadena vacía.
-        const descFinal = (descripcion && descripcion.trim()) ? descripcion.trim() : '';
+        const descBase = (descripcion && descripcion.trim()) ? descripcion.trim() : '';
 
         return await ejecutarTransaccion(async (client) => {
-            // 1. Obtener saldo actual y bloquear la fila para evitar escrituras concurrentes
-            const ccRes = await client.query(
-                `SELECT saldo FROM public.factura_cuentas_corrientes WHERE id = $1 FOR UPDATE`,
-                [cuenta_corriente_id]
-            );
+            // 1. Resolver si la CC corresponde a una subcuenta unificada de Nodo -> redirigir a Madre
+            const destCuenta = await resolverDestinoContableClienteBunker(client, {
+                cuentaCorrienteId: cuenta_corriente_id
+            });
+            let cuentaCorrienteDestinoId = Number(cuenta_corriente_id);
+            let saldoActual = 0;
 
-            if (ccRes.rows.length === 0) {
-                throw new Error('La cuenta corriente especificada no existe.');
+            if (destCuenta.unificada && destCuenta.madreCodigoBunker) {
+                const ccMadre = await obtenerOCrearCuentaPrincipalBunker(client, destCuenta.madreCodigoBunker, {
+                    forUpdate: true,
+                    crearSiNoExiste: true
+                });
+                cuentaCorrienteDestinoId = Number(ccMadre.id);
+                saldoActual = parseFloat(ccMadre.saldo || 0);
+            } else {
+                const ccRes = await client.query(
+                    `SELECT saldo FROM public.factura_cuentas_corrientes WHERE id = $1 FOR UPDATE`,
+                    [cuentaCorrienteDestinoId]
+                );
+
+                if (ccRes.rows.length === 0) {
+                    throw new Error('La cuenta corriente especificada no existe.');
+                }
+                saldoActual = parseFloat(ccRes.rows[0].saldo);
             }
 
-            const saldoActual = parseFloat(ccRes.rows[0].saldo);
+            const descFinal = destCuenta.unificada
+                ? agregarReferenciaNodoADescripcion(descBase, destCuenta.nombreMarca)
+                : descBase;
+            let metaFinal = metadatos || null;
+            if (destCuenta.unificada) {
+                const metaObj = (metadatos && typeof metadatos === 'object') ? { ...metadatos } : {};
+                metaObj.nodo_id = destCuenta.nodoId;
+                metaObj.codigo_nodo = destCuenta.codigoNodo;
+                metaObj.nodo_marca = destCuenta.nombreMarca;
+                metaObj.origen_subcuenta = destCuenta.subcuentaCodigoBunker;
+                metaFinal = JSON.stringify(metaObj);
+            }
+
             const esCredito = tipo_movimiento === 'CREDITO';
             const nuevoSaldo = esCredito ? (saldoActual - montoNum) : (saldoActual + montoNum);
 
@@ -195,18 +228,18 @@ class CuentaCorrienteService {
                 RETURNING *
             `;
             const resInsert = await client.query(queryInsertMov, [
-                cuenta_corriente_id,
+                cuentaCorrienteDestinoId,
                 tipo_movimiento,
                 montoNum,
                 nuevoSaldo,
                 tipo_comprobante || 'AJUSTE_MANUAL',
                 descFinal,
                 fecha_movimiento || new Date(),
-                metadatos || null
+                metaFinal
             ]);
 
             // 3. Recalcular saldos de toda la cuenta (garantiza orden cronológico en saldo_resultante)
-            await this.recalcularSaldos(cuenta_corriente_id, client);
+            await this.recalcularSaldos(cuentaCorrienteDestinoId, client);
 
             console.log(`✅ [CC-SERVICE] Movimiento registrado y saldo recalculado.`);
             return resInsert.rows[0];

@@ -2,6 +2,12 @@ const { pool } = require('../config/database');
 const cuentasBancariasService = require('../services/cuentasBancariasService');
 const geminiService = require('../services/geminiService');
 const { supabaseFetch } = require('../../produccion/utils/supabaseHelper');
+const {
+    sqlExcluirSubcuentasNodosUnificadas,
+    agregarReferenciaNodoADescripcion,
+    resolverDestinoContableClienteBunker,
+    obtenerOCrearCuentaPrincipalBunker
+} = require('../../shared/nodosCuentaUnificadaHelper');
 
 
 /**
@@ -87,15 +93,17 @@ async function listarMovimientos(req, res, next) {
         if (hayNoVinculados) {
             const [resClientes, resAliases] = await Promise.all([
                 pool.query(`
-                    SELECT id, razon_social, cliente_nombre, cuit_cuil AS cuit, codigo_bunker_cliente,
-                           REPLACE(COALESCE(cuit_cuil, ''), '-', '') AS cuit_limpio
-                    FROM public.bunker_clientes
+                    SELECT bc.id, bc.razon_social, bc.cliente_nombre, bc.cuit_cuil AS cuit, bc.codigo_bunker_cliente,
+                           REPLACE(COALESCE(bc.cuit_cuil, ''), '-', '') AS cuit_limpio
+                    FROM public.bunker_clientes bc
+                    WHERE ${sqlExcluirSubcuentasNodosUnificadas('bc')}
                 `),
                 pool.query(`
                     SELECT a.cliente_id, a.cuit_origen, a.cbu_cvu_origen, a.titular_origen, a.veces_vinculado, a.actualizado_en,
                            c.razon_social, c.cliente_nombre, c.cuit_cuil AS cuit, c.codigo_bunker_cliente
                     FROM public.fin_alias_bancarios_clientes a
                     JOIN public.bunker_clientes c ON a.cliente_id = c.id
+                    WHERE ${sqlExcluirSubcuentasNodosUnificadas('c')}
                     ORDER BY a.veces_vinculado DESC, a.actualizado_en DESC
                 `)
             ]);
@@ -345,12 +353,21 @@ async function vincularCliente(req, res, next) {
     const dbClient = await pool.connect();
     try {
         const movimientoId = parseInt(req.params.id, 10);
-        const { clienteId, aplicarAjuste, montoAjuste, modoFinanciacion } = req.body;
+        const { clienteId: clienteIdBody, aplicarAjuste, montoAjuste, modoFinanciacion } = req.body;
+        let clienteId = clienteIdBody;
         const modoFinNorm = String(modoFinanciacion || 'BONIFICAR').toUpperCase();
         
         console.log(`🔗 [BANCARIO-CONTROLLER] Iniciando transacción de vinculación para movimiento ID ${movimientoId} (modoFinanciacion: ${modoFinNorm})...`);
         
         await dbClient.query('BEGIN');
+
+        let destCuentaUnificada = null;
+        if (clienteId !== null && clienteId !== undefined) {
+            destCuentaUnificada = await resolverDestinoContableClienteBunker(dbClient, { bunkerClienteId: clienteId });
+            if (destCuentaUnificada.unificada && destCuentaUnificada.madreBunkerId) {
+                clienteId = destCuentaUnificada.madreBunkerId;
+            }
+        }
         
         // 1. Obtener y verificar el movimiento bancario
         const checkMov = await dbClient.query(
@@ -477,7 +494,10 @@ async function vincularCliente(req, res, next) {
                 const tipoMovCC = esDebito ? 'DEBITO' : 'CREDITO';
                 const tipoCompCC = esDebito ? 'PAGO_A_CLIENTE' : 'COBRO_BANCARIO';
                 const conceptoCorto = String(movimiento.concepto || '').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 75);
-                const descCC = `${esDebito ? 'Pago Emitido a Cliente/Colaborador' : 'Cobro'} Bancario Galicia [Mov: ${movimientoId}] - Concepto: ${movimiento.concepto.substring(0, 80)}`;
+                const descBaseCC = `${esDebito ? 'Pago Emitido a Cliente/Colaborador' : 'Cobro'} Bancario Galicia [Mov: ${movimientoId}] - Concepto: ${movimiento.concepto.substring(0, 80)}`;
+                const descCC = (destCuentaUnificada && destCuentaUnificada.unificada)
+                    ? agregarReferenciaNodoADescripcion(descBaseCC, destCuentaUnificada.nombreMarca)
+                    : descBaseCC;
                 
                 let fechaMovFinal = new Date(movimiento.fecha_movimiento);
                 if (fechaMovFinal.getUTCHours() === 3 && fechaMovFinal.getUTCMinutes() === 0 && fechaMovFinal.getUTCSeconds() === 0) {
@@ -908,7 +928,15 @@ async function listarClientesBunker(req, res, next) {
                 cc.id AS cuenta_corriente_id,
                 COALESCE(cc.saldo, 0.00) AS saldo_cuenta_corriente
             FROM public.bunker_clientes c
-            LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = c.codigo_bunker_cliente
+            LEFT JOIN LATERAL (
+                SELECT id, saldo
+                FROM public.factura_cuentas_corrientes
+                WHERE codigo_bunker_cliente = c.codigo_bunker_cliente
+                  AND COALESCE(estado, 'ACTIVA') <> 'ARCHIVADA_UNIFICADA'
+                ORDER BY CASE WHEN nombre_cuenta = 'Cuenta Principal' THEN 0 ELSE 1 END, id ASC
+                LIMIT 1
+            ) cc ON true
+            WHERE ${sqlExcluirSubcuentasNodosUnificadas('c')}
             ORDER BY c.razon_social ASC
         `;
         const result = await pool.query(query);
@@ -1107,7 +1135,8 @@ async function vincularCheque(req, res, next) {
     const dbClient = await pool.connect();
     try {
         const { chequeId } = req.params;
-        const { clienteId } = req.body;
+        const { clienteId: clienteIdBody } = req.body;
+        let clienteId = clienteIdBody;
         
         console.log(`🔗 [BANCARIO-CONTROLLER] Iniciando vinculación manual de cheque UUID: ${chequeId}...`);
         
@@ -1119,6 +1148,11 @@ async function vincularCheque(req, res, next) {
         }
         
         await dbClient.query('BEGIN');
+
+        const destCuentaCheque = await resolverDestinoContableClienteBunker(dbClient, { bunkerClienteId: clienteId });
+        if (destCuentaCheque.unificada && destCuentaCheque.madreBunkerId) {
+            clienteId = destCuentaCheque.madreBunkerId;
+        }
         
         // 1. Obtener la clave de Supabase
         const key = (process.env.SUPABASE_SERVICE_KEY || '').trim();
@@ -1264,7 +1298,10 @@ async function vincularCheque(req, res, next) {
             }
         }
 
-        const descCC = `Val Ch ${cheque.numero_cheque} (Vto: ${fechaVtoFmt}) [Cheque: ${chequeId}] - Banco: ${cheque.banco_emisor} - Emisor: ${cheque.librador_razon_social || 'N/A'}`;
+        const descBaseCheque = `Val Ch ${cheque.numero_cheque} (Vto: ${fechaVtoFmt}) [Cheque: ${chequeId}] - Banco: ${cheque.banco_emisor} - Emisor: ${cheque.librador_razon_social || 'N/A'}`;
+        const descCC = (destCuentaCheque && destCuentaCheque.unificada)
+            ? agregarReferenciaNodoADescripcion(descBaseCheque, destCuentaCheque.nombreMarca)
+            : descBaseCheque;
         
         await dbClient.query(
             `INSERT INTO public.factura_cuenta_corriente_movimientos (

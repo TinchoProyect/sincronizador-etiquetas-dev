@@ -1302,6 +1302,8 @@
         const saldoTxt = saldoNum < 0
             ? `Saldo a favor: ${fmtMoneda(Math.abs(saldoNum))}`
             : `Saldo CC Principal: ${fmtMoneda(saldoNum)}`;
+        const chkUnif = document.getElementById('abm-usar-cuenta-madre-unificada');
+        const usarUnificada = Boolean(chkUnif?.checked);
         return `
             <div style="padding:8px 12px; border-radius:7px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.45); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                 <div style="font-size:0.78rem; color:#ecfdf5;">
@@ -1311,8 +1313,10 @@
                     — <strong>${escaparHtml(cli.razon_social || cli.cliente_nombre)}</strong>
                     <span style="margin-left:6px; color:#6ee7b7; font-weight:700;">(${saldoTxt})</span>
                 </div>
-                <div style="font-size:0.71rem; color:#a7f3d0;">
-                    Subcuenta operativa aislada <code>CB-NODO-xxx</code> + liquidación neta en <code>${escaparHtml(cli.codigo_bunker_cliente)}</code>
+                <div style="font-size:0.71rem; color:${usarUnificada ? '#bae6fd' : '#a7f3d0'};">
+                    ${usarUnificada
+                        ? `Cuenta Unificada directo en <code>${escaparHtml(cli.codigo_bunker_cliente)}</code> (subcuenta duplicada archivada)`
+                        : `Subcuenta operativa aislada <code>CB-NODO-xxx</code> + liquidación neta en <code>${escaparHtml(cli.codigo_bunker_cliente)}</code>`}
                 </div>
             </div>
         `;
@@ -1402,7 +1406,11 @@
                                             👤 Gestor: <strong>${escaparHtml(n.gestor_nombre)}</strong> · 📍 ${escaparHtml(n.barrio_zona || n.direccion_retiro || '')}
                                         </div>
                                         <div style="font-size:0.72rem; color:#94a3b8; margin-top:3px; display:flex; gap:10px; flex-wrap:wrap;">
-                                            <span>📒 Subcuenta <code>${escaparHtml(n.codigo_bunker_cliente || 'CB-NODO')}</code>: <strong style="color:#34d399;">${fmtMoneda(n.saldo_cuenta_corriente)}</strong></span>
+                                            ${n.usar_cuenta_madre_unificada && n.codigo_bunker_cliente_madre ? `
+                                                <span>🔗 Cuenta Única <code>${escaparHtml(n.codigo_bunker_cliente_madre)}</code>: <strong style="color:#38bdf8;">${fmtMoneda(n.saldo_cuenta_corriente_madre)}</strong> <span style="color:#64748b;">(subcuenta ${escaparHtml(n.codigo_bunker_cliente || '')} archivada)</span></span>
+                                            ` : `
+                                                <span>📒 Subcuenta <code>${escaparHtml(n.codigo_bunker_cliente || 'CB-NODO')}</code>: <strong style="color:#34d399;">${fmtMoneda(n.saldo_cuenta_corriente)}</strong></span>
+                                            `}
                                             <span>🏦 Alias: <strong style="color:#38bdf8;">${escaparHtml(n.alias_bancario_display || 'pago.canasto')}</strong></span>
                                             <span>🛵 Envío: <strong>${puedeRep ? fmtMoneda(n.cargo_envio_barrial) : 'Deshabilitado'}</strong></span>
                                         </div>
@@ -1412,8 +1420,8 @@
                                             ${puedeEnc ? `<span style="font-size:0.66rem; padding:1px 6px; border-radius:999px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.35); color:#fcd34d;">📦 Encomienda (prevista)</span>` : ''}
                                         </div>
                                         ${n.codigo_bunker_cliente_madre ? `
-                                            <div style="font-size:0.71rem; color:#6ee7b7; margin-top:4px; padding:3px 7px; border-radius:5px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.35); display:inline-block;">
-                                                🔗 Cliente Titular LAMDA: <strong>${escaparHtml(n.codigo_bunker_cliente_madre)}</strong> (${escaparHtml(n.cliente_madre_razon_social || n.cliente_madre_nombre || '')}) · Saldo CC: <strong>${fmtMoneda(n.saldo_cuenta_corriente_madre)}</strong>
+                                            <div style="font-size:0.71rem; color:${n.usar_cuenta_madre_unificada ? '#bae6fd' : '#6ee7b7'}; margin-top:4px; padding:3px 7px; border-radius:5px; background:${n.usar_cuenta_madre_unificada ? 'rgba(56,189,248,0.14)' : 'rgba(16,185,129,0.14)'}; border:1px solid ${n.usar_cuenta_madre_unificada ? 'rgba(56,189,248,0.4)' : 'rgba(16,185,129,0.35)'}; display:inline-block;">
+                                                ${n.usar_cuenta_madre_unificada ? '🔗 Cuenta Madre Unificada:' : '🔗 Cliente Titular LAMDA:'} <strong>${escaparHtml(n.codigo_bunker_cliente_madre)}</strong> (${escaparHtml(n.cliente_madre_razon_social || n.cliente_madre_nombre || '')}) · Saldo CC: <strong>${fmtMoneda(n.saldo_cuenta_corriente_madre)}</strong>
                                             </div>
                                         ` : ''}
                                     </div>
@@ -1495,6 +1503,20 @@
                             <div id="abm-cliente-titular-resumen">
                                 ${renderizarResumenClienteTitularHtml()}
                             </div>
+
+                            <label style="display:flex; gap:10px; align-items:flex-start; margin-top:10px; padding:9px 11px; border-radius:8px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.35); cursor:pointer;">
+                                <input type="checkbox" id="abm-usar-cuenta-madre-unificada"
+                                    onchange="window.NodosPizarra.alCambiarModoCuentaUnificadaAbm()"
+                                    style="margin-top:3px; accent-color:#38bdf8;">
+                                <div>
+                                    <div style="font-size:0.78rem; font-weight:800; color:#bae6fd;">
+                                        🔗 Unificar Cuenta Corriente directo en el Cliente Titular Madre (sin subcuenta duplicada en Tesorería)
+                                    </div>
+                                    <div style="font-size:0.71rem; color:#94a3b8; margin-top:2px; line-height:1.35;">
+                                        Al activarlo, retiros de canastos, remitos, transferencias, cobros y liquidaciones del Nodo imputan directo en la Cuenta Principal del Titular con la referencia operativa <code>Nodo [Marca]</code>, y su subcuenta <code>CB-NODO-xxx</code> queda archivada sin duplicidad. Desactivado = opera en subcuenta aislada.
+                                    </div>
+                                </div>
+                            </label>
                         </div>
 
                         <!-- PASO 2: DATOS DE CONTACTO, PUNTO DE RETIRO Y MAPA INTERACTIVO AR (LEAFLET + GEOREF AR) -->
@@ -3383,7 +3405,13 @@
                 `;
             }
             if (subEl) {
-                subEl.innerHTML = `Modificando Nodo existente · Subcuenta aislada <code>${escaparHtml(nodo.codigo_bunker_cliente || 'CB-NODO-xxx')}</code> · Link tienda: <code>/tienda/${escaparHtml(nodo.slug)}</code>`;
+                const chkUnif = document.getElementById('abm-usar-cuenta-madre-unificada');
+                const esUnif = chkUnif ? Boolean(chkUnif.checked) : Boolean(nodo.usar_cuenta_madre_unificada);
+                const codigoMadre = document.getElementById('abm-cliente-madre-codigo')?.value?.trim() || nodo.codigo_bunker_cliente_madre || '';
+                const infoCuenta = (esUnif && codigoMadre)
+                    ? `Cuenta Unificada directo en <code>${escaparHtml(codigoMadre)}</code> (subcuenta <code>${escaparHtml(nodo.codigo_bunker_cliente || '')}</code> archivada)`
+                    : `Subcuenta aislada <code>${escaparHtml(nodo.codigo_bunker_cliente || 'CB-NODO-xxx')}</code>`;
+                subEl.innerHTML = `Modificando Nodo existente · ${infoCuenta} · Link tienda: <code>/tienda/${escaparHtml(nodo.slug)}</code>`;
             }
             if (actBox) {
                 actBox.innerHTML = `
@@ -3571,6 +3599,8 @@
         setVal('abm-longitud', nodo.longitud ?? '');
         setVal('abm-cliente-madre-id', nodo.cliente_madre_bunker_id || '');
         setVal('abm-cliente-madre-codigo', nodo.codigo_bunker_cliente_madre || '');
+        const chkUnif = document.getElementById('abm-usar-cuenta-madre-unificada');
+        if (chkUnif) chkUnif.checked = Boolean(nodo.usar_cuenta_madre_unificada);
         const chkComp = document.getElementById('abm-cuenta-compartida');
         if (chkComp) chkComp.checked = nodo.usa_cuenta_compartida !== false;
         const chkRet = document.getElementById('abm-permitir-retiro');
@@ -3661,6 +3691,8 @@
         renderizarPreviewTemaVisualAbm(null);
         const aliasEl = document.getElementById('abm-alias-display');
         if (aliasEl) aliasEl.value = cfgCanal.alias_recaudador || 'pago.canasto';
+        const chkUnif = document.getElementById('abm-usar-cuenta-madre-unificada');
+        if (chkUnif) chkUnif.checked = false;
         const chkComp = document.getElementById('abm-cuenta-compartida');
         if (chkComp) chkComp.checked = true;
         const chkRet = document.getElementById('abm-permitir-retiro');
@@ -3687,6 +3719,18 @@
         ocultarDropdownsGeoAbm();
         actualizarEncabezadoFormularioAbm(null);
         regenerarLogoZplEnVivo();
+    }
+
+    function alCambiarModoCuentaUnificadaAbm() {
+        const resBox = document.getElementById('abm-cliente-titular-resumen');
+        const cliSel = (ESTADO_NODOS.fuentes.clientes_bunker || []).find(
+            c => Number(c.id) === Number(ESTADO_NODOS.clienteMadreSeleccionadoId)
+        );
+        if (resBox) resBox.innerHTML = renderizarResumenClienteTitularHtml(cliSel || null);
+        const nodoEditando = ESTADO_NODOS.nodoEditandoId
+            ? ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(ESTADO_NODOS.nodoEditandoId))
+            : null;
+        actualizarEncabezadoFormularioAbm(nodoEditando || null);
     }
 
     function filtrarClientesTitularesAbm(val) {
@@ -4179,6 +4223,7 @@
                 longitud: lngVal !== '' && lngVal !== undefined ? Number(lngVal) : null,
                 cliente_madre_bunker_id: Number(clienteMadreIdVal),
                 codigo_bunker_cliente_madre: codigoMadreVal,
+                usar_cuenta_madre_unificada: Boolean(document.getElementById('abm-usar-cuenta-madre-unificada')?.checked),
                 cuenta_bancaria_id: cfgCanal.cuenta_bancaria_id || null,
                 usa_cuenta_compartida: usaComp,
                 alias_bancario_display: usaComp ? (cfgCanal.alias_recaudador || aliasEscrito) : aliasEscrito,
@@ -4225,7 +4270,7 @@
                     title: '✅ Nodo Barrial Guardado',
                     html: `
                         <div style="text-align:left; font-size:0.85rem; line-height:1.5;">
-                            <p><strong>${escaparHtml(data.nodo.nombre_marca)}</strong> quedó activo y vinculado al Cliente Titular <code>${escaparHtml(data.nodo.codigo_bunker_cliente_madre || '')}</code> con subcuenta aislada <code>${escaparHtml(data.nodo.codigo_bunker_cliente || '')}</code>.</p>
+                            <p><strong>${escaparHtml(data.nodo.nombre_marca)}</strong> quedó activo vinculado al Cliente Titular <code>${escaparHtml(data.nodo.codigo_bunker_cliente_madre || '')}</code> ${data.nodo.usar_cuenta_madre_unificada ? `(<strong>Cuenta Única Unificada</strong> · subcuenta <code>${escaparHtml(data.nodo.codigo_bunker_cliente || '')}</code> archivada sin duplicidad)` : `con subcuenta aislada <code>${escaparHtml(data.nodo.codigo_bunker_cliente || '')}</code>`}.</p>
                             <div style="margin-top:8px; padding:10px; border-radius:8px; background:#0f172a; border:1px solid #334155; font-size:0.79rem;">
                                 <div>📍 <strong>Retiro:</strong> ${escaparHtml(data.nodo.direccion_retiro || '')} (${escaparHtml(data.nodo.barrio_zona || '')})</div>
                                 <div>🏦 <strong>Alias Vecinos (Marca Blanca):</strong> <code>${escaparHtml(data.nodo.alias_bancario_display || 'pago.canasto')}</code></div>
@@ -4374,6 +4419,7 @@
         ubicarTextoDomicilioActualEnMapaAbm,
         aplicarBarrioSugeridoMapaAbm,
         aplicarCalleSugeridaMapaAbm,
+        alCambiarModoCuentaUnificadaAbm,
         alCambiarToggleCuentaCompartidaAbm,
         abrirModalConfigCuentaCanal,
         aplicarDomicilioSugeridoAbm,

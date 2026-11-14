@@ -11,9 +11,16 @@ const nodosService = require('../src/produccion/services/nodosBarrialesService')
     try {
         await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
         const resultado = await nodosService.migrarNodoLoDeMatiAParaiso(db);
+        const resultadoUnificacion = await nodosService.activarCuentaMadreUnificadaNodo(db, {
+            codigo_nodo: 'NODO-001',
+            slug: 'paraiso',
+            codigo_bunker_cliente_madre: 'CB-0006'
+        });
         const check = await db.query(
             `SELECT id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca,
-                    gestor_nombre, barrio_zona, color_primario, cliente_madre_bunker_id, codigo_bunker_cliente,
+                    gestor_nombre, barrio_zona, color_primario,
+                    cliente_madre_bunker_id, codigo_bunker_cliente_madre,
+                    usar_cuenta_madre_unificada, bunker_cliente_id, codigo_bunker_cliente,
                     LEFT(COALESCE(gestor_token, ''), 12) AS gestor_token_prefijo,
                     LEFT(COALESCE(logo_zpl_gfa, ''), 24) AS logo_zpl_prefijo,
                     logo_zpl_config,
@@ -22,8 +29,17 @@ const nodosService = require('../src/produccion/services/nodosBarrialesService')
              FROM public.nodos_maestro
              ORDER BY id ASC`
         );
+        const cuentasRes = await db.query(
+            `SELECT id, codigo_bunker_cliente, nombre_cuenta, estado, saldo, saldo_apertura
+             FROM public.factura_cuentas_corrientes
+             WHERE codigo_bunker_cliente IN ('CB-0006', 'CB-NODO-001')
+                OR codigo_bunker_cliente LIKE 'CB-NODO-%'
+             ORDER BY id ASC`
+        );
         console.log('Resultado migración Paraíso:', JSON.stringify(resultado, null, 2));
+        console.log('Resultado unificación Cuenta Madre NODO-001 -> CB-0006:', JSON.stringify(resultadoUnificacion, null, 2));
         console.log('Estado nodos_maestro:', JSON.stringify(check.rows, null, 2));
+        console.log('Estado cuentas corrientes relacionadas:', JSON.stringify(cuentasRes.rows, null, 2));
         process.exit(0);
     } catch (err) {
         console.error('Error ejecutando migrarNodoParaiso:', err);
