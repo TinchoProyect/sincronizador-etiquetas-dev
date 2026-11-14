@@ -59,6 +59,7 @@ const TEMA_VISUAL_PARAISO_OFICIAL = {
         familia: "'Nunito', sans-serif",
         google_font: 'Nunito:wght@500;600;700;800;900'
     },
+    logo_incluye_texto: true,
     logos: {
         horizontal: '/img/nodos/paraiso/paraiso-horizontal.png',
         vertical: '/img/nodos/paraiso/paraiso-vertical.png',
@@ -92,7 +93,7 @@ async function migrarNodoLoDeMatiAParaiso(runner = null) {
     const q = runner || db;
     const candRes = await q.query(
         `SELECT id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca,
-                subtitulo_marca, color_primario, tema_visual, logo_zpl_config, logo_zpl_gfa
+                subtitulo_marca, gestor_nombre, barrio_zona, color_primario, tema_visual, logo_zpl_config, logo_zpl_gfa
          FROM public.nodos_maestro
          WHERE codigo_nodo = 'NODO-001'
             OR LOWER(slug) = 'lo-de-mati'
@@ -117,7 +118,10 @@ async function migrarNodoLoDeMatiAParaiso(runner = null) {
         String(row.slug_historico || '').trim() === 'lo-de-mati' &&
         String(row.nombre_marca || '').trim() === 'Paraíso' &&
         String(row.bajada_marca || '').trim() === 'Alimentos saludables' &&
+        String(row.gestor_nombre || '').trim() === 'Matías Ferronato' &&
+        String(row.barrio_zona || '').trim() === 'Barrio Paraíso' &&
         String(row.color_primario || '').toUpperCase() === '#D36344' &&
+        tvActual?.logo_incluye_texto === true &&
         tvActual?.logos?.horizontal === TEMA_VISUAL_PARAISO_OFICIAL.logos.horizontal &&
         tvActual?.paleta?.primario === TEMA_VISUAL_PARAISO_OFICIAL.paleta.primario &&
         Number(cfgActual.width || 0) === 264 &&
@@ -166,6 +170,8 @@ async function migrarNodoLoDeMatiAParaiso(runner = null) {
              nombre_marca = 'Paraíso',
              bajada_marca = 'Alimentos saludables',
              subtitulo_marca = 'Alimentos saludables',
+             gestor_nombre = 'Matías Ferronato',
+             barrio_zona = 'Barrio Paraíso',
              color_primario = '#D36344',
              tema_visual = $1::jsonb,
              logo_original_base64 = COALESCE($2, logo_original_base64),
@@ -174,7 +180,7 @@ async function migrarNodoLoDeMatiAParaiso(runner = null) {
              logo_zpl_config = $5::jsonb,
              updated_at = NOW()
          WHERE id = $6::int
-         RETURNING id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca`,
+         RETURNING id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca, gestor_nombre, barrio_zona`,
         [
             JSON.stringify(TEMA_VISUAL_PARAISO_OFICIAL),
             zebraDataUrl,

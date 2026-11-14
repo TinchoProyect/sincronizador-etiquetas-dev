@@ -108,7 +108,7 @@
       align-items: flex-start;
       gap: 7px;
     }
-    .brand-box.has-horizontal-brand .brand-title {
+    .brand-box.logo-includes-text .brand-title {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -116,9 +116,11 @@
       clip: rect(0, 0, 0, 0);
       white-space: nowrap;
     }
-    .brand-box.has-horizontal-brand .brand-sub {
-      margin-top: 0;
-      font-size: 0.85rem;
+    .brand-box.logo-includes-text .brand-sub {
+      display: none;
+    }
+    .brand-box.logo-includes-text .brand-meta {
+      margin-top: 2px;
     }
     .brand-logo {
       width: 64px;
@@ -271,6 +273,12 @@
       gap: 8px;
       overflow-x: auto;
       padding-bottom: 4px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .cats-row::-webkit-scrollbar {
+      display: none;
     }
     .cat-btn {
       padding: 7px 14px;
@@ -1222,11 +1230,17 @@
 
       const logoBox = document.getElementById('brand-logo-box');
       const logoHorizontal = STATE.nodo.tema_visual?.logos?.horizontal || '';
+      const logoIncluyeTexto = Boolean(logoHorizontal && STATE.nodo.tema_visual?.logo_incluye_texto);
       const logoSrc = logoHorizontal || STATE.nodo.logo_original_base64 || STATE.nodo.logo_mono_preview_base64 || '';
       logoBox.classList.toggle('has-horizontal-logo', Boolean(logoHorizontal));
-      logoBox.closest('.brand-box')?.classList.toggle('has-horizontal-brand', Boolean(logoHorizontal));
+      const brandBoxEl = logoBox.closest('.brand-box');
+      if (brandBoxEl) {
+        brandBoxEl.classList.toggle('has-horizontal-brand', Boolean(logoHorizontal));
+        brandBoxEl.classList.toggle('logo-includes-text', logoIncluyeTexto);
+      }
       if (logoSrc) {
-        logoBox.innerHTML = `<img src="${logoSrc}" alt="${esc(STATE.nodo.nombre_marca)}">`;
+        const altLogo = bajadaEfectiva ? `${STATE.nodo.nombre_marca} · ${bajadaEfectiva}` : STATE.nodo.nombre_marca;
+        logoBox.innerHTML = `<img src="${logoSrc}" alt="${esc(altLogo)}">`;
       } else {
         const siglas = String(STATE.nodo.nombre_marca || 'ND').split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
         logoBox.innerHTML = `<div class="brand-monogram">${esc(siglas)}</div>`;

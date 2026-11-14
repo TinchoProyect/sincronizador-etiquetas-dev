@@ -13,10 +13,11 @@ const nodosService = require('../src/produccion/services/nodosBarrialesService')
         const resultado = await nodosService.migrarNodoLoDeMatiAParaiso(db);
         const check = await db.query(
             `SELECT id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca,
-                    color_primario, cliente_madre_bunker_id, codigo_bunker_cliente,
+                    gestor_nombre, barrio_zona, color_primario, cliente_madre_bunker_id, codigo_bunker_cliente,
                     LEFT(COALESCE(gestor_token, ''), 12) AS gestor_token_prefijo,
                     LEFT(COALESCE(logo_zpl_gfa, ''), 24) AS logo_zpl_prefijo,
                     logo_zpl_config,
+                    tema_visual->'logo_incluye_texto' AS logo_incluye_texto,
                     tema_visual->'logos' AS tema_logos
              FROM public.nodos_maestro
              ORDER BY id ASC`
