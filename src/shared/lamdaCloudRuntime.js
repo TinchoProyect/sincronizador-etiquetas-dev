@@ -1526,6 +1526,8 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
         if (
             reqPathClean.startsWith('/tienda') ||
             reqPathClean.startsWith('/gestor') ||
+            reqPathClean.startsWith('/seguimiento') ||
+            reqPathClean.startsWith('/img/nodos') ||
             (rawHostHeader && (rawHostHeader === publicNodosHost || rawHostHeader === 'tienda.lamdaser.com' || rawHostHeader.startsWith('tienda.') || rawHostHeader.includes('.trycloudflare.com')))
         ) {
             return next();

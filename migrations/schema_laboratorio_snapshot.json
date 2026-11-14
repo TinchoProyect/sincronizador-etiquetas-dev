@@ -12923,6 +12923,36 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "false"
+      },
+      "bajada_marca": {
+        "ordinal_position": 40,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "slug_historico": {
+        "ordinal_position": 41,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "tema_visual": {
+        "ordinal_position": 42,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'{}'::jsonb"
       }
     },
     "nodos_movimientos_cta_cte": {

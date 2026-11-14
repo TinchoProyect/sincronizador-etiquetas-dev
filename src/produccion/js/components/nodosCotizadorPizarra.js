@@ -39,7 +39,10 @@
         modoCreacionNuevo: false,
         modoLaboratorio: false,
         mostrarArchivadosAbm: false,
-        ultimoPreviewEtiqueta: null
+        ultimoPreviewEtiqueta: null,
+        logoZplConfigActual: null,
+        temaVisualEditando: {},
+        slugHistoricoActual: ''
     };
 
     const FLUJO_META = {
@@ -1370,9 +1373,9 @@
                                 data-abm-card-id="${n.id}"
                                 style="padding:12px; border-radius:10px; background:${estaEditando ? 'rgba(30,27,75,0.55)' : 'rgba(15,23,42,0.85)'}; border:${estaEditando ? '2px' : '1px'} ${esArchivado ? 'dashed' : 'solid'} ${estaEditando ? '#a78bfa' : (esArchivado ? '#b45309' : '#334155')}; opacity:${esArchivado ? '0.78' : '1'}; cursor:pointer; display:flex; flex-direction:column; gap:8px;">
                                 <div style="display:flex; gap:12px; align-items:center;">
-                                    <div style="width:74px; height:44px; background:#faf7f3; border-radius:6px; border:1px solid #475569; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; padding:3px;">
-                                        ${n.logo_original_base64
-                                            ? `<img src="${n.logo_original_base64}" style="max-width:100%; max-height:100%; object-fit:contain;" alt="Logo">`
+                                    <div style="width:82px; height:46px; background:#faf7f3; border-radius:6px; border:1px solid #475569; display:flex; align-items:center; justify-content:center; overflow:hidden; flex-shrink:0; padding:3px;">
+                                        ${(n.tema_visual?.logos?.horizontal || n.logo_original_base64)
+                                            ? `<img src="${escaparHtml(n.tema_visual?.logos?.horizontal || n.logo_original_base64)}" style="max-width:100%; max-height:100%; object-fit:contain;" alt="Logo">`
                                             : (n.logo_mono_preview_base64
                                                 ? `<img src="${n.logo_mono_preview_base64}" style="max-width:100%; max-height:100%; image-rendering:pixelated;" alt="Logo">`
                                                 : `<span style="color:#000; font-weight:800; font-size:0.75rem;">LOGO</span>`)}
@@ -1382,6 +1385,7 @@
                                             <span style="font-weight:800; color:#f8fafc; font-size:0.9rem; display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">
                                                 <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${escaparHtml(n.color_primario || '#a2553b')}; border:1px solid rgba(255,255,255,0.4);"></span>
                                                 ${escaparHtml(n.nombre_marca)}
+                                                ${n.bajada_marca ? `<span style="font-size:0.72rem; font-weight:600; color:#cbd5e1;">· ${escaparHtml(n.bajada_marca)}</span>` : ''}
                                                 ${esArchivado ? `<span style="font-size:0.64rem; font-weight:900; padding:1px 6px; border-radius:4px; background:rgba(245,158,11,0.22); border:1px solid #f59e0b; color:#fcd34d;">ARCHIVADO</span>` : ''}
                                             </span>
                                             <span style="display:inline-flex; align-items:center; gap:5px; flex-wrap:wrap;">
@@ -1570,12 +1574,18 @@
                         <div style="font-size:0.75rem; color:#cbd5e1; font-weight:800; margin-bottom:6px;">
                             3️⃣ Identidad de la Tienda Vecinal (Marca Blanca), Estética y Condiciones Operativas
                         </div>
-                        <div style="display:grid; grid-template-columns: 1.25fr 1.1fr 1.15fr; gap:10px; margin-bottom:10px;">
+                        <div style="display:grid; grid-template-columns: 1.15fr 1fr 1fr 1.15fr; gap:10px; margin-bottom:10px;">
                             <div>
                                 <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Nombre de la Marca del Nodo</label>
-                                <input type="text" id="abm-nombre-marca" placeholder="Ej: Lo de Mati"
+                                <input type="text" id="abm-nombre-marca" placeholder="Ej: Paraíso"
                                     oninput="window.NodosPizarra.alEditarNombreMarcaAbm(this.value)"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700; box-sizing:border-box;">
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Bajada Oficial de Marca</label>
+                                <input type="text" id="abm-bajada-marca" placeholder="Ej: Alimentos saludables"
+                                    oninput="window.NodosPizarra.simularEtiquetaZebra('estandar_pagado')"
+                                    style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
                             </div>
                             <div>
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:3px;">
@@ -1586,42 +1596,47 @@
                                         🔄 Tomar del nombre
                                     </button>
                                 </div>
-                                <input type="text" id="abm-slug" placeholder="ej: lo-de-mati"
+                                <input type="text" id="abm-slug" placeholder="ej: paraiso"
                                     oninput="this.dataset.manual='true'"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#38bdf8; font-family:monospace; box-sizing:border-box;">
                             </div>
                             <div>
-                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Bajada / Subtítulo de Marca</label>
+                                <label style="display:block; font-size:0.73rem; color:#cbd5e1; margin-bottom:3px;">Subtítulo Etiqueta / Pie</label>
                                 <input type="text" id="abm-subtitulo" value="Alimentos Naturales y Frutos Secos - Entrega Barrial"
                                     oninput="window.NodosPizarra.simularEtiquetaZebra('estandar_pagado')"
                                     style="width:100%; padding:7px 9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; box-sizing:border-box;">
                             </div>
                         </div>
 
-                        <!-- PALETA DE COLOR PERSONALIZABLE DEL NODO (PANTALLAS MÓVILES) -->
-                        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; padding:9px 12px; border-radius:8px; background:rgba(15,23,42,0.75); border:1px solid #263244; margin-bottom:10px;">
-                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                <span style="font-size:0.73rem; color:#cbd5e1; font-weight:800;">🎨 Color de Identidad (Apps Móviles):</span>
-                                <input type="color" id="abm-color-primario" value="#a2553b"
-                                    oninput="document.getElementById('abm-color-hex-label').textContent = this.value"
-                                    style="width:32px; height:28px; padding:0; border:1px solid #475569; border-radius:6px; background:transparent; cursor:pointer;">
-                                <code id="abm-color-hex-label" style="font-size:0.74rem; color:#f8fafc; background:#0f172a; padding:2px 7px; border-radius:5px; border:1px solid #334155;">#a2553b</code>
+                        <!-- PALETA DE COLOR Y TEMA VISUAL MARCA BLANCA DEL NODO -->
+                        <div style="display:flex; flex-direction:column; gap:8px; padding:9px 12px; border-radius:8px; background:rgba(15,23,42,0.75); border:1px solid #263244; margin-bottom:10px;">
+                            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                    <span style="font-size:0.73rem; color:#cbd5e1; font-weight:800;">🎨 Color de Identidad (Apps Móviles):</span>
+                                    <input type="color" id="abm-color-primario" value="#a2553b"
+                                        oninput="document.getElementById('abm-color-hex-label').textContent = this.value"
+                                        style="width:32px; height:28px; padding:0; border:1px solid #475569; border-radius:6px; background:transparent; cursor:pointer;">
+                                    <code id="abm-color-hex-label" style="font-size:0.74rem; color:#f8fafc; background:#0f172a; padding:2px 7px; border-radius:5px; border:1px solid #334155;">#a2553b</code>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                    <span style="font-size:0.7rem; color:#94a3b8;">Paletas sugeridas:</span>
+                                    ${[
+                                        { label: 'Paraíso Terracota', hex: '#D36344' },
+                                        { label: 'Terracota Tierra', hex: '#a2553b' },
+                                        { label: 'Cacao Tostado', hex: '#654B30' },
+                                        { label: 'Oliva Pistacho', hex: '#9DAD5A' },
+                                        { label: 'Azul Barrial', hex: '#2b5b84' }
+                                    ].map(p => `
+                                        <button type="button" onclick="window.NodosPizarra.fijarColorPrimarioNodoAbm('${p.hex}')"
+                                            style="display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:999px; font-size:0.7rem; font-weight:700; border:1px solid #334155; background:#0f172a; color:#e2e8f0; cursor:pointer;">
+                                            <span style="width:10px; height:10px; border-radius:50%; background:${p.hex}; display:inline-block;"></span>
+                                            ${p.label}
+                                        </button>
+                                    `).join('')}
+                                </div>
                             </div>
-                            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                                <span style="font-size:0.7rem; color:#94a3b8;">Paletas sugeridas:</span>
-                                ${[
-                                    { label: 'Terracota Tierra', hex: '#a2553b' },
-                                    { label: 'Cacao Tostado', hex: '#6b442a' },
-                                    { label: 'Oliva Suave', hex: '#5c6f47' },
-                                    { label: 'Verde Almacén', hex: '#2f6f4e' },
-                                    { label: 'Azul Barrial', hex: '#2b5b84' }
-                                ].map(p => `
-                                    <button type="button" onclick="window.NodosPizarra.fijarColorPrimarioNodoAbm('${p.hex}')"
-                                        style="display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:999px; font-size:0.7rem; font-weight:700; border:1px solid #334155; background:#0f172a; color:#e2e8f0; cursor:pointer;">
-                                        <span style="width:10px; height:10px; border-radius:50%; background:${p.hex}; display:inline-block;"></span>
-                                        ${p.label}
-                                    </button>
-                                `).join('')}
+                            <div id="abm-tema-visual-preview" style="padding:7px 9px; border-radius:6px; background:#0b1220; border:1px solid #1e293b; font-size:0.71rem; color:#94a3b8;">
+                                Tema visual por defecto (usa color primario + sello o logo cargado).
                             </div>
                         </div>
 
@@ -1729,19 +1744,19 @@
                                 </div>
                             </div>
 
-                            <div style="display:grid; grid-template-columns: 280px 1fr; gap:14px; align-items:center;">
+                            <div style="display:grid; grid-template-columns: 356px 1fr; gap:14px; align-items:center;">
                                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
                                     <div style="display:flex; flex-direction:column; align-items:center; gap:5px; background:#1e293b; padding:8px; border-radius:8px; border:1px solid #475569;">
                                         <div style="font-size:0.66rem; color:#cbd5e1; font-weight:700;">LOGO EN CELULAR</div>
-                                        <div style="width:112px; height:60px; background:#faf7f3; display:flex; align-items:center; justify-content:center; border-radius:6px; border:1px solid #cbd5e1; padding:4px;">
-                                            <img id="abm-logo-color-preview-img" src="" alt="" style="max-width:104px; max-height:52px; object-fit:contain; display:none;">
+                                        <div style="width:154px; height:60px; background:#faf7f3; display:flex; align-items:center; justify-content:center; border-radius:6px; border:1px solid #cbd5e1; padding:4px; overflow:hidden;">
+                                            <img id="abm-logo-color-preview-img" src="" alt="" style="max-width:100%; max-height:52px; object-fit:contain; display:none;">
                                             <span id="abm-logo-color-empty" style="font-size:0.68rem; color:#64748b; font-weight:700;">Sello automático</span>
                                         </div>
                                     </div>
                                     <div style="display:flex; flex-direction:column; align-items:center; gap:5px; background:#1e293b; padding:8px; border-radius:8px; border:1px solid #475569;">
                                         <div style="font-size:0.66rem; color:#cbd5e1; font-weight:700;">VISTA ETIQUETA</div>
-                                        <div style="width:112px; height:60px; background:#ffffff; display:flex; align-items:center; justify-content:center; border:1px solid #000;">
-                                            <img id="abm-logo-preview-img" src="" alt="Vista previa del logo" style="max-width:108px; max-height:54px; image-rendering:pixelated;">
+                                        <div style="width:162px; height:60px; background:#ffffff; display:flex; align-items:center; justify-content:center; border:1px solid #000; padding:3px; overflow:hidden;">
+                                            <img id="abm-logo-preview-img" src="" alt="Vista previa del logo" style="max-width:100%; max-height:54px; object-fit:contain; image-rendering:pixelated;">
                                         </div>
                                     </div>
                                 </div>
@@ -3187,12 +3202,71 @@
 
     let limpiarLogoOriginalPendiente = false;
 
-    function actualizarPreviewLogoColorAbm(srcBase64) {
+    function renderizarPreviewTemaVisualAbm(nodo) {
+        const box = document.getElementById('abm-tema-visual-preview');
+        if (!box) return;
+        const tv = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? nodo.tema_visual : (ESTADO_NODOS.temaVisualEditando || {});
+        const pal = (tv.paleta && typeof tv.paleta === 'object') ? tv.paleta : {};
+        const logos = (tv.logos && typeof tv.logos === 'object') ? tv.logos : {};
+        const tip = (tv.tipografia && typeof tv.tipografia === 'object') ? tv.tipografia : {};
+        const palEntries = Object.entries(pal).filter(([, hex]) => /^#[0-9a-fA-F]{3,8}$/.test(String(hex || '').trim()));
+        const logoSlots = [
+            ['Horizontal', logos.horizontal],
+            ['Vertical', logos.vertical],
+            ['Isotipo', logos.isotipo],
+            ['Zebra 1-bit', logos.zebra_mono]
+        ].filter(([, url]) => Boolean(url));
+        const slugHist = nodo?.slug_historico || ESTADO_NODOS.slugHistoricoActual || '';
+
+        if (palEntries.length === 0 && logoSlots.length === 0 && !tip.familia && !slugHist) {
+            const c = nodo?.color_primario || document.getElementById('abm-color-primario')?.value || '#a2553b';
+            box.innerHTML = `<span style="color:#94a3b8;">Tema visual por defecto (color primario <code>${escaparHtml(c)}</code> + sello o logo cargado).</span>`;
+            return;
+        }
+
+        box.innerHTML = `
+            <div style="display:flex; flex-direction:column; gap:7px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+                    <span style="color:#cbd5e1; font-weight:700;">✨ Identidad Marca Blanca extendida ${tip.familia ? `· Tipografía: <code>${escaparHtml(tip.familia)}</code>` : ''}</span>
+                    ${slugHist ? `<span style="color:#bae6fd; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.35); border-radius:999px; padding:1px 8px;">Alias histórico activo: <code>/tienda/${escaparHtml(slugHist)}</code></span>` : ''}
+                </div>
+                ${palEntries.length > 0 ? `
+                    <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                        ${palEntries.slice(0, 9).map(([k, hex]) => `
+                            <span title="${escaparHtml(k)}: ${escaparHtml(hex)}" style="display:inline-flex; align-items:center; gap:4px; padding:2px 6px; border-radius:5px; background:#0f172a; border:1px solid #334155; color:#e2e8f0; font-size:0.67rem;">
+                                <span style="width:10px; height:10px; border-radius:3px; background:${escaparHtml(hex)}; border:1px solid rgba(255,255,255,0.35); display:inline-block;"></span>
+                                ${escaparHtml(k)}: <code>${escaparHtml(hex)}</code>
+                            </span>
+                        `).join('')}
+                    </div>
+                ` : ''}
+                ${logoSlots.length > 0 ? `
+                    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                        ${logoSlots.map(([label, url]) => `
+                            <div style="display:flex; align-items:center; gap:6px; padding:4px 8px; border-radius:6px; background:#151e2e; border:1px solid #334155;">
+                                <div style="width:48px; height:26px; background:#FBF8F3; border-radius:4px; display:flex; align-items:center; justify-content:center; padding:2px; overflow:hidden;">
+                                    <img src="${escaparHtml(url)}" alt="${escaparHtml(label)}" style="max-width:100%; max-height:100%; object-fit:contain;">
+                                </div>
+                                <span style="font-size:0.68rem; color:#cbd5e1; font-weight:700;">${escaparHtml(label)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    function actualizarPreviewLogoColorAbm(srcBase64, nodoRef = null) {
         const imgColor = document.getElementById('abm-logo-color-preview-img');
         const emptyLbl = document.getElementById('abm-logo-color-empty');
+        const effectiveSrc = (nodoRef?.tema_visual?.logos?.horizontal && !srcBase64?.startsWith('data:image/'))
+            ? nodoRef.tema_visual.logos.horizontal
+            : (nodoRef?.tema_visual?.logos?.horizontal && nodoRef?.tema_visual?.logos?.zebra_mono && srcBase64 === logoOriginalSubidoBase64)
+                ? nodoRef.tema_visual.logos.horizontal
+                : (srcBase64 || nodoRef?.tema_visual?.logos?.horizontal || null);
         if (imgColor && emptyLbl) {
-            if (srcBase64) {
-                imgColor.src = srcBase64;
+            if (effectiveSrc) {
+                imgColor.src = effectiveSrc;
                 imgColor.style.display = 'block';
                 emptyLbl.style.display = 'none';
             } else {
@@ -3464,6 +3538,9 @@
         ESTADO_NODOS.modoCreacionNuevo = false;
         ESTADO_NODOS.nodoEditandoId = Number(nodo.id);
         ESTADO_NODOS.clienteMadreSeleccionadoId = nodo.cliente_madre_bunker_id ? Number(nodo.cliente_madre_bunker_id) : null;
+        ESTADO_NODOS.logoZplConfigActual = (nodo.logo_zpl_config && typeof nodo.logo_zpl_config === 'object') ? { ...nodo.logo_zpl_config } : null;
+        ESTADO_NODOS.temaVisualEditando = (nodo.tema_visual && typeof nodo.tema_visual === 'object') ? JSON.parse(JSON.stringify(nodo.tema_visual)) : {};
+        ESTADO_NODOS.slugHistoricoActual = nodo.slug_historico || '';
         logoOriginalSubidoBase64 = nodo.logo_original_base64 || null;
         limpiarLogoOriginalPendiente = false;
 
@@ -3479,11 +3556,13 @@
 
         setVal('abm-nodo-id', nodo.id);
         setVal('abm-nombre-marca', nodo.nombre_marca);
+        setVal('abm-bajada-marca', nodo.bajada_marca || '');
         setVal('abm-slug', nodo.slug);
         const slugEl = document.getElementById('abm-slug');
         if (slugEl) slugEl.dataset.manual = 'true';
         setVal('abm-subtitulo', nodo.subtitulo_marca);
         fijarColorPrimarioNodoAbm(nodo.color_primario || '#a2553b');
+        renderizarPreviewTemaVisualAbm(nodo);
         setVal('abm-gestor-nombre', nodo.gestor_nombre);
         setVal('abm-gestor-tel', nodo.gestor_telefono);
         setVal('abm-barrio', nodo.barrio_zona);
@@ -3515,7 +3594,7 @@
         const thSpan = document.getElementById('abm-threshold-val');
         if (thSpan) thSpan.textContent = thEfectivo;
 
-        actualizarPreviewLogoColorAbm(nodo.logo_original_base64 || null);
+        actualizarPreviewLogoColorAbm(nodo.logo_original_base64 || null, nodo);
         const imgPrev = document.getElementById('abm-logo-preview-img');
         if (imgPrev) {
             if (nodo.logo_mono_preview_base64) {
@@ -3546,6 +3625,9 @@
         ESTADO_NODOS.modoCreacionNuevo = true;
         ESTADO_NODOS.nodoEditandoId = null;
         ESTADO_NODOS.clienteMadreSeleccionadoId = null;
+        ESTADO_NODOS.logoZplConfigActual = null;
+        ESTADO_NODOS.temaVisualEditando = {};
+        ESTADO_NODOS.slugHistoricoActual = '';
         ESTADO_NODOS.busquedaClienteAbm = '';
         abmUltimaSugerenciaMapa = { barrio: '', calle: '', lat: null, lng: null };
 
@@ -3556,6 +3638,7 @@
         const ids = [
             'abm-nodo-id',
             'abm-nombre-marca',
+            'abm-bajada-marca',
             'abm-slug',
             'abm-gestor-nombre',
             'abm-gestor-tel',
@@ -3575,6 +3658,7 @@
         });
         fijarColorPrimarioNodoAbm('#a2553b');
         resetearPreviewLogoAbm({ inicialesDefault: '', thresholdDefault: 138 });
+        renderizarPreviewTemaVisualAbm(null);
         const aliasEl = document.getElementById('abm-alias-display');
         if (aliasEl) aliasEl.value = cfgCanal.alias_recaudador || 'pago.canasto';
         const chkComp = document.getElementById('abm-cuenta-compartida');
@@ -3917,7 +4001,8 @@
         reader.onload = function (e) {
             logoOriginalSubidoBase64 = e.target.result;
             limpiarLogoOriginalPendiente = false;
-            actualizarPreviewLogoColorAbm(logoOriginalSubidoBase64);
+            ESTADO_NODOS.logoZplConfigActual = null;
+            actualizarPreviewLogoColorAbm(logoOriginalSubidoBase64, null);
             const thEl = document.getElementById('abm-logo-threshold');
             const thSpan = document.getElementById('abm-threshold-val');
             if (thEl && Number(thEl.value) < 160) {
@@ -3932,13 +4017,14 @@
     function quitarLogoImagenAbm() {
         logoOriginalSubidoBase64 = null;
         limpiarLogoOriginalPendiente = true;
+        ESTADO_NODOS.logoZplConfigActual = null;
         const fileInput = document.getElementById('abm-logo-file-input');
         if (fileInput) fileInput.value = '';
         const thEl = document.getElementById('abm-logo-threshold');
         const thSpan = document.getElementById('abm-threshold-val');
         if (thEl) thEl.value = '138';
         if (thSpan) thSpan.textContent = '138';
-        actualizarPreviewLogoColorAbm(null);
+        actualizarPreviewLogoColorAbm(null, null);
         regenerarLogoZplEnVivo();
     }
 
@@ -3948,6 +4034,7 @@
             const iniciales = document.getElementById('abm-logo-iniciales')?.value || '';
             const mode = document.getElementById('abm-logo-mode')?.value || 'threshold';
             const threshold = Number(document.getElementById('abm-logo-threshold')?.value || 138);
+            const zplCfg = ESTADO_NODOS.logoZplConfigActual || {};
 
             const resp = await fetch('/api/produccion/nodos/convertir-logo-zpl', {
                 method: 'POST',
@@ -3957,7 +4044,11 @@
                     nombreMarca,
                     iniciales,
                     mode,
-                    threshold
+                    threshold,
+                    width: zplCfg.width || undefined,
+                    height: zplCfg.height || undefined,
+                    padding: zplCfg.padding,
+                    invert: Boolean(zplCfg.invert)
                 })
             });
             const data = await resp.json();
@@ -3977,6 +4068,7 @@
     async function simularEtiquetaZebra(modo = 'estandar_pagado') {
         try {
             const nombreMarca = document.getElementById('abm-nombre-marca')?.value || 'ALMACEN NATURAL BARRIAL';
+            const bajadaMarca = document.getElementById('abm-bajada-marca')?.value || '';
             const subtitulo = document.getElementById('abm-subtitulo')?.value || 'Comunidad Barrial - Entrega Fresca';
             const direccion = document.getElementById('abm-direccion')?.value || 'Punto de Retiro del Nodo';
             const logoGfa = document.getElementById('abm-logo-zpl-gfa')?.value || '';
@@ -4001,9 +4093,11 @@
             const esLargo = modo === 'largo_continuacion';
             const payload = {
                 nombre_marca: nombreMarca,
+                bajada_marca: bajadaMarca,
                 subtitulo_marca: subtitulo,
                 logo_zpl_gfa: logoGfa,
                 logo_mono_preview_base64: logoMono,
+                logo_zpl_config: ESTADO_NODOS.logoZplConfigActual || undefined,
                 pedido_codigo: esLargo ? 'NB-1089' : 'NB-1042',
                 vecino_nombre: esLargo ? 'VALERIA SANCHEZ' : 'MARIA LAURA GOMEZ',
                 vecino_telefono: esLargo ? '221-509-4412' : '221-554-8910',
@@ -4063,9 +4157,19 @@
                 throw new Error('Debés habilitar al menos una modalidad activa de entrega (Retiro por el Nodo o Reparto Propio).');
             }
 
+            const colorPrimarioVal = document.getElementById('abm-color-primario')?.value || '#a2553b';
+            const temaVisualPayload = (ESTADO_NODOS.temaVisualEditando && Object.keys(ESTADO_NODOS.temaVisualEditando).length > 0)
+                ? JSON.parse(JSON.stringify(ESTADO_NODOS.temaVisualEditando))
+                : undefined;
+            if (temaVisualPayload?.paleta && colorPrimarioVal) {
+                temaVisualPayload.paleta.terracota = colorPrimarioVal;
+            }
+
             const payload = {
                 nombre_marca: document.getElementById('abm-nombre-marca')?.value || '',
+                bajada_marca: document.getElementById('abm-bajada-marca')?.value?.trim() || null,
                 slug: document.getElementById('abm-slug')?.value || '',
+                slug_historico: ESTADO_NODOS.slugHistoricoActual || undefined,
                 subtitulo_marca: document.getElementById('abm-subtitulo')?.value || '',
                 gestor_nombre: document.getElementById('abm-gestor-nombre')?.value || '',
                 gestor_telefono: document.getElementById('abm-gestor-tel')?.value || '',
@@ -4087,10 +4191,12 @@
                 cargo_envio_barrial: Number(document.getElementById('abm-cargo-envio')?.value || 0),
                 mostrar_ingredientes_tienda: Boolean(document.getElementById('abm-mostrar-ingredientes-tienda')?.checked ?? true),
                 margen_gestor_default_pct: Number(document.getElementById('abm-margen-default')?.value || 28),
-                color_primario: document.getElementById('abm-color-primario')?.value || '#a2553b',
+                color_primario: colorPrimarioVal,
+                tema_visual: temaVisualPayload,
                 logo_original_base64: logoOriginalSubidoBase64,
                 limpiar_logo_original: limpiarLogoOriginalPendiente,
                 logo_zpl_config: {
+                    ...(ESTADO_NODOS.logoZplConfigActual || {}),
                     iniciales: document.getElementById('abm-logo-iniciales')?.value || '',
                     mode: document.getElementById('abm-logo-mode')?.value || 'threshold',
                     threshold: Number(document.getElementById('abm-logo-threshold')?.value || 138)

@@ -2,6 +2,7 @@ if (!globalThis.WebSocket) { try { globalThis.WebSocket = require('ws'); } catch
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const fs = require('fs');
 const path = require('path');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
@@ -51,10 +52,12 @@ app.use((req, res, next) => {
     const p = String(req.path || '');
     const esVistaPermitida =
         /^\/(gestor|gestor-nodo|tienda)(\/[^/]+)?(\/mi-cuenta\/[^/]+)?\/?$/i.test(p) ||
+        /^\/seguimiento(\/[^/]+)?\/?$/i.test(p) ||
+        /^\/img\/nodos\/[^/]+\/[a-z0-9._-]+\.(?:png|jpe?g|webp|svg|ico)$/i.test(p) ||
         /^\/(favicon\.ico|robots\.txt)$/i.test(p);
 
     const esApiNodoPermitida =
-        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|ofertas-gestor\/\d+|gestor\/\d+\/(config-logistica|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
+        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|ofertas-gestor\/\d+|gestor\/\d+\/(config-logistica|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
 
     if (esVistaPermitida || esApiNodoPermitida) {
         return next();
@@ -112,9 +115,108 @@ app.use('/api/produccion/tiempos', tiemposRouter);
 app.use('/api/produccion/nodos', nodosBarrialesRouter);
 app.use('/api/produccion', produccionRoutes);
 
+function escHtmlAttrNodos(v) {
+    return String(v ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function construirBaseUrlAbsolutaNodos(req) {
+    const hostHeader = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+    const rawProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    const isLocalHost = !hostHeader || /^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostHeader);
+    const proto = rawProto || (req.secure || !isLocalHost ? 'https' : (req.protocol || 'http'));
+    return hostHeader ? `${proto}://${hostHeader}` : '';
+}
+
+function aUrlAbsolutaNodos(baseUrl, rutaOUrl) {
+    const raw = String(rutaOUrl || '').trim();
+    if (!raw) return '';
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (!baseUrl) return raw;
+    return `${baseUrl}${raw.startsWith('/') ? '' : '/'}${raw}`;
+}
+
+function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}) {
+    const htmlPath = path.join(__dirname, 'pages', fileName);
+    let html = fs.readFileSync(htmlPath, 'utf8');
+
+    const baseUrl = construirBaseUrlAbsolutaNodos(req);
+    const tv = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? nodo.tema_visual : {};
+    const logosTv = (tv.logos && typeof tv.logos === 'object') ? tv.logos : {};
+    const nombreMarca = String(nodo?.nombre_marca || 'Tienda Barrial').trim();
+    const bajada = String(nodo?.bajada_marca || nodo?.subtitulo_marca || '').trim();
+    const esGestor = fileName === 'nodo-panel-gestor.html';
+
+    const tituloDoc = esGestor
+        ? `${nombreMarca} — Panel del Gestor`
+        : (bajada ? `${nombreMarca} · ${bajada}` : `${nombreMarca} — Tienda Vecinal`);
+
+    const ogTitle = extraContext.codigoPedido
+        ? `${nombreMarca} · Pedido #${extraContext.codigoPedido}`
+        : tituloDoc;
+
+    const ogDesc = extraContext.codigoPedido
+        ? `Seguimiento en vivo de tu pedido #${extraContext.codigoPedido} en ${nombreMarca}${nodo?.barrio_zona ? ` (${nodo.barrio_zona})` : ''}.`
+        : `${bajada || 'Pedidos comunitarios del barrio'}${nodo?.barrio_zona ? ` · ${nodo.barrio_zona}` : ''}.`;
+
+    const ogImagePath = logosTv.vertical || logosTv.horizontal || '';
+    const ogImageAbs = aUrlAbsolutaNodos(baseUrl, ogImagePath);
+    const faviconPath = logosTv.isotipo || '';
+    const ogUrl = aUrlAbsolutaNodos(baseUrl, req.originalUrl || req.path || '');
+
+    const metaTags = [];
+    if (faviconPath) {
+        metaTags.push(`<link rel="icon" type="image/png" href="${escHtmlAttrNodos(faviconPath)}">`);
+        metaTags.push(`<link rel="apple-touch-icon" href="${escHtmlAttrNodos(faviconPath)}">`);
+    }
+    if (!esGestor) {
+        metaTags.push(`<meta name="description" content="${escHtmlAttrNodos(ogDesc)}">`);
+        metaTags.push(`<meta property="og:type" content="website">`);
+        metaTags.push(`<meta property="og:title" content="${escHtmlAttrNodos(ogTitle)}">`);
+        metaTags.push(`<meta property="og:description" content="${escHtmlAttrNodos(ogDesc)}">`);
+        if (ogUrl) metaTags.push(`<meta property="og:url" content="${escHtmlAttrNodos(ogUrl)}">`);
+        if (ogImageAbs) metaTags.push(`<meta property="og:image" content="${escHtmlAttrNodos(ogImageAbs)}">`);
+        metaTags.push(`<meta name="twitter:card" content="${ogImageAbs ? 'summary_large_image' : 'summary'}">`);
+    }
+
+    const bootstrapPayload = {
+        slug: nodo?.slug || '',
+        tracking_token: extraContext.trackingToken || ''
+    };
+    const bootstrapScript = `<script>window.__NODOS_BOOTSTRAP__ = ${JSON.stringify(bootstrapPayload).replace(/</g, '\\u003c')};</script>`;
+
+    html = html.replace(/<title([^>]*)>[\s\S]*?<\/title>/i, `<title$1>${escHtmlAttrNodos(tituloDoc)}</title>\n  ${metaTags.join('\n  ')}\n  ${bootstrapScript}`);
+    return html;
+}
+
+function construirUrlRedireccionSlugCanonico(req, slugSolicitado, slugCanonico) {
+    const qIdx = String(req.originalUrl || '').indexOf('?');
+    const querySuffix = qIdx !== -1 ? String(req.originalUrl).slice(qIdx) : '';
+    const reqPath = String(req.path || '/');
+    if (req.params?.nodoSlug) {
+        const segEsc = req.params.nodoSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const nuevoPath = reqPath.replace(new RegExp(`/(${segEsc})(?=/|$)`, 'i'), `/${encodeURIComponent(slugCanonico)}`);
+        return `${nuevoPath}${querySuffix}`;
+    }
+    if (req.query?.nodo) {
+        const u = new URL(req.originalUrl || reqPath, 'http://local');
+        u.searchParams.set('nodo', slugCanonico);
+        return u.pathname + u.search;
+    }
+    return `/tienda/${encodeURIComponent(slugCanonico)}${querySuffix}`;
+}
+
 async function validarYServirVistaNodoPublica(req, res, fileName) {
     const slugSolicitado = String(req.params.nodoSlug || req.query.nodo || '').trim();
     const esExterno = esAccesoExternoNodos(req);
+
+    try {
+        const nodosService = require('./services/nodosBarrialesService');
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+    } catch (_) {}
 
     if (!slugSolicitado) {
         if (esExterno) {
@@ -134,9 +236,16 @@ async function validarYServirVistaNodoPublica(req, res, fileName) {
         return res.sendFile(path.join(__dirname, 'pages', fileName));
     }
 
+    let nodoRow = null;
     try {
         const { rows } = await db.query(
-            `SELECT id FROM public.nodos_maestro WHERE LOWER(slug) = LOWER($1) AND COALESCE(activo, true) = true LIMIT 1`,
+            `SELECT id, slug, slug_historico, nombre_marca, bajada_marca, subtitulo_marca,
+                    barrio_zona, color_primario, tema_visual
+             FROM public.nodos_maestro
+             WHERE (LOWER(slug) = LOWER($1) OR LOWER(COALESCE(slug_historico, '')) = LOWER($1))
+               AND COALESCE(activo, true) = true
+             ORDER BY CASE WHEN LOWER(slug) = LOWER($1) THEN 0 ELSE 1 END, id ASC
+             LIMIT 1`,
             [slugSolicitado]
         );
         if (rows.length === 0) {
@@ -153,16 +262,64 @@ async function validarYServirVistaNodoPublica(req, res, fileName) {
   </div>
 </body></html>`);
         }
+        nodoRow = rows[0];
     } catch (err) {
         console.error('❌ [NODOS] Error validando slug público:', err.message);
         return res.status(404).send('Nodo Barrial no encontrado.');
     }
 
-    return res.sendFile(path.join(__dirname, 'pages', fileName));
+    if (nodoRow.slug && String(nodoRow.slug).toLowerCase() !== slugSolicitado.toLowerCase()) {
+        const destino = construirUrlRedireccionSlugCanonico(req, slugSolicitado, nodoRow.slug);
+        return res.redirect(302, destino);
+    }
+
+    const html = renderizarHtmlMarcaBlancaConMeta(fileName, nodoRow, req);
+    return res.type('text/html').send(html);
 }
 
+app.use('/img/nodos', express.static(path.join(__dirname, 'img', 'nodos')));
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.get('/robots.txt', (req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
+
+app.get('/seguimiento/:trackingToken', async (req, res) => {
+    const cleanTok = String(req.params.trackingToken || '').trim();
+    try {
+        const nodosService = require('./services/nodosBarrialesService');
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const { rows } = await db.query(
+            `SELECT npv.codigo_pedido, npv.tracking_token,
+                    nm.id, nm.slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca,
+                    nm.subtitulo_marca, nm.barrio_zona, nm.color_primario, nm.tema_visual
+             FROM public.nodos_pedidos_vecinos npv
+             JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+             WHERE npv.tracking_token = $1
+               AND COALESCE(nm.activo, true) = true
+             LIMIT 1`,
+            [cleanTok]
+        );
+        if (rows.length === 0) {
+            return res.status(404).send(`<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Seguimiento no encontrado</title></head>
+<body style="font-family:sans-serif;background:#faf8f5;color:#1e293b;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;padding:20px;text-align:center;">
+  <div style="max-width:420px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:26px;">
+    <div style="font-size:2.2rem;margin-bottom:8px;">📦</div>
+    <h2 style="margin:0 0 8px 0;font-size:1.15rem;">Enlace de seguimiento no encontrado</h2>
+    <p style="color:#64748b;font-size:0.9rem;margin:0;">Verificá el enlace compartido o consultá desde la tienda de tu nodo.</p>
+  </div>
+</body></html>`);
+        }
+        const row = rows[0];
+        const html = renderizarHtmlMarcaBlancaConMeta('nodo-tienda-vecino.html', row, req, {
+            trackingToken: row.tracking_token,
+            codigoPedido: row.codigo_pedido
+        });
+        return res.type('text/html').send(html);
+    } catch (err) {
+        console.error('❌ [NODOS] Error sirviendo /seguimiento/:token:', err.message);
+        return res.status(500).send('Error cargando seguimiento.');
+    }
+});
 
 // 🏘️ Rutas amigables Etapas 2, 3 y 4: Tienda Vecino, Mi Cuenta Vecino, Panel Gestor, Mesa de Armado y Liquidación Cta. Cte.
 app.get(['/tienda', '/tienda/:nodoSlug', '/tienda/:nodoSlug/mi-cuenta/:portalToken'], (req, res) => {

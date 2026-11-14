@@ -560,7 +560,10 @@ router.get('/portal/:slug', async (req, res, next) => {
     const vistaReq = String(req.query.vista || '').trim().toLowerCase();
     if (vistaReq === 'gestor') {
         return autenticarGestorSiPublicoOToken(req, res, () => {
-            if (req.nodoAuth && String(req.nodoAuth.slug || '').toLowerCase() !== String(req.params.slug || '').trim().toLowerCase()) {
+            const slugReqLower = String(req.params.slug || '').trim().toLowerCase();
+            const slugAuthLower = String(req.nodoAuth?.slug || '').trim().toLowerCase();
+            const slugHistLower = String(req.nodoAuth?.slug_historico || '').trim().toLowerCase();
+            if (req.nodoAuth && slugAuthLower !== slugReqLower && (!slugHistLower || slugHistLower !== slugReqLower)) {
                 return res.status(403).json({
                     ok: false,
                     code: 'GESTOR_WRONG_NODE',
@@ -595,6 +598,20 @@ router.get('/tienda/:slug/seguimiento/:token', async (req, res) => {
     try {
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
         const data = await nodosService.obtenerSeguimientoPublicoPedidoVecino(req.params.slug, req.params.token);
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        res.status(404).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/seguimiento/:token
+ * Seguimiento directo por token criptográfico sin requerir slug en la URL
+ */
+router.get('/seguimiento/:token', async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        const data = await nodosService.obtenerSeguimientoPublicoPedidoVecino('', req.params.token);
         res.json({ ok: true, ...data });
     } catch (error) {
         res.status(404).json({ ok: false, error: error.message });

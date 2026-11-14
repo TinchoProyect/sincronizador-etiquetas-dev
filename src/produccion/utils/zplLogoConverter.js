@@ -23,6 +23,30 @@ const DEFAULT_LOGO_HEIGHT = 56; // 56 filas -> 14 * 56 = 784 bytes totales
 const ITEMS_POR_ETIQUETA_DERECHA = 6; // Máximo de renglones en etiqueta derecha antes de emitir etiqueta de continuación
 
 /**
+ * Extrae ancho y alto (en dots 203 dpi) directamente desde el encabezado ^GFA,<total>,<total>,<bytesPorFila>,...
+ */
+function parsearDimensionesGfa(gfaStr = '') {
+    const m = String(gfaStr || '').match(/\^GFA\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,/i);
+    if (!m) return null;
+    const totalBytes = Number(m[1]) || 0;
+    const bytesPerRow = Number(m[3]) || 0;
+    if (totalBytes <= 0 || bytesPerRow <= 0) return null;
+    return {
+        width: bytesPerRow * 8,
+        height: Math.max(1, Math.round(totalBytes / bytesPerRow))
+    };
+}
+
+function resolverModoCabeceraLogo({ logoGfa = '', logoImg = null, logoZplConfig = null } = {}) {
+    const gfaDims = parsearDimensionesGfa(logoGfa);
+    const width = gfaDims?.width || Number(logoImg?.width) || Number(logoZplConfig?.width) || DEFAULT_LOGO_WIDTH;
+    const height = gfaDims?.height || Number(logoImg?.height) || Number(logoZplConfig?.height) || DEFAULT_LOGO_HEIGHT;
+    const modoConfig = String(logoZplConfig?.modo_cabecera || '').trim().toLowerCase();
+    const esBannerCompleto = modoConfig === 'banner_completo' || width >= 180;
+    return { width, height, esBannerCompleto };
+}
+
+/**
  * Limpia texto para ZPL (sin tildes problemáticas ni caracteres de control)
  */
 function limpiarTextoZpl(texto = '') {
@@ -140,7 +164,10 @@ async function convertirLogoAZplGfa(opts = {}) {
             : `data:image/png;base64,${opts.imageBase64}`;
         const img = await loadImage(cleanDataUrl);
 
-        const scale = Math.min((width - 4) / img.width, (height - 4) / img.height);
+        const totalPadding = Number.isFinite(Number(opts.padding))
+            ? Math.max(0, Number(opts.padding))
+            : (width >= 180 ? 2 : 4);
+        const scale = Math.min((width - totalPadding) / img.width, (height - totalPadding) / img.height);
         const drawW = Math.max(1, Math.round(img.width * scale));
         const drawH = Math.max(1, Math.round(img.height * scale));
         const dx = Math.round((width - drawW) / 2);
@@ -261,10 +288,11 @@ function paginarItemsEtiqueta(items = []) {
  */
 function generarEtiquetaZplParNodo(params = {}) {
     const nombreMarca = limpiarTextoZpl(params.nombre_marca || 'ALMACEN VERDE CITY BELL').toUpperCase();
-    const subtituloMarca = limpiarTextoZpl(params.subtitulo_marca || 'Pedido Vecinal - Entrega Fresca');
+    const subtituloMarca = limpiarTextoZpl(params.bajada_marca || params.subtitulo_marca || 'Pedido Vecinal - Entrega Fresca');
     const logoGfa = (params.logo_zpl_gfa && params.logo_zpl_gfa.startsWith('^GFA'))
         ? params.logo_zpl_gfa
         : '';
+    const logoCabecera = resolverModoCabeceraLogo({ logoGfa, logoZplConfig: params.logo_zpl_config });
 
     const pedidoCodigo = limpiarTextoZpl(params.pedido_codigo || 'NB-1042');
     const vecinoNombre = limpiarTextoZpl(params.vecino_nombre || 'MARIA LAURA GOMEZ').toUpperCase();
@@ -299,15 +327,28 @@ function generarEtiquetaZplParNodo(params = {}) {
             ].join('\n');
         }).join('\n');
 
+        const xRightBadge = Math.min(315, 25 + Math.min(logoCabecera.width, 280) + 10);
+        const bloqueCabeceraIzqZpl = logoGfa && logoCabecera.esBannerCompleto
+            ? [
+                `^FO25,8${logoGfa}^FS`,
+                ...(esContinuacion ? [
+                    `^FO${xRightBadge},18^A0N,17,17^FDHOJA ${numHoja}/${totalHojas}^FS`,
+                    `^FO${xRightBadge},40^A0N,14,14^FDCONT. CHECK^FS`
+                ] : [])
+            ]
+            : [
+                logoGfa ? `^FO25,14${logoGfa}^FS` : '^FO25,14^GB108,54,3^FS^FO42,30^A0N,24,24^FDNODO^FS',
+                `^FO142,16^A0N,${fontTituloZpl}^FD${nombreMarca.substring(0, 32)}^FS`,
+                `^FO142,42^A0N,15,14^FD${esContinuacion ? `CONTINUACION CHECKLIST (HOJA ${numHoja}/${totalHojas})` : subtituloMarca.substring(0, 44)}^FS`
+            ];
+
         return [
             '^XA',
             '^CI28',
             '^PW830',
             '^LL280',
             // ================= COLUMNA IZQUIERDA (X=23): PORTADA MARCA BLANCA =================
-            logoGfa ? `^FO25,14${logoGfa}^FS` : '^FO25,14^GB108,54,3^FS^FO42,30^A0N,24,24^FDNODO^FS',
-            `^FO142,16^A0N,${fontTituloZpl}^FD${nombreMarca.substring(0, 32)}^FS`,
-            `^FO142,42^A0N,15,14^FD${esContinuacion ? `CONTINUACION CHECKLIST (HOJA ${numHoja}/${totalHojas})` : subtituloMarca.substring(0, 44)}^FS`,
+            ...bloqueCabeceraIzqZpl,
             '^FO23,76^GB372,2,2^FS',
             `^FO23,84^A0N,21,20^FDVECINO: ${vecinoNombre.substring(0, 26)}^FS`,
             `^FO23,110^A0N,17,17^FD${modalidadEntrega.substring(0, 38)}^FS`,
@@ -374,7 +415,12 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
     }
 
     const nombreMarca = limpiarTextoZpl(params.nombre_marca || 'ALMACEN VERDE CITY BELL').toUpperCase();
-    const subtituloMarca = limpiarTextoZpl(params.subtitulo_marca || 'Pedido Vecinal - Entrega Fresca');
+    const subtituloMarca = limpiarTextoZpl(params.bajada_marca || params.subtitulo_marca || 'Pedido Vecinal - Entrega Fresca');
+    const logoCabecera = resolverModoCabeceraLogo({
+        logoGfa: params.logo_zpl_gfa,
+        logoImg,
+        logoZplConfig: params.logo_zpl_config
+    });
     const pedidoCodigo = limpiarTextoZpl(params.pedido_codigo || 'NB-1042');
     const vecinoNombre = limpiarTextoZpl(params.vecino_nombre || 'MARIA LAURA GOMEZ').toUpperCase();
     const vecinoTelefono = limpiarTextoZpl(params.vecino_telefono || '221-554-8910');
@@ -406,24 +452,45 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
         }
 
         // ================= DIBUJAR ETIQUETA IZQUIERDA =================
-        if (logoImg) {
-            ctx.drawImage(logoImg, leftX + 10, rowY + 10, 112, 56);
+        if (logoImg && logoCabecera.esBannerCompleto) {
+            const scalePv = Math.min(1, (labelW - 22) / logoImg.width, 64 / logoImg.height);
+            const drawW = Math.round(logoImg.width * scalePv);
+            const drawH = Math.round(logoImg.height * scalePv);
+            ctx.drawImage(logoImg, leftX + 10, rowY + 6 + Math.round((64 - drawH) / 2), drawW, drawH);
+            if (esContinuacion) {
+                const bx = Math.min(leftX + labelW - 95, leftX + 14 + drawW);
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = '#b45309';
+                ctx.font = 'bold 11px Arial';
+                ctx.fillText(`HOJA ${numHoja}/${totalHojas}`, bx, rowY + 18);
+                ctx.font = 'bold 9.5px Arial';
+                ctx.fillText('CONT. CHECK', bx, rowY + 36);
+            }
         } else {
-            dibujarMonogramaEnCanvas(ctx, 112, 56, nombreMarca);
+            if (logoImg) {
+                ctx.drawImage(logoImg, leftX + 10, rowY + 10, 112, 56);
+            } else {
+                dibujarMonogramaEnCanvas(ctx, 112, 56, nombreMarca);
+            }
+
+            ctx.fillStyle = '#0f172a';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.font = nombreMarca.length > 21 ? 'bold 13px Arial' : 'bold 15px Arial';
+            ctx.fillText(nombreMarca.substring(0, 32), leftX + 128, rowY + 14);
+
+            const textoSub = esContinuacion
+                ? `CONTINUACION CHECKLIST (HOJA ${numHoja}/${totalHojas})`
+                : subtituloMarca.substring(0, 44);
+            ctx.font = textoSub.length > 30 ? 'bold 10px Arial' : 'bold 11px Arial';
+            ctx.fillStyle = esContinuacion ? '#b45309' : '#334155';
+            ctx.fillText(textoSub, leftX + 128, rowY + 38);
         }
 
-        ctx.fillStyle = '#0f172a';
+        ctx.fillStyle = '#000000';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
-        ctx.font = nombreMarca.length > 21 ? 'bold 13px Arial' : 'bold 15px Arial';
-        ctx.fillText(nombreMarca.substring(0, 32), leftX + 128, rowY + 14);
-
-        const textoSub = esContinuacion
-            ? `CONTINUACION CHECKLIST (HOJA ${numHoja}/${totalHojas})`
-            : subtituloMarca.substring(0, 44);
-        ctx.font = textoSub.length > 30 ? 'bold 10px Arial' : 'bold 11px Arial';
-        ctx.fillStyle = esContinuacion ? '#b45309' : '#334155';
-        ctx.fillText(textoSub, leftX + 128, rowY + 38);
 
         ctx.fillStyle = '#000000';
         ctx.fillRect(leftX + 10, rowY + 72, labelW - 20, 2);
@@ -587,6 +654,7 @@ async function generarPreviewVisualCanastoQrMaestro(params = {}) {
 
     const leftX = 23;
     const rightX = 443;
+    const logoCabecera = resolverModoCabeceraLogo({ logoGfa, logoZplConfig: params.logo_zpl_config });
 
     const lineasPedidosZpl = pedidos.slice(0, 6).map((p, idx) => {
         const rowY = 74 + idx * 31;
@@ -597,6 +665,20 @@ async function generarPreviewVisualCanastoQrMaestro(params = {}) {
         ].join('\n');
     }).join('\n');
 
+    const xCanastoTagZpl = leftX + Math.min(282, logoCabecera.width + 12);
+    const bloqueCabeceraCanastoZpl = logoCabecera.esBannerCompleto
+        ? [
+            `^FO${leftX + 4},6${logoGfa}^FS`,
+            `^FO${xCanastoTagZpl},14^A0N,16,15^FDCANASTO NODOS^FS`,
+            `^FO${xCanastoTagZpl},34^A0N,14,13^FD${codigoCanasto.slice(0, 14)}^FS`,
+            `^FO${xCanastoTagZpl},51^A0N,12,12^FDESTACION NODOS^FS`
+        ]
+        : [
+            `^FO${leftX + 8},10${logoGfa}`,
+            `^FO${leftX + 128},14^A0N,22,20^FD${nombreMarca.substring(0, 30)}^FS`,
+            `^FO${leftX + 128},40^A0N,16,16^FDCANASTO ESTACION NODOS (${codigoCanasto})^FS`
+        ];
+
     const zpl = [
         '^XA',
         '^CI28',
@@ -604,9 +686,7 @@ async function generarPreviewVisualCanastoQrMaestro(params = {}) {
         '^LL280',
         '^LH0,0',
         // Etiqueta Izquierda: QR Maestro del Canasto en ESTACION_NODOS
-        `^FO${leftX + 8},10${logoGfa}`,
-        `^FO${leftX + 128},14^A0N,22,20^FD${nombreMarca.substring(0, 30)}^FS`,
-        `^FO${leftX + 128},40^A0N,16,16^FDCANASTO ESTACION NODOS (${codigoCanasto})^FS`,
+        ...bloqueCabeceraCanastoZpl,
         `^FO${leftX + 8},72^GB378,2,2^FS`,
         `^FO${leftX + 8},80^A0N,20,20^FDGESTOR: ${gestorNombre.substring(0, 26)}^FS`,
         `^FO${leftX + 8},104^A0N,17,17^FDENTREGA: ${fechaEntregaLabel.substring(0, 34)}^FS`,
@@ -657,23 +737,45 @@ async function generarPreviewVisualCanastoQrMaestro(params = {}) {
         ctx.strokeRect(lx, rowY, labelW, labelH);
     }
 
-    if (logoImg) {
-        ctx.drawImage(logoImg, lxLeft + 10, rowY + 10, 112, 56);
+    if (logoImg && (logoCabecera.esBannerCompleto || logoImg.width >= 180)) {
+        const scalePv = Math.min(1, 272 / logoImg.width, 62 / logoImg.height);
+        const drawW = Math.round(logoImg.width * scalePv);
+        const drawH = Math.round(logoImg.height * scalePv);
+        ctx.drawImage(logoImg, lxLeft + 8, rowY + 6 + Math.round((62 - drawH) / 2), drawW, drawH);
+
+        const bx = lxLeft + Math.min(286, drawW + 14);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 11px Arial';
+        ctx.fillText('CANASTO', bx, rowY + 14);
+        ctx.fillStyle = '#0284c7';
+        ctx.font = 'bold 9.5px Arial';
+        ctx.fillText(codigoCanasto.slice(0, 14), bx, rowY + 32);
+        ctx.fillStyle = '#475569';
+        ctx.font = 'bold 9px Arial';
+        ctx.fillText('EST. NODOS', bx, rowY + 48);
     } else {
-        dibujarMonogramaEnCanvas(ctx, 112, 56, nombreMarca);
+        if (logoImg) {
+            ctx.drawImage(logoImg, lxLeft + 10, rowY + 10, 112, 56);
+        } else {
+            dibujarMonogramaEnCanvas(ctx, 112, 56, nombreMarca);
+        }
+
+        ctx.fillStyle = '#0f172a';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.font = nombreMarca.length > 21 ? 'bold 13px Arial' : 'bold 15px Arial';
+        ctx.fillText(nombreMarca.substring(0, 32), lxLeft + 128, rowY + 14);
+
+        ctx.font = 'bold 11px Arial';
+        ctx.fillStyle = '#0284c7';
+        ctx.fillText(`CANASTO ESTACION NODOS (${codigoCanasto})`, lxLeft + 128, rowY + 38);
     }
 
-    ctx.fillStyle = '#0f172a';
+    ctx.fillStyle = '#000000';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.font = nombreMarca.length > 21 ? 'bold 13px Arial' : 'bold 15px Arial';
-    ctx.fillText(nombreMarca.substring(0, 32), lxLeft + 128, rowY + 14);
-
-    ctx.font = 'bold 11px Arial';
-    ctx.fillStyle = '#0284c7';
-    ctx.fillText(`CANASTO ESTACION NODOS (${codigoCanasto})`, lxLeft + 128, rowY + 38);
-
-    ctx.fillStyle = '#000000';
     ctx.fillRect(lxLeft + 10, rowY + 72, labelW - 20, 2);
 
     ctx.font = 'bold 13px Arial';

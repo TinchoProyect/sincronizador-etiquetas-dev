@@ -27,23 +27,28 @@
       --brand-dark: #6b311d;
       --brand-soft: rgba(162, 85, 59, 0.12);
       --brand-border: rgba(162, 85, 59, 0.34);
+      --accent: #a2553b;
+      --sun: #fef3c7;
       --bg: #faf7f3;
       --surface: #ffffff;
       --surface-warm: #f3ebe2;
+      --surface-header: #fffdfb;
       --text: #25130b;
       --muted: #57453b;
       --border: #d9cbbd;
       --ok: #1f5c3d;
       --ok-soft: #e6f4ec;
+      --ok-border: #b7e4c7;
       --warn: #92400e;
       --warn-soft: #fef3c7;
+      --font-brand: 'Nunito', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      font-family: 'Nunito', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: var(--font-brand);
       background: var(--bg);
       color: var(--text);
       padding-bottom: 48px;
@@ -52,7 +57,7 @@
 
     /* Encabezado claro, cálido y austero */
     .top-bar {
-      background: #fffdfb;
+      background: var(--surface-header, #fffdfb);
       border-bottom: 1px solid var(--border);
       padding: 9px 12px;
       position: sticky;
@@ -71,7 +76,7 @@
     .brand-identity {
       display: flex;
       align-items: center;
-      gap: 9px;
+      gap: 10px;
       cursor: pointer;
       text-decoration: none;
       color: inherit;
@@ -84,10 +89,22 @@
       justify-content: center;
       flex-shrink: 0;
     }
+    .brand-emblem.has-horizontal-logo {
+      width: auto;
+      height: 36px;
+      max-width: 158px;
+    }
     .brand-emblem img {
       max-width: 100%;
       max-height: 100%;
       object-fit: contain;
+    }
+    .brand-emblem.has-horizontal-logo img {
+      height: 36px;
+      width: auto;
+      max-width: 158px;
+      object-fit: contain;
+      display: block;
     }
     .brand-monogram {
       width: 34px;
@@ -364,12 +381,12 @@
       padding: 10px 12px;
       margin-bottom: 10px;
       border-radius: 13px;
-      border: 1.5px solid #8a432b;
-      background: linear-gradient(135deg, #a2553b 0%, #7d3e28 100%);
+      border: 1.5px solid var(--brand-dark);
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
       color: #ffffff;
       font-family: inherit;
       cursor: pointer;
-      box-shadow: 0 5px 14px rgba(125, 62, 40, 0.2);
+      box-shadow: 0 5px 14px var(--brand-soft);
       transition: transform 0.12s, box-shadow 0.15s;
     }
     .cta-difusion-hero:active {
@@ -902,6 +919,7 @@
       compradoresResumen: { total_compradores: 0, con_pedido_activo: 0, recurrentes: 0 },
       compradoresCargados: false,
       compartirKit: null,
+      aficheQrDataUrl: '',
       difusionModo: 'tienda',
       difusionOfertaId: 0,
       movimientosCtaCte: [],
@@ -965,21 +983,72 @@
       }
     }
 
-    function aplicarPaletaNodo(hexColor) {
-      const clean = /^#[0-9a-fA-F]{6}$/.test(String(hexColor || '').trim()) ? String(hexColor).trim() : '#a2553b';
+    function aplicarFaviconGestor(urlImg) {
+      const clean = String(urlImg || '').trim();
+      if (!clean) return;
+      ['icon', 'apple-touch-icon'].forEach(rel => {
+        let link = document.querySelector(`link[rel="${rel}"]`);
+        if (!link) {
+          link = document.createElement('link');
+          link.rel = rel;
+          document.head.appendChild(link);
+        }
+        link.href = clean;
+      });
+    }
+
+    function obtenerLogoHorizontalGestor(nodo) {
+      const logos = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? (nodo.tema_visual.logos || {}) : {};
+      return logos.horizontal || '';
+    }
+
+    function obtenerLogoVerticalGestor(nodo) {
+      const logos = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? (nodo.tema_visual.logos || {}) : {};
+      return logos.vertical || logos.horizontal || nodo?.logo_original_base64 || nodo?.logo_mono_preview_base64 || '';
+    }
+
+    function obtenerLogoIconoGestor(nodo) {
+      const logos = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? (nodo.tema_visual.logos || {}) : {};
+      return logos.isotipo || logos.horizontal || nodo?.logo_original_base64 || nodo?.logo_mono_preview_base64 || '';
+    }
+
+    function aplicarPaletaNodo(hexONodo) {
+      const esObj = Boolean(hexONodo && typeof hexONodo === 'object');
+      const nodo = esObj ? hexONodo : null;
+      const tv = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? nodo.tema_visual : {};
+      const pal = (tv.paleta && typeof tv.paleta === 'object') ? tv.paleta : {};
+      const tip = (tv.tipografia && typeof tv.tipografia === 'object') ? tv.tipografia : {};
+      const hexRaw = esObj ? (pal.terracota || nodo.color_primario || '#a2553b') : hexONodo;
+      const clean = /^#[0-9a-fA-F]{6}$/.test(String(hexRaw || '').trim()) ? String(hexRaw).trim() : '#a2553b';
       const r = parseInt(clean.slice(1, 3), 16);
       const g = parseInt(clean.slice(3, 5), 16);
       const b = parseInt(clean.slice(5, 7), 16);
       const darkR = Math.max(0, Math.round(r * 0.78));
       const darkG = Math.max(0, Math.round(g * 0.78));
       const darkB = Math.max(0, Math.round(b * 0.78));
-      const darkHex = '#' + [darkR, darkG, darkB].map(v => v.toString(16).padStart(2, '0')).join('');
+      const darkFallback = '#' + [darkR, darkG, darkB].map(v => v.toString(16).padStart(2, '0')).join('');
 
       const root = document.documentElement;
       root.style.setProperty('--brand', clean);
-      root.style.setProperty('--brand-dark', darkHex);
+      root.style.setProperty('--brand-dark', /^#[0-9a-fA-F]{6}$/.test(pal.terracota_oscuro || '') ? pal.terracota_oscuro : darkFallback);
       root.style.setProperty('--brand-soft', `rgba(${r}, ${g}, ${b}, 0.11)`);
       root.style.setProperty('--brand-border', `rgba(${r}, ${g}, ${b}, 0.30)`);
+
+      if (pal.fondo) root.style.setProperty('--bg', pal.fondo);
+      if (pal.superficie_calida) root.style.setProperty('--surface-warm', pal.superficie_calida);
+      if (pal.tarjeta) {
+        root.style.setProperty('--surface', pal.tarjeta);
+        root.style.setProperty('--surface-header', pal.tarjeta);
+      }
+      if (pal.texto) root.style.setProperty('--text', pal.texto);
+      if (pal.texto_secundario) root.style.setProperty('--muted', pal.texto_secundario);
+      if (pal.borde) root.style.setProperty('--border', pal.borde);
+      if (pal.ocre) root.style.setProperty('--accent', pal.ocre);
+      if (pal.amarillo_sol) root.style.setProperty('--sun', pal.amarillo_sol);
+      if (pal.pistacho_texto) root.style.setProperty('--ok', pal.pistacho_texto);
+      if (pal.pistacho_suave) root.style.setProperty('--ok-soft', pal.pistacho_suave);
+      if (pal.pistacho) root.style.setProperty('--ok-border', pal.pistacho);
+      if (tip.familia) root.style.setProperty('--font-brand', tip.familia);
     }
 
     function detectarSlugInicial() {
@@ -1167,10 +1236,15 @@
         }
       }
 
-      aplicarPaletaNodo(GSTATE.nodo.color_primario || '#a2553b');
+      aplicarPaletaNodo(GSTATE.nodo);
+      aplicarFaviconGestor(obtenerLogoIconoGestor(GSTATE.nodo));
+
+      const nombreMarcaHdr = GSTATE.nodo.nombre_marca || 'Mi Nodo';
+      const bajadaMarcaHdr = String(GSTATE.nodo.bajada_marca || '').trim();
+      const tituloCompletoHdr = bajadaMarcaHdr ? `${nombreMarcaHdr} · ${bajadaMarcaHdr}` : nombreMarcaHdr;
 
       const titleEl = document.getElementById('gestor-nodo-title');
-      if (titleEl) titleEl.textContent = GSTATE.nodo.nombre_marca || 'Mi Nodo';
+      if (titleEl) titleEl.textContent = tituloCompletoHdr;
 
       const subEl = document.getElementById('gestor-nodo-subtitle');
       if (subEl) {
@@ -1183,16 +1257,19 @@
 
       const logoBox = document.getElementById('gestor-logo-box');
       if (logoBox) {
-        const logoSrc = GSTATE.nodo.logo_original_base64 || GSTATE.nodo.logo_mono_preview_base64 || '';
+        const logoHoriz = obtenerLogoHorizontalGestor(GSTATE.nodo);
+        const logoFallback = GSTATE.nodo.logo_original_base64 || GSTATE.nodo.logo_mono_preview_base64 || obtenerLogoIconoGestor(GSTATE.nodo) || '';
+        const logoSrc = logoHoriz || logoFallback;
+        logoBox.classList.toggle('has-horizontal-logo', Boolean(logoHoriz));
         if (logoSrc) {
-          logoBox.innerHTML = `<img src="${logoSrc}" alt="${esc(GSTATE.nodo.nombre_marca)}">`;
+          logoBox.innerHTML = `<img src="${esc(logoSrc)}" alt="${esc(tituloCompletoHdr)}">`;
         } else {
-          const siglas = String(GSTATE.nodo.nombre_marca || 'ND').split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
+          const siglas = String(nombreMarcaHdr || 'ND').split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
           logoBox.innerHTML = `<div class="brand-monogram">${esc(siglas)}</div>`;
         }
       }
 
-      document.title = `${GSTATE.nodo.nombre_marca || 'Nodo'} — Panel del Gestor`;
+      document.title = `${tituloCompletoHdr} — Panel del Gestor`;
 
       const btnTienda = document.getElementById('btn-abrir-tienda');
       if (btnTienda) btnTienda.href = `/tienda/${encodeURIComponent(GSTATE.slug)}`;
@@ -1421,11 +1498,13 @@
     async function cargarKitCompartirGestor(forzar = false) {
       if (!GSTATE.nodo?.id) return null;
       if (GSTATE.compartirKit && !forzar) return GSTATE.compartirKit;
+      GSTATE.aficheQrDataUrl = '';
       try {
         const resp = await fetchGestor(`/api/produccion/nodos/gestor/${Number(GSTATE.nodo.id)}/compartir-kit`, { cache: 'no-store' });
         const data = await leerRespuestaJsonSegura(resp);
         if (resp.ok && data.ok) {
           GSTATE.compartirKit = data;
+          construirAficheQrMarcaBlancaDataUrl().catch(() => {});
           return data;
         }
       } catch (_) {}
@@ -1474,7 +1553,10 @@
     }
 
     function generarTextoSugeridoDifusion() {
-      const nombreMarca = GSTATE.compartirKit?.nodo?.nombre_marca || GSTATE.nodo?.nombre_marca || 'Nuestra tienda';
+      const nodoKit = GSTATE.compartirKit?.nodo || GSTATE.nodo || {};
+      const nombreMarca = nodoKit.nombre_marca || 'Nuestra tienda';
+      const bajadaMarca = String(nodoKit.bajada_marca || '').trim();
+      const encabezadoMarca = bajadaMarca ? `${nombreMarca} · ${bajadaMarca}` : nombreMarca;
       const url = obtenerUrlDifusionActual();
       const prox = GSTATE.compartirKit?.proxima_entrega?.asignada?.label_completo
         || GSTATE.proximaEntrega?.asignada?.label_completo
@@ -1492,7 +1574,7 @@
             ? ` (${pres})`
             : '';
           return [
-            `✨ *${nombreMarca}*`,
+            `✨ *${encabezadoMarca}*`,
             `¡Hola! Te comparto esta opción disponible hoy: *${of.nombre_publico}${descPres}* a *${fmt(of.precio_venta_vecino)}* 🛒`,
             `Podés ver detalles y pedirlo directo acá:`,
             url,
@@ -1502,7 +1584,7 @@
       }
 
       return [
-        `✨ *${nombreMarca}*`,
+        `✨ *${encabezadoMarca}*`,
         `¡Hola! Te comparto el link de nuestra tienda para ver los productos disponibles y hacer tu pedido online:`,
         url,
         prox ? `📅 *Próxima entrega:* ${prox}` : '',
@@ -1705,8 +1787,13 @@
       const body = document.getElementById('modal-recibo-gestor-body');
       if (!body || !GSTATE.nodo) return;
 
-      const nombreMarca = GSTATE.compartirKit?.nodo?.nombre_marca || GSTATE.nodo?.nombre_marca || 'Tu Tienda';
+      const nodoModal = GSTATE.compartirKit?.nodo || GSTATE.nodo || {};
+      const nombreMarca = nodoModal.nombre_marca || 'Tu Tienda';
+      const bajadaMarca = String(nodoModal.bajada_marca || '').trim();
+      const tituloMarcaModal = bajadaMarca ? `${nombreMarca} · ${bajadaMarca}` : nombreMarca;
       const qrDataUrl = GSTATE.compartirKit?.qr_tienda_data_url || '';
+      const logoVerticalPreview = obtenerLogoVerticalGestor(nodoModal);
+      const aficheSrc = GSTATE.aficheQrDataUrl || '';
       const ofertasPub = obtenerOfertasPublicadasDifusion();
       if (GSTATE.difusionModo === 'oferta' && ofertasPub.length > 0) {
         const existeSel = ofertasPub.some(o => Number(o.oferta_id) === Number(GSTATE.difusionOfertaId));
@@ -1716,29 +1803,36 @@
       }
 
       if (mostrarQrGrande && qrDataUrl) {
+        if (!aficheSrc) {
+          construirAficheQrMarcaBlancaDataUrl().then(url => {
+            if (!url) return;
+            const imgEl = document.getElementById('difusion-afiche-grande-img');
+            if (imgEl) imgEl.src = url;
+          }).catch(() => {});
+        }
         body.innerHTML = `
           <div style="background:var(--brand); color:#fff; padding:16px 20px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
             <div>
-              <div style="font-size:0.7rem; font-weight:800; text-transform:uppercase; opacity:0.88;">QR Público de Tienda</div>
-              <div style="font-size:1.1rem; font-weight:900;">${esc(nombreMarca)}</div>
+              <div style="font-size:0.7rem; font-weight:800; text-transform:uppercase; opacity:0.88;">Afiche QR Público</div>
+              <div style="font-size:1.08rem; font-weight:900;">${esc(tituloMarcaModal)}</div>
             </div>
             <button type="button" onclick="renderizarCuerpoModalDifusion(false)"
               style="background:rgba(255,255,255,0.2); border:none; color:#fff; padding:6px 12px; border-radius:999px; font-weight:800; cursor:pointer;">
               ← Volver
             </button>
           </div>
-          <div style="padding:22px 20px; text-align:center; background:#fff;">
-            <p style="margin:0 0 12px 0; font-size:0.86rem; color:var(--muted);">
-              Escaneá este código con la cámara del celular para abrir la tienda online.
+          <div style="padding:18px 20px; text-align:center; background:var(--surface);">
+            <p style="margin:0 0 12px 0; font-size:0.84rem; color:var(--muted);">
+              Listo para imprimir en mostrador o compartir por redes sociales y estados de WhatsApp.
             </p>
-            <img src="${qrDataUrl}" alt="QR Público ${esc(nombreMarca)}"
-              style="width:min(300px, 76vw); height:auto; border-radius:16px; border:1px solid var(--border); padding:10px; background:#fff; box-shadow:0 8px 24px rgba(0,0,0,0.08);">
-            <div style="margin-top:12px; font-size:0.78rem; color:var(--brand-dark); font-weight:800; word-break:break-all;">
+            <img id="difusion-afiche-grande-img" src="${aficheSrc || qrDataUrl}" alt="Afiche QR ${esc(tituloMarcaModal)}"
+              style="width:min(340px, 82vw); height:auto; border-radius:16px; border:1px solid var(--border); background:#fff; box-shadow:0 8px 24px rgba(0,0,0,0.08);">
+            <div style="margin-top:10px; font-size:0.78rem; color:var(--brand-dark); font-weight:800; word-break:break-all;">
               ${esc(obtenerUrlBaseTiendaFallback())}
             </div>
-            <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:16px;">
+            <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:14px;">
               <button type="button" class="btn-primary" onclick="descargarQrTiendaMarcaBlanca()">
-                ⬇️ Descargar QR PNG
+                ⬇️ Descargar Afiche QR PNG
               </button>
               <button type="button" class="btn-soft" onclick="renderizarCuerpoModalDifusion(false)">
                 Cerrar vista grande
@@ -1757,7 +1851,7 @@
         <div style="background:var(--surface-warm); color:var(--text); padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
           <div>
             <div style="font-size:0.72rem; font-weight:800; text-transform:uppercase; color:var(--brand-dark);">Kit de Difusión</div>
-            <div style="font-size:1.08rem; font-weight:900; margin-top:2px;">📣 Difundir ${esc(nombreMarca)}</div>
+            <div style="font-size:1.08rem; font-weight:900; margin-top:2px;">📣 Difundir ${esc(tituloMarcaModal)}</div>
             <div style="font-size:0.78rem; color:var(--muted); margin-top:2px;">Elegí qué compartir, editá el texto si querés y enviá libremente por WhatsApp o redes.</div>
           </div>
           <button type="button" onclick="cerrarModalReciboGestor()"
@@ -1839,23 +1933,30 @@
 
           <div style="border-top:1px solid var(--border); padding-top:14px;">
             <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; background:var(--surface-warm); border:1px solid var(--border); border-radius:14px; padding:12px 14px;">
-              <div style="width:92px; height:92px; border-radius:10px; background:#fff; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden;">
-                ${qrDataUrl
-                  ? `<img id="difusion-qr-img" src="${qrDataUrl}" alt="QR Público ${esc(nombreMarca)}" style="width:88px; height:88px; display:block;">`
-                  : `<span style="font-size:0.72rem; color:var(--muted); text-align:center; padding:6px;">Generando QR...</span>`
-                }
+              <div style="display:flex; flex-direction:column; align-items:center; gap:6px; flex-shrink:0;">
+                ${logoVerticalPreview ? `
+                  <div style="width:92px; padding:4px 6px; border-radius:9px; background:#fff; border:1px solid var(--border); display:flex; align-items:center; justify-content:center;">
+                    <img src="${esc(logoVerticalPreview)}" alt="${esc(tituloMarcaModal)}" style="max-width:78px; max-height:48px; object-fit:contain; display:block;">
+                  </div>
+                ` : ''}
+                <div style="width:92px; height:92px; border-radius:10px; background:#fff; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; overflow:hidden;">
+                  ${qrDataUrl
+                    ? `<img id="difusion-qr-img" src="${qrDataUrl}" alt="QR Público ${esc(tituloMarcaModal)}" style="width:88px; height:88px; display:block;">`
+                    : `<span style="font-size:0.72rem; color:var(--muted); text-align:center; padding:6px;">Generando QR...</span>`
+                  }
+                </div>
               </div>
               <div style="flex:1; min-width:180px;">
-                <div style="font-weight:900; font-size:0.88rem; color:var(--text);">QR Público para redes o mostrador</div>
+                <div style="font-weight:900; font-size:0.88rem; color:var(--text);">Afiche QR Público para redes o mostrador</div>
                 <div style="font-size:0.76rem; color:var(--muted); margin-top:2px; line-height:1.4;">
-                  100% marca blanca de <strong>${esc(nombreMarca)}</strong>. Descargalo como imagen PNG o abrilo en grande para que lo escaneen directo.
+                  100% marca blanca de <strong>${esc(tituloMarcaModal)}</strong>${logoVerticalPreview ? ' (incluye el logo oficial)' : ''}. Descargalo como imagen PNG o abrilo en grande para que lo escaneen directo.
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
                   <button type="button" class="btn-soft" onclick="descargarQrTiendaMarcaBlanca()" ${qrDataUrl ? '' : 'disabled'} style="font-size:0.76rem; padding:6px 10px;">
-                    ⬇️ Descargar PNG
+                    ⬇️ Descargar Afiche PNG
                   </button>
                   <button type="button" class="btn-soft" onclick="verQrGrandeMarcaBlanca()" ${qrDataUrl ? '' : 'disabled'} style="font-size:0.76rem; padding:6px 10px;">
-                    🔍 Ver QR grande
+                    🔍 Ver Afiche grande
                   </button>
                 </div>
               </div>
@@ -1929,20 +2030,185 @@
       }
     }
 
-    function descargarQrTiendaMarcaBlanca() {
+    function _cargarImagenCanvasGestor(src) {
+      return new Promise(resolve => {
+        if (!src) return resolve(null);
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        const timer = setTimeout(() => resolve(null), 3500);
+        img.onload = () => {
+          clearTimeout(timer);
+          resolve(img.naturalWidth > 0 ? img : null);
+        };
+        img.onerror = () => {
+          clearTimeout(timer);
+          resolve(null);
+        };
+        img.src = src;
+      });
+    }
+
+    function _trazarRoundRectGestor(ctx, x, y, w, h, r) {
+      const rad = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + rad, y);
+      ctx.arcTo(x + w, y, x + w, y + h, rad);
+      ctx.arcTo(x + w, y + h, x, y + h, rad);
+      ctx.arcTo(x, y + h, x, y, rad);
+      ctx.arcTo(x, y, x + w, y, rad);
+      ctx.closePath();
+    }
+
+    async function construirAficheQrMarcaBlancaDataUrl() {
+      const qrDataUrl = GSTATE.compartirKit?.qr_tienda_data_url || '';
+      if (!qrDataUrl) return '';
+      if (GSTATE.aficheQrDataUrl) return GSTATE.aficheQrDataUrl;
+
+      const nodoInfo = GSTATE.compartirKit?.nodo || GSTATE.nodo || {};
+      const tv = (nodoInfo.tema_visual && typeof nodoInfo.tema_visual === 'object') ? nodoInfo.tema_visual : {};
+      const pal = (tv.paleta && typeof tv.paleta === 'object') ? tv.paleta : {};
+      const bgOuter = pal.superficie_calida || '#F5EFE6';
+      const cardBg = pal.tarjeta || '#FFFFFF';
+      const accent = pal.terracota || nodoInfo.color_primario || '#a2553b';
+      const ocre = pal.ocre || accent;
+      const pistachoBg = pal.pistacho_suave || '#EFF4DF';
+      const pistachoTxt = pal.pistacho_texto || '#43521D';
+      const txtPrimary = pal.texto || '#25130b';
+      const txtMuted = pal.texto_secundario || '#57453b';
+      const borderCol = pal.borde || '#E7DCCB';
+      const fontStack = "'Nunito', 'Segoe UI', Roboto, Arial, sans-serif";
+
+      const verticalSrc = obtenerLogoVerticalGestor(nodoInfo);
+      const [qrImg, logoImg] = await Promise.all([
+        _cargarImagenCanvasGestor(qrDataUrl),
+        _cargarImagenCanvasGestor(verticalSrc)
+      ]);
+      if (!qrImg) return qrDataUrl;
+
+      const W = 900;
+      const H = 1220;
+      const canvas = document.createElement('canvas');
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return qrDataUrl;
+
+      ctx.fillStyle = bgOuter;
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.save();
+      _trazarRoundRectGestor(ctx, 44, 44, W - 88, H - 88, 38);
+      ctx.fillStyle = cardBg;
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = borderCol;
+      ctx.stroke();
+      ctx.clip();
+
+      const grad = ctx.createLinearGradient(44, 44, W - 44, 44);
+      grad.addColorStop(0, accent);
+      grad.addColorStop(1, ocre);
+      ctx.fillStyle = grad;
+      ctx.fillRect(44, 44, W - 88, 18);
+      ctx.restore();
+
+      const nombreMarca = String(nodoInfo.nombre_marca || 'Tu Tienda').trim();
+      const bajadaMarca = String(nodoInfo.bajada_marca || '').trim();
+      const barrio = String(nodoInfo.barrio_zona || '').trim();
+      let cursorY = 96;
+
+      if (logoImg) {
+        const maxW = 480;
+        const maxH = 270;
+        const scale = Math.min(maxW / logoImg.naturalWidth, maxH / logoImg.naturalHeight);
+        const dw = Math.round(logoImg.naturalWidth * scale);
+        const dh = Math.round(logoImg.naturalHeight * scale);
+        ctx.drawImage(logoImg, Math.round((W - dw) / 2), cursorY, dw, dh);
+        cursorY += dh + 22;
+      } else {
+        ctx.fillStyle = txtPrimary;
+        ctx.textAlign = 'center';
+        ctx.font = `900 54px ${fontStack}`;
+        ctx.fillText(nombreMarca, W / 2, cursorY + 72, W - 160);
+        cursorY += 106;
+        if (bajadaMarca) {
+          ctx.fillStyle = txtMuted;
+          ctx.font = `700 28px ${fontStack}`;
+          ctx.fillText(bajadaMarca, W / 2, cursorY + 12, W - 160);
+          cursorY += 46;
+        }
+      }
+
+      const subPill = bajadaMarca && logoImg
+        ? (barrio ? `${nombreMarca} · ${bajadaMarca} · 📍 ${barrio}` : `${nombreMarca} · ${bajadaMarca}`)
+        : (barrio ? `📍 ${barrio} · Tienda Barrial Online` : '🛒 Tienda Barrial Online');
+      ctx.font = `800 24px ${fontStack}`;
+      const pillW = Math.min(W - 140, Math.round(ctx.measureText(subPill).width) + 56);
+      const pillX = Math.round((W - pillW) / 2);
+      _trazarRoundRectGestor(ctx, pillX, cursorY, pillW, 48, 24);
+      ctx.fillStyle = pistachoBg;
+      ctx.fill();
+      ctx.fillStyle = pistachoTxt;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(subPill, W / 2, cursorY + 25, pillW - 32);
+      cursorY += 76;
+
+      const qrFrameSize = 540;
+      const qrFrameX = Math.round((W - qrFrameSize) / 2);
+      _trazarRoundRectGestor(ctx, qrFrameX, cursorY, qrFrameSize, qrFrameSize, 28);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = borderCol;
+      ctx.stroke();
+
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(qrImg, qrFrameX + 24, cursorY + 24, qrFrameSize - 48, qrFrameSize - 48);
+      ctx.imageSmoothingEnabled = true;
+      cursorY += qrFrameSize + 34;
+
+      const ctaW = 660;
+      const ctaX = Math.round((W - ctaW) / 2);
+      _trazarRoundRectGestor(ctx, ctaX, cursorY, ctaW, 68, 18);
+      ctx.fillStyle = accent;
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = `900 28px ${fontStack}`;
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Escaneá el QR para hacer tu pedido', W / 2, cursorY + 35, ctaW - 36);
+      cursorY += 102;
+
+      const urlPublica = obtenerUrlBaseTiendaFallback();
+      ctx.fillStyle = txtMuted;
+      ctx.font = `700 22px ${fontStack}`;
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(urlPublica, W / 2, cursorY, W - 130);
+
+      try {
+        const out = canvas.toDataURL('image/png');
+        GSTATE.aficheQrDataUrl = out;
+        return out;
+      } catch (_) {
+        return qrDataUrl;
+      }
+    }
+
+    async function descargarQrTiendaMarcaBlanca() {
       const dataUrl = GSTATE.compartirKit?.qr_tienda_data_url || '';
       if (!dataUrl) {
         mostrarAvisoPantallaGestor('El QR todavía se está generando, probá en un segundo.', 'error');
         return;
       }
+      const aficheUrl = (await construirAficheQrMarcaBlancaDataUrl()) || dataUrl;
       const slugClean = String(GSTATE.slug || 'tienda').replace(/[^a-zA-Z0-9_-]+/g, '-');
       const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `QR_${slugClean}.png`;
+      a.href = aficheUrl;
+      a.download = aficheUrl !== dataUrl ? `Afiche_QR_${slugClean}.png` : `QR_${slugClean}.png`;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      mostrarAvisoPantallaGestor('✅ QR PNG descargado.', 'ok');
+      mostrarAvisoPantallaGestor('✅ Afiche QR PNG descargado.', 'ok');
     }
 
     function verQrGrandeMarcaBlanca() {

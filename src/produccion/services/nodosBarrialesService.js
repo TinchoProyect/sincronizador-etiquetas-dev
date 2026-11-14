@@ -9,6 +9,8 @@
  */
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const db = require('../config/database');
 const {
     convertirLogoAZplGfa,
@@ -32,6 +34,162 @@ let _ultimoHitNominatimMs = 0;
 function esModoLaboratorioNodos() {
     return String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true'
         && String(process.env.DB_NAME || '').trim() === 'etiquetas_pruebas';
+}
+
+// Paleta exacta muestreada píxel a píxel desde assets-paraiso/Paraiso Color Horizontal.png
+const TEMA_VISUAL_PARAISO_OFICIAL = {
+    paleta: {
+        primario: '#654B30',
+        primario_oscuro: '#4E3924',
+        terracota: '#D36344',
+        terracota_oscuro: '#B54F33',
+        ocre: '#DA9A46',
+        pistacho: '#9DAD5A',
+        pistacho_texto: '#43521D',
+        pistacho_suave: '#EFF4DF',
+        amarillo_sol: '#FFC266',
+        fondo: '#FBF8F3',
+        superficie_calida: '#F5EFE6',
+        tarjeta: '#FFFFFF',
+        texto: '#654B30',
+        texto_secundario: '#826B53',
+        borde: '#E7DCCB'
+    },
+    tipografia: {
+        familia: "'Nunito', sans-serif",
+        google_font: 'Nunito:wght@500;600;700;800;900'
+    },
+    logos: {
+        horizontal: '/img/nodos/paraiso/paraiso-horizontal.png',
+        vertical: '/img/nodos/paraiso/paraiso-vertical.png',
+        isotipo: '/img/nodos/paraiso/paraiso-isotipo.png',
+        zebra_mono: '/img/nodos/paraiso/paraiso-zebra-mono.png'
+    }
+};
+
+function leerLogoZebraParaisoDataUrl() {
+    const candidatos = [
+        path.join(__dirname, '..', 'img', 'nodos', 'paraiso', 'paraiso-zebra-mono.png'),
+        path.join(__dirname, '..', '..', '..', 'assets-paraiso', 'paraiso-zebra-mono.png')
+    ];
+    for (const p of candidatos) {
+        try {
+            if (fs.existsSync(p)) {
+                return `data:image/png;base64,${fs.readFileSync(p).toString('base64')}`;
+            }
+        } catch (_) {}
+    }
+    return null;
+}
+
+/**
+ * Migración idempotente de NODO-001 ("Lo de Mati" -> "Paraíso · Alimentos saludables").
+ * Reutilizable de forma segura en Laboratorio y en el futuro pase a Producción:
+ * - Conserva intactos cliente_madre_bunker_id, CB-NODO-001, gestor_token y todos los pedidos existentes.
+ * - No modifica jamás a MANSO (NODO-002) ni otros nodos.
+ */
+async function migrarNodoLoDeMatiAParaiso(runner = null) {
+    const q = runner || db;
+    const candRes = await q.query(
+        `SELECT id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca,
+                subtitulo_marca, color_primario, tema_visual, logo_zpl_config, logo_zpl_gfa
+         FROM public.nodos_maestro
+         WHERE codigo_nodo = 'NODO-001'
+            OR LOWER(slug) = 'lo-de-mati'
+            OR LOWER(COALESCE(slug_historico, '')) = 'lo-de-mati'
+         ORDER BY CASE WHEN codigo_nodo = 'NODO-001' THEN 0 ELSE 1 END, id ASC
+         LIMIT 1`
+    );
+
+    if (candRes.rows.length === 0) {
+        return { migrated: false, reason: 'NODO_001_NO_ENCONTRADO' };
+    }
+
+    const row = candRes.rows[0];
+    if (String(row.slug || '').trim().toLowerCase() === 'manso') {
+        return { migrated: false, reason: 'PROTEGIDO_MANSO' };
+    }
+
+    const tvActual = (row.tema_visual && typeof row.tema_visual === 'object') ? row.tema_visual : {};
+    const cfgActual = (row.logo_zpl_config && typeof row.logo_zpl_config === 'object') ? row.logo_zpl_config : {};
+    const yaMigrado =
+        String(row.slug || '').trim() === 'paraiso' &&
+        String(row.slug_historico || '').trim() === 'lo-de-mati' &&
+        String(row.nombre_marca || '').trim() === 'Paraíso' &&
+        String(row.bajada_marca || '').trim() === 'Alimentos saludables' &&
+        String(row.color_primario || '').toUpperCase() === '#D36344' &&
+        tvActual?.logos?.horizontal === TEMA_VISUAL_PARAISO_OFICIAL.logos.horizontal &&
+        tvActual?.paleta?.primario === TEMA_VISUAL_PARAISO_OFICIAL.paleta.primario &&
+        Number(cfgActual.width || 0) === 264 &&
+        Number(cfgActual.height || 0) === 64 &&
+        String(row.logo_zpl_gfa || '').startsWith('^GFA,2112,2112,33,');
+
+    if (yaMigrado) {
+        return { migrated: false, already_migrated: true, nodo_id: Number(row.id) };
+    }
+
+    const conflictoSlug = await q.query(
+        `SELECT id FROM public.nodos_maestro WHERE LOWER(slug) = 'paraiso' AND id <> $1::int LIMIT 1`,
+        [Number(row.id)]
+    );
+    if (conflictoSlug.rows.length > 0) {
+        return { migrated: false, reason: 'SLUG_PARAISO_OCUPADO', conflicto_id: conflictoSlug.rows[0].id };
+    }
+
+    const zebraDataUrl = leerLogoZebraParaisoDataUrl();
+    const zplConfigNuevo = {
+        width: 264,
+        height: 64,
+        threshold: 115,
+        mode: 'threshold',
+        invert: false,
+        padding: 2,
+        modo_cabecera: 'banner_completo',
+        iniciales: 'P'
+    };
+    const conversionLogo = await convertirLogoAZplGfa({
+        imageBase64: zebraDataUrl,
+        nombreMarca: 'Paraíso',
+        iniciales: 'P',
+        width: zplConfigNuevo.width,
+        height: zplConfigNuevo.height,
+        threshold: zplConfigNuevo.threshold,
+        mode: zplConfigNuevo.mode,
+        padding: zplConfigNuevo.padding,
+        invert: false
+    });
+
+    const upd = await q.query(
+        `UPDATE public.nodos_maestro
+         SET slug = 'paraiso',
+             slug_historico = 'lo-de-mati',
+             nombre_marca = 'Paraíso',
+             bajada_marca = 'Alimentos saludables',
+             subtitulo_marca = 'Alimentos saludables',
+             color_primario = '#D36344',
+             tema_visual = $1::jsonb,
+             logo_original_base64 = COALESCE($2, logo_original_base64),
+             logo_mono_preview_base64 = $3,
+             logo_zpl_gfa = $4,
+             logo_zpl_config = $5::jsonb,
+             updated_at = NOW()
+         WHERE id = $6::int
+         RETURNING id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca`,
+        [
+            JSON.stringify(TEMA_VISUAL_PARAISO_OFICIAL),
+            zebraDataUrl,
+            conversionLogo.logo_mono_preview_base64,
+            conversionLogo.logo_zpl_gfa,
+            JSON.stringify(zplConfigNuevo),
+            Number(row.id)
+        ]
+    );
+
+    return {
+        migrated: true,
+        nodo: upd.rows[0] || null,
+        zpl_dims: `${conversionLogo.width}x${conversionLogo.height}`
+    };
 }
 
 function setGeoCacheLimitado(cacheMap, clave, valor) {
@@ -2554,11 +2712,18 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS latitud NUMERIC(12,8),
                 ADD COLUMN IF NOT EXISTS longitud NUMERIC(12,8),
                 ADD COLUMN IF NOT EXISTS mostrar_ingredientes_tienda BOOLEAN DEFAULT true,
-                ADD COLUMN IF NOT EXISTS gestor_token VARCHAR(80);
+                ADD COLUMN IF NOT EXISTS gestor_token VARCHAR(80),
+                ADD COLUMN IF NOT EXISTS bajada_marca TEXT,
+                ADD COLUMN IF NOT EXISTS slug_historico TEXT,
+                ADD COLUMN IF NOT EXISTS tema_visual JSONB NOT NULL DEFAULT '{}'::jsonb;
 
             CREATE UNIQUE INDEX IF NOT EXISTS unq_nodos_maestro_gestor_token
                 ON public.nodos_maestro (gestor_token)
                 WHERE gestor_token IS NOT NULL;
+
+            CREATE INDEX IF NOT EXISTS idx_nodos_maestro_slug_historico_lower
+                ON public.nodos_maestro (LOWER(slug_historico))
+                WHERE slug_historico IS NOT NULL;
 
             ALTER TABLE public.nodos_ofertas_gestor
                 ADD COLUMN IF NOT EXISTS mostrar_ingredientes BOOLEAN DEFAULT true;
@@ -3923,6 +4088,9 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             }
         }
 
+        // Migración idempotente de identidad visual Paraíso para NODO-001 (sin tocar MANSO ni pedidos)
+        await migrarNodoLoDeMatiAParaiso(client);
+
         await client.query('COMMIT');
         esquemaInicializado = true;
 
@@ -4559,16 +4727,38 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
         : (payload.logo_original_base64 || existenteRow?.logo_original_base64 || null);
 
     // Convertir o regenerar el logo a ZPL ^GFA si se envió imagen o configuración
-    const zplConfigPrev = existenteRow?.logo_zpl_config || {};
-    const zplConfig = payload.logo_zpl_config || zplConfigPrev || {};
+    const zplConfigPrev = (existenteRow?.logo_zpl_config && typeof existenteRow.logo_zpl_config === 'object') ? existenteRow.logo_zpl_config : {};
+    const zplConfig = (payload.logo_zpl_config && typeof payload.logo_zpl_config === 'object')
+        ? { ...zplConfigPrev, ...payload.logo_zpl_config }
+        : zplConfigPrev;
+    const widthZplReq = Number(zplConfig.width || 112);
+    const heightZplReq = Number(zplConfig.height || 56);
+    const bajadaMarcaEfectiva = payload.bajada_marca !== undefined
+        ? (String(payload.bajada_marca || '').trim() || null)
+        : (existenteRow?.bajada_marca ?? null);
+    const slugHistoricoEfectivo = payload.slug_historico !== undefined
+        ? (String(payload.slug_historico || '').trim() || null)
+        : (existenteRow?.slug_historico ?? null);
+    const temaVisualPrev = (existenteRow?.tema_visual && typeof existenteRow.tema_visual === 'object') ? existenteRow.tema_visual : {};
+    const temaVisualEfectivo = (payload.tema_visual && typeof payload.tema_visual === 'object')
+        ? {
+            ...temaVisualPrev,
+            ...payload.tema_visual,
+            paleta: { ...(temaVisualPrev.paleta || {}), ...(payload.tema_visual.paleta || {}) },
+            tipografia: { ...(temaVisualPrev.tipografia || {}), ...(payload.tema_visual.tipografia || {}) },
+            logos: { ...(temaVisualPrev.logos || {}), ...(payload.tema_visual.logos || {}) }
+        }
+        : temaVisualPrev;
+
     const conversionLogo = await convertirLogoAZplGfa({
         imageBase64: logoOriginalEfectivo,
         nombreMarca,
         iniciales: zplConfig.iniciales || '',
-        width: zplConfig.width || 112,
-        height: zplConfig.height || 56,
+        width: widthZplReq,
+        height: heightZplReq,
         threshold: zplConfig.threshold || (logoOriginalEfectivo ? 180 : 138),
         mode: zplConfig.mode || 'threshold',
+        padding: zplConfig.padding,
         invert: Boolean(zplConfig.invert)
     });
 
@@ -4667,13 +4857,16 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     longitud = $29,
                     mostrar_ingredientes_tienda = COALESCE($30, mostrar_ingredientes_tienda),
                     gestor_token = COALESCE(NULLIF(TRIM(gestor_token), ''), $31),
+                    bajada_marca = $36,
+                    slug_historico = $37,
+                    tema_visual = $38::jsonb,
                     updated_at = NOW()
                 WHERE id = $32
                 RETURNING *`,
                 [
                     slugBase,
                     nombreMarca,
-                    payload.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
+                    payload.subtitulo_marca || bajadaMarcaEfectiva || 'Comunidad Barrial - Entrega Fresca',
                     gestorNombre,
                     payload.gestor_telefono || '',
                     payload.gestor_email || '',
@@ -4702,6 +4895,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                         threshold: conversionLogo.threshold,
                         mode: conversionLogo.mode,
                         invert: conversionLogo.invert,
+                        padding: zplConfig.padding,
+                        modo_cabecera: zplConfig.modo_cabecera || (conversionLogo.width >= 180 ? 'banner_completo' : undefined),
                         iniciales: zplConfig.iniciales || ''
                     }),
                     payload.activo !== undefined ? Boolean(payload.activo) : (existenteRow ? existenteRow.activo !== false : true),
@@ -4712,7 +4907,10 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     Number(idExistente),
                     permitirRetiro,
                     permitirReparto,
-                    permitirEncomienda
+                    permitirEncomienda,
+                    bajadaMarcaEfectiva,
+                    slugHistoricoEfectivo,
+                    JSON.stringify(temaVisualEfectivo || {})
                 ]
             );
             nodoGuardado = upd.rows[0];
@@ -4728,15 +4926,16 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     cargo_envio_barrial, margen_gestor_default_pct,
                     config_ventanas_corte, color_primario,
                     logo_original_base64, logo_mono_preview_base64, logo_zpl_gfa, logo_zpl_config,
-                    latitud, longitud, mostrar_ingredientes_tienda, gestor_token
+                    latitud, longitud, mostrar_ingredientes_tienda, gestor_token,
+                    bajada_marca, slug_historico, tema_visual
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$35,$36,$37::jsonb
                 ) RETURNING *`,
                 [
                     codigoNodo,
                     slugBase,
                     nombreMarca,
-                    payload.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
+                    payload.subtitulo_marca || bajadaMarcaEfectiva || 'Comunidad Barrial - Entrega Fresca',
                     gestorNombre,
                     payload.gestor_telefono || '',
                     payload.gestor_email || '',
@@ -4765,6 +4964,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                         threshold: conversionLogo.threshold,
                         mode: conversionLogo.mode,
                         invert: conversionLogo.invert,
+                        padding: zplConfig.padding,
+                        modo_cabecera: zplConfig.modo_cabecera || (conversionLogo.width >= 180 ? 'banner_completo' : undefined),
                         iniciales: zplConfig.iniciales || ''
                     }),
                     Number.isFinite(latVal) ? latVal : null,
@@ -4773,7 +4974,10 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     gestorTokenEfectivo,
                     permitirRetiro,
                     permitirReparto,
-                    permitirEncomienda
+                    permitirEncomienda,
+                    bajadaMarcaEfectiva,
+                    slugHistoricoEfectivo,
+                    JSON.stringify(temaVisualEfectivo || {})
                 ]
             );
             nodoGuardado = ins.rows[0];
@@ -5029,7 +5233,10 @@ async function anularODescartarPropuestaFraccion(propuestaId, opciones = {}) {
         const nodoSlug = String(opciones.nodo_slug || '').trim().toLowerCase();
         if (!nodoId && nodoSlug) {
             const nRes = await db.query(
-                'SELECT id FROM public.nodos_maestro WHERE LOWER(slug) = $1 LIMIT 1',
+                `SELECT id FROM public.nodos_maestro
+                 WHERE LOWER(slug) = $1 OR LOWER(COALESCE(slug_historico, '')) = $1
+                 ORDER BY CASE WHEN LOWER(slug) = $1 THEN 0 ELSE 1 END
+                 LIMIT 1`,
                 [nodoSlug]
             );
             if (nRes.rows[0]) nodoId = Number(nRes.rows[0].id);
@@ -6277,8 +6484,9 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
          LEFT JOIN public.factura_cuentas_corrientes cc_madre
            ON cc_madre.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
           AND cc_madre.nombre_cuenta = 'Cuenta Principal'
-         WHERE LOWER(nm.slug) = LOWER($1)
+         WHERE (LOWER(nm.slug) = LOWER($1) OR LOWER(COALESCE(nm.slug_historico, '')) = LOWER($1))
            AND COALESCE(nm.activo, true) = true
+         ORDER BY CASE WHEN LOWER(nm.slug) = LOWER($1) THEN 0 ELSE 1 END, nm.id ASC
          LIMIT 1`,
         [cleanSlug]
     );
@@ -6306,7 +6514,10 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
     if (nodoRes.rows.length === 0) {
         if (cleanSlug) {
             const archCheck = await db.query(
-                `SELECT id FROM public.nodos_maestro WHERE LOWER(slug) = LOWER($1) AND activo = false LIMIT 1`,
+                `SELECT id FROM public.nodos_maestro
+                 WHERE (LOWER(slug) = LOWER($1) OR LOWER(COALESCE(slug_historico, '')) = LOWER($1))
+                   AND activo = false
+                 LIMIT 1`,
                 [cleanSlug]
             );
             if (archCheck.rows.length > 0) {
@@ -6523,7 +6734,9 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             id: nodo.id,
             codigo_nodo: nodo.codigo_nodo,
             slug: nodo.slug,
+            slug_historico: nodo.slug_historico || null,
             nombre_marca: nodo.nombre_marca,
+            bajada_marca: nodo.bajada_marca || null,
             subtitulo_marca: nodo.subtitulo_marca,
             gestor_nombre: nodo.gestor_nombre,
             gestor_telefono: nodo.gestor_telefono,
@@ -6542,6 +6755,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             zona_centro_lng: puedeRepartoPropio && nodo.longitud != null ? Number(nodo.longitud) : null,
             config_ventanas_corte: nodo.config_ventanas_corte,
             color_primario: nodo.color_primario,
+            tema_visual: (nodo.tema_visual && typeof nodo.tema_visual === 'object') ? nodo.tema_visual : {},
             logo_original_base64: nodo.logo_original_base64
         };
 
@@ -6572,11 +6786,14 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 id: nodo.id,
                 codigo_nodo: nodo.codigo_nodo,
                 slug: nodo.slug,
+                slug_historico: nodo.slug_historico || null,
                 nombre_marca: nodo.nombre_marca,
+                bajada_marca: nodo.bajada_marca || null,
                 subtitulo_marca: nodo.subtitulo_marca,
                 gestor_nombre: nodo.gestor_nombre,
                 barrio_zona: nodo.barrio_zona,
-                color_primario: nodo.color_primario
+                color_primario: nodo.color_primario,
+                tema_visual: (nodo.tema_visual && typeof nodo.tema_visual === 'object') ? nodo.tema_visual : {}
             }
         ],
         proxima_entrega: proximaEntrega,
@@ -6637,6 +6854,7 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
     const upd = await db.query(
         `UPDATE public.nodos_maestro SET
             nombre_marca = COALESCE($1, nombre_marca),
+            bajada_marca = COALESCE($17, bajada_marca),
             subtitulo_marca = COALESCE($2, subtitulo_marca),
             gestor_nombre = COALESCE($3, gestor_nombre),
             gestor_telefono = COALESCE($4, gestor_telefono),
@@ -6670,7 +6888,8 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             Number(nodoId),
             permitirRetiro,
             permitirReparto,
-            permitirEncomienda
+            permitirEncomienda,
+            payload.bajada_marca !== undefined ? String(payload.bajada_marca || '').trim() : actual.bajada_marca
         ]
     );
 
@@ -6701,7 +6920,10 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
         await client.query('BEGIN');
 
         const nodoRes = await client.query(
-            'SELECT * FROM public.nodos_maestro WHERE LOWER(slug) = LOWER($1) LIMIT 1',
+            `SELECT * FROM public.nodos_maestro
+             WHERE LOWER(slug) = LOWER($1) OR LOWER(COALESCE(slug_historico, '')) = LOWER($1)
+             ORDER BY CASE WHEN LOWER(slug) = LOWER($1) THEN 0 ELSE 1 END
+             LIMIT 1`,
             [String(slug || '').trim()]
         );
         if (nodoRes.rows.length === 0) {
@@ -7089,7 +7311,8 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
 
     const pedRes = await db.query(
         `SELECT npv.*,
-                nm.nombre_marca, nm.subtitulo_marca, nm.logo_zpl_gfa, nm.logo_mono_preview_base64
+                nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca,
+                nm.logo_zpl_gfa, nm.logo_mono_preview_base64, nm.logo_zpl_config
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          WHERE npv.id = $1 LIMIT 1`,
@@ -7108,9 +7331,11 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
     const esEfectivo = ped.medio_pago === 'EFECTIVO' || String(ped.estado_pago).includes('COBRAR');
     return generarPreviewVisualEtiquetaPar({
         nombre_marca: ped.nombre_marca,
+        bajada_marca: ped.bajada_marca,
         subtitulo_marca: ped.subtitulo_marca,
         logo_zpl_gfa: ped.logo_zpl_gfa,
         logo_mono_preview_base64: ped.logo_mono_preview_base64,
+        logo_zpl_config: ped.logo_zpl_config,
         pedido_codigo: ped.codigo_pedido,
         vecino_nombre: ped.vecino_nombre,
         vecino_telefono: ped.vecino_telefono,
@@ -8700,8 +8925,8 @@ async function generarEtiquetaQrMaestroCanasto(canastoId) {
 
     const canRes = await db.query(
         `SELECT nle.*,
-                nm.nombre_marca, nm.subtitulo_marca, nm.gestor_nombre,
-                nm.logo_zpl_gfa, nm.logo_mono_preview_base64
+                nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca, nm.gestor_nombre,
+                nm.logo_zpl_gfa, nm.logo_mono_preview_base64, nm.logo_zpl_config
          FROM public.nodos_lotes_estacion nle
          JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
          WHERE nle.id = $1 LIMIT 1`,
@@ -8723,6 +8948,7 @@ async function generarEtiquetaQrMaestroCanasto(canastoId) {
 
     return generarPreviewVisualCanastoQrMaestro({
         nombre_marca: canasto.nombre_marca,
+        bajada_marca: canasto.bajada_marca,
         codigo_canasto: canasto.codigo_canasto,
         qr_maestro_payload: canasto.qr_maestro_payload,
         gestor_nombre: canasto.gestor_nombre,
@@ -8733,6 +8959,7 @@ async function generarEtiquetaQrMaestroCanasto(canastoId) {
         estado_canasto: canasto.estado_canasto,
         logo_zpl_gfa: canasto.logo_zpl_gfa,
         logo_mono_preview_base64: canasto.logo_mono_preview_base64,
+        logo_zpl_config: canasto.logo_zpl_config,
         pedidos: pedidosRes.rows
     });
 }
@@ -11407,13 +11634,16 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
     return {
         nodo: {
             slug: nodoRow.slug,
+            slug_historico: nodoRow.slug_historico || null,
             nombre_marca: nodoRow.nombre_marca,
+            bajada_marca: nodoRow.bajada_marca || null,
             subtitulo_marca: nodoRow.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
             gestor_nombre: nodoRow.gestor_nombre,
             gestor_telefono: nodoRow.gestor_telefono,
             barrio_zona: nodoRow.barrio_zona,
             direccion_retiro: nodoRow.direccion_retiro,
             color_primario: nodoRow.color_primario || '#a2553b',
+            tema_visual: (nodoRow.tema_visual && typeof nodoRow.tema_visual === 'object') ? nodoRow.tema_visual : {},
             logo_original_base64: nodoRow.logo_original_base64 || null,
             alias_bancario_display: nodoRow.alias_bancario_display || '',
             cbu_display: nodoRow.cbu_display || '',
@@ -11474,14 +11704,14 @@ async function obtenerSeguimientoPublicoPedidoVecino(slug, trackingToken) {
                 nv.id AS vec_id_real, nv.portal_token AS vec_portal_token,
                 nv.telefono_normalizado AS vec_tel_norm, nv.telefono_whatsapp AS vec_tel_wa,
                 nv.nombre_completo AS vec_nombre_real,
-                nm.slug AS nm_slug, nm.nombre_marca, nm.subtitulo_marca, nm.gestor_nombre,
-                nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario,
+                nm.slug AS nm_slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca, nm.gestor_nombre,
+                nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
                 nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
          WHERE npv.tracking_token = $1
-           AND ($2 = '' OR LOWER(nm.slug) = LOWER($2))
+           AND ($2 = '' OR LOWER(nm.slug) = LOWER($2) OR LOWER(COALESCE(nm.slug_historico, '')) = LOWER($2))
            AND COALESCE(nm.activo, true) = true
          LIMIT 1`,
         [cleanToken, cleanSlug]
@@ -11574,13 +11804,13 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
     const res = await db.query(
         `SELECT npv.*,
                 nv.telefono_normalizado AS vec_tel_norm,
-                nm.slug AS nm_slug, nm.nombre_marca, nm.subtitulo_marca, nm.gestor_nombre,
-                nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario,
+                nm.slug AS nm_slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca, nm.gestor_nombre,
+                nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
                 nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
-         WHERE ($1 = '' OR LOWER(nm.slug) = LOWER($1))
+         WHERE ($1 = '' OR LOWER(nm.slug) = LOWER($1) OR LOWER(COALESCE(nm.slug_historico, '')) = LOWER($1))
            AND COALESCE(nm.activo, true) = true
            AND COALESCE(npv.estado_operativo, '') <> 'ANULADO'
            AND (
@@ -11644,13 +11874,16 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
     const primera = filasCoincidentes[0];
     const nodoPublico = {
         slug: primera.nm_slug,
+        slug_historico: primera.slug_historico || null,
         nombre_marca: primera.nombre_marca,
+        bajada_marca: primera.bajada_marca || null,
         subtitulo_marca: primera.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
         gestor_nombre: primera.gestor_nombre || '',
         gestor_telefono: primera.gestor_telefono || '',
         barrio_zona: primera.barrio_zona || '',
         direccion_retiro: primera.direccion_retiro || '',
         color_primario: primera.color_primario || '#a2553b',
+        tema_visual: (primera.tema_visual && typeof primera.tema_visual === 'object') ? primera.tema_visual : {},
         logo_original_base64: primera.logo_original_base64 || null,
         alias_bancario_display: primera.alias_bancario_display || '',
         cbu_display: '',
@@ -11758,14 +11991,14 @@ async function buscarSeguimientoPublicoPorTelefonoYPedido(slug, payload = {}) {
     const res = await db.query(
         `SELECT npv.*,
                 nv.telefono_normalizado AS vec_tel_norm,
-                nm.slug AS nm_slug, nm.nombre_marca, nm.subtitulo_marca, nm.gestor_nombre,
-                nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario,
+                nm.slug AS nm_slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca, nm.gestor_nombre,
+                nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
                 nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
          WHERE UPPER(TRIM(npv.codigo_pedido)) = $1
-           AND ($2 = '' OR LOWER(nm.slug) = LOWER($2))
+           AND ($2 = '' OR LOWER(nm.slug) = LOWER($2) OR LOWER(COALESCE(nm.slug_historico, '')) = LOWER($2))
            AND COALESCE(nm.activo, true) = true
          LIMIT 5`,
         [codigoNormalizado, cleanSlug]
@@ -12794,7 +13027,7 @@ async function resolverNodoPorTokenGestor(token) {
     const tok = String(token || '').trim();
     if (!tok || tok.length < 16) return null;
     const res = await db.query(
-        `SELECT id, codigo_nodo, slug, nombre_marca, gestor_nombre, activo
+        `SELECT id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca, gestor_nombre, activo
          FROM public.nodos_maestro
          WHERE gestor_token = $1
            AND COALESCE(activo, true) = true
@@ -12897,12 +13130,13 @@ async function obtenerDatosQrAccesoNodo(idOrSlug) {
 
     const numVal = /^\d+$/.test(raw) ? Number(raw) : -1;
     const res = await db.query(
-        `SELECT id, codigo_nodo, slug, nombre_marca, subtitulo_marca,
+        `SELECT id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca, subtitulo_marca,
                 gestor_nombre, gestor_telefono, barrio_zona, direccion_retiro,
-                color_primario, bunker_cliente_id, codigo_bunker_cliente, activo, gestor_token
+                color_primario, tema_visual, bunker_cliente_id, codigo_bunker_cliente, activo, gestor_token
          FROM public.nodos_maestro
          WHERE ($1::int > 0 AND (bunker_cliente_id = $1::int OR id = $1::int))
             OR LOWER(slug) = LOWER($2)
+            OR LOWER(COALESCE(slug_historico, '')) = LOWER($2)
             OR UPPER(codigo_nodo) = UPPER($2)
             OR UPPER(COALESCE(codigo_bunker_cliente, '')) = UPPER($2)
          ORDER BY CASE WHEN bunker_cliente_id = $1::int THEN 0 ELSE 1 END, id ASC
@@ -12930,14 +13164,17 @@ async function obtenerDatosQrAccesoNodo(idOrSlug) {
         codigo_nodo: n.codigo_nodo,
         codigo_bunker_cliente: n.codigo_bunker_cliente || null,
         slug: n.slug,
+        slug_historico: n.slug_historico || null,
         gestor_token: gestorToken,
         nombre_marca: n.nombre_marca,
+        bajada_marca: n.bajada_marca || null,
         subtitulo_marca: n.subtitulo_marca || '',
         gestor_nombre: n.gestor_nombre || '',
         gestor_telefono: n.gestor_telefono || '',
         barrio_zona: n.barrio_zona || '',
         direccion_retiro: n.direccion_retiro || '',
-        color_primario: n.color_primario || '#16a34a'
+        color_primario: n.color_primario || '#16a34a',
+        tema_visual: (n.tema_visual && typeof n.tema_visual === 'object') ? n.tema_visual : {}
     };
 }
 
@@ -13032,15 +13269,15 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
         `SELECT nv.id, nv.nodo_id, nv.codigo_vecino, nv.nombre_completo,
                 nv.telefono_whatsapp, nv.telefono_normalizado, nv.direccion_calle, nv.entrecalles_referencia,
                 nv.saldo_actual,
-                nm.slug AS nm_slug, nm.nombre_marca, nm.subtitulo_marca,
+                nm.slug AS nm_slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca,
                 nm.gestor_nombre, nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro,
-                nm.color_primario, nm.logo_original_base64,
+                nm.color_primario, nm.tema_visual, nm.logo_original_base64,
                 nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
                 nm.permitir_envio_barrial, nm.permitir_retiro_nodo, nm.permitir_reparto_propio, nm.permitir_encomienda, nm.cargo_envio_barrial
          FROM public.nodos_vecinos nv
          JOIN public.nodos_maestro nm ON nm.id = nv.nodo_id
          WHERE nv.portal_token = $1
-           AND ($2 = '' OR LOWER(nm.slug) = LOWER($2))
+           AND ($2 = '' OR LOWER(nm.slug) = LOWER($2) OR LOWER(COALESCE(nm.slug_historico, '')) = LOWER($2))
            AND COALESCE(nv.activo, true) = true
            AND COALESCE(nm.activo, true) = true
          LIMIT 1`,
@@ -13055,13 +13292,16 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
     const vid = Number(row.id);
     const nodoInfo = {
         slug: row.nm_slug,
+        slug_historico: row.slug_historico || null,
         nombre_marca: row.nombre_marca,
+        bajada_marca: row.bajada_marca || null,
         subtitulo_marca: row.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
         gestor_nombre: row.gestor_nombre || '',
         gestor_telefono: row.gestor_telefono || '',
         barrio_zona: row.barrio_zona || '',
         direccion_retiro: row.direccion_retiro || '',
         color_primario: row.color_primario || '#a2553b',
+        tema_visual: (row.tema_visual && typeof row.tema_visual === 'object') ? row.tema_visual : {},
         logo_original_base64: row.logo_original_base64 || null,
         alias_bancario_display: row.alias_bancario_display || 'pago.canasto',
         cbu_display: row.cbu_display || '',
@@ -13274,11 +13514,11 @@ async function obtenerKitCompartirNodo(nodoId) {
 
     const [nodoRes, ofertasRes] = await Promise.all([
         db.query(
-            `SELECT id, codigo_nodo, slug, nombre_marca, subtitulo_marca,
+            `SELECT id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca, subtitulo_marca,
                     gestor_nombre, barrio_zona, direccion_retiro,
                     permitir_envio_barrial, permitir_retiro_nodo, permitir_reparto_propio, permitir_encomienda,
                     cargo_envio_barrial,
-                    color_primario, config_ventanas_corte, activo
+                    color_primario, tema_visual, config_ventanas_corte, activo
              FROM public.nodos_maestro
              WHERE id = $1::int
              LIMIT 1`,
@@ -13323,7 +13563,9 @@ async function obtenerKitCompartirNodo(nodoId) {
         nodo: {
             id: Number(n.id),
             slug: n.slug,
+            slug_historico: n.slug_historico || null,
             nombre_marca: n.nombre_marca,
+            bajada_marca: n.bajada_marca || null,
             subtitulo_marca: n.subtitulo_marca || '',
             gestor_nombre: n.gestor_nombre || '',
             barrio_zona: n.barrio_zona || '',
@@ -13333,7 +13575,8 @@ async function obtenerKitCompartirNodo(nodoId) {
             permitir_reparto_propio: puedeRepartoKit,
             permitir_encomienda: Boolean(n.permitir_encomienda),
             cargo_envio_barrial: Number(n.cargo_envio_barrial || 0),
-            color_primario: n.color_primario || '#a2553b'
+            color_primario: n.color_primario || '#a2553b',
+            tema_visual: (n.tema_visual && typeof n.tema_visual === 'object') ? n.tema_visual : {}
         },
         proxima_entrega: proximaEntrega,
         ofertas_publicadas: ofertasRes.rows.map(o => ({
@@ -13843,5 +14086,7 @@ module.exports = {
     convertirLogoAZplGfa,
     generarEtiquetaZplParNodo,
     generarPreviewVisualEtiquetaPar,
-    generarPreviewVisualCanastoQrMaestro
+    generarPreviewVisualCanastoQrMaestro,
+    migrarNodoLoDeMatiAParaiso,
+    TEMA_VISUAL_PARAISO_OFICIAL
 };
