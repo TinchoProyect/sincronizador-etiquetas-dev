@@ -277,19 +277,23 @@ exports.obtenerHistorialMermas = async (req, res) => {
                 NULLIF(peh.kilos_entrada, 0) AS kilos_entrada_original,
                 svm_rec.kilos_egresados_reales,
                 svm_rec.sku_egresado_real,
-                COALESCE(
-                    NULLIF(peh.kilos_entrada, 0),
-                    NULLIF(svm_rec.kilos_egresados_reales, 0),
-                    CASE
-                        -- Únicamente en Líneas 5 y 6 se admite fallback de blueprint si no hay registro de egreso en movimientos
-                        WHEN (peh.articulo_padre_id ILIKE 'BF%' OR peh.articulo_fraccionado_id ILIKE 'BF%')
-                             AND COALESCE(bp.masa_base_blueprint, 0) > 0 AND CAST(peh.kilos_producidos AS DECIMAL(20,10)) > 0
-                        THEN (COALESCE(bp.masa_base_blueprint, 0) + COALESCE(bp.masa_agregados_blueprint, 0)) * (CAST(peh.kilos_producidos AS DECIMAL(20,10)) / 4.80)
-                        WHEN (peh.articulo_padre_id ILIKE 'G%GN%' OR peh.articulo_fraccionado_id ILIKE 'G%GN%')
-                        THEN NULLIF(COALESCE(bp.masa_base_blueprint, 0) + COALESCE(bp.masa_agregados_blueprint, 0), 0)
-                        ELSE NULL
-                    END
-                ) AS kilos_entrada_resuelta,
+                CASE
+                    WHEN NOT (peh.articulo_padre_id ILIKE 'BF%' OR peh.articulo_fraccionado_id ILIKE 'BF%' OR peh.articulo_padre_id ILIKE 'G%GN%' OR peh.articulo_fraccionado_id ILIKE 'G%GN%')
+                    THEN COALESCE(NULLIF(svm_rec.kilos_egresados_reales, 0), NULLIF(peh.kilos_entrada, 0))
+                    ELSE COALESCE(
+                        NULLIF(peh.kilos_entrada, 0),
+                        NULLIF(svm_rec.kilos_egresados_reales, 0),
+                        CASE
+                            -- Únicamente en Líneas 5 y 6 se admite fallback de blueprint si no hay registro de egreso en movimientos
+                            WHEN (peh.articulo_padre_id ILIKE 'BF%' OR peh.articulo_fraccionado_id ILIKE 'BF%')
+                                 AND COALESCE(bp.masa_base_blueprint, 0) > 0 AND CAST(peh.kilos_producidos AS DECIMAL(20,10)) > 0
+                            THEN (COALESCE(bp.masa_base_blueprint, 0) + COALESCE(bp.masa_agregados_blueprint, 0)) * (CAST(peh.kilos_producidos AS DECIMAL(20,10)) / 4.80)
+                            WHEN (peh.articulo_padre_id ILIKE 'G%GN%' OR peh.articulo_fraccionado_id ILIKE 'G%GN%')
+                            THEN NULLIF(COALESCE(bp.masa_base_blueprint, 0) + COALESCE(bp.masa_agregados_blueprint, 0), 0)
+                            ELSE NULL
+                        END
+                    )
+                END AS kilos_entrada_resuelta,
                 COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos) AS kilos_salida,
                 peh.kilos_producidos
             FROM public.produccion_externa_historial peh
@@ -330,10 +334,13 @@ exports.obtenerHistorialMermas = async (req, res) => {
             const sal = salParsed > 0 ? Number(salParsed.toFixed(4)) : 0;
             const prodOrig = parseFloat(h.kilos_producidos) || sal;
 
-            // Regla estricta: inválida si falta entrada válida o si kilos_producidos > kilos_entrada (nunca truncar a 0%)
+            // Regla estricta: inválida si falta entrada válida, si salida > entrada, o en Línea 4 (Tostadero) fuera del rango [0%, 25%]
             const faltaEntrada = !(entTotal > 0);
             const salidaExcedeEntrada = entTotal > 0 && (prodOrig > entTotal + 0.0001 || sal > entTotal + 0.0001);
-            const esInvalida = faltaEntrada || salidaExcedeEntrada || !(sal > 0);
+            const mermaRaw = (entTotal > 0 && sal > 0) ? Number((((entTotal - sal) / entTotal) * 100).toFixed(2)) : null;
+            const esLinea4Hist = Number(h.linea_negocio || 4) === 4;
+            const fueraRangoL4 = esLinea4Hist && mermaRaw !== null && (mermaRaw < 0 || mermaRaw > 25);
+            const esInvalida = faltaEntrada || salidaExcedeEntrada || !(sal > 0) || fueraRangoL4;
 
             const item = {
                 id: h.id,
@@ -346,22 +353,23 @@ exports.obtenerHistorialMermas = async (req, res) => {
                 kilos_entrada: entTotal > 0 ? entTotal : null,
                 kilos_salida: sal,
                 kilos_producidos: prodOrig,
-                reconstruido_movimientos: !h.kilos_entrada_original && !!(h.kilos_egresados_reales && parseFloat(h.kilos_egresados_reales) > 0),
+                reconstruido_movimientos: !!(h.kilos_egresados_reales && parseFloat(h.kilos_egresados_reales) > 0 && (!h.kilos_entrada_original || Math.abs(parseFloat(h.kilos_entrada_original) - parseFloat(h.kilos_egresados_reales)) > 0.001)),
                 sku_egresado_real: h.sku_egresado_real || null,
                 es_invalida: esInvalida,
                 motivo_invalida: faltaEntrada
                     ? 'Falta entrada válida registrada'
-                    : (salidaExcedeEntrada ? 'Salida supera kilos de entrada' : null),
+                    : (salidaExcedeEntrada
+                        ? 'Salida supera kilos de entrada (merma negativa)'
+                        : (fueraRangoL4 ? `Merma (${mermaRaw}%) fuera del rango válido de Tostadero (0% a 25%)` : null)),
                 porcentaje_merma: null
             };
 
-            if (!esInvalida) {
-                const mermaCalc = Number((((entTotal - sal) / entTotal) * 100).toFixed(2));
-                item.porcentaje_merma = mermaCalc;
-                sumMermas += mermaCalc;
+            if (!esInvalida && mermaRaw !== null) {
+                item.porcentaje_merma = mermaRaw;
+                sumMermas += mermaRaw;
                 countMermas++;
                 if (ultimaMermaValida === null) {
-                    ultimaMermaValida = mermaCalc;
+                    ultimaMermaValida = mermaRaw;
                 }
             }
 

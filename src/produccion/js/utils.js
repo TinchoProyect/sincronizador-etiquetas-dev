@@ -257,6 +257,16 @@ export const estilosTablaCarros = `
         border-bottom: 2px solid #cbd5e1;
     }
 
+    /* Carro Interno */
+    .carro-interno {
+        background-color: #ffffff;
+        border-left: 4px solid #0d9488;
+    }
+
+    .carro-interno:hover {
+        background-color: #f0fdfa;
+    }
+
     /* Carro Interno Activo */
     .carro-activo {
         background-color: #f0fdf4 !important;
@@ -268,6 +278,10 @@ export const estilosTablaCarros = `
         color: #64748b;
     }
 
+    .carro-interno.carro-finalizado {
+        border-left: 4px solid #94a3b8;
+    }
+
     .carro-finalizado.carro-activo {
         background-color: #f1f5f9 !important;
     }
@@ -277,23 +291,179 @@ export const estilosTablaCarros = `
        --------------------------------------------------- */
        
     .carro-externo {
-        background-color: #f8fafc;
-        border-left: 4px solid #94a3b8;
+        background-color: #eef2ff;
+        border-left: 4px solid #4f46e5;
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
 
     .carro-externo:hover {
-        background-color: #eff6ff;
+        background-color: #e0e7ff;
     }
 
     .carro-externo.carro-activo {
-        background-color: #eff6ff !important;
+        background-color: #e0e7ff !important;
         border-left: 4px solid #2563eb !important;
     }
 
     .carro-externo.carro-finalizado {
         background-color: #f8fafc;
-        border-left: 4px solid #64748b;
+        border-left: 4px solid #818cf8;
+    }
+
+    /* Barra superior y filtros rápidos de carros */
+    .carros-header-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+
+    .carros-header-bar h3 {
+        margin: 0;
+        font-size: 1.08rem;
+        color: #0f172a;
+    }
+
+    .carros-filtros-bar {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        background: #f1f5f9;
+        padding: 4px;
+        border-radius: 9999px;
+        border: 1px solid #cbd5e1;
+    }
+
+    .pill-filtro-carro {
+        border: none;
+        background: transparent;
+        color: #475569;
+        font-size: 11.5px;
+        font-weight: 700;
+        padding: 5px 11px;
+        border-radius: 9999px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: all 0.15s ease;
+    }
+
+    .pill-filtro-carro:hover {
+        background: #e2e8f0;
+        color: #0f172a;
+    }
+
+    .pill-filtro-carro.activo {
+        background: #0f172a;
+        color: #ffffff;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);
+    }
+
+    .pill-filtro-carro.abiertos.activo {
+        background: #d97706;
+        color: #ffffff;
+    }
+
+    .pill-filtro-carro.externos.activo {
+        background: #4f46e5;
+        color: #ffffff;
+    }
+
+    .pill-filtro-carro.internos.activo {
+        background: #0d9488;
+        color: #ffffff;
+    }
+
+    .pill-count {
+        font-size: 10.5px;
+        padding: 1px 6px;
+        border-radius: 9999px;
+        background: rgba(15, 23, 42, 0.10);
+        color: inherit;
+    }
+
+    .pill-filtro-carro.activo .pill-count {
+        background: rgba(255, 255, 255, 0.24);
+        color: #ffffff;
+    }
+
+    /* Sección destacada superior: Carros Abiertos / Pendientes de Asentar */
+    .panel-carros-abiertos {
+        background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%);
+        border: 1.5px solid #fcd34d;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-bottom: 16px;
+        box-shadow: 0 2px 8px rgba(217, 119, 6, 0.08);
+    }
+
+    .panel-carros-abiertos-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+        border-bottom: 1px dashed #fde68a;
+    }
+
+    .panel-carros-abiertos-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+        gap: 12px;
+    }
+
+    .bloque-abiertos-columna {
+        background: #ffffff;
+        border-radius: 8px;
+        padding: 10px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .bloque-abiertos-columna.externa {
+        border-top: 3px solid #4f46e5;
+        background: #f8faff;
+    }
+
+    .bloque-abiertos-columna.interna {
+        border-top: 3px solid #0d9488;
+        background: #f6fefc;
+    }
+
+    .card-carro-abierto {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 9px 10px;
+        border-radius: 7px;
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        margin-top: 8px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .card-carro-abierto:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 3px 8px rgba(15, 23, 42, 0.08);
+    }
+
+    .card-carro-abierto.externa {
+        border-left: 4px solid #4f46e5;
+    }
+
+    .card-carro-abierto.interna {
+        border-left: 4px solid #0d9488;
+    }
+
+    .card-carro-abierto.activo-en-vista {
+        outline: 2px solid #2563eb;
+        background: #eff6ff;
     }
 
     .btn-group {

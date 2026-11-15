@@ -2842,7 +2842,12 @@ router.get('/carro/:id/articulos-resumen', async (req, res) => {
                         SUM(ABS(svm.cantidad)) as cantidad_total,
                         COALESCE(src.stock_consolidado, 0) as stock_actual,
                         COALESCE(NULLIF(src.kilos_unidad, 0), NULLIF(ba.kilos_unidad, 0), 1.0) as kilos_unidad,
-                        SUM(ABS(svm.cantidad) * COALESCE(NULLIF(src.kilos_unidad, 0), NULLIF(ba.kilos_unidad, 0), 1.0)) as kilos_totales
+                        SUM(
+                            CASE
+                                WHEN ABS(COALESCE(svm.kilos, 0)) > 0 THEN ABS(svm.kilos)
+                                ELSE ABS(svm.cantidad) * COALESCE(NULLIF(src.kilos_unidad, 0), NULLIF(ba.kilos_unidad, 0), 1.0)
+                            END
+                        ) as kilos_totales
                     FROM stock_ventas_movimientos svm
                     LEFT JOIN stock_real_consolidado src ON src.articulo_numero = svm.articulo_numero
                     LEFT JOIN articulos a ON (a.numero = svm.articulo_numero OR a.codigo_barras = svm.articulo_numero)
@@ -5343,52 +5348,75 @@ router.get('/simulacion/inicializar', async (req, res) => {
             db.query(`SELECT id, articulo_produccion_codigo, articulo_kilo_codigo, multiplicador_ingredientes, ingredientes_custom FROM public.articulos_produccion_externa_relacion WHERE UPPER(BTRIM(articulo_produccion_codigo)) <> UPPER(BTRIM(articulo_kilo_codigo))`),
             db.query(`SELECT id, usuario_id, articulo_numero, valor_por_unidad, unidad_medida FROM public.colaboradores_tarifas_rendimiento WHERE activo = true`),
             db.query(`
+                WITH base_mermas AS (
+                    SELECT
+                        peh.id,
+                        peh.carro_id,
+                        peh.articulo_padre_id,
+                        peh.articulo_fraccionado_id,
+                        COALESCE(
+                            peh.linea_negocio,
+                            CASE
+                                WHEN peh.articulo_padre_id ILIKE 'BF%' OR peh.articulo_fraccionado_id ILIKE 'BF%' THEN 5
+                                WHEN peh.articulo_padre_id ILIKE 'G%GN%' OR peh.articulo_fraccionado_id ILIKE 'G%GN%' THEN 6
+                                ELSE 4
+                            END
+                        ) AS ldn_res,
+                        CASE
+                            WHEN NOT (peh.articulo_padre_id ILIKE 'BF%' OR peh.articulo_fraccionado_id ILIKE 'BF%' OR peh.articulo_padre_id ILIKE 'G%GN%' OR peh.articulo_fraccionado_id ILIKE 'G%GN%')
+                            THEN COALESCE(NULLIF(svm_rec.kilos_egresados_reales, 0), NULLIF(peh.kilos_entrada, 0))
+                            ELSE COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0))
+                        END AS ent_res,
+                        COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos) AS sal_res,
+                        peh.kilos_producidos,
+                        peh.fecha_registro
+                    FROM public.produccion_externa_historial peh
+                    LEFT JOIN LATERAL (
+                        SELECT SUM(
+                            CASE
+                                WHEN ABS(COALESCE(svm.kilos, 0)) > 0 THEN ABS(svm.kilos)
+                                ELSE ABS(COALESCE(svm.cantidad, 0)) * COALESCE(NULLIF(ba_s.kilos_unidad, 0), NULLIF(src_s.kilos_unidad, 0), 1.00)
+                            END
+                        ) AS kilos_egresados_reales
+                        FROM public.stock_ventas_movimientos svm
+                        LEFT JOIN public.bunker_articulos ba_s ON ba_s.articulo_id = svm.articulo_numero
+                        LEFT JOIN public.stock_real_consolidado src_s ON src_s.articulo_numero = svm.articulo_numero
+                        WHERE svm.carro_id = peh.carro_id
+                          AND LOWER(COALESCE(svm.tipo, '')) LIKE '%egreso por receta externa%'
+                    ) svm_rec ON true
+                    WHERE UPPER(BTRIM(COALESCE(peh.articulo_padre_id, ''))) <> UPPER(BTRIM(COALESCE(peh.articulo_fraccionado_id, '')))
+                    ORDER BY peh.fecha_registro DESC
+                    LIMIT 500
+                )
                 SELECT
-                    peh.id,
-                    peh.carro_id,
-                    peh.articulo_padre_id,
-                    peh.articulo_fraccionado_id,
-                    COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0)) AS kilos_entrada,
-                    COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos) AS kilos_salida,
-                    peh.kilos_producidos,
+                    id,
+                    carro_id,
+                    articulo_padre_id,
+                    articulo_fraccionado_id,
+                    ent_res AS kilos_entrada,
+                    sal_res AS kilos_salida,
+                    kilos_producidos,
                     CASE
-                        WHEN COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0), 0) > 0
-                             AND COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos, 0) > 0
-                             AND COALESCE(peh.kilos_producidos, 0) <= COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0)) + 0.0001
-                             AND COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos, 0) <= COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0)) + 0.0001
-                        THEN ROUND(
-                            ((COALESCE(NULLIF(peh.kilos_entrada, 0), svm_rec.kilos_egresados_reales) - COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos))
-                             / COALESCE(NULLIF(peh.kilos_entrada, 0), svm_rec.kilos_egresados_reales)) * 100,
-                            2
-                        )
+                        WHEN COALESCE(ent_res, 0) > 0
+                             AND COALESCE(sal_res, 0) > 0
+                             AND COALESCE(kilos_producidos, 0) <= ent_res + 0.0001
+                             AND sal_res <= ent_res + 0.0001
+                             AND (ldn_res <> 4 OR (((ent_res - sal_res) / ent_res) * 100 BETWEEN 0 AND 25))
+                        THEN ROUND(((ent_res - sal_res) / ent_res) * 100, 2)
                         ELSE NULL
                     END AS porcentaje_merma,
                     CASE
-                        WHEN COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0), 0) <= 0
-                             OR COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos, 0) <= 0
-                             OR COALESCE(peh.kilos_producidos, 0) > COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0)) + 0.0001
-                             OR COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos, 0) > COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0)) + 0.0001
+                        WHEN COALESCE(ent_res, 0) <= 0
+                             OR COALESCE(sal_res, 0) <= 0
+                             OR COALESCE(kilos_producidos, 0) > ent_res + 0.0001
+                             OR sal_res > ent_res + 0.0001
+                             OR (ldn_res = 4 AND NOT (((ent_res - sal_res) / ent_res) * 100 BETWEEN 0 AND 25))
                         THEN true
                         ELSE false
                     END AS es_invalida,
-                    peh.fecha_registro
-                FROM public.produccion_externa_historial peh
-                LEFT JOIN LATERAL (
-                    SELECT SUM(
-                        CASE
-                            WHEN ABS(COALESCE(svm.kilos, 0)) > 0 THEN ABS(svm.kilos)
-                            ELSE ABS(COALESCE(svm.cantidad, 0)) * COALESCE(NULLIF(ba_s.kilos_unidad, 0), NULLIF(src_s.kilos_unidad, 0), 1.00)
-                        END
-                    ) AS kilos_egresados_reales
-                    FROM public.stock_ventas_movimientos svm
-                    LEFT JOIN public.bunker_articulos ba_s ON ba_s.articulo_id = svm.articulo_numero
-                    LEFT JOIN public.stock_real_consolidado src_s ON src_s.articulo_numero = svm.articulo_numero
-                    WHERE svm.carro_id = peh.carro_id
-                      AND LOWER(COALESCE(svm.tipo, '')) LIKE '%egreso por receta externa%'
-                ) svm_rec ON true
-                WHERE UPPER(BTRIM(COALESCE(peh.articulo_padre_id, ''))) <> UPPER(BTRIM(COALESCE(peh.articulo_fraccionado_id, '')))
-                ORDER BY peh.fecha_registro DESC
-                LIMIT 500
+                    fecha_registro
+                FROM base_mermas
+                ORDER BY fecha_registro DESC
             `)
         ]);
 

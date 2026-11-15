@@ -272,13 +272,21 @@ async function obtenerAnalisisPlanificacionLunes(params = {}, dbPool = null) {
                 FROM public.v_producibilidad_componentes_mix
             `),
 
-            // 10. Mermas históricas de producción externa (UPs)
+            // 10. Mermas históricas válidas de producción externa (UPs; en Línea 4 restringido a [0%, 25%])
             db.query(`
                 SELECT articulo_fraccionado_id, 
                        ROUND(AVG(porcentaje_merma), 2) AS merma_promedio,
                        COUNT(id) AS total_lotes_externos,
                        MAX(fecha_registro) AS ultima_recepcion_externa
                 FROM public.produccion_externa_historial
+                WHERE porcentaje_merma IS NOT NULL
+                  AND porcentaje_merma >= 0
+                  AND (
+                      COALESCE(linea_negocio, 4) IN (5, 6)
+                      OR articulo_fraccionado_id ILIKE 'BF%'
+                      OR articulo_fraccionado_id ILIKE 'G%GN%'
+                      OR porcentaje_merma <= 25
+                  )
                 GROUP BY articulo_fraccionado_id
             `),
 

@@ -535,7 +535,14 @@ class ConciliacionController {
     async propagarIngredienteAFracciones(req, res) {
         const client = await pool.connect();
         try {
-            const { ingrediente_id, porcentaje_iva, articulos_target_ids } = req.body;
+            const {
+                ingrediente_id,
+                porcentaje_iva,
+                articulos_target_ids,
+                nuevo_costo_patron,
+                ap_codigo,
+                nuevo_costo_base_ap
+            } = req.body;
 
             if (!ingrediente_id) {
                 return res.status(400).json({ success: false, message: 'Parámetro ingrediente_id requerido.' });
@@ -543,7 +550,7 @@ class ConciliacionController {
 
             await client.query('BEGIN');
 
-            // 1. Obtener costo_patron del ingrediente
+            // 1. Obtener costo_patron del ingrediente (y actualizarlo en la misma transacción si viene costo vivo simulado)
             const resIng = await client.query(
                 `SELECT id, nombre, costo_patron, articulo_vinculado_numero FROM public.ingredientes WHERE id = $1 LIMIT 1`,
                 [parseInt(ingrediente_id)]
@@ -555,7 +562,23 @@ class ConciliacionController {
             }
 
             const ing = resIng.rows[0];
-            const costoKiloIngrediente = parseFloat(ing.costo_patron) || 0;
+            let costoKiloIngrediente = parseFloat(ing.costo_patron) || 0;
+            let huboCambioIngredienteOAp = false;
+            const articulosActualizados = [];
+            const listasActualizadas = [];
+
+            if (nuevo_costo_patron !== undefined && nuevo_costo_patron !== null && !isNaN(parseFloat(nuevo_costo_patron)) && parseFloat(nuevo_costo_patron) > 0) {
+                const nuevoPatron = Number(parseFloat(nuevo_costo_patron).toFixed(4));
+                if (Math.abs(nuevoPatron - costoKiloIngrediente) >= 0.0001) {
+                    await client.query(
+                        `UPDATE public.ingredientes SET costo_patron = $1 WHERE id = $2`,
+                        [nuevoPatron, parseInt(ingrediente_id)]
+                    );
+                    ing.costo_patron = nuevoPatron;
+                    huboCambioIngredienteOAp = true;
+                }
+                costoKiloIngrediente = nuevoPatron;
+            }
 
             // 2. Resolver el IVA a propagar (desde req.body, del Bulto Origen o fallback)
             const bultoCerradoOrigen = String(ing.articulo_vinculado_numero || '').trim().toLowerCase();
@@ -568,6 +591,71 @@ class ConciliacionController {
                 );
                 if (resBulto.rows.length > 0 && resBulto.rows[0].porcentaje_iva) {
                     ivaPropagacion = parseFloat(resBulto.rows[0].porcentaje_iva);
+                }
+            }
+
+            // 2.1 Si el ingrediente proviene de un Artículo Puente (ej. Tostadero LDN 4), sincronizar el AP en la misma transacción
+            if (ap_codigo && nuevo_costo_base_ap !== undefined && nuevo_costo_base_ap !== null && !isNaN(parseFloat(nuevo_costo_base_ap)) && parseFloat(nuevo_costo_base_ap) > 0) {
+                const apSkuClean = String(ap_codigo).trim();
+                const resAp = await client.query(
+                    `SELECT articulo_id, kilos_unidad, porcentaje_iva FROM public.bunker_articulos WHERE LOWER(TRIM(articulo_id)) = LOWER(TRIM($1)) LIMIT 1`,
+                    [apSkuClean]
+                );
+                if (resAp.rows.length > 0) {
+                    const apRow = resAp.rows[0];
+                    const kilosAp = parseFloat(apRow.kilos_unidad) > 0 ? parseFloat(apRow.kilos_unidad) : 1;
+                    const costoApKilo = Number(parseFloat(nuevo_costo_base_ap).toFixed(4));
+                    const costoApBulto = Number((costoApKilo * kilosAp).toFixed(2));
+                    const ivaAp = ivaPropagacion !== null ? ivaPropagacion : (parseFloat(apRow.porcentaje_iva) || 21);
+
+                    await client.query(
+                        `UPDATE public.bunker_articulos
+                         SET costo_base = $1,
+                             porcentaje_iva = $2,
+                             updated_at = CURRENT_TIMESTAMP
+                         WHERE LOWER(TRIM(articulo_id)) = LOWER(TRIM($3))`,
+                        [costoApBulto, ivaAp, apRow.articulo_id]
+                    );
+                    articulosActualizados.push({ articulo_id: apRow.articulo_id, costo_base: costoApBulto, porcentaje_iva: ivaAp });
+
+                    const resListasAp = await client.query(
+                        `SELECT la.id, la.lista_id, la.costo_tiempo, COALESCE(la.mano_obra_activa, true) AS mano_obra_activa,
+                                la.margen_ganancia, la.iva, COALESCE(la.modo_iva, 'COMPLETO') AS modo_iva
+                         FROM public.bunker_lista_articulos la
+                         JOIN public.bunker_listas_precios blp ON blp.id = la.lista_id
+                         WHERE LOWER(TRIM(la.articulo_numero)) = LOWER(TRIM($1))
+                           AND blp.activa = true`,
+                        [apRow.articulo_id]
+                    );
+                    for (const laAp of resListasAp.rows) {
+                        const moAp = laAp.mano_obra_activa !== false ? (parseFloat(laAp.costo_tiempo) || 0) : 0;
+                        const margenAp = parseFloat(laAp.margen_ganancia) || 0;
+                        const ivaListaAp = ivaPropagacion !== null ? ivaPropagacion : (parseFloat(laAp.iva) || ivaAp);
+                        const modoIvaAp = String(laAp.modo_iva || 'COMPLETO').toUpperCase();
+                        let ivaEfAp = ivaListaAp;
+                        if (modoIvaAp === 'MEDIO') ivaEfAp = ivaListaAp / 2;
+                        else if (modoIvaAp === 'SIN') ivaEfAp = 0;
+                        const precioAp = Number((((costoApBulto * (1 + (margenAp / 100))) + moAp) * (1 + (ivaEfAp / 100))).toFixed(2));
+
+                        await client.query(
+                            `UPDATE public.bunker_lista_articulos
+                             SET costo_base_sobrescrito = $1,
+                                 iva = $2,
+                                 precio_final = $3,
+                                 updated_at = NOW()
+                             WHERE id = $4`,
+                            [costoApKilo, ivaListaAp, precioAp, laAp.id]
+                        );
+                        listasActualizadas.push({
+                            id: laAp.id,
+                            lista_id: laAp.lista_id,
+                            articulo_numero: apRow.articulo_id,
+                            costo_base_sobrescrito: costoApKilo,
+                            iva: ivaListaAp,
+                            precio_final: precioAp
+                        });
+                    }
+                    huboCambioIngredienteOAp = true;
                 }
             }
 
@@ -643,7 +731,7 @@ class ConciliacionController {
                 }
             }
 
-            if (articulosAfectados.length === 0) {
+            if (articulosAfectados.length === 0 && !huboCambioIngredienteOAp) {
                 await client.query('ROLLBACK');
                 return res.json({
                     success: false,
@@ -795,6 +883,7 @@ class ConciliacionController {
                      WHERE LOWER(TRIM(articulo_id)) = LOWER(TRIM($3))`,
                     [costoBaseMaestro, ivaAplicar, sku]
                 );
+                articulosActualizados.push({ articulo_id: sku, costo_base: costoBaseMaestro, porcentaje_iva: ivaAplicar });
 
                 // 3. Obtener listas activas y actualizar precio_final (sumando insumos propios de la lista solo para el precio, NO en costo_base_sobrescrito)
                 const resListas = await client.query(
@@ -886,6 +975,14 @@ class ConciliacionController {
                          WHERE id = $4`,
                         [costoKiloSobrescritoFinal, ivaLista, precioFinal, la.id]
                     );
+                    listasActualizadas.push({
+                        id: la.id,
+                        lista_id: la.lista_id,
+                        articulo_numero: sku,
+                        costo_base_sobrescrito: costoKiloSobrescritoFinal,
+                        iva: ivaLista,
+                        precio_final: precioFinal
+                    });
                 }
 
                 totalActualizados++;
@@ -914,7 +1011,9 @@ class ConciliacionController {
                 success: true,
                 message: `Propagación completada con éxito: ${totalActualizados} artículos fraccionados mono-ingrediente actualizados en la BD ($${costoKiloIngrediente.toFixed(2)}/kg).`,
                 ingrediente: ing,
-                articulosAfectadosCount: totalActualizados
+                articulosAfectadosCount: totalActualizados,
+                articulosActualizados,
+                listasActualizadas
             });
 
         } catch (err) {

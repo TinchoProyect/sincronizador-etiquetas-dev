@@ -17,6 +17,133 @@
 window.pizarraFamiliasDesplegadas = window.pizarraFamiliasDesplegadas || new Set();
 window.pizarraSubfamiliasDesplegadas = window.pizarraSubfamiliasDesplegadas || new Set();
 
+// Helpers deterministas de Vínculo Puente AP y Costo Vivo vs Costo Patrón BD
+window.construirSetSkusPuenteProduccion = function(masterData) {
+    const master = masterData || window.pizarraSimulacionMaster || {};
+    const skusPuente = new Set();
+    const todos = master.articulosBunker || [];
+    const recetas = master.recetas || [];
+    const recetaIngs = master.recetaIngredientes || [];
+    const compMix = master.composicionMix || [];
+    const mixIds = new Set(compMix.map(cm => Number(cm.mix_id)));
+
+    todos.forEach(a => {
+        const sku = String(a.articulo_id || '').trim().toLowerCase();
+        if (!sku) return;
+        const famId = Number(a.familia_id || 0);
+        const famNombre = String(a.familia_nombre || a.familia || '').toLowerCase().trim();
+        const descLower = String(a.descripcion || '').toLowerCase().trim();
+        if (
+            famId === 42 ||
+            famNombre === 'produccion' ||
+            descLower === 'articulo puente' ||
+            descLower === 'unidad productiva' ||
+            sku.startsWith('prod')
+        ) {
+            skusPuente.add(sku);
+        }
+    });
+
+    (window.tostaderosConfigsLDN4 || []).forEach(t => {
+        if (t.ap_codigo) skusPuente.add(String(t.ap_codigo).trim().toLowerCase());
+        if (t.up_codigo) skusPuente.add(String(t.up_codigo).trim().toLowerCase());
+    });
+
+    ['aptpgxk', 'aptspgxk', 'aptspgxkpm', 'cctgxk', 'cctsgxk', 'emb-gz6u9k', 'mfspxk', 'bfx50g', 'gfgnfx1', 'gsgnfx1'].forEach(s => skusPuente.add(s));
+
+    recetas.forEach(r => {
+        const skuR = String(r.articulo_numero || '').trim().toLowerCase();
+        if (!skuR) return;
+        if (recetaIngs.some(ri => ri.receta_id === r.id && mixIds.has(Number(ri.ingrediente_id)))) {
+            skusPuente.add(skuR);
+        }
+    });
+
+    return skusPuente;
+};
+
+window.obtenerVinculoPuenteAPIngrediente = function(ing, skusPuenteOpt) {
+    if (!ing) return { esPuenteAP: false, apCodigo: null, circuitoLDN: null, labelOrigen: '' };
+    const skusPuente = skusPuenteOpt || window.construirSetSkusPuenteProduccion();
+    const tost = (window.tostaderosConfigsLDN4 || []).find(t => Number(t.ing_id) === Number(ing.id));
+    if (tost) {
+        return {
+            esPuenteAP: true,
+            apCodigo: tost.ap_codigo,
+            upCodigo: tost.up_codigo,
+            circuitoLDN: 4,
+            labelOrigen: '🥜 Tostadero [LDN 4]'
+        };
+    }
+
+    const candidatos = [];
+    if (ing.articulo_vinculado_numero) candidatos.push(String(ing.articulo_vinculado_numero).trim());
+    if (Array.isArray(ing.bunker_articulos)) {
+        ing.bunker_articulos.forEach(b => {
+            const c = String(b.codigo || b.articulo_id || '').trim();
+            if (c && !candidatos.includes(c)) candidatos.push(c);
+        });
+    }
+
+    const matchAp = candidatos.find(c => skusPuente.has(c.toLowerCase()));
+    if (!matchAp) {
+        return { esPuenteAP: false, apCodigo: null, circuitoLDN: null, labelOrigen: '' };
+    }
+
+    const apUpper = matchAp.toUpperCase();
+    let circuitoLDN = 3;
+    let labelOrigen = '🧪 Puente Mix [LDN 3]';
+    if (Number(ing.id) === 141 || apUpper === 'BFX50G') {
+        circuitoLDN = 5;
+        labelOrigen = '🍫 Barritas [LDN 5]';
+    } else if (Number(ing.id) === 122 || Number(ing.id) === 131 || apUpper === 'GFGNFX1' || apUpper === 'GSGNFX1') {
+        circuitoLDN = 6;
+        labelOrigen = '🥣 Granolas [LDN 6]';
+    } else if (['APTPGXK', 'APTSPGXK', 'APTSPGXKPM', 'CCTGXK', 'CCTSGXK', 'EMB-GZ6U9K'].includes(apUpper)) {
+        circuitoLDN = 4;
+        labelOrigen = '🥜 Tostadero [LDN 4]';
+    }
+
+    return {
+        esPuenteAP: true,
+        apCodigo: matchAp,
+        circuitoLDN,
+        labelOrigen
+    };
+};
+
+window.obtenerContextoCostoIngrediente = function(ingredienteId) {
+    const master = window.pizarraSimulacionMaster || {};
+    const ing = (master.ingredientes || []).find(i => Number(i.id) === Number(ingredienteId));
+    const costoPatronBD = parseFloat(ing?.costo_patron || 0);
+    const tost = (window.tostaderosConfigsLDN4 || []).find(t => Number(t.ing_id) === Number(ingredienteId));
+
+    let costoVivoSim = costoPatronBD;
+    if (tost && !isNaN(parseFloat(tost.costo_ingrediente_simulado)) && parseFloat(tost.costo_ingrediente_simulado) > 0) {
+        costoVivoSim = parseFloat(tost.costo_ingrediente_simulado);
+    } else if (typeof window.resolverCostoIngrediente === 'function') {
+        const resuelto = parseFloat(window.resolverCostoIngrediente(Number(ingredienteId)));
+        if (!isNaN(resuelto) && resuelto > 0) costoVivoSim = resuelto;
+    } else if (window.ingredientesSim && window.ingredientesSim[ingredienteId] && parseFloat(window.ingredientesSim[ingredienteId].costo_sim) > 0) {
+        costoVivoSim = parseFloat(window.ingredientesSim[ingredienteId].costo_sim);
+    }
+
+    const hayDesfaseIngrediente = Math.abs(costoVivoSim - costoPatronBD) >= 0.05;
+    const vinculoPuente = window.obtenerVinculoPuenteAPIngrediente(ing);
+
+    return {
+        ingredienteId: Number(ingredienteId),
+        costoPatronBD,
+        costoVivoSim,
+        hayDesfaseIngrediente,
+        esTostaderoLDN4: Boolean(tost),
+        apCodigo: tost ? tost.ap_codigo : vinculoPuente.apCodigo,
+        costoBaseApSim: tost ? parseFloat(tost.costo_base_ap_simulado ?? tost.costo_ap_simulado ?? 0) : null,
+        tostConfig: tost || null,
+        vinculoPuente
+    };
+};
+
 window.togglePizarraColapsarFamilia = function(famKey, e) {
     if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
     if (!window.pizarraFamiliasDesplegadas || !(window.pizarraFamiliasDesplegadas instanceof Set)) {
@@ -841,33 +968,41 @@ function renderizarArticulosBunkerLDN1() {
     }
 
     // -------------------------------------------------------------------------
-    // PASO 4-B: Renderizar Acordeón 4 (Ingredientes Huérfanos — Sin Vínculo Estructural)
+    // PASO 4-B: Separación Determinista entre Insumos con Vínculo Puente AP vs Huérfanos Reales
     // -------------------------------------------------------------------------
+    const gridPuenteAP = document.getElementById('grid-ingredientes-puente-ap');
+    const badgePuenteAP = document.getElementById('count-ingredientes-puente-ap');
+    const accPuenteAP = document.getElementById('accordion-ingredientes-puente-ap');
     const gridHuerfanos = document.getElementById('grid-ingredientes-huerfanos');
     const badgeHuerfanos = document.getElementById('count-ingredientes-huerfanos');
+    const accHuerfanos = document.getElementById('accordion-ingredientes-huerfanos');
+    let countPuenteAP = 0;
     let countHuerfanos = 0;
 
-    if (gridHuerfanos) {
-        gridHuerfanos.innerHTML = '';
-        
-        // Identificar ingredientes que NO poseen ningún artículo de Comercialización Directa vinculado
+    if (gridPuenteAP || gridHuerfanos) {
+        if (gridPuenteAP) gridPuenteAP.innerHTML = '';
+        if (gridHuerfanos) gridHuerfanos.innerHTML = '';
+
+        const skusPuenteSet = window.construirSetSkusPuenteProduccion(master);
         const skusComercializacionDirecta = new Set(
             todos
                 .filter(a => {
                     const esPack = a.pack_hijo_codigo && a.pack_hijo_codigo.trim() !== '';
+                    const famId = Number(a.familia_id || 0);
                     const famNombre = String(a.familia_nombre || a.familia || '').toLowerCase().trim();
                     const descLower = String(a.descripcion || '').toLowerCase().trim();
-                    const esProduccionInterna = famNombre === 'produccion' ||
+                    const esProduccionInterna = famId === 42 ||
+                                                famNombre === 'produccion' ||
                                                 descLower === 'articulo puente' ||
                                                 descLower === 'unidad productiva' ||
-                                                String(a.articulo_id || '').startsWith('PROD');
+                                                String(a.articulo_id || '').toUpperCase().startsWith('PROD');
                     return !esPack && !a.es_pack && a.tiene_receta !== true && !esProduccionInterna;
                 })
                 .map(a => (a.articulo_id || '').toLowerCase().trim())
                 .filter(Boolean)
         );
 
-        const ingredientesHuerfanos = ingredientesList.filter(ing => {
+        const sinVinculoDirecto = ingredientesList.filter(ing => {
             const vincNum = (ing.articulo_vinculado_numero || '').toLowerCase().trim();
             const vinculacionesDirectas = Array.isArray(ing.bunker_articulos)
                 ? ing.bunker_articulos.map(b => (b.codigo || b.articulo_id || '').toLowerCase().trim()).filter(Boolean)
@@ -879,115 +1014,159 @@ function renderizarArticulosBunkerLDN1() {
             return !tieneVinculoDirectoTablaMaestra && !tieneVinculoDirectoJunction;
         });
 
-        ingredientesHuerfanos.forEach(ing => {
-            let matchQuery = true;
-            if (searchTerms.length > 0) {
-                const searchableText = `${ing.nombre || ''} ${ing.articulo_vinculado_numero || ''} ${ing.codigo || ''}`
-                    .toLowerCase()
-                    .normalize("NFD")
-                    .replace(/[\u0300-\u036f]/g, "");
-                matchQuery = searchTerms.every(term => searchableText.includes(term));
-            }
-            if (!matchQuery) return;
-
-            countHuerfanos++;
+        const construirTarjetaInsumoFabrica = (ing, esPuenteAP, vinculoPuente) => {
             const cleanDesc = (ing.nombre || '').replace(/'/g, "\\'");
             const stockKg = parseFloat(ing.stock_actual || 0);
-            const costoPatron = parseFloat(ing.costo_patron || 0);
+            const ctxCosto = window.obtenerContextoCostoIngrediente(ing.id);
+            const costoPatron = ctxCosto.costoPatronBD;
+            const costoVivoSim = ctxCosto.costoVivoSim;
+            const hayDesfaseIng = ctxCosto.hayDesfaseIngrediente;
             const ivaVal = parseFloat(ing.porcentaje_iva || 21);
 
-            // Auditoría determinista de fracciones mono para este ingrediente huérfano
             const estadoMono = (typeof window.auditarEstadoFraccionesMono === 'function')
                 ? window.auditarEstadoFraccionesMono(ing.id)
                 : { total: 0, todosAlDia: false, pendientes: 0 };
 
             let btnMonoPropagarHtml = '';
             if (estadoMono.total > 0) {
-                if (estadoMono.todosAlDia) {
+                if (estadoMono.todosAlDia && !hayDesfaseIng) {
                     btnMonoPropagarHtml = `
                         <button onclick="propagarIngredienteAFraccionesMono(${ing.id})" 
                             style="width: 100%; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 4px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 700; cursor: pointer; transition: all 0.2s;"
                             onmouseover="this.style.background='rgba(16, 185, 129, 0.25)'" onmouseout="this.style.background='rgba(16, 185, 129, 0.15)'"
-                            title="Las ${estadoMono.total} fracciones directas [LDN 2] están 100% al día con el costo patrón de $${costoPatron.toFixed(2)}/kg. Hacé clic para ver la auditoría de costos.">
-                            🟢 Fracciones [LDN 2] al Día (Ver Auditoría)
+                            title="Las ${estadoMono.total} presentaciones derivadas están 100% al día con $${costoPatron.toFixed(2)}/kg. Hacé clic para ver la auditoría Antes/Después.">
+                            🟢 Fracciones al Día (${estadoMono.total}) · Ver Auditoría
                         </button>
                     `;
                 } else {
+                    const cantPend = estadoMono.pendientes > 0 ? estadoMono.pendientes : estadoMono.total;
                     btnMonoPropagarHtml = `
                         <button onclick="propagarIngredienteAFraccionesMono(${ing.id})" 
                             style="width: 100%; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.72rem; font-weight: 800; cursor: pointer; box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);"
-                            title="Detectada variación: hay ${estadoMono.pendientes} fracción(es) directas en [LDN 2] pendientes de propagar en BD. Hacé clic para impactar.">
-                            ⚡ Propagar a Fracciones [LDN 2] (${estadoMono.pendientes} pendientes)
+                            title="Propagar costo a ${cantPend} presentación(es) derivada(s) y packs con vista Antes/Después.">
+                            ⚡ Propagar a Fracciones (${cantPend} pendientes)
                         </button>
                     `;
                 }
             }
 
-            // Auditoría de participación en Mixes (LDN 3)
             const mixesQueConsumen = (composicionMixList || []).filter(cm => cm.ingrediente_id === ing.id).map(cm => cm.mix_id);
             const uniqueMixes = [...new Set(mixesQueConsumen)];
             let btnMixesHtml = '';
-            if (uniqueMixes.length > 0) {
+            if (uniqueMixes.length > 0 || (esPuenteAP && vinculoPuente.circuitoLDN === 3)) {
+                const labelMix = uniqueMixes.length > 0
+                    ? `🧪 Incide en ${uniqueMixes.length} Mix${uniqueMixes.length > 1 ? 'es' : ''} (Ver LDN 3)`
+                    : `🧪 Puente de Mixes (Ver LDN 3)`;
                 btnMixesHtml = `
                     <button onclick="event.stopPropagation(); window.seleccionarIngredienteHuerfano(${ing.id}); if(window.cambiarContextoLDN) window.cambiarContextoLDN(3);" 
-                        style="width: 100%; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); padding: 3px 6px; border-radius: 4px; font-size: 0.70rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;"
-                        title="Este insumo incide en ${uniqueMixes.length} fórmula(s) de mezcla interna (Mixes). Hacé clic para ir a LDN 3.">
-                        🧪 Incide en ${uniqueMixes.length} Mix${uniqueMixes.length > 1 ? 'es' : ''} (Ver LDN 3)
+                        style="width: 100%; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); padding: 3px 6px; border-radius: 4px; font-size: 0.70rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                        ${labelMix}
                     </button>
                 `;
             }
 
-            // Auditoría de participación en Granolas (LDN 6)
-            const participaEnGranolas = uniqueMixes.includes(132) || (master.granolasInsumos || []).some(gi => gi.ingrediente_id === ing.id);
+            const participaEnGranolas = uniqueMixes.includes(132) || (master.granolasInsumos || []).some(gi => gi.ingrediente_id === ing.id) || (esPuenteAP && vinculoPuente.circuitoLDN === 6);
             let btnGranolaHtml = '';
             if (participaEnGranolas) {
                 btnGranolaHtml = `
                     <button onclick="event.stopPropagation(); window.seleccionarIngredienteHuerfano(${ing.id}); if(window.cambiarContextoLDN) window.cambiarContextoLDN(6);" 
-                        style="width: 100%; background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.4); padding: 3px 6px; border-radius: 4px; font-size: 0.70rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;"
-                        title="Este insumo o sus mezclas forman parte de las Granolas. Hacé clic para ir a LDN 6.">
+                        style="width: 100%; background: rgba(234, 179, 8, 0.15); color: #facc15; border: 1px solid rgba(234, 179, 8, 0.4); padding: 3px 6px; border-radius: 4px; font-size: 0.70rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
                         🌾 Incide en Granolas (Ver LDN 6)
                     </button>
                 `;
             }
 
-            // Auditoría de participación en Tostaderos (LDN 4)
-            const CIRCUITOS_TOSTADEROS_IDS = [38, 57, 123, 18, 41, 56, 166];
-            const vincUpper = (ing.articulo_vinculado_numero || '').toUpperCase();
-            const participaEnTostadero = CIRCUITOS_TOSTADEROS_IDS.includes(ing.id) || 
-                vincUpper.includes('TPG') || vincUpper.includes('TSPG') || vincUpper.includes('CTG') || vincUpper.includes('PTS');
+            let btnBarritasHtml = '';
+            if (esPuenteAP && vinculoPuente.circuitoLDN === 5) {
+                btnBarritasHtml = `
+                    <button onclick="event.stopPropagation(); window.seleccionarIngredienteHuerfano(${ing.id}); if(window.cambiarContextoLDN) window.cambiarContextoLDN(5);" 
+                        style="width: 100%; background: rgba(251, 146, 60, 0.15); color: #fb923c; border: 1px solid rgba(251, 146, 60, 0.4); padding: 3px 6px; border-radius: 4px; font-size: 0.70rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;">
+                        🍫 Circuito Barritas (Ver LDN 5)
+                    </button>
+                `;
+            }
+
+            const participaEnTostadero = (esPuenteAP && vinculoPuente.circuitoLDN === 4) || ctxCosto.esTostaderoLDN4;
             let btnTostaderoHtml = '';
             if (participaEnTostadero) {
                 btnTostaderoHtml = `
                     <button onclick="event.stopPropagation(); window.seleccionarIngredienteHuerfano(${ing.id}); if(window.cambiarContextoLDN) window.cambiarContextoLDN(4);" 
                         style="width: 100%; background: rgba(249, 115, 22, 0.15); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.4); padding: 3px 6px; border-radius: 4px; font-size: 0.70rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;"
-                        title="Este insumo se elabora o transforma en Tostaderos (UP Externa). Hacé clic para ir a LDN 4.">
+                        title="Elaborado en Tostadero (UP Externa). Hacé clic para abrir su panel en [LDN 4].">
                         🥜 Elaborado en Tostadero (Ver LDN 4)
                     </button>
                 `;
             }
 
             const esSeleccionado = window.ingredienteSeleccionadoId === ing.id;
+            const accentHex = esPuenteAP ? '#0ea5e9' : '#f59e0b';
+            const accentRgbaBorder = esPuenteAP ? 'rgba(14, 165, 233, 0.35)' : 'rgba(245, 158, 11, 0.3)';
+            const accentRgbaBgSel = esPuenteAP ? 'rgba(14, 165, 233, 0.16)' : 'rgba(245, 158, 11, 0.15)';
+            const accentRgbaBg = esPuenteAP ? 'rgba(14, 165, 233, 0.05)' : 'rgba(245, 158, 11, 0.04)';
+
             const ingCard = document.createElement('div');
             ingCard.className = `articulo-card ${esSeleccionado ? 'selected active' : ''}`;
-            ingCard.style.borderColor = esSeleccionado ? '#f59e0b' : 'rgba(245, 158, 11, 0.3)';
-            ingCard.style.background = esSeleccionado ? 'rgba(245, 158, 11, 0.15)' : 'rgba(245, 158, 11, 0.04)';
+            ingCard.style.borderColor = esSeleccionado ? accentHex : accentRgbaBorder;
+            ingCard.style.background = esSeleccionado ? accentRgbaBgSel : accentRgbaBg;
             if (esSeleccionado) {
-                ingCard.style.boxShadow = '0 0 12px rgba(245, 158, 11, 0.4)';
+                ingCard.style.boxShadow = esPuenteAP ? '0 0 12px rgba(14, 165, 233, 0.38)' : '0 0 12px rgba(245, 158, 11, 0.4)';
             }
             ingCard.style.cursor = 'pointer';
-            ingCard.setAttribute('data-tooltip', `[ING #${ing.id}] ${ing.nombre} | Insumo de Fábrica Sin Vínculo con Comercialización Directa`);
+            ingCard.setAttribute(
+                'data-tooltip',
+                esPuenteAP
+                    ? `[ING #${ing.id}] ${ing.nombre} | Abastecido por Artículo Puente [${vinculoPuente.apCodigo}] (${vinculoPuente.labelOrigen})`
+                    : `[ING #${ing.id}] ${ing.nombre} | Insumo Huérfano Sin Vínculo Estructural`
+            );
             ingCard.onclick = () => window.seleccionarIngredienteHuerfano(ing.id);
 
-            const badgeVinculoHtml = ing.articulo_vinculado_numero ? `
-                <span class="art-badge-tipo warning" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.35);" title="Artículo Puente / Producción: ${ing.articulo_vinculado_numero}">AP: ${ing.articulo_vinculado_numero}</span>
-            ` : `
-                <span class="art-badge-tipo warning">Sin Vínculo</span>
-            `;
+            const badgeVinculoHtml = esPuenteAP
+                ? `<span class="art-badge-tipo" style="background: rgba(14, 165, 233, 0.18); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.42); font-weight: 700;" title="${vinculoPuente.labelOrigen} · Artículo Puente [${vinculoPuente.apCodigo}]">🌉 Puente AP: ${vinculoPuente.apCodigo}</span>`
+                : `<span class="art-badge-tipo warning">Sin Vínculo</span>`;
+
+            const costoComparativoHtml = hayDesfaseIng
+                ? `
+                    <div style="margin-top: 6px; padding: 4px 6px; border-radius: 4px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.32); font-size: 0.69rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="color:#94a3b8;">Patrón BD:</span>
+                            <strong style="color:#cbd5e1;">$${costoPatron.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+                            <span style="color:#fbbf24; font-weight:700;">⚡ Vivo Simulado:</span>
+                            <span style="display:inline-flex; align-items:center; gap:3px;">
+                                <strong style="color:#fbbf24;">$${costoVivoSim.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+                                <button onclick="event.stopPropagation(); window.abrirEdicionManualCostoIngrediente(${ing.id});" style="background: none; border: none; cursor: pointer; font-size: 0.70rem; padding: 0 2px;" title="Editar costo patrón manualmente">✏️</button>
+                            </span>
+                        </div>
+                    </div>
+                `
+                : `
+                    <div style="margin-top: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem;">
+                        <div style="display: flex; align-items: center; gap: 4px;">
+                            <span style="color: ${esPuenteAP ? '#38bdf8' : '#f59e0b'}; font-weight: 700;">💰 $${costoPatron.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</span>
+                            <button onclick="event.stopPropagation(); window.abrirEdicionManualCostoIngrediente(${ing.id});" style="background: none; border: none; cursor: pointer; font-size: 0.72rem; padding: 0 2px;" title="Editar costo manualmente">✏️</button>
+                        </div>
+                        <span class="art-badge-tipo" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">IVA ${ivaVal}%</span>
+                    </div>
+                `;
+
+            const accionesInferioresHtml = esPuenteAP
+                ? `
+                    <div style="display: flex; gap: 6px; justify-content: center;">
+                        <button onclick="window.abrirModuloConciliacionIA('ING-${ing.id}', null, { es_ingrediente: true, ingrediente_id: ${ing.id} })" style="flex: 1; background: linear-gradient(135deg, rgba(2, 132, 199, 0.28), rgba(14, 165, 233, 0.18)); border: 1px solid rgba(56, 189, 248, 0.45); color: #bae6fd; padding: 4px 6px; font-size: 0.71rem; font-weight: 700; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;" title="Conciliar costo con IA">🤖 Conciliar IA</button>
+                    </div>
+                `
+                : `
+                    <div style="display: flex; gap: 6px; justify-content: center;">
+                        <button onclick="window.abrirModuloConciliacionIA('ING-${ing.id}', null, { es_ingrediente: true, ingrediente_id: ${ing.id} })" style="flex: 1; background: linear-gradient(135deg, rgba(2, 132, 199, 0.35), rgba(99, 102, 241, 0.35)); border: 1px solid #38bdf8; color: #bae6fd; padding: 4px 6px; font-size: 0.72rem; font-weight: 700; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.2s;" title="Conciliar costo con IA y proveedores de Tabla Maestra">🤖 Conciliar IA</button>
+                        <button onclick="abrirModalVinculacionEstructural('', '${cleanDesc}')" style="background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; padding: 4px 8px; font-size: 0.72rem; font-weight: 600; border-radius: 4px; cursor: pointer;" title="Vincular este insumo a un artículo de comercialización directa">🔗 Vincular</button>
+                    </div>
+                `;
 
             ingCard.innerHTML = `
                 <div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                        <div class="art-code" style="color: #f59e0b; font-weight: 700;">ING #${ing.id}</div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; gap: 4px;">
+                        <div class="art-code" style="color: ${esPuenteAP ? '#38bdf8' : '#f59e0b'}; font-weight: 700;">ING #${ing.id}${ing.codigo ? ` · [${ing.codigo}]` : ''}</div>
                         ${badgeVinculoHtml}
                     </div>
                     <div class="art-name-compact" title="${ing.nombre}" style="font-weight: 600;">${ing.nombre}</div>
@@ -998,32 +1177,64 @@ function renderizarArticulosBunkerLDN1() {
                         <strong style="color: ${stockKg > 0 ? '#10b981' : '#ef4444'}; font-weight: 700;">📦 ${stockKg.toFixed(1).replace('.', ',')} kg</strong>
                     </div>
                 </div>
-                <div style="margin-top: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 0.72rem;">
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                        <span style="color: #f59e0b; font-weight: 700;">💰 $${costoPatron.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</span>
-                        <button onclick="event.stopPropagation(); window.abrirEdicionManualCostoIngrediente(${ing.id});" style="background: none; border: none; cursor: pointer; font-size: 0.72rem; padding: 0 2px;" title="Editar costo manualmente">✏️</button>
-                    </div>
-                    <span class="art-badge-tipo" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;">IVA ${ivaVal}%</span>
-                </div>
+                ${costoComparativoHtml}
                 <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(255, 255, 255, 0.08); display: flex; flex-direction: column; gap: 4px;" onclick="event.stopPropagation();">
                     ${btnMonoPropagarHtml}
-                    ${btnMixesHtml}
-                    ${btnGranolaHtml}
                     ${btnTostaderoHtml}
-                    <div style="display: flex; gap: 6px; justify-content: center;">
-                        <button onclick="window.abrirModuloConciliacionIA('ING-${ing.id}', null, { es_ingrediente: true, ingrediente_id: ${ing.id} })" style="flex: 1; background: linear-gradient(135deg, rgba(2, 132, 199, 0.35), rgba(99, 102, 241, 0.35)); border: 1px solid #38bdf8; color: #bae6fd; padding: 4px 6px; font-size: 0.72rem; font-weight: 700; border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.2s;" title="Conciliar costo con IA y proveedores de Tabla Maestra">🤖 Conciliar IA</button>
-                        <button onclick="abrirModalVinculacionEstructural('', '${cleanDesc}')" style="background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; padding: 4px 8px; font-size: 0.72rem; font-weight: 600; border-radius: 4px; cursor: pointer;" title="Vincular este insumo a un artículo de comercialización directa">🔗 Vincular</button>
-                    </div>
+                    ${btnMixesHtml}
+                    ${btnBarritasHtml}
+                    ${btnGranolaHtml}
+                    ${accionesInferioresHtml}
                 </div>
             `;
-            gridHuerfanos.appendChild(ingCard);
+            return ingCard;
+        };
+
+        sinVinculoDirecto.forEach(ing => {
+            const vinculoPuente = window.obtenerVinculoPuenteAPIngrediente(ing, skusPuenteSet);
+            let matchQuery = true;
+            if (searchTerms.length > 0) {
+                const searchableText = `${ing.nombre || ''} ${ing.articulo_vinculado_numero || ''} ${vinculoPuente.apCodigo || ''} ${ing.codigo || ''} ${ing.id || ''}`
+                    .toLowerCase()
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "");
+                matchQuery = searchTerms.every(term => searchableText.includes(term));
+            }
+            if (!matchQuery) return;
+
+            if (vinculoPuente.esPuenteAP) {
+                if (gridPuenteAP) {
+                    countPuenteAP++;
+                    gridPuenteAP.appendChild(construirTarjetaInsumoFabrica(ing, true, vinculoPuente));
+                }
+            } else if (gridHuerfanos) {
+                countHuerfanos++;
+                gridHuerfanos.appendChild(construirTarjetaInsumoFabrica(ing, false, vinculoPuente));
+            }
         });
+
+        if (badgePuenteAP) {
+            badgePuenteAP.innerText = `${countPuenteAP} insumo${countPuenteAP !== 1 ? 's' : ''}`;
+        }
+        if (gridPuenteAP && countPuenteAP === 0) {
+            gridPuenteAP.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;">No se encontraron insumos vinculados a Artículos Puente con ese filtro.</div>';
+        }
+        if (accPuenteAP && searchTerms.length > 0 && countPuenteAP > 0) {
+            accPuenteAP.classList.add('open');
+            const ic = accPuenteAP.querySelector('.accordion-icon');
+            if (ic) ic.innerText = '🔽';
+        }
 
         if (badgeHuerfanos) {
             badgeHuerfanos.innerText = `${countHuerfanos} insumo${countHuerfanos !== 1 ? 's' : ''}`;
         }
-        if (countHuerfanos === 0) {
+        if (gridHuerfanos && countHuerfanos === 0) {
             gridHuerfanos.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;">No se encontraron insumos huérfanos sin vínculo relacional.</div>';
+        }
+        if (accHuerfanos && searchTerms.length > 0 && countHuerfanos > 0) {
+            accHuerfanos.classList.add('open');
+            const icH = accHuerfanos.querySelector('.accordion-icon');
+            if (icH) icH.innerText = '🔽';
         }
     }
 
@@ -1369,12 +1580,19 @@ function renderizarArticulosBunkerLDN1() {
             const ingAlim = rIngsAlimentos[0];
             const ingAlimObj = ingAlim ? ingredientesList.find(i => i.id === ingAlim.ingrediente_id) : null;
             const costoKiloMatPrima = ingAlimObj
-                ? parseFloat(ingAlimObj.costo_patron || 0)
+                ? window.obtenerContextoCostoIngrediente(ingAlimObj.id).costoVivoSim
                 : (insumosEmpaqueReceta.length > 0 ? 0 : ((parseFloat(art.costo_base) || 0) / (kilosUnidad || 1)));
+
+            const insumosListaPropiaRows = (master.insumosListas || []).filter(ins => {
+                return laArt && ins.lista_articulo_id === laArt.id && (ins.incluido === true || ins.incluido === 'true');
+            });
+            const costoInsumosListaPropia = insumosListaPropiaRows.reduce((sum, ins) => sum + (parseFloat(ins.cantidad || 0) * parseFloat(ins.costo_unitario_capturado || ins.costo_unitario_en_vivo || 0)), 0);
+            const nombresInsumosListaPropia = insumosListaPropiaRows.map(i => i.descripcion || 'Empaque Pack').join(', ');
             
             let costoBaseTotalBulto = 0;
             let costoKiloBaseSobrescrito = 0;
             let empaqueDesgloseHtml = '';
+            let insListaAplicado = 0;
 
             if (esPack && art.pack_hijo_codigo) {
                 const hijoObj = todos.find(a => (a.articulo_id || '').toLowerCase() === (art.pack_hijo_codigo || '').toLowerCase());
@@ -1382,11 +1600,9 @@ function renderizarArticulosBunkerLDN1() {
                 const packUnidades = parseInt(art.pack_unidades) || 10;
                 
                 // 1. Insumos propios del pack en bunker_lista_insumos (ej: Bolsa 30x40 para el pack)
-                const insumosPackList = (master.insumosListas || []).filter(ins => {
-                    return laArt && ins.lista_articulo_id === laArt.id && (ins.incluido === true || ins.incluido === 'true');
-                });
-                const costoInsumosPackPropio = insumosPackList.reduce((sum, ins) => sum + (parseFloat(ins.cantidad || 0) * parseFloat(ins.costo_unitario_capturado || ins.costo_unitario_en_vivo || 0)), 0);
-                const nombresInsumosPack = insumosPackList.map(i => i.descripcion || 'Empaque Pack').join(', ');
+                const costoInsumosPackPropio = costoInsumosListaPropia;
+                const nombresInsumosPack = nombresInsumosListaPropia;
+                insListaAplicado = costoInsumosPackPropio;
 
                 // 2. Mano de obra de fraccionar las unidades hijas
                 const laHijos = (master.articulosListas || []).filter(l => (l.articulo_numero || '').trim().toLowerCase() === (art.pack_hijo_codigo || '').trim().toLowerCase());
@@ -1424,7 +1640,8 @@ function renderizarArticulosBunkerLDN1() {
                 }
             } else {
                 const costoMatPrimaBulto = costoKiloMatPrima * (kilosUnidad || 1);
-                costoBaseTotalBulto = costoMatPrimaBulto + costoInsumosRecetaVal;
+                insListaAplicado = costoInsumosRecetaVal === 0 ? costoInsumosListaPropia : 0;
+                costoBaseTotalBulto = costoMatPrimaBulto + costoInsumosRecetaVal + insListaAplicado;
                 costoKiloBaseSobrescrito = costoBaseTotalBulto / (kilosUnidad || 1);
 
                 empaqueDesgloseHtml = `
@@ -1433,26 +1650,31 @@ function renderizarArticulosBunkerLDN1() {
                         <strong>$${costoMatPrimaBulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
                     </div>
                 `;
-                if (costoInsumosRecetaVal > 0) {
+                if (costoInsumosRecetaVal > 0 || insListaAplicado > 0) {
+                    const empValShow = costoInsumosRecetaVal > 0 ? costoInsumosRecetaVal : insListaAplicado;
+                    const empNameShow = costoInsumosRecetaVal > 0 ? (nombresInsumosStr || 'Bolsa') : (nombresInsumosListaPropia || 'Bolsa');
                     empaqueDesgloseHtml += `
-                        <div style="font-size: 0.68rem; color: #fbbf24; margin-top: 2px; display: flex; justify-content: space-between; align-items: center;" title="Insumos de empaque: ${nombresInsumosStr}">
-                            <span>📦 + Empaque (${nombresInsumosStr || 'Bolsa'}):</span>
-                            <strong>+$${costoInsumosRecetaVal.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+                        <div style="font-size: 0.68rem; color: #fbbf24; margin-top: 2px; display: flex; justify-content: space-between; align-items: center;" title="Insumos de empaque: ${empNameShow}">
+                            <span>📦 + Empaque (${empNameShow}):</span>
+                            <strong>+$${empValShow.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
                         </div>
                     `;
                 }
             }
 
             // SEMÁFORO DE CERTEZA VISUAL: Base de Datos vs Simulación en Memoria
-            // Nota: laArt.costo_base_sobrescrito en PostgreSQL ya incluye los insumos propios del pack dividido por kilosUnidad
-            let costoOficialBD = parseFloat(art.costo_base) || 0;
+            // Nota: costo_base y costo_base_sobrescrito en PostgreSQL NO incrustan bunker_lista_insumos propios (ej: Bolsa 30x40 de ATyS10x150),
+            // los cuales se suman por separado en insListaAplicado sin duplicarse.
+            const costoSinInsSim = costoBaseTotalBulto - insListaAplicado;
+            let costoSinInsBD = parseFloat(art.costo_base) || 0;
             if (laArt && laArt.costo_base_sobrescrito !== null && laArt.costo_base_sobrescrito !== undefined && parseFloat(laArt.costo_base_sobrescrito) > 0) {
                 const costoKiloBD = parseFloat(laArt.costo_base_sobrescrito);
                 const costoBultoBD = costoKiloBD * (kilosUnidad || 1);
-                if (Math.abs(costoBaseTotalBulto - costoBultoBD) < 0.05 || Math.abs(costoBaseTotalBulto - costoOficialBD) >= 0.05) {
-                    costoOficialBD = costoBultoBD;
+                if (Math.abs(costoSinInsSim - costoBultoBD) < 0.05 || Math.abs(costoSinInsSim - costoSinInsBD) >= 0.05) {
+                    costoSinInsBD = costoBultoBD;
                 }
             }
+            const costoOficialBD = costoSinInsBD + insListaAplicado;
             const diffCosto = Math.abs(costoBaseTotalBulto - costoOficialBD);
             const estaSincronizado = diffCosto < 0.05 && costoOficialBD > 0;
             const costoTotalConMoBulto = costoBaseTotalBulto + costoTiempoVal;
@@ -2233,11 +2455,12 @@ window.obtenerArticulosMonoIngredientesDeIngrediente = function(ingredienteId) {
     // 1. Fracciones con receta directa (nota: si art.tiene_receta === true, ya es una presentación transformada en LDN 2, nunca un bulto cerrado sin receta de LDN 1)
     const fraccionesDirectas = todos.filter(art => {
         if (art.tiene_receta !== true) return false;
+        if (Number(art.familia_id) === 42) return false;
 
         const descStr = (art.descripcion_generada || art.descripcion || '').toLowerCase();
-        const codeStr = (art.articulo_id || '').toLowerCase();
+        const codeStr = (art.articulo_id || '').trim().toLowerCase();
 
-        const recetasDelArt = recetasList.filter(r => r.articulo_numero === art.articulo_id);
+        const recetasDelArt = recetasList.filter(r => (r.articulo_numero || '').trim().toLowerCase() === codeStr);
         const recetaIds = recetasDelArt.map(r => r.id);
         const ingredientesDeReceta = recetaIngredientesList.filter(ri => recetaIds.includes(ri.receta_id));
 
@@ -2280,9 +2503,11 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
         ? window.obtenerArticulosMonoIngredientesDeIngrediente(ingredienteId)
         : [];
 
-    if (articulosMono.length === 0) return { total: 0, pendientes: 0, alDia: 0, todosAlDia: false, rowsData: [] };
+    const ctxIng = window.obtenerContextoCostoIngrediente(ingredienteId);
+    if (articulosMono.length === 0) return { total: 0, pendientes: 0, alDia: 0, todosAlDia: false, rowsData: [], ctxIng };
 
-    const costoPatron = parseFloat(ing.costo_patron || 0);
+    const costoKiloActivo = ctxIng.costoVivoSim;
+    const lista1Id = (master.listasPrecios && master.listasPrecios[0]) ? master.listasPrecios[0].id : 1;
 
     const rowsData = articulosMono.map(art => {
         const kilos = parseFloat(art.kilos_unidad) || 1;
@@ -2297,13 +2522,20 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
                        skuHijoClean !== bultoOrigenClean;
 
         const laArts = (master.articulosListas || []).filter(l => (l.articulo_numero || '').trim().toLowerCase() === art.articulo_id.trim().toLowerCase());
-        const laArt = laArts.find(l => l.es_patron) || laArts.find(l => l.lista_id === 1) || laArts[0];
-        const costoTiempo = parseFloat(laArt?.costo_tiempo || 0);
+        const laArt = laArts.find(l => l.lista_id === lista1Id) || laArts.find(l => l.es_patron) || laArts[0];
+        const costoTiempo = (laArt && laArt.mano_obra_activa !== false) ? parseFloat(laArt?.costo_tiempo || 0) : 0;
+
+        const insumosListaPropiaRows = (master.insumosListas || []).filter(ins => {
+            return laArt && ins.lista_articulo_id === laArt.id && (ins.incluido === true || ins.incluido === 'true');
+        });
+        const costoInsumosListaPropia = insumosListaPropiaRows.reduce((sum, ins) => sum + (parseFloat(ins.cantidad || 0) * parseFloat(ins.costo_unitario_capturado || ins.costo_unitario_en_vivo || 0)), 0);
+        const nombresInsumosListaPropia = insumosListaPropiaRows.map(i => i.descripcion || 'Bolsa Pack').join(', ');
 
         let costoMatPrima = 0;
         let costoEmpaque = 0;
         let moHijosTotal = 0;
         let empaqueNombres = 'Sin empaque';
+        let insListaAplicado = 0;
 
         if (esPack && art.pack_hijo_codigo) {
             const hijo = (master.articulosBunker || []).find(a => (a.articulo_id || '').toLowerCase() === (art.pack_hijo_codigo || '').toLowerCase());
@@ -2331,26 +2563,22 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
                 ? alimHijo.reduce((s, ri) => {
                     const iObj = master.ingredientes.find(i => i.id === ri.ingrediente_id);
                     const cant = parseFloat(ri.cantidad) || kilosHijo;
-                    return s + (cant * parseFloat(iObj?.costo_patron || 0));
+                    const cKg = Number(ri.ingrediente_id) === Number(ingredienteId)
+                        ? costoKiloActivo
+                        : window.obtenerContextoCostoIngrediente(ri.ingrediente_id).costoVivoSim;
+                    return s + (cant * cKg);
                 }, 0)
-                : (insHijo.length > 0 ? 0 : (costoPatron * kilosHijo));
+                : (insHijo.length > 0 ? 0 : (costoKiloActivo * kilosHijo));
 
-            // Insumos propios del Pack Padre en bunker_lista_insumos (ej: Bolsa 30x40)
-            const insumosPackList = (master.insumosListas || []).filter(ins => {
-                return laArt && ins.lista_articulo_id === laArt.id && (ins.incluido === true || ins.incluido === 'true');
-            });
-            const costoInsumosPackPropio = insumosPackList.reduce((sum, ins) => sum + (parseFloat(ins.cantidad || 0) * parseFloat(ins.costo_unitario_capturado || ins.costo_unitario_en_vivo || 0)), 0);
-            const nombresInsumosPack = insumosPackList.map(i => i.descripcion || 'Bolsa Pack').join(', ');
-
-            // Mano de obra del hijo multiplicada por las unidades del pack
+            insListaAplicado = costoInsumosListaPropia;
             const laHijos = (master.articulosListas || []).filter(l => (l.articulo_numero || '').trim().toLowerCase() === (art.pack_hijo_codigo || '').trim().toLowerCase());
             const laHijo = (laArt ? laHijos.find(l => l.lista_id === laArt.lista_id) : null) || laHijos.find(l => l.es_patron) || laHijos[0];
             const moHijo = (laHijo && laHijo.mano_obra_activa !== false) ? (parseFloat(laHijo.costo_tiempo) || 0) : 0;
             moHijosTotal = moHijo * unidades;
 
-            costoEmpaque = costoEmpaqueHijos + costoInsumosPackPropio;
+            costoEmpaque = costoEmpaqueHijos + costoInsumosListaPropia;
             costoMatPrima = costoMatPrimaHijoUnit * unidades;
-            empaqueNombres = `${unidades}x Hijos ($${costoEmpaqueHijos.toFixed(2)})` + (costoInsumosPackPropio > 0 ? ` + Pack ${nombresInsumosPack} ($${costoInsumosPackPropio.toFixed(2)})` : '');
+            empaqueNombres = `${unidades}x Hijos ($${costoEmpaqueHijos.toFixed(2)})` + (costoInsumosListaPropia > 0 ? ` + Pack ${nombresInsumosListaPropia} ($${costoInsumosListaPropia.toFixed(2)})` : '');
         } else {
             const recIds = recArt.map(r => r.id);
             const ingRec = (master.recetaIngredientes || []).filter(ri => recIds.includes(ri.receta_id));
@@ -2363,39 +2591,59 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
                 const iObj = master.ingredientes.find(i => i.id === ri.ingrediente_id);
                 return iObj && (iObj.es_insumo || iObj.unidad_medida === 'Unidades');
             });
-            costoEmpaque = insRec.reduce((s, ri) => {
+            const costoEmpaqueReceta = insRec.reduce((s, ri) => {
                 const iObj = master.ingredientes.find(i => i.id === ri.ingrediente_id);
                 return s + (parseFloat(ri.cantidad || 0) * parseFloat(iObj?.costo_patron || 0));
             }, 0);
+            insListaAplicado = costoEmpaqueReceta === 0 ? costoInsumosListaPropia : 0;
+            costoEmpaque = costoEmpaqueReceta + insListaAplicado;
 
             costoMatPrima = alimRec.length > 0
                 ? alimRec.reduce((s, ri) => {
-                    const iObj = master.ingredientes.find(i => i.id === ri.ingrediente_id);
                     const cant = parseFloat(ri.cantidad) || kilos;
-                    return s + (cant * parseFloat(iObj?.costo_patron || 0));
+                    const cKg = Number(ri.ingrediente_id) === Number(ingredienteId)
+                        ? costoKiloActivo
+                        : window.obtenerContextoCostoIngrediente(ri.ingrediente_id).costoVivoSim;
+                    return s + (cant * cKg);
                 }, 0)
-                : (insRec.length > 0 ? 0 : (costoPatron * kilos));
+                : (insRec.length > 0 ? 0 : (costoKiloActivo * kilos));
 
-            empaqueNombres = insRec.map(ri => {
-                const iObj = master.ingredientes.find(i => i.id === ri.ingrediente_id);
-                return iObj ? iObj.nombre : 'Bolsa';
-            }).join(', ') || 'Sin empaque';
+            empaqueNombres = insRec.length > 0
+                ? insRec.map(ri => {
+                    const iObj = master.ingredientes.find(i => i.id === ri.ingrediente_id);
+                    return iObj ? iObj.nombre : 'Bolsa';
+                }).join(', ')
+                : (nombresInsumosListaPropia || 'Sin empaque');
         }
 
         // En un Pack Padre, el Costo Base Total incluye: Mat. Prima Hijos + Empaque Hijos + M.O. Hijos + Empaque Propio del Pack
         const costoBaseTotal = costoMatPrima + costoEmpaque + moHijosTotal;
         const costoKiloBase = costoBaseTotal / kilos;
+        const costoSinInsSim = costoBaseTotal - insListaAplicado;
 
-        let costoOficialBD = parseFloat(art.costo_base) || 0;
+        let costoSinInsBD = parseFloat(art.costo_base) || 0;
         if (laArt && laArt.costo_base_sobrescrito !== null && laArt.costo_base_sobrescrito !== undefined && parseFloat(laArt.costo_base_sobrescrito) > 0) {
             const costoKiloBD = parseFloat(laArt.costo_base_sobrescrito);
             const costoBultoBD = costoKiloBD * kilos;
-            if (Math.abs(costoBaseTotal - costoBultoBD) < 0.05 || Math.abs(costoBaseTotal - costoOficialBD) >= 0.05) {
-                costoOficialBD = costoBultoBD;
+            if (Math.abs(costoSinInsSim - costoBultoBD) < 0.05 || Math.abs(costoSinInsSim - costoSinInsBD) >= 0.05) {
+                costoSinInsBD = costoBultoBD;
             }
         }
+        const costoOficialBD = costoSinInsBD + insListaAplicado;
+
+        const margenLista1 = parseFloat(laArt?.margen_ganancia || 0);
+        const ivaLista1 = parseFloat(laArt?.iva ?? art.porcentaje_iva ?? 21);
+        const modoIva1 = String(laArt?.modo_iva || 'COMPLETO').toUpperCase();
+        let ivaEf1 = ivaLista1;
+        if (modoIva1 === 'MEDIO') ivaEf1 = ivaLista1 / 2;
+        else if (modoIva1 === 'SIN') ivaEf1 = 0;
+
+        const precioLista1BD = parseFloat(laArt?.precio_final || 0);
+        const precioLista1Nuevo = Number((((costoBaseTotal * (1 + (margenLista1 / 100))) + costoTiempo) * (1 + (ivaEf1 / 100))).toFixed(2));
+
         const diff = Math.abs(costoBaseTotal - costoOficialBD);
-        const estaSincronizado = diff < 0.05 && costoOficialBD > 0;
+        const diffPrecio = Math.abs(precioLista1Nuevo - precioLista1BD);
+        const estaSincronizado = diff < 0.05 && (precioLista1BD === 0 || diffPrecio < 0.5) && !ctxIng.hayDesfaseIngrediente && costoOficialBD > 0;
 
         return {
             sku: art.articulo_id,
@@ -2411,6 +2659,8 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
             costoBaseTotal,
             costoKiloBase,
             costoOficialBD,
+            precioLista1BD,
+            precioLista1Nuevo,
             diff,
             estaSincronizado
         };
@@ -2418,14 +2668,15 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
 
     const pendientes = rowsData.filter(r => !r.estaSincronizado).length;
     const alDia = rowsData.filter(r => r.estaSincronizado).length;
-    const todosAlDia = rowsData.length > 0 && pendientes === 0;
+    const todosAlDia = rowsData.length > 0 && pendientes === 0 && !ctxIng.hayDesfaseIngrediente;
 
     return {
         total: rowsData.length,
         pendientes,
         alDia,
         todosAlDia,
-        rowsData
+        rowsData,
+        ctxIng
     };
 };
 
@@ -2435,6 +2686,7 @@ window.impactarFraccionQuirurgica = async function(sku, ingredienteId) {
     const master = window.pizarraSimulacionMaster;
     const ing = master?.ingredientes?.find(i => i.id === ingredienteId);
     const ivaVal = parseFloat(ing?.porcentaje_iva || ing?.iva || 21);
+    const ctxIng = ingredienteId ? window.obtenerContextoCostoIngrediente(ingredienteId) : null;
 
     const art = (master?.articulosBunker || []).find(a => (a.articulo_id || '').trim().toLowerCase() === sku.trim().toLowerCase());
     const artName = art?.descripcion_generada || art?.descripcion || sku;
@@ -2446,7 +2698,7 @@ window.impactarFraccionQuirurgica = async function(sku, ingredienteId) {
                 <p style="margin-bottom: 6px;">¿Deseas impactar en la base de datos oficial <strong>únicamente</strong> este artículo?</p>
                 <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 8px 12px; border-radius: 6px; margin-top: 8px;">
                     <div style="font-weight: 700; color: #34d399;">[${sku}] ${artName}</div>
-                    <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">Se actualizará el costo base y los precios de las 6 listas en PostgreSQL respetando sus insumos y mano de obra.</div>
+                    <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">Se actualizará el costo base y los precios de todas las listas activas en PostgreSQL respetando insumos y mano de obra.</div>
                 </div>
             </div>
         `,
@@ -2475,7 +2727,10 @@ window.impactarFraccionQuirurgica = async function(sku, ingredienteId) {
             body: JSON.stringify({
                 ingrediente_id: ingredienteId,
                 porcentaje_iva: ivaVal,
-                articulos_target_ids: [sku]
+                articulos_target_ids: [sku],
+                nuevo_costo_patron: ctxIng ? ctxIng.costoVivoSim : undefined,
+                ap_codigo: (ctxIng && ctxIng.esTostaderoLDN4) ? ctxIng.apCodigo : undefined,
+                nuevo_costo_base_ap: (ctxIng && ctxIng.esTostaderoLDN4) ? ctxIng.costoBaseApSim : undefined
             })
         });
 
@@ -2687,7 +2942,7 @@ window.impactarArticuloCompuestoQuirurgico = async function(sku, nuevoCostoKiloP
     }
 };
 
-// Módulo de Propagación desde Ingrediente a Fracciones Mono-Ingredientes (100% Puros) con Radiografía Pre-Impacto
+// Módulo de Propagación desde Ingrediente a Fracciones Mono-Ingredientes (100% Puros) con Radiografía Pre-Impacto Antes/Después
 window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
     const master = window.pizarraSimulacionMaster;
     if (!master || !master.ingredientes) return;
@@ -2695,10 +2950,12 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
     const ing = master.ingredientes.find(i => i.id === ingredienteId);
     if (!ing) return;
 
-    const costoPatron = parseFloat(ing.costo_patron || 0);
+    const ctxIng = window.obtenerContextoCostoIngrediente(ingredienteId);
+    const costoPatronBD = ctxIng.costoPatronBD;
+    const costoAPropagar = ctxIng.costoVivoSim;
+    const hayDesfaseIng = ctxIng.hayDesfaseIngrediente;
     const ivaVal = parseFloat(ing.porcentaje_iva || ing.iva || 21);
 
-    // Obtener exactamente los artículos del sub-acordeón "Mono-Ingredientes (100% Puros)" incluyendo Packs Padres
     const articulosMono = window.obtenerArticulosMonoIngredientesDeIngrediente(ingredienteId);
 
     if (articulosMono.length === 0) {
@@ -2724,10 +2981,10 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
         return;
     }
 
-    const { rowsData, todosAlDia, pendientes, alDia } = estadoMono;
+    const { rowsData, todosAlDia, pendientes } = estadoMono;
 
-    const tableRowsHtml = rowsData.map((row, idx) => `
-        <tr style="border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 0.74rem;">
+    const tableRowsHtml = rowsData.map((row) => `
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 0.73rem;">
             <td style="padding: 6px 4px; text-align: center;">
                 <input type="checkbox" class="audit-check-sku" data-sku="${row.sku}" ${!todosAlDia && row.estaSincronizado ? '' : 'checked'} style="cursor: pointer; width: 15px; height: 15px;">
             </td>
@@ -2738,14 +2995,23 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
                 </div>
                 ${row.esPack ? `<span style="display:block; font-size:0.65rem; color:#e9d5ff;">📦 Pack (${row.packInfo})</span>` : ''}
             </td>
-            <td style="padding: 6px 4px; color: #94a3b8;">${row.kilos} kg</td>
+            <td style="padding: 6px 4px; color: #94a3b8;">${row.kilos.toFixed(2)} kg</td>
             <td style="padding: 6px 4px; text-align: right; color: #e2e8f0;">$${row.costoMatPrima.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
             <td style="padding: 6px 4px; text-align: right; color: #fbbf24;" title="${row.empaqueNombres}">$${row.costoEmpaque.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
             <td style="padding: 6px 4px; text-align: right; color: #38bdf8;" title="${row.esPack ? `MO de ${row.packInfo}: $${(row.moHijosTotal || 0).toFixed(2)} (incluida en Base Bulto) | MO Armado Pack: $${row.costoTiempo.toFixed(2)}` : 'Mano de obra de fraccionamiento'}">
                 $${(row.esPack ? (row.moHijosTotal || 0) : row.costoTiempo).toLocaleString('es-AR', {minimumFractionDigits: 2})}
                 ${row.esPack && row.moHijosTotal > 0 ? `<span style="display:block; font-size:0.60rem; color:#93c5fd;">(Hijos en Base)</span>` : ''}
             </td>
-            <td style="padding: 6px 4px; text-align: right; font-weight: 700; color: #a7f3d0;">$${row.costoBaseTotal.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+            <td style="padding: 6px 4px; text-align: right;">
+                <span style="color:#94a3b8; font-size:0.68rem;">$${row.costoOficialBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+                <span style="color:#64748b; margin:0 2px;">→</span>
+                <strong style="color:#a7f3d0;">$${row.costoBaseTotal.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+            </td>
+            <td style="padding: 6px 4px; text-align: right;">
+                <span style="color:#94a3b8; font-size:0.68rem;">$${(row.precioLista1BD || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+                <span style="color:#64748b; margin:0 2px;">→</span>
+                <strong style="color:#38bdf8;">$${(row.precioLista1Nuevo || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+            </td>
             <td style="padding: 6px 4px; text-align: center;">
                 ${row.estaSincronizado 
                     ? `<span style="background: rgba(16,185,129,0.2); color:#34d399; padding: 2px 5px; border-radius: 3px; font-size: 0.65rem; font-weight: 700;">🟢 Al día</span>` 
@@ -2758,47 +3024,62 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
     const bannerHtml = todosAlDia
         ? `
             <div style="padding: 8px 12px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px; font-size: 0.74rem; color: #6ee7b7; margin-bottom: 10px;">
-                🟢 <strong>Fracciones 100% Sincronizadas:</strong> Todas las presentaciones comerciales derivadas reflejan exactamente el costo patrón de <strong>$${costoPatron.toFixed(2)}/kg</strong> en la base de datos oficial. No hay variaciones pendientes.
+                🟢 <strong>Fracciones y Packs 100% Sincronizados:</strong> Todas las presentaciones comerciales derivadas reflejan exactamente el costo de <strong>$${costoAPropagar.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong> en la base de datos oficial. No hay variaciones pendientes.
             </div>
         `
         : `
             <div style="padding: 8px 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 6px; font-size: 0.74rem; color: #fbbf24; margin-bottom: 10px;">
-                ⚠️ <strong>Variación de Costos Detectada:</strong> Hay <strong>${pendientes}</strong> artículo(s) con costos en BD diferentes al costo patrón simulado ($${costoPatron.toFixed(2)}/kg). Podés seleccionar cuáles impactar en PostgreSQL conservando insumos de empaque y mano de obra.
+                ⚠️ <strong>Variación Detectada (Vista Antes vs Después):</strong> Se actualizarán en una única transacción el Ingrediente${ctxIng.apCodigo ? `, su Puente [${ctxIng.apCodigo}]` : ''} y <strong>${pendientes > 0 ? pendientes : rowsData.length}</strong> presentación(es)/pack(s) seleccionados, conservando insumos de empaque y márgenes de cada lista.
+            </div>
+        `;
+
+    const resumenCostoIngredienteHtml = hayDesfaseIng
+        ? `
+            <div style="text-align: right; font-size: 0.76rem;">
+                <span style="color:#94a3b8;">Patrón BD: $${costoPatronBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</span>
+                <span style="color:#64748b; margin:0 4px;">→</span>
+                <strong style="color:#fbbf24;">Nuevo: $${costoAPropagar.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+                <span style="font-size:0.68rem; color:#94a3b8; margin-left:4px;">(IVA ${ivaVal}%)</span>
+            </div>
+        `
+        : `
+            <div style="color: #38bdf8; font-weight: 700; font-size: 0.78rem;">
+                Patrón BD / A Propagar: $${costoAPropagar.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg (IVA ${ivaVal}%)
             </div>
         `;
 
     const modalHtml = `
         <div style="text-align: left; font-size: 0.85rem; color: #e2e8f0;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; padding: 6px 10px; background: rgba(255,255,255,0.03); border-radius: 6px; border: 1px solid rgba(255,255,255,0.07);">
                 <div>
                     <span style="color: #94a3b8;">Ingrediente:</span> <strong>[#${ing.id}] ${ing.nombre}</strong>
+                    ${ctxIng.apCodigo ? `<span style="margin-left: 6px; font-size: 0.70rem; background: rgba(14,165,233,0.18); color:#38bdf8; border:1px solid rgba(14,165,233,0.38); padding:1px 6px; border-radius:4px;">🌉 Puente AP: ${ctxIng.apCodigo}</span>` : ''}
                 </div>
-                <div style="color: #38bdf8; font-weight: 700;">
-                    Costo Patrón: $${costoPatron.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg (IVA ${ivaVal}%)
-                </div>
+                ${resumenCostoIngredienteHtml}
             </div>
 
             ${bannerHtml}
 
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.75rem;">
-                <span style="font-weight: 700; color: #e2e8f0;">Desglose Unitario por Presentación (${rowsData.length}):</span>
+                <span style="font-weight: 700; color: #e2e8f0;">Desglose Antes / Después por Presentación y Pack (${rowsData.length}):</span>
                 <div>
                     <button type="button" onclick="document.querySelectorAll('.audit-check-sku').forEach(c => c.checked = true)" style="background: none; border: none; color: #38bdf8; cursor: pointer; text-decoration: underline; font-size: 0.72rem; margin-right: 8px;">Marcar Todos</button>
                     <button type="button" onclick="document.querySelectorAll('.audit-check-sku').forEach(c => c.checked = false)" style="background: none; border: none; color: #94a3b8; cursor: pointer; text-decoration: underline; font-size: 0.72rem;">Desmarcar Todos</button>
                 </div>
             </div>
 
-            <div style="max-height: 250px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(0,0,0,0.25);">
+            <div style="max-height: 260px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(0,0,0,0.25);">
                 <table style="width: 100%; border-collapse: collapse; text-align: left;">
-                    <thead style="position: sticky; top: 0; background: #1e293b; color: #94a3b8; font-size: 0.70rem; border-bottom: 1px solid rgba(255,255,255,0.15);">
+                    <thead style="position: sticky; top: 0; background: #1e293b; color: #94a3b8; font-size: 0.68rem; border-bottom: 1px solid rgba(255,255,255,0.15);">
                         <tr>
-                            <th style="padding: 6px 4px; text-align: center; width: 30px;">✓</th>
+                            <th style="padding: 6px 4px; text-align: center; width: 28px;">✓</th>
                             <th style="padding: 6px 4px;">SKU</th>
                             <th style="padding: 6px 4px;">Peso</th>
                             <th style="padding: 6px 4px; text-align: right;">Mat. Prima</th>
                             <th style="padding: 6px 4px; text-align: right;">Empaque</th>
                             <th style="padding: 6px 4px; text-align: right;">M.O.</th>
-                            <th style="padding: 6px 4px; text-align: right;">Base Bulto</th>
+                            <th style="padding: 6px 4px; text-align: right;">Costo Base (BD → Nuevo)</th>
+                            <th style="padding: 6px 4px; text-align: right;">Lista 1 (BD → Nuevo)</th>
                             <th style="padding: 6px 4px; text-align: center;">Estado</th>
                         </tr>
                     </thead>
@@ -2811,9 +3092,9 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
     `;
 
     const confirmResult = await Swal.fire({
-        title: todosAlDia ? `Auditoría: Fracciones al Día` : `⚡ Auditoría y Propagación (${pendientes} pendientes)`,
+        title: todosAlDia ? `Auditoría: Fracciones al Día` : `⚡ Auditoría y Propagación (${pendientes > 0 ? pendientes : rowsData.length} a sincronizar)`,
         html: modalHtml,
-        width: '720px',
+        width: '860px',
         background: '#151e2e',
         color: '#f3f4f6',
         showCancelButton: true,
@@ -2825,12 +3106,11 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
 
     if (todosAlDia) {
         if (confirmResult.isConfirmed) {
-            return; // Cierre limpio sin requests innecesarios
+            return;
         }
         if (confirmResult.dismiss !== Swal.DismissReason.cancel) {
-            return; // Si cerró con backdrop/esc, salir
+            return;
         }
-        // Si hizo clic explícito en "Forzar Re-Impacto en BD", continúa la ejecución
     } else {
         if (!confirmResult.isConfirmed) return;
     }
@@ -2856,38 +3136,76 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
             didOpen: () => Swal.showLoading()
         });
 
+        // Si pertenece a un circuito de Tostadero [LDN 4], estacionar también tostadero_simulacion en el AP
+        if (ctxIng.esTostaderoLDN4 && ctxIng.tostConfig && ctxIng.apCodigo) {
+            try {
+                const tost = ctxIng.tostConfig;
+                const apArt = (master.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toLowerCase() === String(ctxIng.apCodigo).trim().toLowerCase());
+                const prevSim = apArt?.propiedades_dinamicas?.tostadero_simulacion || {};
+                const payloadSimTost = {
+                    ...prevSim,
+                    tarifa: Number(tost.tarifa_maquila_simulada),
+                    merma: Number(tost.merma_porc_simulada),
+                    insumo_evaluado_sku: tost.crudo_sku,
+                    insumo_evaluado_descripcion: tost.crudo_nombre,
+                    es_comparacion_bulto_comprado: false,
+                    costo_crudo_kg: Number(tost.costo_crudo_simulado),
+                    costo_resultante_kg: Number((ctxIng.costoBaseApSim || 0).toFixed(2)),
+                    updated_at: new Date().toISOString()
+                };
+                await fetch(`/api/logistica/bunker/tostadero-simulacion/${encodeURIComponent(ctxIng.apCodigo)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payloadSimTost)
+                });
+            } catch (eSim) {
+                console.warn('Aviso: no se pudo estacionar tostadero_simulacion:', eSim);
+            }
+        }
+
         const res = await fetch('/api/produccion/simulacion/propagar-ingrediente-a-fracciones', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 ingrediente_id: ingredienteId,
                 porcentaje_iva: ivaVal,
-                articulos_target_ids: selectedSkus
+                articulos_target_ids: selectedSkus,
+                nuevo_costo_patron: costoAPropagar,
+                ap_codigo: ctxIng.esTostaderoLDN4 ? ctxIng.apCodigo : undefined,
+                nuevo_costo_base_ap: ctxIng.esTostaderoLDN4 ? ctxIng.costoBaseApSim : undefined
             })
         });
 
-        console.log(`[VIGÍA-PROPAGACIÓN] ⚡ INICIO: Propagando Ingrediente [#${ing.id}] (${ing.nombre}) a $${costoPatron.toFixed(2)}/kg para SKUs seleccionados:`, selectedSkus);
+        console.log(`[VIGÍA-PROPAGACIÓN] ⚡ INICIO: Propagando Ingrediente [#${ing.id}] (${ing.nombre}) a $${costoAPropagar.toFixed(2)}/kg para SKUs seleccionados:`, selectedSkus);
 
         const resData = await res.json();
         if (!resData.success) throw new Error(resData.message || 'Error al propagar ingrediente.');
 
         console.log(`[VIGÍA-PROPAGACIÓN] 🔄 RESPUESTA SERVIDOR: ${resData.message}`);
 
+        // Sincronizar inmediatamente en RAM antes y después de rehidratar catálogos
+        ing.costo_patron = costoAPropagar;
         if (window.ingredientesSim && window.ingredientesSim[ingredienteId]) {
-            window.ingredientesSim[ingredienteId].costo_sim = costoPatron;
+            window.ingredientesSim[ingredienteId].costo_patron = costoAPropagar;
+            window.ingredientesSim[ingredienteId].costo_sim = costoAPropagar;
+        }
+        if (ctxIng.tostConfig) {
+            ctxIng.tostConfig.costo_ap_oficial_bd = costoAPropagar;
+            if (ctxIng.costoBaseApSim) ctxIng.tostConfig.costo_base_ap_oficial_bd = ctxIng.costoBaseApSim;
         }
 
         if (typeof window.inicializarPizarra === 'function') {
             await window.inicializarPizarra(true);
-        } else if (typeof window.renderizarArticulosBunkerLDN1 === 'function') {
-            window.renderizarArticulosBunkerLDN1();
+        } else {
+            if (typeof window.recalcularCascadaGlobalCompleta === 'function') {
+                window.recalcularCascadaGlobalCompleta();
+            }
+            if (typeof window.renderizarArticulosBunkerLDN1 === 'function') {
+                window.renderizarArticulosBunkerLDN1();
+            }
         }
 
-        if (typeof window.recalcularCascadaGlobalCompleta === 'function') {
-            window.recalcularCascadaGlobalCompleta();
-        }
-
-        console.log(`[VIGÍA-PROPAGACIÓN] ✅ ÉXITO: Sincronización en memoria y recálculo en cascada completado para LDN 2.`);
+        console.log(`[VIGÍA-PROPAGACIÓN] ✅ ÉXITO: Sincronización en BD y memoria completada sin falsos estados Simulado.`);
 
         Swal.fire({
             icon: 'success',
@@ -2977,7 +3295,7 @@ window.abrirRadiografiaCostosArticulo = function(sku) {
         const filasMatPrimaHijo = alimHijo.map(ri => {
             const iObj = ingredientesList.find(i => i.id === ri.ingrediente_id);
             const cant = parseFloat(ri.cantidad) || kilosHijo;
-            const cKilo = parseFloat(window.ingredientesSim?.[ri.ingrediente_id]?.costo_sim ?? iObj?.costo_patron ?? 0);
+            const cKilo = window.obtenerContextoCostoIngrediente(ri.ingrediente_id).costoVivoSim;
             const sub = cant * cKilo;
             costoMatPrimaUnitHijo += sub;
             return `<div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#cbd5e1; padding:2px 0;">
@@ -3085,7 +3403,7 @@ window.abrirRadiografiaCostosArticulo = function(sku) {
         const filasAlim = alimRec.map(ri => {
             const iObj = ingredientesList.find(i => i.id === ri.ingrediente_id);
             const cant = parseFloat(ri.cantidad) || kilosUnidad;
-            const cKilo = parseFloat(window.ingredientesSim?.[ri.ingrediente_id]?.costo_sim ?? iObj?.costo_patron ?? 0);
+            const cKilo = window.obtenerContextoCostoIngrediente(ri.ingrediente_id).costoVivoSim;
             const sub = cant * cKilo;
             subtotalMatPrima += sub;
             return `<div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#cbd5e1; padding:2px 0;">
@@ -3163,14 +3481,19 @@ window.abrirRadiografiaCostosArticulo = function(sku) {
         `;
     }
 
-    // Comparativa BD vs Simulado
-    let costoOficialBD = parseFloat(art.costo_base) || 0;
+    // Comparativa BD vs Simulado (respetando insumos propios de bunker_lista_insumos sin duplicarlos)
+    const empaqueListaAplicadoInspector = esPack
+        ? costoInsumosListaPropios
+        : ((recPropias.length > 0 && recetaIngsList.some(ri => recPropias.some(r => r.id === ri.receta_id) && ingredientesList.some(i => i.id === ri.ingrediente_id && (i.es_insumo || i.unidad_medida === 'Unidades')))) ? 0 : costoInsumosListaPropios);
+    const costoSinInsSimInspector = costoBaseSimuladoBulto - empaqueListaAplicadoInspector;
+    let costoSinInsBDInspector = parseFloat(art.costo_base) || 0;
     if (laArtPatron && laArtPatron.costo_base_sobrescrito !== null && laArtPatron.costo_base_sobrescrito !== undefined && parseFloat(laArtPatron.costo_base_sobrescrito) > 0) {
         const costoBultoBD = parseFloat(laArtPatron.costo_base_sobrescrito) * kilosUnidad;
-        if (Math.abs(costoBaseSimuladoBulto - costoBultoBD) < 0.05 || Math.abs(costoBaseSimuladoBulto - costoOficialBD) >= 0.05) {
-            costoOficialBD = costoBultoBD;
+        if (Math.abs(costoSinInsSimInspector - costoBultoBD) < 0.05 || Math.abs(costoSinInsSimInspector - costoSinInsBDInspector) >= 0.05) {
+            costoSinInsBDInspector = costoBultoBD;
         }
     }
+    const costoOficialBD = costoSinInsBDInspector + empaqueListaAplicadoInspector;
     const estaSincronizado = Math.abs(costoBaseSimuladoBulto - costoOficialBD) < 0.05 && costoOficialBD > 0;
 
     // Tabla de las Listas de Precios (Usando los nombres oficiales de master.listasPrecios en PostgreSQL)
@@ -3186,25 +3509,33 @@ window.abrirRadiografiaCostosArticulo = function(sku) {
     const filasListasHtml = listasOrdenadas.map(la => {
         const listaOficial = listasCatalogo.find(lp => lp.id === la.lista_id);
         const nombreLista = listaOficial?.nombre || la.lista_nombre || `Lista #${la.lista_id}`;
+        const cascadaFila = typeof window.calcularCascadaArticuloLista === 'function'
+            ? window.calcularCascadaArticuloLista(art.articulo_id, la.lista_id)
+            : null;
+        const baseFila = cascadaFila ? cascadaFila.costoNetoBulto : costoBaseSimuladoBulto;
         const margen = parseFloat(la.margen_ganancia || 0);
         const mo = (la.mano_obra_activa !== false) ? (parseFloat(la.costo_tiempo) || 0) : 0;
-        const costoTotalConMoFila = costoBaseSimuladoBulto + mo;
-        const gananciaMargenPesos = costoBaseSimuladoBulto * (margen / 100);
+        const costoTotalConMoFila = baseFila + mo;
+        const gananciaMargenPesos = baseFila * (margen / 100);
         const iva = parseFloat(la.iva || art.porcentaje_iva || 21);
-        const netoSim = (costoBaseSimuladoBulto * (1 + (margen / 100))) + mo;
-        const finalSim = netoSim * (1 + (iva / 100));
+        const modoIva = String(la.modo_iva || 'COMPLETO').toUpperCase();
+        let ivaEf = iva;
+        if (modoIva === 'MEDIO') ivaEf = iva / 2;
+        else if (modoIva === 'SIN') ivaEf = 0;
+        const netoSim = (baseFila * (1 + (margen / 100))) + mo;
+        const finalSim = cascadaFila ? cascadaFila.precioFinalCalculado : (netoSim * (1 + (ivaEf / 100)));
         const finalBD = parseFloat(la.precio_final || 0);
         const okLista = Math.abs(finalSim - finalBD) < 0.5;
 
         return `
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 0.72rem;">
                 <td style="padding: 5px 6px; font-weight: 700; color: #e2e8f0;">${nombreLista}</td>
-                <td style="padding: 5px 6px; text-align: right; color: #a7f3d0;">$${costoBaseSimuladoBulto.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
+                <td style="padding: 5px 6px; text-align: right; color: #a7f3d0;">$${baseFila.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
                 <td style="padding: 5px 6px; text-align: right; color: #38bdf8;">+$${mo.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
                 <td style="padding: 5px 6px; text-align: right; font-weight: 700; color: #fde68a;">$${costoTotalConMoFila.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
-                <td style="padding: 5px 6px; text-align: right; color: #fcd34d;" title="+$${gananciaMargenPesos.toLocaleString('es-AR', {minimumFractionDigits:2})} (${margen.toFixed(1)}% sobre Costo Base $${costoBaseSimuladoBulto.toLocaleString('es-AR', {minimumFractionDigits:2})})">+${margen.toFixed(1)}% <span style="font-size:0.65rem; color:#94a3b8;">(+$${gananciaMargenPesos.toFixed(0)})</span></td>
+                <td style="padding: 5px 6px; text-align: right; color: #fcd34d;" title="+$${gananciaMargenPesos.toLocaleString('es-AR', {minimumFractionDigits:2})} (${margen.toFixed(1)}% sobre Costo Base $${baseFila.toLocaleString('es-AR', {minimumFractionDigits:2})})">+${margen.toFixed(1)}% <span style="font-size:0.65rem; color:#94a3b8;">(+$${gananciaMargenPesos.toFixed(0)})</span></td>
                 <td style="padding: 5px 6px; text-align: right; color: #cbd5e1;">$${netoSim.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
-                <td style="padding: 5px 6px; text-align: right; color: #94a3b8;">${iva}%</td>
+                <td style="padding: 5px 6px; text-align: right; color: #94a3b8;">${ivaEf}%</td>
                 <td style="padding: 5px 6px; text-align: right; font-weight: 800; color: #34d399;">$${finalSim.toLocaleString('es-AR', {minimumFractionDigits:2})}</td>
                 <td style="padding: 5px 6px; text-align: right; color: ${okLista ? '#6ee7b7' : '#fbbf24'};">
                     $${finalBD.toLocaleString('es-AR', {minimumFractionDigits:2})} ${okLista ? '🟢' : '🟡'}

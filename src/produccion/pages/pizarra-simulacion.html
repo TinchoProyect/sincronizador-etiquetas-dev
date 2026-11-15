@@ -1652,7 +1652,7 @@
       }
     }
   </style>
-  <script src="/js/components/accordion-ldn1.js?v=2.0.12"></script>
+  <script src="/js/components/accordion-ldn1.js?v=2.0.13"></script>
   <script src="/js/components/modalGestionCostos.js?v=2.0.12"></script>
 </head>
 
@@ -1917,7 +1917,23 @@
               </div>
             </div>
 
-            <!-- ACORDEÓN CUARTO: INSUMOS Y STOCK DE FÁBRICA HUÉRFANOS (SIN VÍNCULO ESTRUCTURAL) -->
+            <!-- ACORDEÓN CUARTO-A: INSUMOS ABASTECIDOS POR PRODUCCIÓN / TOSTADERO (VÍNCULO PUENTE AP) -->
+            <div class="accordion-item" id="accordion-ingredientes-puente-ap" style="margin-top: 16px;">
+              <div class="accordion-header accordion-header-tertiary" style="border-left: 3px solid #0ea5e9;" onclick="toggleAccordion('accordion-ingredientes-puente-ap')">
+                <div class="accordion-title">
+                  <span class="accordion-icon">▶️</span>
+                  <span>🏭 Insumos Abastecidos por Producción / Tostadero (Vínculo Puente AP)</span>
+                </div>
+                <span class="accordion-count-badge badge-info" id="count-ingredientes-puente-ap" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.35);">0 insumos</span>
+              </div>
+              <div class="accordion-content">
+                <div class="articulos-grid" id="grid-ingredientes-puente-ap">
+                  <!-- Cargado por JS -->
+                </div>
+              </div>
+            </div>
+
+            <!-- ACORDEÓN CUARTO-B: INSUMOS Y STOCK DE FÁBRICA HUÉRFANOS (SIN VÍNCULO ESTRUCTURAL) -->
             <div class="accordion-item" id="accordion-ingredientes-huerfanos" style="margin-top: 16px;">
               <div class="accordion-header accordion-header-tertiary" style="border-left: 3px solid #f59e0b;" onclick="toggleAccordion('accordion-ingredientes-huerfanos')">
                 <div class="accordion-title">
@@ -2757,6 +2773,11 @@
         };
       });
 
+      // Exponer referencias vivas en window para sincronización determinista con accordion-ldn1.js
+      window.ingredientesSim = ingredientesSim;
+      window.tostaderosConfigsLDN4 = tostaderosConfigsLDN4;
+      window.listasArticulosSim = listasArticulosSim;
+
       // Ejecutar corrida inicial global para asimilar lotes y redondeos
       recalcularCascadaGlobalCompleta();
 
@@ -2938,6 +2959,7 @@
           costo_ap_oficial_bd: costoIngOficialBd
         });
       });
+      window.tostaderosConfigsLDN4 = tostaderosConfigsLDN4;
     }
 
     function calcularCostoApTostadero(t) {
@@ -5414,7 +5436,9 @@
       ejecutarCascadaUnificada();
     }
 
-    function resolverCostoIngrediente(ingId, visitados) {
+    function resolverCostoIngrediente(ingId, visitados = new Set()) {
+      ingId = parseInt(ingId, 10);
+      if (!(visitados instanceof Set)) visitados = new Set();
       if (visitados.has(ingId)) {
         return ingredientesSim[ingId]?.costo_sim || 0;
       }
@@ -10735,8 +10759,11 @@
           }
         }
         const costoOficialBD = costoSinInsBD + (cascada ? (cascada.costoInsumosPackaging || 0) : 0);
+        const precioLista1BD = la1 ? (parseFloat(la1.precio_final) || 0) : 0;
+        const precioLista1Nuevo = cascada ? (parseFloat(cascada.precioFinalCalculado) || 0) : precioLista1BD;
         const diff = Math.abs(costoBaseTotal - costoOficialBD);
-        const estaSincronizado = diff < 0.05 && costoOficialBD > 0;
+        const diffPrecio = Math.abs(precioLista1Nuevo - precioLista1BD);
+        const estaSincronizado = diff < 0.05 && diffPrecio < 0.5 && costoOficialBD > 0;
 
         return {
           sku: f.articulo_id,
@@ -10749,12 +10776,14 @@
           mo,
           costoBaseTotal,
           costoOficialBD,
+          precioLista1BD,
+          precioLista1Nuevo,
           estaSincronizado
         };
       });
 
       const tableRowsHtml = rowsData.map(row => `
-        <tr style="border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 0.74rem;">
+        <tr style="border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 0.73rem;">
           <td style="padding: 6px 4px; text-align: center;">
             <input type="checkbox" class="audit-check-sku-ldn4" data-sku="${row.sku}" checked style="cursor: pointer; width: 15px; height: 15px;">
           </td>
@@ -10766,9 +10795,18 @@
           <td style="padding: 6px 4px; text-align: right; color: #e2e8f0;">$${row.matPrima.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
           <td style="padding: 6px 4px; text-align: right; color: #fbbf24;">$${row.empaque.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
           <td style="padding: 6px 4px; text-align: right; color: #38bdf8;">$${row.mo.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-          <td style="padding: 6px 4px; text-align: right; font-weight: 700; color: #fff;">$${row.costoBaseTotal.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+          <td style="padding: 6px 4px; text-align: right;">
+            <span style="color:#94a3b8; font-size:0.68rem;">$${row.costoOficialBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+            <span style="color:#64748b; margin:0 2px;">→</span>
+            <strong style="color:#fff;">$${row.costoBaseTotal.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+          </td>
+          <td style="padding: 6px 4px; text-align: right;">
+            <span style="color:#94a3b8; font-size:0.68rem;">$${row.precioLista1BD.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+            <span style="color:#64748b; margin:0 2px;">→</span>
+            <strong style="color:#34d399;">$${row.precioLista1Nuevo.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+          </td>
           <td style="padding: 6px 4px; text-align: right; color: ${row.estaSincronizado ? '#34d399' : '#fbbf24'}; font-weight: 600;">
-            ${row.estaSincronizado ? '🟢 Al día' : `$${row.costoOficialBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}`}
+            ${row.estaSincronizado ? '🟢 Al día' : '🟡 Pendiente'}
           </td>
         </tr>
       `).join('');
@@ -10815,14 +10853,15 @@
             <div style="overflow-y: auto; max-height: 250px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px;">
               <table style="width: 100%; border-collapse: collapse; font-family: var(--font-inter);">
                 <thead>
-                  <tr style="background: rgba(0,0,0,0.3); color: #94a3b8; font-size: 0.70rem; text-transform: uppercase;">
-                    <th style="padding: 6px 4px; width: 30px; text-align: center;">✓</th>
+                  <tr style="background: rgba(0,0,0,0.3); color: #94a3b8; font-size: 0.68rem; text-transform: uppercase;">
+                    <th style="padding: 6px 4px; width: 28px; text-align: center;">✓</th>
                     <th style="padding: 6px 4px; text-align: left;">Fracción</th>
                     <th style="padding: 6px 4px; text-align: left;">Peso</th>
                     <th style="padding: 6px 4px; text-align: right;">Fruto Tost.</th>
                     <th style="padding: 6px 4px; text-align: right;">Bolsa</th>
                     <th style="padding: 6px 4px; text-align: right;">MO</th>
-                    <th style="padding: 6px 4px; text-align: right;">Costo Total</th>
+                    <th style="padding: 6px 4px; text-align: right;">Costo Base (BD → Nuevo)</th>
+                    <th style="padding: 6px 4px; text-align: right;">Lista 1 (BD → Nuevo)</th>
                     <th style="padding: 6px 4px; text-align: right;">Estado</th>
                   </tr>
                 </thead>
@@ -10845,7 +10884,7 @@
       const confirmResult = await Swal.fire({
         title: '🥜 Auditoría y Propagación Tostadero',
         html: modalHtml,
-        width: '700px',
+        width: '820px',
         showCancelButton: true,
         confirmButtonText: '⚡ Confirmar Impacto en Base de Datos',
         cancelButtonText: 'Cancelar',

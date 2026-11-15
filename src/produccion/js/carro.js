@@ -569,30 +569,232 @@ export async function actualizarEstadoCarro() {
             console.debug('[ROLES] error obteniendo permisos:', error);
         }
 
-        // Agrupar carros por semanas y meses (nueva funcionalidad mixta)
-        const gruposMixtos = agruparCarrosPorSemanasYMeses(carros);
+        // Estado persistido en memoria de filtro rápido ('todos' | 'abiertos' | 'externos' | 'internos')
+        window._carrosUsuarioCache = carros;
+        if (!window._filtroListaCarros) {
+            window._filtroListaCarros = 'todos';
+        }
+        window.filtrarListaCarros = (nuevoFiltro) => {
+            window._filtroListaCarros = nuevoFiltro || 'todos';
+            actualizarEstadoCarro();
+        };
 
-        // Construir HTML con agrupación mixta
+        const escCarroHtml = (val) => String(val === null || val === undefined ? '' : val)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+
+        const formatearAntiguedadCarro = (fechaIso, prefijo = 'Hace') => {
+            if (!fechaIso) return '';
+            const ms = Math.max(0, Date.now() - new Date(fechaIso).getTime());
+            const min = Math.floor(ms / 60000);
+            if (min < 2) return `${prefijo} instantes`;
+            if (min < 60) return `${prefijo} ${min} min`;
+            const horas = Math.floor(min / 60);
+            if (horas < 24) {
+                const restMin = min % 60;
+                return restMin > 0 ? `${prefijo} ${horas} h ${restMin} m` : `${prefijo} ${horas} h`;
+            }
+            const dias = Math.floor(horas / 24);
+            const restH = horas % 24;
+            return dias === 1
+                ? `${prefijo} 1 día${restH > 0 ? ` ${restH} h` : ''}`
+                : `${prefijo} ${dias} días${restH > 0 && dias < 5 ? ` ${restH} h` : ''}`;
+        };
+
+        const inferirLineaCarro = (c) => {
+            const ldn = Number(c.linea_negocio || 0);
+            if (ldn > 0) return ldn;
+            if (c.tipo_carro === 'externa') {
+                const arts = Array.isArray(c.resumen_articulos) ? c.resumen_articulos : [];
+                const ref = `${arts[0]?.numero || ''} ${arts[0]?.descripcion || ''}`.toUpperCase();
+                if (ref.startsWith('BF') || ref.includes('BARRA')) return 5;
+                if (ref.includes('GN') || ref.includes('GRANA')) return 6;
+                return 4;
+            }
+            return 2;
+        };
+
+        const carrosAbiertosTodos = carros.filter(c => c.fecha_confirmacion === null);
+        const totalTodos = carros.length;
+        const totalAbiertos = carrosAbiertosTodos.length;
+        const totalExternos = carros.filter(c => c.tipo_carro === 'externa').length;
+        const totalInternos = carros.filter(c => c.tipo_carro !== 'externa').length;
+
+        const filtroActivo = window._filtroListaCarros || 'todos';
+        const carrosFiltrados = carros.filter(c => {
+            if (filtroActivo === 'abiertos') return c.fecha_confirmacion === null;
+            if (filtroActivo === 'externos') return c.tipo_carro === 'externa';
+            if (filtroActivo === 'internos') return c.tipo_carro !== 'externa';
+            return true;
+        });
+
+        // Carros abiertos visibles según filtro activo (siempre arriba y fuera de acordeones cerrados)
+        const abiertosExternos = carrosAbiertosTodos.filter(c => c.tipo_carro === 'externa' && filtroActivo !== 'internos');
+        const abiertosInternos = carrosAbiertosTodos.filter(c => c.tipo_carro !== 'externa' && filtroActivo !== 'externos');
+
+        const renderTarjetaCarroAbierto = (c) => {
+            const esExt = c.tipo_carro === 'externa';
+            const esPrep = c.fecha_preparado !== null;
+            const estaEnVista = String(c.id) === String(carroId);
+            const ldn = inferirLineaCarro(c);
+            const arts = Array.isArray(c.resumen_articulos) ? c.resumen_articulos : [];
+            const insumosExt = Array.isArray(c.insumos_externos) ? c.insumos_externos : [];
+
+            let tagTipo = esExt
+                ? (ldn === 5 ? 'EXTERNO · L5 Barritas' : ldn === 6 ? 'EXTERNO · L6 Granolas' : 'EXTERNO · L4 Tostadero')
+                : (ldn === 3 ? 'INTERNO · L3 Puente / Mix' : 'INTERNO · L2 Fracciones');
+
+            const badgeTipoColor = esExt
+                ? 'background:#4f46e5;color:#ffffff;'
+                : 'background:#0d9488;color:#ffffff;';
+
+            const estadoTexto = esExt
+                ? (esPrep ? '⏳ En Tostadero / Taller' : '✏️ En armado en planta')
+                : (esPrep ? '📦 Listo p/ asentar' : '✏️ En armado');
+
+            const estadoEstilo = esPrep
+                ? (esExt ? 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;' : 'background:#dcfce7;color:#166534;border:1px solid #86efac;')
+                : 'background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;';
+
+            const textoTiempo = esPrep
+                ? formatearAntiguedadCarro(c.fecha_preparado, esExt ? 'Retirado hace' : 'Preparado hace')
+                : formatearAntiguedadCarro(c.fecha_inicio, 'Iniciado hace');
+
+            let detallePrincipal = '';
+            if (esExt) {
+                const artUp = arts[0];
+                const upTxt = artUp
+                    ? `[${escCarroHtml(artUp.numero)}] ${escCarroHtml(artUp.descripcion)}${artUp.ap_codigo ? ` → <b>[${escCarroHtml(artUp.ap_codigo)}]</b>` : ''}`
+                    : `${c.total_articulos} art.`;
+                const retiroTxt = insumosExt.length > 0
+                    ? insumosExt.map(ins => {
+                        const kgFmt = (parseFloat(ins.kilos) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        return `<span style="font-family:monospace;font-weight:700;color:#1e3a8a;">[${escCarroHtml(ins.sku)}]</span> ${escCarroHtml(ins.descripcion)} — <b>${kgFmt} kg</b>`;
+                    }).join(' · ')
+                    : '';
+                detallePrincipal = `
+                    <div style="font-size:12px;color:#1e293b;margin-top:4px;font-weight:600;">${upTxt}</div>
+                    ${retiroTxt ? `<div style="font-size:11.5px;color:#334155;margin-top:3px;background:#eef2ff;padding:3px 7px;border-radius:5px;border:1px solid #c7d2fe;">📦 ${esPrep ? 'Insumo retirado:' : 'Insumo previsto:'} ${retiroTxt}</div>` : ''}
+                `;
+            } else {
+                const artsResumen = arts.length > 0
+                    ? arts.slice(0, 2).map(a => `<span style="font-family:monospace;font-weight:700;color:#0f766e;">[${escCarroHtml(a.numero)}]</span> ${escCarroHtml(a.descripcion)} × <b>${a.cantidad}</b>`).join(' · ') + (arts.length > 2 ? ` <i>(+${arts.length - 2} más)</i>` : '')
+                    : `<b>${c.total_articulos}</b> artículo(s) en carro`;
+                detallePrincipal = `<div style="font-size:12px;color:#1e293b;margin-top:4px;">${artsResumen}</div>`;
+            }
+
+            return `
+                <div class="card-carro-abierto ${esExt ? 'externa' : 'interna'} ${estaEnVista ? 'activo-en-vista' : ''}" onclick="seleccionarCarro(${c.id})">
+                    <div style="flex:1;min-width:0;">
+                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                            <span style="font-weight:800;font-size:13px;color:#0f172a;">#${c.id}</span>
+                            <span style="font-size:10px;font-weight:800;padding:2px 7px;border-radius:9999px;letter-spacing:0.2px;${badgeTipoColor}">${tagTipo}</span>
+                            <span style="font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:9999px;${estadoEstilo}">${estadoTexto}</span>
+                            ${estaEnVista ? `<span style="font-size:10px;font-weight:800;background:#dbeafe;color:#1d4ed8;padding:1px 6px;border-radius:9999px;">● En vista</span>` : ''}
+                        </div>
+                        ${detallePrincipal}
+                        <div style="font-size:11px;color:#64748b;margin-top:4px;">
+                            🕒 ${escCarroHtml(textoTiempo)} · Inicio: ${new Date(c.fecha_inicio).toLocaleDateString('es-AR')}
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;">
+                        <button type="button"
+                                onclick="event.stopPropagation(); seleccionarCarro(${c.id})"
+                                style="padding:5px 10px;border-radius:6px;border:none;font-size:11.5px;font-weight:700;cursor:pointer;color:#ffffff;background:${esExt ? '#4f46e5' : '#0d9488'};">
+                            ${esPrep ? '⚖️ Abrir / Asentar' : '✏️ Abrir'}
+                        </button>
+                    </div>
+                </div>
+            `;
+        };
+
+        let panelAbiertosHtml = '';
+        if (abiertosExternos.length > 0 || abiertosInternos.length > 0) {
+            panelAbiertosHtml = `
+                <div class="panel-carros-abiertos" id="panel-carros-abiertos-pendientes">
+                    <div class="panel-carros-abiertos-header">
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <span style="font-size:13.5px;font-weight:800;color:#92400e;">📌 Carros Abiertos / Pendientes de Asentar</span>
+                            <span style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;font-size:11px;font-weight:800;padding:1px 8px;border-radius:9999px;">
+                                ${abiertosExternos.length + abiertosInternos.length} abierto${(abiertosExternos.length + abiertosInternos.length) !== 1 ? 's' : ''}
+                            </span>
+                        </div>
+                        <span style="font-size:11.5px;color:#78350f;">Visibles siempre arriba aunque pertenezcan a semanas anteriores</span>
+                    </div>
+                    <div class="panel-carros-abiertos-grid">
+                        ${filtroActivo !== 'internos' ? `
+                            <div class="bloque-abiertos-columna externa">
+                                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                                    <span style="font-size:12px;font-weight:800;color:#3730a3;">🚚 Producción Externa (En Tostadero / Taller)</span>
+                                    <span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:800;padding:1px 7px;border-radius:9999px;">${abiertosExternos.length}</span>
+                                </div>
+                                ${abiertosExternos.length > 0
+                                    ? abiertosExternos.map(renderTarjetaCarroAbierto).join('')
+                                    : `<div style="font-size:11.5px;color:#64748b;padding:8px 2px 2px 2px;">Sin carros externos pendientes de asentar.</div>`
+                                }
+                            </div>
+                        ` : ''}
+                        ${filtroActivo !== 'externos' ? `
+                            <div class="bloque-abiertos-columna interna">
+                                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                                    <span style="font-size:12px;font-weight:800;color:#0f766e;">🏭 Producción Interna (En Planta)</span>
+                                    <span style="background:#ccfbf1;color:#0f766e;font-size:11px;font-weight:800;padding:1px 7px;border-radius:9999px;">${abiertosInternos.length}</span>
+                                </div>
+                                ${abiertosInternos.length > 0
+                                    ? abiertosInternos.map(renderTarjetaCarroAbierto).join('')
+                                    : `<div style="font-size:11.5px;color:#64748b;padding:8px 2px 2px 2px;">Sin carros internos abiertos en planta.</div>`
+                                }
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Agrupar carros por semanas y meses preservando el orden cronológico calendario
+        const gruposMixtos = agruparCarrosPorSemanasYMeses(carrosFiltrados);
+
+        // Construir HTML con barra de filtros rápidos + sección superior de abiertos + agrupación mixta
         let html = `
             <div class="carros-lista">
-                <h3>Tus carros de producción</h3>
+                <div class="carros-header-bar">
+                    <h3>Tus carros de producción</h3>
+                    <div class="carros-filtros-bar" role="tablist" aria-label="Filtros rápidos de carros">
+                        <button type="button" class="pill-filtro-carro todos ${filtroActivo === 'todos' ? 'activo' : ''}" onclick="filtrarListaCarros('todos')">
+                            Todos <span class="pill-count">${totalTodos}</span>
+                        </button>
+                        <button type="button" class="pill-filtro-carro abiertos ${filtroActivo === 'abiertos' ? 'activo' : ''}" onclick="filtrarListaCarros('abiertos')">
+                            ⏳ Abiertos <span class="pill-count">${totalAbiertos}</span>
+                        </button>
+                        <button type="button" class="pill-filtro-carro externos ${filtroActivo === 'externos' ? 'activo' : ''}" onclick="filtrarListaCarros('externos')">
+                            🚚 Externos <span class="pill-count">${totalExternos}</span>
+                        </button>
+                        <button type="button" class="pill-filtro-carro internos ${filtroActivo === 'internos' ? 'activo' : ''}" onclick="filtrarListaCarros('internos')">
+                            🏭 Internos <span class="pill-count">${totalInternos}</span>
+                        </button>
+                    </div>
+                </div>
+                ${panelAbiertosHtml}
         `;
+
+        if (gruposMixtos.length === 0) {
+            html += `<div class="no-carros">No hay carros que coincidan con el filtro seleccionado.</div>`;
+        }
 
         gruposMixtos.forEach((grupo, indiceGrupo) => {
             const claseGrupo = grupo.esActual ? 'semana-actual' : '';
             const totalCarros = grupo.carros.length;
             const esGrupoMensual = grupo.anio !== undefined; // Los grupos mensuales tienen propiedades anio y mes
 
-            // 🔍 DEPURACIÓN: Determinar si el grupo debe estar expandido por defecto
-            const esEstaSemanaSoloExpandida = grupo.etiqueta.includes('Esta semana');
-            console.log(`🔍 DEBUG EXPANSIÓN - Grupo: "${grupo.etiqueta}" | Es "Esta semana": ${esEstaSemanaSoloExpandida}`);
+            // Expandir "Esta semana" por defecto, o expandir todos los grupos con coincidencias cuando hay un filtro rápido activo
+            const esEstaSemanaSoloExpandida = grupo.etiqueta.includes('Esta semana') || filtroActivo !== 'todos';
 
             const estaExpandido = esEstaSemanaSoloExpandida;
             const indicadorColapso = estaExpandido ? '▼' : '▶';
             const displayTabla = estaExpandido ? 'table' : 'none';
             const claseColapsado = estaExpandido ? '' : 'colapsado';
-
-            console.log(`🔍 DEBUG EXPANSIÓN - Resultado: expandido=${estaExpandido}, display=${displayTabla}, clase="${claseColapsado}"`);
 
             html += `
                 <div class="grupo-temporal ${claseGrupo} ${esGrupoMensual ? 'grupo-mensual' : 'grupo-semanal'} ${claseColapsado}" data-grupo="${indiceGrupo}">
@@ -626,14 +828,12 @@ export async function actualizarEstadoCarro() {
                 const esFinalizado = carro.fecha_confirmacion !== null;
                 const esPreparado = carro.fecha_preparado !== null;
                 const esHoy = carro.esHoy;
+                const ldnFila = inferirLineaCarro(carro);
 
-                // Aplicar clases CSS para diferenciación visual
-                let clasesFila = '';
+                // Aplicar clases CSS para diferenciación visual nítida Externo vs Interno
+                let clasesFila = esExterno ? 'carro-externo ' : 'carro-interno ';
                 if (estaActivo) {
                     clasesFila += 'carro-activo ';
-                }
-                if (esExterno) {
-                    clasesFila += 'carro-externo ';
                 }
                 if (esFinalizado) {
                     clasesFila += 'carro-finalizado ';
@@ -644,24 +844,32 @@ export async function actualizarEstadoCarro() {
 
                 let tipoBadge = '';
                 if (esExterno) {
-                    let tagLinea = 'Externa';
-                    if (carro.linea_negocio === 4) tagLinea = 'L4 Tostadero';
-                    else if (carro.linea_negocio === 5) tagLinea = 'L5 Barritas';
-                    else if (carro.linea_negocio === 6) tagLinea = 'L6 Granolas';
-                    tipoBadge = `<span class="badge-tipo-carro externa" title="${carro.nombre_linea_negocio || 'Producción Externa'}">🚚 ${tagLinea}</span>`;
+                    let tagLinea = 'EXTERNO';
+                    if (ldnFila === 4) tagLinea = 'EXTERNO · L4 Tostadero';
+                    else if (ldnFila === 5) tagLinea = 'EXTERNO · L5 Barritas';
+                    else if (ldnFila === 6) tagLinea = 'EXTERNO · L6 Granolas';
+                    tipoBadge = `<span class="badge-tipo-carro externa" style="background:#e0e7ff;color:#3730a3;border:1px solid #818cf8;font-weight:800;" title="${escCarroHtml(carro.nombre_linea_negocio || 'Producción Externa')}">🚚 ${tagLinea}</span>`;
                 } else {
-                    if (Number(carro.linea_negocio) === 3) {
-                        tipoBadge = `<span class="badge-tipo-carro interna" style="background: #dcfce7; color: #166534; border: 1px solid #86efac;" title="1° Etapa: Producción de Artículos Puente / Mixes a Granel x Kilo">🥣 L3 Art. Puente / Mix</span>`;
-                    } else if (Number(carro.linea_negocio) === 2) {
-                        tipoBadge = `<span class="badge-tipo-carro interna" style="background: #e0f2fe; color: #075985; border: 1px solid #7dd3fc;" title="2° Etapa: Producción de Fracciones Comerciales">📦 L2 Fracciones</span>`;
+                    if (ldnFila === 3) {
+                        tipoBadge = `<span class="badge-tipo-carro interna" style="background: #dcfce7; color: #166534; border: 1px solid #86efac; font-weight: 700;" title="1° Etapa: Producción de Artículos Puente / Mixes a Granel x Kilo">🥣 INTERNO · L3 Puente/Mix</span>`;
+                    } else if (ldnFila === 2) {
+                        tipoBadge = `<span class="badge-tipo-carro interna" style="background: #ccfbf1; color: #0f766e; border: 1px solid #5eead4; font-weight: 700;" title="2° Etapa: Producción de Fracciones Comerciales">🏭 INTERNO · L2 Fracciones</span>`;
                     } else {
-                        tipoBadge = `<span class="badge-tipo-carro interna">🏭 Interna</span>`;
+                        tipoBadge = `<span class="badge-tipo-carro interna" style="background: #ccfbf1; color: #0f766e; border: 1px solid #5eead4; font-weight: 700;">🏭 INTERNO</span>`;
                     }
                 }
 
                 const estadoBadge = esFinalizado
-                    ? `<span class="badge-estado-carro finalizado" style="font-size: 10.5px; padding: 2px 8px;">✅ Finalizado</span>`
-                    : (esPreparado ? `<span class="badge-estado-carro preparado" style="font-size: 10.5px; padding: 2px 8px;">📦 Listo</span>` : `<span class="badge-estado-carro en-edicion" style="font-size: 10.5px; padding: 2px 8px;">✏️ En curso</span>`);
+                    ? `<span class="badge-estado-carro finalizado" style="font-size: 10.5px; padding: 2px 8px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-weight:700;">✅ Asentado</span>`
+                    : (esPreparado
+                        ? `<span class="badge-estado-carro preparado" style="font-size: 10.5px; padding: 2px 8px; background:#fef3c7; color:#92400e; border:1px solid #f59e0b; font-weight:800;">${esExterno ? '⏳ Abierto · En Tostadero' : '📦 Abierto · Listo'}</span>`
+                        : `<span class="badge-estado-carro en-edicion" style="font-size: 10.5px; padding: 2px 8px; background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; font-weight:700;">✏️ Abierto · En curso</span>`);
+
+                const artsFila = Array.isArray(carro.resumen_articulos) ? carro.resumen_articulos : [];
+                const insExtFila = Array.isArray(carro.insumos_externos) ? carro.insumos_externos : [];
+                const subArtTxt = artsFila.length > 0
+                    ? `<div style="font-size:11px;color:#475569;margin-top:2px;">${artsFila.slice(0, 2).map(a => `<span style="font-family:monospace;font-weight:700;">[${escCarroHtml(a.numero)}]</span>`).join(', ')}${artsFila.length > 2 ? ` +${artsFila.length - 2}` : ''}${esExterno && insExtFila[0] ? ` · <span style="color:#3730a3;font-weight:600;">${(parseFloat(insExtFila[0].kilos) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</span>` : ''}</div>`
+                    : '';
 
                 html += `
                     <tr class="${clasesFila.trim()}" onclick="seleccionarCarro(${carro.id})">
@@ -670,7 +878,7 @@ export async function actualizarEstadoCarro() {
                         </td>
 
                         <td>${fecha}</td>
-                        <td><strong>${carro.total_articulos}</strong> art.</td>
+                        <td><strong>${carro.total_articulos}</strong> art.${subArtTxt}</td>
                         <td>${tipoBadge}</td>
                         <td>${estadoBadge}</td>
                         <td>
@@ -697,10 +905,14 @@ export async function actualizarEstadoCarro() {
 
         carroInfo.innerHTML = html;
 
-        // Agregar estilos CSS inline para la tabla
-        const style = document.createElement('style');
-        style.textContent = estilosTablaCarros;
-        document.head.appendChild(style);
+        // Asegurar estilos CSS inline únicos para la tabla y tarjetas
+        let styleEl = document.getElementById('estilos-tabla-carros-lamda');
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = 'estilos-tabla-carros-lamda';
+            document.head.appendChild(styleEl);
+        }
+        styleEl.textContent = estilosTablaCarros;
 
     } catch (error) {
         console.error('Error:', error);

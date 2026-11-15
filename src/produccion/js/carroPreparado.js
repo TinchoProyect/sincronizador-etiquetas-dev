@@ -1964,11 +1964,82 @@ export async function finalizarProduccion(carroIdParam) {
             let tarifa = null;
             let creditoCalculado = 0;
             
-            // Leer valores de merma del DOM
-            const txtCrudo = document.getElementById('total-crudo')?.textContent || '0.00 kg';
-            const txtDiferencia = document.getElementById('diferencia-peso')?.textContent || '0.00 kg';
-            const txtPorcentaje = document.getElementById('porcentaje-reduccion')?.textContent || '0.00%';
-            totalCrudoVal = parseFloat(txtCrudo.replace(' kg', '')) || 0;
+            // Leer y verificar valores reales de entrada cruda (priorizando movimientos reales vía articulos-resumen)
+            let txtCrudo = document.getElementById('total-crudo')?.textContent || '0.00 kg';
+            let txtDiferencia = document.getElementById('diferencia-peso')?.textContent || '0.00 kg';
+            let txtPorcentaje = document.getElementById('porcentaje-reduccion')?.textContent || '0.00%';
+            totalCrudoVal = parseFloat(txtCrudo.replace(',', '.').replace(' kg', '')) || 0;
+
+            const ldnMeta = window.carroActivoMetadata || {};
+            const ldnNum = Number(estadoCarro.linea_negocio || ldnMeta.linea_negocio || 4);
+
+            try {
+                const resResumen = await fetch(`/api/produccion/carro/${carroId}/articulos-resumen?usuarioId=${colaborador.id}`);
+                if (resResumen.ok) {
+                    const insumosReales = await resResumen.json();
+                    const pesoRealInsumos = (insumosReales || []).reduce((acc, ins) => {
+                        const kTot = parseFloat(ins.kilos_totales) || (parseFloat(ins.cantidad_total || 0) * (parseFloat(ins.kilos_unidad) || 1));
+                        return acc + kTot;
+                    }, 0);
+                    if (pesoRealInsumos > 0 && (ldnNum === 4 || totalCrudoVal <= 0)) {
+                        totalCrudoVal = Number(pesoRealInsumos.toFixed(4));
+                        txtCrudo = `${totalCrudoVal.toFixed(2)} kg`;
+                    }
+                }
+            } catch (errResCrudo) {
+                console.warn('Aviso al revalidar entrada cruda antes de asentar:', errResCrudo);
+            }
+
+            const diffReal = totalCrudoVal > 0 ? (kilosProducidos - totalCrudoVal) : 0;
+            const mermaPctReal = totalCrudoVal > 0 ? (((totalCrudoVal - kilosProducidos) / totalCrudoVal) * 100) : 0;
+            if (totalCrudoVal > 0) {
+                txtDiferencia = `${diffReal > 0 ? '+' : ''}${diffReal.toFixed(2)} kg`;
+                txtPorcentaje = `${mermaPctReal.toFixed(2)}%`;
+            }
+
+            // ⛔ BLOQUEO ANTI-TIPEO / ERROR DE COMA EN LÍNEA 4 (TOSTADEROS): kilos_producidos > kilos_entrada
+            if (ldnNum === 4 && totalCrudoVal > 0 && kilosProducidos > totalCrudoVal + 0.0001) {
+                let sugerenciaKg = null;
+                if ((kilosProducidos / 10) <= totalCrudoVal && (kilosProducidos / 10) > 0) {
+                    sugerenciaKg = (kilosProducidos / 10).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                } else if ((kilosProducidos / 100) <= totalCrudoVal && (kilosProducidos / 100) > 0) {
+                    sugerenciaKg = (kilosProducidos / 100).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+
+                await Swal.fire({
+                    icon: 'error',
+                    title: '⛔ Asiento bloqueado — Posible error de coma',
+                    html: `
+                        <div style="text-align:left;font-size:0.95em;line-height:1.5;color:#1e293b;">
+                            <p style="margin-bottom:8px;">En <b>Tostadero (Línea 4)</b> los kilos producidos no pueden superar los kilos crudos retirados del depósito:</p>
+                            <div style="background:#fef2f2;border:1.5px solid #ef4444;border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+                                <div>📦 <b>Entrada cruda retirada:</b> ${totalCrudoVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</div>
+                                <div style="color:#b91c1c;margin-top:3px;">⚠️ <b>Valor ingresado:</b> ${kilosProducidos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg (merma negativa ${mermaPctReal.toFixed(2)}%)</div>
+                            </div>
+                            <p style="margin:0;color:#475569;font-size:0.9em;">
+                                Revisá la coma decimal en el campo de kilos producidos${sugerenciaKg ? ` (por ejemplo: <b>${sugerenciaKg} kg</b>)` : ''} y volvé a asentar.
+                            </p>
+                        </div>
+                    `,
+                    confirmButtonText: '✏️ Corregir kilos producidos',
+                    confirmButtonColor: '#dc2626'
+                });
+
+                btnFinalizarProduccion.disabled = false;
+                btnFinalizarProduccion.classList.remove('procesando');
+                btnFinalizarProduccion.textContent = 'Asentar producción';
+                if (kilosProducidosInput) {
+                    kilosProducidosInput.focus();
+                    kilosProducidosInput.select();
+                }
+                return;
+            }
+
+            const requiereDobleConfirmacionMermaL4 = (
+                ldnNum === 4 &&
+                totalCrudoVal > 0 &&
+                (mermaPctReal > 15 || Math.abs(mermaPctReal) < 0.001)
+            );
             
             // Calcular suma de ingredientes vinculados agregados en caliente (únicamente post-cocción)
             let sumaVinculadosVal = 0;
@@ -2011,14 +2082,30 @@ export async function finalizarProduccion(carroIdParam) {
             }
             
             let htmlConfirm = '';
-            let confirmBtnColor = '#10b981';
-            let iconType = 'question';
+            let confirmBtnColor = requiereDobleConfirmacionMermaL4 ? '#d97706' : '#10b981';
+            let iconType = requiereDobleConfirmacionMermaL4 ? 'warning' : 'question';
 
-            const ldnMeta = window.carroActivoMetadata || {};
-            const ldnNum = ldnMeta.linea_negocio || 4;
             const ldnNombre = ldnMeta.nombre_linea_negocio || `Línea de Negocio ${ldnNum}`;
             const ldnIcono = ldnMeta.icono_linea_negocio || (ldnNum === 4 ? '🔥' : ldnNum === 5 ? '🍫' : '🥣');
             const ldnSubtitulo = ldnMeta.subtitulo_linea_negocio || (ldnNum === 4 ? 'Tostadero (UP Externa Simple)' : ldnNum === 5 ? 'Barritas (Mezcla Interna + UP Externa)' : 'Granolas (Doble Mezcla / UP Externa)');
+
+            const alertaMermaAtipicaHtml = requiereDobleConfirmacionMermaL4 ? `
+                <div style="margin-top:12px;background:#fff7ed;border:2px solid #f97316;border-radius:8px;padding:10px 12px;color:#9a3412;font-size:0.9em;">
+                    <div style="font-weight:800;margin-bottom:4px;">
+                        ⚠️ Atención — Merma inusual detectada (${mermaPctReal.toFixed(2)}%)
+                    </div>
+                    <div style="font-size:0.88em;line-height:1.4;margin-bottom:8px;">
+                        ${Math.abs(mermaPctReal) < 0.001
+                            ? `Estás asentando <b>0,00% de merma</b> (${kilosProducidos.toFixed(2)} kg de salida sobre ${totalCrudoVal.toFixed(2)} kg crudos).`
+                            : `La reducción calculada (<b>${mermaPctReal.toFixed(2)}%</b>) supera el umbral habitual de Tostadero (15%).`}
+                        Verificá que no haya un error de tipeo antes de impactar el historial y el stock.
+                    </div>
+                    <label style="display:flex;align-items:flex-start;gap:8px;background:#ffedd5;padding:7px 9px;border-radius:6px;cursor:pointer;font-weight:700;color:#7c2d12;">
+                        <input type="checkbox" id="swal-chk-doble-confirmacion-merma" style="width:17px;height:17px;margin-top:2px;cursor:pointer;flex-shrink:0;" />
+                        <span>Confirmo que verifiqué en balanza el peso real de ${kilosProducidos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg (merma ${mermaPctReal.toFixed(2)}%)</span>
+                    </label>
+                </div>
+            ` : '';
             
             const ldnBadgeModal = `
                 <div style="display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #3b82f6; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px;">
@@ -2077,6 +2164,7 @@ export async function finalizarProduccion(carroIdParam) {
                                 ${calculoTexto}
                             </div>
                         </div>
+                        ${alertaMermaAtipicaHtml}
                         <p style="margin-top: 12px; font-size: 0.85em; color: #64748b; text-align: center; font-style: italic;">
                             Se generará una orden de pago automática en su cuenta corriente.
                         </p>
@@ -2099,6 +2187,7 @@ export async function finalizarProduccion(carroIdParam) {
                             <tr><td style="color:#64748b; padding: 4px 0;">Diferencia de Peso Cocción:</td><td style="text-align: right; font-weight: bold; color: #dc2626;">${txtDiferencia}</td></tr>
                             <tr><td style="color:#64748b; padding: 4px 0;">Reducción por Cocción:</td><td style="text-align: right; font-weight: bold; color: #b45309;">${txtPorcentaje}</td></tr>
                         </table>
+                        ${alertaMermaAtipicaHtml}
                         
                         <div style="margin-top: 12px; background: #fffbeb; padding: 12px; border-radius: 6px; border: 1px solid #fef3c7; color: #b45309; font-size: 0.85em;">
                             ⚠️ <strong>Aviso:</strong> No se encontró tarifa de rendimiento activa para este artículo. La producción se asentará <strong>sin liquidación</strong> de pago en cuenta corriente.
@@ -2116,7 +2205,17 @@ export async function finalizarProduccion(carroIdParam) {
                 cancelButtonText: '❌ Cancelar y modificar',
                 confirmButtonColor: confirmBtnColor,
                 cancelButtonColor: '#64748b',
-                allowOutsideClick: false
+                allowOutsideClick: false,
+                preConfirm: () => {
+                    if (requiereDobleConfirmacionMermaL4) {
+                        const chk = document.getElementById('swal-chk-doble-confirmacion-merma');
+                        if (!chk || !chk.checked) {
+                            Swal.showValidationMessage('Marcá la casilla de doble confirmación de peso en balanza para continuar.');
+                            return false;
+                        }
+                    }
+                    return true;
+                }
             });
             
             if (!confirmResult.isConfirmed) {
@@ -2709,10 +2808,11 @@ async function calcularMermaProduccion(carroId, mostrarPreviaCrudo = false) {
             // Continuar con peso 0
         }
 
-        // PASO 6: Calcular totales
+        // PASO 6: Calcular totales con signo real (sin enmascarar mermas negativas con Math.abs)
         const totalCrudo = pesoArticuloBase + pesoIngredientes;
         const diferenciaPeso = tieneKilosValidos ? (kilosProducidos - totalCrudo) : 0;
-        const porcentajeReduccion = (tieneKilosValidos && totalCrudo > 0) ? (Math.abs(diferenciaPeso) / totalCrudo) * 100 : 0;
+        const mermaRealPct = (tieneKilosValidos && totalCrudo > 0) ? (((totalCrudo - kilosProducidos) / totalCrudo) * 100) : 0;
+        const esLinea4Activa = Number(window.carroActivoMetadata?.linea_negocio || 4) === 4;
 
         // PASO 7: Actualizar UI (SIEMPRE)
         document.getElementById('total-crudo').textContent = `${totalCrudo.toFixed(2)} kg`;
@@ -2720,8 +2820,8 @@ async function calcularMermaProduccion(carroId, mostrarPreviaCrudo = false) {
 
         const spanDiferencia = document.getElementById('diferencia-peso');
         if (tieneKilosValidos) {
-            spanDiferencia.textContent = `${diferenciaPeso.toFixed(2)} kg`;
-            spanDiferencia.style.color = diferenciaPeso < 0 ? '#dc3545' : '#28a745';
+            spanDiferencia.textContent = `${diferenciaPeso > 0 ? '+' : ''}${diferenciaPeso.toFixed(2)} kg`;
+            spanDiferencia.style.color = diferenciaPeso > 0.0001 ? '#dc2626' : (diferenciaPeso < 0 ? '#dc3545' : '#d97706');
         } else {
             spanDiferencia.textContent = '-';
             spanDiferencia.style.color = '#6c757d';
@@ -2729,11 +2829,41 @@ async function calcularMermaProduccion(carroId, mostrarPreviaCrudo = false) {
 
         const spanPorcentaje = document.getElementById('porcentaje-reduccion');
         if (tieneKilosValidos) {
-            spanPorcentaje.textContent = `${porcentajeReduccion.toFixed(2)}%`;
-            spanPorcentaje.style.color = porcentajeReduccion > 15 ? '#dc3545' : porcentajeReduccion > 10 ? '#ffc107' : '#28a745';
+            spanPorcentaje.textContent = `${mermaRealPct.toFixed(2)}%`;
+            spanPorcentaje.style.color = (mermaRealPct < -0.0001 || mermaRealPct > 15)
+                ? '#dc2626'
+                : (Math.abs(mermaRealPct) < 0.001 || mermaRealPct > 10 ? '#d97706' : '#16a34a');
         } else {
             spanPorcentaje.textContent = '-';
             spanPorcentaje.style.color = '#6c757d';
+        }
+
+        let alertaEl = document.getElementById('alerta-guardia-merma');
+        if (!alertaEl) {
+            alertaEl = document.createElement('div');
+            alertaEl.id = 'alerta-guardia-merma';
+            alertaEl.style.marginTop = '8px';
+            calculoMerma.appendChild(alertaEl);
+        }
+
+        if (esLinea4Activa && tieneKilosValidos && totalCrudo > 0 && kilosProducidos > totalCrudo + 0.0001) {
+            const sug10 = (kilosProducidos / 10) <= totalCrudo ? ` (¿quisiste ingresar <b>${(kilosProducidos / 10).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</b>?)` : '';
+            alertaEl.style.display = 'block';
+            alertaEl.innerHTML = `
+                <div style="background:#fef2f2;border:1.5px solid #ef4444;color:#991b1b;padding:8px 10px;border-radius:6px;font-size:12px;line-height:1.4;font-weight:600;">
+                    ⛔ <b>Merma negativa bloqueada:</b> ingresaste <b>${kilosProducidos.toFixed(2)} kg</b> sobre <b>${totalCrudo.toFixed(2)} kg</b> retirados${sug10}. Revisá la coma decimal antes de asentar.
+                </div>
+            `;
+        } else if (esLinea4Activa && tieneKilosValidos && totalCrudo > 0 && (mermaRealPct > 15 || Math.abs(mermaRealPct) < 0.001)) {
+            alertaEl.style.display = 'block';
+            alertaEl.innerHTML = `
+                <div style="background:#fff7ed;border:1.5px solid #f97316;color:#9a3412;padding:7px 10px;border-radius:6px;font-size:12px;line-height:1.4;font-weight:600;">
+                    ⚠️ <b>Merma atípica (${mermaRealPct.toFixed(2)}%):</b> se solicitará doble confirmación de balanza al asentar.
+                </div>
+            `;
+        } else {
+            alertaEl.style.display = 'none';
+            alertaEl.innerHTML = '';
         }
 
         // ⚠️ FORZAR VISUALIZACIÓN DEL PANEL

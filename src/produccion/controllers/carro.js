@@ -222,7 +222,111 @@ async function obtenerCarrosDeUsuario(usuarioId) {
                 cp.nombre_linea_negocio,
                 cp.fecha_preparado,
                 cp.fecha_confirmacion,
-                (SELECT COUNT(*) FROM carros_articulos ca WHERE ca.carro_id = cp.id) as total_articulos
+                (SELECT COUNT(*) FROM carros_articulos ca WHERE ca.carro_id = cp.id) as total_articulos,
+                COALESCE((
+                    SELECT json_agg(
+                        json_build_object(
+                            'numero', ca.articulo_numero,
+                            'descripcion', COALESCE(
+                                NULLIF(BTRIM(ba.descripcion_generada), ''),
+                                NULLIF(BTRIM(ba.descripcion), ''),
+                                NULLIF(BTRIM(src.descripcion), ''),
+                                NULLIF(BTRIM(a.nombre), ''),
+                                ca.articulo_numero
+                            ),
+                            'cantidad', ca.cantidad,
+                            'ap_codigo', aper.articulo_kilo_codigo,
+                            'ap_descripcion', COALESCE(NULLIF(BTRIM(ba_ap.descripcion_generada), ''), NULLIF(BTRIM(ba_ap.descripcion), ''), aper.articulo_kilo_codigo)
+                        ) ORDER BY ca.id ASC
+                    )
+                    FROM carros_articulos ca
+                    LEFT JOIN bunker_articulos ba ON UPPER(BTRIM(ba.articulo_id)) = UPPER(BTRIM(ca.articulo_numero))
+                    LEFT JOIN stock_real_consolidado src ON UPPER(BTRIM(src.articulo_numero)) = UPPER(BTRIM(ca.articulo_numero))
+                    LEFT JOIN articulos a ON UPPER(BTRIM(a.numero)) = UPPER(BTRIM(ca.articulo_numero))
+                    LEFT JOIN LATERAL (
+                        SELECT r_ext.articulo_kilo_codigo
+                        FROM articulos_produccion_externa_relacion r_ext
+                        WHERE UPPER(BTRIM(r_ext.articulo_produccion_codigo)) = UPPER(BTRIM(ca.articulo_numero))
+                          AND UPPER(BTRIM(r_ext.articulo_produccion_codigo)) <> UPPER(BTRIM(r_ext.articulo_kilo_codigo))
+                        ORDER BY r_ext.id ASC
+                        LIMIT 1
+                    ) aper ON true
+                    LEFT JOIN bunker_articulos ba_ap ON UPPER(BTRIM(ba_ap.articulo_id)) = UPPER(BTRIM(aper.articulo_kilo_codigo))
+                    WHERE ca.carro_id = cp.id
+                ), '[]'::json) AS resumen_articulos,
+                CASE
+                    WHEN cp.tipo_carro = 'externa' AND cp.fecha_preparado IS NOT NULL THEN COALESCE((
+                        SELECT json_agg(
+                            json_build_object(
+                                'sku', mov.articulo_numero,
+                                'descripcion', mov.descripcion,
+                                'cantidad', mov.cantidad_total,
+                                'kilos', mov.kilos_totales,
+                                'confirmado_retiro', true
+                            )
+                        )
+                        FROM (
+                            SELECT
+                                svm.articulo_numero,
+                                COALESCE(
+                                    NULLIF(BTRIM(ba_s.descripcion_generada), ''),
+                                    NULLIF(BTRIM(ba_s.descripcion), ''),
+                                    NULLIF(BTRIM(src_s.descripcion), ''),
+                                    NULLIF(BTRIM(a_s.nombre), ''),
+                                    svm.articulo_numero
+                                ) AS descripcion,
+                                ROUND(SUM(ABS(COALESCE(svm.cantidad, 0)))::numeric, 3) AS cantidad_total,
+                                ROUND(SUM(
+                                    CASE
+                                        WHEN ABS(COALESCE(svm.kilos, 0)) > 0 THEN ABS(svm.kilos)
+                                        ELSE ABS(COALESCE(svm.cantidad, 0)) * COALESCE(NULLIF(ba_s.kilos_unidad, 0), NULLIF(src_s.kilos_unidad, 0), 1.0)
+                                    END
+                                )::numeric, 3) AS kilos_totales
+                            FROM stock_ventas_movimientos svm
+                            LEFT JOIN bunker_articulos ba_s ON UPPER(BTRIM(ba_s.articulo_id)) = UPPER(BTRIM(svm.articulo_numero))
+                            LEFT JOIN stock_real_consolidado src_s ON UPPER(BTRIM(src_s.articulo_numero)) = UPPER(BTRIM(svm.articulo_numero))
+                            LEFT JOIN articulos a_s ON UPPER(BTRIM(a_s.numero)) = UPPER(BTRIM(svm.articulo_numero))
+                            WHERE svm.carro_id = cp.id
+                              AND LOWER(COALESCE(svm.tipo, '')) LIKE '%egreso por receta externa%'
+                            GROUP BY svm.articulo_numero, ba_s.descripcion_generada, ba_s.descripcion, src_s.descripcion, a_s.nombre
+                            ORDER BY svm.articulo_numero
+                        ) mov
+                    ), '[]'::json)
+                    WHEN cp.tipo_carro = 'externa' THEN COALESCE((
+                        SELECT json_agg(
+                            json_build_object(
+                                'sku', prev.articulo_numero,
+                                'descripcion', prev.descripcion,
+                                'cantidad', prev.cantidad_total,
+                                'kilos', prev.kilos_totales,
+                                'confirmado_retiro', false
+                            )
+                        )
+                        FROM (
+                            SELECT
+                                ra.articulo_numero,
+                                COALESCE(
+                                    NULLIF(BTRIM(ba_r.descripcion_generada), ''),
+                                    NULLIF(BTRIM(ba_r.descripcion), ''),
+                                    NULLIF(BTRIM(src_r.descripcion), ''),
+                                    NULLIF(BTRIM(a_r.nombre), ''),
+                                    ra.articulo_numero
+                                ) AS descripcion,
+                                ROUND(SUM(ra.cantidad * ca.cantidad)::numeric, 3) AS cantidad_total,
+                                ROUND(SUM(ra.cantidad * ca.cantidad * COALESCE(NULLIF(ba_r.kilos_unidad, 0), NULLIF(src_r.kilos_unidad, 0), 1.0))::numeric, 3) AS kilos_totales
+                            FROM carros_articulos ca
+                            JOIN recetas r ON UPPER(BTRIM(r.articulo_numero)) = UPPER(BTRIM(ca.articulo_numero))
+                            JOIN receta_articulos ra ON ra.receta_id = r.id
+                            LEFT JOIN bunker_articulos ba_r ON UPPER(BTRIM(ba_r.articulo_id)) = UPPER(BTRIM(ra.articulo_numero))
+                            LEFT JOIN stock_real_consolidado src_r ON UPPER(BTRIM(src_r.articulo_numero)) = UPPER(BTRIM(ra.articulo_numero))
+                            LEFT JOIN articulos a_r ON UPPER(BTRIM(a_r.numero)) = UPPER(BTRIM(ra.articulo_numero))
+                            WHERE ca.carro_id = cp.id
+                            GROUP BY ra.articulo_numero, ba_r.descripcion_generada, ba_r.descripcion, src_r.descripcion, a_r.nombre
+                            ORDER BY ra.articulo_numero
+                        ) prev
+                    ), '[]'::json)
+                    ELSE '[]'::json
+                END AS insumos_externos
             FROM carros_produccion cp
             WHERE cp.usuario_id = $1
             ORDER BY cp.fecha_inicio DESC

@@ -213,33 +213,51 @@ async function
                 nombreLineaNegocio = 'Línea de Negocio 6: Granolas (Doble Mezcla / UP Externa)';
             }
 
-            let inputKilos = (kilos_entrada && !isNaN(parseFloat(kilos_entrada)) && parseFloat(kilos_entrada) > 0) 
-                ? parseFloat(kilos_entrada) 
-                : null;
+            // 🛡️ FUENTE DE VERDAD PRIORITARIA: Kilos efectivamente retirados del carro en stock_ventas_movimientos
+            //    (Inmune a cualquier cambio posterior del bulto crudo en la receta de la UP mientras el carro está afuera)
+            let inputKilos = null;
+            const { rows: egresosStock } = await db.query(`
+                SELECT 
+                    svm.articulo_numero,
+                    CASE
+                        WHEN ABS(COALESCE(svm.kilos, 0)) > 0 THEN ABS(CAST(svm.kilos AS DECIMAL(20,10)))
+                        ELSE ABS(CAST(svm.cantidad AS DECIMAL(20,10))) * COALESCE(NULLIF(CAST(src.kilos_unidad AS DECIMAL(20,10)), 0), NULLIF(ba.kilos_unidad, 0), 1.0000)
+                    END AS kilos_egresados
+                FROM public.stock_ventas_movimientos svm
+                LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = svm.articulo_numero
+                LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = svm.articulo_numero
+                WHERE svm.carro_id = $1
+                  AND (
+                      LOWER(COALESCE(svm.tipo, '')) LIKE '%egreso por receta externa%'
+                      OR LOWER(COALESCE(svm.tipo, '')) LIKE '%egreso%'
+                      OR CAST(svm.cantidad AS TEXT) LIKE '-%'
+                  )
+            `, [carroId]);
 
-            // 🛡️ SALVAGUARDA ESTRUCTURAL: Si inputKilos no llegó o vino en 0, calcularlo desde el egreso real del carro o la receta
-            if (!inputKilos || inputKilos <= 0) {
-                console.log('⚠️ [FINALIZAR PRODUCCIÓN] kilos_entrada no proporcionado o en 0. Calculando desde egresos de stock...');
-                const { rows: egresosStock } = await db.query(`
-                    SELECT 
-                        svm.articulo_numero,
-                        ABS(CAST(svm.cantidad AS DECIMAL(20,10))) AS cantidad,
-                        COALESCE(CAST(src.kilos_unidad AS DECIMAL(20,10)), ba.kilos_unidad, 1.0000) AS kilos_unidad
-                    FROM public.stock_ventas_movimientos svm
-                    LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = svm.articulo_numero
-                    LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = svm.articulo_numero
-                    WHERE svm.carro_id = $1 AND (LOWER(svm.tipo) LIKE '%egreso%' OR CAST(svm.cantidad AS TEXT) LIKE '-%')
-                `, [carroId]);
-
-                if (egresosStock.length > 0) {
-                    inputKilos = egresosStock.reduce((acc, row) => acc + (parseFloat(row.cantidad) * parseFloat(row.kilos_unidad)), 0);
-                    console.log(`✅ [FINALIZAR PRODUCCIÓN] Entrada calculada desde egresos de stock: ${inputKilos} kg`);
+            if (egresosStock.length > 0) {
+                const kilosMovimientos = egresosStock.reduce((acc, row) => acc + (parseFloat(row.kilos_egresados) || 0), 0);
+                if (kilosMovimientos > 0) {
+                    if (lineaNegocio === 4) {
+                        // En Línea 4 (Tostadero) la entrada cruda es 100% el bulto retirado en stock_ventas_movimientos
+                        inputKilos = kilosMovimientos;
+                    } else {
+                        // En Líneas 5/6 si req.body.kilos_entrada suma además ingredientes personales pre-cocción, respetar el mayor consistente
+                        const bodyEntrada = (kilos_entrada && !isNaN(parseFloat(kilos_entrada)) && parseFloat(kilos_entrada) > 0)
+                            ? parseFloat(kilos_entrada)
+                            : 0;
+                        inputKilos = bodyEntrada > kilosMovimientos ? bodyEntrada : kilosMovimientos;
+                    }
+                    console.log(`✅ [FINALIZAR PRODUCCIÓN] Entrada resuelta prioritariamente desde stock_ventas_movimientos del carro #${carroId}: ${inputKilos} kg`);
                 }
+            }
 
-                if (!inputKilos || inputKilos <= 0) {
+            if (!inputKilos || inputKilos <= 0) {
+                if (kilos_entrada && !isNaN(parseFloat(kilos_entrada)) && parseFloat(kilos_entrada) > 0) {
+                    inputKilos = parseFloat(kilos_entrada);
+                } else {
                     const { rows: recetaUP } = await db.query(`
                         SELECT 
-                            SUM(CAST(ra.cantidad AS DECIMAL(20, 10)) * COALESCE(CAST(src.kilos_unidad AS DECIMAL(20, 10)), ba.kilos_unidad, 1.0000)) * COALESCE(ca.cantidad, 1.0) AS masa_receta
+                            SUM(CAST(ra.cantidad AS DECIMAL(20, 10)) * COALESCE(NULLIF(CAST(src.kilos_unidad AS DECIMAL(20, 10)), 0), NULLIF(ba.kilos_unidad, 0), 1.0000)) * COALESCE(ca.cantidad, 1.0) AS masa_receta
                         FROM public.carros_articulos ca
                         JOIN public.recetas r ON r.articulo_numero = ca.articulo_numero
                         JOIN public.receta_articulos ra ON ra.receta_id = r.id
@@ -252,13 +270,23 @@ async function
 
                     if (recetaUP.length > 0 && parseFloat(recetaUP[0].masa_receta) > 0) {
                         inputKilos = parseFloat(recetaUP[0].masa_receta);
-                        console.log(`✅ [FINALIZAR PRODUCCIÓN] Entrada calculada desde receta de UP: ${inputKilos} kg`);
+                        console.log(`✅ [FINALIZAR PRODUCCIÓN] Entrada calculada por fallback desde receta de UP: ${inputKilos} kg`);
                     }
                 }
             }
             inputKilos = (inputKilos && inputKilos > 0) ? Number(inputKilos.toFixed(4)) : null;
 
             const outputKilos = parseFloat(kilos_producidos);
+
+            // 🛡️ GUARDIA ANTI-TIPEO DE SERVIDOR EN LÍNEA 4 (TOSTADERO): prohibido asentar kilos_producidos > kilos_entrada
+            if (lineaNegocio === 4 && inputKilos && inputKilos > 0 && outputKilos > inputKilos + 0.0001) {
+                const errTypo = new Error(
+                    `Asiento bloqueado por merma negativa inválida: ingresaste ${outputKilos} kg producidos sobre ${inputKilos} kg retirados. Verificá la coma decimal (ej. ${(outputKilos / 10).toFixed(2)} kg).`
+                );
+                errTypo.statusCode = 400;
+                throw errTypo;
+            }
+
             const mermaPercent = (inputKilos && inputKilos > 0) ? Number((((inputKilos - outputKilos) / inputKilos) * 100).toFixed(2)) : 0;
 
             // Insertar en historial con trazabilidad de Línea de Negocio
@@ -636,9 +664,10 @@ async function
     } catch (error) {
         await db.query('ROLLBACK');
         console.error('Error al confirmar producción:', error);
-        return res.status(500).json({
-            error: 'Error al confirmar la producción',
-            detalle: error.message
+        const status = error.statusCode || 500;
+        return res.status(status).json({
+            error: status === 400 ? error.message : 'Error al confirmar la producción',
+            detalle: status === 400 ? undefined : error.message
         });
     }
 }
