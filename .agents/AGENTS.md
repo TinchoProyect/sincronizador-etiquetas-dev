@@ -161,3 +161,16 @@ Todas las herramientas de cálculo, simulaciones de precios y cascadas de costos
     1. Precarga de todos los teléfonos y emails de la ficha en `bunker_clientes` (incluyendo `cliente_madre_bunker_id` cuando opera con Cuenta Madre Unificada) + ingreso opcional de destinatario manual al vuelo.
     2. Selección de canal (`WhatsApp :3004` vía `whatsappService` y/o `Email SMTP` vía `emailService`).
     3. Vista previa editable de asunto/mensaje, soporte de adjuntos (PDFs o PNGs de QR) y despacho directo desde backend con confirmación real por canal.
+
+---
+
+## 8. Estándar Permanente de Flujos Guiados por Rol (Gestor vs. Cliente Final)
+
+* **Paneles Operativos de Gestor (`src/produccion/pages/nodo-panel-gestor.html` y formularios secuenciales equivalentes) — Bloqueo Progresivo Atenuado:**
+  - El usuario visualiza la estructura completa de pasos numerados (`1..N`), pero únicamente el paso actual presenta contraste pleno y borde destacado en el color de marca (`var(--brand)`).
+  - Los pasos aún no habilitados permanecen atenuados/apaisados (`opacity: ~0.42`, fondo neutro suave, `pointer-events: none`, controles con `disabled` y leyenda `"Completá el paso anterior"`).
+  - Todo cambio en un paso superior dispara **reinicio en cascada** de los pasos dependientes y re-bloquea el envío hasta completar la secuencia válida, acompañando el avance en móvil con scroll suave.
+* **Flujos Correlativos de Consumidor Final (`src/produccion/pages/nodo-tienda-vecino.html` Checkout) — Wizard Fullscreen de 1 Sola Acción:**
+  - Cada pantalla ocupa toda la vista móvil (`100dvh`) con **una sola decisión por pantalla** (Entrega, Datos, Dirección si aplica envío, Pago, Revisión y Confirmación), cero campos de pasos futuros y cero overflow horizontal.
+  - Cabecera limpia con presencia de marca del nodo activo (respetando `tema_visual` y `logo_incluye_texto` en Paraíso sin texto duplicado, y encabezado estándar en nodos como MANSO), indicador `"Paso X de N"` y botón grande `"← Volver"`.
+  - El botón inferior `"Continuar"` permanece `disabled` hasta validar el dato único de esa pantalla, precargando identidad desde `localStorage` solo cuando el vecino ya compró antes.

@@ -87,3 +87,16 @@
      - Seleccionar contactos precargados de la ficha del cliente en `bunker_clientes` (múltiples teléfonos y direcciones de email, contemplando `cliente_madre_bunker_id` cuando aplica Cuenta Madre Unificada) más opción rápida para ingresar un destinatario manual al vuelo.
      - Elegir el canal de salida: **Motor propio de WhatsApp Web (`:3004`, `whatsappService`)**, **Email corporativo SMTP (`emailService`)**, o **ambos en simultáneo**.
      - Editar la vista previa del asunto y cuerpo del mensaje (y adjuntos como PDFs o imágenes PNG de códigos QR) antes del despacho directo por backend, mostrando confirmación real por cada canal.
+
+---
+
+## 6. Estándar Permanente de Flujos Guiados por Rol (Gestor vs. Cliente Final)
+
+1. **Paneles Operativos de Gestor (`nodo-panel-gestor.html` y formularios secuenciales internos) — Desbloqueo Progresivo Atenuado ("Apaisado"):**
+   - Mostrar de entrada la estructura completa de pasos numerados y correlativos para dar contexto total al operador, habilitando inicialmente solo el **Paso 1** con contraste pleno, foco claro y borde en el color de marca (`var(--brand)`).
+   - Mantener los pasos futuros **atenuados/apaisados** (`opacity: ~0.42`, fondo neutro suave, `pointer-events: none`, atributo `disabled` en todos sus controles y leyenda `"Completá el paso anterior"`).
+   - Acompañar el desbloqueo en móvil con scroll suave si el siguiente paso queda fuera de vista, y aplicar **reinicio en cascada** obligatorio cuando se modifica un paso superior (limpiando selecciones dependientes y re-bloqueando los pasos posteriores hasta revalidarlos).
+2. **Flujos Correlativos de Cliente Final (`nodo-tienda-vecino.html` Checkout) — Wizard Fullscreen de 1 Sola Acción con Presencia de Marca:**
+   - Ocupar toda la vista móvil (`100dvh`) con **una única decisión por pantalla**, sin exponer campos de pasos futuros ni scrolls confusos.
+   - Exhibir cabecera protagónica con la identidad visual del nodo activo (respetando `tema_visual` y `logo_incluye_texto` sin duplicar texto en marcas como Paraíso, y encabezado estándar en nodos como MANSO), indicador simple `"Paso X de N"` y botón grande `"← Volver"`.
+   - Mantener el botón inferior `"Continuar"` estrictamente `disabled` hasta que el dato único de la pantalla activa sea válido, precargando datos previos desde `localStorage` para compradores recurrentes sin valores ficticios hardcodeados.

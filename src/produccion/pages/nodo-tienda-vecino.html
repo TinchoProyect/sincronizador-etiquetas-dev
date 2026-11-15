@@ -660,6 +660,291 @@
       margin-top: 2px;
     }
 
+    /* Wizard Fullscreen de 1 Sola Acción por Pantalla (Checkout Cliente Final) */
+    .chk-fullscreen-wizard {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100vh;
+      height: 100dvh;
+      background: var(--bg);
+      display: none;
+      flex-direction: column;
+      z-index: 320;
+      overflow: hidden;
+    }
+    .chk-wiz-shell {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .chk-wiz-header {
+      flex-shrink: 0;
+      background: var(--hero-bg);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 2px 10px rgba(62, 37, 25, 0.05);
+    }
+    .chk-wiz-header-inner {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 11px 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .chk-wiz-nav-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    .chk-btn-volver {
+      min-height: 44px;
+      padding: 8px 16px;
+      border-radius: 12px;
+      border: 1.5px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.96rem;
+      font-weight: 900;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 1px 4px rgba(62, 37, 25, 0.05);
+    }
+    .chk-btn-volver:active {
+      transform: scale(0.98);
+    }
+    .chk-step-pill {
+      font-size: 0.86rem;
+      font-weight: 900;
+      color: var(--brand-dark);
+      background: var(--brand-light);
+      border: 1px solid var(--brand-border);
+      padding: 6px 13px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .chk-wiz-brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .chk-wiz-logo-horizontal {
+      height: 44px;
+      max-width: 215px;
+      object-fit: contain;
+      display: block;
+    }
+    .chk-wiz-brand-std {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-width: 0;
+    }
+    .chk-wiz-brand-std img {
+      width: 44px;
+      height: 44px;
+      object-fit: contain;
+      border-radius: 10px;
+      flex-shrink: 0;
+    }
+    .chk-wiz-brand-name {
+      font-size: 1.18rem;
+      font-weight: 900;
+      color: var(--text);
+      line-height: 1.15;
+    }
+    .chk-wiz-brand-sub {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+    .chk-wiz-delivery-chip {
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: var(--brand-dark);
+      background: var(--surface-warm);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 999px;
+      max-width: 100%;
+    }
+    .chk-wiz-progress-track {
+      width: 100%;
+      height: 4px;
+      background: var(--border);
+      overflow: hidden;
+    }
+    .chk-wiz-progress-fill {
+      height: 100%;
+      background: var(--brand);
+      transition: width 0.22s ease;
+    }
+    .chk-wiz-body {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 22px 16px 26px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .chk-wiz-stage {
+      max-width: 540px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .chk-wiz-question {
+      margin: 0 0 6px 0;
+      font-size: 1.36rem;
+      font-weight: 900;
+      color: var(--text);
+      line-height: 1.2;
+      letter-spacing: -0.015em;
+    }
+    .chk-wiz-lead {
+      margin: 0 0 18px 0;
+      font-size: 0.93rem;
+      color: var(--muted);
+      font-weight: 700;
+      line-height: 1.42;
+    }
+    .chk-big-options {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .chk-big-card {
+      width: 100%;
+      min-height: 84px;
+      padding: 16px;
+      border-radius: 16px;
+      border: 2px solid var(--border);
+      background: var(--card);
+      text-align: left;
+      font-family: inherit;
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+      box-shadow: 0 3px 10px rgba(62, 37, 25, 0.04);
+    }
+    .chk-big-card.active {
+      border-color: var(--brand);
+      background: var(--brand-light);
+      box-shadow: 0 6px 18px rgba(62, 37, 25, 0.09);
+    }
+    .chk-big-card-title {
+      font-size: 1.03rem;
+      font-weight: 900;
+      color: var(--text);
+      line-height: 1.25;
+    }
+    .chk-big-card-sub {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--muted);
+      margin-top: 4px;
+      line-height: 1.35;
+    }
+    .chk-big-price-badge {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 900;
+      background: var(--surface-warm);
+      color: var(--brand-dark);
+      border: 1px solid var(--brand-border);
+    }
+    .chk-big-radio {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      border: 2px solid #cfc4b8;
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.92rem;
+      font-weight: 900;
+      color: transparent;
+      flex-shrink: 0;
+    }
+    .chk-big-card.active .chk-big-radio {
+      border-color: var(--brand);
+      background: var(--brand);
+      color: #ffffff;
+    }
+    .chk-field-lg {
+      margin-bottom: 15px;
+    }
+    .chk-field-lg label {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 900;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .chk-field-lg input {
+      width: 100%;
+      min-height: 52px;
+      padding: 13px 14px;
+      border-radius: 13px;
+      border: 1.5px solid var(--border);
+      background: var(--card);
+      font-size: 1rem;
+      font-family: inherit;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .chk-field-lg input:focus {
+      outline: none;
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px var(--brand-light);
+    }
+    .chk-wiz-footer {
+      flex-shrink: 0;
+      background: var(--card);
+      border-top: 1px solid var(--border);
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+      box-shadow: 0 -4px 16px rgba(62, 37, 25, 0.06);
+    }
+    .chk-wiz-footer-inner {
+      max-width: 540px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .chk-btn-primary {
+      width: 100%;
+      min-height: 54px;
+      padding: 14px 18px;
+      border-radius: 14px;
+      border: none;
+      background: var(--brand);
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 1.05rem;
+      font-weight: 900;
+      cursor: pointer;
+      transition: opacity 0.16s ease, background-color 0.16s ease;
+    }
+    .chk-btn-primary:disabled {
+      opacity: 0.40 !important;
+      cursor: not-allowed !important;
+      pointer-events: none;
+    }
+
     /* Seguimiento en Vivo Marca Blanca (Estilo Mercado Libre) */
     .btn-track-header {
       background: var(--brand-light);
@@ -984,9 +1269,9 @@
     </button>
   </div>
 
-  <!-- Modal de Confirmación de Pedido Vecinal -->
-  <div class="modal-backdrop" id="checkout-modal">
-    <div class="modal-card" id="checkout-card-content"></div>
+  <!-- Wizard Fullscreen de Confirmación de Pedido Vecinal -->
+  <div class="chk-fullscreen-wizard" id="checkout-modal" role="dialog" aria-modal="true">
+    <div class="chk-wiz-shell" id="checkout-card-content"></div>
   </div>
 
   <!-- Modal Marca Blanca de Seguimiento en Vivo / Buscador de Pedido -->
@@ -1018,7 +1303,18 @@
       ultimoPedidoConfirmado: null,
       ofertaEnfocadaId: 0,
       skuEnfocado: '',
-      _scrollOfertaHecho: false
+      _scrollOfertaHecho: false,
+      checkoutWiz: {
+        pasoActualKey: 'entrega',
+        modalidadElegida: '',
+        medioPagoElegido: '',
+        nombre: '',
+        telefono: '',
+        direccion: '',
+        entrecalles: '',
+        teniaDatosGuardados: false,
+        enviandoPedido: false
+      }
     };
 
     function fmt(n) {
@@ -1473,7 +1769,7 @@
       refrescarBannerPedidosRecientes();
       renderizarBannerDispositivoAdminTienda();
 
-      if (!fechaSimulada && _telUltimoSlugVistaEnviada !== STATE.slug) {
+      if (!fechaSimuladaIso && _telUltimoSlugVistaEnviada !== STATE.slug) {
         _telUltimoSlugVistaEnviada = STATE.slug;
         const extraVista = {};
         if (_URL_LAUNCH_PARAMS.modo_admin_param === '1') {
@@ -1934,11 +2230,93 @@
       document.getElementById('cart-total-label').textContent = fmt(res.subtotal);
     }
 
+    function obtenerMediosPagoHabilitadosTienda(nodoObj = STATE.nodo) {
+      const n = nodoObj || {};
+      const permiteTransf = n.permitir_transferencia !== false;
+      const permiteEfec = n.permitir_efectivo !== false;
+      const lista = [];
+      if (permiteTransf) {
+        lista.push({
+          codigo: 'TRANSFERENCIA',
+          titulo: '🏦 Transferencia Bancaria',
+          subtitulo: `Alias: ${n.alias_bancario_display || 'pago.canasto'}`
+        });
+      }
+      if (permiteEfec) {
+        lista.push({
+          codigo: 'EFECTIVO',
+          titulo: '💵 Efectivo al recibir / retirar',
+          subtitulo: 'Abonás en mano al momento de la entrega'
+        });
+      }
+      if (lista.length === 0) {
+        lista.push({
+          codigo: 'TRANSFERENCIA',
+          titulo: '🏦 Transferencia Bancaria',
+          subtitulo: `Alias: ${n.alias_bancario_display || 'pago.canasto'}`
+        });
+      }
+      return lista;
+    }
+
+    function obtenerPasosCheckoutWizard() {
+      if (STATE.checkoutWiz.modalidadElegida === 'ENVIO_BARRIAL') {
+        return ['entrega', 'datos', 'direccion', 'pago', 'revision'];
+      }
+      return ['entrega', 'datos', 'pago', 'revision'];
+    }
+
+    function validarPasoCheckoutWizard(pasoKey) {
+      const w = STATE.checkoutWiz;
+      if (pasoKey === 'entrega') {
+        return w.modalidadElegida === 'RETIRO_NODO' || w.modalidadElegida === 'ENVIO_BARRIAL';
+      }
+      if (pasoKey === 'datos') {
+        const nom = String(w.nombre || '').trim();
+        const digitosTel = String(w.telefono || '').replace(/\D/g, '');
+        return nom.length >= 2 && digitosTel.length >= 8;
+      }
+      if (pasoKey === 'direccion') {
+        const dir = String(w.direccion || '').trim();
+        return dir.length >= 3;
+      }
+      if (pasoKey === 'pago') {
+        return w.medioPagoElegido === 'TRANSFERENCIA' || w.medioPagoElegido === 'EFECTIVO';
+      }
+      if (pasoKey === 'revision') {
+        return validarPasoCheckoutWizard('entrega') &&
+               validarPasoCheckoutWizard('datos') &&
+               (w.modalidadElegida !== 'ENVIO_BARRIAL' || validarPasoCheckoutWizard('direccion')) &&
+               validarPasoCheckoutWizard('pago');
+      }
+      return false;
+    }
+
     function abrirModalCheckout() {
       const res = calcularResumenCarrito();
       if (res.unidades === 0) return;
       enviarTelemetriaTienda('inicio_checkout', construirSnapshotCarritoTelemetria(), 2000);
 
+      const idGuardada = obtenerIdentidadVecinoLocal(STATE.slug) || {};
+      const nombrePre = String(idGuardada.nombre_completo || window._savedVecinoNombre || '').trim();
+      const telPre = String(idGuardada.telefono_display || idGuardada.telefono_normalizado || window._savedVecinoTel || '').trim();
+      const dirPre = String(idGuardada.direccion_calle || window._savedVecinoDir || '').trim();
+      const refPre = String(idGuardada.entrecalles_referencia || window._savedVecinoRef || '').trim();
+
+      STATE.mostrarMapaCheckoutVecino = false;
+      STATE.checkoutWiz = {
+        pasoActualKey: 'entrega',
+        modalidadElegida: '',
+        medioPagoElegido: '',
+        nombre: nombrePre,
+        telefono: telPre,
+        direccion: dirPre,
+        entrecalles: refPre,
+        teniaDatosGuardados: Boolean(nombrePre.length >= 2 && telPre.replace(/\D/g, '').length >= 8),
+        enviandoPedido: false
+      };
+
+      document.body.style.overflow = 'hidden';
       const modal = document.getElementById('checkout-modal');
       modal.style.display = 'flex';
       renderContenidoModalCheckout();
@@ -1954,7 +2332,78 @@
 
     function cerrarModalCheckout() {
       destruirMapaCheckoutVecino();
-      document.getElementById('checkout-modal').style.display = 'none';
+      document.body.style.overflow = '';
+      const modal = document.getElementById('checkout-modal');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function sincronizarInputsPasoVisibleCheckout() {
+      const inpNom = document.getElementById('chk-nombre');
+      if (inpNom) {
+        STATE.checkoutWiz.nombre = inpNom.value;
+        window._savedVecinoNombre = inpNom.value;
+      }
+      const inpTel = document.getElementById('chk-telefono');
+      if (inpTel) {
+        STATE.checkoutWiz.telefono = inpTel.value;
+        window._savedVecinoTel = inpTel.value;
+      }
+      const inpDir = document.getElementById('chk-direccion');
+      if (inpDir) {
+        STATE.checkoutWiz.direccion = inpDir.value;
+        window._savedVecinoDir = inpDir.value;
+      }
+      const inpRef = document.getElementById('chk-entrecalles');
+      if (inpRef) {
+        STATE.checkoutWiz.entrecalles = inpRef.value;
+        window._savedVecinoRef = inpRef.value;
+      }
+    }
+
+    function retrocederPasoCheckoutWizard() {
+      if (STATE.checkoutWiz.enviandoPedido) return;
+      sincronizarInputsPasoVisibleCheckout();
+      const pasos = obtenerPasosCheckoutWizard();
+      const idx = pasos.indexOf(STATE.checkoutWiz.pasoActualKey);
+      if (idx <= 0) {
+        cerrarModalCheckout();
+        return;
+      }
+      STATE.checkoutWiz.pasoActualKey = pasos[idx - 1];
+      renderContenidoModalCheckout();
+    }
+
+    function avanzarPasoCheckoutWizard() {
+      if (STATE.checkoutWiz.enviandoPedido) return;
+      sincronizarInputsPasoVisibleCheckout();
+      const actual = STATE.checkoutWiz.pasoActualKey;
+      if (!validarPasoCheckoutWizard(actual)) return;
+      const pasos = obtenerPasosCheckoutWizard();
+      const idx = pasos.indexOf(actual);
+      if (idx >= 0 && idx < pasos.length - 1) {
+        STATE.checkoutWiz.pasoActualKey = pasos[idx + 1];
+        renderContenidoModalCheckout();
+      }
+    }
+
+    function seleccionarModalidadCheckoutWizard(mod) {
+      STATE.checkoutWiz.modalidadElegida = mod;
+      STATE.modalidadEntrega = mod;
+      renderContenidoModalCheckout();
+    }
+
+    function seleccionarPagoCheckoutWizard(medio) {
+      STATE.checkoutWiz.medioPagoElegido = medio;
+      STATE.medioPago = medio;
+      renderContenidoModalCheckout();
+    }
+
+    function onInputDatosCheckoutWizard() {
+      sincronizarInputsPasoVisibleCheckout();
+      const btn = document.getElementById('chk-btn-continuar');
+      if (btn) {
+        btn.disabled = !validarPasoCheckoutWizard('datos');
+      }
     }
 
     function _normalizarDirCheckPin(txt = '') {
@@ -1962,6 +2411,7 @@
     }
 
     function onEditarDireccionCheckoutVecino(val) {
+      STATE.checkoutWiz.direccion = val;
       window._savedVecinoDir = val;
       if (window._savedVecinoLat != null && _normalizarDirCheckPin(val) !== _normalizarDirCheckPin(window._savedVecinoDirPinBase || '')) {
         window._savedVecinoLat = null;
@@ -1969,6 +2419,10 @@
         window._savedVecinoGpsOrigen = null;
         window._savedVecinoDirPinBase = '';
         actualizarEstadoGpsCheckoutUI();
+      }
+      const btn = document.getElementById('chk-btn-continuar');
+      if (btn) {
+        btn.disabled = !validarPasoCheckoutWizard('direccion');
       }
     }
 
@@ -2028,7 +2482,7 @@
         window._savedVecinoLat = Number(Number(lat).toFixed(7));
         window._savedVecinoLng = Number(Number(lng).toFixed(7));
         window._savedVecinoGpsOrigen = 'VECINO_PIN_MAPA';
-        window._savedVecinoDirPinBase = document.getElementById('chk-direccion')?.value || window._savedVecinoDir || '';
+        window._savedVecinoDirPinBase = document.getElementById('chk-direccion')?.value || STATE.checkoutWiz.direccion || window._savedVecinoDir || '';
         marker.setLatLng([window._savedVecinoLat, window._savedVecinoLng]);
         actualizarEstadoGpsCheckoutUI();
       };
@@ -2080,7 +2534,7 @@
           window._savedVecinoLat = Number(pos.coords.latitude.toFixed(7));
           window._savedVecinoLng = Number(pos.coords.longitude.toFixed(7));
           window._savedVecinoGpsOrigen = 'VECINO_GPS';
-          window._savedVecinoDirPinBase = document.getElementById('chk-direccion')?.value || window._savedVecinoDir || '';
+          window._savedVecinoDirPinBase = document.getElementById('chk-direccion')?.value || STATE.checkoutWiz.direccion || window._savedVecinoDir || '';
           STATE.mostrarMapaCheckoutVecino = true;
           const wrap = document.getElementById('chk-mapa-wrapper');
           const toggleBtn = document.getElementById('chk-btn-toggle-mapa');
@@ -2103,85 +2557,190 @@
       );
     }
 
+    function renderCabeceraMarcaCheckoutWizard(pasoNumero, totalPasos, modoConfirmado = false) {
+      const nodo = STATE.nodo || {};
+      const prox = STATE.proximaEntrega?.asignada;
+      const proxLabel = prox ? prox.label_completo : 'Próxima ventana';
+      const logoHorizontal = nodo.tema_visual?.logos?.horizontal || '';
+      const logoIncluyeTexto = Boolean(logoHorizontal && nodo.tema_visual?.logo_incluye_texto);
+      const logoFallback = logoHorizontal || nodo.logo_original_base64 || nodo.logo_mono_preview_base64 || obtenerLogoIconoNodo(nodo) || '';
+      const bajadaEfectiva = nodo.bajada_marca || nodo.subtitulo_marca || (nodo.barrio_zona ? `📍 ${nodo.barrio_zona}` : 'Tienda barrial');
+      const altLogo = nodo.bajada_marca ? `${nodo.nombre_marca} · ${nodo.bajada_marca}` : (nodo.nombre_marca || 'Tienda');
+      const siglas = String(nodo.nombre_marca || 'ND').split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
+
+      const identidadHtml = logoIncluyeTexto
+        ? `<img src="${esc(logoHorizontal)}" class="chk-wiz-logo-horizontal" alt="${esc(altLogo)}">`
+        : `
+          <div class="chk-wiz-brand-std">
+            ${logoFallback
+              ? `<img src="${esc(logoFallback)}" alt="${esc(altLogo)}">`
+              : `<div class="brand-monogram" style="width:44px;height:44px;border-radius:12px;">${esc(siglas)}</div>`}
+            <div>
+              <div class="chk-wiz-brand-name">${esc(nodo.nombre_marca || 'Mi Nodo')}</div>
+              <div class="chk-wiz-brand-sub">${esc(bajadaEfectiva)}</div>
+            </div>
+          </div>
+        `;
+
+      const porcentajeAvance = modoConfirmado
+        ? 100
+        : Math.max(10, Math.min(100, Math.round((pasoNumero / Math.max(1, totalPasos)) * 100)));
+
+      return `
+        <header class="chk-wiz-header">
+          <div class="chk-wiz-header-inner">
+            <div class="chk-wiz-nav-row">
+              <button type="button" id="chk-btn-volver" class="chk-btn-volver"
+                onclick="${modoConfirmado ? 'cerrarModalCheckout()' : 'retrocederPasoCheckoutWizard()'}">
+                ← Volver
+              </button>
+              ${modoConfirmado
+                ? `<span class="chk-step-pill" style="background:var(--ok-soft);color:var(--ok);border-color:var(--ok-border);">✓ Pedido confirmado</span>`
+                : `<span class="chk-step-pill" id="chk-step-indicator">Paso ${pasoNumero} de ${totalPasos}</span>`}
+            </div>
+            <div class="chk-wiz-brand-row">
+              ${identidadHtml}
+              <span class="chk-wiz-delivery-chip">📅 ${esc(proxLabel)}</span>
+            </div>
+          </div>
+          <div class="chk-wiz-progress-track">
+            <div class="chk-wiz-progress-fill" style="width:${porcentajeAvance}%; ${modoConfirmado ? 'background:var(--ok);' : ''}"></div>
+          </div>
+        </header>
+      `;
+    }
+
     function renderContenidoModalCheckout() {
       destruirMapaCheckoutVecino();
-      asegurarModalidadEntregaValida();
       const capEntrega = obtenerCapacidadesEntregaTienda();
+      const w = STATE.checkoutWiz;
+      const pasos = obtenerPasosCheckoutWizard();
+      if (!pasos.includes(w.pasoActualKey)) {
+        w.pasoActualKey = pasos[0];
+      }
+      const pasoIdx = pasos.indexOf(w.pasoActualKey);
+      const pasoNumero = pasoIdx + 1;
+      const totalPasos = pasos.length;
+
+      if (w.modalidadElegida) {
+        STATE.modalidadEntrega = w.modalidadElegida;
+      }
       const res = calcularResumenCarrito();
       const prox = STATE.proximaEntrega?.asignada;
       const box = document.getElementById('checkout-card-content');
       const tienePinActual = Number.isFinite(Number(window._savedVecinoLat)) && Number.isFinite(Number(window._savedVecinoLng)) && Number(window._savedVecinoLat) !== 0;
 
-      box.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:14px;">
-          <div>
-            <h2 style="margin:0; font-size:1.2rem; font-weight:900;">🧺 Confirmar Pedido Vecinal</h2>
-            <div style="font-size:0.8rem; color:var(--brand-dark); font-weight:800; margin-top:2px;">
-              📅 Entrega asignada: ${esc(prox ? prox.label_completo : 'Próxima ventana')}
-            </div>
-          </div>
-          <button type="button" onclick="cerrarModalCheckout()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--muted);">&times;</button>
-        </div>
+      let stageHtml = '';
+      let footerHtml = '';
 
-        <!-- Resumen de ítems -->
-        <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:14px; max-height:160px; overflow-y:auto;">
-          ${res.detalle.map(it => `
-            <div style="display:flex; justify-content:space-between; gap:8px; font-size:0.86rem; padding:4px 0; border-bottom:1px dashed var(--border);">
-              <span><strong>${it.cantidad}x</strong> ${esc(formatearNombreItemConPresentacion(it))}</span>
-              <strong style="white-space:nowrap;">${fmt(it.subtotal)}</strong>
-            </div>
-          `).join('')}
-        </div>
+      if (w.pasoActualKey === 'entrega') {
+        const cargoEnvioNum = Number(STATE.nodo?.cargo_envio_barrial || 0);
+        const costoEnvioBadge = cargoEnvioNum > 0 ? `Costo de envío: +${fmt(cargoEnvioNum)}` : 'Envío sin cargo';
+        const pasoValido = validarPasoCheckoutWizard('entrega');
 
-        <!-- Elección de Retiro o Envío Barrial (según capacidades activas del Nodo) -->
-        <label style="display:block; font-size:0.8rem; font-weight:800; color:var(--text); margin-bottom:6px;">1. ¿Cómo preferís recibir tu pedido?</label>
-        <div class="option-grid">
-          ${capEntrega.puedeRetiro ? `
-            <div class="opt-card ${STATE.modalidadEntrega === 'RETIRO_NODO' ? 'active' : ''}"
-                 onclick="STATE.modalidadEntrega='RETIRO_NODO'; renderContenidoModalCheckout();">
-              <div class="opt-title">🏠 Retiro por el Nodo (Gratis)</div>
-              <div class="opt-sub">${esc(STATE.nodo.direccion_retiro || STATE.nodo.barrio_zona)}</div>
-            </div>
-          ` : ''}
-          ${capEntrega.puedeReparto ? `
-            <div class="opt-card ${STATE.modalidadEntrega === 'ENVIO_BARRIAL' ? 'active' : ''}"
-                 onclick="STATE.modalidadEntrega='ENVIO_BARRIAL'; renderContenidoModalCheckout();">
-              <div class="opt-title">🛵 Envío a Domicilio (+${fmt(STATE.nodo.cargo_envio_barrial)})</div>
-              <div class="opt-sub">Reparto barrial en ${esc(STATE.nodo.barrio_zona || 'la zona')}</div>
-            </div>
-          ` : ''}
-        </div>
-
-        <!-- Datos del vecino -->
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-          <div class="form-group">
-            <label>Tu Nombre y Apellido *</label>
-            <input type="text" id="chk-nombre" placeholder="Ej: María Laura Gómez" value="${esc(window._savedVecinoNombre || '')}" oninput="window._savedVecinoNombre=this.value">
-          </div>
-          <div class="form-group">
-            <label>Tu WhatsApp *</label>
-            <input type="text" id="chk-telefono" placeholder="Ej: 221 661 5746" value="${esc(window._savedVecinoTel || '221 661 5746')}" oninput="window._savedVecinoTel=this.value">
-          </div>
-        </div>
-
-        ${STATE.modalidadEntrega === 'ENVIO_BARRIAL' ? `
-          <div style="display:grid; grid-template-columns: 1.2fr 0.8fr; gap:10px;">
-            <div class="form-group">
-              <label>Dirección de entrega en el barrio *</label>
-              <input type="text" id="chk-direccion" placeholder="Calle y número (ej: Calle 473 bis N° 1120)" value="${esc(window._savedVecinoDir || '')}" oninput="onEditarDireccionCheckoutVecino(this.value)">
-            </div>
-            <div class="form-group">
-              <label>Entrecalles / Referencia</label>
-              <input type="text" id="chk-entrecalles" placeholder="Ej: entre 14b y 15, portón verde" value="${esc(window._savedVecinoRef || '')}" oninput="window._savedVecinoRef=this.value">
-            </div>
-          </div>
-          <div style="margin:-2px 0 14px; padding:10px 12px; border-radius:12px; background:#fffdfb; border:1px dashed var(--brand-border);">
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
-              <div style="flex:1; min-width:210px;">
-                <div style="font-size:0.8rem; color:var(--text); font-weight:800;">
-                  📍 Opcional: si estás en casa, podés sumar tu ubicación
+        stageHtml = `
+          <h2 class="chk-wiz-question">¿Cómo querés recibir tu pedido?</h2>
+          <p class="chk-wiz-lead">Tocá una tarjeta para elegir cómo preferís recibir tu compra.</p>
+          <div class="chk-big-options">
+            ${capEntrega.puedeRetiro ? `
+              <button type="button" id="chk-opt-retiro"
+                class="chk-big-card ${w.modalidadElegida === 'RETIRO_NODO' ? 'active' : ''}"
+                onclick="seleccionarModalidadCheckoutWizard('RETIRO_NODO')">
+                <div>
+                  <div class="chk-big-card-title">🏠 Retiro en punto de entrega</div>
+                  <div class="chk-big-card-sub">${esc(STATE.nodo?.direccion_retiro || STATE.nodo?.barrio_zona || 'Punto del nodo')}</div>
+                  <span class="chk-big-price-badge">Sin cargo</span>
                 </div>
-                <div id="chk-gps-status-txt" style="font-size:0.75rem; color:${tienePinActual ? '#15803d' : 'var(--muted)'}; font-weight:700; margin-top:2px;">
+                <span class="chk-big-radio">✓</span>
+              </button>
+            ` : ''}
+            ${capEntrega.puedeReparto ? `
+              <button type="button" id="chk-opt-envio"
+                class="chk-big-card ${w.modalidadElegida === 'ENVIO_BARRIAL' ? 'active' : ''}"
+                onclick="seleccionarModalidadCheckoutWizard('ENVIO_BARRIAL')">
+                <div>
+                  <div class="chk-big-card-title">🛵 Envío a domicilio</div>
+                  <div class="chk-big-card-sub">Reparto en ${esc(STATE.nodo?.barrio_zona || 'tu barrio')}</div>
+                  <span class="chk-big-price-badge">${esc(costoEnvioBadge)}</span>
+                </div>
+                <span class="chk-big-radio">✓</span>
+              </button>
+            ` : ''}
+          </div>
+        `;
+
+        footerHtml = `
+          <button type="button" id="chk-btn-continuar" class="chk-btn-primary"
+            ${pasoValido ? '' : 'disabled'}
+            onclick="avanzarPasoCheckoutWizard()">
+            Continuar
+          </button>
+        `;
+      } else if (w.pasoActualKey === 'datos') {
+        const pasoValido = validarPasoCheckoutWizard('datos');
+        stageHtml = `
+          <h2 class="chk-wiz-question">¿A nombre de quién preparamos tu pedido?</h2>
+          ${w.teniaDatosGuardados ? `
+            <div style="margin:0 0 16px 0; padding:11px 13px; border-radius:12px; background:var(--ok-soft); border:1px solid var(--ok-border); color:var(--ok); font-size:0.86rem; font-weight:800; line-height:1.4;">
+              ✓ Cargamos tus datos guardados. Si están bien, tocá <strong>Continuar</strong>.
+            </div>
+          ` : `
+            <p class="chk-wiz-lead">Te avisamos por WhatsApp cuando tu pedido esté listo.</p>
+          `}
+
+          <div class="chk-field-lg">
+            <label for="chk-nombre">Tu nombre y apellido *</label>
+            <input type="text" id="chk-nombre" autocomplete="name"
+              placeholder="Ej: María Laura Gómez"
+              value="${esc(w.nombre)}"
+              oninput="onInputDatosCheckoutWizard()">
+          </div>
+
+          <div class="chk-field-lg">
+            <label for="chk-telefono">Tu número de WhatsApp *</label>
+            <input type="tel" inputmode="tel" id="chk-telefono" autocomplete="tel"
+              placeholder="Ej: 221 555 4444"
+              value="${esc(w.telefono)}"
+              oninput="onInputDatosCheckoutWizard()">
+          </div>
+        `;
+
+        footerHtml = `
+          <button type="button" id="chk-btn-continuar" class="chk-btn-primary"
+            ${pasoValido ? '' : 'disabled'}
+            onclick="avanzarPasoCheckoutWizard()">
+            Continuar
+          </button>
+        `;
+      } else if (w.pasoActualKey === 'direccion') {
+        const pasoValido = validarPasoCheckoutWizard('direccion');
+        stageHtml = `
+          <h2 class="chk-wiz-question">¿A qué dirección te lo llevamos?</h2>
+          <p class="chk-wiz-lead">Indicá tu calle y número en ${esc(STATE.nodo?.barrio_zona || 'el barrio')}.</p>
+
+          <div class="chk-field-lg">
+            <label for="chk-direccion">Calle y número *</label>
+            <input type="text" id="chk-direccion" autocomplete="street-address"
+              placeholder="Ej: Calle 473 bis N° 1120"
+              value="${esc(w.direccion)}"
+              oninput="onEditarDireccionCheckoutVecino(this.value)">
+          </div>
+
+          <div class="chk-field-lg">
+            <label for="chk-entrecalles">Entrecalles o referencia (opcional)</label>
+            <input type="text" id="chk-entrecalles"
+              placeholder="Ej: entre 14b y 15, portón verde"
+              value="${esc(w.entrecalles)}"
+              oninput="STATE.checkoutWiz.entrecalles=this.value; window._savedVecinoRef=this.value;">
+          </div>
+
+          <div style="margin-top:4px; padding:11px 13px; border-radius:14px; background:var(--card); border:1px dashed var(--brand-border);">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+              <div style="flex:1; min-width:200px;">
+                <div style="font-size:0.84rem; color:var(--text); font-weight:900;">
+                  📍 Opcional: sumar ubicación en mapa
+                </div>
+                <div id="chk-gps-status-txt" style="font-size:0.76rem; color:${tienePinActual ? '#15803d' : 'var(--muted)'}; font-weight:700; margin-top:2px;">
                   ${tienePinActual
                     ? `✅ Ubicación lista (${Number(window._savedVecinoLat).toFixed(5)}, ${Number(window._savedVecinoLng).toFixed(5)}) — podés mover el pin si hace falta.`
                     : 'Si no compartís GPS no hay problema: repartimos con tu calle y entrecalles.'}
@@ -2189,82 +2748,172 @@
               </div>
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 <button type="button" id="chk-btn-gps-actual" onclick="capturarUbicacionActualCheckoutVecino()"
-                  style="padding:7px 11px; border-radius:9px; border:1px solid #16a34a; background:#f0fdf4; color:#15803d; font-family:inherit; font-weight:800; font-size:0.76rem; cursor:pointer;">
+                  style="padding:8px 12px; border-radius:10px; border:1px solid #16a34a; background:#f0fdf4; color:#15803d; font-family:inherit; font-weight:800; font-size:0.78rem; cursor:pointer;">
                   📍 Usar mi ubicación actual
                 </button>
                 <button type="button" id="chk-btn-toggle-mapa" onclick="toggleMapaPinCheckoutVecino()"
-                  style="padding:7px 11px; border-radius:9px; border:1px solid var(--brand-border); background:#ffffff; color:var(--brand-dark); font-family:inherit; font-weight:800; font-size:0.76rem; cursor:pointer;">
+                  style="padding:8px 12px; border-radius:10px; border:1px solid var(--brand-border); background:#ffffff; color:var(--brand-dark); font-family:inherit; font-weight:800; font-size:0.78rem; cursor:pointer;">
                   🗺️ ${STATE.mostrarMapaCheckoutVecino ? 'Ocultar mapa' : 'Marcar pin en mapa'}
                 </button>
                 <button type="button" id="chk-btn-quitar-pin" onclick="limpiarUbicacionCheckoutVecino()"
-                  style="display:${tienePinActual ? 'inline-flex' : 'none'}; padding:7px 10px; border-radius:9px; border:1px solid #fecaca; background:#fef2f2; color:#b91c1c; font-family:inherit; font-weight:800; font-size:0.75rem; cursor:pointer;">
+                  style="display:${tienePinActual ? 'inline-flex' : 'none'}; padding:8px 10px; border-radius:10px; border:1px solid #fecaca; background:#fef2f2; color:#b91c1c; font-family:inherit; font-weight:800; font-size:0.76rem; cursor:pointer;">
                   ✕ Quitar pin
                 </button>
               </div>
             </div>
             <div id="chk-mapa-wrapper" style="display:${STATE.mostrarMapaCheckoutVecino ? 'block' : 'none'}; margin-top:10px;">
-              <div id="chk-leaflet-map" style="width:100%; height:200px; border-radius:10px; border:1px solid var(--border); background:#f3efe9;"></div>
-              <div style="font-size:0.72rem; color:var(--muted); font-weight:700; margin-top:5px;">
+              <div id="chk-leaflet-map" style="width:100%; height:195px; border-radius:10px; border:1px solid var(--border); background:#f3efe9;"></div>
+              <div style="font-size:0.74rem; color:var(--muted); font-weight:700; margin-top:5px;">
                 Tocá el mapa o arrastrá el marcador si querés ajustar la puerta exacta.
               </div>
             </div>
           </div>
-        ` : ''}
+        `;
 
-        <!-- Elección de Medio de Pago -->
-        <label style="display:block; font-size:0.8rem; font-weight:800; color:var(--text); margin-bottom:6px;">2. ¿Cómo preferís abonar?</label>
-        <div class="option-grid">
-          <div class="opt-card ${STATE.medioPago === 'TRANSFERENCIA' ? 'active' : ''}"
-               onclick="STATE.medioPago='TRANSFERENCIA'; renderContenidoModalCheckout();">
-            <div class="opt-title">🏦 Transferencia Bancaria</div>
-            <div class="opt-sub">Alias: <strong>${esc(STATE.nodo.alias_bancario_display || 'pago.canasto')}</strong></div>
-          </div>
-          <div class="opt-card ${STATE.medioPago === 'EFECTIVO' ? 'active' : ''}"
-               onclick="STATE.medioPago='EFECTIVO'; renderContenidoModalCheckout();">
-            <div class="opt-title">💵 Efectivo al recibir / retirar</div>
-            <div class="opt-sub">Abonás en mano al momento de la entrega</div>
-          </div>
-        </div>
+        footerHtml = `
+          <button type="button" id="chk-btn-continuar" class="chk-btn-primary"
+            ${pasoValido ? '' : 'disabled'}
+            onclick="avanzarPasoCheckoutWizard()">
+            Continuar
+          </button>
+        `;
+      } else if (w.pasoActualKey === 'pago') {
+        const mediosHabilitados = obtenerMediosPagoHabilitadosTienda(STATE.nodo);
+        const pasoValido = validarPasoCheckoutWizard('pago');
 
-        <!-- Totalizador -->
-        <div style="background:#3e2519; color:#fffdfb; border-radius:14px; padding:13px 16px; margin-bottom:14px;">
-          <div style="display:flex; justify-content:space-between; font-size:0.84rem; color:#d9c8bb; font-weight:700;">
-            <span>Subtotal productos (${res.unidades} u.)</span>
-            <span>${fmt(res.subtotal)}</span>
+        stageHtml = `
+          <h2 class="chk-wiz-question">¿Cómo preferís abonar?</h2>
+          <p class="chk-wiz-lead">Elegí el medio de pago más cómodo para vos.</p>
+          <div class="chk-big-options">
+            ${mediosHabilitados.map(m => `
+              <button type="button" id="chk-opt-pago-${esc(m.codigo.toLowerCase())}"
+                class="chk-big-card ${w.medioPagoElegido === m.codigo ? 'active' : ''}"
+                onclick="seleccionarPagoCheckoutWizard('${esc(m.codigo)}')">
+                <div>
+                  <div class="chk-big-card-title">${esc(m.titulo)}</div>
+                  <div class="chk-big-card-sub">${esc(m.subtitulo)}</div>
+                </div>
+                <span class="chk-big-radio">✓</span>
+              </button>
+            `).join('')}
           </div>
-          ${res.costoEnvio > 0 ? `
-            <div style="display:flex; justify-content:space-between; font-size:0.84rem; color:#f5d0b5; margin-top:4px; font-weight:700;">
-              <span>Envío a domicilio barrial</span>
-              <span>+${fmt(res.costoEnvio)}</span>
+        `;
+
+        footerHtml = `
+          <button type="button" id="chk-btn-continuar" class="chk-btn-primary"
+            ${pasoValido ? '' : 'disabled'}
+            onclick="avanzarPasoCheckoutWizard()">
+            Continuar
+          </button>
+        `;
+      } else {
+        const esEnvio = w.modalidadElegida === 'ENVIO_BARRIAL';
+        const entregaTexto = esEnvio
+          ? `🛵 Envío a domicilio — ${w.direccion}${w.entrecalles ? ' (' + w.entrecalles + ')' : ''}`
+          : `🏠 Retiro en punto de entrega — ${STATE.nodo?.direccion_retiro || STATE.nodo?.barrio_zona || ''}`;
+        const pagoTexto = w.medioPagoElegido === 'EFECTIVO'
+          ? '💵 Efectivo al recibir / retirar'
+          : `🏦 Transferencia Bancaria (Alias: ${STATE.nodo?.alias_bancario_display || 'pago.canasto'})`;
+
+        stageHtml = `
+          <h2 class="chk-wiz-question">Revisá y confirmá tu pedido</h2>
+          <p class="chk-wiz-lead">Verificá el resumen antes de enviarlo.</p>
+
+          <div style="background:var(--card); border:1.5px solid var(--border); border-radius:16px; padding:15px 16px; margin-bottom:14px; box-shadow:0 3px 12px rgba(62,37,25,0.04);">
+            <div style="font-size:0.78rem; font-weight:900; text-transform:uppercase; color:var(--brand-dark); margin-bottom:8px;">
+              🛒 Tus productos (${res.unidades} ${res.unidades === 1 ? 'unidad' : 'unidades'})
             </div>
-          ` : ''}
-          <div style="display:flex; justify-content:space-between; font-size:1.2rem; font-weight:900; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.16);">
-            <span>Total a abonar</span>
-            <span style="color:#fcd9bd;">${fmt(res.total)}</span>
+            ${res.detalle.map(it => `
+              <div style="display:flex; justify-content:space-between; gap:10px; font-size:0.93rem; padding:6px 0; border-bottom:1px dashed var(--border);">
+                <span><strong>${it.cantidad}x</strong> ${esc(formatearNombreItemConPresentacion(it))}</span>
+                <strong style="white-space:nowrap;">${fmt(it.subtotal)}</strong>
+              </div>
+            `).join('')}
+
+            <div style="margin-top:12px; display:flex; flex-direction:column; gap:7px; font-size:0.88rem; line-height:1.4;">
+              <div><span style="color:var(--muted); font-weight:800;">Entrega:</span> <strong>${esc(entregaTexto)}</strong></div>
+              <div><span style="color:var(--muted); font-weight:800;">Fecha estimada:</span> <strong>${esc(prox ? prox.label_completo : 'Próxima ventana')}</strong></div>
+              <div><span style="color:var(--muted); font-weight:800;">Vecino/a:</span> <strong>${esc(w.nombre)} · 📱 ${esc(w.telefono)}</strong></div>
+              <div><span style="color:var(--muted); font-weight:800;">Abonás con:</span> <strong>${esc(pagoTexto)}</strong></div>
+            </div>
+          </div>
+
+          <div style="background:#3e2519; color:#fffdfb; border-radius:16px; padding:15px 18px;">
+            <div style="display:flex; justify-content:space-between; font-size:0.88rem; color:#d9c8bb; font-weight:700;">
+              <span>Subtotal productos</span>
+              <span>${fmt(res.subtotal)}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:0.88rem; color:#f5d0b5; margin-top:5px; font-weight:700;">
+              <span>${esEnvio ? 'Envío a domicilio' : 'Retiro en punto de entrega'}</span>
+              <span>${res.costoEnvio > 0 ? '+' + fmt(res.costoEnvio) : 'Sin cargo'}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:1.28rem; font-weight:900; margin-top:9px; padding-top:9px; border-top:1px solid rgba(255,255,255,0.18);">
+              <span>Total a abonar</span>
+              <span style="color:#fcd9bd;">${fmt(res.total)}</span>
+            </div>
+          </div>
+        `;
+
+        footerHtml = `
+          <button type="button" id="chk-btn-confirmar-pedido" class="chk-btn-primary"
+            ${w.enviandoPedido ? 'disabled' : ''}
+            onclick="enviarPedidoVecinal()">
+            ${w.enviandoPedido ? 'Confirmando tu pedido...' : 'Confirmar mi Pedido'}
+          </button>
+        `;
+      }
+
+      box.innerHTML = `
+        ${renderCabeceraMarcaCheckoutWizard(pasoNumero, totalPasos, false)}
+        <div class="chk-wiz-body" id="chk-wiz-scroll-body">
+          <div class="chk-wiz-stage">
+            ${stageHtml}
           </div>
         </div>
-
-        <button type="button" onclick="enviarPedidoVecinal()"
-          style="width:100%; padding:13px; border-radius:12px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:1rem; cursor:pointer;">
-          Confirmar mi Pedido
-        </button>
+        <footer class="chk-wiz-footer">
+          <div class="chk-wiz-footer-inner">
+            ${footerHtml}
+          </div>
+        </footer>
       `;
+
+      const scrollBody = document.getElementById('chk-wiz-scroll-body');
+      if (scrollBody) scrollBody.scrollTop = 0;
+
+      if (w.pasoActualKey === 'direccion' && STATE.mostrarMapaCheckoutVecino) {
+        inicializarMapaCheckoutVecino();
+      }
     }
 
     async function enviarPedidoVecinal() {
+      if (STATE.checkoutWiz.enviandoPedido) return;
+      sincronizarInputsPasoVisibleCheckout();
+
+      const w = STATE.checkoutWiz;
+      STATE.modalidadEntrega = w.modalidadElegida || STATE.modalidadEntrega;
+      STATE.medioPago = w.medioPagoElegido || STATE.medioPago;
       const res = calcularResumenCarrito();
-      const nombre = (document.getElementById('chk-nombre')?.value || '').trim();
-      const telefono = (document.getElementById('chk-telefono')?.value || '').trim();
-      const direccion = (document.getElementById('chk-direccion')?.value || '').trim();
-      const entrecalles = (document.getElementById('chk-entrecalles')?.value || '').trim();
+      const nombre = String(w.nombre || '').trim();
+      const telefono = String(w.telefono || '').trim();
+      const direccion = String(w.direccion || '').trim();
+      const entrecalles = String(w.entrecalles || '').trim();
 
       if (!nombre || !telefono) {
-        alert('Por favor completá tu nombre y tu número de WhatsApp.');
+        w.pasoActualKey = 'datos';
+        renderContenidoModalCheckout();
         return;
       }
       if (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && !direccion) {
-        alert('Por favor ingresá tu dirección para el envío barrial.');
+        w.pasoActualKey = 'direccion';
+        renderContenidoModalCheckout();
         return;
+      }
+
+      w.enviandoPedido = true;
+      const btnConf = document.getElementById('chk-btn-confirmar-pedido');
+      if (btnConf) {
+        btnConf.disabled = true;
+        btnConf.textContent = 'Confirmando tu pedido...';
       }
 
       const dirCoincidePin = Number.isFinite(Number(window._savedVecinoLat)) &&
@@ -2290,140 +2939,155 @@
         }))
       };
 
-      const resp = await fetch(`/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/pedido`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data.ok) {
-        alert(data.error || 'No se pudo registrar el pedido.');
-        return;
-      }
-
-      const ped = data.pedido;
-      const pagoInfo = data.nodo_pago_info;
-      const itemsConfirmados = (Array.isArray(ped?.items) && ped.items.length > 0)
-        ? ped.items
-        : calcularResumenCarrito().detalle;
-
-      STATE.carrito = {};
-      renderCatalogo();
-      actualizarBarraCarrito();
-
-      if (ped) {
-        STATE.ultimoPedidoConfirmado = {
-          codigo_pedido: ped.codigo_pedido,
-          items: itemsConfirmados
-        };
-        guardarIdentidadVecinoLocal({
-          portal_token: ped.portal_token || STATE.portalToken || '',
-          telefono_normalizado: ped.telefono_normalizado || '',
-          telefono_display: telefono || ped.vecino_telefono || '',
-          nombre_completo: ped.vecino_nombre || nombre || '',
-          direccion_calle: direccion || '',
-          entrecalles_referencia: entrecalles || ''
+      try {
+        const resp = await fetch(`/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/pedido`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
-        if (ped.tracking_token) {
-          guardarPedidoRecienteLocal({
-            codigo_pedido: ped.codigo_pedido,
-            tracking_token: ped.tracking_token,
-            vecino_nombre: ped.vecino_nombre,
-            created_at: ped.created_at || new Date().toISOString()
-          });
-          refrescarBannerPedidosRecientes();
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          w.enviandoPedido = false;
+          alert(data.error || 'No se pudo registrar el pedido.');
+          renderContenidoModalCheckout();
+          return;
         }
-        enviarTelemetriaTienda('pedido_confirmado', {
-          pedido_id: ped.id,
-          codigo_pedido: ped.codigo_pedido,
-          tracking_token: ped.tracking_token || undefined,
-          vecino_nombre: ped.vecino_nombre || nombre,
-          vecino_telefono: telefono || ped.vecino_telefono,
-          carrito_unidades: itemsConfirmados.reduce((acc, it) => acc + Number(it.cantidad || 1), 0),
-          carrito_subtotal: Number(ped.total_vecino || 0),
-          carrito_snapshot: []
-        }, 0);
-      }
-      const box = document.getElementById('checkout-card-content');
 
-      box.innerHTML = `
-        <div style="text-align:center; padding:10px 4px;">
-          <div style="font-size:2.6rem;">🎉</div>
-          <h2 style="margin:6px 0; color:#15803d;">¡Pedido Confirmado! (${esc(ped.codigo_pedido)})</h2>
-          <p style="margin:4px 0 14px 0; color:#475569; font-size:0.9rem;">
-            Gracias <strong>${esc(ped.vecino_nombre)}</strong>. Tu pedido en <strong>${esc(pagoInfo.nombre_marca)}</strong> ya quedó agendado.
-          </p>
+        w.enviandoPedido = false;
+        const ped = data.pedido;
+        const pagoInfo = data.nodo_pago_info;
+        const itemsConfirmados = (Array.isArray(ped?.items) && ped.items.length > 0)
+          ? ped.items
+          : res.detalle;
 
-          <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:12px; padding:12px; text-align:left; font-size:0.86rem; margin-bottom:14px;">
-            <div>📅 <strong>Fecha y ventana de entrega:</strong> ${esc(ped.fecha_entrega_label)}</div>
-            <div style="margin-top:4px;">📍 <strong>Modalidad:</strong> ${ped.modalidad_entrega === 'ENVIO_BARRIAL' ? `Envío a domicilio (${esc(ped.direccion_entrega)})` : `Retiro en Nodo (${esc(pagoInfo.direccion_retiro)})`}</div>
-            ${itemsConfirmados.length > 0 ? `
-              <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #86efac;">
-                <div style="font-size:0.75rem; font-weight:800; color:#166534; text-transform:uppercase; margin-bottom:4px;">🛒 Detalle del pedido</div>
-                ${itemsConfirmados.map(it => `
-                  <div style="display:flex; justify-content:space-between; gap:8px; font-size:0.82rem; padding:2px 0;">
-                    <span><strong>${Number(it.cantidad || 1)}x</strong> ${esc(formatearNombreItemConPresentacion(it))}</span>
-                    <strong style="white-space:nowrap;">${fmt(it.subtotal_vecino ?? it.subtotal ?? 0)}</strong>
+        STATE.carrito = {};
+        renderCatalogo();
+        actualizarBarraCarrito();
+
+        if (ped) {
+          STATE.ultimoPedidoConfirmado = {
+            codigo_pedido: ped.codigo_pedido,
+            items: itemsConfirmados
+          };
+          guardarIdentidadVecinoLocal({
+            portal_token: ped.portal_token || STATE.portalToken || '',
+            telefono_normalizado: ped.telefono_normalizado || '',
+            telefono_display: telefono || ped.vecino_telefono || '',
+            nombre_completo: ped.vecino_nombre || nombre || '',
+            direccion_calle: direccion || '',
+            entrecalles_referencia: entrecalles || ''
+          });
+          if (ped.tracking_token) {
+            guardarPedidoRecienteLocal({
+              codigo_pedido: ped.codigo_pedido,
+              tracking_token: ped.tracking_token,
+              vecino_nombre: ped.vecino_nombre,
+              created_at: ped.created_at || new Date().toISOString()
+            });
+            refrescarBannerPedidosRecientes();
+          }
+          enviarTelemetriaTienda('pedido_confirmado', {
+            pedido_id: ped.id,
+            codigo_pedido: ped.codigo_pedido,
+            tracking_token: ped.tracking_token || undefined,
+            vecino_nombre: ped.vecino_nombre || nombre,
+            vecino_telefono: telefono || ped.vecino_telefono,
+            carrito_unidades: itemsConfirmados.reduce((acc, it) => acc + Number(it.cantidad || 1), 0),
+            carrito_subtotal: Number(ped.total_vecino || 0),
+            carrito_snapshot: []
+          }, 0);
+        }
+
+        const box = document.getElementById('checkout-card-content');
+        box.innerHTML = `
+          ${renderCabeceraMarcaCheckoutWizard(1, 1, true)}
+          <div class="chk-wiz-body">
+            <div class="chk-wiz-stage" style="text-align:center;">
+              <div style="font-size:2.6rem;">🎉</div>
+              <h2 style="margin:6px 0; color:#15803d; font-size:1.35rem; font-weight:900;">¡Pedido Confirmado! (${esc(ped.codigo_pedido)})</h2>
+              <p style="margin:4px 0 16px 0; color:#475569; font-size:0.93rem; font-weight:700;">
+                Gracias <strong>${esc(ped.vecino_nombre)}</strong>. Tu pedido en <strong>${esc(pagoInfo.nombre_marca)}</strong> ya quedó agendado.
+              </p>
+
+              <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:14px; padding:14px; text-align:left; font-size:0.88rem; margin-bottom:14px;">
+                <div>📅 <strong>Fecha y ventana de entrega:</strong> ${esc(ped.fecha_entrega_label)}</div>
+                <div style="margin-top:4px;">📍 <strong>Modalidad:</strong> ${ped.modalidad_entrega === 'ENVIO_BARRIAL' ? `Envío a domicilio (${esc(ped.direccion_entrega)})` : `Retiro en punto de entrega (${esc(pagoInfo.direccion_retiro)})`}</div>
+                ${itemsConfirmados.length > 0 ? `
+                  <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #86efac;">
+                    <div style="font-size:0.75rem; font-weight:800; color:#166534; text-transform:uppercase; margin-bottom:4px;">🛒 Detalle del pedido</div>
+                    ${itemsConfirmados.map(it => `
+                      <div style="display:flex; justify-content:space-between; gap:8px; font-size:0.84rem; padding:2px 0;">
+                        <span><strong>${Number(it.cantidad || 1)}x</strong> ${esc(formatearNombreItemConPresentacion(it))}</span>
+                        <strong style="white-space:nowrap;">${fmt(it.subtotal_vecino ?? it.subtotal ?? 0)}</strong>
+                      </div>
+                    `).join('')}
                   </div>
-                `).join('')}
+                ` : ''}
+                <div style="margin-top:6px; padding-top:6px; border-top:1px solid #86efac;">💰 <strong>Total del pedido:</strong> ${fmt(ped.total_vecino)}</div>
               </div>
-            ` : ''}
-            <div style="margin-top:6px; padding-top:6px; border-top:1px solid #86efac;">💰 <strong>Total del pedido:</strong> ${fmt(ped.total_vecino)}</div>
-          </div>
 
-          ${ped.medio_pago === 'TRANSFERENCIA' ? `
-            <div style="background:#eff6ff; border:2px solid #60a5fa; border-radius:12px; padding:14px; text-align:left; margin-bottom:14px;">
-              <div style="font-size:0.78rem; font-weight:800; color:#1d4ed8; text-transform:uppercase;">🏦 Datos para Transferencia Bancaria</div>
-              <div style="font-size:1.15rem; font-weight:900; color:#0f172a; margin:6px 0;">
-                Alias: <span id="alias-copy-text">${esc(pagoInfo.alias || 'pago.canasto')}</span>
+              ${ped.medio_pago === 'TRANSFERENCIA' ? `
+                <div style="background:#eff6ff; border:2px solid #60a5fa; border-radius:14px; padding:14px; text-align:left; margin-bottom:14px;">
+                  <div style="font-size:0.78rem; font-weight:800; color:#1d4ed8; text-transform:uppercase;">🏦 Datos para Transferencia Bancaria</div>
+                  <div style="font-size:1.15rem; font-weight:900; color:#0f172a; margin:6px 0;">
+                    Alias: <span id="alias-copy-text">${esc(pagoInfo.alias || 'pago.canasto')}</span>
+                  </div>
+                  <div style="font-size:0.8rem; color:#334155;">Titular: ${esc(pagoInfo.titular || '')}${pagoInfo.cbu && pagoInfo.cbu !== '0000000000000000000000' ? ` · CBU: ${esc(pagoInfo.cbu)}` : ''}</div>
+                  <button type="button" onclick="navigator.clipboard.writeText('${esc(pagoInfo.alias || 'pago.canasto')}'); this.textContent='✅ ¡Alias Copiado!';"
+                    style="margin-top:8px; padding:8px 14px; border-radius:9px; border:1px solid #2563eb; background:#2563eb; color:#fff; font-weight:800; font-size:0.82rem; cursor:pointer;">
+                    📋 Copiar Alias Bancario
+                  </button>
+                </div>
+              ` : `
+                <div style="background:#fef3c7; border:1px solid #fcd34d; border-radius:14px; padding:13px; text-align:left; font-size:0.88rem; color:#92400e; margin-bottom:14px;">
+                  💵 <strong>Pago en Efectivo:</strong> Abonás <strong>${fmt(ped.total_vecino)}</strong> directamente al momento de recibir o retirar tu pedido.
+                </div>
+              `}
+
+              ${ped.tracking_token ? `
+                <div style="margin-bottom:12px;">
+                  <button type="button" onclick="cerrarModalCheckout(); abrirSeguimientoPorToken('${esc(ped.tracking_token)}');"
+                    style="width:100%; padding:13px 16px; border-radius:12px; border:1.5px solid var(--brand); background:var(--brand-light); color:var(--brand-dark); font-family:inherit; font-weight:900; font-size:0.94rem; cursor:pointer;">
+                    📍 Seguir el estado de mi pedido en vivo →
+                  </button>
+                </div>
+              ` : ''}
+
+              <div id="etiqueta-confirmacion-preview" style="margin-bottom:12px;"></div>
+
+              <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                <button type="button" onclick="enviarComprobanteWhatsAppPrueba('${esc(ped.codigo_pedido)}', '${esc(ped.vecino_nombre)}', '${esc(pagoInfo.nombre_marca)}', '${esc(ped.fecha_entrega_label)}', ${Number(ped.total_vecino)}, '${esc(ped.medio_pago)}', '${esc(pagoInfo.alias || '')}', '${esc(ped.tracking_token || '')}')"
+                  style="padding:10px 14px; border-radius:10px; border:1px solid #16a34a; background:#15803d; color:#ffffff; font-weight:800; font-size:0.82rem; cursor:pointer;">
+                  📲 Recibir Comprobante por WhatsApp
+                </button>
+                ${esModoEspejoLocal() ? `
+                  <button type="button" onclick="verEtiquetaDeMiPedido(${ped.id})"
+                    style="padding:10px 14px; border-radius:10px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700; font-size:0.82rem; cursor:pointer;">
+                    🖨️ Ver Etiqueta Térmica (Modo Espejo)
+                  </button>
+                ` : ''}
+                ${STATE.portalToken ? `
+                  <button type="button" onclick="cerrarModalCheckout(); activarVistaMiCuenta();"
+                    style="padding:10px 16px; border-radius:10px; border:1.5px solid var(--brand); background:var(--brand-light); color:var(--brand-dark); font-weight:900; font-size:0.84rem; cursor:pointer;">
+                    👤 Ver en Mi Cuenta
+                  </button>
+                ` : ''}
               </div>
-              <div style="font-size:0.8rem; color:#334155;">Titular: ${esc(pagoInfo.titular || '')}${pagoInfo.cbu && pagoInfo.cbu !== '0000000000000000000000' ? ` · CBU: ${esc(pagoInfo.cbu)}` : ''}</div>
-              <button type="button" onclick="navigator.clipboard.writeText('${esc(pagoInfo.alias || 'pago.canasto')}'); this.textContent='✅ ¡Alias Copiado!';"
-                style="margin-top:8px; padding:7px 14px; border-radius:8px; border:1px solid #2563eb; background:#2563eb; color:#fff; font-weight:700; font-size:0.8rem; cursor:pointer;">
-                📋 Copiar Alias Bancario
-              </button>
             </div>
-          ` : `
-            <div style="background:#fef3c7; border:1px solid #fcd34d; border-radius:12px; padding:12px; text-align:left; font-size:0.85rem; color:#92400e; margin-bottom:14px;">
-              💵 <strong>Pago en Efectivo:</strong> Abonás <strong>${fmt(ped.total_vecino)}</strong> directamente al momento de recibir o retirar tu pedido.
-            </div>
-          `}
-
-          ${ped.tracking_token ? `
-            <div style="margin-bottom:12px;">
-              <button type="button" onclick="cerrarModalCheckout(); abrirSeguimientoPorToken('${esc(ped.tracking_token)}');"
-                style="width:100%; padding:12px 16px; border-radius:11px; border:1.5px solid var(--brand); background:var(--brand-light); color:var(--brand-dark); font-family:inherit; font-weight:900; font-size:0.92rem; cursor:pointer;">
-                📍 Seguir el estado de mi pedido en vivo →
-              </button>
-            </div>
-          ` : ''}
-
-          <div id="etiqueta-confirmacion-preview" style="margin-bottom:12px;"></div>
-
-          <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-            <button type="button" onclick="enviarComprobanteWhatsAppPrueba('${esc(ped.codigo_pedido)}', '${esc(ped.vecino_nombre)}', '${esc(pagoInfo.nombre_marca)}', '${esc(ped.fecha_entrega_label)}', ${Number(ped.total_vecino)}, '${esc(ped.medio_pago)}', '${esc(pagoInfo.alias || '')}', '${esc(ped.tracking_token || '')}')"
-              style="padding:9px 14px; border-radius:9px; border:1px solid #16a34a; background:#15803d; color:#ffffff; font-weight:800; font-size:0.8rem; cursor:pointer;">
-              📲 Recibir Comprobante por WhatsApp
-            </button>
-            ${esModoEspejoLocal() ? `
-              <button type="button" onclick="verEtiquetaDeMiPedido(${ped.id})"
-                style="padding:9px 14px; border-radius:9px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700; font-size:0.8rem; cursor:pointer;">
-                🖨️ Ver Etiqueta Térmica (Modo Espejo)
-              </button>
-            ` : ''}
-            <button type="button" onclick="cerrarModalCheckout()"
-              style="padding:9px 18px; border-radius:9px; border:none; background:var(--brand); color:#ffffff; font-weight:800; font-size:0.85rem; cursor:pointer;">
-              Listo, volver a la tienda
-            </button>
-            ${STATE.portalToken ? `
-              <button type="button" onclick="cerrarModalCheckout(); activarVistaMiCuenta();"
-                style="padding:9px 16px; border-radius:9px; border:1.5px solid var(--brand); background:var(--brand-light); color:var(--brand-dark); font-weight:900; font-size:0.84rem; cursor:pointer;">
-                👤 Ver en Mi Cuenta
-              </button>
-            ` : ''}
           </div>
-        </div>
-      `;
+          <footer class="chk-wiz-footer">
+            <div class="chk-wiz-footer-inner">
+              <button type="button" class="chk-btn-primary" onclick="cerrarModalCheckout()">
+                Listo, volver a la tienda
+              </button>
+            </div>
+          </footer>
+        `;
+      } catch (err) {
+        w.enviandoPedido = false;
+        alert('Error de conexión al registrar tu pedido. Intentá nuevamente.');
+        renderContenidoModalCheckout();
+      }
     }
 
     let _ultimoPayloadWaTienda = null;

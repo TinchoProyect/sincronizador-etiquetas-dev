@@ -499,6 +499,118 @@
       align-items: end;
     }
 
+    /* Flujo guiado con desbloqueo progresivo y pasos atenuados ("apaisados") */
+    .prop-steps-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .prop-step-card {
+      border-radius: 14px;
+      padding: 13px 14px;
+      border: 1.5px solid var(--border);
+      background: #fffdfb;
+      transition: opacity 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background-color 0.22s ease;
+      scroll-margin-top: 86px;
+    }
+    .prop-step-card.is-current {
+      opacity: 1;
+      background: #ffffff;
+      border: 2px solid var(--brand);
+      box-shadow: 0 6px 18px var(--brand-soft);
+    }
+    .prop-step-card.is-done {
+      opacity: 1;
+      background: #fffdfb;
+      border: 1.5px solid rgba(31, 111, 74, 0.32);
+    }
+    .prop-step-card.is-locked {
+      opacity: 0.42;
+      background: #f3f1ed;
+      border: 1.5px dashed #d5cec5;
+      pointer-events: none;
+      user-select: none;
+      box-shadow: none;
+    }
+    .prop-step-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 9px;
+      flex-wrap: wrap;
+    }
+    .prop-step-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .prop-step-num {
+      width: 25px;
+      height: 25px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.78rem;
+      font-weight: 900;
+      flex-shrink: 0;
+      background: #e7e1d9;
+      color: var(--muted);
+    }
+    .prop-step-card.is-current .prop-step-num {
+      background: var(--brand);
+      color: #ffffff;
+    }
+    .prop-step-card.is-done .prop-step-num {
+      background: var(--ok);
+      color: #ffffff;
+    }
+    .prop-step-title {
+      font-size: 0.86rem;
+      font-weight: 900;
+      color: var(--text);
+      line-height: 1.25;
+    }
+    .prop-step-status {
+      font-size: 0.71rem;
+      font-weight: 800;
+      padding: 3px 9px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .prop-step-status.current {
+      background: var(--brand-soft);
+      color: var(--brand-dark);
+      border: 1px solid var(--brand-border);
+    }
+    .prop-step-status.done {
+      background: var(--ok-soft);
+      color: var(--ok);
+      border: 1px solid rgba(31, 111, 74, 0.25);
+    }
+    .prop-step-lock-hint {
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: #6b6259;
+      background: #e8e4dd;
+      padding: 3px 9px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .prop-step-card.is-current select:focus,
+    .prop-step-card.is-current input:focus {
+      outline: none;
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px var(--brand-soft);
+    }
+    #btn-enviar-propuesta-gestor:disabled {
+      opacity: 0.46 !important;
+      cursor: not-allowed !important;
+      pointer-events: none;
+    }
+
     /* Hoja de Ruta y Conducción Nocturna (Etapas B4 + B5 + Rebalanceo denso) */
     .cta-reparto-hero {
       width: 100%;
@@ -949,9 +1061,13 @@
       propFiltroTexto: '',
       propIngredienteIdSel: 0,
       propIngredienteInicializadoId: 0,
-      propKilosSel: 0.25,
+      propKilosSel: 0,
+      propPesoManualTexto: '',
       propUnidadPesoManual: 'g',
+      propPrecioObjetivoTexto: '',
+      propNombreTexto: '',
       propNombreEditadoManual: false,
+      propComentarioTexto: '',
       propConfirmacionReciente: '',
       liquidacionTablero: null,
       repartoOrdenManual: [],
@@ -1244,20 +1360,12 @@
       // Precargar kit de difusión público en segundo plano (sin bloquear UI)
       cargarKitCompartirGestor(false).catch(() => {});
 
-      if (GSTATE.ingredientesDisponibles.length > 0) {
+      if (opciones.resetPropuesta) {
+        reiniciarFormularioPropuestaGestor({ conservarConfirmacion: true });
+      } else if (GSTATE.ingredientesDisponibles.length > 0 && GSTATE.propCategoriaSel) {
         const cats = Array.from(new Set(GSTATE.ingredientesDisponibles.map(i => i.categoria_gestor)));
-        if (!GSTATE.propCategoriaSel || !cats.includes(GSTATE.propCategoriaSel)) {
-          GSTATE.propCategoriaSel = cats.includes('Granolas') ? 'Granolas' : cats[0];
-        }
-        const itemsCat = GSTATE.ingredientesDisponibles.filter(i => i.categoria_gestor === GSTATE.propCategoriaSel);
-        if (!itemsCat.some(i => Number(i.id) === Number(GSTATE.propIngredienteIdSel)) && itemsCat[0]) {
-          GSTATE.propIngredienteIdSel = Number(itemsCat[0].id);
-        }
-        const ingActual = GSTATE.ingredientesDisponibles.find(i => Number(i.id) === Number(GSTATE.propIngredienteIdSel));
-        if (ingActual && (opciones.avanzarGramajeTrasEnvio || GSTATE.propIngredienteInicializadoId !== Number(ingActual.id))) {
-          GSTATE.propKilosSel = elegirPrimerGramajeNuevoDisponible(ingActual);
-          GSTATE.propUnidadPesoManual = Number(GSTATE.propKilosSel) >= 1 ? 'kg' : 'g';
-          GSTATE.propIngredienteInicializadoId = Number(ingActual.id);
+        if (!cats.includes(GSTATE.propCategoriaSel)) {
+          reiniciarFormularioPropuestaGestor();
         }
       }
 
@@ -1305,6 +1413,9 @@
     }
 
     function abrirSeccionGestor(seccion) {
+      if (seccion === 'propuestas' && GSTATE.vista !== 'propuestas') {
+        reiniciarFormularioPropuestaGestor();
+      }
       GSTATE.vista = seccion;
       try {
         window.history.pushState({ vista: seccion }, '', `#${seccion}`);
@@ -2480,26 +2591,28 @@
     }
 
     function obtenerIngredienteSeleccionadoGestor() {
+      if (!GSTATE.propCategoriaSel || !GSTATE.propIngredienteIdSel) return null;
       return (GSTATE.ingredientesDisponibles || []).find(
-        i => Number(i.id) === Number(GSTATE.propIngredienteIdSel)
+        i => Number(i.id) === Number(GSTATE.propIngredienteIdSel) &&
+             String(i.categoria_gestor || '') === String(GSTATE.propCategoriaSel || '')
       ) || null;
     }
 
     function obtenerOpcionesGramajeIngrediente(ingObj) {
       const base = ingObj && ingObj.es_pack_barritas
         ? [
-            { label: 'Pack x 3 (150g)', val: 0.15 },
-            { label: 'Pack x 6 (300g)', val: 0.30 },
-            { label: 'Pack x 12 (600g)', val: 0.60 },
+            { label: 'Pack x 3 (150 g)', val: 0.15 },
+            { label: 'Pack x 6 (300 g)', val: 0.30 },
+            { label: 'Pack x 12 (600 g)', val: 0.60 },
             { label: 'Caja x 20 (1 kg)', val: 1.00 }
           ]
         : [
-            { label: '100g', val: 0.10 },
-            { label: '150g', val: 0.15 },
-            { label: '200g', val: 0.20 },
-            { label: '250g', val: 0.25 },
-            { label: '400g', val: 0.40 },
-            { label: '500g', val: 0.50 },
+            { label: '100 g', val: 0.10 },
+            { label: '150 g', val: 0.15 },
+            { label: '200 g', val: 0.20 },
+            { label: '250 g', val: 0.25 },
+            { label: '400 g', val: 0.40 },
+            { label: '500 g', val: 0.50 },
             { label: '1 kg', val: 1.00 }
           ];
 
@@ -2573,6 +2686,13 @@
     }
 
     function renderResumenExistentesLamdaHtml(ingObj) {
+      if (!ingObj) {
+        return `
+          <div style="font-size:0.75rem; color:var(--muted); margin-bottom:7px;">
+            Elegí primero categoría y producto arriba para consultar las medidas disponibles y definir una nueva fracción.
+          </div>
+        `;
+      }
       const pres = Array.isArray(ingObj?.presentaciones_lamda) ? ingObj.presentaciones_lamda : [];
       if (pres.length === 0) {
         return `
@@ -2604,12 +2724,21 @@
       `;
     }
 
-    function renderOpcionesGramajePropuestaHtml(ingObj, kilosActuales) {
+    function renderOpcionesGramajePropuestaHtml(ingObj, kilosActuales, bloqueado = false) {
+      if (bloqueado || !ingObj) {
+        const vistaPrevia = ['100 g', '250 g', '500 g', '1 kg'];
+        return vistaPrevia.map(label => `
+          <button type="button" class="btn-soft" disabled style="cursor:not-allowed;">
+            ${esc(label)}
+          </button>
+        `).join('');
+      }
+
       const kg = Number(kilosActuales || 0);
       const opciones = obtenerOpcionesGramajeIngrediente(ingObj);
 
       return opciones.map(op => {
-        const activo = Math.abs(kg - op.val) < 0.003;
+        const activo = kg > 0 && Math.abs(kg - op.val) < 0.003;
         const est = evaluarEstadoGramajeParaGestor(ingObj, op.val);
 
         let sufijo = '';
@@ -2750,67 +2879,189 @@
       return Number(kilos.toFixed(4));
     }
 
-    function sincronizarBotonEnvioPropuestaDom(ingObj, kilos) {
-      const btn = document.getElementById('btn-enviar-propuesta-gestor');
-      if (!btn) return;
-      if (!kilos || Number(kilos) <= 0) {
-        btn.disabled = true;
-        btn.style.opacity = '0.5';
-        btn.textContent = 'Ingresá un peso válido mayor a 0';
-        return;
-      }
-      const est = evaluarEstadoGramajeParaGestor(ingObj, kilos);
-      const etPeso = formatearPesoCortoGestor(kilos);
-
-      if (est.tipo === 'NUEVA_DISPONIBLE') {
-        btn.disabled = false;
-        btn.style.opacity = '1';
-        btn.textContent = `Enviar Solicitud de Nueva Fracción (${etPeso})`;
-      } else if (est.tipo === 'EN_OFERTA_NODO' || est.tipo === 'EN_CATALOGO_NODOS') {
-        btn.disabled = true;
-        btn.style.opacity = '0.5';
-        btn.textContent = `Medida ${etPeso} ya cotizada`;
-      } else if (est.tipo === 'YA_EXISTE_LAMDA') {
-        btn.disabled = true;
-        btn.style.opacity = '0.5';
-        btn.textContent = `Medida ${etPeso} ya existe en LAMDA`;
-      } else if (est.tipo === 'YA_SOLICITADA') {
-        btn.disabled = true;
-        btn.style.opacity = '0.5';
-        btn.textContent = `Medida ${etPeso} ya solicitada`;
+    function reiniciarFormularioPropuestaGestor({ conservarConfirmacion = false } = {}) {
+      GSTATE.propCategoriaSel = '';
+      GSTATE.propFiltroTexto = '';
+      GSTATE.propIngredienteIdSel = 0;
+      GSTATE.propIngredienteInicializadoId = 0;
+      GSTATE.propKilosSel = 0;
+      GSTATE.propPesoManualTexto = '';
+      GSTATE.propUnidadPesoManual = 'g';
+      GSTATE.propPrecioObjetivoTexto = '';
+      GSTATE.propNombreTexto = '';
+      GSTATE.propNombreEditadoManual = false;
+      GSTATE.propComentarioTexto = '';
+      if (!conservarConfirmacion) {
+        GSTATE.propConfirmacionReciente = '';
       }
     }
 
-    function actualizarControlesPropuestaEnVivo() {
-      const totalCat = (GSTATE.ingredientesDisponibles || []).filter(
-        i => String(i.categoria_gestor || '') === String(GSTATE.propCategoriaSel || '')
-      );
-      const filtrados = obtenerIngredientesFiltradosGestor(GSTATE.propCategoriaSel, GSTATE.propFiltroTexto);
+    function acompanarScrollPasoGestor(elId) {
+      setTimeout(() => {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+        const headerOffset = 84;
+        if (rect.bottom > vh - 16 || rect.top < headerOffset) {
+          const targetY = window.scrollY + rect.top - headerOffset;
+          window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+        }
+      }, 65);
+    }
 
-      if (!filtrados.some(i => Number(i.id) === Number(GSTATE.propIngredienteIdSel))) {
-        GSTATE.propIngredienteIdSel = filtrados[0] ? Number(filtrados[0].id) : 0;
+    function evaluarPasosPropuestaGestor() {
+      const paso1Completo = Boolean(String(GSTATE.propCategoriaSel || '').trim());
+      const ingSel = paso1Completo ? obtenerIngredienteSeleccionadoGestor() : null;
+      const paso2Habilitado = paso1Completo;
+      const paso2Completo = Boolean(paso1Completo && ingSel);
+      const paso3Habilitado = paso2Completo;
+      const kilos = paso3Habilitado ? Number(GSTATE.propKilosSel || 0) : 0;
+      const estGramaje = (paso3Habilitado && kilos > 0) ? evaluarEstadoGramajeParaGestor(ingSel, kilos) : null;
+      const paso3Valido = Boolean(paso3Habilitado && kilos > 0 && estGramaje && estGramaje.tipo === 'NUEVA_DISPONIBLE');
+      const paso4Habilitado = paso3Valido;
+
+      const clasePaso1 = !paso1Completo ? 'is-current' : 'is-done';
+      const clasePaso2 = !paso2Habilitado ? 'is-locked' : (!paso2Completo ? 'is-current' : 'is-done');
+      const clasePaso3 = !paso3Habilitado ? 'is-locked' : (!paso3Valido ? 'is-current' : 'is-done');
+      const clasePaso4 = !paso4Habilitado ? 'is-locked' : 'is-current';
+
+      return {
+        paso1Completo,
+        ingSel,
+        paso2Habilitado,
+        paso2Completo,
+        paso3Habilitado,
+        kilos,
+        estGramaje,
+        paso3Valido,
+        paso4Habilitado,
+        clasePaso1,
+        clasePaso2,
+        clasePaso3,
+        clasePaso4
+      };
+    }
+
+    function renderBadgeEstadoPasoPropuesta(clasePaso, textoCompletado = 'Listo', textoActivo = 'Paso activo') {
+      if (clasePaso === 'is-locked') {
+        return `<span class="prop-step-lock-hint">Completá el paso anterior</span>`;
       }
-      const ingSel = obtenerIngredienteSeleccionadoGestor();
+      if (clasePaso === 'is-done') {
+        return `<span class="prop-step-status done">✓ ${esc(textoCompletado)}</span>`;
+      }
+      return `<span class="prop-step-status current">${esc(textoActivo)}</span>`;
+    }
+
+    function construirNombreFinalPropuestaGestor(ingSel, kilos) {
+      if (!ingSel) return '';
+      const rawInput = document.getElementById('prop-nombre')
+        ? document.getElementById('prop-nombre').value
+        : GSTATE.propNombreTexto;
+      const nombreBase = String(rawInput || ingSel.alias_vecino_sugerido || ingSel.nombre_claro || '').trim();
+      if (!kilos || Number(kilos) <= 0) return nombreBase;
+      const etiquetaPeso = formatearPesoCortoGestor(kilos).replace(/\s+/g, '');
+      return /\bx\s*\d+/i.test(nombreBase) ? nombreBase : `${nombreBase} x ${etiquetaPeso}`;
+    }
+
+    function renderResumenPaso4PropuestaHtml(ev) {
+      const catTxt = ev.paso1Completo ? GSTATE.propCategoriaSel : 'Sin elegir aún';
+      const prodTxt = ev.ingSel ? ev.ingSel.nombre_claro : 'Sin elegir aún';
+      let fracTxt = 'Sin definir aún';
+      if (ev.paso3Valido) {
+        fracTxt = `${formatearPesoCortoGestor(ev.kilos)} (${construirNombreFinalPropuestaGestor(ev.ingSel, ev.kilos)})`;
+      } else if (ev.paso3Habilitado && ev.kilos > 0) {
+        fracTxt = `${formatearPesoCortoGestor(ev.kilos)} — elegí arriba una medida nueva disponible`;
+      }
+      const notaTxt = ev.paso3Habilitado
+        ? String((document.getElementById('prop-comentario')?.value ?? GSTATE.propComentarioTexto) || '').trim()
+        : '';
+
+      return `
+        <div style="padding:10px 12px; border-radius:10px; background:var(--surface-warm); border:1px solid var(--border); font-size:0.8rem; line-height:1.5; margin-bottom:10px;">
+          <div><span style="color:var(--muted); font-weight:700;">Categoría:</span> <strong>${esc(catTxt)}</strong></div>
+          <div><span style="color:var(--muted); font-weight:700;">Producto:</span> <strong>${esc(prodTxt)}</strong></div>
+          <div><span style="color:var(--muted); font-weight:700;">Fracción:</span> <strong>${esc(fracTxt)}</strong></div>
+          ${notaTxt ? `<div><span style="color:var(--muted); font-weight:700;">Nota:</span> ${esc(notaTxt)}</div>` : ''}
+        </div>
+      `;
+    }
+
+    function sincronizarBotonEnvioPropuestaDom() {
+      const ev = evaluarPasosPropuestaGestor();
+      const btn = document.getElementById('btn-enviar-propuesta-gestor');
+      if (btn) {
+        btn.disabled = !ev.paso4Habilitado;
+        btn.style.opacity = ev.paso4Habilitado ? '1' : '0.46';
+        btn.textContent = 'Enviar solicitud';
+      }
+      const resBox = document.getElementById('prop-resumen-seleccion');
+      if (resBox) {
+        resBox.innerHTML = renderResumenPaso4PropuestaHtml(ev);
+      }
+      const step1 = document.getElementById('prop-step-1');
+      if (step1) step1.className = `prop-step-card ${ev.clasePaso1}`;
+      const step2 = document.getElementById('prop-step-2');
+      if (step2) step2.className = `prop-step-card ${ev.clasePaso2}`;
+      const step3 = document.getElementById('prop-step-3');
+      if (step3) step3.className = `prop-step-card ${ev.clasePaso3}`;
+      const step4 = document.getElementById('prop-step-4');
+      if (step4) step4.className = `prop-step-card ${ev.clasePaso4}`;
+
+      const b1 = document.getElementById('prop-step-1-badge');
+      if (b1) b1.innerHTML = renderBadgeEstadoPasoPropuesta(ev.clasePaso1, GSTATE.propCategoriaSel || 'Elegida', 'Paso 1 activo');
+      const b2 = document.getElementById('prop-step-2-badge');
+      if (b2) b2.innerHTML = renderBadgeEstadoPasoPropuesta(ev.clasePaso2, 'Producto elegido', 'Elegí un producto');
+      const b3 = document.getElementById('prop-step-3-badge');
+      if (b3) b3.innerHTML = renderBadgeEstadoPasoPropuesta(ev.clasePaso3, ev.kilos > 0 ? formatearPesoCortoGestor(ev.kilos) : 'Definida', 'Definí el gramaje');
+      const b4 = document.getElementById('prop-step-4-badge');
+      if (b4) b4.innerHTML = renderBadgeEstadoPasoPropuesta(ev.clasePaso4, 'Listo', 'Listo para enviar');
+    }
+
+    function actualizarControlesPropuestaEnVivo() {
+      const ev = evaluarPasosPropuestaGestor();
+      const totalCat = ev.paso1Completo
+        ? (GSTATE.ingredientesDisponibles || []).filter(i => String(i.categoria_gestor || '') === String(GSTATE.propCategoriaSel || ''))
+        : [];
+      const filtrados = ev.paso1Completo
+        ? obtenerIngredientesFiltradosGestor(GSTATE.propCategoriaSel, GSTATE.propFiltroTexto)
+        : [];
+
+      if (ev.paso1Completo && GSTATE.propIngredienteIdSel && !filtrados.some(i => Number(i.id) === Number(GSTATE.propIngredienteIdSel))) {
+        GSTATE.propIngredienteIdSel = 0;
+        GSTATE.propKilosSel = 0;
+        GSTATE.propPesoManualTexto = '';
+      }
+
+      const evSync = evaluarPasosPropuestaGestor();
+      const ingSel = evSync.ingSel;
 
       const wrapFiltro = document.getElementById('prop-filtro-wrap');
+      const inputFiltro = document.getElementById('prop-filtro-ingrediente');
       if (wrapFiltro) {
-        wrapFiltro.style.display = totalCat.length > 8 ? 'block' : 'none';
+        wrapFiltro.style.display = (evSync.paso2Habilitado && totalCat.length > 8) ? 'block' : 'none';
+      }
+      if (inputFiltro) {
+        inputFiltro.disabled = !evSync.paso2Habilitado;
       }
 
       const selIng = document.getElementById('prop-ingrediente');
       if (selIng) {
-        selIng.innerHTML = filtrados.length === 0
-          ? `<option value="">Sin coincidencias en ${esc(GSTATE.propCategoriaSel)}</option>`
-          : filtrados.map(i => `
+        selIng.disabled = !evSync.paso2Habilitado;
+        if (!evSync.paso2Habilitado) {
+          selIng.innerHTML = `<option value="">Elegí primero una categoría en el Paso 1...</option>`;
+        } else if (filtrados.length === 0) {
+          selIng.innerHTML = `<option value="">Sin coincidencias en ${esc(GSTATE.propCategoriaSel)}</option>`;
+        } else {
+          selIng.innerHTML = `
+            <option value="" ${!ingSel ? 'selected' : ''}>— Seleccioná un producto (${filtrados.length}) —</option>
+            ${filtrados.map(i => `
               <option value="${i.id}" ${Number(i.id) === Number(GSTATE.propIngredienteIdSel) ? 'selected' : ''}>
                 ${esc(i.nombre_claro)}
               </option>
-            `).join('');
-      }
-
-      const inputNombre = document.getElementById('prop-nombre');
-      if (inputNombre && ingSel && !GSTATE.propNombreEditadoManual) {
-        inputNombre.value = ingSel.alias_vecino_sugerido || ingSel.nombre_claro;
+            `).join('')}
+          `;
+        }
       }
 
       const resumenExistBox = document.getElementById('prop-resumen-existentes');
@@ -2820,24 +3071,56 @@
 
       const gramajesBox = document.getElementById('prop-gramajes-box');
       if (gramajesBox) {
-        gramajesBox.innerHTML = renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel);
+        gramajesBox.innerHTML = renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel, !evSync.paso3Habilitado);
       }
 
       const selUnidad = document.getElementById('prop-peso-unidad');
-      if (selUnidad && selUnidad.value !== GSTATE.propUnidadPesoManual) {
-        selUnidad.value = GSTATE.propUnidadPesoManual;
+      if (selUnidad) {
+        selUnidad.disabled = !evSync.paso3Habilitado;
+        if (selUnidad.value !== GSTATE.propUnidadPesoManual) {
+          selUnidad.value = GSTATE.propUnidadPesoManual;
+        }
       }
 
       const inputPeso = document.getElementById('prop-peso-manual');
-      if (inputPeso && document.activeElement !== inputPeso) {
-        inputPeso.value = formatearValorInputPesoManual(GSTATE.propKilosSel, GSTATE.propUnidadPesoManual);
-        inputPeso.placeholder = GSTATE.propUnidadPesoManual === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350';
+      if (inputPeso) {
+        inputPeso.disabled = !evSync.paso3Habilitado;
+        if (document.activeElement !== inputPeso) {
+          inputPeso.value = evSync.paso3Habilitado
+            ? formatearValorInputPesoManual(GSTATE.propKilosSel, GSTATE.propUnidadPesoManual)
+            : '';
+          inputPeso.placeholder = GSTATE.propUnidadPesoManual === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350';
+        }
+      }
+
+      const inputTarget = document.getElementById('prop-target');
+      if (inputTarget) {
+        inputTarget.disabled = !evSync.paso3Habilitado;
+        if (!evSync.paso3Habilitado) inputTarget.value = '';
+      }
+
+      const inputNombre = document.getElementById('prop-nombre');
+      if (inputNombre) {
+        inputNombre.disabled = !evSync.paso3Habilitado;
+        if (!evSync.paso3Habilitado) {
+          inputNombre.value = '';
+        } else if (ingSel && !GSTATE.propNombreEditadoManual && document.activeElement !== inputNombre) {
+          const sugerido = ingSel.alias_vecino_sugerido || ingSel.nombre_claro;
+          GSTATE.propNombreTexto = sugerido;
+          inputNombre.value = sugerido;
+        }
+      }
+
+      const inputComentario = document.getElementById('prop-comentario');
+      if (inputComentario) {
+        inputComentario.disabled = !evSync.paso3Habilitado;
+        if (!evSync.paso3Habilitado) inputComentario.value = '';
       }
 
       const confBox = document.getElementById('prop-confirmacion-reciente');
       if (confBox) {
         confBox.innerHTML = GSTATE.propConfirmacionReciente ? `
-          <div style="padding:11px 13px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.35); color:var(--ok); font-size:0.82rem; font-weight:700; line-height:1.4;">
+          <div style="padding:11px 13px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.35); color:var(--ok); font-size:0.82rem; font-weight:700; line-height:1.4; margin-bottom:12px;">
             ${esc(GSTATE.propConfirmacionReciente)}
           </div>
         ` : '';
@@ -2845,97 +3128,126 @@
 
       const avisoBox = document.getElementById('prop-aviso-existente');
       if (avisoBox) {
-        avisoBox.innerHTML = renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel);
+        avisoBox.innerHTML = evSync.paso3Habilitado
+          ? renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel)
+          : '';
       }
 
-      sincronizarBotonEnvioPropuestaDom(ingSel, GSTATE.propKilosSel);
+      sincronizarBotonEnvioPropuestaDom();
     }
 
     function alCambiarCategoriaPropuestaGestor(nuevaCat) {
-      GSTATE.propCategoriaSel = nuevaCat;
+      GSTATE.propCategoriaSel = String(nuevaCat || '').trim();
       GSTATE.propFiltroTexto = '';
+      GSTATE.propIngredienteIdSel = 0;
+      GSTATE.propIngredienteInicializadoId = 0;
+      GSTATE.propKilosSel = 0;
+      GSTATE.propPesoManualTexto = '';
+      GSTATE.propUnidadPesoManual = 'g';
+      GSTATE.propPrecioObjetivoTexto = '';
+      GSTATE.propNombreTexto = '';
       GSTATE.propNombreEditadoManual = false;
+      GSTATE.propComentarioTexto = '';
       GSTATE.propConfirmacionReciente = '';
+
       const inputFiltro = document.getElementById('prop-filtro-ingrediente');
       if (inputFiltro) inputFiltro.value = '';
+      const inputPeso = document.getElementById('prop-peso-manual');
+      if (inputPeso) inputPeso.value = '';
+      const inputTarget = document.getElementById('prop-target');
+      if (inputTarget) inputTarget.value = '';
+      const inputNombre = document.getElementById('prop-nombre');
+      if (inputNombre) inputNombre.value = '';
+      const inputComentario = document.getElementById('prop-comentario');
+      if (inputComentario) inputComentario.value = '';
 
-      const listaCat = obtenerIngredientesFiltradosGestor(nuevaCat, '');
-      GSTATE.propIngredienteIdSel = listaCat[0] ? Number(listaCat[0].id) : 0;
-      const ingSel = obtenerIngredienteSeleccionadoGestor();
-      if (ingSel) {
-        GSTATE.propKilosSel = elegirPrimerGramajeNuevoDisponible(ingSel);
-        GSTATE.propUnidadPesoManual = Number(GSTATE.propKilosSel) >= 1 ? 'kg' : 'g';
-        GSTATE.propIngredienteInicializadoId = Number(ingSel.id);
-      }
       actualizarControlesPropuestaEnVivo();
+      if (GSTATE.propCategoriaSel) {
+        acompanarScrollPasoGestor('prop-step-2');
+      }
     }
 
     function alFiltrarIngredientesPropuestaGestor(texto) {
       GSTATE.propFiltroTexto = texto;
-      GSTATE.propNombreEditadoManual = false;
       GSTATE.propConfirmacionReciente = '';
       actualizarControlesPropuestaEnVivo();
     }
 
     function alCambiarIngredientePropuestaGestor(ingId) {
       GSTATE.propIngredienteIdSel = Number(ingId || 0);
+      GSTATE.propKilosSel = 0;
+      GSTATE.propPesoManualTexto = '';
+      GSTATE.propUnidadPesoManual = 'g';
       GSTATE.propNombreEditadoManual = false;
       GSTATE.propConfirmacionReciente = '';
+
       const ingSel = obtenerIngredienteSeleccionadoGestor();
-      if (ingSel) {
-        GSTATE.propKilosSel = elegirPrimerGramajeNuevoDisponible(ingSel);
-        GSTATE.propUnidadPesoManual = Number(GSTATE.propKilosSel) >= 1 ? 'kg' : 'g';
-        GSTATE.propIngredienteInicializadoId = Number(ingSel.id);
-      }
+      GSTATE.propNombreTexto = ingSel ? (ingSel.alias_vecino_sugerido || ingSel.nombre_claro) : '';
+
+      const inputPeso = document.getElementById('prop-peso-manual');
+      if (inputPeso) inputPeso.value = '';
+      const inputNombre = document.getElementById('prop-nombre');
+      if (inputNombre) inputNombre.value = GSTATE.propNombreTexto;
+
       actualizarControlesPropuestaEnVivo();
+      if (ingSel) {
+        acompanarScrollPasoGestor('prop-step-3');
+      }
     }
 
     function fijarGramajePropuestaGestor(kilos) {
+      const ingSel = obtenerIngredienteSeleccionadoGestor();
+      if (!ingSel) return;
       GSTATE.propConfirmacionReciente = '';
-      GSTATE.propKilosSel = Number(kilos || 0.25);
+      GSTATE.propKilosSel = Number(kilos || 0);
       GSTATE.propUnidadPesoManual = Number(GSTATE.propKilosSel) >= 1 ? 'kg' : 'g';
+      GSTATE.propPesoManualTexto = formatearValorInputPesoManual(GSTATE.propKilosSel, GSTATE.propUnidadPesoManual);
+
       const selUnidad = document.getElementById('prop-peso-unidad');
       if (selUnidad) selUnidad.value = GSTATE.propUnidadPesoManual;
       const inputPeso = document.getElementById('prop-peso-manual');
       if (inputPeso) {
-        inputPeso.value = formatearValorInputPesoManual(GSTATE.propKilosSel, GSTATE.propUnidadPesoManual);
+        inputPeso.value = GSTATE.propPesoManualTexto;
         inputPeso.placeholder = GSTATE.propUnidadPesoManual === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350';
       }
       actualizarControlesPropuestaEnVivo();
+
+      const ev = evaluarPasosPropuestaGestor();
+      if (ev.paso4Habilitado) {
+        acompanarScrollPasoGestor('prop-step-4');
+      } else if (ev.kilos > 0) {
+        acompanarScrollPasoGestor('prop-aviso-existente');
+      }
     }
 
     function alEscribirPesoManualGestor(texto) {
+      const ingSel = obtenerIngredienteSeleccionadoGestor();
+      if (!ingSel) return;
       GSTATE.propConfirmacionReciente = '';
+      GSTATE.propPesoManualTexto = texto;
       const unidad = document.getElementById('prop-peso-unidad')?.value || GSTATE.propUnidadPesoManual || 'g';
       const kilos = parsearKilosDesdeTextoManual(texto, unidad);
-      const ingSel = obtenerIngredienteSeleccionadoGestor();
 
-      if (kilos > 0) {
-        GSTATE.propKilosSel = kilos;
-        const gramajesBox = document.getElementById('prop-gramajes-box');
-        if (gramajesBox) {
-          gramajesBox.innerHTML = renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel);
-        }
-        const avisoBox = document.getElementById('prop-aviso-existente');
-        if (avisoBox) {
-          avisoBox.innerHTML = renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel);
-        }
-        sincronizarBotonEnvioPropuestaDom(ingSel, GSTATE.propKilosSel);
-      } else {
-        const avisoBox = document.getElementById('prop-aviso-existente');
-        if (avisoBox) avisoBox.innerHTML = '';
-        sincronizarBotonEnvioPropuestaDom(ingSel, 0);
+      GSTATE.propKilosSel = kilos > 0 ? kilos : 0;
+      const gramajesBox = document.getElementById('prop-gramajes-box');
+      if (gramajesBox) {
+        gramajesBox.innerHTML = renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel, false);
       }
+      const avisoBox = document.getElementById('prop-aviso-existente');
+      if (avisoBox) {
+        avisoBox.innerHTML = GSTATE.propKilosSel > 0
+          ? renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel)
+          : '';
+      }
+      sincronizarBotonEnvioPropuestaDom();
     }
 
     function alSalirPesoManualGestor() {
       const inputPeso = document.getElementById('prop-peso-manual');
-      if (!inputPeso) return;
+      if (!inputPeso || inputPeso.disabled) return;
       const unidad = document.getElementById('prop-peso-unidad')?.value || GSTATE.propUnidadPesoManual || 'g';
       const kilos = parsearKilosDesdeTextoManual(inputPeso.value, unidad);
-      if (kilos > 0) {
-        GSTATE.propKilosSel = kilos;
-      }
+      GSTATE.propKilosSel = kilos > 0 ? kilos : 0;
       inputPeso.value = formatearValorInputPesoManual(GSTATE.propKilosSel, unidad);
       actualizarControlesPropuestaEnVivo();
     }
@@ -2943,61 +3255,77 @@
     function alCambiarUnidadPesoManualGestor(nuevaUnidad) {
       const unidadDestino = nuevaUnidad === 'kg' ? 'kg' : 'g';
       const inputPeso = document.getElementById('prop-peso-manual');
-      if (inputPeso) {
+      if (inputPeso && !inputPeso.disabled) {
         const kilosLeidos = parsearKilosDesdeTextoManual(inputPeso.value, GSTATE.propUnidadPesoManual);
-        if (kilosLeidos > 0) {
-          GSTATE.propKilosSel = kilosLeidos;
-        }
+        GSTATE.propKilosSel = kilosLeidos > 0 ? kilosLeidos : GSTATE.propKilosSel;
       }
       GSTATE.propUnidadPesoManual = unidadDestino;
-      if (inputPeso) {
+      if (inputPeso && !inputPeso.disabled) {
         inputPeso.value = formatearValorInputPesoManual(GSTATE.propKilosSel, unidadDestino);
         inputPeso.placeholder = unidadDestino === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350';
       }
       actualizarControlesPropuestaEnVivo();
     }
 
+    function alEditarMetaPropuestaGestor() {
+      const inpNom = document.getElementById('prop-nombre');
+      if (inpNom) GSTATE.propNombreTexto = inpNom.value;
+      const inpCom = document.getElementById('prop-comentario');
+      if (inpCom) GSTATE.propComentarioTexto = inpCom.value;
+      const inpTar = document.getElementById('prop-target');
+      if (inpTar) GSTATE.propPrecioObjetivoTexto = inpTar.value;
+      sincronizarBotonEnvioPropuestaDom();
+    }
+
     function renderSeccionPropuestas() {
       const disponibles = GSTATE.ingredientesDisponibles || [];
       const categoriasUnicas = Array.from(new Set(disponibles.map(i => i.categoria_gestor)));
-      if (categoriasUnicas.length > 0 && (!GSTATE.propCategoriaSel || !categoriasUnicas.includes(GSTATE.propCategoriaSel))) {
-        GSTATE.propCategoriaSel = categoriasUnicas.includes('Granolas') ? 'Granolas' : categoriasUnicas[0];
+      if (GSTATE.propCategoriaSel && !categoriasUnicas.includes(GSTATE.propCategoriaSel)) {
+        reiniciarFormularioPropuestaGestor({ conservarConfirmacion: true });
       }
-      const totalEnCat = disponibles.filter(i => i.categoria_gestor === GSTATE.propCategoriaSel);
-      const filtrados = obtenerIngredientesFiltradosGestor(GSTATE.propCategoriaSel, GSTATE.propFiltroTexto);
-      if (!filtrados.some(i => Number(i.id) === Number(GSTATE.propIngredienteIdSel))) {
-        GSTATE.propIngredienteIdSel = filtrados[0] ? Number(filtrados[0].id) : 0;
-      }
-      const ingSel = obtenerIngredienteSeleccionadoGestor();
-      if (ingSel && GSTATE.propIngredienteInicializadoId !== Number(ingSel.id)) {
-        GSTATE.propKilosSel = elegirPrimerGramajeNuevoDisponible(ingSel);
-        GSTATE.propUnidadPesoManual = Number(GSTATE.propKilosSel) >= 1 ? 'kg' : 'g';
-        GSTATE.propIngredienteInicializadoId = Number(ingSel.id);
-      }
-      const nombreInicial = ingSel ? (ingSel.alias_vecino_sugerido || ingSel.nombre_claro) : '';
-      const estInicial = evaluarEstadoGramajeParaGestor(ingSel, GSTATE.propKilosSel);
-      const etPesoInicial = formatearPesoCortoGestor(GSTATE.propKilosSel);
-      const btnHabilitado = estInicial.tipo === 'NUEVA_DISPONIBLE';
-      const btnLabelInicial = btnHabilitado
-        ? `Enviar Solicitud de Nueva Fracción (${etPesoInicial})`
-        : estInicial.tipo === 'YA_EXISTE_LAMDA'
-          ? `Medida ${etPesoInicial} ya existe en LAMDA`
-          : estInicial.tipo === 'YA_SOLICITADA'
-            ? `Medida ${etPesoInicial} ya solicitada`
-            : `Medida ${etPesoInicial} ya cotizada`;
+
+      const ev = evaluarPasosPropuestaGestor();
+      const totalEnCat = ev.paso1Completo
+        ? disponibles.filter(i => i.categoria_gestor === GSTATE.propCategoriaSel)
+        : [];
+      const filtrados = ev.paso1Completo
+        ? obtenerIngredientesFiltradosGestor(GSTATE.propCategoriaSel, GSTATE.propFiltroTexto)
+        : [];
+      const ingSel = ev.ingSel;
+      const nombreInicial = ingSel
+        ? (GSTATE.propNombreEditadoManual ? GSTATE.propNombreTexto : (ingSel.alias_vecino_sugerido || ingSel.nombre_claro))
+        : '';
 
       return `
         <div class="propuestas-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; align-items:start;">
           <div class="card">
             <h3 style="margin:0 0 6px 0; font-size:1rem;">Solicitar Nueva Fracción</h3>
-            <p style="margin:0 0 14px 0; font-size:0.8rem; color:var(--muted);">
-              Elegí el producto y una medida nueva que aún no exista. Cuando se cotice su Precio Base aparecerá en <strong>Mi Oferta y Márgenes</strong> para que definas tu ganancia y la publiques.
+            <p style="margin:0 0 12px 0; font-size:0.8rem; color:var(--muted);">
+              Completá los pasos en orden para pedir una medida nueva que aún no exista. Cuando se cotice su Precio Base aparecerá en <strong>Mi Oferta y Márgenes</strong>.
             </p>
 
-            <div style="display:flex; flex-direction:column; gap:11px;">
-              <div>
-                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">1. Categoría</label>
+            <div id="prop-confirmacion-reciente">
+              ${GSTATE.propConfirmacionReciente ? `
+                <div style="padding:11px 13px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.35); color:var(--ok); font-size:0.82rem; font-weight:700; line-height:1.4; margin-bottom:12px;">
+                  ${esc(GSTATE.propConfirmacionReciente)}
+                </div>
+              ` : ''}
+            </div>
+
+            <div class="prop-steps-stack">
+              <!-- PASO 1: CATEGORÍA / RUBRO -->
+              <div id="prop-step-1" class="prop-step-card ${ev.clasePaso1}">
+                <div class="prop-step-head">
+                  <div class="prop-step-title-wrap">
+                    <span class="prop-step-num">1</span>
+                    <span class="prop-step-title">Seleccionar Categoría / Rubro</span>
+                  </div>
+                  <div id="prop-step-1-badge">
+                    ${renderBadgeEstadoPasoPropuesta(ev.clasePaso1, GSTATE.propCategoriaSel || 'Elegida', 'Paso 1 activo')}
+                  </div>
+                </div>
                 <select id="prop-categoria" class="input-sm" style="width:100%;" onchange="alCambiarCategoriaPropuestaGestor(this.value)">
+                  <option value="" ${!ev.paso1Completo ? 'selected' : ''}>— Seleccioná una categoría / rubro —</option>
                   ${categoriasUnicas.map(cat => {
                     const count = disponibles.filter(i => i.categoria_gestor === cat).length;
                     return `<option value="${esc(cat)}" ${cat === GSTATE.propCategoriaSel ? 'selected' : ''}>${esc(cat)} (${count})</option>`;
@@ -3005,43 +3333,74 @@
                 </select>
               </div>
 
-              <div>
-                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">2. Producto / Variedad disponible</label>
-                <div id="prop-filtro-wrap" style="display:${totalEnCat.length > 8 ? 'block' : 'none'}; margin-bottom:6px;">
+              <!-- PASO 2: PRODUCTO -->
+              <div id="prop-step-2" class="prop-step-card ${ev.clasePaso2}">
+                <div class="prop-step-head">
+                  <div class="prop-step-title-wrap">
+                    <span class="prop-step-num">2</span>
+                    <span class="prop-step-title">Seleccionar Producto</span>
+                  </div>
+                  <div id="prop-step-2-badge">
+                    ${renderBadgeEstadoPasoPropuesta(ev.clasePaso2, 'Producto elegido', 'Elegí un producto')}
+                  </div>
+                </div>
+                <div id="prop-filtro-wrap" style="display:${(ev.paso2Habilitado && totalEnCat.length > 8) ? 'block' : 'none'}; margin-bottom:6px;">
                   <input type="text" id="prop-filtro-ingrediente" class="input-sm" style="width:100%; font-size:0.82rem;"
+                    ${!ev.paso2Habilitado ? 'disabled' : ''}
                     value="${esc(GSTATE.propFiltroTexto)}"
                     oninput="alFiltrarIngredientesPropuestaGestor(this.value)"
                     placeholder="Filtrar dentro de esta categoría..." />
                 </div>
-                <select id="prop-ingrediente" class="input-sm" style="width:100%;" onchange="alCambiarIngredientePropuestaGestor(this.value)">
-                  ${filtrados.map(i => `
-                    <option value="${i.id}" ${Number(i.id) === Number(GSTATE.propIngredienteIdSel) ? 'selected' : ''}>
-                      ${esc(i.nombre_claro)}
-                    </option>
-                  `).join('')}
+                <select id="prop-ingrediente" class="input-sm" style="width:100%;"
+                  ${!ev.paso2Habilitado ? 'disabled' : ''}
+                  onchange="alCambiarIngredientePropuestaGestor(this.value)">
+                  ${!ev.paso2Habilitado
+                    ? `<option value="">Elegí primero una categoría en el Paso 1...</option>`
+                    : `
+                      <option value="" ${!ingSel ? 'selected' : ''}>— Seleccioná un producto (${filtrados.length}) —</option>
+                      ${filtrados.map(i => `
+                        <option value="${i.id}" ${Number(i.id) === Number(GSTATE.propIngredienteIdSel) ? 'selected' : ''}>
+                          ${esc(i.nombre_claro)}
+                        </option>
+                      `).join('')}
+                    `}
                 </select>
               </div>
 
-              <div>
-                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">3. Presentación / Gramaje</label>
+              <!-- PASO 3: FRACCIÓN / GRAMAJE Y NOTA OPCIONAL -->
+              <div id="prop-step-3" class="prop-step-card ${ev.clasePaso3}">
+                <div class="prop-step-head">
+                  <div class="prop-step-title-wrap">
+                    <span class="prop-step-num">3</span>
+                    <span class="prop-step-title">Definir Fracción / Gramaje</span>
+                  </div>
+                  <div id="prop-step-3-badge">
+                    ${renderBadgeEstadoPasoPropuesta(ev.clasePaso3, ev.kilos > 0 ? formatearPesoCortoGestor(ev.kilos) : 'Definida', 'Definí el gramaje')}
+                  </div>
+                </div>
+
                 <div id="prop-resumen-existentes">
                   ${renderResumenExistentesLamdaHtml(ingSel)}
                 </div>
-                <div id="prop-gramajes-box" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:7px;">
-                  ${renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel)}
+
+                <div id="prop-gramajes-box" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                  ${renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel, !ev.paso3Habilitado)}
                 </div>
-                <div style="display:grid; grid-template-columns: 1.25fr 0.95fr; gap:10px;">
+
+                <div style="display:grid; grid-template-columns: 1.25fr 0.95fr; gap:10px; margin-bottom:9px;">
                   <div>
                     <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Otro peso manual</label>
                     <div style="display:flex; gap:5px; align-items:stretch;">
                       <input type="text" inputmode="decimal" autocomplete="off" id="prop-peso-manual" class="input-sm"
                         style="flex:1; min-width:0;"
-                        value="${esc(formatearValorInputPesoManual(GSTATE.propKilosSel || 0.25, GSTATE.propUnidadPesoManual))}"
+                        ${!ev.paso3Habilitado ? 'disabled' : ''}
+                        value="${esc(ev.paso3Habilitado ? formatearValorInputPesoManual(GSTATE.propKilosSel, GSTATE.propUnidadPesoManual) : '')}"
                         placeholder="${GSTATE.propUnidadPesoManual === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350'}"
                         oninput="alEscribirPesoManualGestor(this.value)"
                         onblur="alSalirPesoManualGestor()" />
                       <select id="prop-peso-unidad" class="input-sm"
                         style="width:74px; padding-left:7px; padding-right:4px; font-weight:800; background:var(--surface-warm);"
+                        ${!ev.paso3Habilitado ? 'disabled' : ''}
                         onchange="alCambiarUnidadPesoManualGestor(this.value)">
                         <option value="g" ${GSTATE.propUnidadPesoManual === 'g' ? 'selected' : ''}>g</option>
                         <option value="kg" ${GSTATE.propUnidadPesoManual === 'kg' ? 'selected' : ''}>kg</option>
@@ -3050,45 +3409,60 @@
                   </div>
                   <div>
                     <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Precio estimado ($ opc.)</label>
-                    <input type="text" inputmode="numeric" id="prop-target" class="input-sm" style="width:100%;" placeholder="Opcional" />
+                    <input type="text" inputmode="numeric" id="prop-target" class="input-sm" style="width:100%;"
+                      ${!ev.paso3Habilitado ? 'disabled' : ''}
+                      value="${esc(ev.paso3Habilitado ? GSTATE.propPrecioObjetivoTexto : '')}"
+                      oninput="alEditarMetaPropuestaGestor()"
+                      placeholder="Opcional" />
                   </div>
+                </div>
+
+                <div style="margin-bottom:8px;">
+                  <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Nombre sugerido para tu tienda (opcional)</label>
+                  <input type="text" id="prop-nombre" class="input-sm" style="width:100%;"
+                    ${!ev.paso3Habilitado ? 'disabled' : ''}
+                    value="${esc(nombreInicial)}"
+                    oninput="GSTATE.propNombreEditadoManual = true; alEditarMetaPropuestaGestor();"
+                    placeholder="Ej: Granola de Sol" />
+                </div>
+
+                <div>
+                  <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Nota opcional</label>
+                  <input type="text" id="prop-comentario" class="input-sm" style="width:100%;"
+                    ${!ev.paso3Habilitado ? 'disabled' : ''}
+                    value="${esc(ev.paso3Habilitado ? GSTATE.propComentarioTexto : '')}"
+                    oninput="alEditarMetaPropuestaGestor()"
+                    placeholder="Ej: Bolsita individual para merienda" />
+                </div>
+
+                <div id="prop-aviso-existente" style="margin-top:8px;">
+                  ${ev.paso3Habilitado ? renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel) : ''}
                 </div>
               </div>
 
-              <div>
-                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:3px;">4. Nombre sugerido para tu tienda</label>
-                <input type="text" id="prop-nombre" class="input-sm" style="width:100%;"
-                  value="${esc(nombreInicial)}"
-                  oninput="GSTATE.propNombreEditadoManual = true"
-                  placeholder="Ej: Granola de Sol" />
-                <div style="font-size:0.71rem; color:var(--muted); margin-top:3px;">
-                  Se completa solo al elegir el producto; podés retocar cómo te gustaría mostrarlo a tus vecinos.
-                </div>
-              </div>
-
-              <div>
-                <label style="display:block; font-size:0.78rem; font-weight:800; margin-bottom:4px;">Comentario (opcional)</label>
-                <input type="text" id="prop-comentario" class="input-sm" style="width:100%;" placeholder="Ej: Bolsita individual para merienda" />
-              </div>
-
-              <div id="prop-confirmacion-reciente">
-                ${GSTATE.propConfirmacionReciente ? `
-                  <div style="padding:11px 13px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.35); color:var(--ok); font-size:0.82rem; font-weight:700; line-height:1.4;">
-                    ${esc(GSTATE.propConfirmacionReciente)}
+              <!-- PASO 4: RESUMEN BREVE Y ENVIAR SOLICITUD -->
+              <div id="prop-step-4" class="prop-step-card ${ev.clasePaso4}">
+                <div class="prop-step-head">
+                  <div class="prop-step-title-wrap">
+                    <span class="prop-step-num">4</span>
+                    <span class="prop-step-title">Confirmación y envío</span>
                   </div>
-                ` : ''}
-              </div>
+                  <div id="prop-step-4-badge">
+                    ${renderBadgeEstadoPasoPropuesta(ev.clasePaso4, 'Listo', 'Listo para enviar')}
+                  </div>
+                </div>
 
-              <div id="prop-aviso-existente">
-                ${renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel)}
-              </div>
+                <div id="prop-resumen-seleccion">
+                  ${renderResumenPaso4PropuestaHtml(ev)}
+                </div>
 
-              <button type="button" id="btn-enviar-propuesta-gestor" class="btn-primary"
-                ${btnHabilitado ? '' : 'disabled'}
-                style="opacity:${btnHabilitado ? '1' : '0.5'};"
-                onclick="enviarNuevaPropuestaGestor()">
-                ${esc(btnLabelInicial)}
-              </button>
+                <button type="button" id="btn-enviar-propuesta-gestor" class="btn-primary"
+                  ${ev.paso4Habilitado ? '' : 'disabled'}
+                  style="width:100%; opacity:${ev.paso4Habilitado ? '1' : '0.46'};"
+                  onclick="enviarNuevaPropuestaGestor()">
+                  Enviar solicitud
+                </button>
+              </div>
             </div>
           </div>
 
@@ -3152,8 +3526,8 @@
     async function enviarNuevaPropuestaGestor(opciones = {}) {
       const solicitarHabilitacionExistente = Boolean(opciones && opciones.solicitarHabilitacionExistente === true);
       const ingSel = obtenerIngredienteSeleccionadoGestor();
-      if (!ingSel) {
-        mostrarAvisoPantallaGestor('Seleccioná primero un producto disponible de la lista.', 'error');
+      if (!GSTATE.propCategoriaSel || !ingSel) {
+        mostrarAvisoPantallaGestor('Completá primero la categoría y el producto antes de enviar.', 'error');
         return;
       }
       const inputManualEl = document.getElementById('prop-peso-manual');
@@ -3162,7 +3536,7 @@
         ? parsearKilosDesdeTextoManual(inputManualEl.value, unidadManual)
         : Number(GSTATE.propKilosSel || 0);
       if (!kilos || kilos <= 0) {
-        mostrarAvisoPantallaGestor('Ingresá un peso válido mayor a 0 (por ejemplo 350 en g o 0.5 en kg).', 'error');
+        mostrarAvisoPantallaGestor('Definí primero una fracción válida mayor a 0.', 'error');
         return;
       }
       GSTATE.propKilosSel = kilos;
@@ -3181,9 +3555,7 @@
         return;
       }
 
-      const nombreBase = (document.getElementById('prop-nombre')?.value || ingSel.alias_vecino_sugerido || ingSel.nombre_claro).trim();
-      const etiquetaPeso = formatearPesoCortoGestor(kilos).replace(/\s+/g, '');
-      const nombreConPeso = /\bx\s*\d+/i.test(nombreBase) ? nombreBase : `${nombreBase} x ${etiquetaPeso}`;
+      const nombreConPeso = construirNombreFinalPropuestaGestor(ingSel, kilos);
 
       const btn = document.getElementById('btn-enviar-propuesta-gestor');
       if (btn) {
@@ -3217,19 +3589,18 @@
         const data = await leerRespuestaJsonSegura(resp);
         if (!resp.ok || !data.ok) {
           mostrarAvisoPantallaGestor('No se pudo enviar la solicitud: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
-          sincronizarBotonEnvioPropuestaDom(ingSel, kilos);
+          sincronizarBotonEnvioPropuestaDom();
           return;
         }
 
         const codProp = data.propuesta?.codigo_propuesta || '';
-        GSTATE.propNombreEditadoManual = false;
         GSTATE.propConfirmacionReciente = solicitarHabilitacionExistente
           ? `✅ Solicitud registrada (${codProp}): pediste habilitar ${nombreConPeso} en tu Nodo.`
           : `✅ ¡Solicitud enviada con éxito! ${nombreConPeso} (${codProp}) ingresó a cotización y ya figura en Mis Solicitudes.`;
-        await cargarPanelGestor({ avanzarGramajeTrasEnvio: true });
+        await cargarPanelGestor({ resetPropuesta: true });
       } catch (err) {
         mostrarAvisoPantallaGestor('Error de comunicación al enviar la solicitud. Verificá tu conexión e intentá de nuevo.', 'error');
-        sincronizarBotonEnvioPropuestaDom(ingSel, kilos);
+        sincronizarBotonEnvioPropuestaDom();
       }
     }
 
