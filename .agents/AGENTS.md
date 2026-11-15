@@ -174,3 +174,15 @@ Todas las herramientas de cálculo, simulaciones de precios y cascadas de costos
   - Cada pantalla ocupa toda la vista móvil (`100dvh`) con **una sola decisión por pantalla** (Entrega, Datos, Dirección si aplica envío, Pago, Revisión y Confirmación), cero campos de pasos futuros y cero overflow horizontal.
   - Cabecera limpia con presencia de marca del nodo activo (respetando `tema_visual` y `logo_incluye_texto` en Paraíso sin texto duplicado, y encabezado estándar en nodos como MANSO), indicador `"Paso X de N"` y botón grande `"← Volver"`.
   - El botón inferior `"Continuar"` permanece `disabled` hasta validar el dato único de esa pantalla, precargando identidad desde `localStorage` solo cuando el vecino ya compró antes.
+
+---
+
+## 9. Regla Rectora de Determinismo por Código e Idioma Oficial LAMDA (LAMDA ↔ Nodo ↔ Tienda Vecinal)
+
+* **Frontera 1 — LAMDA ↔ Nodo (B2B / Operativa):**
+  - Hablan el idioma técnico oficial de LAMDA por ID y código determinista (`[codigo] nombre` de `public.ingredientes`, insumos `es_insumo = true` y `[SKU] descripcion_generada` de `public.bunker_articulos`). Prohibido crear diccionarios intermedios de traducción comercial o contaminar `public.ingredientes` con alias comerciales.
+  - En el Cotizador de Fracciones, el alta/sincronización de artículos se realiza únicamente por clonación determinista de hermano canónico en `bunker_articulos` (**Caso A**) o selectores relacionales por PK del Diccionario Oficial Búnker (**Caso B**), registrando `recetas.articulo_sugerido_numero = ingrediente.articulo_vinculado_numero`, bolsa exacta en `receta_ingredientes` y **0 alertas `estructura_desfasada`**.
+* **Frontera 2 — Nodo ↔ Cliente Final (B2C / Vidriera):**
+  - El artículo llega a cada Nodo con su `SKU` y nombre oficial LAMDA (`descripcion_generada`) por defecto. Solo en `public.nodos_ofertas_gestor` (`nombre_vidriera_personalizado`, `categoria_vidriera_personalizada`) cada Nodo puede personalizar cómo lo exhibe en su tienda pública (`/tienda/:slug`) sin afectar a otros Nodos ni al padrón LAMDA.
+* **Frontera 3 — Retorno del Pedido (Tienda → LAMDA):**
+  - Todo pedido vecinal, canasto/lote, mesa de armado (`/deposito-nodos`), orden de producción/carro, presupuesto/remito, liquidación y vista en `Centro de Nodos y Analítica` retorna a LAMDA anclado por `ID / SKU` mostrando siempre `[SKU] Nomenclatura Oficial LAMDA`.

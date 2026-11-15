@@ -13197,6 +13197,26 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "true"
+      },
+      "nombre_vidriera_personalizado": {
+        "ordinal_position": 13,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "categoria_vidriera_personalizada": {
+        "ordinal_position": 14,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_pedidos_eventos_tracking": {
@@ -13411,6 +13431,16 @@
         "numeric_scale": 2,
         "is_nullable": "NO",
         "column_default": "0.00"
+      },
+      "nombre_vidriera_vecino": {
+        "ordinal_position": 13,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_pedidos_vecinos": {
@@ -14135,6 +14165,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "now()"
+      },
+      "alias_vidriera_sugerido": {
+        "ordinal_position": 19,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_reparto_radar": {

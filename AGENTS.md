@@ -100,3 +100,17 @@
    - Ocupar toda la vista móvil (`100dvh`) con **una única decisión por pantalla**, sin exponer campos de pasos futuros ni scrolls confusos.
    - Exhibir cabecera protagónica con la identidad visual del nodo activo (respetando `tema_visual` y `logo_incluye_texto` sin duplicar texto en marcas como Paraíso, y encabezado estándar en nodos como MANSO), indicador simple `"Paso X de N"` y botón grande `"← Volver"`.
    - Mantener el botón inferior `"Continuar"` estrictamente `disabled` hasta que el dato único de la pantalla activa sea válido, precargando datos previos desde `localStorage` para compradores recurrentes sin valores ficticios hardcodeados.
+
+---
+
+## 7. Regla Rectora de Determinismo por Código e Idioma Oficial LAMDA (LAMDA ↔ Nodo ↔ Tienda Vecinal)
+
+1. **Frontera LAMDA ↔ Nodo (B2B / Operativa — Cero Traducciones Intermedias):**
+   - LAMDA y el Gestor del Nodo hablan **siempre el idioma técnico oficial de LAMDA por ID y código determinista**: códigos y nombres reales de `public.ingredientes` (ej. `[98300883] Mix Premium (Simple)`), envases/insumos reales (`es_insumo = true`) y `[SKU] descripcion_generada` de `public.bunker_articulos` (ej. `[MFSPx300] Mix F/SCOS Premiun x 300g`).
+   - Queda prohibido usar diccionarios o mapas intermedios de traducción comercial entre LAMDA y el Nodo o agregar columnas de alias comerciales en `public.ingredientes`.
+   - Toda nueva fracción aprobada en el Cotizador de Nodos debe construirse **exclusivamente** clonando la anatomía canónica de un hermano existente en `public.bunker_articulos` (**Caso A**) o mediante selectores relacionales por ID del Diccionario Oficial Búnker (`bunker_familias`, `bunker_familia_categorias`, `bunker_diccionario`, `bunker_relacion_atributo_principal`, `bunker_rubros` / `bunker_subrubros` — **Caso B**), con cero texto libre, cero regex inventadas, `recetas.articulo_sugerido_numero = ingrediente.articulo_vinculado_numero` y **0 alertas `estructura_desfasada`**.
+2. **Frontera Nodo ↔ Cliente Final (B2C / Vidriera Autónoma por Nodo):**
+   - Cada artículo llega al Nodo con su `SKU` y su nombre oficial LAMDA (`descripcion_generada`) por defecto.
+   - Recién en su configuración propia (`public.nodos_ofertas_gestor.nombre_vidriera_personalizado` y `categoria_vidriera_personalizada`), cada Nodo puede conservar el nombre oficial por defecto o definir un nombre comercial propio para su tienda pública (`/tienda/:slug`) sin afectar a otros Nodos ni al catálogo maestro de LAMDA.
+3. **Retorno Determinista del Pedido (Tienda → LAMDA):**
+   - Sin importar cómo haya bautizado un Nodo al producto en su vidriera pública, todo pedido vecinal, lote/canasto consolidado, preparación en `/deposito-nodos`, orden de producción/carro, remito/presupuesto, liquidación y pantalla de `Centro de Nodos y Analítica` ingresa y se visualiza en LAMDA anclado por `ID / SKU` exhibiendo `[SKU] Nomenclatura Oficial LAMDA`.

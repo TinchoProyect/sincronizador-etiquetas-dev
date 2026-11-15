@@ -1053,10 +1053,16 @@ async function obtenerFichaDetalleNodo(idOrSlug, { calcularProximaEntregaFn = nu
              LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
              LEFT JOIN LATERAL (
                  SELECT
-                     SUM(cantidad) AS total_unidades,
-                     STRING_AGG(cantidad::text || 'x ' || nombre_publico, ' · ' ORDER BY id ASC) AS resumen_items
-                 FROM public.nodos_pedidos_items
-                 WHERE pedido_id = npv.id
+                     SUM(npi.cantidad) AS total_unidades,
+                     STRING_AGG(
+                         npi.cantidad::text || 'x [' || COALESCE(nac.sku_nodo, npi.sku_nodo, 'S/C') || '] ' ||
+                         COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico),
+                         ' · ' ORDER BY npi.id ASC
+                     ) AS resumen_items
+                 FROM public.nodos_pedidos_items npi
+                 LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+                 LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
+                 WHERE npi.pedido_id = npv.id
              ) it ON true
              WHERE npv.nodo_id = $1::int
              ORDER BY npv.id DESC
@@ -1276,15 +1282,24 @@ async function obtenerRadarAnaliticaNodos({
         ),
         db.query(
             `SELECT
-                COALESCE(e.sku_nodo, '') AS sku_nodo,
-                MAX(COALESCE(e.producto_nombre, e.sku_nodo, 'Producto')) AS producto_nombre,
+                COALESCE(ba.articulo_id, nac.sku_nodo, e.sku_nodo, '') AS sku_nodo,
+                MAX(
+                    CASE
+                        WHEN COALESCE(e.sku_nodo, '') <> '' THEN
+                            '[' || COALESCE(ba.articulo_id, nac.sku_nodo, e.sku_nodo) || '] ' ||
+                            COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico, e.producto_nombre, e.sku_nodo)
+                        ELSE COALESCE(e.producto_nombre, 'Producto')
+                    END
+                ) AS producto_nombre,
                 COUNT(*) FILTER (WHERE e.tipo_evento IN ('clic_que_contiene', 'vista_producto'))::int AS vistas_detalle,
                 COUNT(*) FILTER (WHERE e.tipo_evento = 'carrito_agregar')::int AS veces_agregado,
                 COUNT(DISTINCT e.visitor_id)::int AS visitantes
              FROM public.nodos_tienda_eventos e
+             LEFT JOIN public.nodos_articulos_catalogo nac ON UPPER(nac.sku_nodo) = UPPER(COALESCE(e.sku_nodo, ''))
+             LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, e.sku_nodo, ''))
              ${whereSql ? `${whereSql} AND` : 'WHERE'} e.tipo_evento IN ('clic_que_contiene', 'vista_producto', 'carrito_agregar')
                AND COALESCE(e.producto_nombre, e.sku_nodo, '') <> ''
-             GROUP BY COALESCE(e.sku_nodo, '')
+             GROUP BY COALESCE(ba.articulo_id, nac.sku_nodo, e.sku_nodo, '')
              ORDER BY veces_agregado DESC, vistas_detalle DESC
              LIMIT 15`,
             params
@@ -1313,8 +1328,13 @@ async function obtenerRadarAnaliticaNodos({
                 e.categoria_nombre,
                 e.termino_busqueda,
                 e.oferta_id,
-                e.sku_nodo,
-                e.producto_nombre,
+                COALESCE(ba.articulo_id, nac.sku_nodo, e.sku_nodo) AS sku_nodo,
+                CASE
+                    WHEN COALESCE(e.sku_nodo, '') <> '' THEN
+                        '[' || COALESCE(ba.articulo_id, nac.sku_nodo, e.sku_nodo) || '] ' ||
+                        COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico, e.producto_nombre, e.sku_nodo)
+                    ELSE e.producto_nombre
+                END AS producto_nombre,
                 e.cantidad,
                 e.carrito_unidades,
                 e.carrito_subtotal,
@@ -1336,6 +1356,8 @@ async function obtenerRadarAnaliticaNodos({
                 v.carrito_actualizado_at
              FROM public.nodos_tienda_eventos e
              JOIN public.nodos_maestro nm ON nm.id = e.nodo_id
+             LEFT JOIN public.nodos_articulos_catalogo nac ON UPPER(nac.sku_nodo) = UPPER(COALESCE(e.sku_nodo, ''))
+             LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, e.sku_nodo, ''))
              LEFT JOIN public.nodos_tienda_visitantes v ON v.visitor_id = e.visitor_id
              LEFT JOIN public.nodos_vecinos nv ON nv.id = COALESCE(e.vecino_id, v.vecino_id)
              ${whereSql}
@@ -1388,6 +1410,30 @@ async function obtenerRadarAnaliticaNodos({
         cartParams
     );
 
+    const catalogoSkuOficialRes = await db.query(
+        `SELECT UPPER(nac.sku_nodo) AS sku_upper,
+                COALESCE(ba.articulo_id, nac.sku_nodo) AS sku_oficial,
+                COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial
+         FROM public.nodos_articulos_catalogo nac
+         LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)`
+    );
+    const mapaSkuOficial = new Map(
+        catalogoSkuOficialRes.rows.map(r => [r.sku_upper, { sku: r.sku_oficial, nombre: r.nombre_oficial }])
+    );
+    const normalizarItemsCarritoLamda = (arr) => {
+        if (!Array.isArray(arr)) return [];
+        return arr.map(it => {
+            const rawSku = String(it.sku || it.sku_nodo || '').trim();
+            const match = rawSku ? mapaSkuOficial.get(rawSku.toUpperCase()) : null;
+            if (!match) return it;
+            return {
+                ...it,
+                sku: match.sku,
+                nombre: `[${match.sku}] ${match.nombre}`
+            };
+        });
+    };
+
     const carritosSinCerrar = carritosAbiertosRes.rows.map((c) => {
         const minInactivo = Math.max(0, Math.round(Number(c.segundos_inactivo || 0) / 60));
         return {
@@ -1407,7 +1453,7 @@ async function obtenerRadarAnaliticaNodos({
             origen_trafico: c.ultimo_origen_trafico || 'Directo',
             unidades: Number(c.carrito_actual_unidades || 0),
             subtotal: Number(c.carrito_actual_subtotal || 0),
-            items: Array.isArray(c.carrito_actual_json) ? c.carrito_actual_json : [],
+            items: normalizarItemsCarritoLamda(c.carrito_actual_json),
             actualizado_at: c.carrito_actualizado_at,
             minutos_inactivo: minInactivo,
             estado_carrito: minInactivo >= 10 ? 'ABANDONADO' : 'EN_TIENDA_AHORA'
@@ -1454,7 +1500,7 @@ async function obtenerRadarAnaliticaNodos({
                 productos_interes: [],
                 carrito_actual_unidades: Number(ev.carrito_actual_unidades || 0),
                 carrito_actual_subtotal: Number(ev.carrito_actual_subtotal || 0),
-                carrito_actual_items: Array.isArray(ev.carrito_actual_json) ? ev.carrito_actual_json : [],
+                carrito_actual_items: normalizarItemsCarritoLamda(ev.carrito_actual_json),
                 eventos: []
             });
         }

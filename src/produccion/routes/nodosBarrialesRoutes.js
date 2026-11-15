@@ -259,11 +259,31 @@ router.post('/calcular-preview', async (req, res) => {
 });
 
 /**
- * POST /api/produccion/nodos/previsualizar-anatomia
- * Resuelve en vivo para la Mesa Cotizadora el SKU nativo en Búnker, receta/bolsa real
- * en Espacios Personales y el Alias Amigable sugerido para el Vecino.
+ * GET /api/produccion/nodos/diccionario-bunker
+ * Catálogo relacional oficial del Diccionario Búnker (Familias, Posiciones, Sustantivos Ancla,
+ * Términos vinculados por familia + principal y Rubros/Subrubros) para Caso B de la Mesa Cotizadora.
  */
-router.post('/previsualizar-anatomia', async (req, res) => {
+router.get('/diccionario-bunker', async (req, res) => {
+    try {
+        if (esSolicitudPublicaNodos(req)) {
+            return res.status(403).json({ ok: false, error: 'Diccionario Búnker restringido a administración interna.' });
+        }
+        const data = await nodosService.obtenerDiccionarioBunkerCotizador(
+            req.query.familia_id || null,
+            req.query.articulo_principal_id || null
+        );
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /diccionario-bunker:', error);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/previsualizar-anatomia
+ * Resuelve en vivo para la Mesa Cotizadora el SKU oficial y la Nomenclatura Oficial del Diccionario Búnker.
+ */
+router.post(['/previsualizar-anatomia', '/cotizar-preview'], async (req, res) => {
     try {
         const anatomia = await nodosService.previsualizarAnatomiaCotizacionNodo(req.body || {});
         res.json({ ok: true, anatomia });

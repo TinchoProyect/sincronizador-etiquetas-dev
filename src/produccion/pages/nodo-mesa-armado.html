@@ -601,14 +601,24 @@
             const todasListas = canasto.total_bolsas > 0 && canasto.bolsas_armadas === canasto.total_bolsas;
             const yaEntregado = canasto.estado_canasto === 'ENTREGADO_AL_GESTOR';
 
+            const formatearEtiquetaOficialItem = (it) => {
+                if (it?.etiqueta_oficial_lamda) return String(it.etiqueta_oficial_lamda).trim();
+                const sku = String(it?.sku_nodo || '').trim();
+                const nom = String(it?.nombre_oficial_lamda || it?.nombre_publico || '').trim() || 'Producto';
+                if (!sku) return nom;
+                if (nom.toUpperCase().startsWith(`[${sku.toUpperCase()}]`)) return nom;
+                return `[${sku}] ${nom}`;
+            };
+
             const filasConsolidado = (canasto.consolidado_mercaderia || []).map(item => {
                 const completo = item.bolsas_pendientes === 0;
                 const vecinosStr = item.vecinos_detalle.map(v => `${esc(v.vecino_nombre)} (${v.cantidad})`).join(', ');
+                const etiquetaOficial = formatearEtiquetaOficialItem(item);
                 return `
                     <tr>
                         <td>
-                            <div style="font-weight:800; color:#f8fafc;">${esc(item.nombre_publico)}</div>
-                            <div style="font-size:0.72rem; color:#94a3b8;">Código: <code>${esc(item.sku_nodo)}</code> · Vecinos: ${vecinosStr}</div>
+                            <div style="font-weight:800; color:#f8fafc;">${esc(etiquetaOficial)}</div>
+                            <div style="font-size:0.72rem; color:#94a3b8;">SKU Oficial: <code>${esc(item.sku_nodo)}</code> · Vecinos: ${vecinosStr}</div>
                         </td>
                         <td>
                             <span class="badge" style="background:rgba(255,255,255,0.06); color:#cbd5e1;">
@@ -634,8 +644,9 @@
                 const esEfectivo = p.medio_pago === 'EFECTIVO' || String(p.estado_pago).includes('COBRAR');
                 const itemsResumen = (p.items || []).map(i => {
                     const pres = String(i.presentacion_etiqueta || '').trim();
-                    const nom = String(i.nombre_publico || '').trim() || 'Producto';
-                    const txt = pres && !nom.toLowerCase().includes(pres.toLowerCase()) ? `${nom} (${pres})` : nom;
+                    const nom = formatearEtiquetaOficialItem(i);
+                    const yaTienePeso = /\bx\s*\d+(?:[.,]\d+)?\s*(?:g|gr|kg)\b/i.test(nom);
+                    const txt = pres && !yaTienePeso && !nom.toLowerCase().includes(pres.toLowerCase()) ? `${nom} (${pres})` : nom;
                     return `<strong>${i.cantidad}x</strong> ${esc(txt)}`;
                 }).join(' · ');
 

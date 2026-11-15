@@ -35,6 +35,19 @@
         propuestaActivaId: null,
         catalogoEditandoId: null,
         omitirAutoOrigenInicial: false,
+        anatomiaActualMesa: null,
+        diccionarioBunkerActual: null,
+        casoBSeleccion: {
+            familia_id: null,
+            incluir_familia: true,
+            modo_display_familia: 'ABREVIATURA',
+            articulo_principal_id: null,
+            silencioso_principal: false,
+            modo_display_principal: 'COMPLETO',
+            posiciones: {},
+            rubro: '',
+            sub_rubro: ''
+        },
         nodoEditandoId: null,
         modoCreacionNuevo: false,
         modoLaboratorio: false,
@@ -291,9 +304,10 @@
     // =========================================================================
     function renderizarSubTabCotizador() {
         const flujoActual = Number(ESTADO_NODOS.flujoSeleccionadoMesa || 2);
-        const envasesOpts = ESTADO_NODOS.fuentes.envases.map(e =>
-            `<option value="${e.id}" data-costo="${e.costo_unitario}" ${e.id === 180 ? 'selected' : ''}>${escaparHtml(e.nombre)} (${fmtMoneda(e.costo_unitario, 2)})</option>`
-        ).join('');
+        const envasesOpts = ESTADO_NODOS.fuentes.envases.map(e => {
+            const labelEnv = e.label_oficial || `#${e.id} [${e.codigo || e.id}] ${e.nombre}`;
+            return `<option value="${e.id}" data-costo="${e.costo_unitario}" ${e.id === 180 ? 'selected' : ''}>${escaparHtml(labelEnv)} (${fmtMoneda(e.costo_unitario, 2)})</option>`;
+        }).join('');
 
         const tarifasOpts = ESTADO_NODOS.fuentes.tarifas_mano_obra.map(t =>
             `<option value="${t.id}" data-valor-hora="${t.valor_hora}">${escaparHtml(t.nombre_completo)} (${fmtMoneda(t.valor_hora)}/hora)</option>`
@@ -306,6 +320,11 @@
             const metaFlujo = FLUJO_META[prop.flujo_sugerido] || FLUJO_META[2];
             const activa = Number(ESTADO_NODOS.propuestaActivaId) === Number(prop.id);
             const skuBunkerExistente = prop.articulo_bunker_sugerido_codigo ? String(prop.articulo_bunker_sugerido_codigo).trim() : '';
+            const gramosProp = Math.round(Number(prop.kilos_sugeridos || 0.25) * 1000);
+            const etPesoProp = gramosProp >= 1000 && gramosProp % 1000 === 0 ? `${gramosProp / 1000}kg` : `${gramosProp}g`;
+            const tituloDeterminista = prop.ingrediente_label_oficial
+                ? `${prop.ingrediente_label_oficial} x ${etPesoProp}`
+                : prop.nombre_sugerido;
 
             return `
                 <div style="padding:11px 13px; border-radius:10px; background:${activa ? 'rgba(16,185,129,0.14)' : 'rgba(15,23,42,0.75)'}; border:1px solid ${activa ? '#10b981' : esPendiente ? 'rgba(245,158,11,0.4)' : '#334155'}; display:flex; flex-direction:column; gap:6px;">
@@ -324,16 +343,18 @@
                         </span>
                     </div>
 
-                    <div style="font-weight:700; font-size:0.9rem; color:#f8fafc;">
-                        ${escaparHtml(prop.nombre_sugerido)}
+                    <div style="font-weight:800; font-size:0.88rem; color:#f8fafc; font-family:inherit;">
+                        ${escaparHtml(tituloDeterminista)}
                     </div>
 
-                    <div style="font-size:0.77rem; color:#cbd5e1; display:flex; gap:12px; flex-wrap:wrap;">
-                        <span>⚖️ Fracción: <strong>${Math.round(Number(prop.kilos_sugeridos || 0.25) * 1000)}g</strong> (${Number(prop.kilos_sugeridos || 0.25)} kg)</span>
-                        ${prop.ingrediente_sugerido_nombre ? `<span>🌾 Base: <strong>${escaparHtml(prop.ingrediente_sugerido_nombre)}</strong> (${fmtMoneda(prop.ingrediente_sugerido_costo_kg)}/kg)</span>` : ''}
-                        ${prop.precio_objetivo_vecino ? `<span>🎯 Precio estimado vecino: <strong style="color:#38bdf8;">${fmtMoneda(prop.precio_objetivo_vecino)}</strong></span>` : ''}
+                    <div style="font-size:0.76rem; color:#cbd5e1; display:flex; gap:10px; flex-wrap:wrap;">
+                        <span>⚖️ Fracción: <strong>${gramosProp}g</strong> (${Number(prop.kilos_sugeridos || 0.25)} kg)</span>
+                        ${(prop.ingrediente_label_oficial || prop.ingrediente_sugerido_nombre) ? `<span>🌾 Ingrediente FK #${Number(prop.ingrediente_sugerido_id || 0)}: <strong>${escaparHtml(prop.ingrediente_label_oficial || prop.ingrediente_sugerido_nombre)}</strong> (${fmtMoneda(prop.ingrediente_sugerido_costo_kg)}/kg)</span>` : ''}
+                        ${prop.ingrediente_articulo_vinculado ? `<span>🔗 Puente: <code style="color:#7dd3fc;">${escaparHtml(prop.ingrediente_articulo_vinculado)}</code></span>` : ''}
+                        ${prop.precio_objetivo_vecino ? `<span>🎯 Ref. vecino: <strong style="color:#38bdf8;">${fmtMoneda(prop.precio_objetivo_vecino)}</strong></span>` : ''}
                     </div>
 
+                    ${prop.alias_vidriera_sugerido ? `<div style="font-size:0.74rem; color:#fcd34d; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); padding:4px 8px; border-radius:6px;">🏪 Alias pensado por el Nodo p/ su vidriera: <strong>"${escaparHtml(prop.alias_vidriera_sugerido)}"</strong> <span style="color:#94a3b8;">(solo aplica a su vidriera B2C)</span></div>` : ''}
                     ${prop.comentario_gestor ? `<div style="font-size:0.75rem; color:#94a3b8; font-style:italic; background:rgba(0,0,0,0.25); padding:5px 8px; border-radius:6px;">"${escaparHtml(prop.comentario_gestor)}"</div>` : ''}
 
                     <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:2px; flex-wrap:wrap;">
@@ -361,7 +382,7 @@
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                             <div>
                                 <div style="font-weight:700; font-size:0.94rem; color:#f8fafc;">📥 Solicitudes de Nuevas Fracciones (Gestores → LAMDA)</div>
-                                <div style="font-size:0.75rem; color:#94a3b8;">Los pedidos de nuevas presentaciones ingresan aquí para cotizar y fijar su Precio Base Nodo</div>
+                                <div style="font-size:0.75rem; color:#94a3b8;">Atadas por FK determinista a <code>public.ingredientes</code> y al Diccionario Oficial Búnker</div>
                             </div>
                             <button onclick="window.NodosPizarra.abrirModalNuevaPropuesta()"
                                 style="padding:6px 11px; border-radius:7px; font-size:0.76rem; font-weight:700; cursor:pointer; border:1px solid #38bdf8; background:rgba(56,189,248,0.16); color:#bae6fd;">
@@ -377,11 +398,11 @@
                     <!-- EXPLORADOR DIRECTO DE INSUMOS / RECETAS POR FLUJO (1 AL 6) -->
                     <div class="card" style="padding:14px; background:#151e2e; border:1px solid #2e3c51; border-radius:12px;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
-                            <div style="font-weight:700; font-size:0.9rem; color:#f8fafc;">🧭 Elegir Producto o Receta de la Pizarra</div>
-                            <input type="text" id="nodos-search-fuentes" placeholder="🔍 Buscar almendra, mix, granola, barrita..."
+                            <div style="font-weight:700; font-size:0.9rem; color:#f8fafc;">🧭 Ingredientes y Puentes Oficiales LAMDA</div>
+                            <input type="text" id="nodos-search-fuentes" placeholder="🔍 Buscar código, ID, ingrediente, puente..."
                                 value="${escaparHtml(ESTADO_NODOS.busquedaFuentes)}"
                                 oninput="window.NodosPizarra.filtrarFuentesRapidas(this.value)"
-                                style="padding:5px 10px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.78rem; width:220px;">
+                                style="padding:5px 10px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.78rem; width:230px;">
                         </div>
                         <div id="nodos-lista-fuentes-rapidas" style="display:flex; flex-direction:column; gap:6px; max-height:290px; overflow-y:auto; padding-right:4px;">
                             ${renderizarListaFuentesRapidasHtml()}
@@ -389,15 +410,15 @@
                     </div>
                 </div>
 
-                <!-- COLUMNA DERECHA: MESA DE COTIZACIÓN DE FRACCIONES Y APROBACIÓN DE PRECIO BASE NODO -->
+                <!-- COLUMNA DERECHA: MESA DE COTIZACIÓN DETERMINISTA POR CÓDIGO Y DICCIONARIO BÚNKER -->
                 <div class="card" style="padding:16px 18px; background:#151e2e; border:1px solid rgba(16,185,129,0.4); border-radius:12px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2e3c51; padding-bottom:10px; margin-bottom:14px;">
                         <div>
                             <div style="font-size:1rem; font-weight:800; color:#f8fafc;" id="mesa-cotizacion-titulo">
-                                🧮 Cotizador de Fracciones Familiares
+                                🧮 Cotizador Determinista de Fracciones (Idioma Oficial LAMDA)
                             </div>
                             <div style="font-size:0.76rem; color:#94a3b8;" id="mesa-cotizacion-subtitulo">
-                                Seleccione un flujo productivo o cargue una solicitud de la bandeja izquierda.
+                                Ingrediente FK + Envase Real + Nomenclatura Oficial derivada del Diccionario Búnker.
                             </div>
                         </div>
                         <button onclick="window.NodosPizarra.limpiarMesaCotizacion()"
@@ -425,27 +446,31 @@
                         </div>
                     </div>
 
-                    <!-- DATOS DE ORIGEN, FRACCIÓN Y ENVASE -->
-                    <div style="display:grid; grid-template-columns: 1.5fr 1fr 0.9fr; gap:10px; margin-bottom:10px;">
+                    <!-- DATOS DE ORIGEN, COSTO VIVO Y PESO DE FRACCIÓN -->
+                    <div style="display:grid; grid-template-columns: 1.6fr 0.95fr 0.85fr; gap:10px; margin-bottom:8px;">
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Producto / Receta Base (${FLUJO_META[flujoActual].corto})</label>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Ingrediente / Insumo Oficial LAMDA (${FLUJO_META[flujoActual].corto})</label>
                             <select id="cot-origen-select" onchange="window.NodosPizarra.alCambiarOrigenSelect()"
-                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.82rem;">
+                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.81rem;">
                                 ${opcionesInsumoFlujo}
                             </select>
                         </div>
                         <div>
                             <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Costo por Kilo ($ / Kg)</label>
                             <input type="number" id="cot-costo-kg" step="0.01" value="18109.43" oninput="window.NodosPizarra.recalcularEnVivo()"
-                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #38bdf8; background:#0f172a; color:#38bdf8; font-weight:800; font-size:0.86rem;">
+                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #38bdf8; background:#0f172a; color:#38bdf8; font-weight:800; font-size:0.86rem; box-sizing:border-box;">
                         </div>
                         <div>
                             <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Peso Fracción (Kg)</label>
                             <input type="number" id="cot-kilos-unidad" step="0.01" min="0.01" value="0.25"
                                 oninput="window.NodosPizarra.recalcularEnVivo()"
                                 onchange="window.NodosPizarra.alCambiarKilosUnidadMesa()"
-                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #10b981; background:#0f172a; color:#6ee7b7; font-weight:800; font-size:0.86rem;">
+                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #10b981; background:#0f172a; color:#6ee7b7; font-weight:800; font-size:0.86rem; box-sizing:border-box;">
                         </div>
+                    </div>
+
+                    <!-- CADENA RELACIONAL DETERMINISTA (INGREDIENTE SIMPLE -> ARTÍCULO PUENTE -> RECETA MADRE MIX) -->
+                    <div id="cot-cadena-relacional-box" style="margin-bottom:10px; padding:8px 11px; border-radius:8px; background:#0f172a; border:1px solid #334155; font-size:0.75rem; color:#cbd5e1; line-height:1.45;">
                     </div>
 
                     <!-- ATAJOS RÁPIDOS DE GRAMAJE FAMILIAR -->
@@ -468,40 +493,35 @@
                         `).join('')}
                     </div>
 
-                    <!-- CONEXIÓN EN VIVO CON RECETA DE BÚNKER / ESPACIO DE TRABAJO PERSONAL -->
-                    <div id="cot-bunker-receta-badge" style="display:none; margin-bottom:10px; padding:7px 11px; border-radius:8px; font-size:0.76rem; font-weight:700;"></div>
+                    <!-- CONEXIÓN EN VIVO CON DICCIONARIO OFICIAL BÚNKER / RECETA -->
+                    <div id="cot-bunker-receta-badge" style="display:none; margin-bottom:10px; padding:8px 11px; border-radius:8px; font-size:0.76rem; font-weight:700; line-height:1.45;"></div>
 
-                    <!-- IDENTIDAD COMERCIAL DEL ARTÍCULO EN EL PADRÓN DE NODOS Y NOMENCLATURA BÚNKER -->
-                    <div style="display:grid; grid-template-columns: 1.3fr 1.5fr; gap:10px; margin-bottom:10px;">
+                    <!-- PANEL RELACIONAL DICCIONARIO BÚNKER (CASO B: SIN HERMANO PREVIO EN BÚNKER) -->
+                    <div id="cot-caso-b-diccionario-panel" style="display:none; margin-bottom:12px; padding:11px 12px; border-radius:9px; background:rgba(30,41,59,0.85); border:1px solid rgba(56,189,248,0.45);">
+                    </div>
+
+                    <!-- IDENTIDAD TÉCNICA DETERMINISTA (DICCIONARIO OFICIAL BÚNKER — SOLO LECTURA) -->
+                    <div style="display:grid; grid-template-columns: 0.95fr 1.65fr; gap:10px; margin-bottom:10px;">
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#38bdf8; font-weight:700; margin-bottom:4px;">🏛️ Nomenclatura Interna Búnker / Depósito</label>
-                            <input type="text" id="cot-bunker-nomenclatura" placeholder="Ej: GRANA Sol x 200g"
-                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #0284c7; background:#0f172a; color:#bae6fd; font-weight:700; font-size:0.82rem; box-sizing:border-box;">
+                            <label style="display:block; font-size:0.74rem; color:#7dd3fc; font-weight:700; margin-bottom:4px;">Código SKU Oficial (Búnker + Nodo)</label>
+                            <input type="text" id="cot-sku-nodo" placeholder="Automático (ej: MFSPx500)"
+                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #0284c7; background:#0f172a; color:#f8fafc; font-family:monospace; font-weight:800; font-size:0.84rem; box-sizing:border-box;">
                         </div>
-                        <div style="padding:7px 9px; border-radius:9px; background:rgba(16,185,129,0.10); border:1px solid rgba(16,185,129,0.45);">
-                            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:4px;">
-                                <label style="font-size:0.74rem; color:#34d399; font-weight:800;">🏘️ Nombre Amigable que verá el Vecino (Confirmar)</label>
-                                <button type="button" onclick="window.NodosPizarra.aplicarAliasVecinoSugeridoMesa()"
-                                    title="Restaurar nombre claro sugerido"
-                                    style="padding:1px 6px; border-radius:4px; font-size:0.66rem; font-weight:700; border:1px solid #10b981; background:#0f172a; color:#6ee7b7; cursor:pointer;">
-                                    ↺ Sugerido
-                                </button>
-                            </div>
-                            <input type="text" id="cot-nombre-publico" placeholder="Ej: Granola de Sol"
-                                style="width:100%; padding:7px 8px; border-radius:7px; border:1px solid #10b981; background:#0f172a; color:#ffffff; font-weight:800; font-size:0.85rem; box-sizing:border-box;">
+                        <div>
+                            <label style="display:flex; justify-content:space-between; align-items:center; font-size:0.74rem; color:#38bdf8; font-weight:700; margin-bottom:4px;">
+                                <span>🏛️ Nomenclatura Oficial Búnker (Diccionario — Solo Lectura)</span>
+                                <span style="font-size:0.66rem; color:#94a3b8;">El Nodo personaliza su vidriera en Mi Oferta</span>
+                            </label>
+                            <input type="text" id="cot-bunker-nomenclatura" readonly placeholder="Derivada automáticamente del Diccionario Búnker"
+                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #0284c7; background:#0b1120; color:#bae6fd; font-weight:800; font-size:0.84rem; box-sizing:border-box; cursor:not-allowed;">
                         </div>
                     </div>
 
-                    <div style="display:grid; grid-template-columns: 0.9fr 1fr 1.3fr; gap:10px; margin-bottom:12px;">
+                    <div style="display:grid; grid-template-columns: 1fr 1.35fr; gap:10px; margin-bottom:12px;">
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Código SKU (Búnker + Nodo)</label>
-                            <input type="text" id="cot-sku-nodo" placeholder="Automático (ej: APN25/27X250G)"
-                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#cbd5e1; font-family:monospace; font-size:0.82rem;">
-                        </div>
-                        <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Categoría en Tienda Vecinal</label>
-                            <input type="text" id="cot-categoria" value="Frutos Secos Puros"
-                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.82rem;">
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Familia / Rubro Oficial LAMDA</label>
+                            <input type="text" id="cot-categoria" readonly value="Frutos Secos"
+                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0b1120; color:#cbd5e1; font-size:0.81rem; box-sizing:border-box; cursor:not-allowed;">
                         </div>
                         <div>
                             <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Disponibilidad en Listas del Búnker</label>
@@ -513,12 +533,12 @@
                         </div>
                     </div>
 
-                    <!-- ENVASE, TIEMPO DE FRACCIONADO Y TARIFA HORARIA -->
-                    <div style="display:grid; grid-template-columns: 1.25fr 1fr 1.15fr; gap:10px; margin-bottom:12px;">
+                    <!-- ENVASE REAL DETERMINISTA, TIEMPO DE FRACCIONADO Y TARIFA HORARIA -->
+                    <div style="display:grid; grid-template-columns: 1.35fr 0.95fr 1.1fr; gap:10px; margin-bottom:12px;">
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Envase / Bolsa</label>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Envase / Bolsa Oficial (<code>public.ingredientes</code>)</label>
                             <select id="cot-envase-select" onchange="window.NodosPizarra.recalcularEnVivo()"
-                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.81rem;">
+                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.8rem;">
                                 ${envasesOpts}
                             </select>
                         </div>
@@ -581,7 +601,7 @@
                     </div>
 
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-                        <input type="text" id="cot-notas-tecnicas" placeholder="Observación o nota para el gestor del Nodo..."
+                        <input type="text" id="cot-notas-tecnicas" placeholder="Observación técnica interna o nota para el gestor del Nodo..."
                             style="flex:1; padding:9px 12px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#e2e8f0; font-size:0.8rem;">
                         <button type="button" onclick="window.NodosPizarra.aprobarYPublicarEnPadronNodos()"
                             style="padding:10px 18px; border-radius:8px; font-weight:800; font-size:0.86rem; cursor:pointer; border:none; background:linear-gradient(135deg, #10b981, #059669); color:#ffffff; box-shadow: 0 4px 12px rgba(16,185,129,0.28);">
@@ -597,7 +617,7 @@
         const num = Number(flujo || 2);
         if (num === 1) {
             return ESTADO_NODOS.fuentes.articulos_flujo_1.map(a =>
-                `<option value="ART:${escaparHtml(a.articulo_id)}" data-costo="${a.costo_kg}" data-nombre="${escaparHtml(a.nombre)}" data-alias-vecino="${escaparHtml(a.nombre)}">[${escaparHtml(a.articulo_id)}] ${escaparHtml(a.nombre)} (${fmtMoneda(a.costo_kg)}/kg)</option>`
+                `<option value="ART:${escaparHtml(a.articulo_id)}" data-costo="${a.costo_kg}" data-nombre="${escaparHtml(a.nombre)}">[${escaparHtml(a.articulo_id)}] ${escaparHtml(a.nombre)} (${fmtMoneda(a.costo_kg)}/kg)</option>`
             ).join('');
         }
 
@@ -606,32 +626,38 @@
 
         return lista.map(i => {
             const costoVivo = obtenerCostoVivoIngredientePizarra(i.id, i.costo_kg);
-            const labelClaro = i.nombre_claro_gestor || i.nombre;
-            const aliasVecino = i.alias_vecino_sugerido || labelClaro;
-            return `<option value="${i.id}" data-costo="${costoVivo}" data-nombre="${escaparHtml(i.nombre)}" data-alias-vecino="${escaparHtml(aliasVecino)}" data-categoria="${escaparHtml(i.categoria_gestor || '')}">${escaparHtml(labelClaro)} (${fmtMoneda(costoVivo)}/kg)</option>`;
+            const labelOficial = i.label_oficial || `[${i.codigo || i.id}] ${i.nombre}`;
+            const puenteTxt = i.articulo_vinculado_numero ? ` · Puente: ${i.articulo_vinculado_numero}` : '';
+            return `<option value="${i.id}" data-costo="${costoVivo}" data-nombre="${escaparHtml(i.nombre)}" data-categoria="${escaparHtml(i.categoria_lamda || i.categoria_gestor || '')}">#${i.id} ${escaparHtml(labelOficial)}${escaparHtml(puenteTxt)} (${fmtMoneda(costoVivo)}/kg)</option>`;
         }).join('');
     }
 
     function renderizarListaFuentesRapidasHtml() {
         const q = ESTADO_NODOS.busquedaFuentes;
         const filtrados = ESTADO_NODOS.fuentes.ingredientes_por_flujo.filter(item => {
-            const bolsa = `${item.id} ${item.codigo || ''} ${item.nombre} ${item.nombre_claro_gestor || ''} ${item.alias_vecino_sugerido || ''} ${item.categoria_gestor || ''} ${item.flujo_nombre} ${item.articulo_vinculado_numero || ''}`;
+            const bolsa = `${item.id} ${item.codigo || ''} ${item.nombre} ${item.label_oficial || ''} ${item.categoria_lamda || item.categoria_gestor || ''} ${item.flujo_nombre} ${item.articulo_vinculado_numero || ''} ${item.mix_padre?.codigo || ''} ${item.mix_padre?.nombre || ''}`;
             return cumpleBusquedaUniversalLamda(bolsa, q);
         });
 
         return filtrados.slice(0, 45).map(item => {
             const meta = FLUJO_META[item.flujo] || FLUJO_META[2];
             const costoVivo = obtenerCostoVivoIngredientePizarra(item.id, item.costo_kg);
-            const labelClaro = item.nombre_claro_gestor || item.nombre;
+            const labelOficial = item.label_oficial || `[${item.codigo || item.id}] ${item.nombre}`;
             return `
-                <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; border-radius:7px; background:rgba(15,23,42,0.7); border:1px solid #263244;">
-                    <div>
-                        <span style="font-size:0.68rem; padding:1px 6px; border-radius:4px; background:${meta.bg}; color:${meta.color}; font-weight:700; margin-right:6px;">
-                            ${meta.corto}
-                        </span>
-                        <strong style="font-size:0.8rem; color:#f1f5f9;">${escaparHtml(labelClaro)}</strong>
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 10px; border-radius:7px; background:rgba(15,23,42,0.7); border:1px solid #263244;">
+                    <div style="min-width:0;">
+                        <div>
+                            <span style="font-size:0.68rem; padding:1px 6px; border-radius:4px; background:${meta.bg}; color:${meta.color}; font-weight:700; margin-right:6px;">
+                                ${meta.corto}
+                            </span>
+                            <strong style="font-size:0.79rem; color:#f1f5f9;">#${item.id} ${escaparHtml(labelOficial)}</strong>
+                        </div>
+                        <div style="font-size:0.69rem; color:#94a3b8; margin-top:2px;">
+                            ${item.articulo_vinculado_numero ? `🔗 Puente: <code style="color:#7dd3fc;">${escaparHtml(item.articulo_vinculado_numero)}</code>` : 'Sin puente'}
+                            ${item.mix_padre ? ` · 🥣 Receta Madre: <code style="color:#c4b5fd;">#${item.mix_padre.id} [${escaparHtml(item.mix_padre.codigo)}] ${escaparHtml(item.mix_padre.nombre)}</code>` : ''}
+                        </div>
                     </div>
-                    <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
                         <span style="font-size:0.8rem; color:#38bdf8; font-weight:700;">${fmtMoneda(costoVivo)}/kg</span>
                         <button type="button" onclick="window.NodosPizarra.cargarIngredienteDirectoEnMesa(${item.id})"
                             style="padding:3px 8px; border-radius:5px; font-size:0.72rem; font-weight:700; border:1px solid #38bdf8; background:rgba(56,189,248,0.15); color:#bae6fd; cursor:pointer;">
@@ -825,7 +851,7 @@
             const kilos = Number(p.kilos_unidad || 0);
             if (modoPeso === 'SUB_1KG' && kilos >= 0.99 && !p.es_pack) return false;
             if (modoPeso === '1KG' && (kilos < 0.99 || p.es_pack)) return false;
-            const bolsa = `${p.articulo_id} ${p.descripcion_generada || ''} ${p.nombre_claro_gestor || ''} ${p.alias_vecino_sugerido || ''} ${p.categoria_gestor || ''} ${p.etiqueta_peso || ''} flujo ${p.flujo}`;
+            const bolsa = `${p.articulo_id} ${p.descripcion_generada || ''} ${p.label_oficial || ''} ${p.ingrediente_label_oficial || ''} ${p.categoria_lamda || p.categoria_gestor || ''} ${p.etiqueta_peso || ''} flujo ${p.flujo}`;
             return cumpleBusquedaUniversalLamda(bolsa, qPlanta);
         });
 
@@ -843,8 +869,8 @@
                     <thead>
                         <tr style="background:#0f172a; color:#94a3b8; text-align:left; position:sticky; top:0; z-index:1; border-bottom:1px solid #334155;">
                             <th style="padding:8px 10px;">SKU Búnker / Flujo</th>
-                            <th style="padding:8px 10px;">Producto LAMDA y Presentación</th>
-                            <th style="padding:8px 10px;">Categoría</th>
+                            <th style="padding:8px 10px;">Nomenclatura Oficial LAMDA (Búnker)</th>
+                            <th style="padding:8px 10px;">Familia / Rubro</th>
                             <th style="padding:8px 10px;">Costo MP / Base</th>
                             <th style="padding:8px 10px;">Ref. Lista Mayorista</th>
                             <th style="padding:8px 10px; text-align:right;">Habilitar en Nodos</th>
@@ -853,6 +879,7 @@
                     <tbody>
                         ${filtradas.map(p => {
                             const meta = FLUJO_META[p.flujo] || FLUJO_META[2];
+                            const labelArt = p.label_oficial || `[${p.articulo_id}] ${p.descripcion_generada || ''}`;
                             return `
                                 <tr style="border-bottom:1px solid #1e293b; background:rgba(15,23,42,0.55);">
                                     <td style="padding:8px 10px;">
@@ -862,13 +889,13 @@
                                         </div>
                                     </td>
                                     <td style="padding:8px 10px;">
-                                        <strong style="color:#f8fafc;">${escaparHtml(p.nombre_claro_gestor)}</strong>
+                                        <strong style="color:#f8fafc;">${escaparHtml(labelArt)}</strong>
                                         <span style="margin-left:6px; background:rgba(56,189,248,0.16); color:#bae6fd; border:1px solid rgba(56,189,248,0.35); padding:1px 7px; border-radius:999px; font-size:0.72rem; font-weight:800;">
                                             ${escaparHtml(p.etiqueta_peso)}
                                         </span>
-                                        <div style="font-size:0.72rem; color:#94a3b8; margin-top:2px;">${escaparHtml(p.descripcion_generada || '')}</div>
+                                        ${p.ingrediente_label_oficial ? `<div style="font-size:0.71rem; color:#94a3b8; margin-top:2px; font-family:monospace;">Insumo: ${escaparHtml(p.ingrediente_label_oficial)}</div>` : ''}
                                     </td>
-                                    <td style="padding:8px 10px; color:#cbd5e1;">${escaparHtml(p.categoria_gestor || '')}</td>
+                                    <td style="padding:8px 10px; color:#cbd5e1;">${escaparHtml(p.categoria_lamda || p.categoria_gestor || '')}</td>
                                     <td style="padding:8px 10px;">
                                         <div style="color:#cbd5e1;">MP: <strong>${fmtMoneda(p.costo_insumo_kg)}/kg</strong></div>
                                         ${p.bunker_costo_base > 0 ? `<div style="font-size:0.71rem; color:#94a3b8;">Costo u. Búnker: ${fmtMoneda(p.bunker_costo_base, 0)}</div>` : ''}
@@ -902,7 +929,7 @@
 
         const filasCatalogo = ESTADO_NODOS.catalogo.filter(c => {
             if (fFlujo > 0 && Number(c.flujo_lamda) !== fFlujo) return false;
-            const bolsa = `${c.sku_nodo} ${c.bunker_descripcion_generada || ''} ${c.bunker_familia_nombre || ''} ${c.nombre_publico} ${c.categoria_familiar} ${c.presentacion_etiqueta || ''} ${c.ingrediente_origen_nombre || ''} ${c.notas_tecnicas || ''} flujo ${c.flujo_lamda}`;
+            const bolsa = `${c.sku_nodo} ${c.bunker_descripcion_generada || ''} ${c.bunker_familia_nombre || ''} ${c.bunker_rubro || ''} ${c.bunker_sub_rubro || ''} ${c.nombre_publico || ''} ${c.categoria_familiar || ''} ${c.presentacion_etiqueta || ''} ${c.ingrediente_label_oficial || ''} ${c.ingrediente_origen_nombre || ''} ${c.ingrediente_articulo_vinculado || ''} ${c.notas_tecnicas || ''} flujo ${c.flujo_lamda}`;
             return cumpleBusquedaUniversalLamda(bolsa, q);
         });
 
@@ -916,7 +943,7 @@
                                 🏛️ Lista Oficial Búnker: ${escaparHtml(listaBunkerNodos.nombre_lista)} (ID #${listaBunkerNodos.id || '-'})
                             </span>
                             <span style="font-size:0.75rem; color:#94a3b8;">
-                                Sincronizada bidireccionalmente con <code>bunker_lista_articulos</code>, <code>bunker_lista_insumos</code> y <code>bunker_cliente_listas_precios</code>
+                                Idioma Técnico Oficial LAMDA (<code>[SKU] descripcion_generada</code>) · Cada Nodo personaliza su nombre de vidriera en su propio panel
                             </span>
                         </div>
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:2px;">
@@ -936,7 +963,7 @@
 
                 <div class="card" style="padding:12px 16px; background:#151e2e; border:1px solid #2e3c51; border-radius:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
                     <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:280px;">
-                        <input type="text" placeholder="🔍 Buscar por nomenclatura Búnker, alias vecino, familia, código o peso..."
+                        <input type="text" placeholder="🔍 Buscar por SKU oficial, nomenclatura Búnker, código de insumo, puente o rubro..."
                             value="${escaparHtml(ESTADO_NODOS.busquedaCatalogo)}"
                             oninput="window.NodosPizarra.filtrarCatalogo(this.value)"
                             style="flex:1; padding:8px 12px; border-radius:8px; border:1px solid #38bdf8; background:#0f172a; color:#f8fafc; font-size:0.83rem;">
@@ -959,13 +986,13 @@
                     <table style="width:100%; border-collapse:collapse; font-size:0.81rem; color:#e2e8f0;">
                         <thead>
                             <tr style="background:#0f172a; color:#94a3b8; text-align:left; border-bottom:1px solid #334155;">
-                                <th style="padding:10px;">Código / Flujo / Canal</th>
-                                <th style="padding:10px;">Nomenclatura Búnker y Alias Vecino</th>
-                                <th style="padding:10px;">Insumo Base</th>
+                                <th style="padding:10px;">SKU Oficial / Flujo</th>
+                                <th style="padding:10px;">Nomenclatura Oficial LAMDA (Búnker)</th>
+                                <th style="padding:10px;">Insumo Base y Puente</th>
                                 <th style="padding:10px;">Costo Total</th>
                                 <th style="padding:10px;">Margen LAMDA</th>
                                 <th style="padding:10px; color:#34d399;">Precio Lista Base Nodo</th>
-                                <th style="padding:10px; color:#38bdf8;">Márgenes y Precio al Vecino por Nodo</th>
+                                <th style="padding:10px; color:#38bdf8;">Márgenes y Vidriera por Nodo</th>
                                 <th style="padding:10px; text-align:right;">Acción</th>
                             </tr>
                         </thead>
@@ -973,6 +1000,8 @@
                             ${filasCatalogo.map(cat => {
                                 const meta = FLUJO_META[cat.flujo_lamda] || FLUJO_META[2];
                                 const esCompartido = Boolean(cat.compartido_mayorista);
+                                const nomOficial = cat.bunker_descripcion_generada || cat.nombre_publico || cat.sku_nodo;
+                                const ingLabel = cat.ingrediente_label_oficial || cat.ingrediente_origen_nombre || 'Directo';
                                 const ofertasItem = ESTADO_NODOS.ofertas_gestor.filter(o =>
                                     Number(o.articulo_catalogo_id) === Number(cat.id) &&
                                     (fNodo === 0 || Number(o.nodo_id) === fNodo)
@@ -981,7 +1010,7 @@
                                 return `
                                     <tr style="border-bottom:1px solid #1e293b;">
                                         <td style="padding:10px; vertical-align:top;">
-                                            <div style="font-family:monospace; font-weight:800; color:#f8fafc;">${escaparHtml(cat.sku_nodo)}</div>
+                                            <div style="font-family:monospace; font-weight:800; color:#f8fafc;">[${escaparHtml(cat.sku_nodo)}]</div>
                                             <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px; align-items:flex-start;">
                                                 <span style="font-size:0.68rem; padding:2px 6px; border-radius:4px; background:${meta.bg}; color:${meta.color}; font-weight:700;">
                                                     ${meta.corto}
@@ -994,16 +1023,17 @@
                                         <td style="padding:10px; vertical-align:top;">
                                             <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                                                 <span style="font-size:0.68rem; background:#1e293b; color:#38bdf8; border:1px solid #334155; padding:1px 6px; border-radius:4px; font-weight:800;">
-                                                    🌳 ${escaparHtml(cat.bunker_familia_nombre || 'Frutos Secos')}
+                                                    🌳 ${escaparHtml(cat.bunker_familia_nombre || 'Familia Búnker')}
                                                 </span>
-                                                <strong style="color:#f8fafc; font-size:0.86rem;">${escaparHtml(cat.bunker_descripcion_generada || cat.nombre_publico)}</strong>
+                                                <strong style="color:#f8fafc; font-size:0.86rem;">${escaparHtml(nomOficial)}</strong>
                                             </div>
-                                            <div style="font-size:0.76rem; color:#6ee7b7; margin-top:4px; font-weight:700;">
-                                                🏘️ Alias Vecino: "${escaparHtml(cat.nombre_publico)}" · <span style="color:#cbd5e1;">${escaparHtml(cat.presentacion_etiqueta || `${Math.round(Number(cat.kilos_unidad) * 1000)}g`)}</span>
+                                            <div style="font-size:0.73rem; color:#94a3b8; margin-top:4px;">
+                                                Rubro: <strong style="color:#cbd5e1;">${escaparHtml(cat.bunker_rubro || cat.categoria_familiar || '-')}</strong>${cat.bunker_sub_rubro ? ` / ${escaparHtml(cat.bunker_sub_rubro)}` : ''} · <span style="color:#6ee7b7; font-weight:700;">${escaparHtml(cat.presentacion_etiqueta || `${Math.round(Number(cat.kilos_unidad) * 1000)}g`)}</span>
                                             </div>
                                         </td>
                                         <td style="padding:10px; vertical-align:top;">
-                                            <div style="color:#cbd5e1;">${escaparHtml(cat.ingrediente_origen_nombre || 'Directo')}</div>
+                                            <div style="color:#cbd5e1; font-family:monospace; font-size:0.76rem;">${escaparHtml(ingLabel)}</div>
+                                            ${cat.ingrediente_articulo_vinculado ? `<div style="font-size:0.7rem; color:#a78bfa; font-family:monospace;">Puente: ${escaparHtml(cat.ingrediente_articulo_vinculado)}</div>` : ''}
                                             <div style="font-size:0.75rem; color:#38bdf8; font-weight:700;">${fmtMoneda(cat.costo_insumo_kg)}/kg</div>
                                         </td>
                                         <td style="padding:10px; vertical-align:top;">
@@ -1020,15 +1050,20 @@
                                             <div style="font-size:1.05rem; font-weight:900; color:#34d399;">${fmtMoneda(cat.precio_base_nodo_final)}</div>
                                             <div style="font-size:0.7rem; color:#94a3b8;">S/IVA: ${fmtMoneda(cat.precio_base_nodo_neto, 0)}</div>
                                         </td>
-                                        <td style="padding:10px; vertical-align:top; min-width:310px;">
+                                        <td style="padding:10px; vertical-align:top; min-width:320px;">
                                             <div style="display:flex; flex-direction:column; gap:6px;">
-                                                ${ofertasItem.map(of => `
+                                                ${ofertasItem.map(of => {
+                                                    const aliasVidriera = String(of.nombre_vidriera_personalizado || '').trim();
+                                                    return `
                                                     <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:#0f172a; border:1px solid ${of.alerta_cambio_costo ? '#f59e0b' : '#263244'}; padding:5px 8px; border-radius:6px;">
-                                                        <div style="font-size:0.74rem;">
+                                                        <div style="font-size:0.74rem; min-width:0;">
                                                             <strong style="color:#f8fafc;">${escaparHtml(of.nombre_marca)}</strong>
                                                             <div style="color:#6ee7b7; font-size:0.7rem;">Gana: +${fmtMoneda(of.ganancia_unitaria_gestor)}/u.</div>
+                                                            <div style="font-size:0.68rem; color:${aliasVidriera ? '#38bdf8' : '#64748b'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:170px;" title="${escaparHtml(aliasVidriera || nomOficial)}">
+                                                                ${aliasVidriera ? `🏷️ Vidriera: "${escaparHtml(aliasVidriera)}"` : '🏛️ Vidriera: nombre oficial'}
+                                                            </div>
                                                         </div>
-                                                        <div style="display:flex; align-items:center; gap:6px;">
+                                                        <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                                                             <label style="font-size:0.7rem; color:#94a3b8;">%</label>
                                                             <input type="number" step="0.5" value="${Number(of.margen_gestor_pct)}"
                                                                 onchange="window.NodosPizarra.actualizarMargenOfertaGestor(${of.id}, this.value)"
@@ -1041,7 +1076,7 @@
                                                                 title="Publicado en tienda vecinal del Nodo">
                                                         </div>
                                                     </div>
-                                                `).join('')}
+                                                `;}).join('')}
                                             </div>
                                         </td>
                                         <td style="padding:10px; vertical-align:top; text-align:right;">
@@ -1861,133 +1896,414 @@
     }
 
     // =========================================================================
-    // ACCIONES INTERACTIVAS DEL MÓDULO
+    // ACCIONES INTERACTIVAS DEL MÓDULO (ARQUITECTURA DETERMINISTA POR CÓDIGO)
     // =========================================================================
     function seleccionarFlujoMesa(flujo) {
         ESTADO_NODOS.flujoSeleccionadoMesa = Number(flujo);
         ESTADO_NODOS.propuestaActivaId = null;
         ESTADO_NODOS.catalogoEditandoId = null;
+        ESTADO_NODOS.anatomiaActualMesa = null;
         renderizarVistaNodosCompleta();
     }
 
-    function derivarDesdeHermanoNativoFrontend(ingId, nombreBase, kilos, flujo) {
-        const ing = (ESTADO_NODOS.fuentes.ingredientes_por_flujo || []).find(i => Number(i.id) === Number(ingId));
-        const k = Math.max(0.001, Number(kilos) || 0.25);
-        const gramos = Math.round(k * 1000);
-        const etiquetaPeso = k >= 1
-            ? `${k.toFixed(k % 1 === 0 ? 0 : 2)}kg`
-            : `${gramos}g`;
-
-        if (ing && (ing.hermano_sku_base || ing.hermano_descripcion_generada)) {
-            let skuBase = String(ing.hermano_sku_base || '').trim();
-            let descBase = String(ing.hermano_descripcion_generada || '').trim();
-
-            if (Number(ing.id) === 141) {
-                const packU = Math.max(1, Math.round(k / 0.05));
-                skuBase = skuBase.replace(/\d+X50/i, `${packU}X50`);
-                descBase = descBase.replace(/\b\d+\s*x\s*50g/i, `${packU} x 50g`);
-                return { sku: skuBase, nomenclatura: descBase };
-            }
-
-            if (skuBase) {
-                if (/X\d+G$/i.test(skuBase)) {
-                    skuBase = skuBase.replace(/X\d+G$/i, k >= 1 ? `X${Math.round(k)}` : `X${gramos}G`);
-                } else if (/x\d+$/i.test(skuBase)) {
-                    skuBase = skuBase.replace(/x\d+$/i, k >= 1 ? `x${Math.round(k)}` : `x${gramos}`);
-                }
-            }
-            if (descBase) {
-                descBase = descBase.replace(/x\s*\d+(?:[.,]\d+)?\s*(?:kg|g|gr)$/i, `x ${etiquetaPeso}`);
-            }
-            return { sku: skuBase, nomenclatura: descBase };
-        }
-
-        const txt = String(nombreBase || '').replace(/\s*\(Simple\)\s*/i, '').trim();
-        return {
-            sku: '',
-            nomenclatura: `${txt.replace(/\s+x\s+\d+.*$/i, '').trim()} x ${etiquetaPeso}`
-        };
-    }
-
-    function sugerirNomenclaturaPosicionalFrontend(nombreBase, kilos, flujo, ingId) {
+    function obtenerIngredienteSeleccionadoMesa() {
         const selectEl = document.getElementById('cot-origen-select');
-        const idTarget = ingId || (selectEl && !String(selectEl.value).startsWith('ART:') ? Number(selectEl.value) : null);
-        const res = derivarDesdeHermanoNativoFrontend(idTarget, nombreBase, kilos, flujo);
-        const skuEl = document.getElementById('cot-sku-nodo');
-        if (skuEl && res.sku && (!ESTADO_NODOS.catalogoEditandoId || /^NB-/i.test(skuEl.value))) {
-            skuEl.value = res.sku;
-        }
-        return res.nomenclatura;
+        if (!selectEl) return null;
+        const val = String(selectEl.value || '');
+        if (!val || val.startsWith('ART:')) return null;
+        const ingId = Number(val);
+        if (!ingId) return null;
+        return (ESTADO_NODOS.fuentes.ingredientes_por_flujo || []).find(i => Number(i.id) === ingId) || null;
     }
 
-    let _ultimoAliasSugeridoMesa = '';
+    function renderizarCadenaRelacionalMesa(anat = null) {
+        const box = document.getElementById('cot-cadena-relacional-box');
+        if (!box) return;
+
+        const selectEl = document.getElementById('cot-origen-select');
+        const val = String(selectEl?.value || '');
+        if (!val) {
+            box.style.display = 'none';
+            box.innerHTML = '';
+            return;
+        }
+
+        if (val.startsWith('ART:')) {
+            const skuBulto = val.replace('ART:', '');
+            const artObj = (ESTADO_NODOS.fuentes.articulos_bulto_flujo1 || []).find(a => String(a.id) === skuBulto);
+            box.style.display = 'block';
+            box.innerHTML = `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                    <span>📦 <strong>Bulto Cerrado Directo (Flujo 1):</strong> <code style="color:#6ee7b7; font-weight:800;">${escaparHtml(artObj?.label_oficial || `[${skuBulto}]`)}</code></span>
+                    <span style="color:#38bdf8; font-weight:800;">Costo base: ${fmtMoneda(artObj?.costo_kg || 0)}/kg</span>
+                </div>
+            `;
+            return;
+        }
+
+        const ing = obtenerIngredienteSeleccionadoMesa();
+        const ingId = ing?.id || anat?.ingrediente_comercial_id || anat?.ingrediente_id || Number(val);
+        const ingCodigo = anat?.ingrediente_comercial_codigo || anat?.ingrediente_codigo || ing?.codigo || ingId;
+        const ingNombre = anat?.ingrediente_comercial_nombre || anat?.ingrediente_nombre || ing?.nombre_oficial || ing?.nombre || '';
+        const puente = anat?.articulo_vinculado_numero || anat?.articulo_puente_numero || ing?.articulo_vinculado_numero || '';
+        const costoVivo = Number(document.getElementById('cot-costo-kg')?.value || ing?.costo_kg || 0);
+        const mixPadre = anat?.mix_padre || ing?.mix_padre || null;
+
+        box.style.display = 'block';
+        box.innerHTML = `
+            <div style="display:flex; flex-direction:column; gap:4px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                    <span>
+                        🧬 <strong>Insumo Base Granel:</strong>
+                        <code style="color:#38bdf8; font-weight:800;">#${escaparHtml(ingId)} [${escaparHtml(ingCodigo)}] ${escaparHtml(ingNombre)}</code>
+                    </span>
+                    <span style="display:inline-flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        ${puente
+                            ? `<span style="background:rgba(167,139,250,0.18); border:1px solid rgba(167,139,250,0.45); color:#ddd6fe; padding:1px 7px; border-radius:4px; font-family:monospace; font-weight:800; font-size:0.71rem;">🔗 Puente: ${escaparHtml(puente)}</span>`
+                            : `<span style="color:#94a3b8; font-size:0.7rem;">Sin puente granel</span>`}
+                        <strong style="color:#34d399;">${fmtMoneda(costoVivo)}/kg vivo</strong>
+                    </span>
+                </div>
+                ${mixPadre ? `
+                    <div style="padding-top:4px; border-top:1px dashed rgba(56,189,248,0.28); color:#bae6fd; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                        <span>
+                            🥣 <strong>Receta Padre Flujo 3 (vía puente <code>${escaparHtml(puente)}</code>):</strong>
+                            <code style="color:#fcd34d; font-weight:800;">${escaparHtml(mixPadre.label_oficial || `#${mixPadre.ingrediente_mix_id} [${mixPadre.ingrediente_mix_codigo}] ${mixPadre.ingrediente_mix_nombre}`)}</code>
+                        </span>
+                        <span style="font-size:0.7rem; color:#94a3b8;">Receta #${escaparHtml(mixPadre.receta_id)} · Rendimiento: ${Number(mixPadre.receta_rendimiento_kg || 0)} kg</span>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    async function cargarDiccionarioBunkerCasoB(familiaId = null, articuloPrincipalId = null) {
+        const famTarget = familiaId || ESTADO_NODOS.casoBSeleccion.familia_id || 1;
+        const princTarget = articuloPrincipalId !== undefined
+            ? articuloPrincipalId
+            : ESTADO_NODOS.casoBSeleccion.articulo_principal_id;
+
+        const qs = new URLSearchParams();
+        if (famTarget) qs.set('familia_id', String(famTarget));
+        if (princTarget) qs.set('articulo_principal_id', String(princTarget));
+
+        const resp = await fetch(`/api/produccion/nodos/diccionario-bunker?${qs.toString()}`);
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+            throw new Error(data.error || 'No se pudo cargar el Diccionario Oficial Búnker');
+        }
+        ESTADO_NODOS.diccionarioBunkerActual = data;
+        ESTADO_NODOS.casoBSeleccion.familia_id = Number(data.familia_activa_id || famTarget);
+        ESTADO_NODOS.casoBSeleccion.articulo_principal_id = data.articulo_principal_activo_id ? Number(data.articulo_principal_activo_id) : null;
+        if (!ESTADO_NODOS.casoBSeleccion.rubro && Array.isArray(data.rubros) && data.rubros.length > 0) {
+            ESTADO_NODOS.casoBSeleccion.rubro = data.rubros[0].rubro || data.rubros[0].nombre || '';
+        }
+        return data;
+    }
+
+    function esModoCasoBAnatomia(anat) {
+        return Boolean(
+            anat && (
+                anat.modo_resolucion === 'CASO_B_DICCIONARIO' ||
+                anat.modo_resolucion === 'CASO_B_PENDIENTE' ||
+                anat.requiere_diccionario_bunker ||
+                (!anat.tiene_hermano_bunker && !anat.existe_en_bunker)
+            )
+        );
+    }
+
+    function construirPosicionesSeleccionadasCasoB() {
+        const posMap = ESTADO_NODOS.casoBSeleccion?.posiciones || {};
+        return Object.values(posMap)
+            .filter(v => v && Number(v.categoria_id) > 0 && Number(v.termino_id) > 0)
+            .map(v => ({
+                categoria_id: Number(v.categoria_id),
+                termino_id: Number(v.termino_id),
+                modo_display: v.modo_display || 'COMPLETO',
+                silencioso: Boolean(v.silencioso)
+            }));
+    }
+
+    function renderizarPanelDiccionarioCasoB(anat = null) {
+        const panel = document.getElementById('cot-caso-b-diccionario-panel');
+        if (!panel) return;
+
+        if (!esModoCasoBAnatomia(anat)) {
+            panel.style.display = 'none';
+            panel.innerHTML = '';
+            return;
+        }
+
+        const dic = ESTADO_NODOS.diccionarioBunkerActual;
+        if (!dic) {
+            panel.style.display = 'block';
+            panel.innerHTML = `<div style="font-size:0.75rem; color:#fcd34d;">⏳ Cargando selectores relacionales del Diccionario Oficial Búnker...</div>`;
+            return;
+        }
+
+        const sel = ESTADO_NODOS.casoBSeleccion;
+        const kilos = Math.max(0.001, Number(document.getElementById('cot-kilos-unidad')?.value || 0.25));
+        const etiquetaPeso = kilos >= 1
+            ? `${kilos.toFixed(kilos % 1 === 0 ? 0 : 2).replace(/\.00$/, '')}kg`
+            : `${Math.round(kilos * 1000)}g`;
+
+        const familiasOpts = (dic.familias || []).map(f =>
+            `<option value="${f.id}" ${Number(sel.familia_id) === Number(f.id) ? 'selected' : ''}>#${f.id} ${escaparHtml(f.nombre)}${f.abreviatura ? ` (${escaparHtml(f.abreviatura)})` : ''}</option>`
+        ).join('');
+
+        const listaPrincipales = dic.articulos_principales || dic.principales || [];
+        const principalesOpts = [
+            `<option value="">— Seleccionar Sustantivo Ancla (bunker_diccionario) —</option>`,
+            ...listaPrincipales.map(p =>
+                `<option value="${p.id}" ${Number(sel.articulo_principal_id) === Number(p.id) ? 'selected' : ''}>#${p.id} ${escaparHtml(p.termino)}${p.abreviatura ? ` [${escaparHtml(p.abreviatura)}]` : ''}</option>`
+            )
+        ].join('');
+
+        const categoriasHtml = (dic.categorias_familia || []).map(cat => {
+            const ordenNum = Number(cat.orden_posicional || cat.orden_posicion || 1);
+            const slotKey = `pos_${ordenNum}`;
+            const nombreCat = String(cat.categoria || cat.nombre_categoria || '').trim();
+            const esSlotPeso = /GRAMAJE|PRESENTAC|PESO|FRACCION|ENVASE|UNIDAD/i.test(nombreCat);
+            const terminosCat = Array.isArray(cat.terminos) ? cat.terminos : [];
+            const valorActual = sel.posiciones?.[slotKey]?.termino_id || '';
+
+            const optsTerminos = [
+                esSlotPeso
+                    ? `<option value="">⚡ Automático por peso cotizado (x ${escaparHtml(etiquetaPeso)})</option>`
+                    : `<option value="">— Sin atributo en pos_${ordenNum} —</option>`,
+                ...terminosCat.map(t =>
+                    `<option value="${t.id}" ${Number(valorActual) === Number(t.id) ? 'selected' : ''}>#${t.id} ${escaparHtml(t.termino)}${t.abreviatura ? ` [${escaparHtml(t.abreviatura)}]` : ''}</option>`
+                )
+            ].join('');
+
+            return `
+                <div>
+                    <label style="display:block; font-size:0.69rem; color:#fcd34d; font-weight:700; margin-bottom:2px;">
+                        Pos ${ordenNum} · ${escaparHtml(nombreCat)}:
+                    </label>
+                    <select onchange="window.NodosPizarra.alCambiarSelectorDiccionarioCasoB('${slotKey}', this.value, ${Number(cat.id)})"
+                        style="width:100%; padding:5px 7px; border-radius:6px; border:1px solid rgba(245,158,11,0.45); background:#0f172a; color:#f8fafc; font-size:0.75rem;">
+                        ${optsTerminos}
+                    </select>
+                </div>
+            `;
+        }).join('');
+
+        const rubrosOpts = [
+            `<option value="">— Seleccionar Rubro Oficial —</option>`,
+            ...(dic.rubros || []).map(r => {
+                const nomRubro = r.rubro || r.nombre || '';
+                return `<option value="${escaparHtml(nomRubro)}" ${String(sel.rubro || '').toUpperCase() === String(nomRubro).toUpperCase() ? 'selected' : ''}>${escaparHtml(nomRubro)}</option>`;
+            })
+        ].join('');
+
+        const rubroObjActivo = (dic.rubros || []).find(r => String(r.rubro || r.nombre || '').toUpperCase() === String(sel.rubro || '').toUpperCase());
+        const subrubrosLista = Array.isArray(rubroObjActivo?.subrubros) ? rubroObjActivo.subrubros : [];
+        const subrubrosOpts = [
+            `<option value="">— Sin Sub-Rubro / Opcional —</option>`,
+            ...subrubrosLista.map(sr => {
+                const nomSub = typeof sr === 'string' ? sr : (sr.nombre || '');
+                return `<option value="${escaparHtml(nomSub)}" ${String(sel.sub_rubro || '').toUpperCase() === String(nomSub).toUpperCase() ? 'selected' : ''}>${escaparHtml(nomSub)}</option>`;
+            })
+        ].join('');
+
+        panel.style.display = 'block';
+        panel.innerHTML = `
+            <div style="font-size:0.76rem; font-weight:800; color:#fcd34d; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                <span>🧬 Caso B (Sin hermano previo en Búnker): Construcción Relacional Obligatoria por Diccionario Oficial</span>
+                <span style="font-size:0.68rem; color:#fde68a; font-weight:600;">Cero texto libre · IDs primarios Búnker</span>
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin-bottom:8px;">
+                <div>
+                    <label style="display:block; font-size:0.69rem; color:#cbd5e1; margin-bottom:2px;">1. Familia Búnker (<code>bunker_familias</code>):</label>
+                    <select onchange="window.NodosPizarra.alCambiarSelectorDiccionarioCasoB('familia_id', this.value)"
+                        style="width:100%; padding:5px 7px; border-radius:6px; border:1px solid #f59e0b; background:#0f172a; color:#fff; font-size:0.76rem;">
+                        ${familiasOpts}
+                    </select>
+                    <label style="display:inline-flex; align-items:center; gap:5px; font-size:0.68rem; color:#cbd5e1; margin-top:4px; cursor:pointer;">
+                        <input type="checkbox" ${sel.incluir_familia ? 'checked' : ''}
+                            onchange="window.NodosPizarra.alCambiarSelectorDiccionarioCasoB('incluir_familia', this.checked)">
+                        Incluir abreviatura de familia en descripción
+                    </label>
+                </div>
+                <div>
+                    <label style="display:block; font-size:0.69rem; color:#cbd5e1; margin-bottom:2px;">2. Sustantivo Ancla (<code>articulo_principal_id</code>):</label>
+                    <select onchange="window.NodosPizarra.alCambiarSelectorDiccionarioCasoB('articulo_principal_id', this.value)"
+                        style="width:100%; padding:5px 7px; border-radius:6px; border:1px solid #f59e0b; background:#0f172a; color:#fff; font-size:0.76rem;">
+                        ${principalesOpts}
+                    </select>
+                    <label style="display:inline-flex; align-items:center; gap:5px; font-size:0.68rem; color:#cbd5e1; margin-top:4px; cursor:pointer;">
+                        <input type="checkbox" ${sel.silencioso_principal ? 'checked' : ''}
+                            onchange="window.NodosPizarra.alCambiarSelectorDiccionarioCasoB('silencioso_principal', this.checked)">
+                        Sustantivo silencioso
+                    </label>
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap:8px; margin-bottom:8px;">
+                ${categoriasHtml}
+            </div>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                <div>
+                    <label style="display:block; font-size:0.69rem; color:#cbd5e1; margin-bottom:2px;">Rubro Oficial (<code>bunker_rubros</code>):</label>
+                    <select onchange="window.NodosPizarra.alCambiarSelectorDiccionarioCasoB('rubro', this.value)"
+                        style="width:100%; padding:5px 7px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#fff; font-size:0.76rem;">
+                        ${rubrosOpts}
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block; font-size:0.69rem; color:#cbd5e1; margin-bottom:2px;">Sub-Rubro Oficial (<code>bunker_subrubros</code>):</label>
+                    <select onchange="window.NodosPizarra.alCambiarSelectorDiccionarioCasoB('sub_rubro', this.value)"
+                        style="width:100%; padding:5px 7px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#fff; font-size:0.76rem;">
+                        ${subrubrosOpts}
+                    </select>
+                </div>
+            </div>
+        `;
+    }
+
+    async function alCambiarSelectorDiccionarioCasoB(campo, valor, categoriaId = null) {
+        const sel = ESTADO_NODOS.casoBSeleccion;
+        if (campo === 'familia_id') {
+            sel.familia_id = Number(valor) || 1;
+            sel.posiciones = {};
+            await cargarDiccionarioBunkerCasoB(sel.familia_id, sel.articulo_principal_id);
+        } else if (campo === 'articulo_principal_id') {
+            sel.articulo_principal_id = valor ? Number(valor) : null;
+            sel.posiciones = {};
+            await cargarDiccionarioBunkerCasoB(sel.familia_id, sel.articulo_principal_id);
+        } else if (campo === 'incluir_familia') {
+            sel.incluir_familia = Boolean(valor);
+        } else if (campo === 'silencioso_principal') {
+            sel.silencioso_principal = Boolean(valor);
+        } else if (campo === 'rubro') {
+            sel.rubro = String(valor || '');
+            sel.sub_rubro = '';
+        } else if (campo === 'sub_rubro') {
+            sel.sub_rubro = String(valor || '');
+        } else if (campo.startsWith('pos_')) {
+            if (!sel.posiciones) sel.posiciones = {};
+            if (valor) {
+                sel.posiciones[campo] = {
+                    categoria_id: Number(categoriaId || 0),
+                    termino_id: Number(valor),
+                    modo_display: 'COMPLETO'
+                };
+            } else {
+                delete sel.posiciones[campo];
+            }
+        }
+        await sincronizarAnatomiaMesaConBackend({ desdeCasoB: true });
+    }
 
     async function sincronizarAnatomiaMesaConBackend(opciones = {}) {
         const selectEl = document.getElementById('cot-origen-select');
         const kilosEl = document.getElementById('cot-kilos-unidad');
-        if (!selectEl || String(selectEl.value || '').startsWith('ART:')) return;
+        renderizarCadenaRelacionalMesa(ESTADO_NODOS.anatomiaActualMesa);
+
+        if (!selectEl || String(selectEl.value || '').startsWith('ART:')) {
+            ESTADO_NODOS.anatomiaActualMesa = null;
+            renderizarPanelDiccionarioCasoB(null);
+            return;
+        }
 
         const ingId = Number(selectEl.value || 0);
         if (!ingId) return;
         const kilos = Math.max(0.001, Number(kilosEl?.value) || 0.25);
 
         try {
+            const selCasoB = ESTADO_NODOS.casoBSeleccion || {};
+            const bodyReq = {
+                ingrediente_origen_id: ingId,
+                kilos_unidad: kilos,
+                flujo_lamda: ESTADO_NODOS.flujoSeleccionadoMesa
+            };
+            if (opciones.desdeCasoB || esModoCasoBAnatomia(ESTADO_NODOS.anatomiaActualMesa)) {
+                if (selCasoB.familia_id) {
+                    bodyReq.familia_bunker_id = selCasoB.familia_id;
+                    bodyReq.familia_id = selCasoB.familia_id;
+                }
+                bodyReq.incluir_familia = Boolean(selCasoB.incluir_familia);
+                bodyReq.modo_display_familia = selCasoB.modo_display_familia || 'ABREVIADO';
+                if (selCasoB.articulo_principal_id) bodyReq.articulo_principal_id = selCasoB.articulo_principal_id;
+                bodyReq.silencioso_principal = Boolean(selCasoB.silencioso_principal);
+                bodyReq.modo_display_principal = selCasoB.modo_display_principal || 'COMPLETO';
+                bodyReq.posiciones_seleccionadas = construirPosicionesSeleccionadasCasoB();
+                bodyReq.posiciones = selCasoB.posiciones || {};
+                if (selCasoB.rubro) {
+                    bodyReq.rubro_bunker = selCasoB.rubro;
+                    bodyReq.rubro = selCasoB.rubro;
+                }
+                if (selCasoB.sub_rubro) {
+                    bodyReq.sub_rubro_bunker = selCasoB.sub_rubro;
+                    bodyReq.sub_rubro = selCasoB.sub_rubro;
+                }
+            }
+
             const resp = await fetch('/api/produccion/nodos/previsualizar-anatomia', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    ingrediente_origen_id: ingId,
-                    kilos_unidad: kilos,
-                    flujo_lamda: ESTADO_NODOS.flujoSeleccionadoMesa,
-                    nombre_publico: document.getElementById('cot-nombre-publico')?.value || ''
-                })
+                body: JSON.stringify(bodyReq)
             });
             const data = await resp.json();
             if (!resp.ok || !data.ok || !data.anatomia) return;
             const anat = data.anatomia;
+            ESTADO_NODOS.anatomiaActualMesa = anat;
 
-            _ultimoAliasSugeridoMesa = anat.alias_vecino_sugerido || anat.nombre_publico_limpio || '';
+            renderizarCadenaRelacionalMesa(anat);
+
+            if (esModoCasoBAnatomia(anat)) {
+                if (!ESTADO_NODOS.diccionarioBunkerActual) {
+                    await cargarDiccionarioBunkerCasoB(anat.familia_id || 1, anat.articulo_principal_id || null);
+                }
+                renderizarPanelDiccionarioCasoB(anat);
+            } else {
+                renderizarPanelDiccionarioCasoB(null);
+            }
 
             const skuEl = document.getElementById('cot-sku-nodo');
             const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
-            const nombreEl = document.getElementById('cot-nombre-publico');
             const catEl = document.getElementById('cot-categoria');
             const envEl = document.getElementById('cot-envase-select');
-            const segEl = document.getElementById('cot-segundos-mo');
             const badgeEl = document.getElementById('cot-bunker-receta-badge');
 
             if (skuEl && anat.sku_nativo && !ESTADO_NODOS.catalogoEditandoId) {
                 skuEl.value = anat.sku_nativo;
             }
-            if (bunkerNomEl && anat.nomenclatura_bunker && !ESTADO_NODOS.catalogoEditandoId) {
-                bunkerNomEl.value = anat.nomenclatura_bunker;
+            if (bunkerNomEl) {
+                bunkerNomEl.value = anat.nomenclatura_bunker || '';
             }
-            if (nombreEl && !opciones.preservarAliasExistente && _ultimoAliasSugeridoMesa) {
-                nombreEl.value = _ultimoAliasSugeridoMesa;
+            if (catEl) {
+                const rubroTxt = anat.rubro ? `${anat.rubro}${anat.sub_rubro ? ` / ${anat.sub_rubro}` : ''}` : (anat.familia_nombre || 'Frutos Secos');
+                catEl.value = rubroTxt;
             }
-            if (catEl && anat.categoria_gestor && !ESTADO_NODOS.catalogoEditandoId) {
-                catEl.value = anat.categoria_gestor;
-            }
-            if (envEl && anat.insumo_envase_id && !ESTADO_NODOS.catalogoEditandoId) {
+            if (envEl && anat.insumo_envase_id && !ESTADO_NODOS.catalogoEditandoId && !opciones.desdeCasoB) {
                 envEl.value = String(anat.insumo_envase_id);
             }
-            if (anat.segundos_nativos && !ESTADO_NODOS.catalogoEditandoId) {
+            if (anat.segundos_nativos && !ESTADO_NODOS.catalogoEditandoId && !opciones.desdeCasoB) {
                 fijarSegundosEnMesa(anat.segundos_nativos, true);
             }
             if (badgeEl) {
-                const envObj = (ESTADO_NODOS.fuentes.envases || []).find(e => Number(e.id) === Number(anat.insumo_envase_id));
-                const nombreBolsa = envObj ? envObj.nombre : `Envase #${anat.insumo_envase_id || ''}`;
+                const envIdActivo = Number(envEl?.value || anat.insumo_envase_id || 0);
+                const envObj = (ESTADO_NODOS.fuentes.envases || []).find(e => Number(e.id) === envIdActivo);
+                const nombreBolsa = envObj ? (envObj.label_oficial || `#${envObj.id} [${envObj.codigo}] ${envObj.nombre}`) : `Envase #${envIdActivo || ''}`;
                 badgeEl.style.display = 'block';
                 if (anat.existe_en_bunker) {
                     badgeEl.style.background = 'rgba(16,185,129,0.14)';
                     badgeEl.style.border = '1px solid rgba(16,185,129,0.45)';
                     badgeEl.style.color = '#6ee7b7';
-                    badgeEl.innerHTML = `✅ Receta existente en Búnker / Espacio Personal: <code>${escaparHtml(anat.sku_nativo)}</code> · ${escaparHtml(anat.nomenclatura_bunker)} · Envase real: <strong>${escaparHtml(nombreBolsa)}</strong>`;
-                } else {
+                    badgeEl.innerHTML = `✅ <strong>Caso 0 (Artículo y Receta existentes en Búnker):</strong> <code>[${escaparHtml(anat.sku_nativo)}] ${escaparHtml(anat.nomenclatura_bunker)}</code> · Envase real: <strong>${escaparHtml(nombreBolsa)}</strong>`;
+                } else if (anat.modo_resolucion === 'CASO_A_HERMANO') {
                     badgeEl.style.background = 'rgba(56,189,248,0.12)';
                     badgeEl.style.border = '1px solid rgba(56,189,248,0.40)';
                     badgeEl.style.color = '#bae6fd';
-                    badgeEl.innerHTML = `✨ Nueva fracción a dar de alta en Búnker y Espacio Personal: <code>${escaparHtml(anat.sku_nativo)}</code> · Envase sugerido: <strong>${escaparHtml(nombreBolsa)}</strong>`;
+                    badgeEl.innerHTML = `🧬 <strong>Caso A (Clonado determinista de hermano Búnker <code>${escaparHtml(anat.hermano_origen_sku || '')}</code>):</strong> <code>[${escaparHtml(anat.sku_nativo)}] ${escaparHtml(anat.nomenclatura_bunker)}</code> · Familia <strong>${escaparHtml(anat.familia_nombre || '')}</strong> (${escaparHtml(anat.rubro || '')}${anat.sub_rubro ? `/${escaparHtml(anat.sub_rubro)}` : ''}) · Bolsa: <strong>${escaparHtml(nombreBolsa)}</strong>`;
+                } else {
+                    badgeEl.style.background = 'rgba(245,158,11,0.14)';
+                    badgeEl.style.border = '1px solid rgba(245,158,11,0.45)';
+                    badgeEl.style.color = '#fde68a';
+                    badgeEl.innerHTML = anat.nomenclatura_bunker
+                        ? `🏛️ <strong>Caso B (Ensamblado por Diccionario Búnker):</strong> <code>[${escaparHtml(anat.sku_nativo)}] ${escaparHtml(anat.nomenclatura_bunker)}</code> · Bolsa: <strong>${escaparHtml(nombreBolsa)}</strong>`
+                        : `⚠️ <strong>Caso B:</strong> Seleccione el Sustantivo Ancla y atributos del Diccionario Oficial Búnker arriba para construir el SKU y la descripción oficial.`;
                 }
             }
 
@@ -1997,21 +2313,10 @@
         }
     }
 
-    function aplicarAliasVecinoSugeridoMesa() {
-        const nombreEl = document.getElementById('cot-nombre-publico');
-        const selectEl = document.getElementById('cot-origen-select');
-        const opt = selectEl?.selectedOptions?.[0];
-        const alias = _ultimoAliasSugeridoMesa || opt?.getAttribute('data-alias-vecino') || opt?.getAttribute('data-nombre') || '';
-        if (nombreEl && alias) {
-            nombreEl.value = alias;
-            nombreEl.focus();
-        }
-    }
-
     function alCambiarKilosUnidadMesa() {
         const kilos = Number(document.getElementById('cot-kilos-unidad')?.value || 0.25);
         if (kilos > 0) {
-            sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: true });
+            sincronizarAnatomiaMesaConBackend();
         }
         recalcularMesaCotizacionEnVivo();
     }
@@ -2019,54 +2324,40 @@
     function alCambiarOrigenSelect() {
         const selectEl = document.getElementById('cot-origen-select');
         const costoEl = document.getElementById('cot-costo-kg');
-        const nombreEl = document.getElementById('cot-nombre-publico');
         const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
-        const kilosEl = document.getElementById('cot-kilos-unidad');
+        const skuEl = document.getElementById('cot-sku-nodo');
         const catEl = document.getElementById('cot-categoria');
         if (!selectEl || !costoEl) return;
 
+        ESTADO_NODOS.anatomiaActualMesa = null;
         const opt = selectEl.selectedOptions?.[0];
         if (opt) {
             const costo = Number(opt.getAttribute('data-costo') || 0);
-            const nombreBase = opt.getAttribute('data-nombre') || '';
-            const aliasVecino = opt.getAttribute('data-alias-vecino') || nombreBase.replace(/\s*\((Mix|Simple)\)\s*/gi, ' ').replace(/\s+/g, ' ').trim();
             const catSugerida = opt.getAttribute('data-categoria') || '';
-            const kilos = Number(kilosEl?.value) || 0.25;
-            const ingId = !String(selectEl.value).startsWith('ART:') ? Number(selectEl.value) : null;
             costoEl.value = costo.toFixed(2);
-            if (nombreEl) {
-                nombreEl.value = aliasVecino;
-            }
             if (catEl && catSugerida) {
                 catEl.value = catSugerida;
             }
-            if (bunkerNomEl && (!bunkerNomEl.value.trim() || !ESTADO_NODOS.catalogoEditandoId)) {
-                bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(nombreBase, kilos, ESTADO_NODOS.flujoSeleccionadoMesa, ingId);
+            if (String(selectEl.value || '').startsWith('ART:')) {
+                const skuBulto = String(selectEl.value).replace('ART:', '');
+                const artObj = (ESTADO_NODOS.fuentes.articulos_bulto_flujo1 || []).find(a => String(a.id) === skuBulto);
+                if (skuEl && !ESTADO_NODOS.catalogoEditandoId) skuEl.value = skuBulto;
+                if (bunkerNomEl) bunkerNomEl.value = artObj?.nombre || opt.getAttribute('data-nombre') || skuBulto;
+                renderizarCadenaRelacionalMesa(null);
+                renderizarPanelDiccionarioCasoB(null);
+            } else {
+                sincronizarAnatomiaMesaConBackend();
             }
-            sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: false });
         }
         recalcularMesaCotizacionEnVivo();
     }
 
     function fijarGramajeRapido(kilos) {
         const kilosEl = document.getElementById('cot-kilos-unidad');
-        const nombreEl = document.getElementById('cot-nombre-publico');
-        const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
         if (kilosEl) {
             kilosEl.value = Number(kilos).toFixed(2);
         }
-        const etiquetaGramos = kilos >= 1 ? `${kilos}kg` : `${Math.round(kilos * 1000)}g`;
-        if (nombreEl && nombreEl.value) {
-            nombreEl.value = nombreEl.value.replace(/\s*x\s*\d+(\.\d+)?\s*(g|gr|kg)/i, '').trim();
-        }
-        if (bunkerNomEl && bunkerNomEl.value) {
-            if (/x\s*\d+(\.\d+)?\s*(g|gr|kg)/i.test(bunkerNomEl.value)) {
-                bunkerNomEl.value = bunkerNomEl.value.replace(/x\s*\d+(\.\d+)?\s*(g|gr|kg)/i, `x ${etiquetaGramos}`);
-            } else {
-                bunkerNomEl.value = `${bunkerNomEl.value.trim()} x ${etiquetaGramos}`;
-            }
-        }
-        sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: true });
+        sincronizarAnatomiaMesaConBackend();
         recalcularMesaCotizacionEnVivo();
     }
 
@@ -2077,6 +2368,7 @@
         ESTADO_NODOS.subTabActiva = 'cotizador';
         ESTADO_NODOS.propuestaActivaId = null;
         ESTADO_NODOS.catalogoEditandoId = null;
+        ESTADO_NODOS.anatomiaActualMesa = null;
         ESTADO_NODOS.flujoSeleccionadoMesa = Number(item.flujo || 2);
         ESTADO_NODOS.omitirAutoOrigenInicial = true;
         renderizarVistaNodosCompleta();
@@ -2084,19 +2376,15 @@
 
         const selectEl = document.getElementById('cot-origen-select');
         const costoEl = document.getElementById('cot-costo-kg');
-        const nombreEl = document.getElementById('cot-nombre-publico');
-        const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
-        const kilosEl = document.getElementById('cot-kilos-unidad');
         const catEl = document.getElementById('cot-categoria');
 
         if (selectEl) selectEl.value = String(item.id);
         const costoVivo = obtenerCostoVivoIngredientePizarra(item.id, item.costo_kg);
         if (costoEl) costoEl.value = costoVivo.toFixed(2);
-        const kilos = Number(kilosEl?.value) || 0.25;
-        if (nombreEl) nombreEl.value = item.alias_vecino_sugerido || item.nombre.replace(/\s*\((Mix|Simple)\)\s*/gi, ' ').replace(/\s+/g, ' ').trim();
-        if (catEl && item.categoria_gestor) catEl.value = item.categoria_gestor;
-        if (bunkerNomEl) bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(item.nombre, kilos, item.flujo, item.id);
-        sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: false });
+        if (catEl && (item.categoria_lamda || item.categoria_gestor)) {
+            catEl.value = item.categoria_lamda || item.categoria_gestor;
+        }
+        sincronizarAnatomiaMesaConBackend();
         recalcularMesaCotizacionEnVivo();
     }
 
@@ -2111,6 +2399,7 @@
         ESTADO_NODOS.subTabActiva = 'cotizador';
         ESTADO_NODOS.propuestaActivaId = null;
         ESTADO_NODOS.catalogoEditandoId = null;
+        ESTADO_NODOS.anatomiaActualMesa = null;
         ESTADO_NODOS.flujoSeleccionadoMesa = flujoTarget;
         ESTADO_NODOS.omitirAutoOrigenInicial = true;
         renderizarVistaNodosCompleta();
@@ -2119,7 +2408,6 @@
         const selectEl = document.getElementById('cot-origen-select');
         const costoEl = document.getElementById('cot-costo-kg');
         const kilosEl = document.getElementById('cot-kilos-unidad');
-        const nombreEl = document.getElementById('cot-nombre-publico');
         const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
         const skuEl = document.getElementById('cot-sku-nodo');
         const catEl = document.getElementById('cot-categoria');
@@ -2131,21 +2419,22 @@
         const costoVivo = obtenerCostoVivoIngredientePizarra(ingId, item?.costo_kg || pres?.costo_insumo_kg || 0);
         if (costoEl) costoEl.value = costoVivo.toFixed(2);
         if (kilosEl) kilosEl.value = kilosNum.toFixed(2);
-        if (nombreEl) nombreEl.value = pres?.alias_vecino_sugerido || item?.alias_vecino_sugerido || pres?.nombre_claro_gestor || '';
         if (bunkerNomEl && pres?.descripcion_generada) bunkerNomEl.value = pres.descripcion_generada;
         if (skuEl && pres?.articulo_id) skuEl.value = pres.articulo_id;
-        if (catEl && (pres?.categoria_gestor || item?.categoria_gestor)) catEl.value = pres?.categoria_gestor || item?.categoria_gestor;
+        if (catEl && (pres?.categoria_lamda || pres?.categoria_gestor || item?.categoria_lamda)) {
+            catEl.value = pres?.categoria_lamda || pres?.categoria_gestor || item?.categoria_lamda;
+        }
         if (compMayEl) compMayEl.value = 'true';
 
         if (titEl && pres) {
-            titEl.innerHTML = `🏭 Habilitando Presentación Existente de Planta (${escaparHtml(pres.articulo_id)})`;
+            titEl.innerHTML = `🏭 Habilitando Presentación Existente de Planta (<code>[${escaparHtml(pres.articulo_id)}]</code>)`;
         }
         if (subEl && pres) {
-            subEl.innerHTML = `Reutiliza artículo y receta real del Búnker: <strong style="color:#f8fafc;">${escaparHtml(pres.descripcion_generada)}</strong>${pres.precio_ref_mayorista ? ` · Ref. Mayorista: <strong style="color:#fcd34d;">${fmtMoneda(pres.precio_ref_mayorista)}</strong>` : ''}`;
+            subEl.innerHTML = `Reutiliza artículo y receta oficial del Búnker: <strong style="color:#f8fafc;">[${escaparHtml(pres.articulo_id)}] ${escaparHtml(pres.descripcion_generada)}</strong>${pres.precio_ref_mayorista ? ` · Ref. Mayorista: <strong style="color:#fcd34d;">${fmtMoneda(pres.precio_ref_mayorista)}</strong>` : ''}`;
         }
 
         recalcularMesaCotizacionEnVivo();
-        await sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: false });
+        await sincronizarAnatomiaMesaConBackend();
     }
 
     async function cargarPropuestaEnMesa(propuestaId) {
@@ -2159,23 +2448,28 @@
         ESTADO_NODOS.subTabActiva = 'cotizador';
         ESTADO_NODOS.propuestaActivaId = Number(prop.id);
         ESTADO_NODOS.catalogoEditandoId = prop.articulo_catalogo_id ? Number(prop.articulo_catalogo_id) : null;
+        ESTADO_NODOS.anatomiaActualMesa = null;
         ESTADO_NODOS.flujoSeleccionadoMesa = Number(itemIng?.flujo || prop.flujo_sugerido || 2);
+        ESTADO_NODOS.omitirAutoOrigenInicial = true;
 
         renderizarVistaNodosCompleta();
+        ESTADO_NODOS.omitirAutoOrigenInicial = false;
 
         const selectEl = document.getElementById('cot-origen-select');
         const costoEl = document.getElementById('cot-costo-kg');
         const kilosEl = document.getElementById('cot-kilos-unidad');
-        const nombreEl = document.getElementById('cot-nombre-publico');
-        const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
         const catEl = document.getElementById('cot-categoria');
         const envEl = document.getElementById('cot-envase-select');
-        const segEl = document.getElementById('cot-segundos-mo');
         const titEl = document.getElementById('mesa-cotizacion-titulo');
         const subEl = document.getElementById('mesa-cotizacion-subtitulo');
 
+        const ingLabelProp = prop.ingrediente_label_oficial || (itemIng ? itemIng.label_oficial : prop.nombre_sugerido);
+        const aliasInfo = prop.alias_vidriera_sugerido
+            ? ` · Alias vidriera del Nodo (informativo): <span style="color:#38bdf8;">"${escaparHtml(prop.alias_vidriera_sugerido)}"</span>`
+            : '';
+
         if (titEl) titEl.innerHTML = `🧮 Cotizando Solicitud ${escaparHtml(prop.codigo_propuesta)} (${escaparHtml(prop.nodo_solicitante_nombre || 'Nodo')})`;
-        if (subEl) subEl.innerHTML = `Solicitado por el Gestor: <strong style="color:#f8fafc;">${escaparHtml(prop.nombre_sugerido)}</strong> · Precio estimado vecino: <strong style="color:#38bdf8;">${prop.precio_objetivo_vecino ? fmtMoneda(prop.precio_objetivo_vecino) : 'Abierto'}</strong>`;
+        if (subEl) subEl.innerHTML = `Insumo LAMDA solicitado: <strong style="color:#f8fafc;">${escaparHtml(ingLabelProp)}</strong> · Fracción: <strong style="color:#6ee7b7;">${Math.round(Number(prop.kilos_sugeridos || 0.25) * 1000)}g</strong>${aliasInfo}`;
 
         if (prop.ingrediente_sugerido_id && selectEl) {
             selectEl.value = String(prop.ingrediente_sugerido_id);
@@ -2185,21 +2479,15 @@
             : Number(prop.ingrediente_sugerido_costo_kg || 10000);
 
         const kilosSug = Number(prop.kilos_sugeridos || 0.25);
-        const aliasDelGestor = (prop.nombre_sugerido || '')
-            .replace(/\s*x\s*\d+(\.\d+)?\s*(g|gr|kg)/i, '')
-            .trim();
-        const aliasLimpioInicial = aliasDelGestor || itemIng?.alias_vecino_sugerido || '';
 
         if (costoEl) costoEl.value = costoVivo.toFixed(2);
         if (kilosEl) kilosEl.value = kilosSug.toFixed(2);
-        if (nombreEl) nombreEl.value = aliasLimpioInicial;
-        if (bunkerNomEl) bunkerNomEl.value = sugerirNomenclaturaPosicionalFrontend(prop.ingrediente_sugerido_nombre || prop.nombre_sugerido, kilosSug, ESTADO_NODOS.flujoSeleccionadoMesa, prop.ingrediente_sugerido_id);
-        if (catEl) catEl.value = prop.categoria_sugerida || itemIng?.categoria_gestor || 'Frutos Secos';
+        if (catEl) catEl.value = prop.categoria_sugerida || itemIng?.categoria_lamda || itemIng?.categoria_gestor || 'FRUTOS SECOS';
         if (envEl && prop.insumo_envase_sugerido_id) envEl.value = String(prop.insumo_envase_sugerido_id);
         if (prop.segundos_estimados) fijarSegundosEnMesa(prop.segundos_estimados, true);
 
         recalcularMesaCotizacionEnVivo();
-        await sincronizarAnatomiaMesaConBackend({ preservarAliasExistente: Boolean(aliasDelGestor) });
+        await sincronizarAnatomiaMesaConBackend();
     }
 
     function editarArticuloCatalogoEnMesa(catalogoId) {
@@ -2209,20 +2497,21 @@
         ESTADO_NODOS.subTabActiva = 'cotizador';
         ESTADO_NODOS.catalogoEditandoId = Number(cat.id);
         ESTADO_NODOS.propuestaActivaId = null;
+        ESTADO_NODOS.anatomiaActualMesa = null;
         ESTADO_NODOS.flujoSeleccionadoMesa = Number(cat.flujo_lamda || 2);
+        ESTADO_NODOS.omitirAutoOrigenInicial = true;
 
         renderizarVistaNodosCompleta();
+        ESTADO_NODOS.omitirAutoOrigenInicial = false;
 
         const selectEl = document.getElementById('cot-origen-select');
         const costoEl = document.getElementById('cot-costo-kg');
         const kilosEl = document.getElementById('cot-kilos-unidad');
-        const nombreEl = document.getElementById('cot-nombre-publico');
         const bunkerNomEl = document.getElementById('cot-bunker-nomenclatura');
         const compMayEl = document.getElementById('cot-compartido-mayorista');
         const skuEl = document.getElementById('cot-sku-nodo');
         const catEl = document.getElementById('cot-categoria');
         const envEl = document.getElementById('cot-envase-select');
-        const segEl = document.getElementById('cot-segundos-mo');
         const margenL = document.getElementById('cot-margen-lamda');
         const iibbEl = document.getElementById('cot-iibb-pct');
         const margenG = document.getElementById('cot-margen-gestor');
@@ -2231,11 +2520,10 @@
         if (cat.ingrediente_origen_id && selectEl) selectEl.value = String(cat.ingrediente_origen_id);
         if (costoEl) costoEl.value = Number(cat.costo_insumo_kg_vivo || cat.costo_insumo_kg).toFixed(2);
         if (kilosEl) kilosEl.value = Number(cat.kilos_unidad).toFixed(2);
-        if (nombreEl) nombreEl.value = cat.nombre_publico;
-        if (bunkerNomEl) bunkerNomEl.value = cat.bunker_descripcion_generada || sugerirNomenclaturaPosicionalFrontend(cat.nombre_publico, cat.kilos_unidad, cat.flujo_lamda);
+        if (bunkerNomEl) bunkerNomEl.value = cat.bunker_descripcion_generada || cat.nombre_publico || '';
         if (compMayEl) compMayEl.value = Boolean(cat.compartido_mayorista) ? 'true' : 'false';
         if (skuEl) skuEl.value = cat.sku_nodo;
-        if (catEl) catEl.value = cat.categoria_familiar || 'Frutos Secos';
+        if (catEl) catEl.value = cat.bunker_rubro ? `${cat.bunker_rubro}${cat.bunker_sub_rubro ? ` / ${cat.bunker_sub_rubro}` : ''}` : (cat.categoria_familiar || 'FRUTOS SECOS');
         if (envEl && cat.insumo_envase_id) envEl.value = String(cat.insumo_envase_id);
         fijarSegundosEnMesa(cat.segundos_fraccionamiento || 35, true);
         if (margenL) margenL.value = Number(cat.margen_lamda_pct || 22);
@@ -2243,12 +2531,14 @@
         if (margenG) margenG.value = Number(cat.margen_sugerido_gestor_pct || 28);
         if (notasEl) notasEl.value = cat.notas_tecnicas || '';
 
+        renderizarCadenaRelacionalMesa(null);
         recalcularMesaCotizacionEnVivo();
     }
 
     function limpiarMesaCotizacion() {
         ESTADO_NODOS.propuestaActivaId = null;
         ESTADO_NODOS.catalogoEditandoId = null;
+        ESTADO_NODOS.anatomiaActualMesa = null;
         ESTADO_NODOS.unidadTiempoMesa = 'seg';
         renderizarVistaNodosCompleta();
     }
@@ -2262,7 +2552,7 @@
             const res = await window.Swal.fire({
                 title: `¿Descartar ${prop.codigo_propuesta}?`,
                 html: `<div style="text-align:left; font-size:0.88rem; color:#cbd5e1;">
-                    Se descartará la solicitud de <strong>${escaparHtml(prop.nombre_sugerido)}</strong> enviada por <strong>${escaparHtml(prop.nodo_solicitante_nombre || 'el Nodo')}</strong>.<br><br>
+                    Se descartará la solicitud de <strong>${escaparHtml(prop.ingrediente_label_oficial || prop.nombre_sugerido)}</strong> enviada por <strong>${escaparHtml(prop.nodo_solicitante_nombre || 'el Nodo')}</strong>.<br><br>
                     Podés dejar un motivo breve opcional para el Gestor:
                 </div>`,
                 input: 'text',
@@ -2307,8 +2597,33 @@
             const ingredienteOrigenId = !esArtBunker && origenVal ? Number(origenVal) : null;
             const artBunkerCodigo = esArtBunker ? origenVal.replace('ART:', '') : null;
 
+            if (!esArtBunker && !ingredienteOrigenId) {
+                throw new Error('Debe seleccionar un Insumo Base real de LAMDA por código determinista.');
+            }
+
             const envSelect = document.getElementById('cot-envase-select');
             const envOpt = envSelect?.selectedOptions?.[0];
+            const insumoEnvaseId = envSelect?.value ? Number(envSelect.value) : null;
+            if (Number(ESTADO_NODOS.flujoSeleccionadoMesa) !== 1 && !insumoEnvaseId) {
+                throw new Error('Debe seleccionar una Bolsa / Envase real de public.ingredientes (es_insumo = true).');
+            }
+
+            const anat = ESTADO_NODOS.anatomiaActualMesa;
+            const selCasoB = ESTADO_NODOS.casoBSeleccion || {};
+            if (esModoCasoBAnatomia(anat)) {
+                if (!selCasoB.articulo_principal_id) {
+                    throw new Error('Caso B (sin hermano previo en Búnker): seleccione el Sustantivo Ancla del Diccionario Oficial Búnker.');
+                }
+                if (!selCasoB.rubro) {
+                    throw new Error('Caso B (sin hermano previo en Búnker): seleccione el Rubro Oficial de Búnker.');
+                }
+            }
+
+            const descripcionOficialBunker = String(document.getElementById('cot-bunker-nomenclatura')?.value || '').trim();
+            if (!descripcionOficialBunker) {
+                throw new Error('La Nomenclatura Oficial Búnker no puede estar vacía.');
+            }
+
             const tarifaSelect = document.getElementById('cot-tarifa-select');
             const tarifaOpt = tarifaSelect?.selectedOptions?.[0];
 
@@ -2317,10 +2632,10 @@
                 catalogo_id: ESTADO_NODOS.catalogoEditandoId || null,
                 propuesta_id: ESTADO_NODOS.propuestaActivaId || null,
                 sku_nodo: document.getElementById('cot-sku-nodo')?.value || '',
-                nombre_publico: document.getElementById('cot-nombre-publico')?.value || '',
-                bunker_descripcion_generada: document.getElementById('cot-bunker-nomenclatura')?.value || '',
+                nombre_publico: descripcionOficialBunker,
+                bunker_descripcion_generada: descripcionOficialBunker,
                 compartido_mayorista: document.getElementById('cot-compartido-mayorista')?.value === 'true',
-                categoria_familiar: document.getElementById('cot-categoria')?.value || 'Frutos Secos',
+                categoria_familiar: document.getElementById('cot-categoria')?.value || 'FRUTOS SECOS',
                 presentacion_etiqueta: kilos >= 1 ? `Bolsa ${kilos}kg` : `Bolsa ${Math.round(kilos * 1000)}g`,
                 flujo_lamda: ESTADO_NODOS.flujoSeleccionadoMesa,
                 origen_tipo: esArtBunker ? 'ARTICULO_BUNKER' : (ESTADO_NODOS.flujoSeleccionadoMesa === 3 ? 'MIX' : ESTADO_NODOS.flujoSeleccionadoMesa >= 4 ? 'UP_EXTERNA' : 'INGREDIENTE'),
@@ -2328,7 +2643,7 @@
                 articulo_bunker_origen_codigo: artBunkerCodigo,
                 costo_insumo_kg: Number(document.getElementById('cot-costo-kg')?.value || 0),
                 kilos_unidad: kilos,
-                insumo_envase_id: envSelect?.value ? Number(envSelect.value) : null,
+                insumo_envase_id: insumoEnvaseId,
                 costo_envase_unitario: Number(envOpt?.getAttribute('data-costo') || 0),
                 segundos_fraccionamiento: Math.max(1, obtenerSegundosDesdeMesa() || 35),
                 tarifa_colaborador_id: tarifaSelect?.value ? Number(tarifaSelect.value) : null,
@@ -2339,6 +2654,22 @@
                 margen_sugerido_gestor_pct: Number(document.getElementById('cot-margen-gestor')?.value || 28),
                 notas_tecnicas: document.getElementById('cot-notas-tecnicas')?.value || ''
             };
+
+            if (esModoCasoBAnatomia(anat)) {
+                payload.familia_bunker_id = selCasoB.familia_id;
+                payload.familia_id = selCasoB.familia_id;
+                payload.incluir_familia = Boolean(selCasoB.incluir_familia);
+                payload.modo_display_familia = selCasoB.modo_display_familia || 'ABREVIADO';
+                payload.articulo_principal_id = selCasoB.articulo_principal_id;
+                payload.silencioso_principal = Boolean(selCasoB.silencioso_principal);
+                payload.modo_display_principal = selCasoB.modo_display_principal || 'COMPLETO';
+                payload.posiciones_seleccionadas = construirPosicionesSeleccionadasCasoB();
+                payload.posiciones = selCasoB.posiciones || {};
+                payload.rubro_bunker = selCasoB.rubro;
+                payload.rubro = selCasoB.rubro;
+                payload.sub_rubro_bunker = selCasoB.sub_rubro || '';
+                payload.sub_rubro = selCasoB.sub_rubro || '';
+            }
 
             const resp = await fetch('/api/produccion/nodos/cotizar-aprobar', {
                 method: 'POST',
@@ -2353,14 +2684,14 @@
             if (window.Swal) {
                 await Swal.fire({
                     icon: 'success',
-                    title: 'Artículo Sincronizado con Búnker y Nodos',
+                    title: 'Artículo Oficial Sincronizado con Búnker y Nodos',
                     html: `
                         <div style="text-align:left; font-size:0.88rem; line-height:1.5;">
-                            <p>🏛️ <strong>Nomenclatura Búnker (${escaparHtml(data.articulo.bunker_familia_nombre || 'Familia')}):</strong><br>
-                            <code style="color:#38bdf8;">${escaparHtml(data.articulo.bunker_descripcion_generada || data.articulo.nombre_publico)}</code> (<code>${escaparHtml(data.articulo.sku_nodo)}</code>)</p>
-                            <p>🏘️ <strong>Alias Tienda Vecinal:</strong> ${escaparHtml(data.articulo.nombre_publico)} (${escaparHtml(data.articulo.presentacion_etiqueta)})</p>
+                            <p>🏛️ <strong>Artículo Oficial LAMDA (${escaparHtml(data.articulo.bunker_familia_nombre || 'Familia')}):</strong><br>
+                            <code style="color:#38bdf8; font-weight:800;">[${escaparHtml(data.articulo.sku_nodo)}] ${escaparHtml(data.articulo.bunker_descripcion_generada || data.articulo.nombre_publico)}</code></p>
+                            <p>📂 <strong>Rubro Oficial Búnker:</strong> ${escaparHtml(data.articulo.bunker_rubro || '-')}${data.articulo.bunker_sub_rubro ? ` / ${escaparHtml(data.articulo.bunker_sub_rubro)}` : ''} (${escaparHtml(data.articulo.presentacion_etiqueta)})</p>
                             <p>✅ <strong>Precio Lista Base Nodos:</strong> ${fmtMoneda(data.calculo.precio_base_nodo_final)}</p>
-                            <p>🛒 <strong>Precio Sugerido al Vecino:</strong> ${fmtMoneda(data.calculo.precio_sugerido_vecino)}</p>
+                            <p>🛒 <strong>Precio Sugerido al Vecino:</strong> ${fmtMoneda(data.calculo.precio_sugerido_vecino)} <span style="font-size:0.76rem; color:#94a3b8;">(cada Nodo puede personalizar el nombre de su vidriera en su panel)</span></p>
                         </div>
                     `,
                     background: '#151e2e',
@@ -2370,6 +2701,7 @@
 
             ESTADO_NODOS.propuestaActivaId = null;
             ESTADO_NODOS.catalogoEditandoId = null;
+            ESTADO_NODOS.anatomiaActualMesa = null;
             await cargarDatosNodosBarriales(true);
         } catch (err) {
             if (window.Swal) {
@@ -2383,10 +2715,13 @@
     async function abrirModalNuevaPropuesta() {
         if (!window.Swal) return;
         const nodosOpts = ESTADO_NODOS.nodos.map(n => `<option value="${n.id}">${escaparHtml(n.nombre_marca)} (${escaparHtml(n.gestor_nombre)})</option>`).join('');
-        const ingOpts = ESTADO_NODOS.fuentes.ingredientes_por_flujo.map(i => `<option value="${i.id}" data-flujo="${i.flujo}">[${FLUJO_META[i.flujo]?.corto || 'Flujo'}] ${escaparHtml(i.nombre)} (${fmtMoneda(i.costo_kg)}/kg)</option>`).join('');
+        const ingOpts = ESTADO_NODOS.fuentes.ingredientes_por_flujo.map(i => {
+            const label = i.label_oficial || `[${i.codigo || i.id}] ${i.nombre_oficial || i.nombre}`;
+            return `<option value="${i.id}" data-flujo="${i.flujo}" data-label="${escaparHtml(label)}">[${FLUJO_META[i.flujo]?.corto || 'Flujo'}] ${escaparHtml(label)} (${fmtMoneda(i.costo_kg)}/kg)</option>`;
+        }).join('');
 
         const { value: formValues } = await Swal.fire({
-            title: '➕ Nueva Solicitud de Fracción de un Nodo',
+            title: '➕ Nueva Solicitud Técnica de Fracción (Nodo -> LAMDA)',
             background: '#151e2e',
             color: '#f8fafc',
             width: '620px',
@@ -2397,26 +2732,26 @@
                         <select id="swal-prop-nodo" class="swal2-input" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">${nodosOpts}</select>
                     </div>
                     <div>
-                        <label>Producto / Receta de interés:</label>
+                        <label>Insumo Oficial LAMDA (por Código Determinista):</label>
                         <select id="swal-prop-ing" class="swal2-input" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">${ingOpts}</select>
-                    </div>
-                    <div>
-                        <label>Nombre de la presentación familiar solicitada:</label>
-                        <input id="swal-prop-nombre" class="swal2-input" placeholder="Ej: Castaña de Pará Pelada Familiar x 200g" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">
                     </div>
                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                         <div>
-                            <label>Peso Fracción (Kg, ej 0.20 = 200g):</label>
-                            <input id="swal-prop-kilos" type="number" step="0.05" value="0.25" class="swal2-input" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">
+                            <label>Peso Fracción (Kg, ej 0.50 = 500g):</label>
+                            <input id="swal-prop-kilos" type="number" step="0.05" value="0.50" class="swal2-input" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">
                         </div>
                         <div>
                             <label>Precio Estimado al Vecino ($ opcional):</label>
-                            <input id="swal-prop-target" type="number" step="100" value="6500" class="swal2-input" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">
+                            <input id="swal-prop-target" type="number" step="100" value="" placeholder="Opcional" class="swal2-input" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">
                         </div>
                     </div>
                     <div>
-                        <label>Comentario del Gestor:</label>
-                        <input id="swal-prop-comentario" class="swal2-input" placeholder="Ej: Muy pedido en el grupo de WhatsApp del barrio" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">
+                        <label>Alias sugerido para la vidriera del Nodo (opcional, informativo):</label>
+                        <input id="swal-prop-alias-vidriera" class="swal2-input" placeholder="Ej: Mix Selección Paraíso (no altera el nombre oficial LAMDA)" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">
+                    </div>
+                    <div>
+                        <label>Observación operativa del Gestor:</label>
+                        <input id="swal-prop-comentario" class="swal2-input" placeholder="Ej: Fracción familiar pedida por vecinos" style="width:100%; margin:4px 0; background:#0f172a; color:#fff;">
                     </div>
                 </div>
             `,
@@ -2427,19 +2762,23 @@
             preConfirm: () => {
                 const ingSelect = document.getElementById('swal-prop-ing');
                 const opt = ingSelect?.selectedOptions?.[0];
+                const kilosNum = Number(document.getElementById('swal-prop-kilos').value || 0.50);
+                const etiqPeso = kilosNum >= 1 ? `${kilosNum}kg` : `${Math.round(kilosNum * 1000)}g`;
+                const labelIng = opt?.getAttribute('data-label') || '';
                 return {
                     nodo_solicitante_id: Number(document.getElementById('swal-prop-nodo').value),
                     ingrediente_sugerido_id: Number(ingSelect.value),
                     flujo_sugerido: Number(opt?.getAttribute('data-flujo') || 2),
-                    nombre_sugerido: document.getElementById('swal-prop-nombre').value.trim(),
-                    kilos_sugeridos: Number(document.getElementById('swal-prop-kilos').value || 0.25),
+                    nombre_sugerido: `${labelIng} x ${etiqPeso}`.trim(),
+                    alias_vidriera_sugerido: document.getElementById('swal-prop-alias-vidriera').value.trim() || null,
+                    kilos_sugeridos: kilosNum,
                     precio_objetivo_vecino: Number(document.getElementById('swal-prop-target').value || 0),
                     comentario_gestor: document.getElementById('swal-prop-comentario').value.trim()
                 };
             }
         });
 
-        if (formValues && formValues.nombre_sugerido) {
+        if (formValues && formValues.ingrediente_sugerido_id) {
             const resp = await fetch('/api/produccion/nodos/propuestas', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -4207,7 +4546,7 @@
         seleccionarFlujoMesa,
         alCambiarOrigenSelect,
         alCambiarKilosUnidadMesa,
-        aplicarAliasVecinoSugeridoMesa,
+        alCambiarSelectorDiccionarioCasoB,
         fijarGramajeRapido,
         alCambiarUnidadTiempoMesa,
         recalcularEnVivo: recalcularMesaCotizacionEnVivo,

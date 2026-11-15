@@ -705,209 +705,314 @@ function clasificarIngredienteEnFlujo(ing, idsCompuestosSet = new Set()) {
 }
 
 /**
- * Diccionario determinista de nombres claros para el Gestor del Nodo y Alias sugerido para el Vecino,
- * traduciendo siglas internas de depósito (ej: Mix BK, Zapallo A / AA, Grana Sol, Barrita 20 x 50).
+ * Formateadores deterministas del idioma técnico oficial de LAMDA (CERO diccionarios de traducción intermedia).
  */
-const MAPA_IDENTIDAD_CLARA_INGREDIENTES = {
-    // Granolas (Línea 6)
-    131: { nombre_claro: 'Granola de Sol (Grana Sol — Avena, Miel y Semillas)', alias_vecino: 'Granola de Sol', categoria: 'Granolas' },
-    122: { nombre_claro: 'Granola de Flor (Grana de Flor — con Frutos Secos)', alias_vecino: 'Granola de Flor', categoria: 'Granolas' },
-    // Barritas (Línea 5)
-    141: { nombre_claro: 'Barrita Energética Artesanal (Unidades de 50g)', alias_vecino: 'Pack Barritas Energéticas', categoria: 'Barritas', es_pack_barritas: true },
-    // Mixes y Mezclas (Línea 3)
-    149: { nombre_claro: 'Mix de Frutos Secos con Pasas', alias_vecino: 'Mix de Frutos Secos con Pasas', categoria: 'Mixes y Mezclas' },
-    154: { nombre_claro: 'Mix de Frutos Secos sin Pasas', alias_vecino: 'Mix de Frutos Secos sin Pasas', categoria: 'Mixes y Mezclas' },
-    150: { nombre_claro: 'Mix Premium de Frutos Secos (Sin Maní ni Pasas)', alias_vecino: 'Mix Premium de Frutos Secos', categoria: 'Mixes y Mezclas' },
-    151: { nombre_claro: 'Mix Salado Tostado (Picada)', alias_vecino: 'Mix Salado Tostado', categoria: 'Mixes y Mezclas' },
-    148: { nombre_claro: 'Mix Tropical (Frutos Secos y Frutas)', alias_vecino: 'Mix Tropical', categoria: 'Mixes y Mezclas' },
-    155: { nombre_claro: 'Mix Color Tropical (Con Cubos de Fruta)', alias_vecino: 'Mix Color Tropical', categoria: 'Mixes y Mezclas' },
-    92:  { nombre_claro: 'Mix de 4 Semillas Activables', alias_vecino: 'Mix de Semillas', categoria: 'Mixes y Mezclas' },
-    158: { nombre_claro: 'Mix Puro 4 Frutos Secos con Avellana (Línea Almafrut)', alias_vecino: 'Mix Puro 4 Frutos Secos', categoria: 'Mixes y Mezclas' },
-    159: { nombre_claro: 'Mix Clásico Económico con Pasas y Maní (Línea BK)', alias_vecino: 'Mix Clásico con Pasas', categoria: 'Mixes y Mezclas' },
-    // Tostados (Línea 4)
-    57:  { nombre_claro: 'Almendra Tostada sin Sal', alias_vecino: 'Almendra Tostada sin Sal', categoria: 'Tostados' },
-    123: { nombre_claro: 'Almendra Tostada y Salada', alias_vecino: 'Almendra Tostada y Salada', categoria: 'Tostados' },
-    18:  { nombre_claro: 'Castaña de Cajú Tostada sin Sal', alias_vecino: 'Castaña de Cajú Tostada', categoria: 'Tostados' },
-    41:  { nombre_claro: 'Castaña de Cajú Tostada y Salada', alias_vecino: 'Castaña de Cajú Tostada y Salada', categoria: 'Tostados' },
-    166: { nombre_claro: 'Castaña de Cajú Tostada y Salada (Partida)', alias_vecino: 'Castaña de Cajú Tostada Partida', categoria: 'Tostados' },
-    56:  { nombre_claro: 'Pistacho con Cáscara Tostado y Salado', alias_vecino: 'Pistacho Tostado y Salado', categoria: 'Tostados' },
-    // Frutos Secos (Línea 2)
-    1:   { nombre_claro: 'Almendra Nonpareil Pelada', alias_vecino: 'Almendra Nonpareil', categoria: 'Frutos Secos' },
-    161: { nombre_claro: 'Almendra Nonpareil Pelada (Calibre Grande)', alias_vecino: 'Almendra Nonpareil Grande', categoria: 'Frutos Secos' },
-    19:  { nombre_claro: 'Almendra Carmel Pelada', alias_vecino: 'Almendra Pelada Carmel', categoria: 'Frutos Secos' },
-    117: { nombre_claro: 'Almendra Guara Pelada Entera', alias_vecino: 'Almendra Guara Entera', categoria: 'Frutos Secos' },
-    74:  { nombre_claro: 'Almendra Guara Seleccionada (Ramillada)', alias_vecino: 'Almendra Guara Seleccionada', categoria: 'Frutos Secos' },
-    33:  { nombre_claro: 'Almendra Guara Partida', alias_vecino: 'Almendra Partida', categoria: 'Frutos Secos' },
-    39:  { nombre_claro: 'Almendra Fileteada Laminada', alias_vecino: 'Almendra Fileteada', categoria: 'Frutos Secos' },
-    21:  { nombre_claro: 'Avellana Pelada Grande', alias_vecino: 'Avellana Pelada Grande', categoria: 'Frutos Secos' },
-    71:  { nombre_claro: 'Avellana Pelada Mediana/Chica', alias_vecino: 'Avellana Pelada', categoria: 'Frutos Secos' },
-    16:  { nombre_claro: 'Castaña de Cajú Natural Entera', alias_vecino: 'Castaña de Cajú Entera', categoria: 'Frutos Secos' },
-    51:  { nombre_claro: 'Castaña de Cajú Natural Partida', alias_vecino: 'Castaña de Cajú Partida', categoria: 'Frutos Secos' },
-    24:  { nombre_claro: 'Castaña de Pará (Nuez de Brasil) Pelada', alias_vecino: 'Castaña de Pará Pelada', categoria: 'Frutos Secos' },
-    55:  { nombre_claro: 'Coco en Escamas Natural', alias_vecino: 'Coco en Escamas', categoria: 'Frutos Secos' },
-    22:  { nombre_claro: 'Coco Rallado', alias_vecino: 'Coco Rallado', categoria: 'Frutos Secos' },
-    76:  { nombre_claro: 'Maní con Cáscara Tostado (Virginia)', alias_vecino: 'Maní con Cáscara', categoria: 'Frutos Secos' },
-    45:  { nombre_claro: 'Maní Repelado Tostado y Salado', alias_vecino: 'Maní Salado', categoria: 'Frutos Secos' },
-    36:  { nombre_claro: 'Maní Repelado Tostado sin Sal', alias_vecino: 'Maní sin Sal', categoria: 'Frutos Secos' },
-    185: { nombre_claro: 'Maní Repelado sin Sal (Lote Alternativo)', alias_vecino: 'Maní Repelado sin Sal', categoria: 'Frutos Secos' },
-    98:  { nombre_claro: 'Maní Pelado Crudo (Runner)', alias_vecino: 'Maní Pelado', categoria: 'Frutos Secos' },
-    53:  { nombre_claro: 'Nuez con Cáscara Estándar (Calibre 32/34)', alias_vecino: 'Nuez con Cáscara', categoria: 'Frutos Secos' },
-    162: { nombre_claro: 'Nuez con Cáscara Mediana (Calibre 34/36)', alias_vecino: 'Nuez con Cáscara Seleccionada', categoria: 'Frutos Secos' },
-    83:  { nombre_claro: 'Nuez con Cáscara Grande (Calibre 36+)', alias_vecino: 'Nuez con Cáscara Grande', categoria: 'Frutos Secos' },
-    25:  { nombre_claro: 'Nuez Pelada Mariposa Extra Light (Mitades)', alias_vecino: 'Nuez Mariposa Extra Light', categoria: 'Frutos Secos' },
-    157: { nombre_claro: 'Nuez Pelada Cuarto Extra Light', alias_vecino: 'Nuez Pelada Cuarto', categoria: 'Frutos Secos' },
-    163: { nombre_claro: 'Nuez Pelada Cuartillo Extra Light (Repostería)', alias_vecino: 'Nuez Pelada Picada', categoria: 'Frutos Secos' },
-    32:  { nombre_claro: 'Nuez Pecán Pelada', alias_vecino: 'Nuez Pecán Pelada', categoria: 'Frutos Secos' },
-    50:  { nombre_claro: 'Pistacho Pelado Natural sin Cáscara', alias_vecino: 'Pistacho Pelado', categoria: 'Frutos Secos' },
-    // Semillas
-    110: { nombre_claro: 'Semilla de Zapallo Pelada Estándar (Calidad A)', alias_vecino: 'Semilla de Zapallo Pelada', categoria: 'Semillas' },
-    42:  { nombre_claro: 'Semilla de Zapallo Pelada Grande (Calidad AA)', alias_vecino: 'Semilla de Zapallo Pelada Grande', categoria: 'Semillas' },
-    152: { nombre_claro: 'Semilla de Amapola Azul', alias_vecino: 'Semilla de Amapola', categoria: 'Semillas' },
-    147: { nombre_claro: 'Semilla de Chía Gris', alias_vecino: 'Semilla de Chía', categoria: 'Semillas' },
-    85:  { nombre_claro: 'Semilla de Chía Marrón', alias_vecino: 'Semilla de Chía Marrón', categoria: 'Semillas' },
-    43:  { nombre_claro: 'Semilla de Girasol Pelado Entero', alias_vecino: 'Semilla de Girasol Pelado', categoria: 'Semillas' },
-    184: { nombre_claro: 'Semilla de Girasol Pelado Partido', alias_vecino: 'Semilla de Girasol Partido', categoria: 'Semillas' },
-    81:  { nombre_claro: 'Semilla de Lino', alias_vecino: 'Semilla de Lino', categoria: 'Semillas' },
-    97:  { nombre_claro: 'Quinoa Blanca Lavada', alias_vecino: 'Quinoa Blanca', categoria: 'Semillas' },
-    128: { nombre_claro: 'Sésamo Blanco Pelado', alias_vecino: 'Sésamo Blanco', categoria: 'Semillas' },
-    20:  { nombre_claro: 'Sésamo Integral', alias_vecino: 'Sésamo Integral', categoria: 'Semillas' },
-    79:  { nombre_claro: 'Sésamo Negro', alias_vecino: 'Sésamo Negro', categoria: 'Semillas' },
-    // Frutas Disecadas y Deshidratados
-    26:  { nombre_claro: 'Arándanos Rojos Deshidratados (Pasas)', alias_vecino: 'Arándanos Deshidratados', categoria: 'Frutas Disecadas y Deshidratados' },
-    168: { nombre_claro: 'Damasco Turco Deshidratado', alias_vecino: 'Damasco Turco', categoria: 'Frutas Disecadas y Deshidratados' },
-    89:  { nombre_claro: 'Dátil Medjoul Grande sin Carozo', alias_vecino: 'Dátil Medjoul', categoria: 'Frutas Disecadas y Deshidratados' },
-    169: { nombre_claro: 'Dátil Deglet Noor con Carozo', alias_vecino: 'Dátil con Carozo', categoria: 'Frutas Disecadas y Deshidratados' },
-    188: { nombre_claro: 'Higo Turco Deshidratado', alias_vecino: 'Higo Turco', categoria: 'Frutas Disecadas y Deshidratados' },
-    34:  { nombre_claro: 'Pasa de Uva Negra sin Semilla', alias_vecino: 'Pasa de Uva Negra', categoria: 'Frutas Disecadas y Deshidratados' },
-    153: { nombre_claro: 'Pasa de Uva Negra Jumbo Grande', alias_vecino: 'Pasa de Uva Jumbo', categoria: 'Frutas Disecadas y Deshidratados' },
-    35:  { nombre_claro: 'Pasa de Uva Rubia sin Semilla', alias_vecino: 'Pasa de Uva Rubia', categoria: 'Frutas Disecadas y Deshidratados' },
-    59:  { nombre_claro: 'Pasa de Uva Rubia Seleccionada (Lote 2)', alias_vecino: 'Pasa de Uva Rubia', categoria: 'Frutas Disecadas y Deshidratados' },
-    46:  { nombre_claro: 'Chips de Banana Crocantes', alias_vecino: 'Chips de Banana', categoria: 'Frutas Disecadas y Deshidratados' },
-    64:  { nombre_claro: 'Ananá Amarillo Deshidratado en Cubos', alias_vecino: 'Ananá en Cubos', categoria: 'Frutas Disecadas y Deshidratados' },
-    60:  { nombre_claro: 'Ananá Multicolor Deshidratado en Cubos', alias_vecino: 'Ananá Multicolor en Cubos', categoria: 'Frutas Disecadas y Deshidratados' },
-    63:  { nombre_claro: 'Ananá Rojo Deshidratado en Cubos', alias_vecino: 'Ananá Rojo en Cubos', categoria: 'Frutas Disecadas y Deshidratados' },
-    61:  { nombre_claro: 'Ananá Deshidratado en Rodajas', alias_vecino: 'Rodajas de Ananá Deshidratado', categoria: 'Frutas Disecadas y Deshidratados' },
-    167: { nombre_claro: 'Papaya Deshidratada en Cubos Multicolor', alias_vecino: 'Papaya en Cubos', categoria: 'Frutas Disecadas y Deshidratados' },
-    91:  { nombre_claro: 'Hongos de Pino Secos', alias_vecino: 'Hongos Secos', categoria: 'Frutas Disecadas y Deshidratados' },
-    52:  { nombre_claro: 'Tomate Seco Deshidratado', alias_vecino: 'Tomate Seco', categoria: 'Frutas Disecadas y Deshidratados' },
-    193: { nombre_claro: 'Romero Seco Aromático', alias_vecino: 'Romero Seco', categoria: 'Frutas Disecadas y Deshidratados' },
-    170: { nombre_claro: 'Jengibre Deshidratado Natural', alias_vecino: 'Jengibre Deshidratado', categoria: 'Frutas Disecadas y Deshidratados' },
-    // Cereales y Harinas
-    164: { nombre_claro: 'Salvado de Avena', alias_vecino: 'Salvado de Avena', categoria: 'Cereales y Harinas' },
-    87:  { nombre_claro: 'Harina de Trigo Integral Orgánica', alias_vecino: 'Harina Integral Orgánica', categoria: 'Cereales y Harinas' },
-    187: { nombre_claro: 'Harina de Trigo Integral Fina', alias_vecino: 'Harina de Trigo Integral', categoria: 'Cereales y Harinas' },
-    82:  { nombre_claro: 'Harina de Almendras Peladas (Sin Piel)', alias_vecino: 'Harina de Almendras sin Piel', categoria: 'Cereales y Harinas' },
-    191: { nombre_claro: 'Harina de Almendras Integrales (Con Piel)', alias_vecino: 'Harina de Almendras con Piel', categoria: 'Cereales y Harinas' },
-    156: { nombre_claro: 'Harina de Maíz Fina', alias_vecino: 'Harina de Maíz', categoria: 'Cereales y Harinas' },
-    106: { nombre_claro: 'Avena Arrollada Mediana', alias_vecino: 'Avena Arrollada Mediana', categoria: 'Cereales y Harinas' },
-    37:  { nombre_claro: 'Avena Arrollada Fina', alias_vecino: 'Avena Arrollada Fina', categoria: 'Cereales y Harinas' },
-    120: { nombre_claro: 'Avena Arrollada Gruesa Tradicional', alias_vecino: 'Avena Arrollada Gruesa', categoria: 'Cereales y Harinas' },
-    75:  { nombre_claro: 'Avena Instantánea', alias_vecino: 'Avena Instantánea', categoria: 'Cereales y Harinas' },
-    95:  { nombre_claro: 'Arroz Yamaní Integral', alias_vecino: 'Arroz Yamaní', categoria: 'Cereales y Harinas' },
-    139: { nombre_claro: 'Arroz Largo Fino Integral', alias_vecino: 'Arroz Integral', categoria: 'Cereales y Harinas' },
-    102: { nombre_claro: 'Arroz Doble Carolina / Sushi', alias_vecino: 'Arroz para Sushi', categoria: 'Cereales y Harinas' },
-    72:  { nombre_claro: 'Maíz Frito Crocante Sabor Barbacoa', alias_vecino: 'Maíz Frito Barbacoa', categoria: 'Cereales y Harinas' },
-    44:  { nombre_claro: 'Maíz Frito Crocante Sabor Mostaza y Miel', alias_vecino: 'Maíz Frito Mostaza y Miel', categoria: 'Cereales y Harinas' },
-    130: { nombre_claro: 'Maíz Frito Crocante Sabor Queso', alias_vecino: 'Maíz Frito Sabor Queso', categoria: 'Cereales y Harinas' },
-    173: { nombre_claro: 'Maíz Pisado Blanco (Locro)', alias_vecino: 'Maíz Pisado Blanco', categoria: 'Cereales y Harinas' },
-    174: { nombre_claro: 'Maíz Pisingallo (Pochoclo)', alias_vecino: 'Maíz Pisingallo', categoria: 'Cereales y Harinas' },
-    165: { nombre_claro: 'Rebozador Japonés Crocante (Panko)', alias_vecino: 'Panko Crocante', categoria: 'Cereales y Harinas' },
-    // Legumbres
-    88:  { nombre_claro: 'Garbanzo Seco Seleccionado', alias_vecino: 'Garbanzo', categoria: 'Legumbres' },
-    112: { nombre_claro: 'Garbanzo Lechoso Grande', alias_vecino: 'Garbanzo Lechoso Grande', categoria: 'Legumbres' },
-    100: { nombre_claro: 'Arveja Seca Entera', alias_vecino: 'Arvejas Secas', categoria: 'Legumbres' },
-    186: { nombre_claro: 'Lenteja Nacional', alias_vecino: 'Lentejas', categoria: 'Legumbres' },
-    111: { nombre_claro: 'Lenteja Roja Turca Pelada', alias_vecino: 'Lenteja Roja Turca', categoria: 'Legumbres' },
-    113: { nombre_claro: 'Lentejón Importado Grande', alias_vecino: 'Lentejón Grande', categoria: 'Legumbres' },
-    96:  { nombre_claro: 'Lentejón Nacional', alias_vecino: 'Lentejón Nacional', categoria: 'Legumbres' },
-    105: { nombre_claro: 'Poroto Cranberry (Alubia Colorada)', alias_vecino: 'Poroto Cranberry', categoria: 'Legumbres' },
-    192: { nombre_claro: 'Poroto Colorado (Red Kidney)', alias_vecino: 'Poroto Colorado', categoria: 'Legumbres' },
-    93:  { nombre_claro: 'Poroto Aduki', alias_vecino: 'Poroto Aduki', categoria: 'Legumbres' },
-    90:  { nombre_claro: 'Poroto Alubia Blanco', alias_vecino: 'Poroto Alubia', categoria: 'Legumbres' },
-    103: { nombre_claro: 'Poroto Mung Verde', alias_vecino: 'Poroto Mung', categoria: 'Legumbres' },
-    94:  { nombre_claro: 'Poroto Negro', alias_vecino: 'Poroto Negro', categoria: 'Legumbres' },
-    104: { nombre_claro: 'Poroto Pallares Blanco Grande', alias_vecino: 'Poroto Pallares', categoria: 'Legumbres' },
-    // Repostería y Otros
-    54:  { nombre_claro: 'Azúcar Mascabo Integral', alias_vecino: 'Azúcar Mascabo', categoria: 'Repostería y Otros' },
-    171: { nombre_claro: 'Azúcar Rubia Orgánica', alias_vecino: 'Azúcar Rubia', categoria: 'Repostería y Otros' },
-    23:  { nombre_claro: 'Azúcar Negra', alias_vecino: 'Azúcar Negra', categoria: 'Repostería y Otros' },
-    99:  { nombre_claro: 'Jengibre Cristalizado en Cubos', alias_vecino: 'Jengibre en Cubos', categoria: 'Repostería y Otros' },
-    65:  { nombre_claro: 'Cereza Glaseada', alias_vecino: 'Cereza Glaseada', categoria: 'Repostería y Otros' },
-    144: { nombre_claro: 'Fruta Abrillantada Nevada', alias_vecino: 'Fruta Abrillantada', categoria: 'Repostería y Otros' },
-    195: { nombre_claro: 'Fruta Escurrida Repostería (Línea Orieta)', alias_vecino: 'Fruta Escurrida', categoria: 'Repostería y Otros' },
-    194: { nombre_claro: 'Fruta Escurrida Especial (Línea Picardía)', alias_vecino: 'Fruta Escurrida Especial', categoria: 'Repostería y Otros' },
-    172: { nombre_claro: 'Ají Molido Seleccionado', alias_vecino: 'Ají Molido', categoria: 'Repostería y Otros' },
-    84:  { nombre_claro: 'Ajo Deshidratado en Polvo', alias_vecino: 'Ajo en Polvo', categoria: 'Repostería y Otros' }
-};
+function formatearEtiquetaTecnicaIngrediente(ing = {}) {
+    const id = Number(ing.id || 0);
+    const cod = ing.codigo !== undefined && ing.codigo !== null && String(ing.codigo).trim() !== ''
+        ? String(ing.codigo).trim()
+        : (id > 0 ? `#${id}` : 'S/C');
+    const nom = String(ing.nombre || '').trim() || `Ingrediente #${id}`;
+    return `[${cod}] ${nom}`;
+}
 
-function formatearIdentidadClaraIngrediente(ing, familiaNombreDb = null, idsCompuestosSet = new Set()) {
-    const id = Number(ing.id);
+function formatearEtiquetaTecnicaArticulo(sku, descripcionOficial) {
+    const cod = String(sku || '').trim() || 'S/SKU';
+    const desc = String(descripcionOficial || '').trim() || cod;
+    return `[${cod}] ${desc}`;
+}
+
+function normalizarEjeCategoriaBunker(txt) {
+    return String(txt || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[\s-]+/g, '_');
+}
+
+function resolverIdentidadTecnicaIngrediente(ing = {}, familiaNombreDb = null, categoriaIngNombreDb = null, idsCompuestosSet = new Set()) {
+    const id = Number(ing.id || 0);
     const clasif = clasificarIngredienteEnFlujo(ing, idsCompuestosSet);
-    const override = MAPA_IDENTIDAD_CLARA_INGREDIENTES[id];
-
-    if (override) {
-        return {
-            nombre_claro_gestor: override.nombre_claro,
-            alias_vecino_sugerido: override.alias_vecino,
-            categoria_gestor: override.categoria,
-            flujo: clasif.flujo,
-            flujo_nombre: clasif.flujo_nombre,
-            origen_tipo: clasif.origen_tipo,
-            es_pack_barritas: Boolean(override.es_pack_barritas || id === 141 || clasif.flujo === 5)
-        };
-    }
-
-    // Normalización general automática para cualquier ingrediente nuevo agregado en el futuro
-    let limpio = String(ing.nombre || '')
-        .replace(/\s*\((Simple|Mix)\)\s*/gi, ' ')
-        .replace(/\bNonparei\b/gi, 'Nonpareil')
-        .replace(/\bDamazco\b/gi, 'Damasco')
-        .replace(/\bSalvao\b/gi, 'Salvado')
-        .replace(/\bCasacara\b/gi, 'Cáscara')
-        .replace(/\bCramberry\b/gi, 'Cranberry')
-        .replace(/\bMani\b/gi, 'Maní')
-        .replace(/\bAzucar\b/gi, 'Azúcar')
-        .replace(/\bSesamo\b/gi, 'Sésamo')
-        .replace(/\bAnana\b/gi, 'Ananá')
-        .replace(/\bAji\b/gi, 'Ají')
-        .replace(/\bChia\b/gi, 'Chía')
-        .replace(/\bCaju\b/gi, 'Cajú')
-        .replace(/\bMaiz\b/gi, 'Maíz')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    let categoria = 'Frutos Secos';
-    const low = limpio.toLowerCase();
-    const famLow = String(familiaNombreDb || '').toLowerCase();
-
-    if (clasif.flujo === 6) {
-        categoria = 'Granolas';
-    } else if (clasif.flujo === 5) {
-        categoria = 'Barritas';
-    } else if (clasif.flujo === 4) {
-        categoria = 'Tostados';
-    } else if (clasif.flujo === 3) {
-        categoria = 'Mixes y Mezclas';
-    } else if (famLow.includes('semilla') || /\b(semilla|sésamo|sesamo|quinoa|chía|lino|amapola)\b/i.test(low)) {
-        categoria = 'Semillas';
-    } else if (famLow.includes('legumbre') || /\b(poroto|lenteja|lentejon|lentejón|garbanzo|arveja)\b/i.test(low)) {
-        categoria = 'Legumbres';
-    } else if (famLow.includes('harina') || famLow.includes('cereal') || /\b(harina|avena|arroz|salvado|panko|maíz|maiz)\b/i.test(low)) {
-        categoria = 'Cereales y Harinas';
-    } else if (famLow.includes('disecad') || famLow.includes('deshidrat') || /\b(pasa|dátil|datil|damasco|higo|arándano|arandano|ananá|papaya|chip|tomate seco|hongo)\b/i.test(low)) {
-        categoria = 'Frutas Disecadas y Deshidratados';
-    } else if (famLow.includes('repost') || /\b(azúcar|azucar|cereza|fruta|jengibre|ají|ajo|leche)\b/i.test(low)) {
-        categoria = 'Repostería y Otros';
-    }
+    const nombreOficial = String(ing.nombre || '').trim();
+    const codigoOficial = ing.codigo !== undefined && ing.codigo !== null && String(ing.codigo).trim() !== ''
+        ? String(ing.codigo).trim()
+        : null;
+    const labelOficial = formatearEtiquetaTecnicaIngrediente(ing);
+    const categoriaLamda = String(familiaNombreDb || categoriaIngNombreDb || '').trim()
+        || (clasif.flujo === 6 ? 'Cereales'
+            : clasif.flujo === 5 ? 'Cereales'
+            : clasif.flujo === 3 ? 'Frutos Secos'
+            : 'Sin Familia Asignada');
 
     return {
-        nombre_claro_gestor: limpio,
-        alias_vecino_sugerido: limpio.replace(/\s+\d+\s*$/, '').trim() || limpio,
-        categoria_gestor: categoria,
+        id,
+        codigo: codigoOficial,
+        nombre_oficial: nombreOficial,
+        label_oficial: labelOficial,
+        categoria_lamda: categoriaLamda,
         flujo: clasif.flujo,
         flujo_nombre: clasif.flujo_nombre,
         origen_tipo: clasif.origen_tipo,
         es_pack_barritas: Boolean(id === 141 || clasif.flujo === 5)
+    };
+}
+
+/**
+ * En Flujo 3 (Mixes) o ingredientes simples vinculados a receta puente, resuelve por SQL real
+ * la cadena determinista:
+ *   ingredientes(simple).articulo_vinculado_numero -> recetas.articulo_numero -> receta_ingredientes -> ingredientes(mix padre)
+ * Ejemplo real verificable:
+ *   #150 [98300883] Mix Premium (Simple) -> puente 'MFSPXK' -> #31 [48903659] Mix Premium (Mix)
+ */
+async function resolverMixPadreFlujo3(runner, ingSimple = {}) {
+    const q = runner || db;
+    const artVinc = String(ingSimple.articulo_vinculado_numero || '').trim();
+    const simpleId = Number(ingSimple.id || 0);
+    if (!artVinc) return null;
+
+    const res = await q.query(
+        `SELECT ing_p.id,
+                ing_p.codigo,
+                ing_p.nombre,
+                COALESCE(ing_p.costo_patron, 0)::numeric(14,2) AS costo_patron,
+                r.id AS receta_puente_id,
+                r.articulo_numero AS receta_puente_codigo
+         FROM public.recetas r
+         JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
+         JOIN public.ingredientes ing_p ON ing_p.id = ri.ingrediente_id
+         WHERE UPPER(r.articulo_numero) = UPPER($1)
+           AND ($2::int = 0 OR ing_p.id <> $2::int)
+           AND COALESCE(ing_p.es_insumo, false) = false
+         ORDER BY COALESCE(ri.cantidad, 0) DESC, ing_p.id ASC
+         LIMIT 1`,
+        [artVinc, simpleId]
+    );
+    if (res.rows.length === 0) return null;
+    const row = res.rows[0];
+    const codPadre = row.codigo !== null && row.codigo !== undefined && String(row.codigo).trim() !== ''
+        ? String(row.codigo).trim()
+        : `#${row.id}`;
+    return {
+        id: Number(row.id),
+        codigo: row.codigo,
+        nombre: row.nombre,
+        costo_patron: Number(row.costo_patron || 0),
+        receta_puente_id: Number(row.receta_puente_id),
+        receta_puente_codigo: row.receta_puente_codigo,
+        label_oficial: `#${row.id} [${codPadre}] ${row.nombre}`
+    };
+}
+
+/**
+ * Ensambla la descripción técnica oficial del Búnker replicando exactamente el algoritmo
+ * posicional de actualizarLivePreview() en src/logistica/js/bunker.js.
+ */
+function ensamblarDescripcionOficialBunker(cfg = {}) {
+    const tokens = [];
+    const incluirFamilia = Boolean(cfg.incluir_familia);
+    const posicionFamilia = String(cfg.posicion_familia || 'ANTES').toUpperCase();
+    const modoFamilia = String(cfg.modo_display_familia || 'COMPLETO').toUpperCase();
+    const textoFamilia = (modoFamilia === 'ABREVIADO' && String(cfg.abreviatura_familia || '').trim())
+        ? String(cfg.abreviatura_familia).trim()
+        : String(cfg.familia_nombre || '').trim();
+
+    if (incluirFamilia && posicionFamilia !== 'DESPUES' && textoFamilia) {
+        tokens.push(textoFamilia);
+    }
+
+    const silenciosoPrincipal = Boolean(cfg.silencioso_principal);
+    const modoPrincipal = String(cfg.modo_display_principal || 'COMPLETO').toUpperCase();
+    const textoPrincipal = (modoPrincipal === 'ABREVIADO' && String(cfg.abreviatura_principal || '').trim())
+        ? String(cfg.abreviatura_principal).trim()
+        : String(cfg.articulo_principal || '').trim();
+
+    if (!silenciosoPrincipal && textoPrincipal) {
+        tokens.push(textoPrincipal);
+    }
+
+    if (incluirFamilia && posicionFamilia === 'DESPUES' && textoFamilia) {
+        tokens.push(textoFamilia);
+    }
+
+    const posicionesObj = (cfg.posiciones && typeof cfg.posiciones === 'object') ? cfg.posiciones : {};
+    const entradasPos = Object.entries(posicionesObj)
+        .filter(([, p]) => p && typeof p === 'object' && String(p.valor || '').trim())
+        .sort((a, b) => Number(a[1].posicion || 99) - Number(b[1].posicion || 99));
+
+    for (const [, p] of entradasPos) {
+        if (p.silencioso) continue;
+        const modoPos = String(p.modo_display || 'COMPLETO').toUpperCase();
+        const txtPos = (modoPos === 'ABREVIADO' && String(p.abreviatura || '').trim())
+            ? String(p.abreviatura).trim()
+            : String(p.valor).trim();
+        if (txtPos) tokens.push(txtPos);
+    }
+
+    const kilos = Math.max(0.001, Number(cfg.kilos_unidad || 0.25));
+    const gramos = Math.round(kilos * 1000);
+    const esPack = Boolean(cfg.es_pack) && Number(cfg.pack_unidades || 1) > 1;
+    if (esPack) {
+        const packU = Math.max(2, Number(cfg.pack_unidades || 1));
+        const gramosUnit = Math.max(1, Math.round(gramos / packU));
+        tokens.push(`${packU} x ${gramosUnit}g`);
+    } else {
+        const sufijoPeso = (gramos >= 1000 && gramos % 1000 === 0) ? `${gramos / 1000}kg` : `${gramos}g`;
+        tokens.push(`x ${sufijoPeso}`);
+    }
+
+    return tokens.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Expone los selectores relacionales oficiales del Diccionario Búnker (por Primary Key IDs)
+ * para el Caso B del Cotizador (cuando un ingrediente aún no posee hermano en public.bunker_articulos).
+ */
+async function obtenerDiccionarioBunkerCotizador(familiaId = null, articuloPrincipalId = null) {
+    if (familiaId && typeof familiaId === 'object') {
+        articuloPrincipalId = familiaId.articuloPrincipalId ?? familiaId.articulo_principal_id ?? null;
+        familiaId = familiaId.familiaId ?? familiaId.familia_id ?? null;
+    }
+    const famNum = familiaId ? Number(familiaId) : null;
+    const artPrinNum = articuloPrincipalId ? Number(articuloPrincipalId) : null;
+
+    const [familiasRes, rubrosRes, principalesRes, categoriasFamRes, relacionesRes, diccionarioRes] = await Promise.all([
+        db.query(`
+            SELECT id, codigo_familia, nombre, abreviatura
+            FROM public.bunker_familias
+            WHERE COALESCE(activo, true) = true
+              AND id <> 42
+            ORDER BY nombre ASC
+        `),
+        db.query(`
+            SELECT r.id,
+                   r.nombre AS rubro,
+                   COALESCE(
+                       json_agg(s.nombre ORDER BY s.nombre ASC) FILTER (WHERE s.id IS NOT NULL),
+                       '[]'::json
+                   ) AS subrubros
+            FROM public.bunker_rubros r
+            LEFT JOIN public.bunker_subrubros s ON s.rubro_id = r.id
+            GROUP BY r.id, r.nombre
+            ORDER BY r.nombre ASC
+        `),
+        db.query(`
+            SELECT id, termino, abreviatura
+            FROM public.bunker_diccionario
+            WHERE LOWER(categoria) = 'articulo_principal'
+              AND COALESCE(obsoleto, false) = false
+            ORDER BY termino ASC
+        `),
+        famNum
+            ? db.query(
+                `SELECT id, familia_id, categoria, orden_posicional
+                 FROM public.bunker_familia_categorias
+                 WHERE familia_id = $1
+                 ORDER BY orden_posicional ASC, id ASC`,
+                [famNum]
+            )
+            : db.query(`
+                SELECT id, familia_id, categoria, orden_posicional
+                FROM public.bunker_familia_categorias
+                ORDER BY familia_id ASC, orden_posicional ASC, id ASC
+            `),
+        famNum
+            ? db.query(
+                `SELECT r.id, r.familia_id, r.articulo_principal_id, r.termino_id,
+                        r.categoria, r.categoria_id,
+                        d.termino, d.abreviatura
+                 FROM public.bunker_relacion_atributo_principal r
+                 JOIN public.bunker_diccionario d ON d.id = r.termino_id
+                 WHERE r.familia_id = $1
+                   AND COALESCE(d.obsoleto, false) = false
+                   AND ($2::int IS NULL OR r.articulo_principal_id = $2::int)
+                 ORDER BY r.orden_id_safe ASC NULLS LAST, d.termino ASC`
+                    .replace('r.orden_id_safe ASC NULLS LAST, ', ''),
+                [famNum, artPrinNum]
+            )
+            : Promise.resolve({ rows: [] }),
+        db.query(`
+            SELECT id, termino, abreviatura, categoria
+            FROM public.bunker_diccionario
+            WHERE COALESCE(obsoleto, false) = false
+              AND LOWER(categoria) <> 'articulo_principal'
+            ORDER BY categoria ASC, termino ASC
+        `)
+    ]);
+
+    let principalesPermitidos = principalesRes.rows;
+    if (famNum) {
+        const prinRelRes = await db.query(
+            `SELECT DISTINCT d.id, d.termino, d.abreviatura
+             FROM public.bunker_relacion_atributo_principal r
+             JOIN public.bunker_diccionario d ON d.id = r.articulo_principal_id
+             WHERE r.familia_id = $1
+               AND COALESCE(d.obsoleto, false) = false
+             ORDER BY d.termino ASC`,
+            [famNum]
+        );
+        if (prinRelRes.rows.length > 0) {
+            principalesPermitidos = prinRelRes.rows;
+        }
+    }
+
+    const terminosPorCategoria = {};
+    for (const d of diccionarioRes.rows) {
+        const ejeKey = normalizarEjeCategoriaBunker(d.categoria);
+        if (!terminosPorCategoria[ejeKey]) terminosPorCategoria[ejeKey] = [];
+        terminosPorCategoria[ejeKey].push({
+            id: Number(d.id),
+            termino: d.termino,
+            abreviatura: d.abreviatura || '',
+            categoria: d.categoria
+        });
+    }
+
+    const categoriasFamilia = categoriasFamRes.rows.map(cat => {
+        const ejeNorm = normalizarEjeCategoriaBunker(cat.categoria);
+        const relTerminos = relacionesRes.rows
+            .filter(r => Number(r.categoria_id || 0) === Number(cat.id) || normalizarEjeCategoriaBunker(r.categoria) === ejeNorm)
+            .map(r => ({
+                id: Number(r.termino_id),
+                termino: r.termino,
+                abreviatura: r.abreviatura || ''
+            }));
+        const dedupMap = new Map();
+        const fuente = relTerminos.length > 0 ? relTerminos : (terminosPorCategoria[ejeNorm] || []);
+        for (const t of fuente) {
+            if (!dedupMap.has(t.id)) dedupMap.set(t.id, t);
+        }
+        return {
+            id: Number(cat.id),
+            familia_id: Number(cat.familia_id),
+            categoria: cat.categoria,
+            eje_normalizado: ejeNorm,
+            orden_posicional: Number(cat.orden_posicional),
+            restringido_por_relacion: relTerminos.length > 0,
+            terminos: Array.from(dedupMap.values())
+        };
+    });
+
+    return {
+        familia_activa_id: famNum,
+        articulo_principal_activo_id: artPrinNum,
+        familias: familiasRes.rows.map(f => ({
+            id: Number(f.id),
+            codigo_familia: f.codigo_familia,
+            nombre: f.nombre,
+            abreviatura: f.abreviatura || ''
+        })),
+        rubros: rubrosRes.rows.map(r => ({
+            id: Number(r.id),
+            rubro: r.rubro,
+            subrubros: Array.isArray(r.subrubros) ? r.subrubros : []
+        })),
+        articulos_principales: principalesPermitidos.map(p => ({
+            id: Number(p.id),
+            termino: p.termino,
+            abreviatura: p.abreviatura || ''
+        })),
+        categorias_familia: categoriasFamilia
     };
 }
 
@@ -917,8 +1022,8 @@ function formatearIdentidadClaraIngrediente(ing, familiaNombreDb = null, idsComp
  * hacia su Ingrediente Puente Simple comercial que consumen las presentaciones de bunker_articulos:
  *   ingrediente_origen -> receta_ingredientes -> recetas.articulo_numero -> ingredientes.articulo_vinculado_numero
  * Ejemplos relacionales exactos en etiquetas_pruebas:
- *   #30 (Mix Frutos Secos Con Pasas) -> receta 'MFS' -> #149 (Mix Frutos Secos Con Pasas (Simple))
- *   #31 (Mix Frutos Secos Sin Pasas) -> receta 'MFSP' -> #150 (Mix Premium (Simple))
+ *   #30 (Mix Frutos Secos Con Pasas) -> receta 'MFSXK' -> #149 (Mix Frutos Secos Con Pasas (Simple))
+ *   #31 (Mix Premium (Mix)) -> receta 'MFSPXK' -> #150 (Mix Premium (Simple))
  *   #109 (Pre-Mezcla Barritas) -> 'MPB' (#140) -> 'BF' -> #141 (Barrita 20 x 50 (1kg))
  */
 async function resolverIngredienteComercialDeterminista(runner, ingredienteId) {
@@ -928,7 +1033,7 @@ async function resolverIngredienteComercialDeterminista(runner, ingredienteId) {
 
     const curRes = await q.query(
         `SELECT id, codigo, nombre, COALESCE(costo_patron, 0)::numeric(14,2) AS costo_patron,
-                articulo_vinculado_numero
+                articulo_vinculado_numero, categoria_id
          FROM public.ingredientes
          WHERE id = $1
          LIMIT 1`,
@@ -941,10 +1046,10 @@ async function resolverIngredienteComercialDeterminista(runner, ingredienteId) {
         const puenteRes = await q.query(
             `SELECT ing_dest.id, ing_dest.codigo, ing_dest.nombre,
                     COALESCE(ing_dest.costo_patron, 0)::numeric(14,2) AS costo_patron,
-                    ing_dest.articulo_vinculado_numero
+                    ing_dest.articulo_vinculado_numero, ing_dest.categoria_id
              FROM public.receta_ingredientes ri
              JOIN public.recetas r ON r.id = ri.receta_id
-             JOIN public.ingredientes ing_dest ON ing_dest.articulo_vinculado_numero = r.articulo_numero
+             JOIN public.ingredientes ing_dest ON UPPER(ing_dest.articulo_vinculado_numero) = UPPER(r.articulo_numero)
              WHERE ri.ingrediente_id = $1
                AND ing_dest.id <> $1
                AND COALESCE(ing_dest.es_insumo, false) = false
@@ -963,8 +1068,10 @@ async function resolverIngredienteComercialDeterminista(runner, ingredienteId) {
         id: Number(actual.id),
         codigo: actual.codigo,
         nombre: actual.nombre,
+        label_oficial: formatearEtiquetaTecnicaIngrediente(actual),
         costo_patron: Number(actual.costo_patron || 0),
-        articulo_vinculado_numero: actual.articulo_vinculado_numero
+        articulo_vinculado_numero: actual.articulo_vinculado_numero || null,
+        categoria_id: actual.categoria_id ? Number(actual.categoria_id) : null
     };
 }
 
@@ -972,7 +1079,7 @@ async function resolverIngredienteComercialDeterminista(runner, ingredienteId) {
  * Resuelve el desglose comercial de ingredientes para una oferta de Nodo Barrial,
  * contemplando Líneas 3, 4, 5 (Barritas con pre-mezcla + miel/aceite en UP) y 6,
  * incluso cuando el artículo de catálogo apunte a una pre-mezcla (#109 -> #141)
- * o a un pack derivado (p. ej. BF6X50 / NB-BARRITA*) cuya receta comercial está en su artículo padre.
+ * o a un pack derivado (p. ej. BF6X50) cuya receta comercial está en su artículo padre.
  */
 async function resolverDesgloseIngredientesOfertaNodo(runner, oferta, catalogoIngredientes) {
     if (!catalogoIngredientes || !oferta) return null;
@@ -1048,8 +1155,8 @@ async function resolverDesgloseIngredientesOfertaNodo(runner, oferta, catalogoIn
 }
 
 /**
- * Deriva determinísticamente el SKU nativo LAMDA (sin prefijos de canal NB-) y la nomenclatura
- * posicional exacta a partir de un artículo hermano nativo de public.bunker_articulos.
+ * Deriva determinísticamente el SKU nativo LAMDA (sin prefijos NB- ni EMB-) y la nomenclatura
+ * posicional exacta a partir de un artículo hermano canónico de public.bunker_articulos.
  */
 function derivarSkuYNomenclaturaDesdeHermano(hermano = {}, kilosUnidad = 0.25, packUnidadesOverride = null) {
     const kilos = Math.max(0.001, Number(kilosUnidad || 0.25));
@@ -1140,20 +1247,97 @@ function derivarSkuYNomenclaturaDesdeHermano(hermano = {}, kilosUnidad = 0.25, p
 }
 
 /**
+ * Filtra y normaliza un mapa posiciones contra los ejes activos de bunker_familia_categorias
+ * para garantizar 0 alertas de estructura_desfasada en bunkerController.js.
+ */
+async function sanitizarPosicionesContraFamiliaBunker(runner, familiaId, posicionesRaw = {}) {
+    const q = runner || db;
+    if (!familiaId || !posicionesRaw || typeof posicionesRaw !== 'object') return {};
+    const catRes = await q.query(
+        `SELECT categoria, orden_posicional
+         FROM public.bunker_familia_categorias
+         WHERE familia_id = $1
+         ORDER BY orden_posicional ASC`,
+        [Number(familiaId)]
+    );
+    const ejesValidos = new Map(
+        catRes.rows.map(r => [normalizarEjeCategoriaBunker(r.categoria), Number(r.orden_posicional)])
+    );
+    const limpias = {};
+    for (const [key, val] of Object.entries(posicionesRaw)) {
+        if (!val || typeof val !== 'object') continue;
+        const ejeNorm = normalizarEjeCategoriaBunker(val.eje);
+        if (!ejeNorm || !ejesValidos.has(ejeNorm)) continue;
+        const valorTxt = String(val.valor || '').trim();
+        if (!valorTxt) continue;
+        const posOrden = Number(val.posicion || ejesValidos.get(ejeNorm) || 1);
+        limpias[key || `pos_${posOrden}`] = {
+            eje: val.eje,
+            valor: valorTxt,
+            abreviatura: String(val.abreviatura || '').trim(),
+            posicion: posOrden,
+            silencioso: Boolean(val.silencioso),
+            modo_display: String(val.modo_display || 'COMPLETO').toUpperCase() === 'ABREVIADO' ? 'ABREVIADO' : 'COMPLETO'
+        };
+    }
+    return limpias;
+}
+
+function derivarPrefijoSkuDesdeDiccionario(cfg = {}, articuloVinculadoNumero = '') {
+    const vinc = String(articuloVinculadoNumero || '').trim().toUpperCase();
+    if (vinc && !vinc.startsWith('EMB-') && !vinc.startsWith('NB-')) {
+        const baseVinc = vinc.replace(/([xX])(\d+|K|KG)$/i, '');
+        if (baseVinc.length >= 2) return baseVinc;
+    }
+    const partes = [];
+    if (cfg.incluir_familia) {
+        const abFam = String(cfg.abreviatura_familia || cfg.familia_nombre || '').trim().toUpperCase();
+        if (abFam) partes.push(abFam.slice(0, 1));
+    }
+    const prin = String(cfg.abreviatura_principal || cfg.articulo_principal || '').trim().toUpperCase();
+    if (prin) {
+        const palabrasPrin = prin.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+        partes.push(palabrasPrin.map(w => w.charAt(0)).join('').slice(0, 2) || prin.slice(0, 2));
+    }
+    const posOrdenadas = Object.values(cfg.posiciones || {})
+        .filter(p => p && typeof p === 'object' && p.valor)
+        .sort((a, b) => Number(a.posicion || 99) - Number(b.posicion || 99));
+    for (const p of posOrdenadas) {
+        const ab = String(p.abreviatura || p.valor || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, '');
+        if (ab) partes.push(ab.slice(0, 2));
+    }
+    const unido = partes.join('').replace(/[^A-Z0-9]/g, '').slice(0, 8);
+    return unido || 'ART';
+}
+
+/**
  * Resuelve la anatomía nativa completa de un artículo para Nodos Barriales directamente
  * desde las tablas relacionales de PostgreSQL (public.bunker_articulos, public.recetas,
- * public.receta_ingredientes y public.bunker_familias):
- * 1. Verifica primero si ya existe la presentación comercial en public.bunker_articulos (ej: GDFX500G, GSX500G) para reutilizarla.
- * 2. Si es una presentación nueva, toma su artículo hermano nativo que consume el mismo ingrediente puente
- *    y hereda familia_id, rubro, sub_rubro, articulo_principal, posiciones (pos_1..pos_6) y patrón de código nativo.
+ * public.receta_ingredientes, public.bunker_familias y public.bunker_diccionario):
+ * - Caso 0: Si ya referencia un SKU nativo existente en public.bunker_articulos con igual peso, reutiliza su anatomía.
+ * - Caso A: Si tiene artículo hermano en public.bunker_articulos que consume el mismo ingrediente_id, clona su
+ *           familia_id, rubro, sub_rubro, sustantivo ancla y propiedades_dinamicas canónicas completas.
+ * - Caso B: Si NO tiene hermano previo en Búnker, exige selectores relacionales del Diccionario Búnker (por PK IDs).
  */
 async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
     const q = runner || db;
     const kilos = Math.max(0.001, Number(art.kilos_unidad || 0.25));
+    const gramos = Math.round(kilos * 1000);
+    const sufijoPeso = (gramos >= 1000 && gramos % 1000 === 0) ? `${gramos / 1000}kg` : `${gramos}g`;
+
     const ingResuelto = art.ingrediente_origen_id
         ? await resolverIngredienteComercialDeterminista(q, art.ingrediente_origen_id)
         : null;
     const ingId = ingResuelto ? ingResuelto.id : (art.ingrediente_origen_id ? Number(art.ingrediente_origen_id) : null);
+
+    let mixPadre = null;
+    if (ingResuelto && ingResuelto.articulo_vinculado_numero) {
+        mixPadre = await resolverMixPadreFlujo3(q, ingResuelto).catch(() => null);
+    }
 
     const recomendarEnvasePorKilos = (kgVal) => {
         const kg = Number(kgVal || 0.25);
@@ -1163,12 +1347,21 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
         return 177;                 // Bolsa 30 x 40
     };
 
-    // 0) Si el artículo ya referencia un SKU nativo existente en public.bunker_articulos (ej: QRX1, bulto cerrado o multipack)
-    // con el mismo peso unitario, reutilizar directamente su anatomía nativa sin alterar sus propiedades ni recetas.
+    const listasMayoristasInput = Array.isArray(art.listas_mayoristas_compartidas)
+        ? art.listas_mayoristas_compartidas.map(Number).filter(Boolean)
+        : [];
+    const compartidoInput = art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : (listasMayoristasInput.length > 0);
+
+    // Caso 0: Artículo nativo existente en public.bunker_articulos con el mismo peso unitario
     const skuCandidato = String(art.sku_nodo || '').trim();
-    if (skuCandidato && !skuCandidato.toUpperCase().startsWith('NB-') && skuCandidato.toUpperCase() !== 'CCTX250G') {
+    if (
+        skuCandidato &&
+        !skuCandidato.toUpperCase().startsWith('NB-') &&
+        !skuCandidato.toUpperCase().startsWith('EMB-') &&
+        skuCandidato.toUpperCase() !== 'CCTX250G'
+    ) {
         const dirRes = await q.query(
-            `SELECT ba.*, bf.nombre AS familia_nombre_db
+            `SELECT ba.*, bf.nombre AS familia_nombre_db, bf.abreviatura AS familia_abrev_db
              FROM public.bunker_articulos ba
              LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
              WHERE UPPER(ba.articulo_id) = UPPER($1)
@@ -1179,7 +1372,9 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
         if (dirArt && Math.abs(Number(dirArt.kilos_unidad || kilos) - kilos) < 0.002) {
             const recDirRes = await q.query(
                 `SELECT ri.ingrediente_id, ri.cantidad,
-                        ing.nombre AS ing_nombre, COALESCE(ing.costo_patron, 0) AS costo_patron,
+                        ing.codigo AS ing_codigo, ing.nombre AS ing_nombre,
+                        ing.articulo_vinculado_numero,
+                        COALESCE(ing.costo_patron, 0) AS costo_patron,
                         COALESCE(ing.es_insumo, false) AS es_insumo
                  FROM public.recetas r
                  JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
@@ -1200,36 +1395,47 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                 }
             }
             const ingIdEfectivo = ingId || (ingAlimentoRow ? Number(ingAlimentoRow.ingrediente_id) : null);
+            const artVincEfectivo = ingResuelto?.articulo_vinculado_numero || ingAlimentoRow?.articulo_vinculado_numero || null;
+            if (!mixPadre && artVincEfectivo) {
+                mixPadre = await resolverMixPadreFlujo3(q, { id: ingIdEfectivo, articulo_vinculado_numero: artVincEfectivo }).catch(() => null);
+            }
+
+            const famIdDir = Number(dirArt.familia_id || 1);
             const propDir = (dirArt.propiedades_dinamicas && typeof dirArt.propiedades_dinamicas === 'object')
                 ? dirArt.propiedades_dinamicas
                 : {};
-            const posicionesDir = (propDir.posiciones && typeof propDir.posiciones === 'object')
-                ? propDir.posiciones
-                : {};
-            const fallbackTaxDir = construirTaxonomiaPosicionalNodo({
-                ...art,
-                ingrediente_origen_id: ingIdEfectivo,
-                sku_nodo: dirArt.articulo_id,
-                nomenclatura_bunker: dirArt.descripcion_generada || dirArt.descripcion
-            });
+            const posicionesDir = await sanitizarPosicionesContraFamiliaBunker(q, famIdDir, propDir.posiciones || {});
             const segundosDir = Number(propDir.asistente_minutos) > 0
                 ? Math.round(Number(propDir.asistente_minutos) * 60)
                 : null;
+            const descOficial = dirArt.descripcion_generada || dirArt.descripcion || dirArt.articulo_id;
+            const presEtiqueta = Boolean(dirArt.es_pack) && Number(dirArt.pack_unidades || 1) > 1
+                ? `Pack ${dirArt.pack_unidades} u. (${gramos}g)`
+                : `Bolsa ${sufijoPeso}`;
 
             return {
                 existe_en_bunker: true,
+                tiene_hermano_bunker: true,
+                requiere_diccionario_bunker: false,
+                hermano_referencia_sku: dirArt.articulo_id,
                 ingrediente_comercial_id: ingIdEfectivo,
+                ingrediente_comercial_codigo: ingResuelto?.codigo || ingAlimentoRow?.ing_codigo || null,
                 ingrediente_comercial_nombre: ingResuelto?.nombre || ingAlimentoRow?.ing_nombre || art.ing_origen_nombre || null,
+                ingrediente_comercial_label: ingResuelto
+                    ? ingResuelto.label_oficial
+                    : (ingAlimentoRow ? formatearEtiquetaTecnicaIngrediente({ id: ingIdEfectivo, codigo: ingAlimentoRow.ing_codigo, nombre: ingAlimentoRow.ing_nombre }) : null),
                 ingrediente_comercial_costo_kg: ingResuelto?.costo_patron || Number(ingAlimentoRow?.costo_patron || art.costo_insumo_kg || 0),
+                articulo_vinculado_numero: artVincEfectivo,
+                mix_padre: mixPadre,
                 sku_nativo: dirArt.articulo_id,
-                familia_id: Number(dirArt.familia_id || fallbackTaxDir.familia_id),
-                familia_nombre: dirArt.familia_nombre_db || fallbackTaxDir.familia_nombre,
-                rubro: dirArt.rubro || fallbackTaxDir.rubro,
-                sub_rubro: dirArt.sub_rubro || fallbackTaxDir.sub_rubro,
-                articulo_principal: dirArt.descripcion || fallbackTaxDir.articulo_principal,
-                nomenclatura_bunker: dirArt.descripcion_generada || dirArt.descripcion || fallbackTaxDir.nomenclatura_bunker,
-                nombre_publico_limpio: art.nombre_publico || fallbackTaxDir.nombre_publico_limpio,
-                presentacion_etiqueta: art.presentacion_etiqueta || fallbackTaxDir.presentacion_etiqueta,
+                familia_id: famIdDir,
+                familia_nombre: dirArt.familia_nombre_db || propDir.familia_nombre || 'Frutos Secos',
+                rubro: dirArt.rubro || null,
+                sub_rubro: dirArt.sub_rubro || null,
+                articulo_principal: dirArt.descripcion || propDir.articulo_principal || descOficial,
+                nomenclatura_bunker: descOficial,
+                nombre_publico_limpio: descOficial,
+                presentacion_etiqueta: art.presentacion_etiqueta || presEtiqueta,
                 es_pack: Boolean(dirArt.es_pack),
                 pack_unidades: Number(dirArt.pack_unidades || 1),
                 pack_hijo_codigo: dirArt.pack_hijo_codigo || null,
@@ -1237,23 +1443,38 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                 segundos_nativos: segundosDir,
                 insumo_envase_id: insumoEnvaseRecetaId || (ingIdEfectivo ? recomendarEnvasePorKilos(kilos) : null),
                 envase_origen_receta: Boolean(insumoEnvaseRecetaId),
-                compartido_mayorista: fallbackTaxDir.compartido_mayorista,
-                listas_mayoristas_compartidas: fallbackTaxDir.listas_mayoristas_compartidas,
-                posiciones: Object.keys(posicionesDir).length > 0 ? posicionesDir : fallbackTaxDir.posiciones
+                compartido_mayorista: compartidoInput,
+                listas_mayoristas_compartidas: listasMayoristasInput,
+                propiedades_estructurales: {
+                    familia_id: famIdDir,
+                    familia_nombre: dirArt.familia_nombre_db || propDir.familia_nombre || '',
+                    incluir_familia: Boolean(propDir.incluir_familia),
+                    posicion_familia: propDir.posicion_familia || 'ANTES',
+                    abreviatura_familia: propDir.abreviatura_familia ?? (dirArt.familia_abrev_db || ''),
+                    modo_display_familia: propDir.modo_display_familia || 'COMPLETO',
+                    articulo_principal: propDir.articulo_principal || dirArt.descripcion || '',
+                    silencioso_principal: Boolean(propDir.silencioso_principal),
+                    modo_display_principal: propDir.modo_display_principal || 'COMPLETO',
+                    presentacion_variable_wip: false,
+                    sufijo_wip: null
+                },
+                posiciones: posicionesDir
             };
         }
     }
 
+    // Caso A: Buscar artículos hermanos canónicos en public.bunker_articulos que consuman el mismo ingrediente_id
     let hermanos = [];
     if (ingId) {
         const hermRes = await q.query(
-            `SELECT ba.*, bf.nombre AS familia_nombre_db
+            `SELECT ba.*, bf.nombre AS familia_nombre_db, bf.abreviatura AS familia_abrev_db
              FROM public.bunker_articulos ba
              LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
-             JOIN public.recetas r ON r.articulo_numero = ba.articulo_id
+             JOIN public.recetas r ON UPPER(r.articulo_numero) = UPPER(ba.articulo_id)
              JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
              WHERE ri.ingrediente_id = $1
-               AND ba.articulo_id NOT LIKE 'NB-%'
+               AND UPPER(ba.articulo_id) NOT LIKE 'NB-%'
+               AND UPPER(ba.articulo_id) NOT LIKE 'EMB-%'
                AND UPPER(ba.articulo_id) <> 'CCTX250G'
                AND COALESCE(ba.familia_id, 0) > 0
                AND COALESCE(ba.familia_id, 0) <> 42
@@ -1271,7 +1492,6 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
         const hermanoRef = hermanos[0];
         const derivado = derivarSkuYNomenclaturaDesdeHermano(hermanoRef, kilos, art.pack_unidades);
 
-        // Verificar si el SKU derivado ya existe en bunker_articulos
         const exactoEnHermanos = hermanos.find(
             h => String(h.articulo_id).toUpperCase() === String(derivado.sku_nativo).toUpperCase()
         ) || (Math.abs(Number(hermanoRef.kilos_unidad) - kilos) < 0.0005 ? hermanoRef : null);
@@ -1298,39 +1518,76 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
         }
 
         const baseArt = exactoEnHermanos || hermanoRef;
-        const propRef = (baseArt.propiedades_dinamicas && typeof baseArt.propiedades_dinamicas === 'object')
-            ? baseArt.propiedades_dinamicas
-            : {};
-        const posicionesNativas = (propRef.posiciones && typeof propRef.posiciones === 'object')
-            ? propRef.posiciones
-            : {};
+        // Coalesce rubro y sub_rubro entre todos los hermanos del ingrediente por si el hermano más cercano los tuviera vacíos
+        const hermanoConRubro = hermanos.find(h => h.rubro && String(h.rubro).trim() !== '') || baseArt;
+        const hermanoConSubRubro = hermanos.find(h => h.sub_rubro && String(h.sub_rubro).trim() !== '') || hermanoConRubro;
 
-        const fallbackTax = construirTaxonomiaPosicionalNodo({
-            ...art,
-            ingrediente_origen_id: ingId,
-            sku_nodo: exactoEnHermanos ? exactoEnHermanos.articulo_id : derivado.sku_nativo,
-            nomenclatura_bunker: exactoEnHermanos ? exactoEnHermanos.descripcion_generada : derivado.nomenclatura_bunker
+        // Elegir el hermano con estructura propiedades_dinamicas más completa (con incluir_familia / articulo_principal o posiciones de objeto)
+        const hermanoPropsCanonicas = hermanos.find(h => {
+            const pd = h.propiedades_dinamicas;
+            return pd && typeof pd === 'object' && (pd.articulo_principal !== undefined || pd.incluir_familia !== undefined);
+        }) || baseArt;
+
+        const propRef = (hermanoPropsCanonicas.propiedades_dinamicas && typeof hermanoPropsCanonicas.propiedades_dinamicas === 'object')
+            ? hermanoPropsCanonicas.propiedades_dinamicas
+            : {};
+        const famId = Number(baseArt.familia_id || hermanoPropsCanonicas.familia_id || 1);
+        const famNombre = baseArt.familia_nombre_db || propRef.familia_nombre || 'Frutos Secos';
+        const posicionesSanas = await sanitizarPosicionesContraFamiliaBunker(q, famId, propRef.posiciones || {});
+
+        const propsEstructurales = {
+            familia_id: famId,
+            familia_nombre: famNombre,
+            incluir_familia: Boolean(propRef.incluir_familia),
+            posicion_familia: propRef.posicion_familia || 'ANTES',
+            abreviatura_familia: propRef.abreviatura_familia ?? (baseArt.familia_abrev_db || ''),
+            modo_display_familia: propRef.modo_display_familia || 'COMPLETO',
+            articulo_principal: propRef.articulo_principal || baseArt.descripcion || '',
+            silencioso_principal: Boolean(propRef.silencioso_principal),
+            modo_display_principal: propRef.modo_display_principal || 'COMPLETO',
+            presentacion_variable_wip: false,
+            sufijo_wip: null
+        };
+
+        const nomenclaturaEnsamblada = ensamblarDescripcionOficialBunker({
+            ...propsEstructurales,
+            posiciones: posicionesSanas,
+            kilos_unidad: kilos,
+            es_pack: derivado.es_pack,
+            pack_unidades: derivado.pack_unidades
         });
+
+        const nomenclaturaFinal = exactoEnHermanos
+            ? (exactoEnHermanos.descripcion_generada || derivado.nomenclatura_bunker || nomenclaturaEnsamblada)
+            : (derivado.nomenclatura_bunker || nomenclaturaEnsamblada);
 
         const segundosNativos = (exactoEnHermanos && Number(propRef.asistente_minutos) > 0)
             ? Math.round(Number(propRef.asistente_minutos) * 60)
             : null;
 
         return {
+            modo_resolucion: exactoEnHermanos ? 'CASO_0_EXISTENTE' : 'CASO_A_HERMANO',
             existe_en_bunker: Boolean(exactoEnHermanos),
+            tiene_hermano_bunker: true,
+            requiere_diccionario_bunker: false,
+            hermano_referencia_sku: baseArt.articulo_id,
+            hermano_origen_sku: baseArt.articulo_id,
             ingrediente_comercial_id: ingId,
+            ingrediente_comercial_codigo: ingResuelto?.codigo || null,
             ingrediente_comercial_nombre: ingResuelto?.nombre || art.ing_origen_nombre || null,
+            ingrediente_comercial_label: ingResuelto ? ingResuelto.label_oficial : null,
             ingrediente_comercial_costo_kg: ingResuelto?.costo_patron || Number(art.costo_insumo_kg || 0),
+            articulo_vinculado_numero: ingResuelto?.articulo_vinculado_numero || null,
+            articulo_puente_numero: ingResuelto?.articulo_vinculado_numero || null,
+            mix_padre: mixPadre,
             sku_nativo: exactoEnHermanos ? exactoEnHermanos.articulo_id : derivado.sku_nativo,
-            familia_id: Number(baseArt.familia_id || fallbackTax.familia_id),
-            familia_nombre: baseArt.familia_nombre_db || fallbackTax.familia_nombre,
-            rubro: baseArt.rubro || fallbackTax.rubro,
-            sub_rubro: baseArt.sub_rubro || fallbackTax.sub_rubro,
-            articulo_principal: baseArt.descripcion || fallbackTax.articulo_principal,
-            nomenclatura_bunker: exactoEnHermanos
-                ? (exactoEnHermanos.descripcion_generada || derivado.nomenclatura_bunker)
-                : derivado.nomenclatura_bunker,
-            nombre_publico_limpio: fallbackTax.nombre_publico_limpio,
+            familia_id: famId,
+            familia_nombre: famNombre,
+            rubro: baseArt.rubro || hermanoConRubro.rubro || null,
+            sub_rubro: baseArt.sub_rubro || hermanoConSubRubro.sub_rubro || null,
+            articulo_principal: baseArt.descripcion || propsEstructurales.articulo_principal,
+            nomenclatura_bunker: nomenclaturaFinal,
+            nombre_publico_limpio: nomenclaturaFinal,
             presentacion_etiqueta: art.presentacion_etiqueta || derivado.presentacion_etiqueta,
             es_pack: derivado.es_pack,
             pack_unidades: derivado.pack_unidades,
@@ -1339,304 +1596,226 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
             segundos_nativos: segundosNativos,
             insumo_envase_id: insumoEnvaseRecetaId || recomendarEnvasePorKilos(kilos),
             envase_origen_receta: Boolean(insumoEnvaseRecetaId),
-            compartido_mayorista: fallbackTax.compartido_mayorista,
-            listas_mayoristas_compartidas: fallbackTax.listas_mayoristas_compartidas,
-            posiciones: Object.keys(posicionesNativas).length > 0 ? posicionesNativas : fallbackTax.posiciones
+            compartido_mayorista: compartidoInput,
+            listas_mayoristas_compartidas: listasMayoristasInput,
+            propiedades_estructurales: propsEstructurales,
+            posiciones: posicionesSanas
         };
     }
 
-    const fallback = construirTaxonomiaPosicionalNodo({
-        ...art,
-        ingrediente_origen_id: ingId,
-        ing_origen_nombre: ingResuelto?.nombre || art.ing_origen_nombre || '',
-        articulo_vinculado_numero: ingResuelto?.articulo_vinculado_numero || ''
-    });
+    // Caso B: Sin hermano previo en public.bunker_articulos -> Construcción determinista por selectores del Diccionario Búnker (PK IDs)
+    const famBunkerId = Number(art.familia_bunker_id || art.familia_id || 0);
+    const artPrincipalId = Number(art.articulo_principal_id || 0);
+    const artPrincipalTextoDirecto = String(art.articulo_principal_bunker || '').trim();
+    const rubroInput = String(art.rubro_bunker || art.rubro || '').trim().toUpperCase();
+    const subRubroInput = String(art.sub_rubro_bunker || art.sub_rubro || '').trim().toUpperCase();
+
+    if (famBunkerId > 0 && (artPrincipalId > 0 || artPrincipalTextoDirecto)) {
+        const famRowRes = await q.query(
+            `SELECT id, nombre, abreviatura FROM public.bunker_familias WHERE id = $1 LIMIT 1`,
+            [famBunkerId]
+        );
+        const famRow = famRowRes.rows[0] || null;
+        if (famRow) {
+            let principalRow = null;
+            if (artPrincipalId > 0) {
+                const pRes = await q.query(
+                    `SELECT id, termino, abreviatura FROM public.bunker_diccionario WHERE id = $1 LIMIT 1`,
+                    [artPrincipalId]
+                );
+                principalRow = pRes.rows[0] || null;
+            } else if (artPrincipalTextoDirecto) {
+                const pRes = await q.query(
+                    `SELECT id, termino, abreviatura FROM public.bunker_diccionario
+                     WHERE LOWER(categoria) = 'articulo_principal'
+                       AND LOWER(termino) = LOWER($1)
+                     LIMIT 1`,
+                    [artPrincipalTextoDirecto]
+                );
+                principalRow = pRes.rows[0] || { id: null, termino: artPrincipalTextoDirecto, abreviatura: '' };
+            }
+
+            if (principalRow) {
+                const catsFamRes = await q.query(
+                    `SELECT id, categoria, orden_posicional
+                     FROM public.bunker_familia_categorias
+                     WHERE familia_id = $1
+                     ORDER BY orden_posicional ASC`,
+                    [famBunkerId]
+                );
+                const catsMap = new Map(catsFamRes.rows.map(c => [Number(c.id), c]));
+                const catsByOrdenMap = new Map(catsFamRes.rows.map(c => [Number(c.orden_posicional), c]));
+                let seleccionesPos = Array.isArray(art.posiciones_seleccionadas) ? [...art.posiciones_seleccionadas] : [];
+                if (seleccionesPos.length === 0 && art.posiciones && typeof art.posiciones === 'object' && !Array.isArray(art.posiciones)) {
+                    for (const [slotKey, slotVal] of Object.entries(art.posiciones)) {
+                        if (!slotVal || typeof slotVal !== 'object') continue;
+                        const ordenMatch = /^pos_(\d+)$/i.exec(slotKey);
+                        const catFromOrden = ordenMatch ? catsByOrdenMap.get(Number(ordenMatch[1])) : null;
+                        const catIdResolved = Number(slotVal.categoria_id || catFromOrden?.id || 0);
+                        const termIdResolved = Number(slotVal.termino_id || 0);
+                        if (catIdResolved > 0 && termIdResolved > 0) {
+                            seleccionesPos.push({
+                                categoria_id: catIdResolved,
+                                termino_id: termIdResolved,
+                                modo_display: slotVal.modo_display || 'COMPLETO',
+                                silencioso: Boolean(slotVal.silencioso)
+                            });
+                        }
+                    }
+                }
+                const posicionesConstruidas = {};
+
+                for (const sel of seleccionesPos) {
+                    const catId = Number(sel.categoria_id || 0);
+                    const termId = Number(sel.termino_id || 0);
+                    if (!catId || !termId || !catsMap.has(catId)) continue;
+                    const catInfo = catsMap.get(catId);
+                    const termRes = await q.query(
+                        `SELECT id, termino, abreviatura FROM public.bunker_diccionario WHERE id = $1 AND COALESCE(obsoleto, false) = false LIMIT 1`,
+                        [termId]
+                    );
+                    if (!termRes.rows[0]) continue;
+                    const tRow = termRes.rows[0];
+                    const orden = Number(catInfo.orden_posicional || 1);
+                    posicionesConstruidas[`pos_${orden}`] = {
+                        categoria_id: Number(catInfo.id),
+                        termino_id: Number(tRow.id),
+                        eje: normalizarEjeCategoriaBunker(catInfo.categoria),
+                        valor: tRow.termino,
+                        abreviatura: tRow.abreviatura || '',
+                        posicion: orden,
+                        silencioso: Boolean(sel.silencioso),
+                        modo_display: String(sel.modo_display || 'COMPLETO').toUpperCase() === 'ABREVIADO' ? 'ABREVIADO' : 'COMPLETO'
+                    };
+                }
+
+                const incluirFam = art.incluir_familia !== undefined ? Boolean(art.incluir_familia) : Boolean(famRow.abreviatura);
+                const modoFamRaw = String(art.modo_display_familia || (famRow.abreviatura ? 'ABREVIADO' : 'COMPLETO')).toUpperCase();
+                const modoFam = modoFamRaw.startsWith('ABREV') ? 'ABREVIADO' : 'COMPLETO';
+                const propsEst = {
+                    familia_id: Number(famRow.id),
+                    familia_nombre: famRow.nombre,
+                    incluir_familia: incluirFam,
+                    posicion_familia: String(art.posicion_familia || 'ANTES').toUpperCase(),
+                    abreviatura_familia: famRow.abreviatura || '',
+                    modo_display_familia: modoFam,
+                    articulo_principal: principalRow.termino,
+                    abreviatura_principal: principalRow.abreviatura || '',
+                    silencioso_principal: Boolean(art.silencioso_principal),
+                    modo_display_principal: String(art.modo_display_principal || 'COMPLETO').toUpperCase(),
+                    presentacion_variable_wip: false,
+                    sufijo_wip: null
+                };
+
+                const descGenerada = ensamblarDescripcionOficialBunker({
+                    ...propsEst,
+                    posiciones: posicionesConstruidas,
+                    kilos_unidad: kilos,
+                    es_pack: false,
+                    pack_unidades: 1
+                });
+
+                const skuExplicito = String(art.sku_nodo || '').trim();
+                const prefSku = derivarPrefijoSkuDesdeDiccionario(
+                    { ...propsEst, posiciones: posicionesConstruidas },
+                    ingResuelto?.articulo_vinculado_numero || ''
+                );
+                const sufijoSku = (gramos >= 1000 && gramos % 1000 === 0) ? `X${gramos / 1000}` : `X${gramos}G`;
+                const skuConstruido = (skuExplicito && !/^NB-/i.test(skuExplicito) && !/^EMB-/i.test(skuExplicito))
+                    ? skuExplicito
+                    : `${prefSku}${sufijoSku}`;
+
+                return {
+                    modo_resolucion: 'CASO_B_DICCIONARIO',
+                    existe_en_bunker: false,
+                    tiene_hermano_bunker: false,
+                    requiere_diccionario_bunker: false,
+                    hermano_referencia_sku: null,
+                    hermano_origen_sku: null,
+                    ingrediente_comercial_id: ingId,
+                    ingrediente_comercial_codigo: ingResuelto?.codigo || null,
+                    ingrediente_comercial_nombre: ingResuelto?.nombre || art.ing_origen_nombre || null,
+                    ingrediente_comercial_label: ingResuelto ? ingResuelto.label_oficial : null,
+                    ingrediente_comercial_costo_kg: ingResuelto?.costo_patron || Number(art.costo_insumo_kg || 0),
+                    articulo_vinculado_numero: ingResuelto?.articulo_vinculado_numero || null,
+                    articulo_puente_numero: ingResuelto?.articulo_vinculado_numero || null,
+                    mix_padre: mixPadre,
+                    sku_nativo: skuConstruido,
+                    familia_id: Number(famRow.id),
+                    familia_nombre: famRow.nombre,
+                    rubro: rubroInput || famRow.nombre.toUpperCase(),
+                    sub_rubro: subRubroInput || null,
+                    articulo_principal: principalRow.termino,
+                    nomenclatura_bunker: descGenerada,
+                    nombre_publico_limpio: descGenerada,
+                    presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
+                    es_pack: false,
+                    pack_unidades: 1,
+                    pack_hijo_codigo: null,
+                    expresado_en_gramos: kilos < 1,
+                    segundos_nativos: null,
+                    insumo_envase_id: recomendarEnvasePorKilos(kilos),
+                    envase_origen_receta: false,
+                    compartido_mayorista: compartidoInput,
+                    listas_mayoristas_compartidas: listasMayoristasInput,
+                    propiedades_estructurales: propsEst,
+                    posiciones: posicionesConstruidas
+                };
+            }
+        }
+    }
+
+    // Sin hermano en Búnker y aún sin selección relacional del Diccionario Búnker
     return {
+        modo_resolucion: 'CASO_B_PENDIENTE',
         existe_en_bunker: false,
+        tiene_hermano_bunker: false,
+        requiere_diccionario_bunker: true,
+        hermano_referencia_sku: null,
+        hermano_origen_sku: null,
         ingrediente_comercial_id: ingId,
+        ingrediente_comercial_codigo: ingResuelto?.codigo || null,
         ingrediente_comercial_nombre: ingResuelto?.nombre || art.ing_origen_nombre || null,
+        ingrediente_comercial_label: ingResuelto ? ingResuelto.label_oficial : null,
         ingrediente_comercial_costo_kg: ingResuelto?.costo_patron || Number(art.costo_insumo_kg || 0),
-        sku_nativo: fallback.sku_nativo,
-        ...fallback,
+        articulo_vinculado_numero: ingResuelto?.articulo_vinculado_numero || null,
+        articulo_puente_numero: ingResuelto?.articulo_vinculado_numero || null,
+        mix_padre: mixPadre,
+        sku_nativo: '',
+        familia_id: null,
+        familia_nombre: null,
+        rubro: null,
+        sub_rubro: null,
+        articulo_principal: null,
+        nomenclatura_bunker: '',
+        nombre_publico_limpio: '',
+        presentacion_etiqueta: `Bolsa ${sufijoPeso}`,
+        es_pack: false,
+        pack_unidades: 1,
         pack_hijo_codigo: null,
+        expresado_en_gramos: kilos < 1,
         segundos_nativos: null,
         insumo_envase_id: recomendarEnvasePorKilos(kilos),
-        envase_origen_receta: false
+        envase_origen_receta: false,
+        compartido_mayorista: compartidoInput,
+        listas_mayoristas_compartidas: listasMayoristasInput,
+        propiedades_estructurales: null,
+        posiciones: {}
     };
 }
 
 /**
- * Previsualiza en vivo para la Mesa Cotizadora de LAMDA la anatomía exacta en Búnker / Espacios Personales
- * (SKU nativo, receta existente si ya existe, envase primario real de receta y Alias Amigable sugerido al vecino).
+ * Previsualiza en vivo para la Mesa Cotizadora de LAMDA la anatomía exacta en Búnker
+ * (SKU nativo, cadena relacional de ingrediente/puente/mix padre, envase primario real y nomenclatura oficial).
  */
 async function previsualizarAnatomiaCotizacionNodo(payload = {}) {
     await asegurarEsquemaNodosBarriales();
     const anatomia = await resolverAnatomiaNativaArticuloNodo(db, payload);
-    let identidadClara = null;
-    if (anatomia.ingrediente_comercial_id) {
-        const ingRes = await db.query(
-            'SELECT id, codigo, nombre, articulo_vinculado_numero FROM public.ingredientes WHERE id = $1 LIMIT 1',
-            [anatomia.ingrediente_comercial_id]
-        );
-        if (ingRes.rows[0]) {
-            identidadClara = formatearIdentidadClaraIngrediente(ingRes.rows[0], anatomia.familia_nombre);
-        }
-    }
     return {
         ...anatomia,
-        nombre_claro_gestor: identidadClara ? identidadClara.nombre_claro_gestor : (anatomia.ingrediente_comercial_nombre || ''),
-        alias_vecino_sugerido: identidadClara ? identidadClara.alias_vecino_sugerido : (anatomia.nombre_publico_limpio || ''),
-        categoria_gestor: identidadClara ? identidadClara.categoria_gestor : (anatomia.familia_nombre || 'Frutos Secos')
-    };
-}
-
-/**
- * Construye la taxonomía posicional (con claves pos_1..pos_6 del motor del diccionario)
- * y el Alias Comercial del Vecino por ID de ingrediente puente.
- */
-function construirTaxonomiaPosicionalNodo(art = {}) {
-    const sku = String(art.sku_nodo || '').trim().toUpperCase();
-    const kilos = Math.max(0.001, Number(art.kilos_unidad || 0.25));
-    const gramos = Math.round(kilos * 1000);
-    const sufijoPeso = gramos >= 1000 && gramos % 1000 === 0 ? `${gramos / 1000}kg` : `${gramos}g`;
-    const ingId = art.ingrediente_origen_id ? Number(art.ingrediente_origen_id) : null;
-    const flujo = Number(art.flujo_lamda || 2);
-
-    if (ingId === 1 || sku === 'APN25/27X250G' || sku === 'NB-ALM-250G') {
-        return {
-            sku_nativo: `APN25/27X${gramos}G`,
-            familia_id: 1,
-            familia_nombre: 'Frutos Secos',
-            rubro: 'FRUTOS SECOS',
-            sub_rubro: 'ALMENDRAS',
-            articulo_principal: 'ALMENDRA',
-            nomenclatura_bunker: art.nomenclatura_bunker || `ALMENDRA Peladas NP 25-27 x ${sufijoPeso}`,
-            nombre_publico_limpio: (art.nombre_publico || 'Almendra Nonpareil')
-                .replace(/^\[NODO\]\s*/i, '')
-                .replace(/\s+Californiana\s+x\s+\d+g$/i, '')
-                .replace(/\s+x\s+\d+(g|kg)$/i, '')
-                .trim() || 'Almendra Nonpareil',
-            presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
-            es_pack: false,
-            pack_unidades: 1,
-            expresado_en_gramos: kilos < 1,
-            compartido_mayorista: art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : false,
-            listas_mayoristas_compartidas: Array.isArray(art.listas_mayoristas_compartidas) ? art.listas_mayoristas_compartidas : [],
-            posiciones: {
-                pos_1: 'Peladas',
-                pos_2: 'NP',
-                pos_3: '25-27'
-            }
-        };
-    }
-
-    if (ingId === 149 || ingId === 30 || sku === 'MFSX500G' || sku === 'NB-MIX-PASAS-500G') {
-        return {
-            sku_nativo: `MFSX${gramos}G`,
-            familia_id: 1,
-            familia_nombre: 'Frutos Secos',
-            rubro: 'FRUTOS SECOS',
-            sub_rubro: 'MIX',
-            articulo_principal: 'Mix',
-            nomenclatura_bunker: art.nomenclatura_bunker || `Mix F/SCOS Con Pasas x ${sufijoPeso}`,
-            nombre_publico_limpio: (art.nombre_publico || 'Mix Frutos Secos con Pasas')
-                .replace(/^\[NODO\]\s*/i, '')
-                .replace(/\s+Familiar\s+x\s+\d+g$/i, '')
-                .replace(/\s*\(Simple\)\s*/i, '')
-                .replace(/\s+x\s+\d+(g|kg)$/i, '')
-                .trim() || 'Mix Frutos Secos con Pasas',
-            presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
-            es_pack: false,
-            pack_unidades: 1,
-            expresado_en_gramos: kilos < 1,
-            compartido_mayorista: art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : false,
-            listas_mayoristas_compartidas: Array.isArray(art.listas_mayoristas_compartidas) ? art.listas_mayoristas_compartidas : [],
-            posiciones: {
-                pos_1: 'F/SCOS',
-                pos_2: 'Con Pasas'
-            }
-        };
-    }
-
-    if (ingId === 150 || ingId === 31 || sku.startsWith('MFSP')) {
-        return {
-            sku_nativo: `MFSPx${gramos}`,
-            familia_id: 1,
-            familia_nombre: 'Frutos Secos',
-            rubro: 'FRUTOS SECOS',
-            sub_rubro: 'MIX',
-            articulo_principal: 'Mix',
-            nomenclatura_bunker: art.nomenclatura_bunker || `Mix F/SCOS Premiun x ${sufijoPeso}`,
-            nombre_publico_limpio: (art.nombre_publico || 'Mix Premium Sin Pasas')
-                .replace(/^\[NODO\]\s*/i, '')
-                .replace(/\s*\(Simple\)\s*/i, '')
-                .replace(/\s+x\s+\d+(g|kg)$/i, '')
-                .trim() || 'Mix Premium Sin Pasas',
-            presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
-            es_pack: false,
-            pack_unidades: 1,
-            expresado_en_gramos: kilos < 1,
-            compartido_mayorista: art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : false,
-            listas_mayoristas_compartidas: Array.isArray(art.listas_mayoristas_compartidas) ? art.listas_mayoristas_compartidas : [],
-            posiciones: {
-                pos_1: 'F/SCOS',
-                pos_2: 'Premiun'
-            }
-        };
-    }
-
-    if (ingId === 18 || sku === 'CCTSX250' || sku === 'NB-CAJU-TOST-250G') {
-        return {
-            sku_nativo: `CCTSx${gramos}`,
-            familia_id: 1,
-            familia_nombre: 'Frutos Secos',
-            rubro: 'FRUTOS SECOS',
-            sub_rubro: 'CASTAÑAS',
-            articulo_principal: 'Castañas de Caju',
-            nomenclatura_bunker: art.nomenclatura_bunker || `Castañas de Caju Tostado x ${sufijoPeso}`,
-            nombre_publico_limpio: (art.nombre_publico || 'Castaña de Cajú Tostada')
-                .replace(/^\[NODO\]\s*/i, '')
-                .replace(/\s+Artesanal\s+x\s+\d+g$/i, '')
-                .replace(/\s+x\s+\d+(g|kg)$/i, '')
-                .trim() || 'Castaña de Cajú Tostada',
-            presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
-            es_pack: false,
-            pack_unidades: 1,
-            expresado_en_gramos: kilos < 1,
-            compartido_mayorista: art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : false,
-            listas_mayoristas_compartidas: Array.isArray(art.listas_mayoristas_compartidas) ? art.listas_mayoristas_compartidas : [],
-            posiciones: {
-                pos_3: 'Tostado'
-            }
-        };
-    }
-
-    if (ingId === 25 || sku.startsWith('NMECHAM')) {
-        return {
-            sku_nativo: `NMECHAMX${gramos}G`,
-            familia_id: 1,
-            familia_nombre: 'Frutos Secos',
-            rubro: 'FRUTOS SECOS',
-            sub_rubro: 'NUECES',
-            articulo_principal: 'NUEZ',
-            nomenclatura_bunker: art.nomenclatura_bunker || `NUEZ Peladas Mariposa Extra Light Chandler x ${sufijoPeso}`,
-            nombre_publico_limpio: (art.nombre_publico || 'Nuez Mariposa Extra Light')
-                .replace(/^\[NODO\]\s*/i, '')
-                .replace(/\s+(Familiar\s+)?x\s+\d+(g|kg)$/i, '')
-                .trim() || 'Nuez Mariposa Extra Light',
-            presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
-            es_pack: false,
-            pack_unidades: 1,
-            expresado_en_gramos: kilos < 1,
-            compartido_mayorista: art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : false,
-            listas_mayoristas_compartidas: Array.isArray(art.listas_mayoristas_compartidas) ? art.listas_mayoristas_compartidas : [],
-            posiciones: {
-                pos_1: 'Peladas',
-                pos_2: 'Mariposa',
-                pos_4: 'Extra Light',
-                pos_5: 'Chandler'
-            }
-        };
-    }
-
-    if (ingId === 141 || ingId === 109 || flujo === 5 || sku === 'BF6X50' || sku === 'NB-BARRITA-PACK6') {
-        const packU = Math.max(1, Math.round(gramos / 50));
-        const compartido = art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : true;
-        const listasComp = Array.isArray(art.listas_mayoristas_compartidas) && art.listas_mayoristas_compartidas.length > 0
-            ? art.listas_mayoristas_compartidas
-            : (compartido ? [5, 6] : []);
-        return {
-            sku_nativo: `BF${packU}X50`,
-            familia_id: 27,
-            familia_nombre: 'Cereales',
-            rubro: 'CEREALES',
-            sub_rubro: 'GRANOLA',
-            articulo_principal: 'Granolas',
-            nomenclatura_bunker: art.nomenclatura_bunker || `BARRA Flor ${packU} x 50g`,
-            nombre_publico_limpio: (art.nombre_publico || `Pack ${packU} Barritas Energéticas`)
-                .replace(/^\[NODO\]\s*/i, '')
-                .replace(/^Pack Familiar 6 Barritas Energéticas.*$/i, 'Pack 6 Barritas Energéticas')
-                .trim() || `Pack ${packU} Barritas Energéticas`,
-            presentacion_etiqueta: art.presentacion_etiqueta || `Pack ${packU} u. (${gramos}g)`,
-            es_pack: true,
-            pack_unidades: packU,
-            expresado_en_gramos: true,
-            compartido_mayorista: compartido,
-            listas_mayoristas_compartidas: listasComp,
-            posiciones: {
-                pos_1: 'BARRA',
-                pos_2: 'Flor'
-            }
-        };
-    }
-
-    if (ingId === 131 || ingId === 122 || flujo === 6 || sku === 'GSX500G' || sku === 'GDFX500G' || sku === 'NB-GRANA-SOL-500G' || sku === 'NB-GRANOLA-DE-500G') {
-        const esFlor = ingId === 122 || sku === 'GDFX500G' || sku === 'NB-GRANOLA-DE-500G';
-        const variedadGrana = esFlor ? 'Flor' : 'Sol';
-        const prefGrana = esFlor ? 'GDF' : 'GS';
-        const compartido = art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : true;
-        const listasComp = Array.isArray(art.listas_mayoristas_compartidas) && art.listas_mayoristas_compartidas.length > 0
-            ? art.listas_mayoristas_compartidas
-            : (compartido ? [1, 2, 3, 5, 6, 7] : []);
-        return {
-            sku_nativo: `${prefGrana}X${gramos}G`,
-            familia_id: 27,
-            familia_nombre: 'Cereales',
-            rubro: 'CEREALES',
-            sub_rubro: 'GRANOLA',
-            articulo_principal: 'Granolas',
-            nomenclatura_bunker: art.nomenclatura_bunker || `GRANA ${variedadGrana} x ${sufijoPeso}`,
-            nombre_publico_limpio: (art.nombre_publico || (esFlor ? 'Granola de Flor' : 'Granola de Sol Crocante'))
-                .replace(/^\[NODO\]\s*/i, '')
-                .replace(/\s+con Miel\s+x\s+\d+g$/i, '')
-                .replace(/\s+x\s+\d+(g|kg)$/i, '')
-                .trim() || (esFlor ? 'Granola de Flor' : 'Granola de Sol Crocante'),
-            presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
-            es_pack: false,
-            pack_unidades: 1,
-            expresado_en_gramos: kilos < 1,
-            compartido_mayorista: compartido,
-            listas_mayoristas_compartidas: listasComp,
-            posiciones: {
-                pos_1: 'GRANA',
-                pos_2: variedadGrana
-            }
-        };
-    }
-
-    const nombreBase = String(art.nombre_publico || art.ing_origen_nombre || MAPA_IDENTIDAD_CLARA_INGREDIENTES[ingId]?.alias_vecino || sku)
-        .replace(/^\[NODO\]\s*/i, '')
-        .replace(/\s*\((Simple|Mix)\)\s*/gi, '')
-        .replace(/\s+x\s+\d+(g|kg)$/i, '')
-        .trim();
-    const artVincPref = String(art.articulo_vinculado_numero || '')
-        .trim()
-        .toUpperCase()
-        .replace(/([xX])(\d+|K|KG)$/i, '');
-    const prefCod = artVincPref || nombreBase
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toUpperCase()
-        .replace(/[^A-Z0-9]+/g, '')
-        .slice(0, 6) || 'FRAC';
-    return {
-        sku_nativo: sku && !sku.startsWith('NB-') ? sku : `${prefCod}X${sufijoPeso.toUpperCase()}`,
-        familia_id: Number(art.familia_bunker_id || 1),
-        familia_nombre: art.familia_bunker_nombre || 'Frutos Secos',
-        rubro: 'FRUTOS SECOS',
-        sub_rubro: 'FRACCIONADOS',
-        articulo_principal: art.articulo_principal_bunker || nombreBase.split(' ')[0].toUpperCase(),
-        nomenclatura_bunker: art.nomenclatura_bunker || `${nombreBase} x ${sufijoPeso}`,
-        nombre_publico_limpio: nombreBase,
-        presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
-        es_pack: false,
-        pack_unidades: 1,
-        expresado_en_gramos: kilos < 1,
-        compartido_mayorista: Boolean(art.compartido_mayorista),
-        listas_mayoristas_compartidas: Array.isArray(art.listas_mayoristas_compartidas) ? art.listas_mayoristas_compartidas : [],
-        posiciones: {
-            pos_1: 'Peladas'
-        }
+        etiqueta_oficial_lamda: anatomia.sku_nativo && anatomia.nomenclatura_bunker
+            ? formatearEtiquetaTecnicaArticulo(anatomia.sku_nativo, anatomia.nomenclatura_bunker)
+            : ''
     };
 }
 
@@ -3088,7 +3267,15 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 WHERE slug_historico IS NOT NULL;
 
             ALTER TABLE public.nodos_ofertas_gestor
-                ADD COLUMN IF NOT EXISTS mostrar_ingredientes BOOLEAN DEFAULT true;
+                ADD COLUMN IF NOT EXISTS mostrar_ingredientes BOOLEAN DEFAULT true,
+                ADD COLUMN IF NOT EXISTS nombre_vidriera_personalizado TEXT,
+                ADD COLUMN IF NOT EXISTS categoria_vidriera_personalizada TEXT;
+
+            ALTER TABLE public.nodos_propuestas_fracciones
+                ADD COLUMN IF NOT EXISTS alias_vidriera_sugerido TEXT;
+
+            ALTER TABLE public.nodos_pedidos_items
+                ADD COLUMN IF NOT EXISTS nombre_vidriera_vecino TEXT;
 
             CREATE TABLE IF NOT EXISTS public.nodos_configuracion_canal (
                 id INTEGER PRIMARY KEY DEFAULT 1,
@@ -3851,9 +4038,10 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
         for (const row of catExistentes.rows) {
             const skuOriginal = String(row.sku_nodo || '').trim();
             const anatomia = await resolverAnatomiaNativaArticuloNodo(client, row);
-            const skuNativo = anatomia.sku_nativo;
+            const skuNativo = String(anatomia.sku_nativo || skuOriginal).trim();
+            if (!skuNativo) continue;
 
-            // Si el SKU cambió (ej. NB-ALM-250G -> APN25/27X250G) y ya existía otra fila con el SKU nativo, unificar y deduplicar
+            // Si el SKU cambió y ya existía otra fila con el SKU nativo, unificar y deduplicar
             if (skuOriginal.toUpperCase() !== skuNativo.toUpperCase()) {
                 const dupCheck = await client.query(
                     `SELECT id FROM public.nodos_articulos_catalogo WHERE UPPER(sku_nodo) = UPPER($1) AND id <> $2 LIMIT 1`,
@@ -3886,17 +4074,12 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 compartidoTarget = true;
             }
 
-            const tax = construirTaxonomiaPosicionalNodo({
-                ...row,
-                sku_nodo: skuNativo,
-                ingrediente_origen_id: anatomia.ingrediente_comercial_id,
-                nomenclatura_bunker: anatomia.nomenclatura_bunker,
-                familia_bunker_id: anatomia.familia_id,
-                familia_bunker_nombre: anatomia.familia_nombre,
-                articulo_principal_bunker: anatomia.articulo_principal,
-                compartido_mayorista: compartidoTarget,
-                listas_mayoristas_compartidas: listasMayoristasTarget
-            });
+            const nomenclaturaOficial = String(anatomia.nomenclatura_bunker || row.nomenclatura_bunker || row.nombre_publico || skuNativo).trim();
+            const familiaIdOficial = Number(anatomia.familia_id || row.familia_bunker_id || 1);
+            const familiaNombreOficial = String(anatomia.familia_nombre || row.familia_bunker_nombre || row.categoria_familiar || 'Frutos Secos').trim();
+            const artPrincipalOficial = String(anatomia.articulo_principal || row.articulo_principal_bunker || nomenclaturaOficial).trim();
+            const presentacionEtiquetaOficial = String(anatomia.presentacion_etiqueta || row.presentacion_etiqueta || '').trim();
+            const ingComercialFinal = anatomia.ingrediente_comercial_id || row.ingrediente_origen_id || null;
 
             const costoEnvaseUnitarioReal = Number(row.env_costo_db || 45.96);
             const costoEnvaseExtra = esBarritaPack6
@@ -3949,18 +4132,18 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                  WHERE id = $24`,
                 [
                     skuNativo,
-                    anatomia.ingrediente_comercial_id,
+                    ingComercialFinal,
                     skuNativo,
                     calc.segundos_fraccionamiento,
-                    tax.nombre_publico_limpio,
-                    tax.familia_nombre,
-                    tax.presentacion_etiqueta,
-                    anatomia.nomenclatura_bunker || tax.nomenclatura_bunker,
-                    anatomia.familia_id || tax.familia_id,
-                    anatomia.familia_nombre || tax.familia_nombre,
-                    anatomia.articulo_principal || tax.articulo_principal,
-                    tax.compartido_mayorista,
-                    JSON.stringify(tax.listas_mayoristas_compartidas),
+                    nomenclaturaOficial,
+                    familiaNombreOficial,
+                    presentacionEtiquetaOficial,
+                    nomenclaturaOficial,
+                    familiaIdOficial,
+                    familiaNombreOficial,
+                    artPrincipalOficial,
+                    compartidoTarget,
+                    JSON.stringify(listasMayoristasTarget),
                     calc.costo_insumo_kg,
                     calc.costo_insumo_fraccion,
                     calc.costo_envase_aplicado,
@@ -3985,14 +4168,15 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 [calc.precio_base_nodo_final, row.id]
             );
 
-            // Actualizar SKU y alias visual en nodos_pedidos_items y presupuestos_detalles sin alterar precios congelados del vecino
+            // Actualizar SKU y nomenclatura técnica oficial en nodos_pedidos_items preservando el alias histórico de vidriera para el comprobante B2C del vecino
             await client.query(
                 `UPDATE public.nodos_pedidos_items SET
+                    nombre_vidriera_vecino = COALESCE(NULLIF(TRIM(nombre_vidriera_vecino), ''), NULLIF(TRIM(nombre_publico), '')),
                     sku_nodo = $1,
                     nombre_publico = $2,
                     presentacion_etiqueta = $3
                  WHERE articulo_catalogo_id = $4 OR UPPER(sku_nodo) = UPPER($5)`,
-                [skuNativo, tax.nombre_publico_limpio, tax.presentacion_etiqueta, row.id, skuOriginal]
+                [skuNativo, nomenclaturaOficial, presentacionEtiquetaOficial, row.id, skuOriginal]
             );
             if (skuOriginal.toUpperCase() !== skuNativo.toUpperCase()) {
                 await client.query(
@@ -4450,6 +4634,25 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             }
         }
 
+        // Normalizar propuestas de fracción existentes vinculadas a ingrediente_sugerido_id hacia nomenclatura oficial [codigo] nombre
+        await client.query(`
+            UPDATE public.nodos_propuestas_fracciones npf
+            SET alias_vidriera_sugerido = COALESCE(
+                    NULLIF(TRIM(npf.alias_vidriera_sugerido), ''),
+                    CASE WHEN LEFT(TRIM(COALESCE(npf.nombre_sugerido, '')), 1) <> '[' THEN TRIM(npf.nombre_sugerido) ELSE NULL END
+                ),
+                nombre_sugerido = '[' || COALESCE(NULLIF(TRIM(ing.codigo::text), ''), '#' || ing.id::text) || '] ' || ing.nombre || ' x ' ||
+                    CASE
+                        WHEN COALESCE(npf.kilos_sugeridos, 0.25) >= 1 THEN TRIM(TO_CHAR(npf.kilos_sugeridos, 'FM9990.##')) || ' kg'
+                        ELSE ROUND(COALESCE(npf.kilos_sugeridos, 0.25) * 1000)::text || 'g'
+                    END,
+                categoria_sugerida = COALESCE(ci.nombre, npf.categoria_sugerida)
+            FROM public.ingredientes ing
+            LEFT JOIN public.categorias_ingredientes ci ON ci.id = ing.categoria_id
+            WHERE npf.ingrediente_sugerido_id = ing.id
+              AND LEFT(TRIM(COALESCE(npf.nombre_sugerido, '')), 1) <> '[';
+        `);
+
         // Migración idempotente de identidad visual Paraíso para NODO-001 (sin tocar MANSO ni pedidos)
         await migrarNodoLoDeMatiAParaiso(client);
         await asegurarEsquemaAnaliticaNodos(client);
@@ -4473,21 +4676,42 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
  * utilizando únicamente ingredientes simples puente y hermanos nativos deterministas.
  */
 async function obtenerFuentesCostoSeisFlujos() {
-    const [ingRes, compRes, artDirectosRes, envasesRes, tarifasRes, cuentasRes, clientesRes, hermanosRes, cfgCanalRes] = await Promise.all([
+    const [ingRes, compRes, mixPadresRes, artDirectosRes, envasesRes, tarifasRes, cuentasRes, clientesRes, hermanosRes, cfgCanalRes] = await Promise.all([
         db.query(`
-            SELECT id, codigo, nombre, COALESCE(costo_patron, 0)::numeric(14,2) AS costo_patron,
-                   articulo_vinculado_numero, COALESCE(es_insumo, false) AS es_insumo
-            FROM public.ingredientes
-            WHERE COALESCE(es_insumo, false) = false
-              AND id < 8000
-              AND nombre NOT ILIKE '%Fuera de Servicio%'
-              AND nombre NOT ILIKE '%Para Mix%'
-              AND nombre NOT ILIKE '%Test E2E%'
-            ORDER BY nombre ASC
+            SELECT i.id, i.codigo, i.nombre, COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_patron,
+                   i.articulo_vinculado_numero, COALESCE(i.es_insumo, false) AS es_insumo,
+                   i.categoria_id, ci.nombre AS categoria_ingrediente_nombre
+            FROM public.ingredientes i
+            LEFT JOIN public.categorias_ingredientes ci ON ci.id = i.categoria_id
+            WHERE COALESCE(i.es_insumo, false) = false
+              AND i.id < 8000
+              AND i.nombre NOT ILIKE '%Fuera de Servicio%'
+              AND i.nombre NOT ILIKE '%Para Mix%'
+              AND i.nombre NOT ILIKE '%Test E2E%'
+            ORDER BY i.nombre ASC
         `),
         db.query(`
             SELECT DISTINCT mix_id AS ingrediente_padre_id
             FROM public.ingrediente_composicion
+        `),
+        db.query(`
+            SELECT DISTINCT ON (ing_s.id)
+                   ing_s.id AS simple_id,
+                   r.id AS receta_puente_id,
+                   r.articulo_numero AS receta_puente_codigo,
+                   ing_p.id AS padre_id,
+                   ing_p.codigo AS padre_codigo,
+                   ing_p.nombre AS padre_nombre,
+                   COALESCE(ing_p.costo_patron, 0)::numeric(14,2) AS padre_costo_patron
+            FROM public.ingredientes ing_s
+            JOIN public.recetas r ON UPPER(r.articulo_numero) = UPPER(ing_s.articulo_vinculado_numero)
+            JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
+            JOIN public.ingredientes ing_p ON ing_p.id = ri.ingrediente_id
+            WHERE ing_s.articulo_vinculado_numero IS NOT NULL
+              AND TRIM(ing_s.articulo_vinculado_numero) <> ''
+              AND ing_p.id <> ing_s.id
+              AND COALESCE(ing_p.es_insumo, false) = false
+            ORDER BY ing_s.id, COALESCE(ri.cantidad, 0) DESC, ing_p.id ASC
         `),
         db.query(`
             SELECT articulo_id, descripcion_generada, descripcion, rubro, sub_rubro,
@@ -4574,11 +4798,13 @@ async function obtenerFuentesCostoSeisFlujos() {
                    bf.nombre AS hermano_familia_nombre
             FROM public.receta_ingredientes ri
             JOIN public.recetas r ON r.id = ri.receta_id
-            JOIN public.bunker_articulos ba ON ba.articulo_id = r.articulo_numero
+            JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(r.articulo_numero)
             LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
             WHERE COALESCE(ba.es_pack, false) = false
               AND ba.familia_id IS NOT NULL
               AND COALESCE(ba.familia_id, 0) <> 42
+              AND UPPER(ba.articulo_id) NOT LIKE 'NB-%'
+              AND UPPER(ba.articulo_id) NOT LIKE 'EMB-%'
             ORDER BY ri.ingrediente_id,
                      CASE
                          WHEN ba.kilos_unidad BETWEEN 0.10 AND 1.00 THEN 0
@@ -4594,31 +4820,52 @@ async function obtenerFuentesCostoSeisFlujos() {
     ]);
 
     const idsCompuestosSet = new Set(compRes.rows.map(r => Number(r.ingrediente_padre_id)));
-    // Pre-mezclas e insumos internos de UP que tienen un ingrediente puente simple terminado (ej: 109 -> 141, 132/134/135/136 -> 122/131)
     const idsPreMezclasIntermedias = new Set([109, 132, 133, 134, 135, 136, 140]);
     const mapaHermanos = new Map(hermanosRes.rows.map(r => [Number(r.ingrediente_id), r]));
+    const mapaMixPadres = new Map(
+        mixPadresRes.rows.map(r => {
+            const codP = r.padre_codigo !== null && r.padre_codigo !== undefined && String(r.padre_codigo).trim() !== ''
+                ? String(r.padre_codigo).trim()
+                : `#${r.padre_id}`;
+            return [Number(r.simple_id), {
+                id: Number(r.padre_id),
+                codigo: r.padre_codigo,
+                nombre: r.padre_nombre,
+                costo_patron: Number(r.padre_costo_patron || 0),
+                receta_puente_id: Number(r.receta_puente_id),
+                receta_puente_codigo: r.receta_puente_codigo,
+                label_oficial: `#${r.padre_id} [${codP}] ${r.padre_nombre}`
+            }];
+        })
+    );
 
     const fuentesIngredientes = ingRes.rows
         .filter(ing => {
             const idNum = Number(ing.id);
-            // Excluir mixes padres de receta (30, 31, 32, 33, 35) y pre-mezclas intermedias para exponer solo el Ingrediente Simple Puente comercializable
             if (idsCompuestosSet.has(idNum)) return false;
             if (idsPreMezclasIntermedias.has(idNum)) return false;
             return true;
         })
         .map(ing => {
-            const herm = mapaHermanos.get(Number(ing.id)) || null;
-            const ident = formatearIdentidadClaraIngrediente(ing, herm ? herm.hermano_familia_nombre : null, idsCompuestosSet);
+            const idNum = Number(ing.id);
+            const herm = mapaHermanos.get(idNum) || null;
+            const ident = resolverIdentidadTecnicaIngrediente(
+                ing,
+                herm ? herm.hermano_familia_nombre : null,
+                ing.categoria_ingrediente_nombre || null,
+                idsCompuestosSet
+            );
+            const mixPadre = mapaMixPadres.get(idNum) || null;
             return {
-                id: Number(ing.id),
+                id: idNum,
                 codigo: ing.codigo,
                 nombre: ing.nombre,
-                nombre_claro_gestor: ident.nombre_claro_gestor,
-                alias_vecino_sugerido: ident.alias_vecino_sugerido,
-                categoria_gestor: ident.categoria_gestor,
+                label_oficial: ident.label_oficial,
+                categoria_lamda: ident.categoria_lamda,
                 es_pack_barritas: ident.es_pack_barritas,
                 costo_kg: Number(ing.costo_patron),
-                articulo_vinculado_numero: ing.articulo_vinculado_numero,
+                articulo_vinculado_numero: ing.articulo_vinculado_numero || null,
+                mix_padre: mixPadre,
                 flujo: ident.flujo,
                 flujo_nombre: ident.flujo_nombre,
                 origen_tipo: ident.origen_tipo,
@@ -4632,9 +4879,11 @@ async function obtenerFuentesCostoSeisFlujos() {
         const kilos = Math.max(0.001, Number(art.kilos_unidad) || 1);
         const costoBase = Number(art.costo_base) || 0;
         const costoKg = Number((costoBase / kilos).toFixed(2));
+        const descOf = art.descripcion_generada || art.descripcion || art.articulo_id;
         return {
             articulo_id: art.articulo_id,
-            nombre: art.descripcion_generada || art.descripcion || art.articulo_id,
+            nombre: descOf,
+            label_oficial: formatearEtiquetaTecnicaArticulo(art.articulo_id, descOf),
             rubro: art.rubro,
             kilos_bulto: kilos,
             costo_bulto: costoBase,
@@ -4657,12 +4906,18 @@ async function obtenerFuentesCostoSeisFlujos() {
     return {
         ingredientes_por_flujo: fuentesIngredientes,
         articulos_flujo_1: fuentesDirectosFlujo1,
-        envases: envasesRes.rows.map(e => ({
-            id: Number(e.id),
-            codigo: e.codigo,
-            nombre: e.nombre,
-            costo_unitario: Number(e.costo_unitario)
-        })),
+        envases: envasesRes.rows.map(e => {
+            const codEnv = e.codigo !== null && e.codigo !== undefined && String(e.codigo).trim() !== ''
+                ? String(e.codigo).trim()
+                : `#${e.id}`;
+            return {
+                id: Number(e.id),
+                codigo: e.codigo,
+                nombre: e.nombre,
+                label_oficial: `#${e.id} [${codEnv}] ${e.nombre}`,
+                costo_unitario: Number(e.costo_unitario)
+            };
+        }),
         tarifas_mano_obra: tarifasRes.rows.map(t => ({
             id: Number(t.id),
             nombre_completo: t.nombre_completo,
@@ -4679,9 +4934,6 @@ async function obtenerFuentesCostoSeisFlujos() {
  * Obtiene las presentaciones unitarias (<= 1kg, más packs de barritas) que LAMDA YA PRODUCE
  * en Planta / Búnker (public.bunker_articulos + public.recetas + public.receta_ingredientes),
  * cruzadas con public.nodos_articulos_catalogo (Lista Base Nodos Barriales).
- * Sirve tanto para:
- *  - Informar al Gestor qué medidas ya existen en LAMDA (sin exponer costos ni stocks internos).
- *  - Permitir a Administración LAMDA habilitar en 1 clic presentaciones estándar en el Catálogo Base de Nodos.
  */
 async function obtenerPresentacionesPlantaLamda(runner = null) {
     const q = runner || db;
@@ -4697,8 +4949,10 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
                 ba.familia_id,
                 bf.nombre AS familia_nombre,
                 ri.ingrediente_id,
+                i.codigo AS ingrediente_codigo,
                 i.nombre AS ingrediente_nombre,
                 i.articulo_vinculado_numero,
+                ci.nombre AS categoria_ingrediente_nombre,
                 COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_insumo_kg,
                 nac.id AS catalogo_nodo_id,
                 nac.precio_base_nodo_final,
@@ -4727,10 +4981,12 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
             JOIN public.recetas r ON UPPER(r.articulo_numero) = UPPER(ba.articulo_id)
             JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
             JOIN public.ingredientes i ON i.id = ri.ingrediente_id AND COALESCE(i.es_insumo, false) = false
+            LEFT JOIN public.categorias_ingredientes ci ON ci.id = i.categoria_id
             LEFT JOIN public.nodos_articulos_catalogo nac
               ON UPPER(nac.sku_nodo) = UPPER(ba.articulo_id)
              AND nac.activo = true
-            WHERE ba.articulo_id NOT LIKE 'NB-%'
+            WHERE UPPER(ba.articulo_id) NOT LIKE 'NB-%'
+              AND UPPER(ba.articulo_id) NOT LIKE 'EMB-%'
               AND UPPER(ba.articulo_id) <> 'CCTX250G'
               AND COALESCE(ba.familia_id, 0) > 0
               AND COALESCE(ba.familia_id, 0) <> 42
@@ -4744,7 +5000,7 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
                      ba.articulo_id ASC
         `),
         q.query(`
-            SELECT id, sku_nodo, nombre_publico, presentacion_etiqueta, ingrediente_origen_id,
+            SELECT id, sku_nodo, nombre_publico, nomenclatura_bunker, presentacion_etiqueta, ingrediente_origen_id,
                    kilos_unidad, precio_base_nodo_final
             FROM public.nodos_articulos_catalogo
             WHERE activo = true
@@ -4794,9 +5050,13 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
         const kilos = Number(Number(row.kilos_unidad || 0).toFixed(4));
         const etiqueta = formatearEtiquetaPeso(kilos, row.es_pack, row.pack_unidades);
         const enCatalogo = Boolean(row.catalogo_nodo_id);
+        const descOficial = row.descripcion_generada || row.articulo_id;
 
-        // Metadatos seguros para el celular del Gestor (CERO costos internos ni stocks)
+        // Metadatos técnicos oficiales para el Gestor (SKU + descripción Búnker, CERO costos internos ni stocks)
         registrarEnMapaGestor(ingId, {
+            sku: row.articulo_id,
+            descripcion_generada: descOficial,
+            label_oficial: formatearEtiquetaTecnicaArticulo(row.articulo_id, descOficial),
             kilos_unidad: kilos,
             es_pack: Boolean(row.es_pack),
             pack_unidades: Number(row.pack_unidades || 1),
@@ -4808,27 +5068,30 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
         });
 
         if (!enCatalogo) {
-            const ident = formatearIdentidadClaraIngrediente(
+            const ident = resolverIdentidadTecnicaIngrediente(
                 {
                     id: ingId,
+                    codigo: row.ingrediente_codigo,
                     nombre: row.ingrediente_nombre,
                     articulo_vinculado_numero: row.articulo_vinculado_numero
                 },
                 row.familia_nombre,
+                row.categoria_ingrediente_nombre,
                 idsCompuestosSet
             );
             disponiblesParaAdmin.push({
                 articulo_id: row.articulo_id,
-                descripcion_generada: row.descripcion_generada,
+                descripcion_generada: descOficial,
+                label_oficial: formatearEtiquetaTecnicaArticulo(row.articulo_id, descOficial),
                 kilos_unidad: kilos,
                 etiqueta_peso: etiqueta,
                 es_pack: Boolean(row.es_pack),
                 pack_unidades: Number(row.pack_unidades || 1),
                 ingrediente_id: ingId,
+                ingrediente_codigo: row.ingrediente_codigo,
                 ingrediente_nombre: row.ingrediente_nombre,
-                nombre_claro_gestor: ident.nombre_claro_gestor,
-                alias_vecino_sugerido: ident.alias_vecino_sugerido,
-                categoria_gestor: ident.categoria_gestor,
+                ingrediente_label_oficial: ident.label_oficial,
+                categoria_lamda: ident.categoria_lamda,
                 flujo: ident.flujo,
                 costo_insumo_kg: Number(row.costo_insumo_kg || 0),
                 bunker_costo_base: Number(row.bunker_costo_base || 0),
@@ -4837,11 +5100,14 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
         }
     }
 
-    // Incluir también en el mapa del Gestor cualquier fracción nueva que ya haya sido aprobada en nodos_articulos_catalogo
     for (const cat of catNodosRes.rows) {
         const ingId = Number(cat.ingrediente_origen_id);
         const kilos = Number(Number(cat.kilos_unidad || 0).toFixed(4));
+        const descCat = cat.nomenclatura_bunker || cat.nombre_publico || cat.sku_nodo;
         registrarEnMapaGestor(ingId, {
+            sku: cat.sku_nodo,
+            descripcion_generada: descCat,
+            label_oficial: formatearEtiquetaTecnicaArticulo(cat.sku_nodo, descCat),
             kilos_unidad: kilos,
             es_pack: ingId === 141,
             pack_unidades: ingId === 141 ? Math.max(1, Math.round((kilos * 1000) / 50)) : 1,
@@ -4861,9 +5127,9 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
         const aChica = a.kilos_unidad < 0.99 ? 0 : 1;
         const bChica = b.kilos_unidad < 0.99 ? 0 : 1;
         if (aChica !== bChica) return aChica - bChica;
-        const catDiff = String(a.categoria_gestor).localeCompare(String(b.categoria_gestor), 'es');
+        const catDiff = String(a.categoria_lamda).localeCompare(String(b.categoria_lamda), 'es');
         if (catDiff !== 0) return catDiff;
-        const nomDiff = String(a.nombre_claro_gestor).localeCompare(String(b.nombre_claro_gestor), 'es');
+        const nomDiff = String(a.descripcion_generada).localeCompare(String(b.descripcion_generada), 'es');
         if (nomDiff !== 0) return nomDiff;
         return a.kilos_unidad - b.kilos_unidad;
     });
@@ -4919,30 +5185,38 @@ async function obtenerEstadoCompletoNodos() {
         `),
         db.query(`
             SELECT nac.*,
-                   COALESCE(nac.nomenclatura_bunker, nac.nombre_publico) AS bunker_descripcion_generada,
+                   COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS bunker_descripcion_generada,
+                   COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
                    COALESCE(nac.familia_bunker_nombre, 'Frutos Secos') AS bunker_familia_nombre,
+                   ing.codigo AS ingrediente_origen_codigo,
                    ing.nombre AS ingrediente_origen_nombre,
+                   ing.articulo_vinculado_numero AS ingrediente_origen_puente,
                    COALESCE(ing.costo_patron, nac.costo_insumo_kg)::numeric(14,2) AS costo_insumo_kg_vivo,
+                   env.codigo AS envase_codigo,
                    env.nombre AS envase_nombre,
                    COALESCE(env.costo_patron, nac.costo_envase_aplicado)::numeric(14,2) AS costo_envase_vivo,
                    COALESCE(u.nombre_completo, u.usuario, 'Operador Taller') AS colaborador_nombre,
                    COALESCE(src.stock_consolidado, 0)::numeric(12,2) AS stock_fisico_bunker
             FROM public.nodos_articulos_catalogo nac
+            LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
             LEFT JOIN public.ingredientes ing ON ing.id = nac.ingrediente_origen_id
             LEFT JOIN public.ingredientes env ON env.id = nac.insumo_envase_id
             LEFT JOIN public.colaboradores_tarifas ct ON ct.id = nac.tarifa_colaborador_id
             LEFT JOIN public.usuarios u ON u.id = ct.usuario_id
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = nac.sku_nodo
             WHERE nac.activo = true
-            ORDER BY nac.flujo_lamda ASC, nac.nombre_publico ASC
+            ORDER BY nac.flujo_lamda ASC, COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) ASC
         `),
         db.query(`
             SELECT npf.*,
                    nm.nombre_marca AS nodo_solicitante_nombre,
                    nm.gestor_nombre AS nodo_gestor_nombre,
                    nm.color_primario AS nodo_color,
+                   ing.codigo AS ingrediente_sugerido_codigo,
                    ing.nombre AS ingrediente_sugerido_nombre,
+                   ing.articulo_vinculado_numero AS ingrediente_sugerido_puente,
                    COALESCE(ing.costo_patron, 0)::numeric(14,2) AS ingrediente_sugerido_costo_kg,
+                   env.codigo AS envase_sugerido_codigo,
                    env.nombre AS envase_sugerido_nombre,
                    COALESCE(env.costo_patron, 0)::numeric(14,2) AS envase_sugerido_costo
             FROM public.nodos_propuestas_fracciones npf
@@ -4960,8 +5234,9 @@ async function obtenerEstadoCompletoNodos() {
                    nm.slug AS nodo_slug,
                    nm.color_primario,
                    nac.sku_nodo,
-                   nac.nombre_publico,
-                   nac.nomenclatura_bunker,
+                   COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_publico,
+                   COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
+                   COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nomenclatura_bunker,
                    nac.familia_bunker_nombre,
                    nac.compartido_mayorista,
                    nac.presentacion_etiqueta,
@@ -4971,8 +5246,9 @@ async function obtenerEstadoCompletoNodos() {
             FROM public.nodos_ofertas_gestor nog
             JOIN public.nodos_maestro nm ON nm.id = nog.nodo_id
             JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+            LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
             WHERE nac.activo = true
-            ORDER BY nog.nodo_id ASC, nac.flujo_lamda ASC, nac.nombre_publico ASC
+            ORDER BY nog.nodo_id ASC, nac.flujo_lamda ASC, COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) ASC
         `),
         obtenerFuentesCostoSeisFlujos(),
         db.query(`
@@ -5487,15 +5763,41 @@ async function actualizarConfiguracionCuentaCanalNodos(payload = {}) {
 async function crearPropuestaFraccion(payload = {}) {
     await asegurarEsquemaNodosBarriales();
 
-    const nombreSugerido = String(payload.nombre_sugerido || '').trim();
-    if (!nombreSugerido) {
-        throw new Error('El nombre sugerido de la fracción es obligatorio.');
-    }
-
     const nodoId = payload.nodo_solicitante_id ? Number(payload.nodo_solicitante_id) : null;
     const ingId = payload.ingrediente_sugerido_id ? Number(payload.ingrediente_sugerido_id) : null;
     const kilos = Math.max(0.01, Number(payload.kilos_sugeridos || 0.25));
     const esHabilitacionExistente = Boolean(payload.solicitar_habilitacion_existente === true);
+    const aliasVidrieraSugerido = String(payload.alias_vidriera_sugerido || '').trim() || null;
+
+    if (!ingId && !payload.articulo_bunker_sugerido_codigo) {
+        throw new Error('Debés seleccionar un producto o ingrediente oficial de LAMDA para solicitar una fracción.');
+    }
+
+    let ingRow = null;
+    if (ingId) {
+        const ingRes = await db.query(
+            `SELECT i.id, i.codigo, i.nombre, i.articulo_vinculado_numero,
+                    ci.nombre AS categoria_lamda
+             FROM public.ingredientes i
+             LEFT JOIN public.categorias_ingredientes ci ON ci.id = i.categoria_id
+             WHERE i.id = $1 AND COALESCE(i.es_insumo, false) = false
+             LIMIT 1`,
+            [ingId]
+        );
+        if (ingRes.rows.length === 0) {
+            throw new Error('El ingrediente seleccionado no existe en el padrón oficial de LAMDA.');
+        }
+        ingRow = ingRes.rows[0];
+    }
+
+    const etPeso = kilos >= 1 ? `${Number(kilos.toFixed(2))} kg` : `${Math.round(kilos * 1000)}g`;
+    const nombreOficialBase = ingRow
+        ? `${formatearEtiquetaTecnicaIngrediente(ingRow)} x ${etPeso}`
+        : String(payload.nombre_sugerido || '').trim();
+    const nombreSugerido = nombreOficialBase || String(payload.nombre_sugerido || '').trim();
+    if (!nombreSugerido) {
+        throw new Error('No se pudo determinar la identidad técnica de la fracción solicitada.');
+    }
 
     if (ingId) {
         // 1. Verificar si ya está cotizada en el Catálogo Base de Nodos
@@ -5509,7 +5811,7 @@ async function crearPropuestaFraccion(payload = {}) {
             [ingId, kilos]
         );
         if (catExistRes.rows.length > 0) {
-            throw new Error('Esta presentación ya está cotizada en el Catálogo Base de Nodos. Podés incorporarla o editarla desde Mi Oferta y Márgenes.');
+            throw new Error(`Esta presentación ya está cotizada en el Catálogo Base de Nodos ([${catExistRes.rows[0].sku_nodo}] ${catExistRes.rows[0].nombre_publico}). Podés incorporarla o editarla desde Mi Oferta y Márgenes.`);
         }
 
         // 2. Verificar si ya existe una solicitud pendiente para el mismo Nodo, producto y gramaje
@@ -5536,8 +5838,7 @@ async function crearPropuestaFraccion(payload = {}) {
             flujo_lamda: Number(payload.flujo_sugerido || 2)
         });
         if (anatomia.existe_en_bunker && !esHabilitacionExistente) {
-            const etPeso = kilos >= 1 ? `${Number(kilos.toFixed(2))} kg` : `${Math.round(kilos * 1000)}g`;
-            throw new Error(`LAMDA ya produce esta presentación (${etPeso}). No corresponde pedirla como nueva fracción a crear; elegí otro gramaje nuevo o solicitá habilitar la presentación existente.`);
+            throw new Error(`LAMDA ya produce esta presentación ([${anatomia.sku_nativo}] ${anatomia.nomenclatura_bunker || etPeso}). No corresponde pedirla como nueva fracción a crear; elegí otro gramaje nuevo o solicitá habilitar la presentación existente.`);
         }
         if (anatomia.existe_en_bunker && esHabilitacionExistente) {
             payload.articulo_bunker_sugerido_codigo = anatomia.sku_nativo;
@@ -5552,20 +5853,22 @@ async function crearPropuestaFraccion(payload = {}) {
         FROM public.nodos_propuestas_fracciones
     `);
     const codigoPropuesta = `PROP-NB-${String(Number(maxRes.rows[0].max_num || 0) + 1).padStart(3, '0')}`;
+    const categoriaOficial = String(payload.categoria_sugerida || ingRow?.categoria_lamda || 'Frutos Secos').trim();
 
     const ins = await db.query(
         `INSERT INTO public.nodos_propuestas_fracciones (
-            codigo_propuesta, nodo_solicitante_id, nombre_sugerido, categoria_sugerida,
-            flujo_sugerido, ingrediente_sugerido_id, articulo_bunker_sugerido_codigo,
+            codigo_propuesta, nodo_solicitante_id, nombre_sugerido, alias_vidriera_sugerido,
+            categoria_sugerida, flujo_sugerido, ingrediente_sugerido_id, articulo_bunker_sugerido_codigo,
             kilos_sugeridos, insumo_envase_sugerido_id, segundos_estimados,
             precio_objetivo_vecino, comentario_gestor, estado
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'PENDIENTE_COTIZACION')
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'PENDIENTE_COTIZACION')
         RETURNING *`,
         [
             codigoPropuesta,
             nodoId,
             nombreSugerido,
-            payload.categoria_sugerida || 'Frutos Secos',
+            aliasVidrieraSugerido,
+            categoriaOficial,
             Number(payload.flujo_sugerido || 2),
             ingId,
             payload.articulo_bunker_sugerido_codigo || null,
@@ -5699,11 +6002,6 @@ async function sumarArticuloCatalogoANodo(nodoId, catalogoId) {
 async function cotizarYAprobarArticuloNodo(payload = {}) {
     await asegurarEsquemaNodosBarriales();
 
-    const nombrePublico = String(payload.nombre_publico || '').trim();
-    if (!nombrePublico) {
-        throw new Error('El nombre público del producto para Nodos es obligatorio.');
-    }
-
     const client = await db.connect();
     try {
         await client.query('BEGIN');
@@ -5712,17 +6010,37 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
         const ingComercial = await resolverIngredienteComercialDeterminista(client, payload.ingrediente_origen_id);
         const ingredienteOrigenFinalId = ingComercial.id || (payload.ingrediente_origen_id ? Number(payload.ingrediente_origen_id) : null);
 
-        // 2. Resolver Anatomía Nativa LAMDA desde hermanos existentes o artículo existente en bunker_articulos
+        // 2. Resolver Anatomía Nativa LAMDA (Caso 0: existente, Caso A: clon de hermano Búnker, Caso B: Diccionario relacional Búnker)
         const anatomia = await resolverAnatomiaNativaArticuloNodo(client, {
             ...payload,
             ingrediente_origen_id: ingredienteOrigenFinalId
         });
 
-        // 3. Resolver costo de envase primario (#180, #179) y flowpack individual (#181 si es Pack de Barritas)
+        if (anatomia.requiere_diccionario_bunker) {
+            throw new Error('Este artículo nuevo no posee hermanos previos en el Búnker. Completá los selectores relacionales del Diccionario Búnker (Familia, Sustantivo Ancla y Rubro/Subrubro) antes de aprobar.');
+        }
+
+        // 3. Validar determinísticamente por ID el envase primario (es_insumo = true) y flowpack individual (#181 si es Pack de Barritas)
+        const origenTipoFinal = String(payload.origen_tipo || 'INGREDIENTE').toUpperCase();
+        const insumoEnvaseIdFinal = payload.insumo_envase_id
+            ? Number(payload.insumo_envase_id)
+            : (anatomia.insumo_envase_id ? Number(anatomia.insumo_envase_id) : null);
+
         let costoEnvaseUnitario = Number(payload.costo_envase_unitario ?? 0);
-        if (payload.insumo_envase_id) {
-            const envRes = await client.query('SELECT costo_patron FROM public.ingredientes WHERE id = $1', [Number(payload.insumo_envase_id)]);
-            if (envRes.rows[0]) costoEnvaseUnitario = Number(envRes.rows[0].costo_patron || costoEnvaseUnitario);
+        if (insumoEnvaseIdFinal) {
+            const envRes = await client.query(
+                `SELECT id, codigo, nombre, COALESCE(es_insumo, false) AS es_insumo, COALESCE(costo_patron, 0) AS costo_patron
+                 FROM public.ingredientes
+                 WHERE id = $1
+                 LIMIT 1`,
+                [insumoEnvaseIdFinal]
+            );
+            if (envRes.rows.length === 0 || !envRes.rows[0].es_insumo) {
+                throw new Error('El envase / bolsa seleccionado no corresponde a un insumo válido del padrón de LAMDA (es_insumo = true).');
+            }
+            costoEnvaseUnitario = Number(envRes.rows[0].costo_patron || costoEnvaseUnitario);
+        } else if (origenTipoFinal === 'INGREDIENTE' && !anatomia.existe_en_bunker) {
+            throw new Error('Debés seleccionar un envase / bolsa oficial del padrón de insumos de LAMDA.');
         }
 
         let costoEnvaseExtra = Number(payload.costo_envase_extra || 0);
@@ -5746,13 +6064,24 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             costo_envase_extra: costoEnvaseExtra
         });
 
-        // 5. Código interno nativo LAMDA (sin prefijo de canal NB-)
-        let skuEntrada = String(payload.sku_nodo || '').trim();
-        let skuNodo = (!skuEntrada || /^NB-/i.test(skuEntrada))
-            ? anatomia.sku_nativo
-            : skuEntrada;
+        // 5. Código SKU y Nomenclatura Oficial LAMDA deterministas (prohibidos prefijos NB- / EMB- y texto libre)
+        const skuEntrada = String(payload.sku_nodo || '').trim();
+        if (/^(NB-|EMB-)/i.test(skuEntrada)) {
+            throw new Error(`El código SKU "${skuEntrada}" no respeta el estándar oficial LAMDA (prohibidos prefijos NB- o EMB-).`);
+        }
+        const skuNodo = skuEntrada || String(anatomia.sku_nativo || '').trim();
+        if (!skuNodo || /^(NB-|EMB-)/i.test(skuNodo)) {
+            throw new Error('No se pudo derivar un código SKU oficial válido del Diccionario Búnker.');
+        }
 
-        const nomenclaturaExplicita = String(payload.nomenclatura_bunker || payload.bunker_descripcion_generada || '').trim();
+        const nomenclaturaOficial = String(anatomia.nomenclatura_bunker || '').trim();
+        if (!nomenclaturaOficial) {
+            throw new Error('La nomenclatura oficial del artículo debe derivarse estrictamente del Diccionario Búnker.');
+        }
+        if (!anatomia.familia_id || !anatomia.articulo_principal) {
+            throw new Error('El artículo debe quedar vinculado a una Familia y un Sustantivo Ancla válidos del Diccionario Búnker.');
+        }
+
         const listasCompEntrada = Array.isArray(payload.listas_mayoristas_compartidas)
             ? payload.listas_mayoristas_compartidas.map(Number).filter(Boolean)
             : [];
@@ -5762,19 +6091,20 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             : listasCompEntrada;
         const compartidoFinal = esGranolaExistente ? true : Boolean(payload.compartido_mayorista);
 
-        const tax = construirTaxonomiaPosicionalNodo({
-            ...payload,
-            sku_nodo: skuNodo,
-            ingrediente_origen_id: ingredienteOrigenFinalId,
-            nombre_publico: nombrePublico,
-            nomenclatura_bunker: nomenclaturaExplicita || anatomia.nomenclatura_bunker || undefined,
-            familia_bunker_id: anatomia.familia_id,
-            familia_bunker_nombre: anatomia.familia_nombre,
-            articulo_principal_bunker: anatomia.articulo_principal,
-            kilos_unidad: calc.kilos_unidad,
-            compartido_mayorista: compartidoFinal,
-            listas_mayoristas_compartidas: listasCompFinales
-        });
+        let presentacionEtiqueta = String(payload.presentacion_etiqueta || '').trim();
+        if (!presentacionEtiqueta) {
+            if (Boolean(anatomia.es_pack) && Number(anatomia.pack_unidades || 1) > 1) {
+                presentacionEtiqueta = Number(ingredienteOrigenFinalId) === 141
+                    ? `Pack x ${anatomia.pack_unidades} (${Math.round((calc.kilos_unidad * 1000) / Number(anatomia.pack_unidades))}g c/u)`
+                    : `Pack x ${anatomia.pack_unidades} un.`;
+            } else if (calc.kilos_unidad < 1) {
+                presentacionEtiqueta = `Bolsa ${Math.round(calc.kilos_unidad * 1000)}g`;
+            } else {
+                presentacionEtiqueta = `Bolsa ${Number(calc.kilos_unidad.toFixed(2))}kg`;
+            }
+        }
+
+        const categoriaOficial = String(anatomia.familia_nombre || payload.categoria_familiar || 'Frutos Secos').trim();
 
         let articuloRow;
         if (payload.catalogo_id) {
@@ -5820,15 +6150,15 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                 RETURNING *`,
                 [
                     skuNodo,
-                    tax.nombre_publico_limpio || nombrePublico,
-                    String(payload.categoria_familiar || '').trim() || tax.familia_nombre,
-                    payload.presentacion_etiqueta || tax.presentacion_etiqueta,
+                    nomenclaturaOficial,
+                    categoriaOficial,
+                    presentacionEtiqueta,
                     Number(payload.flujo_lamda || 2),
-                    payload.origen_tipo || 'INGREDIENTE',
+                    origenTipoFinal,
                     ingredienteOrigenFinalId,
                     skuNodo,
                     calc.kilos_unidad,
-                    payload.insumo_envase_id ? Number(payload.insumo_envase_id) : null,
+                    insumoEnvaseIdFinal,
                     Number(payload.cantidad_envases_unidad || 1),
                     calc.segundos_fraccionamiento,
                     payload.tarifa_colaborador_id ? Number(payload.tarifa_colaborador_id) : null,
@@ -5846,12 +6176,12 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                     calc.margen_sugerido_gestor_pct,
                     calc.precio_sugerido_vecino,
                     payload.notas_tecnicas || '',
-                    nomenclaturaExplicita || anatomia.nomenclatura_bunker || tax.nomenclatura_bunker,
-                    anatomia.familia_id || tax.familia_id,
-                    anatomia.familia_nombre || tax.familia_nombre,
-                    anatomia.articulo_principal || tax.articulo_principal,
-                    tax.compartido_mayorista,
-                    JSON.stringify(tax.listas_mayoristas_compartidas),
+                    nomenclaturaOficial,
+                    anatomia.familia_id,
+                    anatomia.familia_nombre,
+                    anatomia.articulo_principal,
+                    compartidoFinal,
+                    JSON.stringify(listasCompFinales),
                     Number(payload.catalogo_id)
                 ]
             );
@@ -5878,6 +6208,8 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                     presentacion_etiqueta = EXCLUDED.presentacion_etiqueta,
                     ingrediente_origen_id = EXCLUDED.ingrediente_origen_id,
                     articulo_bunker_origen_codigo = EXCLUDED.articulo_bunker_origen_codigo,
+                    insumo_envase_id = EXCLUDED.insumo_envase_id,
+                    cantidad_envases_unidad = EXCLUDED.cantidad_envases_unidad,
                     segundos_fraccionamiento = EXCLUDED.segundos_fraccionamiento,
                     costo_insumo_kg = EXCLUDED.costo_insumo_kg,
                     costo_insumo_fraccion = EXCLUDED.costo_insumo_fraccion,
@@ -5900,15 +6232,15 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                 RETURNING *`,
                 [
                     skuNodo,
-                    tax.nombre_publico_limpio || nombrePublico,
-                    String(payload.categoria_familiar || '').trim() || tax.familia_nombre,
-                    payload.presentacion_etiqueta || tax.presentacion_etiqueta,
+                    nomenclaturaOficial,
+                    categoriaOficial,
+                    presentacionEtiqueta,
                     Number(payload.flujo_lamda || 2),
-                    payload.origen_tipo || 'INGREDIENTE',
+                    origenTipoFinal,
                     ingredienteOrigenFinalId,
                     skuNodo,
                     calc.kilos_unidad,
-                    payload.insumo_envase_id ? Number(payload.insumo_envase_id) : null,
+                    insumoEnvaseIdFinal,
                     Number(payload.cantidad_envases_unidad || 1),
                     calc.segundos_fraccionamiento,
                     payload.tarifa_colaborador_id ? Number(payload.tarifa_colaborador_id) : null,
@@ -5926,19 +6258,19 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                     calc.margen_sugerido_gestor_pct,
                     calc.precio_sugerido_vecino,
                     payload.notas_tecnicas || '',
-                    nomenclaturaExplicita || anatomia.nomenclatura_bunker || tax.nomenclatura_bunker,
-                    anatomia.familia_id || tax.familia_id,
-                    anatomia.familia_nombre || tax.familia_nombre,
-                    anatomia.articulo_principal || tax.articulo_principal,
-                    tax.compartido_mayorista,
-                    JSON.stringify(tax.listas_mayoristas_compartidas)
+                    nomenclaturaOficial,
+                    anatomia.familia_id,
+                    anatomia.familia_nombre,
+                    anatomia.articulo_principal,
+                    compartidoFinal,
+                    JSON.stringify(listasCompFinales)
                 ]
             );
             articuloRow = ins.rows[0];
         }
 
         // Si provenía de una propuesta de fracción (o existían solicitudes pendientes equivalentes), marcarlas como APROBADA y vincularlas
-        const textoRespuestaAprobada = payload.respuesta_lamda || `Aprobado por LAMDA con Precio Base Nodo $${calc.precio_base_nodo_final.toLocaleString('es-AR')} (${articuloRow.nomenclatura_bunker})`;
+        const textoRespuestaAprobada = payload.respuesta_lamda || `Aprobado por LAMDA con Precio Base Nodo $${calc.precio_base_nodo_final.toLocaleString('es-AR')} ([${skuNodo}] ${nomenclaturaOficial})`;
         if (payload.propuesta_id) {
             await client.query(
                 `UPDATE public.nodos_propuestas_fracciones SET
@@ -5974,8 +6306,8 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             );
         }
 
-        // Propagar / actualizar en nodos_ofertas_gestor para todos los Nodos activos (sin tocar pedidos vecinales confirmados).
-        // Las fracciones nuevas ingresan en estado Oculto (publicado_tienda = false) para que cada Gestor defina su ganancia y las publique en su tienda.
+        // Propagar / actualizar en nodos_ofertas_gestor para todos los Nodos activos (sin tocar nombre_vidriera_personalizado).
+        // Cada Nodo recibe el artículo con su SKU y nombre oficial LAMDA por defecto y puede personalizar su vidriera en Mi Oferta y Margen.
         const publicadoInicial = Boolean(payload.publicar_inmediato_tienda === true);
         const nodosActivos = await client.query('SELECT id, margen_gestor_default_pct FROM public.nodos_maestro WHERE activo = true');
         for (const nodo of nodosActivos.rows) {
@@ -5998,8 +6330,11 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             );
         }
 
-        // Sincronizar inmediatamente con bunker_articulos, bunker_lista_articulos y recetas (indicando edición expresa desde el Cotizador)
-        await sincronizarNodosConCircuitoOperativoLamda(client, { skuDesdeCotizador: skuNodo });
+        // Sincronizar inmediatamente con bunker_articulos, bunker_lista_articulos y recetas
+        await sincronizarNodosConCircuitoOperativoLamda(client, {
+            skuDesdeCotizador: skuNodo,
+            anatomiaOverride: anatomia
+        });
 
         await client.query('COMMIT');
         articuloRow.bunker_descripcion_generada = articuloRow.nomenclatura_bunker;
@@ -6348,35 +6683,26 @@ async function sincronizarCatalogoNodoDesdeBunker(articuloId, runnerOpt = null) 
         const familiaBunkerId = ba.familia_id ? Number(ba.familia_id) : (row?.familia_bunker_id || null);
         const familiaBunkerNombre = ba.familia_nombre_db || row?.familia_bunker_nombre || ba.rubro || 'Frutos Secos';
 
-        let nombrePublico = row?.nombre_publico || propDin.alias_comercial_vecino || propDin.alias_vecino_nodo || '';
-        let categoriaFamiliar = row?.categoria_familiar || '';
+        const nombrePublico = nomenclaturaBunker;
+        const categoriaFamiliar = familiaBunkerNombre;
         let flujoLamda = Number(row?.flujo_lamda || (recItemsRes.rows.length > 0 ? 2 : 1));
         let origenTipo = row?.origen_tipo || (ingredienteOrigenId ? 'INGREDIENTE' : 'ARTICULO_BUNKER');
 
-        if (!nombrePublico || !categoriaFamiliar || !row) {
-            if (ingredienteAlimento) {
-                const idsCompRes = await q.query('SELECT DISTINCT mix_id AS ingrediente_padre_id FROM public.ingrediente_composicion');
-                const idsCompSet = new Set(idsCompRes.rows.map(r => Number(r.ingrediente_padre_id)));
-                const ident = formatearIdentidadClaraIngrediente(
-                    {
-                        id: ingredienteAlimento.ing_id,
-                        codigo: ingredienteAlimento.ing_codigo,
-                        nombre: ingredienteAlimento.ing_nombre,
-                        articulo_vinculado_numero: ingredienteAlimento.articulo_vinculado_numero
-                    },
-                    familiaBunkerNombre,
-                    idsCompSet
-                );
-                if (!nombrePublico) nombrePublico = ident.alias_vecino_sugerido || ident.nombre_claro_gestor || artPrincipalBunker;
-                if (!categoriaFamiliar) categoriaFamiliar = ident.categoria_gestor || familiaBunkerNombre;
-                if (!row) {
-                    flujoLamda = Number(ident.flujo || 2);
-                    origenTipo = ident.origen_tipo || 'INGREDIENTE';
-                }
-            } else {
-                if (!nombrePublico) nombrePublico = artPrincipalBunker;
-                if (!categoriaFamiliar) categoriaFamiliar = familiaBunkerNombre;
-            }
+        if (!row && ingredienteAlimento) {
+            const idsCompRes = await q.query('SELECT DISTINCT mix_id AS ingrediente_padre_id FROM public.ingrediente_composicion');
+            const idsCompSet = new Set(idsCompRes.rows.map(r => Number(r.ingrediente_padre_id)));
+            const ident = resolverIdentidadTecnicaIngrediente(
+                {
+                    id: ingredienteAlimento.ing_id,
+                    codigo: ingredienteAlimento.ing_codigo,
+                    nombre: ingredienteAlimento.ing_nombre,
+                    articulo_vinculado_numero: ingredienteAlimento.articulo_vinculado_numero
+                },
+                familiaBunkerNombre,
+                idsCompSet
+            );
+            flujoLamda = Number(ident.flujo || 2);
+            origenTipo = ident.origen_tipo || 'INGREDIENTE';
         }
 
         let presentacionEtiqueta = row?.presentacion_etiqueta || propDin.presentacion_etiqueta_nodo || '';
@@ -6619,6 +6945,12 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
     const mostrarIngredientes = payload.mostrar_ingredientes !== undefined
         ? Boolean(payload.mostrar_ingredientes)
         : (row.mostrar_ingredientes !== false);
+    const nombreVidrieraPersonalizado = payload.nombre_vidriera_personalizado !== undefined
+        ? (String(payload.nombre_vidriera_personalizado || '').trim() || null)
+        : (row.nombre_vidriera_personalizado || null);
+    const categoriaVidrieraPersonalizada = payload.categoria_vidriera_personalizada !== undefined
+        ? (String(payload.categoria_vidriera_personalizada || '').trim() || null)
+        : (row.categoria_vidriera_personalizada || null);
 
     const upd = await db.query(
         `UPDATE public.nodos_ofertas_gestor SET
@@ -6629,11 +6961,24 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
             publicado_tienda = $5,
             destacado_tienda = $6,
             mostrar_ingredientes = $7,
+            nombre_vidriera_personalizado = $8,
+            categoria_vidriera_personalizada = $9,
             alerta_cambio_costo = false,
             updated_at = NOW()
-         WHERE id = $8
+         WHERE id = $10
          RETURNING *`,
-        [baseActual, margenPct, precioVecino, gananciaUnitaria, publicado, destacado, mostrarIngredientes, Number(ofertaId)]
+        [
+            baseActual,
+            margenPct,
+            precioVecino,
+            gananciaUnitaria,
+            publicado,
+            destacado,
+            mostrarIngredientes,
+            nombreVidrieraPersonalizado,
+            categoriaVidrieraPersonalizada,
+            Number(ofertaId)
+        ]
     );
 
     return upd.rows[0];
@@ -6751,21 +7096,24 @@ function calcularProximaEntregaNodo(configVentanas = [], fechaReferenciaInput = 
 }
 
 /**
- * Devuelve el catálogo sanitizado de ingredientes activos comercializables o producibles por LAMDA
- * para que el Gestor del Nodo solicite nuevas fracciones desde su celular sin texto libre,
- * independientemente del stock circunstancial del momento y sin exponer costos ni fórmulas internas.
+ * Devuelve el catálogo técnico oficial de ingredientes comercializables o producibles por LAMDA
+ * para que el Gestor del Nodo solicite nuevas fracciones desde su panel hablando el mismo idioma
+ * oficial de LAMDA ([codigo] nombre real de public.ingredientes y familias reales de Búnker/Ingredientes),
+ * sin diccionarios intermedios y sin exponer costos ni fórmulas internas.
  */
 async function obtenerCatalogoIngredientesSolicitablesGestor() {
     const [ingRes, compRes, famRes, plantaInfo] = await Promise.all([
         db.query(`
-            SELECT id, nombre, articulo_vinculado_numero
-            FROM public.ingredientes
-            WHERE COALESCE(es_insumo, false) = false
-              AND id < 8000
-              AND nombre NOT ILIKE '%Fuera de Servicio%'
-              AND nombre NOT ILIKE '%Para Mix%'
-              AND nombre NOT ILIKE '%Test E2E%'
-            ORDER BY id ASC
+            SELECT i.id, i.codigo, i.nombre, i.articulo_vinculado_numero,
+                   ci.nombre AS categoria_ingrediente_nombre
+            FROM public.ingredientes i
+            LEFT JOIN public.categorias_ingredientes ci ON ci.id = i.categoria_id
+            WHERE COALESCE(i.es_insumo, false) = false
+              AND i.id < 8000
+              AND i.nombre NOT ILIKE '%Fuera de Servicio%'
+              AND i.nombre NOT ILIKE '%Para Mix%'
+              AND i.nombre NOT ILIKE '%Test E2E%'
+            ORDER BY i.id ASC
         `),
         db.query(`
             SELECT DISTINCT mix_id AS ingrediente_padre_id
@@ -6794,23 +7142,6 @@ async function obtenerCatalogoIngredientesSolicitablesGestor() {
     const mapaFamilias = new Map(famRes.rows.map(r => [Number(r.ingrediente_id), r.familia_nombre]));
     const mapaPresGestor = plantaInfo ? plantaInfo.porIngredienteGestor : new Map();
 
-    const ordenCategorias = [
-        'Granolas',
-        'Frutos Secos',
-        'Tostados',
-        'Mixes y Mezclas',
-        'Barritas',
-        'Frutas Disecadas y Deshidratados',
-        'Semillas',
-        'Cereales y Harinas',
-        'Legumbres',
-        'Repostería y Otros'
-    ];
-    const pesoCat = (cat) => {
-        const idx = ordenCategorias.indexOf(cat);
-        return idx === -1 ? 99 : idx;
-    };
-
     return ingRes.rows
         .filter(ing => {
             const idNum = Number(ing.id);
@@ -6820,22 +7151,27 @@ async function obtenerCatalogoIngredientesSolicitablesGestor() {
         })
         .map(ing => {
             const idNum = Number(ing.id);
-            const fam = mapaFamilias.get(idNum) || null;
-            const ident = formatearIdentidadClaraIngrediente(ing, fam, idsCompuestosSet);
+            const fam = mapaFamilias.get(idNum) || ing.categoria_ingrediente_nombre || null;
+            const ident = resolverIdentidadTecnicaIngrediente(ing, fam, idsCompuestosSet);
             return {
                 id: idNum,
-                nombre_claro: ident.nombre_claro_gestor,
-                alias_vecino_sugerido: ident.alias_vecino_sugerido,
-                categoria_gestor: ident.categoria_gestor,
+                codigo: ident.codigo,
+                nombre_oficial: ident.nombre_oficial,
+                label_oficial: ident.label_oficial,
+                nombre_claro: ident.label_oficial,
+                categoria_lamda: ident.categoria_lamda,
+                categoria_gestor: ident.categoria_lamda,
+                articulo_vinculado_numero: ident.articulo_vinculado_numero,
                 flujo: ident.flujo,
+                flujo_nombre: ident.flujo_nombre,
                 es_pack_barritas: ident.es_pack_barritas,
                 presentaciones_lamda: mapaPresGestor.get(idNum) || []
             };
         })
         .sort((a, b) => {
-            const diffCat = pesoCat(a.categoria_gestor) - pesoCat(b.categoria_gestor);
+            const diffCat = String(a.categoria_lamda || '').localeCompare(String(b.categoria_lamda || ''), 'es');
             if (diffCat !== 0) return diffCat;
-            return a.nombre_claro.localeCompare(b.nombre_claro, 'es');
+            return String(a.nombre_oficial || '').localeCompare(String(b.nombre_oficial || ''), 'es');
         });
 }
 
@@ -6922,6 +7258,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         db.query(
             `SELECT nog.*,
                     nac.sku_nodo,
+                    COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
+                    COALESCE(bf.nombre, ba.rubro, nac.familia_bunker_nombre, nac.categoria_familiar) AS categoria_oficial_lamda,
                     nac.nombre_publico,
                     nac.categoria_familiar,
                     nac.presentacion_etiqueta,
@@ -6932,18 +7270,25 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                     nac.precio_base_nodo_final
              FROM public.nodos_ofertas_gestor nog
              JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+             LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
+             LEFT JOIN public.bunker_familias bf ON bf.id = COALESCE(ba.familia_id, nac.familia_bunker_id)
              WHERE nog.nodo_id = $1
                AND nac.activo = true
                AND nac.precio_base_nodo_final > 0
-             ORDER BY nog.destacado_tienda DESC, nac.categoria_familiar ASC, nac.nombre_publico ASC`,
+             ORDER BY nog.destacado_tienda DESC,
+                      COALESCE(bf.nombre, ba.rubro, nac.familia_bunker_nombre, nac.categoria_familiar) ASC,
+                      COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) ASC`,
             [nodo.id]
         ),
         db.query(
             `SELECT npf.id, npf.codigo_propuesta, npf.nodo_solicitante_id, npf.nombre_sugerido,
+                    npf.alias_vidriera_sugerido, npf.articulo_catalogo_id,
                     npf.categoria_sugerida, npf.ingrediente_sugerido_id, npf.flujo_sugerido,
                     npf.articulo_bunker_sugerido_codigo, npf.kilos_sugeridos, npf.precio_objetivo_vecino,
-                    npf.comentario_gestor, npf.estado, npf.respuesta_lamda, npf.created_at
+                    npf.comentario_gestor, npf.estado, npf.respuesta_lamda, npf.created_at,
+                    ing.codigo AS ingrediente_codigo, ing.nombre AS ingrediente_nombre
              FROM public.nodos_propuestas_fracciones npf
+             LEFT JOIN public.ingredientes ing ON ing.id = npf.ingrediente_sugerido_id
              WHERE npf.nodo_solicitante_id = $1
                AND COALESCE(npf.estado, '') <> 'ANULADA'
              ORDER BY npf.id DESC`,
@@ -6972,9 +7317,15 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             : Promise.resolve({ rows: [] }),
         esVistaGestor
             ? db.query(
-                `SELECT npi.*
+                `SELECT npi.*,
+                        COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial_lamda,
+                        COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda,
+                        COALESCE(NULLIF(TRIM(npi.nombre_vidriera_vecino), ''), NULLIF(TRIM(nog.nombre_vidriera_personalizado), ''), COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico)) AS nombre_vidriera_efectivo
                  FROM public.nodos_pedidos_items npi
                  JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
+                 LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+                 LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
+                 LEFT JOIN public.nodos_ofertas_gestor nog ON nog.nodo_id = npv.nodo_id AND nog.articulo_catalogo_id = npi.articulo_catalogo_id
                  WHERE npv.nodo_id = $1
                  ORDER BY npi.id ASC`,
                 [nodo.id]
@@ -6995,20 +7346,25 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         esVistaGestor
             ? db.query(
                 `SELECT nac.id AS catalogo_id,
-                        nac.nombre_publico,
-                        nac.categoria_familiar,
+                        nac.sku_nodo,
+                        COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
+                        COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_publico,
+                        COALESCE(bf.nombre, ba.rubro, nac.familia_bunker_nombre, nac.categoria_familiar) AS categoria_familiar,
                         nac.presentacion_etiqueta,
                         nac.kilos_unidad,
                         nac.ingrediente_origen_id,
                         nac.precio_base_nodo_final
                  FROM public.nodos_articulos_catalogo nac
+                 LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
+                 LEFT JOIN public.bunker_familias bf ON bf.id = COALESCE(ba.familia_id, nac.familia_bunker_id)
                  WHERE nac.activo = true
                    AND nac.precio_base_nodo_final > 0
                    AND NOT EXISTS (
                        SELECT 1 FROM public.nodos_ofertas_gestor nog
                        WHERE nog.nodo_id = $1 AND nog.articulo_catalogo_id = nac.id
                    )
-                 ORDER BY nac.categoria_familiar ASC, nac.nombre_publico ASC`,
+                 ORDER BY COALESCE(bf.nombre, ba.rubro, nac.familia_bunker_nombre, nac.categoria_familiar) ASC,
+                          COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) ASC`,
                 [nodo.id]
             )
             : Promise.resolve({ rows: [] }),
@@ -7017,11 +7373,33 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             : Promise.resolve(null)
     ]);
 
+    const aliasSugeridoPorCatId = new Map();
+    const propuestasEnriquecidas = propuestasRes.rows.map(pr => {
+        if (pr.articulo_catalogo_id && pr.alias_vidriera_sugerido && !aliasSugeridoPorCatId.has(Number(pr.articulo_catalogo_id))) {
+            aliasSugeridoPorCatId.set(Number(pr.articulo_catalogo_id), String(pr.alias_vidriera_sugerido).trim());
+        }
+        return {
+            ...pr,
+            ingrediente_label_oficial: pr.ingrediente_sugerido_id
+                ? formatearEtiquetaTecnicaIngrediente({ id: pr.ingrediente_sugerido_id, codigo: pr.ingrediente_codigo, nombre: pr.ingrediente_nombre })
+                : null
+        };
+    });
+
     const itemsPorPedido = new Map();
     for (const it of itemsPedidosRes.rows) {
         const pid = Number(it.pedido_id);
         if (!itemsPorPedido.has(pid)) itemsPorPedido.set(pid, []);
-        itemsPorPedido.get(pid).push(it);
+        const skuOf = it.sku_oficial_lamda || it.sku_nodo || '';
+        const nomOf = it.nombre_oficial_lamda || it.nombre_publico;
+        itemsPorPedido.get(pid).push({
+            ...it,
+            sku_nodo: skuOf,
+            nombre_oficial_lamda: nomOf,
+            etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(skuOf, nomOf),
+            nombre_vidriera_vecino: it.nombre_vidriera_efectivo || nomOf,
+            nombre_publico: nomOf
+        });
     }
 
     const pedidosConItems = pedidosRes.rows.map(p => {
@@ -7059,8 +7437,24 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 : [];
             const tieneDesgloseIngredientes = listaIngredientes.length >= 2;
             const mostrarEnOferta = o.mostrar_ingredientes !== false;
+            const nombreOficialLamda = o.nombre_oficial_lamda || o.nombre_publico;
+            const categoriaOficialLamda = o.categoria_oficial_lamda || o.categoria_familiar;
+            const nombreVidrieraPers = o.nombre_vidriera_personalizado ? String(o.nombre_vidriera_personalizado).trim() : '';
+            const categoriaVidrieraPers = o.categoria_vidriera_personalizada ? String(o.categoria_vidriera_personalizada).trim() : '';
+            const nombreVidrieraEfectivo = nombreVidrieraPers || nombreOficialLamda;
+            const categoriaVidrieraEfectiva = categoriaVidrieraPers || categoriaOficialLamda;
             return {
                 ...o,
+                nombre_publico: nombreOficialLamda,
+                categoria_familiar: categoriaOficialLamda,
+                nombre_oficial_lamda: nombreOficialLamda,
+                etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(o.sku_nodo, nombreOficialLamda),
+                categoria_oficial_lamda: categoriaOficialLamda,
+                nombre_vidriera_personalizado: nombreVidrieraPers || null,
+                categoria_vidriera_personalizada: categoriaVidrieraPers || null,
+                nombre_vidriera_efectivo: nombreVidrieraEfectivo,
+                categoria_vidriera_efectiva: categoriaVidrieraEfectiva,
+                alias_sugerido_previo: aliasSugeridoPorCatId.get(Number(o.articulo_catalogo_id)) || null,
                 linea_negocio: desglose ? Number(desglose.linea_negocio || 0) || null : null,
                 mostrar_ingredientes: mostrarEnOferta,
                 tiene_desglose_ingredientes: tieneDesgloseIngredientes,
@@ -7081,8 +7475,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 oferta_id: o.id,
                 articulo_catalogo_id: o.articulo_catalogo_id,
                 sku_nodo: o.sku_nodo,
-                nombre_publico: o.nombre_publico,
-                categoria_familiar: o.categoria_familiar,
+                nombre_publico: o.nombre_vidriera_efectivo,
+                categoria_familiar: o.categoria_vidriera_efectiva,
                 presentacion_etiqueta: o.presentacion_etiqueta,
                 kilos_unidad: Number(o.kilos_unidad),
                 flujo_lamda: Number(o.flujo_lamda || 0) || null,
@@ -7178,7 +7572,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         ofertas_publicadas: ofertasPublicadas,
         todas_ofertas_gestor: esVistaGestor ? ofertasConDesglose : [],
         catalogo_base_disponible: esVistaGestor ? catDisponibleRes.rows : [],
-        propuestas_nodo: esVistaGestor ? propuestasRes.rows : [],
+        propuestas_nodo: esVistaGestor ? propuestasEnriquecidas : [],
         pedidos_nodo: esVistaGestor ? pedidosConItems : [],
         movimientos_cta_cte: esVistaGestor ? movsRes.rows : [],
         radar_reparto: esVistaGestor ? radarReparto : { activo: false },
@@ -7345,11 +7739,17 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
         const proxima = calcularProximaEntregaNodo(nodo.config_ventanas_corte, payload.fecha_hora_simulada || null);
         const entregaAsignada = proxima.asignada;
 
-        // Consultar las ofertas publicadas del Nodo
+        // Consultar las ofertas publicadas del Nodo ancladas a SKU + nomenclatura oficial de LAMDA
         const ofertasRes = await client.query(
-            `SELECT nog.*, nac.sku_nodo, nac.nombre_publico, nac.presentacion_etiqueta, nac.precio_base_nodo_final
+            `SELECT nog.*,
+                    nac.sku_nodo,
+                    COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
+                    nac.nombre_publico,
+                    nac.presentacion_etiqueta,
+                    nac.precio_base_nodo_final
              FROM public.nodos_ofertas_gestor nog
              JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+             LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
              WHERE nog.nodo_id = $1`,
             [nodo.id]
         );
@@ -7375,10 +7775,17 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             totalBaseLamda += subBase;
             gananciaProductosGestor += ganItem;
 
+            const nombreOficialLamda = of.nombre_oficial_lamda || of.nombre_publico;
+            const nombreVidrieraVecino = (of.nombre_vidriera_personalizado && String(of.nombre_vidriera_personalizado).trim())
+                ? String(of.nombre_vidriera_personalizado).trim()
+                : nombreOficialLamda;
+
             itemsValidados.push({
                 articulo_catalogo_id: of.articulo_catalogo_id,
                 sku_nodo: of.sku_nodo,
-                nombre_publico: of.nombre_publico,
+                nombre_oficial_lamda: nombreOficialLamda,
+                nombre_vidriera_vecino: nombreVidrieraVecino,
+                nombre_publico: nombreOficialLamda,
                 presentacion_etiqueta: of.presentacion_etiqueta,
                 cantidad: cant,
                 precio_unitario_vecino: pUnitVecino,
@@ -7604,15 +8011,16 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
         for (const it of itemsValidados) {
             await client.query(
                 `INSERT INTO public.nodos_pedidos_items (
-                    pedido_id, articulo_catalogo_id, sku_nodo, nombre_publico, presentacion_etiqueta,
-                    cantidad, precio_unitario_vecino, precio_unitario_base_lamda,
+                    pedido_id, articulo_catalogo_id, sku_nodo, nombre_publico, nombre_vidriera_vecino,
+                    presentacion_etiqueta, cantidad, precio_unitario_vecino, precio_unitario_base_lamda,
                     subtotal_vecino, subtotal_base_lamda, ganancia_item_gestor
-                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
                 [
                     pedidoRow.id,
                     it.articulo_catalogo_id,
                     it.sku_nodo,
-                    it.nombre_publico,
+                    it.nombre_oficial_lamda,
+                    it.nombre_vidriera_vecino,
                     it.presentacion_etiqueta,
                     it.cantidad,
                     it.precio_unitario_vecino,
@@ -7675,7 +8083,15 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 portal_token: portalTokenVecino,
                 telefono_normalizado: telNormVecino,
                 saldo_subcuenta_vecino: saldoVecinoActual,
-                items: itemsValidados
+                items: itemsValidados.map(it => ({
+                    articulo_catalogo_id: it.articulo_catalogo_id,
+                    sku_nodo: it.sku_nodo,
+                    nombre_publico: it.nombre_vidriera_vecino || it.nombre_publico,
+                    presentacion_etiqueta: it.presentacion_etiqueta,
+                    cantidad: it.cantidad,
+                    precio_unitario_vecino: it.precio_unitario_vecino,
+                    subtotal_vecino: it.subtotal_vecino
+                }))
             },
             nodo_pago_info: {
                 nombre_marca: nodo.nombre_marca,
@@ -7696,7 +8112,9 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
 }
 
 /**
- * Genera el preview y el código ZPL de la etiqueta térmica de un pedido vecinal real
+ * Genera el preview y el código ZPL de la etiqueta térmica de un pedido vecinal real.
+ * La etiqueta izquierda es Marca Blanca pura del Nodo para la bolsa del vecino;
+ * el talón derecho de control de armado de Depósito LAMDA imprime siempre [SKU] Nomenclatura Oficial LAMDA.
  */
 async function generarEtiquetaDePedidoExistente(pedidoId) {
     await asegurarEsquemaNodosBarriales();
@@ -7716,7 +8134,14 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
     const ped = pedRes.rows[0];
 
     const itemsRes = await db.query(
-        'SELECT * FROM public.nodos_pedidos_items WHERE pedido_id = $1 ORDER BY id ASC',
+        `SELECT npi.*,
+                COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial_lamda,
+                COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda
+         FROM public.nodos_pedidos_items npi
+         LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+         LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
+         WHERE npi.pedido_id = $1
+         ORDER BY npi.id ASC`,
         [ped.id]
     );
 
@@ -7738,7 +8163,7 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
         bultos_texto: 'BOLSA 1/1',
         items: itemsRes.rows.map(r => ({
             cantidad: r.cantidad,
-            descripcion: r.nombre_publico,
+            descripcion: formatearEtiquetaTecnicaArticulo(r.sku_oficial_lamda || r.sku_nodo, r.nombre_oficial_lamda || r.nombre_publico),
             presentacion_etiqueta: r.presentacion_etiqueta
         }))
     });
@@ -7930,6 +8355,7 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
     const q = runner || db;
     const opts = (opciones && typeof opciones === 'object') ? opciones : {};
     const skuDesdeCotizador = opts.skuDesdeCotizador ? String(opts.skuDesdeCotizador).trim().toUpperCase() : null;
+    const anatomiaOverride = (opts.anatomiaOverride && typeof opts.anatomiaOverride === 'object') ? opts.anatomiaOverride : null;
     const forzarPreciosNodos = Boolean(opts.forzarPreciosNodos);
 
     // 1. Asegurar Clientes y Domicilios Geolocalizados por cada Nodo activo
@@ -8085,6 +8511,7 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
     const catRes = await q.query(`
         SELECT nac.*,
                ing.nombre AS ing_origen_nombre,
+               ing.articulo_vinculado_numero AS ing_articulo_vinculado_numero,
                env.nombre AS env_nombre,
                COALESCE(env.costo_patron, nac.costo_envase_aplicado) AS env_costo_unitario
         FROM public.nodos_articulos_catalogo nac
@@ -8095,7 +8522,14 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
     `);
 
     for (const art of catRes.rows) {
-        const anatomia = await resolverAnatomiaNativaArticuloNodo(q, art);
+        const esMatchOverride = Boolean(
+            skuDesdeCotizador &&
+            String(art.sku_nodo || '').trim().toUpperCase() === skuDesdeCotizador &&
+            anatomiaOverride
+        );
+        const anatomia = esMatchOverride
+            ? anatomiaOverride
+            : await resolverAnatomiaNativaArticuloNodo(q, art);
         const sku = String(anatomia.sku_nativo || art.sku_nodo).trim();
         const esEdicionDesdeCotizador = Boolean(
             skuDesdeCotizador &&
@@ -8103,40 +8537,34 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
         );
         const existeNativoPreviamente = Boolean(anatomia.existe_en_bunker);
 
-        const tax = construirTaxonomiaPosicionalNodo({
-            ...art,
-            sku_nodo: sku,
-            ingrediente_origen_id: anatomia.ingrediente_comercial_id,
-            nomenclatura_bunker: anatomia.nomenclatura_bunker,
-            familia_bunker_id: anatomia.familia_id,
-            familia_bunker_nombre: anatomia.familia_nombre,
-            articulo_principal_bunker: anatomia.articulo_principal
-        });
-        const descTecnicaBunker = anatomia.nomenclatura_bunker || art.nomenclatura_bunker || tax.nomenclatura_bunker;
+        const descTecnicaBunker = String(anatomia.nomenclatura_bunker || art.nomenclatura_bunker || art.nombre_publico || sku).trim();
         const kilos = Number(art.kilos_unidad || 0.25);
         const minutosFracc = Number((Number(art.segundos_fraccionamiento || anatomia.segundos_nativos || 35) / 60).toFixed(4));
         const listasCompIds = Array.isArray(art.listas_mayoristas_compartidas)
             ? art.listas_mayoristas_compartidas.map(Number).filter(Boolean)
-            : tax.listas_mayoristas_compartidas.map(Number).filter(Boolean);
+            : [];
+        const compartidoMayorista = Boolean(art.compartido_mayorista || listasCompIds.length > 0);
 
         const usuarioColabId = tarifaToUsuarioMap.get(Number(art.tarifa_colaborador_id || 1))
             || Number(anatomia.asistente_colaborador_usuario_id || 5);
 
         const posicionesNativas = {
-            ...(anatomia.posiciones && Object.keys(anatomia.posiciones).length > 0 ? anatomia.posiciones : tax.posiciones)
+            ...(anatomia.posiciones && typeof anatomia.posiciones === 'object' ? anatomia.posiciones : {})
         };
+        const propEstructurales = (anatomia.propiedades_estructurales && typeof anatomia.propiedades_estructurales === 'object')
+            ? anatomia.propiedades_estructurales
+            : {};
 
         const propMetadataNodo = {
-            alias_comercial_vecino: tax.nombre_publico_limpio,
-            alias_vecino_nodo: tax.nombre_publico_limpio,
-            presentacion_etiqueta_nodo: tax.presentacion_etiqueta,
+            presentacion_etiqueta_nodo: art.presentacion_etiqueta || (kilos < 1 ? `Bolsa ${Math.round(kilos * 1000)}g` : `Bolsa ${Number(kilos.toFixed(2))}kg`),
             canal_nodos_barriales: true,
             sku_nodo: sku,
-            compartido_mayorista: Boolean(tax.compartido_mayorista),
+            compartido_mayorista: compartidoMayorista,
             listas_mayoristas_compartidas: listasCompIds
         };
 
         const propDinamicasCompletas = {
+            ...propEstructurales,
             posiciones: posicionesNativas,
             asistente_minutos: minutosFracc,
             asistente_colaborador_id: usuarioColabId,
@@ -8173,16 +8601,16 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
                  ) VALUES ($1,$1,$2,$3,$4,$5,$6,$7,$8,$9,false,$10,$11,$12,$13)`,
                 [
                     sku,
-                    anatomia.articulo_principal || tax.articulo_principal,
+                    anatomia.articulo_principal || art.articulo_principal_bunker || descTecnicaBunker,
                     descTecnicaBunker,
                     kilos,
                     costoMateriaYEnvase,
                     Number(art.iva_pct ?? 21),
-                    anatomia.rubro || tax.rubro,
-                    anatomia.sub_rubro || tax.sub_rubro,
-                    anatomia.familia_id || tax.familia_id,
-                    Boolean(anatomia.es_pack ?? tax.es_pack),
-                    Number(anatomia.pack_unidades || tax.pack_unidades || 1),
+                    anatomia.rubro || null,
+                    anatomia.sub_rubro || null,
+                    anatomia.familia_id || art.familia_bunker_id || null,
+                    Boolean(anatomia.es_pack),
+                    Number(anatomia.pack_unidades || 1),
                     Boolean(anatomia.expresado_en_gramos),
                     JSON.stringify(propDinamicasCompletas)
                 ]
@@ -8195,39 +8623,39 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
                     kilos_unidad = $4,
                     costo_base = $5,
                     porcentaje_iva = $6,
-                    rubro = $7,
-                    sub_rubro = $8,
-                    familia_id = $9,
+                    rubro = COALESCE($7, rubro),
+                    sub_rubro = COALESCE($8, sub_rubro),
+                    familia_id = COALESCE($9, familia_id),
                     es_pack = $10,
                     pack_unidades = $11,
                     expresado_en_gramos = $12,
-                    propiedades_dinamicas = COALESCE(propiedades_dinamicas, '{}'::jsonb) || $13::jsonb
+                    propiedades_dinamicas = ((COALESCE(propiedades_dinamicas, '{}'::jsonb) - 'alias_comercial_vecino' - 'alias_vecino_nodo') || $13::jsonb)
                  WHERE UPPER(articulo_id) = UPPER($1)`,
                 [
                     sku,
-                    anatomia.articulo_principal || tax.articulo_principal,
+                    anatomia.articulo_principal || art.articulo_principal_bunker || descTecnicaBunker,
                     descTecnicaBunker,
                     kilos,
                     costoMateriaYEnvase,
                     Number(art.iva_pct ?? 21),
-                    anatomia.rubro || tax.rubro,
-                    anatomia.sub_rubro || tax.sub_rubro,
-                    anatomia.familia_id || tax.familia_id,
-                    Boolean(anatomia.es_pack ?? tax.es_pack),
-                    Number(anatomia.pack_unidades || tax.pack_unidades || 1),
+                    anatomia.rubro || null,
+                    anatomia.sub_rubro || null,
+                    anatomia.familia_id || art.familia_bunker_id || null,
+                    Boolean(anatomia.es_pack),
+                    Number(anatomia.pack_unidades || 1),
                     Boolean(anatomia.expresado_en_gramos),
                     JSON.stringify(propDinamicasCompletas)
                 ]
             );
         } else {
             // Artículo nativo existente en Búnker: preservar intactos su costo_base, tiempos de asistente y taxonomía,
-            // agregando únicamente los metadatos de alias para Nodos Barriales (o actualizando asistente_minutos solo si se cotizó desde Cotizador).
+            // limpiando cualquier alias comercial viejo y manteniendo únicamente metadatos técnicos de canal.
             const patchProps = esEdicionDesdeCotizador
                 ? { asistente_minutos: minutosFracc, asistente_colaborador_id: usuarioColabId, ...propMetadataNodo }
                 : propMetadataNodo;
             await q.query(
                 `UPDATE public.bunker_articulos
-                 SET propiedades_dinamicas = COALESCE(propiedades_dinamicas, '{}'::jsonb) || $2::jsonb
+                 SET propiedades_dinamicas = ((COALESCE(propiedades_dinamicas, '{}'::jsonb) - 'alias_comercial_vecino' - 'alias_vecino_nodo') || $2::jsonb)
                  WHERE UPPER(articulo_id) = UPPER($1)`,
                 [sku, JSON.stringify(patchProps)]
             );
@@ -8241,7 +8669,7 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
                     articulo_numero, codigo_barras, descripcion, stock_lomasoft, stock_movimientos,
                     stock_ajustes, stock_consolidado, kilos_unidad, no_producido_por_lambda, solo_produccion_externa, es_pack
                  ) VALUES ($1,$1,$2,0,0,0,0,$3,false,false,$4)`,
-                [sku, descTecnicaBunker, kilos, Boolean(anatomia.es_pack ?? tax.es_pack)]
+                [sku, descTecnicaBunker, kilos, Boolean(anatomia.es_pack)]
             );
         } else {
             await q.query(
@@ -8252,21 +8680,29 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
             );
         }
 
-        // Asegurar Receta Nativa en public.recetas + public.receta_ingredientes sin sobrescribir recetas nativas existentes en el Búnker
+        // Asegurar Receta Nativa en public.recetas + public.receta_ingredientes (con articulo_sugerido_numero puente)
         const ingComercialId = anatomia.ingrediente_comercial_id || art.ingrediente_origen_id;
+        const artSugeridoPuente = anatomia.articulo_vinculado_numero || art.ing_articulo_vinculado_numero || null;
         if (ingComercialId) {
             const recCheck = await q.query('SELECT id FROM public.recetas WHERE UPPER(articulo_numero) = UPPER($1) LIMIT 1', [sku]);
             let recetaId;
             if (recCheck.rows.length === 0) {
                 const insRec = await q.query(
-                    `INSERT INTO public.recetas (articulo_numero, descripcion, fecha_creacion, enlazado_externo)
-                     VALUES ($1, $2, NOW(), false)
+                    `INSERT INTO public.recetas (articulo_numero, descripcion, articulo_sugerido_numero, fecha_creacion, enlazado_externo)
+                     VALUES ($1, $2, $3, NOW(), false)
                      RETURNING id`,
-                    [sku, descTecnicaBunker]
+                    [sku, descTecnicaBunker, artSugeridoPuente]
                 );
                 recetaId = insRec.rows[0].id;
             } else {
                 recetaId = recCheck.rows[0].id;
+                await q.query(
+                    `UPDATE public.recetas
+                     SET articulo_sugerido_numero = COALESCE($2, articulo_sugerido_numero),
+                         descripcion = CASE WHEN $3::boolean THEN $4 ELSE descripcion END
+                     WHERE id = $1`,
+                    [recetaId, artSugeridoPuente, Boolean(esEdicionDesdeCotizador && !existeNativoPreviamente), descTecnicaBunker]
+                );
             }
 
             const recItemsCntRes = await q.query('SELECT COUNT(*)::int AS cnt FROM public.receta_ingredientes WHERE receta_id = $1', [recetaId]);
@@ -8319,7 +8755,7 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
             const esListaNodos = String(lp.canal_comercial || 'MAYORISTA').toUpperCase() === 'NODOS';
             const disponibleEnLista = esListaNodos
                 ? true
-                : Boolean(tax.compartido_mayorista && listasCompIds.includes(Number(lp.id)));
+                : Boolean(compartidoMayorista && listasCompIds.includes(Number(lp.id)));
 
             let listaArtId = null;
 
@@ -9072,12 +9508,16 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
                    npv.codigo_pedido,
                    npv.vecino_nombre,
                    npv.estado_operativo,
+                   COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial_lamda,
+                   COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda,
                    COALESCE(nac.kilos_unidad, 0.25)::numeric(10,3) AS kilos_unidad,
                    COALESCE(nac.flujo_lamda, 2)::int AS flujo_lamda,
-                   COALESCE(nac.categoria_familiar, 'Fraccionados') AS categoria_familiar
+                   COALESCE(bf.nombre, ba.rubro, nac.familia_bunker_nombre, nac.categoria_familiar, 'Fraccionados') AS categoria_familiar
             FROM public.nodos_pedidos_items npi
             JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
             LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+            LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
+            LEFT JOIN public.bunker_familias bf ON bf.id = COALESCE(ba.familia_id, nac.familia_bunker_id)
             WHERE ($1 = 0 OR npv.nodo_id = $1)
               AND COALESCE(npv.estado_operativo, '') <> 'ANULADO'
             ORDER BY npi.id ASC
@@ -9099,7 +9539,16 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
     const itemsPorPedido = new Map();
     const itemsPorCanasto = new Map();
 
-    for (const it of itemsRes.rows) {
+    for (const rawIt of itemsRes.rows) {
+        const skuOf = rawIt.sku_oficial_lamda || rawIt.sku_nodo || '';
+        const nomOf = rawIt.nombre_oficial_lamda || rawIt.nombre_publico;
+        const it = {
+            ...rawIt,
+            sku_nodo: skuOf,
+            nombre_oficial_lamda: nomOf,
+            etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(skuOf, nomOf),
+            nombre_publico: nomOf
+        };
         const pid = Number(it.pedido_id);
         if (!itemsPorPedido.has(pid)) itemsPorPedido.set(pid, []);
         itemsPorPedido.get(pid).push(it);
@@ -9137,6 +9586,8 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
                 mapaConsolidado.set(key, {
                     articulo_catalogo_id: it.articulo_catalogo_id,
                     sku_nodo: it.sku_nodo || 'S/C',
+                    nombre_oficial_lamda: it.nombre_oficial_lamda || it.nombre_publico,
+                    etiqueta_oficial_lamda: it.etiqueta_oficial_lamda || formatearEtiquetaTecnicaArticulo(it.sku_nodo, it.nombre_oficial_lamda || it.nombre_publico),
                     nombre_publico: it.nombre_publico,
                     presentacion_etiqueta: it.presentacion_etiqueta || '',
                     categoria_familiar: it.categoria_familiar || '',
@@ -9871,9 +10322,13 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
             ORDER BY npv.id ASC
         `, [nodoIdFiltro]),
         db.query(`
-            SELECT npi.*
+            SELECT npi.*,
+                   COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial_lamda,
+                   COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda
             FROM public.nodos_pedidos_items npi
             JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
+            LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+            LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
             WHERE ($1::int = 0 OR npv.nodo_id = $1::int)
             ORDER BY npi.id ASC
         `, [nodoIdFiltro]),
@@ -9916,10 +10371,18 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
     ]);
 
     const itemsPorPedido = new Map();
-    for (const it of itemsRes.rows) {
-        const pid = Number(it.pedido_id);
+    for (const rawIt of itemsRes.rows) {
+        const pid = Number(rawIt.pedido_id);
         if (!itemsPorPedido.has(pid)) itemsPorPedido.set(pid, []);
-        itemsPorPedido.get(pid).push(it);
+        const skuOf = rawIt.sku_oficial_lamda || rawIt.sku_nodo || '';
+        const nomOf = rawIt.nombre_oficial_lamda || rawIt.nombre_publico;
+        itemsPorPedido.get(pid).push({
+            ...rawIt,
+            sku_nodo: skuOf,
+            nombre_oficial_lamda: nomOf,
+            etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(skuOf, nomOf),
+            nombre_publico: nomOf
+        });
     }
 
     const pedidosPorCanasto = new Map();
@@ -10935,10 +11398,13 @@ async function obtenerArbolCanastosPorCodigos(codigosCanastos = []) {
         db.query(
             `SELECT npi.*,
                     npv.lote_canasto_id,
+                    COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial_lamda,
+                    COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda,
                     COALESCE(nac.kilos_unidad, 0.25)::numeric(10,3) AS kilos_unidad
              FROM public.nodos_pedidos_items npi
              JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
              LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+             LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
              WHERE npv.lote_canasto_id = ANY($1::int[])
                AND COALESCE(npv.estado_operativo, '') <> 'ANULADO'
              ORDER BY npi.id ASC`,
@@ -10950,10 +11416,14 @@ async function obtenerArbolCanastosPorCodigos(codigosCanastos = []) {
     for (const it of itemsRes.rows) {
         const pid = Number(it.pedido_id);
         if (!itemsPorPedido.has(pid)) itemsPorPedido.set(pid, []);
+        const skuOf = it.sku_oficial_lamda || it.sku_nodo || '';
+        const nomOf = it.nombre_oficial_lamda || it.nombre_publico;
         itemsPorPedido.get(pid).push({
             id: Number(it.id),
-            sku_nodo: it.sku_nodo,
-            nombre_publico: it.nombre_publico,
+            sku_nodo: skuOf,
+            nombre_oficial_lamda: nomOf,
+            etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(skuOf, nomOf),
+            nombre_publico: nomOf,
             presentacion_etiqueta: it.presentacion_etiqueta || '',
             cantidad: Number(it.cantidad || 0),
             kilos_unidad: Number(it.kilos_unidad || 0),
@@ -11079,9 +11549,12 @@ async function obtenerMetadataPedidosVecinosPorCodigos(codigosPedidos = [], opci
     const pedidoIds = pedRes.rows.map(r => Number(r.id));
     const itemsRes = await db.query(
         `SELECT npi.*,
+                COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial_lamda,
+                COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda,
                 COALESCE(nac.kilos_unidad, 0.25)::numeric(10,3) AS kilos_unidad
          FROM public.nodos_pedidos_items npi
          LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+         LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
          WHERE npi.pedido_id = ANY($1::int[])
          ORDER BY npi.id ASC`,
         [pedidoIds]
@@ -11091,10 +11564,14 @@ async function obtenerMetadataPedidosVecinosPorCodigos(codigosPedidos = [], opci
     for (const it of itemsRes.rows) {
         const pid = Number(it.pedido_id);
         if (!itemsPorPedido.has(pid)) itemsPorPedido.set(pid, []);
+        const skuOf = it.sku_oficial_lamda || it.sku_nodo || '';
+        const nomOf = it.nombre_oficial_lamda || it.nombre_publico;
         itemsPorPedido.get(pid).push({
             id: Number(it.id),
-            sku_nodo: it.sku_nodo,
-            nombre_publico: it.nombre_publico,
+            sku_nodo: skuOf,
+            nombre_oficial_lamda: nomOf,
+            etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(skuOf, nomOf),
+            nombre_publico: nomOf,
             presentacion_etiqueta: it.presentacion_etiqueta || '',
             cantidad: Number(it.cantidad || 0),
             kilos_unidad: Number(it.kilos_unidad || 0),
@@ -11947,9 +12424,13 @@ async function obtenerSubcuentaVecinoDetalle(vecinoId) {
             [vid]
         ),
         db.query(
-            `SELECT npi.*
+            `SELECT npi.*,
+                    COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial_lamda,
+                    COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda
              FROM public.nodos_pedidos_items npi
              JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
+             LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+             LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
              WHERE npv.vecino_id = $1::int
              ORDER BY npi.id ASC`,
             [vid]
@@ -11973,10 +12454,18 @@ async function obtenerSubcuentaVecinoDetalle(vecinoId) {
     ]);
 
     const itemsPorPed = new Map();
-    for (const it of itemsRes.rows) {
-        const pid = Number(it.pedido_id);
+    for (const rawIt of itemsRes.rows) {
+        const pid = Number(rawIt.pedido_id);
         if (!itemsPorPed.has(pid)) itemsPorPed.set(pid, []);
-        itemsPorPed.get(pid).push(it);
+        const skuOf = rawIt.sku_oficial_lamda || rawIt.sku_nodo || '';
+        const nomOf = rawIt.nombre_oficial_lamda || rawIt.nombre_publico;
+        itemsPorPed.get(pid).push({
+            ...rawIt,
+            sku_nodo: skuOf,
+            nombre_oficial_lamda: nomOf,
+            etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(skuOf, nomOf),
+            nombre_publico: nomOf
+        });
     }
 
     let totalComprado = 0;
@@ -12146,7 +12635,8 @@ async function obtenerResumenRadarParaPedidoVecino(pedidoRow) {
 async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
     const [itemsRes, evsRes] = await Promise.all([
         db.query(
-            `SELECT nombre_publico, presentacion_etiqueta, cantidad,
+            `SELECT COALESCE(NULLIF(TRIM(nombre_vidriera_vecino), ''), nombre_publico) AS nombre_publico,
+                    presentacion_etiqueta, cantidad,
                     precio_unitario_vecino, subtotal_vecino
              FROM public.nodos_pedidos_items
              WHERE pedido_id = $1
@@ -12372,7 +12862,9 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
     const pedidoIds = filasCoincidentes.map(r => Number(r.id));
     const [itemsRes, evsRes] = await Promise.all([
         db.query(
-            `SELECT pedido_id, nombre_publico, presentacion_etiqueta, cantidad,
+            `SELECT pedido_id,
+                    COALESCE(NULLIF(TRIM(nombre_vidriera_vecino), ''), nombre_publico) AS nombre_publico,
+                    presentacion_etiqueta, cantidad,
                     precio_unitario_vecino, subtotal_vecino
              FROM public.nodos_pedidos_items
              WHERE pedido_id = ANY($1::int[])
@@ -14154,7 +14646,9 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
             [vid]
         ),
         db.query(
-            `SELECT npi.pedido_id, npi.nombre_publico, npi.presentacion_etiqueta,
+            `SELECT npi.pedido_id,
+                    COALESCE(NULLIF(TRIM(npi.nombre_vidriera_vecino), ''), npi.nombre_publico) AS nombre_publico,
+                    npi.presentacion_etiqueta,
                     npi.cantidad, npi.precio_unitario_vecino, npi.subtotal_vecino
              FROM public.nodos_pedidos_items npi
              JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
@@ -14353,17 +14847,22 @@ async function obtenerKitCompartirNodo(nodoId) {
                     nog.precio_venta_vecino,
                     nog.destacado_tienda,
                     nac.sku_nodo,
-                    nac.nombre_publico,
-                    nac.categoria_familiar,
+                    COALESCE(NULLIF(TRIM(nog.nombre_vidriera_personalizado), ''), ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_publico,
+                    COALESCE(NULLIF(TRIM(nog.categoria_vidriera_personalizada), ''), bf.nombre, ba.rubro, nac.familia_bunker_nombre, nac.categoria_familiar) AS categoria_familiar,
                     nac.presentacion_etiqueta,
                     nac.kilos_unidad
              FROM public.nodos_ofertas_gestor nog
              JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+             LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
+             LEFT JOIN public.bunker_familias bf ON bf.id = COALESCE(ba.familia_id, nac.familia_bunker_id)
              WHERE nog.nodo_id = $1::int
                AND nog.publicado_tienda = true
                AND nac.activo = true
                AND nac.precio_base_nodo_final > 0
-             ORDER BY nog.destacado_tienda DESC, nac.categoria_familiar ASC, nac.nombre_publico ASC, nac.kilos_unidad ASC`,
+             ORDER BY nog.destacado_tienda DESC,
+                      COALESCE(NULLIF(TRIM(nog.categoria_vidriera_personalizada), ''), bf.nombre, ba.rubro, nac.familia_bunker_nombre, nac.categoria_familiar) ASC,
+                      COALESCE(NULLIF(TRIM(nog.nombre_vidriera_personalizado), ''), ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) ASC,
+                      nac.kilos_unidad ASC`,
             [nid]
         )
     ]);
@@ -14848,7 +15347,10 @@ module.exports = {
     sincronizarHerenciaFiscalDesdeMadrePorId,
     ponerACeroDatosNodosBarriales,
     normalizarTelefonoVecinoNodo,
-    construirTaxonomiaPosicionalNodo,
+    formatearEtiquetaTecnicaIngrediente,
+    formatearEtiquetaTecnicaArticulo,
+    ensamblarDescripcionOficialBunker,
+    obtenerDiccionarioBunkerCotizador,
     previsualizarAnatomiaCotizacionNodo,
     calcularEstructuraCostosNodo,
     obtenerEstadoCompletoNodos,

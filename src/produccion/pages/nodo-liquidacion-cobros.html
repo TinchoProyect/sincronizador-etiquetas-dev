@@ -284,9 +284,14 @@
         }
 
         function formatearItemLiq(it) {
-            const nom = String(it?.nombre_publico || '').trim() || 'Producto';
+            const sku = String(it?.sku_nodo || '').trim();
+            let nom = String(it?.etiqueta_oficial_lamda || it?.nombre_oficial_lamda || it?.nombre_publico || '').trim() || 'Producto';
+            if (sku && !nom.toUpperCase().startsWith(`[${sku.toUpperCase()}]`)) {
+                nom = `[${sku}] ${nom}`;
+            }
             const pres = String(it?.presentacion_etiqueta || '').trim();
             if (!pres) return nom;
+            if (/\bx\s*\d+(?:[.,]\d+)?\s*(?:g|gr|kg)\b/i.test(nom)) return nom;
             return nom.toLowerCase().includes(pres.toLowerCase()) ? nom : `${nom} (${pres})`;
         }
 

@@ -1661,8 +1661,8 @@
         .map(o => ({
           oferta_id: Number(o.id),
           sku_nodo: o.sku_nodo || '',
-          nombre_publico: o.nombre_publico || 'Producto',
-          categoria_familiar: o.categoria_familiar || 'Almacén',
+          nombre_publico: String(o.nombre_vidriera_efectivo || o.nombre_vidriera_personalizado || o.nombre_oficial_lamda || o.nombre_publico || 'Producto').trim(),
+          categoria_familiar: String(o.categoria_vidriera_efectiva || o.categoria_vidriera_personalizada || o.categoria_oficial_lamda || o.categoria_familiar || 'Almacén').trim(),
           presentacion_etiqueta: o.presentacion_etiqueta || '',
           kilos_unidad: Number(o.kilos_unidad || 0),
           precio_venta_vecino: Number(o.precio_venta_vecino || 0),
@@ -2357,11 +2357,24 @@
       abrirModalDifusionTienda(0);
     }
 
-    function formatearItemGestor(it) {
-      const nom = String(it?.nombre_publico || '').trim() || 'Producto';
+    function formatearItemVecinoGestor(it) {
+      const nom = String(it?.nombre_vidriera_vecino || it?.nombre_publico || '').trim() || 'Producto';
       const pres = String(it?.presentacion_etiqueta || '').trim();
       if (!pres) return nom;
       return nom.toLowerCase().includes(pres.toLowerCase()) ? nom : `${nom} (${pres})`;
+    }
+
+    function formatearItemGestor(it) {
+      const sku = String(it?.sku_nodo || '').trim();
+      const nomOficial = String(it?.nombre_oficial_lamda || it?.nombre_publico || '').trim() || 'Producto';
+      const baseTecnica = sku && !nomOficial.startsWith(`[${sku}]`)
+        ? `[${sku}] ${nomOficial}`
+        : nomOficial;
+      const nomVidriera = String(it?.nombre_vidriera_vecino || '').trim();
+      if (nomVidriera && nomVidriera.toLowerCase() !== nomOficial.toLowerCase()) {
+        return `${baseTecnica} (Vidriera: "${nomVidriera}")`;
+      }
+      return baseTecnica;
     }
 
     function obtenerUrlSeguimientoPedidoGestor(p) {
@@ -2372,7 +2385,7 @@
     async function enviarWhatsAppVecinoPedidoPrueba(pedidoId) {
       const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
       if (!p || !GSTATE.nodo) return;
-      const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${formatearItemGestor(it)} (${fmt(it.subtotal_vecino)})`).join('\n');
+      const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${formatearItemVecinoGestor(it)} (${fmt(it.subtotal_vecino)})`).join('\n');
       const linkSeg = obtenerUrlSeguimientoPedidoGestor(p);
       const mensaje = [
         `🌿 *${GSTATE.nodo.nombre_marca}* — Pedido #${p.codigo_pedido}`,
@@ -2401,23 +2414,31 @@
         <div class="card" style="margin-top:14px;">
           <h3 style="margin:0 0 4px 0; font-size:0.96rem;">Catálogo Base Disponible (${GSTATE.catalogoBaseDisponible.length})</h3>
           <p style="margin:0 0 12px 0; font-size:0.8rem; color:var(--muted);">
-            Presentaciones ya cotizadas por LAMDA listas para sumar a tu oferta en un toque:
+            Presentaciones oficiales LAMDA listas para sumar a tu oferta en un toque:
           </p>
           <div style="display:flex; flex-direction:column; gap:8px;">
-            ${GSTATE.catalogoBaseDisponible.map(c => `
-              <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; border-radius:11px; border:1px solid var(--border); background:#fffdfb;">
-                <div>
-                  <div style="font-weight:800; font-size:0.9rem;">${esc(c.nombre_publico)}</div>
-                  <div style="font-size:0.76rem; color:var(--muted);">
-                    ${esc(c.presentacion_etiqueta || `${Math.round(Number(c.kilos_unidad) * 1000)}g`)} · Costo Base <strong>${fmt(c.precio_base_nodo_final)}</strong>
+            ${GSTATE.catalogoBaseDisponible.map(c => {
+              const skuCat = String(c.sku_nodo || '').trim();
+              const nomLamda = String(c.nombre_oficial_lamda || c.nombre_publico || '').trim();
+              const catLamda = String(c.categoria_oficial_lamda || c.categoria_familiar || '').trim();
+              return `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; border-radius:11px; border:1px solid var(--border); background:#fffdfb;">
+                  <div>
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                      ${skuCat ? `<span style="font-family:monospace; font-size:0.74rem; font-weight:900; padding:1px 6px; border-radius:5px; background:var(--surface-warm); border:1px solid var(--border); color:var(--brand-dark);">[${esc(skuCat)}]</span>` : ''}
+                      <span style="font-weight:800; font-size:0.9rem;">${esc(nomLamda)}</span>
+                    </div>
+                    <div style="font-size:0.76rem; color:var(--muted); margin-top:2px;">
+                      ${catLamda ? `${esc(catLamda)} · ` : ''}${esc(c.presentacion_etiqueta || `${Math.round(Number(c.kilos_unidad) * 1000)}g`)} · Costo Base <strong>${fmt(c.precio_base_nodo_final)}</strong>
+                    </div>
                   </div>
+                  <button type="button" class="btn-soft" style="font-size:0.78rem; padding:6px 11px;"
+                    onclick="sumarCatalogoBaseAMiOferta(${c.catalogo_id})">
+                    + Sumar
+                  </button>
                 </div>
-                <button type="button" class="btn-soft" style="font-size:0.78rem; padding:6px 11px;"
-                  onclick="sumarCatalogoBaseAMiOferta(${c.catalogo_id})">
-                  + Sumar
-                </button>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         </div>
       ` : '';
@@ -2440,72 +2461,119 @@
       return `
         <div class="card">
           <p style="margin:0 0 14px 0; font-size:0.84rem; color:var(--muted);">
-            Ajustá tu porcentaje de margen o el precio final al vecino. Tu ganancia por unidad se actualiza al instante.
+            Cada artículo llega con su código SKU y nomenclatura oficial LAMDA por defecto. Acá podés personalizar cómo se muestra en tu propia vidriera y definir tu margen.
           </p>
-          ${GSTATE.ofertas.map(of => `
-            <div class="oferta-item">
-              <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
-                <div>
-                  <div style="font-weight:900; font-size:0.98rem;">${esc(of.nombre_publico)}</div>
-                  <div style="font-size:0.78rem; color:var(--muted); margin-top:2px;">
-                    ${esc(of.categoria_familiar || 'Almacén')} · <strong>${esc(of.presentacion_etiqueta || `${Math.round(Number(of.kilos_unidad) * 1000)}g`)}</strong>
+          ${GSTATE.ofertas.map(of => {
+            const skuOficial = String(of.sku_nodo || '').trim();
+            const nombreOficialLamda = String(of.nombre_oficial_lamda || of.nombre_publico || '').trim();
+            const catOficialLamda = String(of.categoria_oficial_lamda || of.categoria_familiar || 'Almacén').trim();
+            const nombreVidrieraPers = String(of.nombre_vidriera_personalizado || '').trim();
+            const catVidrieraPers = String(of.categoria_vidriera_personalizada || '').trim();
+            const nombreVidrieraEfectivo = String(of.nombre_vidriera_efectivo || nombreVidrieraPers || nombreOficialLamda).trim();
+            const aliasPrevio = String(of.alias_sugerido_previo || '').trim();
+            return `
+              <div class="oferta-item">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+                  <div style="min-width:210px; flex:1;">
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                      ${skuOficial ? `<span style="font-family:monospace; font-size:0.76rem; font-weight:900; padding:2px 7px; border-radius:6px; background:var(--surface-warm); border:1px solid var(--border); color:var(--brand-dark);">[${esc(skuOficial)}]</span>` : ''}
+                      <span style="font-weight:900; font-size:0.96rem;">${esc(nombreOficialLamda)}</span>
+                    </div>
+                    <div style="font-size:0.76rem; color:var(--muted); margin-top:2px;">
+                      Catálogo oficial LAMDA · ${esc(catOficialLamda)} · <strong>${esc(of.presentacion_etiqueta || `${Math.round(Number(of.kilos_unidad) * 1000)}g`)}</strong>
+                    </div>
                   </div>
-                </div>
-                <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                  ${of.tiene_desglose_ingredientes ? `
-                    <label class="switch-label" title="Mostrar u ocultar el botón ¿Qué contiene? en este artículo elaborado">
-                      <input type="checkbox" ${of.mostrar_ingredientes !== false ? 'checked' : ''}
-                        onchange="guardarCambioOferta(${of.id}, { mostrar_ingredientes: this.checked })" />
-                      <span style="font-size:0.76rem; color:${of.mostrar_ingredientes !== false ? 'var(--brand-dark)' : 'var(--muted)'};">
-                        🥣 Ingredientes (${(of.ingredientes_comerciales || []).length})
+                  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                    ${of.tiene_desglose_ingredientes ? `
+                      <label class="switch-label" title="Mostrar u ocultar el botón ¿Qué contiene? en este artículo elaborado">
+                        <input type="checkbox" ${of.mostrar_ingredientes !== false ? 'checked' : ''}
+                          onchange="guardarCambioOferta(${of.id}, { mostrar_ingredientes: this.checked })" />
+                        <span style="font-size:0.76rem; color:${of.mostrar_ingredientes !== false ? 'var(--brand-dark)' : 'var(--muted)'};">
+                          🥣 Ingredientes (${(of.ingredientes_comerciales || []).length})
+                        </span>
+                      </label>
+                    ` : ''}
+                    ${of.publicado_tienda ? `
+                      <button type="button" class="btn-soft" style="font-size:0.74rem; padding:4px 9px;"
+                        onclick="abrirModalDifusionTienda(${Number(of.id)})" title="Compartir este producto directo por WhatsApp o link">
+                        📣 Compartir
+                      </button>
+                    ` : ''}
+                    <label class="switch-label">
+                      <input type="checkbox" ${of.publicado_tienda ? 'checked' : ''}
+                        onchange="guardarCambioOferta(${of.id}, { publicado_tienda: this.checked })" />
+                      <span style="color:${of.publicado_tienda ? 'var(--ok)' : 'var(--muted)'};">
+                        ${of.publicado_tienda ? 'Publicado' : 'Oculto'}
                       </span>
                     </label>
-                  ` : ''}
-                  ${of.publicado_tienda ? `
-                    <button type="button" class="btn-soft" style="font-size:0.74rem; padding:4px 9px;"
-                      onclick="abrirModalDifusionTienda(${Number(of.id)})" title="Compartir este producto directo por WhatsApp o link">
-                      📣 Compartir
-                    </button>
-                  ` : ''}
-                  <label class="switch-label">
-                    <input type="checkbox" ${of.publicado_tienda ? 'checked' : ''}
-                      onchange="guardarCambioOferta(${of.id}, { publicado_tienda: this.checked })" />
-                    <span style="color:${of.publicado_tienda ? 'var(--ok)' : 'var(--muted)'};">
-                      ${of.publicado_tienda ? 'Publicado' : 'Oculto'}
-                    </span>
-                  </label>
+                  </div>
                 </div>
-              </div>
-              ${of.tiene_desglose_ingredientes ? `
-                <div style="font-size:0.74rem; color:var(--muted); background:var(--surface-warm); border:1px solid var(--border); border-radius:8px; padding:5px 9px; margin-bottom:8px;">
-                  <strong style="color:var(--text);">🥣 Contiene:</strong> ${(of.ingredientes_comerciales || []).map(esc).join(', ')}
-                </div>
-              ` : ''}
+                ${of.tiene_desglose_ingredientes ? `
+                  <div style="font-size:0.74rem; color:var(--muted); background:var(--surface-warm); border:1px solid var(--border); border-radius:8px; padding:5px 9px; margin-top:6px;">
+                    <strong style="color:var(--text);">🥣 Contiene:</strong> ${(of.ingredientes_comerciales || []).map(esc).join(', ')}
+                  </div>
+                ` : ''}
 
-              <div class="oferta-grid">
-                <div>
-                  <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">Costo Base</div>
-                  <div style="font-size:0.95rem; font-weight:800; padding:7px 0;">${fmt(of.precio_base_nodo_final)}</div>
+                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:10px; margin:8px 0 10px 0; padding:9px 10px; border-radius:10px; background:#fffaf5; border:1px dashed var(--brand-border);">
+                  <div>
+                    <label style="display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:0.72rem; color:var(--brand-dark); font-weight:800; margin-bottom:3px;">
+                      <span>🏪 Nombre en mi tienda / vidriera</span>
+                      <span style="font-size:0.68rem; color:var(--muted); font-weight:700;">Vacío = nombre oficial</span>
+                    </label>
+                    <input type="text" class="input-sm" style="width:100%;"
+                      data-oferta-nombre-vidriera="${of.id}"
+                      value="${esc(nombreVidrieraPers)}"
+                      placeholder="${esc(nombreOficialLamda)} (por defecto)"
+                      onchange="guardarCambioOferta(${of.id}, { nombre_vidriera_personalizado: this.value })" />
+                    ${(!nombreVidrieraPers && aliasPrevio && aliasPrevio.toLowerCase() !== nombreOficialLamda.toLowerCase()) ? `
+                      <div style="margin-top:4px; font-size:0.72rem; color:var(--muted); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span>💡 Sugerido en tu solicitud: <strong>"${esc(aliasPrevio)}"</strong></span>
+                        <button type="button" class="btn-soft" style="font-size:0.68rem; padding:2px 8px;"
+                          onclick="guardarCambioOferta(${of.id}, { nombre_vidriera_personalizado: decodeURIComponent('${encodeURIComponent(aliasPrevio)}') })">
+                          Aplicar en mi vidriera
+                        </button>
+                      </div>
+                    ` : `
+                      <div style="margin-top:3px; font-size:0.71rem; color:var(--muted);">
+                        👁️ En tu tienda pública se muestra: <strong style="color:var(--text);">${esc(nombreVidrieraEfectivo)}</strong>
+                      </div>
+                    `}
+                  </div>
+                  <div>
+                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:800; margin-bottom:3px;">Categoría en mi tienda (opcional)</label>
+                    <input type="text" class="input-sm" style="width:100%;"
+                      data-oferta-cat-vidriera="${of.id}"
+                      value="${esc(catVidrieraPers)}"
+                      placeholder="${esc(catOficialLamda)} (por defecto)"
+                      onchange="guardarCambioOferta(${of.id}, { categoria_vidriera_personalizada: this.value })" />
+                  </div>
                 </div>
-                <div>
-                  <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Mi Margen (%)</label>
-                  <input type="number" step="0.5" class="input-sm" style="width:100%;"
-                    value="${Number(of.margen_gestor_pct)}"
-                    onchange="guardarCambioOferta(${of.id}, { margen_gestor_pct: Number(this.value) })" />
-                </div>
-                <div>
-                  <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Precio Vecino ($)</label>
-                  <input type="number" step="50" class="input-sm" style="width:100%; border-color:var(--brand-border);"
-                    value="${Math.round(Number(of.precio_venta_vecino))}"
-                    onchange="guardarPrecioDirectoOferta(${of.id}, ${Number(of.precio_base_nodo_final)}, Number(this.value))" />
-                </div>
-                <div>
-                  <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">Mi Ganancia</div>
-                  <div style="font-size:0.98rem; font-weight:900; color:var(--ok); padding:7px 0;">+${fmt(of.ganancia_unitaria_gestor)}</div>
+
+                <div class="oferta-grid">
+                  <div>
+                    <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">Costo Base</div>
+                    <div style="font-size:0.95rem; font-weight:800; padding:7px 0;">${fmt(of.precio_base_nodo_final)}</div>
+                  </div>
+                  <div>
+                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Mi Margen (%)</label>
+                    <input type="number" step="0.5" class="input-sm" style="width:100%;"
+                      value="${Number(of.margen_gestor_pct)}"
+                      onchange="guardarCambioOferta(${of.id}, { margen_gestor_pct: Number(this.value) })" />
+                  </div>
+                  <div>
+                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Precio Vecino ($)</label>
+                    <input type="number" step="50" class="input-sm" style="width:100%; border-color:var(--brand-border);"
+                      value="${Math.round(Number(of.precio_venta_vecino))}"
+                      onchange="guardarPrecioDirectoOferta(${of.id}, ${Number(of.precio_base_nodo_final)}, Number(this.value))" />
+                  </div>
+                  <div>
+                    <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">Mi Ganancia</div>
+                    <div style="font-size:0.98rem; font-weight:900; color:var(--ok); padding:7px 0;">+${fmt(of.ganancia_unitaria_gestor)}</div>
+                  </div>
                 </div>
               </div>
-            </div>
-          `).join('')}
+            `;
+          }).join('')}
         </div>
         ${disponiblesCatHtml}
       `;
@@ -2580,12 +2648,14 @@
 
     function obtenerIngredientesFiltradosGestor(categoria, filtroTexto) {
       const listaCat = (GSTATE.ingredientesDisponibles || []).filter(
-        i => String(i.categoria_gestor || '') === String(categoria || '')
+        i => String(i.categoria_lamda || i.categoria_gestor || '') === String(categoria || '')
       );
       const terminos = normalizarTextoGestor(filtroTexto).split(/\s+/).filter(Boolean);
       if (terminos.length === 0) return listaCat;
       return listaCat.filter(i => {
-        const bolsa = normalizarTextoGestor(`${i.nombre_claro} ${i.alias_vecino_sugerido} ${i.categoria_gestor}`);
+        const bolsa = normalizarTextoGestor(
+          `${i.id} ${i.codigo || ''} ${i.nombre_oficial || ''} ${i.label_oficial || ''} ${i.nombre_claro || ''} ${i.categoria_lamda || i.categoria_gestor || ''} ${i.articulo_vinculado_numero || ''}`
+        );
         return terminos.every(t => bolsa.includes(t));
       });
     }
@@ -2594,7 +2664,7 @@
       if (!GSTATE.propCategoriaSel || !GSTATE.propIngredienteIdSel) return null;
       return (GSTATE.ingredientesDisponibles || []).find(
         i => Number(i.id) === Number(GSTATE.propIngredienteIdSel) &&
-             String(i.categoria_gestor || '') === String(GSTATE.propCategoriaSel || '')
+             String(i.categoria_lamda || i.categoria_gestor || '') === String(GSTATE.propCategoriaSel || '')
       ) || null;
     }
 
@@ -2689,7 +2759,7 @@
       if (!ingObj) {
         return `
           <div style="font-size:0.75rem; color:var(--muted); margin-bottom:7px;">
-            Elegí primero categoría y producto arriba para consultar las medidas disponibles y definir una nueva fracción.
+            Elegí primero familia/rubro y producto oficial LAMDA arriba para consultar las presentaciones existentes y definir una nueva fracción.
           </div>
         `;
       }
@@ -2697,7 +2767,7 @@
       if (pres.length === 0) {
         return `
           <div style="font-size:0.75rem; color:var(--muted); margin-bottom:7px;">
-            Este artículo aún no tiene bolsitas fraccionadas estándar; podés pedir el gramaje que necesites.
+            Este ingrediente aún no tiene presentaciones fraccionadas en el Búnker LAMDA; podés pedir el gramaje que necesites.
           </div>
         `;
       }
@@ -2710,15 +2780,16 @@
           : p.en_catalogo_nodos
             ? ' (cotizada)'
             : '';
-        return `<span style="display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:999px; background:#edf7f1; border:1px solid rgba(31,111,74,0.28); color:var(--ok); font-weight:800; font-size:0.72rem;">✓ ${esc(p.etiqueta)}${esc(sub)}</span>`;
+        const labelOf = p.label_oficial || (p.sku ? `[${p.sku}] ${p.descripcion_generada || p.etiqueta}` : p.etiqueta);
+        return `<span style="display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:999px; background:#edf7f1; border:1px solid rgba(31,111,74,0.28); color:var(--ok); font-weight:800; font-size:0.72rem;">✓ ${esc(labelOf)}${esc(sub)}</span>`;
       }).join(' ');
 
       return `
         <div style="margin-bottom:8px; padding:8px 10px; border-radius:10px; background:#f8faf8; border:1px solid rgba(31,111,74,0.18); font-size:0.76rem; line-height:1.45;">
-          <div style="color:var(--text); font-weight:800; margin-bottom:4px;">Presentaciones que LAMDA ya produce:</div>
+          <div style="color:var(--text); font-weight:800; margin-bottom:4px;">Artículos fraccionados existentes en Búnker LAMDA:</div>
           <div style="display:flex; flex-wrap:wrap; gap:5px;">${badges}</div>
           <div style="color:var(--muted); font-size:0.72rem; margin-top:4px;">
-            Esas medidas ya existen; para pedir una <strong>nueva fracción</strong> elegí abajo otro gramaje distinto.
+            Esas presentaciones ya existen; para pedir una <strong>nueva fracción</strong> elegí abajo otro gramaje distinto.
           </div>
         </div>
       `;
@@ -2797,7 +2868,7 @@
         const pres = est.pres;
         return `
           <div style="padding:11px 12px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.30); color:var(--text); font-size:0.8rem; line-height:1.45;">
-            <strong style="color:var(--ok);">✓ Esta medida (${esc(etPeso)}) ya está cotizada por LAMDA</strong> (Costo Base <strong>${fmt(pres.precio_base_nodo_final)}</strong>).<br>
+            <strong style="color:var(--ok);">✓ Esta medida (${esc(etPeso)}) ya está cotizada por LAMDA</strong> (${esc(pres.label_oficial || pres.sku)} · Costo Base <strong>${fmt(pres.precio_base_nodo_final)}</strong>).<br>
             No necesitás pedir cotización; sumala directo a tu Nodo:
             <div style="margin-top:8px;">
               <button type="button" class="btn-primary" style="font-size:0.78rem; padding:6px 12px;"
@@ -2810,11 +2881,12 @@
       }
 
       if (est.tipo === 'YA_EXISTE_LAMDA') {
+        const refSku = est.pres?.label_oficial || est.pres?.sku || etPeso;
         if (est.propuestaPendiente) {
           return `
             <div style="padding:11px 12px; border-radius:11px; background:var(--warn-soft); border:1px solid rgba(180,83,9,0.28); color:var(--warn); font-size:0.8rem; line-height:1.45;">
               <strong>⏳ Habilitación ya solicitada (${esc(est.propuestaPendiente.codigo_propuesta)})</strong><br>
-              Ya pediste habilitar esta presentación existente de <strong>${esc(etPeso)}</strong> en tu Nodo.
+              Ya pediste habilitar esta presentación oficial existente <strong>${esc(refSku)}</strong> en tu Nodo.
               <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
                 <span style="font-size:0.74rem;">¿La enviaste por error?</span>
                 <button type="button" class="btn-soft"
@@ -2828,10 +2900,10 @@
         }
         return `
           <div style="padding:11px 12px; border-radius:11px; background:#f4faf6; border:1px solid rgba(31,111,74,0.28); color:var(--text); font-size:0.8rem; line-height:1.45;">
-            <strong style="color:var(--ok);">✓ LAMDA ya produce la presentación de ${esc(etPeso)}</strong><br>
+            <strong style="color:var(--ok);">✓ LAMDA ya produce la presentación ${esc(refSku)}</strong><br>
             No debe solicitarse como nueva fracción a crear. Elegí arriba otro gramaje que aún no exista (por ejemplo <strong>100g</strong>, <strong>150g</strong> o <strong>400g</strong>).
             <div style="margin-top:8px; padding-top:7px; border-top:1px dashed rgba(31,111,74,0.22); display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
-              <span style="font-size:0.74rem; color:var(--muted);">¿Querés vender esta medida existente de ${esc(etPeso)}?</span>
+              <span style="font-size:0.74rem; color:var(--muted);">¿Querés vender esta presentación existente ${esc(etPeso)}?</span>
               <button type="button" class="btn-soft" style="font-size:0.75rem; padding:5px 10px;"
                 onclick="enviarNuevaPropuestaGestor({ solicitarHabilitacionExistente: true })">
                 Pedir que la habiliten en mi Nodo
@@ -2888,8 +2960,7 @@
       GSTATE.propPesoManualTexto = '';
       GSTATE.propUnidadPesoManual = 'g';
       GSTATE.propPrecioObjetivoTexto = '';
-      GSTATE.propNombreTexto = '';
-      GSTATE.propNombreEditadoManual = false;
+      GSTATE.propAliasVidrieraTexto = '';
       GSTATE.propComentarioTexto = '';
       if (!conservarConfirmacion) {
         GSTATE.propConfirmacionReciente = '';
@@ -2955,18 +3026,15 @@
 
     function construirNombreFinalPropuestaGestor(ingSel, kilos) {
       if (!ingSel) return '';
-      const rawInput = document.getElementById('prop-nombre')
-        ? document.getElementById('prop-nombre').value
-        : GSTATE.propNombreTexto;
-      const nombreBase = String(rawInput || ingSel.alias_vecino_sugerido || ingSel.nombre_claro || '').trim();
-      if (!kilos || Number(kilos) <= 0) return nombreBase;
+      const baseTecnica = String(ingSel.label_oficial || ingSel.nombre_claro || ingSel.nombre_oficial || '').trim();
+      if (!kilos || Number(kilos) <= 0) return baseTecnica;
       const etiquetaPeso = formatearPesoCortoGestor(kilos).replace(/\s+/g, '');
-      return /\bx\s*\d+/i.test(nombreBase) ? nombreBase : `${nombreBase} x ${etiquetaPeso}`;
+      return /\bx\s*\d+/i.test(baseTecnica) ? baseTecnica : `${baseTecnica} x ${etiquetaPeso}`;
     }
 
     function renderResumenPaso4PropuestaHtml(ev) {
       const catTxt = ev.paso1Completo ? GSTATE.propCategoriaSel : 'Sin elegir aún';
-      const prodTxt = ev.ingSel ? ev.ingSel.nombre_claro : 'Sin elegir aún';
+      const prodTxt = ev.ingSel ? (ev.ingSel.label_oficial || ev.ingSel.nombre_claro) : 'Sin elegir aún';
       let fracTxt = 'Sin definir aún';
       if (ev.paso3Valido) {
         fracTxt = `${formatearPesoCortoGestor(ev.kilos)} (${construirNombreFinalPropuestaGestor(ev.ingSel, ev.kilos)})`;
@@ -2976,12 +3044,16 @@
       const notaTxt = ev.paso3Habilitado
         ? String((document.getElementById('prop-comentario')?.value ?? GSTATE.propComentarioTexto) || '').trim()
         : '';
+      const aliasVidrieraTxt = ev.paso4Habilitado
+        ? String((document.getElementById('prop-alias-vidriera')?.value ?? GSTATE.propAliasVidrieraTexto) || '').trim()
+        : '';
 
       return `
         <div style="padding:10px 12px; border-radius:10px; background:var(--surface-warm); border:1px solid var(--border); font-size:0.8rem; line-height:1.5; margin-bottom:10px;">
-          <div><span style="color:var(--muted); font-weight:700;">Categoría:</span> <strong>${esc(catTxt)}</strong></div>
-          <div><span style="color:var(--muted); font-weight:700;">Producto:</span> <strong>${esc(prodTxt)}</strong></div>
-          <div><span style="color:var(--muted); font-weight:700;">Fracción:</span> <strong>${esc(fracTxt)}</strong></div>
+          <div><span style="color:var(--muted); font-weight:700;">Familia / Rubro LAMDA:</span> <strong>${esc(catTxt)}</strong></div>
+          <div><span style="color:var(--muted); font-weight:700;">Ingrediente Oficial:</span> <strong>${esc(prodTxt)}</strong></div>
+          <div><span style="color:var(--muted); font-weight:700;">Fracción Solicitada:</span> <strong>${esc(fracTxt)}</strong></div>
+          ${aliasVidrieraTxt ? `<div><span style="color:var(--muted); font-weight:700;">Alias pensado p/ mi vidriera:</span> <strong>"${esc(aliasVidrieraTxt)}"</strong></div>` : ''}
           ${notaTxt ? `<div><span style="color:var(--muted); font-weight:700;">Nota:</span> ${esc(notaTxt)}</div>` : ''}
         </div>
       `;
@@ -2994,6 +3066,11 @@
         btn.disabled = !ev.paso4Habilitado;
         btn.style.opacity = ev.paso4Habilitado ? '1' : '0.46';
         btn.textContent = 'Enviar solicitud';
+      }
+      const aliasEl = document.getElementById('prop-alias-vidriera');
+      if (aliasEl) {
+        aliasEl.disabled = !ev.paso4Habilitado;
+        if (!ev.paso4Habilitado) aliasEl.value = '';
       }
       const resBox = document.getElementById('prop-resumen-seleccion');
       if (resBox) {
@@ -3011,7 +3088,7 @@
       const b1 = document.getElementById('prop-step-1-badge');
       if (b1) b1.innerHTML = renderBadgeEstadoPasoPropuesta(ev.clasePaso1, GSTATE.propCategoriaSel || 'Elegida', 'Paso 1 activo');
       const b2 = document.getElementById('prop-step-2-badge');
-      if (b2) b2.innerHTML = renderBadgeEstadoPasoPropuesta(ev.clasePaso2, 'Producto elegido', 'Elegí un producto');
+      if (b2) b2.innerHTML = renderBadgeEstadoPasoPropuesta(ev.clasePaso2, 'Ingrediente elegido', 'Elegí un ingrediente');
       const b3 = document.getElementById('prop-step-3-badge');
       if (b3) b3.innerHTML = renderBadgeEstadoPasoPropuesta(ev.clasePaso3, ev.kilos > 0 ? formatearPesoCortoGestor(ev.kilos) : 'Definida', 'Definí el gramaje');
       const b4 = document.getElementById('prop-step-4-badge');
@@ -3021,7 +3098,7 @@
     function actualizarControlesPropuestaEnVivo() {
       const ev = evaluarPasosPropuestaGestor();
       const totalCat = ev.paso1Completo
-        ? (GSTATE.ingredientesDisponibles || []).filter(i => String(i.categoria_gestor || '') === String(GSTATE.propCategoriaSel || ''))
+        ? (GSTATE.ingredientesDisponibles || []).filter(i => String(i.categoria_lamda || i.categoria_gestor || '') === String(GSTATE.propCategoriaSel || ''))
         : [];
       const filtrados = ev.paso1Completo
         ? obtenerIngredientesFiltradosGestor(GSTATE.propCategoriaSel, GSTATE.propFiltroTexto)
@@ -3031,6 +3108,7 @@
         GSTATE.propIngredienteIdSel = 0;
         GSTATE.propKilosSel = 0;
         GSTATE.propPesoManualTexto = '';
+        GSTATE.propAliasVidrieraTexto = '';
       }
 
       const evSync = evaluarPasosPropuestaGestor();
@@ -3049,15 +3127,15 @@
       if (selIng) {
         selIng.disabled = !evSync.paso2Habilitado;
         if (!evSync.paso2Habilitado) {
-          selIng.innerHTML = `<option value="">Elegí primero una categoría en el Paso 1...</option>`;
+          selIng.innerHTML = `<option value="">Elegí primero una familia / rubro en el Paso 1...</option>`;
         } else if (filtrados.length === 0) {
           selIng.innerHTML = `<option value="">Sin coincidencias en ${esc(GSTATE.propCategoriaSel)}</option>`;
         } else {
           selIng.innerHTML = `
-            <option value="" ${!ingSel ? 'selected' : ''}>— Seleccioná un producto (${filtrados.length}) —</option>
+            <option value="" ${!ingSel ? 'selected' : ''}>— Seleccioná un ingrediente LAMDA (${filtrados.length}) —</option>
             ${filtrados.map(i => `
               <option value="${i.id}" ${Number(i.id) === Number(GSTATE.propIngredienteIdSel) ? 'selected' : ''}>
-                ${esc(i.nombre_claro)}
+                ${esc(i.label_oficial || i.nombre_claro)}
               </option>
             `).join('')}
           `;
@@ -3099,22 +3177,16 @@
         if (!evSync.paso3Habilitado) inputTarget.value = '';
       }
 
-      const inputNombre = document.getElementById('prop-nombre');
-      if (inputNombre) {
-        inputNombre.disabled = !evSync.paso3Habilitado;
-        if (!evSync.paso3Habilitado) {
-          inputNombre.value = '';
-        } else if (ingSel && !GSTATE.propNombreEditadoManual && document.activeElement !== inputNombre) {
-          const sugerido = ingSel.alias_vecino_sugerido || ingSel.nombre_claro;
-          GSTATE.propNombreTexto = sugerido;
-          inputNombre.value = sugerido;
-        }
-      }
-
       const inputComentario = document.getElementById('prop-comentario');
       if (inputComentario) {
         inputComentario.disabled = !evSync.paso3Habilitado;
         if (!evSync.paso3Habilitado) inputComentario.value = '';
+      }
+
+      const inputAlias = document.getElementById('prop-alias-vidriera');
+      if (inputAlias) {
+        inputAlias.disabled = !evSync.paso4Habilitado;
+        if (!evSync.paso4Habilitado) inputAlias.value = '';
       }
 
       const confBox = document.getElementById('prop-confirmacion-reciente');
@@ -3145,8 +3217,7 @@
       GSTATE.propPesoManualTexto = '';
       GSTATE.propUnidadPesoManual = 'g';
       GSTATE.propPrecioObjetivoTexto = '';
-      GSTATE.propNombreTexto = '';
-      GSTATE.propNombreEditadoManual = false;
+      GSTATE.propAliasVidrieraTexto = '';
       GSTATE.propComentarioTexto = '';
       GSTATE.propConfirmacionReciente = '';
 
@@ -3156,8 +3227,8 @@
       if (inputPeso) inputPeso.value = '';
       const inputTarget = document.getElementById('prop-target');
       if (inputTarget) inputTarget.value = '';
-      const inputNombre = document.getElementById('prop-nombre');
-      if (inputNombre) inputNombre.value = '';
+      const inputAlias = document.getElementById('prop-alias-vidriera');
+      if (inputAlias) inputAlias.value = '';
       const inputComentario = document.getElementById('prop-comentario');
       if (inputComentario) inputComentario.value = '';
 
@@ -3178,16 +3249,15 @@
       GSTATE.propKilosSel = 0;
       GSTATE.propPesoManualTexto = '';
       GSTATE.propUnidadPesoManual = 'g';
-      GSTATE.propNombreEditadoManual = false;
+      GSTATE.propAliasVidrieraTexto = '';
       GSTATE.propConfirmacionReciente = '';
 
       const ingSel = obtenerIngredienteSeleccionadoGestor();
-      GSTATE.propNombreTexto = ingSel ? (ingSel.alias_vecino_sugerido || ingSel.nombre_claro) : '';
 
       const inputPeso = document.getElementById('prop-peso-manual');
       if (inputPeso) inputPeso.value = '';
-      const inputNombre = document.getElementById('prop-nombre');
-      if (inputNombre) inputNombre.value = GSTATE.propNombreTexto;
+      const inputAlias = document.getElementById('prop-alias-vidriera');
+      if (inputAlias) inputAlias.value = '';
 
       actualizarControlesPropuestaEnVivo();
       if (ingSel) {
@@ -3268,8 +3338,8 @@
     }
 
     function alEditarMetaPropuestaGestor() {
-      const inpNom = document.getElementById('prop-nombre');
-      if (inpNom) GSTATE.propNombreTexto = inpNom.value;
+      const inpAlias = document.getElementById('prop-alias-vidriera');
+      if (inpAlias) GSTATE.propAliasVidrieraTexto = inpAlias.value;
       const inpCom = document.getElementById('prop-comentario');
       if (inpCom) GSTATE.propComentarioTexto = inpCom.value;
       const inpTar = document.getElementById('prop-target');
@@ -3279,29 +3349,26 @@
 
     function renderSeccionPropuestas() {
       const disponibles = GSTATE.ingredientesDisponibles || [];
-      const categoriasUnicas = Array.from(new Set(disponibles.map(i => i.categoria_gestor)));
+      const categoriasUnicas = Array.from(new Set(disponibles.map(i => i.categoria_lamda || i.categoria_gestor)));
       if (GSTATE.propCategoriaSel && !categoriasUnicas.includes(GSTATE.propCategoriaSel)) {
         reiniciarFormularioPropuestaGestor({ conservarConfirmacion: true });
       }
 
       const ev = evaluarPasosPropuestaGestor();
       const totalEnCat = ev.paso1Completo
-        ? disponibles.filter(i => i.categoria_gestor === GSTATE.propCategoriaSel)
+        ? disponibles.filter(i => (i.categoria_lamda || i.categoria_gestor) === GSTATE.propCategoriaSel)
         : [];
       const filtrados = ev.paso1Completo
         ? obtenerIngredientesFiltradosGestor(GSTATE.propCategoriaSel, GSTATE.propFiltroTexto)
         : [];
       const ingSel = ev.ingSel;
-      const nombreInicial = ingSel
-        ? (GSTATE.propNombreEditadoManual ? GSTATE.propNombreTexto : (ingSel.alias_vecino_sugerido || ingSel.nombre_claro))
-        : '';
 
       return `
         <div class="propuestas-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; align-items:start;">
           <div class="card">
             <h3 style="margin:0 0 6px 0; font-size:1rem;">Solicitar Nueva Fracción</h3>
             <p style="margin:0 0 12px 0; font-size:0.8rem; color:var(--muted);">
-              Completá los pasos en orden para pedir una medida nueva que aún no exista. Cuando se cotice su Precio Base aparecerá en <strong>Mi Oferta y Márgenes</strong>.
+              Completá los pasos en orden seleccionando el ingrediente oficial LAMDA. Cuando se cotice su Precio Base aparecerá en <strong>Mi Oferta y Márgenes</strong> con su SKU oficial.
             </p>
 
             <div id="prop-confirmacion-reciente">
@@ -3313,35 +3380,35 @@
             </div>
 
             <div class="prop-steps-stack">
-              <!-- PASO 1: CATEGORÍA / RUBRO -->
+              <!-- PASO 1: FAMILIA / RUBRO OFICIAL LAMDA -->
               <div id="prop-step-1" class="prop-step-card ${ev.clasePaso1}">
                 <div class="prop-step-head">
                   <div class="prop-step-title-wrap">
                     <span class="prop-step-num">1</span>
-                    <span class="prop-step-title">Seleccionar Categoría / Rubro</span>
+                    <span class="prop-step-title">Seleccionar Familia / Rubro LAMDA</span>
                   </div>
                   <div id="prop-step-1-badge">
                     ${renderBadgeEstadoPasoPropuesta(ev.clasePaso1, GSTATE.propCategoriaSel || 'Elegida', 'Paso 1 activo')}
                   </div>
                 </div>
                 <select id="prop-categoria" class="input-sm" style="width:100%;" onchange="alCambiarCategoriaPropuestaGestor(this.value)">
-                  <option value="" ${!ev.paso1Completo ? 'selected' : ''}>— Seleccioná una categoría / rubro —</option>
+                  <option value="" ${!ev.paso1Completo ? 'selected' : ''}>— Seleccioná una familia / rubro —</option>
                   ${categoriasUnicas.map(cat => {
-                    const count = disponibles.filter(i => i.categoria_gestor === cat).length;
+                    const count = disponibles.filter(i => (i.categoria_lamda || i.categoria_gestor) === cat).length;
                     return `<option value="${esc(cat)}" ${cat === GSTATE.propCategoriaSel ? 'selected' : ''}>${esc(cat)} (${count})</option>`;
                   }).join('')}
                 </select>
               </div>
 
-              <!-- PASO 2: PRODUCTO -->
+              <!-- PASO 2: INGREDIENTE / PRODUCTO OFICIAL LAMDA -->
               <div id="prop-step-2" class="prop-step-card ${ev.clasePaso2}">
                 <div class="prop-step-head">
                   <div class="prop-step-title-wrap">
                     <span class="prop-step-num">2</span>
-                    <span class="prop-step-title">Seleccionar Producto</span>
+                    <span class="prop-step-title">Seleccionar Ingrediente / Producto LAMDA</span>
                   </div>
                   <div id="prop-step-2-badge">
-                    ${renderBadgeEstadoPasoPropuesta(ev.clasePaso2, 'Producto elegido', 'Elegí un producto')}
+                    ${renderBadgeEstadoPasoPropuesta(ev.clasePaso2, 'Ingrediente elegido', 'Elegí un ingrediente')}
                   </div>
                 </div>
                 <div id="prop-filtro-wrap" style="display:${(ev.paso2Habilitado && totalEnCat.length > 8) ? 'block' : 'none'}; margin-bottom:6px;">
@@ -3349,18 +3416,18 @@
                     ${!ev.paso2Habilitado ? 'disabled' : ''}
                     value="${esc(GSTATE.propFiltroTexto)}"
                     oninput="alFiltrarIngredientesPropuestaGestor(this.value)"
-                    placeholder="Filtrar dentro de esta categoría..." />
+                    placeholder="Filtrar por código o nombre dentro de este rubro..." />
                 </div>
                 <select id="prop-ingrediente" class="input-sm" style="width:100%;"
                   ${!ev.paso2Habilitado ? 'disabled' : ''}
                   onchange="alCambiarIngredientePropuestaGestor(this.value)">
                   ${!ev.paso2Habilitado
-                    ? `<option value="">Elegí primero una categoría en el Paso 1...</option>`
+                    ? `<option value="">Elegí primero una familia / rubro en el Paso 1...</option>`
                     : `
-                      <option value="" ${!ingSel ? 'selected' : ''}>— Seleccioná un producto (${filtrados.length}) —</option>
+                      <option value="" ${!ingSel ? 'selected' : ''}>— Seleccioná un ingrediente LAMDA (${filtrados.length}) —</option>
                       ${filtrados.map(i => `
                         <option value="${i.id}" ${Number(i.id) === Number(GSTATE.propIngredienteIdSel) ? 'selected' : ''}>
-                          ${esc(i.nombre_claro)}
+                          ${esc(i.label_oficial || i.nombre_claro)}
                         </option>
                       `).join('')}
                     `}
@@ -3417,17 +3484,8 @@
                   </div>
                 </div>
 
-                <div style="margin-bottom:8px;">
-                  <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Nombre sugerido para tu tienda (opcional)</label>
-                  <input type="text" id="prop-nombre" class="input-sm" style="width:100%;"
-                    ${!ev.paso3Habilitado ? 'disabled' : ''}
-                    value="${esc(nombreInicial)}"
-                    oninput="GSTATE.propNombreEditadoManual = true; alEditarMetaPropuestaGestor();"
-                    placeholder="Ej: Granola de Sol" />
-                </div>
-
                 <div>
-                  <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Nota opcional</label>
+                  <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Nota operativa opcional</label>
                   <input type="text" id="prop-comentario" class="input-sm" style="width:100%;"
                     ${!ev.paso3Habilitado ? 'disabled' : ''}
                     value="${esc(ev.paso3Habilitado ? GSTATE.propComentarioTexto : '')}"
@@ -3440,7 +3498,7 @@
                 </div>
               </div>
 
-              <!-- PASO 4: RESUMEN BREVE Y ENVIAR SOLICITUD -->
+              <!-- PASO 4: ALIAS DE VIDRIERA OPCIONAL + RESUMEN TÉCNICO Y ENVIAR SOLICITUD -->
               <div id="prop-step-4" class="prop-step-card ${ev.clasePaso4}">
                 <div class="prop-step-head">
                   <div class="prop-step-title-wrap">
@@ -3450,6 +3508,15 @@
                   <div id="prop-step-4-badge">
                     ${renderBadgeEstadoPasoPropuesta(ev.clasePaso4, 'Listo', 'Listo para enviar')}
                   </div>
+                </div>
+
+                <div style="margin-bottom:10px;">
+                  <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Alias sugerido para mi vidriera (opcional)</label>
+                  <input type="text" id="prop-alias-vidriera" class="input-sm" style="width:100%;"
+                    ${!ev.paso4Habilitado ? 'disabled' : ''}
+                    value="${esc(ev.paso4Habilitado ? (GSTATE.propAliasVidrieraTexto || '') : '')}"
+                    oninput="alEditarMetaPropuestaGestor()"
+                    placeholder="Opcional: ej. Mix Selección Paraíso (si queda vacío usa el nombre oficial LAMDA)" />
                 </div>
 
                 <div id="prop-resumen-seleccion">
@@ -3481,20 +3548,24 @@
                 const badgeBg = esAprobada ? 'var(--ok-soft)' : esDescartada ? '#f3f4f6' : 'var(--warn-soft)';
                 const badgeColor = esAprobada ? 'var(--ok)' : esDescartada ? 'var(--muted)' : 'var(--warn)';
                 const badgeLabel = esAprobada ? 'Cotizada' : esDescartada ? 'Descartada' : 'En cotización';
+                const tituloTecnico = p.ingrediente_label_oficial
+                  ? `${p.ingrediente_label_oficial} x ${gramosTxt.replace(/\s+/g, '')}`
+                  : p.nombre_sugerido;
 
                 return `
                   <div style="padding:12px; border-radius:12px; border:1px solid var(--border); background:#fffdfb;">
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                      <strong style="font-size:0.9rem;">${esc(p.nombre_sugerido)}</strong>
+                      <strong style="font-size:0.9rem;">${esc(tituloTecnico)}</strong>
                       <span style="font-size:0.72rem; font-weight:800; padding:3px 9px; border-radius:999px; background:${badgeBg}; color:${badgeColor};">
                         ${badgeLabel}
                       </span>
                     </div>
                     <div style="font-size:0.78rem; color:var(--muted); margin-top:4px;">
                       ${esc(p.categoria_sugerida || 'Frutos Secos')} · <strong>${esc(gramosTxt)}</strong>
-                      · ${esHabilitacion ? 'Presentación existente LAMDA' : 'Nueva fracción'}
+                      · ${esHabilitacion ? `Presentación oficial LAMDA (${esc(p.articulo_bunker_sugerido_codigo)})` : 'Nueva fracción'}
                       ${p.precio_objetivo_vecino ? ` · Est: ${fmt(p.precio_objetivo_vecino)}` : ''}
                     </div>
+                    ${p.alias_vidriera_sugerido ? `<div style="margin-top:4px; font-size:0.75rem; color:var(--brand-dark);">🏪 Alias pensado para mi vidriera: <strong>"${esc(p.alias_vidriera_sugerido)}"</strong></div>` : ''}
                     ${p.comentario_gestor ? `<div style="margin-top:4px; font-size:0.76rem; color:var(--muted);">${esc(p.comentario_gestor)}</div>` : ''}
                     ${esDescartada && p.respuesta_lamda ? `<div style="margin-top:5px; padding:6px 8px; border-radius:8px; background:#f8f7f5; font-size:0.75rem; color:var(--muted);">${esc(p.respuesta_lamda)}</div>` : ''}
                     <div style="margin-top:8px; display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
@@ -3527,7 +3598,7 @@
       const solicitarHabilitacionExistente = Boolean(opciones && opciones.solicitarHabilitacionExistente === true);
       const ingSel = obtenerIngredienteSeleccionadoGestor();
       if (!GSTATE.propCategoriaSel || !ingSel) {
-        mostrarAvisoPantallaGestor('Completá primero la categoría y el producto antes de enviar.', 'error');
+        mostrarAvisoPantallaGestor('Completá primero la familia/rubro y el ingrediente oficial LAMDA antes de enviar.', 'error');
         return;
       }
       const inputManualEl = document.getElementById('prop-peso-manual');
@@ -3556,6 +3627,7 @@
       }
 
       const nombreConPeso = construirNombreFinalPropuestaGestor(ingSel, kilos);
+      const aliasVidrieraInput = String((document.getElementById('prop-alias-vidriera')?.value ?? GSTATE.propAliasVidrieraTexto) || '').trim();
 
       const btn = document.getElementById('btn-enviar-propuesta-gestor');
       if (btn) {
@@ -3572,8 +3644,9 @@
         nodo_solicitante_id: GSTATE.nodo.id,
         ingrediente_sugerido_id: Number(ingSel.id),
         flujo_sugerido: Number(ingSel.flujo || 2),
-        categoria_sugerida: ingSel.categoria_gestor || document.getElementById('prop-categoria')?.value || 'Frutos Secos',
+        categoria_sugerida: ingSel.categoria_lamda || ingSel.categoria_gestor || document.getElementById('prop-categoria')?.value || 'Frutos Secos',
         nombre_sugerido: nombreConPeso,
+        alias_vidriera_sugerido: aliasVidrieraInput || null,
         kilos_sugeridos: kilos,
         precio_objetivo_vecino: Number(document.getElementById('prop-target')?.value || 0),
         comentario_gestor: comentarioFinal,
@@ -4352,7 +4425,7 @@
           <div style="border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:14px; background:#fffdfb; font-size:0.84rem;">
             ${(p.items || []).map(it => `
               <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
-                <span><strong>${it.cantidad}x</strong> ${esc(formatearItemGestor(it))}</span>
+                <span><strong>${it.cantidad}x</strong> ${esc(formatearItemVecinoGestor(it))}</span>
                 <strong>${fmt(it.subtotal_vecino)}</strong>
               </div>
             `).join('')}
@@ -4383,7 +4456,7 @@
       if (!p || !GSTATE.nodo) return;
       const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
       const nroRecibo = p.comprobante_referencia || (esEfvo ? `REC-EFVO-${p.codigo_pedido}` : `REC-TRF-${p.codigo_pedido}`);
-      const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${formatearItemGestor(it)}: ${fmt(it.subtotal_vecino)}`).join('\n');
+      const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${formatearItemVecinoGestor(it)}: ${fmt(it.subtotal_vecino)}`).join('\n');
       const linkSeg = obtenerUrlSeguimientoPedidoGestor(p);
 
       const mensaje = [
