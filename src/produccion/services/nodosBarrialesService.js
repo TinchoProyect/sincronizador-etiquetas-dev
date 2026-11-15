@@ -11620,7 +11620,7 @@ async function obtenerArbolNodoClientesBunker(bunkerClienteIdOrNodoId, opciones 
     const searchDigits = normalizarTelefonoVecinoNodo(searchTerm) || searchTerm.replace(/\D+/g, '');
 
     let nodoRes;
-    if (/^(CB-NODO-|NODO-)/i.test(rawParam)) {
+    if (/^(CB-|NODO-)/i.test(rawParam)) {
         nodoRes = await db.query(
             `SELECT nm.*,
                     COALESCE(cc.id, 0) AS cuenta_corriente_nodo_id,
@@ -11634,9 +11634,20 @@ async function obtenerArbolNodoClientesBunker(bunkerClienteIdOrNodoId, opciones 
              LEFT JOIN public.bunker_clientes bc_madre ON bc_madre.id = nm.cliente_madre_bunker_id
              LEFT JOIN public.factura_cuentas_corrientes cc_madre
                ON cc_madre.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
-              AND cc_madre.nombre_cuenta = 'Cuenta Principal'
+              AND COALESCE(cc_madre.estado, 'ACTIVA') <> 'ARCHIVADA_UNIFICADA'
              WHERE UPPER(nm.codigo_bunker_cliente) = UPPER($1)
                 OR UPPER(nm.codigo_nodo) = UPPER($1)
+                OR (
+                    COALESCE(nm.usar_cuenta_madre_unificada, false) = true
+                    AND UPPER(COALESCE(nm.codigo_bunker_cliente_madre, '')) = UPPER($1)
+                )
+             ORDER BY
+                CASE
+                    WHEN UPPER(nm.codigo_bunker_cliente) = UPPER($1) OR UPPER(nm.codigo_nodo) = UPPER($1) THEN 0
+                    ELSE 1
+                END ASC,
+                CASE WHEN cc_madre.nombre_cuenta = 'Cuenta Principal' THEN 0 ELSE 1 END ASC,
+                nm.id ASC
              LIMIT 1`,
             [rawParam]
         );
@@ -11658,10 +11669,23 @@ async function obtenerArbolNodoClientesBunker(bunkerClienteIdOrNodoId, opciones 
              LEFT JOIN public.bunker_clientes bc_madre ON bc_madre.id = nm.cliente_madre_bunker_id
              LEFT JOIN public.factura_cuentas_corrientes cc_madre
                ON cc_madre.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
-              AND cc_madre.nombre_cuenta = 'Cuenta Principal'
-             WHERE ($2::boolean = false AND nm.bunker_cliente_id = $1::int)
+              AND COALESCE(cc_madre.estado, 'ACTIVA') <> 'ARCHIVADA_UNIFICADA'
+             WHERE (
+                    $2::boolean = false
+                    AND (
+                        nm.bunker_cliente_id = $1::int
+                        OR (COALESCE(nm.usar_cuenta_madre_unificada, false) = true AND nm.cliente_madre_bunker_id = $1::int)
+                    )
+                 )
                 OR nm.id = $1::int
-             ORDER BY CASE WHEN nm.bunker_cliente_id = $1::int THEN 0 ELSE 1 END
+             ORDER BY
+                CASE
+                    WHEN $2::boolean = false AND nm.bunker_cliente_id = $1::int THEN 0
+                    WHEN $2::boolean = false AND COALESCE(nm.usar_cuenta_madre_unificada, false) = true AND nm.cliente_madre_bunker_id = $1::int THEN 1
+                    ELSE 2
+                END ASC,
+                CASE WHEN cc_madre.nombre_cuenta = 'Cuenta Principal' THEN 0 ELSE 1 END ASC,
+                nm.id ASC
              LIMIT 1`,
             [numId, Boolean(opciones.porNodoId)]
         );
@@ -11835,6 +11859,14 @@ async function obtenerArbolNodoClientesBunker(bunkerClienteIdOrNodoId, opciones 
         };
     });
 
+    const usaMadreUnificada = Boolean(nRow.usar_cuenta_madre_unificada && nRow.codigo_bunker_cliente_madre);
+    const saldoOperativoCc = usaMadreUnificada
+        ? Number(Number(nRow.saldo_cuenta_madre || 0).toFixed(2))
+        : Number(Number(nRow.saldo_cuenta_corriente || 0).toFixed(2));
+    const codigoCuentaOperativa = usaMadreUnificada
+        ? nRow.codigo_bunker_cliente_madre
+        : nRow.codigo_bunker_cliente;
+
     return {
         nodo: {
             id: nodoId,
@@ -11847,10 +11879,12 @@ async function obtenerArbolNodoClientesBunker(bunkerClienteIdOrNodoId, opciones 
             barrio_zona: nRow.barrio_zona || '',
             direccion_retiro: nRow.direccion_retiro || '',
             color_primario: nRow.color_primario || '#16a34a',
+            usar_cuenta_madre_unificada: usaMadreUnificada,
+            codigo_cuenta_operativa: codigoCuentaOperativa,
             bunker_cliente_id: nRow.bunker_cliente_id ? Number(nRow.bunker_cliente_id) : null,
             codigo_bunker_cliente: nRow.codigo_bunker_cliente,
             cuenta_corriente_nodo_id: Number(nRow.cuenta_corriente_nodo_id || 0) || null,
-            saldo_cuenta_corriente: Number(Number(nRow.saldo_cuenta_corriente || 0).toFixed(2)),
+            saldo_cuenta_corriente: saldoOperativoCc,
             cliente_madre_bunker_id: nRow.cliente_madre_bunker_id ? Number(nRow.cliente_madre_bunker_id) : null,
             codigo_bunker_cliente_madre: nRow.codigo_bunker_cliente_madre || null,
             cliente_madre_nombre: nRow.cliente_madre_razon_social || nRow.cliente_madre_nombre || null,
@@ -11858,7 +11892,7 @@ async function obtenerArbolNodoClientesBunker(bunkerClienteIdOrNodoId, opciones 
             saldo_cuenta_madre: nRow.codigo_bunker_cliente_madre ? Number(Number(nRow.saldo_cuenta_madre || 0).toFixed(2)) : null
         },
         cuadratura: {
-            saldo_cc_nodo_lamda: Number(Number(nRow.saldo_cuenta_corriente || 0).toFixed(2)),
+            saldo_cc_nodo_lamda: saldoOperativoCc,
             total_subcuentas_vecinos: Number(totalSubcuentasVecinos.toFixed(2)),
             vecinos_totales: vecinosArbol.length,
             vecinos_con_saldo_pendiente: vecinosConSaldoPendiente,
@@ -13635,14 +13669,30 @@ async function obtenerDatosQrAccesoNodo(idOrSlug) {
     const res = await db.query(
         `SELECT id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca, subtitulo_marca,
                 gestor_nombre, gestor_telefono, barrio_zona, direccion_retiro,
-                color_primario, tema_visual, bunker_cliente_id, codigo_bunker_cliente, activo, gestor_token
+                color_primario, tema_visual, bunker_cliente_id, codigo_bunker_cliente,
+                cliente_madre_bunker_id, codigo_bunker_cliente_madre, usar_cuenta_madre_unificada,
+                activo, gestor_token
          FROM public.nodos_maestro
-         WHERE ($1::int > 0 AND (bunker_cliente_id = $1::int OR id = $1::int))
+         WHERE (
+                $1::int > 0
+                AND (
+                    bunker_cliente_id = $1::int
+                    OR (COALESCE(usar_cuenta_madre_unificada, false) = true AND cliente_madre_bunker_id = $1::int)
+                    OR id = $1::int
+                )
+             )
             OR LOWER(slug) = LOWER($2)
             OR LOWER(COALESCE(slug_historico, '')) = LOWER($2)
             OR UPPER(codigo_nodo) = UPPER($2)
             OR UPPER(COALESCE(codigo_bunker_cliente, '')) = UPPER($2)
-         ORDER BY CASE WHEN bunker_cliente_id = $1::int THEN 0 ELSE 1 END, id ASC
+            OR (COALESCE(usar_cuenta_madre_unificada, false) = true AND UPPER(COALESCE(codigo_bunker_cliente_madre, '')) = UPPER($2))
+         ORDER BY
+            CASE
+                WHEN bunker_cliente_id = $1::int THEN 0
+                WHEN COALESCE(usar_cuenta_madre_unificada, false) = true AND cliente_madre_bunker_id = $1::int THEN 1
+                ELSE 2
+            END ASC,
+            id ASC
          LIMIT 1`,
         [numVal, raw]
     );

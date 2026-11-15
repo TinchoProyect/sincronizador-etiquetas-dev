@@ -138,15 +138,39 @@ class ClientesBunkerModel {
                 SELECT nm.id AS nodo_id,
                        nm.bunker_cliente_id,
                        nm.codigo_bunker_cliente,
+                       nm.cliente_madre_bunker_id,
+                       nm.codigo_bunker_cliente_madre,
+                       COALESCE(nm.usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada,
+                       CONCAT_WS(
+                           ' ',
+                           'nodo',
+                           '[nodo]',
+                           nm.codigo_nodo,
+                           nm.slug,
+                           COALESCE(nm.slug_historico, ''),
+                           REPLACE(COALESCE(nm.slug_historico, ''), '-', ' '),
+                           nm.nombre_marca,
+                           COALESCE(nm.bajada_marca, ''),
+                           COALESCE(nm.subtitulo_marca, ''),
+                           COALESCE(nm.gestor_nombre, ''),
+                           COALESCE(nm.gestor_telefono, ''),
+                           COALESCE(nm.barrio_zona, ''),
+                           COALESCE(nm.direccion_retiro, '')
+                       ) AS nodo_busqueda_texto,
                        JSON_BUILD_OBJECT(
                            'nodo_id', nm.id,
                            'codigo_nodo', nm.codigo_nodo,
                            'slug', nm.slug,
+                           'slug_historico', nm.slug_historico,
                            'nombre_marca', nm.nombre_marca,
+                           'bajada_marca', nm.bajada_marca,
+                           'subtitulo_marca', nm.subtitulo_marca,
                            'gestor_nombre', nm.gestor_nombre,
                            'gestor_telefono', nm.gestor_telefono,
                            'barrio_zona', nm.barrio_zona,
                            'color_primario', COALESCE(nm.color_primario, '#16a34a'),
+                           'usar_cuenta_madre_unificada', COALESCE(nm.usar_cuenta_madre_unificada, false),
+                           'codigo_bunker_cliente_nodo', nm.codigo_bunker_cliente,
                            'codigo_bunker_cliente_madre', nm.codigo_bunker_cliente_madre,
                            'cliente_madre_bunker_id', nm.cliente_madre_bunker_id,
                            'cliente_madre_nombre', COALESCE(bc_m.razon_social, bc_m.cliente_nombre),
@@ -163,6 +187,7 @@ class ClientesBunkerModel {
                 LEFT JOIN cc_principal cc_m ON cc_m.codigo_bunker_cliente = nm.codigo_bunker_cliente_madre
                 LEFT JOIN vecinos_agg va ON va.nodo_id = nm.id
                 LEFT JOIN efvo_nodos_agg ea ON ea.nodo_id = nm.id
+                WHERE COALESCE(nm.activo, true) = true
             )
             SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.preferencia_facturacion, COALESCE(c.ver_stock, false) as ver_stock, COALESCE(c.salvavidas_modo, 'HEREDAR_LISTA') as salvavidas_modo, c.created_at, c.updated_at,
                    cc.saldo, cc.cuenta_corriente_id,
@@ -181,10 +206,24 @@ class ClientesBunkerModel {
              AND c.lomas_soft_id::integer <> c.id
              AND da_legacy.id_cliente = c.lomas_soft_id::integer
             LEFT JOIN LATERAL (
-                SELECT n.nodo_info
+                SELECT n.nodo_info, n.nodo_busqueda_texto
                 FROM nodos_agg n
                 WHERE n.bunker_cliente_id = c.id
                    OR n.codigo_bunker_cliente = c.codigo_bunker_cliente
+                   OR (
+                       n.usar_cuenta_madre_unificada = true
+                       AND (
+                           n.cliente_madre_bunker_id = c.id
+                           OR (n.codigo_bunker_cliente_madre IS NOT NULL AND n.codigo_bunker_cliente_madre = c.codigo_bunker_cliente)
+                       )
+                   )
+                ORDER BY
+                    CASE
+                        WHEN n.usar_cuenta_madre_unificada = true AND n.cliente_madre_bunker_id = c.id THEN 0
+                        WHEN n.bunker_cliente_id = c.id THEN 1
+                        ELSE 2
+                    END ASC,
+                    n.nodo_id ASC
                 LIMIT 1
             ) na ON true
         `;
@@ -206,6 +245,7 @@ class ClientesBunkerModel {
                     OR c.domicilio_fiscal ILIKE $1
                     OR COALESCE(da_bunker.domicilios_texto, '') ILIKE $1
                     OR COALESCE(da_legacy.domicilios_texto, '') ILIKE $1
+                    OR COALESCE(na.nodo_busqueda_texto, '') ILIKE $1
                     OR (na.nodo_info IS NOT NULL AND COALESCE((na.nodo_info->>'vecinos_coincidentes')::int, 0) > 0)
                   )
             `;

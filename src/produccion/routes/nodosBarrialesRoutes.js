@@ -1311,17 +1311,29 @@ async function obtenerUrlPublicaQrNodos(req) {
     return `http://${lanIp}:3002`;
 }
 
-async function construirPayloadQrNodo(nodo, baseMovil) {
+function obtenerBaseUrlEscritorioNodos(req) {
+    const hostHeader = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').split(',')[0].trim();
+    const proto = String(req?.headers?.['x-forwarded-proto'] || req?.protocol || 'http').split(',')[0].trim();
+    const isPublicCloud = hostHeader && !/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostHeader);
+    if (isPublicCloud) {
+        return `${proto}://${hostHeader}`;
+    }
+    const localHostOnly = hostHeader ? hostHeader.split(':')[0] : 'localhost';
+    return `http://${localHostOnly || 'localhost'}:3002`;
+}
+
+async function construirPayloadQrNodo(nodo, baseMovil, req = null) {
     const slugEnc = encodeURIComponent(nodo.slug);
     const tokenQ = nodo.gestor_token ? `?t=${encodeURIComponent(nodo.gestor_token)}` : '';
+    const basePc = obtenerBaseUrlEscritorioNodos(req);
     const urlMovilGestor = `${baseMovil}/gestor/${slugEnc}${tokenQ}`;
     const urlMovilTienda = `${baseMovil}/tienda/${slugEnc}`;
     const urlMovilTiendaQrAfiche = `${baseMovil}/tienda/${slugEnc}?utm_source=qr&utm_medium=afiche`;
     const urlMovilTiendaAdmin = `${baseMovil}/tienda/${slugEnc}?modo_admin=1`;
     const urlMovilTiendaClienteLimpio = `${baseMovil}/tienda/${slugEnc}?modo_admin=0`;
-    const urlPcGestor = `http://localhost:3002/gestor/${slugEnc}${tokenQ}`;
-    const urlPcTienda = `http://localhost:3002/tienda/${slugEnc}`;
-    const urlPcTiendaAdmin = `http://localhost:3002/tienda/${slugEnc}?modo_admin=1`;
+    const urlPcGestor = `${basePc}/gestor/${slugEnc}${tokenQ}`;
+    const urlPcTienda = `${basePc}/tienda/${slugEnc}`;
+    const urlPcTiendaAdmin = `${basePc}/tienda/${slugEnc}?modo_admin=1`;
 
     const [qrGestorDataUrl, qrTiendaDataUrl, qrAficheDataUrl, qrTiendaAdminDataUrl] = await Promise.all([
         QRCode.toDataURL(urlMovilGestor, { margin: 2, width: 360, errorCorrectionLevel: 'M' }),
@@ -1394,7 +1406,7 @@ router.get('/accesos-qr/nodo/:idOrSlug', async (req, res) => {
             nodosService.obtenerDatosQrAccesoNodo(req.params.idOrSlug),
             obtenerUrlPublicaQrNodos(req)
         ]);
-        const payload = await construirPayloadQrNodo(nodo, baseMovil);
+        const payload = await construirPayloadQrNodo(nodo, baseMovil, req);
         res.json(payload);
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en GET /accesos-qr/nodo/:idOrSlug:', error.message);
@@ -1412,7 +1424,7 @@ router.post('/accesos-qr/nodo/:idOrSlug/rotar-token', async (req, res) => {
             nodosService.rotarGestorTokenNodo(req.params.idOrSlug),
             obtenerUrlPublicaQrNodos(req)
         ]);
-        const payload = await construirPayloadQrNodo(nodo, baseMovil);
+        const payload = await construirPayloadQrNodo(nodo, baseMovil, req);
         res.json(payload);
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en POST /accesos-qr/nodo/:idOrSlug/rotar-token:', error.message);
@@ -1433,8 +1445,9 @@ router.get('/accesos-qr/vecino/:vecinoId', async (req, res) => {
         ]);
         const slugEnc = encodeURIComponent(datosVec.nodo.slug);
         const tokEnc = encodeURIComponent(datosVec.portal_token);
+        const basePc = obtenerBaseUrlEscritorioNodos(req);
         const urlMovilVecino = `${baseMovil}/tienda/${slugEnc}/mi-cuenta/${tokEnc}`;
-        const urlPcVecino = `http://localhost:3002/tienda/${slugEnc}/mi-cuenta/${tokEnc}`;
+        const urlPcVecino = `${basePc}/tienda/${slugEnc}/mi-cuenta/${tokEnc}`;
         const qrVecinoDataUrl = await QRCode.toDataURL(urlMovilVecino, {
             margin: 2,
             width: 360,

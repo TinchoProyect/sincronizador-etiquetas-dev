@@ -59,12 +59,14 @@ app.use('/api/produccion', createProxyMiddleware({
 }));
 
 // 🏘️ Proxy para vistas móviles y operativas de Nodos Barriales (puerto 3002) desde :3000
-['/tienda', '/gestor', '/gestor-nodo', '/seguimiento', '/img/nodos', '/deposito-nodos', '/liquidacion-nodos'].forEach((nodoPrefix) => {
+['/tienda', '/gestor', '/gestor-nodo', '/seguimiento', '/img/nodos', '/deposito-nodos', '/liquidacion-nodos', '/centro-nodos'].forEach((nodoPrefix) => {
   app.use(nodoPrefix, createProxyMiddleware({
     target: 'http://127.0.0.1:3002',
     changeOrigin: true,
     pathRewrite: (pathUrl, req) => {
-      return nodoPrefix + (req.url === '/' ? '' : req.url);
+      if (req.url === '/') return nodoPrefix;
+      if (req.url.startsWith('/?')) return nodoPrefix + req.url.slice(1);
+      return nodoPrefix + req.url;
     },
     onError: (err, req, res) => {
       console.error(`❌ [NODOS-PROXY :3000] Error en ${nodoPrefix}:`, err.message);

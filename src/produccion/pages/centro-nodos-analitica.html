@@ -489,10 +489,11 @@
         </div>
       </div>
       <div class="topbar-actions">
-        <a href="http://localhost:3000/" class="btn-top">← Menú Principal</a>
-        <a href="http://localhost:3002/pages/pizarra-simulacion.html" class="btn-top">🎛️ Pizarra y ABM Nodos</a>
-        <a href="http://localhost:3002/deposito-nodos" class="btn-top">📦 Mesa de Armado</a>
-        <a href="http://localhost:3002/liquidacion-nodos" class="btn-top">💰 Liquidación y Cobros</a>
+        <a href="http://localhost:3000/" id="btn-top-menu-principal" class="btn-top">← Menú Principal</a>
+        <a href="http://localhost:3002/pages/pizarra-simulacion.html?tab=nodos" id="btn-top-pizarra-nodos" class="btn-top">🎛️ Pizarra y ABM Nodos</a>
+        <a href="/deposito-nodos" id="btn-top-mesa-armado" class="btn-top">📦 Mesa de Armado</a>
+        <a href="/liquidacion-nodos" id="btn-top-liquidacion-nodos" class="btn-top">💰 Liquidación y Cobros</a>
+        <a href="http://localhost:3005/pages/listado-clientes.html" id="btn-top-clientes-bunker" class="btn-top">📒 Clientes Búnker</a>
         <button type="button" class="btn-top primary" onclick="recargarVistaActiva()">🔄 Actualizar</button>
       </div>
     </div>
@@ -600,6 +601,27 @@
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+    }
+
+    function resolverUrlModuloLamda(puertoLocal, rutaRelativa = '/') {
+      const ruta = rutaRelativa.startsWith('/') ? rutaRelativa : ('/' + rutaRelativa);
+      const baseLocal = `http://localhost:${puertoLocal}${ruta}`;
+      if (typeof window.LAMDA_RESOLVE_URL === 'function') {
+        const resuelta = window.LAMDA_RESOLVE_URL(baseLocal);
+        if (resuelta && resuelta !== baseLocal) return resuelta;
+      }
+      const host = (window.location && window.location.hostname) ? window.location.hostname : 'localhost';
+      const proto = (window.location && window.location.protocol) ? window.location.protocol : 'http:';
+      return `${proto}//${host}:${puertoLocal}${ruta}`;
+    }
+
+    function inicializarEnlacesNavegacionInterna() {
+      const elMenu = document.getElementById('btn-top-menu-principal');
+      const elPizarra = document.getElementById('btn-top-pizarra-nodos');
+      const elClientes = document.getElementById('btn-top-clientes-bunker');
+      if (elMenu) elMenu.setAttribute('href', resolverUrlModuloLamda(3000, '/'));
+      if (elPizarra) elPizarra.setAttribute('href', resolverUrlModuloLamda(3002, '/pages/pizarra-simulacion.html?tab=nodos'));
+      if (elClientes) elClientes.setAttribute('href', resolverUrlModuloLamda(3005, '/pages/listado-clientes.html'));
     }
 
     function fmtMoneda(n) {
@@ -1005,7 +1027,7 @@
                     ${fmtMoneda(cont.saldo_cuenta_operativa)}
                   </div>
                   <div style="margin-top:6px; display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;">
-                    <a href="http://localhost:3003/pages/clientes-bunker.html" class="btn" style="padding:5px 10px; font-size:0.74rem;">
+                    <a href="${esc(resolverUrlModuloLamda(3005, '/pages/listado-clientes.html'))}" class="btn" style="padding:5px 10px; font-size:0.74rem;">
                       📒 Ir a Clientes Búnker
                     </a>
                   </div>
@@ -1765,6 +1787,7 @@
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
+      inicializarEnlacesNavegacionInterna();
       renderizarEstadoAdminPc();
       const params = new URLSearchParams(window.location.search);
       const tabInicial = (params.get('tab') || 'fichas').trim().toLowerCase();

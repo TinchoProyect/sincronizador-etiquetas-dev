@@ -1007,7 +1007,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const listasTxt = Array.isArray(c.listas_precios) ? c.listas_precios.map(l => l.nombre || '').join(' ') : '';
         const ni = c.nodo_info || null;
         const nodoTxt = ni
-            ? [ni.codigo_nodo, ni.slug, ni.nombre_marca, ni.gestor_nombre, ni.gestor_telefono, ni.barrio_zona, ni.codigo_bunker_cliente_madre, ni.cliente_madre_nombre].join(' ')
+            ? [
+                'nodo',
+                '[nodo]',
+                ni.codigo_nodo,
+                ni.slug,
+                ni.slug_historico,
+                String(ni.slug_historico || '').replace(/-/g, ' '),
+                ni.nombre_marca,
+                ni.bajada_marca,
+                ni.subtitulo_marca,
+                ni.gestor_nombre,
+                ni.gestor_telefono,
+                ni.barrio_zona,
+                ni.codigo_bunker_cliente_nodo,
+                ni.codigo_bunker_cliente_madre,
+                ni.cliente_madre_nombre
+              ].join(' ')
             : '';
 
         const bolsaBase = normalizarTextoBusquedaLocal([
@@ -2139,6 +2155,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const totalSaldoVecinos = Number(ni.total_saldo_vecinos || 0);
                 const efvoGestor = Number(ni.efectivo_mano_gestor || 0);
                 const vecinosMatch = Number(ni.vecinos_coincidentes || 0);
+                const usaMadreUnificada = Boolean(ni.usar_cuenta_madre_unificada);
+                const marcaNodoLabel = ni.nombre_marca || cliente.cliente_nombre || 'Nodo';
 
                 codigoCellHtml = `
                     <div style="display:flex; align-items:center; gap:6px;">
@@ -2156,7 +2174,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 htmlNombre = `
                     <div style="display:flex; flex-direction:column; gap:4px;">
                         <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
-                            <span style="font-weight:800; color:#14532d; font-size:0.98em;">🏘️ ${escHtmlNodo(ni.nombre_marca || cliente.cliente_nombre)}</span>
+                            ${usaMadreUnificada ? `<span style="font-weight:800; color:#0f172a; font-size:0.96em;">${escHtmlNodo(cliente.cliente_nombre)}</span>` : ''}
+                            <span class="badge" style="background:#dcfce7; color:#14532d; border:1px solid #86efac; font-size:10.5px; font-weight:800; padding:2px 7px; border-radius:6px; display:inline-flex; align-items:center; gap:3px;">
+                                🏘️ [NODO] ${escHtmlNodo(marcaNodoLabel)}
+                            </span>
                             <button type="button" class="btn-toggle-nodo-tree" onclick="window.toggleArbolNodoBunker(${cliente.id})">
                                 <span>${estaExpandidoNodo ? '▼' : '▶'}</span>
                                 <span>🌳 Clientes (${cantVecinos})</span>
@@ -2166,31 +2187,36 @@ document.addEventListener('DOMContentLoaded', () => {
                                 title="Código QR y acceso directo como Gestor del Nodo y Tienda Pública">
                                 📱 QR Gestor
                             </button>
+                            ${tieneB2B ? `<span class="badge" style="background-color:#e0e7ff; color:#4338ca; border:1px solid #c7d2fe; font-size:10px; font-weight:600; padding:1px 6px; border-radius:4px;" title="Acceso al Portal B2B Habilitado (${escHtmlNodo(cliente.email_portal || '')})">🌐 Portal Activo</span>` : ''}
                             ${vecinosMatch > 0 && ultimaBusquedaClientes ? `<span class="badge" style="background:#fef9c3; color:#854d0e; border:1px solid #fde047; font-size:10px; font-weight:800;">🔍 ${vecinosMatch} vecino${vecinosMatch === 1 ? '' : 's'}</span>` : ''}
                         </div>
                         <div style="display:flex; gap:5px; flex-wrap:wrap; align-items:center; font-size:10.5px; color:#475569;">
                             <span>👤 Gestor: <strong>${escHtmlNodo(ni.gestor_nombre || '-')}</strong></span>
-                            ${ni.codigo_bunker_cliente_madre ? `
+                            ${usaMadreUnificada ? `
+                                <span class="badge" style="background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; font-size:9.5px; font-weight:700;" title="Cuenta corriente unificada en el Cliente Madre titular">
+                                    🔗 Cta. Madre Unificada (${escHtmlNodo(cliente.codigo_bunker_cliente)})
+                                </span>
+                            ` : (ni.codigo_bunker_cliente_madre ? `
                                 <span class="badge" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; font-size:9.5px; font-weight:700;" title="Cuenta personal del colaborador aislada de la operatoria diaria del Nodo">
                                     🔗 Cta. Personal: ${escHtmlNodo(ni.codigo_bunker_cliente_madre)}
                                 </span>
-                            ` : ''}
+                            ` : '')}
                         </div>
                     </div>
                 `;
 
                 htmlFinanciacionFinal = `
-                    <div style="display:inline-flex; flex-direction:column; align-items:center; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:7px; padding:4px 9px;">
-                        <span style="font-size:10.5px; font-weight:800; color:#166534;">🔄 Liquidación por Lote</span>
-                        <span style="font-size:9.5px; color:#15803d; font-weight:600;">Subcuenta Nodo (0% interés)</span>
+                    <div style="display:inline-flex; flex-direction:column; align-items:center; background:${usaMadreUnificada ? '#f5f3ff' : '#f0fdf4'}; border:1px solid ${usaMadreUnificada ? '#ddd6fe' : '#bbf7d0'}; border-radius:7px; padding:4px 9px;">
+                        <span style="font-size:10.5px; font-weight:800; color:${usaMadreUnificada ? '#5b21b6' : '#166534'};">🔄 Liquidación por Lote</span>
+                        <span style="font-size:9.5px; color:${usaMadreUnificada ? '#6d28d9' : '#15803d'}; font-weight:600;">${usaMadreUnificada ? 'Cuenta Madre Unificada' : 'Subcuenta Nodo (0% interés)'}</span>
                     </div>
                 `;
 
                 const labelEstadoNodo = saldoNum > 0.01
                     ? `<small style="color:#dc2626; font-size:0.74em; font-weight:700;">Deudor a LAMDA</small>`
                     : (saldoNum < -0.01
-                        ? `<small style="color:#16a34a; font-size:0.74em; font-weight:700;">A favor del Nodo</small>`
-                        : `<small style="color:#15803d; font-size:0.74em; font-weight:700;">Cta. Nodo Al Día ($ 0,00)</small>`);
+                        ? `<small style="color:#16a34a; font-size:0.74em; font-weight:700;">A favor ${usaMadreUnificada ? 'del Cliente/Nodo' : 'del Nodo'}</small>`
+                        : `<small style="color:#15803d; font-size:0.74em; font-weight:700;">${usaMadreUnificada ? 'Cta. Madre Al Día ($ 0,00)' : 'Cta. Nodo Al Día ($ 0,00)'}</small>`);
 
                 badgeSaldoFinal = `
                     <div>
@@ -2210,13 +2236,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
 
                 htmlAccionesFinal = `
-                    <div style="display:inline-flex; gap:4px; justify-content:center; flex-wrap:wrap; max-width:170px;">
+                    <div style="display:inline-flex; gap:4px; justify-content:center; flex-wrap:wrap; max-width:178px;">
                         <button type="button" class="btn-action" onclick="window.toggleArbolNodoBunker(${cliente.id})" style="background:#dcfce7; border:1px solid #86efac; color:#166534;" title="Desplegar / contraer Clientes Vecinos del Nodo">🌳</button>
-                        <button type="button" class="btn-action" onclick="window.abrirModalQrAccesoNodo(${cliente.id})" style="background:#eff6ff; border:1px solid #60a5fa; color:#1d4ed8;" title="QR Móvil y Acceso Directo como Gestor del Nodo (${escHtmlNodo(ni.nombre_marca || cliente.cliente_nombre)})">📱</button>
+                        <button type="button" class="btn-action" onclick="window.abrirModalQrAccesoNodo(${cliente.id})" style="background:#eff6ff; border:1px solid #60a5fa; color:#1d4ed8;" title="QR Móvil y Acceso Directo como Gestor del Nodo (${escHtmlNodo(marcaNodoLabel)})">📱</button>
                         <button type="button" class="btn-action" onclick="window.open('/liquidacion-nodos', '_blank')" style="background:#e0f2fe; border:1px solid #7dd3fc; color:#0369a1;" title="Abrir Tablero de Conciliación y Liquidación de Lotes del Nodo">⚖️</button>
-                        <button class="btn-action btn-cc" data-codigo="${cliente.codigo_bunker_cliente}" title="Ver Cuenta Corriente Operativa del Nodo (${cliente.codigo_bunker_cliente})">💳</button>
+                        <button class="btn-action btn-cc" data-codigo="${cliente.codigo_bunker_cliente}" title="Ver Cuenta Corriente (${cliente.codigo_bunker_cliente})">💳</button>
+                        ${usaMadreUnificada && tieneB2B ? `<button class="btn-action btn-impersonate" data-codigo="${cliente.codigo_bunker_cliente}" data-nombre="${cliente.cliente_nombre}" title="Acceder como Cliente (Espejo B2B)">🔑</button>` : ''}
                         <button class="btn-action btn-assign" data-id="${cliente.id}" title="Asociar Listas de Precios Bunker">🏷️</button>
-                        <button class="btn-action btn-edit" data-id="${cliente.id}" title="Editar ficha de Nodo">✏️</button>
+                        <button class="btn-action btn-edit" data-id="${cliente.id}" title="Editar ficha de cliente / Nodo">✏️</button>
                     </div>
                 `;
             } else {
@@ -4977,23 +5004,33 @@ document.addEventListener('DOMContentLoaded', () => {
             const transfLamda = Number(cuad.transferencias_en_lamda_lotes_abiertos || 0);
 
             const saldoMadre = Number(nodo.saldo_cuenta_madre || 0);
-            const htmlTarjetaMadre = nodo.codigo_bunker_cliente_madre
+            const usaMadreUnifArbol = Boolean(nodo.usar_cuenta_madre_unificada);
+            const codigoOperativoArbol = nodo.codigo_cuenta_operativa || nodo.codigo_bunker_cliente || '';
+            const htmlTarjetaMadre = usaMadreUnifArbol
                 ? `
-                    <div class="nodo-cuadratura-card" style="border-left:3px solid #64748b;">
-                        <div style="font-size:10px; font-weight:800; color:#475569; text-transform:uppercase; line-height:1.25;">🔗 Cuenta Personal Vinculada (${escHtmlNodo(nodo.codigo_bunker_cliente_madre)})</div>
-                        <div style="font-size:1rem; font-weight:800; color:${saldoMadre > 0.01 ? '#dc2626' : '#16a34a'}; margin-top:3px;">
-                            ${saldoMadre < -0.01 ? `$ ${fmtMonedaNodo(Math.abs(saldoMadre))} a favor` : `$ ${fmtMonedaNodo(saldoMadre)}`}
-                        </div>
-                        <div style="font-size:10.5px; color:#64748b; margin-top:2px; overflow-wrap:break-word;">🔒 Aislada (${escHtmlNodo(nodo.cliente_madre_nombre || '')})</div>
+                    <div class="nodo-cuadratura-card" style="border-left:3px solid #7c3aed;">
+                        <div style="font-size:10px; font-weight:800; color:#5b21b6; text-transform:uppercase; line-height:1.25;">🔗 Modalidad Contable Unificada</div>
+                        <div style="font-size:0.94rem; font-weight:800; color:#4c1d95; margin-top:4px;">Titular Madre ${escHtmlNodo(codigoOperativoArbol)}</div>
+                        <div style="font-size:10.5px; color:#64748b; margin-top:2px; overflow-wrap:break-word;">Subcuenta ${escHtmlNodo(nodo.codigo_bunker_cliente || '')} archivada (${escHtmlNodo(nodo.cliente_madre_nombre || '')})</div>
                     </div>
                 `
-                : `
-                    <div class="nodo-cuadratura-card" style="border-left:3px solid #cbd5e1;">
-                        <div style="font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; line-height:1.25;">🔗 Cuenta Personal Colaborador</div>
-                        <div style="font-size:0.92rem; font-weight:700; color:#94a3b8; margin-top:4px;">Sin cuenta personal vinculada</div>
-                        <div style="font-size:10.5px; color:#64748b; margin-top:2px;">Rendición directa sobre ${escHtmlNodo(nodo.codigo_bunker_cliente || '')}</div>
-                    </div>
-                `;
+                : (nodo.codigo_bunker_cliente_madre
+                    ? `
+                        <div class="nodo-cuadratura-card" style="border-left:3px solid #64748b;">
+                            <div style="font-size:10px; font-weight:800; color:#475569; text-transform:uppercase; line-height:1.25;">🔗 Cuenta Personal Vinculada (${escHtmlNodo(nodo.codigo_bunker_cliente_madre)})</div>
+                            <div style="font-size:1rem; font-weight:800; color:${saldoMadre > 0.01 ? '#dc2626' : '#16a34a'}; margin-top:3px;">
+                                ${saldoMadre < -0.01 ? `$ ${fmtMonedaNodo(Math.abs(saldoMadre))} a favor` : `$ ${fmtMonedaNodo(saldoMadre)}`}
+                            </div>
+                            <div style="font-size:10.5px; color:#64748b; margin-top:2px; overflow-wrap:break-word;">🔒 Aislada (${escHtmlNodo(nodo.cliente_madre_nombre || '')})</div>
+                        </div>
+                    `
+                    : `
+                        <div class="nodo-cuadratura-card" style="border-left:3px solid #cbd5e1;">
+                            <div style="font-size:10px; font-weight:800; color:#64748b; text-transform:uppercase; line-height:1.25;">🔗 Cuenta Personal Colaborador</div>
+                            <div style="font-size:0.92rem; font-weight:700; color:#94a3b8; margin-top:4px;">Sin cuenta personal vinculada</div>
+                            <div style="font-size:10.5px; color:#64748b; margin-top:2px;">Rendición directa sobre ${escHtmlNodo(nodo.codigo_bunker_cliente || '')}</div>
+                        </div>
+                    `);
 
             const filasVecinosHtml = vecinos.length === 0
                 ? `<tr><td colspan="7" style="text-align:center; padding:16px; color:#64748b;">Todavía no hay clientes vecinos empadronados en este Nodo.</td></tr>`
@@ -5074,7 +5111,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #e2e8f0;">
                     <div style="min-width:0; flex:1 1 360px;">
                         <div style="font-size:13.5px; font-weight:800; color:#14532d; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                            <span>🌳 Árbol de Clientes y Cuadratura Contable — ${escHtmlNodo(nodo.nombre_marca)} (${escHtmlNodo(nodo.codigo_bunker_cliente)})</span>
+                            <span>🌳 Árbol de Clientes y Cuadratura Contable — ${escHtmlNodo(nodo.nombre_marca)} (${escHtmlNodo(codigoOperativoArbol)})</span>
                             <span class="badge" style="background:#dcfce7; color:#166534; border:1px solid #86efac; font-size:10.5px;">${vecinos.length} vecino${vecinos.length === 1 ? '' : 's'} único${vecinos.length === 1 ? '' : 's'} por teléfono</span>
                         </div>
                         <div style="font-size:11px; color:#64748b; margin-top:2px;">
@@ -5100,7 +5137,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 <div class="nodo-cuadratura-grid">
                     <div class="nodo-cuadratura-card" style="border-left:3px solid ${saldoNodo > 0.01 ? '#dc2626' : '#16a34a'};">
-                        <div style="font-size:10px; font-weight:800; color:#475569; text-transform:uppercase; line-height:1.25;">📒 Saldo Cta. Cte. Nodo (${escHtmlNodo(nodo.codigo_bunker_cliente)})</div>
+                        <div style="font-size:10px; font-weight:800; color:#475569; text-transform:uppercase; line-height:1.25;">📒 Saldo Cta. Cte. ${usaMadreUnifArbol ? 'Madre Unificada' : 'Nodo'} (${escHtmlNodo(codigoOperativoArbol)})</div>
                         <div style="font-size:1rem; font-weight:800; margin-top:3px;">${txtSaldoNodo}</div>
                         <div style="font-size:10.5px; color:#64748b; margin-top:2px;">Transf. conciliadas en LAMDA: $ ${fmtMonedaNodo(transfLamda)}</div>
                     </div>
