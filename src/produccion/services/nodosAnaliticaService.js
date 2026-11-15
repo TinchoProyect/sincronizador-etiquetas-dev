@@ -187,6 +187,30 @@ async function asegurarEsquemaAnaliticaNodos(clientOrDb = null) {
         CREATE INDEX IF NOT EXISTS idx_nodos_tienda_visitantes_vecino
             ON public.nodos_tienda_visitantes (vecino_id);
 
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_index ix
+                JOIN pg_class tbl ON tbl.oid = ix.indrelid
+                JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+                JOIN pg_attribute att ON att.attrelid = tbl.oid AND att.attnum = ANY(ix.indkey)
+                WHERE ns.nspname = 'public'
+                  AND tbl.relname = 'nodos_tienda_visitantes'
+                  AND ix.indisunique = true
+                  AND ix.indnatts = 1
+                  AND att.attname = 'visitor_id'
+            ) AND NOT EXISTS (
+                SELECT visitor_id
+                FROM public.nodos_tienda_visitantes
+                GROUP BY visitor_id
+                HAVING COUNT(*) > 1
+            ) THEN
+                CREATE UNIQUE INDEX IF NOT EXISTS nodos_tienda_visitantes_visitor_id_key
+                    ON public.nodos_tienda_visitantes (visitor_id);
+            END IF;
+        END $$;
+
         CREATE TABLE IF NOT EXISTS public.nodos_tienda_eventos (
             id BIGSERIAL PRIMARY KEY,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -314,53 +338,67 @@ async function vincularVisitanteConVecino({
 
     const uaInfo = detectarAgenteOSistemaNodo(userAgent || '');
 
-    await runner.query(
-        `INSERT INTO public.nodos_tienda_visitantes (
-            visitor_id, primer_nodo_id, ultimo_nodo_id,
-            vecino_id, vecino_nombre, vecino_telefono, telefono_normalizado, identificado_via,
-            dispositivo_modo, sistema_operativo,
-            total_sesiones, total_eventos, total_pedidos_confirmados,
-            carrito_actual_json, carrito_actual_unidades, carrito_actual_subtotal,
-            ultimo_pedido_at, ultima_ip, user_agent
-        ) VALUES (
-            $1::varchar, $2::int, $2::int,
-            $3::int, $4::varchar, $5::varchar, $6::varchar, $7::varchar,
-            $8::varchar, $9::varchar,
-            1, 0, CASE WHEN $10::boolean THEN 1 ELSE 0 END,
-            '[]'::jsonb, 0, 0.00,
-            CASE WHEN $10::boolean THEN NOW() ELSE NULL::timestamptz END,
-            $11::varchar, $12::text
-        )
-        ON CONFLICT (visitor_id) DO UPDATE SET
-            ultimo_nodo_id = COALESCE($2::int, public.nodos_tienda_visitantes.ultimo_nodo_id),
-            vecino_id = COALESCE($3::int, public.nodos_tienda_visitantes.vecino_id),
-            vecino_nombre = COALESCE($4::varchar, public.nodos_tienda_visitantes.vecino_nombre),
-            vecino_telefono = COALESCE($5::varchar, public.nodos_tienda_visitantes.vecino_telefono),
-            telefono_normalizado = COALESCE($6::varchar, public.nodos_tienda_visitantes.telefono_normalizado),
-            identificado_via = COALESCE($7::varchar, public.nodos_tienda_visitantes.identificado_via),
-            total_pedidos_confirmados = public.nodos_tienda_visitantes.total_pedidos_confirmados + (CASE WHEN $10::boolean THEN 1 ELSE 0 END),
-            carrito_actual_json = CASE WHEN $10::boolean THEN '[]'::jsonb ELSE public.nodos_tienda_visitantes.carrito_actual_json END,
-            carrito_actual_unidades = CASE WHEN $10::boolean THEN 0 ELSE public.nodos_tienda_visitantes.carrito_actual_unidades END,
-            carrito_actual_subtotal = CASE WHEN $10::boolean THEN 0.00 ELSE public.nodos_tienda_visitantes.carrito_actual_subtotal END,
-            ultimo_pedido_at = CASE WHEN $10::boolean THEN NOW() ELSE public.nodos_tienda_visitantes.ultimo_pedido_at END,
+    const paramsVincular = [
+        vid,
+        nodoId ? Number(nodoId) : null,
+        vId,
+        vNombre,
+        vTel,
+        telNorm || null,
+        limpiarTextoCorto(identificadoVia, 40),
+        uaInfo.modo,
+        uaInfo.sistema,
+        Boolean(pedidoConfirmado),
+        limpiarTextoCorto(ipOrigen, 80),
+        limpiarTextoCorto(userAgent, 500)
+    ];
+
+    const updVis = await runner.query(
+        `UPDATE public.nodos_tienda_visitantes SET
+            ultimo_nodo_id = COALESCE($2::int, ultimo_nodo_id),
+            vecino_id = COALESCE($3::int, vecino_id),
+            vecino_nombre = COALESCE($4::varchar, vecino_nombre),
+            vecino_telefono = COALESCE($5::varchar, vecino_telefono),
+            telefono_normalizado = COALESCE($6::varchar, telefono_normalizado),
+            identificado_via = COALESCE($7::varchar, identificado_via),
+            dispositivo_modo = COALESCE($8::varchar, dispositivo_modo),
+            sistema_operativo = COALESCE($9::varchar, sistema_operativo),
+            total_pedidos_confirmados = total_pedidos_confirmados + (CASE WHEN $10::boolean THEN 1 ELSE 0 END),
+            carrito_actual_json = CASE WHEN $10::boolean THEN '[]'::jsonb ELSE carrito_actual_json END,
+            carrito_actual_unidades = CASE WHEN $10::boolean THEN 0 ELSE carrito_actual_unidades END,
+            carrito_actual_subtotal = CASE WHEN $10::boolean THEN 0.00 ELSE carrito_actual_subtotal END,
+            ultimo_pedido_at = CASE WHEN $10::boolean THEN NOW() ELSE ultimo_pedido_at END,
             ultima_visita_at = NOW(),
-            ultima_ip = COALESCE($11::varchar, public.nodos_tienda_visitantes.ultima_ip),
-            user_agent = COALESCE($12::text, public.nodos_tienda_visitantes.user_agent)`,
-        [
-            vid,
-            nodoId ? Number(nodoId) : null,
-            vId,
-            vNombre,
-            vTel,
-            telNorm || null,
-            limpiarTextoCorto(identificadoVia, 40),
-            uaInfo.modo,
-            uaInfo.sistema,
-            Boolean(pedidoConfirmado),
-            limpiarTextoCorto(ipOrigen, 80),
-            limpiarTextoCorto(userAgent, 500)
-        ]
+            ultima_ip = COALESCE($11::varchar, ultima_ip),
+            user_agent = COALESCE($12::text, user_agent)
+         WHERE visitor_id = $1::varchar`,
+        paramsVincular
     );
+
+    if (updVis.rowCount === 0) {
+        await runner.query(
+            `INSERT INTO public.nodos_tienda_visitantes (
+                visitor_id, primer_nodo_id, ultimo_nodo_id,
+                vecino_id, vecino_nombre, vecino_telefono, telefono_normalizado, identificado_via,
+                dispositivo_modo, sistema_operativo,
+                total_sesiones, total_eventos, total_pedidos_confirmados,
+                carrito_actual_json, carrito_actual_unidades, carrito_actual_subtotal,
+                ultimo_pedido_at, ultima_ip, user_agent
+            )
+            SELECT
+                $1::varchar, $2::int, $2::int,
+                $3::int, $4::varchar, $5::varchar, $6::varchar, $7::varchar,
+                $8::varchar, $9::varchar,
+                1, 0, CASE WHEN $10::boolean THEN 1 ELSE 0 END,
+                '[]'::jsonb, 0, 0.00,
+                CASE WHEN $10::boolean THEN NOW() ELSE NULL::timestamptz END,
+                $11::varchar, $12::text
+            WHERE NOT EXISTS (
+                SELECT 1 FROM public.nodos_tienda_visitantes WHERE visitor_id = $1::varchar
+            )`,
+            paramsVincular
+        );
+    }
 
     if (vId) {
         await runner.query(
@@ -518,96 +556,108 @@ async function registrarEventoTelemetriaTienda(slugOrId, payload = {}, reqMeta =
         ? origenTrafico
         : prev.ultimo_origen_trafico;
 
-    await db.query(
-        `INSERT INTO public.nodos_tienda_visitantes (
-            visitor_id, primer_nodo_id, ultimo_nodo_id,
-            vecino_id, vecino_nombre, vecino_telefono, telefono_normalizado, identificado_via,
-            es_admin_gestor, etiqueta_dispositivo, dispositivo_modo, sistema_operativo, ultimo_origen_trafico,
-            total_sesiones, total_eventos, total_pedidos_confirmados,
-            carrito_actual_json, carrito_actual_unidades, carrito_actual_subtotal, carrito_actual_nodo_id, carrito_actualizado_at,
-            ultimo_pedido_at, ultima_ip, user_agent
-        ) VALUES (
-            $1::varchar, $2::int, $2::int,
-            $3::int, $4::varchar, $5::varchar, $6::varchar, $7::varchar,
-            $8::boolean, $9::varchar, $10::varchar, $11::varchar, $12::varchar,
-            1, 1, CASE WHEN $13::boolean THEN 1 ELSE 0 END,
-            COALESCE($14::jsonb, '[]'::jsonb),
-            COALESCE($15::int, 0),
-            COALESCE($16::numeric, 0.00),
-            CASE WHEN $17::boolean THEN $2::int ELSE NULL::int END,
-            CASE WHEN $17::boolean THEN NOW() ELSE NULL::timestamptz END,
-            CASE WHEN $13::boolean THEN NOW() ELSE NULL::timestamptz END,
-            $18::varchar, $19::text
-        )
-        ON CONFLICT (visitor_id) DO UPDATE SET
+    const paramsTelemetria = [
+        visitorId,
+        nodo.id,
+        vecinoId,
+        vecinoNombre,
+        vecinoTelefono,
+        telNorm,
+        identificadoVia || (esPedidoConfirmado ? 'PEDIDO' : null),
+        esAdminGestor,
+        etiquetaDispositivo,
+        uaInfo.modo,
+        uaInfo.sistema,
+        origenPersistir,
+        esPedidoConfirmado,
+        esPedidoConfirmado ? '[]' : (snapshotLimpio ? JSON.stringify(snapshotLimpio) : null),
+        esPedidoConfirmado ? 0 : carritoUnidades,
+        esPedidoConfirmado ? 0 : carritoSubtotal,
+        esEventoCarrito,
+        ipOrigen,
+        userAgent || null,
+        nuevaSesion
+    ];
+
+    const updTelVis = await db.query(
+        `UPDATE public.nodos_tienda_visitantes SET
             ultimo_nodo_id = $2::int,
-            vecino_id = COALESCE($3::int, public.nodos_tienda_visitantes.vecino_id),
-            vecino_nombre = COALESCE($4::varchar, public.nodos_tienda_visitantes.vecino_nombre),
-            vecino_telefono = COALESCE($5::varchar, public.nodos_tienda_visitantes.vecino_telefono),
-            telefono_normalizado = COALESCE($6::varchar, public.nodos_tienda_visitantes.telefono_normalizado),
-            identificado_via = COALESCE($7::varchar, public.nodos_tienda_visitantes.identificado_via),
+            vecino_id = COALESCE($3::int, vecino_id),
+            vecino_nombre = COALESCE($4::varchar, vecino_nombre),
+            vecino_telefono = COALESCE($5::varchar, vecino_telefono),
+            telefono_normalizado = COALESCE($6::varchar, telefono_normalizado),
+            identificado_via = COALESCE($7::varchar, identificado_via),
             es_admin_gestor = $8::boolean,
-            etiqueta_dispositivo = COALESCE($9::varchar, public.nodos_tienda_visitantes.etiqueta_dispositivo),
+            etiqueta_dispositivo = COALESCE($9::varchar, etiqueta_dispositivo),
             dispositivo_modo = $10::varchar,
             sistema_operativo = $11::varchar,
             ultimo_origen_trafico = $12::varchar,
-            total_sesiones = public.nodos_tienda_visitantes.total_sesiones + (CASE WHEN $20::boolean THEN 1 ELSE 0 END),
-            total_eventos = public.nodos_tienda_visitantes.total_eventos + 1,
-            total_pedidos_confirmados = public.nodos_tienda_visitantes.total_pedidos_confirmados + (CASE WHEN $13::boolean THEN 1 ELSE 0 END),
+            total_sesiones = total_sesiones + (CASE WHEN $20::boolean THEN 1 ELSE 0 END),
+            total_eventos = total_eventos + 1,
+            total_pedidos_confirmados = total_pedidos_confirmados + (CASE WHEN $13::boolean THEN 1 ELSE 0 END),
             carrito_actual_json = CASE
                 WHEN $13::boolean THEN '[]'::jsonb
                 WHEN $17::boolean AND $14::jsonb IS NOT NULL THEN $14::jsonb
-                ELSE public.nodos_tienda_visitantes.carrito_actual_json
+                ELSE carrito_actual_json
             END,
             carrito_actual_unidades = CASE
                 WHEN $13::boolean THEN 0
                 WHEN $17::boolean AND $15::int IS NOT NULL THEN $15::int
-                ELSE public.nodos_tienda_visitantes.carrito_actual_unidades
+                ELSE carrito_actual_unidades
             END,
             carrito_actual_subtotal = CASE
                 WHEN $13::boolean THEN 0.00
                 WHEN $17::boolean AND $16::numeric IS NOT NULL THEN $16::numeric
-                ELSE public.nodos_tienda_visitantes.carrito_actual_subtotal
+                ELSE carrito_actual_subtotal
             END,
             carrito_actual_nodo_id = CASE
-                WHEN $13::boolean THEN public.nodos_tienda_visitantes.carrito_actual_nodo_id
+                WHEN $13::boolean THEN carrito_actual_nodo_id
                 WHEN $17::boolean THEN $2::int
-                ELSE public.nodos_tienda_visitantes.carrito_actual_nodo_id
+                ELSE carrito_actual_nodo_id
             END,
             carrito_actualizado_at = CASE
                 WHEN $13::boolean OR $17::boolean THEN NOW()
-                ELSE public.nodos_tienda_visitantes.carrito_actualizado_at
+                ELSE carrito_actualizado_at
             END,
             ultimo_pedido_at = CASE
                 WHEN $13::boolean THEN NOW()
-                ELSE public.nodos_tienda_visitantes.ultimo_pedido_at
+                ELSE ultimo_pedido_at
             END,
             ultima_visita_at = NOW(),
-            ultima_ip = COALESCE($18::varchar, public.nodos_tienda_visitantes.ultima_ip),
-            user_agent = COALESCE($19::text, public.nodos_tienda_visitantes.user_agent)`,
-        [
-            visitorId,
-            nodo.id,
-            vecinoId,
-            vecinoNombre,
-            vecinoTelefono,
-            telNorm,
-            identificadoVia || (esPedidoConfirmado ? 'PEDIDO' : null),
-            esAdminGestor,
-            etiquetaDispositivo,
-            uaInfo.modo,
-            uaInfo.sistema,
-            origenPersistir,
-            esPedidoConfirmado,
-            esPedidoConfirmado ? '[]' : (snapshotLimpio ? JSON.stringify(snapshotLimpio) : null),
-            esPedidoConfirmado ? 0 : carritoUnidades,
-            esPedidoConfirmado ? 0 : carritoSubtotal,
-            esEventoCarrito,
-            ipOrigen,
-            userAgent || null,
-            nuevaSesion
-        ]
+            ultima_ip = COALESCE($18::varchar, ultima_ip),
+            user_agent = COALESCE($19::text, user_agent)
+         WHERE visitor_id = $1::varchar`,
+        paramsTelemetria
     );
+
+    if (updTelVis.rowCount === 0) {
+        await db.query(
+            `INSERT INTO public.nodos_tienda_visitantes (
+                visitor_id, primer_nodo_id, ultimo_nodo_id,
+                vecino_id, vecino_nombre, vecino_telefono, telefono_normalizado, identificado_via,
+                es_admin_gestor, etiqueta_dispositivo, dispositivo_modo, sistema_operativo, ultimo_origen_trafico,
+                total_sesiones, total_eventos, total_pedidos_confirmados,
+                carrito_actual_json, carrito_actual_unidades, carrito_actual_subtotal, carrito_actual_nodo_id, carrito_actualizado_at,
+                ultimo_pedido_at, ultima_ip, user_agent
+            )
+            SELECT
+                $1::varchar, $2::int, $2::int,
+                $3::int, $4::varchar, $5::varchar, $6::varchar, $7::varchar,
+                $8::boolean, $9::varchar, $10::varchar, $11::varchar, $12::varchar,
+                1, 1, CASE WHEN $13::boolean THEN 1 ELSE 0 END,
+                COALESCE($14::jsonb, '[]'::jsonb),
+                COALESCE($15::int, 0),
+                COALESCE($16::numeric, 0.00),
+                CASE WHEN $17::boolean THEN $2::int ELSE NULL::int END,
+                CASE WHEN $17::boolean THEN NOW() ELSE NULL::timestamptz END,
+                CASE WHEN $13::boolean THEN NOW() ELSE NULL::timestamptz END,
+                $18::varchar, $19::text
+            WHERE NOT EXISTS (
+                SELECT 1 FROM public.nodos_tienda_visitantes WHERE visitor_id = $1::varchar
+            )`,
+            paramsTelemetria.slice(0, 19)
+        );
+    }
 
     const pedidoId = payload.pedido_id && /^\d+$/.test(String(payload.pedido_id)) ? Number(payload.pedido_id) : null;
     const ofertaId = payload.oferta_id && /^\d+$/.test(String(payload.oferta_id)) ? Number(payload.oferta_id) : null;

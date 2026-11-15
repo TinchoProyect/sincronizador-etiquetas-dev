@@ -84,6 +84,154 @@ async function extraerEsquemaDesdeCliente(client) {
     return tables;
 }
 
+function normalizarDefClaveIndice(indexDef = '', indexPredicate = '') {
+    const def = String(indexDef || '').trim();
+    const predNorm = String(indexPredicate || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const usingIdx = def.toLowerCase().indexOf(' using ');
+    let keyExpr = def;
+    if (usingIdx !== -1) {
+        const afterUsing = def.slice(usingIdx + 7);
+        const openParen = afterUsing.indexOf('(');
+        if (openParen !== -1) {
+            let depth = 0;
+            let endParen = -1;
+            for (let i = openParen; i < afterUsing.length; i++) {
+                const ch = afterUsing[i];
+                if (ch === '(') depth++;
+                else if (ch === ')') {
+                    depth--;
+                    if (depth === 0) {
+                        endParen = i;
+                        break;
+                    }
+                }
+            }
+            if (endParen !== -1) {
+                keyExpr = afterUsing.slice(openParen + 1, endParen);
+            }
+        }
+    }
+    const keyNorm = keyExpr.toLowerCase().replace(/"/g, '').replace(/\s+/g, ' ').trim();
+    return { keyNorm, predNorm };
+}
+
+function construirFirmaIndiceUnico(row) {
+    const { keyNorm, predNorm } = normalizarDefClaveIndice(row.index_def, row.index_predicate);
+    return `${row.table_name}::(${keyNorm})[pred=${predNorm}]`;
+}
+
+async function extraerIndicesUnicosDesdeCliente(client) {
+    const res = await client.query(`
+        SELECT
+            tbl.relname AS table_name,
+            idx.relname AS index_name,
+            ix.indisprimary AS is_primary,
+            ix.indisunique AS is_unique,
+            pg_get_indexdef(ix.indexrelid) AS index_def,
+            COALESCE(pg_get_expr(ix.indpred, ix.indrelid), '') AS index_predicate,
+            COALESCE((
+                SELECT array_agg(att.attname::text ORDER BY u.ord)
+                FROM unnest(ix.indkey) WITH ORDINALITY AS u(attnum, ord)
+                JOIN pg_attribute att ON att.attrelid = tbl.oid AND att.attnum = u.attnum
+                WHERE u.ord <= ix.indnkeyatts AND u.attnum > 0
+            ), ARRAY[]::text[]) AS key_columns,
+            (0 = ANY(ix.indkey[1:ix.indnkeyatts])) AS has_expression_key
+        FROM pg_index ix
+        JOIN pg_class tbl ON tbl.oid = ix.indrelid
+        JOIN pg_class idx ON idx.oid = ix.indexrelid
+        JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+        WHERE ns.nspname = 'public'
+          AND tbl.relkind = 'r'
+          AND ix.indisvalid = true
+          AND (ix.indisprimary = true OR ix.indisunique = true)
+        ORDER BY tbl.relname ASC, ix.indisprimary DESC, idx.relname ASC;
+    `);
+
+    const bySig = new Map();
+    for (const row of res.rows) {
+        const item = {
+            table_name: row.table_name,
+            index_name: row.index_name,
+            is_primary: Boolean(row.is_primary),
+            is_unique: Boolean(row.is_unique),
+            index_def: row.index_def,
+            index_predicate: row.index_predicate || '',
+            key_columns: Array.isArray(row.key_columns) ? row.key_columns : [],
+            has_expression_key: Boolean(row.has_expression_key)
+        };
+        item.sig = construirFirmaIndiceUnico(item);
+        if (!bySig.has(item.sig)) {
+            bySig.set(item.sig, item);
+        }
+    }
+
+    return Array.from(bySig.values()).sort((a, b) => a.sig.localeCompare(b.sig));
+}
+
+async function aplicarIndicesUnicosFaltantesEnCliente(client, sourceUniqueIndexes = [], currentUniqueIndexes = [], targetLabel = 'DB') {
+    const curBySig = new Set((currentUniqueIndexes || []).map(x => x.sig || construirFirmaIndiceUnico(x)));
+    const tablesWithPk = new Set((currentUniqueIndexes || []).filter(x => x.is_primary).map(x => x.table_name));
+    let appliedCount = 0;
+    const appliedLog = [];
+    const skippedLog = [];
+
+    for (const uq of (sourceUniqueIndexes || [])) {
+        const sig = uq.sig || construirFirmaIndiceUnico(uq);
+        if (curBySig.has(sig)) continue;
+
+        const cols = Array.isArray(uq.key_columns) ? uq.key_columns : [];
+        const canCheckColumnDups = cols.length > 0 && !uq.has_expression_key && !uq.index_predicate;
+
+        if (canCheckColumnDups) {
+            const colsSql = cols.map(c => `"${c}"`).join(', ');
+            const notNullSql = cols.map(c => `"${c}" IS NOT NULL`).join(' AND ');
+            try {
+                const dupCheck = await client.query(
+                    `SELECT 1 FROM public."${uq.table_name}" WHERE ${notNullSql} GROUP BY ${colsSql} HAVING COUNT(*) > 1 LIMIT 1`
+                );
+                if (dupCheck.rows.length > 0) {
+                    const msg = `⚠️ [SCHEMA-AUDIT] Omitido índice único ${uq.index_name} en ${targetLabel} (public.${uq.table_name}) por filas duplicadas preexistentes.`;
+                    console.warn(msg);
+                    skippedLog.push(msg);
+                    continue;
+                }
+            } catch (_) {
+                continue;
+            }
+        }
+
+        try {
+            if (uq.is_primary && !tablesWithPk.has(uq.table_name) && cols.length > 0 && !uq.has_expression_key && !uq.index_predicate) {
+                const colsSql = cols.map(c => `"${c}"`).join(', ');
+                const nullCond = cols.map(c => `"${c}" IS NULL`).join(' OR ');
+                const nullChk = await client.query(`SELECT 1 FROM public."${uq.table_name}" WHERE ${nullCond} LIMIT 1`);
+                if (nullChk.rows.length === 0) {
+                    await client.query(`ALTER TABLE public."${uq.table_name}" ADD CONSTRAINT "${uq.index_name}" PRIMARY KEY (${colsSql});`);
+                    tablesWithPk.add(uq.table_name);
+                    curBySig.add(sig);
+                    appliedCount++;
+                    appliedLog.push(`🔐 PK sincronizada en ${targetLabel}: public.${uq.table_name} (${cols.join(', ')})`);
+                    continue;
+                }
+            }
+
+            const createStmt = String(uq.index_def || '').replace(/^CREATE\s+UNIQUE\s+INDEX\s+/i, 'CREATE UNIQUE INDEX IF NOT EXISTS ');
+            if (createStmt.toUpperCase().startsWith('CREATE UNIQUE INDEX')) {
+                await client.query(createStmt + ';');
+                curBySig.add(sig);
+                appliedCount++;
+                appliedLog.push(`🔐 UNIQUE sincronizado en ${targetLabel}: public.${uq.table_name} -> ${uq.index_name}`);
+            }
+        } catch (errIdx) {
+            const msg = `⚠️ [SCHEMA-AUDIT] No se pudo crear índice ${uq.index_name} en ${targetLabel} (public.${uq.table_name}): ${errIdx.message}`;
+            console.warn(msg);
+            skippedLog.push(msg);
+        }
+    }
+
+    return { appliedCount, appliedLog, skippedLog };
+}
+
 function ordenarEsquemaDeterminista(tables) {
     const sortedTables = {};
     const tableNames = Object.keys(tables || {}).sort((a, b) => a.localeCompare(b));
@@ -114,7 +262,7 @@ function ordenarEsquemaDeterminista(tables) {
     return sortedTables;
 }
 
-function construirFirmaEstructuralCanonica(tables) {
+function construirFirmaEstructuralCanonica(tables, uniqueIndexes = []) {
     const canonical = {};
     const tableNames = Object.keys(tables || {}).sort((a, b) => a.localeCompare(b));
     for (const tName of tableNames) {
@@ -135,7 +283,10 @@ function construirFirmaEstructuralCanonica(tables) {
         }
         canonical[tName] = canonicalCols;
     }
-    return JSON.stringify(canonical);
+    const canonicalUnique = (uniqueIndexes || [])
+        .map(u => u.sig || construirFirmaIndiceUnico(u))
+        .sort((a, b) => a.localeCompare(b));
+    return JSON.stringify({ tables: canonical, uniqueIndexes: canonicalUnique });
 }
 
 function construirTipoSql(col) {
@@ -184,6 +335,7 @@ async function exportarSnapshotLaboratorio() {
     try {
         const rawTables = await extraerEsquemaDesdeCliente(client);
         const tables = ordenarEsquemaDeterminista(rawTables);
+        const uniqueIndexes = await extraerIndicesUnicosDesdeCliente(client);
         const dir = path.dirname(SNAPSHOT_JSON_PATH);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -197,11 +349,11 @@ async function exportarSnapshotLaboratorio() {
                     Object.prototype.hasOwnProperty.call(existingParsed, 'generatedAt') ||
                     Object.prototype.hasOwnProperty.call(existingParsed, 'host')
                 );
-                if (!hasVolatileFields && existingParsed && existingParsed.tables) {
-                    const prevSig = construirFirmaEstructuralCanonica(existingParsed.tables);
-                    const nextSig = construirFirmaEstructuralCanonica(tables);
+                if (!hasVolatileFields && existingParsed && existingParsed.tables && Array.isArray(existingParsed.uniqueIndexes)) {
+                    const prevSig = construirFirmaEstructuralCanonica(existingParsed.tables, existingParsed.uniqueIndexes);
+                    const nextSig = construirFirmaEstructuralCanonica(tables, uniqueIndexes);
                     if (prevSig === nextSig) {
-                        console.log(`✅ [SCHEMA-AUDIT] Esquema de 'etiquetas_pruebas' sin cambios estructurales (${Object.keys(tables).length} tablas). Snapshot intacto.`);
+                        console.log(`✅ [SCHEMA-AUDIT] Esquema de 'etiquetas_pruebas' sin cambios estructurales (${Object.keys(tables).length} tablas, ${uniqueIndexes.length} PK/UNIQUE). Snapshot intacto.`);
                         return existingParsed.tables;
                     }
                 }
@@ -210,10 +362,12 @@ async function exportarSnapshotLaboratorio() {
 
         const payload = {
             tableCount: Object.keys(tables).length,
-            tables
+            uniqueIndexCount: uniqueIndexes.length,
+            tables,
+            uniqueIndexes
         };
         fs.writeFileSync(SNAPSHOT_JSON_PATH, JSON.stringify(payload, null, 2) + '\n', 'utf8');
-        console.log(`✅ [SCHEMA-AUDIT] Esquema de 'etiquetas_pruebas' exportado (${payload.tableCount} tablas) -> migrations/schema_laboratorio_snapshot.json`);
+        console.log(`✅ [SCHEMA-AUDIT] Esquema de 'etiquetas_pruebas' exportado (${payload.tableCount} tablas, ${payload.uniqueIndexCount} PK/UNIQUE) -> migrations/schema_laboratorio_snapshot.json`);
         return tables;
     } finally {
         try { await client.end(); } catch (_) {}
@@ -223,12 +377,16 @@ async function exportarSnapshotLaboratorio() {
 async function sincronizarEsquemaHaciaProduccion() {
     console.log('🔍 [SCHEMA-AUDIT] Comparando estructura de Laboratorio (`etiquetas_pruebas`) contra Producción (`etiquetas`)...');
     let labTables = {};
+    let labUniqueIndexes = [];
 
     if (fs.existsSync(SNAPSHOT_JSON_PATH)) {
         try {
             const parsed = JSON.parse(fs.readFileSync(SNAPSHOT_JSON_PATH, 'utf8'));
             if (parsed && parsed.tables) {
                 labTables = parsed.tables;
+            }
+            if (parsed && Array.isArray(parsed.uniqueIndexes)) {
+                labUniqueIndexes = parsed.uniqueIndexes;
             }
         } catch (_) {}
     }
@@ -240,6 +398,10 @@ async function sincronizarEsquemaHaciaProduccion() {
             for (const [tName, cols] of Object.entries(liveLab)) {
                 labTables[tName] = { ...(labTables[tName] || {}), ...cols };
             }
+            const liveUnique = await extraerIndicesUnicosDesdeCliente(labClient);
+            if (liveUnique.length > 0) {
+                labUniqueIndexes = liveUnique;
+            }
         } finally {
             try { await labClient.end(); } catch (_) {}
         }
@@ -247,13 +409,15 @@ async function sincronizarEsquemaHaciaProduccion() {
 
     const prodClient = await conectarDbLocal('etiquetas');
     if (!prodClient) {
-        console.warn('⚠️ [SCHEMA-AUDIT] No se pudo conectar a la base local `etiquetas`.');
+        console.log('ℹ️ [SCHEMA-AUDIT] Base local `etiquetas` no presente en este equipo; la sincronización de tablas, columnas e índices PK/UNIQUE se aplicará sobre Nube vía `schema_laboratorio_snapshot.json`.');
         return { changesCount: 0, sqlStatements: [] };
     }
 
     let prodTables = {};
+    let prodUniqueIndexes = [];
     try {
         prodTables = await extraerEsquemaDesdeCliente(prodClient);
+        prodUniqueIndexes = await extraerIndicesUnicosDesdeCliente(prodClient);
     } catch (e) {
         try { await prodClient.end(); } catch (_) {}
         throw e;
@@ -326,9 +490,14 @@ END $$;`.trim();
     } catch (_) {}
 
     if (sqlStatements.length === 0) {
-        console.log('✅ [SCHEMA-AUDIT] Esquemas 100% alineados: no hay tablas ni columnas faltantes en Producción.');
+        const idxRes = await aplicarIndicesUnicosFaltantesEnCliente(prodClient, labUniqueIndexes, prodUniqueIndexes, 'etiquetas (Local)');
+        if (idxRes.appliedCount > 0) {
+            for (const l of idxRes.appliedLog) console.log('   ' + l);
+        } else {
+            console.log('✅ [SCHEMA-AUDIT] Esquemas e índices PK/UNIQUE 100% alineados en Producción Local.');
+        }
         try { await prodClient.end(); } catch (_) {}
-        return { changesCount: 0, sqlStatements: [] };
+        return { changesCount: idxRes.appliedCount, sqlStatements: [] };
     }
 
     console.log(`🛠️  [SCHEMA-AUDIT] Se detectaron ${sqlStatements.length} cambios estructurales nuevos en Laboratorio:`);
@@ -352,7 +521,10 @@ END $$;`.trim();
         for (const stmt of sqlStatements) {
             await prodClient.query(stmt);
         }
-        console.log('✅ [SCHEMA-AUDIT] Nuevas tablas/columnas aplicadas en la base de Producción LOCAL (`PcAlmacen`).');
+        const postUnique = await extraerIndicesUnicosDesdeCliente(prodClient);
+        const idxRes = await aplicarIndicesUnicosFaltantesEnCliente(prodClient, labUniqueIndexes, postUnique, 'etiquetas (Local)');
+        for (const l of idxRes.appliedLog) console.log('   ' + l);
+        console.log('✅ [SCHEMA-AUDIT] Nuevas tablas/columnas e índices únicos aplicados en la base de Producción LOCAL (`PcAlmacen`).');
     } catch (errLoc) {
         console.warn('⚠️ [SCHEMA-AUDIT] Advertencia aplicando DDL en base Local:', errLoc.message);
     } finally {
@@ -379,9 +551,11 @@ async function sincronizarSnapshotHaciaBaseLocal(targetDbName = 'etiquetas_prueb
         return { changesCount: 0, sqlStatements: [] };
     }
     let snapshotTables = {};
+    let snapshotUniqueIndexes = [];
     try {
         const parsed = JSON.parse(fs.readFileSync(SNAPSHOT_JSON_PATH, 'utf8'));
         if (parsed && parsed.tables) snapshotTables = parsed.tables;
+        if (parsed && Array.isArray(parsed.uniqueIndexes)) snapshotUniqueIndexes = parsed.uniqueIndexes;
     } catch (_) {
         return { changesCount: 0, sqlStatements: [] };
     }
@@ -443,6 +617,21 @@ async function sincronizarSnapshotHaciaBaseLocal(targetDbName = 'etiquetas_prueb
             console.log(`✅ [SCHEMA-AUDIT] Base '${targetDbName}' ya cuenta con el 100% de las tablas/columnas del snapshot.`);
         }
 
+        let uniqueAppliedCount = 0;
+        if (snapshotUniqueIndexes.length > 0) {
+            const currentUniqueIndexes = await extraerIndicesUnicosDesdeCliente(dbClient);
+            const idxSyncRes = await aplicarIndicesUnicosFaltantesEnCliente(dbClient, snapshotUniqueIndexes, currentUniqueIndexes, targetDbName);
+            uniqueAppliedCount = idxSyncRes.appliedCount;
+            if (idxSyncRes.appliedCount > 0) {
+                console.log(`✅ [SCHEMA-AUDIT] Sincronizados ${idxSyncRes.appliedCount} índices PK/UNIQUE faltantes sobre '${targetDbName}':`);
+                for (const l of idxSyncRes.appliedLog) {
+                    console.log('   ' + l);
+                }
+            } else {
+                console.log(`✅ [SCHEMA-AUDIT] Base '${targetDbName}' con el 100% de los índices PK/UNIQUE alineados (${currentUniqueIndexes.length}).`);
+            }
+        }
+
         try {
             await dbClient.query(`
                 DO $$
@@ -462,7 +651,7 @@ async function sincronizarSnapshotHaciaBaseLocal(targetDbName = 'etiquetas_prueb
                 END $$;
             `);
         } catch (_) {}
-        return { changesCount: sqlStatements.length, sqlStatements };
+        return { changesCount: sqlStatements.length + uniqueAppliedCount, sqlStatements };
     } finally {
         try { await dbClient.end(); } catch (_) {}
     }

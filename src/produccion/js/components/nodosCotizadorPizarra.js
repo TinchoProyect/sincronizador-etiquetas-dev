@@ -510,11 +510,20 @@
                         <div>
                             <label style="display:flex; justify-content:space-between; align-items:center; font-size:0.74rem; color:#38bdf8; font-weight:700; margin-bottom:4px;">
                                 <span>🏛️ Nomenclatura Oficial Búnker (Diccionario — Solo Lectura)</span>
-                                <span style="font-size:0.66rem; color:#94a3b8;">El Nodo personaliza su vidriera en Mi Oferta</span>
+                                <span style="font-size:0.66rem; color:#94a3b8;">Idioma oficial LAMDA ↔ Nodo</span>
                             </label>
                             <input type="text" id="cot-bunker-nomenclatura" readonly placeholder="Derivada automáticamente del Diccionario Búnker"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #0284c7; background:#0b1120; color:#bae6fd; font-weight:800; font-size:0.84rem; box-sizing:border-box; cursor:not-allowed;">
                         </div>
+                    </div>
+
+                    <div id="cot-alias-vidriera-wrap" style="display:${ESTADO_NODOS.propuestaActivaId ? 'block' : 'none'}; margin-bottom:10px;">
+                        <label style="display:flex; justify-content:space-between; align-items:center; font-size:0.73rem; color:#6ee7b7; font-weight:700; margin-bottom:4px;">
+                            <span>🏪 Nombre en Vidriera Pública del Nodo Solicitante (Opcional — solo en su tienda)</span>
+                            <span style="font-size:0.66rem; color:#94a3b8;">Vacío = usa Nomenclatura Oficial LAMDA</span>
+                        </label>
+                        <input type="text" id="cot-alias-vidriera-nodo" placeholder="Ej: Mix premium por 500 gramos (solo aplica a la vidriera de este Nodo)"
+                            style="width:100%; padding:8px; border-radius:7px; border:1px solid rgba(16,185,129,0.5); background:#0f172a; color:#f8fafc; font-size:0.82rem; box-sizing:border-box;">
                     </div>
 
                     <div style="display:grid; grid-template-columns: 1fr 1.35fr; gap:10px; margin-bottom:12px;">
@@ -2460,6 +2469,7 @@
         const kilosEl = document.getElementById('cot-kilos-unidad');
         const catEl = document.getElementById('cot-categoria');
         const envEl = document.getElementById('cot-envase-select');
+        const aliasVidEl = document.getElementById('cot-alias-vidriera-nodo');
         const titEl = document.getElementById('mesa-cotizacion-titulo');
         const subEl = document.getElementById('mesa-cotizacion-subtitulo');
 
@@ -2470,6 +2480,7 @@
 
         if (titEl) titEl.innerHTML = `🧮 Cotizando Solicitud ${escaparHtml(prop.codigo_propuesta)} (${escaparHtml(prop.nodo_solicitante_nombre || 'Nodo')})`;
         if (subEl) subEl.innerHTML = `Insumo LAMDA solicitado: <strong style="color:#f8fafc;">${escaparHtml(ingLabelProp)}</strong> · Fracción: <strong style="color:#6ee7b7;">${Math.round(Number(prop.kilos_sugeridos || 0.25) * 1000)}g</strong>${aliasInfo}`;
+        if (aliasVidEl) aliasVidEl.value = prop.alias_vidriera_sugerido || '';
 
         if (prop.ingrediente_sugerido_id && selectEl) {
             selectEl.value = String(prop.ingrediente_sugerido_id);
@@ -2628,12 +2639,14 @@
             const tarifaOpt = tarifaSelect?.selectedOptions?.[0];
 
             const kilos = Number(document.getElementById('cot-kilos-unidad')?.value || 0.25);
+            const aliasVidrieraNodo = String(document.getElementById('cot-alias-vidriera-nodo')?.value || '').trim();
             const payload = {
                 catalogo_id: ESTADO_NODOS.catalogoEditandoId || null,
                 propuesta_id: ESTADO_NODOS.propuestaActivaId || null,
                 sku_nodo: document.getElementById('cot-sku-nodo')?.value || '',
                 nombre_publico: descripcionOficialBunker,
                 bunker_descripcion_generada: descripcionOficialBunker,
+                alias_vidriera_nodo: aliasVidrieraNodo || null,
                 compartido_mayorista: document.getElementById('cot-compartido-mayorista')?.value === 'true',
                 categoria_familiar: document.getElementById('cot-categoria')?.value || 'FRUTOS SECOS',
                 presentacion_etiqueta: kilos >= 1 ? `Bolsa ${kilos}kg` : `Bolsa ${Math.round(kilos * 1000)}g`,

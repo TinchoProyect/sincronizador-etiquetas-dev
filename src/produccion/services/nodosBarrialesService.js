@@ -3289,9 +3289,12 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
 
             INSERT INTO public.nodos_configuracion_canal (
                 id, cuenta_bancaria_id, banco_recaudador, alias_recaudador, cbu_recaudador, titular_recaudador
-            ) VALUES (
+            )
+            SELECT
                 1, NULL, 'Cuenta Recaudadora Canal Nodos (Provisoria)', 'pago.canasto', '0000000000000000000000', 'Recaudación Canal Nodos (Provisorio)'
-            ) ON CONFLICT (id) DO NOTHING;
+            WHERE NOT EXISTS (
+                SELECT 1 FROM public.nodos_configuracion_canal WHERE id = 1
+            );
 
             ALTER TABLE public.nodos_liquidaciones_lote
                 ADD COLUMN IF NOT EXISTS movimiento_cc_madre_id BIGINT,
@@ -3301,6 +3304,61 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS presupuesto_id_local INTEGER,
                 ADD COLUMN IF NOT EXISTS secuencia_operativa_lamda VARCHAR(40) DEFAULT 'Imprimir';
         `);
+
+        // Garantizar de forma idempotente todos los índices UNIQUE del módulo Nodos
+        // incluso si las tablas habían sido creadas previamente por snapshot sin constraints secundarias.
+        const uniqueSpecsNodos = [
+            { table: 'nodos_maestro', index: 'nodos_maestro_codigo_nodo_key', cols: ['codigo_nodo'] },
+            { table: 'nodos_maestro', index: 'nodos_maestro_slug_key', cols: ['slug'] },
+            { table: 'nodos_articulos_catalogo', index: 'nodos_articulos_catalogo_sku_nodo_key', cols: ['sku_nodo'] },
+            { table: 'nodos_propuestas_fracciones', index: 'nodos_propuestas_fracciones_codigo_propuesta_key', cols: ['codigo_propuesta'] },
+            { table: 'nodos_ofertas_gestor', index: 'unq_nodo_articulo_oferta', cols: ['nodo_id', 'articulo_catalogo_id'] },
+            { table: 'nodos_vecinos', index: 'unq_nodos_vecinos_nodo_tel', cols: ['nodo_id', 'telefono_normalizado'] },
+            { table: 'nodos_pedidos_vecinos', index: 'nodos_pedidos_vecinos_codigo_pedido_key', cols: ['codigo_pedido'] },
+            { table: 'nodos_lotes_estacion', index: 'nodos_lotes_estacion_codigo_canasto_key', cols: ['codigo_canasto'] },
+            { table: 'nodos_lotes_estacion', index: 'unq_nodo_ventana_canasto', cols: ['nodo_id', 'fecha_entrega_label'] },
+            { table: 'nodos_alias_vecinos_aprendidos', index: 'unq_nodo_titular_vecino', cols: ['nodo_id', 'titular_normalizado'] },
+            { table: 'nodos_liquidaciones_lote', index: 'nodos_liquidaciones_lote_codigo_liquidacion_key', cols: ['codigo_liquidacion'] },
+            { table: 'nodos_reparto_radar', index: 'unq_nodos_reparto_radar_nodo', cols: ['nodo_id'] }
+        ];
+        for (const spec of uniqueSpecsNodos) {
+            const colsList = spec.cols.map(c => `"${c}"`).join(', ');
+            const colsArrayLiteral = spec.cols.map(c => `'${c}'`).join(', ');
+            const notNullCond = spec.cols.map(c => `"${c}" IS NOT NULL`).join(' AND ');
+            await client.query(`
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_schema = 'public' AND table_name = '${spec.table}'
+                    ) AND NOT EXISTS (
+                        SELECT 1
+                        FROM pg_index ix
+                        JOIN pg_class tbl ON tbl.oid = ix.indrelid
+                        JOIN pg_namespace ns ON ns.oid = tbl.relnamespace
+                        WHERE ns.nspname = 'public'
+                          AND tbl.relname = '${spec.table}'
+                          AND ix.indisunique = true
+                          AND ix.indpred IS NULL
+                          AND (
+                              SELECT array_agg(att.attname::text ORDER BY u.ord)
+                              FROM unnest(ix.indkey) WITH ORDINALITY AS u(attnum, ord)
+                              JOIN pg_attribute att ON att.attrelid = tbl.oid AND att.attnum = u.attnum
+                              WHERE u.ord <= ix.indnkeyatts
+                          ) = ARRAY[${colsArrayLiteral}]::text[]
+                    ) AND NOT EXISTS (
+                        SELECT 1
+                        FROM public."${spec.table}"
+                        WHERE ${notNullCond}
+                        GROUP BY ${colsList}
+                        HAVING COUNT(*) > 1
+                    ) THEN
+                        CREATE UNIQUE INDEX IF NOT EXISTS "${spec.index}"
+                            ON public."${spec.table}" (${colsList});
+                    END IF;
+                END $$;
+            `);
+        }
 
         // Garantizar gestor_token criptográfico único en nodos existentes sin token
         const nodosSinTokenRes = await client.query(
@@ -4323,17 +4381,31 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             let vid = p.vecino_id ? Number(p.vecino_id) : null;
             const telNormPed = normalizarTelefonoVecinoNodo(p.vecino_telefono) || `SIN-TEL-PED-${p.id}`;
             if (!vid) {
-                const upVec = await client.query(
-                    `INSERT INTO public.nodos_vecinos (
-                        nodo_id, nombre_completo, telefono_whatsapp, telefono_normalizado, direccion_calle, entrecalles_referencia
-                     ) VALUES ($1, $2, $3, $4, $5, $6)
-                     ON CONFLICT (nodo_id, telefono_normalizado)
-                     DO UPDATE SET updated_at = NOW()
-                     RETURNING id, codigo_vecino`,
-                    [p.nodo_id, p.vecino_nombre, p.vecino_telefono, telNormPed, p.direccion_entrega || '', p.entrecalles_referencia || '']
+                const exVecBack = await client.query(
+                    `SELECT id, codigo_vecino FROM public.nodos_vecinos
+                     WHERE nodo_id = $1 AND telefono_normalizado = $2
+                     LIMIT 1 FOR UPDATE`,
+                    [p.nodo_id, telNormPed]
                 );
-                vid = Number(upVec.rows[0].id);
-                if (!upVec.rows[0].codigo_vecino) {
+                let vecRowBack;
+                if (exVecBack.rows.length > 0) {
+                    const updVecBack = await client.query(
+                        `UPDATE public.nodos_vecinos SET updated_at = NOW() WHERE id = $1 RETURNING id, codigo_vecino`,
+                        [exVecBack.rows[0].id]
+                    );
+                    vecRowBack = updVecBack.rows[0];
+                } else {
+                    const insVecBack = await client.query(
+                        `INSERT INTO public.nodos_vecinos (
+                            nodo_id, nombre_completo, telefono_whatsapp, telefono_normalizado, direccion_calle, entrecalles_referencia
+                         ) VALUES ($1, $2, $3, $4, $5, $6)
+                         RETURNING id, codigo_vecino`,
+                        [p.nodo_id, p.vecino_nombre, p.vecino_telefono, telNormPed, p.direccion_entrega || '', p.entrecalles_referencia || '']
+                    );
+                    vecRowBack = insVecBack.rows[0];
+                }
+                vid = Number(vecRowBack.id);
+                if (!vecRowBack.codigo_vecino) {
                     await client.query(
                         'UPDATE public.nodos_vecinos SET codigo_vecino = $1 WHERE id = $2',
                         [formatearCodigoVecinoNodo(p.nodo_id, vid), vid]
@@ -5639,14 +5711,19 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                 const base = Number(c.precio_base_nodo_final || 0);
                 const pVecino = Math.ceil((base * (1 + margenDef / 100)) / 50) * 50;
                 const gan = Math.max(0, pVecino - base);
-                await client.query(
-                    `INSERT INTO public.nodos_ofertas_gestor (
-                        nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
-                        margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
-                    ) VALUES ($1,$2,$3,$4,$5,$6,true)
-                    ON CONFLICT (nodo_id, articulo_catalogo_id) DO NOTHING`,
-                    [nodoGuardado.id, c.id, base, margenDef, pVecino, gan]
+                const chkOf = await client.query(
+                    `SELECT id FROM public.nodos_ofertas_gestor WHERE nodo_id = $1 AND articulo_catalogo_id = $2 LIMIT 1 FOR UPDATE`,
+                    [nodoGuardado.id, c.id]
                 );
+                if (chkOf.rows.length === 0) {
+                    await client.query(
+                        `INSERT INTO public.nodos_ofertas_gestor (
+                            nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
+                            margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
+                        ) VALUES ($1,$2,$3,$4,$5,$6,true)`,
+                        [nodoGuardado.id, c.id, base, margenDef, pVecino, gan]
+                    );
+                }
             }
         }
 
@@ -5712,20 +5789,27 @@ async function actualizarConfiguracionCuentaCanalNodos(payload = {}) {
     try {
         await client.query('BEGIN');
 
-        const cfgRes = await client.query(
-            `INSERT INTO public.nodos_configuracion_canal (
-                id, cuenta_bancaria_id, banco_recaudador, alias_recaudador, cbu_recaudador, titular_recaudador, updated_at
-            ) VALUES (1, $1, $2, $3, $4, $5, NOW())
-            ON CONFLICT (id) DO UPDATE SET
-                cuenta_bancaria_id = EXCLUDED.cuenta_bancaria_id,
-                banco_recaudador = EXCLUDED.banco_recaudador,
-                alias_recaudador = EXCLUDED.alias_recaudador,
-                cbu_recaudador = EXCLUDED.cbu_recaudador,
-                titular_recaudador = EXCLUDED.titular_recaudador,
+        let cfgRes = await client.query(
+            `UPDATE public.nodos_configuracion_canal SET
+                cuenta_bancaria_id = $1,
+                banco_recaudador = $2,
+                alias_recaudador = $3,
+                cbu_recaudador = $4,
+                titular_recaudador = $5,
                 updated_at = NOW()
-            RETURNING *`,
+             WHERE id = 1
+             RETURNING *`,
             [cuentaBancariaId, bancoRecaudador, aliasRecaudador, cbuRecaudador, titularRecaudador]
         );
+        if (cfgRes.rowCount === 0) {
+            cfgRes = await client.query(
+                `INSERT INTO public.nodos_configuracion_canal (
+                    id, cuenta_bancaria_id, banco_recaudador, alias_recaudador, cbu_recaudador, titular_recaudador, updated_at
+                ) VALUES (1, $1, $2, $3, $4, $5, NOW())
+                RETURNING *`,
+                [cuentaBancariaId, bancoRecaudador, aliasRecaudador, cbuRecaudador, titularRecaudador]
+            );
+        }
 
         const updNodos = await client.query(
             `UPDATE public.nodos_maestro
@@ -5981,18 +6065,25 @@ async function sumarArticuloCatalogoANodo(nodoId, catalogoId) {
     const precioVecino = Math.ceil((base * (1 + margenDef / 100)) / 50) * 50;
     const ganancia = Math.max(0, precioVecino - base);
 
-    const ins = await db.query(
-        `INSERT INTO public.nodos_ofertas_gestor (
-            nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
-            margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
-         ) VALUES ($1, $2, $3, $4, $5, $6, false)
-         ON CONFLICT (nodo_id, articulo_catalogo_id) DO UPDATE SET
-            precio_base_nodo_snapshot = EXCLUDED.precio_base_nodo_snapshot,
+    let resOf = await db.query(
+        `UPDATE public.nodos_ofertas_gestor SET
+            precio_base_nodo_snapshot = $3,
             updated_at = NOW()
+         WHERE nodo_id = $1 AND articulo_catalogo_id = $2
          RETURNING *`,
-        [nId, cId, base, margenDef, precioVecino, ganancia]
+        [nId, cId, base]
     );
-    return ins.rows[0];
+    if (resOf.rowCount === 0) {
+        resOf = await db.query(
+            `INSERT INTO public.nodos_ofertas_gestor (
+                nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
+                margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
+             ) VALUES ($1, $2, $3, $4, $5, $6, false)
+             RETURNING *`,
+            [nId, cId, base, margenDef, precioVecino, ganancia]
+        );
+    }
+    return resOf.rows[0];
 }
 
 /**
@@ -6187,96 +6278,179 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             );
             articuloRow = upd.rows[0];
         } else {
-            const ins = await client.query(
-                `INSERT INTO public.nodos_articulos_catalogo (
-                    sku_nodo, nombre_publico, categoria_familiar, presentacion_etiqueta,
-                    flujo_lamda, origen_tipo, ingrediente_origen_id, articulo_bunker_origen_codigo,
-                    kilos_unidad, insumo_envase_id, cantidad_envases_unidad, segundos_fraccionamiento,
-                    tarifa_colaborador_id, valor_hora_aplicado, costo_insumo_kg,
-                    costo_insumo_fraccion, costo_envase_aplicado, costo_mano_obra_aplicado,
-                    margen_lamda_pct, iva_pct, iibb_pct, costo_puro_total,
-                    precio_base_nodo_neto, precio_base_nodo_final,
-                    margen_sugerido_gestor_pct, precio_sugerido_vecino, notas_tecnicas,
-                    nomenclatura_bunker, familia_bunker_id, familia_bunker_nombre,
-                    articulo_principal_bunker, compartido_mayorista, listas_mayoristas_compartidas
-                ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33
-                )
-                ON CONFLICT (sku_nodo) DO UPDATE SET
-                    nombre_publico = EXCLUDED.nombre_publico,
-                    categoria_familiar = EXCLUDED.categoria_familiar,
-                    presentacion_etiqueta = EXCLUDED.presentacion_etiqueta,
-                    ingrediente_origen_id = EXCLUDED.ingrediente_origen_id,
-                    articulo_bunker_origen_codigo = EXCLUDED.articulo_bunker_origen_codigo,
-                    insumo_envase_id = EXCLUDED.insumo_envase_id,
-                    cantidad_envases_unidad = EXCLUDED.cantidad_envases_unidad,
-                    segundos_fraccionamiento = EXCLUDED.segundos_fraccionamiento,
-                    costo_insumo_kg = EXCLUDED.costo_insumo_kg,
-                    costo_insumo_fraccion = EXCLUDED.costo_insumo_fraccion,
-                    costo_envase_aplicado = EXCLUDED.costo_envase_aplicado,
-                    costo_mano_obra_aplicado = EXCLUDED.costo_mano_obra_aplicado,
-                    margen_lamda_pct = EXCLUDED.margen_lamda_pct,
-                    costo_puro_total = EXCLUDED.costo_puro_total,
-                    precio_base_nodo_neto = EXCLUDED.precio_base_nodo_neto,
-                    precio_base_nodo_final = EXCLUDED.precio_base_nodo_final,
-                    precio_sugerido_vecino = EXCLUDED.precio_sugerido_vecino,
-                    nomenclatura_bunker = EXCLUDED.nomenclatura_bunker,
-                    familia_bunker_id = EXCLUDED.familia_bunker_id,
-                    familia_bunker_nombre = EXCLUDED.familia_bunker_nombre,
-                    articulo_principal_bunker = EXCLUDED.articulo_principal_bunker,
-                    compartido_mayorista = EXCLUDED.compartido_mayorista,
-                    listas_mayoristas_compartidas = EXCLUDED.listas_mayoristas_compartidas,
-                    activo = true,
-                    estado = 'APROBADO',
-                    updated_at = NOW()
-                RETURNING *`,
-                [
-                    skuNodo,
-                    nomenclaturaOficial,
-                    categoriaOficial,
-                    presentacionEtiqueta,
-                    Number(payload.flujo_lamda || 2),
-                    origenTipoFinal,
-                    ingredienteOrigenFinalId,
-                    skuNodo,
-                    calc.kilos_unidad,
-                    insumoEnvaseIdFinal,
-                    Number(payload.cantidad_envases_unidad || 1),
-                    calc.segundos_fraccionamiento,
-                    payload.tarifa_colaborador_id ? Number(payload.tarifa_colaborador_id) : null,
-                    calc.valor_hora_aplicado,
-                    calc.costo_insumo_kg,
-                    calc.costo_insumo_fraccion,
-                    calc.costo_envase_aplicado,
-                    calc.costo_mano_obra_aplicado,
-                    calc.margen_lamda_pct,
-                    calc.iva_pct,
-                    calc.iibb_pct,
-                    calc.costo_puro_total,
-                    calc.precio_base_nodo_neto,
-                    calc.precio_base_nodo_final,
-                    calc.margen_sugerido_gestor_pct,
-                    calc.precio_sugerido_vecino,
-                    payload.notas_tecnicas || '',
-                    nomenclaturaOficial,
-                    anatomia.familia_id,
-                    anatomia.familia_nombre,
-                    anatomia.articulo_principal,
-                    compartidoFinal,
-                    JSON.stringify(listasCompFinales)
-                ]
+            const exCatSku = await client.query(
+                `SELECT id FROM public.nodos_articulos_catalogo
+                 WHERE UPPER(sku_nodo) = UPPER($1)
+                 LIMIT 1 FOR UPDATE`,
+                [skuNodo]
             );
-            articuloRow = ins.rows[0];
+            if (exCatSku.rows.length > 0) {
+                const updSku = await client.query(
+                    `UPDATE public.nodos_articulos_catalogo SET
+                        nombre_publico = $2,
+                        categoria_familiar = $3,
+                        presentacion_etiqueta = $4,
+                        flujo_lamda = $5,
+                        origen_tipo = $6,
+                        ingrediente_origen_id = $7,
+                        articulo_bunker_origen_codigo = $8,
+                        kilos_unidad = $9,
+                        insumo_envase_id = $10,
+                        cantidad_envases_unidad = $11,
+                        segundos_fraccionamiento = $12,
+                        tarifa_colaborador_id = $13,
+                        valor_hora_aplicado = $14,
+                        costo_insumo_kg = $15,
+                        costo_insumo_fraccion = $16,
+                        costo_envase_aplicado = $17,
+                        costo_mano_obra_aplicado = $18,
+                        margen_lamda_pct = $19,
+                        iva_pct = $20,
+                        iibb_pct = $21,
+                        costo_puro_total = $22,
+                        precio_base_nodo_neto = $23,
+                        precio_base_nodo_final = $24,
+                        margen_sugerido_gestor_pct = $25,
+                        precio_sugerido_vecino = $26,
+                        notas_tecnicas = $27,
+                        nomenclatura_bunker = $28,
+                        familia_bunker_id = $29,
+                        familia_bunker_nombre = $30,
+                        articulo_principal_bunker = $31,
+                        compartido_mayorista = $32,
+                        listas_mayoristas_compartidas = $33,
+                        activo = true,
+                        estado = 'APROBADO',
+                        updated_at = NOW()
+                     WHERE id = $1
+                     RETURNING *`,
+                    [
+                        exCatSku.rows[0].id,
+                        nomenclaturaOficial,
+                        categoriaOficial,
+                        presentacionEtiqueta,
+                        Number(payload.flujo_lamda || 2),
+                        origenTipoFinal,
+                        ingredienteOrigenFinalId,
+                        skuNodo,
+                        calc.kilos_unidad,
+                        insumoEnvaseIdFinal,
+                        Number(payload.cantidad_envases_unidad || 1),
+                        calc.segundos_fraccionamiento,
+                        payload.tarifa_colaborador_id ? Number(payload.tarifa_colaborador_id) : null,
+                        calc.valor_hora_aplicado,
+                        calc.costo_insumo_kg,
+                        calc.costo_insumo_fraccion,
+                        calc.costo_envase_aplicado,
+                        calc.costo_mano_obra_aplicado,
+                        calc.margen_lamda_pct,
+                        calc.iva_pct,
+                        calc.iibb_pct,
+                        calc.costo_puro_total,
+                        calc.precio_base_nodo_neto,
+                        calc.precio_base_nodo_final,
+                        calc.margen_sugerido_gestor_pct,
+                        calc.precio_sugerido_vecino,
+                        payload.notas_tecnicas || '',
+                        nomenclaturaOficial,
+                        anatomia.familia_id,
+                        anatomia.familia_nombre,
+                        anatomia.articulo_principal,
+                        compartidoFinal,
+                        JSON.stringify(listasCompFinales)
+                    ]
+                );
+                articuloRow = updSku.rows[0];
+            } else {
+                const ins = await client.query(
+                    `INSERT INTO public.nodos_articulos_catalogo (
+                        sku_nodo, nombre_publico, categoria_familiar, presentacion_etiqueta,
+                        flujo_lamda, origen_tipo, ingrediente_origen_id, articulo_bunker_origen_codigo,
+                        kilos_unidad, insumo_envase_id, cantidad_envases_unidad, segundos_fraccionamiento,
+                        tarifa_colaborador_id, valor_hora_aplicado, costo_insumo_kg,
+                        costo_insumo_fraccion, costo_envase_aplicado, costo_mano_obra_aplicado,
+                        margen_lamda_pct, iva_pct, iibb_pct, costo_puro_total,
+                        precio_base_nodo_neto, precio_base_nodo_final,
+                        margen_sugerido_gestor_pct, precio_sugerido_vecino, notas_tecnicas,
+                        nomenclatura_bunker, familia_bunker_id, familia_bunker_nombre,
+                        articulo_principal_bunker, compartido_mayorista, listas_mayoristas_compartidas
+                    ) VALUES (
+                        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33
+                    )
+                    RETURNING *`,
+                    [
+                        skuNodo,
+                        nomenclaturaOficial,
+                        categoriaOficial,
+                        presentacionEtiqueta,
+                        Number(payload.flujo_lamda || 2),
+                        origenTipoFinal,
+                        ingredienteOrigenFinalId,
+                        skuNodo,
+                        calc.kilos_unidad,
+                        insumoEnvaseIdFinal,
+                        Number(payload.cantidad_envases_unidad || 1),
+                        calc.segundos_fraccionamiento,
+                        payload.tarifa_colaborador_id ? Number(payload.tarifa_colaborador_id) : null,
+                        calc.valor_hora_aplicado,
+                        calc.costo_insumo_kg,
+                        calc.costo_insumo_fraccion,
+                        calc.costo_envase_aplicado,
+                        calc.costo_mano_obra_aplicado,
+                        calc.margen_lamda_pct,
+                        calc.iva_pct,
+                        calc.iibb_pct,
+                        calc.costo_puro_total,
+                        calc.precio_base_nodo_neto,
+                        calc.precio_base_nodo_final,
+                        calc.margen_sugerido_gestor_pct,
+                        calc.precio_sugerido_vecino,
+                        payload.notas_tecnicas || '',
+                        nomenclaturaOficial,
+                        anatomia.familia_id,
+                        anatomia.familia_nombre,
+                        anatomia.articulo_principal,
+                        compartidoFinal,
+                        JSON.stringify(listasCompFinales)
+                    ]
+                );
+                articuloRow = ins.rows[0];
+            }
         }
 
         // Si provenía de una propuesta de fracción (o existían solicitudes pendientes equivalentes), marcarlas como APROBADA y vincularlas
+        let nodoSolicitantePropId = null;
+        let aliasVidrieraSolicitante = null;
         const textoRespuestaAprobada = payload.respuesta_lamda || `Aprobado por LAMDA con Precio Base Nodo $${calc.precio_base_nodo_final.toLocaleString('es-AR')} ([${skuNodo}] ${nomenclaturaOficial})`;
         if (payload.propuesta_id) {
+            const propPrevRes = await client.query(
+                `SELECT id, nodo_solicitante_id, alias_vidriera_sugerido
+                 FROM public.nodos_propuestas_fracciones
+                 WHERE id = $1
+                 LIMIT 1 FOR UPDATE`,
+                [Number(payload.propuesta_id)]
+            );
+            const propPrev = propPrevRes.rows[0] || null;
+            if (propPrev && propPrev.nodo_solicitante_id) {
+                nodoSolicitantePropId = Number(propPrev.nodo_solicitante_id);
+            }
+            const rawAliasExplicito = payload.alias_vidriera_nodo !== undefined
+                ? String(payload.alias_vidriera_nodo || '').trim()
+                : (payload.nombre_vidriera_personalizado !== undefined
+                    ? String(payload.nombre_vidriera_personalizado || '').trim()
+                    : ((payload.nombre_publico && String(payload.nombre_publico).trim() && String(payload.nombre_publico).trim() !== nomenclaturaOficial)
+                        ? String(payload.nombre_publico).trim()
+                        : String(propPrev?.alias_vidriera_sugerido || '').trim()));
+            if (rawAliasExplicito && rawAliasExplicito !== nomenclaturaOficial) {
+                aliasVidrieraSolicitante = rawAliasExplicito;
+            }
+
             await client.query(
                 `UPDATE public.nodos_propuestas_fracciones SET
                     estado = 'APROBADA',
                     articulo_catalogo_id = $1,
                     ingrediente_sugerido_id = COALESCE($4, ingrediente_sugerido_id),
+                    alias_vidriera_sugerido = COALESCE($5, alias_vidriera_sugerido),
                     respuesta_lamda = $2,
                     updated_at = NOW()
                 WHERE id = $3`,
@@ -6284,7 +6458,8 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                     articuloRow.id,
                     textoRespuestaAprobada,
                     Number(payload.propuesta_id),
-                    ingredienteOrigenFinalId
+                    ingredienteOrigenFinalId,
+                    aliasVidrieraSolicitante
                 ]
             );
         }
@@ -6306,28 +6481,53 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             );
         }
 
-        // Propagar / actualizar en nodos_ofertas_gestor para todos los Nodos activos (sin tocar nombre_vidriera_personalizado).
-        // Cada Nodo recibe el artículo con su SKU y nombre oficial LAMDA por defecto y puede personalizar su vidriera en Mi Oferta y Margen.
+        // Propagar / actualizar en nodos_ofertas_gestor para todos los Nodos activos mediante upsert determinístico.
+        // Cada Nodo recibe el artículo con su SKU y nombre oficial LAMDA por defecto; si la solicitud traía un nombre
+        // de vidriera personalizado para el Nodo solicitante, se registra únicamente en su oferta de vidriera.
         const publicadoInicial = Boolean(payload.publicar_inmediato_tienda === true);
         const nodosActivos = await client.query('SELECT id, margen_gestor_default_pct FROM public.nodos_maestro WHERE activo = true');
         for (const nodo of nodosActivos.rows) {
             const margenDef = Number(nodo.margen_gestor_default_pct || calc.margen_sugerido_gestor_pct || 28);
             const precioVecino = Math.ceil((calc.precio_base_nodo_final * (1 + margenDef / 100)) / 50) * 50;
             const ganancia = Math.max(0, precioVecino - calc.precio_base_nodo_final);
+            const aliasVidrieraParaNodo = (nodoSolicitantePropId && Number(nodo.id) === nodoSolicitantePropId && aliasVidrieraSolicitante)
+                ? aliasVidrieraSolicitante
+                : null;
 
-            await client.query(
-                `INSERT INTO public.nodos_ofertas_gestor (
-                    nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
-                    margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7)
-                ON CONFLICT (nodo_id, articulo_catalogo_id) DO UPDATE SET
-                    alerta_cambio_costo = (public.nodos_ofertas_gestor.precio_base_nodo_snapshot <> EXCLUDED.precio_base_nodo_snapshot),
-                    precio_base_nodo_snapshot = EXCLUDED.precio_base_nodo_snapshot,
-                    precio_venta_vecino = CEIL((EXCLUDED.precio_base_nodo_snapshot * (1 + public.nodos_ofertas_gestor.margen_gestor_pct / 100.0)) / 50.0) * 50,
-                    ganancia_unitaria_gestor = (CEIL((EXCLUDED.precio_base_nodo_snapshot * (1 + public.nodos_ofertas_gestor.margen_gestor_pct / 100.0)) / 50.0) * 50) - EXCLUDED.precio_base_nodo_snapshot,
-                    updated_at = NOW()`,
-                [nodo.id, articuloRow.id, calc.precio_base_nodo_final, margenDef, precioVecino, ganancia, publicadoInicial]
+            const exOferta = await client.query(
+                `SELECT id, precio_base_nodo_snapshot, margen_gestor_pct
+                 FROM public.nodos_ofertas_gestor
+                 WHERE nodo_id = $1 AND articulo_catalogo_id = $2
+                 LIMIT 1 FOR UPDATE`,
+                [nodo.id, articuloRow.id]
             );
+            if (exOferta.rows.length > 0) {
+                const ofPrev = exOferta.rows[0];
+                const margenOf = Number(ofPrev.margen_gestor_pct ?? margenDef);
+                const nuevoPVecino = Math.ceil((calc.precio_base_nodo_final * (1 + margenOf / 100)) / 50) * 50;
+                const nuevaGan = Math.max(0, nuevoPVecino - calc.precio_base_nodo_final);
+                const cambioCosto = Number(ofPrev.precio_base_nodo_snapshot || 0) !== Number(calc.precio_base_nodo_final || 0);
+                await client.query(
+                    `UPDATE public.nodos_ofertas_gestor SET
+                        alerta_cambio_costo = $2,
+                        precio_base_nodo_snapshot = $3,
+                        precio_venta_vecino = $4,
+                        ganancia_unitaria_gestor = $5,
+                        nombre_vidriera_personalizado = COALESCE($6, nombre_vidriera_personalizado),
+                        updated_at = NOW()
+                     WHERE id = $1`,
+                    [ofPrev.id, cambioCosto, calc.precio_base_nodo_final, nuevoPVecino, nuevaGan, aliasVidrieraParaNodo]
+                );
+            } else {
+                await client.query(
+                    `INSERT INTO public.nodos_ofertas_gestor (
+                        nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
+                        margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor,
+                        publicado_tienda, nombre_vidriera_personalizado
+                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+                    [nodo.id, articuloRow.id, calc.precio_base_nodo_final, margenDef, precioVecino, ganancia, publicadoInicial, aliasVidrieraParaNodo]
+                );
+            }
         }
 
         // Sincronizar inmediatamente con bunker_articulos, bunker_lista_articulos y recetas
@@ -6848,19 +7048,38 @@ async function sincronizarCatalogoNodoDesdeBunker(articuloId, runnerOpt = null) 
                 const precioVecino = Math.ceil((precioBaseNodoFinal * (1 + margenDef / 100)) / 50) * 50;
                 const ganancia = Math.max(0, precioVecino - precioBaseNodoFinal);
 
-                await q.query(
-                    `INSERT INTO public.nodos_ofertas_gestor (
-                        nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
-                        margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
-                     ) VALUES ($1,$2,$3,$4,$5,$6,false)
-                     ON CONFLICT (nodo_id, articulo_catalogo_id) DO UPDATE SET
-                        alerta_cambio_costo = (public.nodos_ofertas_gestor.precio_base_nodo_snapshot <> EXCLUDED.precio_base_nodo_snapshot),
-                        precio_base_nodo_snapshot = EXCLUDED.precio_base_nodo_snapshot,
-                        precio_venta_vecino = CEIL((EXCLUDED.precio_base_nodo_snapshot * (1 + public.nodos_ofertas_gestor.margen_gestor_pct / 100.0)) / 50.0) * 50,
-                        ganancia_unitaria_gestor = (CEIL((EXCLUDED.precio_base_nodo_snapshot * (1 + public.nodos_ofertas_gestor.margen_gestor_pct / 100.0)) / 50.0) * 50) - EXCLUDED.precio_base_nodo_snapshot,
-                        updated_at = NOW()`,
-                    [nodo.id, catalogoRowActual.id, precioBaseNodoFinal, margenDef, precioVecino, ganancia]
+                const exOfHab = await q.query(
+                    `SELECT id, precio_base_nodo_snapshot, margen_gestor_pct
+                     FROM public.nodos_ofertas_gestor
+                     WHERE nodo_id = $1 AND articulo_catalogo_id = $2
+                     LIMIT 1`,
+                    [nodo.id, catalogoRowActual.id]
                 );
+                if (exOfHab.rows.length > 0) {
+                    const prevOf = exOfHab.rows[0];
+                    const mOf = Number(prevOf.margen_gestor_pct ?? margenDef);
+                    const nPVec = Math.ceil((precioBaseNodoFinal * (1 + mOf / 100)) / 50) * 50;
+                    const nGan = Math.max(0, nPVec - precioBaseNodoFinal);
+                    const chgCosto = Number(prevOf.precio_base_nodo_snapshot || 0) !== Number(precioBaseNodoFinal || 0);
+                    await q.query(
+                        `UPDATE public.nodos_ofertas_gestor SET
+                            alerta_cambio_costo = $2,
+                            precio_base_nodo_snapshot = $3,
+                            precio_venta_vecino = $4,
+                            ganancia_unitaria_gestor = $5,
+                            updated_at = NOW()
+                         WHERE id = $1`,
+                        [prevOf.id, chgCosto, precioBaseNodoFinal, nPVec, nGan]
+                    );
+                } else {
+                    await q.query(
+                        `INSERT INTO public.nodos_ofertas_gestor (
+                            nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
+                            margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
+                         ) VALUES ($1,$2,$3,$4,$5,$6,false)`,
+                        [nodo.id, catalogoRowActual.id, precioBaseNodoFinal, margenDef, precioVecino, ganancia]
+                    );
+                }
             }
 
             if (ingredienteOrigenId) {
@@ -7859,72 +8078,96 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             }
         }
 
-        const upVec = await client.query(
-            `INSERT INTO public.nodos_vecinos (
-                nodo_id, nombre_completo, telefono_whatsapp, telefono_normalizado,
-                direccion_calle, entrecalles_referencia, notas_entrega,
-                latitud, longitud, gps_origen, gps_verificado_gestor, gps_updated_at, activo
-             ) VALUES (
-                $1, $2, $3, $4,
-                $5, $6, $7,
-                $8::numeric, $9::numeric, $10::varchar, false, CASE WHEN $8::numeric IS NOT NULL THEN NOW() ELSE NULL END, true
-             )
-             ON CONFLICT (nodo_id, telefono_normalizado)
-             DO UPDATE SET
-                nombre_completo = EXCLUDED.nombre_completo,
-                telefono_whatsapp = EXCLUDED.telefono_whatsapp,
-                direccion_calle = CASE
-                    WHEN $11::boolean THEN COALESCE(NULLIF(EXCLUDED.direccion_calle, ''), public.nodos_vecinos.direccion_calle)
-                    ELSE public.nodos_vecinos.direccion_calle
-                END,
-                entrecalles_referencia = CASE
-                    WHEN $11::boolean THEN COALESCE(NULLIF(EXCLUDED.entrecalles_referencia, ''), public.nodos_vecinos.entrecalles_referencia)
-                    ELSE public.nodos_vecinos.entrecalles_referencia
-                END,
-                notas_entrega = COALESCE(NULLIF(EXCLUDED.notas_entrega, ''), public.nodos_vecinos.notas_entrega),
-                latitud = CASE
-                    WHEN $8::numeric IS NOT NULL THEN $8::numeric
-                    WHEN $12::boolean THEN NULL
-                    ELSE public.nodos_vecinos.latitud
-                END,
-                longitud = CASE
-                    WHEN $9::numeric IS NOT NULL THEN $9::numeric
-                    WHEN $12::boolean THEN NULL
-                    ELSE public.nodos_vecinos.longitud
-                END,
-                gps_origen = CASE
-                    WHEN $8::numeric IS NOT NULL THEN $10::varchar
-                    WHEN $12::boolean THEN NULL
-                    ELSE public.nodos_vecinos.gps_origen
-                END,
-                gps_verificado_gestor = CASE
-                    WHEN $8::numeric IS NOT NULL THEN false
-                    WHEN $12::boolean THEN false
-                    ELSE public.nodos_vecinos.gps_verificado_gestor
-                END,
-                gps_updated_at = CASE
-                    WHEN $8::numeric IS NOT NULL THEN NOW()
-                    WHEN $12::boolean THEN NULL
-                    ELSE public.nodos_vecinos.gps_updated_at
-                END,
-                activo = true,
-                updated_at = NOW()
-             RETURNING id, codigo_vecino, portal_token`,
-            [
-                nodo.id,
-                vecinoNombre,
-                vecinoTelefono,
-                telNormVecino,
-                modalidad === 'ENVIO_BARRIAL' ? dirVecino : '',
-                modalidad === 'ENVIO_BARRIAL' ? entrecallesVecino : '',
-                payload.observaciones_vecino || '',
-                coordsPayload ? coordsPayload.lat : null,
-                coordsPayload ? coordsPayload.lng : null,
-                gpsOrigenPayload,
-                modalidad === 'ENVIO_BARRIAL',
-                cambioDireccionEnvio
-            ]
+        const exVecPed = await client.query(
+            `SELECT id FROM public.nodos_vecinos
+             WHERE nodo_id = $1 AND telefono_normalizado = $2
+             LIMIT 1 FOR UPDATE`,
+            [nodo.id, telNormVecino]
         );
+        let upVec;
+        if (exVecPed.rows.length > 0) {
+            upVec = await client.query(
+                `UPDATE public.nodos_vecinos SET
+                    nombre_completo = $2,
+                    telefono_whatsapp = $3,
+                    direccion_calle = CASE
+                        WHEN $10::boolean THEN COALESCE(NULLIF($4::varchar, ''), direccion_calle)
+                        ELSE direccion_calle
+                    END,
+                    entrecalles_referencia = CASE
+                        WHEN $10::boolean THEN COALESCE(NULLIF($5::varchar, ''), entrecalles_referencia)
+                        ELSE entrecalles_referencia
+                    END,
+                    notas_entrega = COALESCE(NULLIF($6::text, ''), notas_entrega),
+                    latitud = CASE
+                        WHEN $7::numeric IS NOT NULL THEN $7::numeric
+                        WHEN $11::boolean THEN NULL
+                        ELSE latitud
+                    END,
+                    longitud = CASE
+                        WHEN $8::numeric IS NOT NULL THEN $8::numeric
+                        WHEN $11::boolean THEN NULL
+                        ELSE longitud
+                    END,
+                    gps_origen = CASE
+                        WHEN $7::numeric IS NOT NULL THEN $9::varchar
+                        WHEN $11::boolean THEN NULL
+                        ELSE gps_origen
+                    END,
+                    gps_verificado_gestor = CASE
+                        WHEN $7::numeric IS NOT NULL THEN false
+                        WHEN $11::boolean THEN false
+                        ELSE gps_verificado_gestor
+                    END,
+                    gps_updated_at = CASE
+                        WHEN $7::numeric IS NOT NULL THEN NOW()
+                        WHEN $11::boolean THEN NULL
+                        ELSE gps_updated_at
+                    END,
+                    activo = true,
+                    updated_at = NOW()
+                 WHERE id = $1
+                 RETURNING id, codigo_vecino, portal_token`,
+                [
+                    exVecPed.rows[0].id,
+                    vecinoNombre,
+                    vecinoTelefono,
+                    modalidad === 'ENVIO_BARRIAL' ? dirVecino : '',
+                    modalidad === 'ENVIO_BARRIAL' ? entrecallesVecino : '',
+                    payload.observaciones_vecino || '',
+                    coordsPayload ? coordsPayload.lat : null,
+                    coordsPayload ? coordsPayload.lng : null,
+                    gpsOrigenPayload,
+                    modalidad === 'ENVIO_BARRIAL',
+                    cambioDireccionEnvio
+                ]
+            );
+        } else {
+            upVec = await client.query(
+                `INSERT INTO public.nodos_vecinos (
+                    nodo_id, nombre_completo, telefono_whatsapp, telefono_normalizado,
+                    direccion_calle, entrecalles_referencia, notas_entrega,
+                    latitud, longitud, gps_origen, gps_verificado_gestor, gps_updated_at, activo
+                 ) VALUES (
+                    $1, $2, $3, $4,
+                    $5, $6, $7,
+                    $8::numeric, $9::numeric, $10::varchar, false, CASE WHEN $8::numeric IS NOT NULL THEN NOW() ELSE NULL END, true
+                 )
+                 RETURNING id, codigo_vecino, portal_token`,
+                [
+                    nodo.id,
+                    vecinoNombre,
+                    vecinoTelefono,
+                    telNormVecino,
+                    modalidad === 'ENVIO_BARRIAL' ? dirVecino : '',
+                    modalidad === 'ENVIO_BARRIAL' ? entrecallesVecino : '',
+                    payload.observaciones_vecino || '',
+                    coordsPayload ? coordsPayload.lat : null,
+                    coordsPayload ? coordsPayload.lng : null,
+                    gpsOrigenPayload
+                ]
+            );
+        }
         const vecinoId = Number(upVec.rows[0].id);
         const codigoVecino = upVec.rows[0].codigo_vecino || formatearCodigoVecinoNodo(nodo.id, vecinoId);
         const portalTokenVecino = (upVec.rows[0].portal_token && String(upVec.rows[0].portal_token).trim().length >= 16)
@@ -8762,27 +9005,19 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
             if (esListaNodos) {
                 const exLaNodos = await q.query(
                     `SELECT id, disponible FROM public.bunker_lista_articulos
-                     WHERE lista_id = $1 AND UPPER(articulo_numero) = UPPER($2) LIMIT 1`,
+                     WHERE lista_id = $1 AND UPPER(articulo_numero) = UPPER($2)
+                     LIMIT 1 FOR UPDATE`,
                     [lp.id, sku]
                 );
 
-                if (exLaNodos.rows.length === 0 || esEdicionDesdeCotizador || forzarPreciosNodos) {
+                if (exLaNodos.rows.length === 0) {
                     const manoObraActivaNodo = Number(art.costo_mano_obra_aplicado || 0) > 0;
-                    const upLa = await q.query(
+                    const insLa = await q.query(
                         `INSERT INTO public.bunker_lista_articulos (
                             lista_id, articulo_numero, margen_ganancia, costo_base_sobrescrito,
                             costo_tiempo, iva, precio_final, modo_calculo, modo_iva,
                             es_patron, disponible, mano_obra_activa, updated_at
                          ) VALUES ($1,$2,$3,$4,$5,$6,$7,'AUTOMATIC','COMPLETO',false,true,$8,NOW())
-                         ON CONFLICT (lista_id, articulo_numero) DO UPDATE SET
-                            margen_ganancia = EXCLUDED.margen_ganancia,
-                            costo_base_sobrescrito = EXCLUDED.costo_base_sobrescrito,
-                            costo_tiempo = EXCLUDED.costo_tiempo,
-                            iva = EXCLUDED.iva,
-                            precio_final = EXCLUDED.precio_final,
-                            disponible = true,
-                            mano_obra_activa = EXCLUDED.mano_obra_activa,
-                            updated_at = NOW()
                          RETURNING id`,
                         [
                             lp.id,
@@ -8795,7 +9030,31 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
                             manoObraActivaNodo
                         ]
                     );
-                    listaArtId = upLa.rows[0].id;
+                    listaArtId = insLa.rows[0].id;
+                } else if (esEdicionDesdeCotizador || forzarPreciosNodos) {
+                    const manoObraActivaNodo = Number(art.costo_mano_obra_aplicado || 0) > 0;
+                    listaArtId = exLaNodos.rows[0].id;
+                    await q.query(
+                        `UPDATE public.bunker_lista_articulos SET
+                            margen_ganancia = $2,
+                            costo_base_sobrescrito = $3,
+                            costo_tiempo = $4,
+                            iva = $5,
+                            precio_final = $6,
+                            disponible = true,
+                            mano_obra_activa = $7,
+                            updated_at = NOW()
+                         WHERE id = $1`,
+                        [
+                            listaArtId,
+                            Number(art.margen_lamda_pct ?? 22),
+                            costoRecetaPorKg > 0 ? costoRecetaPorKg : null,
+                            Number(art.costo_mano_obra_aplicado || 0),
+                            Number(art.iva_pct ?? 21),
+                            Number(art.precio_base_nodo_final || 0),
+                            manoObraActivaNodo
+                        ]
+                    );
                 } else {
                     // Ya existe en Lista Base Nodos Barriales: respetar intactos su margen, mano de obra y precio configurados en Búnker
                     listaArtId = exLaNodos.rows[0].id;
@@ -8809,7 +9068,8 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
             } else {
                 const exLa = await q.query(
                     `SELECT id, disponible FROM public.bunker_lista_articulos
-                     WHERE lista_id = $1 AND UPPER(articulo_numero) = UPPER($2) LIMIT 1`,
+                     WHERE lista_id = $1 AND UPPER(articulo_numero) = UPPER($2)
+                     LIMIT 1 FOR UPDATE`,
                     [lp.id, sku]
                 );
 
@@ -8823,13 +9083,12 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
                         );
                     }
                 } else {
-                    const upLaMay = await q.query(
+                    const insLaMay = await q.query(
                         `INSERT INTO public.bunker_lista_articulos (
                             lista_id, articulo_numero, margen_ganancia, costo_base_sobrescrito,
                             costo_tiempo, iva, precio_final, modo_calculo, modo_iva,
                             es_patron, disponible, mano_obra_activa, updated_at
                          ) VALUES ($1,$2,$3,$4,$5,$6,$7,'AUTOMATIC','COMPLETO',false,$8,$9,NOW())
-                         ON CONFLICT (lista_id, articulo_numero) DO NOTHING
                          RETURNING id`,
                         [
                             lp.id,
@@ -8843,7 +9102,7 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
                             Number(art.costo_mano_obra_aplicado || 0) > 0
                         ]
                     );
-                    listaArtId = upLaMay.rows[0]?.id || null;
+                    listaArtId = insLaMay.rows[0]?.id || null;
                 }
             }
 
@@ -10584,18 +10843,31 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
             }
 
             // Aprendizaje automático del titular para futuras transferencias del vecino
-            await client.query(
-                `INSERT INTO public.nodos_alias_vecinos_aprendidos (
-                    nodo_id, vecino_id, vecino_nombre, titular_normalizado, billetera_banco_origen, usos_confirmados, updated_at
-                 ) VALUES ($1, $2, $3, $4, $5, 1, NOW())
-                 ON CONFLICT (nodo_id, titular_normalizado)
-                 DO UPDATE SET
-                    vecino_nombre = EXCLUDED.vecino_nombre,
-                    billetera_banco_origen = EXCLUDED.billetera_banco_origen,
-                    usos_confirmados = public.nodos_alias_vecinos_aprendidos.usos_confirmados + 1,
-                    updated_at = NOW()`,
-                [ped.nodo_id, ped.vecino_id, ped.vecino_nombre, titularNorm, billetera]
+            const exAliasVec = await client.query(
+                `SELECT id FROM public.nodos_alias_vecinos_aprendidos
+                 WHERE nodo_id = $1 AND titular_normalizado = $2
+                 LIMIT 1 FOR UPDATE`,
+                [ped.nodo_id, titularNorm]
             );
+            if (exAliasVec.rows.length > 0) {
+                await client.query(
+                    `UPDATE public.nodos_alias_vecinos_aprendidos SET
+                        vecino_id = COALESCE($2, vecino_id),
+                        vecino_nombre = $3,
+                        billetera_banco_origen = $4,
+                        usos_confirmados = usos_confirmados + 1,
+                        updated_at = NOW()
+                     WHERE id = $1`,
+                    [exAliasVec.rows[0].id, ped.vecino_id, ped.vecino_nombre, billetera]
+                );
+            } else {
+                await client.query(
+                    `INSERT INTO public.nodos_alias_vecinos_aprendidos (
+                        nodo_id, vecino_id, vecino_nombre, titular_normalizado, billetera_banco_origen, usos_confirmados, updated_at
+                     ) VALUES ($1, $2, $3, $4, $5, 1, NOW())`,
+                    [ped.nodo_id, ped.vecino_id, ped.vecino_nombre, titularNorm, billetera]
+                );
+            }
 
             if (ped.vecino_id) {
                 await client.query(
@@ -13983,17 +14255,24 @@ async function actualizarRadarRepartoGestor(nodoId, payload = {}) {
     const activo = Boolean(payload.activo);
 
     if (!activo) {
-        await db.query(
-            `INSERT INTO public.nodos_reparto_radar (
-                nodo_id, activo, latitud, longitud, precision_metros, pedido_actual_id, updated_at
-             ) VALUES ($1::int, false, NULL, NULL, NULL, NULL, NOW())
-             ON CONFLICT (nodo_id)
-             DO UPDATE SET
+        const updOff = await db.query(
+            `UPDATE public.nodos_reparto_radar SET
                 activo = false,
                 pedido_actual_id = NULL,
-                updated_at = NOW()`,
+                updated_at = NOW()
+             WHERE nodo_id = $1::int`,
             [nid]
         );
+        if (updOff.rowCount === 0) {
+            await db.query(
+                `INSERT INTO public.nodos_reparto_radar (
+                    nodo_id, activo, latitud, longitud, precision_metros, pedido_actual_id, updated_at
+                 )
+                 SELECT $1::int, false, NULL, NULL, NULL, NULL, NOW()
+                 WHERE NOT EXISTS (SELECT 1 FROM public.nodos_reparto_radar WHERE nodo_id = $1::int)`,
+                [nid]
+            );
+        }
         return { activo: false, expira_en_segundos: 240 };
     }
 
@@ -14011,26 +14290,34 @@ async function actualizarRadarRepartoGestor(nodoId, payload = {}) {
         if (chk.rows.length > 0) pedActualValidado = pedActualRaw;
     }
 
-    await db.query(
-        `INSERT INTO public.nodos_reparto_radar (
-            nodo_id, activo, latitud, longitud, precision_metros, pedido_actual_id, updated_at
-         ) VALUES ($1::int, true, $2::numeric, $3::numeric, $4::int, $5::int, NOW())
-         ON CONFLICT (nodo_id)
-         DO UPDATE SET
+    const paramsRadar = [
+        nid,
+        coords ? coords.lat : null,
+        coords ? coords.lng : null,
+        precision,
+        pedActualValidado
+    ];
+    const updOn = await db.query(
+        `UPDATE public.nodos_reparto_radar SET
             activo = true,
-            latitud = COALESCE($2::numeric, public.nodos_reparto_radar.latitud),
-            longitud = COALESCE($3::numeric, public.nodos_reparto_radar.longitud),
-            precision_metros = COALESCE($4::int, public.nodos_reparto_radar.precision_metros),
+            latitud = COALESCE($2::numeric, latitud),
+            longitud = COALESCE($3::numeric, longitud),
+            precision_metros = COALESCE($4::int, precision_metros),
             pedido_actual_id = $5::int,
-            updated_at = NOW()`,
-        [
-            nid,
-            coords ? coords.lat : null,
-            coords ? coords.lng : null,
-            precision,
-            pedActualValidado
-        ]
+            updated_at = NOW()
+         WHERE nodo_id = $1::int`,
+        paramsRadar
     );
+    if (updOn.rowCount === 0) {
+        await db.query(
+            `INSERT INTO public.nodos_reparto_radar (
+                nodo_id, activo, latitud, longitud, precision_metros, pedido_actual_id, updated_at
+             )
+             SELECT $1::int, true, $2::numeric, $3::numeric, $4::int, $5::int, NOW()
+             WHERE NOT EXISTS (SELECT 1 FROM public.nodos_reparto_radar WHERE nodo_id = $1::int)`,
+            paramsRadar
+        );
+    }
 
     return {
         activo: true,

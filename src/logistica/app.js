@@ -145,6 +145,18 @@ app.use((req, res, next) => {
     next();
 });
 
+// Normalizar el alias estático PWA /lamda-manifest.json hacia la ruta pública homologada del manifest
+// sin abrir ninguna ruta privada ni tocar lamdaCloudAuthGuard.js.
+app.use((req, res, next) => {
+    if ((req.method === 'GET' || req.method === 'HEAD') && req.path === '/lamda-manifest.json') {
+        const qIdx = (req.originalUrl || req.url || '').indexOf('?');
+        const qs = qIdx !== -1 ? (req.originalUrl || req.url).slice(qIdx) : '';
+        req.url = '/lamda-prueba-manifest.json' + qs;
+        req.originalUrl = req.url;
+    }
+    next();
+});
+
 // 🛡️ Escudo Unificado de Autenticación Cloud 24/7 (Cookie HttpOnly lamda_cloud_jwt + Bearer)
 // Protege /pages/*, /gw/3000..3004 y /api/* salvo la lista blanca pública
 app.use(lamdaCloudAuthGuard);
@@ -205,6 +217,7 @@ app.use((req, res, next) => {
         reqPath.startsWith('/api/tiempos') ||
         reqPath.startsWith('/api/facturacion') ||
         reqPath === '/lamda-cloud-runtime.js' ||
+        reqPath === '/lamda-manifest.json' ||
         reqPath === '/lamda-prueba-manifest.json' ||
         reqPath === '/lamda-prueba-sw.js' ||
         reqPath === '/env-config.js' ||
