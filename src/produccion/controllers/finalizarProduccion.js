@@ -287,9 +287,11 @@ async function
 
             // Guardar datos para usar en el registro de movimientos
             historialData = {
+                articulo_padre_id: articuloPadre.articulo_numero,
                 articulo_fraccionado_id: articuloFraccionadoCodigo,
                 kilos_producidos: kilos_producidos,
-                ingredientes_sumados: ingredientesSumados
+                ingredientes_sumados: ingredientesSumados,
+                linea_negocio: lineaNegocio
             };
         }
 
@@ -603,9 +605,32 @@ async function
             console.warn('⚠️ [PRODUCCION-CONFIRMADA] Sondeo post-producción omitido:', errReconcil.message);
         }
 
+        const asentadoResumen = carro.tipo_carro === 'externa'
+            ? {
+                tipo_carro: 'externa',
+                linea_negocio: historialData?.linea_negocio || 4,
+                articulo_padre_id: historialData?.articulo_padre_id || null,
+                articulos_producidos: historialData?.articulo_fraccionado_id
+                    ? [{
+                        sku: historialData.articulo_fraccionado_id,
+                        cantidad: Number((parseFloat(historialData.kilos_producidos || 0) + parseFloat(historialData.ingredientes_sumados || 0)).toFixed(4))
+                    }]
+                    : []
+            }
+            : {
+                tipo_carro: 'interna',
+                linea_negocio: carro.linea_negocio || null,
+                articulos_producidos: articulosCarro.map((a) => ({
+                    sku: a.articulo_numero,
+                    descripcion: a.descripcion || a.articulo_numero,
+                    cantidad: Number(a.cantidad) || 0
+                }))
+            };
+
         return res.json({
             mensaje: 'Producción confirmada correctamente',
-            articulos: articulosCarro.length
+            articulos: articulosCarro.length,
+            asentado_resumen: asentadoResumen
         });
 
     } catch (error) {

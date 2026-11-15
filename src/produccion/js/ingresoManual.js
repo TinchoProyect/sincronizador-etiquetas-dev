@@ -546,6 +546,20 @@ async function consultarKilosUnidad(articuloNumero) {
 // 🆕 Función para actualizar kilos_unidad si cambió
 async function actualizarKilosUnidadSiCambio(articuloNumero, nuevoValor) {
   try {
+    // Blindaje de Artículo Puente: jamás sobrescribir kilos_unidad (1.00 kg/u) con los kilos del lote transferido
+    if (
+      articuloSeleccionado &&
+      String(articuloSeleccionado.numero || '').trim().toUpperCase() === String(articuloNumero || '').trim().toUpperCase() &&
+      (
+        articuloSeleccionado.es_articulo_puente === true ||
+        articuloSeleccionado.es_articulo_sugerido === true ||
+        Number(articuloSeleccionado.familia_id) === 42
+      )
+    ) {
+      console.log(`🛡️ [BLINDAJE AP] Se omite actualización de kilos_unidad para el Artículo Puente ${articuloNumero} (permanece 1.00 kg).`);
+      return;
+    }
+
     // Solo actualizar si el valor cambió
     if (kilosUnidadOriginal !== null && Math.abs(kilosUnidadOriginal - nuevoValor) < 0.001) {
       console.log('ℹ️ [KILOS_UNIDAD] Valor no cambió, no se actualiza');

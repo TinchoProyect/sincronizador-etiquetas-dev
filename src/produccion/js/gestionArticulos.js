@@ -64,7 +64,7 @@ function actualizarTablaArticulos(articulos) {
     tbody.innerHTML = '';
 
     if (!articulos || articulos.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="mensaje-info">No hay artículos registrados</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="8" class="mensaje-info">No hay artículos registrados</td></tr>`;
         return;
     }
 
@@ -120,7 +120,27 @@ function actualizarTablaArticulos(articulos) {
                     <span class="slider round"></span>
                 </label>
             </td>
+            <td style="text-align: center; white-space: nowrap;">
+                <button type="button"
+                        class="btn-configurar-up-directo"
+                        data-sku="${String(articulo.numero || '').replace(/"/g, '&quot;')}"
+                        style="background: #0f172a; color: #38bdf8; border: 1px solid #38bdf8; border-radius: 5px; padding: 3px 8px; font-size: 11px; font-weight: 700; cursor: pointer;">
+                    ⚙️ UP / Receta
+                </button>
+            </td>
         `;
+        const btnDirecto = tr.querySelector('.btn-configurar-up-directo');
+        if (btnDirecto) {
+            btnDirecto.addEventListener('click', () => {
+                if (typeof window.abrirEditorUpDirecto === 'function') {
+                    window.abrirEditorUpDirecto(articulo.numero, {
+                        onSaved: () => {
+                            if (typeof cargarArticulos === 'function') cargarArticulos();
+                        }
+                    });
+                }
+            });
+        }
         tbody.appendChild(tr);
     });
     

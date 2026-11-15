@@ -52,20 +52,67 @@ async function obtenerArticulos(tipoCarro = null, codigoBarras = null) {
                     SELECT 1 FROM public.recetas r3
                     WHERE r3.articulo_sugerido_numero = a.numero
                 ) as es_articulo_sugerido,
-                -- Información del artículo base de la receta (para UPs)
-                ra.articulo_numero as articulo_base_codigo,
-                a_base.nombre as articulo_base_nombre,
-                COALESCE(src_base.stock_consolidado, 0) as articulo_base_stock
+                -- Información determinista del artículo base (crudo / pre-mezcla) de la receta (para UPs)
+                base_info.articulo_base_codigo,
+                base_info.articulo_base_nombre,
+                COALESCE(base_info.articulo_base_stock, 0) as articulo_base_stock,
+                COALESCE(base_info.articulo_base_kilos_unidad, 1) as articulo_base_kilos_unidad,
+                COALESCE(base_info.articulo_base_costo_bulto, 0) as articulo_base_costo_bulto,
+                -- Información determinista del Artículo Puente (AP) destino y su ingrediente espejo
+                ap_info.articulo_puente_codigo,
+                ap_info.articulo_puente_nombre,
+                ap_info.multiplicador_ingredientes as relacion_multiplicador,
+                ap_info.ingrediente_espejo_id,
+                ap_info.ingrediente_espejo_codigo,
+                ap_info.ingrediente_espejo_nombre,
+                -- Marca explícita de Artículo Puente por kilo
+                (
+                    COALESCE(src.solo_produccion_externa, false) = false
+                    AND (
+                        (COALESCE(ba.familia_id, 0) = 42 AND ABS(COALESCE(ba.kilos_unidad, src.kilos_unidad, 1) - 1) < 0.001)
+                        OR EXISTS (
+                            SELECT 1 FROM public.articulos_produccion_externa_relacion aper_chk
+                            WHERE UPPER(BTRIM(aper_chk.articulo_kilo_codigo)) = UPPER(BTRIM(a.numero))
+                              AND UPPER(BTRIM(aper_chk.articulo_produccion_codigo)) <> UPPER(BTRIM(aper_chk.articulo_kilo_codigo))
+                        )
+                    )
+                ) as es_articulo_puente
             FROM public.articulos a
             LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
             LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = a.numero
-            -- Join con receta para obtener el artículo base (insumo)
-            LEFT JOIN public.recetas r ON r.articulo_numero = a.numero
-            LEFT JOIN public.receta_articulos ra ON ra.receta_id = r.id
-            -- Join con artículos para obtener nombre del artículo base
-            LEFT JOIN public.articulos a_base ON a_base.numero = ra.articulo_numero
-            -- Join con stock del artículo base
-            LEFT JOIN public.stock_real_consolidado src_base ON src_base.articulo_numero = ra.articulo_numero
+            LEFT JOIN LATERAL (
+                SELECT
+                    ra.articulo_numero AS articulo_base_codigo,
+                    COALESCE(ba_base.descripcion_generada, ba_base.descripcion, a_base.nombre) AS articulo_base_nombre,
+                    COALESCE(src_base.stock_consolidado, 0) AS articulo_base_stock,
+                    COALESCE(NULLIF(ba_base.kilos_unidad, 0), NULLIF(src_base.kilos_unidad, 0), 1) AS articulo_base_kilos_unidad,
+                    COALESCE(ba_base.costo_base, 0) AS articulo_base_costo_bulto
+                FROM public.recetas r
+                JOIN public.receta_articulos ra ON ra.receta_id = r.id
+                LEFT JOIN public.articulos a_base ON a_base.numero = ra.articulo_numero
+                LEFT JOIN public.bunker_articulos ba_base ON ba_base.articulo_id = ra.articulo_numero
+                LEFT JOIN public.stock_real_consolidado src_base ON src_base.articulo_numero = ra.articulo_numero
+                WHERE r.articulo_numero = a.numero
+                ORDER BY ra.id ASC
+                LIMIT 1
+            ) base_info ON true
+            LEFT JOIN LATERAL (
+                SELECT
+                    aper.articulo_kilo_codigo AS articulo_puente_codigo,
+                    COALESCE(ba_ap.descripcion_generada, ba_ap.descripcion, a_ap.nombre) AS articulo_puente_nombre,
+                    COALESCE(aper.multiplicador_ingredientes, 1) AS multiplicador_ingredientes,
+                    ing_ap.id AS ingrediente_espejo_id,
+                    ing_ap.codigo AS ingrediente_espejo_codigo,
+                    ing_ap.nombre AS ingrediente_espejo_nombre
+                FROM public.articulos_produccion_externa_relacion aper
+                LEFT JOIN public.articulos a_ap ON a_ap.numero = aper.articulo_kilo_codigo
+                LEFT JOIN public.bunker_articulos ba_ap ON ba_ap.articulo_id = aper.articulo_kilo_codigo
+                LEFT JOIN public.ingredientes ing_ap ON UPPER(BTRIM(ing_ap.articulo_vinculado_numero)) = UPPER(BTRIM(aper.articulo_kilo_codigo))
+                WHERE UPPER(BTRIM(aper.articulo_produccion_codigo)) = UPPER(BTRIM(a.numero))
+                  AND UPPER(BTRIM(aper.articulo_produccion_codigo)) <> UPPER(BTRIM(aper.articulo_kilo_codigo))
+                ORDER BY aper.id ASC
+                LIMIT 1
+            ) ap_info ON true
             ${whereClause}
             ORDER BY nombre ASC
         `;
@@ -253,6 +300,24 @@ async function actualizarKilosUnidad(articuloNumero, kilosUnidad) {
         const kilosUnidadValido = kilosUnidad === null || kilosUnidad === '' ? null : parseFloat(kilosUnidad);
         if (kilosUnidadValido !== null && (isNaN(kilosUnidadValido) || kilosUnidadValido < 0)) {
             throw new Error('El valor de kilos por unidad debe ser un número positivo o null');
+        }
+
+        // Blindaje estricto: un Artículo Puente por kilo jamás debe sobrescribir kilos_unidad con el peso del lote transferido
+        const { esArticuloPuentePorKilo } = require('../utils/articuloPuenteHelper');
+        const esApPorKilo = await esArticuloPuentePorKilo(pool, articuloNumero);
+        if (esApPorKilo && (kilosUnidadValido === null || Math.abs(kilosUnidadValido - 1) > 0.001)) {
+            console.log(`🛡️ [BLINDAJE AP] Ignorando sobrescritura de kilos_unidad=${kilosUnidadValido} sobre Artículo Puente ${articuloNumero} (se preserva 1.00 kg/u).`);
+            await pool.query(
+                `UPDATE public.stock_real_consolidado SET kilos_unidad = 1.00 WHERE articulo_numero = $1 AND COALESCE(kilos_unidad, 0) <> 1.00`,
+                [articuloNumero]
+            );
+            return {
+                success: true,
+                protegido_articulo_puente: true,
+                message: 'Artículo Puente protegido: se mantiene kilos_unidad = 1.00',
+                articulo_numero: articuloNumero,
+                kilos_unidad: 1.0
+            };
         }
         
         // Verificar que el artículo existe

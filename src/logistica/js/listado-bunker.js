@@ -2260,6 +2260,12 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva, opcion
             const costoLomasoftKilo = gp_factorPresentacion > 0 ? (costoLomasoftBulto / gp_factorPresentacion) : 0;
             gp_costoLomasoftKilo = costoLomasoftKilo;
 
+            const cardLomasoftEl = document.getElementById('gp-card-lomasoft');
+            const esFamiliaPuenteAp = Number(data.familia_id || (data.propiedades_dinamicas && data.propiedades_dinamicas.familia_id) || 0) === 42;
+            if (cardLomasoftEl) {
+                cardLomasoftEl.style.display = esFamiliaPuenteAp ? 'none' : 'flex';
+            }
+
             const lomaValEl = document.getElementById('gp-costo-lomasoft-val');
             const lomaBultoEl = document.getElementById('gp-costo-lomasoft-bulto');
             const lomaIvaEl = document.getElementById('gp-iva-lomasoft-val');
@@ -2626,6 +2632,8 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva, opcion
             const tostaderoBadgeEl = document.getElementById('gp-tostadero-badge');
 
             let crudoNombreResolved = data.nombre_ingrediente_ref || data.parent_descripcion || null;
+            let crudoStockCostoTexto = '';
+            let merDataGlobal = null;
             let mermaValResolved = (props && props.tostadero_simulacion && props.tostadero_simulacion.merma !== undefined)
                 ? props.tostadero_simulacion.merma
                 : (data.porcentaje_merma !== undefined && data.porcentaje_merma !== null ? data.porcentaje_merma : null);
@@ -2634,16 +2642,27 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva, opcion
 
             // Consultar Sonda UP (Unidad Productiva) de Carro Externo desde mermas-historicas
             try {
-                console.log(`🔍 [SONDA UP FRONTEND HARD-DEBUG] abrirGestorPrecios fetch mermas-historicas querySku: "${querySku}" (articulo_id: "${articulo_id}")`);
                 const resMer = await fetch(`/api/logistica/bunker/mermas-historicas?sku_salida=${encodeURIComponent(querySku)}`);
                 if (resMer.ok) {
                     const merData = await resMer.json();
-                    console.log("🔍 [SONDA UP FRONTEND HARD-DEBUG] Response merData:", merData);
+                    merDataGlobal = merData;
+                    window.gp_sku_up_vinculado = merData.sku_up || querySku;
                     if (merData.enlazado && merData.vinculo_directo && merData.descripcion_entrada && merData.descripcion_entrada !== 'Sin vincular') {
-                        crudoNombreResolved = merData.descripcion_entrada;
+                        const skuIn = merData.sku_nexo_ingrediente || merData.sku_entrada || '';
+                        crudoNombreResolved = skuIn ? `[${skuIn}] ${merData.descripcion_entrada}` : merData.descripcion_entrada;
                         isVinculadoDirectoUP = true;
+                        if (merData.nexo_insumo_entrada) {
+                            const nx = merData.nexo_insumo_entrada;
+                            const stBultos = parseFloat(nx.stock_bultos) || 0;
+                            const stKilos = parseFloat(nx.stock_kilos) || 0;
+                            const cKg = parseFloat(nx.costo_kilo) || 0;
+                            crudoStockCostoTexto = `📦 Stock UP: ${stBultos.toLocaleString('es-AR', { maximumFractionDigits: 2 })} bultos (${stKilos.toLocaleString('es-AR', { maximumFractionDigits: 2 })} kg) · ${currencyFormatter.format(cKg)}/kg`;
+                        }
                         if (mermaValResolved === null && merData.merma_promedio !== undefined) {
                             mermaValResolved = merData.merma_promedio;
+                        }
+                        if ((!props.tostadero_simulacion) && merData.tostadero_simulacion) {
+                            props.tostadero_simulacion = merData.tostadero_simulacion;
                         }
                     }
                 }
@@ -2709,6 +2728,7 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva, opcion
                 };
             }
 
+            const tostaderoCrudoMetaEl = document.getElementById('gp-tostadero-crudo-stock-costo');
             if (isVinculadoDirectoUP) {
                 if (cardTostaderoEl) cardTostaderoEl.style.display = 'flex';
                 if (tostaderoCrudoValEl) {
@@ -2716,10 +2736,18 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva, opcion
                     tostaderoCrudoValEl.style.color = '#b45309';
                     tostaderoCrudoValEl.title = `Materia prima / Mezcla de UP enlazada: ${crudoNombreResolved}`;
                 }
+                if (tostaderoCrudoMetaEl) {
+                    if (crudoStockCostoTexto) {
+                        tostaderoCrudoMetaEl.style.display = 'block';
+                        tostaderoCrudoMetaEl.innerText = crudoStockCostoTexto;
+                    } else {
+                        tostaderoCrudoMetaEl.style.display = 'none';
+                    }
+                }
 
                 let mermaText = '- %';
                 if (mermaValResolved !== null && mermaValResolved !== undefined) {
-                    mermaText = `${parseFloat(mermaValResolved).toFixed(1)} %`;
+                    mermaText = `${parseFloat(mermaValResolved).toFixed(2)} %`;
                 }
                 
                 if (tostaderoMermaValEl) {
@@ -2740,17 +2768,19 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva, opcion
                 }
             } else {
                 if (cardTostaderoEl) cardTostaderoEl.style.display = 'none';
+                if (tostaderoCrudoMetaEl) tostaderoCrudoMetaEl.style.display = 'none';
             }
 
-            if (simData && parseFloat(simData.costo_final) > 0) {
-                const costVal = parseFloat(simData.costo_final) || 0;
+            const costoSimPersistido = simData ? (parseFloat(simData.costo_resultante_kg) || parseFloat(simData.costo_final) || 0) : 0;
+            if (costoSimPersistido > 0) {
+                const costVal = costoSimPersistido;
                 window.gp_costoTostaderoKilo = costVal;
                 
                 const tostaderoValEl = document.getElementById('gp-costo-tostadero-val');
                 if (tostaderoValEl) {
                     tostaderoValEl.innerText = currencyFormatter.format(costVal);
                     tostaderoValEl.setAttribute('onclick', `window.confirmarTostaderoTotalCost(${costVal})`);
-                    tostaderoValEl.title = `Haga clic para inyectar este costo ($${costVal.toFixed(2)}/kg) en la calculadora`;
+                    tostaderoValEl.title = `Haga clic para inyectar este costo (${currencyFormatter.format(costVal)}/kg) en la calculadora`;
                 }
             }
 
@@ -4587,7 +4617,8 @@ window.guardarEstructuraFinanciera = async function() {
             body: JSON.stringify({ 
                 configs: configsPayload,
                 asistente_colaborador_id,
-                asistente_minutos
+                asistente_minutos,
+                tostadero_simulacion: window.gp_current_articulo_data?.propiedades_dinamicas?.tostadero_simulacion
             })
         });
         const result = await res.json();
@@ -13009,9 +13040,9 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
             console.error("Error al cargar ingredientes locales:", errIngs);
         }
         
-        const simSaved = (currentData.propiedades_dinamicas && currentData.propiedades_dinamicas.tostadero_simulacion) 
-            ? currentData.propiedades_dinamicas.tostadero_simulacion 
-            : null;
+        const simSaved = (currentData.propiedades_dinamicas && currentData.propiedades_dinamicas.tostadero_simulacion)
+            ? currentData.propiedades_dinamicas.tostadero_simulacion
+            : (mermasData.tostadero_simulacion || null);
 
         // 2.7 Obtener ingredientes de la Unidad Productiva vinculada al artículo simulado
         const skuParaReceta = mermasData.sku_entrada || skuSalida;
@@ -13047,18 +13078,31 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
         });
 
         // Estructura de variables en caliente (Dominios Desacoplados v5.43c)
-        let currentSkuEntrada = mermasData.sku_nexo_ingrediente || mermasData.sku_entrada || '';
-        let currentDescripcionCrudo = mermasData.descripcion_nexo_generada || mermasData.descripcion_entrada || mermasData.sku_entrada || 'Sin vincular';
-        let currentCostoCrudo = simSaved ? parseFloat(simSaved.costo_crudo) : 0; // Por Kilo
-        let currentTarifa = simSaved ? parseFloat(simSaved.tarifa) : 0;
-        let currentMerma = simSaved ? parseFloat(simSaved.merma) : (mermasData.merma_promedio || 0.00);
+        const bultosComparativos = Array.isArray(mermasData.bultos_comparativos) ? mermasData.bultos_comparativos : [];
+        const skuOriginalUpCrudo = mermasData.sku_nexo_ingrediente || mermasData.sku_entrada || '';
+        const bultoSavedObj = simSaved && simSaved.insumo_evaluado_sku
+            ? bultosComparativos.find(b => String(b.sku).trim().toUpperCase() === String(simSaved.insumo_evaluado_sku).trim().toUpperCase())
+            : null;
+        let currentSkuEntrada = bultoSavedObj ? bultoSavedObj.sku : skuOriginalUpCrudo;
+        let currentDescripcionCrudo = bultoSavedObj
+            ? bultoSavedObj.descripcion
+            : (mermasData.descripcion_nexo_generada || mermasData.descripcion_entrada || mermasData.sku_entrada || 'Sin vincular');
+        let currentEsComparacionComprado = bultoSavedObj ? Boolean(bultoSavedObj.es_tostado_comprado) : false;
+        let currentCostoCrudo = simSaved ? (parseFloat(simSaved.costo_crudo_kg) || parseFloat(simSaved.costo_crudo) || 0) : 0; // Por Kilo
+        let currentTarifa = (simSaved && simSaved.tarifa !== undefined && simSaved.tarifa !== null) ? parseFloat(simSaved.tarifa) : 0;
+        let currentMerma = (simSaved && simSaved.merma !== undefined && simSaved.merma !== null) ? parseFloat(simSaved.merma) : (mermasData.merma_promedio || 0.00);
+        let backupMermaUp = currentEsComparacionComprado ? (mermasData.merma_promedio || 0.00) : currentMerma;
+        let backupTarifaUp = currentEsComparacionComprado ? 0 : currentTarifa;
         let currentKilosUnidad = 1.00;
         let cotizacionMaestraSeleccionada = null;
+        let currentCostoFinalExacto = 0;
         
         // 🔑 HITO A (Fase 3 - v5.44): INGESTA DINÁMICA DE COSTO BASE DE MATERIA PRIMA (Caja 2)
-        if (mermasData && mermasData.ingesta_financiera_caja_2 && parseFloat(mermasData.ingesta_financiera_caja_2.costo_kilo_sugerido) > 0) {
+        if (bultoSavedObj && bultoSavedObj.costo_kilo > 0 && !(currentCostoCrudo > 0)) {
+            currentCostoCrudo = parseFloat(bultoSavedObj.costo_kilo);
+        } else if (!bultoSavedObj && mermasData && mermasData.ingesta_financiera_caja_2 && parseFloat(mermasData.ingesta_financiera_caja_2.costo_kilo_sugerido) > 0 && !(currentCostoCrudo > 0)) {
             currentCostoCrudo = parseFloat(mermasData.ingesta_financiera_caja_2.costo_kilo_sugerido);
-        } else {
+        } else if (!(currentCostoCrudo > 0)) {
             const skuOrigenFinanzas = currentSkuEntrada || mermasData.sku_entrada || 'MPB';
             try {
                 const resFinCrudo = await fetch(`/api/logistica/bunker/finanzas/${encodeURIComponent(skuOrigenFinanzas)}`);
@@ -13101,10 +13145,25 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                 <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 15px;">
                     <!-- Paso 1: Materia Prima -->
                     <div>
-                        <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #334155; font-size: 0.95em;">1. Materia Prima Entrada</label>
-                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; font-size: 0.88em; color: #475569;">
-                            <div style="font-weight: 600; color: #0f172a;">${currentDescripcionCrudo}</div>
+                        <label style="font-weight: bold; display: block; margin-bottom: 5px; color: #334155; font-size: 0.95em;">1. Materia Prima / Insumo Evaluado</label>
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; font-size: 0.88em; color: #475569; display: flex; flex-direction: column; gap: 6px;">
+                            <div id="sim_lbl_mp_titulo" style="font-weight: 700; color: #0f172a;">[${currentSkuEntrada || 'S/SKU'}] ${currentDescripcionCrudo}</div>
                             <div style="font-size: 0.85em; color: #64748b;" id="sim_lbl_kilos_unidad">Cargando kilos por bulto...</div>
+                            ${Number(mermasData.linea_negocio) === 4 && bultosComparativos.length > 0 ? `
+                                <div style="border-top: 1px dashed #cbd5e1; padding-top: 6px; margin-top: 2px;">
+                                    <span style="font-size: 0.8em; font-weight: 700; color: #475569; display: block; margin-bottom: 4px;">🔄 Simular o comparar contra otro bulto en Búnker:</span>
+                                    <select id="sim_selector_insumo_evaluado" style="width: 100%; padding: 6px 8px; border: 1px solid #94a3b8; border-radius: 5px; font-size: 0.84em; background: #fff; color: #0f172a; font-weight: 600;">
+                                        ${bultosComparativos.map(b => {
+                                            const tag = b.es_actual_up ? '★ ACTUAL EN UP' : (b.es_tostado_comprado ? '🛒 BULTO TOSTADO COMPRADO' : '🌰 BULTO CRUDO');
+                                            const sel = String(b.sku).trim().toUpperCase() === String(currentSkuEntrada).trim().toUpperCase() ? 'selected' : '';
+                                            return `<option value="${b.sku}" data-desc="${(b.descripcion || '').replace(/"/g, '&quot;')}" data-costo-kg="${b.costo_kilo}" data-kilos="${b.kilos_unidad}" data-comprado="${b.es_tostado_comprado ? '1' : '0'}" ${sel}>[${b.sku}] ${b.descripcion} (${tag}) · Stock: ${b.stock_bultos} bultos (${b.stock_kilos} kg) · ${currencyFormatterLocal.format(b.costo_kilo)}/kg</option>`;
+                                        }).join('')}
+                                    </select>
+                                    <div id="sim_badge_comparacion_comprado" style="display: ${currentEsComparacionComprado ? 'block' : 'none'}; margin-top: 5px; padding: 5px 8px; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 5px; color: #92400e; font-size: 0.79em; font-weight: 600;">
+                                        🛒 Comparando contra bulto ya procesado comprado (ej. emergencia): merma y tarifa de tostado en 0 para contraste directo $/kg.
+                                    </div>
+                                </div>
+                            ` : ''}
                         </div>
                     </div>
 
@@ -13460,10 +13519,13 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         }
                     });
 
-                    // A) Horneable & Salida de Horno (Redondeo explícito a 2 decimales)
+                    // A) Horneable & Salida de Horno
                     const masaHorneable = currentKilosUnidad + sumQtyExtra;
                     const costoTotalHorneable = (currentKilosUnidad * currentCostoCrudo) + sumCostExtra;
-                    const masaSalidaHorno = Number((masaHorneable * rend).toFixed(2));
+                    const esLinea4Pura = Number(mermasData && mermasData.linea_negocio) === 4 && sumQtyExtra === 0;
+                    const masaSalidaHorno = esLinea4Pura
+                        ? (masaHorneable * rend)
+                        : Number((masaHorneable * rend).toFixed(2));
 
                     // 2. Recopilar & Escalar Etapa 2 (Secos Post-Horno sobre Masa Salida Horno)
                     const activePostHorno = [];
@@ -13547,17 +13609,22 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
 
                     const costoUnitarioPorPieza = unidadesProd > 0 ? (inversionTotalTanda / unidadesProd) : 0;
                     
-                    // 🔑 BIFURCACIÓN DE COSTO POR KILO (UNIDAD vs GRANEL CONCENTRADO) - v5.65
+                    // 🔑 BIFURCACIÓN DE COSTO POR KILO (UNIDAD vs LÍNEA 4 PURA vs GRANEL CONCENTRADO)
                     let costoFinalPorKilo = 0;
                     if (esModoUnidad) {
                         // 🔒 FLUJO POR PIEZAS (BARRITAS - FASE 1 INMUTABLE):
                         costoFinalPorKilo = masaFinalTerminada > 0 ? (inversionTotalTanda / masaFinalTerminada) : 0;
+                    } else if (esLinea4Pura && sumQtyPostHorno === 0) {
+                        // 🥜 FLUJO LÍNEA 4 TOSTADEROS (Ecuación Exacta Unificada):
+                        // Solo el crudo absorbe la merma; la tarifa del productor se suma por kg entregado sin dividir por merma.
+                        costoFinalPorKilo = (currentCostoCrudo / factorRendimiento) + tarifaVal;
                     } else {
                         // 🥣 FLUJO GRANEL (GRANOLAS - COSTO BASE CONCENTRADO v5.65):
                         // Se divide por masaSalidaHorno (la masa que sufrió la merma) para evitar la doble dilución en Búnker
                         const masaBaseHorneadaReal = Math.max(0.0001, masaSalidaHorno);
                         costoFinalPorKilo = masaBaseHorneadaReal > 0 ? (inversionTotalTanda / masaBaseHorneadaReal) : 0;
                     }
+                    currentCostoFinalExacto = costoFinalPorKilo;
 
                     // Actualizar Pizarra UI con Visibilidad Transparente de Tarifa ($175/un)
                     document.getElementById('sim_lbl_desglose_crudo').innerText = currencyFormatterLocal.format(currentCostoCrudo) + ' / kg';
@@ -13719,8 +13786,9 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         let costoBunkerKilo = 0;
                         let fuenteCostoAplicada = '';
 
-                        // 🔑 FASE 3 (v5.47): Detectar e Inmunizar Costo Vivo Operativo Inyectado ($ 8.198,94 / kg)
-                        const ingestaCaja2Obj = mermasData && mermasData.ingesta_financiera_caja_2;
+                        // 🔑 FASE 3 (v5.47): Detectar e Inmunizar Costo Vivo Operativo Inyectado
+                        const esSkuOriginalUp = String(skuEntrada || '').trim().toUpperCase() === String(skuOriginalUpCrudo || '').trim().toUpperCase();
+                        const ingestaCaja2Obj = esSkuOriginalUp ? (mermasData && mermasData.ingesta_financiera_caja_2) : null;
                         const costoVivoIngresado = (ingestaCaja2Obj && parseFloat(ingestaCaja2Obj.costo_kilo_sugerido) > 0)
                             ? parseFloat(ingestaCaja2Obj.costo_kilo_sugerido)
                             : 0;
@@ -13810,7 +13878,9 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
 
                         if (elFuentes) elFuentes.innerHTML = htmlFuentes;
 
-                        let savedCost = simSaved ? parseFloat(simSaved.costo_crudo) : 0;
+                        let savedCost = (simSaved && (!simSaved.insumo_evaluado_sku || String(simSaved.insumo_evaluado_sku).trim().toUpperCase() === String(skuEntrada).trim().toUpperCase()))
+                            ? (parseFloat(simSaved.costo_crudo_kg) || parseFloat(simSaved.costo_crudo) || 0)
+                            : 0;
                         if (cotizacionMaestraSeleccionada) {
                             window.seleccionarFuenteCosto(parseFloat(cotizacionMaestraSeleccionada.costo_reposicion) || 0);
                         } else if (savedCost > 0) {
@@ -13896,48 +13966,34 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
 
                         const historialValido = mData.historial || [];
                         let htmlMermas = '';
-                        let sumaMermas = 0;
-                        let countMermas = 0;
-                        let ultimaMermaCalculada = 0;
+                        const promedioFinal = parseFloat(mData.merma_promedio) || 0;
+                        const ultimaMermaCalculada = parseFloat(mData.ultima_merma) || 0;
+                        const countMermas = parseInt(mData.total_carros) || 0;
 
                         if (historialValido.length > 0) {
-                            historialValido.forEach((h, index) => {
+                            historialValido.forEach((h) => {
                                 const fechaRaw = h.fecha_registro || h.fecha_creacion || h.fecha;
                                 const fechaObj = new Date(fechaRaw);
                                 const fechaFmt = (fechaRaw && !isNaN(fechaObj.getTime())) ? fechaObj.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : 'N/A';
-                                const entradaVal = parseFloat(h.kilos_entrada) || 0;
+                                const entradaVal = h.kilos_entrada !== null && h.kilos_entrada !== undefined ? parseFloat(h.kilos_entrada) : null;
                                 const salidaVal = parseFloat(h.kilos_salida) || 0;
-                                const ingVal = (h.ingredientes_extra_json && Array.isArray(h.ingredientes_extra_json))
-                                    ? h.ingredientes_extra_json.reduce((acc, i) => acc + (parseFloat(i.cantidad) || 0), 0)
-                                    : (parseFloat(h.ingredientes_sumados) || 0);
-                                const entradaTotal = h.kilos_entrada_total !== undefined && h.kilos_entrada_total !== null
-                                    ? parseFloat(h.kilos_entrada_total)
-                                    : (entradaVal + ingVal);
+                                const esInvalida = Boolean(h.es_invalida) || entradaVal === null || !(entradaVal > 0) || salidaVal > entradaVal + 0.0001;
+                                const mPct = (!esInvalida && h.porcentaje_merma !== null && h.porcentaje_merma !== undefined)
+                                    ? parseFloat(h.porcentaje_merma)
+                                    : null;
 
-                                let mPct = h.porcentaje_merma !== null ? parseFloat(h.porcentaje_merma) : null;
-                                if (mPct === null && entradaTotal > 0 && salidaVal > 0) {
-                                    mPct = ((entradaTotal - salidaVal) / entradaTotal) * 100;
-                                }
-                                if (mPct !== null && mPct < 0) mPct = 0;
-                                
-                                if (mPct !== null) {
-                                    if (mPct > 0) {
-                                        sumaMermas += mPct;
-                                        countMermas++;
-                                    }
-                                    if (index === 0) {
-                                        ultimaMermaCalculada = mPct;
-                                    }
-                                }
-
-                                const mermaTexto = mPct !== null ? `${mPct.toFixed(2)}%` : 'Sin datos';
-                                const clickMermaVal = mPct !== null ? mPct : 0;
+                                const entradaTexto = (entradaVal !== null && entradaVal > 0)
+                                    ? `${entradaVal.toFixed(2)} kg${h.reconstruido_movimientos ? ' *' : ''}`
+                                    : 'Sin entrada';
+                                const mermaTexto = esInvalida
+                                    ? `<span style="color:#b91c1c; font-size:0.86em;" title="${h.motivo_invalida || 'Registro inválido excluido del promedio'}">⚠️ Inválida</span>`
+                                    : `${mPct.toFixed(2)}%`;
 
                                 htmlMermas += `
-                                    <tr style="border-bottom: 1px solid #f1f5f9; cursor: pointer;" onclick="window.setSimMerma(${clickMermaVal})" class="sim-row-merma">
+                                    <tr style="border-bottom: 1px solid #f1f5f9; ${esInvalida ? 'background:#fef2f2; opacity:0.75; cursor:not-allowed;' : 'cursor: pointer;'}" ${esInvalida ? '' : `onclick="window.setSimMerma(${mPct})"`} class="sim-row-merma">
                                         <td style="padding: 8px; color: #475569;">${fechaFmt}</td>
                                         <td style="padding: 8px; font-weight: 500; color: #1e3a8a;">#${h.carro_id}</td>
-                                        <td style="padding: 8px; text-align: right; color: #64748b;" title="Mezcla Base: ${entradaVal.toFixed(2)} kg + Insumos Extra: ${ingVal.toFixed(2)} kg">${entradaTotal.toFixed(2)} kg</td>
+                                        <td style="padding: 8px; text-align: right; color: #64748b;" title="${h.reconstruido_movimientos ? `Reconstruido desde egreso real (${h.sku_egresado_real || 'movimiento'})` : ''}">${entradaTexto}</td>
                                         <td style="padding: 8px; text-align: right; color: #64748b;">${salidaVal.toFixed(2)} kg</td>
                                         <td style="padding: 8px; text-align: right; font-weight: bold; color: #1e3a8a;">${mermaTexto}</td>
                                     </tr>
@@ -13945,15 +14001,14 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                             });
                             document.getElementById('sim_tabla_mermas_body').innerHTML = htmlMermas;
 
-                            const promedioFinal = countMermas > 0 ? (sumaMermas / countMermas) : 0;
                             const btnPromedio = document.getElementById('sim_btn_merma_promedio');
                             const btnUltimo = document.getElementById('sim_btn_merma_ultimo');
                             if (btnPromedio) {
-                                btnPromedio.textContent = `Promedio (${promedioFinal.toFixed(1)}%)`;
+                                btnPromedio.textContent = `Promedio (${promedioFinal.toFixed(2)}%)`;
                                 btnPromedio.onclick = () => window.setSimMerma(promedioFinal);
                             }
                             if (btnUltimo) {
-                                btnUltimo.textContent = `Último (${ultimaMermaCalculada.toFixed(1)}%)`;
+                                btnUltimo.textContent = `Último (${ultimaMermaCalculada.toFixed(2)}%)`;
                                 btnUltimo.onclick = () => window.setSimMerma(ultimaMermaCalculada);
                             }
 
@@ -14037,12 +14092,48 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                             selectServicio.innerHTML = optionsHtml;
                             selectServicio.disabled = false;
                             selectServicio.style.background = 'white';
-                            selectServicio.selectedIndex = 0;
+
+                            // Restaurar servicio guardado o autoseleccionar servicio coincidente por SKU / Tostadero
+                            const savedServId = simSaved && simSaved.servicio_id ? String(simSaved.servicio_id) : '';
+                            let matchedIdx = -1;
+                            if (savedServId) {
+                                matchedIdx = Array.from(selectServicio.options).findIndex(o => String(o.value) === savedServId);
+                            }
+                            if (matchedIdx === -1) {
+                                const upSkuU = String(skuUP || '').trim().toUpperCase();
+                                const salSkuU = String(skuSalida || '').trim().toUpperCase();
+                                matchedIdx = Array.from(selectServicio.options).findIndex(o => {
+                                    const optSku = String(o.getAttribute('data-sku') || '').trim().toUpperCase();
+                                    return optSku && (optSku === upSkuU || optSku === salSkuU);
+                                });
+                            }
+                            if (matchedIdx === -1 && Number(mermasData && mermasData.linea_negocio) === 4 && serviciosList.length === 1) {
+                                matchedIdx = 1;
+                            }
+
+                            if (matchedIdx > 0) {
+                                selectServicio.selectedIndex = matchedIdx;
+                                const optSel = selectServicio.options[matchedIdx];
+                                const tarifaOpt = parseFloat(optSel.getAttribute('data-tarifa')) || 0;
+                                const tarifaInp = document.getElementById('sim_tarifa_input');
+                                if (tarifaInp && !currentEsComparacionComprado && (!(parseFloat(tarifaInp.value) > 0) || !savedServId)) {
+                                    tarifaInp.value = tarifaOpt.toFixed(2);
+                                }
+                                const detalleEl = document.getElementById('sim_lbl_tarifa_detalle');
+                                if (detalleEl) {
+                                    detalleEl.innerText = `Servicio: ${optSel.text.trim()}`;
+                                }
+                            } else {
+                                selectServicio.selectedIndex = 0;
+                            }
                         } else {
                             selectServicio.innerHTML = `<option value="base" data-tarifa="${tarifaBaseHora}">Tarifa Base por Hora (${colabNombre}) — ${currencyFormatterLocal.format(tarifaBaseHora)} / hr</option>`;
                             selectServicio.disabled = false;
                             selectServicio.style.background = 'white';
                             selectServicio.selectedIndex = 0;
+                        }
+                        if (typeof window.recalcularSimulacionTostadero === 'function') {
+                            window.recalcularSimulacionTostadero();
                         }
 
                     } catch (errServ) {
@@ -14103,6 +14194,46 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                     });
                 }
 
+                const selectorInsumoEval = document.getElementById('sim_selector_insumo_evaluado');
+                if (selectorInsumoEval) {
+                    selectorInsumoEval.addEventListener('change', async () => {
+                        const opt = selectorInsumoEval.options[selectorInsumoEval.selectedIndex];
+                        if (!opt) return;
+                        const nuevoSku = opt.value;
+                        const nuevaDesc = opt.getAttribute('data-desc') || nuevoSku;
+                        const esComprado = opt.getAttribute('data-comprado') === '1';
+                        const inputMerma = document.getElementById('sim_merma_input');
+                        const inputTarifa = document.getElementById('sim_tarifa_input');
+                        const badgeComp = document.getElementById('sim_badge_comparacion_comprado');
+                        const lblTituloMp = document.getElementById('sim_lbl_mp_titulo');
+
+                        if (!currentEsComparacionComprado && esComprado) {
+                            backupMermaUp = inputMerma ? (parseFloat(inputMerma.value) || 0) : backupMermaUp;
+                            backupTarifaUp = inputTarifa ? (parseFloat(inputTarifa.value) || 0) : backupTarifaUp;
+                            if (inputMerma) inputMerma.value = '0.00';
+                            if (inputTarifa) inputTarifa.value = '0.00';
+                        } else if (currentEsComparacionComprado && !esComprado) {
+                            if (inputMerma && parseFloat(inputMerma.value) === 0 && backupMermaUp > 0) {
+                                inputMerma.value = backupMermaUp.toFixed(2);
+                            }
+                            if (inputTarifa && parseFloat(inputTarifa.value) === 0 && backupTarifaUp > 0) {
+                                inputTarifa.value = backupTarifaUp.toFixed(2);
+                            } else if (inputTarifa && parseFloat(inputTarifa.value) === 0 && selectServicio && selectServicio.selectedIndex > 0) {
+                                const tOpt = parseFloat(selectServicio.options[selectServicio.selectedIndex].getAttribute('data-tarifa')) || 0;
+                                if (tOpt > 0) inputTarifa.value = tOpt.toFixed(2);
+                            }
+                        }
+
+                        currentEsComparacionComprado = esComprado;
+                        currentSkuEntrada = nuevoSku;
+                        currentDescripcionCrudo = nuevaDesc;
+                        if (lblTituloMp) lblTituloMp.innerText = `[${nuevoSku}] ${nuevaDesc}`;
+                        if (badgeComp) badgeComp.style.display = esComprado ? 'block' : 'none';
+
+                        await window.actualizarFuentesYHistorial(nuevoSku);
+                    });
+                }
+
                 window.actualizarFuentesYHistorial(currentSkuEntrada);
 
                 if (defaultColabId && selectColab) {
@@ -14112,12 +14243,16 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
             },
             preConfirm: () => {
                 const textFinal = document.getElementById('sim_lbl_costo_final').innerText;
-                let finalKiloVal = 0;
+                let finalKiloVal = Number.isFinite(currentCostoFinalExacto) && currentCostoFinalExacto > 0
+                    ? Number(currentCostoFinalExacto.toFixed(2))
+                    : 0;
                 let finalUnidadVal = 0;
 
-                const matchKilo = textFinal.match(/\$\s*([\d\.\,]+)\s*\/\s*kg/);
-                if (matchKilo && matchKilo[1]) {
-                    finalKiloVal = parseFloat(matchKilo[1].replace(/\./g, '').replace(',', '.')) || 0;
+                if (!finalKiloVal) {
+                    const matchKilo = textFinal.match(/\$\s*([\d\.\,]+)\s*\/\s*kg/);
+                    if (matchKilo && matchKilo[1]) {
+                        finalKiloVal = parseFloat(matchKilo[1].replace(/\./g, '').replace(',', '.')) || 0;
+                    }
                 }
                 const matchUnidad = textFinal.match(/\$\s*([\d\.\,]+)\s*\/\s*un/);
                 if (matchUnidad && matchUnidad[1]) {
@@ -14136,6 +14271,12 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                 const tarifaVal = parseFloat(document.getElementById('sim_tarifa_input') ? document.getElementById('sim_tarifa_input').value : currentTarifa) || 0;
                 const colabSelect = document.getElementById('sim_colaborador');
                 const colaboradorId = colabSelect && colabSelect.value ? parseInt(colabSelect.value) : null;
+                const colabObj = (colaboradores || []).find(c => String(c.usuario_id) === String(colaboradorId));
+                const servSelect = document.getElementById('sim_servicio_select');
+                const servicioId = servSelect && servSelect.value ? servSelect.value : null;
+                const servicioDesc = (servSelect && servSelect.selectedIndex > 0 && servSelect.options[servSelect.selectedIndex])
+                    ? servSelect.options[servSelect.selectedIndex].text.trim()
+                    : null;
 
                 const activeIngredients = [];
                 const rows = document.querySelectorAll('#sim_insumos_adicionales_container .sim-insumo-row');
@@ -14161,12 +14302,20 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                 
                 return {
                     costo_final: finalKiloVal,
+                    costo_resultante_kg: finalKiloVal,
                     costo_unidad: finalUnidadVal,
                     cantidad_piezas: piezasQty,
                     costo_crudo: currentCostoCrudo,
+                    costo_crudo_kg: currentCostoCrudo,
                     merma: mermaVal,
                     tarifa: tarifaVal,
                     colaborador_id: colaboradorId,
+                    colaborador_nombre: colabObj ? (colabObj.nombre_completo || colabObj.usuario) : null,
+                    servicio_id: servicioId,
+                    servicio_descripcion: servicioDesc,
+                    insumo_evaluado_sku: currentSkuEntrada || null,
+                    insumo_evaluado_descripcion: currentDescripcionCrudo || null,
+                    es_comparacion_bulto_comprado: Boolean(currentEsComparacionComprado),
                     ingredientes_extra: activeIngredients
                 };
             }
@@ -14188,6 +14337,22 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                 window.gp_current_articulo_data.propiedades_dinamicas = {};
             }
             window.gp_current_articulo_data.propiedades_dinamicas.tostadero_simulacion = finalObj;
+
+            // Persistir inmediatamente en propiedades_dinamicas.tostadero_simulacion para que al reabrir jamás arranque en $0,00
+            try {
+                await fetch(`/api/logistica/bunker/tostadero-simulacion/${encodeURIComponent(skuSalida)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(finalObj)
+                });
+            } catch (errSaveSim) {
+                console.warn('⚠️ No se pudo persistir tostadero_simulacion de forma anticipada:', errSaveSim);
+            }
+
+            const tostaderoMermaEl = document.getElementById('gp-tostadero-merma-val');
+            if (tostaderoMermaEl && finalObj.merma !== undefined) {
+                tostaderoMermaEl.innerText = `${parseFloat(finalObj.merma).toFixed(2)} %`;
+            }
 
             // Actualizar variable global de costo tostadero en memoria
             window.gp_costoTostaderoKilo = finalVal;

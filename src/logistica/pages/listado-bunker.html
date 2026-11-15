@@ -1623,7 +1623,7 @@
                     <!-- B. Nivel Inferior: Sub-Grilla de Referencias Básicas (3 o 4 Columnas) -->
                     <div id="gp-subgrilla-referencias" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 15px;">
                         <!-- TARJETA 1: HISTÓRICO LEGACY (LOMASOFT) -->
-                        <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+                        <div id="gp-card-lomasoft" style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
                             <div style="font-size: 0.88em; font-weight: 700; color: #475569; display: flex; align-items: center; gap: 4px; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 2px;">
                                 📋 HISTÓRICO LEGACY (LOMASOFT)
                             </div>
@@ -1724,8 +1724,9 @@
                                     </div>
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
                                         <span style="font-size: 0.85em; color: #b45309;">Relación Crudo:</span>
-                                        <strong id="gp-tostadero-crudo-val" style="color: #b45309; font-size: 0.9em; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Sin vincular</strong>
+                                        <strong id="gp-tostadero-crudo-val" style="color: #b45309; font-size: 0.88em; max-width: 155px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Sin vincular</strong>
                                     </div>
+                                    <div id="gp-tostadero-crudo-stock-costo" style="font-size: 0.78em; color: #92400e; background: #fef3c7; border: 1px dashed #f59e0b; border-radius: 5px; padding: 4px 7px; display: none; line-height: 1.3;"></div>
                                     <div style="display: flex; justify-content: space-between; align-items: center;">
                                         <span style="font-size: 0.85em; color: #b45309;">Rendimiento/Merma:</span>
                                         <strong id="gp-tostadero-merma-val" style="color: #b45309; font-size: 1em; font-family: monospace;">- %</strong>
@@ -1744,9 +1745,14 @@
                                         </div>
                                     </div>
                                 </div>
-                                <button type="button" onclick="window.abrirCalculadoraTostadero()" style="background: #fcd34d; color: #78350f; border: 1px solid #f59e0b; border-radius: 4px; padding: 6px 10px; font-size: 0.85em; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.2s ease; width: 100%; margin-top: 5px;" onmouseover="this.style.background='#f59e0b'" onmouseout="this.style.background='#fcd34d'">
-                                    ⚙️ Simular Tostadero
-                                </button>
+                                <div style="display: flex; gap: 6px; margin-top: 5px;">
+                                    <button type="button" onclick="window.abrirCalculadoraTostadero()" style="flex: 1; background: #fcd34d; color: #78350f; border: 1px solid #f59e0b; border-radius: 4px; padding: 6px 8px; font-size: 0.82em; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; transition: all 0.2s ease;" onmouseover="this.style.background='#f59e0b'" onmouseout="this.style.background='#fcd34d'">
+                                        ⚙️ Simular Tostadero
+                                    </button>
+                                    <button type="button" id="gp-btn-editar-up-directo" onclick="if (typeof window.abrirEditorUpDirecto === 'function') window.abrirEditorUpDirecto(window.gp_sku_up_vinculado || window.currentArticuloIdGlobal, { onSaved: () => window.abrirGestorPrecios && window.abrirGestorPrecios(window.currentArticuloIdGlobal) });" style="background: #fff; color: #92400e; border: 1px solid #d97706; border-radius: 4px; padding: 6px 8px; font-size: 0.8em; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 4px;" title="Editar Receta / Bulto Crudo de la Unidad Productiva sin abrir carros">
+                                        🛠️ UP
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -2151,6 +2157,7 @@
         </div>
     </div>
 
-    <script src="../js/listado-bunker.js?v=552_fix_mano_obra_asistente"></script>
+    <script src="/api/produccion/ui/editor-up-receta-directo.js?v=1"></script>
+    <script src="../js/listado-bunker.js?v=553_linea4_tostaderos"></script>
 </body>
 </html>

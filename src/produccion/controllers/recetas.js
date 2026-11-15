@@ -117,7 +117,17 @@ async function crearReceta(req, res) {
     
     try {
         console.log('📥 crearReceta - Body recibido:', req.body);
-        const { articulo_numero, descripcion, ingredientes, articulos, esProduccionExternaConArticuloPrincipal, enlazado_externo, upsert } = req.body;
+        const {
+            articulo_numero,
+            descripcion,
+            ingredientes,
+            articulos,
+            esProduccionExternaConArticuloPrincipal,
+            enlazado_externo,
+            upsert,
+            reemplazar_ingredientes,
+            reemplazar_articulos
+        } = req.body;
 
         console.log('📋 esProduccionExternaConArticuloPrincipal:', esProduccionExternaConArticuloPrincipal);
 
@@ -126,11 +136,13 @@ async function crearReceta(req, res) {
             return res.status(400).json({ error: 'El número de artículo es requerido' });
         }
 
-        // Validar que haya al menos ingredientes O artículos (excepto para producción externa con artículo principal)
+        // Validar que haya al menos ingredientes O artículos (excepto para producción externa con artículo principal o actualización parcial no destructiva)
         const tieneIngredientes = Array.isArray(ingredientes) && ingredientes.length > 0;
         const tieneArticulos = Array.isArray(articulos) && articulos.length > 0;
+        const limpiaIngredientesExplicito = Array.isArray(ingredientes) && ingredientes.length === 0 && reemplazar_ingredientes === true;
+        const limpiaArticulosExplicito = Array.isArray(articulos) && articulos.length === 0 && reemplazar_articulos === true;
 
-        if (!tieneIngredientes && !tieneArticulos && !esProduccionExternaConArticuloPrincipal) {
+        if (!tieneIngredientes && !tieneArticulos && !esProduccionExternaConArticuloPrincipal && !(upsert === true && (limpiaIngredientesExplicito || limpiaArticulosExplicito))) {
             return res.status(400).json({ error: 'Debe incluir al menos un ingrediente o artículo, excepto para producción externa con artículo principal' });
         }
 
@@ -170,40 +182,80 @@ async function crearReceta(req, res) {
 
         let recetaId = null;
         let fueActualizada = false;
+        let debeReemplazarIngredientes = tieneIngredientes;
+        let debeReemplazarArticulos = tieneArticulos;
 
         if (upsert === true) {
             const existenteRes = await client.query(
-                `SELECT id FROM recetas
+                `SELECT id, descripcion, COALESCE(enlazado_externo, false) AS enlazado_externo
+                 FROM recetas
                  WHERE articulo_numero = $1 OR UPPER(TRIM(articulo_numero)) = UPPER(TRIM($1))
                  ORDER BY (articulo_numero = $1) DESC
                  LIMIT 1`,
                 [articulo_numero]
             );
             if (existenteRes.rows.length > 0) {
-                recetaId = existenteRes.rows[0].id;
+                const existente = existenteRes.rows[0];
+                recetaId = existente.id;
                 fueActualizada = true;
-                await client.query('DELETE FROM receta_ingredientes WHERE receta_id = $1', [recetaId]);
-                await client.query('DELETE FROM receta_articulos WHERE receta_id = $1', [recetaId]);
+
+                const [cntIngRes, cntArtRes] = await Promise.all([
+                    client.query('SELECT COUNT(*)::int AS cnt FROM receta_ingredientes WHERE receta_id = $1', [recetaId]),
+                    client.query('SELECT COUNT(*)::int AS cnt FROM receta_articulos WHERE receta_id = $1', [recetaId])
+                ]);
+                const existingIngCnt = cntIngRes.rows[0]?.cnt || 0;
+                const existingArtCnt = cntArtRes.rows[0]?.cnt || 0;
+
+                // Blindaje no destructivo: nunca borrar receta_articulos ni receta_ingredientes salvo envío con ítems o flag explícito
+                debeReemplazarIngredientes = Array.isArray(ingredientes) && (ingredientes.length > 0 || reemplazar_ingredientes === true);
+                debeReemplazarArticulos = Array.isArray(articulos) && (articulos.length > 0 || reemplazar_articulos === true);
+
+                const finalIngCnt = debeReemplazarIngredientes ? ingredientes.length : existingIngCnt;
+                const finalArtCnt = debeReemplazarArticulos ? articulos.length : existingArtCnt;
+                if (finalIngCnt === 0 && finalArtCnt === 0 && !esProduccionExternaConArticuloPrincipal) {
+                    await client.query('ROLLBACK');
+                    return res.status(400).json({ error: 'La receta no puede quedar vacía sin ingredientes ni artículos vinculados' });
+                }
+
+                if (debeReemplazarIngredientes) {
+                    await client.query('DELETE FROM receta_ingredientes WHERE receta_id = $1', [recetaId]);
+                }
+                if (debeReemplazarArticulos) {
+                    await client.query('DELETE FROM receta_articulos WHERE receta_id = $1', [recetaId]);
+                }
+
+                const descFinal = descripcion !== undefined ? descripcion : existente.descripcion;
+                const enlazadoFinal = enlazado_externo !== undefined ? (enlazado_externo === true) : existente.enlazado_externo;
                 await client.query(
                     'UPDATE recetas SET descripcion = $1, enlazado_externo = $2 WHERE id = $3',
-                    [descripcion, enlazado_externo === true, recetaId]
+                    [descFinal, enlazadoFinal, recetaId]
                 );
             }
         }
 
         if (!recetaId) {
+            if (!tieneIngredientes && !tieneArticulos && !esProduccionExternaConArticuloPrincipal) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ error: 'Debe incluir al menos un ingrediente o artículo para crear una receta nueva' });
+            }
             // Insertar la receta
             const recetaQuery = `
                 INSERT INTO recetas (articulo_numero, descripcion, fecha_creacion, enlazado_externo)
                 VALUES ($1, $2, NOW(), $3)
                 RETURNING id
             `;
-            const recetaResult = await client.query(recetaQuery, [articulo_numero, descripcion, enlazado_externo === true]);
+            const recetaResult = await client.query(recetaQuery, [
+                articulo_numero,
+                descripcion !== undefined ? descripcion : `Receta de ${articulo_numero}`,
+                enlazado_externo === true
+            ]);
             recetaId = recetaResult.rows[0].id;
+            debeReemplazarIngredientes = tieneIngredientes;
+            debeReemplazarArticulos = tieneArticulos;
         }
 
         // Insertar los ingredientes si existen
-        if (tieneIngredientes) {
+        if (debeReemplazarIngredientes && tieneIngredientes) {
             const ingredientesQuery = `
                 INSERT INTO receta_ingredientes 
                 (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
@@ -233,7 +285,7 @@ async function crearReceta(req, res) {
         }
 
         // Insertar los artículos si existen
-        if (tieneArticulos) {
+        if (debeReemplazarArticulos && tieneArticulos) {
             const articulosQuery = `
                 INSERT INTO receta_articulos 
                 (receta_id, articulo_numero, cantidad)
@@ -368,15 +420,25 @@ async function actualizarReceta(req, res) {
     try {
         console.log('📥 actualizarReceta - Body recibido:', req.body);
         const numero_articulo = req.params.numero_articulo || req.query.codigo || req.body.articulo_numero;
-        const { descripcion, ingredientes, articulos, esProduccionExternaConArticuloPrincipal, enlazado_externo } = req.body;
+        const {
+            descripcion,
+            ingredientes,
+            articulos,
+            esProduccionExternaConArticuloPrincipal,
+            enlazado_externo,
+            reemplazar_ingredientes,
+            reemplazar_articulos
+        } = req.body;
 
         console.log('📋 esProduccionExternaConArticuloPrincipal:', esProduccionExternaConArticuloPrincipal);
 
-        // Validar que haya al menos ingredientes O artículos (excepto para producción externa con artículo principal)
+        // Validar que haya al menos ingredientes O artículos (excepto para producción externa con artículo principal o limpieza explícita de una sola cara)
         const tieneIngredientes = Array.isArray(ingredientes) && ingredientes.length > 0;
         const tieneArticulos = Array.isArray(articulos) && articulos.length > 0;
+        const limpiaIngredientesExplicito = Array.isArray(ingredientes) && ingredientes.length === 0 && reemplazar_ingredientes === true;
+        const limpiaArticulosExplicito = Array.isArray(articulos) && articulos.length === 0 && reemplazar_articulos === true;
 
-        if (!tieneIngredientes && !tieneArticulos && !esProduccionExternaConArticuloPrincipal) {
+        if (!tieneIngredientes && !tieneArticulos && !esProduccionExternaConArticuloPrincipal && !limpiaIngredientesExplicito && !limpiaArticulosExplicito) {
             return res.status(400).json({ error: 'Debe incluir al menos un ingrediente o artículo, excepto para producción externa con artículo principal' });
         }
 
@@ -416,7 +478,8 @@ async function actualizarReceta(req, res) {
 
         // Verificar si la receta existe
         const recetaQuery = `
-            SELECT id FROM recetas 
+            SELECT id, descripcion, COALESCE(enlazado_externo, false) AS enlazado_externo
+            FROM recetas 
             WHERE articulo_numero = $1
                OR UPPER(TRIM(articulo_numero)) = UPPER(TRIM($1))
             ORDER BY (articulo_numero = $1) DESC
@@ -429,17 +492,41 @@ async function actualizarReceta(req, res) {
             return res.status(404).json({ error: 'Receta no encontrada' });
         }
 
-        const recetaId = recetaResult.rows[0].id;
+        const existente = recetaResult.rows[0];
+        const recetaId = existente.id;
 
-        // Eliminar ingredientes y artículos actuales
-        await client.query('DELETE FROM receta_ingredientes WHERE receta_id = $1', [recetaId]);
-        await client.query('DELETE FROM receta_articulos WHERE receta_id = $1', [recetaId]);
+        const [cntIngRes, cntArtRes] = await Promise.all([
+            client.query('SELECT COUNT(*)::int AS cnt FROM receta_ingredientes WHERE receta_id = $1', [recetaId]),
+            client.query('SELECT COUNT(*)::int AS cnt FROM receta_articulos WHERE receta_id = $1', [recetaId])
+        ]);
+        const existingIngCnt = cntIngRes.rows[0]?.cnt || 0;
+        const existingArtCnt = cntArtRes.rows[0]?.cnt || 0;
 
-        // Actualizar descripción y enlace externo
-        await client.query('UPDATE recetas SET descripcion = $1, enlazado_externo = $2 WHERE id = $3', [descripcion, enlazado_externo === true, recetaId]);
+        // Blindaje no destructivo: preservar receta_articulos cuando un cliente parcial edita solo ingredientes (y viceversa)
+        const debeReemplazarIngredientes = Array.isArray(ingredientes) && (ingredientes.length > 0 || reemplazar_ingredientes === true);
+        const debeReemplazarArticulos = Array.isArray(articulos) && (articulos.length > 0 || reemplazar_articulos === true);
+
+        const finalIngCnt = debeReemplazarIngredientes ? ingredientes.length : existingIngCnt;
+        const finalArtCnt = debeReemplazarArticulos ? articulos.length : existingArtCnt;
+        if (finalIngCnt === 0 && finalArtCnt === 0 && !esProduccionExternaConArticuloPrincipal) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'La receta no puede quedar vacía sin ingredientes ni artículos vinculados' });
+        }
+
+        if (debeReemplazarIngredientes) {
+            await client.query('DELETE FROM receta_ingredientes WHERE receta_id = $1', [recetaId]);
+        }
+        if (debeReemplazarArticulos) {
+            await client.query('DELETE FROM receta_articulos WHERE receta_id = $1', [recetaId]);
+        }
+
+        // Actualizar descripción y enlace externo preservando los valores existentes cuando se omiten
+        const descFinal = descripcion !== undefined ? descripcion : existente.descripcion;
+        const enlazadoFinal = enlazado_externo !== undefined ? (enlazado_externo === true) : existente.enlazado_externo;
+        await client.query('UPDATE recetas SET descripcion = $1, enlazado_externo = $2 WHERE id = $3', [descFinal, enlazadoFinal, recetaId]);
 
         // Insertar nuevos ingredientes si existen
-        if (tieneIngredientes) {
+        if (debeReemplazarIngredientes && tieneIngredientes) {
             const ingredientesQuery = `
                 INSERT INTO receta_ingredientes 
                 (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
@@ -469,7 +556,7 @@ async function actualizarReceta(req, res) {
         }
 
         // Insertar nuevos artículos si existen
-        if (tieneArticulos) {
+        if (debeReemplazarArticulos && tieneArticulos) {
             const articulosQuery = `
                 INSERT INTO receta_articulos 
                 (receta_id, articulo_numero, cantidad)

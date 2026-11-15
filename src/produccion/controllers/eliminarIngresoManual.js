@@ -159,7 +159,13 @@ async function eliminarIngresoManual(req, res) {
         // 🔧 CORRECCIÓN CRÍTICA: Revertir correctamente el stock_movimientos usando CANTIDAD (no kilos)
         // Cuando se registró el ingreso, se RESTÓ la CANTIDAD de stock_movimientos
         // Al eliminar, debemos SUMAR la CANTIDAD para revertir el efecto
-        const cantidadUnidadesARevertir = Math.abs(parseFloat(stockIngreso.cantidad) || 1);
+        const { calcularUnidadesMovimientoIngresoProduccion } = require('../utils/articuloPuenteHelper');
+        const cantidadUnidadesARevertir = await calcularUnidadesMovimientoIngresoProduccion(
+            client,
+            stockIngreso.articulo_numero,
+            stockIngreso.cantidad,
+            stockIngreso.kilos
+        );
         const kilosOriginales = Math.abs(parseFloat(stockIngreso.kilos) || 0);
         
         if (cantidadUnidadesARevertir > 0 && stockIngreso.articulo_numero) {
@@ -281,8 +287,14 @@ async function eliminarIngresoManualPorUUID(req, res) {
         const stockViejoRows = await client.query(selectStockQuery, [carroId, uuidPattern]);
 
         if (stockViejoRows.rows.length > 0) {
+            const { calcularUnidadesMovimientoIngresoProduccion } = require('../utils/articuloPuenteHelper');
             for (const stockViejo of stockViejoRows.rows) {
-                const cantidadUnidadesARevertir = Math.abs(parseFloat(stockViejo.cantidad) || 1);
+                const cantidadUnidadesARevertir = await calcularUnidadesMovimientoIngresoProduccion(
+                    client,
+                    stockViejo.articulo_numero,
+                    stockViejo.cantidad,
+                    stockViejo.kilos
+                );
                 
                 const revertirStockMovimientosQuery = `
                     UPDATE stock_real_consolidado 

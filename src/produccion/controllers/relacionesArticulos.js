@@ -21,6 +21,7 @@ async function obtenerRelacionesCarro(carroId, usuarioId) {
             WHERE aper.articulo_produccion_codigo IN (
                 SELECT articulo_numero FROM carros_articulos WHERE carro_id = $1
             )
+              AND UPPER(BTRIM(aper.articulo_produccion_codigo)) <> UPPER(BTRIM(aper.articulo_kilo_codigo))
         `;
         const result = await pool.query(query, [carroId]);
         return result.rows;
@@ -48,6 +49,7 @@ async function obtenerRelacionPorArticulo(articuloCodigo) {
             FROM articulos_produccion_externa_relacion aper
             LEFT JOIN articulos a ON a.numero = aper.articulo_kilo_codigo
             WHERE aper.articulo_produccion_codigo = $1
+              AND UPPER(BTRIM(aper.articulo_produccion_codigo)) <> UPPER(BTRIM(aper.articulo_kilo_codigo))
             LIMIT 1
         `;
         const result = await pool.query(query, [articuloCodigo]);
@@ -76,6 +78,7 @@ async function obtenerRelacionesPorArticulos(articuloCodigos) {
             FROM articulos_produccion_externa_relacion aper
             LEFT JOIN articulos a ON a.numero = aper.articulo_kilo_codigo
             WHERE aper.articulo_produccion_codigo = ANY($1)
+              AND UPPER(BTRIM(aper.articulo_produccion_codigo)) <> UPPER(BTRIM(aper.articulo_kilo_codigo))
         `;
         const result = await pool.query(query, [articuloCodigos]);
         return result.rows;
@@ -95,7 +98,19 @@ async function obtenerRelacionesPorArticulos(articuloCodigos) {
  */
 async function crearRelacion(articuloProduccionCodigo, articuloKiloCodigo, multiplicadorIngredientes = 1, ingredientesCustom = null) {
     try {
-        console.log(`🔗 Creando relación: ${articuloProduccionCodigo} -> ${articuloKiloCodigo} (multiplicador: ${multiplicadorIngredientes})`);
+        const upClean = String(articuloProduccionCodigo || '').trim();
+        const apClean = String(articuloKiloCodigo || '').trim();
+        if (!upClean || !apClean) {
+            const err = new Error('Debe especificar tanto el código de la Unidad Productiva (UP) como el del Artículo Puente (AP).');
+            err.statusCode = 400;
+            throw err;
+        }
+        if (upClean.toUpperCase() === apClean.toUpperCase()) {
+            const err = new Error(`Auto-vínculo inválido: la Unidad Productiva (${upClean}) no puede apuntar a sí misma como Artículo Puente (${apClean}).`);
+            err.statusCode = 400;
+            throw err;
+        }
+        console.log(`🔗 Creando relación: ${upClean} -> ${apClean} (multiplicador: ${multiplicadorIngredientes})`);
         
         // 🛡️ ROBUSTEZ: Limpiar cualquier relación previa para garantizar 1 a 1
         console.log(`🧹 Limpiando relaciones previas para ${articuloProduccionCodigo}...`);
@@ -134,6 +149,27 @@ async function crearRelacion(articuloProduccionCodigo, articuloKiloCodigo, multi
  */
 async function actualizarRelacion(relacionId, articuloKiloCodigo, multiplicadorIngredientes = null, ingredientesCustom = null) {
     try {
+        const apClean = String(articuloKiloCodigo || '').trim();
+        if (!apClean) {
+            const err = new Error('Debe especificar el código del Artículo Puente (AP).');
+            err.statusCode = 400;
+            throw err;
+        }
+        const prevRes = await pool.query(
+            'SELECT id, articulo_produccion_codigo FROM articulos_produccion_externa_relacion WHERE id = $1 LIMIT 1',
+            [relacionId]
+        );
+        if (prevRes.rows.length === 0) {
+            const err = new Error('Relación no encontrada');
+            err.statusCode = 404;
+            throw err;
+        }
+        const upExistente = String(prevRes.rows[0].articulo_produccion_codigo || '').trim();
+        if (upExistente.toUpperCase() === apClean.toUpperCase()) {
+            const err = new Error(`Auto-vínculo inválido: la Unidad Productiva (${upExistente}) no puede apuntar a sí misma como Artículo Puente (${apClean}).`);
+            err.statusCode = 400;
+            throw err;
+        }
         console.log(`✏️ Actualizando relación ${relacionId}: ${articuloKiloCodigo} (multiplicador: ${multiplicadorIngredientes})`);
         
         let updateQuery, params;

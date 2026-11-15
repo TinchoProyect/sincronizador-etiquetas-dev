@@ -2169,8 +2169,9 @@ export async function finalizarProduccion(carroIdParam) {
             throw new Error(msg);
         }
 
+        const resultData = await response.json().catch(() => ({}));
+
         // Mostrar notificación de éxito
-                // Mostrar notificación de éxito
         mostrarNotificacion('Producción finalizada exitosamente');
 
         // ⏱️ Sincronizar automáticamente el avance a Etapa 3 si la medición estaba en producción (Etapa 2)
@@ -2234,12 +2235,236 @@ export async function finalizarProduccion(carroIdParam) {
 
         console.log('✅ [FINALIZADO] Actualización completa de UI finalizada');
 
+        // 4. 🚀 LANZADOR DETERMINISTA POST-ASENTADO (AP Tostaderos Línea 4 y Puente Mix Línea 3)
+        try {
+            await ofrecerCarroFraccionadoPostAsentado(resultData, colaborador);
+        } catch (errPostFracc) {
+            console.warn('⚠️ [FRACCIONADO-POST-ASENTADO] No se pudo desplegar asistente post-asentado:', errPostFracc);
+        }
+
     } catch (error) {
         console.error('Error al finalizar producción:', error);
         btnFinalizarProduccion.disabled = false;
         btnFinalizarProduccion.classList.remove('procesando');
         btnFinalizarProduccion.textContent = 'Asentar producción';
         mostrarNotificacion(`Error: ${error.message}`, true);
+    }
+}
+
+/**
+ * Lanzador determinista post-asentado:
+ * Al asentar un carro externo de Línea 4 (Tostadero -> AP) o un carro interno de Artículo Puente Mix (Línea 3),
+ * consulta por cadena SQL estricta (AP = ingredientes.articulo_vinculado_numero -> receta_ingredientes -> recetas -> bunker_articulos)
+ * las fracciones comerciales activas y ofrece crear y abrir el carro interno de fraccionado en el acto.
+ */
+async function ofrecerCarroFraccionadoPostAsentado(resultData, colaborador) {
+    if (typeof Swal === 'undefined' || !colaborador || !colaborador.id) return;
+
+    const resumen = resultData?.asentado_resumen;
+    if (!resumen || !Array.isArray(resumen.articulos_producidos) || resumen.articulos_producidos.length === 0) {
+        return;
+    }
+
+    // Para carros externos solo se dispara en Línea 4 (Tostaderos); para carros internos cuando el artículo producido es un AP con fracciones activas (ej. Puente Mix MFSPXK)
+    if (resumen.tipo_carro === 'externa' && Number(resumen.linea_negocio || 4) !== 4) {
+        return;
+    }
+
+    const escHtml = (v) => String(v === null || v === undefined ? '' : v)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    const fmtKg = (n) => (Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    let candidatoHallado = null;
+    for (const prod of resumen.articulos_producidos) {
+        const skuCand = String(prod?.sku || '').trim();
+        if (!skuCand) continue;
+        const resp = await fetch(`/api/produccion/articulos-puente/${encodeURIComponent(skuCand)}/fracciones-deterministas`);
+        if (!resp.ok) continue;
+        const dataAp = await resp.json().catch(() => null);
+        if (dataAp && Array.isArray(dataAp.fracciones) && dataAp.fracciones.length > 0) {
+            candidatoHallado = {
+                kilosProducidosRecien: Number(prod.cantidad) || 0,
+                dataAp
+            };
+            break;
+        }
+    }
+
+    if (!candidatoHallado) return;
+
+    const { kilosProducidosRecien, dataAp } = candidatoHallado;
+    const ingInfo = dataAp.ingrediente_vinculado;
+    const fracciones = dataAp.fracciones;
+
+    const filasHtml = fracciones.map((f, idx) => `
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 8px 6px; text-align: left;">
+                <div style="font-weight: 700; color: #0f172a; font-size: 13px;">
+                    <span style="background:#e0f2fe;color:#0369a1;padding:1px 6px;border-radius:4px;font-family:monospace;font-size:11.5px;">[${escHtml(f.sku)}]</span>
+                    ${escHtml(f.descripcion_generada)}
+                </div>
+                <div style="font-size: 11.5px; color: #64748b; margin-top: 2px;">
+                    ⚖️ ${fmtKg(f.kilos_ingrediente_por_unidad)} kg/u · 🛍️ ${escHtml(f.envase_nombre)} · Stock actual: <b>${Number(f.stock_actual) || 0} u</b>
+                </div>
+            </td>
+            <td style="padding: 8px 6px; width: 120px; text-align: right;">
+                <input type="number"
+                       class="swal-frac-cant-input"
+                       data-idx="${idx}"
+                       data-sku="${escHtml(f.sku)}"
+                       data-desc="${escHtml(f.descripcion_generada)}"
+                       data-kg="${Number(f.kilos_ingrediente_por_unidad) || 0}"
+                       min="0"
+                       step="1"
+                       value="0"
+                       style="width: 96px; padding: 6px 8px; border: 1.5px solid #94a3b8; border-radius: 6px; text-align: center; font-size: 14px; font-weight: 700; color: #0f172a;">
+            </td>
+        </tr>
+    `).join('');
+
+    const modalHtml = `
+        <div style="text-align: left; font-size: 13px; color: #1e293b;">
+            <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
+                <div style="font-weight: 700; color: #0c4a6e;">
+                    📦 Artículo Puente asentado: <span style="font-family:monospace;">[${escHtml(dataAp.sku_ap)}]</span> ${escHtml(dataAp.ap_descripcion)}
+                </div>
+                <div style="margin-top: 4px; color: #0369a1; font-size: 12.5px;">
+                    Producido en este carro: <b>${fmtKg(kilosProducidosRecien)} kg</b> · Stock AP disponible: <b>${fmtKg(dataAp.stock_ap_actual)} kg</b>
+                </div>
+                ${ingInfo ? `<div style="margin-top: 3px; color: #334155; font-size: 12px;">🔗 Ingrediente vinculado: <b>[${escHtml(ingInfo.codigo)}] ${escHtml(ingInfo.nombre)}</b></div>` : ''}
+            </div>
+
+            <div style="max-height: 280px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 12px;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8fafc; border-bottom: 1.5px solid #cbd5e1;">
+                            <th style="padding: 7px 8px; text-align: left; font-size: 12px; color: #475569;">Fracción Comercial Activa</th>
+                            <th style="padding: 7px 8px; text-align: right; font-size: 12px; color: #475569;">Unidades a armar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${filasHtml}
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="swal-frac-live-counter" style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 12.5px; color: #334155;">
+                ⚖️ <b>0,00 kg comprometidos</b> de <b>${fmtKg(kilosProducidosRecien)} kg</b> producidos (Saldo libre de esta tanda: ${fmtKg(kilosProducidosRecien)} kg)
+            </div>
+        </div>
+    `;
+
+    const modalRes = await Swal.fire({
+        title: '¿Querés armar ahora el carro interno de fraccionado?',
+        html: modalHtml,
+        width: '680px',
+        showCancelButton: true,
+        confirmButtonText: '🚀 Crear y abrir carro interno',
+        cancelButtonText: 'Ahora no, dejar solo asentado',
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#64748b',
+        allowOutsideClick: false,
+        didOpen: (popup) => {
+            const inputs = popup.querySelectorAll('.swal-frac-cant-input');
+            const counterEl = popup.querySelector('#swal-frac-live-counter');
+
+            const recalcular = () => {
+                let totalKgComprometidos = 0;
+                const desglose = [];
+                inputs.forEach((inp) => {
+                    const cant = Math.max(0, parseInt(inp.value, 10) || 0);
+                    const kgU = parseFloat(inp.dataset.kg) || 0;
+                    if (cant > 0) {
+                        const subKg = cant * kgU;
+                        totalKgComprometidos += subKg;
+                        desglose.push(`${cant} u × ${fmtKg(kgU)} kg = ${fmtKg(subKg)} kg`);
+                    }
+                });
+
+                const saldoTanda = kilosProducidosRecien - totalKgComprometidos;
+                const superaTanda = totalKgComprometidos > (kilosProducidosRecien + 0.0001);
+                if (!counterEl) return;
+
+                if (superaTanda) {
+                    counterEl.style.background = '#fffbeb';
+                    counterEl.style.borderColor = '#f59e0b';
+                    counterEl.style.color = '#92400e';
+                    counterEl.innerHTML = `
+                        <div>⚠️ <b>${fmtKg(totalKgComprometidos)} kg comprometidos</b> de <b>${fmtKg(kilosProducidosRecien)} kg</b> producidos (excede esta tanda por ${fmtKg(Math.abs(saldoTanda))} kg · Stock total AP: ${fmtKg(dataAp.stock_ap_actual)} kg)</div>
+                        ${desglose.length ? `<div style="margin-top:4px;font-size:11.5px;">${desglose.join(' · ')}</div>` : ''}
+                    `;
+                } else {
+                    counterEl.style.background = totalKgComprometidos > 0 ? '#ecfdf5' : '#f8fafc';
+                    counterEl.style.borderColor = totalKgComprometidos > 0 ? '#10b981' : '#cbd5e1';
+                    counterEl.style.color = totalKgComprometidos > 0 ? '#065f46' : '#334155';
+                    counterEl.innerHTML = `
+                        <div>⚖️ <b>${fmtKg(totalKgComprometidos)} kg comprometidos</b> de <b>${fmtKg(kilosProducidosRecien)} kg</b> producidos (Restante de esta tanda: ${fmtKg(Math.max(0, saldoTanda))} kg)</div>
+                        ${desglose.length ? `<div style="margin-top:4px;font-size:11.5px;">${desglose.join(' · ')}</div>` : ''}
+                    `;
+                }
+            };
+
+            inputs.forEach((inp) => {
+                inp.addEventListener('input', recalcular);
+                inp.addEventListener('change', recalcular);
+            });
+            if (inputs[0]) {
+                setTimeout(() => inputs[0].focus(), 80);
+            }
+        },
+        preConfirm: async () => {
+            const popup = Swal.getPopup();
+            const inputs = popup ? popup.querySelectorAll('.swal-frac-cant-input') : [];
+            const items = [];
+            inputs.forEach((inp) => {
+                const cant = Math.max(0, parseInt(inp.value, 10) || 0);
+                if (cant > 0) {
+                    items.push({
+                        articulo_numero: inp.dataset.sku,
+                        descripcion: inp.dataset.desc,
+                        cantidad: cant
+                    });
+                }
+            });
+
+            if (items.length === 0) {
+                Swal.showValidationMessage('Ingresá al menos 1 unidad en alguna fracción comercial o pulsá "Ahora no, dejar solo asentado".');
+                return false;
+            }
+
+            try {
+                const respCrear = await fetch(`/api/produccion/articulos-puente/${encodeURIComponent(dataAp.sku_ap)}/crear-carro-fraccionado`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        usuarioId: colaborador.id,
+                        items
+                    })
+                });
+                const jsonCrear = await respCrear.json().catch(() => ({}));
+                if (!respCrear.ok || !jsonCrear.carro_id) {
+                    throw new Error(jsonCrear.detalle || jsonCrear.error || `HTTP ${respCrear.status}`);
+                }
+                return jsonCrear;
+            } catch (errCreate) {
+                Swal.showValidationMessage(`Error al crear carro interno: ${errCreate.message}`);
+                return false;
+            }
+        }
+    });
+
+    if (modalRes.isConfirmed && modalRes.value && modalRes.value.carro_id) {
+        const nuevoCarroId = modalRes.value.carro_id;
+        if (typeof window.actualizarEstadoCarro === 'function') {
+            await window.actualizarEstadoCarro();
+        }
+        if (typeof window.seleccionarCarro === 'function') {
+            await window.seleccionarCarro(nuevoCarroId);
+        }
+        mostrarNotificacion(`Carro interno #${nuevoCarroId} creado y abierto con tus fracciones`);
     }
 }
 

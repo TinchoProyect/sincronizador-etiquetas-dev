@@ -743,8 +743,11 @@ class LotesBunkerService {
                 'SELECT articulo_vinculado_numero FROM public.ingredientes WHERE id = $1',
                 [ingredienteId]
             );
-            if (checkRes.rows.length === 0 || checkRes.rows[0].articulo_vinculado_numero) {
-                return; // Ya vinculado
+            const vincExistente = checkRes.rows.length > 0
+                ? String(checkRes.rows[0].articulo_vinculado_numero || '').trim()
+                : '';
+            if (checkRes.rows.length === 0 || vincExistente) {
+                return; // Ya vinculado (blindado contra sobrescritura)
             }
 
             let skuSugerido = null;
@@ -802,7 +805,8 @@ class LotesBunkerService {
                     await client.query(`
                         UPDATE public.ingredientes
                         SET articulo_vinculado_numero = $1
-                        WHERE id = $2 AND articulo_vinculado_numero IS NULL
+                        WHERE id = $2
+                          AND NULLIF(BTRIM(COALESCE(articulo_vinculado_numero, '')), '') IS NULL
                     `, [finalSku, ingredienteId]);
                     console.log(`🔗 [AUTO-APRENDIZAJE LOTES] Ingrediente ${ingredienteId} auto-vinculado permanentemente al SKU ${finalSku}`);
                 }

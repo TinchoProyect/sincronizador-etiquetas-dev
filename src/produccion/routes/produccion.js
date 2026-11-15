@@ -3782,7 +3782,9 @@ router.post('/relacion-articulo', async (req, res) => {
         });
     } catch (error) {
         console.error('❌ Error al crear relación:', error);
-        if (error.message.includes('Ya existe una relación')) {
+        if (error.statusCode) {
+            res.status(error.statusCode).json({ error: error.message });
+        } else if (error.message.includes('Ya existe una relación')) {
             res.status(409).json({ error: error.message });
         } else if (error.message.includes('no existe')) {
             res.status(404).json({ error: error.message });
@@ -3833,7 +3835,9 @@ router.put('/relacion-articulo/:id', async (req, res) => {
         });
     } catch (error) {
         console.error('❌ Error al actualizar relación:', error);
-        if (error.message.includes('no encontrada') || error.message.includes('no existe')) {
+        if (error.statusCode) {
+            res.status(error.statusCode).json({ error: error.message });
+        } else if (error.message.includes('no encontrada') || error.message.includes('no existe')) {
             res.status(404).json({ error: error.message });
         } else {
             res.status(500).json({ error: error.message });
@@ -5069,11 +5073,12 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
                 kilosUnidad
             ]);
 
-            // C) Auto-vincular de forma permanente el ingrediente al artículo de compras si no lo posee
+            // C) Auto-vincular de forma permanente el ingrediente al artículo de compras SOLO si no posee vínculo previo
             await client.query(`
                 UPDATE public.ingredientes
                 SET articulo_vinculado_numero = $1
-                WHERE id = $2 AND articulo_vinculado_numero IS NULL
+                WHERE id = $2
+                  AND NULLIF(BTRIM(COALESCE(articulo_vinculado_numero, '')), '') IS NULL
             `, [articulo_numero, ingrediente_id]);
 
             await client.query('COMMIT');
@@ -5335,9 +5340,56 @@ router.get('/simulacion/inicializar', async (req, res) => {
                 ORDER BY v.fecha_vinculacion DESC
             `),
             db.query(`SELECT id, nombre FROM public.bunker_familias`),
-            db.query(`SELECT id, articulo_produccion_codigo, articulo_kilo_codigo, multiplicador_ingredientes, ingredientes_custom FROM public.articulos_produccion_externa_relacion`),
+            db.query(`SELECT id, articulo_produccion_codigo, articulo_kilo_codigo, multiplicador_ingredientes, ingredientes_custom FROM public.articulos_produccion_externa_relacion WHERE UPPER(BTRIM(articulo_produccion_codigo)) <> UPPER(BTRIM(articulo_kilo_codigo))`),
             db.query(`SELECT id, usuario_id, articulo_numero, valor_por_unidad, unidad_medida FROM public.colaboradores_tarifas_rendimiento WHERE activo = true`),
-            db.query(`SELECT id, carro_id, articulo_padre_id, articulo_fraccionado_id, kilos_entrada, kilos_salida, porcentaje_merma, fecha_registro FROM public.produccion_externa_historial ORDER BY fecha_registro DESC LIMIT 50`)
+            db.query(`
+                SELECT
+                    peh.id,
+                    peh.carro_id,
+                    peh.articulo_padre_id,
+                    peh.articulo_fraccionado_id,
+                    COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0)) AS kilos_entrada,
+                    COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos) AS kilos_salida,
+                    peh.kilos_producidos,
+                    CASE
+                        WHEN COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0), 0) > 0
+                             AND COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos, 0) > 0
+                             AND COALESCE(peh.kilos_producidos, 0) <= COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0)) + 0.0001
+                             AND COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos, 0) <= COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0)) + 0.0001
+                        THEN ROUND(
+                            ((COALESCE(NULLIF(peh.kilos_entrada, 0), svm_rec.kilos_egresados_reales) - COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos))
+                             / COALESCE(NULLIF(peh.kilos_entrada, 0), svm_rec.kilos_egresados_reales)) * 100,
+                            2
+                        )
+                        ELSE NULL
+                    END AS porcentaje_merma,
+                    CASE
+                        WHEN COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0), 0) <= 0
+                             OR COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos, 0) <= 0
+                             OR COALESCE(peh.kilos_producidos, 0) > COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0)) + 0.0001
+                             OR COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos, 0) > COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0)) + 0.0001
+                        THEN true
+                        ELSE false
+                    END AS es_invalida,
+                    peh.fecha_registro
+                FROM public.produccion_externa_historial peh
+                LEFT JOIN LATERAL (
+                    SELECT SUM(
+                        CASE
+                            WHEN ABS(COALESCE(svm.kilos, 0)) > 0 THEN ABS(svm.kilos)
+                            ELSE ABS(COALESCE(svm.cantidad, 0)) * COALESCE(NULLIF(ba_s.kilos_unidad, 0), NULLIF(src_s.kilos_unidad, 0), 1.00)
+                        END
+                    ) AS kilos_egresados_reales
+                    FROM public.stock_ventas_movimientos svm
+                    LEFT JOIN public.bunker_articulos ba_s ON ba_s.articulo_id = svm.articulo_numero
+                    LEFT JOIN public.stock_real_consolidado src_s ON src_s.articulo_numero = svm.articulo_numero
+                    WHERE svm.carro_id = peh.carro_id
+                      AND LOWER(COALESCE(svm.tipo, '')) LIKE '%egreso por receta externa%'
+                ) svm_rec ON true
+                WHERE UPPER(BTRIM(COALESCE(peh.articulo_padre_id, ''))) <> UPPER(BTRIM(COALESCE(peh.articulo_fraccionado_id, '')))
+                ORDER BY peh.fecha_registro DESC
+                LIMIT 500
+            `)
         ]);
 
         res.json({
@@ -6480,6 +6532,30 @@ router.post('/etiquetas/saldo-ingrediente', async (req, res) => {
         res.status(500).json({ success: false, error: err.message });
     }
 });
+
+// =========================================================================
+// EDITOR DIRECTO Y NO DESTRUCTIVO DE UPs / RECETAS + FRACCIONADO POST-ASENTADO
+// =========================================================================
+const {
+    obtenerConfiguracionUpRecetaDirecta,
+    guardarConfiguracionUpRecetaDirecta
+} = require('../controllers/upRecetaDirectaController');
+const {
+    obtenerFraccionesDeterministasPorAp,
+    crearCarroInternoFraccionadoDesdeAp
+} = require('../controllers/fraccionadoPostAsentadoController');
+
+router.get('/ui/editor-up-receta-directo.js', (req, res) => {
+    const path = require('path');
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache');
+    return res.sendFile(path.resolve(__dirname, '../js/components/editorUpRecetaDirecto.js'));
+});
+
+router.get('/up-receta-directa/:codigo', obtenerConfiguracionUpRecetaDirecta);
+router.put('/up-receta-directa/:codigo', guardarConfiguracionUpRecetaDirecta);
+router.get('/articulos-puente/:sku/fracciones-deterministas', obtenerFraccionesDeterministasPorAp);
+router.post('/articulos-puente/:sku/crear-carro-fraccionado', crearCarroInternoFraccionadoDesdeAp);
 
 module.exports = router;
 

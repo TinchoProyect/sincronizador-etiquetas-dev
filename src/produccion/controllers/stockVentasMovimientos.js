@@ -78,10 +78,12 @@ async function registrarMovimientoStockVentas(req, res) {
     console.log('✅ ORIGEN_INGRESO guardado en BD:', origen_ingreso);
 
     const { recalcularStockConsolidado } = require('../utils/recalcularStock');
+    const { calcularUnidadesMovimientoIngresoProduccion } = require('../utils/articuloPuenteHelper');
 
     // Actualizar stock_movimientos según el tipo de movimiento
     if (tipo === 'ingreso a producción') {
-      console.log('🔄 Actualizando stock_movimientos para ingreso a producción...');
+      const unidadesADescontar = await calcularUnidadesMovimientoIngresoProduccion(db, articulo_numero, cantidad, kilos);
+      console.log(`🔄 Actualizando stock_movimientos para ingreso a producción (${articulo_numero}): -${unidadesADescontar}`);
       
       const updateQuery = `
         UPDATE stock_real_consolidado 
@@ -92,7 +94,7 @@ async function registrarMovimientoStockVentas(req, res) {
       `;
 
       await db.query(updateQuery, [
-        cantidad,
+        unidadesADescontar,
         articulo_numero
       ]);
       

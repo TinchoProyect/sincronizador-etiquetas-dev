@@ -84,7 +84,12 @@ async function registrarMovimientoIngrediente(movimiento, db) {
           'SELECT articulo_vinculado_numero FROM public.ingredientes WHERE id = $1',
           [ingrediente_id]
         );
-        if (checkIng.rows.length > 0 && !checkIng.rows[0].articulo_vinculado_numero) {
+        const vinculoActual = checkIng.rows.length > 0
+          ? String(checkIng.rows[0].articulo_vinculado_numero || '').trim()
+          : '';
+        // Blindaje estricto: jamás sobrescribir articulo_vinculado_numero si ya posee un artículo configurado
+        // (evitando que el ingreso de un bulto de emergencia desconecte el AP productivo).
+        if (checkIng.rows.length > 0 && !vinculoActual) {
           const skuNorm = skuCandidato.trim().toUpperCase();
           const baCheck = await db.query(
             'SELECT articulo_id FROM public.bunker_articulos WHERE UPPER(articulo_id) = $1',
@@ -93,7 +98,10 @@ async function registrarMovimientoIngrediente(movimiento, db) {
           if (baCheck.rows.length > 0) {
             const finalSku = baCheck.rows[0].articulo_id;
             await db.query(
-              'UPDATE public.ingredientes SET articulo_vinculado_numero = $1 WHERE id = $2 AND articulo_vinculado_numero IS NULL',
+              `UPDATE public.ingredientes
+               SET articulo_vinculado_numero = $1
+               WHERE id = $2
+                 AND NULLIF(BTRIM(COALESCE(articulo_vinculado_numero, '')), '') IS NULL`,
               [finalSku, ingrediente_id]
             );
             console.log(`🔗 [AUTO-APRENDIZAJE TALLER] Ingrediente ${ingrediente_id} vinculado automáticamente a ${finalSku}`);

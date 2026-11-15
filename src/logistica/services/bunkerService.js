@@ -810,27 +810,35 @@ class BunkerService {
                 const recetaPayload = articuloData.receta;
                 
                 if (recetaPayload && recetaPayload.activa === true && Array.isArray(recetaPayload.ingredientes) && recetaPayload.ingredientes.length > 0) {
-                    // 1. Purgar recetas previas si existían en el artículo destino
+                    // 1. Preservar receta existente (receta_articulos, enlazado_externo y articulo_sugerido_numero) si ya existe
                     const resRecetasDestino = await client.query(
-                        `SELECT id FROM public.recetas WHERE articulo_numero = $1`,
+                        `SELECT id, descripcion, COALESCE(enlazado_externo, false) AS enlazado_externo, articulo_sugerido_numero
+                         FROM public.recetas
+                         WHERE UPPER(BTRIM(articulo_numero)) = UPPER(BTRIM($1))
+                         ORDER BY (articulo_numero = $1) DESC, id ASC`,
                         [articulo_id]
                     );
+                    let recetaDestinoId = null;
                     if (resRecetasDestino.rows.length > 0) {
-                        for (const rOld of resRecetasDestino.rows) {
-                            await client.query(`DELETE FROM public.receta_ingredientes WHERE receta_id = $1`, [rOld.id]);
-                            await client.query(`DELETE FROM public.receta_articulos WHERE receta_id = $1`, [rOld.id]);
-                            await client.query(`DELETE FROM public.recetas WHERE id = $1`, [rOld.id]);
+                        recetaDestinoId = resRecetasDestino.rows[0].id;
+                        await client.query(`DELETE FROM public.receta_ingredientes WHERE receta_id = $1`, [recetaDestinoId]);
+                        for (let idx = 1; idx < resRecetasDestino.rows.length; idx++) {
+                            const rDup = resRecetasDestino.rows[idx];
+                            const cntArtDup = await client.query(`SELECT COUNT(*)::int AS cnt FROM public.receta_articulos WHERE receta_id = $1`, [rDup.id]);
+                            if ((cntArtDup.rows[0]?.cnt || 0) === 0) {
+                                await client.query(`DELETE FROM public.receta_ingredientes WHERE receta_id = $1`, [rDup.id]);
+                                await client.query(`DELETE FROM public.recetas WHERE id = $1`, [rDup.id]);
+                            }
                         }
+                    } else {
+                        const resNuevaReceta = await client.query(
+                            `INSERT INTO public.recetas (articulo_numero, descripcion, fecha_creacion, enlazado_externo)
+                             VALUES ($1, $2, NOW(), false)
+                             RETURNING id`,
+                            [articulo_id, 'Receta de Búnker para ' + (descFinal || articuloData.descripcion || articulo_id)]
+                        );
+                        recetaDestinoId = resNuevaReceta.rows[0].id;
                     }
-
-                    // 2. Insertar nueva receta personalizada
-                    const resNuevaReceta = await client.query(
-                        `INSERT INTO public.recetas (articulo_numero, descripcion, fecha_creacion, enlazado_externo)
-                         VALUES ($1, $2, NOW(), false)
-                         RETURNING id`,
-                        [articulo_id, 'Receta de Búnker para ' + (descFinal || articuloData.descripcion || articulo_id)]
-                    );
-                    const nuevaRecetaId = resNuevaReceta.rows[0].id;
 
                     for (const ing of recetaPayload.ingredientes) {
                         const cantNum = parseFloat(ing.cantidad) || 0;
@@ -838,23 +846,31 @@ class BunkerService {
                             await client.query(
                                 `INSERT INTO public.receta_ingredientes (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad, fase_produccion)
                                  VALUES ($1, $2, $3, $4, $5, 'externa')`,
-                                [nuevaRecetaId, parseInt(ing.ingrediente_id), ing.nombre_ingrediente, ing.unidad_medida || 'Kilo', cantNum]
+                                [recetaDestinoId, parseInt(ing.ingrediente_id), ing.nombre_ingrediente, ing.unidad_medida || 'Kilo', cantNum]
                             );
                         }
                     }
-                    console.log(`📋 [BUNKER-SERVICE] Receta personalizada #${nuevaRecetaId} guardada para SKU ${articulo_id} con ${recetaPayload.ingredientes.length} componentes`);
+                    console.log(`📋 [BUNKER-SERVICE] Receta personalizada #${recetaDestinoId} guardada de forma no destructiva para SKU ${articulo_id} con ${recetaPayload.ingredientes.length} componentes`);
                 } else if (recetaPayload && recetaPayload.activa === false) {
                     const resRecetasDestino = await client.query(
-                        `SELECT id FROM public.recetas WHERE articulo_numero = $1`,
+                        `SELECT id FROM public.recetas WHERE UPPER(BTRIM(articulo_numero)) = UPPER(BTRIM($1))`,
                         [articulo_id]
                     );
                     if (resRecetasDestino.rows.length > 0) {
                         for (const rOld of resRecetasDestino.rows) {
                             await client.query(`DELETE FROM public.receta_ingredientes WHERE receta_id = $1`, [rOld.id]);
-                            await client.query(`DELETE FROM public.receta_articulos WHERE receta_id = $1`, [rOld.id]);
-                            await client.query(`DELETE FROM public.recetas WHERE id = $1`, [rOld.id]);
+                            if (recetaPayload.purgar_articulos_up === true) {
+                                await client.query(`DELETE FROM public.receta_articulos WHERE receta_id = $1`, [rOld.id]);
+                                await client.query(`DELETE FROM public.recetas WHERE id = $1`, [rOld.id]);
+                            } else {
+                                const cntArt = await client.query(`SELECT COUNT(*)::int AS cnt FROM public.receta_articulos WHERE receta_id = $1`, [rOld.id]);
+                                if ((cntArt.rows[0]?.cnt || 0) === 0) {
+                                    await client.query(`DELETE FROM public.recetas WHERE id = $1`, [rOld.id]);
+                                } else {
+                                    console.log(`🛡️ [BUNKER-SERVICE] Preservados ${cntArt.rows[0].cnt} receta_articulos en receta #${rOld.id} de SKU ${articulo_id}`);
+                                }
+                            }
                         }
-                        console.log(`📋 [BUNKER-SERVICE] Recetas purgadas para SKU ${articulo_id} por desactivación explícita`);
                     }
                 } else if (clonarDeId) {
                     // Fallback tradicional de clonación automática si no se especificó un payload de receta
@@ -1370,27 +1386,35 @@ class BunkerService {
                 const recetaPayload = articuloData.receta;
                 
                 if (recetaPayload && recetaPayload.activa === true && Array.isArray(recetaPayload.ingredientes) && recetaPayload.ingredientes.length > 0) {
-                    // 1. Purgar recetas previas si existían en el artículo
+                    // 1. Preservar receta existente (receta_articulos, enlazado_externo y articulo_sugerido_numero) de forma no destructiva
                     const resRecetasDestino = await client.query(
-                        `SELECT id FROM public.recetas WHERE articulo_numero = $1`,
+                        `SELECT id, descripcion, COALESCE(enlazado_externo, false) AS enlazado_externo, articulo_sugerido_numero
+                         FROM public.recetas
+                         WHERE UPPER(BTRIM(articulo_numero)) = UPPER(BTRIM($1))
+                         ORDER BY (articulo_numero = $1) DESC, id ASC`,
                         [articulo_id]
                     );
+                    let recetaDestinoId = null;
                     if (resRecetasDestino.rows.length > 0) {
-                        for (const rOld of resRecetasDestino.rows) {
-                            await client.query(`DELETE FROM public.receta_ingredientes WHERE receta_id = $1`, [rOld.id]);
-                            await client.query(`DELETE FROM public.receta_articulos WHERE receta_id = $1`, [rOld.id]);
-                            await client.query(`DELETE FROM public.recetas WHERE id = $1`, [rOld.id]);
+                        recetaDestinoId = resRecetasDestino.rows[0].id;
+                        await client.query(`DELETE FROM public.receta_ingredientes WHERE receta_id = $1`, [recetaDestinoId]);
+                        for (let idx = 1; idx < resRecetasDestino.rows.length; idx++) {
+                            const rDup = resRecetasDestino.rows[idx];
+                            const cntArtDup = await client.query(`SELECT COUNT(*)::int AS cnt FROM public.receta_articulos WHERE receta_id = $1`, [rDup.id]);
+                            if ((cntArtDup.rows[0]?.cnt || 0) === 0) {
+                                await client.query(`DELETE FROM public.receta_ingredientes WHERE receta_id = $1`, [rDup.id]);
+                                await client.query(`DELETE FROM public.recetas WHERE id = $1`, [rDup.id]);
+                            }
                         }
+                    } else {
+                        const resNuevaReceta = await client.query(
+                            `INSERT INTO public.recetas (articulo_numero, descripcion, fecha_creacion, enlazado_externo)
+                             VALUES ($1, $2, NOW(), false)
+                             RETURNING id`,
+                            [articulo_id, 'Receta de Búnker para ' + (articuloData.descripcion_abreviada || articuloData.descripcion || articulo_id)]
+                        );
+                        recetaDestinoId = resNuevaReceta.rows[0].id;
                     }
-
-                    // 2. Insertar nueva receta personalizada
-                    const resNuevaReceta = await client.query(
-                        `INSERT INTO public.recetas (articulo_numero, descripcion, fecha_creacion, enlazado_externo)
-                         VALUES ($1, $2, NOW(), false)
-                         RETURNING id`,
-                        [articulo_id, 'Receta de Búnker para ' + (articuloData.descripcion_abreviada || articuloData.descripcion || articulo_id)]
-                    );
-                    const nuevaRecetaId = resNuevaReceta.rows[0].id;
 
                     for (const ing of recetaPayload.ingredientes) {
                         const cantNum = parseFloat(ing.cantidad) || 0;
@@ -1398,23 +1422,31 @@ class BunkerService {
                             await client.query(
                                 `INSERT INTO public.receta_ingredientes (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad, fase_produccion)
                                  VALUES ($1, $2, $3, $4, $5, 'externa')`,
-                                [nuevaRecetaId, parseInt(ing.ingrediente_id), ing.nombre_ingrediente, ing.unidad_medida || 'Kilo', cantNum]
+                                [recetaDestinoId, parseInt(ing.ingrediente_id), ing.nombre_ingrediente, ing.unidad_medida || 'Kilo', cantNum]
                             );
                         }
                     }
-                    console.log(`📋 [BUNKER-SERVICE] Receta personalizada #${nuevaRecetaId} guardada para SKU ${articulo_id} con ${recetaPayload.ingredientes.length} componentes`);
+                    console.log(`📋 [BUNKER-SERVICE] Receta personalizada #${recetaDestinoId} actualizada sin destruir receta_articulos para SKU ${articulo_id} (${recetaPayload.ingredientes.length} componentes)`);
                 } else if (recetaPayload && recetaPayload.activa === false) {
                     const resRecetasDestino = await client.query(
-                        `SELECT id FROM public.recetas WHERE articulo_numero = $1`,
+                        `SELECT id FROM public.recetas WHERE UPPER(BTRIM(articulo_numero)) = UPPER(BTRIM($1))`,
                         [articulo_id]
                     );
                     if (resRecetasDestino.rows.length > 0) {
                         for (const rOld of resRecetasDestino.rows) {
                             await client.query(`DELETE FROM public.receta_ingredientes WHERE receta_id = $1`, [rOld.id]);
-                            await client.query(`DELETE FROM public.receta_articulos WHERE receta_id = $1`, [rOld.id]);
-                            await client.query(`DELETE FROM public.recetas WHERE id = $1`, [rOld.id]);
+                            if (recetaPayload.purgar_articulos_up === true) {
+                                await client.query(`DELETE FROM public.receta_articulos WHERE receta_id = $1`, [rOld.id]);
+                                await client.query(`DELETE FROM public.recetas WHERE id = $1`, [rOld.id]);
+                            } else {
+                                const cntArt = await client.query(`SELECT COUNT(*)::int AS cnt FROM public.receta_articulos WHERE receta_id = $1`, [rOld.id]);
+                                if ((cntArt.rows[0]?.cnt || 0) === 0) {
+                                    await client.query(`DELETE FROM public.recetas WHERE id = $1`, [rOld.id]);
+                                } else {
+                                    console.log(`🛡️ [BUNKER-SERVICE] Preservados ${cntArt.rows[0].cnt} receta_articulos en receta #${rOld.id} de SKU ${articulo_id}`);
+                                }
+                            }
                         }
-                        console.log(`📋 [BUNKER-SERVICE] Recetas purgadas para SKU ${articulo_id} por desactivación explícita`);
                     }
                 }
             } catch (errReceta) {
@@ -3411,6 +3443,9 @@ class BunkerService {
 
         return {
             articulo_id,
+            familia_id: articulo.familia_id || (props && props.familia_id) || null,
+            descripcion: articulo.descripcion || null,
+            descripcion_generada: articulo.descripcion_generada || null,
             codigo_barras: articulo.codigo_barras || null,
             pack_hijo_codigo: articulo.pack_hijo_codigo || childIdForPadre || null,
             pack_unidades: articulo.pack_unidades || 0,
@@ -3628,6 +3663,22 @@ class BunkerService {
                                 ins.incluido === true || ins.incluido === 'true'
                             ]);
                         }
+                    }
+                }
+
+                // Sincronizar bunker_articulos.costo_base junto con costo_base_sobrescrito de la lista Patrón / Lista 1 (sin incrustar insumos de lista)
+                if (costo_base === undefined) {
+                    const confRef = configs.find(c => (c.es_patron === true || c.es_patron === 'true') && parseFloat(c.costo_base_sobrescrito) > 0)
+                        || configs.find(c => Number(c.lista_id) === 1 && parseFloat(c.costo_base_sobrescrito) > 0)
+                        || configs.find(c => parseFloat(c.costo_base_sobrescrito) > 0);
+                    if (confRef && parseFloat(confRef.costo_base_sobrescrito) > 0) {
+                        await client.query(
+                            `UPDATE public.bunker_articulos
+                             SET costo_base = ROUND(($2::numeric * COALESCE(NULLIF(kilos_unidad, 0), 1.00)), 2),
+                                 updated_at = CURRENT_TIMESTAMP
+                             WHERE articulo_id = $1`,
+                            [articulo_id, parseFloat(confRef.costo_base_sobrescrito)]
+                        );
                     }
                 }
             } 

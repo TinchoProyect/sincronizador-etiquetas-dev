@@ -1628,6 +1628,16 @@ const PORT = process.env.PRODUCCION_PORT || 3002;
 
 httpServer.listen(PORT, () => {
     console.log(`Servidor de producción corriendo en puerto ${PORT}`);
+
+    // Saneamiento estructural idempotente de Línea 4 (Tostaderos) y Artículos Puente
+    const { ejecutarSaneamientoLinea4 } = require('./migrations/saneamientoLinea4');
+    ejecutarSaneamientoLinea4(db)
+        .then(resMig => {
+            console.log('✅ [STARTUP-LDN4] Saneamiento estructural verificado:', JSON.stringify(resMig));
+        })
+        .catch(errMig => {
+            console.warn('⚠️ [STARTUP-LDN4] Advertencia al ejecutar saneamiento estructural:', errMig.message);
+        });
     
     // Warmup asíncrono de Tabla Maestra en memoria para eliminación total de latencia inicial en Conciliación IA
     const conciliacionArticulosService = require('./services/conciliacionArticulosService');

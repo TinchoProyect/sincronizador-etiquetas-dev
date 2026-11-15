@@ -6,6 +6,7 @@ const mermasController = require('../controllers/mermasController');
 console.log('🔍 [BUNKER-ROUTES] Configurando rutas del Búnker...');
 
 router.get('/mermas-historicas', mermasController.obtenerHistorialMermas);
+router.post('/tostadero-simulacion/:sku', mermasController.guardarSimulacionTostadero);
 
 // Obtener todas las listas activas
 router.get('/listas', bunkerController.getListas);

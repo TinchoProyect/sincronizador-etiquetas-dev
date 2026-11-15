@@ -4475,9 +4475,8 @@ window.guardarRecetaInline = async function() {
 
         const requestBody = {
             articulo_numero: articuloCodigo,
-            descripcion: `Receta de ${articuloCodigo}`,
             ingredientes: ingredientes,
-            articulos: [],
+            reemplazar_ingredientes: true,
             esProduccionExternaConArticuloPrincipal: false,
             upsert: true
         };

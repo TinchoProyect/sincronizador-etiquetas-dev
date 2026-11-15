@@ -38,9 +38,17 @@ async function editarIngresoManual(req, res) {
         `;
         const stockViejoRows = await client.query(selectStockQuery, [carroId, uuidPattern]);
 
+        const { recalcularStockConsolidado } = require('../utils/recalcularStock');
+        const { calcularUnidadesMovimientoIngresoProduccion } = require('../utils/articuloPuenteHelper');
+
         if (stockViejoRows.rows.length > 0) {
             for (const stockViejo of stockViejoRows.rows) {
-                const cantidadUnidadesARevertir = Math.abs(parseFloat(stockViejo.cantidad) || 1);
+                const cantidadUnidadesARevertir = await calcularUnidadesMovimientoIngresoProduccion(
+                    client,
+                    stockViejo.articulo_numero,
+                    stockViejo.cantidad,
+                    stockViejo.kilos
+                );
                 
                 const revertirStockMovimientosQuery = `
                     UPDATE stock_real_consolidado 
@@ -55,7 +63,6 @@ async function editarIngresoManual(req, res) {
                 await client.query(`DELETE FROM stock_ventas_movimientos WHERE carro_id = $1 AND observaciones LIKE $2`, [carroId, uuidPattern]);
                 
                 // Recalcular consolidado del artículo viejo
-                const { recalcularStockConsolidado } = require('../utils/recalcularStock');
                 await recalcularStockConsolidado(client, stockViejo.articulo_numero);
             }
         }
@@ -101,6 +108,12 @@ async function editarIngresoManual(req, res) {
 
             // Actualizar stock movimientos para el nuevo ingreso
             if (movimientoStock.tipo === 'ingreso a producción') {
+                const unidadesADescontarNuevo = await calcularUnidadesMovimientoIngresoProduccion(
+                    client,
+                    movimientoStock.articulo_numero,
+                    movimientoStock.cantidad || 1,
+                    movimientoStock.kilos
+                );
                 const updateStockNuevo = `
                     UPDATE stock_real_consolidado 
                     SET 
@@ -109,12 +122,11 @@ async function editarIngresoManual(req, res) {
                     WHERE articulo_numero = $2
                 `;
                 await client.query(updateStockNuevo, [
-                    movimientoStock.cantidad || 1,
+                    unidadesADescontarNuevo,
                     movimientoStock.articulo_numero
                 ]);
                 
                 // Recalcular consolidado del nuevo artículo
-                const { recalcularStockConsolidado } = require('../utils/recalcularStock');
                 await recalcularStockConsolidado(client, movimientoStock.articulo_numero);
             }
         }

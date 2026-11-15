@@ -34,15 +34,30 @@ async function refrescarTablaArticulosSiModalAbierto() {
  * Línea 5: Barritas (BFXP / Barritas UP)
  * Línea 6: Granolas (GFGN, GSGN / Granolas UP)
  */
-function clasificarLineaNegocioArticulo(numero, nombre) {
-    const num = (numero || '').toUpperCase();
-    const nom = (nombre || '').toUpperCase();
-    if (num.startsWith('BF') || nom.includes('BARRA')) {
-        return 5;
-    }
-    if ((num.startsWith('G') && num.includes('GN')) || num.startsWith('GRA') || nom.includes('GRANA') || nom.includes('GRANOLA')) {
+function clasificarLineaNegocioArticulo(numero, nombre, articuloObj = null) {
+    const num = String(numero || articuloObj?.numero || '').trim().toUpperCase();
+    const nom = String(nombre || articuloObj?.descripcion_generada || articuloObj?.nombre || '').trim().toUpperCase();
+    const baseCod = String(articuloObj?.articulo_base_codigo || '').trim().toUpperCase();
+
+    // Línea 6: Granolas (GFGN, GSGN, premezclas MPGDF/MPGDS, o descripciones de Granola/Grana)
+    if (
+        num === 'GFGN' ||
+        num === 'GSGN' ||
+        num.startsWith('GFGN') ||
+        num.startsWith('GSGN') ||
+        (num.startsWith('G') && num.includes('GN')) ||
+        num.startsWith('GRA') ||
+        baseCod.startsWith('MPGD') ||
+        nom.includes('GRANA') ||
+        nom.includes('GRANOLA')
+    ) {
         return 6;
     }
+    // Línea 5: Barritas (BFXP / Barritas UP)
+    if (num.startsWith('BF') || baseCod === 'MPB' || nom.includes('BARRA')) {
+        return 5;
+    }
+    // Línea 4: Tostaderos
     return 4;
 }
 
@@ -2408,12 +2423,20 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
         const articulosOtras = [];
 
         for (const art of articulos) {
-            const lineaArt = clasificarLineaNegocioArticulo(art.numero, art.nombre);
+            const lineaArt = clasificarLineaNegocioArticulo(art.numero, art.nombre, art);
             if (!lineaActiva || lineaArt === lineaActiva) {
                 articulosLinea.push({ ...art, lineaPertenece: lineaArt });
             } else {
                 articulosOtras.push({ ...art, lineaPertenece: lineaArt });
             }
+        }
+
+        // Si no hay línea bloqueada, ordenar agrupando explícitamente Línea 4, luego Línea 5, luego Línea 6
+        if (!lineaActiva) {
+            articulosLinea.sort((a, b) => {
+                if (a.lineaPertenece !== b.lineaPertenece) return a.lineaPertenece - b.lineaPertenece;
+                return String(a.nombre || '').localeCompare(String(b.nombre || ''));
+            });
         }
 
         // Obtener recetas completas para mostrar insumos base
@@ -2460,13 +2483,31 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
 
         // Renderizar lista combinada: primero los de la línea activa, luego los de otras líneas
         const listaRender = [...articulosLinea, ...articulosOtras];
+        let ultimaLineaSeccionRenderizada = null;
 
         for (const articulo of listaRender) {
             const tieneReceta = estadoRecetas[articulo.numero];
             const esIntegra = integridadRecetas[articulo.numero];
             const receta = recetasPorArticulo[articulo.numero] || null;
-            const lineaArticulo = clasificarLineaNegocioArticulo(articulo.numero, articulo.nombre);
+            const lineaArticulo = clasificarLineaNegocioArticulo(articulo.numero, articulo.nombre, articulo);
             const esDeOtraLinea = lineaActiva && (lineaArticulo !== lineaActiva);
+
+            // Si no hay línea bloqueada, separar explícitamente Línea 4, Línea 5 y Línea 6 con encabezados de sección
+            if (!lineaActiva && ultimaLineaSeccionRenderizada !== lineaArticulo) {
+                ultimaLineaSeccionRenderizada = lineaArticulo;
+                const titulosSeccion = {
+                    4: { ico: '🥜', nom: 'Línea 4 — Producción de Tostaderos (Almendras y Castañas)', col: '#b45309', bg: '#fffbeb', bd: '#fde68a' },
+                    5: { ico: '🍫', nom: 'Línea 5 — Producción Externa de Barritas', col: '#1e40af', bg: '#eff6ff', bd: '#bfdbfe' },
+                    6: { ico: '🥣', nom: 'Línea 6 — Producción Externa de Granolas (GFGN / GSGN)', col: '#166534', bg: '#f0fdf4', bd: '#86efac' }
+                };
+                const metaSec = titulosSeccion[lineaArticulo] || titulosSeccion[4];
+                const sep = document.createElement('div');
+                sep.className = 'separador-linea-externa';
+                sep.dataset.lineaSeccion = lineaArticulo;
+                sep.style.cssText = `grid-column: 1 / -1; background: ${metaSec.bg}; border: 1.5px solid ${metaSec.bd}; border-radius: 8px; padding: 8px 14px; margin-top: 6px; font-weight: 800; font-size: 13px; color: ${metaSec.col}; display: flex; align-items: center; gap: 8px;`;
+                sep.innerHTML = `<span style="font-size:18px;">${metaSec.ico}</span><span>${metaSec.nom}</span>`;
+                contenedor.appendChild(sep);
+            }
 
             // Crear tarjeta
             const tarjeta = document.createElement('div');
@@ -2495,33 +2536,42 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
                 </div>
             ` : '';
 
-            // Cabecera de la tarjeta
+            const descBunkerUp = articulo.descripcion_generada || articulo.nombre || articulo.numero;
+
+            // Cabecera de la tarjeta: [SKU UP] Descripción Búnker
             const cabecera = `
                 ${bannerOtraLinea}
                 <div class="tarjeta-cabecera">
-                    <h3 class="tarjeta-titulo">${articulo.nombre}</h3>
-                    <span class="tarjeta-codigo">${articulo.numero}</span>
+                    <h3 class="tarjeta-titulo">[${escaparAtributoHtml(articulo.numero)}] ${escaparAtributoHtml(descBunkerUp)}</h3>
+                    <span class="tarjeta-codigo">${escaparAtributoHtml(nombreLineaArt)}</span>
                 </div>
             `;
 
-            // Información del ARTÍCULO BASE (insumo que compone la UP)
+            // Información del ARTÍCULO BASE / BULTO CRUDO (insumo que compone la UP)
             let infoInsumoBase = '';
             if (articulo.articulo_base_codigo) {
-                const stockInsumo = articulo.articulo_base_stock || 0;
-                const colorStock = stockInsumo > 0 ? '#28a745' : '#dc3545';
+                const stockInsumo = parseFloat(articulo.articulo_base_stock) || 0;
+                const kilosPorBulto = parseFloat(articulo.articulo_base_kilos_unidad) || 1;
+                const stockKilos = stockInsumo * kilosPorBulto;
+                const sinStock = stockInsumo <= 0;
+                const colorStock = !sinStock ? '#15803d' : '#dc2626';
                 const nombreBase = articulo.articulo_base_nombre || articulo.articulo_base_codigo;
+                const etiquetaInsumo = lineaArticulo === 4 ? 'Bulto Crudo:' : 'Artículo Base:';
+                const badgeSinStock = sinStock
+                    ? `<span style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; border-radius:4px; padding:1px 6px; font-size:10.5px; font-weight:800; margin-left:6px;">⚠️ SIN STOCK</span>`
+                    : '';
 
                 infoInsumoBase = `
                     <div class="tarjeta-info-item">
                         <span class="info-icono">📦</span>
-                        <span class="info-label">Artículo Base:</span>
-                        <span class="info-valor">${articulo.articulo_base_codigo} - ${nombreBase}</span>
+                        <span class="info-label">${etiquetaInsumo}</span>
+                        <span class="info-valor"><strong>[${escaparAtributoHtml(articulo.articulo_base_codigo)}]</strong> ${escaparAtributoHtml(nombreBase)}</span>
                     </div>
                     <div class="tarjeta-info-item">
                         <span class="info-icono">📊</span>
-                        <span class="info-label">Stock:</span>
+                        <span class="info-label">Stock crudo:</span>
                         <span class="info-valor" style="color: ${colorStock}; font-weight: bold;">
-                            ${formatearStock(stockInsumo)} unidades
+                            ${formatearStock(stockInsumo)} bultos (${formatearStock(stockKilos)} kg)${badgeSinStock}
                         </span>
                     </div>
                 `;
@@ -2529,11 +2579,30 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
                 infoInsumoBase = `
                     <div class="tarjeta-info-item">
                         <span class="info-icono">⚠️</span>
-                        <span class="info-label">Artículo Base:</span>
+                        <span class="info-label">Bulto Crudo:</span>
                         <span class="info-valor texto-advertencia">Sin configurar</span>
                     </div>
                 `;
             }
+
+            // Información determinista del Artículo Puente (AP) destino
+            const infoApDestinoHTML = articulo.articulo_puente_codigo
+                ? `
+                    <div class="tarjeta-info-item">
+                        <span class="info-icono">🌉</span>
+                        <span class="info-label">AP Destino:</span>
+                        <span class="info-valor" style="color:#0f766e; font-weight:700;">
+                            [${escaparAtributoHtml(articulo.articulo_puente_codigo)}] ${escaparAtributoHtml(articulo.articulo_puente_nombre || articulo.articulo_puente_codigo)}
+                        </span>
+                    </div>
+                `
+                : `
+                    <div class="tarjeta-info-item">
+                        <span class="info-icono">⚠️</span>
+                        <span class="info-label">AP Destino:</span>
+                        <span class="info-valor texto-advertencia">Sin Artículo Puente vinculado</span>
+                    </div>
+                `;
 
             // Información de ingredientes adicionales (miel, aceite, etc.)
             let infoIngredientesHTML = '';
@@ -2543,10 +2612,10 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
                     <div class="tarjeta-info-item">
                         <span class="info-icono">🥄</span>
                         <span class="info-label">Ingredientes extra:</span>
-                        <span class="info-valor">${nombresIngredientes}</span>
+                        <span class="info-valor">${escaparAtributoHtml(nombresIngredientes)}</span>
                     </div>
                 `;
-            } else {
+            } else if (lineaArticulo !== 4) {
                 infoIngredientesHTML = `
                     <div class="tarjeta-info-item">
                         <span class="info-icono">🥄</span>
@@ -2556,35 +2625,35 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
                 `;
             }
 
-            // Texto de ayuda
+            // Texto de ayuda determinista UP -> AP
             const textoAyuda = articulo.articulo_base_codigo
-                ? `Esta UP consume <strong>${articulo.articulo_base_codigo} - ${articulo.articulo_base_nombre || articulo.articulo_base_codigo}</strong> como artículo base y lo transforma en <strong>${articulo.nombre}</strong>`
-                : 'Configure la receta para definir el artículo base y los ingredientes necesarios';
+                ? `Consume <strong>[${escaparAtributoHtml(articulo.articulo_base_codigo)}] ${escaparAtributoHtml(articulo.articulo_base_nombre || articulo.articulo_base_codigo)}</strong> y asienta kilos producidos en <strong>${articulo.articulo_puente_codigo ? `[${escaparAtributoHtml(articulo.articulo_puente_codigo)}] ${escaparAtributoHtml(articulo.articulo_puente_nombre || '')}` : escaparAtributoHtml(descBunkerUp)}</strong>.`
+                : 'Configure la receta para definir el bulto crudo y el Artículo Puente destino.';
 
             // Botones de acción
             let botonesHTML = '';
             if (tieneReceta) {
                 botonesHTML = `
                     <button class="btn-seleccionar-tarjeta" 
-                            data-numero="${articulo.numero}" 
-                            data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
+                            data-numero="${escaparAtributoHtml(articulo.numero)}" 
+                            data-nombre="${escaparAtributoHtml(descBunkerUp)}"
                             data-integra="${esIntegra}">
                         ✅ Seleccionar / Asignar
                     </button>
                     <button class="btn-editar-receta-tarjeta" 
-                            data-numero="${articulo.numero}" 
-                            data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
-                            onclick="mostrarModalReceta('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}', 'editar')">
+                            data-numero="${escaparAtributoHtml(articulo.numero)}" 
+                            data-nombre="${escaparAtributoHtml(descBunkerUp)}"
+                            onclick="window.abrirEditorUpDirecto ? window.abrirEditorUpDirecto('${articulo.numero.replace(/'/g, "\\'")}') : mostrarModalReceta('${articulo.numero.replace(/'/g, "\\'")}', '${descBunkerUp.replace(/'/g, "\\'")}', 'editar')">
                         ⚙️ Editar Configuración UP
                     </button>
                 `;
             } else {
                 botonesHTML = `
                     <button class="btn-configurar-receta" 
-                            data-numero="${articulo.numero}" 
-                            data-nombre="${articulo.nombre.replace(/'/g, "\\'")}"
-                            onclick="mostrarModalReceta('${articulo.numero}', '${articulo.nombre.replace(/'/g, "\\'")}', 'crear')">
-                        ⚙️ Configurar Receta
+                            data-numero="${escaparAtributoHtml(articulo.numero)}" 
+                            data-nombre="${escaparAtributoHtml(descBunkerUp)}"
+                            onclick="window.abrirEditorUpDirecto ? window.abrirEditorUpDirecto('${articulo.numero.replace(/'/g, "\\'")}') : mostrarModalReceta('${articulo.numero.replace(/'/g, "\\'")}', '${descBunkerUp.replace(/'/g, "\\'")}', 'crear')">
+                        ⚙️ Configurar Receta / UP
                     </button>
                 `;
             }
@@ -2594,6 +2663,7 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
                 ${cabecera}
                 <div class="tarjeta-cuerpo">
                     ${infoInsumoBase}
+                    ${infoApDestinoHTML}
                     ${infoIngredientesHTML}
                     <div class="tarjeta-ayuda">
                         <span class="ayuda-icono">💡</span>

@@ -571,13 +571,17 @@ class ConciliacionController {
                 }
             }
 
-            // 3. Buscar artículos fraccionados con receta que consumen este ingrediente (Flujo 2)
+            // 3. Buscar artículos fraccionados con receta que consumen este ingrediente (Flujo 2 / Flujo 4)
+            // Excluye Artículos Puente (familia 42), obsoletos, no producidos por LAMDA y huérfanos sin alta en Búnker.
             const resArtRecetas = await client.query(
                 `SELECT DISTINCT r.articulo_numero, ba.kilos_unidad, ba.descripcion, ba.porcentaje_iva, ba.es_pack, ba.pack_hijo_codigo, ba.pack_unidades
                  FROM public.receta_ingredientes ri
                  JOIN public.recetas r ON r.id = ri.receta_id
                  JOIN public.bunker_articulos ba ON LOWER(TRIM(ba.articulo_id)) = LOWER(TRIM(r.articulo_numero))
-                 WHERE ri.ingrediente_id = $1`,
+                 WHERE ri.ingrediente_id = $1
+                   AND COALESCE(ba.familia_id, 0) <> 42
+                   AND COALESCE(ba.no_producido_por_lambda, false) = false
+                   AND COALESCE((ba.propiedades_dinamicas->>'obsoleto')::boolean, false) = false`,
                 [parseInt(ingrediente_id)]
             );
 
@@ -598,6 +602,9 @@ class ConciliacionController {
                      FROM public.bunker_articulos ba
                      WHERE (ba.es_pack = true OR (ba.pack_unidades IS NOT NULL AND ba.pack_unidades > 1))
                        AND ba.pack_hijo_codigo = ANY($1)
+                       AND COALESCE(ba.familia_id, 0) <> 42
+                       AND COALESCE(ba.no_producido_por_lambda, false) = false
+                       AND COALESCE((ba.propiedades_dinamicas->>'obsoleto')::boolean, false) = false
                        AND NOT EXISTS (SELECT 1 FROM public.recetas r WHERE LOWER(TRIM(r.articulo_numero)) = LOWER(TRIM(ba.articulo_id)))`,
                     [hijosSkus]
                 );
@@ -614,7 +621,7 @@ class ConciliacionController {
                 const targetSet = new Set(articulos_target_ids.map(s => String(s).trim().toLowerCase()));
                 articulosAfectados = articulosAfectados.filter(r => targetSet.has((r.articulo_numero || '').trim().toLowerCase()));
                 
-                // Si la consulta SQL estricta omitió alguno de los resueltos por la UI (ej: vinculación directa), consultar sus datos
+                // Si la consulta SQL estricta omitió alguno de los resueltos por la UI, consultar sus datos solo si está vigente en Búnker
                 for (const targetSku of articulos_target_ids) {
                     const skuClean = String(targetSku).trim();
                     const alreadyFound = articulosAfectados.some(r => r.articulo_numero.trim().toLowerCase() === skuClean.toLowerCase());
@@ -622,7 +629,11 @@ class ConciliacionController {
                         const resDirect = await client.query(
                             `SELECT articulo_id AS articulo_numero, kilos_unidad, descripcion, porcentaje_iva, es_pack, pack_hijo_codigo, pack_unidades 
                              FROM public.bunker_articulos 
-                             WHERE LOWER(TRIM(articulo_id)) = LOWER(TRIM($1)) LIMIT 1`,
+                             WHERE LOWER(TRIM(articulo_id)) = LOWER(TRIM($1))
+                               AND COALESCE(familia_id, 0) <> 42
+                               AND COALESCE(no_producido_por_lambda, false) = false
+                               AND COALESCE((propiedades_dinamicas->>'obsoleto')::boolean, false) = false
+                             LIMIT 1`,
                             [skuClean]
                         );
                         if (resDirect.rows.length > 0) {
@@ -640,8 +651,12 @@ class ConciliacionController {
                 });
             }
 
+            // Procesar fracciones hijas antes que Packs Padres para mantener coherencia en la transacción
+            articulosAfectados.sort((a, b) => (a.pack_hijo_codigo ? 1 : 0) - (b.pack_hijo_codigo ? 1 : 0));
+
             let totalActualizados = 0;
             const cambiosHistorialFracciones = [];
+            const articulosNodosActualizados = new Set();
 
             for (const art of articulosAfectados) {
                 const sku = art.articulo_numero;
@@ -661,14 +676,14 @@ class ConciliacionController {
                                skuHijoClean !== sku.toLowerCase() &&
                                skuHijoClean !== bultoCerradoOrigen;
 
-                let costoBaseBultoTotal = 0;
+                let costoBaseBultoSinInsumosLista = 0;
+                let packMeta = null;
 
                 if (esPack && art.pack_hijo_codigo) {
                     // CÁLCULO DE ARTÍCULO PADRE (PACK MULTIPACK)
                     const skuHijo = art.pack_hijo_codigo.trim();
                     const packUnidades = parseInt(art.pack_unidades) || 10;
 
-                    // 1. Obtener datos y receta del hijo
                     const resHijo = await client.query(
                         `SELECT kilos_unidad FROM public.bunker_articulos WHERE LOWER(TRIM(articulo_id)) = LOWER(TRIM($1)) LIMIT 1`,
                         [skuHijo]
@@ -684,7 +699,7 @@ class ConciliacionController {
                         [skuHijo]
                     );
 
-                    let costoInsumosHijo = 0;
+                    let costoInsumosRecetaHijo = 0;
                     let costoMateriaPrimaHijo = 0;
 
                     if (resRecetaHijo.rows.length > 0) {
@@ -693,7 +708,7 @@ class ConciliacionController {
                             if (parseInt(item.ingrediente_id) === parseInt(ingrediente_id)) {
                                 costoMateriaPrimaHijo += cant * costoKiloIngrediente;
                             } else {
-                                costoInsumosHijo += cant * (parseFloat(item.costo_patron) || 0);
+                                costoInsumosRecetaHijo += cant * (parseFloat(item.costo_patron) || 0);
                             }
                         });
                     }
@@ -701,25 +716,42 @@ class ConciliacionController {
                         costoMateriaPrimaHijo = costoKiloIngrediente * kilosHijo;
                     }
 
-                    // 1.1. Obtener costo_tiempo (mano de obra de fraccionamiento) del hijo
-                    const resMoHijo = await client.query(
-                        `SELECT COALESCE(costo_tiempo, 0) as costo_tiempo, mano_obra_activa
+                    // Costo de referencia en lista patrón / Lista 1 del hijo (incluyendo sus insumos de lista si los tuviera, SIN la bolsa externa del pack)
+                    const resLaHijoPatron = await client.query(
+                        `SELECT id, COALESCE(costo_tiempo, 0) AS costo_tiempo, COALESCE(mano_obra_activa, true) AS mano_obra_activa
                          FROM public.bunker_lista_articulos
                          WHERE LOWER(TRIM(articulo_numero)) = LOWER(TRIM($1))
                          ORDER BY es_patron DESC, lista_id ASC
                          LIMIT 1`,
                         [skuHijo]
                     );
-                    const moHijo = (resMoHijo.rows.length > 0 && resMoHijo.rows[0].mano_obra_activa !== false)
-                        ? (parseFloat(resMoHijo.rows[0].costo_tiempo) || 0)
-                        : 0;
+                    let moHijoPatron = 0;
+                    let insumosListaHijoPatron = 0;
+                    if (resLaHijoPatron.rows.length > 0) {
+                        moHijoPatron = resLaHijoPatron.rows[0].mano_obra_activa !== false
+                            ? (parseFloat(resLaHijoPatron.rows[0].costo_tiempo) || 0)
+                            : 0;
+                        const resInsHijo = await client.query(
+                            `SELECT SUM(COALESCE(li.cantidad, 0) * COALESCE(ing.costo_patron, ba.costo_base, li.costo_unitario_capturado, 0)) AS total_insumos
+                             FROM public.bunker_lista_insumos li
+                             LEFT JOIN public.ingredientes ing ON ing.id::text = li.insumo_articulo_numero
+                             LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = li.insumo_articulo_numero
+                             WHERE li.lista_articulo_id = $1 AND COALESCE(li.incluido, true) = true`,
+                            [resLaHijoPatron.rows[0].id]
+                        );
+                        insumosListaHijoPatron = parseFloat(resInsHijo.rows[0]?.total_insumos) || 0;
+                    }
 
-                    const costoBultoUnitarioHijo = costoMateriaPrimaHijo + costoInsumosHijo + moHijo;
-                    costoBaseBultoTotal = costoBultoUnitarioHijo * packUnidades;
-
+                    const costoBultoUnitarioHijoPatron = costoMateriaPrimaHijo + costoInsumosRecetaHijo + insumosListaHijoPatron + moHijoPatron;
+                    costoBaseBultoSinInsumosLista = costoBultoUnitarioHijoPatron * packUnidades;
+                    packMeta = {
+                        skuHijo,
+                        packUnidades,
+                        costoBaseRecetaHijo: costoMateriaPrimaHijo + costoInsumosRecetaHijo,
+                        costoBultoUnitarioHijoPatron
+                    };
                 } else {
-                    // CÁLCULO DE FRACCIÓN MONO DIRECTA
-                    // 1. Obtener insumos de la receta de este artículo (ej: Bolsa 30x40)
+                    // CÁLCULO DE FRACCIÓN DIRECTA
                     const resRecetaItems = await client.query(
                         `SELECT ri.ingrediente_id, ri.cantidad, ing.costo_patron, ing.es_insumo, ing.unidad_medida
                          FROM public.receta_ingredientes ri
@@ -744,53 +776,73 @@ class ConciliacionController {
                         });
                     }
 
-                    // Fallback de materia prima solo si no existen ítems desglosados en la receta
                     if (costoMateriaPrimaBulto === 0 && resRecetaItems.rows.length === 0) {
                         costoMateriaPrimaBulto = costoKiloIngrediente * kilosUnidad;
                     }
 
-                    costoBaseBultoTotal = costoMateriaPrimaBulto + costoInsumosReceta;
+                    costoBaseBultoSinInsumosLista = costoMateriaPrimaBulto + costoInsumosReceta;
                 }
 
-                const costoKiloBaseSobrescritoCalculado = costoBaseBultoTotal / kilosUnidad;
-
-                // 2. Resolver costo_base para public.bunker_articulos
-                // Si tiene insumos de empaque en bunker_lista_insumos para su lista principal, reflejarlos en costo_base maestro
-                let costoBaseMaestro = costoBaseBultoTotal;
-                const resInsumosPrincipal = await client.query(
-                    `SELECT SUM(COALESCE(li.cantidad, 0) * COALESCE(ing.costo_patron, ba.costo_base, li.costo_unitario_capturado, 0)) AS total_insumos
-                     FROM public.bunker_lista_insumos li
-                     JOIN public.bunker_lista_articulos la ON la.id = li.lista_articulo_id
-                     LEFT JOIN public.ingredientes ing ON ing.id::text = li.insumo_articulo_numero
-                     LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = li.insumo_articulo_numero
-                     WHERE LOWER(TRIM(la.articulo_numero)) = LOWER(TRIM($1))
-                       AND COALESCE(li.incluido, true) = true
-                     GROUP BY la.id
-                     ORDER BY la.lista_id ASC
-                     LIMIT 1`,
-                    [sku]
-                );
-                if (resInsumosPrincipal.rows.length > 0) {
-                    costoBaseMaestro += parseFloat(resInsumosPrincipal.rows[0]?.total_insumos) || 0;
-                }
+                // 2. Guardar costo_base en public.bunker_articulos SIN incrustar bunker_lista_insumos propios del artículo/pack
+                // (evita duplicar la bolsa exterior 30x40 en Packs como ATyS10x150).
+                const costoBaseMaestro = Number(costoBaseBultoSinInsumosLista.toFixed(2));
 
                 await client.query(
                     `UPDATE public.bunker_articulos
                      SET costo_base = $1,
-                         porcentaje_iva = $2
+                         porcentaje_iva = $2,
+                         updated_at = CURRENT_TIMESTAMP
                      WHERE LOWER(TRIM(articulo_id)) = LOWER(TRIM($3))`,
                     [costoBaseMaestro, ivaAplicar, sku]
                 );
 
-                // 3. Obtener listas de precios y sumar insumos de lista
+                // 3. Obtener listas activas y actualizar precio_final (sumando insumos propios de la lista solo para el precio, NO en costo_base_sobrescrito)
                 const resListas = await client.query(
-                    `SELECT id, lista_id, costo_tiempo, margen_ganancia, iva, precio_final, costo_base_sobrescrito 
-                     FROM public.bunker_lista_articulos 
-                     WHERE LOWER(TRIM(articulo_numero)) = LOWER(TRIM($1))`,
+                    `SELECT la.id, la.lista_id, la.costo_tiempo, COALESCE(la.mano_obra_activa, true) AS mano_obra_activa,
+                            la.margen_ganancia, la.iva, COALESCE(la.modo_iva, 'COMPLETO') AS modo_iva,
+                            la.precio_final, la.costo_base_sobrescrito, COALESCE(la.disponible, true) AS disponible,
+                            COALESCE(blp.canal_comercial, 'MAYORISTA') AS canal_comercial
+                     FROM public.bunker_lista_articulos la
+                     JOIN public.bunker_listas_precios blp ON blp.id = la.lista_id
+                     WHERE LOWER(TRIM(la.articulo_numero)) = LOWER(TRIM($1))
+                       AND blp.activa = true`,
                     [sku]
                 );
 
                 for (const la of resListas.rows) {
+                    const esCanalNodos = String(la.canal_comercial || '').toUpperCase() === 'NODOS';
+                    if (esCanalNodos && la.disponible === false) {
+                        continue;
+                    }
+                    if (esCanalNodos) {
+                        articulosNodosActualizados.add(String(sku));
+                    }
+
+                    let costoBaseSinInsEnEstaLista = costoBaseBultoSinInsumosLista;
+                    if (packMeta) {
+                        const resLaHijoLista = await client.query(
+                            `SELECT id, COALESCE(costo_tiempo, 0) AS costo_tiempo, COALESCE(mano_obra_activa, true) AS mano_obra_activa
+                             FROM public.bunker_lista_articulos
+                             WHERE lista_id = $1 AND LOWER(TRIM(articulo_numero)) = LOWER(TRIM($2))
+                             LIMIT 1`,
+                            [la.lista_id, packMeta.skuHijo]
+                        );
+                        if (resLaHijoLista.rows.length > 0) {
+                            const laHijoRow = resLaHijoLista.rows[0];
+                            const moHijoLista = laHijoRow.mano_obra_activa !== false ? (parseFloat(laHijoRow.costo_tiempo) || 0) : 0;
+                            const resInsHijoLista = await client.query(
+                                `SELECT SUM(COALESCE(li.cantidad, 0) * COALESCE(ing.costo_patron, ba.costo_base, li.costo_unitario_capturado, 0)) AS total_insumos
+                                 FROM public.bunker_lista_insumos li
+                                 LEFT JOIN public.ingredientes ing ON ing.id::text = li.insumo_articulo_numero
+                                 LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = li.insumo_articulo_numero
+                                 WHERE li.lista_articulo_id = $1 AND COALESCE(li.incluido, true) = true`,
+                                [laHijoRow.id]
+                            );
+                            const insHijoLista = parseFloat(resInsHijoLista.rows[0]?.total_insumos) || 0;
+                            costoBaseSinInsEnEstaLista = (packMeta.costoBaseRecetaHijo + insHijoLista + moHijoLista) * packMeta.packUnidades;
+                        }
+                    }
+
                     const resInsumosLista = await client.query(
                         `SELECT SUM(COALESCE(li.cantidad, 0) * COALESCE(ing.costo_patron, ba.costo_base, li.costo_unitario_capturado, 0)) AS total_insumos
                          FROM public.bunker_lista_insumos li
@@ -800,16 +852,19 @@ class ConciliacionController {
                         [la.id]
                     );
                     const costoInsumosLista = parseFloat(resInsumosLista.rows[0]?.total_insumos) || 0;
-                    const costoTotalBultoConTodosInsumos = costoBaseBultoTotal + costoInsumosLista;
-                    const costoKiloSobrescritoFinal = costoTotalBultoConTodosInsumos / kilosUnidad;
+                    const costoTotalBultoConTodosInsumos = costoBaseSinInsEnEstaLista + costoInsumosLista;
+                    const costoKiloSobrescritoFinal = Number((costoBaseSinInsEnEstaLista / kilosUnidad).toFixed(4));
 
-                    const costoTiempo = parseFloat(la.costo_tiempo) || 0;
+                    const costoTiempo = la.mano_obra_activa !== false ? (parseFloat(la.costo_tiempo) || 0) : 0;
                     const margen = parseFloat(la.margen_ganancia) || 0;
-                    const ivaLista = ivaAplicar;
+                    const ivaLista = ivaPropagacion !== null ? ivaPropagacion : (parseFloat(la.iva) || ivaAplicar);
+                    const modoIva = String(la.modo_iva || 'COMPLETO').toUpperCase();
+                    let ivaEfectivo = ivaLista;
+                    if (modoIva === 'MEDIO') ivaEfectivo = ivaLista / 2;
+                    else if (modoIva === 'SIN') ivaEfectivo = 0;
 
-                    const precioFinal = (costoTotalBultoConTodosInsumos * (1 + (margen / 100)) + costoTiempo) * (1 + (ivaLista / 100));
+                    const precioFinal = Number((((costoTotalBultoConTodosInsumos * (1 + (margen / 100))) + costoTiempo) * (1 + (ivaEfectivo / 100))).toFixed(2));
 
-                    // Preparar registro para historial
                     cambiosHistorialFracciones.push({
                         articulo_numero: sku,
                         lista_id: la.lista_id,
@@ -847,6 +902,13 @@ class ConciliacionController {
             }
 
             await client.query('COMMIT');
+
+            if (articulosNodosActualizados.size > 0) {
+                const nodosBarrialesService = require('../services/nodosBarrialesService');
+                for (const artId of articulosNodosActualizados) {
+                    await nodosBarrialesService.sincronizarCatalogoNodoDesdeBunker(artId);
+                }
+            }
 
             return res.json({
                 success: true,

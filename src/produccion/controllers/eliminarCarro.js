@@ -124,14 +124,14 @@ async function eliminarRegistrosRelacionados(carroId) {
         if (conteos.tipoCarro === 'externa') {
             // Para carros externos: incluir movimientos de producción externa y egresos de abastecimiento
             movimientosQuery = `
-                SELECT articulo_numero, cantidad, tipo
+                SELECT articulo_numero, cantidad, kilos, tipo
                 FROM stock_ventas_movimientos 
                 WHERE carro_id = $1 AND tipo IN ('ingreso a producción', 'salida a ventas', 'ingreso por produccion externa', 'egreso por receta externa', 'egreso')
             `;
         } else {
             // Para carros internos: solo movimientos tradicionales
             movimientosQuery = `
-                SELECT articulo_numero, cantidad, tipo
+                SELECT articulo_numero, cantidad, kilos, tipo
                 FROM stock_ventas_movimientos 
                 WHERE carro_id = $1 AND tipo IN ('ingreso a producción', 'salida a ventas')
             `;
@@ -140,21 +140,28 @@ async function eliminarRegistrosRelacionados(carroId) {
         const movimientosResult = await pool.query(movimientosQuery, [carroId]);
 
         const { recalcularStockConsolidado } = require('../utils/recalcularStock');
+        const { calcularUnidadesMovimientoIngresoProduccion } = require('../utils/articuloPuenteHelper');
 
         // Actualizar stock_movimientos para cada movimiento según su tipo
         const articulosAfectados = [];
 
         for (const mov of movimientosResult.rows) {
             if (mov.tipo === 'ingreso a producción') {
-                // Para ingreso a producción eliminado: SUMAR de vuelta la cantidad a stock_movimientos
+                const unidadesRevertir = await calcularUnidadesMovimientoIngresoProduccion(
+                    pool,
+                    mov.articulo_numero,
+                    mov.cantidad,
+                    mov.kilos
+                );
+                // Para ingreso a producción eliminado: SUMAR de vuelta las unidades/kilos reales a stock_movimientos
                 await pool.query(`
                     UPDATE stock_real_consolidado 
                     SET 
                         stock_movimientos = COALESCE(stock_movimientos, 0) + $1,
                         ultima_actualizacion = NOW()
                     WHERE articulo_numero = $2
-                `, [mov.cantidad, mov.articulo_numero]);
-                console.log(`Stock movimientos actualizado para artículo ${mov.articulo_numero}: +${mov.cantidad} (revertir ingreso a producción)`);
+                `, [unidadesRevertir, mov.articulo_numero]);
+                console.log(`Stock movimientos actualizado para artículo ${mov.articulo_numero}: +${unidadesRevertir} (revertir ingreso a producción)`);
             } else if (mov.tipo === 'salida a ventas') {
                 // Para salida a ventas eliminada: RESTAR la cantidad de stock_movimientos
                 await pool.query(`
