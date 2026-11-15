@@ -220,6 +220,7 @@ app.use((req, res, next) => {
         reqPath === '/lamda-manifest.json' ||
         reqPath === '/lamda-prueba-manifest.json' ||
         reqPath === '/lamda-prueba-sw.js' ||
+        reqPath === '/sw-nodo-pwa.js' ||
         reqPath === '/env-config.js' ||
         reqPath === '/login' ||
         reqPath === '/logout' ||
@@ -396,7 +397,7 @@ app.use('/api/produccion', createProxyMiddleware({
 }));
 
 // Proxy para vistas móviles y operativas de Nodos Barriales (puerto 3002)
-['/tienda', '/gestor', '/gestor-nodo', '/seguimiento', '/img/nodos', '/deposito-nodos', '/liquidacion-nodos', '/centro-nodos'].forEach((nodoPrefix) => {
+['/tienda', '/gestor', '/gestor-nodo', '/seguimiento', '/sw-nodo-pwa.js', '/img/nodos', '/deposito-nodos', '/liquidacion-nodos', '/centro-nodos'].forEach((nodoPrefix) => {
     app.use(nodoPrefix, createProxyMiddleware({
         target: 'http://127.0.0.1:3002',
         changeOrigin: true,

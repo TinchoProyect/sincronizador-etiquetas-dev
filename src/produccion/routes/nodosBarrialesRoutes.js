@@ -7,6 +7,7 @@ const QRCode = require('qrcode');
 const router = express.Router();
 const nodosService = require('../services/nodosBarrialesService');
 const nodosAnaliticaService = require('../services/nodosAnaliticaService');
+const nodosPwaService = require('../services/nodosPwaService');
 
 const CLOUDFLARED_EXE = 'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe';
 const TUNNEL_CACHE_FILE = path.join(os.tmpdir(), 'lamda_nodos_cloudflare_tunnel.json');
@@ -2180,6 +2181,47 @@ router.post('/comunicaciones/nodo/:idOrSlug/enviar', bloquearEnDominioPublicoTie
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en POST /comunicaciones/nodo/:idOrSlug/enviar:', error.message);
         res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+// ============================================================================
+// PWA MARCA BLANCA POR NODO — MANIFESTS E ICONOS PNG DIFERENCIADOS (TIENDA vs GESTOR)
+// ============================================================================
+router.get('/pwa/:slug/:recurso', async (req, res) => {
+    try {
+        const slug = String(req.params.slug || '').trim();
+        const recurso = String(req.params.recurso || '').trim().toLowerCase();
+
+        const manifestMatch = /^(tienda|gestor)\.webmanifest$/.exec(recurso);
+        const iconMatch = /^icon-(tienda|gestor)-(180|192|512)\.png$/.exec(recurso);
+
+        if (!manifestMatch && !iconMatch) {
+            return res.status(404).json({ ok: false, error: 'Recurso PWA no reconocido.' });
+        }
+
+        const nodo = await nodosPwaService.obtenerNodoPublicoPwaPorSlug(slug);
+        if (!nodo) {
+            return res.status(404).json({ ok: false, error: 'Nodo Barrial no encontrado o inactivo.' });
+        }
+
+        if (manifestMatch) {
+            const rol = manifestMatch[1];
+            const tokenQuery = String(req.query.t || req.query.gestor_token || '').trim();
+            const manifest = nodosPwaService.construirManifestPwaNodo(nodo, rol, tokenQuery);
+            res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+            res.set('Content-Type', 'application/manifest+json; charset=utf-8');
+            return res.status(200).send(JSON.stringify(manifest, null, 2));
+        }
+
+        const rolIcon = iconMatch[1];
+        const sizeIcon = parseInt(iconMatch[2], 10);
+        const pngBuffer = await nodosPwaService.renderizarIconoPngNodo(nodo, rolIcon, sizeIcon);
+        res.set('Cache-Control', 'public, max-age=3600');
+        res.set('Content-Type', 'image/png');
+        return res.status(200).send(pngBuffer);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error sirviendo recurso PWA:', error.message);
+        return res.status(500).json({ ok: false, error: 'Error generando recurso PWA del Nodo.' });
     }
 });
 

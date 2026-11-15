@@ -53,6 +53,7 @@ app.use((req, res, next) => {
     const esVistaPermitida =
         /^\/(gestor|gestor-nodo|tienda)(\/[^/]+)?(\/mi-cuenta\/[^/]+)?\/?$/i.test(p) ||
         /^\/seguimiento(\/[^/]+)?\/?$/i.test(p) ||
+        /^\/sw-nodo-pwa\.js$/i.test(p) ||
         /^\/img\/nodos\/[^/]+\/[a-z0-9._-]+\.(?:png|jpe?g|webp|svg|ico)$/i.test(p) ||
         /^\/(favicon\.ico|robots\.txt)$/i.test(p);
 
@@ -60,8 +61,13 @@ app.use((req, res, next) => {
         req.method === 'POST' &&
         /^\/api\/produccion\/nodos\/tienda\/[^/]+\/telemetria\/?$/i.test(p);
 
+    const esRecursoPwaNodo =
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        /^\/api\/produccion\/nodos\/pwa\/[^/]+\/(?:(?:tienda|gestor)\.webmanifest|icon-(?:tienda|gestor)-(?:180|192|512)\.png)$/i.test(p);
+
     const esApiNodoPermitida =
         esBeaconTelemetriaTienda ||
+        esRecursoPwaNodo ||
         /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|ofertas-gestor\/\d+|gestor\/\d+\/(config-logistica|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
 
     if (esVistaPermitida || esApiNodoPermitida) {
@@ -171,9 +177,36 @@ function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}
     const ogImageAbs = aUrlAbsolutaNodos(baseUrl, ogImagePath);
     const faviconPath = logosTv.isotipo || '';
     const ogUrl = aUrlAbsolutaNodos(baseUrl, req.originalUrl || req.path || '');
+    const paletaTv = (tv.paleta && typeof tv.paleta === 'object') ? tv.paleta : {};
+    const slugCanonico = String(nodo?.slug || '').trim();
+    const slugEnc = encodeURIComponent(slugCanonico);
+
+    const tokQueryRaw = String(req.query?.t || req.query?.gestor_token || '').trim();
+    const tokRealNodo = String(nodo?.gestor_token || '').trim();
+    const tokGestorValido = (esGestor && tokQueryRaw && tokRealNodo && tokQueryRaw === tokRealNodo)
+        ? tokRealNodo
+        : '';
 
     const metaTags = [];
-    if (faviconPath) {
+    if (slugCanonico) {
+        const rolIcon = esGestor ? 'gestor' : 'tienda';
+        const manifestHref = esGestor
+            ? `/api/produccion/nodos/pwa/${slugEnc}/gestor.webmanifest${tokGestorValido ? `?t=${encodeURIComponent(tokGestorValido)}` : ''}`
+            : `/api/produccion/nodos/pwa/${slugEnc}/tienda.webmanifest`;
+        const appShortTitle = esGestor ? `Nodo ${nombreMarca}` : nombreMarca;
+        const themeColor = esGestor
+            ? String(paletaTv.primario || '#654830').trim()
+            : String(paletaTv.fondo || '#FBF8F3').trim();
+
+        metaTags.push(`<link id="nodo-pwa-manifest" rel="manifest" href="${escHtmlAttrNodos(manifestHref)}">`);
+        metaTags.push(`<link rel="icon" type="image/png" sizes="192x192" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-192.png?v=1">`);
+        metaTags.push(`<link id="nodo-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-180.png?v=1">`);
+        metaTags.push(`<meta name="theme-color" content="${escHtmlAttrNodos(themeColor)}">`);
+        metaTags.push(`<meta name="mobile-web-app-capable" content="yes">`);
+        metaTags.push(`<meta name="apple-mobile-web-app-capable" content="yes">`);
+        metaTags.push(`<meta name="apple-mobile-web-app-status-bar-style" content="${esGestor ? 'black-translucent' : 'default'}">`);
+        metaTags.push(`<meta name="apple-mobile-web-app-title" content="${escHtmlAttrNodos(appShortTitle)}">`);
+    } else if (faviconPath) {
         metaTags.push(`<link rel="icon" type="image/png" href="${escHtmlAttrNodos(faviconPath)}">`);
         metaTags.push(`<link rel="apple-touch-icon" href="${escHtmlAttrNodos(faviconPath)}">`);
     }
@@ -245,7 +278,7 @@ async function validarYServirVistaNodoPublica(req, res, fileName) {
     try {
         const { rows } = await db.query(
             `SELECT id, slug, slug_historico, nombre_marca, bajada_marca, subtitulo_marca,
-                    barrio_zona, color_primario, tema_visual
+                    barrio_zona, color_primario, tema_visual, gestor_token
              FROM public.nodos_maestro
              WHERE (LOWER(slug) = LOWER($1) OR LOWER(COALESCE(slug_historico, '')) = LOWER($1))
                AND COALESCE(activo, true) = true
@@ -285,6 +318,13 @@ async function validarYServirVistaNodoPublica(req, res, fileName) {
 app.use('/img/nodos', express.static(path.join(__dirname, 'img', 'nodos')));
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.get('/robots.txt', (req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
+app.get('/sw-nodo-pwa.js', (req, res) => {
+    const nodosPwaService = require('./services/nodosPwaService');
+    res.set('Service-Worker-Allowed', '/');
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.type('application/javascript; charset=utf-8');
+    return res.status(200).send(nodosPwaService.generarCodigoServiceWorkerNodo());
+});
 
 app.get('/seguimiento/:trackingToken', async (req, res) => {
     const cleanTok = String(req.params.trackingToken || '').trim();

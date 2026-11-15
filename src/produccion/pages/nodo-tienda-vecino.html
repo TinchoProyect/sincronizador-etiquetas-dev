@@ -6,11 +6,34 @@
   <title id="page-title">Tienda Barrial</title>
   <!-- /lamda-cloud-runtime.js omitido en apps externas de Nodos (Marca Blanca) -->
   <script>
+    window.__nodoTiendaDeferredPrompt = null;
     try {
+      window.addEventListener('beforeinstallprompt', function(ev) {
+        ev.preventDefault();
+        window.__nodoTiendaDeferredPrompt = ev;
+        if (typeof window.renderizarBarraPwaTienda === 'function') {
+          window.renderizarBarraPwaTienda();
+        }
+      });
+      window.addEventListener('appinstalled', function() {
+        window.__nodoTiendaDeferredPrompt = null;
+        if (typeof window.cerrarModalPwaTienda === 'function') {
+          window.cerrarModalPwaTienda();
+        }
+        if (typeof window.renderizarBarraPwaTienda === 'function') {
+          window.renderizarBarraPwaTienda();
+        }
+      });
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function(regs) {
-          regs.forEach(function(r) { r.unregister(); });
+          regs.forEach(function(r) {
+            var sUrl = (r.active && r.active.scriptURL) || (r.installing && r.installing.scriptURL) || (r.waiting && r.waiting.scriptURL) || '';
+            if (sUrl.indexOf('/sw-nodo-pwa.js') === -1) {
+              r.unregister();
+            }
+          });
         }).catch(function(){});
+        navigator.serviceWorker.register('/sw-nodo-pwa.js', { scope: '/' }).catch(function(){});
       }
       localStorage.removeItem('lamda_prefer_mobile_home');
     } catch (_) {}
@@ -244,6 +267,82 @@
       color: var(--muted);
       font-weight: 600;
       margin-top: 3px;
+    }
+
+    /* Barra armoniosa de acceso directo PWA bajo cabecera de marca */
+    .pwa-tienda-bar {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      background: var(--card);
+      border: 1px solid var(--brand-border);
+      border-radius: 13px;
+      padding: 8px 10px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 10px rgba(62, 37, 25, 0.05);
+    }
+    .pwa-tienda-btn {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      background: transparent;
+      border: none;
+      padding: 2px 4px;
+      text-align: left;
+      font-family: inherit;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .pwa-tienda-thumb {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      flex-shrink: 0;
+      object-fit: cover;
+      border: 1px solid var(--border);
+    }
+    .pwa-tienda-label {
+      font-size: 0.85rem;
+      font-weight: 900;
+      color: var(--brand-dark);
+      line-height: 1.24;
+    }
+    .pwa-tienda-sub {
+      font-size: 0.73rem;
+      font-weight: 700;
+      color: var(--muted);
+      line-height: 1.22;
+      margin-top: 1px;
+    }
+    .pwa-tienda-cta-chip {
+      flex-shrink: 0;
+      background: var(--brand);
+      color: #ffffff;
+      font-size: 0.74rem;
+      font-weight: 900;
+      padding: 5px 10px;
+      border-radius: 999px;
+    }
+    .pwa-tienda-close {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-warm);
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 900;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .pwa-tienda-close:hover {
+      color: var(--text);
     }
 
     /* Buscador y Categorías */
@@ -1234,6 +1333,9 @@
 
     <!-- Bloque Catálogo de la Tienda Pública -->
     <div id="catalogo-tienda-wrapper">
+      <!-- Acceso directo instalable en celular del vecino (oculto si ya está instalada o si el vecino lo cerró) -->
+      <div id="pwa-tienda-install-bar" class="pwa-tienda-bar"></div>
+
       <!-- Banner recordatorio de pedido activo del vecino en este dispositivo -->
       <div class="active-order-banner" id="mis-pedidos-recientes-banner"></div>
 
@@ -1282,6 +1384,11 @@
   <!-- Modal Marca Blanca de Contenido / Ingredientes -->
   <div class="modal-backdrop" id="ingredientes-modal" style="z-index:260;" onclick="if(event.target===this) cerrarModalIngredientesProducto()">
     <div class="modal-card" id="ingredientes-card-content" style="max-width:480px;"></div>
+  </div>
+
+  <!-- Modal Breve de 2 Pasos para Guardar Acceso Directo en Celular (iOS / Navegador) -->
+  <div class="modal-backdrop" id="pwa-tienda-modal" style="z-index:275;" onclick="if(event.target===this) cerrarModalPwaTienda()">
+    <div class="modal-card" id="pwa-tienda-modal-content" style="max-width:380px;"></div>
   </div>
 
   <script>
@@ -1580,17 +1687,166 @@
     }
 
     function aplicarFaviconTienda(urlImg) {
-      const clean = String(urlImg || '').trim();
-      if (!clean) return;
-      ['icon', 'apple-touch-icon'].forEach(rel => {
-        let link = document.querySelector(`link[rel="${rel}"]`);
-        if (!link) {
-          link = document.createElement('link');
-          link.rel = rel;
-          document.head.appendChild(link);
+      const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
+      const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-192.png?v=1` : String(urlImg || '').trim();
+      const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=1` : String(urlImg || '').trim();
+      if (iconPwa192) {
+        let linkIcon = document.querySelector('link[rel="icon"]');
+        if (!linkIcon) {
+          linkIcon = document.createElement('link');
+          linkIcon.rel = 'icon';
+          linkIcon.type = 'image/png';
+          document.head.appendChild(linkIcon);
         }
-        link.href = clean;
-      });
+        linkIcon.href = iconPwa192;
+      }
+      if (iconPwa180) {
+        let linkApple = document.getElementById('nodo-apple-touch-icon') || document.querySelector('link[rel="apple-touch-icon"]');
+        if (!linkApple) {
+          linkApple = document.createElement('link');
+          linkApple.id = 'nodo-apple-touch-icon';
+          linkApple.rel = 'apple-touch-icon';
+          linkApple.sizes = '180x180';
+          document.head.appendChild(linkApple);
+        }
+        linkApple.href = iconPwa180;
+      }
+    }
+
+    function sincronizarManifestPwaTienda(slug) {
+      const cleanSlug = String(slug || '').trim();
+      if (!cleanSlug) return;
+      const href = `/api/produccion/nodos/pwa/${encodeURIComponent(cleanSlug)}/tienda.webmanifest`;
+      let link = document.getElementById('nodo-pwa-manifest') || document.querySelector('link[rel="manifest"]');
+      if (!link) {
+        link = document.createElement('link');
+        link.id = 'nodo-pwa-manifest';
+        link.rel = 'manifest';
+        document.head.appendChild(link);
+      }
+      if (link.getAttribute('href') !== href) {
+        link.setAttribute('href', href);
+      }
+    }
+
+    function esModoPwaInstaladaTienda() {
+      try {
+        if (window.navigator.standalone === true) return true;
+        if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+      } catch (_) {}
+      return false;
+    }
+
+    function obtenerKeyOcultarPwaTienda(slug) {
+      return 'lamda_nodo_pwa_tienda_cerrado_' + String(slug || '').trim().toLowerCase();
+    }
+
+    function cerrarBannerPwaTienda() {
+      const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
+      if (slugAct) {
+        try { localStorage.setItem(obtenerKeyOcultarPwaTienda(slugAct), '1'); } catch (_) {}
+      }
+      const bar = document.getElementById('pwa-tienda-install-bar');
+      if (bar) bar.style.display = 'none';
+    }
+
+    function cerrarModalPwaTienda() {
+      const modal = document.getElementById('pwa-tienda-modal');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('open');
+      }
+    }
+
+    function renderizarBarraPwaTienda() {
+      const bar = document.getElementById('pwa-tienda-install-bar');
+      if (!bar) return;
+      const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
+      if (!slugAct || !STATE.nodo || esModoPwaInstaladaTienda()) {
+        bar.style.display = 'none';
+        return;
+      }
+      try {
+        if (localStorage.getItem(obtenerKeyOcultarPwaTienda(slugAct)) === '1') {
+          bar.style.display = 'none';
+          return;
+        }
+      } catch (_) {}
+
+      const nombreMarca = String(STATE.nodo.nombre_marca || 'la tienda').trim();
+      const iconUrl = `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=1`;
+      bar.innerHTML = `
+        <button type="button" id="btn-instalar-pwa-tienda" class="pwa-tienda-btn" onclick="instalarAccesoDirectoTienda()">
+          <img src="${esc(iconUrl)}" alt="${esc(nombreMarca)}" class="pwa-tienda-thumb" />
+          <div style="min-width:0; flex:1;">
+            <div class="pwa-tienda-label">📲 Guardar acceso directo en mi celular</div>
+            <div class="pwa-tienda-sub">Entrá en un toque a ${esc(nombreMarca)} desde tu inicio</div>
+          </div>
+          <span class="pwa-tienda-cta-chip">Guardar</span>
+        </button>
+        <button type="button" class="pwa-tienda-close" aria-label="Cerrar aviso" title="No mostrar este aviso" onclick="cerrarBannerPwaTienda()">✕</button>
+      `;
+      bar.style.display = 'flex';
+    }
+
+    async function instalarAccesoDirectoTienda() {
+      const promptEv = window.__nodoTiendaDeferredPrompt;
+      if (promptEv && typeof promptEv.prompt === 'function') {
+        try {
+          promptEv.prompt();
+          const choice = await promptEv.userChoice;
+          if (choice && choice.outcome === 'accepted') {
+            window.__nodoTiendaDeferredPrompt = null;
+          }
+        } catch (_) {}
+        renderizarBarraPwaTienda();
+        return;
+      }
+
+      const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
+      const nombreMarca = String(STATE.nodo?.nombre_marca || 'la Tienda').trim();
+      const iconUrl = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=1` : '';
+      const esIos = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+
+      const card = document.getElementById('pwa-tienda-modal-content');
+      const modal = document.getElementById('pwa-tienda-modal');
+      if (!card || !modal) return;
+
+      card.innerHTML = `
+        <div style="padding:18px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              ${iconUrl ? `<img src="${esc(iconUrl)}" alt="${esc(nombreMarca)}" style="width:44px; height:44px; border-radius:11px; border:1px solid var(--border);" />` : ''}
+              <div>
+                <div style="font-weight:900; font-size:1.02rem; color:var(--text);">${esc(nombreMarca)}</div>
+                <div style="font-size:0.77rem; color:var(--muted); font-weight:700;">Acceso directo en tu celular</div>
+              </div>
+            </div>
+            <button type="button" onclick="cerrarModalPwaTienda()" aria-label="Cerrar"
+              style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px;">
+            <div style="display:flex; align-items:flex-start; gap:10px; background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:10px 12px;">
+              <span style="width:24px; height:24px; border-radius:999px; background:var(--brand); color:#fff; font-weight:900; font-size:0.8rem; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">1</span>
+              <div style="font-size:0.87rem; color:var(--text); line-height:1.38;">
+                Tocá <strong>${esIos ? 'Compartir (ícono ⬆️ abajo en Safari)' : 'el menú ⋮ o Compartir del navegador'}</strong>.
+              </div>
+            </div>
+            <div style="display:flex; align-items:flex-start; gap:10px; background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:10px 12px;">
+              <span style="width:24px; height:24px; border-radius:999px; background:var(--brand); color:#fff; font-weight:900; font-size:0.8rem; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">2</span>
+              <div style="font-size:0.87rem; color:var(--text); line-height:1.38;">
+                Elegí <strong>"Agregar a inicio"</strong>${esIos ? '' : ' (o <strong>"Instalar aplicación"</strong>)'} y listo.
+              </div>
+            </div>
+          </div>
+          <button type="button" onclick="cerrarModalPwaTienda()"
+            style="width:100%; min-height:42px; border:none; border-radius:11px; background:var(--brand); color:#fff; font-family:inherit; font-weight:900; font-size:0.92rem; cursor:pointer;">
+            Entendido
+          </button>
+        </div>
+      `;
+      modal.style.display = 'flex';
+      modal.classList.add('open');
     }
 
     function obtenerLogoIconoNodo(nodo) {
@@ -1733,6 +1989,9 @@
 
       // Aplicar paleta cálida personalizada del Nodo (tema_visual + fallback color_primario)
       aplicarPaletaTienda(STATE.nodo);
+      sincronizarManifestPwaTienda(STATE.slug);
+      aplicarFaviconTienda('');
+      renderizarBarraPwaTienda();
       const bajadaEfectiva = STATE.nodo.bajada_marca || STATE.nodo.subtitulo_marca || 'Pedidos comunitarios del barrio';
       document.title = STATE.nodo.bajada_marca
         ? `${STATE.nodo.nombre_marca} · ${STATE.nodo.bajada_marca}`

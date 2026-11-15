@@ -6,11 +6,34 @@
   <title>Panel del Gestor</title>
   <!-- /lamda-cloud-runtime.js omitido en apps externas de Nodos (Marca Blanca) -->
   <script>
+    window.__nodoGestorDeferredPrompt = null;
     try {
+      window.addEventListener('beforeinstallprompt', function(ev) {
+        ev.preventDefault();
+        window.__nodoGestorDeferredPrompt = ev;
+        if (typeof window.actualizarVisibilidadBotonPwaGestor === 'function') {
+          window.actualizarVisibilidadBotonPwaGestor();
+        }
+      });
+      window.addEventListener('appinstalled', function() {
+        window.__nodoGestorDeferredPrompt = null;
+        if (typeof window.cerrarModalPwaGestor === 'function') {
+          window.cerrarModalPwaGestor();
+        }
+        if (typeof window.actualizarVisibilidadBotonPwaGestor === 'function') {
+          window.actualizarVisibilidadBotonPwaGestor();
+        }
+      });
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function(regs) {
-          regs.forEach(function(r) { r.unregister(); });
+          regs.forEach(function(r) {
+            var sUrl = (r.active && r.active.scriptURL) || (r.installing && r.installing.scriptURL) || (r.waiting && r.waiting.scriptURL) || '';
+            if (sUrl.indexOf('/sw-nodo-pwa.js') === -1) {
+              r.unregister();
+            }
+          });
         }).catch(function(){});
+        navigator.serviceWorker.register('/sw-nodo-pwa.js', { scope: '/' }).catch(function(){});
       }
       localStorage.removeItem('lamda_prefer_mobile_home');
     } catch (_) {}
@@ -387,6 +410,152 @@
       accent-color: var(--brand);
       flex-shrink: 0;
       cursor: pointer;
+    }
+
+    /* === Estado vs. Acción en Mi Oferta y Márgenes === */
+    .oferta-item.is-unpublished {
+      background: #fdfbf8;
+      border-style: dashed;
+    }
+    .oferta-pub-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .oferta-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.76rem;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 999px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .oferta-status-pill.is-unpublished {
+      background: #f1ede7;
+      color: #64748b;
+      border: 1px solid #dfd7cc;
+    }
+    .oferta-status-pill.is-published {
+      background: var(--ok-soft);
+      color: var(--ok);
+      border: 1px solid var(--ok-border);
+    }
+    .btn-oferta-activar {
+      background: var(--brand);
+      color: #ffffff;
+      border: 1px solid var(--brand-dark);
+      min-height: 36px;
+      padding: 6px 14px;
+      border-radius: 9px;
+      font-family: inherit;
+      font-weight: 900;
+      font-size: 0.82rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      cursor: pointer;
+      box-shadow: 0 2px 7px var(--brand-soft);
+      transition: background 0.15s, opacity 0.15s, transform 0.1s;
+    }
+    .btn-oferta-activar:hover:not(:disabled) {
+      background: var(--brand-dark);
+    }
+    .btn-oferta-activar:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+    .btn-oferta-despublicar {
+      background: #ffffff;
+      color: #475569;
+      border: 1px solid #cbd5e1;
+      min-height: 36px;
+      padding: 6px 12px;
+      border-radius: 9px;
+      font-family: inherit;
+      font-weight: 800;
+      font-size: 0.8rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+    }
+    .btn-oferta-despublicar:hover:not(:disabled) {
+      background: #f8fafc;
+      border-color: #94a3b8;
+      color: #1e293b;
+    }
+    .btn-oferta-activar:disabled,
+    .btn-oferta-despublicar:disabled {
+      opacity: 0.68;
+      cursor: wait;
+    }
+
+    /* === Botón de Instalación de Acceso Directo PWA (Panel Gestor) === */
+    .cta-pwa-gestor {
+      width: 100%;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      text-align: left;
+      padding: 9px 12px;
+      margin-bottom: 10px;
+      border-radius: 12px;
+      border: 1.5px solid var(--brand-border);
+      background: var(--surface-warm);
+      color: var(--text);
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    }
+    .cta-pwa-gestor:hover {
+      border-color: var(--brand);
+    }
+    .cta-pwa-gestor:active {
+      transform: scale(0.99);
+    }
+    .cta-pwa-gestor-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+    .cta-pwa-gestor-thumb {
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      flex-shrink: 0;
+      object-fit: cover;
+      box-shadow: 0 2px 6px rgba(37, 19, 11, 0.16);
+    }
+    .cta-pwa-gestor-title {
+      font-size: 0.9rem;
+      font-weight: 900;
+      color: var(--text);
+      line-height: 1.2;
+    }
+    .cta-pwa-gestor-sub {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--muted);
+      line-height: 1.25;
+      margin-top: 1px;
+    }
+    .cta-pwa-gestor-pill {
+      flex-shrink: 0;
+      background: var(--brand);
+      color: #ffffff;
+      font-size: 0.76rem;
+      font-weight: 900;
+      padding: 5px 10px;
+      border-radius: 999px;
     }
 
     /* === Escala Móvil Rebalanceada (Estándar limpio 14.5px) === */
@@ -1032,6 +1201,13 @@
   <!-- VISTA OVERLAY FULLSCREEN DE CONDUCCIÓN NOCTURNA (ALTO CONTRASTE #0b1120) -->
   <div id="gestor-nocturno-overlay" class="nocturno-overlay"></div>
 
+  <!-- MODAL BREVE DE 2 PASOS PARA INSTALAR ACCESO DIRECTO EN IPHONE / NAVEGADOR -->
+  <div id="modal-pwa-gestor" onclick="if(event.target===this) cerrarModalPwaGestor()" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.62); z-index:4300; align-items:center; justify-content:center; padding:14px;">
+    <div style="background:#ffffff; border-radius:18px; max-width:390px; width:100%; padding:20px 18px; box-shadow:0 22px 45px rgba(15,23,42,0.3); border:1px solid var(--border);">
+      <div id="modal-pwa-gestor-body"></div>
+    </div>
+  </div>
+
   <script>
     const GSTATE = {
       slug: '',
@@ -1121,17 +1297,122 @@
     }
 
     function aplicarFaviconGestor(urlImg) {
-      const clean = String(urlImg || '').trim();
-      if (!clean) return;
-      ['icon', 'apple-touch-icon'].forEach(rel => {
-        let link = document.querySelector(`link[rel="${rel}"]`);
-        if (!link) {
-          link = document.createElement('link');
-          link.rel = rel;
-          document.head.appendChild(link);
+      const slugAct = String(GSTATE.slug || detectarSlugInicial() || '').trim();
+      const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-192.png?v=1` : String(urlImg || '').trim();
+      const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=1` : String(urlImg || '').trim();
+      if (iconPwa192) {
+        let linkIcon = document.querySelector('link[rel="icon"]');
+        if (!linkIcon) {
+          linkIcon = document.createElement('link');
+          linkIcon.rel = 'icon';
+          linkIcon.type = 'image/png';
+          document.head.appendChild(linkIcon);
         }
-        link.href = clean;
-      });
+        linkIcon.href = iconPwa192;
+      }
+      if (iconPwa180) {
+        let linkApple = document.getElementById('nodo-apple-touch-icon') || document.querySelector('link[rel="apple-touch-icon"]');
+        if (!linkApple) {
+          linkApple = document.createElement('link');
+          linkApple.id = 'nodo-apple-touch-icon';
+          linkApple.rel = 'apple-touch-icon';
+          linkApple.sizes = '180x180';
+          document.head.appendChild(linkApple);
+        }
+        linkApple.href = iconPwa180;
+      }
+    }
+
+    function sincronizarManifestPwaGestor(slug, tok) {
+      const cleanSlug = String(slug || '').trim();
+      if (!cleanSlug) return;
+      const slugEnc = encodeURIComponent(cleanSlug);
+      const tokClean = String(tok || '').trim();
+      const href = `/api/produccion/nodos/pwa/${slugEnc}/gestor.webmanifest${tokClean ? `?t=${encodeURIComponent(tokClean)}` : ''}`;
+      let link = document.getElementById('nodo-pwa-manifest') || document.querySelector('link[rel="manifest"]');
+      if (!link) {
+        link = document.createElement('link');
+        link.id = 'nodo-pwa-manifest';
+        link.rel = 'manifest';
+        document.head.appendChild(link);
+      }
+      if (link.getAttribute('href') !== href) {
+        link.setAttribute('href', href);
+      }
+    }
+
+    function esModoPwaInstaladaGestor() {
+      try {
+        if (window.navigator.standalone === true) return true;
+        if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+      } catch (_) {}
+      return false;
+    }
+
+    function actualizarVisibilidadBotonPwaGestor() {
+      const btn = document.getElementById('btn-instalar-pwa-gestor');
+      if (!btn) return;
+      btn.style.display = esModoPwaInstaladaGestor() ? 'none' : 'flex';
+    }
+
+    function cerrarModalPwaGestor() {
+      const m = document.getElementById('modal-pwa-gestor');
+      if (m) m.style.display = 'none';
+    }
+
+    async function instalarAccesoDirectoGestor() {
+      const promptEv = window.__nodoGestorDeferredPrompt;
+      if (promptEv && typeof promptEv.prompt === 'function') {
+        try {
+          promptEv.prompt();
+          const choice = await promptEv.userChoice;
+          if (choice && choice.outcome === 'accepted') {
+            window.__nodoGestorDeferredPrompt = null;
+            mostrarAvisoPantallaGestor('✓ Acceso directo Nodo instalado en tu pantalla de inicio.', 'ok');
+          }
+        } catch (_) {}
+        actualizarVisibilidadBotonPwaGestor();
+        return;
+      }
+
+      const slugAct = String(GSTATE.slug || detectarSlugInicial() || '').trim();
+      const nombreMarca = String(GSTATE.nodo?.nombre_marca || 'tu Nodo').trim();
+      const iconUrl = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=1` : '';
+      const esIos = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+
+      const bodyEl = document.getElementById('modal-pwa-gestor-body');
+      const modalEl = document.getElementById('modal-pwa-gestor');
+      if (!bodyEl || !modalEl) return;
+
+      bodyEl.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            ${iconUrl ? `<img src="${esc(iconUrl)}" alt="Nodo ${esc(nombreMarca)}" style="width:44px; height:44px; border-radius:11px; box-shadow:0 3px 8px rgba(0,0,0,0.16);" />` : ''}
+            <div>
+              <div style="font-weight:900; font-size:1rem; color:var(--text);">Nodo ${esc(nombreMarca)}</div>
+              <div style="font-size:0.76rem; color:var(--muted); font-weight:700;">Acceso directo de gestión</div>
+            </div>
+          </div>
+          <button type="button" onclick="cerrarModalPwaGestor()" aria-label="Cerrar"
+            style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px;">
+          <div style="display:flex; align-items:flex-start; gap:10px; background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:10px 12px;">
+            <span style="width:24px; height:24px; border-radius:999px; background:var(--brand); color:#fff; font-weight:900; font-size:0.8rem; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">1</span>
+            <div style="font-size:0.86rem; color:var(--text); line-height:1.38;">
+              Tocá <strong>${esIos ? 'Compartir (ícono ⬆️ abajo en Safari)' : 'el menú ⋮ o Compartir del navegador'}</strong>.
+            </div>
+          </div>
+          <div style="display:flex; align-items:flex-start; gap:10px; background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:10px 12px;">
+            <span style="width:24px; height:24px; border-radius:999px; background:var(--brand); color:#fff; font-weight:900; font-size:0.8rem; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">2</span>
+            <div style="font-size:0.86rem; color:var(--text); line-height:1.38;">
+              Elegí <strong>"Agregar a inicio"</strong>${esIos ? '' : ' (o <strong>"Instalar aplicación"</strong>)'} y confirmá.
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-primary" style="width:100%;" onclick="cerrarModalPwaGestor()">Entendido</button>
+      `;
+      modalEl.style.display = 'flex';
     }
 
     function obtenerLogoHorizontalGestor(nodo) {
@@ -1218,11 +1499,14 @@
         try {
           window.history.replaceState({}, document.title, nuevaUrl);
         } catch (_) {}
+        sincronizarManifestPwaGestor(cleanSlug, tokQuery);
         return tokQuery;
       }
 
       try {
-        return String(localStorage.getItem(key) || '').trim();
+        const guardado = String(localStorage.getItem(key) || '').trim();
+        sincronizarManifestPwaGestor(cleanSlug, guardado);
+        return guardado;
       } catch (_) {
         return '';
       }
@@ -1585,10 +1869,25 @@
       );
       const enviosEnCamino = enviosListosReparto.filter(p => Number(p.hito_tracking_actual || 1) === 5).length;
 
+      const slugIconPwa = encodeURIComponent(String(GSTATE.slug || GSTATE.nodo?.slug || '').trim());
+      const mostrarBtnPwa = !esModoPwaInstaladaGestor();
+
       return `
         <div class="board-intro">
           Hola ${esc((GSTATE.nodo.gestor_nombre || '').split(' ')[0] || 'Gestor')}, elegí qué sección querés gestionar:
         </div>
+        ${mostrarBtnPwa ? `
+          <button type="button" id="btn-instalar-pwa-gestor" class="cta-pwa-gestor" onclick="instalarAccesoDirectoGestor()">
+            <div class="cta-pwa-gestor-left">
+              ${slugIconPwa ? `<img src="/api/produccion/nodos/pwa/${slugIconPwa}/icon-gestor-180.png?v=1" alt="Nodo ${esc(GSTATE.nodo.nombre_marca || '')}" class="cta-pwa-gestor-thumb" />` : '<span style="font-size:1.35rem;">📲</span>'}
+              <div>
+                <div class="cta-pwa-gestor-title">📲 Instalar acceso en mi celular</div>
+                <div class="cta-pwa-gestor-sub">Ícono propio "Nodo ${esc(GSTATE.nodo.nombre_marca || '')}" diferenciado de tu tienda</div>
+              </div>
+            </div>
+            <span class="cta-pwa-gestor-pill">Instalar</span>
+          </button>
+        ` : ''}
         <button type="button" class="cta-difusion-hero" onclick="abrirModalDifusionTienda()">
           <div class="cta-difusion-icon">📣</div>
           <div class="cta-difusion-body">
@@ -2472,7 +2771,7 @@
             const nombreVidrieraEfectivo = String(of.nombre_vidriera_efectivo || nombreVidrieraPers || nombreOficialLamda).trim();
             const aliasPrevio = String(of.alias_sugerido_previo || '').trim();
             return `
-              <div class="oferta-item">
+              <div class="oferta-item${of.publicado_tienda ? '' : ' is-unpublished'}">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
                   <div style="min-width:210px; flex:1;">
                     <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
@@ -2483,7 +2782,7 @@
                       Catálogo oficial LAMDA · ${esc(catOficialLamda)} · <strong>${esc(of.presentacion_etiqueta || `${Math.round(Number(of.kilos_unidad) * 1000)}g`)}</strong>
                     </div>
                   </div>
-                  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                     ${of.tiene_desglose_ingredientes ? `
                       <label class="switch-label" title="Mostrar u ocultar el botón ¿Qué contiene? en este artículo elaborado">
                         <input type="checkbox" ${of.mostrar_ingredientes !== false ? 'checked' : ''}
@@ -2498,14 +2797,22 @@
                         onclick="abrirModalDifusionTienda(${Number(of.id)})" title="Compartir este producto directo por WhatsApp o link">
                         📣 Compartir
                       </button>
-                    ` : ''}
-                    <label class="switch-label">
-                      <input type="checkbox" ${of.publicado_tienda ? 'checked' : ''}
-                        onchange="guardarCambioOferta(${of.id}, { publicado_tienda: this.checked })" />
-                      <span style="color:${of.publicado_tienda ? 'var(--ok)' : 'var(--muted)'};">
-                        ${of.publicado_tienda ? 'Publicado' : 'Oculto'}
-                      </span>
-                    </label>
+                      <div class="oferta-pub-group" data-oferta-estado-box="${of.id}">
+                        <span class="oferta-status-pill is-published">● Publicado</span>
+                        <button type="button" class="btn-oferta-despublicar" data-btn-pub-oferta="${of.id}"
+                          onclick="cambiarEstadoPublicacionOferta(${of.id}, false, this)">
+                          Despublicar
+                        </button>
+                      </div>
+                    ` : `
+                      <div class="oferta-pub-group" data-oferta-estado-box="${of.id}">
+                        <span class="oferta-status-pill is-unpublished">No publicado</span>
+                        <button type="button" class="btn-oferta-activar" data-btn-pub-oferta="${of.id}"
+                          onclick="cambiarEstadoPublicacionOferta(${of.id}, true, this)">
+                          Activar
+                        </button>
+                      </div>
+                    `}
                   </div>
                 </div>
                 ${of.tiene_desglose_ingredientes ? `
@@ -2612,11 +2919,36 @@
         const data = await leerRespuestaJsonSegura(resp);
         if (!resp.ok || !data.ok) {
           mostrarAvisoPantallaGestor('No se pudo guardar el cambio: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
-          return;
+          return false;
         }
         await cargarPanelGestor();
+        return true;
       } catch (_) {
         mostrarAvisoPantallaGestor('Falla de comunicación al guardar la oferta.', 'error');
+        return false;
+      }
+    }
+
+    async function cambiarEstadoPublicacionOferta(ofertaId, publicar, btnEl) {
+      if (btnEl && btnEl.disabled) return;
+      const textoOriginal = btnEl ? btnEl.textContent : '';
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.textContent = publicar ? 'Activando...' : 'Actualizando...';
+      }
+      const ok = await guardarCambioOferta(ofertaId, { publicado_tienda: Boolean(publicar) });
+      if (!ok && btnEl) {
+        btnEl.disabled = false;
+        btnEl.textContent = textoOriginal;
+        return;
+      }
+      if (ok) {
+        mostrarAvisoPantallaGestor(
+          publicar
+            ? '✓ Producto publicado y visible en tu tienda.'
+            : 'Producto despublicado de tu tienda pública.',
+          'ok'
+        );
       }
     }
 
