@@ -11,7 +11,7 @@ description: Reglas permanentes de arquitectura LAMDA (Producción vs Laboratori
 
 2. **Reglas Operativas en la Notebook (`SERVEDIORA`):**
    - Se trabaja **únicamente** sobre la rama `desarrollo` y la base `etiquetas_pruebas` (`LAMDA_MODO_LABORATORIO=true`, `DB_PASSWORD=taKionga`).
-   - **Prohibido** hacer commits o push a la rama `main` desde la Notebook. El pase de `desarrollo` a `main` y el despliegue a Producción se ejecutan desde `PcAlmacen` mediante `node scripts/publicarDesarrolloAProduccion.js`.
+   - **Prohibido** hacer commits o push directos a la rama `main` durante tareas de desarrollo. El pase de `desarrollo` a `main` y el despliegue a Producción solo pueden ejecutarse bajo orden expresa mediante `node scripts/publicarDesarrolloAProduccion.js --confirmar-produccion`.
 
 3. **Flujo Automático de Sincronización en `desarrollo`:**
    - **Al iniciar tarea:** Verificar `git status`, limpiar ruido de runtime, ejecutar `git pull --rebase origin desarrollo` y aplicar diferencias de esquema con `node scripts/auditarDiferenciasEsquemaDb.js --apply-lab`.
@@ -19,3 +19,7 @@ description: Reglas permanentes de arquitectura LAMDA (Producción vs Laboratori
 
 4. **Blindajes Inamovibles:**
    - Mantener intactos la simulación local de ARCA en Laboratorio (`esModoLaboratorioAfip()`), la protección dual de WhatsApp sin consumo de QR en Laboratorio (`esModoLaboratorioWa()` con `DB_NAME === 'etiquetas_pruebas'` y `LAMDA_MODO_LABORATORIO === 'true'`), y los controladores del Switch de Producción (`lamdaSwitchGuiServer.js`, `orquestadorSwitchLocalNube.js`, `lamdaCloudAuthGuard.js`).
+
+5. **Política Permanente de Comunicaciones Administrativas (Cero `wa.me` / `mailto:`):**
+   - En **ninguna** pantalla administrativa interna de LAMDA está permitido usar `wa.me`, `api.whatsapp.com` ni `mailto:` (solo se admiten en vistas públicas/externas para celulares de gestores/vecinos como `nodo-panel-gestor.html` y `nodo-tienda-vecino.html`).
+   - Todo envío administrativo de WhatsApp o Email debe pasar siempre por una ventana modal previa con selección de contactos múltiples de `bunker_clientes` + destinatario manual opcional, selección de canal (`WhatsApp :3004` y/o `Email SMTP`), vista previa editable del mensaje/adjuntos y despacho directo por backend.

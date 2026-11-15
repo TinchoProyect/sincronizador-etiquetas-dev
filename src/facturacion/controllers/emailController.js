@@ -331,7 +331,7 @@ const enviarNotificacion = async (req, res) => {
     console.log('📧 [EMAIL-CTRL] Petición de envío de notificación por Email');
 
     try {
-        const { clienteNombre, destinatarios, asunto, mensajeTexto } = req.body;
+        const { clienteNombre, destinatarios, asunto, mensajeTexto, adjuntos, datosDetalle, notaAdjunto } = req.body;
 
         let emailDestinos = '';
         if (Array.isArray(destinatarios)) {
@@ -356,24 +356,67 @@ const enviarNotificacion = async (req, res) => {
             });
         }
 
+        const attachments = [];
+        let imagenInlineHtml = '';
+        if (Array.isArray(adjuntos)) {
+            for (const adj of adjuntos) {
+                if (!adj || !adj.base64Data) continue;
+                const cleanB64 = String(adj.base64Data).replace(/^data:[^;]+;base64,/i, '').trim();
+                if (!cleanB64) continue;
+                const filename = String(adj.filename || 'adjunto.png').trim();
+                const contentType = String(adj.mimeType || 'image/png').trim();
+                const cid = adj.cid ? String(adj.cid).trim() : undefined;
+                attachments.push({
+                    filename,
+                    content: Buffer.from(cleanB64, 'base64'),
+                    contentType,
+                    ...(cid ? { cid } : {})
+                });
+                if (cid && contentType.startsWith('image/')) {
+                    imagenInlineHtml += `
+                        <div style="text-align:center; margin:20px 0;">
+                            <img src="cid:${cid}" alt="${filename}" style="max-width:260px; width:100%; height:auto; border-radius:12px; border:1px solid #e2e8f0; padding:8px; background:#ffffff;" />
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        const htmlMensajeSeguro = String(mensajeTexto)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener" style="color:#6d28d9; font-weight:600;">$1</a>')
+            .replace(/\n/g, '<br>');
+
         const htmlBody = emailService.obtenerPlantillaHtml({
-            titulo: asunto || 'Aviso de Stock Disponible',
+            titulo: asunto || 'Notificación LAMDA',
             clienteNombre: clienteNombre || 'Estimado Cliente',
-            mensajePrincipal: mensajeTexto.replace(/\n/g, '<br>'),
+            mensajePrincipal: htmlMensajeSeguro,
+            datosDetalle: Array.isArray(datosDetalle) ? datosDetalle : [],
+            imagenInlineHtml,
+            notaAdjunto: notaAdjunto !== undefined
+                ? notaAdjunto
+                : (attachments.length > 0 ? 'En el adjunto de este correo electrónico encontrará el archivo correspondiente.' : ''),
             piePagina: 'Sistema LAMDA - Gestión Comercial y Depósito',
             mostrarTransferencia: false
         });
 
         const resultado = await emailService.enviarEmail({
             to: emailDestinos,
-            subject: asunto || 'Aviso de Stock Disponible - LAMDA',
-            htmlBody
+            subject: asunto || 'Notificación - LAMDA',
+            htmlBody,
+            attachments
         });
 
         res.json({
             success: true,
-            message: 'Envío de notificación por correo procesado.',
+            simulated: Boolean(resultado.simulated),
+            message: resultado.simulated
+                ? 'Envío de notificación por correo SIMULADO en Modo Laboratorio.'
+                : 'Envío de notificación por correo procesado.',
             data: {
+                simulated: Boolean(resultado.simulated),
                 destinatarios: resultado.recipients.join(', '),
                 messageId: resultado.messageId
             }

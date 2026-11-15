@@ -916,6 +916,14 @@
               </button>
             </div>
 
+            <div style="margin-bottom:12px;">
+              <button type="button" class="btn solid-green"
+                style="width:100%; justify-content:center; padding:9px 12px; font-size:0.82rem; background:linear-gradient(135deg, #0f172a 0%, #15803d 100%); border:none;"
+                onclick="abrirEnvioInternoCentroNodos(${Number(n.id)}, 'gestor_y_tienda', '${esQrAfiche ? 'tienda_afiche' : 'tienda_limpio'}')">
+                📤 Enviar Invitación / Links y QR (WA / Email)
+              </button>
+            </div>
+
             <!-- 1. ENTRAR COMO CLIENTE -->
             <div class="qr-access-box">
               <div class="qr-access-head">
@@ -940,6 +948,7 @@
               <div class="btn-row">
                 <a href="${esc(urlTiendaMostrar)}" target="_blank" rel="noopener" class="btn solid-green" style="flex:1;">🚀 Entrar como Cliente</a>
                 <button type="button" class="btn" onclick="copiarTextoPortapapeles('${esc(urlTiendaMostrar)}', this)">📋 Copiar URL</button>
+                <button type="button" class="btn" title="Enviar link y QR de Tienda por motor interno WA/Email" onclick="abrirEnvioInternoCentroNodos(${Number(n.id)}, 'solo_tienda', '${esQrAfiche ? 'tienda_afiche' : 'tienda_limpio'}')">📤 Enviar</button>
                 ${imgQrTienda ? `<button type="button" class="btn" onclick="abrirModalQrZoom('🛒 Tienda ${esc(n.nombre_marca)}', 'Escaneá con la cámara de tu celular', '${esc(imgQrTienda)}', '${esc(urlTiendaMostrar)}')">🔍 QR</button>` : ''}
               </div>
             </div>
@@ -962,6 +971,7 @@
               <div class="btn-row">
                 <a href="${esc(urlGestorMostrar)}" target="_blank" rel="noopener" class="btn solid-blue" style="flex:1;">🎛️ Entrar como Gestor</a>
                 <button type="button" class="btn" onclick="copiarTextoPortapapeles('${esc(urlGestorMostrar)}', this)">📋 Copiar</button>
+                <button type="button" class="btn" title="Enviar invitación y QR del Gestor por WA/Email" onclick="abrirEnvioInternoCentroNodos(${Number(n.id)}, 'gestor_y_tienda', 'gestor')">📤 Enviar</button>
                 ${qr.qr_gestor_data_url ? `<button type="button" class="btn" onclick="abrirModalQrZoom('🎛️ Panel Gestor · ${esc(n.nombre_marca)}', 'Escaneá desde el celular del Gestor', '${esc(qr.qr_gestor_data_url)}', '${esc(urlGestorMostrar)}')">🔍 QR</button>` : ''}
                 <button type="button" class="btn" title="Invalidar QR anterior y generar uno nuevo" onclick="rotarTokenGestorDesdeCentro(${Number(n.id)})">🔄</button>
               </div>
@@ -982,6 +992,7 @@
                     📲 QR Marcar mi Celular Admin
                   </button>
                 ` : ''}
+                <button type="button" class="btn" title="Autoenviar link y QR ?modo_admin=1 a mi celular o correo" onclick="abrirEnvioInternoCentroNodos(${Number(n.id)}, 'admin_prueba', 'admin_prueba')">📤 Autoenviar</button>
                 <button type="button" class="btn" onclick="copiarTextoPortapapeles('${esc(urlAdminMovil)}', this)">📋 Link Admin</button>
                 <button type="button" class="btn" title="Copiar enlace para volver a simular un cliente real en el celular"
                   onclick="copiarTextoPortapapeles('${esc(urlClienteLimpioMovil)}', this)">👥 Link Cliente Puro</button>
@@ -1588,9 +1599,8 @@
           ${carts.length === 0
             ? `<div style="font-size:0.82rem; color:var(--muted); padding:10px 0;">No hay carritos pendientes sin confirmar en este momento.</div>`
             : `<div style="display:flex; flex-direction:column; gap:9px; max-height:260px; overflow-y:auto;">
-                ${carts.map(c => {
+                ${carts.map((c, idxCart) => {
                   const telClean = String(c.vecino_telefono || '').replace(/\D+/g, '');
-                  const waHref = telClean ? `https://wa.me/${telClean.startsWith('54') ? telClean : '549' + telClean}` : '';
                   return `
                     <div style="border:1px solid ${c.estado_carrito === 'ABANDONADO' ? '#fcd34d' : '#cbd5e1'}; background:${c.estado_carrito === 'ABANDONADO' ? '#fffbeb' : '#f8fafc'}; border-radius:10px; padding:9px 11px; font-size:0.79rem;">
                       <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
@@ -1605,9 +1615,12 @@
                       <div style="margin-top:5px; color:#334155;">
                         ${c.items.map(it => `${Number(it.cantidad)}x ${esc(it.nombre)}${it.presentacion ? ' (' + esc(it.presentacion) + ')' : ''}`).join(' · ')}
                       </div>
-                      <div style="margin-top:5px; display:flex; justify-content:space-between; align-items:center;">
+                      <div style="margin-top:5px; display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
                         <strong style="color:#0f172a;">Subtotal: ${fmtMoneda(c.subtotal)} (${c.unidades} u.)</strong>
-                        ${waHref ? `<a href="${esc(waHref)}" target="_blank" rel="noopener" style="color:#15803d; font-weight:800; text-decoration:none;">💬 ${esc(c.vecino_telefono)}</a>` : `<span style="color:var(--muted);">${esc(iconoOrigenTrafico(c.origen_trafico))}</span>`}
+                        ${telClean
+                          ? `<button type="button" class="btn" style="padding:3px 8px; font-size:0.73rem; border-color:#86efac; background:#f0fdf4; color:#15803d;" onclick="abrirContactoInternoCarritoRadar(${idxCart})">📤 ${esc(c.vecino_telefono)}</button>`
+                          : `<span style="color:var(--muted);">${esc(iconoOrigenTrafico(c.origen_trafico))}</span>`
+                        }
                       </div>
                     </div>
                   `;
@@ -1786,6 +1799,64 @@
       `;
     }
 
+    async function asegurarModalOmnicanalCargado() {
+      if (typeof window.abrirModalEnvioOmnicanalNodo === 'function') return;
+      await new Promise((resolve, reject) => {
+        const sc = document.createElement('script');
+        sc.src = '/api/produccion/nodos/comunicaciones-modal.js?v=1.0.0';
+        sc.onload = resolve;
+        sc.onerror = () => reject(new Error('No se pudo cargar el modal interno de envío omnicanal.'));
+        document.head.appendChild(sc);
+      });
+    }
+
+    async function abrirEnvioInternoCentroNodos(nodoId, plantillaInicial = 'gestor_y_tienda', qrTipoInicial = 'tienda_afiche') {
+      try {
+        await asegurarModalOmnicanalCargado();
+        await window.abrirModalEnvioOmnicanalNodo({
+          nodoId: Number(nodoId),
+          plantillaInicial,
+          qrTipoInicial,
+          adjuntarQrInicial: true
+        });
+      } catch (err) {
+        window.alert('Error abriendo envío interno: ' + err.message);
+      }
+    }
+
+    async function abrirContactoInternoCarritoRadar(idxCart) {
+      try {
+        const carts = CSTATE.radar?.data?.carritos_sin_cerrar || [];
+        const c = carts[idxCart];
+        if (!c) return;
+        await asegurarModalOmnicanalCargado();
+        const nodoIdTarget = c.nodo_id || CSTATE.nodoSeleccionadoId || (CSTATE.nodos[0] && CSTATE.nodos[0].id);
+        const itemsTxt = Array.isArray(c.items) && c.items.length > 0
+          ? c.items.map(it => `• ${Number(it.cantidad)}x ${it.nombre}${it.presentacion ? ' (' + it.presentacion + ')' : ''}`).join('\n')
+          : '';
+        const saludoNombre = c.vecino_nombre ? `Hola ${c.vecino_nombre}!` : 'Hola!';
+        const nombreTienda = (c.nodo_nombre || 'nuestra tienda').split('·')[0].trim();
+        await window.abrirModalEnvioOmnicanalNodo({
+          nodoId: nodoIdTarget,
+          telefonoManualInicial: c.vecino_telefono || '',
+          nombreDestinatarioInicial: c.vecino_nombre || 'Vecino/a',
+          desmarcarContactosPrecargados: true,
+          adjuntarQrInicial: false,
+          qrTipoInicial: 'tienda_limpio',
+          tituloPlantillaPersonalizada: 'Asistencia de Carrito en Tienda',
+          asuntoPersonalizadoInicial: `🛒 Tu carrito pendiente en ${nombreTienda}`,
+          mensajePersonalizadoInicial: [
+            `${saludoNombre} Te escribimos de *${nombreTienda}* por si necesitás ayuda para finalizar tu pedido:`,
+            itemsTxt,
+            ``,
+            `Subtotal actual: ${fmtMoneda(c.subtotal)} (${c.unidades} u.)`
+          ].filter(Boolean).join('\n')
+        });
+      } catch (err) {
+        window.alert('Error abriendo contacto interno: ' + err.message);
+      }
+    }
+
     document.addEventListener('DOMContentLoaded', async () => {
       inicializarEnlacesNavegacionInterna();
       renderizarEstadoAdminPc();
@@ -1802,5 +1873,6 @@
       }
     });
   </script>
+  <script src="/api/produccion/nodos/comunicaciones-modal.js?v=1.0.0"></script>
 </body>
 </html>

@@ -1431,8 +1431,9 @@
                                         <span style="font-size:0.71rem; color:#fcd34d; align-self:center; margin-right:auto;">Tienda y App bloqueadas hasta reactivar</span>
                                     ` : `
                                         <button type="button" onclick="window.NodosPizarra.enviarLinksBienvenidaNodoWa(${n.id})"
-                                            style="padding:4px 9px; border-radius:6px; font-size:0.71rem; font-weight:700; background:rgba(16,185,129,0.2); border:1px solid #10b981; color:#6ee7b7; cursor:pointer;">
-                                            📲 Enviar Links por WA
+                                            style="padding:4px 9px; border-radius:6px; font-size:0.71rem; font-weight:700; background:rgba(16,185,129,0.2); border:1px solid #10b981; color:#6ee7b7; cursor:pointer;"
+                                            title="Abrir modal interno de envío por motor WhatsApp (:3004) y/o Email SMTP con adjunto QR">
+                                            📤 Enviar Invitación / QR (WA · Email)
                                         </button>
                                         <a href="/gestor/${escaparHtml(n.slug)}" target="_blank"
                                             style="text-decoration:none; padding:4px 9px; border-radius:6px; font-size:0.71rem; font-weight:700; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.4); color:#bae6fd;">
@@ -3860,180 +3861,26 @@
 
     async function enviarLinksBienvenidaNodoWa(nodoId) {
         try {
-            const nodo = ESTADO_NODOS.nodos.find(n => Number(n.id) === Number(nodoId));
-            if (!nodo) return;
-            const origin = window.location.origin;
-            const urlGestor = nodo.gestor_token
-                ? `${origin}/gestor/${encodeURIComponent(nodo.slug)}?t=${encodeURIComponent(nodo.gestor_token)}`
-                : `${origin}/gestor/${encodeURIComponent(nodo.slug)}`;
-            const urlTienda = `${origin}/tienda/${encodeURIComponent(nodo.slug)}`;
-            const mensaje = [
-                `🌱 *Bienvenido/a a Nodos Barriales — ${nodo.nombre_marca}*`,
-                `👤 Gestor/a: ${nodo.gestor_nombre}`,
-                `📍 Punto de retiro: ${nodo.direccion_retiro || nodo.barrio_zona || '-'}`,
-                `🏦 Alias recaudador vecinos: ${nodo.alias_bancario_display || 'pago.canasto'}`,
-                ``,
-                `📲 *1. Tu Panel de Gestor (Armado de Canasto, Márgenes y Cobros):*`,
-                urlGestor,
-                ``,
-                `🛒 *2. Tu Tienda Vecinal Marca Blanca (para compartir con tus vecinos):*`,
-                urlTienda
-            ].join('\n');
-
-            // En Producción, usar accesos QR oficiales + enlace wa.me directo (whatsapp-prueba es exclusivo de Laboratorio)
-            const respPrev = await fetch('/api/produccion/nodos/whatsapp-prueba', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    destinatario_nombre: nodo.gestor_nombre || nodo.nombre_marca,
-                    telefono_original: nodo.gestor_telefono || '',
-                    mensaje,
-                    solo_preview: true
-                })
-            });
-            if (respPrev.status === 403) {
-                let urlG = urlGestor;
-                let urlT = urlTienda;
-                let qrG = '';
-                let qrT = '';
-                try {
-                    const rQr = await fetch(`/api/produccion/nodos/accesos-qr/nodo/${encodeURIComponent(nodo.id)}`);
-                    const dQr = await rQr.json();
-                    if (rQr.ok && dQr.ok) {
-                        urlG = dQr.url_movil_gestor || urlG;
-                        urlT = dQr.url_movil_tienda || urlT;
-                        qrG = dQr.qr_gestor_data_url || '';
-                        qrT = dQr.qr_tienda_data_url || '';
-                    }
-                } catch (_) {}
-                const msgFinalProd = [
-                    `🌱 *Bienvenido/a — ${nodo.nombre_marca}*`,
-                    `👤 Gestor/a: ${nodo.gestor_nombre}`,
-                    `📍 Punto de retiro: ${nodo.direccion_retiro || nodo.barrio_zona || '-'}`,
-                    ``,
-                    `📲 *1. Tu Panel de Gestor:*`,
-                    urlG,
-                    ``,
-                    `🛒 *2. Tu Tienda Vecinal:*`,
-                    urlT
-                ].join('\n');
-                const telClean = String(nodo.gestor_telefono || '').replace(/\D/g, '');
-                const telWa = telClean ? (telClean.startsWith('54') ? telClean : `549${telClean}`) : '';
-                const waUrl = `https://wa.me/${telWa}?text=${encodeURIComponent(msgFinalProd)}`;
-                if (window.Swal) {
-                    await Swal.fire({
-                        icon: 'info',
-                        width: 620,
-                        title: '📲 Links de Bienvenida (Producción HTTPS)',
-                        html: `
-                            <div style="text-align:left; font-size:0.83rem; line-height:1.45;">
-                                <p style="color:#94a3b8; margin-top:0;">Copiá o enviá por WhatsApp Web/App los accesos definitivos:</p>
-                                <pre style="white-space:pre-wrap; word-break:break-word; padding:10px; border-radius:8px; background:#0b1120; border:1px solid #1e293b; color:#e2e8f0; font-size:0.75rem; max-height:160px; overflow-y:auto;">${escaparHtml(msgFinalProd)}</pre>
-                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; text-align:center;">
-                                    ${qrG ? `<div style="padding:8px; background:#0f172a; border-radius:8px;"><div style="font-size:0.75rem; font-weight:800; color:#38bdf8; margin-bottom:4px;">🎛️ QR Gestor</div><img src="${qrG}" style="width:120px;height:120px;background:#fff;padding:4px;border-radius:6px;"></div>` : ''}
-                                    ${qrT ? `<div style="padding:8px; background:#0f172a; border-radius:8px;"><div style="font-size:0.75rem; font-weight:800; color:#34d399; margin-bottom:4px;">🛒 QR Tienda</div><img src="${qrT}" style="width:120px;height:120px;background:#fff;padding:4px;border-radius:6px;"></div>` : ''}
-                                </div>
-                                <div style="display:flex; gap:8px; margin-top:12px;">
-                                    <a href="${escaparHtml(waUrl)}" target="_blank" rel="noopener" style="flex:1; text-align:center; padding:9px; border-radius:8px; background:#16a34a; color:#fff; font-weight:800; text-decoration:none;">💬 Abrir en WhatsApp</a>
-                                </div>
-                            </div>
-                        `,
-                        confirmButtonText: 'Cerrar',
-                        background: '#151e2e',
-                        color: '#f8fafc'
-                    });
-                }
-                return;
-            }
-            const dataPrev = await respPrev.json();
-            if (!respPrev.ok || !dataPrev.ok) throw new Error(dataPrev.error || 'No se pudo preparar la vista previa de WhatsApp.');
-
-            const linksDetectados = Array.isArray(dataPrev.links_detectados) ? dataPrev.links_detectados : [];
-            const qrCardsHtml = linksDetectados.length > 0 ? `
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(175px, 1fr)); gap:10px; margin-top:10px;">
-                    ${linksDetectados.map(lk => `
-                        <div style="padding:10px; border-radius:10px; background:#0f172a; border:1px solid #334155; text-align:center;">
-                            <div style="font-size:0.76rem; font-weight:800; color:#38bdf8; margin-bottom:6px;">${escaparHtml(lk.label)}</div>
-                            ${lk.qr_data_url ? `<img src="${lk.qr_data_url}" alt="QR" style="width:130px; height:130px; border-radius:8px; background:#fff; padding:4px; margin-bottom:6px;">` : ''}
-                            <div style="font-size:0.68rem; color:#cbd5e1; word-break:break-all; margin-bottom:6px; font-family:monospace;">${escaparHtml(lk.url)}</div>
-                            <div style="display:flex; gap:5px; justify-content:center;">
-                                <a href="${escaparHtml(lk.url)}" target="_blank" rel="noopener"
-                                    style="padding:5px 9px; border-radius:6px; background:#0284c7; color:#fff; text-decoration:none; font-weight:800; font-size:0.7rem;">
-                                    Abrir ↗
-                                </a>
-                                <button type="button" onclick="navigator.clipboard.writeText('${escaparHtml(lk.url)}')"
-                                    style="padding:5px 9px; border-radius:6px; border:1px solid #475569; background:#1e293b; color:#e2e8f0; font-weight:700; font-size:0.7rem; cursor:pointer;">
-                                    Copiar Link
-                                </button>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            ` : '';
-
-            if (window.Swal) {
-                const resConfirm = await Swal.fire({
-                    icon: 'question',
-                    width: 620,
-                    title: '📲 Despacho por Conexión Interna de WhatsApp LAMDA',
-                    html: `
-                        <div style="text-align:left; font-size:0.83rem; line-height:1.45;">
-                            <div style="padding:10px 12px; border-radius:8px; background:rgba(16,185,129,0.12); border:1px solid #059669; color:#a7f3d0; margin-bottom:10px;">
-                                📋 <strong>Listo para enviar (sin abrir ventanas externas):</strong><br>
-                                Destinatario original: <strong>${escaparHtml(nodo.gestor_nombre || nodo.nombre_marca)} (${escaparHtml(nodo.gestor_telefono || 'S/T')})</strong><br>
-                                🛡️ Destino protegido en Modo Laboratorio: <strong>${escaparHtml(dataPrev.telefono_destino_display || '221 661 5746')}</strong>
-                            </div>
-                            <div style="font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">
-                                Mensaje a enviar con links para celular (<strong>${escaparHtml(dataPrev.base_url_movil || '')}</strong>):
-                            </div>
-                            <pre style="white-space:pre-wrap; word-break:break-word; padding:10px; border-radius:8px; background:#0b1120; border:1px solid #1e293b; color:#e2e8f0; font-size:0.75rem; font-family:inherit; margin:0 0 8px 0; max-height:170px; overflow-y:auto;">${escaparHtml(dataPrev.mensaje_enviado || mensaje)}</pre>
-                            ${qrCardsHtml}
-                        </div>
-                    `,
-                    showCancelButton: true,
-                    confirmButtonText: '📲 Enviar',
-                    cancelButtonText: 'Cancelar',
-                    confirmButtonColor: '#16a34a',
-                    cancelButtonColor: '#475569',
-                    showLoaderOnConfirm: true,
-                    background: '#151e2e',
-                    color: '#f8fafc',
-                    preConfirm: async () => {
-                        const respEnvio = await fetch('/api/produccion/nodos/whatsapp-prueba', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                destinatario_nombre: nodo.gestor_nombre || nodo.nombre_marca,
-                                telefono_original: nodo.gestor_telefono || '',
-                                mensaje: dataPrev.mensaje_enviado || mensaje,
-                                solo_preview: false
-                            })
-                        });
-                        const dataEnvio = await respEnvio.json();
-                        if (!respEnvio.ok || !dataEnvio.ok) {
-                            Swal.showValidationMessage(dataEnvio.error || 'No se pudo despachar el mensaje.');
-                            return false;
-                        }
-                        return dataEnvio;
-                    },
-                    allowOutsideClick: () => !Swal.isLoading()
+            if (typeof window.abrirModalEnvioOmnicanalNodo !== 'function') {
+                await new Promise((resolve, reject) => {
+                    const sc = document.createElement('script');
+                    sc.src = '/api/produccion/nodos/comunicaciones-modal.js?v=1.0.0';
+                    sc.onload = resolve;
+                    sc.onerror = () => reject(new Error('No se pudo cargar el módulo interno de envío omnicanal.'));
+                    document.head.appendChild(sc);
                 });
-
-                if (resConfirm.isConfirmed && resConfirm.value) {
-                    Swal.fire({
-                        icon: 'success',
-                        title: '✅ Mensaje Enviado por WhatsApp',
-                        text: `Despachado correctamente al teléfono de resguardo ${resConfirm.value.telefono_destino_display || '221 661 5746'}.`,
-                        timer: 2600,
-                        showConfirmButton: false,
-                        background: '#151e2e',
-                        color: '#f8fafc'
-                    });
-                }
             }
+            await window.abrirModalEnvioOmnicanalNodo({
+                nodoId: Number(nodoId),
+                plantillaInicial: 'gestor_y_tienda',
+                qrTipoInicial: 'tienda_afiche',
+                adjuntarQrInicial: true
+            });
         } catch (err) {
             if (window.Swal) {
-                Swal.fire({ icon: 'error', title: 'Error WhatsApp', text: err.message, background: '#151e2e', color: '#f8fafc' });
+                Swal.fire({ icon: 'error', title: 'Error de Envío Interno', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            } else {
+                window.alert(err.message);
             }
         }
     }

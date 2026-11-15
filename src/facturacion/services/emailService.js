@@ -117,7 +117,18 @@ const enviarEmail = async ({ to, subject, htmlBody, attachments = [] }) => {
 /**
  * Plantilla HTML institucional base para los correos de LAMDA
  */
-const obtenerPlantillaHtml = ({ titulo, clienteNombre, mensajePrincipal, datosDetalle, avisoSaldoExcedidoHtml = '', piePagina, mostrarTransferencia = true }) => {
+const obtenerPlantillaHtml = ({
+    titulo,
+    clienteNombre,
+    mensajePrincipal,
+    datosDetalle = [],
+    avisoSaldoExcedidoHtml = '',
+    imagenInlineHtml = '',
+    notaAdjunto = 'En el adjunto de este correo electrónico encontrará el comprobante correspondiente en formato PDF.',
+    piePagina,
+    mostrarTransferencia = true
+}) => {
+    const listaDetalles = Array.isArray(datosDetalle) ? datosDetalle : [];
     return `
     <!DOCTYPE html>
     <html lang="es">
@@ -205,10 +216,11 @@ const obtenerPlantillaHtml = ({ titulo, clienteNombre, mensajePrincipal, datosDe
                 <div class="greeting">Estimado/a ${clienteNombre},</div>
                 <div class="message">${mensajePrincipal}</div>
                 
+                ${listaDetalles.length > 0 ? `
                 <div class="details-box">
                     <table>
                         <tbody>
-                            ${datosDetalle.map(item => `
+                            ${listaDetalles.map(item => `
                                 <tr>
                                     <td class="label">${item.label}</td>
                                     <td><strong>${item.value}</strong></td>
@@ -217,6 +229,9 @@ const obtenerPlantillaHtml = ({ titulo, clienteNombre, mensajePrincipal, datosDe
                         </tbody>
                     </table>
                 </div>
+                ` : ''}
+
+                ${imagenInlineHtml || ''}
 
                 ${avisoSaldoExcedidoHtml || ''}
                 
@@ -232,9 +247,11 @@ const obtenerPlantillaHtml = ({ titulo, clienteNombre, mensajePrincipal, datosDe
                 </div>
                 ` : ''}
                 
+                ${notaAdjunto ? `
                 <p style="font-size: 14px; color: #64748b; margin-top: 24px;">
-                    En el adjunto de este correo electrónico encontrará el comprobante correspondiente en formato PDF.
+                    ${notaAdjunto}
                 </p>
+                ` : ''}
             </div>
             <div class="footer">
                 <p>Este correo electrónico fue generado automáticamente por el Sistema LAMDA.</p>

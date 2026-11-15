@@ -13744,6 +13744,277 @@ async function rotarGestorTokenNodo(idOrSlug) {
     };
 }
 
+function _normalizarClaveTelefonoOmnicanal(rawTel) {
+    const digits = String(rawTel || '').replace(/\D+/g, '');
+    if (!digits || digits.length < 7) return null;
+    let norm = digits;
+    if (norm.startsWith('00')) norm = norm.slice(2);
+    if (norm.startsWith('0') && norm.length >= 10) norm = norm.slice(1);
+    if (norm.startsWith('54') && !norm.startsWith('549') && norm.length === 12) {
+        norm = '549' + norm.slice(2);
+    } else if (!norm.startsWith('54') && norm.length === 10) {
+        norm = '549' + norm;
+    }
+    return norm;
+}
+
+function _parsearListaContactosJsonOTexto(rawVal, campoValor = 'numero') {
+    if (!rawVal) return [];
+    const txt = String(rawVal).trim();
+    if (!txt) return [];
+    if (txt.startsWith('[')) {
+        try {
+            const arr = JSON.parse(txt);
+            if (Array.isArray(arr)) {
+                return arr
+                    .map(it => {
+                        if (typeof it === 'string') return { valor: it.trim(), nombre: '', cargo: '', esDefault: true };
+                        if (!it || typeof it !== 'object') return null;
+                        const v = String(it[campoValor] || it.numero || it.telefono || it.email || '').trim();
+                        if (!v) return null;
+                        return {
+                            valor: v,
+                            nombre: String(it.nombre || '').trim(),
+                            cargo: String(it.cargo || '').trim(),
+                            esDefault: Boolean(it.default_factura || it.default_resumen || it.default)
+                        };
+                    })
+                    .filter(Boolean);
+            }
+        } catch (_) {}
+    }
+    return txt
+        .split(/[,;]+/)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(v => ({ valor: v, nombre: '', cargo: '', esDefault: true }));
+}
+
+/**
+ * Consolida los contactos omnicanal (WhatsApp + Email) asociados a un Nodo Barrial:
+ * - Ficha Madre en Búnker (`cliente_madre_bunker_id` cuando `usar_cuenta_madre_unificada = true`, o respaldo)
+ * - Subficha Búnker del Nodo (`bunker_cliente_id`)
+ * - Correo de Portal B2B (`email_portal`)
+ * - Contactos de Gestor en `nodos_maestro` (`gestor_telefono`, `gestor_email`)
+ * - Respaldo en `public.clientes` (Lomasoft) si existiera `lomas_soft_id`
+ */
+async function obtenerContactosOmnicanalNodo(idOrSlug) {
+    const nodoQr = await obtenerDatosQrAccesoNodo(idOrSlug);
+    const mRes = await db.query(
+        `SELECT id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca, subtitulo_marca,
+                gestor_nombre, gestor_telefono, gestor_email, barrio_zona, direccion_retiro,
+                alias_bancario_display, cbu_display, titular_display,
+                bunker_cliente_id, codigo_bunker_cliente,
+                cliente_madre_bunker_id, codigo_bunker_cliente_madre,
+                COALESCE(usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada,
+                activo
+         FROM public.nodos_maestro
+         WHERE id = $1::int
+         LIMIT 1`,
+        [Number(nodoQr.id)]
+    );
+    if (mRes.rows.length === 0) {
+        throw new Error('Nodo Barrial no encontrado.');
+    }
+    const nm = mRes.rows[0];
+    const usaMadre = Boolean(nm.usar_cuenta_madre_unificada) && Number(nm.cliente_madre_bunker_id) > 0;
+    const idsBunkerOrdenados = [];
+    if (usaMadre) {
+        idsBunkerOrdenados.push(Number(nm.cliente_madre_bunker_id));
+        if (nm.bunker_cliente_id && Number(nm.bunker_cliente_id) !== Number(nm.cliente_madre_bunker_id)) {
+            idsBunkerOrdenados.push(Number(nm.bunker_cliente_id));
+        }
+    } else {
+        if (nm.bunker_cliente_id) idsBunkerOrdenados.push(Number(nm.bunker_cliente_id));
+        if (nm.cliente_madre_bunker_id && Number(nm.cliente_madre_bunker_id) !== Number(nm.bunker_cliente_id || 0)) {
+            idsBunkerOrdenados.push(Number(nm.cliente_madre_bunker_id));
+        }
+    }
+
+    let fichasBunker = [];
+    if (idsBunkerOrdenados.length > 0) {
+        const bRes = await db.query(
+            `SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social,
+                    whatsapp_facturas, email_facturas,
+                    email_portal, email_portal_nombre, email_portal_cargo,
+                    lomas_soft_id
+             FROM public.bunker_clientes
+             WHERE id = ANY($1::int[])`,
+            [idsBunkerOrdenados]
+        );
+        const mapPorId = new Map(bRes.rows.map(r => [Number(r.id), r]));
+        fichasBunker = idsBunkerOrdenados.map(id => mapPorId.get(id)).filter(Boolean);
+    }
+
+    const fichaOperativa = fichasBunker[0] || null;
+    const mapaWa = new Map();
+    const mapaEmail = new Map();
+
+    const registrarWa = ({ numero, nombre, cargo, origen, preferido }) => {
+        const clave = _normalizarClaveTelefonoOmnicanal(numero);
+        if (!clave) return;
+        if (mapaWa.has(clave)) {
+            const prev = mapaWa.get(clave);
+            if (!prev.nombre && nombre) prev.nombre = nombre;
+            if (!prev.cargo && cargo) prev.cargo = cargo;
+            if (preferido) prev.seleccionado_default = true;
+            return;
+        }
+        mapaWa.set(clave, {
+            numero: clave,
+            numero_display: String(numero || clave).trim(),
+            nombre: nombre || nm.gestor_nombre || nm.nombre_marca || '',
+            cargo: cargo || '',
+            origen,
+            seleccionado_default: Boolean(preferido)
+        });
+    };
+
+    const registrarEmail = ({ email, nombre, cargo, origen, preferido }) => {
+        const limpio = String(email || '').trim().toLowerCase();
+        if (!limpio || !limpio.includes('@')) return;
+        if (mapaEmail.has(limpio)) {
+            const prev = mapaEmail.get(limpio);
+            if (!prev.nombre && nombre) prev.nombre = nombre;
+            if (!prev.cargo && cargo) prev.cargo = cargo;
+            if (preferido) prev.seleccionado_default = true;
+            return;
+        }
+        mapaEmail.set(limpio, {
+            email: limpio,
+            nombre: nombre || nm.gestor_nombre || nm.nombre_marca || '',
+            cargo: cargo || '',
+            origen,
+            seleccionado_default: Boolean(preferido)
+        });
+    };
+
+    for (let idx = 0; idx < fichasBunker.length; idx++) {
+        const fb = fichasBunker[idx];
+        const esPrimaria = idx === 0;
+        const codFb = fb.codigo_bunker_cliente || `ID-${fb.id}`;
+        const etiquetaFicha = esPrimaria
+            ? `Ficha ${codFb}`
+            : `Vínculo ${codFb}`;
+
+        const listaWa = _parsearListaContactosJsonOTexto(fb.whatsapp_facturas, 'numero');
+        for (const w of listaWa) {
+            registrarWa({
+                numero: w.valor,
+                nombre: w.nombre || fb.cliente_nombre || '',
+                cargo: w.cargo || '',
+                origen: etiquetaFicha,
+                preferido: esPrimaria && (w.esDefault || listaWa.length === 1)
+            });
+        }
+
+        const listaEm = _parsearListaContactosJsonOTexto(fb.email_facturas, 'email');
+        for (const em of listaEm) {
+            registrarEmail({
+                email: em.valor,
+                nombre: em.nombre || fb.cliente_nombre || '',
+                cargo: em.cargo || '',
+                origen: etiquetaFicha,
+                preferido: esPrimaria && (em.esDefault || listaEm.length === 1)
+            });
+        }
+
+        if (fb.email_portal && String(fb.email_portal).includes('@')) {
+            registrarEmail({
+                email: fb.email_portal,
+                nombre: fb.email_portal_nombre || fb.cliente_nombre || '',
+                cargo: fb.email_portal_cargo || 'Portal B2B',
+                origen: `Portal B2B (${codFb})`,
+                preferido: esPrimaria && mapaEmail.size === 0
+            });
+        }
+
+        if (/^\d+$/.test(String(fb.lomas_soft_id || '').trim())) {
+            try {
+                const lRes = await db.query(
+                    `SELECT telefono, celular, email FROM public.clientes WHERE cliente_id = $1::int LIMIT 1`,
+                    [Number(fb.lomas_soft_id)]
+                );
+                if (lRes.rows.length > 0) {
+                    const lr = lRes.rows[0];
+                    if (lr.celular) registrarWa({ numero: lr.celular, nombre: fb.cliente_nombre || '', cargo: 'Celular Lomas', origen: `Lomas (${codFb})`, preferido: false });
+                    if (lr.telefono) registrarWa({ numero: lr.telefono, nombre: fb.cliente_nombre || '', cargo: 'Teléfono Lomas', origen: `Lomas (${codFb})`, preferido: false });
+                    if (lr.email) registrarEmail({ email: lr.email, nombre: fb.cliente_nombre || '', cargo: 'Correo Lomas', origen: `Lomas (${codFb})`, preferido: false });
+                }
+            } catch (_) {}
+        }
+    }
+
+    if (nm.gestor_telefono) {
+        registrarWa({
+            numero: nm.gestor_telefono,
+            nombre: nm.gestor_nombre || nm.nombre_marca,
+            cargo: 'Gestor del Nodo',
+            origen: `Gestor (${nm.codigo_nodo})`,
+            preferido: mapaWa.size === 0
+        });
+    }
+
+    if (nm.gestor_email) {
+        registrarEmail({
+            email: nm.gestor_email,
+            nombre: nm.gestor_nombre || nm.nombre_marca,
+            cargo: 'Gestor del Nodo',
+            origen: `Gestor (${nm.codigo_nodo})`,
+            preferido: mapaEmail.size === 0
+        });
+    }
+
+    const contactosWhatsapp = Array.from(mapaWa.values());
+    if (contactosWhatsapp.length > 0 && !contactosWhatsapp.some(c => c.seleccionado_default)) {
+        contactosWhatsapp[0].seleccionado_default = true;
+    }
+
+    const contactosEmail = Array.from(mapaEmail.values());
+    if (contactosEmail.length > 0 && !contactosEmail.some(c => c.seleccionado_default)) {
+        contactosEmail[0].seleccionado_default = true;
+    }
+
+    return {
+        nodo_qr: nodoQr,
+        nodo_detalle: {
+            id: Number(nm.id),
+            codigo_nodo: nm.codigo_nodo,
+            slug: nm.slug,
+            slug_historico: nm.slug_historico || null,
+            nombre_marca: nm.nombre_marca,
+            bajada_marca: nm.bajada_marca || null,
+            subtitulo_marca: nm.subtitulo_marca || '',
+            gestor_nombre: nm.gestor_nombre || '',
+            gestor_telefono: nm.gestor_telefono || '',
+            gestor_email: nm.gestor_email || '',
+            barrio_zona: nm.barrio_zona || '',
+            direccion_retiro: nm.direccion_retiro || '',
+            alias_bancario_display: nm.alias_bancario_display || '',
+            usar_cuenta_madre_unificada: Boolean(nm.usar_cuenta_madre_unificada),
+            cliente_madre_bunker_id: nm.cliente_madre_bunker_id ? Number(nm.cliente_madre_bunker_id) : null,
+            codigo_bunker_cliente_madre: nm.codigo_bunker_cliente_madre || null,
+            bunker_cliente_id: nm.bunker_cliente_id ? Number(nm.bunker_cliente_id) : null,
+            codigo_bunker_cliente: nm.codigo_bunker_cliente || null
+        },
+        cliente_operativo: fichaOperativa ? {
+            id: Number(fichaOperativa.id),
+            codigo_bunker_cliente: fichaOperativa.codigo_bunker_cliente,
+            cliente_nombre: fichaOperativa.cliente_nombre || fichaOperativa.razon_social || nm.gestor_nombre || nm.nombre_marca,
+            razon_social: fichaOperativa.razon_social || '',
+            es_cuenta_madre_unificada: usaMadre
+        } : {
+            id: null,
+            codigo_bunker_cliente: nm.codigo_bunker_cliente_madre || nm.codigo_bunker_cliente || nm.codigo_nodo,
+            cliente_nombre: nm.gestor_nombre || nm.nombre_marca,
+            razon_social: '',
+            es_cuenta_madre_unificada: usaMadre
+        },
+        contactos_whatsapp: contactosWhatsapp,
+        contactos_email: contactosEmail
+    };
+}
+
 /**
  * Resuelve metadatos y garantiza un `portal_token` criptográfico único por Vecino
  * para generar su QR personal "Ver como Cliente" desde Clientes Búnker.
@@ -14635,6 +14906,7 @@ module.exports = {
     actualizarRadarRepartoGestor,
     obtenerResumenRadarParaPedidoVecino,
     obtenerDatosQrAccesoNodo,
+    obtenerContactosOmnicanalNodo,
     obtenerKitCompartirNodo,
     obtenerCompradoresRegistradosNodo,
     rotarGestorTokenNodo,

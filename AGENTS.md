@@ -74,3 +74,16 @@
 3. **Controladores del Switch de Producción y Guardia Cloud:**
    - Mantener siempre intactos `scripts/lamdaSwitchGuiServer.js`, `scripts/orquestadorSwitchLocalNube.js`, `src/shared/lamdaCloudAuthGuard.js` y `src/shared/lamdaCloudRuntime.js`.
    - Mantener intacto el endpoint `/api/admin/db-snapshot-pruebas` en `src/logistica/app.js` y el restaurador `scripts/dbRestaurarPruebas.js` que alimentan a `etiquetas_pruebas` con copias sanitizadas de Producción (vaciando `factura_afip_ta`).
+
+---
+
+## 5. Política Permanente de Comunicaciones Administrativas (Cero `wa.me` / `mailto:`)
+
+1. **Prohibición Estricta de Enlaces Externos en Pantallas Administrativas:**
+   - En **ninguna** pantalla administrativa interna de LAMDA está permitido usar `wa.me`, `api.whatsapp.com` ni `mailto:` para despachar mensajes, invitaciones, presupuestos, comprobantes o códigos QR.
+   - *(Excepción única: las aplicaciones públicas/externas operadas por el gestor barrial o los vecinos en su propio teléfono personal, como `src/produccion/pages/nodo-panel-gestor.html` y `src/produccion/pages/nodo-tienda-vecino.html`, o la web institucional pública).*
+2. **Modal Omnicanal Previo Obligatorio (Motor WhatsApp `:3004` + Email SMTP):**
+   - Todo envío administrativo de WhatsApp o Email debe pasar siempre por una **ventana modal previa** que permita:
+     - Seleccionar contactos precargados de la ficha del cliente en `bunker_clientes` (múltiples teléfonos y direcciones de email, contemplando `cliente_madre_bunker_id` cuando aplica Cuenta Madre Unificada) más opción rápida para ingresar un destinatario manual al vuelo.
+     - Elegir el canal de salida: **Motor propio de WhatsApp Web (`:3004`, `whatsappService`)**, **Email corporativo SMTP (`emailService`)**, o **ambos en simultáneo**.
+     - Editar la vista previa del asunto y cuerpo del mensaje (y adjuntos como PDFs o imágenes PNG de códigos QR) antes del despacho directo por backend, mostrando confirmación real por cada canal.

@@ -386,8 +386,13 @@ const enviarImagen = async (req, res) => {
     console.log('📱 [WHATSAPP-CTRL] Petición de envío de imagen Base64');
     try {
         const { destinatarios, base64Data, mimeType, filename, mensajeTexto } = req.body;
+
+        const destinatariosStr = Array.isArray(destinatarios)
+            ? destinatarios.map(n => String(n || '').trim()).filter(Boolean).join(', ')
+            : String(destinatarios || '').trim();
+        const cleanBase64 = String(base64Data || '').replace(/^data:[^;]+;base64,/i, '').trim();
         
-        if (!destinatarios || !destinatarios.trim()) {
+        if (!destinatariosStr) {
             return res.status(400).json({
                 success: false,
                 error: 'Faltan destinatarios',
@@ -395,7 +400,7 @@ const enviarImagen = async (req, res) => {
             });
         }
         
-        if (!base64Data || !base64Data.trim()) {
+        if (!cleanBase64) {
             return res.status(400).json({
                 success: false,
                 error: 'Falta imagen',
@@ -404,8 +409,8 @@ const enviarImagen = async (req, res) => {
         }
         
         const envios = await whatsappService.enviarImagenBase64(
-            destinatarios,
-            base64Data,
+            destinatariosStr,
+            cleanBase64,
             mimeType || 'image/jpeg',
             filename || 'imagen.jpg',
             mensajeTexto || ''

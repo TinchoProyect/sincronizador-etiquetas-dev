@@ -149,3 +149,15 @@ Todas las herramientas de cálculo, simulaciones de precios y cascadas de costos
      - Cada uno de los 3 informes (`Plan_Jornada_Hoy_Deposito.pdf`, `Plan_Retiro_Produccion_Externa_Hoy.pdf` y `Plan_Semanal_3_Jornadas_Deposito.pdf`) debe generarse **siempre acompañado de su anexo gemelo de Fundamentals** (`Fundamentals_Jornada_Hoy_Deposito.pdf`, `Fundamentals_Retiro_Produccion_Externa_Hoy.pdf` y `Fundamentals_Semanal_3_Jornadas_Deposito.pdf`) auditado por el Comité de **7 Subagentes Especializados** (`especialista_metricas_temporales`, `especialista_linea_2_fraccionados`, `especialista_linea_3_mixes`, `especialista_lineas_4_5_6_up`, `especialista_demanda_y_compras_up`, `especialista_retiro_produccion_externa` y `auditor_fundamentals_produccion`).
      - En la Pizarra (`src/app-etiquetas/js/main.js`), cada botón de informe operativo lleva adosado a su derecha únicamente un **pequeño botón de clip (`📎` `.pizarra-btn-clip-anexo`)** dentro de `.pizarra-pdf-pair` para abrir su documento de Fundamentals (prohibido usar botones largos o blancos separados).
      - **Principio de Finitud Dual (Local y Externa) y Descuento Diario:** Todo informe diario/semanal y de retiro externo debe descontar automáticamente los carros confirmados en la jornada previa y demostrar el punto exacto de **Finitud Total (`0 tareas locales pendientes` y `0 UPs externas pendientes` una vez cubierto el Stock Ideal >= 30 días)**.
+
+---
+
+## 7. Política Permanente de Comunicaciones Administrativas (Cero `wa.me` / `mailto:`)
+
+* **Prohibición Absoluta en Pantallas Internas:**
+  - En **ninguna** pantalla administrativa interna de LAMDA está permitido abrir o enlazar `wa.me`, `api.whatsapp.com` ni `mailto:`. (Únicamente las vistas externas para teléfonos personales de gestores/vecinos como `nodo-panel-gestor.html` / `nodo-tienda-vecino.html` o la landing institucional pública pueden usar enlaces nativos del dispositivo).
+* **Modal Previo Omnicanal Obligatorio (`:3004` WhatsApp + SMTP Email):**
+  - Todo envío administrativo de WhatsApp o Correo Electrónico debe realizarse a través de un modal previo con:
+    1. Precarga de todos los teléfonos y emails de la ficha en `bunker_clientes` (incluyendo `cliente_madre_bunker_id` cuando opera con Cuenta Madre Unificada) + ingreso opcional de destinatario manual al vuelo.
+    2. Selección de canal (`WhatsApp :3004` vía `whatsappService` y/o `Email SMTP` vía `emailService`).
+    3. Vista previa editable de asunto/mensaje, soporte de adjuntos (PDFs o PNGs de QR) y despacho directo desde backend con confirmación real por canal.

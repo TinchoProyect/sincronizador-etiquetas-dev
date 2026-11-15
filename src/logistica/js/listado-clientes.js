@@ -5316,8 +5316,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
 
+            <!-- Envío Interno Omnicanal (WhatsApp :3004 + Email SMTP con QR PNG adjunto) -->
+            <div style="margin-top:12px;">
+                <button type="button"
+                    onclick="window.abrirModalEnvioOmnicanalDesdeQrCliente('${escHtmlNodo(nodo.id || data._bunkerClienteId || '')}', '${esGestor ? 'gestor_y_tienda' : 'solo_tienda'}', '${esGestor ? 'gestor' : 'tienda_afiche'}')"
+                    style="width:100%; padding:11px 14px; border-radius:10px; border:1px solid #047857; background:linear-gradient(135deg, #0f172a 0%, #14532d 100%); color:#ffffff; font-size:12.5px; font-weight:800; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 3px 10px rgba(20,83,45,0.2);">
+                    📤 Enviar Invitación, Links y QR por WhatsApp (:3004) / Email
+                </button>
+            </div>
+
             <!-- Botones Principales de Acción -->
-            <div style="display:grid; grid-template-columns:${esGestor ? '1.15fr 0.85fr 0.9fr' : '1.25fr 0.85fr'}; gap:8px; margin-top:14px;">
+            <div style="display:grid; grid-template-columns:${esGestor ? '1.15fr 0.85fr 0.9fr' : '1.25fr 0.85fr'}; gap:8px; margin-top:10px;">
                 <button type="button" onclick="window.open('${escHtmlNodo(urlPcActiva)}', '_blank')"
                     style="padding:11px 12px; border-radius:10px; border:none; background:${esGestor ? '#16a34a' : '#c2410c'}; color:#ffffff; font-size:12px; font-weight:800; cursor:pointer;">
                     ${esGestor ? '🖥️ Abrir en esta PC' : '🖥️ Abrir en esta PC'}
@@ -5359,6 +5368,28 @@ document.addEventListener('DOMContentLoaded', () => {
     window.cambiarPestanaModalQrNodo = function(modo) {
         if (!_ultimoPayloadQrNodo) return;
         _renderizarContenidoModalQrNodo(_ultimoPayloadQrNodo, modo);
+    };
+
+    window.abrirModalEnvioOmnicanalDesdeQrCliente = async function(identificadorNodo, plantillaInicial, qrTipoInicial) {
+        try {
+            if (typeof window.abrirModalEnvioOmnicanalNodo !== 'function') {
+                await new Promise((resolve, reject) => {
+                    const sc = document.createElement('script');
+                    sc.src = '/api/produccion/nodos/comunicaciones-modal.js?v=1.0.0';
+                    sc.onload = resolve;
+                    sc.onerror = () => reject(new Error('No se pudo cargar el modal interno de envío omnicanal.'));
+                    document.head.appendChild(sc);
+                });
+            }
+            await window.abrirModalEnvioOmnicanalNodo({
+                nodoId: identificadorNodo,
+                plantillaInicial: plantillaInicial || 'gestor_y_tienda',
+                qrTipoInicial: qrTipoInicial || 'tienda_afiche',
+                adjuntarQrInicial: true
+            });
+        } catch (err) {
+            window.alert('Error abriendo envío omnicanal: ' + err.message);
+        }
     };
 
     window.abrirModalQrAccesoNodo = async function(bunkerClienteId, modoInicial = 'GESTOR') {

@@ -213,9 +213,13 @@ async function obtenerBaseUrlAccesibleCelular(req) {
         return publicBaseEnv;
     }
     const hostHeader = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').split(',')[0].trim();
+    const hostClean = hostHeader.replace(/:\d+$/, '').toLowerCase();
     const proto = String(req?.headers?.['x-forwarded-proto'] || req?.protocol || 'http').split(',')[0].trim();
-    const isPublicCloud = hostHeader && !/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostHeader);
+    const isPublicCloud = hostClean && !/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostClean);
     if (isPublicCloud) {
+        if (hostClean.endsWith('.lamdaser.com') && NODOS_PUBLIC_HOST_CONFIG) {
+            return `https://${NODOS_PUBLIC_HOST_CONFIG}`;
+        }
         return `${proto}://${hostHeader}`;
     }
     const tunelHttps = await asegurarTunelCloudflareNodos();
@@ -1295,9 +1299,13 @@ async function obtenerUrlPublicaQrNodos(req) {
         return publicBaseEnv;
     }
     const hostHeader = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').split(',')[0].trim();
+    const hostClean = hostHeader.replace(/:\d+$/, '').toLowerCase();
     const proto = String(req?.headers?.['x-forwarded-proto'] || req?.protocol || 'http').split(',')[0].trim();
-    const isPublicCloud = hostHeader && !/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostHeader);
+    const isPublicCloud = hostClean && !/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostClean);
     if (isPublicCloud) {
+        if (hostClean.endsWith('.lamdaser.com') && NODOS_PUBLIC_HOST_CONFIG) {
+            return `https://${NODOS_PUBLIC_HOST_CONFIG}`;
+        }
         return `${proto}://${hostHeader}`;
     }
     if (tunelCloudflareUrlActual && !(await verificarTunelVivo(tunelCloudflareUrlActual))) {
@@ -1783,6 +1791,374 @@ router.get('/centro-analitica/radar', bloquearEnDominioPublicoTienda, async (req
         res.json(data);
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en GET /centro-analitica/radar:', error.message);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+// ============================================================================
+// MODAL INTERNO OMNICANAL DE COMUNICACIONES (WHATSAPP :3004 + EMAIL SMTP)
+// ============================================================================
+
+function construirPlantillasOmnicanalNodo(nodoDet, qrPayload) {
+    const marca = nodoDet.nombre_marca || 'Nodo Barrial';
+    const marcaCompleta = nodoDet.bajada_marca ? `${marca} · ${nodoDet.bajada_marca}` : marca;
+    const gestor = nodoDet.gestor_nombre || 'Gestor/a';
+    const retiro = nodoDet.direccion_retiro || nodoDet.barrio_zona || '-';
+    const aliasLinea = nodoDet.alias_bancario_display
+        ? `🏦 Alias recaudador vecinos: ${nodoDet.alias_bancario_display}\n`
+        : '';
+
+    return {
+        gestor_y_tienda: {
+            id: 'gestor_y_tienda',
+            titulo: 'Invitación Gestor + Tienda Pública',
+            qr_tipo_sugerido: 'tienda_afiche',
+            asunto: `🌱 Accesos y Código QR de tu Nodo — ${marca}`,
+            mensaje_texto: [
+                `🌱 *Bienvenido/a a ${marcaCompleta}*`,
+                `👤 Gestor/a: ${gestor}`,
+                `📍 Punto de retiro: ${retiro}`,
+                aliasLinea ? aliasLinea.trimEnd() : null,
+                ``,
+                `🎛️ *1. Tu Panel Móvil de Gestor (uso privado — canastos, márgenes, cobros y reparto):*`,
+                qrPayload.url_movil_gestor,
+                ``,
+                `🛒 *2. Tu Tienda Pública Vecinal (para compartir con tus vecinos):*`,
+                qrPayload.url_movil_tienda
+            ].filter(v => v !== null).join('\n')
+        },
+        solo_tienda: {
+            id: 'solo_tienda',
+            titulo: 'Solo Tienda Pública Vecinal',
+            qr_tipo_sugerido: 'tienda_afiche',
+            asunto: `🛒 Tienda Online y Código QR — ${marca}`,
+            mensaje_texto: [
+                `🛒 *Tienda Online — ${marcaCompleta}*`,
+                `📍 Retiro / Zona: ${retiro}`,
+                ``,
+                `Hacé tu pedido directo desde el celular entrando en este enlace o escaneando el Código QR adjunto:`,
+                qrPayload.url_movil_tienda
+            ].join('\n')
+        },
+        admin_prueba: {
+            id: 'admin_prueba',
+            titulo: 'Acceso Admin de Prueba con ?modo_admin=1',
+            qr_tipo_sugerido: 'admin_prueba',
+            asunto: `🛠️ Identificación de Celular Admin / Prueba — ${marca}`,
+            mensaje_texto: [
+                `🛠️ *Identificación de Dispositivo Admin / Prueba — ${marca}*`,
+                ``,
+                `Abrí este enlace o escaneá el QR adjunto una sola vez en tu celular para que tus visitas de prueba a la tienda de *${marca}* queden identificadas como Administración y no distorsionen las métricas de clientes reales en el Radar:`,
+                qrPayload.url_movil_tienda_admin,
+                ``,
+                `🔄 Si luego querés volver a simular un vecino real en ese celular:`,
+                qrPayload.url_movil_tienda_cliente_limpio
+            ].join('\n')
+        }
+    };
+}
+
+async function resolverImagenQrParaEnvio(nodoDet, qrPayload, qrTipo = 'tienda_afiche') {
+    const slugLimpio = String(nodoDet.slug || 'nodo').replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
+    let urlObjetivo = qrPayload.url_movil_tienda_qr_afiche || qrPayload.url_movil_tienda;
+    let sufijo = 'tienda-afiche';
+    let label = 'QR Tienda Pública (con trazabilidad de Afiche)';
+
+    if (qrTipo === 'gestor') {
+        urlObjetivo = qrPayload.url_movil_gestor;
+        sufijo = 'panel-gestor';
+        label = 'QR Panel Móvil del Gestor';
+    } else if (qrTipo === 'tienda_limpio') {
+        urlObjetivo = qrPayload.url_movil_tienda;
+        sufijo = 'tienda';
+        label = 'QR Tienda Pública (enlace limpio)';
+    } else if (qrTipo === 'admin_prueba') {
+        urlObjetivo = qrPayload.url_movil_tienda_admin;
+        sufijo = 'modo-admin';
+        label = 'QR Identificación Celular Admin (?modo_admin=1)';
+    }
+
+    const dataUrlAlta = await QRCode.toDataURL(urlObjetivo, {
+        margin: 2,
+        width: 520,
+        errorCorrectionLevel: 'M'
+    });
+    const base64Data = String(dataUrlAlta || '').replace(/^data:image\/png;base64,/i, '').trim();
+    return {
+        qr_tipo: qrTipo,
+        label,
+        url: urlObjetivo,
+        filename: `QR-${slugLimpio}-${sufijo}.png`,
+        mimeType: 'image/png',
+        dataUrl: dataUrlAlta,
+        base64Data
+    };
+}
+
+/**
+ * GET /api/produccion/nodos/comunicaciones-modal.js
+ * Sirve el componente JS compartido del modal omnicanal interno para Pizarra, Centro de Nodos y Clientes Búnker.
+ */
+router.get('/comunicaciones-modal.js', bloquearEnDominioPublicoTienda, (req, res) => {
+    const modalScriptPath = path.join(__dirname, '..', 'js', 'components', 'nodoEnvioOmnicanalModal.js');
+    res.set('Content-Type', 'application/javascript; charset=utf-8');
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    if (!fs.existsSync(modalScriptPath)) {
+        return res.status(404).send('// nodoEnvioOmnicanalModal.js no encontrado');
+    }
+    return res.sendFile(modalScriptPath);
+});
+
+/**
+ * GET /api/produccion/nodos/comunicaciones/nodo/:idOrSlug/contexto
+ * Precarga contactos (ficha madre Búnker + subficha + gestor), plantillas, QRs y estado del motor :3004.
+ */
+router.get('/comunicaciones/nodo/:idOrSlug/contexto', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        const [datosContactos, baseMovil] = await Promise.all([
+            nodosService.obtenerContactosOmnicanalNodo(req.params.idOrSlug),
+            obtenerUrlPublicaQrNodos(req)
+        ]);
+        const qrPayload = await construirPayloadQrNodo(datosContactos.nodo_qr, baseMovil, req);
+        const plantillas = construirPlantillasOmnicanalNodo(datosContactos.nodo_detalle, qrPayload);
+
+        let estadoWa = null;
+        try {
+            const stRes = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/status', {
+                signal: AbortSignal.timeout(2500)
+            });
+            if (stRes.ok) {
+                const stJson = await stRes.json();
+                estadoWa = stJson?.data || null;
+            }
+        } catch (_) {}
+
+        res.json({
+            ok: true,
+            modo_laboratorio: esModoLaboratorioWaSegura(),
+            telefono_resguardo_laboratorio: '221 661 5746',
+            whatsapp_motor: {
+                status: estadoWa?.status || 'DESCONOCIDO',
+                step_text: estadoWa?.stepText || ''
+            },
+            nodo: datosContactos.nodo_detalle,
+            cliente_operativo: datosContactos.cliente_operativo,
+            contactos_whatsapp: datosContactos.contactos_whatsapp,
+            contactos_email: datosContactos.contactos_email,
+            accesos_qr: {
+                base_url_movil: qrPayload.base_url_movil,
+                es_tunel_https: qrPayload.es_tunel_https,
+                es_dominio_publico_fijo: qrPayload.es_dominio_publico_fijo,
+                url_movil_gestor: qrPayload.url_movil_gestor,
+                url_movil_tienda: qrPayload.url_movil_tienda,
+                url_movil_tienda_qr_afiche: qrPayload.url_movil_tienda_qr_afiche,
+                url_movil_tienda_admin: qrPayload.url_movil_tienda_admin,
+                url_movil_tienda_cliente_limpio: qrPayload.url_movil_tienda_cliente_limpio,
+                qr_gestor_data_url: qrPayload.qr_gestor_data_url,
+                qr_tienda_data_url: qrPayload.qr_tienda_data_url,
+                qr_afiche_data_url: qrPayload.qr_afiche_data_url,
+                qr_tienda_admin_data_url: qrPayload.qr_tienda_admin_data_url
+            },
+            plantillas
+        });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /comunicaciones/nodo/:idOrSlug/contexto:', error.message);
+        res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/comunicaciones/nodo/:idOrSlug/enviar
+ * Despacha internamente por el motor propio de WhatsApp (:3004) y/o Email SMTP (:3004),
+ * adjuntando opcionalmente la imagen PNG en alta resolución del Código QR seleccionado.
+ */
+router.post('/comunicaciones/nodo/:idOrSlug/enviar', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        const body = req.body || {};
+        const enviarWhatsapp = Boolean(body.enviar_whatsapp);
+        const enviarEmail = Boolean(body.enviar_email);
+        const adjuntarQr = body.adjuntar_qr !== false;
+        const qrTipo = String(body.qr_tipo || 'tienda_afiche').trim();
+        const asunto = String(body.asunto || '').trim();
+        const mensajeTexto = String(body.mensaje_texto || '').trim();
+
+        if (!enviarWhatsapp && !enviarEmail) {
+            return res.status(400).json({ ok: false, error: 'Seleccioná al menos un canal de envío (WhatsApp y/o Email).' });
+        }
+        if (!mensajeTexto) {
+            return res.status(400).json({ ok: false, error: 'El cuerpo del mensaje no puede estar vacío.' });
+        }
+
+        const listaWa = Array.isArray(body.destinatarios_whatsapp)
+            ? [...new Set(body.destinatarios_whatsapp.map(t => String(t || '').replace(/[^\d+]/g, '').trim()).filter(t => t.replace(/\D/g, '').length >= 7))]
+            : [];
+        const listaEmails = Array.isArray(body.destinatarios_email)
+            ? [...new Set(body.destinatarios_email.map(e => String(e || '').trim().toLowerCase()).filter(e => e.includes('@')))]
+            : [];
+
+        if (enviarWhatsapp && listaWa.length === 0) {
+            return res.status(400).json({ ok: false, error: 'Seleccioná o ingresá al menos un número de WhatsApp válido.' });
+        }
+        if (enviarEmail && listaEmails.length === 0) {
+            return res.status(400).json({ ok: false, error: 'Seleccioná o ingresá al menos una dirección de Email válida.' });
+        }
+
+        const [datosContactos, baseMovil] = await Promise.all([
+            nodosService.obtenerContactosOmnicanalNodo(req.params.idOrSlug),
+            obtenerUrlPublicaQrNodos(req)
+        ]);
+        const qrPayload = await construirPayloadQrNodo(datosContactos.nodo_qr, baseMovil, req);
+        const nodoDet = datosContactos.nodo_detalle;
+        const nombreDestinatarioSaludo = String(
+            body.nombre_destinatario ||
+            datosContactos.cliente_operativo?.cliente_nombre ||
+            nodoDet.gestor_nombre ||
+            nodoDet.nombre_marca ||
+            'Cliente'
+        ).trim();
+
+        let qrImgInfo = null;
+        if (adjuntarQr) {
+            qrImgInfo = await resolverImagenQrParaEnvio(nodoDet, qrPayload, qrTipo);
+        }
+
+        const resultadoWhatsapp = {
+            attempted: enviarWhatsapp,
+            ok: false,
+            simulated: false,
+            destinatarios: listaWa,
+            adjunto_qr: qrImgInfo ? qrImgInfo.filename : null,
+            resultados: [],
+            error: null
+        };
+
+        const resultadoEmail = {
+            attempted: enviarEmail,
+            ok: false,
+            simulated: false,
+            destinatarios: listaEmails,
+            adjunto_qr: qrImgInfo ? qrImgInfo.filename : null,
+            messageId: null,
+            error: null
+        };
+
+        const promesas = [];
+
+        if (enviarWhatsapp) {
+            promesas.push((async () => {
+                try {
+                    const endpointWa = qrImgInfo
+                        ? 'http://127.0.0.1:3004/facturacion/whatsapp/enviar-imagen'
+                        : 'http://127.0.0.1:3004/facturacion/whatsapp/enviar-mensaje';
+                    const payloadWa = qrImgInfo
+                        ? {
+                            destinatarios: listaWa.join(', '),
+                            base64Data: qrImgInfo.base64Data,
+                            mimeType: qrImgInfo.mimeType,
+                            filename: qrImgInfo.filename,
+                            mensajeTexto
+                        }
+                        : {
+                            destinatarios: listaWa.join(', '),
+                            mensajeTexto
+                        };
+
+                    const wpRes = await fetch(endpointWa, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payloadWa),
+                        signal: AbortSignal.timeout(45000)
+                    });
+                    const wpJson = await wpRes.json().catch(() => ({}));
+                    const dets = Array.isArray(wpJson?.data?.resultados)
+                        ? wpJson.data.resultados
+                        : (Array.isArray(wpJson?.detalles) ? wpJson.detalles : []);
+
+                    resultadoWhatsapp.resultados = dets;
+                    resultadoWhatsapp.simulated = dets.some(r => Boolean(r && r.simulated));
+
+                    if (!wpRes.ok || !wpJson.success) {
+                        resultadoWhatsapp.ok = false;
+                        resultadoWhatsapp.error = wpJson.error || wpJson.message || `Error HTTP ${wpRes.status} en motor WhatsApp (:3004).`;
+                    } else {
+                        const exitosos = dets.filter(r => r && (r.success === true || r.status === 'enviado'));
+                        resultadoWhatsapp.ok = dets.length === 0 ? true : exitosos.length > 0;
+                        if (!resultadoWhatsapp.ok) {
+                            resultadoWhatsapp.error = dets[0]?.error || 'No se pudo entregar el mensaje por WhatsApp.';
+                        }
+                    }
+                } catch (errWa) {
+                    resultadoWhatsapp.ok = false;
+                    resultadoWhatsapp.error = errWa.message || 'No se pudo contactar al motor interno de WhatsApp (:3004).';
+                }
+            })());
+        }
+
+        if (enviarEmail) {
+            promesas.push((async () => {
+                try {
+                    const asuntoFinal = asunto || `🌱 Accesos y Código QR — ${nodoDet.nombre_marca || 'Nodo Barrial'}`;
+                    const payloadEmail = {
+                        clienteNombre: nombreDestinatarioSaludo,
+                        destinatarios: listaEmails,
+                        asunto: asuntoFinal,
+                        mensajeTexto,
+                        notaAdjunto: qrImgInfo
+                            ? `En el cuerpo y adjunto de este correo encontrará la imagen PNG (${qrImgInfo.filename}) lista para escanear, reenviar o imprimir.`
+                            : '',
+                        adjuntos: qrImgInfo
+                            ? [{
+                                filename: qrImgInfo.filename,
+                                base64Data: qrImgInfo.base64Data,
+                                mimeType: qrImgInfo.mimeType,
+                                cid: 'qr-nodo-acceso'
+                            }]
+                            : []
+                    };
+
+                    const emRes = await fetch('http://127.0.0.1:3004/facturacion/email/notificacion/enviar', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payloadEmail),
+                        signal: AbortSignal.timeout(35000)
+                    });
+                    const emJson = await emRes.json().catch(() => ({}));
+                    if (!emRes.ok || !emJson.success) {
+                        resultadoEmail.ok = false;
+                        resultadoEmail.error = emJson.message || emJson.error || `Error HTTP ${emRes.status} en servidor de Email (:3004).`;
+                    } else {
+                        resultadoEmail.ok = true;
+                        resultadoEmail.simulated = Boolean(emJson.simulated || emJson?.data?.simulated);
+                        resultadoEmail.messageId = emJson?.data?.messageId || null;
+                    }
+                } catch (errEm) {
+                    resultadoEmail.ok = false;
+                    resultadoEmail.error = errEm.message || 'No se pudo contactar al servicio interno de Email (:3004).';
+                }
+            })());
+        }
+
+        await Promise.all(promesas);
+
+        const intentados = [resultadoWhatsapp, resultadoEmail].filter(r => r.attempted);
+        const exitosos = intentados.filter(r => r.ok);
+        const todoOk = intentados.length > 0 && exitosos.length === intentados.length;
+        const algunoOk = exitosos.length > 0;
+
+        return res.status(algunoOk ? 200 : 500).json({
+            ok: algunoOk,
+            todo_ok: todoOk,
+            parcial: algunoOk && !todoOk,
+            modo_laboratorio: esModoLaboratorioWaSegura(),
+            whatsapp: resultadoWhatsapp,
+            email: resultadoEmail,
+            error: !algunoOk
+                ? [resultadoWhatsapp.error, resultadoEmail.error].filter(Boolean).join(' | ')
+                : null
+        });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /comunicaciones/nodo/:idOrSlug/enviar:', error.message);
         res.status(500).json({ ok: false, error: error.message });
     }
 });
