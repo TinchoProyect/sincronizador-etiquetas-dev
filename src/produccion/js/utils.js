@@ -390,25 +390,132 @@ export const estilosTablaCarros = `
         color: #ffffff;
     }
 
-    /* Sección destacada superior: Carros Abiertos / Pendientes de Asentar */
-    .panel-carros-abiertos {
-        background: linear-gradient(180deg, #fffbeb 0%, #ffffff 100%);
-        border: 1.5px solid #fcd34d;
-        border-radius: 10px;
-        padding: 12px 14px;
-        margin-bottom: 16px;
-        box-shadow: 0 2px 8px rgba(217, 119, 6, 0.08);
+    /* Acordeones unificados de lista de carros (Abiertos + Períodos) */
+    .grupo-temporal {
+        border: 1px solid #e2e8f0;
+        border-radius: 9px;
+        margin-bottom: 10px;
+        background: #ffffff;
+        overflow: hidden;
     }
 
-    .panel-carros-abiertos-header {
+    .grupo-temporal .header-grupo-temporal {
         display: flex;
         align-items: center;
         justify-content: space-between;
         flex-wrap: wrap;
         gap: 8px;
-        margin-bottom: 10px;
-        padding-bottom: 8px;
-        border-bottom: 1px dashed #fde68a;
+        padding: 10px 14px;
+        cursor: pointer;
+        user-select: none;
+        background: #f8fafc;
+        transition: background-color 0.15s ease;
+    }
+
+    .grupo-temporal .header-grupo-temporal:hover {
+        background: #f1f5f9;
+    }
+
+    .grupo-temporal.semana-actual .header-grupo-temporal {
+        border-left: 4px solid #2563eb;
+        background: #f8fbff;
+    }
+
+    .grupo-temporal .etiqueta-temporal {
+        font-size: 13px;
+        font-weight: 700;
+        color: #1e293b;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .grupo-temporal .indicador-colapso {
+        font-size: 11px;
+        color: #64748b;
+        font-weight: 700;
+        transform: none !important;
+        transition: none !important;
+        min-width: 14px;
+        text-align: center;
+    }
+
+    .grupo-temporal .contador-carros {
+        background: #e2e8f0;
+        color: #334155;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 9999px;
+    }
+
+    .badge-resumen-acordeon {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 9999px;
+        border: 1px solid transparent;
+        white-space: nowrap;
+    }
+
+    .badge-resumen-acordeon.externos {
+        background: #eef2ff;
+        color: #3730a3;
+        border-color: #c7d2fe;
+    }
+
+    .badge-resumen-acordeon.externos.alerta {
+        background: #fef3c7;
+        color: #92400e;
+        border-color: #f59e0b;
+    }
+
+    .badge-resumen-acordeon.internos {
+        background: #f0fdfa;
+        color: #0f766e;
+        border-color: #99f6e4;
+    }
+
+    .badge-resumen-acordeon.neutro {
+        background: #f1f5f9;
+        color: #94a3b8;
+        border-color: #e2e8f0;
+        font-weight: 600;
+    }
+
+    /* Acordeón superior: Carros Abiertos / Pendientes de Asentar */
+    .panel-carros-abiertos-acordeon {
+        border: 1.5px solid #cbd5e1;
+        margin-bottom: 12px;
+    }
+
+    .panel-carros-abiertos-acordeon > .header-grupo-temporal {
+        border-left: 4px solid #0d9488;
+        background: #f8fafc;
+    }
+
+    .panel-carros-abiertos-acordeon.tiene-externos-pendientes {
+        border-color: #fcd34d;
+        box-shadow: 0 2px 6px rgba(217, 119, 6, 0.08);
+    }
+
+    .panel-carros-abiertos-acordeon.tiene-externos-pendientes > .header-grupo-temporal {
+        border-left: 4px solid #4f46e5;
+        background: linear-gradient(90deg, #fffbeb 0%, #f8faff 100%);
+    }
+
+    .panel-carros-abiertos-acordeon.tiene-externos-pendientes > .header-grupo-temporal:hover {
+        background: linear-gradient(90deg, #fef3c7 0%, #eef2ff 100%);
+    }
+
+    .panel-carros-abiertos-body {
+        padding: 12px 14px;
+        background: #ffffff;
+        border-top: 1px solid #e2e8f0;
     }
 
     .panel-carros-abiertos-grid {

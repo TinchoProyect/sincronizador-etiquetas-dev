@@ -2436,6 +2436,20 @@ async function ofrecerCarroFraccionadoPostAsentado(resultData, colaborador) {
                 ${ingInfo ? `<div style="margin-top: 3px; color: #334155; font-size: 12px;">🔗 Ingrediente vinculado: <b>[${escHtml(ingInfo.codigo)}] ${escHtml(ingInfo.nombre)}</b></div>` : ''}
             </div>
 
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
+                <span style="font-size: 12px; color: #475569; font-weight: 600;">Indicá las unidades por presentación (0 = no incluir):</span>
+                <div style="display: inline-flex; align-items: center; gap: 6px;">
+                    <button type="button" id="btn-frac-cargar-uno-todas"
+                            style="padding: 5px 11px; border-radius: 6px; border: 1px solid #059669; background: #ecfdf5; color: #065f46; font-size: 12px; font-weight: 700; cursor: pointer;">
+                        ✓ Cargar 1 en todas
+                    </button>
+                    <button type="button" id="btn-frac-limpiar-todas"
+                            style="padding: 5px 9px; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #475569; font-size: 12px; font-weight: 600; cursor: pointer;">
+                        Limpiar
+                    </button>
+                </div>
+            </div>
+
             <div style="max-height: 280px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 12px;">
                 <table style="width: 100%; border-collapse: collapse;">
                     <thead>
@@ -2510,6 +2524,27 @@ async function ofrecerCarroFraccionadoPostAsentado(resultData, colaborador) {
                 inp.addEventListener('input', recalcular);
                 inp.addEventListener('change', recalcular);
             });
+
+            const btnCargarUnoTodas = popup.querySelector('#btn-frac-cargar-uno-todas');
+            if (btnCargarUnoTodas) {
+                btnCargarUnoTodas.addEventListener('click', () => {
+                    inputs.forEach((inp) => {
+                        inp.value = '1';
+                    });
+                    recalcular();
+                });
+            }
+
+            const btnLimpiarTodas = popup.querySelector('#btn-frac-limpiar-todas');
+            if (btnLimpiarTodas) {
+                btnLimpiarTodas.addEventListener('click', () => {
+                    inputs.forEach((inp) => {
+                        inp.value = '0';
+                    });
+                    recalcular();
+                });
+            }
+
             if (inputs[0]) {
                 setTimeout(() => inputs[0].focus(), 80);
             }

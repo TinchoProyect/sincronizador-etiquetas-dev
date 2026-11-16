@@ -2907,28 +2907,45 @@
           ? ((parseFloat(laAP.costo_tiempo) || 0) / kilosAP)
           : 0;
 
-        // Costo crudo inicial (preferencia Reposición; si hay simulación guardada sobre el mismo crudo, respetarla)
+        // Costo crudo inicial (preferencia Reposición; respeta fuente LOTE o MANUAL guardada mientras Repo no haya variado)
+        let fuenteInicial = 'REPO';
         let costoCrudoInicial = crudoCostoRepoKilo > 0 ? crudoCostoRepoKilo : (loteCostoKilo || 0);
         if (
           simSaved &&
           !simSaved.es_comparacion_bulto_comprado &&
-          (!simSaved.insumo_evaluado_sku || String(simSaved.insumo_evaluado_sku).trim().toUpperCase() === String(crudoSku).trim().toUpperCase()) &&
-          parseFloat(simSaved.costo_crudo_kg) > 0 &&
-          !(crudoCostoRepoKilo > 0)
+          (!simSaved.insumo_evaluado_sku || String(simSaved.insumo_evaluado_sku).trim().toUpperCase() === String(crudoSku).trim().toUpperCase())
         ) {
-          costoCrudoInicial = parseFloat(simSaved.costo_crudo_kg);
+          if (simSaved.fuente_costo === 'LOTE' && loteCostoKilo > 0) {
+            fuenteInicial = 'LOTE';
+            costoCrudoInicial = loteCostoKilo;
+          } else if (
+            simSaved.fuente_costo === 'MANUAL' &&
+            parseFloat(simSaved.costo_crudo_kg) > 0 &&
+            (
+              !(crudoCostoRepoKilo > 0) ||
+              (simSaved.costo_repo_referencia_kg !== undefined && Math.abs((parseFloat(simSaved.costo_repo_referencia_kg) || 0) - crudoCostoRepoKilo) <= 0.02)
+            )
+          ) {
+            fuenteInicial = 'MANUAL';
+            costoCrudoInicial = parseFloat(simSaved.costo_crudo_kg);
+          } else if (parseFloat(simSaved.costo_crudo_kg) > 0 && !(crudoCostoRepoKilo > 0)) {
+            costoCrudoInicial = parseFloat(simSaved.costo_crudo_kg);
+          }
         }
 
-        // Ecuación canónica LDN 4:
+        // Ecuación canónica LDN 4 (redondeada a 2 decimales comerciales = precisión de PostgreSQL):
         // Costo_Base_AP ($/kg) = (Costo_Crudo_Kg / (1 - Merma_Pct / 100)) + Tarifa_Productor_Por_Kg_Entregado
         // Costo_Patron_Ingrediente ($/kg) = Costo_Base_AP ($/kg) + MO_Interna_AP ($/kg)
         const factorRendimiento = 1 - (mermaPorc / 100);
-        const costoBaseApCalculado = factorRendimiento > 0 ? ((costoCrudoInicial / factorRendimiento) + tarifaMaquila) : 0;
-        const costoIngredienteCalculado = costoBaseApCalculado + moApKilo;
-        const costoBaseApOficialBd = (laAP && laAP.costo_base_sobrescrito !== null && parseFloat(laAP.costo_base_sobrescrito) > 0)
-          ? parseFloat(laAP.costo_base_sobrescrito)
-          : ((parseFloat(apArt?.costo_base) || 0) / kilosAP);
-        const costoIngOficialBd = ingSimple ? (parseFloat(ingSimple.costo_patron) || 0) : costoIngredienteCalculado;
+        const costoBaseApCalculado = factorRendimiento > 0 ? Number((((costoCrudoInicial / factorRendimiento) + tarifaMaquila)).toFixed(2)) : 0;
+        const costoIngredienteCalculado = Number((costoBaseApCalculado + moApKilo).toFixed(2));
+        const costoBaseApBunker = ((parseFloat(apArt?.costo_base) || 0) / kilosAP);
+        const costoBaseApOficialBd = costoBaseApBunker > 0
+          ? Number(costoBaseApBunker.toFixed(2))
+          : ((laAP && laAP.costo_base_sobrescrito !== null && parseFloat(laAP.costo_base_sobrescrito) > 0)
+              ? Number(parseFloat(laAP.costo_base_sobrescrito).toFixed(2))
+              : 0);
+        const costoIngOficialBd = ingSimple ? Number((parseFloat(ingSimple.costo_patron) || 0).toFixed(2)) : 0;
 
         tostaderosConfigsLDN4.push({
           id: def.up_codigo,
@@ -2948,7 +2965,7 @@
           crudo_costo_repo_kilo: crudoCostoRepoKilo,
           lote_costo_kilo: loteCostoKilo,
           lote_codigo: loteCodigo,
-          fuente_costo: 'REPO',
+          fuente_costo: fuenteInicial,
           costo_crudo_simulado: costoCrudoInicial,
           tarifa_maquila_simulada: tarifaMaquila,
           merma_porc_simulada: mermaPorc,
@@ -2962,13 +2979,209 @@
       window.tostaderosConfigsLDN4 = tostaderosConfigsLDN4;
     }
 
+    const TOLERANCIA_REDONDEO_LDN4 = 0.02;
+
+    function obtenerFraccionesTostaderoLDN4(tost) {
+      const data = window.pizarraSimulacionMaster;
+      if (!data || !tost) return [];
+      const recetas = data.recetas || [];
+      const recetaIngredientes = data.recetaIngredientes || [];
+      const articulosBunker = data.articulosBunker || [];
+
+      const recArtIds = new Set();
+      recetas.forEach(r => {
+        if (recetaIngredientes.some(ri => ri.receta_id === r.id && Number(ri.ingrediente_id) === Number(tost.ing_id))) {
+          if (r.articulo_numero) recArtIds.add(String(r.articulo_numero).trim().toLowerCase());
+        }
+      });
+
+      const apLower = String(tost.ap_codigo || '').trim().toLowerCase();
+      const upLower = String(tost.up_codigo || '').trim().toLowerCase();
+
+      return articulosBunker.filter(a => {
+        const skuLower = String(a.articulo_id || '').trim().toLowerCase();
+        if (skuLower === apLower || skuLower === upLower) return false;
+        if (Number(a.familia_id || a.propiedades_dinamicas?.familia_id || 0) === 42) return false;
+        if (a.no_producido_por_lambda === true || a.propiedades_dinamicas?.obsoleto === true) return false;
+        if (recArtIds.has(skuLower)) return true;
+        if (a.pack_hijo_codigo && recArtIds.has(String(a.pack_hijo_codigo).trim().toLowerCase())) return true;
+        return false;
+      });
+    }
+
+    function auditarArticuloHijoLDN4(art) {
+      const data = window.pizarraSimulacionMaster;
+      if (!data || !art) {
+        return { estaAlDia: true, costoDesactualizado: false, diffCosto: 0, maxDiffPrecio: 0, listasDesactualizadas: 0, costoSinInsSim: 0, costoBaseBunkerBD: 0, costoBultoSim: 0, costoBultoBD: 0 };
+      }
+      const listas = data.listasPrecios || [];
+      const lista1Id = listas[0] ? listas[0].id : 1;
+      const kilos = (parseFloat(art.kilos_unidad) > 0) ? parseFloat(art.kilos_unidad) : 1;
+      const skuLower = String(art.articulo_id || '').trim().toLowerCase();
+
+      const cascada1 = calcularCascadaArticuloLista(art.articulo_id, lista1Id);
+      const costoSinInsSim = Number((cascada1 ? cascada1.costoBaseSinInsumosLista : (parseFloat(art.costo_base) || 0)).toFixed(2));
+      const costoEmpaqueLista1 = Number((cascada1 ? (cascada1.costoInsumosPackaging || 0) : 0).toFixed(2));
+      const costoBultoSim = Number((costoSinInsSim + costoEmpaqueLista1).toFixed(2));
+
+      const costoBaseBunkerBD = Number((parseFloat(art.costo_base) || 0).toFixed(2));
+      const costoBultoBD = Number((costoBaseBunkerBD + costoEmpaqueLista1).toFixed(2));
+      const diffCosto = Number((costoBultoSim - costoBultoBD).toFixed(2));
+      const costoDesactualizado = (Math.abs(costoSinInsSim - costoBaseBunkerBD) > TOLERANCIA_REDONDEO_LDN4) || (costoBaseBunkerBD <= 0 && costoSinInsSim > TOLERANCIA_REDONDEO_LDN4);
+
+      let listasDesactualizadas = 0;
+      let maxDiffPrecio = 0;
+
+      listas.forEach(l => {
+        const laActual = (data.articulosListas || []).find(c =>
+          c.lista_id === l.id && String(c.articulo_numero || '').trim().toLowerCase() === skuLower
+        );
+        const esNodos = String(l?.canal_comercial || '').toUpperCase() === 'NODOS';
+        if (esNodos && (!laActual || laActual.disponible === false)) return;
+
+        const keySim = `${l.id}_${art.articulo_id}`;
+        const laSim = (typeof listasArticulosSim !== 'undefined') ? listasArticulosSim[keySim] : null;
+        const cascadaL = calcularCascadaArticuloLista(art.articulo_id, l.id);
+        if (!cascadaL) return;
+
+        let precioObjetivo = Number(cascadaL.precioFinalCalculado.toFixed(2));
+        if (laSim && Math.abs((laSim.precio_simulado || 0) - (laSim.precio_inicial_simulado || 0)) > TOLERANCIA_REDONDEO_LDN4) {
+          if (Math.abs((laSim.costo_base_simulado || 0) - cascadaL.costoNetoBulto) <= TOLERANCIA_REDONDEO_LDN4) {
+            precioObjetivo = Number(laSim.precio_simulado.toFixed(2));
+          }
+        }
+
+        if (!laActual) {
+          listasDesactualizadas++;
+          if (Math.abs(precioObjetivo) > Math.abs(maxDiffPrecio)) maxDiffPrecio = precioObjetivo;
+          return;
+        }
+
+        const precioBD = Number((parseFloat(laActual.precio_final) || 0).toFixed(2));
+        const diffP = Number((precioObjetivo - precioBD).toFixed(2));
+        if (Math.abs(diffP) > Math.abs(maxDiffPrecio)) {
+          maxDiffPrecio = diffP;
+        }
+
+        const costoSobrescritoBultoBD = (laActual.costo_base_sobrescrito !== null && parseFloat(laActual.costo_base_sobrescrito) > 0)
+          ? Number((parseFloat(laActual.costo_base_sobrescrito) * kilos).toFixed(2))
+          : costoBaseBunkerBD;
+        const diffCostoLista = Math.abs(costoSinInsSim - costoSobrescritoBultoBD);
+        const dispCambio = laSim && laSim.disponible !== undefined && Boolean(laSim.disponible) !== Boolean(laActual.disponible !== false);
+
+        if (Math.abs(diffP) > TOLERANCIA_REDONDEO_LDN4 || diffCostoLista > TOLERANCIA_REDONDEO_LDN4 || dispCambio) {
+          listasDesactualizadas++;
+        }
+      });
+
+      const estaAlDia = !costoDesactualizado && listasDesactualizadas === 0;
+      return {
+        estaAlDia,
+        costoDesactualizado,
+        diffCosto,
+        maxDiffPrecio,
+        listasDesactualizadas,
+        costoSinInsSim,
+        costoBaseBunkerBD,
+        costoBultoSim,
+        costoBultoBD
+      };
+    }
+
+    function auditarEstadoSincronizacionTostaderoLDN4(upCodigo) {
+      const data = window.pizarraSimulacionMaster;
+      const tost = (tostaderosConfigsLDN4 || []).find(t => t.up_codigo === upCodigo);
+      if (!data || !tost) {
+        return { estaAlDia: true, totalCambios: 0, motivos: [], resumenDetalle: '', diffApBase: 0, diffIng: 0, costoBaseApSim: 0, costoBaseApBd: 0, costoIngSim: 0, costoIngBd: 0 };
+      }
+
+      const apLower = String(tost.ap_codigo || '').trim().toLowerCase();
+      const apArt = (data.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toLowerCase() === apLower);
+      const ingMaster = (data.ingredientes || []).find(i => Number(i.id) === Number(tost.ing_id));
+      const kilosAp = (apArt && parseFloat(apArt.kilos_unidad) > 0) ? parseFloat(apArt.kilos_unidad) : (parseFloat(tost.kilos_ap) || 1);
+
+      const costoBaseApSim = Number((tost.costo_base_ap_simulado ?? tost.costo_ap_simulado ?? 0).toFixed(2));
+      const moApKilo = Number(tost.mo_ap_kilo || 0);
+      const costoIngSim = Number((tost.costo_ingrediente_simulado ?? (costoBaseApSim + moApKilo)).toFixed(2));
+
+      const costoBaseApBd = apArt
+        ? Number(((parseFloat(apArt.costo_base) || 0) / kilosAp).toFixed(2))
+        : Number((tost.costo_base_ap_oficial_bd || 0).toFixed(2));
+      const costoIngBd = ingMaster
+        ? Number((parseFloat(ingMaster.costo_patron) || 0).toFixed(2))
+        : Number((tost.costo_ap_oficial_bd || 0).toFixed(2));
+
+      tost.costo_base_ap_oficial_bd = costoBaseApBd;
+      tost.costo_ap_oficial_bd = costoIngBd;
+
+      const diffApBase = Number((costoBaseApSim - costoBaseApBd).toFixed(2));
+      const diffIng = Number((costoIngSim - costoIngBd).toFixed(2));
+
+      const crudoCambio = String(tost.crudo_sku || '').trim().toUpperCase() !== String(tost.crudo_sku_oficial_bd || '').trim().toUpperCase();
+      const apDesactualizado = Math.abs(diffApBase) > TOLERANCIA_REDONDEO_LDN4 || (costoBaseApBd <= 0 && costoBaseApSim > TOLERANCIA_REDONDEO_LDN4);
+      const ingDesactualizado = Boolean(tost.ing_id) && (Math.abs(diffIng) > TOLERANCIA_REDONDEO_LDN4 || (costoIngBd <= 0 && costoIngSim > TOLERANCIA_REDONDEO_LDN4));
+
+      const fraccs = obtenerFraccionesTostaderoLDN4(tost);
+      let fraccionesDesactualizadas = 0;
+      let packsDesactualizados = 0;
+
+      fraccs.forEach(f => {
+        const auditHijo = auditarArticuloHijoLDN4(f);
+        if (!auditHijo.estaAlDia) {
+          if (f.pack_hijo_codigo) packsDesactualizados++;
+          else fraccionesDesactualizadas++;
+        }
+      });
+
+      let totalCambios = 0;
+      const motivos = [];
+      if (crudoCambio) {
+        totalCambios += 1;
+        motivos.push('Crudo UP');
+      }
+      if (apDesactualizado) {
+        totalCambios += 1;
+        motivos.push('AP');
+      }
+      if (ingDesactualizado) {
+        totalCambios += 1;
+        motivos.push('Ingrediente');
+      }
+      if (fraccionesDesactualizadas > 0) {
+        totalCambios += fraccionesDesactualizadas;
+        motivos.push(`${fraccionesDesactualizadas} Fracc.`);
+      }
+      if (packsDesactualizados > 0) {
+        totalCambios += packsDesactualizados;
+        motivos.push(`${packsDesactualizados} Pack${packsDesactualizados !== 1 ? 's' : ''}`);
+      }
+
+      const estaAlDia = totalCambios === 0;
+      return {
+        estaAlDia,
+        totalCambios,
+        motivos,
+        resumenDetalle: motivos.join(' · '),
+        diffApBase,
+        diffIng,
+        costoBaseApSim,
+        costoBaseApBd,
+        costoIngSim,
+        costoIngBd,
+        fraccionesDesactualizadas,
+        packsDesactualizados
+      };
+    }
+    window.auditarEstadoSincronizacionTostaderoLDN4 = auditarEstadoSincronizacionTostaderoLDN4;
+    window.auditarArticuloHijoLDN4 = auditarArticuloHijoLDN4;
+
     function calcularCostoApTostadero(t) {
       const factorRend = 1 - (t.merma_porc_simulada / 100);
-      const costoBaseAp = factorRend > 0 ? ((t.costo_crudo_simulado / factorRend) + t.tarifa_maquila_simulada) : 0;
+      const costoBaseAp = factorRend > 0 ? Number((((t.costo_crudo_simulado / factorRend) + t.tarifa_maquila_simulada)).toFixed(2)) : 0;
       const moApKilo = parseFloat(t.mo_ap_kilo) || 0;
       t.costo_base_ap_simulado = costoBaseAp;
       t.costo_ap_simulado = costoBaseAp;
-      t.costo_ingrediente_simulado = costoBaseAp + moApKilo;
+      t.costo_ingrediente_simulado = Number((costoBaseAp + moApKilo).toFixed(2));
       if (ingredientesSim[t.ing_id]) {
         ingredientesSim[t.ing_id].costo_sim = t.costo_ingrediente_simulado;
       }
@@ -2978,6 +3191,7 @@
     function cambiarCostoCrudoTostadero(upCodigo, nuevoCosto) {
       const t = (tostaderosConfigsLDN4 || []).find(x => x.up_codigo === upCodigo);
       if (!t) return;
+      t.fuente_costo = 'MANUAL';
       t.costo_crudo_simulado = Math.max(0, parseFloat(nuevoCosto) || 0);
       calcularCostoApTostadero(t);
       recalcularCascada();
@@ -3465,12 +3679,16 @@
         count++;
 
         const isDestacado = tostaderoSeleccionadoCodigo === t.up_codigo;
-        const costoIngSim = t.costo_ingrediente_simulado !== undefined ? t.costo_ingrediente_simulado : t.costo_ap_simulado;
-        const costoBaseApSim = t.costo_base_ap_simulado !== undefined ? t.costo_base_ap_simulado : t.costo_ap_simulado;
+        const auditTost = auditarEstadoSincronizacionTostaderoLDN4(t.up_codigo);
+        const costoIngSim = auditTost.costoIngSim;
+        const costoBaseApSim = auditTost.costoBaseApSim;
         const moApKilo = parseFloat(t.mo_ap_kilo) || 0;
-        const diffIng = costoIngSim - t.costo_ap_oficial_bd;
-        const diffApBase = (t.costo_base_ap_oficial_bd > 0) ? (costoBaseApSim - t.costo_base_ap_oficial_bd) : 0;
+        const diffIng = auditTost.diffIng;
+        const diffApBase = auditTost.diffApBase;
         const diffPesos = Math.abs(diffIng) >= Math.abs(diffApBase) ? diffIng : diffApBase;
+        const badgeEstadoTostHtml = auditTost.estaAlDia
+          ? `<span class="badge-estado-ldn4 al-dia" style="font-size: 0.66rem; font-weight: 800; background: rgba(16, 185, 129, 0.16); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 2px 7px; border-radius: 9999px;" title="AP, Ingrediente espejo y fracciones activas sincronizados con BD (tolerancia <= $0,02)">🟢 Al día en BD</span>`
+          : `<span class="badge-estado-ldn4 desactualizado" style="font-size: 0.66rem; font-weight: 800; background: rgba(245, 158, 11, 0.22); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.55); padding: 2px 7px; border-radius: 9999px;" title="Diferencias reales detectadas (> $0,02): ${auditTost.resumenDetalle}">🟡 Desactualizado (${auditTost.totalCambios} cambio${auditTost.totalCambios !== 1 ? 's' : ''})</span>`;
 
         const card = document.createElement('div');
         card.className = `mix-card` + (isDestacado ? ' mix-card-destacado open' : '');
@@ -3485,6 +3703,7 @@
               <span class="art-code" style="font-size: 0.85rem; font-weight: 700; color: #38bdf8;">[${t.up_codigo}]</span>
               <span class="mix-title" style="${isDestacado ? 'color: #38bdf8; font-weight: 700;' : ''}">${t.titulo}</span>
               <span style="font-size: 0.68rem; font-weight: 700; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 6px; border-radius: 4px;">AP [${t.ap_codigo}]</span>
+              ${badgeEstadoTostHtml}
               ${isDestacado ? '<span style="font-size: 0.66rem; font-weight: 700; background: rgba(56, 189, 248, 0.3); color: #bae6fd; padding: 2px 6px; border-radius: 4px;">🎯 Seleccionado</span>' : '<span style="font-size: 0.66rem; color: #64748b;">(clic para ver fracciones)</span>'}
             </div>
             <div class="mix-price-badge" style="display: flex; flex-direction: column; align-items: flex-end; gap: 1px;">
@@ -3567,12 +3786,12 @@
             <!-- Resultado y Botones de Acción -->
             <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 6px; margin-top: 2px; flex-wrap: wrap; gap: 6px;">
               <div>
-                <span style="font-size: 0.68rem; color: var(--text-secondary);">Ing #${t.ing_id} en BD: <strong style="color: #94a3b8;">$${t.costo_ap_oficial_bd.toFixed(2)}/kg</strong>${moApKilo > 0 ? ` <span style="color:#64748b;">(MO AP +$${moApKilo.toFixed(2)})</span>` : ''}</span>
-                ${Math.abs(diffPesos) > 0.05 ? `
-                  <span style="font-size: 0.66rem; padding: 1px 4px; border-radius: 3px; font-weight: 700; background: ${diffPesos > 0 ? 'rgba(239,68,68,0.18)' : 'rgba(16,185,129,0.18)'}; color: ${diffPesos > 0 ? '#f87171' : '#34d399'}; margin-left: 4px;">
-                    ${diffPesos > 0 ? '+' : ''}$${diffPesos.toFixed(2)}
-                  </span>
-                ` : '<span style="font-size: 0.66rem; color: #34d399; font-weight: 700; margin-left: 4px;">🟢 Al día</span>'}
+                <span style="font-size: 0.68rem; color: var(--text-secondary);">AP BD: <strong style="color: #94a3b8;">$${auditTost.costoBaseApBd.toFixed(2)}/kg</strong> · Ing #${t.ing_id} BD: <strong style="color: #94a3b8;">$${auditTost.costoIngBd.toFixed(2)}/kg</strong>${moApKilo > 0 ? ` <span style="color:#64748b;">(MO AP +$${moApKilo.toFixed(2)})</span>` : ''}</span>
+                ${!auditTost.estaAlDia ? `
+                  <div style="font-size: 0.66rem; color: #fbbf24; font-weight: 700; margin-top: 2px;">
+                    🟡 Desactualizado (${auditTost.totalCambios} cambio${auditTost.totalCambios !== 1 ? 's' : ''}: ${auditTost.resumenDetalle})${Math.abs(diffPesos) > TOLERANCIA_REDONDEO_LDN4 ? ` · Δ ${diffPesos > 0 ? '+' : ''}$${diffPesos.toFixed(2)}/kg` : ''}
+                  </div>
+                ` : '<div style="font-size: 0.66rem; color: #34d399; font-weight: 700; margin-top: 2px;">🟢 Al día en BD</div>'}
               </div>
               <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
                 ${t.ing_id ? `
@@ -3586,10 +3805,17 @@
                   onclick="event.stopPropagation(); toggleTostaderoCollapse('${t.up_codigo}')" title="Filtrar fracciones comerciales de esta UP en el catálogo derecho">
                   ${isDestacado ? '✕ Deseleccionar' : '🔍 Ver Fracciones'}
                 </button>
-                <button class="btn" style="padding: 3px 8px; font-size: 0.70rem; font-weight: 700; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 4px; cursor: pointer;"
-                  onclick="event.stopPropagation(); actualizarTodasFraccionesDeTostadero('${t.up_codigo}')" title="Actualizar todas las fracciones de esta UP en la base de datos">
-                  ⚡ Actualizar Todas
-                </button>
+                ${!auditTost.estaAlDia ? `
+                  <button class="btn btn-actualizar-todas-ldn4" style="padding: 4px 10px; font-size: 0.70rem; font-weight: 800; background: linear-gradient(135deg, #f59e0b, #d97706); color: #0f172a; border: 1px solid #fbbf24; border-radius: 4px; cursor: pointer; box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);"
+                    onclick="event.stopPropagation(); actualizarTodasFraccionesDeTostadero('${t.up_codigo}')" title="Actualizar AP, Ingrediente espejo y todas las fracciones/packs de esta UP en la base de datos (${auditTost.resumenDetalle})">
+                    ⚡ Actualizar Todas
+                  </button>
+                ` : `
+                  <button class="btn btn-actualizar-todas-ldn4" disabled style="padding: 4px 10px; font-size: 0.70rem; font-weight: 700; background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 4px; cursor: not-allowed; opacity: 0.85;"
+                    title="Todo el circuito coincide con los valores persistidos en la base de datos">
+                    ✓ Todo actualizado
+                  </button>
+                `}
               </div>
             </div>
           </div>
@@ -5452,8 +5678,8 @@
         const merma = parseFloat(tostLDN4.merma_porc_simulada) || 0;
         const moApKilo = parseFloat(tostLDN4.mo_ap_kilo) || 0;
         const factorRend = 1 - (merma / 100);
-        const costoBaseAP = factorRend > 0 ? ((costoCrudo / factorRend) + maquila) : 0;
-        const costoIngrediente = costoBaseAP + moApKilo;
+        const costoBaseAP = factorRend > 0 ? Number((((costoCrudo / factorRend) + maquila)).toFixed(2)) : 0;
+        const costoIngrediente = Number((costoBaseAP + moApKilo).toFixed(2));
         tostLDN4.costo_base_ap_simulado = costoBaseAP;
         tostLDN4.costo_ap_simulado = costoBaseAP;
         tostLDN4.costo_ingrediente_simulado = costoIngrediente;
@@ -7117,7 +7343,37 @@
         }
 
         let semaforoHTML = '';
-        if (contextoLDN === 3 || contextoLDN === 4 || contextoLDN === 5 || contextoLDN === 6) {
+        if (contextoLDN === 4) {
+          const audit4 = auditarArticuloHijoLDN4(art);
+          const deltaMostrar = Math.abs(audit4.diffCosto) > TOLERANCIA_REDONDEO_LDN4 ? audit4.diffCosto : audit4.maxDiffPrecio;
+          const etiquetaDelta = Math.abs(deltaMostrar) > TOLERANCIA_REDONDEO_LDN4
+            ? ` (${deltaMostrar >= 0 ? '+' : ''}$${deltaMostrar.toFixed(2)})`
+            : '';
+
+          semaforoHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-top: 6px; padding: 4px 6px; border-radius: 4px; background: rgba(0,0,0,0.25); border: 1px solid ${audit4.estaAlDia ? 'rgba(16,185,129,0.22)' : 'rgba(245,158,11,0.35)'}; font-size: 0.70rem;">
+              <div>
+                ${audit4.estaAlDia
+                  ? `<span style="color: #34d399; font-weight: 700;" title="Costo y listas comerciales sincronizados con BD: $${audit4.costoBultoBD.toFixed(2)}">🟢 Al día en BD: $${audit4.costoBultoBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>`
+                  : `<span style="color: #fbbf24; font-weight: 700;" title="En BD: $${audit4.costoBultoBD.toFixed(2)} vs Simulado: $${audit4.costoBultoSim.toFixed(2)} (${audit4.listasDesactualizadas} lista(s) con dif. > $0,02)">🟡 Desactualizado · Sim: $${audit4.costoBultoSim.toLocaleString('es-AR', {minimumFractionDigits: 2})} <span style="font-size: 0.64rem; color: #94a3b8;">(BD: $${audit4.costoBultoBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}${audit4.listasDesactualizadas > 0 ? ` · ${audit4.listasDesactualizadas}L` : ''})</span></span>`
+                }
+              </div>
+              <div style="display: inline-flex; align-items: center; gap: 4px;">
+                <button type="button" onclick="event.stopPropagation(); if(typeof window.abrirRadiografiaCostosArticulo === 'function') window.abrirRadiografiaCostosArticulo('${art.articulo_id}')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-size: 0.66rem; font-weight: 700; cursor: pointer;" title="Ver radiografía financiera paso a paso de cómo se llega a este costo">
+                  📊 Costos
+                </button>
+                ${audit4.estaAlDia
+                  ? `<button class="btn" style="padding: 2px 8px; font-size: 0.68rem; font-weight: 700; background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 4px; cursor: default;" disabled title="Precios y costos 100% al día con la base de datos">✓ Al día</button>`
+                  : `<button class="btn" style="padding: 2px 8px; font-size: 0.68rem; font-weight: 800; background: rgba(245, 158, 11, 0.25); color: #fbbf24; border: 1px solid #f59e0b; border-radius: 4px; cursor: pointer; box-shadow: 0 0 6px rgba(245, 158, 11, 0.3);"
+                      onclick="event.stopPropagation(); guardarPresentacionCompletaSimulada('${art.articulo_id}')"
+                      title="Diferencias pendientes respecto a BD. Hacé clic para impactar en las listas comerciales.">
+                      ⚡ Impactar${etiquetaDelta}
+                    </button>`
+                }
+              </div>
+            </div>
+          `;
+        } else if (contextoLDN === 3 || contextoLDN === 5 || contextoLDN === 6) {
           const cascada1 = calcularCascadaArticuloLista(art.articulo_id, (data.listasPrecios && data.listasPrecios[0] ? data.listasPrecios[0].id : 1));
           const costoBultoSim = cascada1 ? cascada1.costoNetoBulto : (parseFloat(art.costo_base) || 0);
           const costoSinInsSim = cascada1 ? cascada1.costoBaseSinInsumosLista : costoBultoSim;
@@ -7969,6 +8225,10 @@
         laSim.disponible = disponible;
         renderizarGrillaMultilista();
         actualizarBannerCambios();
+        if (contextoLDN === 4) {
+          renderizarTostaderosLDN4();
+          renderizarArticulosBunker();
+        }
       }
     }
 
@@ -7993,6 +8253,10 @@
       recalcularCascada();
       renderizarGrillaMultilista();
       actualizarBannerCambios();
+      if (contextoLDN === 4) {
+        renderizarTostaderosLDN4();
+        renderizarArticulosBunker();
+      }
     }
 
     function cambiarPrecioSimulado(key, valor) {
@@ -8014,6 +8278,10 @@
       recalcularCascada();
       renderizarGrillaMultilista();
       actualizarBannerCambios();
+      if (contextoLDN === 4) {
+        renderizarTostaderosLDN4();
+        renderizarArticulosBunker();
+      }
     }
 
 
@@ -8030,6 +8298,10 @@
       recalcularCascada();
       renderizarGrillaMultilista();
       actualizarBannerCambios();
+      if (contextoLDN === 4) {
+        renderizarTostaderosLDN4();
+        renderizarArticulosBunker();
+      }
     }
 
     // ==========================================
@@ -8619,10 +8891,14 @@
           }
         }
         if (art) {
-          art.costo_base = baseSinIns;
+          art.costo_base = Number((parseFloat(costoKiloSim.toFixed(4)) * factor).toFixed(2));
         }
 
         actualizarBannerCambios();
+        if (contextoLDN === 4) {
+          renderizarTostaderosLDN4();
+          renderizarArticulosBunker();
+        }
         renderizarGrillaMultilista();
 
         // 3. Restablecer exactamente la posición de scroll
@@ -8858,10 +9134,13 @@
         });
 
         if (art && clavesActualizadas.length > 0) {
-          art.costo_base = clavesActualizadas[0].baseSinIns;
+          art.costo_base = Number((parseFloat(clavesActualizadas[0].costoKiloSim.toFixed(4)) * factor).toFixed(2));
         }
 
         actualizarBannerCambios();
+        if (contextoLDN === 4) {
+          renderizarTostaderosLDN4();
+        }
         renderizarArticulosBunker();
         renderizarGrillaMultilista();
 
@@ -10758,12 +11037,11 @@
             costoSinInsBD = costoBultoFromLa;
           }
         }
-        const costoOficialBD = costoSinInsBD + (cascada ? (cascada.costoInsumosPackaging || 0) : 0);
+        const auditRow = auditarArticuloHijoLDN4(f);
+        const costoOficialBD = auditRow.costoBultoBD;
         const precioLista1BD = la1 ? (parseFloat(la1.precio_final) || 0) : 0;
         const precioLista1Nuevo = cascada ? (parseFloat(cascada.precioFinalCalculado) || 0) : precioLista1BD;
-        const diff = Math.abs(costoBaseTotal - costoOficialBD);
-        const diffPrecio = Math.abs(precioLista1Nuevo - precioLista1BD);
-        const estaSincronizado = diff < 0.05 && diffPrecio < 0.5 && costoOficialBD > 0;
+        const estaSincronizado = auditRow.estaAlDia;
 
         return {
           sku: f.articulo_id,
@@ -10913,21 +11191,27 @@
           didOpen: () => Swal.showLoading()
         });
 
-        // 1. Impactar Costo Patrón en el Ingrediente Espejo de Fábrica (Costo_Base_AP + MO_Interna_AP)
+        const costoBaseApPersistido = Number(costoBaseApSim.toFixed(2));
+        const costoIngPersistido = Number(costoIngSim.toFixed(2));
+        tost.costo_base_ap_simulado = costoBaseApPersistido;
+        tost.costo_ap_simulado = costoBaseApPersistido;
+        tost.costo_ingrediente_simulado = costoIngPersistido;
+
+        // 1. Impactar Costo Patrón en el Ingrediente Espejo de Fábrica (Costo_Base_AP + MO_Interna_AP, redondeado a 2 decimales de BD)
         if (tost.ing_id) {
           const resIng = await fetch(`/api/produccion/ingredientes/${tost.ing_id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ costo_patron: parseFloat(costoIngSim.toFixed(4)) })
+            body: JSON.stringify({ costo_patron: costoIngPersistido })
           });
           if (!resIng.ok) {
             throw new Error('No se pudo actualizar el costo patrón del ingrediente tostado en la base de datos.');
           }
           const ingMaster = (data.ingredientes || []).find(i => i.id === tost.ing_id);
-          if (ingMaster) ingMaster.costo_patron = costoIngSim;
+          if (ingMaster) ingMaster.costo_patron = costoIngPersistido;
           if (ingredientesSim[tost.ing_id]) {
-            ingredientesSim[tost.ing_id].costo_patron = costoIngSim;
-            ingredientesSim[tost.ing_id].costo_sim = costoIngSim;
+            ingredientesSim[tost.ing_id].costo_patron = costoIngPersistido;
+            ingredientesSim[tost.ing_id].costo_sim = costoIngPersistido;
           }
         }
 
@@ -10942,8 +11226,10 @@
             insumo_evaluado_sku: tost.crudo_sku,
             insumo_evaluado_descripcion: tost.crudo_nombre,
             es_comparacion_bulto_comprado: false,
+            fuente_costo: tost.fuente_costo || 'REPO',
+            costo_repo_referencia_kg: Number(tost.crudo_costo_repo_kilo || 0),
             costo_crudo_kg: Number(tost.costo_crudo_simulado),
-            costo_resultante_kg: Number(costoBaseApSim.toFixed(2)),
+            costo_resultante_kg: costoBaseApPersistido,
             updated_at: new Date().toISOString()
           };
           await fetch(`/api/logistica/bunker/tostadero-simulacion/${encodeURIComponent(tost.ap_codigo)}`, {
@@ -10973,17 +11259,22 @@
 
         articulosSincronizar.forEach(f => {
           const esElAp = String(f.articulo_id || '').trim().toLowerCase() === apLower;
+          const kilosArt = (parseFloat(f.kilos_unidad) > 0) ? parseFloat(f.kilos_unidad) : 1;
           const cascada1 = calcularCascadaArticuloLista(f.articulo_id, (listas[0] ? listas[0].id : 1));
-          if (esElAp) {
-            f.costo_base = costoBaseApSim * (parseFloat(f.kilos_unidad) || 1);
-          } else if (cascada1) {
-            f.costo_base = cascada1.costoBaseSinInsumosLista;
+          const costoKiloRef = esElAp
+            ? parseFloat(costoBaseApPersistido.toFixed(4))
+            : (cascada1 ? parseFloat((cascada1.costoBaseSinInsumosLista / kilosArt).toFixed(4)) : 0);
+
+          if (esElAp || cascada1) {
+            f.costo_base = Number((costoKiloRef * kilosArt).toFixed(2));
           }
 
           listas.forEach(l => {
             const key = `${l.id}_${f.articulo_id}`;
             const laSim = listasArticulosSim[key];
-            const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && c.articulo_numero === f.articulo_id);
+            const laActual = (data.articulosListas || []).find(c =>
+              c.lista_id === l.id && String(c.articulo_numero || '').trim().toLowerCase() === String(f.articulo_id || '').trim().toLowerCase()
+            );
             if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
 
             const cascada = calcularCascadaArticuloLista(f.articulo_id, l.id);
@@ -10996,8 +11287,8 @@
 
             const precioCalc = parseFloat(cascada.precioFinalCalculado.toFixed(2));
             const costoKilo = esElAp
-              ? parseFloat(costoBaseApSim.toFixed(4))
-              : parseFloat((cascada.costoBaseSinInsumosLista / (parseFloat(f.kilos_unidad) || 1)).toFixed(4));
+              ? parseFloat(costoBaseApPersistido.toFixed(4))
+              : parseFloat((cascada.costoBaseSinInsumosLista / kilosArt).toFixed(4));
             const mo = parseFloat(cascada.moFracc.toFixed(4));
             const iva = parseFloat(cascada.ivaVal.toFixed(2));
 
@@ -11024,6 +11315,8 @@
               laSim.precio_inicial_simulado = precioCalc;
               laSim.margen_simulado = margen;
               laSim.margen_inicial_simulado = margen;
+              laSim.disponible = dispActual;
+              laSim.disponible_inicial = dispActual;
             }
 
             if (laActual) {
@@ -11031,6 +11324,21 @@
               laActual.margen_ganancia = margen;
               laActual.costo_base_sobrescrito = costoKilo;
               laActual.costo_tiempo = mo;
+              laActual.disponible = dispActual;
+            } else if (Array.isArray(data.articulosListas)) {
+              data.articulosListas.push({
+                lista_id: l.id,
+                articulo_numero: f.articulo_id,
+                margen_ganancia: margen,
+                costo_base_sobrescrito: costoKilo,
+                costo_tiempo: mo,
+                iva: iva,
+                precio_final: precioCalc,
+                disponible: dispActual,
+                mano_obra_activa: true,
+                modo_calculo: 'AUTOMATIC',
+                modo_iva: 'COMPLETO'
+              });
             }
           });
         });
@@ -11048,8 +11356,8 @@
           }
         }
 
-        tost.costo_base_ap_oficial_bd = costoBaseApSim;
-        tost.costo_ap_oficial_bd = costoIngSim;
+        tost.costo_base_ap_oficial_bd = costoBaseApPersistido;
+        tost.costo_ap_oficial_bd = costoIngPersistido;
 
         recalcularCascada();
         if (typeof auditarIncidenciaLineasNegocio === 'function') {

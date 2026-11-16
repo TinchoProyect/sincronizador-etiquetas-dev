@@ -2094,6 +2094,20 @@ async function obtenerInformeComprasProveedores(params = {}, dbPool = null) {
                     SELECT isu.ingrediente_id,
                            SUM(isu.cantidad) AS stock_satelite_kg
                     FROM public.ingredientes_stock_usuarios isu
+                    WHERE EXISTS (
+                        SELECT 1
+                        FROM public.articulos_produccion_externa_relacion rel
+                        JOIN public.recetas r_up ON UPPER(BTRIM(r_up.articulo_numero)) = UPPER(BTRIM(rel.articulo_produccion_codigo))
+                        JOIN public.receta_ingredientes ri_up ON ri_up.receta_id = r_up.id
+                        WHERE ri_up.ingrediente_id = isu.ingrediente_id
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM public.ingredientes_stock_usuarios isu_env
+                        WHERE isu_env.usuario_id = isu.usuario_id
+                          AND isu_env.ingrediente_id = isu.ingrediente_id
+                          AND isu_env.contexto_envase IS NOT NULL
+                    )
                     GROUP BY isu.ingrediente_id
                 ) sat ON sat.ingrediente_id = i.id
                 LEFT JOIN public.bunker_articulos ba ON UPPER(TRIM(ba.articulo_id)) = UPPER(TRIM(sku_resuelto.sku))

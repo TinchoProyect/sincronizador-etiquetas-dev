@@ -570,12 +570,29 @@ export async function actualizarEstadoCarro() {
         }
 
         // Estado persistido en memoria de filtro rápido ('todos' | 'abiertos' | 'externos' | 'internos')
+        // Por defecto (al iniciar o cambiar de colaborador), TODOS los acordeones nacen plegados.
         window._carrosUsuarioCache = carros;
+        if (window._ultimoColaboradorListaCarros !== String(colaborador.id)) {
+            window._ultimoColaboradorListaCarros = String(colaborador.id);
+            window._filtroListaCarros = 'todos';
+            window._acordeonAbiertosExpandido = false;
+            window._gruposTemporalesExpandidos = new Set();
+        }
         if (!window._filtroListaCarros) {
             window._filtroListaCarros = 'todos';
         }
+        if (typeof window._acordeonAbiertosExpandido !== 'boolean') {
+            window._acordeonAbiertosExpandido = false;
+        }
+        if (!(window._gruposTemporalesExpandidos instanceof Set)) {
+            window._gruposTemporalesExpandidos = new Set();
+        }
         window.filtrarListaCarros = (nuevoFiltro) => {
-            window._filtroListaCarros = nuevoFiltro || 'todos';
+            const filtroNormalizado = nuevoFiltro || 'todos';
+            window._filtroListaCarros = filtroNormalizado;
+            window._gruposTemporalesExpandidos = new Set();
+            // Solo al pulsar explícitamente el filtro 'abiertos' se despliega automáticamente Carros Abiertos
+            window._acordeonAbiertosExpandido = (filtroNormalizado === 'abiertos');
             actualizarEstadoCarro();
         };
 
@@ -712,42 +729,59 @@ export async function actualizarEstadoCarro() {
 
         let panelAbiertosHtml = '';
         if (abiertosExternos.length > 0 || abiertosInternos.length > 0) {
+            const totalPanelAbiertos = abiertosExternos.length + abiertosInternos.length;
+            const tieneExternosPendientes = abiertosExternos.length > 0;
+            const abiertosExpandido = Boolean(window._acordeonAbiertosExpandido);
+            const indicadorAbiertos = abiertosExpandido ? '▼' : '▶';
+
+            const badgeExtHeader = filtroActivo !== 'internos'
+                ? `<span class="badge-resumen-acordeon ${tieneExternosPendientes ? 'externos alerta' : 'neutro'}">🚚 ${abiertosExternos.length} Externo${abiertosExternos.length !== 1 ? 's' : ''}${tieneExternosPendientes ? ' (En tostadero)' : ''}</span>`
+                : '';
+            const badgeIntHeader = filtroActivo !== 'externos'
+                ? `<span class="badge-resumen-acordeon ${abiertosInternos.length > 0 ? 'internos' : 'neutro'}">🏭 ${abiertosInternos.length} Interno${abiertosInternos.length !== 1 ? 's' : ''}</span>`
+                : '';
+
             panelAbiertosHtml = `
-                <div class="panel-carros-abiertos" id="panel-carros-abiertos-pendientes">
-                    <div class="panel-carros-abiertos-header">
-                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                            <span style="font-size:13.5px;font-weight:800;color:#92400e;">📌 Carros Abiertos / Pendientes de Asentar</span>
-                            <span style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;font-size:11px;font-weight:800;padding:1px 8px;border-radius:9999px;">
-                                ${abiertosExternos.length + abiertosInternos.length} abierto${(abiertosExternos.length + abiertosInternos.length) !== 1 ? 's' : ''}
-                            </span>
+                <div class="grupo-temporal panel-carros-abiertos-acordeon ${tieneExternosPendientes ? 'tiene-externos-pendientes' : ''} ${abiertosExpandido ? '' : 'colapsado'}" id="panel-carros-abiertos-pendientes">
+                    <div class="header-grupo-temporal" onclick="toggleAcordeonCarrosAbiertos()">
+                        <div class="etiqueta-temporal">
+                            <span style="color:${tieneExternosPendientes ? '#92400e' : '#0f172a'};font-weight:800;">📌 Carros Abiertos / Pendientes de Asentar</span>
+                            ${tieneExternosPendientes ? `<span style="font-size:10.5px;font-weight:800;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;padding:1px 7px;border-radius:9999px;">⏳ Pendiente asentar</span>` : ''}
                         </div>
-                        <span style="font-size:11.5px;color:#78350f;">Visibles siempre arriba aunque pertenezcan a semanas anteriores</span>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            ${badgeExtHeader}
+                            ${badgeIntHeader}
+                            <span class="contador-carros" style="${tieneExternosPendientes ? 'background:#fde68a;color:#78350f;' : ''}">${totalPanelAbiertos} abierto${totalPanelAbiertos !== 1 ? 's' : ''}</span>
+                            <span class="indicador-colapso">${indicadorAbiertos}</span>
+                        </div>
                     </div>
-                    <div class="panel-carros-abiertos-grid">
-                        ${filtroActivo !== 'internos' ? `
-                            <div class="bloque-abiertos-columna externa">
-                                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-                                    <span style="font-size:12px;font-weight:800;color:#3730a3;">🚚 Producción Externa (En Tostadero / Taller)</span>
-                                    <span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:800;padding:1px 7px;border-radius:9999px;">${abiertosExternos.length}</span>
+                    <div class="panel-carros-abiertos-body" style="display: ${abiertosExpandido ? 'block' : 'none'};">
+                        <div class="panel-carros-abiertos-grid">
+                            ${filtroActivo !== 'internos' ? `
+                                <div class="bloque-abiertos-columna externa">
+                                    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                                        <span style="font-size:12px;font-weight:800;color:#3730a3;">🚚 Producción Externa (En Tostadero / Taller)</span>
+                                        <span style="background:#e0e7ff;color:#3730a3;font-size:11px;font-weight:800;padding:1px 7px;border-radius:9999px;">${abiertosExternos.length}</span>
+                                    </div>
+                                    ${abiertosExternos.length > 0
+                                        ? abiertosExternos.map(renderTarjetaCarroAbierto).join('')
+                                        : `<div style="font-size:11.5px;color:#64748b;padding:8px 2px 2px 2px;">Sin carros externos pendientes de asentar.</div>`
+                                    }
                                 </div>
-                                ${abiertosExternos.length > 0
-                                    ? abiertosExternos.map(renderTarjetaCarroAbierto).join('')
-                                    : `<div style="font-size:11.5px;color:#64748b;padding:8px 2px 2px 2px;">Sin carros externos pendientes de asentar.</div>`
-                                }
-                            </div>
-                        ` : ''}
-                        ${filtroActivo !== 'externos' ? `
-                            <div class="bloque-abiertos-columna interna">
-                                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-                                    <span style="font-size:12px;font-weight:800;color:#0f766e;">🏭 Producción Interna (En Planta)</span>
-                                    <span style="background:#ccfbf1;color:#0f766e;font-size:11px;font-weight:800;padding:1px 7px;border-radius:9999px;">${abiertosInternos.length}</span>
+                            ` : ''}
+                            ${filtroActivo !== 'externos' ? `
+                                <div class="bloque-abiertos-columna interna">
+                                    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                                        <span style="font-size:12px;font-weight:800;color:#0f766e;">🏭 Producción Interna (En Planta)</span>
+                                        <span style="background:#ccfbf1;color:#0f766e;font-size:11px;font-weight:800;padding:1px 7px;border-radius:9999px;">${abiertosInternos.length}</span>
+                                    </div>
+                                    ${abiertosInternos.length > 0
+                                        ? abiertosInternos.map(renderTarjetaCarroAbierto).join('')
+                                        : `<div style="font-size:11.5px;color:#64748b;padding:8px 2px 2px 2px;">Sin carros internos abiertos en planta.</div>`
+                                    }
                                 </div>
-                                ${abiertosInternos.length > 0
-                                    ? abiertosInternos.map(renderTarjetaCarroAbierto).join('')
-                                    : `<div style="font-size:11.5px;color:#64748b;padding:8px 2px 2px 2px;">Sin carros internos abiertos en planta.</div>`
-                                }
-                            </div>
-                        ` : ''}
+                            ` : ''}
+                        </div>
                     </div>
                 </div>
             `;
@@ -787,22 +821,32 @@ export async function actualizarEstadoCarro() {
             const claseGrupo = grupo.esActual ? 'semana-actual' : '';
             const totalCarros = grupo.carros.length;
             const esGrupoMensual = grupo.anio !== undefined; // Los grupos mensuales tienen propiedades anio y mes
+            const claveGrupo = String(grupo.etiqueta || indiceGrupo);
+            const cantExtGrupo = grupo.carros.filter(c => c.tipo_carro === 'externa').length;
+            const cantIntGrupo = totalCarros - cantExtGrupo;
 
-            // Expandir "Esta semana" por defecto, o expandir todos los grupos con coincidencias cuando hay un filtro rápido activo
-            const esEstaSemanaSoloExpandida = grupo.etiqueta.includes('Esta semana') || filtroActivo !== 'todos';
-
-            const estaExpandido = esEstaSemanaSoloExpandida;
+            // Todos los acordeones de períodos nacen cerrados/plegados por defecto hasta que el usuario los despliegue
+            const estaExpandido = window._gruposTemporalesExpandidos instanceof Set && window._gruposTemporalesExpandidos.has(claveGrupo);
             const indicadorColapso = estaExpandido ? '▼' : '▶';
             const displayTabla = estaExpandido ? 'table' : 'none';
             const claseColapsado = estaExpandido ? '' : 'colapsado';
 
+            const resumenExtGrupo = filtroActivo !== 'internos'
+                ? `<span class="badge-resumen-acordeon ${cantExtGrupo > 0 ? 'externos' : 'neutro'}">🚚 ${cantExtGrupo} ext.</span>`
+                : '';
+            const resumenIntGrupo = filtroActivo !== 'externos'
+                ? `<span class="badge-resumen-acordeon ${cantIntGrupo > 0 ? 'internos' : 'neutro'}">🏭 ${cantIntGrupo} int.</span>`
+                : '';
+
             html += `
-                <div class="grupo-temporal ${claseGrupo} ${esGrupoMensual ? 'grupo-mensual' : 'grupo-semanal'} ${claseColapsado}" data-grupo="${indiceGrupo}">
+                <div class="grupo-temporal ${claseGrupo} ${esGrupoMensual ? 'grupo-mensual' : 'grupo-semanal'} ${claseColapsado}" data-grupo="${indiceGrupo}" data-clave-grupo="${escCarroHtml(claveGrupo)}">
                     <div class="header-grupo-temporal" onclick="toggleGrupoTemporal(${indiceGrupo})">
                         <div class="etiqueta-temporal">
                             ${grupo.etiqueta}
                         </div>
-                        <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            ${resumenExtGrupo}
+                            ${resumenIntGrupo}
                             <span class="contador-carros">${totalCarros} carro${totalCarros !== 1 ? 's' : ''}</span>
                             <span class="indicador-colapso">${indicadorColapso}</span>
                         </div>
@@ -1458,6 +1502,27 @@ export async function crearNuevoCarro(tipoCarro = 'interna', lineaNegocio = null
     }
 }
 
+// Función para alternar la visibilidad del acordeón superior de Carros Abiertos
+window.toggleAcordeonCarrosAbiertos = function () {
+    const panel = document.getElementById('panel-carros-abiertos-pendientes');
+    if (!panel) return;
+    const body = panel.querySelector('.panel-carros-abiertos-body');
+    const indicador = panel.querySelector('.indicador-colapso');
+    if (!body || !indicador) return;
+
+    if (body.style.display === 'none') {
+        body.style.display = 'block';
+        indicador.textContent = '▼';
+        panel.classList.remove('colapsado');
+        window._acordeonAbiertosExpandido = true;
+    } else {
+        body.style.display = 'none';
+        indicador.textContent = '▶';
+        panel.classList.add('colapsado');
+        window._acordeonAbiertosExpandido = false;
+    }
+};
+
 // Función para alternar la visibilidad de grupos temporales (semanas y meses)
 window.toggleGrupoTemporal = function (indiceGrupo) {
     const grupo = document.querySelector(`[data-grupo="${indiceGrupo}"]`);
@@ -1465,18 +1530,24 @@ window.toggleGrupoTemporal = function (indiceGrupo) {
 
     const tabla = grupo.querySelector('.tabla-carros-grupo');
     const indicador = grupo.querySelector('.indicador-colapso');
+    const claveGrupo = grupo.dataset.claveGrupo || String(indiceGrupo);
 
     if (!tabla || !indicador) return;
+    if (!(window._gruposTemporalesExpandidos instanceof Set)) {
+        window._gruposTemporalesExpandidos = new Set();
+    }
 
     // Alternar visibilidad de la tabla
     if (tabla.style.display === 'none') {
         tabla.style.display = 'table';
         indicador.textContent = '▼';
         grupo.classList.remove('colapsado');
+        window._gruposTemporalesExpandidos.add(claveGrupo);
     } else {
         tabla.style.display = 'none';
         indicador.textContent = '▶';
         grupo.classList.add('colapsado');
+        window._gruposTemporalesExpandidos.delete(claveGrupo);
     }
 };
 
@@ -4870,7 +4941,7 @@ document.addEventListener('recetaActualizada', async (event) => {
         await mostrarArticulosDelCarro();
         
         // Refrescar los resúmenes consolidados de la derecha (Ingredientes, Mixes, Faltantes)
-        const carroIdActual = sessionStorage.getItem('carroActivo');
+        const carroIdActual = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         const colaboradorDataActual = localStorage.getItem('colaboradorActivo');
         
         if (carroIdActual && colaboradorDataActual) {

@@ -22,7 +22,10 @@ async function ejecutarSaneamientoLinea4(poolOrClient) {
         bolsas_asignadas_atys: [],
         listas_inicializadas_atys: 0,
         sugeridos_ap_normalizados: 0,
-        kilos_unidad_src_normalizados: 0
+        kilos_unidad_src_normalizados: 0,
+        stock_domicilio_depurado: 0,
+        bolsas_pack_quitadas_de_unitarias: [],
+        insumos_pack_padre_asegurados: []
     };
 
     try {
@@ -413,6 +416,104 @@ async function ejecutarSaneamientoLinea4(poolOrClient) {
             WHERE UPPER(BTRIM(articulo_id)) IN ('ATX2', 'ATX5', 'ATYSX5')
               AND (rubro IS NULL OR BTRIM(rubro) = '' OR sub_rubro IS NULL OR BTRIM(sub_rubro) = '')
         `);
+
+        // 9. Depurar ingredientes exclusivos de Planta/Depósito en stock personal domicilio (ej. #59 Pasa Rubia 2 en usuario_id=5)
+        // Conservando intactos los insumos reales de domicilio (Aceite de Coco #135, Miel #136 y cualquier envase personal asignado).
+        const delStockDomicilio = await client.query(`
+            DELETE FROM public.ingredientes_stock_usuarios isu
+            WHERE isu.contexto_envase IS NULL
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM public.articulos_produccion_externa_relacion rel
+                  JOIN public.recetas r_up ON UPPER(BTRIM(r_up.articulo_numero)) = UPPER(BTRIM(rel.articulo_produccion_codigo))
+                  JOIN public.receta_ingredientes ri_up ON ri_up.receta_id = r_up.id
+                  WHERE ri_up.ingrediente_id = isu.ingrediente_id
+              )
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM public.ingredientes_stock_usuarios isu_env
+                  WHERE isu_env.usuario_id = isu.usuario_id
+                    AND isu_env.ingrediente_id = isu.ingrediente_id
+                    AND isu_env.contexto_envase IS NOT NULL
+              )
+            RETURNING isu.id, isu.usuario_id, isu.ingrediente_id, isu.cantidad
+        `);
+        resumen.stock_domicilio_depurado = delStockDomicilio.rowCount || 0;
+
+        // 10. Limpiar bolsas exteriores de pack prorrateadas (0.1 u de #177 Bolsa 30 x 40 o #178 Bolsa 20 x 30)
+        // cargadas por error en recetas unitarias chicas de Línea 4 (CCTSx150, ATX150), garantizando que conserven
+        // su bolsa unitaria (#180 Bolsa 15 x 18 x 1 u) y que el Pack Padre tenga su bolsa exterior en bunker_lista_insumos.
+        const delBolsaPackUnitarias = await client.query(`
+            DELETE FROM public.receta_ingredientes ri_pack
+            USING public.recetas r,
+                  public.ingredientes i_pack
+            WHERE ri_pack.receta_id = r.id
+              AND i_pack.id = ri_pack.ingrediente_id
+              AND COALESCE(i_pack.es_insumo, false) = true
+              AND ri_pack.cantidad > 0
+              AND ri_pack.cantidad < 0.999
+              AND i_pack.id IN (177, 178)
+              AND EXISTS (
+                  SELECT 1
+                  FROM public.receta_ingredientes ri_base
+                  JOIN public.ingredientes i_base ON i_base.id = ri_base.ingrediente_id
+                  WHERE ri_base.receta_id = r.id
+                    AND COALESCE(i_base.es_insumo, false) = false
+                    AND UPPER(BTRIM(COALESCE(i_base.articulo_vinculado_numero, ''))) IN ('APTPGXK', 'APTSPGXK', 'APTSPGXKPM', 'CCTGXK', 'CCTSGXK', 'EMB-GZ6U9K')
+              )
+              AND EXISTS (
+                  SELECT 1
+                  FROM public.receta_ingredientes ri_unit
+                  JOIN public.ingredientes i_unit ON i_unit.id = ri_unit.ingrediente_id
+                  WHERE ri_unit.receta_id = r.id
+                    AND COALESCE(i_unit.es_insumo, false) = true
+                    AND ri_unit.cantidad >= 1
+                    AND ri_unit.id <> ri_pack.id
+              )
+            RETURNING r.articulo_numero, i_pack.id AS insumo_id, i_pack.nombre AS insumo_nombre, ri_pack.cantidad
+        `);
+        resumen.bolsas_pack_quitadas_de_unitarias = delBolsaPackUnitarias.rows || [];
+
+        const packsBolsaExterior = [
+            { packSkuUpper: 'CCTS10X150', insumoId: '177', fallbackCosto: 159.40 },
+            { packSkuUpper: 'AT10X150', insumoId: '178', fallbackCosto: 75.45 },
+            { packSkuUpper: 'ATYS10X150', insumoId: '177', fallbackCosto: 159.40 }
+        ];
+
+        for (const cfgPack of packsBolsaExterior) {
+            const insPack = await client.query(`
+                INSERT INTO public.bunker_lista_insumos (
+                    lista_articulo_id,
+                    insumo_articulo_numero,
+                    cantidad,
+                    costo_unitario_capturado,
+                    incluido
+                )
+                SELECT
+                    bla.id,
+                    $2::varchar,
+                    1.0000,
+                    COALESCE((SELECT i.costo_patron FROM public.ingredientes i WHERE i.id = $2::int LIMIT 1), $3::numeric),
+                    true
+                FROM public.bunker_lista_articulos bla
+                WHERE UPPER(BTRIM(bla.articulo_numero)) = $1
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM public.bunker_lista_insumos bli
+                      WHERE bli.lista_articulo_id = bla.id
+                        AND bli.incluido = true
+                  )
+                RETURNING id, lista_articulo_id, insumo_articulo_numero
+            `, [cfgPack.packSkuUpper, cfgPack.insumoId, cfgPack.fallbackCosto]);
+
+            if ((insPack.rowCount || 0) > 0) {
+                resumen.insumos_pack_padre_asegurados.push({
+                    pack_sku: cfgPack.packSkuUpper,
+                    insumo_id: cfgPack.insumoId,
+                    listas_impactadas: insPack.rowCount
+                });
+            }
+        }
 
         await client.query('COMMIT');
         return resumen;

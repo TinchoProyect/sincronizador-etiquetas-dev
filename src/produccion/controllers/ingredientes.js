@@ -769,6 +769,23 @@ async function obtenerStockPorUsuario(usuarioId) {
             LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
             INNER JOIN public.ingredientes_stock_usuarios isu ON i.id = isu.ingrediente_id
             WHERE isu.usuario_id = $1
+              AND COALESCE(i.es_insumo, false) = false
+              AND (
+                  EXISTS (
+                      SELECT 1
+                      FROM public.articulos_produccion_externa_relacion rel
+                      JOIN public.recetas r_up ON UPPER(BTRIM(r_up.articulo_numero)) = UPPER(BTRIM(rel.articulo_produccion_codigo))
+                      JOIN public.receta_ingredientes ri_up ON ri_up.receta_id = r_up.id
+                      WHERE ri_up.ingrediente_id = i.id
+                  )
+                  OR EXISTS (
+                      SELECT 1
+                      FROM public.ingredientes_stock_usuarios isu_env
+                      WHERE isu_env.usuario_id = $1
+                        AND isu_env.ingrediente_id = i.id
+                        AND isu_env.contexto_envase IS NOT NULL
+                  )
+              )
             GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria_id, c.nombre, i.costo_patron, i.sector_id, s.nombre, s.descripcion
             ORDER BY i.nombre ASC;
         `;

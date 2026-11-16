@@ -1236,12 +1236,12 @@ const validarEstadoRecetas = (req, res, next) => {
 const validarReceta = (req, res, next) => {
     console.log('🔍 validarReceta - Body recibido:', req.body);
     const { descripcion, ingredientes, esProduccionExternaConArticuloPrincipal } = req.body;
-    const articulo_numero = req.method === 'POST' ? req.body.articulo_numero : req.params.numero_articulo;
+    const articulo_numero = req.params.numero_articulo || req.query.codigo || req.body.articulo_numero;
 
     console.log('🔍 validarReceta - esProduccionExternaConArticuloPrincipal:', esProduccionExternaConArticuloPrincipal);
     console.log('🔍 validarReceta - ingredientes:', ingredientes);
 
-    if (req.method === 'POST' && (!articulo_numero || typeof articulo_numero !== 'string' || !articulo_numero.trim())) {
+    if (!articulo_numero || typeof articulo_numero !== 'string' || !articulo_numero.trim()) {
         console.log('❌ validarReceta - Error: número de artículo inválido');
         return res.status(400).json({ error: 'El número de artículo es requerido y debe ser un texto válido' });
     }
@@ -2677,6 +2677,39 @@ router.post('/ingredientes-stock-usuarios', async (req, res) => {
         if (!usuario_id || !ingrediente_id || cantidad === undefined || !origen_carro_id) {
             console.log('❌ ERROR: Faltan datos requeridos');
             return res.status(400).json({ error: 'Faltan datos requeridos' });
+        }
+
+        // Blindaje de stock personal domicilio: excluir insumos y excluir ingredientes exclusivos de Planta/Depósito
+        // que no forman parte de ninguna receta de Unidad Productiva externa ni de un despacho personal con envase.
+        const valIngDomicilio = await req.db.query(`
+            SELECT i.id, i.nombre, COALESCE(i.es_insumo, false) AS es_insumo,
+                   EXISTS (
+                       SELECT 1
+                       FROM public.articulos_produccion_externa_relacion rel
+                       JOIN public.recetas r_up ON UPPER(BTRIM(r_up.articulo_numero)) = UPPER(BTRIM(rel.articulo_produccion_codigo))
+                       JOIN public.receta_ingredientes ri_up ON ri_up.receta_id = r_up.id
+                       WHERE ri_up.ingrediente_id = i.id
+                   ) AS pertenece_a_up,
+                   EXISTS (
+                       SELECT 1
+                       FROM public.ingredientes_stock_usuarios isu_env
+                       WHERE isu_env.usuario_id = $2
+                         AND isu_env.ingrediente_id = i.id
+                         AND isu_env.contexto_envase IS NOT NULL
+                   ) AS tiene_envase_personal
+            FROM public.ingredientes i
+            WHERE i.id = $1
+            LIMIT 1
+        `, [ingrediente_id, usuario_id]);
+
+        const infoDom = valIngDomicilio.rows[0];
+        if (!infoDom || infoDom.es_insumo || (!infoDom.pertenece_a_up && !infoDom.tiene_envase_personal)) {
+            console.log(`⏭️ Ingrediente #${ingrediente_id} (${infoDom?.nombre || 'desconocido'}) omitido de stock personal domicilio (exclusivo de Depósito/Planta).`);
+            return res.json({
+                message: 'Ingrediente exclusivo de Depósito/Planta omitido de stock personal domicilio',
+                omitido_planta: true,
+                id: null
+            });
         }
 
         const query = `

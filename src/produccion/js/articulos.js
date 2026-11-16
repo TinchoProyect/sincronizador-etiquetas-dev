@@ -1492,6 +1492,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Detectar si es un carro de producción externa para permitir recetas sin ingredientes
                 const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+                let tipoCarroActual = 'interna';
                 let esProduccionExternaConArticuloPrincipal = false;
 
                 if (carroId) {
@@ -1499,13 +1500,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         const carroResponse = await fetch(`/api/produccion/carro/${carroId}/estado`);
                         if (carroResponse.ok) {
                             const carroData = await carroResponse.json();
-                            const tipoCarro = carroData.tipo_carro || 'interna';
+                            tipoCarroActual = carroData.tipo_carro || 'interna';
                             // Es producción externa con artículo principal si:
                             // 1. Es carro externo
                             // 2. Tiene artículos en la receta (artículo principal)
                             // 3. No tiene ingredientes (solo el artículo principal)
                             esProduccionExternaConArticuloPrincipal = (
-                                tipoCarro === 'externa' &&
+                                tipoCarroActual === 'externa' &&
                                 state.articulosReceta.length > 0 &&
                                 state.ingredientesCargados.length === 0
                             );
@@ -1518,6 +1519,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const datos = {
                     articulo_numero,
                     descripcion,
+                    reemplazar_ingredientes: true,
+                    reemplazar_articulos: tipoCarroActual === 'externa',
                     ingredientes: state.ingredientesCargados.map(ing => ({
                         ingrediente_id: ing.ingrediente_id,
                         nombre_ingrediente: ing.nombre_ingrediente,
@@ -1545,8 +1548,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Error al guardar la receta');
+                    const rawErr = await response.text();
+                    let errMsg = `Error HTTP ${response.status} al guardar la receta`;
+                    try {
+                        const errorData = JSON.parse(rawErr);
+                        errMsg = errorData.error || errorData.detalle || errMsg;
+                    } catch (_) {
+                        if (rawErr && rawErr.trim() && !rawErr.trim().startsWith('<')) {
+                            errMsg = rawErr.trim();
+                        }
+                    }
+                    throw new Error(errMsg);
                 }
 
                 state.ultimoArticuloEditado = articulo_numero;
