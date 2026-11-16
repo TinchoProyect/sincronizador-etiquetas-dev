@@ -7,16 +7,35 @@
   <!-- /lamda-cloud-runtime.js omitido en apps externas de Nodos (Marca Blanca) -->
   <script>
     window.__nodoTiendaDeferredPrompt = null;
+    window.__nodoTiendaInstaladoRuntime = false;
+    window.limpiarBanderasObsoletasPwaTienda = function() {
+      try {
+        var keys = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && (/^(lamda_nodo_pwa_|lamda_pwa_installed|pwa_installed|pwa_dismissed|dismissed_forever)/i.test(k))) {
+            keys.push(k);
+          }
+        }
+        for (var j = 0; j < keys.length; j++) {
+          localStorage.removeItem(keys[j]);
+        }
+      } catch (_) {}
+    };
     try {
+      window.limpiarBanderasObsoletasPwaTienda();
       window.addEventListener('beforeinstallprompt', function(ev) {
         ev.preventDefault();
         window.__nodoTiendaDeferredPrompt = ev;
+        window.__nodoTiendaInstaladoRuntime = false;
+        window.limpiarBanderasObsoletasPwaTienda();
         if (typeof window.renderizarBarraPwaTienda === 'function') {
           window.renderizarBarraPwaTienda();
         }
       });
       window.addEventListener('appinstalled', function() {
         window.__nodoTiendaDeferredPrompt = null;
+        window.__nodoTiendaInstaladoRuntime = true;
         if (typeof window.cerrarModalPwaTienda === 'function') {
           window.cerrarModalPwaTienda();
         }
@@ -2398,22 +2417,83 @@
       }
     }
 
-    function esModoPwaInstaladaTienda() {
+    function esModoStandaloneActivoTienda() {
       try {
         if (window.navigator.standalone === true) return true;
         if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+        if (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) return true;
+        if (typeof document !== 'undefined' && String(document.referrer || '').indexOf('android-app://') === 0) return true;
       } catch (_) {}
       return false;
     }
 
-    function obtenerKeyOcultarPwaTienda(slug) {
-      return 'lamda_nodo_pwa_tienda_cerrado_' + String(slug || '').trim().toLowerCase();
+    function esModoPwaInstaladaTienda() {
+      if (esModoStandaloneActivoTienda()) return true;
+      if (window.__nodoTiendaDeferredPrompt) return false;
+      return Boolean(window.__nodoTiendaInstaladoRuntime);
     }
+
+    async function verificarEstadoRealAccesoDirectoTienda() {
+      try {
+        if (esModoStandaloneActivoTienda()) {
+          renderizarBarraPwaTienda();
+          return true;
+        }
+        if (window.__nodoTiendaDeferredPrompt) {
+          window.__nodoTiendaInstaladoRuntime = false;
+          if (typeof window.limpiarBanderasObsoletasPwaTienda === 'function') {
+            window.limpiarBanderasObsoletasPwaTienda();
+          }
+          renderizarBarraPwaTienda();
+          return false;
+        }
+        if (typeof navigator !== 'undefined' && typeof navigator.getInstalledRelatedApps === 'function') {
+          const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
+          const slugEnc = encodeURIComponent(slugAct);
+          const apps = await navigator.getInstalledRelatedApps();
+          const instalada = Array.isArray(apps) && apps.some(a => {
+            if (!a) return false;
+            const u = String(a.url || '');
+            if (!u) return a.platform === 'webapp';
+            if (!slugEnc) return u.includes('/tienda.webmanifest');
+            return u.includes(`/pwa/${slugEnc}/tienda.webmanifest`) || u.includes(`/tienda/${slugEnc}`);
+          });
+          window.__nodoTiendaInstaladoRuntime = instalada;
+          if (!instalada && typeof window.limpiarBanderasObsoletasPwaTienda === 'function') {
+            window.limpiarBanderasObsoletasPwaTienda();
+          }
+          renderizarBarraPwaTienda();
+          return instalada;
+        }
+      } catch (_) {}
+      renderizarBarraPwaTienda();
+      return esModoPwaInstaladaTienda();
+    }
+    window.verificarEstadoRealAccesoDirectoTienda = verificarEstadoRealAccesoDirectoTienda;
+
+    try {
+      if (window.matchMedia) {
+        const mqStandaloneTienda = window.matchMedia('(display-mode: standalone)');
+        if (typeof mqStandaloneTienda.addEventListener === 'function') {
+          mqStandaloneTienda.addEventListener('change', () => renderizarBarraPwaTienda());
+        } else if (typeof mqStandaloneTienda.addListener === 'function') {
+          mqStandaloneTienda.addListener(() => renderizarBarraPwaTienda());
+        }
+      }
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          verificarEstadoRealAccesoDirectoTienda();
+        }
+      });
+      window.addEventListener('focus', () => {
+        verificarEstadoRealAccesoDirectoTienda();
+      });
+    } catch (_) {}
 
     function cerrarBannerPwaTienda() {
       const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
       if (slugAct) {
-        try { localStorage.setItem(obtenerKeyOcultarPwaTienda(slugAct), '1'); } catch (_) {}
+        try { sessionStorage.setItem('pwa_banner_snooze_' + slugAct.toLowerCase(), String(Date.now())); } catch (_) {}
       }
       const bar = document.getElementById('pwa-tienda-install-bar');
       if (bar) bar.style.display = 'none';
@@ -2461,6 +2541,7 @@
           const choice = await promptEv.userChoice;
           if (choice && choice.outcome === 'accepted') {
             window.__nodoTiendaDeferredPrompt = null;
+            window.__nodoTiendaInstaladoRuntime = true;
           }
         } catch (_) {}
         renderizarBarraPwaTienda();
@@ -2664,6 +2745,7 @@
       sincronizarManifestPwaTienda(STATE.slug);
       aplicarFaviconTienda('');
       renderizarBarraPwaTienda();
+      verificarEstadoRealAccesoDirectoTienda();
       const bajadaEfectiva = STATE.nodo.bajada_marca || STATE.nodo.subtitulo_marca || 'Pedidos comunitarios del barrio';
       sincronizarTituloYMetaPwaTienda(STATE.nodo.nombre_marca);
 

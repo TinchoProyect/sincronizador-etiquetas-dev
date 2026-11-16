@@ -2362,7 +2362,12 @@ router.get('/pwa/:slug/:recurso', async (req, res) => {
         if (manifestMatch) {
             const rol = manifestMatch[1];
             const tokenQuery = String(req.query.t || req.query.gestor_token || '').trim();
-            const manifest = nodosPwaService.construirManifestPwaNodo(nodo, rol, tokenQuery);
+            const hostHdr = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+            const isLocal = !hostHdr || /^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/i.test(hostHdr);
+            const protoHdr = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim()
+                || (req.secure || !isLocal ? 'https' : (req.protocol || 'http'));
+            const baseOrigin = hostHdr ? `${protoHdr}://${hostHdr}` : '';
+            const manifest = nodosPwaService.construirManifestPwaNodo(nodo, rol, tokenQuery, baseOrigin);
             res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
             res.set('Content-Type', 'application/manifest+json; charset=utf-8');
             return res.status(200).send(JSON.stringify(manifest, null, 2));

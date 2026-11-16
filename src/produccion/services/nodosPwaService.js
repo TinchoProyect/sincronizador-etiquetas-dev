@@ -76,12 +76,13 @@ function extraerPaletaNodoPwa(nodo) {
     };
 }
 
-function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '') {
+function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '', baseOrigin = '') {
     const slug = String(nodo?.slug || '').trim();
     const slugEnc = encodeURIComponent(slug);
     const nombreMarca = String(nodo?.nombre_marca || 'Tienda').trim();
     const bajada = String(nodo?.bajada_marca || nodo?.subtitulo_marca || '').trim();
     const pal = extraerPaletaNodoPwa(nodo);
+    const originClean = String(baseOrigin || '').trim().replace(/\/+$/, '');
 
     if (rol === 'gestor') {
         const tokReq = String(tokenQuery || '').trim();
@@ -91,6 +92,16 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '') {
             ? `/gestor/${slugEnc}?t=${encodeURIComponent(tokReal)}&pwa=1`
             : `/gestor/${slugEnc}?pwa=1`;
         const tituloGestion = `Gestión ${nombreMarca}`;
+        const manifestBaseUrl = `${originClean}/api/produccion/nodos/pwa/${slugEnc}/gestor.webmanifest`;
+        const manifestExactUrl = tieneTokenValido
+            ? `${manifestBaseUrl}?t=${encodeURIComponent(tokReal)}`
+            : manifestBaseUrl;
+        const relatedAppsGestor = tieneTokenValido
+            ? [
+                { platform: 'webapp', url: manifestExactUrl },
+                { platform: 'webapp', url: manifestBaseUrl }
+            ]
+            : [{ platform: 'webapp', url: manifestBaseUrl }];
 
         return {
             id: `/gestor/${slugEnc}`,
@@ -104,6 +115,8 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '') {
             orientation: 'portrait',
             background_color: pal.fondoGestor,
             theme_color: pal.fondoGestor,
+            prefer_related_applications: false,
+            related_applications: relatedAppsGestor,
             icons: [
                 {
                     src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-192.png?v=2`,
@@ -127,6 +140,7 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '') {
         };
     }
 
+    const manifestTiendaUrl = `${originClean}/api/produccion/nodos/pwa/${slugEnc}/tienda.webmanifest`;
     return {
         id: `/tienda/${slugEnc}`,
         name: nombreMarca,
@@ -139,6 +153,10 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '') {
         orientation: 'portrait',
         background_color: pal.fondoClaro,
         theme_color: pal.fondoClaro,
+        prefer_related_applications: false,
+        related_applications: [
+            { platform: 'webapp', url: manifestTiendaUrl }
+        ],
         icons: [
             {
                 src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-192.png?v=2`,
@@ -359,7 +377,7 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
 
 function generarCodigoServiceWorkerNodo() {
     return `/* LAMDA Tiendas Comunitarias — Service Worker liviano (network-first, sin caché de API, media ni subidas multipart) */
-const SW_VERSION = 'lamda-nodo-pwa-v4';
+const SW_VERSION = 'lamda-nodo-pwa-v5';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

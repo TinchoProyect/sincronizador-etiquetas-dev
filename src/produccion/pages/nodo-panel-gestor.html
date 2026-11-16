@@ -7,16 +7,35 @@
   <!-- /lamda-cloud-runtime.js omitido en apps externas de Nodos (Marca Blanca) -->
   <script>
     window.__nodoGestorDeferredPrompt = null;
+    window.__nodoGestorInstaladoRuntime = false;
+    window.limpiarBanderasObsoletasPwaGestor = function() {
+      try {
+        var keys = [];
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (k && (/^(lamda_nodo_pwa_|lamda_pwa_installed|pwa_installed|pwa_dismissed|dismissed_forever)/i.test(k))) {
+            keys.push(k);
+          }
+        }
+        for (var j = 0; j < keys.length; j++) {
+          localStorage.removeItem(keys[j]);
+        }
+      } catch (_) {}
+    };
     try {
+      window.limpiarBanderasObsoletasPwaGestor();
       window.addEventListener('beforeinstallprompt', function(ev) {
         ev.preventDefault();
         window.__nodoGestorDeferredPrompt = ev;
+        window.__nodoGestorInstaladoRuntime = false;
+        window.limpiarBanderasObsoletasPwaGestor();
         if (typeof window.actualizarVisibilidadBotonPwaGestor === 'function') {
           window.actualizarVisibilidadBotonPwaGestor();
         }
       });
       window.addEventListener('appinstalled', function() {
         window.__nodoGestorDeferredPrompt = null;
+        window.__nodoGestorInstaladoRuntime = true;
         if (typeof window.cerrarModalPwaGestor === 'function') {
           window.cerrarModalPwaGestor();
         }
@@ -412,10 +431,214 @@
       cursor: pointer;
     }
 
-    /* === Estado vs. Acción en Mi Oferta y Márgenes === */
+    /* === Pestañas de Estado, Categorías y Claridad Visual en Mi Oferta y Márgenes === */
+    .ofertas-tabs-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      background: var(--surface-warm);
+      padding: 5px;
+      border-radius: 13px;
+      border: 1px solid var(--border);
+      margin-bottom: 11px;
+    }
+    .oferta-tab-btn {
+      min-height: 40px;
+      border-radius: 9px;
+      border: 1.5px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding: 6px 5px;
+      white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+    }
+    .oferta-tab-btn:hover {
+      color: var(--text);
+    }
+    .oferta-tab-btn.is-active[data-tab="ACTIVOS"] {
+      background: #ffffff;
+      color: #166534;
+      border-color: #86efac;
+      box-shadow: 0 2px 6px rgba(22, 101, 52, 0.1);
+      font-weight: 900;
+    }
+    .oferta-tab-btn.is-active[data-tab="DESACTIVADOS"] {
+      background: #ffffff;
+      color: #475569;
+      border-color: #cbd5e1;
+      box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+      font-weight: 900;
+    }
+    .oferta-tab-btn.is-active[data-tab="TODOS"] {
+      background: #ffffff;
+      color: var(--brand-dark);
+      border-color: var(--brand-border);
+      box-shadow: 0 2px 6px rgba(62, 37, 25, 0.08);
+      font-weight: 900;
+    }
+    .ofertas-search-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      margin-bottom: 9px;
+    }
+    .ofertas-search-input {
+      width: 100%;
+      min-height: 40px;
+      padding: 8px 38px 8px 12px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: #fffdfb;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.88rem;
+      font-weight: 700;
+      outline: none;
+    }
+    .ofertas-search-input:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px var(--brand-soft);
+    }
+    .ofertas-search-clear {
+      position: absolute;
+      right: 8px;
+      width: 26px;
+      height: 26px;
+      border-radius: 999px;
+      border: none;
+      background: var(--surface-warm);
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 900;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+    .ofertas-cats-strip {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      overflow-x: auto;
+      padding: 2px 1px 6px 1px;
+      margin-bottom: 10px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      -webkit-overflow-scrolling: touch;
+    }
+    .ofertas-cats-strip::-webkit-scrollbar {
+      display: none;
+    }
+    .oferta-cat-chip {
+      flex-shrink: 0;
+      min-height: 33px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .oferta-cat-chip.is-active {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #ffffff;
+    }
+    .oferta-item.is-published {
+      background: #ffffff;
+      border: 1.5px solid #86efac;
+      border-left: 5px solid #16a34a;
+      box-shadow: 0 3px 10px rgba(22, 163, 74, 0.05);
+    }
     .oferta-item.is-unpublished {
-      background: #fdfbf8;
-      border-style: dashed;
+      background: #f8f5f0;
+      border: 1.5px dashed #d6c9ba;
+      border-left: 5px solid #94a3b8;
+      opacity: 0.93;
+    }
+    .oferta-pub-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 8px 0 8px 0;
+      padding: 8px 11px;
+      border-radius: 10px;
+    }
+    .oferta-pub-banner.is-published {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+    }
+    .oferta-pub-banner.is-unpublished {
+      background: #f1ede7;
+      border: 1px solid #dfd7cc;
+    }
+    .oferta-toggle-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      cursor: pointer;
+      user-select: none;
+      font-weight: 800;
+      font-size: 0.8rem;
+      color: var(--text);
+    }
+    .oferta-toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 25px;
+      flex-shrink: 0;
+    }
+    .oferta-toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+    .oferta-toggle-slider {
+      position: absolute;
+      inset: 0;
+      cursor: pointer;
+      background-color: #94a3b8;
+      border-radius: 999px;
+      transition: background-color 0.18s ease;
+    }
+    .oferta-toggle-slider::before {
+      content: "";
+      position: absolute;
+      height: 19px;
+      width: 19px;
+      left: 3px;
+      top: 3px;
+      background-color: #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.24);
+      transition: transform 0.18s ease;
+    }
+    .oferta-toggle-switch input:checked + .oferta-toggle-slider {
+      background-color: #16a34a;
+    }
+    .oferta-toggle-switch input:checked + .oferta-toggle-slider::before {
+      transform: translateX(19px);
+    }
+    .oferta-toggle-switch input:disabled + .oferta-toggle-slider {
+      opacity: 0.55;
+      cursor: wait;
     }
     .oferta-pub-group {
       display: inline-flex;
@@ -427,22 +650,22 @@
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      font-size: 0.76rem;
-      font-weight: 800;
+      font-size: 0.75rem;
+      font-weight: 900;
       padding: 4px 10px;
       border-radius: 999px;
       line-height: 1.2;
       white-space: nowrap;
     }
     .oferta-status-pill.is-unpublished {
-      background: #f1ede7;
-      color: #64748b;
-      border: 1px solid #dfd7cc;
+      background: #e2e8f0;
+      color: #334155;
+      border: 1px solid #cbd5e1;
     }
     .oferta-status-pill.is-published {
-      background: var(--ok-soft);
-      color: var(--ok);
-      border: 1px solid var(--ok-border);
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #86efac;
     }
     .btn-oferta-activar {
       background: var(--brand);
@@ -1384,6 +1607,9 @@
         <button type="button" class="btn-top" onclick="copiarLinkTiendaVecinos()">
           🔗 Copiar Link
         </button>
+        <button type="button" id="btn-top-pwa-gestor" class="btn-top" style="display:none;" onclick="instalarAccesoDirectoGestor()" title="Crear acceso directo en mi celular">
+          📲 Acceso directo
+        </button>
       </div>
     </div>
   </header>
@@ -1437,6 +1663,9 @@
       filtroOperativoPedidos: 'TODOS',
       filtroCompradores: 'TODOS',
       busquedaCompradores: '',
+      ofertasEstadoTab: '', // 'ACTIVOS' | 'DESACTIVADOS' | 'TODOS'
+      ofertasCategoriaSel: 'TODAS',
+      ofertasBusquedaTexto: '',
       nodo: null,
       modoLaboratorio: false,
       telefonoPruebas: '5492216615746',
@@ -1575,24 +1804,97 @@
       }
     }
 
-    function esModoPwaInstaladaGestor() {
+    function esModoStandaloneActivoGestor() {
       try {
         if (window.navigator.standalone === true) return true;
         if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+        if (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) return true;
+        if (typeof document !== 'undefined' && String(document.referrer || '').indexOf('android-app://') === 0) return true;
       } catch (_) {}
       return false;
     }
 
-    function actualizarVisibilidadBotonPwaGestor() {
-      const btn = document.getElementById('btn-instalar-pwa-gestor');
-      if (!btn) return;
-      btn.style.display = esModoPwaInstaladaGestor() ? 'none' : 'flex';
+    function esModoPwaInstaladaGestor() {
+      if (esModoStandaloneActivoGestor()) return true;
+      if (window.__nodoGestorDeferredPrompt) return false;
+      return Boolean(window.__nodoGestorInstaladoRuntime);
     }
+
+    function actualizarVisibilidadBotonPwaGestor() {
+      const ocultar = esModoPwaInstaladaGestor();
+      const btnBoard = document.getElementById('btn-instalar-pwa-gestor');
+      if (btnBoard) {
+        btnBoard.style.display = ocultar ? 'none' : 'flex';
+      }
+      const btnTop = document.getElementById('btn-top-pwa-gestor');
+      if (btnTop) {
+        btnTop.style.display = (ocultar || !GSTATE.nodo) ? 'none' : 'inline-flex';
+      }
+    }
+    window.actualizarVisibilidadBotonPwaGestor = actualizarVisibilidadBotonPwaGestor;
+
+    async function verificarEstadoRealAccesoDirectoGestor() {
+      try {
+        if (esModoStandaloneActivoGestor()) {
+          actualizarVisibilidadBotonPwaGestor();
+          return true;
+        }
+        if (window.__nodoGestorDeferredPrompt) {
+          window.__nodoGestorInstaladoRuntime = false;
+          if (typeof window.limpiarBanderasObsoletasPwaGestor === 'function') {
+            window.limpiarBanderasObsoletasPwaGestor();
+          }
+          actualizarVisibilidadBotonPwaGestor();
+          return false;
+        }
+        if (typeof navigator !== 'undefined' && typeof navigator.getInstalledRelatedApps === 'function') {
+          const slugAct = String(GSTATE.slug || detectarSlugInicial() || '').trim();
+          const slugEnc = encodeURIComponent(slugAct);
+          const apps = await navigator.getInstalledRelatedApps();
+          const instalada = Array.isArray(apps) && apps.some(a => {
+            if (!a) return false;
+            const u = String(a.url || '');
+            if (!u) return a.platform === 'webapp';
+            if (!slugEnc) return u.includes('/gestor.webmanifest');
+            return u.includes(`/pwa/${slugEnc}/gestor.webmanifest`) || u.includes(`/gestor/${slugEnc}`);
+          });
+          window.__nodoGestorInstaladoRuntime = instalada;
+          if (!instalada && typeof window.limpiarBanderasObsoletasPwaGestor === 'function') {
+            window.limpiarBanderasObsoletasPwaGestor();
+          }
+          actualizarVisibilidadBotonPwaGestor();
+          return instalada;
+        }
+      } catch (_) {}
+      actualizarVisibilidadBotonPwaGestor();
+      return esModoPwaInstaladaGestor();
+    }
+    window.verificarEstadoRealAccesoDirectoGestor = verificarEstadoRealAccesoDirectoGestor;
+
+    try {
+      if (window.matchMedia) {
+        const mqStandaloneGestor = window.matchMedia('(display-mode: standalone)');
+        if (typeof mqStandaloneGestor.addEventListener === 'function') {
+          mqStandaloneGestor.addEventListener('change', () => actualizarVisibilidadBotonPwaGestor());
+        } else if (typeof mqStandaloneGestor.addListener === 'function') {
+          mqStandaloneGestor.addListener(() => actualizarVisibilidadBotonPwaGestor());
+        }
+      }
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          verificarEstadoRealAccesoDirectoGestor();
+        }
+      });
+      window.addEventListener('focus', () => {
+        verificarEstadoRealAccesoDirectoGestor();
+      });
+    } catch (_) {}
 
     function cerrarModalPwaGestor() {
       const m = document.getElementById('modal-pwa-gestor');
       if (m) m.style.display = 'none';
     }
+    window.cerrarModalPwaGestor = cerrarModalPwaGestor;
 
     async function instalarAccesoDirectoGestor() {
       const promptEv = window.__nodoGestorDeferredPrompt;
@@ -1602,6 +1904,7 @@
           const choice = await promptEv.userChoice;
           if (choice && choice.outcome === 'accepted') {
             window.__nodoGestorDeferredPrompt = null;
+            window.__nodoGestorInstaladoRuntime = true;
             const marcaToast = String(GSTATE.nodo?.nombre_marca || 'tu tienda').trim();
             mostrarAvisoPantallaGestor(`✓ Acceso directo "Gestión ${marcaToast}" creado en tu pantalla de inicio.`, 'ok');
           }
@@ -1938,6 +2241,8 @@
       if (btnTienda) btnTienda.href = `/tienda/${encodeURIComponent(GSTATE.slug)}`;
 
       renderVistaGestor();
+      actualizarVisibilidadBotonPwaGestor();
+      verificarEstadoRealAccesoDirectoGestor();
     }
 
     function abrirSeccionGestor(seccion) {
@@ -2120,18 +2425,16 @@
         <div class="board-intro">
           Hola ${esc((GSTATE.nodo.gestor_nombre || '').split(' ')[0] || 'Gestor')}, elegí qué sección querés gestionar:
         </div>
-        ${mostrarBtnPwa ? `
-          <button type="button" id="btn-instalar-pwa-gestor" class="cta-pwa-gestor" onclick="instalarAccesoDirectoGestor()">
-            <div class="cta-pwa-gestor-left">
-              ${slugIconPwa ? `<img src="/api/produccion/nodos/pwa/${slugIconPwa}/icon-gestor-180.png?v=2" alt="Gestión ${esc(GSTATE.nodo.nombre_marca || '')}" class="cta-pwa-gestor-thumb" />` : '<span style="font-size:1.35rem;">📲</span>'}
-              <div>
-                <div class="cta-pwa-gestor-title">📲 Crear acceso directo en mi celular</div>
-                <div class="cta-pwa-gestor-sub">No instala nada pesado ni ocupa espacio: solo deja el ícono directo en tu pantalla.</div>
-              </div>
+        <button type="button" id="btn-instalar-pwa-gestor" class="cta-pwa-gestor" style="display:${mostrarBtnPwa ? 'flex' : 'none'};" onclick="instalarAccesoDirectoGestor()">
+          <div class="cta-pwa-gestor-left">
+            ${slugIconPwa ? `<img src="/api/produccion/nodos/pwa/${slugIconPwa}/icon-gestor-180.png?v=2" alt="Gestión ${esc(GSTATE.nodo.nombre_marca || '')}" class="cta-pwa-gestor-thumb" />` : '<span style="font-size:1.35rem;">📲</span>'}
+            <div>
+              <div class="cta-pwa-gestor-title">📲 Crear acceso directo en mi celular</div>
+              <div class="cta-pwa-gestor-sub">No instala nada pesado ni ocupa espacio: solo deja el ícono directo en tu pantalla.</div>
             </div>
-            <span class="cta-pwa-gestor-pill">Agregar</span>
-          </button>
-        ` : ''}
+          </div>
+          <span class="cta-pwa-gestor-pill">Agregar</span>
+        </button>
         <button type="button" class="cta-difusion-hero" onclick="abrirModalDifusionTienda()">
           <div class="cta-difusion-icon">📣</div>
           <div class="cta-difusion-body">
@@ -2950,9 +3253,394 @@
     }
 
     // -------------------------------------------------------------------------
-    // 1. MI OFERTA Y MÁRGENES
+    // 1. MI OFERTA Y MÁRGENES (PESTAÑAS ACTIVOS / DESACTIVADOS / TODOS + CATEGORÍAS)
     // -------------------------------------------------------------------------
+    function obtenerCategoriaEfectivaOfertaGestor(of) {
+      return String(
+        of?.categoria_vidriera_personalizada ||
+        of?.categoria_vidriera_efectiva ||
+        of?.categoria_oficial_lamda ||
+        of?.categoria_familiar ||
+        'Almacén'
+      ).trim() || 'Almacén';
+    }
+
+    function claveCategoriaOfertaGestor(catTxt) {
+      return normalizarTextoGestor(String(catTxt || '').trim()).replace(/\s+/g, ' ').trim();
+    }
+
+    function obtenerCategoriasDisponiblesOfertasGestor() {
+      const mapa = new Map();
+      for (const itemOf of (GSTATE.ofertas || [])) {
+        const label = obtenerCategoriaEfectivaOfertaGestor(itemOf);
+        const key = claveCategoriaOfertaGestor(label);
+        if (!key) continue;
+        if (!mapa.has(key)) {
+          mapa.set(key, { key, label, count: 0 });
+        }
+        mapa.get(key).count += 1;
+      }
+      return Array.from(mapa.values()).sort((a, b) => a.label.localeCompare(b.label, 'es-AR'));
+    }
+
+    function asegurarEstadoFiltrosOfertasGestor() {
+      if (!['ACTIVOS', 'DESACTIVADOS', 'TODOS'].includes(GSTATE.ofertasEstadoTab)) {
+        GSTATE.ofertasEstadoTab = 'TODOS';
+      }
+      if (GSTATE.ofertasCategoriaSel && GSTATE.ofertasCategoriaSel !== 'TODAS') {
+        const cats = obtenerCategoriasDisponiblesOfertasGestor();
+        if (!cats.some(c => c.key === GSTATE.ofertasCategoriaSel)) {
+          GSTATE.ofertasCategoriaSel = 'TODAS';
+        }
+      } else {
+        GSTATE.ofertasCategoriaSel = 'TODAS';
+      }
+    }
+
+    function obtenerOfertasFiltradasGestor() {
+      asegurarEstadoFiltrosOfertasGestor();
+      const tab = GSTATE.ofertasEstadoTab || 'TODOS';
+      const catKeySel = GSTATE.ofertasCategoriaSel || 'TODAS';
+      const terminos = normalizarTextoGestor(GSTATE.ofertasBusquedaTexto || '')
+        .split(/\s+/)
+        .filter(Boolean);
+
+      return (GSTATE.ofertas || [])
+        .filter(of => {
+          if (tab === 'ACTIVOS' && !of.publicado_tienda) return false;
+          if (tab === 'DESACTIVADOS' && Boolean(of.publicado_tienda)) return false;
+          if (catKeySel !== 'TODAS') {
+            if (claveCategoriaOfertaGestor(obtenerCategoriaEfectivaOfertaGestor(of)) !== catKeySel) {
+              return false;
+            }
+          }
+          if (terminos.length > 0) {
+            const bolsa = normalizarTextoGestor([
+              of.sku_nodo,
+              of.nombre_oficial_lamda,
+              of.nombre_publico,
+              of.nombre_vidriera_personalizado,
+              of.nombre_vidriera_efectivo,
+              of.categoria_oficial_lamda,
+              of.categoria_familiar,
+              of.categoria_vidriera_personalizada,
+              of.categoria_vidriera_efectiva,
+              of.bunker_rubro,
+              of.bunker_subrubro,
+              of.presentacion_etiqueta,
+              ...(Array.isArray(of.ingredientes_comerciales) ? of.ingredientes_comerciales : [])
+            ].filter(Boolean).join(' '));
+            for (const t of terminos) {
+              if (!bolsa.includes(t)) return false;
+            }
+          }
+          return true;
+        })
+        .slice()
+        .sort((a, b) => {
+          if (tab === 'TODOS' && Boolean(a.publicado_tienda) !== Boolean(b.publicado_tienda)) {
+            return a.publicado_tienda ? -1 : 1;
+          }
+          return 0;
+        });
+    }
+
+    function renderizarTabsEstadoOfertasHtml() {
+      const total = (GSTATE.ofertas || []).length;
+      const activos = (GSTATE.ofertas || []).filter(o => Boolean(o.publicado_tienda)).length;
+      const desactivados = total - activos;
+      const tab = GSTATE.ofertasEstadoTab || 'TODOS';
+
+      return `
+        <button type="button" id="tab-ofertas-activos" data-tab="ACTIVOS"
+          class="oferta-tab-btn${tab === 'ACTIVOS' ? ' is-active' : ''}"
+          onclick="seleccionarTabEstadoOfertasGestor('ACTIVOS')">
+          <span>🟢 Activos (${activos})</span>
+        </button>
+        <button type="button" id="tab-ofertas-desactivados" data-tab="DESACTIVADOS"
+          class="oferta-tab-btn${tab === 'DESACTIVADOS' ? ' is-active' : ''}"
+          onclick="seleccionarTabEstadoOfertasGestor('DESACTIVADOS')">
+          <span>⏸️ Desactivados (${desactivados})</span>
+        </button>
+        <button type="button" id="tab-ofertas-todos" data-tab="TODOS"
+          class="oferta-tab-btn${tab === 'TODOS' ? ' is-active' : ''}"
+          onclick="seleccionarTabEstadoOfertasGestor('TODOS')">
+          <span>📋 Todos (${total})</span>
+        </button>
+      `;
+    }
+
+    function renderizarChipsCategoriasOfertasHtml() {
+      const cats = obtenerCategoriasDisponiblesOfertasGestor();
+      const sel = GSTATE.ofertasCategoriaSel || 'TODAS';
+      const total = (GSTATE.ofertas || []).length;
+      return [
+        `<button type="button" class="oferta-cat-chip${sel === 'TODAS' ? ' is-active' : ''}" data-cat-key="TODAS" onclick="seleccionarCategoriaOfertasGestor('TODAS')">Todas las categorías (${total})</button>`,
+        ...cats.map(c => `
+          <button type="button" class="oferta-cat-chip${sel === c.key ? ' is-active' : ''}" data-cat-key="${esc(c.key)}" onclick="seleccionarCategoriaOfertasGestor(decodeURIComponent('${encodeURIComponent(c.key)}'))">
+            ${esc(c.label)} (${c.count})
+          </button>
+        `)
+      ].join('');
+    }
+
+    function renderizarTarjetaOfertaIndividualHtml(of) {
+      const skuOficial = String(of.sku_nodo || '').trim();
+      const nombreOficialLamda = String(of.nombre_oficial_lamda || of.nombre_publico || '').trim();
+      const catOficialLamda = String(of.categoria_oficial_lamda || of.categoria_familiar || 'Almacén').trim();
+      const nombreVidrieraPers = String(of.nombre_vidriera_personalizado || '').trim();
+      const catVidrieraPers = String(of.categoria_vidriera_personalizada || '').trim();
+      const nombreVidrieraEfectivo = String(of.nombre_vidriera_efectivo || nombreVidrieraPers || nombreOficialLamda).trim();
+      const aliasPrevio = String(of.alias_sugerido_previo || '').trim();
+      const estaActivo = Boolean(of.publicado_tienda);
+
+      return `
+        <div class="oferta-item ${estaActivo ? 'is-published' : 'is-unpublished'}" data-oferta-card-id="${of.id}">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+            <div style="min-width:205px; flex:1;">
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                ${skuOficial ? `<span style="font-family:monospace; font-size:0.76rem; font-weight:900; padding:2px 7px; border-radius:6px; background:var(--surface-warm); border:1px solid var(--border); color:var(--brand-dark);">[${esc(skuOficial)}]</span>` : ''}
+                <span style="font-weight:900; font-size:0.96rem; color:var(--text);">${esc(nombreOficialLamda)}</span>
+              </div>
+              <div style="font-size:0.76rem; color:var(--muted); margin-top:2px;">
+                Catálogo oficial LAMDA · ${esc(catOficialLamda)} · <strong>${esc(of.presentacion_etiqueta || `${Math.round(Number(of.kilos_unidad) * 1000)}g`)}</strong>
+              </div>
+            </div>
+            <div class="oferta-pub-group" data-oferta-estado-box="${of.id}">
+              ${estaActivo
+                ? `<span class="oferta-status-pill is-published">🟢 Activo en tienda</span>`
+                : `<span class="oferta-status-pill is-unpublished">⏸️ Desactivado · Oculto en tienda</span>`}
+              ${estaActivo ? `
+                <button type="button" class="btn-soft" style="font-size:0.74rem; padding:4px 9px; min-height:30px;"
+                  onclick="abrirModalDifusionTienda(${Number(of.id)})" title="Compartir este producto directo por WhatsApp o link">
+                  📣 Compartir
+                </button>
+              ` : ''}
+            </div>
+          </div>
+
+          <div class="oferta-pub-banner ${estaActivo ? 'is-published' : 'is-unpublished'}">
+            <label class="oferta-toggle-label">
+              <span class="oferta-toggle-switch">
+                <input type="checkbox" role="switch" aria-checked="${estaActivo ? 'true' : 'false'}"
+                  data-btn-pub-oferta="${of.id}"
+                  ${estaActivo ? 'checked' : ''}
+                  onchange="cambiarEstadoPublicacionOferta(${of.id}, this.checked, this)" />
+                <span class="oferta-toggle-slider"></span>
+              </span>
+              <span style="line-height:1.32;">
+                ${estaActivo
+                  ? '<strong style="color:#166534;">Visible para tus clientes</strong> <span style="color:var(--muted); font-weight:700;">· Apagá el interruptor si querés pausarlo temporalmente</span>'
+                  : '<strong style="color:#334155;">Oculto para clientes</strong> <span style="color:var(--muted); font-weight:700;">(no se borra de tu catálogo, podés activarlo cuando quieras)</span>'}
+              </span>
+            </label>
+            ${of.tiene_desglose_ingredientes ? `
+              <label class="switch-label" style="min-height:28px;" title="Mostrar u ocultar el botón ¿Qué contiene? en este artículo elaborado">
+                <input type="checkbox" ${of.mostrar_ingredientes !== false ? 'checked' : ''}
+                  onchange="guardarCambioOferta(${of.id}, { mostrar_ingredientes: this.checked })" />
+                <span style="font-size:0.75rem; color:${of.mostrar_ingredientes !== false ? 'var(--brand-dark)' : 'var(--muted)'};">
+                  🥣 Ingredientes (${(of.ingredientes_comerciales || []).length})
+                </span>
+              </label>
+            ` : ''}
+          </div>
+
+          ${of.tiene_desglose_ingredientes ? `
+            <div style="font-size:0.74rem; color:var(--muted); background:var(--surface-warm); border:1px solid var(--border); border-radius:8px; padding:5px 9px; margin-bottom:8px;">
+              <strong style="color:var(--text);">🥣 Contiene:</strong> ${(of.ingredientes_comerciales || []).map(esc).join(', ')}
+            </div>
+          ` : ''}
+
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:10px; margin:8px 0 10px 0; padding:9px 10px; border-radius:10px; background:#fffaf5; border:1px dashed var(--brand-border);">
+            <div>
+              <label style="display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:0.72rem; color:var(--brand-dark); font-weight:800; margin-bottom:3px;">
+                <span>🏪 Nombre en mi tienda / vidriera</span>
+                <span style="font-size:0.68rem; color:var(--muted); font-weight:700;">Vacío = nombre oficial</span>
+              </label>
+              <input type="text" class="input-sm" style="width:100%;"
+                data-oferta-nombre-vidriera="${of.id}"
+                value="${esc(nombreVidrieraPers)}"
+                placeholder="${esc(nombreOficialLamda)} (por defecto)"
+                onchange="guardarCambioOferta(${of.id}, { nombre_vidriera_personalizado: this.value })" />
+              ${(!nombreVidrieraPers && aliasPrevio && aliasPrevio.toLowerCase() !== nombreOficialLamda.toLowerCase()) ? `
+                <div style="margin-top:4px; font-size:0.72rem; color:var(--muted); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                  <span>💡 Sugerido en tu solicitud: <strong>"${esc(aliasPrevio)}"</strong></span>
+                  <button type="button" class="btn-soft" style="font-size:0.68rem; padding:2px 8px;"
+                    onclick="guardarCambioOferta(${of.id}, { nombre_vidriera_personalizado: decodeURIComponent('${encodeURIComponent(aliasPrevio)}') })">
+                    Aplicar en mi vidriera
+                  </button>
+                </div>
+              ` : `
+                <div style="margin-top:3px; font-size:0.71rem; color:var(--muted);">
+                  👁️ En tu tienda pública se muestra: <strong style="color:var(--text);">${esc(nombreVidrieraEfectivo)}</strong>
+                </div>
+              `}
+            </div>
+            <div>
+              <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:800; margin-bottom:3px;">Categoría en mi tienda (opcional)</label>
+              <input type="text" class="input-sm" style="width:100%;"
+                data-oferta-cat-vidriera="${of.id}"
+                value="${esc(catVidrieraPers)}"
+                placeholder="${esc(catOficialLamda)} (por defecto)"
+                onchange="guardarCambioOferta(${of.id}, { categoria_vidriera_personalizada: this.value })" />
+            </div>
+          </div>
+
+          ${renderizarBloqueAlbumOferta(of)}
+
+          <div class="oferta-grid">
+            <div>
+              <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">Costo Base</div>
+              <div style="font-size:0.95rem; font-weight:800; padding:7px 0;">${fmt(of.precio_base_nodo_final)}</div>
+            </div>
+            <div>
+              <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Mi Margen (%)</label>
+              <input type="number" step="0.5" class="input-sm" style="width:100%;"
+                value="${Number(of.margen_gestor_pct)}"
+                onchange="guardarCambioOferta(${of.id}, { margen_gestor_pct: Number(this.value) })" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Precio Vecino ($)</label>
+              <input type="number" step="50" class="input-sm" style="width:100%; border-color:var(--brand-border);"
+                value="${Math.round(Number(of.precio_venta_vecino))}"
+                onchange="guardarPrecioDirectoOferta(${of.id}, ${Number(of.precio_base_nodo_final)}, Number(this.value))" />
+            </div>
+            <div>
+              <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">Mi Ganancia</div>
+              <div style="font-size:0.98rem; font-weight:900; color:var(--ok); padding:7px 0;">+${fmt(of.ganancia_unitaria_gestor)}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderizarListadoTarjetasOfertasHtml() {
+      const filtradas = obtenerOfertasFiltradasGestor();
+      const total = (GSTATE.ofertas || []).length;
+      const activos = (GSTATE.ofertas || []).filter(o => Boolean(o.publicado_tienda)).length;
+      const desactivados = total - activos;
+      const tab = GSTATE.ofertasEstadoTab || 'TODOS';
+      const hayFiltroExtra = (GSTATE.ofertasCategoriaSel && GSTATE.ofertasCategoriaSel !== 'TODAS') ||
+        Boolean(String(GSTATE.ofertasBusquedaTexto || '').trim());
+
+      if (filtradas.length === 0) {
+        if (!hayFiltroExtra && tab === 'ACTIVOS' && activos === 0 && desactivados > 0) {
+          return `
+            <div style="text-align:center; padding:22px 16px; border-radius:12px; background:var(--surface-warm); border:1px dashed var(--border);">
+              <div style="font-size:0.95rem; font-weight:900; color:var(--text); margin-bottom:5px;">
+                Hoy no tenés productos activos en la tienda pública
+              </div>
+              <p style="margin:0 auto 12px auto; max-width:430px; font-size:0.82rem; color:var(--muted); line-height:1.4;">
+                Tenés <strong>${desactivados} producto${desactivados === 1 ? '' : 's'} desactivado${desactivados === 1 ? '' : 's'}</strong> en tu catálogo listos para activar cuando quieras.
+              </p>
+              <button type="button" class="btn-primary" onclick="seleccionarTabEstadoOfertasGestor('DESACTIVADOS')">
+                ⏸️ Ver Desactivados (${desactivados})
+              </button>
+            </div>
+          `;
+        }
+        if (!hayFiltroExtra && tab === 'DESACTIVADOS' && desactivados === 0 && activos > 0) {
+          return `
+            <div style="text-align:center; padding:22px 16px; border-radius:12px; background:#f0fdf4; border:1px solid #bbf7d0;">
+              <div style="font-size:0.94rem; font-weight:900; color:#166534; margin-bottom:5px;">
+                ¡Todos tus productos están activos en la tienda!
+              </div>
+              <p style="margin:0 auto 12px auto; max-width:420px; font-size:0.81rem; color:var(--muted);">
+                Cuando pauses algún artículo temporalmente aparecerá guardado acá sin perder sus fotos ni su margen.
+              </p>
+              <button type="button" class="btn-soft" onclick="seleccionarTabEstadoOfertasGestor('ACTIVOS')">
+                🟢 Ver Activos (${activos})
+              </button>
+            </div>
+          `;
+        }
+        return `
+          <div style="text-align:center; padding:22px 16px; border-radius:12px; background:#fffdfb; border:1px dashed var(--border);">
+            <div style="font-size:0.92rem; font-weight:900; color:var(--text); margin-bottom:5px;">
+              No encontramos artículos con esa combinación de filtros
+            </div>
+            <p style="margin:0 0 12px 0; font-size:0.8rem; color:var(--muted);">
+              Probá buscando con otro término o restablecé la vista completa de tu catálogo.
+            </p>
+            <button type="button" id="btn-limpiar-filtros-ofertas" class="btn-soft" style="border-color:var(--brand-border); color:var(--brand-dark); font-weight:900;"
+              onclick="limpiarFiltrosOfertasGestor()">
+              ✕ Limpiar filtros
+            </button>
+          </div>
+        `;
+      }
+
+      const resumenFiltroHtml = hayFiltroExtra ? `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:9px; font-size:0.78rem; color:var(--muted); font-weight:800;">
+          <span>Mostrando ${filtradas.length} de ${total} artículos</span>
+          <button type="button" onclick="limpiarFiltrosOfertasGestor()"
+            style="border:none; background:transparent; color:var(--brand-dark); font-family:inherit; font-size:0.77rem; font-weight:900; cursor:pointer; text-decoration:underline; padding:0;">
+            Limpiar filtros
+          </button>
+        </div>
+      ` : '';
+
+      return resumenFiltroHtml + filtradas.map(of => renderizarTarjetaOfertaIndividualHtml(of)).join('');
+    }
+
+    function refrescarControlesOfertasEnDom() {
+      const tabsEl = document.getElementById('ofertas-tabs-bar');
+      if (tabsEl) tabsEl.innerHTML = renderizarTabsEstadoOfertasHtml();
+      const catsEl = document.getElementById('ofertas-cats-bar');
+      if (catsEl) catsEl.innerHTML = renderizarChipsCategoriasOfertasHtml();
+      const listEl = document.getElementById('ofertas-lista-container');
+      if (listEl) listEl.innerHTML = renderizarListadoTarjetasOfertasHtml();
+      const clearBtn = document.getElementById('ofertas-clear-search');
+      if (clearBtn) {
+        clearBtn.style.display = String(GSTATE.ofertasBusquedaTexto || '').trim() ? 'inline-flex' : 'none';
+      }
+    }
+
+    function seleccionarTabEstadoOfertasGestor(nuevoTab) {
+      GSTATE.ofertasEstadoTab = ['ACTIVOS', 'DESACTIVADOS', 'TODOS'].includes(nuevoTab) ? nuevoTab : 'TODOS';
+      refrescarControlesOfertasEnDom();
+    }
+
+    function seleccionarCategoriaOfertasGestor(catKey) {
+      GSTATE.ofertasCategoriaSel = catKey || 'TODAS';
+      refrescarControlesOfertasEnDom();
+    }
+
+    function filtrarTextoOfertasGestor(valor) {
+      GSTATE.ofertasBusquedaTexto = String(valor || '');
+      const listEl = document.getElementById('ofertas-lista-container');
+      if (listEl) listEl.innerHTML = renderizarListadoTarjetasOfertasHtml();
+      const clearBtn = document.getElementById('ofertas-clear-search');
+      if (clearBtn) {
+        clearBtn.style.display = GSTATE.ofertasBusquedaTexto.trim() ? 'inline-flex' : 'none';
+      }
+    }
+
+    function limpiarBusquedaOfertasGestor() {
+      GSTATE.ofertasBusquedaTexto = '';
+      const inp = document.getElementById('ofertas-search-input');
+      if (inp) {
+        inp.value = '';
+        inp.focus();
+      }
+      filtrarTextoOfertasGestor('');
+    }
+
+    function limpiarFiltrosOfertasGestor() {
+      GSTATE.ofertasCategoriaSel = 'TODAS';
+      GSTATE.ofertasBusquedaTexto = '';
+      if (GSTATE.ofertasEstadoTab === 'ACTIVOS' && !(GSTATE.ofertas || []).some(o => Boolean(o.publicado_tienda))) {
+        GSTATE.ofertasEstadoTab = 'TODOS';
+      } else if (GSTATE.ofertasEstadoTab === 'DESACTIVADOS' && !(GSTATE.ofertas || []).some(o => !o.publicado_tienda)) {
+        GSTATE.ofertasEstadoTab = 'TODOS';
+      }
+      const inp = document.getElementById('ofertas-search-input');
+      if (inp) inp.value = '';
+      refrescarControlesOfertasEnDom();
+    }
+
     function renderSeccionOfertas() {
+      asegurarEstadoFiltrosOfertasGestor();
       const disponiblesCatHtml = (GSTATE.catalogoBaseDisponible || []).length > 0 ? `
         <div class="card" style="margin-top:14px;">
           <h3 style="margin:0 0 4px 0; font-size:0.96rem;">Catálogo Base Disponible (${GSTATE.catalogoBaseDisponible.length})</h3>
@@ -3001,132 +3689,36 @@
         `;
       }
 
+      const tieneTexto = Boolean(String(GSTATE.ofertasBusquedaTexto || '').trim());
       return `
         <div class="card">
-          <p style="margin:0 0 14px 0; font-size:0.84rem; color:var(--muted);">
-            Cada artículo llega con su código SKU y nomenclatura oficial LAMDA por defecto. Acá podés personalizar cómo se muestra en tu propia vidriera y definir tu margen.
+          <p style="margin:0 0 11px 0; font-size:0.83rem; color:var(--muted);">
+            Activá o pausá cada artículo cuando quieras sin perder su configuración ni sus fotos, y definí cómo se muestra en tu tienda.
           </p>
-          ${GSTATE.ofertas.map(of => {
-            const skuOficial = String(of.sku_nodo || '').trim();
-            const nombreOficialLamda = String(of.nombre_oficial_lamda || of.nombre_publico || '').trim();
-            const catOficialLamda = String(of.categoria_oficial_lamda || of.categoria_familiar || 'Almacén').trim();
-            const nombreVidrieraPers = String(of.nombre_vidriera_personalizado || '').trim();
-            const catVidrieraPers = String(of.categoria_vidriera_personalizada || '').trim();
-            const nombreVidrieraEfectivo = String(of.nombre_vidriera_efectivo || nombreVidrieraPers || nombreOficialLamda).trim();
-            const aliasPrevio = String(of.alias_sugerido_previo || '').trim();
-            return `
-              <div class="oferta-item${of.publicado_tienda ? '' : ' is-unpublished'}">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
-                  <div style="min-width:210px; flex:1;">
-                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                      ${skuOficial ? `<span style="font-family:monospace; font-size:0.76rem; font-weight:900; padding:2px 7px; border-radius:6px; background:var(--surface-warm); border:1px solid var(--border); color:var(--brand-dark);">[${esc(skuOficial)}]</span>` : ''}
-                      <span style="font-weight:900; font-size:0.96rem;">${esc(nombreOficialLamda)}</span>
-                    </div>
-                    <div style="font-size:0.76rem; color:var(--muted); margin-top:2px;">
-                      Catálogo oficial LAMDA · ${esc(catOficialLamda)} · <strong>${esc(of.presentacion_etiqueta || `${Math.round(Number(of.kilos_unidad) * 1000)}g`)}</strong>
-                    </div>
-                  </div>
-                  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-                    ${of.tiene_desglose_ingredientes ? `
-                      <label class="switch-label" title="Mostrar u ocultar el botón ¿Qué contiene? en este artículo elaborado">
-                        <input type="checkbox" ${of.mostrar_ingredientes !== false ? 'checked' : ''}
-                          onchange="guardarCambioOferta(${of.id}, { mostrar_ingredientes: this.checked })" />
-                        <span style="font-size:0.76rem; color:${of.mostrar_ingredientes !== false ? 'var(--brand-dark)' : 'var(--muted)'};">
-                          🥣 Ingredientes (${(of.ingredientes_comerciales || []).length})
-                        </span>
-                      </label>
-                    ` : ''}
-                    ${of.publicado_tienda ? `
-                      <button type="button" class="btn-soft" style="font-size:0.74rem; padding:4px 9px;"
-                        onclick="abrirModalDifusionTienda(${Number(of.id)})" title="Compartir este producto directo por WhatsApp o link">
-                        📣 Compartir
-                      </button>
-                      <div class="oferta-pub-group" data-oferta-estado-box="${of.id}">
-                        <span class="oferta-status-pill is-published">● Publicado</span>
-                        <button type="button" class="btn-oferta-despublicar" data-btn-pub-oferta="${of.id}"
-                          onclick="cambiarEstadoPublicacionOferta(${of.id}, false, this)">
-                          Despublicar
-                        </button>
-                      </div>
-                    ` : `
-                      <div class="oferta-pub-group" data-oferta-estado-box="${of.id}">
-                        <span class="oferta-status-pill is-unpublished">No publicado</span>
-                        <button type="button" class="btn-oferta-activar" data-btn-pub-oferta="${of.id}"
-                          onclick="cambiarEstadoPublicacionOferta(${of.id}, true, this)">
-                          Activar
-                        </button>
-                      </div>
-                    `}
-                  </div>
-                </div>
-                ${of.tiene_desglose_ingredientes ? `
-                  <div style="font-size:0.74rem; color:var(--muted); background:var(--surface-warm); border:1px solid var(--border); border-radius:8px; padding:5px 9px; margin-top:6px;">
-                    <strong style="color:var(--text);">🥣 Contiene:</strong> ${(of.ingredientes_comerciales || []).map(esc).join(', ')}
-                  </div>
-                ` : ''}
 
-                <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:10px; margin:8px 0 10px 0; padding:9px 10px; border-radius:10px; background:#fffaf5; border:1px dashed var(--brand-border);">
-                  <div>
-                    <label style="display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:0.72rem; color:var(--brand-dark); font-weight:800; margin-bottom:3px;">
-                      <span>🏪 Nombre en mi tienda / vidriera</span>
-                      <span style="font-size:0.68rem; color:var(--muted); font-weight:700;">Vacío = nombre oficial</span>
-                    </label>
-                    <input type="text" class="input-sm" style="width:100%;"
-                      data-oferta-nombre-vidriera="${of.id}"
-                      value="${esc(nombreVidrieraPers)}"
-                      placeholder="${esc(nombreOficialLamda)} (por defecto)"
-                      onchange="guardarCambioOferta(${of.id}, { nombre_vidriera_personalizado: this.value })" />
-                    ${(!nombreVidrieraPers && aliasPrevio && aliasPrevio.toLowerCase() !== nombreOficialLamda.toLowerCase()) ? `
-                      <div style="margin-top:4px; font-size:0.72rem; color:var(--muted); display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                        <span>💡 Sugerido en tu solicitud: <strong>"${esc(aliasPrevio)}"</strong></span>
-                        <button type="button" class="btn-soft" style="font-size:0.68rem; padding:2px 8px;"
-                          onclick="guardarCambioOferta(${of.id}, { nombre_vidriera_personalizado: decodeURIComponent('${encodeURIComponent(aliasPrevio)}') })">
-                          Aplicar en mi vidriera
-                        </button>
-                      </div>
-                    ` : `
-                      <div style="margin-top:3px; font-size:0.71rem; color:var(--muted);">
-                        👁️ En tu tienda pública se muestra: <strong style="color:var(--text);">${esc(nombreVidrieraEfectivo)}</strong>
-                      </div>
-                    `}
-                  </div>
-                  <div>
-                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:800; margin-bottom:3px;">Categoría en mi tienda (opcional)</label>
-                    <input type="text" class="input-sm" style="width:100%;"
-                      data-oferta-cat-vidriera="${of.id}"
-                      value="${esc(catVidrieraPers)}"
-                      placeholder="${esc(catOficialLamda)} (por defecto)"
-                      onchange="guardarCambioOferta(${of.id}, { categoria_vidriera_personalizada: this.value })" />
-                  </div>
-                </div>
+          <div id="ofertas-tabs-bar" class="ofertas-tabs-row" role="tablist" aria-label="Estado de artículos">
+            ${renderizarTabsEstadoOfertasHtml()}
+          </div>
 
-                ${renderizarBloqueAlbumOferta(of)}
+          <div class="ofertas-search-wrap">
+            <input type="text" id="ofertas-search-input" class="ofertas-search-input"
+              value="${esc(GSTATE.ofertasBusquedaTexto || '')}"
+              placeholder="🔍 Buscar por nombre, SKU, presentación o categoría..."
+              oninput="filtrarTextoOfertasGestor(this.value)"
+              onkeydown="if(event.key==='Escape') limpiarBusquedaOfertasGestor();" />
+            <button type="button" id="ofertas-clear-search" class="ofertas-search-clear"
+              style="display:${tieneTexto ? 'inline-flex' : 'none'};"
+              aria-label="Limpiar búsqueda" title="Limpiar búsqueda"
+              onclick="limpiarBusquedaOfertasGestor()">✕</button>
+          </div>
 
-                <div class="oferta-grid">
-                  <div>
-                    <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">Costo Base</div>
-                    <div style="font-size:0.95rem; font-weight:800; padding:7px 0;">${fmt(of.precio_base_nodo_final)}</div>
-                  </div>
-                  <div>
-                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Mi Margen (%)</label>
-                    <input type="number" step="0.5" class="input-sm" style="width:100%;"
-                      value="${Number(of.margen_gestor_pct)}"
-                      onchange="guardarCambioOferta(${of.id}, { margen_gestor_pct: Number(this.value) })" />
-                  </div>
-                  <div>
-                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Precio Vecino ($)</label>
-                    <input type="number" step="50" class="input-sm" style="width:100%; border-color:var(--brand-border);"
-                      value="${Math.round(Number(of.precio_venta_vecino))}"
-                      onchange="guardarPrecioDirectoOferta(${of.id}, ${Number(of.precio_base_nodo_final)}, Number(this.value))" />
-                  </div>
-                  <div>
-                    <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">Mi Ganancia</div>
-                    <div style="font-size:0.98rem; font-weight:900; color:var(--ok); padding:7px 0;">+${fmt(of.ganancia_unitaria_gestor)}</div>
-                  </div>
-                </div>
-              </div>
-            `;
-          }).join('')}
+          <div id="ofertas-cats-bar" class="ofertas-cats-strip" role="group" aria-label="Filtrar por categoría">
+            ${renderizarChipsCategoriasOfertasHtml()}
+          </div>
+
+          <div id="ofertas-lista-container">
+            ${renderizarListadoTarjetasOfertasHtml()}
+          </div>
         </div>
         ${disponiblesCatHtml}
       `;
@@ -3175,24 +3767,31 @@
       }
     }
 
-    async function cambiarEstadoPublicacionOferta(ofertaId, publicar, btnEl) {
-      if (btnEl && btnEl.disabled) return;
-      const textoOriginal = btnEl ? btnEl.textContent : '';
-      if (btnEl) {
-        btnEl.disabled = true;
-        btnEl.textContent = publicar ? 'Activando...' : 'Actualizando...';
+    async function cambiarEstadoPublicacionOferta(ofertaId, publicar, ctrlEl) {
+      if (ctrlEl && ctrlEl.disabled) return;
+      const esCheckbox = Boolean(ctrlEl && ctrlEl.tagName === 'INPUT' && ctrlEl.type === 'checkbox');
+      const textoOriginal = (!esCheckbox && ctrlEl) ? ctrlEl.textContent : '';
+      if (ctrlEl) {
+        ctrlEl.disabled = true;
+        if (!esCheckbox) {
+          ctrlEl.textContent = publicar ? 'Activando...' : 'Actualizando...';
+        }
       }
       const ok = await guardarCambioOferta(ofertaId, { publicado_tienda: Boolean(publicar) });
-      if (!ok && btnEl) {
-        btnEl.disabled = false;
-        btnEl.textContent = textoOriginal;
+      if (!ok && ctrlEl) {
+        ctrlEl.disabled = false;
+        if (esCheckbox) {
+          ctrlEl.checked = !publicar;
+        } else {
+          ctrlEl.textContent = textoOriginal;
+        }
         return;
       }
       if (ok) {
         mostrarAvisoPantallaGestor(
           publicar
-            ? '✓ Producto publicado y visible en tu tienda.'
-            : 'Producto despublicado de tu tienda pública.',
+            ? '🟢 Producto activado y visible para tus clientes.'
+            : '⏸️ Producto desactivado (sigue guardado en tu catálogo).',
           'ok'
         );
       }

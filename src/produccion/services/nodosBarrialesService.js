@@ -7495,6 +7495,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                     nac.sku_nodo,
                     COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
                     COALESCE(bf.nombre, ba.rubro, nac.familia_bunker_nombre, nac.categoria_familiar) AS categoria_oficial_lamda,
+                    ba.rubro AS bunker_rubro,
+                    ba.sub_rubro AS bunker_subrubro,
                     nac.nombre_publico,
                     nac.categoria_familiar,
                     nac.presentacion_etiqueta,
@@ -7695,7 +7697,10 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             const tieneDesgloseIngredientes = listaIngredientes.length >= 2;
             const mostrarEnOferta = o.mostrar_ingredientes !== false;
             const nombreOficialLamda = o.nombre_oficial_lamda || o.nombre_publico;
-            const categoriaOficialLamda = o.categoria_oficial_lamda || o.categoria_familiar;
+            const rawCatLamda = String(o.categoria_oficial_lamda || o.categoria_familiar || 'Almacén').trim();
+            const categoriaOficialLamda = (rawCatLamda === rawCatLamda.toUpperCase() && rawCatLamda.length > 2)
+                ? rawCatLamda.toLowerCase().replace(/(^|\s)\S/g, l => l.toUpperCase())
+                : rawCatLamda;
             const nombreVidrieraPers = o.nombre_vidriera_personalizado ? String(o.nombre_vidriera_personalizado).trim() : '';
             const categoriaVidrieraPers = o.categoria_vidriera_personalizada ? String(o.categoria_vidriera_personalizada).trim() : '';
             const nombreVidrieraEfectivo = nombreVidrieraPers || nombreOficialLamda;
