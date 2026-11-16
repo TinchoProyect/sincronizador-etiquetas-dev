@@ -1604,7 +1604,7 @@
         <button type="button" class="btn-top brand" onclick="abrirModalDifusionTienda()">
           📣 Difundir Tienda
         </button>
-        <button type="button" class="btn-top" onclick="copiarLinkTiendaVecinos()">
+        <button type="button" id="btn-top-copiar-link-tienda" class="btn-top" onclick="copiarLinkTiendaVecinos()">
           🔗 Copiar Link
         </button>
         <button type="button" id="btn-top-pwa-gestor" class="btn-top" style="display:none;" onclick="instalarAccesoDirectoGestor()" title="Crear acceso directo en mi celular">
@@ -1706,6 +1706,62 @@
 
     function fmt(n) {
       return '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+    }
+
+    function esPerfilEcommerceGestor(nodoRef = GSTATE.nodo) {
+      const p = String(nodoRef?.perfil_operativo || '').trim().toLowerCase();
+      return p === 'ecommerce_fulfillment';
+    }
+
+    function obtenerModulosActivosGestor(nodoRef = GSTATE.nodo) {
+      const esEc = esPerfilEcommerceGestor(nodoRef);
+      const preset = esEc
+        ? { retiro_punto: false, reparto_zonal: false, hoja_de_ruta: false, envio_paqueteria: true, venta_continua_24_7: true, despacho_desde_lamda: true, canasto_consolidado: false, cobro_efectivo_entrega: false }
+        : { retiro_punto: true, reparto_zonal: true, hoja_de_ruta: true, envio_paqueteria: false, venta_continua_24_7: false, despacho_desde_lamda: false, canasto_consolidado: true, cobro_efectivo_entrega: true };
+      const raw = (nodoRef?.modulos_activos && typeof nodoRef.modulos_activos === 'object') ? nodoRef.modulos_activos : {};
+      return { ...preset, ...raw };
+    }
+
+    function tMarca(nodoRef, clave) {
+      const n = nodoRef || GSTATE.nodo || {};
+      const dic = (n.diccionario_textos && typeof n.diccionario_textos === 'object') ? n.diccionario_textos : {};
+      if (dic[clave] !== undefined && dic[clave] !== null && String(dic[clave]).trim() !== '') {
+        return String(dic[clave]);
+      }
+      const esEc = esPerfilEcommerceGestor(n);
+      const mod = obtenerModulosActivosGestor(n);
+      const mapa = esEc ? {
+        subtitulo_cabecera: '🚚 Envíos a todo el país · Despacho directo',
+        btn_copiar_link: '🔗 Compartir link de mi tienda',
+        bloque_3_titulo: 'Envíos Nacionales y Despacho',
+        bloque_3_heading: '3. Envíos Nacionales y Despacho',
+        bloque_4_titulo: 'Ventas y Envíos',
+        bloque_4_heading: '4. Ventas y Envíos',
+        bloque_5_titulo: 'Estado de Cuenta Operativo',
+        bloque_5_heading: '5. Estado de Cuenta Operativo',
+        bloque_6_titulo: 'Liquidaciones y Ganancias',
+        bloque_6_heading: '6. Liquidaciones y Ganancias',
+        bloque_7_titulo: 'Clientes de mi Tienda',
+        bloque_7_heading: '7. Clientes de mi Tienda',
+        comprador_singular: 'cliente',
+        comprador_plural: 'clientes'
+      } : {
+        subtitulo_cabecera: '',
+        btn_copiar_link: '🔗 Copiar Link',
+        bloque_3_titulo: 'Días de Entrega, Corte y Modalidades',
+        bloque_3_heading: '3. Días de Entrega, Corte y Envío Barrial',
+        bloque_4_titulo: mod.hoja_de_ruta ? 'Pedidos de Vecinos' : 'Pedidos de Clientes',
+        bloque_4_heading: mod.hoja_de_ruta ? '4. Pedidos de Vecinos' : '4. Pedidos de Clientes',
+        bloque_5_titulo: 'Cuentas Corrientes',
+        bloque_5_heading: '5. Cuentas Corrientes',
+        bloque_6_titulo: 'Liquidación',
+        bloque_6_heading: '6. Liquidación',
+        bloque_7_titulo: 'Compradores registrados',
+        bloque_7_heading: '7. Compradores registrados',
+        comprador_singular: 'vecino',
+        comprador_plural: 'vecinos'
+      };
+      return mapa[clave] ?? clave;
     }
 
     function esc(s) {
@@ -2214,11 +2270,23 @@
 
       const subEl = document.getElementById('gestor-nodo-subtitle');
       if (subEl) {
-        const partes = [logoIncluyeTextoHdr ? `Gestión ${nombreMarcaHdr}` : 'Gestión comercial'];
-        if (GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro) {
-          partes.push(`📍 ${GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro}`);
+        if (esPerfilEcommerceGestor(GSTATE.nodo)) {
+          const partesEc = [];
+          if (logoIncluyeTextoHdr) partesEc.push(`Gestión ${nombreMarcaHdr}`);
+          partesEc.push(tMarca(GSTATE.nodo, 'subtitulo_cabecera'));
+          subEl.textContent = partesEc.join(' · ');
+        } else {
+          const partes = [logoIncluyeTextoHdr ? `Gestión ${nombreMarcaHdr}` : 'Gestión comercial'];
+          if (GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro) {
+            partes.push(`📍 ${GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro}`);
+          }
+          subEl.textContent = partes.join(' · ');
         }
-        subEl.textContent = partes.join(' · ');
+      }
+
+      const btnCopyTop = document.getElementById('btn-top-copiar-link-tienda');
+      if (btnCopyTop) {
+        btnCopyTop.textContent = tMarca(GSTATE.nodo, 'btn_copiar_link');
       }
 
       const logoBox = document.getElementById('gestor-logo-box');
@@ -2246,6 +2314,10 @@
     }
 
     function abrirSeccionGestor(seccion) {
+      const mod = obtenerModulosActivosGestor();
+      if (seccion === 'reparto' && (!mod.hoja_de_ruta || esPerfilEcommerceGestor())) {
+        seccion = 'inicio';
+      }
       if (seccion === 'propuestas' && GSTATE.vista !== 'propuestas') {
         reiniciarFormularioPropuestaGestor();
       }
@@ -2268,7 +2340,10 @@
 
     window.addEventListener('popstate', () => {
       const hash = (window.location.hash || '').replace(/^#/, '');
-      if (['reparto', 'ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(hash)) {
+      const mod = obtenerModulosActivosGestor();
+      if (hash === 'reparto' && (!mod.hoja_de_ruta || esPerfilEcommerceGestor())) {
+        GSTATE.vista = 'inicio';
+      } else if (['reparto', 'ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(hash)) {
         GSTATE.vista = hash;
       } else {
         GSTATE.vista = 'inicio';
@@ -2291,57 +2366,70 @@
     function renderVistaGestor() {
       const box = document.getElementById('gestor-main-view');
       if (!box || !GSTATE.nodo) return;
+      const mod = obtenerModulosActivosGestor();
+      const esEc = esPerfilEcommerceGestor();
 
-      if (GSTATE.vista === 'reparto') {
+      if (GSTATE.vista === 'reparto' && mod.hoja_de_ruta && !esEc) {
         box.innerHTML = envolverSeccionInterna('🚗 Modo Reparto / Hoja de Ruta', renderSeccionReparto());
       } else if (GSTATE.vista === 'ofertas') {
         box.innerHTML = envolverSeccionInterna('1. Mi Oferta y Márgenes', renderSeccionOfertas());
       } else if (GSTATE.vista === 'propuestas') {
         box.innerHTML = envolverSeccionInterna('2. Pedir Nueva Fracción', renderSeccionPropuestas());
       } else if (GSTATE.vista === 'logistica') {
-        box.innerHTML = envolverSeccionInterna('3. Días de Entrega, Corte y Envío Barrial', renderSeccionLogistica());
+        box.innerHTML = envolverSeccionInterna(tMarca(GSTATE.nodo, 'bloque_3_heading'), renderSeccionLogistica());
       } else if (GSTATE.vista === 'pedidos') {
-        box.innerHTML = envolverSeccionInterna('4. Pedidos de Vecinos', renderSeccionPedidos());
+        box.innerHTML = envolverSeccionInterna(tMarca(GSTATE.nodo, 'bloque_4_heading'), renderSeccionPedidos());
       } else if (GSTATE.vista === 'ctacte') {
-        box.innerHTML = envolverSeccionInterna('5. Cuentas Corrientes', renderSeccionCuentasCorrientes());
+        box.innerHTML = envolverSeccionInterna(tMarca(GSTATE.nodo, 'bloque_5_heading'), renderSeccionCuentasCorrientes());
       } else if (GSTATE.vista === 'liquidacion') {
-        box.innerHTML = envolverSeccionInterna('6. Liquidación', renderSeccionLiquidacion());
+        box.innerHTML = envolverSeccionInterna(tMarca(GSTATE.nodo, 'bloque_6_heading'), renderSeccionLiquidacion());
       } else if (GSTATE.vista === 'compradores') {
-        box.innerHTML = envolverSeccionInterna('7. Compradores registrados', renderSeccionCompradores());
+        box.innerHTML = envolverSeccionInterna(tMarca(GSTATE.nodo, 'bloque_7_heading'), renderSeccionCompradores());
       } else {
+        GSTATE.vista = 'inicio';
         box.innerHTML = renderTableroPrincipal();
       }
-      if (GSTATE.nocturnoAbierto) {
+      if (GSTATE.nocturnoAbierto && mod.hoja_de_ruta && !esEc) {
         renderOverlayConduccionNocturna();
       }
     }
 
     // -------------------------------------------------------------------------
-    // PANTALLA PRINCIPAL AUSTERA: TABLERO DE 6 BLOQUES
+    // PANTALLA PRINCIPAL AUSTERA: TABLERO DE BLOQUES
     // -------------------------------------------------------------------------
     function renderTableroPrincipal() {
+      const esEc = esPerfilEcommerceGestor();
+      const mod = obtenerModulosActivosGestor();
+      const cfgPaq = GSTATE.nodo.config_paqueteria || {};
       const publicadas = GSTATE.ofertas.filter(o => o.publicado_tienda).length;
       const totalOfertas = GSTATE.ofertas.length;
       const propPendientes = GSTATE.propuestas.filter(p => p.estado !== 'APROBADA').length;
       const proxTxt = GSTATE.proximaEntrega?.asignada?.label_completo || 'Configurar día y horario';
-      const puedeRetiro = GSTATE.nodo.permitir_retiro_nodo !== false;
-      const puedeReparto = Boolean(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial ?? false);
-      const puedeEncomienda = Boolean(GSTATE.nodo.permitir_encomienda);
+      const puedeRetiro = Boolean(mod.retiro_punto && GSTATE.nodo.permitir_retiro_nodo !== false);
+      const puedeReparto = Boolean(mod.reparto_zonal && (GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial ?? false));
+      const puedeEncomienda = Boolean(mod.envio_paqueteria || GSTATE.nodo.permitir_encomienda);
       const modalidadesTxt = [];
       if (puedeRetiro) modalidadesTxt.push('🏠 Punto de retiro');
       if (puedeReparto) modalidadesTxt.push(`🚗 Reparto (${fmt(GSTATE.nodo.cargo_envio_barrial)})`);
-      if (puedeEncomienda) modalidadesTxt.push('📦 Encomienda prevista');
+      if (puedeEncomienda) modalidadesTxt.push(esEc ? '📦 Correo Argentino · Andreani' : '📦 Encomienda prevista');
       const envioTxt = modalidadesTxt.length ? modalidadesTxt.join(' · ') : '⚠️ Sin modalidad activa';
+
+      const metaLogistica = esEc
+        ? `${cfgPaq.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles'} · ${envioTxt}${cfgPaq.envio_gratis_activo && Number(cfgPaq.envio_gratis_desde_monto) > 0 ? ` · Bonificado desde ${fmt(cfgPaq.envio_gratis_desde_monto)}` : ''}`
+        : `${proxTxt} · ${envioTxt}`;
 
       const pedidosActivos = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO');
       const totalPedidos = pedidosActivos.length;
       const pendCobro = pedidosActivos.filter(p => !p.pago_confirmado).length;
-      const listosRecibirLote = pedidosActivos.filter(p => Number(p.hito_tracking_actual || 1) === 3 && p.lote_canasto_id && !p.lote_debito_registrado).length;
+      const listosRecibirLote = !esEc && mod.canasto_consolidado
+        ? pedidosActivos.filter(p => Number(p.hito_tracking_actual || 1) === 3 && p.lote_canasto_id && !p.lote_debito_registrado).length
+        : 0;
       const entregadosCant = pedidosActivos.filter(p => Number(p.hito_tracking_actual || 1) >= 6).length;
 
       const saldoNodo = Number(GSTATE.nodo.saldo_cuenta_corriente || 0);
       const canastos = (GSTATE.liquidacionTablero?.lotes || []).filter(c => Number(c.nodo_id) === Number(GSTATE.nodo?.id));
       const lotesAbiertos = canastos.filter(c => !c.liquidacion_cerrada).length;
+      const gananciaAcumulada = pedidosActivos.reduce((acc, p) => acc + Number(p.ganancia_total_gestor || 0), 0);
 
       const bloques = [
         {
@@ -2365,57 +2453,60 @@
         {
           num: '3',
           id: 'logistica',
-          titulo: 'Días de Entrega, Corte y Modalidades',
-          meta: `${proxTxt} · ${envioTxt}`
+          titulo: tMarca(GSTATE.nodo, 'bloque_3_titulo'),
+          meta: metaLogistica
         },
         {
           num: '4',
           id: 'pedidos',
-          titulo: 'Pedidos de Vecinos',
+          titulo: tMarca(GSTATE.nodo, 'bloque_4_titulo'),
           meta: totalPedidos === 0
-            ? 'Aún no hay pedidos registrados'
+            ? (esEc ? 'Aún no hay ventas registradas' : 'Aún no hay pedidos registrados')
             : (listosRecibirLote > 0
                 ? `📥 ${listosRecibirLote} pedido${listosRecibirLote === 1 ? '' : 's'} listo${listosRecibirLote === 1 ? '' : 's'} para recibir lote · ${pendCobro} pend. cobro`
-                : `${totalPedidos} pedido${totalPedidos === 1 ? '' : 's'} (${entregadosCant} entregado${entregadosCant === 1 ? '' : 's'})${pendCobro > 0 ? ` · ${pendCobro} pend. cobro` : ' · todos cobrados'}`)
+                : `${totalPedidos} ${esEc ? (totalPedidos === 1 ? 'venta' : 'ventas') : (totalPedidos === 1 ? 'pedido' : 'pedidos')} (${entregadosCant} entregado${entregadosCant === 1 ? '' : 's'})${pendCobro > 0 ? ` · ${pendCobro} pend. verificación` : ' · pagos verificados'}`)
         },
         {
           num: '5',
           id: 'ctacte',
-          titulo: 'Cuentas Corrientes',
+          titulo: tMarca(GSTATE.nodo, 'bloque_5_titulo'),
           meta: `Saldo operativo: ${saldoNodo < 0 ? '-' + fmt(Math.abs(saldoNodo)) : fmt(saldoNodo)}`
         },
         {
           num: '6',
           id: 'liquidacion',
-          titulo: 'Liquidación',
-          meta: canastos.length === 0
-            ? 'Sin lotes cerrados para liquidar'
-            : (lotesAbiertos > 0 ? `${lotesAbiertos} lote${lotesAbiertos === 1 ? '' : 's'} en curso para conciliar` : `${canastos.length} lote${canastos.length === 1 ? '' : 's'} liquidados`)
+          titulo: tMarca(GSTATE.nodo, 'bloque_6_titulo'),
+          meta: esEc
+            ? (totalPedidos === 0 ? 'Sin liquidaciones cerradas aún' : `Ganancia proyectada en órdenes activas: +${fmt(gananciaAcumulada)}`)
+            : (canastos.length === 0
+                ? 'Sin lotes cerrados para liquidar'
+                : (lotesAbiertos > 0 ? `${lotesAbiertos} lote${lotesAbiertos === 1 ? '' : 's'} en curso para conciliar` : `${canastos.length} lote${canastos.length === 1 ? '' : 's'} liquidados`))
         },
         {
           num: '7',
           id: 'compradores',
-          titulo: 'Compradores registrados',
+          titulo: tMarca(GSTATE.nodo, 'bloque_7_titulo'),
           meta: (() => {
             const tot = Number(GSTATE.compradoresResumen?.total_compradores || GSTATE.compradores?.length || 0);
             const act = Number(GSTATE.compradoresResumen?.con_pedido_activo || 0);
             const rec = Number(GSTATE.compradoresResumen?.recurrentes || 0);
             if (tot === 0) return 'Se registran automáticamente con cada compra en tu tienda';
             const extras = [];
-            if (act > 0) extras.push(`${act} con pedido activo`);
+            if (act > 0) extras.push(`${act} con orden activa`);
             if (rec > 0) extras.push(`${rec} recurrente${rec === 1 ? '' : 's'}`);
-            return `${tot} comprador${tot === 1 ? '' : 'es'}${extras.length ? ` · ${extras.join(' · ')}` : ''}`;
+            return `${tot} ${esEc ? (tot === 1 ? 'cliente' : 'clientes') : (tot === 1 ? 'comprador' : 'compradores')}${extras.length ? ` · ${extras.join(' · ')}` : ''}`;
           })()
         }
       ];
 
-      const enviosListosReparto = pedidosActivos.filter(p => esPedidoEnHojaRutaActiva(p));
-      const enviosEnHito3 = pedidosActivos.filter(p =>
+      const mostrarHojaDeRuta = Boolean(mod.hoja_de_ruta && !esEc);
+      const enviosListosReparto = mostrarHojaDeRuta ? pedidosActivos.filter(p => esPedidoEnHojaRutaActiva(p)) : [];
+      const enviosEnHito3 = mostrarHojaDeRuta ? pedidosActivos.filter(p =>
         String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' &&
         !p.ausente_pasa_retirar &&
         Number(p.hito_tracking_actual || 1) === 3 &&
         p.lote_canasto_id
-      );
+      ) : [];
       const enviosEnCamino = enviosListosReparto.filter(p => Number(p.hito_tracking_actual || 1) === 5).length;
 
       const slugIconPwa = encodeURIComponent(String(GSTATE.slug || GSTATE.nodo?.slug || '').trim());
@@ -2423,7 +2514,7 @@
 
       return `
         <div class="board-intro">
-          Hola ${esc((GSTATE.nodo.gestor_nombre || '').split(' ')[0] || 'Gestor')}, elegí qué sección querés gestionar:
+          Hola ${esc((GSTATE.nodo.gestor_nombre || '').split(' ')[0] || 'Hola')}, elegí qué sección querés gestionar:
         </div>
         <button type="button" id="btn-instalar-pwa-gestor" class="cta-pwa-gestor" style="display:${mostrarBtnPwa ? 'flex' : 'none'};" onclick="instalarAccesoDirectoGestor()">
           <div class="cta-pwa-gestor-left">
@@ -2438,12 +2529,12 @@
         <button type="button" class="cta-difusion-hero" onclick="abrirModalDifusionTienda()">
           <div class="cta-difusion-icon">📣</div>
           <div class="cta-difusion-body">
-            <div class="cta-difusion-title">Difundir mi Tienda y Productos por WhatsApp</div>
-            <div class="cta-difusion-sub">Compartí tu enlace directo o armá mensajes de difusión en un toque</div>
+            <div class="cta-difusion-title">${esEc ? 'Compartir Link de mi Tienda Online y Productos' : 'Difundir mi Tienda y Productos por WhatsApp'}</div>
+            <div class="cta-difusion-sub">${esEc ? 'Copiá tu enlace para Instagram, TikTok o WhatsApp en un toque' : 'Compartí tu enlace directo o armá mensajes de difusión en un toque'}</div>
           </div>
           <div class="cta-difusion-arrow">›</div>
         </button>
-        ${(puedeReparto || enviosListosReparto.length > 0) ? `
+        ${(mostrarHojaDeRuta && (puedeReparto || enviosListosReparto.length > 0)) ? `
           <button type="button" class="cta-reparto-hero" onclick="abrirSeccionGestor('reparto')">
             <div class="cta-difusion-icon" style="background:rgba(16,185,129,0.22); color:#34d399;">🚗</div>
             <div class="cta-difusion-body">
@@ -2548,6 +2639,35 @@
       const corte = GSTATE.compartirKit?.proxima_entrega?.asignada?.label_corte
         || GSTATE.proximaEntrega?.asignada?.label_corte
         || '';
+
+      if (esPerfilEcommerceGestor(nodoKit)) {
+        const slaTxt = nodoKit.config_paqueteria?.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles';
+        const gratisTxt = (nodoKit.config_paqueteria?.envio_gratis_activo && Number(nodoKit.config_paqueteria?.envio_gratis_desde_monto) > 0)
+          ? `🎁 Envío bonificado desde ${fmt(nodoKit.config_paqueteria.envio_gratis_desde_monto)}`
+          : '';
+        if (GSTATE.difusionModo === 'oferta') {
+          const ofertas = obtenerOfertasPublicadasDifusion();
+          const of = ofertas.find(o => Number(o.oferta_id) === Number(GSTATE.difusionOfertaId)) || ofertas[0];
+          if (of) {
+            const pres = String(of.presentacion_etiqueta || '').trim();
+            const descPres = pres && !String(of.nombre_publico || '').toLowerCase().includes(pres.toLowerCase()) ? ` (${pres})` : '';
+            return [
+              `✨ *${encabezadoMarca}*`,
+              `¡Hola! Mirá esta opción disponible en nuestra tienda online: *${of.nombre_publico}${descPres}* a *${fmt(of.precio_venta_vecino)}* 🛒`,
+              url,
+              `🚚 Envíos a todo el país (${slaTxt})`,
+              gratisTxt
+            ].filter(Boolean).join('\n');
+          }
+        }
+        return [
+          `✨ *${encabezadoMarca}*`,
+          `¡Hola! Te comparto nuestra tienda online con envíos a todo el país:`,
+          url,
+          `🚚 ${slaTxt}`,
+          gratisTxt
+        ].filter(Boolean).join('\n');
+      }
 
       if (GSTATE.difusionModo === 'oferta') {
         const ofertas = obtenerOfertasPublicadasDifusion();
@@ -3123,9 +3243,12 @@
         }
       }
 
-      const subPill = bajadaMarca && logoImg
-        ? (barrio ? `${nombreMarca} · ${bajadaMarca} · 📍 ${barrio}` : `${nombreMarca} · ${bajadaMarca}`)
-        : (barrio ? `📍 ${barrio} · Tienda Barrial Online` : '🛒 Tienda Barrial Online');
+      const esEcAfiche = esPerfilEcommerceGestor(nodoInfo);
+      const subPill = esEcAfiche
+        ? (bajadaMarca && logoImg ? `${nombreMarca} · ${bajadaMarca}` : '🚚 Tienda Oficial · Envíos a Todo el País')
+        : (bajadaMarca && logoImg
+            ? (barrio ? `${nombreMarca} · ${bajadaMarca} · 📍 ${barrio}` : `${nombreMarca} · ${bajadaMarca}`)
+            : (barrio ? `📍 ${barrio} · Tienda Barrial Online` : '🛒 Tienda Barrial Online'));
       ctx.font = `800 24px ${fontStack}`;
       const pillW = Math.min(W - 140, Math.round(ctx.measureText(subPill).width) + 56);
       const pillX = Math.round((W - pillW) / 2);
@@ -3231,16 +3354,20 @@
     async function enviarWhatsAppVecinoPedidoPrueba(pedidoId) {
       const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
       if (!p || !GSTATE.nodo) return;
+      const esEcWa = esPerfilEcommerceGestor(GSTATE.nodo);
       const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${formatearItemVecinoGestor(it)} (${fmt(it.subtotal_vecino)})`).join('\n');
       const linkSeg = obtenerUrlSeguimientoPedidoGestor(p);
+      const lineaEnvioWa = esEcWa
+        ? `🚚 Envío postal: ${Number(p.cargo_envio_barrial) > 0 ? fmt(p.cargo_envio_barrial) : 'Bonificado'} (${p.direccion_entrega || ''})`
+        : (Number(p.cargo_envio_barrial) > 0 ? `🛵 Envío barrial: ${fmt(p.cargo_envio_barrial)}` : `🏠 Retiro: ${GSTATE.nodo.direccion_retiro || ''}`);
       const mensaje = [
         `🌿 *${GSTATE.nodo.nombre_marca}* — Pedido #${p.codigo_pedido}`,
-        `¡Hola ${p.vecino_nombre}! Te compartimos el detalle y estado de tu pedido:`,
+        `¡Hola ${p.vecino_nombre}! Te compartimos el detalle y estado de tu compra:`,
         itemsTxt,
-        Number(p.cargo_envio_barrial) > 0 ? `🛵 Envío barrial: ${fmt(p.cargo_envio_barrial)}` : `🏠 Retiro: ${GSTATE.nodo.direccion_retiro || ''}`,
+        lineaEnvioWa,
         `💰 *Total:* ${fmt(p.total_vecino)} (${p.medio_pago === 'EFECTIVO' ? 'Efectivo en entrega' : `Transferencia al alias ${GSTATE.nodo.alias_bancario_display || ''}`})`,
-        `📅 *Entrega:* ${p.fecha_entrega_label}`,
-        linkSeg ? `📍 *Seguí tu pedido en vivo acá:* ${linkSeg}` : ''
+        `📅 *Despacho / Entrega:* ${p.fecha_entrega_label}`,
+        linkSeg ? `📍 *Seguí tu pedido acá:* ${linkSeg}` : ''
       ].filter(Boolean).join('\n');
 
       await abrirModalDespachoWhatsAppGestor({
@@ -3248,7 +3375,7 @@
         telefono_original: p.vecino_telefono,
         mensaje,
         titulo: `Detalle Pedido #${p.codigo_pedido}`,
-        subtitulo: `Vecino/a: ${p.vecino_nombre}`
+        subtitulo: `${esEcWa ? 'Cliente' : 'Vecino/a'}: ${p.vecino_nombre}`
       });
     }
 
@@ -3500,7 +3627,7 @@
                 onchange="guardarCambioOferta(${of.id}, { margen_gestor_pct: Number(this.value) })" />
             </div>
             <div>
-              <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Precio Vecino ($)</label>
+              <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">${esPerfilEcommerceGestor() ? 'Precio Venta ($)' : 'Precio Vecino ($)'}</label>
               <input type="number" step="50" class="input-sm" style="width:100%; border-color:var(--brand-border);"
                 value="${Math.round(Number(of.precio_venta_vecino))}"
                 onchange="guardarPrecioDirectoOferta(${of.id}, ${Number(of.precio_base_nodo_final)}, Number(this.value))" />
@@ -4962,6 +5089,92 @@
     // 3. DÍAS DE ENTREGA, CORTE Y ENVÍO BARRIAL
     // -------------------------------------------------------------------------
     function renderSeccionLogistica() {
+      if (esPerfilEcommerceGestor()) {
+        const cfgPaq = GSTATE.nodo.config_paqueteria || {};
+        const ops = Array.isArray(cfgPaq.operadores_habilitados) && cfgPaq.operadores_habilitados.length
+          ? cfgPaq.operadores_habilitados
+          : ['CORREO_ARGENTINO', 'ANDREANI'];
+        const zonas = Array.isArray(cfgPaq.tarifario_zonas) ? cfgPaq.tarifario_zonas : [];
+        const puedeEditarPaq = cfgPaq.permitir_editar_gestor !== false;
+
+        return `
+          <div class="card">
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+              <span style="padding:4px 10px; border-radius:999px; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; font-size:0.78rem; font-weight:900;">
+                🚚 Cobertura Nacional Activa · Venta continua 24/7
+              </span>
+              <span style="padding:4px 10px; border-radius:999px; background:var(--surface-warm); color:var(--text); border:1px solid var(--border); font-size:0.78rem; font-weight:800;">
+                📦 Armado y despacho directo al correo
+              </span>
+            </div>
+            <p style="margin:0 0 16px 0; font-size:0.86rem; color:var(--muted); line-height:1.45;">
+              Tus compras ingresan las 24 hs desde cualquier localidad del país. Cada orden verificada se empaqueta con la identidad de <strong>${esc(GSTATE.nodo.nombre_marca || 'tu marca')}</strong> y se despacha directamente por correo con número de seguimiento.
+            </p>
+
+            <div style="margin-bottom:16px;">
+              <div style="font-size:0.88rem; font-weight:900; color:var(--text); margin-bottom:8px;">Operadores postales y modalidades activas</div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                ${ops.map(op => `
+                  <span style="padding:7px 12px; border-radius:10px; background:#fffdfb; border:1px solid var(--border); font-size:0.84rem; font-weight:800;">
+                    ${op === 'ANDREANI' ? '🚚 Andreani' : '📮 Correo Argentino'}
+                  </span>
+                `).join('')}
+                ${cfgPaq.permitir_domicilio !== false ? `<span style="padding:7px 12px; border-radius:10px; background:#f8fafc; border:1px solid var(--border); font-size:0.82rem; font-weight:700;">📦 Entrega a Domicilio</span>` : ''}
+                ${cfgPaq.permitir_sucursal_correo !== false ? `<span style="padding:7px 12px; border-radius:10px; background:#f8fafc; border:1px solid var(--border); font-size:0.82rem; font-weight:700;">🏢 Retiro en Sucursal de Correo</span>` : ''}
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:12px; margin-bottom:16px;">
+              <div>
+                <label style="display:block; font-size:0.84rem; font-weight:800; margin-bottom:5px;">Plazo informado en tienda</label>
+                <input type="text" id="cfg-paq-sla" class="input-sm" style="width:100%;" value="${esc(cfgPaq.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles')}" ${puedeEditarPaq ? '' : 'disabled'} />
+              </div>
+              <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:10px 12px;">
+                <label style="display:flex; align-items:center; gap:8px; font-size:0.84rem; font-weight:800; cursor:pointer; margin-bottom:6px;">
+                  <input type="checkbox" id="cfg-paq-gratis-activo" ${cfgPaq.envio_gratis_activo ? 'checked' : ''} ${puedeEditarPaq ? '' : 'disabled'} />
+                  <span>🎁 Ofrecer envío bonificado superando monto</span>
+                </label>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span style="font-size:0.8rem; font-weight:700; color:var(--muted);">Desde ($):</span>
+                  <input type="number" step="1000" id="cfg-paq-gratis-monto" class="input-sm" style="flex:1;" value="${Number(cfgPaq.envio_gratis_desde_monto ?? 45000)}" ${puedeEditarPaq ? '' : 'disabled'} />
+                </div>
+              </div>
+            </div>
+
+            ${zonas.length > 0 ? `
+              <div style="margin-bottom:16px;">
+                <div style="font-size:0.88rem; font-weight:900; color:var(--text); margin-bottom:8px;">Cuadro tarifario nacional por Código Postal</div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  ${zonas.map(z => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 12px; border-radius:11px; background:#fffdfb; border:1px solid var(--border);">
+                      <div>
+                        <div style="font-weight:900; font-size:0.86rem;">${esc(z.nombre || z.codigo)}</div>
+                        <div style="font-size:0.76rem; color:var(--muted);">Plazo estimado: ${esc(z.plazo_dias || '3 a 6 días hábiles')}</div>
+                      </div>
+                      <div style="display:flex; gap:8px; flex-wrap:wrap; font-size:0.8rem; font-weight:800;">
+                        <span style="padding:4px 9px; border-radius:8px; background:var(--surface-warm);">📦 Domicilio: ${fmt(z.domicilio)}</span>
+                        <span style="padding:4px 9px; border-radius:8px; background:#eff6ff; color:#1e40af;">🏢 Sucursal: ${fmt(z.sucursal)}</span>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+
+            <div class="cfg-switch-card" style="margin-bottom:16px;">
+              <label class="switch-label">
+                <input type="checkbox" id="cfg-mostrar-ingredientes" ${GSTATE.nodo.mostrar_ingredientes_tienda !== false ? 'checked' : ''} />
+                <span>🥗 Mostrar botón "¿Qué contiene?" (ingredientes) en mi tienda</span>
+              </label>
+            </div>
+
+            <button type="button" class="btn-primary" style="width:100%; max-width:340px;" onclick="guardarConfigLogisticaGestor()">
+              Guardar Preferencias de Envíos
+            </button>
+          </div>
+        `;
+      }
+
       const ventanas = Array.isArray(GSTATE.nodo.config_ventanas_corte) && GSTATE.nodo.config_ventanas_corte.length > 0
         ? GSTATE.nodo.config_ventanas_corte
         : [{ dia_entrega: 'Miércoles', cierre_dia: 'Martes', cierre_hora: '14:00', ventana_retiro: '17:00 a 20:00 hs' }];
@@ -5096,6 +5309,40 @@
     }
 
     async function guardarConfigLogisticaGestor() {
+      if (esPerfilEcommerceGestor()) {
+        const cfgPrev = GSTATE.nodo.config_paqueteria || {};
+        const payloadEc = {
+          permitir_retiro_nodo: false,
+          permitir_reparto_propio: false,
+          permitir_envio_barrial: false,
+          permitir_encomienda: true,
+          mostrar_ingredientes_tienda: Boolean(document.getElementById('cfg-mostrar-ingredientes')?.checked ?? true),
+          config_paqueteria: {
+            ...cfgPrev,
+            sla_despacho_label: document.getElementById('cfg-paq-sla')?.value?.trim() || 'Despacho en 24 a 48 hs hábiles',
+            envio_gratis_activo: Boolean(document.getElementById('cfg-paq-gratis-activo')?.checked),
+            envio_gratis_desde_monto: Math.max(0, Number(document.getElementById('cfg-paq-gratis-monto')?.value || 0))
+          }
+        };
+        try {
+          const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/config-logistica`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payloadEc)
+          });
+          const data = await leerRespuestaJsonSegura(resp);
+          if (!resp.ok || !data.ok) {
+            mostrarAvisoPantallaGestor('No se pudo guardar: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+            return;
+          }
+          mostrarAvisoPantallaGestor('✅ Configuración de envíos nacionales actualizada.', 'ok');
+          await cargarPanelGestor();
+        } catch (_) {
+          mostrarAvisoPantallaGestor('Error de comunicación al guardar las preferencias de envío.', 'error');
+        }
+        return;
+      }
+
       const permitirRetiro = Boolean(document.getElementById('cfg-permitir-retiro')?.checked);
       const permitirReparto = Boolean(document.getElementById('cfg-permitir-reparto')?.checked);
       const permitirEncomienda = Boolean(document.getElementById('cfg-permitir-encomienda')?.checked);
@@ -5150,9 +5397,35 @@
       if (esAnulado) {
         return { texto: '🚫 Anulado', bg: '#fee2e2', fg: '#991b1b', bd: '#fecaca', pasoTxt: 'Anulado' };
       }
-      const esEnvio = String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL';
-      const totalPasos = esEnvio ? 6 : 5;
+      const modUpper = String(p.modalidad_entrega || '').toUpperCase();
+      const esPostal = esPerfilEcommerceGestor() || ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(modUpper);
       const hito = Number(p.hito_tracking_actual || 1);
+
+      if (esPostal) {
+        const opLbl = p.postal_operador === 'ANDREANI' ? 'Andreani' : 'Correo Argentino';
+        const guia = String(p.postal_numero_tracking || '').trim();
+        if (hito <= 1) {
+          return p.pago_confirmado
+            ? { texto: '💳 Pago confirmado · Cola de armado', bg: '#ecfdf5', fg: '#047857', bd: '#a7f3d0' }
+            : { texto: '⏳ Pendiente de verificación', bg: '#fef3c7', fg: '#92400e', bd: '#fde68a' };
+        }
+        if (hito === 2) {
+          return { texto: '💳 Pago confirmado · En preparación', bg: '#fef3c7', fg: '#92400e', bd: '#fde68a' };
+        }
+        if (hito === 3) {
+          return { texto: '📦 Empaquetado · Listo para correo', bg: '#e0f2fe', fg: '#0369a1', bd: '#bae6fd' };
+        }
+        if (hito === 4) {
+          return { texto: guia ? `🚚 Despachado · Guía #${guia}` : `🚚 Despachado por ${opLbl}`, bg: '#ede9fe', fg: '#5b21b6', bd: '#c4b5fd' };
+        }
+        if (hito === 5) {
+          return { texto: `🛣️ En tránsito (${opLbl})`, bg: '#ede9fe', fg: '#5b21b6', bd: '#c4b5fd' };
+        }
+        return { texto: '✅ Entregado', bg: '#dcfce7', fg: '#14532d', bd: '#86efac' };
+      }
+
+      const esEnvio = modUpper === 'ENVIO_BARRIAL';
+      const totalPasos = esEnvio ? 6 : 5;
       const marca = GSTATE.nodo?.nombre_marca || 'el punto de retiro';
 
       if (Boolean(p.ausente_pasa_retirar) && hito < 6) {
@@ -5180,24 +5453,28 @@
     }
 
     function renderSeccionPedidos() {
+      const esEc = esPerfilEcommerceGestor();
+      const mod = obtenerModulosActivosGestor();
       const todos = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO');
       const anulados = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() === 'ANULADO');
 
-      // Detectar lotes controlados en Verificación (Hito 3) pendientes de recepción de 1 toque en el Nodo
+      // Detectar lotes controlados en Verificación (Hito 3) pendientes de recepción de 1 toque (solo perfil vecinal con canasto)
       const mapaLotes = new Map();
-      for (const p of todos) {
-        const cid = Number(p.lote_canasto_id || 0);
-        if (!cid) continue;
-        if (!mapaLotes.has(cid)) {
-          mapaLotes.set(cid, {
-            canasto_id: cid,
-            codigo_canasto: p.lote_codigo_canasto || `Lote #${cid}`,
-            debito_registrado: Boolean(p.lote_debito_registrado),
-            estado_canasto: p.lote_estado_canasto || '',
-            pedidos: []
-          });
+      if (!esEc && mod.canasto_consolidado) {
+        for (const p of todos) {
+          const cid = Number(p.lote_canasto_id || 0);
+          if (!cid) continue;
+          if (!mapaLotes.has(cid)) {
+            mapaLotes.set(cid, {
+              canasto_id: cid,
+              codigo_canasto: p.lote_codigo_canasto || `Lote #${cid}`,
+              debito_registrado: Boolean(p.lote_debito_registrado),
+              estado_canasto: p.lote_estado_canasto || '',
+              pedidos: []
+            });
+          }
+          mapaLotes.get(cid).pedidos.push(p);
         }
-        mapaLotes.get(cid).pedidos.push(p);
       }
 
       const lotesListosParaRecibir = [];
@@ -5216,6 +5493,7 @@
       const cantPrep = todos.filter(p => Number(p.hito_tracking_actual || 1) <= 3).length;
       const cantEnNodo = todos.filter(p => Number(p.hito_tracking_actual || 1) === 4).length;
       const cantReparto = todos.filter(p => Number(p.hito_tracking_actual || 1) === 5).length;
+      const cantDespachados = todos.filter(p => [4, 5].includes(Number(p.hito_tracking_actual || 1))).length;
       const cantEntregados = todos.filter(p => Number(p.hito_tracking_actual || 1) >= 6).length;
 
       const pagados = todos.filter(p => Boolean(p.pago_confirmado));
@@ -5232,6 +5510,7 @@
         if (fOp === 'TODOS' || fOp === 'ANULADOS') return true;
         const h = Number(p.hito_tracking_actual || 1);
         if (fOp === 'PREP') return h <= 3;
+        if (fOp === 'DESPACHADOS') return h === 4 || h === 5;
         if (fOp === 'EN_NODO') return h === 4;
         if (fOp === 'REPARTO') return h === 5;
         if (fOp === 'ENTREGADOS') return h >= 6;
@@ -5282,16 +5561,23 @@
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('PREP')"
               style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'PREP' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
-              🥣 Prep./Control (${cantPrep})
+              ${esEc ? `📦 En preparación (${cantPrep})` : `🥣 Prep./Control (${cantPrep})`}
             </button>
-            <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('EN_NODO')"
-              style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'EN_NODO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
-              🏡 En punto de retiro (${cantEnNodo})
-            </button>
-            <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('REPARTO')"
-              style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'REPARTO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
-              🛵 En camino (${cantReparto})
-            </button>
+            ${esEc ? `
+              <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('DESPACHADOS')"
+                style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'DESPACHADOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+                🚚 Despachados (${cantDespachados})
+              </button>
+            ` : `
+              <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('EN_NODO')"
+                style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'EN_NODO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+                🏡 En punto de retiro (${cantEnNodo})
+              </button>
+              <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('REPARTO')"
+                style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'REPARTO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+                🛵 En camino (${cantReparto})
+              </button>
+            `}
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('ENTREGADOS')"
               style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'ENTREGADOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
               ✅ Entregados (${cantEntregados})
@@ -5302,11 +5588,11 @@
           <div style="display:flex; gap:6px; flex-wrap:wrap; padding-bottom:10px; margin-bottom:12px; border-bottom:1px solid var(--border);">
             <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('TODOS')"
               style="min-height:36px; font-size:0.82rem; padding:5px 10px; ${GSTATE.filtroPagoPedidos === 'TODOS' ? 'background:#25130b; color:#fff; border-color:#25130b;' : ''}">
-              Cobros: Todos
+              Pagos: Todos
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('PENDIENTES')"
               style="min-height:36px; font-size:0.82rem; padding:5px 10px; ${GSTATE.filtroPagoPedidos === 'PENDIENTES' ? 'background:#25130b; color:#fff; border-color:#25130b;' : ''}">
-              💵 Pendientes de cobro (${pendientes.length})
+              ⏳ ${esEc ? 'Pendientes de verificación' : 'Pendientes de cobro'} (${pendientes.length})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoPagoPedidosGestor('PAGADOS')"
               style="min-height:36px; font-size:0.82rem; padding:5px 10px; ${GSTATE.filtroPagoPedidos === 'PAGADOS' ? 'background:#25130b; color:#fff; border-color:#25130b;' : ''}">
@@ -5316,20 +5602,29 @@
 
           ${listaFiltrada.length === 0 ? `
             <div style="text-align:center; padding:18px; color:var(--muted); font-size:0.9rem; font-weight:700; background:#fffdfb; border-radius:10px; border:1px dashed var(--border);">
-              No hay pedidos registrados en este filtro.
+              ${esEc ? 'No hay ventas registradas en este filtro.' : 'No hay pedidos registrados en este filtro.'}
             </div>
           ` : ''}
 
           <div style="display:flex; flex-direction:column; gap:10px;">
             ${listaFiltrada.map(p => {
               const pagado = Boolean(p.pago_confirmado);
-              const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
-              const esEnvio = String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' || Boolean(p.incluido_reparto_manual);
+              const modUpper = String(p.modalidad_entrega || '').toUpperCase();
+              const esPostal = esEc || ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(modUpper);
+              const esEfvo = !esPostal && (String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR');
+              const esEnvio = !esPostal && (modUpper === 'ENVIO_BARRIAL' || Boolean(p.incluido_reparto_manual));
               const hito = Number(p.hito_tracking_actual || 1);
               const metaHito = _obtenerMetaHitoGestor(p);
               const urlSeg = obtenerUrlSeguimientoPedidoGestor(p);
-              const puedeSalirReparto = esEnvio && hito === 4;
-              const puedeMarcarEntregado = hito === 4 || hito === 5;
+              const puedeSalirReparto = !esEc && mod.hoja_de_ruta && esEnvio && hito === 4;
+              const puedeMarcarEntregado = !esEc && !esPostal && (hito === 4 || hito === 5);
+
+              const opLbl = p.postal_operador === 'ANDREANI' ? 'Andreani' : 'Correo Argentino';
+              const guiaPostal = String(p.postal_numero_tracking || '').trim();
+              const urlCarrier = String(p.postal_url_tracking_carrier || '').trim();
+              const lineaEntregaHtml = esPostal
+                ? `🚚 <strong>${esc(opLbl)}</strong> · ${String(p.postal_modalidad || modUpper).includes('SUCURSAL') ? '🏢 Sucursal' : '📦 Domicilio'}: ${esc([p.postal_localidad_nombre, p.postal_provincia_nombre].filter(Boolean).join(', ') || p.direccion_entrega || '')}${p.postal_cp_destino ? ` (CP ${esc(p.postal_cp_destino)})` : ''}${guiaPostal ? ` · <strong>Guía #${esc(guiaPostal)}</strong>` : ''}`
+                : `${esc(p.fecha_entrega_label)} · ${esEnvio ? `🛵 ${Boolean(p.incluido_reparto_manual) && modUpper === 'RETIRO_NODO' ? 'Reparto manual' : 'Envío'}: ${esc(p.direccion_entrega)}${p.entrecalles_referencia ? ` (${esc(p.entrecalles_referencia)})` : ''}` : '🏠 Punto de retiro'}`;
 
               return `
                 <div style="border:1px solid ${hito >= 6 ? 'rgba(22,163,74,0.45)' : (pagado ? 'rgba(47,111,78,0.4)' : 'var(--border)')}; border-radius:12px; padding:12px; background:#fffdfb;">
@@ -5341,14 +5636,14 @@
                           ${esc(metaHito.texto)}
                         </span>
                       </div>
-                      <div style="font-size:0.86rem; font-weight:700; color:var(--text); margin-top:4px; line-height:1.35;">
-                        ${esc(p.fecha_entrega_label)} · ${esEnvio ? `🛵 ${Boolean(p.incluido_reparto_manual) && String(p.modalidad_entrega || '').toUpperCase() === 'RETIRO_NODO' ? 'Reparto manual' : 'Envío'}: ${esc(p.direccion_entrega)}${p.entrecalles_referencia ? ` (${esc(p.entrecalles_referencia)})` : ''}` : '🏠 Punto de retiro'}
+                      <div style="font-size:0.84rem; font-weight:700; color:var(--text); margin-top:4px; line-height:1.35;">
+                        ${lineaEntregaHtml}
                       </div>
                     </div>
                     <div style="text-align:right;">
                       <div style="font-weight:900; font-size:1.05rem; color:var(--text);">${fmt(p.total_vecino)}</div>
                       <span style="font-size:0.8rem; font-weight:800; color:${pagado ? 'var(--ok)' : 'var(--warn)'};">
-                        ${pagado ? (esEfvo ? '✅ Pagado en efectivo' : '✅ Transferencia acreditada') : (esEfvo ? '💵 Cobra efectivo en entrega' : '🏦 Pendiente transferencia')}
+                        ${pagado ? (esEfvo ? '✅ Pagado en efectivo' : '✅ Transferencia acreditada') : (esEfvo ? '💵 Cobra efectivo en entrega' : '🏦 Pendiente verificación')}
                       </span>
                     </div>
                   </div>
@@ -5357,7 +5652,6 @@
                     ${(p.items || []).map(it => `<span style="display:inline-block; background:var(--surface-warm); padding:3px 8px; border-radius:7px; margin:2px 4px 2px 0; font-weight:700;"><strong>${it.cantidad}x</strong> ${esc(formatearItemGestor(it))}</span>`).join('')}
                   </div>
 
-                  <!-- Botonera contextual de 1 toque (Reparto / Entrega / Cobro / Seguimiento) -->
                   ${(puedeSalirReparto || puedeMarcarEntregado) ? `
                     <div style="display:flex; gap:8px; flex-wrap:wrap; padding:8px; margin-bottom:8px; border-radius:10px; background:var(--surface-warm); border:1px solid var(--border);">
                       ${puedeSalirReparto ? `
@@ -5378,16 +5672,26 @@
                   <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-top:1px solid var(--border); padding-top:8px;">
                     <span style="font-size:0.84rem; font-weight:900; color:var(--ok);">Tu ganancia: +${fmt(p.ganancia_total_gestor)}</span>
                     <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                      ${!pagado ? `
+                      ${(!pagado && mod.cobro_efectivo_entrega && !esEc) ? `
                         <button type="button" class="btn-primary" style="min-height:38px; padding:6px 12px; font-size:0.82rem;" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})">
                           💵 Cobrar Efectivo
                         </button>
-                      ` : `
+                      ` : ''}
+                      ${pagado ? `
                         <button type="button" class="btn-soft" style="min-height:38px; font-size:0.82rem; padding:6px 10px;" onclick="abrirModalReciboVecinoGestor(${p.id})">
                           🧾 Recibo Digital
                         </button>
-                      `}
+                      ` : ''}
+                      ${urlCarrier ? `
+                        <a href="${esc(urlCarrier)}" target="_blank" rel="noopener" class="btn-soft" style="min-height:38px; font-size:0.82rem; padding:6px 10px; text-decoration:none;">
+                          📮 Tracking Correo
+                        </a>
+                      ` : ''}
                       ${urlSeg ? `
+                        <button type="button" class="btn-soft" style="min-height:38px; font-size:0.82rem; padding:6px 10px;"
+                          onclick="navigator.clipboard?.writeText('${esc(window.location.origin + urlSeg)}').then(() => mostrarAvisoPantallaGestor('✅ Link de seguimiento copiado.', 'ok'))">
+                          📋 Copiar Seguimiento
+                        </button>
                         <a href="${esc(urlSeg)}" target="_blank" rel="noopener" class="btn-soft" style="min-height:38px; font-size:0.82rem; padding:6px 10px; text-decoration:none;">
                           📍 Seguimiento
                         </a>
@@ -5596,7 +5900,7 @@
         </div>
         <div style="padding:18px; color:var(--text);">
           <div style="font-size:0.85rem; margin-bottom:12px;">
-            <div><strong>Vecino/a:</strong> ${esc(p.vecino_nombre)} · <strong>Pedido #${esc(p.codigo_pedido)}</strong></div>
+            <div><strong>${esPerfilEcommerceGestor() ? 'Cliente:' : 'Vecino/a:'}</strong> ${esc(p.vecino_nombre)} · <strong>Pedido #${esc(p.codigo_pedido)}</strong></div>
             <div style="color:var(--muted); font-size:0.78rem; margin-top:2px;">Recibo ${esc(nroRecibo)} · ${esEfvo ? 'Efectivo' : 'Transferencia'}</div>
           </div>
           <div style="border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:14px; background:#fffdfb; font-size:0.84rem;">
@@ -5608,7 +5912,7 @@
             `).join('')}
             ${Number(p.cargo_envio_barrial) > 0 ? `
               <div style="display:flex; justify-content:space-between; color:var(--muted); border-top:1px dashed var(--border); padding-top:6px;">
-                <span>Envío barrial</span>
+                <span>${esPerfilEcommerceGestor() ? 'Envío postal' : 'Envío barrial'}</span>
                 <strong>${fmt(p.cargo_envio_barrial)}</strong>
               </div>
             ` : ''}
@@ -5641,7 +5945,7 @@
         `Comprobante: *${nroRecibo}* · Pedido *#${p.codigo_pedido}*`,
         `Hola *${p.vecino_nombre}*, registramos tu pago:`,
         itemsTxt,
-        Number(p.cargo_envio_barrial) > 0 ? `• Envío barrial: ${fmt(p.cargo_envio_barrial)}` : '',
+        Number(p.cargo_envio_barrial) > 0 ? `• ${esPerfilEcommerceGestor() ? 'Envío postal' : 'Envío barrial'}: ${fmt(p.cargo_envio_barrial)}` : '',
         `✅ *TOTAL ABONADO: ${fmt(p.total_vecino)}* (${esEfvo ? 'Efectivo' : 'Transferencia'})`,
         linkSeg ? `📍 Seguimiento de tu pedido: ${linkSeg}` : '',
         `¡Muchas gracias!`
@@ -5652,7 +5956,7 @@
         telefono_original: p.vecino_telefono,
         mensaje,
         titulo: `Recibo ${nroRecibo}`,
-        subtitulo: `Vecino/a: ${p.vecino_nombre}`
+        subtitulo: `${esPerfilEcommerceGestor() ? 'Cliente' : 'Vecino/a'}: ${p.vecino_nombre}`
       });
     }
 
@@ -5686,7 +5990,7 @@
             ${esAcreedor ? `${fmt(Math.abs(saldoActual))} a tu favor` : (esDeudor ? `${fmt(saldoActual)} a rendir a LAMDA` : `${fmt(0)} (Al día)`)}
           </div>
           <p style="margin:6px 0 0 0; font-size:0.82rem; color:var(--muted);">
-            Alias de recaudación para transferencias de vecinos: <strong>${esc(GSTATE.nodo?.alias_bancario_display || 'pago.canasto')}</strong>
+            Alias de recaudación para transferencias de ${esc(tMarca(GSTATE.nodo, 'comprador_plural'))}: <strong>${esc(GSTATE.nodo?.alias_bancario_display || 'pago.canasto')}</strong>
           </p>
 
           ${codMadre ? `
@@ -5743,7 +6047,43 @@
     // 6. LIQUIDACIÓN
     // -------------------------------------------------------------------------
     function renderSeccionLiquidacion() {
+      const esEc = esPerfilEcommerceGestor();
       const canastos = (GSTATE.liquidacionTablero?.lotes || []).filter(c => Number(c.nodo_id) === Number(GSTATE.nodo?.id));
+
+      if (esEc) {
+        const peds = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO');
+        const pedsPagos = peds.filter(p => Boolean(p.pago_confirmado));
+        const totalFacturado = peds.reduce((a, p) => a + Number(p.total_vecino || 0), 0);
+        const totalBase = peds.reduce((a, p) => a + Number(p.total_base_lamda || 0), 0);
+        const totalGanancia = peds.reduce((a, p) => a + Number(p.ganancia_total_gestor || 0), 0);
+        const gananciaAcreditada = pedsPagos.reduce((a, p) => a + Number(p.ganancia_total_gestor || 0), 0);
+
+        return `
+          <div class="card">
+            <div style="font-size:0.78rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:8px;">
+              Resumen continuo de Ventas y Ganancias · ${esc(GSTATE.nodo?.nombre_marca || 'Tienda Online')}
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(165px, 1fr)); gap:10px; margin-bottom:12px;">
+              <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:12px;">
+                <div style="font-size:0.72rem; color:var(--muted); font-weight:800; text-transform:uppercase;">Ventas Totales (${peds.length})</div>
+                <div style="font-size:1.18rem; font-weight:900; margin-top:3px;">${fmt(totalFacturado)}</div>
+              </div>
+              <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:12px;">
+                <div style="font-size:0.72rem; color:var(--muted); font-weight:800; text-transform:uppercase;">Costo Base Productos</div>
+                <div style="font-size:1.18rem; font-weight:900; margin-top:3px;">-${fmt(totalBase)}</div>
+              </div>
+              <div style="background:var(--ok-soft); border:1px solid rgba(47,111,78,0.25); border-radius:12px; padding:12px;">
+                <div style="font-size:0.72rem; color:var(--ok); font-weight:800; text-transform:uppercase;">Tu Ganancia Proyectada</div>
+                <div style="font-size:1.18rem; font-weight:900; color:var(--ok); margin-top:3px;">+${fmt(totalGanancia)}</div>
+                <div style="font-size:0.74rem; color:var(--muted); margin-top:2px;">Pagos acreditados: +${fmt(gananciaAcreditada)} (${pedsPagos.length}/${peds.length})</div>
+              </div>
+            </div>
+            <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:12px; font-size:0.83rem; line-height:1.45; color:var(--text);">
+              Las órdenes de tu tienda online se procesan de forma continua y tus ganancias netas se acreditan en cortes periódicos sobre las compras despachadas con pago verificado.
+            </div>
+          </div>
+        `;
+      }
 
       if (canastos.length === 0) {
         return `
@@ -5822,6 +6162,9 @@
             c.telefono_whatsapp,
             c.direccion_calle,
             c.entrecalles_referencia,
+            c.localidad_habitual,
+            c.provincia_habitual,
+            c.cp_habitual,
             c.notas_entrega,
             c.ultimo_pedido?.codigo_pedido,
             c.ultimo_pedido?.fecha_entrega_label
@@ -5962,7 +6305,9 @@
                 </div>
                 <div style="font-size:0.8rem; color:var(--muted); margin-top:4px; line-height:1.45;">
                   ${telDisplay ? `<span>📱 ${esc(telDisplay)}</span>` : '<span>📱 Sin teléfono</span>'}
-                  ${c.direccion_calle ? ` · <span>📍 ${esc(c.direccion_calle)}${c.entrecalles_referencia ? ` (${esc(c.entrecalles_referencia)})` : ''}</span>` : ''}
+                  ${(c.localidad_habitual || c.provincia_habitual || c.cp_habitual)
+                    ? ` · <span>📍 ${esc([c.localidad_habitual, c.provincia_habitual].filter(Boolean).join(', '))}${c.cp_habitual ? ` (CP ${esc(c.cp_habitual)})` : ''}</span>`
+                    : (c.direccion_calle ? ` · <span>📍 ${esc(c.direccion_calle)}${c.entrecalles_referencia ? ` (${esc(c.entrecalles_referencia)})` : ''}</span>` : '')}
                   ${fechaAlta ? ` · <span>Alta: ${esc(fechaAlta)}</span>` : ''}
                 </div>
               </div>

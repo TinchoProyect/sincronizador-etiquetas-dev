@@ -4396,8 +4396,8 @@
             const permitirRetiro = Boolean(document.getElementById('abm-permitir-retiro')?.checked ?? true);
             const permitirReparto = Boolean(document.getElementById('abm-permitir-reparto')?.checked ?? true);
             const permitirEncomienda = Boolean(document.getElementById('abm-permitir-encomienda')?.checked ?? false);
-            if (!permitirRetiro && !permitirReparto) {
-                throw new Error('Debés habilitar al menos una modalidad activa de entrega (Retiro por el Nodo o Reparto Propio).');
+            if (!permitirRetiro && !permitirReparto && !permitirEncomienda) {
+                throw new Error('Debés habilitar al menos una modalidad activa de entrega (Punto de Retiro, Reparto Propio o Paquetería Nacional).');
             }
 
             const colorPrimarioVal = document.getElementById('abm-color-primario')?.value || '#a2553b';

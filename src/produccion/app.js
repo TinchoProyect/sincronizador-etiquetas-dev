@@ -74,7 +74,7 @@ app.use((req, res, next) => {
     const esApiNodoPermitida =
         esBeaconTelemetriaTienda ||
         esRecursoPwaNodo ||
-        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|ofertas-gestor\/\d+(\/fotos(\/preview|\/[a-z0-9_-]+)?|\/fotos-orden)?|gestor\/\d+\/(config-logistica|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
+        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|ofertas-gestor\/\d+(\/fotos(\/preview|\/[a-z0-9_-]+)?|\/fotos-orden)?|gestor\/\d+\/(config-logistica|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|cotizar-cp|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
 
     if (esVistaPermitida || esApiNodoPermitida) {
         return next();
@@ -1692,11 +1692,13 @@ httpServer.listen(PORT, () => {
             console.warn('⚠️ [STARTUP-LDN3-LDN5] Advertencia al ejecutar saneamiento estructural:', errMig35.message);
         });
 
-    // Esquema Nodos Barriales (incluyendo fotos_vidriera / fotos_catalogo_base) y aprovisionamiento idempotente de MANSO
+    // Esquema Nodos Barriales (incluyendo fotos_vidriera / fotos_catalogo_base) y aprovisionamiento + perfiles idempotentes de Paraíso y MANSO
     const { provisionarNodoManso } = require('./scripts/provisionarNodoManso');
+    const { migrarPerfilesOperativosNodos } = require('./scripts/migrarPerfilesOperativosNodos');
     provisionarNodoManso({ log: true })
+        .then(() => migrarPerfilesOperativosNodos({ log: true }))
         .catch(errManso => {
-            console.warn('⚠️ [STARTUP-NODOS] Advertencia verificando aprovisionamiento idempotente de MANSO:', errManso.message);
+            console.warn('⚠️ [STARTUP-NODOS] Advertencia verificando aprovisionamiento/perfiles idempotentes de Nodos:', errManso.message);
         });
     
     // Warmup asíncrono de Tabla Maestra en memoria para eliminación total de latencia inicial en Conciliación IA

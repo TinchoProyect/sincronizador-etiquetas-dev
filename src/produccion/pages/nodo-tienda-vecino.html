@@ -1581,7 +1581,8 @@
       color: var(--text);
       margin-bottom: 6px;
     }
-    .chk-field-lg input {
+    .chk-field-lg input,
+    .chk-field-lg select {
       width: 100%;
       min-height: 52px;
       padding: 13px 14px;
@@ -1593,10 +1594,50 @@
       font-weight: 700;
       color: var(--text);
     }
-    .chk-field-lg input:focus {
+    .chk-field-lg input:focus,
+    .chk-field-lg select:focus {
       outline: none;
       border-color: var(--brand);
       box-shadow: 0 0 0 3px var(--brand-light);
+    }
+    .chk-field-lg input:disabled,
+    .chk-field-lg select:disabled {
+      opacity: 0.55;
+      background: var(--surface-warm);
+    }
+    .free-shipping-strip {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      margin: -4px 0 12px 0;
+      padding: 9px 13px;
+      border-radius: 12px;
+      background: var(--surface-warm);
+      border: 1px solid var(--brand-border);
+      font-size: 0.79rem;
+      font-weight: 800;
+      color: var(--text);
+    }
+    .free-shipping-strip.unlocked {
+      background: var(--ok-soft);
+      border-color: var(--ok-border);
+      color: var(--ok);
+    }
+    .free-shipping-bar-track {
+      width: 100%;
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(62, 37, 25, 0.10);
+      overflow: hidden;
+    }
+    .free-shipping-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--brand);
+      transition: width 0.25s ease;
+    }
+    .free-shipping-strip.unlocked .free-shipping-bar-fill {
+      background: var(--ok);
     }
     .chk-wiz-footer {
       flex-shrink: 0;
@@ -1952,12 +1993,13 @@
 
     <!-- Bloque Catálogo de la Tienda Pública -->
     <div id="catalogo-tienda-wrapper">
-      <!-- Franja compacta, cálida y legible de próxima entrega y barrio -->
-      <button type="button" class="delivery-strip-compact" id="delivery-banner" onclick="abrirDrawerNodoTienda()" title="Ver detalle completo de entrega y punto de retiro">
+      <!-- Franja compacta, cálida y legible de próxima entrega o despacho nacional -->
+      <button type="button" class="delivery-strip-compact" id="delivery-banner" onclick="abrirDrawerNodoTienda()" title="Ver información de envíos y contacto">
         <span class="delivery-strip-icon" id="delivery-badge-status">📅</span>
-        <span class="delivery-strip-main" id="delivery-date-text">Calculando próxima entrega...</span>
+        <span class="delivery-strip-main" id="delivery-date-text">Cargando información de entrega...</span>
         <span class="delivery-strip-chevron" aria-hidden="true">›</span>
       </button>
+      <div class="free-shipping-strip" id="free-shipping-banner"></div>
 
       <!-- Banner recordatorio de pedido activo del vecino en este dispositivo -->
       <div class="active-order-banner" id="mis-pedidos-recientes-banner"></div>
@@ -2086,10 +2128,235 @@
         telefono: '',
         direccion: '',
         entrecalles: '',
+        cpPostal: '',
+        operadorPostal: 'CORREO_ARGENTINO',
+        provinciaCodigo: '',
+        provinciaNombre: '',
+        localidadPostal: '',
+        callePostal: '',
+        alturaPostal: '',
+        sinNumeroPostal: false,
+        pisoDeptoPostal: '',
+        referenciasPostal: '',
+        sucursalPostal: '',
+        dniPostal: '',
+        emailPostal: '',
+        cotizacionPostal: null,
         teniaDatosGuardados: false,
         enviandoPedido: false
       }
     };
+
+    const PROVINCIAS_AR_TIENDA = [
+      { codigo: 'AR-C', nombre: 'Ciudad Autónoma de Buenos Aires' },
+      { codigo: 'AR-B', nombre: 'Buenos Aires' },
+      { codigo: 'AR-K', nombre: 'Catamarca' },
+      { codigo: 'AR-H', nombre: 'Chaco' },
+      { codigo: 'AR-U', nombre: 'Chubut' },
+      { codigo: 'AR-X', nombre: 'Córdoba' },
+      { codigo: 'AR-W', nombre: 'Corrientes' },
+      { codigo: 'AR-E', nombre: 'Entre Ríos' },
+      { codigo: 'AR-P', nombre: 'Formosa' },
+      { codigo: 'AR-Y', nombre: 'Jujuy' },
+      { codigo: 'AR-L', nombre: 'La Pampa' },
+      { codigo: 'AR-F', nombre: 'La Rioja' },
+      { codigo: 'AR-M', nombre: 'Mendoza' },
+      { codigo: 'AR-N', nombre: 'Misiones' },
+      { codigo: 'AR-Q', nombre: 'Neuquén' },
+      { codigo: 'AR-R', nombre: 'Río Negro' },
+      { codigo: 'AR-A', nombre: 'Salta' },
+      { codigo: 'AR-J', nombre: 'San Juan' },
+      { codigo: 'AR-D', nombre: 'San Luis' },
+      { codigo: 'AR-Z', nombre: 'Santa Cruz' },
+      { codigo: 'AR-S', nombre: 'Santa Fe' },
+      { codigo: 'AR-G', nombre: 'Santiago del Estero' },
+      { codigo: 'AR-V', nombre: 'Tierra del Fuego' },
+      { codigo: 'AR-T', nombre: 'Tucumán' }
+    ];
+
+    function esPerfilEcommerceTienda(nodoObj = STATE.nodo) {
+      const n = nodoObj || {};
+      const perf = String(n.perfil_operativo || '').trim().toLowerCase();
+      if (perf === 'ecommerce_fulfillment' || perf === 'creador_online' || perf === 'fulfillment_lamda') return true;
+      const mod = (n.modulos_activos && typeof n.modulos_activos === 'object') ? n.modulos_activos : {};
+      if (mod.envio_paqueteria && mod.retiro_punto === false && mod.reparto_zonal === false) return true;
+      return false;
+    }
+
+    function obtenerModulosActivosTienda(nodoObj = STATE.nodo) {
+      const n = nodoObj || {};
+      const esEc = esPerfilEcommerceTienda(n);
+      const base = esEc
+        ? {
+            retiro_punto: false,
+            reparto_zonal: false,
+            hoja_de_ruta: false,
+            envio_paqueteria: true,
+            venta_continua_24_7: true,
+            despacho_desde_lamda: true,
+            canasto_consolidado: false,
+            cobro_efectivo_entrega: false
+          }
+        : {
+            retiro_punto: true,
+            reparto_zonal: true,
+            hoja_de_ruta: true,
+            envio_paqueteria: false,
+            venta_continua_24_7: false,
+            despacho_desde_lamda: false,
+            canasto_consolidado: true,
+            cobro_efectivo_entrega: true
+          };
+      const raw = (n.modulos_activos && typeof n.modulos_activos === 'object') ? n.modulos_activos : {};
+      return { ...base, ...raw };
+    }
+
+    function obtenerConfigPaqueteriaTienda(nodoObj = STATE.nodo) {
+      const raw = (nodoObj?.config_paqueteria && typeof nodoObj.config_paqueteria === 'object') ? nodoObj.config_paqueteria : {};
+      const ops = Array.isArray(raw.operadores_habilitados) && raw.operadores_habilitados.length > 0
+        ? raw.operadores_habilitados.map(o => String(o || '').trim().toUpperCase()).filter(Boolean)
+        : ['CORREO_ARGENTINO', 'ANDREANI'];
+      const opDef = ops.includes(String(raw.operador_default || '').toUpperCase())
+        ? String(raw.operador_default).toUpperCase()
+        : ops[0];
+      const zonas = Array.isArray(raw.tarifario_zonas) && raw.tarifario_zonas.length > 0
+        ? raw.tarifario_zonas
+        : [
+            { codigo: 'AMBA_LA_PLATA', nombre: 'CABA, GBA y Gran La Plata', cp_prefijos: ['10','11','12','13','14','16','17','18','19'], domicilio: 6500, sucursal: 4800, plazo_dias: '2 a 4 días hábiles' },
+            { codigo: 'PBA_CENTRO_LITORAL', nombre: 'PBA Interior, Centro y Litoral', cp_prefijos: ['20','21','22','23','24','25','26','27','28','29','30','31','32','50','51','52','58','59','60','64','65','66','67','70','71','72','73','74','75','76','80','81'], domicilio: 8200, sucursal: 6100, plazo_dias: '3 a 6 días hábiles' },
+            { codigo: 'RESTO_PAIS', nombre: 'Cuyo, NOA, NEA y Patagonia', cp_prefijos: ['*'], domicilio: 10500, sucursal: 7900, plazo_dias: '4 a 8 días hábiles' }
+          ];
+      const montoGratis = Math.max(0, Number(raw.envio_gratis_desde_monto ?? 45000) || 0);
+      return {
+        operadores_habilitados: ops,
+        operador_default: opDef,
+        permitir_domicilio: raw.permitir_domicilio !== false,
+        permitir_sucursal_correo: raw.permitir_sucursal_correo !== false,
+        sla_despacho_label: String(raw.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles').trim(),
+        envio_gratis_activo: raw.envio_gratis_activo !== false && montoGratis > 0,
+        envio_gratis_desde_monto: montoGratis,
+        tarifario_zonas: zonas
+      };
+    }
+
+    function formatearOperadorPostalTienda(opRaw = '') {
+      const op = String(opRaw || '').trim().toUpperCase();
+      if (op === 'ANDREANI') return 'Andreani';
+      if (op === 'OCA') return 'OCA';
+      return 'Correo Argentino';
+    }
+
+    function tMarca(nodoObj, clave) {
+      const n = nodoObj || STATE.nodo || {};
+      const dic = (n.diccionario_textos && typeof n.diccionario_textos === 'object') ? n.diccionario_textos : {};
+      if (dic[clave]) return String(dic[clave]);
+      const esEc = esPerfilEcommerceTienda(n);
+      const mapa = esEc
+        ? {
+            comprador_singular: 'Cliente',
+            carrito_contenedor: 'carrito',
+            productos_pedido: 'Productos de tu compra',
+            resumen_compra: 'Compra online',
+            banner_entrega_default: 'Envíos a todo el país · Despacho en 24 a 48 hs hábiles'
+          }
+        : {
+            comprador_singular: 'Vecino/a',
+            carrito_contenedor: 'canasto',
+            productos_pedido: 'Productos en tu bolsa',
+            resumen_compra: 'Compra vecinal',
+            banner_entrega_default: 'Próxima entrega programada'
+          };
+      return mapa[clave] || clave;
+    }
+
+    function inferirProvinciaPorCpTienda(cpRaw = '') {
+      const digits = String(cpRaw || '').replace(/\D+/g, '');
+      if (digits.length !== 4) return null;
+      const n = Number(digits);
+      if (n < 1000 || n > 9499) return null;
+      const localHints = {
+        1629: { localidad: 'Pilar', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        1667: { localidad: 'Tortuguitas', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        1896: { localidad: 'City Bell', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        1900: { localidad: 'La Plata', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        7130: { localidad: 'Chascomús', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        7600: { localidad: 'Mar del Plata', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        8000: { localidad: 'Bahía Blanca', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        2000: { localidad: 'Rosario', provincia_codigo: 'AR-S', provincia_nombre: 'Santa Fe' },
+        3000: { localidad: 'Santa Fe', provincia_codigo: 'AR-S', provincia_nombre: 'Santa Fe' },
+        5000: { localidad: 'Córdoba', provincia_codigo: 'AR-X', provincia_nombre: 'Córdoba' },
+        5500: { localidad: 'Mendoza', provincia_codigo: 'AR-M', provincia_nombre: 'Mendoza' },
+        4000: { localidad: 'San Miguel de Tucumán', provincia_codigo: 'AR-T', provincia_nombre: 'Tucumán' },
+        4400: { localidad: 'Salta', provincia_codigo: 'AR-A', provincia_nombre: 'Salta' },
+        8300: { localidad: 'Neuquén', provincia_codigo: 'AR-Q', provincia_nombre: 'Neuquén' },
+        8400: { localidad: 'San Carlos de Bariloche', provincia_codigo: 'AR-R', provincia_nombre: 'Río Negro' },
+        9410: { localidad: 'Ushuaia', provincia_codigo: 'AR-V', provincia_nombre: 'Tierra del Fuego' }
+      };
+      if (localHints[n]) return { ...localHints[n] };
+      if (n >= 1000 && n <= 1499) return { localidad: 'CABA', provincia_codigo: 'AR-C', provincia_nombre: 'Ciudad Autónoma de Buenos Aires' };
+      if ((n >= 1600 && n <= 1999) || (n >= 2700 && n <= 2999) || (n >= 6000 && n <= 6299) || (n >= 6400 && n <= 8199)) {
+        return { localidad: '', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' };
+      }
+      if ((n >= 2000 && n <= 2699) || (n >= 3000 && n <= 3099)) return { localidad: '', provincia_codigo: 'AR-S', provincia_nombre: 'Santa Fe' };
+      if (n >= 3100 && n <= 3299) return { localidad: '', provincia_codigo: 'AR-E', provincia_nombre: 'Entre Ríos' };
+      if (n >= 3300 && n <= 3399) return { localidad: '', provincia_codigo: 'AR-N', provincia_nombre: 'Misiones' };
+      if (n >= 3400 && n <= 3499) return { localidad: '', provincia_codigo: 'AR-W', provincia_nombre: 'Corrientes' };
+      if (n >= 3500 && n <= 3599) return { localidad: '', provincia_codigo: 'AR-H', provincia_nombre: 'Chaco' };
+      if (n >= 3600 && n <= 3699) return { localidad: '', provincia_codigo: 'AR-P', provincia_nombre: 'Formosa' };
+      if (n >= 4000 && n <= 4199) return { localidad: '', provincia_codigo: 'AR-T', provincia_nombre: 'Tucumán' };
+      if (n >= 4200 && n <= 4399) return { localidad: '', provincia_codigo: 'AR-G', provincia_nombre: 'Santiago del Estero' };
+      if (n >= 4400 && n <= 4599) return { localidad: '', provincia_codigo: 'AR-A', provincia_nombre: 'Salta' };
+      if (n >= 4600 && n <= 4699) return { localidad: '', provincia_codigo: 'AR-Y', provincia_nombre: 'Jujuy' };
+      if (n >= 4700 && n <= 4799) return { localidad: '', provincia_codigo: 'AR-K', provincia_nombre: 'Catamarca' };
+      if ((n >= 5000 && n <= 5299) || (n >= 5800 && n <= 5999)) return { localidad: '', provincia_codigo: 'AR-X', provincia_nombre: 'Córdoba' };
+      if (n >= 5300 && n <= 5399) return { localidad: '', provincia_codigo: 'AR-F', provincia_nombre: 'La Rioja' };
+      if (n >= 5400 && n <= 5499) return { localidad: '', provincia_codigo: 'AR-J', provincia_nombre: 'San Juan' };
+      if (n >= 5500 && n <= 5699) return { localidad: '', provincia_codigo: 'AR-M', provincia_nombre: 'Mendoza' };
+      if (n >= 5700 && n <= 5799) return { localidad: '', provincia_codigo: 'AR-D', provincia_nombre: 'San Luis' };
+      if (n >= 6300 && n <= 6399) return { localidad: '', provincia_codigo: 'AR-L', provincia_nombre: 'La Pampa' };
+      if (n >= 8300 && n <= 8399) return { localidad: '', provincia_codigo: 'AR-Q', provincia_nombre: 'Neuquén' };
+      if (n >= 8400 && n <= 8599) return { localidad: '', provincia_codigo: 'AR-R', provincia_nombre: 'Río Negro' };
+      if (n >= 9000 && n <= 9299) return { localidad: '', provincia_codigo: 'AR-U', provincia_nombre: 'Chubut' };
+      if (n >= 9300 && n <= 9399) return { localidad: '', provincia_codigo: 'AR-Z', provincia_nombre: 'Santa Cruz' };
+      if (n >= 9400 && n <= 9499) return { localidad: '', provincia_codigo: 'AR-V', provincia_nombre: 'Tierra del Fuego' };
+      return { localidad: '', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' };
+    }
+
+    function cotizarEnvioPostalLocalTienda(cpRaw = '', subtotalProductos = 0) {
+      const cfg = obtenerConfigPaqueteriaTienda(STATE.nodo);
+      const digits = String(cpRaw || '').replace(/\D+/g, '');
+      if (digits.length !== 4 || Number(digits) < 1000 || Number(digits) > 9499) return null;
+      const pref2 = digits.slice(0, 2);
+      const zonaMatch = cfg.tarifario_zonas.find(z => {
+        const prefs = Array.isArray(z.cp_prefijos) ? z.cp_prefijos : [];
+        return prefs.some(p => p !== '*' && (digits.startsWith(String(p)) || pref2 === String(p)));
+      }) || cfg.tarifario_zonas.find(z => (z.cp_prefijos || []).includes('*')) || cfg.tarifario_zonas[0];
+
+      const sub = Math.max(0, Number(subtotalProductos) || 0);
+      const bonificado = Boolean(cfg.envio_gratis_activo && cfg.envio_gratis_desde_monto > 0 && sub >= cfg.envio_gratis_desde_monto);
+      const domLista = Math.max(0, Number(zonaMatch?.domicilio ?? 8200) || 0);
+      const sucLista = Math.max(0, Number(zonaMatch?.sucursal ?? 6100) || 0);
+      const inf = inferirProvinciaPorCpTienda(digits);
+
+      return {
+        cp: digits,
+        zona_codigo: zonaMatch?.codigo || 'NACIONAL',
+        zona_nombre: zonaMatch?.nombre || 'Envío Nacional',
+        plazo_dias: zonaMatch?.plazo_dias || '3 a 6 días hábiles',
+        bonificado,
+        costo_domicilio_lista: domLista,
+        costo_sucursal_lista: sucLista,
+        costo_domicilio_efectivo: bonificado ? 0 : domLista,
+        costo_sucursal_efectivo: bonificado ? 0 : sucLista,
+        provincia_sugerida: inf?.provincia_nombre || '',
+        provincia_codigo_sugerido: inf?.provincia_codigo || '',
+        localidad_sugerida: inf?.localidad || '',
+        operadores_habilitados: cfg.operadores_habilitados,
+        operador_default: cfg.operador_default,
+        permitir_domicilio: cfg.permitir_domicilio,
+        permitir_sucursal_correo: cfg.permitir_sucursal_correo
+      };
+    }
 
     function fmt(n) {
       return '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
@@ -2697,7 +2964,7 @@
             <div style="grid-column: 1/-1; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:32px; text-align:center;">
               <h3 style="margin:0 0 8px 0;">Tienda no disponible</h3>
               <p style="color:var(--muted); font-size:0.9rem; max-width:500px; margin:0 auto;">
-                Verificá el enlace o escaneá el código QR compartido por el referente de tu barrio.
+                Verificá el enlace o escaneá el código QR compartido por la tienda.
               </p>
             </div>
           `;
@@ -2712,9 +2979,9 @@
         if (grid) {
           grid.innerHTML = `
             <div style="grid-column: 1/-1; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:32px; text-align:center;">
-              <h3 style="margin:0 0 8px 0;">Tienda Vecinal no disponible</h3>
+              <h3 style="margin:0 0 8px 0;">Tienda no disponible</h3>
               <p style="color:var(--muted); font-size:0.9rem; max-width:500px; margin:0 auto;">
-                ${esc(data.error || 'Verificá el enlace compartido por el coordinador de tu barrio.')}
+                ${esc(data.error || 'Verificá el enlace compartido por la tienda.')}
               </p>
             </div>
           `;
@@ -2746,7 +3013,11 @@
       aplicarFaviconTienda('');
       renderizarBarraPwaTienda();
       verificarEstadoRealAccesoDirectoTienda();
-      const bajadaEfectiva = STATE.nodo.bajada_marca || STATE.nodo.subtitulo_marca || 'Pedidos comunitarios del barrio';
+      const bajadaEfectiva = STATE.nodo.bajada_marca || STATE.nodo.subtitulo_marca || (
+        esPerfilEcommerceTienda(STATE.nodo)
+          ? 'Tienda Online Oficial · Envíos a todo el país'
+          : 'Pedidos comunitarios del barrio'
+      );
       sincronizarTituloYMetaPwaTienda(STATE.nodo.nombre_marca);
 
       // Renderizar cabecera minimalista con protagonismo central de marca
@@ -2830,18 +3101,29 @@
       const telDigits = String(nodo.gestor_telefono || '').replace(/\D+/g, '');
       if (!telDigits) return '';
       const telWa = telDigits.startsWith('54') ? telDigits : `549${telDigits}`;
-      const saludo = `Hola ${nodo.gestor_nombre || ''}! Te escribo desde la tienda vecinal de ${nodo.nombre_marca || 'nuestro barrio'}.`;
+      const saludo = esPerfilEcommerceTienda(nodo)
+        ? `Hola ${nodo.gestor_nombre || ''}! Te escribo desde la tienda online de ${nodo.nombre_marca || 'la marca'}.`
+        : `Hola ${nodo.gestor_nombre || ''}! Te escribo desde la tienda vecinal de ${nodo.nombre_marca || 'nuestro barrio'}.`;
       return `https://wa.me/${telWa}?text=${encodeURIComponent(saludo)}`;
     }
 
     function sincronizarEnlacesCoordinarGestor() {
       const href = obtenerUrlWhatsappCoordinarGestor();
-      const gestorNombre = String(STATE.nodo?.gestor_nombre || 'el referente').trim();
+      const esEc = esPerfilEcommerceTienda(STATE.nodo);
+      const gestorNombre = String(STATE.nodo?.gestor_nombre || (esEc ? 'la tienda' : 'el referente')).trim();
       for (const idEl of ['bnav-coordinar', 'desk-nav-coordinar', 'drawer-wa-gestor-link']) {
         const el = document.getElementById(idEl);
         if (!el) continue;
         el.setAttribute('href', href || '#');
-        el.setAttribute('title', `Coordinar por WhatsApp con ${gestorNombre}`);
+        el.setAttribute('title', `${esEc ? 'Consultar por WhatsApp con' : 'Coordinar por WhatsApp con'} ${gestorNombre}`);
+      }
+      const deskCoord = document.getElementById('desk-nav-coordinar');
+      if (deskCoord) {
+        deskCoord.textContent = esEc ? '💬 Contacto' : '💬 Coordinar';
+      }
+      const bnavCoordLbl = document.querySelector('#bnav-coordinar .bnav-label');
+      if (bnavCoordLbl) {
+        bnavCoordLbl.textContent = esEc ? 'Contacto' : 'Coordinar';
       }
     }
 
@@ -2931,11 +3213,13 @@
       if (!headSummary || !bodyEl) return;
 
       const nodo = STATE.nodo || {};
+      const esEc = esPerfilEcommerceTienda(nodo);
       const nombreMarca = nodo.nombre_marca || 'Tienda';
       const barrio = nodo.barrio_zona || 'Tu barrio';
-      const gestorNombre = nodo.gestor_nombre || 'Referente barrial';
+      const gestorNombre = nodo.gestor_nombre || (esEc ? nombreMarca : 'Referente barrial');
       const iconoUrl = obtenerLogoIconoNodo(nodo);
       const siglas = String(nombreMarca).split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
+      const waHref = obtenerUrlWhatsappCoordinarGestor();
 
       headSummary.innerHTML = `
         ${iconoUrl
@@ -2947,10 +3231,99 @@
             ${esc(nombreMarca)}
           </div>
           <div style="font-size:0.77rem; font-weight:800; color:var(--brand-dark); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-            📍 ${esc(barrio)}
+            ${esEc ? '🚚 Envíos a todo el país' : `📍 ${esc(barrio)}`}
           </div>
         </div>
       `;
+
+      if (esEc) {
+        const cfgPaq = obtenerConfigPaqueteriaTienda(nodo);
+        const opsLabel = cfgPaq.operadores_habilitados.map(formatearOperadorPostalTienda).join(' · ');
+        const modsLabel = [
+          cfgPaq.permitir_domicilio ? '📦 Envío a domicilio' : '',
+          cfgPaq.permitir_sucursal_correo ? '🏢 Retiro en sucursal de correo' : ''
+        ].filter(Boolean).join(' y ');
+
+        bodyEl.innerHTML = `
+          <!-- 1. Cobertura y Despacho Nacional -->
+          <div class="drawer-section-card">
+            <div style="display:inline-block; font-size:0.7rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; padding:3px 9px; border-radius:999px; background:var(--ok-soft); color:var(--ok); border:1px solid var(--ok-border); margin-bottom:7px;">
+              🚚 Envíos a todo el país
+            </div>
+            <div style="font-size:0.96rem; font-weight:900; color:var(--text); line-height:1.28;">
+              ${esc(cfgPaq.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles')}
+            </div>
+            <div style="margin-top:9px; padding-top:9px; border-top:1px dashed var(--border); font-size:0.8rem; line-height:1.45;">
+              <div><strong>Operadores postales:</strong> ${esc(opsLabel)}</div>
+              <div style="margin-top:3px;"><strong>Modalidades:</strong> ${esc(modsLabel)}</div>
+              ${cfgPaq.envio_gratis_activo && cfgPaq.envio_gratis_desde_monto > 0 ? `
+                <div style="margin-top:4px; color:var(--ok); font-weight:900;">🎁 Envío bonificado en compras desde ${fmt(cfgPaq.envio_gratis_desde_monto)}</div>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- 2. Atención directa de la marca -->
+          <div class="drawer-section-card">
+            <div style="font-size:0.72rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted);">
+              Atención directa · ${esc(nombreMarca)}
+            </div>
+            <div style="font-size:0.98rem; font-weight:900; color:var(--text); margin-top:3px;">
+              Consultas con ${esc(gestorNombre)}
+            </div>
+            <div style="font-size:0.78rem; font-weight:700; color:var(--muted); margin-top:2px; margin-bottom:10px;">
+              Asesoramiento sobre productos, envíos y seguimiento de tu compra en ${esc(nombreMarca)}.
+            </div>
+            ${waHref ? `
+              <a id="drawer-wa-gestor-link" href="${esc(waHref)}" target="_blank" rel="noopener"
+                onclick="return onClickCoordinarGestor(event)"
+                style="display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:42px; padding:9px 14px; border-radius:11px; background:#15803d; color:#ffffff; font-size:0.86rem; font-weight:900; text-decoration:none;">
+                <span>💬 Escribir por WhatsApp</span>
+              </a>
+            ` : ''}
+          </div>
+
+          <!-- 3. Seguimiento de Pedido y Mi Cuenta -->
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button type="button" class="drawer-action-btn" id="drawer-btn-seguir-pedido" onclick="cerrarDrawerNodoTienda(); accionBotonSeguirMiPedido();">
+              <span>📦 Seguir estado de mi pedido</span>
+              <span style="color:var(--brand); font-weight:900;">›</span>
+            </button>
+            ${STATE.portalToken ? `
+              <button type="button" class="drawer-action-btn" id="drawer-btn-mi-cuenta" onclick="cerrarDrawerNodoTienda(); activarVistaMiCuenta();">
+                <span>👤 Mi Cuenta y comprobantes</span>
+                <span style="color:var(--brand); font-weight:900;">›</span>
+              </button>
+            ` : ''}
+          </div>
+
+          <!-- 4. Cómo comprar online -->
+          <div class="drawer-section-card" style="background:var(--surface-warm);">
+            <div style="font-size:0.76rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; color:var(--brand-dark); margin-bottom:9px;">
+              ✨ Cómo comprar en ${esc(nombreMarca)}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px; font-size:0.8rem; line-height:1.34;">
+              <div style="display:flex; align-items:flex-start; gap:9px;">
+                <span style="width:20px; height:20px; border-radius:999px; background:var(--brand); color:#fff; font-size:0.72rem; font-weight:900; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">1</span>
+                <div><strong>Armá tu carrito online</strong> eligiendo tus productos en cualquier momento.</div>
+              </div>
+              <div style="display:flex; align-items:flex-start; gap:9px;">
+                <span style="width:20px; height:20px; border-radius:999px; background:var(--brand); color:#fff; font-size:0.72rem; font-weight:900; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">2</span>
+                <div><strong>Cotizá con tu Código Postal</strong> envío a domicilio o sucursal de correo y aboná por transferencia.</div>
+              </div>
+              <div style="display:flex; align-items:flex-start; gap:9px;">
+                <span style="width:20px; height:20px; border-radius:999px; background:var(--brand); color:#fff; font-size:0.72rem; font-weight:900; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">3</span>
+                <div><strong>Despachamos tu paquete</strong> en 24 a 48 hs hábiles con código de seguimiento hasta tu destino.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. Bloque Destacado Acceso Directo -->
+          <div class="drawer-pwa-card" id="drawer-pwa-box" style="display:none;"></div>
+        `;
+
+        renderizarBarraPwaTienda();
+        return;
+      }
 
       const prox = STATE.proximaEntrega;
       const asig = prox?.asignada || null;
@@ -2958,7 +3331,6 @@
       const envioTxt = nodo.permitir_envio_barrial
         ? `🛵 Envío barrial: ${Number(nodo.cargo_envio_barrial) > 0 ? fmt(nodo.cargo_envio_barrial) : 'Sin cargo'}`
         : '🏠 Modalidad: Retiro en punto de retiro';
-      const waHref = obtenerUrlWhatsappCoordinarGestor();
 
       bodyEl.innerHTML = `
         <!-- 1. Detalle de Próxima Entrega y Punto de Retiro -->
@@ -3042,12 +3414,76 @@
       renderizarBarraPwaTienda();
     }
 
+    function calcularSubtotalProductosSoloCarrito() {
+      let sub = 0;
+      for (const p of (STATE.productos || [])) {
+        const c = Number(STATE.carrito[p.oferta_id] || 0);
+        if (c > 0) sub += c * Number(p.precio_venta_vecino || 0);
+      }
+      return sub;
+    }
+
+    function renderBarraProgresoEnvioGratis() {
+      const strip = document.getElementById('free-shipping-banner');
+      if (!strip) return;
+      if (!esPerfilEcommerceTienda(STATE.nodo)) {
+        strip.style.display = 'none';
+        return;
+      }
+      const cfg = obtenerConfigPaqueteriaTienda(STATE.nodo);
+      const meta = Number(cfg.envio_gratis_desde_monto || 0);
+      if (!cfg.envio_gratis_activo || meta <= 0) {
+        strip.style.display = 'none';
+        return;
+      }
+      const subtotal = calcularSubtotalProductosSoloCarrito();
+      const pct = Math.min(100, Math.max(0, Math.round((subtotal / meta) * 100)));
+      const desbloqueado = subtotal >= meta;
+      strip.classList.toggle('unlocked', desbloqueado);
+      strip.style.display = 'flex';
+      if (desbloqueado) {
+        strip.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <span>🎉 ¡Activaste <strong>Envío Bonificado a todo el país</strong>!</span>
+            <span>100%</span>
+          </div>
+          <div class="free-shipping-bar-track"><div class="free-shipping-bar-fill" style="width:100%;"></div></div>
+        `;
+      } else if (subtotal > 0) {
+        const falta = Math.max(0, meta - subtotal);
+        strip.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <span>🎁 Sumá <strong>${fmt(falta)}</strong> más para tener <strong>Envío Bonificado</strong></span>
+            <span style="color:var(--muted);">${pct}%</span>
+          </div>
+          <div class="free-shipping-bar-track"><div class="free-shipping-bar-fill" style="width:${pct}%;"></div></div>
+        `;
+      } else {
+        strip.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <span>🎁 <strong>Envío bonificado a todo el país</strong> en compras desde ${fmt(meta)}</span>
+          </div>
+        `;
+      }
+    }
+
     function renderBannerEntrega() {
       const banner = document.getElementById('delivery-banner');
       const badge = document.getElementById('delivery-badge-status');
       const mainTxt = document.getElementById('delivery-date-text');
       if (!banner || !mainTxt) return;
 
+      if (esPerfilEcommerceTienda(STATE.nodo)) {
+        const cfg = obtenerConfigPaqueteriaTienda(STATE.nodo);
+        banner.classList.remove('after-cutoff');
+        banner.setAttribute('title', 'Ver cobertura nacional, correos habilitados y contacto');
+        if (badge) badge.textContent = '🚚';
+        mainTxt.innerHTML = `Envíos a todo el país · <strong>${esc(cfg.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles')}</strong>`;
+        renderBarraProgresoEnvioGratis();
+        return;
+      }
+
+      renderBarraProgresoEnvioGratis();
       const prox = STATE.proximaEntrega;
       const barrio = String(STATE.nodo?.barrio_zona || STATE.nodo?.nombre_marca || 'tu barrio').trim();
       if (!prox || !prox.asignada) {
@@ -3097,11 +3533,14 @@
     function renderCatalogo() {
       const grid = document.getElementById('products-grid');
       if (STATE.productos.length === 0) {
+        const esEc = esPerfilEcommerceTienda(STATE.nodo);
         grid.innerHTML = `
           <div style="grid-column: 1/-1; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:34px 20px; text-align:center;">
             <div style="font-size:1.02rem; font-weight:900; color:var(--text); margin-bottom:6px;">Próximamente disponibles</div>
             <div style="font-size:0.88rem; color:var(--muted); max-width:440px; margin:0 auto;">
-              Estamos preparando la selección de productos para la próxima entrega del barrio.
+              ${esEc
+                ? `Estamos preparando la selección de productos disponibles para envío nacional en ${esc(STATE.nodo?.nombre_marca || 'la tienda')}.`
+                : 'Estamos preparando la selección de productos para la próxima entrega del barrio.'}
             </div>
           </div>
         `;
@@ -3435,20 +3874,37 @@
 
     function obtenerCapacidadesEntregaTienda(nodoObj = STATE.nodo) {
       const n = nodoObj || {};
-      const puedeRetiro = n.permitir_retiro_nodo !== false;
-      const puedeReparto = Boolean(n.permitir_reparto_propio ?? n.permitir_envio_barrial);
-      const puedeEncomienda = Boolean(n.permitir_encomienda);
-      return { puedeRetiro, puedeReparto, puedeEncomienda };
+      const mod = obtenerModulosActivosTienda(n);
+      const puedeRetiro = Boolean(mod.retiro_punto && n.permitir_retiro_nodo !== false);
+      const puedeReparto = Boolean(mod.reparto_zonal && (n.permitir_reparto_propio ?? n.permitir_envio_barrial));
+      const puedeEncomienda = Boolean(mod.envio_paqueteria || n.permitir_encomienda);
+      return {
+        puedeRetiro,
+        puedeReparto,
+        puedeEncomienda,
+        esPostalExclusivo: Boolean(puedeEncomienda && !puedeRetiro && !puedeReparto)
+      };
+    }
+
+    function esCheckoutPostalNacional(nodoObj = STATE.nodo) {
+      const cap = obtenerCapacidadesEntregaTienda(nodoObj);
+      return Boolean(cap.esPostalExclusivo || esPerfilEcommerceTienda(nodoObj));
     }
 
     function asegurarModalidadEntregaValida() {
       const cap = obtenerCapacidadesEntregaTienda();
       if (STATE.modalidadEntrega === 'RETIRO_NODO' && cap.puedeRetiro) return 'RETIRO_NODO';
       if (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && cap.puedeReparto) return 'ENVIO_BARRIAL';
+      if ((STATE.modalidadEntrega === 'PAQUETERIA_DOMICILIO' || STATE.modalidadEntrega === 'PAQUETERIA_SUCURSAL') && cap.puedeEncomienda) {
+        return STATE.modalidadEntrega;
+      }
       if (cap.puedeRetiro) {
         STATE.modalidadEntrega = 'RETIRO_NODO';
       } else if (cap.puedeReparto) {
         STATE.modalidadEntrega = 'ENVIO_BARRIAL';
+      } else if (cap.puedeEncomienda) {
+        const cfg = obtenerConfigPaqueteriaTienda();
+        STATE.modalidadEntrega = cfg.permitir_domicilio ? 'PAQUETERIA_DOMICILIO' : 'PAQUETERIA_SUCURSAL';
       }
       return STATE.modalidadEntrega;
     }
@@ -3467,13 +3923,24 @@
         }
       }
       const cap = obtenerCapacidadesEntregaTienda();
-      const costoEnvio = (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && cap.puedeReparto)
-        ? Number(STATE.nodo.cargo_envio_barrial || 0)
-        : 0;
+      let costoEnvio = 0;
+      let cotizacionPostal = null;
+      if ((STATE.modalidadEntrega === 'PAQUETERIA_DOMICILIO' || STATE.modalidadEntrega === 'PAQUETERIA_SUCURSAL') && cap.puedeEncomienda) {
+        const cpWiz = String(STATE.checkoutWiz?.cpPostal || '').replace(/\D+/g, '');
+        cotizacionPostal = cotizarEnvioPostalLocalTienda(cpWiz, subtotal);
+        if (cotizacionPostal) {
+          costoEnvio = STATE.modalidadEntrega === 'PAQUETERIA_SUCURSAL'
+            ? Number(cotizacionPostal.costo_sucursal_efectivo || 0)
+            : Number(cotizacionPostal.costo_domicilio_efectivo || 0);
+        }
+      } else if (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && cap.puedeReparto) {
+        costoEnvio = Number(STATE.nodo?.cargo_envio_barrial || 0);
+      }
       return {
         unidades,
         subtotal,
         costoEnvio,
+        cotizacionPostal,
         total: subtotal + costoEnvio,
         detalle
       };
@@ -3522,13 +3989,15 @@
 
     function actualizarBarraCarrito() {
       const res = calcularResumenCarrito();
+      renderBarraProgresoEnvioGratis();
       const bar = document.getElementById('cart-bar');
       if (bar) {
         if (res.unidades === 0 || STATE.vistaMiCuentaActiva) {
           bar.style.display = 'none';
         } else {
           bar.style.display = 'flex';
-          document.getElementById('cart-count-label').textContent = `${res.unidades} ${res.unidades === 1 ? 'producto' : 'productos'} en tu canasto`;
+          const contTxt = tMarca(STATE.nodo, 'carrito_contenedor');
+          document.getElementById('cart-count-label').textContent = `${res.unidades} ${res.unidades === 1 ? 'producto' : 'productos'} en tu ${contTxt}`;
           document.getElementById('cart-total-label').textContent = fmt(res.subtotal);
         }
       }
@@ -3564,14 +4033,16 @@
 
     function obtenerMediosPagoHabilitadosTienda(nodoObj = STATE.nodo) {
       const n = nodoObj || {};
+      const mod = obtenerModulosActivosTienda(n);
       const permiteTransf = n.permitir_transferencia !== false;
-      const permiteEfec = n.permitir_efectivo !== false;
+      const permiteEfec = Boolean(mod.cobro_efectivo_entrega && n.permitir_efectivo !== false && !esCheckoutPostalNacional(n));
+      const aliasDef = n.alias_bancario_display || (esPerfilEcommerceTienda(n) ? `${n.slug || 'tienda'}.oficial` : 'pago.canasto');
       const lista = [];
       if (permiteTransf) {
         lista.push({
           codigo: 'TRANSFERENCIA',
           titulo: '🏦 Transferencia Bancaria',
-          subtitulo: `Alias: ${n.alias_bancario_display || 'pago.canasto'}`
+          subtitulo: `Alias: ${aliasDef}`
         });
       }
       if (permiteEfec) {
@@ -3585,13 +4056,16 @@
         lista.push({
           codigo: 'TRANSFERENCIA',
           titulo: '🏦 Transferencia Bancaria',
-          subtitulo: `Alias: ${n.alias_bancario_display || 'pago.canasto'}`
+          subtitulo: `Alias: ${aliasDef}`
         });
       }
       return lista;
     }
 
     function obtenerPasosCheckoutWizard() {
+      if (esCheckoutPostalNacional()) {
+        return ['cp_modalidad', 'destino_postal', 'destinatario_postal', 'pago', 'revision'];
+      }
       if (STATE.checkoutWiz.modalidadElegida === 'ENVIO_BARRIAL') {
         return ['entrega', 'datos', 'direccion', 'pago', 'revision'];
       }
@@ -3600,6 +4074,33 @@
 
     function validarPasoCheckoutWizard(pasoKey) {
       const w = STATE.checkoutWiz;
+      if (pasoKey === 'cp_modalidad') {
+        const cpDigits = String(w.cpPostal || '').replace(/\D+/g, '');
+        const cpNum = Number(cpDigits);
+        const cpOk = cpDigits.length === 4 && cpNum >= 1000 && cpNum <= 9499;
+        const modOk = w.modalidadElegida === 'PAQUETERIA_DOMICILIO' || w.modalidadElegida === 'PAQUETERIA_SUCURSAL';
+        const opOk = Boolean(String(w.operadorPostal || '').trim());
+        return cpOk && modOk && opOk;
+      }
+      if (pasoKey === 'destino_postal') {
+        const provOk = Boolean(String(w.provinciaCodigo || '').trim() || String(w.provinciaNombre || '').trim());
+        const locOk = String(w.localidadPostal || '').trim().length >= 2;
+        if (!provOk || !locOk) return false;
+        if (w.modalidadElegida === 'PAQUETERIA_SUCURSAL') {
+          return String(w.sucursalPostal || '').trim().length >= 3;
+        }
+        const calleOk = String(w.callePostal || '').trim().length >= 2;
+        const alturaOk = Boolean(w.sinNumeroPostal) || String(w.alturaPostal || '').trim().length >= 1;
+        return calleOk && alturaOk;
+      }
+      if (pasoKey === 'destinatario_postal') {
+        const nom = String(w.nombre || '').trim();
+        const dniDigits = String(w.dniPostal || '').replace(/\D/g, '');
+        const telDigits = String(w.telefono || '').replace(/\D/g, '');
+        const em = String(w.emailPostal || '').trim();
+        const emOk = !em || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em);
+        return nom.length >= 3 && dniDigits.length >= 7 && dniDigits.length <= 11 && telDigits.length >= 8 && emOk;
+      }
       if (pasoKey === 'entrega') {
         return w.modalidadElegida === 'RETIRO_NODO' || w.modalidadElegida === 'ENVIO_BARRIAL';
       }
@@ -3613,9 +4114,18 @@
         return dir.length >= 3;
       }
       if (pasoKey === 'pago') {
+        if (esCheckoutPostalNacional()) {
+          return w.medioPagoElegido === 'TRANSFERENCIA';
+        }
         return w.medioPagoElegido === 'TRANSFERENCIA' || w.medioPagoElegido === 'EFECTIVO';
       }
       if (pasoKey === 'revision') {
+        if (esCheckoutPostalNacional()) {
+          return validarPasoCheckoutWizard('cp_modalidad') &&
+                 validarPasoCheckoutWizard('destino_postal') &&
+                 validarPasoCheckoutWizard('destinatario_postal') &&
+                 validarPasoCheckoutWizard('pago');
+        }
         return validarPasoCheckoutWizard('entrega') &&
                validarPasoCheckoutWizard('datos') &&
                (w.modalidadElegida !== 'ENVIO_BARRIAL' || validarPasoCheckoutWizard('direccion')) &&
@@ -3634,16 +4144,36 @@
       const telPre = String(idGuardada.telefono_display || idGuardada.telefono_normalizado || window._savedVecinoTel || '').trim();
       const dirPre = String(idGuardada.direccion_calle || window._savedVecinoDir || '').trim();
       const refPre = String(idGuardada.entrecalles_referencia || window._savedVecinoRef || '').trim();
+      const cfgPaq = obtenerConfigPaqueteriaTienda(STATE.nodo);
+      const cpPre = String(idGuardada.cp_postal || '').replace(/\D+/g, '').slice(0, 4);
+      const opGuardado = String(idGuardada.operador_postal || '').toUpperCase();
+      const opPre = cfgPaq.operadores_habilitados.includes(opGuardado) ? opGuardado : cfgPaq.operador_default;
+      const esPostal = esCheckoutPostalNacional();
 
       STATE.mostrarMapaCheckoutVecino = false;
       STATE.checkoutWiz = {
-        pasoActualKey: 'entrega',
+        pasoActualKey: esPostal ? 'cp_modalidad' : 'entrega',
         modalidadElegida: '',
         medioPagoElegido: '',
         nombre: nombrePre,
         telefono: telPre,
         direccion: dirPre,
         entrecalles: refPre,
+        cpPostal: cpPre,
+        cpAutoHidratado: '',
+        operadorPostal: opPre,
+        provinciaCodigo: String(idGuardada.provincia_codigo || '').trim(),
+        provinciaNombre: String(idGuardada.provincia_nombre || '').trim(),
+        localidadPostal: String(idGuardada.localidad_postal || '').trim(),
+        callePostal: String(idGuardada.calle_postal || '').trim(),
+        alturaPostal: String(idGuardada.altura_postal || '').trim(),
+        sinNumeroPostal: Boolean(idGuardada.sin_numero_postal),
+        pisoDeptoPostal: String(idGuardada.piso_depto_postal || '').trim(),
+        referenciasPostal: String(idGuardada.referencias_postal || refPre || '').trim(),
+        sucursalPostal: String(idGuardada.sucursal_postal || '').trim(),
+        dniPostal: String(idGuardada.dni_cuil || '').replace(/\D/g, ''),
+        emailPostal: String(idGuardada.email_contacto || '').trim(),
+        cotizacionPostal: cpPre.length === 4 ? cotizarEnvioPostalLocalTienda(cpPre, res.subtotal) : null,
         teniaDatosGuardados: Boolean(nombrePre.length >= 2 && telPre.replace(/\D/g, '').length >= 8),
         enviandoPedido: false
       };
@@ -3670,26 +4200,221 @@
     }
 
     function sincronizarInputsPasoVisibleCheckout() {
+      const w = STATE.checkoutWiz;
       const inpNom = document.getElementById('chk-nombre');
       if (inpNom) {
-        STATE.checkoutWiz.nombre = inpNom.value;
+        w.nombre = inpNom.value;
         window._savedVecinoNombre = inpNom.value;
       }
       const inpTel = document.getElementById('chk-telefono');
       if (inpTel) {
-        STATE.checkoutWiz.telefono = inpTel.value;
+        w.telefono = inpTel.value;
         window._savedVecinoTel = inpTel.value;
       }
       const inpDir = document.getElementById('chk-direccion');
       if (inpDir) {
-        STATE.checkoutWiz.direccion = inpDir.value;
+        w.direccion = inpDir.value;
         window._savedVecinoDir = inpDir.value;
       }
       const inpRef = document.getElementById('chk-entrecalles');
       if (inpRef) {
-        STATE.checkoutWiz.entrecalles = inpRef.value;
+        w.entrecalles = inpRef.value;
         window._savedVecinoRef = inpRef.value;
       }
+      const inpCp = document.getElementById('chk-postal-cp');
+      if (inpCp) {
+        w.cpPostal = String(inpCp.value || '').replace(/\D+/g, '').slice(0, 4);
+      }
+      const selProv = document.getElementById('chk-postal-provincia');
+      if (selProv) {
+        w.provinciaCodigo = selProv.value;
+        const pObj = PROVINCIAS_AR_TIENDA.find(p => p.codigo === selProv.value);
+        w.provinciaNombre = pObj ? pObj.nombre : '';
+      }
+      const inpLoc = document.getElementById('chk-postal-localidad');
+      if (inpLoc) w.localidadPostal = inpLoc.value;
+      const inpCalle = document.getElementById('chk-postal-calle');
+      if (inpCalle) w.callePostal = inpCalle.value;
+      const chkSn = document.getElementById('chk-postal-sn');
+      if (chkSn) w.sinNumeroPostal = Boolean(chkSn.checked);
+      const inpAlt = document.getElementById('chk-postal-altura');
+      if (inpAlt && !w.sinNumeroPostal) w.alturaPostal = inpAlt.value;
+      const inpPiso = document.getElementById('chk-postal-piso');
+      if (inpPiso) w.pisoDeptoPostal = inpPiso.value;
+      const inpRefPostal = document.getElementById('chk-postal-referencias');
+      if (inpRefPostal) w.referenciasPostal = inpRefPostal.value;
+      const inpSuc = document.getElementById('chk-postal-sucursal');
+      if (inpSuc) w.sucursalPostal = inpSuc.value;
+      const inpDni = document.getElementById('chk-postal-dni');
+      if (inpDni) w.dniPostal = String(inpDni.value || '').replace(/\D+/g, '').slice(0, 11);
+      const inpEm = document.getElementById('chk-postal-email');
+      if (inpEm) w.emailPostal = inpEm.value;
+    }
+
+    function hidratarSugerenciasCpEnDestinoPostal() {
+      const w = STATE.checkoutWiz;
+      const cp = String(w.cpPostal || '').replace(/\D+/g, '');
+      if (cp.length !== 4) return;
+      const inf = w.cotizacionPostal || cotizarEnvioPostalLocalTienda(cp, calcularSubtotalProductosSoloCarrito());
+      if (inf && w.cpAutoHidratado !== cp) {
+        if (inf.provincia_codigo_sugerido) {
+          w.provinciaCodigo = inf.provincia_codigo_sugerido;
+          w.provinciaNombre = inf.provincia_sugerida || '';
+        }
+        if (inf.localidad_sugerida) {
+          w.localidadPostal = inf.localidad_sugerida;
+        }
+        w.cpAutoHidratado = cp;
+      } else if (inf && !w.provinciaCodigo && inf.provincia_codigo_sugerido) {
+        w.provinciaCodigo = inf.provincia_codigo_sugerido;
+        w.provinciaNombre = inf.provincia_sugerida || '';
+      }
+      if (w.modalidadElegida === 'PAQUETERIA_SUCURSAL') {
+        const opLbl = formatearOperadorPostalTienda(w.operadorPostal);
+        const locBase = w.localidadPostal || w.provinciaNombre || `CP ${cp}`;
+        if (!w.sucursalPostal || w.sucursalPostal.includes('(CP ') && !w.sucursalPostal.includes(`CP ${cp}`)) {
+          w.sucursalPostal = `Sucursal ${opLbl} — ${locBase} (CP ${cp})`;
+        }
+      }
+    }
+
+    let _cotizarCpFetchTimer = null;
+
+    function renderBloqueCotizacionPaso1Postal() {
+      const w = STATE.checkoutWiz;
+      const cfg = obtenerConfigPaqueteriaTienda(STATE.nodo);
+      const sub = calcularSubtotalProductosSoloCarrito();
+      const cpDigits = String(w.cpPostal || '').replace(/\D+/g, '');
+      if (cpDigits.length !== 4) {
+        return `
+          <div style="padding:13px 14px; border-radius:14px; background:var(--surface-warm); border:1px dashed var(--brand-border); color:var(--muted); font-size:0.86rem; font-weight:700; line-height:1.4;">
+            Ingresá los <strong>4 números</strong> de tu Código Postal argentino para calcular el envío a domicilio y a sucursal en el acto.
+          </div>
+        `;
+      }
+      const cot = cotizarEnvioPostalLocalTienda(cpDigits, sub);
+      if (!cot) {
+        return `
+          <div style="padding:12px 14px; border-radius:14px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; font-size:0.85rem; font-weight:800;">
+            Verificá el Código Postal ingresado (debe estar entre 1000 y 9499).
+          </div>
+        `;
+      }
+      w.cotizacionPostal = cot;
+      const locDetectada = [cot.localidad_sugerida, cot.provincia_sugerida].filter(Boolean).join(', ') || cot.zona_nombre;
+      const badgeDom = cot.bonificado
+        ? '🎁 ¡Envío bonificado! ($0)'
+        : (cot.costo_domicilio_efectivo > 0 ? `+${fmt(cot.costo_domicilio_efectivo)}` : 'Sin cargo');
+      const badgeSuc = cot.bonificado
+        ? '🎁 ¡Envío bonificado! ($0)'
+        : (cot.costo_sucursal_efectivo > 0 ? `+${fmt(cot.costo_sucursal_efectivo)}` : 'Sin cargo');
+      const ops = cfg.operadores_habilitados;
+
+      return `
+        <div style="margin-bottom:13px; padding:10px 13px; border-radius:12px; background:var(--ok-soft); border:1px solid var(--ok-border); color:var(--ok); font-size:0.83rem; font-weight:800; line-height:1.38;">
+          📍 Destino detectado: <strong>${esc(locDetectada)}</strong> · ${esc(cot.plazo_dias)}
+        </div>
+
+        ${ops.length > 1 ? `
+          <div style="margin-bottom:13px;">
+            <div style="font-size:0.82rem; font-weight:900; color:var(--text); margin-bottom:6px;">Operador de correo</div>
+            <div style="display:grid; grid-template-columns:repeat(${ops.length}, 1fr); gap:8px;">
+              ${ops.map(op => {
+                const activoOp = w.operadorPostal === op;
+                return `
+                  <button type="button" id="chk-opt-op-${esc(op.toLowerCase())}"
+                    onclick="seleccionarOperadorPostalCheckout('${esc(op)}')"
+                    style="padding:10px 12px; border-radius:12px; border:${activoOp ? '2px solid var(--brand)' : '1.5px solid var(--border)'}; background:${activoOp ? 'var(--brand-light)' : 'var(--card)'}; color:${activoOp ? 'var(--brand-dark)' : 'var(--text)'}; font-family:inherit; font-size:0.86rem; font-weight:900; cursor:pointer;">
+                    🚚 ${esc(formatearOperadorPostalTienda(op))}
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        <div style="font-size:0.84rem; font-weight:900; color:var(--text); margin-bottom:8px;">Elegí cómo querés recibir tu compra *</div>
+        <div class="chk-big-options">
+          ${cot.permitir_domicilio ? `
+            <button type="button" id="chk-opt-postal-domicilio"
+              class="chk-big-card ${w.modalidadElegida === 'PAQUETERIA_DOMICILIO' ? 'active' : ''}"
+              onclick="seleccionarModalidadCheckoutWizard('PAQUETERIA_DOMICILIO')">
+              <div>
+                <div class="chk-big-card-title">📦 Envío a Domicilio</div>
+                <div class="chk-big-card-sub">${esc(formatearOperadorPostalTienda(w.operadorPostal))} · Entrega en puerta (${esc(cot.plazo_dias)})</div>
+                <span class="chk-big-price-badge" style="${cot.bonificado ? 'background:var(--ok-soft);color:var(--ok);border-color:var(--ok-border);' : ''}">${esc(badgeDom)}</span>
+              </div>
+              <span class="chk-big-radio">✓</span>
+            </button>
+          ` : ''}
+          ${cot.permitir_sucursal_correo ? `
+            <button type="button" id="chk-opt-postal-sucursal"
+              class="chk-big-card ${w.modalidadElegida === 'PAQUETERIA_SUCURSAL' ? 'active' : ''}"
+              onclick="seleccionarModalidadCheckoutWizard('PAQUETERIA_SUCURSAL')">
+              <div>
+                <div class="chk-big-card-title">🏢 Retiro en Sucursal de Correo</div>
+                <div class="chk-big-card-sub">Sucursal ${esc(formatearOperadorPostalTienda(w.operadorPostal))} en CP ${esc(cpDigits)} (${esc(cot.plazo_dias)})</div>
+                <span class="chk-big-price-badge" style="${cot.bonificado ? 'background:var(--ok-soft);color:var(--ok);border-color:var(--ok-border);' : ''}">${esc(badgeSuc)}</span>
+              </div>
+              <span class="chk-big-radio">✓</span>
+            </button>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function onInputCpPostalCheckout(val) {
+      const digits = String(val || '').replace(/\D+/g, '').slice(0, 4);
+      const inp = document.getElementById('chk-postal-cp');
+      if (inp && inp.value !== digits) inp.value = digits;
+      STATE.checkoutWiz.cpPostal = digits;
+      const slot = document.getElementById('chk-postal-cp-quote-slot');
+      if (slot) slot.innerHTML = renderBloqueCotizacionPaso1Postal();
+      const btn = document.getElementById('chk-btn-continuar');
+      if (btn) btn.disabled = !validarPasoCheckoutWizard('cp_modalidad');
+
+      if (_cotizarCpFetchTimer) clearTimeout(_cotizarCpFetchTimer);
+      if (digits.length === 4) {
+        _cotizarCpFetchTimer = setTimeout(async () => {
+          try {
+            const sub = calcularSubtotalProductosSoloCarrito();
+            const r = await fetch(`/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/cotizar-cp?cp=${encodeURIComponent(digits)}&subtotal=${encodeURIComponent(sub)}`);
+            const d = await r.json();
+            if (r.ok && d.ok && d.cotizacion && STATE.checkoutWiz.cpPostal === digits) {
+              STATE.checkoutWiz.cotizacionPostal = {
+                ...STATE.checkoutWiz.cotizacionPostal,
+                ...d.cotizacion
+              };
+            }
+          } catch (_) {}
+        }, 180);
+      }
+    }
+
+    function seleccionarOperadorPostalCheckout(op) {
+      STATE.checkoutWiz.operadorPostal = op;
+      const slot = document.getElementById('chk-postal-cp-quote-slot');
+      if (slot) slot.innerHTML = renderBloqueCotizacionPaso1Postal();
+      const btn = document.getElementById('chk-btn-continuar');
+      if (btn) btn.disabled = !validarPasoCheckoutWizard('cp_modalidad');
+    }
+
+    function onInputDestinoPostalCheckout() {
+      sincronizarInputsPasoVisibleCheckout();
+      const inpAlt = document.getElementById('chk-postal-altura');
+      if (inpAlt) {
+        inpAlt.disabled = Boolean(STATE.checkoutWiz.sinNumeroPostal);
+        if (STATE.checkoutWiz.sinNumeroPostal) inpAlt.value = 'S/N';
+        else if (inpAlt.value === 'S/N') inpAlt.value = '';
+      }
+      const btn = document.getElementById('chk-btn-continuar');
+      if (btn) btn.disabled = !validarPasoCheckoutWizard('destino_postal');
+    }
+
+    function onInputDestinatarioPostalCheckout() {
+      sincronizarInputsPasoVisibleCheckout();
+      const btn = document.getElementById('chk-btn-continuar');
+      if (btn) btn.disabled = !validarPasoCheckoutWizard('destinatario_postal');
     }
 
     function retrocederPasoCheckoutWizard() {
@@ -3891,12 +4616,20 @@
 
     function renderCabeceraMarcaCheckoutWizard(pasoNumero, totalPasos, modoConfirmado = false) {
       const nodo = STATE.nodo || {};
+      const esPostal = esCheckoutPostalNacional(nodo);
+      const cfgPaq = obtenerConfigPaqueteriaTienda(nodo);
       const prox = STATE.proximaEntrega?.asignada;
-      const proxLabel = prox ? prox.label_completo : 'Próxima ventana';
+      const proxLabel = esPostal
+        ? (cfgPaq.sla_despacho_label || 'Envíos a todo el país')
+        : (prox ? prox.label_completo : 'Próxima ventana');
       const logoHorizontal = nodo.tema_visual?.logos?.horizontal || '';
       const logoIncluyeTexto = Boolean(logoHorizontal && nodo.tema_visual?.logo_incluye_texto);
       const logoFallback = logoHorizontal || nodo.logo_original_base64 || nodo.logo_mono_preview_base64 || obtenerLogoIconoNodo(nodo) || '';
-      const bajadaEfectiva = nodo.bajada_marca || nodo.subtitulo_marca || (nodo.barrio_zona ? `📍 ${nodo.barrio_zona}` : 'Tienda barrial');
+      const bajadaEfectiva = nodo.bajada_marca || nodo.subtitulo_marca || (
+        esPostal
+          ? 'Tienda Online Oficial'
+          : (nodo.barrio_zona ? `📍 ${nodo.barrio_zona}` : 'Tienda barrial')
+      );
       const altLogo = nodo.bajada_marca ? `${nodo.nombre_marca} · ${nodo.bajada_marca}` : (nodo.nombre_marca || 'Tienda');
       const siglas = String(nodo.nombre_marca || 'ND').split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
 
@@ -3932,7 +4665,7 @@
             </div>
             <div class="chk-wiz-brand-row">
               ${identidadHtml}
-              <span class="chk-wiz-delivery-chip">📅 ${esc(proxLabel)}</span>
+              <span class="chk-wiz-delivery-chip">${esPostal ? '🚚' : '📅'} ${esc(proxLabel)}</span>
             </div>
           </div>
           <div class="chk-wiz-progress-track">
@@ -3954,6 +4687,9 @@
       const pasoNumero = pasoIdx + 1;
       const totalPasos = pasos.length;
 
+      if (w.pasoActualKey === 'destino_postal') {
+        hidratarSugerenciasCpEnDestinoPostal();
+      }
       if (w.modalidadElegida) {
         STATE.modalidadEntrega = w.modalidadElegida;
       }
@@ -3965,7 +4701,163 @@
       let stageHtml = '';
       let footerHtml = '';
 
-      if (w.pasoActualKey === 'entrega') {
+      if (w.pasoActualKey === 'cp_modalidad') {
+        const pasoValido = validarPasoCheckoutWizard('cp_modalidad');
+        stageHtml = `
+          <h2 class="chk-wiz-question">¿A qué Código Postal enviamos tu compra?</h2>
+          <p class="chk-wiz-lead">Cotizá tu envío nacional en el acto y elegí domicilio o sucursal de correo.</p>
+
+          <div class="chk-field-lg">
+            <label for="chk-postal-cp">Código Postal (4 números) *</label>
+            <input type="text" inputmode="numeric" maxlength="4" id="chk-postal-cp"
+              placeholder="Ej: 7130, 1629, 1900"
+              value="${esc(w.cpPostal || '')}"
+              oninput="onInputCpPostalCheckout(this.value)">
+          </div>
+
+          <div id="chk-postal-cp-quote-slot">
+            ${renderBloqueCotizacionPaso1Postal()}
+          </div>
+        `;
+
+        footerHtml = `
+          <button type="button" id="chk-btn-continuar" class="chk-btn-primary"
+            ${pasoValido ? '' : 'disabled'}
+            onclick="avanzarPasoCheckoutWizard()">
+            Continuar
+          </button>
+        `;
+      } else if (w.pasoActualKey === 'destino_postal') {
+        const pasoValido = validarPasoCheckoutWizard('destino_postal');
+        const esSucursal = w.modalidadElegida === 'PAQUETERIA_SUCURSAL';
+        const opLbl = formatearOperadorPostalTienda(w.operadorPostal);
+
+        stageHtml = `
+          <h2 class="chk-wiz-question">${esSucursal ? '¿En qué localidad y sucursal retirás?' : '¿A qué domicilio despachamos tu paquete?'}</h2>
+          <p class="chk-wiz-lead">CP <strong>${esc(w.cpPostal)}</strong> · ${esc(opLbl)}</p>
+
+          <div class="chk-field-lg">
+            <label for="chk-postal-provincia">Provincia *</label>
+            <select id="chk-postal-provincia" onchange="onInputDestinoPostalCheckout()">
+              <option value="">Seleccioná una provincia...</option>
+              ${PROVINCIAS_AR_TIENDA.map(pr => `
+                <option value="${esc(pr.codigo)}" ${w.provinciaCodigo === pr.codigo ? 'selected' : ''}>${esc(pr.nombre)}</option>
+              `).join('')}
+            </select>
+          </div>
+
+          <div class="chk-field-lg">
+            <label for="chk-postal-localidad">Localidad / Ciudad *</label>
+            <input type="text" id="chk-postal-localidad" autocomplete="address-level2"
+              placeholder="Ej: Chascomús, Pilar, Rosario"
+              value="${esc(w.localidadPostal || '')}"
+              oninput="onInputDestinoPostalCheckout()">
+          </div>
+
+          ${esSucursal ? `
+            <div class="chk-field-lg">
+              <label for="chk-postal-sucursal">Sucursal de ${esc(opLbl)} *</label>
+              <input type="text" id="chk-postal-sucursal"
+                placeholder="Ej: Sucursal ${esc(opLbl)} Centro"
+                value="${esc(w.sucursalPostal || '')}"
+                oninput="onInputDestinoPostalCheckout()">
+            </div>
+          ` : `
+            <div class="chk-field-lg">
+              <label for="chk-postal-calle">Calle *</label>
+              <input type="text" id="chk-postal-calle" autocomplete="address-line1"
+                placeholder="Ej: Av. Lastra / Belgrano"
+                value="${esc(w.callePostal || '')}"
+                oninput="onInputDestinoPostalCheckout()">
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr auto; gap:10px; align-items:end; margin-bottom:15px;">
+              <div class="chk-field-lg" style="margin-bottom:0;">
+                <label for="chk-postal-altura">Altura / Número *</label>
+                <input type="text" inputmode="numeric" id="chk-postal-altura"
+                  placeholder="Ej: 450"
+                  ${w.sinNumeroPostal ? 'disabled value="S/N"' : `value="${esc(w.alturaPostal || '')}"`}
+                  oninput="onInputDestinoPostalCheckout()">
+              </div>
+              <label style="display:inline-flex; align-items:center; gap:7px; min-height:52px; padding:0 13px; border-radius:13px; border:1.5px solid var(--border); background:var(--card); font-size:0.86rem; font-weight:900; color:var(--text); cursor:pointer; user-select:none;">
+                <input type="checkbox" id="chk-postal-sn" ${w.sinNumeroPostal ? 'checked' : ''} onchange="onInputDestinoPostalCheckout()" style="width:18px; height:18px; accent-color:var(--brand);">
+                <span>S/N</span>
+              </label>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <div class="chk-field-lg">
+                <label for="chk-postal-piso">Piso / Depto (opc.)</label>
+                <input type="text" id="chk-postal-piso"
+                  placeholder="Ej: 2° B"
+                  value="${esc(w.pisoDeptoPostal || '')}"
+                  oninput="onInputDestinoPostalCheckout()">
+              </div>
+              <div class="chk-field-lg">
+                <label for="chk-postal-referencias">Referencias (opc.)</label>
+                <input type="text" id="chk-postal-referencias"
+                  placeholder="Ej: Entre Mitre y Sarmiento"
+                  value="${esc(w.referenciasPostal || '')}"
+                  oninput="onInputDestinoPostalCheckout()">
+              </div>
+            </div>
+          `}
+        `;
+
+        footerHtml = `
+          <button type="button" id="chk-btn-continuar" class="chk-btn-primary"
+            ${pasoValido ? '' : 'disabled'}
+            onclick="avanzarPasoCheckoutWizard()">
+            Continuar
+          </button>
+        `;
+      } else if (w.pasoActualKey === 'destinatario_postal') {
+        const pasoValido = validarPasoCheckoutWizard('destinatario_postal');
+        stageHtml = `
+          <h2 class="chk-wiz-question">¿Quién recibe el envío?</h2>
+          <p class="chk-wiz-lead">El correo requiere nombre completo y DNI para entregar el paquete.</p>
+
+          <div class="chk-field-lg">
+            <label for="chk-nombre">Nombre y apellido completo *</label>
+            <input type="text" id="chk-nombre" autocomplete="name"
+              placeholder="Ej: Martín Pérez"
+              value="${esc(w.nombre || '')}"
+              oninput="onInputDestinatarioPostalCheckout()">
+          </div>
+
+          <div class="chk-field-lg">
+            <label for="chk-postal-dni">DNI o CUIL de quien recibe *</label>
+            <input type="text" inputmode="numeric" maxlength="11" id="chk-postal-dni"
+              placeholder="Solo números, sin puntos (ej: 32456789)"
+              value="${esc(w.dniPostal || '')}"
+              oninput="onInputDestinatarioPostalCheckout()">
+          </div>
+
+          <div class="chk-field-lg">
+            <label for="chk-telefono">WhatsApp para enviarte el seguimiento *</label>
+            <input type="tel" inputmode="tel" id="chk-telefono" autocomplete="tel"
+              placeholder="Ej: 221 555 4444"
+              value="${esc(w.telefono || '')}"
+              oninput="onInputDestinatarioPostalCheckout()">
+          </div>
+
+          <div class="chk-field-lg">
+            <label for="chk-postal-email">Email (opcional)</label>
+            <input type="email" inputmode="email" id="chk-postal-email" autocomplete="email"
+              placeholder="Ej: tu@email.com"
+              value="${esc(w.emailPostal || '')}"
+              oninput="onInputDestinatarioPostalCheckout()">
+          </div>
+        `;
+
+        footerHtml = `
+          <button type="button" id="chk-btn-continuar" class="chk-btn-primary"
+            ${pasoValido ? '' : 'disabled'}
+            onclick="avanzarPasoCheckoutWizard()">
+            Continuar
+          </button>
+        `;
+      } else if (w.pasoActualKey === 'entrega') {
         const cargoEnvioNum = Number(STATE.nodo?.cargo_envio_barrial || 0);
         const costoEnvioBadge = cargoEnvioNum > 0 ? `Costo de envío: +${fmt(cargoEnvioNum)}` : 'Envío sin cargo';
         const pasoValido = validarPasoCheckoutWizard('entrega');
@@ -4112,10 +5004,14 @@
       } else if (w.pasoActualKey === 'pago') {
         const mediosHabilitados = obtenerMediosPagoHabilitadosTienda(STATE.nodo);
         const pasoValido = validarPasoCheckoutWizard('pago');
+        const esPostal = esCheckoutPostalNacional();
+        const aliasMostrar = STATE.nodo?.alias_bancario_display || (esPostal ? `${STATE.nodo?.slug || 'tienda'}.oficial` : 'pago.canasto');
+        const titularMostrar = limpiarTitularVisibleTienda(STATE.nodo?.titular_display || STATE.nodo?.nombre_marca || '', STATE.nodo);
+        const cbuMostrar = (STATE.nodo?.cbu_display && STATE.nodo.cbu_display !== '0000000000000000000000') ? STATE.nodo.cbu_display : '';
 
         stageHtml = `
-          <h2 class="chk-wiz-question">¿Cómo preferís abonar?</h2>
-          <p class="chk-wiz-lead">Elegí el medio de pago más cómodo para vos.</p>
+          <h2 class="chk-wiz-question">${esPostal ? 'Pago online por Transferencia' : '¿Cómo preferís abonar?'}</h2>
+          <p class="chk-wiz-lead">${esPostal ? 'Seleccioná Transferencia Bancaria para confirmar tu compra y ver los datos de acreditación.' : 'Elegí el medio de pago más cómodo para vos.'}</p>
           <div class="chk-big-options">
             ${mediosHabilitados.map(m => `
               <button type="button" id="chk-opt-pago-${esc(m.codigo.toLowerCase())}"
@@ -4129,6 +5025,26 @@
               </button>
             `).join('')}
           </div>
+
+          ${esPostal ? `
+            <div style="margin-top:14px; padding:13px 15px; border-radius:14px; background:#eff6ff; border:1.5px solid #93c5fd; font-size:0.84rem; color:#0f172a;">
+              <div style="font-size:0.74rem; font-weight:900; text-transform:uppercase; color:#1d4ed8;">Datos bancarios de ${esc(STATE.nodo?.nombre_marca || 'la tienda')}</div>
+              <div style="font-size:1.05rem; font-weight:900; margin:4px 0;">Alias: <span>${esc(aliasMostrar)}</span></div>
+              ${titularMostrar ? `<div style="font-size:0.79rem; color:#334155; font-weight:700;">Titular: ${esc(titularMostrar)}${cbuMostrar ? ` · CBU: ${esc(cbuMostrar)}` : ''}</div>` : ''}
+              <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" onclick="navigator.clipboard.writeText('${esc(aliasMostrar)}'); this.textContent='✅ Alias copiado';"
+                  style="padding:7px 13px; border-radius:9px; border:none; background:#2563eb; color:#ffffff; font-family:inherit; font-size:0.8rem; font-weight:900; cursor:pointer;">
+                  📋 Copiar Alias
+                </button>
+                ${cbuMostrar ? `
+                  <button type="button" onclick="navigator.clipboard.writeText('${esc(cbuMostrar)}'); this.textContent='✅ CBU copiado';"
+                    style="padding:7px 13px; border-radius:9px; border:1px solid #93c5fd; background:#ffffff; color:#1d4ed8; font-family:inherit; font-size:0.8rem; font-weight:900; cursor:pointer;">
+                    📋 Copiar CBU
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+          ` : ''}
         `;
 
         footerHtml = `
@@ -4139,17 +5055,34 @@
           </button>
         `;
       } else {
+        const esPostal = esCheckoutPostalNacional();
+        const opLbl = formatearOperadorPostalTienda(w.operadorPostal);
+        const esSucursalPostal = w.modalidadElegida === 'PAQUETERIA_SUCURSAL';
         const esEnvio = w.modalidadElegida === 'ENVIO_BARRIAL';
-        const entregaTexto = esEnvio
-          ? `🛵 Envío a domicilio — ${w.direccion}${w.entrecalles ? ' (' + w.entrecalles + ')' : ''}`
-          : `🏠 Retiro en punto de entrega — ${STATE.nodo?.direccion_retiro || STATE.nodo?.barrio_zona || ''}`;
+        const alturaEfectiva = w.sinNumeroPostal ? 'S/N' : w.alturaPostal;
+        const destinoPostalTxt = esSucursalPostal
+          ? `🏢 Retiro en ${w.sucursalPostal} — ${w.localidadPostal}, ${w.provinciaNombre} (CP ${w.cpPostal})`
+          : `📦 ${opLbl} a domicilio — ${w.callePostal} ${alturaEfectiva}${w.pisoDeptoPostal ? ' (' + w.pisoDeptoPostal + ')' : ''}, ${w.localidadPostal}, ${w.provinciaNombre} (CP ${w.cpPostal})`;
+        const entregaTexto = esPostal
+          ? destinoPostalTxt
+          : (esEnvio
+              ? `🛵 Envío a domicilio — ${w.direccion}${w.entrecalles ? ' (' + w.entrecalles + ')' : ''}`
+              : `🏠 Retiro en punto de entrega — ${STATE.nodo?.direccion_retiro || STATE.nodo?.barrio_zona || ''}`);
+        const aliasMostrar = STATE.nodo?.alias_bancario_display || (esPostal ? `${STATE.nodo?.slug || 'tienda'}.oficial` : 'pago.canasto');
         const pagoTexto = w.medioPagoElegido === 'EFECTIVO'
           ? '💵 Efectivo al recibir / retirar'
-          : `🏦 Transferencia Bancaria (Alias: ${STATE.nodo?.alias_bancario_display || 'pago.canasto'})`;
+          : `🏦 Transferencia Bancaria (Alias: ${aliasMostrar})`;
+        const cfgPaq = obtenerConfigPaqueteriaTienda(STATE.nodo);
+        const plazoTexto = esPostal
+          ? `${cfgPaq.sla_despacho_label}${res.cotizacionPostal?.plazo_dias ? ' · Correo: ' + res.cotizacionPostal.plazo_dias : ''}`
+          : (prox ? prox.label_completo : 'Próxima ventana');
+        const lineaEnvioResumen = esPostal
+          ? `Envío postal (${opLbl} · CP ${w.cpPostal})`
+          : (esEnvio ? 'Envío a domicilio' : 'Retiro en punto de entrega');
 
         stageHtml = `
           <h2 class="chk-wiz-question">Revisá y confirmá tu pedido</h2>
-          <p class="chk-wiz-lead">Verificá el resumen antes de enviarlo.</p>
+          <p class="chk-wiz-lead">Verificá el detalle desglosado antes de confirmar.</p>
 
           <div style="background:var(--card); border:1.5px solid var(--border); border-radius:16px; padding:15px 16px; margin-bottom:14px; box-shadow:0 3px 12px rgba(62,37,25,0.04);">
             <div style="font-size:0.78rem; font-weight:900; text-transform:uppercase; color:var(--brand-dark); margin-bottom:8px;">
@@ -4164,8 +5097,8 @@
 
             <div style="margin-top:12px; display:flex; flex-direction:column; gap:7px; font-size:0.88rem; line-height:1.4;">
               <div><span style="color:var(--muted); font-weight:800;">Entrega:</span> <strong>${esc(entregaTexto)}</strong></div>
-              <div><span style="color:var(--muted); font-weight:800;">Fecha estimada:</span> <strong>${esc(prox ? prox.label_completo : 'Próxima ventana')}</strong></div>
-              <div><span style="color:var(--muted); font-weight:800;">Vecino/a:</span> <strong>${esc(w.nombre)} · 📱 ${esc(w.telefono)}</strong></div>
+              <div><span style="color:var(--muted); font-weight:800;">${esPostal ? 'Despacho:' : 'Fecha estimada:'}</span> <strong>${esc(plazoTexto)}</strong></div>
+              <div><span style="color:var(--muted); font-weight:800;">${esPostal ? 'Recibe:' : 'Vecino/a:'}</span> <strong>${esc(w.nombre)}${esPostal && w.dniPostal ? ` · DNI ${esc(w.dniPostal)}` : ''} · 📱 ${esc(w.telefono)}</strong></div>
               <div><span style="color:var(--muted); font-weight:800;">Abonás con:</span> <strong>${esc(pagoTexto)}</strong></div>
             </div>
           </div>
@@ -4176,8 +5109,8 @@
               <span>${fmt(res.subtotal)}</span>
             </div>
             <div style="display:flex; justify-content:space-between; font-size:0.88rem; color:#f5d0b5; margin-top:5px; font-weight:700;">
-              <span>${esEnvio ? 'Envío a domicilio' : 'Retiro en punto de entrega'}</span>
-              <span>${res.costoEnvio > 0 ? '+' + fmt(res.costoEnvio) : 'Sin cargo'}</span>
+              <span>${esc(lineaEnvioResumen)}</span>
+              <span>${res.costoEnvio > 0 ? '+' + fmt(res.costoEnvio) : (esPostal ? 'Bonificado ($0)' : 'Sin cargo')}</span>
             </div>
             <div style="display:flex; justify-content:space-between; font-size:1.28rem; font-weight:900; margin-top:9px; padding-top:9px; border-top:1px solid rgba(255,255,255,0.18);">
               <span>Total a abonar</span>
@@ -4190,7 +5123,7 @@
           <button type="button" id="chk-btn-confirmar-pedido" class="chk-btn-primary"
             ${w.enviandoPedido ? 'disabled' : ''}
             onclick="enviarPedidoVecinal()">
-            ${w.enviandoPedido ? 'Confirmando tu pedido...' : 'Confirmar mi Pedido'}
+            ${w.enviandoPedido ? 'Confirmando tu pedido...' : (esPostal ? 'Confirmar Compra' : 'Confirmar mi Pedido')}
           </button>
         `;
       }
@@ -4222,6 +5155,7 @@
       sincronizarInputsPasoVisibleCheckout();
 
       const w = STATE.checkoutWiz;
+      const esPostal = esCheckoutPostalNacional();
       STATE.modalidadEntrega = w.modalidadElegida || STATE.modalidadEntrega;
       STATE.medioPago = w.medioPagoElegido || STATE.medioPago;
       const res = calcularResumenCarrito();
@@ -4230,15 +5164,33 @@
       const direccion = String(w.direccion || '').trim();
       const entrecalles = String(w.entrecalles || '').trim();
 
-      if (!nombre || !telefono) {
-        w.pasoActualKey = 'datos';
-        renderContenidoModalCheckout();
-        return;
-      }
-      if (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && !direccion) {
-        w.pasoActualKey = 'direccion';
-        renderContenidoModalCheckout();
-        return;
+      if (esPostal) {
+        if (!validarPasoCheckoutWizard('cp_modalidad')) {
+          w.pasoActualKey = 'cp_modalidad';
+          renderContenidoModalCheckout();
+          return;
+        }
+        if (!validarPasoCheckoutWizard('destino_postal')) {
+          w.pasoActualKey = 'destino_postal';
+          renderContenidoModalCheckout();
+          return;
+        }
+        if (!validarPasoCheckoutWizard('destinatario_postal')) {
+          w.pasoActualKey = 'destinatario_postal';
+          renderContenidoModalCheckout();
+          return;
+        }
+      } else {
+        if (!nombre || !telefono) {
+          w.pasoActualKey = 'datos';
+          renderContenidoModalCheckout();
+          return;
+        }
+        if (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && !direccion) {
+          w.pasoActualKey = 'direccion';
+          renderContenidoModalCheckout();
+          return;
+        }
       }
 
       w.enviandoPedido = true;
@@ -4257,14 +5209,33 @@
         visitor_id: obtenerVisitorIdTienda(),
         vecino_nombre: nombre,
         vecino_telefono: telefono,
+        vecino_email: esPostal ? String(w.emailPostal || '').trim() : undefined,
+        destinatario_dni: esPostal ? String(w.dniPostal || '').replace(/\D/g, '') : undefined,
         modalidad_entrega: STATE.modalidadEntrega,
         direccion_entrega: direccion,
-        entrecalles_referencia: entrecalles,
-        latitud: (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && dirCoincidePin) ? Number(window._savedVecinoLat) : null,
-        longitud: (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && dirCoincidePin) ? Number(window._savedVecinoLng) : null,
-        gps_origen: (STATE.modalidadEntrega === 'ENVIO_BARRIAL' && dirCoincidePin) ? (window._savedVecinoGpsOrigen || 'VECINO_GPS') : null,
+        entrecalles_referencia: esPostal ? String(w.referenciasPostal || '').trim() : entrecalles,
+        latitud: (!esPostal && STATE.modalidadEntrega === 'ENVIO_BARRIAL' && dirCoincidePin) ? Number(window._savedVecinoLat) : null,
+        longitud: (!esPostal && STATE.modalidadEntrega === 'ENVIO_BARRIAL' && dirCoincidePin) ? Number(window._savedVecinoLng) : null,
+        gps_origen: (!esPostal && STATE.modalidadEntrega === 'ENVIO_BARRIAL' && dirCoincidePin) ? (window._savedVecinoGpsOrigen || 'VECINO_GPS') : null,
         medio_pago: STATE.medioPago,
         fecha_hora_simulada: calcularFechaSimuladaCorte(),
+        postal: esPostal ? {
+          operador_postal: w.operadorPostal,
+          modalidad_postal: STATE.modalidadEntrega === 'PAQUETERIA_SUCURSAL' ? 'SUCURSAL' : 'DOMICILIO',
+          cp_destino: String(w.cpPostal || '').replace(/\D+/g, ''),
+          provincia_codigo: w.provinciaCodigo,
+          provincia_nombre: w.provinciaNombre,
+          localidad_nombre: String(w.localidadPostal || '').trim(),
+          calle: String(w.callePostal || '').trim(),
+          altura: w.sinNumeroPostal ? 'S/N' : String(w.alturaPostal || '').trim(),
+          sin_numero: Boolean(w.sinNumeroPostal),
+          piso_depto: String(w.pisoDeptoPostal || '').trim(),
+          referencias_domicilio: String(w.referenciasPostal || '').trim(),
+          sucursal_nombre: String(w.sucursalPostal || '').trim(),
+          destinatario_nombre: nombre,
+          destinatario_dni: String(w.dniPostal || '').replace(/\D/g, ''),
+          email: String(w.emailPostal || '').trim()
+        } : undefined,
         items: res.detalle.map(d => ({
           oferta_id: d.oferta_id,
           cantidad: d.cantidad
@@ -4299,6 +5270,7 @@
         if (ped) {
           STATE.ultimoPedidoConfirmado = {
             codigo_pedido: ped.codigo_pedido,
+            tracking_token: ped.tracking_token || '',
             items: itemsConfirmados
           };
           guardarIdentidadVecinoLocal({
@@ -4306,8 +5278,21 @@
             telefono_normalizado: ped.telefono_normalizado || '',
             telefono_display: telefono || ped.vecino_telefono || '',
             nombre_completo: ped.vecino_nombre || nombre || '',
-            direccion_calle: direccion || '',
-            entrecalles_referencia: entrecalles || ''
+            direccion_calle: esPostal ? (ped.direccion_entrega || '') : (direccion || ''),
+            entrecalles_referencia: esPostal ? (w.referenciasPostal || '') : (entrecalles || ''),
+            cp_postal: esPostal ? w.cpPostal : undefined,
+            operador_postal: esPostal ? w.operadorPostal : undefined,
+            provincia_codigo: esPostal ? w.provinciaCodigo : undefined,
+            provincia_nombre: esPostal ? w.provinciaNombre : undefined,
+            localidad_postal: esPostal ? w.localidadPostal : undefined,
+            calle_postal: esPostal ? w.callePostal : undefined,
+            altura_postal: esPostal ? w.alturaPostal : undefined,
+            sin_numero_postal: esPostal ? Boolean(w.sinNumeroPostal) : undefined,
+            piso_depto_postal: esPostal ? w.pisoDeptoPostal : undefined,
+            referencias_postal: esPostal ? w.referenciasPostal : undefined,
+            sucursal_postal: esPostal ? w.sucursalPostal : undefined,
+            dni_cuil: esPostal ? w.dniPostal : undefined,
+            email_contacto: esPostal ? w.emailPostal : undefined
           });
           if (ped.tracking_token) {
             guardarPedidoRecienteLocal({
@@ -4330,6 +5315,13 @@
           }, 0);
         }
 
+        const esPedPostal = ped.modalidad_entrega === 'PAQUETERIA_DOMICILIO' || ped.modalidad_entrega === 'PAQUETERIA_SUCURSAL';
+        const modalidadConfirmadaTxt = esPedPostal
+          ? `${ped.modalidad_entrega === 'PAQUETERIA_SUCURSAL' ? 'Retiro en sucursal' : 'Envío postal a domicilio'} (${ped.direccion_entrega})`
+          : (ped.modalidad_entrega === 'ENVIO_BARRIAL'
+              ? `Envío a domicilio (${ped.direccion_entrega})`
+              : `Retiro en punto de entrega (${pagoInfo.direccion_retiro})`);
+
         const box = document.getElementById('checkout-card-content');
         box.innerHTML = `
           ${renderCabeceraMarcaCheckoutWizard(1, 1, true)}
@@ -4338,15 +5330,15 @@
               <div style="font-size:2.6rem;">🎉</div>
               <h2 style="margin:6px 0; color:#15803d; font-size:1.35rem; font-weight:900;">¡Pedido Confirmado! (${esc(ped.codigo_pedido)})</h2>
               <p style="margin:4px 0 16px 0; color:#475569; font-size:0.93rem; font-weight:700;">
-                Gracias <strong>${esc(ped.vecino_nombre)}</strong>. Tu pedido en <strong>${esc(pagoInfo.nombre_marca)}</strong> ya quedó agendado.
+                Gracias <strong>${esc(ped.vecino_nombre)}</strong>. Tu compra en <strong>${esc(pagoInfo.nombre_marca)}</strong> ya quedó registrada.
               </p>
 
               <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:14px; padding:14px; text-align:left; font-size:0.88rem; margin-bottom:14px;">
-                <div>📅 <strong>Fecha y ventana de entrega:</strong> ${esc(ped.fecha_entrega_label)}</div>
-                <div style="margin-top:4px;">📍 <strong>Modalidad:</strong> ${ped.modalidad_entrega === 'ENVIO_BARRIAL' ? `Envío a domicilio (${esc(ped.direccion_entrega)})` : `Retiro en punto de entrega (${esc(pagoInfo.direccion_retiro)})`}</div>
+                <div>${esPedPostal ? '🚚 <strong>Despacho estimado:</strong>' : '📅 <strong>Fecha y ventana de entrega:</strong>'} ${esc(ped.fecha_entrega_label)}</div>
+                <div style="margin-top:4px;">📍 <strong>Destino:</strong> ${esc(modalidadConfirmadaTxt)}</div>
                 ${itemsConfirmados.length > 0 ? `
                   <div style="margin-top:8px; padding-top:8px; border-top:1px dashed #86efac;">
-                    <div style="font-size:0.75rem; font-weight:800; color:#166534; text-transform:uppercase; margin-bottom:4px;">🛒 Detalle del pedido</div>
+                    <div style="font-size:0.75rem; font-weight:800; color:#166534; text-transform:uppercase; margin-bottom:4px;">🛒 Detalle de productos</div>
                     ${itemsConfirmados.map(it => `
                       <div style="display:flex; justify-content:space-between; gap:8px; font-size:0.84rem; padding:2px 0;">
                         <span><strong>${Number(it.cantidad || 1)}x</strong> ${esc(formatearNombreItemConPresentacion(it))}</span>
@@ -4355,7 +5347,10 @@
                     `).join('')}
                   </div>
                 ` : ''}
-                <div style="margin-top:6px; padding-top:6px; border-top:1px solid #86efac;">💰 <strong>Total del pedido:</strong> ${fmt(ped.total_vecino)}</div>
+                ${Number(ped.cargo_envio_barrial || 0) > 0 ? `
+                  <div style="margin-top:5px; font-size:0.83rem; color:#166534;">🚚 <strong>Envío:</strong> +${fmt(ped.cargo_envio_barrial)}</div>
+                ` : (esPedPostal ? `<div style="margin-top:5px; font-size:0.83rem; color:#15803d; font-weight:800;">🎁 <strong>Envío nacional bonificado ($0)</strong></div>` : '')}
+                <div style="margin-top:6px; padding-top:6px; border-top:1px solid #86efac;">💰 <strong>Total a abonar:</strong> ${fmt(ped.total_vecino)}</div>
               </div>
 
               ${ped.medio_pago === 'TRANSFERENCIA' ? `
@@ -4378,7 +5373,7 @@
 
               ${ped.tracking_token ? `
                 <div style="margin-bottom:12px;">
-                  <button type="button" onclick="cerrarModalCheckout(); abrirSeguimientoPorToken('${esc(ped.tracking_token)}');"
+                  <button type="button" id="chk-btn-abrir-seguimiento" onclick="cerrarModalCheckout(); abrirSeguimientoPorToken('${esc(ped.tracking_token)}');"
                     style="width:100%; padding:13px 16px; border-radius:12px; border:1.5px solid var(--brand); background:var(--brand-light); color:var(--brand-dark); font-family:inherit; font-weight:900; font-size:0.94rem; cursor:pointer;">
                     📍 Seguir el estado de mi pedido en vivo →
                   </button>
@@ -4439,10 +5434,11 @@
       const lineasItems = itemsPedido.map(it =>
         `  • ${Number(it.cantidad || 1)}x ${formatearNombreItemConPresentacion(it)} (${fmt(it.subtotal_vecino ?? it.subtotal ?? 0)})`
       );
+      const esEcWa = esPerfilEcommerceTienda(STATE.nodo);
       const lineasMsg = [
         `🌿 *${nombreMarca}* — Nuevo Pedido #${codigoPedido}`,
-        `👤 Vecino/a: *${vecinoNombre}*`,
-        `📅 Entrega: ${fechaEntrega}`
+        `👤 ${esEcWa ? 'Cliente' : 'Vecino/a'}: *${vecinoNombre}*`,
+        `${esEcWa ? '🚚 Despacho' : '📅 Entrega'}: ${fechaEntrega}`
       ];
       if (lineasItems.length > 0) {
         lineasMsg.push('🛒 *Detalle:*');
@@ -4624,6 +5620,7 @@
       try {
         const actual = obtenerIdentidadVecinoLocal(slug);
         const fusion = {
+          ...actual,
           portal_token: (parcial.portal_token && String(parcial.portal_token).trim().length >= 16)
             ? String(parcial.portal_token).trim()
             : (actual.portal_token || ''),
@@ -4632,6 +5629,19 @@
           nombre_completo: parcial.nombre_completo || actual.nombre_completo || '',
           direccion_calle: parcial.direccion_calle !== undefined ? (parcial.direccion_calle || actual.direccion_calle || '') : (actual.direccion_calle || ''),
           entrecalles_referencia: parcial.entrecalles_referencia !== undefined ? (parcial.entrecalles_referencia || actual.entrecalles_referencia || '') : (actual.entrecalles_referencia || ''),
+          cp_postal: parcial.cp_postal !== undefined ? parcial.cp_postal : (actual.cp_postal || ''),
+          operador_postal: parcial.operador_postal !== undefined ? parcial.operador_postal : (actual.operador_postal || ''),
+          provincia_codigo: parcial.provincia_codigo !== undefined ? parcial.provincia_codigo : (actual.provincia_codigo || ''),
+          provincia_nombre: parcial.provincia_nombre !== undefined ? parcial.provincia_nombre : (actual.provincia_nombre || ''),
+          localidad_postal: parcial.localidad_postal !== undefined ? parcial.localidad_postal : (actual.localidad_postal || ''),
+          calle_postal: parcial.calle_postal !== undefined ? parcial.calle_postal : (actual.calle_postal || ''),
+          altura_postal: parcial.altura_postal !== undefined ? parcial.altura_postal : (actual.altura_postal || ''),
+          sin_numero_postal: parcial.sin_numero_postal !== undefined ? Boolean(parcial.sin_numero_postal) : Boolean(actual.sin_numero_postal),
+          piso_depto_postal: parcial.piso_depto_postal !== undefined ? parcial.piso_depto_postal : (actual.piso_depto_postal || ''),
+          referencias_postal: parcial.referencias_postal !== undefined ? parcial.referencias_postal : (actual.referencias_postal || ''),
+          sucursal_postal: parcial.sucursal_postal !== undefined ? parcial.sucursal_postal : (actual.sucursal_postal || ''),
+          dni_cuil: parcial.dni_cuil !== undefined ? parcial.dni_cuil : (actual.dni_cuil || ''),
+          email_contacto: parcial.email_contacto !== undefined ? parcial.email_contacto : (actual.email_contacto || ''),
           updated_at: new Date().toISOString()
         };
         localStorage.setItem(_storageKeyIdentidadVecino(slug), JSON.stringify(fusion));
@@ -4926,7 +5936,7 @@
       const telPrefill = forzarOtroNumero
         ? ''
         : (identidad.telefono_display || window._savedVecinoTel || '');
-      const nombreMarca = STATE.nodo?.nombre_marca || 'Tienda Barrial';
+      const nombreMarca = STATE.nodo?.nombre_marca || 'la tienda';
       const tieneCuentaActiva = Boolean(STATE.portalToken);
 
       box.innerHTML = `
@@ -5218,7 +6228,7 @@
                 </span>
               </div>
               <div style="font-size:0.81rem; color:var(--text); font-weight:700; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                ${resumenItems || 'Compra vecinal'}
+                ${resumenItems || esc(tMarca(nodo, 'resumen_compra'))}
               </div>
               ${p.fecha_entrega_label ? `<div style="font-size:0.75rem; color:var(--muted); font-weight:700; margin-top:2px;">📅 ${esc(p.fecha_entrega_label)}</div>` : ''}
             </div>
@@ -5399,12 +6409,15 @@
         const telWa = telGestorDigits.startsWith('54') ? telGestorDigits : `549${telGestorDigits}`;
         return `https://wa.me/${telWa}?text=${encodeURIComponent(textoBase)}`;
       };
+      const esEcSeg = esPerfilEcommerceTienda(nodo) || ped.modalidad_entrega === 'PAQUETERIA_DOMICILIO' || ped.modalidad_entrega === 'PAQUETERIA_SUCURSAL';
+      const envPost = ped.envio_postal || seg.envio_postal || null;
+      const opPostalLbl = envPost?.operador_postal_label || formatearOperadorPostalTienda(envPost?.operador_postal || '');
       const waGestorHref = armarHrefWaGestor(`Hola ${nodo.gestor_nombre || ''}! Te consulto por mi pedido #${ped.codigo_pedido} en ${nodo.nombre_marca}.`);
-      const waAusenteTempranoHref = (ped.modalidad_entrega === 'ENVIO_BARRIAL' && !seg.anulado && !esEntregado && !ped.ausente_pasa_retirar && !seg.ausente_pasa_retirar)
+      const waAusenteTempranoHref = (!esEcSeg && ped.modalidad_entrega === 'ENVIO_BARRIAL' && !seg.anulado && !esEntregado && !ped.ausente_pasa_retirar && !seg.ausente_pasa_retirar)
         ? armarHrefWaGestor(`Hola ${nodo.gestor_nombre || ''}! Sobre mi pedido #${ped.codigo_pedido} (${nodo.nombre_marca}): hoy no voy a estar en casa a la hora del reparto. ¿Podemos coordinar otro horario o paso a retirarlo por el punto de retiro?`)
         : '';
-      const radar = data.radar_en_vivo || null;
-      const esAusenteRetirar = Boolean(ped.ausente_pasa_retirar || seg.ausente_pasa_retirar) && !seg.anulado && !esEntregado;
+      const radar = esEcSeg ? null : (data.radar_en_vivo || null);
+      const esAusenteRetirar = !esEcSeg && Boolean(ped.ausente_pasa_retirar || seg.ausente_pasa_retirar) && !seg.anulado && !esEntregado;
 
       const accionRefrescar = tieneTok
         ? `abrirSeguimientoPorToken('${esc(ped.tracking_token)}', true)`
@@ -5491,6 +6504,31 @@
           </div>
         ` : ''}
 
+        ${(esEcSeg && envPost && envPost.numero_tracking && !seg.anulado) ? `
+          <div style="background:#eff6ff; border:1.5px solid #60a5fa; border-radius:14px; padding:12px 14px; margin-bottom:14px;">
+            <div style="font-size:0.73rem; font-weight:900; text-transform:uppercase; color:#1d4ed8;">
+              🚚 Código de seguimiento · ${esc(opPostalLbl)}
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-top:4px;">
+              <div style="font-size:1.05rem; font-weight:900; color:#0f172a; letter-spacing:0.03em;">
+                ${esc(envPost.numero_tracking)}
+              </div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" onclick="navigator.clipboard.writeText('${esc(envPost.numero_tracking)}'); this.textContent='✓ Copiado';"
+                  style="padding:6px 11px; border-radius:8px; border:1px solid #93c5fd; background:#ffffff; color:#1d4ed8; font-family:inherit; font-size:0.78rem; font-weight:900; cursor:pointer;">
+                  📋 Copiar código
+                </button>
+                ${envPost.url_tracking_carrier ? `
+                  <a href="${esc(envPost.url_tracking_carrier)}" target="_blank" rel="noopener"
+                    style="padding:6px 11px; border-radius:8px; background:#2563eb; color:#ffffff; font-size:0.78rem; font-weight:900; text-decoration:none;">
+                    Seguir en ${esc(opPostalLbl)} ↗
+                  </a>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
         <!-- Línea de Tiempo Vertical Paso a Paso -->
         ${!seg.anulado ? `
           <div class="trk-timeline">
@@ -5526,20 +6564,22 @@
           <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; padding-bottom:8px; border-bottom:1px solid var(--border); margin-bottom:9px;">
             <div>
               <div style="font-size:0.73rem; font-weight:800; color:var(--muted); text-transform:uppercase;">
-                ${ped.modalidad_entrega === 'ENVIO_BARRIAL' ? '🛵 Envío a domicilio' : `🏠 Retiro en ${esc(nodo.nombre_marca)}`}
+                ${esEcSeg
+                  ? (ped.modalidad_entrega === 'PAQUETERIA_SUCURSAL' ? `🏢 Retiro en sucursal (${esc(opPostalLbl)})` : `📦 Envío postal a domicilio (${esc(opPostalLbl)})`)
+                  : (ped.modalidad_entrega === 'ENVIO_BARRIAL' ? '🛵 Envío a domicilio' : `🏠 Retiro en ${esc(nodo.nombre_marca)}`)}
               </div>
               <div style="font-weight:800; color:var(--text); margin-top:2px;">
-                ${ped.modalidad_entrega === 'ENVIO_BARRIAL'
+                ${(esEcSeg || ped.modalidad_entrega === 'ENVIO_BARRIAL')
                   ? `${esc(ped.direccion_entrega)}${ped.entrecalles_referencia ? ` (${esc(ped.entrecalles_referencia)})` : ''}`
                   : esc(nodo.direccion_retiro || nodo.barrio_zona || '')
                 }
               </div>
-              ${esEnmascarado && ped.modalidad_entrega === 'ENVIO_BARRIAL' ? `
+              ${esEnmascarado && (esEcSeg || ped.modalidad_entrega === 'ENVIO_BARRIAL') ? `
                 <div style="font-size:0.72rem; color:#64748b; font-weight:700; margin-top:2px;">
                   🔒 Numeración parcialmente oculta por privacidad
                 </div>
               ` : ''}
-              ${ped.fecha_entrega_label ? `<div style="font-size:0.78rem; color:var(--muted); font-weight:700; margin-top:2px;">📅 ${esc(ped.fecha_entrega_label)}</div>` : ''}
+              ${ped.fecha_entrega_label ? `<div style="font-size:0.78rem; color:var(--muted); font-weight:700; margin-top:2px;">${esEcSeg ? '🚚' : '📅'} ${esc(ped.fecha_entrega_label)}</div>` : ''}
             </div>
             <div style="text-align:right;">
               ${ped.pago_confirmado
@@ -5557,7 +6597,7 @@
           </div>
 
           <div style="font-size:0.75rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:5px;">
-            Productos en tu bolsa (${items.reduce((a, b) => a + Number(b.cantidad || 0), 0)} u.)
+            ${esc(tMarca(nodo, 'productos_pedido'))} (${items.reduce((a, b) => a + Number(b.cantidad || 0), 0)} u.)
           </div>
           ${items.map(it => `
             <div style="display:flex; justify-content:space-between; gap:8px; padding:3px 0; font-size:0.83rem;">
@@ -5567,10 +6607,15 @@
           `).join('')}
           ${Number(ped.cargo_envio_barrial) > 0 ? `
             <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem; color:var(--muted);">
-              <span>Envío barrial</span>
+              <span>${esEcSeg ? `Envío postal (${esc(opPostalLbl)})` : 'Envío barrial'}</span>
               <span>+${fmt(ped.cargo_envio_barrial)}</span>
             </div>
-          ` : ''}
+          ` : (esEcSeg ? `
+            <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem; color:#15803d; font-weight:800;">
+              <span>Envío postal (${esc(opPostalLbl)})</span>
+              <span>Bonificado ($0)</span>
+            </div>
+          ` : '')}
           ${Number(ped.monto_ajuste_credito) > 0 ? `
             <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem; color:#15803d;">
               <span>Bonificación / ajuste a favor</span>
@@ -5986,20 +7031,22 @@
               </div>
             ` : ''}
 
-            <!-- Detalle de entrega y bolsas pedidas -->
+            <!-- Detalle de entrega y productos pedidos -->
             <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:14px; padding:13px 15px; font-size:0.84rem;">
               <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; padding-bottom:9px; border-bottom:1px solid var(--border); margin-bottom:9px;">
                 <div>
                   <div style="font-size:0.73rem; font-weight:800; color:var(--muted); text-transform:uppercase;">
-                    ${pedDest.modalidad_entrega === 'ENVIO_BARRIAL' ? '🛵 Entrega a domicilio barrial' : `🏠 Retiro en ${esc(nodo.nombre_marca)}`}
+                    ${(pedDest.modalidad_entrega === 'PAQUETERIA_DOMICILIO' || pedDest.modalidad_entrega === 'PAQUETERIA_SUCURSAL')
+                      ? (pedDest.modalidad_entrega === 'PAQUETERIA_SUCURSAL' ? '🏢 Retiro en sucursal de correo' : '📦 Envío postal a domicilio')
+                      : (pedDest.modalidad_entrega === 'ENVIO_BARRIAL' ? '🛵 Entrega a domicilio barrial' : `🏠 Retiro en ${esc(nodo.nombre_marca)}`)}
                   </div>
                   <div style="font-weight:800; color:var(--text); margin-top:2px;">
-                    ${pedDest.modalidad_entrega === 'ENVIO_BARRIAL'
+                    ${(pedDest.modalidad_entrega === 'ENVIO_BARRIAL' || pedDest.modalidad_entrega === 'PAQUETERIA_DOMICILIO' || pedDest.modalidad_entrega === 'PAQUETERIA_SUCURSAL')
                       ? `${esc(pedDest.direccion_entrega)}${pedDest.entrecalles_referencia ? ` (${esc(pedDest.entrecalles_referencia)})` : ''}`
                       : esc(nodo.direccion_retiro || nodo.barrio_zona || '')
                     }
                   </div>
-                  ${pedDest.fecha_entrega_label ? `<div style="font-size:0.79rem; color:var(--brand-dark); font-weight:800; margin-top:3px;">📅 Entrega programada: ${esc(pedDest.fecha_entrega_label)}</div>` : ''}
+                  ${pedDest.fecha_entrega_label ? `<div style="font-size:0.79rem; color:var(--brand-dark); font-weight:800; margin-top:3px;">${esPerfilEcommerceTienda(nodo) ? '🚚 Despacho:' : '📅 Entrega programada:'} ${esc(pedDest.fecha_entrega_label)}</div>` : ''}
                 </div>
                 ${pedDest.pago_confirmado && pedDest.comprobante_digital ? `
                   <div style="align-self:center;">
@@ -6012,7 +7059,7 @@
               </div>
 
               <div style="font-size:0.74rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:5px;">
-                Bolsas y productos pedidos (${Number(pedDest.total_unidades || 0)} u.)
+                ${esPerfilEcommerceTienda(nodo) ? 'Productos de tu compra' : 'Bolsas y productos pedidos'} (${Number(pedDest.total_unidades || 0)} u.)
               </div>
               ${(pedDest.items || []).map(it => `
                 <div style="display:flex; justify-content:space-between; gap:8px; padding:3px 0; font-size:0.84rem;">
@@ -6022,7 +7069,7 @@
               `).join('')}
               ${Number(pedDest.cargo_envio_barrial) > 0 ? `
                 <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem; color:var(--muted);">
-                  <span>Envío a domicilio barrial</span>
+                  <span>${esPerfilEcommerceTienda(nodo) ? 'Envío postal nacional' : 'Envío a domicilio barrial'}</span>
                   <span>+${fmt(pedDest.cargo_envio_barrial)}</span>
                 </div>
               ` : ''}
@@ -6147,7 +7194,7 @@
                           ${resumenItems || '—'}
                         </div>
                         <div style="font-size:0.77rem; color:var(--muted); font-weight:700; margin-top:3px;">
-                          ${fechaCreacionTxt ? `Pedido el ${esc(fechaCreacionTxt)} · ` : ''}📅 Entrega: ${esc(h.fecha_entrega_label || 'Programada')} · ${h.modalidad_entrega === 'ENVIO_BARRIAL' ? '🛵 Envío a domicilio' : '🏠 Punto de retiro'}
+                          ${fechaCreacionTxt ? `Pedido el ${esc(fechaCreacionTxt)} · ` : ''}${esPerfilEcommerceTienda(nodo) ? '🚚' : '📅'} ${esc(h.fecha_entrega_label || 'Programada')} · ${h.modalidad_entrega === 'PAQUETERIA_SUCURSAL' ? '🏢 Sucursal de correo' : (h.modalidad_entrega === 'PAQUETERIA_DOMICILIO' ? '📦 Envío postal' : (h.modalidad_entrega === 'ENVIO_BARRIAL' ? '🛵 Envío a domicilio' : '🏠 Punto de retiro'))}
                         </div>
                       </div>
                       <div style="text-align:right;">

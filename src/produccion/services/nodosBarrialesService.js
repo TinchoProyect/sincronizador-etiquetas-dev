@@ -44,6 +44,327 @@ function esModoLaboratorioNodos() {
         && String(process.env.DB_NAME || '').trim() === 'etiquetas_pruebas';
 }
 
+const PROVINCIAS_ARGENTINA_CANONICAS = [
+    { codigo: 'AR-C', nombre: 'Ciudad Autónoma de Buenos Aires' },
+    { codigo: 'AR-B', nombre: 'Buenos Aires' },
+    { codigo: 'AR-K', nombre: 'Catamarca' },
+    { codigo: 'AR-H', nombre: 'Chaco' },
+    { codigo: 'AR-U', nombre: 'Chubut' },
+    { codigo: 'AR-X', nombre: 'Córdoba' },
+    { codigo: 'AR-W', nombre: 'Corrientes' },
+    { codigo: 'AR-E', nombre: 'Entre Ríos' },
+    { codigo: 'AR-P', nombre: 'Formosa' },
+    { codigo: 'AR-Y', nombre: 'Jujuy' },
+    { codigo: 'AR-L', nombre: 'La Pampa' },
+    { codigo: 'AR-F', nombre: 'La Rioja' },
+    { codigo: 'AR-M', nombre: 'Mendoza' },
+    { codigo: 'AR-N', nombre: 'Misiones' },
+    { codigo: 'AR-Q', nombre: 'Neuquén' },
+    { codigo: 'AR-R', nombre: 'Río Negro' },
+    { codigo: 'AR-A', nombre: 'Salta' },
+    { codigo: 'AR-J', nombre: 'San Juan' },
+    { codigo: 'AR-D', nombre: 'San Luis' },
+    { codigo: 'AR-Z', nombre: 'Santa Cruz' },
+    { codigo: 'AR-S', nombre: 'Santa Fe' },
+    { codigo: 'AR-G', nombre: 'Santiago del Estero' },
+    { codigo: 'AR-V', nombre: 'Tierra del Fuego' },
+    { codigo: 'AR-T', nombre: 'Tucumán' }
+];
+
+function normalizarPerfilOperativoNodo(raw) {
+    const val = String(raw || '').trim().toLowerCase();
+    if (val === 'ecommerce_fulfillment' || val === 'creador_online' || val === 'fulfillment_lamda') {
+        return 'ecommerce_fulfillment';
+    }
+    return 'vecinal';
+}
+
+function obtenerPresetModulosActivos(perfilRaw = 'vecinal') {
+    const perfil = normalizarPerfilOperativoNodo(perfilRaw);
+    if (perfil === 'ecommerce_fulfillment') {
+        return {
+            retiro_punto: false,
+            reparto_zonal: false,
+            hoja_de_ruta: false,
+            envio_paqueteria: true,
+            venta_continua_24_7: true,
+            despacho_desde_lamda: true,
+            canasto_consolidado: false,
+            cobro_efectivo_entrega: false
+        };
+    }
+    return {
+        retiro_punto: true,
+        reparto_zonal: true,
+        hoja_de_ruta: true,
+        envio_paqueteria: false,
+        venta_continua_24_7: false,
+        despacho_desde_lamda: false,
+        canasto_consolidado: true,
+        cobro_efectivo_entrega: true
+    };
+}
+
+function resolverModulosActivosNodo(nodoLike = {}, overridesRaw = null) {
+    const perfil = normalizarPerfilOperativoNodo(nodoLike?.perfil_operativo);
+    const preset = obtenerPresetModulosActivos(perfil);
+    const guardados = (nodoLike?.modulos_activos && typeof nodoLike.modulos_activos === 'object' && !Array.isArray(nodoLike.modulos_activos))
+        ? nodoLike.modulos_activos
+        : {};
+    const overrides = (overridesRaw && typeof overridesRaw === 'object' && !Array.isArray(overridesRaw))
+        ? overridesRaw
+        : {};
+
+    const tieneGuardados = Object.keys(guardados).length > 0;
+    const baseLegacy = {};
+    if (!tieneGuardados && nodoLike && typeof nodoLike === 'object') {
+        if (nodoLike.permitir_retiro_nodo !== undefined) baseLegacy.retiro_punto = Boolean(nodoLike.permitir_retiro_nodo);
+        if (nodoLike.permitir_reparto_propio !== undefined || nodoLike.permitir_envio_barrial !== undefined) {
+            baseLegacy.reparto_zonal = Boolean(nodoLike.permitir_reparto_propio ?? nodoLike.permitir_envio_barrial);
+        }
+        if (nodoLike.permitir_encomienda !== undefined && perfil === 'vecinal') {
+            baseLegacy.envio_paqueteria = Boolean(nodoLike.permitir_encomienda);
+        }
+    }
+
+    const merged = {
+        ...preset,
+        ...baseLegacy,
+        ...guardados,
+        ...overrides
+    };
+
+    const resultado = {};
+    for (const k of Object.keys(preset)) {
+        resultado[k] = Boolean(merged[k]);
+    }
+    return resultado;
+}
+
+function obtenerConfigPaqueteriaDefault() {
+    return {
+        operadores_habilitados: ['CORREO_ARGENTINO', 'ANDREANI'],
+        operador_default: 'CORREO_ARGENTINO',
+        permitir_domicilio: true,
+        permitir_sucursal_correo: true,
+        permitir_editar_gestor: true,
+        sla_despacho_label: 'Despacho en 24 a 48 hs hábiles',
+        envio_gratis_activo: true,
+        envio_gratis_desde_monto: 45000,
+        tarifario_zonas: [
+            {
+                codigo: 'AMBA_LA_PLATA',
+                nombre: 'CABA, GBA y Gran La Plata',
+                cp_prefijos: ['10', '11', '12', '13', '14', '16', '17', '18', '19'],
+                domicilio: 6500,
+                sucursal: 4800,
+                plazo_dias: '2 a 4 días hábiles'
+            },
+            {
+                codigo: 'PBA_CENTRO_LITORAL',
+                nombre: 'PBA Interior, Centro y Litoral',
+                cp_prefijos: ['20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '50', '51', '52', '58', '59', '60', '64', '65', '66', '67', '70', '71', '72', '73', '74', '75', '76', '80', '81'],
+                domicilio: 8200,
+                sucursal: 6100,
+                plazo_dias: '3 a 6 días hábiles'
+            },
+            {
+                codigo: 'RESTO_PAIS',
+                nombre: 'Cuyo, NOA, NEA y Patagonia',
+                cp_prefijos: ['*'],
+                domicilio: 10500,
+                sucursal: 7900,
+                plazo_dias: '4 a 8 días hábiles'
+            }
+        ],
+        remitente_etiqueta: {
+            mostrar_marca_creador: true,
+            ciudad_origen: 'La Plata, Buenos Aires',
+            cp_origen: '1900'
+        }
+    };
+}
+
+function normalizarConfigPaqueteria(raw = {}) {
+    const def = obtenerConfigPaqueteriaDefault();
+    const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+
+    const opsPermitidos = ['CORREO_ARGENTINO', 'ANDREANI'];
+    let operadores = Array.isArray(src.operadores_habilitados)
+        ? src.operadores_habilitados.map(o => String(o || '').trim().toUpperCase()).filter(o => opsPermitidos.includes(o))
+        : def.operadores_habilitados.slice();
+    operadores = Array.from(new Set(operadores));
+    if (operadores.length === 0) operadores = ['CORREO_ARGENTINO'];
+
+    const opDefCandidato = String(src.operador_default || '').trim().toUpperCase();
+    const operadorDefault = operadores.includes(opDefCandidato) ? opDefCandidato : operadores[0];
+
+    let permitirDom = src.permitir_domicilio !== undefined ? Boolean(src.permitir_domicilio) : true;
+    let permitirSuc = src.permitir_sucursal_correo !== undefined ? Boolean(src.permitir_sucursal_correo) : true;
+    if (!permitirDom && !permitirSuc) permitirDom = true;
+
+    let zonas = Array.isArray(src.tarifario_zonas) && src.tarifario_zonas.length > 0
+        ? src.tarifario_zonas.map((z, idx) => ({
+            codigo: String(z?.codigo || `ZONA_${idx + 1}`).trim().toUpperCase(),
+            nombre: String(z?.nombre || `Zona ${idx + 1}`).trim(),
+            cp_prefijos: Array.isArray(z?.cp_prefijos)
+                ? z.cp_prefijos.map(p => String(p || '').trim()).filter(Boolean)
+                : String(z?.cp_prefijos || '*').split(',').map(p => p.trim()).filter(Boolean),
+            domicilio: Math.max(0, Number(z?.domicilio ?? 8000) || 0),
+            sucursal: Math.max(0, Number(z?.sucursal ?? 6000) || 0),
+            plazo_dias: String(z?.plazo_dias || '3 a 6 días hábiles').trim()
+        }))
+        : def.tarifario_zonas.map(z => ({ ...z, cp_prefijos: [...z.cp_prefijos] }));
+
+    if (!zonas.some(z => z.cp_prefijos.includes('*'))) {
+        zonas.push({ ...def.tarifario_zonas[def.tarifario_zonas.length - 1] });
+    }
+
+    const montoGratis = Math.max(0, Number(src.envio_gratis_desde_monto ?? def.envio_gratis_desde_monto) || 0);
+    const envioGratisActivo = src.envio_gratis_activo !== undefined
+        ? Boolean(src.envio_gratis_activo) && montoGratis > 0
+        : (montoGratis > 0);
+
+    return {
+        operadores_habilitados: operadores,
+        operador_default: operadorDefault,
+        permitir_domicilio: permitirDom,
+        permitir_sucursal_correo: permitirSuc,
+        permitir_editar_gestor: src.permitir_editar_gestor !== false,
+        sla_despacho_label: String(src.sla_despacho_label || def.sla_despacho_label).trim() || def.sla_despacho_label,
+        envio_gratis_activo: envioGratisActivo,
+        envio_gratis_desde_monto: montoGratis,
+        tarifario_zonas: zonas,
+        remitente_etiqueta: {
+            ...def.remitente_etiqueta,
+            ...((src.remitente_etiqueta && typeof src.remitente_etiqueta === 'object') ? src.remitente_etiqueta : {})
+        }
+    };
+}
+
+function formatearOperadorPostalLabel(opRaw = '') {
+    const op = String(opRaw || '').trim().toUpperCase();
+    if (op === 'ANDREANI') return 'Andreani';
+    if (op === 'OCA') return 'OCA';
+    return 'Correo Argentino';
+}
+
+function inferirProvinciaPorCp(cpRaw = '') {
+    const digits = String(cpRaw || '').replace(/\D+/g, '');
+    if (digits.length !== 4) return null;
+    const n = Number(digits);
+    const localHints = {
+        1629: { localidad: 'Pilar', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        1667: { localidad: 'Tortuguitas', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        1896: { localidad: 'City Bell', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        1900: { localidad: 'La Plata', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        7130: { localidad: 'Chascomús', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        7600: { localidad: 'Mar del Plata', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        8000: { localidad: 'Bahía Blanca', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' },
+        2000: { localidad: 'Rosario', provincia_codigo: 'AR-S', provincia_nombre: 'Santa Fe' },
+        3000: { localidad: 'Santa Fe', provincia_codigo: 'AR-S', provincia_nombre: 'Santa Fe' },
+        5000: { localidad: 'Córdoba', provincia_codigo: 'AR-X', provincia_nombre: 'Córdoba' },
+        5500: { localidad: 'Mendoza', provincia_codigo: 'AR-M', provincia_nombre: 'Mendoza' },
+        4000: { localidad: 'San Miguel de Tucumán', provincia_codigo: 'AR-T', provincia_nombre: 'Tucumán' },
+        4400: { localidad: 'Salta', provincia_codigo: 'AR-A', provincia_nombre: 'Salta' },
+        8300: { localidad: 'Neuquén', provincia_codigo: 'AR-Q', provincia_nombre: 'Neuquén' },
+        8400: { localidad: 'San Carlos de Bariloche', provincia_codigo: 'AR-R', provincia_nombre: 'Río Negro' },
+        9410: { localidad: 'Ushuaia', provincia_codigo: 'AR-V', provincia_nombre: 'Tierra del Fuego' }
+    };
+    if (localHints[n]) return { ...localHints[n] };
+
+    if (n >= 1000 && n <= 1499) return { localidad: '', provincia_codigo: 'AR-C', provincia_nombre: 'Ciudad Autónoma de Buenos Aires' };
+    if ((n >= 1600 && n <= 1999) || (n >= 2700 && n <= 2999) || (n >= 6000 && n <= 6299) || (n >= 6400 && n <= 8199)) {
+        return { localidad: '', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' };
+    }
+    if (n >= 2000 && n <= 2699) return { localidad: '', provincia_codigo: 'AR-S', provincia_nombre: 'Santa Fe' };
+    if (n >= 3000 && n <= 3099) return { localidad: '', provincia_codigo: 'AR-S', provincia_nombre: 'Santa Fe' };
+    if (n >= 3100 && n <= 3299) return { localidad: '', provincia_codigo: 'AR-E', provincia_nombre: 'Entre Ríos' };
+    if (n >= 3300 && n <= 3399) return { localidad: '', provincia_codigo: 'AR-N', provincia_nombre: 'Misiones' };
+    if (n >= 3400 && n <= 3499) return { localidad: '', provincia_codigo: 'AR-W', provincia_nombre: 'Corrientes' };
+    if (n >= 3500 && n <= 3599) return { localidad: '', provincia_codigo: 'AR-H', provincia_nombre: 'Chaco' };
+    if (n >= 3600 && n <= 3699) return { localidad: '', provincia_codigo: 'AR-P', provincia_nombre: 'Formosa' };
+    if (n >= 4000 && n <= 4199) return { localidad: '', provincia_codigo: 'AR-T', provincia_nombre: 'Tucumán' };
+    if (n >= 4200 && n <= 4399) return { localidad: '', provincia_codigo: 'AR-G', provincia_nombre: 'Santiago del Estero' };
+    if (n >= 4400 && n <= 4599) return { localidad: '', provincia_codigo: 'AR-A', provincia_nombre: 'Salta' };
+    if (n >= 4600 && n <= 4699) return { localidad: '', provincia_codigo: 'AR-Y', provincia_nombre: 'Jujuy' };
+    if (n >= 4700 && n <= 4799) return { localidad: '', provincia_codigo: 'AR-K', provincia_nombre: 'Catamarca' };
+    if (n >= 5000 && n <= 5299) return { localidad: '', provincia_codigo: 'AR-X', provincia_nombre: 'Córdoba' };
+    if (n >= 5300 && n <= 5399) return { localidad: '', provincia_codigo: 'AR-F', provincia_nombre: 'La Rioja' };
+    if (n >= 5400 && n <= 5499) return { localidad: '', provincia_codigo: 'AR-J', provincia_nombre: 'San Juan' };
+    if (n >= 5500 && n <= 5699) return { localidad: '', provincia_codigo: 'AR-M', provincia_nombre: 'Mendoza' };
+    if (n >= 5700 && n <= 5799) return { localidad: '', provincia_codigo: 'AR-D', provincia_nombre: 'San Luis' };
+    if (n >= 5800 && n <= 5999) return { localidad: '', provincia_codigo: 'AR-X', provincia_nombre: 'Córdoba' };
+    if (n >= 6300 && n <= 6399) return { localidad: '', provincia_codigo: 'AR-L', provincia_nombre: 'La Pampa' };
+    if (n >= 8300 && n <= 8399) return { localidad: '', provincia_codigo: 'AR-Q', provincia_nombre: 'Neuquén' };
+    if (n >= 8400 && n <= 8599) return { localidad: '', provincia_codigo: 'AR-R', provincia_nombre: 'Río Negro' };
+    if (n >= 9000 && n <= 9299) return { localidad: '', provincia_codigo: 'AR-U', provincia_nombre: 'Chubut' };
+    if (n >= 9300 && n <= 9399) return { localidad: '', provincia_codigo: 'AR-Z', provincia_nombre: 'Santa Cruz' };
+    if (n >= 9400 && n <= 9499) return { localidad: '', provincia_codigo: 'AR-V', provincia_nombre: 'Tierra del Fuego' };
+    return { localidad: '', provincia_codigo: 'AR-B', provincia_nombre: 'Buenos Aires' };
+}
+
+function cotizarEnvioPostalPorCp(configPaqueteriaRaw = {}, cpRaw = '', subtotalProductos = 0) {
+    const cfg = normalizarConfigPaqueteria(configPaqueteriaRaw);
+    const digits = String(cpRaw || '').replace(/\D+/g, '');
+    if (digits.length !== 4) {
+        return {
+            ok: false,
+            cp_valido: false,
+            cp: digits,
+            error: 'Ingresá un Código Postal argentino válido de 4 dígitos.'
+        };
+    }
+
+    const pref2 = digits.slice(0, 2);
+    let zonaAplicada = null;
+    for (const z of cfg.tarifario_zonas) {
+        const prefs = Array.isArray(z.cp_prefijos) ? z.cp_prefijos : [];
+        if (prefs.some(p => p !== '*' && digits.startsWith(String(p)))) {
+            zonaAplicada = z;
+            break;
+        }
+        if (prefs.includes(pref2)) {
+            zonaAplicada = z;
+            break;
+        }
+    }
+    if (!zonaAplicada) {
+        zonaAplicada = cfg.tarifario_zonas.find(z => (z.cp_prefijos || []).includes('*')) || cfg.tarifario_zonas[cfg.tarifario_zonas.length - 1];
+    }
+
+    const sub = Math.max(0, Number(subtotalProductos || 0));
+    const calificaEnvioGratis = Boolean(cfg.envio_gratis_activo && cfg.envio_gratis_desde_monto > 0 && sub >= cfg.envio_gratis_desde_monto);
+    const costoDomicilioBase = Math.max(0, Number(zonaAplicada?.domicilio || 0));
+    const costoSucursalBase = Math.max(0, Number(zonaAplicada?.sucursal || 0));
+    const sugerenciaGeo = inferirProvinciaPorCp(digits);
+
+    return {
+        ok: true,
+        cp_valido: true,
+        cp: digits,
+        zona_codigo: zonaAplicada?.codigo || 'NACIONAL',
+        zona_nombre: zonaAplicada?.nombre || 'Cobertura Nacional',
+        plazo_dias: zonaAplicada?.plazo_dias || '3 a 6 días hábiles',
+        sla_despacho_label: cfg.sla_despacho_label,
+        operadores_habilitados: cfg.operadores_habilitados,
+        operador_default: cfg.operador_default,
+        permitir_domicilio: cfg.permitir_domicilio,
+        permitir_sucursal_correo: cfg.permitir_sucursal_correo,
+        envio_gratis_activo: cfg.envio_gratis_activo,
+        envio_gratis_desde_monto: cfg.envio_gratis_desde_monto,
+        califica_envio_gratis: calificaEnvioGratis,
+        faltante_envio_gratis: (cfg.envio_gratis_activo && cfg.envio_gratis_desde_monto > sub)
+            ? Number((cfg.envio_gratis_desde_monto - sub).toFixed(2))
+            : 0,
+        costo_domicilio_base: costoDomicilioBase,
+        costo_sucursal_base: costoSucursalBase,
+        costo_domicilio_efectivo: calificaEnvioGratis ? 0 : costoDomicilioBase,
+        costo_sucursal_efectivo: calificaEnvioGratis ? 0 : costoSucursalBase,
+        sugerencia_geo: sugerenciaGeo
+    };
+}
+
 // Paleta exacta muestreada píxel a píxel desde assets-paraiso/Paraiso Color Horizontal.png
 const TEMA_VISUAL_PARAISO_OFICIAL = {
     paleta: {
@@ -2850,19 +3171,18 @@ function _calcularDistanciaMetrosGeo(lat1, lng1, lat2, lng2) {
  * - ENVIO_BARRIAL: 6 hitos (1 -> 2 -> 3 -> 4 -> 5 -> 6).
  * - RETIRO_NODO: 5 hitos (1 -> 2 -> 3 -> 4 "¡Listo para retirar!" -> 6 "Entregado", sin viaje falso de reparto).
  */
-function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = []) {
-    const esEnvio = String(pedido.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' ||
-        Boolean(pedido.incluido_reparto_manual);
+function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = [], envioPostal = null) {
+    const modOpUpper = String(pedido.modalidad_entrega || '').toUpperCase();
+    const esPedidoPostal = Boolean(envioPostal) ||
+        ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(modOpUpper) ||
+        normalizarPerfilOperativoNodo(nodo?.perfil_operativo) === 'ecommerce_fulfillment';
+
     const marca = nodo.nombre_marca || 'nuestra tienda';
     const gestor = nodo.gestor_nombre || marca;
-    const dirRetiro = nodo.direccion_retiro || nodo.barrio_zona || marca;
-    const dirVecino = pedido.direccion_entrega || 'tu domicilio';
     const esAnulado = String(pedido.estado_operativo || '').toUpperCase() === 'ANULADO';
     const hitoActual = esAnulado
         ? 0
         : Number(pedido.hito_tracking_actual || resolverHitoDesdeEstadoOperativo(pedido.estado_operativo, pedido.secuencia_operativa_lamda));
-    const esAusentePasaRetirar = Boolean(pedido.ausente_pasa_retirar) && !esAnulado && hitoActual < 6;
-    const motivoAusencia = String(pedido.motivo_ausencia || '').trim();
 
     const mapaEventosTs = new Map();
     for (const ev of (eventosRows || [])) {
@@ -2871,6 +3191,115 @@ function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = []) {
             mapaEventosTs.set(hn, ev.created_at);
         }
     }
+
+    if (esPedidoPostal) {
+        const operadorLabel = formatearOperadorPostalLabel(envioPostal?.operador_postal || 'CORREO_ARGENTINO');
+        const esSucursalPostal = String(envioPostal?.modalidad_postal || '').toUpperCase() === 'SUCURSAL' || modOpUpper === 'PAQUETERIA_SUCURSAL';
+        const locTxt = [envioPostal?.localidad_nombre, envioPostal?.provincia_nombre].filter(Boolean).join(', ') || (pedido.direccion_entrega || 'tu localidad');
+        const cpTxt = envioPostal?.cp_destino ? ` (CP ${envioPostal.cp_destino})` : '';
+        const numGuia = String(envioPostal?.numero_tracking || '').trim();
+        const slaLabel = nodo?.config_paqueteria?.sla_despacho_label || pedido.fecha_entrega_label || 'Despacho en 24 a 48 hs hábiles';
+
+        const defsEcommerce = [
+            {
+                hito_numero: 1,
+                codigo: 'COMPRA_RECIBIDA',
+                icono: '📝',
+                titulo: 'Compra recibida',
+                descripcion: `Tu pedido quedó registrado en ${marca} (${slaLabel}).`,
+                fecha_fallback: pedido.created_at
+            },
+            {
+                hito_numero: 2,
+                codigo: 'EN_PREPARACION',
+                icono: '💳',
+                titulo: 'Pago confirmado · En preparación',
+                descripcion: 'Estamos seleccionando y preparando tus productos frescos para despacho.',
+                fecha_fallback: pedido.fecha_en_preparacion || pedido.fecha_armado_bolsa
+            },
+            {
+                hito_numero: 3,
+                codigo: 'EMPAQUETADO_CONTROLADO',
+                icono: '📦',
+                titulo: 'Empaquetado y controlado',
+                descripcion: `Tus productos fueron controlados uno por uno y embalados con sello de ${marca}.`,
+                fecha_fallback: pedido.fecha_armado_bolsa
+            },
+            {
+                hito_numero: 4,
+                codigo: 'DESPACHADO_CORREO',
+                icono: '🚚',
+                titulo: `Despachado por ${operadorLabel}`,
+                descripcion: numGuia
+                    ? `Tu paquete ingresó a ${operadorLabel} con número de seguimiento #${numGuia}.`
+                    : `Tu paquete ya fue entregado a ${operadorLabel} para su distribución nacional.`,
+                fecha_fallback: envioPostal?.fecha_despacho || pedido.fecha_entrega_gestor
+            },
+            {
+                hito_numero: 5,
+                codigo: 'EN_TRANSITO_CORREO',
+                icono: '🛣️',
+                titulo: esSucursalPostal ? 'En viaje a sucursal de correo' : 'En tránsito a tu domicilio',
+                descripcion: esSucursalPostal
+                    ? `Viajando hacia la sucursal de ${operadorLabel} en ${locTxt}${cpTxt}.`
+                    : `En distribución postal hacia ${locTxt}${cpTxt}.`,
+                fecha_fallback: pedido.fecha_en_camino_vecino
+            },
+            {
+                hito_numero: 6,
+                codigo: 'ENTREGADO_CLIENTE',
+                icono: '✅',
+                titulo: 'Entregado',
+                descripcion: `¡Gracias por elegir ${marca}! Que disfrutes tu compra.`,
+                fecha_fallback: envioPostal?.fecha_entrega_correo || pedido.fecha_entregado_vecino
+            }
+        ];
+
+        const hitoEfectivoPostal = Math.max(1, Math.min(6, hitoActual || 1));
+        const pasosPostal = defsEcommerce.map((def, idx) => {
+            const completado = !esAnulado && hitoEfectivoPostal >= def.hito_numero;
+            const esActual = !esAnulado && hitoEfectivoPostal === def.hito_numero;
+            const ts = completado ? (mapaEventosTs.get(def.hito_numero) || def.fecha_fallback || null) : null;
+            return {
+                paso_orden: idx + 1,
+                total_pasos: defsEcommerce.length,
+                hito_numero: def.hito_numero,
+                codigo: def.codigo,
+                icono: def.icono,
+                titulo: def.titulo,
+                descripcion: def.descripcion,
+                completado,
+                es_actual: esActual,
+                fecha_hora: ts
+            };
+        });
+        const pasoActualPostal = pasosPostal.find(p => p.es_actual) || pasosPostal[0];
+        return {
+            es_ecommerce_postal: true,
+            anulado: esAnulado,
+            ausente_pasa_retirar: false,
+            motivo_ausencia: null,
+            hito_actual: esAnulado ? 0 : hitoEfectivoPostal,
+            paso_actual_orden: esAnulado ? 0 : (pasoActualPostal ? pasoActualPostal.paso_orden : 1),
+            total_pasos: pasosPostal.length,
+            titulo_estado_actual: esAnulado ? 'Compra anulada' : (pasoActualPostal ? pasoActualPostal.titulo : 'Compra recibida'),
+            descripcion_estado_actual: esAnulado
+                ? `Esta compra fue anulada. Si necesitás asistencia, contactanos desde ${marca}.`
+                : (pasoActualPostal ? pasoActualPostal.descripcion : ''),
+            operador_postal: envioPostal?.operador_postal || 'CORREO_ARGENTINO',
+            operador_postal_label: operadorLabel,
+            numero_tracking: numGuia || null,
+            url_tracking_carrier: envioPostal?.url_tracking_carrier || null,
+            pasos: pasosPostal
+        };
+    }
+
+    const esEnvio = modOpUpper === 'ENVIO_BARRIAL' ||
+        Boolean(pedido.incluido_reparto_manual);
+    const dirRetiro = nodo.direccion_retiro || nodo.barrio_zona || marca;
+    const dirVecino = pedido.direccion_entrega || 'tu domicilio';
+    const esAusentePasaRetirar = Boolean(pedido.ausente_pasa_retirar) && !esAnulado && hitoActual < 6;
+    const motivoAusencia = String(pedido.motivo_ausencia || '').trim();
 
     const definiciones = [
         {
@@ -3304,9 +3733,68 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS movimiento_cc_madre_id BIGINT,
                 ADD COLUMN IF NOT EXISTS saldo_cta_cte_madre_post_cierre NUMERIC(14,2);
 
+            ALTER TABLE public.nodos_maestro
+                ADD COLUMN IF NOT EXISTS perfil_operativo VARCHAR(40) NOT NULL DEFAULT 'vecinal',
+                ADD COLUMN IF NOT EXISTS modulos_activos JSONB NOT NULL DEFAULT '{}'::jsonb,
+                ADD COLUMN IF NOT EXISTS config_paqueteria JSONB NOT NULL DEFAULT '{}'::jsonb,
+                ADD COLUMN IF NOT EXISTS diccionario_textos JSONB NOT NULL DEFAULT '{}'::jsonb,
+                ADD COLUMN IF NOT EXISTS plantilla_origen_id INTEGER REFERENCES public.nodos_maestro(id) ON DELETE SET NULL;
+
+            ALTER TABLE public.nodos_vecinos
+                ADD COLUMN IF NOT EXISTS dni_cuil VARCHAR(24),
+                ADD COLUMN IF NOT EXISTS email_contacto VARCHAR(160),
+                ADD COLUMN IF NOT EXISTS cp_habitual VARCHAR(12),
+                ADD COLUMN IF NOT EXISTS provincia_habitual VARCHAR(80),
+                ADD COLUMN IF NOT EXISTS localidad_habitual VARCHAR(120);
+
             ALTER TABLE public.nodos_pedidos_vecinos
                 ADD COLUMN IF NOT EXISTS presupuesto_id_local INTEGER,
-                ADD COLUMN IF NOT EXISTS secuencia_operativa_lamda VARCHAR(40) DEFAULT 'Imprimir';
+                ADD COLUMN IF NOT EXISTS secuencia_operativa_lamda VARCHAR(40) DEFAULT 'Imprimir',
+                ADD COLUMN IF NOT EXISTS vecino_email VARCHAR(160),
+                ADD COLUMN IF NOT EXISTS destinatario_dni VARCHAR(24);
+
+            CREATE TABLE IF NOT EXISTS public.nodos_pedidos_envios_postales (
+                id SERIAL PRIMARY KEY,
+                pedido_id INTEGER NOT NULL UNIQUE REFERENCES public.nodos_pedidos_vecinos(id) ON DELETE CASCADE,
+                nodo_id INTEGER NOT NULL REFERENCES public.nodos_maestro(id) ON DELETE CASCADE,
+                operador_postal VARCHAR(40) NOT NULL DEFAULT 'CORREO_ARGENTINO',
+                modalidad_postal VARCHAR(30) NOT NULL DEFAULT 'DOMICILIO',
+                sucursal_codigo VARCHAR(60),
+                sucursal_nombre VARCHAR(180),
+                destinatario_nombre VARCHAR(160) NOT NULL,
+                destinatario_dni VARCHAR(24) NOT NULL,
+                cp_destino VARCHAR(12) NOT NULL,
+                provincia_codigo VARCHAR(10),
+                provincia_nombre VARCHAR(80) NOT NULL,
+                localidad_nombre VARCHAR(120) NOT NULL,
+                calle VARCHAR(160),
+                altura VARCHAR(30),
+                piso_depto VARCHAR(60),
+                referencias_domicilio VARCHAR(280),
+                peso_gramos INTEGER NOT NULL DEFAULT 1000,
+                largo_cm NUMERIC(6,1) DEFAULT 25.0,
+                ancho_cm NUMERIC(6,1) DEFAULT 20.0,
+                alto_cm NUMERIC(6,1) DEFAULT 15.0,
+                valor_declarado NUMERIC(14,2) DEFAULT 0.00,
+                costo_envio_cliente NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                costo_flete_lamda NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                modo_imposicion VARCHAR(20) NOT NULL DEFAULT 'MANUAL',
+                id_externo_carrier VARCHAR(120),
+                numero_tracking VARCHAR(100),
+                url_tracking_carrier TEXT,
+                rotulo_formato VARCHAR(16),
+                rotulo_contenido TEXT,
+                estado_envio VARCHAR(40) NOT NULL DEFAULT 'PENDIENTE_DESPACHO',
+                eventos_carrier_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+                fecha_despacho TIMESTAMPTZ,
+                fecha_entrega_correo TIMESTAMPTZ,
+                ultimo_sync_carrier_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_nodos_envios_postales_nodo_estado
+                ON public.nodos_pedidos_envios_postales (nodo_id, estado_envio, id DESC);
         `);
 
         // Garantizar de forma idempotente todos los índices UNIQUE del módulo Nodos
@@ -3323,7 +3811,8 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             { table: 'nodos_lotes_estacion', index: 'unq_nodo_ventana_canasto', cols: ['nodo_id', 'fecha_entrega_label'] },
             { table: 'nodos_alias_vecinos_aprendidos', index: 'unq_nodo_titular_vecino', cols: ['nodo_id', 'titular_normalizado'] },
             { table: 'nodos_liquidaciones_lote', index: 'nodos_liquidaciones_lote_codigo_liquidacion_key', cols: ['codigo_liquidacion'] },
-            { table: 'nodos_reparto_radar', index: 'unq_nodos_reparto_radar_nodo', cols: ['nodo_id'] }
+            { table: 'nodos_reparto_radar', index: 'unq_nodos_reparto_radar_nodo', cols: ['nodo_id'] },
+            { table: 'nodos_pedidos_envios_postales', index: 'nodos_pedidos_envios_postales_pedido_id_key', cols: ['pedido_id'] }
         ];
         for (const spec of uniqueSpecsNodos) {
             const colsList = spec.cols.map(c => `"${c}"`).join(', ');
@@ -5420,21 +5909,84 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
         existenteRow = exRes.rows[0] || null;
     }
 
+    const perfilOperativoEfectivo = payload.perfil_operativo !== undefined
+        ? normalizarPerfilOperativoNodo(payload.perfil_operativo)
+        : normalizarPerfilOperativoNodo(existenteRow?.perfil_operativo || 'vecinal');
+
+    const cambioDePerfil = Boolean(existenteRow) &&
+        normalizarPerfilOperativoNodo(existenteRow.perfil_operativo) !== perfilOperativoEfectivo;
+
+    const overridesModulos = (payload.modulos_activos && typeof payload.modulos_activos === 'object' && !Array.isArray(payload.modulos_activos))
+        ? { ...payload.modulos_activos }
+        : {};
+    if (payload.permitir_retiro_nodo !== undefined && overridesModulos.retiro_punto === undefined) {
+        overridesModulos.retiro_punto = Boolean(payload.permitir_retiro_nodo);
+    }
+    if ((payload.permitir_reparto_propio !== undefined || payload.permitir_envio_barrial !== undefined) && overridesModulos.reparto_zonal === undefined) {
+        overridesModulos.reparto_zonal = Boolean(payload.permitir_reparto_propio ?? payload.permitir_envio_barrial);
+    }
+    if (payload.permitir_encomienda !== undefined && overridesModulos.envio_paqueteria === undefined) {
+        overridesModulos.envio_paqueteria = Boolean(payload.permitir_encomienda);
+    }
+
+    const modulosActivosEfectivos = resolverModulosActivosNodo(
+        {
+            perfil_operativo: perfilOperativoEfectivo,
+            modulos_activos: cambioDePerfil ? {} : (existenteRow?.modulos_activos || {}),
+            permitir_retiro_nodo: cambioDePerfil ? undefined : existenteRow?.permitir_retiro_nodo,
+            permitir_reparto_propio: cambioDePerfil ? undefined : existenteRow?.permitir_reparto_propio,
+            permitir_envio_barrial: cambioDePerfil ? undefined : existenteRow?.permitir_envio_barrial,
+            permitir_encomienda: cambioDePerfil ? undefined : existenteRow?.permitir_encomienda
+        },
+        overridesModulos
+    );
+
     const permitirRetiro = payload.permitir_retiro_nodo !== undefined
         ? Boolean(payload.permitir_retiro_nodo)
-        : (existenteRow ? existenteRow.permitir_retiro_nodo !== false : true);
+        : Boolean(modulosActivosEfectivos.retiro_punto);
     const permitirReparto = payload.permitir_reparto_propio !== undefined
         ? Boolean(payload.permitir_reparto_propio)
         : (payload.permitir_envio_barrial !== undefined
             ? Boolean(payload.permitir_envio_barrial)
-            : (existenteRow ? Boolean(existenteRow.permitir_reparto_propio ?? existenteRow.permitir_envio_barrial ?? true) : true));
+            : Boolean(modulosActivosEfectivos.reparto_zonal));
     const permitirEncomienda = payload.permitir_encomienda !== undefined
         ? Boolean(payload.permitir_encomienda)
-        : (existenteRow ? Boolean(existenteRow.permitir_encomienda) : false);
+        : Boolean(modulosActivosEfectivos.envio_paqueteria);
 
-    if (!permitirRetiro && !permitirReparto) {
-        throw new Error('Debés habilitar al menos una modalidad activa de entrega (Retiro en el Nodo o Reparto Propio).');
+    modulosActivosEfectivos.retiro_punto = permitirRetiro;
+    modulosActivosEfectivos.reparto_zonal = permitirReparto;
+    modulosActivosEfectivos.envio_paqueteria = permitirEncomienda;
+    if (!permitirReparto && perfilOperativoEfectivo === 'ecommerce_fulfillment') {
+        modulosActivosEfectivos.hoja_de_ruta = false;
     }
+
+    if (!permitirRetiro && !permitirReparto && !permitirEncomienda) {
+        throw new Error('Debés habilitar al menos una modalidad activa de entrega (Punto de Retiro, Reparto Zonal o Paquetería Nacional).');
+    }
+
+    const configPaqueteriaPrev = (existenteRow?.config_paqueteria && typeof existenteRow.config_paqueteria === 'object')
+        ? existenteRow.config_paqueteria
+        : {};
+    const configPaqueteriaEfectiva = normalizarConfigPaqueteria(
+        (payload.config_paqueteria && typeof payload.config_paqueteria === 'object')
+            ? { ...configPaqueteriaPrev, ...payload.config_paqueteria }
+            : configPaqueteriaPrev
+    );
+
+    const diccionarioTextosPrev = (existenteRow?.diccionario_textos && typeof existenteRow.diccionario_textos === 'object' && !Array.isArray(existenteRow.diccionario_textos))
+        ? existenteRow.diccionario_textos
+        : {};
+    const diccionarioTextosEfectivo = (payload.diccionario_textos && typeof payload.diccionario_textos === 'object' && !Array.isArray(payload.diccionario_textos))
+        ? { ...diccionarioTextosPrev, ...payload.diccionario_textos }
+        : diccionarioTextosPrev;
+
+    const plantillaOrigenIdEfectiva = payload.plantilla_origen_id !== undefined
+        ? (payload.plantilla_origen_id ? Number(payload.plantilla_origen_id) : null)
+        : (existenteRow?.plantilla_origen_id ? Number(existenteRow.plantilla_origen_id) : null);
+
+    const subtituloDefaultPerfil = perfilOperativoEfectivo === 'ecommerce_fulfillment'
+        ? 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País'
+        : 'Comunidad Barrial - Entrega Fresca';
 
     const limpiarLogoOriginal = Boolean(payload.limpiar_logo_original);
     const logoOriginalEfectivo = limpiarLogoOriginal
@@ -5483,8 +6035,14 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
 
         let codigoNodo = String(payload.codigo_nodo || existenteRow?.codigo_nodo || '').trim();
         if (!codigoNodo && !idExistente) {
-            const maxRes = await client.query('SELECT COUNT(*)::int AS total FROM public.nodos_maestro');
-            codigoNodo = `NODO-${String(maxRes.rows[0].total + 1).padStart(3, '0')}`;
+            const maxRes = await client.query(`
+                SELECT GREATEST(
+                    COUNT(*)::int,
+                    COALESCE(MAX(CASE WHEN codigo_nodo ~ '^NODO-[0-9]+$' THEN CAST(SUBSTRING(codigo_nodo FROM 6) AS INTEGER) ELSE 0 END), 0)
+                ) AS base_num
+                FROM public.nodos_maestro
+            `);
+            codigoNodo = `NODO-${String(Number(maxRes.rows[0]?.base_num || 0) + 1).padStart(3, '0')}`;
         }
 
         const vinculoContable = await asegurarVinculoContableNodo(client, {
@@ -5595,13 +6153,18 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     bajada_marca = $36,
                     slug_historico = $37,
                     tema_visual = $38::jsonb,
+                    perfil_operativo = $40,
+                    modulos_activos = $41::jsonb,
+                    config_paqueteria = $42::jsonb,
+                    diccionario_textos = $43::jsonb,
+                    plantilla_origen_id = $44,
                     updated_at = NOW()
                 WHERE id = $32
                 RETURNING *`,
                 [
                     slugBase,
                     nombreMarca,
-                    payload.subtitulo_marca || bajadaMarcaEfectiva || 'Comunidad Barrial - Entrega Fresca',
+                    payload.subtitulo_marca || bajadaMarcaEfectiva || subtituloDefaultPerfil,
                     gestorNombre,
                     payload.gestor_telefono || '',
                     payload.gestor_email || '',
@@ -5646,7 +6209,12 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     bajadaMarcaEfectiva,
                     slugHistoricoEfectivo,
                     JSON.stringify(temaVisualEfectivo || {}),
-                    usarCuentaMadreUnificada
+                    usarCuentaMadreUnificada,
+                    perfilOperativoEfectivo,
+                    JSON.stringify(modulosActivosEfectivos),
+                    JSON.stringify(configPaqueteriaEfectiva),
+                    JSON.stringify(diccionarioTextosEfectivo),
+                    plantillaOrigenIdEfectiva
                 ]
             );
             nodoGuardado = upd.rows[0];
@@ -5664,15 +6232,16 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     config_ventanas_corte, color_primario,
                     logo_original_base64, logo_mono_preview_base64, logo_zpl_gfa, logo_zpl_config,
                     latitud, longitud, mostrar_ingredientes_tienda, gestor_token,
-                    bajada_marca, slug_historico, tema_visual
+                    bajada_marca, slug_historico, tema_visual,
+                    perfil_operativo, modulos_activos, config_paqueteria, diccionario_textos, plantilla_origen_id
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$38,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$35,$36,$37::jsonb
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$38,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$35,$36,$37::jsonb,$39,$40::jsonb,$41::jsonb,$42::jsonb,$43
                 ) RETURNING *`,
                 [
                     codigoNodo,
                     slugBase,
                     nombreMarca,
-                    payload.subtitulo_marca || bajadaMarcaEfectiva || 'Comunidad Barrial - Entrega Fresca',
+                    payload.subtitulo_marca || bajadaMarcaEfectiva || subtituloDefaultPerfil,
                     gestorNombre,
                     payload.gestor_telefono || '',
                     payload.gestor_email || '',
@@ -5715,7 +6284,12 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     bajadaMarcaEfectiva,
                     slugHistoricoEfectivo,
                     JSON.stringify(temaVisualEfectivo || {}),
-                    usarCuentaMadreUnificada
+                    usarCuentaMadreUnificada,
+                    perfilOperativoEfectivo,
+                    JSON.stringify(modulosActivosEfectivos),
+                    JSON.stringify(configPaqueteriaEfectiva),
+                    JSON.stringify(diccionarioTextosEfectivo),
+                    plantillaOrigenIdEfectiva
                 ]
             );
             nodoGuardado = ins.rows[0];
@@ -5782,6 +6356,219 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
     } finally {
         client.release();
     }
+}
+
+/**
+ * Clona en 1 clic la configuración operativa de una tienda/marca existente (ej. MANSO o Paraíso)
+ * hacia una nueva marca con identidad propia y titular contable aislado.
+ * NUNCA copia fotos caseras privadas ni cuentas contables ni tokens de acceso.
+ */
+async function clonarNodoMaestro(origenId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const oid = Number(origenId || 0);
+    if (!Number.isFinite(oid) || oid <= 0) {
+        throw new Error('Identificador de tienda plantilla inválido.');
+    }
+
+    const oriRes = await db.query('SELECT * FROM public.nodos_maestro WHERE id = $1 LIMIT 1', [oid]);
+    if (oriRes.rows.length === 0) {
+        const err = new Error('No se encontró la tienda plantilla seleccionada para clonar.');
+        err.statusCode = 404;
+        throw err;
+    }
+    const origen = oriRes.rows[0];
+
+    const nombreMarcaNueva = String(payload.nombre_marca || '').trim();
+    const gestorNombreNuevo = String(payload.gestor_nombre || '').trim();
+    if (!nombreMarcaNueva || !gestorNombreNuevo) {
+        throw new Error('Debés indicar el nombre de la nueva marca y el nombre de su creador/referente.');
+    }
+    if (!payload.cliente_madre_bunker_id && !payload.codigo_bunker_cliente_madre) {
+        throw new Error('Debés seleccionar el Cliente Titular propio en el padrón Búnker para la nueva marca.');
+    }
+
+    const slugCandidato = String(payload.slug || nombreMarcaNueva)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    if (!slugCandidato || slugCandidato === String(origen.slug || '').toLowerCase()) {
+        throw new Error('El identificador URL (slug) de la nueva tienda debe ser único y distinto al de la plantilla.');
+    }
+    const chkSlug = await db.query(
+        'SELECT id, nombre_marca FROM public.nodos_maestro WHERE LOWER(slug) = LOWER($1) LIMIT 1',
+        [slugCandidato]
+    );
+    if (chkSlug.rows.length > 0) {
+        throw new Error(`El slug "/tienda/${slugCandidato}" ya está en uso por "${chkSlug.rows[0].nombre_marca}".`);
+    }
+
+    const perfilHeredado = payload.perfil_operativo !== undefined
+        ? normalizarPerfilOperativoNodo(payload.perfil_operativo)
+        : normalizarPerfilOperativoNodo(origen.perfil_operativo);
+    const modulosHeredados = resolverModulosActivosNodo(
+        {
+            perfil_operativo: perfilHeredado,
+            modulos_activos: origen.modulos_activos,
+            permitir_retiro_nodo: origen.permitir_retiro_nodo,
+            permitir_reparto_propio: origen.permitir_reparto_propio,
+            permitir_envio_barrial: origen.permitir_envio_barrial,
+            permitir_encomienda: origen.permitir_encomienda
+        },
+        (payload.modulos_activos && typeof payload.modulos_activos === 'object') ? payload.modulos_activos : null
+    );
+    const configPaqHeredada = normalizarConfigPaqueteria(
+        (payload.config_paqueteria && typeof payload.config_paqueteria === 'object')
+            ? { ...(origen.config_paqueteria || {}), ...payload.config_paqueteria }
+            : (origen.config_paqueteria || {})
+    );
+    const dicTextosHeredado = {
+        ...((origen.diccionario_textos && typeof origen.diccionario_textos === 'object') ? origen.diccionario_textos : {}),
+        ...((payload.diccionario_textos && typeof payload.diccionario_textos === 'object') ? payload.diccionario_textos : {})
+    };
+
+    const temaOrigen = (origen.tema_visual && typeof origen.tema_visual === 'object') ? origen.tema_visual : {};
+    const temaNuevo = {
+        ...(temaOrigen.tipografia ? { tipografia: { ...temaOrigen.tipografia } } : {}),
+        ...((payload.tema_visual && typeof payload.tema_visual === 'object') ? payload.tema_visual : {}),
+        logo_incluye_texto: Boolean(payload.tema_visual?.logo_incluye_texto),
+        logos: (payload.tema_visual?.logos && typeof payload.tema_visual.logos === 'object')
+            ? { ...payload.tema_visual.logos }
+            : {}
+    };
+
+    const nodoCreado = await guardarNodoMaestro({
+        nombre_marca: nombreMarcaNueva,
+        slug: slugCandidato,
+        bajada_marca: payload.bajada_marca !== undefined ? payload.bajada_marca : null,
+        subtitulo_marca: payload.subtitulo_marca || (perfilHeredado === 'ecommerce_fulfillment'
+            ? 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País'
+            : (origen.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca')),
+        gestor_nombre: gestorNombreNuevo,
+        gestor_telefono: payload.gestor_telefono || '',
+        gestor_email: payload.gestor_email || '',
+        barrio_zona: payload.barrio_zona !== undefined ? payload.barrio_zona : '',
+        direccion_retiro: payload.direccion_retiro !== undefined ? payload.direccion_retiro : '',
+        latitud: payload.latitud ?? null,
+        longitud: payload.longitud ?? null,
+        cliente_madre_bunker_id: payload.cliente_madre_bunker_id,
+        codigo_bunker_cliente_madre: payload.codigo_bunker_cliente_madre,
+        usar_cuenta_madre_unificada: payload.usar_cuenta_madre_unificada !== undefined
+            ? Boolean(payload.usar_cuenta_madre_unificada)
+            : Boolean(origen.usar_cuenta_madre_unificada),
+        usa_cuenta_compartida: payload.usa_cuenta_compartida !== undefined
+            ? Boolean(payload.usa_cuenta_compartida)
+            : (origen.usa_cuenta_compartida !== false),
+        alias_bancario_display: payload.alias_bancario_display || '',
+        permitir_retiro_nodo: Boolean(modulosHeredados.retiro_punto),
+        permitir_reparto_propio: Boolean(modulosHeredados.reparto_zonal),
+        permitir_envio_barrial: Boolean(modulosHeredados.reparto_zonal),
+        permitir_encomienda: Boolean(modulosHeredados.envio_paqueteria),
+        cargo_envio_barrial: payload.cargo_envio_barrial !== undefined
+            ? Number(payload.cargo_envio_barrial || 0)
+            : Number(origen.cargo_envio_barrial || 0),
+        margen_gestor_default_pct: payload.margen_gestor_default_pct !== undefined
+            ? Number(payload.margen_gestor_default_pct || 28)
+            : Number(origen.margen_gestor_default_pct || 28),
+        config_ventanas_corte: Array.isArray(payload.config_ventanas_corte) && payload.config_ventanas_corte.length > 0
+            ? payload.config_ventanas_corte
+            : origen.config_ventanas_corte,
+        mostrar_ingredientes_tienda: payload.mostrar_ingredientes_tienda !== undefined
+            ? Boolean(payload.mostrar_ingredientes_tienda)
+            : (origen.mostrar_ingredientes_tienda !== false),
+        color_primario: payload.color_primario || origen.color_primario || '#a2553b',
+        logo_original_base64: payload.logo_original_base64 || null,
+        logo_zpl_config: payload.logo_zpl_config || {
+            mode: 'threshold',
+            width: 112,
+            height: 56,
+            invert: false,
+            iniciales: nombreMarcaNueva.slice(0, 2).toUpperCase(),
+            threshold: 150
+        },
+        tema_visual: temaNuevo,
+        perfil_operativo: perfilHeredado,
+        modulos_activos: modulosHeredados,
+        config_paqueteria: configPaqHeredada,
+        diccionario_textos: dicTextosHeredado,
+        plantilla_origen_id: origen.id
+    }, null);
+
+    // Sincronizar opcionalmente la selección de ofertas publicadas y % de margen (NUNCA fotos caseras privadas)
+    const clonarOfertas = payload.clonar_ofertas_margenes !== false;
+    let ofertasSincronizadas = 0;
+    if (clonarOfertas && nodoCreado?.id) {
+        const ofOrigenRes = await db.query(
+            `SELECT nog.articulo_catalogo_id, nog.margen_gestor_pct, nog.publicado_tienda,
+                    nog.destacado_tienda, nog.mostrar_ingredientes,
+                    nac.precio_base_nodo_final
+             FROM public.nodos_ofertas_gestor nog
+             JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+             WHERE nog.nodo_id = $1 AND nac.activo = true`,
+            [origen.id]
+        );
+        const mapaOrigen = new Map(ofOrigenRes.rows.map(r => [Number(r.articulo_catalogo_id), r]));
+
+        for (const [catId, refOf] of mapaOrigen.entries()) {
+            const base = Number(refOf.precio_base_nodo_final || 0);
+            const margen = Number(refOf.margen_gestor_pct ?? nodoCreado.margen_gestor_default_pct ?? 28);
+            const pVenta = Math.ceil((base * (1 + margen / 100)) / 50) * 50;
+            const gan = Math.max(0, pVenta - base);
+            await db.query(
+                `INSERT INTO public.nodos_ofertas_gestor (
+                    nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
+                    margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor,
+                    publicado_tienda, destacado_tienda, mostrar_ingredientes, fotos_vidriera
+                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'[]'::jsonb)
+                 ON CONFLICT (nodo_id, articulo_catalogo_id) DO UPDATE SET
+                    precio_base_nodo_snapshot = EXCLUDED.precio_base_nodo_snapshot,
+                    margen_gestor_pct = EXCLUDED.margen_gestor_pct,
+                    precio_venta_vecino = EXCLUDED.precio_venta_vecino,
+                    ganancia_unitaria_gestor = EXCLUDED.ganancia_unitaria_gestor,
+                    publicado_tienda = EXCLUDED.publicado_tienda,
+                    destacado_tienda = EXCLUDED.destacado_tienda,
+                    mostrar_ingredientes = EXCLUDED.mostrar_ingredientes,
+                    fotos_vidriera = '[]'::jsonb,
+                    updated_at = NOW()`,
+                [
+                    nodoCreado.id,
+                    catId,
+                    base,
+                    margen,
+                    pVenta,
+                    gan,
+                    Boolean(refOf.publicado_tienda),
+                    Boolean(refOf.destacado_tienda),
+                    refOf.mostrar_ingredientes !== false
+                ]
+            );
+            ofertasSincronizadas++;
+        }
+
+        if (mapaOrigen.size > 0) {
+            await db.query(
+                `UPDATE public.nodos_ofertas_gestor
+                 SET publicado_tienda = false, updated_at = NOW()
+                 WHERE nodo_id = $1
+                   AND NOT (articulo_catalogo_id = ANY($2::int[]))`,
+                [nodoCreado.id, Array.from(mapaOrigen.keys())]
+            );
+        }
+    }
+
+    return {
+        nodo: nodoCreado,
+        plantilla_origen: {
+            id: origen.id,
+            codigo_nodo: origen.codigo_nodo,
+            slug: origen.slug,
+            nombre_marca: origen.nombre_marca,
+            perfil_operativo: normalizarPerfilOperativoNodo(origen.perfil_operativo)
+        },
+        ofertas_sincronizadas: ofertasSincronizadas
+    };
 }
 
 /**
@@ -7543,10 +8330,25 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                         nv.gps_origen AS vecino_gps_origen,
                         nv.direccion_calle AS vecino_direccion_calle,
                         nv.entrecalles_referencia AS vecino_entrecalles,
-                        COALESCE(nv.gps_verificado_gestor, false) AS vecino_gps_verificado
+                        COALESCE(nv.gps_verificado_gestor, false) AS vecino_gps_verificado,
+                        npep.operador_postal AS postal_operador,
+                        npep.modalidad_postal AS postal_modalidad,
+                        npep.sucursal_nombre AS postal_sucursal_nombre,
+                        npep.cp_destino AS postal_cp_destino,
+                        npep.provincia_nombre AS postal_provincia_nombre,
+                        npep.localidad_nombre AS postal_localidad_nombre,
+                        npep.calle AS postal_calle,
+                        npep.altura AS postal_altura,
+                        npep.piso_depto AS postal_piso_depto,
+                        npep.destinatario_dni AS postal_destinatario_dni,
+                        npep.costo_envio_cliente AS postal_costo_envio_cliente,
+                        npep.numero_tracking AS postal_numero_tracking,
+                        npep.url_tracking_carrier AS postal_url_tracking_carrier,
+                        npep.estado_envio AS postal_estado_envio
                  FROM public.nodos_pedidos_vecinos npv
                  LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
                  LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
+                 LEFT JOIN public.nodos_pedidos_envios_postales npep ON npep.pedido_id = npv.id
                  WHERE npv.nodo_id = $1
                  ORDER BY npv.id DESC
                  LIMIT 120`,
@@ -7765,19 +8567,32 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             };
         });
 
-    const puedeRetiroNodo = nodo.permitir_retiro_nodo !== false;
-    const puedeRepartoPropio = Boolean(nodo.permitir_reparto_propio ?? nodo.permitir_envio_barrial ?? true);
-    const puedeEncomiendaNodo = Boolean(nodo.permitir_encomienda);
+    const perfilOperativoNodo = normalizarPerfilOperativoNodo(nodo.perfil_operativo);
+    const modulosActivosNodo = resolverModulosActivosNodo(nodo);
+    const configPaqueteriaNodo = normalizarConfigPaqueteria(nodo.config_paqueteria);
+    const diccionarioTextosNodo = (nodo.diccionario_textos && typeof nodo.diccionario_textos === 'object' && !Array.isArray(nodo.diccionario_textos))
+        ? nodo.diccionario_textos
+        : {};
+
+    const puedeRetiroNodo = Boolean(modulosActivosNodo.retiro_punto && nodo.permitir_retiro_nodo !== false);
+    const puedeRepartoPropio = Boolean(modulosActivosNodo.reparto_zonal && (nodo.permitir_reparto_propio ?? nodo.permitir_envio_barrial ?? false));
+    const puedeEncomiendaNodo = Boolean(modulosActivosNodo.envio_paqueteria || nodo.permitir_encomienda);
+    const permiteEfectivoNodo = Boolean(modulosActivosNodo.cobro_efectivo_entrega);
 
     const { gestor_token: _omitGestorToken, ...nodoSinToken } = nodo;
     const nodoPublico = esVistaGestor
         ? {
             ...nodoSinToken,
+            perfil_operativo: perfilOperativoNodo,
+            modulos_activos: modulosActivosNodo,
+            config_paqueteria: configPaqueteriaNodo,
+            diccionario_textos: diccionarioTextosNodo,
             mostrar_ingredientes_tienda: mostrarIngredientesNodo,
             permitir_retiro_nodo: puedeRetiroNodo,
             permitir_reparto_propio: puedeRepartoPropio,
             permitir_encomienda: puedeEncomiendaNodo,
-            permitir_envio_barrial: puedeRepartoPropio
+            permitir_envio_barrial: puedeRepartoPropio,
+            permitir_efectivo: permiteEfectivoNodo
         }
         : {
             id: nodo.id,
@@ -7794,10 +8609,15 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             alias_bancario_display: nodo.alias_bancario_display,
             cbu_display: nodo.cbu_display,
             titular_display: nodo.titular_display,
+            perfil_operativo: perfilOperativoNodo,
+            modulos_activos: modulosActivosNodo,
+            config_paqueteria: configPaqueteriaNodo,
+            diccionario_textos: diccionarioTextosNodo,
             permitir_envio_barrial: puedeRepartoPropio,
             permitir_retiro_nodo: puedeRetiroNodo,
             permitir_reparto_propio: puedeRepartoPropio,
             permitir_encomienda: puedeEncomiendaNodo,
+            permitir_efectivo: permiteEfectivoNodo,
             mostrar_ingredientes_tienda: mostrarIngredientesNodo,
             cargo_envio_barrial: nodo.cargo_envio_barrial,
             zona_centro_lat: puedeRepartoPropio && nodo.latitud != null ? Number(nodo.latitud) : null,
@@ -7809,7 +8629,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         };
 
     let radarReparto = { activo: false };
-    if (esVistaGestor) {
+    if (esVistaGestor && modulosActivosNodo.hoja_de_ruta) {
         const radRes = await db.query(
             `SELECT activo, pedido_actual_id, updated_at,
                     EXTRACT(EPOCH FROM (NOW() - updated_at)) AS edad_segundos
@@ -7869,32 +8689,47 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
 
     const cur = await db.query('SELECT * FROM public.nodos_maestro WHERE id = $1', [Number(nodoId)]);
     if (cur.rows.length === 0) {
-        const err = new Error('Nodo no encontrado.');
+        const err = new Error('Tienda no encontrada.');
         err.statusCode = 404;
         throw err;
     }
     const actual = cur.rows[0];
     if (actual.activo === false) {
-        const err = new Error('Este Nodo se encuentra archivado y no puede modificar su configuración.');
+        const err = new Error('Esta tienda se encuentra archivada y no puede modificar su configuración.');
         err.statusCode = 403;
         throw err;
     }
 
+    const perfilActual = normalizarPerfilOperativoNodo(actual.perfil_operativo);
+    const modulosActuales = resolverModulosActivosNodo(actual);
+
     const permitirRetiro = payload.permitir_retiro_nodo !== undefined
         ? Boolean(payload.permitir_retiro_nodo)
-        : (actual.permitir_retiro_nodo !== false);
+        : Boolean(modulosActuales.retiro_punto && actual.permitir_retiro_nodo !== false);
     const permitirReparto = payload.permitir_reparto_propio !== undefined
         ? Boolean(payload.permitir_reparto_propio)
         : (payload.permitir_envio_barrial !== undefined
             ? Boolean(payload.permitir_envio_barrial)
-            : Boolean(actual.permitir_reparto_propio ?? actual.permitir_envio_barrial ?? true));
+            : Boolean(modulosActuales.reparto_zonal && (actual.permitir_reparto_propio ?? actual.permitir_envio_barrial ?? false)));
     const permitirEncomienda = payload.permitir_encomienda !== undefined
         ? Boolean(payload.permitir_encomienda)
-        : Boolean(actual.permitir_encomienda);
+        : Boolean(modulosActuales.envio_paqueteria || actual.permitir_encomienda);
 
-    if (!permitirRetiro && !permitirReparto) {
-        throw new Error('Debés mantener habilitada al menos una modalidad activa de entrega (Retiro en el Nodo o Reparto Propio).');
+    if (!permitirRetiro && !permitirReparto && !permitirEncomienda) {
+        throw new Error('Debés mantener habilitada al menos una modalidad activa de entrega.');
     }
+
+    const modulosNuevos = resolverModulosActivosNodo(actual, {
+        retiro_punto: permitirRetiro,
+        reparto_zonal: permitirReparto,
+        envio_paqueteria: permitirEncomienda,
+        ...(perfilActual === 'ecommerce_fulfillment' && !permitirReparto ? { hoja_de_ruta: false } : {})
+    });
+
+    const configPaqActual = normalizarConfigPaqueteria(actual.config_paqueteria);
+    const configPaqNueva = (payload.config_paqueteria && typeof payload.config_paqueteria === 'object' && configPaqActual.permitir_editar_gestor !== false)
+        ? normalizarConfigPaqueteria({ ...configPaqActual, ...payload.config_paqueteria })
+        : configPaqActual;
 
     const ventanas = Array.isArray(payload.config_ventanas_corte)
         ? payload.config_ventanas_corte
@@ -7918,6 +8753,8 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             config_ventanas_corte = $10,
             color_primario = COALESCE($11, color_primario),
             mostrar_ingredientes_tienda = $12,
+            modulos_activos = $18::jsonb,
+            config_paqueteria = $19::jsonb,
             updated_at = NOW()
          WHERE id = $13
          RETURNING *`,
@@ -7938,11 +8775,39 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             permitirRetiro,
             permitirReparto,
             permitirEncomienda,
-            payload.bajada_marca !== undefined ? String(payload.bajada_marca || '').trim() : actual.bajada_marca
+            payload.bajada_marca !== undefined ? String(payload.bajada_marca || '').trim() : actual.bajada_marca,
+            JSON.stringify(modulosNuevos),
+            JSON.stringify(configPaqNueva)
         ]
     );
 
     return upd.rows[0];
+}
+
+async function cotizarEnvioPostalTienda(slug, cpRaw = '', subtotalProductos = 0) {
+    await asegurarEsquemaNodosBarriales();
+    const nodoRes = await db.query(
+        `SELECT id, slug, nombre_marca, perfil_operativo, modulos_activos, config_paqueteria, permitir_encomienda, activo
+         FROM public.nodos_maestro
+         WHERE (LOWER(slug) = LOWER($1) OR LOWER(COALESCE(slug_historico, '')) = LOWER($1))
+           AND COALESCE(activo, true) = true
+         ORDER BY CASE WHEN LOWER(slug) = LOWER($1) THEN 0 ELSE 1 END
+         LIMIT 1`,
+        [String(slug || '').trim()]
+    );
+    if (nodoRes.rows.length === 0) {
+        const err = new Error('Tienda no encontrada.');
+        err.statusCode = 404;
+        throw err;
+    }
+    const nodo = nodoRes.rows[0];
+    const modulos = resolverModulosActivosNodo(nodo);
+    if (!modulos.envio_paqueteria && !nodo.permitir_encomienda) {
+        const err = new Error('Esta tienda no tiene habilitado el envío por correo.');
+        err.statusCode = 400;
+        throw err;
+    }
+    return cotizarEnvioPostalPorCp(nodo.config_paqueteria, cpRaw, subtotalProductos);
 }
 
 /**
@@ -7976,27 +8841,46 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             [String(slug || '').trim()]
         );
         if (nodoRes.rows.length === 0) {
-            throw new Error('Tienda barrial no encontrada.');
+            throw new Error('Tienda no encontrada.');
         }
         const nodo = nodoRes.rows[0];
         if (nodo.activo === false) {
-            throw new Error('Esta tienda barrial se encuentra temporalmente pausada o archivada y no recibe pedidos.');
+            throw new Error('Esta tienda se encuentra temporalmente pausada o archivada y no recibe pedidos.');
         }
 
-        const puedeRetiro = nodo.permitir_retiro_nodo !== false;
-        const puedeReparto = Boolean(nodo.permitir_reparto_propio ?? nodo.permitir_envio_barrial);
+        const modulosNodo = resolverModulosActivosNodo(nodo);
+        const configPaqNodo = normalizarConfigPaqueteria(nodo.config_paqueteria);
+        const puedeRetiro = Boolean(modulosNodo.retiro_punto && nodo.permitir_retiro_nodo !== false);
+        const puedeReparto = Boolean(modulosNodo.reparto_zonal && (nodo.permitir_reparto_propio ?? nodo.permitir_envio_barrial));
+        const puedeEncomienda = Boolean(modulosNodo.envio_paqueteria || nodo.permitir_encomienda);
         const modReq = String(payload.modalidad_entrega || '').trim().toUpperCase();
+
         let modalidad;
-        if (modReq === 'ENCOMIENDA') {
-            throw new Error('La modalidad Encomienda Nacional aún no se encuentra habilitada para compras.');
+        if (['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(modReq)) {
+            if (!puedeEncomienda) {
+                throw new Error('Esta tienda no tiene habilitado el envío por paquetería nacional en este momento.');
+            }
+            const postalIn = (payload.postal && typeof payload.postal === 'object') ? payload.postal : payload;
+            const modPostIn = String(postalIn.modalidad_postal || '').trim().toUpperCase();
+            if (modReq === 'PAQUETERIA_SUCURSAL' || modPostIn === 'SUCURSAL') {
+                if (!configPaqNodo.permitir_sucursal_correo) {
+                    throw new Error('El retiro en sucursal de correo no se encuentra habilitado en este momento.');
+                }
+                modalidad = 'PAQUETERIA_SUCURSAL';
+            } else {
+                if (!configPaqNodo.permitir_domicilio) {
+                    throw new Error('El envío postal a domicilio no se encuentra habilitado en este momento.');
+                }
+                modalidad = 'PAQUETERIA_DOMICILIO';
+            }
         } else if (modReq === 'ENVIO_BARRIAL') {
             if (!puedeReparto) {
-                throw new Error('Este Nodo no tiene habilitado el envío a domicilio en este momento.');
+                throw new Error('Esta tienda no tiene habilitado el envío local a domicilio en este momento.');
             }
             modalidad = 'ENVIO_BARRIAL';
         } else if (modReq === 'RETIRO_NODO') {
             if (!puedeRetiro) {
-                throw new Error('Este Nodo no tiene habilitado el retiro en puerta en este momento.');
+                throw new Error('Esta tienda no tiene habilitado el retiro presencial en este momento.');
             }
             modalidad = 'RETIRO_NODO';
         } else {
@@ -8004,13 +8888,81 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 modalidad = 'RETIRO_NODO';
             } else if (puedeReparto) {
                 modalidad = 'ENVIO_BARRIAL';
+            } else if (puedeEncomienda) {
+                modalidad = configPaqNodo.permitir_domicilio ? 'PAQUETERIA_DOMICILIO' : 'PAQUETERIA_SUCURSAL';
             } else {
-                throw new Error('Este Nodo no tiene modalidades de entrega habilitadas.');
+                throw new Error('Esta tienda no tiene modalidades de entrega habilitadas.');
             }
         }
 
-        if (modalidad === 'ENVIO_BARRIAL' && !String(payload.direccion_entrega || '').trim()) {
-            throw new Error('Por favor indicá tu dirección en el barrio para el envío a domicilio.');
+        const esPedidoPostal = modalidad === 'PAQUETERIA_DOMICILIO' || modalidad === 'PAQUETERIA_SUCURSAL';
+        const postalRaw = (payload.postal && typeof payload.postal === 'object') ? payload.postal : payload;
+
+        let datosPostalesValidados = null;
+        if (esPedidoPostal) {
+            const cpDigits = String(postalRaw.cp_destino || postalRaw.codigo_postal || '').replace(/\D+/g, '');
+            if (cpDigits.length !== 4) {
+                throw new Error('Por favor ingresá un Código Postal argentino válido de 4 dígitos.');
+            }
+            const provNombre = String(postalRaw.provincia_nombre || postalRaw.provincia || '').trim();
+            const provObj = PROVINCIAS_ARGENTINA_CANONICAS.find(
+                p => p.nombre.toLowerCase() === provNombre.toLowerCase() || p.codigo.toLowerCase() === String(postalRaw.provincia_codigo || '').trim().toLowerCase()
+            );
+            const provFinalNombre = provObj ? provObj.nombre : provNombre;
+            const provFinalCodigo = provObj ? provObj.codigo : (String(postalRaw.provincia_codigo || '').trim().slice(0, 10) || null);
+            const localidadNombre = String(postalRaw.localidad_nombre || postalRaw.localidad || '').trim();
+            if (!provFinalNombre || !localidadNombre) {
+                throw new Error('Por favor completá la Provincia y la Localidad de destino.');
+            }
+
+            const dniDigits = String(postalRaw.destinatario_dni || payload.destinatario_dni || '').replace(/\D+/g, '');
+            if (dniDigits.length < 7 || dniDigits.length > 11) {
+                throw new Error('Por favor ingresá un DNI o CUIL válido (7 a 11 dígitos) para la etiqueta del correo.');
+            }
+
+            const opSolicitado = String(postalRaw.operador_postal || configPaqNodo.operador_default || 'CORREO_ARGENTINO').trim().toUpperCase();
+            const operadorEfectivo = configPaqNodo.operadores_habilitados.includes(opSolicitado)
+                ? opSolicitado
+                : configPaqNodo.operador_default;
+
+            const modalidadPostal = modalidad === 'PAQUETERIA_SUCURSAL' ? 'SUCURSAL' : 'DOMICILIO';
+            const calle = String(postalRaw.calle || '').trim();
+            const sinNumero = Boolean(postalRaw.sin_numero);
+            const altura = sinNumero ? 'S/N' : String(postalRaw.altura || '').trim();
+            const pisoDepto = String(postalRaw.piso_depto || '').trim();
+            const referenciasDom = String(postalRaw.referencias_domicilio || payload.entrecalles_referencia || '').trim();
+            const sucursalCodigo = String(postalRaw.sucursal_codigo || '').trim() || null;
+            const sucursalNombre = String(
+                postalRaw.sucursal_nombre ||
+                (modalidadPostal === 'SUCURSAL' ? `Sucursal ${formatearOperadorPostalLabel(operadorEfectivo)} — ${localidadNombre} (CP ${cpDigits})` : '')
+            ).trim();
+
+            if (modalidadPostal === 'DOMICILIO' && (!calle || !altura)) {
+                throw new Error('Por favor completá la calle y la altura del domicilio (o marcá S/N).');
+            }
+            if (modalidadPostal === 'SUCURSAL' && !sucursalNombre) {
+                throw new Error('Por favor indicá la sucursal de correo de destino.');
+            }
+
+            datosPostalesValidados = {
+                operador_postal: operadorEfectivo,
+                modalidad_postal: modalidadPostal,
+                sucursal_codigo: sucursalCodigo,
+                sucursal_nombre: modalidadPostal === 'SUCURSAL' ? sucursalNombre : null,
+                destinatario_nombre: String(postalRaw.destinatario_nombre || vecinoNombre).trim(),
+                destinatario_dni: dniDigits,
+                cp_destino: cpDigits,
+                provincia_codigo: provFinalCodigo,
+                provincia_nombre: provFinalNombre,
+                localidad_nombre: localidadNombre,
+                calle: modalidadPostal === 'DOMICILIO' ? calle : null,
+                altura: modalidadPostal === 'DOMICILIO' ? altura : null,
+                piso_depto: modalidadPostal === 'DOMICILIO' ? (pisoDepto || null) : null,
+                referencias_domicilio: referenciasDom || null,
+                email_contacto: String(postalRaw.email || payload.vecino_email || '').trim().slice(0, 160) || null
+            };
+        } else if (modalidad === 'ENVIO_BARRIAL' && !String(payload.direccion_entrega || '').trim()) {
+            throw new Error('Por favor indicá tu dirección para el envío a domicilio.');
         }
 
         const proxima = calcularProximaEntregaNodo(nodo.config_ventanas_corte, payload.fecha_hora_simulada || null);
@@ -8077,23 +9029,64 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             throw new Error('No se pudieron validar los artículos seleccionados.');
         }
 
-        // El cargo opcional de envío barrial corresponde 100% al gestor (sin costo base de LAMDA)
-        const cargoEnvioBarrial = modalidad === 'ENVIO_BARRIAL' ? Number(nodo.cargo_envio_barrial || 0) : 0;
-        const totalVecino = subtotalProductosVecino + cargoEnvioBarrial;
-        const gananciaTotalGestor = gananciaProductosGestor + cargoEnvioBarrial;
+        let pesoGramosEstimado = 0;
+        for (const it of itemsValidados) {
+            const ofRow = ofertasRes.rows.find(r => Number(r.articulo_catalogo_id) === Number(it.articulo_catalogo_id));
+            const kgUnit = Number(ofRow?.kilos_unidad || 0.3);
+            pesoGramosEstimado += Math.round(kgUnit * 1000 * Number(it.cantidad || 1));
+        }
+        pesoGramosEstimado = Math.max(250, pesoGramosEstimado + 180);
 
-        const medioPago = payload.medio_pago === 'EFECTIVO' ? 'EFECTIVO' : 'TRANSFERENCIA';
+        let cargoEnvioBarrial = 0;
+        let cotizacionPostalAplicada = null;
+        if (esPedidoPostal && datosPostalesValidados) {
+            cotizacionPostalAplicada = cotizarEnvioPostalPorCp(
+                configPaqNodo,
+                datosPostalesValidados.cp_destino,
+                subtotalProductosVecino
+            );
+            cargoEnvioBarrial = datosPostalesValidados.modalidad_postal === 'SUCURSAL'
+                ? Number(cotizacionPostalAplicada.costo_sucursal_efectivo || 0)
+                : Number(cotizacionPostalAplicada.costo_domicilio_efectivo || 0);
+        } else if (modalidad === 'ENVIO_BARRIAL') {
+            cargoEnvioBarrial = Number(nodo.cargo_envio_barrial || 0);
+        }
+
+        const totalVecino = subtotalProductosVecino + cargoEnvioBarrial;
+        const gananciaTotalGestor = esPedidoPostal
+            ? gananciaProductosGestor
+            : (gananciaProductosGestor + cargoEnvioBarrial);
+
+        if (payload.medio_pago === 'EFECTIVO' && (!modulosNodo.cobro_efectivo_entrega || esPedidoPostal)) {
+            throw new Error('El pago en efectivo no está habilitado para envíos por correo. Seleccioná Transferencia Bancaria.');
+        }
+        const medioPago = (payload.medio_pago === 'EFECTIVO' && modulosNodo.cobro_efectivo_entrega && !esPedidoPostal)
+            ? 'EFECTIVO'
+            : 'TRANSFERENCIA';
         const estadoPago = medioPago === 'EFECTIVO' ? 'COBRAR_EN_ENTREGA' : 'PENDIENTE_TRANSFERENCIA';
 
-        // Registrar o actualizar el vecino de forma determinista por clave única (nodo_id, telefono_normalizado)
+        // Registrar o actualizar el comprador de forma determinista por clave única (nodo_id, telefono_normalizado)
         const telNormVecino = normalizarTelefonoVecinoNodo(vecinoTelefono);
         if (!telNormVecino || telNormVecino.length < 7) {
             throw new Error('Por favor ingresá un número de WhatsApp válido con código de área (ej: 221 501-1101).');
         }
-        const dirVecino = modalidad === 'ENVIO_BARRIAL'
-            ? String(payload.direccion_entrega || '').trim()
-            : (nodo.direccion_retiro || '');
-        const entrecallesVecino = payload.entrecalles_referencia || '';
+        let dirPostalFormateada = '';
+        if (esPedidoPostal && datosPostalesValidados) {
+            if (datosPostalesValidados.modalidad_postal === 'SUCURSAL') {
+                dirPostalFormateada = `${datosPostalesValidados.sucursal_nombre} — ${datosPostalesValidados.localidad_nombre}, ${datosPostalesValidados.provincia_nombre} (CP ${datosPostalesValidados.cp_destino})`;
+            } else {
+                const parteCalle = `${datosPostalesValidados.calle} ${datosPostalesValidados.altura}${datosPostalesValidados.piso_depto ? ` (${datosPostalesValidados.piso_depto})` : ''}`;
+                dirPostalFormateada = `${parteCalle}, ${datosPostalesValidados.localidad_nombre}, ${datosPostalesValidados.provincia_nombre} (CP ${datosPostalesValidados.cp_destino})`;
+            }
+        }
+        const dirVecino = esPedidoPostal
+            ? dirPostalFormateada
+            : (modalidad === 'ENVIO_BARRIAL'
+                ? String(payload.direccion_entrega || '').trim()
+                : (nodo.direccion_retiro || ''));
+        const entrecallesVecino = esPedidoPostal
+            ? (datosPostalesValidados?.referencias_domicilio || '')
+            : (payload.entrecalles_referencia || '');
         const coordsPayload = modalidad === 'ENVIO_BARRIAL'
             ? _sanitizarCoordenadasGeo(payload.latitud, payload.longitud)
             : null;
@@ -8237,6 +9230,30 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 [codigoVecino, portalTokenVecino, vecinoId]
             );
         }
+        if (esPedidoPostal && datosPostalesValidados) {
+            await client.query(
+                `UPDATE public.nodos_vecinos SET
+                    dni_cuil = COALESCE(NULLIF($2::varchar, ''), dni_cuil),
+                    email_contacto = COALESCE(NULLIF($3::varchar, ''), email_contacto),
+                    cp_habitual = COALESCE(NULLIF($4::varchar, ''), cp_habitual),
+                    provincia_habitual = COALESCE(NULLIF($5::varchar, ''), provincia_habitual),
+                    localidad_habitual = COALESCE(NULLIF($6::varchar, ''), localidad_habitual),
+                    direccion_calle = COALESCE(NULLIF($7::varchar, ''), direccion_calle),
+                    entrecalles_referencia = COALESCE(NULLIF($8::varchar, ''), entrecalles_referencia),
+                    updated_at = NOW()
+                 WHERE id = $1`,
+                [
+                    vecinoId,
+                    datosPostalesValidados.destinatario_dni || '',
+                    datosPostalesValidados.email_contacto || '',
+                    datosPostalesValidados.cp_destino || '',
+                    datosPostalesValidados.provincia_nombre || '',
+                    datosPostalesValidados.localidad_nombre || '',
+                    dirPostalFormateada,
+                    datosPostalesValidados.referencias_domicilio || ''
+                ]
+            );
+        }
 
         const seqRes = await client.query(`
             SELECT GREATEST(
@@ -8247,15 +9264,28 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
         `);
         const codigoPedido = `NB-${Number(seqRes.rows[0].base_num || 1000) + 1}`;
 
-        const direccionFinal = modalidad === 'ENVIO_BARRIAL'
-            ? String(payload.direccion_entrega || '').trim()
-            : (nodo.direccion_retiro || nodo.barrio_zona || '');
+        const direccionFinal = esPedidoPostal
+            ? dirPostalFormateada
+            : (modalidad === 'ENVIO_BARRIAL'
+                ? String(payload.direccion_entrega || '').trim()
+                : (nodo.direccion_retiro || nodo.barrio_zona || ''));
+
+        const fechaEntregaIsoEfectiva = esPedidoPostal
+            ? new Date().toISOString().slice(0, 10)
+            : entregaAsignada.fecha_entrega_iso;
+        const fechaEntregaLabelEfectiva = esPedidoPostal
+            ? (configPaqNodo.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles')
+            : entregaAsignada.label_completo;
+        const ventanaLabelEfectiva = esPedidoPostal && datosPostalesValidados
+            ? `${formatearOperadorPostalLabel(datosPostalesValidados.operador_postal)} · ${datosPostalesValidados.modalidad_postal === 'SUCURSAL' ? 'Retiro en Sucursal' : 'Envío a Domicilio'} (CP ${datosPostalesValidados.cp_destino})`
+            : entregaAsignada.ventana_retiro;
 
         const trackingToken = generarTrackingTokenPedidoNodo();
 
         const insPed = await client.query(
             `INSERT INTO public.nodos_pedidos_vecinos (
                 codigo_pedido, nodo_id, vecino_id, vecino_nombre, vecino_telefono,
+                vecino_email, destinatario_dni,
                 modalidad_entrega, direccion_entrega, entrecalles_referencia,
                 latitud, longitud, gps_origen,
                 fecha_entrega_comprometida, fecha_entrega_label, ventana_horaria_label,
@@ -8265,7 +9295,7 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 subtotal_productos_vecino, cargo_envio_barrial, total_vecino,
                 total_base_lamda, ganancia_total_gestor, observaciones_vecino
              ) VALUES (
-                $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'CONFIRMADO_VECINO',$18,1,$25,false,$19,$20,$21,$22,$23,$24
+                $1,$2,$3,$4,$5,$26,$27,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'CONFIRMADO_VECINO',$18,1,$25,false,$19,$20,$21,$22,$23,$24
              ) RETURNING *`,
             [
                 codigoPedido,
@@ -8275,14 +9305,14 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 vecinoTelefono,
                 modalidad,
                 direccionFinal,
-                payload.entrecalles_referencia || '',
+                entrecallesVecino,
                 latPedidoFinal,
                 lngPedidoFinal,
                 gpsOrigenPedidoFinal,
-                entregaAsignada.fecha_entrega_iso,
-                entregaAsignada.label_completo,
-                entregaAsignada.ventana_retiro,
-                !proxima.paso_horario_corte,
+                fechaEntregaIsoEfectiva,
+                fechaEntregaLabelEfectiva,
+                ventanaLabelEfectiva,
+                esPedidoPostal ? true : !proxima.paso_horario_corte,
                 medioPago,
                 estadoPago,
                 trackingToken,
@@ -8292,10 +9322,50 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 totalBaseLamda,
                 gananciaTotalGestor,
                 payload.observaciones_vecino || '',
-                modalidad === 'ENVIO_BARRIAL'
+                modalidad === 'ENVIO_BARRIAL',
+                datosPostalesValidados?.email_contacto || String(payload.vecino_email || '').trim().slice(0, 160) || null,
+                datosPostalesValidados?.destinatario_dni || null
             ]
         );
         const pedidoRow = insPed.rows[0];
+
+        let envioPostalRow = null;
+        if (esPedidoPostal && datosPostalesValidados) {
+            const insEnvioPostal = await client.query(
+                `INSERT INTO public.nodos_pedidos_envios_postales (
+                    pedido_id, nodo_id, operador_postal, modalidad_postal,
+                    sucursal_codigo, sucursal_nombre, destinatario_nombre, destinatario_dni,
+                    cp_destino, provincia_codigo, provincia_nombre, localidad_nombre,
+                    calle, altura, piso_depto, referencias_domicilio,
+                    peso_gramos, valor_declarado, costo_envio_cliente, costo_flete_lamda,
+                    modo_imposicion, estado_envio
+                 ) VALUES (
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,0,'MANUAL','PENDIENTE_DESPACHO'
+                 ) RETURNING *`,
+                [
+                    pedidoRow.id,
+                    nodo.id,
+                    datosPostalesValidados.operador_postal,
+                    datosPostalesValidados.modalidad_postal,
+                    datosPostalesValidados.sucursal_codigo,
+                    datosPostalesValidados.sucursal_nombre,
+                    datosPostalesValidados.destinatario_nombre,
+                    datosPostalesValidados.destinatario_dni,
+                    datosPostalesValidados.cp_destino,
+                    datosPostalesValidados.provincia_codigo,
+                    datosPostalesValidados.provincia_nombre,
+                    datosPostalesValidados.localidad_nombre,
+                    datosPostalesValidados.calle,
+                    datosPostalesValidados.altura,
+                    datosPostalesValidados.piso_depto,
+                    datosPostalesValidados.referencias_domicilio,
+                    pesoGramosEstimado,
+                    subtotalProductosVecino,
+                    cargoEnvioBarrial
+                ]
+            );
+            envioPostalRow = insEnvioPostal.rows[0];
+        }
 
         await client.query(
             `INSERT INTO public.nodos_pedidos_eventos_tracking (
@@ -8354,7 +9424,7 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 loteCanastoId,
                 totalVecino,
                 medioPago,
-                `Compra Pedido #${codigoPedido} (${itemsValidados.length} art. · ${entregaAsignada.label_completo})`,
+                `Compra Pedido #${codigoPedido} (${itemsValidados.length} art. · ${fechaEntregaLabelEfectiva})`,
                 codigoPedido
             ]
         );
@@ -8384,6 +9454,7 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 portal_token: portalTokenVecino,
                 telefono_normalizado: telNormVecino,
                 saldo_subcuenta_vecino: saldoVecinoActual,
+                envio_postal: envioPostalRow,
                 items: itemsValidados.map(it => ({
                     articulo_catalogo_id: it.articulo_catalogo_id,
                     sku_nodo: it.sku_nodo,
@@ -8507,6 +9578,10 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
                ), 0)::numeric(14,2) AS ganancia_estimada_gestor
         FROM public.nodos_pedidos_vecinos npv
         JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+        WHERE COALESCE(
+            (nm.modulos_activos->>'canasto_consolidado')::boolean,
+            CASE WHEN LOWER(COALESCE(nm.perfil_operativo, 'vecinal')) = 'ecommerce_fulfillment' THEN false ELSE true END
+        ) = true
         GROUP BY npv.nodo_id, nm.codigo_nodo, npv.fecha_entrega_label
         ORDER BY MIN(npv.fecha_entrega_comprometida) ASC, npv.nodo_id ASC
     `);
@@ -12963,7 +14038,7 @@ async function obtenerResumenRadarParaPedidoVecino(pedidoRow) {
 }
 
 async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
-    const [itemsRes, evsRes] = await Promise.all([
+    const [itemsRes, evsRes, postalRes] = await Promise.all([
         db.query(
             `SELECT COALESCE(NULLIF(TRIM(nombre_vidriera_vecino), ''), nombre_publico) AS nombre_publico,
                     presentacion_etiqueta, cantidad,
@@ -12979,14 +14054,37 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
              WHERE pedido_id = $1
              ORDER BY hito_numero ASC, id ASC`,
             [pedidoRow.id]
+        ),
+        db.query(
+            `SELECT operador_postal, modalidad_postal, sucursal_codigo, sucursal_nombre,
+                    destinatario_nombre, cp_destino, provincia_nombre, localidad_nombre,
+                    calle, altura, piso_depto, referencias_domicilio,
+                    costo_envio_cliente, numero_tracking, url_tracking_carrier, estado_envio,
+                    fecha_despacho, fecha_entrega_correo
+             FROM public.nodos_pedidos_envios_postales
+             WHERE pedido_id = $1
+             LIMIT 1`,
+            [pedidoRow.id]
         )
     ]);
 
+    const envioPostal = postalRes.rows[0] || null;
     const pagoConfirmado = Boolean(pedidoRow.impactado_cta_cte_pago) ||
         ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(pedidoRow.estado_pago || '').toUpperCase());
 
-    const timeline = construirTimelineMarcaBlancaPedido(pedidoRow, nodoRow, evsRes.rows);
-    const radarResumen = await obtenerResumenRadarParaPedidoVecino(pedidoRow);
+    const perfilOp = normalizarPerfilOperativoNodo(nodoRow.perfil_operativo);
+    const modulosOp = resolverModulosActivosNodo(nodoRow);
+    const configPaqOp = normalizarConfigPaqueteria(nodoRow.config_paqueteria);
+
+    const timeline = construirTimelineMarcaBlancaPedido(
+        pedidoRow,
+        { ...nodoRow, perfil_operativo: perfilOp, config_paqueteria: configPaqOp },
+        evsRes.rows,
+        envioPostal
+    );
+    const radarResumen = modulosOp.hoja_de_ruta
+        ? await obtenerResumenRadarParaPedidoVecino(pedidoRow)
+        : { disponible: false };
 
     return {
         nodo: {
@@ -12994,7 +14092,7 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             slug_historico: nodoRow.slug_historico || null,
             nombre_marca: nodoRow.nombre_marca,
             bajada_marca: nodoRow.bajada_marca || null,
-            subtitulo_marca: nodoRow.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
+            subtitulo_marca: nodoRow.subtitulo_marca || (perfilOp === 'ecommerce_fulfillment' ? 'Tienda Oficial · Envíos a Todo el País' : 'Comunidad Barrial - Entrega Fresca'),
             gestor_nombre: nodoRow.gestor_nombre,
             gestor_telefono: nodoRow.gestor_telefono,
             barrio_zona: nodoRow.barrio_zona,
@@ -13004,7 +14102,10 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             logo_original_base64: nodoRow.logo_original_base64 || null,
             alias_bancario_display: nodoRow.alias_bancario_display || '',
             cbu_display: nodoRow.cbu_display || '',
-            titular_display: nodoRow.titular_display || ''
+            titular_display: nodoRow.titular_display || '',
+            perfil_operativo: perfilOp,
+            modulos_activos: modulosOp,
+            config_paqueteria: configPaqOp
         },
         pedido: {
             codigo_pedido: pedidoRow.codigo_pedido,
@@ -13026,7 +14127,20 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             motivo_ajuste_credito: pedidoRow.motivo_ajuste_credito || '',
             total_vecino: Number(pedidoRow.total_vecino || 0),
             observaciones_vecino: pedidoRow.observaciones_vecino || '',
-            created_at: pedidoRow.created_at
+            created_at: pedidoRow.created_at,
+            envio_postal: envioPostal ? {
+                operador_postal: envioPostal.operador_postal,
+                operador_label: formatearOperadorPostalLabel(envioPostal.operador_postal),
+                modalidad_postal: envioPostal.modalidad_postal,
+                sucursal_nombre: envioPostal.sucursal_nombre || null,
+                cp_destino: envioPostal.cp_destino,
+                provincia_nombre: envioPostal.provincia_nombre,
+                localidad_nombre: envioPostal.localidad_nombre,
+                costo_envio_cliente: Number(envioPostal.costo_envio_cliente || 0),
+                numero_tracking: envioPostal.numero_tracking || null,
+                url_tracking_carrier: envioPostal.url_tracking_carrier || null,
+                estado_envio: envioPostal.estado_envio || 'PENDIENTE_DESPACHO'
+            } : null
         },
         items: itemsRes.rows.map(it => ({
             nombre_publico: it.nombre_publico,
@@ -13063,7 +14177,8 @@ async function obtenerSeguimientoPublicoPedidoVecino(slug, trackingToken) {
                 nv.nombre_completo AS vec_nombre_real,
                 nm.slug AS nm_slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca, nm.gestor_nombre,
                 nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
-                nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display
+                nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
+                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.diccionario_textos
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
@@ -13163,7 +14278,8 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
                 nv.telefono_normalizado AS vec_tel_norm,
                 nm.slug AS nm_slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca, nm.gestor_nombre,
                 nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
-                nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display
+                nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
+                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.diccionario_textos
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
@@ -13231,12 +14347,15 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
     }
 
     const primera = filasCoincidentes[0];
+    const perfilOpWa = normalizarPerfilOperativoNodo(primera.perfil_operativo);
+    const modulosOpWa = resolverModulosActivosNodo(primera);
+    const configPaqWa = normalizarConfigPaqueteria(primera.config_paqueteria);
     const nodoPublico = {
         slug: primera.nm_slug,
         slug_historico: primera.slug_historico || null,
         nombre_marca: primera.nombre_marca,
         bajada_marca: primera.bajada_marca || null,
-        subtitulo_marca: primera.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
+        subtitulo_marca: primera.subtitulo_marca || (perfilOpWa === 'ecommerce_fulfillment' ? 'Tienda Oficial · Envíos a Todo el País' : 'Comunidad Barrial - Entrega Fresca'),
         gestor_nombre: primera.gestor_nombre || '',
         gestor_telefono: primera.gestor_telefono || '',
         barrio_zona: primera.barrio_zona || '',
@@ -13246,7 +14365,10 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
         logo_original_base64: primera.logo_original_base64 || null,
         alias_bancario_display: primera.alias_bancario_display || '',
         cbu_display: '',
-        titular_display: primera.titular_display || ''
+        titular_display: primera.titular_display || '',
+        perfil_operativo: perfilOpWa,
+        modulos_activos: modulosOpWa,
+        config_paqueteria: configPaqWa
     };
 
     const esModoLab = esModoLaboratorioNodos();
@@ -13352,7 +14474,8 @@ async function buscarSeguimientoPublicoPorTelefonoYPedido(slug, payload = {}) {
                 nv.telefono_normalizado AS vec_tel_norm,
                 nm.slug AS nm_slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca, nm.gestor_nombre,
                 nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
-                nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display
+                nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
+                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.diccionario_textos
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
@@ -14934,7 +16057,8 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
                 nm.gestor_nombre, nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro,
                 nm.color_primario, nm.tema_visual, nm.logo_original_base64,
                 nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
-                nm.permitir_envio_barrial, nm.permitir_retiro_nodo, nm.permitir_reparto_propio, nm.permitir_encomienda, nm.cargo_envio_barrial
+                nm.permitir_envio_barrial, nm.permitir_retiro_nodo, nm.permitir_reparto_propio, nm.permitir_encomienda, nm.cargo_envio_barrial,
+                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.diccionario_textos
          FROM public.nodos_vecinos nv
          JOIN public.nodos_maestro nm ON nm.id = nv.nodo_id
          WHERE nv.portal_token = $1
@@ -14971,7 +16095,10 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
         permitir_retiro_nodo: row.permitir_retiro_nodo !== false,
         permitir_reparto_propio: Boolean(row.permitir_reparto_propio ?? row.permitir_envio_barrial),
         permitir_encomienda: Boolean(row.permitir_encomienda),
-        cargo_envio_barrial: Number(row.cargo_envio_barrial || 0)
+        cargo_envio_barrial: Number(row.cargo_envio_barrial || 0),
+        perfil_operativo: normalizarPerfilOperativoNodo(row.perfil_operativo),
+        modulos_activos: resolverModulosActivosNodo(row),
+        config_paqueteria: normalizarConfigPaqueteria(row.config_paqueteria)
     };
 
     const [pedsRes, itemsRes, evsRes, pagosMovsRes] = await Promise.all([
@@ -15276,7 +16403,7 @@ async function obtenerCompradoresRegistradosNodo(nodoId) {
 
     const [nodoRes, vecinosRes, pedidosRes] = await Promise.all([
         db.query(
-            `SELECT id, slug, nombre_marca, activo
+            `SELECT id, slug, nombre_marca, perfil_operativo, activo
              FROM public.nodos_maestro
              WHERE id = $1::int
              LIMIT 1`,
@@ -15286,6 +16413,7 @@ async function obtenerCompradoresRegistradosNodo(nodoId) {
             `SELECT id, nodo_id, codigo_vecino, nombre_completo,
                     telefono_whatsapp, telefono_normalizado,
                     direccion_calle, entrecalles_referencia, notas_entrega,
+                    dni_cuil, email_contacto, cp_habitual, provincia_habitual, localidad_habitual,
                     saldo_actual, created_at, updated_at
              FROM public.nodos_vecinos
              WHERE nodo_id = $1::int
@@ -15402,6 +16530,11 @@ async function obtenerCompradoresRegistradosNodo(nodoId) {
             direccion_calle: v.direccion_calle || '',
             entrecalles_referencia: v.entrecalles_referencia || '',
             notas_entrega: v.notas_entrega || '',
+            dni_cuil: v.dni_cuil || '',
+            email_contacto: v.email_contacto || '',
+            cp_habitual: v.cp_habitual || '',
+            provincia_habitual: v.provincia_habitual || '',
+            localidad_habitual: v.localidad_habitual || '',
             saldo_actual: Number(Number(v.saldo_actual || 0).toFixed(2)),
             cantidad_pedidos_activos: cantidadActivos,
             cantidad_pedidos_entregados: cantidadEntregados,
@@ -15700,6 +16833,15 @@ module.exports = {
     calcularEstructuraCostosNodo,
     obtenerEstadoCompletoNodos,
     guardarNodoMaestro,
+    clonarNodoMaestro,
+    normalizarPerfilOperativoNodo,
+    obtenerPresetModulosActivos,
+    resolverModulosActivosNodo,
+    obtenerConfigPaqueteriaDefault,
+    normalizarConfigPaqueteria,
+    cotizarEnvioPostalPorCp,
+    cotizarEnvioPostalTienda,
+    PROVINCIAS_ARGENTINA_CANONICAS,
     actualizarConfiguracionCuentaCanalNodos,
     crearPropuestaFraccion,
     anularODescartarPropuestaFraccion,

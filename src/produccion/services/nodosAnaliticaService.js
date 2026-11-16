@@ -862,9 +862,27 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
             color_primario: r.color_primario || '#16a34a',
             tema_visual: (r.tema_visual && typeof r.tema_visual === 'object') ? r.tema_visual : {},
             activo: r.activo !== false,
+            perfil_operativo: String(r.perfil_operativo || 'vecinal').trim().toLowerCase() === 'ecommerce_fulfillment'
+                ? 'ecommerce_fulfillment'
+                : 'vecinal',
+            modulos_activos: (r.modulos_activos && typeof r.modulos_activos === 'object' && !Array.isArray(r.modulos_activos))
+                ? r.modulos_activos
+                : {},
+            config_paqueteria: (r.config_paqueteria && typeof r.config_paqueteria === 'object' && !Array.isArray(r.config_paqueteria))
+                ? r.config_paqueteria
+                : {},
+            diccionario_textos: (r.diccionario_textos && typeof r.diccionario_textos === 'object' && !Array.isArray(r.diccionario_textos))
+                ? r.diccionario_textos
+                : {},
+            plantilla_origen_id: r.plantilla_origen_id ? Number(r.plantilla_origen_id) : null,
             permitir_retiro_nodo: r.permitir_retiro_nodo !== false,
             permitir_reparto_propio: Boolean(r.permitir_reparto_propio ?? r.permitir_envio_barrial),
+            permitir_encomienda: Boolean(r.permitir_encomienda),
             cargo_envio_barrial: Number(r.cargo_envio_barrial || 0),
+            margen_gestor_default_pct: Number(r.margen_gestor_default_pct ?? 28),
+            mostrar_ingredientes_tienda: r.mostrar_ingredientes_tienda !== false,
+            usa_cuenta_compartida: r.usa_cuenta_compartida !== false,
+            alias_bancario_display: r.alias_bancario_display || '',
             contabilidad: {
                 usar_cuenta_madre_unificada: usaMadre,
                 modalidad: usaMadre ? 'CUENTA_MADRE_UNIFICADA' : 'SUBCUENTA_PROPIA',
@@ -913,6 +931,8 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
     return {
         ok: true,
         fecha_servidor: new Date().toISOString(),
+        modo_laboratorio: String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true'
+            && String(process.env.DB_NAME || '').trim() === 'etiquetas_pruebas',
         total_nodos: nodos.length,
         nodos
     };

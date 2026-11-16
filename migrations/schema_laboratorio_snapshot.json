@@ -1,6 +1,6 @@
 {
-  "tableCount": 165,
-  "uniqueIndexCount": 237,
+  "tableCount": 166,
+  "uniqueIndexCount": 239,
   "tables": {
     "articulos": {
       "numero": {
@@ -12974,6 +12974,56 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "false"
+      },
+      "perfil_operativo": {
+        "ordinal_position": 44,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'vecinal'::character varying"
+      },
+      "modulos_activos": {
+        "ordinal_position": 45,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'{}'::jsonb"
+      },
+      "config_paqueteria": {
+        "ordinal_position": 46,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'{}'::jsonb"
+      },
+      "diccionario_textos": {
+        "ordinal_position": 47,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'{}'::jsonb"
+      },
+      "plantilla_origen_id": {
+        "ordinal_position": 48,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_movimientos_cta_cte": {
@@ -13238,6 +13288,378 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "'[]'::jsonb"
+      }
+    },
+    "nodos_pedidos_envios_postales": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_pedidos_envios_postales_id_seq'::regclass)"
+      },
+      "pedido_id": {
+        "ordinal_position": 2,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "nodo_id": {
+        "ordinal_position": 3,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "operador_postal": {
+        "ordinal_position": 4,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'CORREO_ARGENTINO'::character varying"
+      },
+      "modalidad_postal": {
+        "ordinal_position": 5,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'DOMICILIO'::character varying"
+      },
+      "sucursal_codigo": {
+        "ordinal_position": 6,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 60,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "sucursal_nombre": {
+        "ordinal_position": 7,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 180,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "destinatario_nombre": {
+        "ordinal_position": 8,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 160,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "destinatario_dni": {
+        "ordinal_position": 9,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 24,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "cp_destino": {
+        "ordinal_position": 10,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 12,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "provincia_codigo": {
+        "ordinal_position": 11,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 10,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "provincia_nombre": {
+        "ordinal_position": 12,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "localidad_nombre": {
+        "ordinal_position": 13,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "calle": {
+        "ordinal_position": 14,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 160,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "altura": {
+        "ordinal_position": 15,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "piso_depto": {
+        "ordinal_position": 16,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 60,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "referencias_domicilio": {
+        "ordinal_position": 17,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 280,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "peso_gramos": {
+        "ordinal_position": 18,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "1000"
+      },
+      "largo_cm": {
+        "ordinal_position": 19,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 6,
+        "numeric_scale": 1,
+        "is_nullable": "YES",
+        "column_default": "25.0"
+      },
+      "ancho_cm": {
+        "ordinal_position": 20,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 6,
+        "numeric_scale": 1,
+        "is_nullable": "YES",
+        "column_default": "20.0"
+      },
+      "alto_cm": {
+        "ordinal_position": 21,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 6,
+        "numeric_scale": 1,
+        "is_nullable": "YES",
+        "column_default": "15.0"
+      },
+      "valor_declarado": {
+        "ordinal_position": 22,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": "0.00"
+      },
+      "costo_envio_cliente": {
+        "ordinal_position": 23,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "costo_flete_lamda": {
+        "ordinal_position": 24,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "modo_imposicion": {
+        "ordinal_position": 25,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 20,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'MANUAL'::character varying"
+      },
+      "id_externo_carrier": {
+        "ordinal_position": 26,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "numero_tracking": {
+        "ordinal_position": 27,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "url_tracking_carrier": {
+        "ordinal_position": 28,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "rotulo_formato": {
+        "ordinal_position": 29,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 16,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "rotulo_contenido": {
+        "ordinal_position": 30,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "estado_envio": {
+        "ordinal_position": 31,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'PENDIENTE_DESPACHO'::character varying"
+      },
+      "eventos_carrier_json": {
+        "ordinal_position": 32,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'[]'::jsonb"
+      },
+      "fecha_despacho": {
+        "ordinal_position": 33,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "fecha_entrega_correo": {
+        "ordinal_position": 34,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "ultimo_sync_carrier_at": {
+        "ordinal_position": 35,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "created_at": {
+        "ordinal_position": 36,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      "updated_at": {
+        "ordinal_position": 37,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
       }
     },
     "nodos_pedidos_eventos_tracking": {
@@ -14004,6 +14426,26 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "false"
+      },
+      "vecino_email": {
+        "ordinal_position": 55,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 160,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "destinatario_dni": {
+        "ordinal_position": 56,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 24,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_propuestas_fracciones": {
@@ -15060,6 +15502,56 @@
         "data_type": "timestamp without time zone",
         "udt_name": "timestamp",
         "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "dni_cuil": {
+        "ordinal_position": 21,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 24,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "email_contacto": {
+        "ordinal_position": 22,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 160,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "cp_habitual": {
+        "ordinal_position": 23,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 12,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "provincia_habitual": {
+        "ordinal_position": 24,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "localidad_habitual": {
+        "ordinal_position": 25,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
         "numeric_precision": null,
         "numeric_scale": null,
         "is_nullable": "YES",
@@ -21629,6 +22121,32 @@
       ],
       "has_expression_key": false,
       "sig": "nodos_ofertas_gestor::(nodo_id, articulo_catalogo_id)[pred=]"
+    },
+    {
+      "table_name": "nodos_pedidos_envios_postales",
+      "index_name": "nodos_pedidos_envios_postales_pkey",
+      "is_primary": true,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX nodos_pedidos_envios_postales_pkey ON public.nodos_pedidos_envios_postales USING btree (id)",
+      "index_predicate": "",
+      "key_columns": [
+        "id"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_pedidos_envios_postales::(id)[pred=]"
+    },
+    {
+      "table_name": "nodos_pedidos_envios_postales",
+      "index_name": "nodos_pedidos_envios_postales_pedido_id_key",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX nodos_pedidos_envios_postales_pedido_id_key ON public.nodos_pedidos_envios_postales USING btree (pedido_id)",
+      "index_predicate": "",
+      "key_columns": [
+        "pedido_id"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_pedidos_envios_postales::(pedido_id)[pred=]"
     },
     {
       "table_name": "nodos_pedidos_eventos_tracking",

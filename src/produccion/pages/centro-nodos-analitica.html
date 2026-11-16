@@ -489,6 +489,7 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <button type="button" id="btn-top-nueva-tienda" class="btn-top" style="background:#16a34a; border-color:#15803d; color:#fff; font-weight:900;" onclick="abrirModalAbmTiendaCentro(null, null)">➕ Nueva Tienda / 🧬 Clonar</button>
         <a href="http://localhost:3000/" id="btn-top-menu-principal" class="btn-top">← Menú Principal</a>
         <a href="http://localhost:3002/pages/pizarra-simulacion.html?tab=nodos" id="btn-top-pizarra-nodos" class="btn-top">🎛️ Pizarra y ABM Nodos</a>
         <a href="/deposito-nodos" id="btn-top-mesa-armado" class="btn-top">📦 Mesa de Armado</a>
@@ -572,6 +573,11 @@
   <!-- Modal Zoom QR para escaneo cómodo desde el celular -->
   <div id="qr-zoom-modal" class="modal-backdrop" onclick="if(event.target===this) cerrarModalQrZoom()">
     <div class="modal-box" id="qr-zoom-content"></div>
+  </div>
+
+  <!-- Modal Alta / Edición de Perfil Operativo / Clonación 1 Clic de Tienda -->
+  <div id="abm-tienda-centro-modal" class="modal-backdrop" onclick="if(event.target===this) cerrarModalAbmTiendaCentro()">
+    <div class="modal-box" id="abm-tienda-centro-content" style="max-width:840px; width:96%; max-height:92vh; overflow-y:auto; text-align:left; padding:22px 24px;"></div>
   </div>
 
   <script>
@@ -743,6 +749,7 @@
       }
 
       CSTATE.nodos = Array.isArray(data.nodos) ? data.nodos : [];
+      CSTATE.modoLaboratorio = Boolean(data.modo_laboratorio);
       renderizarPillsNodosRadar();
 
       if (seleccionarInicial && CSTATE.nodos.length > 0 && !CSTATE.nodoSeleccionadoId) {
@@ -770,6 +777,10 @@
       strip.innerHTML = CSTATE.nodos.map(n => {
         const sel = Number(n.id) === Number(CSTATE.nodoSeleccionadoId);
         const usaMadre = n.contabilidad.usar_cuenta_madre_unificada;
+        const esFulfillment = n.perfil_operativo === 'ecommerce_fulfillment';
+        const badgePerfil = esFulfillment
+          ? `<span class="badge-pill" style="background:#fef3c7; color:#92400e;">📦 Tienda Online · Fulfillment</span>`
+          : `<span class="badge-pill" style="background:#ecfdf5; color:#047857;">🏘️ Vecinal · Barrial</span>`;
         const badgeContable = usaMadre
           ? `<span class="badge-pill" style="background:#ede9fe; color:#5b21b6;">🔗 Madre Unificada (${esc(n.contabilidad.codigo_cuenta_operativa)})</span>`
           : `<span class="badge-pill" style="background:#e0f2fe; color:#0369a1;">🏢 Subcuenta Propia (${esc(n.contabilidad.codigo_cuenta_operativa)})</span>`;
@@ -787,13 +798,16 @@
                   ${esc(n.nombre_marca)}
                 </div>
                 <div style="font-size:0.78rem; color:var(--muted); margin-top:1px;">
-                  👤 ${esc(n.gestor_nombre || 'Sin gestor')} · 📍 ${esc(n.barrio_zona || 'Sin zona')}
+                  👤 ${esc(n.gestor_nombre || 'Sin referente')} · ${esFulfillment ? '🚚 Cobertura Nacional' : `📍 ${esc(n.barrio_zona || 'Sin zona')}`}
                 </div>
               </div>
-              ${n.activo
-                ? `<span class="badge-pill" style="background:#dcfce7; color:#166534;">ACTIVO</span>`
-                : `<span class="badge-pill" style="background:#f1f5f9; color:#64748b;">ARCHIVADO</span>`
-              }
+              <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                ${n.activo
+                  ? `<span class="badge-pill" style="background:#dcfce7; color:#166534;">ACTIVO</span>`
+                  : `<span class="badge-pill" style="background:#f1f5f9; color:#64748b;">ARCHIVADO</span>`
+                }
+                ${badgePerfil}
+              </div>
             </div>
 
             <div style="margin-top:10px; padding-left:6px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -806,7 +820,7 @@
             <div style="margin-top:9px; padding:8px 0 0 6px; border-top:1px dashed var(--border); display:flex; gap:8px; flex-wrap:wrap; font-size:0.74rem; font-weight:700; color:#475569;">
               <span>📦 ${n.comercial.pedidos_activos} activos</span>
               <span>·</span>
-              <span>🧺 ${n.comercial.canastos_en_curso} canastos</span>
+              <span>${esFulfillment ? '🚚 Fulfillment 24/7' : `🧺 ${n.comercial.canastos_en_curso} canastos`}</span>
               <span>·</span>
               <span>📡 ${n.comercial.visitantes_reales_hoy} visitas hoy</span>
               ${n.comercial.carritos_sin_cerrar > 0 ? `<span style="color:#b45309;">· 🛒 ${n.comercial.carritos_sin_cerrar} en carrito</span>` : ''}
@@ -916,7 +930,23 @@
               </button>
             </div>
 
-            <div style="margin-bottom:12px;">
+            <div style="margin-bottom:12px; display:flex; flex-direction:column; gap:7px;">
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <button type="button" id="btn-ficha-config-perfil" class="btn solid-dark" style="flex:1; justify-content:center; padding:8px 10px; font-size:0.78rem;"
+                  onclick="abrirModalAbmTiendaCentro(${Number(n.id)}, null)">
+                  ⚙️ Configurar Perfil / Módulos
+                </button>
+                <button type="button" id="btn-ficha-clonar-tienda" class="btn" style="flex:1; justify-content:center; padding:8px 10px; font-size:0.78rem; background:#f0fdf4; border-color:#86efac; color:#166534; font-weight:800;"
+                  onclick="abrirModalAbmTiendaCentro(null, ${Number(n.id)})">
+                  🧬 Clonar ${esc(n.nombre_marca)}
+                </button>
+                ${(CSTATE.modoLaboratorio && Number(n.id) > 2) ? `
+                  <button type="button" id="btn-ficha-eliminar-lab" class="btn" style="padding:8px 10px; font-size:0.76rem; background:#fef2f2; border-color:#fecaca; color:#b91c1c; font-weight:800;"
+                    onclick="eliminarTiendaPruebaDesdeCentro(${Number(n.id)}, '${esc(n.nombre_marca)}')">
+                    🗑️ Eliminar Prueba
+                  </button>
+                ` : ''}
+              </div>
               <button type="button" class="btn solid-green"
                 style="width:100%; justify-content:center; padding:9px 12px; font-size:0.82rem; background:linear-gradient(135deg, #0f172a 0%, #15803d 100%); border:none;"
                 onclick="abrirEnvioInternoCentroNodos(${Number(n.id)}, 'gestor_y_tienda', '${esQrAfiche ? 'tienda_afiche' : 'tienda_limpio'}')">
@@ -928,8 +958,8 @@
             <div class="qr-access-box">
               <div class="qr-access-head">
                 <div>
-                  <div style="font-weight:900; font-size:0.9rem; color:#15803d;">🛒 Entrar como Cliente (Tienda Vecinal)</div>
-                  <div style="font-size:0.75rem; color:var(--muted);">Vista pública de compra para vecinos de ${esc(n.nombre_marca)}</div>
+                  <div style="font-weight:900; font-size:0.9rem; color:#15803d;">🛒 Entrar como Cliente (${n.perfil_operativo === 'ecommerce_fulfillment' ? 'Tienda Online' : 'Tienda Vecinal'})</div>
+                  <div style="font-size:0.75rem; color:var(--muted);">Vista pública de compra de ${esc(n.nombre_marca)}</div>
                 </div>
                 <div style="display:flex; gap:4px;">
                   <button type="button" class="btn ${!esQrAfiche ? 'solid-dark' : ''}" style="padding:3px 7px; font-size:0.69rem;"
@@ -1049,14 +1079,16 @@
             <!-- RESUMEN COMERCIAL OPERATIVO -->
             <div class="kpi-grid-4">
               <div class="kpi-box">
-                <div class="kpi-label">📦 Pedidos Vecinales</div>
+                <div class="kpi-label">${n.perfil_operativo === 'ecommerce_fulfillment' ? '📦 Ventas y Envíos' : '📦 Pedidos Vecinales'}</div>
                 <div class="kpi-val">${com.pedidos_activos} <span style="font-size:0.84rem; font-weight:700; color:var(--muted);">activos</span></div>
-                <div class="kpi-sub">${com.pedidos_historicos} históricos · ${com.pedidos_hoy} hoy · ${com.vecinos_registrados} vecinos</div>
+                <div class="kpi-sub">${com.pedidos_historicos} históricos · ${com.pedidos_hoy} hoy · ${com.vecinos_registrados} ${n.perfil_operativo === 'ecommerce_fulfillment' ? 'clientes' : 'vecinos'}</div>
               </div>
               <div class="kpi-box">
-                <div class="kpi-label">📅 Próximo Corte / Entrega</div>
+                <div class="kpi-label">${n.perfil_operativo === 'ecommerce_fulfillment' ? '🚚 Modalidad Operativa' : '📅 Próximo Corte / Entrega'}</div>
                 <div class="kpi-val" style="font-size:1.02rem; line-height:1.25; margin-top:6px;">
-                  ${esc(com.proxima_entrega?.label_completo || 'Sin ventana activa')}
+                  ${n.perfil_operativo === 'ecommerce_fulfillment'
+                    ? esc(n.config_paqueteria?.sla_despacho_label || 'Envíos a todo el país · 24/48 hs')
+                    : esc(com.proxima_entrega?.label_completo || 'Sin ventana activa')}
                 </div>
                 <div class="kpi-sub">${esc(com.proxima_entrega?.corte_texto || `${com.ofertas_publicadas} ofertas publicadas`)}</div>
               </div>
@@ -1855,6 +1887,579 @@
       } catch (err) {
         window.alert('Error abriendo contacto interno: ' + err.message);
       }
+    }
+
+    // =========================================================================
+    // ABM DE TIENDA / PERFIL OPERATIVO / CLONADOR EN 1 CLIC
+    // =========================================================================
+    const PRESETS_MODULOS_CENTRO = {
+      vecinal: {
+        retiro_punto: true,
+        reparto_zonal: true,
+        hoja_de_ruta: true,
+        envio_paqueteria: false,
+        venta_continua_24_7: false,
+        despacho_desde_lamda: false,
+        canasto_consolidado: true,
+        cobro_efectivo_entrega: true
+      },
+      ecommerce_fulfillment: {
+        retiro_punto: false,
+        reparto_zonal: false,
+        hoja_de_ruta: false,
+        envio_paqueteria: true,
+        venta_continua_24_7: true,
+        despacho_desde_lamda: true,
+        canasto_consolidado: false,
+        cobro_efectivo_entrega: false
+      }
+    };
+
+    function obtenerConfigPaqueteriaDefaultCentro() {
+      return {
+        operadores_habilitados: ['CORREO_ARGENTINO', 'ANDREANI'],
+        operador_default: 'CORREO_ARGENTINO',
+        permitir_domicilio: true,
+        permitir_sucursal_correo: true,
+        sla_despacho_label: 'Despacho en 24 a 48 hs hábiles',
+        envio_gratis_activo: true,
+        envio_gratis_desde_monto: 45000,
+        tarifario_zonas: [
+          { codigo: 'AMBA_LA_PLATA', nombre: 'CABA, GBA y Gran La Plata', cp_prefijos: ['10','11','12','13','14','16','17','18','19'], domicilio: 6500, sucursal: 4800, plazo_dias: '2 a 4 días hábiles' },
+          { codigo: 'PBA_CENTRO_LITORAL', nombre: 'PBA Interior, Centro y Litoral', cp_prefijos: ['20','21','22','23','24','25','26','27','28','29','30','31','32','50','51','52','58','59','60','64','65','66','67','70','71','72','73','74','75','76','80','81'], domicilio: 8200, sucursal: 6100, plazo_dias: '3 a 6 días hábiles' },
+          { codigo: 'RESTO_PAIS', nombre: 'Cuyo, NOA, NEA y Patagonia', cp_prefijos: ['*'], domicilio: 10500, sucursal: 7900, plazo_dias: '4 a 8 días hábiles' }
+        ]
+      };
+    }
+
+    async function asegurarClientesBunkerCargadosCentro() {
+      if (Array.isArray(CSTATE.clientesBunker) && CSTATE.clientesBunker.length > 0) return CSTATE.clientesBunker;
+      const resp = await fetch('/api/produccion/nodos/inicializar', { cache: 'no-store' });
+      const data = await resp.json();
+      if (Array.isArray(data?.fuentes?.clientes_bunker) && data.fuentes.clientes_bunker.length > 0) {
+        CSTATE.clientesBunker = data.fuentes.clientes_bunker;
+        return CSTATE.clientesBunker;
+      }
+      const respAlt = await fetch('/api/logistica/bunker/clientes', { cache: 'no-store' });
+      const dataAlt = await respAlt.json();
+      CSTATE.clientesBunker = Array.isArray(dataAlt?.clientes) ? dataAlt.clientes : (Array.isArray(dataAlt) ? dataAlt : []);
+      return CSTATE.clientesBunker;
+    }
+
+    function cerrarModalAbmTiendaCentro() {
+      const m = document.getElementById('abm-tienda-centro-modal');
+      if (m) m.style.display = 'none';
+    }
+
+    function _armarSlugSugeridoCentro(txt) {
+      return String(txt || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    }
+
+    async function abrirModalAbmTiendaCentro(editarNodoId = null, clonarOrigenId = null) {
+      const modal = document.getElementById('abm-tienda-centro-modal');
+      const box = document.getElementById('abm-tienda-centro-content');
+      modal.style.display = 'flex';
+      box.innerHTML = `<div style="padding:26px; text-align:center; font-weight:800; color:var(--muted);">⏳ Cargando padrón Búnker y configuración de perfiles...</div>`;
+
+      try {
+        await asegurarClientesBunkerCargadosCentro();
+      } catch (_) {
+        CSTATE.clientesBunker = CSTATE.clientesBunker || [];
+      }
+
+      const editNodo = editarNodoId
+        ? CSTATE.nodos.find(x => Number(x.id) === Number(editarNodoId)) || null
+        : null;
+      const origenClon = (!editNodo && clonarOrigenId)
+        ? CSTATE.nodos.find(x => Number(x.id) === Number(clonarOrigenId)) || null
+        : null;
+
+      const baseRef = editNodo || origenClon || null;
+      const perfilInicial = baseRef?.perfil_operativo === 'ecommerce_fulfillment' ? 'ecommerce_fulfillment' : 'vecinal';
+      const modBase = {
+        ...PRESETS_MODULOS_CENTRO[perfilInicial],
+        ...((baseRef?.modulos_activos && typeof baseRef.modulos_activos === 'object') ? baseRef.modulos_activos : {})
+      };
+      const paqDef = obtenerConfigPaqueteriaDefaultCentro();
+      const paqRef = (baseRef?.config_paqueteria && typeof baseRef.config_paqueteria === 'object') ? baseRef.config_paqueteria : {};
+      const paqInicial = {
+        ...paqDef,
+        ...paqRef,
+        operadores_habilitados: Array.isArray(paqRef.operadores_habilitados) && paqRef.operadores_habilitados.length
+          ? paqRef.operadores_habilitados
+          : paqDef.operadores_habilitados,
+        tarifario_zonas: Array.isArray(paqRef.tarifario_zonas) && paqRef.tarifario_zonas.length >= 3
+          ? paqRef.tarifario_zonas
+          : paqDef.tarifario_zonas
+      };
+
+      CSTATE.abmDraft = {
+        editarId: editNodo ? Number(editNodo.id) : null,
+        clonarOrigenId: origenClon ? Number(origenClon.id) : '',
+        logoSubidoBase64: null
+      };
+
+      const clienteMadrePreId = editNodo?.contabilidad?.cliente_madre_bunker_id || '';
+      const usarUnificadaPre = editNodo ? Boolean(editNodo.contabilidad?.usar_cuenta_madre_unificada) : true;
+
+      const switchesDefs = [
+        { key: 'retiro_punto', label: '🏠 Punto de retiro presencial', desc: 'Habilita retirar en domicilio del referente' },
+        { key: 'reparto_zonal', label: '🚗 Reparto zonal propio', desc: 'Envío local hecho por el referente' },
+        { key: 'hoja_de_ruta', label: '🗺️ Módulo Hoja de Ruta y GPS', desc: 'Mapa Leaflet, paradas y modo conducción' },
+        { key: 'envio_paqueteria', label: '📦 Envío por Paquetería Nacional', desc: 'Checkout postal por CP + Correo Argentino / Andreani' },
+        { key: 'venta_continua_24_7', label: '⏱️ Venta continua 24/7', desc: 'Sin cierre por ventana semanal; despacho 24/48 hs' },
+        { key: 'despacho_desde_lamda', label: '🏭 Fulfillment directo desde LAMDA', desc: 'Armado y despacho desde depósito central La Plata' },
+        { key: 'canasto_consolidado', label: '🧺 Consolidar en Canasto Semanal', desc: 'Agrupa bolsas por ventana para retiro del referente' },
+        { key: 'cobro_efectivo_entrega', label: '💵 Permitir cobro en Efectivo', desc: 'Pago en mano al recibir (apagado en correo nacional)' }
+      ];
+
+      box.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:14px;">
+          <div>
+            <h3 style="margin:0; font-size:1.15rem; font-weight:900;">
+              ${editNodo
+                ? `⚙️ Configurar Tienda y Perfil Operativo · ${esc(editNodo.nombre_marca)}`
+                : '➕ Nueva Tienda / Marca (Perfiles Clonables)'}
+            </h3>
+            <div style="font-size:0.8rem; color:var(--muted); margin-top:3px;">
+              ${editNodo
+                ? `Código ${esc(editNodo.codigo_nodo)} · /tienda/${esc(editNodo.slug)}`
+                : 'Creá una nueva marca barrial o tienda online de creador con fulfillment desde LAMDA.'}
+            </div>
+          </div>
+          <button type="button" class="btn" onclick="cerrarModalAbmTiendaCentro()">✕ Cerrar</button>
+        </div>
+
+        ${!editNodo ? `
+          <div style="background:linear-gradient(135deg, #f0fdf4 0%, #ecfeff 100%); border:1.5px solid #86efac; border-radius:12px; padding:12px 14px; margin-bottom:14px;">
+            <label for="abm-centro-clonar-select" style="display:block; font-size:0.82rem; font-weight:900; color:#14532d; margin-bottom:6px;">
+              🧬 Crear clonando configuración operativa de:
+            </label>
+            <select id="abm-centro-clonar-select" onchange="onCambioClonarPlantillaCentro(this.value)"
+              style="width:100%; padding:9px 11px; border-radius:9px; border:1px solid #4ade80; font-family:inherit; font-size:0.86rem; font-weight:800; background:#fff;">
+              <option value="">— Sin plantilla (configuración manual desde cero) —</option>
+              ${CSTATE.nodos.map(nd => `
+                <option value="${Number(nd.id)}" ${Number(origenClon?.id || 0) === Number(nd.id) ? 'selected' : ''}>
+                  ${esc(nd.nombre_marca)} (${nd.perfil_operativo === 'ecommerce_fulfillment' ? '📦 Tienda Online · Fulfillment LAMDA' : '🏘️ Vecinal · Punto Barrial'})
+                </option>
+              `).join('')}
+            </select>
+            <label style="display:flex; align-items:center; gap:7px; margin-top:8px; font-size:0.79rem; font-weight:700; color:#166534; cursor:pointer;">
+              <input type="checkbox" id="abm-centro-clonar-ofertas" checked />
+              <span>Clonar catálogo publicado y % de márgenes de la plantilla (sin copiar fotos privadas ni cuentas contables)</span>
+            </label>
+          </div>
+        ` : ''}
+
+        <!-- 1. PERFIL OPERATIVO -->
+        <div style="margin-bottom:14px;">
+          <div style="font-size:0.79rem; font-weight:900; text-transform:uppercase; color:var(--muted); margin-bottom:6px;">
+            1. Perfil Operativo Base
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px;">
+            <label id="card-perfil-vecinal" style="display:flex; align-items:flex-start; gap:9px; padding:11px 13px; border-radius:11px; border:2px solid ${perfilInicial === 'vecinal' ? '#16a34a' : 'var(--border)'}; background:${perfilInicial === 'vecinal' ? '#f0fdf4' : '#fff'}; cursor:pointer;">
+              <input type="radio" name="abm-centro-perfil" value="vecinal" ${perfilInicial === 'vecinal' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('vecinal')" style="margin-top:3px;" />
+              <div>
+                <div style="font-weight:900; font-size:0.88rem;">🏘️ Vecinal / Punto Barrial</div>
+                <div style="font-size:0.75rem; color:var(--muted);">Ventana semanal, canasto consolidado, retiro en punto o Hoja de Ruta (ej. Paraíso).</div>
+              </div>
+            </label>
+            <label id="card-perfil-fulfillment" style="display:flex; align-items:flex-start; gap:9px; padding:11px 13px; border-radius:11px; border:2px solid ${perfilInicial === 'ecommerce_fulfillment' ? '#d97706' : 'var(--border)'}; background:${perfilInicial === 'ecommerce_fulfillment' ? '#fffbeb' : '#fff'}; cursor:pointer;">
+              <input type="radio" name="abm-centro-perfil" value="ecommerce_fulfillment" ${perfilInicial === 'ecommerce_fulfillment' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('ecommerce_fulfillment')" style="margin-top:3px;" />
+              <div>
+                <div style="font-weight:900; font-size:0.88rem;">📦 Tienda Online / Fulfillment LAMDA</div>
+                <div style="font-size:0.75rem; color:var(--muted);">Creadores e-commerce: cero stock propio, armado en LAMDA + Correo Argentino / Andreani (ej. MANSO).</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- 2. IDENTIDAD Y TITULAR CONTABLE -->
+        <div style="background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:13px 14px; margin-bottom:14px;">
+          <div style="font-size:0.79rem; font-weight:900; text-transform:uppercase; color:var(--muted); margin-bottom:9px;">
+            2. Identidad de Marca y Titular Contable (Aislado por Tienda)
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(195px, 1fr)); gap:10px;">
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Nombre de la Marca *</label>
+              <input type="text" id="abm-centro-marca" value="${esc(editNodo?.nombre_marca || '')}" placeholder="Ej: CLARICHUNS / NUEVA MARCA"
+                oninput="if(!CSTATE.abmDraft.editarId){ document.getElementById('abm-centro-slug').value = _armarSlugSugeridoCentro(this.value); }"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem; font-weight:800;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Slug URL (/tienda/...) *</label>
+              <input type="text" id="abm-centro-slug" value="${esc(editNodo?.slug || '')}" placeholder="ej: nueva-marca"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:monospace; font-size:0.84rem;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Creador / Referente *</label>
+              <input type="text" id="abm-centro-gestor" value="${esc(editNodo?.gestor_nombre || '')}" placeholder="Ej: Clara / Referente"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">WhatsApp Atención</label>
+              <input type="text" id="abm-centro-telefono" value="${esc(editNodo?.gestor_telefono || '')}" placeholder="Ej: 54911..."
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem;" />
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:2fr 1fr 0.7fr; gap:10px; margin-top:10px;">
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Subtítulo público de la tienda</label>
+              <input type="text" id="abm-centro-subtitulo" value="${esc(editNodo?.subtitulo_marca || (perfilInicial === 'ecommerce_fulfillment' ? 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País' : 'Comunidad Barrial - Entrega Fresca'))}"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.83rem;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Margen inicial (%)</label>
+              <input type="number" step="0.5" id="abm-centro-margen" value="${Number(baseRef?.margen_gestor_default_pct ?? 28)}"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem; font-weight:800;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Color</label>
+              <input type="color" id="abm-centro-color" value="${esc(baseRef?.color_primario || '#c69f9f')}"
+                style="width:100%; height:36px; padding:2px; border-radius:8px; border:1px solid var(--border-strong); cursor:pointer;" />
+            </div>
+          </div>
+
+          <div id="abm-centro-barrial-fields" style="display:${modBase.retiro_punto || modBase.reparto_zonal ? 'grid' : 'none'}; grid-template-columns:1fr 1.4fr 0.8fr; gap:10px; margin-top:10px;">
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Barrio / Zona local</label>
+              <input type="text" id="abm-centro-barrio" value="${esc(editNodo?.barrio_zona || '')}" placeholder="Ej: City Bell"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Dirección punto de retiro</label>
+              <input type="text" id="abm-centro-direccion" value="${esc(editNodo?.direccion_retiro || '')}" placeholder="Ej: Cantilo 452"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Envío barrial ($)</label>
+              <input type="number" step="100" id="abm-centro-cargo-barrial" value="${Number(editNodo?.cargo_envio_barrial || 0)}"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
+            </div>
+          </div>
+
+          <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); display:grid; grid-template-columns:1fr 1.4fr; gap:10px; align-items:end;">
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">🔎 Filtrar Cliente Titular en Padrón Búnker</label>
+              <input type="text" id="abm-centro-filtro-cliente" placeholder="Escribí nombre, razón social o CB-..."
+                oninput="filtrarClientesBunkerModalCentro(this.value)"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Cliente Titular Madre (bunker_clientes) *</label>
+              <select id="abm-centro-cliente-madre" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.84rem; font-weight:700; background:#fff;">
+                <option value="">— Seleccionar Cliente Titular en Búnker —</option>
+                ${(CSTATE.clientesBunker || []).map(c => `
+                  <option value="${Number(c.id)}" ${Number(clienteMadrePreId) === Number(c.id) ? 'selected' : ''}>
+                    [${esc(c.codigo_bunker_cliente || ('ID-' + c.id))}] ${esc(c.cliente_nombre || c.razon_social || 'Cliente')}
+                  </option>
+                `).join('')}
+              </select>
+            </div>
+          </div>
+          <label style="display:inline-flex; align-items:center; gap:7px; margin-top:8px; font-size:0.79rem; font-weight:800; color:#4c1d95; cursor:pointer;">
+            <input type="checkbox" id="abm-centro-usar-madre-unificada" ${usarUnificadaPre ? 'checked' : ''} />
+            <span>🔗 Usar Cuenta Madre Unificada (imputar liquidaciones en la cuenta principal del titular manteniendo subcuenta oculta)</span>
+          </label>
+        </div>
+
+        <!-- 3. SWITCHES MODULARES -->
+        <div style="background:#fff; border:1px solid var(--border); border-radius:12px; padding:13px 14px; margin-bottom:14px;">
+          <div style="font-size:0.79rem; font-weight:900; text-transform:uppercase; color:var(--muted); margin-bottom:8px;">
+            3. Módulos Operativos Activos (<code>modulos_activos</code>)
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:8px;">
+            ${switchesDefs.map(sw => `
+              <label style="display:flex; align-items:flex-start; gap:8px; padding:8px 10px; border-radius:9px; border:1px solid var(--border); background:#f8fafc; cursor:pointer;">
+                <input type="checkbox" id="abm-mod-${sw.key}" data-mod-key="${sw.key}" ${modBase[sw.key] ? 'checked' : ''}
+                  onchange="sincronizarVisibilidadPanelesAbmCentro()" style="margin-top:3px;" />
+                <div>
+                  <div style="font-size:0.81rem; font-weight:800;">${sw.label}</div>
+                  <div style="font-size:0.71rem; color:var(--muted); line-height:1.25;">${sw.desc}</div>
+                </div>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- 4. CONFIGURACIÓN DE PAQUETERÍA NACIONAL -->
+        <div id="abm-centro-paqueteria-box" style="display:${modBase.envio_paqueteria ? 'block' : 'none'}; background:#fffbeb; border:1px solid #fcd34d; border-radius:12px; padding:13px 14px; margin-bottom:14px;">
+          <div style="font-size:0.79rem; font-weight:900; text-transform:uppercase; color:#92400e; margin-bottom:9px;">
+            4. Operadores Postales, Envío Gratis y Tarifario por Zonas de CP (<code>config_paqueteria</code>)
+          </div>
+          <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:10px; font-size:0.81rem; font-weight:800;">
+            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="abm-paq-op-ca" ${paqInicial.operadores_habilitados.includes('CORREO_ARGENTINO') ? 'checked' : ''} />
+              <span>📮 Correo Argentino</span>
+            </label>
+            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="abm-paq-op-and" ${paqInicial.operadores_habilitados.includes('ANDREANI') ? 'checked' : ''} />
+              <span>🚚 Andreani</span>
+            </label>
+            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="abm-paq-domicilio" ${paqInicial.permitir_domicilio !== false ? 'checked' : ''} />
+              <span>📦 Envío a Domicilio</span>
+            </label>
+            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="abm-paq-sucursal" ${paqInicial.permitir_sucursal_correo !== false ? 'checked' : ''} />
+              <span>🏢 Retiro en Sucursal Correo</span>
+            </label>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:10px; margin-bottom:10px; align-items:end;">
+            <div>
+              <label style="display:block; font-size:0.74rem; font-weight:800; color:#78350f; margin-bottom:3px;">Leyenda SLA de Despacho</label>
+              <input type="text" id="abm-paq-sla" value="${esc(paqInicial.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles')}"
+                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid #f59e0b; background:#fff; font-size:0.82rem; font-weight:700;" />
+            </div>
+            <div>
+              <label style="display:flex; align-items:center; gap:6px; font-size:0.76rem; font-weight:800; color:#78350f; cursor:pointer; margin-bottom:5px;">
+                <input type="checkbox" id="abm-paq-gratis-activo" ${paqInicial.envio_gratis_activo ? 'checked' : ''} />
+                <span>Bonificar envío desde monto</span>
+              </label>
+              <input type="number" step="1000" id="abm-paq-gratis-monto" value="${Number(paqInicial.envio_gratis_desde_monto ?? 45000)}"
+                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid #f59e0b; background:#fff; font-size:0.83rem; font-weight:800;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.74rem; font-weight:800; color:#78350f; margin-bottom:3px;">Operador Preseleccionado</label>
+              <select id="abm-paq-op-default" style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid #f59e0b; background:#fff; font-size:0.82rem; font-weight:800;">
+                <option value="CORREO_ARGENTINO" ${paqInicial.operador_default === 'CORREO_ARGENTINO' ? 'selected' : ''}>Correo Argentino</option>
+                <option value="ANDREANI" ${paqInicial.operador_default === 'ANDREANI' ? 'selected' : ''}>Andreani</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:6px;">
+            ${paqInicial.tarifario_zonas.map((z, idx) => `
+              <div class="abm-zona-row" data-zona-codigo="${esc(z.codigo)}" data-zona-plazo="${esc(z.plazo_dias || '3 a 6 días hábiles')}"
+                style="display:grid; grid-template-columns:1.3fr 1.4fr 0.8fr 0.8fr; gap:8px; align-items:center; background:#fff; padding:7px 9px; border-radius:8px; border:1px solid #fde68a;">
+                <input type="text" class="z-nombre" value="${esc(z.nombre)}" style="padding:6px 8px; border-radius:6px; border:1px solid var(--border); font-size:0.79rem; font-weight:800;" />
+                <input type="text" class="z-prefijos" value="${esc(Array.isArray(z.cp_prefijos) ? z.cp_prefijos.join(',') : (z.cp_prefijos || '*'))}" title="Prefijos de CP separados por coma (o * para resto del país)" style="padding:6px 8px; border-radius:6px; border:1px solid var(--border); font-family:monospace; font-size:0.76rem;" />
+                <div>
+                  <span style="font-size:0.68rem; font-weight:800; color:var(--muted);">Domicilio $</span>
+                  <input type="number" step="100" class="z-dom" value="${Number(z.domicilio || 0)}" style="width:100%; padding:5px 7px; border-radius:6px; border:1px solid var(--border); font-size:0.8rem; font-weight:800;" />
+                </div>
+                <div>
+                  <span style="font-size:0.68rem; font-weight:800; color:var(--muted);">Sucursal $</span>
+                  <input type="number" step="100" class="z-suc" value="${Number(z.sucursal || 0)}" style="width:100%; padding:5px 7px; border-radius:6px; border:1px solid var(--border); font-size:0.8rem; font-weight:800;" />
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div id="abm-centro-feedback" style="display:none; margin-bottom:10px; padding:10px 12px; border-radius:9px; font-size:0.83rem; font-weight:800;"></div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px;">
+          <button type="button" class="btn" onclick="cerrarModalAbmTiendaCentro()">Cancelar</button>
+          <button type="button" id="abm-centro-btn-submit" class="btn solid-green" style="padding:10px 18px; font-size:0.88rem;" onclick="guardarAbmTiendaCentro()">
+            ${editNodo ? '💾 Guardar Cambios de Perfil y Módulos' : '🚀 Crear Tienda y Configurar Cuenta'}
+          </button>
+        </div>
+      `;
+    }
+
+    function sincronizarVisibilidadPanelesAbmCentro() {
+      const modRet = Boolean(document.getElementById('abm-mod-retiro_punto')?.checked);
+      const modRep = Boolean(document.getElementById('abm-mod-reparto_zonal')?.checked);
+      const modPaq = Boolean(document.getElementById('abm-mod-envio_paqueteria')?.checked);
+      const barrialBox = document.getElementById('abm-centro-barrial-fields');
+      const paqBox = document.getElementById('abm-centro-paqueteria-box');
+      if (barrialBox) barrialBox.style.display = (modRet || modRep) ? 'grid' : 'none';
+      if (paqBox) paqBox.style.display = modPaq ? 'block' : 'none';
+    }
+
+    function onCambioPerfilOperativoCentro(nuevoPerfil) {
+      const p = nuevoPerfil === 'ecommerce_fulfillment' ? 'ecommerce_fulfillment' : 'vecinal';
+      const preset = PRESETS_MODULOS_CENTRO[p];
+      Object.keys(preset).forEach(k => {
+        const chk = document.getElementById(`abm-mod-${k}`);
+        if (chk) chk.checked = Boolean(preset[k]);
+      });
+      const cVec = document.getElementById('card-perfil-vecinal');
+      const cFul = document.getElementById('card-perfil-fulfillment');
+      if (cVec) {
+        cVec.style.borderColor = p === 'vecinal' ? '#16a34a' : 'var(--border)';
+        cVec.style.background = p === 'vecinal' ? '#f0fdf4' : '#fff';
+      }
+      if (cFul) {
+        cFul.style.borderColor = p === 'ecommerce_fulfillment' ? '#d97706' : 'var(--border)';
+        cFul.style.background = p === 'ecommerce_fulfillment' ? '#fffbeb' : '#fff';
+      }
+      const subEl = document.getElementById('abm-centro-subtitulo');
+      if (subEl && !CSTATE.abmDraft?.editarId) {
+        subEl.value = p === 'ecommerce_fulfillment'
+          ? 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País'
+          : 'Comunidad Barrial - Entrega Fresca';
+      }
+      sincronizarVisibilidadPanelesAbmCentro();
+    }
+
+    function onCambioClonarPlantillaCentro(origenIdVal) {
+      if (!origenIdVal) return;
+      abrirModalAbmTiendaCentro(null, Number(origenIdVal));
+    }
+
+    function filtrarClientesBunkerModalCentro(qRaw) {
+      const q = String(qRaw || '').trim().toLowerCase();
+      const sel = document.getElementById('abm-centro-cliente-madre');
+      if (!sel) return;
+      const valActual = sel.value;
+      const filtrados = (CSTATE.clientesBunker || []).filter(c => {
+        if (!q) return true;
+        const bolsa = `${c.codigo_bunker_cliente || ''} ${c.cliente_nombre || ''} ${c.razon_social || ''} ${c.cuit || ''}`.toLowerCase();
+        return bolsa.includes(q);
+      });
+      sel.innerHTML = `<option value="">— Seleccionar Cliente Titular en Búnker (${filtrados.length}) —</option>` +
+        filtrados.map(c => `
+          <option value="${Number(c.id)}" ${String(valActual) === String(c.id) ? 'selected' : ''}>
+            [${esc(c.codigo_bunker_cliente || ('ID-' + c.id))}] ${esc(c.cliente_nombre || c.razon_social || 'Cliente')}
+          </option>
+        `).join('');
+    }
+
+    async function guardarAbmTiendaCentro() {
+      const fb = document.getElementById('abm-centro-feedback');
+      const btn = document.getElementById('abm-centro-btn-submit');
+      const mostrarError = (msg) => {
+        if (!fb) return;
+        fb.style.display = 'block';
+        fb.style.background = '#fef2f2';
+        fb.style.color = '#991b1b';
+        fb.style.border = '1px solid #fecaca';
+        fb.textContent = '❌ ' + msg;
+      };
+
+      const editarId = CSTATE.abmDraft?.editarId || null;
+      const clonarOrigenId = !editarId ? (document.getElementById('abm-centro-clonar-select')?.value || '') : '';
+      const perfil = document.querySelector('input[name="abm-centro-perfil"]:checked')?.value || 'vecinal';
+      const nombreMarca = document.getElementById('abm-centro-marca')?.value?.trim() || '';
+      const slug = document.getElementById('abm-centro-slug')?.value?.trim() || '';
+      const gestorNombre = document.getElementById('abm-centro-gestor')?.value?.trim() || '';
+      const clienteMadreId = Number(document.getElementById('abm-centro-cliente-madre')?.value || 0);
+
+      if (!nombreMarca || !gestorNombre) {
+        mostrarError('Completá el Nombre de la Marca y el nombre del Creador / Referente.');
+        return;
+      }
+      if (!clienteMadreId) {
+        mostrarError('Seleccioná un Cliente Titular Madre del padrón Búnker.');
+        return;
+      }
+
+      const modulos = {};
+      Object.keys(PRESETS_MODULOS_CENTRO.vecinal).forEach(k => {
+        modulos[k] = Boolean(document.getElementById(`abm-mod-${k}`)?.checked);
+      });
+      if (!modulos.retiro_punto && !modulos.reparto_zonal && !modulos.envio_paqueteria) {
+        mostrarError('Habilitá al menos una modalidad de entrega (Retiro, Reparto Zonal o Paquetería Nacional).');
+        return;
+      }
+
+      const operadores = [];
+      if (document.getElementById('abm-paq-op-ca')?.checked) operadores.push('CORREO_ARGENTINO');
+      if (document.getElementById('abm-paq-op-and')?.checked) operadores.push('ANDREANI');
+      if (operadores.length === 0) operadores.push('CORREO_ARGENTINO');
+
+      const zonasRows = Array.from(document.querySelectorAll('.abm-zona-row'));
+      const tarifarioZonas = zonasRows.map((r, idx) => ({
+        codigo: r.getAttribute('data-zona-codigo') || `ZONA_${idx + 1}`,
+        nombre: r.querySelector('.z-nombre')?.value?.trim() || `Zona ${idx + 1}`,
+        cp_prefijos: String(r.querySelector('.z-prefijos')?.value || '*').split(',').map(s => s.trim()).filter(Boolean),
+        domicilio: Math.max(0, Number(r.querySelector('.z-dom')?.value || 0)),
+        sucursal: Math.max(0, Number(r.querySelector('.z-suc')?.value || 0)),
+        plazo_dias: r.getAttribute('data-zona-plazo') || '3 a 6 días hábiles'
+      }));
+
+      const cliObj = (CSTATE.clientesBunker || []).find(c => Number(c.id) === clienteMadreId);
+      const payload = {
+        nombre_marca: nombreMarca,
+        slug,
+        subtitulo_marca: document.getElementById('abm-centro-subtitulo')?.value?.trim() || '',
+        gestor_nombre: gestorNombre,
+        gestor_telefono: document.getElementById('abm-centro-telefono')?.value?.trim() || '',
+        barrio_zona: document.getElementById('abm-centro-barrio')?.value?.trim() || '',
+        direccion_retiro: document.getElementById('abm-centro-direccion')?.value?.trim() || '',
+        cargo_envio_barrial: Number(document.getElementById('abm-centro-cargo-barrial')?.value || 0),
+        margen_gestor_default_pct: Number(document.getElementById('abm-centro-margen')?.value || 28),
+        color_primario: document.getElementById('abm-centro-color')?.value || '#a2553b',
+        cliente_madre_bunker_id: clienteMadreId,
+        codigo_bunker_cliente_madre: cliObj?.codigo_bunker_cliente || undefined,
+        usar_cuenta_madre_unificada: Boolean(document.getElementById('abm-centro-usar-madre-unificada')?.checked),
+        perfil_operativo: perfil,
+        modulos_activos: modulos,
+        permitir_retiro_nodo: Boolean(modulos.retiro_punto),
+        permitir_reparto_propio: Boolean(modulos.reparto_zonal),
+        permitir_envio_barrial: Boolean(modulos.reparto_zonal),
+        permitir_encomienda: Boolean(modulos.envio_paqueteria),
+        clonar_ofertas_margenes: Boolean(document.getElementById('abm-centro-clonar-ofertas')?.checked ?? true),
+        config_paqueteria: {
+          operadores_habilitados: operadores,
+          operador_default: document.getElementById('abm-paq-op-default')?.value || operadores[0],
+          permitir_domicilio: Boolean(document.getElementById('abm-paq-domicilio')?.checked ?? true),
+          permitir_sucursal_correo: Boolean(document.getElementById('abm-paq-sucursal')?.checked ?? true),
+          sla_despacho_label: document.getElementById('abm-paq-sla')?.value?.trim() || 'Despacho en 24 a 48 hs hábiles',
+          envio_gratis_activo: Boolean(document.getElementById('abm-paq-gratis-activo')?.checked),
+          envio_gratis_desde_monto: Math.max(0, Number(document.getElementById('abm-paq-gratis-monto')?.value || 0)),
+          tarifario_zonas: tarifarioZonas
+        }
+      };
+
+      const url = editarId
+        ? `/api/produccion/nodos/maestro/${Number(editarId)}`
+        : (clonarOrigenId
+            ? `/api/produccion/nodos/maestro/${Number(clonarOrigenId)}/clonar`
+            : '/api/produccion/nodos/maestro');
+      const method = editarId ? 'PUT' : 'POST';
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Guardando...';
+      }
+
+      try {
+        const resp = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.error || 'No se pudo guardar la tienda.');
+        }
+        cerrarModalAbmTiendaCentro();
+        CSTATE.nodoSeleccionadoId = Number(data.nodo.id);
+        await cargarResumenNodos(false);
+        await seleccionarNodoFicha(Number(data.nodo.id), true);
+      } catch (err) {
+        mostrarError(err.message || 'Error de comunicación con el servidor.');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = editarId ? '💾 Guardar Cambios de Perfil y Módulos' : '🚀 Crear Tienda y Configurar Cuenta';
+        }
+      }
+    }
+
+    async function eliminarTiendaPruebaDesdeCentro(nodoId, nombreMarca) {
+      if (!confirm(`¿Eliminar la tienda de prueba "${nombreMarca}" (solo Modo Laboratorio)? Se limpiará su subcuenta hija preservando intacto el Cliente Madre.`)) {
+        return;
+      }
+      const resp = await fetch(`/api/produccion/nodos/maestro/${Number(nodoId)}?motivo=Limpieza_Test_Clonador`, {
+        method: 'DELETE'
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data.ok) {
+        alert(data.error || 'No se pudo eliminar la tienda de prueba.');
+        return;
+      }
+      CSTATE.nodoSeleccionadoId = CSTATE.nodos.find(x => Number(x.id) !== Number(nodoId))?.id || null;
+      await cargarResumenNodos(true);
     }
 
     document.addEventListener('DOMContentLoaded', async () => {

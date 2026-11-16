@@ -366,6 +366,9 @@ router.post('/preview-etiqueta', async (req, res) => {
  */
 router.post('/maestro', async (req, res) => {
     try {
+        if (esSolicitudPublicaNodos(req)) {
+            return res.status(403).json({ ok: false, error: 'Operación restringida a administración interna.' });
+        }
         const nodo = await nodosService.guardarNodoMaestro(req.body || {}, null);
         res.json({ ok: true, nodo });
     } catch (error) {
@@ -375,11 +378,31 @@ router.post('/maestro', async (req, res) => {
 });
 
 /**
+ * POST /api/produccion/nodos/maestro/:id/clonar
+ * Clona en 1 clic la configuración operativa de una tienda existente (ej. MANSO o Paraíso)
+ */
+router.post('/maestro/:id/clonar', async (req, res) => {
+    try {
+        if (esSolicitudPublicaNodos(req)) {
+            return res.status(403).json({ ok: false, error: 'Operación restringida a administración interna.' });
+        }
+        const resultado = await nodosService.clonarNodoMaestro(req.params.id, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error clonando tienda:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
  * PUT /api/produccion/nodos/maestro/:id
  * Actualiza un Nodo Barrial existente y regenera su gráfico ZPL ^GFA
  */
 router.put('/maestro/:id', async (req, res) => {
     try {
+        if (esSolicitudPublicaNodos(req)) {
+            return res.status(403).json({ ok: false, error: 'Operación restringida a administración interna.' });
+        }
         const nodo = await nodosService.guardarNodoMaestro(req.body || {}, req.params.id);
         res.json({ ok: true, nodo });
     } catch (error) {
@@ -767,6 +790,24 @@ router.get('/portal/:slug', async (req, res, next) => {
         res.json({ ok: true, ...data });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en GET /portal/:slug:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/tienda/:slug/cotizar-cp
+ * Cotiza envío postal nacional por Código Postal (4 dígitos) y subtotal de productos
+ */
+router.get('/tienda/:slug/cotizar-cp', async (req, res) => {
+    try {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+        const resultado = await nodosService.cotizarEnvioPostalTienda(
+            req.params.slug,
+            req.query.cp || '',
+            Number(req.query.subtotal || 0)
+        );
+        res.json(resultado);
+    } catch (error) {
         res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });

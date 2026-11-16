@@ -377,7 +377,7 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
 
 function generarCodigoServiceWorkerNodo() {
     return `/* LAMDA Tiendas Comunitarias — Service Worker liviano (network-first, sin caché de API, media ni subidas multipart) */
-const SW_VERSION = 'lamda-nodo-pwa-v5';
+const SW_VERSION = 'lamda-nodo-pwa-v6';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
