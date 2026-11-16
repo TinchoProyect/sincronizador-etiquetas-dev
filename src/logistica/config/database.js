@@ -161,8 +161,9 @@ pool.query('SELECT NOW()', async (err, res) => {
                 UPDATE public.bunker_articulos SET pack_hijo_codigo = 'MPBX25' WHERE articulo_id = 'MPBX5' AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'MPBX25');
                 UPDATE public.bunker_articulos SET pack_hijo_codigo = 'SZAAX25' WHERE articulo_id = 'SZAAx5' AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'SZAAX25');
                 UPDATE public.bunker_articulos SET pack_hijo_codigo = 'SZAAX25' WHERE articulo_id = 'SZAAX1' AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'SZAAX25');
-                UPDATE public.bunker_articulos SET pack_hijo_codigo = 'GFGNFX1' WHERE articulo_id IN ('GDFX1', 'GDFX500G', 'GDFX200G', 'GDF5x1') AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'GFGNFX1');
-                UPDATE public.bunker_articulos SET pack_hijo_codigo = 'GSGNFX1' WHERE articulo_id IN ('GSX1', 'GSX500G', 'GSX200G', 'GS5X1') AND (pack_hijo_codigo IS NULL OR pack_hijo_codigo != 'GSGNFX1');
+                UPDATE public.bunker_articulos SET pack_hijo_codigo = NULL WHERE UPPER(BTRIM(articulo_id)) IN ('GDFX1', 'GDFX500G', 'GDFX200G', 'GSX1', 'GSX500G', 'GSX200G') AND COALESCE(es_pack, false) = false AND pack_hijo_codigo IS NOT NULL;
+                UPDATE public.bunker_articulos SET pack_hijo_codigo = 'GDFX1' WHERE UPPER(BTRIM(articulo_id)) = 'GDF5X1' AND COALESCE(UPPER(BTRIM(pack_hijo_codigo)), '') <> 'GDFX1';
+                UPDATE public.bunker_articulos SET pack_hijo_codigo = 'GSX1' WHERE UPPER(BTRIM(articulo_id)) = 'GS5X1' AND COALESCE(UPPER(BTRIM(pack_hijo_codigo)), '') <> 'GSX1';
             `);
             console.log('✅ [LOGISTICA] Relaciones de hermanos comerciales (pack_hijo_codigo) verificadas y configuradas');
 

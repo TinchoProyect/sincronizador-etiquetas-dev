@@ -1638,6 +1638,16 @@ httpServer.listen(PORT, () => {
         .catch(errMig => {
             console.warn('⚠️ [STARTUP-LDN4] Advertencia al ejecutar saneamiento estructural:', errMig.message);
         });
+
+    // Saneamiento estructural idempotente de Línea 6 (Granolas: GFGN y GSGN)
+    const { ejecutarSaneamientoLinea6 } = require('./migrations/saneamientoLinea6');
+    ejecutarSaneamientoLinea6(db)
+        .then(resMig6 => {
+            console.log('✅ [STARTUP-LDN6] Saneamiento estructural verificado:', JSON.stringify(resMig6));
+        })
+        .catch(errMig6 => {
+            console.warn('⚠️ [STARTUP-LDN6] Advertencia al ejecutar saneamiento estructural:', errMig6.message);
+        });
     
     // Warmup asíncrono de Tabla Maestra en memoria para eliminación total de latencia inicial en Conciliación IA
     const conciliacionArticulosService = require('./services/conciliacionArticulosService');

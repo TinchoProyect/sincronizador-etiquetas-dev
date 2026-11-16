@@ -179,21 +179,21 @@ async function
 
                 console.log(`📊 Ingredientes vinculados calculados: ${ingredientesVinculadosCalculados.length}`);
 
-                // Sumar únicamente ingredientes agregados POST-COCCIÓN (en caliente)
+                // Sumar únicamente ingredientes agregados POST-COCCIÓN redondeando cada insumo a 2 decimales (idéntico en frontend y backend)
                 ingredientesSumados = ingredientesVinculadosCalculados.reduce((suma, ingrediente) => {
                     if (ingrediente.es_post_coccion === true) {
-                        const cantidad = parseFloat(ingrediente.cantidad) || 0;
-                        console.log(`  - [POST-COCCIÓN] ${ingrediente.nombre}: ${cantidad} ${ingrediente.unidad_medida || 'kg'}`);
-                        return suma + cantidad;
+                        const cantidadRedondeada = Number((parseFloat(ingrediente.cantidad) || 0).toFixed(2));
+                        ingrediente.cantidad = cantidadRedondeada;
+                        console.log(`  - [POST-COCCIÓN DEPÓSITO] #${ingrediente.id} ${ingrediente.nombre}: ${cantidadRedondeada.toFixed(2)} ${ingrediente.unidad_medida || 'kg'}`);
+                        return Number((suma + cantidadRedondeada).toFixed(2));
                     }
                     console.log(`  - [PRE-COCCIÓN / SATÉLITE] ${ingrediente.nombre}: ${ingrediente.cantidad} ${ingrediente.unidad_medida || 'kg'} (descontado de stock del colaborador, no suma a kilos liquidables de salida)`);
                     return suma;
                 }, 0);
 
-                // Redondear a 2 decimales para evitar problemas de precisión
                 ingredientesSumados = Number(ingredientesSumados.toFixed(2));
 
-                console.log(`📊 TOTAL INGREDIENTES SUMADOS: ${ingredientesSumados} kg`);
+                console.log(`📊 TOTAL INGREDIENTES SUMADOS POST-HORNO: ${ingredientesSumados.toFixed(2)} kg`);
             } else {
                 console.log(`⚠️ No se encontró artículo vinculado, ingredientes_sumados = 0`);
             }
@@ -234,20 +234,45 @@ async function
                   )
             `, [carroId]);
 
+            // Sumar también los insumos pre-horno egresados del stock domiciliario del colaborador para este carro (ej. Miel #136 y Aceite #135 en Línea 6)
+            const { rows: egresosDomicilioRows } = await db.query(`
+                SELECT COALESCE(SUM(ABS(CAST(cantidad AS DECIMAL(20,10)))), 0) AS kilos_domicilio
+                FROM public.ingredientes_stock_usuarios
+                WHERE origen_carro_id = $1
+                  AND cantidad < 0
+            `, [carroId]);
+            const kilosDomicilioPreHorno = parseFloat(egresosDomicilioRows[0]?.kilos_domicilio) || 0;
+
             if (egresosStock.length > 0) {
                 const kilosMovimientos = egresosStock.reduce((acc, row) => acc + (parseFloat(row.kilos_egresados) || 0), 0);
                 if (kilosMovimientos > 0) {
                     if (lineaNegocio === 4) {
                         // En Línea 4 (Tostadero) la entrada cruda es 100% el bulto retirado en stock_ventas_movimientos
                         inputKilos = kilosMovimientos;
+                    } else if (lineaNegocio === 6) {
+                        // En Línea 6 (Granolas): Masa_Pre_Horno = Bulto pre-mezcla retirado de depósito + Miel y Aceite de Coco de domicilio
+                        if (kilosDomicilioPreHorno > 0) {
+                            inputKilos = kilosMovimientos + kilosDomicilioPreHorno;
+                        } else {
+                            const { rows: preHornoRec } = await db.query(`
+                                SELECT COALESCE(SUM(CAST(ri.cantidad AS DECIMAL(20,10)) * COALESCE(ca.cantidad, 1)), 0) AS kilos_rec_ing
+                                FROM public.carros_articulos ca
+                                JOIN public.recetas r ON UPPER(BTRIM(r.articulo_numero)) = UPPER(BTRIM(ca.articulo_numero))
+                                JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
+                                WHERE ca.carro_id = $1
+                            `, [carroId]);
+                            const kilosRecIng = parseFloat(preHornoRec[0]?.kilos_rec_ing) || 0;
+                            inputKilos = kilosMovimientos + kilosRecIng;
+                        }
                     } else {
-                        // En Líneas 5/6 si req.body.kilos_entrada suma además ingredientes personales pre-cocción, respetar el mayor consistente
+                        // En Línea 5 si req.body.kilos_entrada suma además ingredientes personales pre-cocción, respetar el mayor consistente
                         const bodyEntrada = (kilos_entrada && !isNaN(parseFloat(kilos_entrada)) && parseFloat(kilos_entrada) > 0)
                             ? parseFloat(kilos_entrada)
                             : 0;
-                        inputKilos = bodyEntrada > kilosMovimientos ? bodyEntrada : kilosMovimientos;
+                        const realCombinado = kilosMovimientos + kilosDomicilioPreHorno;
+                        inputKilos = Math.max(realCombinado, bodyEntrada, kilosMovimientos);
                     }
-                    console.log(`✅ [FINALIZAR PRODUCCIÓN] Entrada resuelta prioritariamente desde stock_ventas_movimientos del carro #${carroId}: ${inputKilos} kg`);
+                    console.log(`✅ [FINALIZAR PRODUCCIÓN] Entrada resuelta prioritariamente para carro #${carroId} [LDN ${lineaNegocio}]: ${inputKilos} kg (depósito=${kilosMovimientos}, domicilio=${kilosDomicilioPreHorno})`);
                 }
             }
 
@@ -257,14 +282,24 @@ async function
                 } else {
                     const { rows: recetaUP } = await db.query(`
                         SELECT 
-                            SUM(CAST(ra.cantidad AS DECIMAL(20, 10)) * COALESCE(NULLIF(CAST(src.kilos_unidad AS DECIMAL(20, 10)), 0), NULLIF(ba.kilos_unidad, 0), 1.0000)) * COALESCE(ca.cantidad, 1.0) AS masa_receta
+                            (
+                                COALESCE((
+                                    SELECT SUM(CAST(ra.cantidad AS DECIMAL(20, 10)) * COALESCE(NULLIF(CAST(src.kilos_unidad AS DECIMAL(20, 10)), 0), NULLIF(ba.kilos_unidad, 0), 1.0000))
+                                    FROM public.receta_articulos ra
+                                    LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = ra.articulo_numero
+                                    LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = ra.articulo_numero
+                                    WHERE ra.receta_id = r.id
+                                ), 0)
+                                +
+                                COALESCE((
+                                    SELECT SUM(CAST(ri.cantidad AS DECIMAL(20, 10)))
+                                    FROM public.receta_ingredientes ri
+                                    WHERE ri.receta_id = r.id
+                                ), 0)
+                            ) * COALESCE(ca.cantidad, 1.0) AS masa_receta
                         FROM public.carros_articulos ca
                         JOIN public.recetas r ON r.articulo_numero = ca.articulo_numero
-                        JOIN public.receta_articulos ra ON ra.receta_id = r.id
-                        LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = ra.articulo_numero
-                        LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = ra.articulo_numero
                         WHERE ca.carro_id = $1
-                        GROUP BY ca.cantidad
                         LIMIT 1
                     `, [carroId]);
 
@@ -285,6 +320,15 @@ async function
                 );
                 errTypo.statusCode = 400;
                 throw errTypo;
+            }
+
+            // 🛡️ GUARDIA DE HORNO EN LÍNEA 6 (GRANOLAS): prohibido tipear Masa_Final (> Masa_Pre_Horno) en el campo de salida de horno
+            if (lineaNegocio === 6 && inputKilos && inputKilos > 0 && outputKilos > inputKilos + 0.0001) {
+                const errHorno = new Error(
+                    `Asiento bloqueado en Granolas (Línea 6): ingresaste ${outputKilos.toFixed(2)} kg salidos de horno sobre ${inputKilos.toFixed(2)} kg de Masa Pre-Horno. Ingresá únicamente los kilos salidos del horno (sin coco ni pasas); el sistema sumará automáticamente los agregados secos de depósito.`
+                );
+                errHorno.statusCode = 400;
+                throw errHorno;
             }
 
             const mermaPercent = (inputKilos && inputKilos > 0) ? Number((((inputKilos - outputKilos) / inputKilos) * 100).toFixed(2)) : 0;
@@ -326,8 +370,8 @@ async function
         // 5. Registrar movimientos según el tipo de carro
         if (carro.tipo_carro === 'externa') {
             console.log(`\n🏭 PROCESANDO ASENTADO EXTERNO PARA ARTÍCULO ${historialData.articulo_fraccionado_id}`);
-            const cantidadTotal = parseFloat(historialData.kilos_producidos) + parseFloat(historialData.ingredientes_sumados);
-            console.log(`📊 Cantidad total: ${cantidadTotal} (${historialData.kilos_producidos} + ${historialData.ingredientes_sumados})`);
+            const cantidadTotal = Number((parseFloat(historialData.kilos_producidos) + parseFloat(historialData.ingredientes_sumados)).toFixed(2));
+            console.log(`📊 Masa Final Total a ingresar a AP: ${cantidadTotal} kg (${historialData.kilos_producidos} kg horno + ${historialData.ingredientes_sumados} kg post-horno)`);
 
             // ✅ DESCUENTO DE INGREDIENTES VINCULADOS del stock general (se ejecuta una única vez por carro)
             console.log('\n🔍 INGREDIENTES VINCULADOS: Procesando descuento en asentado');
@@ -341,16 +385,23 @@ async function
 
                 if (ingredientesVinculados.length > 0) {
                     for (const ing of ingredientesVinculados) {
-                        const cantidadRequerida = Number(ing.cantidad.toFixed(4));
-                        const fase = ing.fase_produccion || 'externa';
+                        if (!ing.id) {
+                            throw new Error(`Ingrediente vinculado "${ing.nombre}" carece de ingrediente_id determinista.`);
+                        }
+                        const cantidadRequerida = ing.es_post_coccion
+                            ? Number((parseFloat(ing.cantidad) || 0).toFixed(2))
+                            : Number((parseFloat(ing.cantidad) || 0).toFixed(4));
+                        const fase = (historialData.linea_negocio === 6 && ing.es_post_coccion)
+                            ? 'interna'
+                            : (ing.fase_produccion || 'externa');
 
                         if (fase === 'interna') {
-                            // Descuento de stock central
+                            // Descuento determinista por ingrediente_id en stock central de depósito (public.ingredientes_movimientos -> public.ingredientes.stock_actual)
                             const stockGeneral = parseFloat(ing.stock_actual) || 0;
-                            console.log(`🔄 DESCUENTO CENTRAL (Fase Interna): ${ing.nombre} | Requerido: ${cantidadRequerida} | Stock Central: ${stockGeneral}`);
+                            console.log(`🔄 DESCUENTO DEPÓSITO CENTRAL (Fase Interna): #${ing.id} ${ing.nombre} | Requerido: ${cantidadRequerida} | Stock Central: ${stockGeneral}`);
 
                             if (stockGeneral < cantidadRequerida) {
-                                console.warn(`⚠️ ALERTA: Stock general insuficiente para ingrediente vinculado "${ing.nombre}". Quedará en negativo. Disponible: ${stockGeneral}, Requerido: ${cantidadRequerida}`);
+                                console.warn(`⚠️ ALERTA: Stock general insuficiente para ingrediente vinculado "${ing.nombre}" (#${ing.id}). Quedará en negativo. Disponible: ${stockGeneral}, Requerido: ${cantidadRequerida}`);
                             }
 
                             await registrarMovimientoIngrediente({
@@ -358,10 +409,10 @@ async function
                                 kilos: -cantidadRequerida,
                                 tipo: 'egreso',
                                 carro_id: parseInt(carroId),
-                                observaciones: `Egreso por asentado carro externo #${carroId} - Ingrediente vinculado (stock general - Fase Interna)`,
+                                observaciones: `Egreso post-horno en depósito por asentado carro externo #${carroId} (${historialData.articulo_fraccionado_id})`,
                                 stock_anterior: stockGeneral
                             }, db);
-                            console.log(`✅ ${ing.nombre} descontado de Stock Central: -${cantidadRequerida}`);
+                            console.log(`✅ #${ing.id} ${ing.nombre} descontado de Stock Central: -${cantidadRequerida} kg`);
                         } else {
                             // Descuento de stock satélite del colaborador (Fase Externa)
                             console.log(`🔄 DESCUENTO SATÉLITE (Fase Externa): ${ing.nombre} | Requerido: ${cantidadRequerida} | Colaborador ID: ${usuarioId}`);
@@ -553,7 +604,7 @@ async function
                             v_cantidad_liquidar = parseFloat(kilos_producidos) * 20;
                         }
                     } else {
-                        v_cantidad_liquidar = parseFloat(kilos_producidos) + parseFloat((historialData && historialData.ingredientes_sumados) || 0);
+                        v_cantidad_liquidar = Number((parseFloat(kilos_producidos) + parseFloat((historialData && historialData.ingredientes_sumados) || 0)).toFixed(2));
                     }
 
                     const creditoMonto = Number((v_cantidad_liquidar * parseFloat(tarifa.valor_por_unidad)).toFixed(2));
@@ -641,7 +692,7 @@ async function
                 articulos_producidos: historialData?.articulo_fraccionado_id
                     ? [{
                         sku: historialData.articulo_fraccionado_id,
-                        cantidad: Number((parseFloat(historialData.kilos_producidos || 0) + parseFloat(historialData.ingredientes_sumados || 0)).toFixed(4))
+                        cantidad: Number((parseFloat(historialData.kilos_producidos || 0) + parseFloat(historialData.ingredientes_sumados || 0)).toFixed(2))
                     }]
                     : []
             }

@@ -240,16 +240,22 @@ export async function actualizarVisibilidadBotones() {
                         kilosProducidosContainer.className = 'kilos-producidos-container';
                         kilosProducidosContainer.style.cssText = 'margin: 15px 0;';
 
-                        // 1. GENERAR HTML (Con soporte para Unidades, Merma y Línea de Negocio)
+                        const labelInputKilosTexto = ldnNum === 6
+                            ? '🔥 Kilos salidos de horno (sin coco ni pasas):'
+                            : 'Kilos Producidos:';
+                        const placeholderInputKilos = ldnNum === 6 ? 'Ej: 8,20 (solo peso salido de horno)' : '0.00';
+
+                        // 1. GENERAR HTML (Con soporte para Unidades, Merma, Desglose Post-Horno LDN 6 y Línea de Negocio)
                         kilosProducidosContainer.innerHTML = `
                             ${bannerLdnHtml}
                             <div class="inputs-produccion-wrapper" style="display: flex; gap: 15px; align-items: flex-start; background: #f8f9fa; padding: 10px; border-radius: 4px;">
                                 <div class="input-group-produccion" style="flex: 1;">
-                                    <label for="kilos-producidos" style="display: block; margin-bottom: 5px; font-weight: bold;">Kilos Producidos:</label>
+                                    <label id="label-kilos-producidos" for="kilos-producidos" style="display: block; margin-bottom: 5px; font-weight: bold; color: ${ldnNum === 6 ? '#065f46' : '#212529'};">${labelInputKilosTexto}</label>
                                     <div style="display: flex; align-items: center; gap: 5px;">
-                                        <input type="text" inputmode="decimal" id="kilos-producidos" placeholder="0.00" style="width: 100%; padding: 5px; border: 1px solid #ced4da; border-radius: 4px;" required>
-                                        <span style="color: #6c757d; font-size: 0.9em;">kg</span>
+                                        <input type="text" inputmode="decimal" id="kilos-producidos" placeholder="${placeholderInputKilos}" style="width: 100%; padding: 6px 8px; border: 1.5px solid ${ldnNum === 6 ? '#10b981' : '#ced4da'}; border-radius: 4px; font-weight: 600;" required>
+                                        <span style="color: #6c757d; font-size: 0.9em; font-weight: 600;">kg</span>
                                     </div>
+                                    ${ldnNum === 6 ? `<small id="hint-horno-ldn6" style="display:block;margin-top:4px;color:#047857;font-size:0.8em;font-weight:600;">⚠️ Ingresá únicamente lo pesado al salir del horno. El Coco en Escamas y las Pasas/Arándanos se suman automáticamente abajo.</small>` : ''}
                                 </div>
                                 <div id="container-unidades-helper" class="input-group-produccion" style="display: none; flex: 1; border-left: 1px solid #ccc; padding-left: 15px;">
                                     <label for="unidades-producidas" style="color: #007bff; display: block; margin-bottom: 5px; font-weight: bold;">O Unidades:</label>
@@ -260,28 +266,35 @@ export async function actualizarVisibilidadBotones() {
                                 </div>
                             </div>
 
+                            <div id="desglose-posthorno-ldn6" style="display: ${ldnNum === 6 ? 'block' : 'none'}; margin-top: 8px; padding: 10px 12px; background: #ecfdf5; border: 1.5px solid #6ee7b7; border-left: 4px solid #10b981; border-radius: 6px; font-size: 13px; color: #064e3b;">
+                                <div style="font-weight: 800; margin-bottom: 6px; color: #065f46;">🥣 Fase 2 Post-Horno en Depósito y Masa Final a Liquidar</div>
+                                <div id="desglose-posthorno-ldn6-body" style="line-height: 1.6;">
+                                    <span style="color: #047857; font-style: italic;">Ingresá los kilos salidos de horno para calcular los agregados secos (+0,125 kg/kg cada uno) y la Masa Final Total.</span>
+                                </div>
+                            </div>
+
                             <div id="calculo-merma" style="display: none; margin-top: 10px; padding: 12px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
                                 <h4 style="margin: 0 0 8px 0; color: #856404; font-size: 14px;">📊 Análisis de Reducción por Cocción</h4>
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
                                     <div>
-                                        <strong>Total Mezcla en Crudo:</strong>
+                                        <strong id="label-total-crudo">${ldnNum === 6 ? 'Masa Pre-Horno:' : 'Total Mezcla en Crudo:'}</strong>
                                         <span id="total-crudo" style="font-weight: bold; color: #495057;">0.00 kg</span>
                                     </div>
                                     <div>
-                                        <strong>Kilos Producidos:</strong>
+                                        <strong id="label-kilos-final">${ldnNum === 6 ? 'Salida de Horno:' : 'Kilos Producidos:'}</strong>
                                         <span id="kilos-final" style="font-weight: bold; color: #495057;">0.00 kg</span>
                                     </div>
                                     <div>
-                                        <strong>Diferencia de Peso:</strong>
+                                        <strong>Diferencia Cocción:</strong>
                                         <span id="diferencia-peso" style="font-weight: bold;">0.00 kg</span>
                                     </div>
                                     <div>
-                                        <strong>% de Reducción:</strong>
+                                        <strong>% Merma de Cocción:</strong>
                                         <span id="porcentaje-reduccion" style="font-weight: bold;">0.00%</span>
                                     </div>
                                 </div>
                                 <p style="margin: 8px 0 0 0; font-size: 11px; color: #856404; font-style: italic;">
-                                    💡 La reducción es normal debido a la evaporación de líquidos durante la cocción.
+                                    💡 La merma de cocción mide la evaporación en horno antes de sumar agregados secos en depósito.
                                 </p>
                             </div>
                         `;
@@ -301,6 +314,29 @@ export async function actualizarVisibilidadBotones() {
                         } else {
                             kilosProducidosContainer.insertAdjacentHTML('afterbegin', bannerLdnHtml);
                         }
+
+                        // Actualizar etiquetas y visibilidad de bloque LDN 6 cuando se reutiliza el contenedor
+                        const lblKilosExistente = document.getElementById('label-kilos-producidos') || kilosProducidosContainer.querySelector('label[for="kilos-producidos"]');
+                        if (lblKilosExistente) {
+                            lblKilosExistente.textContent = ldnNum === 6 ? '🔥 Kilos salidos de horno (sin coco ni pasas):' : 'Kilos Producidos:';
+                            lblKilosExistente.style.color = ldnNum === 6 ? '#065f46' : '#212529';
+                        }
+                        const inpExistente = document.getElementById('kilos-producidos');
+                        if (inpExistente) {
+                            inpExistente.placeholder = ldnNum === 6 ? 'Ej: 8,20 (solo peso salido de horno)' : '0.00';
+                            inpExistente.style.border = ldnNum === 6 ? '1.5px solid #10b981' : '1px solid #ced4da';
+                        }
+                        const lblCrudoExist = document.getElementById('label-total-crudo');
+                        if (lblCrudoExist) lblCrudoExist.textContent = ldnNum === 6 ? 'Masa Pre-Horno:' : 'Total Mezcla en Crudo:';
+                        const lblFinalExist = document.getElementById('label-kilos-final');
+                        if (lblFinalExist) lblFinalExist.textContent = ldnNum === 6 ? 'Salida de Horno:' : 'Kilos Producidos:';
+                        let boxPostHorno = document.getElementById('desglose-posthorno-ldn6');
+                        if (!boxPostHorno) {
+                            kilosProducidosContainer.remove();
+                            await actualizarVisibilidadBotones();
+                            return;
+                        }
+                        boxPostHorno.style.display = ldnNum === 6 ? 'block' : 'none';
 
                         // ⚠️ NO CLONAR - Solo verificar que el panel exista
                         const panelMerma = document.getElementById('calculo-merma');
@@ -334,6 +370,9 @@ export async function actualizarVisibilidadBotones() {
                     // 🎯 Activar calculadora dual (Unidades <-> Kilos) inmediatamente y pre-mostrar peso crudo
                     verificarYConfigurarModoDual();
                     calcularMermaProduccion(carroId, true);
+                    if (ldnNum === 6) {
+                        await mostrarInformesIngredientesVinculados();
+                    }
                 } else {
                     // Ocultar para carros internos
                     const kilosProducidosContainer = document.getElementById('kilos-producidos-container');
@@ -842,10 +881,10 @@ async function mostrarInformesIngredientesVinculados() {
                 console.log(`✅ [VIGÍA B] Estado almacenado antes de renderizar para ${ing.nombre}: Base=${cantidadBase}, Stock=${stockActual}`);
 
                 html += `
-                    <tr class="ingrediente-vinculado" data-base-kilo="${cantidadBase}" data-stock="${stockActual}" data-unidad="${ing.unidad_medida || ''}" data-id="${ing.id}" data-es-post-coccion="${ing.es_post_coccion ? 'true' : 'false'}">
-                        <td>${ing.nombre || 'Sin nombre'}</td>
+                    <tr class="ingrediente-vinculado" data-nombre="${(ing.nombre || '').replace(/"/g, '&quot;')}" data-base-kilo="${cantidadBase}" data-stock="${stockActual}" data-unidad="${ing.unidad_medida || ''}" data-id="${ing.id}" data-es-post-coccion="${ing.es_post_coccion ? 'true' : 'false'}">
+                        <td><strong>[#${ing.id}]</strong> ${ing.nombre || 'Sin nombre'}</td>
                         <td class="cell-proporcion font-weight-bold" style="color: #17a2b8;">${cantidadBase.toFixed(3)}</td>
-                        <td class="cell-requerido font-weight-bold" style="color: #6c757d;">0.000 <span style="font-size: 14px; font-weight: 500; opacity: 0.8; color: #5d6d7e;">${ing.unidad_medida || 'kg'}</span></td>
+                        <td class="cell-requerido font-weight-bold" style="color: #6c757d;">0.00 <span style="font-size: 14px; font-weight: 500; opacity: 0.8; color: #5d6d7e;">${ing.unidad_medida || 'kg'}</span></td>
                         <td>${stockActual.toFixed(2)}</td>
                         <td class="cell-estado">-</td>
                         <td>${ing.unidad_medida || ''}</td>
@@ -862,63 +901,96 @@ async function mostrarInformesIngredientesVinculados() {
                     </tbody>
                 </table>
             `;
-            
-            // Instalar el recalculador en tiempo real si el input existe
+
+            // Instalar el recalculador en tiempo real (redondeo idéntico al backend: 2 decimales por insumo sumado)
             setTimeout(() => {
                 const inputKilos = document.getElementById('kilos-producidos');
                 if (inputKilos) {
-                    // Remover listeners viejos para evitar duplicación
                     inputKilos.removeEventListener('input', window._recalcularVinculados);
                     window._recalcularVinculados = function() {
-                        const kilosStr = this.value.replace(',', '.');
+                        const kilosStr = (this.value || '').replace(',', '.');
                         const kilos = parseFloat(kilosStr) || 0;
                         const filas = document.querySelectorAll('.ingrediente-vinculado');
-                        
+                        const desgloseBody = document.getElementById('desglose-posthorno-ldn6-body');
+                        let sumaAgregadosRedondeados = 0;
+                        const renglonesDesglose = [];
+
                         filas.forEach(fila => {
                             const baseKilo = parseFloat(fila.dataset.baseKilo) || 0;
                             const stockActual = parseFloat(fila.dataset.stock) || 0;
-                            const unidad = fila.dataset.unidad || '';
-                            
+                            const unidad = fila.dataset.unidad || 'kg';
+                            const nombreIng = fila.dataset.nombre || 'Agregado seco';
+
                             const cellRequerido = fila.querySelector('.cell-requerido');
                             const cellEstado = fila.querySelector('.cell-estado');
-                            
+
                             if (kilos <= 0) {
-                                cellRequerido.innerHTML = `0.000 <span style="font-size: 14px; font-weight: 500; opacity: 0.8; color: #5d6d7e;">${unidad || 'kg'}</span>`;
+                                cellRequerido.innerHTML = `0.00 <span style="font-size: 14px; font-weight: 500; opacity: 0.8; color: #5d6d7e;">${unidad}</span>`;
                                 cellRequerido.style.color = '#6c757d';
                                 cellEstado.innerHTML = '-';
                                 fila.className = 'ingrediente-vinculado';
                                 return;
                             }
-                            
-                            console.log(`✅ [VIGÍA C] Mapeo de tabla en tiempo real: Kilos Producidos=${kilos}, Base/Kilo=${baseKilo}`);
-                            
-                            const cantidadNecesaria = baseKilo * kilos;
-                            console.log(`✅ [VIGÍA D] Valor inyectado en celda de DOM (Requerido): ${cantidadNecesaria}`);
-                            
-                            cellRequerido.innerHTML = `${cantidadNecesaria.toFixed(3)} <span style="font-size: 14px; font-weight: 500; opacity: 0.8; color: #555;">${unidad || 'kg'}</span>`;
+
+                            // Redondeo exacto a 2 decimales por insumo sumado (idéntico a finalizarProduccion.js)
+                            const cantidadNecesaria = Number((baseKilo * kilos).toFixed(2));
+                            if (fila.dataset.esPostCoccion === 'true') {
+                                sumaAgregadosRedondeados = Number((sumaAgregadosRedondeados + cantidadNecesaria).toFixed(2));
+                                renglonesDesglose.push({
+                                    nombre: nombreIng,
+                                    baseKilo,
+                                    cantidad: cantidadNecesaria,
+                                    stockActual
+                                });
+                            }
+
+                            cellRequerido.innerHTML = `${cantidadNecesaria.toFixed(2)} <span style="font-size: 14px; font-weight: 500; opacity: 0.8; color: #555;">${unidad}</span>`;
                             cellRequerido.style.color = '';
-                            
+
                             const diferencia = stockActual - cantidadNecesaria;
                             const tieneStock = diferencia >= -0.01;
                             const faltante = tieneStock ? 0 : Math.abs(diferencia);
-                            
+
                             if (tieneStock) {
-                                cellEstado.innerHTML = `<span class="stock-suficiente">✅ Suficiente</span>`;
+                                cellEstado.innerHTML = `<span class="stock-suficiente">✅ Suficiente en Depósito</span>`;
                                 fila.className = 'ingrediente-vinculado stock-ok';
                             } else {
                                 cellEstado.innerHTML = `<span class="stock-insuficiente">❌ Faltan ${faltante.toFixed(2)} ${unidad}</span>`;
                                 fila.className = 'ingrediente-vinculado stock-faltante';
                             }
                         });
+
+                        if (desgloseBody) {
+                            if (kilos <= 0) {
+                                desgloseBody.innerHTML = `<span style="color: #047857; font-style: italic;">Ingresá los kilos salidos de horno para calcular los agregados secos (+0,125 kg/kg cada uno) y la Masa Final Total.</span>`;
+                            } else {
+                                const masaFinalTotal = Number((kilos + sumaAgregadosRedondeados).toFixed(2));
+                                const itemsHtml = renglonesDesglose.map(r => `
+                                    <div style="display:flex;justify-content:space-between;padding:2px 0;">
+                                        <span>➕ <b>${r.nombre}</b> (${r.baseKilo.toFixed(3)} × ${kilos.toFixed(2)} kg · Depósito):</span>
+                                        <span style="font-weight:700;color:#047857;">+ ${r.cantidad.toFixed(2)} kg</span>
+                                    </div>
+                                `).join('');
+                                desgloseBody.innerHTML = `
+                                    <div style="display:flex;justify-content:space-between;padding:2px 0;">
+                                        <span>🔥 <b>Kilos salidos de horno (sin coco ni pasas):</b></span>
+                                        <span style="font-weight:700;">${kilos.toFixed(2)} kg</span>
+                                    </div>
+                                    ${itemsHtml}
+                                    <div style="display:flex;justify-content:space-between;padding:6px 0 2px 0;margin-top:4px;border-top:1.5px solid #34d399;font-size:14px;">
+                                        <span style="font-weight:800;color:#064e3b;">⚖️ = Masa Final Total a ingresar y liquidar:</span>
+                                        <span id="masa-final-total-ldn6" style="font-weight:900;color:#065f46;font-size:15px;">${masaFinalTotal.toFixed(2)} kg</span>
+                                    </div>
+                                `;
+                            }
+                        }
                     };
                     inputKilos.addEventListener('input', window._recalcularVinculados);
-                    
-                    // Disparar inmediatamente por si ya hay un valor
-                    if (inputKilos.value) {
-                        window._recalcularVinculados.call(inputKilos);
-                    }
+
+                    // Disparar inmediatamente
+                    window._recalcularVinculados.call(inputKilos);
                 }
-            }, 100);
+            }, 60);
         }
 
         seccionInformesVinculados.innerHTML = html;
@@ -1681,7 +1753,71 @@ export async function marcarCarroPreparado(carroIdParam) {
             console.warn('Aviso al verificar línea de negocio del carro:', errCheck);
         }
 
+        // ⛔ BLOQUEO ESTRICTO: Prohibido preparar carros vacíos (0 filas en carros_articulos)
+        let cantArticulosBackend = null;
+        try {
+            const artCheckRes = await fetch(`/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
+            if (artCheckRes.ok) {
+                const listaArts = await artCheckRes.json();
+                if (Array.isArray(listaArts)) {
+                    cantArticulosBackend = listaArts.length;
+                }
+            }
+        } catch (_) {}
+
+        const articulosEnDom = document.querySelectorAll('#lista-articulos .articulo-container').length;
+        if (cantArticulosBackend === 0 || (cantArticulosBackend === null && articulosEnDom === 0)) {
+            if (typeof Swal !== 'undefined') {
+                await Swal.fire({
+                    icon: 'warning',
+                    title: '⛔ Carro vacío',
+                    text: 'No podés marcar como "Carro listo para producir" un carro sin artículos. Agregá al menos un artículo primero.',
+                    confirmButtonText: 'Entendido',
+                    confirmButtonColor: '#d97706'
+                });
+            } else {
+                alert('No podés preparar un carro vacío. Agregá al menos un artículo primero.');
+            }
+            restaurarBotonPreparado(btnCarroPreparado);
+            return false;
+        }
+
         const { pendientes, primerElementoFaltante } = recolectarPendientesPreparacionCarro(esExterno, lineaNegocio);
+
+        // ⛔ En carros externos: si falta saldo neto en el stock domiciliario del colaborador (Miel / Aceite de Coco),
+        // advertir claramente y bloquear en vez de descontar a escondidas del depósito central.
+        if (esExterno) {
+            const faltantesDomicilio = pendientes.filter(p => p.categoria === 'Ingrediente / Insumo en rojo');
+            if (faltantesDomicilio.length > 0) {
+                const detalleDomHtml = faltantesDomicilio.map(f => `
+                    <li style="margin-bottom:6px;">
+                        <strong>${escaparHtmlPreparado(f.nombre)}</strong>: <span style="color:#b91c1c;font-weight:700;">${escaparHtmlPreparado(f.detalle)}</span>
+                    </li>
+                `).join('');
+                if (typeof Swal !== 'undefined') {
+                    await Swal.fire({
+                        icon: 'error',
+                        title: '🏠 Saldo insuficiente en domicilio del colaborador',
+                        html: `
+                            <div style="text-align:left;font-size:0.94em;line-height:1.45;">
+                                <p style="margin-bottom:8px;">El colaborador no tiene saldo neto suficiente en su stock domiciliario para iniciar esta tanda externa:</p>
+                                <ul style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 14px 10px 24px;margin-bottom:10px;">
+                                    ${detalleDomHtml}
+                                </ul>
+                                <p style="margin:0;color:#475569;font-size:0.9em;">Registrá primero la entrega de insumos al domicilio del colaborador (no se descuenta del depósito central por detrás).</p>
+                            </div>
+                        `,
+                        confirmButtonText: 'Revisar stock domiciliario',
+                        confirmButtonColor: '#dc2626'
+                    });
+                } else {
+                    alert('Saldo insuficiente en stock domiciliario del colaborador.');
+                }
+                restaurarBotonPreparado(btnCarroPreparado);
+                return false;
+            }
+        }
+
         const confirmarPendientes = await confirmarPreparacionConFaltantes(pendientes, primerElementoFaltante);
         if (!confirmarPendientes) {
             restaurarBotonPreparado(btnCarroPreparado);
@@ -1974,17 +2110,36 @@ export async function finalizarProduccion(carroIdParam) {
             const ldnNum = Number(estadoCarro.linea_negocio || ldnMeta.linea_negocio || 4);
 
             try {
-                const resResumen = await fetch(`/api/produccion/carro/${carroId}/articulos-resumen?usuarioId=${colaborador.id}`);
-                if (resResumen.ok) {
+                const [resResumen, resIngBase] = await Promise.all([
+                    fetch(`/api/produccion/carro/${carroId}/articulos-resumen?usuarioId=${colaborador.id}`).catch(() => null),
+                    (ldnNum === 6 || ldnNum === 5)
+                        ? fetch(`/api/produccion/carro/${carroId}/ingredientes?usuarioId=${colaborador.id}`).catch(() => null)
+                        : Promise.resolve(null)
+                ]);
+
+                let pesoRealInsumos = 0;
+                if (resResumen && resResumen.ok) {
                     const insumosReales = await resResumen.json();
-                    const pesoRealInsumos = (insumosReales || []).reduce((acc, ins) => {
+                    pesoRealInsumos = (insumosReales || []).reduce((acc, ins) => {
                         const kTot = parseFloat(ins.kilos_totales) || (parseFloat(ins.cantidad_total || 0) * (parseFloat(ins.kilos_unidad) || 1));
                         return acc + kTot;
                     }, 0);
-                    if (pesoRealInsumos > 0 && (ldnNum === 4 || totalCrudoVal <= 0)) {
-                        totalCrudoVal = Number(pesoRealInsumos.toFixed(4));
-                        txtCrudo = `${totalCrudoVal.toFixed(2)} kg`;
-                    }
+                }
+
+                let pesoIngPreHorno = 0;
+                if (resIngBase && resIngBase.ok) {
+                    const ingLista = await resIngBase.json();
+                    pesoIngPreHorno = (ingLista || [])
+                        .filter(i => !i.es_de_articulo_vinculado)
+                        .reduce((acc, i) => acc + (parseFloat(i.cantidad) || 0), 0);
+                }
+
+                if (ldnNum === 4 && pesoRealInsumos > 0) {
+                    totalCrudoVal = Number(pesoRealInsumos.toFixed(4));
+                    txtCrudo = `${totalCrudoVal.toFixed(2)} kg`;
+                } else if ((ldnNum === 6 || ldnNum === 5) && (pesoRealInsumos + pesoIngPreHorno) > 0) {
+                    totalCrudoVal = Number((pesoRealInsumos + pesoIngPreHorno).toFixed(4));
+                    txtCrudo = `${totalCrudoVal.toFixed(2)} kg`;
                 }
             } catch (errResCrudo) {
                 console.warn('Aviso al revalidar entrada cruda antes de asentar:', errResCrudo);
@@ -2035,22 +2190,76 @@ export async function finalizarProduccion(carroIdParam) {
                 return;
             }
 
+            // ⛔ GUARDIA DE HORNO EN LÍNEA 6 (GRANOLAS): bloquear si se tipea Masa_Final (> Masa_Pre_Horno) en vez de salida de horno
+            if (ldnNum === 6 && totalCrudoVal > 0 && kilosProducidos > totalCrudoVal + 0.0001) {
+                await Swal.fire({
+                    icon: 'error',
+                    title: '⛔ Asiento bloqueado — Peso supera Masa Pre-Horno',
+                    html: `
+                        <div style="text-align:left;font-size:0.95em;line-height:1.5;color:#1e293b;">
+                            <p style="margin-bottom:8px;">En <b>Granolas (Línea 6)</b> debés ingresar únicamente los <b>kilos salidos del horno (sin coco ni pasas)</b>:</p>
+                            <div style="background:#fef2f2;border:1.5px solid #ef4444;border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+                                <div>🥣 <b>Masa Pre-Horno ingresada a cocción:</b> ${totalCrudoVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</div>
+                                <div style="color:#b91c1c;margin-top:3px;">⚠️ <b>Valor tipeado en horno:</b> ${kilosProducidos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg (supera la Masa Pre-Horno)</div>
+                            </div>
+                            <p style="margin:0;color:#475569;font-size:0.9em;">
+                                No incluyas el Coco en Escamas ni las Pasas/Arándanos en este campo: el sistema los calcula y suma automáticamente (+0,125 kg/kg cada uno) para conformar la Masa Final.
+                            </p>
+                        </div>
+                    `,
+                    confirmButtonText: '✏️ Ingresar solo kilos salidos de horno',
+                    confirmButtonColor: '#dc2626'
+                });
+
+                btnFinalizarProduccion.disabled = false;
+                btnFinalizarProduccion.classList.remove('procesando');
+                btnFinalizarProduccion.textContent = 'Asentar producción';
+                if (kilosProducidosInput) {
+                    kilosProducidosInput.focus();
+                    kilosProducidosInput.select();
+                }
+                return;
+            }
+
             const requiereDobleConfirmacionMermaL4 = (
                 ldnNum === 4 &&
                 totalCrudoVal > 0 &&
                 (mermaPctReal > 15 || Math.abs(mermaPctReal) < 0.001)
             );
-            
-            // Calcular suma de ingredientes vinculados agregados en caliente (únicamente post-cocción)
+            const requiereDobleConfirmacionMermaL6 = (
+                ldnNum === 6 &&
+                totalCrudoVal > 0 &&
+                (mermaPctReal < 5 || mermaPctReal > 25)
+            );
+            const requiereDobleConfirmacionMerma = requiereDobleConfirmacionMermaL4 || requiereDobleConfirmacionMermaL6;
+
+            // Calcular suma de ingredientes vinculados post-horno con el MISMO redondeo de 2 decimales por insumo que usa finalizarProduccion.js
             let sumaVinculadosVal = 0;
             const filasVinculadas = document.querySelectorAll('.ingrediente-vinculado');
-            filasVinculadas.forEach(fila => {
-                if (fila.dataset.esPostCoccion === 'true') {
-                    const baseKilo = parseFloat(fila.dataset.baseKilo) || 0;
-                    sumaVinculadosVal += baseKilo * kilosProducidos;
-                }
-            });
-            sumaVinculadosVal = Number(sumaVinculadosVal.toFixed(3));
+            if (filasVinculadas.length > 0) {
+                filasVinculadas.forEach(fila => {
+                    if (fila.dataset.esPostCoccion === 'true') {
+                        const baseKilo = parseFloat(fila.dataset.baseKilo) || 0;
+                        const cantRed2 = Number((baseKilo * kilosProducidos).toFixed(2));
+                        sumaVinculadosVal = Number((sumaVinculadosVal + cantRed2).toFixed(2));
+                    }
+                });
+            } else if (ldnNum === 6) {
+                try {
+                    const resVincFallback = await fetch(`/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${colaborador.id}`);
+                    if (resVincFallback.ok) {
+                        const vincData = await resVincFallback.json();
+                        (vincData || []).forEach(v => {
+                            if (v.es_post_coccion) {
+                                const baseKilo = parseFloat(v.cantidad_base_por_kilo) || parseFloat(v.cantidad) || 0;
+                                const cantRed2 = Number((baseKilo * kilosProducidos).toFixed(2));
+                                sumaVinculadosVal = Number((sumaVinculadosVal + cantRed2).toFixed(2));
+                            }
+                        });
+                    }
+                } catch (_) {}
+            }
+            sumaVinculadosVal = Number(sumaVinculadosVal.toFixed(2));
             
             try {
                 // 1. Consultar relaciones de artículos del carro para saber el SKU de salida
@@ -2082,27 +2291,31 @@ export async function finalizarProduccion(carroIdParam) {
             }
             
             let htmlConfirm = '';
-            let confirmBtnColor = requiereDobleConfirmacionMermaL4 ? '#d97706' : '#10b981';
-            let iconType = requiereDobleConfirmacionMermaL4 ? 'warning' : 'question';
+            let confirmBtnColor = requiereDobleConfirmacionMerma ? '#d97706' : '#10b981';
+            let iconType = requiereDobleConfirmacionMerma ? 'warning' : 'question';
 
             const ldnNombre = ldnMeta.nombre_linea_negocio || `Línea de Negocio ${ldnNum}`;
             const ldnIcono = ldnMeta.icono_linea_negocio || (ldnNum === 4 ? '🔥' : ldnNum === 5 ? '🍫' : '🥣');
             const ldnSubtitulo = ldnMeta.subtitulo_linea_negocio || (ldnNum === 4 ? 'Tostadero (UP Externa Simple)' : ldnNum === 5 ? 'Barritas (Mezcla Interna + UP Externa)' : 'Granolas (Doble Mezcla / UP Externa)');
 
-            const alertaMermaAtipicaHtml = requiereDobleConfirmacionMermaL4 ? `
+            const textoDetalleMermaAtipica = ldnNum === 6
+                ? `La merma de cocción calculada (<b>${mermaPctReal.toFixed(2)}%</b> sobre ${totalCrudoVal.toFixed(2)} kg de Masa Pre-Horno) está fuera del rango habitual de horno en Granolas (<b>5% a 25%</b>).`
+                : (Math.abs(mermaPctReal) < 0.001
+                    ? `Estás asentando <b>0,00% de merma</b> (${kilosProducidos.toFixed(2)} kg de salida sobre ${totalCrudoVal.toFixed(2)} kg crudos).`
+                    : `La reducción calculada (<b>${mermaPctReal.toFixed(2)}%</b>) supera el umbral habitual de Tostadero (15%).`);
+
+            const alertaMermaAtipicaHtml = requiereDobleConfirmacionMerma ? `
                 <div style="margin-top:12px;background:#fff7ed;border:2px solid #f97316;border-radius:8px;padding:10px 12px;color:#9a3412;font-size:0.9em;">
                     <div style="font-weight:800;margin-bottom:4px;">
-                        ⚠️ Atención — Merma inusual detectada (${mermaPctReal.toFixed(2)}%)
+                        ⚠️ Atención — Merma de cocción atípica (${mermaPctReal.toFixed(2)}%)
                     </div>
                     <div style="font-size:0.88em;line-height:1.4;margin-bottom:8px;">
-                        ${Math.abs(mermaPctReal) < 0.001
-                            ? `Estás asentando <b>0,00% de merma</b> (${kilosProducidos.toFixed(2)} kg de salida sobre ${totalCrudoVal.toFixed(2)} kg crudos).`
-                            : `La reducción calculada (<b>${mermaPctReal.toFixed(2)}%</b>) supera el umbral habitual de Tostadero (15%).`}
+                        ${textoDetalleMermaAtipica}
                         Verificá que no haya un error de tipeo antes de impactar el historial y el stock.
                     </div>
                     <label style="display:flex;align-items:flex-start;gap:8px;background:#ffedd5;padding:7px 9px;border-radius:6px;cursor:pointer;font-weight:700;color:#7c2d12;">
                         <input type="checkbox" id="swal-chk-doble-confirmacion-merma" style="width:17px;height:17px;margin-top:2px;cursor:pointer;flex-shrink:0;" />
-                        <span>Confirmo que verifiqué en balanza el peso real de ${kilosProducidos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg (merma ${mermaPctReal.toFixed(2)}%)</span>
+                        <span>Confirmo que verifiqué en balanza los ${kilosProducidos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg ${ldnNum === 6 ? 'salidos de horno (sin coco ni pasas)' : ''} (merma ${mermaPctReal.toFixed(2)}%)</span>
                     </label>
                 </div>
             ` : '';
@@ -2134,24 +2347,25 @@ export async function finalizarProduccion(carroIdParam) {
                     creditoCalculado = Number((v_cantidad * parseFloat(tarifa.valor_por_unidad)).toFixed(2));
                     calculoTexto = `Cálculo: ${v_cantidad.toLocaleString('es-AR')} un × $ ${parseFloat(tarifa.valor_por_unidad).toLocaleString('es-AR')}/un`;
                 } else {
-                    v_cantidad = kilosProducidos + sumaVinculadosVal;
+                    v_cantidad = Number((kilosProducidos + sumaVinculadosVal).toFixed(2));
                     creditoCalculado = Number((v_cantidad * parseFloat(tarifa.valor_por_unidad)).toFixed(2));
-                    calculoTexto = `Cálculo: (${kilosProducidos.toLocaleString('es-AR')} kg cocido + ${sumaVinculadosVal.toLocaleString('es-AR')} kg agregados) × $ ${parseFloat(tarifa.valor_por_unidad).toLocaleString('es-AR')}/kg`;
+                    calculoTexto = `Cálculo: (${kilosProducidos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg horno + ${sumaVinculadosVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg secos post-horno = ${v_cantidad.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg) × $ ${parseFloat(tarifa.valor_por_unidad).toLocaleString('es-AR')}/kg`;
                 }
 
                 htmlConfirm = `
                     <div style="text-align: left; font-size: 0.95em; line-height: 1.5;">
                         ${ldnBadgeModal}
                         <p style="margin: 4px 0;"><strong>Colaborador:</strong> ${colaborador.nombre_completo || 'Matías'}</p>
-                        <p style="margin: 4px 0;"><strong>Artículo:</strong> ${relacion.articulo_kilo_nombre || relacion.articulo_kilo_codigo} (${relacion.articulo_kilo_codigo})</p>
+                        <p style="margin: 4px 0;"><strong>Artículo Puente (AP):</strong> ${relacion.articulo_kilo_nombre || relacion.articulo_kilo_codigo} (${relacion.articulo_kilo_codigo})</p>
                         
                         <h4 style="margin-top: 15px; border-bottom: 1px dashed #cbd5e1; padding-bottom: 3px; font-size: 1.05em; color: #1e293b; font-weight: bold;">⚖️ Rendimiento y Merma Física</h4>
                         <table style="width: 100%; font-size: 0.9em; margin-bottom: 15px; border-collapse: collapse;">
-                            <tr><td style="color:#64748b; padding: 4px 0;">Mezcla Cruda (Entrada):</td><td style="text-align: right; font-weight: bold;">${txtCrudo}</td></tr>
-                            <tr><td style="color:#64748b; padding: 4px 0;">Salida de Cocción (Tostado):</td><td style="text-align: right; font-weight: bold; color: #2563eb;">${kilosProducidos.toFixed(2)} kg</td></tr>
-                            <tr><td style="color:#64748b; padding: 4px 0;">Ingredientes Vinculados Agregados:</td><td style="text-align: right; font-weight: bold; color: #16a34a;">+ ${sumaVinculadosVal.toFixed(3)} kg</td></tr>
+                            <tr><td style="color:#64748b; padding: 4px 0;">${ldnNum === 6 ? 'Masa Pre-Horno (Entrada):' : 'Mezcla Cruda (Entrada):'}</td><td style="text-align: right; font-weight: bold;">${txtCrudo}</td></tr>
+                            <tr><td style="color:#64748b; padding: 4px 0;">${ldnNum === 6 ? 'Salida de Horno (sin coco/pasas):' : 'Salida de Cocción (Tostado):'}</td><td style="text-align: right; font-weight: bold; color: #2563eb;">${kilosProducidos.toFixed(2)} kg</td></tr>
                             <tr><td style="color:#64748b; padding: 4px 0;">Diferencia de Peso Cocción:</td><td style="text-align: right; font-weight: bold; color: #dc2626;">${txtDiferencia}</td></tr>
-                            <tr><td style="color:#64748b; padding: 4px 0;">Reducción por Cocción:</td><td style="text-align: right; font-weight: bold; color: #b45309;">${txtPorcentaje}</td></tr>
+                            <tr><td style="color:#64748b; padding: 4px 0;">Merma de Cocción:</td><td style="text-align: right; font-weight: bold; color: #b45309;">${txtPorcentaje}</td></tr>
+                            ${sumaVinculadosVal > 0 ? `<tr><td style="color:#64748b; padding: 4px 0;">Agregados Secos Post-Horno (Depósito):</td><td style="text-align: right; font-weight: bold; color: #16a34a;">+ ${sumaVinculadosVal.toFixed(2)} kg</td></tr>` : ''}
+                            ${sumaVinculadosVal > 0 ? `<tr style="border-top: 1px solid #cbd5e1;"><td style="color:#065f46; padding: 5px 0; font-weight: 800;">Masa Final Total (Ingresa a AP y liquida):</td><td style="text-align: right; font-weight: 900; color: #065f46;">${Number((kilosProducidos + sumaVinculadosVal).toFixed(2)).toFixed(2)} kg</td></tr>` : ''}
                         </table>
  
                         <h4 style="border-bottom: 1px dashed #cbd5e1; padding-bottom: 3px; font-size: 1.05em; color: #1e293b; font-weight: bold;">💰 Liquidación (Cuenta Corriente)</h4>
@@ -2207,7 +2421,7 @@ export async function finalizarProduccion(carroIdParam) {
                 cancelButtonColor: '#64748b',
                 allowOutsideClick: false,
                 preConfirm: () => {
-                    if (requiereDobleConfirmacionMermaL4) {
+                    if (requiereDobleConfirmacionMerma) {
                         const chk = document.getElementById('swal-chk-doble-confirmacion-merma');
                         if (!chk || !chk.checked) {
                             Swal.showValidationMessage('Marcá la casilla de doble confirmación de peso en balanza para continuar.');
@@ -2364,8 +2578,8 @@ async function ofrecerCarroFraccionadoPostAsentado(resultData, colaborador) {
         return;
     }
 
-    // Para carros externos solo se dispara en Línea 4 (Tostaderos); para carros internos cuando el artículo producido es un AP con fracciones activas (ej. Puente Mix MFSPXK)
-    if (resumen.tipo_carro === 'externa' && Number(resumen.linea_negocio || 4) !== 4) {
+    // Para carros externos se dispara en Línea 4 (Tostaderos) y Línea 6 (Granolas); para carros internos cuando el artículo producido es un AP con fracciones activas (ej. Puente Mix MFSPXK)
+    if (resumen.tipo_carro === 'externa' && ![4, 6].includes(Number(resumen.linea_negocio || 4))) {
         return;
     }
 
@@ -2847,7 +3061,9 @@ async function calcularMermaProduccion(carroId, mostrarPreviaCrudo = false) {
         const totalCrudo = pesoArticuloBase + pesoIngredientes;
         const diferenciaPeso = tieneKilosValidos ? (kilosProducidos - totalCrudo) : 0;
         const mermaRealPct = (tieneKilosValidos && totalCrudo > 0) ? (((totalCrudo - kilosProducidos) / totalCrudo) * 100) : 0;
-        const esLinea4Activa = Number(window.carroActivoMetadata?.linea_negocio || 4) === 4;
+        const ldnActivaNum = Number(window.carroActivoMetadata?.linea_negocio || 4);
+        const esLinea4Activa = ldnActivaNum === 4;
+        const esLinea6Activa = ldnActivaNum === 6;
 
         // PASO 7: Actualizar UI (SIEMPRE)
         document.getElementById('total-crudo').textContent = `${totalCrudo.toFixed(2)} kg`;
@@ -2889,11 +3105,25 @@ async function calcularMermaProduccion(carroId, mostrarPreviaCrudo = false) {
                     ⛔ <b>Merma negativa bloqueada:</b> ingresaste <b>${kilosProducidos.toFixed(2)} kg</b> sobre <b>${totalCrudo.toFixed(2)} kg</b> retirados${sug10}. Revisá la coma decimal antes de asentar.
                 </div>
             `;
+        } else if (esLinea6Activa && tieneKilosValidos && totalCrudo > 0 && kilosProducidos > totalCrudo + 0.0001) {
+            alertaEl.style.display = 'block';
+            alertaEl.innerHTML = `
+                <div style="background:#fef2f2;border:1.5px solid #ef4444;color:#991b1b;padding:8px 10px;border-radius:6px;font-size:12px;line-height:1.4;font-weight:600;">
+                    ⛔ <b>Asiento bloqueado:</b> ingresaste <b>${kilosProducidos.toFixed(2)} kg</b> sobre <b>${totalCrudo.toFixed(2)} kg</b> de Masa Pre-Horno. Ingresá únicamente los kilos salidos de horno (sin coco ni pasas).
+                </div>
+            `;
         } else if (esLinea4Activa && tieneKilosValidos && totalCrudo > 0 && (mermaRealPct > 15 || Math.abs(mermaRealPct) < 0.001)) {
             alertaEl.style.display = 'block';
             alertaEl.innerHTML = `
                 <div style="background:#fff7ed;border:1.5px solid #f97316;color:#9a3412;padding:7px 10px;border-radius:6px;font-size:12px;line-height:1.4;font-weight:600;">
                     ⚠️ <b>Merma atípica (${mermaRealPct.toFixed(2)}%):</b> se solicitará doble confirmación de balanza al asentar.
+                </div>
+            `;
+        } else if (esLinea6Activa && tieneKilosValidos && totalCrudo > 0 && (mermaRealPct < 5 || mermaRealPct > 25)) {
+            alertaEl.style.display = 'block';
+            alertaEl.innerHTML = `
+                <div style="background:#fff7ed;border:1.5px solid #f97316;color:#9a3412;padding:7px 10px;border-radius:6px;font-size:12px;line-height:1.4;font-weight:600;">
+                    ⚠️ <b>Merma de cocción atípica (${mermaRealPct.toFixed(2)}% — rango normal 5% a 25%):</b> se solicitará doble confirmación de balanza al asentar.
                 </div>
             `;
         } else {

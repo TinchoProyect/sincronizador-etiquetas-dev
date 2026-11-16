@@ -73,6 +73,11 @@ function consolidarIngredientes(ingredientes) {
             consolidados[key].sector_letra = consolidados[key].sector_letra || ing.sector_letra || null;
             consolidados[key].fase_produccion = consolidados[key].fase_produccion || ing.fase_produccion || null;
             consolidados[key].es_post_coccion = consolidados[key].es_post_coccion || ing.es_post_coccion || false;
+            if (typeof ing.cantidad_base_por_kilo === 'number' && !isNaN(ing.cantidad_base_por_kilo)) {
+                consolidados[key].cantidad_base_por_kilo = Number(
+                    ((consolidados[key].cantidad_base_por_kilo || 0) + ing.cantidad_base_por_kilo).toPrecision(10)
+                );
+            }
             console.log(`➕ SUMANDO cantidades para ID ${key}:`);
             console.log(`   ${anterior} + ${ing.cantidad} = ${consolidados[key].cantidad}`);
             console.log(`   es_primario: ${consolidados[key].es_primario}`);
@@ -93,7 +98,10 @@ function consolidarIngredientes(ingredientes) {
                 origen_mix_id: ing.origen_mix_id || null, // Preservar origen_mix_id
                 sector_letra: ing.sector_letra || null, // Preservar sector_letra
                 fase_produccion: ing.fase_produccion || null, // Preservar fase_produccion
-                es_post_coccion: ing.es_post_coccion || false
+                es_post_coccion: ing.es_post_coccion || false,
+                ...(typeof ing.cantidad_base_por_kilo === 'number' && !isNaN(ing.cantidad_base_por_kilo)
+                    ? { cantidad_base_por_kilo: Number(ing.cantidad_base_por_kilo.toPrecision(10)) }
+                    : {})
             };
         }
     });

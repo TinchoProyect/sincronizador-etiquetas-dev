@@ -4425,50 +4425,64 @@
           tarifaMaquila = parseFloat(tMaq.valor_por_unidad);
         }
 
-        // 4. Mermas Historial dinámicas (Promedio de últimos 5 y Último carro)
-        const carrosHistorial = (data.mermasHistorial || []).filter(m => 
+        // 4. Mermas Historial dinámicas (todas las cocciones válidas reconstruidas, alineadas 100% con Búnker mermasController.js)
+        const carrosHistorial = (data.mermasHistorial || []).filter(m =>
           ((m.articulo_padre_id || '').trim().toUpperCase() === v.up_codigo || (m.articulo_fraccionado_id || '').trim().toUpperCase() === v.ap_codigo) &&
-          parseFloat(m.porcentaje_merma) > 0
+          !m.es_invalida &&
+          m.porcentaje_merma !== null &&
+          !isNaN(parseFloat(m.porcentaje_merma)) &&
+          parseFloat(m.porcentaje_merma) >= 0
         );
-        const mermaUltimo = carrosHistorial.length > 0 ? parseFloat(carrosHistorial[0].porcentaje_merma) : (v.key === 'FLOR' ? 15.50 : 15.64);
-        const ultimos5 = carrosHistorial.slice(0, 5);
-        const mermaPromedio = ultimos5.length > 0 ? (ultimos5.reduce((sum, m) => sum + parseFloat(m.porcentaje_merma), 0) / ultimos5.length) : mermaUltimo;
+        const mermaUltimo = carrosHistorial.length > 0 ? Number(parseFloat(carrosHistorial[0].porcentaje_merma).toFixed(2)) : (v.key === 'FLOR' ? 15.50 : 15.64);
+        const mermaPromedio = carrosHistorial.length > 0
+          ? Number((carrosHistorial.reduce((sum, m) => sum + parseFloat(m.porcentaje_merma), 0) / carrosHistorial.length).toFixed(2))
+          : mermaUltimo;
 
-        // 5. Insumos Secos desde articulosProduccionExternaRelacion.ingredientes_custom
-        const relUP = (data.articulosProduccionExternaRelacion || []).find(r => 
+        // 5. Insumos Secos deterministas por ingrediente_id desde articulosProduccionExternaRelacion.ingredientes_custom
+        const relUP = (data.articulosProduccionExternaRelacion || []).find(r =>
           (r.articulo_produccion_codigo || '').trim().toUpperCase() === v.up_codigo ||
           (r.articulo_kilo_codigo || '').trim().toUpperCase() === v.ap_codigo
         );
         const secos = [];
         if (relUP && Array.isArray(relUP.ingredientes_custom)) {
           relUP.ingredientes_custom.forEach(item => {
+            const idInt = parseInt(item.ingrediente_id, 10);
             const nombreItem = (item.nombre_ingrediente || '').trim().toLowerCase();
-            const ingMatch = (data.ingredientes || []).find(i => 
-              (i.nombre || '').trim().toLowerCase() === nombreItem ||
-              (nombreItem.includes('arandano') && (i.nombre || '').toLowerCase().includes('arandano')) ||
-              (nombreItem.includes('coco') && (i.nombre || '').toLowerCase().includes('coco en escamas')) ||
-              (nombreItem.includes('pasa') && (i.nombre || '').toLowerCase().includes('pasa rubia 2'))
-            );
+            const ingMatch = (Number.isInteger(idInt) && idInt > 0)
+              ? (data.ingredientes || []).find(i => Number(i.id) === idInt)
+              : (data.ingredientes || []).find(i => (i.nombre || '').trim().toLowerCase() === nombreItem);
             const ratio = parseFloat(item.cantidad) || 0.125;
             const costoUnit = ingMatch ? (parseFloat(ingMatch.costo_patron) || 0) : 0;
             secos.push({
-              id: ingMatch ? ingMatch.id : null,
+              id: ingMatch ? ingMatch.id : (Number.isInteger(idInt) && idInt > 0 ? idInt : null),
               nombre: ingMatch ? ingMatch.nombre : item.nombre_ingrediente,
               ratio: ratio,
-              costo_unit: costoUnit
+              costo_unit: costoUnit,
+              kg_tanda: 0,
+              subtotal_tanda: 0
             });
           });
         }
 
-        // 6. Mano de obra Taller Mezcla 2 (AP)
+        // 6. Mano de obra Taller Mezcla 2 (AP) y simulación persistida en propiedades_dinamicas.tostadero_simulacion
         const laAP = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === v.ap_codigo && la.lista_id === 1);
         const artAP = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === v.ap_codigo);
-        const moApTaller = (laAP && laAP.mano_obra_activa !== false) ? (parseFloat(laAP.costo_tiempo) || 93.33) : 93.33;
+        const manoObraApActiva = laAP ? (laAP.mano_obra_activa !== false) : true;
+        const moApTaller = manoObraApActiva ? (parseFloat(laAP?.costo_tiempo) || 93.33) : 0;
         const minutosApTaller = artAP?.propiedades_dinamicas?.asistente_minutos || 0.8;
 
-        // 7. Costo Oficial en BD de AP
+        const simApGuardada = artAP?.propiedades_dinamicas?.tostadero_simulacion || null;
+        const mermaInicialSim = (simApGuardada && simApGuardada.merma !== undefined && simApGuardada.merma !== null && !isNaN(parseFloat(simApGuardada.merma)) && parseFloat(simApGuardada.merma) >= 0)
+          ? Number(parseFloat(simApGuardada.merma).toFixed(2))
+          : mermaPromedio;
+        if (simApGuardada && simApGuardada.tarifa !== undefined && parseFloat(simApGuardada.tarifa) > 0) {
+          tarifaMaquila = parseFloat(simApGuardada.tarifa);
+        }
+
+        // 7. Costos Oficiales en BD de AP e Ingrediente Espejo
         const ingAP = (data.ingredientes || []).find(i => i.id === v.ing_ap_id);
         const costoApOficialBd = ingAP ? (parseFloat(ingAP.costo_patron) || 0) : 0;
+        const costoBaseApOficialBd = artAP ? (parseFloat(artAP.costo_base) || 0) : 0;
 
         granolasConfigLDN6[v.key] = {
           variedad_codigo: v.key,
@@ -4485,9 +4499,10 @@
           mo_mezcla1: moMezcla1,
           minutos_mezcla1: minutosMezcla1,
           tarifa_maquila_simulada: tarifaMaquila,
-          merma_porc_simulada: parseFloat(mermaPromedio.toFixed(2)),
-          merma_promedio: parseFloat(mermaPromedio.toFixed(2)),
-          merma_ultimo: parseFloat(mermaUltimo.toFixed(2)),
+          merma_porc_simulada: mermaInicialSim,
+          merma_promedio: mermaPromedio,
+          merma_ultimo: mermaUltimo,
+          mano_obra_ap_activa: manoObraApActiva,
           mo_ap_taller: moApTaller,
           minutos_ap_taller: minutosApTaller,
           costo_kilo_crudo: 0,
@@ -4496,10 +4511,16 @@
           masa_entrada_kilos: crudoKilos + 2.30 + 0.48,
           costo_masa_entrada: 0,
           masa_salida_horno: 0,
+          masa_final_kilos: 0,
+          costo_secos_tanda: 0,
+          mo_maquila_tanda: 0,
+          costo_total_tanda: 0,
           costo_salida_up_concentrado: 0,
           secos: secos,
           costo_secos_kilo: 0,
           costo_base_sobrescrito: 0,
+          costo_base_ap_simulado: 0,
+          costo_base_ap_oficial_bd: costoBaseApOficialBd,
           costo_ap_simulado: 0,
           costo_ap_oficial_bd: costoApOficialBd,
           desglose_crudo: []
@@ -4550,93 +4571,266 @@
       });
       g.desglose_crudo = desgloseCrudo;
 
-      // 2. Mezcla 1 Envasada (Bulto Crudo + Bolsa 40x60 + Mano de Obra Mezcla 1)
-      const costoBultoCrudo = (costoKiloCrudo * g.crudo_kilos) + g.costo_bolsa_crudo + (parseFloat(g.mo_mezcla1) || 0);
+      // 2. Mezcla 1 Envasada (Bulto Crudo + Bolsa 40x60 + Mano de Obra Mezcla 1) — alineada al centavo con Búnker obtenerCostoVivoNexo
+      const costoBultoCrudoRaw = (costoKiloCrudo * g.crudo_kilos) + g.costo_bolsa_crudo + (parseFloat(g.mo_mezcla1) || 0);
+      const costoKiloCrudoEntrada = g.crudo_kilos > 0 ? Number((costoBultoCrudoRaw / g.crudo_kilos).toFixed(2)) : 0;
+      const costoBultoCrudo = g.crudo_kilos * costoKiloCrudoEntrada;
       g.costo_bulto_crudo = costoBultoCrudo;
-      const costoKiloCrudoEntrada = g.crudo_kilos > 0 ? (costoBultoCrudo / g.crudo_kilos) : 0;
       g.costo_kilo_crudo_entrada = costoKiloCrudoEntrada;
 
-      // 3. Masa de Entrada Horneado (Crudo + 2.30kg Miel + 0.48kg Aceite Coco)
+      if (ingredientesSim[g.mix_id]) {
+        ingredientesSim[g.mix_id].costo_sim = Number(costoKiloCrudo.toFixed(4));
+      }
+
+      // 3. Masa de Entrada Pre-Horno (Bulto Pre-Mezcla + 2.30kg Miel + 0.48kg Aceite Coco)
       const masaEntradaKilos = g.crudo_kilos + 2.30 + 0.48; // Flor: 9.68kg, Sol: 9.78kg
       const costoInsumosUP = (2.30 * g.costo_miel_simulado) + (0.48 * g.costo_coco_simulado);
       const costoTotalHorneable = costoBultoCrudo + costoInsumosUP;
       g.masa_entrada_kilos = masaEntradaKilos;
       g.costo_masa_entrada = costoTotalHorneable;
 
-      // 4. Salida de Horno con Merma
+      // 4. Salida de Horno con Merma de Cocción
       const factorRend = 1 - (g.merma_porc_simulada / 100);
       const masaSalidaHorno = Number((masaEntradaKilos * factorRend).toFixed(2));
       g.masa_salida_horno = masaSalidaHorno;
 
-      // 5. Maquila UP y Costo Concentrado Base (según listado-bunker.js v5.65)
-      let ratioSecosTotal = 0;
-      let costoSecosPorKiloBase = 0;
+      // 5. REGLA OFICIAL DE PLANTA LÍNEA 6 (idéntica al centavo con Simulador de Búnker listado-bunker.js):
+      //    Kg_Seco = 0.125 * Masa_Salida_Horno (3 decimales), Masa_Final = Masa_Salida_Horno + Kg_Coco + Kg_Pasas
+      //    Costo_Total_Tanda = Costo_Pre_Horno + Costo_Coco_Escamas + Costo_Pasas + (Masa_Final * Tarifa_Productor_Kg)
+      //    Costo_Base_AP ($/kg) = Costo_Total_Tanda / Masa_Final
+      let sumQtyPostHorno = 0;
+      let sumCostPostHorno = 0;
       (g.secos || []).forEach(s => {
-        const cIng = (ingredientesSim[s.id]?.costo_sim) || s.costo_unit;
+        const cIng = (ingredientesSim[s.id]?.costo_sim) ?? s.costo_unit;
         s.costo_unit = cIng;
-        ratioSecosTotal += s.ratio;
-        costoSecosPorKiloBase += s.ratio * cIng;
+        const qtySeco = Number((s.ratio * masaSalidaHorno).toFixed(3));
+        const subSeco = qtySeco * cIng;
+        s.kg_tanda = qtySeco;
+        s.subtotal_tanda = subSeco;
+        sumQtyPostHorno += qtySeco;
+        sumCostPostHorno += subSeco;
       });
-      g.costo_secos_kilo = costoSecosPorKiloBase;
 
-      const masaFinalConSecos = masaSalidaHorno * (1 + ratioSecosTotal);
+      const masaFinalConSecos = Number((masaSalidaHorno + sumQtyPostHorno).toFixed(3));
       const moMaquilaTotal = g.tarifa_maquila_simulada * masaFinalConSecos;
-      const inversionTotalUP = costoTotalHorneable + moMaquilaTotal;
-      const costoBaseConcentrado = masaSalidaHorno > 0 ? (inversionTotalUP / masaSalidaHorno) : 0;
-      g.costo_salida_up_concentrado = costoBaseConcentrado;
+      const costoTotalTanda = costoTotalHorneable + sumCostPostHorno + moMaquilaTotal;
+      const costoBaseAp = masaFinalConSecos > 0 ? Number((costoTotalTanda / masaFinalConSecos).toFixed(2)) : 0;
 
-      // 6. Mezcla 2 en Depósito: Base Horneada Concentrada + Agregados Secos + MO Taller ($93.33)
-      const costoBaseSobrescrito = costoBaseConcentrado + costoSecosPorKiloBase;
-      g.costo_base_sobrescrito = costoBaseSobrescrito;
-      const costoTotalAp = costoBaseSobrescrito + (parseFloat(g.mo_ap_taller) || 0);
+      g.masa_final_kilos = masaFinalConSecos;
+      g.costo_secos_tanda = sumCostPostHorno;
+      g.costo_secos_kilo = masaFinalConSecos > 0 ? (sumCostPostHorno / masaFinalConSecos) : 0;
+      g.mo_maquila_tanda = moMaquilaTotal;
+      g.costo_total_tanda = costoTotalTanda;
+      g.costo_salida_up_concentrado = masaFinalConSecos > 0 ? ((costoTotalHorneable + moMaquilaTotal) / masaFinalConSecos) : 0;
+
+      // 6. Artículo Puente (GFGNFX1 / GSGNFX1) -> Ingrediente Espejo (#122 / #131 suma MO interna AP $93.33/kg cuando mano_obra_activa = true)
+      g.costo_base_sobrescrito = costoBaseAp;
+      g.costo_base_ap_simulado = costoBaseAp;
+      const moApEfectiva = g.mano_obra_ap_activa !== false ? (parseFloat(g.mo_ap_taller) || 0) : 0;
+      const costoTotalAp = Number((costoBaseAp + moApEfectiva).toFixed(2));
       g.costo_ap_simulado = costoTotalAp;
 
+      if (g.ap_codigo) {
+        articulosSim[g.ap_codigo] = costoBaseAp;
+      }
       if (ingredientesSim[g.ing_ap_id]) {
         ingredientesSim[g.ing_ap_id].costo_sim = costoTotalAp;
       }
       return costoTotalAp;
     }
 
+    function obtenerFraccionesGranolaLDN6(g) {
+      const data = window.pizarraSimulacionMaster;
+      if (!data || !g) return [];
+      const targetIngId = Number(g.ing_ap_id);
+      const bridgeSkuUpper = String(g.ap_codigo || '').trim().toUpperCase();
+      const upSkuUpper = String(g.up_codigo || '').trim().toUpperCase();
+      const preMezclaUpper = String(g.crudo_sku || '').trim().toUpperCase();
+
+      const directSkus = new Set();
+      (data.recetas || []).forEach(r => {
+        if ((data.recetaIngredientes || []).some(ri => ri.receta_id === r.id && Number(ri.ingrediente_id) === targetIngId)) {
+          if (r.articulo_numero) directSkus.add(String(r.articulo_numero).trim().toUpperCase());
+        }
+      });
+
+      const allGranolaSkus = new Set(directSkus);
+      (data.articulosBunker || []).forEach(a => {
+        const esPack = a.es_pack === true || parseInt(a.pack_unidades) > 1;
+        if (esPack && a.pack_hijo_codigo) {
+          const hijoUpper = String(a.pack_hijo_codigo || '').trim().toUpperCase();
+          if (directSkus.has(hijoUpper) || (bridgeSkuUpper && hijoUpper === bridgeSkuUpper)) {
+            allGranolaSkus.add(String(a.articulo_id || '').trim().toUpperCase());
+          }
+        }
+      });
+
+      return (data.articulosBunker || []).filter(a => {
+        const skuUpper = String(a.articulo_id || '').trim().toUpperCase();
+        if (!skuUpper || skuUpper.startsWith('GSC')) return false;
+        if (skuUpper === bridgeSkuUpper || skuUpper === upSkuUpper || skuUpper === preMezclaUpper) return false;
+        if (a.no_producido_por_lambda === true || a.propiedades_dinamicas?.obsoleto === true) return false;
+        return allGranolaSkus.has(skuUpper);
+      });
+    }
+
+    function auditarEstadoSincronizacionGranolaLDN6(variedad = 'FLOR') {
+      const data = window.pizarraSimulacionMaster;
+      const g = granolasConfigLDN6 ? granolasConfigLDN6[variedad] : null;
+      if (!data || !g) {
+        return {
+          estaAlDia: true, totalCambios: 0, motivos: [], resumenDetalle: '',
+          diffApBase: 0, diffIng: 0, costoBaseApSim: 0, costoBaseApBd: 0, costoIngSim: 0, costoIngBd: 0,
+          fraccionesDesactualizadas: 0, packsDesactualizados: 0
+        };
+      }
+
+      calcularCostoGranolasLDN6(variedad);
+
+      const apUpper = String(g.ap_codigo || '').trim().toUpperCase();
+      const apArt = (data.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toUpperCase() === apUpper);
+      const ingMaster = (data.ingredientes || []).find(i => Number(i.id) === Number(g.ing_ap_id));
+      const kilosAp = (apArt && parseFloat(apArt.kilos_unidad) > 0) ? parseFloat(apArt.kilos_unidad) : 1;
+
+      const costoBaseApSim = Number((g.costo_base_ap_simulado || 0).toFixed(2));
+      const costoIngSim = Number((g.costo_ap_simulado || 0).toFixed(2));
+
+      const costoBaseApBd = apArt
+        ? Number(((parseFloat(apArt.costo_base) || 0) / kilosAp).toFixed(2))
+        : Number((g.costo_base_ap_oficial_bd || 0).toFixed(2));
+      const costoIngBd = ingMaster
+        ? Number((parseFloat(ingMaster.costo_patron) || 0).toFixed(2))
+        : Number((g.costo_ap_oficial_bd || 0).toFixed(2));
+
+      g.costo_base_ap_oficial_bd = costoBaseApBd;
+      g.costo_ap_oficial_bd = costoIngBd;
+
+      const diffApBase = Number((costoBaseApSim - costoBaseApBd).toFixed(2));
+      const diffIng = Number((costoIngSim - costoIngBd).toFixed(2));
+
+      // Verificar también Lista 1 del AP
+      const laAp1 = (data.articulosListas || []).find(la => String(la.articulo_numero || '').trim().toUpperCase() === apUpper && la.lista_id === 1);
+      const costoBaseSobrescritoApBd = laAp1 && laAp1.costo_base_sobrescrito !== null ? Number(parseFloat(laAp1.costo_base_sobrescrito).toFixed(2)) : costoBaseApBd;
+
+      // Verificar Pre-Mezcla (MPGDFX6,9 / MPGDSX7)
+      const preMezclaUpper = String(g.crudo_sku || '').trim().toUpperCase();
+      const artPreMezcla = (data.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toUpperCase() === preMezclaUpper);
+      const laPm1 = (data.articulosListas || []).find(la => String(la.articulo_numero || '').trim().toUpperCase() === preMezclaUpper && la.lista_id === 1);
+      const costoKiloPmSim = Number(((costoBultoPmHelper(g))).toFixed(2));
+      const costoKiloPmBd = laPm1 && laPm1.costo_base_sobrescrito !== null && parseFloat(laPm1.costo_base_sobrescrito) > 0
+        ? Number(parseFloat(laPm1.costo_base_sobrescrito).toFixed(2))
+        : (artPreMezcla && parseFloat(artPreMezcla.kilos_unidad) > 0 ? Number(((parseFloat(artPreMezcla.costo_base) || 0) / parseFloat(artPreMezcla.kilos_unidad)).toFixed(2)) : costoKiloPmSim);
+      const moPmBd = laPm1 ? Number((parseFloat(laPm1.costo_tiempo) || 0).toFixed(2)) : Number((parseFloat(g.mo_mezcla1) || 0).toFixed(2));
+      const preMezclaDesactualizada = Math.abs(costoKiloPmSim - costoKiloPmBd) > TOLERANCIA_REDONDEO_LDN4
+        || Math.abs((parseFloat(g.mo_mezcla1) || 0) - moPmBd) > TOLERANCIA_REDONDEO_LDN4;
+
+      const apDesactualizado = Math.abs(diffApBase) > TOLERANCIA_REDONDEO_LDN4
+        || Math.abs(costoBaseApSim - costoBaseSobrescritoApBd) > TOLERANCIA_REDONDEO_LDN4
+        || (costoBaseApBd <= 0 && costoBaseApSim > TOLERANCIA_REDONDEO_LDN4);
+      const ingDesactualizado = Math.abs(diffIng) > TOLERANCIA_REDONDEO_LDN4
+        || (costoIngBd <= 0 && costoIngSim > TOLERANCIA_REDONDEO_LDN4);
+
+      const fraccs = obtenerFraccionesGranolaLDN6(g);
+      let fraccionesDesactualizadas = 0;
+      let packsDesactualizados = 0;
+
+      fraccs.forEach(f => {
+        const auditHijo = auditarArticuloHijoLDN4(f);
+        if (!auditHijo.estaAlDia) {
+          const esPack = f.es_pack === true || parseInt(f.pack_unidades) > 1 || Boolean(f.pack_hijo_codigo);
+          if (esPack) packsDesactualizados++;
+          else fraccionesDesactualizadas++;
+        }
+      });
+
+      let totalCambios = 0;
+      const motivos = [];
+      if (preMezclaDesactualizada) {
+        totalCambios += 1;
+        motivos.push('Pre-Mezcla');
+      }
+      if (apDesactualizado) {
+        totalCambios += 1;
+        motivos.push('AP');
+      }
+      if (ingDesactualizado) {
+        totalCambios += 1;
+        motivos.push('Ingrediente');
+      }
+      if (fraccionesDesactualizadas > 0) {
+        totalCambios += fraccionesDesactualizadas;
+        motivos.push(`${fraccionesDesactualizadas} Fracc.`);
+      }
+      if (packsDesactualizados > 0) {
+        totalCambios += packsDesactualizados;
+        motivos.push(`${packsDesactualizados} Pack${packsDesactualizados !== 1 ? 's' : ''}`);
+      }
+
+      const estaAlDia = totalCambios === 0;
+      return {
+        estaAlDia,
+        totalCambios,
+        motivos,
+        resumenDetalle: motivos.join(' · '),
+        diffApBase,
+        diffIng,
+        costoBaseApSim,
+        costoBaseApBd,
+        costoIngSim,
+        costoIngBd,
+        fraccionesDesactualizadas,
+        packsDesactualizados
+      };
+    }
+
+    function costoBultoPmHelper(g) {
+      if (!g || !(g.crudo_kilos > 0)) return 0;
+      return ((g.costo_kilo_crudo * g.crudo_kilos) + g.costo_bolsa_crudo) / g.crudo_kilos;
+    }
+    window.auditarEstadoSincronizacionGranolaLDN6 = auditarEstadoSincronizacionGranolaLDN6;
+
+    function refrescarVistaTrasCambioGranolaLDN6(variedad) {
+      calcularCostoGranolasLDN6(variedad);
+      recalcularCascada();
+      renderizarGranolasLDN6();
+      renderizarArticulosBunker();
+      if (articuloSeleccionadoId) renderizarGrillaMultilista();
+    }
+
     function cambiarMoMezcla1Granolas(nuevoValor, variedad = 'FLOR') {
       if (!granolasConfigLDN6 || !granolasConfigLDN6[variedad]) return;
       granolasConfigLDN6[variedad].mo_mezcla1 = Math.max(0, parseFloat(nuevoValor) || 0);
-      recalcularCascada();
-      renderizarGranolasLDN6();
+      refrescarVistaTrasCambioGranolaLDN6(variedad);
     }
 
     function cambiarMielGranolas(nuevoValor, variedad = 'FLOR') {
       if (!granolasConfigLDN6 || !granolasConfigLDN6[variedad]) return;
       granolasConfigLDN6[variedad].costo_miel_simulado = Math.max(0, parseFloat(nuevoValor) || 0);
-      recalcularCascada();
-      renderizarGranolasLDN6();
+      refrescarVistaTrasCambioGranolaLDN6(variedad);
     }
 
     function cambiarCocoGranolas(nuevoValor, variedad = 'FLOR') {
       if (!granolasConfigLDN6 || !granolasConfigLDN6[variedad]) return;
       granolasConfigLDN6[variedad].costo_coco_simulado = Math.max(0, parseFloat(nuevoValor) || 0);
-      recalcularCascada();
-      renderizarGranolasLDN6();
+      refrescarVistaTrasCambioGranolaLDN6(variedad);
     }
 
     function cambiarMaquilaGranolas(nuevaMaquila, variedad = 'FLOR') {
       if (!granolasConfigLDN6 || !granolasConfigLDN6[variedad]) return;
       granolasConfigLDN6[variedad].tarifa_maquila_simulada = Math.max(0, parseFloat(nuevaMaquila) || 0);
-      recalcularCascada();
-      renderizarGranolasLDN6();
+      refrescarVistaTrasCambioGranolaLDN6(variedad);
     }
 
     function cambiarMermaGranolas(nuevaMerma, variedad = 'FLOR') {
       if (!granolasConfigLDN6 || !granolasConfigLDN6[variedad]) return;
       granolasConfigLDN6[variedad].merma_porc_simulada = Math.max(0, Math.min(99, parseFloat(nuevaMerma) || 0));
-      recalcularCascada();
-      renderizarGranolasLDN6();
+      refrescarVistaTrasCambioGranolaLDN6(variedad);
     }
 
     function cambiarMoApTallerGranolas(nuevoValor, variedad = 'FLOR') {
       if (!granolasConfigLDN6 || !granolasConfigLDN6[variedad]) return;
       granolasConfigLDN6[variedad].mo_ap_taller = Math.max(0, parseFloat(nuevoValor) || 0);
-      recalcularCascada();
-      renderizarGranolasLDN6();
+      refrescarVistaTrasCambioGranolaLDN6(variedad);
     }
 
     function seleccionarVariedadGranolaLDN6(variedad) {
@@ -4661,60 +4855,43 @@
         return;
       }
 
-      // Precalcular costos de ambas variedades para semáforo de pastillas
-      calcularCostoGranolasLDN6('FLOR');
-      calcularCostoGranolasLDN6('SOL');
+      // Precalcular y auditar sincronización completa (tolerancia <= $0,02) de ambas variedades igual que [LDN 4]
+      const auditFlor = auditarEstadoSincronizacionGranolaLDN6('FLOR');
+      const auditSol = auditarEstadoSincronizacionGranolaLDN6('SOL');
 
       const gFlor = granolasConfigLDN6['FLOR'];
       const gSol = granolasConfigLDN6['SOL'];
-      const diffFlor = gFlor ? (gFlor.costo_ap_simulado - gFlor.costo_ap_oficial_bd) : 0;
-      const diffSol = gSol ? (gSol.costo_ap_simulado - gSol.costo_ap_oficial_bd) : 0;
-      const pendFlor = Math.abs(diffFlor) > 0.05;
-      const pendSol = Math.abs(diffSol) > 0.05;
+      const pendFlor = !auditFlor.estaAlDia;
+      const pendSol = !auditSol.estaAlDia;
 
       const variedad = granolaSeleccionadaLDN6 || 'FLOR';
       const g = granolasConfigLDN6[variedad];
       if (!g) return;
 
-      const data = window.pizarraSimulacionMaster;
-      const diffPesos = variedad === 'FLOR' ? diffFlor : diffSol;
-      let hayDiferenciasGranola = variedad === 'FLOR' ? pendFlor : pendSol;
+      const auditActiva = variedad === 'FLOR' ? auditFlor : auditSol;
+      const diffPesos = Math.abs(auditActiva.diffIng) >= Math.abs(auditActiva.diffApBase) ? auditActiva.diffIng : auditActiva.diffApBase;
+      const hayDiferenciasGranola = !auditActiva.estaAlDia;
 
-      if (!hayDiferenciasGranola && data) {
-        const listas = data.listasPrecios || [];
-        const baseSku = variedad === 'FLOR' ? 'GDFX1' : 'GSX1';
-        for (const l of listas) {
-          const cascadaLista = calcularCascadaArticuloLista(baseSku, l.id);
-          const laActual = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === baseSku && la.lista_id === l.id);
-          const pActual = laActual ? parseFloat(laActual.precio_final) : 0;
-          const pNuevo = cascadaLista ? cascadaLista.precioFinalCalculado : 0;
-          if (Math.abs(pNuevo - pActual) > 0.1) {
-            hayDiferenciasGranola = true;
-            break;
-          }
-        }
-      }
-
-      // 1. Selector de Pastillas (Pills) con Semáforo Dinámico en Vivo
+      // 1. Selector de Pastillas (Pills) con Semáforo Exacto de [LDN 4]
       const pillsContainer = document.createElement('div');
-      pillsContainer.style.cssText = 'display: flex; gap: 8px; margin-bottom: 12px; justify-content: center;';
+      pillsContainer.style.cssText = 'display: flex; gap: 8px; margin-bottom: 12px; justify-content: center; flex-wrap: wrap;';
       pillsContainer.innerHTML = `
         <button class="btn btn-secondary ${variedad === 'FLOR' ? 'active' : ''}"
           style="padding: 6px 14px; font-size: 0.80rem; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; ${variedad === 'FLOR' ? 'border-color: #f472b6; color: #f472b6; background: rgba(244,114,182,0.18);' : ''}"
           onclick="seleccionarVariedadGranolaLDN6('FLOR')">
           <span>🌸 Grana Flor</span>
-          ${pendFlor 
-            ? `<span style="font-size: 0.65rem; background: rgba(245,158,11,0.25); color: #fbbf24; border: 1px solid #f59e0b; padding: 1px 6px; border-radius: 10px; font-weight: 800;">⚠️ ${diffFlor >= 0 ? '+' : ''}$${diffFlor.toFixed(2)}</span>`
-            : `<span style="font-size: 0.65rem; background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.4); padding: 1px 6px; border-radius: 10px;">🟢 al día</span>`
+          ${pendFlor
+            ? `<span style="font-size: 0.65rem; background: rgba(245,158,11,0.25); color: #fbbf24; border: 1px solid #f59e0b; padding: 1px 6px; border-radius: 10px; font-weight: 800;">🟡 Desactualizado (${auditFlor.totalCambios} cambio${auditFlor.totalCambios !== 1 ? 's' : ''})</span>`
+            : `<span style="font-size: 0.65rem; background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.4); padding: 1px 6px; border-radius: 10px; font-weight: 800;">🟢 Al día en BD</span>`
           }
         </button>
         <button class="btn btn-secondary ${variedad === 'SOL' ? 'active' : ''}"
           style="padding: 6px 14px; font-size: 0.80rem; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; ${variedad === 'SOL' ? 'border-color: #fbbf24; color: #fbbf24; background: rgba(251,191,36,0.18);' : ''}"
           onclick="seleccionarVariedadGranolaLDN6('SOL')">
           <span>☀️ Grana Sol</span>
-          ${pendSol 
-            ? `<span style="font-size: 0.65rem; background: rgba(245,158,11,0.25); color: #fbbf24; border: 1px solid #f59e0b; padding: 1px 6px; border-radius: 10px; font-weight: 800; box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);">⚠️ ${diffSol >= 0 ? '+' : ''}$${diffSol.toFixed(2)}</span>`
-            : `<span style="font-size: 0.65rem; background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.4); padding: 1px 6px; border-radius: 10px;">🟢 al día</span>`
+          ${pendSol
+            ? `<span style="font-size: 0.65rem; background: rgba(245,158,11,0.25); color: #fbbf24; border: 1px solid #f59e0b; padding: 1px 6px; border-radius: 10px; font-weight: 800;">🟡 Desactualizado (${auditSol.totalCambios} cambio${auditSol.totalCambios !== 1 ? 's' : ''})</span>`
+            : `<span style="font-size: 0.65rem; background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid rgba(16,185,129,0.4); padding: 1px 6px; border-radius: 10px; font-weight: 800;">🟢 Al día en BD</span>`
           }
         </button>
       `;
@@ -4733,17 +4910,17 @@
         `;
       });
 
-      // 3. Filas de Secos
+      // 3. Filas de Secos Post-Horno (mostrando kg reales en la tanda y subtotal en pesos)
       let filasSecosHtml = '';
       (g.secos || []).forEach(s => {
-        const kgPorBultoHorno = s.ratio * g.masa_salida_horno;
-        const subtotalSecos = s.ratio * s.costo_unit;
+        const kgPorBultoHorno = Number((s.kg_tanda ?? (s.ratio * g.masa_salida_horno)).toFixed(3));
+        const subtotalTanda = s.subtotal_tanda ?? (kgPorBultoHorno * s.costo_unit);
         filasSecosHtml += `
           <tr style="border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.70rem;">
-            <td style="padding: 3px 6px; color: #cbd5e1;">${s.nombre}</td>
-            <td style="padding: 3px 6px; text-align: right; color: #38bdf8; font-weight: 600;">${(s.ratio * 100).toFixed(1)}% (${kgPorBultoHorno.toFixed(2)} kg)</td>
+            <td style="padding: 3px 6px; color: #cbd5e1;">[#${s.id || '-'}] ${s.nombre}</td>
+            <td style="padding: 3px 6px; text-align: right; color: #38bdf8; font-weight: 600;">${(s.ratio * 100).toFixed(1)}% (+${kgPorBultoHorno.toFixed(3)} kg)</td>
             <td style="padding: 3px 6px; text-align: right; color: #94a3b8;">$${s.costo_unit.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-            <td style="padding: 3px 6px; text-align: right; font-weight: 700; color: #a78bfa;">+$${subtotalSecos.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</td>
+            <td style="padding: 3px 6px; text-align: right; font-weight: 700; color: #a78bfa;">$${subtotalTanda.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
           </tr>
         `;
       });
@@ -4776,19 +4953,19 @@
           </span>
         </div>
 
-        <!-- Resumen de Flujo y Estado de Sincronización -->
-        <div style="background: rgba(0,0,0,0.3); border: 1px solid ${hayDiferenciasGranola ? 'rgba(245, 158, 11, 0.4)' : 'rgba(16, 185, 129, 0.35)'}; border-radius: 6px; padding: 7px 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+        <!-- Resumen de Flujo y Semáforo Exacto de Sincronización (Tolerancia <= $0,02) -->
+        <div style="background: rgba(0,0,0,0.3); border: 1px solid ${hayDiferenciasGranola ? 'rgba(245, 158, 11, 0.4)' : 'rgba(16, 185, 129, 0.35)'}; border-radius: 6px; padding: 7px 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
           <div style="font-size: 0.72rem; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <span style="color: #94a3b8;">1. Crudo (Mix #${g.mix_id}): <strong style="color: #fbbf24;">$${g.costo_kilo_crudo.toFixed(2)}/kg</strong></span>
             <span style="color: #475569;">➔</span>
-            <span style="color: #94a3b8;">2. Puente [${g.ap_codigo}]: <strong style="color: #38bdf8;">$${g.costo_ap_simulado.toFixed(2)}/kg</strong></span>
+            <span style="color: #94a3b8;">2. Costo Base AP [${g.ap_codigo}]: <strong style="color: #38bdf8;">$${g.costo_base_ap_simulado.toFixed(2)}/kg</strong></span>
             <span style="color: #475569;">➔</span>
-            <span style="color: #94a3b8;">3. Fracciones Comerciales: <strong style="color: #34d399;">${variedad === 'FLOR' ? 'GDF' : 'GS'} (1kg, 500g, packs)</strong></span>
+            <span style="color: #94a3b8;">3. Ing #${g.ing_ap_id} (+MO AP): <strong style="color: #34d399;">$${g.costo_ap_simulado.toFixed(2)}/kg</strong></span>
           </div>
           <div>
             ${hayDiferenciasGranola
-              ? `<span style="font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid #f59e0b; font-weight: 700; white-space: nowrap;">⚠️ Variación Pendiente</span>`
-              : `<span style="font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.4); font-weight: 700; white-space: nowrap;">🟢 100% al Día en BD</span>`
+              ? `<span class="badge-estado-ldn6 desactualizado" style="font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; background: rgba(245,158,11,0.22); color: #fbbf24; border: 1px solid rgba(245,158,11,0.55); font-weight: 800; white-space: nowrap;" title="Diferencias reales detectadas (> $0,02): ${auditActiva.resumenDetalle}">🟡 Desactualizado (${auditActiva.totalCambios} cambio${auditActiva.totalCambios !== 1 ? 's' : ''})</span>`
+              : `<span class="badge-estado-ldn6 al-dia" style="font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; background: rgba(16,185,129,0.16); color: #34d399; border: 1px solid rgba(16,185,129,0.4); font-weight: 800; white-space: nowrap;" title="Pre-Mezcla, AP, Ingrediente espejo, 3 fracciones y todos los Packs Padre sincronizados con BD (tolerancia <= $0,02)">🟢 Al día en BD</span>`
             }
           </div>
         </div>
@@ -4917,15 +5094,15 @@
             </div>
           </div>
           <div style="margin-top: 6px; padding: 4px 6px; background: rgba(0,0,0,0.15); border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.70rem;">
-            <span style="color: #94a3b8;">Costo Base Horneado Concentrado (Origen Tostadero):</span>
-            <span style="font-weight: 700; color: #f472b6;">$${g.costo_salida_up_concentrado.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</span>
+            <span style="color: #94a3b8;">Masa Salida Horno: <strong style="color:#fff;">${g.masa_salida_horno.toFixed(2)} kg</strong> ➔ Masa Final (+Secos): <strong style="color:#34d399;">${g.masa_final_kilos.toFixed(2)} kg</strong></span>
+            <span style="font-weight: 700; color: #fbbf24;">MO Productor: $${g.mo_maquila_tanda.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
           </div>
         </div>
 
         <!-- ETAPA 3: MEZCLA 2 / SECOS POST-HORNO EN DEPÓSITO -->
         <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(167, 139, 250, 0.25); border-radius: 6px; padding: 8px; margin-bottom: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <strong style="color: #a78bfa; font-size: 0.76rem;">🥥 Etapa 3: Mezcla 2 Secos en Depósito [${g.ap_codigo}]</strong>
+            <strong style="color: #a78bfa; font-size: 0.76rem;">🥥 Etapa 3: Agregados Secos Post-Horno en Depósito [${g.ap_codigo}]</strong>
             <span style="font-size: 0.70rem; color: #c084fc; font-weight: 700;">Ingrediente #${g.ing_ap_id}</span>
           </div>
 
@@ -4933,9 +5110,9 @@
             <thead>
               <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.66rem; color: #94a3b8;">
                 <th style="text-align: left; padding: 2px 6px;">Agregado Seco Post-Horno</th>
-                <th style="text-align: right; padding: 2px 6px;">Ratio (kg)</th>
+                <th style="text-align: right; padding: 2px 6px;">Ratio / Kg Tanda</th>
                 <th style="text-align: right; padding: 2px 6px;">$/kg</th>
-                <th style="text-align: right; padding: 2px 6px;">Incidencia</th>
+                <th style="text-align: right; padding: 2px 6px;">Subtotal Tanda</th>
               </tr>
             </thead>
             <tbody>
@@ -4945,8 +5122,8 @@
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: rgba(0,0,0,0.15); padding: 6px; border-radius: 4px; margin-bottom: 6px; font-size: 0.70rem;">
             <div>
-              <span style="color: #94a3b8;">Total Secos Incorporados:</span>
-              <div style="font-weight: 700; color: #a78bfa;">+$${g.costo_secos_kilo.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</div>
+              <span style="color: #94a3b8;">Costo Total Tanda (${g.masa_final_kilos.toFixed(2)} kg):</span>
+              <div style="font-weight: 700; color: #a78bfa;">$${g.costo_total_tanda.toLocaleString('es-AR', {minimumFractionDigits: 2})}</div>
             </div>
             <div>
               <span style="color: #94a3b8;">MO Taller Integración (${g.minutos_ap_taller} min):</span>
@@ -4960,26 +5137,26 @@
             </div>
           </div>
 
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding: 4px 6px; background: rgba(0,0,0,0.15); border-radius: 4px; font-size: 0.70rem;">
-            <span style="color: #94a3b8;">Base Horneada ($${g.costo_salida_up_concentrado.toFixed(2)}) + Secos ($${g.costo_secos_kilo.toFixed(2)}):</span>
-            <strong style="color: #fbbf24;">Costo Base Sobrescrito: $${g.costo_base_sobrescrito.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding: 4px 6px; background: rgba(0,0,0,0.15); border-radius: 4px; font-size: 0.70rem; flex-wrap: wrap; gap: 4px;">
+            <span style="color: #94a3b8;">Costo Total Tanda ($${g.costo_total_tanda.toLocaleString('es-AR', {minimumFractionDigits: 2})}) ÷ Masa Final (${g.masa_final_kilos.toFixed(2)} kg):</span>
+            <strong style="color: #fbbf24;">Costo Base AP [${g.ap_codigo}]: $${g.costo_base_ap_simulado.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg <span style="color:#94a3b8;font-weight:normal;">(BD: $${auditActiva.costoBaseApBd.toLocaleString('es-AR', {minimumFractionDigits: 2})})</span></strong>
           </div>
 
           <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(167, 139, 250, 0.2); padding-top: 6px;">
             <div>
-              <div style="font-size: 0.66rem; color: #94a3b8;">Costo Total AP Simulado (Ing #${g.ing_ap_id}):</div>
+              <div style="font-size: 0.66rem; color: #94a3b8;">Costo Ingrediente #${g.ing_ap_id} Simulado (Costo Base AP + MO AP):</div>
               <div style="font-size: 0.95rem; font-weight: 800; color: #34d399;">
                 $${g.costo_ap_simulado.toLocaleString('es-AR', {minimumFractionDigits: 2})}<span style="font-size: 0.70rem; font-weight: normal; color: #94a3b8;"> / kg</span>
               </div>
             </div>
 
             <div style="text-align: right;">
-              <div style="font-size: 0.66rem; color: var(--text-secondary);">En BD Oficial: <strong style="color: #94a3b8;">$${g.costo_ap_oficial_bd.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong></div>
-              ${Math.abs(diffPesos) > 0.05 ? `
-                <span style="font-size: 0.66rem; padding: 1px 5px; border-radius: 3px; font-weight: 700; background: ${diffPesos > 0 ? 'rgba(239,68,68,0.18)' : 'rgba(16,185,129,0.18)'}; color: ${diffPesos > 0 ? '#f87171' : '#34d399'};">
-                  ${diffPesos > 0 ? '+' : ''}$${diffPesos.toFixed(2)}
+              <div style="font-size: 0.66rem; color: var(--text-secondary);">Ing #${g.ing_ap_id} en BD: <strong style="color: #94a3b8;">$${auditActiva.costoIngBd.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong></div>
+              ${!auditActiva.estaAlDia ? `
+                <span style="font-size: 0.66rem; padding: 1px 5px; border-radius: 3px; font-weight: 700; background: rgba(245,158,11,0.2); color: #fbbf24;">
+                  🟡 ${auditActiva.resumenDetalle}${Math.abs(diffPesos) > TOLERANCIA_REDONDEO_LDN4 ? ` (${diffPesos > 0 ? '+' : ''}$${diffPesos.toFixed(2)})` : ''}
                 </span>
-              ` : '<span style="font-size: 0.66rem; color: #34d399; font-weight: 700;">🟢 Al día</span>'}
+              ` : '<span style="font-size: 0.66rem; color: #34d399; font-weight: 700;">🟢 Al día en BD</span>'}
             </div>
           </div>
         </div>
@@ -5012,22 +5189,29 @@
         </div>
 
         <!-- ACCIONES -->
-        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 8px; margin-top: 4px;">
-          <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 600;"
-            onclick="seleccionarArticulo('${variedad === 'FLOR' ? 'GDFX1' : 'GSX1'}')" title="Seleccionar y auditar ${variedad === 'FLOR' ? 'GDFX1' : 'GSX1'} en el catálogo">
-            🔍 Ver Fracciones en Catálogo
-          </button>
-          <button class="btn" style="padding: 5px 12px; font-size: 0.74rem; font-weight: 700; ${
-            hayDiferenciasGranola
-              ? 'background: rgba(245, 158, 11, 0.25); color: #fbbf24; border: 1px solid #f59e0b; box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);'
-              : 'background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4);'
-          } border-radius: 4px; cursor: pointer;"
-            onclick="actualizarTodasFraccionesDeGranolas('${variedad}')" title="${hayDiferenciasGranola ? 'Hay variaciones pendientes de impactar en las listas comerciales' : 'Precios al día con la base de datos. Hacé clic para auditar.'}">
-            ${hayDiferenciasGranola 
-              ? `⚡ Impactar Variación en ${variedad === 'FLOR' ? 'Grana Flor' : 'Grana Sol'} (${diffPesos >= 0 ? '+' : ''}$${diffPesos.toFixed(2)})`
-              : `🟢 ${variedad === 'FLOR' ? 'Grana Flor' : 'Grana Sol'} al Día (Ver Auditoría)`
-            }
-          </button>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 8px; margin-top: 4px; gap: 6px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 600;"
+              onclick="seleccionarArticulo('${variedad === 'FLOR' ? 'GDFX1' : 'GSX1'}')" title="Seleccionar y auditar ${variedad === 'FLOR' ? 'GDFX1' : 'GSX1'} en el catálogo">
+              🔍 Ver Fracciones en Catálogo
+            </button>
+            <button class="btn" style="padding: 4px 9px; font-size: 0.70rem; font-weight: 700; background: rgba(168, 85, 247, 0.16); color: #d8b4fe; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 4px; cursor: pointer;"
+              onclick="if (window.abrirEditorUpDirecto) window.abrirEditorUpDirecto('${g.up_codigo}', { onSaved: () => inicializarPizarra(true) });"
+              title="Editar directamente la receta e insumos de la UP [${g.up_codigo}]">
+              🛠️ Editar UP
+            </button>
+          </div>
+          ${hayDiferenciasGranola ? `
+            <button class="btn btn-actualizar-todas-ldn6" style="padding: 5px 12px; font-size: 0.74rem; font-weight: 800; background: linear-gradient(135deg, #f59e0b, #d97706); color: #0f172a; border: 1px solid #fbbf24; border-radius: 4px; cursor: pointer; box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);"
+              onclick="actualizarTodasFraccionesDeGranolas('${variedad}')" title="Actualizar Pre-Mezcla, AP, Ingrediente espejo, 3 fracciones y Packs Padre en BD (${auditActiva.resumenDetalle})">
+              ⚡ Actualizar Todas
+            </button>
+          ` : `
+            <button class="btn btn-actualizar-todas-ldn6" disabled style="padding: 5px 12px; font-size: 0.74rem; font-weight: 700; background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 4px; cursor: not-allowed; opacity: 0.85;"
+              title="Todo el circuito coincide con los valores persistidos en la base de datos (tolerancia <= $0,02)">
+              ✓ Todo actualizado
+            </button>
+          `}
         </div>
       `;
 
@@ -7343,7 +7527,7 @@
         }
 
         let semaforoHTML = '';
-        if (contextoLDN === 4) {
+        if (contextoLDN === 4 || contextoLDN === 6) {
           const audit4 = auditarArticuloHijoLDN4(art);
           const deltaMostrar = Math.abs(audit4.diffCosto) > TOLERANCIA_REDONDEO_LDN4 ? audit4.diffCosto : audit4.maxDiffPrecio;
           const etiquetaDelta = Math.abs(deltaMostrar) > TOLERANCIA_REDONDEO_LDN4
@@ -7373,7 +7557,7 @@
               </div>
             </div>
           `;
-        } else if (contextoLDN === 3 || contextoLDN === 5 || contextoLDN === 6) {
+        } else if (contextoLDN === 3 || contextoLDN === 5) {
           const cascada1 = calcularCascadaArticuloLista(art.articulo_id, (data.listasPrecios && data.listasPrecios[0] ? data.listasPrecios[0].id : 1));
           const costoBultoSim = cascada1 ? cascada1.costoNetoBulto : (parseFloat(art.costo_base) || 0);
           const costoSinInsSim = cascada1 ? cascada1.costoBaseSinInsumosLista : costoBultoSim;
@@ -9140,6 +9324,8 @@
         actualizarBannerCambios();
         if (contextoLDN === 4) {
           renderizarTostaderosLDN4();
+        } else if (contextoLDN === 6) {
+          renderizarGranolasLDN6();
         }
         renderizarArticulosBunker();
         renderizarGrillaMultilista();
@@ -11762,32 +11948,11 @@
       const listas = data.listasPrecios || [];
       const articulosBunker = data.articulosBunker || [];
 
+      calcularCostoGranolasLDN6(variedad);
+      recalcularCascada();
+
       // Identificar dinámicamente las fracciones comerciales y packs para esta variedad (Cero hardcoding)
-      const targetIngId = g.ing_ap_id;
-      const bridgeSku = (g.ap_codigo || '').trim().toUpperCase();
-      const directSkus = new Set();
-      (data.recetas || []).forEach(r => {
-        if ((data.recetaIngredientes || []).some(ri => ri.receta_id === r.id && ri.ingrediente_id === targetIngId)) {
-          if (r.articulo_numero) directSkus.add(r.articulo_numero.trim().toUpperCase());
-        }
-      });
-
-      const allGranolaSkus = new Set(directSkus);
-      (data.articulosBunker || []).forEach(a => {
-        const esPack = a.es_pack === true || parseInt(a.pack_unidades) > 1;
-        if (esPack && a.pack_hijo_codigo) {
-          const hijoUpper = (a.pack_hijo_codigo || '').trim().toUpperCase();
-          if (directSkus.has(hijoUpper) || (bridgeSku && hijoUpper === bridgeSku)) {
-            allGranolaSkus.add(a.articulo_id.trim().toUpperCase());
-          }
-        }
-      });
-
-      const fraccsAImpactar = (data.articulosBunker || []).filter(a => {
-        const skuUpper = (a.articulo_id || '').trim().toUpperCase();
-        if (skuUpper.startsWith('GSC')) return false; // Descartar Garbanzo Sauco
-        return allGranolaSkus.has(skuUpper);
-      });
+      const fraccsAImpactar = obtenerFraccionesGranolaLDN6(g);
 
       if (fraccsAImpactar.length === 0) {
         Swal.fire({
@@ -11800,9 +11965,9 @@
         return;
       }
 
-      // Preparar tabla de auditoría previa de las 6 listas de precios
+      const auditPrevio = auditarEstadoSincronizacionGranolaLDN6(variedad);
       let filasListasHtml = '';
-      let alDiaTotal = Math.abs(g.costo_ap_simulado - g.costo_ap_oficial_bd) <= 0.05;
+      let alDiaTotal = auditPrevio.estaAlDia;
 
       fraccsAImpactar.forEach(fracc => {
         const sku = fracc.articulo_id;
@@ -11818,14 +11983,16 @@
         `;
 
         listas.forEach(l => {
-          const cascadaLista = calcularCascadaArticuloLista(sku, l.id);
-          const laActual = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === sku && la.lista_id === l.id);
-          const pActual = laActual ? parseFloat(laActual.precio_final) : 0;
-          const pNuevo = cascadaLista ? cascadaLista.precioFinalCalculado : 0;
-          const mActual = laActual ? parseFloat(laActual.margen_ganancia) : (cascadaLista ? cascadaLista.margen : 0);
-          const diffPesos = pNuevo - pActual;
+          const laActual = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === sku.trim().toUpperCase() && la.lista_id === l.id);
+          if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
 
-          if (Math.abs(diffPesos) > 0.1) {
+          const cascadaLista = calcularCascadaArticuloLista(sku, l.id);
+          const pActual = laActual ? parseFloat(laActual.precio_final) : 0;
+          const pNuevo = cascadaLista ? Number(cascadaLista.precioFinalCalculado.toFixed(2)) : 0;
+          const mActual = laActual ? parseFloat(laActual.margen_ganancia) : (cascadaLista ? cascadaLista.margen : 0);
+          const diffPesos = Number((pNuevo - pActual).toFixed(2));
+
+          if (Math.abs(diffPesos) > TOLERANCIA_REDONDEO_LDN4) {
             alDiaTotal = false;
           }
 
@@ -11835,7 +12002,7 @@
               <td style="padding: 4px 8px; text-align: right; color: #a78bfa; font-weight: 700;">${mActual.toFixed(2)}%</td>
               <td style="padding: 4px 8px; text-align: right; color: #94a3b8;">$${pActual.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
               <td style="padding: 4px 8px; text-align: right; color: #34d399; font-weight: 700;">$${pNuevo.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-              <td style="padding: 4px 8px; text-align: right; font-weight: 700; color: ${diffPesos >= 0 ? '#f87171' : '#34d399'};">
+              <td style="padding: 4px 8px; text-align: right; font-weight: 700; color: ${Math.abs(diffPesos) <= TOLERANCIA_REDONDEO_LDN4 ? '#34d399' : (diffPesos > 0 ? '#f87171' : '#34d399')};">
                 ${diffPesos >= 0 ? '+' : ''}$${diffPesos.toLocaleString('es-AR', {minimumFractionDigits: 2})}
               </td>
             </tr>
@@ -11916,48 +12083,102 @@
           didOpen: () => Swal.showLoading()
         });
 
-        // 1. Sincronizar costo_patron del Ingrediente Puente (#122 o #131) y de la Pre-Mezcla Mix (#134 o #132)
+        // 1. Sincronizar costo_patron del Ingrediente Puente (#122 o #131), de la Pre-Mezcla Mix (#134 o #132) y de Miel (#136)/Aceite (#135) si fueron editados
         const mixGranolaId = variedad === 'FLOR' ? 134 : 132;
         const preMezclaSku = variedad === 'FLOR' ? 'MPGDFX6,9' : 'MPGDSX7';
+        const costoIngPersistido = Number(g.costo_ap_simulado.toFixed(2));
+        const costoBaseApPersistido = Number(g.costo_base_ap_simulado.toFixed(2));
         try {
           await fetch(`/api/produccion/ingredientes/${g.ing_ap_id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ costo_patron: parseFloat(g.costo_ap_simulado.toFixed(4)) })
+            body: JSON.stringify({ costo_patron: costoIngPersistido })
           });
-          g.costo_ap_oficial_bd = g.costo_ap_simulado;
-          const ingObj = (data.ingredientes || []).find(i => i.id === g.ing_ap_id);
-          if (ingObj) ingObj.costo_patron = g.costo_ap_simulado;
+          g.costo_ap_oficial_bd = costoIngPersistido;
+          const ingObj = (data.ingredientes || []).find(i => Number(i.id) === Number(g.ing_ap_id));
+          if (ingObj) ingObj.costo_patron = costoIngPersistido;
 
-          const mixGranSim = ingredientesSim[mixGranolaId] ? ingredientesSim[mixGranolaId].costo_sim : 0;
+          const mixGranSim = Number((g.costo_kilo_crudo || 0).toFixed(4));
           if (mixGranSim > 0) {
             await fetch(`/api/produccion/ingredientes/${mixGranolaId}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ costo_patron: parseFloat(mixGranSim.toFixed(4)) })
+              body: JSON.stringify({ costo_patron: mixGranSim })
             });
-            const ingMixGran = (data.ingredientes || []).find(i => i.id === mixGranolaId);
-            if (ingMixGran) ingMixGran.costo_patron = parseFloat(mixGranSim.toFixed(4));
+            const ingMixGran = (data.ingredientes || []).find(i => Number(i.id) === Number(mixGranolaId));
+            if (ingMixGran) ingMixGran.costo_patron = mixGranSim;
+          }
+
+          // Sincronizar también Miel (#136) y Aceite de Coco (#135) si el usuario editó su costo simulado
+          const ing136Obj = (data.ingredientes || []).find(i => Number(i.id) === 136);
+          if (ing136Obj && Math.abs((parseFloat(ing136Obj.costo_patron) || 0) - g.costo_miel_simulado) > 0.01) {
+            await fetch(`/api/produccion/ingredientes/136`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ costo_patron: Number(g.costo_miel_simulado.toFixed(4)) })
+            });
+            ing136Obj.costo_patron = Number(g.costo_miel_simulado.toFixed(4));
+          }
+          const ing135Obj = (data.ingredientes || []).find(i => Number(i.id) === 135);
+          if (ing135Obj && Math.abs((parseFloat(ing135Obj.costo_patron) || 0) - g.costo_coco_simulado) > 0.01) {
+            await fetch(`/api/produccion/ingredientes/135`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ costo_patron: Number(g.costo_coco_simulado.toFixed(4)) })
+            });
+            ing135Obj.costo_patron = Number(g.costo_coco_simulado.toFixed(4));
           }
         } catch (eIng) {
           console.warn(`Aviso: no se pudo actualizar costo_patron del ingrediente ${g.ing_ap_id}:`, eIng);
         }
 
-        // 2. Construir array de actualizaciones para todas las fracciones en las listas (incluyendo Pre-Mezcla MPGDFX6,9 / MPGDSX7)
+        // 1.5 Persistir tostadero_simulacion en propiedades_dinamicas del AP para paridad total con Búnker Finanzas
+        try {
+          const payloadSimAp = {
+            tarifa: Number(g.tarifa_maquila_simulada.toFixed(2)),
+            merma: Number(g.merma_porc_simulada.toFixed(2)),
+            insumo_evaluado_sku: preMezclaSku,
+            costo_crudo_kg: Number(g.costo_kilo_crudo_entrada.toFixed(2)),
+            costo_resultante_kg: costoBaseApPersistido,
+            sincronizar_costo_y_listas: false
+          };
+          let respSim = await fetch(`/api/logistica/bunker/tostadero-simulacion/${encodeURIComponent(g.ap_codigo)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payloadSimAp)
+          }).catch(() => null);
+          if (!respSim || !respSim.ok) {
+            const hostLocal = window.location.hostname || 'localhost';
+            respSim = await fetch(`http://${hostLocal}:3005/api/logistica/bunker/tostadero-simulacion/${encodeURIComponent(g.ap_codigo)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payloadSimAp)
+            }).catch(() => null);
+          }
+          const artApMem = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === g.ap_codigo);
+          if (artApMem) {
+            if (!artApMem.propiedades_dinamicas) artApMem.propiedades_dinamicas = {};
+            artApMem.propiedades_dinamicas.tostadero_simulacion = payloadSimAp;
+          }
+        } catch (_) {}
+
+        // 2. Construir array de actualizaciones para Pre-Mezcla, AP y todas las fracciones/packs
         const actualizaciones = [];
-        const costoKiloPreMezcla = calcularCostoBaseKiloArticulo(preMezclaSku);
+        const costoKiloPreMezcla = costoBultoPmHelper(g);
         const artPreMezcla = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === preMezclaSku);
-        const kilosPreMezcla = parseFloat(artPreMezcla?.kilos_unidad) > 0 ? parseFloat(artPreMezcla.kilos_unidad) : 1;
+        const kilosPreMezcla = parseFloat(artPreMezcla?.kilos_unidad) > 0 ? parseFloat(artPreMezcla.kilos_unidad) : g.crudo_kilos;
         if (costoKiloPreMezcla > 0) {
-          if (artPreMezcla) artPreMezcla.costo_base = parseFloat((costoKiloPreMezcla * kilosPreMezcla).toFixed(4));
+          if (artPreMezcla) artPreMezcla.costo_base = Number((costoKiloPreMezcla * kilosPreMezcla).toFixed(2));
           listas.forEach(l => {
             const laPM = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === preMezclaSku && la.lista_id === l.id);
+            if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laPM || laPM.disponible === false)) return;
             const margenPM = laPM ? (parseFloat(laPM.margen_ganancia) || 0) : 0;
-            const moPM = (laPM && laPM.mano_obra_activa !== false) ? (parseFloat(laPM.costo_tiempo) || 0) : 0;
+            const moPM = (laPM && laPM.mano_obra_activa === false) ? 0 : (parseFloat(g.mo_mezcla1) || 0);
             const ivaPM = laPM ? (parseFloat(laPM.iva) || 21) : 21;
             const pFinalPM = parseFloat((((costoKiloPreMezcla * kilosPreMezcla) * (1 + margenPM / 100) + moPM) * (1 + ivaPM / 100)).toFixed(2));
             if (laPM) {
               laPM.costo_base_sobrescrito = parseFloat(costoKiloPreMezcla.toFixed(4));
+              laPM.costo_tiempo = parseFloat(moPM.toFixed(4));
               laPM.precio_final = pFinalPM;
             }
             actualizaciones.push({
@@ -11973,24 +12194,39 @@
           });
         }
 
-        // 2.1 Incluir actualización del Artículo Puente (GFGNFX1 / GSGNFX1) en bunker_lista_articulos
+        // 2.1 Incluir actualización del Artículo Puente (GFGNFX1 / GSGNFX1) en bunker_lista_articulos + memoria
         if (g.ap_codigo) {
+          const artApObj = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === g.ap_codigo);
+          const kilosApObj = (artApObj && parseFloat(artApObj.kilos_unidad) > 0) ? parseFloat(artApObj.kilos_unidad) : 1;
+          if (artApObj) {
+            artApObj.costo_base = Number((costoBaseApPersistido * kilosApObj).toFixed(2));
+          }
+          g.costo_base_ap_oficial_bd = costoBaseApPersistido;
+
           listas.forEach(l => {
             const laAP = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === g.ap_codigo && la.lista_id === l.id);
+            if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laAP || laAP.disponible === false)) return;
             const margenAP = laAP ? (parseFloat(laAP.margen_ganancia) || 0) : 0;
             const ivaAP = laAP ? (parseFloat(laAP.iva) || 21) : 21;
-            const pSinIvaAP = (g.costo_base_sobrescrito * (1 + margenAP / 100)) + g.mo_ap_taller;
+            const moApLista = (laAP && laAP.mano_obra_activa === false) ? 0 : (parseFloat(g.mo_ap_taller) || 0);
+            const pSinIvaAP = (costoBaseApPersistido * (1 + margenAP / 100)) + moApLista;
             const pFinalAP = parseFloat((pSinIvaAP * (1 + ivaAP / 100)).toFixed(2));
+
+            if (laAP) {
+              laAP.costo_base_sobrescrito = parseFloat(costoBaseApPersistido.toFixed(4));
+              laAP.costo_tiempo = parseFloat(moApLista.toFixed(4));
+              laAP.precio_final = pFinalAP;
+            }
 
             actualizaciones.push({
               lista_id: l.id,
               articulo_numero: g.ap_codigo,
               margen_ganancia: margenAP,
-              costo_base_sobrescrito: parseFloat(g.costo_base_sobrescrito.toFixed(4)),
-              costo_tiempo: parseFloat(g.mo_ap_taller.toFixed(4)),
+              costo_base_sobrescrito: parseFloat(costoBaseApPersistido.toFixed(4)),
+              costo_tiempo: parseFloat(moApLista.toFixed(4)),
               iva: ivaAP,
               precio_final: pFinalAP,
-              disponible: false,
+              disponible: laAP ? laAP.disponible !== false : false,
               modo_calculo: null,
               modo_iva: null
             });

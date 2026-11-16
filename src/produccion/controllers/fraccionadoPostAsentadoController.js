@@ -68,6 +68,7 @@ async function obtenerFraccionesDeterministasPorAp(req, res) {
             WHERE UPPER(BTRIM(i.articulo_vinculado_numero)) = UPPER(BTRIM($1))
               AND COALESCE(ba.familia_id, 0) <> 42
               AND COALESCE(ba.es_pack, false) = false
+              AND COALESCE(ba.pack_unidades, 1) <= 1
               AND NULLIF(BTRIM(COALESCE(ba.pack_hijo_codigo, '')), '') IS NULL
               AND COALESCE(ba.no_producido_por_lambda, src.no_producido_por_lambda, false) = false
               AND COALESCE(src.solo_produccion_externa, false) = false

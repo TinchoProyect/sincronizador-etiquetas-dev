@@ -34,10 +34,22 @@ async function marcarCarroPreparado(req, res) {
 
         // 2. Verificar que no esté ya preparado
         if (carro.fecha_preparado) {
+            await db.query('ROLLBACK');
             return res.json({
                 mensaje: 'El carro ya fue marcado como preparado anteriormente',
                 fecha: carro.fecha_preparado
             });
+        }
+
+        // 2b. Prohibir estrictamente marcar como preparado un carro vacío (0 filas en carros_articulos)
+        const { rows: articulosDelCarro } = await db.query(
+            'SELECT id, articulo_numero, cantidad FROM carros_articulos WHERE carro_id = $1',
+            [carroId]
+        );
+        if (!articulosDelCarro || articulosDelCarro.length === 0) {
+            const errVacio = new Error('No se puede preparar un carro vacío. Agregá al menos un artículo antes de marcar "Carro listo para producir".');
+            errVacio.statusCode = 400;
+            throw errVacio;
         }
 
         // 3. Obtener ingredientes según el tipo de carro
@@ -210,29 +222,22 @@ async function marcarCarroPreparado(req, res) {
                             console.log(`🔍 Contenido completo del ingrediente:`, JSON.stringify(ing, null, 2));
                         }
 
-                        // Verificar si el usuario tiene stock personal para este ingrediente
+                        // Verificar el SALDO NETO REAL del colaborador en domicilio (ingresos positivos menos consumos negativos)
                         const stockPersonalQuery = `
-                            SELECT SUM(cantidad) as stock_personal
+                            SELECT COALESCE(SUM(cantidad), 0) as stock_personal
                             FROM ingredientes_stock_usuarios
-                            WHERE usuario_id = $1 AND ingrediente_id = $2 AND cantidad > 0
+                            WHERE usuario_id = $1 AND ingrediente_id = $2
                         `;
                         const stockPersonalResult = await db.query(stockPersonalQuery, [usuarioId, ing.id]);
-                        const stockPersonal = parseFloat(stockPersonalResult.rows[0]?.stock_personal) || 0;
+                        const stockPersonal = Number((parseFloat(stockPersonalResult.rows[0]?.stock_personal) || 0).toFixed(4));
 
-                        // También obtener el stock general para comparación
+                        // También obtener el stock general para comparación en ingredientes vinculados
                         const stockGeneral = parseFloat(ing.stock_actual) || 0;
 
                         console.log(`📊 ANÁLISIS DE STOCK:`);
-                        console.log(`- Stock personal del usuario: ${stockPersonal}`);
+                        console.log(`- Saldo neto personal en domicilio: ${stockPersonal}`);
                         console.log(`- Stock general (ingredientes.stock_actual): ${stockGeneral}`);
                         console.log(`- Cantidad requerida: ${cantidadRedondeada}`);
-
-                        // 🔍 LOG CRÍTICO: Punto de decisión para ingredientes vinculados
-                        console.log(`\n🔍 PUNTO DE DECISIÓN CRÍTICO:`);
-                        console.log(`==========================================`);
-                        console.log(`❓ ¿Es ingrediente vinculado? ${ing._contexto_origen === 'vinculado' ? 'SÍ ✅' : 'NO ❌'}`);
-                        console.log(`❓ ¿Tiene stock general suficiente? ${stockGeneral >= cantidadRedondeada ? 'SÍ ✅' : 'NO ❌'}`);
-                        console.log(`❓ ¿Se ejecutará movimiento de egreso? ${ing._contexto_origen === 'vinculado' && stockGeneral >= cantidadRedondeada ? 'SÍ ✅' : 'NO ❌'}`);
 
                         // 🎯 CRITERIO CORREGIDO: Los ingredientes vinculados NO se descontarán en preparación
                         if (ing._contexto_origen === 'vinculado') {
@@ -247,62 +252,36 @@ async function marcarCarroPreparado(req, res) {
                                 console.log(`   - Requerido: ${cantidadRedondeada}`);
                                 console.log(`   - Faltante: ${faltante.toFixed(2)} kg`);
                                 console.log(`   - El stock quedará en negativo al finalizar producción`);
-                                console.log(`\n💡 RECOMENDACIÓN: Realizar ingreso manual de ${faltante.toFixed(2)} kg de "${ing.nombre}" antes de finalizar`);
                             }
 
-                            // ✅ CORRECCIÓN CRÍTICA: Solo validar stock, NO registrar movimiento
-                            // Los ingredientes vinculados se descontarán en finalizarProduccion.js
-                            console.log(`\n🔍 INGREDIENTE VINCULADO - SOLO VALIDACIÓN`);
-                            console.log(`==========================================`);
-                            console.log(`✅ Validación completada para ingrediente vinculado ${ing.nombre}`);
-                            console.log(`📝 MOVIMIENTO DIFERIDO: Se registrará en finalizarProduccion.js`);
-                            console.log(`📊 Stock disponible: ${stockGeneral}, Requerido: ${cantidadRedondeada}`);
+                            // ✅ Solo validar stock, NO registrar movimiento: se descontará en finalizarProduccion.js
+                            console.log(`✅ Validación completada para ingrediente vinculado ${ing.nombre} (se descontará al asentar)`);
 
-                        } else if (ing._contexto_origen === 'base' && stockPersonal > 0) {
-                            console.log(`🔧 INGREDIENTE BASE CON STOCK PERSONAL DETECTADO - Usando FIFO`);
-                            console.log(`📊 Stock personal disponible: ${stockPersonal}`);
+                        } else {
+                            // Ingrediente base de UP externa (ej. Miel #136 y Aceite de Coco #135 en domicilio del colaborador):
+                            // PROHIBIDO descontar silenciosamente del depósito central si falta saldo en domicilio.
+                            console.log(`🏠 INGREDIENTE DOMICILIARIO DE UP EXTERNA: ${ing.nombre} | Saldo neto: ${stockPersonal}`);
 
-                            if (stockPersonal < cantidadRedondeada) {
-                                throw new Error(`Stock personal insuficiente para ingrediente base "${ing.nombre}". Disponible: ${stockPersonal}, Requerido: ${cantidadRedondeada}`);
+                            if (stockPersonal + 0.0001 < cantidadRedondeada) {
+                                const unidadTxt = ing.unidad_medida || 'kg';
+                                const errDomicilio = new Error(
+                                    `Saldo insuficiente en stock domiciliario del colaborador para "${ing.nombre}": disponible ${stockPersonal.toFixed(2)} ${unidadTxt}, requerido ${cantidadRedondeada.toFixed(2)} ${unidadTxt}. Registrá la entrega al colaborador antes de preparar el carro.`
+                                );
+                                errDomicilio.statusCode = 400;
+                                throw errDomicilio;
                             }
 
-                            // Para ingredientes base con stock personal: usar FIFO
                             const datosMovimiento = {
                                 usuario_id: parseInt(usuarioId),
                                 ingrediente_id: ing.id,
-                                cantidad: -cantidadRedondeada, // Negativo para consumo
+                                cantidad: -cantidadRedondeada,
                                 carro_id: parseInt(carroId),
                                 origen_mix_id: ing.origen_mix_id
                             };
 
-                            console.log('📝 DATOS PARA MOVIMIENTO FIFO - INGREDIENTE BASE PERSONAL:', JSON.stringify(datosMovimiento, null, 2));
+                            console.log('📝 DATOS PARA CONSUMO DOMICILIARIO:', JSON.stringify(datosMovimiento, null, 2));
                             await registrarMovimientoStockUsuarioFIFO(datosMovimiento, db);
-                            console.log(`✅ Movimiento FIFO registrado correctamente para ingrediente base personal ${ing.nombre}`);
-
-                        } else if (stockGeneral > 0) {
-                            console.log(`🔧 INGREDIENTE BASE SIN STOCK PERSONAL - Usando stock general como fallback`);
-                            console.log(`📊 Stock general disponible: ${stockGeneral}`);
-
-                            if (stockGeneral < cantidadRedondeada) {
-                                throw new Error(`Stock general insuficiente para ingrediente "${ing.nombre}". Disponible: ${stockGeneral}, Requerido: ${cantidadRedondeada}`);
-                            }
-
-                            // Para ingredientes base sin stock personal: usar stock general
-                            const movimientoData = {
-                                ingrediente_id: ing.id,
-                                kilos: -cantidadRedondeada, // ✅ NEGATIVO para egreso (se resta del stock)
-                                tipo: 'egreso',
-                                carro_id: parseInt(carroId),
-                                observaciones: `Egreso por carro externo #${carroId} - Ingrediente base (stock general fallback)`,
-                                stock_anterior: stockGeneral // 📸 SNAPSHOT: Guardar stock antes del movimiento
-                            };
-
-                            console.log('📝 REGISTRANDO MOVIMIENTO DIRECTO - INGREDIENTE BASE GENERAL (ingredientes_movimientos):', JSON.stringify(movimientoData, null, 2));
-                            await registrarMovimientoIngrediente(movimientoData, db);
-                            console.log(`✅ Movimiento directo registrado correctamente para ingrediente base general ${ing.nombre}`);
-
-                        } else {
-                            throw new Error(`Sin stock disponible para ingrediente "${ing.nombre}". Stock personal: ${stockPersonal}, Stock general: ${stockGeneral}, Requerido: ${cantidadRedondeada}`);
+                            console.log(`✅ Consumo domiciliario registrado correctamente para ${ing.nombre}`);
                         }
 
                         console.log(`==========================================\n`);
@@ -310,7 +289,9 @@ async function marcarCarroPreparado(req, res) {
                     } catch (error) {
                         console.error(`❌ ERROR PROCESANDO INGREDIENTE "${ing.nombre}":`, error);
                         console.error(`❌ Stack trace:`, error.stack);
-                        throw new Error(`Error procesando ingrediente "${ing.nombre}": ${error.message}`);
+                        const wrappedErr = new Error(error.statusCode === 400 ? error.message : `Error procesando ingrediente "${ing.nombre}": ${error.message}`);
+                        if (error.statusCode) wrappedErr.statusCode = error.statusCode;
+                        throw wrappedErr;
                     }
                 }
 
@@ -549,8 +530,9 @@ async function marcarCarroPreparado(req, res) {
     } catch (error) {
         await db.query('ROLLBACK');
         console.error('Error al marcar carro como preparado:', error);
-        return res.status(500).json({
-            error: 'Error al marcar el carro como preparado',
+        const status = error.statusCode || 500;
+        return res.status(status).json({
+            error: status === 400 ? error.message : 'Error al marcar el carro como preparado',
             detalle: error.message
         });
     }

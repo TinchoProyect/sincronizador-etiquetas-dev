@@ -13124,7 +13124,7 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
             ? [...ingredientesUp] 
             : (simSaved && simSaved.ingredientes_extra ? simSaved.ingredientes_extra : []);
 
-        // Etapa 2 (Insumos Secos post-horno de Fraccionado)
+        // Etapa 2 (Insumos Secos post-horno de Fraccionado — proporción directa por kg salido de horno, ej: 0.125 kg/kg)
         let currentAgregadosPostHorno = [];
         if (mermasData.ingredientes_extra && mermasData.ingredientes_extra.length > 0) {
             currentAgregadosPostHorno = mermasData.ingredientes_extra.map(ing => ({
@@ -13132,7 +13132,8 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                 nombre_ingrediente: ing.nombre_ingrediente,
                 cantidad: parseFloat(ing.cantidad),
                 costo_patron: parseFloat(ing.costo_patron) || 0,
-                es_ratio_api: true
+                es_ratio_api: true,
+                es_post_horno: true
             }));
         }
 
@@ -13233,11 +13234,11 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         </div>
 
                         <!-- Nivel 3: Inyección y Visibilidad Transparente de Tarifa -->
-                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 6px;">
-                            <span id="sim_lbl_tarifa_tipo" style="font-size: 0.85em; color: #475569;">Tarifa Servicio ($/un):</span>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
+                            <span id="sim_lbl_tarifa_tipo" style="font-size: 0.85em; color: #475569; white-space: nowrap;">Tarifa Servicio ($/kg):</span>
                             <input type="number" id="sim_tarifa_input" step="0.01" style="width: 110px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9em; font-weight: bold; color: #1e3a8a;" placeholder="0.00" value="${currentTarifa > 0 ? currentTarifa.toFixed(2) : ''}" oninput="if(typeof window.recalcularSimulacionTostadero === 'function') window.recalcularSimulacionTostadero();">
                             
-                            <span style="font-size: 0.85em; color: #475569;">Unidades:</span>
+                            <span style="font-size: 0.85em; color: #475569; white-space: nowrap;">Unidades:</span>
                             <input type="number" id="sim_unidades_producidas" step="1" style="width: 80px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9em; font-weight: bold; text-align: center;" value="96" oninput="if(typeof window.recalcularSimulacionTostadero === 'function') window.recalcularSimulacionTostadero();">
                         </div>
                         <div id="sim_lbl_tarifa_detalle" style="background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; padding: 6px 10px; font-size: 0.82em; color: #0369a1; margin-top: 8px; font-weight: bold;">
@@ -13366,7 +13367,7 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                     }
                 };
 
-                // Agregar fila de insumo secundario
+                // Agregar fila de insumo secundario (Pre-Horno o Post-Horno)
                 window.agregarFilaInsumoSecundario = (data = null, skipRecalculate = false) => {
                     const ingName = data ? data.nombre_ingrediente : '';
                     const ingId = data ? (data.ingrediente_id || '') : '';
@@ -13374,12 +13375,21 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                     const ingCost = data ? parseFloat(data.costo_patron) || 0 : 0;
                     const initialSubtotal = initialQty * ingCost;
                     const isRatioApi = (data && data.es_ratio_api) ? 'true' : 'false';
-                    const baseRatio = data ? (initialQty / (currentKilosUnidad || 1)) : 0;
-                    const initialQtyFormatted = data ? Number(initialQty.toFixed(3)) : '';
-
-                    const containerId = (data && data.es_ratio_api && currentAgregadosPostHorno.some(p => String(p.ingrediente_id) === String(ingId)))
+                    const isPostHornoRow = Boolean(
+                        data && (
+                            data.es_post_horno === true ||
+                            (data.es_ratio_api && currentAgregadosPostHorno.some(p => String(p.ingrediente_id) === String(ingId)))
+                        )
+                    );
+                    const containerId = isPostHornoRow
                         ? 'sim_insumos_posthorno_container'
                         : 'sim_insumos_adicionales_container';
+                    // 🔑 BUGFIX 3.2(a): En post-horno (0.125 kg/kg) NUNCA dividir por currentKilosUnidad (6.90 / 7.00);
+                    // multiplicar directo 0.125 * masaSalidaHorno.
+                    const baseRatio = data
+                        ? (isPostHornoRow ? initialQty : (initialQty / (currentKilosUnidad || 1)))
+                        : 0;
+                    const initialQtyFormatted = data ? Number(initialQty.toFixed(3)) : '';
 
                     const targetContainer = document.getElementById(containerId);
                     if (!targetContainer) return;
@@ -13399,9 +13409,9 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                             <span style="font-size: 0.85em; color: #475569; font-weight: 500;">kg</span>
                         </div>
                         ${containerId === 'sim_insumos_posthorno_container' ? `
-                        <div style="flex: 1.6; font-size: 0.82em; color: #86198f; text-align: right; line-height: 1.2; min-width: 110px;">
-                            <div class="sim-insumo-unit-cost-lbl" style="display: none;">$ ${ingCost.toFixed(2)}/kg</div>
-                            <div class="sim-insumo-subtotal-lbl" style="color: #86198f; font-size: 0.88em; font-weight: 600;">(Merma 0%)</div>
+                        <div style="flex: 1.6; font-size: 0.82em; color: #86198f; text-align: right; line-height: 1.25; min-width: 120px;">
+                            <div class="sim-insumo-unit-cost-lbl" style="color: #a21caf; font-size: 0.84em;">$ ${ingCost.toFixed(2)}/kg · (0% merma)</div>
+                            <div class="sim-insumo-subtotal-lbl" style="color: #701a75; font-size: 0.92em; font-weight: 700;">${currencyFormatterLocal.format(initialSubtotal)}</div>
                         </div>
                         ` : `
                         <div style="flex: 1.6; font-size: 0.82em; color: #334155; text-align: right; line-height: 1.2; min-width: 110px;">
@@ -13535,13 +13545,13 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                     const containerPost = document.getElementById('sim_insumos_posthorno_container');
                     const rowsPost = containerPost ? containerPost.querySelectorAll('.sim-insumo-row') : [];
                     
-                    // Escalar ratios dinámicamente multiplicando por la Salida de Horno limpia
+                    // Escalar ratios dinámicamente multiplicando directo por la Salida de Horno limpia (0.125 * masaSalidaHorno)
                     rowsPost.forEach(r => {
                         const qtyInp = r.querySelector('.sim-insumo-qty-input');
                         if (qtyInp && qtyInp.getAttribute('data-is-ratio') === 'true') {
                             const baseRatio = parseFloat(qtyInp.getAttribute('data-base-ratio')) || 0;
-                            const newQty = baseRatio * masaSalidaHorno;
-                            qtyInp.value = Number(newQty.toFixed(3));
+                            const newQty = Number((baseRatio * masaSalidaHorno).toFixed(3));
+                            qtyInp.value = newQty;
                         }
                     });
 
@@ -13549,29 +13559,34 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         const nameInp = r.querySelector('.sim-insumo-search-input');
                         const idInp = r.querySelector('.sim-insumo-id-val');
                         const qtyInp = r.querySelector('.sim-insumo-qty-input');
+                        const unitCostLbl = r.querySelector('.sim-insumo-unit-cost-lbl');
+                        const subtotalLbl = r.querySelector('.sim-insumo-subtotal-lbl');
 
                         const name = nameInp ? nameInp.value.trim() : '';
                         const id = idInp ? idInp.value : '';
                         const qty = qtyInp ? parseFloat(String(qtyInp.value).replace(',', '.')) || 0 : 0;
                         const cost = nameInp ? parseFloat(nameInp.getAttribute('data-costo')) || 0 : 0;
+                        const subRowCost = qty * cost;
+
+                        if (unitCostLbl) unitCostLbl.innerText = `$ ${cost.toFixed(2)}/kg · (0% merma)`;
+                        if (subtotalLbl) subtotalLbl.innerText = currencyFormatterLocal.format(subRowCost);
 
                         if (name) {
                             activePostHorno.push({ ingrediente_id: id || null, nombre_ingrediente: name, cantidad: qty, costo_patron: cost });
                             sumQtyPostHorno += qty;
-                            sumCostPostHorno += qty * cost;
+                            sumCostPostHorno += subRowCost;
                         }
                     });
 
                     currentIngredientesExtra = activeIngredients;
                     currentAgregadosPostHorno = activePostHorno;
 
-                    // 🔑 MOTOR DUAL DE MANO DE OBRA (BIFURCACIÓN GRANEL vs UNIDAD) - v5.64
+                    // 🔑 MOTOR DUAL DE MANO DE OBRA (BIFURCACIÓN GRANEL vs UNIDAD)
                     const modoUnidadCheck = document.getElementById('gp-tostadero-modo-unidad-check') || document.getElementById('sim_modo_unidad_check');
                     const esModoUnidad = modoUnidadCheck ? modoUnidadCheck.checked : false;
                     const unidadesProdInp = document.getElementById('sim_unidades_producidas');
                     const unidadesProd = unidadesProdInp ? (parseFloat(unidadesProdInp.value) || 1) : 1;
-                    
-                    // Vector B (v5.64): Bloqueo DOM del Input de Unidades en Modo Granel
+
                     if (unidadesProdInp) {
                         if (esModoUnidad) {
                             unidadesProdInp.disabled = false;
@@ -13584,45 +13599,34 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         }
                     }
 
-                    const masaFinalTerminada = masaSalidaHorno + sumQtyPostHorno;
+                    const masaFinalTerminada = Number((masaSalidaHorno + sumQtyPostHorno).toFixed(3));
                     let manoObraTotalVal = 0;
 
                     if (esModoUnidad) {
-                        // Modo Unidad Productiva (Maquila): MO = Tarifa_Unidad * Unidades (Multiplicador por kilos desactivado)
                         manoObraTotalVal = tarifaVal * unidadesProd;
                     } else {
-                        // Modo Granel: MO = Tarifa_Kilo * Kilos_Salida (Masa Final con agregados)
+                        // Modo Granel: MO = Tarifa_Productor_Kg * Masa_Final (incluye agregados secos post-horno)
                         manoObraTotalVal = tarifaVal * masaFinalTerminada;
                     }
-                    
-                    // D) Cascada Dinámica de Operaciones (Inversion_Total / Kilos_Entrada / Factor_Rendimiento) - Bifurcación v5.64
-                    const factorRendimiento = Math.max(0.0001, rend);
-                    let inversionTotalTanda = 0;
 
-                    if (esModoUnidad) {
-                        // 🔒 FLUJO POR PIEZAS (BARRITAS - FASE 1 INMUTABLE): Incluye costo monetario de agregados post-horno si existiera
-                        inversionTotalTanda = costoTotalHorneable + manoObraTotalVal + sumCostPostHorno;
-                    } else {
-                        // 🥣 FLUJO GRANEL (GRANOLAS - FASE 2 RECTIFICADO): Agregados secos post-horno aportan KILOS (para MO) pero $0.00 PESOS en Inversión Total Tostadero
-                        inversionTotalTanda = costoTotalHorneable + manoObraTotalVal;
-                    }
+                    // 🔑 BUGFIX 3.2(b) & 3.2(c) — REGLA OFICIAL DE PLANTA LÍNEA 6:
+                    // Costo_Total_Tanda = Costo_Mezcla_Base + Costo_Aceite_Coco + Costo_Miel + Costo_Coco_Escamas + Costo_Pasas + (Masa_Final * Tarifa_Productor_Kg)
+                    // Costo_Base_AP ($/kg) = Costo_Total_Tanda / Masa_Final (NUNCA dividir por masaSalidaHorno)
+                    const factorRendimiento = Math.max(0.0001, rend);
+                    const costoTotalMateriaPrimaTanda = costoTotalHorneable + sumCostPostHorno;
+                    const inversionTotalTanda = costoTotalMateriaPrimaTanda + manoObraTotalVal;
 
                     const costoUnitarioPorPieza = unidadesProd > 0 ? (inversionTotalTanda / unidadesProd) : 0;
-                    
-                    // 🔑 BIFURCACIÓN DE COSTO POR KILO (UNIDAD vs LÍNEA 4 PURA vs GRANEL CONCENTRADO)
+
                     let costoFinalPorKilo = 0;
                     if (esModoUnidad) {
-                        // 🔒 FLUJO POR PIEZAS (BARRITAS - FASE 1 INMUTABLE):
                         costoFinalPorKilo = masaFinalTerminada > 0 ? (inversionTotalTanda / masaFinalTerminada) : 0;
                     } else if (esLinea4Pura && sumQtyPostHorno === 0) {
                         // 🥜 FLUJO LÍNEA 4 TOSTADEROS (Ecuación Exacta Unificada):
-                        // Solo el crudo absorbe la merma; la tarifa del productor se suma por kg entregado sin dividir por merma.
                         costoFinalPorKilo = (currentCostoCrudo / factorRendimiento) + tarifaVal;
                     } else {
-                        // 🥣 FLUJO GRANEL (GRANOLAS - COSTO BASE CONCENTRADO v5.65):
-                        // Se divide por masaSalidaHorno (la masa que sufrió la merma) para evitar la doble dilución en Búnker
-                        const masaBaseHorneadaReal = Math.max(0.0001, masaSalidaHorno);
-                        costoFinalPorKilo = masaBaseHorneadaReal > 0 ? (inversionTotalTanda / masaBaseHorneadaReal) : 0;
+                        // 🥣 FLUJO LÍNEA 6 GRANOLAS: Costo_Total_Tanda / Masa_Final
+                        costoFinalPorKilo = masaFinalTerminada > 0 ? (inversionTotalTanda / masaFinalTerminada) : 0;
                     }
                     currentCostoFinalExacto = costoFinalPorKilo;
 
@@ -13651,6 +13655,10 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         }
                     }
                     
+                    const elLblTarifaTipo = document.getElementById('sim_lbl_tarifa_tipo');
+                    if (elLblTarifaTipo) {
+                        elLblTarifaTipo.innerText = esModoUnidad ? 'Tarifa Servicio ($/un):' : 'Tarifa Servicio ($/kg):';
+                    }
                     const elDetalleTarifa = document.getElementById('sim_lbl_tarifa_detalle');
                     if (elDetalleTarifa) {
                         if (esModoUnidad) {
@@ -13715,23 +13723,30 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
 
                         htmlExtras += `
                             <div style="display: flex; justify-content: space-between; padding: 4px 0; border-top: 1.5px solid #bfdbfe; margin-top: 4px; font-weight: bold; color: #1e3a8a;">
-                                <span>Masa Horneable (${masaHorneable.toFixed(2)} kg):</span>
-                                <span>Total MP: ${currencyFormatterLocal.format(costoTotalHorneable)}</span>
+                                <span>Masa Pre-Horno (${masaHorneable.toFixed(2)} kg ➔ Salida Horno: ${masaSalidaHorno.toFixed(2)} kg):</span>
+                                <span>MP Pre-Horno: ${currencyFormatterLocal.format(costoTotalHorneable)}</span>
                             </div>
                         `;
 
                         if (currentAgregadosPostHorno.length > 0) {
-                            htmlExtras += `<div style="margin-top: 4px; margin-bottom: 2px; color: #86198f; font-weight: bold; font-size: 0.9em;">Agregados Post-Horno (Merma 0%):</div>`;
+                            htmlExtras += `<div style="margin-top: 4px; margin-bottom: 2px; color: #86198f; font-weight: bold; font-size: 0.9em;">Agregados Secos Post-Horno en Depósito (Merma 0%):</div>`;
                             currentAgregadosPostHorno.forEach(ing => {
                                 const cant = parseFloat(ing.cantidad) || 0;
+                                const cost = parseFloat(ing.costo_patron) || 0;
                                 const cantFmt = Number(cant.toFixed(3));
                                 htmlExtras += `
                                     <div style="display: flex; justify-content: space-between; padding: 2px 0;">
-                                        <span style="color: #86198f;">• ${ing.nombre_ingrediente} (${cantFmt} kg):</span>
-                                        <span style="font-weight: 500; color: #86198f;">+ ${cantFmt} kg (Agregado Seco)</span>
+                                        <span style="color: #86198f;">• ${ing.nombre_ingrediente} (+${cantFmt} kg @ ${currencyFormatterLocal.format(cost)}/kg):</span>
+                                        <span style="font-weight: 700; color: #701a75;">${currencyFormatterLocal.format(cant * cost)}</span>
                                     </div>
                                 `;
                             });
+                            htmlExtras += `
+                                <div style="display: flex; justify-content: space-between; padding: 4px 0; border-top: 1px dashed #e879f9; margin-top: 3px; font-weight: bold; color: #0f172a;">
+                                    <span>Total Materia Prima Tanda (Pre + Post-Horno):</span>
+                                    <span>${currencyFormatterLocal.format(costoTotalMateriaPrimaTanda)}</span>
+                                </div>
+                            `;
                         }
 
                         const labelMasaFinal = esModoUnidad 
@@ -13924,7 +13939,8 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                                     nombre_ingrediente: ing.nombre_ingrediente,
                                     cantidad: parseFloat(ing.cantidad),
                                     costo_patron: parseFloat(ing.costo_patron) || 0,
-                                    es_ratio_api: true
+                                    es_ratio_api: true,
+                                    es_post_horno: true
                                 }));
                             }
 
@@ -14338,15 +14354,38 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
             }
             window.gp_current_articulo_data.propiedades_dinamicas.tostadero_simulacion = finalObj;
 
-            // Persistir inmediatamente en propiedades_dinamicas.tostadero_simulacion para que al reabrir jamás arranque en $0,00
+            // Persistir en propiedades_dinamicas.tostadero_simulacion Y sincronizar bunker_articulos.costo_base + listas
             try {
-                await fetch(`/api/logistica/bunker/tostadero-simulacion/${encodeURIComponent(skuSalida)}`, {
+                const respSyncSim = await fetch(`/api/logistica/bunker/tostadero-simulacion/${encodeURIComponent(skuSalida)}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(finalObj)
+                    body: JSON.stringify({
+                        ...finalObj,
+                        sincronizar_costo_y_listas: true
+                    })
                 });
+                if (respSyncSim.ok) {
+                    const syncJson = await respSyncSim.json().catch(() => null);
+                    if (syncJson && typeof syncJson.costo_base === 'number') {
+                        window.gp_current_articulo_data.costo_base = syncJson.costo_base;
+                    }
+                }
             } catch (errSaveSim) {
                 console.warn('⚠️ No se pudo persistir tostadero_simulacion de forma anticipada:', errSaveSim);
+            }
+
+            // Sincronizar también en memoria las listas abiertas en la modal financiera de Búnker
+            if (typeof gp_listasFinancieras !== 'undefined' && Array.isArray(gp_listasFinancieras)) {
+                gp_listasFinancieras.forEach(list => {
+                    list.costo_base_sobrescrito = finalVal;
+                });
+                const heredarCheck = document.getElementById('gp-heredar-costo');
+                if (heredarCheck) heredarCheck.checked = false;
+                const inputManual = document.getElementById('gp-costo-manual');
+                if (inputManual) inputManual.value = finalVal.toFixed(2);
+                if (typeof window.recalcularPreciosGestor === 'function') {
+                    window.recalcularPreciosGestor();
+                }
             }
 
             const tostaderoMermaEl = document.getElementById('gp-tostadero-merma-val');

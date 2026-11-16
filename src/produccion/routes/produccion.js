@@ -5398,6 +5398,14 @@ router.get('/simulacion/inicializar', async (req, res) => {
                         CASE
                             WHEN NOT (peh.articulo_padre_id ILIKE 'BF%' OR peh.articulo_fraccionado_id ILIKE 'BF%' OR peh.articulo_padre_id ILIKE 'G%GN%' OR peh.articulo_fraccionado_id ILIKE 'G%GN%')
                             THEN COALESCE(NULLIF(svm_rec.kilos_egresados_reales, 0), NULLIF(peh.kilos_entrada, 0))
+                            WHEN (peh.articulo_padre_id ILIKE 'G%GN%' OR peh.articulo_fraccionado_id ILIKE 'G%GN%')
+                            THEN CASE
+                                WHEN COALESCE(peh.kilos_entrada, 0) > COALESCE(svm_rec.kilos_egresados_reales, 0) + 0.01
+                                THEN peh.kilos_entrada
+                                WHEN COALESCE(svm_rec.kilos_egresados_reales, 0) > 0
+                                THEN svm_rec.kilos_egresados_reales + COALESCE(NULLIF(isu_rec.kilos_domicilio_reales, 0), NULLIF(bp_up.masa_agregados_bp, 0), 2.78)
+                                ELSE NULLIF(COALESCE(bp_up.masa_base_bp, 0) + COALESCE(bp_up.masa_agregados_bp, 0), 0)
+                            END
                             ELSE COALESCE(NULLIF(peh.kilos_entrada, 0), NULLIF(svm_rec.kilos_egresados_reales, 0))
                         END AS ent_res,
                         COALESCE(NULLIF(peh.kilos_salida, 0), peh.kilos_producidos) AS sal_res,
@@ -5417,6 +5425,30 @@ router.get('/simulacion/inicializar', async (req, res) => {
                         WHERE svm.carro_id = peh.carro_id
                           AND LOWER(COALESCE(svm.tipo, '')) LIKE '%egreso por receta externa%'
                     ) svm_rec ON true
+                    LEFT JOIN LATERAL (
+                        SELECT COALESCE(SUM(ABS(isu.cantidad)), 0) AS kilos_domicilio_reales
+                        FROM public.ingredientes_stock_usuarios isu
+                        WHERE isu.origen_carro_id = peh.carro_id
+                          AND isu.cantidad < 0
+                    ) isu_rec ON true
+                    LEFT JOIN LATERAL (
+                        SELECT
+                            COALESCE((
+                                SELECT SUM(CAST(ra.cantidad AS DECIMAL(20,10)) * COALESCE(NULLIF(CAST(src_b.kilos_unidad AS DECIMAL(20,10)), 0), NULLIF(ba_b.kilos_unidad, 0), 1.00))
+                                FROM public.receta_articulos ra
+                                LEFT JOIN public.stock_real_consolidado src_b ON src_b.articulo_numero = ra.articulo_numero
+                                LEFT JOIN public.bunker_articulos ba_b ON ba_b.articulo_id = ra.articulo_numero
+                                WHERE ra.receta_id = r_up.id
+                            ), 0) AS masa_base_bp,
+                            COALESCE((
+                                SELECT SUM(CAST(ri.cantidad AS DECIMAL(20,10)))
+                                FROM public.receta_ingredientes ri
+                                WHERE ri.receta_id = r_up.id
+                            ), 0) AS masa_agregados_bp
+                        FROM public.recetas r_up
+                        WHERE UPPER(BTRIM(r_up.articulo_numero)) = UPPER(BTRIM(peh.articulo_padre_id))
+                        LIMIT 1
+                    ) bp_up ON true
                     WHERE UPPER(BTRIM(COALESCE(peh.articulo_padre_id, ''))) <> UPPER(BTRIM(COALESCE(peh.articulo_fraccionado_id, '')))
                     ORDER BY peh.fecha_registro DESC
                     LIMIT 500
@@ -5435,6 +5467,7 @@ router.get('/simulacion/inicializar', async (req, res) => {
                              AND COALESCE(kilos_producidos, 0) <= ent_res + 0.0001
                              AND sal_res <= ent_res + 0.0001
                              AND (ldn_res <> 4 OR (((ent_res - sal_res) / ent_res) * 100 BETWEEN 0 AND 25))
+                             AND (ldn_res <> 6 OR (((ent_res - sal_res) / ent_res) * 100 BETWEEN 0 AND 30))
                         THEN ROUND(((ent_res - sal_res) / ent_res) * 100, 2)
                         ELSE NULL
                     END AS porcentaje_merma,
@@ -5444,6 +5477,7 @@ router.get('/simulacion/inicializar', async (req, res) => {
                              OR COALESCE(kilos_producidos, 0) > ent_res + 0.0001
                              OR sal_res > ent_res + 0.0001
                              OR (ldn_res = 4 AND NOT (((ent_res - sal_res) / ent_res) * 100 BETWEEN 0 AND 25))
+                             OR (ldn_res = 6 AND NOT (((ent_res - sal_res) / ent_res) * 100 BETWEEN 0 AND 30))
                         THEN true
                         ELSE false
                     END AS es_invalida,

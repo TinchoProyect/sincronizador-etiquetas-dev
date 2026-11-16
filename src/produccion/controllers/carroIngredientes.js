@@ -1008,47 +1008,46 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId, kilosR
             }
 
             // Por cada ingrediente en la receta base o custom
+            const apCodigoUpper = String(articuloVinculado.articulo_kilo_codigo || '').trim().toUpperCase();
+            const esApGranolaLdn6 = apCodigoUpper === 'GFGNFX1' || apCodigoUpper === 'GSGNFX1';
+
             for (const ing of ingredientesBase) {
-                const multiplicador = articuloVinculado.multiplicador_ingredientes || 1;
-                
+                const multiplicador = parseFloat(articuloVinculado.multiplicador_ingredientes) || 1;
+                const rawCant = parseFloat(ing.cantidad) || 0;
+
                 // 🎯 NUEVO MOTOR MATEMÁTICO:
                 let cantidadBasePorKilo;
-                
-                if (esRecetaGlobal) {
-                    // Histórico: Las recetas globales en la BD guardan el peso para la canasta completa (ej 10.2 kg).
-                    // Para estandarizar a la vista (por kilo), se divide por el multiplicador de la relación.
-                    cantidadBasePorKilo = ing.cantidad / multiplicador;
+
+                if (esRecetaGlobal && rawCant >= 1) {
+                    // Histórico: recetas globales expresadas por tanda completa (>= 1 kg) se normalizan dividiendo por el multiplicador.
+                    cantidadBasePorKilo = rawCant / multiplicador;
                 } else {
-                    // Custom Editado: En el modal, el operario ya editó directamente la proporción (por kilo).
-                    // Viene pura desde el front-end (ej: 0.125), no debe someterse a divisiones ni multiplicaciones inversas.
-                    cantidadBasePorKilo = ing.cantidad;
+                    // Proporción directa por kilo horneado (ej: 0.125 kg/kg en Granolas Línea 6).
+                    cantidadBasePorKilo = rawCant;
                 }
-                
+
                 const factorCantidad = kilosRealesDeclarados !== null ? kilosRealesDeclarados : articuloVinculado.cantidad;
                 const cantidadTotal = Number((cantidadBasePorKilo * factorCantidad).toPrecision(10));
-                
+                const faseDeterminista = esApGranolaLdn6 ? 'interna' : (ing.fase_produccion || 'interna');
+
                 console.log(`\n🔍 ANÁLISIS DE CANTIDADES VINCULADAS - ${articuloVinculado.articulo_kilo_codigo} `);
                 console.log(`===================================================== `);
                 console.log(`1️⃣ DATOS DE ENTRADA: `);
                 console.log(`- Fuente: ${esRecetaGlobal ? 'Global (de BD Recetas)' : 'Custom Override (de UI Modal)'}`);
-                console.log(`- Valor Puro Recibido (ing.cantidad): ${ing.cantidad}`);
+                console.log(`- Valor Puro Recibido (ing.cantidad): ${rawCant}`);
                 console.log(`- Factor Kilos Asentados: ${factorCantidad} `);
                 console.log(`2️⃣ CÁLCULO DE NORMALIZACIÓN (POR KILO): `);
-                console.log(`- Tasa Base Consolidada: ${cantidadBasePorKilo} kg (por cada 1 kg de producto final)`);
+                console.log(`- Tasa Base Consolidada: ${cantidadBasePorKilo} kg (por cada 1 kg salido de cocción)`);
                 console.log(`- Cantidad Total Resultante: ${cantidadBasePorKilo} * ${factorCantidad} = ${cantidadTotal}`);
+                console.log(`- Fase Producción: ${faseDeterminista}`);
                 console.log(`=====================================================\n`);
 
-                let ingredienteIdParaExpandir = ing.ingrediente_id;
+                let ingredienteIdParaExpandir = ing.ingrediente_id ? parseInt(ing.ingrediente_id, 10) : null;
 
-                // Si ingrediente_id es null, buscar por nombre
+                // Solo fallback por nombre en registros legacy que aún no tuvieran ingrediente_id entero
                 if (!ingredienteIdParaExpandir) {
-                    console.log(`🔍 ingrediente_id es NULL para ${ing.nombre_ingrediente}, buscando por nombre...`);
+                    console.log(`🔍 ingrediente_id es NULL para ${ing.nombre_ingrediente}, buscando fallback...`);
                     ingredienteIdParaExpandir = await buscarIngredientePorNombre(ing.nombre_ingrediente);
-                    if (ingredienteIdParaExpandir) {
-                        console.log(`✅ ID encontrado por nombre: ${ingredienteIdParaExpandir} para ${ing.nombre_ingrediente} `);
-                    } else {
-                        console.log(`⚠️ No se encontró ID para ${ing.nombre_ingrediente}, omitiendo expansión`);
-                    }
                 }
 
                 let ingredientesExpandidos = [];
@@ -1067,7 +1066,7 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId, kilosR
                         if (ingredientesExpandidos.length > 0) {
                             const mappedExp = ingredientesExpandidos.map(exp => ({
                                 ...exp,
-                                fase_produccion: ing.fase_produccion || 'externa',
+                                fase_produccion: faseDeterminista,
                                 es_post_coccion: true
                             }));
                             todosLosIngredientesVinculados = todosLosIngredientesVinculados.concat(mappedExp);
@@ -1076,27 +1075,25 @@ async function obtenerIngredientesArticulosVinculados(carroId, usuarioId, kilosR
                         }
                     } else {
                         console.log(`ℹ️ Ingrediente vinculado ${ing.nombre_ingrediente} (ID: ${ingredienteIdParaExpandir}) es un ingrediente simple - agregando directamente`);
-                        // Para ingredientes simples, agregar directamente
                         todosLosIngredientesVinculados.push({
                             id: ingredienteIdParaExpandir,
                             nombre: ing.nombre_ingrediente,
-                            unidad_medida: ing.unidad_medida,
+                            unidad_medida: ing.unidad_medida || 'Kilo',
                             cantidad: cantidadTotal,
                             cantidad_base_por_kilo: cantidadBasePorKilo,
-                            fase_produccion: ing.fase_produccion || 'externa',
+                            fase_produccion: faseDeterminista,
                             es_post_coccion: true
                         });
                     }
                 } else {
                     console.log(`⚠️ No se encontró ID para ingrediente vinculado ${ing.nombre_ingrediente} - agregando sin ID`);
-                    // Si no se encontró ID, agregar sin ID (fallback)
                     todosLosIngredientesVinculados.push({
                         id: null,
                         nombre: ing.nombre_ingrediente,
-                        unidad_medida: ing.unidad_medida,
+                        unidad_medida: ing.unidad_medida || 'Kilo',
                         cantidad: cantidadTotal,
                         cantidad_base_por_kilo: cantidadBasePorKilo,
-                        fase_produccion: ing.fase_produccion || 'externa',
+                        fase_produccion: faseDeterminista,
                         es_post_coccion: true
                     });
                 }

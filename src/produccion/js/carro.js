@@ -3333,6 +3333,84 @@ export async function mostrarArticulosDelCarro() {
                     `;
                 }
 
+                // 🥣 ANATOMÍA EN 2 ETAPAS PARA LÍNEA 6 (GRANOLAS: GFGN / GSGN) — visible en en_preparacion y preparado
+                const skuUpUpper = String(art.numero || '').trim().toUpperCase();
+                const apRelUpper = String(relacion?.articulo_kilo_codigo || '').trim().toUpperCase();
+                const esGranolaLdn6 = skuUpUpper === 'GFGN' || skuUpUpper === 'GSGN' || apRelUpper === 'GFGNFX1' || apRelUpper === 'GSGNFX1' || String(art.descripcion || '').toUpperCase().includes('GRANA');
+
+                if (esGranolaLdn6) {
+                    try {
+                        const [resIngDom, resIngVinc] = await Promise.all([
+                            fetch(`/api/produccion/carro/${carroId}/ingredientes?usuarioId=${colaborador.id}`).catch(() => null),
+                            fetch(`/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${colaborador.id}`).catch(() => null)
+                        ]);
+                        const ingDomList = (resIngDom && resIngDom.ok) ? (await resIngDom.json()) : [];
+                        const ingVincList = (resIngVinc && resIngVinc.ok) ? (await resIngVinc.json()) : [];
+
+                        const kgBultosPreHorno = (articulosRecetaUp || []).reduce((s, ins) => {
+                            const cU = parseFloat(ins.cantidad_total || 1);
+                            return s + (parseFloat(ins.kilos_totales) || (cU * (parseFloat(ins.kilos_unidad) || 1)));
+                        }, 0);
+                        const ingDomPreHorno = (ingDomList || []).filter(i => !i.es_de_articulo_vinculado);
+                        const kgDomPreHorno = ingDomPreHorno.reduce((s, i) => s + (parseFloat(i.cantidad) || 0), 0);
+                        const masaPreHornoTotal = Number((kgBultosPreHorno + kgDomPreHorno).toFixed(2));
+
+                        const itemsFase1BultoHtml = (articulosRecetaUp || []).map(ins => {
+                            const cU = parseFloat(ins.cantidad_total || 1);
+                            const kTot = parseFloat(ins.kilos_totales || (cU * (parseFloat(ins.kilos_unidad) || 1)));
+                            const stk = parseFloat(ins.stock_actual || 0);
+                            return `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed #fde68a;">
+                                <span>📦 <b>[${escaparAtributoHtml(ins.articulo_numero)}]</b> ${escaparAtributoHtml(ins.nombre || '')} <small style="color:#64748b;">(Depósito)</small></span>
+                                <span><b>${cU} u = ${kTot.toFixed(2)} kg</b> · <small style="color:${stk >= cU || esPreparado ? '#15803d' : '#b91c1c'};font-weight:700;">Stock dep: ${stk.toFixed(2)} u</small></span>
+                            </div>`;
+                        }).join('');
+
+                        const itemsFase1DomHtml = ingDomPreHorno.map(i => {
+                            const req = parseFloat(i.cantidad) || 0;
+                            const saldoLive = (esPreparado && typeof i.stock_live === 'number') ? i.stock_live : (parseFloat(i.stock_actual) || 0);
+                            const ok = esPreparado ? true : (saldoLive + 0.0001 >= req);
+                            const tagEstado = esPreparado
+                                ? `<span style="color:#15803d;font-weight:700;">✅ Descontado (Saldo neto actual: ${saldoLive.toFixed(2)} kg)</span>`
+                                : (ok
+                                    ? `<span style="color:#15803d;font-weight:700;">✅ Saldo domicilio: ${saldoLive.toFixed(2)} kg</span>`
+                                    : `<span style="color:#b91c1c;font-weight:700;">❌ Saldo domicilio: ${saldoLive.toFixed(2)} kg (Faltan ${(req - saldoLive).toFixed(2)} kg)</span>`);
+                            return `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed #fde68a;flex-wrap:wrap;">
+                                <span>🏠 <b>[#${i.id}] ${escaparAtributoHtml(i.nombre || '')}</b> <small style="color:#64748b;">(Domicilio colaborador)</small></span>
+                                <span><b>${req.toFixed(2)} kg</b> · ${tagEstado}</span>
+                            </div>`;
+                        }).join('');
+
+                        const itemsFase2PostHtml = (ingVincList || []).map(iv => {
+                            const ratio = parseFloat(iv.cantidad_base_por_kilo) || parseFloat(iv.cantidad) || 0.125;
+                            const stkDep = parseFloat(iv.stock_actual) || 0;
+                            return `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed #bae6fd;flex-wrap:wrap;">
+                                <span>🏭 <b>[#${iv.id}] ${escaparAtributoHtml(iv.nombre || '')}</b> <small style="color:#64748b;">(Depósito central · Merma 0%)</small></span>
+                                <span><b>${ratio.toFixed(3)} kg / kg horneado</b> · <small style="color:${stkDep > 0 ? '#0369a1' : '#b91c1c'};font-weight:700;">Stock depósito: ${stkDep.toFixed(2)} kg</small></span>
+                            </div>`;
+                        }).join('');
+
+                        html += `
+                            <div class="anatomia-granola-ldn6-card" style="background:#ffffff;border:1.5px solid #10b981;border-radius:8px;padding:10px 12px;margin:4px 0 8px 0;font-size:0.86em;">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+                                    <span style="font-weight:800;color:#065f46;font-size:0.98em;">🥣 Anatomía Oficial de Planta — Línea 6 (Granolas en 2 Etapas)</span>
+                                    <span style="background:#d1fae5;color:#065f46;border:1px solid #6ee7b7;padding:2px 8px;border-radius:9999px;font-weight:700;font-size:0.82em;">Masa Pre-Horno: ${masaPreHornoTotal.toFixed(2)} kg</span>
+                                </div>
+                                <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:7px 10px;margin-bottom:7px;">
+                                    <div style="font-weight:800;color:#92400e;margin-bottom:4px;">🔥 Fase 1 — Pre-Horno (Va a cocción · Total ${masaPreHornoTotal.toFixed(2)} kg)</div>
+                                    ${itemsFase1BultoHtml}
+                                    ${itemsFase1DomHtml}
+                                </div>
+                                <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:7px 10px;">
+                                    <div style="font-weight:800;color:#0c4a6e;margin-bottom:4px;">➕ Fase 2 — Post-Horno en Depósito (Se calcula sobre kg salidos de horno y se descuenta en Depósito al asentar)</div>
+                                    ${itemsFase2PostHtml || '<div style="color:#64748b;">Sin agregados post-horno configurados</div>'}
+                                </div>
+                            </div>
+                        `;
+                    } catch (errAnat6) {
+                        console.warn('Aviso al renderizar anatomía de 2 etapas Línea 6:', errAnat6);
+                    }
+                }
+
                 if (tieneRelacion) {
                     const codPuenteSafe = (relacion.articulo_kilo_codigo || '').replace(/'/g, "\\'");
                     const nomPuenteSafe = (relacion.articulo_kilo_nombre || '').replace(/'/g, "\\'");
