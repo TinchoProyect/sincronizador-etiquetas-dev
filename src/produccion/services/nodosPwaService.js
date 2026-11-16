@@ -79,7 +79,7 @@ function extraerPaletaNodoPwa(nodo) {
 function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '') {
     const slug = String(nodo?.slug || '').trim();
     const slugEnc = encodeURIComponent(slug);
-    const nombreMarca = String(nodo?.nombre_marca || 'Nodo Barrial').trim();
+    const nombreMarca = String(nodo?.nombre_marca || 'Tienda').trim();
     const bajada = String(nodo?.bajada_marca || nodo?.subtitulo_marca || '').trim();
     const pal = extraerPaletaNodoPwa(nodo);
 
@@ -90,12 +90,13 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '') {
         const startUrl = tieneTokenValido
             ? `/gestor/${slugEnc}?t=${encodeURIComponent(tokReal)}&pwa=1`
             : `/gestor/${slugEnc}?pwa=1`;
+        const tituloGestion = `Gestión ${nombreMarca}`;
 
         return {
             id: `/gestor/${slugEnc}`,
-            name: `${nombreMarca} · Panel Nodo`,
-            short_name: `Nodo ${nombreMarca}`,
-            description: `Panel operativo de gestión — Nodo ${nombreMarca}`,
+            name: tituloGestion,
+            short_name: tituloGestion,
+            description: `Gestión comercial — ${nombreMarca}`,
             lang: 'es-AR',
             start_url: startUrl,
             scope: `/gestor/${slugEnc}`,
@@ -105,19 +106,19 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '') {
             theme_color: pal.fondoGestor,
             icons: [
                 {
-                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-192.png?v=1`,
+                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-192.png?v=2`,
                     sizes: '192x192',
                     type: 'image/png',
                     purpose: 'any'
                 },
                 {
-                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=1`,
+                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=2`,
                     sizes: '512x512',
                     type: 'image/png',
                     purpose: 'any'
                 },
                 {
-                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=1`,
+                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=2`,
                     sizes: '512x512',
                     type: 'image/png',
                     purpose: 'maskable'
@@ -128,9 +129,9 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '') {
 
     return {
         id: `/tienda/${slugEnc}`,
-        name: `${nombreMarca} — Tienda`,
+        name: nombreMarca,
         short_name: nombreMarca,
-        description: bajada || `Tienda vecinal de ${nombreMarca}`,
+        description: bajada || `Tienda de ${nombreMarca}`,
         lang: 'es-AR',
         start_url: `/tienda/${slugEnc}?pwa=1`,
         scope: `/tienda/${slugEnc}`,
@@ -140,19 +141,19 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '') {
         theme_color: pal.fondoClaro,
         icons: [
             {
-                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-192.png?v=1`,
+                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-192.png?v=2`,
                 sizes: '192x192',
                 type: 'image/png',
                 purpose: 'any'
             },
             {
-                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=1`,
+                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=2`,
                 sizes: '512x512',
                 type: 'image/png',
                 purpose: 'any'
             },
             {
-                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=1`,
+                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=2`,
                 sizes: '512x512',
                 type: 'image/png',
                 purpose: 'maskable'
@@ -172,69 +173,6 @@ function trazarRectRedondeado(ctx, x, y, w, h, r) {
     ctx.closePath();
 }
 
-/**
- * Dibuja la palabra "NODO" con geometría vectorial redondeada limpia
- * para garantizar nitidez idéntica en Windows y Linux sin depender de fuentes del SO.
- */
-function dibujarPalabraVectorialNodo(ctx, centerX, centerY, heightPx, colorHex) {
-    const h = heightPx;
-    const stroke = Math.max(2, h * 0.205);
-    const wN = h * 0.72;
-    const wO = h * 0.76;
-    const wD = h * 0.74;
-    const gap = h * 0.34;
-    const totalW = wN + gap + wO + gap + wD + gap + wO;
-
-    ctx.save();
-    ctx.strokeStyle = colorHex;
-    ctx.lineWidth = stroke;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    let x = centerX - totalW / 2;
-    const top = centerY - h / 2;
-    const bot = centerY + h / 2;
-
-    // 'N'
-    ctx.beginPath();
-    ctx.moveTo(x, bot);
-    ctx.lineTo(x, top);
-    ctx.lineTo(x + wN, bot);
-    ctx.lineTo(x + wN, top);
-    ctx.stroke();
-    x += wN + gap;
-
-    // 'O' (1)
-    const drawRoundedO = (ox) => {
-        const rx = wO / 2;
-        const ry = h / 2;
-        ctx.beginPath();
-        ctx.ellipse(ox + rx, centerY, rx, ry, 0, 0, Math.PI * 2);
-        ctx.stroke();
-    };
-    drawRoundedO(x);
-    x += wO + gap;
-
-    // 'D'
-    ctx.beginPath();
-    ctx.moveTo(x, top);
-    ctx.lineTo(x, bot);
-    ctx.lineTo(x + wD * 0.38, bot);
-    ctx.bezierCurveTo(
-        x + wD * 1.08, bot,
-        x + wD * 1.08, top,
-        x + wD * 0.38, top
-    );
-    ctx.closePath();
-    ctx.stroke();
-    x += wD + gap;
-
-    // 'O' (2)
-    drawRoundedO(x);
-
-    ctx.restore();
-}
-
 function dibujarMonogramaFallback(ctx, cx, cy, boxSize, nombreMarca, colorMarca) {
     const r = boxSize * 0.46;
     ctx.save();
@@ -249,7 +187,7 @@ function dibujarMonogramaFallback(ctx, cx, cy, boxSize, nombreMarca, colorMarca)
     ctx.arc(cx, cy, r * 0.84, 0, Math.PI * 2);
     ctx.stroke();
 
-    const inicial = String(nombreMarca || 'N').trim().charAt(0).toUpperCase() || 'N';
+    const inicial = String(nombreMarca || 'T').trim().charAt(0).toUpperCase() || 'T';
     ctx.fillStyle = '#FFFDF9';
     ctx.font = `900 ${Math.round(boxSize * 0.48)}px "DejaVu Sans", "Segoe UI", Arial, sans-serif`;
     ctx.textAlign = 'center';
@@ -320,10 +258,11 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
     const safeSize = ICON_SIZES_VALIDOS.has(size) ? size : 192;
     const rolNorm = rol === 'gestor' ? 'gestor' : 'tienda';
     const pal = extraerPaletaNodoPwa(nodo);
-    const nombreMarca = String(nodo?.nombre_marca || 'Nodo').trim();
+    const nombreMarca = String(nodo?.nombre_marca || 'Tienda').trim();
     const logoB64Len = nodo?.logo_original_base64 ? String(nodo.logo_original_base64).length : 0;
 
     const cacheKey = [
+        'v2-clean',
         nodo?.id || 0,
         nodo?.slug || '',
         rolNorm,
@@ -352,12 +291,12 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
     }
 
     if (rolNorm === 'tienda') {
-        // Fondo cálido/crema limpio de la identidad visual de la tienda (sin marcos rectangulares que recorte Android circular)
+        // Fondo cálido/crema limpio de la identidad visual de la tienda (sin marcos ni textos)
         ctx.fillStyle = pal.fondoClaro;
         ctx.fillRect(0, 0, safeSize, safeSize);
 
-        // Isotipo centrado con amplio margen estético (~19% por lado, 100% seguro dentro de squircle iOS y círculo Android)
-        const boxSize = Math.round(safeSize * 0.62);
+        // Isotipo/monograma centrado con margen maskable seguro exacto (20% por lado)
+        const boxSize = Math.round(safeSize * 0.60);
         const offset = Math.round((safeSize - boxSize) / 2);
         let dibujado = false;
         if (isotipoImg) {
@@ -373,69 +312,41 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
             dibujarMonogramaFallback(ctx, safeSize / 2, safeSize / 2, boxSize, nombreMarca, colorMono);
         }
     } else {
-        // Variante Gestor / Nodo: fondo profundo de gestión (#654830 / primario oscuro)
+        // Variante Gestión: fondo profundo de gestión + medallón limpio centrado sin cintas ni textos
         const bgGrad = ctx.createLinearGradient(0, 0, 0, safeSize);
         bgGrad.addColorStop(0, pal.fondoGestor);
         bgGrad.addColorStop(1, pal.fondoGestorOscuro);
         ctx.fillStyle = bgGrad;
         ctx.fillRect(0, 0, safeSize, safeSize);
 
-        // Medallón superior crema cálido dentro de zona segura maskable (iOS squircle + Android círculo)
-        const cardW = Math.round(safeSize * 0.58);
-        const cardH = Math.round(safeSize * 0.49);
-        const cardX = Math.round((safeSize - cardW) / 2);
-        const cardY = Math.round(safeSize * 0.145);
-        const cardR = Math.round(safeSize * 0.125);
+        const cardSize = Math.round(safeSize * 0.60);
+        const cardOffset = Math.round((safeSize - cardSize) / 2);
+        const cardR = Math.round(safeSize * 0.145);
 
         ctx.save();
         ctx.shadowColor = 'rgba(20, 12, 6, 0.28)';
         ctx.shadowBlur = Math.round(safeSize * 0.032);
         ctx.shadowOffsetY = Math.round(safeSize * 0.012);
-        trazarRectRedondeado(ctx, cardX, cardY, cardW, cardH, cardR);
+        trazarRectRedondeado(ctx, cardOffset, cardOffset, cardSize, cardSize, cardR);
         ctx.fillStyle = pal.fondoClaro;
         ctx.fill();
         ctx.restore();
 
-        const isoSize = Math.round(safeSize * 0.39);
-        const isoX = Math.round((safeSize - isoSize) / 2);
-        const isoY = Math.round(cardY + (cardH - isoSize) / 2);
+        const isoSize = Math.round(safeSize * 0.44);
+        const isoOffset = Math.round((safeSize - isoSize) / 2);
         let dibujadoGestor = false;
         if (isotipoImg) {
             if (esIsotipoArchivo) {
-                ctx.drawImage(isotipoImg, isoX, isoY, isoSize, isoSize);
+                ctx.drawImage(isotipoImg, isoOffset, isoOffset, isoSize, isoSize);
                 dibujadoGestor = true;
             } else {
-                dibujadoGestor = dibujarImagenContenidaSegura(ctx, isotipoImg, isoX, isoY, isoSize);
+                dibujadoGestor = dibujarImagenContenidaSegura(ctx, isotipoImg, isoOffset, isoOffset, isoSize);
             }
         }
         if (!dibujadoGestor) {
             const colorMono = luminanciaRelativaHex(pal.colorMarca) > 0.45 ? oscurecerHex(pal.colorMarca, 0.78) : pal.colorMarca;
-            dibujarMonogramaFallback(ctx, safeSize / 2, cardY + cardH / 2, isoSize, nombreMarca, colorMono);
+            dibujarMonogramaFallback(ctx, safeSize / 2, safeSize / 2, isoSize, nombreMarca, colorMono);
         }
-
-        // Pastilla inferior nítida "NODO" centrada cómodamente dentro del círculo maskable (y: 68%..81%)
-        const pillW = Math.round(safeSize * 0.50);
-        const pillH = Math.round(safeSize * 0.128);
-        const pillX = Math.round((safeSize - pillW) / 2);
-        const pillY = Math.round(safeSize * 0.685);
-        const colorPastilla = luminanciaRelativaHex(pal.colorMarca) > 0.42
-            ? oscurecerHex(pal.colorMarca, 0.72)
-            : pal.colorMarca;
-
-        trazarRectRedondeado(ctx, pillX, pillY, pillW, pillH, pillH / 2);
-        ctx.fillStyle = colorPastilla;
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(255, 251, 245, 0.38)';
-        ctx.lineWidth = Math.max(1, safeSize * 0.008);
-        ctx.stroke();
-
-        dibujarPalabraVectorialNodo(
-            ctx,
-            safeSize / 2,
-            pillY + pillH / 2,
-            pillH * 0.48,
-            '#FFFDF9'
-        );
     }
 
     const buf = canvas.toBuffer('image/png');
@@ -447,8 +358,8 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
 }
 
 function generarCodigoServiceWorkerNodo() {
-    return `/* LAMDA Nodos Barriales — Service Worker liviano (network-first, sin caché de API, media ni subidas multipart) */
-const SW_VERSION = 'lamda-nodo-pwa-v3';
+    return `/* LAMDA Tiendas Comunitarias — Service Worker liviano (network-first, sin caché de API, media ni subidas multipart) */
+const SW_VERSION = 'lamda-nodo-pwa-v4';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

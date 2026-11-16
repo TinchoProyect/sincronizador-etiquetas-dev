@@ -2853,7 +2853,7 @@ function _calcularDistanciaMetrosGeo(lat1, lng1, lat2, lng2) {
 function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = []) {
     const esEnvio = String(pedido.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' ||
         Boolean(pedido.incluido_reparto_manual);
-    const marca = nodo.nombre_marca || 'Tu Nodo Barrial';
+    const marca = nodo.nombre_marca || 'nuestra tienda';
     const gestor = nodo.gestor_nombre || marca;
     const dirRetiro = nodo.direccion_retiro || nodo.barrio_zona || marca;
     const dirVecino = pedido.direccion_entrega || 'tu domicilio';

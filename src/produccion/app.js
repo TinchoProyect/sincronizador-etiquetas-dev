@@ -83,7 +83,7 @@ app.use((req, res, next) => {
     if (p.startsWith('/api/')) {
         return res.status(403).json({
             ok: false,
-            error: 'Acceso restringido. Recurso no habilitado para el portal público del Nodo.'
+            error: 'Acceso restringido. Recurso no habilitado para el portal público.'
         });
     }
 
@@ -95,7 +95,7 @@ app.use((req, res, next) => {
     <div style="font-size:2.2rem;margin-bottom:8px;">🔒</div>
     <h2 style="margin:0 0 8px 0;font-size:1.15rem;">Sección Restringida</h2>
     <p style="color:#94a3b8;font-size:0.88rem;line-height:1.5;margin:0;">
-      Este dominio está habilitado únicamente para la Tienda Vecinal y el Panel del Gestor de cada Nodo Barrial.
+      Este dominio está habilitado únicamente para la tienda online y la gestión comercial autorizada.
     </p>
   </div>
 </body></html>`);
@@ -163,17 +163,17 @@ function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}
     const baseUrl = construirBaseUrlAbsolutaNodos(req);
     const tv = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? nodo.tema_visual : {};
     const logosTv = (tv.logos && typeof tv.logos === 'object') ? tv.logos : {};
-    const nombreMarca = String(nodo?.nombre_marca || 'Tienda Barrial').trim();
+    const nombreMarca = String(nodo?.nombre_marca || 'Tienda').trim();
     const bajada = String(nodo?.bajada_marca || nodo?.subtitulo_marca || '').trim();
     const esGestor = fileName === 'nodo-panel-gestor.html';
 
     const tituloDoc = esGestor
-        ? `${nombreMarca} — Panel del Gestor`
-        : (bajada ? `${nombreMarca} · ${bajada}` : `${nombreMarca} — Tienda Vecinal`);
+        ? `Gestión ${nombreMarca}`
+        : nombreMarca;
 
     const ogTitle = extraContext.codigoPedido
         ? `${nombreMarca} · Pedido #${extraContext.codigoPedido}`
-        : tituloDoc;
+        : (bajada ? `${nombreMarca} · ${bajada}` : nombreMarca);
 
     const ogDesc = extraContext.codigoPedido
         ? `Seguimiento en vivo de tu pedido #${extraContext.codigoPedido} en ${nombreMarca}${nodo?.barrio_zona ? ` (${nodo.barrio_zona})` : ''}.`
@@ -199,14 +199,14 @@ function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}
         const manifestHref = esGestor
             ? `/api/produccion/nodos/pwa/${slugEnc}/gestor.webmanifest${tokGestorValido ? `?t=${encodeURIComponent(tokGestorValido)}` : ''}`
             : `/api/produccion/nodos/pwa/${slugEnc}/tienda.webmanifest`;
-        const appShortTitle = esGestor ? `Nodo ${nombreMarca}` : nombreMarca;
+        const appShortTitle = esGestor ? `Gestión ${nombreMarca}` : nombreMarca;
         const themeColor = esGestor
             ? String(paletaTv.primario || '#654830').trim()
             : String(paletaTv.fondo || '#FBF8F3').trim();
 
         metaTags.push(`<link id="nodo-pwa-manifest" rel="manifest" href="${escHtmlAttrNodos(manifestHref)}">`);
-        metaTags.push(`<link rel="icon" type="image/png" sizes="192x192" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-192.png?v=1">`);
-        metaTags.push(`<link id="nodo-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-180.png?v=1">`);
+        metaTags.push(`<link rel="icon" type="image/png" sizes="192x192" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-192.png?v=2">`);
+        metaTags.push(`<link id="nodo-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-180.png?v=2">`);
         metaTags.push(`<meta name="theme-color" content="${escHtmlAttrNodos(themeColor)}">`);
         metaTags.push(`<meta name="mobile-web-app-capable" content="yes">`);
         metaTags.push(`<meta name="apple-mobile-web-app-capable" content="yes">`);
@@ -266,13 +266,13 @@ async function validarYServirVistaNodoPublica(req, res, fileName) {
         if (esExterno) {
             return res.status(404).send(`<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nodo no encontrado</title></head>
+<title>Tienda no encontrada</title></head>
 <body style="font-family:sans-serif;background:#faf8f5;color:#1e293b;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;padding:20px;text-align:center;">
   <div style="max-width:420px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:26px;box-shadow:0 8px 24px rgba(15,23,42,0.06);">
     <div style="font-size:2.2rem;margin-bottom:8px;">📍</div>
-    <h2 style="margin:0 0 8px 0;font-size:1.15rem;">Tienda o Nodo Barrial no encontrado</h2>
+    <h2 style="margin:0 0 8px 0;font-size:1.15rem;">Tienda no encontrada</h2>
     <p style="color:#64748b;font-size:0.9rem;line-height:1.5;margin:0;">
-      Verificá el enlace recibido o escaneá nuevamente el código QR provisto por tu nodo barrial.
+      Verificá el enlace recibido o escaneá nuevamente el código QR compartido por el referente de tu barrio.
     </p>
   </div>
 </body></html>`);
@@ -295,13 +295,13 @@ async function validarYServirVistaNodoPublica(req, res, fileName) {
         if (rows.length === 0) {
             return res.status(404).send(`<!DOCTYPE html>
 <html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Nodo no encontrado</title></head>
+<title>Tienda no encontrada</title></head>
 <body style="font-family:sans-serif;background:#faf8f5;color:#1e293b;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;padding:20px;text-align:center;">
   <div style="max-width:420px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:26px;box-shadow:0 8px 24px rgba(15,23,42,0.06);">
     <div style="font-size:2.2rem;margin-bottom:8px;">📍</div>
-    <h2 style="margin:0 0 8px 0;font-size:1.15rem;">Nodo Barrial no encontrado</h2>
+    <h2 style="margin:0 0 8px 0;font-size:1.15rem;">Tienda no encontrada</h2>
     <p style="color:#64748b;font-size:0.9rem;line-height:1.5;margin:0;">
-      No existe un punto de entrega activo para este enlace. Verificá la dirección o solicitá nuevamente el acceso QR.
+      No existe un punto de retiro activo para este enlace. Verificá la dirección o solicitá nuevamente el acceso QR.
     </p>
   </div>
 </body></html>`);
@@ -309,7 +309,7 @@ async function validarYServirVistaNodoPublica(req, res, fileName) {
         nodoRow = rows[0];
     } catch (err) {
         console.error('❌ [NODOS] Error validando slug público:', err.message);
-        return res.status(404).send('Nodo Barrial no encontrado.');
+        return res.status(404).send('Tienda no encontrada.');
     }
 
     if (nodoRow.slug && String(nodoRow.slug).toLowerCase() !== slugSolicitado.toLowerCase()) {
@@ -383,7 +383,7 @@ app.get('/seguimiento/:trackingToken', async (req, res) => {
   <div style="max-width:420px;background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:26px;">
     <div style="font-size:2.2rem;margin-bottom:8px;">📦</div>
     <h2 style="margin:0 0 8px 0;font-size:1.15rem;">Enlace de seguimiento no encontrado</h2>
-    <p style="color:#64748b;font-size:0.9rem;margin:0;">Verificá el enlace compartido o consultá desde la tienda de tu nodo.</p>
+    <p style="color:#64748b;font-size:0.9rem;margin:0;">Verificá el enlace compartido o consultá desde la tienda de tu barrio.</p>
   </div>
 </body></html>`);
         }

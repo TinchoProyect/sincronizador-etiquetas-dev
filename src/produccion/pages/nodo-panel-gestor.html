@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Panel del Gestor</title>
+  <title>Gestión comercial</title>
   <!-- /lamda-cloud-runtime.js omitido en apps externas de Nodos (Marca Blanca) -->
   <script>
     window.__nodoGestorDeferredPrompt = null;
@@ -1370,7 +1370,7 @@
         <div class="brand-emblem" id="gestor-logo-box"></div>
         <div>
           <div class="brand-title" id="gestor-nodo-title">Cargando...</div>
-          <div class="brand-subtitle" id="gestor-nodo-subtitle">Panel del Gestor</div>
+          <div class="brand-subtitle" id="gestor-nodo-subtitle">Gestión comercial</div>
         </div>
       </div>
 
@@ -1517,10 +1517,23 @@
       }
     }
 
+    function sincronizarTituloYMetaPwaGestor(nombreMarcaRaw) {
+      const marca = String(nombreMarcaRaw || '').trim();
+      const tituloGestion = marca ? `Gestión ${marca}` : 'Gestión comercial';
+      document.title = tituloGestion;
+      let metaAppleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+      if (!metaAppleTitle) {
+        metaAppleTitle = document.createElement('meta');
+        metaAppleTitle.setAttribute('name', 'apple-mobile-web-app-title');
+        document.head.appendChild(metaAppleTitle);
+      }
+      metaAppleTitle.setAttribute('content', tituloGestion);
+    }
+
     function aplicarFaviconGestor(urlImg) {
       const slugAct = String(GSTATE.slug || detectarSlugInicial() || '').trim();
-      const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-192.png?v=1` : String(urlImg || '').trim();
-      const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=1` : String(urlImg || '').trim();
+      const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-192.png?v=2` : String(urlImg || '').trim();
+      const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=2` : String(urlImg || '').trim();
       if (iconPwa192) {
         let linkIcon = document.querySelector('link[rel="icon"]');
         if (!linkIcon) {
@@ -1589,7 +1602,8 @@
           const choice = await promptEv.userChoice;
           if (choice && choice.outcome === 'accepted') {
             window.__nodoGestorDeferredPrompt = null;
-            mostrarAvisoPantallaGestor('✓ Acceso directo Nodo instalado en tu pantalla de inicio.', 'ok');
+            const marcaToast = String(GSTATE.nodo?.nombre_marca || 'tu tienda').trim();
+            mostrarAvisoPantallaGestor(`✓ Acceso directo "Gestión ${marcaToast}" creado en tu pantalla de inicio.`, 'ok');
           }
         } catch (_) {}
         actualizarVisibilidadBotonPwaGestor();
@@ -1597,8 +1611,8 @@
       }
 
       const slugAct = String(GSTATE.slug || detectarSlugInicial() || '').trim();
-      const nombreMarca = String(GSTATE.nodo?.nombre_marca || 'tu Nodo').trim();
-      const iconUrl = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=1` : '';
+      const nombreMarca = String(GSTATE.nodo?.nombre_marca || 'tu tienda').trim();
+      const iconUrl = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=2` : '';
       const esIos = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
 
       const bodyEl = document.getElementById('modal-pwa-gestor-body');
@@ -1606,17 +1620,20 @@
       if (!bodyEl || !modalEl) return;
 
       bodyEl.innerHTML = `
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
           <div style="display:flex; align-items:center; gap:10px;">
-            ${iconUrl ? `<img src="${esc(iconUrl)}" alt="Nodo ${esc(nombreMarca)}" style="width:44px; height:44px; border-radius:11px; box-shadow:0 3px 8px rgba(0,0,0,0.16);" />` : ''}
+            ${iconUrl ? `<img src="${esc(iconUrl)}" alt="Gestión ${esc(nombreMarca)}" style="width:44px; height:44px; border-radius:11px; box-shadow:0 3px 8px rgba(0,0,0,0.16);" />` : ''}
             <div>
-              <div style="font-weight:900; font-size:1rem; color:var(--text);">Nodo ${esc(nombreMarca)}</div>
-              <div style="font-size:0.76rem; color:var(--muted); font-weight:700;">Acceso directo de gestión</div>
+              <div style="font-weight:900; font-size:1rem; color:var(--text);">Gestión ${esc(nombreMarca)}</div>
+              <div style="font-size:0.78rem; color:var(--brand-dark); font-weight:800;">📲 Agregar acceso directo</div>
             </div>
           </div>
           <button type="button" onclick="cerrarModalPwaGestor()" aria-label="Cerrar"
             style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
         </div>
+        <p style="margin:0 0 12px 0; font-size:0.79rem; color:var(--muted); font-weight:700; line-height:1.38;">
+          No instala nada pesado ni ocupa espacio: solo deja el ícono directo en tu pantalla.
+        </p>
         <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px;">
           <div style="display:flex; align-items:flex-start; gap:10px; background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:10px 12px;">
             <span style="width:24px; height:24px; border-radius:999px; background:var(--brand); color:#fff; font-weight:900; font-size:0.8rem; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">1</span>
@@ -1627,7 +1644,9 @@
           <div style="display:flex; align-items:flex-start; gap:10px; background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:10px 12px;">
             <span style="width:24px; height:24px; border-radius:999px; background:var(--brand); color:#fff; font-weight:900; font-size:0.8rem; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">2</span>
             <div style="font-size:0.86rem; color:var(--text); line-height:1.38;">
-              Elegí <strong>"Agregar a inicio"</strong>${esIos ? '' : ' (o <strong>"Instalar aplicación"</strong>)'} y confirmá.
+              ${esIos
+                ? 'Tocá Compartir y elegí <strong>"Agregar a inicio"</strong> para dejar tu acceso directo.'
+                : 'Elegí <strong>"Agregar a inicio"</strong> (o <strong>"Agregar a la pantalla principal"</strong>) para dejar tu acceso directo.'}
             </div>
           </div>
         </div>
@@ -1780,7 +1799,7 @@
           <p style="color:var(--muted); font-size:0.9rem; line-height:1.55; margin:0 0 14px 0;">
             ${esInvalido
               ? 'El acceso anterior ya no está vigente por rotación de seguridad. Pedí el código QR actualizado y escanealo con la cámara de tu celular.'
-              : 'Por seguridad de tu Nodo, este panel requiere abrirse desde tu código QR personal de Gestor.'}
+              : 'Por seguridad de tu tienda, este espacio de gestión requiere abrirse desde tu código QR personal.'}
           </p>
           <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:12px 14px; font-size:0.82rem; color:var(--text); line-height:1.45; text-align:left; margin-bottom:16px;">
             <strong>💡 ¿Usás iPhone o iPad ("Agregar a inicio")?</strong><br>
@@ -1821,9 +1840,9 @@
         if (box) {
           box.innerHTML = `
             <div class="card" style="text-align:center; padding:32px;">
-              <h3 style="margin:0 0 8px 0;">Panel de Gestión no disponible</h3>
+              <h3 style="margin:0 0 8px 0;">Gestión comercial no disponible</h3>
               <p style="color:var(--muted); font-size:0.9rem; max-width:480px; margin:0 auto;">
-                Verificá que el enlace de tu Nodo esté actualizado o escaneá nuevamente tu código QR de Gestor.
+                Verificá que tu enlace de gestión esté actualizado o escaneá nuevamente tu código QR personal.
               </p>
             </div>
           `;
@@ -1881,16 +1900,18 @@
       aplicarPaletaNodo(GSTATE.nodo);
       aplicarFaviconGestor(obtenerLogoIconoGestor(GSTATE.nodo));
 
-      const nombreMarcaHdr = GSTATE.nodo.nombre_marca || 'Mi Nodo';
+      const nombreMarcaHdr = GSTATE.nodo.nombre_marca || 'Mi Tienda';
       const bajadaMarcaHdr = String(GSTATE.nodo.bajada_marca || '').trim();
       const tituloCompletoHdr = bajadaMarcaHdr ? `${nombreMarcaHdr} · ${bajadaMarcaHdr}` : nombreMarcaHdr;
+      const logoHorizHdr = obtenerLogoHorizontalGestor(GSTATE.nodo);
+      const logoIncluyeTextoHdr = Boolean(logoHorizHdr && GSTATE.nodo.tema_visual?.logo_incluye_texto);
 
       const titleEl = document.getElementById('gestor-nodo-title');
-      if (titleEl) titleEl.textContent = tituloCompletoHdr;
+      if (titleEl) titleEl.textContent = `Gestión ${nombreMarcaHdr}`;
 
       const subEl = document.getElementById('gestor-nodo-subtitle');
       if (subEl) {
-        const partes = ['Panel del Gestor'];
+        const partes = [logoIncluyeTextoHdr ? `Gestión ${nombreMarcaHdr}` : 'Gestión comercial'];
         if (GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro) {
           partes.push(`📍 ${GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro}`);
         }
@@ -1899,21 +1920,19 @@
 
       const logoBox = document.getElementById('gestor-logo-box');
       if (logoBox) {
-        const logoHoriz = obtenerLogoHorizontalGestor(GSTATE.nodo);
-        const logoIncluyeTexto = Boolean(logoHoriz && GSTATE.nodo.tema_visual?.logo_incluye_texto);
         const logoFallback = GSTATE.nodo.logo_original_base64 || GSTATE.nodo.logo_mono_preview_base64 || obtenerLogoIconoGestor(GSTATE.nodo) || '';
-        const logoSrc = logoHoriz || logoFallback;
-        logoBox.classList.toggle('has-horizontal-logo', Boolean(logoHoriz));
-        logoBox.closest('.brand-identity')?.classList.toggle('logo-includes-text', logoIncluyeTexto);
+        const logoSrc = logoHorizHdr || logoFallback;
+        logoBox.classList.toggle('has-horizontal-logo', Boolean(logoHorizHdr));
+        logoBox.closest('.brand-identity')?.classList.toggle('logo-includes-text', logoIncluyeTextoHdr);
         if (logoSrc) {
           logoBox.innerHTML = `<img src="${esc(logoSrc)}" alt="${esc(tituloCompletoHdr)}">`;
         } else {
-          const siglas = String(nombreMarcaHdr || 'ND').split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
+          const siglas = String(nombreMarcaHdr || 'GT').split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
           logoBox.innerHTML = `<div class="brand-monogram">${esc(siglas)}</div>`;
         }
       }
 
-      document.title = `${tituloCompletoHdr} — Panel del Gestor`;
+      sincronizarTituloYMetaPwaGestor(nombreMarcaHdr);
 
       const btnTienda = document.getElementById('btn-abrir-tienda');
       if (btnTienda) btnTienda.href = `/tienda/${encodeURIComponent(GSTATE.slug)}`;
@@ -2004,7 +2023,7 @@
       const puedeReparto = Boolean(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial ?? false);
       const puedeEncomienda = Boolean(GSTATE.nodo.permitir_encomienda);
       const modalidadesTxt = [];
-      if (puedeRetiro) modalidadesTxt.push('🏠 Retiro en Nodo');
+      if (puedeRetiro) modalidadesTxt.push('🏠 Punto de retiro');
       if (puedeReparto) modalidadesTxt.push(`🚗 Reparto (${fmt(GSTATE.nodo.cargo_envio_barrial)})`);
       if (puedeEncomienda) modalidadesTxt.push('📦 Encomienda prevista');
       const envioTxt = modalidadesTxt.length ? modalidadesTxt.join(' · ') : '⚠️ Sin modalidad activa';
@@ -2058,7 +2077,7 @@
           num: '5',
           id: 'ctacte',
           titulo: 'Cuentas Corrientes',
-          meta: `Saldo operativo del Nodo: ${saldoNodo < 0 ? '-' + fmt(Math.abs(saldoNodo)) : fmt(saldoNodo)}`
+          meta: `Saldo operativo: ${saldoNodo < 0 ? '-' + fmt(Math.abs(saldoNodo)) : fmt(saldoNodo)}`
         },
         {
           num: '6',
@@ -2104,13 +2123,13 @@
         ${mostrarBtnPwa ? `
           <button type="button" id="btn-instalar-pwa-gestor" class="cta-pwa-gestor" onclick="instalarAccesoDirectoGestor()">
             <div class="cta-pwa-gestor-left">
-              ${slugIconPwa ? `<img src="/api/produccion/nodos/pwa/${slugIconPwa}/icon-gestor-180.png?v=1" alt="Nodo ${esc(GSTATE.nodo.nombre_marca || '')}" class="cta-pwa-gestor-thumb" />` : '<span style="font-size:1.35rem;">📲</span>'}
+              ${slugIconPwa ? `<img src="/api/produccion/nodos/pwa/${slugIconPwa}/icon-gestor-180.png?v=2" alt="Gestión ${esc(GSTATE.nodo.nombre_marca || '')}" class="cta-pwa-gestor-thumb" />` : '<span style="font-size:1.35rem;">📲</span>'}
               <div>
-                <div class="cta-pwa-gestor-title">📲 Instalar acceso en mi celular</div>
-                <div class="cta-pwa-gestor-sub">Ícono propio "Nodo ${esc(GSTATE.nodo.nombre_marca || '')}" diferenciado de tu tienda</div>
+                <div class="cta-pwa-gestor-title">📲 Crear acceso directo en mi celular</div>
+                <div class="cta-pwa-gestor-sub">No instala nada pesado ni ocupa espacio: solo deja el ícono directo en tu pantalla.</div>
               </div>
             </div>
-            <span class="cta-pwa-gestor-pill">Instalar</span>
+            <span class="cta-pwa-gestor-pill">Agregar</span>
           </button>
         ` : ''}
         <button type="button" class="cta-difusion-hero" onclick="abrirModalDifusionTienda()">
@@ -2584,7 +2603,7 @@
             </button>
             ${puedeNativo ? `
               <button type="button" class="btn-soft" onclick="compartirKitNativo()" style="padding:10px 14px;">
-                📲 Más apps
+                📤 Otras opciones
               </button>
             ` : `
               <button type="button" class="btn-soft" onclick="compartirKitNativo()" style="padding:10px 14px;">
@@ -3412,7 +3431,7 @@
         const of = est.oferta;
         return `
           <div style="padding:11px 12px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.30); color:var(--text); font-size:0.8rem; line-height:1.45;">
-            <strong style="color:var(--ok);">✓ Ya tenés ${esc(etPeso)} cotizada en tu Nodo</strong> (Costo Base <strong>${fmt(of.precio_base_nodo_final)}</strong>).<br>
+            <strong style="color:var(--ok);">✓ Ya tenés ${esc(etPeso)} cotizada en tu tienda</strong> (Costo Base <strong>${fmt(of.precio_base_nodo_final)}</strong>).<br>
             No corresponde volver a pedirla: configurala o publicala desde <strong>Mi Oferta y Márgenes</strong>.
             <div style="margin-top:8px;">
               <button type="button" class="btn-soft" style="font-size:0.76rem; padding:5px 11px;" onclick="abrirSeccionGestor('ofertas')">
@@ -3428,7 +3447,7 @@
         return `
           <div style="padding:11px 12px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.30); color:var(--text); font-size:0.8rem; line-height:1.45;">
             <strong style="color:var(--ok);">✓ Esta medida (${esc(etPeso)}) ya está cotizada por LAMDA</strong> (${esc(pres.label_oficial || pres.sku)} · Costo Base <strong>${fmt(pres.precio_base_nodo_final)}</strong>).<br>
-            No necesitás pedir cotización; sumala directo a tu Nodo:
+            No necesitás pedir cotización; sumala directo a tu tienda:
             <div style="margin-top:8px;">
               <button type="button" class="btn-primary" style="font-size:0.78rem; padding:6px 12px;"
                 onclick="sumarCatalogoBaseAMiOferta(${pres.catalogo_id}, true)">
@@ -3445,7 +3464,7 @@
           return `
             <div style="padding:11px 12px; border-radius:11px; background:var(--warn-soft); border:1px solid rgba(180,83,9,0.28); color:var(--warn); font-size:0.8rem; line-height:1.45;">
               <strong>⏳ Habilitación ya solicitada (${esc(est.propuestaPendiente.codigo_propuesta)})</strong><br>
-              Ya pediste habilitar esta presentación oficial existente <strong>${esc(refSku)}</strong> en tu Nodo.
+              Ya pediste habilitar esta presentación oficial existente <strong>${esc(refSku)}</strong> en tu tienda.
               <div style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
                 <span style="font-size:0.74rem;">¿La enviaste por error?</span>
                 <button type="button" class="btn-soft"
@@ -3465,7 +3484,7 @@
               <span style="font-size:0.74rem; color:var(--muted);">¿Querés vender esta presentación existente ${esc(etPeso)}?</span>
               <button type="button" class="btn-soft" style="font-size:0.75rem; padding:5px 10px;"
                 onclick="enviarNuevaPropuestaGestor({ solicitarHabilitacionExistente: true })">
-                Pedir que la habiliten en mi Nodo
+                Pedir que la habiliten en mi tienda
               </button>
             </div>
           </div>
@@ -4177,7 +4196,7 @@
         return;
       }
       if (est.tipo === 'YA_EXISTE_LAMDA' && !solicitarHabilitacionExistente) {
-        mostrarAvisoPantallaGestor('LAMDA ya produce esta presentación. Elegí otro gramaje nuevo o usá la opción para pedir que la habiliten en tu Nodo.', 'error');
+        mostrarAvisoPantallaGestor('LAMDA ya produce esta presentación. Elegí otro gramaje nuevo o usá la opción para pedir que la habiliten en tu tienda.', 'error');
         return;
       }
       if (est.tipo === 'YA_SOLICITADA' || (est.tipo === 'YA_EXISTE_LAMDA' && est.propuestaPendiente)) {
@@ -4196,7 +4215,7 @@
 
       const comentarioInput = (document.getElementById('prop-comentario')?.value || '').trim();
       const comentarioFinal = solicitarHabilitacionExistente && !comentarioInput
-        ? 'Solicitud para habilitar presentación estándar de LAMDA en mi Nodo.'
+        ? 'Solicitud para habilitar presentación estándar de LAMDA en mi tienda.'
         : comentarioInput;
 
       const payload = {
@@ -4227,7 +4246,7 @@
 
         const codProp = data.propuesta?.codigo_propuesta || '';
         GSTATE.propConfirmacionReciente = solicitarHabilitacionExistente
-          ? `✅ Solicitud registrada (${codProp}): pediste habilitar ${nombreConPeso} en tu Nodo.`
+          ? `✅ Solicitud registrada (${codProp}): pediste habilitar ${nombreConPeso} en tu tienda.`
           : `✅ ¡Solicitud enviada con éxito! ${nombreConPeso} (${codProp}) ingresó a cotización y ya figura en Mis Solicitudes.`;
         await cargarPanelGestor({ resetPropuesta: true });
       } catch (err) {
@@ -4392,7 +4411,7 @@
 
           <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin-bottom:18px;">
             <div>
-              <label style="display:block; font-size:0.94rem; font-weight:800; margin-bottom:6px; color:var(--text);">Domicilio de retiro en el Nodo</label>
+              <label style="display:block; font-size:0.94rem; font-weight:800; margin-bottom:6px; color:var(--text);">Domicilio del punto de retiro</label>
               <input type="text" id="cfg-direccion-retiro" class="input-sm" style="width:100%;" value="${esc(GSTATE.nodo.direccion_retiro || '')}" />
             </div>
             <div id="cfg-cargo-envio-wrap" style="${(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial) ? '' : 'opacity:0.48; transition:opacity 0.15s;'}">
@@ -4407,7 +4426,7 @@
             <div class="cfg-switch-card">
               <label class="switch-label">
                 <input type="checkbox" id="cfg-permitir-retiro" ${GSTATE.nodo.permitir_retiro_nodo !== false ? 'checked' : ''} />
-                <span>🏠 Habilitar retiro en el Nodo</span>
+                <span>🏠 Habilitar punto de retiro</span>
               </label>
             </div>
             <div class="cfg-switch-card">
@@ -4422,7 +4441,7 @@
                 <span>📦 Encomienda nacional / correo <span style="font-weight:700; color:var(--muted);">(previsión futura)</span></span>
               </label>
               <div style="font-size:0.86rem; color:var(--muted); font-weight:600; padding-left:35px; margin-top:2px;">
-                Deja previsto el perfil postal del nodo para la próxima etapa de envíos.
+                Deja previsto el perfil postal de tu tienda para la próxima etapa de envíos.
               </div>
             </div>
             <div class="cfg-switch-card">
@@ -4482,7 +4501,7 @@
       const permitirReparto = Boolean(document.getElementById('cfg-permitir-reparto')?.checked);
       const permitirEncomienda = Boolean(document.getElementById('cfg-permitir-encomienda')?.checked);
       if (!permitirRetiro && !permitirReparto) {
-        alert('Activá al menos Retiro en el Nodo o Reparto propio a domicilio para que tus vecinos puedan completar pedidos.');
+        alert('Activá al menos Punto de retiro o Reparto propio a domicilio para que tus vecinos puedan completar pedidos.');
         return;
       }
       const payload = {
@@ -4535,7 +4554,7 @@
       const esEnvio = String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL';
       const totalPasos = esEnvio ? 6 : 5;
       const hito = Number(p.hito_tracking_actual || 1);
-      const marca = GSTATE.nodo?.nombre_marca || 'el Nodo';
+      const marca = GSTATE.nodo?.nombre_marca || 'el punto de retiro';
 
       if (Boolean(p.ausente_pasa_retirar) && hito < 6) {
         return { texto: `🏡 No estaba · Pasa a retirar por ${marca}`, bg: '#fef3c7', fg: '#92400e', bd: '#fcd34d' };
@@ -4625,7 +4644,7 @@
           <div style="display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;">
             <div style="flex:1; min-width:220px;">
               <div style="font-size:0.86rem; font-weight:900; color:#15803d; text-transform:uppercase; letter-spacing:0.03em;">
-                📦 Lote controlado · Listo para recibir en ${esc(GSTATE.nodo?.nombre_marca || 'tu Nodo')}
+                📦 Lote controlado · Listo para recibir en ${esc(GSTATE.nodo?.nombre_marca || 'tu punto de retiro')}
               </div>
               <div style="font-size:1.15rem; font-weight:900; color:#14532d; margin-top:4px;">
                 ${esc(l.codigo_canasto)} (${l.pedidos.length} ${l.pedidos.length === 1 ? 'bolsa de vecino' : 'bolsas de vecinos'})
@@ -4668,7 +4687,7 @@
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('EN_NODO')"
               style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'EN_NODO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
-              🏡 En el Nodo (${cantEnNodo})
+              🏡 En punto de retiro (${cantEnNodo})
             </button>
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('REPARTO')"
               style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'REPARTO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
@@ -4724,7 +4743,7 @@
                         </span>
                       </div>
                       <div style="font-size:0.86rem; font-weight:700; color:var(--text); margin-top:4px; line-height:1.35;">
-                        ${esc(p.fecha_entrega_label)} · ${esEnvio ? `🛵 ${Boolean(p.incluido_reparto_manual) && String(p.modalidad_entrega || '').toUpperCase() === 'RETIRO_NODO' ? 'Reparto manual' : 'Envío'}: ${esc(p.direccion_entrega)}${p.entrecalles_referencia ? ` (${esc(p.entrecalles_referencia)})` : ''}` : '🏠 Retira en Nodo'}
+                        ${esc(p.fecha_entrega_label)} · ${esEnvio ? `🛵 ${Boolean(p.incluido_reparto_manual) && String(p.modalidad_entrega || '').toUpperCase() === 'RETIRO_NODO' ? 'Reparto manual' : 'Envío'}: ${esc(p.direccion_entrega)}${p.entrecalles_referencia ? ` (${esc(p.entrecalles_referencia)})` : ''}` : '🏠 Punto de retiro'}
                       </div>
                     </div>
                     <div style="text-align:right;">
@@ -4798,7 +4817,7 @@
         const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/lotes/${canastoId}/confirmar-recepcion`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ actor: GSTATE.nodo.gestor_nombre || 'Gestor del Nodo' })
+          body: JSON.stringify({ actor: GSTATE.nodo.gestor_nombre || 'Referente comercial' })
         });
         const data = await leerRespuestaJsonSegura(resp);
         if (!resp.ok || !data.ok) {
@@ -4877,7 +4896,7 @@
             registrar_cobro_efectivo: Boolean(registrarCobroEfectivo),
             motivo: opciones.motivo || '',
             salir_a_reparto: Boolean(opciones.salirAReparto),
-            actor: GSTATE.nodo.gestor_nombre || 'Gestor del Nodo'
+            actor: GSTATE.nodo.gestor_nombre || 'Referente comercial'
           })
         });
         const data = await leerRespuestaJsonSegura(resp);
@@ -4889,7 +4908,7 @@
         const msgExito = accion === 'SALIO_REPARTO'
           ? `🛵 Pedido #${p.codigo_pedido} marcado "En camino a domicilio". El vecino ya lo ve en vivo.`
           : accion === 'AUSENTE_PASA_RETIRAR'
-            ? `🏡 Pedido #${p.codigo_pedido} pasado a "Ausente — Pasa a retirar por el Nodo" (se conserva envío).`
+            ? `🏡 Pedido #${p.codigo_pedido} pasado a "Ausente — Pasa por punto de retiro" (se conserva envío).`
             : accion === 'REINTEGRAR_REPARTO'
               ? `🔄 Pedido #${p.codigo_pedido} reintegrado a la Hoja de Ruta.`
               : (data.cobro_efectivo_registrado
@@ -5051,10 +5070,18 @@
       const nomMadre = nodoResumen?.cliente_madre_razon_social || nodoResumen?.cliente_madre_nombre || GSTATE.nodo?.cliente_madre_razon_social || '';
       const saldoMadre = Number(nodoResumen?.saldo_cuenta_corriente_madre ?? GSTATE.nodo?.saldo_cuenta_corriente_madre ?? 0);
 
+      const marcaCta = String(GSTATE.nodo?.nombre_marca || 'Mi Tienda').trim();
+      const limpiarConceptoVisible = (raw) => String(raw || '')
+        .replace(/_?NODOS?\b/gi, '')
+        .replace(/\bdel?\s+nodo\b/gi, 'operativa')
+        .replace(/\bnodos?\b/gi, 'tienda')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
       return `
         <div class="card">
           <div style="font-size:0.74rem; color:var(--muted); font-weight:800; text-transform:uppercase;">
-            Subcuenta Operativa del Nodo (${esc(nodoResumen?.codigo_bunker_cliente || GSTATE.nodo?.codigo_bunker_cliente || 'CB-NODO')})
+            Cuenta Operativa · Gestión ${esc(marcaCta)}
           </div>
           <div style="font-size:1.45rem; font-weight:900; margin-top:4px; color:${esDeudor ? 'var(--warn)' : 'var(--ok)'};">
             ${esAcreedor ? `${fmt(Math.abs(saldoActual))} a tu favor` : (esDeudor ? `${fmt(saldoActual)} a rendir a LAMDA` : `${fmt(0)} (Al día)`)}
@@ -5077,10 +5104,10 @@
         </div>
 
         <div class="card">
-          <h3 style="margin:0 0 10px 0; font-size:0.98rem;">Movimientos de la Subcuenta del Nodo</h3>
+          <h3 style="margin:0 0 10px 0; font-size:0.98rem;">Movimientos de la Cuenta Operativa</h3>
           ${GSTATE.movimientosCtaCte.length === 0 ? `
             <div style="text-align:center; padding:20px; color:var(--muted); font-size:0.85rem;">
-              Aún no hay movimientos registrados en la subcuenta de este Nodo.
+              Aún no hay movimientos registrados en tu cuenta operativa.
             </div>
           ` : `
             <div style="display:flex; flex-direction:column; gap:8px;">
@@ -5092,11 +5119,11 @@
                 const colorMov = esNeutro ? 'var(--muted)' : (esDebito ? 'var(--warn)' : 'var(--ok)');
                 const textoMov = esNeutro
                   ? `Efvo. en mano: ${fmt(monto)}`
-                  : (esDebito ? `+${fmt(monto)} (Cargo LAMDA)` : `-${fmt(monto)} (A favor Nodo)`);
+                  : (esDebito ? `+${fmt(monto)} (Cargo LAMDA)` : `-${fmt(monto)} (A tu favor)`);
                 return `
                   <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:#fffdfb;">
                     <div>
-                      <div style="font-weight:800; font-size:0.86rem;">${esc(m.concepto || m.tipo_movimiento || 'Movimiento')}</div>
+                      <div style="font-weight:800; font-size:0.86rem;">${esc(limpiarConceptoVisible(m.concepto || m.tipo_movimiento || 'Movimiento') || 'Movimiento')}</div>
                       <div style="font-size:0.75rem; color:var(--muted);">
                         ${m.codigo_canasto ? `Lote ${esc(m.codigo_canasto)} · ` : ''}${m.created_at ? new Date(m.created_at).toLocaleDateString('es-AR') : ''}
                       </div>
@@ -5122,7 +5149,7 @@
       if (canastos.length === 0) {
         return `
           <div class="card" style="text-align:center; padding:28px 20px; color:var(--muted);">
-            Aún no hay lotes de pedidos cerrados para liquidar en este Nodo.
+            Aún no hay lotes de pedidos cerrados para liquidar en tu tienda.
           </div>
         `;
       }
@@ -5301,7 +5328,7 @@
       if ((GSTATE.compradores || []).length === 0) {
         return `
           <div class="card" style="text-align:center; padding:28px 20px; color:var(--muted);">
-            Todavía no hay compradores registrados en este Nodo.<br>
+            Todavía no hay compradores registrados en tu tienda.<br>
             <span style="font-size:0.84rem;">Cuando alguien haga su primer pedido o se registre en tu tienda, aparecerá acá automáticamente.</span>
           </div>
         `;
@@ -5852,7 +5879,7 @@
             <p style="color:var(--muted); margin:5px 0 ${disponiblesAgregar.length > 0 ? '10px' : '0'} 0; font-size:0.86rem;">
               ${disponiblesAgregar.length > 0
                 ? `Tenés ${disponiblesAgregar.length} pedido${disponiblesAgregar.length === 1 ? '' : 's'} disponible${disponiblesAgregar.length === 1 ? '' : 's'} para sumar manualmente a la Hoja de Ruta.`
-                : 'Cuando recibas pedidos con Envío Barrial en el Nodo aparecerán acá listos para ordenar y salir.'}
+                : 'Cuando recibas pedidos con envío a domicilio en tu tienda aparecerán acá listos para ordenar y salir.'}
             </p>
             ${disponiblesAgregar.length > 0 ? `
               <button type="button" class="btn-primary" onclick="abrirModalAgregarRepartoGestor(false)">
@@ -5969,7 +5996,7 @@
         ${ausentes.length > 0 ? `
           <div class="card" style="background:#fffbeb; border:1.5px solid #fcd34d; margin-top:12px;">
             <div style="font-size:0.92rem; font-weight:900; color:#92400e; margin-bottom:8px;">
-              🏡 Ausentes en reparto — Quedaron para retirar en ${esc(GSTATE.nodo?.nombre_marca || 'el Nodo')} (${ausentes.length})
+              🏡 Ausentes en reparto — Quedaron en punto de retiro ${esc(GSTATE.nodo?.nombre_marca || '')} (${ausentes.length})
             </div>
             ${ausentes.map(p => `
               <div style="background:#ffffff; border:1px solid #fde68a; border-radius:10px; padding:10px; margin-bottom:8px;">
@@ -6618,7 +6645,7 @@
         boundsPts.push([nLat, nLng]);
         const nodoIcon = window.L.divIcon({
           className: '',
-          html: `<div class="acomodar-pin-nodo">🏠 ${esc((GSTATE.nodo?.nombre_marca || 'Nodo').slice(0, 14))}</div>`,
+          html: `<div class="acomodar-pin-nodo">🏠 ${esc((GSTATE.nodo?.nombre_marca || 'Punto').slice(0, 14))}</div>`,
           iconSize: [96, 28],
           iconAnchor: [48, 14]
         });
@@ -7536,7 +7563,7 @@
         </div>
         <div style="padding:14px; color:var(--text);">
           <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:10px; padding:10px; margin-bottom:10px; font-size:0.85rem; color:#78350f; font-weight:700;">
-            El pedido pasará a <strong>Disponible para retirar en el Nodo</strong>. El cargo de envío (${fmt(p.cargo_envio_barrial)}) se conserva íntegro porque realizaste el viaje hasta la puerta.
+            El pedido pasará a <strong>Disponible en el punto de retiro</strong>. El cargo de envío (${fmt(p.cargo_envio_barrial)}) se conserva íntegro porque realizaste el viaje hasta la puerta.
           </div>
           <label style="display:block; font-size:0.82rem; font-weight:800; margin-bottom:4px;">Observación breve (opcional):</label>
           <input type="text" id="ausente-motivo-input" value="Pasamos y no atendieron timbre/teléfono"
@@ -7544,7 +7571,7 @@
           <div style="display:flex; flex-direction:column; gap:8px;">
             <button type="button" onclick="confirmarAusenteDesdeModalGestor(${p.id})"
               style="width:100%; min-height:42px; border-radius:10px; border:none; background:#d97706; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.92rem; cursor:pointer;">
-              🏡 Confirmar Ausente (Pasa a retirar por Nodo)
+              🏡 Confirmar Ausente (Pasa por punto de retiro)
             </button>
             <button type="button" class="btn-soft" onclick="cerrarModalReciboGestor()">Cancelar</button>
           </div>
@@ -7617,7 +7644,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               pedido_ids: paradas.map(p => Number(p.id)),
-              actor: GSTATE.nodo.gestor_nombre || 'Gestor del Nodo'
+              actor: GSTATE.nodo.gestor_nombre || 'Referente comercial'
             })
           });
           const data = await leerRespuestaJsonSegura(resp);
@@ -7657,7 +7684,7 @@
     }
 
     function armarUrlWhatsAppNocturno(p, tipo) {
-      const marca = GSTATE.nodo?.nombre_marca || 'Tu Nodo Barrial';
+      const marca = GSTATE.nodo?.nombre_marca || 'nuestra tienda';
       const gestor = GSTATE.nodo?.gestor_nombre || marca;
       const primerNom = String(p.vecino_nombre || '').trim().split(/\s+/)[0] || 'vecino/a';
       const dir = p.direccion_entrega || 'tu domicilio';
@@ -7813,7 +7840,7 @@
             <h2 style="margin:0 0 6px 0; font-size:1.2rem; font-weight:900;">¡Todas las paradas entregadas!</h2>
             <p style="color:#cbd5e1; font-size:0.92rem; margin:0;">Ya no quedan envíos pendientes en esta Hoja de Ruta.</p>
             <button type="button" onclick="cerrarModoNocturno(false)" class="nocturno-btn" style="background:#10b981; color:#052e16; margin-top:14px;">
-              ← Volver al Panel del Gestor
+              ← Volver a Gestión ${esc(GSTATE.nodo?.nombre_marca || 'comercial')}
             </button>
           </div>
         `;
@@ -7928,7 +7955,7 @@
             </button>
             <button type="button" onclick="abrirModalAusenteGestor(${p.id})"
               style="min-height:40px; border-radius:10px; border:1px solid #f59e0b; background:rgba(245,158,11,0.14); color:#fcd34d; font-family:inherit; font-weight:800; font-size:0.85rem; padding:6px 10px; cursor:pointer;">
-              🏡 No respondió — Pasa a retirar por el Nodo
+              🏡 No respondió — Pasa por punto de retiro
             </button>
           </div>
           ${GSTATE.modoLaboratorio ? `
