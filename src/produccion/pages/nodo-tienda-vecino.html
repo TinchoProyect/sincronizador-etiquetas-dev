@@ -70,8 +70,24 @@
       font-family: var(--font-brand);
       background: var(--bg);
       color: var(--text);
-      padding-bottom: 110px;
+      padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
       -webkit-font-smoothing: antialiased;
+    }
+    @media (min-width: 768px) {
+      body {
+        padding-bottom: 110px;
+      }
+    }
+    .sr-only {
+      position: absolute !important;
+      width: 1px !important;
+      height: 1px !important;
+      padding: 0 !important;
+      margin: -1px !important;
+      overflow: hidden !important;
+      clip: rect(0, 0, 0, 0) !important;
+      white-space: nowrap !important;
+      border: 0 !important;
     }
     /* Barra superior discreta sólo en Modo Espejo local */
     .lab-bar {
@@ -104,34 +120,77 @@
       font-weight: 800;
     }
 
-    /* Cabecera Marca Blanca Cálida y Austera */
+    /* Top App Bar Minimalista con Protagonismo de Marca */
     .hero {
-      background: var(--hero-bg);
+      position: sticky;
+      top: 0;
+      z-index: 120;
+      background: var(--bg);
+      background: color-mix(in srgb, var(--bg) 94%, #ffffff 6%);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       color: var(--text);
-      padding: 20px 18px;
+      padding: 8px 12px;
       border-bottom: 1px solid var(--border);
+      box-shadow: 0 2px 12px rgba(62, 37, 25, 0.04);
     }
     .hero-inner {
-      max-width: 920px;
+      max-width: 960px;
       margin: 0 auto;
-      display: flex;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr) 44px;
       align-items: center;
-      gap: 16px;
-      flex-wrap: wrap;
+      gap: 8px;
+      min-height: 48px;
+    }
+    .hero-left-slot {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+    }
+    .hero-right-slot {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .icon-appbar-btn {
+      width: 44px;
+      height: 44px;
+      min-width: 44px;
+      min-height: 44px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      font-family: inherit;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.12s;
+      box-shadow: 0 1px 4px rgba(62, 37, 25, 0.04);
+    }
+    .icon-appbar-btn:active {
+      transform: scale(0.96);
+    }
+    .icon-appbar-btn:hover,
+    .icon-appbar-btn.is-active {
+      border-color: var(--brand);
+      background: var(--brand-light);
+      color: var(--brand-dark);
     }
     .brand-box {
       display: flex;
       align-items: center;
-      gap: 14px;
-      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      min-width: 0;
+      text-align: center;
+      justify-self: center;
     }
-    .brand-box.has-horizontal-brand {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 7px;
-    }
-    .brand-box.logo-includes-text .brand-title {
+    .brand-box.logo-includes-text .brand-text-stack {
       position: absolute;
       width: 1px;
       height: 1px;
@@ -139,15 +198,9 @@
       clip: rect(0, 0, 0, 0);
       white-space: nowrap;
     }
-    .brand-box.logo-includes-text .brand-sub {
-      display: none;
-    }
-    .brand-box.logo-includes-text .brand-meta {
-      margin-top: 2px;
-    }
     .brand-logo {
-      width: 64px;
-      height: 54px;
+      width: 40px;
+      height: 40px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -155,217 +208,519 @@
     }
     .brand-logo.has-horizontal-logo {
       width: auto;
-      max-width: 260px;
-      height: 58px;
-      justify-content: flex-start;
-    }
-    @media (max-width: 480px) {
-      .brand-logo.has-horizontal-logo {
-        max-width: 236px;
-        height: 52px;
-      }
+      max-width: 214px;
+      height: 44px;
+      justify-content: center;
     }
     .brand-logo img {
       max-width: 100%;
       max-height: 100%;
       object-fit: contain;
+      display: block;
     }
     .brand-monogram {
-      width: 50px;
-      height: 50px;
-      border-radius: 14px;
+      width: 38px;
+      height: 38px;
+      border-radius: 11px;
       background: var(--brand-light);
       border: 1px solid var(--brand-border);
       color: var(--brand-dark);
       font-weight: 900;
-      font-size: 1rem;
+      font-size: 0.92rem;
       display: flex;
       align-items: center;
       justify-content: center;
     }
+    .brand-text-stack {
+      min-width: 0;
+      text-align: left;
+    }
     .brand-title {
       margin: 0;
-      font-size: 1.48rem;
+      font-size: 1.22rem;
       font-weight: 900;
       color: var(--text);
       letter-spacing: -0.02em;
-      line-height: 1.15;
+      line-height: 1.12;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .brand-sub {
-      margin: 3px 0 0 0;
-      font-size: 0.88rem;
+      margin: 2px 0 0 0;
+      font-size: 0.74rem;
       color: var(--muted);
       font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 200px;
     }
-    .brand-meta {
-      display: flex;
+    .desktop-nav-actions {
+      display: none;
+      align-items: center;
       gap: 8px;
-      flex-wrap: wrap;
-      margin-top: 8px;
-      font-size: 0.78rem;
     }
-    .brand-pill {
-      background: var(--brand-light);
-      border: 1px solid var(--brand-border);
-      color: var(--brand-dark);
-      padding: 4px 10px;
+    .desk-nav-pill {
+      min-height: 40px;
+      padding: 7px 13px;
       border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.82rem;
       font-weight: 800;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      transition: all 0.15s;
+    }
+    .desk-nav-pill:hover {
+      border-color: var(--brand-border);
+      background: var(--surface-warm);
+    }
+    .desk-nav-pill.cart-pill {
+      border-color: var(--brand-border);
+      background: var(--brand-light);
+      color: var(--brand-dark);
+      font-weight: 900;
+    }
+    .desk-nav-pill.cart-pill.has-items {
+      background: var(--brand);
+      border-color: var(--brand);
+      color: #ffffff;
+    }
+    .desk-cart-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 900;
+      background: rgba(255, 255, 255, 0.24);
+      color: inherit;
+    }
+    .desk-nav-pill.cart-pill:not(.has-items) .desk-cart-badge {
+      background: var(--card);
+      color: var(--brand-dark);
+    }
+
+    @media (min-width: 768px) {
+      .hero {
+        padding: 11px 20px;
+      }
+      .hero-inner {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .hero-left-slot {
+        gap: 12px;
+      }
+      .brand-box {
+        justify-content: flex-start;
+      }
+      .brand-logo.has-horizontal-logo {
+        max-width: 248px;
+        height: 48px;
+      }
+      .brand-sub {
+        max-width: 320px;
+      }
+      .desktop-nav-actions {
+        display: inline-flex;
+      }
     }
 
     .container {
-      max-width: 920px;
+      max-width: 960px;
       margin: 0 auto;
-      padding: 18px 16px;
+      padding: 10px 12px 20px;
+    }
+    @media (min-width: 768px) {
+      .container {
+        padding: 18px 20px 28px;
+      }
     }
 
-    /* Banner de Próxima Entrega y Punto de Corte */
-    .delivery-banner {
-      background: var(--card);
-      border: 1px solid var(--brand-border);
-      border-left: 4px solid var(--brand);
-      border-radius: 16px;
-      padding: 14px 18px;
-      margin-bottom: 18px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 14px;
-      flex-wrap: wrap;
-      box-shadow: 0 2px 10px rgba(62, 37, 25, 0.04);
-    }
-    .delivery-banner.after-cutoff {
-      border-color: #f59e0b;
-      border-left-color: #d97706;
-      background: #fffbeb;
-    }
-    .delivery-badge {
-      display: inline-block;
-      font-size: 0.72rem;
-      font-weight: 800;
-      text-transform: uppercase;
-      padding: 4px 11px;
-      border-radius: 999px;
-      background: var(--ok-soft);
-      color: var(--ok);
-      border: 1px solid var(--ok-border);
-      margin-bottom: 5px;
-      letter-spacing: 0.02em;
-    }
-    .delivery-banner.after-cutoff .delivery-badge {
-      background: var(--sun);
-      color: #92400e;
-      border-color: #fcd34d;
-    }
-    .delivery-date-main {
-      font-size: 1.05rem;
-      font-weight: 900;
-      color: var(--text);
-    }
-    .delivery-note {
-      font-size: 0.83rem;
-      color: var(--muted);
-      font-weight: 600;
-      margin-top: 3px;
-    }
-
-    /* Barra armoniosa de acceso directo PWA bajo cabecera de marca */
-    .pwa-tienda-bar {
-      display: none;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      background: var(--card);
+    /* Pastilla Compacta de Próxima Entrega (Portada Limpia) */
+    .delivery-strip-compact {
+      width: 100%;
+      background: var(--surface-warm);
       border: 1px solid var(--brand-border);
       border-radius: 13px;
-      padding: 8px 10px;
-      margin-bottom: 12px;
-      box-shadow: 0 2px 10px rgba(62, 37, 25, 0.05);
-    }
-    .pwa-tienda-btn {
-      flex: 1;
-      min-width: 0;
+      padding: 8px 12px;
+      margin-bottom: 10px;
       display: flex;
       align-items: center;
+      justify-content: space-between;
       gap: 9px;
+      cursor: pointer;
+      text-align: left;
+      font-family: inherit;
+      color: var(--text);
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .delivery-strip-compact:hover {
+      border-color: var(--brand);
+    }
+    .delivery-strip-compact.after-cutoff {
+      background: #fffbeb;
+      border-color: #f59e0b;
+    }
+    .delivery-strip-icon {
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      background: var(--card);
+      border: 1px solid var(--brand-border);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.84rem;
+      flex-shrink: 0;
+    }
+    .delivery-strip-main {
+      flex: 1;
+      min-width: 0;
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1.3;
+    }
+    .delivery-strip-main strong {
+      color: var(--brand-dark);
+      font-weight: 900;
+    }
+    .delivery-strip-compact.after-cutoff .delivery-strip-main strong {
+      color: #92400e;
+    }
+    .delivery-strip-chevron {
+      font-size: 1.08rem;
+      font-weight: 900;
+      color: var(--brand-dark);
+      flex-shrink: 0;
+      line-height: 1;
+      opacity: 0.8;
+    }
+
+    /* Buscador Desplegable y Categorías */
+    .toolbar {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      margin-bottom: 12px;
+    }
+    .search-collapsible-wrap {
+      display: none;
+      position: relative;
+      align-items: center;
+    }
+    .search-collapsible-wrap.open {
+      display: flex;
+    }
+    .search-input {
+      width: 100%;
+      padding: 11px 40px 11px 14px;
+      border-radius: 12px;
+      border: 1.5px solid var(--brand-border);
+      font-size: 0.94rem;
+      font-family: inherit;
+      font-weight: 700;
+      color: var(--text);
+      background: var(--card);
+      outline: none;
+      box-shadow: 0 3px 10px rgba(62, 37, 25, 0.05);
+    }
+    .search-input:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px var(--brand-light);
+    }
+    .search-clear-btn {
+      position: absolute;
+      right: 8px;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      border: none;
+      background: var(--surface-warm);
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 900;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .search-clear-btn:hover {
+      color: var(--text);
+    }
+
+    /* Menú Lateral Desplegable (Drawer ☰) */
+    .nodo-drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(42, 27, 18, 0.48);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      z-index: 290;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease;
+    }
+    .nodo-drawer-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .nodo-drawer {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: min(88vw, 356px);
+      height: 100vh;
+      height: 100dvh;
+      background: var(--bg);
+      color: var(--text);
+      z-index: 295;
+      transform: translateX(-104%);
+      transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+      display: flex;
+      flex-direction: column;
+      box-shadow: 14px 0 36px rgba(42, 27, 18, 0.22);
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .nodo-drawer.open {
+      transform: translateX(0);
+    }
+    .nodo-drawer-head {
+      padding: 16px 16px 14px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .nodo-drawer-close {
+      width: 38px;
+      height: 38px;
+      border-radius: 11px;
+      border: 1px solid var(--border);
+      background: var(--surface-warm);
+      color: var(--text);
+      font-size: 1rem;
+      font-weight: 900;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .nodo-drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 15px calc(22px + env(safe-area-inset-bottom, 0px));
+      display: flex;
+      flex-direction: column;
+      gap: 13px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .drawer-section-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      padding: 13px 14px;
+      box-shadow: 0 2px 8px rgba(62, 37, 25, 0.04);
+    }
+    .drawer-action-btn {
+      width: 100%;
+      min-height: 46px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1.5px solid var(--brand-border);
+      background: var(--card);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.88rem;
+      font-weight: 900;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      text-decoration: none;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .drawer-action-btn:hover {
+      background: var(--surface-warm);
+      border-color: var(--brand);
+    }
+    .drawer-pwa-card {
+      background: linear-gradient(135deg, var(--card) 0%, var(--surface-warm) 100%);
+      border: 1.5px solid var(--brand);
+      border-radius: 15px;
+      padding: 12px 13px;
+      box-shadow: 0 4px 14px var(--brand-light);
+    }
+    .drawer-pwa-trigger {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
       background: transparent;
       border: none;
-      padding: 2px 4px;
+      padding: 0;
       text-align: left;
       font-family: inherit;
       color: var(--text);
       cursor: pointer;
     }
-    .pwa-tienda-thumb {
-      width: 34px;
-      height: 34px;
-      border-radius: 9px;
-      flex-shrink: 0;
-      object-fit: cover;
-      border: 1px solid var(--border);
+
+    /* Barra de Navegación Inferior Estilo App (Móvil < 768px) */
+    .mobile-bottom-nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 150;
+      background: rgba(255, 253, 251, 0.97);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -4px 18px rgba(62, 37, 25, 0.08);
+      padding: 5px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 4px;
     }
-    .pwa-tienda-label {
-      font-size: 0.85rem;
-      font-weight: 900;
-      color: var(--brand-dark);
-      line-height: 1.24;
+    @media (min-width: 768px) {
+      .mobile-bottom-nav {
+        display: none !important;
+      }
     }
-    .pwa-tienda-sub {
-      font-size: 0.73rem;
-      font-weight: 700;
+    .bnav-item {
+      position: relative;
+      min-height: 52px;
+      padding: 5px 4px 4px;
+      border-radius: 12px;
+      border: none;
+      background: transparent;
       color: var(--muted);
-      line-height: 1.22;
-      margin-top: 1px;
+      font-family: inherit;
+      font-size: 0.71rem;
+      font-weight: 800;
+      text-decoration: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      cursor: pointer;
+      transition: color 0.15s, background 0.15s, transform 0.1s;
+      -webkit-tap-highlight-color: transparent;
     }
-    .pwa-tienda-cta-chip {
-      flex-shrink: 0;
+    .bnav-item:active {
+      transform: scale(0.96);
+    }
+    .bnav-item.active {
+      color: var(--brand);
+    }
+    .bnav-item.active::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 26%;
+      right: 26%;
+      height: 3px;
+      border-radius: 999px;
       background: var(--brand);
-      color: #ffffff;
-      font-size: 0.74rem;
-      font-weight: 900;
-      padding: 5px 10px;
-      border-radius: 999px;
     }
-    .pwa-tienda-close {
-      flex-shrink: 0;
-      width: 28px;
-      height: 28px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--surface-warm);
-      color: var(--muted);
-      font-size: 0.82rem;
-      font-weight: 900;
+    .bnav-item.bnav-cart-has-items {
+      background: var(--brand-light);
+      color: var(--brand-dark);
+    }
+    .bnav-icon-wrap {
+      position: relative;
+      width: 26px;
+      height: 24px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      cursor: pointer;
     }
-    .pwa-tienda-close:hover {
-      color: var(--text);
+    .bnav-badge {
+      position: absolute;
+      top: -5px;
+      right: -10px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      border-radius: 999px;
+      background: var(--brand);
+      color: #ffffff;
+      font-size: 0.67rem;
+      font-weight: 900;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      border: 1.5px solid #ffffff;
+      line-height: 1;
     }
-
-    /* Buscador y Categorías */
-    .toolbar {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      margin-bottom: 18px;
+    .bnav-live-dot {
+      position: absolute;
+      top: -1px;
+      right: -2px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #16a34a;
+      border: 1.5px solid #ffffff;
+      display: none;
     }
-    .search-input {
-      width: 100%;
-      padding: 12px 16px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      font-size: 0.95rem;
-      font-family: inherit;
-      color: var(--text);
-      background: var(--card);
-      outline: none;
+    .bnav-label {
+      max-width: 100%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.1;
     }
-    .search-input:focus {
-      border-color: var(--brand);
-      box-shadow: 0 0 0 3px var(--brand-light);
+    .bnav-item.bnav-cart-has-items .bnav-label {
+      font-weight: 900;
+      color: var(--brand-dark);
+    }
+    .cart-empty-toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+      transform: translateX(-50%) translateY(10px);
+      background: var(--text);
+      color: #fffdfb;
+      padding: 9px 15px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 800;
+      box-shadow: 0 8px 22px rgba(42, 27, 18, 0.25);
+      z-index: 180;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      white-space: nowrap;
+      max-width: calc(100vw - 28px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cart-empty-toast.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
     }
     .cats-row {
       display: flex;
@@ -649,10 +1004,10 @@
       color: var(--brand-dark);
     }
 
-    /* Barra flotante inferior de Carrito */
+    /* Barra flotante inferior de Carrito (solo escritorio >= 768px; en móvil se integra en la Bottom Nav) */
     .cart-bar {
       position: fixed;
-      bottom: 16px;
+      bottom: 18px;
       left: 50%;
       transform: translateX(-50%);
       width: calc(100% - 32px);
@@ -666,6 +1021,11 @@
       align-items: center;
       box-shadow: 0 12px 28px rgba(62, 37, 25, 0.28);
       z-index: 90;
+    }
+    @media (max-width: 767px) {
+      .cart-bar {
+        display: none !important;
+      }
     }
     .cart-bar-btn {
       background: var(--brand);
@@ -1302,30 +1662,63 @@
     </div>
   </div>
 
-  <!-- Encabezado Marca Blanca del Nodo -->
+  <!-- Top App Bar Minimalista con Protagonismo de Marca -->
   <header class="hero">
     <div class="hero-inner">
-      <div class="brand-box">
+      <div class="hero-left-slot">
+        <button type="button" id="btn-open-drawer" class="icon-appbar-btn" aria-label="Abrir menú de información del nodo" onclick="abrirDrawerNodoTienda()">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="3.5" y1="6.5" x2="20.5" y2="6.5"></line>
+            <line x1="3.5" y1="12" x2="20.5" y2="12"></line>
+            <line x1="3.5" y1="17.5" x2="20.5" y2="17.5"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="brand-box" id="hero-brand-box">
         <div class="brand-logo" id="brand-logo-box"></div>
-        <div>
+        <div class="brand-text-stack">
           <h1 class="brand-title" id="brand-name">Cargando tienda...</h1>
           <p class="brand-sub" id="brand-subtitle"></p>
-          <div class="brand-meta">
-            <span class="brand-pill" id="brand-zone">📍 Barrio</span>
-            <span class="brand-pill" id="brand-manager">👤 Gestor</span>
-          </div>
         </div>
       </div>
-      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;" id="hero-actions-box">
-        <button type="button" id="btn-toggle-mi-cuenta" class="btn-header-primary" style="display:none;" onclick="alternarVistaMiCuenta()">
-          👤 Mi Cuenta
+
+      <div class="hero-right-slot" id="hero-actions-box">
+        <button type="button" id="btn-toggle-search" class="icon-appbar-btn" aria-label="Buscar productos" title="Buscar productos" onclick="alternarBuscadorTienda()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7.2"></circle>
+            <line x1="20.2" y1="20.2" x2="16.2" y2="16.2"></line>
+          </svg>
         </button>
-        <button type="button" id="btn-seguir-pedido-header" class="btn-track-header" onclick="accionBotonSeguirMiPedido()">
-          📦 Seguir mi pedido
-        </button>
+        <div class="desktop-nav-actions" id="desktop-nav-actions">
+          <button type="button" id="btn-toggle-mi-cuenta" class="desk-nav-pill" style="display:none;" onclick="alternarVistaMiCuenta()">
+            👤 Mi Cuenta
+          </button>
+          <button type="button" id="btn-seguir-pedido-header" class="desk-nav-pill" onclick="accionBotonSeguirMiPedido()">
+            📦 Mi pedido
+          </button>
+          <a id="desk-nav-coordinar" href="#" target="_blank" rel="noopener" class="desk-nav-pill" onclick="return onClickCoordinarGestor(event)">
+            💬 Coordinar
+          </a>
+          <button type="button" id="desk-nav-carrito" class="desk-nav-pill cart-pill" onclick="abrirAccionCarritoTienda()">
+            <span>🛒</span>
+            <span id="desk-cart-label">Carrito</span>
+            <span class="desk-cart-badge" id="desk-cart-badge">0</span>
+          </button>
+        </div>
       </div>
     </div>
   </header>
+
+  <!-- Menú Lateral Desplegable (Drawer ☰) -->
+  <div class="nodo-drawer-backdrop" id="nodo-drawer-backdrop" onclick="cerrarDrawerNodoTienda()"></div>
+  <aside class="nodo-drawer" id="nodo-drawer" aria-label="Información del nodo comunitario" aria-hidden="true">
+    <div class="nodo-drawer-head">
+      <div style="display:flex; align-items:center; gap:10px; min-width:0;" id="drawer-brand-summary"></div>
+      <button type="button" id="btn-close-drawer" class="nodo-drawer-close" aria-label="Cerrar menú" onclick="cerrarDrawerNodoTienda()">✕</button>
+    </div>
+    <div class="nodo-drawer-body" id="nodo-drawer-body"></div>
+  </aside>
 
   <main class="container">
     <!-- Vista Personal Marca Blanca del Comprador ("Mi Cuenta / Mis Pedidos") -->
@@ -1333,25 +1726,22 @@
 
     <!-- Bloque Catálogo de la Tienda Pública -->
     <div id="catalogo-tienda-wrapper">
-      <!-- Acceso directo instalable en celular del vecino (oculto si ya está instalada o si el vecino lo cerró) -->
-      <div id="pwa-tienda-install-bar" class="pwa-tienda-bar"></div>
+      <!-- Franja compacta, cálida y legible de próxima entrega y barrio -->
+      <button type="button" class="delivery-strip-compact" id="delivery-banner" onclick="abrirDrawerNodoTienda()" title="Ver detalle completo de entrega y punto de retiro">
+        <span class="delivery-strip-icon" id="delivery-badge-status">📅</span>
+        <span class="delivery-strip-main" id="delivery-date-text">Calculando próxima entrega...</span>
+        <span class="delivery-strip-chevron" aria-hidden="true">›</span>
+      </button>
 
       <!-- Banner recordatorio de pedido activo del vecino en este dispositivo -->
       <div class="active-order-banner" id="mis-pedidos-recientes-banner"></div>
 
-      <!-- Aviso de Próxima Fecha de Entrega según Punto de Corte -->
-      <div class="delivery-banner" id="delivery-banner">
-        <div>
-          <span class="delivery-badge" id="delivery-badge-status">📅 Próxima Entrega</span>
-          <div class="delivery-date-main" id="delivery-date-text">Calculando próxima entrega...</div>
-          <div class="delivery-note" id="delivery-cutoff-note"></div>
-        </div>
-        <div style="text-align:right; font-size:0.82rem; color:var(--text);" id="delivery-pickup-address"></div>
-      </div>
-
-      <!-- Buscador y Filtro de Categorías -->
+      <!-- Buscador desplegable (sin ocupar alto fijo innecesario) y Filtro de Categorías -->
       <div class="toolbar">
-        <input type="text" id="search-box" class="search-input" placeholder="🔍 Buscar almendras, nueces, mixes, granolas, barritas..." oninput="renderCatalogo(); programarTelemetriaBusquedaLupa(this.value);" />
+        <div class="search-collapsible-wrap" id="search-collapsible-wrap">
+          <input type="text" id="search-box" class="search-input" placeholder="Buscar almendras, nueces, mixes, granolas, barritas..." oninput="onInputBuscadorTienda(this.value)" onkeydown="if(event.key==='Escape') limpiarYCerrarBuscadorTienda();" />
+          <button type="button" class="search-clear-btn" id="btn-clear-search" aria-label="Cerrar búsqueda" title="Limpiar búsqueda" onclick="limpiarYCerrarBuscadorTienda()">✕</button>
+        </div>
         <div class="cats-row" id="cats-row"></div>
       </div>
 
@@ -1360,7 +1750,7 @@
     </div>
   </main>
 
-  <!-- Barra Flotante del Carrito -->
+  <!-- Barra Flotante del Carrito (Escritorio >= 768px) -->
   <div class="cart-bar" id="cart-bar">
     <div>
       <div style="font-size:0.78rem; color:#d9c8bb; font-weight:700;" id="cart-count-label">0 productos en tu pedido</div>
@@ -1370,6 +1760,57 @@
       Continuar con mi pedido →
     </button>
   </div>
+
+  <!-- Toast sutil cuando se toca Carrito vacío -->
+  <div class="cart-empty-toast" id="cart-empty-toast" role="status" aria-live="polite"></div>
+
+  <!-- Barra de Navegación Inferior Estilo App (Móvil < 768px) -->
+  <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Navegación principal">
+    <button type="button" class="bnav-item active" id="bnav-tienda" onclick="irACatalogoTiendaBoton()">
+      <span class="bnav-icon-wrap" aria-hidden="true">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9.5L5 4h14l2 5.5"></path>
+          <path d="M3 9.5a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0"></path>
+          <path d="M5 12v8h14v-8"></path>
+          <path d="M10 20v-5h4v5"></path>
+        </svg>
+      </span>
+      <span class="bnav-label">Tienda</span>
+    </button>
+
+    <button type="button" class="bnav-item" id="bnav-pedido" onclick="accionBotonSeguirMiPedido()">
+      <span class="bnav-icon-wrap" aria-hidden="true">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path>
+          <path d="m3.3 7 8.7 5 8.7-5"></path>
+          <path d="M12 22V12"></path>
+        </svg>
+        <span class="bnav-live-dot" id="bnav-pedido-dot"></span>
+      </span>
+      <span class="bnav-label">Mi pedido</span>
+    </button>
+
+    <a class="bnav-item" id="bnav-coordinar" href="#" target="_blank" rel="noopener" onclick="return onClickCoordinarGestor(event)">
+      <span class="bnav-icon-wrap" aria-hidden="true">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+        </svg>
+      </span>
+      <span class="bnav-label">Coordinar</span>
+    </a>
+
+    <button type="button" class="bnav-item" id="bnav-carrito" onclick="abrirAccionCarritoTienda()">
+      <span class="bnav-icon-wrap" aria-hidden="true">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"></path>
+          <path d="M3 6h18"></path>
+          <path d="M16 10a4 4 0 0 1-8 0"></path>
+        </svg>
+        <span class="bnav-badge" id="bnav-cart-badge">0</span>
+      </span>
+      <span class="bnav-label" id="bnav-cart-label">Carrito</span>
+    </button>
+  </nav>
 
   <!-- Wizard Fullscreen de Confirmación de Pedido Vecinal -->
   <div class="chk-fullscreen-wizard" id="checkout-modal" role="dialog" aria-modal="true">
@@ -1759,35 +2200,30 @@
     }
 
     function renderizarBarraPwaTienda() {
-      const bar = document.getElementById('pwa-tienda-install-bar');
-      if (!bar) return;
+      const box = document.getElementById('drawer-pwa-box');
+      if (!box) return;
       const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
       if (!slugAct || !STATE.nodo || esModoPwaInstaladaTienda()) {
-        bar.style.display = 'none';
+        box.style.display = 'none';
+        box.innerHTML = '';
         return;
       }
-      try {
-        if (localStorage.getItem(obtenerKeyOcultarPwaTienda(slugAct)) === '1') {
-          bar.style.display = 'none';
-          return;
-        }
-      } catch (_) {}
-
       const nombreMarca = String(STATE.nodo.nombre_marca || 'la tienda').trim();
       const iconUrl = `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=1`;
-      bar.innerHTML = `
-        <button type="button" id="btn-instalar-pwa-tienda" class="pwa-tienda-btn" onclick="instalarAccesoDirectoTienda()">
-          <img src="${esc(iconUrl)}" alt="${esc(nombreMarca)}" class="pwa-tienda-thumb" />
+      box.innerHTML = `
+        <button type="button" id="btn-instalar-pwa-tienda" class="drawer-pwa-trigger" onclick="cerrarDrawerNodoTienda(); instalarAccesoDirectoTienda();">
+          <img src="${esc(iconUrl)}" alt="${esc(nombreMarca)}" style="width:40px; height:40px; border-radius:10px; border:1px solid var(--border); flex-shrink:0; object-fit:cover;" />
           <div style="min-width:0; flex:1;">
-            <div class="pwa-tienda-label">📲 Guardar acceso directo en mi celular</div>
-            <div class="pwa-tienda-sub">Entrá en un toque a ${esc(nombreMarca)} desde tu inicio</div>
+            <div style="font-size:0.86rem; font-weight:900; color:var(--brand-dark); line-height:1.22;">📲 Instalar aplicación en mi celular</div>
+            <div style="font-size:0.74rem; font-weight:700; color:var(--muted); margin-top:2px; line-height:1.25;">Entrá en un toque a ${esc(nombreMarca)} desde tu inicio</div>
           </div>
-          <span class="pwa-tienda-cta-chip">Guardar</span>
+          <span style="flex-shrink:0; background:var(--brand); color:#ffffff; font-size:0.74rem; font-weight:900; padding:6px 11px; border-radius:999px;">Instalar</span>
         </button>
-        <button type="button" class="pwa-tienda-close" aria-label="Cerrar aviso" title="No mostrar este aviso" onclick="cerrarBannerPwaTienda()">✕</button>
       `;
-      bar.style.display = 'flex';
+      box.style.display = 'block';
     }
+    window.renderizarBarraPwaTienda = renderizarBarraPwaTienda;
+    window.cerrarModalPwaTienda = cerrarModalPwaTienda;
 
     async function instalarAccesoDirectoTienda() {
       const promptEv = window.__nodoTiendaDeferredPrompt;
@@ -1876,11 +2312,14 @@
       root.style.setProperty('--brand-light', `rgba(${r}, ${g}, ${b}, 0.12)`);
       root.style.setProperty('--brand-border', `rgba(${r}, ${g}, ${b}, 0.28)`);
 
-      if (pal.fondo) root.style.setProperty('--bg', pal.fondo);
+      if (pal.fondo) {
+        root.style.setProperty('--bg', pal.fondo);
+        root.style.setProperty('--hero-bg', pal.fondo);
+      }
       if (pal.superficie_calida) root.style.setProperty('--surface-warm', pal.superficie_calida);
       if (pal.tarjeta) {
         root.style.setProperty('--card', pal.tarjeta);
-        root.style.setProperty('--hero-bg', pal.tarjeta);
+        if (!pal.fondo) root.style.setProperty('--hero-bg', pal.tarjeta);
       }
       if (pal.texto) root.style.setProperty('--text', pal.texto);
       if (pal.texto_secundario) root.style.setProperty('--muted', pal.texto_secundario);
@@ -1997,20 +2436,20 @@
         ? `${STATE.nodo.nombre_marca} · ${STATE.nodo.bajada_marca}`
         : `${STATE.nodo.nombre_marca} — Tienda Vecinal`;
 
-      // Renderizar cabecera
+      // Renderizar cabecera minimalista con protagonismo central de marca
       document.getElementById('brand-name').textContent = STATE.nodo.nombre_marca;
       document.getElementById('brand-subtitle').textContent = bajadaEfectiva;
-      document.getElementById('brand-zone').textContent = `📍 ${STATE.nodo.barrio_zona || 'Zona Barrial'}`;
-      document.getElementById('brand-manager').textContent = `👤 Coordina: ${STATE.nodo.gestor_nombre}`;
 
       const logoBox = document.getElementById('brand-logo-box');
       const logoHorizontal = STATE.nodo.tema_visual?.logos?.horizontal || '';
       const logoIncluyeTexto = Boolean(logoHorizontal && STATE.nodo.tema_visual?.logo_incluye_texto);
-      const logoSrc = logoHorizontal || STATE.nodo.logo_original_base64 || STATE.nodo.logo_mono_preview_base64 || '';
-      logoBox.classList.toggle('has-horizontal-logo', Boolean(logoHorizontal));
+      const logoIsotipo = STATE.nodo.tema_visual?.logos?.isotipo || '';
+      const logoSrc = logoIncluyeTexto
+        ? logoHorizontal
+        : (logoIsotipo || logoHorizontal || STATE.nodo.logo_original_base64 || STATE.nodo.logo_mono_preview_base64 || '');
+      logoBox.classList.toggle('has-horizontal-logo', logoIncluyeTexto);
       const brandBoxEl = logoBox.closest('.brand-box');
       if (brandBoxEl) {
-        brandBoxEl.classList.toggle('has-horizontal-brand', Boolean(logoHorizontal));
         brandBoxEl.classList.toggle('logo-includes-text', logoIncluyeTexto);
       }
       if (logoSrc) {
@@ -2021,7 +2460,9 @@
         logoBox.innerHTML = `<div class="brand-monogram">${esc(siglas)}</div>`;
       }
 
+      sincronizarEnlacesCoordinarGestor();
       renderBannerEntrega();
+      renderizarDrawerNodoTienda();
       renderCategorias();
       renderCatalogo();
       actualizarBarraCarrito();
@@ -2071,34 +2512,255 @@
       cargarTienda('');
     }
 
+    function obtenerUrlWhatsappCoordinarGestor() {
+      const nodo = STATE.nodo || {};
+      const telDigits = String(nodo.gestor_telefono || '').replace(/\D+/g, '');
+      if (!telDigits) return '';
+      const telWa = telDigits.startsWith('54') ? telDigits : `549${telDigits}`;
+      const saludo = `Hola ${nodo.gestor_nombre || ''}! Te escribo desde la tienda vecinal de ${nodo.nombre_marca || 'nuestro barrio'}.`;
+      return `https://wa.me/${telWa}?text=${encodeURIComponent(saludo)}`;
+    }
+
+    function sincronizarEnlacesCoordinarGestor() {
+      const href = obtenerUrlWhatsappCoordinarGestor();
+      const gestorNombre = String(STATE.nodo?.gestor_nombre || 'el referente').trim();
+      for (const idEl of ['bnav-coordinar', 'desk-nav-coordinar', 'drawer-wa-gestor-link']) {
+        const el = document.getElementById(idEl);
+        if (!el) continue;
+        el.setAttribute('href', href || '#');
+        el.setAttribute('title', `Coordinar por WhatsApp con ${gestorNombre}`);
+      }
+    }
+
+    function onClickCoordinarGestor(ev) {
+      const href = obtenerUrlWhatsappCoordinarGestor();
+      if (!href) {
+        if (ev) ev.preventDefault();
+        abrirDrawerNodoTienda();
+        return false;
+      }
+      enviarTelemetriaTienda('clic_coordinar_gestor', { gestor_nombre: STATE.nodo?.gestor_nombre || '' }, 2000);
+      return true;
+    }
+
+    function alternarBuscadorTienda() {
+      if (STATE.vistaMiCuentaActiva) {
+        irACatalogoDesdeMiCuenta();
+      }
+      const wrap = document.getElementById('search-collapsible-wrap');
+      const inp = document.getElementById('search-box');
+      const btn = document.getElementById('btn-toggle-search');
+      if (!wrap || !inp) return;
+
+      const estaAbierto = wrap.classList.contains('open');
+      if (estaAbierto && !String(inp.value || '').trim()) {
+        wrap.classList.remove('open');
+        if (btn) btn.classList.remove('is-active');
+        return;
+      }
+
+      wrap.classList.add('open');
+      if (btn) btn.classList.add('is-active');
+      setTimeout(() => {
+        inp.focus();
+        inp.select?.();
+      }, 30);
+    }
+
+    function onInputBuscadorTienda(val) {
+      const btn = document.getElementById('btn-toggle-search');
+      if (btn) {
+        btn.classList.toggle('is-active', true);
+      }
+      renderCatalogo();
+      programarTelemetriaBusquedaLupa(val);
+    }
+
+    function limpiarYCerrarBuscadorTienda() {
+      const wrap = document.getElementById('search-collapsible-wrap');
+      const inp = document.getElementById('search-box');
+      const btn = document.getElementById('btn-toggle-search');
+      if (inp) inp.value = '';
+      if (wrap) wrap.classList.remove('open');
+      if (btn) btn.classList.remove('is-active');
+      renderCatalogo();
+    }
+
+    function abrirDrawerNodoTienda() {
+      renderizarDrawerNodoTienda();
+      const backdrop = document.getElementById('nodo-drawer-backdrop');
+      const drawer = document.getElementById('nodo-drawer');
+      if (backdrop) backdrop.classList.add('open');
+      if (drawer) {
+        drawer.classList.add('open');
+        drawer.setAttribute('aria-hidden', 'false');
+      }
+      document.body.style.overflow = 'hidden';
+    }
+
+    function cerrarDrawerNodoTienda() {
+      const backdrop = document.getElementById('nodo-drawer-backdrop');
+      const drawer = document.getElementById('nodo-drawer');
+      if (backdrop) backdrop.classList.remove('open');
+      if (drawer) {
+        drawer.classList.remove('open');
+        drawer.setAttribute('aria-hidden', 'true');
+      }
+      const chkOpen = document.getElementById('checkout-modal')?.style.display === 'flex';
+      if (!chkOpen) {
+        document.body.style.overflow = '';
+      }
+    }
+
+    function renderizarDrawerNodoTienda() {
+      const headSummary = document.getElementById('drawer-brand-summary');
+      const bodyEl = document.getElementById('nodo-drawer-body');
+      if (!headSummary || !bodyEl) return;
+
+      const nodo = STATE.nodo || {};
+      const nombreMarca = nodo.nombre_marca || 'Tienda Vecinal';
+      const barrio = nodo.barrio_zona || 'Tu barrio';
+      const gestorNombre = nodo.gestor_nombre || 'Referente del nodo';
+      const iconoUrl = obtenerLogoIconoNodo(nodo);
+      const siglas = String(nombreMarca).split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
+
+      headSummary.innerHTML = `
+        ${iconoUrl
+          ? `<img src="${esc(iconoUrl)}" alt="${esc(nombreMarca)}" style="width:40px; height:40px; border-radius:11px; object-fit:contain; flex-shrink:0; border:1px solid var(--border); background:#fff;" />`
+          : `<div class="brand-monogram" style="width:40px; height:40px; flex-shrink:0;">${esc(siglas)}</div>`
+        }
+        <div style="min-width:0;">
+          <div style="font-size:1.05rem; font-weight:900; color:var(--text); line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            ${esc(nombreMarca)}
+          </div>
+          <div style="font-size:0.77rem; font-weight:800; color:var(--brand-dark); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            📍 ${esc(barrio)}
+          </div>
+        </div>
+      `;
+
+      const prox = STATE.proximaEntrega;
+      const asig = prox?.asignada || null;
+      const pasoCorte = Boolean(prox?.paso_horario_corte);
+      const envioTxt = nodo.permitir_envio_barrial
+        ? `🛵 Envío barrial: ${Number(nodo.cargo_envio_barrial) > 0 ? fmt(nodo.cargo_envio_barrial) : 'Sin cargo'}`
+        : '🏠 Modalidad: Retiro en el punto del nodo';
+      const waHref = obtenerUrlWhatsappCoordinarGestor();
+
+      bodyEl.innerHTML = `
+        <!-- 1. Detalle de Próxima Entrega y Punto de Retiro -->
+        <div class="drawer-section-card" style="${pasoCorte ? 'background:#fffbeb; border-color:#fcd34d;' : ''}">
+          <div style="display:inline-block; font-size:0.7rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; padding:3px 9px; border-radius:999px; background:${pasoCorte ? 'var(--sun)' : 'var(--ok-soft)'}; color:${pasoCorte ? '#92400e' : 'var(--ok)'}; border:1px solid ${pasoCorte ? '#fcd34d' : 'var(--ok-border)'}; margin-bottom:7px;">
+            ${pasoCorte ? '⏭️ Horario de corte superado' : '📅 Próxima entrega programada'}
+          </div>
+          <div style="font-size:0.96rem; font-weight:900; color:var(--text); line-height:1.28;">
+            ${asig ? esc(asig.label_completo) : 'Por confirmar'}
+          </div>
+          ${prox?.mensaje_vecino ? `
+            <div style="font-size:0.79rem; font-weight:700; color:var(--muted); margin-top:5px; line-height:1.38;">
+              ${esc(prox.mensaje_vecino)}
+            </div>
+          ` : ''}
+          <div style="margin-top:9px; padding-top:9px; border-top:1px dashed var(--border); font-size:0.8rem; line-height:1.42;">
+            <div><strong>🏠 Punto de retiro:</strong> ${esc(nodo.direccion_retiro || barrio)}</div>
+            <div style="margin-top:3px; color:var(--brand-dark); font-weight:800;">${esc(envioTxt)}</div>
+          </div>
+        </div>
+
+        <!-- 2. Tarjeta del Referente Barrial -->
+        <div class="drawer-section-card">
+          <div style="font-size:0.72rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted);">
+            Referente de ${esc(barrio)}
+          </div>
+          <div style="font-size:0.98rem; font-weight:900; color:var(--text); margin-top:3px;">
+            Coordinar con ${esc(gestorNombre)}
+          </div>
+          <div style="font-size:0.78rem; font-weight:700; color:var(--muted); margin-top:2px; margin-bottom:10px;">
+            Consultas sobre entregas, retiros o encargos del nodo.
+          </div>
+          ${waHref ? `
+            <a id="drawer-wa-gestor-link" href="${esc(waHref)}" target="_blank" rel="noopener"
+              onclick="return onClickCoordinarGestor(event)"
+              style="display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:42px; padding:9px 14px; border-radius:11px; background:#15803d; color:#ffffff; font-size:0.86rem; font-weight:900; text-decoration:none;">
+              <span>💬 Escribir por WhatsApp</span>
+            </a>
+          ` : ''}
+        </div>
+
+        <!-- 3. Seguimiento de Pedido y Mi Cuenta -->
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button type="button" class="drawer-action-btn" id="drawer-btn-seguir-pedido" onclick="cerrarDrawerNodoTienda(); accionBotonSeguirMiPedido();">
+            <span>📦 Seguir estado de mi pedido</span>
+            <span style="color:var(--brand); font-weight:900;">›</span>
+          </button>
+          ${STATE.portalToken ? `
+            <button type="button" class="drawer-action-btn" id="drawer-btn-mi-cuenta" onclick="cerrarDrawerNodoTienda(); activarVistaMiCuenta();">
+              <span>👤 Mi Cuenta y comprobantes</span>
+              <span style="color:var(--brand); font-weight:900;">›</span>
+            </button>
+          ` : ''}
+        </div>
+
+        <!-- 4. Resumen en 3 Pasos de Compra Comunitaria -->
+        <div class="drawer-section-card" style="background:var(--surface-warm);">
+          <div style="font-size:0.76rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; color:var(--brand-dark); margin-bottom:9px;">
+            🤝 Cómo funciona ${esc(nombreMarca)}
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px; font-size:0.8rem; line-height:1.34;">
+            <div style="display:flex; align-items:flex-start; gap:9px;">
+              <span style="width:20px; height:20px; border-radius:999px; background:var(--brand); color:#fff; font-size:0.72rem; font-weight:900; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">1</span>
+              <div><strong>Elegí tus productos</strong> del catálogo antes del horario de cierre semanal.</div>
+            </div>
+            <div style="display:flex; align-items:flex-start; gap:9px;">
+              <span style="width:20px; height:20px; border-radius:999px; background:var(--brand); color:#fff; font-size:0.72rem; font-weight:900; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">2</span>
+              <div><strong>Consolidamos en el nodo</strong> todos los pedidos de ${esc(barrio)} directo de elaboración.</div>
+            </div>
+            <div style="display:flex; align-items:flex-start; gap:9px;">
+              <span style="width:20px; height:20px; border-radius:999px; background:var(--brand); color:#fff; font-size:0.72rem; font-weight:900; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">3</span>
+              <div><strong>Retirás o recibís</strong> en la fecha programada y abonás por transferencia o efectivo.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Bloque Destacado PWA (oculto automáticamente en modo standalone) -->
+        <div class="drawer-pwa-card" id="drawer-pwa-box" style="display:none;"></div>
+      `;
+
+      renderizarBarraPwaTienda();
+    }
+
     function renderBannerEntrega() {
       const banner = document.getElementById('delivery-banner');
       const badge = document.getElementById('delivery-badge-status');
       const mainTxt = document.getElementById('delivery-date-text');
-      const noteTxt = document.getElementById('delivery-cutoff-note');
-      const addrTxt = document.getElementById('delivery-pickup-address');
+      if (!banner || !mainTxt) return;
 
       const prox = STATE.proximaEntrega;
-      if (!prox || !prox.asignada) return;
+      const barrio = String(STATE.nodo?.barrio_zona || STATE.nodo?.nombre_marca || 'tu barrio').trim();
+      if (!prox || !prox.asignada) {
+        mainTxt.textContent = `Próxima entrega en ${barrio}`;
+        return;
+      }
 
+      const asig = prox.asignada;
       const pasoCorte = Boolean(prox.paso_horario_corte);
       banner.classList.toggle('after-cutoff', pasoCorte);
+      if (badge) {
+        badge.textContent = pasoCorte ? '⏭️' : '📅';
+      }
 
-      badge.textContent = pasoCorte
-        ? '⏭️ Horario de corte superado · Asignado a próxima fecha'
-        : '📅 Pedidos abiertos para esta semana';
+      const dia = String(asig.dia_entrega_nombre || '').trim();
+      const fechaCorta = String(asig.fecha_entrega_corta || '').trim();
+      const ventana = String(asig.ventana_retiro || '').trim();
+      const detalleFechaHora = (dia && fechaCorta)
+        ? `${dia} ${fechaCorta}${ventana ? `, ${ventana}` : ''}`
+        : String(asig.label_completo || '');
 
-      mainTxt.textContent = `Entrega: ${prox.asignada.label_completo}`;
-      noteTxt.textContent = prox.mensaje_vecino;
+      const prefijo = pasoCorte
+        ? `Próxima fecha en ${esc(barrio)}`
+        : `Próxima entrega en ${esc(barrio)}`;
 
-      const envioTxt = STATE.nodo.permitir_envio_barrial
-        ? `🛵 Envío a domicilio en el barrio: ${Number(STATE.nodo.cargo_envio_barrial) > 0 ? fmt(STATE.nodo.cargo_envio_barrial) : 'Sin cargo'}`
-        : '🏠 Modalidad: Retiro por el Nodo';
-
-      addrTxt.innerHTML = `
-        <div><strong>🏠 Punto de retiro:</strong> ${esc(STATE.nodo.direccion_retiro || STATE.nodo.barrio_zona)}</div>
-        <div style="margin-top:3px; color:var(--brand-dark); font-weight:800;">${envioTxt}</div>
-      `;
+      mainTxt.innerHTML = `${prefijo} · <strong>${esc(detalleFechaHora)}</strong>`;
     }
 
     function renderCategorias() {
@@ -2281,7 +2943,16 @@
     }
 
     document.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape' && STATE.ofertaIngredientesModalId) {
+      if (ev.key !== 'Escape') return;
+      if (document.getElementById('nodo-drawer')?.classList.contains('open')) {
+        cerrarDrawerNodoTienda();
+        return;
+      }
+      if (document.getElementById('pwa-tienda-modal')?.classList.contains('open')) {
+        cerrarModalPwaTienda();
+        return;
+      }
+      if (STATE.ofertaIngredientesModalId) {
         cerrarModalIngredientesProducto();
       }
     });
@@ -2477,16 +3148,87 @@
       };
     }
 
+    let _cartEmptyToastTimer = null;
+
+    function mostrarToastCarritoVacio() {
+      const toast = document.getElementById('cart-empty-toast');
+      if (!toast) return;
+      toast.textContent = '🛒 Sumá productos del catálogo para iniciar tu pedido';
+      toast.classList.add('visible');
+      if (_cartEmptyToastTimer) clearTimeout(_cartEmptyToastTimer);
+      _cartEmptyToastTimer = setTimeout(() => {
+        toast.classList.remove('visible');
+      }, 2200);
+    }
+
+    function abrirAccionCarritoTienda() {
+      cerrarDrawerNodoTienda();
+      const res = calcularResumenCarrito();
+      if (res.unidades > 0) {
+        abrirModalCheckout();
+        return;
+      }
+      if (STATE.vistaMiCuentaActiva) {
+        irACatalogoDesdeMiCuenta();
+      }
+      mostrarToastCarritoVacio();
+      const grid = document.getElementById('products-grid');
+      if (grid) {
+        grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    function irACatalogoTiendaBoton() {
+      cerrarDrawerNodoTienda();
+      cerrarModalSeguimiento();
+      if (STATE.vistaMiCuentaActiva) {
+        irACatalogoDesdeMiCuenta();
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      actualizarBotonesCabeceraMiCuenta();
+    }
+
     function actualizarBarraCarrito() {
       const res = calcularResumenCarrito();
       const bar = document.getElementById('cart-bar');
-      if (res.unidades === 0) {
-        bar.style.display = 'none';
-        return;
+      if (bar) {
+        if (res.unidades === 0 || STATE.vistaMiCuentaActiva) {
+          bar.style.display = 'none';
+        } else {
+          bar.style.display = 'flex';
+          document.getElementById('cart-count-label').textContent = `${res.unidades} ${res.unidades === 1 ? 'producto' : 'productos'} en tu canasto`;
+          document.getElementById('cart-total-label').textContent = fmt(res.subtotal);
+        }
       }
-      bar.style.display = 'flex';
-      document.getElementById('cart-count-label').textContent = `${res.unidades} ${res.unidades === 1 ? 'producto' : 'productos'} en tu canasto`;
-      document.getElementById('cart-total-label').textContent = fmt(res.subtotal);
+
+      // Actualizar ítem Carrito en Barra Inferior Móvil (< 768px)
+      const bnavCart = document.getElementById('bnav-carrito');
+      const bnavBadge = document.getElementById('bnav-cart-badge');
+      const bnavLabel = document.getElementById('bnav-cart-label');
+      if (bnavCart && bnavBadge && bnavLabel) {
+        if (res.unidades > 0) {
+          bnavCart.classList.add('bnav-cart-has-items');
+          bnavBadge.textContent = String(res.unidades);
+          bnavBadge.style.display = 'inline-flex';
+          bnavLabel.textContent = fmt(res.subtotal);
+        } else {
+          bnavCart.classList.remove('bnav-cart-has-items');
+          bnavBadge.textContent = '0';
+          bnavBadge.style.display = 'none';
+          bnavLabel.textContent = 'Carrito';
+        }
+      }
+
+      // Actualizar píldora Carrito en Cabecera Escritorio (>= 768px)
+      const deskCart = document.getElementById('desk-nav-carrito');
+      const deskBadge = document.getElementById('desk-cart-badge');
+      const deskLabel = document.getElementById('desk-cart-label');
+      if (deskCart && deskBadge && deskLabel) {
+        deskCart.classList.toggle('has-items', res.unidades > 0);
+        deskBadge.textContent = String(res.unidades);
+        deskLabel.textContent = res.unidades > 0 ? fmt(res.subtotal) : 'Carrito';
+      }
     }
 
     function obtenerMediosPagoHabilitadosTienda(nodoObj = STATE.nodo) {
@@ -3616,10 +4358,12 @@
 
     async function refrescarBannerPedidosRecientes() {
       const banner = document.getElementById('mis-pedidos-recientes-banner');
+      const liveDot = document.getElementById('bnav-pedido-dot');
       if (!banner) return;
       const guardados = obtenerPedidosRecientesLocal();
       if (guardados.length === 0) {
         banner.style.display = 'none';
+        if (liveDot) liveDot.style.display = 'none';
         return;
       }
       const ultimo = guardados[0];
@@ -3628,6 +4372,7 @@
         const data = await resp.json();
         if (!resp.ok || !data.ok) {
           banner.style.display = 'none';
+          if (liveDot) liveDot.style.display = 'none';
           return;
         }
         if (data.identidad_vecino) {
@@ -3642,8 +4387,10 @@
         const ped = data.pedido;
         if (seg.anulado || Number(seg.hito_actual || 1) >= 6) {
           banner.style.display = 'none';
+          if (liveDot) liveDot.style.display = 'none';
           return;
         }
+        if (liveDot) liveDot.style.display = 'block';
         const pasoActual = (seg.pasos || []).find(p => p.es_actual) || (seg.pasos || [])[0] || {};
         banner.style.display = 'flex';
         banner.innerHTML = `
@@ -4580,6 +5327,11 @@
     }
 
     function actualizarBotonesCabeceraMiCuenta() {
+      const bnavTienda = document.getElementById('bnav-tienda');
+      const bnavPedido = document.getElementById('bnav-pedido');
+      if (bnavTienda) bnavTienda.classList.toggle('active', !STATE.vistaMiCuentaActiva);
+      if (bnavPedido) bnavPedido.classList.toggle('active', Boolean(STATE.vistaMiCuentaActiva));
+
       const btnToggle = document.getElementById('btn-toggle-mi-cuenta');
       const btnSeguir = document.getElementById('btn-seguir-pedido-header');
       if (!btnToggle) return;
