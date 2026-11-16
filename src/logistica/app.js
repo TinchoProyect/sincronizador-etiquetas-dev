@@ -73,6 +73,8 @@ const allowedOrigins = [
     'https://nube-prueba.lamdaser.com',
     'http://nube-prueba.lamdaser.com',
     'http://logistica.lamdaser.com',
+    'https://tienda.lamdaser.com',
+    'http://tienda.lamdaser.com',
     // --- Acceso externo vía DDNS (router TP-Link con Port Forwarding) ---
     'http://lamda-logistica.tplinkdns.com:3005',
     'https://lamda-logistica.tplinkdns.com:3005',
@@ -90,7 +92,7 @@ const corsOptions = {
         }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Lamda-Physical-Station', 'X-Lamda-Physical-Token', 'X-Lamda-Print-Token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Lamda-Physical-Station', 'X-Lamda-Physical-Token', 'X-Lamda-Print-Token', 'X-Nodo-Gestor-Token'],
     credentials: true
 };
 
@@ -397,7 +399,7 @@ app.use('/api/produccion', createProxyMiddleware({
 }));
 
 // Proxy para vistas móviles y operativas de Nodos Barriales (puerto 3002)
-['/tienda', '/gestor', '/gestor-nodo', '/seguimiento', '/sw-nodo-pwa.js', '/img/nodos', '/deposito-nodos', '/liquidacion-nodos', '/centro-nodos'].forEach((nodoPrefix) => {
+['/tienda', '/gestor', '/gestor-nodo', '/seguimiento', '/sw-nodo-pwa.js', '/img/nodos', '/media/nodos', '/deposito-nodos', '/liquidacion-nodos', '/centro-nodos'].forEach((nodoPrefix) => {
     app.use(nodoPrefix, createProxyMiddleware({
         target: 'http://127.0.0.1:3002',
         changeOrigin: true,

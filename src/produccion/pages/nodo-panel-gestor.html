@@ -496,6 +496,227 @@
       cursor: wait;
     }
 
+    /* === Álbum de Fotos por Oferta (Panel Gestor) === */
+    .oferta-album-box {
+      margin: 0 0 10px 0;
+      padding: 9px 10px;
+      border-radius: 10px;
+      background: var(--surface-warm);
+      border: 1px solid var(--border);
+    }
+    .oferta-album-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 7px;
+    }
+    .oferta-album-title {
+      font-size: 0.75rem;
+      font-weight: 900;
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .oferta-album-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 2px 1px 6px 1px;
+      scrollbar-width: thin;
+    }
+    .album-thumb-btn {
+      position: relative;
+      width: 66px;
+      height: 66px;
+      flex-shrink: 0;
+      padding: 0;
+      border-radius: 10px;
+      border: 2px solid var(--border);
+      background: #18181b;
+      overflow: hidden;
+      cursor: pointer;
+      transition: transform 0.12s, border-color 0.15s;
+    }
+    .album-thumb-btn.is-portada {
+      border-color: var(--brand);
+      box-shadow: 0 2px 8px var(--brand-soft);
+    }
+    .album-thumb-btn:hover {
+      border-color: var(--brand);
+      transform: translateY(-1px);
+    }
+    .album-thumb-btn img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .album-thumb-badge {
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      padding: 1px 5px;
+      border-radius: 6px;
+      font-size: 0.62rem;
+      font-weight: 900;
+      background: rgba(15, 23, 42, 0.78);
+      color: #fff;
+      line-height: 1.3;
+    }
+    .album-thumb-btn.is-portada .album-thumb-badge {
+      background: var(--brand);
+    }
+    .album-thumb-fx {
+      position: absolute;
+      bottom: 3px;
+      right: 3px;
+      font-size: 0.62rem;
+      background: rgba(15, 23, 42, 0.74);
+      color: #fde68a;
+      border-radius: 5px;
+      padding: 1px 4px;
+      line-height: 1.2;
+    }
+    .oferta-album-actions {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .btn-album-act {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 33px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--brand-border);
+      background: #ffffff;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.76rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn-album-act:hover:not(:disabled) {
+      border-color: var(--brand);
+      background: #fffaf5;
+    }
+    .btn-album-act:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .btn-album-danger {
+      border-color: #fecaca;
+      color: #b91c1c;
+      background: #fff5f5;
+      font-size: 0.71rem;
+      min-height: 28px;
+      padding: 3px 8px;
+    }
+    .foto-modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9400;
+      background: rgba(15, 23, 42, 0.72);
+      backdrop-filter: blur(3px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+    }
+    .foto-modal-card {
+      width: 100%;
+      max-width: 470px;
+      max-height: 94dvh;
+      overflow-y: auto;
+      background: var(--surface, #ffffff);
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      padding: 16px;
+      box-shadow: 0 20px 48px rgba(0, 0, 0, 0.35);
+    }
+    .foto-preview-stage {
+      position: relative;
+      width: 100%;
+      height: 270px;
+      background: #121316;
+      border-radius: 13px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+      user-select: none;
+      cursor: grab;
+    }
+    .foto-preview-stage:active {
+      cursor: grabbing;
+    }
+    .foto-preview-stage img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      pointer-events: none;
+      display: block;
+    }
+    .foto-filter-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 10px 0;
+    }
+    .foto-filter-pill {
+      min-height: 40px;
+      padding: 7px 10px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: var(--surface-warm);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .foto-filter-pill.is-active {
+      border-color: var(--brand);
+      background: var(--brand);
+      color: #ffffff;
+      box-shadow: 0 3px 10px var(--brand-soft);
+    }
+    .foto-chip-group {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .foto-mini-chip {
+      padding: 5px 9px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.74rem;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .foto-mini-chip.is-active {
+      border-color: var(--brand);
+      background: var(--brand-soft);
+      color: var(--brand-dark);
+    }
+
     /* === Botón de Instalación de Acceso Directo PWA (Panel Gestor) === */
     .cta-pwa-gestor {
       width: 100%;
@@ -1515,6 +1736,10 @@
     function fetchGestor(url, options = {}) {
       const tok = resolverYPersistirTokenGestor(GSTATE.slug || detectarSlugInicial());
       const headers = { ...(options.headers || {}) };
+      if (typeof FormData !== 'undefined' && options.body instanceof FormData) {
+        delete headers['Content-Type'];
+        delete headers['content-type'];
+      }
       if (tok) {
         headers['X-Nodo-Gestor-Token'] = tok;
       }
@@ -2855,6 +3080,8 @@
                       onchange="guardarCambioOferta(${of.id}, { categoria_vidriera_personalizada: this.value })" />
                   </div>
                 </div>
+
+                ${renderizarBloqueAlbumOferta(of)}
 
                 <div class="oferta-grid">
                   <div>
@@ -7711,6 +7938,828 @@
           ` : ''}
         </div>
       `;
+    }
+
+    // =========================================================================
+    // ÁLBUM DE FOTOS POR OFERTA (CAPTURA + AUTO-MEJORA + CICLO DE VIDA COMPLETO)
+    // =========================================================================
+    const MAX_FOTOS_OFERTA_UI = 6;
+    const FOTO_EDITOR_STATE = {
+      abierto: false,
+      modo: 'nueva', // 'nueva' | 'reeditar' | 'reemplazar'
+      ofertaId: null,
+      fotoId: null,
+      colaArchivos: [],
+      indiceCola: 0,
+      blobComprimido: null,
+      imgWidthOrig: 1000,
+      imgHeightOrig: 1000,
+      rotacion: 0,
+      presetEncuadre: 'original', // 'original' | '1:1' | '4:5'
+      zoomEncuadre: 1.0,
+      panX: 0.5,
+      panY: 0.5,
+      cropInicial: null,
+      aplicarFiltro: true,
+      mejoradaDataUrl: '',
+      originalDataUrl: '',
+      cargandoPreview: false,
+      guardando: false,
+      debounceTimer: null,
+      dragActivo: false,
+      dragStartX: 0,
+      dragStartY: 0,
+      dragPanX0: 0.5,
+      dragPanY0: 0.5
+    };
+
+    function obtenerOfertaLocalPorId(ofertaId) {
+      return (GSTATE.ofertas || []).find(o => Number(o.id) === Number(ofertaId)) || null;
+    }
+
+    function obtenerFotosDeOfertaLocal(of) {
+      return Array.isArray(of?.fotos_vidriera) ? of.fotos_vidriera : [];
+    }
+
+    function renderizarBloqueAlbumOferta(of) {
+      const fotos = obtenerFotosDeOfertaLocal(of);
+      const lleno = fotos.length >= MAX_FOTOS_OFERTA_UI;
+      return `
+        <div class="oferta-album-box" data-oferta-album-box="${Number(of.id)}">
+          <div class="oferta-album-head">
+            <div class="oferta-album-title">
+              <span>📷 Fotos del producto (${fotos.length}/${MAX_FOTOS_OFERTA_UI})</span>
+              ${fotos.length === 0
+                ? `<span style="font-weight:700; color:var(--muted); font-size:0.7rem;">· Sin fotos aún</span>`
+                : `<span style="font-weight:700; color:var(--muted); font-size:0.7rem;">· Tocá una miniatura para editar</span>`
+              }
+            </div>
+            ${fotos.length > 0 ? `
+              <button type="button" class="btn-album-act btn-album-danger"
+                onclick="confirmarVaciarAlbumOferta(${Number(of.id)})">
+                🧹 Vaciar álbum
+              </button>
+            ` : ''}
+          </div>
+          ${fotos.length > 0 ? `
+            <div class="oferta-album-strip">
+              ${fotos.map((f, idx) => `
+                <button type="button"
+                  class="album-thumb-btn${idx === 0 ? ' is-portada' : ''}"
+                  data-album-thumb="${esc(f.id)}"
+                  onclick="abrirMenuAccionesFotoOferta(${Number(of.id)}, '${esc(f.id)}')"
+                  title="${idx === 0 ? 'Portada del álbum — Tocar para opciones' : `Foto #${idx + 1} — Tocar para opciones`}">
+                  <img src="${esc(f.url)}" alt="Foto ${idx + 1}" loading="lazy" />
+                  <span class="album-thumb-badge">${idx === 0 ? '⭐ Portada' : `#${idx + 1}`}</span>
+                  ${f.filtro_aplicado !== false ? `<span class="album-thumb-fx" title="Con mejora automática">✨</span>` : ''}
+                </button>
+              `).join('')}
+            </div>
+          ` : ''}
+          <div class="oferta-album-actions">
+            <button type="button" class="btn-album-act" data-btn-camara="${Number(of.id)}"
+              ${lleno ? 'disabled' : ''}
+              onclick="dispararCapturaFotoOferta(${Number(of.id)}, 'camera')">
+              📷 Sacar foto
+            </button>
+            <button type="button" class="btn-album-act" data-btn-galeria="${Number(of.id)}"
+              ${lleno ? 'disabled' : ''}
+              onclick="dispararCapturaFotoOferta(${Number(of.id)}, 'gallery')">
+              🖼️ Subir de galería
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function asegurarNodosDomModalesFotosGestor() {
+      if (document.getElementById('modal-acciones-foto-gestor')) return;
+
+      const wrap = document.createElement('div');
+      wrap.innerHTML = `
+        <input type="file" id="input-foto-camara-gestor" accept="image/*" capture="environment" style="display:none;" />
+        <input type="file" id="input-foto-galeria-gestor" accept="image/*" multiple style="display:none;" />
+        <input type="file" id="input-foto-reemplazar-gestor" accept="image/*" style="display:none;" />
+
+        <div id="modal-acciones-foto-gestor" class="foto-modal-overlay" onclick="if(event.target===this)cerrarMenuAccionesFotoOferta()">
+          <div class="foto-modal-card" id="modal-acciones-foto-content"></div>
+        </div>
+
+        <div id="modal-editor-foto-gestor" class="foto-modal-overlay" onclick="if(event.target===this && !FOTO_EDITOR_STATE.guardando)cerrarEditorFotoOferta()">
+          <div class="foto-modal-card">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
+              <div>
+                <div id="foto-editor-titulo" style="font-weight:900; font-size:0.98rem; color:var(--text);">Preparar foto del producto</div>
+                <div id="foto-editor-subtitulo" style="font-size:0.74rem; color:var(--muted); font-weight:700;">Arrastrá sobre la foto si querés reencuadrar</div>
+              </div>
+              <button type="button" onclick="cerrarEditorFotoOferta()" aria-label="Cerrar"
+                style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+            </div>
+
+            <div class="foto-preview-stage" id="foto-editor-stage">
+              <img id="foto-editor-img" src="" alt="Vista previa" style="display:none;" />
+              <div id="foto-editor-loader" style="color:#e2e8f0; font-size:0.84rem; font-weight:800; padding:12px; text-align:center;">
+                Procesando vista previa...
+              </div>
+            </div>
+
+            <div class="foto-filter-switch">
+              <button type="button" id="btn-filtro-mejorada" class="foto-filter-pill is-active"
+                onclick="seleccionarVarianteFiltroEditor(true)">
+                ✨ Mejorada Automática
+              </button>
+              <button type="button" id="btn-filtro-original" class="foto-filter-pill"
+                onclick="seleccionarVarianteFiltroEditor(false)">
+                📷 Original sin filtro
+              </button>
+            </div>
+
+            <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:11px; padding:9px 10px; margin-bottom:12px; display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
+                <div class="foto-chip-group">
+                  <button type="button" class="foto-mini-chip" onclick="girarFotoEditor(-90)">↺ -90°</button>
+                  <button type="button" class="foto-mini-chip" onclick="girarFotoEditor(90)">↻ +90°</button>
+                </div>
+                <div class="foto-chip-group">
+                  <button type="button" class="foto-mini-chip is-active" data-preset-crop="original" onclick="cambiarPresetEncuadreEditor('original')">Original</button>
+                  <button type="button" class="foto-mini-chip" data-preset-crop="1:1" onclick="cambiarPresetEncuadreEditor('1:1')">1:1 Cuadrado</button>
+                  <button type="button" class="foto-mini-chip" data-preset-crop="4:5" onclick="cambiarPresetEncuadreEditor('4:5')">4:5 Vertical</button>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:0.72rem; font-weight:800; color:var(--muted); min-width:58px;">🔍 Recorte</span>
+                <input type="range" id="input-zoom-encuadre" min="1" max="2.4" step="0.05" value="1"
+                  style="flex:1; accent-color:var(--brand);"
+                  oninput="cambiarZoomEncuadreEditor(this.value)" />
+                <span id="label-zoom-encuadre" style="font-size:0.72rem; font-weight:800; color:var(--text); min-width:34px; text-align:right;">1.0x</span>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="btn-soft" style="flex:1; min-height:42px; font-weight:800;"
+                onclick="cerrarEditorFotoOferta()">Cancelar</button>
+              <button type="button" id="btn-guardar-foto-editor" class="btn-primary" style="flex:2; min-height:42px; font-weight:900;"
+                onclick="confirmarGuardarFotoEditor()">💾 Guardar foto</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(wrap);
+
+      const inpCam = document.getElementById('input-foto-camara-gestor');
+      const inpGal = document.getElementById('input-foto-galeria-gestor');
+      const inpRep = document.getElementById('input-foto-reemplazar-gestor');
+
+      inpCam.addEventListener('change', (ev) => manejarSeleccionArchivosFoto(ev.target.files, 'nueva'));
+      inpGal.addEventListener('change', (ev) => manejarSeleccionArchivosFoto(ev.target.files, 'nueva'));
+      inpRep.addEventListener('change', (ev) => manejarSeleccionArchivosFoto(ev.target.files, 'reemplazar'));
+
+      // Soporte de arrastre táctil / mouse sobre el visor para ajustar el encuadre cuando hay recorte activo
+      const stage = document.getElementById('foto-editor-stage');
+      const iniciarDrag = (clientX, clientY) => {
+        if (FOTO_EDITOR_STATE.presetEncuadre === 'original' && FOTO_EDITOR_STATE.zoomEncuadre <= 1.01) return;
+        FOTO_EDITOR_STATE.dragActivo = true;
+        FOTO_EDITOR_STATE.dragStartX = clientX;
+        FOTO_EDITOR_STATE.dragStartY = clientY;
+        FOTO_EDITOR_STATE.dragPanX0 = FOTO_EDITOR_STATE.panX;
+        FOTO_EDITOR_STATE.dragPanY0 = FOTO_EDITOR_STATE.panY;
+      };
+      const moverDrag = (clientX, clientY) => {
+        if (!FOTO_EDITOR_STATE.dragActivo) return;
+        const rect = stage.getBoundingClientRect();
+        const dx = (clientX - FOTO_EDITOR_STATE.dragStartX) / Math.max(120, rect.width);
+        const dy = (clientY - FOTO_EDITOR_STATE.dragStartY) / Math.max(120, rect.height);
+        FOTO_EDITOR_STATE.panX = Math.max(0, Math.min(1, FOTO_EDITOR_STATE.dragPanX0 - dx));
+        FOTO_EDITOR_STATE.panY = Math.max(0, Math.min(1, FOTO_EDITOR_STATE.dragPanY0 - dy));
+        programarRefrescoPreviewServidor();
+      };
+      const finDrag = () => { FOTO_EDITOR_STATE.dragActivo = false; };
+
+      stage.addEventListener('pointerdown', (e) => { iniciarDrag(e.clientX, e.clientY); });
+      window.addEventListener('pointermove', (e) => { moverDrag(e.clientX, e.clientY); });
+      window.addEventListener('pointerup', finDrag);
+      window.addEventListener('pointercancel', finDrag);
+    }
+
+    function dispararCapturaFotoOferta(ofertaId, origen = 'gallery') {
+      asegurarNodosDomModalesFotosGestor();
+      const of = obtenerOfertaLocalPorId(ofertaId);
+      const fotos = obtenerFotosDeOfertaLocal(of);
+      if (fotos.length >= MAX_FOTOS_OFERTA_UI) {
+        mostrarAvisoPantallaGestor(`Ya alcanzaste el máximo de ${MAX_FOTOS_OFERTA_UI} fotos para este artículo.`, 'error');
+        return;
+      }
+      FOTO_EDITOR_STATE.ofertaId = Number(ofertaId);
+      FOTO_EDITOR_STATE.fotoId = null;
+      FOTO_EDITOR_STATE.modo = 'nueva';
+
+      const inputEl = document.getElementById(origen === 'camera' ? 'input-foto-camara-gestor' : 'input-foto-galeria-gestor');
+      if (inputEl) {
+        inputEl.value = '';
+        inputEl.click();
+      }
+    }
+
+    function dispararReemplazoFotoExistente(ofertaId, fotoId) {
+      asegurarNodosDomModalesFotosGestor();
+      cerrarMenuAccionesFotoOferta();
+      FOTO_EDITOR_STATE.ofertaId = Number(ofertaId);
+      FOTO_EDITOR_STATE.fotoId = String(fotoId);
+      FOTO_EDITOR_STATE.modo = 'reemplazar';
+      const inpRep = document.getElementById('input-foto-reemplazar-gestor');
+      if (inpRep) {
+        inpRep.value = '';
+        inpRep.click();
+      }
+    }
+
+    async function comprimirArchivoImagenCliente(file) {
+      const MAX_SIDE = 1600;
+      let bitmap = null;
+      try {
+        if (typeof createImageBitmap === 'function') {
+          bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+        }
+      } catch (_) {
+        bitmap = null;
+      }
+
+      if (bitmap) {
+        const w0 = bitmap.width;
+        const h0 = bitmap.height;
+        const scale = Math.min(1, MAX_SIDE / Math.max(w0, h0, 1));
+        const w = Math.max(1, Math.round(w0 * scale));
+        const h = Math.max(1, Math.round(h0 * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, 0, 0, w, h);
+        if (bitmap.close) bitmap.close();
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.88));
+        return { blob: blob || file, width: w, height: h };
+      }
+
+      return new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const w0 = img.naturalWidth || 1000;
+          const h0 = img.naturalHeight || 1000;
+          const scale = Math.min(1, MAX_SIDE / Math.max(w0, h0, 1));
+          const w = Math.max(1, Math.round(w0 * scale));
+          const h = Math.max(1, Math.round(h0 * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob((blob) => resolve({ blob: blob || file, width: w, height: h }), 'image/jpeg', 0.88);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          resolve({ blob: file, width: 1000, height: 1000 });
+        };
+        img.src = url;
+      });
+    }
+
+    async function manejarSeleccionArchivosFoto(fileList, modo = 'nueva') {
+      const files = Array.from(fileList || []).filter(f => f && f.size > 0);
+      if (files.length === 0) return;
+
+      const of = obtenerOfertaLocalPorId(FOTO_EDITOR_STATE.ofertaId);
+      const actuales = obtenerFotosDeOfertaLocal(of).length;
+      const cupo = modo === 'reemplazar' ? 1 : Math.max(0, MAX_FOTOS_OFERTA_UI - actuales);
+      if (cupo <= 0) {
+        mostrarAvisoPantallaGestor(`El álbum ya tiene el máximo de ${MAX_FOTOS_OFERTA_UI} fotos.`, 'error');
+        return;
+      }
+
+      FOTO_EDITOR_STATE.modo = modo;
+      FOTO_EDITOR_STATE.colaArchivos = files.slice(0, cupo);
+      FOTO_EDITOR_STATE.indiceCola = 0;
+      await cargarArchivoActualEnEditor();
+    }
+
+    async function cargarArchivoActualEnEditor() {
+      const file = FOTO_EDITOR_STATE.colaArchivos[FOTO_EDITOR_STATE.indiceCola];
+      if (!file) {
+        cerrarEditorFotoOferta();
+        return;
+      }
+
+      FOTO_EDITOR_STATE.rotacion = 0;
+      FOTO_EDITOR_STATE.presetEncuadre = 'original';
+      FOTO_EDITOR_STATE.zoomEncuadre = 1.0;
+      FOTO_EDITOR_STATE.panX = 0.5;
+      FOTO_EDITOR_STATE.panY = 0.5;
+      FOTO_EDITOR_STATE.cropInicial = null;
+      FOTO_EDITOR_STATE.aplicarFiltro = true;
+      FOTO_EDITOR_STATE.mejoradaDataUrl = '';
+      FOTO_EDITOR_STATE.originalDataUrl = '';
+
+      abrirOverlayEditorFotoUI();
+      sincronizarControlesEditorUI();
+
+      const comp = await comprimirArchivoImagenCliente(file);
+      FOTO_EDITOR_STATE.blobComprimido = comp.blob;
+      FOTO_EDITOR_STATE.imgWidthOrig = comp.width || 1000;
+      FOTO_EDITOR_STATE.imgHeightOrig = comp.height || 1000;
+
+      await solicitarPreviewServidorFoto(false);
+    }
+
+    async function abrirEditorFotoExistente(ofertaId, fotoId) {
+      asegurarNodosDomModalesFotosGestor();
+      cerrarMenuAccionesFotoOferta();
+      const of = obtenerOfertaLocalPorId(ofertaId);
+      const foto = obtenerFotosDeOfertaLocal(of).find(f => String(f.id) === String(fotoId));
+      if (!foto) return;
+
+      FOTO_EDITOR_STATE.modo = 'reeditar';
+      FOTO_EDITOR_STATE.ofertaId = Number(ofertaId);
+      FOTO_EDITOR_STATE.fotoId = String(foto.id);
+      FOTO_EDITOR_STATE.colaArchivos = [];
+      FOTO_EDITOR_STATE.indiceCola = 0;
+      FOTO_EDITOR_STATE.blobComprimido = null;
+      FOTO_EDITOR_STATE.rotacion = Number(foto.rotacion || 0) || 0;
+      FOTO_EDITOR_STATE.aplicarFiltro = foto.filtro_aplicado !== false;
+      FOTO_EDITOR_STATE.imgWidthOrig = Number(foto.width || 1000);
+      FOTO_EDITOR_STATE.imgHeightOrig = Number(foto.height || 1000);
+
+      if (foto.crop && typeof foto.crop === 'object') {
+        FOTO_EDITOR_STATE.presetEncuadre = foto.crop.preset || 'original';
+        const minSide = Math.max(0.2, Math.min(Number(foto.crop.w || 1), Number(foto.crop.h || 1)));
+        FOTO_EDITOR_STATE.zoomEncuadre = Math.min(2.4, Math.max(1.0, Number((1 / minSide).toFixed(2))));
+        const libreX = Math.max(0.0001, 1 - Number(foto.crop.w || 1));
+        const libreY = Math.max(0.0001, 1 - Number(foto.crop.h || 1));
+        FOTO_EDITOR_STATE.panX = Number(foto.crop.w || 1) < 0.995 ? Math.max(0, Math.min(1, Number(foto.crop.x || 0) / libreX)) : 0.5;
+        FOTO_EDITOR_STATE.panY = Number(foto.crop.h || 1) < 0.995 ? Math.max(0, Math.min(1, Number(foto.crop.y || 0) / libreY)) : 0.5;
+      } else {
+        FOTO_EDITOR_STATE.presetEncuadre = 'original';
+        FOTO_EDITOR_STATE.zoomEncuadre = 1.0;
+        FOTO_EDITOR_STATE.panX = 0.5;
+        FOTO_EDITOR_STATE.panY = 0.5;
+      }
+
+      abrirOverlayEditorFotoUI();
+      sincronizarControlesEditorUI();
+      await solicitarPreviewServidorFoto(true);
+    }
+
+    function abrirOverlayEditorFotoUI() {
+      FOTO_EDITOR_STATE.abierto = true;
+      const modal = document.getElementById('modal-editor-foto-gestor');
+      if (modal) modal.style.display = 'flex';
+    }
+
+    function cerrarEditorFotoOferta() {
+      FOTO_EDITOR_STATE.abierto = false;
+      FOTO_EDITOR_STATE.guardando = false;
+      if (FOTO_EDITOR_STATE.debounceTimer) {
+        clearTimeout(FOTO_EDITOR_STATE.debounceTimer);
+        FOTO_EDITOR_STATE.debounceTimer = null;
+      }
+      const modal = document.getElementById('modal-editor-foto-gestor');
+      if (modal) modal.style.display = 'none';
+    }
+
+    function calcularCropNormalizadoActual() {
+      const rot = ((FOTO_EDITOR_STATE.rotacion % 360) + 360) % 360;
+      const swap = rot === 90 || rot === 270;
+      const wImg = Math.max(1, swap ? FOTO_EDITOR_STATE.imgHeightOrig : FOTO_EDITOR_STATE.imgWidthOrig);
+      const hImg = Math.max(1, swap ? FOTO_EDITOR_STATE.imgWidthOrig : FOTO_EDITOR_STATE.imgHeightOrig);
+      const ratioImg = wImg / hImg;
+
+      let baseW = 1.0;
+      let baseH = 1.0;
+      const preset = FOTO_EDITOR_STATE.presetEncuadre;
+      let targetRatio = ratioImg;
+      if (preset === '1:1') targetRatio = 1.0;
+      else if (preset === '4:5') targetRatio = 0.8;
+
+      if (Math.abs(targetRatio - ratioImg) > 0.01) {
+        if (ratioImg > targetRatio) {
+          baseW = targetRatio / ratioImg;
+          baseH = 1.0;
+        } else {
+          baseW = 1.0;
+          baseH = ratioImg / targetRatio;
+        }
+      }
+
+      const zoom = Math.max(1.0, Math.min(2.4, Number(FOTO_EDITOR_STATE.zoomEncuadre || 1.0)));
+      const w = Math.max(0.1, Math.min(1.0, baseW / zoom));
+      const h = Math.max(0.1, Math.min(1.0, baseH / zoom));
+
+      if (preset === 'original' && zoom <= 1.005) {
+        return null;
+      }
+
+      const x = Math.max(0, Math.min(1 - w, (1 - w) * FOTO_EDITOR_STATE.panX));
+      const y = Math.max(0, Math.min(1 - h, (1 - h) * FOTO_EDITOR_STATE.panY));
+      return {
+        x: Number(x.toFixed(4)),
+        y: Number(y.toFixed(4)),
+        w: Number(w.toFixed(4)),
+        h: Number(h.toFixed(4)),
+        preset
+      };
+    }
+
+    function sincronizarControlesEditorUI() {
+      const totalCola = FOTO_EDITOR_STATE.colaArchivos.length;
+      const tit = document.getElementById('foto-editor-titulo');
+      const sub = document.getElementById('foto-editor-subtitulo');
+      if (tit) {
+        if (FOTO_EDITOR_STATE.modo === 'reeditar') {
+          tit.textContent = '✏️ Editar foto del álbum';
+        } else if (FOTO_EDITOR_STATE.modo === 'reemplazar') {
+          tit.textContent = '🔄 Reemplazar foto del álbum';
+        } else if (totalCola > 1) {
+          tit.textContent = `📷 Preparar foto (${FOTO_EDITOR_STATE.indiceCola + 1} de ${totalCola})`;
+        } else {
+          tit.textContent = '📷 Preparar foto del producto';
+        }
+      }
+      if (sub) {
+        sub.textContent = (FOTO_EDITOR_STATE.presetEncuadre !== 'original' || FOTO_EDITOR_STATE.zoomEncuadre > 1.01)
+          ? 'Arrastrá la imagen con el dedo para centrar el recorte'
+          : 'Compará la mejora automática vs. la foto original';
+      }
+
+      document.getElementById('btn-filtro-mejorada')?.classList.toggle('is-active', Boolean(FOTO_EDITOR_STATE.aplicarFiltro));
+      document.getElementById('btn-filtro-original')?.classList.toggle('is-active', !FOTO_EDITOR_STATE.aplicarFiltro);
+
+      document.querySelectorAll('#modal-editor-foto-gestor [data-preset-crop]').forEach(btn => {
+        btn.classList.toggle('is-active', btn.getAttribute('data-preset-crop') === FOTO_EDITOR_STATE.presetEncuadre);
+      });
+
+      const rng = document.getElementById('input-zoom-encuadre');
+      const lbl = document.getElementById('label-zoom-encuadre');
+      if (rng) rng.value = String(FOTO_EDITOR_STATE.zoomEncuadre);
+      if (lbl) lbl.textContent = Number(FOTO_EDITOR_STATE.zoomEncuadre).toFixed(1) + 'x';
+
+      const btnSave = document.getElementById('btn-guardar-foto-editor');
+      if (btnSave && !FOTO_EDITOR_STATE.guardando) {
+        btnSave.textContent = (FOTO_EDITOR_STATE.modo === 'nueva' && totalCola > 1 && FOTO_EDITOR_STATE.indiceCola < totalCola - 1)
+          ? `💾 Guardar y siguiente (${FOTO_EDITOR_STATE.indiceCola + 1}/${totalCola})`
+          : '💾 Guardar foto';
+      }
+
+      actualizarImagenVisibleEditor();
+    }
+
+    function actualizarImagenVisibleEditor() {
+      const imgEl = document.getElementById('foto-editor-img');
+      const loaderEl = document.getElementById('foto-editor-loader');
+      if (!imgEl || !loaderEl) return;
+
+      const src = FOTO_EDITOR_STATE.aplicarFiltro
+        ? (FOTO_EDITOR_STATE.mejoradaDataUrl || FOTO_EDITOR_STATE.originalDataUrl)
+        : (FOTO_EDITOR_STATE.originalDataUrl || FOTO_EDITOR_STATE.mejoradaDataUrl);
+
+      if (src) {
+        imgEl.src = src;
+        imgEl.style.display = 'block';
+        imgEl.style.opacity = FOTO_EDITOR_STATE.cargandoPreview ? '0.55' : '1';
+        loaderEl.style.display = FOTO_EDITOR_STATE.cargandoPreview ? 'block' : 'none';
+        loaderEl.style.position = 'absolute';
+        loaderEl.style.background = 'rgba(15,23,42,0.68)';
+        loaderEl.style.borderRadius = '999px';
+        loaderEl.textContent = 'Ajustando...';
+      } else {
+        imgEl.style.display = 'none';
+        loaderEl.style.display = 'block';
+        loaderEl.style.position = 'static';
+        loaderEl.style.background = 'transparent';
+        loaderEl.textContent = 'Procesando vista previa...';
+      }
+    }
+
+    function seleccionarVarianteFiltroEditor(usarFiltro) {
+      FOTO_EDITOR_STATE.aplicarFiltro = Boolean(usarFiltro);
+      sincronizarControlesEditorUI();
+    }
+
+    function girarFotoEditor(deltaGrados) {
+      FOTO_EDITOR_STATE.rotacion = (((FOTO_EDITOR_STATE.rotacion + deltaGrados) % 360) + 360) % 360;
+      FOTO_EDITOR_STATE.panX = 0.5;
+      FOTO_EDITOR_STATE.panY = 0.5;
+      sincronizarControlesEditorUI();
+      programarRefrescoPreviewServidor();
+    }
+
+    function cambiarPresetEncuadreEditor(preset) {
+      FOTO_EDITOR_STATE.presetEncuadre = preset;
+      sincronizarControlesEditorUI();
+      programarRefrescoPreviewServidor();
+    }
+
+    function cambiarZoomEncuadreEditor(val) {
+      FOTO_EDITOR_STATE.zoomEncuadre = Math.max(1.0, Math.min(2.4, Number(val) || 1.0));
+      sincronizarControlesEditorUI();
+      programarRefrescoPreviewServidor();
+    }
+
+    function programarRefrescoPreviewServidor() {
+      if (FOTO_EDITOR_STATE.debounceTimer) {
+        clearTimeout(FOTO_EDITOR_STATE.debounceTimer);
+      }
+      FOTO_EDITOR_STATE.debounceTimer = setTimeout(() => {
+        solicitarPreviewServidorFoto(false);
+      }, 170);
+    }
+
+    async function solicitarPreviewServidorFoto(incluirBase = false) {
+      if (!FOTO_EDITOR_STATE.ofertaId) return;
+      FOTO_EDITOR_STATE.cargandoPreview = true;
+      actualizarImagenVisibleEditor();
+
+      try {
+        const crop = calcularCropNormalizadoActual();
+        let resp;
+        if (FOTO_EDITOR_STATE.blobComprimido) {
+          const fd = new FormData();
+          fd.append('foto', FOTO_EDITOR_STATE.blobComprimido, 'captura.jpg');
+          fd.append('rotacion', String(FOTO_EDITOR_STATE.rotacion));
+          if (crop) fd.append('crop', JSON.stringify(crop));
+          fd.append('preview_ambas', 'true');
+          resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${FOTO_EDITOR_STATE.ofertaId}/fotos/preview`, {
+            method: 'POST',
+            body: fd
+          });
+        } else if (FOTO_EDITOR_STATE.fotoId) {
+          resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${FOTO_EDITOR_STATE.ofertaId}/fotos/preview`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              foto_id: FOTO_EDITOR_STATE.fotoId,
+              rotacion: FOTO_EDITOR_STATE.rotacion,
+              crop,
+              preview_ambas: true,
+              incluir_base_encuadre: Boolean(incluirBase)
+            })
+          });
+        } else {
+          return;
+        }
+
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo previsualizar la imagen: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+
+        if (incluirBase && data.base_encuadre_data_url) {
+          await new Promise((resolve) => {
+            const im = new Image();
+            im.onload = () => {
+              FOTO_EDITOR_STATE.imgWidthOrig = im.naturalWidth || FOTO_EDITOR_STATE.imgWidthOrig;
+              FOTO_EDITOR_STATE.imgHeightOrig = im.naturalHeight || FOTO_EDITOR_STATE.imgHeightOrig;
+              resolve();
+            };
+            im.onerror = () => resolve();
+            im.src = data.base_encuadre_data_url;
+          });
+        }
+
+        FOTO_EDITOR_STATE.mejoradaDataUrl = data.mejorada_data_url || '';
+        FOTO_EDITOR_STATE.originalDataUrl = data.original_data_url || data.mejorada_data_url || '';
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Falla de conexión al generar la vista previa.', 'error');
+      } finally {
+        FOTO_EDITOR_STATE.cargandoPreview = false;
+        actualizarImagenVisibleEditor();
+      }
+    }
+
+    async function confirmarGuardarFotoEditor() {
+      if (FOTO_EDITOR_STATE.guardando || !FOTO_EDITOR_STATE.ofertaId) return;
+      FOTO_EDITOR_STATE.guardando = true;
+      const btnSave = document.getElementById('btn-guardar-foto-editor');
+      if (btnSave) {
+        btnSave.disabled = true;
+        btnSave.textContent = 'Guardando...';
+      }
+
+      try {
+        const crop = calcularCropNormalizadoActual();
+        let resp;
+
+        if (FOTO_EDITOR_STATE.modo === 'nueva') {
+          const fd = new FormData();
+          fd.append('foto', FOTO_EDITOR_STATE.blobComprimido, 'foto.jpg');
+          fd.append('rotacion', String(FOTO_EDITOR_STATE.rotacion));
+          if (crop) fd.append('crop', JSON.stringify(crop));
+          fd.append('aplicar_filtro', String(Boolean(FOTO_EDITOR_STATE.aplicarFiltro)));
+          resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${FOTO_EDITOR_STATE.ofertaId}/fotos`, {
+            method: 'POST',
+            body: fd
+          });
+        } else if (FOTO_EDITOR_STATE.modo === 'reemplazar') {
+          const fd = new FormData();
+          fd.append('foto', FOTO_EDITOR_STATE.blobComprimido, 'reemplazo.jpg');
+          fd.append('rotacion', String(FOTO_EDITOR_STATE.rotacion));
+          if (crop) fd.append('crop', JSON.stringify(crop));
+          fd.append('aplicar_filtro', String(Boolean(FOTO_EDITOR_STATE.aplicarFiltro)));
+          resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${FOTO_EDITOR_STATE.ofertaId}/fotos/${encodeURIComponent(FOTO_EDITOR_STATE.fotoId)}`, {
+            method: 'PUT',
+            body: fd
+          });
+        } else {
+          resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${FOTO_EDITOR_STATE.ofertaId}/fotos/${encodeURIComponent(FOTO_EDITOR_STATE.fotoId)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              rotacion: FOTO_EDITOR_STATE.rotacion,
+              crop: crop || null,
+              aplicar_filtro: Boolean(FOTO_EDITOR_STATE.aplicarFiltro)
+            })
+          });
+        }
+
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo guardar la foto: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+
+        // Si quedan más archivos en cola de galería, pasar al siguiente antes de cerrar
+        if (FOTO_EDITOR_STATE.modo === 'nueva' && FOTO_EDITOR_STATE.indiceCola < FOTO_EDITOR_STATE.colaArchivos.length - 1) {
+          FOTO_EDITOR_STATE.guardando = false;
+          if (btnSave) btnSave.disabled = false;
+          FOTO_EDITOR_STATE.indiceCola += 1;
+          await cargarPanelGestor();
+          await cargarArchivoActualEnEditor();
+          return;
+        }
+
+        cerrarEditorFotoOferta();
+        await cargarPanelGestor();
+        mostrarAvisoPantallaGestor('✓ Foto guardada en el álbum del producto.', 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de red al guardar la foto.', 'error');
+      } finally {
+        FOTO_EDITOR_STATE.guardando = false;
+        if (btnSave) btnSave.disabled = false;
+        sincronizarControlesEditorUI();
+      }
+    }
+
+    function abrirMenuAccionesFotoOferta(ofertaId, fotoId) {
+      asegurarNodosDomModalesFotosGestor();
+      const of = obtenerOfertaLocalPorId(ofertaId);
+      const fotos = obtenerFotosDeOfertaLocal(of);
+      const idx = fotos.findIndex(f => String(f.id) === String(fotoId));
+      if (idx === -1) return;
+      const f = fotos[idx];
+
+      const box = document.getElementById('modal-acciones-foto-content');
+      const modal = document.getElementById('modal-acciones-foto-gestor');
+      if (!box || !modal) return;
+
+      box.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
+          <div style="font-weight:900; font-size:0.96rem; color:var(--text);">
+            ${idx === 0 ? '⭐ Foto de Portada (#1)' : `📷 Foto #${idx + 1} de ${fotos.length}`}
+          </div>
+          <button type="button" onclick="cerrarMenuAccionesFotoOferta()" aria-label="Cerrar"
+            style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+        </div>
+        <div style="background:#121316; border-radius:12px; height:190px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin-bottom:12px;">
+          <img src="${esc(f.url)}" alt="Vista foto" style="max-width:100%; max-height:100%; object-fit:contain;" />
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button type="button" class="btn-album-act" style="width:100%; justify-content:center; min-height:40px;"
+            onclick="abrirEditorFotoExistente(${Number(ofertaId)}, '${esc(f.id)}')">
+            ✏️ Editar (Recortar / Girar / Filtro)
+          </button>
+          <button type="button" class="btn-album-act" style="width:100%; justify-content:center; min-height:40px;"
+            onclick="dispararReemplazoFotoExistente(${Number(ofertaId)}, '${esc(f.id)}')">
+            🔄 Reemplazar foto
+          </button>
+          ${idx > 0 ? `
+            <button type="button" class="btn-album-act" style="width:100%; justify-content:center; min-height:40px;"
+              onclick="hacerPortadaFotoOferta(${Number(ofertaId)}, '${esc(f.id)}')">
+              ⭐ Hacer portada (#1)
+            </button>
+          ` : ''}
+          ${fotos.length > 1 ? `
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <button type="button" class="btn-album-act" style="justify-content:center; min-height:38px;"
+                ${idx === 0 ? 'disabled' : ''}
+                onclick="moverOrdenFotoOferta(${Number(ofertaId)}, '${esc(f.id)}', -1)">
+                ◀ Mover antes
+              </button>
+              <button type="button" class="btn-album-act" style="justify-content:center; min-height:38px;"
+                ${idx === fotos.length - 1 ? 'disabled' : ''}
+                onclick="moverOrdenFotoOferta(${Number(ofertaId)}, '${esc(f.id)}', 1)">
+                Mover después ▶
+              </button>
+            </div>
+          ` : ''}
+          <button type="button" class="btn-album-act btn-album-danger" style="width:100%; justify-content:center; min-height:40px; font-size:0.8rem;"
+            onclick="confirmarEliminarFotoOferta(${Number(ofertaId)}, '${esc(f.id)}')">
+            🗑️ Eliminar esta foto
+          </button>
+        </div>
+      `;
+      modal.style.display = 'flex';
+    }
+
+    function cerrarMenuAccionesFotoOferta() {
+      const modal = document.getElementById('modal-acciones-foto-gestor');
+      if (modal) modal.style.display = 'none';
+    }
+
+    async function hacerPortadaFotoOferta(ofertaId, fotoId) {
+      cerrarMenuAccionesFotoOferta();
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${Number(ofertaId)}/fotos-orden`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ portada_id: String(fotoId) })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo cambiar la portada: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+        await cargarPanelGestor();
+        mostrarAvisoPantallaGestor('⭐ Nueva foto de portada actualizada.', 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de red al actualizar la portada.', 'error');
+      }
+    }
+
+    async function moverOrdenFotoOferta(ofertaId, fotoId, delta) {
+      const of = obtenerOfertaLocalPorId(ofertaId);
+      const fotos = obtenerFotosDeOfertaLocal(of);
+      const idx = fotos.findIndex(f => String(f.id) === String(fotoId));
+      const dest = idx + Number(delta);
+      if (idx < 0 || dest < 0 || dest >= fotos.length) return;
+
+      const ids = fotos.map(f => f.id);
+      const [mov] = ids.splice(idx, 1);
+      ids.splice(dest, 0, mov);
+      cerrarMenuAccionesFotoOferta();
+
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${Number(ofertaId)}/fotos-orden`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orden_ids: ids })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo reordenar el álbum: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+        await cargarPanelGestor();
+        mostrarAvisoPantallaGestor('✓ Orden del álbum actualizado.', 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de red al reordenar el álbum.', 'error');
+      }
+    }
+
+    async function confirmarEliminarFotoOferta(ofertaId, fotoId) {
+      if (!window.confirm('¿Querés eliminar esta foto del álbum del producto?')) return;
+      cerrarMenuAccionesFotoOferta();
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${Number(ofertaId)}/fotos/${encodeURIComponent(fotoId)}`, {
+          method: 'DELETE'
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo eliminar la foto: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+        await cargarPanelGestor();
+        mostrarAvisoPantallaGestor('🗑️ Foto eliminada del álbum.', 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de red al eliminar la foto.', 'error');
+      }
+    }
+
+    async function confirmarVaciarAlbumOferta(ofertaId) {
+      if (!window.confirm('¿Querés vaciar todas las fotos de este producto?')) return;
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${Number(ofertaId)}/fotos`, {
+          method: 'DELETE'
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo vaciar el álbum: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+        await cargarPanelGestor();
+        mostrarAvisoPantallaGestor('🧹 Álbum de fotos vaciado por completo.', 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de red al vaciar el álbum.', 'error');
+      }
     }
 
     document.addEventListener('DOMContentLoaded', () => {

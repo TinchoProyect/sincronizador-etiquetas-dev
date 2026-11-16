@@ -4,10 +4,39 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const QRCode = require('qrcode');
+const multer = require('multer');
 const router = express.Router();
 const nodosService = require('../services/nodosBarrialesService');
 const nodosAnaliticaService = require('../services/nodosAnaliticaService');
 const nodosPwaService = require('../services/nodosPwaService');
+const nodosFotosService = require('../services/nodosFotosService');
+
+const uploadFotoNodoMemoria = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 12 * 1024 * 1024,
+        files: 1
+    }
+});
+
+function middlewareSubidaFotoOpcional(req, res, next) {
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+    if (!contentType.includes('multipart/form-data')) {
+        return next();
+    }
+    return uploadFotoNodoMemoria.single('foto')(req, res, (err) => {
+        if (err) {
+            const esTamano = err.code === 'LIMIT_FILE_SIZE';
+            return res.status(400).json({
+                ok: false,
+                error: esTamano
+                    ? 'La foto supera el límite máximo permitido (12 MB).'
+                    : ('Error recibiendo imagen: ' + err.message)
+            });
+        }
+        return next();
+    });
+}
 
 const CLOUDFLARED_EXE = 'C:\\Program Files (x86)\\cloudflared\\cloudflared.exe';
 const TUNNEL_CACHE_FILE = path.join(os.tmpdir(), 'lamda_nodos_cloudflare_tunnel.json');
@@ -551,6 +580,132 @@ router.put('/ofertas-gestor/:id', autenticarGestorSiPublicoOToken, async (req, r
         res.json({ ok: true, oferta });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error actualizando oferta gestor:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * ============================================================================
+ * ÁLBUM DE FOTOS POR OFERTA DEL NODO (AUTO-MEJORA ADAPTATIVA + CICLO COMPLETO)
+ * ============================================================================
+ */
+router.post('/ofertas-gestor/:id/fotos/preview', autenticarGestorSiPublicoOToken, middlewareSubidaFotoOpcional, async (req, res) => {
+    try {
+        if (req.nodoAuth) {
+            await nodosService.asegurarOfertaPerteneceANodo(req.params.id, req.nodoAuth.id);
+        }
+        const body = req.body || {};
+        const resultado = await nodosFotosService.previsualizarFotoOferta({
+            ofertaId: req.params.id,
+            nodoAuthId: req.nodoAuth ? req.nodoAuth.id : null,
+            fileBuffer: req.file ? req.file.buffer : null,
+            fotoId: body.foto_id || null,
+            rotacion: body.rotacion,
+            crop: body.crop,
+            previewAmbas: body.preview_ambas !== false && body.preview_ambas !== 'false',
+            incluirBaseEncuadre: body.incluir_base_encuadre === true || body.incluir_base_encuadre === 'true'
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en preview de foto de oferta:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/ofertas-gestor/:id/fotos', autenticarGestorSiPublicoOToken, middlewareSubidaFotoOpcional, async (req, res) => {
+    try {
+        if (req.nodoAuth) {
+            await nodosService.asegurarOfertaPerteneceANodo(req.params.id, req.nodoAuth.id);
+        }
+        if (!req.file || !req.file.buffer) {
+            return res.status(400).json({ ok: false, error: 'Debés adjuntar una foto para agregar al álbum.' });
+        }
+        const body = req.body || {};
+        const resultado = await nodosFotosService.agregarFotoOferta({
+            ofertaId: req.params.id,
+            nodoAuthId: req.nodoAuth ? req.nodoAuth.id : null,
+            fileBuffer: req.file.buffer,
+            rotacion: body.rotacion,
+            crop: body.crop,
+            aplicarFiltro: body.aplicar_filtro
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error agregando foto a oferta:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.put('/ofertas-gestor/:id/fotos-orden', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth) {
+            await nodosService.asegurarOfertaPerteneceANodo(req.params.id, req.nodoAuth.id);
+        }
+        const body = req.body || {};
+        const resultado = await nodosFotosService.reordenarFotosOferta({
+            ofertaId: req.params.id,
+            nodoAuthId: req.nodoAuth ? req.nodoAuth.id : null,
+            ordenIds: Array.isArray(body.orden_ids) ? body.orden_ids : null,
+            portadaId: body.portada_id || null
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error reordenando fotos de oferta:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.put('/ofertas-gestor/:id/fotos/:fotoId', autenticarGestorSiPublicoOToken, middlewareSubidaFotoOpcional, async (req, res) => {
+    try {
+        if (req.nodoAuth) {
+            await nodosService.asegurarOfertaPerteneceANodo(req.params.id, req.nodoAuth.id);
+        }
+        const body = req.body || {};
+        const resultado = await nodosFotosService.editarOReemplazarFotoOferta({
+            ofertaId: req.params.id,
+            fotoId: req.params.fotoId,
+            nodoAuthId: req.nodoAuth ? req.nodoAuth.id : null,
+            fileBuffer: req.file ? req.file.buffer : null,
+            rotacion: body.rotacion,
+            crop: body.crop,
+            aplicarFiltro: body.aplicar_filtro
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error editando/reemplazando foto de oferta:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.delete('/ofertas-gestor/:id/fotos/:fotoId', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth) {
+            await nodosService.asegurarOfertaPerteneceANodo(req.params.id, req.nodoAuth.id);
+        }
+        const resultado = await nodosFotosService.eliminarFotoOferta({
+            ofertaId: req.params.id,
+            fotoId: req.params.fotoId,
+            nodoAuthId: req.nodoAuth ? req.nodoAuth.id : null
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error eliminando foto de oferta:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.delete('/ofertas-gestor/:id/fotos', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth) {
+            await nodosService.asegurarOfertaPerteneceANodo(req.params.id, req.nodoAuth.id);
+        }
+        const resultado = await nodosFotosService.vaciarAlbumOferta({
+            ofertaId: req.params.id,
+            nodoAuthId: req.nodoAuth ? req.nodoAuth.id : null
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error vaciando álbum de oferta:', error);
         res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });

@@ -39,7 +39,8 @@ async function obtenerNodoPublicoPwaPorSlug(slugRaw) {
 
     const { rows } = await db.query(
         `SELECT id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca,
-                subtitulo_marca, barrio_zona, color_primario, tema_visual, gestor_token
+                subtitulo_marca, barrio_zona, color_primario, tema_visual, gestor_token,
+                logo_original_base64
          FROM public.nodos_maestro
          WHERE (LOWER(slug) = LOWER($1) OR LOWER(COALESCE(slug_historico, '')) = LOWER($1))
            AND COALESCE(activo, true) = true
@@ -273,12 +274,54 @@ async function cargarImagenIsotipoLocal(isotipoRelPath) {
     return img;
 }
 
+async function cargarImagenBase64Nodo(dataUrlOrBase64) {
+    const raw = String(dataUrlOrBase64 || '').trim();
+    if (!raw || raw.length < 32) return null;
+    const cacheKey = `b64:${raw.length}:${raw.slice(0, 48)}:${raw.slice(-32)}`;
+    if (_imageCache.has(cacheKey)) {
+        return _imageCache.get(cacheKey);
+    }
+    try {
+        const cleanB64 = raw.includes('base64,') ? raw.split('base64,')[1] : raw;
+        const buf = Buffer.from(cleanB64, 'base64');
+        if (!buf || buf.length < 24) return null;
+        const img = await loadImage(buf);
+        if (!img || !img.width || !img.height) return null;
+        _imageCache.set(cacheKey, img);
+        return img;
+    } catch (_) {
+        return null;
+    }
+}
+
+function dibujarImagenContenidaSegura(ctx, img, boxX, boxY, boxSize) {
+    const w = Number(img?.width || 0);
+    const h = Number(img?.height || 0);
+    if (w <= 0 || h <= 0) return false;
+    const ratio = w / h;
+    // Si el logo es una marquesina horizontal muy apaisada (> 2.4:1), en un ícono circular 192px
+    // quedaría diminuto; en ese caso el monograma vectorial de alto contraste luce mucho más limpio.
+    if (ratio > 2.4 || ratio < (1 / 2.4)) return false;
+    let drawW = boxSize;
+    let drawH = boxSize;
+    if (ratio >= 1) {
+        drawH = Math.round(boxSize / ratio);
+    } else {
+        drawW = Math.round(boxSize * ratio);
+    }
+    const dx = Math.round(boxX + (boxSize - drawW) / 2);
+    const dy = Math.round(boxY + (boxSize - drawH) / 2);
+    ctx.drawImage(img, dx, dy, drawW, drawH);
+    return true;
+}
+
 async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
     const size = Number(sizeRaw);
     const safeSize = ICON_SIZES_VALIDOS.has(size) ? size : 192;
     const rolNorm = rol === 'gestor' ? 'gestor' : 'tienda';
     const pal = extraerPaletaNodoPwa(nodo);
     const nombreMarca = String(nodo?.nombre_marca || 'Nodo').trim();
+    const logoB64Len = nodo?.logo_original_base64 ? String(nodo.logo_original_base64).length : 0;
 
     const cacheKey = [
         nodo?.id || 0,
@@ -289,6 +332,7 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
         pal.fondoGestor,
         pal.colorMarca,
         pal.isotipoRelPath,
+        logoB64Len,
         nombreMarca
     ].join('|');
 
@@ -301,7 +345,11 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
     ctx.quality = 'best';
     ctx.patternQuality = 'best';
 
-    const isotipoImg = await cargarImagenIsotipoLocal(pal.isotipoRelPath).catch(() => null);
+    let isotipoImg = await cargarImagenIsotipoLocal(pal.isotipoRelPath).catch(() => null);
+    let esIsotipoArchivo = Boolean(isotipoImg);
+    if (!isotipoImg && nodo?.logo_original_base64) {
+        isotipoImg = await cargarImagenBase64Nodo(nodo.logo_original_base64);
+    }
 
     if (rolNorm === 'tienda') {
         // Fondo cálido/crema limpio de la identidad visual de la tienda (sin marcos rectangulares que recorte Android circular)
@@ -311,9 +359,16 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
         // Isotipo centrado con amplio margen estético (~19% por lado, 100% seguro dentro de squircle iOS y círculo Android)
         const boxSize = Math.round(safeSize * 0.62);
         const offset = Math.round((safeSize - boxSize) / 2);
+        let dibujado = false;
         if (isotipoImg) {
-            ctx.drawImage(isotipoImg, offset, offset, boxSize, boxSize);
-        } else {
+            if (esIsotipoArchivo) {
+                ctx.drawImage(isotipoImg, offset, offset, boxSize, boxSize);
+                dibujado = true;
+            } else {
+                dibujado = dibujarImagenContenidaSegura(ctx, isotipoImg, offset, offset, boxSize);
+            }
+        }
+        if (!dibujado) {
             const colorMono = luminanciaRelativaHex(pal.colorMarca) > 0.45 ? oscurecerHex(pal.colorMarca, 0.78) : pal.colorMarca;
             dibujarMonogramaFallback(ctx, safeSize / 2, safeSize / 2, boxSize, nombreMarca, colorMono);
         }
@@ -344,9 +399,16 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
         const isoSize = Math.round(safeSize * 0.39);
         const isoX = Math.round((safeSize - isoSize) / 2);
         const isoY = Math.round(cardY + (cardH - isoSize) / 2);
+        let dibujadoGestor = false;
         if (isotipoImg) {
-            ctx.drawImage(isotipoImg, isoX, isoY, isoSize, isoSize);
-        } else {
+            if (esIsotipoArchivo) {
+                ctx.drawImage(isotipoImg, isoX, isoY, isoSize, isoSize);
+                dibujadoGestor = true;
+            } else {
+                dibujadoGestor = dibujarImagenContenidaSegura(ctx, isotipoImg, isoX, isoY, isoSize);
+            }
+        }
+        if (!dibujadoGestor) {
             const colorMono = luminanciaRelativaHex(pal.colorMarca) > 0.45 ? oscurecerHex(pal.colorMarca, 0.78) : pal.colorMarca;
             dibujarMonogramaFallback(ctx, safeSize / 2, cardY + cardH / 2, isoSize, nombreMarca, colorMono);
         }

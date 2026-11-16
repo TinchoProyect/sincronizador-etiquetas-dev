@@ -136,8 +136,9 @@ src/facturacion/.wwebjs_auth/
 # Caché local de producción
 src/produccion/cache/
 
-# Uploads de bultos
+# Uploads de bultos y álbumes locales de nodos en Modo Laboratorio
 src/logistica/public/uploads/
+data/nodos-fotos/
 
 # Scripts scratch locales
 src/scratch_*.js

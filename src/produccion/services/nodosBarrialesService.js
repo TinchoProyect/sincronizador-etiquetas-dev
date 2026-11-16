@@ -3269,7 +3269,11 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             ALTER TABLE public.nodos_ofertas_gestor
                 ADD COLUMN IF NOT EXISTS mostrar_ingredientes BOOLEAN DEFAULT true,
                 ADD COLUMN IF NOT EXISTS nombre_vidriera_personalizado TEXT,
-                ADD COLUMN IF NOT EXISTS categoria_vidriera_personalizada TEXT;
+                ADD COLUMN IF NOT EXISTS categoria_vidriera_personalizada TEXT,
+                ADD COLUMN IF NOT EXISTS fotos_vidriera JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+            ALTER TABLE public.nodos_articulos_catalogo
+                ADD COLUMN IF NOT EXISTS fotos_catalogo_base JSONB NOT NULL DEFAULT '[]'::jsonb;
 
             ALTER TABLE public.nodos_propuestas_fracciones
                 ADD COLUMN IF NOT EXISTS alias_vidriera_sugerido TEXT;
@@ -5519,9 +5523,21 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
             cuentaBancariaIdEfectiva = cfgCanal.cuenta_bancaria_id || null;
         }
 
-        const gestorTokenEfectivo = (existenteRow?.gestor_token && String(existenteRow.gestor_token).trim().length >= 16)
+        let gestorTokenCandidato = (existenteRow?.gestor_token && String(existenteRow.gestor_token).trim().length >= 16)
             ? String(existenteRow.gestor_token).trim()
-            : generarGestorTokenNodo();
+            : (payload.gestor_token && String(payload.gestor_token).trim().length >= 16
+                ? String(payload.gestor_token).trim()
+                : '');
+        if (gestorTokenCandidato && !idExistente) {
+            const chkTok = await client.query(
+                'SELECT id FROM public.nodos_maestro WHERE gestor_token = $1 LIMIT 1',
+                [gestorTokenCandidato]
+            );
+            if (chkTok.rows.length > 0) {
+                gestorTokenCandidato = '';
+            }
+        }
+        const gestorTokenEfectivo = gestorTokenCandidato || generarGestorTokenNodo();
 
         const latVal = payload.latitud !== undefined && payload.latitud !== null && payload.latitud !== ''
             ? Number(payload.latitud)
@@ -7486,7 +7502,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                     nac.flujo_lamda,
                     nac.ingrediente_origen_id,
                     nac.articulo_bunker_origen_codigo,
-                    nac.precio_base_nodo_final
+                    nac.precio_base_nodo_final,
+                    COALESCE(nac.fotos_catalogo_base, '[]'::jsonb) AS fotos_catalogo_base
              FROM public.nodos_ofertas_gestor nog
              JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
              LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
@@ -7646,6 +7663,27 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         };
     });
 
+    const normalizarFotosGestor = (rawArr) => {
+        if (!Array.isArray(rawArr)) return [];
+        return rawArr
+            .filter(f => f && typeof f === 'object' && f.id && f.url && /^\/media\/nodos\/\d+\/\d+\/[a-z0-9_-]+\.webp(\?.*)?$/i.test(String(f.url)) && !String(f.url).includes('_orig.webp'))
+            .slice()
+            .sort((a, b) => (Number(a.orden || 0) - Number(b.orden || 0)))
+            .map((f, idx) => ({
+                id: String(f.id),
+                url: String(f.url),
+                width: Number(f.width || 0) || null,
+                height: Number(f.height || 0) || null,
+                bytes: Number(f.bytes || 0) || null,
+                orden: idx + 1,
+                filtro_aplicado: f.filtro_aplicado !== false,
+                rotacion: Number(f.rotacion || 0) || 0,
+                crop: (f.crop && typeof f.crop === 'object') ? f.crop : null,
+                created_at: f.created_at || null,
+                updated_at: f.updated_at || null
+            }));
+    };
+
     const ofertasConDesglose = await Promise.all(
         ofertasRes.rows.map(async (o) => {
             const desglose = catalogoIngredientes
@@ -7662,6 +7700,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             const categoriaVidrieraPers = o.categoria_vidriera_personalizada ? String(o.categoria_vidriera_personalizada).trim() : '';
             const nombreVidrieraEfectivo = nombreVidrieraPers || nombreOficialLamda;
             const categoriaVidrieraEfectiva = categoriaVidrieraPers || categoriaOficialLamda;
+            const fotosPropias = normalizarFotosGestor(o.fotos_vidriera);
+            const fotosBase = normalizarFotosGestor(o.fotos_catalogo_base);
             return {
                 ...o,
                 nombre_publico: nombreOficialLamda,
@@ -7677,7 +7717,9 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 linea_negocio: desglose ? Number(desglose.linea_negocio || 0) || null : null,
                 mostrar_ingredientes: mostrarEnOferta,
                 tiene_desglose_ingredientes: tieneDesgloseIngredientes,
-                ingredientes_comerciales: listaIngredientes
+                ingredientes_comerciales: listaIngredientes,
+                fotos_vidriera: fotosPropias,
+                fotos_catalogo_base: fotosBase
             };
         })
     );
@@ -7690,6 +7732,16 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 o.mostrar_ingredientes !== false &&
                 o.tiene_desglose_ingredientes
             );
+            const fotosEfectivas = (Array.isArray(o.fotos_vidriera) && o.fotos_vidriera.length > 0)
+                ? o.fotos_vidriera
+                : (Array.isArray(o.fotos_catalogo_base) ? o.fotos_catalogo_base : []);
+            const fotosPublicas = fotosEfectivas.map((f, idx) => ({
+                id: f.id,
+                url: f.url,
+                width: f.width,
+                height: f.height,
+                orden: idx + 1
+            }));
             return {
                 oferta_id: o.id,
                 articulo_catalogo_id: o.articulo_catalogo_id,
@@ -7703,7 +7755,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 precio_venta_vecino: Number(o.precio_venta_vecino),
                 destacado_tienda: Boolean(o.destacado_tienda),
                 mostrar_ingredientes: habilitarBotonIng,
-                ingredientes_comerciales: habilitarBotonIng ? o.ingredientes_comerciales : []
+                ingredientes_comerciales: habilitarBotonIng ? o.ingredientes_comerciales : [],
+                fotos_vidriera: fotosPublicas
             };
         });
 

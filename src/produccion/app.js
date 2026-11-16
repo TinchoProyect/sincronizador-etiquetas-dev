@@ -50,7 +50,13 @@ app.use((req, res, next) => {
     if (!esAccesoExternoNodos(req)) return next();
 
     const p = String(req.path || '');
+    const esMediaFotoPublicaNodo =
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        !p.toLowerCase().endsWith('_orig.webp') &&
+        /^\/media\/nodos\/\d+\/\d+\/[a-z0-9_-]+\.webp$/i.test(p);
+
     const esVistaPermitida =
+        esMediaFotoPublicaNodo ||
         /^\/(gestor|gestor-nodo|tienda)(\/[^/]+)?(\/mi-cuenta\/[^/]+)?\/?$/i.test(p) ||
         /^\/seguimiento(\/[^/]+)?\/?$/i.test(p) ||
         /^\/sw-nodo-pwa\.js$/i.test(p) ||
@@ -68,7 +74,7 @@ app.use((req, res, next) => {
     const esApiNodoPermitida =
         esBeaconTelemetriaTienda ||
         esRecursoPwaNodo ||
-        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|ofertas-gestor\/\d+|gestor\/\d+\/(config-logistica|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
+        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|ofertas-gestor\/\d+(\/fotos(\/preview|\/[a-z0-9_-]+)?|\/fotos-orden)?|gestor\/\d+\/(config-logistica|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
 
     if (esVistaPermitida || esApiNodoPermitida) {
         return next();
@@ -317,6 +323,32 @@ async function validarYServirVistaNodoPublica(req, res, fileName) {
 }
 
 app.use('/img/nodos', express.static(path.join(__dirname, 'img', 'nodos')));
+
+// 🖼️ Servidor estático blindado para álbumes WebP publicados de Nodos Barriales
+// (Bloquea traversal, listado de directorios y archivos internos `*_orig.webp`)
+const { obtenerDirectorioMediaNodos } = require('./services/nodosFotosService');
+app.use('/media/nodos', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+        return res.status(405).end();
+    }
+    const subPath = String(req.path || '');
+    if (subPath.toLowerCase().endsWith('_orig.webp') || !/^\/\d+\/\d+\/[a-z0-9_-]+\.webp$/i.test(subPath)) {
+        return res.status(403).json({ ok: false, error: 'Acceso restringido al recurso multimedia.' });
+    }
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    const mediaRoot = obtenerDirectorioMediaNodos();
+    return express.static(mediaRoot, {
+        dotfiles: 'deny',
+        index: false,
+        fallthrough: false
+    })(req, res, (err) => {
+        if (err) {
+            return res.status(err.statusCode || err.status || 404).end();
+        }
+        return next();
+    });
+});
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.get('/robots.txt', (req, res) => res.type('text/plain').send('User-agent: *\nDisallow: /\n'));
 app.get('/sw-nodo-pwa.js', (req, res) => {
@@ -1658,6 +1690,13 @@ httpServer.listen(PORT, () => {
         })
         .catch(errMig35 => {
             console.warn('⚠️ [STARTUP-LDN3-LDN5] Advertencia al ejecutar saneamiento estructural:', errMig35.message);
+        });
+
+    // Esquema Nodos Barriales (incluyendo fotos_vidriera / fotos_catalogo_base) y aprovisionamiento idempotente de MANSO
+    const { provisionarNodoManso } = require('./scripts/provisionarNodoManso');
+    provisionarNodoManso({ log: true })
+        .catch(errManso => {
+            console.warn('⚠️ [STARTUP-NODOS] Advertencia verificando aprovisionamiento idempotente de MANSO:', errManso.message);
         });
     
     // Warmup asíncrono de Tabla Maestra en memoria para eliminación total de latencia inicial en Conciliación IA
