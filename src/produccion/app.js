@@ -312,6 +312,7 @@ async function validarYServirVistaNodoPublica(req, res, fileName) {
     }
 
     const html = renderizarHtmlMarcaBlancaConMeta(fileName, nodoRow, req);
+    res.set('Cache-Control', 'no-cache, must-revalidate');
     return res.type('text/html').send(html);
 }
 

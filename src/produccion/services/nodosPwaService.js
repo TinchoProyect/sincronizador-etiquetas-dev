@@ -386,14 +386,19 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
 
 function generarCodigoServiceWorkerNodo() {
     return `/* LAMDA Nodos Barriales — Service Worker liviano (network-first, sin caché de API ni precios) */
-const SW_VERSION = 'lamda-nodo-pwa-v1';
+const SW_VERSION = 'lamda-nodo-pwa-v2';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+      .catch(() => {})
+      .then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener('fetch', (event) => {
@@ -412,7 +417,7 @@ self.addEventListener('fetch', (event) => {
 
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req).catch(() => new Response(
+      fetch(req, { cache: 'no-cache' }).catch(() => new Response(
         '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sin conexión</title></head>' +
         '<body style="font-family:sans-serif;background:#FBF8F3;color:#2E2218;display:flex;align-items:center;justify-content:center;min-height:92vh;margin:0;padding:20px;text-align:center;">' +
         '<div style="max-width:340px;background:#fff;border:1px solid #E6DDD0;border-radius:18px;padding:24px;box-shadow:0 8px 24px rgba(46,34,24,0.08);">' +
