@@ -447,8 +447,8 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
 }
 
 function generarCodigoServiceWorkerNodo() {
-    return `/* LAMDA Nodos Barriales — Service Worker liviano (network-first, sin caché de API ni precios) */
-const SW_VERSION = 'lamda-nodo-pwa-v2';
+    return `/* LAMDA Nodos Barriales — Service Worker liviano (network-first, sin caché de API, media ni subidas multipart) */
+const SW_VERSION = 'lamda-nodo-pwa-v3';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -475,7 +475,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/')) return;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/media/nodos/')) return;
 
   if (req.mode === 'navigate') {
     event.respondWith(
