@@ -1,11 +1,23 @@
 const pool = require('../../config/database');
 
 /**
- * Extrae el peso unitario de un artículo a partir de su nombre
- * @param {string} nombreArticulo - Nombre del artículo (ej: "Mix Premium x 5")
- * @returns {number} Peso unitario extraído o 1 si no se encuentra
+ * Resuelve el peso unitario determinista de un artículo/ingrediente.
+ * Para ingredientes Mix (esMix = true) NUNCA usa expresiones regulares sobre el nombre:
+ * la proporción se rige exclusivamente por receta_base_kg / suma de composición (pesoUnitario = 1).
+ * @param {string} nombreArticulo - Nombre descriptivo
+ * @param {object} [opciones] - { esMix?: boolean, kilosUnidad?: number }
+ * @returns {number} Peso unitario determinista
  */
-function extraerPesoUnitario(nombreArticulo) {
+function extraerPesoUnitario(nombreArticulo, opciones = {}) {
+    if (opciones && opciones.esMix === true) {
+        return 1;
+    }
+    if (opciones && Number(opciones.kilosUnidad) > 0) {
+        return Number(opciones.kilosUnidad);
+    }
+    if (!nombreArticulo || typeof nombreArticulo !== 'string') {
+        return 1;
+    }
     const match = nombreArticulo.match(/x\s*(\d+(\.\d+)?)/i);
     return match ? parseFloat(match[1]) : 1;
 }
@@ -183,16 +195,18 @@ async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = ne
         `;
         const composicionResult = await pool.query(composicionQuery, [articuloId]);
 
-        // Obtener y validar receta_base_kg
-        const recetaBaseKg = composicionResult.rows[0]?.receta_base_kg;
-        console.log(`receta_base_kg encontrado: ${recetaBaseKg}`);
+        // Obtener y validar receta_base_kg (con respaldo determinista en la suma de ingrediente_composicion, cero regex sobre nombres)
+        const recetaBaseKgRaw = parseFloat(composicionResult.rows[0]?.receta_base_kg);
+        const sumaComposicionKg = composicionResult.rows.reduce((acc, r) => acc + (parseFloat(r.cantidad) || 0), 0);
+        console.log(`receta_base_kg encontrado: ${recetaBaseKgRaw} (suma composición: ${sumaComposicionKg})`);
 
-        const baseKg = (recetaBaseKg && recetaBaseKg > 0) ? recetaBaseKg : 1;
-        if (recetaBaseKg === null || recetaBaseKg === 0) {
-            console.warn(`⚠️ Mix ${articuloId} tiene receta_base_kg nulo o 0. Usando base = 1 por defecto`);
+        const baseKg = (Number.isFinite(recetaBaseKgRaw) && recetaBaseKgRaw > 0)
+            ? recetaBaseKgRaw
+            : (sumaComposicionKg > 0 ? sumaComposicionKg : 1);
+        if (!Number.isFinite(recetaBaseKgRaw) || recetaBaseKgRaw <= 0) {
+            console.warn(`⚠️ Mix ${articuloId} tiene receta_base_kg nulo o 0. Usando suma determinista de composición = ${baseKg} kg`);
         }
 
-        // Obtener el peso unitario del nombre del mix
         const nombreMixQuery = `
             SELECT nombre
             FROM ingredientes
@@ -200,7 +214,7 @@ async function expandirIngrediente(articuloId, cantidadBase = 1, procesados = ne
         `;
         const nombreMixResult = await pool.query(nombreMixQuery, [articuloId]);
         const nombreMix = nombreMixResult.rows[0]?.nombre || '';
-        const pesoUnitario = extraerPesoUnitario(nombreMix);
+        const pesoUnitario = extraerPesoUnitario(nombreMix, { esMix: true }); // Determinista = 1 (sin regex por texto)
 
         // Calcular factor de proporción con alta precisión
         const factorProporcion = Number(((cantidadBase * pesoUnitario) / baseKg).toPrecision(10));

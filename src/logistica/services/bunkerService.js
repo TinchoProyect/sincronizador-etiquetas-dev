@@ -93,7 +93,6 @@ class BunkerService {
      * Obtener todas las listas activas de bunker_listas_precios
      */
     static async getListasActivas(db) {
-        await db.query(`ALTER TABLE public.bunker_listas_precios ADD COLUMN IF NOT EXISTS canal_comercial VARCHAR(30) DEFAULT 'MAYORISTA'`).catch(() => {});
         const query = `
             SELECT id, nombre, activa, descripcion, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial
             FROM public.bunker_listas_precios 
@@ -981,8 +980,7 @@ class BunkerService {
 
         const articulo = resArticulo.rows[0];
 
-        // 1. Obtener todas las listas activas
-        await db.query(`ALTER TABLE public.bunker_listas_precios ADD COLUMN IF NOT EXISTS canal_comercial VARCHAR(30) DEFAULT 'MAYORISTA'`).catch(() => {});
+        // 1. Obtener todas las listas activas (sin ejecutar DDL en lecturas para preservar transacciones READ ONLY)
         const resListas = await db.query("SELECT id, nombre, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial FROM public.bunker_listas_precios WHERE activa = true ORDER BY id ASC");
         const listasActivas = resListas.rows;
 
@@ -1510,7 +1508,7 @@ class BunkerService {
                 );
             } else {
                 ingRes = await db.query(
-                    'SELECT id, costo_patron, receta_base_kg FROM public.ingredientes WHERE id::text = $1 OR LOWER(nombre_ingrediente) = LOWER($1) LIMIT 1',
+                    'SELECT id, costo_patron, receta_base_kg FROM public.ingredientes WHERE id::text = $1 OR LOWER(nombre) = LOWER($1) LIMIT 1',
                     [idStr]
                 );
             }
@@ -2147,7 +2145,6 @@ class BunkerService {
         const context = await this.resolverCostosEnVivo(db);
 
         // 1b. Obtener todas las listas de precios activas para asegurar correspondencia
-        await db.query(`ALTER TABLE public.bunker_listas_precios ADD COLUMN IF NOT EXISTS canal_comercial VARCHAR(30) DEFAULT 'MAYORISTA'`).catch(() => {});
         const resListasActivas = await db.query("SELECT id, nombre, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial FROM public.bunker_listas_precios WHERE activa = true ORDER BY id ASC");
         const listasActivas = resListasActivas.rows.length > 0 ? resListasActivas.rows : [{ id: 1, nombre: 'Lista Nico', canal_comercial: 'MAYORISTA' }];
 
@@ -2474,9 +2471,7 @@ class BunkerService {
         // 1. Obtener artículo de Búnker o Fallback por ID / descripción
         let art = null;
         try {
-            if (/^\d+$/.test(idClean)) {
-                art = await this.obtenerArticulo(db, parseInt(idClean));
-            }
+            art = await this.obtenerArticulo(db, idClean);
             if (!art) {
                 const resF = await db.query(
                     `SELECT articulo_id, descripcion, descripcion_generada, kilos_unidad, costo_base, propiedades_dinamicas
@@ -2525,12 +2520,12 @@ class BunkerService {
         // NIVEL 2: Insumo WIP / Búnker con Receta Madre Activa
         try {
             const resReceta = await db.query(
-                `SELECT id, kilos_salida FROM public.recetas WHERE articulo_numero = $1 ORDER BY fecha_creacion DESC LIMIT 1`,
+                `SELECT id FROM public.recetas WHERE articulo_numero = $1 ORDER BY fecha_creacion DESC LIMIT 1`,
                 [art.articulo_id]
             );
             if (resReceta.rows.length > 0) {
                 const recId = resReceta.rows[0].id;
-                const kilosSalidaReceta = parseFloat(resReceta.rows[0].kilos_salida) || kUnidad || 1.0;
+                const kilosSalidaReceta = kUnidad || 1.0;
 
                 const resIngs = await db.query(
                     `SELECT ingrediente_id, cantidad FROM public.receta_ingredientes WHERE receta_id = $1`,
@@ -2540,8 +2535,13 @@ class BunkerService {
                     let costoTotalReceta = 0;
                     for (const ing of resIngs.rows) {
                         const cantKilos = parseFloat(ing.cantidad) || 0;
-                        const subRes = await this.resolverCostoJerarquico(db, ing.ingrediente_id, new Set(visitedSet), depth + 1);
-                        costoTotalReceta += cantKilos * subRes.costo_kilo;
+                        const cIng = await this.resolverCostoIngrediente(db, ing.ingrediente_id);
+                        if (cIng > 0) {
+                            costoTotalReceta += cantKilos * cIng;
+                        } else {
+                            const subRes = await this.resolverCostoJerarquico(db, ing.ingrediente_id, new Set(visitedSet), depth + 1, opciones);
+                            costoTotalReceta += cantKilos * subRes.costo_kilo;
+                        }
                     }
                     if (costoTotalReceta > 0) {
                         return { costo_kilo: costoTotalReceta / kilosSalidaReceta, fuente: 'NIVEL_2_RECETA_MADRE_WIP' };
@@ -2564,7 +2564,7 @@ class BunkerService {
         if (!sku_nexo) return { costo_kilo_crudo: 0, kilos_bulto: 1, fuente_aplicada: 'SIN_SKU' };
 
         try {
-            const finData = await this.obtenerRadiografiaFinanciera(db, sku_nexo);
+            const finData = await this.obtenerRadiografiaFinanciera(db, sku_nexo, { solo_local: true, saltar_reposicion: true });
             if (!finData) return { costo_kilo_crudo: 0, kilos_bulto: 1, fuente_aplicada: 'NO_ENCONTRADO' };
 
             const kgBulto = parseFloat(finData.kilos_unidad) || 1.00;
@@ -2572,15 +2572,16 @@ class BunkerService {
             let costoTiempoTotal = 0;
             let fuenteAplicada = 'LEGACY_FALLBACK';
 
-            // Prioridad 1: Buscar costo_base_sobrescrito en listas_margenes
+            // Prioridad 1: Buscar costo_base_sobrescrito en listas_margenes (priorizando Lista 1 o patrón)
             if (Array.isArray(finData.listas_margenes) && finData.listas_margenes.length > 0) {
-                const listaActiva = finData.listas_margenes.find(l => l.disponible === true || l.es_patron === true) 
+                const listaActiva = finData.listas_margenes.find(l => Number(l.lista_id) === 1 && parseFloat(l.costo_base_sobrescrito) > 0)
+                    || finData.listas_margenes.find(l => l.disponible === true || l.es_patron === true) 
                     || finData.listas_margenes[0];
 
                 if (listaActiva && parseFloat(listaActiva.costo_base_sobrescrito) > 0) {
                     costoKiloCrudo = parseFloat(listaActiva.costo_base_sobrescrito);
-                    costoTiempoTotal = parseFloat(listaActiva.costo_tiempo) || 0;
-                    fuenteAplicada = `LISTA_${listaActiva.nombre_lista.toUpperCase()}`;
+                    costoTiempoTotal = listaActiva.mano_obra_activa !== false ? (parseFloat(listaActiva.costo_tiempo) || 0) : 0;
+                    fuenteAplicada = `LISTA_${(listaActiva.nombre_lista || 'BASE').toUpperCase()}`;
                 }
             }
 
@@ -2665,9 +2666,9 @@ class BunkerService {
                 let resIng = { rows: [] };
                 try {
                     resIng = await db.query(
-                        `SELECT id as articulo_id, nombre_ingrediente as descripcion, 1.0 as kilos_unidad, COALESCE(costo_patron, 0) as costo_base
+                        `SELECT id as articulo_id, nombre as descripcion, 1.0 as kilos_unidad, COALESCE(costo_patron, 0) as costo_base
                          FROM public.ingredientes
-                         WHERE id::text = $1 OR LOWER(nombre_ingrediente) ILIKE $2
+                         WHERE id::text = $1 OR LOWER(nombre) ILIKE $2
                          LIMIT 1`,
                         [articulo_id, `%${articulo_id}%`]
                     );
@@ -2961,7 +2962,7 @@ class BunkerService {
                         if (/^\d+$/.test(ingIdClean)) {
                             ingRes = await db.query('SELECT costo_patron FROM public.ingredientes WHERE id = $1', [parseInt(ingIdClean)]);
                         } else if (ingIdClean.length > 0) {
-                            ingRes = await db.query('SELECT costo_patron FROM public.ingredientes WHERE id::text = $1 OR LOWER(nombre_ingrediente) = LOWER($1) LIMIT 1', [ingIdClean]);
+                            ingRes = await db.query('SELECT costo_patron FROM public.ingredientes WHERE id::text = $1 OR LOWER(nombre) = LOWER($1) LIMIT 1', [ingIdClean]);
                         }
                         row.costo_patron_directo = ingRes.rows.length > 0 ? parseFloat(ingRes.rows[0].costo_patron || 0) : 0;
                         

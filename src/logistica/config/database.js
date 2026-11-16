@@ -153,6 +153,7 @@ pool.query('SELECT NOW()', async (err, res) => {
                 ALTER TABLE public.factura_cuenta_corriente_movimientos_eliminados ADD COLUMN IF NOT EXISTS metadatos JSONB DEFAULT NULL;
                 
                 ALTER TABLE public.bunker_articulos ADD COLUMN IF NOT EXISTS expresado_en_unidades BOOLEAN DEFAULT FALSE;
+                ALTER TABLE public.bunker_listas_precios ADD COLUMN IF NOT EXISTS canal_comercial VARCHAR(30) DEFAULT 'MAYORISTA';
             `);
             console.log('✅ [LOGISTICA] Columnas fiscales, saldo_apertura, whatsapp_facturas y expresado_en_unidades verificadas/agregadas');
 

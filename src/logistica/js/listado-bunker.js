@@ -2682,7 +2682,11 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva, opcion
             const piezasContainer = document.getElementById('gp-tostadero-piezas-container');
             const piezasInput = document.getElementById('gp-tostadero-piezas-input');
 
-            const isModoPiezasActive = (modoSaved === 'UNIDAD');
+            const simData = props ? props.tostadero_simulacion : null;
+            const esArticuloLinea5 = String(currentSku || currentArtId || '').trim().toUpperCase() === 'BFX50G' || Boolean(simData && simData.modo_unidad === true);
+            const isModoPiezasActive = esArticuloLinea5
+                ? (modoSaved ? (modoSaved === 'UNIDAD') : true)
+                : (modoSaved === 'UNIDAD');
             if (chkEl) {
                 chkEl.checked = isModoPiezasActive;
             }
@@ -2690,13 +2694,15 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva, opcion
                 piezasContainer.style.display = isModoPiezasActive ? 'flex' : 'none';
             }
 
-            // Persistencia e Inmunidad de Piezas (v5.74)
-            const simData = props ? props.tostadero_simulacion : null;
+            // Persistencia e Inmunidad de Piezas (v5.74 + Línea 5 default 96 barritas)
             const piezasSavedBD = simData ? parseInt(simData.cantidad_piezas) : null;
             const keyPiezasId = currentArtId ? `bunker_piezas_qty_${currentArtId}` : null;
             const keyPiezasSku = currentSku ? `bunker_piezas_qty_${currentSku}` : null;
             const piezasSavedLS = (keyPiezasId ? localStorage.getItem(keyPiezasId) : null) || (keyPiezasSku ? localStorage.getItem(keyPiezasSku) : null);
-            const piezasResolved = piezasSavedBD || (piezasSavedLS ? parseInt(piezasSavedLS) : null) || parseInt(data.pack_unidades) || 20;
+            const defaultPiezasFallback = esArticuloLinea5 ? 96 : (parseInt(data.pack_unidades) > 1 ? parseInt(data.pack_unidades) : 20);
+            const piezasResolved = (piezasSavedBD && piezasSavedBD > 0)
+                ? piezasSavedBD
+                : ((piezasSavedLS && parseInt(piezasSavedLS) > (esArticuloLinea5 ? 1 : 0)) ? parseInt(piezasSavedLS) : defaultPiezasFallback);
 
             if (piezasInput) {
                 piezasInput.value = piezasResolved;
@@ -13138,6 +13144,16 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
         }
 
         let isFirstLoad = true;
+        const esLinea5Simulador = Number(mermasData && mermasData.linea_negocio) === 5 || String(skuSalida || '').trim().toUpperCase() === 'BFX50G';
+        const chkExternoUnidad = document.getElementById('gp-tostadero-modo-unidad-check');
+        const modoUnidadInicial = esLinea5Simulador || Boolean(simSaved && simSaved.modo_unidad === true) || Boolean(chkExternoUnidad && chkExternoUnidad.checked);
+        const piezasInicialModal = (simSaved && parseInt(simSaved.cantidad_piezas) > 0)
+            ? parseInt(simSaved.cantidad_piezas)
+            : (esLinea5Simulador ? 96 : (parseInt(document.getElementById('gp-tostadero-piezas-input')?.value) || 96));
+        if (esLinea5Simulador && currentTarifa >= 1000) {
+            // Si quedaba en memoria/simulacion una tarifa vieja en $/kg ($3500/kg), convertir a $175/un
+            currentTarifa = Number((currentTarifa * 0.05).toFixed(2));
+        }
 
         // Construir HTML del modal expandido interactivo de dos columnas
         const formHtml = `
@@ -13234,12 +13250,18 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         </div>
 
                         <!-- Nivel 3: Inyección y Visibilidad Transparente de Tarifa -->
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 6px; margin-bottom: 6px; padding: 4px 8px; background: #f1f5f9; border-radius: 6px; border: 1px solid #cbd5e1;">
+                            <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.82em; font-weight: 700; color: #334155; cursor: pointer; margin: 0;">
+                                <input type="checkbox" id="sim_modo_unidad_check" ${modoUnidadInicial ? 'checked' : ''} style="cursor: pointer;">
+                                <span>🍫 Liquidación y Costeo por Unidades Enteras (50g/un)</span>
+                            </label>
+                        </div>
                         <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap;">
-                            <span id="sim_lbl_tarifa_tipo" style="font-size: 0.85em; color: #475569; white-space: nowrap;">Tarifa Servicio ($/kg):</span>
+                            <span id="sim_lbl_tarifa_tipo" style="font-size: 0.85em; color: #475569; white-space: nowrap;">${modoUnidadInicial ? 'Tarifa Servicio ($/un):' : 'Tarifa Servicio ($/kg):'}</span>
                             <input type="number" id="sim_tarifa_input" step="0.01" style="width: 110px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9em; font-weight: bold; color: #1e3a8a;" placeholder="0.00" value="${currentTarifa > 0 ? currentTarifa.toFixed(2) : ''}" oninput="if(typeof window.recalcularSimulacionTostadero === 'function') window.recalcularSimulacionTostadero();">
                             
-                            <span style="font-size: 0.85em; color: #475569; white-space: nowrap;">Unidades:</span>
-                            <input type="number" id="sim_unidades_producidas" step="1" style="width: 80px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9em; font-weight: bold; text-align: center;" value="96" oninput="if(typeof window.recalcularSimulacionTostadero === 'function') window.recalcularSimulacionTostadero();">
+                            <span style="font-size: 0.85em; color: #475569; white-space: nowrap;">Unidades Tanda:</span>
+                            <input type="number" id="sim_unidades_producidas" step="1" min="1" style="width: 80px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.9em; font-weight: bold; text-align: center;" value="${piezasInicialModal}" oninput="if(typeof window.recalcularSimulacionTostadero === 'function') window.recalcularSimulacionTostadero();">
                         </div>
                         <div id="sim_lbl_tarifa_detalle" style="background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; padding: 6px 10px; font-size: 0.82em; color: #0369a1; margin-top: 8px; font-weight: bold;">
                             💼 Seleccione un colaborador y servicio para calcular la liquidación.
@@ -13271,7 +13293,7 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                     </div>
 
                     <!-- Paso 5: Merma Simulación -->
-                    <div>
+                    <div id="sim_paso_merma_wrapper" style="display: ${modoUnidadInicial ? 'none' : 'block'};">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                             <label style="font-weight: bold; color: #334155; font-size: 0.95em; margin: 0;">5. Merma Simulación (%)</label>
                             <div style="display: flex; gap: 6px;">
@@ -13285,6 +13307,9 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                             <span style="font-weight: bold; color: #475569;">%</span>
                             <span id="sim_lbl_historial_res" style="font-size: 0.8em; color: #64748b; margin-left: 8px;"></span>
                         </div>
+                    </div>
+                    <div id="sim_aviso_modo_unidad_sin_merma" style="display: ${modoUnidadInicial ? 'block' : 'none'}; background: #f5f3ff; border: 1px solid #c4b5fd; border-left: 4px solid #7c3aed; border-radius: 8px; padding: 10px 12px; font-size: 0.84em; color: #4c1d95;">
+                        🍫 <strong>Modo por Unidades Activo:</strong> el costo por barrita y por kilo (20 barritas = 1,00 kg) deriva exclusivamente de las <strong>unidades por tanda</strong> (<span id="sim_lbl_unidades_equiv_aviso">${piezasInicialModal} un = ${(piezasInicialModal * 0.05).toFixed(2)} kg</span>), sin depender del % de merma de cocción.
                     </div>
 
                     <!-- Paso 6: Agregados Secos Post-Horno (Merma 0%) -->
@@ -13582,10 +13607,20 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                     currentAgregadosPostHorno = activePostHorno;
 
                     // 🔑 MOTOR DUAL DE MANO DE OBRA (BIFURCACIÓN GRANEL vs UNIDAD)
-                    const modoUnidadCheck = document.getElementById('gp-tostadero-modo-unidad-check') || document.getElementById('sim_modo_unidad_check');
+                    const modoUnidadCheck = document.getElementById('sim_modo_unidad_check') || document.getElementById('gp-tostadero-modo-unidad-check');
                     const esModoUnidad = modoUnidadCheck ? modoUnidadCheck.checked : false;
                     const unidadesProdInp = document.getElementById('sim_unidades_producidas');
                     const unidadesProd = unidadesProdInp ? (parseFloat(unidadesProdInp.value) || 1) : 1;
+                    const pesoEquivUnidadesKg = Number((unidadesProd * 0.05).toFixed(4));
+
+                    const pasoMermaWrap = document.getElementById('sim_paso_merma_wrapper');
+                    const avisoUnidadWrap = document.getElementById('sim_aviso_modo_unidad_sin_merma');
+                    const lblUnidadesEquivAviso = document.getElementById('sim_lbl_unidades_equiv_aviso');
+                    const mermaInpEl = document.getElementById('sim_merma_input');
+                    if (pasoMermaWrap) pasoMermaWrap.style.display = esModoUnidad ? 'none' : 'block';
+                    if (avisoUnidadWrap) avisoUnidadWrap.style.display = esModoUnidad ? 'block' : 'none';
+                    if (lblUnidadesEquivAviso) lblUnidadesEquivAviso.innerText = `${unidadesProd} un = ${pesoEquivUnidadesKg.toFixed(2)} kg`;
+                    if (mermaInpEl) mermaInpEl.disabled = esModoUnidad;
 
                     if (unidadesProdInp) {
                         if (esModoUnidad) {
@@ -13599,7 +13634,9 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         }
                     }
 
-                    const masaFinalTerminada = Number((masaSalidaHorno + sumQtyPostHorno).toFixed(3));
+                    const masaFinalTerminada = esModoUnidad
+                        ? pesoEquivUnidadesKg
+                        : Number((masaSalidaHorno + sumQtyPostHorno).toFixed(3));
                     let manoObraTotalVal = 0;
 
                     if (esModoUnidad) {
@@ -13609,10 +13646,14 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         manoObraTotalVal = tarifaVal * masaFinalTerminada;
                     }
 
-                    // 🔑 BUGFIX 3.2(b) & 3.2(c) — REGLA OFICIAL DE PLANTA LÍNEA 6:
-                    // Costo_Total_Tanda = Costo_Mezcla_Base + Costo_Aceite_Coco + Costo_Miel + Costo_Coco_Escamas + Costo_Pasas + (Masa_Final * Tarifa_Productor_Kg)
-                    // Costo_Base_AP ($/kg) = Costo_Total_Tanda / Masa_Final (NUNCA dividir por masaSalidaHorno)
-                    const factorRendimiento = Math.max(0.0001, rend);
+                    // 🔑 REGLA OFICIAL DE PLANTA:
+                    //   - Línea 5 (Modo Unidades): Costo_Salida_Por_Barrita = Costo_Tanda_UP / Unidades_Tanda;
+                    //                              Costo_Base_AP ($/kg de 20 barritas) = Costo_Salida_Por_Barrita / 0.05 (NUNCA depende de % merma)
+                    //   - Línea 4 (Tostadero):     (Costo_Crudo / Rendimiento) + Tarifa_Kg
+                    //   - Línea 6 (Granolas):      Costo_Total_Tanda / Masa_Final
+                    const factorRendimiento = esModoUnidad
+                        ? (masaHorneable > 0 ? (pesoEquivUnidadesKg / masaHorneable) : 1)
+                        : Math.max(0.0001, rend);
                     const costoTotalMateriaPrimaTanda = costoTotalHorneable + sumCostPostHorno;
                     const inversionTotalTanda = costoTotalMateriaPrimaTanda + manoObraTotalVal;
 
@@ -13620,7 +13661,7 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
 
                     let costoFinalPorKilo = 0;
                     if (esModoUnidad) {
-                        costoFinalPorKilo = masaFinalTerminada > 0 ? (inversionTotalTanda / masaFinalTerminada) : 0;
+                        costoFinalPorKilo = costoUnitarioPorPieza / 0.05; // = costoUnitarioPorPieza * 20 = inversionTotalTanda / (unidadesProd * 0.05)
                     } else if (esLinea4Pura && sumQtyPostHorno === 0) {
                         // 🥜 FLUJO LÍNEA 4 TOSTADEROS (Ecuación Exacta Unificada):
                         costoFinalPorKilo = (currentCostoCrudo / factorRendimiento) + tarifaVal;
@@ -13723,7 +13764,10 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
 
                         htmlExtras += `
                             <div style="display: flex; justify-content: space-between; padding: 4px 0; border-top: 1.5px solid #bfdbfe; margin-top: 4px; font-weight: bold; color: #1e3a8a;">
-                                <span>Masa Pre-Horno (${masaHorneable.toFixed(2)} kg ➔ Salida Horno: ${masaSalidaHorno.toFixed(2)} kg):</span>
+                                <span>${esModoUnidad
+                                    ? `Masa Entrada (${masaHorneable.toFixed(2)} kg ➔ Salida Tanda: ${unidadesProd} un = ${(unidadesProd * 0.05).toFixed(2)} kg):`
+                                    : `Masa Pre-Horno (${masaHorneable.toFixed(2)} kg ➔ Salida Horno: ${masaSalidaHorno.toFixed(2)} kg):`
+                                }</span>
                                 <span>MP Pre-Horno: ${currencyFormatterLocal.format(costoTotalHorneable)}</span>
                             </div>
                         `;
@@ -14043,10 +14087,12 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                 document.getElementById('sim_tarifa_input').addEventListener('input', window.recalcularSimulacionTostadero);
                 
                 // 🔑 FASE 3 ETAPA FINAL (v5.46): Escuchador & Persistencia por Artículo (localStorage)
-                const modoUnidadChkEl = document.getElementById('gp-tostadero-modo-unidad-check') || document.getElementById('sim_modo_unidad_check');
+                const modoUnidadChkEl = document.getElementById('sim_modo_unidad_check') || document.getElementById('gp-tostadero-modo-unidad-check');
                 if (modoUnidadChkEl) {
                     modoUnidadChkEl.addEventListener('change', (e) => {
                         const modeVal = e.target.checked ? 'UNIDAD' : 'KILO';
+                        const extChk = document.getElementById('gp-tostadero-modo-unidad-check');
+                        if (extChk && extChk !== e.target) extChk.checked = e.target.checked;
                         if (window.currentArticuloIdGlobal) {
                             localStorage.setItem(`bunker_modo_unidad_${window.currentArticuloIdGlobal}`, modeVal);
                         }
@@ -14097,8 +14143,9 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
 
                             serviciosList.forEach((s) => {
                                 const tVal = parseFloat(s.valor_por_unidad) || 0;
+                                const uMed = String(s.unidad_medida || 'un').trim().toLowerCase();
                                 const descLimpia = s.descripcion || s.articulo_numero || 'Servicio General';
-                                optionsHtml += `<option value="${s.id}" data-sku="${s.articulo_numero}" data-tarifa="${tVal}">
+                                optionsHtml += `<option value="${s.id}" data-sku="${s.articulo_numero}" data-tarifa="${tVal}" data-unidad="${uMed}">
                                     ${descLimpia} — ${currencyFormatterLocal.format(tVal)} / ${s.unidad_medida || 'un'}
                                 </option>`;
                             });
@@ -14131,8 +14178,13 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                                 selectServicio.selectedIndex = matchedIdx;
                                 const optSel = selectServicio.options[matchedIdx];
                                 const tarifaOpt = parseFloat(optSel.getAttribute('data-tarifa')) || 0;
+                                const unidadOpt = String(optSel.getAttribute('data-unidad') || '').toLowerCase();
+                                if (unidadOpt === 'un') {
+                                    const chkModalU = document.getElementById('sim_modo_unidad_check');
+                                    if (chkModalU) chkModalU.checked = true;
+                                }
                                 const tarifaInp = document.getElementById('sim_tarifa_input');
-                                if (tarifaInp && !currentEsComparacionComprado && (!(parseFloat(tarifaInp.value) > 0) || !savedServId)) {
+                                if (tarifaInp && !currentEsComparacionComprado && (!(parseFloat(tarifaInp.value) > 0) || !savedServId || (unidadOpt === 'un' && parseFloat(tarifaInp.value) >= 1000))) {
                                     tarifaInp.value = tarifaOpt.toFixed(2);
                                 }
                                 const detalleEl = document.getElementById('sim_lbl_tarifa_detalle');
@@ -14172,6 +14224,11 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         const optSelected = selectServicio.options[selectServicio.selectedIndex];
                         if (optSelected) {
                             const tarifaInyectada = parseFloat(optSelected.getAttribute('data-tarifa')) || 0;
+                            const unidadSelected = String(optSelected.getAttribute('data-unidad') || '').toLowerCase();
+                            const chkModalU = document.getElementById('sim_modo_unidad_check');
+                            if (chkModalU && unidadSelected) {
+                                chkModalU.checked = (unidadSelected === 'un');
+                            }
                             const tarifaInp = document.getElementById('sim_tarifa_input');
                             if (tarifaInp) {
                                 tarifaInp.value = tarifaInyectada.toFixed(2);
@@ -14280,8 +14337,12 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                     finalKiloVal = parseFloat(cleanText) || 0;
                 }
 
-                const piezasInp = document.getElementById('gp-tostadero-piezas-input') || document.getElementById('sim_unidades_producidas');
-                const piezasQty = piezasInp ? (parseInt(piezasInp.value) || 20) : 20;
+                const piezasInp = document.getElementById('sim_unidades_producidas') || document.getElementById('gp-tostadero-piezas-input');
+                const piezasQty = piezasInp ? (parseInt(piezasInp.value) || 96) : 96;
+                const chkModoUFinal = document.getElementById('sim_modo_unidad_check') || document.getElementById('gp-tostadero-modo-unidad-check');
+                const esModoUFinal = Boolean(chkModoUFinal && chkModoUFinal.checked);
+                const extPiezasInp = document.getElementById('gp-tostadero-piezas-input');
+                if (extPiezasInp && esModoUFinal) extPiezasInp.value = piezasQty;
 
                 const mermaVal = parseFloat(document.getElementById('sim_merma_input') ? document.getElementById('sim_merma_input').value : currentMerma) || 0;
                 const tarifaVal = parseFloat(document.getElementById('sim_tarifa_input') ? document.getElementById('sim_tarifa_input').value : currentTarifa) || 0;
@@ -14320,6 +14381,8 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                     costo_final: finalKiloVal,
                     costo_resultante_kg: finalKiloVal,
                     costo_unidad: finalUnidadVal,
+                    modo_unidad: esModoUFinal,
+                    unidad_medida_tarifa: esModoUFinal ? 'un' : 'kg',
                     cantidad_piezas: piezasQty,
                     costo_crudo: currentCostoCrudo,
                     costo_crudo_kg: currentCostoCrudo,

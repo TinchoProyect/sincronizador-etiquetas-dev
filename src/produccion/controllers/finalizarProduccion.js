@@ -311,7 +311,8 @@ async function
             }
             inputKilos = (inputKilos && inputKilos > 0) ? Number(inputKilos.toFixed(4)) : null;
 
-            const outputKilos = parseFloat(kilos_producidos);
+            let outputKilos = parseFloat(kilos_producidos);
+            let unidadesBarritasL5 = null;
 
             // 🛡️ GUARDIA ANTI-TIPEO DE SERVIDOR EN LÍNEA 4 (TOSTADERO): prohibido asentar kilos_producidos > kilos_entrada
             if (lineaNegocio === 4 && inputKilos && inputKilos > 0 && outputKilos > inputKilos + 0.0001) {
@@ -320,6 +321,27 @@ async function
                 );
                 errTypo.statusCode = 400;
                 throw errTypo;
+            }
+
+            // 🛡️ GUARDIA ANTI-TIPEO DE SERVIDOR EN LÍNEA 5 (BARRITAS): prohibido asentar kilos_producidos > Masa_Entrada (ej. tipear "96" en kg en lugar de unidades)
+            if (lineaNegocio === 5) {
+                if (inputKilos && inputKilos > 0 && outputKilos > inputKilos + 0.0001) {
+                    const sugUn = Math.round(outputKilos);
+                    const sugKg = (sugUn * 0.05).toFixed(2).replace('.', ',');
+                    const sugerenciaTexto = outputKilos >= 10
+                        ? ` ¿Quisiste ingresar "${sugUn} barritas = ${sugKg} kg" en el campo de unidades?`
+                        : ' (ej. 96 barritas = 4,80 kg).';
+                    const errL5 = new Error(
+                        `Asiento bloqueado en Barritas (Línea 5): ingresaste ${outputKilos.toFixed(2)} kg en el casillero de kilos, superando la Masa de Entrada (${inputKilos.toFixed(2)} kg).${sugerenciaTexto}`
+                    );
+                    errL5.statusCode = 400;
+                    throw errL5;
+                }
+
+                unidadesBarritasL5 = (unidades_producidas !== undefined && unidades_producidas !== null && !isNaN(parseFloat(unidades_producidas)) && parseFloat(unidades_producidas) > 0)
+                    ? Math.round(parseFloat(unidades_producidas))
+                    : Math.round(outputKilos / 0.05);
+                outputKilos = Number((unidadesBarritasL5 * 0.05).toFixed(2));
             }
 
             // 🛡️ GUARDIA DE HORNO EN LÍNEA 6 (GRANOLAS): prohibido tipear Masa_Final (> Masa_Pre_Horno) en el campo de salida de horno
@@ -346,7 +368,7 @@ async function
                 usuarioId, 
                 articuloPadre.articulo_numero, 
                 articuloFraccionadoCodigo, 
-                kilos_producidos, 
+                outputKilos, 
                 ingredientesSumados,
                 inputKilos,
                 outputKilos,
@@ -355,13 +377,14 @@ async function
                 nombreLineaNegocio
             ]);
 
-            console.log(`✅ Historial creado: [LDN ${lineaNegocio}] padre=${articuloPadre.articulo_numero}, fraccionado=${articuloFraccionadoCodigo}, kilos=${kilos_producidos}, ingredientes=${ingredientesSumados}, entrada=${inputKilos}, merma=${mermaPercent}%`);
+            console.log(`✅ Historial creado: [LDN ${lineaNegocio}] padre=${articuloPadre.articulo_numero}, fraccionado=${articuloFraccionadoCodigo}, kilos=${outputKilos}, unidades=${unidadesBarritasL5 ?? 'N/A'}, ingredientes=${ingredientesSumados}, entrada=${inputKilos}, merma=${mermaPercent}%`);
 
             // Guardar datos para usar en el registro de movimientos
             historialData = {
                 articulo_padre_id: articuloPadre.articulo_numero,
                 articulo_fraccionado_id: articuloFraccionadoCodigo,
-                kilos_producidos: kilos_producidos,
+                kilos_producidos: outputKilos,
+                unidades_producidas: unidadesBarritasL5,
                 ingredientes_sumados: ingredientesSumados,
                 linea_negocio: lineaNegocio
             };
@@ -597,14 +620,16 @@ async function
                     let v_cantidad_liquidar = 0;
                     
                     if (tarifa.unidad_medida === 'un') {
-                        if (unidades_producidas !== undefined && unidades_producidas !== null && !isNaN(unidades_producidas)) {
-                            v_cantidad_liquidar = parseFloat(unidades_producidas);
+                        if (historialData && Number.isFinite(historialData.unidades_producidas) && historialData.unidades_producidas > 0) {
+                            v_cantidad_liquidar = historialData.unidades_producidas;
+                        } else if (unidades_producidas !== undefined && unidades_producidas !== null && !isNaN(unidades_producidas) && parseFloat(unidades_producidas) > 0) {
+                            v_cantidad_liquidar = Math.round(parseFloat(unidades_producidas));
                         } else {
-                            // Fallback: 20 unidades por kilo
-                            v_cantidad_liquidar = parseFloat(kilos_producidos) * 20;
+                            // Fallback: 20 unidades por kilo (1 barrita = 0.05 kg)
+                            v_cantidad_liquidar = Math.round(parseFloat((historialData && historialData.kilos_producidos) || kilos_producidos) / 0.05);
                         }
                     } else {
-                        v_cantidad_liquidar = Number((parseFloat(kilos_producidos) + parseFloat((historialData && historialData.ingredientes_sumados) || 0)).toFixed(2));
+                        v_cantidad_liquidar = Number((parseFloat((historialData && historialData.kilos_producidos) || kilos_producidos) + parseFloat((historialData && historialData.ingredientes_sumados) || 0)).toFixed(2));
                     }
 
                     const creditoMonto = Number((v_cantidad_liquidar * parseFloat(tarifa.valor_por_unidad)).toFixed(2));
@@ -692,7 +717,8 @@ async function
                 articulos_producidos: historialData?.articulo_fraccionado_id
                     ? [{
                         sku: historialData.articulo_fraccionado_id,
-                        cantidad: Number((parseFloat(historialData.kilos_producidos || 0) + parseFloat(historialData.ingredientes_sumados || 0)).toFixed(2))
+                        cantidad: Number((parseFloat(historialData.kilos_producidos || 0) + parseFloat(historialData.ingredientes_sumados || 0)).toFixed(2)),
+                        unidades_producidas: historialData.unidades_producidas || null
                     }]
                     : []
             }

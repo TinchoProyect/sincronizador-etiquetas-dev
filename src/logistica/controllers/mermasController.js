@@ -557,6 +557,10 @@ exports.guardarSimulacionTostadero = async (req, res) => {
             servicio_id: simPayload.servicio_id ?? null,
             servicio_descripcion: simPayload.servicio_descripcion ?? null,
             tarifa: Number.isFinite(parseFloat(simPayload.tarifa)) ? parseFloat(simPayload.tarifa) : 0,
+            unidad_medida_tarifa: simPayload.unidad_medida_tarifa || null,
+            modo_unidad: Boolean(simPayload.modo_unidad),
+            cantidad_piezas: Number.isFinite(parseFloat(simPayload.cantidad_piezas)) ? parseFloat(simPayload.cantidad_piezas) : null,
+            costo_unidad: Number.isFinite(parseFloat(simPayload.costo_unidad)) ? parseFloat(simPayload.costo_unidad) : null,
             merma: Number.isFinite(parseFloat(simPayload.merma)) ? parseFloat(simPayload.merma) : 0,
             insumo_evaluado_sku: simPayload.insumo_evaluado_sku || null,
             insumo_evaluado_descripcion: simPayload.insumo_evaluado_descripcion || null,
@@ -598,12 +602,12 @@ exports.guardarSimulacionTostadero = async (req, res) => {
 
             updatedRow = upd.rows[0];
 
-            // Sincronizar también bunker_lista_articulos del AP cuando se inyecta un costo_resultante_kg válido
+            // Sincronizar también bunker_lista_articulos e ingrediente espejo del AP cuando se inyecta un costo_resultante_kg válido
             if (tieneCostoValido) {
                 const kilosU = parseFloat(updatedRow.kilos_unidad) || 1.00;
                 const costoBultoBase = Number((cleanSim.costo_resultante_kg * kilosU).toFixed(2));
                 const listasRes = await client.query(
-                    `SELECT bla.id, bla.margen_ganancia, bla.costo_tiempo, bla.iva, bla.modo_iva, bla.mano_obra_activa,
+                    `SELECT bla.id, bla.lista_id, bla.margen_ganancia, bla.costo_tiempo, bla.iva, bla.modo_iva, bla.mano_obra_activa,
                             COALESCE((
                                 SELECT SUM(bli.cantidad * bli.costo_unitario_capturado)
                                 FROM public.bunker_lista_insumos bli
@@ -614,9 +618,13 @@ exports.guardarSimulacionTostadero = async (req, res) => {
                     [updatedRow.articulo_id]
                 );
 
+                let moLista1PorKilo = 0;
                 for (const lr of listasRes.rows) {
                     const margen = parseFloat(lr.margen_ganancia) || 0;
                     const mo = lr.mano_obra_activa !== false ? (parseFloat(lr.costo_tiempo) || 0) : 0;
+                    if (Number(lr.lista_id) === 1) {
+                        moLista1PorKilo = kilosU > 0 ? (mo / kilosU) : mo;
+                    }
                     const ivaPct = parseFloat(lr.iva) || 21;
                     const cIns = parseFloat(lr.costo_insumos) || 0;
                     const factorIva = lr.modo_iva === 'EXENTO'
@@ -634,6 +642,16 @@ exports.guardarSimulacionTostadero = async (req, res) => {
                         [Number(cleanSim.costo_resultante_kg.toFixed(4)), pFinal, lr.id]
                     );
                 }
+
+                // Sincronizar ingrediente espejo (ej. #141 Barrita 20 x 50 = Costo_Base_AP + MO_AP_Activa)
+                const costoPatronEspejo = Number((cleanSim.costo_resultante_kg + moLista1PorKilo).toFixed(2));
+                await client.query(
+                    `UPDATE public.ingredientes
+                     SET costo_patron = $1
+                     WHERE UPPER(BTRIM(COALESCE(articulo_vinculado_numero, ''))) = UPPER(BTRIM($2))
+                       AND COALESCE(es_insumo, false) = false`,
+                    [costoPatronEspejo, updatedRow.articulo_id]
+                );
             }
 
             await client.query('COMMIT');

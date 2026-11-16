@@ -51,12 +51,33 @@ export function verificarYConfigurarModoDual() {
     console.log(`⚖️ [MODO DUAL] Activado para ${descCoincidencia} - Factor: ${factorConversion}`);
     containerUnidades.style.display = 'block';
     const labelUnidadesEl = containerUnidades.querySelector('label[for="unidades-producidas"]');
-    if (labelUnidadesEl) {
-        labelUnidadesEl.textContent = factorConversion === 0.05 ? 'O cantidad de Barritas (unidades):' : 'O cantidad de unidades:';
+    const labelKilosEl = document.getElementById('label-kilos-producidos');
+    if (factorConversion === 0.05) {
+        containerUnidades.style.order = '-1';
+        containerUnidades.style.background = '#f5f3ff';
+        containerUnidades.style.border = '1.5px solid #8b5cf6';
+        containerUnidades.style.borderRadius = '6px';
+        containerUnidades.style.padding = '8px 12px';
+        inputUnidades.style.border = '1.5px solid #7c3aed';
+        inputUnidades.style.fontWeight = '700';
+        inputUnidades.style.color = '#4c1d95';
+        if (labelUnidadesEl) {
+            labelUnidadesEl.textContent = '🍫 Cantidad de Barritas Producidas (unidades):';
+            labelUnidadesEl.style.color = '#5b21b6';
+        }
+        if (labelKilosEl && ldnActiva === 5) {
+            labelKilosEl.textContent = '⚖️ Peso equivalente (kg):';
+            labelKilosEl.style.color = '#475569';
+        }
+    } else {
+        containerUnidades.style.order = '0';
+        if (labelUnidadesEl) {
+            labelUnidadesEl.textContent = 'O cantidad de unidades:';
+        }
     }
     if (labelFactor) {
         labelFactor.textContent = factorConversion === 0.05
-            ? '1 barrita = 0.05 kg (20 barritas = 1 kg · Ej: 96 u = 4.80 kg)'
+            ? '1 barrita = 0,05 kg · 96 barritas = 4,80 kg'
             : `1 unidad ≈ ${factorConversion} kg`;
     }
 
@@ -2190,6 +2211,65 @@ export async function finalizarProduccion(carroIdParam) {
                 return;
             }
 
+            // ⛔ BLOQUEO ANTI-TIPEO EN LÍNEA 5 (BARRITAS): prohibido asentar si kilos_producidos supera Masa_Entrada (ej. tipear "96" en kg en vez de unidades)
+            if (ldnNum === 5 && totalCrudoVal > 0 && kilosProducidos > totalCrudoVal + 0.0001) {
+                const sugBarritas = kilosProducidos >= 10 ? Math.round(kilosProducidos) : 96;
+                const sugKgFmt = (sugBarritas * 0.05).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                await Swal.fire({
+                    icon: 'error',
+                    title: '⛔ Asiento bloqueado — Supera Masa de Entrada',
+                    html: `
+                        <div style="text-align:left;font-size:0.95em;line-height:1.5;color:#1e293b;">
+                            <p style="margin-bottom:8px;">En <b>Barritas (Línea 5)</b> el peso producido no puede superar la <b>Masa de Entrada</b> del carro:</p>
+                            <div style="background:#fef2f2;border:1.5px solid #ef4444;border-radius:8px;padding:10px 12px;margin-bottom:10px;">
+                                <div>🍫 <b>Masa de Entrada en cocción:</b> ${totalCrudoVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</div>
+                                <div style="color:#b91c1c;margin-top:3px;">⚠️ <b>Valor tipeado en kilos:</b> ${kilosProducidos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</div>
+                            </div>
+                            <p style="margin:0;color:#475569;font-size:0.9em;">
+                                ¿Tipeaste la cantidad de barritas en el casillero de kilos? Ingresá las unidades en <b>Cantidad de Barritas Producidas</b> (por ejemplo: <b>${sugBarritas} barritas = ${sugKgFmt} kg</b>).
+                            </p>
+                        </div>
+                    `,
+                    confirmButtonText: '✏️ Corregir en Cantidad de Barritas',
+                    confirmButtonColor: '#dc2626'
+                });
+
+                btnFinalizarProduccion.disabled = false;
+                btnFinalizarProduccion.classList.remove('procesando');
+                btnFinalizarProduccion.textContent = 'Asentar producción';
+                const unInp = document.getElementById('unidades-producidas');
+                if (unInp) {
+                    unInp.focus();
+                    unInp.select();
+                } else if (kilosProducidosInput) {
+                    kilosProducidosInput.focus();
+                    kilosProducidosInput.select();
+                }
+                return;
+            }
+
+            // En Línea 5 normalizar siempre unidades enteras y kilos equivalentes exactos (unidades * 0.05 kg)
+            let unidadesBarritasL5 = null;
+            let tandasUpL5 = 1;
+            if (ldnNum === 5) {
+                const unInpL5 = document.getElementById('unidades-producidas');
+                unidadesBarritasL5 = (unInpL5 && !isNaN(parseFloat(unInpL5.value)) && parseFloat(unInpL5.value) > 0)
+                    ? Math.round(parseFloat(unInpL5.value))
+                    : Math.round(kilosProducidos / 0.05);
+                if (unInpL5) unInpL5.value = String(unidadesBarritasL5);
+                kilosProducidos = Number((unidadesBarritasL5 * 0.05).toFixed(2));
+                if (kilosProducidosInput) kilosProducidosInput.value = kilosProducidos.toFixed(2);
+                tandasUpL5 = Math.max(1, Math.round((totalCrudoVal || 5.39) / 5.39));
+            }
+
+            const diffRealAjustado = totalCrudoVal > 0 ? (kilosProducidos - totalCrudoVal) : 0;
+            const mermaPctRealAjustada = totalCrudoVal > 0 ? (((totalCrudoVal - kilosProducidos) / totalCrudoVal) * 100) : 0;
+            if (ldnNum === 5 && totalCrudoVal > 0) {
+                txtDiferencia = `${diffRealAjustado > 0 ? '+' : ''}${diffRealAjustado.toFixed(2)} kg`;
+                txtPorcentaje = `${mermaPctRealAjustada.toFixed(2)}%`;
+            }
+
             // ⛔ GUARDIA DE HORNO EN LÍNEA 6 (GRANOLAS): bloquear si se tipea Masa_Final (> Masa_Pre_Horno) en vez de salida de horno
             if (ldnNum === 6 && totalCrudoVal > 0 && kilosProducidos > totalCrudoVal + 0.0001) {
                 await Swal.fire({
@@ -2226,12 +2306,18 @@ export async function finalizarProduccion(carroIdParam) {
                 totalCrudoVal > 0 &&
                 (mermaPctReal > 15 || Math.abs(mermaPctReal) < 0.001)
             );
+            const unidadesPorTandaL5 = (ldnNum === 5 && unidadesBarritasL5 !== null) ? (unidadesBarritasL5 / tandasUpL5) : 96;
+            const requiereDobleConfirmacionMermaL5 = (
+                ldnNum === 5 &&
+                unidadesBarritasL5 !== null &&
+                (unidadesPorTandaL5 < 80 || unidadesPorTandaL5 > 108)
+            );
             const requiereDobleConfirmacionMermaL6 = (
                 ldnNum === 6 &&
                 totalCrudoVal > 0 &&
                 (mermaPctReal < 5 || mermaPctReal > 25)
             );
-            const requiereDobleConfirmacionMerma = requiereDobleConfirmacionMermaL4 || requiereDobleConfirmacionMermaL6;
+            const requiereDobleConfirmacionMerma = requiereDobleConfirmacionMermaL4 || requiereDobleConfirmacionMermaL5 || requiereDobleConfirmacionMermaL6;
 
             // Calcular suma de ingredientes vinculados post-horno con el MISMO redondeo de 2 decimales por insumo que usa finalizarProduccion.js
             let sumaVinculadosVal = 0;
@@ -2300,14 +2386,16 @@ export async function finalizarProduccion(carroIdParam) {
 
             const textoDetalleMermaAtipica = ldnNum === 6
                 ? `La merma de cocción calculada (<b>${mermaPctReal.toFixed(2)}%</b> sobre ${totalCrudoVal.toFixed(2)} kg de Masa Pre-Horno) está fuera del rango habitual de horno en Granolas (<b>5% a 25%</b>).`
-                : (Math.abs(mermaPctReal) < 0.001
-                    ? `Estás asentando <b>0,00% de merma</b> (${kilosProducidos.toFixed(2)} kg de salida sobre ${totalCrudoVal.toFixed(2)} kg crudos).`
-                    : `La reducción calculada (<b>${mermaPctReal.toFixed(2)}%</b>) supera el umbral habitual de Tostadero (15%).`);
+                : ldnNum === 5
+                    ? `La cantidad declarada (<b>${unidadesBarritasL5} barritas = ${kilosProducidos.toFixed(2)} kg</b>) cae fuera del rango habitual de planta (<b>${80 * tandasUpL5} a ${108 * tandasUpL5} barritas</b>).`
+                    : (Math.abs(mermaPctReal) < 0.001
+                        ? `Estás asentando <b>0,00% de merma</b> (${kilosProducidos.toFixed(2)} kg de salida sobre ${totalCrudoVal.toFixed(2)} kg crudos).`
+                        : `La reducción calculada (<b>${mermaPctReal.toFixed(2)}%</b>) supera el umbral habitual de Tostadero (15%).`);
 
             const alertaMermaAtipicaHtml = requiereDobleConfirmacionMerma ? `
                 <div style="margin-top:12px;background:#fff7ed;border:2px solid #f97316;border-radius:8px;padding:10px 12px;color:#9a3412;font-size:0.9em;">
                     <div style="font-weight:800;margin-bottom:4px;">
-                        ⚠️ Atención — Merma de cocción atípica (${mermaPctReal.toFixed(2)}%)
+                        ⚠️ Atención — ${ldnNum === 5 ? `Rendimiento atípico (${unidadesBarritasL5} barritas)` : `Merma de cocción atípica (${mermaPctReal.toFixed(2)}%)`}
                     </div>
                     <div style="font-size:0.88em;line-height:1.4;margin-bottom:8px;">
                         ${textoDetalleMermaAtipica}
@@ -2315,7 +2403,9 @@ export async function finalizarProduccion(carroIdParam) {
                     </div>
                     <label style="display:flex;align-items:flex-start;gap:8px;background:#ffedd5;padding:7px 9px;border-radius:6px;cursor:pointer;font-weight:700;color:#7c2d12;">
                         <input type="checkbox" id="swal-chk-doble-confirmacion-merma" style="width:17px;height:17px;margin-top:2px;cursor:pointer;flex-shrink:0;" />
-                        <span>Confirmo que verifiqué en balanza los ${kilosProducidos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg ${ldnNum === 6 ? 'salidos de horno (sin coco ni pasas)' : ''} (merma ${mermaPctReal.toFixed(2)}%)</span>
+                        <span>${ldnNum === 5
+                            ? `Confirmo que conté físicamente ${unidadesBarritasL5} barritas (${kilosProducidos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg)`
+                            : `Confirmo que verifiqué en balanza los ${kilosProducidos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg ${ldnNum === 6 ? 'salidos de horno (sin coco ni pasas)' : ''} (merma ${mermaPctReal.toFixed(2)}%)`}</span>
                     </label>
                 </div>
             ` : '';
@@ -2339,13 +2429,15 @@ export async function finalizarProduccion(carroIdParam) {
                 
                 if (tarifa.unidad_medida === 'un') {
                     const unidadesInput = document.getElementById('unidades-producidas');
-                    if (unidadesInput && !isNaN(parseFloat(unidadesInput.value))) {
-                        v_cantidad = parseFloat(unidadesInput.value);
+                    if (unidadesBarritasL5 !== null) {
+                        v_cantidad = unidadesBarritasL5;
+                    } else if (unidadesInput && !isNaN(parseFloat(unidadesInput.value)) && parseFloat(unidadesInput.value) > 0) {
+                        v_cantidad = Math.round(parseFloat(unidadesInput.value));
                     } else {
-                        v_cantidad = kilosProducidos * 20; // fallback standard
+                        v_cantidad = Math.round(kilosProducidos / 0.05); // fallback standard (1 barrita = 0.05 kg)
                     }
                     creditoCalculado = Number((v_cantidad * parseFloat(tarifa.valor_por_unidad)).toFixed(2));
-                    calculoTexto = `Cálculo: ${v_cantidad.toLocaleString('es-AR')} un × $ ${parseFloat(tarifa.valor_por_unidad).toLocaleString('es-AR')}/un`;
+                    calculoTexto = `Cálculo: ${v_cantidad.toLocaleString('es-AR')} barritas × $ ${parseFloat(tarifa.valor_por_unidad).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/un (ingresa ${kilosProducidos.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg a ${relacion.articulo_kilo_codigo})`;
                 } else {
                     v_cantidad = Number((kilosProducidos + sumaVinculadosVal).toFixed(2));
                     creditoCalculado = Number((v_cantidad * parseFloat(tarifa.valor_por_unidad)).toFixed(2));
@@ -2578,8 +2670,9 @@ async function ofrecerCarroFraccionadoPostAsentado(resultData, colaborador) {
         return;
     }
 
-    // Para carros externos se dispara en Línea 4 (Tostaderos) y Línea 6 (Granolas); para carros internos cuando el artículo producido es un AP con fracciones activas (ej. Puente Mix MFSPXK)
-    if (resumen.tipo_carro === 'externa' && ![4, 6].includes(Number(resumen.linea_negocio || 4))) {
+    // Para carros externos se dispara en Línea 4 (Tostaderos), Línea 5 (Barritas) y Línea 6 (Granolas); para carros internos cuando el artículo producido es un AP con fracciones activas (ej. Puente Mix MFSPXK)
+    const ldnResumen = Number(resumen.linea_negocio || 4);
+    if (resumen.tipo_carro === 'externa' && ![4, 5, 6].includes(ldnResumen)) {
         return;
     }
 
@@ -2611,6 +2704,28 @@ async function ofrecerCarroFraccionadoPostAsentado(resultData, colaborador) {
     const { kilosProducidosRecien, dataAp } = candidatoHallado;
     const ingInfo = dataAp.ingrediente_vinculado;
     const fracciones = dataAp.fracciones;
+
+    // Calcular sugerencia rápida cuando hay fracción única o en Línea 5 (ej. BF24X50: 4 cajas para 4,80 kg = 96 barritas)
+    let sugeridoUnico = null;
+    if (fracciones.length === 1 || ldnResumen === 5) {
+        const fracRef = fracciones.find(f => String(f.sku || '').trim().toUpperCase() === 'BF24X50') || fracciones[0];
+        const kgRef = Number(fracRef?.kilos_ingrediente_por_unidad) || 0;
+        if (kgRef > 0 && kilosProducidosRecien >= kgRef - 0.0001) {
+            const cantSug = Math.floor((kilosProducidosRecien + 0.0001) / kgRef);
+            if (cantSug >= 1) {
+                const esBarrita = ldnResumen === 5 || String(fracRef.sku || '').toUpperCase().startsWith('BF');
+                const barritasEquiv = Math.round(cantSug * kgRef / 0.05);
+                sugeridoUnico = {
+                    sku: fracRef.sku,
+                    cantidad: cantSug,
+                    kgTotal: Number((cantSug * kgRef).toFixed(2)),
+                    etiqueta: esBarrita
+                        ? `⚡ Sugerido: ${cantSug} ${cantSug === 1 ? 'caja' : 'cajas'} (${barritasEquiv} barritas = ${fmtKg(cantSug * kgRef)} kg)`
+                        : `⚡ Sugerido: ${cantSug} u (${fmtKg(cantSug * kgRef)} kg)`
+                };
+            }
+        }
+    }
 
     const filasHtml = fracciones.map((f, idx) => `
         <tr style="border-bottom: 1px solid #e2e8f0;">
@@ -2652,7 +2767,13 @@ async function ofrecerCarroFraccionadoPostAsentado(resultData, colaborador) {
 
             <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
                 <span style="font-size: 12px; color: #475569; font-weight: 600;">Indicá las unidades por presentación (0 = no incluir):</span>
-                <div style="display: inline-flex; align-items: center; gap: 6px;">
+                <div style="display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    ${sugeridoUnico ? `
+                        <button type="button" id="btn-frac-cargar-sugerido"
+                                style="padding: 5px 11px; border-radius: 6px; border: 1.5px solid #7c3aed; background: #ede9fe; color: #4c1d95; font-size: 12px; font-weight: 800; cursor: pointer;">
+                            ${escHtml(sugeridoUnico.etiqueta)}
+                        </button>
+                    ` : ''}
                     <button type="button" id="btn-frac-cargar-uno-todas"
                             style="padding: 5px 11px; border-radius: 6px; border: 1px solid #059669; background: #ecfdf5; color: #065f46; font-size: 12px; font-weight: 700; cursor: pointer;">
                         ✓ Cargar 1 en todas
@@ -2738,6 +2859,18 @@ async function ofrecerCarroFraccionadoPostAsentado(resultData, colaborador) {
                 inp.addEventListener('input', recalcular);
                 inp.addEventListener('change', recalcular);
             });
+
+            const btnCargarSugerido = popup.querySelector('#btn-frac-cargar-sugerido');
+            if (btnCargarSugerido && sugeridoUnico) {
+                btnCargarSugerido.addEventListener('click', () => {
+                    inputs.forEach((inp) => {
+                        inp.value = String(inp.dataset.sku || '').trim().toUpperCase() === String(sugeridoUnico.sku || '').trim().toUpperCase()
+                            ? String(sugeridoUnico.cantidad)
+                            : '0';
+                    });
+                    recalcular();
+                });
+            }
 
             const btnCargarUnoTodas = popup.querySelector('#btn-frac-cargar-uno-todas');
             if (btnCargarUnoTodas) {
@@ -3063,6 +3196,7 @@ async function calcularMermaProduccion(carroId, mostrarPreviaCrudo = false) {
         const mermaRealPct = (tieneKilosValidos && totalCrudo > 0) ? (((totalCrudo - kilosProducidos) / totalCrudo) * 100) : 0;
         const ldnActivaNum = Number(window.carroActivoMetadata?.linea_negocio || 4);
         const esLinea4Activa = ldnActivaNum === 4;
+        const esLinea5Activa = ldnActivaNum === 5;
         const esLinea6Activa = ldnActivaNum === 6;
 
         // PASO 7: Actualizar UI (SIEMPRE)
@@ -3105,11 +3239,34 @@ async function calcularMermaProduccion(carroId, mostrarPreviaCrudo = false) {
                     ⛔ <b>Merma negativa bloqueada:</b> ingresaste <b>${kilosProducidos.toFixed(2)} kg</b> sobre <b>${totalCrudo.toFixed(2)} kg</b> retirados${sug10}. Revisá la coma decimal antes de asentar.
                 </div>
             `;
+        } else if (esLinea5Activa && tieneKilosValidos && totalCrudo > 0 && kilosProducidos > totalCrudo + 0.0001) {
+            const sugUn5 = kilosProducidos >= 10 ? Math.round(kilosProducidos) : 96;
+            const sugKg5 = (sugUn5 * 0.05).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            alertaEl.style.display = 'block';
+            alertaEl.innerHTML = `
+                <div style="background:#fef2f2;border:1.5px solid #ef4444;color:#991b1b;padding:8px 10px;border-radius:6px;font-size:12px;line-height:1.4;font-weight:600;">
+                    ⛔ <b>Asiento bloqueado en Barritas (Línea 5):</b> ingresaste <b>${kilosProducidos.toFixed(2)} kg</b> sobre <b>${totalCrudo.toFixed(2)} kg</b> de Masa de Entrada. ¿Quisiste ingresar <b>${sugUn5} barritas = ${sugKg5} kg</b> en el casillero de Unidades?
+                </div>
+            `;
         } else if (esLinea6Activa && tieneKilosValidos && totalCrudo > 0 && kilosProducidos > totalCrudo + 0.0001) {
             alertaEl.style.display = 'block';
             alertaEl.innerHTML = `
                 <div style="background:#fef2f2;border:1.5px solid #ef4444;color:#991b1b;padding:8px 10px;border-radius:6px;font-size:12px;line-height:1.4;font-weight:600;">
                     ⛔ <b>Asiento bloqueado:</b> ingresaste <b>${kilosProducidos.toFixed(2)} kg</b> sobre <b>${totalCrudo.toFixed(2)} kg</b> de Masa Pre-Horno. Ingresá únicamente los kilos salidos de horno (sin coco ni pasas).
+                </div>
+            `;
+        } else if (esLinea5Activa && tieneKilosValidos && totalCrudo > 0 && (() => {
+            const tandas5 = Math.max(1, Math.round(totalCrudo / 5.39));
+            const un5 = Math.round(kilosProducidos / 0.05);
+            const unPorTanda5 = un5 / tandas5;
+            return unPorTanda5 < 80 || unPorTanda5 > 108;
+        })()) {
+            const tandas5 = Math.max(1, Math.round(totalCrudo / 5.39));
+            const un5 = Math.round(kilosProducidos / 0.05);
+            alertaEl.style.display = 'block';
+            alertaEl.innerHTML = `
+                <div style="background:#fff7ed;border:1.5px solid #f97316;color:#9a3412;padding:7px 10px;border-radius:6px;font-size:12px;line-height:1.4;font-weight:600;">
+                    ⚠️ <b>Rendimiento atípico (${un5} barritas — rango normal ${80 * tandas5} a ${108 * tandas5} barritas):</b> se solicitará doble confirmación al asentar.
                 </div>
             `;
         } else if (esLinea4Activa && tieneKilosValidos && totalCrudo > 0 && (mermaRealPct > 15 || Math.abs(mermaRealPct) < 0.001)) {

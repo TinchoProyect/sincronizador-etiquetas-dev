@@ -3836,35 +3836,58 @@
     }
 
     // =========================================================================
-    // ECOSISTEMA RELACIONAL SELLADO LDN 5: FLUJO 5 BARRITAS
+    // ECOSISTEMA RELACIONAL SELLADO LDN 5: FLUJO 5 BARRITAS (96 UNIDADES / TANDA)
     // =========================================================================
+    function obtenerFraccionesBarritasLDN5() {
+      const data = window.pizarraSimulacionMaster;
+      if (!data) return [];
+      const targetIngId = 141;
+      const bridgeSku = String(barritasConfigLDN5?.ap_codigo || 'BFX50G').trim().toUpperCase();
+      const directSkus = new Set();
+      (data.recetas || []).forEach(r => {
+        if ((data.recetaIngredientes || []).some(ri => ri.receta_id === r.id && Number(ri.ingrediente_id) === targetIngId)) {
+          if (r.articulo_numero) directSkus.add(String(r.articulo_numero).trim().toUpperCase());
+        }
+      });
+      directSkus.add('BF24X50');
+
+      return (data.articulosBunker || []).filter(a => {
+        const skuUpper = String(a.articulo_id || '').trim().toUpperCase();
+        if (!skuUpper || skuUpper === bridgeSku || skuUpper === 'MPB' || skuUpper === 'BFXP') return false;
+        if (a.solo_produccion_externa === true || a.no_producido_por_lambda === true || a.propiedades_dinamicas?.obsoleto === true) return false;
+        if (directSkus.has(skuUpper)) return true;
+        if (a.pack_hijo_codigo && directSkus.has(String(a.pack_hijo_codigo).trim().toUpperCase())) return true;
+        return false;
+      });
+    }
+
     function inicializarBarritasDeterministasLDN5() {
       const data = window.pizarraSimulacionMaster;
       if (!data) return;
 
-      // 1. Tarifa Maquila (colaboradores_tarifas_rendimiento)
-      let tarifaMaquila = 3500.00;
+      // 1. Tarifa Unitaria por Barrita ($/un en colaboradores_tarifas_rendimiento)
+      let tarifaUnitaria = 175.00;
       if (Array.isArray(data.tarifasRendimiento)) {
-        const tar = data.tarifasRendimiento.find(t => 
-          (t.articulo_numero || '').trim().toUpperCase() === 'BFX50G' || 
-          (t.articulo_numero || '').trim().toUpperCase() === 'BFXP'
-        );
-        if (tar && parseFloat(tar.valor_por_unidad) > 0) {
-          tarifaMaquila = parseFloat(tar.valor_por_unidad);
+        const tarBfx = data.tarifasRendimiento.find(t => (t.articulo_numero || '').trim().toUpperCase() === 'BFX50G')
+          || data.tarifasRendimiento.find(t => (t.articulo_numero || '').trim().toUpperCase() === 'BFXUNI')
+          || data.tarifasRendimiento.find(t => (t.articulo_numero || '').trim().toUpperCase() === 'BFXP');
+        if (tarBfx && parseFloat(tarBfx.valor_por_unidad) > 0) {
+          const valRaw = parseFloat(tarBfx.valor_por_unidad);
+          const umRaw = String(tarBfx.unidad_medida || 'un').trim().toLowerCase();
+          tarifaUnitaria = umRaw === 'un' ? valRaw : Number((valRaw * 0.05).toFixed(2));
         }
       }
 
-      // 2. Merma % (produccion_externa_historial)
-      let mermaPorc = 10.95;
-      if (Array.isArray(data.mermasHistorial)) {
-        const mer = data.mermasHistorial.find(m => 
-          (m.articulo_padre_id || '').trim().toUpperCase() === 'BFXP' &&
-          (m.articulo_fraccionado_id || '').trim().toUpperCase() === 'BFX50G'
-        ) || data.mermasHistorial.find(m => 
-          (m.articulo_padre_id || '').trim().toUpperCase() === 'BFXP'
-        );
-        if (mer && parseFloat(mer.porcentaje_merma) > 0) {
-          mermaPorc = parseFloat(mer.porcentaje_merma);
+      // 2. Unidades por Tanda persistidas en BFX50G.propiedades_dinamicas.tostadero_simulacion (default 96 barritas = 4,80 kg)
+      const artBFX50G = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === 'BFX50G');
+      const simGuardada = artBFX50G?.propiedades_dinamicas?.tostadero_simulacion || null;
+      let unidadesTanda = (simGuardada && parseInt(simGuardada.cantidad_piezas, 10) > 0)
+        ? parseInt(simGuardada.cantidad_piezas, 10)
+        : 96;
+      if (simGuardada && simGuardada.tarifa !== undefined && parseFloat(simGuardada.tarifa) > 0) {
+        const tGuardada = parseFloat(simGuardada.tarifa);
+        if (simGuardada.modo_unidad === true || String(simGuardada.unidad_medida_tarifa || '').toLowerCase() === 'un' || tGuardada < 1000) {
+          tarifaUnitaria = tGuardada;
         }
       }
 
@@ -3878,7 +3901,8 @@
       const ing175 = (data.ingredientes || []).find(i => i.id === 175);
       const costoBolsa40x50 = ing175 ? (parseFloat(ing175.costo_patron) || 250.38) : 250.38;
       const laMPB = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === 'MPB' && la.lista_id === 1);
-      const moMPB = (laMPB && laMPB.mano_obra_activa !== false) ? (parseFloat(laMPB.costo_tiempo) || 0) : 1166.67;
+      const manoObraMpbActiva = laMPB ? (laMPB.mano_obra_activa !== false) : true;
+      const moMPB = manoObraMpbActiva ? (parseFloat(laMPB?.costo_tiempo) || 0) : 0;
 
       // 5. Insumo Caja 20x20x10 (#176) y Bolsa 8x15 (#181)
       const ing176 = (data.ingredientes || []).find(i => i.id === 176);
@@ -3886,13 +3910,15 @@
       const costoCaja = ing176 ? (parseFloat(ing176.costo_patron) || 264.22) : 264.22;
       const costoBolsaFlowpack = ing181 ? (parseFloat(ing181.costo_patron) || 18.16) : 18.16;
 
-      // 6. Mano de Obra de Taller para AP BFX50G (20 min) y Armado de Caja BF24X50 (5 min)
+      // 6. Mano de Obra de Taller para AP BFX50G (19 min = $2.216,67/kg) y Armado de Caja BF24X50 (5 min = $583,33)
       const laBFX = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === 'BFX50G' && la.lista_id === 1);
-      const moApTaller = (laBFX && laBFX.mano_obra_activa !== false) ? (parseFloat(laBFX.costo_tiempo) || 2216.67) : 2216.67;
+      const manoObraApActiva = laBFX ? (laBFX.mano_obra_activa !== false) : true;
+      const moApTaller = parseFloat(laBFX?.costo_tiempo) || 2216.6667;
       const laBF24 = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === 'BF24X50' && la.lista_id === 1);
       const moArmadoCaja = (laBF24 && laBF24.mano_obra_activa !== false) ? (parseFloat(laBF24.costo_tiempo) || 583.33) : 583.33;
 
       const ing141 = (data.ingredientes || []).find(i => i.id === 141);
+      const artBF24 = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === 'BF24X50');
 
       barritasConfigLDN5 = {
         up_codigo: 'BFXP',
@@ -3900,32 +3926,40 @@
         ing_id: 141,
         mix_id: 109,
         titulo: 'Barrita Flor x 50g (UP Horneado y Molde)',
-        tarifa_maquila_simulada: tarifaMaquila,
-        merma_porc_simulada: mermaPorc,
+        tarifa_unitaria_simulada: tarifaUnitaria,
+        tarifa_maquila_simulada: Number((tarifaUnitaria * 20).toFixed(2)),
+        unidades_tanda_simulada: unidadesTanda,
         costo_miel_simulado: costoMiel,
         costo_coco_simulado: costoCoco,
         costo_bolsa_mpb: costoBolsa40x50,
+        mano_obra_mpb_activa: manoObraMpbActiva,
         mo_mpb: moMPB,
         costo_caja_display: costoCaja,
         costo_bolsa_flowpack: costoBolsaFlowpack,
+        mano_obra_ap_activa: manoObraApActiva,
         mo_ap_taller: moApTaller,
         mo_armado_caja: moArmadoCaja,
         costo_kilo_mix109: 0,
+        costo_kilo_mpb_sin_mo: 0,
         costo_kilo_mpb: 0,
         costo_bulto_mpb: 0,
         masa_entrada_kilos: 5.39,
         costo_masa_entrada: 0,
-        masa_salida_kilos: 4.80,
+        masa_salida_kilos: Number((unidadesTanda * 0.05).toFixed(2)),
+        mo_maquila_tanda: 0,
+        costo_total_tanda_up: 0,
         costo_salida_up: 0,
         costo_salida_up_individual: 0,
+        costo_base_ap_simulado: 0,
+        costo_base_ap_oficial_bd: artBFX50G ? (parseFloat(artBFX50G.costo_base) || 0) : 0,
         costo_ap_simulado: 0,
         costo_barrita_individual: 0,
         empaque_por_caja: (24 * costoBolsaFlowpack) + costoCaja,
         costo_bulto_bf24x50: 0,
         costo_kilo_bf24x50: 0,
-        costo_ap_oficial_bd: ing141 ? (parseFloat(ing141.costo_patron) || 0) : 14545.89,
-        costo_bulto_bf24x50_bd: 18155.12,
-        costo_kilo_bf24x50_bd: 15129.27,
+        costo_ap_oficial_bd: ing141 ? (parseFloat(ing141.costo_patron) || 0) : 0,
+        costo_bulto_bf24x50_bd: artBF24 ? (parseFloat(artBF24.costo_base) || 0) : 0,
+        costo_kilo_bf24x50_bd: artBF24 && parseFloat(artBF24.kilos_unidad) > 0 ? ((parseFloat(artBF24.costo_base) || 0) / parseFloat(artBF24.kilos_unidad)) : 0,
         desglose_crudo_mix109: []
       };
 
@@ -3934,6 +3968,7 @@
 
     function calcularCostoApBarritasLDN5() {
       if (!barritasConfigLDN5) return 0;
+      const b = barritasConfigLDN5;
       const data = window.pizarraSimulacionMaster;
       if (!data) return 0;
 
@@ -3945,7 +3980,7 @@
       comp109.forEach(c => {
         const ing = (data.ingredientes || []).find(i => i.id === c.ingrediente_id);
         const cant = parseFloat(c.cantidad) || 0;
-        const cPatron = (ingredientesSim[c.ingrediente_id]?.costo_sim) || (ing ? parseFloat(ing.costo_patron) || 0 : 0);
+        const cPatron = (ingredientesSim[c.ingrediente_id]?.costo_sim) ?? (ing ? parseFloat(ing.costo_patron) || 0 : 0);
         costoTotalCrudo += cant * cPatron;
         kilosTotalCrudo += cant;
         desgloseCrudo.push({
@@ -3956,54 +3991,165 @@
           subtotal: cant * cPatron
         });
       });
-      const costoKiloMix109 = kilosTotalCrudo > 0 ? (costoTotalCrudo / kilosTotalCrudo) : 0;
-      barritasConfigLDN5.costo_kilo_mix109 = costoKiloMix109;
-      barritasConfigLDN5.desglose_crudo_mix109 = desgloseCrudo;
+      const costoKiloMix109 = kilosTotalCrudo > 0 ? Number((costoTotalCrudo / kilosTotalCrudo).toFixed(2)) : 0;
+      b.costo_kilo_mix109 = costoKiloMix109;
+      b.desglose_crudo_mix109 = desgloseCrudo;
+      if (ingredientesSim[109]) {
+        ingredientesSim[109].costo_sim = costoKiloMix109;
+      }
 
-      // 2. Mezcla Previa MPB (4.00 kg)
-      const costoBultoMPB = (costoKiloMix109 * 4.0) + barritasConfigLDN5.costo_bolsa_mpb + barritasConfigLDN5.mo_mpb;
-      const costoKiloMPB = costoBultoMPB / 4.0;
-      barritasConfigLDN5.costo_kilo_mpb = costoKiloMPB;
-      barritasConfigLDN5.costo_bulto_mpb = costoBultoMPB;
+      // 2. Mezcla Previa MPB (4.00 kg) — alineado al centavo ($0,00 desvío) con BunkerService.obtenerCostoVivoNexo('MPB')
+      const costoBultoMpbSinMo = (costoKiloMix109 * 4.0) + b.costo_bolsa_mpb;
+      const costoKiloMpbSinMo = costoBultoMpbSinMo / 4.0;
+      const moMpbEfectiva = b.mano_obra_mpb_activa !== false ? (parseFloat(b.mo_mpb) || 0) : 0;
+      const costoKiloMPB = Number(((costoBultoMpbSinMo + moMpbEfectiva) / 4.0).toFixed(2));
+      const costoBultoMPB = Number((4.0 * costoKiloMPB).toFixed(2));
+      b.costo_kilo_mpb_sin_mo = costoKiloMpbSinMo;
+      b.costo_kilo_mpb = costoKiloMPB;
+      b.costo_bulto_mpb = costoBultoMPB;
 
-      // 3. Masa Entrada UP BFXP (Receta #194)
+      // 3. Masa Entrada UP BFXP (Receta #194: 1 u MPB + 1,15 kg Miel + 0,24 kg Aceite de Coco)
       const masaEntradaKilos = 4.0 + 1.15 + 0.24; // 5.39 kg
-      const costoMasaEntrada = costoBultoMPB + (1.15 * barritasConfigLDN5.costo_miel_simulado) + (0.24 * barritasConfigLDN5.costo_coco_simulado);
-      barritasConfigLDN5.masa_entrada_kilos = masaEntradaKilos;
-      barritasConfigLDN5.costo_masa_entrada = costoMasaEntrada;
+      const costoMasaEntrada = costoBultoMPB + (1.15 * b.costo_miel_simulado) + (0.24 * b.costo_coco_simulado);
+      b.masa_entrada_kilos = masaEntradaKilos;
+      b.costo_masa_entrada = costoMasaEntrada;
 
-      // 4. Salida Horneada con Merma
-      const factorRend = 1 - (barritasConfigLDN5.merma_porc_simulada / 100);
-      const masaSalidaKilos = masaEntradaKilos * factorRend; // ~4.80 kg (96 barritas x 50g)
-      barritasConfigLDN5.masa_salida_kilos = masaSalidaKilos;
+      // 4. REGLA OFICIAL DE PLANTA LÍNEA 5 (Por Unidades Enteras, nunca por % de merma):
+      //    a) Costo_Tanda_UP = Costo_Operativo_MPB + Costo_Miel + Costo_Aceite_Coco + (Unidades_Tanda * Tarifa_Unitaria_Productor)
+      //    b) Costo_Salida_Por_Barrita = Costo_Tanda_UP / Unidades_Tanda
+      //    c) Costo_Base_AP (BFX50G, $/kg de 20 barritas) = Costo_Salida_Por_Barrita / 0.05 (= Costo_Salida_Por_Barrita * 20)
+      const unidadesTanda = Math.max(1, Math.round(parseFloat(b.unidades_tanda_simulada) || 96));
+      b.unidades_tanda_simulada = unidadesTanda;
+      const masaSalidaKilos = Number((unidadesTanda * 0.05).toFixed(2));
+      b.masa_salida_kilos = masaSalidaKilos;
 
-      // 5. Costo Total Proceso con Maquila (Salida UP)
-      const costoTotalProceso = costoMasaEntrada + (masaSalidaKilos * barritasConfigLDN5.tarifa_maquila_simulada);
-      const costoSalidaUp = masaSalidaKilos > 0 ? (costoTotalProceso / masaSalidaKilos) : 0;
-      barritasConfigLDN5.costo_salida_up = costoSalidaUp;
-      barritasConfigLDN5.costo_salida_up_individual = costoSalidaUp * 0.05;
+      const moMaquilaTanda = Number((unidadesTanda * b.tarifa_unitaria_simulada).toFixed(2));
+      const costoTotalProceso = costoMasaEntrada + moMaquilaTanda;
+      const costoSalidaPorBarrita = costoTotalProceso / unidadesTanda;
+      const costoBaseAp = Number((costoSalidaPorBarrita / 0.05).toFixed(2));
 
-      // 6. Costo Total Artículo Puente BFX50G (Ingrediente #141) = Salida UP + MO Taller (20 min)
-      const costoTotalAp = costoSalidaUp + barritasConfigLDN5.mo_ap_taller;
-      barritasConfigLDN5.costo_ap_simulado = costoTotalAp;
-      barritasConfigLDN5.costo_barrita_individual = costoTotalAp * 0.05;
+      b.mo_maquila_tanda = moMaquilaTanda;
+      b.costo_total_tanda_up = costoTotalProceso;
+      b.costo_salida_up_individual = costoSalidaPorBarrita;
+      b.costo_salida_up = costoBaseAp;
+      b.costo_base_ap_simulado = costoBaseAp;
+      b.tarifa_maquila_simulada = Number((b.tarifa_unitaria_simulada * 20).toFixed(2));
 
-      // 7. Fraccionamiento Comercial BF24X50 (Receta #153: 1.20 kg barritas + 24 bolsas flowpack + 1 caja display)
-      const empaquePorCaja = (24 * barritasConfigLDN5.costo_bolsa_flowpack) + (1 * barritasConfigLDN5.costo_caja_display);
-      barritasConfigLDN5.empaque_por_caja = empaquePorCaja;
-      barritasConfigLDN5.costo_bulto_bf24x50 = (1.20 * costoTotalAp) + empaquePorCaja;
-      barritasConfigLDN5.costo_kilo_bf24x50 = barritasConfigLDN5.costo_bulto_bf24x50 / 1.20;
+      // 5. d) Costo_Patron_Ingrediente (#141 Barrita 20 x 50, $/kg) = Costo_Base_AP + (mano_obra_activa ? Costo_Tiempo_BFX50G : 0)
+      const moApEfectiva = b.mano_obra_ap_activa !== false ? (parseFloat(b.mo_ap_taller) || 0) : 0;
+      const costoTotalAp = Number((costoBaseAp + moApEfectiva).toFixed(2));
+      b.costo_ap_simulado = costoTotalAp;
+      b.costo_barrita_individual = costoTotalAp * 0.05;
 
-      // Referencia BD Búnker histórica:
-      const costoBaseApBd = barritasConfigLDN5.costo_ap_oficial_bd > 0 ? barritasConfigLDN5.costo_ap_oficial_bd : 14545.89;
-      barritasConfigLDN5.costo_bulto_bf24x50_bd = (1.20 * costoBaseApBd) + empaquePorCaja;
-      barritasConfigLDN5.costo_kilo_bf24x50_bd = barritasConfigLDN5.costo_bulto_bf24x50_bd / 1.20;
-
+      if (b.ap_codigo) {
+        articulosSim[b.ap_codigo] = costoBaseAp;
+      }
       if (ingredientesSim[141]) {
         ingredientesSim[141].costo_sim = costoTotalAp;
       }
+
+      // 6. e) Costo_Base_BF24X50 = (1.20 * Costo_Patron_141) + (24 * Costo_Bolsa_8x15) + (1 * Costo_Caja_20x20x10)
+      const empaquePorCaja = (24 * b.costo_bolsa_flowpack) + (1 * b.costo_caja_display);
+      b.empaque_por_caja = empaquePorCaja;
+      b.costo_bulto_bf24x50 = Number(((1.20 * costoTotalAp) + empaquePorCaja).toFixed(2));
+      b.costo_kilo_bf24x50 = b.costo_bulto_bf24x50 / 1.20;
+
+      const artBF24 = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === 'BF24X50');
+      b.costo_bulto_bf24x50_bd = artBF24 ? (parseFloat(artBF24.costo_base) || 0) : 0;
+      b.costo_kilo_bf24x50_bd = b.costo_bulto_bf24x50_bd / 1.20;
+
       return costoTotalAp;
     }
+
+    function auditarEstadoSincronizacionBarritasLDN5() {
+      const data = window.pizarraSimulacionMaster;
+      if (!data) {
+        return { estaAlDia: true, totalCambios: 0, motivos: [], resumenDetalle: '', diffApBase: 0, diffIng: 0 };
+      }
+      if (!barritasConfigLDN5) inicializarBarritasDeterministasLDN5();
+      const b = barritasConfigLDN5;
+      if (!b) {
+        return { estaAlDia: true, totalCambios: 0, motivos: [], resumenDetalle: '', diffApBase: 0, diffIng: 0 };
+      }
+
+      calcularCostoApBarritasLDN5();
+
+      // 1. Auditar Mix #109
+      const ing109 = (data.ingredientes || []).find(i => Number(i.id) === 109);
+      const costoMix109Bd = ing109 ? Number((parseFloat(ing109.costo_patron) || 0).toFixed(2)) : 0;
+      const mix109Pendiente = Math.abs(b.costo_kilo_mix109 - costoMix109Bd) > TOLERANCIA_REDONDEO_LDN4;
+
+      // 2. Auditar Pre-Mezcla MPB
+      const artMpb = (data.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toUpperCase() === 'MPB');
+      const laMpb1 = (data.articulosListas || []).find(la => String(la.articulo_numero || '').trim().toUpperCase() === 'MPB' && la.lista_id === 1);
+      const kilosMpb = artMpb && parseFloat(artMpb.kilos_unidad) > 0 ? parseFloat(artMpb.kilos_unidad) : 4.0;
+      const costoMpbSinMoSim = Number(((b.costo_kilo_mix109 * kilosMpb) + b.costo_bolsa_mpb).toFixed(2));
+      const costoMpbSinMoBd = artMpb ? Number((parseFloat(artMpb.costo_base) || 0).toFixed(2)) : 0;
+      const costoMpbCbsBd = laMpb1 && laMpb1.costo_base_sobrescrito !== null
+        ? Number((parseFloat(laMpb1.costo_base_sobrescrito) * kilosMpb).toFixed(2))
+        : costoMpbSinMoBd;
+      const mpbPendiente = Math.abs(costoMpbSinMoSim - costoMpbSinMoBd) > TOLERANCIA_REDONDEO_LDN4
+        || Math.abs(costoMpbSinMoSim - costoMpbCbsBd) > TOLERANCIA_REDONDEO_LDN4;
+
+      // 3. Auditar Artículo Puente BFX50G (costo_base y Lista 1 costo_base_sobrescrito + costo_tiempo)
+      const artAp = (data.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toUpperCase() === 'BFX50G');
+      const laAp1 = (data.articulosListas || []).find(la => String(la.articulo_numero || '').trim().toUpperCase() === 'BFX50G' && la.lista_id === 1);
+      const kilosAp = artAp && parseFloat(artAp.kilos_unidad) > 0 ? parseFloat(artAp.kilos_unidad) : 1.0;
+      const costoBaseApSim = Number((b.costo_base_ap_simulado || 0).toFixed(2));
+      const costoBaseApBd = artAp ? Number(((parseFloat(artAp.costo_base) || 0) / kilosAp).toFixed(2)) : 0;
+      const costoBaseSobApBd = laAp1 && laAp1.costo_base_sobrescrito !== null
+        ? Number(parseFloat(laAp1.costo_base_sobrescrito).toFixed(2))
+        : costoBaseApBd;
+      const moApBd = laAp1 ? Number((parseFloat(laAp1.costo_tiempo) || 0).toFixed(2)) : Number((b.mo_ap_taller || 0).toFixed(2));
+      b.costo_base_ap_oficial_bd = costoBaseApBd;
+      const diffApBase = Number((costoBaseApSim - costoBaseApBd).toFixed(2));
+      const apPendiente = Math.abs(diffApBase) > TOLERANCIA_REDONDEO_LDN4
+        || Math.abs(costoBaseApSim - costoBaseSobApBd) > TOLERANCIA_REDONDEO_LDN4
+        || Math.abs(Number((b.mo_ap_taller || 0).toFixed(2)) - moApBd) > TOLERANCIA_REDONDEO_LDN4;
+
+      // 4. Auditar Ingrediente Espejo #141 Barrita 20 x 50 (1kg)
+      const ing141 = (data.ingredientes || []).find(i => Number(i.id) === 141);
+      const costoIngSim = Number((b.costo_ap_simulado || 0).toFixed(2));
+      const costoIngBd = ing141 ? Number((parseFloat(ing141.costo_patron) || 0).toFixed(2)) : 0;
+      b.costo_ap_oficial_bd = costoIngBd;
+      const diffIng = Number((costoIngSim - costoIngBd).toFixed(2));
+      const ingPendiente = Math.abs(diffIng) > TOLERANCIA_REDONDEO_LDN4;
+
+      // 5. Auditar Fracciones Comerciales (BF24X50, etc.) en Búnker y Listas 1..8
+      const fraccs = obtenerFraccionesBarritasLDN5();
+      let fraccionesDesactualizadas = 0;
+      fraccs.forEach(f => {
+        const auditHijo = auditarArticuloHijoLDN4(f);
+        if (!auditHijo.estaAlDia) fraccionesDesactualizadas++;
+      });
+
+      let totalCambios = 0;
+      const motivos = [];
+      if (mix109Pendiente) { totalCambios += 1; motivos.push('Mix #109'); }
+      if (mpbPendiente) { totalCambios += 1; motivos.push('MPB'); }
+      if (apPendiente) { totalCambios += 1; motivos.push('AP BFX50G'); }
+      if (ingPendiente) { totalCambios += 1; motivos.push('Ing #141'); }
+      if (fraccionesDesactualizadas > 0) {
+        totalCambios += fraccionesDesactualizadas;
+        motivos.push(`${fraccionesDesactualizadas} Fracc.`);
+      }
+
+      const estaAlDia = totalCambios === 0;
+      return {
+        estaAlDia,
+        totalCambios,
+        motivos,
+        resumenDetalle: motivos.join(' · '),
+        diffApBase,
+        diffIng,
+        costoBaseApSim,
+        costoBaseApBd,
+        costoIngSim,
+        costoIngBd,
+        fraccionesDesactualizadas
+      };
+    }
+    window.auditarEstadoSincronizacionBarritasLDN5 = auditarEstadoSincronizacionBarritasLDN5;
 
     function cambiarMoApTallerBarritas(nuevoValor) {
       if (!barritasConfigLDN5) return;
@@ -4016,9 +4162,19 @@
     }
     window.cambiarMoApTallerBarritas = cambiarMoApTallerBarritas;
 
-    function cambiarMaquilaBarritas(nuevaMaquila) {
+    function cambiarMaquilaBarritas(nuevaTarifaUnitaria) {
       if (!barritasConfigLDN5) return;
-      barritasConfigLDN5.tarifa_maquila_simulada = Math.max(0, parseFloat(nuevaMaquila) || 0);
+      barritasConfigLDN5.tarifa_unitaria_simulada = Math.max(0, parseFloat(nuevaTarifaUnitaria) || 0);
+      calcularCostoApBarritasLDN5();
+      recalcularCascada();
+      renderizarBarritasLDN5();
+      renderizarArticulosBunker();
+      if (articuloSeleccionadoId) renderizarGrillaMultilista();
+    }
+
+    function cambiarUnidadesTandaBarritas(nuevasUnidades) {
+      if (!barritasConfigLDN5) return;
+      barritasConfigLDN5.unidades_tanda_simulada = Math.max(1, Math.round(parseFloat(nuevasUnidades) || 96));
       calcularCostoApBarritasLDN5();
       recalcularCascada();
       renderizarBarritasLDN5();
@@ -4027,13 +4183,10 @@
     }
 
     function cambiarMermaBarritas(nuevaMerma) {
-      if (!barritasConfigLDN5) return;
-      barritasConfigLDN5.merma_porc_simulada = Math.max(0, Math.min(99, parseFloat(nuevaMerma) || 0));
-      calcularCostoApBarritasLDN5();
-      recalcularCascada();
-      renderizarBarritasLDN5();
-      renderizarArticulosBunker();
-      if (articuloSeleccionadoId) renderizarGrillaMultilista();
+      // Compatibilidad legacy: redirige a unidades enteras equivalentes
+      const rend = 1 - (Math.max(0, Math.min(99, parseFloat(nuevaMerma) || 0)) / 100);
+      const unEquiv = Math.max(1, Math.round((5.39 * rend) / 0.05));
+      cambiarUnidadesTandaBarritas(unEquiv);
     }
 
     function cambiarMielBarritas(nuevoCosto) {
@@ -4070,26 +4223,11 @@
         return;
       }
 
-      calcularCostoApBarritasLDN5();
-
-      const data = window.pizarraSimulacionMaster;
-      const diffPesos = b.costo_ap_simulado - b.costo_ap_oficial_bd;
-      const diffBulto = b.costo_bulto_bf24x50 - b.costo_bulto_bf24x50_bd;
-
-      let hayDiferenciasBarritas = Math.abs(diffPesos) > 0.05 || Math.abs(diffBulto) > 0.05;
-      if (!hayDiferenciasBarritas && data) {
-        const listas = data.listasPrecios || [];
-        for (const l of listas) {
-          const cascadaLista = calcularCascadaArticuloLista('BF24X50', l.id);
-          const laActual = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === 'BF24X50' && la.lista_id === l.id);
-          const pActual = laActual ? parseFloat(laActual.precio_final) : 0;
-          const pNuevo = cascadaLista ? cascadaLista.precioFinalCalculado : 0;
-          if (Math.abs(pNuevo - pActual) > 0.1) {
-            hayDiferenciasBarritas = true;
-            break;
-          }
-        }
-      }
+      const audit5 = auditarEstadoSincronizacionBarritasLDN5();
+      const hayDiferenciasBarritas = !audit5.estaAlDia;
+      const diffApBase = audit5.diffApBase;
+      const diffIng = audit5.diffIng;
+      const diffBulto = Number((b.costo_bulto_bf24x50 - b.costo_bulto_bf24x50_bd).toFixed(2));
 
       const card = document.createElement('div');
       card.className = 'tostadero-card active';
@@ -4123,7 +4261,7 @@
               <strong style="color: #fb923c; font-size: 0.92rem;">${b.titulo}</strong>
             </div>
             <div style="font-size: 0.68rem; color: var(--text-secondary); margin-top: 2px;">
-              Circuito F5: Mix #109 ➔ MPB (4kg) ➔ UP BFXP ➔ AP BFX50G (Ing #141) ➔ Fracción BF24X50
+              Circuito F5: Mix #109 ➔ MPB (4kg) ➔ UP BFXP (${b.unidades_tanda_simulada} un) ➔ AP BFX50G ➔ Ing #141 ➔ BF24X50
             </div>
           </div>
           <span style="font-size: 0.65rem; background: rgba(251, 146, 60, 0.2); color: #fb923c; border: 1px solid rgba(251, 146, 60, 0.4); padding: 2px 6px; border-radius: 4px; font-weight: 700;">
@@ -4131,19 +4269,21 @@
           </span>
         </div>
 
-        <!-- Resumen de Flujo y Estado de Sincronización -->
-        <div style="background: rgba(0,0,0,0.3); border: 1px solid ${hayDiferenciasBarritas ? 'rgba(245, 158, 11, 0.4)' : 'rgba(16, 185, 129, 0.35)'}; border-radius: 6px; padding: 7px 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-          <div style="font-size: 0.72rem; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-            <span style="color: #94a3b8;">1. Crudo (Mix #109): <strong style="color: #fbbf24;">$${b.costo_kilo_mix109.toFixed(2)}/kg</strong></span>
+        <!-- Resumen de Flujo y Semáforo Estricto (<= $0,02) -->
+        <div style="background: rgba(0,0,0,0.3); border: 1px solid ${hayDiferenciasBarritas ? 'rgba(245, 158, 11, 0.4)' : 'rgba(16, 185, 129, 0.35)'}; border-radius: 6px; padding: 7px 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <div style="font-size: 0.71rem; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <span style="color: #94a3b8;">1. Mix #109: <strong style="color: #fbbf24;">$${b.costo_kilo_mix109.toFixed(2)}/kg</strong></span>
             <span style="color: #475569;">➔</span>
-            <span style="color: #94a3b8;">2. Puente [BFX50G]: <strong style="color: #38bdf8;">$${b.costo_ap_simulado.toFixed(2)}/kg</strong></span>
+            <span style="color: #94a3b8;">2. AP [BFX50G]: <strong style="color: #38bdf8;">$${b.costo_base_ap_simulado.toFixed(2)}/kg</strong></span>
             <span style="color: #475569;">➔</span>
-            <span style="color: #94a3b8;">3. Caja [BF24X50]: <strong style="color: #34d399;">$${b.costo_bulto_bf24x50.toFixed(2)}</strong></span>
+            <span style="color: #94a3b8;">3. Ing #141: <strong style="color: #c084fc;">$${b.costo_ap_simulado.toFixed(2)}/kg</strong></span>
+            <span style="color: #475569;">➔</span>
+            <span style="color: #94a3b8;">4. Caja [BF24X50]: <strong style="color: #34d399;">$${b.costo_bulto_bf24x50.toFixed(2)}</strong></span>
           </div>
           <div>
             ${hayDiferenciasBarritas
-              ? `<span style="font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid #f59e0b; font-weight: 700; white-space: nowrap;">⚠️ Variación Pendiente</span>`
-              : `<span style="font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.4); font-weight: 700; white-space: nowrap;">🟢 100% al Día en BD</span>`
+              ? `<span style="font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid #f59e0b; font-weight: 700; white-space: nowrap;" title="${audit5.resumenDetalle}">🟡 Desactualizado (${audit5.totalCambios} cambio${audit5.totalCambios !== 1 ? 's' : ''})</span>`
+              : `<span style="font-size: 0.68rem; padding: 2px 8px; border-radius: 12px; background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.4); font-weight: 700; white-space: nowrap;">🟢 Al día en BD</span>`
             }
           </div>
         </div>
@@ -4174,15 +4314,15 @@
             <span>Bolsa 40x50: <strong>$${b.costo_bolsa_mpb.toFixed(2)}</strong> | MO: <strong>$${b.mo_mpb.toFixed(2)}</strong></span>
           </div>
           <div style="margin-top: 4px; text-align: right; font-size: 0.74rem; font-weight: 700; color: #34d399;">
-            Costo Neto Bolsa MPB (4kg): $${b.costo_bulto_mpb.toLocaleString('es-AR', {minimumFractionDigits: 2})} ($${b.costo_kilo_mpb.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)
+            Costo Operativo Bolsa MPB (4kg): $${b.costo_bulto_mpb.toLocaleString('es-AR', {minimumFractionDigits: 2})} ($${b.costo_kilo_mpb.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)
           </div>
         </div>
 
-        <!-- ETAPA 2: UP EXTERNA (BFXP - RECETA #194) -->
+        <!-- ETAPA 2: UP EXTERNA (BFXP - RECETA #194 — COSTEO POR UNIDADES ENTERAS) -->
         <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 8px; margin-bottom: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
             <strong style="color: #f472b6; font-size: 0.76rem;">🔥 Etapa 2: Unidad Productiva Cocción y Molde [BFXP]</strong>
-            <span style="font-size: 0.70rem; color: #94a3b8;">Receta #194</span>
+            <span style="font-size: 0.70rem; color: #94a3b8;">Receta #194 · Por Unidades</span>
           </div>
 
           <!-- Insumos Adicionales UP -->
@@ -4213,57 +4353,57 @@
           </div>
 
           <div style="font-size: 0.70rem; color: #94a3b8; margin-bottom: 6px; padding: 4px 6px; background: rgba(0,0,0,0.15); border-radius: 4px;">
-            Masa Entrada Horno: <strong style="color: #fff;">${b.masa_entrada_kilos.toFixed(2)} kg</strong> | Costo Masa: <strong style="color: #fbbf24;">$${b.costo_masa_entrada.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+            Masa Entrada Horno: <strong style="color: #fff;">${b.masa_entrada_kilos.toFixed(2)} kg</strong> | Costo Masa Pre-Horno: <strong style="color: #fbbf24;">$${b.costo_masa_entrada.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
           </div>
 
-          <!-- Parámetros Maquila & Merma -->
+          <!-- Parámetros Tarifa por Barrita & Unidades por Tanda (Cero % de Merma) -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
             <div style="background: rgba(0,0,0,0.2); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.04);">
-              <div style="font-size: 0.66rem; color: var(--text-secondary); margin-bottom: 2px;">TARIFA MAQUILA (UP)</div>
+              <div style="font-size: 0.66rem; color: var(--text-secondary); margin-bottom: 2px;">TARIFA PRODUCTOR ($/un)</div>
               <div style="display: flex; align-items: center; gap: 3px;">
                 <span style="font-size: 0.68rem; color: var(--text-secondary);">$</span>
-                <input type="number" step="50" value="${b.tarifa_maquila_simulada.toFixed(2)}"
+                <input type="number" id="input-ldn5-tarifa-unitaria" step="5" value="${b.tarifa_unitaria_simulada.toFixed(2)}"
                   style="width: 75px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 4px; color: #fbbf24; font-weight: 700; font-size: 0.72rem; text-align: right;"
                   onchange="cambiarMaquilaBarritas(this.value)">
-                <span style="font-size: 0.68rem; color: var(--text-secondary);">/kg</span>
+                <span style="font-size: 0.68rem; color: var(--text-secondary);">/un</span>
               </div>
-              <div style="font-size: 0.64rem; color: #94a3b8; margin-top: 2px;">$${(b.tarifa_maquila_simulada * 0.05).toFixed(2)} / barrita 50g</div>
+              <div style="font-size: 0.64rem; color: #94a3b8; margin-top: 2px;">Total MO UP: $${b.mo_maquila_tanda.toLocaleString('es-AR', {minimumFractionDigits: 2})} (${b.unidades_tanda_simulada} un)</div>
             </div>
 
             <div style="background: rgba(0,0,0,0.2); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.04);">
-              <div style="font-size: 0.66rem; color: var(--text-secondary); margin-bottom: 2px;">MERMA HORNEADO (%)</div>
-              <div style="display: flex; align-items: center; gap: 3px;">
-                <input type="number" step="0.1" value="${b.merma_porc_simulada.toFixed(2)}"
-                  style="width: 60px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 4px; color: #f87171; font-weight: 700; font-size: 0.72rem; text-align: right;"
-                  onchange="cambiarMermaBarritas(this.value)">
-                <span style="font-size: 0.68rem; color: var(--text-secondary);">%</span>
+              <div style="font-size: 0.66rem; color: var(--text-secondary); margin-bottom: 2px;">UNIDADES POR TANDA</div>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <input type="number" id="input-ldn5-unidades-tanda" step="1" min="1" value="${b.unidades_tanda_simulada}"
+                  style="width: 68px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 4px; color: #38bdf8; font-weight: 700; font-size: 0.72rem; text-align: right;"
+                  onchange="cambiarUnidadesTandaBarritas(this.value)">
+                <span style="font-size: 0.68rem; color: var(--text-secondary);">barritas</span>
               </div>
-              <div style="font-size: 0.64rem; color: #94a3b8; margin-top: 2px;">Salida: ${b.masa_salida_kilos.toFixed(2)} kg (96 un)</div>
+              <div style="font-size: 0.64rem; color: #94a3b8; margin-top: 2px;">Equivalente: ${b.masa_salida_kilos.toFixed(2)} kg (50g/un)</div>
             </div>
           </div>
           <div style="margin-top: 6px; padding: 4px 6px; background: rgba(0,0,0,0.15); border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 0.70rem;">
-            <span style="color: #94a3b8;">Salida Horno + Maquila:</span>
-            <span style="font-weight: 700; color: #f472b6;">$${b.costo_salida_up.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg <span style="font-weight: normal; color: #cbd5e1;">($${b.costo_salida_up_individual.toLocaleString('es-AR', {minimumFractionDigits: 2})}/barrita)</span></span>
+            <span style="color: #94a3b8;">Costo Base AP [BFX50G] (20 barritas = 1kg):</span>
+            <span style="font-weight: 700; color: #f472b6;">$${b.costo_base_ap_simulado.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg <span style="font-weight: normal; color: #cbd5e1;">($${b.costo_salida_up_individual.toLocaleString('es-AR', {minimumFractionDigits: 2})}/barrita)</span></span>
           </div>
         </div>
 
-        <!-- ETAPA 3: ARTÍCULO PUENTE (BFX50G / ING #141) -->
+        <!-- ETAPA 3: ARTÍCULO PUENTE (BFX50G) -> INGREDIENTE #141 -->
         <div style="background: rgba(0,0,0,0.25); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 8px; margin-bottom: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <strong style="color: #38bdf8; font-size: 0.76rem;">🌉 Etapa 3: Artículo Puente Taller [BFX50G]</strong>
-            <span style="font-size: 0.70rem; color: #c084fc; font-weight: 700;">Ingrediente #141</span>
+            <strong style="color: #38bdf8; font-size: 0.76rem;">🌉 Etapa 3: AP [BFX50G] ➔ Ingrediente #141</strong>
+            <span style="font-size: 0.70rem; color: #c084fc; font-weight: 700;">Embolsado + Sellado + Etiquetado</span>
           </div>
 
-          <!-- Componentes del AP: Salida UP + MO Taller (20 min) -->
+          <!-- Componentes del AP: Costo Base BFX50G + MO Taller (19 min/kg = $2.216,67/kg) -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
             <div style="background: rgba(0,0,0,0.2); padding: 5px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.04);">
-              <div style="font-size: 0.65rem; color: var(--text-secondary);">SALIDA UP (HORNEADO)</div>
-              <div style="font-size: 0.78rem; font-weight: 700; color: #f472b6;">$${b.costo_salida_up.toLocaleString('es-AR', {minimumFractionDigits: 2})}<span style="font-size: 0.65rem; font-weight: normal; color: #94a3b8;">/kg</span></div>
-              <div style="font-size: 0.63rem; color: #94a3b8;">$${b.costo_salida_up_individual.toLocaleString('es-AR', {minimumFractionDigits: 2})} / barrita</div>
+              <div style="font-size: 0.65rem; color: var(--text-secondary);">COSTO BASE AP [BFX50G]</div>
+              <div style="font-size: 0.78rem; font-weight: 700; color: #38bdf8;">$${b.costo_base_ap_simulado.toLocaleString('es-AR', {minimumFractionDigits: 2})}<span style="font-size: 0.65rem; font-weight: normal; color: #94a3b8;">/kg</span></div>
+              <div style="font-size: 0.63rem; color: #94a3b8;">En BD Búnker: $${b.costo_base_ap_oficial_bd.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg ${Math.abs(diffApBase) > TOLERANCIA_REDONDEO_LDN4 ? `<span style="color:#fbbf24;">(${diffApBase > 0 ? '+' : ''}$${diffApBase.toFixed(2)})</span>` : '🟢'}</div>
             </div>
 
             <div style="background: rgba(0,0,0,0.2); padding: 5px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.04);">
-              <div style="font-size: 0.65rem; color: var(--text-secondary);">MO TALLER BÚNKER (20 min)</div>
+              <div style="font-size: 0.65rem; color: var(--text-secondary);">MO DEPÓSITO BFX50G (19 min)</div>
               <div style="display: flex; align-items: center; gap: 3px; margin-top: 2px;">
                 <span style="font-size: 0.68rem; color: var(--text-secondary);">$</span>
                 <input type="number" step="50" value="${b.mo_ap_taller.toFixed(2)}"
@@ -4277,7 +4417,7 @@
 
           <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(56, 189, 248, 0.2); padding-top: 6px;">
             <div>
-              <div style="font-size: 0.66rem; color: #94a3b8;">Costo Total AP Simulado (Ing #141):</div>
+              <div style="font-size: 0.66rem; color: #94a3b8;">Costo Patrón Ingrediente #141 (AP + MO activa):</div>
               <div style="font-size: 0.95rem; font-weight: 800; color: #34d399;">
                 $${b.costo_ap_simulado.toLocaleString('es-AR', {minimumFractionDigits: 2})}<span style="font-size: 0.70rem; font-weight: normal; color: #94a3b8;"> / kg</span>
                 <span style="font-size: 0.72rem; font-weight: 600; color: #fbbf24; margin-left: 6px;">($${b.costo_barrita_individual.toLocaleString('es-AR', {minimumFractionDigits: 2})}/barrita 50g)</span>
@@ -4285,10 +4425,10 @@
             </div>
 
             <div style="text-align: right;">
-              <div style="font-size: 0.66rem; color: var(--text-secondary);">En BD Oficial: <strong style="color: #94a3b8;">$${b.costo_ap_oficial_bd.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong></div>
-              ${Math.abs(diffPesos) > 0.05 ? `
-                <span style="font-size: 0.66rem; padding: 1px 5px; border-radius: 3px; font-weight: 700; background: ${diffPesos > 0 ? 'rgba(239,68,68,0.18)' : 'rgba(16,185,129,0.18)'}; color: ${diffPesos > 0 ? '#f87171' : '#34d399'};">
-                  ${diffPesos > 0 ? '+' : ''}$${diffPesos.toFixed(2)}
+              <div style="font-size: 0.66rem; color: var(--text-secondary);">En BD (#141): <strong style="color: #94a3b8;">$${b.costo_ap_oficial_bd.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong></div>
+              ${Math.abs(diffIng) > TOLERANCIA_REDONDEO_LDN4 ? `
+                <span style="font-size: 0.66rem; padding: 1px 5px; border-radius: 3px; font-weight: 700; background: ${diffIng > 0 ? 'rgba(239,68,68,0.18)' : 'rgba(16,185,129,0.18)'}; color: ${diffIng > 0 ? '#f87171' : '#34d399'};">
+                  ${diffIng > 0 ? '+' : ''}$${diffIng.toFixed(2)}
                 </span>
               ` : '<span style="font-size: 0.66rem; color: #34d399; font-weight: 700;">🟢 Al día</span>'}
             </div>
@@ -4298,19 +4438,19 @@
         <!-- ETAPA 4: CARRO DE FRACCIONAMIENTO INTERNO [BF24X50] -->
         <div style="background: rgba(0,0,0,0.2); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 6px; padding: 8px; margin-bottom: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <strong style="color: #34d399; font-size: 0.76rem;">📦 Etapa 4: Carro Fraccionamiento [BF24X50]</strong>
-            <span style="font-size: 0.70rem; color: #fbbf24; font-weight: 700;">Tanda 96 un (4 Cajas Display)</span>
+            <strong style="color: #34d399; font-size: 0.76rem;">📦 Etapa 4: Caja Exhibidora Comercial [BF24X50]</strong>
+            <span style="font-size: 0.70rem; color: #fbbf24; font-weight: 700;">1,20 kg (24 barritas/caja)</span>
           </div>
 
           <div style="font-size: 0.68rem; color: #94a3b8; margin-bottom: 6px;">
-            Insumos Carro: 96 Flowpack ($${(96 * b.costo_bolsa_flowpack).toFixed(2)}) + 4 Cajas Display ($${(4 * b.costo_caja_display).toFixed(2)}) = <strong style="color: #38bdf8;">$${(b.empaque_por_caja * 4).toFixed(2)}</strong>
+            Receta #153 (4 cajas = 96 un): 96 Bolsas 8x15 ($${(96 * b.costo_bolsa_flowpack).toFixed(2)}) + 4 Cajas 20x20x10 ($${(4 * b.costo_caja_display).toFixed(2)}) = <strong style="color: #38bdf8;">$${(b.empaque_por_caja * 4).toFixed(2)}</strong>
           </div>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px; background: rgba(0,0,0,0.15); padding: 6px; border-radius: 4px; font-size: 0.70rem;">
             <div>
               <span style="color: #94a3b8; display: block;">Por Caja (1.20 kg / 24 un):</span>
-              <span style="color: #cbd5e1;">• 24 Bolsas Flowpack: <strong>$${(24 * b.costo_bolsa_flowpack).toFixed(2)}</strong></span><br>
-              <span style="color: #cbd5e1;">• 1 Caja Display: <strong>$${b.costo_caja_display.toFixed(2)}</strong></span><br>
+              <span style="color: #cbd5e1;">• 24 Bolsas 8x15: <strong>$${(24 * b.costo_bolsa_flowpack).toFixed(2)}</strong></span><br>
+              <span style="color: #cbd5e1;">• 1 Caja 20x20x10: <strong>$${b.costo_caja_display.toFixed(2)}</strong></span><br>
               <span style="color: #38bdf8; font-weight: 700;">Empaque Caja: $${b.empaque_por_caja.toFixed(2)}</span>
             </div>
             <div>
@@ -4322,7 +4462,7 @@
 
           <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(16, 185, 129, 0.2); padding-top: 6px;">
             <div>
-              <span style="font-size: 0.66rem; color: #94a3b8;">Origen Costo Base Bulto (1.20 kg):</span>
+              <span style="font-size: 0.66rem; color: #94a3b8;">Costo Base Caja [BF24X50] (1.20 kg):</span>
               <div style="font-size: 0.92rem; font-weight: 800; color: #34d399;">
                 $${b.costo_bulto_bf24x50.toLocaleString('es-AR', {minimumFractionDigits: 2})}
                 <span style="font-size: 0.68rem; font-weight: normal; color: #94a3b8;">($${b.costo_kilo_bf24x50.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</span>
@@ -4330,7 +4470,7 @@
             </div>
             <div style="text-align: right;">
               <span style="font-size: 0.66rem; color: #94a3b8;">En Búnker BD:</span>
-              <div style="font-size: 0.82rem; font-weight: 700; color: #fbbf24;">
+              <div style="font-size: 0.82rem; font-weight: 700; color: ${Math.abs(diffBulto) > TOLERANCIA_REDONDEO_LDN4 ? '#fbbf24' : '#34d399'};">
                 $${b.costo_bulto_bf24x50_bd.toLocaleString('es-AR', {minimumFractionDigits: 2})}
                 <span style="font-size: 0.66rem; font-weight: normal; color: #94a3b8;">($${b.costo_kilo_bf24x50_bd.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</span>
               </div>
@@ -4339,22 +4479,21 @@
         </div>
 
         <!-- ACCIONES -->
-        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 8px; margin-top: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 8px; margin-top: 4px; gap: 8px; flex-wrap: wrap;">
           <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 600;"
             onclick="seleccionarArticulo('BF24X50')" title="Seleccionar y auditar la caja comercial BF24X50 en el catálogo">
             🔍 Ver Fracción en Catálogo
           </button>
-          <button class="btn" style="padding: 5px 12px; font-size: 0.74rem; font-weight: 700; ${
-            hayDiferenciasBarritas
-              ? 'background: rgba(245, 158, 11, 0.25); color: #fbbf24; border: 1px solid #f59e0b; box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);'
-              : 'background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4);'
-          } border-radius: 4px; cursor: pointer;"
-            onclick="actualizarTodasFraccionesDeBarritas()" title="${hayDiferenciasBarritas ? 'Hay variaciones pendientes de impactar en las listas comerciales' : 'Precios al día con la base de datos. Hacé clic para auditar.'}">
-            ${hayDiferenciasBarritas 
-              ? `⚡ Impactar Variación en Barritas (${diffBulto >= 0 ? '+' : ''}$${diffBulto.toFixed(2)})`
-              : '🟢 Precios de Barritas al Día (Ver Auditoría)'
-            }
-          </button>
+          ${hayDiferenciasBarritas
+            ? `<button class="btn" id="btn-ldn5-actualizar-todas" style="padding: 5px 12px; font-size: 0.74rem; font-weight: 800; background: rgba(245, 158, 11, 0.25); color: #fbbf24; border: 1px solid #f59e0b; box-shadow: 0 0 10px rgba(245, 158, 11, 0.3); border-radius: 4px; cursor: pointer;"
+                onclick="actualizarTodasFraccionesDeBarritas()" title="Sincronizar Mix #109, MPB, BFX50G, Ing #141 y BF24X50 en BD (${audit5.resumenDetalle})">
+                ⚡ Actualizar Todas
+              </button>`
+            : `<button class="btn" id="btn-ldn5-actualizar-todas" disabled style="padding: 5px 12px; font-size: 0.74rem; font-weight: 700; background: rgba(16, 185, 129, 0.14); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.38); border-radius: 4px; cursor: default; opacity: 0.92;"
+                title="Todo el circuito de Barritas está 100% al día en la Base de Datos">
+                ✓ Todo actualizado
+              </button>`
+          }
         </div>
       `;
 
@@ -4362,6 +4501,7 @@
     }
     window.renderizarBarritasLDN5 = renderizarBarritasLDN5;
     window.cambiarMaquilaBarritas = cambiarMaquilaBarritas;
+    window.cambiarUnidadesTandaBarritas = cambiarUnidadesTandaBarritas;
     window.cambiarMermaBarritas = cambiarMermaBarritas;
     window.cambiarMielBarritas = cambiarMielBarritas;
     window.cambiarCocoBarritas = cambiarCocoBarritas;
@@ -5918,10 +6058,14 @@
           if (recAP) {
             const riMix = (data.recetaIngredientes || []).find(ri => ri.receta_id === recAP.id && composicionMixMap.has(ri.ingrediente_id));
             if (riMix) {
-              const costoMix = resolverCostoIngrediente(riMix.ingrediente_id, visitados);
-              const laAP = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toLowerCase() === apCodigo && (la.es_patron || la.lista_id === 1));
+              const costoMix = Number(resolverCostoIngrediente(riMix.ingrediente_id, visitados).toFixed(2));
+              const apArtObj = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toLowerCase() === apCodigo);
+              const kilosAP = parseFloat(apArtObj?.kilos_unidad) > 0 ? parseFloat(apArtObj.kilos_unidad) : 1;
+              const laAP = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toLowerCase() === apCodigo && la.lista_id === 1)
+                        || (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toLowerCase() === apCodigo && la.es_patron);
               const moAp = (laAP && laAP.mano_obra_activa !== false) ? (parseFloat(laAP.costo_tiempo) || 0) : 0;
-              const costoSimpleCalculado = costoMix + moAp;
+              const moApKilo = kilosAP > 0 ? (moAp / kilosAP) : moAp;
+              const costoSimpleCalculado = Number((costoMix + moApKilo).toFixed(2));
 
               if (ingredientesSim[ingId] && !ingredientesSim[ingId]._manualOverride) {
                 ingredientesSim[ingId].costo_sim = costoSimpleCalculado;
@@ -6136,6 +6280,335 @@
     }
     window.toggleSoloSimplesCoincidentes = toggleSoloSimplesCoincidentes;
 
+    // =========================================================================
+    // AUDITORÍA ESTRICTA (<= $0,02) DE CIRCUITO COMPLETO EN [LDN 3] MIXES
+    // =========================================================================
+    function resolverMixIdDesdeApLDN3(apCodigo) {
+      const data = window.pizarraSimulacionMaster;
+      if (!data || !apCodigo) return null;
+      const apClean = String(apCodigo).trim().toLowerCase();
+      const recAp = (data.recetas || []).find(r => String(r.articulo_numero || '').trim().toLowerCase() === apClean);
+      if (!recAp) return null;
+      const riMix = (data.recetaIngredientes || []).find(ri => ri.receta_id === recAp.id && composicionMixMap.has(ri.ingrediente_id));
+      return riMix ? Number(riMix.ingrediente_id) : null;
+    }
+
+    function auditarEstadoSincronizacionMixLDN3(mixId) {
+      const data = window.pizarraSimulacionMaster;
+      const mId = Number(mixId);
+      const mixObj = (data?.ingredientes || []).find(i => Number(i.id) === mId);
+      if (!data || !mixObj) {
+        return {
+          mixId: mId, estaAlDia: true, enPausa: false, esPreMezcla: false,
+          totalCambios: 0, motivos: [], detallesAntesDespues: [],
+          aguasAbajoPendiente: false, aguasAbajoLabel: '', fraccsCount: 0
+        };
+      }
+
+      const componentes = composicionMixMap.get(mId) || [];
+      let costoBatch = 0;
+      let totalKilosBatch = 0;
+      componentes.forEach(c => {
+        const cIng = ingredientesSim[c.ingrediente_id];
+        const cObj = (data.ingredientes || []).find(i => i.id === c.ingrediente_id);
+        const costoUnit = cIng ? cIng.costo_sim : (cObj ? parseFloat(cObj.costo_patron) || 0 : 0);
+        const cant = parseFloat(c.cantidad) || 0;
+        costoBatch += cant * costoUnit;
+        totalKilosBatch += cant;
+      });
+      const costoMixRaw = totalKilosBatch > 0 ? (costoBatch / totalKilosBatch) : (ingredientesSim[mId]?.costo_sim || 0);
+      const costoMixSim = Number(costoMixRaw.toFixed(2));
+      const costoMixBd = Number((parseFloat(mixObj.costo_patron) || 0).toFixed(2));
+      const diffMix = Number((costoMixSim - costoMixBd).toFixed(2));
+      const mixPendiente = Math.abs(diffMix) > TOLERANCIA_REDONDEO_LDN4;
+
+      const esPreMezcla = (mId === 109 || mId === 132 || mId === 134);
+
+      // Nivel 2: Artículos Puente / Bultos Pre-Mezcla que consumen este Mix
+      const aps = [];
+      (data.recetas || []).forEach(r => {
+        const matchRi = (data.recetaIngredientes || []).filter(ri => ri.receta_id === r.id && Number(ri.ingrediente_id) === mId);
+        if (matchRi.length === 0) return;
+        const apCodeClean = String(r.articulo_numero || '').trim().toLowerCase();
+        const apArt = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toLowerCase() === apCodeClean);
+        const kilosAP = parseFloat(apArt?.kilos_unidad) > 0 ? parseFloat(apArt.kilos_unidad) : 1;
+        const laAP1 = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toLowerCase() === apCodeClean && la.lista_id === 1)
+                   || (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toLowerCase() === apCodeClean && la.es_patron);
+        const moAp = (laAP1 && laAP1.mano_obra_activa !== false) ? (parseFloat(laAP1.costo_tiempo) || 0) : 0;
+
+        let costoRecetaAPBulto = 0;
+        (data.recetaIngredientes || []).filter(ri => ri.receta_id === r.id).forEach(ri => {
+          const cantRi = parseFloat(ri.cantidad) || 0;
+          if (Number(ri.ingrediente_id) === mId) {
+            costoRecetaAPBulto += cantRi * (esPreMezcla && mId !== 109 ? costoMixRaw : costoMixSim);
+          } else {
+            const oSim = ingredientesSim[ri.ingrediente_id];
+            const oObj = (data.ingredientes || []).find(i => i.id === ri.ingrediente_id);
+            const oUnit = oSim ? oSim.costo_sim : (oObj ? parseFloat(oObj.costo_patron) || 0 : 0);
+            costoRecetaAPBulto += cantRi * oUnit;
+          }
+        });
+        const costoApBultoSim = Number((costoRecetaAPBulto > 0 ? costoRecetaAPBulto : (costoMixSim * kilosAP)).toFixed(2));
+        const costoApKiloSim = Number((costoApBultoSim / kilosAP).toFixed(4));
+        const costoApBultoBd = apArt ? Number((parseFloat(apArt.costo_base) || 0).toFixed(2)) : 0;
+        const costoApCbsBultoBd = (laAP1 && laAP1.costo_base_sobrescrito !== null && parseFloat(laAP1.costo_base_sobrescrito) > 0)
+          ? Number((parseFloat(laAP1.costo_base_sobrescrito) * kilosAP).toFixed(2))
+          : costoApBultoBd;
+        const apPendiente = Math.abs(costoApBultoSim - costoApBultoBd) > TOLERANCIA_REDONDEO_LDN4
+          || Math.abs(costoApBultoSim - costoApCbsBultoBd) > TOLERANCIA_REDONDEO_LDN4;
+
+        const moApKilo = kilosAP > 0 ? (moAp / kilosAP) : moAp;
+        const costoNetoAP = Number(((costoApBultoSim / kilosAP) + moApKilo).toFixed(2));
+
+        aps.push({
+          articulo_numero: r.articulo_numero,
+          kilosAP,
+          moAp,
+          costoApBultoSim,
+          costoApBultoBd,
+          costoApKiloSim,
+          costoNetoAP,
+          apPendiente
+        });
+      });
+
+      // Nivel 3: Ingredientes Simples vinculados a esos APs
+      const apCodigosLower = new Set(aps.map(a => String(a.articulo_numero || '').trim().toLowerCase()));
+      const simples = [];
+      (data.ingredientes || []).forEach(ing => {
+        if (composicionMixMap.has(ing.id)) return;
+        const vinc = String(ing.articulo_vinculado_numero || '').trim().toLowerCase();
+        if (!vinc || !apCodigosLower.has(vinc)) return;
+        const apMatch = aps.find(a => String(a.articulo_numero || '').trim().toLowerCase() === vinc);
+        const costoSimpleSim = apMatch ? apMatch.costoNetoAP : costoMixSim;
+        const costoSimpleBd = Number((parseFloat(ing.costo_patron) || 0).toFixed(2));
+        const simplePendiente = Math.abs(costoSimpleSim - costoSimpleBd) > TOLERANCIA_REDONDEO_LDN4;
+        simples.push({
+          id: ing.id,
+          nombre: ing.nombre,
+          apCodigo: apMatch ? apMatch.articulo_numero : ing.articulo_vinculado_numero,
+          costoSimpleSim,
+          costoSimpleBd,
+          simplePendiente
+        });
+      });
+
+      // Nivel 4: Fracciones unitarias y Packs Padre en Búnker
+      const simpleIds = new Set(simples.map(s => s.id));
+      const recArtIds = new Set();
+      (data.recetas || []).forEach(r => {
+        if ((data.recetaIngredientes || []).some(ri => ri.receta_id === r.id && (Number(ri.ingrediente_id) === mId || simpleIds.has(Number(ri.ingrediente_id))))) {
+          const rCodLower = String(r.articulo_numero || '').trim().toLowerCase();
+          if (rCodLower && !apCodigosLower.has(rCodLower)) recArtIds.add(rCodLower);
+        }
+      });
+      const fraccs = (data.articulosBunker || []).filter(a => {
+        if (a.solo_produccion_externa === true || a.no_producido_por_lambda === true || a.propiedades_dinamicas?.obsoleto === true) return false;
+        const sku = String(a.articulo_id || '').trim().toLowerCase();
+        if (apCodigosLower.has(sku) || sku.startsWith('prod ap') || sku === 'mpb' || sku.startsWith('mpgdf') || sku.startsWith('mpgds')) return false;
+        if (recArtIds.has(sku)) return true;
+        if (a.pack_hijo_codigo && recArtIds.has(String(a.pack_hijo_codigo).trim().toLowerCase())) return true;
+        return false;
+      });
+
+      // Si no es Pre-Mezcla y no tiene ninguna oferta comercial activa en Búnker (#77 Mix BK, #107 Mix Almafrut) -> Estructura en pausa
+      if (!esPreMezcla && fraccs.length === 0) {
+        return {
+          mixId: mId,
+          estaAlDia: true,
+          enPausa: true,
+          esPreMezcla: false,
+          totalCambios: 0,
+          motivos: [],
+          detallesAntesDespues: [],
+          aguasAbajoPendiente: false,
+          aguasAbajoLabel: '',
+          costoMixSim,
+          costoMixBd,
+          aps,
+          simples,
+          fraccsCount: 0
+        };
+      }
+
+      let fraccionesDesactualizadas = 0;
+      let packsDesactualizados = 0;
+      const detallesAntesDespues = [];
+
+      if (mixPendiente) {
+        detallesAntesDespues.push(`Mix [#${mId}]: $${costoMixBd.toFixed(2)} ➔ $${costoMixSim.toFixed(2)}/kg`);
+      }
+      aps.forEach(a => {
+        if (a.apPendiente) {
+          detallesAntesDespues.push(`AP [${a.articulo_numero}]: $${a.costoApBultoBd.toFixed(2)} ➔ $${a.costoApBultoSim.toFixed(2)}`);
+        }
+      });
+      simples.forEach(s => {
+        if (s.simplePendiente) {
+          detallesAntesDespues.push(`Simple [#${s.id}]: $${s.costoSimpleBd.toFixed(2)} ➔ $${s.costoSimpleSim.toFixed(2)}/kg`);
+        }
+      });
+
+      if (!esPreMezcla) {
+        fraccs.forEach(f => {
+          const auditHijo = auditarArticuloHijoLDN4(f);
+          if (!auditHijo.estaAlDia) {
+            const esPack = f.es_pack === true || parseInt(f.pack_unidades) > 1 || Boolean(f.pack_hijo_codigo);
+            if (esPack) packsDesactualizados++;
+            else fraccionesDesactualizadas++;
+            detallesAntesDespues.push(`[${f.articulo_id}]: $${auditHijo.costoBultoBD.toFixed(2)} ➔ $${auditHijo.costoBultoSim.toFixed(2)}${auditHijo.listasDesactualizadas > 0 ? ` (${auditHijo.listasDesactualizadas}L)` : ''}`);
+          }
+        });
+      }
+
+      let totalCambios = 0;
+      const motivos = [];
+      if (mixPendiente) { totalCambios += 1; motivos.push('Mix'); }
+      const apsPendCount = aps.filter(a => a.apPendiente).length;
+      if (apsPendCount > 0) { totalCambios += apsPendCount; motivos.push(esPreMezcla ? 'Bulto Depósito' : 'AP'); }
+      const simPendCount = simples.filter(s => s.simplePendiente).length;
+      if (simPendCount > 0) { totalCambios += simPendCount; motivos.push('Simple'); }
+      if (fraccionesDesactualizadas > 0) { totalCambios += fraccionesDesactualizadas; motivos.push(`${fraccionesDesactualizadas} Fracc.`); }
+      if (packsDesactualizados > 0) { totalCambios += packsDesactualizados; motivos.push(`${packsDesactualizados} Pack${packsDesactualizados !== 1 ? 's' : ''}`); }
+
+      // Verificar aguas abajo para las 3 Pre-Mezclas (#109 -> LDN 5, #134 -> LDN 6 FLOR, #132 -> LDN 6 SOL)
+      let aguasAbajoPendiente = false;
+      let aguasAbajoLabel = '';
+      if (mId === 109 && typeof auditarEstadoSincronizacionBarritasLDN5 === 'function') {
+        const aud5 = auditarEstadoSincronizacionBarritasLDN5();
+        if (!aud5.estaAlDia) {
+          aguasAbajoPendiente = true;
+          aguasAbajoLabel = `⚠️ [LDN 5] Barritas tiene ${aud5.totalCambios} cambio(s) pendiente(s) en BD`;
+        }
+      } else if ((mId === 134 || mId === 132) && typeof auditarEstadoSincronizacionGranolaLDN6 === 'function') {
+        const varGran = mId === 134 ? 'FLOR' : 'SOL';
+        const aud6 = auditarEstadoSincronizacionGranolaLDN6(varGran);
+        if (!aud6.estaAlDia) {
+          aguasAbajoPendiente = true;
+          aguasAbajoLabel = `⚠️ [LDN 6] ${mId === 134 ? 'Grana Flor' : 'Grana Sol'} tiene ${aud6.totalCambios} cambio(s) pendiente(s) en BD`;
+        }
+      }
+
+      return {
+        mixId: mId,
+        estaAlDia: totalCambios === 0,
+        enPausa: false,
+        esPreMezcla,
+        totalCambios,
+        motivos,
+        resumenDetalle: motivos.join(' · '),
+        detallesAntesDespues,
+        aguasAbajoPendiente,
+        aguasAbajoLabel,
+        costoMixSim,
+        costoMixBd,
+        aps,
+        simples,
+        fraccsCount: fraccs.length
+      };
+    }
+    window.auditarEstadoSincronizacionMixLDN3 = auditarEstadoSincronizacionMixLDN3;
+
+    async function sincronizarTodosLosMixesDesactualizadosLDN3() {
+      const data = window.pizarraSimulacionMaster;
+      if (!data) return;
+
+      const mixesDesactualizados = [];
+      (data.ingredientes || []).forEach(ing => {
+        if (!composicionMixMap.has(ing.id)) return;
+        const aud = auditarEstadoSincronizacionMixLDN3(ing.id);
+        if (!aud.enPausa && !aud.esPreMezcla && !aud.estaAlDia) {
+          mixesDesactualizados.push({ ing, aud });
+        }
+      });
+
+      if (mixesDesactualizados.length === 0) {
+        Swal.fire({
+          icon: 'info',
+          title: '✓ Todos los Mixes Comerciales al Día',
+          text: 'Los 6 circuitos comerciales de Mixes ya coinciden al centavo con PostgreSQL.',
+          background: '#151e2e',
+          color: '#f3f4f6'
+        });
+        return;
+      }
+
+      const resumenItemsHtml = mixesDesactualizados.map(({ ing, aud }) => `
+        <div style="padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 0.78rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="color:#e9d5ff;">🧪 [#${ing.id}] ${ing.nombre}</strong>
+            <span style="color:#fbbf24; font-size:0.72rem; font-weight:700;">${aud.totalCambios} cambio(s): ${aud.resumenDetalle}</span>
+          </div>
+          <div style="font-size:0.70rem; color:#94a3b8; margin-top:2px;">
+            ${aud.detallesAntesDespues.slice(0, 4).join(' · ')}${aud.detallesAntesDespues.length > 4 ? ` · (+${aud.detallesAntesDespues.length - 4} más)` : ''}
+          </div>
+        </div>
+      `).join('');
+
+      const confirmGlobal = await Swal.fire({
+        title: `⚡ Actualizar ${mixesDesactualizados.length} Circuito(s) de Mixes`,
+        html: `
+          <div style="text-align:left; font-size:0.82rem; color:#e2e8f0;">
+            <p style="margin:0 0 8px 0; color:#cbd5e1;">Se ejecutará la cascada atómica completa (<strong>Mix ➔ AP ➔ Simple ➔ Fracciones y Packs ➔ Listas 1..8 y Nodos</strong>) en los siguientes circuitos activos:</p>
+            <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(168,85,247,0.3); border-radius:6px; max-height:260px; overflow-y:auto;">
+              ${resumenItemsHtml}
+            </div>
+          </div>
+        `,
+        width: '660px',
+        showCancelButton: true,
+        confirmButtonText: `🚀 Actualizar los ${mixesDesactualizados.length} Circuitos`,
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#7c3aed',
+        cancelButtonColor: '#4b5563',
+        background: '#151e2e',
+        color: '#f3f4f6'
+      });
+
+      if (!confirmGlobal.isConfirmed) return;
+
+      try {
+        Swal.fire({
+          title: 'Actualizando todos los circuitos de Mixes...',
+          text: 'Impactando Fórmula, AP, Simple, Fracciones y Packs en PostgreSQL.',
+          allowOutsideClick: false,
+          didOpen: () => Swal.showLoading()
+        });
+
+        for (const item of mixesDesactualizados) {
+          await sincronizarCascadaCompletaMixLDN3(item.ing.id, { silencioso: true });
+        }
+
+        recalcularCascada();
+        renderizarMixes();
+        renderizarArticulosPuente();
+        renderizarIngredientesSimples();
+        renderizarArticulosBunker();
+        if (window.articuloSeleccionadoId) renderizarGrillaMultilista();
+        actualizarBannerCambios();
+
+        Swal.fire({
+          icon: 'success',
+          title: '🎉 ¡Todos los Mixes Comerciales al Día!',
+          html: `Se sincronizaron atómicamente <strong>${mixesDesactualizados.length} circuito(s) completos de Mixes</strong> en PostgreSQL.`,
+          timer: 2800,
+          showConfirmButton: true,
+          confirmButtonColor: '#10b981',
+          background: '#151e2e',
+          color: '#f3f4f6'
+        });
+      } catch (err) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Error al Actualizar Mixes',
+          text: err.message,
+          background: '#151e2e',
+          color: '#f3f4f6'
+        });
+      }
+    }
+    window.sincronizarTodosLosMixesDesactualizadosLDN3 = sincronizarTodosLosMixesDesactualizadosLDN3;
+
     function renderizarIngredientesSimples() {
       const searchInput = document.getElementById('search-ingredientes-simples');
       const query = searchInput ? searchInput.value.toLowerCase() : '';
@@ -6337,9 +6810,14 @@
         if (isDestacado) countRenderedDestacados++;
 
         const ingSim = ingredientesSim[ing.id];
-        const costoPatronSimpleBD = parseFloat(ing.costo_patron) || 0;
-        const costoSimpleSim = ingSim ? ingSim.costo_sim : costoPatronSimpleBD;
-        const isModified = Math.abs(costoSimpleSim - costoPatronSimpleBD) >= 0.01;
+        const costoPatronSimpleBD = Number((parseFloat(ing.costo_patron) || 0).toFixed(2));
+        const costoSimpleSim = Number((ingSim ? ingSim.costo_sim : costoPatronSimpleBD).toFixed(2));
+        const mixPadreId = resolverMixIdDesdeApLDN3(apVinculado || ing.articulo_vinculado_numero);
+        const auditCircuito = mixPadreId ? auditarEstadoSincronizacionMixLDN3(mixPadreId) : null;
+        const enPausaSimple = Boolean(auditCircuito && auditCircuito.enPausa);
+        const isModified = enPausaSimple
+          ? false
+          : (auditCircuito ? !auditCircuito.estaAlDia : (Math.abs(costoSimpleSim - costoPatronSimpleBD) > TOLERANCIA_REDONDEO_LDN4));
 
         const card = document.createElement('div');
         card.className = `mix-card` + (isDestacado || isSelected ? ' mix-card-destacado open' : '');
@@ -6361,9 +6839,11 @@
             ? `Art. Puente: <strong style="color: #38bdf8;">[${ing.articulos_vinculados.map(v => v.codigo || v.bunker_articulo_id).join(', ')}]</strong>`
             : '<span style="color: var(--text-muted);">Sin artículo puente directo</span>';
 
-        const statusPillBD = isModified 
-          ? '<span style="font-size:0.65rem; background:rgba(245,158,11,0.25); color:#fbbf24; border:1px solid rgba(245,158,11,0.5); padding:1px 6px; border-radius:3px; font-weight:700;">🟡 BD Pendiente</span>'
-          : '<span style="font-size:0.65rem; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4); padding:1px 6px; border-radius:3px; font-weight:700;">🟢 BD Al día</span>';
+        const statusPillBD = enPausaSimple
+          ? '<span style="font-size:0.65rem; background:rgba(100,116,139,0.22); color:#cbd5e1; border:1px solid rgba(148,163,184,0.4); padding:1px 6px; border-radius:3px; font-weight:700;">⏸ Sin oferta activa (Estructura en pausa)</span>'
+          : (isModified
+              ? `<span style="font-size:0.65rem; background:rgba(245,158,11,0.25); color:#fbbf24; border:1px solid rgba(245,158,11,0.5); padding:1px 6px; border-radius:3px; font-weight:700;">🟡 Desactualizado (${auditCircuito ? auditCircuito.totalCambios + ' cambio' + (auditCircuito.totalCambios !== 1 ? 's' : '') : 'pendiente'})</span>`
+              : '<span style="font-size:0.65rem; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4); padding:1px 6px; border-radius:3px; font-weight:700;">🟢 Al día en BD</span>');
 
         card.innerHTML = `
           <div class="mix-card-header" onclick="seleccionarIngredienteSimple(${ing.id})" style="${isDestacado || isSelected ? 'background: rgba(168, 85, 247, 0.12); cursor: pointer;' : 'cursor: pointer;'}">
@@ -6376,39 +6856,30 @@
             </div>
             <div class="mix-price-badge">
               <span class="price-old" title="Costo patrón en BD">$${costoPatronSimpleBD.toFixed(2)}</span>
-              <span class="price-new ${isModified ? 'modified' : ''}" title="Costo simulado">$${costoSimpleSim.toFixed(2)}</span>
+              <span class="price-new ${isModified ? 'modified' : ''}" title="Costo derivado (Mix + MO AP)">$${costoSimpleSim.toFixed(2)}</span>
               <span style="font-size:0.65rem; color:var(--text-muted);">/ kg</span>
             </div>
           </div>
           <div class="mix-card-body" style="padding: 8px 12px; font-size: 0.76rem; display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 6px;">
               <div>
                 ${artVincStr}
               </div>
-              <div style="display: flex; gap: 8px; align-items: center;">
-                <button class="btn btn-secondary" style="padding: 3px 8px; font-size: 0.7rem;" onclick="event.stopPropagation(); seleccionarIngredienteSimple(${ing.id})">
-                  📦 Ver Fracciones
-                </button>
-                <div class="item-input-container" style="margin: 0;">
-                  <span class="item-currency-prefix">$</span>
-                  <input type="number" step="0.01" class="item-input ${isModified ? 'item-input-modified' : ''}" 
-                    value="${costoSimpleSim.toFixed(2)}" 
-                    onclick="event.stopPropagation()"
-                    onchange="cambiarCostoIngredienteSimple(${ing.id}, this.value)" style="width: 80px; font-size: 0.78rem; padding: 3px 6px;">
-                </div>
+              <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                ${!enPausaSimple ? `
+                  <button class="btn btn-secondary" style="padding: 3px 8px; font-size: 0.7rem;" onclick="event.stopPropagation(); seleccionarIngredienteSimple(${ing.id})">
+                    📦 Ver Fracciones
+                  </button>
+                ` : ''}
+                ${enPausaSimple
+                  ? ''
+                  : (mixPadreId
+                      ? (isModified
+                          ? `<button class="btn" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 700; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff; border: none; border-radius: 4px; cursor: pointer;" onclick="event.stopPropagation(); sincronizarCascadaCompletaMixLDN3(${mixPadreId})" title="Actualizar atómicamente Mix -> AP -> Simple -> Fracciones y Packs">⚡ Actualizar Circuito Completo</button>`
+                          : `<button class="btn" disabled style="padding: 4px 10px; font-size: 0.72rem; font-weight: 700; background: rgba(16,185,129,0.14); color: #34d399; border: 1px solid rgba(16,185,129,0.38); border-radius: 4px; cursor: default;">✓ Todo actualizado</button>`)
+                      : '')
+                }
               </div>
-            </div>
-            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 6px; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 6px; flex-wrap: wrap;">
-              <button class="btn" style="padding: 4px 8px; font-size: 0.72rem; font-weight: 700; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: #fff; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px;" 
-                onclick="event.stopPropagation(); fijarCostoIngredienteSimpleEnBD(${ing.id})" 
-                title="Fijar el costo ($${costoSimpleSim.toFixed(2)}/kg) como costo_patron en la tabla ingredientes de la BD">
-                💾 Fijar Simple en BD
-              </button>
-              <button class="btn" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 700; background: linear-gradient(135deg, #a855f7 0%, #7c3aed 100%); color: #fff; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 6px rgba(168, 85, 247, 0.25);" 
-                onclick="event.stopPropagation(); actualizarTodasFraccionesDeIngredienteSimple(${ing.id})" 
-                title="Calcular y aplicar masivamente los precios calculados en la BD para todas las presentaciones comerciales de este simple">
-                ⚡ Actualizar Todas las Fracciones
-              </button>
             </div>
           </div>
         `;
@@ -6564,32 +7035,54 @@
       let count = 0;
       let countCoincidentes = 0;
 
+      // Cabecera global siempre visible de [LDN 3]: estado de los circuitos comerciales vigentes
+      const auditoriasPorMix = new Map();
+      let mixesComercialesActivos = 0;
+      let mixesComercialesDesactualizados = 0;
+      listaMixes.forEach(m => {
+        const aud = auditarEstadoSincronizacionMixLDN3(m.ingrediente.id);
+        auditoriasPorMix.set(m.ingrediente.id, aud);
+        if (!aud.enPausa && !aud.esPreMezcla) {
+          mixesComercialesActivos++;
+          if (!aud.estaAlDia) mixesComercialesDesactualizados++;
+        }
+      });
+
+      const globalHeaderBar = document.createElement('div');
+      globalHeaderBar.style.cssText = `
+        padding: 8px 12px;
+        margin-bottom: 10px;
+        background: ${mixesComercialesDesactualizados > 0 ? 'rgba(245, 158, 11, 0.10)' : 'rgba(16, 185, 129, 0.10)'};
+        border: 1px solid ${mixesComercialesDesactualizados > 0 ? 'rgba(245, 158, 11, 0.40)' : 'rgba(16, 185, 129, 0.35)'};
+        border-radius: 6px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 0.76rem;
+      `;
+      globalHeaderBar.innerHTML = `
+        <div style="color: ${mixesComercialesDesactualizados > 0 ? '#fbbf24' : '#34d399'}; font-weight: 700;">
+          ${mixesComercialesDesactualizados > 0
+            ? `🟡 ${mixesComercialesDesactualizados} de ${mixesComercialesActivos} mixes comerciales con cambios pendientes en BD`
+            : `🟢 Los ${mixesComercialesActivos} mixes comerciales vigentes están al día en BD`
+          }
+        </div>
+        <div>
+          ${mixesComercialesDesactualizados > 0
+            ? `<button type="button" id="btn-ldn3-actualizar-todos-mixes" class="btn" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff; border: none; padding: 4px 10px; border-radius: 4px; font-size: 0.72rem; cursor: pointer; font-weight: 800; box-shadow: 0 2px 8px rgba(245, 158, 11, 0.35);" onclick="sincronizarTodosLosMixesDesactualizadosLDN3()">⚡ Actualizar Todos los Mixes Desactualizados (${mixesComercialesDesactualizados})</button>`
+            : `<button type="button" id="btn-ldn3-actualizar-todos-mixes" class="btn" disabled style="background: rgba(16, 185, 129, 0.14); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.38); padding: 4px 10px; border-radius: 4px; font-size: 0.72rem; cursor: default; font-weight: 700;">✓ Todo actualizado</button>`
+          }
+        </div>
+      `;
+      container.appendChild(globalHeaderBar);
+
       // Banner superior informativo si hay artículo/insumo seleccionado o mix en foco
       const countContienen = listaMixes.filter(m => m.contieneInsumo).length;
       if (idsInsumosSeleccionados.length > 0 || mixSeleccionadoId) {
         if (window.soloMixesCoincidentes === undefined) {
           window.soloMixesCoincidentes = (countContienen > 0);
-        }
-
-        const estadoMixFraccs = (typeof auditarEstadoFraccionesMixesLDN3 === 'function')
-          ? auditarEstadoFraccionesMixesLDN3()
-          : { total: 0, todosAlDia: false, pendientes: 0 };
-
-        let btnMasterFraccsMixHtml = '';
-        if (estadoMixFraccs.total > 0) {
-          if (estadoMixFraccs.todosAlDia) {
-            btnMasterFraccsMixHtml = `
-              <button type="button" class="btn" style="background: rgba(16, 185, 129, 0.18); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 4px 10px; border-radius: 4px; font-size: 0.72rem; cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 4px;" onclick="actualizarTodasFraccionesDeMixesLDN3()" title="Las ${estadoMixFraccs.total} fracciones de mixes están 100% al día en BD. Hacé clic para ver la auditoría.">
-                🟢 Fracciones al Día (Ver Auditoría)
-              </button>
-            `;
-          } else {
-            btnMasterFraccsMixHtml = `
-              <button type="button" class="btn" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff; border: none; padding: 4px 10px; border-radius: 4px; font-size: 0.72rem; cursor: pointer; font-weight: 800; display: flex; align-items: center; gap: 4px; box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4); animation: pulse 2s infinite;" onclick="actualizarTodasFraccionesDeMixesLDN3()" title="Hay ${estadoMixFraccs.pendientes} fracciones con costos y precios pendientes de impactar en BD.">
-                ⚡ Impactar Fracciones (${estadoMixFraccs.pendientes} pendientes)
-              </button>
-            `;
-          }
         }
 
         let bannerTitle = '';
@@ -6598,14 +7091,16 @@
 
         if (mixSeleccionadoId) {
           const mixObj = ingredientes.find(i => i.id === mixSeleccionadoId);
+          const audSel = auditoriasPorMix.get(mixSeleccionadoId) || auditarEstadoSincronizacionMixLDN3(mixSeleccionadoId);
           bannerTitle = `🧪 Mix en foco: <strong style="color: #fff;">${mixObj ? mixObj.nombre : '#' + mixSeleccionadoId}</strong>`;
-          bannerSub = `Podés propagar a fracciones comerciales o ejecutar la cascada completa en 1 clic`;
-          bannerAction = `
-            ${btnMasterFraccsMixHtml}
-            <button type="button" class="btn" style="background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color: #fff; border: none; padding: 3px 9px; border-radius: 4px; font-size: 0.72rem; cursor: pointer; font-weight: 700; display: flex; align-items: center; gap: 4px; box-shadow: 0 2px 6px rgba(139,92,246,0.3);" onclick="sincronizarCascadaCompletaMixLDN3(${mixSeleccionadoId})" title="Sincronizar Cascada Completa del Mix en foco">
-              🚀 Cascada Completa
-            </button>
-          `;
+          bannerSub = audSel.enPausa
+            ? 'Estructura preservada en pausa sin fracciones comerciales activas en Búnker'
+            : (audSel.estaAlDia ? 'Circuito completo sincronizado al centavo en PostgreSQL' : `${audSel.totalCambios} cambio(s) pendiente(s): ${audSel.resumenDetalle}`);
+          bannerAction = audSel.enPausa
+            ? ''
+            : (!audSel.estaAlDia
+                ? `<button type="button" class="btn" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff; border: none; padding: 3px 9px; border-radius: 4px; font-size: 0.72rem; cursor: pointer; font-weight: 800;" onclick="sincronizarCascadaCompletaMixLDN3(${mixSeleccionadoId})">⚡ Actualizar Circuito Completo</button>`
+                : `<button type="button" class="btn" disabled style="background: rgba(16,185,129,0.14); color: #34d399; border: 1px solid rgba(16,185,129,0.38); padding: 3px 9px; border-radius: 4px; font-size: 0.72rem; cursor: default; font-weight: 700;">✓ Todo actualizado</button>`);
         } else {
           const insumoNombres = idsInsumosSeleccionados.map(id => {
             const ingObj = ingredientes.find(i => i.id === id);
@@ -6613,7 +7108,7 @@
           }).join(', ');
           bannerTitle = `🎯 Insumo seleccionado: <strong style="color: #fff;">${insumoNombres}</strong>`;
           bannerSub = countContienen > 0 ? `Se detectó en <strong>${countContienen}</strong> fórmulas de mixes de producción interna` : 'No forma parte de ninguna fórmula de mix actual';
-          bannerAction = btnMasterFraccsMixHtml;
+          bannerAction = '';
         }
 
         const infoBanner = document.createElement('div');
@@ -6659,6 +7154,18 @@
         ? listaMixes.filter(m => m.contieneInsumo)
         : listaMixes;
 
+      // Ordenar: activos/pre-mezclas primero, mixes en pausa al final
+      mixesAExhibir.sort((a, b) => {
+        const audA = auditoriasPorMix.get(a.ingrediente.id);
+        const audB = auditoriasPorMix.get(b.ingrediente.id);
+        const pausaA = audA?.enPausa ? 1 : 0;
+        const pausaB = audB?.enPausa ? 1 : 0;
+        if (pausaA !== pausaB) return pausaA - pausaB;
+        if (a.contieneInsumo && !b.contieneInsumo) return -1;
+        if (!a.contieneInsumo && b.contieneInsumo) return 1;
+        return 0;
+      });
+
       mixesAExhibir.forEach(mixItem => {
         const ing = mixItem.ingrediente;
         const componentes = mixItem.componentes;
@@ -6670,39 +7177,10 @@
         count++;
         if (contieneInsumo) countCoincidentes++;
 
-        const ingSim = ingredientesSim[ing.id];
-        const costoPatronMixBD = parseFloat(ing.costo_patron) || 0;
-        const costoFormulaSim = ingSim ? ingSim.costo_sim : costoPatronMixBD;
-
-        // Verificar si algún Artículo Puente o Ingrediente Simple de este Mix está pendiente en BD
-        let apOrSimplePendiente = false;
-        (data.recetas || []).forEach(r => {
-          const matchRi = (data.recetaIngredientes || []).filter(ri => ri.receta_id === r.id && ri.ingrediente_id === ing.id);
-          if (matchRi.length > 0) {
-            const apCodeClean = String(r.articulo_numero || '').trim().toLowerCase();
-            const apArt = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toLowerCase() === apCodeClean);
-            const kilosAP = parseFloat(apArt?.kilos_unidad) > 0 ? parseFloat(apArt.kilos_unidad) : 1;
-            const laAP = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toLowerCase() === apCodeClean && (la.es_patron || la.lista_id === 1));
-            const moAp = (laAP && laAP.mano_obra_activa !== false) ? (parseFloat(laAP.costo_tiempo) || 0) : 0;
-            const costoApKiloBaseSim = calcularCostoBaseKiloArticulo(r.articulo_numero) || costoFormulaSim;
-            const costoApBaseKiloBD = (laAP && laAP.costo_base_sobrescrito !== null && parseFloat(laAP.costo_base_sobrescrito) > 0)
-              ? parseFloat(laAP.costo_base_sobrescrito)
-              : ((parseFloat(apArt?.costo_base) || 0) / kilosAP);
-            if (Math.abs(costoApKiloBaseSim - costoApBaseKiloBD) >= 0.05) apOrSimplePendiente = true;
-
-            const costoNetoAP = costoApKiloBaseSim + (kilosAP > 0 ? (moAp / kilosAP) : moAp);
-            (data.ingredientes || []).forEach(sIng => {
-              if (composicionMixMap.has(sIng.id)) return;
-              const vinc = String(sIng.articulo_vinculado_numero || '').trim().toLowerCase();
-              const isVinc = vinc === apCodeClean || (Array.isArray(sIng.articulos_vinculados) && sIng.articulos_vinculados.some(av => String(av.codigo || av.bunker_articulo_id || '').trim().toLowerCase() === apCodeClean));
-              if (isVinc && Math.abs(costoNetoAP - (parseFloat(sIng.costo_patron) || 0)) >= 0.05) {
-                apOrSimplePendiente = true;
-              }
-            });
-          }
-        });
-
-        const isModified = Math.abs(costoFormulaSim - costoPatronMixBD) >= 0.01 || apOrSimplePendiente;
+        const auditMix = auditoriasPorMix.get(ing.id) || auditarEstadoSincronizacionMixLDN3(ing.id);
+        const costoPatronMixBD = auditMix.costoMixBd;
+        const costoFormulaSim = auditMix.costoMixSim;
+        const isModified = !auditMix.enPausa && !auditMix.estaAlDia;
 
         // Identificar si este Mix es una Pre-Mezcla de otra Línea de Negocio (LDN 5 Barritas o LDN 6 Granolas)
         let badgeRutaLdnHtml = '';
@@ -6721,7 +7199,9 @@
         card.className = `mix-card` + (abiertoMixId === ing.id || isDestacado ? ' open' : '') + (isDestacado ? ' mix-card-destacado' : '');
         card.id = `mix-card-${ing.id}`;
 
-        if (isDestacado) {
+        if (auditMix.enPausa) {
+          card.style.cssText = 'opacity: 0.76; border: 1px dashed rgba(148, 163, 184, 0.35);';
+        } else if (isDestacado) {
           card.style.cssText = 'border: 1px solid rgba(168, 85, 247, 0.6); box-shadow: 0 0 8px rgba(168, 85, 247, 0.2); background: rgba(168, 85, 247, 0.04);';
         }
         
@@ -6750,9 +7230,32 @@
           ? `<span style="font-size: 0.68rem; font-weight: 700; background: rgba(168, 85, 247, 0.25); color: #e9d5ff; border: 1px solid rgba(168, 85, 247, 0.5); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">✨ Contiene Insumo (${mixItem.participacionInsumo.toFixed(1)}%)</span>` 
           : '';
 
-        const statusPillBD = isModified 
-          ? '<span style="font-size:0.65rem; background:rgba(245,158,11,0.25); color:#fbbf24; border:1px solid rgba(245,158,11,0.5); padding:1px 6px; border-radius:3px; font-weight:700;">🟡 BD Pendiente</span>'
-          : '<span style="font-size:0.65rem; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4); padding:1px 6px; border-radius:3px; font-weight:700;">🟢 BD Al día</span>';
+        const statusPillBD = auditMix.enPausa
+          ? '<span style="font-size:0.65rem; background:rgba(100,116,139,0.22); color:#cbd5e1; border:1px solid rgba(148,163,184,0.4); padding:1px 6px; border-radius:3px; font-weight:700;">⏸ Sin oferta activa (Estructura en pausa)</span>'
+          : (isModified
+              ? `<span style="font-size:0.65rem; background:rgba(245,158,11,0.25); color:#fbbf24; border:1px solid rgba(245,158,11,0.5); padding:1px 6px; border-radius:3px; font-weight:700;" title="${auditMix.detallesAntesDespues.join(' | ')}">🟡 Desactualizado (${auditMix.totalCambios} cambio${auditMix.totalCambios !== 1 ? 's' : ''})</span>`
+              : '<span style="font-size:0.65rem; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4); padding:1px 6px; border-radius:3px; font-weight:700;">🟢 Al día en BD</span>');
+
+        const avisoAguasAbajoHtml = auditMix.aguasAbajoPendiente
+          ? `<div style="margin-top:6px; padding:5px 8px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.4); border-radius:4px; font-size:0.70rem; color:#fbbf24; font-weight:700;">${auditMix.aguasAbajoLabel}</div>`
+          : '';
+
+        const detalleCambiosHtml = (!auditMix.enPausa && isModified && auditMix.detallesAntesDespues.length > 0)
+          ? `<div style="margin-top:6px; padding:6px 8px; background:rgba(245,158,11,0.09); border:1px solid rgba(245,158,11,0.30); border-radius:4px; font-size:0.69rem; color:#fde68a; line-height:1.45;">
+               <div style="font-weight:800; color:#fbbf24; margin-bottom:2px;">Detalle Antes ➔ Después (${auditMix.resumenDetalle}):</div>
+               ${auditMix.detallesAntesDespues.map(d => `<div>• ${d}</div>`).join('')}
+             </div>`
+          : '';
+
+        const botonAccionCircuitoHtml = auditMix.enPausa
+          ? `<span style="font-size:0.70rem; color:#94a3b8; font-style:italic;">Estructura preservada sin venta activa</span>`
+          : (isModified
+              ? `<button type="button" class="btn" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 800; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px; box-shadow: 0 2px 6px rgba(245,158,11,0.35);" onclick="event.stopPropagation(); sincronizarCascadaCompletaMixLDN3(${ing.id})" title="${auditMix.esPreMezcla ? 'Sincronizar atómicamente Fórmula + Bulto Pre-Mezcla en Depósito' : 'Sincronizar atómicamente Mix -> AP -> Simple -> Fracciones y Packs -> Listas 1..8'}">
+                   ⚡ ${auditMix.esPreMezcla ? 'Actualizar Pre-Mezcla' : 'Actualizar Circuito Completo'}
+                 </button>`
+              : `<button type="button" class="btn" disabled style="padding: 4px 10px; font-size: 0.72rem; font-weight: 700; background: rgba(16, 185, 129, 0.14); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.38); border-radius: 4px; cursor: default;">
+                   ✓ Todo actualizado
+                 </button>`);
 
         card.innerHTML = `
           <div class="mix-card-header" onclick="toggleMixCollapse(${ing.id})" style="${isDestacado ? 'background: rgba(168, 85, 247, 0.12);' : ''}">
@@ -6770,18 +7273,15 @@
           </div>
           <div class="mix-card-body" style="padding: 8px 12px;">
             ${componentesHTML}
+            ${detalleCambiosHtml}
+            ${avisoAguasAbajoHtml}
             <div style="display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 8px; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 6px; flex-wrap: wrap;">
-              ${btnRutaLdnHtml || `
-              <button type="button" class="btn" style="padding: 4px 8px; font-size: 0.72rem; font-weight: 600; background: rgba(168, 85, 247, 0.2); color: #e9d5ff; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 4px; cursor: pointer;" onclick="event.stopPropagation(); seleccionarMixParaFracciones(${ing.id})">
-                👉 Fracciones
-              </button>
-              `}
-              <button type="button" class="btn" style="padding: 4px 8px; font-size: 0.72rem; font-weight: 700; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #fff; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px;" onclick="event.stopPropagation(); fijarCostoFormulaMixEnBD(${ing.id})" title="Fijar en BD el costo de fórmula ($${costoFormulaSim.toFixed(2)}/kg) en public.ingredientes">
-                ⚡ Fijar en BD
-              </button>
-              <button type="button" class="btn" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 700; background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%); color: #fff; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px; box-shadow: 0 2px 6px rgba(139,92,246,0.3);" onclick="event.stopPropagation(); sincronizarCascadaCompletaMixLDN3(${ing.id})" title="Sincronizar en 1 clic: Fórmula -> Artículo Puente -> Ingrediente Simple -> Fracciones Comerciales">
-                🚀 Cascada Completa
-              </button>
+              ${btnRutaLdnHtml || (!auditMix.enPausa ? `
+                <button type="button" class="btn" style="padding: 4px 8px; font-size: 0.72rem; font-weight: 600; background: rgba(168, 85, 247, 0.2); color: #e9d5ff; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 4px; cursor: pointer;" onclick="event.stopPropagation(); seleccionarMixParaFracciones(${ing.id})">
+                  👉 Fracciones
+                </button>
+              ` : '')}
+              ${botonAccionCircuitoHtml}
             </div>
           </div>
         `;
@@ -7044,14 +7544,15 @@
         });
 
         const simpleCostoBD = simpleVinculado ? parseFloat(simpleVinculado.costo_patron) || 0 : 0;
-        const diffSimple = Math.abs(costoNetoAP - simpleCostoBD);
-        const isSimpleSynced = simpleVinculado && diffSimple < 0.05 && simpleCostoBD > 0;
+        const auditCircuitoAp = auditarEstadoSincronizacionMixLDN3(ap.mix_id);
+        const enPausaAp = Boolean(auditCircuitoAp && auditCircuitoAp.enPausa);
+        const isCircuitoAlDia = enPausaAp ? true : Boolean(auditCircuitoAp && auditCircuitoAp.estaAlDia);
 
-        const statusPillSimple = simpleVinculado 
-          ? (isSimpleSynced 
-              ? '<span style="font-size:0.65rem; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4); padding:1px 6px; border-radius:3px; font-weight:700;">🟢 Simple al día</span>'
-              : '<span style="font-size:0.65rem; background:rgba(245,158,11,0.25); color:#fbbf24; border:1px solid rgba(245,158,11,0.5); padding:1px 6px; border-radius:3px; font-weight:700;">🟡 Simple desfasado</span>')
-          : '';
+        const statusPillSimple = enPausaAp
+          ? '<span style="font-size:0.65rem; background:rgba(100,116,139,0.22); color:#cbd5e1; border:1px solid rgba(148,163,184,0.4); padding:1px 6px; border-radius:3px; font-weight:700;">⏸ Sin oferta activa (Estructura en pausa)</span>'
+          : (isCircuitoAlDia
+              ? '<span style="font-size:0.65rem; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4); padding:1px 6px; border-radius:3px; font-weight:700;">🟢 Al día en BD</span>'
+              : `<span style="font-size:0.65rem; background:rgba(245,158,11,0.25); color:#fbbf24; border:1px solid rgba(245,158,11,0.5); padding:1px 6px; border-radius:3px; font-weight:700;">🟡 Desactualizado (${auditCircuitoAp.totalCambios} cambio${auditCircuitoAp.totalCambios !== 1 ? 's' : ''})</span>`);
 
         card.innerHTML = `
           <div class="mix-card-header" style="${ap.isDestacado ? 'background: rgba(168, 85, 247, 0.12);' : ''}">
@@ -7077,21 +7578,28 @@
             ${simpleVinculado ? `
               <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(14, 165, 233, 0.08); border: 1px solid rgba(14, 165, 233, 0.2); border-radius: 4px; padding: 4px 8px; margin-top: 4px;">
                 <span>🌾 Ing. Simple: <strong style="color: #c084fc;">[#${simpleVinculado.id}] ${simpleVinculado.nombre}</strong></span>
-                <span style="color: ${isSimpleSynced ? '#34d399' : '#fbbf24'}; font-weight: 700;">BD: $${simpleCostoBD.toFixed(2)}/kg</span>
+                <span style="color: ${Math.abs(costoNetoAP - simpleCostoBD) <= TOLERANCIA_REDONDEO_LDN4 ? '#34d399' : '#fbbf24'}; font-weight: 700;">BD: $${simpleCostoBD.toFixed(2)}/kg</span>
               </div>
             ` : ''}
             <div style="display: flex; justify-content: flex-end; gap: 6px; margin-top: 6px; flex-wrap: wrap;">
-              <button class="btn" style="padding: 4px 8px; font-size: 0.72rem; font-weight: 600; background: rgba(168, 85, 247, 0.2); color: #e9d5ff; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 4px; cursor: pointer;" onclick="event.stopPropagation(); enfocarArticuloPuente('${ap.articulo_id}')">
-                📦 Ver Fracciones
-              </button>
+              ${!enPausaAp ? `
+                <button class="btn" style="padding: 4px 8px; font-size: 0.72rem; font-weight: 600; background: rgba(168, 85, 247, 0.2); color: #e9d5ff; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 4px; cursor: pointer;" onclick="event.stopPropagation(); enfocarArticuloPuente('${ap.articulo_id}')">
+                  📦 Ver Fracciones
+                </button>
+              ` : ''}
               <button class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.72rem; font-weight: 600;" onclick="event.stopPropagation(); seleccionarArticulo('${ap.articulo_id}')">
                 🔍 Pizarra
               </button>
-              ${simpleVinculado ? `
-                <button class="btn" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 700; background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); color: #fff; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px;" onclick="event.stopPropagation(); sincronizarAPConSimpleEnBD('${ap.articulo_id}')" title="Guardar el costo neto de este AP ($${costoNetoAP.toFixed(2)}/kg) en el ingrediente simple #${simpleVinculado.id} en la BD">
-                  ⚡ Sincronizar con Simple en BD
-                </button>
-              ` : ''}
+              ${enPausaAp
+                ? ''
+                : (!isCircuitoAlDia
+                    ? `<button class="btn" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 800; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff; border: none; border-radius: 4px; cursor: pointer;" onclick="event.stopPropagation(); sincronizarCascadaCompletaMixLDN3(${ap.mix_id})" title="Actualizar circuito completo de ${ap.mix_nombre}">
+                         ⚡ ${auditCircuitoAp.esPreMezcla ? 'Actualizar Pre-Mezcla' : 'Actualizar Circuito Completo'}
+                       </button>`
+                    : `<button class="btn" disabled style="padding: 4px 10px; font-size: 0.72rem; font-weight: 700; background: rgba(16,185,129,0.14); color: #34d399; border: 1px solid rgba(16,185,129,0.38); border-radius: 4px; cursor: default;">
+                         ✓ Todo actualizado
+                       </button>`)
+              }
             </div>
           </div>
         `;
@@ -7232,11 +7740,11 @@
           });
 
           const mixObj = ingredientes.find(i => i.id === mixSeleccionadoId);
-          const estadoBtnHeader = (typeof auditarEstadoFraccionesMixesLDN3 === 'function') ? auditarEstadoFraccionesMixesLDN3() : null;
-          const btnHeaderHtml = (estadoBtnHeader && estadoBtnHeader.total > 0)
-            ? (estadoBtnHeader.todosAlDia
-                ? `<button type="button" class="btn" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer; font-weight: 700;" onclick="actualizarTodasFraccionesDeMixesLDN3()" title="Cascada y fracciones de este mix al día en BD. Ver auditoría">🟢 Al día (${estadoBtnHeader.total})</button>`
-                : `<button type="button" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer; font-weight: 800; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);" onclick="actualizarTodasFraccionesDeMixesLDN3()" title="Impactar fórmula del mix, artículo puente, simple y fracciones en BD">⚡ Impactar Fracciones (${estadoBtnHeader.pendientes})</button>`
+          const estadoBtnHeader = (typeof auditarEstadoSincronizacionMixLDN3 === 'function') ? auditarEstadoSincronizacionMixLDN3(mixSeleccionadoId) : null;
+          const btnHeaderHtml = (estadoBtnHeader && !estadoBtnHeader.enPausa)
+            ? (estadoBtnHeader.estaAlDia
+                ? `<button type="button" class="btn" disabled style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: default; font-weight: 700;">✓ Todo actualizado</button>`
+                : `<button type="button" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer; font-weight: 800; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);" onclick="sincronizarCascadaCompletaMixLDN3(${mixSeleccionadoId})" title="Impactar atómicamente Mix -> AP -> Simple -> Fracciones y Packs">⚡ Actualizar Circuito Completo (${estadoBtnHeader.totalCambios})</button>`
               )
             : '';
           const articulosTitle = document.getElementById('articulos-title');
@@ -7305,13 +7813,13 @@
               return ingObj ? ingObj.nombre : `#${id}`;
             }).join(', ');
 
-            const estadoBtnHeader = (typeof auditarEstadoFraccionesMixesLDN3 === 'function') ? auditarEstadoFraccionesMixesLDN3() : null;
-            const btnHeaderHtml = (estadoBtnHeader && estadoBtnHeader.total > 0)
-              ? (estadoBtnHeader.todosAlDia
-                  ? `<button type="button" class="btn" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer; font-weight: 700;" onclick="actualizarTodasFraccionesDeMixesLDN3()" title="Fracciones de mixes al día en BD. Ver auditoría">🟢 Al día (${estadoBtnHeader.total})</button>`
-                  : `<button type="button" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer; font-weight: 800; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);" onclick="actualizarTodasFraccionesDeMixesLDN3()" title="Impactar todas las fracciones de mixes en BD">⚡ Impactar Fracciones (${estadoBtnHeader.pendientes})</button>`
-                )
-              : '';
+            const matchingDesactualizados = Array.from(matchingMixIds).filter(mId => {
+              const audM = typeof auditarEstadoSincronizacionMixLDN3 === 'function' ? auditarEstadoSincronizacionMixLDN3(mId) : null;
+              return audM && !audM.enPausa && !audM.esPreMezcla && !audM.estaAlDia;
+            });
+            const btnHeaderHtml = matchingDesactualizados.length === 0
+              ? `<button type="button" class="btn" disabled style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: default; font-weight: 700;">✓ Todo actualizado</button>`
+              : `<button type="button" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer; font-weight: 800; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);" onclick="sincronizarTodosLosMixesDesactualizadosLDN3()" title="Sincronizar atómicamente los circuitos de mixes desactualizados">⚡ Actualizar Todos los Mixes Desactualizados (${matchingDesactualizados.length})</button>`;
 
             const articulosTitle = document.getElementById('articulos-title');
             if (articulosTitle) {
@@ -7328,39 +7836,99 @@
               `;
             }
           } else {
-            articulosAMostrar = articulosBunker.filter(a => a.tiene_receta || a.pack_hijo_codigo || (a.articulo_id && a.articulo_id.startsWith('M')));
-            const estadoBtnHeader = (typeof auditarEstadoFraccionesMixesLDN3 === 'function') ? auditarEstadoFraccionesMixesLDN3() : null;
-            const btnHeaderHtml = (estadoBtnHeader && estadoBtnHeader.total > 0)
-              ? (estadoBtnHeader.todosAlDia
-                  ? `<button type="button" class="btn" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer; font-weight: 700;" onclick="actualizarTodasFraccionesDeMixesLDN3()" title="Fracciones al día en BD. Ver auditoría">🟢 Al día (${estadoBtnHeader.total})</button>`
-                  : `<button type="button" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer; font-weight: 800; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);" onclick="actualizarTodasFraccionesDeMixesLDN3()" title="Impactar todas las fracciones en BD">⚡ Impactar Fracciones (${estadoBtnHeader.pendientes})</button>`
-                )
-              : '';
+            const allMixIds = new Set(Array.from(composicionMixMap.keys()));
+            const allAPCodes = new Set();
+            recetas.forEach(r => {
+              if (recetaIngredientes.some(ri => ri.receta_id === r.id && allMixIds.has(ri.ingrediente_id))) {
+                if (r.articulo_numero) allAPCodes.add(String(r.articulo_numero).trim().toLowerCase());
+              }
+            });
+            const allSimpleIds = new Set();
+            ingredientes.forEach(i => {
+              if (composicionMixMap.has(i.id)) return;
+              const apVinc = String(i.articulo_vinculado_numero || '').trim().toLowerCase();
+              if (apVinc && allAPCodes.has(apVinc)) allSimpleIds.add(i.id);
+              if (Array.isArray(i.articulos_vinculados) && i.articulos_vinculados.some(v => allAPCodes.has(String(v.codigo || v.bunker_articulo_id || '').trim().toLowerCase()))) {
+                allSimpleIds.add(i.id);
+              }
+            });
+            const allMixRecSkus = new Set();
+            recetas.forEach(r => {
+              if (recetaIngredientes.some(ri => ri.receta_id === r.id && (allMixIds.has(ri.ingrediente_id) || allSimpleIds.has(ri.ingrediente_id)))) {
+                const rCodLower = String(r.articulo_numero || '').trim().toLowerCase();
+                if (rCodLower && !allAPCodes.has(rCodLower)) allMixRecSkus.add(rCodLower);
+              }
+            });
+            articulosAMostrar = articulosBunker.filter(a => {
+              if (a.solo_produccion_externa === true) return false;
+              const skuLower = String(a.articulo_id || '').trim().toLowerCase();
+              if (allAPCodes.has(skuLower) || skuLower.startsWith('prod ap') || skuLower === 'mpb' || skuLower.startsWith('mpgdf') || skuLower.startsWith('mpgds')) return false;
+              if (allMixRecSkus.has(skuLower)) return true;
+              if (a.pack_hijo_codigo && allMixRecSkus.has(String(a.pack_hijo_codigo).trim().toLowerCase())) return true;
+              return false;
+            });
+            const desactAll = Array.from(allMixIds).filter(mId => {
+              const audM = typeof auditarEstadoSincronizacionMixLDN3 === 'function' ? auditarEstadoSincronizacionMixLDN3(mId) : null;
+              return audM && !audM.enPausa && !audM.esPreMezcla && !audM.estaAlDia;
+            });
+            const btnHeaderHtml = desactAll.length === 0
+              ? `<button type="button" class="btn" disabled style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: default; font-weight: 700;">✓ Todo actualizado</button>`
+              : `<button type="button" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer; font-weight: 800; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);" onclick="sincronizarTodosLosMixesDesactualizadosLDN3()" title="Sincronizar atómicamente todos los mixes comerciales desactualizados">⚡ Actualizar Todos los Mixes Desactualizados (${desactAll.length})</button>`;
             const articulosTitle = document.getElementById('articulos-title');
             if (articulosTitle) {
               articulosTitle.innerHTML = `
-                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                  <span>🧪 Artículos [LDN 3]: Mixes y Fracciones Comerciales</span>
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 6px;">
+                  <span>🧪 Artículos [LDN 3]: Fracciones y Packs de Mixes (${articulosAMostrar.length} ofertas)</span>
                   ${btnHeaderHtml}
                 </div>
               `;
             }
           }
         } else {
-          // Caso 4: Sin filtro de insumo ni selección
-          articulosAMostrar = articulosBunker.filter(a => a.tiene_receta || a.pack_hijo_codigo || (a.articulo_id && a.articulo_id.startsWith('M')));
-          const estadoBtnHeader = (typeof auditarEstadoFraccionesMixesLDN3 === 'function') ? auditarEstadoFraccionesMixesLDN3() : null;
-          const btnHeaderHtml = (estadoBtnHeader && estadoBtnHeader.total > 0)
-            ? (estadoBtnHeader.todosAlDia
-                ? `<button type="button" class="btn" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer; font-weight: 700;" onclick="actualizarTodasFraccionesDeMixesLDN3()" title="Fracciones al día en BD. Ver auditoría">🟢 Al día (${estadoBtnHeader.total})</button>`
-                : `<button type="button" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer; font-weight: 800; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);" onclick="actualizarTodasFraccionesDeMixesLDN3()" title="Impactar todas las fracciones en BD">⚡ Impactar Fracciones (${estadoBtnHeader.pendientes})</button>`
-              )
-            : '';
+          // Caso 4: Sin filtro de insumo ni selección -> mostrar exclusivamente las fracciones comerciales y packs de LDN 3
+          const allMixIds = new Set(Array.from(composicionMixMap.keys()));
+          const allAPCodes = new Set();
+          recetas.forEach(r => {
+            if (recetaIngredientes.some(ri => ri.receta_id === r.id && allMixIds.has(ri.ingrediente_id))) {
+              if (r.articulo_numero) allAPCodes.add(String(r.articulo_numero).trim().toLowerCase());
+            }
+          });
+          const allSimpleIds = new Set();
+          ingredientes.forEach(i => {
+            if (composicionMixMap.has(i.id)) return;
+            const apVinc = String(i.articulo_vinculado_numero || '').trim().toLowerCase();
+            if (apVinc && allAPCodes.has(apVinc)) allSimpleIds.add(i.id);
+            if (Array.isArray(i.articulos_vinculados) && i.articulos_vinculados.some(v => allAPCodes.has(String(v.codigo || v.bunker_articulo_id || '').trim().toLowerCase()))) {
+              allSimpleIds.add(i.id);
+            }
+          });
+          const allMixRecSkus = new Set();
+          recetas.forEach(r => {
+            if (recetaIngredientes.some(ri => ri.receta_id === r.id && (allMixIds.has(ri.ingrediente_id) || allSimpleIds.has(ri.ingrediente_id)))) {
+              const rCodLower = String(r.articulo_numero || '').trim().toLowerCase();
+              if (rCodLower && !allAPCodes.has(rCodLower)) allMixRecSkus.add(rCodLower);
+            }
+          });
+          articulosAMostrar = articulosBunker.filter(a => {
+            if (a.solo_produccion_externa === true) return false;
+            const skuLower = String(a.articulo_id || '').trim().toLowerCase();
+            if (allAPCodes.has(skuLower) || skuLower.startsWith('prod ap') || skuLower === 'mpb' || skuLower.startsWith('mpgdf') || skuLower.startsWith('mpgds')) return false;
+            if (allMixRecSkus.has(skuLower)) return true;
+            if (a.pack_hijo_codigo && allMixRecSkus.has(String(a.pack_hijo_codigo).trim().toLowerCase())) return true;
+            return false;
+          });
+          const desactAll = Array.from(allMixIds).filter(mId => {
+            const audM = typeof auditarEstadoSincronizacionMixLDN3 === 'function' ? auditarEstadoSincronizacionMixLDN3(mId) : null;
+            return audM && !audM.enPausa && !audM.esPreMezcla && !audM.estaAlDia;
+          });
+          const btnHeaderHtml = desactAll.length === 0
+            ? `<button type="button" class="btn" disabled style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: default; font-weight: 700;">✓ Todo actualizado</button>`
+            : `<button type="button" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; padding: 3px 8px; border-radius: 4px; font-size: 0.68rem; cursor: pointer; font-weight: 800; box-shadow: 0 0 8px rgba(245, 158, 11, 0.4);" onclick="sincronizarTodosLosMixesDesactualizadosLDN3()" title="Sincronizar atómicamente todos los mixes comerciales desactualizados">⚡ Actualizar Todos los Mixes Desactualizados (${desactAll.length})</button>`;
           const articulosTitle = document.getElementById('articulos-title');
           if (articulosTitle) {
             articulosTitle.innerHTML = `
-              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <span>🧪 Artículos [LDN 3]: Mixes y Fracciones Comerciales</span>
+              <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; flex-wrap: wrap; gap: 6px;">
+                <span>🧪 Artículos [LDN 3]: Fracciones y Packs de Mixes (${articulosAMostrar.length} ofertas)</span>
                 ${btnHeaderHtml}
               </div>
             `;
@@ -7527,7 +8095,7 @@
         }
 
         let semaforoHTML = '';
-        if (contextoLDN === 4 || contextoLDN === 6) {
+        if ([3, 4, 5, 6].includes(contextoLDN)) {
           const audit4 = auditarArticuloHijoLDN4(art);
           const deltaMostrar = Math.abs(audit4.diffCosto) > TOLERANCIA_REDONDEO_LDN4 ? audit4.diffCosto : audit4.maxDiffPrecio;
           const etiquetaDelta = Math.abs(deltaMostrar) > TOLERANCIA_REDONDEO_LDN4
@@ -7552,47 +8120,6 @@
                       onclick="event.stopPropagation(); guardarPresentacionCompletaSimulada('${art.articulo_id}')"
                       title="Diferencias pendientes respecto a BD. Hacé clic para impactar en las listas comerciales.">
                       ⚡ Impactar${etiquetaDelta}
-                    </button>`
-                }
-              </div>
-            </div>
-          `;
-        } else if (contextoLDN === 3 || contextoLDN === 5) {
-          const cascada1 = calcularCascadaArticuloLista(art.articulo_id, (data.listasPrecios && data.listasPrecios[0] ? data.listasPrecios[0].id : 1));
-          const costoBultoSim = cascada1 ? cascada1.costoNetoBulto : (parseFloat(art.costo_base) || 0);
-          const costoSinInsSim = cascada1 ? cascada1.costoBaseSinInsumosLista : costoBultoSim;
-          let costoSinInsBD = parseFloat(art.costo_base) || 0;
-          
-          const la1 = (data.articulosListas || []).find(l => (l.articulo_numero || '').trim().toLowerCase() === art.articulo_id.trim().toLowerCase() && l.lista_id === (data.listasPrecios && data.listasPrecios[0] ? data.listasPrecios[0].id : 1));
-          if (la1 && la1.costo_base_sobrescrito !== null && parseFloat(la1.costo_base_sobrescrito) > 0) {
-            const costoKiloBD = parseFloat(la1.costo_base_sobrescrito);
-            const costoBultoFromLa = costoKiloBD * (kilosUnidad > 0 ? kilosUnidad : 1);
-            if (Math.abs(costoSinInsSim - costoBultoFromLa) < 0.05 || Math.abs(costoSinInsSim - costoSinInsBD) >= 0.05) {
-              costoSinInsBD = costoBultoFromLa;
-            }
-          }
-          const costoBultoBD = costoSinInsBD + (cascada1 ? (cascada1.costoInsumosPackaging || 0) : 0);
-          const diffCosto = costoBultoSim - costoBultoBD;
-          const estaAlDia = Math.abs(diffCosto) < 0.05 && costoBultoBD > 0;
-
-          semaforoHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-top: 6px; padding: 4px 6px; border-radius: 4px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); font-size: 0.70rem;">
-              <div>
-                ${estaAlDia 
-                  ? `<span style="color: #34d399; font-weight: 700;" title="Costo base en BD sincronizado: $${costoBultoBD.toFixed(2)}">🟢 En BD: $${costoBultoBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>`
-                  : `<span style="color: #fbbf24; font-weight: 700;" title="En BD: $${costoBultoBD.toFixed(2)} vs Simulado: $${costoBultoSim.toFixed(2)}">🟡 Sim: $${costoBultoSim.toLocaleString('es-AR', {minimumFractionDigits: 2})} <span style="font-size: 0.64rem; color: #94a3b8;">(BD: $${costoBultoBD.toLocaleString('es-AR', {minimumFractionDigits: 2})})</span></span>`
-                }
-              </div>
-              <div style="display: inline-flex; align-items: center; gap: 4px;">
-                <button type="button" onclick="event.stopPropagation(); if(typeof window.abrirRadiografiaCostosArticulo === 'function') window.abrirRadiografiaCostosArticulo('${art.articulo_id}')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-size: 0.66rem; font-weight: 700; cursor: pointer;" title="Ver radiografía financiera paso a paso de cómo se llega a este costo">
-                  📊 Costos
-                </button>
-                ${estaAlDia 
-                  ? `<button class="btn" style="padding: 2px 8px; font-size: 0.68rem; font-weight: 700; background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 4px; cursor: default;" disabled title="Precios y costos 100% al día con la base de datos">✓ Al día</button>`
-                  : `<button class="btn" style="padding: 2px 8px; font-size: 0.68rem; font-weight: 800; background: rgba(245, 158, 11, 0.25); color: #fbbf24; border: 1px solid #f59e0b; border-radius: 4px; cursor: pointer; box-shadow: 0 0 6px rgba(245, 158, 11, 0.3);"
-                      onclick="event.stopPropagation(); guardarPresentacionCompletaSimulada('${art.articulo_id}')"
-                      title="Detectada variación de costos respecto a BD ($${costoBultoSim.toFixed(2)} vs $${costoBultoBD.toFixed(2)}). Hacé clic para impactar en las listas comerciales.">
-                      ⚡ Impactar (${diffCosto >= 0 ? '+' : ''}$${diffCosto.toFixed(2)})
                     </button>`
                 }
               </div>
@@ -7796,7 +8323,7 @@
           const bi = cascadaInfo.barritasInfo;
           origenCascadaHTML = `
             <div style="font-size: 0.74rem; color: #fb923c; font-weight: 600; margin-top: 2px;">
-              🍫 Origen Cascada Barritas: Mix #109 ($${bi.costo_kilo_mix109.toFixed(2)}/kg) ➔ MPB ($${bi.costo_kilo_mpb.toFixed(2)}/kg) ➔ UP [BFXP] (Maquila: $${bi.tarifa_maquila_simulada.toFixed(2)}/kg, Merma: ${bi.merma_porc_simulada.toFixed(2)}%) ➔ AP [BFX50G] ($${bi.costo_ap_simulado.toFixed(2)}/kg) ➔ Caja 24x50g
+              🍫 Origen Cascada Barritas: Mix #109 ($${bi.costo_kilo_mix109.toFixed(2)}/kg) ➔ MPB ($${bi.costo_kilo_mpb.toFixed(2)}/kg) ➔ UP [BFXP] (${bi.unidades_tanda_simulada} un @ $${bi.tarifa_unitaria_simulada.toFixed(2)}/un) ➔ AP [BFX50G] ($${bi.costo_base_ap_simulado.toFixed(2)}/kg + MO $${bi.mo_ap_taller.toFixed(2)}) ➔ Ing #141 ($${bi.costo_ap_simulado.toFixed(2)}/kg)
             </div>
           `;
         }
@@ -7972,13 +8499,18 @@
       }
 
       if (!esCascadaLDN6 && !esCascadaLDN5 && !esCascadaLDN4 && rec) {
-        // 2. Probar si consume ingrediente simple de AP de Mix (LDN 3)
-        const riSimple = data.recetaIngredientes.find(ri => ri.receta_id === rec.id && !composicionMixMap.has(ri.ingrediente_id));
+        // 2. Probar si consume ingrediente simple de AP de Mix (LDN 3), ignorando insumos de empaque (es_insumo = true)
+        const riSimple = data.recetaIngredientes.find(ri => {
+          if (ri.receta_id !== rec.id || composicionMixMap.has(ri.ingrediente_id)) return false;
+          const candIng = data.ingredientes.find(i => i.id === ri.ingrediente_id);
+          return Boolean(candIng && !candIng.es_insumo && candIng.articulo_vinculado_numero);
+        });
         if (riSimple) {
           const simpleIng = data.ingredientes.find(i => i.id === riSimple.ingrediente_id);
           if (simpleIng && simpleIng.articulo_vinculado_numero) {
             const apCodigoTest = simpleIng.articulo_vinculado_numero;
-            const recAP = data.recetas.find(r => (r.articulo_numero || '').trim().toLowerCase() === (apCodigoTest || '').trim().toLowerCase());
+            const apCodeLower = (apCodigoTest || '').trim().toLowerCase();
+            const recAP = data.recetas.find(r => (r.articulo_numero || '').trim().toLowerCase() === apCodeLower);
             if (recAP) {
               const riMix = data.recetaIngredientes.find(ri => ri.receta_id === recAP.id && composicionMixMap.has(ri.ingrediente_id));
               if (riMix) {
@@ -7989,11 +8521,15 @@
                 mixId = riMix.ingrediente_id;
                 const mixObj = data.ingredientes.find(i => i.id === mixId);
                 mixNombre = mixObj ? mixObj.nombre : `Mix #${mixId}`;
-                costoMixKilo = resolverCostoIngrediente(mixId, new Set());
+                costoMixKilo = Number(resolverCostoIngrediente(mixId, new Set()).toFixed(2));
                 
-                const laAP = data.articulosListas.find(la => (la.articulo_numero || '').trim().toLowerCase() === (apCodigo || '').trim().toLowerCase() && la.lista_id === listaId);
-                moApKilo = (laAP && laAP.mano_obra_activa !== false) ? (parseFloat(laAP.costo_tiempo) || 0) : 0;
-                costoApKilo = costoMixKilo + moApKilo;
+                const apArtObj = data.articulosBunker.find(a => (a.articulo_id || '').trim().toLowerCase() === apCodeLower);
+                const kilosAP = apArtObj && parseFloat(apArtObj.kilos_unidad) > 0 ? parseFloat(apArtObj.kilos_unidad) : 1;
+                const laAP = data.articulosListas.find(la => (la.articulo_numero || '').trim().toLowerCase() === apCodeLower && la.lista_id === 1)
+                          || data.articulosListas.find(la => (la.articulo_numero || '').trim().toLowerCase() === apCodeLower && (la.es_patron || la.lista_id === listaId));
+                const moApTotal = (laAP && laAP.mano_obra_activa !== false) ? (parseFloat(laAP.costo_tiempo) || 0) : 0;
+                moApKilo = kilosAP > 0 ? (moApTotal / kilosAP) : moApTotal;
+                costoApKilo = Number((costoMixKilo + moApKilo).toFixed(2));
                 costoSimpleKilo = costoApKilo;
               }
             }
@@ -10088,24 +10624,29 @@
     }
     window.fijarCostoIngredienteSimpleEnBD = fijarCostoIngredienteSimpleEnBD;
 
-    // PALANCA MAESTRA (OPCIÓN B): Sincronizar Cascada Completa de un Mix en 1 Clic
-    async function sincronizarCascadaCompletaMixLDN3(mixId) {
+    // PALANCA MAESTRA ATÓMICA: Sincronizar Cascada Completa de un Mix en 1 Clic (Mix -> AP -> Simple -> Fracciones -> Packs -> Listas 1..8 & Nodos)
+    async function sincronizarCascadaCompletaMixLDN3(mixId, opciones = {}) {
+      const esSilencioso = Boolean(opciones && opciones.silencioso);
       const data = window.pizarraSimulacionMaster;
       if (!data) return;
 
       const mixObj = (data.ingredientes || []).find(i => i.id === mixId);
       if (!mixObj) return;
 
+      const esPreMezcla = (Number(mixId) === 109 || Number(mixId) === 132 || Number(mixId) === 134);
+
       // 1. Calcular costo de fórmula del Mix
       const componentes = composicionMixMap.get(mixId) || [];
       if (componentes.length === 0) {
-        Swal.fire({
-          icon: 'warning',
-          title: 'Mix Sin Componentes',
-          text: `El ingrediente #${mixId} no posee componentes en su fórmula.`,
-          background: '#151e2e',
-          color: '#f3f4f6'
-        });
+        if (!esSilencioso) {
+          Swal.fire({
+            icon: 'warning',
+            title: 'Mix Sin Componentes',
+            text: `El ingrediente #${mixId} no posee componentes en su fórmula.`,
+            background: '#151e2e',
+            color: '#f3f4f6'
+          });
+        }
         return;
       }
 
@@ -10119,9 +10660,10 @@
         costoBatch += cant * costoUnit;
         totalKilosBatch += cant;
       });
-      const costoMixCalculado = totalKilosBatch > 0 ? (costoBatch / totalKilosBatch) : costoBatch;
+      const costoMixRaw = totalKilosBatch > 0 ? (costoBatch / totalKilosBatch) : costoBatch;
+      const costoMixCalculado = Number(costoMixRaw.toFixed(2));
 
-      // 2. Artículos Puente asociados
+      // 2. Artículos Puente / Bultos Pre-Mezcla asociados
       const aps = [];
       (data.recetas || []).forEach(r => {
         const matchRi = (data.recetaIngredientes || []).filter(ri => ri.receta_id === r.id && ri.ingrediente_id === mixId);
@@ -10129,15 +10671,15 @@
           const apCodeClean = String(r.articulo_numero || '').trim().toLowerCase();
           const apArt = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toLowerCase() === apCodeClean);
           const kilosAP = parseFloat(apArt?.kilos_unidad) > 0 ? parseFloat(apArt.kilos_unidad) : 1;
-          const laAP = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toLowerCase() === apCodeClean && (la.es_patron || la.lista_id === 1));
+          const laAP = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toLowerCase() === apCodeClean && la.lista_id === 1)
+                    || (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toLowerCase() === apCodeClean && la.es_patron);
           const moAp = (laAP && laAP.mano_obra_activa !== false) ? (parseFloat(laAP.costo_tiempo) || 0) : 0;
 
-          // Calcular costo de receta del AP por kilo (Mix + otros insumos de receta como Bolsa, dividido por kilosAP)
           let costoRecetaAPBulto = 0;
           (data.recetaIngredientes || []).filter(ri => ri.receta_id === r.id).forEach(ri => {
             const cantRi = parseFloat(ri.cantidad) || 0;
             if (ri.ingrediente_id === mixId) {
-              costoRecetaAPBulto += cantRi * costoMixCalculado;
+              costoRecetaAPBulto += cantRi * (esPreMezcla && Number(mixId) !== 109 ? costoMixRaw : costoMixCalculado);
             } else {
               const oSim = ingredientesSim[ri.ingrediente_id];
               const oObj = (data.ingredientes || []).find(i => i.id === ri.ingrediente_id);
@@ -10145,9 +10687,10 @@
               costoRecetaAPBulto += cantRi * oUnit;
             }
           });
-          const costoApKiloBaseSim = costoRecetaAPBulto > 0 ? (costoRecetaAPBulto / kilosAP) : costoMixCalculado;
+          const costoApBultoRed2 = Number((costoRecetaAPBulto > 0 ? costoRecetaAPBulto : (costoMixCalculado * kilosAP)).toFixed(2));
+          const costoApKiloBaseSim = costoApBultoRed2 / kilosAP;
           const moApKilo = kilosAP > 0 ? (moAp / kilosAP) : moAp;
-          const costoNetoAP = costoApKiloBaseSim + moApKilo;
+          const costoNetoAP = Number((costoApKiloBaseSim + moApKilo).toFixed(2));
 
           aps.push({
             receta: r,
@@ -10155,6 +10698,7 @@
             descripcion: apArt?.descripcion_generada || apArt?.descripcion || r.descripcion,
             kilos_unidad: kilosAP,
             moAp: moAp,
+            costoApBultoRed2: costoApBultoRed2,
             costoApKiloBaseSim: costoApKiloBaseSim,
             costoNetoAP: costoNetoAP
           });
@@ -10178,7 +10722,7 @@
         }
         if (isLinked) {
           const apMatch = aps.find(a => a.articulo_numero.trim().toLowerCase() === linkedApCode);
-          const costoObjetivo = apMatch ? apMatch.costoNetoAP : costoMixCalculado;
+          const costoObjetivo = Number((apMatch ? apMatch.costoNetoAP : costoMixCalculado).toFixed(2));
           simples.push({
             ing: ing,
             costoObjetivo: costoObjetivo,
@@ -10187,7 +10731,7 @@
         }
       });
 
-      // 4. Fracciones comerciales derivadas de esos simples (excluyendo APs y UPs)
+      // 4. Fracciones comerciales y Packs Padre derivados de esos simples
       const simpleIds = new Set(simples.map(s => s.ing.id));
       const recArtIds = new Set();
       (data.recetas || []).forEach(r => {
@@ -10205,8 +10749,8 @@
         });
       }
 
-      const fraccs = (data.articulosBunker || []).filter(a => {
-        if (a.solo_produccion_externa === true) return false;
+      const fraccs = esPreMezcla ? [] : (data.articulosBunker || []).filter(a => {
+        if (a.solo_produccion_externa === true || a.no_producido_por_lambda === true || a.propiedades_dinamicas?.obsoleto === true) return false;
         const sku = String(a.articulo_id || '').trim().toLowerCase();
         if (apCodigosLower.has(sku) || sku.startsWith('prod ap') || sku === 'mpb' || sku.startsWith('mpgdf') || sku.startsWith('mpgds')) return false;
         if (recArtIds.has(sku)) return true;
@@ -10214,169 +10758,195 @@
         return false;
       });
 
-      // Armar desglose visual para el modal
-      const apsHtml = aps.length > 0 
-        ? aps.map(a => `
-            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 2px 0;">
-              <span>[${a.articulo_numero}] ${a.descripcion}</span>
-              <span style="color: #38bdf8; font-weight: 600;">Mix $${costoMixCalculado.toFixed(2)} + MO $${a.moAp.toFixed(2)} = <strong>$${a.costoNetoAP.toFixed(2)}/kg</strong></span>
-            </div>
-          `).join('')
-        : '<div style="color: var(--text-muted); font-size: 0.74rem;">Sin Artículos Puente directos</div>';
+      if (!esSilencioso) {
+        const auditActual = auditarEstadoSincronizacionMixLDN3(mixId);
+        const apsHtml = aps.length > 0 
+          ? aps.map(a => `
+              <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 2px 0;">
+                <span>[${a.articulo_numero}] ${a.descripcion}</span>
+                <span style="color: #38bdf8; font-weight: 600;">Bulto $${a.costoApBultoRed2.toFixed(2)} + MO $${a.moAp.toFixed(2)} = <strong>$${a.costoNetoAP.toFixed(2)}/kg</strong></span>
+              </div>
+            `).join('')
+          : '<div style="color: var(--text-muted); font-size: 0.74rem;">Sin Artículos Puente directos</div>';
 
-      const simplesHtml = simples.length > 0
-        ? simples.map(s => `
-            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 2px 0;">
-              <span>[#${s.ing.id}] ${s.ing.nombre} (Vinc: [${s.apCodigo}])</span>
-              <span style="color: #c084fc; font-weight: 700;">$${s.costoObjetivo.toFixed(2)}/kg</span>
-            </div>
-          `).join('')
-        : '<div style="color: var(--text-muted); font-size: 0.74rem;">Sin Ingredientes Simples directos</div>';
+        const simplesHtml = simples.length > 0
+          ? simples.map(s => `
+              <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 2px 0;">
+                <span>[#${s.ing.id}] ${s.ing.nombre} (Vinc: [${s.apCodigo}])</span>
+                <span style="color: #c084fc; font-weight: 700;">$${s.costoObjetivo.toFixed(2)}/kg</span>
+              </div>
+            `).join('')
+          : '<div style="color: var(--text-muted); font-size: 0.74rem;">Sin Ingredientes Simples directos</div>';
 
-      const fraccsHtml = fraccs.length > 0
-        ? fraccs.map(f => `
-            <span style="background: rgba(168, 85, 247, 0.2); border: 1px solid rgba(168, 85, 247, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; color: #e9d5ff;">
-              ${f.articulo_id} (${parseFloat(f.kilos_unidad || 1).toFixed(2)}kg)
-            </span>
-          `).join(' ')
-        : '<div style="color: var(--text-muted); font-size: 0.74rem;">Sin fracciones comerciales directas</div>';
+        const fraccsHtml = fraccs.length > 0
+          ? fraccs.map(f => `
+              <span style="background: rgba(168, 85, 247, 0.2); border: 1px solid rgba(168, 85, 247, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; color: #e9d5ff;">
+                ${f.articulo_id} (${parseFloat(f.kilos_unidad || 1).toFixed(2)}kg)
+              </span>
+            `).join(' ')
+          : '<div style="color: var(--text-muted); font-size: 0.74rem;">Pre-Mezcla interna de depósito (sin venta fraccionada directa en LDN 3)</div>';
 
-      const modalHtml = `
-        <div style="text-align: left; font-size: 0.84rem; color: #e2e8f0;">
-          <div style="padding: 8px 12px; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; margin-bottom: 12px;">
-            <span style="color: #c084fc; font-weight: 700;">🚀 Cascada Integral de Producción Interna [LDN 3]</span>
-            <div style="font-size: 0.73rem; color: #cbd5e1; margin-top: 2px;">
-              Esta operación sincronizará deterministamente los 4 niveles de la cadena en la base de datos oficial.
+        const antesDespuesHtml = auditActual.detallesAntesDespues.length > 0
+          ? `<div style="margin-bottom:10px; padding:6px 8px; background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.32); border-radius:6px; font-size:0.72rem; color:#fde68a; max-height:95px; overflow-y:auto;">
+               <div style="font-weight:800; color:#fbbf24; margin-bottom:2px;">Cambios detectados (${auditActual.totalCambios}):</div>
+               ${auditActual.detallesAntesDespues.map(d => `<div>• ${d}</div>`).join('')}
+             </div>`
+          : '';
+
+        const modalHtml = `
+          <div style="text-align: left; font-size: 0.84rem; color: #e2e8f0;">
+            <div style="padding: 8px 12px; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; margin-bottom: 12px;">
+              <span style="color: #c084fc; font-weight: 700;">⚡ ${esPreMezcla ? 'Sincronización Atómica de Pre-Mezcla' : 'Cascada Atómica Completa [LDN 3]'}</span>
+              <div style="font-size: 0.73rem; color: #cbd5e1; margin-top: 2px;">
+                Impacta en una sola acción ${esPreMezcla ? 'Fórmula + Bulto de Depósito' : 'Mix ➔ AP ➔ Simple ➔ Fracciones y Packs ➔ Listas 1..8 y Nodos'}.
+              </div>
             </div>
+
+            ${antesDespuesHtml}
+
+            <div style="margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
+              <div style="font-weight: 700; color: #a855f7; font-size: 0.8rem; margin-bottom: 4px;">
+                1️⃣ NIVEL 1 — FÓRMULA DE MIX (public.ingredientes)
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 0.78rem;">
+                <span>[#${mixObj.id}] ${mixObj.nombre} (Batch ${totalKilosBatch.toFixed(1)} kg)</span>
+                <strong style="color: #34d399;">$${costoMixCalculado.toFixed(2)}/kg</strong>
+              </div>
+            </div>
+
+            <div style="margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
+              <div style="font-weight: 700; color: #38bdf8; font-size: 0.8rem; margin-bottom: 4px;">
+                2️⃣ NIVEL 2 — ${esPreMezcla ? 'BULTO PRE-MEZCLA DEPÓSITO' : 'ARTÍCULO PUENTE'} (bunker_articulos + listas)
+              </div>
+              ${apsHtml}
+            </div>
+
+            ${!esPreMezcla ? `
+              <div style="margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
+                <div style="font-weight: 700; color: #c084fc; font-size: 0.8rem; margin-bottom: 4px;">
+                  3️⃣ NIVEL 3 — INGREDIENTE SIMPLE (public.ingredientes)
+                </div>
+                ${simplesHtml}
+              </div>
+
+              <div>
+                <div style="font-weight: 700; color: #fbbf24; font-size: 0.8rem; margin-bottom: 6px;">
+                  4️⃣ NIVEL 4 — FRACCIONES COMERCIALES Y PACKS (${fraccs.length} artículos)
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 90px; overflow-y: auto;">
+                  ${fraccsHtml}
+                </div>
+              </div>
+            ` : ''}
           </div>
+        `;
 
-          <div style="margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
-            <div style="font-weight: 700; color: #a855f7; font-size: 0.8rem; margin-bottom: 4px;">
-              1️⃣ NIVEL 1 — FÓRMULA DE MIX (public.ingredientes)
-            </div>
-            <div style="display: flex; justify-content: space-between; font-size: 0.78rem;">
-              <span>[#${mixObj.id}] ${mixObj.nombre} (Batch ${totalKilosBatch.toFixed(1)} kg)</span>
-              <strong style="color: #34d399;">$${costoMixCalculado.toFixed(2)}/kg</strong>
-            </div>
-          </div>
-
-          <div style="margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
-            <div style="font-weight: 700; color: #38bdf8; font-size: 0.8rem; margin-bottom: 4px;">
-              2️⃣ NIVEL 2 — ARTÍCULO PUENTE (bunker_articulos + listas)
-            </div>
-            ${apsHtml}
-          </div>
-
-          <div style="margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
-            <div style="font-weight: 700; color: #c084fc; font-size: 0.8rem; margin-bottom: 4px;">
-              3️⃣ NIVEL 3 — INGREDIENTE SIMPLE (public.ingredientes)
-            </div>
-            ${simplesHtml}
-          </div>
-
-          <div>
-            <div style="font-weight: 700; color: #fbbf24; font-size: 0.8rem; margin-bottom: 6px;">
-              4️⃣ NIVEL 4 — FRACCIONES COMERCIALES Y LISTAS (${fraccs.length} artículos)
-            </div>
-            <div style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 90px; overflow-y: auto;">
-              ${fraccsHtml}
-            </div>
-          </div>
-        </div>
-      `;
-
-      const confirmRes = await Swal.fire({
-        title: '¿Ejecutar Sincronización Completa?',
-        html: modalHtml,
-        width: '620px',
-        showCancelButton: true,
-        confirmButtonText: '🚀 Confirmar e Impactar Cascada Completa',
-        cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#7c3aed',
-        cancelButtonColor: '#4b5563',
-        background: '#151e2e',
-        color: '#f3f4f6'
-      });
-
-      if (!confirmRes.isConfirmed) return;
-
-      try {
-        Swal.fire({
-          title: 'Sincronizando Cascada Completa...',
-          text: 'Impactando Mix, Artículos Puente, Ingredientes Simples y Fracciones en PostgreSQL.',
-          allowOutsideClick: false,
-          didOpen: () => Swal.showLoading()
+        const confirmRes = await Swal.fire({
+          title: esPreMezcla ? '¿Actualizar Pre-Mezcla en BD?' : '¿Actualizar Circuito Completo?',
+          html: modalHtml,
+          width: '640px',
+          showCancelButton: true,
+          confirmButtonText: '⚡ Confirmar e Impactar en BD',
+          cancelButtonText: 'Cancelar',
+          confirmButtonColor: '#7c3aed',
+          cancelButtonColor: '#4b5563',
+          background: '#151e2e',
+          color: '#f3f4f6'
         });
 
-        // PASO 1: Guardar Fórmula del Mix en BD
+        if (!confirmRes.isConfirmed) return;
+      }
+
+      try {
+        if (!esSilencioso) {
+          Swal.fire({
+            title: 'Sincronizando Circuito Completo...',
+            text: 'Impactando Mix, Artículos Puente, Ingredientes Simples y Fracciones en PostgreSQL.',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+          });
+        }
+
+        // PASO 1: Guardar Fórmula del Mix en BD (NUMERIC(10,2))
         await fetch(`/api/produccion/ingredientes/${mixId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ costo_patron: parseFloat(costoMixCalculado.toFixed(4)) })
+          body: JSON.stringify({ costo_patron: costoMixCalculado })
         });
-        mixObj.costo_patron = parseFloat(costoMixCalculado.toFixed(4));
-        if (ingredientesSim[mixId]) ingredientesSim[mixId].costo_sim = costoMixCalculado;
+        mixObj.costo_patron = costoMixCalculado;
+        if (ingredientesSim[mixId]) ingredientesSim[mixId].costo_sim = esPreMezcla && Number(mixId) !== 109 ? costoMixRaw : costoMixCalculado;
 
-        // PASO 2: Actualizar Artículos Puente en BD
+        // PASO 2: Actualizar Artículos Puente / Bulto Pre-Mezcla en BD
         for (const ap of aps) {
           const apLower = ap.articulo_numero.trim().toLowerCase();
-          const updatesAP = (data.listasPrecios || []).map(l => {
+          const updatesAP = [];
+          (data.listasPrecios || []).forEach(l => {
             const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && (c.articulo_numero || '').trim().toLowerCase() === apLower);
+            if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
             const margenAP = laActual ? parseFloat(laActual.margen_ganancia || 0) : 0;
             const ivaAP = laActual ? parseFloat(laActual.iva || 21) : 21;
-            const pFinalAP = parseFloat((((ap.costoApKiloBaseSim * ap.kilos_unidad) * (1 + margenAP / 100) + ap.moAp) * (1 + ivaAP / 100)).toFixed(2));
+            const factorIvaAp = laActual?.modo_iva === 'SIN' || laActual?.modo_iva === 'EXENTO'
+              ? 1
+              : (laActual?.modo_iva === 'MEDIO' ? (1 + (ivaAP / 200)) : (1 + (ivaAP / 100)));
+            const moListaAp = (laActual && laActual.mano_obra_activa === false) ? 0 : ap.moAp;
+            const pFinalAP = parseFloat(((ap.costoApBultoRed2 * (1 + margenAP / 100) + moListaAp) * factorIvaAp).toFixed(2));
             if (laActual) {
               laActual.costo_base_sobrescrito = parseFloat(ap.costoApKiloBaseSim.toFixed(4));
-              laActual.costo_tiempo = parseFloat(ap.moAp.toFixed(4));
+              laActual.costo_tiempo = parseFloat(moListaAp.toFixed(4));
               laActual.precio_final = pFinalAP;
             }
-            return {
+            updatesAP.push({
               lista_id: l.id,
               articulo_numero: ap.articulo_numero,
               margen_ganancia: margenAP,
               costo_base_sobrescrito: parseFloat(ap.costoApKiloBaseSim.toFixed(4)),
-              costo_tiempo: parseFloat(ap.moAp.toFixed(4)),
+              costo_tiempo: parseFloat(moListaAp.toFixed(4)),
               iva: ivaAP,
               precio_final: pFinalAP,
               disponible: laActual ? laActual.disponible !== false : false
-            };
+            });
           });
-          await fetch('/api/produccion/simulacion/aplicar-precios', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actualizaciones: updatesAP })
-          });
+          if (updatesAP.length > 0) {
+            await fetch('/api/produccion/simulacion/aplicar-precios', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ actualizaciones: updatesAP })
+            });
+          }
           const artB = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toLowerCase() === apLower);
-          if (artB) artB.costo_base = parseFloat((ap.costoApKiloBaseSim * ap.kilos_unidad).toFixed(4));
+          if (artB) artB.costo_base = ap.costoApBultoRed2;
         }
 
-        // PASO 3: Guardar Ingredientes Simples en BD
+        // PASO 3: Guardar Ingredientes Simples en BD (NUMERIC(10,2))
         for (const sim of simples) {
           await fetch(`/api/produccion/ingredientes/${sim.ing.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ costo_patron: parseFloat(sim.costoObjetivo.toFixed(4)) })
+            body: JSON.stringify({ costo_patron: sim.costoObjetivo })
           });
-          sim.ing.costo_patron = parseFloat(sim.costoObjetivo.toFixed(4));
-          if (ingredientesSim[sim.ing.id]) ingredientesSim[sim.ing.id].costo_sim = sim.costoObjetivo;
+          sim.ing.costo_patron = sim.costoObjetivo;
+          if (ingredientesSim[sim.ing.id]) {
+            ingredientesSim[sim.ing.id]._manualOverride = false;
+            ingredientesSim[sim.ing.id].costo_sim = sim.costoObjetivo;
+          }
         }
 
         // Recalcular cascada en memoria antes de calcular precios finales de las Fracciones Comerciales
         recalcularCascada();
 
-        // PASO 4: Recalcular y actualizar todas las Fracciones Comerciales en BD
+        // PASO 4: Recalcular y actualizar todas las Fracciones Comerciales y Packs Padre (sin duplicar bolsa exterior)
         const listas = data.listasPrecios || [];
         const updatesFraccs = [];
         fraccs.sort((a, b) => (a.pack_hijo_codigo ? 1 : 0) - (b.pack_hijo_codigo ? 1 : 0));
 
         fraccs.forEach(f => {
           const cascada1 = calcularCascadaArticuloLista(f.articulo_id, (listas[0] ? listas[0].id : 1));
-          if (cascada1) f.costo_base = cascada1.costoBaseSinInsumosLista;
+          if (cascada1) f.costo_base = Number(cascada1.costoBaseSinInsumosLista.toFixed(2));
 
           listas.forEach(l => {
             const key = `${l.id}_${f.articulo_id}`;
             const laSim = listasArticulosSim[key];
-            const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && c.articulo_numero === f.articulo_id);
+            const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && String(c.articulo_numero || '').trim().toLowerCase() === String(f.articulo_id || '').trim().toLowerCase());
             if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
 
             const cascada = calcularCascadaArticuloLista(f.articulo_id, l.id);
@@ -10434,31 +11004,34 @@
           }
         }
 
-        recalcularCascada();
-        renderizarMixes();
-        renderizarArticulosPuente();
-        renderizarIngredientesSimples();
-        renderizarArticulosBunker();
-        if (window.articuloSeleccionadoId) renderizarGrillaMultilista();
-        actualizarBannerCambios();
+        if (!esSilencioso) {
+          recalcularCascada();
+          renderizarMixes();
+          renderizarArticulosPuente();
+          renderizarIngredientesSimples();
+          renderizarArticulosBunker();
+          if (window.articuloSeleccionadoId) renderizarGrillaMultilista();
+          actualizarBannerCambios();
 
-        Swal.fire({
-          icon: 'success',
-          title: '🎉 ¡Cascada Completa Sincronizada!',
-          html: `
-            <div style="font-size: 0.85rem; text-align: left;">
-              <div>✅ <strong>Mix #${mixId} (${mixObj.nombre}):</strong> $${costoMixCalculado.toFixed(2)}/kg en BD</div>
-              <div>✅ <strong>${aps.length} Artículo(s) Puente:</strong> actualizados en bunker_articulos y listas</div>
-              <div>✅ <strong>${simples.length} Ingrediente(s) Simple(s):</strong> fijados con costo neto en BD</div>
-              <div>✅ <strong>${fraccs.length} Presentaciones Comerciales:</strong> actualizadas en ${updatesFraccs.length} listas</div>
-            </div>
-          `,
-          confirmButtonText: 'Genial, Continuar',
-          confirmButtonColor: '#7c3aed',
-          background: '#151e2e',
-          color: '#f3f4f6'
-        });
+          Swal.fire({
+            icon: 'success',
+            title: esPreMezcla ? '✅ Pre-Mezcla Sincronizada' : '🎉 ¡Circuito Completo Sincronizado!',
+            html: `
+              <div style="font-size: 0.85rem; text-align: left;">
+                <div>✅ <strong>Mix #${mixId} (${mixObj.nombre}):</strong> $${costoMixCalculado.toFixed(2)}/kg en BD</div>
+                <div>✅ <strong>${aps.length} ${esPreMezcla ? 'Bulto(s) Pre-Mezcla' : 'Artículo(s) Puente'}:</strong> actualizados en bunker_articulos y listas</div>
+                ${!esPreMezcla ? `<div>✅ <strong>${simples.length} Ingrediente(s) Simple(s):</strong> fijados con costo neto en BD</div>` : ''}
+                ${!esPreMezcla ? `<div>✅ <strong>${fraccs.length} Presentaciones y Packs:</strong> actualizados en ${updatesFraccs.length} listas</div>` : ''}
+              </div>
+            `,
+            confirmButtonText: 'Genial, Continuar',
+            confirmButtonColor: '#7c3aed',
+            background: '#151e2e',
+            color: '#f3f4f6'
+          });
+        }
       } catch (err) {
+        if (esSilencioso) throw err;
         Swal.fire({
           icon: 'error',
           title: 'Error en Cascada Completa',
@@ -11589,7 +12162,7 @@
     }
     window.actualizarTodasFraccionesDeTostadero = actualizarTodasFraccionesDeTostadero;
 
-    // NIVEL 5: Actualizar masivamente todas las fracciones comerciales de Barritas (Flujo 5)
+    // NIVEL 5: Actualizar masivamente el circuito completo de Barritas (Flujo 5: Mix #109 -> MPB -> BFX50G -> #141 -> BF24X50)
     async function actualizarTodasFraccionesDeBarritas() {
       const data = window.pizarraSimulacionMaster;
       if (!data) return;
@@ -11600,27 +12173,11 @@
       const b = barritasConfigLDN5;
       if (!b) return;
 
+      calcularCostoApBarritasLDN5();
+      recalcularCascada();
+
       const listas = data.listasPrecios || [];
-      const articulosBunker = data.articulosBunker || [];
-
-      // Identificar determinísticamente todas las presentaciones comerciales que consumen el ingrediente puente #141 (BF24X50, BF6X50, etc.)
-      const targetIngId = 141;
-      const bridgeSku = String(b.ap_codigo || 'BFX50G').trim().toUpperCase();
-      const directSkus = new Set();
-      (data.recetas || []).forEach(r => {
-        if ((data.recetaIngredientes || []).some(ri => ri.receta_id === r.id && Number(ri.ingrediente_id) === targetIngId)) {
-          if (r.articulo_numero) directSkus.add(String(r.articulo_numero).trim().toUpperCase());
-        }
-      });
-      directSkus.add('BF24X50');
-
-      const fraccsAImpactar = articulosBunker.filter(a => {
-        const skuUpper = String(a.articulo_id || '').trim().toUpperCase();
-        if (skuUpper === bridgeSku || skuUpper === 'MPB' || a.solo_produccion_externa === true) return false;
-        if (directSkus.has(skuUpper)) return true;
-        if (a.pack_hijo_codigo && directSkus.has(String(a.pack_hijo_codigo).trim().toUpperCase())) return true;
-        return false;
-      });
+      const fraccsAImpactar = obtenerFraccionesBarritasLDN5();
 
       if (fraccsAImpactar.length === 0) {
         Swal.fire({
@@ -11643,7 +12200,8 @@
       const mo = cascada1 ? cascada1.moFracc : 0;
       const costoBaseTotal = cascada1 ? cascada1.costoNetoBulto : (parseFloat(fracc.costo_base) || 0);
 
-      let hayDifPrecios = Math.abs(b.costo_ap_simulado - b.costo_ap_oficial_bd) > 0.05;
+      const auditPrevio = auditarEstadoSincronizacionBarritasLDN5();
+      let alDiaTotal = auditPrevio.estaAlDia;
       let filasListasHtml = '';
 
       fraccsAImpactar.forEach(itemFracc => {
@@ -11662,14 +12220,13 @@
         listas.forEach(l => {
           const laActual = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === sku.toUpperCase() && la.lista_id === l.id);
           if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
-          if (laActual && laActual.disponible === false) return;
 
           const cascadaLista = calcularCascadaArticuloLista(sku, l.id);
           const pActual = laActual ? parseFloat(laActual.precio_final) : 0;
-          const pNuevo = cascadaLista ? cascadaLista.precioFinalCalculado : 0;
+          const pNuevo = cascadaLista ? Number(cascadaLista.precioFinalCalculado.toFixed(2)) : 0;
           const mActual = laActual ? parseFloat(laActual.margen_ganancia) : (cascadaLista ? cascadaLista.margen : 0);
-          const diffPesos = pNuevo - pActual;
-          if (Math.abs(diffPesos) > 0.1) hayDifPrecios = true;
+          const diffPesos = Number((pNuevo - pActual).toFixed(2));
+          if (Math.abs(diffPesos) > TOLERANCIA_REDONDEO_LDN4) alDiaTotal = false;
 
           filasListasHtml += `
             <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.74rem;">
@@ -11677,14 +12234,13 @@
               <td style="padding: 5px 8px; text-align: right; color: #a78bfa; font-weight: 700;">${mActual.toFixed(2)}%</td>
               <td style="padding: 5px 8px; text-align: right; color: #94a3b8;">$${pActual.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
               <td style="padding: 5px 8px; text-align: right; color: #34d399; font-weight: 700;">$${pNuevo.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-              <td style="padding: 5px 8px; text-align: right; font-weight: 700; color: ${Math.abs(diffPesos) < 0.1 ? '#34d399' : (diffPesos >= 0 ? '#f87171' : '#34d399')};">
-                ${Math.abs(diffPesos) < 0.1 ? '🟢 Sin variación' : ((diffPesos >= 0 ? '+' : '') + '$' + diffPesos.toLocaleString('es-AR', {minimumFractionDigits: 2}))}
+              <td style="padding: 5px 8px; text-align: right; font-weight: 700; color: ${Math.abs(diffPesos) <= TOLERANCIA_REDONDEO_LDN4 ? '#34d399' : (diffPesos >= 0 ? '#f87171' : '#34d399')};">
+                ${Math.abs(diffPesos) <= TOLERANCIA_REDONDEO_LDN4 ? '🟢 Al día' : ((diffPesos >= 0 ? '+' : '') + '$' + diffPesos.toLocaleString('es-AR', {minimumFractionDigits: 2}))}
               </td>
             </tr>
           `;
         });
       });
-      const alDiaTotal = !hayDifPrecios;
       const skusLabel = fraccsAImpactar.map(f => f.articulo_id).join(', ');
 
       const modalHtml = `
@@ -11692,13 +12248,10 @@
           <div style="padding: 10px; background: ${alDiaTotal ? 'rgba(16, 185, 129, 0.12)' : 'rgba(251, 146, 60, 0.12)'}; border: 1px solid ${alDiaTotal ? 'rgba(16, 185, 129, 0.35)' : 'rgba(251, 146, 60, 0.35)'}; border-radius: 6px; margin-bottom: 14px;">
             <div style="font-weight: 800; color: ${alDiaTotal ? '#34d399' : '#fb923c'}; font-size: 0.88rem; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
               <span>${alDiaTotal ? '🟢' : '⚠️'}</span>
-              ${alDiaTotal ? 'Precios de Barritas 100% Sincronizados con la Base de Datos' : `🍫 Presentaciones de Barritas (${skusLabel}) — Variación Pendiente de Impactar`}
+              ${alDiaTotal ? 'Circuito de Barritas 100% Sincronizado con la Base de Datos' : `🍫 Circuito Barritas (${b.unidades_tanda_simulada} un) — ${auditPrevio.totalCambios} cambio(s): ${auditPrevio.resumenDetalle}`}
             </div>
             <div style="font-size: 0.76rem; color: #cbd5e1;">
-              ${alDiaTotal 
-                ? `El costo del Artículo Puente BFX50G ($${b.costo_ap_simulado.toFixed(2)}/kg) y los precios de venta de sus ${fraccsAImpactar.length} presentaciones (${skusLabel}) ya coinciden con la base de datos oficial.`
-                : `Esta actualización impactará el nuevo costo del Artículo Puente BFX50G ($${b.costo_ap_simulado.toFixed(2)}/kg) en el Ingrediente #141 y actualizará los precios de sus ${fraccsAImpactar.length} presentaciones (${skusLabel}) conservando los márgenes de ganancia.`
-              }
+              AP <strong>[BFX50G]</strong>: $${b.costo_base_ap_simulado.toFixed(2)}/kg + MO $${b.mo_ap_taller.toFixed(2)}/kg = <strong>Ing #141 $${b.costo_ap_simulado.toFixed(2)}/kg</strong> ➔ Presentaciones (${skusLabel}) conservando márgenes.
             </div>
           </div>
 
@@ -11706,12 +12259,12 @@
             <div style="background: rgba(0,0,0,0.25); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
               <div style="font-size: 0.68rem; color: #94a3b8;">MATERIA PRIMA (${kilos.toFixed(1)}kg)</div>
               <div style="font-size: 0.85rem; font-weight: 700; color: #fbbf24;">$${matPrima.toFixed(2)}</div>
-              <div style="font-size: 0.64rem; color: #94a3b8;">Barritas x 50g</div>
+              <div style="font-size: 0.64rem; color: #94a3b8;">24 Barritas (#141)</div>
             </div>
             <div style="background: rgba(0,0,0,0.25); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
               <div style="font-size: 0.68rem; color: #94a3b8;">EMPAQUE (CAJA+FLOW)</div>
               <div style="font-size: 0.85rem; font-weight: 700; color: #38bdf8;">$${empaque.toFixed(2)}</div>
-              <div style="font-size: 0.64rem; color: #94a3b8;">Envase Primario Receta</div>
+              <div style="font-size: 0.64rem; color: #94a3b8;">Envase Receta #153</div>
             </div>
             <div style="background: rgba(0,0,0,0.25); padding: 8px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
               <div style="font-size: 0.68rem; color: #94a3b8;">ORIGEN COSTO BASE</div>
@@ -11749,7 +12302,7 @@
         background: '#151e2e',
         color: '#f3f4f6',
         showCancelButton: true,
-        confirmButtonText: alDiaTotal ? '✓ Cerrar (Ya al Día)' : '⚡ Impactar Precios en BD',
+        confirmButtonText: alDiaTotal ? '✓ Cerrar (Ya al Día)' : '⚡ Impactar Circuito Completo en BD',
         cancelButtonText: alDiaTotal ? 'Re-aplicar de todos modos' : 'Cancelar',
         confirmButtonColor: alDiaTotal ? '#10b981' : '#0284c7',
         cancelButtonColor: '#475569',
@@ -11769,50 +12322,107 @@
       try {
         Swal.fire({
           title: 'Calculando y propagando cascada...',
-          text: `Impactando presentaciones comerciales (${skusLabel}) e Ingrediente #141 en la base de datos.`,
+          text: `Impactando Mix #109, MPB, AP BFX50G, Ingrediente #141 y presentaciones (${skusLabel}) en PostgreSQL.`,
           allowOutsideClick: false,
           didOpen: () => Swal.showLoading()
         });
 
-        // 1. Sincronizar costo_patron del Ingrediente #141 y de la Pre-Mezcla Mix #109
+        const costoBaseApPersistido = Number((b.costo_base_ap_simulado || 0).toFixed(2));
+        const costoIng141Persistido = Number((b.costo_ap_simulado || 0).toFixed(2));
+        const costoMix109Persistido = Number((b.costo_kilo_mix109 || 0).toFixed(2));
+
+        // 1. Sincronizar costo_patron de #141, #109 y si cambiaron en simulación Miel (#136) / Aceite de Coco (#135)
         try {
           await fetch('/api/produccion/ingredientes/141', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ costo_patron: parseFloat(b.costo_ap_simulado.toFixed(4)) })
+            body: JSON.stringify({ costo_patron: costoIng141Persistido })
           });
-          b.costo_ap_oficial_bd = b.costo_ap_simulado;
+          b.costo_ap_oficial_bd = costoIng141Persistido;
           const ing141 = (data.ingredientes || []).find(i => i.id === 141);
-          if (ing141) ing141.costo_patron = b.costo_ap_simulado;
+          if (ing141) ing141.costo_patron = costoIng141Persistido;
 
-          const mix109Sim = ingredientesSim[109] ? ingredientesSim[109].costo_sim : 0;
-          if (mix109Sim > 0) {
+          if (costoMix109Persistido > 0) {
             await fetch('/api/produccion/ingredientes/109', {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ costo_patron: parseFloat(mix109Sim.toFixed(4)) })
+              body: JSON.stringify({ costo_patron: costoMix109Persistido })
             });
             const ing109 = (data.ingredientes || []).find(i => i.id === 109);
-            if (ing109) ing109.costo_patron = parseFloat(mix109Sim.toFixed(4));
+            if (ing109) ing109.costo_patron = costoMix109Persistido;
+          }
+
+          const ing136Obj = (data.ingredientes || []).find(i => Number(i.id) === 136);
+          if (ing136Obj && Math.abs((parseFloat(ing136Obj.costo_patron) || 0) - b.costo_miel_simulado) > 0.01) {
+            await fetch('/api/produccion/ingredientes/136', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ costo_patron: Number(b.costo_miel_simulado.toFixed(2)) })
+            });
+            ing136Obj.costo_patron = Number(b.costo_miel_simulado.toFixed(2));
+          }
+          const ing135Obj = (data.ingredientes || []).find(i => Number(i.id) === 135);
+          if (ing135Obj && Math.abs((parseFloat(ing135Obj.costo_patron) || 0) - b.costo_coco_simulado) > 0.01) {
+            await fetch('/api/produccion/ingredientes/135', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ costo_patron: Number(b.costo_coco_simulado.toFixed(2)) })
+            });
+            ing135Obj.costo_patron = Number(b.costo_coco_simulado.toFixed(2));
           }
         } catch (eIng) {
           console.warn('Aviso: no se pudo actualizar costo_patron del ingrediente 141/109:', eIng);
         }
 
-        // 2. Construir array de actualizaciones (incluyendo Pre-Mezcla MPB y todas las presentaciones que consumen #141)
+        // 1.5 Persistir tostadero_simulacion en propiedades_dinamicas de BFX50G para paridad 100% con Simulador Búnker
+        try {
+          const payloadSimBfx = {
+            tarifa: Number(b.tarifa_unitaria_simulada.toFixed(2)),
+            unidad_medida_tarifa: 'un',
+            modo_unidad: true,
+            cantidad_piezas: b.unidades_tanda_simulada,
+            costo_unidad: Number(b.costo_salida_up_individual.toFixed(2)),
+            merma: Number((((b.masa_entrada_kilos - b.masa_salida_kilos) / b.masa_entrada_kilos) * 100).toFixed(2)),
+            insumo_evaluado_sku: 'MPB',
+            costo_crudo_kg: Number(b.costo_kilo_mpb.toFixed(2)),
+            costo_resultante_kg: costoBaseApPersistido,
+            sincronizar_costo_y_listas: false
+          };
+          let respSim = await fetch('/api/logistica/bunker/tostadero-simulacion/BFX50G', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payloadSimBfx)
+          }).catch(() => null);
+          if (!respSim || !respSim.ok) {
+            const hostLocal = window.location.hostname || 'localhost';
+            respSim = await fetch(`http://${hostLocal}:3005/api/logistica/bunker/tostadero-simulacion/BFX50G`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payloadSimBfx)
+            }).catch(() => null);
+          }
+          const artApMem = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === 'BFX50G');
+          if (artApMem) {
+            if (!artApMem.propiedades_dinamicas) artApMem.propiedades_dinamicas = {};
+            artApMem.propiedades_dinamicas.tostadero_simulacion = payloadSimBfx;
+          }
+        } catch (_) {}
+
+        // 2. Construir array de actualizaciones: Pre-Mezcla MPB + Artículo Puente BFX50G + Fracciones (BF24X50)
         const actualizaciones = [];
-        const costoKiloMPB = calcularCostoBaseKiloArticulo('MPB');
         const artMPB = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === 'MPB');
-        const kilosMPB = parseFloat(artMPB?.kilos_unidad) > 0 ? parseFloat(artMPB.kilos_unidad) : 1;
+        const kilosMPB = parseFloat(artMPB?.kilos_unidad) > 0 ? parseFloat(artMPB.kilos_unidad) : 4.0;
+        const costoBultoMpbPuro = Number(((costoMix109Persistido * kilosMPB) + b.costo_bolsa_mpb).toFixed(2));
+        const costoKiloMPB = costoBultoMpbPuro / kilosMPB;
         if (costoKiloMPB > 0) {
-          if (artMPB) artMPB.costo_base = parseFloat((costoKiloMPB * kilosMPB).toFixed(4));
+          if (artMPB) artMPB.costo_base = costoBultoMpbPuro;
           listas.forEach(l => {
             const laMPB = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === 'MPB' && la.lista_id === l.id);
             if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laMPB || laMPB.disponible === false)) return;
             const margenMPB = laMPB ? (parseFloat(laMPB.margen_ganancia) || 0) : 0;
             const moMPB = (laMPB && laMPB.mano_obra_activa !== false) ? (parseFloat(laMPB.costo_tiempo) || 0) : 0;
             const ivaMPB = laMPB ? (parseFloat(laMPB.iva) || 21) : 21;
-            const pFinalMPB = parseFloat((((costoKiloMPB * kilosMPB) * (1 + margenMPB / 100) + moMPB) * (1 + ivaMPB / 100)).toFixed(2));
+            const pFinalMPB = parseFloat(((costoBultoMpbPuro * (1 + margenMPB / 100) + moMPB) * (1 + ivaMPB / 100)).toFixed(2));
             if (laMPB) {
               laMPB.costo_base_sobrescrito = parseFloat(costoKiloMPB.toFixed(4));
               laMPB.precio_final = pFinalMPB;
@@ -11830,11 +12440,42 @@
           });
         }
 
+        // 2.1 Incluir Artículo Puente BFX50G (costo_base, costo_base_sobrescrito y costo_tiempo de depósito $2.216,67/kg)
+        const artBFX = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === 'BFX50G');
+        const kilosBFX = parseFloat(artBFX?.kilos_unidad) > 0 ? parseFloat(artBFX.kilos_unidad) : 1.0;
+        if (artBFX) {
+          artBFX.costo_base = Number((costoBaseApPersistido * kilosBFX).toFixed(2));
+        }
+        b.costo_base_ap_oficial_bd = costoBaseApPersistido;
+        listas.forEach(l => {
+          const laBFX = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toUpperCase() === 'BFX50G' && la.lista_id === l.id);
+          if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laBFX || laBFX.disponible === false)) return;
+          const margenBFX = laBFX ? (parseFloat(laBFX.margen_ganancia) || 0) : 0;
+          const moBFX = (laBFX && laBFX.mano_obra_activa === false) ? 0 : (parseFloat(b.mo_ap_taller) || 0);
+          const ivaBFX = laBFX ? (parseFloat(laBFX.iva) || 21) : 21;
+          const pFinalBFX = parseFloat((((costoBaseApPersistido * kilosBFX) * (1 + margenBFX / 100) + moBFX) * (1 + ivaBFX / 100)).toFixed(2));
+          if (laBFX) {
+            laBFX.costo_base_sobrescrito = parseFloat(costoBaseApPersistido.toFixed(4));
+            laBFX.costo_tiempo = parseFloat((b.mo_ap_taller || 0).toFixed(4));
+            laBFX.precio_final = pFinalBFX;
+          }
+          actualizaciones.push({
+            lista_id: l.id,
+            articulo_numero: 'BFX50G',
+            margen_ganancia: margenBFX,
+            costo_base_sobrescrito: parseFloat(costoBaseApPersistido.toFixed(4)),
+            costo_tiempo: parseFloat((b.mo_ap_taller || 0).toFixed(4)),
+            iva: ivaBFX,
+            precio_final: pFinalBFX,
+            disponible: laBFX ? laBFX.disponible !== false : false
+          });
+        });
+
         fraccsAImpactar.forEach(itemFracc => {
           const sku = itemFracc.articulo_id;
           const kItem = (parseFloat(itemFracc.kilos_unidad) > 0) ? parseFloat(itemFracc.kilos_unidad) : 1;
           const c1 = calcularCascadaArticuloLista(sku, lista1Id);
-          if (c1) itemFracc.costo_base = c1.costoBaseSinInsumosLista;
+          if (c1) itemFracc.costo_base = Number(c1.costoBaseSinInsumosLista.toFixed(2));
 
           listas.forEach(l => {
             const key = `${l.id}_${sku}`;
@@ -11869,7 +12510,6 @@
               modo_iva: null
             });
 
-            // Sincronizar en memoria
             if (laSim) {
               laSim.costo_base_simulado = cascada.costoNetoBulto;
               laSim.costo_base_sin_insumos_simulado = cascada.costoBaseSinInsumosLista;
@@ -11900,7 +12540,10 @@
           throw new Error(errData.detalle || 'Error al aplicar actualización de precios de Barritas.');
         }
 
+        recalcularCascada();
         actualizarBannerCambios();
+        renderizarMixes();
+        renderizarArticulosPuente();
         renderizarArticulosBunker();
         renderizarBarritasLDN5();
         if (articuloSeleccionadoId) {
@@ -11913,8 +12556,8 @@
 
         Swal.fire({
           icon: 'success',
-          title: '¡Precios de Barritas Actualizados!',
-          html: `Se actualizaron con éxito <strong>${fraccsAImpactar.length} presentaciones (${skusLabel})</strong> en <strong>${actualizaciones.length} listas de precios</strong> preservando fielmente los márgenes de ganancia.`,
+          title: '¡Circuito Completo de Barritas Actualizado!',
+          html: `Se sincronizaron en PostgreSQL <strong>Mix #109</strong>, <strong>MPB</strong>, <strong>AP BFX50G ($${costoBaseApPersistido.toFixed(2)}/kg)</strong>, <strong>Ingrediente #141 ($${costoIng141Persistido.toFixed(2)}/kg)</strong> y <strong>${fraccsAImpactar.length} presentación(es) (${skusLabel})</strong> conservando márgenes.`,
           timer: 2800,
           showConfirmButton: true,
           confirmButtonColor: '#0284c7',
