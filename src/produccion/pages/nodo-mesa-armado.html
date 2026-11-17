@@ -709,13 +709,22 @@
             const cont = document.getElementById('lista-canastos-container');
             if (!cont) return;
             const canastos = ESTADO.tablero.canastos || [];
+            const retenidosVec = ESTADO.tablero.pedidos_vecinales_aguardando_pago || [];
+
+            const avisoRetenidosHtml = retenidosVec.length === 0 ? '' : `
+                <div data-testid="banner-vecinales-retenidos-pago" style="padding:10px 12px; border-radius:10px; background:rgba(168,85,247,0.14); border:1px solid rgba(168,85,247,0.45); color:#e9d5ff; font-size:0.77rem; margin-bottom:8px; line-height:1.38;">
+                    🔒 <strong>${retenidosVec.length} pedido(s) vecinal(es) retenidos aguardando Banco Galicia:</strong>
+                    ${retenidosVec.map(rv => `#${esc(rv.codigo_pedido)} (${esc(rv.nombre_marca)})`).join(', ')}.
+                    No ingresan al canasto ni a Pizarra hasta quedar conciliados en <a href="/liquidacion-nodos" style="color:#7dd3fc; font-weight:800;">Liquidación y Cobros</a>.
+                </div>
+            `;
 
             if (canastos.length === 0) {
-                cont.innerHTML = `<div style="padding:18px; text-align:center; color:#64748b; font-size:0.84rem;">No hay canastos activos.</div>`;
+                cont.innerHTML = avisoRetenidosHtml + `<div style="padding:18px; text-align:center; color:#64748b; font-size:0.84rem;">No hay canastos activos con pago conciliado.</div>`;
                 return;
             }
 
-            cont.innerHTML = canastos.map(c => {
+            cont.innerHTML = avisoRetenidosHtml + canastos.map(c => {
                 const sel = Number(c.id) === Number(ESTADO.canastoSeleccionadoId);
                 const meta = obtenerMetaEstadoCanasto(c);
                 const pct = c.total_bolsas > 0 ? Math.round((c.bolsas_armadas / c.total_bolsas) * 100) : 0;

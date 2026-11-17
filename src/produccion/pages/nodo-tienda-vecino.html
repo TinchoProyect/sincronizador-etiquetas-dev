@@ -2653,11 +2653,361 @@
 
     function limpiarTitularVisibleTienda(rawTitular, nodoRef) {
       const txt = String(rawTitular || '').trim();
-      if (!txt) return '';
+      if (!txt) return 'Martín Ignacio Serrano';
       if (/nodos?/i.test(txt)) {
-        return String(nodoRef?.nombre_marca || nodoRef?.gestor_nombre || 'Cuenta recaudadora').trim();
+        return 'Martín Ignacio Serrano';
       }
       return txt;
+    }
+
+    function resolverDatosBancariosOficialesTienda(fuente = {}) {
+      const n = fuente || STATE.nodo || {};
+      const aliasRaw = String(n.alias || n.alias_bancario_display || STATE.nodo?.alias_bancario_display || '').trim();
+      const alias = (!aliasRaw || aliasRaw === 'pago.canasto') ? 'LAMDA.SER.MARTIN' : aliasRaw;
+      const banco = String(n.banco || n.banco_display || STATE.nodo?.banco_display || 'Banco Galicia').trim() || 'Banco Galicia';
+      const titular = limpiarTitularVisibleTienda(n.titular || n.titular_display || STATE.nodo?.titular_display || 'Martín Ignacio Serrano', STATE.nodo);
+      const cbuRaw = String(n.cbu || n.cbu_display || STATE.nodo?.cbu_display || '0070373230004007844141').trim();
+      const cbu = (cbuRaw && cbuRaw !== '0000000000000000000000') ? cbuRaw : '0070373230004007844141';
+      const cuil = String(n.cuil || n.cuil_display || STATE.nodo?.cuil_display || '23-24892174-9').trim() || '23-24892174-9';
+      const cuenta = String(n.numero_cuenta || n.numero_cuenta_display || STATE.nodo?.numero_cuenta_display || '400784413734').trim();
+      return { banco, alias, titular, cbu, cuil, cuenta };
+    }
+
+    function copiarDatoBancarioTienda(btnEl, valor, textoConfirmacion = '✅ Copiado') {
+      const limpio = String(valor ?? '').trim();
+      if (!limpio) return;
+      const original = btnEl ? btnEl.innerHTML : '';
+      const feedback = () => {
+        if (!btnEl) return;
+        btnEl.textContent = textoConfirmacion;
+        setTimeout(() => {
+          if (btnEl && btnEl.isConnected) btnEl.innerHTML = original;
+        }, 2200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(limpio).then(feedback).catch(() => {
+          try {
+            const ta = document.createElement('textarea');
+            ta.value = limpio;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            feedback();
+          } catch (_) {}
+        });
+      }
+    }
+
+    window._cachePedidosPagoTienda = window._cachePedidosPagoTienda || {};
+
+    function renderizarTarjetaTransferenciaYAvisoHtml(pedRaw, fuenteBanco, ctxKeyRaw, opciones = {}) {
+      const ped = pedRaw || {};
+      const ctxKey = String(ctxKeyRaw || ped.codigo_pedido || 'pago').replace(/[^a-zA-Z0-9_-]/g, '_');
+      window._cachePedidosPagoTienda[ctxKey] = { ped, fuenteBanco, opciones };
+
+      const bancoInfo = resolverDatosBancariosOficialesTienda(fuenteBanco);
+      const totalPedido = Math.max(0, Number(ped.total_vecino || 0));
+      const acreditado = Math.max(0, Number(ped.monto_acreditado_banco || 0));
+      const declarado = Math.max(0, Number(ped.monto_declarado_cliente || 0));
+      const saldoPendAcreditar = ped.saldo_pendiente_acreditar !== undefined
+        ? Math.max(0, Number(ped.saldo_pendiente_acreditar || 0))
+        : Math.max(0, Number((totalPedido - acreditado).toFixed(2)));
+      const saldoPendDeclarar = ped.saldo_pendiente_declarar !== undefined
+        ? Math.max(0, Number(ped.saldo_pendiente_declarar || 0))
+        : Math.max(0, Number((totalPedido - Math.max(acreditado, declarado)).toFixed(2)));
+
+      const reclamoActivo = Boolean(ped.reclamo_pago_no_recibido) || String(ped.estado_pago || '').toUpperCase() === 'OBSERVADO_NO_RECIBIDO';
+      const avisosLista = Array.isArray(ped.avisos_pago) ? ped.avisos_pago : [];
+      const avisosVigentes = avisosLista.filter(a => String(a.estado_aviso || '').toUpperCase() !== 'OBSERVADO_NO_RECIBIDO');
+      const montoSugeridoInput = reclamoActivo
+        ? (saldoPendAcreditar > 0 ? saldoPendAcreditar : totalPedido)
+        : (saldoPendDeclarar > 0 ? saldoPendDeclarar : (saldoPendAcreditar > 0 ? saldoPendAcreditar : totalPedido));
+      const montoCopiarStr = Number.isInteger(saldoPendAcreditar) ? String(saldoPendAcreditar) : saldoPendAcreditar.toFixed(2);
+
+      const codigoOToken = String(ped.tracking_token || ped.codigo_pedido || '').trim();
+      const trackingTok = String(ped.tracking_token || '').trim();
+      const telRespaldo = String(opciones.telefonoRespaldo || ped.vecino_telefono || '').trim();
+      const nombreMarca = String(fuenteBanco?.nombre_marca || STATE.nodo?.nombre_marca || 'la tienda').trim();
+      const telGestorDigits = String(fuenteBanco?.gestor_telefono || STATE.nodo?.gestor_telefono || '').replace(/\D/g, '');
+      const waOpcionalHref = telGestorDigits
+        ? `https://wa.me/${telGestorDigits.startsWith('54') ? telGestorDigits : '549' + telGestorDigits}?text=${encodeURIComponent(`Hola! Te paso el aviso de transferencia de mi pedido #${ped.codigo_pedido} en ${nombreMarca} por ${fmt(montoSugeridoInput)}.`)}`
+        : '';
+
+      const yaInformoTodoSinReclamo = !reclamoActivo && declarado > 0 && saldoPendDeclarar <= 0.5;
+      const textoBotonPrimario = reclamoActivo
+        ? '📎 Informar pago / Adjuntar comprobante'
+        : (avisosVigentes.length > 0 ? '➕ Informar otra transferencia' : '✅ Ya hice la transferencia');
+
+      const abrirInicial = Boolean(opciones.abrirFormInicial || reclamoActivo);
+
+      return `
+        <div id="bloque-pago-transf-${esc(ctxKey)}" style="background:#eff6ff; border:2px solid ${reclamoActivo ? '#ef4444' : '#60a5fa'}; border-radius:15px; padding:14px 15px; text-align:left; margin-bottom:14px;">
+          ${reclamoActivo ? `
+            <div style="background:#fef2f2; border:1.5px solid #f87171; border-radius:11px; padding:11px 12px; margin-bottom:12px; color:#991b1b; font-size:0.83rem; line-height:1.38;">
+              <div style="font-weight:900; font-size:0.86rem; margin-bottom:3px;">⚠️ Aún no pudimos ubicar tu transferencia en el banco</div>
+              <div style="font-weight:700;">Revisamos las acreditaciones de ${esc(bancoInfo.banco)} y todavía no impactó el pago del pedido <strong>#${esc(ped.codigo_pedido)}</strong>. Verificá los datos abajo o adjuntá acá el comprobante para validarlo enseguida.</div>
+            </div>
+          ` : ''}
+
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; flex-wrap:wrap;">
+            <div>
+              <div style="font-size:0.74rem; font-weight:900; color:#1d4ed8; text-transform:uppercase; letter-spacing:0.02em;">
+                🏦 Datos para Transferencia Bancaria
+              </div>
+              <div style="font-size:1.18rem; font-weight:900; color:#0f172a; margin:4px 0 2px 0; word-break:break-all;">
+                Alias: <span data-testid="alias-oficial-texto">${esc(bancoInfo.alias)}</span>
+              </div>
+              <div style="font-size:0.79rem; color:#334155; font-weight:700;">
+                Titular: <strong>${esc(bancoInfo.titular)}</strong> · ${esc(bancoInfo.banco)}
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:0.71rem; font-weight:800; color:#475569; text-transform:uppercase;">Importe pendiente</div>
+              <div style="font-size:1.12rem; font-weight:900; color:#0f172a;">${fmt(saldoPendAcreditar)}</div>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+            <button type="button" onclick="copiarDatoBancarioTienda(this, '${esc(bancoInfo.alias)}', '✅ Alias copiado')"
+              style="flex:1; min-width:138px; padding:9px 12px; border-radius:10px; border:none; background:#2563eb; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer;">
+              📋 Copiar Alias
+            </button>
+            <button type="button" onclick="copiarDatoBancarioTienda(this, '${esc(montoCopiarStr)}', '✅ Monto copiado')"
+              style="flex:1; min-width:138px; padding:9px 12px; border-radius:10px; border:1.5px solid #93c5fd; background:#ffffff; color:#1d4ed8; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer;">
+              📋 Copiar Monto (${fmt(saldoPendAcreditar)})
+            </button>
+          </div>
+
+          <details style="margin-top:9px; background:rgba(255,255,255,0.72); border:1px solid #bfdbfe; border-radius:10px; padding:7px 11px; font-size:0.78rem; color:#334155;">
+            <summary style="cursor:pointer; font-weight:800; color:#1e40af; user-select:none;">Ver CBU y datos completos de respaldo</summary>
+            <div style="margin-top:7px; display:flex; flex-direction:column; gap:5px; font-weight:700;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                <span>CBU: <strong style="font-family:monospace; font-size:0.83rem;">${esc(bancoInfo.cbu)}</strong></span>
+                <button type="button" onclick="copiarDatoBancarioTienda(this, '${esc(bancoInfo.cbu)}', '✅ CBU copiado')"
+                  style="padding:4px 9px; border-radius:7px; border:1px solid #93c5fd; background:#ffffff; color:#1d4ed8; font-family:inherit; font-size:0.73rem; font-weight:800; cursor:pointer;">
+                  📋 Copiar CBU
+                </button>
+              </div>
+              <div>Banco: <strong>${esc(bancoInfo.banco)}</strong> · CUIL: <strong>${esc(bancoInfo.cuil)}</strong>${bancoInfo.cuenta ? ` · Cta: <strong>${esc(bancoInfo.cuenta)}</strong>` : ''}</div>
+            </div>
+          </details>
+
+          ${acreditado > 0.01 ? `
+            <div style="margin-top:10px; background:#ecfdf5; border:1px solid #86efac; border-radius:10px; padding:8px 11px; font-size:0.8rem; color:#166534; font-weight:800;">
+              ✅ Acreditado en banco hasta ahora: <strong>${fmt(acreditado)}</strong> de ${fmt(totalPedido)} · Resta acreditar: <strong>${fmt(saldoPendAcreditar)}</strong>
+            </div>
+          ` : ''}
+
+          ${avisosLista.length > 0 ? `
+            <div style="margin-top:10px; background:#ffffff; border:1px solid #cbd5e1; border-radius:10px; padding:9px 11px; font-size:0.79rem; color:#1e293b;">
+              <div style="font-weight:900; font-size:0.74rem; text-transform:uppercase; color:#475569; margin-bottom:4px;">
+                🔔 Transferencias informadas (${avisosLista.length})
+              </div>
+              ${avisosLista.map((av, idx) => `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; padding:3px 0; ${idx > 0 ? 'border-top:1px dashed #e2e8f0;' : ''}">
+                  <span>
+                    <strong>${fmt(av.monto_informado)}</strong>
+                    ${av.titular_emisor ? ` · De: <em>${esc(av.titular_emisor)}</em>` : ''}
+                    ${av.tiene_comprobante ? ' · 📎 Comprobante adjunto' : ''}
+                  </span>
+                  <span style="font-size:0.71rem; font-weight:800; padding:2px 7px; border-radius:999px; background:${av.estado_aviso === 'CONCILIADO' ? '#dcfce7' : (av.estado_aviso === 'OBSERVADO_NO_RECIBIDO' ? '#fee2e2' : '#fef3c7')}; color:${av.estado_aviso === 'CONCILIADO' ? '#15803d' : (av.estado_aviso === 'OBSERVADO_NO_RECIBIDO' ? '#b91c1c' : '#92400e')};">
+                    ${av.estado_aviso === 'CONCILIADO' ? '✓ Acreditado' : (av.estado_aviso === 'OBSERVADO_NO_RECIBIDO' ? 'Revisar' : 'En verificación')}
+                  </span>
+                </div>
+              `).join('')}
+              ${(!yaInformoTodoSinReclamo && saldoPendDeclarar > 0.5) ? `
+                <div style="margin-top:6px; padding-top:5px; border-top:1px solid #e2e8f0; font-weight:800; color:#b45309;">
+                  Saldo pendiente por informar: <strong>${fmt(saldoPendDeclarar)}</strong>
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
+
+          ${yaInformoTodoSinReclamo ? `
+            <div style="margin-top:11px; background:#f0fdf4; border:1.5px solid #86efac; border-radius:11px; padding:10px 12px; color:#166534; font-size:0.83rem; font-weight:800;">
+              🔔 ¡Recibimos tu aviso de transferencia por <strong>${fmt(declarado)}</strong>! En cuanto impacte en ${esc(bancoInfo.banco)} pasa automáticamente a preparación.
+              <div style="margin-top:7px;">
+                <button type="button" onclick="toggleFormAvisoTransferencia('${esc(ctxKey)}', true)"
+                  style="padding:6px 11px; border-radius:8px; border:1px solid #86efac; background:#ffffff; color:#15803d; font-family:inherit; font-size:0.76rem; font-weight:800; cursor:pointer;">
+                  📎 Adjuntar comprobante o informar otro tramo
+                </button>
+              </div>
+            </div>
+          ` : `
+            <div id="cta-aviso-wrap-${esc(ctxKey)}" style="margin-top:11px; display:${abrirInicial ? 'none' : 'block'};">
+              <button type="button" data-testid="btn-ya-hice-transferencia"
+                onclick="toggleFormAvisoTransferencia('${esc(ctxKey)}', true)"
+                style="width:100%; padding:12px 15px; border-radius:11px; border:none; background:#15803d; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.93rem; cursor:pointer; box-shadow:0 3px 10px rgba(21,128,61,0.2);">
+                ${textoBotonPrimario}
+              </button>
+              <div style="font-size:0.74rem; color:#475569; font-weight:700; margin-top:5px; text-align:center;">
+                Tu pedido inicia preparación al acreditarse la transferencia.
+              </div>
+            </div>
+          `}
+
+          <div id="form-aviso-wrap-${esc(ctxKey)}" style="display:${abrirInicial ? 'block' : 'none'}; margin-top:11px; background:#ffffff; border:1.5px solid #93c5fd; border-radius:12px; padding:12px 13px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <span style="font-size:0.82rem; font-weight:900; color:#0f172a;">Confirmar datos de tu transferencia</span>
+              <button type="button" onclick="toggleFormAvisoTransferencia('${esc(ctxKey)}', false)"
+                style="border:none; background:transparent; color:#64748b; font-weight:900; font-size:0.82rem; cursor:pointer;">Cerrar ✕</button>
+            </div>
+
+            <div style="margin-bottom:9px;">
+              <label style="display:block; font-size:0.76rem; font-weight:800; color:#334155; margin-bottom:3px;">
+                Importe transferido ($) *
+              </label>
+              <input type="number" step="0.01" min="1" id="inp-aviso-monto-${esc(ctxKey)}"
+                value="${Number.isFinite(montoSugeridoInput) ? Number(montoSugeridoInput.toFixed(2)) : ''}"
+                style="width:100%; box-sizing:border-box; padding:9px 11px; border-radius:9px; border:1.5px solid #cbd5e1; font-family:inherit; font-size:0.96rem; font-weight:900; color:#0f172a;">
+              <div style="font-size:0.72rem; color:#64748b; font-weight:700; margin-top:3px;">
+                Si abonás en 2 o más transferencias, editá el monto de este tramo y luego informá el resto.
+              </div>
+            </div>
+
+            <div style="margin-bottom:9px;">
+              <label style="display:block; font-size:0.76rem; font-weight:800; color:#334155; margin-bottom:3px;">
+                Nombre del titular de la cuenta emisora <span style="color:#64748b; font-weight:700;">(opcional)</span>
+              </label>
+              <input type="text" maxlength="160" id="inp-aviso-titular-${esc(ctxKey)}"
+                placeholder="Completalo si transferiste desde la cuenta de otra persona"
+                style="width:100%; box-sizing:border-box; padding:9px 11px; border-radius:9px; border:1.5px solid #cbd5e1; font-family:inherit; font-size:0.85rem; font-weight:700; color:#0f172a;">
+            </div>
+
+            <details ${reclamoActivo ? 'open' : ''} style="margin-bottom:10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:9px; padding:7px 10px; font-size:0.78rem;">
+              <summary style="cursor:pointer; font-weight:800; color:#334155; user-select:none;">
+                📎 Adjuntar comprobante o avisar por WhatsApp (opcional)
+              </summary>
+              <div style="margin-top:8px; display:flex; flex-direction:column; gap:8px;">
+                <div>
+                  <label style="display:block; font-size:0.74rem; font-weight:800; color:#475569; margin-bottom:3px;">
+                    Imagen o PDF del comprobante (máx. 5 MB)
+                  </label>
+                  <input type="file" id="inp-aviso-archivo-${esc(ctxKey)}" accept="image/jpeg,image/png,image/webp,application/pdf"
+                    style="width:100%; font-size:0.77rem;">
+                </div>
+                ${waOpcionalHref ? `
+                  <a href="${esc(waOpcionalHref)}" target="_blank" rel="noopener"
+                    style="display:inline-block; padding:7px 11px; border-radius:8px; border:1px solid #16a34a; background:#f0fdf4; color:#15803d; font-weight:800; font-size:0.77rem; text-decoration:none; text-align:center;">
+                    💬 Enviar aviso opcional por WhatsApp a ${esc(nombreMarca)}
+                  </a>
+                ` : ''}
+              </div>
+            </details>
+
+            <div id="msg-aviso-error-${esc(ctxKey)}" style="display:none; margin-bottom:8px; padding:8px 10px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; font-size:0.79rem; font-weight:800;"></div>
+
+            <button type="button" id="btn-submit-aviso-${esc(ctxKey)}"
+              onclick="enviarAvisoTransferenciaTienda('${esc(ctxKey)}', '${esc(codigoOToken)}', '${esc(trackingTok)}', '${esc(telRespaldo)}')"
+              style="width:100%; padding:11px 14px; border-radius:10px; border:none; background:#15803d; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer;">
+              Confirmar aviso de transferencia
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function toggleFormAvisoTransferencia(ctxKey, abrir) {
+      const formEl = document.getElementById(`form-aviso-wrap-${ctxKey}`);
+      const ctaEl = document.getElementById(`cta-aviso-wrap-${ctxKey}`);
+      if (formEl) formEl.style.display = abrir ? 'block' : 'none';
+      if (ctaEl) ctaEl.style.display = abrir ? 'none' : 'block';
+    }
+
+    async function enviarAvisoTransferenciaTienda(ctxKey, codigoOToken, trackingToken = '', telefonoRespaldo = '') {
+      const btn = document.getElementById(`btn-submit-aviso-${ctxKey}`);
+      const errBox = document.getElementById(`msg-aviso-error-${ctxKey}`);
+      const inpMonto = document.getElementById(`inp-aviso-monto-${ctxKey}`);
+      const inpTitular = document.getElementById(`inp-aviso-titular-${ctxKey}`);
+      const inpFile = document.getElementById(`inp-aviso-archivo-${ctxKey}`);
+
+      if (errBox) {
+        errBox.style.display = 'none';
+        errBox.textContent = '';
+      }
+
+      const montoVal = String(inpMonto?.value || '').trim();
+      const titularVal = String(inpTitular?.value || '').trim();
+      const fileObj = inpFile?.files && inpFile.files[0] ? inpFile.files[0] : null;
+
+      if (fileObj && fileObj.size > 5 * 1024 * 1024) {
+        if (errBox) {
+          errBox.textContent = 'El archivo supera los 5 MB permitidos.';
+          errBox.style.display = 'block';
+        }
+        return;
+      }
+
+      const idLocal = obtenerIdentidadVecinoLocal(STATE.slug) || {};
+      const portalTok = STATE.portalToken || idLocal.portal_token || '';
+      const telAuth = telefonoRespaldo || idLocal.telefono_normalizado || idLocal.telefono_display || '';
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Registrando aviso...';
+      }
+
+      try {
+        const url = `/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/pedidos/${encodeURIComponent(codigoOToken)}/aviso-pago`;
+        let resp;
+        if (fileObj) {
+          const fd = new FormData();
+          fd.append('monto_informado', montoVal);
+          if (titularVal) fd.append('titular_emisor', titularVal);
+          if (trackingToken) fd.append('tracking_token', trackingToken);
+          if (portalTok) fd.append('portal_token', portalTok);
+          if (telAuth) fd.append('telefono', telAuth);
+          fd.append('comprobante', fileObj);
+          resp = await fetch(url, { method: 'POST', body: fd });
+        } else {
+          resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              monto_informado: montoVal,
+              titular_emisor: titularVal || undefined,
+              tracking_token: trackingToken || undefined,
+              portal_token: portalTok || undefined,
+              telefono: telAuth || undefined
+            })
+          });
+        }
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.error || 'No se pudo registrar el aviso de transferencia.');
+        }
+
+        const cached = window._cachePedidosPagoTienda[ctxKey] || {};
+        const pedMerged = { ...(cached.ped || {}), ...(data.pedido || {}) };
+        if (STATE.ultimoPedidoConfirmado && STATE.ultimoPedidoConfirmado.codigo_pedido === pedMerged.codigo_pedido) {
+          STATE.ultimoPedidoConfirmado = { ...STATE.ultimoPedidoConfirmado, ...pedMerged };
+        }
+        const wrapEl = document.getElementById(`bloque-pago-transf-${ctxKey}`);
+        if (wrapEl) {
+          wrapEl.outerHTML = renderizarTarjetaTransferenciaYAvisoHtml(
+            pedMerged,
+            data.cuenta_bancaria || cached.fuenteBanco || STATE.nodo,
+            ctxKey,
+            { ...(cached.opciones || {}), abrirFormInicial: false }
+          );
+        }
+        refrescarBannerPedidosRecientes();
+        if (STATE.vistaActiva === 'mi_cuenta' && typeof cargarPortalMiCuenta === 'function') {
+          cargarPortalMiCuenta(false);
+        }
+      } catch (err) {
+        if (errBox) {
+          errBox.textContent = err.message || 'Error registrando el aviso.';
+          errBox.style.display = 'block';
+        }
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Confirmar aviso de transferencia';
+        }
+      }
     }
 
     function sincronizarTituloYMetaPwaTienda(nombreMarcaRaw) {
@@ -4137,14 +4487,14 @@
       const n = nodoObj || {};
       const mod = obtenerModulosActivosTienda(n);
       const permiteTransf = n.permitir_transferencia !== false;
-      const permiteEfec = Boolean(mod.cobro_efectivo_entrega && n.permitir_efectivo !== false && !esCheckoutPostalNacional(n));
-      const aliasDef = n.alias_bancario_display || (esPerfilEcommerceTienda(n) ? `${n.slug || 'tienda'}.oficial` : 'pago.canasto');
+      const permiteEfec = Boolean(!n.solo_transferencia_bancaria && mod.cobro_efectivo_entrega && n.permitir_efectivo !== false && !esCheckoutPostalNacional(n));
+      const infoBco = resolverDatosBancariosOficialesTienda(n);
       const lista = [];
       if (permiteTransf) {
         lista.push({
           codigo: 'TRANSFERENCIA',
           titulo: '🏦 Transferencia Bancaria',
-          subtitulo: `Alias: ${aliasDef}`
+          subtitulo: `Alias: ${infoBco.alias} · ${infoBco.banco}`
         });
       }
       if (permiteEfec) {
@@ -4158,7 +4508,7 @@
         lista.push({
           codigo: 'TRANSFERENCIA',
           titulo: '🏦 Transferencia Bancaria',
-          subtitulo: `Alias: ${aliasDef}`
+          subtitulo: `Alias: ${infoBco.alias} · ${infoBco.banco}`
         });
       }
       return lista;
@@ -5107,13 +5457,12 @@
         const mediosHabilitados = obtenerMediosPagoHabilitadosTienda(STATE.nodo);
         const pasoValido = validarPasoCheckoutWizard('pago');
         const esPostal = esCheckoutPostalNacional();
-        const aliasMostrar = STATE.nodo?.alias_bancario_display || (esPostal ? `${STATE.nodo?.slug || 'tienda'}.oficial` : 'pago.canasto');
-        const titularMostrar = limpiarTitularVisibleTienda(STATE.nodo?.titular_display || STATE.nodo?.nombre_marca || '', STATE.nodo);
-        const cbuMostrar = (STATE.nodo?.cbu_display && STATE.nodo.cbu_display !== '0000000000000000000000') ? STATE.nodo.cbu_display : '';
+        const soloTransf = mediosHabilitados.length === 1 && mediosHabilitados[0].codigo === 'TRANSFERENCIA';
+        const bcoChk = resolverDatosBancariosOficialesTienda(STATE.nodo);
 
         stageHtml = `
-          <h2 class="chk-wiz-question">${esPostal ? 'Pago online por Transferencia' : '¿Cómo preferís abonar?'}</h2>
-          <p class="chk-wiz-lead">${esPostal ? 'Seleccioná Transferencia Bancaria para confirmar tu compra y ver los datos de acreditación.' : 'Elegí el medio de pago más cómodo para vos.'}</p>
+          <h2 class="chk-wiz-question">${(esPostal || soloTransf) ? 'Pago por Transferencia Bancaria' : '¿Cómo preferís abonar?'}</h2>
+          <p class="chk-wiz-lead">${(esPostal || soloTransf) ? 'Seleccioná Transferencia Bancaria. Al confirmar tu pedido vas a poder copiar el alias e informar tu pago en 1 toque.' : 'Elegí el medio de pago más cómodo para vos.'}</p>
           <div class="chk-big-options">
             ${mediosHabilitados.map(m => `
               <button type="button" id="chk-opt-pago-${esc(m.codigo.toLowerCase())}"
@@ -5128,23 +5477,15 @@
             `).join('')}
           </div>
 
-          ${esPostal ? `
+          ${(w.medioPagoElegido === 'TRANSFERENCIA' || soloTransf) ? `
             <div style="margin-top:14px; padding:13px 15px; border-radius:14px; background:#eff6ff; border:1.5px solid #93c5fd; font-size:0.84rem; color:#0f172a;">
-              <div style="font-size:0.74rem; font-weight:900; text-transform:uppercase; color:#1d4ed8;">Datos bancarios de ${esc(STATE.nodo?.nombre_marca || 'la tienda')}</div>
-              <div style="font-size:1.05rem; font-weight:900; margin:4px 0;">Alias: <span>${esc(aliasMostrar)}</span></div>
-              ${titularMostrar ? `<div style="font-size:0.79rem; color:#334155; font-weight:700;">Titular: ${esc(titularMostrar)}${cbuMostrar ? ` · CBU: ${esc(cbuMostrar)}` : ''}</div>` : ''}
-              <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
-                <button type="button" onclick="navigator.clipboard.writeText('${esc(aliasMostrar)}'); this.textContent='✅ Alias copiado';"
-                  style="padding:7px 13px; border-radius:9px; border:none; background:#2563eb; color:#ffffff; font-family:inherit; font-size:0.8rem; font-weight:900; cursor:pointer;">
-                  📋 Copiar Alias
-                </button>
-                ${cbuMostrar ? `
-                  <button type="button" onclick="navigator.clipboard.writeText('${esc(cbuMostrar)}'); this.textContent='✅ CBU copiado';"
-                    style="padding:7px 13px; border-radius:9px; border:1px solid #93c5fd; background:#ffffff; color:#1d4ed8; font-family:inherit; font-size:0.8rem; font-weight:900; cursor:pointer;">
-                    📋 Copiar CBU
-                  </button>
-                ` : ''}
-              </div>
+              <div style="font-size:0.73rem; font-weight:900; text-transform:uppercase; color:#1d4ed8;">Cuenta oficial de acreditación</div>
+              <div style="font-size:1.08rem; font-weight:900; margin:4px 0 2px 0;">Alias: <span>${esc(bcoChk.alias)}</span></div>
+              <div style="font-size:0.79rem; color:#334155; font-weight:700;">Titular: <strong>${esc(bcoChk.titular)}</strong> · ${esc(bcoChk.banco)}</div>
+              <details style="margin-top:7px; font-size:0.76rem; color:#334155;">
+                <summary style="cursor:pointer; font-weight:800; color:#1d4ed8;">Ver CBU y CUIL de respaldo</summary>
+                <div style="margin-top:4px; font-weight:700;">CBU: <span style="font-family:monospace;">${esc(bcoChk.cbu)}</span> · CUIL: ${esc(bcoChk.cuil)}</div>
+              </details>
             </div>
           ` : ''}
         `;
@@ -5170,7 +5511,7 @@
           : (esEnvio
               ? `🛵 Envío a domicilio — ${w.direccion}${w.entrecalles ? ' (' + w.entrecalles + ')' : ''}`
               : `🏠 Retiro en punto de entrega — ${STATE.nodo?.direccion_retiro || STATE.nodo?.barrio_zona || ''}`);
-        const aliasMostrar = STATE.nodo?.alias_bancario_display || (esPostal ? `${STATE.nodo?.slug || 'tienda'}.oficial` : 'pago.canasto');
+        const aliasMostrar = resolverDatosBancariosOficialesTienda(STATE.nodo).alias;
         const pagoTexto = w.medioPagoElegido === 'EFECTIVO'
           ? '💵 Efectivo al recibir / retirar'
           : `🏦 Transferencia Bancaria (Alias: ${aliasMostrar})`;
@@ -5456,17 +5797,7 @@
               </div>
 
               ${ped.medio_pago === 'TRANSFERENCIA' ? `
-                <div style="background:#eff6ff; border:2px solid #60a5fa; border-radius:14px; padding:14px; text-align:left; margin-bottom:14px;">
-                  <div style="font-size:0.78rem; font-weight:800; color:#1d4ed8; text-transform:uppercase;">🏦 Datos para Transferencia Bancaria</div>
-                  <div style="font-size:1.15rem; font-weight:900; color:#0f172a; margin:6px 0;">
-                    Alias: <span id="alias-copy-text">${esc(pagoInfo.alias || 'pago.canasto')}</span>
-                  </div>
-                  <div style="font-size:0.8rem; color:#334155;">Titular: ${esc(limpiarTitularVisibleTienda(pagoInfo.titular, STATE.nodo))}${pagoInfo.cbu && pagoInfo.cbu !== '0000000000000000000000' ? ` · CBU: ${esc(pagoInfo.cbu)}` : ''}</div>
-                  <button type="button" onclick="navigator.clipboard.writeText('${esc(pagoInfo.alias || 'pago.canasto')}'); this.textContent='✅ ¡Alias Copiado!';"
-                    style="margin-top:8px; padding:8px 14px; border-radius:9px; border:1px solid #2563eb; background:#2563eb; color:#fff; font-weight:800; font-size:0.82rem; cursor:pointer;">
-                    📋 Copiar Alias Bancario
-                  </button>
-                </div>
+                ${renderizarTarjetaTransferenciaYAvisoHtml(ped, pagoInfo, 'postchk_' + ped.codigo_pedido, { abrirFormInicial: false })}
               ` : `
                 <div style="background:#fef3c7; border:1px solid #fcd34d; border-radius:14px; padding:13px; text-align:left; font-size:0.88rem; color:#92400e; margin-bottom:14px;">
                   💵 <strong>Pago en Efectivo:</strong> Abonás <strong>${fmt(ped.total_vecino)}</strong> directamente al momento de recibir o retirar tu pedido.
@@ -5809,15 +6140,36 @@
         if (liveDot) liveDot.style.display = 'none';
         return;
       }
-      const ultimo = guardados[0];
+      let data = null;
+      const tokensObsoletos = new Set();
+      for (const itemGuardado of guardados) {
+        if (!itemGuardado?.tracking_token) continue;
+        try {
+          const resp = await fetch(`/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/seguimiento/${encodeURIComponent(itemGuardado.tracking_token)}`, { cache: 'no-store' });
+          const cand = await resp.json();
+          if (!resp.ok || !cand.ok || !cand.pedido?.codigo_pedido) {
+            if (resp.status === 404 || resp.status === 400) tokensObsoletos.add(itemGuardado.tracking_token);
+            continue;
+          }
+          if (cand.seguimiento?.anulado || Number(cand.seguimiento?.hito_actual || 1) >= 6) {
+            continue;
+          }
+          data = cand;
+          break;
+        } catch (_) {}
+      }
+      if (tokensObsoletos.size > 0) {
+        try {
+          const filtrados = obtenerPedidosRecientesLocal().filter(x => x?.tracking_token && !tokensObsoletos.has(x.tracking_token));
+          localStorage.setItem(_storageKeyPedidosVecino(), JSON.stringify(filtrados));
+        } catch (_) {}
+      }
+      if (!data) {
+        banner.style.display = 'none';
+        if (liveDot) liveDot.style.display = 'none';
+        return;
+      }
       try {
-        const resp = await fetch(`/api/produccion/nodos/tienda/${encodeURIComponent(STATE.slug)}/seguimiento/${encodeURIComponent(ultimo.tracking_token)}`, { cache: 'no-store' });
-        const data = await resp.json();
-        if (!resp.ok || !data.ok) {
-          banner.style.display = 'none';
-          if (liveDot) liveDot.style.display = 'none';
-          return;
-        }
         if (data.identidad_vecino) {
           guardarIdentidadVecinoLocal({
             portal_token: data.identidad_vecino.portal_token || '',
@@ -5835,25 +6187,43 @@
         }
         if (liveDot) liveDot.style.display = 'block';
         const pasoActual = (seg.pasos || []).find(p => p.es_actual) || (seg.pasos || [])[0] || {};
+        const esPendTransf = !ped.pago_confirmado && ped.medio_pago === 'TRANSFERENCIA';
+        const reclamoBanner = Boolean(ped.reclamo_pago_no_recibido);
+        const yaInformoBanner = Number(ped.monto_declarado_cliente || 0) > 0;
+        const bcoBanner = resolverDatosBancariosOficialesTienda(data.nodo || STATE.nodo);
+        const montoPendBanner = ped.saldo_pendiente_acreditar !== undefined ? Number(ped.saldo_pendiente_acreditar || 0) : Number(ped.total_vecino || 0);
+
         banner.style.display = 'flex';
+        banner.style.borderColor = reclamoBanner ? '#ef4444' : (esPendTransf && !yaInformoBanner ? '#60a5fa' : '');
+        banner.style.background = reclamoBanner ? '#fef2f2' : (esPendTransf && !yaInformoBanner ? '#eff6ff' : '');
         banner.innerHTML = `
           <div style="display:flex; align-items:center; gap:11px; min-width:0;">
-            <div style="width:40px; height:40px; border-radius:12px; background:var(--brand-light); border:1px solid var(--brand-border); display:flex; align-items:center; justify-content:center; font-size:1.25rem; flex-shrink:0;">
-              ${esc(pasoActual.icono || '📦')}
+            <div style="width:40px; height:40px; border-radius:12px; background:${reclamoBanner ? '#fee2e2' : 'var(--brand-light)'}; border:1px solid ${reclamoBanner ? '#fca5a5' : 'var(--brand-border)'}; display:flex; align-items:center; justify-content:center; font-size:1.25rem; flex-shrink:0;">
+              ${reclamoBanner ? '⚠️' : (esPendTransf && !yaInformoBanner ? '🏦' : esc(pasoActual.icono || '📦'))}
             </div>
             <div style="min-width:0;">
-              <div style="font-size:0.74rem; font-weight:800; color:var(--brand-dark); text-transform:uppercase; letter-spacing:0.02em;">
-                Tu pedido #${esc(ped.codigo_pedido)} · Paso ${Number(seg.paso_actual_orden || 1)} de ${Number(seg.total_pasos || 5)}
+              <div style="font-size:0.74rem; font-weight:800; color:${reclamoBanner ? '#b91c1c' : 'var(--brand-dark)'}; text-transform:uppercase; letter-spacing:0.02em;">
+                ${reclamoBanner
+                  ? `Revisar transferencia · Pedido #${esc(ped.codigo_pedido)}`
+                  : (esPendTransf && !yaInformoBanner
+                      ? `Pedido #${esc(ped.codigo_pedido)} · Pendiente de transferencia (${fmt(montoPendBanner)})`
+                      : `Tu pedido #${esc(ped.codigo_pedido)} · Paso ${Number(seg.paso_actual_orden || 1)} de ${Number(seg.total_pasos || 5)}`)}
               </div>
-              <div style="font-size:0.95rem; font-weight:900; color:var(--text);">
-                ${esc(seg.titulo_estado_actual)}
+              <div style="font-size:0.93rem; font-weight:900; color:var(--text);">
+                ${reclamoBanner
+                  ? 'Aún no impactó tu pago · Adjuntá el comprobante acá'
+                  : (esPendTransf && !yaInformoBanner
+                      ? `Alias: ${esc(bcoBanner.alias)} (${esc(bcoBanner.banco)})`
+                      : (esPendTransf && yaInformoBanner
+                          ? `🔔 Pago informado (${fmt(ped.monto_declarado_cliente)}) · Verificando banco`
+                          : esc(seg.titulo_estado_actual)))}
               </div>
             </div>
           </div>
-          <div style="display:flex; align-items:center; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <button type="button" onclick="abrirSeguimientoPorToken('${esc(ped.tracking_token)}')"
-              style="padding:8px 14px; border-radius:10px; border:none; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:800; font-size:0.82rem; cursor:pointer;">
-              📍 Ver en vivo →
+              style="padding:8px 14px; border-radius:10px; border:none; background:${reclamoBanner ? '#dc2626' : (esPendTransf && !yaInformoBanner ? '#15803d' : 'var(--brand)')}; color:#ffffff; font-family:inherit; font-weight:800; font-size:0.82rem; cursor:pointer; white-space:nowrap;">
+              ${reclamoBanner ? '📎 Subir comprobante →' : (esPendTransf && !yaInformoBanner ? '✅ Pagar / Informar →' : '📍 Ver en vivo →')}
             </button>
             <button type="button" title="Ocultar aviso" onclick="descartarBannerPedidoLocal('${esc(ped.tracking_token)}')"
               style="width:30px; height:30px; border-radius:8px; border:1px solid var(--border); background:#ffffff; color:var(--muted); font-weight:800; cursor:pointer;">
@@ -6686,15 +7056,12 @@
             <div style="text-align:right;">
               ${ped.pago_confirmado
                 ? `<span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#dcfce7; color:#15803d; font-size:0.76rem; font-weight:900;">✅ Pagado (${fmt(ped.total_vecino)})</span>`
-                : `<span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#fef3c7; color:#92400e; font-size:0.76rem; font-weight:900;">${ped.medio_pago === 'EFECTIVO' ? `💵 Abonás al recibir: ${fmt(ped.total_vecino)}` : `🏦 Transferencia: ${fmt(ped.total_vecino)}`}</span>`
+                : (ped.reclamo_pago_no_recibido
+                    ? `<span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#fee2e2; color:#b91c1c; font-size:0.76rem; font-weight:900;">⚠️ Revisar pago (${fmt(ped.total_vecino)})</span>`
+                    : (Number(ped.monto_declarado_cliente || 0) > 0
+                        ? `<span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#dbeafe; color:#1d4ed8; font-size:0.76rem; font-weight:900;">🔔 Pago informado (${fmt(ped.monto_declarado_cliente)})</span>`
+                        : `<span style="display:inline-block; padding:4px 10px; border-radius:999px; background:#fef3c7; color:#92400e; font-size:0.76rem; font-weight:900;">${ped.medio_pago === 'EFECTIVO' ? `💵 Abonás al recibir: ${fmt(ped.total_vecino)}` : `🏦 Pendiente de transferencia: ${fmt(ped.total_vecino)}`}</span>`))
               }
-              ${(!ped.pago_confirmado && ped.medio_pago === 'TRANSFERENCIA' && nodo.alias_bancario_display) ? `
-                <div style="margin-top:5px; font-size:0.76rem; color:var(--text);">
-                  Alias: <strong>${esc(nodo.alias_bancario_display)}</strong>
-                  <button type="button" onclick="navigator.clipboard.writeText('${esc(nodo.alias_bancario_display)}'); this.textContent='✓ Copiado';"
-                    style="margin-left:4px; padding:2px 7px; border-radius:6px; border:1px solid var(--brand-border); background:#fff; color:var(--brand-dark); font-size:0.72rem; font-weight:800; cursor:pointer;">Copiar</button>
-                </div>
-              ` : ''}
             </div>
           </div>
 
@@ -6709,7 +7076,7 @@
           `).join('')}
           ${Number(ped.cargo_envio_barrial) > 0 ? `
             <div style="display:flex; justify-content:space-between; padding:3px 0; font-size:0.8rem; color:var(--muted);">
-              <span>${esEcSeg ? `Envío postal (${esc(opPostalLbl)})` : 'Envío barrial'}</span>
+              <span>${esEcSeg ? `Envío postal (${esc(opPostalLbl)})` : 'Envío a domicilio'}</span>
               <span>+${fmt(ped.cargo_envio_barrial)}</span>
             </div>
           ` : (esEcSeg ? `
@@ -6729,6 +7096,10 @@
             <span>${fmt(ped.total_vecino)}</span>
           </div>
         </div>
+
+        ${(!ped.pago_confirmado && ped.medio_pago === 'TRANSFERENCIA' && !seg.anulado) ? `
+          ${renderizarTarjetaTransferenciaYAvisoHtml(ped, nodo, 'trk_' + ped.codigo_pedido, { telefonoRespaldo: _trackingWhatsappActivo || '' })}
+        ` : ''}
 
         <!-- Acciones inferiores del vecino -->
         <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:space-between;">
@@ -7000,6 +7371,7 @@
       if (!alDia) {
         const bloques = [];
         if (pendTransf > 0.01) {
+          const bcoMc = resolverDatosBancariosOficialesTienda(nodo);
           bloques.push(`
             <div style="background:#eff6ff; border:1.5px solid #60a5fa; border-radius:13px; padding:13px 15px; margin-top:12px;">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -7008,13 +7380,13 @@
                     🏦 Datos para abonar por Transferencia (${fmt(pendTransf)})
                   </div>
                   <div style="font-size:1.12rem; font-weight:900; color:#0f172a; margin-top:3px;">
-                    Alias: <span>${esc(nodo.alias_bancario_display || 'pago.canasto')}</span>
+                    Alias: <span>${esc(bcoMc.alias)}</span>
                   </div>
                   <div style="font-size:0.8rem; color:#334155; font-weight:700; margin-top:2px;">
-                    ${nodo.titular_display ? `Titular: ${esc(limpiarTitularVisibleTienda(nodo.titular_display, nodo))}` : ''}${nodo.cbu_display && nodo.cbu_display !== '0000000000000000000000' ? ` · CBU: ${esc(nodo.cbu_display)}` : ''}
+                    Titular: <strong>${esc(bcoMc.titular)}</strong> · ${esc(bcoMc.banco)} · CBU: ${esc(bcoMc.cbu)}
                   </div>
                 </div>
-                <button type="button" onclick="navigator.clipboard.writeText('${esc(nodo.alias_bancario_display || 'pago.canasto')}'); this.textContent='✅ ¡Alias copiado!';"
+                <button type="button" onclick="copiarDatoBancarioTienda(this, '${esc(bcoMc.alias)}', '✅ ¡Alias copiado!')"
                   style="padding:9px 15px; border-radius:10px; border:none; background:#2563eb; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer; white-space:nowrap;">
                   📋 Copiar Alias
                 </button>
@@ -7186,6 +7558,12 @@
                 <span>${fmt(pedDest.total_vecino)}</span>
               </div>
             </div>
+
+            ${(!pedDest.pago_confirmado && pedDest.medio_pago === 'TRANSFERENCIA' && !seg.anulado) ? `
+              <div style="margin-top:12px;">
+                ${renderizarTarjetaTransferenciaYAvisoHtml(pedDest, nodo, 'mc_' + pedDest.codigo_pedido, { telefonoRespaldo: vec.telefono_normalizado || vec.telefono_whatsapp || '' })}
+              </div>
+            ` : ''}
           </div>
         `;
       }

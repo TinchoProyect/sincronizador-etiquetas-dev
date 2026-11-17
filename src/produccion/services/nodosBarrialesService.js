@@ -33,6 +33,7 @@ const {
     asegurarEsquemaAnaliticaNodos,
     vincularVisitanteConVecino
 } = require('./nodosAnaliticaService');
+const pagosBancariosService = require('./nodosPagosBancariosService');
 
 let esquemaInicializado = false;
 
@@ -3886,10 +3887,13 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             CREATE TABLE IF NOT EXISTS public.nodos_configuracion_canal (
                 id INTEGER PRIMARY KEY DEFAULT 1,
                 cuenta_bancaria_id INTEGER REFERENCES public.fin_cuentas_bancarias(id) ON DELETE SET NULL,
-                banco_recaudador VARCHAR(160) DEFAULT 'Cuenta Recaudadora Canal Nodos (Provisoria)',
-                alias_recaudador VARCHAR(120) NOT NULL DEFAULT 'pago.canasto',
-                cbu_recaudador VARCHAR(40) DEFAULT '0000000000000000000000',
-                titular_recaudador VARCHAR(180) DEFAULT 'Recaudación Canal Nodos (Provisorio)',
+                banco_recaudador VARCHAR(160) DEFAULT 'Banco Galicia',
+                alias_recaudador VARCHAR(120) NOT NULL DEFAULT 'LAMDA.SER.MARTIN',
+                cbu_recaudador VARCHAR(40) DEFAULT '0070373230004007844141',
+                titular_recaudador VARCHAR(180) DEFAULT 'Martín Ignacio Serrano',
+                cuil_recaudador VARCHAR(30) DEFAULT '23-24892174-9',
+                numero_cuenta_recaudador VARCHAR(50) DEFAULT '400784413734',
+                solo_transferencia_bancaria BOOLEAN NOT NULL DEFAULT true,
                 updated_at TIMESTAMP DEFAULT NOW()
             );
 
@@ -3897,7 +3901,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 id, cuenta_bancaria_id, banco_recaudador, alias_recaudador, cbu_recaudador, titular_recaudador
             )
             SELECT
-                1, NULL, 'Cuenta Recaudadora Canal Nodos (Provisoria)', 'pago.canasto', '0000000000000000000000', 'Recaudación Canal Nodos (Provisorio)'
+                1, NULL, 'Banco Galicia', 'LAMDA.SER.MARTIN', '0070373230004007844141', 'Martín Ignacio Serrano'
             WHERE NOT EXISTS (
                 SELECT 1 FROM public.nodos_configuracion_canal WHERE id = 1
             );
@@ -5530,6 +5534,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
         // Migración idempotente de identidad visual Paraíso para NODO-001 (sin tocar MANSO ni pedidos)
         await migrarNodoLoDeMatiAParaiso(client);
         await asegurarEsquemaAnaliticaNodos(client);
+        await pagosBancariosService.asegurarEsquemaPagosBancariosNodos(client, { forzar: true });
 
         await client.query('COMMIT');
         esquemaInicializado = true;
@@ -5770,11 +5775,14 @@ async function obtenerFuentesCostoSeisFlujos() {
 
     const cfgCanalRow = cfgCanalRes.rows[0] || {
         id: 1,
-        cuenta_bancaria_id: null,
-        banco_recaudador: 'Cuenta Recaudadora Canal Nodos (Provisoria)',
-        alias_recaudador: 'pago.canasto',
-        cbu_recaudador: '0000000000000000000000',
-        titular_recaudador: 'Recaudación Canal Nodos (Provisorio)'
+        cuenta_bancaria_id: 1,
+        banco_recaudador: pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.banco_recaudador,
+        alias_recaudador: pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.alias_recaudador,
+        cbu_recaudador: pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.cbu_recaudador,
+        titular_recaudador: pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.titular_recaudador,
+        cuil_recaudador: pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.cuil_recaudador,
+        numero_cuenta_recaudador: pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.numero_cuenta_recaudador,
+        solo_transferencia_bancaria: true
     };
 
     return {
@@ -6380,10 +6388,13 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
         // Consultar la configuración compartida de cuenta recaudadora del Canal Nodos
         const cfgCanalRes = await client.query('SELECT * FROM public.nodos_configuracion_canal WHERE id = 1');
         const cfgCanal = cfgCanalRes.rows[0] || {
-            cuenta_bancaria_id: null,
-            alias_recaudador: 'pago.canasto',
-            cbu_recaudador: '0000000000000000000000',
-            titular_recaudador: 'Recaudación Canal Nodos (Provisorio)'
+            cuenta_bancaria_id: 1,
+            banco_recaudador: pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.banco_recaudador,
+            alias_recaudador: pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.alias_recaudador,
+            cbu_recaudador: pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.cbu_recaudador,
+            titular_recaudador: pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.titular_recaudador,
+            cuil_recaudador: pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.cuil_recaudador,
+            numero_cuenta_recaudador: pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.numero_cuenta_recaudador
         };
 
         const usaCuentaCompartida = payload.usa_cuenta_compartida !== undefined ? Boolean(payload.usa_cuenta_compartida) : true;
@@ -6393,10 +6404,10 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
         let cuentaBancariaIdEfectiva = payload.cuenta_bancaria_id ? Number(payload.cuenta_bancaria_id) : (cfgCanal.cuenta_bancaria_id || null);
 
         if (usaCuentaCompartida || !aliasEfectivo) {
-            aliasEfectivo = cfgCanal.alias_recaudador || 'pago.canasto';
-            cbuEfectivo = cfgCanal.cbu_recaudador || cbuEfectivo || '';
-            titularEfectivo = cfgCanal.titular_recaudador || titularEfectivo || '';
-            cuentaBancariaIdEfectiva = cfgCanal.cuenta_bancaria_id || null;
+            aliasEfectivo = cfgCanal.alias_recaudador || pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.alias_recaudador;
+            cbuEfectivo = cfgCanal.cbu_recaudador || cbuEfectivo || pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.cbu_recaudador;
+            titularEfectivo = cfgCanal.titular_recaudador || titularEfectivo || pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.titular_recaudador;
+            cuentaBancariaIdEfectiva = cfgCanal.cuenta_bancaria_id || 1;
         }
 
         let gestorTokenCandidato = (existenteRow?.gestor_token && String(existenteRow.gestor_token).trim().length >= 16)
@@ -6959,10 +6970,13 @@ async function actualizarConfiguracionCuentaCanalNodos(payload = {}) {
         throw new Error('El alias recaudador compartido del canal Nodos no puede estar vacío.');
     }
 
-    const bancoRecaudador = String(payload.banco_recaudador || 'Cuenta Recaudadora Canal Nodos').trim();
-    const cbuRecaudador = String(payload.cbu_recaudador || '').trim();
-    const titularRecaudador = String(payload.titular_recaudador || 'Recaudación Canal Nodos').trim();
-    const cuentaBancariaId = payload.cuenta_bancaria_id ? Number(payload.cuenta_bancaria_id) : null;
+    const bancoRecaudador = String(payload.banco_recaudador || pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.banco_recaudador).trim();
+    const cbuRecaudador = String(payload.cbu_recaudador || pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.cbu_recaudador).trim();
+    const titularRecaudador = String(payload.titular_recaudador || pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.titular_recaudador).trim();
+    const cuilRecaudador = String(payload.cuil_recaudador || pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.cuil_recaudador).trim();
+    const numeroCuentaRecaudador = String(payload.numero_cuenta_recaudador || pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT.numero_cuenta_recaudador).trim();
+    const soloTransferencia = payload.solo_transferencia_bancaria !== undefined ? Boolean(payload.solo_transferencia_bancaria) : true;
+    const cuentaBancariaId = payload.cuenta_bancaria_id ? Number(payload.cuenta_bancaria_id) : 1;
 
     const client = await db.connect();
     try {
@@ -6975,18 +6989,22 @@ async function actualizarConfiguracionCuentaCanalNodos(payload = {}) {
                 alias_recaudador = $3,
                 cbu_recaudador = $4,
                 titular_recaudador = $5,
+                cuil_recaudador = $6,
+                numero_cuenta_recaudador = $7,
+                solo_transferencia_bancaria = $8,
                 updated_at = NOW()
              WHERE id = 1
              RETURNING *`,
-            [cuentaBancariaId, bancoRecaudador, aliasRecaudador, cbuRecaudador, titularRecaudador]
+            [cuentaBancariaId, bancoRecaudador, aliasRecaudador, cbuRecaudador, titularRecaudador, cuilRecaudador, numeroCuentaRecaudador, soloTransferencia]
         );
         if (cfgRes.rowCount === 0) {
             cfgRes = await client.query(
                 `INSERT INTO public.nodos_configuracion_canal (
-                    id, cuenta_bancaria_id, banco_recaudador, alias_recaudador, cbu_recaudador, titular_recaudador, updated_at
-                ) VALUES (1, $1, $2, $3, $4, $5, NOW())
+                    id, cuenta_bancaria_id, banco_recaudador, alias_recaudador, cbu_recaudador,
+                    titular_recaudador, cuil_recaudador, numero_cuenta_recaudador, solo_transferencia_bancaria, updated_at
+                ) VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, NOW())
                 RETURNING *`,
-                [cuentaBancariaId, bancoRecaudador, aliasRecaudador, cbuRecaudador, titularRecaudador]
+                [cuentaBancariaId, bancoRecaudador, aliasRecaudador, cbuRecaudador, titularRecaudador, cuilRecaudador, numeroCuentaRecaudador, soloTransferencia]
             );
         }
 
@@ -6996,10 +7014,13 @@ async function actualizarConfiguracionCuentaCanalNodos(payload = {}) {
                  cbu_display = $2,
                  titular_display = $3,
                  cuenta_bancaria_id = $4,
+                 banco_display = $5,
+                 cuil_display = $6,
+                 numero_cuenta_display = $7,
                  updated_at = NOW()
              WHERE COALESCE(usa_cuenta_compartida, true) = true
              RETURNING id, codigo_nodo, nombre_marca, alias_bancario_display`,
-            [aliasRecaudador, cbuRecaudador, titularRecaudador, cuentaBancariaId]
+            [aliasRecaudador, cbuRecaudador, titularRecaudador, cuentaBancariaId, bancoRecaudador, cuilRecaudador, numeroCuentaRecaudador]
         );
 
         await client.query('COMMIT');
@@ -8926,9 +8947,20 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         });
     }
 
+    const [cfgCanalActiva, mapaPagosGestor] = await Promise.all([
+        pagosBancariosService.obtenerConfiguracionBancariaCanalNodos(),
+        esVistaGestor && pedidosRes.rows.length > 0
+            ? pagosBancariosService.obtenerResumenPagosPorPedidosIds(
+                pedidosRes.rows.map(r => Number(r.id)),
+                null,
+                { incluirTokenComprobante: true }
+            )
+            : Promise.resolve(new Map())
+    ]);
+
     const pedidosConItems = pedidosRes.rows.map(p => {
-        const pagoConfirmado = Boolean(p.impactado_cta_cte_pago) ||
-            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase());
+        const resPago = pagosBancariosService.enriquecerPedidoConResumenPago(p, mapaPagosGestor.get(Number(p.id)));
+        const pagoConfirmado = resPago.pago_confirmado;
         const hitoActual = Number(p.hito_tracking_actual || resolverHitoDesdeEstadoOperativo(p.estado_operativo, p.secuencia_operativa_lamda));
         const latPedido = p.latitud != null ? Number(p.latitud) : null;
         const lngPedido = p.longitud != null ? Number(p.longitud) : null;
@@ -8936,6 +8968,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         const lngVecino = p.vecino_longitud != null ? Number(p.vecino_longitud) : null;
         return {
             ...p,
+            ...resPago,
             latitud: Number.isFinite(latPedido) ? latPedido : null,
             longitud: Number.isFinite(lngPedido) ? lngPedido : null,
             vecino_latitud: Number.isFinite(latVecino) ? latVecino : null,
@@ -9061,12 +9094,25 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
     const puedeRetiroNodo = Boolean(modulosActivosNodo.retiro_punto && nodo.permitir_retiro_nodo !== false);
     const puedeRepartoPropio = Boolean(modulosActivosNodo.reparto_zonal && (nodo.permitir_reparto_propio ?? nodo.permitir_envio_barrial ?? false));
     const puedeEncomiendaNodo = Boolean(modulosActivosNodo.envio_paqueteria || nodo.permitir_encomienda);
-    const permiteEfectivoNodo = Boolean(modulosActivosNodo.cobro_efectivo_entrega);
+    const permiteEfectivoNodo = Boolean(!cfgCanalActiva.solo_transferencia_bancaria && modulosActivosNodo.cobro_efectivo_entrega);
+
+    const bancoEfectivo = nodo.banco_display || cfgCanalActiva.banco_recaudador;
+    const aliasEfectivo = nodo.alias_bancario_display || cfgCanalActiva.alias_recaudador;
+    const cbuEfectivo = nodo.cbu_display || cfgCanalActiva.cbu_recaudador;
+    const titularEfectivo = nodo.titular_display || cfgCanalActiva.titular_recaudador;
+    const cuilEfectivo = nodo.cuil_display || cfgCanalActiva.cuil_recaudador;
+    const nroCuentaEfectivo = nodo.numero_cuenta_display || cfgCanalActiva.numero_cuenta_recaudador;
 
     const { gestor_token: _omitGestorToken, ...nodoSinToken } = nodo;
     const nodoPublico = esVistaGestor
         ? {
             ...nodoSinToken,
+            banco_display: bancoEfectivo,
+            alias_bancario_display: aliasEfectivo,
+            cbu_display: cbuEfectivo,
+            titular_display: titularEfectivo,
+            cuil_display: cuilEfectivo,
+            numero_cuenta_display: nroCuentaEfectivo,
             perfil_operativo: perfilOperativoNodo,
             modulos_activos: modulosActivosNodo,
             config_paqueteria: configPaqueteriaNodo,
@@ -9090,9 +9136,12 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             gestor_telefono: nodo.gestor_telefono,
             barrio_zona: nodo.barrio_zona,
             direccion_retiro: nodo.direccion_retiro,
-            alias_bancario_display: nodo.alias_bancario_display,
-            cbu_display: nodo.cbu_display,
-            titular_display: nodo.titular_display,
+            banco_display: bancoEfectivo,
+            alias_bancario_display: aliasEfectivo,
+            cbu_display: cbuEfectivo,
+            titular_display: titularEfectivo,
+            cuil_display: cuilEfectivo,
+            numero_cuenta_display: nroCuentaEfectivo,
             perfil_operativo: perfilOperativoNodo,
             modulos_activos: modulosActivosNodo,
             config_paqueteria: configPaqueteriaNodo,
@@ -9571,10 +9620,12 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             ? gananciaProductosGestor
             : (gananciaProductosGestor + cargoEnvioBarrial);
 
-        if (payload.medio_pago === 'EFECTIVO' && (!modulosNodo.cobro_efectivo_entrega || esPedidoPostal)) {
-            throw new Error('El pago en efectivo no está habilitado para envíos por correo. Seleccioná Transferencia Bancaria.');
+        const cfgCanalPedido = await pagosBancariosService.obtenerConfiguracionBancariaCanalNodos(client);
+        const efectivoPermitidoEnPedido = Boolean(!cfgCanalPedido.solo_transferencia_bancaria && modulosNodo.cobro_efectivo_entrega && !esPedidoPostal);
+        if (payload.medio_pago === 'EFECTIVO' && !efectivoPermitidoEnPedido) {
+            throw new Error('En esta tienda los pedidos se abonan por Transferencia Bancaria. Seleccioná Transferencia Bancaria para continuar.');
         }
-        const medioPago = (payload.medio_pago === 'EFECTIVO' && modulosNodo.cobro_efectivo_entrega && !esPedidoPostal)
+        const medioPago = (payload.medio_pago === 'EFECTIVO' && efectivoPermitidoEnPedido)
             ? 'EFECTIVO'
             : 'TRANSFERENCIA';
         const estadoPago = medioPago === 'EFECTIVO' ? 'COBRAR_EN_ENTREGA' : 'PENDIENTE_TRANSFERENCIA';
@@ -9989,9 +10040,12 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             },
             nodo_pago_info: {
                 nombre_marca: nodo.nombre_marca,
-                alias: nodo.alias_bancario_display,
-                cbu: nodo.cbu_display,
-                titular: nodo.titular_display,
+                banco: nodo.banco_display || cfgCanalPedido.banco_recaudador,
+                alias: nodo.alias_bancario_display || cfgCanalPedido.alias_recaudador,
+                cbu: nodo.cbu_display || cfgCanalPedido.cbu_recaudador,
+                titular: nodo.titular_display || cfgCanalPedido.titular_recaudador,
+                cuil: nodo.cuil_display || cfgCanalPedido.cuil_recaudador,
+                numero_cuenta: nodo.numero_cuenta_display || cfgCanalPedido.numero_cuenta_recaudador,
                 gestor_nombre: nodo.gestor_nombre,
                 gestor_telefono: nodo.gestor_telefono,
                 direccion_retiro: nodo.direccion_retiro
@@ -10192,45 +10246,62 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
 async function sincronizarCanastosEstacionNodos(runner = null) {
     const q = runner || db;
 
+    // Compuerta estricta unificada: desacoplar de canastos de armado todo pedido vecinal aún sin pago acreditado en Banco Galicia
+    await q.query(`
+        UPDATE public.nodos_pedidos_vecinos npv
+        SET lote_canasto_id = NULL
+        WHERE npv.lote_canasto_id IS NOT NULL
+          AND COALESCE(npv.estado_operativo, '') IN ('', 'CONFIRMADO_VECINO', 'EN_PREPARACION')
+          AND COALESCE(npv.impactado_cta_cte_pago, false) = false
+          AND UPPER(COALESCE(npv.estado_pago, '')) NOT IN ('CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR')
+    `);
+
+    await q.query(`
+        UPDATE public.presupuestos p
+        SET activo = false
+        FROM public.nodos_pedidos_vecinos npv
+        WHERE (p.id_presupuesto_ext = npv.codigo_pedido OR (npv.presupuesto_id_local IS NOT NULL AND p.id = npv.presupuesto_id_local))
+          AND COALESCE(npv.estado_operativo, '') IN ('', 'CONFIRMADO_VECINO', 'EN_PREPARACION')
+          AND COALESCE(npv.impactado_cta_cte_pago, false) = false
+          AND UPPER(COALESCE(npv.estado_pago, '')) NOT IN ('CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR')
+          AND p.activo = true
+    `);
+
+    const condElegibleArmadoSql = `
+        COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+        AND (
+            COALESCE(npv.impactado_cta_cte_pago, false) = true
+            OR UPPER(COALESCE(npv.estado_pago, '')) IN ('CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR')
+            OR npv.estado_operativo IN ('ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'EN_CAMINO_VECINO', 'ENTREGADO_VECINO')
+        )
+    `;
+
     const gruposRes = await q.query(`
         SELECT npv.nodo_id,
                nm.codigo_nodo,
                npv.fecha_entrega_label,
                MAX(npv.ventana_horaria_label) AS ventana_horaria_label,
                MIN(npv.fecha_entrega_comprometida) AS fecha_entrega_iso,
-               COUNT(*) FILTER (
-                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
-               )::int AS total_bolsas,
+               COUNT(*) FILTER (WHERE ${condElegibleArmadoSql})::int AS total_bolsas,
                COUNT(*) FILTER (
                    WHERE npv.estado_operativo IN ('ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'ENTREGADO_VECINO')
                )::int AS bolsas_armadas,
                COUNT(*) FILTER (
                    WHERE npv.estado_operativo IN ('EN_PODER_GESTOR', 'ENTREGADO_VECINO')
                )::int AS bolsas_despachadas,
-               COALESCE(SUM(npv.total_base_lamda) FILTER (
-                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
-               ), 0)::numeric(14,2) AS total_base_lamda,
-               COALESCE(SUM(npv.retencion_iva_margen) FILTER (
-                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
-               ), 0)::numeric(14,2) AS total_retencion_iva_margen,
-               COALESCE(SUM(npv.retencion_iibb_margen) FILTER (
-                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
-               ), 0)::numeric(14,2) AS total_retencion_iibb_margen,
-               COALESCE(SUM(npv.retencion_fiscal_margen) FILTER (
-                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
-               ), 0)::numeric(14,2) AS total_retencion_fiscal_margen,
-               COALESCE(SUM(npv.total_vecino) FILTER (
-                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
-               ), 0)::numeric(14,2) AS total_venta_vecinos,
-               COALESCE(SUM(npv.ganancia_total_gestor) FILTER (
-                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
-               ), 0)::numeric(14,2) AS ganancia_estimada_gestor
+               COALESCE(SUM(npv.total_base_lamda) FILTER (WHERE ${condElegibleArmadoSql}), 0)::numeric(14,2) AS total_base_lamda,
+               COALESCE(SUM(npv.retencion_iva_margen) FILTER (WHERE ${condElegibleArmadoSql}), 0)::numeric(14,2) AS total_retencion_iva_margen,
+               COALESCE(SUM(npv.retencion_iibb_margen) FILTER (WHERE ${condElegibleArmadoSql}), 0)::numeric(14,2) AS total_retencion_iibb_margen,
+               COALESCE(SUM(npv.retencion_fiscal_margen) FILTER (WHERE ${condElegibleArmadoSql}), 0)::numeric(14,2) AS total_retencion_fiscal_margen,
+               COALESCE(SUM(npv.total_vecino) FILTER (WHERE ${condElegibleArmadoSql}), 0)::numeric(14,2) AS total_venta_vecinos,
+               COALESCE(SUM(npv.ganancia_total_gestor) FILTER (WHERE ${condElegibleArmadoSql}), 0)::numeric(14,2) AS ganancia_estimada_gestor
         FROM public.nodos_pedidos_vecinos npv
         JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
         WHERE COALESCE(
             (nm.modulos_activos->>'canasto_consolidado')::boolean,
             CASE WHEN LOWER(COALESCE(nm.perfil_operativo, 'vecinal')) = 'ecommerce_fulfillment' THEN false ELSE true END
         ) = true
+          AND (${condElegibleArmadoSql})
         GROUP BY npv.nodo_id, nm.codigo_nodo, npv.fecha_entrega_label
         ORDER BY MIN(npv.fecha_entrega_comprometida) ASC, npv.nodo_id ASC
     `);
@@ -10239,11 +10310,12 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
         SELECT npv.nodo_id,
                npv.fecha_entrega_label,
                COALESCE(SUM(npi.cantidad * COALESCE(nac.kilos_unidad, 0.25)) FILTER (
-                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+                   WHERE ${condElegibleArmadoSql}
                ), 0)::numeric(12,3) AS total_kilos
         FROM public.nodos_pedidos_vecinos npv
         JOIN public.nodos_pedidos_items npi ON npi.pedido_id = npv.id
         LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+        WHERE (${condElegibleArmadoSql})
         GROUP BY npv.nodo_id, npv.fecha_entrega_label
     `);
 
@@ -10364,16 +10436,29 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
             );
         }
 
-        // Vincular los pedidos vecinales de esa ventana con su Canasto en ESTACION_NODOS
+        // Vincular únicamente los pedidos vecinales con pago acreditado (o históricos ya armados) con su Canasto en ESTACION_NODOS
         await q.query(
-            `UPDATE public.nodos_pedidos_vecinos
+            `UPDATE public.nodos_pedidos_vecinos npv
              SET lote_canasto_id = $1::int
-             WHERE nodo_id = $2::int
-               AND fecha_entrega_label = $3::varchar
-               AND (lote_canasto_id IS NULL OR lote_canasto_id <> $1::int)`,
+             WHERE npv.nodo_id = $2::int
+               AND npv.fecha_entrega_label = $3::varchar
+               AND (${condElegibleArmadoSql})
+               AND (npv.lote_canasto_id IS NULL OR npv.lote_canasto_id <> $1::int)`,
             [canastoId, g.nodo_id, g.fecha_entrega_label]
         );
     }
+
+    // Limpiar canastos abiertos vacíos (sin débito ni liquidación) cuyos pedidos pasaron a anulado o quedaron sin pago acreditado
+    await q.query(`
+        DELETE FROM public.nodos_lotes_estacion nle
+        WHERE COALESCE(nle.debito_cta_cte_registrado, false) = false
+          AND COALESCE(nle.liquidacion_cerrada, false) = false
+          AND COALESCE(nle.estado_canasto, '') <> 'ENTREGADO_AL_GESTOR'
+          AND NOT EXISTS (
+              SELECT 1 FROM public.nodos_pedidos_vecinos npv
+              WHERE npv.lote_canasto_id = nle.id
+          )
+    `);
 
     // Sincronizar automáticamente con las tablas operativas habituales de LAMDA
     await sincronizarNodosConCircuitoOperativoLamda(q);
@@ -10953,14 +11038,20 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
         let bolsasListasCount = 0;
 
         for (const pedido of pedidosCanastoRes.rows) {
-            if (String(pedido.estado_operativo || '').toUpperCase() === 'ANULADO') {
+            const estOpPed = String(pedido.estado_operativo || '').toUpperCase();
+            const pagoOkCanasto = estOpPed !== 'ANULADO' && (
+                Boolean(pedido.impactado_cta_cte_pago) ||
+                ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(pedido.estado_pago || '').toUpperCase()) ||
+                ['ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'EN_CAMINO_VECINO', 'ENTREGADO_VECINO'].includes(estOpPed)
+            );
+            if (estOpPed === 'ANULADO' || !pagoOkCanasto) {
                 await q.query(
                     `UPDATE public.presupuestos
                      SET activo = false,
-                         archivado = true,
-                         estado = 'Anulado'
+                         archivado = CASE WHEN $3 = 'ANULADO' THEN true ELSE archivado END,
+                         estado = CASE WHEN $3 = 'ANULADO' THEN 'Anulado' ELSE estado END
                      WHERE id_presupuesto_ext = $1 OR ($2::int IS NOT NULL AND id = $2::int)`,
-                    [pedido.codigo_pedido, pedido.presupuesto_id_local || null]
+                    [pedido.codigo_pedido, pedido.presupuesto_id_local || null, estOpPed]
                 );
                 continue;
             }
@@ -11186,6 +11277,11 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
         JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
         LEFT JOIN public.nodos_pedidos_envios_postales npep ON npep.pedido_id = npv.id
         WHERE npv.lote_canasto_id IS NULL
+          AND (
+              LOWER(COALESCE(nm.perfil_operativo, 'vecinal')) = 'ecommerce_fulfillment'
+              OR npep.id IS NOT NULL
+              OR UPPER(COALESCE(npv.modalidad_entrega, '')) IN ('PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL')
+          )
         ORDER BY npv.id ASC
     `);
 
@@ -12049,6 +12145,32 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
     }
 
     const nodosEcommerce = nodosRes.rows.filter(n => normalizarPerfilOperativoNodo(n.perfil_operativo) === 'ecommerce_fulfillment');
+    const pedidosVecinalesAguardandoPago = pedidosRes.rows
+        .filter(p => {
+            if (Number(p.lote_canasto_id || 0) > 0) return false;
+            const nRow = mapaNodosPorId.get(Number(p.nodo_id));
+            const esEc = nRow && normalizarPerfilOperativoNodo(nRow.perfil_operativo) === 'ecommerce_fulfillment';
+            const tienePostal = mapaPostalPorPedido.has(Number(p.id)) ||
+                ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(String(p.modalidad_entrega || '').toUpperCase());
+            if (esEc || tienePostal) return false;
+            return !pagosBancariosService.esPedidoPagoConfirmadoNodos(p);
+        })
+        .map(p => {
+            const nRow = mapaNodosPorId.get(Number(p.nodo_id)) || {};
+            return {
+                id: Number(p.id),
+                codigo_pedido: p.codigo_pedido,
+                nodo_id: Number(p.nodo_id),
+                nombre_marca: nRow.nombre_marca || '',
+                vecino_nombre: p.vecino_nombre,
+                fecha_entrega_label: p.fecha_entrega_label || '',
+                estado_pago: p.estado_pago || 'PENDIENTE_TRANSFERENCIA',
+                total_vecino: Number(p.total_vecino || 0),
+                monto_declarado_cliente: Number(p.monto_declarado_cliente || 0),
+                monto_acreditado_banco: Number(p.monto_acreditado_banco || 0),
+                items: itemsPorPedido.get(Number(p.id)) || []
+            };
+        });
 
     return {
         resumen_deposito: {
@@ -12057,6 +12179,7 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
             bolsas_pendientes_armar: bolsasPendientesArmar,
             bolsas_en_estacion_nodos: bolsasEnEstacionNodos,
             bolsas_en_poder_gestor: bolsasEnPoderGestor,
+            vecinales_aguardando_pago: pedidosVecinalesAguardandoPago.length,
             canastos_totales: canastosDetallados.length,
             canastos_listos_retiro: canastosListosRetiro,
             fulfillment_cola_activa: pendEmpaqueCount + empaquetadasListasCount,
@@ -12066,6 +12189,7 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
         },
         nodos: nodosRes.rows,
         canastos: canastosDetallados,
+        pedidos_vecinales_aguardando_pago: pedidosVecinalesAguardandoPago,
         fulfillment_paqueteria: {
             conectores: paqueteriaService.obtenerEstadoConectoresPaqueteria(),
             tiendas_online: nodosEcommerce,
@@ -12106,6 +12230,10 @@ async function armarBolsaPedidoVecino(pedidoId, payload = {}) {
 
     if (['EN_PODER_GESTOR', 'EN_CAMINO_VECINO', 'ENTREGADO_VECINO'].includes(String(ped.estado_operativo || '').toUpperCase())) {
         throw new Error('Este pedido ya fue retirado por el Gestor del Nodo.');
+    }
+
+    if (!desmarcar && !pagosBancariosService.esPedidoPagoConfirmadoNodos(ped)) {
+        throw new Error(`Bloqueo operativo: el pedido #${ped.codigo_pedido} aún no cuenta con pago acreditado en Banco Galicia.`);
     }
 
     const nuevoEstado = desmarcar ? 'CONFIRMADO_VECINO' : 'ARMADO_EN_CANASTO';
@@ -12630,6 +12758,8 @@ function calcularCuadroLiquidacionCanasto(canasto, pedidos = []) {
             if (pagoConfirmado) {
                 cantTransferenciasConciliadas++;
                 transferenciasConciliadasLamda += totVec;
+            } else if (Number(p.monto_acreditado_banco || 0) > 0) {
+                transferenciasConciliadasLamda += Math.min(totVec, Number(p.monto_acreditado_banco || 0));
             }
         }
     }
@@ -12863,27 +12993,47 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
         });
     }
 
+    const [mapaPagosLiquidacion, conciliadorGalicia] = await Promise.all([
+        pedidosRes.rows.length > 0
+            ? pagosBancariosService.obtenerResumenPagosPorPedidosIds(pedidosRes.rows.map(r => Number(r.id)))
+            : Promise.resolve(new Map()),
+        pagosBancariosService.obtenerTableroConciliadorGaliciaNodos({ nodo_id: nodoIdFiltro }).catch(() => null)
+    ]);
+
+    const mapaNodosLiq = new Map(nodosRes.rows.map(n => [Number(n.id), n]));
     const pedidosPorCanasto = new Map();
+    const pedidosVecinalesPreCanastoPorNodo = new Map();
     const pedidosPorVecinoId = new Map();
 
     for (const p of pedidosRes.rows) {
-        const cid = Number(p.lote_canasto_id);
+        const cid = Number(p.lote_canasto_id || 0);
         const esAnulado = String(p.estado_operativo || '').toUpperCase() === 'ANULADO';
-        const pagoConfirmado = !esAnulado && (
-            Boolean(p.impactado_cta_cte_pago) ||
-            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase())
-        );
+        const resPago = pagosBancariosService.enriquecerPedidoConResumenPago(p, mapaPagosLiquidacion.get(Number(p.id)));
+        const pagoConfirmado = !esAnulado && resPago.pago_confirmado;
 
         const titularSugerido = p.titular_transferencia || normalizarTitularBancario(p.vecino_nombre);
         const enriched = {
             ...p,
+            ...resPago,
             anulado: esAnulado,
             pago_confirmado: pagoConfirmado,
             titular_sugerido: titularSugerido,
             items: itemsPorPedido.get(Number(p.id)) || []
         };
-        if (!pedidosPorCanasto.has(cid)) pedidosPorCanasto.set(cid, []);
-        pedidosPorCanasto.get(cid).push(enriched);
+
+        const nRow = mapaNodosLiq.get(Number(p.nodo_id));
+        const esEc = (nRow && normalizarPerfilOperativoNodo(nRow.perfil_operativo) === 'ecommerce_fulfillment') ||
+            Boolean(p.postal_operador) ||
+            ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(String(p.modalidad_entrega || '').toUpperCase());
+
+        if (cid === 0 && !esEc) {
+            const nid = Number(p.nodo_id);
+            if (!pedidosVecinalesPreCanastoPorNodo.has(nid)) pedidosVecinalesPreCanastoPorNodo.set(nid, []);
+            pedidosVecinalesPreCanastoPorNodo.get(nid).push(enriched);
+        } else {
+            if (!pedidosPorCanasto.has(cid)) pedidosPorCanasto.set(cid, []);
+            pedidosPorCanasto.get(cid).push(enriched);
+        }
 
         if (p.vecino_id) {
             const vid = Number(p.vecino_id);
@@ -12945,7 +13095,20 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
 
     const lotes = canastosRes.rows.map(c => {
         const cid = Number(c.id);
-        const pedidosLote = pedidosPorCanasto.get(cid) || [];
+        const pedidosLote = (pedidosPorCanasto.get(cid) || []).slice();
+        // Si este lote sigue abierto, adjuntar pedidos vecinales de esa misma ventana pendientes de acreditación bancaria
+        if (!c.debito_cta_cte_registrado && !c.liquidacion_cerrada && String(c.estado_canasto || '') !== 'ENTREGADO_AL_GESTOR') {
+            const pendVec = pedidosVecinalesPreCanastoPorNodo.get(Number(c.nodo_id)) || [];
+            const restantes = [];
+            for (const pv of pendVec) {
+                if (pv.fecha_entrega_label === c.fecha_entrega_label) {
+                    pedidosLote.push(pv);
+                } else {
+                    restantes.push(pv);
+                }
+            }
+            pedidosVecinalesPreCanastoPorNodo.set(Number(c.nodo_id), restantes);
+        }
         const cuadro = calcularCuadroLiquidacionCanasto(c, pedidosLote);
         return {
             ...c,
@@ -12954,6 +13117,55 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
             liquidacion_oficial: liqPorCanasto.get(cid) || null
         };
     });
+
+    // Si un nodo vecinal tiene pedidos pendientes de conciliación bancaria cuya ventana aún no creó fila física en nodos_lotes_estacion,
+    // exponer una bandeja virtual previa en `lotes` para que Administración los vea y concilie sin ingresar aún a Depósito.
+    for (const [nid, pedsPre] of pedidosVecinalesPreCanastoPorNodo.entries()) {
+        if (!pedsPre || pedsPre.length === 0) continue;
+        const nRow = mapaNodosLiq.get(nid);
+        if (!nRow) continue;
+        const porVentana = new Map();
+        for (const pv of pedsPre) {
+            const lbl = pv.fecha_entrega_label || 'Próxima Ronda';
+            if (!porVentana.has(lbl)) porVentana.set(lbl, []);
+            porVentana.get(lbl).push(pv);
+        }
+        let subIdx = 1;
+        for (const [lbl, listaPv] of porVentana.entries()) {
+            const virtualCanasto = {
+                id: -(nid * 100 + subIdx++),
+                es_bandeja_previa_banco: true,
+                codigo_canasto: `PEND-BANCO-N${String(nid).padStart(2, '0')}`,
+                nodo_id: nid,
+                codigo_nodo: nRow.codigo_nodo,
+                nodo_slug: nRow.slug,
+                nombre_marca: nRow.nombre_marca,
+                gestor_nombre: nRow.gestor_nombre,
+                gestor_telefono: nRow.gestor_telefono,
+                alias_bancario_display: nRow.alias_bancario_display,
+                cbu_display: nRow.cbu_display,
+                titular_display: nRow.titular_display,
+                codigo_bunker_cliente: nRow.codigo_bunker_cliente,
+                codigo_bunker_cuenta_activa: nRow.codigo_bunker_cuenta_activa,
+                usar_cuenta_madre_unificada: nRow.usar_cuenta_madre_unificada,
+                alicuota_iva_margen_pct: nRow.alicuota_iva_margen_pct,
+                alicuota_iibb_margen_pct: nRow.alicuota_iibb_margen_pct,
+                fecha_entrega_label: lbl,
+                ventana_horaria_label: listaPv[0]?.ventana_horaria_label || '',
+                estado_canasto: 'AGUARDANDO_CONCILIACION_BANCO',
+                debito_cta_cte_registrado: false,
+                liquidacion_cerrada: false,
+                total_bolsas: 0,
+                bolsas_armadas: 0
+            };
+            lotes.unshift({
+                ...virtualCanasto,
+                cuadro_liquidacion: calcularCuadroLiquidacionCanasto(virtualCanasto, listaPv),
+                pedidos_vecinos: listaPv,
+                liquidacion_oficial: null
+            });
+        }
+    }
 
     // Construir tablero de Liquidación Continua 24/7 para Tiendas Online (ecommerce_fulfillment / lote_canasto_id IS NULL)
     const pedidosSinCanasto = pedidosPorCanasto.get(0) || [];
@@ -13053,11 +13265,32 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
         lotes,
         tiendas_fulfillment: tiendasFulfillment,
         cortes_fulfillment: cortesFulfillment,
+        conciliador_galicia: conciliadorGalicia,
         vecinos_padron: vecinosPadron,
         alias_aprendidos: aliasRes.rows,
         movimientos_cta_cte: movsRes.rows,
         telefono_whatsapp_pruebas: '5492216615746',
         telefono_whatsapp_pruebas_display: '221 661 5746'
+    };
+}
+
+function _obtenerHelpersContablesParaPagosBancarios() {
+    return {
+        resolverCuentaContableOperativaNodo,
+        recalcularSaldosCuentaMadreBunker,
+        recalcularSaldoSubcuentaVecino,
+        registrarTransicionHitoPedidoVecino,
+        calcularProximaVentanaEntrega: (configVentanas, fechaRef) => {
+            const resProx = calcularProximaEntregaNodo(configVentanas, fechaRef);
+            const asig = resProx?.asignada || {};
+            return {
+                fecha_entrega_label: asig.label_completo || '',
+                ventana_horaria_label: asig.ventana_retiro || '',
+                fecha_entrega_iso: asig.fecha_entrega_iso || null
+            };
+        },
+        sincronizarCanastosEstacionNodos,
+        sincronizarNodosConCircuitoOperativoLamda
     };
 }
 
@@ -13071,6 +13304,27 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
  */
 async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
     await asegurarEsquemaNodosBarriales();
+
+    const forzarEfectivo = String(payload.medio_pago || '').toUpperCase() === 'EFECTIVO';
+    if (!forzarEfectivo) {
+        const chkMedio = await db.query('SELECT medio_pago FROM public.nodos_pedidos_vecinos WHERE id = $1 LIMIT 1', [Number(pedidoId)]);
+        const esPedEfectivo = String(chkMedio.rows[0]?.medio_pago || '').toUpperCase() === 'EFECTIVO';
+        if (!esPedEfectivo) {
+            await pagosBancariosService.conciliarCreditosBancariosNodos(
+                {
+                    pedido_id: Number(pedidoId),
+                    movimiento_bancario_id: payload.movimiento_bancario_id || null,
+                    aviso_pago_id: payload.aviso_pago_id || null,
+                    monto_aplicado: payload.monto_aplicado,
+                    titular_transferencia: payload.titular_transferencia,
+                    comprobante_referencia: payload.comprobante_referencia,
+                    responsable: payload.responsable || 'Administración LAMDA'
+                },
+                _obtenerHelpersContablesParaPagosBancarios()
+            );
+            return obtenerTableroLiquidacionCobros();
+        }
+    }
 
     const client = await db.connect();
     try {
@@ -13107,7 +13361,6 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
         }
 
         const montoTotalVecino = Number(ped.total_vecino || 0);
-        const forzarEfectivo = String(payload.medio_pago || '').toUpperCase() === 'EFECTIVO';
         const esEfectivo = forzarEfectivo || String(ped.medio_pago || '').toUpperCase() === 'EFECTIVO';
 
         let saldoResultante = 0;
@@ -16272,7 +16525,7 @@ async function obtenerResumenRadarParaPedidoVecino(pedidoRow) {
 }
 
 async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
-    const [itemsRes, evsRes, postalRes] = await Promise.all([
+    const [itemsRes, evsRes, postalRes, resumenPagosMap, cfgBancoSeg] = await Promise.all([
         db.query(
             `SELECT COALESCE(NULLIF(TRIM(nombre_vidriera_vecino), ''), nombre_publico) AS nombre_publico,
                     presentacion_etiqueta, cantidad,
@@ -16299,12 +16552,15 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
              WHERE pedido_id = $1
              LIMIT 1`,
             [pedidoRow.id]
-        )
+        ),
+        pagosBancariosService.obtenerResumenPagosPorPedidosIds([Number(pedidoRow.id)], null, {
+            incluirTokenComprobante: true
+        }),
+        pagosBancariosService.obtenerConfiguracionBancariaCanalNodos()
     ]);
 
     const envioPostal = postalRes.rows[0] || null;
-    const pagoConfirmado = Boolean(pedidoRow.impactado_cta_cte_pago) ||
-        ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(pedidoRow.estado_pago || '').toUpperCase());
+    const pagoConfirmado = pagosBancariosService.esPedidoPagoConfirmadoNodos(pedidoRow);
 
     const perfilOp = normalizarPerfilOperativoNodo(nodoRow.perfil_operativo);
     const modulosOp = resolverModulosActivosNodo(nodoRow);
@@ -16320,6 +16576,59 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
         ? await obtenerResumenRadarParaPedidoVecino(pedidoRow)
         : { disponible: false };
 
+    const dfltGal = pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT;
+    const pedidoBase = {
+        codigo_pedido: pedidoRow.codigo_pedido,
+        tracking_token: pedidoRow.tracking_token,
+        vecino_nombre: pedidoRow.vecino_nombre,
+        modalidad_entrega: pedidoRow.modalidad_entrega,
+        direccion_entrega: pedidoRow.direccion_entrega || '',
+        entrecalles_referencia: pedidoRow.entrecalles_referencia || '',
+        fecha_entrega_label: pedidoRow.fecha_entrega_label || '',
+        ventana_horaria_label: pedidoRow.ventana_horaria_label || '',
+        medio_pago: pedidoRow.medio_pago,
+        estado_pago: pedidoRow.estado_pago,
+        impactado_cta_cte_pago: Boolean(pedidoRow.impactado_cta_cte_pago),
+        pago_confirmado: pagoConfirmado,
+        monto_declarado_cliente: Number(pedidoRow.monto_declarado_cliente || 0),
+        monto_acreditado_banco: Number(pedidoRow.monto_acreditado_banco || 0),
+        cantidad_avisos_pago: Number(pedidoRow.cantidad_avisos_pago || 0),
+        ultimo_aviso_pago_at: pedidoRow.ultimo_aviso_pago_at || null,
+        reclamo_pago_no_recibido: Boolean(pedidoRow.reclamo_pago_no_recibido),
+        reclamo_pago_motivo: pedidoRow.reclamo_pago_motivo || null,
+        reclamo_pago_fecha: pedidoRow.reclamo_pago_fecha || null,
+        ausente_pasa_retirar: Boolean(pedidoRow.ausente_pasa_retirar),
+        motivo_ausencia: pedidoRow.motivo_ausencia || '',
+        fecha_ausente_reparto: pedidoRow.fecha_ausente_reparto || null,
+        subtotal_productos_vecino: Number(pedidoRow.subtotal_productos_vecino || 0),
+        cargo_envio_barrial: Number(pedidoRow.cargo_envio_barrial || 0),
+        monto_ajuste_credito: Number(pedidoRow.monto_ajuste_credito || 0),
+        motivo_ajuste_credito: pedidoRow.motivo_ajuste_credito || '',
+        total_vecino: Number(pedidoRow.total_vecino || 0),
+        observaciones_vecino: pedidoRow.observaciones_vecino || '',
+        created_at: pedidoRow.created_at,
+        envio_postal: envioPostal ? {
+            operador_postal: envioPostal.operador_postal,
+            operador_label: formatearOperadorPostalLabel(envioPostal.operador_postal),
+            modalidad_postal: envioPostal.modalidad_postal,
+            sucursal_nombre: envioPostal.sucursal_nombre || null,
+            cp_destino: envioPostal.cp_destino,
+            provincia_nombre: envioPostal.provincia_nombre,
+            localidad_nombre: envioPostal.localidad_nombre,
+            costo_envio_cliente: Number(envioPostal.costo_envio_cliente || 0),
+            numero_tracking: envioPostal.numero_tracking || null,
+            url_tracking_carrier: envioPostal.url_tracking_carrier || null,
+            estado_envio: envioPostal.estado_envio || 'PENDIENTE_DESPACHO'
+        } : null
+    };
+    const pedidoEnriquecido = {
+        ...pedidoBase,
+        ...pagosBancariosService.enriquecerPedidoConResumenPago(
+            pedidoBase,
+            resumenPagosMap.get(Number(pedidoRow.id))
+        )
+    };
+
     return {
         nodo: {
             slug: nodoRow.slug,
@@ -16334,48 +16643,18 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             color_primario: nodoRow.color_primario || '#a2553b',
             tema_visual: (nodoRow.tema_visual && typeof nodoRow.tema_visual === 'object') ? nodoRow.tema_visual : {},
             logo_original_base64: nodoRow.logo_original_base64 || null,
-            alias_bancario_display: nodoRow.alias_bancario_display || '',
-            cbu_display: nodoRow.cbu_display || '',
-            titular_display: nodoRow.titular_display || '',
+            banco_display: nodoRow.banco_display || cfgBancoSeg.banco_display || dfltGal.banco_display,
+            alias_bancario_display: nodoRow.alias_bancario_display || cfgBancoSeg.alias_bancario_display || dfltGal.alias_bancario_display,
+            cbu_display: nodoRow.cbu_display || cfgBancoSeg.cbu_display || dfltGal.cbu_display,
+            titular_display: nodoRow.titular_display || cfgBancoSeg.titular_display || dfltGal.titular_display,
+            cuil_display: nodoRow.cuil_display || cfgBancoSeg.cuil_display || dfltGal.cuil_display,
+            numero_cuenta_display: nodoRow.numero_cuenta_display || cfgBancoSeg.numero_cuenta_display || dfltGal.numero_cuenta_display,
+            solo_transferencia_bancaria: cfgBancoSeg.solo_transferencia_bancaria !== false,
             perfil_operativo: perfilOp,
             modulos_activos: modulosOp,
             config_paqueteria: configPaqOp
         },
-        pedido: {
-            codigo_pedido: pedidoRow.codigo_pedido,
-            tracking_token: pedidoRow.tracking_token,
-            vecino_nombre: pedidoRow.vecino_nombre,
-            modalidad_entrega: pedidoRow.modalidad_entrega,
-            direccion_entrega: pedidoRow.direccion_entrega || '',
-            entrecalles_referencia: pedidoRow.entrecalles_referencia || '',
-            fecha_entrega_label: pedidoRow.fecha_entrega_label || '',
-            ventana_horaria_label: pedidoRow.ventana_horaria_label || '',
-            medio_pago: pedidoRow.medio_pago,
-            pago_confirmado: pagoConfirmado,
-            ausente_pasa_retirar: Boolean(pedidoRow.ausente_pasa_retirar),
-            motivo_ausencia: pedidoRow.motivo_ausencia || '',
-            fecha_ausente_reparto: pedidoRow.fecha_ausente_reparto || null,
-            subtotal_productos_vecino: Number(pedidoRow.subtotal_productos_vecino || 0),
-            cargo_envio_barrial: Number(pedidoRow.cargo_envio_barrial || 0),
-            monto_ajuste_credito: Number(pedidoRow.monto_ajuste_credito || 0),
-            motivo_ajuste_credito: pedidoRow.motivo_ajuste_credito || '',
-            total_vecino: Number(pedidoRow.total_vecino || 0),
-            observaciones_vecino: pedidoRow.observaciones_vecino || '',
-            created_at: pedidoRow.created_at,
-            envio_postal: envioPostal ? {
-                operador_postal: envioPostal.operador_postal,
-                operador_label: formatearOperadorPostalLabel(envioPostal.operador_postal),
-                modalidad_postal: envioPostal.modalidad_postal,
-                sucursal_nombre: envioPostal.sucursal_nombre || null,
-                cp_destino: envioPostal.cp_destino,
-                provincia_nombre: envioPostal.provincia_nombre,
-                localidad_nombre: envioPostal.localidad_nombre,
-                costo_envio_cliente: Number(envioPostal.costo_envio_cliente || 0),
-                numero_tracking: envioPostal.numero_tracking || null,
-                url_tracking_carrier: envioPostal.url_tracking_carrier || null,
-                estado_envio: envioPostal.estado_envio || 'PENDIENTE_DESPACHO'
-            } : null
-        },
+        pedido: pedidoEnriquecido,
         items: itemsRes.rows.map(it => ({
             nombre_publico: it.nombre_publico,
             presentacion_etiqueta: it.presentacion_etiqueta,
@@ -16411,7 +16690,8 @@ async function obtenerSeguimientoPublicoPedidoVecino(slug, trackingToken) {
                 nv.nombre_completo AS vec_nombre_real,
                 nm.slug AS nm_slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca, nm.gestor_nombre,
                 nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
-                nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
+                nm.logo_original_base64, nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
+                nm.cuil_display, nm.numero_cuenta_display,
                 nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.diccionario_textos
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
@@ -16512,7 +16792,8 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
                 nv.telefono_normalizado AS vec_tel_norm,
                 nm.slug AS nm_slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca, nm.gestor_nombre,
                 nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
-                nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
+                nm.logo_original_base64, nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
+                nm.cuil_display, nm.numero_cuenta_display,
                 nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.diccionario_textos
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
@@ -16594,6 +16875,8 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
     const perfilOpWa = normalizarPerfilOperativoNodo(primera.perfil_operativo);
     const modulosOpWa = resolverModulosActivosNodo(primera);
     const configPaqWa = normalizarConfigPaqueteria(primera.config_paqueteria);
+    const dfltGalWa = pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT;
+    const cfgBancoWa = await pagosBancariosService.obtenerConfiguracionBancariaCanalNodos();
     const nodoPublico = {
         slug: primera.nm_slug,
         slug_historico: primera.slug_historico || null,
@@ -16607,9 +16890,13 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
         color_primario: primera.color_primario || '#a2553b',
         tema_visual: (primera.tema_visual && typeof primera.tema_visual === 'object') ? primera.tema_visual : {},
         logo_original_base64: primera.logo_original_base64 || null,
-        alias_bancario_display: primera.alias_bancario_display || '',
-        cbu_display: '',
-        titular_display: primera.titular_display || '',
+        banco_display: primera.banco_display || cfgBancoWa.banco_display || dfltGalWa.banco_display,
+        alias_bancario_display: primera.alias_bancario_display || cfgBancoWa.alias_bancario_display || dfltGalWa.alias_bancario_display,
+        cbu_display: primera.cbu_display || cfgBancoWa.cbu_display || dfltGalWa.cbu_display,
+        titular_display: primera.titular_display || cfgBancoWa.titular_display || dfltGalWa.titular_display,
+        cuil_display: primera.cuil_display || cfgBancoWa.cuil_display || dfltGalWa.cuil_display,
+        numero_cuenta_display: primera.numero_cuenta_display || cfgBancoWa.numero_cuenta_display || dfltGalWa.numero_cuenta_display,
+        solo_transferencia_bancaria: cfgBancoWa.solo_transferencia_bancaria !== false,
         perfil_operativo: perfilOpWa,
         modulos_activos: modulosOpWa,
         config_paqueteria: configPaqWa
@@ -16652,7 +16939,15 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
                 fecha_entrega_label: p.fecha_entrega_label || '',
                 ventana_horaria_label: p.ventana_horaria_label || '',
                 medio_pago: p.medio_pago,
+                estado_pago: p.estado_pago,
                 pago_confirmado: pagoConfirmado,
+                monto_declarado_cliente: Number(p.monto_declarado_cliente || 0),
+                monto_acreditado_banco: Number(p.monto_acreditado_banco || 0),
+                cantidad_avisos_pago: Number(p.cantidad_avisos_pago || 0),
+                reclamo_pago_no_recibido: Boolean(p.reclamo_pago_no_recibido),
+                reclamo_pago_motivo: p.reclamo_pago_motivo || null,
+                saldo_pendiente_acreditar: pagoConfirmado ? 0 : Math.max(0, Number((Number(p.total_vecino || 0) - Number(p.monto_acreditado_banco || 0)).toFixed(2))),
+                saldo_pendiente_declarar: pagoConfirmado ? 0 : Math.max(0, Number((Number(p.total_vecino || 0) - Math.max(Number(p.monto_declarado_cliente || 0), Number(p.monto_acreditado_banco || 0))).toFixed(2))),
                 ausente_pasa_retirar: Boolean(p.ausente_pasa_retirar),
                 motivo_ausencia: p.motivo_ausencia || '',
                 fecha_ausente_reparto: p.fecha_ausente_reparto || null,
@@ -16733,7 +17028,8 @@ async function buscarSeguimientoPublicoPorTelefonoYPedido(slug, payload = {}) {
                 nv.telefono_normalizado AS vec_tel_norm,
                 nm.slug AS nm_slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca, nm.gestor_nombre,
                 nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
-                nm.logo_original_base64, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
+                nm.logo_original_base64, nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
+                nm.cuil_display, nm.numero_cuenta_display,
                 nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.diccionario_textos
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
@@ -16969,6 +17265,11 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
             );
         }
     } else if (accion === 'ENTREGADO') {
+        const esPedEfectivoEnt = String(ped.medio_pago || '').toUpperCase() === 'EFECTIVO';
+        const pagoConfirmadoEnt = pagosBancariosService.esPedidoPagoConfirmadoNodos(ped);
+        if (!pagoConfirmadoEnt && !(esPedEfectivoEnt && Boolean(payload.registrar_cobro_efectivo))) {
+            throw new Error(`El pedido #${ped.codigo_pedido} aún no tiene la transferencia acreditada en Banco Galicia. Debe estar conciliado antes de registrar la entrega.`);
+        }
         if (ped.ausente_pasa_retirar) {
             await db.query(
                 `UPDATE public.nodos_pedidos_vecinos
@@ -18323,7 +18624,8 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
                 nm.slug AS nm_slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca,
                 nm.gestor_nombre, nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro,
                 nm.color_primario, nm.tema_visual, nm.logo_original_base64,
-                nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
+                nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
+                nm.cuil_display, nm.numero_cuenta_display,
                 nm.permitir_envio_barrial, nm.permitir_retiro_nodo, nm.permitir_reparto_propio, nm.permitir_encomienda, nm.cargo_envio_barrial,
                 nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.diccionario_textos
          FROM public.nodos_vecinos nv
@@ -18342,6 +18644,8 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
 
     const row = vecRes.rows[0];
     const vid = Number(row.id);
+    const cfgBancoPortal = await pagosBancariosService.obtenerConfiguracionBancariaCanalNodos();
+    const dfltGalPortal = pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT;
     const nodoInfo = {
         slug: row.nm_slug,
         slug_historico: row.slug_historico || null,
@@ -18355,9 +18659,13 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
         color_primario: row.color_primario || '#a2553b',
         tema_visual: (row.tema_visual && typeof row.tema_visual === 'object') ? row.tema_visual : {},
         logo_original_base64: row.logo_original_base64 || null,
-        alias_bancario_display: row.alias_bancario_display || 'pago.canasto',
-        cbu_display: row.cbu_display || '',
-        titular_display: row.titular_display || '',
+        banco_display: row.banco_display || cfgBancoPortal.banco_display || dfltGalPortal.banco_display,
+        alias_bancario_display: row.alias_bancario_display || cfgBancoPortal.alias_bancario_display || dfltGalPortal.alias_bancario_display,
+        cbu_display: row.cbu_display || cfgBancoPortal.cbu_display || dfltGalPortal.cbu_display,
+        titular_display: row.titular_display || cfgBancoPortal.titular_display || dfltGalPortal.titular_display,
+        cuil_display: row.cuil_display || cfgBancoPortal.cuil_display || dfltGalPortal.cuil_display,
+        numero_cuenta_display: row.numero_cuenta_display || cfgBancoPortal.numero_cuenta_display || dfltGalPortal.numero_cuenta_display,
+        solo_transferencia_bancaria: cfgBancoPortal.solo_transferencia_bancaria !== false,
         permitir_envio_barrial: Boolean(row.permitir_reparto_propio ?? row.permitir_envio_barrial),
         permitir_retiro_nodo: row.permitir_retiro_nodo !== false,
         permitir_reparto_propio: Boolean(row.permitir_reparto_propio ?? row.permitir_envio_barrial),
@@ -18375,6 +18683,8 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
                     fecha_entrega_label, ventana_horaria_label,
                     medio_pago, estado_pago, estado_operativo, secuencia_operativa_lamda,
                     hito_tracking_actual, impactado_cta_cte_pago, comprobante_referencia,
+                    monto_declarado_cliente, monto_acreditado_banco, cantidad_avisos_pago, ultimo_aviso_pago_at,
+                    reclamo_pago_no_recibido, reclamo_pago_motivo, reclamo_pago_fecha,
                     subtotal_productos_vecino, cargo_envio_barrial, monto_ajuste_credito,
                     motivo_anulacion_ajuste, total_vecino, observaciones_vecino,
                     created_at, fecha_en_preparacion, fecha_armado_bolsa,
@@ -18453,6 +18763,12 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
         }
     }
 
+    const resumenPagosPortalMap = await pagosBancariosService.obtenerResumenPagosPorPedidosIds(
+        pedsRes.rows.map(p => Number(p.id)),
+        null,
+        { incluirTokenComprobante: true }
+    );
+
     let totalPendienteTransferencia = 0;
     let totalPendienteEfectivo = 0;
     let totalHistoricoComprado = 0;
@@ -18464,10 +18780,9 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
     const historialPedidos = pedsRes.rows.map(p => {
         const pid = Number(p.id);
         const esAnulado = String(p.estado_operativo || '').toUpperCase() === 'ANULADO';
-        const pagoConfirmado = !esAnulado && (
-            Boolean(p.impactado_cta_cte_pago) ||
-            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase())
-        );
+        const resPagoPortal = resumenPagosPortalMap.get(pid) || null;
+        const pEnr = pagosBancariosService.enriquecerPedidoConResumenPago(p, resPagoPortal);
+        const pagoConfirmado = !esAnulado && Boolean(pEnr.pago_confirmado);
         const totalPed = Number(p.total_vecino || 0);
         const medioPagoNorm = String(p.medio_pago || 'TRANSFERENCIA').toUpperCase();
         const epPortal = postalesPorPedido.get(pid) || null;
@@ -18483,12 +18798,19 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
             }
             if (pagoConfirmado) {
                 totalHistoricoAbonado += totalPed;
-            } else if (totalPed > 0.01) {
-                cantidadPagosPendientes += 1;
-                if (medioPagoNorm === 'EFECTIVO') {
-                    totalPendienteEfectivo += totalPed;
-                } else {
-                    totalPendienteTransferencia += totalPed;
+            } else {
+                const acreditadoParcial = Number(pEnr.monto_acreditado_banco || 0);
+                if (acreditadoParcial > 0) {
+                    totalHistoricoAbonado += Math.min(totalPed, acreditadoParcial);
+                }
+                const pendienteReal = Math.max(0, Number((totalPed - acreditadoParcial).toFixed(2)));
+                if (pendienteReal > 0.01) {
+                    cantidadPagosPendientes += 1;
+                    if (medioPagoNorm === 'EFECTIVO') {
+                        totalPendienteEfectivo += pendienteReal;
+                    } else {
+                        totalPendienteTransferencia += pendienteReal;
+                    }
                 }
             }
         }
@@ -18505,7 +18827,7 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
             medio_pago_label: medioPagoNorm === 'EFECTIVO' ? 'Efectivo al recibir / retirar' : 'Transferencia bancaria',
             monto_abonado: Number(totalPed.toFixed(2)),
             emitido_por: nodoInfo.nombre_marca,
-            concepto: `Pedido vecinal #${p.codigo_pedido} (${totalUnidades} ${totalUnidades === 1 ? 'unidad' : 'unidades'})`
+            concepto: `Pedido #${p.codigo_pedido} (${totalUnidades} ${totalUnidades === 1 ? 'unidad' : 'unidades'})`
         } : null;
 
         return {
@@ -18518,7 +18840,19 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
             direccion_entrega: p.direccion_entrega || '',
             entrecalles_referencia: p.entrecalles_referencia || '',
             medio_pago: medioPagoNorm,
+            estado_pago: pEnr.estado_pago,
             pago_confirmado: pagoConfirmado,
+            monto_declarado_cliente: pEnr.monto_declarado_cliente,
+            monto_acreditado_banco: pEnr.monto_acreditado_banco,
+            saldo_pendiente_acreditar: pEnr.saldo_pendiente_acreditar,
+            saldo_pendiente_declarar: pEnr.saldo_pendiente_declarar,
+            cantidad_avisos_pago: pEnr.cantidad_avisos_pago,
+            ultimo_aviso_pago_at: pEnr.ultimo_aviso_pago_at,
+            reclamo_pago_no_recibido: pEnr.reclamo_pago_no_recibido,
+            reclamo_pago_motivo: pEnr.reclamo_pago_motivo,
+            reclamo_pago_fecha: pEnr.reclamo_pago_fecha,
+            avisos_pago: pEnr.avisos_pago,
+            cobros_banco: pEnr.cobros_banco,
             anulado: esAnulado,
             subtotal_productos_vecino: Number(p.subtotal_productos_vecino || 0),
             cargo_envio_barrial: Number(p.cargo_envio_barrial || 0),
@@ -19107,6 +19441,54 @@ async function eliminarNodoPruebaLaboratorio(nodoId, opciones = {}) {
     return { ok: true, eliminado: true, resumen };
 }
 
+async function obtenerTableroConciliadorGaliciaNodos(filtros = {}) {
+    await asegurarEsquemaNodosBarriales();
+    return pagosBancariosService.obtenerTableroConciliadorGaliciaNodos(filtros);
+}
+
+async function ingestarExtractoGaliciaParaNodos(buffer, opciones = {}) {
+    await asegurarEsquemaNodosBarriales();
+    return pagosBancariosService.ingestarExtractoGaliciaParaNodos(buffer, opciones);
+}
+
+async function conciliarCreditosBancariosNodos(payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+    const resConc = await pagosBancariosService.conciliarCreditosBancariosNodos(
+        payload,
+        _obtenerHelpersContablesParaPagosBancarios()
+    );
+    const tablero = await obtenerTableroLiquidacionCobros({ nodo_id: payload.nodo_id || 0 });
+    return {
+        ...resConc,
+        tablero
+    };
+}
+
+async function marcarPagoNoRecibidoPedidoNodo(pedidoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+    const resRec = await pagosBancariosService.marcarPagoNoRecibidoYSolicitarComprobante(pedidoId, payload);
+    const tablero = await obtenerTableroLiquidacionCobros({ nodo_id: payload.nodo_id || 0 });
+    return {
+        ...resRec,
+        tablero
+    };
+}
+
+async function obtenerEstadoPagoPublicoPedidoTienda(slug, codigoOToken, queryAuth = {}) {
+    await asegurarEsquemaNodosBarriales();
+    return pagosBancariosService.obtenerEstadoPagoPublicoPedido(slug, codigoOToken, queryAuth);
+}
+
+async function registrarAvisoPagoCompradorTienda(slug, codigoOToken, payload = {}, fileObj = null) {
+    await asegurarEsquemaNodosBarriales();
+    return pagosBancariosService.registrarAvisoPagoComprador(slug, codigoOToken, payload, fileObj);
+}
+
+async function obtenerArchivoComprobanteAvisoPagoNodos(avisoId, opciones = {}) {
+    await asegurarEsquemaNodosBarriales();
+    return pagosBancariosService.obtenerArchivoComprobanteAvisoPago(avisoId, opciones);
+}
+
 module.exports = {
     esModoLaboratorioNodos,
     geocodificarDireccionArgentina,
@@ -19217,6 +19599,13 @@ module.exports = {
     resolverCuentaContableOperativaNodo,
     sincronizarArchivoYConsolidacionSubcuentaNodo,
     activarCuentaMadreUnificadaNodo,
+    obtenerTableroConciliadorGaliciaNodos,
+    ingestarExtractoGaliciaParaNodos,
+    conciliarCreditosBancariosNodos,
+    marcarPagoNoRecibidoPedidoNodo,
+    obtenerEstadoPagoPublicoPedidoTienda,
+    registrarAvisoPagoCompradorTienda,
+    obtenerArchivoComprobanteAvisoPagoNodos,
     TEMA_VISUAL_PARAISO_OFICIAL,
     TEMA_VISUAL_MANSO_OFICIAL,
     LOGO_ZPL_CONFIG_MANSO_OFICIAL,

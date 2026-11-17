@@ -1,6 +1,6 @@
 {
-  "tableCount": 166,
-  "uniqueIndexCount": 239,
+  "tableCount": 168,
+  "uniqueIndexCount": 242,
   "tables": {
     "articulos": {
       "numero": {
@@ -11604,6 +11604,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "now()"
+      },
+      "cbu_cvu_origen": {
+        "ordinal_position": 10,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_articulos_catalogo": {
@@ -12068,6 +12078,36 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "now()"
+      },
+      "cuil_recaudador": {
+        "ordinal_position": 8,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'23-24892174-9'::character varying"
+      },
+      "numero_cuenta_recaudador": {
+        "ordinal_position": 9,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'400784413734'::character varying"
+      },
+      "solo_transferencia_bancaria": {
+        "ordinal_position": 10,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "true"
       }
     },
     "nodos_liquidaciones_lote": {
@@ -13154,6 +13194,36 @@
         "numeric_scale": 2,
         "is_nullable": "NO",
         "column_default": "4.00"
+      },
+      "banco_display": {
+        "ordinal_position": 51,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'Banco Galicia'::character varying"
+      },
+      "cuil_display": {
+        "ordinal_position": 52,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'23-24892174-9'::character varying"
+      },
+      "numero_cuenta_display": {
+        "ordinal_position": 53,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'400784413734'::character varying"
       }
     },
     "nodos_movimientos_cta_cte": {
@@ -13418,6 +13488,320 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "'[]'::jsonb"
+      }
+    },
+    "nodos_pedidos_avisos_pago": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_pedidos_avisos_pago_id_seq'::regclass)"
+      },
+      "pedido_id": {
+        "ordinal_position": 2,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "nodo_id": {
+        "ordinal_position": 3,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "vecino_id": {
+        "ordinal_position": 4,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "monto_informado": {
+        "ordinal_position": 5,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "titular_emisor": {
+        "ordinal_position": 6,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 180,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "es_cuenta_tercero": {
+        "ordinal_position": 7,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "nota_cliente": {
+        "ordinal_position": 8,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 280,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "comprobante_token": {
+        "ordinal_position": 9,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 64,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "comprobante_filename": {
+        "ordinal_position": 10,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 220,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "comprobante_mime": {
+        "ordinal_position": 11,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "comprobante_bytes": {
+        "ordinal_position": 12,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "estado_aviso": {
+        "ordinal_position": 13,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 32,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'INFORMADO'::character varying"
+      },
+      "movimiento_bancario_id": {
+        "ordinal_position": 14,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "created_at": {
+        "ordinal_position": 15,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      "updated_at": {
+        "ordinal_position": 16,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      }
+    },
+    "nodos_pedidos_cobros_banco": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_pedidos_cobros_banco_id_seq'::regclass)"
+      },
+      "pedido_id": {
+        "ordinal_position": 2,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "nodo_id": {
+        "ordinal_position": 3,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "vecino_id": {
+        "ordinal_position": 4,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "movimiento_bancario_id": {
+        "ordinal_position": 5,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "aviso_pago_id": {
+        "ordinal_position": 6,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "monto_aplicado": {
+        "ordinal_position": 7,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "fecha_banco": {
+        "ordinal_position": 8,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "cuit_origen": {
+        "ordinal_position": 9,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 24,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "cbu_origen": {
+        "ordinal_position": 10,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "titular_banco": {
+        "ordinal_position": 11,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 180,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "referencia_banco": {
+        "ordinal_position": 12,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 160,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "movimiento_pago_cc_id": {
+        "ordinal_position": 13,
+        "data_type": "bigint",
+        "udt_name": "int8",
+        "character_maximum_length": null,
+        "numeric_precision": 64,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "conciliado_por": {
+        "ordinal_position": 14,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "'Administración LAMDA'::character varying"
+      },
+      "created_at": {
+        "ordinal_position": 15,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
       }
     },
     "nodos_pedidos_envios_postales": {
@@ -14706,6 +15090,76 @@
         "numeric_scale": 2,
         "is_nullable": "NO",
         "column_default": "0.00"
+      },
+      "monto_declarado_cliente": {
+        "ordinal_position": 68,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "monto_acreditado_banco": {
+        "ordinal_position": 69,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "cantidad_avisos_pago": {
+        "ordinal_position": 70,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      "ultimo_aviso_pago_at": {
+        "ordinal_position": 71,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "reclamo_pago_no_recibido": {
+        "ordinal_position": 72,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "reclamo_pago_motivo": {
+        "ordinal_position": 73,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "reclamo_pago_fecha": {
+        "ordinal_position": 74,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_propuestas_fracciones": {
@@ -22381,6 +22835,46 @@
       ],
       "has_expression_key": false,
       "sig": "nodos_ofertas_gestor::(nodo_id, articulo_catalogo_id)[pred=]"
+    },
+    {
+      "table_name": "nodos_pedidos_avisos_pago",
+      "index_name": "nodos_pedidos_avisos_pago_pkey",
+      "is_primary": true,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX nodos_pedidos_avisos_pago_pkey ON public.nodos_pedidos_avisos_pago USING btree (id)",
+      "index_predicate": "",
+      "key_columns": [
+        "id"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_pedidos_avisos_pago::(id)[pred=]"
+    },
+    {
+      "table_name": "nodos_pedidos_cobros_banco",
+      "index_name": "nodos_pedidos_cobros_banco_pkey",
+      "is_primary": true,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX nodos_pedidos_cobros_banco_pkey ON public.nodos_pedidos_cobros_banco USING btree (id)",
+      "index_predicate": "",
+      "key_columns": [
+        "id"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_pedidos_cobros_banco::(id)[pred=]"
+    },
+    {
+      "table_name": "nodos_pedidos_cobros_banco",
+      "index_name": "unq_nodos_cobro_pedido_mov",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX unq_nodos_cobro_pedido_mov ON public.nodos_pedidos_cobros_banco USING btree (pedido_id, movimiento_bancario_id) WHERE (movimiento_bancario_id IS NOT NULL)",
+      "index_predicate": "(movimiento_bancario_id IS NOT NULL)",
+      "key_columns": [
+        "pedido_id",
+        "movimiento_bancario_id"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_pedidos_cobros_banco::(pedido_id, movimiento_bancario_id)[pred=(movimiento_bancario_id is not null)]"
     },
     {
       "table_name": "nodos_pedidos_envios_postales",

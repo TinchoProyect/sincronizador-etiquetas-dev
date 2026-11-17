@@ -139,6 +139,7 @@ src/produccion/cache/
 # Uploads de bultos y álbumes locales de nodos en Modo Laboratorio
 src/logistica/public/uploads/
 data/nodos-fotos/
+data/nodos-comprobantes/
 
 # Scripts scratch locales
 src/scratch_*.js

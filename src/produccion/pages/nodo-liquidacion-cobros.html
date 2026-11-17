@@ -218,6 +218,9 @@
         <!-- KPIS EN VIVO DEL LOTE Y CUENTA CORRIENTE -->
         <div class="kpi-grid" id="kpi-container"></div>
 
+        <!-- PANEL CENTRAL: CONCILIADOR AUTOMÁTICO BANCO GALICIA (LAMDA.SER.MARTIN) -->
+        <div id="conciliador-galicia-container" style="margin-bottom:16px;"></div>
+
         <div class="workspace-grid">
             <!-- COLUMNA IZQUIERDA: LOTES, TITULARES APRENDIDOS Y LIBRO MAYOR CTA CTE -->
             <div style="display:flex; flex-direction:column; gap:14px;">
@@ -369,6 +372,7 @@
         function renderizarTodo() {
             if (!ESTADO.tablero) return;
             renderizarKpis();
+            renderizarConciliadorGalicia();
             renderizarListaLotes();
             renderizarListaTiendasFulfillment();
             renderizarAliasAprendidos();
@@ -379,6 +383,400 @@
                 renderizarWorkspaceLoteActivo();
             }
             renderizarPadronDobleLamda();
+        }
+
+        function renderizarBadgesEstadoBancarioPedido(p) {
+            if (!p || p.anulado || p.pago_confirmado) return '';
+            const badges = [];
+            const acreditado = Number(p.monto_acreditado_banco || 0);
+            const declarado = Number(p.monto_declarado_cliente || 0);
+            const saldoPend = Number(p.saldo_pendiente_acreditar ?? Math.max(0, Number(p.total_vecino || 0) - acreditado));
+            const avisos = Array.isArray(p.avisos_pago) ? p.avisos_pago : [];
+
+            if (acreditado > 0.01) {
+                badges.push(`<span class="badge" style="background:rgba(16,185,129,0.18); color:#6ee7b7; border:1px solid #10b981;">🌓 Acreditado parcial: ${fmtMoneda(acreditado)} · Resta ${fmtMoneda(saldoPend)}</span>`);
+            }
+            if (p.reclamo_pago_no_recibido) {
+                badges.push(`<span class="badge" style="background:rgba(239,68,68,0.24); color:#fecaca; border:1px solid #ef4444;">🚨 Pago no recibido · Comprobante solicitado</span>`);
+            } else if (declarado > 0.01 || avisos.length > 0) {
+                const ultTit = avisos.find(a => a.titular_emisor)?.titular_emisor || '';
+                badges.push(`<span class="badge" style="background:rgba(245,158,11,0.22); color:#fde68a; border:1px solid #f59e0b;">🔔 Pago informado por cliente: ${fmtMoneda(declarado)}${ultTit ? ` (De: ${esc(ultTit)})` : ''}${avisos.length > 1 ? ` · ${avisos.length} tramos` : ''}</span>`);
+            }
+            for (const av of avisos) {
+                if (av.tiene_comprobante) {
+                    badges.push(`<a href="/api/produccion/nodos/comprobante-pago/${av.id}" target="_blank" rel="noopener" class="badge" style="background:rgba(56,189,248,0.2); color:#bae6fd; border:1px solid #38bdf8; text-decoration:none;">📎 Ver comprobante #${av.id} ↗</a>`);
+                }
+            }
+            return badges.join(' ');
+        }
+
+        function renderizarConciliadorGalicia() {
+            const box = document.getElementById('conciliador-galicia-container');
+            if (!box) return;
+            const cg = ESTADO.tablero?.conciliador_galicia || {};
+            const cta = cg.cuenta_oficial || {};
+            const sugs = Array.isArray(cg.sugerencias) ? cg.sugerencias : [];
+            const creds = Array.isArray(cg.creditos_disponibles) ? cg.creditos_disponibles : [];
+            const sinResp = Array.isArray(cg.pedidos_informados_sin_respaldo) ? cg.pedidos_informados_sin_respaldo : [];
+            const pedsPend = Array.isArray(cg.pedidos_pendientes) ? cg.pedidos_pendientes : [];
+
+            window._mapaSugerenciasGalicia = {};
+            sugs.forEach((s, idx) => {
+                window._mapaSugerenciasGalicia[idx] = s;
+            });
+
+            const sugsHtml = sugs.length === 0
+                ? `<div style="padding:11px 13px; border-radius:9px; background:#0f172a; border:1px dashed #334155; color:#94a3b8; font-size:0.79rem;">
+                    ${creds.length === 0
+                        ? 'Subí el archivo Excel (.xls / .xlsx) descargado de Office Banking / Banco Galicia para cruzar acreditaciones automáticamente contra todos los pedidos abiertos.'
+                        : 'No se detectaron coincidencias automáticas directas con los créditos libres actuales. Podés imputar cualquier crédito manualmente abajo.'}
+                   </div>`
+                : sugs.map((s, idx) => {
+                    const mov = s.movimiento || {};
+                    const prop = s.propuesta || {};
+                    const imps = Array.isArray(prop.imputaciones) ? prop.imputaciones : [];
+                    const motivosTxt = (prop.motivos || []).map(m => esc(m)).join(' · ');
+                    const confAlta = prop.confianza === 'ALTA';
+                    return `
+                        <div data-testid="sugerencia-galicia-row" style="padding:11px 13px; border-radius:10px; background:#0f172a; border:1.5px solid ${confAlta ? 'rgba(16,185,129,0.55)' : 'rgba(56,189,248,0.45)'}; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                            <div style="flex:1; min-width:260px;">
+                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                    <span class="badge" style="background:${confAlta ? 'rgba(16,185,129,0.22)' : 'rgba(56,189,248,0.2)'}; color:${confAlta ? '#6ee7b7' : '#7dd3fc'}; border:1px solid ${confAlta ? '#10b981' : '#38bdf8'};">
+                                        ${confAlta ? '🎯 Match Alta Confianza' : '🔎 Sugerencia Detectada'} (${prop.puntaje || 0} pts)
+                                    </span>
+                                    <strong style="color:#34d399; font-size:0.95rem;">+${fmtMoneda(mov.credito_disponible)}</strong>
+                                    <span style="font-size:0.8rem; color:#f8fafc; font-weight:800;">🏦 ${esc(mov.titular_banco || mov.concepto || 'Transferencia Galicia')}</span>
+                                    ${mov.cuit_origen ? `<span style="font-family:monospace; font-size:0.73rem; color:#94a3b8;">CUIT ${esc(mov.cuit_origen)}</span>` : ''}
+                                    <span style="font-size:0.72rem; color:#64748b;">📅 ${esc(String(mov.fecha_operacion || '').slice(0, 10))}</span>
+                                </div>
+                                <div style="font-size:0.79rem; color:#e2e8f0; margin-top:5px;">
+                                    👉 Imputa a:
+                                    ${imps.map(im => `<strong style="color:#38bdf8;">#${esc(im.codigo_pedido)}</strong> (${esc(im.nombre_marca)} · ${esc(im.vecino_nombre)}: <strong>${fmtMoneda(im.monto_aplicado)}</strong> de ${fmtMoneda(im.saldo_pendiente_pedido)})`).join(' + ')}
+                                </div>
+                                <div style="font-size:0.73rem; color:#94a3b8; margin-top:3px;">
+                                    💡 ${motivosTxt}
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <button type="button" class="btn-action" data-testid="btn-confirmar-sugerencia-${idx}"
+                                    onclick="confirmarSugerenciaGalicia(${idx})"
+                                    style="background:linear-gradient(135deg, #10b981, #059669); color:#052e16; font-weight:900;">
+                                    ✅ Acreditar y Conciliar
+                                </button>
+                                <button type="button" class="btn-action"
+                                    onclick="abrirModalImputarCreditoGalicia(${mov.id})"
+                                    style="background:#1e293b; color:#cbd5e1; border:1px solid #334155; font-size:0.75rem;">
+                                    ✏️ Ajustar / Dividir
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+            const sinRespHtml = sinResp.length === 0 ? '' : `
+                <div style="margin-top:12px; padding:11px 13px; border-radius:10px; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.4);">
+                    <div style="font-size:0.8rem; font-weight:800; color:#fcd34d; margin-bottom:7px;">
+                        🔔 Pedidos con aviso "Ya hice la transferencia" sin acreditación detectada en Banco Galicia (${sinResp.length})
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:7px;">
+                        ${sinResp.map(p => {
+                            const avs = Array.isArray(p.avisos) ? p.avisos : [];
+                            const titInfo = avs.map(a => a.titular_emisor).filter(Boolean).join(', ');
+                            const compAv = avs.find(a => a.tiene_comprobante);
+                            return `
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 10px; border-radius:8px; background:#0f172a; border:1px solid #334155;">
+                                    <div style="font-size:0.79rem; color:#e2e8f0;">
+                                        <strong style="color:#38bdf8;">#${esc(p.codigo_pedido)}</strong> · <strong>${esc(p.nombre_marca)}</strong> · 👤 ${esc(p.vecino_nombre)}
+                                        · Informó: <strong style="color:#fcd34d;">${fmtMoneda(p.monto_declarado_cliente)}</strong> (Pendiente banco: ${fmtMoneda(p.saldo_pendiente_acreditar)})
+                                        ${titInfo ? ` · Titular emisor: <em>${esc(titInfo)}</em>` : ''}
+                                        ${compAv ? ` · <a href="/api/produccion/nodos/comprobante-pago/${compAv.id}" target="_blank" rel="noopener" style="color:#7dd3fc; font-weight:800;">📎 Ver comprobante ↗</a>` : ''}
+                                        ${p.reclamo_pago_no_recibido ? ` · <span style="color:#fca5a5; font-weight:800;">🚨 Comprobante ya solicitado</span>` : ''}
+                                    </div>
+                                    <div>
+                                        ${p.reclamo_pago_no_recibido ? `
+                                            <button type="button" class="btn-action" onclick="reclamarPagoNoRecibidoUI(${p.id}, true)"
+                                                style="background:#1e293b; color:#cbd5e1; border:1px solid #475569; padding:6px 10px; font-size:0.74rem;">
+                                                ↩️ Quitar reclamo
+                                            </button>
+                                        ` : `
+                                            <button type="button" class="btn-action" data-testid="btn-reclamar-pago-${p.id}"
+                                                onclick="reclamarPagoNoRecibidoUI(${p.id}, false)"
+                                                style="background:rgba(239,68,68,0.2); color:#fecaca; border:1px solid #ef4444; padding:6px 11px; font-size:0.75rem;">
+                                                ⚠️ Pago no recibido / Solicitar comprobante
+                                            </button>
+                                        `}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+
+            const credsLibresHtml = creds.length === 0 ? '' : `
+                <details style="margin-top:10px; background:#0f172a; border:1px solid #263244; border-radius:9px; padding:8px 12px;">
+                    <summary style="cursor:pointer; font-size:0.79rem; font-weight:800; color:#7dd3fc; user-select:none;">
+                        💳 Ver créditos de Banco Galicia disponibles para imputación manual o dividida (${creds.length} crédito${creds.length === 1 ? '' : 's'})
+                    </summary>
+                    <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+                        ${creds.map(m => `
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:7px 9px; border-radius:7px; background:#151e2e; border:1px solid #334155; font-size:0.77rem;">
+                                <div>
+                                    <strong style="color:#34d399;">Disponible: ${fmtMoneda(m.credito_disponible)}</strong>
+                                    ${Number(m.monto_ya_aplicado_nodos || 0) > 0 ? `<span style="color:#94a3b8;">(Total mov: ${fmtMoneda(m.credito)} · Ya imputado: ${fmtMoneda(m.monto_ya_aplicado_nodos)})</span>` : ''}
+                                    · <strong>${esc(m.titular_banco || m.concepto)}</strong>
+                                    ${m.cuit_origen ? ` · <code>${esc(m.cuit_origen)}</code>` : ''}
+                                    · <span style="color:#94a3b8;">${esc(String(m.fecha_operacion || '').slice(0, 10))}</span>
+                                </div>
+                                <button type="button" class="btn-action" onclick="abrirModalImputarCreditoGalicia(${m.id})"
+                                    style="background:rgba(56,189,248,0.18); color:#bae6fd; border:1px solid #38bdf8; padding:5px 10px; font-size:0.74rem;">
+                                    🔗 Imputar / Dividir en Pedidos
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </details>
+            `;
+
+            box.innerHTML = `
+                <div class="panel-card" style="border:1.5px solid rgba(56,189,248,0.5); background:linear-gradient(135deg, #132036 0%, #0f172a 100%);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+                        <div>
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-size:1.02rem; font-weight:900; color:#f8fafc;">
+                                    🏦 Conciliador Oficial ${esc(cta.banco_display || 'Banco Galicia')} — Alias <code style="color:#38bdf8;">${esc(cta.alias_bancario_display || 'LAMDA.SER.MARTIN')}</code>
+                                </span>
+                                <span class="badge" style="background:rgba(56,189,248,0.16); color:#bae6fd; border:1px solid rgba(56,189,248,0.4);">
+                                    ${pedsPend.length} pedido(s) aguardando banco · ${creds.length} crédito(s) libres
+                                </span>
+                            </div>
+                            <div style="font-size:0.75rem; color:#94a3b8; margin-top:3px;">
+                                Titular: <strong style="color:#e2e8f0;">${esc(cta.titular_display || 'Martín Ignacio Serrano')}</strong> · CBU: <code>${esc(cta.cbu_display || '0070373230004007844141')}</code> · CUIL: <code>${esc(cta.cuil_display || '23-24892174-9')}</code> · Ningún pedido pasa a Depósito hasta quedar conciliado aquí.
+                            </div>
+                        </div>
+
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                            <input type="file" id="inp-extracto-galicia-nodos" accept=".xls,.xlsx" style="display:none;" onchange="subirExtractoGaliciaNodos(this)">
+                            <button type="button" class="btn-action" id="btn-subir-extracto-galicia"
+                                onclick="document.getElementById('inp-extracto-galicia-nodos').click()"
+                                style="background:linear-gradient(135deg, #38bdf8, #0284c7); color:#082f49; font-weight:900;">
+                                📤 Subir Extracto Galicia (.xls / .xlsx)
+                            </button>
+                            ${sugs.length > 1 ? `
+                                <button type="button" class="btn-action" onclick="confirmarTodasSugerenciasGalicia()"
+                                    style="background:rgba(16,185,129,0.22); color:#6ee7b7; border:1px solid #10b981;">
+                                    ⚡ Conciliar las ${sugs.length} sugerencias
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        ${sugsHtml}
+                    </div>
+                    ${sinRespHtml}
+                    ${credsLibresHtml}
+                </div>
+            `;
+        }
+
+        async function subirExtractoGaliciaNodos(inputEl) {
+            const file = inputEl?.files && inputEl.files[0] ? inputEl.files[0] : null;
+            if (!file) return;
+            const btn = document.getElementById('btn-subir-extracto-galicia');
+            const origTxt = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = '⏳ Procesando extracto Galicia...';
+            }
+            try {
+                const fd = new FormData();
+                fd.append('archivo', file);
+                fd.append('nodo_id', String(ESTADO.nodoFiltroId || 0));
+                const res = await fetch('/api/produccion/nodos/liquidacion/conciliador-galicia/ingesta-extracto', {
+                    method: 'POST',
+                    body: fd
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error procesando extracto bancario');
+                if (data.tablero) {
+                    ESTADO.tablero = data.tablero;
+                } else {
+                    await cargarTableroLiquidacion(true);
+                }
+                renderizarTodo();
+                const ing = data.ingesta || {};
+                Swal.fire({
+                    icon: 'success',
+                    title: '🏦 Extracto Banco Galicia procesado',
+                    html: `<div style="font-size:0.88rem; color:#cbd5e1;">Nuevos movimientos importados: <strong style="color:#34d399;">${ing.insertados ?? 0}</strong> · Duplicados omitidos: <strong>${ing.duplicados ?? 0}</strong><br>Sugerencias detectadas: <strong style="color:#38bdf8;">${(data.conciliador?.sugerencias || []).length}</strong></div>`,
+                    background: '#151e2e',
+                    color: '#f8fafc',
+                    timer: 2800
+                });
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error en extracto', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            } finally {
+                inputEl.value = '';
+                if (btn && btn.isConnected) {
+                    btn.disabled = false;
+                    btn.innerHTML = origTxt;
+                }
+            }
+        }
+
+        async function confirmarSugerenciaGalicia(idx) {
+            const sug = window._mapaSugerenciasGalicia && window._mapaSugerenciasGalicia[idx];
+            if (!sug || !sug.movimiento || !sug.propuesta) return;
+            const movId = Number(sug.movimiento.id);
+            const imputaciones = (sug.propuesta.imputaciones || []).map(im => ({
+                pedido_id: Number(im.pedido_id),
+                movimiento_bancario_id: movId,
+                aviso_pago_id: im.aviso_pago_id || null,
+                monto_aplicado: Number(im.monto_aplicado)
+            }));
+            await ejecutarConciliacionImputacionesGalicia(imputaciones);
+        }
+
+        async function confirmarTodasSugerenciasGalicia() {
+            const sugs = ESTADO.tablero?.conciliador_galicia?.sugerencias || [];
+            const imputaciones = [];
+            for (const s of sugs) {
+                const movId = Number(s.movimiento?.id || 0);
+                if (!movId) continue;
+                for (const im of (s.propuesta?.imputaciones || [])) {
+                    imputaciones.push({
+                        pedido_id: Number(im.pedido_id),
+                        movimiento_bancario_id: movId,
+                        aviso_pago_id: im.aviso_pago_id || null,
+                        monto_aplicado: Number(im.monto_aplicado)
+                    });
+                }
+            }
+            if (imputaciones.length === 0) return;
+            await ejecutarConciliacionImputacionesGalicia(imputaciones);
+        }
+
+        async function ejecutarConciliacionImputacionesGalicia(imputaciones) {
+            try {
+                const res = await fetch('/api/produccion/nodos/liquidacion/conciliador-galicia/conciliar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        nodo_id: ESTADO.nodoFiltroId || 0,
+                        imputaciones
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo conciliar el crédito bancario.');
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error de conciliación', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function abrirModalImputarCreditoGalicia(movimientoId) {
+            const cg = ESTADO.tablero?.conciliador_galicia || {};
+            const mov = (cg.creditos_disponibles || []).find(m => Number(m.id) === Number(movimientoId));
+            const peds = cg.pedidos_pendientes || [];
+            if (!mov) return;
+            if (peds.length === 0) {
+                Swal.fire({ icon: 'info', title: 'Sin pedidos pendientes', text: 'No hay pedidos abiertos pendientes de acreditación bancaria.', background: '#151e2e', color: '#f8fafc' });
+                return;
+            }
+
+            const disp = Number(mov.credito_disponible || 0);
+            const opcionesHtml = peds.map(p =>
+                `<option value="${p.id}" data-saldo="${p.saldo_pendiente_acreditar}">#${esc(p.codigo_pedido)} · ${esc(p.nombre_marca)} · ${esc(p.vecino_nombre)} (Pendiente: ${fmtMoneda(p.saldo_pendiente_acreditar)})</option>`
+            ).join('');
+
+            const { value: result } = await Swal.fire({
+                title: `🔗 Imputar Crédito Galicia (${fmtMoneda(disp)})`,
+                background: '#151e2e',
+                color: '#f8fafc',
+                width: '620px',
+                html: `
+                    <div style="text-align:left; font-size:0.83rem; display:flex; flex-direction:column; gap:10px;">
+                        <div style="padding:9px 11px; border-radius:8px; background:#0f172a; border:1px solid #334155;">
+                            <div><strong>Movimiento #${mov.id}:</strong> ${esc(mov.titular_banco || mov.concepto)} ${mov.cuit_origen ? `(CUIT ${esc(mov.cuit_origen)})` : ''}</div>
+                            <div style="color:#34d399; font-weight:800; margin-top:2px;">Saldo disponible del crédito: ${fmtMoneda(disp)}</div>
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:3px;">1° Pedido destino</label>
+                            <select id="swal-imp-ped1" style="width:100%; padding:8px; border-radius:7px; background:#0f172a; color:#f8fafc; border:1px solid #38bdf8;"
+                                onchange="const s=Number(this.selectedOptions[0]?.dataset?.saldo||0); document.getElementById('swal-imp-monto1').value=Math.min(${disp}, s).toFixed(2);">
+                                ${opcionesHtml}
+                            </select>
+                            <label style="display:block; font-size:0.74rem; color:#94a3b8; margin-top:5px;">Monto a aplicar al 1° pedido ($)</label>
+                            <input id="swal-imp-monto1" type="number" step="0.01" min="0.01" max="${disp}" value="${Math.min(disp, Number(peds[0]?.saldo_pendiente_acreditar || disp)).toFixed(2)}"
+                                style="width:100%; padding:8px; border-radius:7px; background:#0f172a; color:#f8fafc; border:1px solid #334155; font-weight:800;">
+                        </div>
+                        ${peds.length > 1 ? `
+                            <div style="padding-top:8px; border-top:1px dashed #334155;">
+                                <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:3px;">2° Pedido opcional (para dividir 1 transferencia grande en 2 pedidos)</label>
+                                <select id="swal-imp-ped2" style="width:100%; padding:8px; border-radius:7px; background:#0f172a; color:#f8fafc; border:1px solid #334155;">
+                                    <option value="0">— Sin segundo pedido —</option>
+                                    ${opcionesHtml}
+                                </select>
+                                <label style="display:block; font-size:0.74rem; color:#94a3b8; margin-top:5px;">Monto a aplicar al 2° pedido ($)</label>
+                                <input id="swal-imp-monto2" type="number" step="0.01" min="0" max="${disp}" value="0"
+                                    style="width:100%; padding:8px; border-radius:7px; background:#0f172a; color:#f8fafc; border:1px solid #334155;">
+                            </div>
+                        ` : ''}
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '✅ Confirmar Imputación',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#059669',
+                preConfirm: () => {
+                    const p1 = Number(document.getElementById('swal-imp-ped1')?.value || 0);
+                    const m1 = Number(document.getElementById('swal-imp-monto1')?.value || 0);
+                    const p2 = Number(document.getElementById('swal-imp-ped2')?.value || 0);
+                    const m2 = Number(document.getElementById('swal-imp-monto2')?.value || 0);
+                    if (!p1 || m1 <= 0) {
+                        Swal.showValidationMessage('Ingresá un monto mayor a $0 para el primer pedido.');
+                        return false;
+                    }
+                    const totalImp = m1 + (p2 > 0 ? m2 : 0);
+                    if (totalImp > disp + 0.05) {
+                        Swal.showValidationMessage(`La suma a imputar (${fmtMoneda(totalImp)}) supera el crédito disponible (${fmtMoneda(disp)}).`);
+                        return false;
+                    }
+                    const list = [{ pedido_id: p1, movimiento_bancario_id: Number(mov.id), monto_aplicado: m1 }];
+                    if (p2 > 0 && m2 > 0) {
+                        if (p2 === p1) {
+                            Swal.showValidationMessage('Elegí un segundo pedido distinto al primero.');
+                            return false;
+                        }
+                        list.push({ pedido_id: p2, movimiento_bancario_id: Number(mov.id), monto_aplicado: m2 });
+                    }
+                    return list;
+                }
+            });
+
+            if (!result) return;
+            await ejecutarConciliacionImputacionesGalicia(result);
+        }
+
+        async function reclamarPagoNoRecibidoUI(pedidoId, levantar = false) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/liquidacion/pedidos/${pedidoId}/reclamar-pago-no-recibido`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        nodo_id: ESTADO.nodoFiltroId || 0,
+                        levantar_reclamo: Boolean(levantar)
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error actualizando estado de reclamo');
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
         }
 
         function obtenerLoteActivo() {
@@ -640,8 +1038,9 @@
                                             ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981;">
                                                 ${esEfectivo ? '✅ Efectivo cobrado en mano por Gestor' : `✅ Transferencia conciliada en Banco (${esc(p.titular_transferencia || p.titular_sugerido)})`}
                                                </span>`
-                                            : `<span class="badge" style="background:rgba(244,63,94,0.16); color:#fda4af;">⏳ Pendiente de registrar</span>`
+                                            : `<span class="badge" style="background:rgba(244,63,94,0.16); color:#fda4af;">⏳ Pendiente acreditar banco</span>`
                                         }
+                                        ${renderizarBadgesEstadoBancarioPedido(p)}
                                         ${montoAjuste > 0 ? `<span class="badge" style="background:rgba(168,85,247,0.2); color:#d8b4fe; border:1px solid #a855f7;">➖ Ajuste Crédito: -${fmtMoneda(montoAjuste)}</span>` : ''}
                                     `
                                 }
@@ -667,9 +1066,14 @@
                             ${esAnulado ? '' : (!confirmado ? `
                                 ${!esEfectivo ? `
                                     <button type="button" class="btn-action"
-                                        onclick="abrirModalConciliarTransferencia(${p.id}, '${esc(p.codigo_pedido)}', '${esc(p.vecino_nombre)}', '${esc(p.titular_sugerido)}', ${Number(p.total_vecino)})"
+                                        onclick="abrirModalConciliarTransferencia(${p.id}, '${esc(p.codigo_pedido)}', '${esc(p.vecino_nombre)}', '${esc(p.titular_sugerido)}', ${Number(p.saldo_pendiente_acreditar ?? p.total_vecino)})"
                                         style="background:linear-gradient(135deg, #38bdf8, #0284c7); color:#082f49;">
-                                        🏦 Conciliar Transferencia (${fmtMoneda(p.total_vecino)})
+                                        🏦 Conciliar (${fmtMoneda(p.saldo_pendiente_acreditar ?? p.total_vecino)})
+                                    </button>
+                                    <button type="button" class="btn-action"
+                                        onclick="reclamarPagoNoRecibidoUI(${p.id}, ${Boolean(p.reclamo_pago_no_recibido)})"
+                                        style="background:${p.reclamo_pago_no_recibido ? '#1e293b' : 'rgba(239,68,68,0.18)'}; color:${p.reclamo_pago_no_recibido ? '#cbd5e1' : '#fecaca'}; border:1px solid ${p.reclamo_pago_no_recibido ? '#475569' : '#ef4444'}; padding:7px 10px; font-size:0.74rem;">
+                                        ${p.reclamo_pago_no_recibido ? '↩️ Quitar reclamo' : '⚠️ Pago no recibido'}
                                     </button>
                                 ` : `
                                     <button type="button" class="btn-action"
@@ -866,46 +1270,55 @@
         }
 
         async function abrirModalConciliarTransferencia(pedidoId, codigoPedido, vecinoNombre, titularSugerido, monto) {
+            const credsDisp = ESTADO.tablero?.conciliador_galicia?.creditos_disponibles || [];
+            const optsCredHtml = `<option value="">— Conciliación manual directa (sin movimiento de extracto) —</option>` +
+                credsDisp.map(m => `<option value="${m.id}" data-disp="${m.credito_disponible}" data-tit="${esc(m.titular_banco || '')}">Mov #${m.id} · +${fmtMoneda(m.credito_disponible)} · ${esc(m.titular_banco || m.concepto)}</option>`).join('');
+
             const { value: formValues } = await Swal.fire({
                 title: `🏦 Conciliar Transferencia #${codigoPedido}`,
                 background: '#151e2e',
                 color: '#f8fafc',
-                width: '560px',
+                width: '580px',
                 html: `
-                    <div style="text-align:left; display:flex; flex-direction:column; gap:12px; font-size:0.85rem;">
+                    <div style="text-align:left; display:flex; flex-direction:column; gap:11px; font-size:0.84rem;">
                         <div style="padding:10px 12px; border-radius:8px; background:rgba(56,189,248,0.14); border:1px solid rgba(56,189,248,0.4); color:#bae6fd;">
-                            Al confirmar esta transferencia de <strong>${esc(vecinoNombre)}</strong> por <strong>${fmtMoneda(monto)}</strong>:
-                            <ul style="margin:6px 0 0 18px;">
-                                <li>Se acredita <strong>+${fmtMoneda(monto)}</strong> a favor del Nodo en su Cuenta Corriente con LAMDA.</li>
-                                <li>El sistema memoriza el titular bancario para conciliar automáticamente sus próximas compras.</li>
-                            </ul>
+                            Comprador: <strong>${esc(vecinoNombre)}</strong> · Saldo pendiente: <strong>${fmtMoneda(monto)}</strong>.
+                            Al completar el total del pedido pasa automáticamente a preparación en Depósito.
                         </div>
                         <div>
-                            <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Titular que figura en el movimiento bancario / Mercado Pago</label>
-                            <input id="swal-titular" type="text" value="${esc(titularSugerido)}"
-                                style="width:100%; padding:9px; border-radius:7px; border:1px solid #38bdf8; background:#0f172a; color:#f8fafc; font-weight:700;">
+                            <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Crédito de Banco Galicia (recomendado)</label>
+                            <select id="swal-mov-banco-id" style="width:100%; padding:9px; border-radius:7px; border:1px solid #38bdf8; background:#0f172a; color:#f8fafc;"
+                                onchange="const op=this.selectedOptions[0]; if(op&&op.value){ const d=Number(op.dataset.disp||0); document.getElementById('swal-monto-aplicar').value=Math.min(${Number(monto)}, d).toFixed(2); if(op.dataset.tit) document.getElementById('swal-titular').value=op.dataset.tit; }">
+                                ${optsCredHtml}
+                            </select>
                         </div>
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
                             <div>
-                                <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Billetera / Banco de origen</label>
-                                <input id="swal-billetera" type="text" value="Mercado Pago"
-                                    style="width:100%; padding:9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc;">
+                                <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Monto a acreditar ($)</label>
+                                <input id="swal-monto-aplicar" type="number" step="0.01" min="0.01" value="${Number(monto).toFixed(2)}"
+                                    style="width:100%; padding:9px; border-radius:7px; border:1px solid #10b981; background:#0f172a; color:#34d399; font-weight:900;">
                             </div>
                             <div>
                                 <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">N° Operación / Referencia</label>
-                                <input id="swal-ref" type="text" value="MP-${codigoPedido}-9821"
+                                <input id="swal-ref" type="text" value="GAL-${codigoPedido}"
                                     style="width:100%; padding:9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#cbd5e1; font-family:monospace;">
                             </div>
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:0.75rem; color:#94a3b8; margin-bottom:4px;">Titular que figura en el movimiento bancario</label>
+                            <input id="swal-titular" type="text" value="${esc(titularSugerido)}"
+                                style="width:100%; padding:9px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-weight:700;">
                         </div>
                     </div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: `✅ Conciliar y Acreditar +${fmtMoneda(monto)}`,
+                confirmButtonText: `✅ Conciliar y Acreditar`,
                 cancelButtonText: 'Cancelar',
                 confirmButtonColor: '#0284c7',
                 preConfirm: () => ({
+                    movimiento_bancario_id: document.getElementById('swal-mov-banco-id').value ? Number(document.getElementById('swal-mov-banco-id').value) : null,
+                    monto_aplicado: Number(document.getElementById('swal-monto-aplicar').value || monto),
                     titular_transferencia: document.getElementById('swal-titular').value,
-                    billetera_origen: document.getElementById('swal-billetera').value,
                     comprobante_referencia: document.getElementById('swal-ref').value
                 })
             });
@@ -1588,6 +2001,7 @@
                                                 ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981;">✅ Pago Conciliado · En Cola Depósito</span>`
                                                 : `<span class="badge" style="background:rgba(244,63,94,0.18); color:#fda4af; border:1px solid #f43f5e;">⏳ Pendiente Conciliar Transferencia</span>`)))
                                 }
+                                ${renderizarBadgesEstadoBancarioPedido(p)}
                             </div>
                             <div style="font-size:0.8rem; color:#e2e8f0; font-weight:600;">${itemsTxt}</div>
                             <div style="font-size:0.74rem; color:#94a3b8;">
@@ -1603,8 +2017,13 @@
                             </div>
                             ${(!esAnulado && !pagado) ? `
                                 <button type="button" class="btn-top primary"
-                                    onclick="abrirModalConciliarTransferencia(${p.id}, '${esc(p.codigo_pedido)}', '${esc(p.vecino_nombre)}', '${esc(p.titular_sugerido)}', ${Number(p.total_vecino || 0)})">
-                                    🏦 Conciliar Transferencia
+                                    onclick="abrirModalConciliarTransferencia(${p.id}, '${esc(p.codigo_pedido)}', '${esc(p.vecino_nombre)}', '${esc(p.titular_sugerido)}', ${Number(p.saldo_pendiente_acreditar ?? p.total_vecino ?? 0)})">
+                                    🏦 Conciliar (${fmtMoneda(p.saldo_pendiente_acreditar ?? p.total_vecino ?? 0)})
+                                </button>
+                                <button type="button" class="btn-top"
+                                    onclick="reclamarPagoNoRecibidoUI(${p.id}, ${Boolean(p.reclamo_pago_no_recibido)})"
+                                    style="border-color:${p.reclamo_pago_no_recibido ? '#475569' : '#ef4444'}; color:${p.reclamo_pago_no_recibido ? '#cbd5e1' : '#fecaca'};">
+                                    ${p.reclamo_pago_no_recibido ? '↩️ Quitar reclamo' : '⚠️ Pago no recibido'}
                                 </button>
                             ` : ''}
                             ${(!esAnulado && pagado && !despachado) ? `

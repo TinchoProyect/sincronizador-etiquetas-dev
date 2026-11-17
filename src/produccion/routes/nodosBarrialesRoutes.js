@@ -19,6 +19,41 @@ const uploadFotoNodoMemoria = multer({
     }
 });
 
+const uploadComprobantePagoMemoria = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 5 * 1024 * 1024,
+        files: 1
+    }
+});
+
+const uploadExtractoGaliciaMemoria = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 10 * 1024 * 1024,
+        files: 1
+    }
+});
+
+function middlewareSubidaComprobanteOpcional(req, res, next) {
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+    if (!contentType.includes('multipart/form-data')) {
+        return next();
+    }
+    return uploadComprobantePagoMemoria.single('comprobante')(req, res, (err) => {
+        if (err) {
+            const esTamano = err.code === 'LIMIT_FILE_SIZE';
+            return res.status(400).json({
+                ok: false,
+                error: esTamano
+                    ? 'El comprobante supera el límite máximo permitido (5 MB).'
+                    : ('Error recibiendo comprobante: ' + err.message)
+            });
+        }
+        return next();
+    });
+}
+
 function middlewareSubidaFotoOpcional(req, res, next) {
     const contentType = String(req.headers['content-type'] || '').toLowerCase();
     if (!contentType.includes('multipart/form-data')) {
@@ -1258,6 +1293,76 @@ router.post('/tienda/:slug/pedido', limitarPedidosPublicos, async (req, res) => 
 });
 
 /**
+ * GET /api/produccion/nodos/tienda/:slug/pedidos/:codigoOToken/estado-pago
+ * Consulta pública autenticada por tracking_token, portal_token o teléfono del comprador
+ */
+router.get('/tienda/:slug/pedidos/:codigoOToken/estado-pago', async (req, res) => {
+    try {
+        const data = await nodosService.obtenerEstadoPagoPublicoPedidoTienda(
+            req.params.slug,
+            req.params.codigoOToken,
+            {
+                tracking_token: req.query?.tracking_token || req.query?.t || '',
+                portal_token: req.query?.portal_token || '',
+                telefono: req.query?.telefono || ''
+            }
+        );
+        res.json(data);
+    } catch (error) {
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/tienda/:slug/pedidos/:codigoOToken/aviso-pago
+ * Registra un aviso declarativo de transferencia (1 toque o tramo parcial + titular emisor opcional + comprobante opcional <= 5 MB)
+ */
+router.post('/tienda/:slug/pedidos/:codigoOToken/aviso-pago', limitarPedidosPublicos, middlewareSubidaComprobanteOpcional, async (req, res) => {
+    try {
+        const payload = {
+            ...(req.body || {}),
+            tracking_token: req.body?.tracking_token || req.query?.tracking_token || req.query?.t || '',
+            portal_token: req.body?.portal_token || req.query?.portal_token || '',
+            telefono: req.body?.telefono || req.query?.telefono || ''
+        };
+        const data = await nodosService.registrarAvisoPagoCompradorTienda(
+            req.params.slug,
+            req.params.codigoOToken,
+            payload,
+            req.file || null
+        );
+        res.json(data);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /tienda/:slug/pedidos/:codigoOToken/aviso-pago:', error.message);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/comprobante-pago/:avisoId
+ * Descarga/visualización protegida del comprobante adjuntado por el comprador
+ */
+router.get('/comprobante-pago/:avisoId', async (req, res) => {
+    try {
+        const esPublico = esSolicitudPublicaNodos(req);
+        const gestorToken = extraerTokenGestorRequest(req);
+        const info = await nodosService.obtenerArchivoComprobanteAvisoPagoNodos(req.params.avisoId, {
+            requerirAutorizacion: esPublico,
+            comprobanteToken: req.query?.ct || '',
+            trackingToken: req.query?.tracking_token || '',
+            gestorToken
+        });
+        res.setHeader('Content-Type', info.mime || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `inline; filename="${info.filename}"`);
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        return res.sendFile(info.absPath);
+    } catch (error) {
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
  * GET /api/produccion/nodos/pedidos/:pedidoId/etiqueta
  * Devuelve la etiqueta térmica Zebra en doble columna (PNG + ZPL) de un pedido vecinal
  */
@@ -1479,6 +1584,92 @@ router.get('/liquidacion/tablero', autenticarGestorSiPublicoOToken, async (req, 
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en GET /liquidacion/tablero:', error);
         res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/liquidacion/conciliador-galicia
+ * Devuelve propuestas automáticas de cruce de Banco Galicia (LAMDA.SER.MARTIN), créditos libres y avisos pendientes
+ */
+router.get('/liquidacion/conciliador-galicia', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const data = await nodosService.obtenerTableroConciliadorGaliciaNodos({
+            nodo_id: req.query?.nodo_id || 0,
+            usar_ia: String(req.query?.usar_ia || '').toLowerCase() === 'true'
+        });
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /liquidacion/conciliador-galicia:', error);
+        res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/liquidacion/conciliador-galicia/ingesta-extracto
+ * Sube un archivo .xls / .xlsx de Banco Galicia, lo ingesta con deduplicación SHA-256 en fin_movimientos_bancarios
+ * y devuelve inmediatamente las sugerencias híbridas de conciliación sobre pedidos pendientes.
+ */
+router.post(
+    '/liquidacion/conciliador-galicia/ingesta-extracto',
+    bloquearEnHostPublicoTienda,
+    (req, res, next) => {
+        uploadExtractoGaliciaMemoria.single('archivo')(req, res, (err) => {
+            if (err) {
+                return res.status(400).json({
+                    ok: false,
+                    error: err.code === 'LIMIT_FILE_SIZE'
+                        ? 'El extracto bancario supera el límite de 10 MB.'
+                        : ('Error recibiendo archivo Excel: ' + err.message)
+                });
+            }
+            next();
+        });
+    },
+    async (req, res) => {
+        try {
+            if (!req.file || !req.file.buffer) {
+                return res.status(400).json({ ok: false, error: 'Seleccioná un archivo .xls o .xlsx de Banco Galicia.' });
+            }
+            const resultado = await nodosService.ingestarExtractoGaliciaParaNodos(req.file.buffer, {
+                nodo_id: req.body?.nodo_id || req.query?.nodo_id || 0,
+                usar_ia: String(req.body?.usar_ia ?? 'true').toLowerCase() !== 'false'
+            });
+            const tablero = await nodosService.obtenerTableroLiquidacionCobros({
+                nodo_id: req.body?.nodo_id || req.query?.nodo_id || 0
+            });
+            res.json({ ok: true, ...resultado, tablero });
+        } catch (error) {
+            console.error('❌ [NodosRoutes] Error en POST /liquidacion/conciliador-galicia/ingesta-extracto:', error);
+            res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+        }
+    }
+);
+
+/**
+ * POST /api/produccion/nodos/liquidacion/conciliador-galicia/conciliar
+ * Confirma 1 o múltiples imputaciones N:M entre créditos de fin_movimientos_bancarios y pedidos pendientes
+ */
+router.post('/liquidacion/conciliador-galicia/conciliar', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const resultado = await nodosService.conciliarCreditosBancariosNodos(req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /liquidacion/conciliador-galicia/conciliar:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/liquidacion/pedidos/:pedidoId/reclamar-pago-no-recibido
+ * Marca en 1 clic "Pago no recibido / Solicitar comprobante" (o levanta el reclamo con { levantar_reclamo: true })
+ */
+router.post('/liquidacion/pedidos/:pedidoId/reclamar-pago-no-recibido', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const resultado = await nodosService.marcarPagoNoRecibidoPedidoNodo(req.params.pedidoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /liquidacion/pedidos/:pedidoId/reclamar-pago-no-recibido:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 

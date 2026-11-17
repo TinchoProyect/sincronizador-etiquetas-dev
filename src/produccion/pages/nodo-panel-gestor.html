@@ -2571,6 +2571,8 @@
       const pedidosActivos = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO');
       const totalPedidos = pedidosActivos.length;
       const pendCobro = pedidosActivos.filter(p => !p.pago_confirmado).length;
+      const pedidosReclamoPago = pedidosActivos.filter(p => !p.pago_confirmado && Boolean(p.reclamo_pago_no_recibido));
+      const pedidosAvisoCliente = pedidosActivos.filter(p => !p.pago_confirmado && !p.reclamo_pago_no_recibido && Number(p.monto_declarado_cliente || 0) > 0);
       const listosRecibirLote = !esEc && mod.canasto_consolidado
         ? pedidosActivos.filter(p => Number(p.hito_tracking_actual || 1) === 3 && p.lote_canasto_id && !p.lote_debito_registrado).length
         : 0;
@@ -2666,6 +2668,30 @@
         <div class="board-intro">
           Hola ${esc((GSTATE.nodo.gestor_nombre || '').split(' ')[0] || 'Hola')}, elegí qué sección querés gestionar:
         </div>
+        ${pedidosReclamoPago.length > 0 ? `
+          <div data-testid="banner-reclamo-pago-gestor" style="background:#fef2f2; border:2px solid #ef4444; border-radius:14px; padding:12px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:210px;">
+              <div style="font-size:0.78rem; font-weight:900; color:#b91c1c; text-transform:uppercase;">🚨 Comprobante de pago solicitado (${pedidosReclamoPago.length})</div>
+              <div style="font-size:0.86rem; font-weight:700; color:#7f1d1d; margin-top:2px; line-height:1.35;">
+                Aún no impactó en Banco Galicia la transferencia de ${pedidosReclamoPago.map(x => `<strong>#${esc(x.codigo_pedido)} (${esc(x.vecino_nombre)})</strong>`).join(', ')}. Pedile el comprobante para destrabar el armado.
+              </div>
+            </div>
+            <button type="button" onclick="irAVistaGestor('pedidos')"
+              style="padding:9px 14px; border-radius:10px; border:none; background:#dc2626; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.84rem; cursor:pointer;">
+              Ver y pedir comprobante →
+            </button>
+          </div>
+        ` : (pedidosAvisoCliente.length > 0 ? `
+          <div data-testid="banner-aviso-pago-gestor" style="background:#fffbeb; border:1.5px solid #f59e0b; border-radius:13px; padding:10px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div style="font-size:0.84rem; font-weight:800; color:#92400e;">
+              🔔 ${pedidosAvisoCliente.length} ${pedidosAvisoCliente.length === 1 ? 'cliente informó su transferencia' : 'clientes informaron su transferencia'} · En verificación bancaria
+            </div>
+            <button type="button" onclick="irAVistaGestor('pedidos')"
+              style="padding:6px 12px; border-radius:9px; border:1px solid #f59e0b; background:#ffffff; color:#92400e; font-family:inherit; font-weight:800; font-size:0.8rem; cursor:pointer;">
+              Ver detalle →
+            </button>
+          </div>
+        ` : '')}
         <button type="button" id="btn-instalar-pwa-gestor" class="cta-pwa-gestor" style="display:${mostrarBtnPwa ? 'flex' : 'none'};" onclick="instalarAccesoDirectoGestor()">
           <div class="cta-pwa-gestor-left">
             ${slugIconPwa ? `<img src="/api/produccion/nodos/pwa/${slugIconPwa}/icon-gestor-180.png?v=${encodeURIComponent(obtenerVersionPwaGestor())}" alt="Gestión ${esc(GSTATE.nodo.nombre_marca || '')}" class="cta-pwa-gestor-thumb" />` : '<span style="font-size:1.35rem;">📲</span>'}
@@ -5788,6 +5814,8 @@
 
       const pagados = todos.filter(p => Boolean(p.pago_confirmado));
       const pendientes = todos.filter(p => !p.pago_confirmado);
+      const reclamadosSec = todos.filter(p => !p.pago_confirmado && Boolean(p.reclamo_pago_no_recibido));
+      const informadosSec = todos.filter(p => !p.pago_confirmado && !p.reclamo_pago_no_recibido && Number(p.monto_declarado_cliente || 0) > 0);
 
       const basePorCobro = GSTATE.filtroPagoPedidos === 'PAGADOS'
         ? pagados
@@ -5838,7 +5866,37 @@
         `;
       }).join('');
 
+      const alertaReclamoSecHtml = reclamadosSec.length === 0 ? '' : `
+        <div style="background:#fef2f2; border:2px solid #ef4444; border-radius:13px; padding:12px 14px; margin-bottom:12px;">
+          <div style="font-size:0.82rem; font-weight:900; color:#b91c1c; text-transform:uppercase; margin-bottom:6px;">
+            🚨 Transferencias no recibidas en Banco Galicia · Solicitar comprobante (${reclamadosSec.length})
+          </div>
+          <div style="display:flex; flex-direction:column; gap:7px;">
+            ${reclamadosSec.map(rp => `
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; background:#ffffff; border:1px solid #fecaca; border-radius:10px; padding:8px 11px; font-size:0.83rem;">
+                <div>
+                  <strong>#${esc(rp.codigo_pedido)} · ${esc(rp.vecino_nombre)}</strong> (${fmt(rp.total_vecino)})
+                  ${Number(rp.monto_declarado_cliente || 0) > 0 ? `<span style="color:#991b1b;"> · Informó ${fmt(rp.monto_declarado_cliente)}</span>` : ''}
+                </div>
+                <button type="button" onclick="pedirComprobantePagoWhatsAppGestor(${rp.id})"
+                  style="padding:7px 12px; border-radius:9px; border:none; background:#dc2626; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.8rem; cursor:pointer;">
+                  💬 Pedir comprobante por WhatsApp
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+
+      const alertaInformadosSecHtml = informadosSec.length === 0 ? '' : `
+        <div style="background:#fffbeb; border:1.5px solid #fcd34d; border-radius:11px; padding:9px 12px; margin-bottom:10px; font-size:0.84rem; color:#92400e; font-weight:800;">
+          🔔 <strong>${informadosSec.length} ${informadosSec.length === 1 ? 'pedido con aviso de transferencia' : 'pedidos con aviso de transferencia'}:</strong> pasan automáticamente a preparación apenas se acredite el pago en Banco Galicia.
+        </div>
+      `;
+
       return `
+        ${alertaReclamoSecHtml}
+        ${alertaInformadosSecHtml}
         ${bannersRecepcionHtml}
         ${bannersPrepHtml}
 
@@ -5907,7 +5965,14 @@
               const metaHito = _obtenerMetaHitoGestor(p);
               const urlSeg = obtenerUrlSeguimientoPedidoGestor(p);
               const puedeSalirReparto = !esEc && mod.hoja_de_ruta && esEnvio && hito === 4;
-              const puedeMarcarEntregado = (hito === 4 || hito === 5);
+              const permiteEfvoActivo = Boolean(!GSTATE.nodo?.solo_transferencia_bancaria && GSTATE.nodo?.permitir_efectivo !== false && mod.cobro_efectivo_entrega && !esEc);
+              const puedeMarcarEntregado = (hito === 4 || hito === 5) && (pagado || (esEfvo && permiteEfvoActivo));
+              const reclamoPed = !pagado && Boolean(p.reclamo_pago_no_recibido);
+              const declaradoPed = !pagado ? Number(p.monto_declarado_cliente || 0) : 0;
+              const acreditadoParcialPed = !pagado ? Number(p.monto_acreditado_banco || 0) : 0;
+              const avisosPed = Array.isArray(p.avisos_pago) ? p.avisos_pago : [];
+              const compAvisoPed = avisosPed.find(a => a.tiene_comprobante);
+              const titularAvisoPed = avisosPed.find(a => a.titular_emisor)?.titular_emisor || '';
 
               const opLbl = p.postal_operador === 'ANDREANI' ? 'Andreani' : 'Correo Argentino';
               const guiaPostal = String(p.postal_numero_tracking || '').trim();
@@ -5932,8 +5997,16 @@
                     </div>
                     <div style="text-align:right;">
                       <div style="font-weight:900; font-size:1.05rem; color:var(--text);">${fmt(p.total_vecino)}</div>
-                      <span style="font-size:0.8rem; font-weight:800; color:${pagado ? 'var(--ok)' : 'var(--warn)'};">
-                        ${pagado ? (esEfvo ? '✅ Pagado en efectivo' : '✅ Transferencia acreditada') : (esEfvo ? '💵 Cobra efectivo en entrega' : '🏦 Pendiente verificación')}
+                      <span style="font-size:0.8rem; font-weight:800; color:${pagado ? 'var(--ok)' : (reclamoPed ? '#dc2626' : (declaradoPed > 0 ? '#1d4ed8' : 'var(--warn)'))};">
+                        ${pagado
+                          ? (esEfvo ? '✅ Pagado en efectivo' : '✅ Transferencia acreditada')
+                          : (reclamoPed
+                              ? '🚨 Pago no recibido · Pedir comprobante'
+                              : (acreditadoParcialPed > 0
+                                  ? `🌓 Acreditado parcial (${fmt(acreditadoParcialPed)})`
+                                  : (declaradoPed > 0
+                                      ? `🔔 Pago informado (${fmt(declaradoPed)}${titularAvisoPed ? ' · ' + esc(titularAvisoPed) : ''})`
+                                      : (esEfvo ? '💵 Cobra efectivo en entrega' : '🏦 Pendiente transferencia'))))}
                       </span>
                     </div>
                   </div>
@@ -5962,7 +6035,17 @@
                   <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-top:1px solid var(--border); padding-top:8px;">
                     <span style="font-size:0.84rem; font-weight:900; color:var(--ok);">Tu ganancia limpia: +${fmt(p.ganancia_total_gestor)}</span>
                     <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                      ${(!pagado && mod.cobro_efectivo_entrega && !esEc) ? `
+                      ${reclamoPed ? `
+                        <button type="button" class="btn-primary" style="min-height:38px; padding:6px 12px; font-size:0.82rem; background:#dc2626; border-color:#dc2626;" onclick="pedirComprobantePagoWhatsAppGestor(${p.id})">
+                          💬 Pedir Comprobante
+                        </button>
+                      ` : ''}
+                      ${compAvisoPed ? `
+                        <a href="/api/produccion/nodos/comprobante-pago/${compAvisoPed.id}?t=${encodeURIComponent(GSTATE.gestorToken || '')}" target="_blank" rel="noopener" class="btn-soft" style="min-height:38px; font-size:0.82rem; padding:6px 10px; text-decoration:none;">
+                          📎 Ver Comprobante
+                        </a>
+                      ` : ''}
+                      ${(!pagado && permiteEfvoActivo && esEfvo) ? `
                         <button type="button" class="btn-primary" style="min-height:38px; padding:6px 12px; font-size:0.82rem;" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})">
                           💵 Cobrar Efectivo
                         </button>
@@ -6032,11 +6115,37 @@
       }
     }
 
+    async function pedirComprobantePagoWhatsAppGestor(pedidoId) {
+      const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
+      if (!p || !GSTATE.nodo) return;
+      const linkSeg = obtenerUrlSeguimientoPedidoGestor(p);
+      const aliasOf = GSTATE.nodo.alias_bancario_display || 'LAMDA.SER.MARTIN';
+      const mensaje = [
+        `Hola ${p.vecino_nombre}! Te escribimos desde *${GSTATE.nodo.nombre_marca}* por tu pedido *#${p.codigo_pedido}* (${fmt(p.total_vecino)}).`,
+        `Revisamos las acreditaciones de Banco Galicia (Alias: *${aliasOf}*) y aún no impactó la transferencia.`,
+        `¿Nos podrás enviar o adjuntar el comprobante para validarlo y poner en marcha tu pedido?`,
+        linkSeg ? `👉 Podés subirlo en 1 toque desde tu enlace de pedido: ${linkSeg}` : ''
+      ].filter(Boolean).join('\n\n');
+
+      await abrirModalDespachoWhatsAppGestor({
+        destinatario_nombre: p.vecino_nombre,
+        telefono_original: p.vecino_telefono,
+        mensaje,
+        titulo: `Solicitar Comprobante · Pedido #${p.codigo_pedido}`,
+        subtitulo: `Comprador: ${p.vecino_nombre} (${fmt(p.total_vecino)})`
+      });
+    }
+
     function tocarBotonEntregadoGestor(pedidoId) {
       const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
       if (!p || !GSTATE.nodo) return;
       if (p.pago_confirmado) {
         avanzarEstadoEntregaGestor(p.id, 'ENTREGADO', false);
+        return;
+      }
+      const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO';
+      if (!esEfvo || GSTATE.nodo.solo_transferencia_bancaria) {
+        mostrarAvisoPantallaGestor(`El pedido #${p.codigo_pedido} debe tener la transferencia acreditada en Banco Galicia antes de marcarse como entregado.`, 'error');
         return;
       }
 

@@ -1369,12 +1369,12 @@
 
     function renderizarSubTabAbmNodos() {
         const cfgCanal = ESTADO_NODOS.fuentes.config_cuenta_canal || {
-            alias_recaudador: 'pago.canasto',
-            banco_recaudador: 'Cuenta Recaudadora Canal Nodos (Provisoria)',
-            titular_recaudador: 'Recaudación Canal Nodos (Provisorio)',
-            cbu_recaudador: '0000000000000000000000'
+            alias_recaudador: 'LAMDA.SER.MARTIN',
+            banco_recaudador: 'Banco Galicia',
+            titular_recaudador: 'Martín Ignacio Serrano',
+            cbu_recaudador: '0070373230004007844141'
         };
-        const aliasCompartido = cfgCanal.alias_recaudador || 'pago.canasto';
+        const aliasCompartido = cfgCanal.alias_recaudador || 'LAMDA.SER.MARTIN';
         const nodosTodos = ESTADO_NODOS.nodos || [];
         const nodosArchivadosCount = nodosTodos.filter(n => n.activo === false).length;
         const nodosVisiblesAbm = ESTADO_NODOS.mostrarArchivadosAbm
@@ -3563,7 +3563,7 @@
         const chkComp = document.getElementById('abm-cuenta-compartida');
         const aliasInput = document.getElementById('abm-alias-display');
         if ((!chkComp || chkComp.checked) && aliasInput) {
-            aliasInput.value = data.config_cuenta_canal.alias_recaudador || 'pago.canasto';
+            aliasInput.value = data.config_cuenta_canal.alias_recaudador || 'LAMDA.SER.MARTIN';
         }
 
         await cargarDatosNodosBarriales(true);
@@ -4157,10 +4157,10 @@
                 iniInput.value = inicialesSug;
             }
 
-            const cfgCanal = ESTADO_NODOS.fuentes?.config_cuenta_canal || { alias_recaudador: 'pago.canasto' };
+            const cfgCanal = ESTADO_NODOS.fuentes?.config_cuenta_canal || { alias_recaudador: 'LAMDA.SER.MARTIN' };
             const aliasInput = document.getElementById('abm-alias-display');
             if (aliasInput) {
-                aliasInput.value = cfgCanal.alias_recaudador || 'pago.canasto';
+                aliasInput.value = cfgCanal.alias_recaudador || 'LAMDA.SER.MARTIN';
             }
         }
 
@@ -4375,10 +4375,10 @@
         try {
             const idExistente = document.getElementById('abm-nodo-id')?.value || null;
             const cfgCanal = ESTADO_NODOS.fuentes?.config_cuenta_canal || {
-                cuenta_bancaria_id: null,
-                alias_recaudador: 'pago.canasto',
-                cbu_recaudador: '0000000000000000000000',
-                titular_recaudador: 'Recaudación Canal Nodos (Provisorio)'
+                cuenta_bancaria_id: 1,
+                alias_recaudador: 'LAMDA.SER.MARTIN',
+                cbu_recaudador: '0070373230004007844141',
+                titular_recaudador: 'Martín Ignacio Serrano'
             };
 
             const clienteMadreIdVal = document.getElementById('abm-cliente-madre-id')?.value || ESTADO_NODOS.clienteMadreSeleccionadoId || null;
@@ -4390,7 +4390,7 @@
             }
 
             const usaComp = Boolean(document.getElementById('abm-cuenta-compartida')?.checked);
-            const aliasEscrito = document.getElementById('abm-alias-display')?.value?.trim() || cfgCanal.alias_recaudador || 'pago.canasto';
+            const aliasEscrito = document.getElementById('abm-alias-display')?.value?.trim() || cfgCanal.alias_recaudador || 'LAMDA.SER.MARTIN';
 
             const latVal = document.getElementById('abm-latitud')?.value;
             const lngVal = document.getElementById('abm-longitud')?.value;
