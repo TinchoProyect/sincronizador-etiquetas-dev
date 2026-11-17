@@ -1575,7 +1575,7 @@ function renderizarArticulosBunkerLDN1() {
             const master = window.pizarraSimulacionMaster || {};
             const laArts = (master.articulosListas || []).filter(l => (l.articulo_numero || '').trim().toLowerCase() === art.articulo_id.trim().toLowerCase());
             const laArt = laArts.find(l => l.es_patron) || laArts.find(l => l.lista_id === 1) || laArts[0];
-            const costoTiempoVal = parseFloat(laArt?.costo_tiempo || 0);
+            const costoTiempoVal = (laArt && laArt.mano_obra_activa !== false) ? parseFloat(laArt?.costo_tiempo || 0) : 0;
 
             const ingAlim = rIngsAlimentos[0];
             const ingAlimObj = ingAlim ? ingredientesList.find(i => i.id === ingAlim.ingrediente_id) : null;
@@ -1675,17 +1675,25 @@ function renderizarArticulosBunkerLDN1() {
                 }
             }
             const costoOficialBD = costoSinInsBD + insListaAplicado;
-            const diffCosto = Math.abs(costoBaseTotalBulto - costoOficialBD);
-            const estaSincronizado = diffCosto < 0.05 && costoOficialBD > 0;
+            const ingAlimCtx = ingAlimObj ? window.obtenerContextoCostoIngrediente(ingAlimObj.id) : null;
+            const auditListas = window.auditarEstadoListasArticuloPizarra(art, costoBaseTotalBulto, insListaAplicado, costoOficialBD, ingAlimCtx);
+            const estaSincronizado = auditListas.alDiaEnTodasListas;
             const costoTotalConMoBulto = costoBaseTotalBulto + costoTiempoVal;
+            const nombresPublicos = auditListas.listasOfrecidas.filter(o => o.esPublico).map(o => o.nombre);
+            const badgeOfrecidoHtml = auditListas.listasOfrecidas.length > 0
+                ? `<div style="margin-top: 3px; font-size: 0.65rem; color: #38bdf8; display: flex; justify-content: space-between; gap: 4px;" title="Listas ofrecidas (disponible=true): ${auditListas.listasOfrecidas.map(o => o.nombre).join(', ')}">
+                     <span>🛒 Ofrecido (${auditListas.listasOfrecidas.length} list.)</span>
+                     ${nombresPublicos.length > 0 ? `<strong style="color:#6ee7b7;">${nombresPublicos.join(' + ')}</strong>` : ''}
+                   </div>`
+                : `<div style="margin-top: 3px; font-size: 0.64rem; color: #64748b;">Sin ofrecer al público actualmente</div>`;
 
             const semaforoHtml = estaSincronizado 
-                ? `<div style="margin-top: 5px; padding: 3px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); display: flex; align-items: center; justify-content: space-between; font-size: 0.67rem; color: #34d399;" title="Costo Base grabado en PostgreSQL: $${costoOficialBD.toLocaleString('es-AR', {minimumFractionDigits: 2})} | Costo Total con M.O.: $${(costoOficialBD + costoTiempoVal).toLocaleString('es-AR', {minimumFractionDigits: 2})}">
-                     <span>🟢 Grabado en BD</span>
+                ? `<div style="margin-top: 5px; padding: 3px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); display: flex; align-items: center; justify-content: space-between; font-size: 0.67rem; color: #34d399;" title="Costo Base y todas las listas activas coinciden con PostgreSQL: $${costoOficialBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}">
+                     <span>🟢 Al día en BD y Listas</span>
                      <span style="font-weight: 700;">$${costoOficialBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}${costoTiempoVal > 0 ? ` <span style="color:#a7f3d0; font-weight:600;">(c/MO: $${(costoOficialBD + costoTiempoVal).toLocaleString('es-AR', {minimumFractionDigits: 2})})</span>` : ''}</span>
                    </div>`
-                : `<div style="margin-top: 5px; padding: 3px 6px; border-radius: 4px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); display: flex; align-items: center; justify-content: space-between; font-size: 0.67rem; color: #fbbf24;" title="Costo simulado en memoria pendiente de impactar en BD">
-                     <span>🟡 Simulado (Pendiente)</span>
+                : `<div style="margin-top: 5px; padding: 3px 6px; border-radius: 4px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); display: flex; align-items: center; justify-content: space-between; font-size: 0.67rem; color: #fbbf24;" title="Variación pendiente en costo o en ${auditListas.listasPendientesCount} lista(s) activa(s)">
+                     <span>🟡 Pendiente (${auditListas.listasPendientesCount > 0 ? `${auditListas.listasPendientesCount} list.` : 'Costo'})</span>
                      <span style="font-weight: 700;">Sim: $${costoBaseTotalBulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}${costoTiempoVal > 0 ? ` (c/MO: $${costoTotalConMoBulto.toLocaleString('es-AR', {minimumFractionDigits: 2})})` : ''}</span>
                    </div>`;
 
@@ -1751,6 +1759,7 @@ function renderizarArticulosBunkerLDN1() {
                 </div>
                 ${empaqueDesgloseHtml}
                 ${infoCostoBaseHtml}
+                ${badgeOfrecidoHtml}
                 ${semaforoHtml}
                 ${btnQuirurgicoHtml}
                 <div class="art-footer" style="margin-top: 6px;">
@@ -2140,6 +2149,7 @@ window.seleccionarArticuloMulti = function(articuloId, event) {
 window.seleccionarIngredienteHuerfano = function(ingId) {
     const ingIdNum = Number(ingId);
     window.deseleccionManual = false;
+    window._ldn4VerTodosManual = false;
     window.ingredienteSeleccionadoId = ingIdNum;
     window.articuloSeleccionadoId = null;
     window.articulosSeleccionadosIds = [];
@@ -2439,6 +2449,84 @@ window.abrirEdicionManualCostoIva = async function(articuloId) {
     }
 };
 
+// Auditoría Unificada de Costo + Listas Activas (Evita contradicción entre tarjetas LDN 2 y botón Propagar)
+window.auditarEstadoListasArticuloPizarra = function(art, costoBaseTotalSim, insListaAplicado, costoOficialBD, ingContexto = null) {
+    const master = window.pizarraSimulacionMaster || {};
+    const listas = (master.listasPrecios || []).filter(l => l.activa !== false);
+    const kilos = parseFloat(art.kilos_unidad) > 0 ? parseFloat(art.kilos_unidad) : 1;
+    const skuLower = String(art.articulo_id || '').trim().toLowerCase();
+    const costoSinInsSim = Number((costoBaseTotalSim - (insListaAplicado || 0)).toFixed(2));
+    const costoDesactualizado = Math.abs(costoBaseTotalSim - costoOficialBD) >= 0.05 || costoOficialBD <= 0;
+    const hayDesfaseIng = Boolean(ingContexto && ingContexto.hayDesfaseIngrediente);
+
+    let listasPendientesCount = 0;
+    let precioLista1BD = 0;
+    let precioLista1Nuevo = 0;
+    const listasOfrecidas = [];
+
+    listas.forEach((l, idx) => {
+        const laActual = (master.articulosListas || []).find(c =>
+            c.lista_id === l.id && String(c.articulo_numero || '').trim().toLowerCase() === skuLower
+        );
+        const esNodos = String(l?.canal_comercial || '').toUpperCase() === 'NODOS';
+        if (esNodos && (!laActual || laActual.disponible === false)) return;
+
+        if (laActual && laActual.disponible !== false) {
+            const nombreLower = String(l.nombre || '').toLowerCase();
+            listasOfrecidas.push({
+                id: l.id,
+                nombre: l.nombre || `Lista #${l.id}`,
+                esPublico: l.id === 6 || nombreLower.includes('consumidor') || esNodos
+            });
+        }
+
+        const margenLista = parseFloat(laActual?.margen_ganancia || 0);
+        const moLista = (laActual && laActual.mano_obra_activa !== false) ? parseFloat(laActual?.costo_tiempo || 0) : 0;
+        const ivaLista = parseFloat(laActual?.iva ?? art.porcentaje_iva ?? 21);
+        const modoIva = String(laActual?.modo_iva || 'COMPLETO').toUpperCase();
+        let ivaEf = ivaLista;
+        if (modoIva === 'MEDIO') ivaEf = ivaLista / 2;
+        else if (modoIva === 'SIN' || modoIva === 'EXENTO') ivaEf = 0;
+
+        let precioObj = Number((((costoBaseTotalSim * (1 + (margenLista / 100))) + moLista) * (1 + (ivaEf / 100))).toFixed(2));
+        if (typeof window.calcularCascadaArticuloLista === 'function') {
+            const casc = window.calcularCascadaArticuloLista(art.articulo_id, l.id);
+            if (casc && isFinite(casc.precioFinalCalculado)) {
+                precioObj = Number(casc.precioFinalCalculado.toFixed(2));
+            }
+        }
+
+        const precioBD = parseFloat(laActual?.precio_final || 0);
+        if (idx === 0 || Number(l.id) === 1) {
+            precioLista1BD = precioBD;
+            precioLista1Nuevo = precioObj;
+        }
+
+        if (!laActual) {
+            listasPendientesCount++;
+            return;
+        }
+        const costoSobrescritoBultoBD = (laActual.costo_base_sobrescrito !== null && parseFloat(laActual.costo_base_sobrescrito) > 0)
+            ? Number((parseFloat(laActual.costo_base_sobrescrito) * kilos).toFixed(2))
+            : costoOficialBD;
+        const diffCostoLista = Math.abs(costoSinInsSim - costoSobrescritoBultoBD);
+        const diffPrecio = Math.abs(precioObj - precioBD);
+        if ((precioBD > 0 && diffPrecio >= 0.5) || diffCostoLista >= 0.05) {
+            listasPendientesCount++;
+        }
+    });
+
+    const alDiaEnTodasListas = !costoDesactualizado && !hayDesfaseIng && listasPendientesCount === 0;
+    return {
+        alDiaEnTodasListas,
+        costoDesactualizado,
+        listasPendientesCount,
+        listasOfrecidas,
+        precioLista1BD,
+        precioLista1Nuevo
+    };
+};
+
 // Función Helper Determinista: Obtiene las fracciones directas Y sus Packs Padres derivados (Línea 2)
 window.obtenerArticulosMonoIngredientesDeIngrediente = function(ingredienteId) {
     const master = window.pizarraSimulacionMaster;
@@ -2638,12 +2726,11 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
         if (modoIva1 === 'MEDIO') ivaEf1 = ivaLista1 / 2;
         else if (modoIva1 === 'SIN') ivaEf1 = 0;
 
-        const precioLista1BD = parseFloat(laArt?.precio_final || 0);
-        const precioLista1Nuevo = Number((((costoBaseTotal * (1 + (margenLista1 / 100))) + costoTiempo) * (1 + (ivaEf1 / 100))).toFixed(2));
-
+        const auditListas = window.auditarEstadoListasArticuloPizarra(art, costoBaseTotal, insListaAplicado, costoOficialBD, ctxIng);
+        const precioLista1BD = auditListas.precioLista1BD || parseFloat(laArt?.precio_final || 0);
+        const precioLista1Nuevo = auditListas.precioLista1Nuevo || Number((((costoBaseTotal * (1 + (margenLista1 / 100))) + costoTiempo) * (1 + (ivaEf1 / 100))).toFixed(2));
         const diff = Math.abs(costoBaseTotal - costoOficialBD);
-        const diffPrecio = Math.abs(precioLista1Nuevo - precioLista1BD);
-        const estaSincronizado = diff < 0.05 && (precioLista1BD === 0 || diffPrecio < 0.5) && !ctxIng.hayDesfaseIngrediente && costoOficialBD > 0;
+        const estaSincronizado = auditListas.alDiaEnTodasListas;
 
         return {
             sku: art.articulo_id,

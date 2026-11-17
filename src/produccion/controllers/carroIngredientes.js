@@ -605,6 +605,13 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                                     i.stock_actual,
                                     COALESCE(i.stock_bultos, 0) as stock_bultos,
                                     i.nombre as ingrediente_nombre,
+                                    i.articulo_vinculado_numero,
+                                    COALESCE((
+                                        SELECT src_ap.stock_consolidado
+                                        FROM public.stock_real_consolidado src_ap
+                                        WHERE UPPER(BTRIM(src_ap.articulo_numero)) = UPPER(BTRIM(i.articulo_vinculado_numero))
+                                        LIMIT 1
+                                    ), 0) AS ap_stock_disponible,
                                     COALESCE(
                                         (
                                             SELECT json_agg(
@@ -648,6 +655,8 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                                 ...ingrediente,
                                 stock_actual: Number(parseFloat(stockActual).toPrecision(10)),
                                 stock_bultos: parseFloat(stockResult.rows[0]?.stock_bultos || 0),
+                                articulo_vinculado_numero: stockResult.rows[0]?.articulo_vinculado_numero || null,
+                                ap_stock_disponible: parseFloat(stockResult.rows[0]?.ap_stock_disponible || 0),
                                 lotes_cajas_cerradas: stockResult.rows[0]?.lotes_cajas_cerradas || [],
                                 origen_mix_id: ingrediente.origen_mix_id, // Preservar origen_mix_id
                                 sector_letra: ingrediente.sector_letra

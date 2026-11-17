@@ -5270,6 +5270,7 @@ router.get('/simulacion/inicializar', async (req, res) => {
                     ba.descripcion, 
                     ba.descripcion_generada, 
                     ba.costo_base, 
+                    ba.updated_at AS costo_updated_at,
                     ba.porcentaje_iva, 
                     ba.kilos_unidad, 
                     ba.pack_hijo_codigo,

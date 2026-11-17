@@ -2436,11 +2436,14 @@ function generarTablaResumen(lista, titulo, esSeccionInsumo, carroFinalizado, es
                 mostrarBotones = (estadoCarro !== 'preparado' && estadoCarro !== 'confirmado');
             }
 
+            const apSkuDisp = ing.articulo_vinculado_numero ? String(ing.articulo_vinculado_numero).trim() : '';
+            const apKilosDisp = parseFloat(ing.ap_stock_disponible || 0);
+            const tieneStockEnAp = !tieneStock && apSkuDisp && apKilosDisp > 0.001 && tipoCarro !== 'externa';
             const carroIdActivo = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
             const deshabilitado = !carroIdActivo;
             const botonIngresoManual = deshabilitado
                 ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
-                : `<button onclick="abrirModalIngresoManual(${ing.id}, ${carroIdActivo})">Ingreso manual</button>`;
+                : `<button onclick="abrirModalIngresoManual(${ing.id}, ${carroIdActivo})" style="${tieneStockEnAp ? 'background:#0284c7;color:#fff;border:none;font-weight:700;' : ''}" title="${tieneStockEnAp ? `Pasar stock disponible desde Artículo Puente [${apSkuDisp}] (${apKilosDisp.toFixed(2)} kg)` : ''}">${tieneStockEnAp ? `📦 Pasar desde AP` : 'Ingreso manual'}</button>`;
 
             let botonesAccion = '';
 
@@ -2507,6 +2510,9 @@ function generarTablaResumen(lista, titulo, esSeccionInsumo, carroFinalizado, es
 
             const valRequerido = esSeccionInsumo ? Math.round(cantidadNecesaria).toString() : cantidadNecesaria.toFixed(2);
             const valStockFinal = esSeccionInsumo ? Math.round(stockFinal).toString() : stockFinal.toFixed(2);
+            const badgePuenteApHtml = tieneStockEnAp
+                ? `<div style="font-size: 0.78em; color: #0369a1; font-weight: 700; margin-top: 3px;" title="Kilos ya asentados en el Artículo Puente listos para transferir a este ingrediente">🌉 AP [${apSkuDisp}]: ${apKilosDisp.toFixed(2)} kg disp.</div>`
+                : '';
 
             html += `
                 <tr class="${clasesFila.trim()}">
@@ -2515,6 +2521,7 @@ function generarTablaResumen(lista, titulo, esSeccionInsumo, carroFinalizado, es
                     <td class="${claseCeldaSustituible}" ${eventoDblClick} title="${!tieneStock ? 'Doble clic para sustituir ingrediente' : ''}">
                         ${valStockFinal}
                         ${cajasCerradasHtml}
+                        ${badgePuenteApHtml}
                     </td>
                     <td>${indicadorEstado}</td>
                     <td>${unidadDisplay}</td>

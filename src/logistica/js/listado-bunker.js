@@ -2772,9 +2772,15 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva, opcion
                         tostaderoBadgeEl.style.color = '#b45309';
                     }
                 }
+                if (typeof window.actualizarAccesoPizarraTostaderoGP === 'function') {
+                    window.actualizarAccesoPizarraTostaderoGP(currentSku || articulo_id, Boolean(props && props.tostadero_simulacion));
+                }
             } else {
                 if (cardTostaderoEl) cardTostaderoEl.style.display = 'none';
                 if (tostaderoCrudoMetaEl) tostaderoCrudoMetaEl.style.display = 'none';
+                if (typeof window.actualizarAccesoPizarraTostaderoGP === 'function') {
+                    window.actualizarAccesoPizarraTostaderoGP(null, false);
+                }
             }
 
             const costoSimPersistido = simData ? (parseFloat(simData.costo_resultante_kg) || parseFloat(simData.costo_final) || 0) : 0;
@@ -2878,7 +2884,35 @@ window.toggleMaximizarGestorPrecios = function() {
     }
 };
 
+window.actualizarAccesoPizarraTostaderoGP = function(skuAp, estacionado = false) {
+    const card = document.getElementById('gp-card-tostadero');
+    if (!card) return;
+    let linkBtn = document.getElementById('gp-btn-ir-pizarra-ldn4');
+    if (!skuAp) {
+        if (linkBtn) linkBtn.remove();
+        return;
+    }
+    if (!linkBtn) {
+        linkBtn = document.createElement('button');
+        linkBtn.id = 'gp-btn-ir-pizarra-ldn4';
+        linkBtn.type = 'button';
+        linkBtn.style.cssText = 'margin-top:6px;width:100%;padding:4px 8px;border-radius:4px;border:1px solid #0284c7;background:#e0f2fe;color:#0369a1;font-size:0.75em;font-weight:700;cursor:pointer;';
+        card.appendChild(linkBtn);
+    }
+    linkBtn.innerText = estacionado
+        ? '⚡ Propagar a fracciones/listas en Pizarra →'
+        : '🔍 Ver circuito Tostadero en Pizarra →';
+    linkBtn.title = 'Abrir la Línea de Flujo Simple de LDN 4 en Pizarra ya filtrada en este producto';
+    linkBtn.onclick = (ev) => {
+        ev.stopPropagation();
+        const rawUrl = `http://localhost:3002/pages/pizarra-simulacion.html?ldn=4&ap=${encodeURIComponent(skuAp)}`;
+        const resolvedUrl = (typeof window.LAMDA_RESOLVE_URL === 'function') ? window.LAMDA_RESOLVE_URL(rawUrl) : rawUrl;
+        window.open(resolvedUrl, '_blank');
+    };
+};
+
 window.resetEstadoTostadero = function() {
+    window.actualizarAccesoPizarraTostaderoGP(null, false);
     // 1. Reset de Variables de Estado Globales
     window.gp_costoTostaderoKilo = null;
     if (window.gp_current_articulo_data) {
@@ -13102,6 +13136,10 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
         let currentKilosUnidad = 1.00;
         let cotizacionMaestraSeleccionada = null;
         let currentCostoFinalExacto = 0;
+        let currentFuenteCosto = (simSaved && simSaved.fuente_costo) ? simSaved.fuente_costo : null;
+        let currentCostoRepoRef = (simSaved && parseFloat(simSaved.costo_repo_referencia_kg) > 0)
+            ? parseFloat(simSaved.costo_repo_referencia_kg)
+            : 0;
         
         // 🔑 HITO A (Fase 3 - v5.44): INGESTA DINÁMICA DE COSTO BASE DE MATERIA PRIMA (Caja 2)
         if (bultoSavedObj && bultoSavedObj.costo_kilo > 0 && !(currentCostoCrudo > 0)) {
@@ -13808,8 +13846,13 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                     }
                 };
 
-                window.seleccionarFuenteCosto = function(costoVal) {
+                window.seleccionarFuenteCosto = function(costoVal, fuenteOpt = null) {
                     currentCostoCrudo = parseFloat(costoVal) || 0;
+                    if (fuenteOpt) {
+                        currentFuenteCosto = fuenteOpt;
+                    } else if (!currentFuenteCosto) {
+                        currentFuenteCosto = 'MANUAL';
+                    }
                     const inputManual = document.getElementById('sim_costo_manual_input');
                     if (inputManual && document.activeElement !== inputManual) {
                         inputManual.value = currentCostoCrudo > 0 ? currentCostoCrudo.toFixed(2) : '';
@@ -13887,6 +13930,7 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         }
 
                         currentKilosUnidad = kUnidad;
+                        currentCostoRepoRef = Number((costoBunkerKilo || 0).toFixed(2));
                         const elKilosLbl = document.getElementById('sim_lbl_kilos_unidad');
                         if (elKilosLbl) elKilosLbl.innerHTML = `Presentación: <strong>${kUnidad.toFixed(2)} kg</strong> por bulto.`;
 
@@ -13896,7 +13940,7 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         const fuenteEtiqueta = fuenteCostoAplicada ? ` <small style="color: #64748b; font-size: 0.85em;">(${fuenteCostoAplicada})</small>` : '';
                         htmlFuentes += `
                             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px 0; font-size: 0.95em; margin: 0; user-select: none;">
-                                <input type="radio" name="sim_fuente_costo" value="${costoBunkerKilo}" ${bunkerChecked} onchange="window.seleccionarFuenteCosto(${costoBunkerKilo})">
+                                <input type="radio" name="sim_fuente_costo" value="${costoBunkerKilo}" ${bunkerChecked} onchange="window.seleccionarFuenteCosto(${costoBunkerKilo}, 'REPO')">
                                 <span>🎯 Costo Base Actual / Editado: <strong>${currencyFormatterLocal.format(costoBunkerKilo)} / kg</strong>${fuenteEtiqueta}</span>
                             </label>
                         `;
@@ -13904,7 +13948,7 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                         if (cLote !== null) {
                             htmlFuentes += `
                                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px 0; font-size: 0.95em; margin: 0; user-select: none;">
-                                    <input type="radio" name="sim_fuente_costo" value="${cLote}" onchange="window.seleccionarFuenteCosto(${cLote})">
+                                    <input type="radio" name="sim_fuente_costo" value="${cLote}" onchange="window.seleccionarFuenteCosto(${cLote}, 'LOTE')">
                                     <span>📦 Último Lote de Compra: <strong>${currencyFormatterLocal.format(cLote)} / kg</strong></span>
                                 </label>
                             `;
@@ -13917,7 +13961,7 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                                 const pNombre = o.proveedor_nombre || `Proveedor #${o.proveedor_id}`;
                                 htmlFuentes += `
                                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 3px 0; font-size: 0.9em; margin: 0; user-select: none; color: #334155;">
-                                        <input type="radio" name="sim_fuente_costo" value="${cProvKilo}" onchange="window.seleccionarFuenteCosto(${cProvKilo})">
+                                        <input type="radio" name="sim_fuente_costo" value="${cProvKilo}" onchange="window.seleccionarFuenteCosto(${cProvKilo}, 'MANUAL')">
                                         <span>🏭 ${pNombre}: <strong>${currencyFormatterLocal.format(cProvKilo)} / kg</strong></span>
                                     </label>
                                 `;
@@ -13929,7 +13973,7 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                             htmlFuentes += `
                                 <div style="font-size: 0.85em; font-weight: bold; color: #0284c7; margin-top: 6px; margin-bottom: 2px;">Cotización Seleccionada:</div>
                                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 4px 0; font-size: 0.93em; margin: 0; user-select: none; background: #e0f2fe; border-radius: 4px; padding-left: 6px;">
-                                    <input type="radio" name="sim_fuente_costo" value="${cMaestraKilo}" checked onchange="window.seleccionarFuenteCosto(${cMaestraKilo})">
+                                    <input type="radio" name="sim_fuente_costo" value="${cMaestraKilo}" checked onchange="window.seleccionarFuenteCosto(${cMaestraKilo}, 'MANUAL')">
                                     <span>🔍 <strong>${cotizacionMaestraSeleccionada.descripcion}</strong>: <strong>${currencyFormatterLocal.format(cMaestraKilo)} / kg</strong></span>
                                 </label>
                             `;
@@ -13941,13 +13985,16 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                             ? (parseFloat(simSaved.costo_crudo_kg) || parseFloat(simSaved.costo_crudo) || 0)
                             : 0;
                         if (cotizacionMaestraSeleccionada) {
-                            window.seleccionarFuenteCosto(parseFloat(cotizacionMaestraSeleccionada.costo_reposicion) || 0);
+                            window.seleccionarFuenteCosto(parseFloat(cotizacionMaestraSeleccionada.costo_reposicion) || 0, 'MANUAL');
                         } else if (savedCost > 0) {
-                            window.seleccionarFuenteCosto(savedCost);
+                            const savedFuente = (simSaved && simSaved.fuente_costo)
+                                ? simSaved.fuente_costo
+                                : (Math.abs(savedCost - costoBunkerKilo) > 0.02 ? 'MANUAL' : 'REPO');
+                            window.seleccionarFuenteCosto(savedCost, savedFuente);
                         } else if (costoVivoIngresado > 0) {
-                            window.seleccionarFuenteCosto(costoVivoIngresado);
+                            window.seleccionarFuenteCosto(costoVivoIngresado, 'REPO');
                         } else {
-                            window.seleccionarFuenteCosto(costoBunkerKilo);
+                            window.seleccionarFuenteCosto(costoBunkerKilo, 'REPO');
                         }
 
                     } catch (err) {
@@ -14252,7 +14299,7 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                 if (inputCostManual) {
                     inputCostManual.addEventListener('input', (e) => {
                         const val = parseFloat(String(e.target.value).replace(',', '.')) || 0;
-                        window.seleccionarFuenteCosto(val);
+                        window.seleccionarFuenteCosto(val, 'MANUAL');
                     });
                 }
 
@@ -14386,6 +14433,8 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                     cantidad_piezas: piezasQty,
                     costo_crudo: currentCostoCrudo,
                     costo_crudo_kg: currentCostoCrudo,
+                    fuente_costo: currentFuenteCosto || (Math.abs(currentCostoCrudo - currentCostoRepoRef) > 0.02 ? 'MANUAL' : 'REPO'),
+                    costo_repo_referencia_kg: Number((currentCostoRepoRef || 0).toFixed(2)),
                     merma: mermaVal,
                     tarifa: tarifaVal,
                     colaborador_id: colaboradorId,
@@ -14481,6 +14530,9 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                 calcSimBtn.innerText = `🔥 Simulado: ${currencyFormatterLocal.format(finalVal)} / kg`;
                 calcSimBtn.style.background = '#0284c7';
                 calcSimBtn.style.color = 'white';
+            }
+            if (typeof window.actualizarAccesoPizarraTostaderoGP === 'function') {
+                window.actualizarAccesoPizarraTostaderoGP(skuSalida, true);
             }
 
             // Notificación pasiva Toast (Fase 16: Sin autoejecución del modal prematuro)

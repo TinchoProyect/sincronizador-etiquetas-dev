@@ -565,6 +565,8 @@ exports.guardarSimulacionTostadero = async (req, res) => {
             insumo_evaluado_sku: simPayload.insumo_evaluado_sku || null,
             insumo_evaluado_descripcion: simPayload.insumo_evaluado_descripcion || null,
             es_comparacion_bulto_comprado: Boolean(simPayload.es_comparacion_bulto_comprado),
+            fuente_costo: simPayload.fuente_costo || (parseFloat(simPayload.costo_crudo_kg) > 0 ? 'MANUAL' : null),
+            costo_repo_referencia_kg: Number.isFinite(parseFloat(simPayload.costo_repo_referencia_kg)) ? parseFloat(simPayload.costo_repo_referencia_kg) : null,
             costo_crudo_kg: Number.isFinite(parseFloat(simPayload.costo_crudo_kg)) ? parseFloat(simPayload.costo_crudo_kg) : 0,
             costo_resultante_kg: Number.isFinite(parseFloat(simPayload.costo_resultante_kg)) ? parseFloat(simPayload.costo_resultante_kg) : 0,
             updated_at: new Date().toISOString()

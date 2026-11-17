@@ -2076,6 +2076,13 @@ async function cargarArticulosSugeridos(ingredienteIdParam) {
     container.style.display = 'block';
     console.log('✅ [SUGERIDOS] Panel de selección rápida desplegado exitosamente con', articulosSugeridos.length, 'opciones');
 
+    // Auto-seleccionar el primer insumo vinculado con stock disponible (ej. Artículo Puente recién asentado)
+    const idxPreferido = articulosSugeridos.findIndex(a => a.tier === 1 && parseFloat(a.stock_actual || 0) > 0);
+    if (idxPreferido >= 0) {
+      const primeraCard = grid.querySelectorAll('.articulo-sugerido-card')[idxPreferido];
+      if (primeraCard) primeraCard.click();
+    }
+
   } catch (error) {
     console.error('❌ [SUGERIDOS] Error al cargar artículos sugeridos:', error);
     const container = document.getElementById('articulos-sugeridos-container');

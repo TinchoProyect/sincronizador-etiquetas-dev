@@ -2790,9 +2790,31 @@
         laSim.disponible_inicial = laSim.disponible;
       }
 
-      // Preservar el contexto LDN activo o caer a 1 por defecto
-      const ctxActual = contextoLDN || 1;
-      cambiarContextoLDN(ctxActual);
+      // Enlace profundo desde Búnker / Finanzas (?ldn=4&ap=CCTGXK o ?ing=18) aplicado solo en carga inicial
+      let ctxDestino = contextoLDN || 1;
+      if (!window._urlLdnAplicado) {
+        window._urlLdnAplicado = true;
+        try {
+          const urlParams = new URLSearchParams(window.location.search || '');
+          const paramLdn = parseInt(urlParams.get('ldn'), 10);
+          const paramAp = String(urlParams.get('ap') || '').trim().toUpperCase();
+          const paramIng = parseInt(urlParams.get('ing'), 10);
+          if (paramAp || !isNaN(paramIng)) {
+            const tostMatch = (tostaderosConfigsLDN4 || []).find(t =>
+              (paramAp && (String(t.ap_codigo || '').toUpperCase() === paramAp || String(t.up_codigo || '').toUpperCase() === paramAp || String(t.crudo_sku || '').toUpperCase() === paramAp)) ||
+              (!isNaN(paramIng) && Number(t.ing_id) === paramIng)
+            );
+            if (tostMatch) {
+              tostaderoSeleccionadoCodigo = tostMatch.up_codigo;
+              window._ldn4VerTodosManual = false;
+              ctxDestino = (!isNaN(paramLdn) && paramLdn >= 1 && paramLdn <= 7) ? paramLdn : 4;
+            }
+          } else if (!isNaN(paramLdn) && paramLdn >= 1 && paramLdn <= 7) {
+            ctxDestino = paramLdn;
+          }
+        } catch (eUrl) {}
+      }
+      cambiarContextoLDN(ctxDestino);
 
       // Restaurar término de búsqueda persistente si existe
       const savedFiltro = localStorage.getItem('pizarra_filtro_articulos');
@@ -2804,7 +2826,7 @@
     }
 
     // =========================================================================
-    // ECOSISTEMA RELACIONAL SELLADO LDN 4: 6 CIRCUITOS DETERMINISTAS DE TOSTADEROS
+    // ECOSISTEMA RELACIONAL DINÁMICO LDN 4: CIRCUITOS DE TOSTADEROS
     // =========================================================================
     const CIRCUITOS_TOSTADEROS_LDN4_DEF = [
       { up_codigo: 'APTPGUP', ap_codigo: 'APTPGXK', ing_id: 57, titulo: 'Almendra Tostada sin Sal' },
@@ -2815,16 +2837,48 @@
       { up_codigo: 'EMB-3RMHD2', ap_codigo: 'EMB-GZ6U9K', ing_id: 166, titulo: 'Castaña Partida Tost/Sal' }
     ];
 
+    function obtenerDefinicionesTostaderosLdn4(data) {
+      const definiciones = CIRCUITOS_TOSTADEROS_LDN4_DEF.map(d => ({ ...d }));
+      const conocidos = new Set(definiciones.map(d => String(d.up_codigo || '').trim().toUpperCase()));
+      const relaciones = Array.isArray(data?.articulosProduccionExternaRelacion) ? data.articulosProduccionExternaRelacion : [];
+      const excluirExternos = new Set(['GFGN', 'GSGN', 'BFXP', 'GFGNFX1', 'GSGNFX1', 'BFX50G']);
+
+      relaciones.forEach(rel => {
+        const up = String(rel.articulo_produccion_codigo || '').trim().toUpperCase();
+        const ap = String(rel.articulo_kilo_codigo || '').trim().toUpperCase();
+        if (!up || !ap || up === ap) return;
+        if (conocidos.has(up) || excluirExternos.has(up) || excluirExternos.has(ap)) return;
+        if (up.startsWith('BF') || up.startsWith('GFGN') || up.startsWith('GSGN')) return;
+
+        const ingMatch = (data.ingredientes || []).find(i =>
+          String(i.articulo_vinculado_numero || '').trim().toUpperCase() === ap ||
+          (Array.isArray(i.bunker_articulos) && i.bunker_articulos.some(b => String(b.codigo || '').trim().toUpperCase() === ap))
+        );
+        const apArt = (data.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toUpperCase() === ap);
+        definiciones.push({
+          up_codigo: up,
+          ap_codigo: ap,
+          ing_id: ingMatch ? ingMatch.id : null,
+          titulo: (ingMatch && ingMatch.nombre) || (apArt && (apArt.descripcion_generada || apArt.descripcion)) || ap
+        });
+        conocidos.add(up);
+      });
+      return definiciones;
+    }
+
     function inicializarTostaderosDeterministasLDN4() {
       const data = window.pizarraSimulacionMaster;
       if (!data) return;
 
       tostaderosConfigsLDN4 = [];
+      const defsActivas = obtenerDefinicionesTostaderosLdn4(data);
 
-      CIRCUITOS_TOSTADEROS_LDN4_DEF.forEach(def => {
+      defsActivas.forEach(def => {
         const upArt = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === def.up_codigo);
         const apArt = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toUpperCase() === def.ap_codigo);
-        const ingSimple = (data.ingredientes || []).find(i => i.id === def.ing_id);
+        const ingSimple = def.ing_id
+          ? (data.ingredientes || []).find(i => Number(i.id) === Number(def.ing_id))
+          : (data.ingredientes || []).find(i => String(i.articulo_vinculado_numero || '').trim().toUpperCase() === def.ap_codigo);
 
         // 1. Insumo Crudo (Bulto de Entrada en receta de la UP)
         let crudoArt = null;
@@ -2907,7 +2961,7 @@
           ? ((parseFloat(laAP.costo_tiempo) || 0) / kilosAP)
           : 0;
 
-        // Costo crudo inicial (preferencia Reposición; respeta fuente LOTE o MANUAL guardada mientras Repo no haya variado)
+        // Costo crudo inicial: respeta última simulación guardada en Finanzas/Pizarra si el bulto crudo no tuvo actualización posterior en BD
         let fuenteInicial = 'REPO';
         let costoCrudoInicial = crudoCostoRepoKilo > 0 ? crudoCostoRepoKilo : (loteCostoKilo || 0);
         if (
@@ -2915,21 +2969,25 @@
           !simSaved.es_comparacion_bulto_comprado &&
           (!simSaved.insumo_evaluado_sku || String(simSaved.insumo_evaluado_sku).trim().toUpperCase() === String(crudoSku).trim().toUpperCase())
         ) {
+          const simCostKg = parseFloat(simSaved.costo_crudo_kg);
+          const simTs = simSaved.updated_at ? Date.parse(simSaved.updated_at) : 0;
+          const crudoTs = (crudoArt && crudoArt.costo_updated_at) ? Date.parse(crudoArt.costo_updated_at) : 0;
+          const repoCambioPostSim = Boolean(
+            crudoCostoRepoKilo > 0 &&
+            (
+              (simTs > 0 && crudoTs > simTs && Math.abs(crudoCostoRepoKilo - simCostKg) > 0.02) ||
+              (simSaved.costo_repo_referencia_kg !== undefined && simSaved.costo_repo_referencia_kg !== null && Math.abs((parseFloat(simSaved.costo_repo_referencia_kg) || 0) - crudoCostoRepoKilo) > 0.02)
+            )
+          );
+
           if (simSaved.fuente_costo === 'LOTE' && loteCostoKilo > 0) {
             fuenteInicial = 'LOTE';
             costoCrudoInicial = loteCostoKilo;
-          } else if (
-            simSaved.fuente_costo === 'MANUAL' &&
-            parseFloat(simSaved.costo_crudo_kg) > 0 &&
-            (
-              !(crudoCostoRepoKilo > 0) ||
-              (simSaved.costo_repo_referencia_kg !== undefined && Math.abs((parseFloat(simSaved.costo_repo_referencia_kg) || 0) - crudoCostoRepoKilo) <= 0.02)
-            )
-          ) {
-            fuenteInicial = 'MANUAL';
-            costoCrudoInicial = parseFloat(simSaved.costo_crudo_kg);
-          } else if (parseFloat(simSaved.costo_crudo_kg) > 0 && !(crudoCostoRepoKilo > 0)) {
-            costoCrudoInicial = parseFloat(simSaved.costo_crudo_kg);
+          } else if (simCostKg > 0 && (simSaved.fuente_costo === 'MANUAL' || simSaved.fuente_costo === 'OFERTA' || (!simSaved.fuente_costo && (simTs >= crudoTs || !(crudoCostoRepoKilo > 0)))) && !repoCambioPostSim) {
+            fuenteInicial = simSaved.fuente_costo || 'MANUAL';
+            costoCrudoInicial = simCostKg;
+          } else if (simCostKg > 0 && !(crudoCostoRepoKilo > 0)) {
+            costoCrudoInicial = simCostKg;
           }
         }
 
@@ -3612,11 +3670,91 @@
       renderizarTostaderosLDN4();
     }
 
+    function resolverTostaderoParaContextoLDN4() {
+      const configs = tostaderosConfigsLDN4 || [];
+      if (configs.length === 0) return null;
+
+      const ingIdActivo = Number(window.ingredienteSeleccionadoId || window.ultimoIngredienteSeleccionadoId || 0);
+      const artSkuActivo = String(window.articuloSeleccionadoId || '').trim().toUpperCase();
+      const targetIngs = Array.isArray(window.targetIngIdsActivos) ? window.targetIngIdsActivos.map(Number) : [];
+
+      let match = configs.find(t => ingIdActivo > 0 && Number(t.ing_id) === ingIdActivo);
+      if (match) return match.up_codigo;
+
+      if (artSkuActivo) {
+        match = configs.find(t =>
+          String(t.up_codigo || '').toUpperCase() === artSkuActivo ||
+          String(t.ap_codigo || '').toUpperCase() === artSkuActivo ||
+          String(t.crudo_sku || '').toUpperCase() === artSkuActivo
+        );
+        if (match) return match.up_codigo;
+
+        const data = window.pizarraSimulacionMaster || {};
+        const artObj = (data.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toUpperCase() === artSkuActivo);
+        const skuParaReceta = (artObj && artObj.pack_hijo_codigo && !artObj.tiene_receta)
+          ? String(artObj.pack_hijo_codigo).trim().toUpperCase()
+          : artSkuActivo;
+        const recs = (data.recetas || []).filter(r => String(r.articulo_numero || '').trim().toUpperCase() === skuParaReceta).map(r => r.id);
+        const recIngIds = (data.recetaIngredientes || []).filter(ri => recs.includes(ri.receta_id)).map(ri => Number(ri.ingrediente_id));
+        match = configs.find(t => recIngIds.includes(Number(t.ing_id)));
+        if (match) return match.up_codigo;
+      }
+
+      if (targetIngs.length > 0) {
+        match = configs.find(t => targetIngs.includes(Number(t.ing_id)));
+        if (match) return match.up_codigo;
+      }
+      return null;
+    }
+
+    function obtenerMixesAfectadosPorTostadero(ingId) {
+      const data = window.pizarraSimulacionMaster;
+      if (!data || !ingId) return [];
+      const res = [];
+      (data.ingredientes || []).forEach(ing => {
+        const comps = composicionMixMap.get(ing.id);
+        if (!comps || !comps.some(c => Number(c.ingrediente_id) === Number(ingId))) return;
+        const apSkus = (data.recetas || [])
+          .filter(r => (data.recetaIngredientes || []).some(ri => ri.receta_id === r.id && ri.ingrediente_id === ing.id))
+          .map(r => r.articulo_numero);
+        const simplesDerivados = (data.ingredientes || []).filter(s =>
+          !composicionMixMap.has(s.id) &&
+          s.articulo_vinculado_numero &&
+          apSkus.some(ap => ap.toUpperCase() === String(s.articulo_vinculado_numero).trim().toUpperCase())
+        );
+        const fraccsMixCount = (data.recetas || []).filter(r =>
+          simplesDerivados.some(s => (data.recetaIngredientes || []).some(ri => ri.receta_id === r.id && ri.ingrediente_id === s.id))
+        ).length;
+        res.push({
+          id: ing.id,
+          nombre: ing.nombre,
+          apSkus,
+          fraccsMixCount
+        });
+      });
+      return res;
+    }
+
+    window.abrirMixEspecificoEnLdn3 = function(mixId) {
+      if (typeof window.cambiarContextoLDN === 'function') {
+        window.cambiarContextoLDN(3);
+      }
+      mixSeleccionadoId = Number(mixId);
+      abiertoMixId = Number(mixId);
+      ingredienteSimpleSeleccionadoId = null;
+      window.verTodosArticulosLDN3 = false;
+      window.soloMixesCoincidentes = false;
+      renderizarMixes();
+      renderizarArticulosBunker();
+    };
+
     function toggleTostaderoCollapse(upCodigo) {
-      if (tostaderoSeleccionadoCodigo === upCodigo) {
+      if (!upCodigo || tostaderoSeleccionadoCodigo === upCodigo) {
         tostaderoSeleccionadoCodigo = null;
+        window._ldn4VerTodosManual = true;
       } else {
         tostaderoSeleccionadoCodigo = upCodigo;
+        window._ldn4VerTodosManual = false;
       }
       renderizarTostaderosLDN4();
       renderizarArticulosBunker();
@@ -3629,45 +3767,176 @@
       if (!container) return;
       container.innerHTML = '';
 
+      const data = window.pizarraSimulacionMaster || {};
       const searchInput = document.getElementById('search-tostaderos');
+      const searchWrap = searchInput ? searchInput.closest('.search-box') : null;
       const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
 
-      // Banner superior de contexto si hay UP seleccionada
-      if (tostaderoSeleccionadoCodigo) {
-        const selTost = (tostaderosConfigsLDN4 || []).find(t => t.up_codigo === tostaderoSeleccionadoCodigo);
-        if (selTost) {
-          const banner = document.createElement('div');
-          banner.style.cssText = `
-            padding: 8px 12px;
-            margin-bottom: 12px;
-            background: rgba(56, 189, 248, 0.1);
-            border: 1px solid rgba(56, 189, 248, 0.3);
-            border-left: 3px solid #38bdf8;
-            border-radius: 6px;
-            font-size: 0.78rem;
-            color: #bae6fd;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          `;
-          banner.innerHTML = `
-            <div>
-              <span>🎯 Unidad Productiva activa: <strong style="color: #fff;">[${selTost.up_codigo}] ${selTost.titulo}</strong></span>
-              <div style="font-size: 0.70rem; color: #38bdf8; margin-top: 2px;">
-                Filtrando catálogo derecho exclusivamente para sus fracciones
-              </div>
-            </div>
-            <button style="background: rgba(56, 189, 248, 0.2); color: #bae6fd; border: 1px solid rgba(56, 189, 248, 0.4); padding: 3px 8px; border-radius: 4px; font-size: 0.70rem; cursor: pointer;"
-              onclick="tostaderoSeleccionadoCodigo = null; renderizarTostaderosLDN4(); renderizarArticulosBunker();">
-              ✕ Ver Todas
-            </button>
-          `;
-          container.appendChild(banner);
-        }
+      const allConfigs = tostaderosConfigsLDN4 || [];
+      const selTost = tostaderoSeleccionadoCodigo
+        ? allConfigs.find(t => t.up_codigo === tostaderoSeleccionadoCodigo)
+        : null;
+
+      if (searchWrap) {
+        searchWrap.style.display = selTost ? 'none' : 'flex';
       }
 
+      // MODO ENFOCADO: Un único flujo simple de 5 pasos para el producto seleccionado (Cero ruido visual)
+      if (selTost) {
+        const auditTost = auditarEstadoSincronizacionTostaderoLDN4(selTost.up_codigo);
+        const costoBaseApSim = auditTost.costoBaseApSim;
+        const costoIngSim = auditTost.costoIngSim;
+        const moApKilo = parseFloat(selTost.mo_ap_kilo) || 0;
+        const apArt = (data.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toUpperCase() === String(selTost.ap_codigo || '').toUpperCase());
+        const ingObj = (data.ingredientes || []).find(i => Number(i.id) === Number(selTost.ing_id));
+        const stockApKg = parseFloat(apArt?.stock_disponible ?? apArt?.stock_consolidado ?? 0);
+        const stockIngKg = parseFloat(ingObj?.stock_actual || 0);
+
+        const fraccs = obtenerFraccionesTostaderoLDN4(selTost);
+        const fraccsPend = fraccs.filter(f => !auditarArticuloHijoLDN4(f).estaAlDia);
+        const listasOfrecidasUnicas = new Set();
+        fraccs.forEach(f => {
+          (data.listasPrecios || []).forEach(l => {
+            if (l.activa === false) return;
+            const la = (data.articulosListas || []).find(c => c.lista_id === l.id && String(c.articulo_numero || '').trim().toUpperCase() === String(f.articulo_id || '').trim().toUpperCase());
+            if (la && la.disponible !== false) {
+              listasOfrecidasUnicas.add(l.nombre);
+            }
+          });
+        });
+
+        const mixesAfectados = obtenerMixesAfectadosPorTostadero(selTost.ing_id);
+        const listasLabel = listasOfrecidasUnicas.size > 0
+          ? Array.from(listasOfrecidasUnicas).join(', ')
+          : 'Ninguna lista activa marcada como disponible';
+
+        container.innerHTML = `
+          <div style="display:flex; flex-direction:column; gap:10px; padding:4px 2px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 12px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.35); border-left:4px solid #38bdf8; border-radius:8px;">
+              <div>
+                <div style="font-size:0.86rem; font-weight:800; color:#fff;">🥜 ${selTost.titulo}</div>
+                <div style="font-size:0.70rem; color:#94a3b8;">Circuito <strong>[${selTost.up_codigo}]</strong> → AP <strong>[${selTost.ap_codigo}]</strong> → Ing. <strong>#${selTost.ing_id}</strong></div>
+              </div>
+              <button type="button" style="background:rgba(15,23,42,0.7); color:#bae6fd; border:1px solid rgba(56,189,248,0.4); padding:4px 10px; border-radius:6px; font-size:0.72rem; font-weight:700; cursor:pointer;"
+                onclick="tostaderoSeleccionadoCodigo = null; window._ldn4VerTodosManual = true; renderizarTostaderosLDN4(); renderizarArticulosBunker();">
+                ← Ver todos (${allConfigs.length})
+              </button>
+            </div>
+
+            <!-- PASO 1: CRUDO -->
+            <div style="background:rgba(15,23,42,0.55); border:1px solid rgba(148,163,184,0.22); border-radius:8px; padding:10px 12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
+                <span style="font-size:0.74rem; font-weight:800; color:#38bdf8;">PASO 1 · INSUMO CRUDO</span>
+                <span style="font-size:0.70rem; font-weight:700; color:${selTost.crudo_stock_bultos > 0 ? '#34d399' : '#f87171'};">Stock crudo: ${selTost.crudo_stock_bultos} bultos (${(selTost.crudo_stock_bultos * selTost.crudo_kilos_unidad).toFixed(1)} kg)</span>
+              </div>
+              <div style="font-size:0.78rem; color:#e2e8f0; font-weight:600; margin-bottom:6px;">[${selTost.crudo_sku}] ${selTost.crudo_nombre}</div>
+              <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                <button type="button" style="padding:3px 7px; border-radius:4px; border:1px solid rgba(255,255,255,0.12); cursor:pointer; font-size:0.70rem; background:${selTost.fuente_costo === 'REPO' ? '#2563eb' : 'rgba(255,255,255,0.06)'}; color:#fff; font-weight:700;"
+                  onclick="conmutarFuenteCostoTostadero('${selTost.up_codigo}', 'REPO')">Repo: $${selTost.crudo_costo_repo_kilo.toFixed(2)}/kg</button>
+                ${selTost.lote_costo_kilo ? `<button type="button" style="padding:3px 7px; border-radius:4px; border:1px solid rgba(255,255,255,0.12); cursor:pointer; font-size:0.70rem; background:${selTost.fuente_costo === 'LOTE' ? '#2563eb' : 'rgba(255,255,255,0.06)'}; color:#fff; font-weight:700;"
+                  onclick="conmutarFuenteCostoTostadero('${selTost.up_codigo}', 'LOTE')">Lote: $${selTost.lote_costo_kilo.toFixed(2)}/kg</button>` : ''}
+                <button type="button" style="padding:3px 7px; border-radius:4px; border:1px solid rgba(56,189,248,0.4); background:rgba(56,189,248,0.14); color:#7dd3fc; font-size:0.70rem; font-weight:700; cursor:pointer;"
+                  onclick="abrirSelectorCrudoTostadero('${selTost.up_codigo}')">🔄 Cambiar crudo</button>
+                <div style="margin-left:auto; display:flex; align-items:center; gap:4px;">
+                  <span style="font-size:0.70rem; color:#94a3b8;">Crudo $/kg:</span>
+                  <input type="number" step="10" value="${selTost.costo_crudo_simulado.toFixed(2)}"
+                    style="width:88px; background:var(--bg-input); border:1px solid rgba(56,189,248,0.4); border-radius:4px; padding:3px 6px; color:#fff; font-weight:700; font-size:0.76rem; text-align:right;"
+                    onchange="cambiarCostoCrudoTostadero('${selTost.up_codigo}', this.value)">
+                </div>
+              </div>
+            </div>
+
+            <!-- PASO 2: TOSTADERO EXTERNO -->
+            <div style="background:rgba(15,23,42,0.55); border:1px solid rgba(148,163,184,0.22); border-radius:8px; padding:10px 12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                <span style="font-size:0.74rem; font-weight:800; color:#fbbf24;">PASO 2 · TOSTADERO EXTERNO (${selTost.up_codigo})</span>
+                <button type="button" style="padding:2px 7px; border-radius:4px; border:1px solid rgba(168,85,247,0.4); background:rgba(168,85,247,0.14); color:#d8b4fe; font-size:0.68rem; font-weight:700; cursor:pointer;"
+                  onclick="if (window.abrirEditorUpDirecto) window.abrirEditorUpDirecto('${selTost.up_codigo}', { onSaved: () => inicializarPizarra(true) });">🛠️ Receta UP</button>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:8px; align-items:center;">
+                <label style="font-size:0.70rem; color:#94a3b8; display:flex; flex-direction:column; gap:3px;">
+                  Merma tostado (%)
+                  <input type="number" step="0.05" value="${selTost.merma_porc_simulada.toFixed(2)}"
+                    style="background:var(--bg-input); border:1px solid rgba(248,113,113,0.4); border-radius:4px; padding:4px 6px; color:#fca5a5; font-weight:700; font-size:0.78rem; text-align:right;"
+                    onchange="cambiarMermaTostadero('${selTost.up_codigo}', this.value)">
+                </label>
+                <label style="font-size:0.70rem; color:#94a3b8; display:flex; flex-direction:column; gap:3px;">
+                  Tarifa colaborador ($/kg)
+                  <input type="number" step="10" value="${selTost.tarifa_maquila_simulada.toFixed(2)}"
+                    style="background:var(--bg-input); border:1px solid rgba(251,191,36,0.4); border-radius:4px; padding:4px 6px; color:#fde68a; font-weight:700; font-size:0.78rem; text-align:right;"
+                    onchange="cambiarMaquilaTostadero('${selTost.up_codigo}', this.value)">
+                </label>
+                <div style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.35); border-radius:6px; padding:6px 8px; text-align:right;">
+                  <div style="font-size:0.66rem; color:#6ee7b7;">Costo tostado AP</div>
+                  <div style="font-size:0.92rem; font-weight:800; color:#34d399;">$${costoBaseApSim.toLocaleString('es-AR', {minimumFractionDigits:2})}/kg</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- PASO 3: ARTÍCULO PUENTE -> INGREDIENTE -->
+            <div style="background:rgba(15,23,42,0.55); border:1px solid rgba(148,163,184,0.22); border-radius:8px; padding:10px 12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:4px;">
+                <span style="font-size:0.74rem; font-weight:800; color:#34d399;">PASO 3 · PUENTE [${selTost.ap_codigo}] → INGREDIENTE #${selTost.ing_id}</span>
+                <span style="font-size:0.69rem; color:#7dd3fc;">Stock AP: <strong>${stockApKg.toFixed(2)} kg</strong> · Ing: <strong>${stockIngKg.toFixed(2)} kg</strong></span>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.76rem; color:#cbd5e1; flex-wrap:wrap; gap:6px;">
+                <span>AP ($${costoBaseApSim.toFixed(2)}) ${moApKilo > 0 ? `+ MO pesaje AP ($${moApKilo.toFixed(2)})` : ''}</span>
+                <span>Ing. BD: <strong style="color:#94a3b8;">$${auditTost.costoIngBd.toLocaleString('es-AR', {minimumFractionDigits:2})}</strong> → Nuevo: <strong style="color:#10b981;">$${costoIngSim.toLocaleString('es-AR', {minimumFractionDigits:2})}/kg</strong></span>
+              </div>
+            </div>
+
+            <!-- PASO 4: DESTINO (FRACCIONES LDN 4 + MIXES LDN 3) -->
+            <div style="background:rgba(15,23,42,0.55); border:1px solid rgba(148,163,184,0.22); border-radius:8px; padding:10px 12px;">
+              <div style="font-size:0.74rem; font-weight:800; color:#c084fc; margin-bottom:6px;">PASO 4 · ADÓNDE IMPACTA ESTE INGREDIENTE</div>
+              <div style="font-size:0.75rem; color:#e2e8f0; margin-bottom:${mixesAfectados.length > 0 ? '8px' : '0'};">
+                📦 <strong>Fracciones directas (LDN 4):</strong> ${fraccs.length} presentación(es) a la derecha
+                (${fraccsPend.length > 0 ? `<strong style="color:#fbbf24;">${fraccsPend.length} con variación</strong>` : '<span style="color:#34d399;">al día</span>'}).
+              </div>
+              ${mixesAfectados.length > 0 ? `
+                <div style="padding:7px 9px; border-radius:6px; background:rgba(168,85,247,0.14); border:1px solid rgba(168,85,247,0.35); font-size:0.73rem; color:#e9d5ff; display:flex; flex-direction:column; gap:5px;">
+                  <div>🧪 <strong>Entra en Mix(es) de [LDN 3]:</strong></div>
+                  ${mixesAfectados.map(mx => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                      <span>• <strong>[#${mx.id}] ${mx.nombre}</strong> → AP: ${mx.apSkus.join(', ') || 's/AP'} (${mx.fraccsMixCount} frac.)</span>
+                      <button type="button" style="padding:2px 7px; border-radius:4px; border:1px solid #c084fc; background:rgba(168,85,247,0.25); color:#f3e8ff; font-size:0.68rem; font-weight:700; cursor:pointer;"
+                        onclick="abrirMixEspecificoEnLdn3(${mx.id})">Ir al Mix →</button>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : '<div style="font-size:0.70rem; color:#64748b; margin-top:3px;">🧪 Mixes [LDN 3]: no participa como componente de ningún Mix actualmente.</div>'}
+            </div>
+
+            <!-- PASO 5: PRECIOS OFRECIDOS Y CONFIRMACIÓN -->
+            <div style="background:rgba(15,23,42,0.75); border:1px solid ${auditTost.estaAlDia ? 'rgba(16,185,129,0.4)' : 'rgba(245,158,11,0.55)'}; border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span style="font-size:0.74rem; font-weight:800; color:${auditTost.estaAlDia ? '#34d399' : '#fbbf24'};">PASO 5 · LISTAS OFRECIDAS Y PÚBLICO</span>
+                <span style="font-size:0.70rem; font-weight:700; color:${auditTost.estaAlDia ? '#34d399' : '#fbbf24'};">${auditTost.estaAlDia ? '🟢 Todo al día en BD' : `🟡 ${auditTost.totalCambios} cambio(s): ${auditTost.resumenDetalle}`}</span>
+              </div>
+              <div style="font-size:0.72rem; color:#cbd5e1;">
+                🛒 Listas activas donde está ofrecido: <strong style="color:#7dd3fc;">${listasLabel}</strong>
+              </div>
+              <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                ${selTost.ing_id ? `
+                  <button type="button" class="btn" style="padding:6px 10px; font-size:0.73rem; font-weight:700; background:rgba(14,165,233,0.18); color:#bae6fd; border:1px solid #38bdf8; border-radius:6px; cursor:pointer;"
+                    onclick="window.abrirModuloConciliacionIA('ING-${selTost.ing_id}', null, { es_ingrediente: true, ingrediente_id: ${selTost.ing_id} })">🤖 Comparar Proveedores</button>
+                ` : ''}
+                <button type="button" class="btn btn-actualizar-todas-ldn4" style="flex:1; padding:7px 12px; font-size:0.78rem; font-weight:800; border-radius:6px; cursor:pointer; border:1px solid ${auditTost.estaAlDia ? 'rgba(16,185,129,0.45)' : '#fbbf24'}; background:${auditTost.estaAlDia ? 'rgba(16,185,129,0.18)' : 'linear-gradient(135deg, #f59e0b, #d97706)'}; color:${auditTost.estaAlDia ? '#34d399' : '#0f172a'};"
+                  onclick="actualizarTodasFraccionesDeTostadero('${selTost.up_codigo}')">
+                  ${auditTost.estaAlDia ? '🔍 Ver Auditoría de Precios Ofrecidos' : '⚡ Ver Precios al Público / Listas y Actualizar Cadena'}
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+        if (window.VigíaPizarra) {
+          window.VigíaPizarra.logEvent('TOSTADEROS_LDN4', `Flujo 5 pasos renderizado para ${selTost.up_codigo}`, { tostaderoSeleccionadoCodigo: selTost.up_codigo });
+        }
+        return;
+      }
+
+      // MODO SELECTOR COMPACTO (cuando no hay producto enfocado todavía)
       let count = 0;
-      (tostaderosConfigsLDN4 || []).forEach(t => {
+      allConfigs.forEach(t => {
         if (query) {
           const match = t.up_codigo.toLowerCase().includes(query) ||
                         t.ap_codigo.toLowerCase().includes(query) ||
@@ -3677,147 +3946,25 @@
           if (!match) return;
         }
         count++;
-
-        const isDestacado = tostaderoSeleccionadoCodigo === t.up_codigo;
         const auditTost = auditarEstadoSincronizacionTostaderoLDN4(t.up_codigo);
-        const costoIngSim = auditTost.costoIngSim;
-        const costoBaseApSim = auditTost.costoBaseApSim;
-        const moApKilo = parseFloat(t.mo_ap_kilo) || 0;
-        const diffIng = auditTost.diffIng;
-        const diffApBase = auditTost.diffApBase;
-        const diffPesos = Math.abs(diffIng) >= Math.abs(diffApBase) ? diffIng : diffApBase;
-        const badgeEstadoTostHtml = auditTost.estaAlDia
-          ? `<span class="badge-estado-ldn4 al-dia" style="font-size: 0.66rem; font-weight: 800; background: rgba(16, 185, 129, 0.16); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); padding: 2px 7px; border-radius: 9999px;" title="AP, Ingrediente espejo y fracciones activas sincronizados con BD (tolerancia <= $0,02)">🟢 Al día en BD</span>`
-          : `<span class="badge-estado-ldn4 desactualizado" style="font-size: 0.66rem; font-weight: 800; background: rgba(245, 158, 11, 0.22); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.55); padding: 2px 7px; border-radius: 9999px;" title="Diferencias reales detectadas (> $0,02): ${auditTost.resumenDetalle}">🟡 Desactualizado (${auditTost.totalCambios} cambio${auditTost.totalCambios !== 1 ? 's' : ''})</span>`;
-
+        const mixesCount = obtenerMixesAfectadosPorTostadero(t.ing_id).length;
         const card = document.createElement('div');
-        card.className = `mix-card` + (isDestacado ? ' mix-card-destacado open' : '');
+        card.className = 'mix-card';
         card.id = `tost-card-${t.up_codigo}`;
-        if (isDestacado) {
-          card.style.cssText = 'border: 1px solid rgba(56, 189, 248, 0.6); box-shadow: 0 0 8px rgba(56, 189, 248, 0.2); background: rgba(56, 189, 248, 0.04);';
-        }
-
+        card.style.cursor = 'pointer';
+        card.onclick = () => toggleTostaderoCollapse(t.up_codigo);
         card.innerHTML = `
-          <div class="mix-card-header" onclick="toggleTostaderoCollapse('${t.up_codigo}')" style="cursor: pointer; ${isDestacado ? 'background: rgba(56, 189, 248, 0.15); border-left: 3px solid #38bdf8;' : ''}">
-            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-              <span class="art-code" style="font-size: 0.85rem; font-weight: 700; color: #38bdf8;">[${t.up_codigo}]</span>
-              <span class="mix-title" style="${isDestacado ? 'color: #38bdf8; font-weight: 700;' : ''}">${t.titulo}</span>
-              <span style="font-size: 0.68rem; font-weight: 700; background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 6px; border-radius: 4px;">AP [${t.ap_codigo}]</span>
-              ${badgeEstadoTostHtml}
-              ${isDestacado ? '<span style="font-size: 0.66rem; font-weight: 700; background: rgba(56, 189, 248, 0.3); color: #bae6fd; padding: 2px 6px; border-radius: 4px;">🎯 Seleccionado</span>' : '<span style="font-size: 0.66rem; color: #64748b;">(clic para ver fracciones)</span>'}
+          <div class="mix-card-header" style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <div>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <strong style="color:#fff; font-size:0.86rem;">${t.titulo}</strong>
+                <span style="font-size:0.68rem; background:rgba(56,189,248,0.18); color:#7dd3fc; padding:1px 6px; border-radius:4px; font-weight:700;">AP ${t.ap_codigo}</span>
+                ${mixesCount > 0 ? `<span style="font-size:0.66rem; background:rgba(168,85,247,0.2); color:#e9d5ff; padding:1px 6px; border-radius:4px; font-weight:700;">🧪 ${mixesCount} Mix</span>` : ''}
+                <span style="font-size:0.66rem; font-weight:800; padding:1px 7px; border-radius:999px; background:${auditTost.estaAlDia ? 'rgba(16,185,129,0.16)' : 'rgba(245,158,11,0.2)'}; color:${auditTost.estaAlDia ? '#34d399' : '#fbbf24'};">${auditTost.estaAlDia ? '🟢 Al día' : `🟡 ${auditTost.totalCambios} pend.`}</span>
+              </div>
+              <div style="font-size:0.71rem; color:#94a3b8; margin-top:3px;">Crudo: [${t.crudo_sku}] · Ing #${t.ing_id || '-'} ($${auditTost.costoIngBd.toFixed(2)}/kg BD → Sim $${auditTost.costoIngSim.toFixed(2)}/kg)</div>
             </div>
-            <div class="mix-price-badge" style="display: flex; flex-direction: column; align-items: flex-end; gap: 1px;">
-              <span class="price-new" style="font-size: 0.85rem; font-weight: 700; color: #10b981;" title="Costo Base AP [${t.ap_codigo}] = (Crudo / Rendimiento) + Tarifa Productor">AP: $${costoBaseApSim.toFixed(2)}/kg <span style="font-size: 0.70rem; color: #64748b;">${isDestacado ? '▲' : '▼'}</span></span>
-              ${moApKilo > 0 ? `<span style="font-size: 0.66rem; color: #fcd34d; font-weight: 700;" title="Ingrediente [#${t.ing_id}] incluye MO interna de pesaje AP (+$${moApKilo.toFixed(2)}/kg)">Ing #${t.ing_id}: $${costoIngSim.toFixed(2)}/kg</span>` : ''}
-            </div>
-          </div>
-          <div class="mix-card-body" style="padding: 10px 14px; font-size: 0.78rem; display: flex; flex-direction: column; gap: 8px;">
-            <!-- Insumo Crudo -->
-            <div style="background: rgba(0,0,0,0.2); padding: 8px; border-radius: 6px; border: 1px solid ${t.crudo_sku !== t.crudo_sku_oficial_bd ? 'rgba(245, 158, 11, 0.45)' : 'rgba(255,255,255,0.05)'};">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 6px; flex-wrap: wrap;">
-                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                  <span style="color: var(--text-secondary); font-size: 0.72rem;">🌾 Insumo Crudo: <strong style="color: #cbd5e1;">[${t.crudo_sku}]</strong></span>
-                  ${t.crudo_sku !== t.crudo_sku_oficial_bd ? `<span style="font-size: 0.63rem; font-weight: 700; background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); padding: 1px 5px; border-radius: 3px;" title="Simulando insumo crudo distinto al guardado en la receta oficial de la UP (${t.crudo_sku_oficial_bd})">🧪 Simulado (UP: ${t.crudo_sku_oficial_bd})</span>` : ''}
-                  <button style="padding: 2px 7px; font-size: 0.67rem; font-weight: 700; background: rgba(56, 189, 248, 0.16); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;"
-                    onclick="event.stopPropagation(); abrirSelectorCrudoTostadero('${t.up_codigo}')"
-                    title="Cambiar el artículo bulto crudo que abastece esta Unidad Productiva (Simular o Guardar en Receta UP)">
-                    🔄 Cambiar Crudo
-                  </button>
-                  <button style="padding: 2px 7px; font-size: 0.67rem; font-weight: 700; background: rgba(168, 85, 247, 0.16); color: #d8b4fe; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;"
-                    onclick="event.stopPropagation(); if (window.abrirEditorUpDirecto) window.abrirEditorUpDirecto('${t.up_codigo}', { onSaved: () => inicializarPizarra(true) });"
-                    title="Editar directamente la receta e insumos de la UP [${t.up_codigo}] sin abrir carros">
-                    🛠️ Editar UP
-                  </button>
-                </div>
-                <span style="color: ${t.crudo_stock_bultos > 0 ? '#06b6d4' : '#f87171'}; font-size: 0.70rem; font-weight: 600;">📦 ${t.crudo_stock_bultos} bultos (${(t.crudo_stock_bultos * t.crudo_kilos_unidad).toFixed(1)} kg)</span>
-              </div>
-              <div style="font-size: 0.72rem; color: #94a3b8; margin-bottom: 6px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;" title="${t.crudo_nombre}">
-                ${t.crudo_nombre}
-              </div>
-              <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                <div style="display: flex; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; font-size: 0.68rem;">
-                  <button style="padding: 3px 6px; border: none; cursor: pointer; background: ${t.fuente_costo === 'REPO' ? '#3b82f6' : 'rgba(255,255,255,0.05)'}; color: #fff; font-weight: ${t.fuente_costo === 'REPO' ? '700' : 'normal'};"
-                    onclick="event.stopPropagation(); conmutarFuenteCostoTostadero('${t.up_codigo}', 'REPO')" title="Usar Costo de Reposición">
-                    Repo: $${t.crudo_costo_repo_kilo.toFixed(2)}
-                  </button>
-                  ${t.lote_costo_kilo ? `
-                    <button style="padding: 3px 6px; border: none; cursor: pointer; background: ${t.fuente_costo === 'LOTE' ? '#3b82f6' : 'rgba(255,255,255,0.05)'}; color: #fff; font-weight: ${t.fuente_costo === 'LOTE' ? '700' : 'normal'}; border-left: 1px solid rgba(255,255,255,0.1);"
-                      onclick="event.stopPropagation(); conmutarFuenteCostoTostadero('${t.up_codigo}', 'LOTE')" title="Lote: ${t.lote_codigo}">
-                      Lote (${t.lote_codigo}): $${t.lote_costo_kilo.toFixed(2)}
-                    </button>
-                  ` : ''}
-                </div>
-                <div style="display: flex; align-items: center; gap: 3px; margin-left: auto;">
-                  <span style="font-size: 0.68rem; color: var(--text-secondary);">$</span>
-                  <input type="number" step="10" value="${t.costo_crudo_simulado.toFixed(2)}"
-                    style="width: 80px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 5px; color: #fff; font-size: 0.72rem; text-align: right;"
-                    onclick="event.stopPropagation();"
-                    onchange="cambiarCostoCrudoTostadero('${t.up_codigo}', this.value)" title="Simular costo de insumo crudo">
-                  <span style="font-size: 0.68rem; color: var(--text-secondary);">/kg</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Parámetros Maquila & Merma -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-              <div style="background: rgba(0,0,0,0.15); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.04);">
-                <div style="font-size: 0.66rem; color: var(--text-secondary); margin-bottom: 2px;">TARIFA PRODUCTOR (s/kg entregado)</div>
-                <div style="display: flex; align-items: center; gap: 3px;">
-                  <span style="font-size: 0.68rem; color: var(--text-secondary);">$</span>
-                  <input type="number" step="10" value="${t.tarifa_maquila_simulada.toFixed(2)}"
-                    style="width: 70px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 4px; color: #fbbf24; font-weight: 700; font-size: 0.72rem; text-align: right;"
-                    onclick="event.stopPropagation();"
-                    onchange="cambiarMaquilaTostadero('${t.up_codigo}', this.value)">
-                  <span style="font-size: 0.68rem; color: var(--text-secondary);">/kg</span>
-                </div>
-              </div>
-              <div style="background: rgba(0,0,0,0.15); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.04);">
-                <div style="font-size: 0.66rem; color: var(--text-secondary); margin-bottom: 2px;">MERMA PROCESO</div>
-                <div style="display: flex; align-items: center; gap: 3px;">
-                  <input type="number" step="0.1" value="${t.merma_porc_simulada.toFixed(2)}"
-                    style="width: 55px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 4px; padding: 2px 4px; color: #f87171; font-weight: 700; font-size: 0.72rem; text-align: right;"
-                    onclick="event.stopPropagation();"
-                    onchange="cambiarMermaTostadero('${t.up_codigo}', this.value)">
-                  <span style="font-size: 0.68rem; color: var(--text-secondary);">%</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Resultado y Botones de Acción -->
-            <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 6px; margin-top: 2px; flex-wrap: wrap; gap: 6px;">
-              <div>
-                <span style="font-size: 0.68rem; color: var(--text-secondary);">AP BD: <strong style="color: #94a3b8;">$${auditTost.costoBaseApBd.toFixed(2)}/kg</strong> · Ing #${t.ing_id} BD: <strong style="color: #94a3b8;">$${auditTost.costoIngBd.toFixed(2)}/kg</strong>${moApKilo > 0 ? ` <span style="color:#64748b;">(MO AP +$${moApKilo.toFixed(2)})</span>` : ''}</span>
-                ${!auditTost.estaAlDia ? `
-                  <div style="font-size: 0.66rem; color: #fbbf24; font-weight: 700; margin-top: 2px;">
-                    🟡 Desactualizado (${auditTost.totalCambios} cambio${auditTost.totalCambios !== 1 ? 's' : ''}: ${auditTost.resumenDetalle})${Math.abs(diffPesos) > TOLERANCIA_REDONDEO_LDN4 ? ` · Δ ${diffPesos > 0 ? '+' : ''}$${diffPesos.toFixed(2)}/kg` : ''}
-                  </div>
-                ` : '<div style="font-size: 0.66rem; color: #34d399; font-weight: 700; margin-top: 2px;">🟢 Al día en BD</div>'}
-              </div>
-              <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
-                ${t.ing_id ? `
-                  <button class="btn" style="padding: 3px 8px; font-size: 0.70rem; font-weight: 700; background: linear-gradient(135deg, rgba(2, 132, 199, 0.35), rgba(99, 102, 241, 0.35)); color: #bae6fd; border: 1px solid #38bdf8; border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;"
-                    onclick="event.stopPropagation(); window.abrirModuloConciliacionIA('ING-${t.ing_id}', null, { es_ingrediente: true, ingrediente_id: ${t.ing_id} })"
-                    title="Contrastar costo de elaboración propia en UP vs ofertas de compra en Tabla Maestra (Proveedores)">
-                    🤖 Conciliar IA
-                  </button>
-                ` : ''}
-                <button class="btn btn-secondary" style="padding: 3px 8px; font-size: 0.70rem; font-weight: 600;"
-                  onclick="event.stopPropagation(); toggleTostaderoCollapse('${t.up_codigo}')" title="Filtrar fracciones comerciales de esta UP en el catálogo derecho">
-                  ${isDestacado ? '✕ Deseleccionar' : '🔍 Ver Fracciones'}
-                </button>
-                ${!auditTost.estaAlDia ? `
-                  <button class="btn btn-actualizar-todas-ldn4" style="padding: 4px 10px; font-size: 0.70rem; font-weight: 800; background: linear-gradient(135deg, #f59e0b, #d97706); color: #0f172a; border: 1px solid #fbbf24; border-radius: 4px; cursor: pointer; box-shadow: 0 0 8px rgba(245, 158, 11, 0.3);"
-                    onclick="event.stopPropagation(); actualizarTodasFraccionesDeTostadero('${t.up_codigo}')" title="Actualizar AP, Ingrediente espejo y todas las fracciones/packs de esta UP en la base de datos (${auditTost.resumenDetalle})">
-                    ⚡ Actualizar Todas
-                  </button>
-                ` : `
-                  <button class="btn btn-actualizar-todas-ldn4" disabled style="padding: 4px 10px; font-size: 0.70rem; font-weight: 700; background: rgba(16, 185, 129, 0.12); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 4px; cursor: not-allowed; opacity: 0.85;"
-                    title="Todo el circuito coincide con los valores persistidos en la base de datos">
-                    ✓ Todo actualizado
-                  </button>
-                `}
-              </div>
-            </div>
+            <button type="button" style="background:#0284c7; color:#fff; border:none; padding:5px 10px; border-radius:6px; font-size:0.72rem; font-weight:700; cursor:pointer; flex-shrink:0;">Abrir flujo →</button>
           </div>
         `;
         container.appendChild(card);
@@ -3828,8 +3975,8 @@
       }
 
       if (window.VigíaPizarra) {
-        window.VigíaPizarra.logEvent('TOSTADEROS_LDN4', `Renderizados ${count} circuitos de tostadero. Activo: ${tostaderoSeleccionadoCodigo || 'Todos'}`, {
-          tostaderoSeleccionadoCodigo,
+        window.VigíaPizarra.logEvent('TOSTADEROS_LDN4', `Renderizados ${count} circuitos de tostadero en selector compacto.`, {
+          tostaderoSeleccionadoCodigo: null,
           total: count
         });
       }
@@ -5783,7 +5930,13 @@
         }
         recalcularCascada();
       } else if (fase === 4) {
-        // [LDN 4]: Tostaderos (Doble columna: Timón Tostaderos + Fracciones Comerciales)
+        // [LDN 4]: Tostaderos (Flujo Simple de 5 Pasos + Fracciones Comerciales)
+        if (!window._ldn4VerTodosManual && typeof resolverTostaderoParaContextoLDN4 === 'function') {
+          const autoUp = resolverTostaderoParaContextoLDN4();
+          if (autoUp) {
+            tostaderoSeleccionadoCodigo = autoUp;
+          }
+        }
         if (leftPanel) leftPanel.style.display = 'flex';
         if (dashboard) {
           dashboard.classList.remove('layout-stacked', 'left-maximized', 'left-collapsed');
@@ -5793,7 +5946,7 @@
         
         // Configurar El Timón exclusivamente para LDN 4 (Tostaderos / Producción Externa Simple)
         const leftTitle = document.getElementById('left-panel-title');
-        if (leftTitle) leftTitle.innerHTML = '🥜 El Timón (Tostaderos / Producción Externa)';
+        if (leftTitle) leftTitle.innerHTML = '🥜 Flujo Simple de Tostadero (LDN 4)';
         const tabsHeader = document.querySelector('#left-panel .tabs-header');
         if (tabsHeader) tabsHeader.style.display = 'none'; // ¡Ocultar barra de pestañas en LDN 4! Cero contaminación de LDN 3
 
@@ -8252,6 +8405,7 @@
 
     function seleccionarArticulo(articuloId) {
       window.deseleccionManual = false;
+      window._ldn4VerTodosManual = false;
       articuloSeleccionadoId = articuloId;
       window.articuloSeleccionadoId = articuloId;
       window.articulosSeleccionadosIds = [articuloId];
@@ -8645,6 +8799,7 @@
         diffPorc
       };
     }
+    window.calcularCascadaArticuloLista = calcularCascadaArticuloLista;
 
     function usarPrecioCalculadoCascada(key, precio) {
       const laSim = listasArticulosSim[key];
@@ -11767,14 +11922,8 @@
         return false;
       });
 
-      // Detectar Mixes de Línea 3 que consumen este ingrediente (frontera explícita: informar sin modificar Línea 3 silenciosamente)
-      const mixesAfectadosLDN3 = [];
-      (data.ingredientes || []).forEach(ing => {
-        const comps = composicionMixMap.get(ing.id);
-        if (comps && comps.some(c => Number(c.ingrediente_id) === Number(tost.ing_id))) {
-          mixesAfectadosLDN3.push({ id: ing.id, codigo: ing.codigo || '', nombre: ing.nombre });
-        }
-      });
+      // Detectar Mixes de Línea 3 que consumen este ingrediente (para alertar o propagar en cascada si se confirma)
+      const mixesAfectadosLDN3 = obtenerMixesAfectadosPorTostadero(tost.ing_id);
 
       const lista1Id = listas[0] ? listas[0].id : 1;
       const rowsData = fraccs.map(f => {
@@ -11802,6 +11951,23 @@
         const precioLista1Nuevo = cascada ? (parseFloat(cascada.precioFinalCalculado) || 0) : precioLista1BD;
         const estaSincronizado = auditRow.estaAlDia;
 
+        const listasOfrecidasHtml = listas
+          .filter(l => l.activa !== false)
+          .map(l => {
+            const laAct = (data.articulosListas || []).find(c =>
+              c.lista_id === l.id && String(c.articulo_numero || '').trim().toLowerCase() === String(f.articulo_id || '').trim().toLowerCase()
+            );
+            if (!laAct || laAct.disponible === false) return null;
+            const cascL = calcularCascadaArticuloLista(f.articulo_id, l.id);
+            const pBd = parseFloat(laAct.precio_final || 0);
+            const pNuevo = cascL ? parseFloat(cascL.precioFinalCalculado || 0) : pBd;
+            const esPublico = l.id === 6 || String(l.nombre || '').toLowerCase().includes('consumidor') || String(l.canal_comercial || '').toUpperCase() === 'NODOS';
+            const badgeColor = esPublico ? '#34d399' : '#7dd3fc';
+            return `<div style="font-size:0.66rem; white-space:nowrap;"><span style="color:${badgeColor}; font-weight:700;">${esPublico ? '🛒 ' : ''}${l.nombre}:</span> $${pBd.toLocaleString('es-AR', {minimumFractionDigits:2})} → <strong>$${pNuevo.toLocaleString('es-AR', {minimumFractionDigits:2})}</strong></div>`;
+          })
+          .filter(Boolean)
+          .join('');
+
         return {
           sku: f.articulo_id,
           nombre: f.descripcion_generada || f.descripcion || f.articulo_id,
@@ -11815,6 +11981,7 @@
           costoOficialBD,
           precioLista1BD,
           precioLista1Nuevo,
+          listasOfrecidasHtml: listasOfrecidasHtml || `<span style="color:#64748b; font-size:0.66rem;">No ofrecido en listas activas</span>`,
           estaSincronizado
         };
       });
@@ -11837,10 +12004,8 @@
             <span style="color:#64748b; margin:0 2px;">→</span>
             <strong style="color:#fff;">$${row.costoBaseTotal.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
           </td>
-          <td style="padding: 6px 4px; text-align: right;">
-            <span style="color:#94a3b8; font-size:0.68rem;">$${row.precioLista1BD.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
-            <span style="color:#64748b; margin:0 2px;">→</span>
-            <strong style="color:#34d399;">$${row.precioLista1Nuevo.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+          <td style="padding: 6px 4px; text-align: left;">
+            ${row.listasOfrecidasHtml}
           </td>
           <td style="padding: 6px 4px; text-align: right; color: ${row.estaSincronizado ? '#34d399' : '#fbbf24'}; font-weight: 600;">
             ${row.estaSincronizado ? '🟢 Al día' : '🟡 Pendiente'}
@@ -11854,9 +12019,14 @@
       const diffAp = costoIngSim - tost.costo_ap_oficial_bd;
 
       const mixesBannerHtml = mixesAfectadosLDN3.length > 0 ? `
-        <div style="background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.38); border-radius: 6px; padding: 8px 11px; font-size: 0.74rem; color: #e9d5ff;">
-          🧪 <strong>Frontera con [LDN 3] Mixes:</strong> Al actualizar <strong>[ING #${tost.ing_id}]</strong>, quedarán marcados con alerta de costo pendiente en Línea 3 (sin alterarse automáticamente):
-          <strong>${mixesAfectadosLDN3.map(m => `[#${m.id}] ${m.nombre}`).join(', ')}</strong>.
+        <div style="background: rgba(168, 85, 247, 0.14); border: 1px solid rgba(168, 85, 247, 0.45); border-radius: 6px; padding: 9px 11px; font-size: 0.74rem; color: #e9d5ff;">
+          <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; margin:0;">
+            <input type="checkbox" id="chk-propagar-mixes-ldn3-desde-ldn4" checked style="margin-top:2px; width:15px; height:15px; cursor:pointer;">
+            <span>
+              🧪 <strong>Propagar también en cascada hacia [LDN 3] Mixes (${mixesAfectadosLDN3.length}):</strong>
+              <br><span style="color:#cbd5e1;">Este ingrediente forma parte de <strong>${mixesAfectadosLDN3.map(m => `[#${m.id}] ${m.nombre}`).join(', ')}</strong>. Al dejar marcado, actualizará también cada Mix → su Artículo Puente → su Ingrediente Simple → y sus fracciones de Mix.</span>
+            </span>
+          </label>
         </div>
       ` : '';
 
@@ -11898,7 +12068,7 @@
                     <th style="padding: 6px 4px; text-align: right;">Bolsa</th>
                     <th style="padding: 6px 4px; text-align: right;">MO</th>
                     <th style="padding: 6px 4px; text-align: right;">Costo Base (BD → Nuevo)</th>
-                    <th style="padding: 6px 4px; text-align: right;">Lista 1 (BD → Nuevo)</th>
+                    <th style="padding: 6px 4px; text-align: left;">Listas Ofrecidas / Público (Actual → Nuevo)</th>
                     <th style="padding: 6px 4px; text-align: right;">Estado</th>
                   </tr>
                 </thead>
@@ -11935,6 +12105,7 @@
 
       const checkedInputs = document.querySelectorAll('.audit-check-sku-ldn4:checked');
       const selectedSkus = Array.from(checkedInputs).map(i => i.getAttribute('data-sku'));
+      const propagarMixesLdn3 = Boolean(document.getElementById('chk-propagar-mixes-ldn3-desde-ldn4')?.checked);
 
       const fraccsAImpactar = fraccs.filter(f => selectedSkus.includes(f.articulo_id));
       fraccsAImpactar.sort((a, b) => (a.pack_hijo_codigo ? 1 : 0) - (b.pack_hijo_codigo ? 1 : 0));
@@ -12118,6 +12289,14 @@
         tost.costo_base_ap_oficial_bd = costoBaseApPersistido;
         tost.costo_ap_oficial_bd = costoIngPersistido;
 
+        const mixesSincronizados = [];
+        if (propagarMixesLdn3 && mixesAfectadosLDN3.length > 0 && typeof sincronizarCascadaCompletaMixLDN3 === 'function') {
+          for (const mx of mixesAfectadosLDN3) {
+            await sincronizarCascadaCompletaMixLDN3(mx.id, { silencioso: true });
+            mixesSincronizados.push(mx);
+          }
+        }
+
         recalcularCascada();
         if (typeof auditarIncidenciaLineasNegocio === 'function') {
           auditarIncidenciaLineasNegocio(tost.ap_codigo, tost.ing_id);
@@ -12133,6 +12312,10 @@
           if (container) container.scrollTop = savedScrollTop;
         });
 
+        const resumenMixesSuccessHtml = mixesSincronizados.length > 0
+          ? `<div style="margin-top: 4px; padding: 6px 8px; border-radius: 5px; background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.38); color: #6ee7b7; font-size: 0.78rem;">🧪 <strong>Mixes en [LDN 3] también actualizados en cascada:</strong> ${mixesSincronizados.map(m => `[#${m.id}] ${m.nombre}`).join(', ')} (Mix → AP → Simple → Fracciones).</div>`
+          : (mixesAfectadosLDN3.length > 0 ? `<div style="margin-top: 4px; padding: 6px 8px; border-radius: 5px; background: rgba(168, 85, 247, 0.14); border: 1px solid rgba(168, 85, 247, 0.38); color: #e9d5ff; font-size: 0.78rem;">🧪 <strong>Mixes en [LDN 3] pendientes de actualizar:</strong> ${mixesAfectadosLDN3.map(m => `[#${m.id}] ${m.nombre}`).join(', ')}. Podés abrirlos desde Paso 4 ("Ir al Mix →").</div>` : '');
+
         Swal.fire({
           icon: 'success',
           title: '¡Tostadero Sincronizado!',
@@ -12140,8 +12323,8 @@
             <div style="text-align: left; font-size: 0.84rem; display: flex; flex-direction: column; gap: 6px;">
               <div>✅ <strong>[${tost.ap_codigo}]:</strong> Costo Base AP fijado en <strong>$${costoBaseApSim.toFixed(2)}/kg</strong>.</div>
               <div>✅ <strong>[ING #${tost.ing_id}]:</strong> Costo Patrón fijado en <strong>$${costoIngSim.toFixed(2)}/kg</strong>${moApKilo > 0 ? ` (incluye +$${moApKilo.toFixed(2)}/kg de MO AP)` : ''}.</div>
-              ${fraccsAImpactar.length > 0 ? `<div>✅ <strong>${fraccsAImpactar.length} presentaciones y packs:</strong> actualizados en las listas comerciales respetando márgenes.</div>` : ''}
-              ${mixesAfectadosLDN3.length > 0 ? `<div style="margin-top: 4px; padding: 6px 8px; border-radius: 5px; background: rgba(168, 85, 247, 0.14); border: 1px solid rgba(168, 85, 247, 0.38); color: #e9d5ff; font-size: 0.78rem;">🧪 <strong>Mixes en [LDN 3] con alerta pendiente:</strong> ${mixesAfectadosLDN3.map(m => `[#${m.id}] ${m.nombre}`).join(', ')}. Revisalos en la pestaña [LDN 3] Mixes cuando desees propagarlos.</div>` : ''}
+              ${fraccsAImpactar.length > 0 ? `<div>✅ <strong>${fraccsAImpactar.length} presentaciones y packs:</strong> actualizados en todas las listas ofrecidas y al público respetando márgenes.</div>` : ''}
+              ${resumenMixesSuccessHtml}
             </div>
           `,
           showConfirmButton: true,
