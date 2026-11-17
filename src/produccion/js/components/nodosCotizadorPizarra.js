@@ -788,8 +788,9 @@
         const gananciaLamda = Math.max(0, gananciaBrutaLamda - retencionIibbMonto);
         const precioBaseNodoFinal = Math.round(precioBaseNeto + impuestosMonto);
 
-        const precioSugeridoVecino = Math.ceil((precioBaseNodoFinal * (1 + margenGestorPct / 100)) / 50) * 50;
-        const gananciaGestorUnitaria = Math.max(0, precioSugeridoVecino - precioBaseNodoFinal);
+        const factorNetoMargen = Math.max(0.01, (1 / (1 + 21 / 100)) - (4 / 100));
+        const precioSugeridoVecino = Math.round(precioBaseNodoFinal * (1 + margenGestorPct / 100));
+        const gananciaGestorUnitaria = Math.round(Math.max(0, precioSugeridoVecino - precioBaseNodoFinal) * factorNetoMargen);
 
         const propActiva = ESTADO_NODOS.propuestas.find(p => Number(p.id) === Number(ESTADO_NODOS.propuestaActivaId));
         const targetVecino = propActiva && Number(propActiva.precio_objetivo_vecino) > 0
@@ -836,7 +837,7 @@
                     <div>
                         <div style="font-size:0.72rem; color:#bae6fd; font-weight:800; text-transform:uppercase;">Precio Sugerido al Vecino (+${margenGestorPct}%)</div>
                         <div style="font-size:0.7rem; color:#93c5fd;">
-                            Ganancia del Gestor: <strong>+${fmtMoneda(gananciaGestorUnitaria)}/u.</strong>
+                            Ganancia Limpia del Gestor (s/IVA 21% + IIBB 4%): <strong>+${fmtMoneda(gananciaGestorUnitaria)}/u.</strong>
                             ${targetVecino ? ` · Pedido gestor: ${fmtMoneda(targetVecino)}` : ''}
                         </div>
                     </div>
@@ -1067,7 +1068,7 @@
                                                     <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:#0f172a; border:1px solid ${of.alerta_cambio_costo ? '#f59e0b' : '#263244'}; padding:5px 8px; border-radius:6px;">
                                                         <div style="font-size:0.74rem; min-width:0;">
                                                             <strong style="color:#f8fafc;">${escaparHtml(of.nombre_marca)}</strong>
-                                                            <div style="color:#6ee7b7; font-size:0.7rem;">Gana: +${fmtMoneda(of.ganancia_unitaria_gestor)}/u.</div>
+                                                            <div style="color:#6ee7b7; font-size:0.7rem;">Gana limpio: +${fmtMoneda(of.ganancia_unitaria_gestor)}/u.</div>
                                                             <div style="font-size:0.68rem; color:${aliasVidriera ? '#38bdf8' : '#64748b'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:170px;" title="${escaparHtml(aliasVidriera || nomOficial)}">
                                                                 ${aliasVidriera ? `🏷️ Vidriera: "${escaparHtml(aliasVidriera)}"` : '🏛️ Vidriera: nombre oficial'}
                                                             </div>

@@ -2237,10 +2237,16 @@ function calcularEstructuraCostosNodo(params = {}) {
     const montoIibb = Number((precioBaseNodoNeto * (iibbPct / 100)).toFixed(2));
     const gananciaLamdaNeta = Number((gananciaLamdaBruta - montoIibb).toFixed(2));
 
-    // Redondeo comercial amigable para vecino (múltiplo de $50)
-    const rawVecino = precioBaseNodoFinal * (1 + margenSugeridoGestorPct / 100);
-    const precioSugeridoVecino = Math.ceil(rawVecino / 50) * 50;
-    const gananciaUnitariaGestor = Math.max(0, precioSugeridoVecino - precioBaseNodoFinal);
+    // Motor fiscal único sobre margen del Nodo (descontando IVA e IIBB sobre el excedente comercial)
+    const calcMargenNodo = calcularPrecioYGananciaNetaOfertaNodo({
+        costoBaseLamda: precioBaseNodoFinal,
+        margenPct: margenSugeridoGestorPct,
+        ivaPct: params.alicuota_iva_margen_pct ?? 21,
+        iibbPct: params.alicuota_iibb_margen_pct ?? 4,
+        modo: 'margen'
+    });
+    const precioSugeridoVecino = calcMargenNodo.precio_tienda;
+    const gananciaUnitariaGestor = calcMargenNodo.ganancia_neta_nodo;
 
     return {
         costo_insumo_kg: Number(costoInsumoKg.toFixed(2)),
@@ -2260,9 +2266,118 @@ function calcularEstructuraCostosNodo(params = {}) {
         monto_impuestos: montoIva,
         monto_iibb: montoIibb,
         precio_base_nodo_final: precioBaseNodoFinal,
-        margen_sugerido_gestor_pct: Number(margenSugeridoGestorPct.toFixed(2)),
+        margen_sugerido_gestor_pct: Number(calcMargenNodo.margen_pct.toFixed(2)),
         precio_sugerido_vecino: precioSugeridoVecino,
-        ganancia_unitaria_gestor: gananciaUnitariaGestor
+        ganancia_unitaria_gestor: gananciaUnitariaGestor,
+        retencion_fiscal_unitaria_margen: calcMargenNodo.retencion_fiscal_unitaria,
+        alicuota_iva_margen_pct: calcMargenNodo.alicuota_iva_pct,
+        alicuota_iibb_margen_pct: calcMargenNodo.alicuota_iibb_pct
+    };
+}
+
+/**
+ * Normaliza una alícuota impositiva porcentual (ej: 21.00 para IVA, 4.00 para IIBB).
+ */
+function normalizarAlicuotaFiscalNodo(val, fallback = 0) {
+    if (val === undefined || val === null || val === '') return Number(fallback);
+    const num = Number(val);
+    if (!Number.isFinite(num) || num < 0) return Number(fallback);
+    return Number(Math.min(90, num).toFixed(2));
+}
+
+/**
+ * Factor neto limpio para el Nodo/Creador sobre el excedente bruto (precio_tienda - costo_base_lamda):
+ *   iva_excedente = excedente_bruto - (excedente_bruto / (1 + iva/100))
+ *   iibb_excedente = excedente_bruto * (iibb/100)
+ *   factor_neto = (1 / (1 + iva/100)) - (iibb/100)
+ * Con IVA=21% e IIBB=4% -> factor_neto = 0.78644628... (78,64% limpio y 21,36% retención fiscal LAMDA).
+ */
+function obtenerFactorNetoMargenNodo(ivaPct = 21, iibbPct = 4) {
+    const iva = normalizarAlicuotaFiscalNodo(ivaPct, 21);
+    const iibb = normalizarAlicuotaFiscalNodo(iibbPct, 4);
+    const factor = (1 / (1 + iva / 100)) - (iibb / 100);
+    return Math.max(0.01, factor);
+}
+
+/**
+ * Desglosa de forma determinista y sin deriva de redondeo la retención fiscal (IVA + IIBB)
+ * y la ganancia limpia sobre cualquier excedente bruto de productos.
+ * Garantiza identidad contable exacta: ganancia_neta + retencion_fiscal_total === excedente_bruto,
+ * e iva_excedente + iibb_excedente === retencion_fiscal_total.
+ */
+function desglosarRetencionFiscalExcedente(excedenteBruto, ivaPct = 21, iibbPct = 4) {
+    const iva = normalizarAlicuotaFiscalNodo(ivaPct, 21);
+    const iibb = normalizarAlicuotaFiscalNodo(iibbPct, 4);
+    const excedente = Math.max(0, Number(Number(excedenteBruto || 0).toFixed(2)));
+    const factorNeto = obtenerFactorNetoMargenNodo(iva, iibb);
+    const gananciaNeta = Math.round(excedente * factorNeto);
+    const retencionTotal = Math.max(0, Number((excedente - gananciaNeta).toFixed(2)));
+    const iibbExcedente = Math.min(retencionTotal, Math.round(excedente * (iibb / 100)));
+    const ivaExcedente = Math.max(0, Number((retencionTotal - iibbExcedente).toFixed(2)));
+
+    return {
+        excedente_bruto: excedente,
+        ganancia_neta: gananciaNeta,
+        retencion_fiscal_total: retencionTotal,
+        iva_excedente: ivaExcedente,
+        iibb_excedente: iibbExcedente,
+        alicuota_iva_pct: iva,
+        alicuota_iibb_pct: iibb,
+        factor_neto: factorNeto
+    };
+}
+
+/**
+ * Motor matemático único y bidireccional (% <-> $) para ofertas de Nodos:
+ *  - modo 'margen': precio_tienda = Math.round(base * (1 + margen_pct/100)), ganancia_neta = Math.round((precio_tienda - base) * factor_neto)
+ *  - modo 'ganancia_neta': excedente_necesario = ganancia_deseada / factor_neto, precio_tienda = Math.round(base + excedente_necesario), margen_pct = (((precio_tienda - base)/base)*100).toFixed(2)
+ *  - modo 'precio': precio_tienda = Math.round(precio), margen_pct = (((precio_tienda - base)/base)*100).toFixed(2), ganancia_neta = Math.round((precio_tienda - base) * factor_neto)
+ */
+function calcularPrecioYGananciaNetaOfertaNodo(opts = {}) {
+    const costoBaseRaw = opts.costoBaseLamda !== undefined ? opts.costoBaseLamda : opts.costo_base_lamda;
+    const margenRaw = opts.margenPct !== undefined ? opts.margenPct : opts.margen_pct;
+    const ganDeseadaRaw = opts.gananciaNetaDeseada !== undefined ? opts.gananciaNetaDeseada : opts.ganancia_neta_deseada;
+    const precioRaw = opts.precioTienda !== undefined ? opts.precioTienda : opts.precio_tienda;
+    const ivaRaw = opts.ivaPct !== undefined ? opts.ivaPct : (opts.iva_pct !== undefined ? opts.iva_pct : opts.alicuota_iva_margen_pct);
+    const iibbRaw = opts.iibbPct !== undefined ? opts.iibbPct : (opts.iibb_pct !== undefined ? opts.iibb_pct : opts.alicuota_iibb_margen_pct);
+    const modoEfectivo = opts.modo
+        || (ganDeseadaRaw !== undefined ? 'ganancia_neta' : (precioRaw !== undefined ? 'precio' : 'margen'));
+
+    const base = Math.max(0, Math.round(Number(costoBaseRaw || 0)));
+    const iva = normalizarAlicuotaFiscalNodo(ivaRaw, 21);
+    const iibb = normalizarAlicuotaFiscalNodo(iibbRaw, 4);
+    const factorNeto = obtenerFactorNetoMargenNodo(iva, iibb);
+
+    let precioFinal = base;
+    let margenFinal = 0;
+
+    if (modoEfectivo === 'ganancia_neta') {
+        const ganDeseada = Math.max(0, Number(ganDeseadaRaw || 0));
+        const excedenteBrutoNecesario = ganDeseada / factorNeto;
+        precioFinal = Math.max(base, Math.round(base + excedenteBrutoNecesario));
+        margenFinal = base > 0 ? Number((((precioFinal - base) / base) * 100).toFixed(2)) : 0;
+    } else if (modoEfectivo === 'precio') {
+        precioFinal = Math.max(base, Math.round(Number(precioRaw || 0)));
+        margenFinal = base > 0 ? Number((((precioFinal - base) / base) * 100).toFixed(2)) : 0;
+    } else {
+        margenFinal = Math.max(0, Number(Number(margenRaw || 0).toFixed(2)));
+        precioFinal = Math.max(base, Math.round(base * (1 + margenFinal / 100)));
+    }
+
+    const excedenteReal = Math.max(0, precioFinal - base);
+    const gananciaNeta = Math.round(excedenteReal * factorNeto);
+    const retencionUnitaria = Math.max(0, excedenteReal - gananciaNeta);
+
+    return {
+        costo_base_lamda: base,
+        margen_pct: margenFinal,
+        precio_tienda: precioFinal,
+        excedente_bruto: excedenteReal,
+        ganancia_neta_nodo: gananciaNeta,
+        retencion_fiscal_unitaria: retencionUnitaria,
+        factor_neto: factorNeto,
+        alicuota_iva_pct: iva,
+        alicuota_iibb_pct: iibb
     };
 }
 
@@ -5298,6 +5413,118 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
               AND LEFT(TRIM(COALESCE(npf.nombre_sugerido, '')), 1) <> '[';
         `);
 
+        // 7) Parametrización fiscal idempotente sobre el margen comercial del Nodo (IVA 21% + IIBB 4%)
+        await client.query(`
+            ALTER TABLE public.nodos_maestro
+                ADD COLUMN IF NOT EXISTS alicuota_iva_margen_pct NUMERIC(5,2) NOT NULL DEFAULT 21.00,
+                ADD COLUMN IF NOT EXISTS alicuota_iibb_margen_pct NUMERIC(5,2) NOT NULL DEFAULT 4.00;
+
+            ALTER TABLE public.nodos_pedidos_vecinos
+                ADD COLUMN IF NOT EXISTS alicuota_iva_margen_pct NUMERIC(5,2) NOT NULL DEFAULT 21.00,
+                ADD COLUMN IF NOT EXISTS alicuota_iibb_margen_pct NUMERIC(5,2) NOT NULL DEFAULT 4.00,
+                ADD COLUMN IF NOT EXISTS retencion_iva_margen NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ADD COLUMN IF NOT EXISTS retencion_iibb_margen NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ADD COLUMN IF NOT EXISTS retencion_fiscal_margen NUMERIC(14,2) NOT NULL DEFAULT 0.00;
+
+            ALTER TABLE public.nodos_lotes_estacion
+                ADD COLUMN IF NOT EXISTS total_retencion_iva_margen NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ADD COLUMN IF NOT EXISTS total_retencion_iibb_margen NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ADD COLUMN IF NOT EXISTS total_retencion_fiscal_margen NUMERIC(14,2) NOT NULL DEFAULT 0.00;
+
+            ALTER TABLE public.nodos_liquidaciones_lote
+                ADD COLUMN IF NOT EXISTS total_retencion_iva_margen NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ADD COLUMN IF NOT EXISTS total_retencion_iibb_margen NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ADD COLUMN IF NOT EXISTS total_retencion_fiscal_margen NUMERIC(14,2) NOT NULL DEFAULT 0.00;
+        `);
+
+        // Backfill idempotente de ganancia limpia en nodos_ofertas_gestor (sin alterar precios de venta publicados)
+        const ofBackfillRes = await client.query(`
+            SELECT nog.id,
+                   nog.precio_venta_vecino,
+                   nog.margen_gestor_pct,
+                   nog.ganancia_unitaria_gestor,
+                   COALESCE(nac.precio_base_nodo_final, nog.precio_base_nodo_snapshot, 0) AS base_efectiva,
+                   COALESCE(nm.alicuota_iva_margen_pct, 21.00) AS iva_pct,
+                   COALESCE(nm.alicuota_iibb_margen_pct, 4.00) AS iibb_pct
+            FROM public.nodos_ofertas_gestor nog
+            JOIN public.nodos_maestro nm ON nm.id = nog.nodo_id
+            LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+        `);
+        for (const ofRow of ofBackfillRes.rows) {
+            const base = Math.max(0, Math.round(Number(ofRow.base_efectiva || 0)));
+            const precioActual = Math.max(base, Math.round(Number(ofRow.precio_venta_vecino || 0)));
+            const calcOf = calcularPrecioYGananciaNetaOfertaNodo({
+                costoBaseLamda: base,
+                precioTienda: precioActual,
+                ivaPct: ofRow.iva_pct,
+                iibbPct: ofRow.iibb_pct,
+                modo: 'precio'
+            });
+            const ganActual = Number(ofRow.ganancia_unitaria_gestor || 0);
+            const margActual = Number(ofRow.margen_gestor_pct || 0);
+            if (Math.abs(ganActual - calcOf.ganancia_neta_nodo) >= 0.5 || Math.abs(margActual - calcOf.margen_pct) >= 0.02) {
+                await client.query(
+                    `UPDATE public.nodos_ofertas_gestor
+                     SET ganancia_unitaria_gestor = $2,
+                         margen_gestor_pct = $3,
+                         precio_base_nodo_snapshot = CASE WHEN $4 > 0 THEN $4 ELSE precio_base_nodo_snapshot END
+                     WHERE id = $1`,
+                    [ofRow.id, calcOf.ganancia_neta_nodo, calcOf.margen_pct, base]
+                );
+            }
+        }
+
+        // Backfill idempotente para pedidos abiertos aún no debitados ni liquidados
+        const pedOpenRes = await client.query(`
+            SELECT npv.id,
+                   npv.modalidad_entrega,
+                   npv.subtotal_productos_vecino,
+                   npv.monto_ajuste_credito,
+                   npv.cargo_envio_barrial,
+                   npv.total_vecino,
+                   npv.total_base_lamda,
+                   COALESCE(nm.alicuota_iva_margen_pct, 21.00) AS iva_pct,
+                   COALESCE(nm.alicuota_iibb_margen_pct, 4.00) AS iibb_pct
+            FROM public.nodos_pedidos_vecinos npv
+            JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+            LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
+            WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+              AND COALESCE(npv.debito_cta_cte_registrado, false) = false
+              AND COALESCE(nle.debito_cta_cte_registrado, false) = false
+              AND npv.liquidacion_id IS NULL
+              AND COALESCE(nle.liquidacion_cerrada, false) = false
+              AND COALESCE(npv.retencion_fiscal_margen, 0) = 0
+              AND COALESCE(npv.subtotal_productos_vecino, 0) > COALESCE(npv.total_base_lamda, 0)
+        `);
+        for (const pr of pedOpenRes.rows) {
+            const subNeto = Math.max(0, Number(pr.subtotal_productos_vecino || 0) - Number(pr.monto_ajuste_credito || 0));
+            const exc = Math.max(0, subNeto - Number(pr.total_base_lamda || 0));
+            const tf = desglosarRetencionFiscalExcedente(exc, pr.iva_pct, pr.iibb_pct);
+            const esPostal = String(pr.modalidad_entrega || '').toUpperCase() === 'ENVIO_POSTAL';
+            const nuevaGan = esPostal
+                ? tf.ganancia_neta
+                : Number((tf.ganancia_neta + Number(pr.cargo_envio_barrial || 0)).toFixed(2));
+            await client.query(
+                `UPDATE public.nodos_pedidos_vecinos
+                 SET alicuota_iva_margen_pct = $2,
+                     alicuota_iibb_margen_pct = $3,
+                     retencion_iva_margen = $4,
+                     retencion_iibb_margen = $5,
+                     retencion_fiscal_margen = $6,
+                     ganancia_total_gestor = $7
+                 WHERE id = $1`,
+                [
+                    pr.id,
+                    tf.alicuota_iva_pct,
+                    tf.alicuota_iibb_pct,
+                    tf.iva_excedente,
+                    tf.iibb_excedente,
+                    tf.retencion_fiscal_total,
+                    nuevaGan
+                ]
+            );
+        }
+
         // Migración idempotente de identidad visual Paraíso para NODO-001 (sin tocar MANSO ni pedidos)
         await migrarNodoLoDeMatiAParaiso(client);
         await asegurarEsquemaAnaliticaNodos(client);
@@ -5878,6 +6105,8 @@ async function obtenerEstadoCompletoNodos() {
                    nm.nombre_marca,
                    nm.slug AS nodo_slug,
                    nm.color_primario,
+                   COALESCE(nm.alicuota_iva_margen_pct, 21.00)::numeric(5,2) AS alicuota_iva_margen_pct,
+                   COALESCE(nm.alicuota_iibb_margen_pct, 4.00)::numeric(5,2) AS alicuota_iibb_margen_pct,
                    nac.sku_nodo,
                    COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_publico,
                    COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
@@ -6064,6 +6293,13 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
         ? (payload.plantilla_origen_id ? Number(payload.plantilla_origen_id) : null)
         : (existenteRow?.plantilla_origen_id ? Number(existenteRow.plantilla_origen_id) : null);
 
+    const alicuotaIvaMargenEfectiva = payload.alicuota_iva_margen_pct !== undefined
+        ? normalizarAlicuotaFiscalNodo(payload.alicuota_iva_margen_pct, 21)
+        : normalizarAlicuotaFiscalNodo(existenteRow?.alicuota_iva_margen_pct, 21);
+    const alicuotaIibbMargenEfectiva = payload.alicuota_iibb_margen_pct !== undefined
+        ? normalizarAlicuotaFiscalNodo(payload.alicuota_iibb_margen_pct, 4)
+        : normalizarAlicuotaFiscalNodo(existenteRow?.alicuota_iibb_margen_pct, 4);
+
     const subtituloDefaultPerfil = perfilOperativoEfectivo === 'ecommerce_fulfillment'
         ? 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País'
         : 'Comunidad Barrial - Entrega Fresca';
@@ -6238,6 +6474,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     config_paqueteria = $42::jsonb,
                     diccionario_textos = $43::jsonb,
                     plantilla_origen_id = $44,
+                    alicuota_iva_margen_pct = $45,
+                    alicuota_iibb_margen_pct = $46,
                     updated_at = NOW()
                 WHERE id = $32
                 RETURNING *`,
@@ -6294,10 +6532,45 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     JSON.stringify(modulosActivosEfectivos),
                     JSON.stringify(configPaqueteriaEfectiva),
                     JSON.stringify(diccionarioTextosEfectivo),
-                    plantillaOrigenIdEfectiva
+                    plantillaOrigenIdEfectiva,
+                    alicuotaIvaMargenEfectiva,
+                    alicuotaIibbMargenEfectiva
                 ]
             );
             nodoGuardado = upd.rows[0];
+
+            // Si cambiaron las alícuotas fiscales del Nodo, resincronizar ganancia_unitaria_gestor de sus ofertas manteniendo precio_venta_vecino
+            const cambioFiscal = existenteRow && (
+                Math.abs(Number(existenteRow.alicuota_iva_margen_pct ?? 21) - alicuotaIvaMargenEfectiva) >= 0.01 ||
+                Math.abs(Number(existenteRow.alicuota_iibb_margen_pct ?? 4) - alicuotaIibbMargenEfectiva) >= 0.01
+            );
+            if (cambioFiscal) {
+                const ofsNodo = await client.query(
+                    `SELECT nog.id, nog.precio_venta_vecino,
+                            COALESCE(nac.precio_base_nodo_final, nog.precio_base_nodo_snapshot, 0) AS base_efectiva
+                     FROM public.nodos_ofertas_gestor nog
+                     LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+                     WHERE nog.nodo_id = $1 FOR UPDATE OF nog`,
+                    [nodoGuardado.id]
+                );
+                for (const ofItem of ofsNodo.rows) {
+                    const calcNuevaGan = calcularPrecioYGananciaNetaOfertaNodo({
+                        costoBaseLamda: ofItem.base_efectiva,
+                        precioTienda: ofItem.precio_venta_vecino,
+                        ivaPct: alicuotaIvaMargenEfectiva,
+                        iibbPct: alicuotaIibbMargenEfectiva,
+                        modo: 'precio'
+                    });
+                    await client.query(
+                        `UPDATE public.nodos_ofertas_gestor
+                         SET ganancia_unitaria_gestor = $2,
+                             margen_gestor_pct = $3,
+                             updated_at = NOW()
+                         WHERE id = $1`,
+                        [ofItem.id, calcNuevaGan.ganancia_neta_nodo, calcNuevaGan.margen_pct]
+                    );
+                }
+            }
         } else {
             const ins = await client.query(
                 `INSERT INTO public.nodos_maestro (
@@ -6313,9 +6586,10 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     logo_original_base64, logo_mono_preview_base64, logo_zpl_gfa, logo_zpl_config,
                     latitud, longitud, mostrar_ingredientes_tienda, gestor_token,
                     bajada_marca, slug_historico, tema_visual,
-                    perfil_operativo, modulos_activos, config_paqueteria, diccionario_textos, plantilla_origen_id
+                    perfil_operativo, modulos_activos, config_paqueteria, diccionario_textos, plantilla_origen_id,
+                    alicuota_iva_margen_pct, alicuota_iibb_margen_pct
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$38,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$35,$36,$37::jsonb,$39,$40::jsonb,$41::jsonb,$42::jsonb,$43
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$38,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$35,$36,$37::jsonb,$39,$40::jsonb,$41::jsonb,$42::jsonb,$43,$44,$45
                 ) RETURNING *`,
                 [
                     codigoNodo,
@@ -6369,18 +6643,25 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     JSON.stringify(modulosActivosEfectivos),
                     JSON.stringify(configPaqueteriaEfectiva),
                     JSON.stringify(diccionarioTextosEfectivo),
-                    plantillaOrigenIdEfectiva
+                    plantillaOrigenIdEfectiva,
+                    alicuotaIvaMargenEfectiva,
+                    alicuotaIibbMargenEfectiva
                 ]
             );
             nodoGuardado = ins.rows[0];
 
-            // Vincular automáticamente el catálogo activo al nuevo Nodo con su margen por defecto
+            // Vincular automáticamente el catálogo activo al nuevo Nodo con su margen por defecto y ganancia limpia post-impuestos
             const catActivos = await client.query('SELECT id, precio_base_nodo_final FROM public.nodos_articulos_catalogo WHERE activo = true');
             const margenDef = Number(nodoGuardado.margen_gestor_default_pct || 28);
             for (const c of catActivos.rows) {
                 const base = Number(c.precio_base_nodo_final || 0);
-                const pVecino = Math.ceil((base * (1 + margenDef / 100)) / 50) * 50;
-                const gan = Math.max(0, pVecino - base);
+                const calcNuevo = calcularPrecioYGananciaNetaOfertaNodo({
+                    costoBaseLamda: base,
+                    margenPct: margenDef,
+                    ivaPct: alicuotaIvaMargenEfectiva,
+                    iibbPct: alicuotaIibbMargenEfectiva,
+                    modo: 'margen'
+                });
                 const chkOf = await client.query(
                     `SELECT id FROM public.nodos_ofertas_gestor WHERE nodo_id = $1 AND articulo_catalogo_id = $2 LIMIT 1 FOR UPDATE`,
                     [nodoGuardado.id, c.id]
@@ -6391,7 +6672,7 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                             nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
                             margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
                         ) VALUES ($1,$2,$3,$4,$5,$6,true)`,
-                        [nodoGuardado.id, c.id, base, margenDef, pVecino, gan]
+                        [nodoGuardado.id, c.id, base, calcNuevo.margen_pct, calcNuevo.precio_tienda, calcNuevo.ganancia_neta_nodo]
                     );
                 }
             }
@@ -6573,7 +6854,13 @@ async function clonarNodoMaestro(origenId, payload = {}) {
         modulos_activos: modulosHeredados,
         config_paqueteria: configPaqHeredada,
         diccionario_textos: dicTextosHeredado,
-        plantilla_origen_id: origen.id
+        plantilla_origen_id: origen.id,
+        alicuota_iva_margen_pct: payload.alicuota_iva_margen_pct !== undefined
+            ? normalizarAlicuotaFiscalNodo(payload.alicuota_iva_margen_pct, 21)
+            : normalizarAlicuotaFiscalNodo(origen.alicuota_iva_margen_pct, 21),
+        alicuota_iibb_margen_pct: payload.alicuota_iibb_margen_pct !== undefined
+            ? normalizarAlicuotaFiscalNodo(payload.alicuota_iibb_margen_pct, 4)
+            : normalizarAlicuotaFiscalNodo(origen.alicuota_iibb_margen_pct, 4)
     }, null);
 
     // Sincronizar opcionalmente la selección de ofertas publicadas y % de margen (NUNCA fotos caseras privadas)
@@ -6594,8 +6881,15 @@ async function clonarNodoMaestro(origenId, payload = {}) {
         for (const [catId, refOf] of mapaOrigen.entries()) {
             const base = Number(refOf.precio_base_nodo_final || 0);
             const margen = Number(refOf.margen_gestor_pct ?? nodoCreado.margen_gestor_default_pct ?? 28);
-            const pVenta = Math.ceil((base * (1 + margen / 100)) / 50) * 50;
-            const gan = Math.max(0, pVenta - base);
+            const calcClon = calcularPrecioYGananciaNetaOfertaNodo({
+                costoBaseLamda: base,
+                margenPct: margen,
+                ivaPct: nodoCreado.alicuota_iva_margen_pct ?? 21,
+                iibbPct: nodoCreado.alicuota_iibb_margen_pct ?? 4,
+                modo: 'margen'
+            });
+            const pVenta = calcClon.precio_tienda;
+            const gan = calcClon.ganancia_neta_nodo;
             await db.query(
                 `INSERT INTO public.nodos_ofertas_gestor (
                     nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
@@ -6930,7 +7224,13 @@ async function sumarArticuloCatalogoANodo(nodoId, catalogoId) {
     }
 
     const [nodoRes, catRes] = await Promise.all([
-        db.query('SELECT id, margen_gestor_default_pct, activo FROM public.nodos_maestro WHERE id = $1 LIMIT 1', [nId]),
+        db.query(
+            `SELECT id, margen_gestor_default_pct, activo,
+                    COALESCE(alicuota_iva_margen_pct, 21.00) AS alicuota_iva_margen_pct,
+                    COALESCE(alicuota_iibb_margen_pct, 4.00) AS alicuota_iibb_margen_pct
+             FROM public.nodos_maestro WHERE id = $1 LIMIT 1`,
+            [nId]
+        ),
         db.query('SELECT * FROM public.nodos_articulos_catalogo WHERE id = $1 AND activo = true LIMIT 1', [cId])
     ]);
     if (nodoRes.rows.length === 0) throw new Error('Nodo no encontrado.');
@@ -6945,8 +7245,15 @@ async function sumarArticuloCatalogoANodo(nodoId, catalogoId) {
     const cat = catRes.rows[0];
     const base = Number(cat.precio_base_nodo_final || 0);
     const margenDef = Number(nodo.margen_gestor_default_pct || cat.margen_sugerido_gestor_pct || 28);
-    const precioVecino = Math.ceil((base * (1 + margenDef / 100)) / 50) * 50;
-    const ganancia = Math.max(0, precioVecino - base);
+    const calcSum = calcularPrecioYGananciaNetaOfertaNodo({
+        costoBaseLamda: base,
+        margenPct: margenDef,
+        ivaPct: nodo.alicuota_iva_margen_pct,
+        iibbPct: nodo.alicuota_iibb_margen_pct,
+        modo: 'margen'
+    });
+    const precioVecino = calcSum.precio_tienda;
+    const ganancia = calcSum.ganancia_neta_nodo;
 
     let resOf = await db.query(
         `UPDATE public.nodos_ofertas_gestor SET
@@ -7368,11 +7675,23 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
         // Cada Nodo recibe el artículo con su SKU y nombre oficial LAMDA por defecto; si la solicitud traía un nombre
         // de vidriera personalizado para el Nodo solicitante, se registra únicamente en su oferta de vidriera.
         const publicadoInicial = Boolean(payload.publicar_inmediato_tienda === true);
-        const nodosActivos = await client.query('SELECT id, margen_gestor_default_pct FROM public.nodos_maestro WHERE activo = true');
+        const nodosActivos = await client.query(
+            `SELECT id, margen_gestor_default_pct,
+                    COALESCE(alicuota_iva_margen_pct, 21.00) AS alicuota_iva_margen_pct,
+                    COALESCE(alicuota_iibb_margen_pct, 4.00) AS alicuota_iibb_margen_pct
+             FROM public.nodos_maestro WHERE activo = true`
+        );
         for (const nodo of nodosActivos.rows) {
             const margenDef = Number(nodo.margen_gestor_default_pct || calc.margen_sugerido_gestor_pct || 28);
-            const precioVecino = Math.ceil((calc.precio_base_nodo_final * (1 + margenDef / 100)) / 50) * 50;
-            const ganancia = Math.max(0, precioVecino - calc.precio_base_nodo_final);
+            const calcDef = calcularPrecioYGananciaNetaOfertaNodo({
+                costoBaseLamda: calc.precio_base_nodo_final,
+                margenPct: margenDef,
+                ivaPct: nodo.alicuota_iva_margen_pct,
+                iibbPct: nodo.alicuota_iibb_margen_pct,
+                modo: 'margen'
+            });
+            const precioVecino = calcDef.precio_tienda;
+            const ganancia = calcDef.ganancia_neta_nodo;
             const aliasVidrieraParaNodo = (nodoSolicitantePropId && Number(nodo.id) === nodoSolicitantePropId && aliasVidrieraSolicitante)
                 ? aliasVidrieraSolicitante
                 : null;
@@ -7387,8 +7706,15 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             if (exOferta.rows.length > 0) {
                 const ofPrev = exOferta.rows[0];
                 const margenOf = Number(ofPrev.margen_gestor_pct ?? margenDef);
-                const nuevoPVecino = Math.ceil((calc.precio_base_nodo_final * (1 + margenOf / 100)) / 50) * 50;
-                const nuevaGan = Math.max(0, nuevoPVecino - calc.precio_base_nodo_final);
+                const calcOf = calcularPrecioYGananciaNetaOfertaNodo({
+                    costoBaseLamda: calc.precio_base_nodo_final,
+                    margenPct: margenOf,
+                    ivaPct: nodo.alicuota_iva_margen_pct,
+                    iibbPct: nodo.alicuota_iibb_margen_pct,
+                    modo: 'margen'
+                });
+                const nuevoPVecino = calcOf.precio_tienda;
+                const nuevaGan = calcOf.ganancia_neta_nodo;
                 const cambioCosto = Number(ofPrev.precio_base_nodo_snapshot || 0) !== Number(calc.precio_base_nodo_final || 0);
                 await client.query(
                     `UPDATE public.nodos_ofertas_gestor SET
@@ -7516,16 +7842,36 @@ async function recalcularCascadaCatalogoNodos(costosSimuladosIngredientes = {}) 
                 ]
             );
 
-            await client.query(
-                `UPDATE public.nodos_ofertas_gestor SET
-                    alerta_cambio_costo = (precio_base_nodo_snapshot <> $1),
-                    precio_base_nodo_snapshot = $1,
-                    precio_venta_vecino = CEIL(($1 * (1 + margen_gestor_pct / 100.0)) / 50.0) * 50,
-                    ganancia_unitaria_gestor = (CEIL(($1 * (1 + margen_gestor_pct / 100.0)) / 50.0) * 50) - $1,
-                    updated_at = NOW()
-                WHERE articulo_catalogo_id = $2`,
-                [calc.precio_base_nodo_final, row.id]
+            const ofsCascadaRes = await client.query(
+                `SELECT nog.id, nog.margen_gestor_pct, nog.precio_base_nodo_snapshot,
+                        COALESCE(nm.alicuota_iva_margen_pct, 21.00) AS iva_pct,
+                        COALESCE(nm.alicuota_iibb_margen_pct, 4.00) AS iibb_pct
+                 FROM public.nodos_ofertas_gestor nog
+                 JOIN public.nodos_maestro nm ON nm.id = nog.nodo_id
+                 WHERE nog.articulo_catalogo_id = $1
+                 FOR UPDATE OF nog`,
+                [row.id]
             );
+            for (const ofRow of ofsCascadaRes.rows) {
+                const calcCasc = calcularPrecioYGananciaNetaOfertaNodo({
+                    costoBaseLamda: calc.precio_base_nodo_final,
+                    margenPct: ofRow.margen_gestor_pct,
+                    ivaPct: ofRow.iva_pct,
+                    iibbPct: ofRow.iibb_pct,
+                    modo: 'margen'
+                });
+                const alertaCosto = Number(ofRow.precio_base_nodo_snapshot || 0) !== Number(calc.precio_base_nodo_final || 0);
+                await client.query(
+                    `UPDATE public.nodos_ofertas_gestor SET
+                        alerta_cambio_costo = $2,
+                        precio_base_nodo_snapshot = $3,
+                        precio_venta_vecino = $4,
+                        ganancia_unitaria_gestor = $5,
+                        updated_at = NOW()
+                     WHERE id = $1`,
+                    [ofRow.id, alertaCosto, calc.precio_base_nodo_final, calcCasc.precio_tienda, calcCasc.ganancia_neta_nodo]
+                );
+            }
 
             actualizados++;
         }
@@ -7758,7 +8104,7 @@ async function sincronizarCatalogoNodoDesdeBunker(articuloId, runnerOpt = null) 
 
         const margenSugGestor = Number(row?.margen_sugerido_gestor_pct || 28);
         const precioSugeridoVecino = precioBaseNodoFinal > 0
-            ? Math.ceil((precioBaseNodoFinal * (1 + margenSugGestor / 100)) / 50) * 50
+            ? Math.round(precioBaseNodoFinal * (1 + margenSugGestor / 100))
             : 0;
 
         const nomenclaturaBunker = ba.descripcion_generada || row?.nomenclatura_bunker || ba.descripcion || skuExacto;
@@ -7925,11 +8271,23 @@ async function sincronizarCatalogoNodoDesdeBunker(articuloId, runnerOpt = null) 
 
         // Propagar a nodos_ofertas_gestor cuando el artículo ya tiene Precio Base Nodo > $0
         if (precioBaseNodoFinal > 0) {
-            const nodosActivos = await q.query('SELECT id, margen_gestor_default_pct FROM public.nodos_maestro WHERE activo = true');
+            const nodosActivos = await q.query(
+                `SELECT id, margen_gestor_default_pct,
+                        COALESCE(alicuota_iva_margen_pct, 21.00) AS alicuota_iva_margen_pct,
+                        COALESCE(alicuota_iibb_margen_pct, 4.00) AS alicuota_iibb_margen_pct
+                 FROM public.nodos_maestro WHERE activo = true`
+            );
             for (const nodo of nodosActivos.rows) {
                 const margenDef = Number(nodo.margen_gestor_default_pct || margenSugGestor || 28);
-                const precioVecino = Math.ceil((precioBaseNodoFinal * (1 + margenDef / 100)) / 50) * 50;
-                const ganancia = Math.max(0, precioVecino - precioBaseNodoFinal);
+                const calcDefBunker = calcularPrecioYGananciaNetaOfertaNodo({
+                    costoBaseLamda: precioBaseNodoFinal,
+                    margenPct: margenDef,
+                    ivaPct: nodo.alicuota_iva_margen_pct,
+                    iibbPct: nodo.alicuota_iibb_margen_pct,
+                    modo: 'margen'
+                });
+                const precioVecino = calcDefBunker.precio_tienda;
+                const ganancia = calcDefBunker.ganancia_neta_nodo;
 
                 const exOfHab = await q.query(
                     `SELECT id, precio_base_nodo_snapshot, margen_gestor_pct
@@ -7941,8 +8299,15 @@ async function sincronizarCatalogoNodoDesdeBunker(articuloId, runnerOpt = null) 
                 if (exOfHab.rows.length > 0) {
                     const prevOf = exOfHab.rows[0];
                     const mOf = Number(prevOf.margen_gestor_pct ?? margenDef);
-                    const nPVec = Math.ceil((precioBaseNodoFinal * (1 + mOf / 100)) / 50) * 50;
-                    const nGan = Math.max(0, nPVec - precioBaseNodoFinal);
+                    const calcExBunker = calcularPrecioYGananciaNetaOfertaNodo({
+                        costoBaseLamda: precioBaseNodoFinal,
+                        margenPct: mOf,
+                        ivaPct: nodo.alicuota_iva_margen_pct,
+                        iibbPct: nodo.alicuota_iibb_margen_pct,
+                        modo: 'margen'
+                    });
+                    const nPVec = calcExBunker.precio_tienda;
+                    const nGan = calcExBunker.ganancia_neta_nodo;
                     const chgCosto = Number(prevOf.precio_base_nodo_snapshot || 0) !== Number(precioBaseNodoFinal || 0);
                     await q.query(
                         `UPDATE public.nodos_ofertas_gestor SET
@@ -8011,7 +8376,9 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
     await asegurarEsquemaNodosBarriales();
 
     const cur = await db.query(
-        `SELECT nog.*, nac.precio_base_nodo_final, nm.activo AS nodo_activo
+        `SELECT nog.*, nac.precio_base_nodo_final, nm.activo AS nodo_activo,
+                COALESCE(nm.alicuota_iva_margen_pct, 21.00) AS alicuota_iva_margen_pct,
+                COALESCE(nm.alicuota_iibb_margen_pct, 4.00) AS alicuota_iibb_margen_pct
          FROM public.nodos_ofertas_gestor nog
          JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
          JOIN public.nodos_maestro nm ON nm.id = nog.nodo_id
@@ -8029,15 +8396,48 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
 
     const row = cur.rows[0];
     const baseActual = Number(row.precio_base_nodo_final || row.precio_base_nodo_snapshot || 0);
-    const margenPct = payload.margen_gestor_pct !== undefined
-        ? Number(payload.margen_gestor_pct)
-        : Number(row.margen_gestor_pct);
+    const ivaMargenPct = Number(row.alicuota_iva_margen_pct ?? 21);
+    const iibbMargenPct = Number(row.alicuota_iibb_margen_pct ?? 4);
 
-    const precioVecino = payload.precio_venta_vecino !== undefined
-        ? Number(payload.precio_venta_vecino)
-        : Math.ceil((baseActual * (1 + margenPct / 100)) / 50) * 50;
+    let calcOferta;
+    if (payload.ganancia_neta_deseada !== undefined && payload.ganancia_neta_deseada !== null && payload.ganancia_neta_deseada !== '') {
+        calcOferta = calcularPrecioYGananciaNetaOfertaNodo({
+            costoBaseLamda: baseActual,
+            gananciaNetaDeseada: payload.ganancia_neta_deseada,
+            ivaPct: ivaMargenPct,
+            iibbPct: iibbMargenPct,
+            modo: 'ganancia_neta'
+        });
+    } else if (payload.precio_venta_vecino !== undefined && payload.precio_venta_vecino !== null && payload.precio_venta_vecino !== '') {
+        calcOferta = calcularPrecioYGananciaNetaOfertaNodo({
+            costoBaseLamda: baseActual,
+            precioTienda: payload.precio_venta_vecino,
+            ivaPct: ivaMargenPct,
+            iibbPct: iibbMargenPct,
+            modo: 'precio'
+        });
+    } else if (payload.margen_gestor_pct !== undefined && payload.margen_gestor_pct !== null && payload.margen_gestor_pct !== '') {
+        calcOferta = calcularPrecioYGananciaNetaOfertaNodo({
+            costoBaseLamda: baseActual,
+            margenPct: payload.margen_gestor_pct,
+            ivaPct: ivaMargenPct,
+            iibbPct: iibbMargenPct,
+            modo: 'margen'
+        });
+    } else {
+        // Si solo cambia publicado_tienda / destacado_tienda / nombre_vidriera_personalizado, preservar el precio actual y sincronizar ganancia limpia
+        calcOferta = calcularPrecioYGananciaNetaOfertaNodo({
+            costoBaseLamda: baseActual,
+            precioTienda: row.precio_venta_vecino,
+            ivaPct: ivaMargenPct,
+            iibbPct: iibbMargenPct,
+            modo: 'precio'
+        });
+    }
 
-    const gananciaUnitaria = Math.max(0, precioVecino - baseActual);
+    const margenPct = calcOferta.margen_pct;
+    const precioVecino = calcOferta.precio_tienda;
+    const gananciaUnitaria = calcOferta.ganancia_neta_nodo;
     const publicado = payload.publicado_tienda !== undefined
         ? Boolean(payload.publicado_tienda)
         : Boolean(row.publicado_tienda);
@@ -9090,7 +9490,9 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
 
         let subtotalProductosVecino = 0;
         let totalBaseLamda = 0;
-        let gananciaProductosGestor = 0;
+        const ivaMargenPedidoPct = normalizarAlicuotaFiscalNodo(nodo.alicuota_iva_margen_pct, 21);
+        const iibbMargenPedidoPct = normalizarAlicuotaFiscalNodo(nodo.alicuota_iibb_margen_pct, 4);
+        const factorNetoPedido = obtenerFactorNetoMargenNodo(ivaMargenPedidoPct, iibbMargenPedidoPct);
         const itemsValidados = [];
 
         for (const itemReq of itemsCarrito) {
@@ -9102,11 +9504,10 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             const pUnitBaseLamda = Number(of.precio_base_nodo_final || of.precio_base_nodo_snapshot);
             const subVecino = Number((pUnitVecino * cant).toFixed(2));
             const subBase = Number((pUnitBaseLamda * cant).toFixed(2));
-            const ganItem = Math.max(0, subVecino - subBase);
+            const ganItem = Math.round(Math.max(0, subVecino - subBase) * factorNetoPedido);
 
             subtotalProductosVecino += subVecino;
             totalBaseLamda += subBase;
-            gananciaProductosGestor += ganItem;
 
             const nombreOficialLamda = of.nombre_oficial_lamda || of.nombre_publico;
             const nombreVidrieraVecino = (of.nombre_vidriera_personalizado && String(of.nombre_vidriera_personalizado).trim())
@@ -9156,6 +9557,13 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             cargoEnvioBarrial = Number(nodo.cargo_envio_barrial || 0);
         }
 
+        const excedenteBrutoProductos = Math.max(0, Number((subtotalProductosVecino - totalBaseLamda).toFixed(2)));
+        const tramoFiscalPedido = desglosarRetencionFiscalExcedente(
+            excedenteBrutoProductos,
+            ivaMargenPedidoPct,
+            iibbMargenPedidoPct
+        );
+        const gananciaProductosGestor = tramoFiscalPedido.ganancia_neta;
         const totalVecino = subtotalProductosVecino + cargoEnvioBarrial;
         const gananciaTotalGestor = esPedidoPostal
             ? gananciaProductosGestor
@@ -9397,9 +9805,11 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 tracking_token, hito_tracking_actual,
                 en_hoja_ruta, incluido_reparto_manual,
                 subtotal_productos_vecino, cargo_envio_barrial, total_vecino,
-                total_base_lamda, ganancia_total_gestor, observaciones_vecino
+                total_base_lamda, ganancia_total_gestor, observaciones_vecino,
+                alicuota_iva_margen_pct, alicuota_iibb_margen_pct,
+                retencion_iva_margen, retencion_iibb_margen, retencion_fiscal_margen
              ) VALUES (
-                $1,$2,$3,$4,$5,$26,$27,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'CONFIRMADO_VECINO',$18,1,$25,false,$19,$20,$21,$22,$23,$24
+                $1,$2,$3,$4,$5,$26,$27,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'CONFIRMADO_VECINO',$18,1,$25,false,$19,$20,$21,$22,$23,$24,$28,$29,$30,$31,$32
              ) RETURNING *`,
             [
                 codigoPedido,
@@ -9428,7 +9838,12 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 payload.observaciones_vecino || '',
                 modalidad === 'ENVIO_BARRIAL',
                 datosPostalesValidados?.email_contacto || String(payload.vecino_email || '').trim().slice(0, 160) || null,
-                datosPostalesValidados?.destinatario_dni || null
+                datosPostalesValidados?.destinatario_dni || null,
+                tramoFiscalPedido.alicuota_iva_pct,
+                tramoFiscalPedido.alicuota_iibb_pct,
+                tramoFiscalPedido.iva_excedente,
+                tramoFiscalPedido.iibb_excedente,
+                tramoFiscalPedido.retencion_fiscal_total
             ]
         );
         const pedidoRow = insPed.rows[0];
@@ -9793,6 +10208,15 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
                COALESCE(SUM(npv.total_base_lamda) FILTER (
                    WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
                ), 0)::numeric(14,2) AS total_base_lamda,
+               COALESCE(SUM(npv.retencion_iva_margen) FILTER (
+                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+               ), 0)::numeric(14,2) AS total_retencion_iva_margen,
+               COALESCE(SUM(npv.retencion_iibb_margen) FILTER (
+                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+               ), 0)::numeric(14,2) AS total_retencion_iibb_margen,
+               COALESCE(SUM(npv.retencion_fiscal_margen) FILTER (
+                   WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+               ), 0)::numeric(14,2) AS total_retencion_fiscal_margen,
                COALESCE(SUM(npv.total_vecino) FILTER (
                    WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
                ), 0)::numeric(14,2) AS total_venta_vecinos,
@@ -9868,9 +10292,10 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
                     codigo_canasto, qr_maestro_payload, nodo_id, fecha_entrega_iso,
                     fecha_entrega_label, ventana_horaria_label, ubicacion_deposito, estado_canasto,
                     total_bolsas, bolsas_armadas, total_kilos_lote,
-                    total_base_lamda, total_venta_vecinos, ganancia_estimada_gestor,
+                    total_base_lamda, total_retencion_iva_margen, total_retencion_iibb_margen, total_retencion_fiscal_margen,
+                    total_venta_vecinos, ganancia_estimada_gestor,
                     fecha_listo_estacion
-                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$16,$17,$18,$13,$14,$15)
                  RETURNING id`,
                 [
                     codigoCanasto,
@@ -9887,7 +10312,10 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
                     Number(g.total_base_lamda || 0),
                     Number(g.total_venta_vecinos || 0),
                     Number(g.ganancia_estimada_gestor || 0),
-                    estadoCalculado === 'LISTO_ESTACION_NODOS' ? new Date() : null
+                    estadoCalculado === 'LISTO_ESTACION_NODOS' ? new Date() : null,
+                    Number(g.total_retencion_iva_margen || 0),
+                    Number(g.total_retencion_iibb_margen || 0),
+                    Number(g.total_retencion_fiscal_margen || 0)
                 ]
             );
             canastoId = ins.rows[0].id;
@@ -9904,6 +10332,9 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
                      bolsas_armadas = $2,
                      total_kilos_lote = $3,
                      total_base_lamda = $4,
+                     total_retencion_iva_margen = $10,
+                     total_retencion_iibb_margen = $11,
+                     total_retencion_fiscal_margen = $12,
                      total_venta_vecinos = $5,
                      ganancia_estimada_gestor = $6,
                      estado_canasto = $7::varchar,
@@ -9923,7 +10354,10 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
                     Number(g.ganancia_estimada_gestor || 0),
                     estadoFinal,
                     ubicacionFinal,
-                    canastoId
+                    canastoId,
+                    Number(g.total_retencion_iva_margen || 0),
+                    Number(g.total_retencion_iibb_margen || 0),
+                    Number(g.total_retencion_fiscal_margen || 0)
                 ]
             );
         }
@@ -11902,15 +12336,20 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
             });
         }
 
-        const montoDebitoBaseLamda = Number(canasto.total_base_lamda || 0);
+        const costoBaseCanasto = Number(canasto.total_base_lamda || 0);
+        const retencionFiscalCanasto = Number(canasto.total_retencion_fiscal_margen || 0);
+        const montoDebitoLamda = Number((costoBaseCanasto + retencionFiscalCanasto).toFixed(2));
         let saldoResultante = 0;
         let movCcFacturaId = null;
 
         // Impactar en Cuenta Corriente operativa del Nodo (Cuenta Madre Unificada si aplica, caso contrario subcuenta CB-NODO-xxx)
-        // Convención única LAMDA: DEBITO suma +monto = saldo deudor hacia LAMDA
+        // Convención única LAMDA: DEBITO suma +monto (Costo Base LAMDA + Retención Fiscal IVA/IIBB sobre margen)
         const destCc = await resolverCuentaContableOperativaNodo(client, canasto);
         if (destCc.ccId) {
-            const descBase = `Retiro Canasto ${canasto.codigo_canasto} (${canasto.total_bolsas} pedidos vecinales - ${canasto.fecha_entrega_label})`;
+            const detFiscalTxt = retencionFiscalCanasto > 0
+                ? `: Base $${costoBaseCanasto.toLocaleString('es-AR')} + Ret. IVA/IIBB s/Margen $${retencionFiscalCanasto.toLocaleString('es-AR')}`
+                : '';
+            const descBase = `Retiro Canasto ${canasto.codigo_canasto} (${canasto.total_bolsas} pedidos vecinales - ${canasto.fecha_entrega_label})${detFiscalTxt}`;
             const descMovimiento = destCc.usaCuentaMadreUnificada
                 ? agregarReferenciaNodoADescripcion(descBase, canasto.nombre_marca)
                 : descBase;
@@ -11923,7 +12362,7 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
                  RETURNING id`,
                 [
                     destCc.ccId,
-                    montoDebitoBaseLamda,
+                    montoDebitoLamda,
                     descMovimiento,
                     JSON.stringify({
                         canasto_id: canasto.id,
@@ -11933,6 +12372,9 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
                         usa_cuenta_madre_unificada: destCc.usaCuentaMadreUnificada,
                         codigo_bunker_cuenta_impactada: destCc.codigoBunkerDestino,
                         total_bolsas: canasto.total_bolsas,
+                        costo_base_lamda: costoBaseCanasto,
+                        retencion_fiscal_margen: retencionFiscalCanasto,
+                        monto_debito_lamda: montoDebitoLamda,
                         total_venta_vecinos: Number(canasto.total_venta_vecinos || 0),
                         ganancia_estimada_gestor: Number(canasto.ganancia_estimada_gestor || 0)
                     })
@@ -11942,8 +12384,10 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
             saldoResultante = await recalcularSaldosCuentaMadreBunker(client, destCc.ccId);
         }
 
-        // Registrar también en el libro mayor específico de Nodos Barriales (signo = +1 por DEBITO)
-        const conceptoNodo = `Débito por retiro de Canasto ${canasto.codigo_canasto} (${canasto.total_bolsas} bolsas · ${canasto.fecha_entrega_label})`;
+        // Registrar también en el libro mayor específico de Nodos (signo = +1 por DEBITO)
+        const conceptoNodo = retencionFiscalCanasto > 0
+            ? `Débito por retiro de Canasto ${canasto.codigo_canasto} (${canasto.total_bolsas} bolsas · Base $${costoBaseCanasto.toLocaleString('es-AR')} + Ret. IVA/IIBB $${retencionFiscalCanasto.toLocaleString('es-AR')})`
+            : `Débito por retiro de Canasto ${canasto.codigo_canasto} (${canasto.total_bolsas} bolsas · ${canasto.fecha_entrega_label})`;
         await client.query(
             `INSERT INTO public.nodos_movimientos_cta_cte (
                 nodo_id, lote_canasto_id, tipo_movimiento, signo, monto,
@@ -11952,7 +12396,7 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
             [
                 canasto.nodo_id,
                 canasto.id,
-                montoDebitoBaseLamda,
+                montoDebitoLamda,
                 saldoResultante,
                 conceptoNodo,
                 canasto.codigo_canasto
@@ -12122,7 +12566,13 @@ function calcularCuadroLiquidacionCanasto(canasto, pedidos = []) {
     let totalSubtotalProductos = 0;
     let totalEnviosBarrialesGestor = 0;
     let totalBaseLamda = 0;
+    let totalRetencionIvaMargen = 0;
+    let totalRetencionIibbMargen = 0;
+    let totalRetencionFiscalMargen = 0;
     let gananciaNetaGestor = 0;
+
+    const ivaCanastoPct = normalizarAlicuotaFiscalNodo(canasto?.alicuota_iva_margen_pct, 21);
+    const iibbCanastoPct = normalizarAlicuotaFiscalNodo(canasto?.alicuota_iibb_margen_pct, 4);
 
     let transferenciasEsperadas = 0;
     let transferenciasConciliadasLamda = 0;
@@ -12147,12 +12597,18 @@ function calcularCuadroLiquidacionCanasto(canasto, pedidos = []) {
         const subProd = Number(p.subtotal_productos_vecino || totVec);
         const envBarrial = Number(p.cargo_envio_barrial || 0);
         const totBase = Number(p.total_base_lamda || 0);
-        const ganGestor = Number(p.ganancia_total_gestor ?? (totVec - totBase));
+        const retFiscalPed = Number(p.retencion_fiscal_margen || 0);
+        const retIvaPed = Number(p.retencion_iva_margen || 0);
+        const retIibbPed = Number(p.retencion_iibb_margen || 0);
+        const ganGestor = Number(p.ganancia_total_gestor ?? Math.max(0, totVec - totBase - retFiscalPed));
 
         totalVentaVecinos += totVec;
         totalSubtotalProductos += subProd;
         totalEnviosBarrialesGestor += envBarrial;
         totalBaseLamda += totBase;
+        totalRetencionIvaMargen += retIvaPed;
+        totalRetencionIibbMargen += retIibbPed;
+        totalRetencionFiscalMargen += retFiscalPed;
         gananciaNetaGestor += ganGestor;
 
         const esEfectivo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO';
@@ -12184,26 +12640,29 @@ function calcularCuadroLiquidacionCanasto(canasto, pedidos = []) {
     const transfEnLamda = todosPagosConfirmados ? transferenciasConciliadasLamda : transferenciasEsperadas;
     const efectivoEnGestor = todosPagosConfirmados ? efectivoCobradoManoGestor : efectivoEsperado;
 
-    // Saldo de compensación:
-    // A LAMDA le corresponde cobrar `totalBaseLamda`. Ya tiene `transfEnLamda` en el banco.
-    // Diferencia: `transfEnLamda - totalBaseLamda` (que es matemáticamente idéntica a `gananciaNetaGestor - efectivoEnGestor`)
-    const diferenciaCompensacion = Number((transfEnLamda - totalBaseLamda).toFixed(2));
+    // A LAMDA le corresponde cubrir `totalBaseLamda + totalRetencionFiscalMargen` (IVA + IIBB sobre el margen).
+    // Diferencia algebraica exacta: `transfEnLamda - totalACubrirLamda === gananciaNetaGestor - efectivoEnGestor`.
+    const totalACubrirLamda = Number((totalBaseLamda + totalRetencionFiscalMargen).toFixed(2));
+    const diferenciaCompensacion = Number((transfEnLamda - totalACubrirLamda).toFixed(2));
 
     let direccionCompensacion = 'SALDADO_EXACTO';
     let montoCompensacionFinal = 0;
     let tituloResultado = 'Cuenta Compensada en $0';
-    let explicacionCompensacion = 'Las transferencias recibidas en LAMDA coinciden exactamente con el Costo Base del lote.';
+    const labelObligacionLamda = totalRetencionFiscalMargen > 0
+        ? `$${totalACubrirLamda.toLocaleString('es-AR')} (Costo Base $${totalBaseLamda.toLocaleString('es-AR')} + Ret. IVA/IIBB s/Margen $${totalRetencionFiscalMargen.toLocaleString('es-AR')})`
+        : `$${totalBaseLamda.toLocaleString('es-AR')}`;
+    let explicacionCompensacion = `Las transferencias recibidas en LAMDA coinciden exactamente con el total a cubrir (${labelObligacionLamda}).`;
 
     if (diferenciaCompensacion < -0.01) {
         direccionCompensacion = 'GESTOR_RINDE_A_LAMDA';
         montoCompensacionFinal = Math.abs(diferenciaCompensacion);
         tituloResultado = `El Gestor rinde a LAMDA: $${montoCompensacionFinal.toLocaleString('es-AR')}`;
-        explicacionCompensacion = `El Gestor cobró $${efectivoEnGestor.toLocaleString('es-AR')} en efectivo en mano: se queda directamente con el 100% de su Ganancia Neta ($${gananciaNetaGestor.toLocaleString('es-AR')}) y rinde a LAMDA los $${montoCompensacionFinal.toLocaleString('es-AR')} restantes para completar el Costo Base del lote ($${totalBaseLamda.toLocaleString('es-AR')} menos $${transfEnLamda.toLocaleString('es-AR')} ya ingresados por transferencia en banco LAMDA).`;
+        explicacionCompensacion = `El Gestor cobró $${efectivoEnGestor.toLocaleString('es-AR')} en efectivo en mano: retiene directamente el 100% de su Ganancia Limpia ($${gananciaNetaGestor.toLocaleString('es-AR')}) y rinde a LAMDA los $${montoCompensacionFinal.toLocaleString('es-AR')} restantes para completar ${labelObligacionLamda} menos $${transfEnLamda.toLocaleString('es-AR')} ya acreditados por transferencia.`;
     } else if (diferenciaCompensacion > 0.01) {
         direccionCompensacion = 'LAMDA_TRANSFIERE_A_GESTOR';
         montoCompensacionFinal = diferenciaCompensacion;
         tituloResultado = `LAMDA transfiere al Gestor: $${montoCompensacionFinal.toLocaleString('es-AR')}`;
-        explicacionCompensacion = `Las transferencias cobradas en el banco de LAMDA ($${transfEnLamda.toLocaleString('es-AR')}) cubrieron la totalidad del Costo Base del lote ($${totalBaseLamda.toLocaleString('es-AR')}) y generaron un saldo a favor de $${montoCompensacionFinal.toLocaleString('es-AR')} que LAMDA transfiere o acredita al Gestor para completar su ganancia.`;
+        explicacionCompensacion = `Las transferencias cobradas en el banco de LAMDA ($${transfEnLamda.toLocaleString('es-AR')}) cubrieron ${labelObligacionLamda} y generaron una Utilidad Neta Liquidable a favor del Gestor de $${montoCompensacionFinal.toLocaleString('es-AR')}.`;
     }
 
     return {
@@ -12215,6 +12674,12 @@ function calcularCuadroLiquidacionCanasto(canasto, pedidos = []) {
         total_subtotal_productos: Number(totalSubtotalProductos.toFixed(2)),
         total_envios_barriales_gestor: Number(totalEnviosBarrialesGestor.toFixed(2)),
         total_base_lamda: Number(totalBaseLamda.toFixed(2)),
+        alicuota_iva_margen_pct: ivaCanastoPct,
+        alicuota_iibb_margen_pct: iibbCanastoPct,
+        total_retencion_iva_margen: Number(totalRetencionIvaMargen.toFixed(2)),
+        total_retencion_iibb_margen: Number(totalRetencionIibbMargen.toFixed(2)),
+        total_retencion_fiscal_margen: Number(totalRetencionFiscalMargen.toFixed(2)),
+        total_a_cubrir_lamda: totalACubrirLamda,
         ganancia_neta_gestor: Number(gananciaNetaGestor.toFixed(2)),
         transferencias_esperadas: Number(transferenciasEsperadas.toFixed(2)),
         transferencias_conciliadas_lamda: Number(transferenciasConciliadasLamda.toFixed(2)),
@@ -12248,6 +12713,8 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
                    nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
                    nm.color_primario, nm.codigo_bunker_cliente, nm.bunker_cliente_id,
                    nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria,
+                   COALESCE(nm.alicuota_iva_margen_pct, 21.00)::numeric(5,2) AS alicuota_iva_margen_pct,
+                   COALESCE(nm.alicuota_iibb_margen_pct, 4.00)::numeric(5,2) AS alicuota_iibb_margen_pct,
                    nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre,
                    COALESCE(nm.usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada,
                    CASE WHEN COALESCE(nm.usar_cuenta_madre_unificada, false) AND nm.codigo_bunker_cliente_madre IS NOT NULL
@@ -12284,6 +12751,8 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
                    nm.cbu_display,
                    nm.titular_display,
                    nm.codigo_bunker_cliente,
+                   COALESCE(nm.alicuota_iva_margen_pct, 21.00)::numeric(5,2) AS alicuota_iva_margen_pct,
+                   COALESCE(nm.alicuota_iibb_margen_pct, 4.00)::numeric(5,2) AS alicuota_iibb_margen_pct,
                    nm.cliente_madre_bunker_id,
                    nm.codigo_bunker_cliente_madre,
                    COALESCE(nm.usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada,
@@ -12518,21 +12987,33 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
             let envioCobradoClientesCorte = 0;
             let totalIngresosBrutosCorte = 0;
             let totalCostoBaseLamdaCorte = 0;
+            let totalRetencionIvaCorte = 0;
+            let totalRetencionIibbCorte = 0;
+            let totalRetencionFiscalCorte = 0;
             let totalCostoFleteLamdaCorte = 0;
             let utilidadNetaCreadorCorte = 0;
+
+            const ivaTiendaPct = normalizarAlicuotaFiscalNodo(n.alicuota_iva_margen_pct, 21);
+            const iibbTiendaPct = normalizarAlicuotaFiscalNodo(n.alicuota_iibb_margen_pct, 4);
 
             for (const po of pedsElegiblesCorte) {
                 const subP = Number(po.subtotal_productos_vecino || 0);
                 const envCli = Number(po.cargo_envio_barrial ?? po.postal_costo_envio_cliente ?? 0);
                 const ingBruto = Number(po.total_vecino || (subP + envCli - Number(po.monto_ajuste_credito || 0)));
                 const baseLamda = Number(po.total_base_lamda || 0);
+                const retFiscal = Number(po.retencion_fiscal_margen || 0);
+                const retIva = Number(po.retencion_iva_margen || 0);
+                const retIibb = Number(po.retencion_iibb_margen || 0);
                 const fleteLamda = Number(po.costo_flete_lamda ?? po.postal_costo_flete_lamda ?? 0);
-                const utilOrden = Number((ingBruto - baseLamda - fleteLamda).toFixed(2));
+                const utilOrden = Number((ingBruto - baseLamda - retFiscal - fleteLamda).toFixed(2));
 
                 subtotalProductosCorte += subP;
                 envioCobradoClientesCorte += envCli;
                 totalIngresosBrutosCorte += ingBruto;
                 totalCostoBaseLamdaCorte += baseLamda;
+                totalRetencionIvaCorte += retIva;
+                totalRetencionIibbCorte += retIibb;
+                totalRetencionFiscalCorte += retFiscal;
                 totalCostoFleteLamdaCorte += fleteLamda;
                 utilidadNetaCreadorCorte += utilOrden;
             }
@@ -12553,6 +13034,11 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
                     envio_cobrado_clientes: Number(envioCobradoClientesCorte.toFixed(2)),
                     total_ingresos_brutos: Number(totalIngresosBrutosCorte.toFixed(2)),
                     costo_base_lamda: Number(totalCostoBaseLamdaCorte.toFixed(2)),
+                    alicuota_iva_margen_pct: ivaTiendaPct,
+                    alicuota_iibb_margen_pct: iibbTiendaPct,
+                    retencion_iva_margen: Number(totalRetencionIvaCorte.toFixed(2)),
+                    retencion_iibb_margen: Number(totalRetencionIibbCorte.toFixed(2)),
+                    retencion_fiscal_margen: Number(totalRetencionFiscalCorte.toFixed(2)),
                     costo_flete_lamda: Number(totalCostoFleteLamdaCorte.toFixed(2)),
                     utilidad_neta_creador: Number(utilidadNetaCreadorCorte.toFixed(2))
                 },
@@ -13094,6 +13580,8 @@ async function confirmarDespachoPostalPedido(pedidoId, payload = {}) {
             `SELECT npv.*,
                     nm.nombre_marca, nm.gestor_nombre, nm.codigo_bunker_cliente,
                     nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria,
+                    COALESCE(nm.alicuota_iva_margen_pct, 21.00) AS nodo_alicuota_iva_margen_pct,
+                    COALESCE(nm.alicuota_iibb_margen_pct, 4.00) AS nodo_alicuota_iibb_margen_pct,
                     nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre,
                     COALESCE(nm.usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada
              FROM public.nodos_pedidos_vecinos npv
@@ -13172,7 +13660,20 @@ async function confirmarDespachoPostalPedido(pedidoId, payload = {}) {
             }
             const costoFleteLamda = Number(costoFleteRaw.toFixed(2));
             const costoBaseLamda = Number(Number(ped.total_base_lamda || 0).toFixed(2));
-            const montoDebitoTotal = Number((costoBaseLamda + costoFleteLamda).toFixed(2));
+            const ivaOrdPct = normalizarAlicuotaFiscalNodo(ped.alicuota_iva_margen_pct ?? ped.nodo_alicuota_iva_margen_pct, 21);
+            const iibbOrdPct = normalizarAlicuotaFiscalNodo(ped.alicuota_iibb_margen_pct ?? ped.nodo_alicuota_iibb_margen_pct, 4);
+            const subNetoProdOrd = Math.max(0, Number(ped.subtotal_productos_vecino || 0) - Number(ped.monto_ajuste_credito || 0));
+            const tramoFiscalOrd = Number(ped.retencion_fiscal_margen || 0) > 0
+                ? {
+                    alicuota_iva_pct: ivaOrdPct,
+                    alicuota_iibb_pct: iibbOrdPct,
+                    iva_excedente: Number(ped.retencion_iva_margen || 0),
+                    iibb_excedente: Number(ped.retencion_iibb_margen || 0),
+                    retencion_fiscal_total: Number(ped.retencion_fiscal_margen || 0)
+                }
+                : desglosarRetencionFiscalExcedente(Math.max(0, subNetoProdOrd - costoBaseLamda), ivaOrdPct, iibbOrdPct);
+            const retencionFiscalMargen = Number(tramoFiscalOrd.retencion_fiscal_total.toFixed(2));
+            const montoDebitoTotal = Number((costoBaseLamda + retencionFiscalMargen + costoFleteLamda).toFixed(2));
             const operadorLabel = formatearOperadorPostalLabel(guiaResuelta.operador_postal);
 
             // a) Actualizar o insertar registro postal con guía, URL oficial y costo_flete_lamda
@@ -13291,13 +13792,16 @@ async function confirmarDespachoPostalPedido(pedidoId, payload = {}) {
                 }
             }
 
-            // d) Registrar DEBITO automático (Costo Base LAMDA + Costo Flete Real LAMDA) en Cuenta Corriente operativa
+            // d) Registrar DEBITO automático (Costo Base LAMDA + Retención Fiscal s/Margen + Costo Flete Real LAMDA) en Cuenta Corriente operativa
             let saldoResultante = 0;
             let movCcFacturaId = null;
             const destCc = await resolverCuentaContableOperativaNodo(client, ped);
 
             if (destCc.ccId && montoDebitoTotal > 0) {
-                const descBase = `Despacho Fulfillment #${ped.codigo_pedido} (${ped.vecino_nombre} · ${operadorLabel} #${guiaResuelta.numero_tracking}): Mercadería Base $${costoBaseLamda.toLocaleString('es-AR')} + Flete Postal $${costoFleteLamda.toLocaleString('es-AR')}`;
+                const txtRetFiscal = retencionFiscalMargen > 0
+                    ? ` + Ret. IVA/IIBB s/Margen $${retencionFiscalMargen.toLocaleString('es-AR')}`
+                    : '';
+                const descBase = `Despacho Fulfillment #${ped.codigo_pedido} (${ped.vecino_nombre} · ${operadorLabel} #${guiaResuelta.numero_tracking}): Mercadería Base $${costoBaseLamda.toLocaleString('es-AR')}${txtRetFiscal} + Flete Postal $${costoFleteLamda.toLocaleString('es-AR')}`;
                 const descMovimiento = destCc.usaCuentaMadreUnificada
                     ? agregarReferenciaNodoADescripcion(descBase, ped.nombre_marca)
                     : descBase;
@@ -13321,6 +13825,9 @@ async function confirmarDespachoPostalPedido(pedidoId, payload = {}) {
                             usa_cuenta_madre_unificada: destCc.usaCuentaMadreUnificada,
                             codigo_bunker_cuenta_impactada: destCc.codigoBunkerDestino,
                             costo_base_lamda: costoBaseLamda,
+                            retencion_iva_margen: tramoFiscalOrd.iva_excedente,
+                            retencion_iibb_margen: tramoFiscalOrd.iibb_excedente,
+                            retencion_fiscal_margen: retencionFiscalMargen,
                             costo_flete_lamda: costoFleteLamda,
                             monto_debito_total: montoDebitoTotal,
                             operador_postal: guiaResuelta.operador_postal,
@@ -13344,14 +13851,14 @@ async function confirmarDespachoPostalPedido(pedidoId, payload = {}) {
                     ped.id,
                     montoDebitoTotal,
                     saldoResultante,
-                    `Débito Despacho Fulfillment #${ped.codigo_pedido} (${operadorLabel} #${guiaResuelta.numero_tracking}): Base LAMDA $${costoBaseLamda.toLocaleString('es-AR')} + Flete $${costoFleteLamda.toLocaleString('es-AR')}`,
+                    `Débito Despacho Fulfillment #${ped.codigo_pedido} (${operadorLabel} #${guiaResuelta.numero_tracking}): Base LAMDA $${costoBaseLamda.toLocaleString('es-AR')}${retencionFiscalMargen > 0 ? ` + Ret. IVA/IIBB $${retencionFiscalMargen.toLocaleString('es-AR')}` : ''} + Flete $${costoFleteLamda.toLocaleString('es-AR')}`,
                     guiaResuelta.numero_tracking
                 ]
             );
 
-            // Recalcular ganancia_total_gestor neta de la orden contemplando el costo real de flete LAMDA
+            // Recalcular ganancia_total_gestor limpia de la orden contemplando retención fiscal s/margen y costo real de flete LAMDA
             const ingresoBrutoOrden = Number(ped.total_vecino || 0);
-            const utilidadNetaOrden = Number((ingresoBrutoOrden - costoBaseLamda - costoFleteLamda).toFixed(2));
+            const utilidadNetaOrden = Number((ingresoBrutoOrden - costoBaseLamda - retencionFiscalMargen - costoFleteLamda).toFixed(2));
 
             await client.query(
                 `UPDATE public.nodos_pedidos_vecinos
@@ -13359,13 +13866,28 @@ async function confirmarDespachoPostalPedido(pedidoId, payload = {}) {
                      movimiento_cc_id = $1,
                      costo_flete_lamda = $2,
                      ganancia_total_gestor = $3,
+                     alicuota_iva_margen_pct = $5,
+                     alicuota_iibb_margen_pct = $6,
+                     retencion_iva_margen = $7,
+                     retencion_iibb_margen = $8,
+                     retencion_fiscal_margen = $9,
                      stock_descontado_fulfillment = true,
                      ubicacion_deposito = 'DESPACHADO_CORREO',
                      secuencia_operativa_lamda = 'Entregado',
                      etiqueta_impresa = true,
                      updated_at = NOW()
                  WHERE id = $4::int`,
-                [movCcFacturaId, costoFleteLamda, utilidadNetaOrden, pid]
+                [
+                    movCcFacturaId,
+                    costoFleteLamda,
+                    utilidadNetaOrden,
+                    pid,
+                    tramoFiscalOrd.alicuota_iva_pct,
+                    tramoFiscalOrd.alicuota_iibb_pct,
+                    tramoFiscalOrd.iva_excedente,
+                    tramoFiscalOrd.iibb_excedente,
+                    retencionFiscalMargen
+                ]
             );
 
             await client.query('COMMIT');
@@ -13378,6 +13900,7 @@ async function confirmarDespachoPostalPedido(pedidoId, payload = {}) {
                 numero_tracking: guiaResuelta.numero_tracking,
                 url_tracking_carrier: guiaResuelta.url_tracking_carrier,
                 costo_base_lamda: costoBaseLamda,
+                retencion_fiscal_margen: retencionFiscalMargen,
                 costo_flete_lamda: costoFleteLamda,
                 monto_debito_total: montoDebitoTotal,
                 utilidad_neta_creador_orden: utilidadNetaOrden,
@@ -13573,6 +14096,9 @@ async function generarCorteLiquidacionFulfillment(nodoId, payload = {}) {
         let totalEnvioCobradoClientes = 0;
         let totalIngresosBrutos = 0;
         let totalCostoBaseLamda = 0;
+        let totalRetencionIvaMargen = 0;
+        let totalRetencionIibbMargen = 0;
+        let totalRetencionFiscalMargen = 0;
         let totalCostoFleteLamda = 0;
         let totalUtilidadNetaCreador = 0;
 
@@ -13582,13 +14108,19 @@ async function generarCorteLiquidacionFulfillment(nodoId, payload = {}) {
             const ajusteCred = Number(po.monto_ajuste_credito || 0);
             const ingBruto = Number(po.total_vecino || (subProd + envCli - ajusteCred));
             const baseLamda = Number(po.total_base_lamda || 0);
+            const retIva = Number(po.retencion_iva_margen || 0);
+            const retIibb = Number(po.retencion_iibb_margen || 0);
+            const retFiscal = Number(po.retencion_fiscal_margen || 0);
             const fleteLamda = Number(po.costo_flete_lamda ?? po.postal_costo_flete_lamda ?? 0);
-            const utilidadOrden = Number((ingBruto - baseLamda - fleteLamda).toFixed(2));
+            const utilidadOrden = Number((ingBruto - baseLamda - retFiscal - fleteLamda).toFixed(2));
 
             totalSubtotalProductos += subProd;
             totalEnvioCobradoClientes += envCli;
             totalIngresosBrutos += ingBruto;
             totalCostoBaseLamda += baseLamda;
+            totalRetencionIvaMargen += retIva;
+            totalRetencionIibbMargen += retIibb;
+            totalRetencionFiscalMargen += retFiscal;
             totalCostoFleteLamda += fleteLamda;
             totalUtilidadNetaCreador += utilidadOrden;
 
@@ -13603,6 +14135,9 @@ async function generarCorteLiquidacionFulfillment(nodoId, payload = {}) {
                 envio_cobrado_cliente: Number(envCli.toFixed(2)),
                 ingreso_bruto: Number(ingBruto.toFixed(2)),
                 costo_base_lamda: Number(baseLamda.toFixed(2)),
+                retencion_iva_margen: Number(retIva.toFixed(2)),
+                retencion_iibb_margen: Number(retIibb.toFixed(2)),
+                retencion_fiscal_margen: Number(retFiscal.toFixed(2)),
                 costo_flete_lamda: Number(fleteLamda.toFixed(2)),
                 utilidad_neta_creador: utilidadOrden,
                 items: itemsMap.get(Number(po.id)) || []
@@ -13613,6 +14148,9 @@ async function generarCorteLiquidacionFulfillment(nodoId, payload = {}) {
         totalEnvioCobradoClientes = Number(totalEnvioCobradoClientes.toFixed(2));
         totalIngresosBrutos = Number(totalIngresosBrutos.toFixed(2));
         totalCostoBaseLamda = Number(totalCostoBaseLamda.toFixed(2));
+        totalRetencionIvaMargen = Number(totalRetencionIvaMargen.toFixed(2));
+        totalRetencionIibbMargen = Number(totalRetencionIibbMargen.toFixed(2));
+        totalRetencionFiscalMargen = Number(totalRetencionFiscalMargen.toFixed(2));
         totalCostoFleteLamda = Number(totalCostoFleteLamda.toFixed(2));
         totalUtilidadNetaCreador = Number(totalUtilidadNetaCreador.toFixed(2));
 
@@ -13717,18 +14255,20 @@ async function generarCorteLiquidacionFulfillment(nodoId, payload = {}) {
         }
 
         const obsTexto = payload.observaciones ||
-            `Corte Fulfillment (${ordenesElegibles.length} órdenes): Productos $${totalSubtotalProductos.toLocaleString('es-AR')} + Envíos cobrados $${totalEnvioCobradoClientes.toLocaleString('es-AR')} − Base LAMDA $${totalCostoBaseLamda.toLocaleString('es-AR')} − Flete LAMDA $${totalCostoFleteLamda.toLocaleString('es-AR')} = Utilidad Neta Creador $${totalUtilidadNetaCreador.toLocaleString('es-AR')}`;
+            `Corte Fulfillment (${ordenesElegibles.length} órdenes): Productos $${totalSubtotalProductos.toLocaleString('es-AR')} + Envíos cobrados $${totalEnvioCobradoClientes.toLocaleString('es-AR')} − Base LAMDA $${totalCostoBaseLamda.toLocaleString('es-AR')} − Ret. IVA/IIBB s/Margen $${totalRetencionFiscalMargen.toLocaleString('es-AR')} − Flete LAMDA $${totalCostoFleteLamda.toLocaleString('es-AR')} = Utilidad Neta Liquidable $${totalUtilidadNetaCreador.toLocaleString('es-AR')}`;
 
         const insLiq = await client.query(
             `INSERT INTO public.nodos_liquidaciones_lote (
                 codigo_liquidacion, nodo_id, lote_canasto_id, tipo_liquidacion, cantidad_ordenes,
-                total_venta_vecinos, total_base_lamda, total_envio_cobrado_clientes, total_costo_flete_lamda,
+                total_venta_vecinos, total_base_lamda,
+                total_retencion_iva_margen, total_retencion_iibb_margen, total_retencion_fiscal_margen,
+                total_envio_cobrado_clientes, total_costo_flete_lamda,
                 ganancia_neta_gestor, total_transferencias_lamda, total_efectivo_mano_gestor,
                 direccion_compensacion, monto_compensacion_final,
                 saldo_cta_cte_post_cierre, movimiento_cc_id,
                 movimiento_cc_madre_id, saldo_cta_cte_madre_post_cierre,
                 modalidad_cierre, observaciones, detalle_ordenes_json
-             ) VALUES ($1,$2,NULL,'CORTE_FULFILLMENT',$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb)
+             ) VALUES ($1,$2,NULL,'CORTE_FULFILLMENT',$3,$4,$5,$19,$20,$21,$6,$7,$8,$9,0,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb)
              RETURNING *`,
             [
                 codigoLiq,
@@ -13748,7 +14288,10 @@ async function generarCorteLiquidacionFulfillment(nodoId, payload = {}) {
                 saldoMadrePostCierre,
                 modalidadCierre,
                 obsTexto,
-                JSON.stringify(detalleOrdenes)
+                JSON.stringify(detalleOrdenes),
+                totalRetencionIvaMargen,
+                totalRetencionIibbMargen,
+                totalRetencionFiscalMargen
             ]
         );
         corteCreado = insLiq.rows[0];
@@ -13826,6 +14369,8 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
         const canRes = await client.query(
             `SELECT nle.*,
                     nm.nombre_marca, nm.gestor_nombre, nm.codigo_bunker_cliente,
+                    COALESCE(nm.alicuota_iva_margen_pct, 21.00) AS alicuota_iva_margen_pct,
+                    COALESCE(nm.alicuota_iibb_margen_pct, 4.00) AS alicuota_iibb_margen_pct,
                     nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre,
                     COALESCE(nm.usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada
              FROM public.nodos_lotes_estacion nle
@@ -13997,13 +14542,15 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
         const insLiq = await client.query(
             `INSERT INTO public.nodos_liquidaciones_lote (
                 codigo_liquidacion, nodo_id, lote_canasto_id,
-                total_venta_vecinos, total_base_lamda, ganancia_neta_gestor,
+                total_venta_vecinos, total_base_lamda,
+                total_retencion_iva_margen, total_retencion_iibb_margen, total_retencion_fiscal_margen,
+                ganancia_neta_gestor,
                 total_transferencias_lamda, total_efectivo_mano_gestor,
                 direccion_compensacion, monto_compensacion_final,
                 saldo_cta_cte_post_cierre, movimiento_cc_id,
                 movimiento_cc_madre_id, saldo_cta_cte_madre_post_cierre,
                 modalidad_cierre, observaciones
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+             ) VALUES ($1,$2,$3,$4,$5,$17,$18,$19,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
              RETURNING *`,
             [
                 codigoLiq,
@@ -14021,7 +14568,10 @@ async function cerrarLiquidacionCanasto(canastoId, payload = {}) {
                 movCcMadreId,
                 saldoMadrePostCierre,
                 modalidadCierre,
-                payload.observaciones || cuadro.explicacion_compensacion
+                payload.observaciones || cuadro.explicacion_compensacion,
+                cuadro.total_retencion_iva_margen || 0,
+                cuadro.total_retencion_iibb_margen || 0,
+                cuadro.total_retencion_fiscal_margen || 0
             ]
         );
         const liqRow = insLiq.rows[0];
@@ -14926,9 +15476,13 @@ async function aplicarNotaCreditoPedidoVecino(pedidoId, payload = {}) {
         const pedRes = await client.query(
             `SELECT npv.*,
                     nm.nombre_marca, nm.gestor_nombre, nm.codigo_bunker_cliente,
+                    COALESCE(nm.alicuota_iva_margen_pct, 21.00) AS nodo_alicuota_iva_margen_pct,
+                    COALESCE(nm.alicuota_iibb_margen_pct, 4.00) AS nodo_alicuota_iibb_margen_pct,
                     nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre,
                     COALESCE(nm.usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada,
-                    nle.codigo_canasto, nle.debito_cta_cte_registrado, nle.liquidacion_cerrada
+                    nle.codigo_canasto,
+                    COALESCE(nle.debito_cta_cte_registrado, npv.debito_cta_cte_registrado, false) AS lote_o_ped_debito_registrado,
+                    nle.liquidacion_cerrada
              FROM public.nodos_pedidos_vecinos npv
              JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
              LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
@@ -14946,8 +15500,8 @@ async function aplicarNotaCreditoPedidoVecino(pedidoId, payload = {}) {
         if (String(ped.estado_operativo || '').toUpperCase() === 'ANULADO') {
             throw new Error(`El pedido #${ped.codigo_pedido} está ANULADO.`);
         }
-        if (ped.liquidacion_cerrada) {
-            throw new Error(`La liquidación del lote ${ped.codigo_canasto} ya se encuentra cerrada.`);
+        if (ped.liquidacion_cerrada || ped.liquidacion_id) {
+            throw new Error(`La liquidación del pedido #${ped.codigo_pedido} ya se encuentra cerrada.`);
         }
 
         const totalActualVecino = Number(ped.total_vecino || 0);
@@ -14955,16 +15509,29 @@ async function aplicarNotaCreditoPedidoVecino(pedidoId, payload = {}) {
             throw new Error(`El monto de la Nota de Crédito ($${montoCredito.toLocaleString('es-AR')}) cubre el total del pedido ($${totalActualVecino.toLocaleString('es-AR')}). Utilice la opción "Anular Pedido" para dar de baja el pedido completo.`);
         }
 
+        const rawRedBase = payload.monto_reduccion_base_lamda ?? payload.monto_credito_base_lamda;
         const totalBaseActual = Number(ped.total_base_lamda || 0);
         const proporcionBase = totalActualVecino > 0 ? (totalBaseActual / totalActualVecino) : 0;
-        const reduccionBase = payload.monto_reduccion_base_lamda !== undefined && payload.monto_reduccion_base_lamda !== null && payload.monto_reduccion_base_lamda !== ''
-            ? Math.min(totalBaseActual, Math.max(0, Number(Number(payload.monto_reduccion_base_lamda).toFixed(2))))
+        const reduccionBase = rawRedBase !== undefined && rawRedBase !== null && rawRedBase !== ''
+            ? Math.min(totalBaseActual, Math.max(0, Number(Number(rawRedBase).toFixed(2))))
             : Math.min(totalBaseActual, Number((montoCredito * proporcionBase).toFixed(2)));
 
         const nuevoTotalVecino = Number((totalActualVecino - montoCredito).toFixed(2));
         const nuevoSubtotalProd = Math.max(0, Number((Number(ped.subtotal_productos_vecino || totalActualVecino) - montoCredito).toFixed(2)));
         const nuevoTotalBase = Math.max(0, Number((totalBaseActual - reduccionBase).toFixed(2)));
-        const nuevaGanancia = Math.max(0, Number((nuevoTotalVecino - nuevoTotalBase).toFixed(2)));
+
+        const ivaNcPct = normalizarAlicuotaFiscalNodo(ped.alicuota_iva_margen_pct ?? ped.nodo_alicuota_iva_margen_pct, 21);
+        const iibbNcPct = normalizarAlicuotaFiscalNodo(ped.alicuota_iibb_margen_pct ?? ped.nodo_alicuota_iibb_margen_pct, 4);
+        const retFiscalPrev = Number(ped.retencion_fiscal_margen || 0);
+        const tramoNc = desglosarRetencionFiscalExcedente(Math.max(0, nuevoSubtotalProd - nuevoTotalBase), ivaNcPct, iibbNcPct);
+        const reduccionRetFiscal = Math.max(0, Number((retFiscalPrev - tramoNc.retencion_fiscal_total).toFixed(2)));
+        const creditoOperativoLamda = Number((reduccionBase + reduccionRetFiscal).toFixed(2));
+
+        const esPedPostalNc = String(ped.modalidad_entrega || '').toUpperCase() === 'ENVIO_POSTAL';
+        const fletePostalActual = Number(ped.costo_flete_lamda || 0);
+        const nuevaGanancia = esPedPostalNc
+            ? Number((nuevoTotalVecino - nuevoTotalBase - tramoNc.retencion_fiscal_total - fletePostalActual).toFixed(2))
+            : Number((tramoNc.ganancia_neta + Number(ped.cargo_envio_barrial || 0)).toFixed(2));
 
         const estabaPagado = Boolean(ped.impactado_cta_cte_pago) ||
             ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(ped.estado_pago || '').toUpperCase());
@@ -15062,8 +15629,8 @@ async function aplicarNotaCreditoPedidoVecino(pedidoId, payload = {}) {
                 );
             }
 
-            if (ped.debito_cta_cte_registrado && reduccionBase > 0) {
-                const descBaseNcLote = `Nota de Crédito Costo Base LAMDA en Lote ${ped.codigo_canasto} (Pedido #${ped.codigo_pedido}) — ${motivo}`;
+            if (ped.lote_o_ped_debito_registrado && creditoOperativoLamda > 0) {
+                const descBaseNcLote = `Nota de Crédito Costo Base + Ret. Fiscal LAMDA en ${ped.codigo_canasto || 'Fulfillment'} (Pedido #${ped.codigo_pedido}) — ${motivo}`;
                 const descNcLote = destCc.usaCuentaMadreUnificada
                     ? agregarReferenciaNodoADescripcion(descBaseNcLote, ped.nombre_marca)
                     : descBaseNcLote;
@@ -15075,7 +15642,7 @@ async function aplicarNotaCreditoPedidoVecino(pedidoId, payload = {}) {
                      ) VALUES ($1, 'CREDITO', $2, 0, 'NOTA_CREDITO_CANASTO_NODO', NULL, $3, NOW(), NOW(), $4)`,
                     [
                         ccId,
-                        reduccionBase,
+                        creditoOperativoLamda,
                         descNcLote,
                         JSON.stringify({
                             pedido_id: ped.id,
@@ -15084,6 +15651,8 @@ async function aplicarNotaCreditoPedidoVecino(pedidoId, payload = {}) {
                             nodo_marca: ped.nombre_marca || null,
                             usa_cuenta_madre_unificada: destCc.usaCuentaMadreUnificada,
                             reduccion_base: reduccionBase,
+                            reduccion_retencion_fiscal: reduccionRetFiscal,
+                            credito_operativo_lamda: creditoOperativoLamda,
                             motivo
                         })
                     ]
@@ -15098,9 +15667,9 @@ async function aplicarNotaCreditoPedidoVecino(pedidoId, payload = {}) {
                         ped.nodo_id,
                         ped.lote_canasto_id || null,
                         ped.id,
-                        reduccionBase,
+                        creditoOperativoLamda,
                         sPostBase,
-                        `Bonificación de Costo Base en Lote ${ped.codigo_canasto} por Nota de Crédito #${ped.codigo_pedido}`,
+                        `Bonificación de Costo Base y Ret. Fiscal en ${ped.codigo_canasto || 'Fulfillment'} por Nota de Crédito #${ped.codigo_pedido}`,
                         ped.codigo_pedido
                     ]
                 );
@@ -15115,9 +15684,23 @@ async function aplicarNotaCreditoPedidoVecino(pedidoId, payload = {}) {
                  ganancia_total_gestor = $4,
                  monto_ajuste_credito = COALESCE(monto_ajuste_credito, 0) + $5,
                  motivo_anulacion_ajuste = $6,
+                 retencion_iva_margen = $8,
+                 retencion_iibb_margen = $9,
+                 retencion_fiscal_margen = $10,
                  updated_at = NOW()
              WHERE id = $7::int`,
-            [nuevoSubtotalProd, nuevoTotalVecino, nuevoTotalBase, nuevaGanancia, montoCredito, motivo, ped.id]
+            [
+                nuevoSubtotalProd,
+                nuevoTotalVecino,
+                nuevoTotalBase,
+                nuevaGanancia,
+                montoCredito,
+                motivo,
+                ped.id,
+                tramoNc.iva_excedente,
+                tramoNc.iibb_excedente,
+                tramoNc.retencion_fiscal_total
+            ]
         );
 
         await sincronizarCanastosEstacionNodos(client);
@@ -18538,6 +19121,10 @@ module.exports = {
     obtenerDiccionarioBunkerCotizador,
     previsualizarAnatomiaCotizacionNodo,
     calcularEstructuraCostosNodo,
+    normalizarAlicuotaFiscalNodo,
+    obtenerFactorNetoMargenNodo,
+    desglosarRetencionFiscalExcedente,
+    calcularPrecioYGananciaNetaOfertaNodo,
     obtenerEstadoCompletoNodos,
     guardarNodoMaestro,
     clonarNodoMaestro,

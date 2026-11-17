@@ -412,15 +412,15 @@
                     </div>
                     <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
                         <div>
-                            <div class="kpi-val" style="color:#fcd34d;">${fmtMoneda((cc.costo_base_lamda || 0) + (cc.costo_flete_lamda || 0))}</div>
-                            <div class="kpi-lbl">Base LAMDA (${fmtMoneda(cc.costo_base_lamda || 0)}) + Flete (${fmtMoneda(cc.costo_flete_lamda || 0)})</div>
+                            <div class="kpi-val" style="color:#fcd34d;">${fmtMoneda((cc.costo_base_lamda || 0) + (cc.retencion_fiscal_margen || 0) + (cc.costo_flete_lamda || 0))}</div>
+                            <div class="kpi-lbl">Base (${fmtMoneda(cc.costo_base_lamda || 0)}) + Ret. IVA/IIBB (${fmtMoneda(cc.retencion_fiscal_margen || 0)}) + Flete (${fmtMoneda(cc.costo_flete_lamda || 0)})</div>
                         </div>
                         <div style="font-size:1.7rem;">🚚</div>
                     </div>
                     <div class="kpi-card" style="border-left: 4px solid #10b981;">
                         <div>
                             <div class="kpi-val" style="color:#6ee7b7;">${fmtMoneda(cc.utilidad_neta_creador || 0)}</div>
-                            <div class="kpi-lbl">Utilidad Neta Creador (Pendiente Corte)</div>
+                            <div class="kpi-lbl">Utilidad Neta Liquidable (Pendiente Corte)</div>
                         </div>
                         <div style="font-size:1.7rem;">✨</div>
                     </div>
@@ -657,7 +657,8 @@
                                 <div style="font-size:0.75rem; color:#94a3b8; display:flex; gap:14px; flex-wrap:wrap;">
                                     <span>Total a abonar por vecino: <strong style="color:#f8fafc;">${fmtMoneda(p.total_vecino)}</strong></span>
                                     <span>Costo Base LAMDA: <strong>${fmtMoneda(p.total_base_lamda)}</strong></span>
-                                    <span style="color:#34d399;">Ganancia Gestor en este pedido: <strong>+${fmtMoneda(p.ganancia_total_gestor)}</strong> ${Number(p.cargo_envio_barrial) > 0 ? `(incluye ${fmtMoneda(p.cargo_envio_barrial)} envío barrial)` : ''}</span>
+                                    <span>Ret. Fiscal s/Margen: <strong style="color:#fcd34d;">-${fmtMoneda(p.retencion_fiscal_margen || 0)}</strong></span>
+                                    <span style="color:#34d399;">Utilidad Neta Liquidable: <strong>+${fmtMoneda(p.ganancia_total_gestor)}</strong> ${Number(p.cargo_envio_barrial) > 0 ? `(incluye ${fmtMoneda(p.cargo_envio_barrial)} envío barrial)` : ''}</span>
                                 </div>
                             `}
                         </div>
@@ -758,11 +759,11 @@
                         </div>
                     </div>
 
-                    <!-- FILA A: VENTA TOTAL, COSTO BASE LAMDA Y GANANCIA NETA DEL GESTOR -->
-                    <div class="liq-box-grid">
+                    <!-- FILA A: VENTA TOTAL, COSTO BASE LAMDA, RETENCIÓN FISCAL S/MARGEN Y UTILIDAD NETA LIQUIDABLE -->
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(205px, 1fr)); gap:12px; margin-bottom:14px;">
                         <div class="liq-metric">
-                            <div style="font-size:0.73rem; color:#94a3b8; text-transform:uppercase; font-weight:700;">A. Total Vendido a Vecinos</div>
-                            <div style="font-size:1.45rem; font-weight:900; color:#f8fafc; margin-top:4px;">${fmtMoneda(c.total_venta_vecinos)}</div>
+                            <div style="font-size:0.73rem; color:#94a3b8; text-transform:uppercase; font-weight:700;">A. Subtotal Venta</div>
+                            <div style="font-size:1.4rem; font-weight:900; color:#f8fafc; margin-top:4px;">${fmtMoneda(c.total_venta_vecinos)}</div>
                             <div style="font-size:0.73rem; color:#cbd5e1; margin-top:4px;">
                                 Productos: ${fmtMoneda(c.total_subtotal_productos)}
                                 ${c.total_envios_barriales_gestor > 0 ? ` + Envíos barriales: ${fmtMoneda(c.total_envios_barriales_gestor)} (100% Gestor)` : ''}
@@ -770,18 +771,26 @@
                         </div>
 
                         <div class="liq-metric">
-                            <div style="font-size:0.73rem; color:#94a3b8; text-transform:uppercase; font-weight:700;">B. Menos Costo Base LAMDA del Lote</div>
-                            <div style="font-size:1.45rem; font-weight:900; color:#fb7185; margin-top:4px;">-${fmtMoneda(c.total_base_lamda)}</div>
+                            <div style="font-size:0.73rem; color:#94a3b8; text-transform:uppercase; font-weight:700;">B. Costo Base LAMDA</div>
+                            <div style="font-size:1.4rem; font-weight:900; color:#fb7185; margin-top:4px;">-${fmtMoneda(c.total_base_lamda)}</div>
                             <div style="font-size:0.73rem; color:#cbd5e1; margin-top:4px;">
-                                Valor mayorista debitado al retirar el canasto (${c.total_pedidos} pedidos)
+                                Valor base mayorista (${c.total_pedidos} pedidos)
+                            </div>
+                        </div>
+
+                        <div class="liq-metric" style="border-color:rgba(245,158,11,0.45);">
+                            <div style="font-size:0.72rem; color:#fcd34d; text-transform:uppercase; font-weight:800;">C. Retención Fiscal s/Margen (IVA ${Number(c.alicuota_iva_margen_pct ?? 21)}% + IIBB ${Number(c.alicuota_iibb_margen_pct ?? 4)}%)</div>
+                            <div style="font-size:1.4rem; font-weight:900; color:#fbbf24; margin-top:4px;">-${fmtMoneda(c.total_retencion_fiscal_margen || 0)}</div>
+                            <div style="font-size:0.72rem; color:#fde68a; margin-top:4px;">
+                                IVA: ${fmtMoneda(c.total_retencion_iva_margen || 0)} · IIBB: ${fmtMoneda(c.total_retencion_iibb_margen || 0)}
                             </div>
                         </div>
 
                         <div class="liq-metric" style="border-color:rgba(16,185,129,0.5); background:rgba(16,185,129,0.08);">
-                            <div style="font-size:0.73rem; color:#6ee7b7; text-transform:uppercase; font-weight:800;">C. (=) Ganancia Neta Total del Gestor</div>
-                            <div style="font-size:1.45rem; font-weight:900; color:#34d399; margin-top:4px;">+${fmtMoneda(c.ganancia_neta_gestor)}</div>
+                            <div style="font-size:0.73rem; color:#6ee7b7; text-transform:uppercase; font-weight:800;">D. (=) Utilidad Neta Liquidable</div>
+                            <div style="font-size:1.4rem; font-weight:900; color:#34d399; margin-top:4px;">+${fmtMoneda(c.ganancia_neta_gestor)}</div>
                             <div style="font-size:0.73rem; color:#a7f3d0; margin-top:4px;">
-                                Comisión limpia de ${esc(lote.gestor_nombre)} en esta entrega
+                                Ganancia limpia de ${esc(lote.gestor_nombre)} en este lote
                             </div>
                         </div>
                     </div>
@@ -980,9 +989,10 @@
                 html: `
                     <div style="text-align:left; font-size:0.86rem; line-height:1.5; display:flex; flex-direction:column; gap:11px;">
                         <div style="padding:12px; border-radius:9px; background:#0f172a; border:1px solid #334155;">
-                            <div>🛍️ <strong>Total vendido a vecinos:</strong> ${fmtMoneda(c.total_venta_vecinos)}</div>
-                            <div>🏭 <strong>Costo Base LAMDA (DÉBITO despacho):</strong> +${fmtMoneda(c.total_base_lamda)}</div>
-                            <div style="color:#34d399;">💰 <strong>Ganancia Neta del Gestor:</strong> +${fmtMoneda(c.ganancia_neta_gestor)}</div>
+                            <div>🛍️ <strong>Subtotal Venta:</strong> ${fmtMoneda(c.total_venta_vecinos)}</div>
+                            <div>🏭 <strong>Costo Base LAMDA:</strong> -${fmtMoneda(c.total_base_lamda)}</div>
+                            <div style="color:#fcd34d;">🏛️ <strong>Retención Fiscal s/Margen (IVA ${Number(c.alicuota_iva_margen_pct ?? 21)}% + IIBB ${Number(c.alicuota_iibb_margen_pct ?? 4)}%):</strong> -${fmtMoneda(c.total_retencion_fiscal_margen || 0)}</div>
+                            <div style="color:#34d399;">💰 <strong>Utilidad Neta Liquidable:</strong> +${fmtMoneda(c.ganancia_neta_gestor)}</div>
                             <hr style="border:none; border-top:1px dashed #334155; margin:8px 0;">
                             <div>🏦 <strong>Transferencias en Banco LAMDA (CRÉDITO):</strong> -${fmtMoneda(c.transferencias_esperadas)}</div>
                             <div>💵 <strong>Efectivo en mano del Gestor:</strong> ${fmtMoneda(c.efectivo_esperado)}</div>
@@ -1554,8 +1564,9 @@
                 const cortado = Boolean(p.liquidacion_id);
                 const subProd = Number(p.subtotal_productos_vecino || 0);
                 const envCli = Number(p.cargo_envio_barrial ?? p.postal_costo_envio_cliente ?? 0);
+                const retFiscal = Number(p.retencion_fiscal_margen || 0);
                 const fleteLamda = Number(p.costo_flete_lamda ?? p.postal_costo_flete_lamda ?? 0);
-                const utilOrden = Number((Number(p.total_vecino || 0) - Number(p.total_base_lamda || 0) - fleteLamda).toFixed(2));
+                const utilOrden = Number((Number(p.total_vecino || 0) - Number(p.total_base_lamda || 0) - retFiscal - fleteLamda).toFixed(2));
                 const itemsTxt = (p.items || []).map(i => `${i.cantidad}x ${esc(formatearItemLiq(i))}`).join(' · ');
 
                 return `
@@ -1580,8 +1591,8 @@
                             </div>
                             <div style="font-size:0.8rem; color:#e2e8f0; font-weight:600;">${itemsTxt}</div>
                             <div style="font-size:0.74rem; color:#94a3b8;">
-                                Prod: <strong>${fmtMoneda(subProd)}</strong> · Envío cliente: <strong>${fmtMoneda(envCli)}</strong> · Base LAMDA: <strong>${fmtMoneda(p.total_base_lamda)}</strong>
-                                ${despachado ? ` · Flete real LAMDA: <strong style="color:#fb7185;">${fmtMoneda(fleteLamda)}</strong> · Utilidad Neta: <strong style="color:#34d399;">${fmtMoneda(utilOrden)}</strong>` : ''}
+                                Prod: <strong>${fmtMoneda(subProd)}</strong> · Envío cliente: <strong>${fmtMoneda(envCli)}</strong> · Base LAMDA: <strong>${fmtMoneda(p.total_base_lamda)}</strong> · Ret. IVA/IIBB s/Margen: <strong style="color:#fcd34d;">-${fmtMoneda(retFiscal)}</strong>
+                                ${despachado ? ` · Flete real LAMDA: <strong style="color:#fb7185;">-${fmtMoneda(fleteLamda)}</strong> · Utilidad Neta Liquidable: <strong style="color:#34d399;">${fmtMoneda(utilOrden)}</strong>` : ''}
                             </div>
                         </div>
 
@@ -1617,13 +1628,14 @@
                             🧾 ${esc(ct.codigo_liquidacion)} · <span style="color:#7dd3fc;">${ct.cantidad_ordenes || 0} orden(es) despachada(s)</span>
                         </div>
                         <div style="font-size:0.75rem; color:#94a3b8; margin-top:3px;">
-                            Ingresos Brutos: <strong>${fmtMoneda(ct.total_venta_vecinos)}</strong> (Envíos cobrados: ${fmtMoneda(ct.total_envio_cobrado_clientes || 0)})
-                            · Base LAMDA: <strong>${fmtMoneda(ct.total_base_lamda)}</strong>
-                            · Flete Real LAMDA: <strong style="color:#fb7185;">${fmtMoneda(ct.total_costo_flete_lamda || 0)}</strong>
+                            Subtotal Venta: <strong>${fmtMoneda(ct.total_venta_vecinos)}</strong> (Envíos cobrados: ${fmtMoneda(ct.total_envio_cobrado_clientes || 0)})
+                            · Costo Base LAMDA: <strong>${fmtMoneda(ct.total_base_lamda)}</strong>
+                            · Ret. Fiscal s/Margen: <strong style="color:#fcd34d;">-${fmtMoneda(ct.total_retencion_fiscal_margen || 0)}</strong>
+                            · Flete Real LAMDA: <strong style="color:#fb7185;">-${fmtMoneda(ct.total_costo_flete_lamda || 0)}</strong>
                         </div>
                     </div>
                     <div style="text-align:right;">
-                        <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase; font-weight:800;">Utilidad Neta Creador</div>
+                        <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase; font-weight:800;">Utilidad Neta Liquidable</div>
                         <div style="font-size:1.12rem; font-weight:900; color:#34d399;">${fmtMoneda(ct.ganancia_neta_gestor)}</div>
                     </div>
                 </div>
@@ -1667,9 +1679,9 @@
                         </button>
                     </div>
 
-                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin-bottom:14px;">
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap:10px; margin-bottom:14px;">
                         <div style="padding:11px; border-radius:9px; background:#0f172a; border:1px solid #263244;">
-                            <div style="font-size:0.7rem; color:#94a3b8;">1. Subtotal Productos (${cc.cantidad_ordenes || 0} órd.)</div>
+                            <div style="font-size:0.7rem; color:#94a3b8;">1. Subtotal Venta (${cc.cantidad_ordenes || 0} órd.)</div>
                             <div style="font-size:1.02rem; font-weight:800; color:#f8fafc; margin-top:2px;">${fmtMoneda(cc.subtotal_productos || 0)}</div>
                         </div>
                         <div style="padding:11px; border-radius:9px; background:#0f172a; border:1px solid #263244;">
@@ -1680,12 +1692,17 @@
                             <div style="font-size:0.7rem; color:#94a3b8;">3. − Costo Base LAMDA</div>
                             <div style="font-size:1.02rem; font-weight:800; color:#fb7185; margin-top:2px;">-${fmtMoneda(cc.costo_base_lamda || 0)}</div>
                         </div>
+                        <div style="padding:11px; border-radius:9px; background:#0f172a; border:1px solid rgba(251,191,36,0.35);">
+                            <div style="font-size:0.7rem; color:#fcd34d; font-weight:700;">4. − Retención Fiscal s/Margen (IVA ${Number(cc.alicuota_iva_margen_pct ?? tf.alicuota_iva_margen_pct ?? 21)}% + IIBB ${Number(cc.alicuota_iibb_margen_pct ?? tf.alicuota_iibb_margen_pct ?? 4)}%)</div>
+                            <div style="font-size:1.02rem; font-weight:800; color:#fbbf24; margin-top:2px;">-${fmtMoneda(cc.retencion_fiscal_margen || 0)}</div>
+                            <div style="font-size:0.66rem; color:#94a3b8; margin-top:2px;">IVA: -${fmtMoneda(cc.retencion_iva_margen || 0)} · IIBB: -${fmtMoneda(cc.retencion_iibb_margen || 0)}</div>
+                        </div>
                         <div style="padding:11px; border-radius:9px; background:#0f172a; border:1px solid #263244;">
-                            <div style="font-size:0.7rem; color:#94a3b8;">4. − Costo Flete Real LAMDA</div>
+                            <div style="font-size:0.7rem; color:#94a3b8;">5. − Costo Flete LAMDA</div>
                             <div style="font-size:1.02rem; font-weight:800; color:#fb7185; margin-top:2px;">-${fmtMoneda(cc.costo_flete_lamda || 0)}</div>
                         </div>
                         <div style="padding:11px; border-radius:9px; background:rgba(16,185,129,0.12); border:1px solid #10b981;">
-                            <div style="font-size:0.7rem; color:#6ee7b7; font-weight:800;">= Utilidad Neta Creador</div>
+                            <div style="font-size:0.7rem; color:#6ee7b7; font-weight:800;">= Utilidad Neta Liquidable</div>
                             <div style="font-size:1.15rem; font-weight:900; color:#34d399; margin-top:2px;">${fmtMoneda(cc.utilidad_neta_creador || 0)}</div>
                         </div>
                     </div>
@@ -1713,12 +1730,13 @@
                     <div style="text-align:left; font-size:0.86rem; line-height:1.55;">
                         <p>Se consolidarán <strong>${cc.cantidad_ordenes} orden(es) despachada(s)</strong> con pago conciliado:</p>
                         <div style="margin:10px 0; padding:12px; border-radius:9px; background:#0f172a; border:1px solid #334155;">
-                            <div>• Subtotal Productos: <strong>${fmtMoneda(cc.subtotal_productos)}</strong></div>
-                            <div>• + Envíos Cobrados a Clientes: <strong>${fmtMoneda(cc.envio_cobrado_clientes)}</strong></div>
-                            <div>• − Costo Base Mercadería LAMDA: <strong style="color:#fb7185;">-${fmtMoneda(cc.costo_base_lamda)}</strong></div>
-                            <div>• − Costo Flete Postal Real LAMDA: <strong style="color:#fb7185;">-${fmtMoneda(cc.costo_flete_lamda)}</strong></div>
+                            <div>• Subtotal Venta Productos: <strong>${fmtMoneda(cc.subtotal_productos)}</strong></div>
+                            <div>• + Flete Cobrado a Clientes: <strong>${fmtMoneda(cc.envio_cobrado_clientes)}</strong></div>
+                            <div>• − Costo Base LAMDA: <strong style="color:#fb7185;">-${fmtMoneda(cc.costo_base_lamda)}</strong></div>
+                            <div>• − Retención Fiscal s/Margen (IVA ${Number(cc.alicuota_iva_margen_pct ?? tf.alicuota_iva_margen_pct ?? 21)}% + IIBB ${Number(cc.alicuota_iibb_margen_pct ?? tf.alicuota_iibb_margen_pct ?? 4)}%): <strong style="color:#fbbf24;">-${fmtMoneda(cc.retencion_fiscal_margen || 0)}</strong></div>
+                            <div>• − Costo Flete LAMDA: <strong style="color:#fb7185;">-${fmtMoneda(cc.costo_flete_lamda)}</strong></div>
                             <hr style="border:none; border-top:1px solid #334155; margin:8px 0;">
-                            <div style="font-size:1rem;">✨ <strong>Utilidad Neta Creador:</strong> <span style="color:#34d399; font-weight:900;">${fmtMoneda(cc.utilidad_neta_creador)}</span></div>
+                            <div style="font-size:1rem;">✨ <strong>Utilidad Neta Liquidable:</strong> <span style="color:#34d399; font-weight:900;">${fmtMoneda(cc.utilidad_neta_creador)}</span></div>
                         </div>
                         <div style="font-size:0.78rem; color:#94a3b8;">La tienda online continúa operando 24/7 sin interrupción.</div>
                     </div>
@@ -1746,7 +1764,7 @@
                 await Swal.fire({
                     icon: 'success',
                     title: `✅ Corte Emitido: ${esc(data.corte?.codigo_liquidacion || '')}`,
-                    text: `Utilidad Neta Creador consolidada: ${fmtMoneda(data.corte?.ganancia_neta_gestor || 0)}`,
+                    text: `Utilidad Neta Liquidable consolidada: ${fmtMoneda(data.corte?.ganancia_neta_gestor || 0)}`,
                     background: '#151e2e',
                     color: '#f8fafc'
                 });

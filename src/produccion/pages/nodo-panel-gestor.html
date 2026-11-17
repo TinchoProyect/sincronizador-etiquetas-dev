@@ -725,6 +725,82 @@
       cursor: wait;
     }
 
+    /* === Bloque Minimalista Bidireccional (% <-> $) en Mi Oferta y Márgenes === */
+    .oferta-fin-box {
+      margin-top: 8px;
+      padding: 10px 11px;
+      border-radius: 11px;
+      background: #fffdfb;
+      border: 1px solid var(--border);
+    }
+    .oferta-fin-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding-bottom: 8px;
+      margin-bottom: 9px;
+      border-bottom: 1px dashed var(--border);
+    }
+    .oferta-fin-inputs-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+    }
+    .oferta-fin-affix-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+    .oferta-fin-affix {
+      position: absolute;
+      font-size: 0.86rem;
+      font-weight: 900;
+      color: var(--muted);
+      pointer-events: none;
+      user-select: none;
+    }
+    .oferta-fin-affix.is-prefix {
+      left: 10px;
+      color: var(--ok);
+    }
+    .oferta-fin-affix.is-suffix {
+      right: 10px;
+    }
+    .oferta-fin-input {
+      width: 100%;
+      min-width: 0;
+      min-height: 40px;
+      border-radius: 9px;
+      border: 1.5px solid var(--border);
+      background: #ffffff;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.94rem;
+      font-weight: 900;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .oferta-fin-input:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px var(--brand-soft);
+    }
+    .oferta-fin-input.has-prefix {
+      padding: 7px 9px 7px 23px;
+      border-color: rgba(47, 111, 78, 0.38);
+      color: var(--ok);
+    }
+    .oferta-fin-input.has-suffix {
+      padding: 7px 26px 7px 10px;
+    }
+    .oferta-fin-caption {
+      margin-top: 7px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      line-height: 1.32;
+      font-weight: 600;
+    }
+
     /* === Álbum de Fotos por Oferta (Panel Gestor) === */
     .oferta-album-box {
       margin: 0 0 10px 0;
@@ -3689,27 +3765,47 @@
 
           ${renderizarBloqueAlbumOferta(of)}
 
-          <div class="oferta-grid">
-            <div>
-              <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">Costo Base</div>
-              <div style="font-size:0.95rem; font-weight:800; padding:7px 0;">${fmt(of.precio_base_nodo_final)}</div>
+          <div class="oferta-fin-box">
+            <div class="oferta-fin-head">
+              <div>
+                <div style="font-size:0.7rem; color:var(--muted); font-weight:800; text-transform:uppercase; letter-spacing:0.02em;">Costo base</div>
+                <div style="font-size:0.96rem; font-weight:800; color:var(--text); margin-top:1px;">${fmt(of.precio_base_nodo_final)}</div>
+              </div>
+              <div style="text-align:right;">
+                <div style="font-size:0.7rem; color:var(--brand-dark); font-weight:800; text-transform:uppercase; letter-spacing:0.02em;">Precio en tienda</div>
+                <div data-oferta-precio-tienda="${of.id}" style="font-size:1.14rem; font-weight:900; color:var(--brand-dark); margin-top:1px;">${fmt(of.precio_venta_vecino)}</div>
+              </div>
             </div>
-            <div>
-              <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Mi Margen (%)</label>
-              <input type="number" step="0.5" class="input-sm" style="width:100%;"
-                value="${Number(of.margen_gestor_pct)}"
-                onchange="guardarCambioOferta(${of.id}, { margen_gestor_pct: Number(this.value) })" />
+
+            <div class="oferta-fin-inputs-row">
+              <div>
+                <label style="display:block; font-size:0.73rem; color:var(--muted); font-weight:800; margin-bottom:4px;">Margen %</label>
+                <div class="oferta-fin-affix-wrap">
+                  <input type="number" step="0.01" min="0" inputmode="decimal"
+                    class="oferta-fin-input has-suffix"
+                    data-oferta-input-margen="${of.id}"
+                    value="${Number(Number(of.margen_gestor_pct || 0).toFixed(2))}"
+                    oninput="alEditarMargenOfertaEnVivo(${of.id}, ${Number(of.precio_base_nodo_final || 0)}, this.value)"
+                    onchange="guardarMargenOfertaGestor(${of.id}, ${Number(of.precio_base_nodo_final || 0)}, this.value)" />
+                  <span class="oferta-fin-affix is-suffix">%</span>
+                </div>
+              </div>
+
+              <div>
+                <label style="display:block; font-size:0.73rem; color:var(--ok); font-weight:800; margin-bottom:4px;">Ganancia limpia $</label>
+                <div class="oferta-fin-affix-wrap">
+                  <span class="oferta-fin-affix is-prefix">$</span>
+                  <input type="number" step="1" min="0" inputmode="numeric"
+                    class="oferta-fin-input has-prefix"
+                    data-oferta-input-ganancia="${of.id}"
+                    value="${Math.round(Number(of.ganancia_unitaria_gestor || 0))}"
+                    oninput="alEditarGananciaLimpiaOfertaEnVivo(${of.id}, ${Number(of.precio_base_nodo_final || 0)}, this.value)"
+                    onchange="guardarGananciaLimpiaOfertaGestor(${of.id}, ${Number(of.precio_base_nodo_final || 0)}, this.value)" />
+                </div>
+              </div>
             </div>
-            <div>
-              <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">${esPerfilEcommerceGestor() ? 'Precio Venta ($)' : 'Precio Vecino ($)'}</label>
-              <input type="number" step="50" class="input-sm" style="width:100%; border-color:var(--brand-border);"
-                value="${Math.round(Number(of.precio_venta_vecino))}"
-                onchange="guardarPrecioDirectoOferta(${of.id}, ${Number(of.precio_base_nodo_final)}, Number(this.value))" />
-            </div>
-            <div>
-              <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">Mi Ganancia</div>
-              <div style="font-size:0.98rem; font-weight:900; color:var(--ok); padding:7px 0;">+${fmt(of.ganancia_unitaria_gestor)}</div>
-            </div>
+
+            <div class="oferta-fin-caption">${esc(obtenerLeyendaFiscalMargenGestor())}</div>
           </div>
         </div>
       `;
@@ -3998,12 +4094,132 @@
       }
     }
 
-    async function guardarPrecioDirectoOferta(ofertaId, base, nuevoPrecio) {
-      const margen = base > 0 ? Number((((nuevoPrecio - base) / base) * 100).toFixed(2)) : 0;
-      await guardarCambioOferta(ofertaId, {
-        margen_gestor_pct: Math.max(0, margen),
-        precio_venta_vecino: nuevoPrecio
-      });
+    function obtenerAlicuotasFiscalesGestor() {
+      const ivaRaw = Number(GSTATE.nodo?.alicuota_iva_margen_pct ?? 21);
+      const iibbRaw = Number(GSTATE.nodo?.alicuota_iibb_margen_pct ?? 4);
+      const iva = Number.isFinite(ivaRaw) && ivaRaw >= 0 ? ivaRaw : 21;
+      const iibb = Number.isFinite(iibbRaw) && iibbRaw >= 0 ? iibbRaw : 4;
+      const factorNeto = Math.max(0.01, (1 / (1 + iva / 100)) - (iibb / 100));
+      return { iva, iibb, factorNeto };
+    }
+
+    function formatearPorcentajeCortoGestor(val) {
+      const n = Number(val || 0);
+      return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2))).replace('.', ',');
+    }
+
+    function obtenerLeyendaFiscalMargenGestor() {
+      const { iva, iibb } = obtenerAlicuotasFiscalesGestor();
+      return `Tu ganancia limpia ya descuenta IVA (${formatearPorcentajeCortoGestor(iva)}%) e IIBB (${formatearPorcentajeCortoGestor(iibb)}%) sobre el margen.`;
+    }
+
+    function calcularDesdeMargenPctGestor(costoBase, margenPct) {
+      const base = Math.max(0, Math.round(Number(costoBase || 0)));
+      const m = Math.max(0, Number(Number(margenPct || 0).toFixed(2)));
+      const { factorNeto } = obtenerAlicuotasFiscalesGestor();
+      const precioTienda = Math.max(base, Math.round(base * (1 + m / 100)));
+      const gananciaLimpia = Math.round(Math.max(0, precioTienda - base) * factorNeto);
+      return { margen_pct: m, precio_tienda: precioTienda, ganancia_limpia: gananciaLimpia };
+    }
+
+    function calcularDesdeGananciaLimpiaGestor(costoBase, gananciaDeseada) {
+      const base = Math.max(0, Math.round(Number(costoBase || 0)));
+      const gan = Math.max(0, Number(gananciaDeseada || 0));
+      const { factorNeto } = obtenerAlicuotasFiscalesGestor();
+      const excedenteNecesario = gan / factorNeto;
+      const precioTienda = Math.max(base, Math.round(base + excedenteNecesario));
+      const margenPct = base > 0 ? Number((((precioTienda - base) / base) * 100).toFixed(2)) : 0;
+      const gananciaLimpia = Math.round(Math.max(0, precioTienda - base) * factorNeto);
+      return { margen_pct: margenPct, precio_tienda: precioTienda, ganancia_limpia: gananciaLimpia };
+    }
+
+    function alEditarMargenOfertaEnVivo(ofertaId, costoBase, rawValor) {
+      const calc = calcularDesdeMargenPctGestor(costoBase, rawValor);
+      const precioEl = document.querySelector(`[data-oferta-precio-tienda="${ofertaId}"]`);
+      if (precioEl) precioEl.textContent = fmt(calc.precio_tienda);
+      const ganInp = document.querySelector(`[data-oferta-input-ganancia="${ofertaId}"]`);
+      if (ganInp && document.activeElement !== ganInp) {
+        ganInp.value = String(calc.ganancia_limpia);
+      }
+    }
+
+    function alEditarGananciaLimpiaOfertaEnVivo(ofertaId, costoBase, rawValor) {
+      const calc = calcularDesdeGananciaLimpiaGestor(costoBase, rawValor);
+      const precioEl = document.querySelector(`[data-oferta-precio-tienda="${ofertaId}"]`);
+      if (precioEl) precioEl.textContent = fmt(calc.precio_tienda);
+      const margInp = document.querySelector(`[data-oferta-input-margen="${ofertaId}"]`);
+      if (margInp && document.activeElement !== margInp) {
+        margInp.value = String(calc.margen_pct);
+      }
+    }
+
+    function sincronizarOfertaActualizadaEnMemoriaYDom(ofertaId, ofData) {
+      if (!ofData) return;
+      const idx = (GSTATE.ofertas || []).findIndex(o => Number(o.id) === Number(ofertaId));
+      if (idx >= 0) {
+        GSTATE.ofertas[idx] = {
+          ...GSTATE.ofertas[idx],
+          margen_gestor_pct: Number(ofData.margen_gestor_pct),
+          precio_venta_vecino: Number(ofData.precio_venta_vecino),
+          ganancia_unitaria_gestor: Number(ofData.ganancia_unitaria_gestor)
+        };
+      }
+      const precioEl = document.querySelector(`[data-oferta-precio-tienda="${ofertaId}"]`);
+      if (precioEl) precioEl.textContent = fmt(ofData.precio_venta_vecino);
+      const margInp = document.querySelector(`[data-oferta-input-margen="${ofertaId}"]`);
+      if (margInp && document.activeElement !== margInp) {
+        margInp.value = String(Number(Number(ofData.margen_gestor_pct || 0).toFixed(2)));
+      }
+      const ganInp = document.querySelector(`[data-oferta-input-ganancia="${ofertaId}"]`);
+      if (ganInp && document.activeElement !== ganInp) {
+        ganInp.value = String(Math.round(Number(ofData.ganancia_unitaria_gestor || 0)));
+      }
+    }
+
+    async function guardarMargenOfertaGestor(ofertaId, costoBase, rawValor) {
+      const margen = Math.max(0, Number(Number(rawValor || 0).toFixed(2)));
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${ofertaId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ margen_gestor_pct: margen })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo guardar el margen: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+          return false;
+        }
+        sincronizarOfertaActualizadaEnMemoriaYDom(ofertaId, data.oferta);
+        const margInp = document.querySelector(`[data-oferta-input-margen="${ofertaId}"]`);
+        if (margInp && data.oferta) margInp.value = String(Number(Number(data.oferta.margen_gestor_pct || 0).toFixed(2)));
+        return true;
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Falla de comunicación al guardar el margen.', 'error');
+        return false;
+      }
+    }
+
+    async function guardarGananciaLimpiaOfertaGestor(ofertaId, costoBase, rawValor) {
+      const gananciaDeseada = Math.max(0, Math.round(Number(rawValor || 0)));
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${ofertaId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ganancia_neta_deseada: gananciaDeseada })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo guardar la ganancia: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+          return false;
+        }
+        sincronizarOfertaActualizadaEnMemoriaYDom(ofertaId, data.oferta);
+        const ganInp = document.querySelector(`[data-oferta-input-ganancia="${ofertaId}"]`);
+        if (ganInp && data.oferta) ganInp.value = String(Math.round(Number(data.oferta.ganancia_unitaria_gestor || 0)));
+        return true;
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Falla de comunicación al guardar la ganancia.', 'error');
+        return false;
+      }
     }
 
     // -------------------------------------------------------------------------
@@ -5744,7 +5960,7 @@
                   ` : ''}
 
                   <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-top:1px solid var(--border); padding-top:8px;">
-                    <span style="font-size:0.84rem; font-weight:900; color:var(--ok);">Tu ganancia: +${fmt(p.ganancia_total_gestor)}</span>
+                    <span style="font-size:0.84rem; font-weight:900; color:var(--ok);">Tu ganancia limpia: +${fmt(p.ganancia_total_gestor)}</span>
                     <div style="display:flex; gap:6px; flex-wrap:wrap;">
                       ${(!pagado && mod.cobro_efectivo_entrega && !esEc) ? `
                         <button type="button" class="btn-primary" style="min-height:38px; padding:6px 12px; font-size:0.82rem;" onclick="cobrarEnEfectivoYEmitirReciboGestor(${p.id})">
@@ -6129,13 +6345,15 @@
         const pedsDespachados = peds.filter(p => Boolean(p.debito_cta_cte_registrado) || Number(p.hito_tracking_actual || 1) >= 4);
         const totalFacturado = peds.reduce((a, p) => a + Number(p.total_vecino || 0), 0);
         const totalBase = peds.reduce((a, p) => a + Number(p.total_base_lamda || 0), 0);
+        const totalRetFiscal = peds.reduce((a, p) => a + Number(p.retencion_fiscal_margen || 0), 0);
         const totalFleteReal = peds.reduce((a, p) => a + Number(p.costo_flete_lamda ?? p.postal_costo_flete_lamda ?? 0), 0);
         const totalUtilidadReal = peds.reduce((a, p) => {
-          const flete = Number(p.costo_flete_lamda ?? p.postal_costo_flete_lamda ?? 0);
-          if (p.debito_cta_cte_registrado || flete > 0) {
-            return a + (Number(p.total_vecino || 0) - Number(p.total_base_lamda || 0) - flete);
+          if (p.ganancia_total_gestor !== undefined && p.ganancia_total_gestor !== null) {
+            return a + Number(p.ganancia_total_gestor || 0);
           }
-          return a + Number(p.ganancia_total_gestor || 0);
+          const flete = Number(p.costo_flete_lamda ?? p.postal_costo_flete_lamda ?? 0);
+          const retFiscal = Number(p.retencion_fiscal_margen || 0);
+          return a + (Number(p.total_vecino || 0) - Number(p.total_base_lamda || 0) - retFiscal - flete);
         }, 0);
         const cortesEmitidos = (GSTATE.liquidacionesNodo || []).filter(l =>
           String(l.tipo_liquidacion || '').toUpperCase() === 'CORTE_FULFILLMENT' || !l.lote_canasto_id
@@ -6154,13 +6372,14 @@
               <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:12px;">
                 <div style="font-size:0.72rem; color:var(--muted); font-weight:800; text-transform:uppercase;">Costo Base Productos</div>
                 <div style="font-size:1.15rem; font-weight:900; margin-top:3px;">-${fmt(totalBase)}</div>
+                ${totalRetFiscal > 0 ? `<div style="font-size:0.71rem; color:var(--muted); margin-top:2px;">IVA/IIBB s/margen: -${fmt(totalRetFiscal)}</div>` : ''}
               </div>
               <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:12px;">
                 <div style="font-size:0.72rem; color:var(--muted); font-weight:800; text-transform:uppercase;">Flete Postal Despachado</div>
                 <div style="font-size:1.15rem; font-weight:900; margin-top:3px;">-${fmt(totalFleteReal)}</div>
               </div>
               <div style="background:var(--ok-soft); border:1px solid rgba(47,111,78,0.25); border-radius:12px; padding:12px;">
-                <div style="font-size:0.72rem; color:var(--ok); font-weight:800; text-transform:uppercase;">Tu Utilidad Neta</div>
+                <div style="font-size:0.72rem; color:var(--ok); font-weight:800; text-transform:uppercase;">Tu Ganancia Limpia</div>
                 <div style="font-size:1.18rem; font-weight:900; color:var(--ok); margin-top:3px;">${totalUtilidadReal >= 0 ? '+' : ''}${fmt(totalUtilidadReal)}</div>
                 <div style="font-size:0.74rem; color:var(--muted); margin-top:2px;">Órdenes despachadas: ${pedsDespachados.length}/${peds.length}</div>
               </div>
@@ -6171,7 +6390,7 @@
             </div>
             ${cortesEmitidos.length === 0 ? `
               <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:12px; font-size:0.83rem; line-height:1.45; color:var(--text);">
-                Las órdenes de tu tienda online se procesan 24/7 y tus ganancias netas se consolidan en cortes periódicos sobre las compras despachadas con pago verificado.
+                Las órdenes de tu tienda online se procesan 24/7 y tus ganancias limpias se consolidan en cortes periódicos sobre las compras despachadas con pago verificado.
               </div>
             ` : `
               <div style="display:flex; flex-direction:column; gap:8px;">
@@ -6180,11 +6399,11 @@
                     <div>
                       <div style="font-weight:900; font-size:0.9rem; color:var(--text);">🧾 ${esc(ct.codigo_liquidacion)} · ${ct.cantidad_ordenes || 0} orden(es)</div>
                       <div style="font-size:0.78rem; color:var(--muted); margin-top:2px;">
-                        Facturado: <strong>${fmt(ct.total_venta_vecinos)}</strong> · Base: -${fmt(ct.total_base_lamda)} · Flete postal: -${fmt(ct.total_costo_flete_lamda || 0)}
+                        Facturado: <strong>${fmt(ct.total_venta_vecinos)}</strong> · Base: -${fmt(ct.total_base_lamda)} · IVA/IIBB s/margen: -${fmt(ct.total_retencion_fiscal_margen || 0)} · Flete postal: -${fmt(ct.total_costo_flete_lamda || 0)}
                       </div>
                     </div>
                     <div style="text-align:right;">
-                      <div style="font-size:0.7rem; font-weight:800; color:var(--muted); text-transform:uppercase;">Utilidad Neta</div>
+                      <div style="font-size:0.7rem; font-weight:800; color:var(--muted); text-transform:uppercase;">Ganancia Limpia</div>
                       <div style="font-size:1.08rem; font-weight:900; color:var(--ok);">${Number(ct.ganancia_neta_gestor || 0) >= 0 ? '+' : ''}${fmt(ct.ganancia_neta_gestor || 0)}</div>
                     </div>
                   </div>
@@ -6223,11 +6442,12 @@
                 <div style="font-size:1.18rem; font-weight:900; margin-top:3px;">${fmt(liq.total_venta_vecinos)}</div>
               </div>
               <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:12px;">
-                <div style="font-size:0.72rem; color:var(--muted); font-weight:800; text-transform:uppercase;">Costo Base Canasto</div>
+                <div style="font-size:0.72rem; color:var(--muted); font-weight:800; text-transform:uppercase;">Costo Base Lote</div>
                 <div style="font-size:1.18rem; font-weight:900; margin-top:3px;">-${fmt(liq.total_base_lamda)}</div>
+                ${Number(liq.total_retencion_fiscal_margen || 0) > 0 ? `<div style="font-size:0.71rem; color:var(--muted); margin-top:2px;">IVA/IIBB s/margen: -${fmt(liq.total_retencion_fiscal_margen)}</div>` : ''}
               </div>
               <div style="background:var(--ok-soft); border:1px solid rgba(47,111,78,0.25); border-radius:12px; padding:12px;">
-                <div style="font-size:0.72rem; color:var(--ok); font-weight:800; text-transform:uppercase;">Tu Ganancia Neta</div>
+                <div style="font-size:0.72rem; color:var(--ok); font-weight:800; text-transform:uppercase;">Tu Ganancia Limpia</div>
                 <div style="font-size:1.18rem; font-weight:900; color:var(--ok); margin-top:3px;">+${fmt(liq.ganancia_neta_gestor)}</div>
               </div>
             </div>

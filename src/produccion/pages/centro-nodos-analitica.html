@@ -1100,7 +1100,11 @@
               <div class="kpi-box">
                 <div class="kpi-label">💵 Facturación Acumulada</div>
                 <div class="kpi-val" style="color:#15803d;">${fmtMoneda(com.facturacion_vecinos)}</div>
-                <div class="kpi-sub">Base LAMDA: <strong>${fmtMoneda(com.facturacion_base_lamda)}</strong> · Margen Nodo: ${fmtMoneda(com.ganancia_gestor)}</div>
+                <div class="kpi-sub">
+                  Base: <strong>${fmtMoneda(com.facturacion_base_lamda)}</strong>
+                  · Ret. IVA/IIBB (${Number(n.alicuota_iva_margen_pct ?? 21)}%/${Number(n.alicuota_iibb_margen_pct ?? 4)}%): <strong>${fmtMoneda(com.retencion_fiscal_margen || 0)}</strong>
+                  · Utilidad Limpia: <strong style="color:#15803d;">${fmtMoneda(com.ganancia_gestor)}</strong>
+                </div>
               </div>
             </div>
 
@@ -2108,7 +2112,7 @@
             </div>
           </div>
 
-          <div style="display:grid; grid-template-columns:2fr 1fr 0.7fr; gap:10px; margin-top:10px;">
+          <div style="display:grid; grid-template-columns:1.8fr 0.85fr 0.75fr 0.75fr 0.55fr; gap:10px; margin-top:10px;">
             <div>
               <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Subtítulo público de la tienda</label>
               <input type="text" id="abm-centro-subtitulo" value="${esc(editNodo?.subtitulo_marca || (perfilInicial === 'ecommerce_fulfillment' ? 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País' : 'Comunidad Barrial - Entrega Fresca'))}"
@@ -2117,6 +2121,16 @@
             <div>
               <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Margen inicial (%)</label>
               <input type="number" step="0.5" id="abm-centro-margen" value="${Number(baseRef?.margen_gestor_default_pct ?? 28)}"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem; font-weight:800;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;" title="Alícuota de IVA retenida por LAMDA sobre el excedente comercial del nodo">IVA s/margen (%)</label>
+              <input type="number" step="0.5" min="0" max="50" id="abm-centro-iva-margen" value="${Number(baseRef?.alicuota_iva_margen_pct ?? 21)}"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem; font-weight:800;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;" title="Alícuota de Ingresos Brutos retenida por LAMDA sobre el excedente comercial del nodo">IIBB s/margen (%)</label>
+              <input type="number" step="0.25" min="0" max="20" id="abm-centro-iibb-margen" value="${Number(baseRef?.alicuota_iibb_margen_pct ?? 4)}"
                 style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem; font-weight:800;" />
             </div>
             <div>
@@ -2388,6 +2402,8 @@
         direccion_retiro: document.getElementById('abm-centro-direccion')?.value?.trim() || '',
         cargo_envio_barrial: Number(document.getElementById('abm-centro-cargo-barrial')?.value || 0),
         margen_gestor_default_pct: Number(document.getElementById('abm-centro-margen')?.value || 28),
+        alicuota_iva_margen_pct: Number(document.getElementById('abm-centro-iva-margen')?.value ?? 21),
+        alicuota_iibb_margen_pct: Number(document.getElementById('abm-centro-iibb-margen')?.value ?? 4),
         color_primario: document.getElementById('abm-centro-color')?.value || '#a2553b',
         cliente_madre_bunker_id: clienteMadreId,
         codigo_bunker_cliente_madre: cliObj?.codigo_bunker_cliente || undefined,

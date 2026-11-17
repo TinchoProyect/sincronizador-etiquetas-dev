@@ -12300,6 +12300,36 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "'[]'::jsonb"
+      },
+      "total_retencion_iva_margen": {
+        "ordinal_position": 24,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "total_retencion_iibb_margen": {
+        "ordinal_position": 25,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "total_retencion_fiscal_margen": {
+        "ordinal_position": 26,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
       }
     },
     "nodos_lotes_estacion": {
@@ -12592,6 +12622,36 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "'Imprimir'::character varying"
+      },
+      "total_retencion_iva_margen": {
+        "ordinal_position": 30,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "total_retencion_iibb_margen": {
+        "ordinal_position": 31,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "total_retencion_fiscal_margen": {
+        "ordinal_position": 32,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
       }
     },
     "nodos_maestro": {
@@ -13074,6 +13134,26 @@
         "numeric_scale": 0,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "alicuota_iva_margen_pct": {
+        "ordinal_position": 49,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 5,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "21.00"
+      },
+      "alicuota_iibb_margen_pct": {
+        "ordinal_position": 50,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 5,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "4.00"
       }
     },
     "nodos_movimientos_cta_cte": {
@@ -14576,6 +14656,56 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "false"
+      },
+      "alicuota_iva_margen_pct": {
+        "ordinal_position": 63,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 5,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "21.00"
+      },
+      "alicuota_iibb_margen_pct": {
+        "ordinal_position": 64,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 5,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "4.00"
+      },
+      "retencion_iva_margen": {
+        "ordinal_position": 65,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "retencion_iibb_margen": {
+        "ordinal_position": 66,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "retencion_fiscal_margen": {
+        "ordinal_position": 67,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
       }
     },
     "nodos_propuestas_fracciones": {
