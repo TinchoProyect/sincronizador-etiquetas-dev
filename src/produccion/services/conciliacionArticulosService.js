@@ -1,6 +1,12 @@
 const pool = require('../config/database');
 const { normalizarOfertaProveedor } = require('../utils/unitNormalizer');
 const { supabaseFetch } = require('../utils/supabaseHelper');
+let iaMonitor = null;
+try {
+    iaMonitor = require('../../services/iaCreditoMonitorService');
+} catch (_) {
+    iaMonitor = null;
+}
 
 // REGEX UNIVERSALES DE CLASIFICACIÓN DE CONFORMACIÓN Y GRADO COMERCIAL (DOMINIO MAYORISTA ALIMENTOS)
 const REGEX_CONFORMACION_INDUSTRIA = /\b(industri[a-z]*|bakery|panader[a-z]*|pastel[a-z]*|partid[oa]s?|ptda|quebrad[oa]s?|trozad[oa]s?|trozos?|granza|pedacer[a-z]*|descarte|segunda|cuart[oa]s?|cuartill[oa]s?|1\/4|octav[oa]s?)\b/i;
@@ -500,12 +506,13 @@ class ConciliacionArticulosService {
             .replace(/\bp\/mix\b|\bpara\s+mix\b|\bp\/\s*mezcla\b/gi, ' ');
 
         // Naturaleza de producto (derivados que no son el fruto/semilla natural)
-        const esHarina = /\b(harina|har\.|farina|polvo)\b/i.test(txtSinParaMix);
+        const esHarina = /\b(harina|har\.|farina|polvo|molid[oa]s?)\b/i.test(txtSinParaMix);
         const esSalvado = /\bsalvado\b/i.test(txtSinParaMix);
+        const esAceite = /\b(aceites?|oleo)\b/i.test(txtSinParaMix) && !/\b(en\s+aceite|c\/aceite|con\s+aceite|sin\s+aceite|s\/aceite)\b/i.test(txtSinParaMix);
         const esBebida = /\b(leche|bebida|beb\.|jugo|biba|ades|tratenfu|vrink)\b/i.test(txtSinParaMix);
         const esPasta = /\b(pasta|manteca|mantequilla|untable|tahini|halawa)\b/i.test(txtSinParaMix);
-        const esConfiteria = /\b(chocolate|choc\.|banad|garrapinad|acaramelad|caramelizad|confitad|turron|crocante|praline|gragead)\b/i.test(txtSinParaMix);
-        const esMix = /\b(mix|mezcla|granola|muesli|trail)\b/i.test(txtSinParaMix) ||
+        const esConfiteria = /\b(chocolate|choc\.|banad\w*|garrapinad\w*|acaramelad\w*|caramelizad\w*|turron\w*|crocante\w*|praline\w*|gragead\w*|cubiert[oa]s?\s+con)\b/i.test(txtSinParaMix);
+        const esMix = /\b(mix|mezcla|granola|muesli|trail|cajun)\b/i.test(txtSinParaMix) ||
             /\b(mani|coco|pasas|almendras?|nuez|nueces|arandanos?|caju|avellanas?)\s*(?:&|y)\s*(mani|coco|pasas|almendras?|nuez|nueces|arandanos?|caju|avellanas?)\b/i.test(txtSinParaMix);
 
         // Cáscara vs Pelado (Si es harina, no asumir pelado/cáscara salvo mención explícita)
@@ -526,9 +533,9 @@ class ConciliacionArticulosService {
         const esSinSal = /\b(sin\s+sal|s\/sal|s\/s)\b/i.test(txtSinParaMix);
         const txtSinSinSal = txtSinParaMix.replace(/\b(sin\s+sal|s\/sal|s\/s)\b/gi, ' ');
 
-        const esTostado = tieneTostSalAbrev || /\b(tostad[oa]s?|tost\.?)\b/i.test(txtSinSinSal);
+        const esTostado = tieneTostSalAbrev || /\b(tostad[oa]s?|totdo|tost\.?)\b/i.test(txtSinSinSal);
         const esFrito = /\b(frit[oa]s?)\b/i.test(txtSinSinSal);
-        const esSalado = tieneTostSalAbrev || (!esSinSal && /\b(salad[oa]s?|c\/sal|con\s+sal|sal)\b/i.test(txtSinSinSal));
+        const esSalado = tieneTostSalAbrev || (!esSinSal && /\b(salad[oa]s?|c\/sal|con\s+sal|sal)\b/i.test(txtSinSinSal) && !/\bsal\s+(?:marina|rosada|fina|gruesa|entrefina|parrillera|himalaya|celta)\b/i.test(txtSinSinSal));
 
         let proceso = 'CRUDO';
         if ((esTostado || esFrito) && esSalado) {
@@ -546,8 +553,8 @@ class ConciliacionArticulosService {
             }
         }
 
-        // Corte / Morfología física
-        const esCorteEspecial = /\b(filetead[oa]s?|laminad[oa]s?|cubetead[oa]s?|cubos?|baston|efilad[oa]s?|granulad[oa]s?|picad[oa]s?|rodajas?|tiras?)\b/i.test(txtSinParaMix);
+        // Corte / Morfología física industrial de frutos secos (fileteado/laminado/cubeteado/granulado)
+        const esCorteEspecial = /\b(filetead[oa]s?|laminad[oa]s?|cubetead[oa]s?|baston|efilad[oa]s?|granulad[oa]s?|picad[oa]s?)\b/i.test(txtSinParaMix);
         const esPartido = /\b(partid[oa]s?|ptda|part\.|quebrad[oa]s?|trozos?|granza|industri\w*|bakery|cuartos?|1\/4|halves\s*&\s*pieces|lwp|swp|sp|p3|b3|g3)\b/i.test(txtSinParaMix);
 
         let corte = 'ENTERO';
@@ -557,6 +564,7 @@ class ConciliacionArticulosService {
         return {
             es_harina: esHarina,
             es_salvado: esSalvado,
+            es_aceite: esAceite,
             es_bebida: esBebida,
             es_pasta: esPasta,
             es_confiteria: esConfiteria,
@@ -596,12 +604,12 @@ class ConciliacionArticulosService {
         let calibreMax = null;
         let esCalibreMas = false;
 
-        // 1. Calibres W y Grados de Partida (P3, G3, B3, LWP, SWP) de Castañas de Cajú
-        const matchW = cleanForCalibre.match(/\b(w\s*(?:180|210|240|320|450|3|4|5))\b/i);
+        // 1. Calibres W / LW y Grados de Partida (P3, G3, B3, LWP, SWP) de Castañas de Cajú (escala internacional completa)
+        const matchW = cleanForCalibre.match(/\b((?:lw|slw|lbw|sw|dw|w)\s*(?:160|180|210|240|280|320|400|450|[1-5]s?))\b/i);
         if (matchW) {
             calibreCodigo = matchW[1].toUpperCase().replace(/\s+/g, '');
         } else if (entidad === 'castana') {
-            const matchPartCaju = cleanForCalibre.match(/\b(p3|g3|b3|lwp|swp)\b/i);
+            const matchPartCaju = cleanForCalibre.match(/\b(p3|g3|b3|lwp|swp|sp)\b/i);
             if (matchPartCaju) {
                 calibreCodigo = matchPartCaju[1].toUpperCase();
             }
@@ -732,6 +740,16 @@ class ConciliacionArticulosService {
         }
 
         if (!calOferta || !calOferta.tiene_criterio) {
+            // En Castañas de Cajú cuando el artículo Búnker exige un calibre estricto (ej: W4, W5, P3),
+            // las ofertas genéricas sin calibre declarado suelen corresponder a otro grado comercial y van a Nivel 2.
+            if (entidad === 'castana' && calTarget.calibre_codigo) {
+                return {
+                    estado: 'DIFERENTE',
+                    sub_orden: 4,
+                    es_compatible: false,
+                    motivo: `Sin calibre ${calTarget.etiqueta_calibre} explícito`
+                };
+            }
             return {
                 estado: 'SIN_DATO_OFERTA',
                 sub_orden: 3,
@@ -748,6 +766,25 @@ class ConciliacionArticulosService {
                 es_compatible: true,
                 motivo: `Calibre Exacto ${calOferta.etiqueta_calibre}`
             };
+        }
+
+        // 1b. Equivalencia técnica internacional en Castañas de Cajú (W180<->W1, W210<->W2, W240<->W3, W320<->W4, W450<->W5)
+        if (entidad === 'castana' && calTarget.calibre_codigo && calOferta.calibre_codigo) {
+            const mapaEquivCaju = {
+                'W1': 'W180', 'W180': 'W1',
+                'W2': 'W210', 'W210': 'W2',
+                'W3': 'W240', 'W240': 'W3',
+                'W4': 'W320', 'W320': 'W4',
+                'W5': 'W450', 'W450': 'W5'
+            };
+            if (mapaEquivCaju[calTarget.calibre_codigo] === calOferta.calibre_codigo) {
+                return {
+                    estado: 'COMPATIBLE_FUERTE',
+                    sub_orden: 2,
+                    es_compatible: true,
+                    motivo: `Calibre Equivalente ${calOferta.etiqueta_calibre} (≈ ${calTarget.etiqueta_calibre})`
+                };
+            }
         }
 
         // 2. Si el target solo pidió tamaño por palabra (sin número, ej: 'Grande') y la oferta coincide en tamaño
@@ -865,18 +902,29 @@ class ConciliacionArticulosService {
                 variedadLabel = 'Higo Negro';
             }
         } else if (entidad === 'pasa' || entidad === 'pasas') {
-            if (/\b(rubia|sultanina)\b/i.test(full)) {
+            if (/\b(rubia\w*|rub\b|sultanina\w*|dorada\w*|golden\b)/i.test(full)) {
                 variedadCanonica = 'RUBIA_SULTANINA';
                 variedadLabel = 'Rubia / Sultanina';
             } else if (/\b(moscatel|mtel)\b/i.test(full)) {
                 variedadCanonica = 'MOSCATEL';
                 variedadLabel = 'Moscatel';
-            } else if (/\bflame\b/i.test(full)) {
-                variedadCanonica = 'FLAME';
-                variedadLabel = 'Flame';
+            } else if (/\b(flame|negr[oa]s?|thompson)\b/i.test(full)) {
+                variedadCanonica = 'FLAME_NEGRA';
+                variedadLabel = 'Negra / Flame';
             } else if (/\bjumbo\b/i.test(full)) {
                 variedadCanonica = 'JUMBO';
                 variedadLabel = 'Jumbo';
+            }
+        } else if (entidad === 'lenteja') {
+            if (/\b(roj[oa]s?|turc[oa]s?|coral)\b/i.test(full)) {
+                variedadCanonica = 'ROJA_TURCA';
+                variedadLabel = 'Roja / Turca';
+            } else if (/\blentejon(?:es)?\b/i.test(full)) {
+                variedadCanonica = 'LENTEJON';
+                variedadLabel = 'Lentejón';
+            } else if (/\b(nacional|6\s*mm|comun|lentejas?\b)\b/i.test(full) && !/\blentejon/i.test(full)) {
+                variedadCanonica = 'LENTEJA_COMUN';
+                variedadLabel = 'Lenteja Común';
             }
         } else if (entidad === 'avena') {
             if (/\b(instantanea|inst\.?)\b/i.test(full)) {
@@ -913,6 +961,21 @@ class ConciliacionArticulosService {
             } else if (/\bsushi\b/i.test(full)) {
                 variedadCanonica = 'SUSHI';
                 variedadLabel = 'Sushi';
+            } else if (/\b(calasparra|bomba)\b/i.test(full)) {
+                variedadCanonica = 'CALASPARRA';
+                variedadLabel = 'Calasparra / Bomba';
+            } else if (/\bparboil\b/i.test(full)) {
+                variedadCanonica = 'PARBOIL';
+                variedadLabel = 'Parboil';
+            } else if (/\bintegral\b/i.test(full)) {
+                variedadCanonica = 'INTEGRAL';
+                variedadLabel = 'Integral';
+            } else if (/\b(doble\s+carolina|carolina)\b/i.test(full)) {
+                variedadCanonica = 'CAROLINA';
+                variedadLabel = 'Doble Carolina';
+            } else if (/\b(largo\s+fino|00000)\b/i.test(full)) {
+                variedadCanonica = 'LARGO_FINO';
+                variedadLabel = 'Largo Fino';
             }
         } else if (entidad === 'sesamo') {
             if (/\bblanc[oa]\b/i.test(full)) {
@@ -929,14 +992,70 @@ class ConciliacionArticulosService {
             if (/\bpallares?\b/i.test(full)) {
                 variedadCanonica = 'PALLARES';
                 variedadLabel = 'Pallares';
-            } else if (/\b(cramberry|cranberry|alubia|negro|colorado|mung|aduki)\b/i.test(full)) {
-                const mPor = full.match(/\b(cramberry|cranberry|alubia|negro|colorado|mung|aduki)\b/i);
+            } else if (/\bsoja\b/i.test(full)) {
+                variedadCanonica = 'SOJA';
+                variedadLabel = 'Soja';
+            } else if (/\bregina\b/i.test(full)) {
+                variedadCanonica = 'REGINA';
+                variedadLabel = 'Regina';
+            } else if (/\bmanteca\b/i.test(full)) {
+                variedadCanonica = 'MANTECA';
+                variedadLabel = 'Manteca';
+            } else if (/\blupin(?:es)?\b/i.test(full)) {
+                variedadCanonica = 'LUPINES';
+                variedadLabel = 'Lupines';
+            } else if (/\b(alubia|blanc[oa]s?)\b/i.test(full)) {
+                variedadCanonica = 'ALUBIA';
+                variedadLabel = 'Alubia / Blanco';
+            } else if (/\b(aduki|azuki)\b/i.test(full)) {
+                variedadCanonica = 'ADUKI';
+                variedadLabel = 'Aduki';
+            } else if (/\b(cramberry|cranberry|negro|colorado|mung)\b/i.test(full)) {
+                const mPor = full.match(/\b(cramberry|cranberry|negro|colorado|mung)\b/i);
                 variedadCanonica = mPor[1].toUpperCase().replace('CRAMBERRY', 'CRANBERRY');
                 variedadLabel = mPor[1];
             }
+        } else if (entidad === 'azucar') {
+            if (/\b(mascabo|muscovado)\b/i.test(full)) {
+                variedadCanonica = 'MASCABO';
+                variedadLabel = 'Mascabo';
+            } else if (/\b(impalpable|glas|talco)\b/i.test(full)) {
+                variedadCanonica = 'IMPALPABLE';
+                variedadLabel = 'Impalpable';
+            } else if (/\bde\s+coco\b/i.test(full)) {
+                variedadCanonica = 'DE_COCO';
+                variedadLabel = 'De Coco';
+            } else if (/\bnegr[oa]\b/i.test(full)) {
+                variedadCanonica = 'NEGRA';
+                variedadLabel = 'Negra';
+            } else if (/\b(comun|blanc[oa]|refinad[oa]|organic[oa]|san\s+isidro|ledesma)\b/i.test(full)) {
+                variedadCanonica = 'BLANCA_ORGANICA';
+                variedadLabel = 'Blanca / Orgánica';
+            }
+        } else if (entidad === 'coco') {
+            if (/\b(desgrasad[oa]|low\s*fat|bajo\s+tenor)\b/i.test(full)) {
+                variedadCanonica = 'LOW_FAT';
+                variedadLabel = 'Desgrasado / Low Fat';
+            } else if (/\b(high\s*fat|alto\s+tenor)\b/i.test(full)) {
+                variedadCanonica = 'HIGH_FAT';
+                variedadLabel = 'Alto Tenor / High Fat';
+            }
+        } else if (entidad === 'mani') {
+            if (/\b(virginia|vgna)\b/i.test(full)) {
+                variedadCanonica = 'VIRGINIA';
+                variedadLabel = 'Virginia';
+            } else if (/\brunner\b/i.test(full)) {
+                variedadCanonica = 'RUNNER';
+                variedadLabel = 'Runner';
+            }
+        } else if (entidad === 'arveja') {
+            if (/\btexturizad[oa]s?\b/i.test(full)) {
+                variedadCanonica = 'TEXTURIZADA';
+                variedadLabel = 'Texturizada';
+            }
         }
 
-        // 2. Morfología específica (ej: Nuez Mariposa vs Cuarto; Almendra Ramillada vs Partida vs Entera)
+        // 2. Morfología específica (ej: Nuez Mariposa vs Cuarto; Almendra Ramillada vs Partida vs Entera; Coco Escamas vs Rallado)
         let morfologiaEspecifica = '';
         let morfologiaLabel = '';
         if (entidad === 'nuez' || entidad === 'nueces') {
@@ -957,6 +1076,19 @@ class ConciliacionArticulosService {
             } else if (/\b(cubetead[oa]s?|cubos?|baston)\b/i.test(full)) {
                 morfologiaEspecifica = 'CUBETEADA';
                 morfologiaLabel = 'Cubeteada';
+            }
+        } else if (entidad === 'coco') {
+            if (/\b(escamas?|chips?|flakes?|laminas?)\b/i.test(full)) {
+                morfologiaEspecifica = 'ESCAMAS';
+                morfologiaLabel = 'Escamas / Chips';
+            } else if (/\brallad[oa]s?\b/i.test(full)) {
+                morfologiaEspecifica = 'RALLADO';
+                morfologiaLabel = 'Rallado';
+            }
+        } else if (entidad === 'pasa' || entidad === 'pasas') {
+            if (/\b(en\s+racimos?|racimos?)\b/i.test(full)) {
+                morfologiaEspecifica = 'EN_RACIMO';
+                morfologiaLabel = 'En Racimo';
             }
         }
 
@@ -1061,6 +1193,204 @@ class ConciliacionArticulosService {
         };
     }
 
+    /**
+     * Detecta con fronteras de palabra (\b) la entidad botánica/comercial canónica evitando falsos positivos (ej. 'yamani' != 'mani').
+     */
+    detectarEntidadBotanica(textoNorm, artPrincipalNorm = '') {
+        const catalogoEntidades = [
+            { canon: 'fruta nevada', regex: /\bfruta\s+nevada\b/i },
+            { canon: 'escurrida', regex: /\b(escurrid[oa]s?|errda|abrillantad[oa]s?)\b/i },
+            { canon: 'zapallo', regex: /\bzapallos?\b/i },
+            { canon: 'nuez', regex: /\b(nuez|nueces)\b/i },
+            { canon: 'almendra', regex: /\balmendras?\b/i },
+            { canon: 'ciruela', regex: /\bciruelas?\b/i },
+            { canon: 'castana', regex: /\b(castanas?|caju)\b/i },
+            { canon: 'chia', regex: /\bchia\b/i },
+            { canon: 'girasol', regex: /\bgirasol(?:es)?\b/i },
+            { canon: 'lino', regex: /\blino\b/i },
+            { canon: 'sesamo', regex: /\bsesamo\b/i },
+            { canon: 'arroz', regex: /\barroz\b/i },
+            { canon: 'mani', regex: /\b(mani|manies)\b/i },
+            { canon: 'datil', regex: /\bdatil(?:es)?\b/i },
+            { canon: 'coco', regex: /\bcoco\b/i },
+            { canon: 'arandano', regex: /\barandanos?\b/i },
+            { canon: 'banana', regex: /\bbananas?\b/i },
+            { canon: 'avena', regex: /\bavenas?\b/i },
+            { canon: 'quinoa', regex: /\b(quinoa|quinua)\b/i },
+            { canon: 'higo', regex: /\bhigos?\b/i },
+            { canon: 'damasco', regex: /\bdamascos?\b/i },
+            { canon: 'tomate', regex: /\btomates?\b/i },
+            { canon: 'lenteja', regex: /\b(lentejas?|lentejon(?:es)?)\b/i },
+            { canon: 'garbanzo', regex: /\bgarbanzos?\b/i },
+            { canon: 'poroto', regex: /\bporotos?\b/i },
+            { canon: 'arveja', regex: /\barvejas?\b/i },
+            { canon: 'pistacho', regex: /\bpistachos?\b/i },
+            { canon: 'avellana', regex: /\bavellanas?\b/i },
+            { canon: 'pasa', regex: /\b(pasas?|sultanina)\b/i },
+            { canon: 'amaranto', regex: /\bamaranto\b/i },
+            { canon: 'amapola', regex: /\bamapolas?\b/i },
+            { canon: 'alpiste', regex: /\balpiste\b/i },
+            { canon: 'mijo', regex: /\bmijo\b/i },
+            { canon: 'pecan', regex: /\bpecan\b/i },
+            { canon: 'macadamia', regex: /\bmacadamias?\b/i },
+            { canon: 'cacao', regex: /\bcacao\b/i },
+            { canon: 'kiwi', regex: /\bkiwis?\b/i },
+            { canon: 'naranja', regex: /\bnaranjas?\b/i },
+            { canon: 'anana', regex: /\b(ananas?|pina)\b/i },
+            { canon: 'mango', regex: /\bmangos?\b/i },
+            { canon: 'papaya', regex: /\bpapayas?\b/i },
+            { canon: 'durazno', regex: /\bduraznos?\b/i },
+            { canon: 'pera', regex: /\bperas?\b/i },
+            { canon: 'manzana', regex: /\bmanzanas?\b/i },
+            { canon: 'frutilla', regex: /\bfrutillas?\b/i },
+            { canon: 'cereza', regex: /\bcerezas?\b/i },
+            { canon: 'jengibre', regex: /\bjengibres?\b/i },
+            { canon: 'azucar', regex: /\bazucar(?:es)?\b/i },
+            { canon: 'panko', regex: /\bpanko\b/i },
+            { canon: 'fecula', regex: /\bfeculas?\b/i },
+            { canon: 'almidon', regex: /\balmidon(?:es)?\b/i },
+            { canon: 'bicarbonato', regex: /\bbicarbonato\b/i },
+            { canon: 'soja', regex: /\bsoja\b/i },
+            { canon: 'maiz', regex: /\b(maiz|maices|pisingallo)\b/i },
+            { canon: 'trigo', regex: /\btrigo\b/i },
+            { canon: 'cebada', regex: /\bcebada\b/i },
+            { canon: 'centeno', regex: /\bcenteno\b/i },
+            { canon: 'miel', regex: /\bmiel\b/i },
+            { canon: 'ajo', regex: /\bajos?\b/i },
+            { canon: 'cebolla', regex: /\bcebollas?\b/i },
+            { canon: 'curcuma', regex: /\bcurcuma\b/i },
+            { canon: 'canela', regex: /\bcanela\b/i },
+            { canon: 'oregano', regex: /\boregano\b/i },
+            { canon: 'pimenton', regex: /\bpimenton\b/i },
+            { canon: 'pimienta', regex: /\bpimientas?\b/i },
+            { canon: 'comino', regex: /\bcomino\b/i },
+            { canon: 'perejil', regex: /\bperejil\b/i },
+            { canon: 'provenzal', regex: /\bprovenzal\b/i }
+        ];
+
+        // Caso especial: "Arándanos Pasas" / "Pasas de Arándano" es siempre arándano deshidratado, no pasa de uva
+        if (/\barandanos?\b/i.test(textoNorm) || /\barandanos?\b/i.test(artPrincipalNorm)) {
+            return 'arandano';
+        }
+
+        // Priorizar siempre el artículo principal canónico del Búnker si coincide (salvo el genérico 'pasas' cuando el texto especifica otra fruta)
+        if (artPrincipalNorm && !/^pasas?$/i.test(artPrincipalNorm)) {
+            for (const item of catalogoEntidades) {
+                if (item.regex.test(artPrincipalNorm)) {
+                    return item.canon;
+                }
+            }
+        }
+        for (const item of catalogoEntidades) {
+            if (item.regex.test(textoNorm)) {
+                return item.canon;
+            }
+        }
+        if (artPrincipalNorm) {
+            return artPrincipalNorm.trim();
+        }
+        return '';
+    }
+
+    /**
+     * Verifica si una oferta de proveedor coincide con la entidad botánica objetivo (soportando plurales e irregulares como nuez/nueces, castaña/caju).
+     */
+    coincideEntidadEnOferta(entidadNorm, subEntidadTarget, textoOfertaNorm) {
+        if (!entidadNorm) return false;
+        const mapaRegex = {
+            'nuez': /\b(nuez|nueces)\b/i,
+            'nueces': /\b(nuez|nueces)\b/i,
+            'castana': subEntidadTarget === 'CASTANA_PARA'
+                ? /\b(castanas?\s+de\s+para|castanas?\s+para)\b/i
+                : /\b(castanas?|caju)\b/i,
+            'mani': /\b(mani|manies)\b/i,
+            'maiz': /\b(maiz|maices|pisingallo)\b/i,
+            'pasa': /\b(pasas?|sultanina|moscatel)\b/i,
+            'pasas': /\b(pasas?|sultanina|moscatel)\b/i,
+            'datil': /\bdatil(?:es)?\b/i,
+            'escurrida': /\b(escurrid[oa]s?|abrillantad[oa]s?)\b/i,
+            'lenteja': /\b(lentejas?|lentejon(?:es)?)\b/i,
+            'quinoa': /\b(quinoa|quinua)\b/i,
+            'anana': /\b(ananas?|pina)\b/i,
+            'azucar': /\bazucar(?:es)?\b/i,
+            'almendra': /\balmendras?\b/i,
+            'avellana': /\bavellanas?\b/i,
+            'ciruela': /\bciruelas?\b/i,
+            'higo': /\bhigos?\b/i,
+            'arandano': /\barandanos?\b/i,
+            'damasco': /\bdamascos?\b/i,
+            'garbanzo': /\bgarbanzos?\b/i,
+            'poroto': /\bporotos?\b/i,
+            'arveja': /\barvejas?\b/i,
+            'pistacho': /\bpistachos?\b/i,
+            'kiwi': /\bkiwis?\b/i,
+            'naranja': /\bnaranjas?\b/i
+        };
+        const rx = mapaRegex[entidadNorm];
+        if (rx) {
+            if (!rx.test(textoOfertaNorm)) return false;
+            if (entidadNorm === 'castana' && /\bcajun\b/i.test(textoOfertaNorm)) return false;
+            return true;
+        }
+        const escaped = entidadNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const genericRx = new RegExp(`\\b${escaped}(?:s|es)?\\b`, 'i');
+        return genericRx.test(textoOfertaNorm);
+    }
+
+    /**
+     * Detecta si la oferta es un producto compuesto de OTRA materia prima donde la entidad buscada solo figura como agregado secundario
+     * (ej: "Garbanzo cubierto con Sésamo" cuando se busca "Sésamo", o "Quinoa inflada pop con arándanos" cuando se busca "Arándanos").
+     */
+    esOfertaCompuestoAjeno(entidadNorm, descOfertaNorm, attrTarget = {}) {
+        if (!entidadNorm || !descOfertaNorm || attrTarget.es_mix || attrTarget.es_confiteria) return false;
+        const otrosSujetos = [
+            'garbanzos?', 'quinoa', 'quinua', 'avenas?', 'arroz', 'cereales?', 'copos', 'inflad[oa]s?',
+            'pop', 'galletitas?', 'granola', 'alfajor(?:es)?', 'turron(?:es)?', 'budin(?:es)?', 'pan', 'grisines?'
+        ].filter(p => !p.startsWith(entidadNorm.slice(0, 4)));
+        const patronOtroSujetoConTarget = new RegExp(`^\\s*(?:${otrosSujetos.join('|')})\\b.*\\b(?:con|y|sabor|cubiert[oa]s?\\s+con|rellen[oa]s?\\s+de)\\b`, 'i');
+        if (patronOtroSujetoConTarget.test(descOfertaNorm)) return true;
+        if (/\b(inflad[oa]s?\s+pop|pop\s+con|cubiert[oa]s?\s+con|rellen[oa]s?\s+de)\b/i.test(descOfertaNorm)) return true;
+        return false;
+    }
+
+    /**
+     * Verifica compatibilidad con los 14 rubros reales de la Tabla Maestra B4.1 en Supabase
+     */
+    esRubroCompatibleB41(rubroCanonico, rubroOferta, attrTarget = {}, entidadNorm = '') {
+        if (!rubroOferta || rubroOferta === 'SIN RUBRO') return true;
+        if (attrTarget.es_bebida) {
+            return ['BEBIDAS', 'OTROS'].includes(rubroOferta);
+        }
+        if (attrTarget.es_aceite) {
+            return ['ACEITES', 'REPOSTERIA', 'OTROS'].includes(rubroOferta);
+        }
+        if (attrTarget.es_harina) {
+            return ['HARINAS', 'REPOSTERIA', 'CEREALES', 'LEGUMBRES', 'FRUTOS SECOS', 'SEMILLAS', 'CONDIMENTOS-ESPECIAS-HIERBAS', 'OTROS'].includes(rubroOferta);
+        }
+        if (attrTarget.es_confiteria) {
+            return ['REPOSTERIA', 'FRUTOS SECOS', 'FRUTAS DESECADAS', 'OTROS'].includes(rubroOferta);
+        }
+        if (entidadNorm === 'escurrida') {
+            return ['REPOSTERIA', 'FRUTAS DESECADAS', 'CONSERVAS', 'OTROS'].includes(rubroOferta);
+        }
+        if (!rubroCanonico) return true;
+
+        const mapaCompatibles = {
+            'FRUTOS SECOS': ['FRUTOS SECOS', 'REPOSTERIA', 'OTROS'],
+            'FRUTAS DESECADAS': ['FRUTAS DESECADAS', 'FRUTOS SECOS', 'REPOSTERIA', 'OTROS'],
+            'SEMILLAS': ['SEMILLAS', 'CEREALES', 'FRUTOS SECOS', 'LEGUMBRES', 'REPOSTERIA', 'OTROS'],
+            'LEGUMBRES': ['LEGUMBRES', 'SEMILLAS', 'CEREALES', 'HARINAS', 'OTROS'],
+            'CEREALES': ['CEREALES', 'SUSHI', 'SEMILLAS', 'HARINAS', 'REPOSTERIA', 'OTROS'],
+            'HARINAS Y DERIVADOS': ['HARINAS', 'REPOSTERIA', 'CEREALES', 'LEGUMBRES', 'FRUTOS SECOS', 'SEMILLAS', 'OTROS'],
+            'ESPECIAS Y CONDIMENTOS': ['CONDIMENTOS-ESPECIAS-HIERBAS', 'ESPECIAS', 'OTROS'],
+            'ACEITES Y GRASAS': ['ACEITES', 'REPOSTERIA', 'OTROS'],
+            'REPOSTERIA': ['REPOSTERIA', 'FRUTOS SECOS', 'FRUTAS DESECADAS', 'HARINAS', 'CEREALES', 'OTROS'],
+            'BEBIDAS': ['BEBIDAS', 'OTROS']
+        };
+        const permitidos = mapaCompatibles[rubroCanonico];
+        return permitidos ? permitidos.includes(rubroOferta) : (rubroOferta === rubroCanonico);
+    }
+
     extraerFichaSemantica(artLamda) {
         const pd = artLamda.propiedades_dinamicas || {};
         const posicionesObj = pd.posiciones || {};
@@ -1079,28 +1409,13 @@ class ConciliacionArticulosService {
 
         const textoIngredienteVinc = String(artLamda.ingrediente_vinculado_nombre || '');
         const textoArticulosVinc = String(artLamda.articulos_vinculados_texto || '');
+        const artPrincNorm = String(pd.articulo_principal || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
 
         const descRaw = `${artLamda.descripcion || ''} ${artLamda.descripcion_generada || ''} ${pd.articulo_principal || ''} ${valoresPosiciones.join(' ')} ${textoIngredienteVinc} ${textoArticulosVinc}`.toLowerCase();
         const descNorm = descRaw.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-        // 1. Detectar entidad botánica/materia prima
-        let entidad = '';
-        const entidadesComunes = [
-            'zapallo', 'nuez', 'nueces', 'almendra', 'ciruela', 'castana', 'chia', 'girasol', 
-            'lino', 'sesamo', 'mani', 'datil', 'coco', 'arandano', 'banana', 'avena', 
-            'quinoa', 'higo', 'damasco', 'tomate', 'lenteja', 'garbanzo', 'poroto', 'arroz',
-            'pistacho', 'avellana', 'pasas', 'pasa', 'amaranto', 'amapola', 'alpiste', 'mijo',
-            'pecan', 'macadamia', 'cacao'
-        ];
-        for (const ent of entidadesComunes) {
-            if (descNorm.includes(ent)) {
-                entidad = ent;
-                break;
-            }
-        }
-        if (!entidad && pd.articulo_principal) {
-            entidad = pd.articulo_principal.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-        }
+        // 1. Detectar entidad botánica/materia prima con fronteras estrictas de palabra (\b)
+        let entidad = this.detectarEntidadBotanica(descNorm, artPrincNorm);
 
         // Sub-entidad para desambiguar especies distintas (ej: Castaña de Cajú vs Castaña de Pará, Nuez vs Nuez Pecán)
         let subEntidad = '';
@@ -1138,6 +1453,10 @@ class ConciliacionArticulosService {
             estadoPartes.push('HARINA');
         } else if (attr.es_salvado) {
             estadoPartes.push('SALVADO');
+        } else if (attr.es_aceite) {
+            estadoPartes.push('ACEITE');
+        } else if (attr.es_bebida) {
+            estadoPartes.push('BEBIDA VEGETAL');
         } else {
             if (attr.proceso === 'TOSTADO_Y_SALADO') estadoPartes.push('TOSTADO Y SALADO');
             else if (attr.proceso === 'TOSTADO_SIN_SAL') estadoPartes.push('TOSTADO SIN SAL');
@@ -1186,23 +1505,29 @@ class ConciliacionArticulosService {
                 esTargetCajaFraccionada = true;
             }
         }
-        const esGranel = (kilosUnidad >= 5) || Boolean(artLamda.es_ingrediente);
-        // En el Taller LAMDA toda materia prima se abastece a granel (1x10kg / 1x25kg) salvo que el artículo LAMDA sea explícitamente un multi-pack (ej. 10x1kg)
+        const esGranel = (kilosUnidad >= 2) || Boolean(artLamda.es_ingrediente);
+        // En el Taller LAMDA toda materia prima se abastece a granel (1x10kg / 1x22.68kg / 1x25kg) salvo que el artículo LAMDA sea explícitamente un multi-pack (ej. 10x1kg)
         const esTargetGranelPuro = !esTargetCajaFraccionada;
 
         // 7. Detectar rubro canónico oficial
         let rubroCanonico = '';
-        if (attr.es_harina) {
+        if (attr.es_bebida) {
+            rubroCanonico = 'BEBIDAS';
+        } else if (attr.es_aceite) {
+            rubroCanonico = 'ACEITES Y GRASAS';
+        } else if (attr.es_harina || entidad === 'panko' || entidad === 'fecula' || entidad === 'almidon') {
             rubroCanonico = 'HARINAS Y DERIVADOS';
         } else if (['girasol', 'zapallo', 'chia', 'lino', 'sesamo', 'amaranto', 'amapola', 'alpiste', 'mijo'].includes(entidad)) {
             rubroCanonico = 'SEMILLAS';
         } else if (['nuez', 'nueces', 'almendra', 'castana', 'pistacho', 'avellana', 'mani', 'pecan', 'macadamia'].includes(entidad)) {
             rubroCanonico = 'FRUTOS SECOS';
-        } else if (['ciruela', 'datil', 'arandano', 'banana', 'higo', 'damasco', 'pasas', 'pasa'].includes(entidad)) {
+        } else if (['ciruela', 'datil', 'arandano', 'banana', 'higo', 'damasco', 'pasas', 'pasa', 'kiwi', 'naranja', 'anana', 'mango', 'papaya', 'durazno', 'pera', 'manzana', 'frutilla', 'cereza', 'fruta nevada'].includes(entidad)) {
             rubroCanonico = 'FRUTAS DESECADAS';
-        } else if (['lenteja', 'garbanzo', 'poroto'].includes(entidad)) {
+        } else if (entidad === 'escurrida' || entidad === 'cacao' || entidad === 'azucar' || entidad === 'bicarbonato') {
+            rubroCanonico = 'REPOSTERIA';
+        } else if (['lenteja', 'garbanzo', 'poroto', 'arveja', 'soja'].includes(entidad)) {
             rubroCanonico = 'LEGUMBRES';
-        } else if (['avena', 'quinoa', 'arroz'].includes(entidad)) {
+        } else if (['avena', 'quinoa', 'arroz', 'maiz', 'trigo', 'cebada', 'centeno'].includes(entidad)) {
             rubroCanonico = 'CEREALES';
         } else {
             const rubroArt = String(artLamda.rubro || artLamda.familia_nombre || '').toUpperCase().trim();
@@ -1214,9 +1539,10 @@ class ConciliacionArticulosService {
             else if (rubroArt.includes('HARINA')) rubroCanonico = 'HARINAS Y DERIVADOS';
             else if (rubroArt.includes('ESPECIA') || rubroArt.includes('CONDIMENTO')) rubroCanonico = 'ESPECIAS Y CONDIMENTOS';
             else if (rubroArt.includes('ACEITE') || rubroArt.includes('GRASA')) rubroCanonico = 'ACEITES Y GRASAS';
+            else if (rubroArt.includes('REPOST')) rubroCanonico = 'REPOSTERIA';
         }
 
-        // 8. Construir los Bloques de Razonamiento Explícitos del Chofer IA para UI y Auditoría
+        // 8. Construir los 4 Agentes / Bloques de Razonamiento Explícitos del Chofer IA para UI y Auditoría
         const detallesEspecificos = [];
         if (calibreInfo.etiqueta_calibre) detallesEspecificos.push(`Calibre/Tamaño: ${calibreInfo.etiqueta_calibre}`);
         if (variedadInfo.variedad_label) detallesEspecificos.push(`Variedad: ${variedadInfo.variedad_label}`);
@@ -1230,40 +1556,40 @@ class ConciliacionArticulosService {
             {
                 paso: 1,
                 icono: '🌱',
-                titulo: '1. Identidad y Estado Físico',
+                titulo: 'Agente 1: Identidad y Estado Físico',
                 valor: `${(entidad || 'Insumo').toUpperCase()} • ${estado}`,
                 explicacion: attr.es_harina
                     ? 'Exige harina/molienda del insumo; descarta fruto entero, pastas y bebidas.'
                     : (attr.es_con_cascara
-                        ? 'Exige fruto con cáscara; descarta pelados, harinas y derivados.'
-                        : 'Exige producto pelado/natural; descarta con cáscara, harinas y pastas.')
+                        ? 'Exige fruto con cáscara; descarta pelados, harinas y compuestos ajenos.'
+                        : 'Exige producto puro en el estado requerido; evalúa todos los proveedores (incluido el habitual).')
             },
             {
                 paso: 2,
                 icono: '📏',
-                titulo: '2. Calibre, Tamaño y Variedad',
+                titulo: 'Agente 2: Calibre, Tamaño y Variedad',
                 valor: detallesEspecificos.length > 0 ? detallesEspecificos.join(' • ') : 'Estándar de Línea',
                 explicacion: calibreInfo.tiene_criterio
-                    ? `Prioriza coincidencia fuerte con ${calibreInfo.etiqueta_calibre}${textoIngredienteVinc ? ` (Insumo: "${textoIngredienteVinc}")` : ''} y separa otros calibres abajo.`
-                    : 'Prioriza coincidencia de variedad, morfología y corte comercial.'
+                    ? `Prioriza coincidencia fuerte con ${calibreInfo.etiqueta_calibre}${textoIngredienteVinc ? ` (Insumo: "${textoIngredienteVinc}")` : ''} y separa otros calibres en Nivel 2.`
+                    : 'Prioriza coincidencia estricta de especie, variedad, morfología y corte comercial.'
             },
             {
                 paso: 3,
                 icono: '📦',
-                titulo: '3. Formato de Empaque',
+                titulo: 'Agente 3: Empaque y Proveedor Habitual',
                 valor: esTargetGranelPuro
-                    ? `Granel Puro (${artLamda.es_ingrediente ? 'Bulto >= 5kg' : `${kilosUnidad} kg suelto`})`
+                    ? `Granel Puro (${artLamda.es_ingrediente ? 'Bulto Mayorista' : `${kilosUnidad} kg suelto`})`
                     : (esTargetCajaFraccionada ? `Caja Subdividida (${kilosUnidad} kg)` : `Presentación ${kilosUnidad} kg`),
                 explicacion: esTargetGranelPuro
-                    ? 'Prioriza bolsas/cajas a granel (1 x 10kg / 25kg) por encima de cajas de paquetes de 1kg (10 x 1kg).'
-                    : 'Acepta presentaciones subdivididas o fraccionadas compatibles.'
+                    ? 'Incluye al Proveedor Habitual compitiendo de igual a igual y separa cajas fraccionadas (10 x 1kg) en Nivel 2.'
+                    : 'Acepta presentaciones subdivididas o fraccionadas compatibles de todo el mercado.'
             },
             {
                 paso: 4,
                 icono: '⏳',
-                titulo: '4. Vigencia Temporal',
-                valor: 'Vigentes Arriba • Vencidas al Fondo',
-                explicacion: 'Mantiene en los primeros niveles solo cotizaciones vigentes (<= 45 días) y desplaza las vencidas al último bloque.'
+                titulo: 'Agente 4: Vigencia y Mejor $/kg',
+                valor: 'Vigentes Arriba • Menor $/kg • Vencidas al Fondo',
+                explicacion: 'Ordena por exactitud técnica y menor costo $/kg vigente (<= 45 días), desplazando cotizaciones vencidas a Nivel 4.'
             }
         ];
 
@@ -1291,17 +1617,29 @@ class ConciliacionArticulosService {
     }
 
     /**
-     * Búsqueda Semántica Autónoma por Bloques de Razonamiento del Chofer IA en Tabla Maestra
-     * Clasifica jerárquicamente en 4 Escalones de Pertinencia:
+     * Búsqueda Semántica Autónoma por Comité de 4 Agentes del Chofer IA en Tabla Maestra B4.1
+     * Evalúa el 100% del mercado activo (INCLUYENDO al Proveedor Habitual para no ocultar la mejor oferta)
+     * y clasifica jerárquicamente en 4 Escalones de Pertinencia:
      * - Prioridad 1 (Coincidencia Fuerte Vigente: Mismo Producto, Calibre/Variedad Compatible y Granel Puro)
-     * - Prioridad 2 (Variante Cercana Vigente: Otro Calibre ej. 9/11 o 11/13, Otra Variedad o Empaque Fraccionado 10x1kg)
+     * - Prioridad 2 (Variante Cercana Vigente: Otro Calibre ej. W1/W3/9-11, Otra Variedad o Caja Fraccionada 10x1kg)
      * - Prioridad 3 (Referencia Secundaria Vigente: Insumo Crudo cuando se busca Tostado o Grado Partido/Industria)
      * - Prioridad 4 (Ofertas Vencidas / Antiguas > 45 días: Rezagadas al fondo sin ocultarlas)
      */
-    buscarAlternativasMercadoIA(ofertasRaw, fichaSemantica, proveedorHabitualNombre = '') {
+    buscarAlternativasMercadoIA(ofertasRaw, fichaSemantica, contextoHabitual = null) {
         if (!fichaSemantica.entidad || !Array.isArray(ofertasRaw)) return [];
 
-        const provHabitualNorm = (proveedorHabitualNombre || '').toLowerCase().trim();
+        const provHabitualNombre = typeof contextoHabitual === 'string'
+            ? contextoHabitual
+            : (contextoHabitual?.proveedorNombre || '');
+        const provHabitualCodigo = typeof contextoHabitual === 'object' && contextoHabitual
+            ? (contextoHabitual.productoCodigo || '')
+            : '';
+        const loteReciente = typeof contextoHabitual === 'object' && contextoHabitual
+            ? (contextoHabitual.loteReciente || null)
+            : null;
+
+        const provHabitualNorm = provHabitualNombre.toLowerCase().trim();
+        const codHabitualNorm = String(provHabitualCodigo || '').toLowerCase().trim();
         const entidadNorm = fichaSemantica.entidad.toLowerCase().trim();
         const subEntidadTarget = fichaSemantica.sub_entidad || '';
         const esGradoA = fichaSemantica.grado === 'A';
@@ -1315,6 +1653,7 @@ class ConciliacionArticulosService {
         const esTargetProcesado = procesoTarget !== 'CRUDO';
         const esTargetGranelPuro = fichaSemantica.es_target_granel_puro !== false && Boolean(fichaSemantica.es_granel);
         const refNormTarget = String(fichaSemantica.nombre_referencia || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const kilosTarget = parseFloat(fichaSemantica.kilos_unidad) || 1;
 
         const candidatas = ofertasRaw.filter(o => {
             if (o.costo_kilo_calculado <= 0) return false;
@@ -1322,11 +1661,13 @@ class ConciliacionArticulosService {
             const desc = (o.descripcion_proveedor || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const espec = (o.especificacion || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const textoCompleto = `${desc} ${espec}`;
-            const prov = (o.proveedor_nombre || '').toLowerCase().trim();
             const rubroOferta = (o.rubro_proveedor || '').toUpperCase().trim();
 
-            // 1. Debe coincidir con la entidad botánica en descripción o especificación
-            if (!desc.includes(entidadNorm) && !espec.includes(entidadNorm)) return false;
+            // 1. Debe coincidir con la entidad botánica con fronteras de palabra y equivalencias plurales
+            if (!this.coincideEntidadEnOferta(entidadNorm, subEntidadTarget, textoCompleto)) return false;
+
+            // 1b. Descartar productos compuestos de otra materia prima donde la entidad solo es un agregado ("Garbanzo cubierto con sésamo", "Quinoa pop con arándanos")
+            if (this.esOfertaCompuestoAjeno(entidadNorm, desc, attrTarget)) return false;
 
             // Desambiguación de sub-entidades botánicas (Castaña Cajú vs Pará, Nuez común vs Moscada/Pecán)
             if (subEntidadTarget === 'CASTANA_CAJU') {
@@ -1334,49 +1675,53 @@ class ConciliacionArticulosService {
             } else if (subEntidadTarget === 'CASTANA_PARA') {
                 if (!/\b(de\s+para|castanas?\s+para)\b/i.test(textoCompleto)) return false;
             } else if (subEntidadTarget === 'NUEZ_COMUN') {
-                if (textoCompleto.includes('moscada') || textoCompleto.includes('pecan')) return false;
+                if (/\b(moscada|pecan)\b/i.test(textoCompleto)) return false;
             } else if (subEntidadTarget === 'NUEZ_PECAN') {
-                if (!textoCompleto.includes('pecan')) return false;
+                if (!/\bpecan\b/i.test(textoCompleto)) return false;
             }
 
-            // 2. Si el artículo target tiene rubro canónico identificado (salvo Harinas, que los proveedores cargan en Frutos Secos o Harinas), filtrar rubros incompatibles
-            if (!attrTarget.es_harina && fichaSemantica.rubro_canonico && rubroOferta && rubroOferta !== 'SIN RUBRO' && rubroOferta !== fichaSemantica.rubro_canonico) {
+            // 2. Analizar atributos semánticos de la oferta
+            const attrOferta = this.analizarAtributosTexto(textoCompleto);
+
+            // 3. Validar compatibilidad con los rubros reales de Supabase B4.1
+            if (!this.esRubroCompatibleB41(fichaSemantica.rubro_canonico, rubroOferta, attrTarget, entidadNorm)) {
                 return false;
             }
 
-            // 3. Analizar atributos semánticos de la oferta
-            const attrOferta = this.analizarAtributosTexto(textoCompleto);
-
-            // Exclusión estricta por Naturaleza de Producto (Harina, Salvado, Bebida, Pasta, Confitería/Bañados, Mixes)
+            // Exclusión estricta por Naturaleza de Producto (Harina, Salvado, Aceite, Bebida, Pasta, Confitería/Bañados, Mixes)
             if (attrTarget.es_harina !== attrOferta.es_harina) return false;
             if (Boolean(attrTarget.es_salvado) !== Boolean(attrOferta.es_salvado)) return false;
+            if (Boolean(attrTarget.es_aceite) !== Boolean(attrOferta.es_aceite)) return false;
             if (attrTarget.es_bebida !== attrOferta.es_bebida) return false;
             if (attrTarget.es_pasta !== attrOferta.es_pasta) return false;
             if (attrTarget.es_confiteria !== attrOferta.es_confiteria) return false;
             if (attrTarget.es_mix !== attrOferta.es_mix) return false;
 
             // 4. Descartar derivados procesados de cocina / conservas / golosinas / galletitas / barras / tés
-            const esDerivadoProcesado = desc.includes('mermelad') || desc.includes('almibar') || 
-                                       (!refNormTarget.includes('escama') && desc.includes('escama')) ||
-                                       desc.includes('pure') || 
-                                       desc.includes('dulce') ||
-                                       (!refNormTarget.includes('aceite') && (desc.includes('aceite') || espec.includes('aceite'))) ||
+            const permiteAlmibar = (entidadNorm === 'escurrida' || refNormTarget.includes('almibar'));
+            const esTomateHumedo = (entidadNorm === 'tomate' && !refNormTarget.includes('triturad') && /\b(perita|triturad[oa]s?|salsa|extracto|pure|botella|lata)\b/i.test(textoCompleto));
+            const esDerivadoProcesado = desc.includes('mermelad') ||
+                                       (!permiteAlmibar && desc.includes('almibar')) ||
+                                       esTomateHumedo ||
+                                       desc.includes('pure') ||
+                                       (!refNormTarget.includes('dulce') && desc.includes('dulce')) ||
+                                       (!attrTarget.es_aceite && !refNormTarget.includes('aceite') && (desc.includes('aceite') || espec.includes('aceite'))) ||
                                        desc.includes('galletit') || desc.includes('gall.') ||
                                        /\b(barras?|barritas?)\b/i.test(desc) || desc.includes('rocio') ||
                                        desc.includes('pulpito') || desc.includes('paella') ||
-                                       desc.includes('conserva') || desc.includes('rooibos') ||
+                                       (!permiteAlmibar && desc.includes('conserva')) || desc.includes('rooibos') ||
                                        desc.includes('sabor ') ||
                                        (!refNormTarget.includes('esencia') && desc.includes('esencia')) ||
                                        espec.includes('galletit');
             if (esDerivadoProcesado) return false;
 
-            // 5. Exclusión estricta de Cáscara vs Pelado (excepto en Harinas o Pistachos):
-            if (entidadNorm !== 'pistacho' && !attrTarget.es_harina) {
+            // 5. Exclusión estricta de Cáscara vs Pelado (excepto en Harinas, Aceites, Bebidas o Pistachos):
+            if (entidadNorm !== 'pistacho' && !attrTarget.es_harina && !attrTarget.es_aceite && !attrTarget.es_bebida) {
                 if (attrTarget.es_con_cascara && !attrOferta.es_con_cascara) return false;
                 if (!attrTarget.es_con_cascara && attrOferta.es_con_cascara) return false;
             }
 
-            // 6. Exclusión de Cortes Especiales (Cubeteada, Fileteada, Laminada) si el target NO lo es
+            // 6. Exclusión de Cortes Industriales Especiales (Cubeteada, Fileteada, Laminada, Granulada) si el target NO lo es
             if (corteTarget !== 'CORTE_ESPECIAL' && attrOferta.es_corte_especial) {
                 return false;
             }
@@ -1398,27 +1743,40 @@ class ConciliacionArticulosService {
             if (esGradoAA && !tieneAA) return false;
 
             // 9. Coherencia de Empaque Mayorista vs Minorista
-            if (fichaSemantica.es_granel) {
-                if (o.modo_empaque === 'ENVASADO' && o.peso_unitario < 1.0) return false;
-                const minKilos = (esTargetProcesado && attrOferta.proceso !== 'CRUDO') ? 2.0 : 5.0;
+            if (fichaSemantica.es_granel && !attrTarget.es_bebida && !attrTarget.es_aceite) {
+                if (o.modo_empaque === 'ENVASADO' && o.peso_unitario < 0.9) return false;
+                const esFrutaEspecial = ['kiwi', 'naranja', 'anana', 'mango', 'papaya', 'cereza', 'frutilla', 'fruta nevada', 'jengibre', 'escurrida'].includes(entidadNorm);
+                let minKilos = 5.0;
+                if ((esTargetProcesado && attrOferta.proceso !== 'CRUDO') || esFrutaEspecial) {
+                    minKilos = 2.0;
+                } else if (!fichaSemantica.es_ingrediente && kilosTarget > 0 && kilosTarget < 5.0) {
+                    minKilos = Math.max(1.0, kilosTarget * 0.8);
+                }
                 if (o.kilos_empaque < minKilos) return false;
             }
 
-            // 10. Excluir el proveedor habitual ya cubierto en Capa 2
-            if (provHabitualNorm && prov.includes(provHabitualNorm)) {
-                return false;
-            }
-
+            // NOTA ARQUITECTÓNICA CLAVE:
+            // NO se excluye al proveedor habitual en Capa 4 (Chofer IA: Mercado).
+            // El Chofer IA evalúa el 100% del mercado en igualdad de condiciones para recomendar siempre
+            // el costo de reposición óptimo real (ej. Bavosi $9.604,30/kg en Castañas de Cajú W4),
+            // identificándolo con insignia de Proveedor Habitual y su cotejo contra el último lote.
             return true;
         });
 
-        // Evaluar cada oferta con los Bloques de Razonamiento del Chofer IA
+        // Evaluar cada oferta con los 4 Agentes de Razonamiento del Chofer IA
+        const familiasExigenVariedadExplicita = ['poroto', 'arroz', 'azucar', 'arveja', 'lenteja'];
+
         const enriquecidas = candidatas.map(alt => {
             const descOferta = (alt.descripcion_proveedor || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const especOferta = (alt.especificacion || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const presOferta = (alt.presentacion_maestra || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             const textoOferta = `${descOferta} ${especOferta}`;
+            const provOfertaNorm = String(alt.proveedor_nombre || '').toLowerCase().trim();
+            const codOfertaNorm = String(alt.codigo_proveedor || '').toLowerCase().trim();
             const attrOferta = this.analizarAtributosTexto(textoOferta);
+
+            const esProvHabitual = Boolean(provHabitualNorm && provOfertaNorm.includes(provHabitualNorm));
+            const esMismoSkuLote = Boolean(esProvHabitual && codHabitualNorm && codOfertaNorm === codHabitualNorm);
 
             let confOferta = 'ESTANDAR';
             if (REGEX_CONFORMACION_INDUSTRIA.test(textoOferta) || attrOferta.es_partido) {
@@ -1427,7 +1785,7 @@ class ConciliacionArticulosService {
                 confOferta = 'ENTERO_PREMIUM';
             }
 
-            // Evaluación Bloque 2: Calibre, Tamaño, Variedad, Morfología y Color
+            // Evaluación Agente 2: Calibre, Tamaño, Variedad, Morfología y Color
             const calOferta = this.analizarCalibreYTamano(textoOferta, entidadNorm, alt.especificacion || '', '');
             const evalCalibre = this.evaluarCoincidenciaCalibre(calTarget, calOferta, entidadNorm);
             const varOferta = this.extraerVariedadColorYSubtipo(textoOferta, entidadNorm, {});
@@ -1442,7 +1800,8 @@ class ConciliacionArticulosService {
             } else if (evalCalibre.estado === 'COMPATIBLE_FUERTE' && calOferta.etiqueta_calibre) {
                 aciertosEspecificos.push(`Calibre Compatible ${calOferta.etiqueta_calibre}`);
             } else if (evalCalibre.estado === 'DIFERENTE') {
-                discrepanciasEspecificas.push(`📏 Otro Calibre: ${calOferta.etiqueta_calibre || calOferta.calibre_codigo}`);
+                const detalleCal = calOferta.etiqueta_calibre || calOferta.calibre_codigo || `Sin calibre ${calTarget.etiqueta_calibre}`;
+                discrepanciasEspecificas.push(`📏 Otro Calibre: ${detalleCal}`);
             }
 
             if (varTarget.variedad_canonica) {
@@ -1451,10 +1810,11 @@ class ConciliacionArticulosService {
                 } else if (varOferta.variedad_canonica === varTarget.variedad_canonica) {
                     aciertosEspecificos.push(`Variedad ${varOferta.variedad_label}`);
                     tieneMatchVariedadCorteExplicito += 2;
-                } else if (['MEDJOUL', 'TURCO'].includes(varTarget.variedad_canonica)) {
-                    // En Dátiles Medjoul e Higos Turcos, las ofertas genéricas sin variedad suelen ser otra variedad económica (Egipcio/Higo Negro)
+                } else if (['MEDJOUL', 'TURCO'].includes(varTarget.variedad_canonica) || familiasExigenVariedadExplicita.includes(entidadNorm)) {
                     discrepanciasEspecificas.push(`🌱 Sin variedad ${varTarget.variedad_label} explícita`);
                 }
+            } else if (entidadNorm === 'arveja' && varOferta.variedad_canonica === 'TEXTURIZADA') {
+                discrepanciasEspecificas.push(`🌱 Derivado Texturizado`);
             }
 
             if (varTarget.morfologia_especifica) {
@@ -1463,7 +1823,13 @@ class ConciliacionArticulosService {
                 } else if (varOferta.morfologia_especifica === varTarget.morfologia_especifica) {
                     aciertosEspecificos.push(`Corte ${varOferta.morfologia_label}`);
                     tieneMatchVariedadCorteExplicito += 2;
+                } else if (entidadNorm === 'coco' && varTarget.morfologia_especifica === 'ESCAMAS') {
+                    discrepanciasEspecificas.push(`🔪 Sin corte Escamas/Chips explícito`);
                 }
+            } else if ((entidadNorm === 'pasa' || entidadNorm === 'pasas') && varOferta.morfologia_especifica === 'EN_RACIMO') {
+                discrepanciasEspecificas.push(`🍇 Presentación Especial: En Racimo`);
+            } else if (entidadNorm === 'coco' && !refNormTarget.includes('escama') && varOferta.morfologia_especifica === 'ESCAMAS') {
+                discrepanciasEspecificas.push(`🔪 Otro Corte: Escamas / Chips`);
             }
 
             if (varTarget.piel_status && (attrTarget.es_harina || corteTarget === 'CORTE_ESPECIAL')) {
@@ -1492,7 +1858,7 @@ class ConciliacionArticulosService {
                 }
             }
 
-            // Evaluación Bloque 3: Empaque Granel Puro vs Caja Fraccionada (ej. 10 x 1 kg)
+            // Evaluación Agente 3: Empaque Granel Puro vs Caja Fraccionada (ej. 10 x 1 kg)
             const empaqueInfo = this.analizarEstructuraEmpaqueOferta(alt, `${textoOferta} ${presOferta}`);
             const penalizarPorFraccionado = (esTargetGranelPuro && empaqueInfo.es_caja_fraccionada);
             if (penalizarPorFraccionado) {
@@ -1555,7 +1921,6 @@ class ConciliacionArticulosService {
                 );
 
                 if (!conformacionCompatible) {
-                    // Ejemplo: se busca Fruto Entero y la oferta es Partido/Industria (o viceversa)
                     prioridadTecnica = 3;
                     matchType = confOferta === 'INDUSTRIA_PARTIDO' ? 'GRADO_INDUSTRIA' : 'GRADO_SUPERIOR';
                     badge = confOferta === 'INDUSTRIA_PARTIDO'
@@ -1563,14 +1928,11 @@ class ConciliacionArticulosService {
                         : '✨ Grado Entero / Superior (Otra Conformación)';
                     justif = `${badge}: ${specClean || 'Conformación alternativa'} a ${precioFmt} (${empaqueClean}).`;
                 } else if (discrepanciasEspecificas.length > 0) {
-                    // Tiene discrepancia de Calibre (ej: 9/11 Chica o 11/13 cuando se busca 15+ Grande),
-                    // o de Empaque (ej: 10 x 1 kg cuando se busca granel 1 x 10 kg), o de Variedad/Corte/Color
                     prioridadTecnica = 2;
                     matchType = 'VARIANTE_CALIBRE_EMPAQUE';
                     badge = discrepanciasEspecificas.join(' • ');
-                    justif = `🔄 Variante de Mercado (${discrepanciasEspecificas.join(' | ')}): Misma materia prima pelada/cruda pero con distinta especificación o empaque a ${precioFmt} (${empaqueClean}).`;
+                    justif = `🔄 Variante de Mercado (${discrepanciasEspecificas.join(' | ')}): Misma materia prima pero con distinta especificación o empaque a ${precioFmt} (${empaqueClean}).`;
                 } else {
-                    // COINCIDENCIA FUERTE (Nivel 1): Mismo producto, estado, granel puro y calibre/variedad compatible
                     prioridadTecnica = 1;
                     matchType = 'MATCH_DIRECTO';
 
@@ -1592,7 +1954,33 @@ class ConciliacionArticulosService {
                 }
             }
 
-            // Evaluación Bloque 4: Vigencia Temporal (Ofertas vencidas > 45 días van al Escalón 4 al final de la solapa)
+            // Enriquecer con trazabilidad de Proveedor Habitual / Último Lote si corresponde
+            let variacionVsLote = alt.variacion_vs_lote || null;
+            if (esProvHabitual && loteReciente && (esMismoSkuLote || prioridadTecnica === 1)) {
+                const costoLote = parseFloat(loteReciente.costo_kilo_al_momento || 0);
+                const precioLista = parseFloat(alt.costo_kilo_calculado || 0);
+                if (costoLote > 0) {
+                    const diffMonto = precioLista - costoLote;
+                    const diffPct = (diffMonto / costoLote) * 100;
+                    variacionVsLote = {
+                        costo_lote: costoLote,
+                        precio_lista: precioLista,
+                        diff_monto: diffMonto,
+                        diff_pct: diffPct,
+                        lote_codigo: loteReciente.lote_codigo_corto || loteReciente.lote_id_supabase,
+                        fecha_lote: loteReciente.fecha_vinculacion,
+                        remito: loteReciente.numero_remito
+                    };
+                }
+            }
+
+            if (esMismoSkuLote && !alt.es_antigua) {
+                justif = `⭐ Proveedor Habitual (Mismo SKU #${alt.codigo_proveedor} del último lote en depósito) • ${justif}`;
+            } else if (esProvHabitual && !alt.es_antigua) {
+                justif = `⭐ Proveedor Habitual en Depósito • ${justif}`;
+            }
+
+            // Evaluación Agente 4: Vigencia Temporal (Ofertas vencidas > 45 días van al Escalón 4 al final de la solapa)
             let prioridadFinal = prioridadTecnica;
             if (alt.es_antigua) {
                 prioridadFinal = 4;
@@ -1608,11 +1996,13 @@ class ConciliacionArticulosService {
                 justif = `🤖 Alternativa de Mercado (${marcaClean || empaqueClean}): ${precioFmt}.`;
             }
 
-            // Sub-puntaje de especificidad (cuantos más atributos específicos explícitos acierta, más arriba dentro de su sub-bloque)
             const especificidadScore = aciertosEspecificos.length;
 
             return {
                 ...alt,
+                es_proveedor_habitual: esProvHabitual,
+                es_mismo_sku_lote: esMismoSkuLote,
+                variacion_vs_lote: variacionVsLote,
                 proceso_oferta: attrOferta.proceso,
                 corte_oferta: attrOferta.corte,
                 calibre_oferta: calOferta.etiqueta_calibre || '',
@@ -1633,11 +2023,10 @@ class ConciliacionArticulosService {
         // Ordenamiento Multi-Criterio del Chofer IA:
         // 1° Escalón de Prioridad IA (1: Coincidencias Fuertes Vigentes, 2: Variantes de Calibre/Empaque Vigentes, 3: Secundarias, 4: Ofertas Vencidas al fondo)
         // 2° Dentro de Ofertas Vencidas (Nivel 4), poner primero las que sí coincidían técnicamente (prioridad_tecnica_base 1 antes que 2)
-        // 3° Sub-orden de Calibre (1: Calibre Exacto ej. 15+ primero, 2: Calibre Compatible ej. 13/15 Grande después, 3: Sin calibre especificado)
-        // 4° Coincidencia explícita de Variedad / Corte específico (ej. Non Pareil, Ramillada, Presidente, Medjoul) antes que ofertas sin variedad declarada
-        // 5° Mayor cantidad total de atributos específicos acertados
-        // 6° Menor costo por kilo
-        // 7° Menor antigüedad (más reciente)
+        // 3° Sub-orden de Calibre (1: Calibre Exacto ej. W4 / 15+ primero, 2: Calibre Compatible después, 3: Sin calibre especificado)
+        // 4° Coincidencia explícita de Variedad / Corte específico antes que ofertas sin variedad declarada
+        // 5° Menor costo por kilo (para que dentro del mismo nivel de exactitud gane siempre la reposición más competitiva, ej. Bavosi $9.604,30/kg)
+        // 6° En empate de precio, priorizar mismo SKU del último lote / proveedor habitual y menor antigüedad
         enriquecidas.sort((a, b) => {
             if (a.prioridad_ia !== b.prioridad_ia) {
                 return a.prioridad_ia - b.prioridad_ia;
@@ -1651,14 +2040,21 @@ class ConciliacionArticulosService {
             if (b.match_variedad_corte !== a.match_variedad_corte) {
                 return b.match_variedad_corte - a.match_variedad_corte;
             }
+            if (Math.abs(a.costo_kilo_calculado - b.costo_kilo_calculado) > 0.01) {
+                return a.costo_kilo_calculado - b.costo_kilo_calculado;
+            }
+            if (Boolean(b.es_mismo_sku_lote) !== Boolean(a.es_mismo_sku_lote)) {
+                return Number(Boolean(b.es_mismo_sku_lote)) - Number(Boolean(a.es_mismo_sku_lote));
+            }
             if (b.especificidad_score !== a.especificidad_score) {
                 return b.especificidad_score - a.especificidad_score;
             }
-            if (a.costo_kilo_calculado !== b.costo_kilo_calculado) {
-                return a.costo_kilo_calculado - b.costo_kilo_calculado;
-            }
             return a.antiguedad_dias - b.antiguedad_dias;
         });
+
+        if (enriquecidas.length > 0 && enriquecidas[0].prioridad_ia === 1) {
+            enriquecidas[0].es_recomendada_top = true;
+        }
 
         return enriquecidas;
     }
@@ -2121,9 +2517,14 @@ class ConciliacionArticulosService {
             });
         }
 
-        // 3. CAPA CHOFER IA (Inteligencia Autónoma y Alternativas de Mercado)
+        // 3. CAPA CHOFER IA (Comité de 4 Agentes sobre el 100% del Mercado incluyendo Proveedor Habitual)
         const fichaSemantica = this.extraerFichaSemantica(artLamda);
-        const capaChoferIA = this.buscarAlternativasMercadoIA(ofertasRaw, fichaSemantica, proveedorHabitualNombre);
+        const capaChoferIA = this.buscarAlternativasMercadoIA(ofertasRaw, fichaSemantica, {
+            proveedorNombre: proveedorHabitualNombre,
+            productoCodigo: proveedorHabitualCodigo,
+            loteReciente
+        });
+        const recomendacionTopIA = capaChoferIA.find(c => c.prioridad_ia === 1) || capaChoferIA[0] || null;
 
         const historialInicial = [
             {
@@ -2170,6 +2571,7 @@ class ConciliacionArticulosService {
                 es_ruta_consolidada: esRutaConsolidadaBD
             },
             capa_chofer_ia: capaChoferIA,
+            recomendacion_principal_ia: recomendacionTopIA,
             ficha_semantica_ia: fichaSemantica,
 
             // Retrocompatibilidad garantizada con UI existente
@@ -2262,75 +2664,441 @@ class ConciliacionArticulosService {
     }
 
     /**
-     * Depuración del Subconjunto Actual mediante Instrucción Natural al Chofer IA
+     * Invoca a Gemini Flash con esquema JSON estricto y registro en el Ledger oficial de Tokens IA (módulo PRODUCCION_LOTES).
+     * Los precios jamás los redacta la IA: solo audita, filtra o reordena IDs existentes.
+     */
+    async _invocarGeminiConciliacionJson({ systemInstruction, userText, responseSchema, detalleLedger = 'Comité Chofer IA' }) {
+        const cred = iaMonitor ? iaMonitor.leerCredencialesGeminiEnCaliente() : {
+            apiKey: String(process.env.GEMINI_API_KEY || '').trim(),
+            model: String(process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim(),
+            disponible: Boolean(process.env.GEMINI_API_KEY && String(process.env.GEMINI_API_KEY).length > 15)
+        };
+        if (!cred.disponible || !cred.apiKey) {
+            throw new Error('GEMINI_NO_CONFIGURADO: No se encontró GEMINI_API_KEY activa en .env.');
+        }
+
+        const backupKey = String(process.env.GEMINI_API_KEY_BACKUP || '').trim();
+        const keys = [cred.apiKey];
+        if (backupKey && backupKey.length > 15 && backupKey !== cred.apiKey) keys.push(backupKey);
+
+        const modelos = Array.from(new Set([cred.model || 'gemini-2.5-flash', 'gemini-2.5-flash', 'gemini-flash-latest']));
+        let ultimoError = null;
+
+        for (const activeKey of keys) {
+            for (const modelName of modelos) {
+                const generationConfig = {
+                    temperature: 0.1,
+                    responseMimeType: 'application/json',
+                    responseSchema
+                };
+                if (modelName.includes('2.5') || modelName.includes('3.')) {
+                    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+                }
+
+                const payload = {
+                    systemInstruction: { parts: [{ text: systemInstruction }] },
+                    contents: [{ role: 'user', parts: [{ text: userText }] }],
+                    generationConfig
+                };
+
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(activeKey)}`;
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 14000);
+                try {
+                    const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                        signal: controller.signal
+                    });
+                    if (!res.ok) {
+                        const errTxt = await res.text().catch(() => '');
+                        ultimoError = new Error(`Gemini (${modelName}) HTTP ${res.status}: ${errTxt.slice(0, 200)}`);
+                        if (res.status === 404) continue;
+                        break;
+                    }
+                    const data = await res.json();
+                    if (iaMonitor) {
+                        iaMonitor.registrarEventoIaSistema({
+                            modulo: 'PRODUCCION_LOTES',
+                            detalle: detalleLedger,
+                            rawResponseData: data,
+                            modelo: modelName
+                        });
+                    }
+                    const partsResp = data?.candidates?.[0]?.content?.parts || [];
+                    const partTexto = partsResp.find(p => typeof p.text === 'string' && !p.thought) || partsResp[0];
+                    const rawText = String(partTexto?.text || '').trim();
+                    if (!rawText) throw new Error('Respuesta vacía de Gemini.');
+                    return { parsed: JSON.parse(rawText), modelo: modelName };
+                } catch (err) {
+                    ultimoError = err;
+                } finally {
+                    clearTimeout(timer);
+                }
+            }
+        }
+        throw ultimoError || new Error('No se pudo conectar con Gemini IA.');
+    }
+
+    /**
+     * Auditoría Cognitiva bajo demanda con Comité Gemini IA sobre las ofertas del mercado (sin alterar precios deterministas)
+     */
+    async auditarConComiteGeminiIA(articuloId) {
+        const baseMatch = await this.buscarCandidatosTablaMaestra(articuloId);
+        const art = baseMatch.articulo_lamda;
+        const ficha = baseMatch.ficha_semantica_ia || {};
+        const candidatosBase = Array.isArray(baseMatch.capa_chofer_ia) ? baseMatch.capa_chofer_ia : [];
+
+        if (candidatosBase.length === 0) {
+            return {
+                usando_ia_gemini: false,
+                veredicto_ejecutivo: 'No hay ofertas candidatas en la Tabla Maestra B4.1 para auditar en este artículo.',
+                alertas_detectadas: [],
+                mejor_oferta_id: null,
+                capa_chofer_ia: []
+            };
+        }
+
+        const muestraParaIA = candidatosBase.slice(0, 28).map((c, idx) => ({
+            ref_idx: idx,
+            oferta_id: String(c.id || c.codigo_proveedor),
+            proveedor: c.proveedor_nombre,
+            es_proveedor_habitual: Boolean(c.es_proveedor_habitual),
+            sku_proveedor: c.codigo_proveedor,
+            descripcion: c.descripcion_proveedor,
+            especificacion: c.especificacion || '',
+            presentacion: c.presentacion_maestra,
+            kilos_bulto: c.kilos_empaque,
+            es_caja_fraccionada: Boolean(c.es_caja_fraccionada),
+            costo_kilo_ars: Number(c.costo_kilo_calculado.toFixed(2)),
+            promo_kilo_ars: c.precio_promo_kilo ? Number(c.precio_promo_kilo.toFixed(2)) : null,
+            antiguedad_dias: c.antiguedad_dias,
+            vencida_mas_45d: Boolean(c.es_antigua),
+            nivel_actual: c.prioridad_ia
+        }));
+
+        const systemInstruction = [
+            'Sos el Comité Cognitivo de Compras y Costos de Reposición de LAMDA (distribuidora mayorista de frutos secos, frutas desecadas, semillas, cereales y legumbres en Argentina).',
+            'Tu misión es auditar las ofertas mayoristas preseleccionadas (incluyendo al Proveedor Habitual) para definir el Costo de Reposición exacto del artículo objetivo.',
+            'REGLAS ESTRICTAS:',
+            '1. NO excluyas nunca al proveedor habitual: si tiene coincidencia exacta de producto/calibre/granel vigente y el menor $/kg, DEBE ser la oferta recomendada #1.',
+            '2. Nivel 1 = Coincidencia exacta/fuerte vigente (mismo producto, calibre compatible, estado crudo/tostado idéntico y bulto a granel cuando se busca granel).',
+            '3. Nivel 2 = Variante cercana vigente (otro calibre ej. W1/W3 cuando se busca W4, otra variedad o caja subdividida 10x1kg cuando se busca bulto suelto de 10kg/22.68kg/25kg).',
+            '4. Nivel 3 = Otra conformación/grado industria/partido o insumo crudo cuando se busca tostado.',
+            '5. Nivel 4 = Ofertas vencidas (> 45 días) y Nivel 0 = Descartar únicamente si es otro producto incompatible que se filtró por error.',
+            '6. Redactá en español argentino claro y técnico (sin signos de apertura "¿" ni "¡"). Jamás inventes precios.'
+        ].join('\n');
+
+        const userText = JSON.stringify({
+            articulo_objetivo_lamda: {
+                codigo: art.articulo_id,
+                descripcion: art.descripcion,
+                kilos_unidad: art.kilos_unidad,
+                costo_kilo_actual_taller: Number((art.costo_kilo_actual || 0).toFixed(2)),
+                entidad: ficha.entidad,
+                estado: ficha.estado,
+                calibre_objetivo: ficha.calibre_info?.etiqueta_calibre || 'Sin restricción',
+                empaque_objetivo: ficha.es_target_granel_puro ? 'Bulto Granel Suelto' : 'Presentación Compatible'
+            },
+            ultimo_lote_deposito: baseMatch.capa_lotes && baseMatch.capa_lotes[0] ? {
+                proveedor: baseMatch.capa_lotes[0].proveedor_nombre,
+                sku: baseMatch.capa_lotes[0].producto_codigo,
+                descripcion: baseMatch.capa_lotes[0].articulo_descripcion,
+                costo_kilo_lote: Number(parseFloat(baseMatch.capa_lotes[0].costo_kilo_al_momento || 0).toFixed(2))
+            } : null,
+            ofertas_candidatas: muestraParaIA
+        });
+
+        const responseSchema = {
+            type: 'OBJECT',
+            properties: {
+                mejor_ref_idx: { type: 'INTEGER', description: 'El ref_idx (0-based) de la mejor oferta recomendada para reposición, o -1 si ninguna sirve.' },
+                veredicto_ejecutivo: { type: 'STRING', description: 'Explicación técnica concisa (2 a 3 oraciones) justificando cuál es la mejor oferta de reposición y cómo se compara con el resto del mercado.' },
+                alertas_detectadas: {
+                    type: 'ARRAY',
+                    items: { type: 'STRING' },
+                    description: 'Hasta 3 alertas breves sobre diferencias de empaque (ej. 10x1kg vs 22.68kg), otros calibres o cotizaciones vencidas.'
+                },
+                evaluaciones: {
+                    type: 'ARRAY',
+                    items: {
+                        type: 'OBJECT',
+                        properties: {
+                            ref_idx: { type: 'INTEGER' },
+                            nivel_ia: { type: 'INTEGER', description: '1=Fuerte vigente, 2=Variante calibre/empaque, 3=Secundaria/partido, 4=Vencida >45d, 0=Descartar por incompatible.' },
+                            nota_ia: { type: 'STRING', description: 'Breve nota técnica para mostrar en la tarjeta (máx 110 caracteres).' }
+                        },
+                        required: ['ref_idx', 'nivel_ia']
+                    }
+                }
+            },
+            required: ['mejor_ref_idx', 'veredicto_ejecutivo', 'evaluaciones']
+        };
+
+        const { parsed, modelo } = await this._invocarGeminiConciliacionJson({
+            systemInstruction,
+            userText,
+            responseSchema,
+            detalleLedger: `Auditoría Comité Chofer IA (${art.articulo_id})`
+        });
+
+        const evalMap = new Map();
+        (parsed.evaluaciones || []).forEach(ev => {
+            evalMap.set(Number(ev.ref_idx), ev);
+        });
+
+        const mejorIdx = Number(parsed.mejor_ref_idx);
+        const auditadas = [];
+
+        candidatosBase.forEach((cand, idx) => {
+            const ev = evalMap.get(idx);
+            if (ev && Number(ev.nivel_ia) === 0) {
+                return; // Descartada por incompatibilidad semántica verificada
+            }
+            let nuevoNivel = cand.prioridad_ia;
+            if (ev && [1, 2, 3, 4].includes(Number(ev.nivel_ia))) {
+                nuevoNivel = cand.es_antigua ? 4 : Number(ev.nivel_ia);
+            }
+            const esElegidaIA = (idx === mejorIdx && !cand.es_antigua);
+            if (esElegidaIA) nuevoNivel = 1;
+
+            const notaLimpia = ev?.nota_ia ? String(ev.nota_ia).replace(/[¿¡]/g, '').trim() : '';
+            auditadas.push({
+                ...cand,
+                prioridad_ia: nuevoNivel,
+                es_recomendada_top: esElegidaIA,
+                auditada_por_gemini: true,
+                justificacion: notaLimpia
+                    ? `🧠 Gemini IA: ${notaLimpia} • (${cand.justificacion || ''})`
+                    : cand.justificacion
+            });
+        });
+
+        auditadas.sort((a, b) => {
+            if (Boolean(b.es_recomendada_top) !== Boolean(a.es_recomendada_top)) {
+                return Number(Boolean(b.es_recomendada_top)) - Number(Boolean(a.es_recomendada_top));
+            }
+            if (a.prioridad_ia !== b.prioridad_ia) return a.prioridad_ia - b.prioridad_ia;
+            if (a.sub_orden_calibre !== b.sub_orden_calibre) return a.sub_orden_calibre - b.sub_orden_calibre;
+            if (Math.abs(a.costo_kilo_calculado - b.costo_kilo_calculado) > 0.01) {
+                return a.costo_kilo_calculado - b.costo_kilo_calculado;
+            }
+            return a.antiguedad_dias - b.antiguedad_dias;
+        });
+
+        return {
+            usando_ia_gemini: true,
+            modelo_ia: modelo,
+            veredicto_ejecutivo: String(parsed.veredicto_ejecutivo || '').replace(/[¿¡]/g, '').trim(),
+            alertas_detectadas: Array.isArray(parsed.alertas_detectadas)
+                ? parsed.alertas_detectadas.map(a => String(a || '').replace(/[¿¡]/g, '').trim()).filter(Boolean)
+                : [],
+            mejor_oferta: auditadas.find(a => a.es_recomendada_top) || auditadas[0] || null,
+            capa_chofer_ia: auditadas
+        };
+    }
+
+    /**
+     * Depuración Inteligente del Subconjunto mediante Instrucción Natural al Chofer IA
+     * Soporta inclusiones ("solo bavosi", "w4", "vietnam", "con promo", "solo vigentes"),
+     * exclusiones ("sin villares", "quitar tostados", "sin fraccionados"), rangos numéricos y restauración ("mostrar todos").
      */
     async refinarSubconjuntoConInstruccion(articuloId, candidatosActuales, instruccionOperador, historialCapasActuales = []) {
-        if (!Array.isArray(candidatosActuales) || candidatosActuales.length === 0) {
+        const instruccionClean = (instruccionOperador || '').toLowerCase().trim();
+        if (!instruccionClean) {
+            return { candidatos_filtrados: candidatosActuales || [], historial_capas: historialCapasActuales };
+        }
+
+        // Siempre recuperar el universo completo del Chofer IA para este artículo si existe articuloId,
+        // de modo que pedir "mostrar todos" o "solo bavosi" recupere proveedores aunque hubieran sido filtrados en un paso previo.
+        let universoBase = Array.isArray(candidatosActuales) ? candidatosActuales : [];
+        if (articuloId) {
+            try {
+                const fullMatch = await this.buscarCandidatosTablaMaestra(articuloId);
+                if (Array.isArray(fullMatch.capa_chofer_ia) && fullMatch.capa_chofer_ia.length > 0) {
+                    universoBase = fullMatch.capa_chofer_ia;
+                }
+            } catch (_) {}
+        }
+
+        if (universoBase.length === 0) {
             return { candidatos_filtrados: [], historial_capas: historialCapasActuales };
         }
 
-        const instruccionClean = (instruccionOperador || '').toLowerCase().trim();
-        if (!instruccionClean) {
-            return { candidatos_filtrados: candidatosActuales, historial_capas: candidatosActuales };
+        const instrNorm = instruccionClean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+        // 1. Comando de restauración completa
+        if (/^(todos?|ver\s+todos?|mostrar\s+todos?|restaurar|reset|limpiar|original)\b/i.test(instrNorm)) {
+            return {
+                candidatos_filtrados: universoBase,
+                historial_capas: [historialCapasActuales[0]].filter(Boolean),
+                resumen_refino: `Se restauraron las ${universoBase.length} ofertas completas del mercado.`
+            };
         }
+
+        // Si no es restauración, encadenar sobre candidatosActuales salvo que pida explícitamente "incluir/mostrar/ver/solo <algo>" que no estaba
+        const pideAmpliarOIncluir = /\b(solo|solamente|unicamente|mostrar|ver|incluir|dejar)\b/i.test(instrNorm);
+        const poolTrabajo = (!pideAmpliarOIncluir && Array.isArray(candidatosActuales) && candidatosActuales.length > 0)
+            ? candidatosActuales
+            : universoBase;
 
         let filtroEmpaqueMin = 0;
+        let filtroEmpaqueMax = Infinity;
         let filtroPrecioMax = Infinity;
+        let filtroPrecioMin = 0;
+        let soloVigentes = false;
+        let soloPromo = false;
+        let soloGranelPuro = false;
+        let excluirFraccionados = false;
+        let soloHabitual = false;
 
-        // Detección de bultos/kilos mínimos: "solo bultos > 10kg", "mas de 5kg", ">10"
-        const matchKilosMin = instruccionClean.match(/(?:bultos?|kilos?|kg|>|mas\s+de|mayor\s+a)\s*>?\s*([0-9.,]+)\s*(?:kg|kilos?)?/i);
-        if (matchKilosMin && (instruccionClean.includes('bulto') || instruccionClean.includes('kg') || instruccionClean.includes('>'))) {
-            filtroEmpaqueMin = parseFloat(matchKilosMin[1].replace(',', '.')) || 0;
+        if (/\b(vigentes?|sin\s+vencid[oa]s?|quitar\s+vencid[oa]s?|actualizad[oa]s?)\b/i.test(instrNorm)) {
+            soloVigentes = true;
+        }
+        if (/\b(con\s+promo|en\s+promo|promocion|oferta\s+promo)\b/i.test(instrNorm)) {
+            soloPromo = true;
+        }
+        if (/\b(solo\s+granel|granel\s+puro|bulto\s+suelto)\b/i.test(instrNorm)) {
+            soloGranelPuro = true;
+        }
+        if (/\b(sin\s+fraccionad[oa]s?|quitar\s+fraccionad[oa]s?|excluir\s+fraccionad[oa]s?|sin\s+10x1)\b/i.test(instrNorm)) {
+            excluirFraccionados = true;
+        }
+        if (/\b(habitual|ultimo\s+lote)\b/i.test(instrNorm) && !/\b(sin|quitar|excluir)\s+habitual\b/i.test(instrNorm)) {
+            soloHabitual = true;
         }
 
-        // Detección de precio máximo: "menor a 10000", "menos de $9500", "< 10000"
-        const matchPrecioMax = instruccionClean.match(/(?:menor\s+a|menos\s+de|<|hasta)\s*\$?\s*([0-9.,]+)/i);
+        // Bultos/kilos mínimos o exactos: "bultos > 10kg", "mas de 15kg", "de 22.68kg"
+        const matchKilosExacto = instrNorm.match(/\b(?:de|exacto)\s*([0-9]+(?:[.,][0-9]+)?)\s*(?:kg|kilos?)\b/i);
+        if (matchKilosExacto) {
+            const valKg = parseFloat(matchKilosExacto[1].replace(',', '.')) || 0;
+            if (valKg > 0) {
+                filtroEmpaqueMin = valKg - 0.25;
+                filtroEmpaqueMax = valKg + 0.25;
+            }
+        } else {
+            const matchKilosMin = instrNorm.match(/(?:bultos?\s*(?:>|>=|mayor(?:es)?\s*a|mas\s*de)|(?:>|>=|mas\s+de|mayor(?:es)?\s+a|desde)\s*)([0-9]+(?:[.,][0-9]+)?)\s*(?:kg|kilos?)\b/i)
+                || (instrNorm.includes('kg') ? instrNorm.match(/(?:>|>=)\s*([0-9]+(?:[.,][0-9]+)?)/i) : null);
+            if (matchKilosMin) {
+                filtroEmpaqueMin = parseFloat(matchKilosMin[1].replace(',', '.')) || 0;
+            }
+            const matchKilosMax = instrNorm.match(/(?:<|<=|menor(?:es)?\s+a|menos\s+de|hasta)\s*([0-9]+(?:[.,][0-9]+)?)\s*(?:kg|kilos?)\b/i);
+            if (matchKilosMax) {
+                filtroEmpaqueMax = parseFloat(matchKilosMax[1].replace(',', '.')) || Infinity;
+            }
+        }
+
+        // Precio máximo / mínimo (cuando el número es >= 100 o lleva $)
+        const sinKilosTxt = instrNorm.replace(/[0-9]+(?:[.,][0-9]+)?\s*(?:kg|kilos?)\b/gi, ' ');
+        const matchPrecioMax = sinKilosTxt.match(/(?:menor(?:es)?\s+a|menos\s+de|<=|<|hasta|maximo)\s*\$?\s*([0-9]{3,}(?:[.,][0-9]+)?)/i);
         if (matchPrecioMax) {
-            filtroPrecioMax = parseFloat(matchPrecioMax[1].replace(/\./g, '').replace(',', '.')) || Infinity;
+            filtroPrecioMax = this.limpiarYParsearNumero(matchPrecioMax[1], Infinity);
+        }
+        const matchPrecioMin = sinKilosTxt.match(/(?:mayor(?:es)?\s+a|mas\s+de|>=|>|desde|minimo)\s*\$?\s*([0-9]{3,}(?:[.,][0-9]+)?)/i);
+        if (matchPrecioMin) {
+            filtroPrecioMin = this.limpiarYParsearNumero(matchPrecioMin[1], 0);
         }
 
-        const terminosDescarte = [];
-        if (instruccionClean.includes('tostad') || instruccionClean.includes('tostado')) terminosDescarte.push('tostad');
-        if (instruccionClean.includes('salad') || instruccionClean.includes('salado')) terminosDescarte.push('salad');
-        if (instruccionClean.includes('pasa') || instruccionClean.includes('pasas')) terminosDescarte.push('pasa');
-        if (instruccionClean.includes('mermelada') || instruccionClean.includes('dulce')) terminosDescarte.push('mermelad', 'dulce');
+        // Separar explícitamente cláusulas de EXCLUSIÓN ("sin X", "quitar X", "sacar X", "excluir X", "no X")
+        // vs cláusulas de INCLUSIÓN ("solo X", "mostrar X", o palabras buscadas directamente como "bavosi", "w4", "brasil")
+        const terminosExcluir = [];
+        const terminosIncluir = [];
 
-        // Proveedores a descartar: "sin abel", "quitar villares"
-        const matchSinProv = instruccionClean.match(/(?:sin|quitar|sacar|no)\s+([a-zA-Z]+)/i);
-        if (matchSinProv) {
-            terminosDescarte.push(matchSinProv[1].toLowerCase());
+        let restoTexto = sinKilosTxt
+            .replace(/\b(vigentes?|vencid[oa]s?|actualizad[oa]s?|con\s+promo|en\s+promo|promocion|solo\s+granel|granel\s+puro|bulto\s+suelto|fraccionad[oa]s?|habitual|ultimo\s+lote)\b/gi, ' ')
+            .replace(/(?:menor(?:es)?\s+a|menos\s+de|mayor(?:es)?\s+a|mas\s+de|<=|>=|<|>|hasta|desde|maximo|minimo)\s*\$?\s*[0-9.,]+/gi, ' ');
+
+        // Capturar segmentos precedidos por verbos de exclusión
+        const regexExcl = /\b(?:sin|quitar|sacar|excluir|ocultar|descartar|eliminar|excepto|menos)\s+([a-z0-9\s/.-]+?)(?=\b(?:y\s+solo|solo|mostrar|incluir|dejar|sin|quitar|sacar|excluir|$))/gi;
+        let mEx;
+        while ((mEx = regexExcl.exec(restoTexto)) !== null) {
+            const frag = mEx[1].trim();
+            frag.split(/[\s,]+/).forEach(w => {
+                const cleanW = w.replace(/[^a-z0-9]/gi, '');
+                if (cleanW.length >= 2 && !['los', 'las', 'del', 'por', 'con', 'que', 'una', 'uno', 'proveedor', 'proveedores', 'ofertas', 'bultos', 'kilos'].includes(cleanW)) {
+                    terminosExcluir.push(cleanW.replace(/s$/, ''));
+                }
+            });
         }
+        restoTexto = restoTexto.replace(regexExcl, ' ');
 
-        const palabras = instruccionClean.replace(/quitar|filtrar|sacar|sin|no|solo|bultos?|kilos?|kg|mayor|menor|hasta|desde/g, '').split(/\s+/).filter(p => p.length >= 3 && !/^[0-9.,]+$/.test(p));
-        palabras.forEach(p => {
-            const pNorm = p.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            if (!terminosDescarte.includes(pNorm)) terminosDescarte.push(pNorm);
+        // Lo que queda (ej: "solo bavosi", "bavosi", "w4", "vietnam", "villares") son términos de INCLUSIÓN
+        const stopWordsIncl = new Set([
+            'solo', 'solamente', 'unicamente', 'mostrar', 'ver', 'incluir', 'dejar', 'filtrar', 'buscar',
+            'por', 'para', 'con', 'del', 'las', 'los', 'una', 'uno', 'que', 'sean', 'sea', 'son',
+            'proveedor', 'proveedores', 'oferta', 'ofertas', 'bulto', 'bultos', 'caja', 'cajas',
+            'bolsa', 'bolsas', 'kilo', 'kilos', 'precio', 'precios', 'mercado', 'todas', 'todo', 'y', 'o', 'de', 'en', 'el', 'la'
+        ]);
+        restoTexto.split(/[\s,]+/).forEach(w => {
+            const cleanW = w.replace(/[^a-z0-9/+]/gi, '').toLowerCase();
+            if (cleanW.length >= 2 && !stopWordsIncl.has(cleanW) && !/^[0-9.,]+$/.test(cleanW)) {
+                // Equivalencia fonética frecuente (ej. "babosi" -> "bavosi")
+                const canonW = cleanW === 'babosi' || cleanW === 'babossi' ? 'bavosi' : cleanW;
+                if (!terminosIncluir.includes(canonW)) terminosIncluir.push(canonW);
+            }
         });
 
-        const candidatosFiltrados = candidatosActuales.filter(cand => {
-            const descNorm = `${cand.descripcion_proveedor || ''} ${cand.proveedor_nombre || ''}`.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-            const tieneDescarte = terminosDescarte.some(td => descNorm.includes(td));
-            if (tieneDescarte) return false;
+        // Normalizar también equivalencia fonética en exclusiones ("sin babosi" -> "bavosi")
+        for (let i = 0; i < terminosExcluir.length; i++) {
+            if (terminosExcluir[i] === 'babosi' || terminosExcluir[i] === 'babossi') {
+                terminosExcluir[i] = 'bavosi';
+            }
+        }
 
-            if (filtroEmpaqueMin > 0 && (cand.kilos_empaque || 0) < filtroEmpaqueMin) {
-                return false;
+        const aplicarFiltroSobrePool = (pool) => pool.filter(cand => {
+            const textoCand = `${cand.descripcion_proveedor || ''} ${cand.especificacion || ''} ${cand.proveedor_nombre || ''} ${cand.codigo_proveedor || ''} ${cand.pais_origen || ''} ${cand.marca || ''} ${cand.presentacion_maestra || ''}`
+                .toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "");
+
+            if (soloVigentes && cand.es_antigua) return false;
+            if (soloPromo && !cand.tiene_promo) return false;
+            if ((soloGranelPuro || excluirFraccionados) && cand.es_caja_fraccionada) return false;
+            if (soloHabitual && !cand.es_proveedor_habitual) return false;
+
+            if (filtroEmpaqueMin > 0 && (cand.kilos_empaque || 0) < filtroEmpaqueMin) return false;
+            if (filtroEmpaqueMax < Infinity && (cand.kilos_empaque || 0) > filtroEmpaqueMax) return false;
+            if (filtroPrecioMax < Infinity && (cand.costo_kilo_calculado || 0) > filtroPrecioMax) return false;
+            if (filtroPrecioMin > 0 && (cand.costo_kilo_calculado || 0) < filtroPrecioMin) return false;
+
+            if (terminosExcluir.length > 0) {
+                const chocaExcl = terminosExcluir.some(te => textoCand.includes(te));
+                if (chocaExcl) return false;
             }
 
-            if (filtroPrecioMax < Infinity && (cand.costo_kilo_calculado || 0) > filtroPrecioMax) {
-                return false;
+            if (terminosIncluir.length > 0) {
+                const cumpleIncl = terminosIncluir.every(ti => {
+                    const stem = ti.length >= 5 ? ti.replace(/s$/, '') : ti;
+                    return textoCand.includes(stem);
+                });
+                if (!cumpleIncl) return false;
             }
 
             return true;
         });
 
-        candidatosFiltrados.sort((a, b) => a.antiguedad_dias - b.antiguedad_dias);
+        let candidatosFiltrados = aplicarFiltroSobrePool(poolTrabajo);
+        if (candidatosFiltrados.length === 0 && poolTrabajo !== universoBase) {
+            candidatosFiltrados = aplicarFiltroSobrePool(universoBase);
+        }
+
+        // Preservar el ordenamiento jerárquico inteligente del Chofer IA (1° Nivel IA, 2° Calibre, 3° Menor $/kg)
+        candidatosFiltrados.sort((a, b) => {
+            if ((a.prioridad_ia || 1) !== (b.prioridad_ia || 1)) return (a.prioridad_ia || 1) - (b.prioridad_ia || 1);
+            if ((a.sub_orden_calibre || 2) !== (b.sub_orden_calibre || 2)) return (a.sub_orden_calibre || 2) - (b.sub_orden_calibre || 2);
+            if (Math.abs((a.costo_kilo_calculado || 0) - (b.costo_kilo_calculado || 0)) > 0.01) {
+                return (a.costo_kilo_calculado || 0) - (b.costo_kilo_calculado || 0);
+            }
+            return (a.antiguedad_dias || 0) - (b.antiguedad_dias || 0);
+        });
 
         const nuevaCapaNum = (historialCapasActuales.length || 1) + 1;
         const nuevoHistorial = [
             ...historialCapasActuales,
             {
                 paso: nuevaCapaNum,
-                nombre: `Paso ${nuevaCapaNum}: ${instruccionOperador} (${candidatosFiltrados.length} ofertas)`,
+                nombre: `Paso ${nuevaCapaNum}: "${instruccionOperador}" (${candidatosFiltrados.length} ofertas)`,
                 instruccion: instruccionOperador,
                 tipo: 'REFINO_OPERADOR',
                 filas_restantes: candidatosFiltrados.length

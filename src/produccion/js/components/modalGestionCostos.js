@@ -11,6 +11,7 @@ let tagsActivosMemoria = [];
 let tagEnEdicionIndex = null;
 let criterioOrdenMemoria = 'FECHA';
 let excluirCeroMemoria = true;
+let opcionesConciliacionActual = {};
 
 async function abrirModuloConciliacionIA(articuloId, tagsOpcionales = null, opcionesOver = {}) {
     if (!articuloId) {
@@ -20,6 +21,7 @@ async function abrirModuloConciliacionIA(articuloId, tagsOpcionales = null, opci
 
     articuloIdActualConciliacion = articuloId;
     tagEnEdicionIndex = null;
+    opcionesConciliacionActual = (opcionesOver && typeof opcionesOver === 'object') ? opcionesOver : {};
 
     if (window.VigíaPizarra) {
         window.VigíaPizarra.logEvent('CONCILIACION_IA', `🤖 Modal Conciliación IA ABIERTO para SKU [${articuloId}]`, {
@@ -71,15 +73,18 @@ async function abrirModuloConciliacionIA(articuloId, tagsOpcionales = null, opci
             </div>
 
             <!-- UNIFIED CONVERSATIONAL BAR WITH AI CHOFER -->
-            <div style="display: flex; align-items: center; gap: 10px; flex: 1; max-width: 540px; margin: 0 24px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex: 1; max-width: 620px; margin: 0 20px;">
                 <div style="position: relative; width: 100%;">
                     <input type="text" id="input-instruccion-chofer" 
-                        placeholder="💬 Hablar con el Chofer IA (ej: 'quitar tostados', 'solo bultos > 10kg')..."
-                        style="width: 100%; padding: 9px 14px; padding-right: 36px; background: #0f172a; border: 1px solid #0284c7; border-radius: 8px; color: white; font-size: 0.88rem; outline: none; box-shadow: 0 0 10px rgba(2, 132, 199, 0.2);"
+                        placeholder="💬 Instruir al Chofer IA (ej: 'solo bavosi', 'de 22.68kg', 'sin villares', 'solo vigentes')..."
+                        style="width: 100%; padding: 9px 14px; background: #0f172a; border: 1px solid #0284c7; border-radius: 8px; color: white; font-size: 0.86rem; outline: none; box-shadow: 0 0 10px rgba(2, 132, 199, 0.2);"
                         onkeyup="if(event.key==='Enter') enviarInstruccionChoferIA();" />
                 </div>
-                <button onclick="enviarInstruccionChoferIA()" style="background: linear-gradient(135deg, #0284c7, #6366f1); color: white; border: none; padding: 9px 18px; border-radius: 8px; font-size: 0.85rem; font-weight: 700; cursor: pointer; white-space: nowrap; box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);">
+                <button onclick="enviarInstruccionChoferIA()" style="background: linear-gradient(135deg, #0284c7, #6366f1); color: white; border: none; padding: 9px 15px; border-radius: 8px; font-size: 0.83rem; font-weight: 700; cursor: pointer; white-space: nowrap; box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);">
                     ⚡ Enviar a Chofer IA
+                </button>
+                <button onclick="restaurarChoferIA()" title="Restaurar todas las ofertas originales del Chofer IA" style="background: #0f172a; color: #94a3b8; border: 1px solid #475569; padding: 9px 11px; border-radius: 8px; font-size: 0.8rem; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                    🔄 Todo
                 </button>
             </div>
 
@@ -630,6 +635,55 @@ async function enviarInstruccionChoferIA() {
     }
 }
 
+async function restaurarChoferIA() {
+    if (!articuloIdActualConciliacion) return;
+    window.tabConciliacionActiva = 'CHOFER_IA';
+    await abrirModuloConciliacionIA(articuloIdActualConciliacion, tagsActivosMemoria, {
+        criterio_orden: criterioOrdenMemoria,
+        excluir_cero: excluirCeroMemoria
+    });
+}
+
+async function ejecutarAuditoriaComiteGeminiIA(btn) {
+    if (!articuloIdActualConciliacion || !datosEstadoActualConciliacion) return;
+    const textoOrig = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Auditando con Gemini IA...';
+    }
+    try {
+        const response = await fetch('/api/produccion/conciliacion/articulos/auditar-ia', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ articulo_id: articuloIdActualConciliacion })
+        });
+        const resData = await response.json();
+        if (!resData.success) {
+            throw new Error(resData.message || 'No se pudo completar la auditoría con Gemini IA.');
+        }
+        const audit = resData.data || {};
+        datosEstadoActualConciliacion = {
+            ...datosEstadoActualConciliacion,
+            capa_chofer_ia: Array.isArray(audit.capa_chofer_ia) ? audit.capa_chofer_ia : datosEstadoActualConciliacion.capa_chofer_ia,
+            dictamen_gemini_ia: {
+                modelo: audit.modelo_ia || 'Gemini Flash',
+                veredicto: audit.veredicto_ejecutivo || '',
+                alertas: audit.alertas_detectadas || [],
+                fecha: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+            }
+        };
+        window.tabConciliacionActiva = 'CHOFER_IA';
+        renderizarContenidoConciliacion(datosEstadoActualConciliacion);
+    } catch (err) {
+        console.error('❌ Error en auditoría Gemini IA:', err);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = textoOrig || '🧠 Auditar con Comité Gemini IA';
+        }
+        Swal.fire('Aviso IA Gemini', err.message || 'No se pudo conectar con Gemini IA.', 'warning');
+    }
+}
+
 function toggleModoPrecioTarjeta(tipoArray, index, nuevoModo) {
     if (!datosEstadoActualConciliacion) return;
     
@@ -687,6 +741,7 @@ window.cambiarTabConciliacion = function(tabName) {
 };
 
 function cerrarModuloConciliacionIA() {
+    opcionesConciliacionActual = {};
     const overlay = document.getElementById('modulo-conciliacion-full-screen');
     if (overlay) overlay.remove();
 }
@@ -1027,14 +1082,66 @@ function renderizarContenidoConciliacion(data) {
         const itemsNivel2 = itemsConIndice.filter(x => x.item.prioridad_ia === 2);
         const itemsNivel3 = itemsConIndice.filter(x => x.item.prioridad_ia === 3);
         const itemsNivel4 = itemsConIndice.filter(x => x.item.prioridad_ia >= 4);
+        const topEntry = itemsNivel1.length > 0 ? itemsNivel1[0] : null;
+        const dictamenGemini = data.dictamen_gemini_ia || null;
+
+        let bannerRecomendadaHtml = '';
+        if (topEntry && topEntry.item) {
+            const topIt = topEntry.item;
+            const topKgFmt = topIt.costo_kilo_calculado.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const topBultoLamdaFmt = (topIt.costo_kilo_calculado * (parseFloat(art.kilos_unidad) || 1)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const badgeHabTop = topIt.es_proveedor_habitual
+                ? `<span style="background: rgba(245, 158, 11, 0.22); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.45); padding: 2px 8px; border-radius: 6px; font-size: 0.74rem; font-weight: 800;">⭐ Proveedor Habitual</span>`
+                : '';
+            bannerRecomendadaHtml = `
+                <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(2, 132, 199, 0.12)); border: 1.5px solid rgba(16, 185, 129, 0.5); border-radius: 12px; padding: 14px 18px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.12);">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;">
+                            <span style="background: #10b981; color: #052e16; font-weight: 900; font-size: 0.74rem; padding: 2px 9px; border-radius: 6px;">🏆 OFERTA RECOMENDADA #1</span>
+                            <strong style="color: #f8fafc; font-size: 0.98rem;">${topIt.proveedor_nombre}</strong>
+                            <span style="color: #38bdf8; font-family: monospace; font-size: 0.8rem; font-weight: 700;">[SKU: ${topIt.codigo_proveedor}]</span>
+                            ${badgeHabTop}
+                            <span style="color: #34d399; font-size: 0.76rem; font-weight: 700;">${topIt.etiqueta_antiguedad || ''}</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: #e2e8f0;">
+                            <strong>${topIt.descripcion_proveedor}</strong>${topIt.especificacion ? ` • <span style="color:#c084fc;">${topIt.especificacion}</span>` : ''} 
+                            • Empaque: <strong style="color:#38bdf8;">${topIt.presentacion_maestra}</strong> 
+                            • Costo Reposición: <strong style="color:#34d399; font-size: 0.96rem;">$${topKgFmt}/kg</strong>
+                        </div>
+                    </div>
+                    <button class="btn-confirm-costo" style="background: linear-gradient(135deg, #10b981, #059669); padding: 10px 16px; font-size: 0.84rem;" onclick="seleccionarEImpactarCostoTarjeta('CHOFER_IA', ${topEntry.idx})">
+                        ${opcionesConciliacionActual?.ldn4_ap_codigo
+                            ? `⚖️ Evaluar en LDN 4 ($${topKgFmt}/kg)`
+                            : `✅ Impactar Recomendada ($${topKgFmt}/kg • $${topBultoLamdaFmt}/bulto)`}
+                    </button>
+                </div>
+            `;
+        }
+
+        let bannerDictamenGeminiHtml = '';
+        if (dictamenGemini && dictamenGemini.veredicto) {
+            const alertasHtml = Array.isArray(dictamenGemini.alertas) && dictamenGemini.alertas.length > 0
+                ? `<div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">${dictamenGemini.alertas.map(al => `<span style="background: rgba(245, 158, 11, 0.16); color: #fde047; border: 1px solid rgba(245, 158, 11, 0.35); padding: 3px 9px; border-radius: 6px; font-size: 0.75rem; font-weight: 600;">⚠️ ${al}</span>`).join('')}</div>`
+                : '';
+            bannerDictamenGeminiHtml = `
+                <div style="background: rgba(139, 92, 246, 0.12); border: 1px solid rgba(168, 85, 247, 0.45); border-radius: 10px; padding: 14px 18px; margin-bottom: 18px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+                        <span style="color: #c084fc; font-weight: 800; font-size: 0.88rem;">🧠 Dictamen Verificado por Comité Cognitivo (${dictamenGemini.modelo} • ${dictamenGemini.fecha}):</span>
+                        <span style="font-size: 0.73rem; color: #a5b4fc;">Precios 100% deterministas desde Tabla Maestra B4.1</span>
+                    </div>
+                    <div style="font-size: 0.85rem; color: #f1f5f9; line-height: 1.45;">${dictamenGemini.veredicto}</div>
+                    ${alertasHtml}
+                </div>
+            `;
+        }
 
         tabContentHtml = `
             <!-- INSIGHT Y BLOQUES DE RAZONAMIENTO ESTRUCTURADO DEL CHOFER IA -->
-            <div style="background: linear-gradient(135deg, rgba(2, 132, 199, 0.12), rgba(99, 102, 241, 0.12)); border: 1px solid #0284c7; padding: 18px 22px; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 4px 16px rgba(2, 132, 199, 0.15);">
+            <div style="background: linear-gradient(135deg, rgba(2, 132, 199, 0.12), rgba(99, 102, 241, 0.12)); border: 1px solid #0284c7; padding: 18px 22px; border-radius: 12px; margin-bottom: 18px; box-shadow: 0 4px 16px rgba(2, 132, 199, 0.15);">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: ${bloquesRazonamiento.length > 0 ? '14px' : '0'};">
                     <div>
                         <div style="display: flex; align-items: center; gap: 8px; font-size: 0.98rem; font-weight: 700; color: #38bdf8; margin-bottom: 8px; flex-wrap: wrap;">
-                            <span>🧠 Cadena de Razonamiento del Chofer IA:</span>
+                            <span>🧠 Comité de 4 Agentes del Chofer IA (Mercado Completo + Habitual):</span>
                             <span style="background: rgba(56, 189, 248, 0.2); color: #38bdf8; padding: 3px 10px; border-radius: 6px; font-size: 0.76rem; border: 1px solid rgba(56, 189, 248, 0.3);">🌱 Materia Prima: ${entidadStr}</span>
                             ${calibreTargetStr ? `<span style="background: rgba(16, 185, 129, 0.22); color: #34d399; padding: 3px 10px; border-radius: 6px; font-size: 0.76rem; border: 1px solid rgba(16, 185, 129, 0.45); font-weight: 800;">📏 Calibre/Tamaño Objetivo: ${calibreTargetStr}</span>` : ''}
                             ${ingVincStr ? `<span style="background: rgba(99, 102, 241, 0.22); color: #a5b4fc; padding: 3px 10px; border-radius: 6px; font-size: 0.76rem; border: 1px solid rgba(99, 102, 241, 0.45);">🔗 Insumo Fábrica: ${ingVincStr}</span>` : ''}
@@ -1044,11 +1151,16 @@ function renderizarContenidoConciliacion(data) {
                         </div>
                         <div style="font-size: 0.84rem; color: #cbd5e1; line-height: 1.5; max-width: 960px;">
                             💡 <strong>Síntesis de Ordenamiento:</strong>
-                            <strong style="color: #34d399;">${itemsNivel1.length} coincidencias fuertes vigentes</strong> en primera línea${itemsNivel2.length > 0 ? `, <strong style="color: #38bdf8;">${itemsNivel2.length} variantes vigentes (otro calibre o caja fraccionada 10x1kg)</strong> en segundo orden` : ''}${itemsNivel3.length > 0 ? `, <strong style="color: #fbbf24;">${itemsNivel3.length} referencias secundarias</strong>` : ''}${itemsNivel4.length > 0 ? ` y <strong style="color: #f87171;">${itemsNivel4.length} ofertas vencidas (> 45 días)</strong> desplazadas al fondo` : ''}.
+                            <strong style="color: #34d399;">${itemsNivel1.length} coincidencias fuertes vigentes</strong> en primera línea (incluyendo al Proveedor Habitual si aplica)${itemsNivel2.length > 0 ? `, <strong style="color: #38bdf8;">${itemsNivel2.length} variantes vigentes (otro calibre o caja fraccionada 10x1kg)</strong> en segundo orden` : ''}${itemsNivel3.length > 0 ? `, <strong style="color: #fbbf24;">${itemsNivel3.length} referencias secundarias</strong>` : ''}${itemsNivel4.length > 0 ? ` y <strong style="color: #f87171;">${itemsNivel4.length} ofertas vencidas (> 45 días)</strong> desplazadas al fondo` : ''}.
                         </div>
                     </div>
-                    <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px 12px; font-size: 0.74rem; color: #94a3b8; text-align: right;">
-                        💬 Escribe en la barra superior y pulsa <strong>⚡ Enviar a Chofer IA</strong> para instruir más filtros.
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+                        <button onclick="ejecutarAuditoriaComiteGeminiIA(this)" style="background: linear-gradient(135deg, #7c3aed, #6366f1); color: white; border: 1px solid #a78bfa; padding: 8px 14px; border-radius: 8px; font-size: 0.8rem; font-weight: 800; cursor: pointer; box-shadow: 0 2px 10px rgba(124, 58, 237, 0.35); display: inline-flex; align-items: center; gap: 6px;">
+                            🧠 Auditar Ranking con Comité Gemini IA
+                        </button>
+                        <div style="font-size: 0.72rem; color: #94a3b8; text-align: right;">
+                            💬 También podés escribir arriba (ej: <em>"solo bavosi"</em>, <em>"sin villares"</em>)
+                        </div>
                     </div>
                 </div>
 
@@ -1070,6 +1182,9 @@ function renderizarContenidoConciliacion(data) {
                     </div>
                 ` : ''}
             </div>
+
+            ${bannerDictamenGeminiHtml}
+            ${bannerRecomendadaHtml}
 
             <!-- SECCIONES JERÁRQUICAS DE ALTERNATIVAS DE MERCADO -->
             <div style="margin-bottom: 24px;">
@@ -1294,12 +1409,16 @@ function crearTarjetaProveedor(item, articuloId, kilosUnidadArt, tipoArray, inde
     }
 
     return `
-        <div class="prov-card">
+        <div class="prov-card" style="${item.es_recomendada_top ? 'border: 1.5px solid #10b981; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.18);' : ''}">
             <div>
                 <!-- CABECERA TARJETA: PROVEEDOR Y RECIENCIA -->
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 6px;">
                     <div>
-                        <div style="font-weight: 700; color: #f8fafc; font-size: 0.95rem;">${item.proveedor_nombre}</div>
+                        <div style="font-weight: 700; color: #f8fafc; font-size: 0.95rem; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                            <span>${item.proveedor_nombre}</span>
+                            ${item.es_recomendada_top ? `<span style="background: #10b981; color: #052e16; font-size: 0.67rem; font-weight: 900; padding: 1px 6px; border-radius: 4px;">🏆 #1</span>` : ''}
+                            ${item.es_proveedor_habitual ? `<span style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.45); font-size: 0.68rem; font-weight: 800; padding: 1px 6px; border-radius: 4px;">⭐ Habitual</span>` : ''}
+                        </div>
                         <div style="font-size: 0.75rem; color: #38bdf8; font-family: monospace; font-weight: 700;">Cód SKU: ${item.codigo_proveedor}</div>
                     </div>
                     <span class="${badgeClass}">${item.etiqueta_antiguedad}</span>
@@ -1390,7 +1509,9 @@ function crearTarjetaProveedor(item, articuloId, kilosUnidadArt, tipoArray, inde
                 <button class="btn-confirm-costo" 
                     style="width: 100%; justify-content: center; ${tipoPrecioActual === 'PROMO' ? 'background: linear-gradient(135deg, #7c3aed, #a855f7); border: 1px solid #c084fc;' : ''}"
                     onclick="seleccionarEImpactarCostoTarjeta('${tipoArray}', ${index})">
-                    ${tipoPrecioActual === 'PROMO' ? '🔥 Impactar Costo Promo' : '✅ Impactar Costo'} ($${costoBultoFinal.toLocaleString('es-AR', {minimumFractionDigits: 2})}/bulto)
+                    ${opcionesConciliacionActual?.ldn4_ap_codigo
+                        ? `${tipoPrecioActual === 'PROMO' ? '🔥 Evaluar Promo en LDN 4' : '⚖️ Evaluar en LDN 4'} ($${costoKiloFinal.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)`
+                        : `${tipoPrecioActual === 'PROMO' ? '🔥 Impactar Costo Promo' : '✅ Impactar Costo'} ($${costoBultoFinal.toLocaleString('es-AR', {minimumFractionDigits: 2})}/bulto)`}
                 </button>
             </div>
         </div>
@@ -1471,6 +1592,60 @@ async function confirmarCostoReposicionDesdeIA(
     const porcentajeIvaFinal = porcentajeIvaExplicit !== undefined && porcentajeIvaExplicit !== null
         ? parseFloat(porcentajeIvaExplicit)
         : (artLamda?.porcentaje_iva || 21);
+
+    // Flujo dedicado Make vs Buy para [LDN 4]: evita pisar el ingrediente sin pasar por el comparador de Tostadero
+    if (opcionesConciliacionActual && opcionesConciliacionActual.ldn4_ap_codigo && typeof window.aplicarOfertaProveedorLdn4 === 'function') {
+        const costoProdRef = parseFloat(opcionesConciliacionActual.costo_prod_ing_kg) || 0;
+        const diffVsProd = costoProdRef > 0 ? (costoKiloCalculado - costoProdRef) : 0;
+        const diffTexto = costoProdRef > 0
+            ? `<div style="margin-top:8px; padding:8px 10px; border-radius:6px; background:${diffVsProd <= 0 ? 'rgba(16,185,129,0.14)' : 'rgba(245,158,11,0.14)'}; border:1px solid ${diffVsProd <= 0 ? 'rgba(16,185,129,0.4)' : 'rgba(245,158,11,0.4)'}; font-size:0.84rem;">
+                 ⚖️ Comparado contra <strong>Producir UP ($${costoProdRef.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</strong>:
+                 <strong style="color:${diffVsProd <= 0 ? '#34d399' : '#fbbf24'};">${diffVsProd > 0 ? '+' : ''}$${diffVsProd.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+               </div>`
+            : '';
+
+        const resLdn4 = await Swal.fire({
+            title: '⚖️ Llevar Oferta al Comparador [LDN 4]',
+            html: `
+                <div style="text-align:left; font-size:0.88rem; color:#cbd5e1;">
+                    <p>Oferta seleccionada para <strong>${artLamda?.descripcion || articuloId}</strong>:</p>
+                    <ul>
+                        <li><strong>Proveedor:</strong> ${proveedorNombre || 'Proveedor'} ${codigoProveedor ? `(${codigoProveedor})` : ''}</li>
+                        <li><strong>Producto:</strong> ${descripcionProveedor || '-'}</li>
+                        <li><strong>Costo Terminado:</strong> <strong style="color:#38bdf8;">$${costoKiloCalculado.toLocaleString('es-AR', {minimumFractionDigits: 2})} / kg</strong></li>
+                    </ul>
+                    ${diffTexto}
+                    <p style="font-size:0.78rem; color:#94a3b8; margin-top:8px;">Esto cargará el dato en el Paso 2 de LDN 4 sin tocar aún los precios en BD hasta que vos confirmes la cadena.</p>
+                </div>
+            `,
+            icon: 'question',
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: '🛒 Activar como Fuente Rectora (Compra)',
+            denyButtonText: '📊 Solo guardar Benchmark',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#0284c7',
+            denyButtonColor: '#475569',
+            cancelButtonColor: '#334155',
+            background: '#151e2e',
+            color: '#f3f4f6'
+        });
+
+        if (!resLdn4.isConfirmed && !resLdn4.isDenied) return;
+        const activarComoRector = Boolean(resLdn4.isConfirmed);
+        const targetUp = opcionesConciliacionActual.ldn4_up_codigo;
+        cerrarModuloConciliacionIA();
+        await window.aplicarOfertaProveedorLdn4(targetUp, {
+            compra_origen: String(codigoProveedor || '').startsWith('LOTE') || String(proveedorId || '') === 'SUPABASE_LOTE' ? 'LOTE' : 'TABLA_MAESTRA',
+            compra_costo_kg: costoKiloCalculado,
+            compra_proveedor_nombre: proveedorNombre || 'Proveedor',
+            compra_proveedor_codigo: codigoProveedor || null,
+            compra_descripcion: descripcionProveedor || null,
+            compra_sku_bulto: null,
+            compra_updated_at: fechaActualizacion || new Date().toISOString()
+        }, activarComoRector);
+        return;
+    }
 
     const result = await Swal.fire({
         title: esIngrediente ? '¿Confirmar Costo de Reposición del Insumo?' : '¿Confirmar Costo de Reposición e IVA?',
@@ -1825,6 +2000,8 @@ window.reprocesarBúsquedaConEtiquetasActivas = reprocesarBúsquedaConEtiquetasA
 window.guardarEstrategiaEnBD = guardarEstrategiaEnBD;
 window.eliminarEstrategiaDeBD = eliminarEstrategiaDeBD;
 window.enviarInstruccionChoferIA = enviarInstruccionChoferIA;
+window.restaurarChoferIA = restaurarChoferIA;
+window.ejecutarAuditoriaComiteGeminiIA = ejecutarAuditoriaComiteGeminiIA;
 window.toggleModoPrecioTarjeta = toggleModoPrecioTarjeta;
 window.toggleTipoPrecioTarjeta = toggleTipoPrecioTarjeta;
 window.cerrarModuloConciliacionIA = cerrarModuloConciliacionIA;

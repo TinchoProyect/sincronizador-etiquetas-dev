@@ -130,6 +130,31 @@ class ConciliacionController {
     }
 
     /**
+     * POST /api/produccion/conciliacion/articulos/auditar-ia
+     * Ejecuta bajo demanda la auditoría cognitiva con el Comité Gemini IA sobre las ofertas candidatas del artículo
+     */
+    async auditarConIA(req, res) {
+        try {
+            const { articulo_id } = req.body;
+            if (!articulo_id) {
+                return res.status(400).json({ success: false, message: 'El parámetro articulo_id es obligatorio.' });
+            }
+
+            const resultado = await conciliacionArticulosService.auditarConComiteGeminiIA(articulo_id);
+            return res.json({
+                success: true,
+                data: resultado
+            });
+        } catch (err) {
+            console.error('❌ Error en auditarConIA conciliación:', err);
+            return res.status(500).json({
+                success: false,
+                message: err.message || 'Error al ejecutar la auditoría cognitiva con Gemini IA.'
+            });
+        }
+    }
+
+    /**
      * POST /api/produccion/conciliacion/articulos/confirmar
      * Confirma la selección del operador, actualiza costo_base en bunker_articulos, 
      * recalcula listas comerciales en bunker_lista_articulos y registra auditoría.

@@ -164,6 +164,7 @@ router.use('/mantenimiento', mantenimientoRouter); // ← /api/produccion/manten
 const conciliacionCtrl = require('../controllers/conciliacionController');
 router.post('/conciliacion/articulos/match', (req, res) => conciliacionCtrl.buscarCandidatos(req, res));
 router.post('/conciliacion/articulos/refinar-paso', (req, res) => conciliacionCtrl.refinarPaso(req, res));
+router.post('/conciliacion/articulos/auditar-ia', (req, res) => conciliacionCtrl.auditarConIA(req, res));
 router.post('/conciliacion/articulos/guardar-estrategia', (req, res) => conciliacionCtrl.guardarEstrategia(req, res));
 router.delete('/conciliacion/articulos/eliminar-estrategia', (req, res) => conciliacionCtrl.eliminarEstrategia(req, res));
 router.post('/conciliacion/articulos/confirmar', (req, res) => conciliacionCtrl.confirmarConciliacion(req, res));
@@ -5237,7 +5238,8 @@ router.get('/simulacion/inicializar', async (req, res) => {
             familiasBunker,
             articulosProduccionExternaRelacion,
             tarifasRendimiento,
-            mermasHistorial
+            mermasHistorial,
+            conciliacionesRecientes
         ] = await Promise.all([
             obtenerIngredientes(),
             db.query(`SELECT mix_id, ingrediente_id, cantidad FROM public.ingrediente_composicion`),
@@ -5482,6 +5484,14 @@ router.get('/simulacion/inicializar', async (req, res) => {
                     fecha_registro
                 FROM base_mermas
                 ORDER BY fecha_registro DESC
+            `),
+            db.query(`
+                SELECT DISTINCT ON (UPPER(BTRIM(COALESCE(articulo_id, ''))), ingrediente_id)
+                       id, articulo_id, ingrediente_id, proveedor_nombre, codigo_proveedor,
+                       descripcion_proveedor, precio_costo, costo_kilo_calculado,
+                       fecha_actualizacion_oferta, fecha_conciliacion
+                FROM public.bunker_conciliacion_articulos
+                ORDER BY UPPER(BTRIM(COALESCE(articulo_id, ''))), ingrediente_id, fecha_conciliacion DESC NULLS LAST, id DESC
             `)
         ]);
 
@@ -5499,11 +5509,83 @@ router.get('/simulacion/inicializar', async (req, res) => {
             familiasBunker: familiasBunker.rows,
             articulosProduccionExternaRelacion: articulosProduccionExternaRelacion.rows,
             tarifasRendimiento: tarifasRendimiento.rows,
-            mermasHistorial: mermasHistorial.rows
+            mermasHistorial: mermasHistorial.rows,
+            conciliacionesRecientes: conciliacionesRecientes.rows
         });
     } catch (error) {
         console.error('❌ Error en GET /simulacion/inicializar:', error);
         res.status(500).json({ error: 'Error al inicializar los datos de simulación', detalle: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/ldn4/fuente-abastecimiento/:apCodigo
+ * Persiste en propiedades_dinamicas->fuente_abastecimiento_ldn4 del Artículo Puente la decisión
+ * explícita del usuario (Producción UP vs Compra Proveedor vs Manual) y su benchmark de proveedor,
+ * sin alterar precios ni costo_base hasta que el operador confirme la propagación.
+ */
+router.post('/ldn4/fuente-abastecimiento/:apCodigo', async (req, res) => {
+    try {
+        const db = req.db || pool;
+        const apCodigo = String(req.params.apCodigo || '').trim();
+        if (!apCodigo) {
+            return res.status(400).json({ success: false, error: 'Código de Artículo Puente requerido.' });
+        }
+
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const modosValidos = new Set(['PRODUCCION_UP', 'COMPRA_PROVEEDOR', 'MANUAL']);
+        const patch = { updated_at: new Date().toISOString() };
+
+        if (body.modo_rector !== undefined) {
+            const modoNorm = String(body.modo_rector || '').trim().toUpperCase();
+            if (!modosValidos.has(modoNorm)) {
+                return res.status(400).json({ success: false, error: 'modo_rector inválido.' });
+            }
+            patch.modo_rector = modoNorm;
+        }
+        if (body.compra_origen !== undefined) patch.compra_origen = body.compra_origen ? String(body.compra_origen).trim().toUpperCase() : null;
+        if (body.compra_sku_bulto !== undefined) patch.compra_sku_bulto = body.compra_sku_bulto ? String(body.compra_sku_bulto).trim() : null;
+        if (body.compra_costo_kg !== undefined) {
+            const val = parseFloat(body.compra_costo_kg);
+            patch.compra_costo_kg = Number.isFinite(val) && val >= 0 ? Number(val.toFixed(2)) : null;
+        }
+        if (body.compra_aplica_mo_ap !== undefined) patch.compra_aplica_mo_ap = Boolean(body.compra_aplica_mo_ap);
+        if (body.compra_proveedor_nombre !== undefined) patch.compra_proveedor_nombre = body.compra_proveedor_nombre ? String(body.compra_proveedor_nombre).trim() : null;
+        if (body.compra_proveedor_codigo !== undefined) patch.compra_proveedor_codigo = body.compra_proveedor_codigo ? String(body.compra_proveedor_codigo).trim() : null;
+        if (body.compra_descripcion !== undefined) patch.compra_descripcion = body.compra_descripcion ? String(body.compra_descripcion).trim() : null;
+        if (body.compra_updated_at !== undefined) patch.compra_updated_at = body.compra_updated_at || new Date().toISOString();
+        if (body.manual_costo_kg !== undefined) {
+            const valM = parseFloat(body.manual_costo_kg);
+            patch.manual_costo_kg = Number.isFinite(valM) && valM >= 0 ? Number(valM.toFixed(2)) : null;
+        }
+        if (body.manual_nota !== undefined) patch.manual_nota = body.manual_nota ? String(body.manual_nota).trim() : null;
+
+        const upd = await db.query(
+            `UPDATE public.bunker_articulos
+             SET propiedades_dinamicas = jsonb_set(
+                 COALESCE(propiedades_dinamicas, '{}'::jsonb),
+                 '{fuente_abastecimiento_ldn4}',
+                 COALESCE(propiedades_dinamicas->'fuente_abastecimiento_ldn4', '{}'::jsonb) || $1::jsonb,
+                 true
+             ),
+             updated_at = CURRENT_TIMESTAMP
+             WHERE UPPER(BTRIM(articulo_id)) = UPPER(BTRIM($2))
+             RETURNING articulo_id, propiedades_dinamicas->'fuente_abastecimiento_ldn4' AS fuente_abastecimiento_ldn4`,
+            [JSON.stringify(patch), apCodigo]
+        );
+
+        if (upd.rows.length === 0) {
+            return res.status(404).json({ success: false, error: `Artículo Puente ${apCodigo} no encontrado.` });
+        }
+
+        res.json({
+            success: true,
+            articulo_id: upd.rows[0].articulo_id,
+            fuente_abastecimiento_ldn4: upd.rows[0].fuente_abastecimiento_ldn4
+        });
+    } catch (error) {
+        console.error('❌ Error en POST /ldn4/fuente-abastecimiento:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
