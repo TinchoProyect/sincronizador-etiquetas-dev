@@ -133,6 +133,7 @@ router.put('/articulos/:articuloId/kilos-unidad', async (req, res) => {
     }
 });
 const {
+    buildSqlCostoNetoKiloBunker,
     obtenerIngredientes,
     obtenerIngrediente,
     crearIngrediente,
@@ -930,7 +931,7 @@ router.get('/ingredientes/:id', async (req, res) => {
     }
 });
 
-// ✅ BUSCADOR DE ARTÍCULOS BÚNKER (Métrica neta de adquisición sin márgenes ni IVA)
+// ✅ BUSCADOR DE ARTÍCULOS BÚNKER (Métrica neta de adquisición por kg, sin márgenes ni IVA)
 router.get('/bunker-articulos/buscar', async (req, res) => {
     try {
         const { q } = req.query;
@@ -938,67 +939,44 @@ router.get('/bunker-articulos/buscar', async (req, res) => {
             return res.json([]);
         }
 
-        const terminos = q.split(' ').filter(t => t.trim() !== '');
+        const normalizarTokenBusqueda = (txt) => String(txt || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+
+        const terminos = q.split(/\s+/).map(normalizarTokenBusqueda).filter(Boolean);
         const whereConds = [];
         const params = [];
+        const exprNormalizada = `translate(LOWER(COALESCE(ba.descripcion, '') || ' ' || COALESCE(ba.descripcion_generada, '') || ' ' || COALESCE(ba.articulo_id, '')), 'áéíóúüñ', 'aeiouun')`;
 
-        terminos.forEach((term, index) => {
-            const paramIdx = index + 1;
-            whereConds.push(`(ba.descripcion ILIKE $${paramIdx} OR ba.descripcion_generada ILIKE $${paramIdx} OR ba.articulo_id ILIKE $${paramIdx})`);
-            params.push(`%${term}%`);
+        terminos.forEach((term) => {
+            if (term === 'ap') {
+                params.push('%ap%', '%articulo puente%');
+                const p1 = params.length - 1;
+                const p2 = params.length;
+                whereConds.push(`(${exprNormalizada} LIKE $${p1} OR ${exprNormalizada} LIKE $${p2})`);
+                return;
+            }
+            const stem = term.length >= 5 ? term.replace(/(as|os|[ao])$/, '') : term;
+            const patron = stem.length >= 4 ? stem : term;
+            params.push(`%${patron}%`);
+            whereConds.push(`${exprNormalizada} LIKE $${params.length}`);
         });
 
         const filterSQL = whereConds.length > 0 ? whereConds.join(' AND ') : '1=1';
+        const costoNetoKiloSQL = buildSqlCostoNetoKiloBunker('ba', 'pa');
 
         const query = `
             SELECT 
                 ba.articulo_id AS codigo,
                 ba.descripcion,
-                COALESCE(
-                    -- 1. Costo Materia Prima (Receta o ERP/Búnker base)
-                    COALESCE(
-                        NULLIF(
-                            (
-                                SELECT SUM(ri.cantidad * COALESCE(i2.costo_patron, 0.00)) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
-                                FROM public.receta_ingredientes ri
-                                JOIN public.ingredientes i2 ON ri.ingrediente_id = i2.id
-                                WHERE ri.receta_id = (
-                                    SELECT r.id 
-                                    FROM public.recetas r 
-                                    WHERE r.articulo_numero = ba.articulo_id 
-                                    ORDER BY r.fecha_creacion DESC 
-                                    LIMIT 1
-                                )
-                            ),
-                            0.00
-                        ),
-                        pa.costo,
-                        ba.costo_base,
-                        0.00
-                    ) +
-                    -- 2. Costo Operativo Consolidado (Mano de obra + Insumos de empaque por kilo de la primera lista no exenta)
-                    COALESCE(
-                        (
-                            SELECT 
-                                (
-                                    COALESCE(la.costo_tiempo, 0.00) + 
-                                    COALESCE((SELECT SUM(li.cantidad * li.costo_unitario_capturado) 
-                                              FROM public.bunker_lista_insumos li 
-                                              WHERE li.lista_articulo_id = la.id AND li.incluido = true), 0.00)
-                                ) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
-                            FROM public.bunker_lista_articulos la
-                            WHERE la.articulo_numero = ba.articulo_id AND COALESCE(la.exencion_operativa, false) = false
-                            ORDER BY la.lista_id ASC
-                            LIMIT 1
-                        ),
-                        0.00
-                    ),
-                    0.00
-                )::numeric(12,2) AS costo_base
+                COALESCE(ba.descripcion_generada, ba.descripcion) AS descripcion_generada,
+                ${costoNetoKiloSQL} AS costo_base
             FROM public.bunker_articulos ba
             LEFT JOIN public.precios_articulos pa ON ba.articulo_id = pa.articulo
             WHERE ${filterSQL}
-            ORDER BY ba.descripcion ASC
+            ORDER BY COALESCE(ba.descripcion_generada, ba.descripcion) ASC
             LIMIT 50
         `;
 
@@ -1027,6 +1005,14 @@ router.post('/ingredientes/:id/bunker-articulos', async (req, res) => {
         `;
         await req.db.query(query, [ingredienteId, bunker_articulo_id]);
 
+        // Mantener espejo determinista en ingredientes.articulo_vinculado_numero si aún estaba vacío
+        await req.db.query(`
+            UPDATE public.ingredientes
+            SET articulo_vinculado_numero = $2
+            WHERE id = $1
+              AND NULLIF(BTRIM(COALESCE(articulo_vinculado_numero, '')), '') IS NULL
+        `, [ingredienteId, bunker_articulo_id]);
+
         res.json({ success: true, message: 'Artículo vinculado correctamente' });
     } catch (error) {
         console.error('❌ Error en POST /ingredientes/:id/bunker-articulos:', error);
@@ -1053,6 +1039,17 @@ router.delete('/ingredientes/:id/bunker-articulos/:articulo_id', async (req, res
         if (result.rowCount === 0) {
             return res.status(404).json({ error: 'Vínculo no encontrado' });
         }
+
+        await req.db.query(`
+            UPDATE public.ingredientes
+            SET articulo_vinculado_numero = (
+                SELECT bunker_articulo_id
+                FROM public.ingrediente_bunker_articulos
+                WHERE ingrediente_id = $1
+                LIMIT 1
+            )
+            WHERE id = $1 AND articulo_vinculado_numero = $2
+        `, [ingredienteId, articulo_id]);
 
         res.json({ success: true, message: 'Artículo desvinculado correctamente' });
     } catch (error) {

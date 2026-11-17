@@ -909,11 +909,11 @@
                         </div>
                         
                         <!-- Panel de Vinculación de Artículo Comercial -->
-                        <div style="margin-top: 10px; margin-bottom: 12px; padding: 8px 12px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85em;">
-                            <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                                <span style="font-size: 1.1em;">🔄</span>
-                                <span style="font-weight: 700; color: #c2410c;">Vínculo a Artículo Venta:</span>
-                                <span id="desglose-vinculo-articulo-label" style="font-style: italic; color: #9a3412; font-weight: 500;">Ningún artículo vinculado</span>
+                        <div id="desglose-bloque-vinculo-comercial" style="margin-top: 10px; margin-bottom: 12px; padding: 8px 12px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.85em;">
+                            <div style="display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;">
+                                <span style="font-size: 1.1em; flex-shrink: 0;">🔄</span>
+                                <span style="font-weight: 700; color: #c2410c; flex-shrink: 0;">Vínculo a Artículo Venta:</span>
+                                <span id="desglose-vinculo-articulo-label" style="font-style: italic; color: #9a3412; font-weight: 500; overflow: hidden; text-overflow: ellipsis;">Ningún artículo vinculado</span>
                             </div>
                             <div style="display: flex; gap: 4px; flex-shrink: 0;">
                                 <button type="button" id="btn-desglose-vincular-art" class="btn-agregar-inline" style="background: #ff9800; color: white; border: none; padding: 4px 8px; font-size: 0.8em; border-radius: 4px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 2px;" onclick="window.abrirBuscadorArticuloDesglose()">
@@ -926,7 +926,7 @@
                         </div>
                         
                         <!-- Bloque de cálculo dinámico informativo -->
-                        <div style="display: flex; justify-content: space-between; align-items: center; background: white; padding: 10px 15px; border-radius: 6px; border: 1px solid #dcfce7; font-size: 0.9rem;">
+                        <div id="desglose-bloque-valorizacion" style="display: flex; justify-content: space-between; align-items: center; background: white; padding: 10px 15px; border-radius: 6px; border: 1px solid #dcfce7; font-size: 0.9rem;">
                             <div>
                                 <span style="color: #475569;">Costo Patrón Activo:</span>
                                 <span id="desglose-costo-patron-activo" style="font-weight: bold; color: #15803d; font-family: monospace; font-size: 0.95rem;">$ 0.00</span>
@@ -1242,7 +1242,7 @@
         // Función para cargar usuarios con stock y crear lista en panel
         async function inicializarSectoresPanel() {
             try {
-                const response = await fetch('http://localhost:3002/api/produccion/ingredientes/usuarios-con-stock');
+                const response = await fetch('/api/produccion/ingredientes/usuarios-con-stock');
 
                 if (!response.ok) {
                     console.warn('⚠️ No se pudieron cargar usuarios con stock');

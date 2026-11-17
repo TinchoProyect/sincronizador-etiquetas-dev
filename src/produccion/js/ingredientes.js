@@ -84,7 +84,7 @@ function restaurarEstadoVisualFiltros() {
 // GESTIÓN DE FILTROS EN RECARGA
 async function recargarDatosMantenendoFiltros() {
     try {
-        const response = await fetch('http://localhost:3002/api/produccion/ingredientes');
+        const response = await fetch('/api/produccion/ingredientes');
         if (!response.ok) throw new Error('Error al obtener los datos');
         const datos = await response.json();
         const ingredientesConEstado = datos.map(d => ({ ...d, esMix: d.es_mix }));
@@ -514,10 +514,10 @@ async function cargarIngredientes(usuarioId = null) {
                 inputFiltroNombre.value = '';
             }
 
-            response = await fetch(`http://localhost:3002/api/produccion/ingredientes/stock-usuario/${usuarioId}`);
+            response = await fetch(`/api/produccion/ingredientes/stock-usuario/${usuarioId}`);
         } else {
             vistaActual = 'deposito';
-            response = await fetch('http://localhost:3002/api/produccion/ingredientes');
+            response = await fetch('/api/produccion/ingredientes');
         }
 
         if (!response.ok) {
@@ -643,7 +643,7 @@ async function actualizarSectorIngrediente(ingredienteId, nuevoSectorId, selecto
         };
 
         // Realizar petición de actualización
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
+        const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
@@ -760,7 +760,7 @@ async function cargarNutrientes(ingredienteId) {
     }
 
     // Cargar del servidor
-    const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/nutrientes`);
+    const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}/nutrientes`);
 
     if (!response.ok) {
         throw new Error('Error al cargar nutrientes');
@@ -949,7 +949,7 @@ function renderizarTablaMix(componentes) {
 async function toggleVinculo(vinculoId, nuevoEstado, ingredienteId) {
     try {
         const response = await fetch(
-            `http://localhost:3002/api/produccion/ingredientes/nutrientes/${vinculoId}`,
+            `/api/produccion/ingredientes/nutrientes/${vinculoId}`,
             {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -1277,7 +1277,7 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
 // Función para crear un nuevo ingrediente
 async function crearIngrediente(datos) {
     try {
-        const response = await fetch('http://localhost:3002/api/produccion/ingredientes', {
+        const response = await fetch('/api/produccion/ingredientes', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1311,7 +1311,7 @@ async function crearIngrediente(datos) {
 async function actualizarIngrediente(id, datos) {
     try {
         guardarEstadoFiltros();
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`, {
+        const response = await fetch(`/api/produccion/ingredientes/${id}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
@@ -1342,7 +1342,7 @@ async function eliminarIngrediente(id) {
 
     try {
         guardarEstadoFiltros();
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`, {
+        const response = await fetch(`/api/produccion/ingredientes/${id}`, {
             method: 'DELETE'
         });
 
@@ -1363,7 +1363,7 @@ async function eliminarIngrediente(id) {
 // Función para editar un ingrediente
 async function editarIngrediente(id) {
     try {
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}`);
+        const response = await fetch(`/api/produccion/ingredientes/${id}`);
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.error || 'Error al obtener el ingrediente');
@@ -1767,7 +1767,7 @@ async function eliminarComposicionMix(id) {
         guardarEstadoFiltros();
 
         // Usar el nuevo endpoint que elimina toda la composición y actualiza receta_base_kg
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}/composicion`, {
+        const response = await fetch(`/api/produccion/ingredientes/${id}/composicion`, {
             method: 'DELETE'
         });
 
@@ -1802,7 +1802,7 @@ async function abrirTrazabilidadDesdeFicha() {
         const modal = document.getElementById('modal-trazabilidad');
         modal.style.display = 'block';
         
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${id}/trazabilidad`);
+        const response = await fetch(`/api/produccion/ingredientes/${id}/trazabilidad`);
         if (!response.ok) {
             throw new Error('Error al cargar la trazabilidad');
         }
@@ -2169,7 +2169,7 @@ window.abrirModalSector = async function(ingredienteId, sectorActualId) {
             const val = document.getElementById('swal-sectores').value;
             Swal.showLoading();
             try {
-                let r = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
+                let r = await fetch(`/api/produccion/ingredientes/${ingredienteId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ sector_id: val || null })
@@ -2215,7 +2215,7 @@ window.ingredientesAjusteSeleccionados = new Map(); // Mapa id => {nombre, stock
 // FASE 1: INICIAR Y ELEGIR USUARIO
 window.iniciarFlujoAjuste = async () => {
     try {
-        const response = await fetch('http://localhost:3002/api/usuarios');
+        const response = await fetch('/api/usuarios');
         if (!response.ok) throw new Error('Error al cargar usuarios');
         const usuarios = await response.json();
         
@@ -2643,7 +2643,7 @@ window.abrirModalDesglose = async function(ingredienteId) {
 
     // Obtener datos frescos del ingrediente desde el backend para asegurar consistencia (especialmente bunker_articulos y costo_patron)
     try {
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`);
+        const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}`);
         if (response.ok) {
             const freshData = await response.json();
             ingrediente = { ...ingrediente, ...freshData };
@@ -2696,172 +2696,177 @@ window.abrirModalDesglose = async function(ingredienteId) {
     const mostrarPrecios = window.mostrarValoresMonetarios;
 
     if (seccionCostos) {
-        if (mostrarPrecios || bunkerArticulos.length > 0) {
-            seccionCostos.style.display = 'block';
+        seccionCostos.style.display = 'block';
 
-            // Tarjetas tradicionales (Lote, Reposición, Costo Manual)
-            const tarjetasTradicionales = gridCostos ? gridCostos.querySelectorAll('div:not(.card-costo-bunker-dinamico):not(#card-costo-formula)') : [];
-            const cardFormula = document.getElementById('card-costo-formula');
-            const bloqueValorizacion = seccionCostos.querySelector('div:last-child'); // El contenedor de costo patrón y valorización
+        // Tarjetas tradicionales (Lote, Reposición, Costo Manual, Artículo Vinculado)
+        const tarjetasTradicionales = gridCostos
+            ? gridCostos.querySelectorAll(':scope > div:not(.card-costo-bunker-dinamico):not(#card-costo-formula)')
+            : [];
+        const cardFormula = document.getElementById('card-costo-formula');
+        const bloqueValorizacion = document.getElementById('desglose-bloque-valorizacion');
 
-            if (!mostrarPrecios) {
-                // Ocultar tarjetas tradicionales, valorización y fórmula
-                tarjetasTradicionales.forEach(t => t.style.display = 'none');
-                if (cardFormula) cardFormula.style.display = 'none';
-                if (bloqueValorizacion) bloqueValorizacion.style.display = 'none';
-            } else {
-                // Mostrar tarjetas tradicionales
-                tarjetasTradicionales.forEach(t => t.style.display = 'flex');
-                if (bloqueValorizacion) bloqueValorizacion.style.display = 'flex';
-                // La fórmula se manejará asincrónicamente abajo
-            }
+        if (!mostrarPrecios) {
+            tarjetasTradicionales.forEach(t => { t.style.display = 'none'; });
+            if (cardFormula) cardFormula.style.display = 'none';
+            if (bloqueValorizacion) bloqueValorizacion.style.display = 'none';
+            if (gridCostos) gridCostos.style.display = bunkerArticulos.length > 0 ? 'grid' : 'none';
+        } else {
+            if (gridCostos) gridCostos.style.display = 'grid';
+            tarjetasTradicionales.forEach(t => { t.style.display = 'flex'; });
+            if (bloqueValorizacion) bloqueValorizacion.style.display = 'flex';
+        }
 
-            // Inyectar tarjetas dinámicas de artículos del Búnker
-            if (gridCostos) {
-                bunkerArticulos.forEach(art => {
-                    const costo = parseFloat(art.costo_base || 0);
-                    const cardHtml = `
-                        <div class="card-costo-bunker-dinamico" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; position: relative;">
-                            <span style="font-size: 0.70rem; color: #166534; font-weight: 700; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;" title="${art.descripcion}">${art.descripcion}</span>
+        // Inyectar tarjetas dinámicas de artículos del Búnker (visibles siempre cuando existen vínculos)
+        if (gridCostos) {
+            bunkerArticulos.forEach(art => {
+                const costo = parseFloat(art.costo_base || 0);
+                const nombreVisible = art.descripcion_generada || art.descripcion || '';
+                const etiquetaTarjeta = `[${art.codigo}] ${nombreVisible}`.trim();
+                const cardHtml = `
+                    <div class="card-costo-bunker-dinamico" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; justify-content: space-between; align-items: center; text-align: center; position: relative;">
+                        <span style="font-size: 0.72rem; color: #166534; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; display: block;" title="${etiquetaTarjeta.replace(/"/g, '&quot;')}"><b style="font-family: monospace; color: #c2410c;">[${art.codigo}]</b> ${nombreVisible}</span>
+                        ${mostrarPrecios ? `
+                            <span class="costo-ref-bunker-clickeable" data-valor="${costo}" style="font-size: 1rem; font-weight: bold; color: #15803d; margin: 4px 0; border-bottom: 1px dashed #15803d; cursor: pointer;" title="Clic para copiar al costo manual">$ ${costo.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg</span>
+                        ` : ''}
+                        <div style="display: flex; gap: 4px; width: 100%; margin-top: 4px;">
                             ${mostrarPrecios ? `
-                                <span class="costo-ref-bunker-clickeable" data-valor="${costo}" style="font-size: 1rem; font-weight: bold; color: #15803d; margin: 4px 0; border-bottom: 1px dashed #15803d; cursor: pointer;" title="Clic para copiar al costo manual">$ ${costo.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg</span>
+                                <button type="button" class="btn-inventario" style="padding: 4px 8px; font-size: 0.7rem; background-color: #10b981; margin: 0; flex: 1; justify-content: center; height: auto;" onclick="window.fijarCostoPatronValor(${costo})">Fijar</button>
                             ` : ''}
-                            <div style="display: flex; gap: 4px; width: 100%; margin-top: 4px;">
-                                ${mostrarPrecios ? `
-                                    <button type="button" class="btn-inventario" style="padding: 4px 8px; font-size: 0.7rem; background-color: #10b981; margin: 0; flex: 1; justify-content: center; height: auto;" onclick="window.fijarCostoPatronValor(${costo})">Fijar</button>
-                                ` : ''}
-                                <button type="button" class="btn-inventario" style="padding: 4px 8px; font-size: 0.7rem; background-color: #ef4444; margin: 0; ${mostrarPrecios ? '' : 'flex: 1;'} justify-content: center; height: auto;" title="Desvincular" onclick="window.desvincularArticuloBunker('${art.codigo}')">🔌 Desvincular</button>
-                            </div>
+                            <button type="button" class="btn-inventario" style="padding: 4px 8px; font-size: 0.7rem; background-color: #ef4444; margin: 0; ${mostrarPrecios ? '' : 'flex: 1;'} justify-content: center; height: auto;" title="Desvincular" onclick="window.desvincularArticuloBunker('${art.codigo}')">🔌 Desvincular</button>
                         </div>
-                    `;
-                    gridCostos.insertAdjacentHTML('beforeend', cardHtml);
-                });
+                    </div>
+                `;
+                gridCostos.insertAdjacentHTML('beforeend', cardHtml);
+            });
+        }
+
+        // Actualizar barra "🔄 Vínculo a Artículo Venta" SIEMPRE (incluso sin mostrar precios)
+        const cardArtVinculado = document.getElementById('card-costo-articulo-vinculado');
+        const labelArtVinculado = document.getElementById('costo-ref-articulo-vinculado');
+        const btnFijarArtVinculado = document.getElementById('btn-fijar-articulo-vinculado');
+        const labelVinculoArt = document.getElementById('desglose-vinculo-articulo-label');
+        const btnDesvincularArt = document.getElementById('btn-desglose-desvincular-art');
+        const btnVincularArt = document.getElementById('btn-desglose-vincular-art');
+
+        window.ultimoCostoArticuloVinculadoResolved = null;
+
+        if (ingrediente.articulo_vinculado_numero) {
+            const costoBaseArt = parseFloat(ingrediente.costo_articulo_vinculado_base || 0);
+            window.ultimoCostoArticuloVinculadoResolved = costoBaseArt;
+
+            if (labelVinculoArt) {
+                const descArt = ingrediente.articulo_vinculado_descripcion || '';
+                const precioHtml = mostrarPrecios
+                    ? ` <span style="font-weight:bold; color: #16a34a; font-family: monospace;">($${costoBaseArt.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg)</span>`
+                    : '';
+                labelVinculoArt.innerHTML = `<b style="color: #c2410c;">[${ingrediente.articulo_vinculado_numero}]</b> ${descArt}${precioHtml}`;
+                labelVinculoArt.title = `[${ingrediente.articulo_vinculado_numero}] ${descArt}`;
             }
+            if (btnDesvincularArt) btnDesvincularArt.style.display = 'inline-block';
+            if (btnVincularArt) btnVincularArt.innerHTML = '🔗 Cambiar';
 
             if (mostrarPrecios) {
-                // Referencia A: Último Lote
-                const costoUltimoLote = lotes.length > 0 ? parseFloat(lotes[lotes.length - 1].costo_kilo || 0) : null;
-                const btnFijarLote = document.getElementById('btn-fijar-lote');
-                const labelLote = document.getElementById('costo-ref-lote');
-                if (costoUltimoLote !== null) {
-                    if (labelLote) {
-                        labelLote.textContent = `$ ${costoUltimoLote.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg`;
-                        labelLote.setAttribute('data-valor', costoUltimoLote);
-                    }
-                    if (btnFijarLote) btnFijarLote.removeAttribute('disabled');
-                } else {
-                    if (labelLote) {
-                        labelLote.textContent = 'N/A';
-                        labelLote.removeAttribute('data-valor');
-                    }
-                    if (btnFijarLote) btnFijarLote.setAttribute('disabled', 'true');
+                if (cardArtVinculado) cardArtVinculado.style.display = 'flex';
+                if (labelArtVinculado) {
+                    labelArtVinculado.textContent = `$ ${costoBaseArt.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg`;
+                    labelArtVinculado.setAttribute('data-valor', costoBaseArt);
                 }
-                
-                // Referencia B: Reposición (se cargará asincrónicamente después)
-                const labelRepo = document.getElementById('costo-ref-reposicion');
-                if (labelRepo) {
-                    labelRepo.textContent = 'Cargando...';
-                    labelRepo.removeAttribute('data-valor');
-                }
-                const btnFijarRepo = document.getElementById('btn-fijar-reposicion');
-                if (btnFijarRepo) btnFijarRepo.setAttribute('disabled', 'true');
-                window.ultimoCostoReposicionResolved = null;
-
-                // Referencia D: Costo por Fórmula Activa (Comentarios en español)
-                const labelFormula = document.getElementById('costo-ref-formula');
-                const btnFijarFormula = document.getElementById('btn-fijar-formula');
-                if (cardFormula) cardFormula.style.display = 'none';
-                if (labelFormula) {
-                    labelFormula.textContent = 'Cargando...';
-                    labelFormula.removeAttribute('data-valor');
-                }
-                if (btnFijarFormula) btnFijarFormula.setAttribute('disabled', 'true');
-                window.ultimoCostoFormulaResolved = null;
-
-                // Consultar la composición de fórmula/Mix en background
-                fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/composicion`)
-                    .then(res => {
-                        if (res.ok) return res.json();
-                        throw new Error('Sin fórmula activa o error de conexión');
-                    })
-                    .then(data => {
-                        if (data && data.composicion && data.composicion.length > 0) {
-                            if (cardFormula) cardFormula.style.display = 'flex';
-                            
-                            const costoFormulaUnitario = typeof data.costoFormulaUnitario === 'number'
-                                ? data.costoFormulaUnitario
-                                : (() => {
-                                    const recetaBase = parseFloat(data.mix?.receta_base_kg || 1.00) || 1.00;
-                                    const totalConsolidado = data.composicion.reduce((acc, comp) => {
-                                        return acc + (parseFloat(comp.cantidad || 0) * parseFloat(comp.costo_patron || 0));
-                                    }, 0);
-                                    return totalConsolidado / recetaBase;
-                                })();
-                            
-                            window.ultimoCostoFormulaResolved = costoFormulaUnitario;
-
-                            if (labelFormula) {
-                                labelFormula.textContent = `$ ${costoFormulaUnitario.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg`;
-                                labelFormula.setAttribute('data-valor', costoFormulaUnitario);
-                            }
-                            if (btnFijarFormula) btnFijarFormula.removeAttribute('disabled');
-                        }
-                    })
-                    .catch(err => {
-                        console.log("ℹ️ [DESGLOSE-FORMULA] No compuesto o sin fórmula:", err.message);
-                    });
-                
-                // Referencia E: Artículo de Venta Vinculado
-                const cardArtVinculado = document.getElementById('card-costo-articulo-vinculado');
-                const labelArtVinculado = document.getElementById('costo-ref-articulo-vinculado');
-                const btnFijarArtVinculado = document.getElementById('btn-fijar-articulo-vinculado');
-                const labelVinculoArt = document.getElementById('desglose-vinculo-articulo-label');
-                const btnDesvincularArt = document.getElementById('btn-desglose-desvincular-art');
-                const btnVincularArt = document.getElementById('btn-desglose-vincular-art');
-                
-                window.ultimoCostoArticuloVinculadoResolved = null;
-                
-                if (ingrediente.articulo_vinculado_numero) {
-                    const costoBaseArt = parseFloat(ingrediente.costo_articulo_vinculado_base || 0);
-                    window.ultimoCostoArticuloVinculadoResolved = costoBaseArt;
-                    
-                    if (cardArtVinculado) cardArtVinculado.style.display = 'flex';
-                    if (labelArtVinculado) {
-                        labelArtVinculado.textContent = `$ ${costoBaseArt.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg`;
-                        labelArtVinculado.setAttribute('data-valor', costoBaseArt);
-                    }
-                    if (btnFijarArtVinculado) btnFijarArtVinculado.removeAttribute('disabled');
-                    
-                    if (labelVinculoArt) {
-                        labelVinculoArt.innerHTML = `<b style="color: #c2410c;">[${ingrediente.articulo_vinculado_numero}]</b> ${ingrediente.articulo_vinculado_descripcion || ''} <span style="font-weight:bold; color: #16a34a; font-family: monospace;">($${costoBaseArt.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</span>`;
-                    }
-                    if (btnDesvincularArt) btnDesvincularArt.style.display = 'inline-block';
-                    if (btnVincularArt) btnVincularArt.innerHTML = '🔗 Cambiar';
-                } else {
-                    if (cardArtVinculado) cardArtVinculado.style.display = 'none';
-                    if (labelArtVinculado) {
-                        labelArtVinculado.textContent = 'N/A';
-                        labelArtVinculado.removeAttribute('data-valor');
-                    }
-                    if (btnFijarArtVinculado) btnFijarArtVinculado.setAttribute('disabled', 'true');
-                    
-                    if (labelVinculoArt) {
-                        labelVinculoArt.textContent = 'Ningún artículo vinculado';
-                    }
-                    if (btnDesvincularArt) btnDesvincularArt.style.display = 'none';
-                    if (btnVincularArt) btnVincularArt.innerHTML = '🔗 Vincular';
-                }
-
-                // Costo Patrón y Valorización actual
-                document.getElementById('desglose-costo-patron-activo').textContent = `$ ${parseFloat(ingrediente.costo_patron || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                document.getElementById('desglose-valorizacion-total').textContent = `$ ${parseFloat(ingrediente.valorizacion_total || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-                
-                // Limpiar input manual
-                const inputManual = document.getElementById('input-costo-manual');
-                if (inputManual) inputManual.value = '';
+                if (btnFijarArtVinculado) btnFijarArtVinculado.removeAttribute('disabled');
             }
         } else {
-            seccionCostos.style.display = 'none';
+            if (cardArtVinculado) cardArtVinculado.style.display = 'none';
+            if (labelArtVinculado) {
+                labelArtVinculado.textContent = 'N/A';
+                labelArtVinculado.removeAttribute('data-valor');
+            }
+            if (btnFijarArtVinculado) btnFijarArtVinculado.setAttribute('disabled', 'true');
+
+            if (labelVinculoArt) {
+                labelVinculoArt.textContent = 'Ningún artículo vinculado';
+                labelVinculoArt.title = '';
+            }
+            if (btnDesvincularArt) btnDesvincularArt.style.display = 'none';
+            if (btnVincularArt) btnVincularArt.innerHTML = '🔗 Vincular';
+        }
+
+        if (mostrarPrecios) {
+            // Referencia A: Último Lote
+            const costoUltimoLote = lotes.length > 0 ? parseFloat(lotes[lotes.length - 1].costo_kilo || 0) : null;
+            const btnFijarLote = document.getElementById('btn-fijar-lote');
+            const labelLote = document.getElementById('costo-ref-lote');
+            if (costoUltimoLote !== null) {
+                if (labelLote) {
+                    labelLote.textContent = `$ ${costoUltimoLote.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg`;
+                    labelLote.setAttribute('data-valor', costoUltimoLote);
+                }
+                if (btnFijarLote) btnFijarLote.removeAttribute('disabled');
+            } else {
+                if (labelLote) {
+                    labelLote.textContent = 'N/A';
+                    labelLote.removeAttribute('data-valor');
+                }
+                if (btnFijarLote) btnFijarLote.setAttribute('disabled', 'true');
+            }
+
+            // Referencia B: Reposición (se cargará asincrónicamente después)
+            const labelRepo = document.getElementById('costo-ref-reposicion');
+            if (labelRepo) {
+                labelRepo.textContent = 'Cargando...';
+                labelRepo.removeAttribute('data-valor');
+            }
+            const btnFijarRepo = document.getElementById('btn-fijar-reposicion');
+            if (btnFijarRepo) btnFijarRepo.setAttribute('disabled', 'true');
+            window.ultimoCostoReposicionResolved = null;
+
+            // Referencia D: Costo por Fórmula Activa
+            const labelFormula = document.getElementById('costo-ref-formula');
+            const btnFijarFormula = document.getElementById('btn-fijar-formula');
+            if (cardFormula) cardFormula.style.display = 'none';
+            if (labelFormula) {
+                labelFormula.textContent = 'Cargando...';
+                labelFormula.removeAttribute('data-valor');
+            }
+            if (btnFijarFormula) btnFijarFormula.setAttribute('disabled', 'true');
+            window.ultimoCostoFormulaResolved = null;
+
+            fetch(`/api/produccion/ingredientes/${ingredienteId}/composicion`)
+                .then(res => {
+                    if (res.ok) return res.json();
+                    throw new Error('Sin fórmula activa o error de conexión');
+                })
+                .then(data => {
+                    if (data && data.composicion && data.composicion.length > 0) {
+                        if (cardFormula) cardFormula.style.display = 'flex';
+
+                        const costoFormulaUnitario = typeof data.costoFormulaUnitario === 'number'
+                            ? data.costoFormulaUnitario
+                            : (() => {
+                                const recetaBase = parseFloat(data.mix?.receta_base_kg || 1.00) || 1.00;
+                                const totalConsolidado = data.composicion.reduce((acc, comp) => {
+                                    return acc + (parseFloat(comp.cantidad || 0) * parseFloat(comp.costo_patron || 0));
+                                }, 0);
+                                return totalConsolidado / recetaBase;
+                            })();
+
+                        window.ultimoCostoFormulaResolved = costoFormulaUnitario;
+
+                        if (labelFormula) {
+                            labelFormula.textContent = `$ ${costoFormulaUnitario.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg`;
+                            labelFormula.setAttribute('data-valor', costoFormulaUnitario);
+                        }
+                        if (btnFijarFormula) btnFijarFormula.removeAttribute('disabled');
+                    }
+                })
+                .catch(err => {
+                    console.log("ℹ️ [DESGLOSE-FORMULA] No compuesto o sin fórmula:", err.message);
+                });
+
+            // Costo Patrón y Valorización actual
+            document.getElementById('desglose-costo-patron-activo').textContent = `$ ${parseFloat(ingrediente.costo_patron || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            document.getElementById('desglose-valorizacion-total').textContent = `$ ${parseFloat(ingrediente.valorizacion_total || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+            const inputManual = document.getElementById('input-costo-manual');
+            if (inputManual) inputManual.value = '';
         }
     }
     let skuParaReposicion = null;
@@ -3929,7 +3934,7 @@ window.fijarCostoPatronRef = async function(tipo) {
     }
 
     try {
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
+        const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ costo_patron: nuevoCosto })
@@ -4084,7 +4089,7 @@ window.fijarCostoPatronValor = async function(valor) {
     }
 
     try {
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
+        const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ costo_patron: nuevoCosto })
@@ -4096,7 +4101,7 @@ window.fijarCostoPatronValor = async function(valor) {
         await recargarDatosMantenendoFiltros();
 
         // Obtener fresh data para actualizar la UI del modal de desglose
-        const freshRes = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`);
+        const freshRes = await fetch(`/api/produccion/ingredientes/${ingredienteId}`);
         if (freshRes.ok) {
             const freshData = await freshRes.json();
             document.getElementById('desglose-costo-patron-activo').textContent = `$ ${parseFloat(freshData.costo_patron || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
@@ -4129,7 +4134,7 @@ window.desvincularArticuloBunker = async function(articuloId) {
     if (!confirmResult.isConfirmed) return;
 
     try {
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/bunker-articulos/${articuloId}`, {
+        const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}/bunker-articulos/${articuloId}`, {
             method: 'DELETE'
         });
 
@@ -4180,7 +4185,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             timeoutBusqueda = setTimeout(async () => {
                 try {
-                    const res = await fetch(`http://localhost:3002/api/produccion/bunker-articulos/buscar?q=${encodeURIComponent(query)}`);
+                    const res = await fetch(`/api/produccion/bunker-articulos/buscar?q=${encodeURIComponent(query)}`);
                     if (!res.ok) throw new Error('Error en búsqueda');
 
                     const articulos = await res.json();
@@ -4193,10 +4198,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     listaResultados.innerHTML = articulos.map(art => {
                         const costo = parseFloat(art.costo_base || 0);
+                        const nombreOpt = art.descripcion_generada || art.descripcion || '';
                         return `
-                            <div class="opcion-bunker-resultado" data-codigo="${art.codigo}" data-descripcion="${art.descripcion}" style="padding: 8px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; font-size: 0.88rem; display: flex; justify-content: space-between; align-items: center;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'">
+                            <div class="opcion-bunker-resultado" data-codigo="${art.codigo}" data-descripcion="${nombreOpt.replace(/"/g, '&quot;')}" style="padding: 8px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; font-size: 0.88rem; display: flex; justify-content: space-between; align-items: center;" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='white'">
                                 <div style="display: flex; flex-direction: column;">
-                                    <span style="font-weight: 700; color: #1e293b;">${art.codigo} - ${art.descripcion}</span>
+                                    <span style="font-weight: 700; color: #1e293b;">${art.codigo} - ${nombreOpt}</span>
                                 </div>
                                 <span style="font-weight: bold; color: #166534; font-family: monospace;">$ ${costo.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg</span>
                             </div>
@@ -4214,7 +4220,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (!ingredienteId || !codigo) return;
 
                             try {
-                                const linkRes = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}/bunker-articulos`, {
+                                const linkRes = await fetch(`/api/produccion/ingredientes/${ingredienteId}/bunker-articulos`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ bunker_articulo_id: codigo })
@@ -4328,22 +4334,42 @@ window.abrirBuscadorArticuloDesglose = async function() {
                     const inputSearch = document.getElementById('swal-buscador-art');
                     const resultsDiv = document.getElementById('swal-art-resultados');
                     
+                    const normalizarBusqArt = (txt) => String(txt || '')
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .toLowerCase();
+
+                    const resolverCostoKiloArticulo = (art) => {
+                        const listasArt = (dataSim.articulosListas || []).filter(l => l.articulo_numero === art.articulo_id);
+                        listasArt.sort((x, y) => (Number(Boolean(y.es_patron)) - Number(Boolean(x.es_patron))) || ((x.lista_id || 999) - (y.lista_id || 999)));
+                        const laSobrescrito = listasArt.find(l => parseFloat(l.costo_base_sobrescrito || 0) > 0);
+                        const laOp = listasArt.find(l => !l.exencion_operativa);
+                        const ku = parseFloat(art.kilos_unidad || 1) || 1;
+                        const costoBaseKg = laSobrescrito
+                            ? parseFloat(laSobrescrito.costo_base_sobrescrito)
+                            : (parseFloat(art.costo_base || 0) / ku);
+                        const costoOpKg = laOp ? (parseFloat(laOp.costo_tiempo || 0) / ku) : 0;
+                        return costoBaseKg + costoOpKg;
+                    };
+
                     const renderFiltered = (query) => {
-                        const q = query.toLowerCase().trim();
-                        
-                        // Dividir por espacios para permitir búsqueda multi-palabra (filtro sobre filtro)
-                        const searchTokens = q.split(/\s+/).filter(t => t.length > 0);
-                        
+                        const searchTokens = normalizarBusqArt(query).trim().split(/\s+/).filter(Boolean);
+
                         let filtered = [];
                         if (searchTokens.length === 0) {
                             filtered = articulos.slice(0, 25);
                         } else {
                             filtered = articulos.filter(a => {
+                                const haystack = normalizarBusqArt(
+                                    `${a.articulo_id || ''} ${a.descripcion || ''} ${a.descripcion_generada || ''} ${a.nombre_lomasoft || ''}`
+                                );
                                 return searchTokens.every(token => {
-                                    return (a.articulo_id && a.articulo_id.toLowerCase().includes(token)) || 
-                                           (a.descripcion && a.descripcion.toLowerCase().includes(token)) ||
-                                           (a.descripcion_generada && a.descripcion_generada.toLowerCase().includes(token)) ||
-                                           (a.nombre_lomasoft && a.nombre_lomasoft.toLowerCase().includes(token));
+                                    if (token === 'ap') {
+                                        return haystack.includes('ap') || haystack.includes('articulo puente');
+                                    }
+                                    const stem = token.length >= 5 ? token.replace(/(as|os|[ao])$/, '') : token;
+                                    const term = stem.length >= 4 ? stem : token;
+                                    return haystack.includes(term);
                                 });
                             }).slice(0, 50);
                         }
@@ -4356,21 +4382,23 @@ window.abrirBuscadorArticuloDesglose = async function() {
                         resultsDiv.innerHTML = filtered.map(a => {
                             const isSel = selectedSku === a.articulo_id;
                             const activeBg = isSel ? 'background: #ffedd5; border-left: 4px solid #f97316; font-weight: bold;' : '';
-                            const titulo = a.descripcion_generada || a.descripcion || a.nombre_lomasoft;
+                            const titulo = a.descripcion_generada || a.descripcion || a.nombre_lomasoft || a.articulo_id;
                             const subtitulo = a.descripcion || a.nombre_lomasoft || "";
+                            const costoMostrarKg = resolverCostoKiloArticulo(a);
+                            const ku = parseFloat(a.kilos_unidad || 1) || 1;
                             
                             return `
-                                <div class="swal-art-item" data-sku="${a.articulo_id}" data-desc="${titulo}" style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; cursor: pointer; transition: background 0.2s; display: flex; justify-content: space-between; align-items: center; ${activeBg}" 
+                                <div class="swal-art-item" data-sku="${a.articulo_id}" data-desc="${titulo.replace(/"/g, '&quot;')}" style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; cursor: pointer; transition: background 0.2s; display: flex; justify-content: space-between; align-items: center; ${activeBg}" 
                                      onmouseover="this.style.background='#f1f5f9'" 
                                      onmouseout="this.style.background='${isSel ? '#ffedd5' : 'transparent'}'">
                                     <div style="display: flex; flex-direction: column; gap: 2px; text-align: left;">
                                         <span style="color: #1e293b; font-weight: 600; font-size: 0.92em;">${titulo}</span>
                                         <span style="color: #64748b; font-size: 0.78em; font-weight: 500;">
-                                            Código: <b style="color: #c2410c; font-family: monospace;">${a.articulo_id}</b> 
+                                            Código: <b style="color: #c2410c; font-family: monospace;">${a.articulo_id}</b>${ku !== 1 ? ` (${ku}kg)` : ''}
                                             ${subtitulo ? ` | <span style="font-style: italic; color: #475569;">${subtitulo}</span>` : ''}
                                         </span>
                                     </div>
-                                    <span style="color: #15803d; font-weight: bold; font-family: monospace; font-size: 1.02em; background: #dcfce7; padding: 2px 6px; border-radius: 4px; flex-shrink: 0;">$ ${parseFloat(a.costo_base || 0).toFixed(2)}</span>
+                                    <span style="color: #15803d; font-weight: bold; font-family: monospace; font-size: 0.96em; background: #dcfce7; padding: 2px 6px; border-radius: 4px; flex-shrink: 0;">$ ${costoMostrarKg.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/kg</span>
                                 </div>
                             `;
                         }).join('');
@@ -4408,31 +4436,34 @@ window.abrirBuscadorArticuloDesglose = async function() {
                         didOpen: () => Swal.showLoading()
                     });
                     
-                    const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ articulo_vinculado_numero: sku })
-                    });
-                    
-                    if (response.ok) {
-                        // Sincronizar grilla local
-                        if (typeof window.recargarDatosMantenendoFiltros === 'function') {
-                            await window.recargarDatosMantenendoFiltros();
-                        }
-                        
-                        Swal.fire({
-                            title: '¡Vínculo Guardado!',
-                            text: 'El ingrediente se ha enlazado con el artículo comercial correctamente.',
-                            icon: 'success',
-                            timer: 1500,
-                            showConfirmButton: false
+                    try {
+                        const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ articulo_vinculado_numero: sku })
                         });
                         
-                        // Refrescar modal desglose
-                        window.abrirModalDesglose(ingredienteId);
-                    } else {
-                        const err = await response.json();
-                        Swal.fire('Error', err.error || 'No se pudo guardar la vinculación.', 'error');
+                        if (response.ok) {
+                            if (typeof window.recargarDatosMantenendoFiltros === 'function') {
+                                await window.recargarDatosMantenendoFiltros();
+                            }
+                            
+                            Swal.fire({
+                                title: '¡Vínculo Guardado!',
+                                text: 'El ingrediente se ha enlazado con el artículo comercial correctamente.',
+                                icon: 'success',
+                                timer: 1200,
+                                showConfirmButton: false
+                            });
+                            
+                            await window.abrirModalDesglose(ingredienteId);
+                        } else {
+                            const err = await response.json().catch(() => ({}));
+                            Swal.fire('Error', err.error || 'No se pudo guardar la vinculación.', 'error');
+                        }
+                    } catch (putErr) {
+                        console.error('Error guardando vinculación de artículo:', putErr);
+                        Swal.fire('Error de Conexión', 'No se pudo comunicar con el servidor al guardar la vinculación.', 'error');
                     }
                 }
             });
@@ -4468,7 +4499,7 @@ window.desvincularArticuloDesglose = async function() {
         });
         
         try {
-            const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/${ingredienteId}`, {
+            const response = await fetch(`/api/produccion/ingredientes/${ingredienteId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ articulo_vinculado_numero: null })

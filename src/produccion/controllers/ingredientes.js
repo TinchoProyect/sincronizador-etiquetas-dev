@@ -70,11 +70,75 @@ function extraerLetraSector(descripcion, nombre) {
 }
 
 /**
+ * Construye la expresión SQL estándar del costo neto por kilo de un artículo Búnker.
+ * Prioriza costo_base_sobrescrito (por kg) en listas, luego receta explotada por kg,
+ * luego ba.costo_base / kilos_unidad, dejando pa.costo (precios_articulos legado) únicamente
+ * como último respaldo, más el costo operativo por kilo (M.O. + insumos de la 1ª lista no exenta).
+ * @param {string} artAlias Alias SQL de public.bunker_articulos
+ * @param {string} paAlias Alias SQL de public.precios_articulos
+ * @returns {string} Expresión SQL con cast ::numeric(12,2)
+ */
+function buildSqlCostoNetoKiloBunker(artAlias = 'ba', paAlias = 'pa') {
+    const kuExpr = `COALESCE(NULLIF(${artAlias}.kilos_unidad::numeric, 0), 1)`;
+    return `
+        COALESCE(
+            COALESCE(
+                (
+                    SELECT la.costo_base_sobrescrito
+                    FROM public.bunker_lista_articulos la
+                    WHERE la.articulo_numero = ${artAlias}.articulo_id
+                      AND la.costo_base_sobrescrito IS NOT NULL
+                      AND la.costo_base_sobrescrito > 0
+                    ORDER BY la.es_patron DESC, la.lista_id ASC
+                    LIMIT 1
+                ),
+                NULLIF(
+                    (
+                        SELECT SUM(ri2.cantidad * COALESCE(i3.costo_patron, 0.00)) / ${kuExpr}
+                        FROM public.receta_ingredientes ri2
+                        JOIN public.ingredientes i3 ON ri2.ingrediente_id = i3.id
+                        WHERE ri2.receta_id = (
+                            SELECT r2.id
+                            FROM public.recetas r2
+                            WHERE r2.articulo_numero = ${artAlias}.articulo_id
+                            ORDER BY r2.fecha_creacion DESC
+                            LIMIT 1
+                        )
+                    ),
+                    0.00
+                ),
+                NULLIF(${artAlias}.costo_base, 0.00) / ${kuExpr},
+                NULLIF(${paAlias}.costo, 0.00) / ${kuExpr},
+                0.00
+            ) +
+            COALESCE(
+                (
+                    SELECT
+                        (
+                            COALESCE(la.costo_tiempo, 0.00) +
+                            COALESCE((SELECT SUM(li.cantidad * li.costo_unitario_capturado)
+                                      FROM public.bunker_lista_insumos li
+                                      WHERE li.lista_articulo_id = la.id AND li.incluido = true), 0.00)
+                        ) / ${kuExpr}
+                    FROM public.bunker_lista_articulos la
+                    WHERE la.articulo_numero = ${artAlias}.articulo_id AND COALESCE(la.exencion_operativa, false) = false
+                    ORDER BY la.lista_id ASC
+                    LIMIT 1
+                ),
+                0.00
+            ),
+            0.00
+        )::numeric(12,2)
+    `;
+}
+
+/**
  * Obtiene todos los ingredientes con información de sector y stock potencial
  * @returns {Promise<Array>} Lista de ingredientes con sector y stock potencial
  */
 async function obtenerIngredientes() {
     try {
+        const costoNetoKiloSQL = buildSqlCostoNetoKiloBunker('ba', 'pa');
         const query = `
             SELECT 
                 i.id,
@@ -152,54 +216,15 @@ async function obtenerIngredientes() {
                     ) AND i.padre_id IS NULL THEN true ELSE false END
                 ) as es_mix,
                 i.es_insumo,
-                -- ✅ ARTÍCULOS VINCULADOS EN EL BÚNKER (Métrica neta de adquisición)
+                -- ✅ ARTÍCULOS VINCULADOS EN EL BÚNKER (Métrica neta de adquisición por kg)
                 COALESCE(
                     (
                         SELECT json_agg(
                             json_build_object(
                                 'codigo', iba.bunker_articulo_id,
                                 'descripcion', ba.descripcion,
-                                'costo_base', COALESCE(
-                                    -- 1. Costo Materia Prima (Receta o ERP/Búnker base)
-                                    COALESCE(
-                                        NULLIF(
-                                            (
-                                                SELECT SUM(ri2.cantidad * COALESCE(i3.costo_patron, 0.00)) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
-                                                FROM public.receta_ingredientes ri2
-                                                JOIN public.ingredientes i3 ON ri2.ingrediente_id = i3.id
-                                                WHERE ri2.receta_id = (
-                                                    SELECT r2.id 
-                                                    FROM public.recetas r2 
-                                                    WHERE r2.articulo_numero = ba.articulo_id 
-                                                    ORDER BY r2.fecha_creacion DESC 
-                                                    LIMIT 1
-                                                )
-                                            ),
-                                            0.00
-                                        ),
-                                        pa.costo,
-                                        ba.costo_base,
-                                        0.00
-                                    ) +
-                                    -- 2. Costo Operativo Consolidado (Mano de obra + Insumos de empaque por kilo de la primera lista no exenta)
-                                    COALESCE(
-                                        (
-                                            SELECT 
-                                                (
-                                                    COALESCE(la.costo_tiempo, 0.00) + 
-                                                    COALESCE((SELECT SUM(li.cantidad * li.costo_unitario_capturado) 
-                                                              FROM public.bunker_lista_insumos li 
-                                                              WHERE li.lista_articulo_id = la.id AND li.incluido = true), 0.00)
-                                                ) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
-                                            FROM public.bunker_lista_articulos la
-                                            WHERE la.articulo_numero = ba.articulo_id AND COALESCE(la.exencion_operativa, false) = false
-                                            ORDER BY la.lista_id ASC
-                                            LIMIT 1
-                                        ),
-                                        0.00
-                                    ),
-                                    0.00
-                                )::numeric(12,2)
+                                'descripcion_generada', COALESCE(ba.descripcion_generada, ba.descripcion),
+                                'costo_base', ${costoNetoKiloSQL}
                             ) ORDER BY ba.descripcion ASC
                         )
                         FROM public.ingrediente_bunker_articulos iba
@@ -335,6 +360,7 @@ async function actualizarVinculo(vinculoId, activo) {
  */
 async function obtenerIngrediente(id) {
     try {
+        const costoNetoKiloSQL = buildSqlCostoNetoKiloBunker('ba', 'pa');
         const query = `
             SELECT 
                 i.id,
@@ -352,58 +378,7 @@ async function obtenerIngrediente(id) {
                 i.es_insumo,
                 i.articulo_vinculado_numero,
                 (
-                    SELECT COALESCE(
-                        -- PARTE 1: Materia Prima (Receta, sobrescrito multilista o ERP/Búnker base)
-                        COALESCE(
-                            -- PRIORIDAD 1: Costo base sobrescrito en listas (ej: simulación de tostadero guardada)
-                            (
-                                SELECT la.costo_base_sobrescrito 
-                                FROM public.bunker_lista_articulos la 
-                                WHERE la.articulo_numero = ba.articulo_id 
-                                  AND la.costo_base_sobrescrito IS NOT NULL 
-                                  AND la.costo_base_sobrescrito > 0
-                                ORDER BY la.es_patron DESC, la.lista_id ASC 
-                                LIMIT 1
-                            ),
-                            -- PRIORIDAD 2: Receta explotada
-                            NULLIF(
-                                (
-                                    SELECT SUM(ri2.cantidad * COALESCE(i3.costo_patron, 0.00)) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
-                                    FROM public.receta_ingredientes ri2
-                                    JOIN public.ingredientes i3 ON ri2.ingrediente_id = i3.id
-                                    WHERE ri2.receta_id = (
-                                        SELECT r2.id 
-                                        FROM public.recetas r2 
-                                        WHERE r2.articulo_numero = i.articulo_vinculado_numero 
-                                        ORDER BY r2.fecha_creacion DESC 
-                                        LIMIT 1
-                                    )
-                                ),
-                                0.00
-                            ),
-                            pa.costo,
-                            ba.costo_base,
-                            0.00
-                        ) +
-                        -- PARTE 2: Costo Operativo Consolidado (Mano de obra + Insumos de empaque por kilo de la primera lista no exenta)
-                        COALESCE(
-                            (
-                                SELECT 
-                                    (
-                                        COALESCE(la.costo_tiempo, 0.00) + 
-                                        COALESCE((SELECT SUM(li.cantidad * li.costo_unitario_capturado) 
-                                                  FROM public.bunker_lista_insumos li 
-                                                  WHERE li.lista_articulo_id = la.id AND li.incluido = true), 0.00)
-                                    ) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
-                                FROM public.bunker_lista_articulos la
-                                WHERE la.articulo_numero = ba.articulo_id AND COALESCE(la.exencion_operativa, false) = false
-                                ORDER BY la.lista_id ASC
-                                LIMIT 1
-                            ),
-                            0.00
-                        ),
-                        0.00
-                    )::numeric(12,2)
+                    SELECT ${costoNetoKiloSQL}
                     FROM public.bunker_articulos ba
                     LEFT JOIN public.precios_articulos pa ON ba.articulo_id = pa.articulo
                     WHERE ba.articulo_id = i.articulo_vinculado_numero
@@ -437,54 +412,15 @@ async function obtenerIngrediente(id) {
                     i.stock_actual
                 ) as valorizacion_total,
                 COALESCE(i.costo_patron, 0.00) as costo_patron,
-                -- ✅ ARTÍCULOS VINCULADOS EN EL BÚNKER (Métrica neta de adquisición)
+                -- ✅ ARTÍCULOS VINCULADOS EN EL BÚNKER (Métrica neta de adquisición por kg)
                 COALESCE(
                     (
                         SELECT json_agg(
                             json_build_object(
                                 'codigo', iba.bunker_articulo_id,
                                 'descripcion', ba.descripcion,
-                                'costo_base', COALESCE(
-                                    -- 1. Costo Materia Prima (Receta o ERP/Búnker base)
-                                    COALESCE(
-                                        NULLIF(
-                                            (
-                                                SELECT SUM(ri2.cantidad * COALESCE(i3.costo_patron, 0.00)) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
-                                                FROM public.receta_ingredientes ri2
-                                                JOIN public.ingredientes i3 ON ri2.ingrediente_id = i3.id
-                                                WHERE ri2.receta_id = (
-                                                    SELECT r2.id 
-                                                    FROM public.recetas r2 
-                                                    WHERE r2.articulo_numero = ba.articulo_id 
-                                                    ORDER BY r2.fecha_creacion DESC 
-                                                    LIMIT 1
-                                                )
-                                            ),
-                                            0.00
-                                        ),
-                                        pa.costo,
-                                        ba.costo_base,
-                                        0.00
-                                    ) +
-                                    -- 2. Costo Operativo Consolidado (Mano de obra + Insumos de empaque por kilo de la primera lista no exenta)
-                                    COALESCE(
-                                        (
-                                            SELECT 
-                                                (
-                                                    COALESCE(la.costo_tiempo, 0.00) + 
-                                                    COALESCE((SELECT SUM(li.cantidad * li.costo_unitario_capturado) 
-                                                              FROM public.bunker_lista_insumos li 
-                                                              WHERE li.lista_articulo_id = la.id AND li.incluido = true), 0.00)
-                                                ) / COALESCE(NULLIF(ba.kilos_unidad::numeric, 0), 1)
-                                            FROM public.bunker_lista_articulos la
-                                            WHERE la.articulo_numero = ba.articulo_id AND COALESCE(la.exencion_operativa, false) = false
-                                            ORDER BY la.lista_id ASC
-                                            LIMIT 1
-                                        ),
-                                        0.00
-                                    ),
-                                    0.00
-                                )::numeric(12,2)
+                                'descripcion_generada', COALESCE(ba.descripcion_generada, ba.descripcion),
+                                'costo_base', ${costoNetoKiloSQL}
                             ) ORDER BY ba.descripcion ASC
                         )
                         FROM public.ingrediente_bunker_articulos iba
@@ -1306,6 +1242,7 @@ async function obtenerTrazabilidadIngrediente(req, res) {
 }
 
 module.exports = {
+    buildSqlCostoNetoKiloBunker,
     obtenerIngredientes,
     obtenerIngrediente,
     crearIngrediente,

@@ -16,6 +16,8 @@ async function ejecutarSaneamientoLinea4(poolOrClient) {
         constraint_creada: false,
         multiplicador_aptspguppm_normalizado: 0,
         ingrediente_123_reconectado: 0,
+        ingredientes_puente_ldn4_reconectados: 0,
+        espejos_bunker_backfill: 0,
         emb_gz6u9k_kilos_unidad_restaurado: 0,
         emb_gz6u9k_residuo_saneado: false,
         fracciones_atys_incorporadas_bunker: [],
@@ -71,29 +73,58 @@ async function ejecutarSaneamientoLinea4(poolOrClient) {
         `);
         resumen.multiplicador_aptspguppm_normalizado = updMult.rowCount || 0;
 
-        // 4. Reconectar ingrediente id = 123 ([98300858] Almendra Tostada y Salada) a su AP 'APTSPGXK'
-        //    si estaba vacío o desviado por ingreso de bulto comprado ('EMB-XBN4S5')
-        const checkApExists = await client.query(`
-            SELECT articulo_id FROM public.bunker_articulos WHERE UPPER(BTRIM(articulo_id)) = 'APTSPGXK' LIMIT 1
-        `);
-        if (checkApExists.rowCount > 0) {
-            const apSku = checkApExists.rows[0].articulo_id;
-            const updIng123 = await client.query(`
-                UPDATE public.ingredientes
-                SET articulo_vinculado_numero = $1
-                WHERE id = 123
-                  AND COALESCE(UPPER(BTRIM(articulo_vinculado_numero)), '') <> 'APTSPGXK'
-                RETURNING id
-            `, [apSku]);
-            resumen.ingrediente_123_reconectado = updIng123.rowCount || 0;
+        // 4. Proteger todos los ingredientes puente sellados de LDN4 y completar espejos faltantes
+        //    en ingrediente_bunker_articulos (incluye #18 CCTGXK, #41 CCTSGXK, #123 APTSPGXK, etc.).
+        const puentesSelladosLdn4 = [
+            { id: 18, apSku: 'CCTGXK' },
+            { id: 38, apSku: 'APTSPGXKPM' },
+            { id: 41, apSku: 'CCTSGXK' },
+            { id: 57, apSku: 'APTPGXK' },
+            { id: 123, apSku: 'APTSPGXK' },
+            { id: 166, apSku: 'EMB-GZ6U9K' }
+        ];
 
-            await client.query(`
-                INSERT INTO public.ingrediente_bunker_articulos (ingrediente_id, bunker_articulo_id)
-                SELECT 123, $1
-                WHERE EXISTS (SELECT 1 FROM public.ingredientes WHERE id = 123)
-                ON CONFLICT (ingrediente_id, bunker_articulo_id) DO NOTHING
-            `, [apSku]);
+        for (const puente of puentesSelladosLdn4) {
+            const checkApExists = await client.query(`
+                SELECT articulo_id FROM public.bunker_articulos WHERE UPPER(BTRIM(articulo_id)) = $1 LIMIT 1
+            `, [puente.apSku]);
+
+            if (checkApExists.rowCount > 0) {
+                const apSkuReal = checkApExists.rows[0].articulo_id;
+                const updIng = await client.query(`
+                    UPDATE public.ingredientes
+                    SET articulo_vinculado_numero = $1
+                    WHERE id = $2
+                      AND COALESCE(UPPER(BTRIM(articulo_vinculado_numero)), '') <> $3
+                    RETURNING id
+                `, [apSkuReal, puente.id, puente.apSku]);
+
+                const count = updIng.rowCount || 0;
+                resumen.ingredientes_puente_ldn4_reconectados += count;
+                if (puente.id === 123) {
+                    resumen.ingrediente_123_reconectado = count;
+                }
+
+                await client.query(`
+                    INSERT INTO public.ingrediente_bunker_articulos (ingrediente_id, bunker_articulo_id)
+                    SELECT $1, $2
+                    WHERE EXISTS (SELECT 1 FROM public.ingredientes WHERE id = $1)
+                    ON CONFLICT (ingrediente_id, bunker_articulo_id) DO NOTHING
+                `, [puente.id, apSkuReal]);
+            }
         }
+
+        // Backfill global idempotente: todo ingrediente con articulo_vinculado_numero válido
+        // en bunker_articulos debe tener su fila espejo en ingrediente_bunker_articulos.
+        const insBackfill = await client.query(`
+            INSERT INTO public.ingrediente_bunker_articulos (ingrediente_id, bunker_articulo_id)
+            SELECT i.id, ba.articulo_id
+            FROM public.ingredientes i
+            JOIN public.bunker_articulos ba ON UPPER(BTRIM(ba.articulo_id)) = UPPER(BTRIM(i.articulo_vinculado_numero))
+            WHERE NULLIF(BTRIM(COALESCE(i.articulo_vinculado_numero, '')), '') IS NOT NULL
+            ON CONFLICT (ingrediente_id, bunker_articulo_id) DO NOTHING
+        `);
+        resumen.espejos_bunker_backfill = insBackfill.rowCount || 0;
 
         // 5. Sanear stock fantasma y kilos_unidad de EMB-GZ6U9K:
         //    Restaurar kilos_unidad = 1.00 y llevar a 0.00 el residuo artificial de 18.18
