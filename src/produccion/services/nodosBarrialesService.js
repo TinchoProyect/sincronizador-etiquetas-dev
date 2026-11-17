@@ -4907,8 +4907,10 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             await client.query(
                 `UPDATE public.nodos_ofertas_gestor SET
                     precio_base_nodo_snapshot = $1,
-                    precio_venta_vecino = CEIL(($1 * (1 + margen_gestor_pct / 100.0)) / 50.0) * 50,
-                    ganancia_unitaria_gestor = (CEIL(($1 * (1 + margen_gestor_pct / 100.0)) / 50.0) * 50) - $1,
+                    precio_venta_vecino = CASE
+                        WHEN COALESCE(precio_venta_vecino, 0) > 0 THEN precio_venta_vecino
+                        ELSE ROUND($1 * (1 + margen_gestor_pct / 100.0))
+                    END,
                     updated_at = NOW()
                  WHERE articulo_catalogo_id = $2`,
                 [calc.precio_base_nodo_final, row.id]

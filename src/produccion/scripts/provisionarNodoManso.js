@@ -159,8 +159,15 @@ async function provisionarNodoManso(opciones = {}) {
         const margenInicial = 28.00;
         for (const cat of catRes.rows) {
             const base = Number(cat.precio_base_nodo_final || 0);
-            const precioVecino = Math.ceil((base * (1 + margenInicial / 100)) / 50) * 50;
-            const ganancia = Math.max(0, precioVecino - base);
+            const calcOf = nodosService.calcularPrecioYGananciaNetaOfertaNodo({
+                costoBaseLamda: base,
+                margenPct: margenInicial,
+                ivaPct: nodoManso.alicuota_iva_margen_pct ?? 21,
+                iibbPct: nodoManso.alicuota_iibb_margen_pct ?? 4,
+                modo: 'margen'
+            });
+            const precioVecino = calcOf.precio_tienda;
+            const ganancia = calcOf.ganancia_neta_nodo;
             const insOf = await db.query(
                 `INSERT INTO public.nodos_ofertas_gestor (
                     nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
