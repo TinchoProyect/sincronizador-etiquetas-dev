@@ -2227,6 +2227,7 @@
       GSTATE.propuestas = data.propuestas_nodo || [];
       GSTATE.pedidos = data.pedidos_nodo || [];
       GSTATE.movimientosCtaCte = data.movimientos_cta_cte || [];
+      GSTATE.liquidacionesNodo = Array.isArray(data.liquidaciones_nodo) ? data.liquidaciones_nodo : [];
       GSTATE.ingredientesDisponibles = Array.isArray(data.ingredientes_sugeribles) ? data.ingredientes_sugeribles : [];
       GSTATE.compartirKit = null;
 
@@ -5416,7 +5417,7 @@
           return { texto: '📦 Empaquetado · Listo para correo', bg: '#e0f2fe', fg: '#0369a1', bd: '#bae6fd' };
         }
         if (hito === 4) {
-          return { texto: guia ? `🚚 Despachado · Guía #${guia}` : `🚚 Despachado por ${opLbl}`, bg: '#ede9fe', fg: '#5b21b6', bd: '#c4b5fd' };
+          return { texto: guia ? `🚚 Despachado por ${opLbl} · #${guia}` : `🚚 Despachado por ${opLbl}`, bg: '#ede9fe', fg: '#5b21b6', bd: '#c4b5fd' };
         }
         if (hito === 5) {
           return { texto: `🛣️ En tránsito (${opLbl})`, bg: '#ede9fe', fg: '#5b21b6', bd: '#c4b5fd' };
@@ -5617,7 +5618,7 @@
               const metaHito = _obtenerMetaHitoGestor(p);
               const urlSeg = obtenerUrlSeguimientoPedidoGestor(p);
               const puedeSalirReparto = !esEc && mod.hoja_de_ruta && esEnvio && hito === 4;
-              const puedeMarcarEntregado = !esEc && !esPostal && (hito === 4 || hito === 5);
+              const puedeMarcarEntregado = (hito === 4 || hito === 5);
 
               const opLbl = p.postal_operador === 'ANDREANI' ? 'Andreani' : 'Correo Argentino';
               const guiaPostal = String(p.postal_numero_tracking || '').trim();
@@ -6052,35 +6053,71 @@
 
       if (esEc) {
         const peds = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO');
-        const pedsPagos = peds.filter(p => Boolean(p.pago_confirmado));
+        const pedsDespachados = peds.filter(p => Boolean(p.debito_cta_cte_registrado) || Number(p.hito_tracking_actual || 1) >= 4);
         const totalFacturado = peds.reduce((a, p) => a + Number(p.total_vecino || 0), 0);
         const totalBase = peds.reduce((a, p) => a + Number(p.total_base_lamda || 0), 0);
-        const totalGanancia = peds.reduce((a, p) => a + Number(p.ganancia_total_gestor || 0), 0);
-        const gananciaAcreditada = pedsPagos.reduce((a, p) => a + Number(p.ganancia_total_gestor || 0), 0);
+        const totalFleteReal = peds.reduce((a, p) => a + Number(p.costo_flete_lamda ?? p.postal_costo_flete_lamda ?? 0), 0);
+        const totalUtilidadReal = peds.reduce((a, p) => {
+          const flete = Number(p.costo_flete_lamda ?? p.postal_costo_flete_lamda ?? 0);
+          if (p.debito_cta_cte_registrado || flete > 0) {
+            return a + (Number(p.total_vecino || 0) - Number(p.total_base_lamda || 0) - flete);
+          }
+          return a + Number(p.ganancia_total_gestor || 0);
+        }, 0);
+        const cortesEmitidos = (GSTATE.liquidacionesNodo || []).filter(l =>
+          String(l.tipo_liquidacion || '').toUpperCase() === 'CORTE_FULFILLMENT' || !l.lote_canasto_id
+        );
 
         return `
           <div class="card">
             <div style="font-size:0.78rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin-bottom:8px;">
               Resumen continuo de Ventas y Ganancias · ${esc(GSTATE.nodo?.nombre_marca || 'Tienda Online')}
             </div>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(165px, 1fr)); gap:10px; margin-bottom:12px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(155px, 1fr)); gap:10px; margin-bottom:12px;">
               <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:12px;">
                 <div style="font-size:0.72rem; color:var(--muted); font-weight:800; text-transform:uppercase;">Ventas Totales (${peds.length})</div>
-                <div style="font-size:1.18rem; font-weight:900; margin-top:3px;">${fmt(totalFacturado)}</div>
+                <div style="font-size:1.15rem; font-weight:900; margin-top:3px;">${fmt(totalFacturado)}</div>
               </div>
               <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:12px;">
                 <div style="font-size:0.72rem; color:var(--muted); font-weight:800; text-transform:uppercase;">Costo Base Productos</div>
-                <div style="font-size:1.18rem; font-weight:900; margin-top:3px;">-${fmt(totalBase)}</div>
+                <div style="font-size:1.15rem; font-weight:900; margin-top:3px;">-${fmt(totalBase)}</div>
+              </div>
+              <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:12px;">
+                <div style="font-size:0.72rem; color:var(--muted); font-weight:800; text-transform:uppercase;">Flete Postal Despachado</div>
+                <div style="font-size:1.15rem; font-weight:900; margin-top:3px;">-${fmt(totalFleteReal)}</div>
               </div>
               <div style="background:var(--ok-soft); border:1px solid rgba(47,111,78,0.25); border-radius:12px; padding:12px;">
-                <div style="font-size:0.72rem; color:var(--ok); font-weight:800; text-transform:uppercase;">Tu Ganancia Proyectada</div>
-                <div style="font-size:1.18rem; font-weight:900; color:var(--ok); margin-top:3px;">+${fmt(totalGanancia)}</div>
-                <div style="font-size:0.74rem; color:var(--muted); margin-top:2px;">Pagos acreditados: +${fmt(gananciaAcreditada)} (${pedsPagos.length}/${peds.length})</div>
+                <div style="font-size:0.72rem; color:var(--ok); font-weight:800; text-transform:uppercase;">Tu Utilidad Neta</div>
+                <div style="font-size:1.18rem; font-weight:900; color:var(--ok); margin-top:3px;">${totalUtilidadReal >= 0 ? '+' : ''}${fmt(totalUtilidadReal)}</div>
+                <div style="font-size:0.74rem; color:var(--muted); margin-top:2px;">Órdenes despachadas: ${pedsDespachados.length}/${peds.length}</div>
               </div>
             </div>
-            <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:12px; font-size:0.83rem; line-height:1.45; color:var(--text);">
-              Las órdenes de tu tienda online se procesan de forma continua y tus ganancias netas se acreditan en cortes periódicos sobre las compras despachadas con pago verificado.
+
+            <div style="font-size:0.78rem; font-weight:800; color:var(--muted); text-transform:uppercase; margin:14px 0 8px;">
+              🧾 Cortes de Liquidación Emitidos (${cortesEmitidos.length})
             </div>
+            ${cortesEmitidos.length === 0 ? `
+              <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:12px; font-size:0.83rem; line-height:1.45; color:var(--text);">
+                Las órdenes de tu tienda online se procesan 24/7 y tus ganancias netas se consolidan en cortes periódicos sobre las compras despachadas con pago verificado.
+              </div>
+            ` : `
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                ${cortesEmitidos.map(ct => `
+                  <div style="background:#fffdfb; border:1px solid var(--border); border-radius:12px; padding:12px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <div>
+                      <div style="font-weight:900; font-size:0.9rem; color:var(--text);">🧾 ${esc(ct.codigo_liquidacion)} · ${ct.cantidad_ordenes || 0} orden(es)</div>
+                      <div style="font-size:0.78rem; color:var(--muted); margin-top:2px;">
+                        Facturado: <strong>${fmt(ct.total_venta_vecinos)}</strong> · Base: -${fmt(ct.total_base_lamda)} · Flete postal: -${fmt(ct.total_costo_flete_lamda || 0)}
+                      </div>
+                    </div>
+                    <div style="text-align:right;">
+                      <div style="font-size:0.7rem; font-weight:800; color:var(--muted); text-transform:uppercase;">Utilidad Neta</div>
+                      <div style="font-size:1.08rem; font-weight:900; color:var(--ok);">${Number(ct.ganancia_neta_gestor || 0) >= 0 ? '+' : ''}${fmt(ct.ganancia_neta_gestor || 0)}</div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            `}
           </div>
         `;
       }

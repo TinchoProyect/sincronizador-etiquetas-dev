@@ -182,6 +182,17 @@ function esSolicitudPublicaNodos(req) {
     return false;
 }
 
+function bloquearEnHostPublicoTienda(req, res, next) {
+    if (esSolicitudPublicaNodos(req)) {
+        return res.status(403).json({
+            ok: false,
+            code: 'INTERNAL_ADMIN_ONLY',
+            error: 'Ruta administrativa interna de LAMDA bloqueada en el dominio público de tiendas.'
+        });
+    }
+    return next();
+}
+
 function extraerTokenGestorRequest(req) {
     const headerTok = String(req?.headers?.['x-nodo-gestor-token'] || '').trim();
     const queryTok = String(req?.query?.t || req?.query?.gestor_token || '').trim();
@@ -1349,13 +1360,103 @@ router.post('/deposito/canastos/:canastoId/entregar-gestor', async (req, res) =>
  * POST /api/produccion/nodos/deposito/canastos/:canastoId/reabrir-prueba
  * Permite en Modo Laboratorio reabrir un Canasto entregado para volver a probar el flujo
  */
-router.post('/deposito/canastos/:canastoId/reabrir-prueba', async (req, res) => {
+router.post('/deposito/canastos/:canastoId/reabrir-prueba', bloquearEnHostPublicoTienda, async (req, res) => {
     try {
         const tablero = await nodosService.reabrirCanastoParaPruebaLaboratorio(req.params.canastoId);
         res.json({ ok: true, tablero });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en POST /deposito/canastos/:canastoId/reabrir-prueba:', error);
         res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+// ============================================================================
+// ENDPOINTS BLOQUE B: FULFILLMENT PAQUETERÍA 24/7, ZPL MARCA BLANCA Y CSV POSTAL
+// ============================================================================
+
+/**
+ * GET /api/produccion/nodos/deposito/fulfillment/preimposicion.csv
+ * Descarga el CSV masivo de Preimposición (Correo Argentino Paq.ar / Andreani)
+ */
+router.get('/deposito/fulfillment/preimposicion.csv', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const csvData = await nodosService.exportarCsvPreimposicionFulfillment({
+            nodo_id: req.query.nodo_id || 0,
+            operador_postal: req.query.operador_postal || 'CORREO_ARGENTINO',
+            solo_pendientes: req.query.solo_pendientes !== '0',
+            pedido_ids: req.query.pedido_ids || ''
+        });
+        if (String(req.query.format || '').toLowerCase() === 'json') {
+            return res.json({ ok: true, ...csvData });
+        }
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${csvData.filename}"`);
+        return res.send(csvData.csv_content);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /deposito/fulfillment/preimposicion.csv:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/deposito/fulfillment/:pedidoId/etiqueta-zpl
+ * Genera la etiqueta térmica Zebra ZD220 100% Marca Blanca (Cara Cliente) + Talón Interno LAMDA
+ */
+router.get('/deposito/fulfillment/:pedidoId/etiqueta-zpl', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const etiqueta = await nodosService.generarEtiquetaFulfillmentMarcaBlanca(req.params.pedidoId);
+        if (String(req.query.download || '') === '1') {
+            const fname = `Etiqueta_Fulfillment_${String(etiqueta.pedido_codigo || req.params.pedidoId).replace(/[^A-Za-z0-9_-]/g, '')}.zpl`;
+            res.setHeader('Content-Type', 'application/x-zpl; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+            return res.send(etiqueta.zpl);
+        }
+        res.json({ ok: true, ...etiqueta });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /deposito/fulfillment/:pedidoId/etiqueta-zpl:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/deposito/fulfillment/:pedidoId/empaquetar
+ * Marca una orden online (con pago conciliado) como controlada y empaquetada en Depósito Central LAMDA
+ */
+router.post('/deposito/fulfillment/:pedidoId/empaquetar', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const resultado = await nodosService.marcarEmpaqueFulfillmentPedido(req.params.pedidoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /deposito/fulfillment/:pedidoId/empaquetar:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/deposito/fulfillment/:pedidoId/despachar
+ * Confirma atómicamente el despacho postal (Guía + Costo Flete LAMDA + Hito 4 + Descuento Stock + Débito Cta. Cte.)
+ */
+router.post('/deposito/fulfillment/:pedidoId/despachar', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const resultado = await nodosService.confirmarDespachoPostalPedido(req.params.pedidoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /deposito/fulfillment/:pedidoId/despachar:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/deposito/fulfillment/:pedidoId/entregar-final
+ * Registra la entrega final en destino de un envío postal (Hito 6 ENTREGADO)
+ */
+router.post('/deposito/fulfillment/:pedidoId/entregar-final', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const resultado = await nodosService.marcarEntregaFinalPostalPedido(req.params.pedidoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /deposito/fulfillment/:pedidoId/entregar-final:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -1431,6 +1532,20 @@ router.post('/liquidacion/canastos/:canastoId/cerrar-liquidacion', async (req, r
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en POST /liquidacion/canastos/:canastoId/cerrar-liquidacion:', error);
         res.status(400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/produccion/nodos/liquidacion/nodos/:nodoId/corte-fulfillment
+ * Genera un Corte de Liquidación Continua sobre todas las órdenes despachadas con pago conciliado pendientes de corte
+ */
+router.post('/liquidacion/nodos/:nodoId/corte-fulfillment', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const resultado = await nodosService.generarCorteLiquidacionFulfillment(req.params.nodoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /liquidacion/nodos/:nodoId/corte-fulfillment:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 

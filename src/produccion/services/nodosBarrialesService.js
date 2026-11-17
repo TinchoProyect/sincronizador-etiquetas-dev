@@ -16,8 +16,11 @@ const {
     convertirLogoAZplGfa,
     generarEtiquetaZplParNodo,
     generarPreviewVisualEtiquetaPar,
-    generarPreviewVisualCanastoQrMaestro
+    generarPreviewVisualCanastoQrMaestro,
+    generarEtiquetaZplParFulfillment,
+    generarPreviewVisualEtiquetaFulfillment
 } = require('../utils/zplLogoConverter');
+const paqueteriaService = require('./paqueteriaFulfillmentService');
 const {
     construirCatalogoIngredientesComerciales,
     obtenerDesgloseIngredientesParaItem
@@ -3062,10 +3065,10 @@ function resolverHitoDesdeEstadoOperativo(estadoOp = '', secuenciaLamda = '') {
     const est = String(estadoOp || '').trim().toUpperCase();
     const sec = String(secuenciaLamda || '').trim();
     if (est === 'ANULADO') return 0;
-    if (est === 'ENTREGADO_VECINO') return 6;
-    if (est === 'EN_CAMINO_VECINO') return 5;
-    if (est === 'EN_PODER_GESTOR') return 4;
-    if (est === 'ARMADO_EN_CANASTO' || sec === 'Pedido_Listo' || sec === 'Retira_Deposito') return 3;
+    if (est === 'ENTREGADO_VECINO' || est === 'ENTREGADO') return 6;
+    if (est === 'EN_CAMINO_VECINO' || est === 'EN_TRANSITO_CORREO') return 5;
+    if (est === 'EN_PODER_GESTOR' || est === 'DESPACHADO_CORREO') return 4;
+    if (est === 'ARMADO_EN_CANASTO' || est === 'EMPAQUETADO_FULFILLMENT' || sec === 'Pedido_Listo' || sec === 'Retira_Deposito') return 3;
     if (est === 'EN_PREPARACION' || sec === 'Armar_Pedido') return 2;
     return 1;
 }
@@ -3747,11 +3750,27 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS provincia_habitual VARCHAR(80),
                 ADD COLUMN IF NOT EXISTS localidad_habitual VARCHAR(120);
 
+            ALTER TABLE public.nodos_liquidaciones_lote
+                ALTER COLUMN lote_canasto_id DROP NOT NULL;
+
+            ALTER TABLE public.nodos_liquidaciones_lote
+                ADD COLUMN IF NOT EXISTS tipo_liquidacion VARCHAR(40) NOT NULL DEFAULT 'CANASTO_SEMANAL',
+                ADD COLUMN IF NOT EXISTS cantidad_ordenes INTEGER NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS total_envio_cobrado_clientes NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ADD COLUMN IF NOT EXISTS total_costo_flete_lamda NUMERIC(14,2) NOT NULL DEFAULT 0.00,
+                ADD COLUMN IF NOT EXISTS detalle_ordenes_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+
             ALTER TABLE public.nodos_pedidos_vecinos
                 ADD COLUMN IF NOT EXISTS presupuesto_id_local INTEGER,
                 ADD COLUMN IF NOT EXISTS secuencia_operativa_lamda VARCHAR(40) DEFAULT 'Imprimir',
                 ADD COLUMN IF NOT EXISTS vecino_email VARCHAR(160),
-                ADD COLUMN IF NOT EXISTS destinatario_dni VARCHAR(24);
+                ADD COLUMN IF NOT EXISTS destinatario_dni VARCHAR(24),
+                ADD COLUMN IF NOT EXISTS debito_cta_cte_registrado BOOLEAN NOT NULL DEFAULT false,
+                ADD COLUMN IF NOT EXISTS movimiento_cc_id INTEGER,
+                ADD COLUMN IF NOT EXISTS liquidacion_id INTEGER REFERENCES public.nodos_liquidaciones_lote(id) ON DELETE SET NULL,
+                ADD COLUMN IF NOT EXISTS fecha_liquidacion TIMESTAMP,
+                ADD COLUMN IF NOT EXISTS costo_flete_lamda NUMERIC(14,2) NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS stock_descontado_fulfillment BOOLEAN NOT NULL DEFAULT false;
 
             CREATE TABLE IF NOT EXISTS public.nodos_pedidos_envios_postales (
                 id SERIAL PRIMARY KEY,
@@ -3786,12 +3805,18 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 rotulo_contenido TEXT,
                 estado_envio VARCHAR(40) NOT NULL DEFAULT 'PENDIENTE_DESPACHO',
                 eventos_carrier_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+                email_contacto VARCHAR(160),
+                despachado_por VARCHAR(120),
                 fecha_despacho TIMESTAMPTZ,
                 fecha_entrega_correo TIMESTAMPTZ,
                 ultimo_sync_carrier_at TIMESTAMPTZ,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
+
+            ALTER TABLE public.nodos_pedidos_envios_postales
+                ADD COLUMN IF NOT EXISTS email_contacto VARCHAR(160),
+                ADD COLUMN IF NOT EXISTS despachado_por VARCHAR(120);
 
             CREATE INDEX IF NOT EXISTS idx_nodos_envios_postales_nodo_estado
                 ON public.nodos_pedidos_envios_postales (nodo_id, estado_envio, id DESC);
@@ -8344,7 +8369,9 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                         npep.costo_envio_cliente AS postal_costo_envio_cliente,
                         npep.numero_tracking AS postal_numero_tracking,
                         npep.url_tracking_carrier AS postal_url_tracking_carrier,
-                        npep.estado_envio AS postal_estado_envio
+                        npep.estado_envio AS postal_estado_envio,
+                        npep.costo_flete_lamda AS postal_costo_flete_lamda,
+                        npep.fecha_despacho AS postal_fecha_despacho
                  FROM public.nodos_pedidos_vecinos npv
                  LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
                  LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
@@ -8648,6 +8675,27 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         }
     }
 
+    let liquidacionesNodo = [];
+    if (esVistaGestor) {
+        const liqGestorRes = await db.query(
+            `SELECT id, codigo_liquidacion, lote_canasto_id, COALESCE(tipo_liquidacion, 'CANASTO_SEMANAL') AS tipo_liquidacion,
+                    COALESCE(cantidad_ordenes, 0) AS cantidad_ordenes,
+                    total_venta_vecinos, total_base_lamda,
+                    COALESCE(total_envio_cobrado_clientes, 0) AS total_envio_cobrado_clientes,
+                    COALESCE(total_costo_flete_lamda, 0) AS total_costo_flete_lamda,
+                    ganancia_neta_gestor, total_transferencias_lamda, total_efectivo_mano_gestor,
+                    direccion_compensacion, monto_compensacion_final,
+                    saldo_cta_cte_post_cierre, modalidad_cierre, observaciones,
+                    detalle_ordenes_json, created_at
+             FROM public.nodos_liquidaciones_lote
+             WHERE nodo_id = $1::int
+             ORDER BY id DESC
+             LIMIT 30`,
+            [nodo.id]
+        );
+        liquidacionesNodo = liqGestorRes.rows;
+    }
+
     return {
         nodo: nodoPublico,
         nodos_disponibles: [
@@ -8672,6 +8720,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         propuestas_nodo: esVistaGestor ? propuestasEnriquecidas : [],
         pedidos_nodo: esVistaGestor ? pedidosConItems : [],
         movimientos_cta_cte: esVistaGestor ? movsRes.rows : [],
+        liquidaciones_nodo: esVistaGestor ? liquidacionesNodo : [],
         radar_reparto: esVistaGestor ? radarReparto : { activo: false },
         telefono_whatsapp_pruebas: '5492216615746',
         telefono_whatsapp_pruebas_display: '221 661 5746',
@@ -9336,11 +9385,11 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                     pedido_id, nodo_id, operador_postal, modalidad_postal,
                     sucursal_codigo, sucursal_nombre, destinatario_nombre, destinatario_dni,
                     cp_destino, provincia_codigo, provincia_nombre, localidad_nombre,
-                    calle, altura, piso_depto, referencias_domicilio,
+                    calle, altura, piso_depto, referencias_domicilio, email_contacto,
                     peso_gramos, valor_declarado, costo_envio_cliente, costo_flete_lamda,
                     modo_imposicion, estado_envio
                  ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,0,'MANUAL','PENDIENTE_DESPACHO'
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$20,$17,$18,$19,0,'MANUAL','PENDIENTE_DESPACHO'
                  ) RETURNING *`,
                 [
                     pedidoRow.id,
@@ -9361,7 +9410,8 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                     datosPostalesValidados.referencias_domicilio,
                     pesoGramosEstimado,
                     subtotalProductosVecino,
-                    cargoEnvioBarrial
+                    cargoEnvioBarrial,
+                    datosPostalesValidados.email_contacto || null
                 ]
             );
             envioPostalRow = insEnvioPostal.rows[0];
@@ -9484,9 +9534,116 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
 }
 
 /**
+ * Genera el preview y el código ZPL 100% Marca Blanca para la caja de paquetería de un Creador / Tienda Online
+ * (Cara Cliente sin mención alguna a LAMDA + QR de seguimiento en tienda.lamdaser.com) acompañado de su
+ * Talón Desmontable Interno para Depósito LAMDA con SKUs oficiales, peso y fecha/hora de empaque.
+ */
+async function generarEtiquetaFulfillmentMarcaBlanca(pedidoId) {
+    await asegurarEsquemaNodosBarriales();
+
+    const pedRes = await db.query(
+        `SELECT npv.*,
+                nm.slug AS nodo_slug, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca,
+                nm.perfil_operativo, nm.modulos_activos,
+                nm.logo_zpl_gfa, nm.logo_mono_preview_base64, nm.logo_zpl_config,
+                npep.operador_postal AS postal_operador,
+                npep.modalidad_postal AS postal_modalidad,
+                npep.sucursal_codigo AS postal_sucursal_codigo,
+                npep.sucursal_nombre AS postal_sucursal_nombre,
+                npep.destinatario_nombre AS postal_destinatario,
+                npep.destinatario_dni AS postal_dni,
+                npep.cp_destino AS postal_cp,
+                npep.provincia_nombre AS postal_provincia,
+                npep.localidad_nombre AS postal_localidad,
+                npep.calle AS postal_calle,
+                npep.altura AS postal_altura,
+                npep.piso_depto AS postal_piso_depto,
+                npep.referencias_domicilio AS postal_referencias,
+                npep.peso_gramos AS postal_peso_gramos,
+                npep.numero_tracking AS postal_numero_tracking
+         FROM public.nodos_pedidos_vecinos npv
+         JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+         LEFT JOIN public.nodos_pedidos_envios_postales npep ON npep.pedido_id = npv.id
+         WHERE npv.id = $1 LIMIT 1`,
+        [Number(pedidoId)]
+    );
+    if (pedRes.rows.length === 0) {
+        throw new Error('Pedido de fulfillment no encontrado.');
+    }
+    const ped = pedRes.rows[0];
+
+    const itemsRes = await db.query(
+        `SELECT npi.*,
+                COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial_lamda,
+                COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda,
+                COALESCE(nac.kilos_unidad, 0.30)::numeric(10,3) AS kilos_unidad
+         FROM public.nodos_pedidos_items npi
+         LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+         LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
+         WHERE npi.pedido_id = $1
+         ORDER BY npi.id ASC`,
+        [ped.id]
+    );
+
+    let pesoCalcGramos = 0;
+    for (const r of itemsRes.rows) {
+        pesoCalcGramos += Math.round(Number(r.kilos_unidad || 0.30) * 1000 * Number(r.cantidad || 1));
+    }
+    pesoCalcGramos = Math.max(250, pesoCalcGramos + 180);
+    const pesoFinalGramos = Number(ped.postal_peso_gramos || 0) > 0
+        ? Number(ped.postal_peso_gramos)
+        : pesoCalcGramos;
+
+    const modPostal = String(ped.postal_modalidad || (ped.modalidad_entrega === 'PAQUETERIA_SUCURSAL' ? 'SUCURSAL' : 'DOMICILIO')).toUpperCase();
+    const dirPostalStr = modPostal === 'SUCURSAL'
+        ? `Sucursal: ${ped.postal_sucursal_nombre || ped.direccion_entrega || 'A designar'}`
+        : [
+            [ped.postal_calle, ped.postal_altura].filter(Boolean).join(' '),
+            ped.postal_piso_depto ? `(${ped.postal_piso_depto})` : ''
+        ].filter(Boolean).join(' ').trim() || (ped.direccion_entrega || '');
+
+    const slugTienda = String(ped.nodo_slug || 'tienda').trim();
+    const qrUrl = `https://tienda.lamdaser.com/tienda/${encodeURIComponent(slugTienda)}?seguimiento=${encodeURIComponent(ped.tracking_token || '')}`;
+
+    const tsRef = ped.fecha_armado_bolsa ? new Date(ped.fecha_armado_bolsa) : new Date();
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const fechaEmpaqueTexto = `${pad2(tsRef.getDate())}/${pad2(tsRef.getMonth() + 1)}/${tsRef.getFullYear()} ${pad2(tsRef.getHours())}:${pad2(tsRef.getMinutes())}`;
+
+    return generarPreviewVisualEtiquetaFulfillment({
+        nombre_marca: ped.nombre_marca,
+        bajada_marca: ped.bajada_marca,
+        subtitulo_marca: ped.subtitulo_marca,
+        logo_zpl_gfa: ped.logo_zpl_gfa,
+        logo_mono_preview_base64: ped.logo_mono_preview_base64,
+        logo_zpl_config: ped.logo_zpl_config,
+        pedido_codigo: ped.codigo_pedido,
+        destinatario_nombre: ped.postal_destinatario || ped.vecino_nombre,
+        destinatario_dni: ped.postal_dni || '',
+        destinatario_telefono: ped.vecino_telefono || '',
+        localidad_nombre: ped.postal_localidad || '',
+        provincia_nombre: ped.postal_provincia || '',
+        cp_destino: ped.postal_cp || '',
+        direccion_postal: dirPostalStr,
+        operador_postal: formatearOperadorPostalLabel(ped.postal_operador || 'CORREO_ARGENTINO'),
+        modalidad_postal: modPostal,
+        sucursal_nombre: ped.postal_sucursal_nombre || '',
+        numero_tracking: ped.postal_numero_tracking || '',
+        qr_seguimiento_url: qrUrl,
+        peso_gramos: pesoFinalGramos,
+        fecha_empaque_texto: fechaEmpaqueTexto,
+        bultos_texto: 'CAJA 1/1',
+        items: itemsRes.rows.map(r => ({
+            cantidad: r.cantidad,
+            descripcion: formatearEtiquetaTecnicaArticulo(r.sku_oficial_lamda || r.sku_nodo, r.nombre_oficial_lamda || r.nombre_publico),
+            presentacion_etiqueta: r.presentacion_etiqueta
+        }))
+    });
+}
+
+/**
  * Genera el preview y el código ZPL de la etiqueta térmica de un pedido vecinal real.
- * La etiqueta izquierda es Marca Blanca pura del Nodo para la bolsa del vecino;
- * el talón derecho de control de armado de Depósito LAMDA imprime siempre [SKU] Nomenclatura Oficial LAMDA.
+ * Si el pedido pertenece a un canal E-Commerce Fulfillment o posee envío postal, delega en
+ * generarEtiquetaFulfillmentMarcaBlanca().
  */
 async function generarEtiquetaDePedidoExistente(pedidoId) {
     await asegurarEsquemaNodosBarriales();
@@ -9494,9 +9651,12 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
     const pedRes = await db.query(
         `SELECT npv.*,
                 nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca,
-                nm.logo_zpl_gfa, nm.logo_mono_preview_base64, nm.logo_zpl_config
+                nm.perfil_operativo, nm.modulos_activos,
+                nm.logo_zpl_gfa, nm.logo_mono_preview_base64, nm.logo_zpl_config,
+                npep.id AS envio_postal_id
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+         LEFT JOIN public.nodos_pedidos_envios_postales npep ON npep.pedido_id = npv.id
          WHERE npv.id = $1 LIMIT 1`,
         [Number(pedidoId)]
     );
@@ -9504,6 +9664,14 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
         throw new Error('Pedido vecinal no encontrado.');
     }
     const ped = pedRes.rows[0];
+
+    if (
+        ped.envio_postal_id ||
+        normalizarPerfilOperativoNodo(ped.perfil_operativo) === 'ecommerce_fulfillment' ||
+        ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(String(ped.modalidad_entrega || '').toUpperCase())
+    ) {
+        return generarEtiquetaFulfillmentMarcaBlanca(pedidoId);
+    }
 
     const itemsRes = await db.query(
         `SELECT npi.*,
@@ -10512,6 +10680,190 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
             [primerPresupuestoIdCanasto, canasto.codigo_canasto, secResumenCanasto, estadoCanastoConsolidado, bolsasListasCount, canasto.id]
         );
     }
+
+    // 4. Sincronizar órdenes individuales de Tiendas Online / E-Commerce Fulfillment (lote_canasto_id IS NULL)
+    const pedidosFulfillmentRes = await q.query(`
+        SELECT npv.*,
+               nm.nombre_marca, nm.gestor_nombre, nm.perfil_operativo, nm.modulos_activos,
+               npep.operador_postal AS postal_operador,
+               npep.modalidad_postal AS postal_modalidad,
+               npep.localidad_nombre AS postal_localidad,
+               npep.provincia_nombre AS postal_provincia,
+               npep.cp_destino AS postal_cp,
+               npep.numero_tracking AS postal_numero_tracking
+        FROM public.nodos_pedidos_vecinos npv
+        JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+        LEFT JOIN public.nodos_pedidos_envios_postales npep ON npep.pedido_id = npv.id
+        WHERE npv.lote_canasto_id IS NULL
+        ORDER BY npv.id ASC
+    `);
+
+    for (const pedido of pedidosFulfillmentRes.rows) {
+        const infoCli = mapaClienteDomicilio.get(Number(pedido.nodo_id));
+        if (!infoCli) continue;
+
+        const estOp = String(pedido.estado_operativo || '').toUpperCase();
+        const pagoConfirmado = estOp !== 'ANULADO' && (
+            Boolean(pedido.impactado_cta_cte_pago) ||
+            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(pedido.estado_pago || '').toUpperCase())
+        );
+
+        if (estOp === 'ANULADO' || !pagoConfirmado) {
+            await q.query(
+                `UPDATE public.presupuestos
+                 SET activo = false,
+                     archivado = CASE WHEN $3 = 'ANULADO' THEN true ELSE archivado END,
+                     estado = CASE WHEN $3 = 'ANULADO' THEN 'Anulado' ELSE estado END
+                 WHERE id_presupuesto_ext = $1 OR ($2::int IS NOT NULL AND id = $2::int)`,
+                [pedido.codigo_pedido, pedido.presupuesto_id_local || null, estOp]
+            );
+            continue;
+        }
+
+        const itemsPedidoRes = await q.query(
+            `SELECT sku_nodo,
+                    MAX(nombre_publico) AS nombre_publico,
+                    SUM(cantidad)::numeric(12,2) AS cantidad_total,
+                    MAX(precio_unitario_base_lamda)::numeric(14,2) AS precio_base
+             FROM public.nodos_pedidos_items
+             WHERE pedido_id = $1
+               AND sku_nodo IS NOT NULL
+               AND TRIM(sku_nodo) != ''
+             GROUP BY sku_nodo
+             ORDER BY sku_nodo ASC`,
+            [pedido.id]
+        );
+        if (itemsPedidoRes.rows.length === 0) continue;
+
+        const presCheck = await q.query(
+            `SELECT * FROM public.presupuestos
+             WHERE id_presupuesto_ext = $1
+             ORDER BY id DESC LIMIT 1`,
+            [pedido.codigo_pedido]
+        );
+
+        let secuenciaTarget = String(pedido.secuencia_operativa_lamda || '').trim();
+        let estadoTarget = 'Presupuesto/Orden';
+        let estadoLogisticoTarget = 'PENDIENTE';
+
+        if (
+            Boolean(pedido.debito_cta_cte_registrado) ||
+            ['DESPACHADO_CORREO', 'EN_TRANSITO_CORREO', 'ENTREGADO', 'ENTREGADO_VECINO'].includes(estOp)
+        ) {
+            secuenciaTarget = 'Entregado';
+            estadoTarget = 'Entregado';
+            estadoLogisticoTarget = 'DESPACHADO_ENCOMIENDA';
+        } else if (estOp === 'EMPAQUETADO_FULFILLMENT') {
+            secuenciaTarget = 'Pedido_Listo';
+            estadoTarget = 'Presupuesto/Orden';
+            estadoLogisticoTarget = 'PENDIENTE_DESPACHO_POSTAL';
+        } else {
+            if (!['Imprimir', 'Imprimir_Modificado', 'Armar_Pedido'].includes(secuenciaTarget)) {
+                secuenciaTarget = 'Armar_Pedido';
+            }
+            estadoTarget = 'Presupuesto/Orden';
+            estadoLogisticoTarget = 'PENDIENTE';
+        }
+
+        const destPostalTxt = [pedido.postal_localidad, pedido.postal_provincia].filter(Boolean).join(', ') || pedido.direccion_entrega || 'Envío Nacional';
+        const opPostalTxt = formatearOperadorPostalLabel(pedido.postal_operador || 'CORREO_ARGENTINO');
+        const guiaTxt = pedido.postal_numero_tracking ? ` · Guía #${pedido.postal_numero_tracking}` : '';
+        const notaPresupuesto = `${pedido.nombre_marca} · Fulfillment 24/7 (#${pedido.codigo_pedido}) · Destinatario: ${pedido.vecino_nombre} · ${opPostalTxt} (${destPostalTxt}${pedido.postal_cp ? ' CP ' + pedido.postal_cp : ''})${guiaTxt}`;
+        const puntoEntregaStr = `${pedido.nombre_marca} — ${pedido.vecino_nombre} (${destPostalTxt})`;
+
+        let presupuestoIdLocal;
+        if (presCheck.rows.length === 0) {
+            const insP = await q.query(
+                `INSERT INTO public.presupuestos (
+                    id_presupuesto_ext, id_cliente, fecha, fecha_entrega,
+                    estado, secuencia, estado_logistico,
+                    agente, tipo_comprobante, punto_entrega,
+                    nota, id_domicilio_entrega, activo, archivado
+                 ) VALUES ($1,$2,CURRENT_DATE,CURRENT_DATE,$3,$4,$5,'Fulfillment Tienda Online','Orden Fulfillment Paquetería',$6,$7,$8,true,false)
+                 RETURNING id`,
+                [
+                    pedido.codigo_pedido,
+                    String(infoCli.cliente_id_num),
+                    estadoTarget,
+                    secuenciaTarget,
+                    estadoLogisticoTarget,
+                    puntoEntregaStr,
+                    notaPresupuesto,
+                    infoCli.domicilio_id
+                ]
+            );
+            presupuestoIdLocal = insP.rows[0].id;
+        } else {
+            presupuestoIdLocal = presCheck.rows[0].id;
+            await q.query(
+                `UPDATE public.presupuestos
+                 SET id_cliente = $1,
+                     fecha = CURRENT_DATE,
+                     estado = $2,
+                     secuencia = $3,
+                     estado_logistico = $4,
+                     agente = 'Fulfillment Tienda Online',
+                     tipo_comprobante = 'Orden Fulfillment Paquetería',
+                     punto_entrega = $5,
+                     nota = $6,
+                     id_domicilio_entrega = COALESCE(id_domicilio_entrega, $7),
+                     activo = true,
+                     archivado = false
+                 WHERE id = $8`,
+                [
+                    String(infoCli.cliente_id_num),
+                    estadoTarget,
+                    secuenciaTarget,
+                    estadoLogisticoTarget,
+                    puntoEntregaStr,
+                    notaPresupuesto,
+                    infoCli.domicilio_id,
+                    presupuestoIdLocal
+                ]
+            );
+        }
+
+        const detExistRes = await q.query(
+            `SELECT articulo, cantidad::numeric(12,2) AS cantidad
+             FROM public.presupuestos_detalles
+             WHERE id_presupuesto = $1
+             ORDER BY articulo ASC`,
+            [presupuestoIdLocal]
+        );
+        const firmaActual = detExistRes.rows.map(r => `${r.articulo}:${Number(r.cantidad)}`).join('|');
+        const firmaNueva = itemsPedidoRes.rows.map(r => `${r.sku_nodo}:${Number(r.cantidad_total)}`).join('|');
+
+        if (firmaActual !== firmaNueva) {
+            await q.query('DELETE FROM public.presupuestos_detalles WHERE id_presupuesto = $1 OR id_presupuesto_ext = $2', [presupuestoIdLocal, pedido.codigo_pedido]);
+            for (const item of itemsPedidoRes.rows) {
+                const cant = Number(item.cantidad_total || 1);
+                const precioBase = Number(item.precio_base || 0);
+                const subtotalBase = Number((cant * precioBase).toFixed(2));
+                await q.query(
+                    `INSERT INTO public.presupuestos_detalles (
+                        id_presupuesto, id_presupuesto_ext, articulo, cantidad,
+                        valor1, precio1, iva1, diferencia, camp1, fecha_actualizacion
+                     ) VALUES ($1,$2,$3,$4,$5,$6,0,0,$6,NOW())`,
+                    [
+                        presupuestoIdLocal,
+                        pedido.codigo_pedido,
+                        item.sku_nodo,
+                        cant,
+                        precioBase,
+                        subtotalBase
+                    ]
+                );
+            }
+        }
+
+        await q.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET presupuesto_id_local = $1,
+                 secuencia_operativa_lamda = $2
+             WHERE id = $3`,
+            [presupuestoIdLocal, secuenciaTarget, pedido.id]
+        );
+    }
 }
 
 /**
@@ -10825,11 +11177,12 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
 
     const nodoIdFiltro = filtros.nodo_id ? Number(filtros.nodo_id) : 0;
 
-    const [nodosRes, canastosRes, pedidosRes, itemsRes, movsRes] = await Promise.all([
+    const [nodosRes, canastosRes, pedidosRes, itemsRes, movsRes, enviosPostalesRes, stockConsolidadoRes] = await Promise.all([
         db.query(`
-            SELECT nm.id, nm.codigo_nodo, nm.slug, nm.nombre_marca, nm.subtitulo_marca,
+            SELECT nm.id, nm.codigo_nodo, nm.slug, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca,
                    nm.gestor_nombre, nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro,
                    nm.color_primario, nm.codigo_bunker_cliente,
+                   nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria,
                    COALESCE(nm.usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada,
                    nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre,
                    CASE WHEN COALESCE(nm.usar_cuenta_madre_unificada, false) AND nm.codigo_bunker_cliente_madre IS NOT NULL
@@ -10925,7 +11278,19 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
             WHERE ($1 = 0 OR nmc.nodo_id = $1)
             ORDER BY nmc.id DESC
             LIMIT 25
-        `, [nodoIdFiltro])
+        `, [nodoIdFiltro]),
+        db.query(`
+            SELECT *
+            FROM public.nodos_pedidos_envios_postales
+            WHERE ($1 = 0 OR nodo_id = $1)
+            ORDER BY id ASC
+        `, [nodoIdFiltro]),
+        db.query(`
+            SELECT UPPER(articulo_numero) AS sku_upper,
+                   COALESCE(stock_consolidado, 0)::numeric(14,2) AS stock_consolidado
+            FROM public.stock_real_consolidado
+            WHERE articulo_numero IS NOT NULL
+        `)
     ]);
 
     const itemsPorPedido = new Map();
@@ -11025,11 +11390,174 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
     });
 
     // Resumen global del 4° Depósito Conceptual (ESTACION_NODOS)
-    const totalPedidos = pedidosRes.rows.length;
-    const bolsasPendientesArmar = pedidosRes.rows.filter(p => p.estado_operativo === 'CONFIRMADO_VECINO').length;
-    const bolsasEnEstacionNodos = pedidosRes.rows.filter(p => p.estado_operativo === 'ARMADO_EN_CANASTO').length;
-    const bolsasEnPoderGestor = pedidosRes.rows.filter(p => ['EN_PODER_GESTOR', 'ENTREGADO_VECINO'].includes(p.estado_operativo)).length;
+    const pedidosCanastosRows = pedidosRes.rows.filter(p => Number(p.lote_canasto_id || 0) > 0);
+    const totalPedidos = pedidosCanastosRows.length;
+    const bolsasPendientesArmar = pedidosCanastosRows.filter(p => p.estado_operativo === 'CONFIRMADO_VECINO').length;
+    const bolsasEnEstacionNodos = pedidosCanastosRows.filter(p => p.estado_operativo === 'ARMADO_EN_CANASTO').length;
+    const bolsasEnPoderGestor = pedidosCanastosRows.filter(p => ['EN_PODER_GESTOR', 'ENTREGADO_VECINO'].includes(p.estado_operativo)).length;
     const canastosListosRetiro = canastosDetallados.filter(c => c.estado_canasto === 'LISTO_ESTACION_NODOS').length;
+
+    // =========================================================================
+    // COLA FIFO FULFILLMENT PAQUETERÍA 24/7 (Tiendas Online / ecommerce_fulfillment)
+    // =========================================================================
+    const mapaNodosPorId = new Map(nodosRes.rows.map(n => [Number(n.id), n]));
+    const mapaPostalPorPedido = new Map(enviosPostalesRes.rows.map(ep => [Number(ep.pedido_id), ep]));
+    const mapaStockPorSku = new Map(stockConsolidadoRes.rows.map(s => [String(s.sku_upper || '').trim().toUpperCase(), Number(s.stock_consolidado || 0)]));
+
+    const pedidosFulfillmentRaw = pedidosRes.rows.filter(p => {
+        if (Number(p.lote_canasto_id || 0) > 0) return false;
+        const nRow = mapaNodosPorId.get(Number(p.nodo_id));
+        const esEc = nRow && normalizarPerfilOperativoNodo(nRow.perfil_operativo) === 'ecommerce_fulfillment';
+        const tienePostal = mapaPostalPorPedido.has(Number(p.id)) ||
+            ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(String(p.modalidad_entrega || '').toUpperCase());
+        return Boolean(esEc || tienePostal);
+    });
+
+    // Orden FIFO por fecha de conciliación de pago o creación
+    pedidosFulfillmentRaw.sort((a, b) => {
+        const ta = new Date(a.fecha_conciliacion_pago || a.created_at || 0).getTime();
+        const tb = new Date(b.fecha_conciliacion_pago || b.created_at || 0).getTime();
+        if (ta !== tb) return ta - tb;
+        return Number(a.id) - Number(b.id);
+    });
+
+    const ordenesFulfillment = [];
+    const mapaConsolidadoFulfillment = new Map();
+    let pendEmpaqueCount = 0;
+    let empaquetadasListasCount = 0;
+    let despachadasCorreoCount = 0;
+    let entregadasFinalCount = 0;
+    let aguardandoPagoCount = 0;
+
+    for (const p of pedidosFulfillmentRaw) {
+        const pid = Number(p.id);
+        const nRow = mapaNodosPorId.get(Number(p.nodo_id)) || {};
+        const ep = mapaPostalPorPedido.get(pid) || null;
+        const itemsPed = itemsPorPedido.get(pid) || [];
+
+        const pagoConfirmado = Boolean(p.impactado_cta_cte_pago) ||
+            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase());
+
+        const estOp = String(p.estado_operativo || '').toUpperCase();
+        const yaDespachado = Boolean(p.debito_cta_cte_registrado) ||
+            ['DESPACHADO_CORREO', 'EN_TRANSITO_CORREO', 'ENTREGADO', 'ENTREGADO_VECINO'].includes(estOp) ||
+            ['DESPACHADO', 'EN_TRANSITO', 'ENTREGADO'].includes(String(ep?.estado_envio || '').toUpperCase());
+        const yaEntregado = ['ENTREGADO', 'ENTREGADO_VECINO'].includes(estOp) ||
+            String(ep?.estado_envio || '').toUpperCase() === 'ENTREGADO' ||
+            Number(p.hito_tracking_actual || 1) >= 6;
+        const yaEmpaquetado = yaDespachado || estOp === 'EMPAQUETADO_FULFILLMENT' || Number(p.hito_tracking_actual || 1) >= 3;
+
+        let etapaFulfillment = 'PENDIENTE_EMPAQUE';
+        if (!pagoConfirmado) {
+            etapaFulfillment = 'AGUARDANDO_PAGO';
+            aguardandoPagoCount++;
+        } else if (yaEntregado) {
+            etapaFulfillment = 'ENTREGADO';
+            entregadasFinalCount++;
+        } else if (yaDespachado) {
+            etapaFulfillment = 'DESPACHADO_CORREO';
+            despachadasCorreoCount++;
+        } else if (yaEmpaquetado) {
+            etapaFulfillment = 'EMPAQUETADO_LISTO';
+            empaquetadasListasCount++;
+        } else {
+            etapaFulfillment = 'PENDIENTE_EMPAQUE';
+            pendEmpaqueCount++;
+        }
+
+        let pesoEstimadoGramos = 0;
+        for (const it of itemsPed) {
+            const cant = Number(it.cantidad || 1);
+            const kgU = Number(it.kilos_unidad || 0.30);
+            pesoEstimadoGramos += Math.round(kgU * 1000 * cant);
+
+            // Alimentar el consolidado de SKUs hacia Carros de Producción para órdenes pagas aún no despachadas
+            if (pagoConfirmado && !yaDespachado) {
+                const skuKey = String(it.sku_nodo || it.nombre_publico).trim().toUpperCase();
+                if (!mapaConsolidadoFulfillment.has(skuKey)) {
+                    const stockActual = mapaStockPorSku.has(skuKey) ? Number(mapaStockPorSku.get(skuKey)) : 0;
+                    mapaConsolidadoFulfillment.set(skuKey, {
+                        articulo_catalogo_id: it.articulo_catalogo_id,
+                        sku_nodo: it.sku_nodo || 'S/C',
+                        nombre_oficial_lamda: it.nombre_oficial_lamda || it.nombre_publico,
+                        etiqueta_oficial_lamda: it.etiqueta_oficial_lamda || formatearEtiquetaTecnicaArticulo(it.sku_nodo, it.nombre_oficial_lamda || it.nombre_publico),
+                        presentacion_etiqueta: it.presentacion_etiqueta || '',
+                        categoria_familiar: it.categoria_familiar || '',
+                        flujo_lamda: Number(it.flujo_lamda || 2),
+                        kilos_unidad: kgU,
+                        unidades_requeridas: 0,
+                        unidades_empaquetadas: 0,
+                        unidades_pendientes_empaque: 0,
+                        kilos_requeridos: 0,
+                        stock_consolidado_actual: stockActual,
+                        faltante_fraccionar_unidades: 0,
+                        faltante_fraccionar_kilos: 0,
+                        ordenes_detalle: []
+                    });
+                }
+                const entry = mapaConsolidadoFulfillment.get(skuKey);
+                entry.unidades_requeridas += cant;
+                if (yaEmpaquetado) entry.unidades_empaquetadas += cant;
+                else entry.unidades_pendientes_empaque += cant;
+                entry.kilos_requeridos = Number((entry.unidades_requeridas * entry.kilos_unidad).toFixed(3));
+                entry.faltante_fraccionar_unidades = Math.max(0, Number((entry.unidades_requeridas - entry.stock_consolidado_actual).toFixed(2)));
+                entry.faltante_fraccionar_kilos = Number((entry.faltante_fraccionar_unidades * entry.kilos_unidad).toFixed(3));
+                entry.ordenes_detalle.push({
+                    codigo_pedido: p.codigo_pedido,
+                    nombre_marca: nRow.nombre_marca || '',
+                    destinatario: ep?.destinatario_nombre || p.vecino_nombre,
+                    cantidad: cant,
+                    empaquetado: yaEmpaquetado
+                });
+            }
+        }
+        pesoEstimadoGramos = Math.max(250, pesoEstimadoGramos + 180);
+
+        const operadorEfectivo = String(ep?.operador_postal || 'CORREO_ARGENTINO').toUpperCase();
+        ordenesFulfillment.push({
+            ...p,
+            nodo_slug: nRow.slug || '',
+            nombre_marca: nRow.nombre_marca || '',
+            bajada_marca: nRow.bajada_marca || '',
+            color_primario: nRow.color_primario || '#1e293b',
+            codigo_bunker_cuenta_activa: nRow.codigo_bunker_cuenta_activa || nRow.codigo_bunker_cliente || '',
+            pago_confirmado: pagoConfirmado,
+            etapa_fulfillment: etapaFulfillment,
+            empaquetado_listo: yaEmpaquetado,
+            despachado_correo: yaDespachado,
+            entregado_final: yaEntregado,
+            operador_postal: operadorEfectivo,
+            operador_postal_label: formatearOperadorPostalLabel(operadorEfectivo),
+            peso_gramos_efectivo: Number(ep?.peso_gramos || 0) > 0 ? Number(ep.peso_gramos) : pesoEstimadoGramos,
+            envio_postal: ep ? {
+                ...ep,
+                operador_label: formatearOperadorPostalLabel(ep.operador_postal || 'CORREO_ARGENTINO'),
+                costo_envio_cliente: Number(ep.costo_envio_cliente || p.cargo_envio_barrial || 0),
+                costo_flete_lamda: Number(ep.costo_flete_lamda ?? p.costo_flete_lamda ?? 0)
+            } : {
+                operador_postal: operadorEfectivo,
+                operador_label: formatearOperadorPostalLabel(operadorEfectivo),
+                modalidad_postal: p.modalidad_entrega === 'PAQUETERIA_SUCURSAL' ? 'SUCURSAL' : 'DOMICILIO',
+                destinatario_nombre: p.vecino_nombre,
+                destinatario_dni: '',
+                cp_destino: '',
+                provincia_nombre: '',
+                localidad_nombre: '',
+                calle: p.direccion_entrega || '',
+                altura: '',
+                piso_depto: '',
+                sucursal_nombre: '',
+                costo_envio_cliente: Number(p.cargo_envio_barrial || 0),
+                costo_flete_lamda: Number(p.costo_flete_lamda || 0),
+                numero_tracking: null,
+                url_tracking_carrier: null,
+                estado_envio: 'PENDIENTE_DESPACHO'
+            },
+            items: itemsPed
+        });
+    }
+
+    const nodosEcommerce = nodosRes.rows.filter(n => normalizarPerfilOperativoNodo(n.perfil_operativo) === 'ecommerce_fulfillment');
 
     return {
         resumen_deposito: {
@@ -11039,10 +11567,29 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
             bolsas_en_estacion_nodos: bolsasEnEstacionNodos,
             bolsas_en_poder_gestor: bolsasEnPoderGestor,
             canastos_totales: canastosDetallados.length,
-            canastos_listos_retiro: canastosListosRetiro
+            canastos_listos_retiro: canastosListosRetiro,
+            fulfillment_cola_activa: pendEmpaqueCount + empaquetadasListasCount,
+            fulfillment_pendientes_empaque: pendEmpaqueCount,
+            fulfillment_empaquetadas_listas: empaquetadasListasCount,
+            fulfillment_despachadas_correo: despachadasCorreoCount
         },
         nodos: nodosRes.rows,
         canastos: canastosDetallados,
+        fulfillment_paqueteria: {
+            conectores: paqueteriaService.obtenerEstadoConectoresPaqueteria(),
+            tiendas_online: nodosEcommerce,
+            resumen: {
+                cola_activa_total: pendEmpaqueCount + empaquetadasListasCount,
+                pendientes_empaque: pendEmpaqueCount,
+                empaquetadas_listas_despacho: empaquetadasListasCount,
+                despachadas_correo: despachadasCorreoCount,
+                entregadas_final: entregadasFinalCount,
+                aguardando_conciliacion_pago: aguardandoPagoCount,
+                total_ordenes: ordenesFulfillment.length
+            },
+            consolidado_mercaderia: Array.from(mapaConsolidadoFulfillment.values()).sort((a, b) => b.unidades_requeridas - a.unidades_requeridas),
+            ordenes: ordenesFulfillment
+        },
         movimientos_cta_cte: movsRes.rows
     };
 }
@@ -11641,10 +12188,11 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
 
     const [nodosRes, canastosRes, pedidosRes, itemsRes, aliasRes, liqRes, movsRes, vecinosRes] = await Promise.all([
         db.query(`
-            SELECT nm.id, nm.codigo_nodo, nm.slug, nm.nombre_marca, nm.subtitulo_marca,
+            SELECT nm.id, nm.codigo_nodo, nm.slug, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca,
                    nm.gestor_nombre, nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro,
                    nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
                    nm.color_primario, nm.codigo_bunker_cliente, nm.bunker_cliente_id,
+                   nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria,
                    nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre,
                    COALESCE(nm.usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada,
                    CASE WHEN COALESCE(nm.usar_cuenta_madre_unificada, false) AND nm.codigo_bunker_cliente_madre IS NOT NULL
@@ -11708,8 +12256,20 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
                 nle.id ASC
         `, [nodoIdFiltro]),
         db.query(`
-            SELECT npv.*
+            SELECT npv.*,
+                   npep.operador_postal AS postal_operador,
+                   npep.modalidad_postal AS postal_modalidad,
+                   npep.cp_destino AS postal_cp,
+                   npep.localidad_nombre AS postal_localidad,
+                   npep.provincia_nombre AS postal_provincia,
+                   npep.numero_tracking AS postal_numero_tracking,
+                   npep.url_tracking_carrier AS postal_url_tracking,
+                   npep.estado_envio AS postal_estado_envio,
+                   npep.costo_envio_cliente AS postal_costo_envio_cliente,
+                   npep.costo_flete_lamda AS postal_costo_flete_lamda,
+                   npep.fecha_despacho AS postal_fecha_despacho
             FROM public.nodos_pedidos_vecinos npv
+            LEFT JOIN public.nodos_pedidos_envios_postales npep ON npep.pedido_id = npv.id
             WHERE ($1::int = 0 OR npv.nodo_id = $1::int)
             ORDER BY npv.id ASC
         `, [nodoIdFiltro]),
@@ -11851,7 +12411,11 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
         };
     });
 
-    const liqPorCanasto = new Map(liqRes.rows.map(l => [Number(l.lote_canasto_id), l]));
+    const liqPorCanasto = new Map(
+        liqRes.rows
+            .filter(l => Number(l.lote_canasto_id || 0) > 0)
+            .map(l => [Number(l.lote_canasto_id), l])
+    );
 
     const lotes = canastosRes.rows.map(c => {
         const cid = Number(c.id);
@@ -11865,9 +12429,87 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
         };
     });
 
+    // Construir tablero de Liquidación Continua 24/7 para Tiendas Online (ecommerce_fulfillment / lote_canasto_id IS NULL)
+    const pedidosSinCanasto = pedidosPorCanasto.get(0) || [];
+    const pedidosFulfillmentPorNodo = new Map();
+    for (const p of pedidosSinCanasto) {
+        const nid = Number(p.nodo_id);
+        if (!pedidosFulfillmentPorNodo.has(nid)) pedidosFulfillmentPorNodo.set(nid, []);
+        pedidosFulfillmentPorNodo.get(nid).push(p);
+    }
+
+    const cortesPorNodo = new Map();
+    const cortesFulfillment = [];
+    for (const l of liqRes.rows) {
+        if (String(l.tipo_liquidacion || '').toUpperCase() === 'CORTE_FULFILLMENT' || !l.lote_canasto_id) {
+            cortesFulfillment.push(l);
+            const nid = Number(l.nodo_id);
+            if (!cortesPorNodo.has(nid)) cortesPorNodo.set(nid, []);
+            cortesPorNodo.get(nid).push(l);
+        }
+    }
+
+    const tiendasFulfillment = nodosRes.rows
+        .filter(n => normalizarPerfilOperativoNodo(n.perfil_operativo) === 'ecommerce_fulfillment' || (pedidosFulfillmentPorNodo.get(Number(n.id)) || []).length > 0)
+        .map(n => {
+            const nid = Number(n.id);
+            const pedsTienda = (pedidosFulfillmentPorNodo.get(nid) || []).slice().sort((a, b) => Number(b.id) - Number(a.id));
+            const pedsActivos = pedsTienda.filter(x => !x.anulado);
+            const pedsPendientesPago = pedsActivos.filter(x => !x.pago_confirmado);
+            const pedsPendientesDespacho = pedsActivos.filter(x => x.pago_confirmado && !x.debito_cta_cte_registrado);
+            const pedsElegiblesCorte = pedsActivos.filter(x => x.pago_confirmado && Boolean(x.debito_cta_cte_registrado) && !x.liquidacion_id);
+
+            let subtotalProductosCorte = 0;
+            let envioCobradoClientesCorte = 0;
+            let totalIngresosBrutosCorte = 0;
+            let totalCostoBaseLamdaCorte = 0;
+            let totalCostoFleteLamdaCorte = 0;
+            let utilidadNetaCreadorCorte = 0;
+
+            for (const po of pedsElegiblesCorte) {
+                const subP = Number(po.subtotal_productos_vecino || 0);
+                const envCli = Number(po.cargo_envio_barrial ?? po.postal_costo_envio_cliente ?? 0);
+                const ingBruto = Number(po.total_vecino || (subP + envCli - Number(po.monto_ajuste_credito || 0)));
+                const baseLamda = Number(po.total_base_lamda || 0);
+                const fleteLamda = Number(po.costo_flete_lamda ?? po.postal_costo_flete_lamda ?? 0);
+                const utilOrden = Number((ingBruto - baseLamda - fleteLamda).toFixed(2));
+
+                subtotalProductosCorte += subP;
+                envioCobradoClientesCorte += envCli;
+                totalIngresosBrutosCorte += ingBruto;
+                totalCostoBaseLamdaCorte += baseLamda;
+                totalCostoFleteLamdaCorte += fleteLamda;
+                utilidadNetaCreadorCorte += utilOrden;
+            }
+
+            return {
+                ...n,
+                perfil_operativo: normalizarPerfilOperativoNodo(n.perfil_operativo),
+                pedidos_fulfillment: pedsTienda,
+                resumen_operativo: {
+                    ordenes_activas: pedsActivos.length,
+                    pendientes_conciliar_pago: pedsPendientesPago.length,
+                    en_cola_despacho_deposito: pedsPendientesDespacho.length,
+                    despachadas_pendientes_corte: pedsElegiblesCorte.length
+                },
+                cuadro_corte_pendiente: {
+                    cantidad_ordenes: pedsElegiblesCorte.length,
+                    subtotal_productos: Number(subtotalProductosCorte.toFixed(2)),
+                    envio_cobrado_clientes: Number(envioCobradoClientesCorte.toFixed(2)),
+                    total_ingresos_brutos: Number(totalIngresosBrutosCorte.toFixed(2)),
+                    costo_base_lamda: Number(totalCostoBaseLamdaCorte.toFixed(2)),
+                    costo_flete_lamda: Number(totalCostoFleteLamdaCorte.toFixed(2)),
+                    utilidad_neta_creador: Number(utilidadNetaCreadorCorte.toFixed(2))
+                },
+                cortes_cerrados: cortesPorNodo.get(nid) || []
+            };
+        });
+
     return {
         nodos: nodosRes.rows,
         lotes,
+        tiendas_fulfillment: tiendasFulfillment,
+        cortes_fulfillment: cortesFulfillment,
         vecinos_padron: vecinosPadron,
         alias_aprendidos: aliasRes.rows,
         movimientos_cta_cte: movsRes.rows,
@@ -11894,12 +12536,15 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
         const pedRes = await client.query(
             `SELECT npv.*,
                     nm.nombre_marca, nm.gestor_nombre, nm.codigo_bunker_cliente, nm.alias_bancario_display,
+                    nm.perfil_operativo, nm.modulos_activos,
                     nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre,
                     COALESCE(nm.usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada,
-                    nle.codigo_canasto
+                    nle.codigo_canasto,
+                    npep.id AS envio_postal_id
              FROM public.nodos_pedidos_vecinos npv
              JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
              LEFT JOIN public.nodos_lotes_estacion nle ON nle.id = npv.lote_canasto_id
+             LEFT JOIN public.nodos_pedidos_envios_postales npep ON npep.pedido_id = npv.id
              WHERE npv.id = $1::int
              FOR UPDATE OF npv`,
             [Number(pedidoId)]
@@ -12114,6 +12759,22 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
             );
         }
 
+        // Si la orden pertenece a E-Commerce Fulfillment / Paquetería (sin canasto semanal),
+        // al conciliar su pago pasa de inmediato a Hito 2 (EN_PREPARACION) e ingresa a la cola FIFO 24/7 de Depósito.
+        const esOrdenFulfillment = !ped.lote_canasto_id && (
+            Boolean(ped.envio_postal_id) ||
+            normalizarPerfilOperativoNodo(ped.perfil_operativo) === 'ecommerce_fulfillment' ||
+            ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(String(ped.modalidad_entrega || '').toUpperCase())
+        );
+        if (esOrdenFulfillment && Number(ped.hito_tracking_actual || 1) < 2) {
+            await registrarTransicionHitoPedidoVecino(client, ped.id, 2, {
+                estadoOverride: 'EN_PREPARACION',
+                origen: 'CONCILIACION_PAGO_ONLINE',
+                actor: String(payload.responsable || 'Administración LAMDA').trim(),
+                detalle: `Pago verificado · Orden #${ped.codigo_pedido} ingresada a cola de preparación y empaque`
+            });
+        }
+
         await client.query('COMMIT');
     } catch (err) {
         await client.query('ROLLBACK');
@@ -12122,6 +12783,7 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
         client.release();
     }
 
+    await sincronizarNodosConCircuitoOperativoLamda();
     return obtenerTableroLiquidacionCobros();
 }
 
@@ -12145,6 +12807,938 @@ async function conciliarTodosLosPagosPendientesCanasto(canastoId) {
     }
 
     return obtenerTableroLiquidacionCobros();
+}
+
+// ============================================================================
+// BLOQUE B: MESA DE FULFILLMENT 24/7, GATILLO CONTABLE POSTAL Y CORTES CONTINUOS
+// ============================================================================
+
+/**
+ * Marca (o desmarca) una orden de E-Commerce Fulfillment como controlada y empaquetada en Depósito Central LAMDA,
+ * devolviendo su etiqueta Zebra Marca Blanca + Talón Interno.
+ * Regla estricta: exige pago_confirmado === true.
+ */
+async function marcarEmpaqueFulfillmentPedido(pedidoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const pid = Number(pedidoId || 0);
+    if (!pid) throw new Error('ID de pedido inválido.');
+
+    const desmarcar = Boolean(payload.desmarcar);
+    const operario = String(payload.operario || 'Mesa Fulfillment LAMDA').trim();
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+
+        const pedRes = await client.query(
+            `SELECT npv.*, nm.nombre_marca, nm.perfil_operativo
+             FROM public.nodos_pedidos_vecinos npv
+             JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+             WHERE npv.id = $1::int
+             FOR UPDATE OF npv`,
+            [pid]
+        );
+        if (pedRes.rows.length === 0) {
+            const err = new Error('Pedido no encontrado.');
+            err.statusCode = 404;
+            throw err;
+        }
+        const ped = pedRes.rows[0];
+        const estOp = String(ped.estado_operativo || '').toUpperCase();
+
+        if (estOp === 'ANULADO') {
+            const err = new Error(`El pedido #${ped.codigo_pedido} está ANULADO.`);
+            err.statusCode = 400;
+            throw err;
+        }
+
+        const pagoConfirmado = Boolean(ped.impactado_cta_cte_pago) ||
+            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(ped.estado_pago || '').toUpperCase());
+        if (!pagoConfirmado) {
+            const err = new Error(`Bloqueo operativo: el pedido #${ped.codigo_pedido} aún no tiene su transferencia conciliada en Liquidación y Cobros.`);
+            err.statusCode = 400;
+            throw err;
+        }
+
+        if (ped.debito_cta_cte_registrado) {
+            const err = new Error(`El pedido #${ped.codigo_pedido} ya fue despachado por correo.`);
+            err.statusCode = 400;
+            throw err;
+        }
+
+        if (payload.peso_gramos !== undefined && Number(payload.peso_gramos) > 0) {
+            await client.query(
+                `UPDATE public.nodos_pedidos_envios_postales
+                 SET peso_gramos = $1::int,
+                     updated_at = NOW()
+                 WHERE pedido_id = $2::int`,
+                [Math.round(Number(payload.peso_gramos)), pid]
+            );
+        }
+
+        if (desmarcar) {
+            await client.query(
+                `UPDATE public.nodos_pedidos_vecinos
+                 SET estado_operativo = 'EN_PREPARACION',
+                     hito_tracking_actual = 2,
+                     ubicacion_deposito = 'COLA_FULFILLMENT',
+                     secuencia_operativa_lamda = 'Armar_Pedido',
+                     updated_at = NOW()
+                 WHERE id = $1::int`,
+                [pid]
+            );
+        } else {
+            await client.query(
+                `UPDATE public.nodos_pedidos_vecinos
+                 SET ubicacion_deposito = 'MESA_FULFILLMENT',
+                     etiqueta_impresa = true,
+                     secuencia_operativa_lamda = 'Pedido_Listo',
+                     fecha_armado_bolsa = COALESCE(fecha_armado_bolsa, NOW()),
+                     updated_at = NOW()
+                 WHERE id = $1::int`,
+                [pid]
+            );
+            await registrarTransicionHitoPedidoVecino(client, pid, 3, {
+                estadoOverride: 'EMPAQUETADO_FULFILLMENT',
+                origen: 'MESA_FULFILLMENT_LAMDA',
+                actor: operario,
+                detalle: `Productos controlados y empaquetados con sello de ${ped.nombre_marca} (${operario})`
+            });
+        }
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    await sincronizarNodosConCircuitoOperativoLamda();
+    const etiqueta = desmarcar ? null : await generarEtiquetaFulfillmentMarcaBlanca(pid);
+    const tablero = await obtenerTableroMesaArmadoDeposito();
+    return { etiqueta, tablero };
+}
+
+/**
+ * Genera el archivo CSV de Preimposición Masiva (Correo Argentino Paq.ar / Andreani / Genérico)
+ * para órdenes de E-Commerce Fulfillment con pago confirmado.
+ */
+async function exportarCsvPreimposicionFulfillment(filtros = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const nodoId = filtros.nodo_id ? Number(filtros.nodo_id) : 0;
+    const operadorFiltro = String(filtros.operador_postal || '').trim().toUpperCase();
+    const soloPendientes = filtros.solo_pendientes !== false && String(filtros.solo_pendientes || '1') !== '0';
+    const idsExplicitos = Array.isArray(filtros.pedido_ids)
+        ? filtros.pedido_ids.map(x => Number(x)).filter(n => Number.isFinite(n) && n > 0)
+        : String(filtros.pedido_ids || '')
+            .split(',')
+            .map(x => Number(String(x).trim()))
+            .filter(n => Number.isFinite(n) && n > 0);
+
+    const res = await db.query(
+        `SELECT npv.*,
+                nm.nombre_marca, nm.perfil_operativo,
+                npep.operador_postal, npep.modalidad_postal, npep.sucursal_codigo, npep.sucursal_nombre,
+                npep.destinatario_nombre, npep.destinatario_dni, npep.cp_destino,
+                npep.provincia_codigo, npep.provincia_nombre, npep.localidad_nombre,
+                npep.calle, npep.altura, npep.piso_depto, npep.referencias_domicilio,
+                npep.email_contacto, npep.peso_gramos, npep.estado_envio
+         FROM public.nodos_pedidos_vecinos npv
+         JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+         LEFT JOIN public.nodos_pedidos_envios_postales npep ON npep.pedido_id = npv.id
+         WHERE npv.lote_canasto_id IS NULL
+           AND COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+           AND (
+               COALESCE(npv.impactado_cta_cte_pago, false) = true
+               OR UPPER(COALESCE(npv.estado_pago, '')) IN ('CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR')
+           )
+           AND ($1::int = 0 OR npv.nodo_id = $1::int)
+         ORDER BY npv.id ASC`,
+        [nodoId]
+    );
+
+    let filas = res.rows;
+    if (idsExplicitos.length > 0) {
+        const setIds = new Set(idsExplicitos);
+        filas = filas.filter(r => setIds.has(Number(r.id)));
+    } else {
+        if (soloPendientes) {
+            filas = filas.filter(r => !r.debito_cta_cte_registrado);
+        }
+        if (operadorFiltro && operadorFiltro !== 'TODOS') {
+            filas = filas.filter(r => String(r.operador_postal || 'CORREO_ARGENTINO').toUpperCase() === operadorFiltro);
+        }
+    }
+
+    const ordenesMapeadas = filas.map(r => ({
+        codigo_pedido: r.codigo_pedido,
+        destinatario_nombre: r.destinatario_nombre || r.vecino_nombre,
+        destinatario_dni: r.destinatario_dni || '',
+        calle: r.calle || r.direccion_entrega || '',
+        altura: r.altura || 'S/N',
+        piso_depto: r.piso_depto || '',
+        cp_destino: r.cp_destino || '',
+        localidad_nombre: r.localidad_nombre || '',
+        provincia_nombre: r.provincia_nombre || '',
+        telefono: r.vecino_telefono || '',
+        email: r.email_contacto || '',
+        peso_gramos: Number(r.peso_gramos || 500),
+        operador_postal: r.operador_postal || 'CORREO_ARGENTINO',
+        modalidad_postal: r.modalidad_postal || 'DOMICILIO',
+        sucursal_codigo: r.sucursal_codigo || '',
+        sucursal_nombre: r.sucursal_nombre || '',
+        valor_declarado: Number(r.subtotal_productos_vecino || r.total_vecino || 0),
+        referencias_domicilio: r.referencias_domicilio || ''
+    }));
+
+    const operadorCsv = operadorFiltro && operadorFiltro !== 'TODOS' ? operadorFiltro : 'CORREO_ARGENTINO';
+    return paqueteriaService.generarCsvPreimposicionMasiva(ordenesMapeadas, operadorCsv);
+}
+
+/**
+ * Confirma atómicamente el despacho postal de una orden de E-Commerce Fulfillment:
+ * 1. Bloquea si pago_confirmado !== true.
+ * 2. Idempotencia estricta mediante debito_cta_cte_registrado: si ya fue despachado, nunca duplica asientos ni descuento de stock.
+ * 3. Actualiza nodos_pedidos_envios_postales + avanza orden a Hito 4 (DESPACHADO_CORREO) visible al instante en Tienda y Panel Creador.
+ * 4. Impacta y cierra presupuesto espejo (Entregado / DESPACHADO_ENCOMIENDA) descontando stock real consolidado.
+ * 5. Registra DEBITO = Costo_Base_LAMDA + Costo_Flete_LAMDA en la Cuenta Corriente operativa del Creador/Nodo.
+ */
+async function confirmarDespachoPostalPedido(pedidoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const pid = Number(pedidoId || 0);
+    if (!pid) {
+        const err = new Error('ID de pedido inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const guiaResuelta = paqueteriaService.resolverGuiaYUrlCarrier({
+        operador_postal: payload.operador_postal,
+        numero_tracking: payload.numero_tracking,
+        url_tracking_custom: payload.url_tracking_carrier || payload.url_tracking_custom
+    });
+
+    if (!guiaResuelta.numero_tracking) {
+        const err = new Error('Ingresá o escaneá el número de seguimiento / guía postal antes de confirmar el despacho.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const despachadoPor = String(payload.despachado_por || 'Mesa Fulfillment LAMDA').trim().slice(0, 120);
+
+    const client = await db.connect();
+    let resultadoDespacho = null;
+    try {
+        await client.query('BEGIN');
+
+        const pedRes = await client.query(
+            `SELECT npv.*,
+                    nm.nombre_marca, nm.gestor_nombre, nm.codigo_bunker_cliente,
+                    nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria,
+                    nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre,
+                    COALESCE(nm.usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada
+             FROM public.nodos_pedidos_vecinos npv
+             JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+             WHERE npv.id = $1::int
+             FOR UPDATE OF npv`,
+            [pid]
+        );
+        if (pedRes.rows.length === 0) {
+            const err = new Error('Pedido de fulfillment no encontrado.');
+            err.statusCode = 404;
+            throw err;
+        }
+        const ped = pedRes.rows[0];
+
+        if (String(ped.estado_operativo || '').toUpperCase() === 'ANULADO') {
+            const err = new Error(`El pedido #${ped.codigo_pedido} está ANULADO y no puede despacharse.`);
+            err.statusCode = 400;
+            throw err;
+        }
+
+        const pagoConfirmado = Boolean(ped.impactado_cta_cte_pago) ||
+            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(ped.estado_pago || '').toUpperCase());
+        if (!pagoConfirmado) {
+            const err = new Error(`Bloqueo contable: el pedido #${ped.codigo_pedido} aún no tiene el pago conciliado. Conciliá primero la transferencia en Liquidación y Cobros antes de despachar.`);
+            err.statusCode = 400;
+            throw err;
+        }
+
+        const epRes = await client.query(
+            `SELECT * FROM public.nodos_pedidos_envios_postales
+             WHERE pedido_id = $1::int
+             LIMIT 1
+             FOR UPDATE`,
+            [pid]
+        );
+        const epActual = epRes.rows[0] || null;
+
+        // Idempotencia estricta: si el débito contable ya fue registrado, solo permite actualizar tracking sin duplicar asientos ni stock
+        if (ped.debito_cta_cte_registrado) {
+            if (epActual) {
+                await client.query(
+                    `UPDATE public.nodos_pedidos_envios_postales
+                     SET operador_postal = $1,
+                         numero_tracking = $2,
+                         url_tracking_carrier = $3,
+                         updated_at = NOW()
+                     WHERE id = $4::int`,
+                    [
+                        guiaResuelta.operador_postal,
+                        guiaResuelta.numero_tracking,
+                        guiaResuelta.url_tracking_carrier,
+                        epActual.id
+                    ]
+                );
+            }
+            await client.query('COMMIT');
+            resultadoDespacho = {
+                idempotente_ya_registrado: true,
+                pedido_id: pid,
+                codigo_pedido: ped.codigo_pedido,
+                operador_postal: guiaResuelta.operador_postal,
+                numero_tracking: guiaResuelta.numero_tracking,
+                url_tracking_carrier: guiaResuelta.url_tracking_carrier,
+                costo_flete_lamda: Number(ped.costo_flete_lamda || epActual?.costo_flete_lamda || 0),
+                movimiento_cc_id: ped.movimiento_cc_id || null
+            };
+        } else {
+            const costoFleteRaw = payload.costo_flete_lamda !== undefined && payload.costo_flete_lamda !== ''
+                ? Number(payload.costo_flete_lamda)
+                : Number(epActual?.costo_flete_lamda ?? ped.costo_flete_lamda ?? 0);
+            if (!Number.isFinite(costoFleteRaw) || costoFleteRaw < 0) {
+                const err = new Error('El costo real de flete LAMDA debe ser un monto numérico mayor o igual a $0.');
+                err.statusCode = 400;
+                throw err;
+            }
+            const costoFleteLamda = Number(costoFleteRaw.toFixed(2));
+            const costoBaseLamda = Number(Number(ped.total_base_lamda || 0).toFixed(2));
+            const montoDebitoTotal = Number((costoBaseLamda + costoFleteLamda).toFixed(2));
+            const operadorLabel = formatearOperadorPostalLabel(guiaResuelta.operador_postal);
+
+            // a) Actualizar o insertar registro postal con guía, URL oficial y costo_flete_lamda
+            if (epActual) {
+                await client.query(
+                    `UPDATE public.nodos_pedidos_envios_postales
+                     SET operador_postal = $1,
+                         numero_tracking = $2,
+                         url_tracking_carrier = $3,
+                         costo_flete_lamda = $4,
+                         estado_envio = 'DESPACHADO',
+                         fecha_despacho = COALESCE(fecha_despacho, NOW()),
+                         despachado_por = $5,
+                         updated_at = NOW()
+                     WHERE id = $6::int`,
+                    [
+                        guiaResuelta.operador_postal,
+                        guiaResuelta.numero_tracking,
+                        guiaResuelta.url_tracking_carrier,
+                        costoFleteLamda,
+                        despachadoPor,
+                        epActual.id
+                    ]
+                );
+            } else {
+                await client.query(
+                    `INSERT INTO public.nodos_pedidos_envios_postales (
+                        pedido_id, nodo_id, operador_postal, modalidad_postal,
+                        destinatario_nombre, cp_destino, provincia_nombre, localidad_nombre,
+                        calle, costo_envio_cliente, costo_flete_lamda,
+                        numero_tracking, url_tracking_carrier, estado_envio,
+                        fecha_despacho, despachado_por
+                     ) VALUES ($1,$2,$3,'DOMICILIO',$4,'0000','Argentina',$5,$5,$6,$7,$8,$9,'DESPACHADO',NOW(),$10)`,
+                    [
+                        pid,
+                        ped.nodo_id,
+                        guiaResuelta.operador_postal,
+                        ped.vecino_nombre,
+                        ped.direccion_entrega || 'Envío Postal',
+                        Number(ped.cargo_envio_barrial || 0),
+                        costoFleteLamda,
+                        guiaResuelta.numero_tracking,
+                        guiaResuelta.url_tracking_carrier,
+                        despachadoPor
+                    ]
+                );
+            }
+
+            // b) Asegurar Hito 3 y avanzar a Hito 4 (DESPACHADO_CORREO)
+            if (Number(ped.hito_tracking_actual || 1) < 3) {
+                await registrarTransicionHitoPedidoVecino(client, pid, 3, {
+                    estadoOverride: 'EMPAQUETADO_FULFILLMENT',
+                    origen: 'MESA_FULFILLMENT_LAMDA',
+                    actor: despachadoPor,
+                    detalle: `Productos controlados y empaquetados con sello de ${ped.nombre_marca}`
+                });
+            }
+            await registrarTransicionHitoPedidoVecino(client, pid, 4, {
+                estadoOverride: 'DESPACHADO_CORREO',
+                origen: 'DESPACHO_POSTAL_LAMDA',
+                actor: despachadoPor,
+                detalle: `Despachado por ${operadorLabel} · Seguimiento #${guiaResuelta.numero_tracking}`
+            });
+
+            // c) Descontar stock real consolidado de los SKUs despachados (1 sola vez por orden)
+            if (!ped.stock_descontado_fulfillment) {
+                const itemsStockRes = await client.query(
+                    `SELECT COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial,
+                            SUM(npi.cantidad)::numeric(12,2) AS cantidad_total,
+                            MAX(COALESCE(nac.kilos_unidad, 0.25))::numeric(10,3) AS kilos_unidad,
+                            MAX(ba.codigo_barras) AS codigo_barras
+                     FROM public.nodos_pedidos_items npi
+                     LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+                     LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
+                     WHERE npi.pedido_id = $1::int
+                     GROUP BY COALESCE(nac.sku_nodo, npi.sku_nodo)`,
+                    [pid]
+                );
+
+                for (const stIt of itemsStockRes.rows) {
+                    const skuArt = String(stIt.sku_oficial || '').trim();
+                    const cantEgreso = Number(stIt.cantidad_total || 0);
+                    if (!skuArt || cantEgreso <= 0) continue;
+                    const kilosEgreso = Number((cantEgreso * Number(stIt.kilos_unidad || 0.25)).toFixed(3));
+
+                    await client.query(
+                        `INSERT INTO public.stock_ventas_movimientos (
+                            articulo_numero, codigo_barras, kilos, cantidad, fecha, tipo, origen_ingreso, observaciones
+                         ) VALUES ($1, $2, $3, $4, NOW(), 'egreso_venta', 'fulfillment_paqueteria', $5)`,
+                        [
+                            skuArt,
+                            stIt.codigo_barras || null,
+                            kilosEgreso,
+                            cantEgreso,
+                            `Despacho Postal ${ped.nombre_marca} #${ped.codigo_pedido} (${operadorLabel} #${guiaResuelta.numero_tracking})`
+                        ]
+                    );
+
+                    const updStock = await client.query(
+                        `UPDATE public.stock_real_consolidado
+                         SET stock_movimientos = COALESCE(stock_movimientos, 0) - $1,
+                             stock_consolidado = COALESCE(stock_lomasoft, 0) + (COALESCE(stock_movimientos, 0) - $1) + COALESCE(stock_ajustes, 0),
+                             ultima_actualizacion = NOW()
+                         WHERE UPPER(articulo_numero) = UPPER($2)`,
+                        [cantEgreso, skuArt]
+                    );
+                    if (updStock.rowCount === 0) {
+                        await client.query(
+                            `INSERT INTO public.stock_real_consolidado (
+                                articulo_numero, stock_lomasoft, stock_movimientos, stock_ajustes, stock_consolidado, ultima_actualizacion
+                             ) VALUES ($1, 0, $2, 0, $2, NOW())
+                             ON CONFLICT DO NOTHING`,
+                            [skuArt, -cantEgreso]
+                        );
+                    }
+                }
+            }
+
+            // d) Registrar DEBITO automático (Costo Base LAMDA + Costo Flete Real LAMDA) en Cuenta Corriente operativa
+            let saldoResultante = 0;
+            let movCcFacturaId = null;
+            const destCc = await resolverCuentaContableOperativaNodo(client, ped);
+
+            if (destCc.ccId && montoDebitoTotal > 0) {
+                const descBase = `Despacho Fulfillment #${ped.codigo_pedido} (${ped.vecino_nombre} · ${operadorLabel} #${guiaResuelta.numero_tracking}): Mercadería Base $${costoBaseLamda.toLocaleString('es-AR')} + Flete Postal $${costoFleteLamda.toLocaleString('es-AR')}`;
+                const descMovimiento = destCc.usaCuentaMadreUnificada
+                    ? agregarReferenciaNodoADescripcion(descBase, ped.nombre_marca)
+                    : descBase;
+
+                const insMovCc = await client.query(
+                    `INSERT INTO public.factura_cuenta_corriente_movimientos (
+                        cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
+                        tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
+                        creado_en, metadatos
+                     ) VALUES ($1, 'DEBITO', $2, 0, 'DESPACHO_FULFILLMENT_NODO', NULL, $3, NOW(), NOW(), $4)
+                     RETURNING id`,
+                    [
+                        destCc.ccId,
+                        montoDebitoTotal,
+                        descMovimiento,
+                        JSON.stringify({
+                            pedido_id: ped.id,
+                            codigo_pedido: ped.codigo_pedido,
+                            nodo_id: ped.nodo_id,
+                            nodo_marca: ped.nombre_marca || null,
+                            usa_cuenta_madre_unificada: destCc.usaCuentaMadreUnificada,
+                            codigo_bunker_cuenta_impactada: destCc.codigoBunkerDestino,
+                            costo_base_lamda: costoBaseLamda,
+                            costo_flete_lamda: costoFleteLamda,
+                            monto_debito_total: montoDebitoTotal,
+                            operador_postal: guiaResuelta.operador_postal,
+                            numero_tracking: guiaResuelta.numero_tracking
+                        })
+                    ]
+                );
+                movCcFacturaId = insMovCc.rows[0].id;
+                saldoResultante = await recalcularSaldosCuentaMadreBunker(client, destCc.ccId);
+            } else if (destCc.ccId) {
+                saldoResultante = Number(destCc.saldo || 0);
+            }
+
+            await client.query(
+                `INSERT INTO public.nodos_movimientos_cta_cte (
+                    nodo_id, lote_canasto_id, pedido_vecino_id, tipo_movimiento, signo, monto,
+                    saldo_resultante, concepto, referencia_externa
+                 ) VALUES ($1, NULL, $2, 'DEBITO_DESPACHO_FULFILLMENT', 1, $3, $4, $5, $6)`,
+                [
+                    ped.nodo_id,
+                    ped.id,
+                    montoDebitoTotal,
+                    saldoResultante,
+                    `Débito Despacho Fulfillment #${ped.codigo_pedido} (${operadorLabel} #${guiaResuelta.numero_tracking}): Base LAMDA $${costoBaseLamda.toLocaleString('es-AR')} + Flete $${costoFleteLamda.toLocaleString('es-AR')}`,
+                    guiaResuelta.numero_tracking
+                ]
+            );
+
+            // Recalcular ganancia_total_gestor neta de la orden contemplando el costo real de flete LAMDA
+            const ingresoBrutoOrden = Number(ped.total_vecino || 0);
+            const utilidadNetaOrden = Number((ingresoBrutoOrden - costoBaseLamda - costoFleteLamda).toFixed(2));
+
+            await client.query(
+                `UPDATE public.nodos_pedidos_vecinos
+                 SET debito_cta_cte_registrado = true,
+                     movimiento_cc_id = $1,
+                     costo_flete_lamda = $2,
+                     ganancia_total_gestor = $3,
+                     stock_descontado_fulfillment = true,
+                     ubicacion_deposito = 'DESPACHADO_CORREO',
+                     secuencia_operativa_lamda = 'Entregado',
+                     etiqueta_impresa = true,
+                     updated_at = NOW()
+                 WHERE id = $4::int`,
+                [movCcFacturaId, costoFleteLamda, utilidadNetaOrden, pid]
+            );
+
+            await client.query('COMMIT');
+            resultadoDespacho = {
+                idempotente_ya_registrado: false,
+                pedido_id: pid,
+                codigo_pedido: ped.codigo_pedido,
+                operador_postal: guiaResuelta.operador_postal,
+                operador_postal_label: operadorLabel,
+                numero_tracking: guiaResuelta.numero_tracking,
+                url_tracking_carrier: guiaResuelta.url_tracking_carrier,
+                costo_base_lamda: costoBaseLamda,
+                costo_flete_lamda: costoFleteLamda,
+                monto_debito_total: montoDebitoTotal,
+                utilidad_neta_creador_orden: utilidadNetaOrden,
+                movimiento_cc_id: movCcFacturaId,
+                saldo_cta_cte_resultante: saldoResultante
+            };
+        }
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    await sincronizarNodosConCircuitoOperativoLamda();
+    const tablero = await obtenerTableroMesaArmadoDeposito();
+    return {
+        despacho: resultadoDespacho,
+        tablero
+    };
+}
+
+/**
+ * Marca como ENTREGADO (Hito 6) un envío postal ya despachado.
+ */
+async function marcarEntregaFinalPostalPedido(pedidoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+    const pid = Number(pedidoId || 0);
+    if (!pid) throw new Error('ID de pedido inválido.');
+
+    const actor = String(payload.actor || 'Seguimiento Postal LAMDA').trim().slice(0, 120);
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        const pedRes = await client.query(
+            `SELECT npv.*, nm.nombre_marca
+             FROM public.nodos_pedidos_vecinos npv
+             JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+             WHERE npv.id = $1::int
+             FOR UPDATE OF npv`,
+            [pid]
+        );
+        if (pedRes.rows.length === 0) {
+            const err = new Error('Pedido no encontrado.');
+            err.statusCode = 404;
+            throw err;
+        }
+        const ped = pedRes.rows[0];
+        if (!ped.debito_cta_cte_registrado) {
+            const err = new Error(`El pedido #${ped.codigo_pedido} debe despacharse por correo antes de marcar su entrega final.`);
+            err.statusCode = 400;
+            throw err;
+        }
+
+        await client.query(
+            `UPDATE public.nodos_pedidos_envios_postales
+             SET estado_envio = 'ENTREGADO',
+                 fecha_entrega_correo = COALESCE(fecha_entrega_correo, NOW()),
+                 updated_at = NOW()
+             WHERE pedido_id = $1::int`,
+            [pid]
+        );
+
+        await registrarTransicionHitoPedidoVecino(client, pid, 6, {
+            estadoOverride: 'ENTREGADO',
+            origen: 'CONFIRMACION_ENTREGA_POSTAL',
+            actor,
+            detalle: `Envío postal #${ped.codigo_pedido} entregado en destino`
+        });
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    const tablero = await obtenerTableroMesaArmadoDeposito();
+    return { ok: true, tablero };
+}
+
+/**
+ * Genera un Corte de Liquidación Continua (sin frenar la tienda 24/7) agrupando todas las órdenes
+ * de E-Commerce Fulfillment de un Nodo que tengan pago_confirmado = true, debito_cta_cte_registrado = true
+ * y liquidacion_id IS NULL.
+ * Fórmula exacta:
+ *   Utilidad_Neta_Creador = (Subtotal_Productos + Envio_Cobrado_Cliente) - Costo_Base_LAMDA - Costo_Flete_LAMDA
+ */
+async function generarCorteLiquidacionFulfillment(nodoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const nid = Number(nodoId || 0);
+    if (!nid) {
+        const err = new Error('ID de Tienda/Nodo requerido.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const idsFiltro = Array.isArray(payload.pedido_ids)
+        ? payload.pedido_ids.map(x => Number(x)).filter(n => Number.isFinite(n) && n > 0)
+        : [];
+
+    const client = await db.connect();
+    let corteCreado = null;
+    try {
+        await client.query('BEGIN');
+
+        const nodoRes = await client.query(
+            `SELECT nm.*
+             FROM public.nodos_maestro nm
+             WHERE nm.id = $1::int
+             FOR UPDATE`,
+            [nid]
+        );
+        if (nodoRes.rows.length === 0) {
+            const err = new Error('Tienda/Nodo no encontrado.');
+            err.statusCode = 404;
+            throw err;
+        }
+        const nodo = nodoRes.rows[0];
+
+        const pedsRes = await client.query(
+            `SELECT npv.*,
+                    npep.operador_postal AS postal_operador,
+                    npep.numero_tracking AS postal_numero_tracking,
+                    npep.costo_envio_cliente AS postal_costo_envio_cliente,
+                    npep.costo_flete_lamda AS postal_costo_flete_lamda,
+                    npep.fecha_despacho AS postal_fecha_despacho
+             FROM public.nodos_pedidos_vecinos npv
+             LEFT JOIN public.nodos_pedidos_envios_postales npep ON npep.pedido_id = npv.id
+             WHERE npv.nodo_id = $1::int
+               AND npv.lote_canasto_id IS NULL
+               AND COALESCE(npv.estado_operativo, '') <> 'ANULADO'
+               AND (
+                   COALESCE(npv.impactado_cta_cte_pago, false) = true
+                   OR UPPER(COALESCE(npv.estado_pago, '')) IN ('CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR')
+               )
+               AND COALESCE(npv.debito_cta_cte_registrado, false) = true
+               AND npv.liquidacion_id IS NULL
+             ORDER BY npv.id ASC
+             FOR UPDATE OF npv`,
+            [nid]
+        );
+
+        let ordenesElegibles = pedsRes.rows;
+        if (idsFiltro.length > 0) {
+            const setIds = new Set(idsFiltro);
+            ordenesElegibles = ordenesElegibles.filter(r => setIds.has(Number(r.id)));
+        }
+
+        if (ordenesElegibles.length === 0) {
+            const err = new Error(`No hay órdenes despachadas con pago conciliado pendientes de corte en ${nodo.nombre_marca}.`);
+            err.statusCode = 400;
+            throw err;
+        }
+
+        const ordenIds = ordenesElegibles.map(o => Number(o.id));
+        const itemsCorteRes = await client.query(
+            `SELECT npi.pedido_id,
+                    npi.cantidad,
+                    npi.precio_unitario_vecino,
+                    npi.precio_unitario_base_lamda,
+                    npi.subtotal_vecino,
+                    npi.subtotal_base_lamda,
+                    COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial_lamda,
+                    COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda
+             FROM public.nodos_pedidos_items npi
+             LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
+             LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
+             WHERE npi.pedido_id = ANY($1::int[])
+             ORDER BY npi.id ASC`,
+            [ordenIds]
+        );
+
+        const itemsMap = new Map();
+        for (const it of itemsCorteRes.rows) {
+            const pid = Number(it.pedido_id);
+            if (!itemsMap.has(pid)) itemsMap.set(pid, []);
+            const skuOf = it.sku_oficial_lamda || '';
+            const nomOf = it.nombre_oficial_lamda || '';
+            itemsMap.get(pid).push({
+                sku_nodo: skuOf,
+                nombre_oficial_lamda: nomOf,
+                etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(skuOf, nomOf),
+                cantidad: Number(it.cantidad || 1),
+                subtotal_cliente: Number(it.subtotal_vecino || 0),
+                subtotal_base_lamda: Number(it.subtotal_base_lamda || 0)
+            });
+        }
+
+        let totalSubtotalProductos = 0;
+        let totalEnvioCobradoClientes = 0;
+        let totalIngresosBrutos = 0;
+        let totalCostoBaseLamda = 0;
+        let totalCostoFleteLamda = 0;
+        let totalUtilidadNetaCreador = 0;
+
+        const detalleOrdenes = ordenesElegibles.map(po => {
+            const subProd = Number(po.subtotal_productos_vecino || 0);
+            const envCli = Number(po.cargo_envio_barrial ?? po.postal_costo_envio_cliente ?? 0);
+            const ajusteCred = Number(po.monto_ajuste_credito || 0);
+            const ingBruto = Number(po.total_vecino || (subProd + envCli - ajusteCred));
+            const baseLamda = Number(po.total_base_lamda || 0);
+            const fleteLamda = Number(po.costo_flete_lamda ?? po.postal_costo_flete_lamda ?? 0);
+            const utilidadOrden = Number((ingBruto - baseLamda - fleteLamda).toFixed(2));
+
+            totalSubtotalProductos += subProd;
+            totalEnvioCobradoClientes += envCli;
+            totalIngresosBrutos += ingBruto;
+            totalCostoBaseLamda += baseLamda;
+            totalCostoFleteLamda += fleteLamda;
+            totalUtilidadNetaCreador += utilidadOrden;
+
+            return {
+                pedido_id: Number(po.id),
+                codigo_pedido: po.codigo_pedido,
+                comprador: po.vecino_nombre,
+                operador_postal: po.postal_operador || 'CORREO_ARGENTINO',
+                numero_tracking: po.postal_numero_tracking || null,
+                fecha_despacho: po.postal_fecha_despacho || po.updated_at,
+                subtotal_productos: Number(subProd.toFixed(2)),
+                envio_cobrado_cliente: Number(envCli.toFixed(2)),
+                ingreso_bruto: Number(ingBruto.toFixed(2)),
+                costo_base_lamda: Number(baseLamda.toFixed(2)),
+                costo_flete_lamda: Number(fleteLamda.toFixed(2)),
+                utilidad_neta_creador: utilidadOrden,
+                items: itemsMap.get(Number(po.id)) || []
+            };
+        });
+
+        totalSubtotalProductos = Number(totalSubtotalProductos.toFixed(2));
+        totalEnvioCobradoClientes = Number(totalEnvioCobradoClientes.toFixed(2));
+        totalIngresosBrutos = Number(totalIngresosBrutos.toFixed(2));
+        totalCostoBaseLamda = Number(totalCostoBaseLamda.toFixed(2));
+        totalCostoFleteLamda = Number(totalCostoFleteLamda.toFixed(2));
+        totalUtilidadNetaCreador = Number(totalUtilidadNetaCreador.toFixed(2));
+
+        let direccionCompensacion = 'SALDADO_EXACTO';
+        if (totalUtilidadNetaCreador > 0.01) {
+            direccionCompensacion = 'LAMDA_TRANSFIERE_A_GESTOR';
+        } else if (totalUtilidadNetaCreador < -0.01) {
+            direccionCompensacion = 'GESTOR_RINDE_A_LAMDA';
+        }
+        const montoCompensacion = Number(Math.abs(totalUtilidadNetaCreador).toFixed(2));
+
+        const usaCuentaMadreUnificada = Boolean(nodo.usar_cuenta_madre_unificada && nodo.codigo_bunker_cliente_madre);
+        const impactarEnCuentaMadre = !usaCuentaMadreUnificada && Boolean(payload.impactar_en_cuenta_madre === true);
+        const modalidadCierre = usaCuentaMadreUnificada
+            ? 'CUENTA_MADRE_UNIFICADA'
+            : (impactarEnCuentaMadre ? 'COMPENSACION_CUENTA_MADRE' : 'RENDICION_DIRECTA_NODO');
+
+        const hoyIso = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const codigoLiq = `LIQ-FUL-N${String(nid).padStart(2, '0')}-${hoyIso}-${Date.now().toString().slice(-4)}`;
+
+        let saldoResultante = 0;
+        let movCcFacturaId = null;
+        let movCcMadreId = null;
+        let saldoMadrePostCierre = null;
+
+        if (usaCuentaMadreUnificada) {
+            // En Cuenta Madre Unificada (ej. MANSO -> CB-0036), los créditos por transferencias (-ingreso_bruto)
+            // y los débitos por despacho postal (+costo_base_lamda + costo_flete_lamda) ya se registraron en tiempo real
+            // sobre la Cuenta Principal de la ficha madre dejando el saldo exacto (-Utilidad_Neta_Creador).
+            const ccMadreUnif = await obtenerOCrearCuentaPrincipalBunker(client, nodo.codigo_bunker_cliente_madre, {
+                forUpdate: true,
+                crearSiNoExiste: true
+            });
+            saldoResultante = Number(ccMadreUnif?.saldo || 0);
+            saldoMadrePostCierre = saldoResultante;
+        } else if (nodo.codigo_bunker_cliente) {
+            const ccRes = await client.query(
+                `SELECT id, saldo FROM public.factura_cuentas_corrientes
+                 WHERE codigo_bunker_cliente = $1
+                 LIMIT 1
+                 FOR UPDATE`,
+                [nodo.codigo_bunker_cliente]
+            );
+            if (ccRes.rows.length > 0) {
+                const ccId = ccRes.rows[0].id;
+                const saldoActual = Number(ccRes.rows[0].saldo || 0);
+                if (montoCompensacion > 0 && direccionCompensacion !== 'SALDADO_EXACTO') {
+                    const tipoMovSub = direccionCompensacion === 'LAMDA_TRANSFIERE_A_GESTOR' ? 'DEBITO' : 'CREDITO';
+                    const descSub = `Corte Liquidación Fulfillment ${codigoLiq} (${ordenesElegibles.length} órdenes · ${nodo.nombre_marca}): Utilidad Neta $${totalUtilidadNetaCreador.toLocaleString('es-AR')}`;
+                    const insMovSub = await client.query(
+                        `INSERT INTO public.factura_cuenta_corriente_movimientos (
+                            cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
+                            tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
+                            creado_en, metadatos
+                         ) VALUES ($1, $2, $3, 0, 'CORTE_FULFILLMENT_NODO', NULL, $4, NOW(), NOW(), $5)
+                         RETURNING id`,
+                        [
+                            ccId,
+                            tipoMovSub,
+                            montoCompensacion,
+                            descSub,
+                            JSON.stringify({ codigo_liquidacion: codigoLiq, cantidad_ordenes: ordenesElegibles.length, utilidad_neta_creador: totalUtilidadNetaCreador })
+                        ]
+                    );
+                    movCcFacturaId = insMovSub.rows[0].id;
+                    saldoResultante = await recalcularSaldosCuentaMadreBunker(client, ccId);
+                } else {
+                    saldoResultante = saldoActual;
+                }
+            }
+
+            if (impactarEnCuentaMadre && nodo.codigo_bunker_cliente_madre && montoCompensacion > 0 && direccionCompensacion !== 'SALDADO_EXACTO') {
+                const ccMadreRes = await client.query(
+                    `SELECT id FROM public.factura_cuentas_corrientes
+                     WHERE codigo_bunker_cliente = $1
+                     ORDER BY CASE WHEN nombre_cuenta = 'Cuenta Principal' THEN 0 ELSE 1 END, id ASC
+                     LIMIT 1 FOR UPDATE`,
+                    [nodo.codigo_bunker_cliente_madre]
+                );
+                if (ccMadreRes.rows.length > 0) {
+                    const ccMadreId = ccMadreRes.rows[0].id;
+                    const tipoMovMadre = direccionCompensacion === 'LAMDA_TRANSFIERE_A_GESTOR' ? 'CREDITO' : 'DEBITO';
+                    const insMadre = await client.query(
+                        `INSERT INTO public.factura_cuenta_corriente_movimientos (
+                            cuenta_corriente_id, tipo_movimiento, monto, saldo_resultante,
+                            tipo_comprobante, comprobante_id, descripcion, fecha_movimiento,
+                            creado_en, metadatos
+                         ) VALUES ($1, $2, $3, 0, 'LIQUIDACION_NODO', NULL, $4, NOW(), NOW(), $5)
+                         RETURNING id`,
+                        [
+                            ccMadreId,
+                            tipoMovMadre,
+                            montoCompensacion,
+                            `Compensación Corte Fulfillment ${nodo.nombre_marca} (${codigoLiq} · ${ordenesElegibles.length} órdenes): Utilidad Neta $${totalUtilidadNetaCreador.toLocaleString('es-AR')}`,
+                            JSON.stringify({ codigo_liquidacion: codigoLiq, utilidad_neta_creador: totalUtilidadNetaCreador })
+                        ]
+                    );
+                    movCcMadreId = insMadre.rows[0].id;
+                    saldoMadrePostCierre = await recalcularSaldosCuentaMadreBunker(client, ccMadreId);
+                }
+            }
+        }
+
+        const obsTexto = payload.observaciones ||
+            `Corte Fulfillment (${ordenesElegibles.length} órdenes): Productos $${totalSubtotalProductos.toLocaleString('es-AR')} + Envíos cobrados $${totalEnvioCobradoClientes.toLocaleString('es-AR')} − Base LAMDA $${totalCostoBaseLamda.toLocaleString('es-AR')} − Flete LAMDA $${totalCostoFleteLamda.toLocaleString('es-AR')} = Utilidad Neta Creador $${totalUtilidadNetaCreador.toLocaleString('es-AR')}`;
+
+        const insLiq = await client.query(
+            `INSERT INTO public.nodos_liquidaciones_lote (
+                codigo_liquidacion, nodo_id, lote_canasto_id, tipo_liquidacion, cantidad_ordenes,
+                total_venta_vecinos, total_base_lamda, total_envio_cobrado_clientes, total_costo_flete_lamda,
+                ganancia_neta_gestor, total_transferencias_lamda, total_efectivo_mano_gestor,
+                direccion_compensacion, monto_compensacion_final,
+                saldo_cta_cte_post_cierre, movimiento_cc_id,
+                movimiento_cc_madre_id, saldo_cta_cte_madre_post_cierre,
+                modalidad_cierre, observaciones, detalle_ordenes_json
+             ) VALUES ($1,$2,NULL,'CORTE_FULFILLMENT',$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb)
+             RETURNING *`,
+            [
+                codigoLiq,
+                nid,
+                ordenesElegibles.length,
+                totalIngresosBrutos,
+                totalCostoBaseLamda,
+                totalEnvioCobradoClientes,
+                totalCostoFleteLamda,
+                totalUtilidadNetaCreador,
+                totalIngresosBrutos,
+                direccionCompensacion,
+                montoCompensacion,
+                saldoResultante,
+                movCcFacturaId,
+                movCcMadreId,
+                saldoMadrePostCierre,
+                modalidadCierre,
+                obsTexto,
+                JSON.stringify(detalleOrdenes)
+            ]
+        );
+        corteCreado = insLiq.rows[0];
+
+        await client.query(
+            `UPDATE public.nodos_pedidos_vecinos
+             SET liquidacion_id = $1::int,
+                 fecha_liquidacion = NOW(),
+                 updated_at = NOW()
+             WHERE id = ANY($2::int[])`,
+            [corteCreado.id, ordenIds]
+        );
+
+        const signoCorte = usaCuentaMadreUnificada
+            ? 0
+            : (montoCompensacion > 0 ? (direccionCompensacion === 'GESTOR_RINDE_A_LAMDA' ? -1 : 1) : 0);
+
+        await client.query(
+            `INSERT INTO public.nodos_movimientos_cta_cte (
+                nodo_id, lote_canasto_id, tipo_movimiento, signo, monto,
+                saldo_resultante, concepto, referencia_externa
+             ) VALUES ($1, NULL, 'CORTE_LIQUIDACION_FULFILLMENT', $2, $3, $4, $5, $6)`,
+            [
+                nid,
+                signoCorte,
+                montoCompensacion,
+                saldoResultante,
+                `Corte de Liquidación ${codigoLiq} (${ordenesElegibles.length} órdenes despachadas): Utilidad Neta Creador $${totalUtilidadNetaCreador.toLocaleString('es-AR')}`,
+                codigoLiq
+            ]
+        );
+
+        await client.query('COMMIT');
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    } finally {
+        client.release();
+    }
+
+    const tablero = await obtenerTableroLiquidacionCobros();
+    return {
+        corte: corteCreado,
+        tablero
+    };
 }
 
 /**
@@ -14306,7 +15900,7 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
     }
 
     const pedidoIds = filasCoincidentes.map(r => Number(r.id));
-    const [itemsRes, evsRes] = await Promise.all([
+    const [itemsRes, evsRes, postalesWaRes] = await Promise.all([
         db.query(
             `SELECT pedido_id,
                     COALESCE(NULLIF(TRIM(nombre_vidriera_vecino), ''), nombre_publico) AS nombre_publico,
@@ -14323,8 +15917,18 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
              WHERE pedido_id = ANY($1::int[])
              ORDER BY hito_numero ASC, id ASC`,
             [pedidoIds]
+        ),
+        db.query(
+            `SELECT pedido_id, operador_postal, modalidad_postal, sucursal_nombre,
+                    cp_destino, provincia_nombre, localidad_nombre,
+                    costo_envio_cliente, numero_tracking, url_tracking_carrier, estado_envio,
+                    fecha_despacho, fecha_entrega_correo
+             FROM public.nodos_pedidos_envios_postales
+             WHERE pedido_id = ANY($1::int[])`,
+            [pedidoIds]
         )
     ]);
+    const postalesWaMap = new Map(postalesWaRes.rows.map(ep => [Number(ep.pedido_id), ep]));
 
     const itemsMap = new Map();
     for (const it of itemsRes.rows) {
@@ -14382,6 +15986,7 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
         const pagoConfirmado = Boolean(p.impactado_cta_cte_pago) ||
             ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase());
 
+        const epWa = postalesWaMap.get(pid) || null;
         const pedidoEnmascaradoParaTimeline = {
             ...p,
             direccion_entrega: dirPublicaOEnmascarada
@@ -14389,7 +15994,8 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
         const seguimiento = construirTimelineMarcaBlancaPedido(
             pedidoEnmascaradoParaTimeline,
             nodoPublico,
-            evsMap.get(pid) || []
+            evsMap.get(pid) || [],
+            epWa
         );
         const radarResumen = await obtenerResumenRadarParaPedidoVecino(p);
 
@@ -14416,7 +16022,20 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
                 motivo_ajuste_credito: '',
                 total_vecino: Number(p.total_vecino || 0),
                 observaciones_vecino: '',
-                created_at: p.created_at
+                created_at: p.created_at,
+                envio_postal: epWa ? {
+                    operador_postal: epWa.operador_postal,
+                    operador_label: formatearOperadorPostalLabel(epWa.operador_postal),
+                    modalidad_postal: epWa.modalidad_postal,
+                    sucursal_nombre: epWa.sucursal_nombre || null,
+                    cp_destino: epWa.cp_destino,
+                    provincia_nombre: epWa.provincia_nombre,
+                    localidad_nombre: epWa.localidad_nombre,
+                    costo_envio_cliente: Number(epWa.costo_envio_cliente || 0),
+                    numero_tracking: epWa.numero_tracking || null,
+                    url_tracking_carrier: epWa.url_tracking_carrier || null,
+                    estado_envio: epWa.estado_envio || 'PENDIENTE_DESPACHO'
+                } : null
             },
             items: itemsMap.get(pid) || [],
             seguimiento,
@@ -14719,6 +16338,14 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
                 [pid]
             );
         }
+        await db.query(
+            `UPDATE public.nodos_pedidos_envios_postales
+             SET estado_envio = 'ENTREGADO',
+                 fecha_entrega_correo = COALESCE(fecha_entrega_correo, NOW()),
+                 updated_at = NOW()
+             WHERE pedido_id = $1::int`,
+            [pid]
+        );
         await registrarTransicionHitoPedidoVecino(db, pid, 6, {
             origen: ped.ausente_pasa_retirar ? 'RETIRO_POST_AUSENCIA' : 'PANEL_GESTOR_ENTREGA',
             actor,
@@ -16101,7 +17728,7 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
         config_paqueteria: normalizarConfigPaqueteria(row.config_paqueteria)
     };
 
-    const [pedsRes, itemsRes, evsRes, pagosMovsRes] = await Promise.all([
+    const [pedsRes, itemsRes, evsRes, pagosMovsRes, postalesPortalRes] = await Promise.all([
         db.query(
             `SELECT id, codigo_pedido, tracking_token, vecino_nombre,
                     modalidad_entrega, direccion_entrega, entrecalles_referencia,
@@ -16144,8 +17771,19 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
                AND tipo_movimiento IN ('CREDITO_TRANSFERENCIA_LAMDA', 'CREDITO_EFECTIVO_GESTOR')
              ORDER BY id DESC`,
             [vid]
+        ),
+        db.query(
+            `SELECT npep.pedido_id, npep.operador_postal, npep.modalidad_postal, npep.sucursal_nombre,
+                    npep.cp_destino, npep.provincia_nombre, npep.localidad_nombre,
+                    npep.costo_envio_cliente, npep.numero_tracking, npep.url_tracking_carrier, npep.estado_envio,
+                    npep.fecha_despacho, npep.fecha_entrega_correo
+             FROM public.nodos_pedidos_envios_postales npep
+             JOIN public.nodos_pedidos_vecinos npv ON npv.id = npep.pedido_id
+             WHERE npv.vecino_id = $1::int`,
+            [vid]
         )
     ]);
+    const postalesPorPedido = new Map(postalesPortalRes.rows.map(ep => [Number(ep.pedido_id), ep]));
 
     const itemsPorPedido = new Map();
     for (const it of itemsRes.rows) {
@@ -16192,7 +17830,8 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
         );
         const totalPed = Number(p.total_vecino || 0);
         const medioPagoNorm = String(p.medio_pago || 'TRANSFERENCIA').toUpperCase();
-        const seguimiento = construirTimelineMarcaBlancaPedido(p, nodoInfo, eventosPorPedido.get(pid) || []);
+        const epPortal = postalesPorPedido.get(pid) || null;
+        const seguimiento = construirTimelineMarcaBlancaPedido(p, nodoInfo, eventosPorPedido.get(pid) || [], epPortal);
         const items = itemsPorPedido.get(pid) || [];
         const totalUnidades = items.reduce((acc, x) => acc + Number(x.cantidad || 0), 0);
 
@@ -16247,6 +17886,19 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
             total_vecino: Number(totalPed.toFixed(2)),
             total_unidades: totalUnidades,
             observaciones_vecino: p.observaciones_vecino || '',
+            envio_postal: epPortal ? {
+                operador_postal: epPortal.operador_postal,
+                operador_label: formatearOperadorPostalLabel(epPortal.operador_postal),
+                modalidad_postal: epPortal.modalidad_postal,
+                sucursal_nombre: epPortal.sucursal_nombre || null,
+                cp_destino: epPortal.cp_destino,
+                provincia_nombre: epPortal.provincia_nombre,
+                localidad_nombre: epPortal.localidad_nombre,
+                costo_envio_cliente: Number(epPortal.costo_envio_cliente || 0),
+                numero_tracking: epPortal.numero_tracking || null,
+                url_tracking_carrier: epPortal.url_tracking_carrier || null,
+                estado_envio: epPortal.estado_envio || 'PENDIENTE_DESPACHO'
+            } : null,
             items,
             seguimiento,
             comprobante_digital: comprobanteDigital
@@ -16856,6 +18508,7 @@ module.exports = {
     actualizarConfiguracionGestorNodo,
     crearPedidoVecinoTienda,
     generarEtiquetaDePedidoExistente,
+    generarEtiquetaFulfillmentMarcaBlanca,
     sincronizarCanastosEstacionNodos,
     sincronizarNodosConCircuitoOperativoLamda,
     sincronizarCambioSecuenciaDesdeLamda,
@@ -16870,6 +18523,11 @@ module.exports = {
     generarEtiquetaQrMaestroCanasto,
     confirmarRetiroCanastoPorGestor,
     reabrirCanastoParaPruebaLaboratorio,
+    marcarEmpaqueFulfillmentPedido,
+    exportarCsvPreimposicionFulfillment,
+    confirmarDespachoPostalPedido,
+    marcarEntregaFinalPostalPedido,
+    generarCorteLiquidacionFulfillment,
     calcularCuadroLiquidacionCanasto,
     obtenerTableroLiquidacionCobros,
     conciliarPagoPedidoVecino,

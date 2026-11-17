@@ -874,11 +874,308 @@ async function generarPreviewVisualCanastoQrMaestro(params = {}) {
     };
 }
 
+function sanitizarCaraClienteSinLamda(texto = '') {
+    return limpiarTextoZpl(texto)
+        .replace(/\blamda\b/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+/**
+ * Genera el par térmico Zebra ZD220 para órdenes de E-Commerce / Fulfillment Nacional:
+ * - Cara Izquierda (X=23, adherida a la caja): 100% Marca Blanca del creador (logo ^GFA,
+ *   marca, orden, destinatario, DNI, domicilio/sucursal, Localidad + Provincia + CP,
+ *   operador postal y QR hacia https://tienda.lamdaser.com/tienda/<slug>?seguimiento=<token>),
+ *   con CERO menciones a "LAMDA".
+ * - Talón Derecho (X=443, desmontable de planta): Control Interno Depósito LAMDA con
+ *   [SKU] Nomenclatura Oficial LAMDA, cantidades exactas, peso total y fecha/hora de armado.
+ */
+function generarEtiquetaZplParFulfillment(params = {}) {
+    const nombreMarca = sanitizarCaraClienteSinLamda(params.nombre_marca || 'TIENDA OFICIAL').toUpperCase() || 'TIENDA OFICIAL';
+    const subtituloMarca = sanitizarCaraClienteSinLamda(params.bajada_marca || params.subtitulo_marca || 'Tienda Online Oficial');
+    const logoGfa = (params.logo_zpl_gfa && String(params.logo_zpl_gfa).startsWith('^GFA'))
+        ? params.logo_zpl_gfa
+        : '';
+    const logoCabecera = resolverModoCabeceraLogo({ logoGfa, logoZplConfig: params.logo_zpl_config });
+
+    const pedidoCodigo = sanitizarCaraClienteSinLamda(params.pedido_codigo || 'NB-1001');
+    const destinatarioNombre = sanitizarCaraClienteSinLamda(params.destinatario_nombre || params.vecino_nombre || 'CLIENTE').toUpperCase();
+    const destinatarioDni = sanitizarCaraClienteSinLamda(params.destinatario_dni || '');
+    const destinoLinea1 = sanitizarCaraClienteSinLamda(params.destino_linea_1 || params.direccion_barrial || '');
+    const localidadProvinciaCp = sanitizarCaraClienteSinLamda(params.localidad_provincia_cp || '');
+    const operadorModalidad = sanitizarCaraClienteSinLamda(params.operador_modalidad || 'CORREO ARGENTINO - DOMICILIO').toUpperCase();
+    const qrSeguimientoUrl = String(params.qr_seguimiento_url || '').trim() ||
+        `https://tienda.lamdaser.com/tienda/${encodeURIComponent(params.slug || 'tienda')}?seguimiento=${encodeURIComponent(params.tracking_token || pedidoCodigo)}`;
+    const pesoGramos = Math.max(100, Math.round(Number(params.peso_gramos || 500)));
+    const fechaHoraArmado = limpiarTextoZpl(params.fecha_hora_armado || new Date().toLocaleString('es-AR', {
+        day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
+    }));
+
+    const paginas = paginarItemsEtiqueta(params.items);
+    const totalHojas = paginas.length;
+    const totalItemsPedido = Array.isArray(params.items) ? params.items.length : paginas.reduce((a, p) => a + p.length, 0);
+    const fontTituloZpl = nombreMarca.length > 22 ? '19,18' : '22,21';
+    const siglasFallback = nombreMarca.split(/\s+/).map(w => w[0] || '').join('').substring(0, 3) || 'MBO';
+
+    const bloquesCaraCliente = [];
+    const bloquesTalonInterno = [];
+    const bloquesZpl = paginas.map((itemsPagina, pageIndex) => {
+        const numHoja = pageIndex + 1;
+        const esContinuacion = numHoja > 1;
+        const xRightBadge = Math.min(315, 25 + Math.min(logoCabecera.width, 280) + 10);
+
+        const bloqueCabeceraIzqZpl = logoGfa && logoCabecera.esBannerCompleto
+            ? [
+                `^FO25,8${logoGfa}^FS`,
+                ...(esContinuacion ? [
+                    `^FO${xRightBadge},18^A0N,17,17^FDBULTO ${numHoja}/${totalHojas}^FS`
+                ] : [])
+            ]
+            : [
+                logoGfa ? `^FO25,12${logoGfa}^FS` : `^FO25,12^GB96,52,3^FS^FO42,27^A0N,24,24^FD${siglasFallback}^FS`,
+                `^FO132,14^A0N,${fontTituloZpl}^FD${nombreMarca.substring(0, 28)}^FS`,
+                `^FO132,40^A0N,15,14^FD${esContinuacion ? `CAJA ${numHoja} DE ${totalHojas}` : subtituloMarca.substring(0, 42)}^FS`
+            ];
+
+        const dniSuffix = destinatarioDni ? ` (DNI ${destinatarioDni})` : '';
+        const caraClienteLines = [
+            ...bloqueCabeceraIzqZpl,
+            '^FO23,72^GB372,2,2^FS',
+            `^FO23,79^A0N,19,18^FDRECIBE: ${(destinatarioNombre + dniSuffix).substring(0, 36)}^FS`,
+            `^FO23,102^A0N,16,16^FD${destinoLinea1.substring(0, 40)}^FS`,
+            `^FO23,122^A0N,17,17^FD${localidadProvinciaCp.substring(0, 38)}^FS`,
+            '^FO23,145^GB372,2,2^FS',
+            `^FO25,153^BQN,2,3^FDQA,${qrSeguimientoUrl}^FS`,
+            '^FO132,155^GB262,106,106^FS',
+            `^FO142,164^FR^A0N,18,17^FD${operadorModalidad.substring(0, 27)}^FS`,
+            `^FO142,190^FR^A0N,20,20^FDORDEN #${pedidoCodigo}^FS`,
+            `^FO142,217^FR^A0N,15,15^FDSEGUI TU ENVIO CON EL QR^FS`,
+            `^FO142,238^FR^A0N,14,14^FDETIQUETA ${numHoja} DE ${totalHojas}^FS`
+        ];
+
+        const lineasChecklistZpl = itemsPagina.map((it, idx) => {
+            const globalIdx = pageIndex * ITEMS_POR_ETIQUETA_DERECHA + idx + 1;
+            const yPos = 72 + idx * 31;
+            const lineaSegura = formatearLineaChecklistSegura(it, globalIdx, 38);
+            return [
+                `^FO446,${yPos}^GB17,17,2^FS`,
+                `^FO469,${yPos + 1}^A0N,17,16^FD${lineaSegura}^FS`
+            ].join('\n');
+        }).join('\n');
+
+        const talonInternoLines = [
+            `^FO443,14^A0N,19,18^FDTALON INTERNO DEPOSITO LAMDA^FS`,
+            `^FO443,36^A0N,16,15^FD#${pedidoCodigo} | ${pesoGramos}g | ${fechaHoraArmado}^FS`,
+            `^FO443,54^A0N,14,14^FDSKUS OFICIALES (${totalItemsPedido} ITEMS - H${numHoja}/${totalHojas})^FS`,
+            '^FO443,68^GB368,2,2^FS',
+            lineasChecklistZpl
+        ];
+
+        bloquesCaraCliente.push(caraClienteLines.join('\n'));
+        bloquesTalonInterno.push(talonInternoLines.join('\n'));
+
+        return [
+            '^XA',
+            '^CI28',
+            '^PW830',
+            '^LL280',
+            ...caraClienteLines,
+            ...talonInternoLines,
+            '^XZ'
+        ].join('\n');
+    });
+
+    return {
+        zpl: bloquesZpl.join('\n\n'),
+        zpl_cara_cliente: bloquesCaraCliente.join('\n\n'),
+        zpl_talon_interno: bloquesTalonInterno.join('\n\n'),
+        qr_seguimiento_url: qrSeguimientoUrl,
+        totalHojas,
+        totalItemsPedido,
+        paginas
+    };
+}
+
+async function generarPreviewVisualEtiquetaFulfillment(params = {}) {
+    const resultadoZpl = generarEtiquetaZplParFulfillment(params);
+    const { paginas, totalHojas, totalItemsPedido, qr_seguimiento_url } = resultadoZpl;
+
+    const labelW = 405;
+    const labelH = 270;
+    const gapX = 20;
+    const gapY = 20;
+    const padOuter = 16;
+
+    const canvasW = padOuter * 2 + labelW * 2 + gapX;
+    const canvasH = padOuter * 2 + totalHojas * labelH + (totalHojas - 1) * gapY;
+    const canvas = createCanvas(canvasW, canvasH);
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    let logoImg = null;
+    if (params.logo_mono_preview_base64) {
+        try {
+            const cleanUrl = params.logo_mono_preview_base64.startsWith('data:image')
+                ? params.logo_mono_preview_base64
+                : `data:image/png;base64,${params.logo_mono_preview_base64}`;
+            logoImg = await loadImage(cleanUrl);
+        } catch (_) {
+            logoImg = null;
+        }
+    }
+
+    const nombreMarca = sanitizarCaraClienteSinLamda(params.nombre_marca || 'TIENDA OFICIAL').toUpperCase() || 'TIENDA OFICIAL';
+    const subtituloMarca = sanitizarCaraClienteSinLamda(params.bajada_marca || params.subtitulo_marca || 'Tienda Online Oficial');
+    const logoCabecera = resolverModoCabeceraLogo({
+        logoGfa: params.logo_zpl_gfa,
+        logoImg,
+        logoZplConfig: params.logo_zpl_config
+    });
+    const pedidoCodigo = sanitizarCaraClienteSinLamda(params.pedido_codigo || 'NB-1001');
+    const destinatarioNombre = sanitizarCaraClienteSinLamda(params.destinatario_nombre || params.vecino_nombre || 'CLIENTE').toUpperCase();
+    const destinatarioDni = sanitizarCaraClienteSinLamda(params.destinatario_dni || '');
+    const destinoLinea1 = sanitizarCaraClienteSinLamda(params.destino_linea_1 || params.direccion_barrial || '');
+    const localidadProvinciaCp = sanitizarCaraClienteSinLamda(params.localidad_provincia_cp || '');
+    const operadorModalidad = sanitizarCaraClienteSinLamda(params.operador_modalidad || 'CORREO ARGENTINO - DOMICILIO').toUpperCase();
+    const pesoGramos = Math.max(100, Math.round(Number(params.peso_gramos || 500)));
+    const fechaHoraArmado = limpiarTextoZpl(params.fecha_hora_armado || new Date().toLocaleString('es-AR', {
+        day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
+    }));
+
+    for (let pageIndex = 0; pageIndex < totalHojas; pageIndex++) {
+        const itemsPagina = paginas[pageIndex];
+        const numHoja = pageIndex + 1;
+        const rowY = padOuter + pageIndex * (labelH + gapY);
+        const leftX = padOuter;
+        const rightX = padOuter + labelW + gapX;
+
+        for (const lx of [leftX, rightX]) {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(lx, rowY, labelW, labelH);
+            ctx.strokeStyle = '#94a3b8';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(lx, rowY, labelW, labelH);
+        }
+
+        // ETIQUETA IZQUIERDA (100% MARCA BLANCA CREADOR)
+        if (logoImg && logoCabecera.esBannerCompleto) {
+            const scalePv = Math.min(1, (labelW - 22) / logoImg.width, 60 / logoImg.height);
+            const drawW = Math.round(logoImg.width * scalePv);
+            const drawH = Math.round(logoImg.height * scalePv);
+            ctx.drawImage(logoImg, leftX + 10, rowY + 6 + Math.round((60 - drawH) / 2), drawW, drawH);
+        } else {
+            if (logoImg) {
+                ctx.drawImage(logoImg, leftX + 10, rowY + 8, 104, 52);
+            }
+            const textX = logoImg ? (leftX + 122) : (leftX + 12);
+            ctx.fillStyle = '#0f172a';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'top';
+            ctx.font = 'bold 16px Arial';
+            ctx.fillText(nombreMarca.substring(0, 26), textX, rowY + 12);
+            ctx.font = 'bold 10.5px Arial';
+            ctx.fillStyle = '#334155';
+            ctx.fillText(subtituloMarca.substring(0, 40), textX, rowY + 36);
+        }
+
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(leftX + 10, rowY + 68, labelW - 20, 2);
+        ctx.font = 'bold 12px Arial';
+        const dniTxt = destinatarioDni ? ` (DNI ${destinatarioDni})` : '';
+        ctx.fillText(`RECIBE: ${(destinatarioNombre + dniTxt).substring(0, 36)}`, leftX + 10, rowY + 76);
+        ctx.font = '11px Arial';
+        ctx.fillText(destinoLinea1.substring(0, 42), leftX + 10, rowY + 96);
+        ctx.font = 'bold 11.5px Arial';
+        ctx.fillText(localidadProvinciaCp.substring(0, 40), leftX + 10, rowY + 116);
+        ctx.fillRect(leftX + 10, rowY + 138, labelW - 20, 2);
+
+        // QR Seguimiento Marca Blanca
+        const qrX = leftX + 12;
+        const qrY = rowY + 148;
+        const qrSize = 86;
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(qrX, qrY, qrSize, qrSize);
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(qrX + 6, qrY + 6, 20, 20);
+        ctx.fillRect(qrX + qrSize - 26, qrY + 6, 20, 20);
+        ctx.fillRect(qrX + 6, qrY + qrSize - 26, 20, 20);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(qrX + 10, qrY + 10, 12, 12);
+        ctx.fillRect(qrX + qrSize - 22, qrY + 10, 12, 12);
+        ctx.fillRect(qrX + 10, qrY + qrSize - 22, 12, 12);
+        ctx.fillStyle = '#000000';
+        for (let r = 0; r < 6; r++) {
+            for (let c = 0; c < 6; c++) {
+                if ((r * 3 + c + pageIndex) % 2 === 0) {
+                    ctx.fillRect(qrX + 30 + c * 7, qrY + 30 + r * 7, 5, 5);
+                }
+            }
+        }
+        ctx.font = 'bold 9px monospace';
+        ctx.fillText(`#${pedidoCodigo}`, qrX + 14, qrY + qrSize + 5);
+
+        const bandX = leftX + 108;
+        const bandY = rowY + 148;
+        const bandW = labelW - 118;
+        const bandH = 102;
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(bandX, bandY, bandW, bandH);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 11.5px Arial';
+        ctx.fillText(operadorModalidad.substring(0, 28), bandX + 10, bandY + 13);
+        ctx.font = 'bold 14px Arial';
+        ctx.fillText(`ORDEN #${pedidoCodigo}`, bandX + 10, bandY + 38);
+        ctx.font = 'bold 10.5px Arial';
+        ctx.fillText('SEGUI TU ENVIO CON EL QR', bandX + 10, bandY + 64);
+        ctx.font = '10px monospace';
+        ctx.fillText(`CAJA ${numHoja} DE ${totalHojas}`, bandX + 10, bandY + 84);
+
+        // TALON DERECHO (CONTROL INTERNO DEPOSITO LAMDA)
+        ctx.fillStyle = '#000000';
+        ctx.font = 'bold 13px Arial';
+        ctx.fillText('TALON INTERNO DEPOSITO LAMDA', rightX + 12, rowY + 12);
+        ctx.font = 'bold 10.5px monospace';
+        ctx.fillText(`#${pedidoCodigo} | PESO: ${pesoGramos}g | ${fechaHoraArmado}`, rightX + 12, rowY + 32);
+        ctx.font = 'bold 10px Arial';
+        ctx.fillText(`SKUS OFICIALES (${totalItemsPedido} ITEMS - H${numHoja}/${totalHojas})`, rightX + 12, rowY + 49);
+        ctx.fillRect(rightX + 10, rowY + 64, labelW - 20, 2);
+
+        itemsPagina.forEach((it, idx) => {
+            const globalIdx = pageIndex * ITEMS_POR_ETIQUETA_DERECHA + idx + 1;
+            const itemY = rowY + 72 + idx * 30;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 1.8;
+            ctx.strokeRect(rightX + 12, itemY, 14, 14);
+            const lineaSegura = formatearLineaChecklistSegura(it, globalIdx, 38);
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 10.8px Arial';
+            ctx.fillText(lineaSegura, rightX + 32, itemY + 1);
+        });
+    }
+
+    return {
+        pedido_codigo: pedidoCodigo,
+        nombre_marca: nombreMarca,
+        qr_seguimiento_url,
+        zpl: resultadoZpl.zpl,
+        zpl_cara_cliente: resultadoZpl.zpl_cara_cliente,
+        zpl_talon_interno: resultadoZpl.zpl_talon_interno,
+        total_hojas: totalHojas,
+        total_items: totalItemsPedido,
+        preview_rollo_base64: canvas.toDataURL('image/png')
+    };
+}
+
 module.exports = {
     convertirLogoAZplGfa,
     generarEtiquetaZplParNodo,
     generarPreviewVisualEtiquetaPar,
     generarPreviewVisualCanastoQrMaestro,
+    generarEtiquetaZplParFulfillment,
+    generarPreviewVisualEtiquetaFulfillment,
     formatearLineaChecklistSegura,
     formatearLineaManifiestoCanastoSegura,
     limpiarTextoZpl,

@@ -259,6 +259,65 @@
         .btn-action:active {
             transform: scale(0.98);
         }
+        .deposito-tabs-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .deposito-tab-btn {
+            padding: 11px 18px;
+            border-radius: 11px;
+            border: 1px solid #334155;
+            background: #151e2e;
+            color: #cbd5e1;
+            font-size: 0.86rem;
+            font-weight: 800;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+            transition: all 0.15s ease;
+        }
+        .deposito-tab-btn:hover {
+            border-color: #64748b;
+            color: #f8fafc;
+        }
+        .deposito-tab-btn.active {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.22), rgba(56, 189, 248, 0.16));
+            border-color: #10b981;
+            color: #f8fafc;
+            box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.35);
+        }
+        .deposito-tab-count {
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 0.74rem;
+            font-weight: 900;
+            background: rgba(15, 23, 42, 0.85);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.35);
+        }
+        .fulfillment-card {
+            background: #151e2e;
+            border: 1px solid #2e3c51;
+            border-radius: 13px;
+            padding: 16px 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 13px;
+        }
+        .fulfillment-card.empaquetado {
+            border-color: rgba(16, 185, 129, 0.55);
+        }
+        .fulfillment-card.despachado {
+            border-color: rgba(56, 189, 248, 0.55);
+            background: linear-gradient(180deg, rgba(56, 189, 248, 0.06), #151e2e);
+        }
+        .fulfillment-card.bloqueado-pago {
+            opacity: 0.72;
+            border-color: rgba(245, 158, 11, 0.45);
+        }
     </style>
 </head>
 <body>
@@ -328,11 +387,23 @@
             </div>
         </div>
 
+        <!-- PESTAÑAS OPERATIVAS: CANASTOS BARRIALES VS FULFILLMENT PAQUETERÍA 24/7 -->
+        <div class="deposito-tabs-bar">
+            <button type="button" id="tab-btn-canastos" class="deposito-tab-btn active" onclick="cambiarTabDeposito('canastos')">
+                <span>🧺 Canastos Barriales (Por Ventana)</span>
+                <span class="deposito-tab-count" id="tab-count-canastos">0</span>
+            </button>
+            <button type="button" id="tab-btn-fulfillment" class="deposito-tab-btn" onclick="cambiarTabDeposito('fulfillment')">
+                <span>📦 Fulfillment Paquetería (24/7)</span>
+                <span class="deposito-tab-count" id="tab-count-fulfillment">0</span>
+            </button>
+        </div>
+
         <!-- KPIS EN VIVO DEL SECTOR -->
         <div class="kpi-grid" id="kpi-container"></div>
 
-        <!-- GRILLA PRINCIPAL: CANASTOS A LA IZQUIERDA + MESA DE ARMADO Y ENTREGA A LA DERECHA -->
-        <div class="workspace-grid">
+        <!-- VISTA 1: CANASTOS BARRIALES (INTACTA PARA TIENDAS VECINALES COMO PARAÍSO) -->
+        <div id="view-tab-canastos" class="workspace-grid">
             <!-- COLUMNA IZQUIERDA: LOTES / CANASTOS POR VENTANA DE ENTREGA -->
             <div style="display:flex; flex-direction:column; gap:14px;">
                 <div class="panel-card">
@@ -351,7 +422,7 @@
                         📒 Movimientos en Cuenta Corriente del Nodo
                     </div>
                     <div style="font-size:0.73rem; color:#94a3b8; margin-bottom:10px;">
-                        Cada vez que el gestor retira un canasto del depósito, se registra el débito por el Costo Base LAMDA del lote.
+                        Cada vez que el gestor retira un canasto del depósito (o se despacha por correo), se registra el débito contable automático.
                     </div>
                     <div id="lista-movimientos-cc" style="display:flex; flex-direction:column; gap:8px;"></div>
                 </div>
@@ -360,11 +431,70 @@
             <!-- COLUMNA DERECHA: DETALLE DEL CANASTO ACTIVO -->
             <div id="detalle-canasto-workspace" style="display:flex; flex-direction:column; gap:16px;"></div>
         </div>
+
+        <!-- VISTA 2: ESTACIÓN DE FULFILLMENT MARCA BLANCA Y PAQUETERÍA 24/7 -->
+        <div id="view-tab-fulfillment" style="display:none; flex-direction:column; gap:16px;">
+            <div class="panel-card" style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <div>
+                        <label style="display:block; font-size:0.68rem; color:#94a3b8; text-transform:uppercase; font-weight:800; margin-bottom:3px;">Marca / Creador</label>
+                        <select id="filtro-fulfillment-marca" onchange="cambiarFiltroFulfillment()"
+                            style="padding:8px 11px; border-radius:8px; background:#0f172a; color:#f8fafc; border:1px solid #334155; font-size:0.8rem; font-weight:700;">
+                            <option value="0">🌐 Todas las Tiendas Online</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:0.68rem; color:#94a3b8; text-transform:uppercase; font-weight:800; margin-bottom:3px;">Estado de Cola</label>
+                        <select id="filtro-fulfillment-estado" onchange="cambiarFiltroFulfillment()"
+                            style="padding:8px 11px; border-radius:8px; background:#0f172a; color:#f8fafc; border:1px solid #334155; font-size:0.8rem; font-weight:700;">
+                            <option value="COLA_ACTIVA">⚡ Cola FIFO Activa (Pagos Confirmados por Despachar)</option>
+                            <option value="PENDIENTE_EMPAQUE">⏳ Pendientes de Empaque</option>
+                            <option value="EMPAQUETADO_LISTO">📦 Empaquetados Listos para Correo</option>
+                            <option value="DESPACHADO_CORREO">🚚 Despachados por Correo</option>
+                            <option value="ENTREGADO">✅ Entregados Final</option>
+                            <option value="AGUARDANDO_PAGO">🔒 Aguardando Conciliación en Cobros</option>
+                            <option value="TODAS">📋 Todas las Órdenes</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:0.68rem; color:#94a3b8; text-transform:uppercase; font-weight:800; margin-bottom:3px;">Operador Postal</label>
+                        <select id="filtro-fulfillment-operador" onchange="cambiarFiltroFulfillment()"
+                            style="padding:8px 11px; border-radius:8px; background:#0f172a; color:#f8fafc; border:1px solid #334155; font-size:0.8rem; font-weight:700;">
+                            <option value="TODOS">📮 Todos los Correos</option>
+                            <option value="CORREO_ARGENTINO">Correo Argentino</option>
+                            <option value="ANDREANI">Andreani</option>
+                            <option value="VIA_CARGO">Vía Cargo</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <button type="button" onclick="exportarCsvPreimposicionMasiva()" class="btn-action"
+                        style="background:rgba(56,189,248,0.18); color:#7dd3fc; border:1px solid #38bdf8;">
+                        📥 Exportar CSV Preimposición
+                    </button>
+                    <a href="/pages/produccion.html" target="_blank" class="btn-action"
+                        style="background:rgba(16,185,129,0.18); color:#6ee7b7; border:1px solid #10b981; text-decoration:none;">
+                        🏭 Carros de Producción ↗
+                    </a>
+                </div>
+            </div>
+
+            <!-- CONSOLIDADO DE MERCADERÍA PENDIENTE HACIA CARROS DE PRODUCCIÓN -->
+            <div id="fulfillment-consolidado-box"></div>
+
+            <!-- COLA FIFO DE ÓRDENES INDIVIDUALES -->
+            <div id="fulfillment-ordenes-container" style="display:flex; flex-direction:column; gap:14px;"></div>
+        </div>
     </main>
 
     <script>
         const ESTADO = {
+            tabActiva: (new URLSearchParams(window.location.search).get('tab') === 'fulfillment') ? 'fulfillment' : 'canastos',
             nodoFiltroId: 0,
+            fulfillmentMarcaId: 0,
+            fulfillmentEstado: 'COLA_ACTIVA',
+            fulfillmentOperador: 'TODOS',
             canastoSeleccionadoId: null,
             tablero: null,
             ultimaEtiquetaMostrada: null
@@ -425,18 +555,95 @@
             renderizarTodo();
         }
 
+        function cambiarTabDeposito(tab) {
+            ESTADO.tabActiva = tab === 'fulfillment' ? 'fulfillment' : 'canastos';
+            renderizarTodo();
+        }
+
+        function cambiarFiltroFulfillment() {
+            const elMarca = document.getElementById('filtro-fulfillment-marca');
+            const elEst = document.getElementById('filtro-fulfillment-estado');
+            const elOp = document.getElementById('filtro-fulfillment-operador');
+            if (elMarca) ESTADO.fulfillmentMarcaId = Number(elMarca.value || 0);
+            if (elEst) ESTADO.fulfillmentEstado = elEst.value || 'COLA_ACTIVA';
+            if (elOp) ESTADO.fulfillmentOperador = elOp.value || 'TODOS';
+            renderizarFulfillmentPaqueteria();
+        }
+
         function renderizarTodo() {
             if (!ESTADO.tablero) return;
+            const btnCan = document.getElementById('tab-btn-canastos');
+            const btnFul = document.getElementById('tab-btn-fulfillment');
+            const viewCan = document.getElementById('view-tab-canastos');
+            const viewFul = document.getElementById('view-tab-fulfillment');
+
+            const cantCanastos = (ESTADO.tablero.canastos || []).filter(c => c.estado_canasto !== 'ENTREGADO_AL_GESTOR').length || (ESTADO.tablero.canastos || []).length;
+            const resFul = ESTADO.tablero.fulfillment_paqueteria?.resumen || {};
+            const cantFulActiva = Number(resFul.cola_activa_total || 0);
+
+            const elCntCan = document.getElementById('tab-count-canastos');
+            const elCntFul = document.getElementById('tab-count-fulfillment');
+            if (elCntCan) elCntCan.textContent = String(cantCanastos);
+            if (elCntFul) elCntFul.textContent = String(cantFulActiva);
+
+            if (ESTADO.tabActiva === 'fulfillment') {
+                if (btnCan) btnCan.classList.remove('active');
+                if (btnFul) btnFul.classList.add('active');
+                if (viewCan) viewCan.style.display = 'none';
+                if (viewFul) viewFul.style.display = 'flex';
+            } else {
+                if (btnCan) btnCan.classList.add('active');
+                if (btnFul) btnFul.classList.remove('active');
+                if (viewCan) viewCan.style.display = 'grid';
+                if (viewFul) viewFul.style.display = 'none';
+            }
+
             renderizarKpis();
             renderizarListaCanastos();
             renderizarMovimientosCc();
             renderizarWorkspaceCanastoActivo();
+            renderizarFulfillmentPaqueteria();
         }
 
         function renderizarKpis() {
             const r = ESTADO.tablero.resumen_deposito || {};
+            const rf = ESTADO.tablero.fulfillment_paqueteria?.resumen || {};
             const el = document.getElementById('kpi-container');
             if (!el) return;
+
+            if (ESTADO.tabActiva === 'fulfillment') {
+                el.innerHTML = `
+                    <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
+                        <div>
+                            <div class="kpi-val" style="color:#fbbf24;">${rf.pendientes_empaque || 0}</div>
+                            <div class="kpi-lbl">Órdenes Pagas por Empaquetar (FIFO)</div>
+                        </div>
+                        <div style="font-size:1.7rem;">⏳</div>
+                    </div>
+                    <div class="kpi-card" style="border-left: 4px solid #10b981;">
+                        <div>
+                            <div class="kpi-val" style="color:#34d399;">${rf.empaquetadas_listas_despacho || 0}</div>
+                            <div class="kpi-lbl">Cajas Empaquetadas Listas Correo</div>
+                        </div>
+                        <div style="font-size:1.7rem;">📦</div>
+                    </div>
+                    <div class="kpi-card" style="border-left: 4px solid #38bdf8;">
+                        <div>
+                            <div class="kpi-val" style="color:#7dd3fc;">${rf.despachadas_correo || 0}</div>
+                            <div class="kpi-lbl">En Tránsito Postal (Con Guía)</div>
+                        </div>
+                        <div style="font-size:1.7rem;">🚚</div>
+                    </div>
+                    <div class="kpi-card" style="border-left: 4px solid #a855f7;">
+                        <div>
+                            <div class="kpi-val" style="color:#d8b4fe;">${rf.aguardando_conciliacion_pago || 0}</div>
+                            <div class="kpi-lbl">Retenidas Aguardando Pago</div>
+                        </div>
+                        <div style="font-size:1.7rem;">🔒</div>
+                    </div>
+                `;
+                return;
+            }
 
             el.innerHTML = `
                 <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
@@ -1099,6 +1306,426 @@
             } catch (err) {
                 Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
             }
+        }
+
+        // =========================================================================
+        // BLOQUE B: ESTACIÓN DE FULFILLMENT MARCA BLANCA Y PAQUETERÍA 24/7
+        // =========================================================================
+
+        function renderizarFulfillmentPaqueteria() {
+            const fp = ESTADO.tablero?.fulfillment_paqueteria || { tiendas_online: [], consolidado_mercaderia: [], ordenes: [] };
+            const selMarca = document.getElementById('filtro-fulfillment-marca');
+            if (selMarca) {
+                const actualMarca = String(ESTADO.fulfillmentMarcaId || 0);
+                selMarca.innerHTML = `<option value="0">🌐 Todas las Tiendas Online</option>` +
+                    (fp.tiendas_online || []).map(t =>
+                        `<option value="${t.id}" ${String(t.id) === actualMarca ? 'selected' : ''}>${esc(t.nombre_marca)} (${esc(t.gestor_nombre)})</option>`
+                    ).join('');
+            }
+
+            // 1. Consolidado de SKUs pendientes hacia Carros de Producción
+            const boxCons = document.getElementById('fulfillment-consolidado-box');
+            if (boxCons) {
+                const listaCons = fp.consolidado_mercaderia || [];
+                if (listaCons.length === 0) {
+                    boxCons.innerHTML = '';
+                } else {
+                    boxCons.innerHTML = `
+                        <div class="panel-card">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+                                <div>
+                                    <div style="font-weight:800; font-size:0.95rem; color:#f8fafc;">🏭 Consolidado de SKUs Pendientes de Fulfillment (Control de Stock y Carros)</div>
+                                    <div style="font-size:0.75rem; color:#94a3b8;">Demanda acumulada de órdenes online pagas aún no despachadas frente al stock fraccionado consolidado en Depósito Central LAMDA.</div>
+                                </div>
+                            </div>
+                            <div style="overflow-x:auto;">
+                                <table class="table-consolidado">
+                                    <thead>
+                                        <tr>
+                                            <th>Artículo Oficial LAMDA [SKU]</th>
+                                            <th>Requerido Cola</th>
+                                            <th>Kilos Totales</th>
+                                            <th>Stock Actual</th>
+                                            <th>Estado Fraccionado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${listaCons.map(it => {
+                                            const falta = Number(it.faltante_fraccionar_unidades || 0) > 0;
+                                            return `
+                                                <tr>
+                                                    <td>
+                                                        <div style="font-weight:800; color:#f8fafc;">${esc(it.etiqueta_oficial_lamda)}</div>
+                                                        <div style="font-size:0.72rem; color:#94a3b8;">SKU: <code>${esc(it.sku_nodo)}</code> · Órdenes: ${(it.ordenes_detalle || []).map(o => '#' + esc(o.codigo_pedido) + ' (' + o.cantidad + ')').join(', ')}</div>
+                                                    </td>
+                                                    <td style="font-weight:900; color:#38bdf8;">${it.unidades_requeridas} u.</td>
+                                                    <td>${fmtKilos(it.kilos_requeridos)}</td>
+                                                    <td style="font-weight:800; color:${it.stock_consolidado_actual >= it.unidades_requeridas ? '#34d399' : '#fbbf24'};">${it.stock_consolidado_actual} u.</td>
+                                                    <td>
+                                                        ${falta
+                                                            ? `<span class="badge" style="background:rgba(245,158,11,0.18); color:#fcd34d; border:1px solid #f59e0b;">⚠️ Fraccionar ${it.faltante_fraccionar_unidades} u. (${fmtKilos(it.faltante_fraccionar_kilos)}) en Carro</span>`
+                                                            : `<span class="badge" style="background:rgba(16,185,129,0.2); color:#6ee7b7; border:1px solid #10b981;">✅ Stock Cubierto</span>`
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            // 2. Filtrar órdenes de la cola
+            const contOrd = document.getElementById('fulfillment-ordenes-container');
+            if (!contOrd) return;
+
+            let ordenes = (fp.ordenes || []).slice();
+            if (ESTADO.fulfillmentMarcaId > 0) {
+                ordenes = ordenes.filter(o => Number(o.nodo_id) === Number(ESTADO.fulfillmentMarcaId));
+            }
+            if (ESTADO.fulfillmentOperador && ESTADO.fulfillmentOperador !== 'TODOS') {
+                ordenes = ordenes.filter(o => String(o.operador_postal || '').toUpperCase() === ESTADO.fulfillmentOperador);
+            }
+            if (ESTADO.fulfillmentEstado === 'COLA_ACTIVA') {
+                ordenes = ordenes.filter(o => o.pago_confirmado && !o.despachado_correo);
+            } else if (ESTADO.fulfillmentEstado !== 'TODAS') {
+                ordenes = ordenes.filter(o => o.etapa_fulfillment === ESTADO.fulfillmentEstado);
+            }
+
+            if (ordenes.length === 0) {
+                const aguardandoCount = Number(fp.resumen?.aguardando_conciliacion_pago || 0);
+                contOrd.innerHTML = `
+                    <div class="panel-card" style="text-align:center; padding:28px; color:#94a3b8;">
+                        <div style="font-size:2rem; margin-bottom:8px;">📦</div>
+                        <div style="font-weight:800; color:#f8fafc; font-size:0.95rem;">No hay órdenes de Fulfillment en esta vista</div>
+                        <div style="font-size:0.8rem; margin-top:4px;">
+                            ${aguardandoCount > 0 && ESTADO.fulfillmentEstado === 'COLA_ACTIVA'
+                                ? `Hay <strong>${aguardandoCount} orden(es) nueva(s)</strong> retenida(s) aguardando conciliación de pago en <a href="/liquidacion-nodos" style="color:#fcd34d;">Cobros y Liquidación</a> (podés verlas cambiando el filtro a "Aguardando Conciliación en Cobros").`
+                                : 'Toda orden online con pago confirmado ingresa automáticamente aquí en orden FIFO para empaque Marca Blanca y despacho postal.'}
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            contOrd.innerHTML = ordenes.map(o => {
+                const ep = o.envio_postal || {};
+                const esSuc = String(ep.modalidad_postal || '').toUpperCase() === 'SUCURSAL';
+                const domTexto = esSuc
+                    ? `Sucursal Correo: ${ep.sucursal_nombre || o.direccion_entrega || 'A designar'}`
+                    : `${[ep.calle, ep.altura].filter(Boolean).join(' ') || o.direccion_entrega || '-'}${ep.piso_depto ? ' (' + ep.piso_depto + ')' : ''}`;
+                const locProvCp = [
+                    ep.localidad_nombre,
+                    ep.provincia_nombre,
+                    ep.cp_destino ? `(CP ${ep.cp_destino})` : ''
+                ].filter(Boolean).join(', ');
+
+                const fleteSugerido = Number(ep.costo_flete_lamda || ep.costo_envio_cliente || 0);
+                const claseCard = !o.pago_confirmado
+                    ? 'bloqueado-pago'
+                    : (o.despachado_correo ? 'despachado' : (o.empaquetado_listo ? 'empaquetado' : ''));
+
+                const badgeEtapa = !o.pago_confirmado
+                    ? `<span class="badge" style="background:rgba(245,158,11,0.2); color:#fcd34d; border:1px solid #f59e0b;">🔒 Aguardando Pago en Cobros</span>`
+                    : (o.entregado_final
+                        ? `<span class="badge" style="background:rgba(16,185,129,0.22); color:#6ee7b7; border:1px solid #10b981;">✅ Entregado en Destino</span>`
+                        : (o.despachado_correo
+                            ? `<span class="badge" style="background:rgba(56,189,248,0.2); color:#7dd3fc; border:1px solid #38bdf8;">🚚 Despachado · #${esc(ep.numero_tracking || '')}</span>`
+                            : (o.empaquetado_listo
+                                ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#6ee7b7; border:1px solid #10b981;">📦 Empaquetado Listo para Correo</span>`
+                                : `<span class="badge" style="background:rgba(245,158,11,0.18); color:#fde68a; border:1px solid #f59e0b;">⏳ Pendiente de Empaque</span>`)));
+
+                const itemsHtml = (o.items || []).map(it => {
+                    const etq = it.etiqueta_oficial_lamda || `[${it.sku_nodo}] ${it.nombre_oficial_lamda || it.nombre_publico}`;
+                    return `
+                        <div style="display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:7px; background:#0f172a; border:1px solid #334155; font-size:0.8rem;">
+                            <strong style="color:#38bdf8;">${it.cantidad}x</strong>
+                            <span style="font-weight:700; color:#f8fafc;">${esc(etq)}</span>
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="fulfillment-card ${claseCard}" data-pedido-id="${o.id}">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                <span class="badge" style="background:${esc(o.color_primario || '#1e293b')}; color:#ffffff; border:1px solid rgba(255,255,255,0.25); font-size:0.76rem;">
+                                    🏷️ ${esc(o.nombre_marca)}
+                                </span>
+                                <span style="font-family:monospace; font-weight:900; font-size:0.95rem; color:#f8fafc;">#${esc(o.codigo_pedido)}</span>
+                                ${badgeEtapa}
+                                <span style="font-size:0.75rem; color:#94a3b8;">⚖️ Peso est.: <strong>${o.peso_gramos_efectivo || 500} g</strong> · Cta: <code>${esc(o.codigo_bunker_cuenta_activa)}</code></span>
+                            </div>
+                            <div style="text-align:right; font-size:0.78rem; color:#cbd5e1;">
+                                Base LAMDA: <strong>${fmtMoneda(o.total_base_lamda)}</strong> · Envío cobrado cliente: <strong>${fmtMoneda(ep.costo_envio_cliente || o.cargo_envio_barrial || 0)}</strong>
+                            </div>
+                        </div>
+
+                        <!-- DATOS POSTALES COMPLETOS DEL DESTINATARIO -->
+                        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:10px; padding:11px 13px; border-radius:9px; background:#0f172a; border:1px solid #263244; font-size:0.8rem;">
+                            <div>
+                                <div style="font-size:0.69rem; color:#94a3b8; text-transform:uppercase; font-weight:800;">Destinatario y DNI</div>
+                                <div style="font-weight:800; color:#f8fafc; margin-top:2px;">👤 ${esc(ep.destinatario_nombre || o.vecino_nombre)} ${ep.destinatario_dni ? '· DNI ' + esc(ep.destinatario_dni) : ''}</div>
+                                <div style="color:#94a3b8; font-size:0.75rem;">📱 ${esc(o.vecino_telefono || '-')}</div>
+                            </div>
+                            <div>
+                                <div style="font-size:0.69rem; color:#94a3b8; text-transform:uppercase; font-weight:800;">Destino Postal (${esSuc ? 'SUCURSAL' : 'DOMICILIO'})</div>
+                                <div style="font-weight:800; color:#38bdf8; margin-top:2px;">📍 ${esc(locProvCp || 'Argentina')}</div>
+                                <div style="color:#e2e8f0; font-size:0.77rem;">${esc(domTexto)}${ep.referencias_domicilio ? ' · Ref: ' + esc(ep.referencias_domicilio) : ''}</div>
+                            </div>
+                        </div>
+
+                        <!-- ARTÍCULOS CON NOMENCLATURA OFICIAL LAMDA [SKU] -->
+                        <div>
+                            <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase; font-weight:800; margin-bottom:6px;">Artículos Oficiales LAMDA a Empaquetar</div>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">${itemsHtml}</div>
+                        </div>
+
+                        <!-- BARRA DE ACCIONES: EMPAQUE + ZPL MARCA BLANCA + ESCÁNER DE GUÍA Y DESPACHO -->
+                        <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; padding-top:8px; border-top:1px solid rgba(51,65,85,0.65);">
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                <button type="button" class="btn-action"
+                                    ${(!o.pago_confirmado || o.despachado_correo) ? 'disabled style="opacity:0.45; cursor:not-allowed; background:#1e293b; color:#94a3b8;"' : `style="background:${o.empaquetado_listo ? 'rgba(16,185,129,0.2)' : '#10b981'}; color:${o.empaquetado_listo ? '#6ee7b7' : '#052e16'}; border:1px solid #10b981;"`}
+                                    onclick="marcarEmpaqueFulfillment(${o.id}, ${o.empaquetado_listo ? 'true' : 'false'})">
+                                    ${o.empaquetado_listo ? '↩️ Reabrir Empaque' : '📦 Controlar / Marcar Empaquetado'}
+                                </button>
+
+                                <button type="button" class="btn-action"
+                                    style="background:rgba(139,92,246,0.18); color:#ddd6fe; border:1px solid #8b5cf6;"
+                                    onclick="abrirModalEtiquetaFulfillmentZpl(${o.id})">
+                                    🖨️ Imprimir Etiqueta Marca Blanca (ZPL)
+                                </button>
+                            </div>
+
+                            ${!o.pago_confirmado ? `
+                                <div style="padding:8px 12px; border-radius:8px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.45); color:#fde68a; font-size:0.78rem; font-weight:700;">
+                                    🔒 Despacho bloqueado hasta conciliar transferencia en <a href="/liquidacion-nodos" style="color:#38bdf8;">Cobros y Liquidación</a>
+                                </div>
+                            ` : (o.despachado_correo ? `
+                                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                    <div style="font-size:0.8rem; color:#cbd5e1;">
+                                        <strong>${esc(ep.operador_label || o.operador_postal_label)}</strong> · Guía:
+                                        <code style="color:#38bdf8; font-weight:900;">${esc(ep.numero_tracking || '')}</code>
+                                        · Flete real LAMDA: <strong style="color:#fb7185;">${fmtMoneda(ep.costo_flete_lamda || o.costo_flete_lamda || 0)}</strong>
+                                    </div>
+                                    ${ep.url_tracking_carrier ? `
+                                        <a href="${esc(ep.url_tracking_carrier)}" target="_blank" rel="noopener" class="btn-action"
+                                            style="background:rgba(56,189,248,0.16); color:#7dd3fc; border:1px solid #38bdf8; text-decoration:none;">
+                                            🔗 Seguimiento Correo ↗
+                                        </a>
+                                    ` : ''}
+                                    ${!o.entregado_final ? `
+                                        <button type="button" class="btn-action"
+                                            style="background:rgba(16,185,129,0.2); color:#6ee7b7; border:1px solid #10b981;"
+                                            onclick="marcarEntregadoPostalFinal(${o.id}, '${esc(o.codigo_pedido)}')">
+                                            ✅ Marcar Entregado
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            ` : `
+                                <div style="display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap;">
+                                    <div>
+                                        <label style="display:block; font-size:0.68rem; color:#94a3b8; font-weight:800; margin-bottom:3px;">Operador</label>
+                                        <select id="sel-operador-${o.id}"
+                                            style="padding:8px 10px; border-radius:8px; background:#0f172a; color:#f8fafc; border:1px solid #334155; font-size:0.79rem; font-weight:700;">
+                                            <option value="CORREO_ARGENTINO" ${o.operador_postal === 'CORREO_ARGENTINO' ? 'selected' : ''}>Correo Argentino</option>
+                                            <option value="ANDREANI" ${o.operador_postal === 'ANDREANI' ? 'selected' : ''}>Andreani</option>
+                                            <option value="VIA_CARGO" ${o.operador_postal === 'VIA_CARGO' ? 'selected' : ''}>Vía Cargo</option>
+                                            <option value="OTRO" ${o.operador_postal === 'OTRO' ? 'selected' : ''}>Otro Expreso</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style="display:block; font-size:0.68rem; color:#94a3b8; font-weight:800; margin-bottom:3px;">N° Seguimiento / Lector USB</label>
+                                        <input id="inp-tracking-${o.id}" type="text" placeholder="Ej: CP987654321AR"
+                                            value="${esc(ep.numero_tracking || '')}"
+                                            onkeydown="if(event.key==='Enter'){event.preventDefault(); confirmarDespachoPostalUi(${o.id}, '${esc(o.codigo_pedido)}');}"
+                                            style="width:185px; padding:8px 10px; border-radius:8px; background:#0f172a; color:#38bdf8; border:1px solid #38bdf8; font-family:monospace; font-weight:800; font-size:0.82rem;">
+                                    </div>
+                                    <div>
+                                        <label style="display:block; font-size:0.68rem; color:#94a3b8; font-weight:800; margin-bottom:3px;">Costo Flete LAMDA ($)</label>
+                                        <input id="inp-flete-${o.id}" type="number" min="0" step="1"
+                                            value="${fleteSugerido}"
+                                            style="width:125px; padding:8px 10px; border-radius:8px; background:#0f172a; color:#f8fafc; border:1px solid #334155; font-weight:800; font-size:0.82rem;">
+                                    </div>
+                                    <button type="button" class="btn-action"
+                                        style="background:#0284c7; color:#ffffff;"
+                                        onclick="confirmarDespachoPostalUi(${o.id}, '${esc(o.codigo_pedido)}')">
+                                        🚚 Confirmar Despacho Postal
+                                    </button>
+                                </div>
+                            `)}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function marcarEmpaqueFulfillment(pedidoId, desmarcar = false) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/deposito/fulfillment/${pedidoId}/empaquetar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ desmarcar })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error actualizando empaque de fulfillment');
+
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+
+                if (!desmarcar && data.etiqueta) {
+                    mostrarModalEtiquetaFulfillmentData(pedidoId, data.etiqueta);
+                }
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Empaque bloqueado', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function abrirModalEtiquetaFulfillmentZpl(pedidoId) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/deposito/fulfillment/${pedidoId}/etiqueta-zpl`);
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo generar la etiqueta Marca Blanca');
+                mostrarModalEtiquetaFulfillmentData(pedidoId, data);
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        function mostrarModalEtiquetaFulfillmentData(pedidoId, etq) {
+            Swal.fire({
+                title: `🏷️ Etiqueta Marca Blanca ${esc(etq.nombre_marca || '')} (#${esc(etq.pedido_codigo || '')})`,
+                width: '920px',
+                background: '#151e2e',
+                color: '#f8fafc',
+                html: `
+                    <div style="text-align:left; display:flex; flex-direction:column; gap:12px; font-size:0.83rem;">
+                        <div style="padding:9px 12px; border-radius:8px; background:rgba(16,185,129,0.14); border:1px solid #10b981; color:#a7f3d0;">
+                            ✅ <strong>Cara Cliente (Izquierda):</strong> 100% identidad ${esc(etq.nombre_marca)} (0 menciones a LAMDA) + QR de seguimiento <code>${esc(etq.qr_seguimiento_url || '')}</code>.<br>
+                            🏷️ <strong>Talón Interno Depósito LAMDA (Derecha):</strong> SKUs oficiales deterministas, peso controlado y sello horario de armado.
+                        </div>
+                        <div style="background:#0f172a; border:1px solid #334155; border-radius:10px; padding:12px; text-align:center;">
+                            <img src="${etq.preview_rollo_base64}" alt="Preview Etiqueta Fulfillment" style="max-width:100%; border-radius:6px;">
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <a href="/api/produccion/nodos/deposito/fulfillment/${pedidoId}/etiqueta-zpl?download=1"
+                                class="btn-action" style="background:rgba(56,189,248,0.18); color:#7dd3fc; border:1px solid #38bdf8; text-decoration:none;">
+                                💾 Descargar Archivo .ZPL (Zebra ZD220)
+                            </a>
+                            <span style="font-size:0.75rem; color:#94a3b8;">Hojas térmicas: ${etq.total_hojas || 1} · Artículos: ${etq.total_items || 0}</span>
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '🖨️ Imprimir en Zebra (:3099)',
+                cancelButtonText: 'Cerrar',
+                confirmButtonColor: '#10b981'
+            }).then(async (r) => {
+                if (r.isConfirmed && etq.zpl) {
+                    try {
+                        await fetch('http://localhost:3099/imprimir', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ zpl: etq.zpl })
+                        });
+                        Swal.fire({ icon: 'success', title: 'Enviado a Zebra', timer: 1400, showConfirmButton: false, background: '#151e2e', color: '#f8fafc' });
+                    } catch (_) {
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'Simulación en Modo Laboratorio',
+                            text: 'Código ZPL Marca Blanca generado correctamente (el puente Zebra :3099 es opcional en pruebas).',
+                            background: '#151e2e',
+                            color: '#f8fafc'
+                        });
+                    }
+                }
+            });
+        }
+
+        async function confirmarDespachoPostalUi(pedidoId, codigoPedido) {
+            const selOp = document.getElementById(`sel-operador-${pedidoId}`);
+            const inpTrk = document.getElementById(`inp-tracking-${pedidoId}`);
+            const inpFlete = document.getElementById(`inp-flete-${pedidoId}`);
+
+            const operador_postal = selOp ? selOp.value : 'CORREO_ARGENTINO';
+            const numero_tracking = inpTrk ? inpTrk.value.trim() : '';
+            const costo_flete_lamda = inpFlete ? Number(inpFlete.value || 0) : 0;
+
+            if (!numero_tracking) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Falta N° de Seguimiento',
+                    text: `Escaneá con el lector USB o ingresá el número de guía postal para el pedido #${codigoPedido}.`,
+                    background: '#151e2e',
+                    color: '#f8fafc'
+                });
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/produccion/nodos/deposito/fulfillment/${pedidoId}/despachar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        operador_postal,
+                        numero_tracking,
+                        costo_flete_lamda
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo confirmar el despacho postal');
+
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+
+                const d = data.despacho || {};
+                await Swal.fire({
+                    icon: 'success',
+                    title: `🚚 Despachado #${esc(d.codigo_pedido || codigoPedido)}`,
+                    background: '#151e2e',
+                    color: '#f8fafc',
+                    html: `
+                        <div style="text-align:left; font-size:0.88rem; line-height:1.55;">
+                            <p>📮 <strong>Operador y Guía:</strong> ${esc(d.operador_postal_label || operador_postal)} · <code>${esc(d.numero_tracking)}</code></p>
+                            <p>📒 <strong>Débito registrado en Cta. Cte.:</strong> <span style="color:#fb7185; font-weight:800;">-${fmtMoneda(d.monto_debito_total || 0)}</span> (Base ${fmtMoneda(d.costo_base_lamda || 0)} + Flete ${fmtMoneda(d.costo_flete_lamda || 0)})</p>
+                            <p>✨ <strong>Utilidad Neta Creador en esta orden:</strong> <span style="color:#34d399; font-weight:800;">${fmtMoneda(d.utilidad_neta_creador_orden || 0)}</span></p>
+                            <p style="font-size:0.78rem; color:#94a3b8; margin-top:6px;">El comprador y el creador ya visualizan Hito 4 y el link de seguimiento postal en vivo.</p>
+                        </div>
+                    `
+                });
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'No se pudo despachar', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        async function marcarEntregadoPostalFinal(pedidoId, codigoPedido) {
+            try {
+                const res = await fetch(`/api/produccion/nodos/deposito/fulfillment/${pedidoId}/entregar-final`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'Error marcando entrega postal');
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+                Swal.fire({ icon: 'success', title: `✅ Pedido #${codigoPedido} marcado como Entregado`, timer: 1600, showConfirmButton: false, background: '#151e2e', color: '#f8fafc' });
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
+        }
+
+        function exportarCsvPreimposicionMasiva() {
+            const params = new URLSearchParams();
+            if (ESTADO.fulfillmentMarcaId > 0) params.set('nodo_id', String(ESTADO.fulfillmentMarcaId));
+            if (ESTADO.fulfillmentOperador && ESTADO.fulfillmentOperador !== 'TODOS') {
+                params.set('operador_postal', ESTADO.fulfillmentOperador);
+            }
+            params.set('solo_pendientes', ESTADO.fulfillmentEstado === 'DESPACHADO_CORREO' || ESTADO.fulfillmentEstado === 'TODAS' ? '0' : '1');
+            window.location.href = `/api/produccion/nodos/deposito/fulfillment/preimposicion.csv?${params.toString()}`;
         }
 
         document.addEventListener('DOMContentLoaded', () => {

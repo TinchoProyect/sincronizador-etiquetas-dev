@@ -223,12 +223,23 @@
             <div style="display:flex; flex-direction:column; gap:14px;">
                 <div class="panel-card">
                     <div style="font-weight:800; font-size:0.95rem; color:#f8fafc; margin-bottom:4px;">
-                        🧺 Lotes / Canastos a Liquidar
+                        🧺 Lotes / Canastos Barriales a Liquidar
                     </div>
                     <div style="font-size:0.74rem; color:#94a3b8; margin-bottom:12px;">
-                        Seleccioná un lote para conciliar los pagos de sus vecinos y cerrar la liquidación con el Gestor.
+                        Seleccioná un canasto semanal para conciliar los pagos de sus vecinos y cerrar la liquidación con el Gestor.
                     </div>
                     <div id="lista-lotes-container" style="display:flex; flex-direction:column; gap:10px;"></div>
+                </div>
+
+                <!-- TIENDAS ONLINE / E-COMMERCE FULFILLMENT (LIQUIDACIÓN CONTINUA 24/7) -->
+                <div class="panel-card" style="border-color:rgba(56,189,248,0.45);">
+                    <div style="font-weight:800; font-size:0.95rem; color:#f8fafc; margin-bottom:4px;">
+                        📦 Tiendas Online · Liquidación Continua (24/7)
+                    </div>
+                    <div style="font-size:0.74rem; color:#94a3b8; margin-bottom:12px;">
+                        Conciliá transferencias para liberar despacho en Depósito y generá cortes de liquidación sobre órdenes despachadas sin pausar la tienda.
+                    </div>
+                    <div id="lista-tiendas-fulfillment-container" style="display:flex; flex-direction:column; gap:10px;"></div>
                 </div>
 
                 <!-- TITULARES BANCARIOS APRENDIDOS -->
@@ -264,8 +275,10 @@
 
     <script>
         const ESTADO = {
+            modoSeleccion: 'lote',
             nodoFiltroId: 0,
             loteSeleccionadoId: null,
+            tiendaFulfillmentId: null,
             tablero: null
         };
 
@@ -305,8 +318,17 @@
                 poblarSelectorNodos(data.nodos || []);
 
                 const lotes = data.lotes || [];
+                const tiendasFul = data.tiendas_fulfillment || [];
                 if (!preservar || !ESTADO.loteSeleccionadoId || !lotes.some(l => Number(l.id) === Number(ESTADO.loteSeleccionadoId))) {
                     ESTADO.loteSeleccionadoId = lotes[0]?.id || null;
+                }
+                if (!preservar || !ESTADO.tiendaFulfillmentId || !tiendasFul.some(t => Number(t.id) === Number(ESTADO.tiendaFulfillmentId))) {
+                    ESTADO.tiendaFulfillmentId = tiendasFul[0]?.id || null;
+                }
+                if (ESTADO.modoSeleccion === 'fulfillment' && !ESTADO.tiendaFulfillmentId && ESTADO.loteSeleccionadoId) {
+                    ESTADO.modoSeleccion = 'lote';
+                } else if (ESTADO.modoSeleccion === 'lote' && !ESTADO.loteSeleccionadoId && ESTADO.tiendaFulfillmentId) {
+                    ESTADO.modoSeleccion = 'fulfillment';
                 }
 
                 renderizarTodo();
@@ -329,17 +351,33 @@
         }
 
         function seleccionarLote(id) {
+            ESTADO.modoSeleccion = 'lote';
             ESTADO.loteSeleccionadoId = Number(id);
             renderizarTodo();
+        }
+
+        function seleccionarTiendaFulfillment(nodoId) {
+            ESTADO.modoSeleccion = 'fulfillment';
+            ESTADO.tiendaFulfillmentId = Number(nodoId);
+            renderizarTodo();
+        }
+
+        function obtenerTiendaFulfillmentActiva() {
+            return (ESTADO.tablero?.tiendas_fulfillment || []).find(t => Number(t.id) === Number(ESTADO.tiendaFulfillmentId)) || null;
         }
 
         function renderizarTodo() {
             if (!ESTADO.tablero) return;
             renderizarKpis();
             renderizarListaLotes();
+            renderizarListaTiendasFulfillment();
             renderizarAliasAprendidos();
             renderizarMovimientosCc();
-            renderizarWorkspaceLoteActivo();
+            if (ESTADO.modoSeleccion === 'fulfillment') {
+                renderizarWorkspaceTiendaFulfillment();
+            } else {
+                renderizarWorkspaceLoteActivo();
+            }
             renderizarPadronDobleLamda();
         }
 
@@ -350,6 +388,46 @@
         function renderizarKpis() {
             const el = document.getElementById('kpi-container');
             if (!el) return;
+
+            if (ESTADO.modoSeleccion === 'fulfillment') {
+                const tf = obtenerTiendaFulfillmentActiva();
+                const cc = tf?.cuadro_corte_pendiente || {};
+                const saldoAct = Number(tf?.usar_cuenta_madre_unificada ? tf?.saldo_cuenta_corriente_madre : tf?.saldo_cuenta_corriente) || 0;
+                const esDeudor = saldoAct > 0.01;
+                const esAcreedor = saldoAct < -0.01;
+                el.innerHTML = `
+                    <div class="kpi-card" style="border-left: 4px solid ${esDeudor ? '#f43f5e' : '#10b981'};">
+                        <div>
+                            <div class="kpi-val" style="color:${esDeudor ? '#fb7185' : '#34d399'};">${esAcreedor ? fmtMoneda(Math.abs(saldoAct)) + ' a favor' : fmtMoneda(saldoAct)}</div>
+                            <div class="kpi-lbl">Saldo Cta. Cte. Activa (${esc(tf?.codigo_bunker_cuenta_activa || 'Creador')})</div>
+                        </div>
+                        <div style="font-size:1.7rem;">📒</div>
+                    </div>
+                    <div class="kpi-card" style="border-left: 4px solid #38bdf8;">
+                        <div>
+                            <div class="kpi-val" style="color:#7dd3fc;">${fmtMoneda(cc.total_ingresos_brutos || 0)}</div>
+                            <div class="kpi-lbl">Ingresos Despachados sin Corte (${cc.cantidad_ordenes || 0} órd.)</div>
+                        </div>
+                        <div style="font-size:1.7rem;">📦</div>
+                    </div>
+                    <div class="kpi-card" style="border-left: 4px solid #f59e0b;">
+                        <div>
+                            <div class="kpi-val" style="color:#fcd34d;">${fmtMoneda((cc.costo_base_lamda || 0) + (cc.costo_flete_lamda || 0))}</div>
+                            <div class="kpi-lbl">Base LAMDA (${fmtMoneda(cc.costo_base_lamda || 0)}) + Flete (${fmtMoneda(cc.costo_flete_lamda || 0)})</div>
+                        </div>
+                        <div style="font-size:1.7rem;">🚚</div>
+                    </div>
+                    <div class="kpi-card" style="border-left: 4px solid #10b981;">
+                        <div>
+                            <div class="kpi-val" style="color:#6ee7b7;">${fmtMoneda(cc.utilidad_neta_creador || 0)}</div>
+                            <div class="kpi-lbl">Utilidad Neta Creador (Pendiente Corte)</div>
+                        </div>
+                        <div style="font-size:1.7rem;">✨</div>
+                    </div>
+                `;
+                return;
+            }
+
             const lote = obtenerLoteActivo();
             const c = lote?.cuadro_liquidacion || {};
             const saldoCc = Number(lote?.saldo_cuenta_corriente || 0);
@@ -399,7 +477,7 @@
             const lotes = ESTADO.tablero.lotes || [];
 
             cont.innerHTML = lotes.map(l => {
-                const sel = Number(l.id) === Number(ESTADO.loteSeleccionadoId);
+                const sel = ESTADO.modoSeleccion === 'lote' && Number(l.id) === Number(ESTADO.loteSeleccionadoId);
                 const c = l.cuadro_liquidacion;
                 const cerrado = Boolean(l.liquidacion_cerrada);
 
@@ -420,6 +498,42 @@
                                 : `<span class="badge" style="background:rgba(245,158,11,0.18); color:#fcd34d; border:1px solid #f59e0b;">💳 Cobros: ${c.pedidos_pagos_confirmados}/${c.total_pedidos} confirmados</span>`
                             }
                             <span style="color:#94a3b8;">Venta: <strong style="color:#f8fafc;">${fmtMoneda(c.total_venta_vecinos)}</strong></span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderizarListaTiendasFulfillment() {
+            const cont = document.getElementById('lista-tiendas-fulfillment-container');
+            if (!cont) return;
+            const tiendas = ESTADO.tablero?.tiendas_fulfillment || [];
+            if (tiendas.length === 0) {
+                cont.innerHTML = `<div style="padding:10px; border-radius:8px; background:#0f172a; border:1px dashed #334155; color:#64748b; font-size:0.76rem;">Sin tiendas online con perfil E-Commerce Fulfillment activas.</div>`;
+                return;
+            }
+
+            cont.innerHTML = tiendas.map(t => {
+                const sel = ESTADO.modoSeleccion === 'fulfillment' && Number(t.id) === Number(ESTADO.tiendaFulfillmentId);
+                const ro = t.resumen_operativo || {};
+                const cc = t.cuadro_corte_pendiente || {};
+                return `
+                    <div class="lote-item ${sel ? 'selected' : ''}" onclick="seleccionarTiendaFulfillment(${t.id})">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                            <strong style="font-size:0.9rem; color:#f8fafc;">🏷️ ${esc(t.nombre_marca)}</strong>
+                            <span style="font-family:monospace; font-size:0.71rem; background:rgba(56,189,248,0.16); color:#7dd3fc; padding:2px 7px; border-radius:5px;">
+                                24/7 ONLINE
+                            </span>
+                        </div>
+                        <div style="font-size:0.75rem; color:#cbd5e1;">
+                            👤 ${esc(t.gestor_nombre)} · Cta: <code>${esc(t.codigo_bunker_cuenta_activa)}</code>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; font-size:0.73rem; padding-top:4px; border-top:1px solid #1e293b;">
+                            ${ro.pendientes_conciliar_pago > 0
+                                ? `<span class="badge" style="background:rgba(244,63,94,0.18); color:#fda4af; border:1px solid #f43f5e;">🏦 ${ro.pendientes_conciliar_pago} por conciliar</span>`
+                                : `<span class="badge" style="background:rgba(16,185,129,0.18); color:#6ee7b7;">✓ Pagos al día</span>`
+                            }
+                            <span style="color:#94a3b8;">Corte pend.: <strong style="color:#34d399;">${ro.despachadas_pendientes_corte || 0} órd. (${fmtMoneda(cc.utilidad_neta_creador || 0)})</strong></span>
                         </div>
                     </div>
                 `;
@@ -1413,6 +1527,232 @@
                     </div>
                 </div>
             `;
+        }
+
+        function renderizarWorkspaceTiendaFulfillment() {
+            const ws = document.getElementById('detalle-lote-workspace');
+            if (!ws) return;
+            const tf = obtenerTiendaFulfillmentActiva();
+            if (!tf) {
+                ws.innerHTML = `<div class="panel-card">Seleccioná una Tienda Online o Canasto a la izquierda.</div>`;
+                return;
+            }
+
+            const peds = tf.pedidos_fulfillment || [];
+            const cc = tf.cuadro_corte_pendiente || {};
+            const cortes = tf.cortes_cerrados || [];
+            const puedeCortar = Number(cc.cantidad_ordenes || 0) > 0;
+
+            const filasOrdenes = peds.length === 0 ? `
+                <div style="padding:18px; border-radius:10px; background:#0f172a; border:1px dashed #334155; color:#94a3b8; font-size:0.84rem; text-align:center;">
+                    Aún no ingresaron órdenes online en <strong>${esc(tf.nombre_marca)}</strong>. Las compras entran aquí al instante para conciliación de transferencia y pase automático a Fulfillment 24/7.
+                </div>
+            ` : peds.map(p => {
+                const esAnulado = Boolean(p.anulado);
+                const pagado = !esAnulado && Boolean(p.pago_confirmado);
+                const despachado = !esAnulado && Boolean(p.debito_cta_cte_registrado);
+                const cortado = Boolean(p.liquidacion_id);
+                const subProd = Number(p.subtotal_productos_vecino || 0);
+                const envCli = Number(p.cargo_envio_barrial ?? p.postal_costo_envio_cliente ?? 0);
+                const fleteLamda = Number(p.costo_flete_lamda ?? p.postal_costo_flete_lamda ?? 0);
+                const utilOrden = Number((Number(p.total_vecino || 0) - Number(p.total_base_lamda || 0) - fleteLamda).toFixed(2));
+                const itemsTxt = (p.items || []).map(i => `${i.cantidad}x ${esc(formatearItemLiq(i))}`).join(' · ');
+
+                return `
+                    <div class="cobro-card ${pagado ? 'confirmado' : ''}" style="${esAnulado ? 'opacity:0.58;' : ''}">
+                        <div style="flex:1; min-width:280px; display:flex; flex-direction:column; gap:5px;">
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-family:monospace; font-weight:900; font-size:0.84rem; background:#1e293b; color:#38bdf8; padding:3px 8px; border-radius:6px;">
+                                    #${esc(p.codigo_pedido)}
+                                </span>
+                                <strong style="font-size:0.94rem; color:#f8fafc;">👤 ${esc(p.vecino_nombre)}</strong>
+                                ${p.postal_cp ? `<span style="font-size:0.75rem; color:#94a3b8;">📍 ${esc(p.postal_localidad || '')}, ${esc(p.postal_provincia || '')} (CP ${esc(p.postal_cp)})</span>` : ''}
+                                ${esAnulado
+                                    ? `<span class="badge" style="background:rgba(244,63,94,0.2); color:#fda4af;">🚫 ANULADA</span>`
+                                    : (cortado
+                                        ? `<span class="badge" style="background:rgba(16,185,129,0.22); color:#6ee7b7; border:1px solid #10b981;">🧾 Incluida en Corte</span>`
+                                        : (despachado
+                                            ? `<span class="badge" style="background:rgba(56,189,248,0.2); color:#7dd3fc; border:1px solid #38bdf8;">🚚 Despachada (#${esc(p.postal_numero_tracking || '')}) · Lista p/ Corte</span>`
+                                            : (pagado
+                                                ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981;">✅ Pago Conciliado · En Cola Depósito</span>`
+                                                : `<span class="badge" style="background:rgba(244,63,94,0.18); color:#fda4af; border:1px solid #f43f5e;">⏳ Pendiente Conciliar Transferencia</span>`)))
+                                }
+                            </div>
+                            <div style="font-size:0.8rem; color:#e2e8f0; font-weight:600;">${itemsTxt}</div>
+                            <div style="font-size:0.74rem; color:#94a3b8;">
+                                Prod: <strong>${fmtMoneda(subProd)}</strong> · Envío cliente: <strong>${fmtMoneda(envCli)}</strong> · Base LAMDA: <strong>${fmtMoneda(p.total_base_lamda)}</strong>
+                                ${despachado ? ` · Flete real LAMDA: <strong style="color:#fb7185;">${fmtMoneda(fleteLamda)}</strong> · Utilidad Neta: <strong style="color:#34d399;">${fmtMoneda(utilOrden)}</strong>` : ''}
+                            </div>
+                        </div>
+
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <div style="text-align:right; margin-right:6px;">
+                                <div style="font-size:1.05rem; font-weight:900; color:#f8fafc;">${fmtMoneda(p.total_vecino)}</div>
+                                <div style="font-size:0.69rem; color:#94a3b8;">Total transferencia</div>
+                            </div>
+                            ${(!esAnulado && !pagado) ? `
+                                <button type="button" class="btn-top primary"
+                                    onclick="abrirModalConciliarTransferencia(${p.id}, '${esc(p.codigo_pedido)}', '${esc(p.vecino_nombre)}', '${esc(p.titular_sugerido)}', ${Number(p.total_vecino || 0)})">
+                                    🏦 Conciliar Transferencia
+                                </button>
+                            ` : ''}
+                            ${(!esAnulado && pagado && !despachado) ? `
+                                <a href="/deposito-nodos?tab=fulfillment" class="btn-top" style="border-color:#38bdf8; color:#7dd3fc; text-decoration:none;">
+                                    📦 Ir a Empaque y Guía ↗
+                                </a>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const cortesHtml = cortes.length === 0 ? `
+                <div style="padding:12px; border-radius:8px; background:#0f172a; border:1px dashed #334155; color:#64748b; font-size:0.78rem;">
+                    Aún no se emitieron cortes de liquidación para ${esc(tf.nombre_marca)}.
+                </div>
+            ` : cortes.map(ct => `
+                <div style="padding:12px 14px; border-radius:10px; background:#0f172a; border:1px solid rgba(16,185,129,0.4); display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                    <div>
+                        <div style="font-weight:800; color:#f8fafc; font-size:0.86rem;">
+                            🧾 ${esc(ct.codigo_liquidacion)} · <span style="color:#7dd3fc;">${ct.cantidad_ordenes || 0} orden(es) despachada(s)</span>
+                        </div>
+                        <div style="font-size:0.75rem; color:#94a3b8; margin-top:3px;">
+                            Ingresos Brutos: <strong>${fmtMoneda(ct.total_venta_vecinos)}</strong> (Envíos cobrados: ${fmtMoneda(ct.total_envio_cobrado_clientes || 0)})
+                            · Base LAMDA: <strong>${fmtMoneda(ct.total_base_lamda)}</strong>
+                            · Flete Real LAMDA: <strong style="color:#fb7185;">${fmtMoneda(ct.total_costo_flete_lamda || 0)}</strong>
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:0.7rem; color:#94a3b8; text-transform:uppercase; font-weight:800;">Utilidad Neta Creador</div>
+                        <div style="font-size:1.12rem; font-weight:900; color:#34d399;">${fmtMoneda(ct.ganancia_neta_gestor)}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            ws.innerHTML = `
+                <div class="panel-card">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+                        <div>
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <h2 style="font-size:1.12rem; font-weight:900; color:#f8fafc;">📦 ${esc(tf.nombre_marca)} — Conciliación y Liquidación Continua 24/7</h2>
+                                <span class="badge" style="background:rgba(56,189,248,0.18); color:#7dd3fc; border:1px solid #38bdf8;">E-Commerce Fulfillment</span>
+                            </div>
+                            <div style="font-size:0.78rem; color:#94a3b8; margin-top:3px;">
+                                Creador / Referente: <strong>${esc(tf.gestor_nombre)}</strong> · Cuenta Contable Operativa: <code>${esc(tf.codigo_bunker_cuenta_activa)}</code> ${tf.usar_cuenta_madre_unificada ? '(Cuenta Madre Unificada)' : ''}
+                            </div>
+                        </div>
+                        <a href="/deposito-nodos?tab=fulfillment" class="btn-top" style="border-color:#10b981; color:#6ee7b7; text-decoration:none;">
+                            📦 Abrir Mesa Fulfillment Depósito ↗
+                        </a>
+                    </div>
+
+                    <div style="display:flex; flex-direction:column; gap:10px;">
+                        ${filasOrdenes}
+                    </div>
+                </div>
+
+                <!-- CUADRO DE CORTE DE LIQUIDACIÓN CONTINUA (SIN PAUSAR VENTAS 24/7) -->
+                <div class="panel-card" style="border-color:rgba(16,185,129,0.5);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+                        <div>
+                            <div style="font-weight:900; font-size:1rem; color:#f8fafc;">🧾 Corte de Liquidación de Órdenes Despachadas</div>
+                            <div style="font-size:0.76rem; color:#94a3b8;">
+                                Agrupa únicamente órdenes con transferencia conciliada + despacho postal confirmado pendientes de corte, sin interrumpir la venta online 24/7.
+                            </div>
+                        </div>
+                        <button type="button" class="btn-top primary"
+                            ${puedeCortar ? 'style="background:#10b981; color:#052e16; border-color:#10b981; font-weight:900; padding:10px 16px;"' : 'disabled style="opacity:0.45; cursor:not-allowed;"'}
+                            onclick="confirmarGenerarCorteFulfillment(${tf.id}, '${esc(tf.nombre_marca)}')">
+                            🧾 Generar Corte de Liquidación (Órdenes Despachadas)
+                        </button>
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin-bottom:14px;">
+                        <div style="padding:11px; border-radius:9px; background:#0f172a; border:1px solid #263244;">
+                            <div style="font-size:0.7rem; color:#94a3b8;">1. Subtotal Productos (${cc.cantidad_ordenes || 0} órd.)</div>
+                            <div style="font-size:1.02rem; font-weight:800; color:#f8fafc; margin-top:2px;">${fmtMoneda(cc.subtotal_productos || 0)}</div>
+                        </div>
+                        <div style="padding:11px; border-radius:9px; background:#0f172a; border:1px solid #263244;">
+                            <div style="font-size:0.7rem; color:#94a3b8;">2. + Envío Cobrado Clientes</div>
+                            <div style="font-size:1.02rem; font-weight:800; color:#38bdf8; margin-top:2px;">+${fmtMoneda(cc.envio_cobrado_clientes || 0)}</div>
+                        </div>
+                        <div style="padding:11px; border-radius:9px; background:#0f172a; border:1px solid #263244;">
+                            <div style="font-size:0.7rem; color:#94a3b8;">3. − Costo Base LAMDA</div>
+                            <div style="font-size:1.02rem; font-weight:800; color:#fb7185; margin-top:2px;">-${fmtMoneda(cc.costo_base_lamda || 0)}</div>
+                        </div>
+                        <div style="padding:11px; border-radius:9px; background:#0f172a; border:1px solid #263244;">
+                            <div style="font-size:0.7rem; color:#94a3b8;">4. − Costo Flete Real LAMDA</div>
+                            <div style="font-size:1.02rem; font-weight:800; color:#fb7185; margin-top:2px;">-${fmtMoneda(cc.costo_flete_lamda || 0)}</div>
+                        </div>
+                        <div style="padding:11px; border-radius:9px; background:rgba(16,185,129,0.12); border:1px solid #10b981;">
+                            <div style="font-size:0.7rem; color:#6ee7b7; font-weight:800;">= Utilidad Neta Creador</div>
+                            <div style="font-size:1.15rem; font-weight:900; color:#34d399; margin-top:2px;">${fmtMoneda(cc.utilidad_neta_creador || 0)}</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div style="font-size:0.76rem; font-weight:800; color:#cbd5e1; text-transform:uppercase; margin-bottom:8px;">Historial de Cortes Emitidos</div>
+                        <div style="display:flex; flex-direction:column; gap:8px;">${cortesHtml}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        async function confirmarGenerarCorteFulfillment(nodoId, nombreMarca) {
+            const tf = obtenerTiendaFulfillmentActiva();
+            if (!tf) return;
+            const cc = tf.cuadro_corte_pendiente || {};
+            if (!cc.cantidad_ordenes) return;
+
+            const r = await Swal.fire({
+                title: `🧾 Generar Corte de Liquidación — ${esc(nombreMarca)}`,
+                background: '#151e2e',
+                color: '#f8fafc',
+                width: '620px',
+                html: `
+                    <div style="text-align:left; font-size:0.86rem; line-height:1.55;">
+                        <p>Se consolidarán <strong>${cc.cantidad_ordenes} orden(es) despachada(s)</strong> con pago conciliado:</p>
+                        <div style="margin:10px 0; padding:12px; border-radius:9px; background:#0f172a; border:1px solid #334155;">
+                            <div>• Subtotal Productos: <strong>${fmtMoneda(cc.subtotal_productos)}</strong></div>
+                            <div>• + Envíos Cobrados a Clientes: <strong>${fmtMoneda(cc.envio_cobrado_clientes)}</strong></div>
+                            <div>• − Costo Base Mercadería LAMDA: <strong style="color:#fb7185;">-${fmtMoneda(cc.costo_base_lamda)}</strong></div>
+                            <div>• − Costo Flete Postal Real LAMDA: <strong style="color:#fb7185;">-${fmtMoneda(cc.costo_flete_lamda)}</strong></div>
+                            <hr style="border:none; border-top:1px solid #334155; margin:8px 0;">
+                            <div style="font-size:1rem;">✨ <strong>Utilidad Neta Creador:</strong> <span style="color:#34d399; font-weight:900;">${fmtMoneda(cc.utilidad_neta_creador)}</span></div>
+                        </div>
+                        <div style="font-size:0.78rem; color:#94a3b8;">La tienda online continúa operando 24/7 sin interrupción.</div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: '✅ Emitir Corte Oficial',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#10b981'
+            });
+
+            if (!r.isConfirmed) return;
+
+            try {
+                const res = await fetch(`/api/produccion/nodos/liquidacion/nodos/${nodoId}/corte-fulfillment`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo generar el corte de liquidación');
+
+                ESTADO.tablero = data.tablero;
+                renderizarTodo();
+
+                await Swal.fire({
+                    icon: 'success',
+                    title: `✅ Corte Emitido: ${esc(data.corte?.codigo_liquidacion || '')}`,
+                    text: `Utilidad Neta Creador consolidada: ${fmtMoneda(data.corte?.ganancia_neta_gestor || 0)}`,
+                    background: '#151e2e',
+                    color: '#f8fafc'
+                });
+            } catch (err) {
+                Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f8fafc' });
+            }
         }
 
         document.addEventListener('DOMContentLoaded', () => {
