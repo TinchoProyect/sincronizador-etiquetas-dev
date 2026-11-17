@@ -639,6 +639,7 @@ async function restaurarChoferIA() {
     if (!articuloIdActualConciliacion) return;
     window.tabConciliacionActiva = 'CHOFER_IA';
     await abrirModuloConciliacionIA(articuloIdActualConciliacion, tagsActivosMemoria, {
+        ...opcionesConciliacionActual,
         criterio_orden: criterioOrdenMemoria,
         excluir_cero: excluirCeroMemoria
     });

@@ -2762,7 +2762,16 @@ window.abrirGestorPrecios = async function(articulo_id, descripcion, iva, opcion
                 }
 
                 if (tostaderoBadgeEl) {
-                    if (props && props.tostadero_simulacion) {
+                    const fuenteLdn4 = props && props.fuente_abastecimiento_ldn4 ? props.fuente_abastecimiento_ldn4 : null;
+                    if (fuenteLdn4 && fuenteLdn4.modo_rector === 'COMPRA_PROVEEDOR') {
+                        tostaderoBadgeEl.innerText = '🛒 Compra Terminado';
+                        tostaderoBadgeEl.style.background = '#e0f2fe';
+                        tostaderoBadgeEl.style.color = '#0369a1';
+                    } else if (fuenteLdn4 && fuenteLdn4.modo_rector === 'MANUAL') {
+                        tostaderoBadgeEl.innerText = '🎯 Fijo Pizarra';
+                        tostaderoBadgeEl.style.background = '#ede9fe';
+                        tostaderoBadgeEl.style.color = '#6d28d9';
+                    } else if (props && props.tostadero_simulacion) {
                         tostaderoBadgeEl.innerText = '🔥 Estacionado';
                         tostaderoBadgeEl.style.background = '#fde68a';
                         tostaderoBadgeEl.style.color = '#78350f';
@@ -14464,9 +14473,11 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
             if (!window.gp_current_articulo_data.propiedades_dinamicas) {
                 window.gp_current_articulo_data.propiedades_dinamicas = {};
             }
-            window.gp_current_articulo_data.propiedades_dinamicas.tostadero_simulacion = finalObj;
+            if (!finalObj.es_comparacion_bulto_comprado) {
+                window.gp_current_articulo_data.propiedades_dinamicas.tostadero_simulacion = finalObj;
+            }
 
-            // Persistir en propiedades_dinamicas.tostadero_simulacion Y sincronizar bunker_articulos.costo_base + listas
+            // Persistir en propiedades_dinamicas.tostadero_simulacion (o fuente_abastecimiento_ldn4 si es bulto comprado) Y sincronizar bunker_articulos.costo_base + listas
             try {
                 const respSyncSim = await fetch(`/api/logistica/bunker/tostadero-simulacion/${encodeURIComponent(skuSalida)}`, {
                     method: 'POST',
@@ -14480,6 +14491,9 @@ window.abrirCalculadoraTostadero = async function(artIdCustom = null) {
                     const syncJson = await respSyncSim.json().catch(() => null);
                     if (syncJson && typeof syncJson.costo_base === 'number') {
                         window.gp_current_articulo_data.costo_base = syncJson.costo_base;
+                    }
+                    if (syncJson && syncJson.fuente_abastecimiento_ldn4) {
+                        window.gp_current_articulo_data.propiedades_dinamicas.fuente_abastecimiento_ldn4 = syncJson.fuente_abastecimiento_ldn4;
                     }
                 }
             } catch (errSaveSim) {

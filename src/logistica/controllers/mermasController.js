@@ -579,23 +579,62 @@ exports.guardarSimulacionTostadero = async (req, res) => {
 
             const tieneCostoValido = cleanSim.costo_resultante_kg > 0 && simPayload.sincronizar_costo_y_listas !== false;
 
-            const upd = await client.query(
-                `UPDATE public.bunker_articulos
-                 SET propiedades_dinamicas = jsonb_set(
-                     COALESCE(propiedades_dinamicas, '{}'::jsonb),
-                     '{tostadero_simulacion}',
-                     $1::jsonb,
-                     true
-                 ),
-                 costo_base = CASE
-                     WHEN $3::boolean THEN ROUND(($4::numeric * COALESCE(NULLIF(kilos_unidad, 0), 1.00)), 2)
-                     ELSE costo_base
-                 END,
-                 updated_at = CURRENT_TIMESTAMP
-                 WHERE UPPER(BTRIM(articulo_id)) = UPPER(BTRIM($2))
-                 RETURNING articulo_id, COALESCE(NULLIF(kilos_unidad, 0), 1.00) AS kilos_unidad, costo_base, propiedades_dinamicas->'tostadero_simulacion' AS tostadero_simulacion`,
-                [JSON.stringify(cleanSim), sku, tieneCostoValido, cleanSim.costo_resultante_kg]
-            );
+            let upd;
+            if (cleanSim.es_comparacion_bulto_comprado) {
+                const fuentePatch = {
+                    compra_origen: 'BULTO_BUNKER',
+                    compra_sku_bulto: cleanSim.insumo_evaluado_sku,
+                    compra_descripcion: cleanSim.insumo_evaluado_descripcion,
+                    compra_costo_kg: cleanSim.costo_resultante_kg,
+                    compra_aplica_mo_ap: false,
+                    compra_updated_at: cleanSim.updated_at,
+                    updated_at: cleanSim.updated_at
+                };
+                if (tieneCostoValido) {
+                    fuentePatch.modo_rector = 'COMPRA_PROVEEDOR';
+                }
+                upd = await client.query(
+                    `UPDATE public.bunker_articulos
+                     SET propiedades_dinamicas = jsonb_set(
+                         COALESCE(propiedades_dinamicas, '{}'::jsonb),
+                         '{fuente_abastecimiento_ldn4}',
+                         COALESCE(propiedades_dinamicas->'fuente_abastecimiento_ldn4', '{}'::jsonb) || $1::jsonb,
+                         true
+                     ),
+                     costo_base = CASE
+                         WHEN $3::boolean THEN ROUND(($4::numeric * COALESCE(NULLIF(kilos_unidad, 0), 1.00)), 2)
+                         ELSE costo_base
+                     END,
+                     updated_at = CURRENT_TIMESTAMP
+                     WHERE UPPER(BTRIM(articulo_id)) = UPPER(BTRIM($2))
+                     RETURNING articulo_id, COALESCE(NULLIF(kilos_unidad, 0), 1.00) AS kilos_unidad, costo_base, propiedades_dinamicas->'tostadero_simulacion' AS tostadero_simulacion, propiedades_dinamicas->'fuente_abastecimiento_ldn4' AS fuente_abastecimiento_ldn4`,
+                    [JSON.stringify(fuentePatch), sku, tieneCostoValido, cleanSim.costo_resultante_kg]
+                );
+            } else {
+                const fuenteUpPatch = (tieneCostoValido && !simPayload.preservar_fuente_abastecimiento)
+                    ? { modo_rector: 'PRODUCCION_UP', updated_at: cleanSim.updated_at }
+                    : null;
+                upd = await client.query(
+                    `UPDATE public.bunker_articulos
+                     SET propiedades_dinamicas = CASE
+                         WHEN $5::jsonb IS NOT NULL THEN jsonb_set(
+                             jsonb_set(COALESCE(propiedades_dinamicas, '{}'::jsonb), '{tostadero_simulacion}', $1::jsonb, true),
+                             '{fuente_abastecimiento_ldn4}',
+                             COALESCE(propiedades_dinamicas->'fuente_abastecimiento_ldn4', '{}'::jsonb) || $5::jsonb,
+                             true
+                         )
+                         ELSE jsonb_set(COALESCE(propiedades_dinamicas, '{}'::jsonb), '{tostadero_simulacion}', $1::jsonb, true)
+                     END,
+                     costo_base = CASE
+                         WHEN $3::boolean THEN ROUND(($4::numeric * COALESCE(NULLIF(kilos_unidad, 0), 1.00)), 2)
+                         ELSE costo_base
+                     END,
+                     updated_at = CURRENT_TIMESTAMP
+                     WHERE UPPER(BTRIM(articulo_id)) = UPPER(BTRIM($2))
+                     RETURNING articulo_id, COALESCE(NULLIF(kilos_unidad, 0), 1.00) AS kilos_unidad, costo_base, propiedades_dinamicas->'tostadero_simulacion' AS tostadero_simulacion, propiedades_dinamicas->'fuente_abastecimiento_ldn4' AS fuente_abastecimiento_ldn4`,
+                    [JSON.stringify(cleanSim), sku, tieneCostoValido, cleanSim.costo_resultante_kg, fuenteUpPatch ? JSON.stringify(fuenteUpPatch) : null]
+                );
+            }
 
             if (upd.rows.length === 0) {
                 await client.query('ROLLBACK');
@@ -668,7 +707,8 @@ exports.guardarSimulacionTostadero = async (req, res) => {
             success: true,
             articulo_id: updatedRow.articulo_id,
             costo_base: parseFloat(updatedRow.costo_base) || 0,
-            tostadero_simulacion: updatedRow.tostadero_simulacion
+            tostadero_simulacion: updatedRow.tostadero_simulacion,
+            fuente_abastecimiento_ldn4: updatedRow.fuente_abastecimiento_ldn4
         });
     } catch (error) {
         console.error('❌ [BUNKER] Error guardando simulación de tostadero:', error);

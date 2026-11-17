@@ -1653,7 +1653,7 @@
     }
   </style>
   <script src="/js/components/accordion-ldn1.js?v=2.0.13"></script>
-  <script src="/js/components/modalGestionCostos.js?v=2.0.12"></script>
+  <script src="/js/components/modalGestionCostos.js?v=2.0.13"></script>
 </head>
 
 <body>
@@ -3005,7 +3005,103 @@
               : 0);
         const costoIngOficialBd = ingSimple ? Number((parseFloat(ingSimple.costo_patron) || 0).toFixed(2)) : 0;
 
-        tostaderosConfigsLDN4.push({
+        // Descubrir bultos ya tostados/terminados compatibles en Búnker + última conciliación (Carril B: Comprar Terminado)
+        const crudoPrincipalUpper = String(crudoArt?.propiedades_dinamicas?.articulo_principal || '').trim().toUpperCase();
+        const apDescUpper = String(apArt?.descripcion_generada || def.titulo || '').toUpperCase();
+        const apEsSalado = apDescUpper.includes('SAL');
+        const apLowerNorm = String(def.ap_codigo || '').trim().toLowerCase();
+        const upLowerNorm = String(def.up_codigo || '').trim().toLowerCase();
+        const vinculadosIngSet = new Set(
+          Array.isArray(ingSimple?.articulos_vinculados)
+            ? ingSimple.articulos_vinculados.map(v => String(v.codigo || v.bunker_articulo_id || '').trim().toLowerCase()).filter(Boolean)
+            : []
+        );
+        if (ingSimple?.articulo_vinculado_numero) {
+          vinculadosIngSet.add(String(ingSimple.articulo_vinculado_numero).trim().toLowerCase());
+        }
+
+        const conciliacionesArr = Array.isArray(data.conciliacionesRecientes) ? data.conciliacionesRecientes : [];
+        const buscarConcilSku = (skuStr) => conciliacionesArr.find(c =>
+          String(c.articulo_id || '').trim().toUpperCase() === String(skuStr || '').trim().toUpperCase()
+        );
+        const concilIng = def.ing_id ? conciliacionesArr.find(c =>
+          Number(c.ingrediente_id) === Number(def.ing_id) || String(c.articulo_id || '').trim().toUpperCase() === `ING-${def.ing_id}`
+        ) : null;
+
+        const bultosCompradosCompatibles = (data.articulosBunker || [])
+          .filter(a => {
+            const skuLow = String(a.articulo_id || '').trim().toLowerCase();
+            if (!skuLow || skuLow === apLowerNorm || skuLow === upLowerNorm) return false;
+            if (Number(a.familia_id || a.propiedades_dinamicas?.familia_id || 0) === 42) return false;
+            if (a.propiedades_dinamicas?.obsoleto === true || a.pack_hijo_codigo) return false;
+            if (a.tiene_receta) return false;
+            const kU = parseFloat(a.kilos_unidad) || 0;
+            const yaVinc = vinculadosIngSet.has(skuLow);
+            if (!yaVinc && kU < 5) return false;
+            if (yaVinc) return true;
+            const artP = String(a.propiedades_dinamicas?.articulo_principal || '').trim().toUpperCase();
+            if (!crudoPrincipalUpper || artP !== crudoPrincipalUpper) return false;
+            const pos4 = String(a.propiedades_dinamicas?.posiciones?.pos_4?.valor || '').toUpperCase();
+            const pos5 = String(a.propiedades_dinamicas?.posiciones?.pos_5?.valor || '').toUpperCase();
+            const descU = String(a.descripcion_generada || a.descripcion || '').toUpperCase();
+            const textoTrat = `${pos4} ${pos5} ${descU}`;
+            return textoTrat.includes('TOST') || Boolean(a.no_producido_por_lambda);
+          })
+          .map(a => {
+            const skuLow = String(a.articulo_id || '').trim().toLowerCase();
+            const kU = parseFloat(a.kilos_unidad) > 0 ? parseFloat(a.kilos_unidad) : 1;
+            const costoKg = Number(((parseFloat(a.costo_base) || 0) / kU).toFixed(2));
+            const stockB = parseFloat(a.stock_disponible ?? a.stock_consolidado ?? 0);
+            const descU = String(a.propiedades_dinamicas?.posiciones?.pos_4?.valor || '') + ' ' + String(a.propiedades_dinamicas?.posiciones?.pos_5?.valor || '') + ' ' + String(a.descripcion_generada || a.descripcion || '');
+            const bultoEsSalado = descU.toUpperCase().includes('SAL');
+            const conc = buscarConcilSku(a.articulo_id);
+            return {
+              sku: a.articulo_id,
+              descripcion: a.descripcion_generada || a.descripcion || a.articulo_id,
+              kilos_unidad: kU,
+              costo_kg: costoKg,
+              stock_bultos: stockB,
+              stock_kilos: Number((stockB * kU).toFixed(2)),
+              ya_vinculado_ing: vinculadosIngSet.has(skuLow),
+              coincide_sabor: bultoEsSalado === apEsSalado,
+              conciliacion_proveedor: conc?.proveedor_nombre || null,
+              conciliacion_fecha: conc?.fecha_conciliacion || null
+            };
+          })
+          .sort((a, b) => {
+            if (a.ya_vinculado_ing !== b.ya_vinculado_ing) return a.ya_vinculado_ing ? -1 : 1;
+            if (a.coincide_sabor !== b.coincide_sabor) return a.coincide_sabor ? -1 : 1;
+            if ((a.stock_kilos > 0) !== (b.stock_kilos > 0)) return a.stock_kilos > 0 ? -1 : 1;
+            return a.sku.localeCompare(b.sku);
+          });
+
+        const fuenteSaved = (apArt && apArt.propiedades_dinamicas && apArt.propiedades_dinamicas.fuente_abastecimiento_ldn4)
+          ? apArt.propiedades_dinamicas.fuente_abastecimiento_ldn4
+          : null;
+        const defaultBultoComp = bultosCompradosCompatibles.find(b => b.coincide_sabor) || bultosCompradosCompatibles[0] || null;
+        let compraOrigen = fuenteSaved?.compra_origen || (defaultBultoComp ? 'BULTO_BUNKER' : (concilIng ? 'TABLA_MAESTRA' : null));
+        let compraSkuBulto = fuenteSaved?.compra_sku_bulto !== undefined ? fuenteSaved.compra_sku_bulto : (defaultBultoComp ? defaultBultoComp.sku : null);
+        let compraCostoKg = (fuenteSaved?.compra_costo_kg !== undefined && fuenteSaved.compra_costo_kg !== null)
+          ? parseFloat(fuenteSaved.compra_costo_kg)
+          : (defaultBultoComp ? defaultBultoComp.costo_kg : (concilIng ? parseFloat(concilIng.costo_kilo_calculado || 0) : 0));
+        let compraProveedorNombre = fuenteSaved?.compra_proveedor_nombre || (defaultBultoComp?.conciliacion_proveedor || concilIng?.proveedor_nombre || null);
+        let compraProveedorCodigo = fuenteSaved?.compra_proveedor_codigo || (concilIng?.codigo_proveedor || null);
+        let compraDescripcion = fuenteSaved?.compra_descripcion || (defaultBultoComp ? defaultBultoComp.descripcion : (concilIng?.descripcion_proveedor || null));
+
+        if (compraOrigen === 'BULTO_BUNKER' && compraSkuBulto) {
+          const bMatch = bultosCompradosCompatibles.find(b => String(b.sku).toUpperCase() === String(compraSkuBulto).toUpperCase());
+          if (bMatch) {
+            if (bMatch.costo_kg > 0) compraCostoKg = bMatch.costo_kg;
+            compraDescripcion = bMatch.descripcion;
+            if (!compraProveedorNombre && bMatch.conciliacion_proveedor) compraProveedorNombre = bMatch.conciliacion_proveedor;
+          }
+        }
+
+        const modoRectorInit = (fuenteSaved?.modo_rector && ['PRODUCCION_UP', 'COMPRA_PROVEEDOR', 'MANUAL'].includes(fuenteSaved.modo_rector))
+          ? fuenteSaved.modo_rector
+          : 'PRODUCCION_UP';
+
+        const cfgObj = {
           id: def.up_codigo,
           up_codigo: def.up_codigo,
           up_nombre: upArt ? (upArt.descripcion_generada || upArt.descripcion) : def.titulo,
@@ -3027,12 +3123,34 @@
           costo_crudo_simulado: costoCrudoInicial,
           tarifa_maquila_simulada: tarifaMaquila,
           merma_porc_simulada: mermaPorc,
+          modo_rector: modoRectorInit,
+          compra_origen: compraOrigen,
+          compra_sku_bulto: compraSkuBulto,
+          compra_costo_kg: Number((compraCostoKg || 0).toFixed(2)),
+          compra_aplica_mo_ap: Boolean(fuenteSaved?.compra_aplica_mo_ap),
+          compra_proveedor_nombre: compraProveedorNombre,
+          compra_proveedor_codigo: compraProveedorCodigo,
+          compra_descripcion: compraDescripcion,
+          compra_updated_at: fuenteSaved?.compra_updated_at || null,
+          manual_costo_kg: (fuenteSaved?.manual_costo_kg !== undefined && fuenteSaved.manual_costo_kg !== null && parseFloat(fuenteSaved.manual_costo_kg) > 0)
+            ? Number(parseFloat(fuenteSaved.manual_costo_kg).toFixed(2))
+            : costoIngredienteCalculado,
+          manual_nota: fuenteSaved?.manual_nota || '',
+          bultos_comprados_compatibles: bultosCompradosCompatibles,
+          costo_base_ap_prod: costoBaseApCalculado,
+          costo_ingrediente_prod: costoIngredienteCalculado,
+          costo_base_ap_compra: 0,
+          costo_ingrediente_compra: 0,
           costo_base_ap_simulado: costoBaseApCalculado,
           costo_ap_simulado: costoBaseApCalculado,
           costo_ingrediente_simulado: costoIngredienteCalculado,
           costo_base_ap_oficial_bd: costoBaseApOficialBd,
           costo_ap_oficial_bd: costoIngOficialBd
-        });
+        };
+        if (typeof calcularCostosDualTostaderoLDN4 === 'function') {
+          calcularCostosDualTostaderoLDN4(cfgObj);
+        }
+        tostaderosConfigsLDN4.push(cfgObj);
       });
       window.tostaderosConfigsLDN4 = tostaderosConfigsLDN4;
     }
@@ -3175,7 +3293,8 @@
       const diffApBase = Number((costoBaseApSim - costoBaseApBd).toFixed(2));
       const diffIng = Number((costoIngSim - costoIngBd).toFixed(2));
 
-      const crudoCambio = String(tost.crudo_sku || '').trim().toUpperCase() !== String(tost.crudo_sku_oficial_bd || '').trim().toUpperCase();
+      const esModoProd = (tost.modo_rector || 'PRODUCCION_UP') === 'PRODUCCION_UP';
+      const crudoCambio = esModoProd && (String(tost.crudo_sku || '').trim().toUpperCase() !== String(tost.crudo_sku_oficial_bd || '').trim().toUpperCase());
       const apDesactualizado = Math.abs(diffApBase) > TOLERANCIA_REDONDEO_LDN4 || (costoBaseApBd <= 0 && costoBaseApSim > TOLERANCIA_REDONDEO_LDN4);
       const ingDesactualizado = Boolean(tost.ing_id) && (Math.abs(diffIng) > TOLERANCIA_REDONDEO_LDN4 || (costoIngBd <= 0 && costoIngSim > TOLERANCIA_REDONDEO_LDN4));
 
@@ -3233,18 +3352,268 @@
     window.auditarEstadoSincronizacionTostaderoLDN4 = auditarEstadoSincronizacionTostaderoLDN4;
     window.auditarArticuloHijoLDN4 = auditarArticuloHijoLDN4;
 
-    function calcularCostoApTostadero(t) {
-      const factorRend = 1 - (t.merma_porc_simulada / 100);
-      const costoBaseAp = factorRend > 0 ? Number((((t.costo_crudo_simulado / factorRend) + t.tarifa_maquila_simulada)).toFixed(2)) : 0;
+    function calcularCostosDualTostaderoLDN4(t) {
+      if (!t) return 0;
+      const costoCrudo = parseFloat(t.costo_crudo_simulado) || 0;
+      const maquila = parseFloat(t.tarifa_maquila_simulada) || 0;
+      const merma = parseFloat(t.merma_porc_simulada) || 0;
       const moApKilo = parseFloat(t.mo_ap_kilo) || 0;
-      t.costo_base_ap_simulado = costoBaseAp;
-      t.costo_ap_simulado = costoBaseAp;
-      t.costo_ingrediente_simulado = Number((costoBaseAp + moApKilo).toFixed(2));
-      if (ingredientesSim[t.ing_id]) {
-        ingredientesSim[t.ing_id].costo_sim = t.costo_ingrediente_simulado;
+      const factorRend = 1 - (merma / 100);
+
+      const costoBaseApProd = factorRend > 0 ? Number((((costoCrudo / factorRend) + maquila)).toFixed(2)) : 0;
+      const costoIngProd = Number((costoBaseApProd + moApKilo).toFixed(2));
+
+      const compraBase = Math.max(0, parseFloat(t.compra_costo_kg) || 0);
+      const costoBaseApCompra = Number(compraBase.toFixed(2));
+      const costoIngCompra = compraBase > 0
+        ? Number((compraBase + (t.compra_aplica_mo_ap ? moApKilo : 0)).toFixed(2))
+        : 0;
+
+      t.costo_base_ap_prod = costoBaseApProd;
+      t.costo_ingrediente_prod = costoIngProd;
+      t.costo_base_ap_compra = costoBaseApCompra;
+      t.costo_ingrediente_compra = costoIngCompra;
+
+      const modo = t.modo_rector || 'PRODUCCION_UP';
+      let costoBaseApRector = costoBaseApProd;
+      let costoIngRector = costoIngProd;
+
+      if (modo === 'COMPRA_PROVEEDOR' && compraBase > 0) {
+        costoBaseApRector = costoBaseApCompra;
+        costoIngRector = costoIngCompra;
+      } else if (modo === 'MANUAL' && parseFloat(t.manual_costo_kg) > 0) {
+        const valM = Number(parseFloat(t.manual_costo_kg).toFixed(2));
+        costoBaseApRector = valM;
+        costoIngRector = valM;
       }
-      return t.costo_ingrediente_simulado;
+
+      t.costo_base_ap_simulado = costoBaseApRector;
+      t.costo_ap_simulado = costoBaseApRector;
+      t.costo_ingrediente_simulado = costoIngRector;
+      if (t.ing_id && typeof ingredientesSim !== 'undefined' && ingredientesSim[t.ing_id]) {
+        ingredientesSim[t.ing_id].costo_sim = costoIngRector;
+      }
+      return costoIngRector;
     }
+
+    function calcularCostoApTostadero(t) {
+      return calcularCostosDualTostaderoLDN4(t);
+    }
+
+    function construirPayloadFuenteLdn4(t) {
+      return {
+        modo_rector: t.modo_rector || 'PRODUCCION_UP',
+        compra_origen: t.compra_origen || null,
+        compra_sku_bulto: t.compra_sku_bulto || null,
+        compra_costo_kg: Number((parseFloat(t.compra_costo_kg) || 0).toFixed(2)),
+        compra_aplica_mo_ap: Boolean(t.compra_aplica_mo_ap),
+        compra_proveedor_nombre: t.compra_proveedor_nombre || null,
+        compra_proveedor_codigo: t.compra_proveedor_codigo || null,
+        compra_descripcion: t.compra_descripcion || null,
+        compra_updated_at: t.compra_updated_at || null,
+        manual_costo_kg: Number((parseFloat(t.manual_costo_kg) || 0).toFixed(2)),
+        manual_nota: t.manual_nota || null
+      };
+    }
+
+    async function guardarFuenteAbastecimientoLdn4(t) {
+      if (!t || !t.ap_codigo) return;
+      const payload = construirPayloadFuenteLdn4(t);
+      const data = window.pizarraSimulacionMaster;
+      const apArt = (data?.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toUpperCase() === String(t.ap_codigo || '').trim().toUpperCase());
+      if (apArt) {
+        if (!apArt.propiedades_dinamicas || typeof apArt.propiedades_dinamicas !== 'object') {
+          apArt.propiedades_dinamicas = {};
+        }
+        apArt.propiedades_dinamicas.fuente_abastecimiento_ldn4 = { ...payload, updated_at: new Date().toISOString() };
+      }
+      try {
+        await fetch(`/api/produccion/ldn4/fuente-abastecimiento/${encodeURIComponent(t.ap_codigo)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (e) {
+        console.warn('Aviso: no se pudo persistir fuente_abastecimiento_ldn4 en servidor:', e);
+      }
+    }
+
+    function refrescarUiTostaderoLdn4(t) {
+      calcularCostosDualTostaderoLDN4(t);
+      recalcularCascada();
+      renderizarTostaderosLDN4();
+      renderizarArticulosBunker();
+      if (articuloSeleccionadoId) renderizarGrillaMultilista();
+    }
+
+    async function seleccionarModoRectorTostadero(upCodigo, modo) {
+      const t = (tostaderosConfigsLDN4 || []).find(x => x.up_codigo === upCodigo);
+      if (!t) return;
+      if (modo === 'COMPRA_PROVEEDOR' && !(parseFloat(t.compra_costo_kg) > 0)) {
+        Swal.fire({
+          icon: 'info',
+          title: 'Falta costo de Proveedor Terminado',
+          text: 'Cargá primero el precio de compra terminado ($/kg), elegí un bulto compatible de Búnker o buscá una oferta en Tabla Maestra.',
+          background: '#151e2e',
+          color: '#f3f4f6'
+        });
+        return;
+      }
+      t.modo_rector = modo;
+      if (modo === 'MANUAL' && !(parseFloat(t.manual_costo_kg) > 0)) {
+        t.manual_costo_kg = t.costo_ingrediente_simulado || t.costo_ingrediente_prod || 0;
+      }
+      refrescarUiTostaderoLdn4(t);
+      await guardarFuenteAbastecimientoLdn4(t);
+    }
+
+    async function seleccionarBultoCompraTostadero(upCodigo, valSelected) {
+      const t = (tostaderosConfigsLDN4 || []).find(x => x.up_codigo === upCodigo);
+      if (!t) return;
+      if (!valSelected || valSelected === '__MANUAL__') {
+        t.compra_origen = 'MANUAL';
+        t.compra_sku_bulto = null;
+        t.compra_proveedor_nombre = null;
+        t.compra_proveedor_codigo = null;
+        t.compra_descripcion = 'Carga manual proveedor terminado';
+      } else {
+        const b = (t.bultos_comprados_compatibles || []).find(x => String(x.sku).toUpperCase() === String(valSelected).toUpperCase());
+        if (b) {
+          t.compra_origen = 'BULTO_BUNKER';
+          t.compra_sku_bulto = b.sku;
+          t.compra_costo_kg = Number((b.costo_kg || 0).toFixed(2));
+          t.compra_descripcion = b.descripcion;
+          t.compra_proveedor_nombre = b.conciliacion_proveedor || 'Stock Búnker';
+          t.compra_proveedor_codigo = b.sku;
+          t.compra_updated_at = b.conciliacion_fecha || new Date().toISOString();
+        }
+      }
+      if (t.compra_costo_kg > 0 && t.modo_rector !== 'MANUAL') {
+        t.modo_rector = 'COMPRA_PROVEEDOR';
+      }
+      refrescarUiTostaderoLdn4(t);
+      await guardarFuenteAbastecimientoLdn4(t);
+    }
+
+    async function cambiarCostoCompraTostadero(upCodigo, valStr) {
+      const t = (tostaderosConfigsLDN4 || []).find(x => x.up_codigo === upCodigo);
+      if (!t) return;
+      const val = Math.max(0, parseFloat(String(valStr).replace(',', '.')) || 0);
+      t.compra_costo_kg = Number(val.toFixed(2));
+      if (!t.compra_origen || t.compra_origen === 'BULTO_BUNKER') {
+        t.compra_origen = 'MANUAL';
+        t.compra_descripcion = t.compra_sku_bulto ? `${t.compra_sku_bulto} (ajustado)` : 'Cotización manual proveedor';
+      }
+      if (val > 0) {
+        t.modo_rector = 'COMPRA_PROVEEDOR';
+      }
+      refrescarUiTostaderoLdn4(t);
+      await guardarFuenteAbastecimientoLdn4(t);
+    }
+
+    async function toggleMoApCompraTostadero(upCodigo, checked) {
+      const t = (tostaderosConfigsLDN4 || []).find(x => x.up_codigo === upCodigo);
+      if (!t) return;
+      t.compra_aplica_mo_ap = Boolean(checked);
+      refrescarUiTostaderoLdn4(t);
+      await guardarFuenteAbastecimientoLdn4(t);
+    }
+
+    async function cambiarCostoManualTostadero(upCodigo, valStr) {
+      const t = (tostaderosConfigsLDN4 || []).find(x => x.up_codigo === upCodigo);
+      if (!t) return;
+      const val = Math.max(0, parseFloat(String(valStr).replace(',', '.')) || 0);
+      t.manual_costo_kg = Number(val.toFixed(2));
+      t.modo_rector = 'MANUAL';
+      refrescarUiTostaderoLdn4(t);
+      await guardarFuenteAbastecimientoLdn4(t);
+    }
+
+    async function aplicarCriterioComparativoTostadero(upCodigo, criterio) {
+      const t = (tostaderosConfigsLDN4 || []).find(x => x.up_codigo === upCodigo);
+      if (!t) return;
+      calcularCostosDualTostaderoLDN4(t);
+      const pProd = t.costo_ingrediente_prod || 0;
+      const pComp = t.costo_ingrediente_compra || 0;
+      if (!(pComp > 0)) return;
+      const eligeCompra = criterio === 'MAYOR' ? (pComp >= pProd) : (pComp <= pProd);
+      t.modo_rector = eligeCompra ? 'COMPRA_PROVEEDOR' : 'PRODUCCION_UP';
+      refrescarUiTostaderoLdn4(t);
+      await guardarFuenteAbastecimientoLdn4(t);
+    }
+
+    async function vincularBultoCompradoAIngrediente(upCodigo, bultoSku, vincular = true) {
+      const data = window.pizarraSimulacionMaster;
+      const t = (tostaderosConfigsLDN4 || []).find(x => x.up_codigo === upCodigo);
+      if (!t || !t.ing_id || !bultoSku) return;
+      try {
+        const url = vincular
+          ? `/api/produccion/ingredientes/${t.ing_id}/bunker-articulos`
+          : `/api/produccion/ingredientes/${t.ing_id}/bunker-articulos/${encodeURIComponent(bultoSku)}`;
+        const res = await fetch(url, {
+          method: vincular ? 'POST' : 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: vincular ? JSON.stringify({ bunker_articulo_id: bultoSku }) : undefined
+        });
+        if (!res.ok) throw new Error('No se pudo actualizar el vínculo del bulto con el ingrediente.');
+        const b = (t.bultos_comprados_compatibles || []).find(x => x.sku === bultoSku);
+        if (b) b.ya_vinculado_ing = vincular;
+        const ingObj = (data?.ingredientes || []).find(i => Number(i.id) === Number(t.ing_id));
+        if (ingObj) {
+          if (!Array.isArray(ingObj.articulos_vinculados)) ingObj.articulos_vinculados = [];
+          if (vincular) {
+            if (!ingObj.articulos_vinculados.some(v => String(v.codigo || '').toUpperCase() === bultoSku.toUpperCase())) {
+              ingObj.articulos_vinculados.push({ codigo: bultoSku });
+            }
+          } else {
+            ingObj.articulos_vinculados = ingObj.articulos_vinculados.filter(v => String(v.codigo || '').toUpperCase() !== bultoSku.toUpperCase());
+          }
+        }
+        renderizarTostaderosLDN4();
+        Swal.fire({
+          icon: 'success',
+          title: vincular ? 'Bulto vinculado al Ingrediente' : 'Bulto desvinculado',
+          text: vincular
+            ? `[${bultoSku}] quedó disponible como fuente física de stock para Ing. #${t.ing_id} en Ingreso Manual sin tocar recetas.`
+            : `[${bultoSku}] quitado de fuentes alternativas de Ing. #${t.ing_id}.`,
+          timer: 2600,
+          showConfirmButton: false,
+          background: '#151e2e',
+          color: '#f3f4f6'
+        });
+      } catch (err) {
+        Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#151e2e', color: '#f3f4f6' });
+      }
+    }
+
+    window.aplicarOfertaProveedorLdn4 = async function(upCodigo, ofertaObj, activarComoRector = false) {
+      const t = (tostaderosConfigsLDN4 || []).find(x => x.up_codigo === upCodigo);
+      if (!t || !ofertaObj) return;
+      t.compra_origen = ofertaObj.compra_origen || 'TABLA_MAESTRA';
+      t.compra_sku_bulto = ofertaObj.compra_sku_bulto || null;
+      t.compra_costo_kg = Number((parseFloat(ofertaObj.compra_costo_kg) || 0).toFixed(2));
+      t.compra_proveedor_nombre = ofertaObj.compra_proveedor_nombre || null;
+      t.compra_proveedor_codigo = ofertaObj.compra_proveedor_codigo || null;
+      t.compra_descripcion = ofertaObj.compra_descripcion || null;
+      t.compra_updated_at = ofertaObj.compra_updated_at || new Date().toISOString();
+      if (activarComoRector && t.compra_costo_kg > 0) {
+        t.modo_rector = 'COMPRA_PROVEEDOR';
+      }
+      tostaderoSeleccionadoCodigo = t.up_codigo;
+      refrescarUiTostaderoLdn4(t);
+      await guardarFuenteAbastecimientoLdn4(t);
+      Swal.fire({
+        icon: 'success',
+        title: activarComoRector ? '🛒 Compra Proveedor Activada en LDN 4' : '📊 Benchmark de Proveedor Guardado',
+        text: activarComoRector
+          ? `Se cargó $${t.compra_costo_kg.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg (${t.compra_proveedor_nombre || 'Proveedor'}) como Fuente Rectora. Revisá el Paso 5 para confirmar los precios en BD.`
+          : `Oferta $${t.compra_costo_kg.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg guardada como referencia comparativa junto a Producción UP.`,
+        timer: 3200,
+        showConfirmButton: false,
+        background: '#151e2e',
+        color: '#f3f4f6'
+      });
+    };
 
     function cambiarCostoCrudoTostadero(upCodigo, nuevoCosto) {
       const t = (tostaderosConfigsLDN4 || []).find(x => x.up_codigo === upCodigo);
@@ -3810,12 +4179,68 @@
           ? Array.from(listasOfrecidasUnicas).join(', ')
           : 'Ninguna lista activa marcada como disponible';
 
+        const modoRector = selTost.modo_rector || 'PRODUCCION_UP';
+        const costoBaseProd = Number((selTost.costo_base_ap_prod ?? costoBaseApSim).toFixed(2));
+        const costoIngProd = Number((selTost.costo_ingrediente_prod ?? costoIngSim).toFixed(2));
+        const costoIngCompra = Number((selTost.costo_ingrediente_compra || 0).toFixed(2));
+        const diffCompraVsProd = (costoIngCompra > 0 && costoIngProd > 0) ? Number((costoIngCompra - costoIngProd).toFixed(2)) : null;
+        const pctCompraVsProd = (diffCompraVsProd !== null && costoIngProd > 0) ? Number(((diffCompraVsProd / costoIngProd) * 100).toFixed(1)) : null;
+        const bultosCompatibles = Array.isArray(selTost.bultos_comprados_compatibles) ? selTost.bultos_comprados_compatibles : [];
+        const bultoSelObj = selTost.compra_sku_bulto
+          ? bultosCompatibles.find(b => String(b.sku).toUpperCase() === String(selTost.compra_sku_bulto).toUpperCase())
+          : null;
+
+        const badgeModoRector = modoRector === 'COMPRA_PROVEEDOR'
+          ? `<span style="background:rgba(14,165,233,0.22); color:#7dd3fc; border:1px solid rgba(56,189,248,0.45); padding:2px 8px; border-radius:999px; font-size:0.68rem; font-weight:800;">🛒 Rector: Compra Proveedor</span>`
+          : (modoRector === 'MANUAL'
+              ? `<span style="background:rgba(168,85,247,0.22); color:#e9d5ff; border:1px solid rgba(192,132,252,0.45); padding:2px 8px; border-radius:999px; font-size:0.68rem; font-weight:800;">🎯 Rector: Manual Fijo</span>`
+              : `<span style="background:rgba(16,185,129,0.22); color:#6ee7b7; border:1px solid rgba(52,211,153,0.45); padding:2px 8px; border-radius:999px; font-size:0.68rem; font-weight:800;">🏭 Rector: Producción UP</span>`);
+
+        const origenCompraLabel = selTost.compra_origen === 'TABLA_MAESTRA'
+          ? `📡 ${selTost.compra_proveedor_nombre || 'Tabla Maestra'}${selTost.compra_proveedor_codigo ? ` [${selTost.compra_proveedor_codigo}]` : ''}`
+          : (selTost.compra_origen === 'LOTE'
+              ? `📥 Lote ${selTost.compra_proveedor_nombre || 'Depósito'}`
+              : (bultoSelObj
+                  ? `📦 [${bultoSelObj.sku}] · Stock: ${bultoSelObj.stock_bultos} bulto(s) (${bultoSelObj.stock_kilos} kg)`
+                  : (selTost.compra_descripcion || 'Sin oferta cargada todavía')));
+
+        let comparativoHtml = `<span style="color:#94a3b8;">Cargá una oferta de proveedor o elegí un bulto terminado para comparar lado a lado.</span>`;
+        if (diffCompraVsProd !== null) {
+          if (Math.abs(diffCompraVsProd) < 0.05) {
+            comparativoHtml = `<span style="color:#cbd5e1;">⚖️ <strong>Empate:</strong> Producir en UP y Comprar Terminado cuestan prácticamente lo mismo ($${costoIngProd.toLocaleString('es-AR', {minimumFractionDigits:2})}/kg).</span>`;
+          } else if (diffCompraVsProd > 0) {
+            comparativoHtml = `<span style="color:#6ee7b7;">⚖️ <strong>Producir en UP</strong> te ahorra <strong>$${diffCompraVsProd.toLocaleString('es-AR', {minimumFractionDigits:2})}/kg (${Math.abs(pctCompraVsProd).toFixed(1)}%)</strong> frente a comprar terminado.</span>`;
+          } else {
+            comparativoHtml = `<span style="color:#7dd3fc;">⚖️ <strong>Comprar Terminado</strong> te ahorra <strong>$${Math.abs(diffCompraVsProd).toLocaleString('es-AR', {minimumFractionDigits:2})}/kg (${Math.abs(pctCompraVsProd).toFixed(1)}%)</strong> frente a producir en UP.</span>`;
+          }
+        }
+
+        const opcionesBultoHtml = `
+          ${bultosCompatibles.map(b => {
+            const selAttr = (selTost.compra_origen === 'BULTO_BUNKER' && selTost.compra_sku_bulto && String(selTost.compra_sku_bulto).toUpperCase() === String(b.sku).toUpperCase()) ? 'selected' : '';
+            return `<option value="${b.sku}" ${selAttr}>📦 [${b.sku}] ${b.descripcion} ($${b.costo_kg.toLocaleString('es-AR', {minimumFractionDigits:2})}/kg · Stock ${b.stock_bultos} b.)</option>`;
+          }).join('')}
+          ${selTost.compra_origen === 'TABLA_MAESTRA' || selTost.compra_origen === 'LOTE'
+            ? `<option value="__OFERTA__" selected>📡 ${selTost.compra_proveedor_nombre || 'Proveedor'}: ${selTost.compra_descripcion || 'Oferta'} ($${(selTost.compra_costo_kg || 0).toLocaleString('es-AR', {minimumFractionDigits:2})}/kg)</option>`
+            : ''}
+          <option value="__MANUAL__" ${(!bultoSelObj && selTost.compra_origen !== 'TABLA_MAESTRA' && selTost.compra_origen !== 'LOTE') ? 'selected' : ''}>✏️ Ingresar precio proveedor manual...</option>
+        `;
+
+        const textoPaso3Origen = modoRector === 'COMPRA_PROVEEDOR'
+          ? `Compra Terminado (${selTost.compra_proveedor_nombre || selTost.compra_sku_bulto || 'Proveedor'}: $${(selTost.costo_base_ap_compra || 0).toFixed(2)})${selTost.compra_aplica_mo_ap && moApKilo > 0 ? ` + MO recepción AP ($${moApKilo.toFixed(2)})` : ''}`
+          : (modoRector === 'MANUAL'
+              ? `Referencia Fija Manual ($${costoBaseApSim.toFixed(2)}/kg)`
+              : `AP Tostado UP ($${costoBaseApSim.toFixed(2)})${moApKilo > 0 ? ` + MO pesaje AP ($${moApKilo.toFixed(2)})` : ''}`);
+
         container.innerHTML = `
           <div style="display:flex; flex-direction:column; gap:10px; padding:4px 2px;">
             <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 12px; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.35); border-left:4px solid #38bdf8; border-radius:8px;">
               <div>
-                <div style="font-size:0.86rem; font-weight:800; color:#fff;">🥜 ${selTost.titulo}</div>
-                <div style="font-size:0.70rem; color:#94a3b8;">Circuito <strong>[${selTost.up_codigo}]</strong> → AP <strong>[${selTost.ap_codigo}]</strong> → Ing. <strong>#${selTost.ing_id}</strong></div>
+                <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap;">
+                  <span style="font-size:0.86rem; font-weight:800; color:#fff;">🥜 ${selTost.titulo}</span>
+                  ${badgeModoRector}
+                </div>
+                <div style="font-size:0.70rem; color:#94a3b8; margin-top:2px;">Circuito <strong>[${selTost.up_codigo}]</strong> → AP <strong>[${selTost.ap_codigo}]</strong> → Ing. <strong>#${selTost.ing_id}</strong></div>
               </div>
               <button type="button" style="background:rgba(15,23,42,0.7); color:#bae6fd; border:1px solid rgba(56,189,248,0.4); padding:4px 10px; border-radius:6px; font-size:0.72rem; font-weight:700; cursor:pointer;"
                 onclick="tostaderoSeleccionadoCodigo = null; window._ldn4VerTodosManual = true; renderizarTostaderosLDN4(); renderizarArticulosBunker();">
@@ -3823,10 +4248,10 @@
               </button>
             </div>
 
-            <!-- PASO 1: CRUDO -->
-            <div style="background:rgba(15,23,42,0.55); border:1px solid rgba(148,163,184,0.22); border-radius:8px; padding:10px 12px;">
+            <!-- PASO 1: CRUDO (SOLO CARRIL PRODUCCIÓN UP) -->
+            <div style="background:rgba(15,23,42,0.55); border:1px solid rgba(148,163,184,0.22); border-radius:8px; padding:10px 12px; opacity:${modoRector === 'PRODUCCION_UP' ? '1' : '0.82'};">
               <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
-                <span style="font-size:0.74rem; font-weight:800; color:#38bdf8;">PASO 1 · INSUMO CRUDO</span>
+                <span style="font-size:0.74rem; font-weight:800; color:#38bdf8;">PASO 1 · INSUMO CRUDO (CARRIL PRODUCCIÓN UP)</span>
                 <span style="font-size:0.70rem; font-weight:700; color:${selTost.crudo_stock_bultos > 0 ? '#34d399' : '#f87171'};">Stock crudo: ${selTost.crudo_stock_bultos} bultos (${(selTost.crudo_stock_bultos * selTost.crudo_kilos_unidad).toFixed(1)} kg)</span>
               </div>
               <div style="font-size:0.78rem; color:#e2e8f0; font-weight:600; margin-bottom:6px;">[${selTost.crudo_sku}] ${selTost.crudo_nombre}</div>
@@ -3846,29 +4271,110 @@
               </div>
             </div>
 
-            <!-- PASO 2: TOSTADERO EXTERNO -->
-            <div style="background:rgba(15,23,42,0.55); border:1px solid rgba(148,163,184,0.22); border-radius:8px; padding:10px 12px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                <span style="font-size:0.74rem; font-weight:800; color:#fbbf24;">PASO 2 · TOSTADERO EXTERNO (${selTost.up_codigo})</span>
-                <button type="button" style="padding:2px 7px; border-radius:4px; border:1px solid rgba(168,85,247,0.4); background:rgba(168,85,247,0.14); color:#d8b4fe; font-size:0.68rem; font-weight:700; cursor:pointer;"
-                  onclick="if (window.abrirEditorUpDirecto) window.abrirEditorUpDirecto('${selTost.up_codigo}', { onSaved: () => inicializarPizarra(true) });">🛠️ Receta UP</button>
+            <!-- PASO 2: COMPARADOR MAKE vs BUY (PRODUCIR EN LAMDA vs COMPRAR TERMINADO) -->
+            <div style="background:rgba(15,23,42,0.62); border:1px solid rgba(148,163,184,0.28); border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                <span style="font-size:0.74rem; font-weight:800; color:#fbbf24;">PASO 2 · DECISIÓN DE COSTO: PRODUCIR vs COMPRAR TERMINADO</span>
+                <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                  <button type="button" id="btn-modo-rector-prod-${selTost.up_codigo}"
+                    style="padding:3px 8px; border-radius:5px; font-size:0.68rem; font-weight:800; cursor:pointer; border:1px solid ${modoRector === 'PRODUCCION_UP' ? '#10b981' : 'rgba(255,255,255,0.16)'}; background:${modoRector === 'PRODUCCION_UP' ? '#059669' : 'rgba(255,255,255,0.06)'}; color:#fff;"
+                    onclick="seleccionarModoRectorTostadero('${selTost.up_codigo}', 'PRODUCCION_UP')">🏭 Usar Producción UP</button>
+                  <button type="button" id="btn-modo-rector-compra-${selTost.up_codigo}"
+                    style="padding:3px 8px; border-radius:5px; font-size:0.68rem; font-weight:800; cursor:pointer; border:1px solid ${modoRector === 'COMPRA_PROVEEDOR' ? '#38bdf8' : 'rgba(255,255,255,0.16)'}; background:${modoRector === 'COMPRA_PROVEEDOR' ? '#0284c7' : 'rgba(255,255,255,0.06)'}; color:#fff;"
+                    onclick="seleccionarModoRectorTostadero('${selTost.up_codigo}', 'COMPRA_PROVEEDOR')">🛒 Usar Compra Proveedor</button>
+                  <button type="button" id="btn-modo-rector-manual-${selTost.up_codigo}"
+                    style="padding:3px 8px; border-radius:5px; font-size:0.68rem; font-weight:800; cursor:pointer; border:1px solid ${modoRector === 'MANUAL' ? '#c084fc' : 'rgba(255,255,255,0.16)'}; background:${modoRector === 'MANUAL' ? '#7c3aed' : 'rgba(255,255,255,0.06)'}; color:#fff;"
+                    onclick="seleccionarModoRectorTostadero('${selTost.up_codigo}', 'MANUAL')">🎯 Manual</button>
+                </div>
               </div>
-              <div style="display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:8px; align-items:center;">
-                <label style="font-size:0.70rem; color:#94a3b8; display:flex; flex-direction:column; gap:3px;">
-                  Merma tostado (%)
-                  <input type="number" step="0.05" value="${selTost.merma_porc_simulada.toFixed(2)}"
-                    style="background:var(--bg-input); border:1px solid rgba(248,113,113,0.4); border-radius:4px; padding:4px 6px; color:#fca5a5; font-weight:700; font-size:0.78rem; text-align:right;"
-                    onchange="cambiarMermaTostadero('${selTost.up_codigo}', this.value)">
-                </label>
-                <label style="font-size:0.70rem; color:#94a3b8; display:flex; flex-direction:column; gap:3px;">
-                  Tarifa colaborador ($/kg)
-                  <input type="number" step="10" value="${selTost.tarifa_maquila_simulada.toFixed(2)}"
-                    style="background:var(--bg-input); border:1px solid rgba(251,191,36,0.4); border-radius:4px; padding:4px 6px; color:#fde68a; font-weight:700; font-size:0.78rem; text-align:right;"
-                    onchange="cambiarMaquilaTostadero('${selTost.up_codigo}', this.value)">
-                </label>
-                <div style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.35); border-radius:6px; padding:6px 8px; text-align:right;">
-                  <div style="font-size:0.66rem; color:#6ee7b7;">Costo tostado AP</div>
-                  <div style="font-size:0.92rem; font-weight:800; color:#34d399;">$${costoBaseApSim.toLocaleString('es-AR', {minimumFractionDigits:2})}/kg</div>
+
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:stretch;">
+                <!-- CARRIL A: TOSTADERO EXTERNO -->
+                <div style="background:rgba(15,23,42,0.65); border:1.5px solid ${modoRector === 'PRODUCCION_UP' ? '#10b981' : 'rgba(148,163,184,0.22)'}; border-radius:7px; padding:8px 10px; display:flex; flex-direction:column; gap:6px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:4px;">
+                    <span style="font-size:0.71rem; font-weight:800; color:#6ee7b7;">🏭 A · PRODUCIR UP (${selTost.up_codigo})</span>
+                    <button type="button" style="padding:2px 6px; border-radius:4px; border:1px solid rgba(168,85,247,0.4); background:rgba(168,85,247,0.14); color:#d8b4fe; font-size:0.65rem; font-weight:700; cursor:pointer;"
+                      onclick="if (window.abrirEditorUpDirecto) window.abrirEditorUpDirecto('${selTost.up_codigo}', { onSaved: () => inicializarPizarra(true) });">🛠️ Receta UP</button>
+                  </div>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                    <label style="font-size:0.67rem; color:#94a3b8; display:flex; flex-direction:column; gap:2px;">
+                      Merma (%)
+                      <input type="number" step="0.05" value="${selTost.merma_porc_simulada.toFixed(2)}"
+                        style="background:var(--bg-input); border:1px solid rgba(248,113,113,0.4); border-radius:4px; padding:3px 5px; color:#fca5a5; font-weight:700; font-size:0.75rem; text-align:right;"
+                        onchange="cambiarMermaTostadero('${selTost.up_codigo}', this.value)">
+                    </label>
+                    <label style="font-size:0.67rem; color:#94a3b8; display:flex; flex-direction:column; gap:2px;">
+                      Tarifa UP ($/kg)
+                      <input type="number" step="10" value="${selTost.tarifa_maquila_simulada.toFixed(2)}"
+                        style="background:var(--bg-input); border:1px solid rgba(251,191,36,0.4); border-radius:4px; padding:3px 5px; color:#fde68a; font-weight:700; font-size:0.75rem; text-align:right;"
+                        onchange="cambiarMaquilaTostadero('${selTost.up_codigo}', this.value)">
+                    </label>
+                  </div>
+                  <div style="margin-top:auto; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); border-radius:5px; padding:5px 8px; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:0.66rem; color:#a7f3d0;">AP: $${costoBaseProd.toLocaleString('es-AR', {minimumFractionDigits:2})} ${moApKilo > 0 ? `+ MO $${moApKilo.toFixed(0)}` : ''}</span>
+                    <strong style="font-size:0.86rem; color:#34d399;">$${costoIngProd.toLocaleString('es-AR', {minimumFractionDigits:2})}/kg</strong>
+                  </div>
+                </div>
+
+                <!-- CARRIL B: COMPRAR TERMINADO A PROVEEDOR -->
+                <div style="background:rgba(15,23,42,0.65); border:1.5px solid ${modoRector === 'COMPRA_PROVEEDOR' ? '#38bdf8' : 'rgba(148,163,184,0.22)'}; border-radius:7px; padding:8px 10px; display:flex; flex-direction:column; gap:6px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:4px;">
+                    <span style="font-size:0.71rem; font-weight:800; color:#7dd3fc;">🛒 B · COMPRAR TERMINADO</span>
+                    ${selTost.ing_id ? `
+                      <button type="button" style="padding:2px 6px; border-radius:4px; border:1px solid rgba(56,189,248,0.45); background:rgba(14,165,233,0.18); color:#bae6fd; font-size:0.65rem; font-weight:700; cursor:pointer;"
+                        onclick="window.abrirModuloConciliacionIA('ING-${selTost.ing_id}', null, { es_ingrediente: true, ingrediente_id: ${selTost.ing_id}, ldn4_up_codigo: '${selTost.up_codigo}', ldn4_ap_codigo: '${selTost.ap_codigo}', costo_prod_ing_kg: ${costoIngProd} })">🤖 Tabla Maestra</button>
+                    ` : ''}
+                  </div>
+                  <select style="width:100%; background:var(--bg-input); border:1px solid rgba(56,189,248,0.35); border-radius:4px; padding:4px 6px; color:#e2e8f0; font-size:0.69rem; font-weight:600;"
+                    onchange="seleccionarBultoCompraTostadero('${selTost.up_codigo}', this.value)">
+                    ${opcionesBultoHtml}
+                  </select>
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; font-size:0.68rem;">
+                    <span style="color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${origenCompraLabel}">${origenCompraLabel}</span>
+                    <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+                      <span style="color:#94a3b8;">$/kg:</span>
+                      <input type="number" step="10" id="inp-compra-kg-${selTost.up_codigo}" value="${(selTost.compra_costo_kg || 0) > 0 ? Number(selTost.compra_costo_kg).toFixed(2) : ''}" placeholder="0.00"
+                        style="width:78px; background:var(--bg-input); border:1px solid rgba(56,189,248,0.45); border-radius:4px; padding:3px 5px; color:#7dd3fc; font-weight:700; font-size:0.75rem; text-align:right;"
+                        onchange="cambiarCostoCompraTostadero('${selTost.up_codigo}', this.value)">
+                    </div>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap; margin-top:auto;">
+                    ${moApKilo > 0 ? `
+                      <label style="display:inline-flex; align-items:center; gap:4px; font-size:0.65rem; color:#94a3b8; cursor:pointer; margin:0;">
+                        <input type="checkbox" ${selTost.compra_aplica_mo_ap ? 'checked' : ''} onchange="toggleMoApCompraTostadero('${selTost.up_codigo}', this.checked)">
+                        <span>+ MO AP ($${moApKilo.toFixed(0)})</span>
+                      </label>
+                    ` : '<span></span>'}
+                    <div style="display:flex; align-items:center; gap:6px;">
+                      ${bultoSelObj && selTost.ing_id ? `
+                        <button type="button" style="padding:2px 6px; border-radius:4px; border:1px solid ${bultoSelObj.ya_vinculado_ing ? 'rgba(16,185,129,0.45)' : 'rgba(245,158,11,0.45)'}; background:${bultoSelObj.ya_vinculado_ing ? 'rgba(16,185,129,0.16)' : 'rgba(245,158,11,0.14)'}; color:${bultoSelObj.ya_vinculado_ing ? '#6ee7b7' : '#fde68a'}; font-size:0.64rem; font-weight:700; cursor:pointer;"
+                          onclick="vincularBultoCompradoAIngrediente('${selTost.up_codigo}', '${bultoSelObj.sku}', ${!bultoSelObj.ya_vinculado_ing})"
+                          title="Permite usar stock físico de [${bultoSelObj.sku}] en Ingreso Manual para Ing. #${selTost.ing_id} sin tocar recetas">
+                          ${bultoSelObj.ya_vinculado_ing ? `✅ Stock linked Ing.#${selTost.ing_id}` : `🔗 Abastecer Ing.#${selTost.ing_id}`}
+                        </button>
+                      ` : ''}
+                      <strong style="font-size:0.84rem; color:#38bdf8;">${costoIngCompra > 0 ? `$${costoIngCompra.toLocaleString('es-AR', {minimumFractionDigits:2})}/kg` : 'Sin precio'}</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- FRANJA COMPARATIVA + MANUAL COBERTURA -->
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; background:rgba(2,6,23,0.45); border:1px solid rgba(148,163,184,0.18); border-radius:6px; padding:6px 9px; font-size:0.71rem;">
+                <div>${comparativoHtml}</div>
+                <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                  ${costoIngCompra > 0 ? `
+                    <button type="button" style="padding:2px 7px; border-radius:4px; border:1px solid rgba(251,191,36,0.4); background:rgba(251,191,36,0.12); color:#fde68a; font-size:0.65rem; font-weight:700; cursor:pointer;"
+                      onclick="aplicarCriterioComparativoTostadero('${selTost.up_codigo}', 'MAYOR')" title="Elegir automáticamente el costo mayor (cobertura de reposición)">El Mayor</button>
+                    <button type="button" style="padding:2px 7px; border-radius:4px; border:1px solid rgba(16,185,129,0.4); background:rgba(16,185,129,0.12); color:#6ee7b7; font-size:0.65rem; font-weight:700; cursor:pointer;"
+                      onclick="aplicarCriterioComparativoTostadero('${selTost.up_codigo}', 'MENOR')" title="Elegir automáticamente el costo menor">El Menor</button>
+                  ` : ''}
+                  ${modoRector === 'MANUAL' ? `
+                    <span style="color:#d8b4fe; font-weight:700;">Fijo $/kg:</span>
+                    <input type="number" step="10" value="${Number(selTost.manual_costo_kg || costoIngSim || 0).toFixed(2)}"
+                      style="width:82px; background:var(--bg-input); border:1px solid rgba(192,132,252,0.55); border-radius:4px; padding:2px 5px; color:#f3e8ff; font-weight:700; font-size:0.74rem; text-align:right;"
+                      onchange="cambiarCostoManualTostadero('${selTost.up_codigo}', this.value)">
+                  ` : ''}
                 </div>
               </div>
             </div>
@@ -3880,7 +4386,7 @@
                 <span style="font-size:0.69rem; color:#7dd3fc;">Stock AP: <strong>${stockApKg.toFixed(2)} kg</strong> · Ing: <strong>${stockIngKg.toFixed(2)} kg</strong></span>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.76rem; color:#cbd5e1; flex-wrap:wrap; gap:6px;">
-                <span>AP ($${costoBaseApSim.toFixed(2)}) ${moApKilo > 0 ? `+ MO pesaje AP ($${moApKilo.toFixed(2)})` : ''}</span>
+                <span>${textoPaso3Origen}</span>
                 <span>Ing. BD: <strong style="color:#94a3b8;">$${auditTost.costoIngBd.toLocaleString('es-AR', {minimumFractionDigits:2})}</strong> → Nuevo: <strong style="color:#10b981;">$${costoIngSim.toLocaleString('es-AR', {minimumFractionDigits:2})}/kg</strong></span>
               </div>
             </div>
@@ -3918,7 +4424,7 @@
               <div style="display:flex; gap:6px; flex-wrap:wrap;">
                 ${selTost.ing_id ? `
                   <button type="button" class="btn" style="padding:6px 10px; font-size:0.73rem; font-weight:700; background:rgba(14,165,233,0.18); color:#bae6fd; border:1px solid #38bdf8; border-radius:6px; cursor:pointer;"
-                    onclick="window.abrirModuloConciliacionIA('ING-${selTost.ing_id}', null, { es_ingrediente: true, ingrediente_id: ${selTost.ing_id} })">🤖 Comparar Proveedores</button>
+                    onclick="window.abrirModuloConciliacionIA('ING-${selTost.ing_id}', null, { es_ingrediente: true, ingrediente_id: ${selTost.ing_id}, ldn4_up_codigo: '${selTost.up_codigo}', ldn4_ap_codigo: '${selTost.ap_codigo}', costo_prod_ing_kg: ${costoIngProd} })">🤖 Comparar Proveedores</button>
                 ` : ''}
                 <button type="button" class="btn btn-actualizar-todas-ldn4" style="flex:1; padding:7px 12px; font-size:0.78rem; font-weight:800; border-radius:6px; cursor:pointer; border:1px solid ${auditTost.estaAlDia ? 'rgba(16,185,129,0.45)' : '#fbbf24'}; background:${auditTost.estaAlDia ? 'rgba(16,185,129,0.18)' : 'linear-gradient(135deg, #f59e0b, #d97706)'}; color:${auditTost.estaAlDia ? '#34d399' : '#0f172a'};"
                   onclick="actualizarTodasFraccionesDeTostadero('${selTost.up_codigo}')">
@@ -3948,6 +4454,11 @@
         count++;
         const auditTost = auditarEstadoSincronizacionTostaderoLDN4(t.up_codigo);
         const mixesCount = obtenerMixesAfectadosPorTostadero(t.ing_id).length;
+        const modoTag = t.modo_rector === 'COMPRA_PROVEEDOR'
+          ? '<span style="font-size:0.65rem; background:rgba(14,165,233,0.2); color:#7dd3fc; padding:1px 6px; border-radius:4px; font-weight:700;">🛒 Compra</span>'
+          : (t.modo_rector === 'MANUAL'
+              ? '<span style="font-size:0.65rem; background:rgba(168,85,247,0.2); color:#e9d5ff; padding:1px 6px; border-radius:4px; font-weight:700;">🎯 Fijo</span>'
+              : '<span style="font-size:0.65rem; background:rgba(16,185,129,0.16); color:#6ee7b7; padding:1px 6px; border-radius:4px; font-weight:700;">🏭 UP</span>');
         const card = document.createElement('div');
         card.className = 'mix-card';
         card.id = `tost-card-${t.up_codigo}`;
@@ -3959,10 +4470,11 @@
               <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                 <strong style="color:#fff; font-size:0.86rem;">${t.titulo}</strong>
                 <span style="font-size:0.68rem; background:rgba(56,189,248,0.18); color:#7dd3fc; padding:1px 6px; border-radius:4px; font-weight:700;">AP ${t.ap_codigo}</span>
+                ${modoTag}
                 ${mixesCount > 0 ? `<span style="font-size:0.66rem; background:rgba(168,85,247,0.2); color:#e9d5ff; padding:1px 6px; border-radius:4px; font-weight:700;">🧪 ${mixesCount} Mix</span>` : ''}
                 <span style="font-size:0.66rem; font-weight:800; padding:1px 7px; border-radius:999px; background:${auditTost.estaAlDia ? 'rgba(16,185,129,0.16)' : 'rgba(245,158,11,0.2)'}; color:${auditTost.estaAlDia ? '#34d399' : '#fbbf24'};">${auditTost.estaAlDia ? '🟢 Al día' : `🟡 ${auditTost.totalCambios} pend.`}</span>
               </div>
-              <div style="font-size:0.71rem; color:#94a3b8; margin-top:3px;">Crudo: [${t.crudo_sku}] · Ing #${t.ing_id || '-'} ($${auditTost.costoIngBd.toFixed(2)}/kg BD → Sim $${auditTost.costoIngSim.toFixed(2)}/kg)</div>
+              <div style="font-size:0.71rem; color:#94a3b8; margin-top:3px;">Crudo: [${t.crudo_sku}] · Ing #${t.ing_id || '-'} ($${auditTost.costoIngBd.toFixed(2)}/kg BD → Sim $${auditTost.costoIngSim.toFixed(2)}/kg)${(t.costo_ingrediente_compra || 0) > 0 ? ` · Prov: $${Number(t.costo_ingrediente_compra).toFixed(2)}/kg` : ''}</div>
             </div>
             <button type="button" style="background:#0284c7; color:#fff; border:none; padding:5px 10px; border-radius:6px; font-size:0.72rem; font-weight:700; cursor:pointer; flex-shrink:0;">Abrir flujo →</button>
           </div>
@@ -6147,21 +6659,10 @@
       }
       visitados.add(ingId);
 
-      // 0. Circuito de Tostadero Sellado LDN 4 (Flujo 4: Insumo Crudo -> Merma + Tarifa Productor s/kg entregado -> AP + MO interna AP -> Ingrediente)
+      // 0. Circuito de Tostadero Sellado LDN 4 (Dual: Producción UP vs Compra Proveedor Terminado vs Manual)
       const tostLDN4 = (tostaderosConfigsLDN4 || []).find(t => t.ing_id === ingId);
       if (tostLDN4) {
-        const costoCrudo = parseFloat(tostLDN4.costo_crudo_simulado) || 0;
-        const maquila = parseFloat(tostLDN4.tarifa_maquila_simulada) || 0;
-        const merma = parseFloat(tostLDN4.merma_porc_simulada) || 0;
-        const moApKilo = parseFloat(tostLDN4.mo_ap_kilo) || 0;
-        const factorRend = 1 - (merma / 100);
-        const costoBaseAP = factorRend > 0 ? Number((((costoCrudo / factorRend) + maquila)).toFixed(2)) : 0;
-        const costoIngrediente = Number((costoBaseAP + moApKilo).toFixed(2));
-        tostLDN4.costo_base_ap_simulado = costoBaseAP;
-        tostLDN4.costo_ap_simulado = costoBaseAP;
-        tostLDN4.costo_ingrediente_simulado = costoIngrediente;
-        if (ingredientesSim[ingId]) ingredientesSim[ingId].costo_sim = costoIngrediente;
-        return costoIngrediente;
+        return calcularCostosDualTostaderoLDN4(tostLDN4);
       }
 
       // 0.1 Circuito de Barritas Sellado LDN 5 (Flujo 5: Mix #109 -> MPB -> BFXP -> BFX50G -> Ingrediente #141)
@@ -12035,8 +12536,9 @@
           <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 6px; padding: 8px 12px; font-size: 0.76rem; color: #cbd5e1;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
               <div>
-                <strong>1. Cadena Tostadero:</strong> AP <strong style="color: #38bdf8;">[${tost.ap_codigo}]</strong> ($${costoBaseApSim.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)
-                ${moApKilo > 0 ? `<span style="color:#67e8f9;">+ MO AP ($${moApKilo.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</span>` : ''}
+                <strong>1. Fuente Rectora (${(tost.modo_rector || 'PRODUCCION_UP') === 'COMPRA_PROVEEDOR' ? '🛒 Compra Proveedor' : ((tost.modo_rector || 'PRODUCCION_UP') === 'MANUAL' ? '🎯 Valor Manual' : '🏭 Producción UP')}):</strong>
+                AP <strong style="color: #38bdf8;">[${tost.ap_codigo}]</strong> ($${costoBaseApSim.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)
+                ${((tost.modo_rector || 'PRODUCCION_UP') === 'PRODUCCION_UP' || tost.compra_aplica_mo_ap) && moApKilo > 0 ? `<span style="color:#67e8f9;">+ MO AP ($${moApKilo.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</span>` : ''}
                 → <strong style="color: #38bdf8;">[ING #${tost.ing_id}]</strong>
               </div>
               <div>
@@ -12047,7 +12549,11 @@
               </div>
             </div>
             <div style="font-size: 0.70rem; color: #94a3b8; margin-top: 3px;">
-              Insumo Crudo activo: <strong>[${tost.crudo_sku}]</strong> ($${tost.costo_crudo_simulado.toFixed(2)}/kg) ÷ Rend. ${(100 - tost.merma_porc_simulada).toFixed(2)}% + Maquila ($${tost.tarifa_maquila_simulada.toFixed(2)}/kg entregados).
+              ${(tost.modo_rector || 'PRODUCCION_UP') === 'COMPRA_PROVEEDOR'
+                ? `Proveedor/Bulto terminado: <strong>${tost.compra_proveedor_nombre || tost.compra_sku_bulto || 'Manual'}</strong> (${tost.compra_descripcion || ''}) · Ref. Producción UP paralela: $${Number(tost.costo_ingrediente_prod || 0).toFixed(2)}/kg.`
+                : ((tost.modo_rector || 'PRODUCCION_UP') === 'MANUAL'
+                    ? `Valor fijo elegido por operador ($${Number(tost.manual_costo_kg || costoIngSim).toFixed(2)}/kg) · Ref. Producción UP: $${Number(tost.costo_ingrediente_prod || 0).toFixed(2)}/kg.`
+                    : `Insumo Crudo activo: <strong>[${tost.crudo_sku}]</strong> ($${tost.costo_crudo_simulado.toFixed(2)}/kg) ÷ Rend. ${(100 - tost.merma_porc_simulada).toFixed(2)}% + Maquila ($${tost.tarifa_maquila_simulada.toFixed(2)}/kg entregados).`)}
             </div>
           </div>
 
@@ -12145,36 +12651,39 @@
           }
         }
 
-        // 1.b Persistir simulación estacionada en propiedades_dinamicas.tostadero_simulacion del AP
+        // 1.b Persistir fuente de abastecimiento elegida (Make vs Buy) y, solo si rige Producción UP, estacionar tostadero_simulacion
         const apArt = articulosBunker.find(a => String(a.articulo_id || '').trim().toLowerCase() === apLower);
         try {
-          const prevSim = apArt?.propiedades_dinamicas?.tostadero_simulacion || {};
-          const payloadSimTost = {
-            ...prevSim,
-            tarifa: Number(tost.tarifa_maquila_simulada),
-            merma: Number(tost.merma_porc_simulada),
-            insumo_evaluado_sku: tost.crudo_sku,
-            insumo_evaluado_descripcion: tost.crudo_nombre,
-            es_comparacion_bulto_comprado: false,
-            fuente_costo: tost.fuente_costo || 'REPO',
-            costo_repo_referencia_kg: Number(tost.crudo_costo_repo_kilo || 0),
-            costo_crudo_kg: Number(tost.costo_crudo_simulado),
-            costo_resultante_kg: costoBaseApPersistido,
-            updated_at: new Date().toISOString()
-          };
-          await fetch(`/api/logistica/bunker/tostadero-simulacion/${encodeURIComponent(tost.ap_codigo)}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payloadSimTost)
-          });
-          if (apArt) {
-            if (!apArt.propiedades_dinamicas || typeof apArt.propiedades_dinamicas !== 'object') {
-              apArt.propiedades_dinamicas = {};
+          await guardarFuenteAbastecimientoLdn4(tost);
+          if ((tost.modo_rector || 'PRODUCCION_UP') === 'PRODUCCION_UP') {
+            const prevSim = apArt?.propiedades_dinamicas?.tostadero_simulacion || {};
+            const payloadSimTost = {
+              ...prevSim,
+              tarifa: Number(tost.tarifa_maquila_simulada),
+              merma: Number(tost.merma_porc_simulada),
+              insumo_evaluado_sku: tost.crudo_sku,
+              insumo_evaluado_descripcion: tost.crudo_nombre,
+              es_comparacion_bulto_comprado: false,
+              fuente_costo: tost.fuente_costo || 'REPO',
+              costo_repo_referencia_kg: Number(tost.crudo_costo_repo_kilo || 0),
+              costo_crudo_kg: Number(tost.costo_crudo_simulado),
+              costo_resultante_kg: Number((tost.costo_base_ap_prod ?? costoBaseApPersistido).toFixed(2)),
+              updated_at: new Date().toISOString()
+            };
+            await fetch(`/api/logistica/bunker/tostadero-simulacion/${encodeURIComponent(tost.ap_codigo)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payloadSimTost)
+            });
+            if (apArt) {
+              if (!apArt.propiedades_dinamicas || typeof apArt.propiedades_dinamicas !== 'object') {
+                apArt.propiedades_dinamicas = {};
+              }
+              apArt.propiedades_dinamicas.tostadero_simulacion = payloadSimTost;
             }
-            apArt.propiedades_dinamicas.tostadero_simulacion = payloadSimTost;
           }
         } catch (errSimSave) {
-          console.warn('Aviso: no se pudo estacionar tostadero_simulacion en AP:', errSimSave);
+          console.warn('Aviso: no se pudo estacionar estado LDN 4 en AP:', errSimSave);
         }
 
         // Recalcular cascada con el nuevo costo_sim del ingrediente espejo antes de leer cascada de fracciones y packs
@@ -12321,8 +12830,8 @@
           title: '¡Tostadero Sincronizado!',
           html: `
             <div style="text-align: left; font-size: 0.84rem; display: flex; flex-direction: column; gap: 6px;">
-              <div>✅ <strong>[${tost.ap_codigo}]:</strong> Costo Base AP fijado en <strong>$${costoBaseApSim.toFixed(2)}/kg</strong>.</div>
-              <div>✅ <strong>[ING #${tost.ing_id}]:</strong> Costo Patrón fijado en <strong>$${costoIngSim.toFixed(2)}/kg</strong>${moApKilo > 0 ? ` (incluye +$${moApKilo.toFixed(2)}/kg de MO AP)` : ''}.</div>
+              <div>✅ <strong>[${tost.ap_codigo}]:</strong> Costo Base AP fijado en <strong>$${costoBaseApSim.toFixed(2)}/kg</strong> (${(tost.modo_rector || 'PRODUCCION_UP') === 'COMPRA_PROVEEDOR' ? '🛒 Compra Proveedor' : ((tost.modo_rector || 'PRODUCCION_UP') === 'MANUAL' ? '🎯 Valor Manual' : '🏭 Producción UP')}).</div>
+              <div>✅ <strong>[ING #${tost.ing_id}]:</strong> Costo Patrón fijado en <strong>$${costoIngSim.toFixed(2)}/kg</strong>${(moApKilo > 0 && ((tost.modo_rector || 'PRODUCCION_UP') === 'PRODUCCION_UP' || tost.compra_aplica_mo_ap)) ? ` (incluye +$${moApKilo.toFixed(2)}/kg de MO AP)` : ''}.</div>
               ${fraccsAImpactar.length > 0 ? `<div>✅ <strong>${fraccsAImpactar.length} presentaciones y packs:</strong> actualizados en todas las listas ofrecidas y al público respetando márgenes.</div>` : ''}
               ${resumenMixesSuccessHtml}
             </div>
