@@ -58,6 +58,10 @@ function extraerPaletaNodoPwa(nodo) {
 
     const colorMarca = limpiarHexColor(pal.terracota || nodo?.color_primario, '#D36344');
     const fondoClaro = limpiarHexColor(pal.fondo, '#FBF8F3');
+    const fondoIconoTienda = pal.fondo_icono_tienda
+        ? limpiarHexColor(pal.fondo_icono_tienda, fondoClaro)
+        : fondoClaro;
+    const isotipoEsMedallonPropio = Boolean(pal.fondo_icono_tienda);
     const fondoGestor = pal.primario
         ? limpiarHexColor(pal.primario, '#654830')
         : oscurecerHex(colorMarca, 0.38);
@@ -69,6 +73,8 @@ function extraerPaletaNodoPwa(nodo) {
     return {
         colorMarca,
         fondoClaro,
+        fondoIconoTienda,
+        isotipoEsMedallonPropio,
         fondoGestor,
         fondoGestorOscuro,
         acentoSol,
@@ -119,19 +125,19 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '', baseOri
             related_applications: relatedAppsGestor,
             icons: [
                 {
-                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-192.png?v=2`,
+                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-192.png?v=3`,
                     sizes: '192x192',
                     type: 'image/png',
                     purpose: 'any'
                 },
                 {
-                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=2`,
+                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=3`,
                     sizes: '512x512',
                     type: 'image/png',
                     purpose: 'any'
                 },
                 {
-                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=2`,
+                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=3`,
                     sizes: '512x512',
                     type: 'image/png',
                     purpose: 'maskable'
@@ -159,19 +165,19 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '', baseOri
         ],
         icons: [
             {
-                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-192.png?v=2`,
+                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-192.png?v=3`,
                 sizes: '192x192',
                 type: 'image/png',
                 purpose: 'any'
             },
             {
-                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=2`,
+                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=3`,
                 sizes: '512x512',
                 type: 'image/png',
                 purpose: 'any'
             },
             {
-                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=2`,
+                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=3`,
                 sizes: '512x512',
                 type: 'image/png',
                 purpose: 'maskable'
@@ -280,12 +286,13 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
     const logoB64Len = nodo?.logo_original_base64 ? String(nodo.logo_original_base64).length : 0;
 
     const cacheKey = [
-        'v2-clean',
+        'v3-clean',
         nodo?.id || 0,
         nodo?.slug || '',
         rolNorm,
         safeSize,
         pal.fondoClaro,
+        pal.fondoIconoTienda,
         pal.fondoGestor,
         pal.colorMarca,
         pal.isotipoRelPath,
@@ -303,27 +310,22 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
     ctx.patternQuality = 'best';
 
     let isotipoImg = await cargarImagenIsotipoLocal(pal.isotipoRelPath).catch(() => null);
-    let esIsotipoArchivo = Boolean(isotipoImg);
     if (!isotipoImg && nodo?.logo_original_base64) {
         isotipoImg = await cargarImagenBase64Nodo(nodo.logo_original_base64);
     }
 
     if (rolNorm === 'tienda') {
-        // Fondo cálido/crema limpio de la identidad visual de la tienda (sin marcos ni textos)
-        ctx.fillStyle = pal.fondoClaro;
+        // Fondo cálido/marca limpio de la identidad visual de la tienda (sin marcos ni textos)
+        ctx.fillStyle = pal.fondoIconoTienda;
         ctx.fillRect(0, 0, safeSize, safeSize);
 
-        // Isotipo/monograma centrado con margen maskable seguro exacto (20% por lado)
-        const boxSize = Math.round(safeSize * 0.60);
+        // Isotipo/monograma centrado con margen maskable seguro (preservando proporción 1:1)
+        const boxRatio = pal.isotipoEsMedallonPropio ? 0.66 : 0.60;
+        const boxSize = Math.round(safeSize * boxRatio);
         const offset = Math.round((safeSize - boxSize) / 2);
         let dibujado = false;
         if (isotipoImg) {
-            if (esIsotipoArchivo) {
-                ctx.drawImage(isotipoImg, offset, offset, boxSize, boxSize);
-                dibujado = true;
-            } else {
-                dibujado = dibujarImagenContenidaSegura(ctx, isotipoImg, offset, offset, boxSize);
-            }
+            dibujado = dibujarImagenContenidaSegura(ctx, isotipoImg, offset, offset, boxSize);
         }
         if (!dibujado) {
             const colorMono = luminanciaRelativaHex(pal.colorMarca) > 0.45 ? oscurecerHex(pal.colorMarca, 0.78) : pal.colorMarca;
@@ -337,33 +339,39 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
         ctx.fillStyle = bgGrad;
         ctx.fillRect(0, 0, safeSize, safeSize);
 
-        const cardSize = Math.round(safeSize * 0.60);
-        const cardOffset = Math.round((safeSize - cardSize) / 2);
-        const cardR = Math.round(safeSize * 0.145);
-
-        ctx.save();
-        ctx.shadowColor = 'rgba(20, 12, 6, 0.28)';
-        ctx.shadowBlur = Math.round(safeSize * 0.032);
-        ctx.shadowOffsetY = Math.round(safeSize * 0.012);
-        trazarRectRedondeado(ctx, cardOffset, cardOffset, cardSize, cardSize, cardR);
-        ctx.fillStyle = pal.fondoClaro;
-        ctx.fill();
-        ctx.restore();
-
-        const isoSize = Math.round(safeSize * 0.44);
-        const isoOffset = Math.round((safeSize - isoSize) / 2);
         let dibujadoGestor = false;
-        if (isotipoImg) {
-            if (esIsotipoArchivo) {
-                ctx.drawImage(isotipoImg, isoOffset, isoOffset, isoSize, isoSize);
-                dibujadoGestor = true;
-            } else {
+        if (pal.isotipoEsMedallonPropio && isotipoImg) {
+            const isoSize = Math.round(safeSize * 0.64);
+            const isoOffset = Math.round((safeSize - isoSize) / 2);
+            ctx.save();
+            ctx.shadowColor = 'rgba(8, 18, 20, 0.34)';
+            ctx.shadowBlur = Math.round(safeSize * 0.035);
+            ctx.shadowOffsetY = Math.round(safeSize * 0.012);
+            dibujadoGestor = dibujarImagenContenidaSegura(ctx, isotipoImg, isoOffset, isoOffset, isoSize);
+            ctx.restore();
+        } else {
+            const cardSize = Math.round(safeSize * 0.60);
+            const cardOffset = Math.round((safeSize - cardSize) / 2);
+            const cardR = Math.round(safeSize * 0.145);
+
+            ctx.save();
+            ctx.shadowColor = 'rgba(20, 12, 6, 0.28)';
+            ctx.shadowBlur = Math.round(safeSize * 0.032);
+            ctx.shadowOffsetY = Math.round(safeSize * 0.012);
+            trazarRectRedondeado(ctx, cardOffset, cardOffset, cardSize, cardSize, cardR);
+            ctx.fillStyle = pal.fondoClaro;
+            ctx.fill();
+            ctx.restore();
+
+            const isoSize = Math.round(safeSize * 0.44);
+            const isoOffset = Math.round((safeSize - isoSize) / 2);
+            if (isotipoImg) {
                 dibujadoGestor = dibujarImagenContenidaSegura(ctx, isotipoImg, isoOffset, isoOffset, isoSize);
             }
-        }
-        if (!dibujadoGestor) {
-            const colorMono = luminanciaRelativaHex(pal.colorMarca) > 0.45 ? oscurecerHex(pal.colorMarca, 0.78) : pal.colorMarca;
-            dibujarMonogramaFallback(ctx, safeSize / 2, safeSize / 2, isoSize, nombreMarca, colorMono);
+            if (!dibujadoGestor) {
+                const colorMono = luminanciaRelativaHex(pal.colorMarca) > 0.45 ? oscurecerHex(pal.colorMarca, 0.78) : pal.colorMarca;
+                dibujarMonogramaFallback(ctx, safeSize / 2, safeSize / 2, isoSize, nombreMarca, colorMono);
+            }
         }
     }
 
@@ -377,7 +385,7 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
 
 function generarCodigoServiceWorkerNodo() {
     return `/* LAMDA Tiendas Comunitarias — Service Worker liviano (network-first, sin caché de API, media ni subidas multipart) */
-const SW_VERSION = 'lamda-nodo-pwa-v6';
+const SW_VERSION = 'lamda-nodo-pwa-v7';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

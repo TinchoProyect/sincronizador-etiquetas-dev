@@ -400,6 +400,61 @@ const TEMA_VISUAL_PARAISO_OFICIAL = {
     }
 };
 
+// Paleta exacta muestreada píxel a píxel desde la lámina gráfica oficial de MANSO (Franjas 2 y 3)
+const TEMA_VISUAL_MANSO_OFICIAL = {
+    paleta: {
+        primario: '#0F4246',
+        primario_oscuro: '#092B2E',
+        terracota: '#672833',
+        terracota_oscuro: '#4E1D26',
+        ocre: '#C99B3D',
+        pistacho: '#85B1B4',
+        pistacho_texto: '#0F4246',
+        pistacho_suave: '#E6F1F1',
+        amarillo_sol: '#E3B857',
+        fondo: '#FAF6EC',
+        fondo_icono_tienda: '#672833',
+        superficie_calida: '#F4EBD6',
+        tarjeta: '#FFFFFF',
+        texto: '#2C1B1E',
+        texto_secundario: '#6E5358',
+        borde: '#E5DAC6'
+    },
+    tipografia: {
+        familia: "'Nunito', sans-serif",
+        google_font: 'Nunito:wght@500;600;700;800;900'
+    },
+    logo_incluye_texto: true,
+    logos: {
+        principal: '/img/nodos/manso/logo-principal.png',
+        horizontal: '/img/nodos/manso/logo-horizontal.png',
+        vertical: '/img/nodos/manso/logo-principal.png',
+        isotipo: '/img/nodos/manso/isotipo.png',
+        zebra_mono: '/img/nodos/manso/logo-termico-bn.png'
+    }
+};
+
+const LOGO_ZPL_CONFIG_MANSO_OFICIAL = {
+    width: 208,
+    height: 62,
+    threshold: 140,
+    mode: 'threshold',
+    padding: 2,
+    invert: false,
+    modo_cabecera: 'banner_completo',
+    iniciales: 'MO'
+};
+
+function leerLogoZebraMansoDataUrl() {
+    const p = path.join(__dirname, '..', 'img', 'nodos', 'manso', 'logo-termico-bn.png');
+    try {
+        if (fs.existsSync(p)) {
+            return `data:image/png;base64,${fs.readFileSync(p).toString('base64')}`;
+        }
+    } catch (_) {}
+    return null;
+}
+
 function leerLogoZebraParaisoDataUrl() {
     const candidatos = [
         path.join(__dirname, '..', 'img', 'nodos', 'paraiso', 'paraiso-zebra-mono.png'),
@@ -18573,5 +18628,8 @@ module.exports = {
     resolverCuentaContableOperativaNodo,
     sincronizarArchivoYConsolidacionSubcuentaNodo,
     activarCuentaMadreUnificadaNodo,
-    TEMA_VISUAL_PARAISO_OFICIAL
+    TEMA_VISUAL_PARAISO_OFICIAL,
+    TEMA_VISUAL_MANSO_OFICIAL,
+    LOGO_ZPL_CONFIG_MANSO_OFICIAL,
+    leerLogoZebraMansoDataUrl
 };

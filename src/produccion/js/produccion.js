@@ -358,7 +358,7 @@ function renderizarGrupoSecuencia(containerId, clientes, titulo) {
 
             const spanTituloNodo = document.createElement('span');
             const codCanastoTxt = primerNodoInfo.codigo_canasto ? ` · Canasto ${primerNodoInfo.codigo_canasto}` : '';
-            spanTituloNodo.innerHTML = `<strong>🏘️ ${primerNodoInfo.nombre_marca}</strong> <span style="font-weight:500; font-size:0.92em; color:#166534;">(Nodo Barrial · Gestor: ${primerNodoInfo.gestor_nombre || '-'}${codCanastoTxt})</span> — <strong>${presupuestosDistintosSeccion} ${presupuestosDistintosSeccion === 1 ? 'canasto de vecino' : 'canastos de vecinos'}</strong> · ${totalUnidadesSeccion} bolsas/u. (${articulosDistintosSeccion} artículos distintos)`;
+            spanTituloNodo.innerHTML = `<strong>🏘️ ${primerNodoInfo.nombre_marca}</strong> <span style="font-weight:500; font-size:0.92em; color:#166534;">(Nodo · Gestor: ${primerNodoInfo.gestor_nombre || '-'}${codCanastoTxt})</span> — <strong>${presupuestosDistintosSeccion} ${presupuestosDistintosSeccion === 1 ? 'canasto de vecino' : 'canastos de vecinos'}</strong> · ${totalUnidadesSeccion} bolsas/u. (${articulosDistintosSeccion} artículos distintos)`;
             header.appendChild(spanTituloNodo);
 
             if (primerNodoInfo.codigo_canasto) {

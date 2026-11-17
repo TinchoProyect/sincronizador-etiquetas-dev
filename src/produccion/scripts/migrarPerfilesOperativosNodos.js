@@ -15,18 +15,33 @@
  *    y `config_paqueteria` inicial configurable (respetando ajustes posteriores del admin/creador).
  */
 
+const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../../.env') });
 
 const db = require('../config/database');
 const nodosService = require('../services/nodosBarrialesService');
 
+const MANSO_SEED_PATH = path.join(__dirname, '..', 'assets', 'mansoSeedData.json');
+
+function leerSeedMansoSeguro() {
+    try {
+        if (fs.existsSync(MANSO_SEED_PATH)) {
+            return JSON.parse(fs.readFileSync(MANSO_SEED_PATH, 'utf8'));
+        }
+    } catch (_) {}
+    return {};
+}
+
 async function migrarPerfilesOperativosNodos(opciones = {}) {
     const logActivo = opciones.log !== false;
     await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+    const seedManso = leerSeedMansoSeguro();
 
     const { rows } = await db.query(
-        `SELECT id, codigo_nodo, slug, nombre_marca, subtitulo_marca,
+        `SELECT id, codigo_nodo, slug, nombre_marca, subtitulo_marca, bajada_marca,
+                color_primario, tema_visual, logo_original_base64, logo_mono_preview_base64,
+                logo_zpl_gfa, logo_zpl_config,
                 perfil_operativo, modulos_activos, config_paqueteria, diccionario_textos,
                 permitir_retiro_nodo, permitir_reparto_propio, permitir_envio_barrial, permitir_encomienda
          FROM public.nodos_maestro
@@ -43,6 +58,24 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
             const tienePaq = row.config_paqueteria && typeof row.config_paqueteria === 'object' && Object.keys(row.config_paqueteria).length > 0;
             const subRaw = String(row.subtitulo_marca || '').trim();
             const subTieneJergaBarrial = !subRaw || /barrial|barrio|vecin|comunidad/i.test(subRaw);
+            const subEsDefaultGenerico = subRaw === 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País';
+
+            const tvActual = (row.tema_visual && typeof row.tema_visual === 'object') ? row.tema_visual : {};
+            const cfgZplActual = (row.logo_zpl_config && typeof row.logo_zpl_config === 'object') ? row.logo_zpl_config : {};
+            const temaOficial = nodosService.TEMA_VISUAL_MANSO_OFICIAL;
+            const cfgZplOficial = nodosService.LOGO_ZPL_CONFIG_MANSO_OFICIAL;
+
+            const faltaIdentidadOficialManso =
+                String(row.color_primario || '').trim().toLowerCase() === '#c69f9f' ||
+                !row.color_primario ||
+                tvActual?.logo_incluye_texto !== true ||
+                tvActual?.logos?.principal !== temaOficial.logos.principal ||
+                tvActual?.logos?.horizontal !== temaOficial.logos.horizontal ||
+                tvActual?.logos?.isotipo !== temaOficial.logos.isotipo ||
+                tvActual?.paleta?.terracota !== temaOficial.paleta.terracota ||
+                cfgZplActual?.modo_cabecera !== 'banner_completo' ||
+                Number(cfgZplActual?.width || 0) !== cfgZplOficial.width ||
+                !String(row.logo_zpl_gfa || '').startsWith('^GFA,1612,1612,26,');
 
             const modulosManso = nodosService.resolverModulosActivosNodo(
                 {
@@ -65,15 +98,43 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
                 tienePaq ? row.config_paqueteria : nodosService.obtenerConfigPaqueteriaDefault()
             );
 
-            const nuevoSubtitulo = subTieneJergaBarrial
-                ? 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País'
+            const nuevoSubtitulo = (subTieneJergaBarrial || subEsDefaultGenerico)
+                ? (seedManso.subtitulo_marca || 'Frutos Secos · Snacks · Boxes')
                 : subRaw;
+            const nuevaBajada = String(row.bajada_marca || '').trim() || seedManso.bajada_marca || 'Que nunca falte algo rico';
+            const nuevoColor = (!row.color_primario || String(row.color_primario).trim().toLowerCase() === '#c69f9f')
+                ? '#672833'
+                : row.color_primario;
+
+            let zplGfaFinal = seedManso.logo_zpl_gfa || row.logo_zpl_gfa || null;
+            let zplMonoPreviewFinal = seedManso.logo_mono_preview_base64 || row.logo_mono_preview_base64 || null;
+            if (!String(zplGfaFinal || '').startsWith('^GFA,1612,1612,26,')) {
+                const zebraDataUrl = nodosService.leerLogoZebraMansoDataUrl();
+                if (zebraDataUrl) {
+                    const conv = await nodosService.convertirLogoAZplGfa({
+                        imageBase64: zebraDataUrl,
+                        nombreMarca: 'MANSO',
+                        iniciales: 'MO',
+                        width: cfgZplOficial.width,
+                        height: cfgZplOficial.height,
+                        threshold: cfgZplOficial.threshold,
+                        mode: cfgZplOficial.mode,
+                        padding: cfgZplOficial.padding,
+                        invert: false
+                    });
+                    zplGfaFinal = conv.logo_zpl_gfa;
+                    zplMonoPreviewFinal = conv.logo_mono_preview_base64;
+                }
+            }
 
             const requiereUpdate =
                 !yaEsFulfillment ||
                 !tieneModulos ||
                 !tienePaq ||
                 subTieneJergaBarrial ||
+                subEsDefaultGenerico ||
+                !String(row.bajada_marca || '').trim() ||
+                faltaIdentidadOficialManso ||
                 row.permitir_retiro_nodo !== false ||
                 row.permitir_reparto_propio !== false ||
                 row.permitir_envio_barrial !== false ||
@@ -88,18 +149,37 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
                         permitir_envio_barrial = false,
                         permitir_encomienda = true,
                         subtitulo_marca = $2,
-                        modulos_activos = $3::jsonb,
-                        config_paqueteria = $4::jsonb,
+                        bajada_marca = $3,
+                        color_primario = $4,
+                        tema_visual = $5::jsonb,
+                        logo_original_base64 = COALESCE($6, logo_original_base64),
+                        logo_mono_preview_base64 = COALESCE($7, logo_mono_preview_base64),
+                        logo_zpl_gfa = COALESCE($8, logo_zpl_gfa),
+                        logo_zpl_config = $9::jsonb,
+                        modulos_activos = $10::jsonb,
+                        config_paqueteria = $11::jsonb,
                         updated_at = NOW()
                      WHERE id = $1`,
                     [
                         row.id,
                         nuevoSubtitulo,
+                        nuevaBajada,
+                        nuevoColor,
+                        JSON.stringify(temaOficial),
+                        seedManso.logo_original_base64 || null,
+                        zplMonoPreviewFinal,
+                        zplGfaFinal,
+                        JSON.stringify(cfgZplOficial),
                         JSON.stringify(modulosManso),
                         JSON.stringify(configPaqManso)
                     ]
                 );
-                actualizados.push({ id: row.id, slug: row.slug, perfil_operativo: 'ecommerce_fulfillment' });
+                actualizados.push({
+                    id: row.id,
+                    slug: row.slug,
+                    perfil_operativo: 'ecommerce_fulfillment',
+                    color_primario: nuevoColor
+                });
             }
         } else {
             // Paraíso y cualquier otro nodo vecinal previo conservan perfil_operativo = 'vecinal' y sus flags intactos

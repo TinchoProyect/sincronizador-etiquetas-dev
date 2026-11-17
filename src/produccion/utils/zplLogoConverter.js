@@ -901,13 +901,19 @@ function generarEtiquetaZplParFulfillment(params = {}) {
     const pedidoCodigo = sanitizarCaraClienteSinLamda(params.pedido_codigo || 'NB-1001');
     const destinatarioNombre = sanitizarCaraClienteSinLamda(params.destinatario_nombre || params.vecino_nombre || 'CLIENTE').toUpperCase();
     const destinatarioDni = sanitizarCaraClienteSinLamda(params.destinatario_dni || '');
-    const destinoLinea1 = sanitizarCaraClienteSinLamda(params.destino_linea_1 || params.direccion_barrial || '');
-    const localidadProvinciaCp = sanitizarCaraClienteSinLamda(params.localidad_provincia_cp || '');
-    const operadorModalidad = sanitizarCaraClienteSinLamda(params.operador_modalidad || 'CORREO ARGENTINO - DOMICILIO').toUpperCase();
+    const destinoLinea1 = sanitizarCaraClienteSinLamda(params.destino_linea_1 || params.direccion_postal || params.direccion_barrial || '');
+    const locFallback = [
+        params.localidad_nombre,
+        params.provincia_nombre,
+        params.cp_destino ? `CP ${params.cp_destino}` : ''
+    ].filter(Boolean).join(', ');
+    const localidadProvinciaCp = sanitizarCaraClienteSinLamda(params.localidad_provincia_cp || locFallback || '');
+    const opFallback = [params.operador_postal, params.modalidad_postal].filter(Boolean).join(' - ');
+    const operadorModalidad = sanitizarCaraClienteSinLamda(params.operador_modalidad || opFallback || 'CORREO ARGENTINO - DOMICILIO').toUpperCase();
     const qrSeguimientoUrl = String(params.qr_seguimiento_url || '').trim() ||
         `https://tienda.lamdaser.com/tienda/${encodeURIComponent(params.slug || 'tienda')}?seguimiento=${encodeURIComponent(params.tracking_token || pedidoCodigo)}`;
     const pesoGramos = Math.max(100, Math.round(Number(params.peso_gramos || 500)));
-    const fechaHoraArmado = limpiarTextoZpl(params.fecha_hora_armado || new Date().toLocaleString('es-AR', {
+    const fechaHoraArmado = limpiarTextoZpl(params.fecha_hora_armado || params.fecha_empaque_texto || new Date().toLocaleString('es-AR', {
         day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
     }));
 
@@ -1036,11 +1042,17 @@ async function generarPreviewVisualEtiquetaFulfillment(params = {}) {
     const pedidoCodigo = sanitizarCaraClienteSinLamda(params.pedido_codigo || 'NB-1001');
     const destinatarioNombre = sanitizarCaraClienteSinLamda(params.destinatario_nombre || params.vecino_nombre || 'CLIENTE').toUpperCase();
     const destinatarioDni = sanitizarCaraClienteSinLamda(params.destinatario_dni || '');
-    const destinoLinea1 = sanitizarCaraClienteSinLamda(params.destino_linea_1 || params.direccion_barrial || '');
-    const localidadProvinciaCp = sanitizarCaraClienteSinLamda(params.localidad_provincia_cp || '');
-    const operadorModalidad = sanitizarCaraClienteSinLamda(params.operador_modalidad || 'CORREO ARGENTINO - DOMICILIO').toUpperCase();
+    const destinoLinea1 = sanitizarCaraClienteSinLamda(params.destino_linea_1 || params.direccion_postal || params.direccion_barrial || '');
+    const locFallbackPv = [
+        params.localidad_nombre,
+        params.provincia_nombre,
+        params.cp_destino ? `CP ${params.cp_destino}` : ''
+    ].filter(Boolean).join(', ');
+    const localidadProvinciaCp = sanitizarCaraClienteSinLamda(params.localidad_provincia_cp || locFallbackPv || '');
+    const opFallbackPv = [params.operador_postal, params.modalidad_postal].filter(Boolean).join(' - ');
+    const operadorModalidad = sanitizarCaraClienteSinLamda(params.operador_modalidad || opFallbackPv || 'CORREO ARGENTINO - DOMICILIO').toUpperCase();
     const pesoGramos = Math.max(100, Math.round(Number(params.peso_gramos || 500)));
-    const fechaHoraArmado = limpiarTextoZpl(params.fecha_hora_armado || new Date().toLocaleString('es-AR', {
+    const fechaHoraArmado = limpiarTextoZpl(params.fecha_hora_armado || params.fecha_empaque_texto || new Date().toLocaleString('es-AR', {
         day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false
     }));
 
@@ -1060,6 +1072,8 @@ async function generarPreviewVisualEtiquetaFulfillment(params = {}) {
         }
 
         // ETIQUETA IZQUIERDA (100% MARCA BLANCA CREADOR)
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
         if (logoImg && logoCabecera.esBannerCompleto) {
             const scalePv = Math.min(1, (labelW - 22) / logoImg.width, 60 / logoImg.height);
             const drawW = Math.round(logoImg.width * scalePv);
@@ -1071,8 +1085,6 @@ async function generarPreviewVisualEtiquetaFulfillment(params = {}) {
             }
             const textX = logoImg ? (leftX + 122) : (leftX + 12);
             ctx.fillStyle = '#0f172a';
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
             ctx.font = 'bold 16px Arial';
             ctx.fillText(nombreMarca.substring(0, 26), textX, rowY + 12);
             ctx.font = 'bold 10.5px Arial';

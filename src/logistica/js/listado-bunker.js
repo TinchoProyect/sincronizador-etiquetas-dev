@@ -1843,7 +1843,7 @@ function renderizarGrid(articulos) {
             ? art.propiedades_dinamicas.presentacion_etiqueta_nodo
             : null;
         const badgeAliasVecino = aliasVecino
-            ? `<div style="margin-top: 3px; font-family: sans-serif; font-size: 0.76em; color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 5px; padding: 1px 6px; display: inline-block; font-weight: 700;" title="Alias Comercial amigable que ven el Gestor y el Vecino en la Tienda del Nodo Barrial y en la etiqueta térmica">🏘️ Vecino: "${aliasVecino}"${presNodo ? ` · ${presNodo}` : ''}</div>`
+            ? `<div style="margin-top: 3px; font-family: sans-serif; font-size: 0.76em; color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 5px; padding: 1px 6px; display: inline-block; font-weight: 700;" title="Alias Comercial amigable que ven el Gestor y el Cliente en la Tienda del Nodo y en la etiqueta térmica">🏘️ Vecino: "${aliasVecino}"${presNodo ? ` · ${presNodo}` : ''}</div>`
             : '';
 
         trMain.innerHTML = `
@@ -8491,29 +8491,29 @@ window.generarHtmlBotonCatalogo = function(art) {
             estadoClase = 'estado-activo';
             labelTexto = '🏘️ En Nodo';
             tooltipTexto = esCompartidoNodos
-                ? `Activo en Lista Base Nodos Barriales + ${activasMayorista}/${totalMayorista} listas mayoristas`
-                : `Exclusivo de Lista Base Nodos Barriales (0/${totalMayorista} mayoristas)`;
+                ? `Activo en Lista Base Nodos + ${activasMayorista}/${totalMayorista} listas mayoristas`
+                : `Exclusivo de Lista Base Nodos (0/${totalMayorista} mayoristas)`;
         } else {
             estadoClase = 'estado-inactivo';
             labelTexto = 'Fuera Nodo';
-            tooltipTexto = 'No incluido en Lista Base Nodos Barriales';
+            tooltipTexto = 'No incluido en Lista Base Nodos';
         }
     } else if (disponibleActiva) {
         estadoClase = 'estado-activo';
         labelTexto = 'Activo';
-        tooltipTexto = `Habilitado en la lista actual (${activasCount} de ${totalListas} listas mayoristas activas)${disponibleEnNodos ? ' + Lista Base Nodos Barriales' : ''} — Click para gestionar catálogos`;
+        tooltipTexto = `Habilitado en la lista actual (${activasCount} de ${totalListas} listas mayoristas activas)${disponibleEnNodos ? ' + Lista Base Nodos' : ''} — Click para gestionar catálogos`;
     } else if (activasCount > 0) {
         estadoClase = 'estado-parcial';
         labelTexto = 'En otras';
-        tooltipTexto = `Excluido de la lista actual, pero SIGUE ACTIVO en ${activasCount} de ${totalListas} listas mayoristas${disponibleEnNodos ? ' + Lista Base Nodos Barriales' : ''} — Click para ver o apagar`;
+        tooltipTexto = `Excluido de la lista actual, pero SIGUE ACTIVO en ${activasCount} de ${totalListas} listas mayoristas${disponibleEnNodos ? ' + Lista Base Nodos' : ''} — Click para ver o apagar`;
     } else if (disponibleEnNodos) {
         estadoClase = 'estado-parcial';
         labelTexto = 'Solo Nodo';
-        tooltipTexto = `Fracción exclusiva de Lista Base Nodos Barriales (0 de ${totalListas} listas mayoristas)`;
+        tooltipTexto = `Fracción exclusiva de Lista Base Nodos (0 de ${totalListas} listas mayoristas)`;
     }
 
     const badgeCompartidoHtml = (!esVistaNodos && disponibleEnNodos)
-        ? `<span style="display:inline-block; background:#dcfce7; color:#166534; border:1px solid #86efac; font-size:0.70em; font-weight:800; padding:1px 6px; border-radius:10px; margin-left:4px; vertical-align:middle;" title="Habilitado también en Lista Base Nodos Barriales">🏘️ +Nodo</span>`
+        ? `<span style="display:inline-block; background:#dcfce7; color:#166534; border:1px solid #86efac; font-size:0.70em; font-weight:800; padding:1px 6px; border-radius:10px; margin-left:4px; vertical-align:middle;" title="Habilitado también en Lista Base Nodos">🏘️ +Nodo</span>`
         : (esVistaNodos && esCompartidoNodos)
             ? `<span style="display:inline-block; background:#dbeafe; color:#1e40af; border:1px solid #93c5fd; font-size:0.70em; font-weight:800; padding:1px 6px; border-radius:10px; margin-left:4px; vertical-align:middle;" title="Artículo compartido también con ${activasMayorista}/${totalMayorista} listas mayoristas">🏢 +${activasMayorista}/${totalMayorista} May.</span>`
             : '';

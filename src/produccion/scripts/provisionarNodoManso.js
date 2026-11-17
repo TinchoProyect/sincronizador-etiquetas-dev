@@ -95,8 +95,8 @@ async function provisionarNodoManso(opciones = {}) {
             codigo_nodo: codigoNodoDeseado,
             slug: 'manso',
             nombre_marca: seed.nombre_marca || 'MANSO',
-            subtitulo_marca: seed.subtitulo_marca || 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País',
-            bajada_marca: seed.bajada_marca || null,
+            subtitulo_marca: seed.subtitulo_marca || 'Frutos Secos · Snacks · Boxes',
+            bajada_marca: seed.bajada_marca || 'Que nunca falte algo rico',
             gestor_nombre: seed.gestor_nombre || 'Clarichuns',
             gestor_telefono: seed.gestor_telefono || '5492604030005',
             gestor_email: seed.gestor_email || '',
@@ -117,19 +117,12 @@ async function provisionarNodoManso(opciones = {}) {
             cargo_envio_barrial: 0,
             margen_gestor_default_pct: Number(seed.margen_gestor_default_pct || 28),
             config_ventanas_corte: Array.isArray(seed.config_ventanas_corte) ? seed.config_ventanas_corte : undefined,
-            color_primario: seed.color_primario || '#c69f9f',
+            color_primario: seed.color_primario || '#672833',
             latitud: seed.latitud,
             longitud: seed.longitud,
             logo_original_base64: seed.logo_original_base64 || null,
-            logo_zpl_config: seed.logo_zpl_config || {
-                mode: 'threshold',
-                width: 112,
-                height: 56,
-                invert: false,
-                iniciales: 'M',
-                threshold: 168
-            },
-            tema_visual: seed.tema_visual || {},
+            logo_zpl_config: seed.logo_zpl_config || nodosService.LOGO_ZPL_CONFIG_MANSO_OFICIAL,
+            tema_visual: seed.tema_visual || nodosService.TEMA_VISUAL_MANSO_OFICIAL,
             gestor_token: tokenPreferido
         });
 

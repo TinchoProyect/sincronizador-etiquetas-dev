@@ -406,10 +406,10 @@
             </ul>
           </li>
 
-          <!-- 4. Nodos Barriales (Marca Blanca) -->
+          <!-- 4. Nodos (Marca Blanca) -->
           <li class="tree-item branch">
             <div class="tree-branch-header" onclick="toggleBranch(this)">
-              <span class="tree-icon">🏘️</span> Nodos Barriales (Marca Blanca)
+              <span class="tree-icon">🏘️</span> Nodos (Marca Blanca)
               <span class="chevron">▼</span>
             </div>
             <ul class="tree-submenu">
@@ -427,13 +427,13 @@
               </li>
               <li>
                 <a href="/liquidacion-nodos" target="_blank" onclick="closeSidebar();" class="tree-sublink">
-                  <span><span class="tree-step-num">3.</span>Cobros, Padrón Vecinal y Liquidación</span>
+                  <span><span class="tree-step-num">3.</span>Cobros, Padrón y Liquidación</span>
                   <span class="tree-ext-arrow">↗</span>
                 </a>
               </li>
               <li>
                 <a href="/centro-nodos" target="_blank" onclick="closeSidebar();" class="tree-sublink">
-                  <span><span class="tree-step-num">4.</span>Fichas de Nodos, Cuentas y Accesos QR</span>
+                  <span><span class="tree-step-num">4.</span>Fichas de Nodos y Accesos</span>
                   <span class="tree-ext-arrow">↗</span>
                 </a>
               </li>
@@ -1206,7 +1206,7 @@ window.abrirModoEspejoNodo = async function(tipoApp = 'gestor') {
 
     Swal.fire({
         title: `📱 Modo Espejo — ${tituloApp}`,
-        text: 'Consultando Nodos Barriales activos...',
+        text: 'Consultando Nodos activos...',
         allowOutsideClick: false,
         didOpen: () => {
             Swal.showLoading();
@@ -1224,7 +1224,7 @@ window.abrirModoEspejoNodo = async function(tipoApp = 'gestor') {
 
         if (nodos.length === 0) {
             const irAlta = await Swal.fire({
-                title: 'Sin Nodos Barriales Cargados',
+                title: 'Sin Nodos Cargados',
                 icon: 'info',
                 html: `
                     <div style="text-align:left; font-size:0.9rem; color:#334155; line-height:1.5;">

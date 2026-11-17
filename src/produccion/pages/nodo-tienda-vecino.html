@@ -231,11 +231,26 @@
       height: 44px;
       justify-content: center;
     }
+    .brand-logo.has-principal-logo {
+      width: auto;
+      max-width: 224px;
+      height: 60px;
+      justify-content: center;
+    }
     .brand-logo img {
       max-width: 100%;
       max-height: 100%;
       object-fit: contain;
       display: block;
+    }
+    .brand-logo.has-horizontal-logo img,
+    .brand-logo.has-principal-logo img {
+      height: 100%;
+      width: auto;
+      max-width: 214px;
+    }
+    .brand-logo.has-principal-logo img {
+      max-width: 224px;
     }
     .brand-monogram {
       width: 38px;
@@ -349,6 +364,16 @@
       .brand-logo.has-horizontal-logo {
         max-width: 248px;
         height: 48px;
+      }
+      .brand-logo.has-horizontal-logo img {
+        max-width: 248px;
+      }
+      .brand-logo.has-principal-logo {
+        max-width: 268px;
+        height: 68px;
+      }
+      .brand-logo.has-principal-logo img {
+        max-width: 268px;
       }
       .brand-sub {
         max-width: 320px;
@@ -2643,8 +2668,8 @@
 
     function aplicarFaviconTienda(urlImg) {
       const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
-      const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-192.png?v=2` : String(urlImg || '').trim();
-      const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=2` : String(urlImg || '').trim();
+      const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-192.png?v=3` : String(urlImg || '').trim();
+      const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=3` : String(urlImg || '').trim();
       if (iconPwa192) {
         let linkIcon = document.querySelector('link[rel="icon"]');
         if (!linkIcon) {
@@ -2784,7 +2809,7 @@
         return;
       }
       const nombreMarca = String(STATE.nodo.nombre_marca || 'la tienda').trim();
-      const iconUrl = `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=2`;
+      const iconUrl = `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=3`;
       box.innerHTML = `
         <button type="button" id="btn-instalar-pwa-tienda" class="drawer-pwa-trigger" onclick="cerrarDrawerNodoTienda(); instalarAccesoDirectoTienda();">
           <img src="${esc(iconUrl)}" alt="${esc(nombreMarca)}" style="width:40px; height:40px; border-radius:10px; border:1px solid var(--border); flex-shrink:0; object-fit:cover;" />
@@ -2817,7 +2842,7 @@
 
       const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
       const nombreMarca = String(STATE.nodo?.nombre_marca || 'la tienda').trim();
-      const iconUrl = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=2` : '';
+      const iconUrl = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=3` : '';
       const esIos = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
 
       const card = document.getElementById('pwa-tienda-modal-content');
@@ -3025,13 +3050,16 @@
       document.getElementById('brand-subtitle').textContent = bajadaEfectiva;
 
       const logoBox = document.getElementById('brand-logo-box');
+      const logoPrincipal = STATE.nodo.tema_visual?.logos?.principal || '';
       const logoHorizontal = STATE.nodo.tema_visual?.logos?.horizontal || '';
-      const logoIncluyeTexto = Boolean(logoHorizontal && STATE.nodo.tema_visual?.logo_incluye_texto);
+      const logoCabecera = logoPrincipal || logoHorizontal;
+      const logoIncluyeTexto = Boolean(logoCabecera && STATE.nodo.tema_visual?.logo_incluye_texto);
       const logoIsotipo = STATE.nodo.tema_visual?.logos?.isotipo || '';
       const logoSrc = logoIncluyeTexto
-        ? logoHorizontal
-        : (logoIsotipo || logoHorizontal || STATE.nodo.logo_original_base64 || STATE.nodo.logo_mono_preview_base64 || '');
-      logoBox.classList.toggle('has-horizontal-logo', logoIncluyeTexto);
+        ? logoCabecera
+        : (logoIsotipo || logoCabecera || STATE.nodo.logo_original_base64 || STATE.nodo.logo_mono_preview_base64 || '');
+      logoBox.classList.toggle('has-principal-logo', Boolean(logoIncluyeTexto && logoPrincipal));
+      logoBox.classList.toggle('has-horizontal-logo', Boolean(logoIncluyeTexto && !logoPrincipal));
       const brandBoxEl = logoBox.closest('.brand-box');
       if (brandBoxEl) {
         brandBoxEl.classList.toggle('logo-includes-text', logoIncluyeTexto);

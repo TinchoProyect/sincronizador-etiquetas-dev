@@ -1817,8 +1817,8 @@
 
     function aplicarFaviconGestor(urlImg) {
       const slugAct = String(GSTATE.slug || detectarSlugInicial() || '').trim();
-      const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-192.png?v=2` : String(urlImg || '').trim();
-      const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=2` : String(urlImg || '').trim();
+      const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-192.png?v=3` : String(urlImg || '').trim();
+      const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=3` : String(urlImg || '').trim();
       if (iconPwa192) {
         let linkIcon = document.querySelector('link[rel="icon"]');
         if (!linkIcon) {
@@ -1971,7 +1971,7 @@
 
       const slugAct = String(GSTATE.slug || detectarSlugInicial() || '').trim();
       const nombreMarca = String(GSTATE.nodo?.nombre_marca || 'tu tienda').trim();
-      const iconUrl = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=2` : '';
+      const iconUrl = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=3` : '';
       const esIos = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
 
       const bodyEl = document.getElementById('modal-pwa-gestor-body');
@@ -2021,7 +2021,7 @@
 
     function obtenerLogoVerticalGestor(nodo) {
       const logos = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? (nodo.tema_visual.logos || {}) : {};
-      return logos.vertical || logos.horizontal || nodo?.logo_original_base64 || nodo?.logo_mono_preview_base64 || '';
+      return logos.principal || logos.vertical || logos.horizontal || nodo?.logo_original_base64 || nodo?.logo_mono_preview_base64 || '';
     }
 
     function obtenerLogoIconoGestor(nodo) {
@@ -2519,7 +2519,7 @@
         </div>
         <button type="button" id="btn-instalar-pwa-gestor" class="cta-pwa-gestor" style="display:${mostrarBtnPwa ? 'flex' : 'none'};" onclick="instalarAccesoDirectoGestor()">
           <div class="cta-pwa-gestor-left">
-            ${slugIconPwa ? `<img src="/api/produccion/nodos/pwa/${slugIconPwa}/icon-gestor-180.png?v=2" alt="Gestión ${esc(GSTATE.nodo.nombre_marca || '')}" class="cta-pwa-gestor-thumb" />` : '<span style="font-size:1.35rem;">📲</span>'}
+            ${slugIconPwa ? `<img src="/api/produccion/nodos/pwa/${slugIconPwa}/icon-gestor-180.png?v=3" alt="Gestión ${esc(GSTATE.nodo.nombre_marca || '')}" class="cta-pwa-gestor-thumb" />` : '<span style="font-size:1.35rem;">📲</span>'}
             <div>
               <div class="cta-pwa-gestor-title">📲 Crear acceso directo en mi celular</div>
               <div class="cta-pwa-gestor-sub">No instala nada pesado ni ocupa espacio: solo deja el ícono directo en tu pantalla.</div>

@@ -342,7 +342,7 @@
         <div class="nav-actions">
             <select id="filtro-nodo-select" onchange="cambiarFiltroNodo(this.value)"
                 style="padding:8px 12px; border-radius:8px; background:#0f172a; color:#f8fafc; border:1px solid #334155; font-size:0.8rem; font-weight:700;">
-                <option value="0">🏘️ Todos los Nodos Barriales</option>
+                <option value="0">🏘️ Todos los Nodos</option>
             </select>
 
             <a href="/pages/produccion.html" target="_blank" class="btn-top" style="background:rgba(16,185,129,0.2); border-color:#10b981; color:#a7f3d0;">
@@ -541,7 +541,7 @@
             const sel = document.getElementById('filtro-nodo-select');
             if (!sel) return;
             const actual = String(ESTADO.nodoFiltroId || 0);
-            sel.innerHTML = `<option value="0">🏘️ Todos los Nodos Barriales</option>` +
+            sel.innerHTML = `<option value="0">🏘️ Todos los Nodos</option>` +
                 nodos.map(n => `<option value="${n.id}" ${String(n.id) === actual ? 'selected' : ''}>${esc(n.nombre_marca)} (${esc(n.gestor_nombre)})</option>`).join('');
         }
 

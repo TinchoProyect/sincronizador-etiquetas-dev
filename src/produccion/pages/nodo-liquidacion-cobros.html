@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conciliación de Cobros y Liquidación de Cuenta Corriente — Nodos Barriales</title>
+    <title>Conciliación de Cobros y Liquidación de Cuenta Corriente — Nodos</title>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         :root {
@@ -193,7 +193,7 @@
         <div class="nav-actions">
             <select id="filtro-nodo-select" onchange="cambiarFiltroNodo(this.value)"
                 style="padding:8px 12px; border-radius:8px; background:#0f172a; color:#f8fafc; border:1px solid #334155; font-size:0.8rem; font-weight:700;">
-                <option value="0">🏘️ Todos los Nodos Barriales</option>
+                <option value="0">🏘️ Todos los Nodos</option>
             </select>
 
             <a href="/pages/produccion.html" target="_blank" class="btn-top" style="background:rgba(16,185,129,0.2); border-color:#10b981; color:#a7f3d0;">
@@ -341,7 +341,7 @@
             const sel = document.getElementById('filtro-nodo-select');
             if (!sel) return;
             const actual = String(ESTADO.nodoFiltroId || 0);
-            sel.innerHTML = `<option value="0">🏘️ Todos los Nodos Barriales</option>` +
+            sel.innerHTML = `<option value="0">🏘️ Todos los Nodos</option>` +
                 nodos.map(n => `<option value="${n.id}" ${String(n.id) === actual ? 'selected' : ''}>${esc(n.nombre_marca)} (${esc(n.gestor_nombre)})</option>`).join('');
         }
 
@@ -1202,7 +1202,7 @@
         function verReciboVecinoMarcaBlanca(pedidoId) {
             const lote = obtenerLoteActivo();
             let p = (lote?.pedidos_vecinos || []).find(x => Number(x.id) === Number(pedidoId));
-            let nombreMarca = lote?.nombre_marca || 'Nodo Barrial';
+            let nombreMarca = lote?.nombre_marca || 'Nodo';
             if (!p) {
                 for (const v of (ESTADO.tablero?.vecinos_padron || [])) {
                     const found = (v.pedidos_historial || []).find(x => Number(x.id) === Number(pedidoId));
@@ -1271,7 +1271,7 @@
 
         async function enviarReciboVecinoWhatsAppPrueba(pedidoId) {
             let p = null;
-            let nombreMarca = 'Nodo Barrial';
+            let nombreMarca = 'Nodo';
             for (const l of (ESTADO.tablero?.lotes || [])) {
                 const f = (l.pedidos_vecinos || []).find(x => Number(x.id) === Number(pedidoId));
                 if (f) { p = f; nombreMarca = l.nombre_marca || nombreMarca; break; }
@@ -1430,7 +1430,7 @@
                                                         </div>
                                                     ` : ''}
                                                 </td>
-                                                <td style="font-size:0.78rem; color:#6ee7b7; font-weight:700;">${esc(n.lista_precio_nombre || 'Lista Base Nodos Barriales')}</td>
+                                                <td style="font-size:0.78rem; color:#6ee7b7; font-weight:700;">${esc(n.lista_precio_nombre || 'Lista Base Nodos')}</td>
                                                 <td style="font-family:monospace; font-size:0.78rem; color:#fcd34d;">${esc(n.alias_bancario_display || 'S/A')}</td>
                                                 <td style="font-weight:900; color:${Number(n.usar_cuenta_madre_unificada && n.codigo_bunker_cliente_madre ? n.saldo_cuenta_corriente_madre : n.saldo_cuenta_corriente) > 0.01 ? '#fb7185' : '#34d399'};">
                                                     ${(() => {

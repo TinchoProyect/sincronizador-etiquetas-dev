@@ -224,7 +224,7 @@ function construirResumenesControlNodoCliente(cliente) {
                 clienteId: cliente.cliente_id,
                 nodoId: vn.nodo_id,
                 codigoNodo: vn.codigo_nodo || '',
-                nombreMarca: vn.nombre_marca || cliente.cliente_nombre || 'Nodo Barrial',
+                nombreMarca: vn.nombre_marca || cliente.cliente_nombre || 'Nodo',
                 gestorNombre: vn.gestor_nombre || '',
                 gestorTelefono: formatearTelefonoImpresion(vn.gestor_telefono || ''),
                 barrioZona: vn.barrio_zona || '',
@@ -800,7 +800,7 @@ function generarHTMLResumenControlNodo(resumen, { fechaHoy, horaHoy, agregarPage
         <div class="datos-pedido" style="border: 1.5px solid #16a34a; border-left: 5px solid #16a34a; background: #f0fdf4; padding: 10px 14px; border-radius: 6px;">
             <div>
                 <div style="font-size: 10px; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.5px;">
-                    Remito General de Control y Entrega a Nodo Barrial
+                    Remito General de Control y Entrega a Nodo
                 </div>
                 <div style="font-size: 16px; font-weight: 800; color: #0f172a; margin-top: 3px;">
                     N° de Cliente: ${escaparHtmlImpresion(resumen.clienteId)} — NODO: ${escaparHtmlImpresion(resumen.nombreMarca)}
@@ -928,7 +928,7 @@ function renderizarPDFResumenControlNodo(doc, resumen, { fechaHoy, horaHoy, qrBu
     doc.fillColor('#16a34a').rect(50, 94, 4.5, 56).fill();
 
     doc.fontSize(8).font('Helvetica-Bold').fillColor('#166534')
-       .text('REMITO GENERAL DE CONTROL Y ENTREGA A NODO BARRIAL', 62, 100, { width: 325 });
+       .text('REMITO GENERAL DE CONTROL Y ENTREGA A NODO', 62, 100, { width: 325 });
     doc.fontSize(13).font('Helvetica-Bold').fillColor('#0f172a')
        .text(`Cliente #${resumen.clienteId} — NODO: ${nombreMarca}`, 62, 112, { width: 325 });
     doc.fontSize(8.5).font('Helvetica').fillColor('#334155')
@@ -2689,7 +2689,7 @@ function generarHTMLPresupuestoUnico({
         <div class="datos-pedido" style="border-left: 5px solid #16a34a; background: #f8fafc; padding: 10px 14px; border-radius: 6px;">
             <div>
                 <div style="font-size: 12px; font-weight: bold; color: #166534; text-transform: uppercase; letter-spacing: 0.4px;">
-                    NODO BARRIAL: ${vn.nombre_marca} <span style="font-weight: normal; color: #475569;">(Gestor: ${vn.gestor_nombre}${vn.codigo_canasto ? ' · Canasto ' + vn.codigo_canasto : ''})</span>
+                    NODO: ${vn.nombre_marca} <span style="font-weight: normal; color: #475569;">(Gestor: ${vn.gestor_nombre}${vn.codigo_canasto ? ' · Canasto ' + vn.codigo_canasto : ''})</span>
                 </div>
                 <div class="nombre-cliente" style="font-size: 17px; font-weight: bold; color: #0f172a; margin-top: 4px;">
                     Cliente / Vecino: ${vn.vecino_nombre}
@@ -3157,7 +3157,7 @@ function renderizarPDFPresupuestoUnico(doc, {
         doc.fillColor('#16a34a').rect(50, 96, 4, 52).fill();
 
         doc.fontSize(9.5).font('Helvetica-Bold').fillColor('#166534')
-           .text(`NODO BARRIAL: ${vn.nombre_marca} (Gestor: ${vn.gestor_nombre}${vn.codigo_canasto ? ' · ' + vn.codigo_canasto : ''})`, 60, 102, { width: 325 });
+           .text(`NODO: ${vn.nombre_marca} (Gestor: ${vn.gestor_nombre}${vn.codigo_canasto ? ' · ' + vn.codigo_canasto : ''})`, 60, 102, { width: 325 });
         doc.fontSize(13).font('Helvetica-Bold').fillColor('#0f172a')
            .text(`Cliente / Vecino: ${vn.vecino_nombre}`, 60, 115, { width: 325 });
         doc.fontSize(8.5).font('Helvetica').fillColor('#334155')

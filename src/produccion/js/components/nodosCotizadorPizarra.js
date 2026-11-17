@@ -119,7 +119,7 @@
             const resp = await fetch('/api/produccion/nodos/inicializar');
             const data = await resp.json();
             if (!resp.ok || !data.ok) {
-                throw new Error(data.error || 'No se pudo inicializar el módulo de Nodos Barriales');
+                throw new Error(data.error || 'No se pudo inicializar el módulo de Nodos');
             }
 
             ESTADO_NODOS.nodos = data.nodos || [];
@@ -139,7 +139,7 @@
             if (container) {
                 container.innerHTML = `
                     <div style="padding: 28px; background: #1e293b; border: 1px solid #ef4444; border-radius: 12px; color: #fecaca;">
-                        <h3 style="margin-top:0;">⚠️ Error al conectar con el módulo de Nodos Barriales</h3>
+                        <h3 style="margin-top:0;">⚠️ Error al conectar con el módulo de Nodos</h3>
                         <p>${escaparHtml(err.message)}</p>
                         <button class="btn btn-primary" onclick="window.recargarModuloNodosBarriales()">🔄 Reintentar</button>
                     </div>
@@ -206,7 +206,7 @@
                         <div style="width:42px; height:42px; border-radius:10px; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.4); display:flex; align-items:center; justify-content:center; font-size:1.35rem;">🏘️</div>
                         <div>
                             <div style="display:flex; align-items:center; gap:8px;">
-                                <h2 style="margin:0; font-size:1.08rem; color:#f8fafc; font-weight:700;">Nodos Barriales (Marca Blanca)</h2>
+                                <h2 style="margin:0; font-size:1.08rem; color:#f8fafc; font-weight:700;">Nodos (Marca Blanca)</h2>
                                 <span style="background:rgba(16,185,129,0.18); color:#34d399; border:1px solid rgba(16,185,129,0.35); font-size:0.72rem; padding:2px 8px; border-radius:999px; font-weight:700;">1. Alta de Nodos, Catálogo y Cotizador</span>
                             </div>
                             <div style="font-size:0.78rem; color:#94a3b8; margin-top:2px;">
@@ -536,7 +536,7 @@
                             <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Disponibilidad en Listas del Búnker</label>
                             <select id="cot-compartido-mayorista"
                                 style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#e2e8f0; font-size:0.8rem; font-weight:700;">
-                                <option value="false">🏘️ Exclusivo Nodos Barriales (0/6 en Mayorista)</option>
+                                <option value="false">🏘️ Exclusivo Nodos (0/6 en Mayorista)</option>
                                 <option value="true">🔄 Compartido: Nodos + Mayorista (Dietética y Cons. Final)</option>
                             </select>
                         </div>
@@ -1386,7 +1386,7 @@
                 <div class="card" style="padding:14px; background:#151e2e; border:1px solid #2e3c51; border-radius:12px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:6px; flex-wrap:wrap;">
                         <div>
-                            <div style="font-weight:700; font-size:0.95rem; color:#f8fafc;">🏘️ Nodos Barriales</div>
+                            <div style="font-weight:700; font-size:0.95rem; color:#f8fafc;">🏘️ Nodos</div>
                             <div style="font-size:0.74rem; color:#94a3b8;">Seleccione un Nodo para editarlo o dé de alta uno nuevo</div>
                         </div>
                         <button onclick="window.NodosPizarra.nuevoNodoFormulario()"
@@ -1501,7 +1501,7 @@
                         <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; border-bottom:1px solid #2e3c51; padding-bottom:12px; margin-bottom:12px;">
                             <div>
                                 <div style="font-size:1.05rem; font-weight:800; color:#f8fafc; display:flex; align-items:center; gap:8px; flex-wrap:wrap;" id="abm-nodo-form-title">
-                                    ➕ Creando Nuevo Nodo Barrial
+                                    ➕ Creando Nuevo Nodo
                                 </div>
                                 <div style="font-size:0.75rem; color:#94a3b8; margin-top:2px;" id="abm-nodo-form-sub">
                                     Todo Nodo parte de un Cliente Titular en LAMDA y opera sus canastos con una subcuenta aislada (<code>CB-NODO-xxx</code>).
@@ -1688,6 +1688,7 @@
                                 <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                                     <span style="font-size:0.7rem; color:#94a3b8;">Paletas sugeridas:</span>
                                     ${[
+                                        { label: 'Manso Bordó', hex: '#672833' },
                                         { label: 'Paraíso Terracota', hex: '#D36344' },
                                         { label: 'Terracota Tierra', hex: '#a2553b' },
                                         { label: 'Cacao Tostado', hex: '#654B30' },
@@ -3492,7 +3493,7 @@
             html: `
                 <div style="text-align:left; font-size:0.82rem; line-height:1.45;">
                     <p style="color:#cbd5e1; margin-top:0;">
-                        Esta configuración se aplica de forma unificada a <strong>todos los Nodos Barriales</strong> para recaudar transferencias de vecinos bajo esquema <strong>Marca Blanca</strong> (sin mencionar a LAMDA ni a un Nodo puntual).
+                        Esta configuración se aplica de forma unificada a <strong>todos los Nodos</strong> para recaudar transferencias bajo esquema <strong>Marca Blanca</strong> (sin mencionar a LAMDA ni a un Nodo puntual).
                     </p>
                     <div style="margin-bottom:10px;">
                         <label style="display:block; font-size:0.75rem; font-weight:800; color:#38bdf8; margin-bottom:4px;">Alias Recaudador Neutro (el que ve y copia el Vecino) *</label>
@@ -3790,7 +3791,7 @@
             }
         } else {
             if (titleEl) {
-                titleEl.innerHTML = `➕ Creando Nuevo Nodo Barrial`;
+                titleEl.innerHTML = `➕ Creando Nuevo Nodo`;
             }
             if (subEl) {
                 subEl.innerHTML = `Alta nueva · Todo Nodo parte de un Cliente Titular en LAMDA y crea una subcuenta aislada (<code>CB-NODO-xxx</code>).`;
@@ -4273,7 +4274,7 @@
 
     async function regenerarLogoZplEnVivo() {
         try {
-            const nombreMarca = document.getElementById('abm-nombre-marca')?.value || 'NODO BARRIAL';
+            const nombreMarca = document.getElementById('abm-nombre-marca')?.value || 'NODO';
             const iniciales = document.getElementById('abm-logo-iniciales')?.value || '';
             const mode = document.getElementById('abm-logo-mode')?.value || 'threshold';
             const threshold = Number(document.getElementById('abm-logo-threshold')?.value || 138);
@@ -4466,7 +4467,7 @@
             if (window.Swal) {
                 const resSwal = await Swal.fire({
                     icon: 'success',
-                    title: '✅ Nodo Barrial Guardado',
+                    title: '✅ Nodo Guardado',
                     html: `
                         <div style="text-align:left; font-size:0.85rem; line-height:1.5;">
                             <p><strong>${escaparHtml(data.nodo.nombre_marca)}</strong> quedó activo vinculado al Cliente Titular <code>${escaparHtml(data.nodo.codigo_bunker_cliente_madre || '')}</code> ${data.nodo.usar_cuenta_madre_unificada ? `(<strong>Cuenta Única Unificada</strong> · subcuenta <code>${escaparHtml(data.nodo.codigo_bunker_cliente || '')}</code> archivada sin duplicidad)` : `con subcuenta aislada <code>${escaparHtml(data.nodo.codigo_bunker_cliente || '')}</code>`}.</p>
@@ -4500,7 +4501,7 @@
         let conservarBase = true;
         if (window.Swal) {
             const conf = await Swal.fire({
-                title: '🧹 Puesta a Cero Integral de Pruebas (Nodos Barriales)',
+                title: '🧹 Puesta a Cero Integral de Pruebas (Nodos)',
                 background: '#151e2e',
                 color: '#f8fafc',
                 width: '580px',

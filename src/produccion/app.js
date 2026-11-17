@@ -55,12 +55,16 @@ app.use((req, res, next) => {
         !p.toLowerCase().endsWith('_orig.webp') &&
         /^\/media\/nodos\/\d+\/\d+\/[a-z0-9_-]+\.webp$/i.test(p);
 
+    const esImagenMarcaPublicaNodo =
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        /^\/img\/nodos\/[^/]+\/[a-z0-9._-]+\.(?:png|jpe?g|webp|svg|ico)$/i.test(p);
+
     const esVistaPermitida =
         esMediaFotoPublicaNodo ||
+        esImagenMarcaPublicaNodo ||
         /^\/(gestor|gestor-nodo|tienda)(\/[^/]+)?(\/mi-cuenta\/[^/]+)?\/?$/i.test(p) ||
         /^\/seguimiento(\/[^/]+)?\/?$/i.test(p) ||
         /^\/sw-nodo-pwa\.js$/i.test(p) ||
-        /^\/img\/nodos\/[^/]+\/[a-z0-9._-]+\.(?:png|jpe?g|webp|svg|ico)$/i.test(p) ||
         /^\/(favicon\.ico|robots\.txt)$/i.test(p);
 
     const esBeaconTelemetriaTienda =
@@ -205,8 +209,8 @@ function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}
             : String(paletaTv.fondo || '#FBF8F3').trim();
 
         metaTags.push(`<link id="nodo-pwa-manifest" rel="manifest" href="${escHtmlAttrNodos(manifestHref)}">`);
-        metaTags.push(`<link rel="icon" type="image/png" sizes="192x192" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-192.png?v=2">`);
-        metaTags.push(`<link id="nodo-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-180.png?v=2">`);
+        metaTags.push(`<link rel="icon" type="image/png" sizes="192x192" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-192.png?v=3">`);
+        metaTags.push(`<link id="nodo-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-180.png?v=3">`);
         metaTags.push(`<meta name="theme-color" content="${escHtmlAttrNodos(themeColor)}">`);
         metaTags.push(`<meta name="mobile-web-app-capable" content="yes">`);
         metaTags.push(`<meta name="apple-mobile-web-app-capable" content="yes">`);
@@ -322,7 +326,16 @@ async function validarYServirVistaNodoPublica(req, res, fileName) {
     return res.type('text/html').send(html);
 }
 
-app.use('/img/nodos', express.static(path.join(__dirname, 'img', 'nodos')));
+app.use('/img/nodos', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+        return res.status(405).end();
+    }
+    return next();
+}, express.static(path.join(__dirname, 'img', 'nodos'), {
+    dotfiles: 'deny',
+    index: false,
+    maxAge: '7d'
+}));
 
 // 🖼️ Servidor estático blindado para álbumes WebP publicados de Nodos Barriales
 // (Bloquea traversal, listado de directorios y archivos internos `*_orig.webp`)

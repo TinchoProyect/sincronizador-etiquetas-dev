@@ -398,9 +398,14 @@ app.use('/api/produccion', createProxyMiddleware({
     }
 }));
 
-// Proxy para vistas móviles y operativas de Nodos Barriales (puerto 3002)
+// Proxy para vistas móviles y operativas de Nodos (puerto 3002)
 ['/tienda', '/gestor', '/gestor-nodo', '/seguimiento', '/sw-nodo-pwa.js', '/img/nodos', '/media/nodos', '/deposito-nodos', '/liquidacion-nodos', '/centro-nodos'].forEach((nodoPrefix) => {
-    app.use(nodoPrefix, createProxyMiddleware({
+    app.use(nodoPrefix, (req, res, next) => {
+        if ((nodoPrefix === '/img/nodos' || nodoPrefix === '/media/nodos') && req.method !== 'GET' && req.method !== 'HEAD') {
+            return res.status(405).end();
+        }
+        return next();
+    }, createProxyMiddleware({
         target: 'http://127.0.0.1:3002',
         changeOrigin: true,
         pathRewrite: (pathUrl, req) => {

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Centro de Nodos y Analítica — Sistema LAMDA</title>
+  <title>Centro de Nodos — Sistema LAMDA</title>
   <script src="/lamda-cloud-runtime.js"></script>
   <style>
     :root {
@@ -484,14 +484,14 @@
       <div class="topbar-title">
         <div style="font-size:1.65rem;">🏘️</div>
         <div>
-          <h1>Centro de Nodos y Analítica</h1>
+          <h1>Centro de Nodos</h1>
           <div class="topbar-sub">Fichas Contables Unificadas · Accesos QR Móviles · Radar de Tiendas y Conversión en Vivo</div>
         </div>
       </div>
       <div class="topbar-actions">
         <button type="button" id="btn-top-nueva-tienda" class="btn-top" style="background:#16a34a; border-color:#15803d; color:#fff; font-weight:900;" onclick="abrirModalAbmTiendaCentro(null, null)">➕ Nueva Tienda / 🧬 Clonar</button>
         <a href="http://localhost:3000/" id="btn-top-menu-principal" class="btn-top">← Menú Principal</a>
-        <a href="http://localhost:3002/pages/pizarra-simulacion.html?tab=nodos" id="btn-top-pizarra-nodos" class="btn-top">🎛️ Pizarra y ABM Nodos</a>
+        <a href="http://localhost:3002/pages/pizarra-simulacion.html?tab=nodos" id="btn-top-pizarra-nodos" class="btn-top">🎛️ Alta de Nodos y Pizarra</a>
         <a href="/deposito-nodos" id="btn-top-mesa-armado" class="btn-top">📦 Mesa de Armado</a>
         <a href="/liquidacion-nodos" id="btn-top-liquidacion-nodos" class="btn-top">💰 Liquidación y Cobros</a>
         <a href="http://localhost:3005/pages/listado-clientes.html" id="btn-top-clientes-bunker" class="btn-top">📒 Clientes Búnker</a>
@@ -504,7 +504,7 @@
     <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
       <div class="main-tabs" style="margin-bottom:0;">
         <button type="button" id="tab-btn-fichas" class="main-tab-btn active" onclick="cambiarTabPrincipal('fichas')">
-          📋 Fichas de Nodos, Cuentas y Accesos QR
+          📋 Fichas de Nodos y Accesos
         </button>
         <button type="button" id="tab-btn-radar" class="main-tab-btn" onclick="cambiarTabPrincipal('radar')">
           📡 Radar en Vivo, Flujo de Nube y Estadísticas
@@ -2121,7 +2121,7 @@
             </div>
             <div>
               <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Color</label>
-              <input type="color" id="abm-centro-color" value="${esc(baseRef?.color_primario || '#c69f9f')}"
+              <input type="color" id="abm-centro-color" value="${esc(baseRef?.color_primario || '#672833')}"
                 style="width:100%; height:36px; padding:2px; border-radius:8px; border:1px solid var(--border-strong); cursor:pointer;" />
             </div>
           </div>
