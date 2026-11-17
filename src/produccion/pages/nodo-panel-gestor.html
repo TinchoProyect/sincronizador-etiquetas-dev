@@ -1018,6 +1018,145 @@
       font-weight: 600;
     }
 
+    /* === Selector 1-toque Modo de Vidriera + Narrativa + Galería Multimedia === */
+    .vidriera-modo-box {
+      margin: 0 0 12px 0;
+      padding: 10px 11px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #fffdfb, var(--surface-warm));
+      border: 1px solid var(--brand-border);
+    }
+    .vidriera-modo-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 7px;
+      flex-wrap: wrap;
+    }
+    .vidriera-modo-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .vidriera-modo-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      min-height: 48px;
+      padding: 6px 5px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: #ffffff;
+      color: var(--muted);
+      font-family: inherit;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+    }
+    .vidriera-modo-btn .vm-lbl {
+      font-size: 0.77rem;
+      font-weight: 900;
+      color: var(--text);
+      line-height: 1.15;
+    }
+    .vidriera-modo-btn .vm-sub {
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--muted);
+      line-height: 1.15;
+    }
+    .vidriera-modo-btn.is-active {
+      border-color: var(--brand);
+      background: var(--brand-soft);
+      box-shadow: 0 2px 8px var(--brand-soft);
+    }
+    .vidriera-modo-btn.is-active .vm-lbl {
+      color: var(--brand-dark);
+    }
+    .oferta-narrativa-details {
+      margin: 0 0 10px 0;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #fffdfb;
+      overflow: hidden;
+    }
+    .oferta-narrativa-details summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.76rem;
+      font-weight: 800;
+      color: var(--text);
+      user-select: none;
+    }
+    .oferta-narrativa-details summary::-webkit-details-marker {
+      display: none;
+    }
+    .oferta-narrativa-body {
+      padding: 0 10px 10px 10px;
+      border-top: 1px dashed var(--border);
+    }
+    .oferta-narrativa-textarea {
+      width: 100%;
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      border: 1.5px solid var(--border);
+      background: #ffffff;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.83rem;
+      line-height: 1.38;
+      resize: vertical;
+      min-height: 68px;
+      outline: none;
+    }
+    .oferta-narrativa-textarea:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px var(--brand-soft);
+    }
+    .album-thumb-play {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+    .album-thumb-play span {
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.76);
+      color: #ffffff;
+      font-size: 0.68rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding-left: 2px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    }
+    .video-upload-banner {
+      margin-top: 7px;
+      padding: 7px 10px;
+      border-radius: 8px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e3a8a;
+      font-size: 0.75rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
     /* === Álbum de Fotos por Oferta (Panel Gestor) === */
     .oferta-album-box {
       margin: 0 0 10px 0;
@@ -3937,6 +4076,7 @@
               of.bunker_rubro,
               of.bunker_subrubro,
               of.presentacion_etiqueta,
+              of.narrativa_tienda,
               ...(Array.isArray(of.ingredientes_comerciales) ? of.ingredientes_comerciales : [])
             ].filter(Boolean).join(' '));
             for (const t of terminos) {
@@ -4094,6 +4234,8 @@
                 onchange="guardarCambioOferta(${of.id}, { categoria_vidriera_personalizada: this.value })" />
             </div>
           </div>
+
+          ${renderizarAcordeonNarrativaOferta(of)}
 
           ${renderizarBloqueAlbumOferta(of)}
 
@@ -4321,8 +4463,10 @@
       const tieneTexto = Boolean(String(GSTATE.ofertasBusquedaTexto || '').trim());
       return `
         <div class="card">
+          ${renderizarSelectorModoVidrieraGestorHtml()}
+
           <p style="margin:0 0 11px 0; font-size:0.83rem; color:var(--muted);">
-            Activá o pausá cada artículo cuando quieras sin perder su configuración ni sus fotos, y definí cómo se muestra en tu tienda.
+            Activá o pausá cada artículo cuando quieras sin perder su configuración ni su galería, y definí cómo se muestra en tu tienda.
           </p>
 
           <div id="ofertas-tabs-bar" class="ofertas-tabs-row" role="tablist" aria-label="Estado de artículos">
@@ -9827,9 +9971,158 @@
     }
 
     // =========================================================================
-    // ÁLBUM DE FOTOS POR OFERTA (CAPTURA + AUTO-MEJORA + CICLO DE VIDA COMPLETO)
+    // MODO DE VIDRIERA, NARRATIVA PROPIA Y GALERÍA MULTIMEDIA (FOTOS + VIDEOS)
     // =========================================================================
-    const MAX_FOTOS_OFERTA_UI = 6;
+    const MAX_FOTOS_OFERTA_UI = 8;
+    const MAX_VIDEOS_OFERTA_UI = 2;
+    const NARRATIVAS_ABIERTAS_SET = new Set();
+    const VIDEO_UPLOAD_STATE = {
+      subiendoOfertaId: null
+    };
+
+    function obtenerModoVidrieraActualGestor() {
+      const m = String(GSTATE.nodo?.modo_vidriera_tienda || 'PORTADAS').trim().toUpperCase();
+      if (m === 'CUADRICULA' || m === 'LISTA_COMPACTA' || m === 'PORTADAS') return m;
+      return 'PORTADAS';
+    }
+
+    function renderizarSelectorModoVidrieraGestorHtml() {
+      const actual = obtenerModoVidrieraActualGestor();
+      const modos = [
+        { codigo: 'PORTADAS', lbl: '🖼️ Foto lateral', sub: 'Tarjeta con miniatura' },
+        { codigo: 'CUADRICULA', lbl: '⊞ Cuadrícula', sub: '2 columnas grandes' },
+        { codigo: 'LISTA_COMPACTA', lbl: '📋 Sin fotos', sub: 'Lista ágil compacta' }
+      ];
+      return `
+        <div class="vidriera-modo-box" data-testid="selector-modo-vidriera-gestor">
+          <div class="vidriera-modo-head">
+            <span style="font-size:0.78rem; font-weight:900; color:var(--text);">🎨 Vista principal de tu tienda</span>
+            <span style="font-size:0.7rem; font-weight:700; color:var(--muted);">Cambialo en 1 toque cuando quieras</span>
+          </div>
+          <div class="vidriera-modo-grid" role="radiogroup" aria-label="Diseño de vidriera en tienda">
+            ${modos.map(m => `
+              <button type="button"
+                class="vidriera-modo-btn${actual === m.codigo ? ' is-active' : ''}"
+                data-modo-vidriera="${m.codigo}"
+                aria-pressed="${actual === m.codigo ? 'true' : 'false'}"
+                onclick="cambiarModoVidrieraTiendaGestor('${m.codigo}', this)">
+                <span class="vm-lbl">${m.lbl}</span>
+                <span class="vm-sub">${m.sub}</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    async function cambiarModoVidrieraTiendaGestor(nuevoModo, btnEl) {
+      if (!GSTATE.nodo || !GSTATE.nodo.id) return;
+      const modoNorm = ['CUADRICULA', 'PORTADAS', 'LISTA_COMPACTA'].includes(String(nuevoModo || '').toUpperCase())
+        ? String(nuevoModo).toUpperCase()
+        : 'PORTADAS';
+      if (obtenerModoVidrieraActualGestor() === modoNorm) return;
+
+      if (btnEl) btnEl.disabled = true;
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/config-logistica`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ modo_vidriera_tienda: modoNorm })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo cambiar el diseño de la tienda: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+        GSTATE.nodo.modo_vidriera_tienda = modoNorm;
+        document.querySelectorAll('[data-modo-vidriera]').forEach(el => {
+          const esActivo = el.getAttribute('data-modo-vidriera') === modoNorm;
+          el.classList.toggle('is-active', esActivo);
+          el.setAttribute('aria-pressed', esActivo ? 'true' : 'false');
+        });
+        const etiquetaHumana = modoNorm === 'CUADRICULA'
+          ? 'Cuadrícula visual'
+          : (modoNorm === 'LISTA_COMPACTA' ? 'Lista compacta sin miniaturas' : 'Tarjetas con foto lateral');
+        mostrarAvisoPantallaGestor(`✓ Diseño de tienda actualizado a "${etiquetaHumana}".`, 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de red al actualizar el diseño de la tienda.', 'error');
+      } finally {
+        if (btnEl) btnEl.disabled = false;
+      }
+    }
+
+    function renderizarAcordeonNarrativaOferta(of) {
+      const id = Number(of.id);
+      const textoActual = String(of.narrativa_tienda || '').trim();
+      const abierto = NARRATIVAS_ABIERTAS_SET.has(id);
+      return `
+        <details class="oferta-narrativa-details" data-testid="acordeon-narrativa-${id}" ${abierto ? 'open' : ''}
+          ontoggle="if(this.open){NARRATIVAS_ABIERTAS_SET.add(${id});}else{NARRATIVAS_ABIERTAS_SET.delete(${id});}">
+          <summary>
+            <span>✍️ Historia o descripción en mi tienda</span>
+            <span style="display:inline-flex; align-items:center; gap:6px;">
+              ${textoActual
+                ? `<span style="font-size:0.68rem; font-weight:900; padding:2px 7px; border-radius:999px; background:#dcfce7; color:#166534;">Cargada (${textoActual.length}/600)</span>`
+                : `<span style="font-size:0.68rem; font-weight:700; color:var(--muted);">Opcional · Tocar para redactar</span>`
+              }
+            </span>
+          </summary>
+          <div class="oferta-narrativa-body">
+            <textarea class="oferta-narrativa-textarea"
+              data-oferta-narrativa="${id}"
+              maxlength="600"
+              rows="3"
+              placeholder="Contá con tus palabras el sabor, origen, ideas de consumo o por qué lo recomendás... (exclusivo de tu tienda)"
+              oninput="actualizarContadorNarrativaGestor(${id}, this.value)">${esc(textoActual)}</textarea>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:6px; flex-wrap:wrap;">
+              <span data-oferta-narrativa-count="${id}" style="font-size:0.7rem; font-weight:700; color:var(--muted);">${textoActual.length} / 600 caracteres</span>
+              <div style="display:inline-flex; align-items:center; gap:6px;">
+                ${textoActual ? `
+                  <button type="button" class="btn-album-act btn-album-danger"
+                    onclick="guardarNarrativaOfertaGestor(${id}, true)">
+                    Quitar texto
+                  </button>
+                ` : ''}
+                <button type="button" class="btn-album-act" style="border-color:var(--brand); color:var(--brand-dark); font-weight:900;"
+                  data-btn-guardar-narrativa="${id}"
+                  onclick="guardarNarrativaOfertaGestor(${id}, false)">
+                  💾 Guardar historia
+                </button>
+              </div>
+            </div>
+          </div>
+        </details>
+      `;
+    }
+
+    function actualizarContadorNarrativaGestor(ofertaId, val) {
+      const el = document.querySelector(`[data-oferta-narrativa-count="${Number(ofertaId)}"]`);
+      if (el) {
+        el.textContent = `${String(val || '').length} / 600 caracteres`;
+      }
+    }
+
+    async function guardarNarrativaOfertaGestor(ofertaId, limpiar = false) {
+      const id = Number(ofertaId);
+      const txtEl = document.querySelector(`[data-oferta-narrativa="${id}"]`);
+      const valor = limpiar ? '' : String(txtEl ? txtEl.value : '').trim().slice(0, 600);
+      const btn = document.querySelector(`[data-btn-guardar-narrativa="${id}"]`);
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Guardando...';
+      }
+      const ok = await guardarCambioOferta(id, { narrativa_tienda: valor });
+      if (ok) {
+        mostrarAvisoPantallaGestor(
+          valor ? '✓ Historia del producto guardada en tu tienda.' : '✓ Historia del producto quitada.',
+          'ok'
+        );
+      } else if (btn) {
+        btn.disabled = false;
+        btn.textContent = '💾 Guardar historia';
+      }
+    }
+
     const FOTO_EDITOR_STATE = {
       abierto: false,
       modo: 'nueva', // 'nueva' | 'reeditar' | 'reemplazar'
@@ -9867,53 +10160,128 @@
       return Array.isArray(of?.fotos_vidriera) ? of.fotos_vidriera : [];
     }
 
+    function obtenerVideosDeOfertaLocal(of) {
+      return Array.isArray(of?.videos_vidriera) ? of.videos_vidriera : [];
+    }
+
+    function obtenerSugeridasBaseOfertaLocal(of) {
+      return Array.isArray(of?.fotos_catalogo_base) ? of.fotos_catalogo_base : [];
+    }
+
     function renderizarBloqueAlbumOferta(of) {
+      const id = Number(of.id);
       const fotos = obtenerFotosDeOfertaLocal(of);
-      const lleno = fotos.length >= MAX_FOTOS_OFERTA_UI;
+      const videos = obtenerVideosDeOfertaLocal(of);
+      const sugeridas = obtenerSugeridasBaseOfertaLocal(of);
+      const fotosLleno = fotos.length >= MAX_FOTOS_OFERTA_UI;
+      const videosLleno = videos.length >= MAX_VIDEOS_OFERTA_UI;
+      const subiendoEsteVideo = Number(VIDEO_UPLOAD_STATE.subiendoOfertaId) === id;
+      const haySubidaVideoEnCurso = Boolean(VIDEO_UPLOAD_STATE.subiendoOfertaId);
+      const portadaModo = String(of.portada_modo || 'AUTO').toUpperCase();
+      const portadaActivaId = (portadaModo !== 'OCULTA' && of.portada_activa && of.portada_activa.id)
+        ? String(of.portada_activa.id)
+        : '';
+      const totalPropio = fotos.length + videos.length;
+      const tieneMediaEfectiva = totalPropio > 0 || sugeridas.length > 0;
+
       return `
-        <div class="oferta-album-box" data-oferta-album-box="${Number(of.id)}">
+        <div class="oferta-album-box" data-oferta-album-box="${id}">
           <div class="oferta-album-head">
-            <div class="oferta-album-title">
-              <span>📷 Fotos del producto (${fotos.length}/${MAX_FOTOS_OFERTA_UI})</span>
-              ${fotos.length === 0
-                ? `<span style="font-weight:700; color:var(--muted); font-size:0.7rem;">· Sin fotos aún</span>`
-                : `<span style="font-weight:700; color:var(--muted); font-size:0.7rem;">· Tocá una miniatura para editar</span>`
+            <div class="oferta-album-title" style="flex-wrap:wrap;">
+              <span>🎬 Galería · Fotos ${fotos.length}/${MAX_FOTOS_OFERTA_UI} · Videos ${videos.length}/${MAX_VIDEOS_OFERTA_UI}</span>
+              ${portadaModo === 'OCULTA'
+                ? `<span style="font-size:0.68rem; font-weight:900; padding:1px 7px; border-radius:999px; background:#fef3c7; color:#92400e;">🙈 Sin portada en lista</span>`
+                : (totalPropio === 0 && sugeridas.length === 0
+                  ? `<span style="font-weight:700; color:var(--muted); font-size:0.7rem;">· Sin fotos ni videos aún</span>`
+                  : `<span style="font-weight:700; color:var(--muted); font-size:0.7rem;">· Tocá una miniatura para portada o editar</span>`)
               }
             </div>
-            ${fotos.length > 0 ? `
-              <button type="button" class="btn-album-act btn-album-danger"
-                onclick="confirmarVaciarAlbumOferta(${Number(of.id)})">
-                🧹 Vaciar álbum
+            <div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              ${tieneMediaEfectiva ? `
+                <button type="button" class="btn-album-act" style="font-size:0.71rem; min-height:28px; padding:3px 8px;"
+                  data-btn-toggle-portada-oculta="${id}"
+                  onclick="configurarPortadaOfertaGestor(${id}, '${portadaModo === 'OCULTA' ? 'AUTO' : 'OCULTA'}', null)">
+                  ${portadaModo === 'OCULTA' ? '👁️ Mostrar portada' : '🙈 Ocultar portada'}
+                </button>
+              ` : ''}
+              ${totalPropio > 0 ? `
+                <button type="button" class="btn-album-act btn-album-danger"
+                  onclick="confirmarVaciarAlbumOferta(${id})">
+                  🧹 Vaciar
+                </button>
+              ` : ''}
+            </div>
+          </div>
+
+          ${totalPropio > 0 ? `
+            <div class="oferta-album-strip">
+              ${fotos.map((f, idx) => {
+                const esPortada = portadaModo !== 'OCULTA' && portadaActivaId === String(f.id);
+                return `
+                  <button type="button"
+                    class="album-thumb-btn${esPortada ? ' is-portada' : ''}"
+                    data-album-thumb="${esc(f.id)}"
+                    onclick="abrirMenuAccionesFotoOferta(${id}, '${esc(f.id)}')"
+                    title="${esPortada ? 'Portada activa — Tocar para opciones' : `Foto #${idx + 1} — Tocar para opciones`}">
+                    <img src="${esc(f.url)}" alt="Foto ${idx + 1}" loading="lazy" />
+                    <span class="album-thumb-badge">${esPortada ? '⭐ Portada' : `📷 #${idx + 1}`}</span>
+                    ${f.filtro_aplicado !== false ? `<span class="album-thumb-fx" title="Con mejora automática">✨</span>` : ''}
+                  </button>
+                `;
+              }).join('')}
+              ${videos.map((v, vIdx) => {
+                const esPortada = portadaModo !== 'OCULTA' && portadaActivaId === String(v.id);
+                const durTxt = Math.max(1, Math.round(Number(v.duration_sec || 1))) + 's';
+                return `
+                  <button type="button"
+                    class="album-thumb-btn${esPortada ? ' is-portada' : ''}"
+                    data-album-thumb="${esc(v.id)}"
+                    onclick="abrirMenuAccionesVideoOferta(${id}, '${esc(v.id)}')"
+                    title="${esPortada ? 'Video de portada activo — Tocar para opciones' : `Video #${vIdx + 1} (${durTxt}) — Tocar para opciones`}">
+                    ${v.poster_url ? `<img src="${esc(v.poster_url)}" alt="Video ${vIdx + 1}" loading="lazy" />` : ''}
+                    <div class="album-thumb-play"><span>▶</span></div>
+                    <span class="album-thumb-badge">${esPortada ? '⭐ Portada' : `🎬 ${durTxt}`}</span>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          ` : (sugeridas.length > 0 ? `
+            <div style="font-size:0.72rem; color:var(--muted); margin-bottom:6px;">
+              📦 Este artículo cuenta con <strong>${sugeridas.length} foto${sugeridas.length === 1 ? '' : 's'} sugerida${sugeridas.length === 1 ? '' : 's'}</strong> de catálogo. Podés importarlas para editarlas o sumar tus propias fotos y videos.
+            </div>
+          ` : '')}
+
+          <div class="oferta-album-actions">
+            <button type="button" class="btn-album-act" data-btn-camara="${id}"
+              ${(fotosLleno || haySubidaVideoEnCurso) ? 'disabled' : ''}
+              onclick="dispararCapturaFotoOferta(${id}, 'camera')">
+              📷 Sacar foto
+            </button>
+            <button type="button" class="btn-album-act" data-btn-galeria="${id}"
+              ${(fotosLleno || haySubidaVideoEnCurso) ? 'disabled' : ''}
+              onclick="dispararCapturaFotoOferta(${id}, 'gallery')">
+              🖼️ Galería
+            </button>
+            <button type="button" class="btn-album-act" data-btn-subir-video="${id}"
+              ${(videosLleno || haySubidaVideoEnCurso) ? 'disabled' : ''}
+              onclick="dispararSubidaVideoOferta(${id})">
+              🎬 Subir video
+            </button>
+            ${(sugeridas.length > 0 && !fotosLleno) ? `
+              <button type="button" class="btn-album-act" data-btn-sugeridas="${id}"
+                ${haySubidaVideoEnCurso ? 'disabled' : ''}
+                onclick="abrirSelectorFotosSugeridasOferta(${id})">
+                📦 Fotos sugeridas (${sugeridas.length})
               </button>
             ` : ''}
           </div>
-          ${fotos.length > 0 ? `
-            <div class="oferta-album-strip">
-              ${fotos.map((f, idx) => `
-                <button type="button"
-                  class="album-thumb-btn${idx === 0 ? ' is-portada' : ''}"
-                  data-album-thumb="${esc(f.id)}"
-                  onclick="abrirMenuAccionesFotoOferta(${Number(of.id)}, '${esc(f.id)}')"
-                  title="${idx === 0 ? 'Portada del álbum — Tocar para opciones' : `Foto #${idx + 1} — Tocar para opciones`}">
-                  <img src="${esc(f.url)}" alt="Foto ${idx + 1}" loading="lazy" />
-                  <span class="album-thumb-badge">${idx === 0 ? '⭐ Portada' : `#${idx + 1}`}</span>
-                  ${f.filtro_aplicado !== false ? `<span class="album-thumb-fx" title="Con mejora automática">✨</span>` : ''}
-                </button>
-              `).join('')}
+
+          ${subiendoEsteVideo ? `
+            <div class="video-upload-banner" data-testid="banner-optimizando-video-${id}">
+              <span>⏳</span>
+              <span>Optimizando video corto para carga instantánea en celulares...</span>
             </div>
           ` : ''}
-          <div class="oferta-album-actions">
-            <button type="button" class="btn-album-act" data-btn-camara="${Number(of.id)}"
-              ${lleno ? 'disabled' : ''}
-              onclick="dispararCapturaFotoOferta(${Number(of.id)}, 'camera')">
-              📷 Sacar foto
-            </button>
-            <button type="button" class="btn-album-act" data-btn-galeria="${Number(of.id)}"
-              ${lleno ? 'disabled' : ''}
-              onclick="dispararCapturaFotoOferta(${Number(of.id)}, 'gallery')">
-              🖼️ Subir de galería
-            </button>
-          </div>
         </div>
       `;
     }
@@ -9926,6 +10294,7 @@
         <input type="file" id="input-foto-camara-gestor" accept="image/*" capture="environment" style="display:none;" />
         <input type="file" id="input-foto-galeria-gestor" accept="image/*" multiple style="display:none;" />
         <input type="file" id="input-foto-reemplazar-gestor" accept="image/*" style="display:none;" />
+        <input type="file" id="input-video-galeria-gestor" accept="video/mp4,video/quicktime,video/webm,video/*" style="display:none;" />
 
         <div id="modal-acciones-foto-gestor" class="foto-modal-overlay" onclick="if(event.target===this)cerrarMenuAccionesFotoOferta()">
           <div class="foto-modal-card" id="modal-acciones-foto-content"></div>
@@ -9995,10 +10364,12 @@
       const inpCam = document.getElementById('input-foto-camara-gestor');
       const inpGal = document.getElementById('input-foto-galeria-gestor');
       const inpRep = document.getElementById('input-foto-reemplazar-gestor');
+      const inpVid = document.getElementById('input-video-galeria-gestor');
 
       inpCam.addEventListener('change', (ev) => manejarSeleccionArchivosFoto(ev.target.files, 'nueva'));
       inpGal.addEventListener('change', (ev) => manejarSeleccionArchivosFoto(ev.target.files, 'nueva'));
       inpRep.addEventListener('change', (ev) => manejarSeleccionArchivosFoto(ev.target.files, 'reemplazar'));
+      inpVid.addEventListener('change', (ev) => manejarSeleccionArchivoVideo(ev.target.files));
 
       // Soporte de arrastre táctil / mouse sobre el visor para ajustar el encuadre cuando hay recorte activo
       const stage = document.getElementById('foto-editor-stage');
@@ -10502,6 +10873,8 @@
       const idx = fotos.findIndex(f => String(f.id) === String(fotoId));
       if (idx === -1) return;
       const f = fotos[idx];
+      const portadaModo = String(of?.portada_modo || 'AUTO').toUpperCase();
+      const esPortadaActual = portadaModo !== 'OCULTA' && String(of?.portada_activa?.id || '') === String(f.id);
 
       const box = document.getElementById('modal-acciones-foto-content');
       const modal = document.getElementById('modal-acciones-foto-gestor');
@@ -10510,7 +10883,7 @@
       box.innerHTML = `
         <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
           <div style="font-weight:900; font-size:0.96rem; color:var(--text);">
-            ${idx === 0 ? '⭐ Foto de Portada (#1)' : `📷 Foto #${idx + 1} de ${fotos.length}`}
+            ${esPortadaActual ? '⭐ Foto de Portada activa' : `📷 Foto #${idx + 1} de ${fotos.length}`}
           </div>
           <button type="button" onclick="cerrarMenuAccionesFotoOferta()" aria-label="Cerrar"
             style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
@@ -10519,6 +10892,13 @@
           <img src="${esc(f.url)}" alt="Vista foto" style="max-width:100%; max-height:100%; object-fit:contain;" />
         </div>
         <div style="display:flex; flex-direction:column; gap:8px;">
+          ${!esPortadaActual ? `
+            <button type="button" class="btn-album-act" style="width:100%; justify-content:center; min-height:40px; border-color:var(--brand); color:var(--brand-dark); font-weight:900;"
+              data-btn-elegir-portada="${esc(f.id)}"
+              onclick="configurarPortadaOfertaGestor(${Number(ofertaId)}, 'CUSTOM', '${esc(f.id)}')">
+              ⭐ Usar esta foto como portada
+            </button>
+          ` : ''}
           <button type="button" class="btn-album-act" style="width:100%; justify-content:center; min-height:40px;"
             onclick="abrirEditorFotoExistente(${Number(ofertaId)}, '${esc(f.id)}')">
             ✏️ Editar (Recortar / Girar / Filtro)
@@ -10527,12 +10907,6 @@
             onclick="dispararReemplazoFotoExistente(${Number(ofertaId)}, '${esc(f.id)}')">
             🔄 Reemplazar foto
           </button>
-          ${idx > 0 ? `
-            <button type="button" class="btn-album-act" style="width:100%; justify-content:center; min-height:40px;"
-              onclick="hacerPortadaFotoOferta(${Number(ofertaId)}, '${esc(f.id)}')">
-              ⭐ Hacer portada (#1)
-            </button>
-          ` : ''}
           ${fotos.length > 1 ? `
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
               <button type="button" class="btn-album-act" style="justify-content:center; min-height:38px;"
@@ -10556,28 +10930,229 @@
       modal.style.display = 'flex';
     }
 
+    function abrirMenuAccionesVideoOferta(ofertaId, videoId) {
+      asegurarNodosDomModalesFotosGestor();
+      const of = obtenerOfertaLocalPorId(ofertaId);
+      const videos = obtenerVideosDeOfertaLocal(of);
+      const idx = videos.findIndex(v => String(v.id) === String(videoId));
+      if (idx === -1) return;
+      const v = videos[idx];
+      const portadaModo = String(of?.portada_modo || 'AUTO').toUpperCase();
+      const esPortadaActual = portadaModo !== 'OCULTA' && String(of?.portada_activa?.id || '') === String(v.id);
+      const durTxt = Math.max(1, Math.round(Number(v.duration_sec || 1))) + 's';
+
+      const box = document.getElementById('modal-acciones-foto-content');
+      const modal = document.getElementById('modal-acciones-foto-gestor');
+      if (!box || !modal) return;
+
+      box.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
+          <div style="font-weight:900; font-size:0.96rem; color:var(--text);">
+            ${esPortadaActual ? `⭐ Video de Portada (${durTxt})` : `🎬 Video #${idx + 1} (${durTxt})`}
+          </div>
+          <button type="button" onclick="cerrarMenuAccionesFotoOferta()" aria-label="Cerrar"
+            style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+        </div>
+        <div style="background:#0f172a; border-radius:12px; height:220px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin-bottom:12px;">
+          <video src="${esc(v.url)}" ${v.poster_url ? `poster="${esc(v.poster_url)}"` : ''}
+            controls playsinline preload="metadata"
+            style="max-width:100%; max-height:100%; object-fit:contain;"></video>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${!esPortadaActual ? `
+            <button type="button" class="btn-album-act" style="width:100%; justify-content:center; min-height:40px; border-color:var(--brand); color:var(--brand-dark); font-weight:900;"
+              data-btn-elegir-portada="${esc(v.id)}"
+              onclick="configurarPortadaOfertaGestor(${Number(ofertaId)}, 'CUSTOM', '${esc(v.id)}')">
+              ⭐ Usar este video como portada
+            </button>
+          ` : `
+            <div style="font-size:0.76rem; color:#166534; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:9px; padding:7px 10px; text-align:center; font-weight:800;">
+              ✓ Este video se muestra como portada en silencio en tu tienda
+            </div>
+          `}
+          <button type="button" class="btn-album-act btn-album-danger" style="width:100%; justify-content:center; min-height:40px; font-size:0.8rem;"
+            data-btn-eliminar-video="${esc(v.id)}"
+            onclick="confirmarEliminarVideoOferta(${Number(ofertaId)}, '${esc(v.id)}')">
+            🗑️ Eliminar este video
+          </button>
+        </div>
+      `;
+      modal.style.display = 'flex';
+    }
+
     function cerrarMenuAccionesFotoOferta() {
+      const box = document.getElementById('modal-acciones-foto-content');
+      if (box) {
+        box.querySelectorAll('video').forEach(v => {
+          try { v.pause(); } catch (_) {}
+        });
+      }
       const modal = document.getElementById('modal-acciones-foto-gestor');
       if (modal) modal.style.display = 'none';
     }
 
-    async function hacerPortadaFotoOferta(ofertaId, fotoId) {
+    async function configurarPortadaOfertaGestor(ofertaId, portadaModo = 'AUTO', portadaMediaId = null) {
       cerrarMenuAccionesFotoOferta();
       try {
-        const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${Number(ofertaId)}/fotos-orden`, {
+        const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${Number(ofertaId)}/portada`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ portada_id: String(fotoId) })
+          body: JSON.stringify({
+            portada_modo: portadaModo,
+            portada_media_id: portadaMediaId
+          })
         });
         const data = await leerRespuestaJsonSegura(resp);
         if (!resp.ok || !data.ok) {
-          mostrarAvisoPantallaGestor('No se pudo cambiar la portada: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          mostrarAvisoPantallaGestor('No se pudo actualizar la portada: ' + (data.error || `HTTP ${resp.status}`), 'error');
           return;
         }
         await cargarPanelGestor();
-        mostrarAvisoPantallaGestor('⭐ Nueva foto de portada actualizada.', 'ok');
+        if (String(portadaModo).toUpperCase() === 'OCULTA') {
+          mostrarAvisoPantallaGestor('🙈 Portada oculta en la lista principal (la galería sigue disponible al abrir el producto).', 'ok');
+        } else {
+          mostrarAvisoPantallaGestor('⭐ Portada del producto actualizada.', 'ok');
+        }
       } catch (_) {
         mostrarAvisoPantallaGestor('Error de red al actualizar la portada.', 'error');
+      }
+    }
+
+    let _ofertaPendienteSubidaVideoId = null;
+
+    function dispararSubidaVideoOferta(ofertaId) {
+      asegurarNodosDomModalesFotosGestor();
+      if (VIDEO_UPLOAD_STATE.subiendoOfertaId) {
+        mostrarAvisoPantallaGestor('Esperá unos segundos a que termine de optimizarse el video en curso.', 'error');
+        return;
+      }
+      const of = obtenerOfertaLocalPorId(ofertaId);
+      const videos = obtenerVideosDeOfertaLocal(of);
+      if (videos.length >= MAX_VIDEOS_OFERTA_UI) {
+        mostrarAvisoPantallaGestor(`Ya alcanzaste el máximo de ${MAX_VIDEOS_OFERTA_UI} videos cortos para este artículo.`, 'error');
+        return;
+      }
+      _ofertaPendienteSubidaVideoId = Number(ofertaId);
+      const inpVid = document.getElementById('input-video-galeria-gestor');
+      if (inpVid) {
+        inpVid.value = '';
+        inpVid.click();
+      }
+    }
+
+    async function manejarSeleccionArchivoVideo(fileList) {
+      const file = Array.from(fileList || [])[0];
+      const ofertaId = Number(_ofertaPendienteSubidaVideoId || 0);
+      _ofertaPendienteSubidaVideoId = null;
+      if (!file || !ofertaId) return;
+
+      if (file.size > 45 * 1024 * 1024) {
+        mostrarAvisoPantallaGestor('El video supera los 45 MB permitidos. Elegí un clip más corto.', 'error');
+        return;
+      }
+
+      VIDEO_UPLOAD_STATE.subiendoOfertaId = ofertaId;
+      refrescarControlesOfertasEnDom();
+
+      try {
+        const fd = new FormData();
+        fd.append('video', file, file.name || 'video.mp4');
+        const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${ofertaId}/videos`, {
+          method: 'POST',
+          body: fd
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        VIDEO_UPLOAD_STATE.subiendoOfertaId = null;
+        if (!resp.ok || !data.ok) {
+          refrescarControlesOfertasEnDom();
+          mostrarAvisoPantallaGestor('No se pudo subir el video: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+        await cargarPanelGestor();
+        if (data.recortado_25s) {
+          mostrarAvisoPantallaGestor('🎬 Video optimizado y recortado automáticamente a los primeros 25 segundos.', 'ok');
+        } else {
+          mostrarAvisoPantallaGestor('🎬 Video corto optimizado y sumado a la galería.', 'ok');
+        }
+      } catch (_) {
+        VIDEO_UPLOAD_STATE.subiendoOfertaId = null;
+        refrescarControlesOfertasEnDom();
+        mostrarAvisoPantallaGestor('Error de red al subir el video.', 'error');
+      }
+    }
+
+    async function confirmarEliminarVideoOferta(ofertaId, videoId) {
+      if (!window.confirm('¿Querés eliminar este video de la galería del producto?')) return;
+      cerrarMenuAccionesFotoOferta();
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${Number(ofertaId)}/videos/${encodeURIComponent(videoId)}`, {
+          method: 'DELETE'
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo eliminar el video: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+        await cargarPanelGestor();
+        mostrarAvisoPantallaGestor('🗑️ Video eliminado de la galería.', 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de red al eliminar el video.', 'error');
+      }
+    }
+
+    function abrirSelectorFotosSugeridasOferta(ofertaId) {
+      asegurarNodosDomModalesFotosGestor();
+      const of = obtenerOfertaLocalPorId(ofertaId);
+      const sugeridas = obtenerSugeridasBaseOfertaLocal(of);
+      if (sugeridas.length === 0) return;
+
+      const box = document.getElementById('modal-acciones-foto-content');
+      const modal = document.getElementById('modal-acciones-foto-gestor');
+      if (!box || !modal) return;
+
+      box.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;">
+          <div style="font-weight:900; font-size:0.95rem; color:var(--text);">📦 Fotos sugeridas de catálogo</div>
+          <button type="button" onclick="cerrarMenuAccionesFotoOferta()" aria-label="Cerrar"
+            style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+        </div>
+        <p style="margin:0 0 10px 0; font-size:0.76rem; color:var(--muted);">
+          Tocá cualquier foto sugerida para sumarla en 1 toque a la galería de tu tienda y poder combinarla o editarla:
+        </p>
+        <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:9px;">
+          ${sugeridas.map((s, i) => `
+            <div style="border:1px solid var(--border); border-radius:10px; padding:7px; background:#fffdfb; display:flex; flex-direction:column; gap:6px;">
+              <div style="height:110px; border-radius:8px; overflow:hidden; background:#18181b;">
+                <img src="${esc(s.url)}" alt="Sugerida ${i + 1}" style="width:100%; height:100%; object-fit:cover;" />
+              </div>
+              <button type="button" class="btn-album-act" style="width:100%; justify-content:center;"
+                onclick="importarFotoSugeridaOfertaGestor(${Number(ofertaId)}, decodeURIComponent('${encodeURIComponent(s.id || s.url)}'))">
+                + Sumar a mi galería
+              </button>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      modal.style.display = 'flex';
+    }
+
+    async function importarFotoSugeridaOfertaGestor(ofertaId, sugeridaIdOUrl) {
+      cerrarMenuAccionesFotoOferta();
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${Number(ofertaId)}/fotos/importar-sugerida`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ foto_sugerida_id: sugeridaIdOUrl })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo importar la foto sugerida: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+        await cargarPanelGestor();
+        mostrarAvisoPantallaGestor('📦 Foto sugerida sumada a la galería de tu tienda.', 'ok');
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de red al importar la foto sugerida.', 'error');
       }
     }
 
@@ -10605,14 +11180,14 @@
           return;
         }
         await cargarPanelGestor();
-        mostrarAvisoPantallaGestor('✓ Orden del álbum actualizado.', 'ok');
+        mostrarAvisoPantallaGestor('✓ Orden de fotos actualizado.', 'ok');
       } catch (_) {
-        mostrarAvisoPantallaGestor('Error de red al reordenar el álbum.', 'error');
+        mostrarAvisoPantallaGestor('Error de red al reordenar las fotos.', 'error');
       }
     }
 
     async function confirmarEliminarFotoOferta(ofertaId, fotoId) {
-      if (!window.confirm('¿Querés eliminar esta foto del álbum del producto?')) return;
+      if (!window.confirm('¿Querés eliminar esta foto de la galería del producto?')) return;
       cerrarMenuAccionesFotoOferta();
       try {
         const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${Number(ofertaId)}/fotos/${encodeURIComponent(fotoId)}`, {
@@ -10624,27 +11199,27 @@
           return;
         }
         await cargarPanelGestor();
-        mostrarAvisoPantallaGestor('🗑️ Foto eliminada del álbum.', 'ok');
+        mostrarAvisoPantallaGestor('🗑️ Foto eliminada de la galería.', 'ok');
       } catch (_) {
         mostrarAvisoPantallaGestor('Error de red al eliminar la foto.', 'error');
       }
     }
 
     async function confirmarVaciarAlbumOferta(ofertaId) {
-      if (!window.confirm('¿Querés vaciar todas las fotos de este producto?')) return;
+      if (!window.confirm('¿Querés vaciar todas las fotos y videos de este producto?')) return;
       try {
         const resp = await fetchGestor(`/api/produccion/nodos/ofertas-gestor/${Number(ofertaId)}/fotos`, {
           method: 'DELETE'
         });
         const data = await leerRespuestaJsonSegura(resp);
         if (!resp.ok || !data.ok) {
-          mostrarAvisoPantallaGestor('No se pudo vaciar el álbum: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          mostrarAvisoPantallaGestor('No se pudo vaciar la galería: ' + (data.error || `HTTP ${resp.status}`), 'error');
           return;
         }
         await cargarPanelGestor();
-        mostrarAvisoPantallaGestor('🧹 Álbum de fotos vaciado por completo.', 'ok');
+        mostrarAvisoPantallaGestor('🧹 Galería multimedia vaciada por completo.', 'ok');
       } catch (_) {
-        mostrarAvisoPantallaGestor('Error de red al vaciar el álbum.', 'error');
+        mostrarAvisoPantallaGestor('Error de red al vaciar la galería.', 'error');
       }
     }
 

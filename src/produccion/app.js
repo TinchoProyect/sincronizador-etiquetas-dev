@@ -50,10 +50,12 @@ app.use((req, res, next) => {
     if (!esAccesoExternoNodos(req)) return next();
 
     const p = String(req.path || '');
+    const pLower = p.toLowerCase();
     const esMediaFotoPublicaNodo =
         (req.method === 'GET' || req.method === 'HEAD') &&
-        !p.toLowerCase().endsWith('_orig.webp') &&
-        /^\/media\/nodos\/\d+\/\d+\/[a-z0-9_-]+\.webp$/i.test(p);
+        !pLower.endsWith('_orig.webp') &&
+        !pLower.endsWith('_tmp.mp4') &&
+        /^\/media\/nodos\/\d+\/\d+\/[a-z0-9_-]+\.(?:webp|mp4)$/i.test(p);
 
     const esImagenMarcaPublicaNodo =
         (req.method === 'GET' || req.method === 'HEAD') &&
@@ -78,7 +80,7 @@ app.use((req, res, next) => {
     const esApiNodoPermitida =
         esBeaconTelemetriaTienda ||
         esRecursoPwaNodo ||
-        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|comprobante-pago\/\d+|ofertas-gestor\/\d+(\/fotos(\/preview|\/[a-z0-9_-]+)?|\/fotos-orden)?|gestor\/\d+\/(config-logistica|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/(estado-entrega|reenviar-recibo-whatsapp)|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|pedidos\/[^/]+\/(aviso-pago|estado-pago)|cotizar-cp|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/(etiqueta|recibo-marca-blanca\.png)|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
+        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|comprobante-pago\/\d+|ofertas-gestor\/\d+(\/fotos(\/preview|\/importar-sugerida|\/[a-z0-9_-]+)?|\/fotos-orden|\/videos(\/[a-z0-9_-]+)?|\/portada)?|gestor\/\d+\/(config-logistica|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/(estado-entrega|reenviar-recibo-whatsapp)|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|pedidos\/[^/]+\/(aviso-pago|estado-pago)|cotizar-cp|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/(etiqueta|recibo-marca-blanca\.png)|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
 
     if (esVistaPermitida || esApiNodoPermitida) {
         return next();
@@ -342,15 +344,16 @@ app.use('/img/nodos', (req, res, next) => {
     maxAge: '7d'
 }));
 
-// 🖼️ Servidor estático blindado para álbumes WebP publicados de Nodos Barriales
-// (Bloquea traversal, listado de directorios y archivos internos `*_orig.webp`)
+// 🖼️ Servidor estático blindado para galerías WebP + MP4 publicadas de Nodos Barriales
+// (Bloquea traversal, listado de directorios y archivos internos `*_orig.webp` / `*_tmp.mp4`; habilita Range HTTP 206)
 const { obtenerDirectorioMediaNodos } = require('./services/nodosFotosService');
 app.use('/media/nodos', (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
         return res.status(405).end();
     }
     const subPath = String(req.path || '');
-    if (subPath.toLowerCase().endsWith('_orig.webp') || !/^\/\d+\/\d+\/[a-z0-9_-]+\.webp$/i.test(subPath)) {
+    const subLower = subPath.toLowerCase();
+    if (subLower.endsWith('_orig.webp') || subLower.endsWith('_tmp.mp4') || !/^\/\d+\/\d+\/[a-z0-9_-]+\.(?:webp|mp4)$/i.test(subPath)) {
         return res.status(403).json({ ok: false, error: 'Acceso restringido al recurso multimedia.' });
     }
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -359,7 +362,8 @@ app.use('/media/nodos', (req, res, next) => {
     return express.static(mediaRoot, {
         dotfiles: 'deny',
         index: false,
-        fallthrough: false
+        fallthrough: false,
+        acceptRanges: true
     })(req, res, (err) => {
         if (err) {
             return res.status(err.statusCode || err.status || 404).end();

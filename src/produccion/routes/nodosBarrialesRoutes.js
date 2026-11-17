@@ -19,6 +19,20 @@ const uploadFotoNodoMemoria = multer({
     }
 });
 
+const uploadVideoNodoDisco = multer({
+    storage: multer.diskStorage({
+        destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+        filename: (_req, file, cb) => {
+            const rawExt = path.extname(String(file.originalname || '.mp4')).replace(/[^a-zA-Z0-9.]/g, '').slice(0, 10) || '.mp4';
+            cb(null, `lamda_vid_${Date.now()}_${Math.random().toString(36).slice(2, 10)}${rawExt}`);
+        }
+    }),
+    limits: {
+        fileSize: 45 * 1024 * 1024,
+        files: 1
+    }
+});
+
 const uploadComprobantePagoMemoria = multer({
     storage: multer.memoryStorage(),
     limits: {
@@ -67,6 +81,24 @@ function middlewareSubidaFotoOpcional(req, res, next) {
                 error: esTamano
                     ? 'La foto supera el límite máximo permitido (12 MB).'
                     : ('Error recibiendo imagen: ' + err.message)
+            });
+        }
+        return next();
+    });
+}
+
+function middlewareSubidaVideoUnico(req, res, next) {
+    return uploadVideoNodoDisco.single('video')(req, res, (err) => {
+        if (err) {
+            if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+                try { fs.unlinkSync(req.file.path); } catch (_) {}
+            }
+            const esTamano = err.code === 'LIMIT_FILE_SIZE';
+            return res.status(400).json({
+                ok: false,
+                error: esTamano
+                    ? 'El video supera el peso máximo permitido (45 MB). Grabá un clip más corto.'
+                    : ('Error recibiendo el video: ' + err.message)
             });
         }
         return next();
@@ -775,6 +807,85 @@ router.delete('/ofertas-gestor/:id/fotos', autenticarGestorSiPublicoOToken, asyn
         res.json({ ok: true, ...resultado });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error vaciando álbum de oferta:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/ofertas-gestor/:id/videos', autenticarGestorSiPublicoOToken, middlewareSubidaVideoUnico, async (req, res) => {
+    const tempPath = req.file && req.file.path ? req.file.path : null;
+    try {
+        if (req.nodoAuth) {
+            await nodosService.asegurarOfertaPerteneceANodo(req.params.id, req.nodoAuth.id);
+        }
+        if (!tempPath) {
+            return res.status(400).json({ ok: false, error: 'Debés seleccionar un archivo de video para subir.' });
+        }
+        const resultado = await nodosFotosService.agregarVideoOferta({
+            ofertaId: req.params.id,
+            nodoAuthId: req.nodoAuth ? req.nodoAuth.id : null,
+            tempFilePath: tempPath
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error subiendo video de oferta:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    } finally {
+        if (tempPath && fs.existsSync(tempPath)) {
+            try { fs.unlinkSync(tempPath); } catch (_) {}
+        }
+    }
+});
+
+router.delete('/ofertas-gestor/:id/videos/:videoId', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth) {
+            await nodosService.asegurarOfertaPerteneceANodo(req.params.id, req.nodoAuth.id);
+        }
+        const resultado = await nodosFotosService.eliminarVideoOferta({
+            ofertaId: req.params.id,
+            videoId: req.params.videoId,
+            nodoAuthId: req.nodoAuth ? req.nodoAuth.id : null
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error eliminando video de oferta:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.put('/ofertas-gestor/:id/portada', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth) {
+            await nodosService.asegurarOfertaPerteneceANodo(req.params.id, req.nodoAuth.id);
+        }
+        const body = req.body || {};
+        const resultado = await nodosFotosService.configurarPortadaOferta({
+            ofertaId: req.params.id,
+            nodoAuthId: req.nodoAuth ? req.nodoAuth.id : null,
+            portadaModo: body.portada_modo,
+            portadaMediaId: body.portada_media_id
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error configurando portada de oferta:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/ofertas-gestor/:id/fotos/importar-sugerida', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth) {
+            await nodosService.asegurarOfertaPerteneceANodo(req.params.id, req.nodoAuth.id);
+        }
+        const body = req.body || {};
+        const resultado = await nodosFotosService.importarFotoSugeridaOferta({
+            ofertaId: req.params.id,
+            nodoAuthId: req.nodoAuth ? req.nodoAuth.id : null,
+            fotoSugeridaIdOUrl: body.foto_sugerida_id || body.url || ''
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error importando foto sugerida de oferta:', error);
         res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });

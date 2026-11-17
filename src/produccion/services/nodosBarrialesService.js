@@ -35,6 +35,19 @@ const {
 } = require('./nodosAnaliticaService');
 const pagosBancariosService = require('./nodosPagosBancariosService');
 const recibosMarcaBlancaService = require('./nodosRecibosMarcaBlancaService');
+const {
+    normalizarArrayVideosBd,
+    normalizarModoPortada,
+    construirGaleriaYPortadaOferta
+} = require('./nodosFotosService');
+
+function normalizarModoVidrieraTienda(raw) {
+    const val = String(raw || '').trim().toUpperCase();
+    if (val === 'CUADRICULA' || val === 'LISTA_COMPACTA' || val === 'PORTADAS') {
+        return val;
+    }
+    return 'PORTADAS';
+}
 
 let esquemaInicializado = false;
 
@@ -3863,7 +3876,8 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS gestor_token VARCHAR(80),
                 ADD COLUMN IF NOT EXISTS bajada_marca TEXT,
                 ADD COLUMN IF NOT EXISTS slug_historico TEXT,
-                ADD COLUMN IF NOT EXISTS tema_visual JSONB NOT NULL DEFAULT '{}'::jsonb;
+                ADD COLUMN IF NOT EXISTS tema_visual JSONB NOT NULL DEFAULT '{}'::jsonb,
+                ADD COLUMN IF NOT EXISTS modo_vidriera_tienda VARCHAR(24) NOT NULL DEFAULT 'PORTADAS';
 
             CREATE UNIQUE INDEX IF NOT EXISTS unq_nodos_maestro_gestor_token
                 ON public.nodos_maestro (gestor_token)
@@ -3877,7 +3891,11 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS mostrar_ingredientes BOOLEAN DEFAULT true,
                 ADD COLUMN IF NOT EXISTS nombre_vidriera_personalizado TEXT,
                 ADD COLUMN IF NOT EXISTS categoria_vidriera_personalizada TEXT,
-                ADD COLUMN IF NOT EXISTS fotos_vidriera JSONB NOT NULL DEFAULT '[]'::jsonb;
+                ADD COLUMN IF NOT EXISTS fotos_vidriera JSONB NOT NULL DEFAULT '[]'::jsonb,
+                ADD COLUMN IF NOT EXISTS narrativa_tienda TEXT,
+                ADD COLUMN IF NOT EXISTS videos_vidriera JSONB NOT NULL DEFAULT '[]'::jsonb,
+                ADD COLUMN IF NOT EXISTS portada_modo VARCHAR(20) NOT NULL DEFAULT 'AUTO',
+                ADD COLUMN IF NOT EXISTS portada_media_id VARCHAR(64);
 
             ALTER TABLE public.nodos_articulos_catalogo
                 ADD COLUMN IF NOT EXISTS fotos_catalogo_base JSONB NOT NULL DEFAULT '[]'::jsonb;
@@ -8489,6 +8507,15 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
     const categoriaVidrieraPersonalizada = payload.categoria_vidriera_personalizada !== undefined
         ? (String(payload.categoria_vidriera_personalizada || '').trim() || null)
         : (row.categoria_vidriera_personalizada || null);
+    const narrativaTienda = payload.narrativa_tienda !== undefined
+        ? (String(payload.narrativa_tienda || '').trim().slice(0, 600) || null)
+        : (row.narrativa_tienda ? String(row.narrativa_tienda).trim().slice(0, 600) : null);
+    const portadaModo = payload.portada_modo !== undefined
+        ? normalizarModoPortada(payload.portada_modo)
+        : normalizarModoPortada(row.portada_modo);
+    const portadaMediaId = payload.portada_media_id !== undefined
+        ? (String(payload.portada_media_id || '').trim() || null)
+        : (row.portada_media_id ? String(row.portada_media_id).trim() : null);
 
     const upd = await db.query(
         `UPDATE public.nodos_ofertas_gestor SET
@@ -8501,9 +8528,12 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
             mostrar_ingredientes = $7,
             nombre_vidriera_personalizado = $8,
             categoria_vidriera_personalizada = $9,
+            narrativa_tienda = $10,
+            portada_modo = $11,
+            portada_media_id = $12,
             alerta_cambio_costo = false,
             updated_at = NOW()
-         WHERE id = $10
+         WHERE id = $13
          RETURNING *`,
         [
             baseActual,
@@ -8515,6 +8545,9 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
             mostrarIngredientes,
             nombreVidrieraPersonalizado,
             categoriaVidrieraPersonalizada,
+            narrativaTienda,
+            portadaModo,
+            portadaModo === 'CUSTOM' ? portadaMediaId : null,
             Number(ofertaId)
         ]
     );
@@ -8997,10 +9030,17 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         };
     });
 
-    const normalizarFotosGestor = (rawArr) => {
+    const normalizarFotosGestor = (rawArr, permitirRutasCatalogoBase = false) => {
         if (!Array.isArray(rawArr)) return [];
         return rawArr
-            .filter(f => f && typeof f === 'object' && f.id && f.url && /^\/media\/nodos\/\d+\/\d+\/[a-z0-9_-]+\.webp(\?.*)?$/i.test(String(f.url)) && !String(f.url).includes('_orig.webp'))
+            .filter(f => {
+                if (!f || typeof f !== 'object' || !f.id || !f.url) return false;
+                const u = String(f.url);
+                if (u.toLowerCase().includes('_orig.webp')) return false;
+                if (/^\/media\/nodos\/\d+\/\d+\/[a-z0-9_-]+\.webp(\?.*)?$/i.test(u)) return true;
+                if (permitirRutasCatalogoBase && /^\/(?:media\/nodos|img)\/[a-z0-9/_.-]+\.(?:webp|png|jpe?g)(\?.*)?$/i.test(u)) return true;
+                return false;
+            })
             .slice()
             .sort((a, b) => (Number(a.orden || 0) - Number(b.orden || 0)))
             .map((f, idx) => ({
@@ -9037,8 +9077,17 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             const categoriaVidrieraPers = o.categoria_vidriera_personalizada ? String(o.categoria_vidriera_personalizada).trim() : '';
             const nombreVidrieraEfectivo = nombreVidrieraPers || nombreOficialLamda;
             const categoriaVidrieraEfectiva = categoriaVidrieraPers || categoriaOficialLamda;
-            const fotosPropias = normalizarFotosGestor(o.fotos_vidriera);
-            const fotosBase = normalizarFotosGestor(o.fotos_catalogo_base);
+            const narrativaTienda = o.narrativa_tienda ? String(o.narrativa_tienda).trim().slice(0, 600) : null;
+            const fotosPropias = normalizarFotosGestor(o.fotos_vidriera, false);
+            const fotosBase = normalizarFotosGestor(o.fotos_catalogo_base, true);
+            const videosPropios = normalizarArrayVideosBd(o.videos_vidriera);
+            const galeriaInfo = construirGaleriaYPortadaOferta({
+                fotosPropias,
+                fotosBase,
+                videosPropios,
+                portadaModo: o.portada_modo,
+                portadaMediaId: o.portada_media_id
+            });
             return {
                 ...o,
                 nombre_publico: nombreOficialLamda,
@@ -9050,13 +9099,19 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 categoria_vidriera_personalizada: categoriaVidrieraPers || null,
                 nombre_vidriera_efectivo: nombreVidrieraEfectivo,
                 categoria_vidriera_efectiva: categoriaVidrieraEfectiva,
+                narrativa_tienda: narrativaTienda,
                 alias_sugerido_previo: aliasSugeridoPorCatId.get(Number(o.articulo_catalogo_id)) || null,
                 linea_negocio: desglose ? Number(desglose.linea_negocio || 0) || null : null,
                 mostrar_ingredientes: mostrarEnOferta,
                 tiene_desglose_ingredientes: tieneDesgloseIngredientes,
                 ingredientes_comerciales: listaIngredientes,
                 fotos_vidriera: fotosPropias,
-                fotos_catalogo_base: fotosBase
+                fotos_catalogo_base: fotosBase,
+                videos_vidriera: videosPropios,
+                portada_modo: galeriaInfo.portada_modo_efectivo,
+                portada_media_id: o.portada_media_id ? String(o.portada_media_id) : null,
+                portada_activa: galeriaInfo.portada_activa,
+                galeria_multimedia: galeriaInfo.galeria_multimedia
             };
         })
     );
@@ -9079,12 +9134,24 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 height: f.height,
                 orden: idx + 1
             }));
+            const videosPublicos = (Array.isArray(o.videos_vidriera) ? o.videos_vidriera : []).map((v, idx) => ({
+                id: v.id,
+                tipo: 'video',
+                url: v.url,
+                poster_url: v.poster_url || '',
+                width: v.width,
+                height: v.height,
+                duration_sec: v.duration_sec || 0,
+                tiene_audio: Boolean(v.tiene_audio),
+                orden: idx + 1
+            }));
             return {
                 oferta_id: o.id,
                 articulo_catalogo_id: o.articulo_catalogo_id,
                 sku_nodo: o.sku_nodo,
                 nombre_publico: o.nombre_vidriera_efectivo,
                 categoria_familiar: o.categoria_vidriera_efectiva,
+                narrativa_tienda: o.narrativa_tienda || null,
                 presentacion_etiqueta: o.presentacion_etiqueta,
                 kilos_unidad: Number(o.kilos_unidad),
                 flujo_lamda: Number(o.flujo_lamda || 0) || null,
@@ -9093,6 +9160,10 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 destacado_tienda: Boolean(o.destacado_tienda),
                 mostrar_ingredientes: habilitarBotonIng,
                 ingredientes_comerciales: habilitarBotonIng ? o.ingredientes_comerciales : [],
+                portada_modo: o.portada_modo || 'AUTO',
+                portada_activa: o.portada_activa || null,
+                galeria_multimedia: Array.isArray(o.galeria_multimedia) ? o.galeria_multimedia : [],
+                videos_vidriera: videosPublicos,
                 fotos_vidriera: fotosPublicas
             };
         });
@@ -9118,10 +9189,13 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
     const cuilEfectivo = nodo.cuil_display || cfgCanalActiva.cuil_recaudador;
     const nroCuentaEfectivo = nodo.numero_cuenta_display || cfgCanalActiva.numero_cuenta_recaudador;
 
+    const modoVidrieraNodo = normalizarModoVidrieraTienda(nodo.modo_vidriera_tienda);
+
     const { gestor_token: _omitGestorToken, ...nodoSinToken } = nodo;
     const nodoPublico = esVistaGestor
         ? {
             ...nodoSinToken,
+            modo_vidriera_tienda: modoVidrieraNodo,
             banco_display: bancoEfectivo,
             alias_bancario_display: aliasEfectivo,
             cbu_display: cbuEfectivo,
@@ -9149,6 +9223,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             nombre_marca: nodo.nombre_marca,
             bajada_marca: nodo.bajada_marca || null,
             subtitulo_marca: nodo.subtitulo_marca,
+            modo_vidriera_tienda: modoVidrieraNodo,
             gestor_nombre: nodo.gestor_nombre,
             gestor_telefono: nodo.gestor_telefono,
             barrio_zona: nodo.barrio_zona,
@@ -9316,6 +9391,10 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
         ? payload.config_ventanas_corte
         : actual.config_ventanas_corte;
 
+    const modoVidrieraTienda = payload.modo_vidriera_tienda !== undefined
+        ? normalizarModoVidrieraTienda(payload.modo_vidriera_tienda)
+        : normalizarModoVidrieraTienda(actual.modo_vidriera_tienda);
+
     const upd = await db.query(
         `UPDATE public.nodos_maestro SET
             nombre_marca = COALESCE($1, nombre_marca),
@@ -9337,6 +9416,7 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             modulos_activos = $18::jsonb,
             config_paqueteria = $19::jsonb,
             cobro_efectivo_entrega = $20,
+            modo_vidriera_tienda = $21,
             updated_at = NOW()
          WHERE id = $13
          RETURNING *`,
@@ -9360,7 +9440,8 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             payload.bajada_marca !== undefined ? String(payload.bajada_marca || '').trim() : actual.bajada_marca,
             JSON.stringify(modulosNuevos),
             JSON.stringify(configPaqNueva),
-            cobroEfectivoEntrega
+            cobroEfectivoEntrega,
+            modoVidrieraTienda
         ]
     );
 

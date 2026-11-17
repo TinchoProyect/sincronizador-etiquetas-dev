@@ -16,13 +16,56 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 const sharp = require('sharp');
 const db = require('../config/database');
 
-const MAX_FOTOS_POR_OFERTA = 6;
+const MAX_FOTOS_POR_OFERTA = 8;
+const MAX_VIDEOS_POR_OFERTA = 2;
+const MAX_VIDEO_DURATION_SEC = 25;
+const MAX_VIDEO_UPLOAD_BYTES = 45 * 1024 * 1024;
+const VIDEO_TRANSCODE_TIMEOUT_MS = 60000;
 const MAX_ORIG_DIM = 1600;
 const MAX_PUB_DIM = 1280;
 const MAX_PREVIEW_DIM = 960;
+
+let _cachedMediaBinaries = null;
+function resolverBinariosMultimedia() {
+    if (_cachedMediaBinaries) return _cachedMediaBinaries;
+    let ffmpegBin = null;
+    let ffprobeBin = null;
+
+    if (process.platform !== 'win32') {
+        if (fs.existsSync('/usr/bin/ffmpeg')) ffmpegBin = '/usr/bin/ffmpeg';
+        if (fs.existsSync('/usr/bin/ffprobe')) ffprobeBin = '/usr/bin/ffprobe';
+    }
+    if (!ffmpegBin) {
+        try {
+            const st = require('ffmpeg-static');
+            if (typeof st === 'string' && fs.existsSync(st)) ffmpegBin = st;
+        } catch (_) {}
+    }
+    if (!ffprobeBin) {
+        try {
+            const pr = require('ffprobe-static');
+            const pPath = typeof pr === 'string' ? pr : pr?.path;
+            if (pPath && fs.existsSync(pPath)) ffprobeBin = pPath;
+        } catch (_) {}
+    }
+    _cachedMediaBinaries = {
+        ffmpeg: ffmpegBin || 'ffmpeg',
+        ffprobe: ffprobeBin || 'ffprobe'
+    };
+    return _cachedMediaBinaries;
+}
+
+// Cola secuencial estricta (concurrencia = 1) para proteger CPU en Cloud y WhatsApp (:3004)
+let _colaTranscodificacionPromise = Promise.resolve();
+function encolarTareaVideo(tareaFn) {
+    const ejecucion = _colaTranscodificacionPromise.then(() => tareaFn());
+    _colaTranscodificacionPromise = ejecucion.catch(() => {});
+    return ejecucion;
+}
 
 function esModoLaboratorioFotos() {
     const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || process.env.MODO_LABORATORIO || '').trim().toLowerCase();
@@ -50,10 +93,20 @@ function esFotoIdSeguro(fotoId) {
     return /^nf-[a-z0-9]{6,36}$/.test(String(fotoId || '').trim());
 }
 
+function esVideoIdSeguro(videoId) {
+    return /^nv-[a-z0-9]{6,36}$/.test(String(videoId || '').trim());
+}
+
 function generarFotoId() {
     const ts = Date.now().toString(36);
     const rnd = crypto.randomBytes(4).toString('hex');
     return `nf-${ts}${rnd}`.toLowerCase();
+}
+
+function generarVideoId() {
+    const ts = Date.now().toString(36);
+    const rnd = crypto.randomBytes(4).toString('hex');
+    return `nv-${ts}${rnd}`.toLowerCase();
 }
 
 function obtenerCarpetaOfertaDisco(nodoId, ofertaId) {
@@ -79,6 +132,22 @@ function obtenerRutasArchivoFoto(nodoId, ofertaId, fotoId) {
         dir,
         pubPath: path.join(dir, `${cleanId}.webp`),
         origPath: path.join(dir, `${cleanId}_orig.webp`)
+    };
+}
+
+function obtenerRutasArchivoVideo(nodoId, ofertaId, videoId) {
+    const cleanId = String(videoId || '').trim();
+    if (!esVideoIdSeguro(cleanId)) {
+        const err = new Error('Identificador de video inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+    const dir = obtenerCarpetaOfertaDisco(nodoId, ofertaId);
+    return {
+        dir,
+        mp4Path: path.join(dir, `${cleanId}.mp4`),
+        tmpMp4Path: path.join(dir, `${cleanId}_tmp.mp4`),
+        posterPath: path.join(dir, `${cleanId}_poster.webp`)
     };
 }
 
@@ -286,12 +355,114 @@ function normalizarArrayFotosBd(rawFotos) {
         }));
 }
 
+function normalizarArrayVideosBd(rawVideos) {
+    if (!Array.isArray(rawVideos)) return [];
+    return rawVideos
+        .filter(v => v && typeof v === 'object' && esVideoIdSeguro(v.id) && v.url)
+        .slice()
+        .sort((a, b) => (Number(a.orden || 0) - Number(b.orden || 0)))
+        .map((v, idx) => ({
+            id: String(v.id),
+            tipo: 'video',
+            url: String(v.url),
+            poster_url: v.poster_url ? String(v.poster_url) : '',
+            width: Number(v.width || 0) || null,
+            height: Number(v.height || 0) || null,
+            bytes: Number(v.bytes || 0) || null,
+            duration_sec: Number(v.duration_sec || 0) || 0,
+            tiene_audio: Boolean(v.tiene_audio),
+            recortado_25s: Boolean(v.recortado_25s),
+            orden: idx + 1,
+            created_at: v.created_at || new Date().toISOString(),
+            updated_at: v.updated_at || new Date().toISOString()
+        }));
+}
+
+function normalizarModoPortada(rawModo) {
+    const m = String(rawModo || '').trim().toUpperCase();
+    if (m === 'CUSTOM' || m === 'OCULTA') return m;
+    return 'AUTO';
+}
+
+function construirGaleriaYPortadaOferta({ fotosPropias = [], fotosBase = [], videosPropios = [], portadaModo = 'AUTO', portadaMediaId = null }) {
+    const fotosEf = (Array.isArray(fotosPropias) && fotosPropias.length > 0)
+        ? fotosPropias
+        : (Array.isArray(fotosBase) ? fotosBase : []);
+    const videosEf = Array.isArray(videosPropios) ? videosPropios : [];
+
+    const itemsBase = [
+        ...fotosEf.map((f, idx) => ({
+            id: String(f.id),
+            tipo: 'foto',
+            url: String(f.url),
+            poster_url: String(f.url),
+            width: Number(f.width || 0) || null,
+            height: Number(f.height || 0) || null,
+            duration_sec: null,
+            tiene_audio: false,
+            orden: idx + 1
+        })),
+        ...videosEf.map((v, idx) => ({
+            id: String(v.id),
+            tipo: 'video',
+            url: String(v.url),
+            poster_url: String(v.poster_url || ''),
+            width: Number(v.width || 0) || null,
+            height: Number(v.height || 0) || null,
+            duration_sec: Number(v.duration_sec || 0) || 0,
+            tiene_audio: Boolean(v.tiene_audio),
+            orden: fotosEf.length + idx + 1
+        }))
+    ];
+
+    const modoNorm = normalizarModoPortada(portadaModo);
+    const idNorm = portadaMediaId ? String(portadaMediaId).trim() : '';
+
+    let portadaActiva = null;
+    if (modoNorm === 'OCULTA') {
+        portadaActiva = null;
+    } else if (modoNorm === 'CUSTOM' && idNorm) {
+        portadaActiva = itemsBase.find(it => it.id === idNorm) || itemsBase[0] || null;
+    } else {
+        portadaActiva = itemsBase[0] || null;
+    }
+
+    // En la galería deslizable, si eligió portada CUSTOM, colocarla primera para que coincida con lo que vio en la tarjeta
+    let galeriaOrdenada = itemsBase.slice();
+    if (portadaActiva && galeriaOrdenada.length > 1 && galeriaOrdenada[0].id !== portadaActiva.id) {
+        galeriaOrdenada = [
+            portadaActiva,
+            ...galeriaOrdenada.filter(it => it.id !== portadaActiva.id)
+        ].map((it, i) => ({ ...it, orden: i + 1 }));
+    }
+
+    return {
+        portada_modo_efectivo: modoNorm,
+        portada_media_id_efectivo: portadaActiva ? portadaActiva.id : null,
+        portada_activa: portadaActiva,
+        galeria_multimedia: galeriaOrdenada
+    };
+}
+
 function borrarArchivosFotoSilencioso(nodoId, ofertaId, fotoId) {
     try {
         if (!esFotoIdSeguro(fotoId)) return;
         const { dir, pubPath, origPath } = obtenerRutasArchivoFoto(nodoId, ofertaId, fotoId);
         if (fs.existsSync(pubPath)) fs.unlinkSync(pubPath);
         if (fs.existsSync(origPath)) fs.unlinkSync(origPath);
+        if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
+            fs.rmdirSync(dir);
+        }
+    } catch (_) {}
+}
+
+function borrarArchivosVideoSilencioso(nodoId, ofertaId, videoId) {
+    try {
+        if (!esVideoIdSeguro(videoId)) return;
+        const { dir, mp4Path, tmpMp4Path, posterPath } = obtenerRutasArchivoVideo(nodoId, ofertaId, videoId);
+        if (fs.existsSync(mp4Path)) fs.unlinkSync(mp4Path);
+        if (fs.existsSync(tmpMp4Path)) fs.unlinkSync(tmpMp4Path);
+        if (fs.existsSync(posterPath)) fs.unlinkSync(posterPath);
         if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
             fs.rmdirSync(dir);
         }
@@ -307,7 +478,11 @@ async function obtenerOfertaYValidarNodo(runner, ofertaId, nodoAuthId = null, fo
     }
     const lockSql = forUpdate ? ' FOR UPDATE OF nog' : '';
     const res = await runner.query(
-        `SELECT nog.id, nog.nodo_id, COALESCE(nog.fotos_vidriera, '[]'::jsonb) AS fotos_vidriera,
+        `SELECT nog.id, nog.nodo_id, nog.articulo_catalogo_id,
+                COALESCE(nog.fotos_vidriera, '[]'::jsonb) AS fotos_vidriera,
+                COALESCE(nog.videos_vidriera, '[]'::jsonb) AS videos_vidriera,
+                COALESCE(nog.portada_modo, 'AUTO') AS portada_modo,
+                nog.portada_media_id,
                 nm.activo AS nodo_activo
          FROM public.nodos_ofertas_gestor nog
          JOIN public.nodos_maestro nm ON nm.id = nog.nodo_id
@@ -599,12 +774,15 @@ async function editarOReemplazarFotoOferta({ ofertaId, fotoId, nodoAuthId = null
         nuevoAlbum[idx] = fotoActualizada;
         nuevoAlbum.forEach((f, i) => { f.orden = i + 1; });
 
+        const actualizarPunteroPortada = esReemplazoArchivo && String(ofertaRow.portada_media_id || '') === targetId;
+
         await client.query(
             `UPDATE public.nodos_ofertas_gestor
              SET fotos_vidriera = $1::jsonb,
+                 portada_media_id = CASE WHEN $3::boolean THEN $4 ELSE portada_media_id END,
                  updated_at = NOW()
              WHERE id = $2`,
-            [JSON.stringify(nuevoAlbum), ofertaRow.id]
+            [JSON.stringify(nuevoAlbum), ofertaRow.id, actualizarPunteroPortada, fotoActualizada.id]
         );
 
         await client.query('COMMIT');
@@ -715,12 +893,16 @@ async function eliminarFotoOferta({ ofertaId, fotoId, nodoAuthId = null }) {
             .filter(f => f.id !== targetId)
             .map((f, idx) => ({ ...f, orden: idx + 1 }));
 
+        const eraPortadaCustom = String(ofertaRow.portada_media_id || '') === targetId;
+
         await client.query(
             `UPDATE public.nodos_ofertas_gestor
              SET fotos_vidriera = $1::jsonb,
+                 portada_modo = CASE WHEN $3::boolean THEN 'AUTO' ELSE portada_modo END,
+                 portada_media_id = CASE WHEN $3::boolean THEN NULL ELSE portada_media_id END,
                  updated_at = NOW()
              WHERE id = $2`,
-            [JSON.stringify(nuevoAlbum), ofertaRow.id]
+            [JSON.stringify(nuevoAlbum), ofertaRow.id, eraPortadaCustom]
         );
         await client.query('COMMIT');
 
@@ -735,7 +917,7 @@ async function eliminarFotoOferta({ ofertaId, fotoId, nodoAuthId = null }) {
 }
 
 /**
- * 6) Vaciar por completo el álbum de una oferta y limpiar todos sus archivos en disco.
+ * 6) Vaciar por completo la galería multimedia de una oferta y limpiar sus archivos en disco.
  */
 async function vaciarAlbumOferta({ ofertaId, nodoAuthId = null }) {
     const client = await db.connect();
@@ -744,10 +926,14 @@ async function vaciarAlbumOferta({ ofertaId, nodoAuthId = null }) {
         const ofertaRow = await obtenerOfertaYValidarNodo(client, ofertaId, nodoAuthId, true);
         const nodoId = Number(ofertaRow.nodo_id);
         const fotosPrevias = normalizarArrayFotosBd(ofertaRow.fotos_vidriera);
+        const videosPrevios = normalizarArrayVideosBd(ofertaRow.videos_vidriera);
 
         await client.query(
             `UPDATE public.nodos_ofertas_gestor
              SET fotos_vidriera = '[]'::jsonb,
+                 videos_vidriera = '[]'::jsonb,
+                 portada_modo = 'AUTO',
+                 portada_media_id = NULL,
                  updated_at = NOW()
              WHERE id = $1`,
             [ofertaRow.id]
@@ -758,7 +944,7 @@ async function vaciarAlbumOferta({ ofertaId, nodoAuthId = null }) {
             const dir = obtenerCarpetaOfertaDisco(nodoId, ofertaRow.id);
             if (fs.existsSync(dir)) {
                 for (const entry of fs.readdirSync(dir)) {
-                    if (entry.endsWith('.webp')) {
+                    if (entry.endsWith('.webp') || entry.endsWith('.mp4')) {
                         try { fs.unlinkSync(path.join(dir, entry)); } catch (_) {}
                     }
                 }
@@ -768,7 +954,7 @@ async function vaciarAlbumOferta({ ofertaId, nodoAuthId = null }) {
             }
         } catch (_) {}
 
-        return { eliminadas: fotosPrevias.length, fotos_vidriera: [] };
+        return { eliminadas: fotosPrevias.length + videosPrevios.length, fotos_vidriera: [], videos_vidriera: [] };
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
         throw err;
@@ -777,15 +963,461 @@ async function vaciarAlbumOferta({ ofertaId, nodoAuthId = null }) {
     }
 }
 
+function ejecutarProcesoConTimeout(bin, args, timeoutMs = 30000, captureStdoutBuffer = false) {
+    return new Promise((resolve, reject) => {
+        let finalizado = false;
+        const stdoutChunks = [];
+        const stderrChunks = [];
+
+        let proc;
+        try {
+            proc = spawn(bin, args, { windowsHide: true });
+        } catch (spawnErr) {
+            return reject(spawnErr);
+        }
+
+        const timer = setTimeout(() => {
+            if (finalizado) return;
+            finalizado = true;
+            try { proc.kill('SIGKILL'); } catch (_) {}
+            const err = new Error('El procesamiento del video superó el tiempo máximo permitido (60 s).');
+            err.statusCode = 408;
+            reject(err);
+        }, timeoutMs);
+
+        proc.stdout.on('data', (chunk) => {
+            stdoutChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+        proc.stderr.on('data', (chunk) => {
+            if (stderrChunks.length < 24) {
+                stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+            }
+        });
+
+        proc.on('error', (err) => {
+            if (finalizado) return;
+            finalizado = true;
+            clearTimeout(timer);
+            reject(err);
+        });
+
+        proc.on('close', (code) => {
+            if (finalizado) return;
+            finalizado = true;
+            clearTimeout(timer);
+            const outBuf = Buffer.concat(stdoutChunks);
+            const errTxt = Buffer.concat(stderrChunks).toString('utf8');
+            if (code !== 0) {
+                const err = new Error(errTxt.trim().split('\n').slice(-3).join(' ') || `Proceso finalizó con código ${code}`);
+                err.code = code;
+                return reject(err);
+            }
+            resolve({
+                stdoutBuffer: outBuf,
+                stdout: captureStdoutBuffer ? '' : outBuf.toString('utf8'),
+                stderr: errTxt
+            });
+        });
+    });
+}
+
+async function inspeccionarVideoConFfprobe(filePath) {
+    if (!filePath || !fs.existsSync(filePath)) {
+        const err = new Error('No se recibió un archivo de video válido.');
+        err.statusCode = 400;
+        throw err;
+    }
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile() || stat.size < 256) {
+        const err = new Error('El archivo de video está vacío o dañado.');
+        err.statusCode = 400;
+        throw err;
+    }
+    if (stat.size > MAX_VIDEO_UPLOAD_BYTES) {
+        const err = new Error('El video supera el peso máximo permitido (45 MB).');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const { ffprobe } = resolverBinariosMultimedia();
+    let parsed = null;
+    try {
+        const res = await ejecutarProcesoConTimeout(
+            ffprobe,
+            ['-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', filePath],
+            15000,
+            false
+        );
+        parsed = JSON.parse(res.stdout || '{}');
+    } catch (_) {
+        const err = new Error('Archivo inválido o no reconocido como video. Subí un video MP4, MOV o WebM real.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const streams = Array.isArray(parsed?.streams) ? parsed.streams : [];
+    const vStream = streams.find(s => s && s.codec_type === 'video' && String(s.codec_name || '').toLowerCase() !== 'mjpeg' && String(s.codec_name || '').toLowerCase() !== 'png');
+    if (!vStream) {
+        const err = new Error('El archivo no contiene una pista de video válida (MP4, MOV o WebM).');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const width = Number(vStream.width || 0);
+    const height = Number(vStream.height || 0);
+    if (width < 32 || height < 32) {
+        const err = new Error('Las dimensiones del video son inválidas.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const durFormat = Number(parsed?.format?.duration || 0);
+    const durStream = Number(vStream.duration || 0);
+    const durationRaw = durFormat > 0 ? durFormat : (durStream > 0 ? durStream : 0);
+    if (!Number.isFinite(durationRaw) || durationRaw <= 0.1) {
+        const err = new Error('No se pudo determinar una duración válida en el video.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const tieneAudio = streams.some(s => s && s.codec_type === 'audio');
+    return {
+        width,
+        height,
+        duration_sec: durationRaw,
+        tiene_audio: tieneAudio
+    };
+}
+
+/**
+ * 7) Subir y transcodificar un video corto (máx. 2 por oferta, máx. 25 s, cola concurrencia = 1, -threads 1, H.264 +faststart + poster WebP).
+ */
+async function agregarVideoOferta({ ofertaId, nodoAuthId = null, tempFilePath }) {
+    try {
+        // 1. Pre-chequeo rápido de cupo antes de consumir CPU en FFmpeg
+        const ofertaPre = await obtenerOfertaYValidarNodo(db, ofertaId, nodoAuthId, false);
+        const videosPre = normalizarArrayVideosBd(ofertaPre.videos_vidriera);
+        if (videosPre.length >= MAX_VIDEOS_POR_OFERTA) {
+            const err = new Error(`Esta oferta ya alcanzó el máximo de ${MAX_VIDEOS_POR_OFERTA} videos cortos.`);
+            err.statusCode = 400;
+            throw err;
+        }
+
+        // 2. Validación estricta del contenedor real con ffprobe
+        const probeIn = await inspeccionarVideoConFfprobe(tempFilePath);
+        const recortado25s = probeIn.duration_sec > (MAX_VIDEO_DURATION_SEC + 0.4);
+
+        // 3. Transcodificación secuencial en cola (concurrency = 1, -threads 1, timeout 60s)
+        return await encolarTareaVideo(async () => {
+            const ofertaCheck = await obtenerOfertaYValidarNodo(db, ofertaId, nodoAuthId, false);
+            const nodoId = Number(ofertaCheck.nodo_id);
+            const videosCheck = normalizarArrayVideosBd(ofertaCheck.videos_vidriera);
+            if (videosCheck.length >= MAX_VIDEOS_POR_OFERTA) {
+                const err = new Error(`Esta oferta ya alcanzó el máximo de ${MAX_VIDEOS_POR_OFERTA} videos cortos.`);
+                err.statusCode = 400;
+                throw err;
+            }
+
+            const videoId = generarVideoId();
+            const { dir, mp4Path, tmpMp4Path, posterPath } = obtenerRutasArchivoVideo(nodoId, ofertaCheck.id, videoId);
+            fs.mkdirSync(dir, { recursive: true });
+
+            const { ffmpeg } = resolverBinariosMultimedia();
+            const vfFilter = "scale='min(720,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2";
+            const ffArgs = [
+                '-y',
+                '-threads', '1',
+                '-i', tempFilePath,
+                '-t', String(MAX_VIDEO_DURATION_SEC),
+                '-vf', vfFilter,
+                '-c:v', 'libx264',
+                '-preset', 'veryfast',
+                '-profile:v', 'main',
+                '-pix_fmt', 'yuv420p',
+                '-crf', '26',
+                '-maxrate', '1500k',
+                '-bufsize', '3000k',
+                '-r', '30'
+            ];
+            if (probeIn.tiene_audio) {
+                ffArgs.push('-c:a', 'aac', '-b:a', '96k', '-ac', '2');
+            } else {
+                ffArgs.push('-an');
+            }
+            ffArgs.push('-movflags', '+faststart', '-threads', '1', tmpMp4Path);
+
+            let archivosCreados = false;
+            try {
+                await ejecutarProcesoConTimeout(ffmpeg, ffArgs, VIDEO_TRANSCODE_TIMEOUT_MS, false);
+                fs.renameSync(tmpMp4Path, mp4Path);
+                archivosCreados = true;
+
+                const probeOut = await inspeccionarVideoConFfprobe(mp4Path);
+                const seekSec = Math.min(0.6, Math.max(0, Number((probeOut.duration_sec * 0.2).toFixed(2))));
+                const frameRes = await ejecutarProcesoConTimeout(
+                    ffmpeg,
+                    ['-y', '-threads', '1', '-ss', String(seekSec), '-i', mp4Path, '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', '-'],
+                    15000,
+                    true
+                );
+
+                const posterBuffer = await sharp(frameRes.stdoutBuffer, { failOnError: false })
+                    .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+                    .webp({ quality: 82, effort: 4 })
+                    .toBuffer();
+                fs.writeFileSync(posterPath, posterBuffer);
+
+                const mp4Bytes = fs.statSync(mp4Path).size;
+                const ts = Date.now();
+                const nowIso = new Date(ts).toISOString();
+
+                const client = await db.connect();
+                try {
+                    await client.query('BEGIN');
+                    const rowLocked = await obtenerOfertaYValidarNodo(client, ofertaId, nodoAuthId, true);
+                    const videosActuales = normalizarArrayVideosBd(rowLocked.videos_vidriera);
+                    if (videosActuales.length >= MAX_VIDEOS_POR_OFERTA) {
+                        const err = new Error(`Esta oferta ya alcanzó el máximo de ${MAX_VIDEOS_POR_OFERTA} videos cortos.`);
+                        err.statusCode = 400;
+                        throw err;
+                    }
+
+                    const nuevoVideo = {
+                        id: videoId,
+                        tipo: 'video',
+                        url: `/media/nodos/${nodoId}/${rowLocked.id}/${videoId}.mp4?v=${ts}`,
+                        poster_url: `/media/nodos/${nodoId}/${rowLocked.id}/${videoId}_poster.webp?v=${ts}`,
+                        width: probeOut.width,
+                        height: probeOut.height,
+                        bytes: mp4Bytes,
+                        duration_sec: Number(probeOut.duration_sec.toFixed(1)),
+                        tiene_audio: Boolean(probeOut.tiene_audio),
+                        recortado_25s: recortado25s,
+                        orden: videosActuales.length + 1,
+                        created_at: nowIso,
+                        updated_at: nowIso
+                    };
+
+                    const nuevosVideos = [...videosActuales, nuevoVideo].map((v, i) => ({ ...v, orden: i + 1 }));
+                    await client.query(
+                        `UPDATE public.nodos_ofertas_gestor
+                         SET videos_vidriera = $1::jsonb,
+                             updated_at = NOW()
+                         WHERE id = $2`,
+                        [JSON.stringify(nuevosVideos), rowLocked.id]
+                    );
+                    await client.query('COMMIT');
+
+                    return {
+                        video: nuevoVideo,
+                        videos_vidriera: nuevosVideos,
+                        recortado_25s: recortado25s
+                    };
+                } catch (dbErr) {
+                    await client.query('ROLLBACK').catch(() => {});
+                    throw dbErr;
+                } finally {
+                    client.release();
+                }
+            } catch (procErr) {
+                if (archivosCreados || fs.existsSync(tmpMp4Path)) {
+                    borrarArchivosVideoSilencioso(nodoId, ofertaCheck.id, videoId);
+                }
+                throw procErr;
+            }
+        });
+    } finally {
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+            try { fs.unlinkSync(tempFilePath); } catch (_) {}
+        }
+    }
+}
+
+/**
+ * 8) Eliminar un video corto y borrar físicamente `nv-<id>.mp4` y `nv-<id>_poster.webp`.
+ *    Si el video eliminado era `portada_media_id`, degrada `portada_modo` a `'AUTO'`.
+ */
+async function eliminarVideoOferta({ ofertaId, videoId, nodoAuthId = null }) {
+    const targetId = String(videoId || '').trim();
+    if (!esVideoIdSeguro(targetId)) {
+        const err = new Error('Identificador de video inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        const ofertaRow = await obtenerOfertaYValidarNodo(client, ofertaId, nodoAuthId, true);
+        const nodoId = Number(ofertaRow.nodo_id);
+        const videosActuales = normalizarArrayVideosBd(ofertaRow.videos_vidriera);
+        if (!videosActuales.some(v => v.id === targetId)) {
+            const err = new Error('El video indicado ya no existe en esta oferta.');
+            err.statusCode = 404;
+            throw err;
+        }
+
+        const nuevosVideos = videosActuales
+            .filter(v => v.id !== targetId)
+            .map((v, idx) => ({ ...v, orden: idx + 1 }));
+
+        const eraPortadaCustom = String(ofertaRow.portada_media_id || '') === targetId;
+
+        await client.query(
+            `UPDATE public.nodos_ofertas_gestor
+             SET videos_vidriera = $1::jsonb,
+                 portada_modo = CASE WHEN $3::boolean THEN 'AUTO' ELSE portada_modo END,
+                 portada_media_id = CASE WHEN $3::boolean THEN NULL ELSE portada_media_id END,
+                 updated_at = NOW()
+             WHERE id = $2`,
+            [JSON.stringify(nuevosVideos), ofertaRow.id, eraPortadaCustom]
+        );
+        await client.query('COMMIT');
+
+        borrarArchivosVideoSilencioso(nodoId, ofertaRow.id, targetId);
+        return {
+            eliminado_id: targetId,
+            videos_vidriera: nuevosVideos,
+            portada_degradada_auto: eraPortadaCustom
+        };
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * 9) Configurar en 1 toque cuál es la Portada activa (`'AUTO' | 'CUSTOM' | 'OCULTA'`),
+ *    permitiendo elegir cualquier foto (`nf-...`) o video (`nv-...`) o dejar sin portada visible.
+ */
+async function configurarPortadaOferta({ ofertaId, nodoAuthId = null, portadaModo = 'AUTO', portadaMediaId = null }) {
+    const modoNorm = normalizarModoPortada(portadaModo);
+    const idNorm = portadaMediaId ? String(portadaMediaId).trim() : null;
+
+    const client = await db.connect();
+    try {
+        await client.query('BEGIN');
+        const ofertaRow = await obtenerOfertaYValidarNodo(client, ofertaId, nodoAuthId, true);
+        const fotosActuales = normalizarArrayFotosBd(ofertaRow.fotos_vidriera);
+        const videosActuales = normalizarArrayVideosBd(ofertaRow.videos_vidriera);
+
+        let modoFinal = modoNorm;
+        let mediaIdFinal = null;
+
+        if (modoNorm === 'CUSTOM') {
+            if (!idNorm) {
+                const err = new Error('Debés indicar la foto o el video que querés usar de portada.');
+                err.statusCode = 400;
+                throw err;
+            }
+            const existeEnFotos = fotosActuales.some(f => f.id === idNorm);
+            const existeEnVideos = videosActuales.some(v => v.id === idNorm);
+            if (!existeEnFotos && !existeEnVideos) {
+                const err = new Error('La pieza multimedia elegida no pertenece a esta oferta.');
+                err.statusCode = 404;
+                throw err;
+            }
+            mediaIdFinal = idNorm;
+        }
+
+        await client.query(
+            `UPDATE public.nodos_ofertas_gestor
+             SET portada_modo = $1,
+                 portada_media_id = $2,
+                 updated_at = NOW()
+             WHERE id = $3`,
+            [modoFinal, mediaIdFinal, ofertaRow.id]
+        );
+        await client.query('COMMIT');
+
+        return {
+            portada_modo: modoFinal,
+            portada_media_id: mediaIdFinal
+        };
+    } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * 10) Importar en 1 toque una foto sugerida del repositorio base de LAMDA (`fotos_catalogo_base`)
+ *     hacia el álbum propio de la oferta para que la tienda pueda editarla o combinarla.
+ */
+async function importarFotoSugeridaOferta({ ofertaId, nodoAuthId = null, fotoSugeridaIdOUrl }) {
+    const ofertaRow = await obtenerOfertaYValidarNodo(db, ofertaId, nodoAuthId, false);
+    const catRes = await db.query(
+        `SELECT COALESCE(fotos_catalogo_base, '[]'::jsonb) AS fotos_catalogo_base
+         FROM public.nodos_articulos_catalogo
+         WHERE id = $1`,
+        [ofertaRow.articulo_catalogo_id]
+    );
+    const sugeridas = Array.isArray(catRes.rows[0]?.fotos_catalogo_base) ? catRes.rows[0].fotos_catalogo_base : [];
+    const needle = String(fotoSugeridaIdOUrl || '').trim();
+    const match = sugeridas.find(s => s && (String(s.id || '') === needle || String(s.url || '') === needle));
+    if (!match || !match.url) {
+        const err = new Error('La foto sugerida indicada no se encontró en el catálogo base.');
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const cleanPath = String(match.url).split('?')[0];
+    let fileBuffer = null;
+    if (cleanPath.startsWith('/media/nodos/')) {
+        const rel = cleanPath.replace(/^\/media\/nodos\//, '');
+        const full = path.resolve(obtenerDirectorioMediaNodos(), rel);
+        const root = path.resolve(obtenerDirectorioMediaNodos());
+        if (full.startsWith(root) && fs.existsSync(full)) {
+            fileBuffer = fs.readFileSync(full);
+        }
+    } else if (cleanPath.startsWith('/img/')) {
+        const fullImg = path.resolve(__dirname, '..', cleanPath.replace(/^\//, ''));
+        if (fs.existsSync(fullImg)) {
+            fileBuffer = fs.readFileSync(fullImg);
+        }
+    }
+
+    if (!fileBuffer) {
+        const err = new Error('El archivo origen de la foto sugerida no está disponible en disco.');
+        err.statusCode = 404;
+        throw err;
+    }
+
+    return agregarFotoOferta({
+        ofertaId,
+        nodoAuthId,
+        fileBuffer,
+        rotacion: 0,
+        crop: null,
+        aplicarFiltro: false
+    });
+}
+
 module.exports = {
     MAX_FOTOS_POR_OFERTA,
+    MAX_VIDEOS_POR_OFERTA,
+    MAX_VIDEO_DURATION_SEC,
+    MAX_VIDEO_UPLOAD_BYTES,
     esModoLaboratorioFotos,
     obtenerDirectorioMediaNodos,
     esFotoIdSeguro,
+    esVideoIdSeguro,
+    normalizarArrayFotosBd,
+    normalizarArrayVideosBd,
+    normalizarModoPortada,
+    construirGaleriaYPortadaOferta,
     previsualizarFotoOferta,
     agregarFotoOferta,
     editarOReemplazarFotoOferta,
     reordenarFotosOferta,
     eliminarFotoOferta,
-    vaciarAlbumOferta
+    vaciarAlbumOferta,
+    agregarVideoOferta,
+    eliminarVideoOferta,
+    configurarPortadaOferta,
+    importarFotoSugeridaOferta
 };
