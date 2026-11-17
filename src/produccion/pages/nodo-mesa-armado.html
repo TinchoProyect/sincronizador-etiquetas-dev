@@ -713,8 +713,19 @@
 
             const avisoRetenidosHtml = retenidosVec.length === 0 ? '' : `
                 <div data-testid="banner-vecinales-retenidos-pago" style="padding:10px 12px; border-radius:10px; background:rgba(168,85,247,0.14); border:1px solid rgba(168,85,247,0.45); color:#e9d5ff; font-size:0.77rem; margin-bottom:8px; line-height:1.38;">
-                    🔒 <strong>${retenidosVec.length} pedido(s) vecinal(es) retenidos aguardando Banco Galicia:</strong>
-                    ${retenidosVec.map(rv => `#${esc(rv.codigo_pedido)} (${esc(rv.nombre_marca)})`).join(', ')}.
+                    <div style="font-weight:800; margin-bottom:5px;">
+                        🔒 ${retenidosVec.length} pedido(s) por transferencia bloqueados para armado:
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:5px;">
+                        ${retenidosVec.map(rv => `
+                            <div style="padding:5px 8px; border-radius:6px; background:rgba(15,23,42,0.72); border:1px solid rgba(168,85,247,0.3); display:flex; justify-content:space-between; gap:6px; flex-wrap:wrap;">
+                                <span><strong>#${esc(rv.codigo_pedido)}</strong> · ${esc(rv.nombre_marca)} · 👤 ${esc(rv.vecino_nombre)} (${fmtMoneda(rv.total_vecino)})</span>
+                                <span style="color:${Number(rv.monto_declarado_cliente || 0) > 0 ? '#93c5fd' : '#fcd34d'}; font-weight:800;">
+                                    ${Number(rv.monto_declarado_cliente || 0) > 0 ? '🔔 Pago informado' : '⏳ Pedido confirmado · Pendiente de pago'}
+                                </span>
+                            </div>
+                        `).join('')}
+                    </div>
                     No ingresan al canasto ni a Pizarra hasta quedar conciliados en <a href="/liquidacion-nodos" style="color:#7dd3fc; font-weight:800;">Liquidación y Cobros</a>.
                 </div>
             `;
@@ -884,8 +895,8 @@
                                     👤 ${esc(p.vecino_nombre)}
                                 </span>
                                 ${badgeUbicacion}
-                                <span class="badge" style="background:${esEfectivo ? 'rgba(245,158,11,0.18)' : 'rgba(16,185,129,0.16)'}; color:${esEfectivo ? '#fcd34d' : '#6ee7b7'};">
-                                    ${esEfectivo ? `💵 Cobrar Efectivo: ${fmtMoneda(p.total_vecino)}` : `🏦 Transferencia (${fmtMoneda(p.total_vecino)})`}
+                                <span data-testid="badge-medio-pago-deposito-${p.id}" class="badge" style="background:${esEfectivo ? 'rgba(245,158,11,0.22)' : 'rgba(16,185,129,0.16)'}; color:${esEfectivo ? '#fcd34d' : '#6ee7b7'}; border:${esEfectivo ? '1px solid rgba(245,158,11,0.5)' : 'none'};">
+                                    ${esEfectivo ? `💵 Efectivo al entregar (${fmtMoneda(p.total_vecino)})` : `🏦 Transferencia acreditada (${fmtMoneda(p.total_vecino)})`}
                                 </span>
                             </div>
 
@@ -1391,36 +1402,58 @@
             const contOrd = document.getElementById('fulfillment-ordenes-container');
             if (!contOrd) return;
 
-            let ordenes = (fp.ordenes || []).slice();
+            let todasOrdenesFp = (fp.ordenes || []).slice();
             if (ESTADO.fulfillmentMarcaId > 0) {
-                ordenes = ordenes.filter(o => Number(o.nodo_id) === Number(ESTADO.fulfillmentMarcaId));
+                todasOrdenesFp = todasOrdenesFp.filter(o => Number(o.nodo_id) === Number(ESTADO.fulfillmentMarcaId));
             }
             if (ESTADO.fulfillmentOperador && ESTADO.fulfillmentOperador !== 'TODOS') {
-                ordenes = ordenes.filter(o => String(o.operador_postal || '').toUpperCase() === ESTADO.fulfillmentOperador);
+                todasOrdenesFp = todasOrdenesFp.filter(o => String(o.operador_postal || '').toUpperCase() === ESTADO.fulfillmentOperador);
             }
+
+            const retenidasFulfillment = todasOrdenesFp.filter(o => !(o.habilitado_armado ?? o.pago_confirmado));
+            const bannerRetenidasFulHtml = (ESTADO.fulfillmentEstado === 'COLA_ACTIVA' && retenidasFulfillment.length > 0) ? `
+                <div data-testid="banner-fulfillment-retenidos-pago" style="padding:12px 14px; border-radius:11px; background:rgba(168,85,247,0.12); border:1px solid rgba(168,85,247,0.45); color:#e9d5ff; font-size:0.8rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:7px;">
+                        <strong>🔒 Pedidos confirmados · Pendientes de acreditación bancaria (${retenidasFulfillment.length}) — Bloqueados para armado y despacho</strong>
+                        <a href="/liquidacion-nodos" style="color:#7dd3fc; font-weight:800; font-size:0.77rem;">Ir a Conciliador Banco Galicia ↗</a>
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:5px;">
+                        ${retenidasFulfillment.map(rf => `
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 10px; border-radius:8px; background:rgba(15,23,42,0.78); border:1px solid rgba(168,85,247,0.3);">
+                                <span><strong>#${esc(rf.codigo_pedido)}</strong> · <strong>${esc(rf.nombre_marca)}</strong> · 👤 ${esc(rf.vecino_nombre)} · <strong>${fmtMoneda(rf.total_vecino)}</strong></span>
+                                <span style="font-weight:800; color:${Number(rf.monto_declarado_cliente || 0) > 0 ? '#93c5fd' : '#fcd34d'};">
+                                    ${Number(rf.monto_declarado_cliente || 0) > 0 ? `🔔 Pago informado (${fmtMoneda(rf.monto_declarado_cliente)})` : '⏳ Pedido confirmado · Pendiente de pago'}
+                                </span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : '';
+
+            let ordenes = todasOrdenesFp.slice();
             if (ESTADO.fulfillmentEstado === 'COLA_ACTIVA') {
-                ordenes = ordenes.filter(o => o.pago_confirmado && !o.despachado_correo);
+                ordenes = ordenes.filter(o => (o.habilitado_armado ?? o.pago_confirmado) && !o.despachado_correo);
             } else if (ESTADO.fulfillmentEstado !== 'TODAS') {
                 ordenes = ordenes.filter(o => o.etapa_fulfillment === ESTADO.fulfillmentEstado);
             }
 
             if (ordenes.length === 0) {
-                const aguardandoCount = Number(fp.resumen?.aguardando_conciliacion_pago || 0);
-                contOrd.innerHTML = `
+                const aguardandoCount = retenidasFulfillment.length || Number(fp.resumen?.aguardando_conciliacion_pago || 0);
+                contOrd.innerHTML = bannerRetenidasFulHtml + `
                     <div class="panel-card" style="text-align:center; padding:28px; color:#94a3b8;">
                         <div style="font-size:2rem; margin-bottom:8px;">📦</div>
-                        <div style="font-weight:800; color:#f8fafc; font-size:0.95rem;">No hay órdenes de Fulfillment en esta vista</div>
+                        <div style="font-weight:800; color:#f8fafc; font-size:0.95rem;">No hay órdenes habilitadas para empaque en este momento</div>
                         <div style="font-size:0.8rem; margin-top:4px;">
                             ${aguardandoCount > 0 && ESTADO.fulfillmentEstado === 'COLA_ACTIVA'
-                                ? `Hay <strong>${aguardandoCount} orden(es) nueva(s)</strong> retenida(s) aguardando conciliación de pago en <a href="/liquidacion-nodos" style="color:#fcd34d;">Cobros y Liquidación</a> (podés verlas cambiando el filtro a "Aguardando Conciliación en Cobros").`
-                                : 'Toda orden online con pago confirmado ingresa automáticamente aquí en orden FIFO para empaque Marca Blanca y despacho postal.'}
+                                ? `Las <strong>${aguardandoCount} orden(es)</strong> listadas arriba permanecen bloqueadas para salida de mercadería hasta conciliar su transferencia en Banco Galicia.`
+                                : 'Toda orden online habilitada ingresa automáticamente aquí en orden FIFO para empaque Marca Blanca y despacho postal.'}
                         </div>
                     </div>
                 `;
                 return;
             }
 
-            contOrd.innerHTML = ordenes.map(o => {
+            contOrd.innerHTML = bannerRetenidasFulHtml + ordenes.map(o => {
                 const ep = o.envio_postal || {};
                 const esSuc = String(ep.modalidad_postal || '').toUpperCase() === 'SUCURSAL';
                 const domTexto = esSuc
@@ -1433,19 +1466,21 @@
                 ].filter(Boolean).join(', ');
 
                 const fleteSugerido = Number(ep.costo_flete_lamda || ep.costo_envio_cliente || 0);
-                const claseCard = !o.pago_confirmado
+                const habArmado = Boolean(o.habilitado_armado ?? o.pago_confirmado);
+                const esEfvoFul = Boolean(o.es_efectivo_entrega || String(o.medio_pago || '').toUpperCase() === 'EFECTIVO');
+                const claseCard = !habArmado
                     ? 'bloqueado-pago'
                     : (o.despachado_correo ? 'despachado' : (o.empaquetado_listo ? 'empaquetado' : ''));
 
-                const badgeEtapa = !o.pago_confirmado
-                    ? `<span class="badge" style="background:rgba(245,158,11,0.2); color:#fcd34d; border:1px solid #f59e0b;">🔒 Aguardando Pago en Cobros</span>`
+                const badgeEtapa = !habArmado
+                    ? `<span class="badge" style="background:rgba(245,158,11,0.2); color:#fcd34d; border:1px solid #f59e0b;">🔒 Pedido confirmado · Pendiente de pago</span>`
                     : (o.entregado_final
                         ? `<span class="badge" style="background:rgba(16,185,129,0.22); color:#6ee7b7; border:1px solid #10b981;">✅ Entregado en Destino</span>`
                         : (o.despachado_correo
                             ? `<span class="badge" style="background:rgba(56,189,248,0.2); color:#7dd3fc; border:1px solid #38bdf8;">🚚 Despachado · #${esc(ep.numero_tracking || '')}</span>`
                             : (o.empaquetado_listo
                                 ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#6ee7b7; border:1px solid #10b981;">📦 Empaquetado Listo para Correo</span>`
-                                : `<span class="badge" style="background:rgba(245,158,11,0.18); color:#fde68a; border:1px solid #f59e0b;">⏳ Pendiente de Empaque</span>`)));
+                                : `<span class="badge" style="background:rgba(245,158,11,0.18); color:#fde68a; border:1px solid #f59e0b;">⏳ Pendiente de Empaque${esEfvoFul && !o.pago_confirmado ? ' · 💵 Efectivo al entregar' : ''}</span>`)));
 
                 const itemsHtml = (o.items || []).map(it => {
                     const etq = it.etiqueta_oficial_lamda || `[${it.sku_nodo}] ${it.nombre_oficial_lamda || it.nombre_publico}`;
@@ -1497,7 +1532,7 @@
                         <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap; padding-top:8px; border-top:1px solid rgba(51,65,85,0.65);">
                             <div style="display:flex; gap:8px; flex-wrap:wrap;">
                                 <button type="button" class="btn-action"
-                                    ${(!o.pago_confirmado || o.despachado_correo) ? 'disabled style="opacity:0.45; cursor:not-allowed; background:#1e293b; color:#94a3b8;"' : `style="background:${o.empaquetado_listo ? 'rgba(16,185,129,0.2)' : '#10b981'}; color:${o.empaquetado_listo ? '#6ee7b7' : '#052e16'}; border:1px solid #10b981;"`}
+                                    ${(!habArmado || o.despachado_correo) ? 'disabled style="opacity:0.45; cursor:not-allowed; background:#1e293b; color:#94a3b8;"' : `style="background:${o.empaquetado_listo ? 'rgba(16,185,129,0.2)' : '#10b981'}; color:${o.empaquetado_listo ? '#6ee7b7' : '#052e16'}; border:1px solid #10b981;"`}
                                     onclick="marcarEmpaqueFulfillment(${o.id}, ${o.empaquetado_listo ? 'true' : 'false'})">
                                     ${o.empaquetado_listo ? '↩️ Reabrir Empaque' : '📦 Controlar / Marcar Empaquetado'}
                                 </button>
@@ -1509,7 +1544,7 @@
                                 </button>
                             </div>
 
-                            ${!o.pago_confirmado ? `
+                            ${!habArmado ? `
                                 <div style="padding:8px 12px; border-radius:8px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.45); color:#fde68a; font-size:0.78rem; font-weight:700;">
                                     🔒 Despacho bloqueado hasta conciliar transferencia en <a href="/liquidacion-nodos" style="color:#38bdf8;">Cobros y Liquidación</a>
                                 </div>

@@ -35,15 +35,21 @@ try {
 
 const CUENTA_OFICIAL_GALICIA_DEFAULT = Object.freeze({
     banco_recaudador: 'Banco Galicia',
+    banco_display: 'Banco Galicia',
     banco_fin_nombre: 'Banco de Galicia y Buenos Aires S.A.U (CUIT: 30-50000173-5)',
     alias_recaudador: 'LAMDA.SER.MARTIN',
+    alias_bancario_display: 'LAMDA.SER.MARTIN',
     cbu_recaudador: '0070373230004007844141',
+    cbu_display: '0070373230004007844141',
     titular_recaudador: 'Martín Ignacio Serrano',
+    titular_display: 'Martín Ignacio Serrano',
     titular_fin_nombre: 'MARTIN IGNACIO SERRANO (DU Nro. 24892174)',
     tipo_cuenta_fin: 'Caja de Ahorro en Pesos (CA $)',
     cuil_recaudador: '23-24892174-9',
+    cuil_display: '23-24892174-9',
     numero_cuenta_recaudador: '400784413734',
-    solo_transferencia_bancaria: true
+    numero_cuenta_display: '400784413734',
+    solo_transferencia_bancaria: false
 });
 
 const MAX_COMPROBANTE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -165,6 +171,19 @@ function esPedidoPagoConfirmadoNodos(ped = {}) {
 }
 
 /**
+ * Compuerta diferenciada de Depósito (`/deposito-nodos` y presupuestos espejo):
+ * - Pedidos en EFECTIVO: habilitados desde la confirmación (`COBRAR_EN_ENTREGA`) para que ingresen al canasto/armado
+ *   y el referente retire la mercadería y cobre al repartir.
+ * - Pedidos por TRANSFERENCIA: estrictamente bloqueados hasta `CONCILIADO_BANCO_LAMDA`.
+ */
+function esPedidoHabilitadoArmadoDepositoNodos(ped = {}) {
+    const estOp = String(ped.estado_operativo || '').toUpperCase();
+    if (estOp === 'ANULADO') return false;
+    if (String(ped.medio_pago || 'TRANSFERENCIA').toUpperCase() === 'EFECTIVO') return true;
+    return esPedidoPagoConfirmadoNodos(ped);
+}
+
+/**
  * Inicializa de forma 100% idempotente las tablas y columnas de cobros bancarios de Nodos,
  * asegura la cuenta oficial de Banco Galicia en `fin_cuentas_bancarias` y vincula `nodos_configuracion_canal (id = 1)`.
  */
@@ -246,25 +265,29 @@ async function asegurarEsquemaPagosBancariosNodos(runner = null, opciones = {}) 
             galiciaCuentaId = Number(insGal.rows[0].id);
         }
 
-        // 3. Extender nodos_configuracion_canal y nodos_maestro con campos bancarios completos
+        // 3. Extender nodos_configuracion_canal y nodos_maestro con campos bancarios y autonomía de efectivo por tienda
         await client.query(`
             ALTER TABLE public.nodos_configuracion_canal
                 ADD COLUMN IF NOT EXISTS cuil_recaudador VARCHAR(30) DEFAULT '23-24892174-9',
                 ADD COLUMN IF NOT EXISTS numero_cuenta_recaudador VARCHAR(50) DEFAULT '400784413734',
-                ADD COLUMN IF NOT EXISTS solo_transferencia_bancaria BOOLEAN NOT NULL DEFAULT true;
+                ADD COLUMN IF NOT EXISTS solo_transferencia_bancaria BOOLEAN NOT NULL DEFAULT false;
+
+            ALTER TABLE public.nodos_configuracion_canal
+                ALTER COLUMN solo_transferencia_bancaria SET DEFAULT false;
 
             ALTER TABLE public.nodos_maestro
                 ADD COLUMN IF NOT EXISTS banco_display VARCHAR(120) DEFAULT 'Banco Galicia',
                 ADD COLUMN IF NOT EXISTS cuil_display VARCHAR(30) DEFAULT '23-24892174-9',
-                ADD COLUMN IF NOT EXISTS numero_cuenta_display VARCHAR(50) DEFAULT '400784413734';
+                ADD COLUMN IF NOT EXISTS numero_cuenta_display VARCHAR(50) DEFAULT '400784413734',
+                ADD COLUMN IF NOT EXISTS cobro_efectivo_entrega BOOLEAN;
         `);
 
-        // 4. Migrar idempotentemente nodos_configuracion_canal (id = 1) desde valores provisorios hacia Banco Galicia oficial
+        // 4. Migrar idempotentemente nodos_configuracion_canal (id = 1) hacia Banco Galicia oficial y liberar autonomía por tienda
         await client.query(
             `INSERT INTO public.nodos_configuracion_canal (
                 id, cuenta_bancaria_id, banco_recaudador, alias_recaudador, cbu_recaudador,
                 titular_recaudador, cuil_recaudador, numero_cuenta_recaudador, solo_transferencia_bancaria, updated_at
-             ) VALUES (1, $1, $2, $3, $4, $5, $6, $7, true, NOW())
+             ) VALUES (1, $1, $2, $3, $4, $5, $6, $7, false, NOW())
              ON CONFLICT (id) DO UPDATE SET
                 cuenta_bancaria_id = COALESCE(public.nodos_configuracion_canal.cuenta_bancaria_id, EXCLUDED.cuenta_bancaria_id),
                 banco_recaudador = CASE
@@ -297,6 +320,7 @@ async function asegurarEsquemaPagosBancariosNodos(runner = null, opciones = {}) 
                 END,
                 cuil_recaudador = COALESCE(NULLIF(TRIM(public.nodos_configuracion_canal.cuil_recaudador), ''), EXCLUDED.cuil_recaudador),
                 numero_cuenta_recaudador = COALESCE(NULLIF(TRIM(public.nodos_configuracion_canal.numero_cuenta_recaudador), ''), EXCLUDED.numero_cuenta_recaudador),
+                solo_transferencia_bancaria = false,
                 updated_at = NOW()`,
             [
                 galiciaCuentaId,
@@ -308,6 +332,29 @@ async function asegurarEsquemaPagosBancariosNodos(runner = null, opciones = {}) 
                 CUENTA_OFICIAL_GALICIA_DEFAULT.numero_cuenta_recaudador
             ]
         );
+
+        // Inicializar una única vez cobro_efectivo_entrega cuando es NULL (paraiso/vecinal=true, manso/ecommerce_fulfillment=false)
+        await client.query(`
+            UPDATE public.nodos_maestro
+            SET cobro_efectivo_entrega = CASE
+                WHEN LOWER(COALESCE(slug, '')) = 'manso' THEN false
+                WHEN LOWER(COALESCE(slug, '')) = 'paraiso' THEN true
+                WHEN modulos_activos ? 'cobro_efectivo_entrega' THEN COALESCE((modulos_activos->>'cobro_efectivo_entrega')::boolean, false)
+                WHEN LOWER(COALESCE(perfil_operativo, 'vecinal')) = 'ecommerce_fulfillment' THEN false
+                ELSE true
+            END
+            WHERE cobro_efectivo_entrega IS NULL;
+
+            UPDATE public.nodos_maestro
+            SET modulos_activos = jsonb_set(
+                COALESCE(modulos_activos, '{}'::jsonb),
+                '{cobro_efectivo_entrega}',
+                to_jsonb(COALESCE(cobro_efectivo_entrega, false)),
+                true
+            )
+            WHERE cobro_efectivo_entrega IS NOT NULL
+              AND COALESCE((modulos_activos->>'cobro_efectivo_entrega')::boolean, NOT cobro_efectivo_entrega) IS DISTINCT FROM cobro_efectivo_entrega;
+        `);
 
         // Sincronizar todos los nodos que usan la cuenta compartida del canal con la configuración vigente de id=1
         const cfgActivaRes = await client.query(`SELECT * FROM public.nodos_configuracion_canal WHERE id = 1 LIMIT 1`);
@@ -344,7 +391,7 @@ async function asegurarEsquemaPagosBancariosNodos(runner = null, opciones = {}) 
             );
         }
 
-        // 5. Columnas resumen de pago / reclamo en nodos_pedidos_vecinos + tablas 1:N / N:M de avisos y cobros reales
+        // 5. Columnas resumen de pago / reclamo / recibo en nodos_pedidos_vecinos + tablas 1:N / N:M de avisos y cobros reales
         await client.query(`
             ALTER TABLE public.nodos_pedidos_vecinos
                 ADD COLUMN IF NOT EXISTS monto_declarado_cliente NUMERIC(14,2) NOT NULL DEFAULT 0.00,
@@ -353,7 +400,10 @@ async function asegurarEsquemaPagosBancariosNodos(runner = null, opciones = {}) 
                 ADD COLUMN IF NOT EXISTS ultimo_aviso_pago_at TIMESTAMPTZ,
                 ADD COLUMN IF NOT EXISTS reclamo_pago_no_recibido BOOLEAN NOT NULL DEFAULT false,
                 ADD COLUMN IF NOT EXISTS reclamo_pago_motivo TEXT,
-                ADD COLUMN IF NOT EXISTS reclamo_pago_fecha TIMESTAMPTZ;
+                ADD COLUMN IF NOT EXISTS reclamo_pago_fecha TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS recibo_emitido_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS recibo_wa_enviado BOOLEAN NOT NULL DEFAULT false,
+                ADD COLUMN IF NOT EXISTS recibo_wa_detalle JSONB;
 
             ALTER TABLE public.nodos_alias_vecinos_aprendidos
                 ADD COLUMN IF NOT EXISTS cbu_cvu_origen VARCHAR(30);
@@ -440,7 +490,7 @@ async function obtenerConfiguracionBancariaCanalNodos(runner = null) {
         titular_recaudador: row.titular_recaudador || CUENTA_OFICIAL_GALICIA_DEFAULT.titular_recaudador,
         cuil_recaudador: row.cuil_recaudador || CUENTA_OFICIAL_GALICIA_DEFAULT.cuil_recaudador,
         numero_cuenta_recaudador: row.numero_cuenta_recaudador || CUENTA_OFICIAL_GALICIA_DEFAULT.numero_cuenta_recaudador,
-        solo_transferencia_bancaria: row.solo_transferencia_bancaria !== false
+        solo_transferencia_bancaria: Boolean(row.solo_transferencia_bancaria === true)
     };
 }
 
@@ -1032,6 +1082,7 @@ async function obtenerTableroConciliadorGaliciaNodos(filtros = {}) {
              LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
              WHERE COALESCE(npv.estado_operativo, '') <> 'ANULADO'
                AND COALESCE(npv.impactado_cta_cte_pago, false) = false
+               AND UPPER(COALESCE(npv.medio_pago, 'TRANSFERENCIA')) <> 'EFECTIVO'
                AND UPPER(COALESCE(npv.estado_pago, '')) NOT IN ('CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR')
                AND ($1::int = 0 OR npv.nodo_id = $1::int)
              ORDER BY npv.id DESC`,
@@ -1966,6 +2017,7 @@ module.exports = {
     obtenerDirectorioComprobantesNodos,
     validarBufferComprobantePago,
     esPedidoPagoConfirmadoNodos,
+    esPedidoHabilitadoArmadoDepositoNodos,
     asegurarEsquemaPagosBancariosNodos,
     obtenerConfiguracionBancariaCanalNodos,
     obtenerResumenPagosPorPedidosIds,

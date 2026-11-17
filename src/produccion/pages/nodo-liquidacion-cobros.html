@@ -513,6 +513,33 @@
                 </div>
             `;
 
+            const pedsSinAviso = pedsPend.filter(p => Number(p.monto_declarado_cliente || 0) <= 0);
+            const pedsConfirmadosSinAvisoHtml = pedsSinAviso.length === 0 ? '' : `
+                <div data-testid="bandeja-pedidos-pendientes-pago-galicia" style="margin-top:10px; padding:11px 13px; border-radius:10px; background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.38);">
+                    <div style="font-size:0.8rem; font-weight:800; color:#7dd3fc; margin-bottom:7px;">
+                        ⏳ Pedidos confirmados · Pendientes de pago (${pedsSinAviso.length}) — Visibles desde el minuto cero
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:6px;">
+                        ${pedsSinAviso.map(p => `
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 10px; border-radius:8px; background:#0f172a; border:1px solid #334155;">
+                                <div style="font-size:0.79rem; color:#e2e8f0;">
+                                    <strong style="color:#38bdf8;">#${esc(p.codigo_pedido)}</strong> · <strong>${esc(p.nombre_marca)}</strong> · 👤 ${esc(p.vecino_nombre)}
+                                    · Total: <strong style="color:#f8fafc;">${fmtMoneda(p.total_vecino)}</strong>
+                                    · <span style="color:#fcd34d; font-weight:800;">Pedido confirmado · Pendiente de pago</span>
+                                </div>
+                                <div style="display:flex; gap:6px; align-items:center;">
+                                    <button type="button" class="btn-action"
+                                        onclick="abrirModalConciliarTransferencia(${p.id}, '${esc(p.codigo_pedido)}', '${esc(p.vecino_nombre)}', '${esc(p.titular_habitual || p.vecino_nombre)}', ${Number(p.saldo_pendiente_acreditar ?? p.total_vecino)})"
+                                        style="background:rgba(56,189,248,0.2); color:#bae6fd; border:1px solid #38bdf8; padding:5px 10px; font-size:0.74rem;">
+                                        🏦 Conciliar (${fmtMoneda(p.saldo_pendiente_acreditar ?? p.total_vecino)})
+                                    </button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
             const credsLibresHtml = creds.length === 0 ? '' : `
                 <details style="margin-top:10px; background:#0f172a; border:1px solid #263244; border-radius:9px; padding:8px 12px;">
                     <summary style="cursor:pointer; font-size:0.79rem; font-weight:800; color:#7dd3fc; user-select:none;">
@@ -575,6 +602,7 @@
                         ${sugsHtml}
                     </div>
                     ${sinRespHtml}
+                    ${pedsConfirmadosSinAvisoHtml}
                     ${credsLibresHtml}
                 </div>
             `;
@@ -1038,7 +1066,9 @@
                                             ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981;">
                                                 ${esEfectivo ? '✅ Efectivo cobrado en mano por Gestor' : `✅ Transferencia conciliada en Banco (${esc(p.titular_transferencia || p.titular_sugerido)})`}
                                                </span>`
-                                            : `<span class="badge" style="background:rgba(244,63,94,0.16); color:#fda4af;">⏳ Pendiente acreditar banco</span>`
+                                            : `<span class="badge" style="background:${esEfectivo ? 'rgba(245,158,11,0.2)' : 'rgba(244,63,94,0.16)'}; color:${esEfectivo ? '#fcd34d' : '#fda4af'};">
+                                                ${esEfectivo ? '💵 Efectivo al entregar' : (Number(p.monto_declarado_cliente || 0) > 0 ? '🔔 Pago informado · Pendiente banco' : '⏳ Pedido confirmado · Pendiente de pago')}
+                                               </span>`
                                         }
                                         ${renderizarBadgesEstadoBancarioPedido(p)}
                                         ${montoAjuste > 0 ? `<span class="badge" style="background:rgba(168,85,247,0.2); color:#d8b4fe; border:1px solid #a855f7;">➖ Ajuste Crédito: -${fmtMoneda(montoAjuste)}</span>` : ''}
@@ -1679,7 +1709,13 @@
                             <span>TOTAL PAGADO</span>
                             <span>${fmtMoneda(p.total_vecino)}</span>
                         </div>
-                        <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #cbd5e1; text-align:center;">
+                        <div style="margin-top:10px; text-align:center;">
+                            <a href="/api/produccion/nodos/pedidos/${p.id}/recibo-marca-blanca.png?_=${Date.now()}" target="_blank" rel="noopener"
+                                style="display:inline-block; width:100%; padding:8px 12px; border-radius:8px; background:#eff6ff; border:1px solid #93c5fd; color:#1d4ed8; font-weight:800; font-size:0.8rem; text-decoration:none; box-sizing:border-box;">
+                                🖼️ Ver Tarjeta Gráfica con Membrete Oficial (PNG) ↗
+                            </a>
+                        </div>
+                        <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #cbd5e1; text-align:center;">
                             <button type="button" onclick="enviarReciboVecinoWhatsAppPrueba(${p.id})"
                                 style="width:100%; padding:9px 14px; border-radius:8px; border:none; background:#15803d; color:#fff; font-weight:800; font-size:0.82rem; cursor:pointer;">
                                 📲 Enviar Recibo por WhatsApp al Vecino (Lab → 221 661 5746)
@@ -1999,7 +2035,9 @@
                                             ? `<span class="badge" style="background:rgba(56,189,248,0.2); color:#7dd3fc; border:1px solid #38bdf8;">🚚 Despachada (#${esc(p.postal_numero_tracking || '')}) · Lista p/ Corte</span>`
                                             : (pagado
                                                 ? `<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1px solid #10b981;">✅ Pago Conciliado · En Cola Depósito</span>`
-                                                : `<span class="badge" style="background:rgba(244,63,94,0.18); color:#fda4af; border:1px solid #f43f5e;">⏳ Pendiente Conciliar Transferencia</span>`)))
+                                                : `<span class="badge" style="background:${String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' ? 'rgba(245,158,11,0.2)' : 'rgba(244,63,94,0.18)'}; color:${String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' ? '#fcd34d' : '#fda4af'}; border:1px solid ${String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' ? '#f59e0b' : '#f43f5e'};">
+                                                    ${String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' ? '💵 Efectivo al entregar' : (Number(p.monto_declarado_cliente || 0) > 0 ? '🔔 Pago informado · Pendiente banco' : '⏳ Pedido confirmado · Pendiente de pago')}
+                                                   </span>`)))
                                 }
                                 ${renderizarBadgesEstadoBancarioPedido(p)}
                             </div>

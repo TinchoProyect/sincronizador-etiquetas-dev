@@ -4487,7 +4487,8 @@
       const n = nodoObj || {};
       const mod = obtenerModulosActivosTienda(n);
       const permiteTransf = n.permitir_transferencia !== false;
-      const permiteEfec = Boolean(!n.solo_transferencia_bancaria && mod.cobro_efectivo_entrega && n.permitir_efectivo !== false && !esCheckoutPostalNacional(n));
+      const cobroEfvoTienda = Boolean(n.cobro_efectivo_entrega ?? mod.cobro_efectivo_entrega);
+      const permiteEfec = Boolean(!n.solo_transferencia_bancaria && cobroEfvoTienda && n.permitir_efectivo !== false);
       const infoBco = resolverDatosBancariosOficialesTienda(n);
       const lista = [];
       if (permiteTransf) {
@@ -4500,7 +4501,7 @@
       if (permiteEfec) {
         lista.push({
           codigo: 'EFECTIVO',
-          titulo: '💵 Efectivo al recibir / retirar',
+          titulo: '💵 Efectivo al recibir',
           subtitulo: 'Abonás en mano al momento de la entrega'
         });
       }
@@ -4566,10 +4567,8 @@
         return dir.length >= 3;
       }
       if (pasoKey === 'pago') {
-        if (esCheckoutPostalNacional()) {
-          return w.medioPagoElegido === 'TRANSFERENCIA';
-        }
-        return w.medioPagoElegido === 'TRANSFERENCIA' || w.medioPagoElegido === 'EFECTIVO';
+        const codsHab = obtenerMediosPagoHabilitadosTienda(STATE.nodo).map(m => m.codigo);
+        return Boolean(w.medioPagoElegido) && codsHab.includes(w.medioPagoElegido);
       }
       if (pasoKey === 'revision') {
         if (esCheckoutPostalNacional()) {
@@ -5455,14 +5454,16 @@
         `;
       } else if (w.pasoActualKey === 'pago') {
         const mediosHabilitados = obtenerMediosPagoHabilitadosTienda(STATE.nodo);
+        if (w.medioPagoElegido && !mediosHabilitados.some(m => m.codigo === w.medioPagoElegido)) {
+          w.medioPagoElegido = '';
+        }
         const pasoValido = validarPasoCheckoutWizard('pago');
-        const esPostal = esCheckoutPostalNacional();
         const soloTransf = mediosHabilitados.length === 1 && mediosHabilitados[0].codigo === 'TRANSFERENCIA';
         const bcoChk = resolverDatosBancariosOficialesTienda(STATE.nodo);
 
         stageHtml = `
-          <h2 class="chk-wiz-question">${(esPostal || soloTransf) ? 'Pago por Transferencia Bancaria' : '¿Cómo preferís abonar?'}</h2>
-          <p class="chk-wiz-lead">${(esPostal || soloTransf) ? 'Seleccioná Transferencia Bancaria. Al confirmar tu pedido vas a poder copiar el alias e informar tu pago en 1 toque.' : 'Elegí el medio de pago más cómodo para vos.'}</p>
+          <h2 class="chk-wiz-question">${soloTransf ? 'Pago por Transferencia Bancaria' : '¿Cómo preferís abonar?'}</h2>
+          <p class="chk-wiz-lead">${soloTransf ? 'Seleccioná Transferencia Bancaria. Al confirmar tu pedido vas a poder copiar el alias e informar tu pago en 1 toque.' : 'Elegí el medio de pago más cómodo para vos.'}</p>
           <div class="chk-big-options">
             ${mediosHabilitados.map(m => `
               <button type="button" id="chk-opt-pago-${esc(m.codigo.toLowerCase())}"
@@ -7101,6 +7102,23 @@
           ${renderizarTarjetaTransferenciaYAvisoHtml(ped, nodo, 'trk_' + ped.codigo_pedido, { telefonoRespaldo: _trackingWhatsappActivo || '' })}
         ` : ''}
 
+        ${(ped.pago_confirmado && ped.comprobante_digital && ped.comprobante_digital.imagen_url && !esEnmascarado) ? `
+          <div data-testid="bloque-recibo-oficial-seguimiento" style="background:#f0fdf4; border:1.5px solid #86efac; border-radius:14px; padding:12px 14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+              <div>
+                <div style="font-size:0.74rem; font-weight:900; color:#15803d; text-transform:uppercase;">🧾 Comprobante Oficial de Pago</div>
+                <div style="font-size:0.84rem; font-weight:800; color:#0f172a; margin-top:2px;">
+                  ${esc(ped.comprobante_digital.numero_recibo || '')} · ${esc(ped.comprobante_digital.medio_pago_label || '')}
+                </div>
+              </div>
+              <a href="${esc(ped.comprobante_digital.imagen_url)}" target="_blank" rel="noopener" data-testid="btn-ver-recibo-seguimiento"
+                style="padding:8px 12px; border-radius:9px; background:#16a34a; color:#ffffff; font-weight:900; font-size:0.8rem; text-decoration:none;">
+                🧾 Abrir / Descargar Recibo
+              </a>
+            </div>
+          </div>
+        ` : ''}
+
         <!-- Acciones inferiores del vecino -->
         <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:space-between;">
           ${waAusenteTempranoHref ? `
@@ -7779,7 +7797,7 @@
             `).join('')}
             ${Number(ped.cargo_envio_barrial) > 0 ? `
               <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#64748b; padding:3px 0;">
-                <span>Envío barrial</span>
+                <span>Envío a domicilio</span>
                 <span>+${fmt(ped.cargo_envio_barrial)}</span>
               </div>
             ` : ''}
@@ -7788,6 +7806,15 @@
               <span>${fmt(rec.monto_abonado)}</span>
             </div>
           </div>
+
+          ${rec.imagen_url ? `
+            <div style="margin-bottom:10px; text-align:center;">
+              <a href="${esc(rec.imagen_url)}" target="_blank" rel="noopener"
+                style="display:inline-block; width:100%; padding:10px 12px; border-radius:10px; background:#ecfdf5; border:1px solid #86efac; color:#15803d; font-weight:900; font-size:0.84rem; text-decoration:none; box-sizing:border-box;">
+                🖼️ Abrir Recibo Oficial con Membrete (PNG)
+              </a>
+            </div>
+          ` : ''}
 
           <div style="display:flex; gap:8px;">
             <button type="button" onclick="window.print()"

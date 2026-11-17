@@ -5402,8 +5402,49 @@
     }
 
     // -------------------------------------------------------------------------
-    // 3. DÍAS DE ENTREGA, CORTE Y ENVÍO BARRIAL
+    // 3. DÍAS DE ENTREGA, CORTE, MEDIOS DE PAGO Y ENVÍO
     // -------------------------------------------------------------------------
+    function renderizarBloqueMediosPagoGestor() {
+      const mod = obtenerModulosActivosGestor();
+      const efectivoActivo = Boolean(
+        !GSTATE.nodo?.solo_transferencia_bancaria &&
+        (GSTATE.nodo?.cobro_efectivo_entrega ?? mod.cobro_efectivo_entrega)
+      );
+      const aliasOficial = GSTATE.nodo?.alias_bancario_display || 'LAMDA.SER.MARTIN';
+      const bancoOficial = GSTATE.nodo?.banco_display || 'Banco Galicia';
+
+      return `
+        <div data-testid="bloque-medios-pago-tienda" style="background:var(--surface-warm); border:1.5px solid var(--border); border-radius:14px; padding:14px 15px; margin-bottom:16px;">
+          <div style="font-size:0.94rem; font-weight:900; color:var(--text); margin-bottom:4px;">💳 Medios de pago habilitados en tu tienda</div>
+          <div style="font-size:0.82rem; color:var(--muted); margin-bottom:10px; line-height:1.4;">
+            Definí qué opciones de pago ven tus compradores en el checkout de <strong>${esc(GSTATE.nodo?.nombre_marca || 'tu tienda')}</strong>.
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:#ffffff; border:1px solid var(--border); border-radius:11px; padding:10px 12px; margin-bottom:9px;">
+            <div>
+              <div style="font-size:0.88rem; font-weight:900; color:var(--text);">🏦 Transferencia Bancaria</div>
+              <div style="font-size:0.79rem; color:var(--muted); font-weight:700;">Alias: <strong>${esc(aliasOficial)}</strong> · ${esc(bancoOficial)}</div>
+            </div>
+            <span style="padding:4px 10px; border-radius:999px; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; font-size:0.76rem; font-weight:900;">
+              ✓ Activa
+            </span>
+          </div>
+
+          <div class="cfg-switch-card" style="background:#ffffff; margin:0;">
+            <label class="switch-label" style="cursor:pointer;">
+              <input type="checkbox" id="cfg-cobro-efectivo-entrega" data-testid="switch-efectivo-al-entregar" ${efectivoActivo ? 'checked' : ''} />
+              <span>💵 Efectivo al entregar</span>
+            </label>
+            <div style="font-size:0.8rem; color:var(--muted); font-weight:600; padding-left:32px; margin-top:3px; line-height:1.35;">
+              ${efectivoActivo
+                ? 'Habilitado: el comprador puede elegir entre Transferencia Bancaria o Efectivo al recibir.'
+                : 'Desactivado: el checkout muestra únicamente Transferencia Bancaria.'}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     function renderSeccionLogistica() {
       if (esPerfilEcommerceGestor()) {
         const cfgPaq = GSTATE.nodo.config_paqueteria || {};
@@ -5477,6 +5518,8 @@
               </div>
             ` : ''}
 
+            ${renderizarBloqueMediosPagoGestor()}
+
             <div class="cfg-switch-card" style="margin-bottom:16px;">
               <label class="switch-label">
                 <input type="checkbox" id="cfg-mostrar-ingredientes" ${GSTATE.nodo.mostrar_ingredientes_tienda !== false ? 'checked' : ''} />
@@ -5484,8 +5527,8 @@
               </label>
             </div>
 
-            <button type="button" class="btn-primary" style="width:100%; max-width:340px;" onclick="guardarConfigLogisticaGestor()">
-              Guardar Preferencias de Envíos
+            <button type="button" class="btn-primary" id="btn-guardar-config-tienda" style="width:100%; max-width:340px;" onclick="guardarConfigLogisticaGestor()">
+              Guardar Configuración
             </button>
           </div>
         `;
@@ -5580,7 +5623,9 @@
             </div>
           </div>
 
-          <button type="button" class="btn-primary" style="width:100%; max-width:340px;" onclick="guardarConfigLogisticaGestor()">
+          ${renderizarBloqueMediosPagoGestor()}
+
+          <button type="button" class="btn-primary" id="btn-guardar-config-tienda" style="width:100%; max-width:340px;" onclick="guardarConfigLogisticaGestor()">
             Guardar Configuración
           </button>
         </div>
@@ -5625,6 +5670,7 @@
     }
 
     async function guardarConfigLogisticaGestor() {
+      const cobroEfectivoSwitch = Boolean(document.getElementById('cfg-cobro-efectivo-entrega')?.checked);
       if (esPerfilEcommerceGestor()) {
         const cfgPrev = GSTATE.nodo.config_paqueteria || {};
         const payloadEc = {
@@ -5632,6 +5678,7 @@
           permitir_reparto_propio: false,
           permitir_envio_barrial: false,
           permitir_encomienda: true,
+          cobro_efectivo_entrega: cobroEfectivoSwitch,
           mostrar_ingredientes_tienda: Boolean(document.getElementById('cfg-mostrar-ingredientes')?.checked ?? true),
           config_paqueteria: {
             ...cfgPrev,
@@ -5651,7 +5698,7 @@
             mostrarAvisoPantallaGestor('No se pudo guardar: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
             return;
           }
-          mostrarAvisoPantallaGestor('✅ Configuración de envíos nacionales actualizada.', 'ok');
+          mostrarAvisoPantallaGestor('✅ Configuración de envíos y medios de pago actualizada.', 'ok');
           await cargarPanelGestor();
         } catch (_) {
           mostrarAvisoPantallaGestor('Error de comunicación al guardar las preferencias de envío.', 'error');
@@ -5663,7 +5710,7 @@
       const permitirReparto = Boolean(document.getElementById('cfg-permitir-reparto')?.checked);
       const permitirEncomienda = Boolean(document.getElementById('cfg-permitir-encomienda')?.checked);
       if (!permitirRetiro && !permitirReparto) {
-        alert('Activá al menos Punto de retiro o Reparto propio a domicilio para que tus vecinos puedan completar pedidos.');
+        alert('Activá al menos Punto de retiro o Reparto propio a domicilio para que tus compradores puedan completar pedidos.');
         return;
       }
       const payload = {
@@ -5674,6 +5721,7 @@
         permitir_reparto_propio: permitirReparto,
         permitir_encomienda: permitirEncomienda,
         permitir_envio_barrial: permitirReparto,
+        cobro_efectivo_entrega: cobroEfectivoSwitch,
         mostrar_ingredientes_tienda: Boolean(document.getElementById('cfg-mostrar-ingredientes')?.checked ?? true)
       };
 
@@ -5720,10 +5768,18 @@
       if (esPostal) {
         const opLbl = p.postal_operador === 'ANDREANI' ? 'Andreani' : 'Correo Argentino';
         const guia = String(p.postal_numero_tracking || '').trim();
+        const esEfvoMeta = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO';
         if (hito <= 1) {
-          return p.pago_confirmado
-            ? { texto: '💳 Pago confirmado · Cola de armado', bg: '#ecfdf5', fg: '#047857', bd: '#a7f3d0' }
-            : { texto: '⏳ Pendiente de verificación', bg: '#fef3c7', fg: '#92400e', bd: '#fde68a' };
+          if (p.pago_confirmado) {
+            return { texto: '💳 Pago confirmado · Cola de armado', bg: '#ecfdf5', fg: '#047857', bd: '#a7f3d0' };
+          }
+          if (esEfvoMeta) {
+            return { texto: '💵 Efectivo al entregar · En preparación', bg: '#ecfdf5', fg: '#047857', bd: '#a7f3d0' };
+          }
+          if (Number(p.monto_declarado_cliente || 0) > 0) {
+            return { texto: '🔔 Pago informado · En verificación', bg: '#dbeafe', fg: '#1d4ed8', bd: '#93c5fd' };
+          }
+          return { texto: '⏳ Pedido confirmado · Pendiente de pago', bg: '#fef3c7', fg: '#92400e', bd: '#fde68a' };
         }
         if (hito === 2) {
           return { texto: '💳 Pago confirmado · En preparación', bg: '#fef3c7', fg: '#92400e', bd: '#fde68a' };
@@ -5816,6 +5872,12 @@
       const pendientes = todos.filter(p => !p.pago_confirmado);
       const reclamadosSec = todos.filter(p => !p.pago_confirmado && Boolean(p.reclamo_pago_no_recibido));
       const informadosSec = todos.filter(p => !p.pago_confirmado && !p.reclamo_pago_no_recibido && Number(p.monto_declarado_cliente || 0) > 0);
+      const pendientesSinAvisoSec = todos.filter(p =>
+        !p.pago_confirmado &&
+        !p.reclamo_pago_no_recibido &&
+        Number(p.monto_declarado_cliente || 0) <= 0 &&
+        String(p.medio_pago || 'TRANSFERENCIA').toUpperCase() !== 'EFECTIVO'
+      );
 
       const basePorCobro = GSTATE.filtroPagoPedidos === 'PAGADOS'
         ? pagados
@@ -5890,13 +5952,20 @@
 
       const alertaInformadosSecHtml = informadosSec.length === 0 ? '' : `
         <div style="background:#fffbeb; border:1.5px solid #fcd34d; border-radius:11px; padding:9px 12px; margin-bottom:10px; font-size:0.84rem; color:#92400e; font-weight:800;">
-          🔔 <strong>${informadosSec.length} ${informadosSec.length === 1 ? 'pedido con aviso de transferencia' : 'pedidos con aviso de transferencia'}:</strong> pasan automáticamente a preparación apenas se acredite el pago en Banco Galicia.
+          🔔 <strong>${informadosSec.length} ${informadosSec.length === 1 ? 'pedido con pago informado' : 'pedidos con pago informado'}:</strong> pasan automáticamente a preparación apenas se acredite el pago en Banco Galicia.
+        </div>
+      `;
+
+      const alertaConfirmadosPendientesHtml = pendientesSinAvisoSec.length === 0 ? '' : `
+        <div data-testid="banner-pedidos-pendientes-pago-gestor" style="background:#f8fafc; border:1.5px solid #93c5fd; border-radius:11px; padding:9px 12px; margin-bottom:10px; font-size:0.84rem; color:#1e3a8a; font-weight:800;">
+          ⏳ <strong>${pendientesSinAvisoSec.length} ${pendientesSinAvisoSec.length === 1 ? 'pedido confirmado · Pendiente de pago' : 'pedidos confirmados · Pendientes de pago'}:</strong> ya figuran registrados en tu tienda y pasarán a armado al acreditarse la transferencia.
         </div>
       `;
 
       return `
         ${alertaReclamoSecHtml}
         ${alertaInformadosSecHtml}
+        ${alertaConfirmadosPendientesHtml}
         ${bannersRecepcionHtml}
         ${bannersPrepHtml}
 
@@ -5959,13 +6028,13 @@
               const pagado = Boolean(p.pago_confirmado);
               const modUpper = String(p.modalidad_entrega || '').toUpperCase();
               const esPostal = esEc || ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(modUpper);
-              const esEfvo = !esPostal && (String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR');
+              const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
               const esEnvio = !esPostal && (modUpper === 'ENVIO_BARRIAL' || Boolean(p.incluido_reparto_manual));
               const hito = Number(p.hito_tracking_actual || 1);
               const metaHito = _obtenerMetaHitoGestor(p);
               const urlSeg = obtenerUrlSeguimientoPedidoGestor(p);
               const puedeSalirReparto = !esEc && mod.hoja_de_ruta && esEnvio && hito === 4;
-              const permiteEfvoActivo = Boolean(!GSTATE.nodo?.solo_transferencia_bancaria && GSTATE.nodo?.permitir_efectivo !== false && mod.cobro_efectivo_entrega && !esEc);
+              const permiteEfvoActivo = Boolean(!GSTATE.nodo?.solo_transferencia_bancaria && (esEfvo || GSTATE.nodo?.cobro_efectivo_entrega || mod.cobro_efectivo_entrega));
               const puedeMarcarEntregado = (hito === 4 || hito === 5) && (pagado || (esEfvo && permiteEfvoActivo));
               const reclamoPed = !pagado && Boolean(p.reclamo_pago_no_recibido);
               const declaradoPed = !pagado ? Number(p.monto_declarado_cliente || 0) : 0;
@@ -5997,7 +6066,7 @@
                     </div>
                     <div style="text-align:right;">
                       <div style="font-weight:900; font-size:1.05rem; color:var(--text);">${fmt(p.total_vecino)}</div>
-                      <span style="font-size:0.8rem; font-weight:800; color:${pagado ? 'var(--ok)' : (reclamoPed ? '#dc2626' : (declaradoPed > 0 ? '#1d4ed8' : 'var(--warn)'))};">
+                      <span data-testid="badge-estado-pago-pedido-${p.id}" style="font-size:0.8rem; font-weight:800; color:${pagado ? 'var(--ok)' : (reclamoPed ? '#dc2626' : (declaradoPed > 0 ? '#1d4ed8' : 'var(--warn)'))};">
                         ${pagado
                           ? (esEfvo ? '✅ Pagado en efectivo' : '✅ Transferencia acreditada')
                           : (reclamoPed
@@ -6006,7 +6075,7 @@
                                   ? `🌓 Acreditado parcial (${fmt(acreditadoParcialPed)})`
                                   : (declaradoPed > 0
                                       ? `🔔 Pago informado (${fmt(declaradoPed)}${titularAvisoPed ? ' · ' + esc(titularAvisoPed) : ''})`
-                                      : (esEfvo ? '💵 Cobra efectivo en entrega' : '🏦 Pendiente transferencia'))))}
+                                      : (esEfvo ? '💵 Efectivo al entregar' : '⏳ Pedido confirmado · Pendiente de pago'))))}
                       </span>
                     </div>
                   </div>
@@ -6149,7 +6218,7 @@
         return;
       }
 
-      // Modal ágil de 1 toque que unifica Entrega + Cobro en Efectivo + Recibo Digital
+      // Modal ágil de 1 toque que unifica Entrega + Cobro en Efectivo + Envío Automático de Recibo con Membrete
       const modal = document.getElementById('modal-recibo-gestor');
       const body = document.getElementById('modal-recibo-gestor-body');
       if (!modal || !body) return;
@@ -6157,26 +6226,22 @@
       body.innerHTML = `
         <div style="background:var(--brand); color:#ffffff; padding:16px 18px; display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <div style="font-size:0.72rem; text-transform:uppercase; font-weight:800; opacity:0.9;">Confirmar Entrega en 1 Toque</div>
+            <div style="font-size:0.72rem; text-transform:uppercase; font-weight:800; opacity:0.9;">Confirmar Entrega y Cobro en 1 Toque</div>
             <div style="font-size:1.1rem; font-weight:900; margin-top:2px;">Pedido #${esc(p.codigo_pedido)} · ${esc(p.vecino_nombre)}</div>
           </div>
           <button type="button" onclick="cerrarModalReciboGestor()" style="background:rgba(0,0,0,0.18); border:none; color:#fff; width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
         </div>
         <div style="padding:18px; color:var(--text);">
           <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:14px; font-size:0.86rem;">
-            <div><strong>Importe del pedido:</strong> <span style="font-size:1.05rem; font-weight:900; color:var(--brand-dark);">${fmt(p.total_vecino)}</span></div>
-            <div style="font-size:0.79rem; color:var(--muted); margin-top:3px;">
-              Medio elegido al pedir: <strong>${p.medio_pago === 'EFECTIVO' ? '💵 Efectivo al recibir' : '🏦 Transferencia bancaria'}</strong> (aún pendiente de acreditar)
+            <div><strong>Importe a cobrar en mano:</strong> <span style="font-size:1.08rem; font-weight:900; color:var(--brand-dark);">${fmt(p.total_vecino)}</span></div>
+            <div style="font-size:0.8rem; color:var(--muted); margin-top:4px; line-height:1.35;">
+              📲 Al confirmar se genera el recibo oficial de <strong>${esc(GSTATE.nodo.nombre_marca)}</strong> y se envía automáticamente al WhatsApp registrado (<strong>${esc(p.vecino_telefono || 'sin número')}</strong>).
             </div>
           </div>
           <div style="display:flex; flex-direction:column; gap:10px;">
-            <button type="button" onclick="cerrarModalReciboGestor(); avanzarEstadoEntregaGestor(${p.id}, 'ENTREGADO', true);"
-              style="width:100%; padding:13px 14px; border-radius:12px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer; text-align:center;">
+            <button type="button" data-testid="btn-confirmar-entrega-cobro-efectivo" onclick="cerrarModalReciboGestor(); avanzarEstadoEntregaGestor(${p.id}, 'ENTREGADO', true);"
+              style="width:100%; padding:13px 14px; border-radius:12px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.92rem; cursor:pointer; text-align:center;">
               💵 Entregado + Cobré ${fmt(p.total_vecino)} en Efectivo
-            </button>
-            <button type="button" onclick="cerrarModalReciboGestor(); avanzarEstadoEntregaGestor(${p.id}, 'ENTREGADO', false);"
-              style="width:100%; padding:11px 14px; border-radius:12px; border:1px solid var(--border); background:#fffdfb; color:var(--text); font-family:inherit; font-weight:800; font-size:0.84rem; cursor:pointer; text-align:center;">
-              📦 Solo marcar Entregado (cobro por transferencia / luego)
             </button>
             <button type="button" class="btn-soft" onclick="cerrarModalReciboGestor()">Cancelar</button>
           </div>
@@ -6207,14 +6272,19 @@
           return false;
         }
 
+        const waInfo = data.envio_whatsapp_recibo || null;
+        const msgWaAuto = waInfo?.ok
+          ? ` Recibo enviado automáticamente al celular de ${p.vecino_nombre}.`
+          : '';
+
         const msgExito = accion === 'SALIO_REPARTO'
-          ? `🛵 Pedido #${p.codigo_pedido} marcado "En camino a domicilio". El vecino ya lo ve en vivo.`
+          ? `🛵 Pedido #${p.codigo_pedido} marcado "En camino a domicilio". El comprador ya lo ve en vivo.`
           : accion === 'AUSENTE_PASA_RETIRAR'
             ? `🏡 Pedido #${p.codigo_pedido} pasado a "Ausente — Pasa por punto de retiro" (se conserva envío).`
             : accion === 'REINTEGRAR_REPARTO'
               ? `🔄 Pedido #${p.codigo_pedido} reintegrado a la Hoja de Ruta.`
               : (data.cobro_efectivo_registrado
-                  ? `✅ Pedido #${p.codigo_pedido} entregado y cobrado en efectivo (${fmt(p.total_vecino)}).`
+                  ? `✅ Pedido #${p.codigo_pedido} entregado y cobrado en efectivo (${fmt(p.total_vecino)}).${msgWaAuto}`
                   : `✅ Pedido #${p.codigo_pedido} marcado como entregado a ${p.vecino_nombre}.`);
         mostrarAvisoPantallaGestor(msgExito, 'ok');
 
@@ -6266,7 +6336,11 @@
           mostrarAvisoPantallaGestor('No se pudo registrar el cobro en efectivo: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
           return;
         }
-        mostrarAvisoPantallaGestor(`✅ Cobro en efectivo registrado para el pedido #${ped.codigo_pedido}.`, 'ok');
+        const waInfo = data.envio_whatsapp_recibo || null;
+        mostrarAvisoPantallaGestor(
+          `✅ Cobro en efectivo registrado para el pedido #${ped.codigo_pedido}.${waInfo?.ok ? ' Recibo enviado al celular del cliente.' : ''}`,
+          'ok'
+        );
         await cargarPanelGestor();
         abrirModalReciboVecinoGestor(pedidoId);
       } catch (_) {
@@ -6283,46 +6357,119 @@
       const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
       if (!p || !GSTATE.nodo) return;
       const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
-      const nroRecibo = p.comprobante_referencia || (esEfvo ? `REC-EFVO-${p.codigo_pedido}` : `REC-TRF-${p.codigo_pedido}`);
+      const nroRecibo = String(p.comprobante_referencia || (esEfvo ? `REC-EFVO-${p.codigo_pedido}` : `REC-PAGO-${p.codigo_pedido}`))
+        .replace(/lamda|nodo/gi, '')
+        .trim() || `REC-EFVO-${p.codigo_pedido}`;
 
       const modal = document.getElementById('modal-recibo-gestor');
       const body = document.getElementById('modal-recibo-gestor-body');
       if (!modal || !body) return;
 
+      const logoHoriz = obtenerLogoHorizontalGestor(GSTATE.nodo) || obtenerLogoIconoGestor(GSTATE.nodo);
+      const logoIncluyeTxt = Boolean(logoHoriz && GSTATE.nodo?.tema_visual?.logo_incluye_texto);
+      const fechaHoraPago = (() => {
+        const rawDt = p.fecha_conciliacion_pago || p.recibo_emitido_at || p.fecha_entregado_vecino || p.created_at;
+        if (!rawDt) return '';
+        try {
+          return new Date(rawDt).toLocaleString('es-AR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+          }) + ' hs';
+        } catch (_) {
+          return '';
+        }
+      })();
+
+      const imgReciboUrl = `/api/produccion/nodos/pedidos/${encodeURIComponent(p.id)}/recibo-marca-blanca.png?t=${encodeURIComponent(GSTATE.gestorToken || '')}&_=${Date.now()}`;
+      const detWa = (p.recibo_wa_detalle && typeof p.recibo_wa_detalle === 'object') ? p.recibo_wa_detalle : null;
+      const waEnviadoOk = Boolean(p.recibo_wa_enviado || detWa?.ok);
+
       body.innerHTML = `
-        <div style="background:var(--brand); color:#ffffff; padding:16px 18px; display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <div style="font-size:0.72rem; text-transform:uppercase; font-weight:800; opacity:0.9;">Comprobante de Pago</div>
-            <div style="font-size:1.12rem; font-weight:900; margin-top:2px;">${esc(GSTATE.nodo.nombre_marca)}</div>
+        <div data-testid="recibo-membrete-tienda-header" style="background:var(--surface-warm); border-bottom:3px solid var(--brand); padding:15px 18px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+            ${logoHoriz ? `
+              <img src="${esc(logoHoriz)}" alt="${esc(GSTATE.nodo.nombre_marca)}" style="max-height:46px; max-width:170px; object-fit:contain; display:block;" />
+            ` : ''}
+            ${!logoIncluyeTxt ? `
+              <div style="min-width:0;">
+                <div style="font-size:0.7rem; text-transform:uppercase; font-weight:900; color:var(--brand);">Recibo Oficial de Pago</div>
+                <div style="font-size:1.12rem; font-weight:900; color:var(--text);">${esc(GSTATE.nodo.nombre_marca)}</div>
+              </div>
+            ` : `
+              <span style="padding:4px 9px; border-radius:999px; background:#ffffff; border:1px solid var(--brand); color:var(--brand); font-size:0.72rem; font-weight:900;">
+                RECIBO DE PAGO
+              </span>
+            `}
           </div>
-          <button type="button" onclick="cerrarModalReciboGestor()" style="background:rgba(0,0,0,0.18); border:none; color:#fff; width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+          <button type="button" onclick="cerrarModalReciboGestor()" style="background:rgba(0,0,0,0.08); border:none; color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer; flex-shrink:0;">✕</button>
         </div>
-        <div style="padding:18px; color:var(--text);">
-          <div style="font-size:0.85rem; margin-bottom:12px;">
-            <div><strong>${esPerfilEcommerceGestor() ? 'Cliente:' : 'Vecino/a:'}</strong> ${esc(p.vecino_nombre)} · <strong>Pedido #${esc(p.codigo_pedido)}</strong></div>
-            <div style="color:var(--muted); font-size:0.78rem; margin-top:2px;">Recibo ${esc(nroRecibo)} · ${esEfvo ? 'Efectivo' : 'Transferencia'}</div>
+
+        <div data-testid="recibo-membrete-tienda-body" style="padding:16px 18px; color:var(--text); max-height:78dvh; overflow-y:auto;">
+          ${waEnviadoOk ? `
+            <div data-testid="aviso-wa-recibo-enviado" style="background:#ecfdf5; border:1px solid #86efac; border-radius:11px; padding:9px 12px; margin-bottom:12px; font-size:0.8rem; color:#166534; font-weight:800;">
+              📲 Recibo enviado automáticamente al celular registrado: <strong>${esc(p.vecino_telefono || detWa?.telefono_registrado || '')}</strong>
+            </div>
+          ` : (detWa && detWa.error ? `
+            <div style="background:#fffbeb; border:1px solid #fcd34d; border-radius:11px; padding:9px 12px; margin-bottom:12px; font-size:0.79rem; color:#92400e; font-weight:700;">
+              ⚠️ El cobro quedó registrado. Estado de mensajería: ${esc(detWa.error)} Podés reenviar el recibo abajo.
+            </div>
+          ` : '')}
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:10px 12px; margin-bottom:12px; font-size:0.82rem;">
+            <div>
+              <div style="font-size:0.7rem; font-weight:800; color:var(--muted); text-transform:uppercase;">Cliente</div>
+              <div style="font-weight:900;">${esc(p.vecino_nombre)}</div>
+            </div>
+            <div>
+              <div style="font-size:0.7rem; font-weight:800; color:var(--muted); text-transform:uppercase;">Fecha y hora</div>
+              <div style="font-weight:800;">${esc(fechaHoraPago || 'Hoy')}</div>
+            </div>
+            <div>
+              <div style="font-size:0.7rem; font-weight:800; color:var(--muted); text-transform:uppercase;">Comprobante / Pedido</div>
+              <div style="font-weight:900; color:var(--brand);">${esc(nroRecibo)} · #${esc(p.codigo_pedido)}</div>
+            </div>
+            <div>
+              <div style="font-size:0.7rem; font-weight:800; color:var(--muted); text-transform:uppercase;">Medio de pago</div>
+              <div style="font-weight:800;">${esEfvo ? '💵 Efectivo en mano' : '🏦 Transferencia bancaria'}</div>
+            </div>
           </div>
-          <div style="border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:14px; background:#fffdfb; font-size:0.84rem;">
+
+          <div style="border:1px solid var(--border); border-radius:12px; padding:12px; margin-bottom:12px; background:#fffdfb; font-size:0.84rem;">
             ${(p.items || []).map(it => `
-              <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+              <div style="display:flex; justify-content:space-between; gap:8px; margin-bottom:5px;">
                 <span><strong>${it.cantidad}x</strong> ${esc(formatearItemVecinoGestor(it))}</span>
                 <strong>${fmt(it.subtotal_vecino)}</strong>
               </div>
             `).join('')}
             ${Number(p.cargo_envio_barrial) > 0 ? `
               <div style="display:flex; justify-content:space-between; color:var(--muted); border-top:1px dashed var(--border); padding-top:6px;">
-                <span>${esPerfilEcommerceGestor() ? 'Envío postal' : 'Envío barrial'}</span>
+                <span>${esPerfilEcommerceGestor() ? 'Envío postal' : 'Envío a domicilio'}</span>
                 <strong>${fmt(p.cargo_envio_barrial)}</strong>
               </div>
             ` : ''}
-            <div style="display:flex; justify-content:space-between; font-size:1rem; font-weight:900; border-top:1px solid var(--border); padding-top:8px; margin-top:6px;">
-              <span>TOTAL PAGADO</span>
-              <span style="color:var(--ok);">${fmt(p.total_vecino)}</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:1.02rem; font-weight:900; background:var(--brand); color:#ffffff; border-radius:10px; padding:10px 12px; margin-top:8px;">
+              <span>${esEfvo ? 'IMPORTE COBRADO EN EFECTIVO' : 'TOTAL ABONADO'}</span>
+              <span>${fmt(p.total_vecino)}</span>
             </div>
           </div>
+
+          <details style="margin-bottom:12px; background:#f8fafc; border:1px solid var(--border); border-radius:11px; padding:8px 11px;">
+            <summary style="cursor:pointer; font-size:0.8rem; font-weight:800; color:var(--brand-dark);">
+              🖼️ Vista previa de la tarjeta gráfica enviada al cliente
+            </summary>
+            <div style="margin-top:8px; text-align:center;">
+              <img data-testid="img-recibo-marca-blanca-gestor" src="${esc(imgReciboUrl)}" alt="Recibo ${esc(GSTATE.nodo.nombre_marca)}"
+                style="max-width:100%; height:auto; border-radius:10px; border:1px solid var(--border);" />
+            </div>
+          </details>
+
           <div style="display:flex; flex-direction:column; gap:8px;">
-            <button type="button" class="btn-primary" onclick="enviarReciboWhatsAppVecinoGestor(${p.id})">
-              📲 Enviar Recibo por WhatsApp
+            <button type="button" class="btn-primary" id="btn-reenviar-recibo-celular-${p.id}" onclick="reenviarReciboWhatsAppDirectoGestor(${p.id})">
+              📲 Reenviar recibo al celular del cliente (${esc(p.vecino_telefono || 'WhatsApp')})
             </button>
             <button type="button" class="btn-soft" onclick="cerrarModalReciboGestor()">Cerrar</button>
           </div>
@@ -6331,32 +6478,46 @@
       modal.style.display = 'flex';
     }
 
-    async function enviarReciboWhatsAppVecinoGestor(pedidoId) {
+    async function reenviarReciboWhatsAppDirectoGestor(pedidoId) {
       const p = (GSTATE.pedidos || []).find(x => Number(x.id) === Number(pedidoId));
-      if (!p || !GSTATE.nodo) return;
-      const esEfvo = String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' || String(p.estado_pago || '').toUpperCase() === 'COBRADO_EFECTIVO_GESTOR';
-      const nroRecibo = p.comprobante_referencia || (esEfvo ? `REC-EFVO-${p.codigo_pedido}` : `REC-TRF-${p.codigo_pedido}`);
-      const itemsTxt = (p.items || []).map(it => `• ${it.cantidad}x ${formatearItemVecinoGestor(it)}: ${fmt(it.subtotal_vecino)}`).join('\n');
-      const linkSeg = obtenerUrlSeguimientoPedidoGestor(p);
+      if (!p || !GSTATE.nodo?.id) return;
+      const btn = document.getElementById(`btn-reenviar-recibo-celular-${p.id}`);
+      const txtOrig = btn ? btn.textContent : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Enviando recibo con membrete...';
+      }
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/pedidos/${p.id}/reenviar-recibo-whatsapp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo reenviar el recibo: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+          return;
+        }
+        const env = data.envio_whatsapp_recibo || {};
+        if (env.ok) {
+          mostrarAvisoPantallaGestor(`✅ Recibo oficial de ${GSTATE.nodo.nombre_marca} enviado al celular de ${p.vecino_nombre}.`, 'ok');
+          await cargarPanelGestor();
+          abrirModalReciboVecinoGestor(pedidoId);
+        } else {
+          mostrarAvisoPantallaGestor(`⚠️ Estado de envío: ${env.error || 'Verificá el número de WhatsApp del cliente.'}`, 'error');
+        }
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de comunicación al reenviar el recibo.', 'error');
+      } finally {
+        if (btn && btn.isConnected) {
+          btn.disabled = false;
+          btn.textContent = txtOrig;
+        }
+      }
+    }
 
-      const mensaje = [
-        `🧾 *RECIBO DE PAGO — ${GSTATE.nodo.nombre_marca}*`,
-        `Comprobante: *${nroRecibo}* · Pedido *#${p.codigo_pedido}*`,
-        `Hola *${p.vecino_nombre}*, registramos tu pago:`,
-        itemsTxt,
-        Number(p.cargo_envio_barrial) > 0 ? `• ${esPerfilEcommerceGestor() ? 'Envío postal' : 'Envío barrial'}: ${fmt(p.cargo_envio_barrial)}` : '',
-        `✅ *TOTAL ABONADO: ${fmt(p.total_vecino)}* (${esEfvo ? 'Efectivo' : 'Transferencia'})`,
-        linkSeg ? `📍 Seguimiento de tu pedido: ${linkSeg}` : '',
-        `¡Muchas gracias!`
-      ].filter(Boolean).join('\n');
-
-      await abrirModalDespachoWhatsAppGestor({
-        destinatario_nombre: p.vecino_nombre,
-        telefono_original: p.vecino_telefono,
-        mensaje,
-        titulo: `Recibo ${nroRecibo}`,
-        subtitulo: `${esPerfilEcommerceGestor() ? 'Cliente' : 'Vecino/a'}: ${p.vecino_nombre}`
-      });
+    async function enviarReciboWhatsAppVecinoGestor(pedidoId) {
+      return reenviarReciboWhatsAppDirectoGestor(pedidoId);
     }
 
     // -------------------------------------------------------------------------

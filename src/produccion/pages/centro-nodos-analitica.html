@@ -1254,6 +1254,17 @@
                       <span class="badge-pill" style="background:${p.estado_operativo === 'ENTREGADO_VECINO' ? '#dcfce7' : (p.estado_operativo === 'ANULADO' ? '#fee2e2' : '#eff6ff')}; color:${p.estado_operativo === 'ENTREGADO_VECINO' ? '#166534' : (p.estado_operativo === 'ANULADO' ? '#991b1b' : '#1e40af')};">
                         ${esc(p.estado_operativo)}
                       </span>
+                      <div style="margin-top:4px;">
+                        ${p.estado_operativo === 'ANULADO'
+                          ? ''
+                          : (p.pago_confirmado
+                              ? `<span class="badge-pill" style="background:#dcfce7; color:#15803d;">✅ ${String(p.medio_pago || '').toUpperCase() === 'EFECTIVO' ? 'Efectivo cobrado' : 'Pagado'}</span>`
+                              : (String(p.medio_pago || '').toUpperCase() === 'EFECTIVO'
+                                  ? `<span class="badge-pill" style="background:#fef3c7; color:#92400e;">💵 Efectivo al entregar</span>`
+                                  : (Number(p.monto_declarado_cliente || 0) > 0
+                                      ? `<span class="badge-pill" style="background:#dbeafe; color:#1d4ed8;">🔔 Pago informado</span>`
+                                      : `<span class="badge-pill" style="background:#fef3c7; color:#92400e;">⏳ Pedido confirmado · Pendiente de pago</span>`)))}
+                      </div>
                     </td>
                     <td style="text-align:right; font-weight:900;">${fmtMoneda(p.total_vecino)}</td>
                   </tr>
@@ -2019,7 +2030,7 @@
         { key: 'venta_continua_24_7', label: '⏱️ Venta continua 24/7', desc: 'Sin cierre por ventana semanal; despacho 24/48 hs' },
         { key: 'despacho_desde_lamda', label: '🏭 Fulfillment directo desde LAMDA', desc: 'Armado y despacho desde depósito central La Plata' },
         { key: 'canasto_consolidado', label: '🧺 Consolidar en Canasto Semanal', desc: 'Agrupa bolsas por ventana para retiro del referente' },
-        { key: 'cobro_efectivo_entrega', label: '💵 Permitir cobro en Efectivo', desc: 'Pago en mano al recibir (apagado en correo nacional)' }
+        { key: 'cobro_efectivo_entrega', label: '💵 Efectivo al entregar', desc: 'Pago en mano al recibir (editable autónomamente por tienda)' }
       ];
 
       box.innerHTML = `

@@ -867,9 +867,19 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
             perfil_operativo: String(r.perfil_operativo || 'vecinal').trim().toLowerCase() === 'ecommerce_fulfillment'
                 ? 'ecommerce_fulfillment'
                 : 'vecinal',
-            modulos_activos: (r.modulos_activos && typeof r.modulos_activos === 'object' && !Array.isArray(r.modulos_activos))
-                ? r.modulos_activos
-                : {},
+            cobro_efectivo_entrega: Boolean(
+                r.cobro_efectivo_entrega ??
+                (r.modulos_activos && typeof r.modulos_activos === 'object' ? r.modulos_activos.cobro_efectivo_entrega : undefined) ??
+                (String(r.perfil_operativo || 'vecinal').trim().toLowerCase() !== 'ecommerce_fulfillment')
+            ),
+            modulos_activos: {
+                ...((r.modulos_activos && typeof r.modulos_activos === 'object' && !Array.isArray(r.modulos_activos)) ? r.modulos_activos : {}),
+                cobro_efectivo_entrega: Boolean(
+                    r.cobro_efectivo_entrega ??
+                    (r.modulos_activos && typeof r.modulos_activos === 'object' ? r.modulos_activos.cobro_efectivo_entrega : undefined) ??
+                    (String(r.perfil_operativo || 'vecinal').trim().toLowerCase() !== 'ecommerce_fulfillment')
+                )
+            },
             config_paqueteria: (r.config_paqueteria && typeof r.config_paqueteria === 'object' && !Array.isArray(r.config_paqueteria))
                 ? r.config_paqueteria
                 : {},
@@ -1119,6 +1129,11 @@ async function obtenerFichaDetalleNodo(idOrSlug, { calcularProximaEntregaFn = nu
             `SELECT npv.id, npv.codigo_pedido, npv.vecino_id, npv.vecino_nombre, npv.vecino_telefono,
                     npv.modalidad_entrega, npv.direccion_entrega, npv.fecha_entrega_label,
                     npv.medio_pago, npv.estado_pago, npv.estado_operativo,
+                    COALESCE(npv.impactado_cta_cte_pago, false) AS impactado_cta_cte_pago,
+                    (COALESCE(npv.impactado_cta_cte_pago, false) = true OR UPPER(COALESCE(npv.estado_pago, '')) IN ('CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR')) AS pago_confirmado,
+                    COALESCE(npv.monto_declarado_cliente, 0)::numeric(14,2) AS monto_declarado_cliente,
+                    COALESCE(npv.monto_acreditado_banco, 0)::numeric(14,2) AS monto_acreditado_banco,
+                    COALESCE(npv.reclamo_pago_no_recibido, false) AS reclamo_pago_no_recibido,
                     npv.total_vecino, npv.total_base_lamda,
                     COALESCE(npv.retencion_fiscal_margen, 0)::numeric(14,2) AS retencion_fiscal_margen,
                     npv.ganancia_total_gestor,

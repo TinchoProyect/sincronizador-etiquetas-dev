@@ -1069,6 +1069,58 @@ router.post('/gestor/:nodoId/pedidos/:pedidoId/estado-entrega', autenticarGestor
 });
 
 /**
+ * POST /api/produccion/nodos/gestor/:nodoId/pedidos/:pedidoId/reenviar-recibo-whatsapp
+ * Reenvía desde el celular del gestor el recibo PNG con membrete oficial al WhatsApp registrado del cliente.
+ */
+router.post('/gestor/:nodoId/pedidos/:pedidoId/reenviar-recibo-whatsapp', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth) {
+            if (Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+                return res.status(403).json({ ok: false, error: 'No autorizado para enviar recibos de otra tienda.' });
+            }
+            await nodosService.asegurarPedidoPerteneceANodo(req.params.pedidoId, req.nodoAuth.id);
+        }
+        const resultado = await nodosService.reenviarReciboWhatsAppPorGestor(
+            req.params.nodoId,
+            req.params.pedidoId,
+            req.body || {}
+        );
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en reenviar-recibo-whatsapp:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/nodos/pedidos/:pedidoId/recibo-marca-blanca.png
+ * Renderiza el Recibo de Pago en PNG de alta definición con el membrete oficial de la tienda (cero menciones a LAMDA / nodo).
+ */
+router.get('/pedidos/:pedidoId/recibo-marca-blanca.png', async (req, res) => {
+    try {
+        const tokenGestor = extraerTokenGestorRequest(req);
+        const nodoAuth = tokenGestor ? await nodosService.resolverNodoPorTokenGestor(tokenGestor) : null;
+        const trackingToken = String(req.query.tracking_token || '').trim();
+        const portalToken = String(req.query.portal_token || '').trim();
+        const esPublico = esSolicitudPublicaNodos(req) || Boolean(trackingToken || portalToken || tokenGestor);
+
+        const rec = await nodosService.obtenerReciboPngAutorizadoPedido(req.params.pedidoId, {
+            esHostPublico: esPublico,
+            nodoAuth,
+            trackingToken,
+            portalToken
+        });
+        res.setHeader('Content-Type', 'image/png');
+        res.setHeader('Content-Disposition', `inline; filename="${rec.filename}"`);
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cache-Control', 'private, max-age=60');
+        res.send(rec.buffer);
+    } catch (error) {
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
  * GET /api/produccion/nodos/gestor/:nodoId/geocodificar?q=...
  * Geocodificador AR autenticado para corregir ubicaciones de vecinos desde el Panel del Gestor.
  */
@@ -1691,7 +1743,11 @@ router.post('/liquidacion/pedidos/:pedidoId/conciliar-pago', autenticarGestorSiP
             }
         }
         const tablero = await nodosService.conciliarPagoPedidoVecino(req.params.pedidoId, req.body || {});
-        res.json({ ok: true, tablero });
+        res.json({
+            ok: true,
+            tablero,
+            envio_whatsapp_recibo: tablero?.ultimo_envio_whatsapp_recibo || null
+        });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en POST /liquidacion/pedidos/:pedidoId/conciliar-pago:', error);
         res.status(error.statusCode || 400).json({ ok: false, error: error.message });

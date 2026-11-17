@@ -78,7 +78,7 @@ app.use((req, res, next) => {
     const esApiNodoPermitida =
         esBeaconTelemetriaTienda ||
         esRecursoPwaNodo ||
-        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|comprobante-pago\/\d+|ofertas-gestor\/\d+(\/fotos(\/preview|\/[a-z0-9_-]+)?|\/fotos-orden)?|gestor\/\d+\/(config-logistica|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/estado-entrega|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|pedidos\/[^/]+\/(aviso-pago|estado-pago)|cotizar-cp|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/etiqueta|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
+        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|comprobante-pago\/\d+|ofertas-gestor\/\d+(\/fotos(\/preview|\/[a-z0-9_-]+)?|\/fotos-orden)?|gestor\/\d+\/(config-logistica|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/(estado-entrega|reenviar-recibo-whatsapp)|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|pedidos\/[^/]+\/(aviso-pago|estado-pago)|cotizar-cp|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/(etiqueta|recibo-marca-blanca\.png)|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
 
     if (esVistaPermitida || esApiNodoPermitida) {
         return next();

@@ -12107,7 +12107,7 @@
         "numeric_precision": null,
         "numeric_scale": null,
         "is_nullable": "NO",
-        "column_default": "true"
+        "column_default": "false"
       }
     },
     "nodos_liquidaciones_lote": {
@@ -13224,6 +13224,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "'400784413734'::character varying"
+      },
+      "cobro_efectivo_entrega": {
+        "ordinal_position": 54,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_movimientos_cta_cte": {
@@ -15155,6 +15165,36 @@
         "ordinal_position": 74,
         "data_type": "timestamp with time zone",
         "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "recibo_emitido_at": {
+        "ordinal_position": 75,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "recibo_wa_enviado": {
+        "ordinal_position": 76,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "recibo_wa_detalle": {
+        "ordinal_position": 77,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,

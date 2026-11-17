@@ -34,6 +34,7 @@ const {
     vincularVisitanteConVecino
 } = require('./nodosAnaliticaService');
 const pagosBancariosService = require('./nodosPagosBancariosService');
+const recibosMarcaBlancaService = require('./nodosRecibosMarcaBlancaService');
 
 let esquemaInicializado = false;
 
@@ -135,6 +136,9 @@ function resolverModulosActivosNodo(nodoLike = {}, overridesRaw = null) {
         ...preset,
         ...baseLegacy,
         ...guardados,
+        ...(nodoLike && nodoLike.cobro_efectivo_entrega !== undefined && nodoLike.cobro_efectivo_entrega !== null
+            ? { cobro_efectivo_entrega: Boolean(nodoLike.cobro_efectivo_entrega) }
+            : {}),
         ...overrides
     };
 
@@ -6247,11 +6251,15 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
     if (payload.permitir_encomienda !== undefined && overridesModulos.envio_paqueteria === undefined) {
         overridesModulos.envio_paqueteria = Boolean(payload.permitir_encomienda);
     }
+    if ((payload.cobro_efectivo_entrega !== undefined || payload.permitir_efectivo !== undefined) && overridesModulos.cobro_efectivo_entrega === undefined) {
+        overridesModulos.cobro_efectivo_entrega = Boolean(payload.cobro_efectivo_entrega ?? payload.permitir_efectivo);
+    }
 
     const modulosActivosEfectivos = resolverModulosActivosNodo(
         {
             perfil_operativo: perfilOperativoEfectivo,
             modulos_activos: cambioDePerfil ? {} : (existenteRow?.modulos_activos || {}),
+            cobro_efectivo_entrega: cambioDePerfil ? undefined : existenteRow?.cobro_efectivo_entrega,
             permitir_retiro_nodo: cambioDePerfil ? undefined : existenteRow?.permitir_retiro_nodo,
             permitir_reparto_propio: cambioDePerfil ? undefined : existenteRow?.permitir_reparto_propio,
             permitir_envio_barrial: cambioDePerfil ? undefined : existenteRow?.permitir_envio_barrial,
@@ -6259,6 +6267,7 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
         },
         overridesModulos
     );
+    const cobroEfectivoEntregaEfectivo = Boolean(modulosActivosEfectivos.cobro_efectivo_entrega);
 
     const permitirRetiro = payload.permitir_retiro_nodo !== undefined
         ? Boolean(payload.permitir_retiro_nodo)
@@ -6489,6 +6498,7 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     plantilla_origen_id = $44,
                     alicuota_iva_margen_pct = $45,
                     alicuota_iibb_margen_pct = $46,
+                    cobro_efectivo_entrega = $47,
                     updated_at = NOW()
                 WHERE id = $32
                 RETURNING *`,
@@ -6547,7 +6557,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     JSON.stringify(diccionarioTextosEfectivo),
                     plantillaOrigenIdEfectiva,
                     alicuotaIvaMargenEfectiva,
-                    alicuotaIibbMargenEfectiva
+                    alicuotaIibbMargenEfectiva,
+                    cobroEfectivoEntregaEfectivo
                 ]
             );
             nodoGuardado = upd.rows[0];
@@ -6600,9 +6611,9 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     latitud, longitud, mostrar_ingredientes_tienda, gestor_token,
                     bajada_marca, slug_historico, tema_visual,
                     perfil_operativo, modulos_activos, config_paqueteria, diccionario_textos, plantilla_origen_id,
-                    alicuota_iva_margen_pct, alicuota_iibb_margen_pct
+                    alicuota_iva_margen_pct, alicuota_iibb_margen_pct, cobro_efectivo_entrega
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$38,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$35,$36,$37::jsonb,$39,$40::jsonb,$41::jsonb,$42::jsonb,$43,$44,$45
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$38,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$35,$36,$37::jsonb,$39,$40::jsonb,$41::jsonb,$42::jsonb,$43,$44,$45,$46
                 ) RETURNING *`,
                 [
                     codigoNodo,
@@ -6658,7 +6669,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     JSON.stringify(diccionarioTextosEfectivo),
                     plantillaOrigenIdEfectiva,
                     alicuotaIvaMargenEfectiva,
-                    alicuotaIibbMargenEfectiva
+                    alicuotaIibbMargenEfectiva,
+                    cobroEfectivoEntregaEfectivo
                 ]
             );
             nodoGuardado = ins.rows[0];
@@ -6786,6 +6798,7 @@ async function clonarNodoMaestro(origenId, payload = {}) {
         {
             perfil_operativo: perfilHeredado,
             modulos_activos: origen.modulos_activos,
+            cobro_efectivo_entrega: origen.cobro_efectivo_entrega,
             permitir_retiro_nodo: origen.permitir_retiro_nodo,
             permitir_reparto_propio: origen.permitir_reparto_propio,
             permitir_envio_barrial: origen.permitir_envio_barrial,
@@ -9094,7 +9107,9 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
     const puedeRetiroNodo = Boolean(modulosActivosNodo.retiro_punto && nodo.permitir_retiro_nodo !== false);
     const puedeRepartoPropio = Boolean(modulosActivosNodo.reparto_zonal && (nodo.permitir_reparto_propio ?? nodo.permitir_envio_barrial ?? false));
     const puedeEncomiendaNodo = Boolean(modulosActivosNodo.envio_paqueteria || nodo.permitir_encomienda);
-    const permiteEfectivoNodo = Boolean(!cfgCanalActiva.solo_transferencia_bancaria && modulosActivosNodo.cobro_efectivo_entrega);
+    const cobroEfectivoNodo = Boolean(nodo.cobro_efectivo_entrega ?? modulosActivosNodo.cobro_efectivo_entrega);
+    modulosActivosNodo.cobro_efectivo_entrega = cobroEfectivoNodo;
+    const permiteEfectivoNodo = Boolean(!cfgCanalActiva.solo_transferencia_bancaria && cobroEfectivoNodo);
 
     const bancoEfectivo = nodo.banco_display || cfgCanalActiva.banco_recaudador;
     const aliasEfectivo = nodo.alias_bancario_display || cfgCanalActiva.alias_recaudador;
@@ -9113,6 +9128,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             titular_display: titularEfectivo,
             cuil_display: cuilEfectivo,
             numero_cuenta_display: nroCuentaEfectivo,
+            solo_transferencia_bancaria: Boolean(cfgCanalActiva.solo_transferencia_bancaria),
+            cobro_efectivo_entrega: cobroEfectivoNodo,
             perfil_operativo: perfilOperativoNodo,
             modulos_activos: modulosActivosNodo,
             config_paqueteria: configPaqueteriaNodo,
@@ -9142,6 +9159,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             titular_display: titularEfectivo,
             cuil_display: cuilEfectivo,
             numero_cuenta_display: nroCuentaEfectivo,
+            solo_transferencia_bancaria: Boolean(cfgCanalActiva.solo_transferencia_bancaria),
+            cobro_efectivo_entrega: cobroEfectivoNodo,
             perfil_operativo: perfilOperativoNodo,
             modulos_activos: modulosActivosNodo,
             config_paqueteria: configPaqueteriaNodo,
@@ -9274,10 +9293,17 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
         throw new Error('Debés mantener habilitada al menos una modalidad activa de entrega.');
     }
 
+    const cobroEfectivoEntrega = payload.cobro_efectivo_entrega !== undefined
+        ? Boolean(payload.cobro_efectivo_entrega)
+        : (payload.permitir_efectivo !== undefined
+            ? Boolean(payload.permitir_efectivo)
+            : Boolean(actual.cobro_efectivo_entrega ?? modulosActuales.cobro_efectivo_entrega));
+
     const modulosNuevos = resolverModulosActivosNodo(actual, {
         retiro_punto: permitirRetiro,
         reparto_zonal: permitirReparto,
         envio_paqueteria: permitirEncomienda,
+        cobro_efectivo_entrega: cobroEfectivoEntrega,
         ...(perfilActual === 'ecommerce_fulfillment' && !permitirReparto ? { hoja_de_ruta: false } : {})
     });
 
@@ -9310,6 +9336,7 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             mostrar_ingredientes_tienda = $12,
             modulos_activos = $18::jsonb,
             config_paqueteria = $19::jsonb,
+            cobro_efectivo_entrega = $20,
             updated_at = NOW()
          WHERE id = $13
          RETURNING *`,
@@ -9332,7 +9359,8 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             permitirEncomienda,
             payload.bajada_marca !== undefined ? String(payload.bajada_marca || '').trim() : actual.bajada_marca,
             JSON.stringify(modulosNuevos),
-            JSON.stringify(configPaqNueva)
+            JSON.stringify(configPaqNueva),
+            cobroEfectivoEntrega
         ]
     );
 
@@ -9621,11 +9649,14 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             : (gananciaProductosGestor + cargoEnvioBarrial);
 
         const cfgCanalPedido = await pagosBancariosService.obtenerConfiguracionBancariaCanalNodos(client);
-        const efectivoPermitidoEnPedido = Boolean(!cfgCanalPedido.solo_transferencia_bancaria && modulosNodo.cobro_efectivo_entrega && !esPedidoPostal);
-        if (payload.medio_pago === 'EFECTIVO' && !efectivoPermitidoEnPedido) {
-            throw new Error('En esta tienda los pedidos se abonan por Transferencia Bancaria. Seleccioná Transferencia Bancaria para continuar.');
+        const cobroEfectivoHabilitadoTienda = Boolean(nodo.cobro_efectivo_entrega ?? modulosNodo.cobro_efectivo_entrega);
+        const efectivoPermitidoEnPedido = Boolean(!cfgCanalPedido.solo_transferencia_bancaria && cobroEfectivoHabilitadoTienda);
+        if (String(payload.medio_pago || '').toUpperCase() === 'EFECTIVO' && !efectivoPermitidoEnPedido) {
+            const errEfvo = new Error('En esta tienda los pedidos se abonan por Transferencia Bancaria. Seleccioná Transferencia Bancaria para continuar.');
+            errEfvo.statusCode = 400;
+            throw errEfvo;
         }
-        const medioPago = (payload.medio_pago === 'EFECTIVO' && efectivoPermitidoEnPedido)
+        const medioPago = (String(payload.medio_pago || '').toUpperCase() === 'EFECTIVO' && efectivoPermitidoEnPedido)
             ? 'EFECTIVO'
             : 'TRANSFERENCIA';
         const estadoPago = medioPago === 'EFECTIVO' ? 'COBRAR_EN_ENTREGA' : 'PENDIENTE_TRANSFERENCIA';
@@ -10246,13 +10277,16 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
 async function sincronizarCanastosEstacionNodos(runner = null) {
     const q = runner || db;
 
-    // Compuerta estricta unificada: desacoplar de canastos de armado todo pedido vecinal aún sin pago acreditado en Banco Galicia
+    // Compuerta diferenciada en Depósito:
+    // - Pedidos por TRANSFERENCIA permanecen bloqueados y fuera del canasto hasta `CONCILIADO_BANCO_LAMDA`.
+    // - Pedidos en EFECTIVO ingresan directo al canasto/armado para que el referente retire la mercadería y cobre al entregar.
     await q.query(`
         UPDATE public.nodos_pedidos_vecinos npv
         SET lote_canasto_id = NULL
         WHERE npv.lote_canasto_id IS NOT NULL
           AND COALESCE(npv.estado_operativo, '') IN ('', 'CONFIRMADO_VECINO', 'EN_PREPARACION')
           AND COALESCE(npv.impactado_cta_cte_pago, false) = false
+          AND UPPER(COALESCE(npv.medio_pago, 'TRANSFERENCIA')) <> 'EFECTIVO'
           AND UPPER(COALESCE(npv.estado_pago, '')) NOT IN ('CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR')
     `);
 
@@ -10263,6 +10297,7 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
         WHERE (p.id_presupuesto_ext = npv.codigo_pedido OR (npv.presupuesto_id_local IS NOT NULL AND p.id = npv.presupuesto_id_local))
           AND COALESCE(npv.estado_operativo, '') IN ('', 'CONFIRMADO_VECINO', 'EN_PREPARACION')
           AND COALESCE(npv.impactado_cta_cte_pago, false) = false
+          AND UPPER(COALESCE(npv.medio_pago, 'TRANSFERENCIA')) <> 'EFECTIVO'
           AND UPPER(COALESCE(npv.estado_pago, '')) NOT IN ('CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR')
           AND p.activo = true
     `);
@@ -10270,7 +10305,8 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
     const condElegibleArmadoSql = `
         COALESCE(npv.estado_operativo, '') <> 'ANULADO'
         AND (
-            COALESCE(npv.impactado_cta_cte_pago, false) = true
+            UPPER(COALESCE(npv.medio_pago, 'TRANSFERENCIA')) = 'EFECTIVO'
+            OR COALESCE(npv.impactado_cta_cte_pago, false) = true
             OR UPPER(COALESCE(npv.estado_pago, '')) IN ('CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR')
             OR npv.estado_operativo IN ('ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'EN_CAMINO_VECINO', 'ENTREGADO_VECINO')
         )
@@ -11040,8 +11076,7 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
         for (const pedido of pedidosCanastoRes.rows) {
             const estOpPed = String(pedido.estado_operativo || '').toUpperCase();
             const pagoOkCanasto = estOpPed !== 'ANULADO' && (
-                Boolean(pedido.impactado_cta_cte_pago) ||
-                ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(pedido.estado_pago || '').toUpperCase()) ||
+                pagosBancariosService.esPedidoHabilitadoArmadoDepositoNodos(pedido) ||
                 ['ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'EN_CAMINO_VECINO', 'ENTREGADO_VECINO'].includes(estOpPed)
             );
             if (estOpPed === 'ANULADO' || !pagoOkCanasto) {
@@ -11290,12 +11325,9 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
         if (!infoCli) continue;
 
         const estOp = String(pedido.estado_operativo || '').toUpperCase();
-        const pagoConfirmado = estOp !== 'ANULADO' && (
-            Boolean(pedido.impactado_cta_cte_pago) ||
-            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(pedido.estado_pago || '').toUpperCase())
-        );
+        const habilitadoArmadoFul = pagosBancariosService.esPedidoHabilitadoArmadoDepositoNodos(pedido);
 
-        if (estOp === 'ANULADO' || !pagoConfirmado) {
+        if (estOp === 'ANULADO' || !habilitadoArmadoFul) {
             await q.query(
                 `UPDATE public.presupuestos
                  SET activo = false,
@@ -12022,8 +12054,8 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
         const ep = mapaPostalPorPedido.get(pid) || null;
         const itemsPed = itemsPorPedido.get(pid) || [];
 
-        const pagoConfirmado = Boolean(p.impactado_cta_cte_pago) ||
-            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(p.estado_pago || '').toUpperCase());
+        const pagoConfirmado = pagosBancariosService.esPedidoPagoConfirmadoNodos(p);
+        const habilitadoArmado = pagosBancariosService.esPedidoHabilitadoArmadoDepositoNodos(p);
 
         const estOp = String(p.estado_operativo || '').toUpperCase();
         const yaDespachado = Boolean(p.debito_cta_cte_registrado) ||
@@ -12035,7 +12067,7 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
         const yaEmpaquetado = yaDespachado || estOp === 'EMPAQUETADO_FULFILLMENT' || Number(p.hito_tracking_actual || 1) >= 3;
 
         let etapaFulfillment = 'PENDIENTE_EMPAQUE';
-        if (!pagoConfirmado) {
+        if (!habilitadoArmado) {
             etapaFulfillment = 'AGUARDANDO_PAGO';
             aguardandoPagoCount++;
         } else if (yaEntregado) {
@@ -12058,8 +12090,8 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
             const kgU = Number(it.kilos_unidad || 0.30);
             pesoEstimadoGramos += Math.round(kgU * 1000 * cant);
 
-            // Alimentar el consolidado de SKUs hacia Carros de Producción para órdenes pagas aún no despachadas
-            if (pagoConfirmado && !yaDespachado) {
+            // Alimentar el consolidado de SKUs hacia Carros de Producción para órdenes habilitadas aún no despachadas
+            if (habilitadoArmado && !yaDespachado) {
                 const skuKey = String(it.sku_nodo || it.nombre_publico).trim().toUpperCase();
                 if (!mapaConsolidadoFulfillment.has(skuKey)) {
                     const stockActual = mapaStockPorSku.has(skuKey) ? Number(mapaStockPorSku.get(skuKey)) : 0;
@@ -12109,6 +12141,8 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
             color_primario: nRow.color_primario || '#1e293b',
             codigo_bunker_cuenta_activa: nRow.codigo_bunker_cuenta_activa || nRow.codigo_bunker_cliente || '',
             pago_confirmado: pagoConfirmado,
+            habilitado_armado: habilitadoArmado,
+            es_efectivo_entrega: String(p.medio_pago || '').toUpperCase() === 'EFECTIVO',
             etapa_fulfillment: etapaFulfillment,
             empaquetado_listo: yaEmpaquetado,
             despachado_correo: yaDespachado,
@@ -12153,7 +12187,7 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
             const tienePostal = mapaPostalPorPedido.has(Number(p.id)) ||
                 ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(String(p.modalidad_entrega || '').toUpperCase());
             if (esEc || tienePostal) return false;
-            return !pagosBancariosService.esPedidoPagoConfirmadoNodos(p);
+            return !pagosBancariosService.esPedidoHabilitadoArmadoDepositoNodos(p);
         })
         .map(p => {
             const nRow = mapaNodosPorId.get(Number(p.nodo_id)) || {};
@@ -12232,7 +12266,7 @@ async function armarBolsaPedidoVecino(pedidoId, payload = {}) {
         throw new Error('Este pedido ya fue retirado por el Gestor del Nodo.');
     }
 
-    if (!desmarcar && !pagosBancariosService.esPedidoPagoConfirmadoNodos(ped)) {
+    if (!desmarcar && !pagosBancariosService.esPedidoHabilitadoArmadoDepositoNodos(ped)) {
         throw new Error(`Bloqueo operativo: el pedido #${ped.codigo_pedido} aún no cuenta con pago acreditado en Banco Galicia.`);
     }
 
@@ -13327,6 +13361,7 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
     }
 
     const client = await db.connect();
+    let despachoReciboEfectivoId = null;
     try {
         await client.query('BEGIN');
 
@@ -13553,6 +13588,7 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
                  WHERE id = $2`,
                 [referencia, ped.id]
             );
+            despachoReciboEfectivoId = Number(ped.id);
         }
 
         // Si la orden pertenece a E-Commerce Fulfillment / Paquetería (sin canasto semanal),
@@ -13580,7 +13616,24 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
     }
 
     await sincronizarNodosConCircuitoOperativoLamda();
-    return obtenerTableroLiquidacionCobros();
+
+    let envioWhatsappRecibo = null;
+    if (despachoReciboEfectivoId && payload.omitir_whatsapp_automatico !== true) {
+        envioWhatsappRecibo = await recibosMarcaBlancaService.despacharReciboMarcaBlancaWhatsApp(
+            despachoReciboEfectivoId,
+            { origen: payload.origen_disparo || 'COBRO_EFECTIVO_AUTOMATICO' }
+        ).catch(err => ({
+            attempted: false,
+            ok: false,
+            error: err?.message || 'Error despachando recibo automático.'
+        }));
+    }
+
+    const tableroActualizado = await obtenerTableroLiquidacionCobros();
+    if (envioWhatsappRecibo && tableroActualizado && typeof tableroActualizado === 'object') {
+        tableroActualizado.ultimo_envio_whatsapp_recibo = envioWhatsappRecibo;
+    }
+    return tableroActualizado;
 }
 
 /**
@@ -13649,9 +13702,8 @@ async function marcarEmpaqueFulfillmentPedido(pedidoId, payload = {}) {
             throw err;
         }
 
-        const pagoConfirmado = Boolean(ped.impactado_cta_cte_pago) ||
-            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(ped.estado_pago || '').toUpperCase());
-        if (!pagoConfirmado) {
+        const habilitadoEmpaque = pagosBancariosService.esPedidoHabilitadoArmadoDepositoNodos(ped);
+        if (!habilitadoEmpaque) {
             const err = new Error(`Bloqueo operativo: el pedido #${ped.codigo_pedido} aún no tiene su transferencia conciliada en Liquidación y Cobros.`);
             err.statusCode = 400;
             throw err;
@@ -13858,9 +13910,8 @@ async function confirmarDespachoPostalPedido(pedidoId, payload = {}) {
             throw err;
         }
 
-        const pagoConfirmado = Boolean(ped.impactado_cta_cte_pago) ||
-            ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(ped.estado_pago || '').toUpperCase());
-        if (!pagoConfirmado) {
+        const habilitadoDespacho = pagosBancariosService.esPedidoHabilitadoArmadoDepositoNodos(ped);
+        if (!habilitadoDespacho) {
             const err = new Error(`Bloqueo contable: el pedido #${ped.codigo_pedido} aún no tiene el pago conciliado. Conciliá primero la transferencia en Liquidación y Cobros antes de despachar.`);
             err.statusCode = 400;
             throw err;
@@ -16621,12 +16672,32 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             estado_envio: envioPostal.estado_envio || 'PENDIENTE_DESPACHO'
         } : null
     };
+    const medioPagoSegNorm = String(pedidoRow.medio_pago || 'TRANSFERENCIA').toUpperCase();
+    const totalUnidadesSeg = itemsRes.rows.reduce((acc, x) => acc + Number(x.cantidad || 0), 0);
+    const comprobanteDigitalSeg = pagoConfirmado ? {
+        disponible: true,
+        numero_recibo: _sanitizarNumeroReciboMarcaBlanca(
+            pedidoRow.comprobante_referencia,
+            pedidoRow.codigo_pedido,
+            medioPagoSegNorm
+        ),
+        fecha_pago: pedidoRow.fecha_conciliacion_pago || pedidoRow.recibo_emitido_at || pedidoRow.fecha_entregado_vecino || pedidoRow.created_at,
+        medio_pago_label: medioPagoSegNorm === 'EFECTIVO' ? 'Efectivo al entregar' : 'Transferencia bancaria',
+        monto_abonado: Number(Number(pedidoRow.total_vecino || 0).toFixed(2)),
+        emitido_por: nodoRow.nombre_marca,
+        concepto: `Pedido #${pedidoRow.codigo_pedido} (${totalUnidadesSeg} ${totalUnidadesSeg === 1 ? 'unidad' : 'unidades'})`,
+        imagen_url: pedidoRow.tracking_token
+            ? `/api/produccion/nodos/pedidos/${Number(pedidoRow.id)}/recibo-marca-blanca.png?tracking_token=${encodeURIComponent(pedidoRow.tracking_token)}`
+            : null
+    } : null;
+
     const pedidoEnriquecido = {
         ...pedidoBase,
         ...pagosBancariosService.enriquecerPedidoConResumenPago(
             pedidoBase,
             resumenPagosMap.get(Number(pedidoRow.id))
-        )
+        ),
+        comprobante_digital: comprobanteDigitalSeg
     };
 
     return {
@@ -16649,7 +16720,7 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             titular_display: nodoRow.titular_display || cfgBancoSeg.titular_display || dfltGal.titular_display,
             cuil_display: nodoRow.cuil_display || cfgBancoSeg.cuil_display || dfltGal.cuil_display,
             numero_cuenta_display: nodoRow.numero_cuenta_display || cfgBancoSeg.numero_cuenta_display || dfltGal.numero_cuenta_display,
-            solo_transferencia_bancaria: cfgBancoSeg.solo_transferencia_bancaria !== false,
+            solo_transferencia_bancaria: Boolean(cfgBancoSeg.solo_transferencia_bancaria === true),
             perfil_operativo: perfilOp,
             modulos_activos: modulosOp,
             config_paqueteria: configPaqOp
@@ -16896,7 +16967,7 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
         titular_display: primera.titular_display || cfgBancoWa.titular_display || dfltGalWa.titular_display,
         cuil_display: primera.cuil_display || cfgBancoWa.cuil_display || dfltGalWa.cuil_display,
         numero_cuenta_display: primera.numero_cuenta_display || cfgBancoWa.numero_cuenta_display || dfltGalWa.numero_cuenta_display,
-        solo_transferencia_bancaria: cfgBancoWa.solo_transferencia_bancaria !== false,
+        solo_transferencia_bancaria: Boolean(cfgBancoWa.solo_transferencia_bancaria === true),
         perfil_operativo: perfilOpWa,
         modulos_activos: modulosOpWa,
         config_paqueteria: configPaqWa
@@ -17297,25 +17368,33 @@ async function actualizarEstadoEntregaVecinoPorGestor(nodoId, pedidoId, payload 
     }
 
     let cobroRegistrado = false;
+    let envioWhatsappRecibo = null;
     const pagoYaConfirmado = Boolean(ped.impactado_cta_cte_pago) ||
         ['CONCILIADO_BANCO_LAMDA', 'COBRADO_EFECTIVO_GESTOR'].includes(String(ped.estado_pago || '').toUpperCase());
 
     if (accion === 'ENTREGADO' && Boolean(payload.registrar_cobro_efectivo) && !pagoYaConfirmado) {
-        await conciliarPagoPedidoVecino(pid, {
+        const resConc = await conciliarPagoPedidoVecino(pid, {
             medio_pago: 'EFECTIVO',
             comprobante_referencia: `REC-EFVO-${ped.codigo_pedido}`,
-            nota: payload.nota_cobro || `Cobrado en efectivo al entregar #${ped.codigo_pedido}`
+            nota: payload.nota_cobro || `Cobrado en efectivo al entregar #${ped.codigo_pedido}`,
+            origen_disparo: 'ENTREGA_GESTOR_UN_TOQUE'
         });
         cobroRegistrado = true;
+        envioWhatsappRecibo = resConc?.ultimo_envio_whatsapp_recibo || null;
     }
 
     const pedActualizadoRes = await db.query('SELECT * FROM public.nodos_pedidos_vecinos WHERE id = $1 LIMIT 1', [pid]);
     const pedAct = pedActualizadoRes.rows[0];
     const seguimientoData = await _armarRespuestaSeguimientoMarcaBlanca(pedAct, ped);
+    const reciboMarcaBlanca = (cobroRegistrado || pagoYaConfirmado)
+        ? await recibosMarcaBlancaService.obtenerDatosReciboMarcaBlanca(pid).catch(() => null)
+        : null;
 
     return {
         pedido: pedAct,
         cobro_efectivo_registrado: cobroRegistrado,
+        envio_whatsapp_recibo: envioWhatsappRecibo || pedAct?.recibo_wa_detalle || null,
+        recibo_marca_blanca: reciboMarcaBlanca,
         seguimiento: seguimientoData.seguimiento
     };
 }
@@ -18665,7 +18744,7 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
         titular_display: row.titular_display || cfgBancoPortal.titular_display || dfltGalPortal.titular_display,
         cuil_display: row.cuil_display || cfgBancoPortal.cuil_display || dfltGalPortal.cuil_display,
         numero_cuenta_display: row.numero_cuenta_display || cfgBancoPortal.numero_cuenta_display || dfltGalPortal.numero_cuenta_display,
-        solo_transferencia_bancaria: cfgBancoPortal.solo_transferencia_bancaria !== false,
+        solo_transferencia_bancaria: Boolean(cfgBancoPortal.solo_transferencia_bancaria === true),
         permitir_envio_barrial: Boolean(row.permitir_reparto_propio ?? row.permitir_envio_barrial),
         permitir_retiro_nodo: row.permitir_retiro_nodo !== false,
         permitir_reparto_propio: Boolean(row.permitir_reparto_propio ?? row.permitir_envio_barrial),
@@ -18824,10 +18903,13 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
                 medioPagoNorm
             ),
             fecha_pago: movPago?.created_at || p.fecha_entregado_vecino || p.created_at,
-            medio_pago_label: medioPagoNorm === 'EFECTIVO' ? 'Efectivo al recibir / retirar' : 'Transferencia bancaria',
+            medio_pago_label: medioPagoNorm === 'EFECTIVO' ? 'Efectivo al entregar' : 'Transferencia bancaria',
             monto_abonado: Number(totalPed.toFixed(2)),
             emitido_por: nodoInfo.nombre_marca,
-            concepto: `Pedido #${p.codigo_pedido} (${totalUnidades} ${totalUnidades === 1 ? 'unidad' : 'unidades'})`
+            concepto: `Pedido #${p.codigo_pedido} (${totalUnidades} ${totalUnidades === 1 ? 'unidad' : 'unidades'})`,
+            imagen_url: p.tracking_token
+                ? `/api/produccion/nodos/pedidos/${pid}/recibo-marca-blanca.png?tracking_token=${encodeURIComponent(p.tracking_token)}`
+                : `/api/produccion/nodos/pedidos/${pid}/recibo-marca-blanca.png?portal_token=${encodeURIComponent(cleanToken)}`
         } : null;
 
         return {
@@ -19489,6 +19571,80 @@ async function obtenerArchivoComprobanteAvisoPagoNodos(avisoId, opciones = {}) {
     return pagosBancariosService.obtenerArchivoComprobanteAvisoPago(avisoId, opciones);
 }
 
+/**
+ * Entrega el PNG del Recibo de Pago con membrete oficial de la tienda validando acceso:
+ * - En host interno ERP: permitido para Administración.
+ * - En host público / con credenciales: exige `nodoAuth` del mismo nodo, `tracking_token` o `portal_token` válido.
+ */
+async function obtenerReciboPngAutorizadoPedido(pedidoId, opciones = {}) {
+    await asegurarEsquemaNodosBarriales();
+    const pid = Number(pedidoId || 0);
+    if (!pid) {
+        const err = new Error('ID de pedido inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    if (opciones.esHostPublico) {
+        const pedRes = await db.query(
+            `SELECT npv.id, npv.nodo_id, npv.tracking_token, npv.impactado_cta_cte_pago, npv.estado_pago,
+                    nv.portal_token
+             FROM public.nodos_pedidos_vecinos npv
+             LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
+             WHERE npv.id = $1::int
+             LIMIT 1`,
+            [pid]
+        );
+        if (pedRes.rows.length === 0) {
+            const err = new Error('Pedido no encontrado.');
+            err.statusCode = 404;
+            throw err;
+        }
+        const ped = pedRes.rows[0];
+        const okGestor = Boolean(opciones.nodoAuth && Number(opciones.nodoAuth.id) === Number(ped.nodo_id));
+        const okTracking = Boolean(opciones.trackingToken && ped.tracking_token && opciones.trackingToken === ped.tracking_token);
+        const okPortal = Boolean(opciones.portalToken && ped.portal_token && opciones.portalToken === ped.portal_token);
+        if (!okGestor && !okTracking && !okPortal) {
+            const err = new Error('No autorizado para visualizar este comprobante.');
+            err.statusCode = 403;
+            throw err;
+        }
+    }
+
+    const datos = await recibosMarcaBlancaService.obtenerDatosReciboMarcaBlanca(pid);
+    if (!datos.pago_confirmado) {
+        const err = new Error('El comprobante de pago estará disponible una vez registrado el cobro.');
+        err.statusCode = 400;
+        throw err;
+    }
+    const pngBuffer = await recibosMarcaBlancaService.renderizarPngReciboMarcaBlanca(datos);
+    return {
+        buffer: pngBuffer,
+        filename: `Recibo-${datos.codigo_pedido}.png`,
+        datos
+    };
+}
+
+async function reenviarReciboWhatsAppPorGestor(nodoId, pedidoId, opciones = {}) {
+    await asegurarEsquemaNodosBarriales();
+    await asegurarPedidoPerteneceANodo(pedidoId, nodoId);
+    const datos = await recibosMarcaBlancaService.obtenerDatosReciboMarcaBlanca(pedidoId);
+    if (!datos.pago_confirmado) {
+        const err = new Error('Registrá primero el cobro del pedido antes de enviar el recibo.');
+        err.statusCode = 400;
+        throw err;
+    }
+    const envio = await recibosMarcaBlancaService.despacharReciboMarcaBlancaWhatsApp(pedidoId, {
+        telefono_override: opciones.telefono_override || null,
+        origen: opciones.origen || 'REENVIO_GESTOR_CELULAR'
+    });
+    return {
+        ok: true,
+        envio_whatsapp_recibo: envio,
+        recibo_marca_blanca: datos
+    };
+}
+
 module.exports = {
     esModoLaboratorioNodos,
     geocodificarDireccionArgentina,
@@ -19606,6 +19762,8 @@ module.exports = {
     obtenerEstadoPagoPublicoPedidoTienda,
     registrarAvisoPagoCompradorTienda,
     obtenerArchivoComprobanteAvisoPagoNodos,
+    obtenerReciboPngAutorizadoPedido,
+    reenviarReciboWhatsAppPorGestor,
     TEMA_VISUAL_PARAISO_OFICIAL,
     TEMA_VISUAL_MANSO_OFICIAL,
     LOGO_ZPL_CONFIG_MANSO_OFICIAL,
