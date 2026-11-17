@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { createCanvas, loadImage } = require('canvas');
 const db = require('../config/database');
 
@@ -40,7 +41,7 @@ async function obtenerNodoPublicoPwaPorSlug(slugRaw) {
     const { rows } = await db.query(
         `SELECT id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca,
                 subtitulo_marca, barrio_zona, color_primario, tema_visual, gestor_token,
-                logo_original_base64
+                logo_original_base64, LENGTH(COALESCE(logo_original_base64, '')) AS logo_b64_len
          FROM public.nodos_maestro
          WHERE (LOWER(slug) = LOWER($1) OR LOWER(COALESCE(slug_historico, '')) = LOWER($1))
            AND COALESCE(activo, true) = true
@@ -49,6 +50,27 @@ async function obtenerNodoPublicoPwaPorSlug(slugRaw) {
         [slug]
     );
     return rows[0] || null;
+}
+
+function calcularVersionPwaNodo(nodo) {
+    const pal = extraerPaletaNodoPwa(nodo);
+    const b64Len = Number(
+        nodo?.logo_b64_len !== undefined
+            ? nodo.logo_b64_len
+            : (nodo?.logo_original_base64 ? String(nodo.logo_original_base64).length : 0)
+    ) || 0;
+    const firma = [
+        'v5',
+        String(nodo?.slug || '').trim().toLowerCase(),
+        pal.colorMarca,
+        pal.fondoClaro,
+        pal.fondoIconoTienda,
+        pal.fondoGestor,
+        pal.isotipoRelPath,
+        b64Len
+    ].join('|');
+    const hash8 = crypto.createHash('sha1').update(firma).digest('hex').slice(0, 8);
+    return `5_${hash8}`;
 }
 
 function extraerPaletaNodoPwa(nodo) {
@@ -88,6 +110,7 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '', baseOri
     const nombreMarca = String(nodo?.nombre_marca || 'Tienda').trim();
     const bajada = String(nodo?.bajada_marca || nodo?.subtitulo_marca || '').trim();
     const pal = extraerPaletaNodoPwa(nodo);
+    const pwaV = calcularVersionPwaNodo(nodo);
     const originClean = String(baseOrigin || '').trim().replace(/\/+$/, '');
 
     if (rol === 'gestor') {
@@ -99,27 +122,13 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '', baseOri
             : `/gestor/${slugEnc}?pwa=1`;
         const tituloGestion = `Gestión ${nombreMarca}`;
         const manifestBaseUrl = `${originClean}/api/produccion/nodos/pwa/${slugEnc}/gestor.webmanifest`;
-        const manifestBaseV4 = `${manifestBaseUrl}?v=4`;
-        const manifestExactV4 = tieneTokenValido
-            ? `${manifestBaseUrl}?t=${encodeURIComponent(tokReal)}&v=4`
-            : manifestBaseV4;
-        const manifestExactLegacy = tieneTokenValido
-            ? `${manifestBaseUrl}?t=${encodeURIComponent(tokReal)}`
-            : manifestBaseUrl;
-        const relatedAppsGestor = tieneTokenValido
-            ? [
-                { platform: 'webapp', url: manifestExactV4 },
-                { platform: 'webapp', url: manifestBaseV4 },
-                { platform: 'webapp', url: manifestExactLegacy },
-                { platform: 'webapp', url: manifestBaseUrl }
-            ]
-            : [
-                { platform: 'webapp', url: manifestBaseV4 },
-                { platform: 'webapp', url: manifestBaseUrl }
-            ];
+        const manifestExactUrl = tieneTokenValido
+            ? `${manifestBaseUrl}?t=${encodeURIComponent(tokReal)}&v=${pwaV}`
+            : `${manifestBaseUrl}?v=${pwaV}`;
+        const relatedAppsGestor = [{ platform: 'webapp', url: manifestExactUrl }];
 
         return {
-            id: `/gestor/${slugEnc}`,
+            id: `/gestor/${slugEnc}?v=2`,
             name: tituloGestion,
             short_name: tituloGestion,
             description: `Gestión comercial — ${nombreMarca}`,
@@ -134,19 +143,19 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '', baseOri
             related_applications: relatedAppsGestor,
             icons: [
                 {
-                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-192.png?v=4`,
+                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-192.png?v=${pwaV}`,
                     sizes: '192x192',
                     type: 'image/png',
                     purpose: 'any'
                 },
                 {
-                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=4`,
+                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=${pwaV}`,
                     sizes: '512x512',
                     type: 'image/png',
                     purpose: 'any'
                 },
                 {
-                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=4`,
+                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=${pwaV}`,
                     sizes: '512x512',
                     type: 'image/png',
                     purpose: 'maskable'
@@ -155,9 +164,9 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '', baseOri
         };
     }
 
-    const manifestTiendaUrl = `${originClean}/api/produccion/nodos/pwa/${slugEnc}/tienda.webmanifest`;
+    const manifestTiendaUrl = `${originClean}/api/produccion/nodos/pwa/${slugEnc}/tienda.webmanifest?v=${pwaV}`;
     return {
-        id: `/tienda/${slugEnc}`,
+        id: `/tienda/${slugEnc}?v=2`,
         name: nombreMarca,
         short_name: nombreMarca,
         description: bajada || `Tienda de ${nombreMarca}`,
@@ -170,24 +179,23 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '', baseOri
         theme_color: pal.fondoClaro,
         prefer_related_applications: false,
         related_applications: [
-            { platform: 'webapp', url: `${manifestTiendaUrl}?v=4` },
             { platform: 'webapp', url: manifestTiendaUrl }
         ],
         icons: [
             {
-                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-192.png?v=4`,
+                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-192.png?v=${pwaV}`,
                 sizes: '192x192',
                 type: 'image/png',
                 purpose: 'any'
             },
             {
-                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=4`,
+                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=${pwaV}`,
                 sizes: '512x512',
                 type: 'image/png',
                 purpose: 'any'
             },
             {
-                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=4`,
+                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=${pwaV}`,
                 sizes: '512x512',
                 type: 'image/png',
                 purpose: 'maskable'
@@ -296,7 +304,7 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
     const logoB64Len = nodo?.logo_original_base64 ? String(nodo.logo_original_base64).length : 0;
 
     const cacheKey = [
-        'v4-clean',
+        'v5-clean',
         nodo?.id || 0,
         nodo?.slug || '',
         rolNorm,
@@ -395,7 +403,7 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
 
 function generarCodigoServiceWorkerNodo() {
     return `/* LAMDA Tiendas Comunitarias — Service Worker liviano (network-first, sin caché de API, media ni subidas multipart) */
-const SW_VERSION = 'lamda-nodo-pwa-v8';
+const SW_VERSION = 'lamda-nodo-pwa-v9';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -446,6 +454,7 @@ self.addEventListener('fetch', (event) => {
 module.exports = {
     ICON_SIZES_VALIDOS,
     obtenerNodoPublicoPwaPorSlug,
+    calcularVersionPwaNodo,
     extraerPaletaNodoPwa,
     construirManifestPwaNodo,
     renderizarIconoPngNodo,

@@ -2524,10 +2524,7 @@ router.get('/pwa/:slug/:recurso', async (req, res) => {
                 || (req.secure || !isLocal ? 'https' : (req.protocol || 'http'));
             const baseOrigin = hostHdr ? `${protoHdr}://${hostHdr}` : '';
             const manifest = nodosPwaService.construirManifestPwaNodo(nodo, rol, tokenQuery, baseOrigin);
-            res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-            res.set('CDN-Cache-Control', 'no-store');
-            res.set('Cloudflare-CDN-Cache-Control', 'no-store');
-            res.set('Pragma', 'no-cache');
+            res.set('Cache-Control', 'no-cache, must-revalidate');
             res.set('Content-Type', 'application/manifest+json; charset=utf-8');
             return res.status(200).send(JSON.stringify(manifest, null, 2));
         }
@@ -2535,11 +2532,8 @@ router.get('/pwa/:slug/:recurso', async (req, res) => {
         const rolIcon = iconMatch[1];
         const sizeIcon = parseInt(iconMatch[2], 10);
         const pngBuffer = await nodosPwaService.renderizarIconoPngNodo(nodo, rolIcon, sizeIcon);
-        // Evitar que Cloudflare Edge cachee dinámicos .png por 4h ante migraciones o cambios de logo/color del gestor
-        res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.set('CDN-Cache-Control', 'no-store');
-        res.set('Cloudflare-CDN-Cache-Control', 'no-store');
-        res.set('Pragma', 'no-cache');
+        // Header cacheable estándar para WebAPK Minting Server de Android Chrome; la invalidación la garantiza el hash ?v=5_<sha1>
+        res.set('Cache-Control', 'public, max-age=86400');
         res.set('Content-Type', 'image/png');
         return res.status(200).send(pngBuffer);
     } catch (error) {

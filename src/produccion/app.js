@@ -197,20 +197,23 @@ function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}
         ? tokRealNodo
         : '';
 
+    const { calcularVersionPwaNodo } = require('./services/nodosPwaService');
+    const pwaV = slugCanonico ? calcularVersionPwaNodo(nodo) : '5';
+
     const metaTags = [];
     if (slugCanonico) {
         const rolIcon = esGestor ? 'gestor' : 'tienda';
         const manifestHref = esGestor
-            ? `/api/produccion/nodos/pwa/${slugEnc}/gestor.webmanifest?${tokGestorValido ? `t=${encodeURIComponent(tokGestorValido)}&` : ''}v=4`
-            : `/api/produccion/nodos/pwa/${slugEnc}/tienda.webmanifest?v=4`;
+            ? `/api/produccion/nodos/pwa/${slugEnc}/gestor.webmanifest?${tokGestorValido ? `t=${encodeURIComponent(tokGestorValido)}&` : ''}v=${encodeURIComponent(pwaV)}`
+            : `/api/produccion/nodos/pwa/${slugEnc}/tienda.webmanifest?v=${encodeURIComponent(pwaV)}`;
         const appShortTitle = esGestor ? `Gestión ${nombreMarca}` : nombreMarca;
         const themeColor = esGestor
             ? String(paletaTv.primario || '#654830').trim()
             : String(paletaTv.fondo || '#FBF8F3').trim();
 
         metaTags.push(`<link id="nodo-pwa-manifest" rel="manifest" href="${escHtmlAttrNodos(manifestHref)}">`);
-        metaTags.push(`<link rel="icon" type="image/png" sizes="192x192" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-192.png?v=4">`);
-        metaTags.push(`<link id="nodo-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-180.png?v=4">`);
+        metaTags.push(`<link rel="icon" type="image/png" sizes="192x192" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-192.png?v=${encodeURIComponent(pwaV)}">`);
+        metaTags.push(`<link id="nodo-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-180.png?v=${encodeURIComponent(pwaV)}">`);
         metaTags.push(`<meta name="theme-color" content="${escHtmlAttrNodos(themeColor)}">`);
         metaTags.push(`<meta name="mobile-web-app-capable" content="yes">`);
         metaTags.push(`<meta name="apple-mobile-web-app-capable" content="yes">`);
@@ -232,7 +235,8 @@ function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}
 
     const bootstrapPayload = {
         slug: nodo?.slug || '',
-        tracking_token: extraContext.trackingToken || ''
+        tracking_token: extraContext.trackingToken || '',
+        pwa_v: pwaV
     };
     const bootstrapScript = `<script>window.__NODOS_BOOTSTRAP__ = ${JSON.stringify(bootstrapPayload).replace(/</g, '\\u003c')};</script>`;
 
@@ -288,7 +292,8 @@ async function validarYServirVistaNodoPublica(req, res, fileName) {
     try {
         const { rows } = await db.query(
             `SELECT id, slug, slug_historico, nombre_marca, bajada_marca, subtitulo_marca,
-                    barrio_zona, color_primario, tema_visual, gestor_token
+                    barrio_zona, color_primario, tema_visual, gestor_token,
+                    LENGTH(COALESCE(logo_original_base64, '')) AS logo_b64_len
              FROM public.nodos_maestro
              WHERE (LOWER(slug) = LOWER($1) OR LOWER(COALESCE(slug_historico, '')) = LOWER($1))
                AND COALESCE(activo, true) = true

@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gestión comercial</title>
-  <!-- /lamda-cloud-runtime.js omitido en apps externas de Nodos (Marca Blanca) -->
+  <!-- Captura síncrona en el tope absoluto del head -->
   <script>
     window.__nodoGestorDeferredPrompt = null;
     window.__nodoGestorInstaladoRuntime = false;
+    window.__nodoGestorBipWaiters = [];
     window.limpiarBanderasObsoletasPwaGestor = function() {
       try {
         var keys = [];
@@ -29,6 +29,10 @@
         window.__nodoGestorDeferredPrompt = ev;
         window.__nodoGestorInstaladoRuntime = false;
         window.limpiarBanderasObsoletasPwaGestor();
+        while (window.__nodoGestorBipWaiters && window.__nodoGestorBipWaiters.length) {
+          var fn = window.__nodoGestorBipWaiters.shift();
+          try { fn(ev); } catch (_) {}
+        }
         if (typeof window.actualizarVisibilidadBotonPwaGestor === 'function') {
           window.actualizarVisibilidadBotonPwaGestor();
         }
@@ -57,6 +61,8 @@
       localStorage.removeItem('lamda_prefer_mobile_home');
     } catch (_) {}
   </script>
+  <title>Gestión comercial</title>
+  <!-- /lamda-cloud-runtime.js omitido en apps externas de Nodos (Marca Blanca) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
@@ -1815,10 +1821,45 @@
       metaAppleTitle.setAttribute('content', tituloGestion);
     }
 
+    function obtenerVersionPwaGestor() {
+      const vBoot = window.__NODOS_BOOTSTRAP__ && window.__NODOS_BOOTSTRAP__.pwa_v;
+      return String(vBoot || '5').trim() || '5';
+    }
+
+    function esNavegadorEmbebidoWebViewGestor() {
+      const ua = String(navigator.userAgent || '');
+      return /(FBAN|FBAV|Instagram|Line\/|TikTok|BytedanceWebview|WhatsApp|; wv\)|\bwv\b)/i.test(ua);
+    }
+
+    function esperarDeferredPromptGestor(timeoutMs = 1500) {
+      if (window.__nodoGestorDeferredPrompt) {
+        return Promise.resolve(window.__nodoGestorDeferredPrompt);
+      }
+      return new Promise((resolve) => {
+        let resuelto = false;
+        const fn = (ev) => {
+          if (resuelto) return;
+          resuelto = true;
+          clearTimeout(tm);
+          resolve(ev || window.__nodoGestorDeferredPrompt || null);
+        };
+        window.__nodoGestorBipWaiters = window.__nodoGestorBipWaiters || [];
+        window.__nodoGestorBipWaiters.push(fn);
+        const tm = setTimeout(() => {
+          if (resuelto) return;
+          resuelto = true;
+          const idx = window.__nodoGestorBipWaiters.indexOf(fn);
+          if (idx !== -1) window.__nodoGestorBipWaiters.splice(idx, 1);
+          resolve(window.__nodoGestorDeferredPrompt || null);
+        }, timeoutMs);
+      });
+    }
+
     function aplicarFaviconGestor(urlImg) {
       const slugAct = String(GSTATE.slug || detectarSlugInicial() || '').trim();
-      const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-192.png?v=4` : String(urlImg || '').trim();
-      const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=4` : String(urlImg || '').trim();
+      const vPwa = encodeURIComponent(obtenerVersionPwaGestor());
+      const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-192.png?v=${vPwa}` : String(urlImg || '').trim();
+      const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=${vPwa}` : String(urlImg || '').trim();
       if (iconPwa192) {
         let linkIcon = document.querySelector('link[rel="icon"]');
         if (!linkIcon) {
@@ -1847,7 +1888,8 @@
       if (!cleanSlug) return;
       const slugEnc = encodeURIComponent(cleanSlug);
       const tokClean = String(tok || '').trim();
-      const href = `/api/produccion/nodos/pwa/${slugEnc}/gestor.webmanifest?${tokClean ? `t=${encodeURIComponent(tokClean)}&` : ''}v=4`;
+      const vPwa = encodeURIComponent(obtenerVersionPwaGestor());
+      const href = `/api/produccion/nodos/pwa/${slugEnc}/gestor.webmanifest?${tokClean ? `t=${encodeURIComponent(tokClean)}&` : ''}v=${vPwa}`;
       let link = document.getElementById('nodo-pwa-manifest') || document.querySelector('link[rel="manifest"]');
       if (!link) {
         link = document.createElement('link');
@@ -1953,33 +1995,82 @@
     window.cerrarModalPwaGestor = cerrarModalPwaGestor;
 
     async function instalarAccesoDirectoGestor() {
-      const promptEv = window.__nodoGestorDeferredPrompt;
-      if (promptEv && typeof promptEv.prompt === 'function') {
-        try {
-          promptEv.prompt();
-          const choice = await promptEv.userChoice;
-          if (choice && choice.outcome === 'accepted') {
-            window.__nodoGestorDeferredPrompt = null;
-            window.__nodoGestorInstaladoRuntime = true;
-            const marcaToast = String(GSTATE.nodo?.nombre_marca || 'tu tienda').trim();
-            mostrarAvisoPantallaGestor(`✓ Acceso directo "Gestión ${marcaToast}" creado en tu pantalla de inicio.`, 'ok');
+      const ua = String(navigator.userAgent || '');
+      const esIos = /iphone|ipad|ipod/i.test(ua);
+      const esWebView = esNavegadorEmbebidoWebViewGestor();
+
+      if (!esWebView) {
+        let promptEv = window.__nodoGestorDeferredPrompt;
+        if (!promptEv && !esIos) {
+          promptEv = await esperarDeferredPromptGestor(900);
+        }
+        if (promptEv && typeof promptEv.prompt === 'function') {
+          window.__nodoGestorDeferredPrompt = null;
+          let lanzadoOk = false;
+          try {
+            const pRes = promptEv.prompt();
+            lanzadoOk = true;
+            Promise.resolve(pRes).catch(() => {});
+            if (promptEv.userChoice && typeof promptEv.userChoice.then === 'function') {
+              promptEv.userChoice.then((choice) => {
+                if (choice && choice.outcome === 'accepted') {
+                  window.__nodoGestorInstaladoRuntime = true;
+                  const marcaToast = String(GSTATE.nodo?.nombre_marca || 'tu tienda').trim();
+                  mostrarAvisoPantallaGestor(`✓ Acceso directo "Gestión ${marcaToast}" creado en tu pantalla de inicio.`, 'ok');
+                }
+                actualizarVisibilidadBotonPwaGestor();
+              }).catch(() => {});
+            }
+          } catch (_) {
+            lanzadoOk = false;
           }
-        } catch (_) {}
-        actualizarVisibilidadBotonPwaGestor();
-        return;
+          if (lanzadoOk) {
+            actualizarVisibilidadBotonPwaGestor();
+            return;
+          }
+        }
       }
 
       const slugAct = String(GSTATE.slug || detectarSlugInicial() || '').trim();
       const nombreMarca = String(GSTATE.nodo?.nombre_marca || 'tu tienda').trim();
-      const iconUrl = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=4` : '';
-      const esIos = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+      const vPwa = encodeURIComponent(obtenerVersionPwaGestor());
+      const iconUrl = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=${vPwa}` : '';
 
       const bodyEl = document.getElementById('modal-pwa-gestor-body');
       const modalEl = document.getElementById('modal-pwa-gestor');
       if (!bodyEl || !modalEl) return;
 
+      const esAndroid = /android/i.test(ua);
+      const chromeIntentHref = esAndroid
+        ? `intent://${window.location.host}${window.location.pathname}${window.location.search}#Intent;scheme=https;package=com.android.chrome;end`
+        : '';
+
+      const cuerpoInstruccionHtml = esWebView
+        ? `
+          <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:14px; font-size:0.88rem; color:var(--text); line-height:1.42; font-weight:700;">
+            Abrí este enlace en <strong>Chrome</strong> (menú <strong>⋮ → Abrir en Chrome</strong>) para agregar el acceso directo en 1 toque.
+          </div>
+          ${chromeIntentHref ? `
+            <a href="${esc(chromeIntentHref)}" onclick="cerrarModalPwaGestor()"
+              style="display:flex; align-items:center; justify-content:center; width:100%; min-height:42px; margin-bottom:8px; border-radius:11px; background:var(--brand); color:#fff; text-decoration:none; font-weight:900; font-size:0.9rem;">
+              🌐 Abrir en Chrome ahora
+            </a>
+          ` : ''}
+        `
+        : (esIos
+          ? `
+            <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:14px; font-size:0.88rem; color:var(--text); line-height:1.42;">
+              Tocá <strong>Compartir (ícono ⬆️ abajo en Safari)</strong> y elegí <strong>"Agregar a inicio"</strong>.
+            </div>
+          `
+          : `
+            <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:14px; font-size:0.87rem; color:var(--text); line-height:1.42;">
+              Tocá el menú <strong>⋮</strong> de Chrome y elegí <strong>"Agregar a la pantalla principal"</strong> (si tenías un acceso directo anterior de gestión en el teléfono, quitalo primero para actualizar su ícono).
+            </div>
+          `);
+
       bodyEl.innerHTML = `
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
           <div style="display:flex; align-items:center; gap:10px;">
             ${iconUrl ? `<img src="${esc(iconUrl)}" alt="Gestión ${esc(nombreMarca)}" style="width:44px; height:44px; border-radius:11px; box-shadow:0 3px 8px rgba(0,0,0,0.16);" />` : ''}
             <div>
@@ -1990,25 +2081,7 @@
           <button type="button" onclick="cerrarModalPwaGestor()" aria-label="Cerrar"
             style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
         </div>
-        <p style="margin:0 0 12px 0; font-size:0.79rem; color:var(--muted); font-weight:700; line-height:1.38;">
-          No instala nada pesado ni ocupa espacio: solo deja el ícono directo en tu pantalla.
-        </p>
-        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px;">
-          <div style="display:flex; align-items:flex-start; gap:10px; background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:10px 12px;">
-            <span style="width:24px; height:24px; border-radius:999px; background:var(--brand); color:#fff; font-weight:900; font-size:0.8rem; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">1</span>
-            <div style="font-size:0.86rem; color:var(--text); line-height:1.38;">
-              Tocá <strong>${esIos ? 'Compartir (ícono ⬆️ abajo en Safari)' : 'el menú ⋮ o Compartir del navegador'}</strong>.
-            </div>
-          </div>
-          <div style="display:flex; align-items:flex-start; gap:10px; background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:10px 12px;">
-            <span style="width:24px; height:24px; border-radius:999px; background:var(--brand); color:#fff; font-weight:900; font-size:0.8rem; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0;">2</span>
-            <div style="font-size:0.86rem; color:var(--text); line-height:1.38;">
-              ${esIos
-                ? 'Tocá Compartir y elegí <strong>"Agregar a inicio"</strong> para dejar tu acceso directo.'
-                : 'Elegí <strong>"Agregar a inicio"</strong> (o <strong>"Agregar a la pantalla principal"</strong>) para dejar tu acceso directo.'}
-            </div>
-          </div>
-        </div>
+        ${cuerpoInstruccionHtml}
         <button type="button" class="btn-primary" style="width:100%;" onclick="cerrarModalPwaGestor()">Entendido</button>
       `;
       modalEl.style.display = 'flex';
@@ -2519,7 +2592,7 @@
         </div>
         <button type="button" id="btn-instalar-pwa-gestor" class="cta-pwa-gestor" style="display:${mostrarBtnPwa ? 'flex' : 'none'};" onclick="instalarAccesoDirectoGestor()">
           <div class="cta-pwa-gestor-left">
-            ${slugIconPwa ? `<img src="/api/produccion/nodos/pwa/${slugIconPwa}/icon-gestor-180.png?v=4" alt="Gestión ${esc(GSTATE.nodo.nombre_marca || '')}" class="cta-pwa-gestor-thumb" />` : '<span style="font-size:1.35rem;">📲</span>'}
+            ${slugIconPwa ? `<img src="/api/produccion/nodos/pwa/${slugIconPwa}/icon-gestor-180.png?v=${encodeURIComponent(obtenerVersionPwaGestor())}" alt="Gestión ${esc(GSTATE.nodo.nombre_marca || '')}" class="cta-pwa-gestor-thumb" />` : '<span style="font-size:1.35rem;">📲</span>'}
             <div>
               <div class="cta-pwa-gestor-title">📲 Crear acceso directo en mi celular</div>
               <div class="cta-pwa-gestor-sub">No instala nada pesado ni ocupa espacio: solo deja el ícono directo en tu pantalla.</div>
