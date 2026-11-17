@@ -201,16 +201,16 @@ function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}
     if (slugCanonico) {
         const rolIcon = esGestor ? 'gestor' : 'tienda';
         const manifestHref = esGestor
-            ? `/api/produccion/nodos/pwa/${slugEnc}/gestor.webmanifest${tokGestorValido ? `?t=${encodeURIComponent(tokGestorValido)}` : ''}`
-            : `/api/produccion/nodos/pwa/${slugEnc}/tienda.webmanifest`;
+            ? `/api/produccion/nodos/pwa/${slugEnc}/gestor.webmanifest?${tokGestorValido ? `t=${encodeURIComponent(tokGestorValido)}&` : ''}v=4`
+            : `/api/produccion/nodos/pwa/${slugEnc}/tienda.webmanifest?v=4`;
         const appShortTitle = esGestor ? `Gestión ${nombreMarca}` : nombreMarca;
         const themeColor = esGestor
             ? String(paletaTv.primario || '#654830').trim()
             : String(paletaTv.fondo || '#FBF8F3').trim();
 
         metaTags.push(`<link id="nodo-pwa-manifest" rel="manifest" href="${escHtmlAttrNodos(manifestHref)}">`);
-        metaTags.push(`<link rel="icon" type="image/png" sizes="192x192" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-192.png?v=3">`);
-        metaTags.push(`<link id="nodo-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-180.png?v=3">`);
+        metaTags.push(`<link rel="icon" type="image/png" sizes="192x192" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-192.png?v=4">`);
+        metaTags.push(`<link id="nodo-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-180.png?v=4">`);
         metaTags.push(`<meta name="theme-color" content="${escHtmlAttrNodos(themeColor)}">`);
         metaTags.push(`<meta name="mobile-web-app-capable" content="yes">`);
         metaTags.push(`<meta name="apple-mobile-web-app-capable" content="yes">`);
@@ -1705,14 +1705,24 @@ httpServer.listen(PORT, () => {
             console.warn('⚠️ [STARTUP-LDN3-LDN5] Advertencia al ejecutar saneamiento estructural:', errMig35.message);
         });
 
-    // Esquema Nodos Barriales (incluyendo fotos_vidriera / fotos_catalogo_base) y aprovisionamiento + perfiles idempotentes de Paraíso y MANSO
+    // Esquema Nodos (incluyendo fotos_vidriera / fotos_catalogo_base) y aprovisionamiento + perfiles idempotentes de Paraíso y MANSO
+    // Escalonado 2.5s con reintento ante deadlock (40P01) cuando PM2 reinicia simultáneamente LOGISTICA y PRODUCCION
     const { provisionarNodoManso } = require('./scripts/provisionarNodoManso');
     const { migrarPerfilesOperativosNodos } = require('./scripts/migrarPerfilesOperativosNodos');
-    provisionarNodoManso({ log: true })
-        .then(() => migrarPerfilesOperativosNodos({ log: true }))
-        .catch(errManso => {
+    const ejecutarBootstrapNodosConReintento = async (intento = 1) => {
+        try {
+            await provisionarNodoManso({ log: true });
+            await migrarPerfilesOperativosNodos({ log: true });
+        } catch (errManso) {
+            if (intento < 3 && (errManso?.code === '40P01' || /deadlock/i.test(String(errManso?.message || '')))) {
+                console.warn(`⏳ [STARTUP-NODOS] Deadlock concurrencia DDL en arranque (intento ${intento}/3); reintentando en ${intento * 2}s...`);
+                setTimeout(() => ejecutarBootstrapNodosConReintento(intento + 1), intento * 2000);
+                return;
+            }
             console.warn('⚠️ [STARTUP-NODOS] Advertencia verificando aprovisionamiento/perfiles idempotentes de Nodos:', errManso.message);
-        });
+        }
+    };
+    setTimeout(() => ejecutarBootstrapNodosConReintento(1), 2500);
     
     // Warmup asíncrono de Tabla Maestra en memoria para eliminación total de latencia inicial en Conciliación IA
     const conciliacionArticulosService = require('./services/conciliacionArticulosService');

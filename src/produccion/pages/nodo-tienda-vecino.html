@@ -2668,8 +2668,8 @@
 
     function aplicarFaviconTienda(urlImg) {
       const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
-      const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-192.png?v=3` : String(urlImg || '').trim();
-      const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=3` : String(urlImg || '').trim();
+      const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-192.png?v=4` : String(urlImg || '').trim();
+      const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=4` : String(urlImg || '').trim();
       if (iconPwa192) {
         let linkIcon = document.querySelector('link[rel="icon"]');
         if (!linkIcon) {
@@ -2696,7 +2696,7 @@
     function sincronizarManifestPwaTienda(slug) {
       const cleanSlug = String(slug || '').trim();
       if (!cleanSlug) return;
-      const href = `/api/produccion/nodos/pwa/${encodeURIComponent(cleanSlug)}/tienda.webmanifest`;
+      const href = `/api/produccion/nodos/pwa/${encodeURIComponent(cleanSlug)}/tienda.webmanifest?v=4`;
       let link = document.getElementById('nodo-pwa-manifest') || document.querySelector('link[rel="manifest"]');
       if (!link) {
         link = document.createElement('link');
@@ -2809,7 +2809,7 @@
         return;
       }
       const nombreMarca = String(STATE.nodo.nombre_marca || 'la tienda').trim();
-      const iconUrl = `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=3`;
+      const iconUrl = `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=4`;
       box.innerHTML = `
         <button type="button" id="btn-instalar-pwa-tienda" class="drawer-pwa-trigger" onclick="cerrarDrawerNodoTienda(); instalarAccesoDirectoTienda();">
           <img src="${esc(iconUrl)}" alt="${esc(nombreMarca)}" style="width:40px; height:40px; border-radius:10px; border:1px solid var(--border); flex-shrink:0; object-fit:cover;" />
@@ -2842,7 +2842,7 @@
 
       const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
       const nombreMarca = String(STATE.nodo?.nombre_marca || 'la tienda').trim();
-      const iconUrl = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=3` : '';
+      const iconUrl = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=4` : '';
       const esIos = /iphone|ipad|ipod/i.test(navigator.userAgent || '');
 
       const card = document.getElementById('pwa-tienda-modal-content');

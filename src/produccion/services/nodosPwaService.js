@@ -99,15 +99,24 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '', baseOri
             : `/gestor/${slugEnc}?pwa=1`;
         const tituloGestion = `Gestión ${nombreMarca}`;
         const manifestBaseUrl = `${originClean}/api/produccion/nodos/pwa/${slugEnc}/gestor.webmanifest`;
-        const manifestExactUrl = tieneTokenValido
+        const manifestBaseV4 = `${manifestBaseUrl}?v=4`;
+        const manifestExactV4 = tieneTokenValido
+            ? `${manifestBaseUrl}?t=${encodeURIComponent(tokReal)}&v=4`
+            : manifestBaseV4;
+        const manifestExactLegacy = tieneTokenValido
             ? `${manifestBaseUrl}?t=${encodeURIComponent(tokReal)}`
             : manifestBaseUrl;
         const relatedAppsGestor = tieneTokenValido
             ? [
-                { platform: 'webapp', url: manifestExactUrl },
+                { platform: 'webapp', url: manifestExactV4 },
+                { platform: 'webapp', url: manifestBaseV4 },
+                { platform: 'webapp', url: manifestExactLegacy },
                 { platform: 'webapp', url: manifestBaseUrl }
             ]
-            : [{ platform: 'webapp', url: manifestBaseUrl }];
+            : [
+                { platform: 'webapp', url: manifestBaseV4 },
+                { platform: 'webapp', url: manifestBaseUrl }
+            ];
 
         return {
             id: `/gestor/${slugEnc}`,
@@ -125,19 +134,19 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '', baseOri
             related_applications: relatedAppsGestor,
             icons: [
                 {
-                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-192.png?v=3`,
+                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-192.png?v=4`,
                     sizes: '192x192',
                     type: 'image/png',
                     purpose: 'any'
                 },
                 {
-                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=3`,
+                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=4`,
                     sizes: '512x512',
                     type: 'image/png',
                     purpose: 'any'
                 },
                 {
-                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=3`,
+                    src: `/api/produccion/nodos/pwa/${slugEnc}/icon-gestor-512.png?v=4`,
                     sizes: '512x512',
                     type: 'image/png',
                     purpose: 'maskable'
@@ -161,23 +170,24 @@ function construirManifestPwaNodo(nodo, rol = 'tienda', tokenQuery = '', baseOri
         theme_color: pal.fondoClaro,
         prefer_related_applications: false,
         related_applications: [
+            { platform: 'webapp', url: `${manifestTiendaUrl}?v=4` },
             { platform: 'webapp', url: manifestTiendaUrl }
         ],
         icons: [
             {
-                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-192.png?v=3`,
+                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-192.png?v=4`,
                 sizes: '192x192',
                 type: 'image/png',
                 purpose: 'any'
             },
             {
-                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=3`,
+                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=4`,
                 sizes: '512x512',
                 type: 'image/png',
                 purpose: 'any'
             },
             {
-                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=3`,
+                src: `/api/produccion/nodos/pwa/${slugEnc}/icon-tienda-512.png?v=4`,
                 sizes: '512x512',
                 type: 'image/png',
                 purpose: 'maskable'
@@ -286,7 +296,7 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
     const logoB64Len = nodo?.logo_original_base64 ? String(nodo.logo_original_base64).length : 0;
 
     const cacheKey = [
-        'v3-clean',
+        'v4-clean',
         nodo?.id || 0,
         nodo?.slug || '',
         rolNorm,
@@ -385,7 +395,7 @@ async function renderizarIconoPngNodo(nodo, rol = 'tienda', sizeRaw = 192) {
 
 function generarCodigoServiceWorkerNodo() {
     return `/* LAMDA Tiendas Comunitarias — Service Worker liviano (network-first, sin caché de API, media ni subidas multipart) */
-const SW_VERSION = 'lamda-nodo-pwa-v7';
+const SW_VERSION = 'lamda-nodo-pwa-v8';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
