@@ -12,6 +12,65 @@ let tagEnEdicionIndex = null;
 let criterioOrdenMemoria = 'FECHA';
 let excluirCeroMemoria = true;
 let opcionesConciliacionActual = {};
+let estadoSimulacionPropiaModal = null;
+
+function inicializarEstadoSimulacionPropia(capaPropia) {
+    if (!capaPropia || !capaPropia.habilitada || capaPropia.tipo_ficha !== 'LDN4_TOSTADERO') {
+        estadoSimulacionPropiaModal = null;
+        return;
+    }
+    const p = capaPropia.parametros_iniciales || {};
+    estadoSimulacionPropiaModal = {
+        up_codigo: capaPropia.up_codigo,
+        ap_codigo: capaPropia.ap_codigo,
+        crudo_sku: p.crudo_sku || capaPropia.crudo_actual?.sku || '',
+        crudo_detalle: capaPropia.crudo_actual || null,
+        fuente_costo_crudo: p.fuente_costo_crudo || 'REPO',
+        costo_crudo_kg: Number(p.costo_crudo_kg || 0),
+        colaborador_id: p.colaborador_id || null,
+        servicio_id: p.servicio_id || null,
+        tarifa_kg: Number(p.tarifa_kg || 0),
+        merma_pct: Number(p.merma_pct ?? capaPropia.merma_promedio ?? 0),
+        cargando_crudo: false
+    };
+}
+
+function calcularValoresVivosPropia(capaPropia) {
+    if (!capaPropia || !capaPropia.habilitada) return null;
+    if (capaPropia.tipo_ficha === 'LDN4_TOSTADERO') {
+        const sim = estadoSimulacionPropiaModal || capaPropia.parametros_iniciales || {};
+        const merma = Math.max(0, Math.min(95, parseFloat(sim.merma_pct) || 0));
+        const factorRend = 1 - (merma / 100);
+        const crudoKg = Math.max(0, parseFloat(sim.costo_crudo_kg) || 0);
+        const tarifaKg = Math.max(0, parseFloat(sim.tarifa_kg) || 0);
+        const crudoAjustadoRend = factorRend > 0 ? Number((crudoKg / factorRend).toFixed(2)) : 0;
+        const costoBaseAp = factorRend > 0 ? Number(((crudoKg / factorRend) + tarifaKg).toFixed(2)) : 0;
+        const moAp = Number(capaPropia.mo_ap_kilo || 0);
+        const costoIng = Number((costoBaseAp + moAp).toFixed(2));
+        return {
+            crudoKg,
+            tarifaKg,
+            merma,
+            factorRend,
+            crudoAjustadoRend,
+            costoBaseAp,
+            moAp,
+            costoIng,
+            costoKiloBadge: costoIng
+        };
+    }
+    if (capaPropia.tipo_ficha === 'LDN2_FRACCIONADO') {
+        return {
+            costoBultoSinMo: Number(capaPropia.costo_sin_mo_bulto || 0),
+            costoBultoConMo: Number(capaPropia.costo_total_elaborado_bulto || 0),
+            costoKiloConMo: Number(capaPropia.costo_total_elaborado_kilo || capaPropia.costo_kilo_elaborado || 0),
+            costoKiloBadge: Number(capaPropia.costo_total_elaborado_kilo || capaPropia.costo_kilo_elaborado || 0)
+        };
+    }
+    return {
+        costoKiloBadge: Number(capaPropia.costo_kilo_elaborado || 0)
+    };
+}
 
 async function abrirModuloConciliacionIA(articuloId, tagsOpcionales = null, opcionesOver = {}) {
     if (!articuloId) {
@@ -19,9 +78,19 @@ async function abrirModuloConciliacionIA(articuloId, tagsOpcionales = null, opci
         return;
     }
 
+    const optsNorm = (opcionesOver && typeof opcionesOver === 'object') ? opcionesOver : {};
+    const esMismoArticuloConservar = Boolean(optsNorm.conservar_tab && articuloIdActualConciliacion === articuloId);
+
     articuloIdActualConciliacion = articuloId;
     tagEnEdicionIndex = null;
-    opcionesConciliacionActual = (opcionesOver && typeof opcionesOver === 'object') ? opcionesOver : {};
+    opcionesConciliacionActual = optsNorm;
+
+    if (optsNorm.tab_inicial) {
+        window.tabConciliacionActiva = optsNorm.tab_inicial;
+    } else if (!esMismoArticuloConservar) {
+        window.tabConciliacionActiva = null;
+        estadoSimulacionPropiaModal = null;
+    }
 
     if (window.VigíaPizarra) {
         window.VigíaPizarra.logEvent('CONCILIACION_IA', `🤖 Modal Conciliación IA ABIERTO para SKU [${articuloId}]`, {
@@ -58,43 +127,43 @@ async function abrirModuloConciliacionIA(articuloId, tagsOpcionales = null, opci
 
     overlay.innerHTML = `
         <!-- HEADER PANTALLA COMPLETA -->
-        <div style="background: #1e293b; padding: 14px 24px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-            <div style="display: flex; align-items: center; gap: 14px;">
-                <div style="background: linear-gradient(135deg, #6366f1, #0284c7); padding: 8px 12px; border-radius: 8px; font-size: 1.3rem;">🤖</div>
-                <div>
-                    <h2 style="margin: 0; font-size: 1.15rem; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 10px;">
-                        Mesa Integrada de Fuentes de Reposición y Trazabilidad (Tabla B4.1 & Lotes Supabase)
-                        <span style="font-size: 0.72rem; background: #0284c7; color: white; padding: 2px 8px; border-radius: 12px;">Pizarra Inteligente</span>
+        <div style="background: #1e293b; padding: 10px 20px; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+            <div style="display: flex; align-items: center; gap: 12px; flex: 1 1 420px; min-width: 0;">
+                <div style="background: linear-gradient(135deg, #6366f1, #0284c7); padding: 7px 10px; border-radius: 8px; font-size: 1.15rem; flex-shrink: 0;">🤖</div>
+                <div style="min-width: 0;">
+                    <h2 style="margin: 0; font-size: 1.02rem; font-weight: 700; color: #f8fafc; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span>Mesa Integrada de Fuentes de Costo y Trazabilidad</span>
+                        <span style="font-size: 0.70rem; background: #0284c7; color: white; padding: 2px 8px; border-radius: 12px; white-space: nowrap;">Pizarra Inteligente</span>
                     </h2>
-                    <div id="art-target-header-info" style="font-size: 0.82rem; color: #94a3b8; margin-top: 2px;">
+                    <div id="art-target-header-info" style="font-size: 0.80rem; color: #94a3b8; margin-top: 2px;">
                         Cargando información del artículo <strong style="color: #38bdf8;">${articuloId}</strong>...
                     </div>
                 </div>
             </div>
 
             <!-- UNIFIED CONVERSATIONAL BAR WITH AI CHOFER -->
-            <div style="display: flex; align-items: center; gap: 8px; flex: 1; max-width: 620px; margin: 0 20px;">
-                <div style="position: relative; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 8px; flex: 1 1 360px; max-width: 560px;">
+                <div style="position: relative; width: 100%; min-width: 170px;">
                     <input type="text" id="input-instruccion-chofer" 
-                        placeholder="💬 Instruir al Chofer IA (ej: 'solo bavosi', 'de 22.68kg', 'sin villares', 'solo vigentes')..."
-                        style="width: 100%; padding: 9px 14px; background: #0f172a; border: 1px solid #0284c7; border-radius: 8px; color: white; font-size: 0.86rem; outline: none; box-shadow: 0 0 10px rgba(2, 132, 199, 0.2);"
+                        placeholder="💬 Instruir al Chofer IA (ej: 'solo bavosi', 'de 22.68kg', 'solo vigentes')..."
+                        style="width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #0284c7; border-radius: 8px; color: white; font-size: 0.84rem; outline: none; box-shadow: 0 0 10px rgba(2, 132, 199, 0.2);"
                         onkeyup="if(event.key==='Enter') enviarInstruccionChoferIA();" />
                 </div>
-                <button onclick="enviarInstruccionChoferIA()" style="background: linear-gradient(135deg, #0284c7, #6366f1); color: white; border: none; padding: 9px 15px; border-radius: 8px; font-size: 0.83rem; font-weight: 700; cursor: pointer; white-space: nowrap; box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);">
+                <button onclick="enviarInstruccionChoferIA()" style="background: linear-gradient(135deg, #0284c7, #6366f1); color: white; border: none; padding: 8px 13px; border-radius: 8px; font-size: 0.81rem; font-weight: 700; cursor: pointer; white-space: nowrap; box-shadow: 0 2px 8px rgba(2, 132, 199, 0.3);">
                     ⚡ Enviar a Chofer IA
                 </button>
-                <button onclick="restaurarChoferIA()" title="Restaurar todas las ofertas originales del Chofer IA" style="background: #0f172a; color: #94a3b8; border: 1px solid #475569; padding: 9px 11px; border-radius: 8px; font-size: 0.8rem; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                <button onclick="restaurarChoferIA()" title="Restaurar todas las ofertas originales del Chofer IA" style="background: #0f172a; color: #94a3b8; border: 1px solid #475569; padding: 8px 10px; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; white-space: nowrap;">
                     🔄 Todo
                 </button>
             </div>
 
-            <button onclick="cerrarModuloConciliacionIA()" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); padding: 7px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+            <button onclick="cerrarModuloConciliacionIA()" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); padding: 7px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.2s;">
                 ✖️ Cerrar Escenario
             </button>
         </div>
 
         <!-- CONTENIDO PRINCIPAL -->
-        <div style="flex: 1; padding: 20px 32px; overflow-y: auto; background: #0f172a;" id="conciliacion-content-area">
+        <div style="flex: 1; padding: 16px 26px; overflow-y: auto; background: #0f172a;" id="conciliacion-content-area">
             <div style="display: flex; justify-content: center; align-items: center; height: 300px; flex-direction: column; gap: 16px;">
                 <div style="width: 44px; height: 44px; border: 4px solid #38bdf8; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
                 <div style="color: #cbd5e1; font-size: 0.92rem;">Escaneando Tabla Maestra de Proveedores (3.581+ ofertas vigentes B4.1)...</div>
@@ -344,6 +413,25 @@ async function abrirModuloConciliacionIA(articuloId, tagsOpcionales = null, opci
                 background: rgba(255, 255, 255, 0.25);
                 color: white;
             }
+            .tab-conciliacion-btn.tab-propia-btn {
+                border-color: rgba(16, 185, 129, 0.45);
+                color: #6ee7b7;
+                background: rgba(16, 185, 129, 0.08);
+            }
+            .tab-conciliacion-btn.tab-propia-btn:hover {
+                background: rgba(16, 185, 129, 0.18);
+                color: #ecfdf5;
+            }
+            .tab-conciliacion-btn.tab-propia-btn.active-propia {
+                background: linear-gradient(135deg, #059669, #10b981);
+                color: #ffffff;
+                border-color: #34d399;
+                box-shadow: 0 -2px 12px rgba(16, 185, 129, 0.35);
+            }
+            .tab-conciliacion-btn.tab-propia-btn.active-propia .tab-counter-badge {
+                background: rgba(5, 46, 22, 0.45);
+                color: #ecfdf5;
+            }
         </style>
     `;
 
@@ -368,6 +456,9 @@ async function abrirModuloConciliacionIA(articuloId, tagsOpcionales = null, opci
         }
 
         datosEstadoActualConciliacion = resData.data;
+        if (!esMismoArticuloConservar || !estadoSimulacionPropiaModal) {
+            inicializarEstadoSimulacionPropia(datosEstadoActualConciliacion.capa_produccion_propia);
+        }
         tagsActivosMemoria = datosEstadoActualConciliacion.articulo_lamda.tags_activos_paso_1 || [];
         renderizarContenidoConciliacion(datosEstadoActualConciliacion);
     } catch (err) {
@@ -476,8 +567,11 @@ function agregarNuevaEtiquetaConConfig(modo, columna) {
 function reprocesarBúsquedaConEtiquetasActivas() {
     if (articuloIdActualConciliacion) {
         abrirModuloConciliacionIA(articuloIdActualConciliacion, tagsActivosMemoria, {
+            ...opcionesConciliacionActual,
             criterio_orden: criterioOrdenMemoria,
-            excluir_cero: excluirCeroMemoria
+            excluir_cero: excluirCeroMemoria,
+            conservar_tab: true,
+            tab_inicial: null
         });
     }
 }
@@ -721,9 +815,12 @@ window.forzarSincronizacionSupabase = async function(btn) {
     }
     try {
         await abrirModuloConciliacionIA(articuloIdActualConciliacion, tagsActivosMemoria, {
+            ...opcionesConciliacionActual,
             forzar_refresco: true,
             criterio_orden: criterioOrdenMemoria,
-            excluir_cero: excluirCeroMemoria
+            excluir_cero: excluirCeroMemoria,
+            conservar_tab: true,
+            tab_inicial: null
         });
     } catch (e) {
         console.error('Error al forzar sincronización con Supabase:', e);
@@ -788,7 +885,20 @@ function renderizarContenidoConciliacion(data) {
     const capaChoferIA = data.capa_chofer_ia || [];
     const fichaIA = data.ficha_semantica_ia || {};
 
-    // Selección inteligente de pestaña activa por defecto
+    // 5. Capa Determinista de Producción Propia LAMDA (Solo cuando existe vínculo real en BD)
+    const capaPropia = (data.capa_produccion_propia && data.capa_produccion_propia.habilitada)
+        ? data.capa_produccion_propia
+        : null;
+    if (capaPropia && capaPropia.tipo_ficha === 'LDN4_TOSTADERO' && (!estadoSimulacionPropiaModal || estadoSimulacionPropiaModal.up_codigo !== capaPropia.up_codigo)) {
+        inicializarEstadoSimulacionPropia(capaPropia);
+    }
+    const valoresPropia = capaPropia ? calcularValoresVivosPropia(capaPropia) : null;
+    const mejorRefExterna = obtenerMejorReferenciaExternaModal(data, lotesHistoria);
+
+    // Selección inteligente de pestaña activa por defecto (con resguardo si PRODUCCION_PROPIA no aplica a este SKU)
+    if (window.tabConciliacionActiva === 'PRODUCCION_PROPIA' && !capaPropia) {
+        window.tabConciliacionActiva = null;
+    }
     if (!window.tabConciliacionActiva) {
         if (lotesHistoria.length > 0) window.tabConciliacionActiva = 'LOTES';
         else if (capaHabitual.length > 0) window.tabConciliacionActiva = 'HABITUAL';
@@ -1272,7 +1382,21 @@ function renderizarContenidoConciliacion(data) {
                 `}
             </div>
         `;
+    } else if (tabActiva === 'PRODUCCION_PROPIA' && capaPropia) {
+        tabContentHtml = construirHtmlTabProduccionPropia(capaPropia, art, valoresPropia, mejorRefExterna);
     }
+
+    const bannerPuenteSolapa5EnTabsExternas = (capaPropia && valoresPropia && tabActiva !== 'PRODUCCION_PROPIA') ? `
+        <div style="margin-bottom: 16px; padding: 10px 16px; border-radius: 10px; background: linear-gradient(90deg, rgba(16, 185, 129, 0.12), rgba(15, 23, 42, 0.85)); border: 1px solid rgba(16, 185, 129, 0.38); display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div style="font-size: 0.82rem; color: #d1fae5; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span style="background: rgba(16, 185, 129, 0.22); color: #34d399; padding: 2px 8px; border-radius: 6px; font-weight: 800; font-size: 0.74rem;">🏭 COMPARATIVA INTERNA ACTIVA</span>
+                <span>Elaborar / fraccionar este producto en LAMDA cuesta hoy <strong style="color: #34d399; font-size: 0.92rem;">$${valoresPropia.costoKiloBadge.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>${capaPropia.tipo_ficha === 'LDN2_FRACCIONADO' ? ` <span style="color:#94a3b8;">($${valoresPropia.costoBultoConMo.toLocaleString('es-AR', {minimumFractionDigits: 2})}/bulto ${capaPropia.kilos_unidad}kg)</span>` : ''}.</span>
+            </div>
+            <button type="button" onclick="cambiarTabConciliacion('PRODUCCION_PROPIA')" style="background: rgba(16, 185, 129, 0.22); color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.55); padding: 5px 12px; border-radius: 6px; font-size: 0.77rem; font-weight: 800; cursor: pointer;">
+                Abrir ${capaPropia.etiqueta_pestana || '🏭 5. Producción Propia'} →
+            </button>
+        </div>
+    ` : '';
 
     contentArea.innerHTML = `
         <!-- RESUMEN DE FLUJOS Y CONTADORES METRICOS -->
@@ -1283,7 +1407,7 @@ function renderizarContenidoConciliacion(data) {
                 <span>Proveedores en Resultados: <strong style="color: #cbd5e1;">${provsStr || 'Ninguno'}</strong></span>
             </div>
             <div style="font-size: 0.76rem; color: #a78bfa; display: flex; align-items: center; gap: 10px;">
-                <span>⚡ Arquitectura de 4 Capas: Depósito • Habitual • Operador • Chofer IA</span>
+                <span>⚡ Arquitectura de ${capaPropia ? '5 Capas: Depósito • Habitual • Operador • Chofer IA • Producción Propia' : '4 Capas: Depósito • Habitual • Operador • Chofer IA'}</span>
                 <button id="btn-sync-supa" onclick="forzarSincronizacionSupabase(this)" style="background: rgba(56, 189, 248, 0.14); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); padding: 3px 10px; border-radius: 6px; font-size: 0.74rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; transition: all 0.2s;" title="Reconsultar inmediatamente Supabase para traer especificaciones y precios recién editados">
                     🔄 Sincronizar Supabase
                 </button>
@@ -1291,7 +1415,7 @@ function renderizarContenidoConciliacion(data) {
         </div>
 
         <!-- NAVEGACIÓN POR PESTAÑAS (TABS) -->
-        <div style="display: flex; gap: 8px; border-bottom: 2px solid #334155; margin-bottom: 20px; overflow-x: auto;">
+        <div style="display: flex; gap: 8px; border-bottom: 2px solid #334155; margin-bottom: 18px; overflow-x: auto;">
             <button class="tab-conciliacion-btn ${tabActiva === 'LOTES' ? 'active' : ''}" onclick="cambiarTabConciliacion('LOTES')">
                 📦 1. Lotes de Depósito <span class="tab-counter-badge">${lotesHistoria.length}</span>
             </button>
@@ -1304,7 +1428,15 @@ function renderizarContenidoConciliacion(data) {
             <button class="tab-conciliacion-btn ${tabActiva === 'CHOFER_IA' ? 'active' : ''}" onclick="cambiarTabConciliacion('CHOFER_IA')">
                 🤖 4. Chofer IA: Mercado <span class="tab-counter-badge">${capaChoferIA.length}</span>
             </button>
+            ${capaPropia && valoresPropia ? `
+            <button class="tab-conciliacion-btn tab-propia-btn ${tabActiva === 'PRODUCCION_PROPIA' ? 'active-propia' : ''}" onclick="cambiarTabConciliacion('PRODUCCION_PROPIA')">
+                ${capaPropia.etiqueta_pestana || '🏭 5. Producción Propia'}
+                <span class="tab-counter-badge">$${valoresPropia.costoKiloBadge.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</span>
+            </button>
+            ` : ''}
         </div>
+
+        ${bannerPuenteSolapa5EnTabsExternas}
 
         <!-- CONTENEDOR DE LA PESTAÑA ACTIVA -->
         ${tabContentHtml}
@@ -1594,35 +1726,208 @@ async function confirmarCostoReposicionDesdeIA(
         ? parseFloat(porcentajeIvaExplicit)
         : (artLamda?.porcentaje_iva || 21);
 
-    // Flujo dedicado Make vs Buy para [LDN 4]: evita pisar el ingrediente sin pasar por el comparador de Tostadero
-    if (opcionesConciliacionActual && opcionesConciliacionActual.ldn4_ap_codigo && typeof window.aplicarOfertaProveedorLdn4 === 'function') {
-        const costoProdRef = parseFloat(opcionesConciliacionActual.costo_prod_ing_kg) || 0;
+    const capaPropiaActiva = (datosEstadoActualConciliacion?.capa_produccion_propia?.habilitada)
+        ? datosEstadoActualConciliacion.capa_produccion_propia
+        : null;
+    const valoresPropiaActivos = capaPropiaActiva ? calcularValoresVivosPropia(capaPropiaActiva) : null;
+    const origenCompraNorm = String(codigoProveedor || '').startsWith('LOTE') || String(proveedorId || '') === 'SUPABASE_LOTE'
+        ? 'LOTE'
+        : 'TABLA_MAESTRA';
+
+    // CASO A (ANTI-ERROR HUMANO): Se abrió sobre un BULTO COMPRADO (ej. [CCWTX22,68]) vinculado a un Ingrediente con Tostadero LDN 4
+    if (
+        capaPropiaActiva &&
+        capaPropiaActiva.tipo_ficha === 'LDN4_TOSTADERO' &&
+        capaPropiaActiva.contexto_origen?.tipo === 'BULTO_COMPRADO_VINCULADO'
+    ) {
+        const costoPropiaRef = valoresPropiaActivos ? valoresPropiaActivos.costoIng : (capaPropiaActiva.costo_kilo_elaborado || 0);
+        const diffVsPropia = costoPropiaRef > 0 ? (costoKiloCalculado - costoPropiaRef) : 0;
+        const resDual = await Swal.fire({
+            title: '🛡️ Confirmación Desambiguada de Destino',
+            width: '680px',
+            html: `
+                <div style="text-align:left; font-size:0.86rem; color:#cbd5e1; display:flex; flex-direction:column; gap:10px;">
+                    <div style="background:#0f172a; border:1px solid #334155; border-radius:8px; padding:10px 12px;">
+                        <div>Oferta seleccionada: <strong style="color:#38bdf8;">${proveedorNombre || 'Proveedor'}</strong> ${codigoProveedor ? `<code>[${codigoProveedor}]</code>` : ''}</div>
+                        <div style="color:#94a3b8; font-size:0.79rem; margin-top:2px;">${descripcionProveedor || '-'}</div>
+                        <div style="margin-top:6px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                            <span>Precio Compra Elegido: <strong style="color:#38bdf8;">$${costoKiloCalculado.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong> ($${nuevoCostoBase.toLocaleString('es-AR', {minimumFractionDigits: 2})}/bulto ${artLamda?.kilos_unidad || 1}kg)</span>
+                            ${costoPropiaRef > 0 ? `<span>vs Producción Propia LAMDA: <strong style="color:#34d399;">$${costoPropiaRef.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong> (${diffVsPropia > 0 ? '+' : ''}$${diffVsPropia.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</span>` : ''}
+                        </div>
+                    </div>
+
+                    <div style="font-size:0.80rem; color:#fde047; font-weight:700;">Elegí explícitamente dónde querés aplicar este costo (podés marcar uno o ambos):</div>
+
+                    <label style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:8px; background:rgba(56,189,248,0.10); border:1px solid rgba(56,189,248,0.38); cursor:pointer;">
+                        <input type="checkbox" id="chk-impactar-bulto-ldn1" checked style="margin-top:3px; width:17px; height:17px; accent-color:#0284c7; cursor:pointer;">
+                        <div>
+                            <div style="font-weight:800; color:#e0f2fe;">📦 1. Actualizar bulto comercial [${articuloId}] (${artLamda?.kilos_unidad || 1}kg)</div>
+                            <div style="font-size:0.77rem; color:#94a3b8;">Actualiza <code>costo_base</code> ($${nuevoCostoBase.toLocaleString('es-AR', {minimumFractionDigits: 2})}/bulto) y las listas de venta directa de este bulto cerrado en [LDN 1].</div>
+                        </div>
+                    </label>
+
+                    <label style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:8px; background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.38); cursor:pointer;">
+                        <input type="checkbox" id="chk-impactar-circuito-ldn4" style="margin-top:3px; width:17px; height:17px; accent-color:#f59e0b; cursor:pointer;">
+                        <div>
+                            <div style="font-weight:800; color:#fef08a;">🥜 2. Adoptar además como Fuente Rectora (🛒 Compra) en [ING #${capaPropiaActiva.ingrediente_id}] ${capaPropiaActiva.ingrediente_nombre}</div>
+                            <div style="font-size:0.77rem; color:#cbd5e1;">Fija Compra Proveedor ($${costoKiloCalculado.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg) sobre AP <code>[${capaPropiaActiva.ap_codigo}]</code> y abre la auditoría de sus <strong>${capaPropiaActiva.fracciones_afectadas?.length || 0} fracciones</strong>${capaPropiaActiva.mixes_afectados?.length ? ` y <strong>${capaPropiaActiva.mixes_afectados.length} mix(es)</strong>` : ''} sin borrar la simulación de Tostadero.</div>
+                        </div>
+                    </label>
+                </div>
+            `,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: '✅ Confirmar Selección',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#0284c7',
+            cancelButtonColor: '#475569',
+            background: '#151e2e',
+            color: '#f3f4f6',
+            preConfirm: () => {
+                const c1 = Boolean(document.getElementById('chk-impactar-bulto-ldn1')?.checked);
+                const c2 = Boolean(document.getElementById('chk-impactar-circuito-ldn4')?.checked);
+                if (!c1 && !c2) {
+                    Swal.showValidationMessage('Seleccioná al menos uno de los dos destinos.');
+                    return false;
+                }
+                return { impactarBulto: c1, impactarCircuitoLdn4: c2 };
+            }
+        });
+
+        if (!resDual.isConfirmed || !resDual.value) return;
+        const { impactarBulto, impactarCircuitoLdn4 } = resDual.value;
+
+        try {
+            if (impactarBulto) {
+                Swal.fire({
+                    title: 'Actualizando bulto comercial...',
+                    text: `Impactando [${articuloId}] sin alterar silenciosamente la cadena LDN 4...`,
+                    allowOutsideClick: false,
+                    didOpen: () => Swal.showLoading()
+                });
+                const respB = await fetch('/api/produccion/conciliacion/articulos/confirmar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        articulo_id: articuloId,
+                        es_ingrediente: false,
+                        ingrediente_id: null,
+                        nuevo_costo_base: nuevoCostoBase,
+                        porcentaje_iva: porcentajeIvaFinal,
+                        proveedor_id: proveedorId,
+                        proveedor_nombre: proveedorNombre,
+                        codigo_proveedor: codigoProveedor,
+                        descripcion_proveedor: descripcionProveedor,
+                        precio_costo_bulto: precioCostoBulto,
+                        costo_kilo_calculado: costoKiloCalculado,
+                        fecha_actualizacion_oferta: fechaActualizacion,
+                        antiguedad_dias: antiguedadDias,
+                        nivel_coincidencia: nivelCoincidencia,
+                        justificacion_determinista: justificacion,
+                        sincronizar_ingrediente: false
+                    })
+                });
+                const dB = await respB.json();
+                if (!dB.success) throw new Error(dB.message || 'Error al actualizar el bulto comercial.');
+                if (typeof window.inicializarPizarra === 'function') {
+                    await window.inicializarPizarra(true);
+                }
+            }
+
+            const upTarget = capaPropiaActiva.up_codigo;
+            const apTarget = capaPropiaActiva.ap_codigo;
+            cerrarModuloConciliacionIA();
+
+            if (impactarCircuitoLdn4) {
+                if (typeof window.aplicarOfertaProveedorLdn4 === 'function') {
+                    await window.aplicarOfertaProveedorLdn4(upTarget, {
+                        compra_origen: 'BULTO_BUNKER',
+                        compra_sku_bulto: articuloId,
+                        compra_costo_kg: costoKiloCalculado,
+                        compra_proveedor_nombre: proveedorNombre || 'Proveedor',
+                        compra_proveedor_codigo: codigoProveedor || articuloId,
+                        compra_descripcion: descripcionProveedor || artLamda?.descripcion || articuloId,
+                        compra_updated_at: fechaActualizacion || new Date().toISOString()
+                    }, true);
+                    if (typeof window.cambiarContextoLDN === 'function') window.cambiarContextoLDN(4);
+                    if (typeof window.actualizarTodasFraccionesDeTostadero === 'function') {
+                        await window.actualizarTodasFraccionesDeTostadero(upTarget);
+                    }
+                } else {
+                    await fetch(`/api/produccion/ldn4/fuente-abastecimiento/${encodeURIComponent(apTarget)}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            modo_rector: 'COMPRA_PROVEEDOR',
+                            compra_origen: 'BULTO_BUNKER',
+                            compra_sku_bulto: articuloId,
+                            compra_costo_kg: costoKiloCalculado,
+                            compra_proveedor_nombre: proveedorNombre || 'Proveedor',
+                            compra_proveedor_codigo: codigoProveedor || articuloId,
+                            compra_descripcion: descripcionProveedor || articuloId,
+                            compra_updated_at: fechaActualizacion || new Date().toISOString()
+                        })
+                    });
+                }
+            } else {
+                // Guardar únicamente como benchmark informativo en el AP si aún no tenía referencia
+                await fetch(`/api/produccion/ldn4/fuente-abastecimiento/${encodeURIComponent(apTarget)}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        compra_origen: 'BULTO_BUNKER',
+                        compra_sku_bulto: articuloId,
+                        compra_costo_kg: costoKiloCalculado,
+                        compra_proveedor_nombre: proveedorNombre || 'Proveedor',
+                        compra_proveedor_codigo: codigoProveedor || articuloId,
+                        compra_descripcion: descripcionProveedor || articuloId,
+                        compra_updated_at: fechaActualizacion || new Date().toISOString()
+                    })
+                }).catch(() => {});
+                Swal.fire('¡Bulto Actualizado!', `Se actualizó [${articuloId}] a $${nuevoCostoBase.toLocaleString('es-AR', {minimumFractionDigits: 2})}/bulto manteniendo intacta la Fuente Rectora de [ING #${capaPropiaActiva.ingrediente_id}].`, 'success');
+                if (typeof window.renderizarArticulosBunkerLDN1 === 'function') window.renderizarArticulosBunkerLDN1();
+            }
+        } catch (errDual) {
+            console.error('❌ Error en confirmación desambiguada:', errDual);
+            Swal.fire('Error', errDual.message || 'No se pudo completar la actualización.', 'error');
+        }
+        return;
+    }
+
+    // CASO B: Circuito [LDN 4] abierto desde Ingrediente (ING-*), Artículo Puente (AP) o botón de [LDN 4]
+    if (
+        ((opcionesConciliacionActual && opcionesConciliacionActual.ldn4_ap_codigo) ||
+         (capaPropiaActiva && capaPropiaActiva.tipo_ficha === 'LDN4_TOSTADERO')) &&
+        typeof window.aplicarOfertaProveedorLdn4 === 'function'
+    ) {
+        const targetUp = opcionesConciliacionActual?.ldn4_up_codigo || capaPropiaActiva?.up_codigo;
+        const costoProdRef = valoresPropiaActivos?.costoIng || parseFloat(opcionesConciliacionActual?.costo_prod_ing_kg) || 0;
         const diffVsProd = costoProdRef > 0 ? (costoKiloCalculado - costoProdRef) : 0;
         const diffTexto = costoProdRef > 0
             ? `<div style="margin-top:8px; padding:8px 10px; border-radius:6px; background:${diffVsProd <= 0 ? 'rgba(16,185,129,0.14)' : 'rgba(245,158,11,0.14)'}; border:1px solid ${diffVsProd <= 0 ? 'rgba(16,185,129,0.4)' : 'rgba(245,158,11,0.4)'}; font-size:0.84rem;">
-                 ⚖️ Comparado contra <strong>Producir UP ($${costoProdRef.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</strong>:
+                 ⚖️ Comparado contra <strong>Producción Propia LAMDA ($${costoProdRef.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</strong>:
                  <strong style="color:${diffVsProd <= 0 ? '#34d399' : '#fbbf24'};">${diffVsProd > 0 ? '+' : ''}$${diffVsProd.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
                </div>`
             : '';
 
         const resLdn4 = await Swal.fire({
-            title: '⚖️ Llevar Oferta al Comparador [LDN 4]',
+            title: '⚖️ Decisión de Abastecimiento [LDN 4]',
             html: `
                 <div style="text-align:left; font-size:0.88rem; color:#cbd5e1;">
-                    <p>Oferta seleccionada para <strong>${artLamda?.descripcion || articuloId}</strong>:</p>
+                    <p>Oferta de proveedor terminado para <strong>${capaPropiaActiva?.ingrediente_nombre || artLamda?.descripcion || articuloId}</strong>:</p>
                     <ul>
                         <li><strong>Proveedor:</strong> ${proveedorNombre || 'Proveedor'} ${codigoProveedor ? `(${codigoProveedor})` : ''}</li>
                         <li><strong>Producto:</strong> ${descripcionProveedor || '-'}</li>
                         <li><strong>Costo Terminado:</strong> <strong style="color:#38bdf8;">$${costoKiloCalculado.toLocaleString('es-AR', {minimumFractionDigits: 2})} / kg</strong></li>
                     </ul>
                     ${diffTexto}
-                    <p style="font-size:0.78rem; color:#94a3b8; margin-top:8px;">Esto cargará el dato en el Paso 2 de LDN 4 sin tocar aún los precios en BD hasta que vos confirmes la cadena.</p>
+                    <p style="font-size:0.78rem; color:#94a3b8; margin-top:8px;">Si activás Compra como Fuente Rectora, se abrirá la tabla de auditoría de AP + Ingrediente + Fracciones + Mixes (sin borrar los datos del Tostadero).</p>
                 </div>
             `,
             icon: 'question',
             showDenyButton: true,
             showCancelButton: true,
-            confirmButtonText: '🛒 Activar como Fuente Rectora (Compra)',
+            confirmButtonText: '🛒 Activar Compra y Revisar Cadena',
             denyButtonText: '📊 Solo guardar Benchmark',
             cancelButtonText: 'Cancelar',
             confirmButtonColor: '#0284c7',
@@ -1634,10 +1939,9 @@ async function confirmarCostoReposicionDesdeIA(
 
         if (!resLdn4.isConfirmed && !resLdn4.isDenied) return;
         const activarComoRector = Boolean(resLdn4.isConfirmed);
-        const targetUp = opcionesConciliacionActual.ldn4_up_codigo;
         cerrarModuloConciliacionIA();
         await window.aplicarOfertaProveedorLdn4(targetUp, {
-            compra_origen: String(codigoProveedor || '').startsWith('LOTE') || String(proveedorId || '') === 'SUPABASE_LOTE' ? 'LOTE' : 'TABLA_MAESTRA',
+            compra_origen: origenCompraNorm,
             compra_costo_kg: costoKiloCalculado,
             compra_proveedor_nombre: proveedorNombre || 'Proveedor',
             compra_proveedor_codigo: codigoProveedor || null,
@@ -1645,8 +1949,22 @@ async function confirmarCostoReposicionDesdeIA(
             compra_sku_bulto: null,
             compra_updated_at: fechaActualizacion || new Date().toISOString()
         }, activarComoRector);
+        if (activarComoRector) {
+            if (typeof window.cambiarContextoLDN === 'function') window.cambiarContextoLDN(4);
+            if (typeof window.actualizarTodasFraccionesDeTostadero === 'function') {
+                await window.actualizarTodasFraccionesDeTostadero(targetUp);
+            }
+        }
         return;
     }
+
+    const esFraccionConRecetaPropia = Boolean(capaPropiaActiva && capaPropiaActiva.tipo_ficha === 'LDN2_FRACCIONADO');
+    const avisoFraccionPropiaHtml = esFraccionConRecetaPropia
+        ? `<div style="margin-top:10px; padding:9px 12px; border-radius:6px; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.38); font-size:0.80rem; color:#d1fae5;">
+             🏭 <strong>Comparativa Fraccionado Propio (Solapa 5):</strong> Elaborar <code>[${articuloId}]</code> en LAMDA cuesta <strong>$${capaPropiaActiva.costo_total_elaborado_bulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}/bulto ($${capaPropiaActiva.costo_total_elaborado_kilo.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</strong>.<br>
+             <span style="color:#fde68a;">Por seguridad, el tilde de sincronizar ingrediente madre viene desmarcado para no alterar las demás presentaciones que se fraccionan desde bulto grande.</span>
+           </div>`
+        : '';
 
     const result = await Swal.fire({
         title: esIngrediente ? '¿Confirmar Costo de Reposición del Insumo?' : '¿Confirmar Costo de Reposición e IVA?',
@@ -1659,10 +1977,11 @@ async function confirmarCostoReposicionDesdeIA(
                     <li><strong>Costo Patrón / kg:</strong> $${costoKiloCalculado.toLocaleString('es-AR', {minimumFractionDigits: 2})} / kg</li>
                     <li><strong>IVA Aplicable:</strong> ${porcentajeIvaFinal}%</li>
                 </ul>
+                ${avisoFraccionPropiaHtml}
                 ${!esIngrediente ? `
                 <div style="margin-top: 14px; padding: 10px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 6px;">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #fde047; font-size: 0.82rem; font-weight: 600; margin: 0;">
-                        <input type="checkbox" id="chk-sincronizar-ingrediente-modal" checked style="width: 16px; height: 16px; accent-color: #f59e0b; cursor: pointer;">
+                        <input type="checkbox" id="chk-sincronizar-ingrediente-modal" ${esFraccionConRecetaPropia ? '' : 'checked'} style="width: 16px; height: 16px; accent-color: #f59e0b; cursor: pointer;">
                         <span>🌱 Sincronizar automáticamente en el ingrediente vinculado de fábrica (costo_patron: $${costoKiloCalculado.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</span>
                     </label>
                 </div>
@@ -1988,6 +2307,729 @@ window.aplicarCostoLoteSimulacion = async function(articuloId, costoKilo, porcen
     }
 };
 
+// =========================================================================
+// CAPA 5 DETERMINISTA: PRODUCCIÓN PROPIA LAMDA (LDN 4 TOSTADERO / LDN 2 FRACCIONADO / LDN 3-5-6)
+// =========================================================================
+
+function obtenerMejorReferenciaExternaModal(data, lotesHistoria = []) {
+    if (!data) return null;
+    const topIA = data.recomendacion_principal_ia;
+    if (topIA && parseFloat(topIA.costo_kilo_calculado) > 0) {
+        return {
+            origen: 'CHOFER_IA',
+            etiqueta: `${topIA.proveedor_nombre || 'Proveedor'} (Chofer IA #1)`,
+            detalle: topIA.descripcion_proveedor || topIA.presentacion_maestra || '',
+            costo_kg: Number(parseFloat(topIA.costo_kilo_calculado).toFixed(2)),
+            tab_destino: 'CHOFER_IA'
+        };
+    }
+    const hab0 = Array.isArray(data.capa_habitual) ? data.capa_habitual[0] : null;
+    if (hab0 && parseFloat(hab0.costo_kilo_calculado) > 0) {
+        return {
+            origen: 'HABITUAL',
+            etiqueta: `${hab0.proveedor_nombre || 'Habitual'} (Lista Vigente)`,
+            detalle: hab0.descripcion_proveedor || '',
+            costo_kg: Number(parseFloat(hab0.costo_kilo_calculado).toFixed(2)),
+            tab_destino: 'HABITUAL'
+        };
+    }
+    const op0 = Array.isArray(data.capa_operador?.exactos) ? data.capa_operador.exactos[0] : null;
+    if (op0 && parseFloat(op0.costo_kilo_calculado) > 0) {
+        return {
+            origen: 'OPERADOR',
+            etiqueta: `${op0.proveedor_nombre || 'Proveedor'} (Filtros)`,
+            detalle: op0.descripcion_proveedor || '',
+            costo_kg: Number(parseFloat(op0.costo_kilo_calculado).toFixed(2)),
+            tab_destino: 'OPERADOR'
+        };
+    }
+    const lote0 = Array.isArray(lotesHistoria) ? lotesHistoria[0] : null;
+    if (lote0 && parseFloat(lote0.costo_kilo_al_momento || lote0.costo_kilo_calculado) > 0) {
+        return {
+            origen: 'LOTES',
+            etiqueta: `${lote0.proveedor_nombre || 'Depósito'} (Último Lote)`,
+            detalle: lote0.articulo_descripcion || '',
+            costo_kg: Number(parseFloat(lote0.costo_kilo_al_momento || lote0.costo_kilo_calculado).toFixed(2)),
+            tab_destino: 'LOTES'
+        };
+    }
+    const fuenteSaved = data.capa_produccion_propia?.fuente_abastecimiento_ldn4;
+    if (fuenteSaved && parseFloat(fuenteSaved.compra_costo_kg) > 0) {
+        return {
+            origen: 'BENCHMARK_GUARDADO',
+            etiqueta: `${fuenteSaved.compra_proveedor_nombre || 'Benchmark Guardado'}`,
+            detalle: fuenteSaved.compra_descripcion || '',
+            costo_kg: Number(parseFloat(fuenteSaved.compra_costo_kg).toFixed(2)),
+            tab_destino: 'CHOFER_IA'
+        };
+    }
+    return null;
+}
+
+function construirHtmlTabProduccionPropia(capaPropia, art, valoresPropia, mejorRefExterna) {
+    // -------------------------------------------------------------------------
+    // CASO 1: SIMULADOR INTERACTIVO COMPLETO DE TOSTADERO [LDN 4]
+    // -------------------------------------------------------------------------
+    if (capaPropia.tipo_ficha === 'LDN4_TOSTADERO') {
+        const sim = estadoSimulacionPropiaModal || capaPropia.parametros_iniciales || {};
+        const crudoDet = sim.crudo_detalle || capaPropia.crudo_actual || {};
+        const repoCrudoKg = Number(crudoDet.costo_repo_kilo || 0);
+        const loteCrudoObj = crudoDet.lote_reciente || null;
+        const loteCrudoKg = loteCrudoObj ? Number(loteCrudoObj.costo_kilo || 0) : 0;
+
+        const colabs = Array.isArray(capaPropia.colaboradores) ? capaPropia.colaboradores : [];
+        const colabSel = colabs.find(c => Number(c.usuario_id) === Number(sim.colaborador_id)) || colabs[0] || null;
+        const serviciosColab = colabSel && Array.isArray(colabSel.servicios) ? colabSel.servicios : [];
+
+        const costoExtKg = mejorRefExterna ? mejorRefExterna.costo_kg : 0;
+        const ahorroKg = costoExtKg > 0 ? Number((costoExtKg - valoresPropia.costoIng).toFixed(2)) : null;
+        const ahorroPct = (ahorroKg !== null && costoExtKg > 0) ? Number(((ahorroKg / costoExtKg) * 100).toFixed(1)) : null;
+
+        const ctxOrigen = capaPropia.contexto_origen || {};
+        const bannerBultoVinculadoHtml = ctxOrigen.tipo === 'BULTO_COMPRADO_VINCULADO' ? `
+            <div style="margin-bottom: 14px; padding: 10px 14px; border-radius: 10px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.42); font-size: 0.82rem; color: #fef3c7; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <div>
+                    🔗 <strong>Vínculo Transitivo Detectado:</strong> Abriste la Mesa desde el bulto comprado <code>[${ctxOrigen.sku_bulto_comprado}]</code> (${ctxOrigen.kilos_bulto_comprado}kg), vinculado al ingrediente <strong>[ING #${capaPropia.ingrediente_id}] ${capaPropia.ingrediente_nombre}</strong> (AP <code>[${capaPropia.ap_codigo}]</code>).
+                </div>
+                <span style="font-size: 0.75rem; color: #fde68a; font-weight: 700;">Al confirmar podrás elegir si impactar el bulto, el ingrediente o ambos.</span>
+            </div>
+        ` : '';
+
+        const modoRectorLabel = capaPropia.modo_rector_actual === 'COMPRA_PROVEEDOR'
+            ? '🛒 Compra Proveedor'
+            : (capaPropia.modo_rector_actual === 'MANUAL' ? '🎯 Valor Manual' : '🏭 Producción Propia UP');
+
+        const crudosOpcionesHtml = (capaPropia.crudos_alternativos || []).map(c => `
+            <option value="${c.sku}" ${String(c.sku).toUpperCase() === String(sim.crudo_sku || '').toUpperCase() ? 'selected' : ''}>
+                [${c.sku}] ${c.descripcion} — Stock: ${c.stock_bultos} bultos (${c.stock_kilos}kg) — Repo: $${c.costo_repo_kilo.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg${c.es_oficial_up ? ' 📌 Oficial Receta UP' : ''}
+            </option>
+        `).join('');
+
+        const colabsOpcionesHtml = colabs.map(c => `
+            <option value="${c.usuario_id}" ${colabSel && Number(c.usuario_id) === Number(colabSel.usuario_id) ? 'selected' : ''}>
+                👤 ${c.nombre}${c.valor_hora > 0 ? ` ($${c.valor_hora.toLocaleString('es-AR')}/h)` : ''}
+            </option>
+        `).join('');
+
+        const serviciosOpcionesHtml = [
+            ...serviciosColab.map(s => `
+                <option value="${s.id}" ${String(sim.servicio_id || '') === String(s.id) ? 'selected' : ''}>
+                    [${s.articulo_numero}] ${s.descripcion} — $${s.valor_por_unidad.toLocaleString('es-AR', {minimumFractionDigits: 2})}/${s.unidad_medida}
+                </option>
+            `),
+            `<option value="__MANUAL__" ${!sim.servicio_id ? 'selected' : ''}>✏️ Tarifa Manual / Personalizada</option>`
+        ].join('');
+
+        const filasHistorialHtml = (capaPropia.historial_cocciones || []).length === 0
+            ? `<tr><td colspan="6" style="padding: 16px; text-align: center; color: #94a3b8; font-size: 0.80rem;">No hay tandas registradas aún en <code>produccion_externa_historial</code> para este circuito.</td></tr>`
+            : capaPropia.historial_cocciones.map(h => {
+                const fechaFmt = h.fecha_registro ? new Date(h.fecha_registro).toLocaleDateString('es-AR') : '-';
+                return `
+                    <tr style="border-bottom: 1px solid rgba(51, 65, 85, 0.65); font-size: 0.77rem; ${h.es_invalida ? 'opacity: 0.58;' : ''}">
+                        <td style="padding: 6px 8px; color: #cbd5e1;">${fechaFmt}</td>
+                        <td style="padding: 6px 8px; color: #38bdf8; font-family: monospace;">#${h.carro_id || h.id}</td>
+                        <td style="padding: 6px 8px; text-align: right; color: #e2e8f0;">${h.kilos_entrada !== null ? `${h.kilos_entrada.toFixed(2)} kg` : '<span style="color:#f87171;">s/dato</span>'}</td>
+                        <td style="padding: 6px 8px; text-align: right; color: #e2e8f0;">${h.kilos_salida.toFixed(2)} kg</td>
+                        <td style="padding: 6px 8px; text-align: right; font-weight: 800; color: ${h.es_invalida ? '#f87171' : '#fbbf24'};">
+                            ${h.es_invalida ? `<span title="${h.motivo_invalida || ''}">⚠️ ${h.motivo_invalida || 'Inválida'}</span>` : `${h.porcentaje_merma.toFixed(2)}%`}
+                        </td>
+                        <td style="padding: 6px 8px; text-align: center;">
+                            ${!h.es_invalida && h.porcentaje_merma !== null ? `
+                                <button type="button" onclick="aplicarMermaTabPropia(${h.porcentaje_merma})"
+                                    style="padding: 2px 8px; border-radius: 5px; border: 1px solid ${Math.abs(valoresPropia.merma - h.porcentaje_merma) < 0.01 ? '#34d399' : '#475569'}; background: ${Math.abs(valoresPropia.merma - h.porcentaje_merma) < 0.01 ? 'rgba(16,185,129,0.22)' : '#0f172a'}; color: ${Math.abs(valoresPropia.merma - h.porcentaje_merma) < 0.01 ? '#6ee7b7' : '#cbd5e1'}; font-size: 0.71rem; font-weight: 700; cursor: pointer;">
+                                    ${Math.abs(valoresPropia.merma - h.porcentaje_merma) < 0.01 ? '✓ Activa' : 'Usar'}
+                                </button>
+                            ` : '-'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+        const crudoCambioDeOficial = capaPropia.crudo_actual?.sku &&
+            sim.crudo_sku &&
+            String(sim.crudo_sku).toUpperCase() !== String(capaPropia.crudo_actual.sku).toUpperCase();
+
+        return `
+            <div style="background: rgba(16, 185, 129, 0.04); border: 1px solid rgba(16, 185, 129, 0.30); border-radius: 12px; padding: 18px;">
+                ${bannerBultoVinculadoHtml}
+
+                <!-- FRANJA EJECUTIVA MAKE VS BUY -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; margin-bottom: 18px;">
+                    <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 12px 16px;">
+                        <div style="font-size: 0.74rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">📌 Costo Vigente en BD ([ING #${capaPropia.ingrediente_id}])</div>
+                        <div style="font-size: 1.25rem; font-weight: 800; color: #f8fafc; margin-top: 4px;">
+                            $${(capaPropia.costo_ingrediente_bd || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})} <span style="font-size: 0.8rem; color: #94a3b8;">/kg</span>
+                        </div>
+                        <div style="font-size: 0.75rem; color: #38bdf8; margin-top: 4px;">Modo actual: <strong>${modoRectorLabel}</strong> · AP [${capaPropia.ap_codigo}]: $${(capaPropia.costo_base_ap_bd || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</div>
+                    </div>
+
+                    <div style="background: #1e293b; border: 1px solid rgba(56, 189, 248, 0.38); border-radius: 10px; padding: 12px 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.74rem; color: #7dd3fc; font-weight: 700; text-transform: uppercase;">🛒 Mejor Oferta Terminado (Solapas 1–4)</span>
+                            ${mejorRefExterna ? `<button type="button" onclick="cambiarTabConciliacion('${mejorRefExterna.tab_destino}')" style="background:none; border:none; color:#38bdf8; font-size:0.72rem; font-weight:700; cursor:pointer; text-decoration:underline;">Ver oferta →</button>` : ''}
+                        </div>
+                        <div style="font-size: 1.25rem; font-weight: 800; color: #38bdf8; margin-top: 4px;">
+                            ${mejorRefExterna ? `$${mejorRefExterna.costo_kg.toLocaleString('es-AR', {minimumFractionDigits: 2})} <span style="font-size: 0.8rem; color: #94a3b8;">/kg</span>` : '<span style="font-size:0.95rem; color:#64748b;">Sin oferta directa detectada</span>'}
+                        </div>
+                        <div style="font-size: 0.75rem; color: #cbd5e1; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${mejorRefExterna ? `${mejorRefExterna.etiqueta} — ${mejorRefExterna.detalle}` : ''}">
+                            ${mejorRefExterna ? `<strong>${mejorRefExterna.etiqueta}</strong>` : 'Podés filtrar manualmente en Solapa 3'}
+                        </div>
+                    </div>
+
+                    <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(15, 23, 42, 0.92)); border: 1.5px solid #10b981; border-radius: 10px; padding: 12px 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                            <span style="font-size: 0.74rem; color: #6ee7b7; font-weight: 800; text-transform: uppercase;">🏭 Costo Producción Propia Simulado</span>
+                            ${ahorroKg !== null ? `
+                                <span style="padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 800; background: ${ahorroKg >= 0 ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}; color: ${ahorroKg >= 0 ? '#34d399' : '#fbbf24'};">
+                                    ${ahorroKg >= 0 ? `✅ Ahorro $${ahorroKg.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg (${ahorroPct}%)` : `⚠️ +$${Math.abs(ahorroKg).toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg vs Comprar`}
+                                </span>
+                            ` : ''}
+                        </div>
+                        <div style="font-size: 1.35rem; font-weight: 900; color: #34d399; margin-top: 4px;">
+                            $${valoresPropia.costoIng.toLocaleString('es-AR', {minimumFractionDigits: 2})} <span style="font-size: 0.82rem; color: #a7f3d0;">/kg puesto en Ingrediente</span>
+                        </div>
+                        <div style="font-size: 0.75rem; color: #d1fae5; margin-top: 4px;">
+                            AP [${capaPropia.ap_codigo}]: <strong>$${valoresPropia.costoBaseAp.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong> + MO Recepción AP: <strong>+$${valoresPropia.moAp.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ESTACIÓN INTERACTIVA EN 2 COLUMNAS -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(430px, 1fr)); gap: 16px;">
+                    <!-- COLUMNA IZQUIERDA: INSUMO CRUDO + COLABORADOR Y TARIFA -->
+                    <div style="display: flex; flex-direction: column; gap: 14px;">
+                        <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
+                                <span style="font-size: 0.86rem; font-weight: 800; color: #38bdf8;">1° 🌾 Insumo Crudo de Entrada (UP [${capaPropia.up_codigo}])</span>
+                                ${sim.crudo_sku ? `
+                                    <button type="button" onclick="abrirModuloConciliacionIA('${sim.crudo_sku}')" style="background: rgba(56, 189, 248, 0.14); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.4); padding: 3px 9px; border-radius: 6px; font-size: 0.72rem; font-weight: 700; cursor: pointer;" title="Abrir las ofertas de proveedores para la bolsa cruda [${sim.crudo_sku}]">
+                                        🔍 Auditar Proveedores del Crudo [${sim.crudo_sku}]
+                                    </button>
+                                ` : ''}
+                            </div>
+
+                            <label style="font-size: 0.74rem; color: #94a3b8; display: block; margin-bottom: 4px;">Bulto crudo a enviar a tostar:</label>
+                            <select onchange="cambiarCrudoTabPropia(this.value)" style="width: 100%; background: #0f172a; color: #f8fafc; border: 1px solid #475569; border-radius: 7px; padding: 8px 10px; font-size: 0.82rem; font-weight: 600; margin-bottom: 12px;">
+                                ${crudosOpcionesHtml}
+                            </select>
+
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; background: #0f172a; padding: 10px 12px; border-radius: 8px; border: 1px solid #334155;">
+                                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                    <button type="button" onclick="cambiarFuenteCrudoTabPropia('REPO')"
+                                        style="padding: 5px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer; border: 1px solid ${sim.fuente_costo_crudo === 'REPO' ? '#38bdf8' : '#334155'}; background: ${sim.fuente_costo_crudo === 'REPO' ? 'rgba(2,132,199,0.28)' : '#1e293b'}; color: ${sim.fuente_costo_crudo === 'REPO' ? '#bae6fd' : '#94a3b8'};">
+                                        📋 Costo Repo ($${repoCrudoKg.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)
+                                    </button>
+                                    <button type="button" ${loteCrudoKg > 0 ? `onclick="cambiarFuenteCrudoTabPropia('LOTE')"` : 'disabled'}
+                                        style="padding: 5px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 700; cursor: ${loteCrudoKg > 0 ? 'pointer' : 'not-allowed'}; opacity: ${loteCrudoKg > 0 ? '1' : '0.45'}; border: 1px solid ${sim.fuente_costo_crudo === 'LOTE' ? '#c084fc' : '#334155'}; background: ${sim.fuente_costo_crudo === 'LOTE' ? 'rgba(168,85,247,0.25)' : '#1e293b'}; color: ${sim.fuente_costo_crudo === 'LOTE' ? '#e9d5ff' : '#94a3b8'};">
+                                        📦 Último Lote ${loteCrudoKg > 0 ? `($${loteCrudoKg.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)` : '(Sin lote)'}
+                                    </button>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <span style="font-size: 0.75rem; color: #94a3b8; font-weight: 700;">Crudo $/kg:</span>
+                                    <input type="number" step="10" value="${valoresPropia.crudoKg.toFixed(2)}"
+                                        onchange="cambiarCostoCrudoManualTabPropia(this.value)"
+                                        style="width: 105px; background: #1e293b; border: 1px solid #38bdf8; border-radius: 6px; padding: 5px 8px; color: #f8fafc; font-weight: 800; font-size: 0.85rem; text-align: right;" />
+                                </div>
+                            </div>
+                            ${crudoCambioDeOficial ? `
+                                <div style="margin-top: 8px; font-size: 0.74rem; color: #fbbf24;">
+                                    ⚡ Estás simulando con <code>[${sim.crudo_sku}]</code> (en Receta UP oficial figura <code>[${capaPropia.crudo_actual.sku}]</code>). Al confirmar podrás elegir si actualizar también la Receta UP.
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px 16px;">
+                            <div style="font-size: 0.86rem; font-weight: 800; color: #c084fc; margin-bottom: 10px;">
+                                2° 👨‍🍳 Colaborador Externo (Maquila UP) y Recepción Interna AP
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                                <div>
+                                    <label style="font-size: 0.73rem; color: #94a3b8; display: block; margin-bottom: 4px;">Colaborador / Tostadero:</label>
+                                    <select onchange="cambiarColaboradorTabPropia(this.value)" style="width: 100%; background: #0f172a; color: #f8fafc; border: 1px solid #475569; border-radius: 7px; padding: 7px 9px; font-size: 0.80rem;">
+                                        ${colabsOpcionesHtml || '<option value="">Sin colaboradores activos</option>'}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.73rem; color: #94a3b8; display: block; margin-bottom: 4px;">Tarifa Parametrizada (Rendimiento):</label>
+                                    <select onchange="cambiarServicioTabPropia(this.value)" style="width: 100%; background: #0f172a; color: #f8fafc; border: 1px solid #475569; border-radius: 7px; padding: 7px 9px; font-size: 0.80rem;">
+                                        ${serviciosOpcionesHtml}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; background: #0f172a; padding: 10px 12px; border-radius: 8px; border: 1px solid #334155;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-size: 0.77rem; color: #cbd5e1; font-weight: 700;">🔥 Tarifa Tostado ($/kg salido):</span>
+                                    <input type="number" step="10" value="${valoresPropia.tarifaKg.toFixed(2)}"
+                                        onchange="cambiarTarifaManualTabPropia(this.value)"
+                                        style="width: 100px; background: #1e293b; border: 1px solid #c084fc; border-radius: 6px; padding: 5px 8px; color: #f3e8ff; font-weight: 800; font-size: 0.85rem; text-align: right;" />
+                                </div>
+                                <div style="font-size: 0.77rem; color: #94a3b8;">
+                                    ⏱️ M.O. Interna Recepción AP <code>[${capaPropia.ap_codigo}]</code>:
+                                    <strong style="color: #38bdf8;">+$${valoresPropia.moAp.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- COLUMNA DERECHA: HISTORIAL DE COCCIONES + DESGLOSE FINAL Y ACCIÓN -->
+                    <div style="display: flex; flex-direction: column; gap: 14px;">
+                        <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 14px 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;">
+                                <span style="font-size: 0.86rem; font-weight: 800; color: #fbbf24;">3° ⚖️ Historial Real de Cocciones y Merma Física</span>
+                                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                    <button type="button" onclick="aplicarMermaTabPropia(${capaPropia.merma_promedio})"
+                                        style="padding: 4px 9px; border-radius: 6px; font-size: 0.73rem; font-weight: 700; cursor: pointer; border: 1px solid ${Math.abs(valoresPropia.merma - capaPropia.merma_promedio) < 0.01 ? '#fbbf24' : '#475569'}; background: ${Math.abs(valoresPropia.merma - capaPropia.merma_promedio) < 0.01 ? 'rgba(245,158,11,0.22)' : '#0f172a'}; color: #fde68a;">
+                                        📊 Promedio (${capaPropia.merma_promedio}% · ${capaPropia.total_cocciones_validas} tandas)
+                                    </button>
+                                    <button type="button" onclick="aplicarMermaTabPropia(${capaPropia.ultima_merma})"
+                                        style="padding: 4px 9px; border-radius: 6px; font-size: 0.73rem; font-weight: 700; cursor: pointer; border: 1px solid ${Math.abs(valoresPropia.merma - capaPropia.ultima_merma) < 0.01 ? '#38bdf8' : '#475569'}; background: ${Math.abs(valoresPropia.merma - capaPropia.ultima_merma) < 0.01 ? 'rgba(56,189,248,0.22)' : '#0f172a'}; color: #bae6fd;">
+                                        ⏱️ Última (${capaPropia.ultima_merma}%)
+                                    </button>
+                                    <div style="display: inline-flex; align-items: center; gap: 4px;">
+                                        <span style="font-size: 0.74rem; color: #94a3b8;">% Merma:</span>
+                                        <input type="number" step="0.1" min="0" max="90" value="${valoresPropia.merma.toFixed(2)}"
+                                            onchange="aplicarMermaTabPropia(this.value)"
+                                            style="width: 72px; background: #0f172a; border: 1px solid #fbbf24; border-radius: 6px; padding: 4px 6px; color: #fde047; font-weight: 800; font-size: 0.82rem; text-align: right;" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style="max-height: 175px; overflow-y: auto; border: 1px solid #334155; border-radius: 8px; background: #0f172a;">
+                                <table style="width: 100%; border-collapse: collapse;">
+                                    <thead style="position: sticky; top: 0; background: #1e293b; font-size: 0.71rem; color: #94a3b8; text-transform: uppercase;">
+                                        <tr>
+                                            <th style="padding: 6px 8px; text-align: left;">Fecha</th>
+                                            <th style="padding: 6px 8px; text-align: left;">Carro</th>
+                                            <th style="padding: 6px 8px; text-align: right;">Entrada</th>
+                                            <th style="padding: 6px 8px; text-align: right;">Salida</th>
+                                            <th style="padding: 6px 8px; text-align: right;">Merma</th>
+                                            <th style="padding: 6px 8px; text-align: center;">Aplicar</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>${filasHistorialHtml}</tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div style="background: #1e293b; border: 1.5px solid rgba(16, 185, 129, 0.45); border-radius: 10px; padding: 14px 16px;">
+                            <div style="font-size: 0.86rem; font-weight: 800; color: #34d399; margin-bottom: 8px;">
+                                4° 🧮 Liquidación Exacta por 1 kg Elaborado e Impacto en Cadena
+                            </div>
+                            <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px 12px; font-size: 0.80rem; display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px;">
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #94a3b8;">Crudo [$${valoresPropia.crudoKg.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg] ÷ Rendimiento ${(valoresPropia.factorRend * 100).toFixed(2)}%:</span>
+                                    <strong style="color: #e2e8f0;">$${valoresPropia.crudoAjustadoRend.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #94a3b8;">+ Tarifa Tostadero Externo:</span>
+                                    <strong style="color: #e9d5ff;">+$${valoresPropia.tarifaKg.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; border-top: 1px dashed #334155; padding-top: 4px;">
+                                    <span style="color: #7dd3fc; font-weight: 700;">= Costo Base Artículo Puente [${capaPropia.ap_codigo}]:</span>
+                                    <strong style="color: #38bdf8;">$${valoresPropia.costoBaseAp.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between;">
+                                    <span style="color: #94a3b8;">+ Mano de Obra Interna Recepción AP:</span>
+                                    <strong style="color: #38bdf8;">+$${valoresPropia.moAp.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; border-top: 1px solid rgba(16,185,129,0.35); padding-top: 6px; font-size: 0.92rem;">
+                                    <span style="color: #6ee7b7; font-weight: 800;">= Costo Final [ING #${capaPropia.ingrediente_id}] ${capaPropia.ingrediente_nombre}:</span>
+                                    <strong style="color: #34d399; font-size: 1.02rem;">$${valoresPropia.costoIng.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+                                </div>
+                            </div>
+
+                            <div style="font-size: 0.75rem; color: #cbd5e1; margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                                <span>📦 <strong>Fracciones hijas (${capaPropia.fracciones_afectadas?.length || 0}):</strong> ${(capaPropia.fracciones_afectadas || []).map(f => `<code style="background:#0f172a; padding:1px 5px; border-radius:4px; color:#38bdf8;">${f.sku}</code>`).join(' ') || 'ninguna'}</span>
+                                ${(capaPropia.mixes_afectados || []).length > 0 ? `<span>· 🧪 <strong>Mixes LDN 3 (${capaPropia.mixes_afectados.length}):</strong> ${capaPropia.mixes_afectados.map(m => `<span style="color:#e9d5ff;">[#${m.id}] ${m.nombre}</span>`).join(', ')}</span>` : ''}
+                            </div>
+
+                            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button type="button" onclick="confirmarCostoProduccionPropiaModal()"
+                                    style="flex: 1; background: linear-gradient(135deg, #10b981, #059669); color: #052e16; border: 1px solid #34d399; padding: 10px 16px; border-radius: 8px; font-size: 0.86rem; font-weight: 900; cursor: pointer; box-shadow: 0 4px 12px rgba(16,185,129,0.25);">
+                                    ✅ Adoptar Costo de Producción Propia ($${valoresPropia.costoIng.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)
+                                </button>
+                                <button type="button" onclick="irAPanelLdnDesdeConciliacion(4, '${capaPropia.up_codigo}')"
+                                    style="background: #0f172a; color: #bae6fd; border: 1px solid #0284c7; padding: 10px 14px; border-radius: 8px; font-size: 0.80rem; font-weight: 700; cursor: pointer;">
+                                    🥜 Ir a [LDN 4] →
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // -------------------------------------------------------------------------
+    // CASO 2: FRACCIONADO INTERNO CON RECETA PROPIA [LDN 2] (ej. SZPX10 x 5kg, CRx5 x 5kg)
+    // -------------------------------------------------------------------------
+    if (capaPropia.tipo_ficha === 'LDN2_FRACCIONADO') {
+        const kilosArt = Number(capaPropia.kilos_unidad || 1);
+        const costoExtKg = mejorRefExterna ? mejorRefExterna.costo_kg : 0;
+        const costoExtBulto = costoExtKg > 0 ? Number((costoExtKg * kilosArt).toFixed(2)) : 0;
+        const ahorroBulto = costoExtBulto > 0 ? Number((costoExtBulto - capaPropia.costo_total_elaborado_bulto).toFixed(2)) : null;
+        const ahorroPct = (ahorroBulto !== null && costoExtBulto > 0) ? Number(((ahorroBulto / costoExtBulto) * 100).toFixed(1)) : null;
+
+        const filasCompHtml = (capaPropia.componentes_receta || []).map(c => `
+            <tr style="border-bottom: 1px solid #334155; font-size: 0.82rem;">
+                <td style="padding: 9px 10px;">
+                    <span style="font-weight: 700; color: ${c.es_insumo ? '#fbbf24' : '#38bdf8'};">${c.es_insumo ? '📦 Empaque' : '🌱 Materia Prima'}</span>
+                </td>
+                <td style="padding: 9px 10px; color: #f8fafc; font-weight: 600;">
+                    [#${c.ingrediente_id}] ${c.nombre}
+                    ${c.bulto_madre_sku ? `<div style="font-size: 0.74rem; color: #94a3b8; margin-top: 2px;">Bulto Madre vinculado: <code style="color:#7dd3fc;">[${c.bulto_madre_sku}]</code> ${c.bulto_madre_descripcion || ''} · Stock Madre: <strong style="color:${c.bulto_madre_stock_bultos > 0 ? '#34d399' : '#f87171'};">${c.bulto_madre_stock_bultos} bultos</strong></div>` : ''}
+                </td>
+                <td style="padding: 9px 10px; text-align: right; color: #cbd5e1;">${c.cantidad} ${c.unidad_medida}</td>
+                <td style="padding: 9px 10px; text-align: right; color: #cbd5e1;">$${c.costo_unitario.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                <td style="padding: 9px 10px; text-align: right; font-weight: 800; color: #e2e8f0;">$${c.subtotal.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                <td style="padding: 9px 10px; text-align: center;">
+                    ${c.origen_up_sku ? `
+                        <button type="button" onclick="abrirModuloConciliacionIA('ING-${c.ingrediente_id}', null, { es_ingrediente: true, ingrediente_id: ${c.ingrediente_id}, tab_inicial: 'PRODUCCION_PROPIA' })"
+                            style="background: rgba(249,115,22,0.18); color: #fdba74; border: 1px solid rgba(249,115,22,0.45); padding: 4px 9px; border-radius: 6px; font-size: 0.73rem; font-weight: 700; cursor: pointer;">
+                            🥜 Ver Tostadero Origen
+                        </button>
+                    ` : (c.bulto_madre_sku ? `
+                        <button type="button" onclick="abrirModuloConciliacionIA('${c.bulto_madre_sku}')"
+                            style="background: rgba(56,189,248,0.15); color: #7dd3fc; border: 1px solid rgba(56,189,248,0.4); padding: 4px 9px; border-radius: 6px; font-size: 0.73rem; font-weight: 700; cursor: pointer;">
+                            🔍 Auditar Madre [${c.bulto_madre_sku}]
+                        </button>
+                    ` : '-')}
+                </td>
+            </tr>
+        `).join('');
+
+        return `
+            <div style="background: rgba(16, 185, 129, 0.04); border: 1px solid rgba(16, 185, 129, 0.30); border-radius: 12px; padding: 18px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 18px;">
+                    <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 12px 16px;">
+                        <div style="font-size: 0.74rem; color: #94a3b8; font-weight: 700; text-transform: uppercase;">📌 Costo Actual en BD ([${capaPropia.articulo_id}])</div>
+                        <div style="font-size: 1.22rem; font-weight: 800; color: #f8fafc; margin-top: 4px;">
+                            $${capaPropia.costo_actual_bd_bulto.toLocaleString('es-AR', {minimumFractionDigits: 2})} <span style="font-size: 0.8rem; color: #94a3b8;">/bulto (${kilosArt}kg)</span>
+                        </div>
+                        <div style="font-size: 0.76rem; color: #94a3b8; margin-top: 3px;">Equivalente: <strong>$${capaPropia.costo_actual_bd_kilo.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong></div>
+                    </div>
+
+                    <div style="background: #1e293b; border: 1px solid rgba(56, 189, 248, 0.38); border-radius: 10px; padding: 12px 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.74rem; color: #7dd3fc; font-weight: 700; text-transform: uppercase;">🛒 Mejor Oferta Proveedor (Solapas 1–4)</span>
+                            ${mejorRefExterna ? `<button type="button" onclick="cambiarTabConciliacion('${mejorRefExterna.tab_destino}')" style="background:none; border:none; color:#38bdf8; font-size:0.72rem; font-weight:700; cursor:pointer; text-decoration:underline;">Ver oferta →</button>` : ''}
+                        </div>
+                        <div style="font-size: 1.22rem; font-weight: 800; color: #38bdf8; margin-top: 4px;">
+                            ${mejorRefExterna ? `$${costoExtBulto.toLocaleString('es-AR', {minimumFractionDigits: 2})} <span style="font-size: 0.8rem; color: #94a3b8;">/bulto ($${mejorRefExterna.costo_kg.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</span>` : '<span style="font-size:0.95rem; color:#64748b;">Sin oferta externa en filtro</span>'}
+                        </div>
+                        <div style="font-size: 0.75rem; color: #cbd5e1; margin-top: 3px;">${mejorRefExterna ? `<strong>${mejorRefExterna.etiqueta}</strong>` : 'Consultá Solapa 3 ó 4 para ver presentaciones'}</div>
+                    </div>
+
+                    <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(15, 23, 42, 0.92)); border: 1.5px solid #10b981; border-radius: 10px; padding: 12px 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px;">
+                            <span style="font-size: 0.74rem; color: #6ee7b7; font-weight: 800; text-transform: uppercase;">🏭 Fraccionado Propio LAMDA [LDN 2]</span>
+                            ${ahorroBulto !== null ? `
+                                <span style="padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 800; background: ${ahorroBulto >= 0 ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}; color: ${ahorroBulto >= 0 ? '#34d399' : '#fbbf24'};">
+                                    ${ahorroBulto >= 0 ? `✅ Ahorro $${ahorroBulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}/bulto (${ahorroPct}%)` : `⚠️ +$${Math.abs(ahorroBulto).toLocaleString('es-AR', {minimumFractionDigits: 2})}/bulto vs Comprar`}
+                                </span>
+                            ` : ''}
+                        </div>
+                        <div style="font-size: 1.30rem; font-weight: 900; color: #34d399; margin-top: 4px;">
+                            $${capaPropia.costo_total_elaborado_bulto.toLocaleString('es-AR', {minimumFractionDigits: 2})} <span style="font-size: 0.82rem; color: #a7f3d0;">/bulto c/MO ($${capaPropia.costo_total_elaborado_kilo.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</span>
+                        </div>
+                        <div style="font-size: 0.75rem; color: #d1fae5; margin-top: 3px;">
+                            Base s/MO: <strong>$${capaPropia.costo_sin_mo_bulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong> + M.O. Fraccionado: <strong>+$${capaPropia.mo_fraccionado_bulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 16px;">
+                    <div style="font-size: 0.92rem; font-weight: 800; color: #f8fafc; margin-bottom: 10px;">
+                        📋 Anatomía Determinista de Fraccionado Interno (Receta Oficial #${capaPropia.receta_id} — [${capaPropia.articulo_id}] ${capaPropia.descripcion})
+                    </div>
+                    <div style="overflow-x: auto; border: 1px solid #334155; border-radius: 8px; background: #0f172a; margin-bottom: 14px;">
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead style="background: #1e293b; color: #94a3b8; font-size: 0.73rem; text-transform: uppercase;">
+                                <tr>
+                                    <th style="padding: 8px 10px; text-align: left;">Rol</th>
+                                    <th style="padding: 8px 10px; text-align: left;">Componente / Bulto Madre</th>
+                                    <th style="padding: 8px 10px; text-align: right;">Cantidad</th>
+                                    <th style="padding: 8px 10px; text-align: right;">Costo Unit.</th>
+                                    <th style="padding: 8px 10px; text-align: right;">Subtotal</th>
+                                    <th style="padding: 8px 10px; text-align: center;">Trazabilidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${filasCompHtml}
+                                <tr style="border-top: 1px dashed #475569; font-size: 0.82rem; background: rgba(56, 189, 248, 0.06);">
+                                    <td style="padding: 8px 10px; color: #38bdf8; font-weight: 700;">⏱️ Mano de Obra</td>
+                                    <td style="padding: 8px 10px; color: #cbd5e1;" colspan="3">Tiempo interno de fraccionamiento en Taller LAMDA (se suma neto sin recargarle margen comercial)</td>
+                                    <td style="padding: 8px 10px; text-align: right; font-weight: 800; color: #38bdf8;">+$${capaPropia.mo_fraccionado_bulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <div style="font-size: 0.78rem; color: #94a3b8;">
+                            💡 Si compraste ocasionalmente esta presentación ya envasada, elegí la oferta en Solapas 1–4. Para volver al costo de fraccionado propio desde bulto madre, usá el botón verde.
+                        </div>
+                        <button type="button" onclick="confirmarCostoFraccionadoPropioModal()"
+                            style="background: linear-gradient(135deg, #10b981, #059669); color: #052e16; border: 1px solid #34d399; padding: 10px 18px; border-radius: 8px; font-size: 0.85rem; font-weight: 900; cursor: pointer;">
+                            ✅ Adoptar / Sincronizar Costo de Fraccionado Propio ($${capaPropia.costo_total_elaborado_bulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}/bulto)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // -------------------------------------------------------------------------
+    // CASO 3: RESUMEN EJECUTIVO DE CIRCUITOS COMPLEJOS (LDN 3 MIXES / LDN 5 BARRITAS / LDN 6 GRANOLAS)
+    // -------------------------------------------------------------------------
+    return `
+        <div style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 12px; padding: 22px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
+            <div>
+                <div style="font-size: 0.78rem; color: #6ee7b7; font-weight: 800; text-transform: uppercase;">
+                    🏭 Elaboración Propia Compleja — Línea de Negocio ${capaPropia.linea_negocio}
+                </div>
+                <h3 style="margin: 6px 0; color: #f8fafc; font-size: 1.15rem;">
+                    ${capaPropia.ingrediente_nombre || capaPropia.ap_descripcion} ${capaPropia.ap_codigo ? `<code style="color:#38bdf8;">[${capaPropia.ap_codigo}]</code>` : ''}
+                </h3>
+                <div style="font-size: 0.86rem; color: #cbd5e1;">
+                    Costo Elaborado Vigente en LAMDA: <strong style="color: #34d399; font-size: 1.05rem;">$${(capaPropia.costo_kilo_elaborado || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+                    ${capaPropia.merma_promedio !== undefined ? ` · Merma histórica promedio: <strong>${capaPropia.merma_promedio}%</strong> (${capaPropia.total_cocciones_validas || 0} tandas válidas)` : ''}
+                </div>
+            </div>
+            <button type="button" onclick="irAPanelLdnDesdeConciliacion(${capaPropia.destino_panel_ldn || capaPropia.linea_negocio}, '${capaPropia.up_codigo || ''}')"
+                style="background: linear-gradient(135deg, #0284c7, #6366f1); color: #ffffff; border: none; padding: 11px 18px; border-radius: 8px; font-size: 0.86rem; font-weight: 800; cursor: pointer;">
+                🚀 Abrir Simulador Específico [LDN ${capaPropia.destino_panel_ldn || capaPropia.linea_negocio}] →
+            </button>
+        </div>
+    `;
+}
+
+async function cambiarCrudoTabPropia(nuevoSku) {
+    if (!estadoSimulacionPropiaModal || !nuevoSku) return;
+    try {
+        const res = await fetch(`/api/produccion/produccion-propia/insumo-crudo/${encodeURIComponent(nuevoSku)}`);
+        const json = await res.json();
+        if (!json.success || !json.data) throw new Error(json.error || 'No se pudo cargar el insumo crudo.');
+        const det = json.data;
+        estadoSimulacionPropiaModal.crudo_sku = det.sku;
+        estadoSimulacionPropiaModal.crudo_detalle = det;
+        if (estadoSimulacionPropiaModal.fuente_costo_crudo === 'LOTE' && det.lote_reciente?.costo_kilo > 0) {
+            estadoSimulacionPropiaModal.costo_crudo_kg = det.lote_reciente.costo_kilo;
+        } else {
+            estadoSimulacionPropiaModal.fuente_costo_crudo = 'REPO';
+            estadoSimulacionPropiaModal.costo_crudo_kg = det.costo_repo_kilo || 0;
+        }
+        renderizarContenidoConciliacion(datosEstadoActualConciliacion);
+    } catch (err) {
+        console.error('Error al cambiar crudo en Solapa 5:', err);
+        Swal.fire('Aviso', err.message || 'No se pudo consultar el bulto crudo.', 'warning');
+    }
+}
+
+function cambiarFuenteCrudoTabPropia(fuente) {
+    if (!estadoSimulacionPropiaModal) return;
+    const det = estadoSimulacionPropiaModal.crudo_detalle || datosEstadoActualConciliacion?.capa_produccion_propia?.crudo_actual || {};
+    estadoSimulacionPropiaModal.fuente_costo_crudo = fuente;
+    if (fuente === 'REPO') {
+        estadoSimulacionPropiaModal.costo_crudo_kg = Number(det.costo_repo_kilo || 0);
+    } else if (fuente === 'LOTE' && det.lote_reciente?.costo_kilo > 0) {
+        estadoSimulacionPropiaModal.costo_crudo_kg = Number(det.lote_reciente.costo_kilo);
+    }
+    renderizarContenidoConciliacion(datosEstadoActualConciliacion);
+}
+
+function cambiarCostoCrudoManualTabPropia(val) {
+    if (!estadoSimulacionPropiaModal) return;
+    estadoSimulacionPropiaModal.fuente_costo_crudo = 'MANUAL';
+    estadoSimulacionPropiaModal.costo_crudo_kg = Math.max(0, parseFloat(val) || 0);
+    renderizarContenidoConciliacion(datosEstadoActualConciliacion);
+}
+
+function cambiarColaboradorTabPropia(usuarioId) {
+    if (!estadoSimulacionPropiaModal || !datosEstadoActualConciliacion?.capa_produccion_propia) return;
+    const capa = datosEstadoActualConciliacion.capa_produccion_propia;
+    const uid = Number(usuarioId);
+    estadoSimulacionPropiaModal.colaborador_id = uid;
+    const colab = (capa.colaboradores || []).find(c => Number(c.usuario_id) === uid);
+    if (colab && Array.isArray(colab.servicios) && colab.servicios.length > 0) {
+        const srvMatch = colab.servicios.find(s =>
+            String(s.articulo_numero || '').toUpperCase() === String(capa.ap_codigo || '').toUpperCase() ||
+            String(s.articulo_numero || '').toUpperCase() === String(capa.up_codigo || '').toUpperCase()
+        ) || colab.servicios[0];
+        estadoSimulacionPropiaModal.servicio_id = srvMatch.id;
+        estadoSimulacionPropiaModal.tarifa_kg = Number(srvMatch.valor_por_unidad || 0);
+    } else {
+        estadoSimulacionPropiaModal.servicio_id = null;
+    }
+    renderizarContenidoConciliacion(datosEstadoActualConciliacion);
+}
+
+function cambiarServicioTabPropia(servicioId) {
+    if (!estadoSimulacionPropiaModal || !datosEstadoActualConciliacion?.capa_produccion_propia) return;
+    if (!servicioId || servicioId === '__MANUAL__') {
+        estadoSimulacionPropiaModal.servicio_id = null;
+        renderizarContenidoConciliacion(datosEstadoActualConciliacion);
+        return;
+    }
+    const capa = datosEstadoActualConciliacion.capa_produccion_propia;
+    const colab = (capa.colaboradores || []).find(c => Number(c.usuario_id) === Number(estadoSimulacionPropiaModal.colaborador_id));
+    const srv = (colab?.servicios || []).find(s => String(s.id) === String(servicioId));
+    if (srv) {
+        estadoSimulacionPropiaModal.servicio_id = srv.id;
+        estadoSimulacionPropiaModal.tarifa_kg = Number(srv.valor_por_unidad || 0);
+    }
+    renderizarContenidoConciliacion(datosEstadoActualConciliacion);
+}
+
+function cambiarTarifaManualTabPropia(val) {
+    if (!estadoSimulacionPropiaModal) return;
+    estadoSimulacionPropiaModal.servicio_id = null;
+    estadoSimulacionPropiaModal.tarifa_kg = Math.max(0, parseFloat(val) || 0);
+    renderizarContenidoConciliacion(datosEstadoActualConciliacion);
+}
+
+function aplicarMermaTabPropia(val) {
+    if (!estadoSimulacionPropiaModal) return;
+    estadoSimulacionPropiaModal.merma_pct = Math.max(0, Math.min(90, parseFloat(val) || 0));
+    renderizarContenidoConciliacion(datosEstadoActualConciliacion);
+}
+
+function irAPanelLdnDesdeConciliacion(ldnNum, upCodigo = '') {
+    cerrarModuloConciliacionIA();
+    if (typeof window.cambiarContextoLDN === 'function') {
+        window.cambiarContextoLDN(Number(ldnNum));
+    }
+    if (Number(ldnNum) === 4 && upCodigo && typeof window.seleccionarTostaderoLDN4 === 'function') {
+        window.seleccionarTostaderoLDN4(upCodigo);
+    }
+}
+
+async function confirmarCostoProduccionPropiaModal() {
+    const capa = datosEstadoActualConciliacion?.capa_produccion_propia;
+    if (!capa || !capa.habilitada || capa.tipo_ficha !== 'LDN4_TOSTADERO') return;
+    const sim = estadoSimulacionPropiaModal || capa.parametros_iniciales || {};
+    const val = calcularValoresVivosPropia(capa);
+    const crudoCambioDeOficial = capa.crudo_actual?.sku &&
+        sim.crudo_sku &&
+        String(sim.crudo_sku).toUpperCase() !== String(capa.crudo_actual.sku).toUpperCase();
+
+    const confirmRes = await Swal.fire({
+        title: '🏭 Adoptar Costo de Producción Propia LAMDA',
+        width: '640px',
+        html: `
+            <div style="text-align:left; font-size:0.86rem; color:#cbd5e1; display:flex; flex-direction:column; gap:8px;">
+                <div>Se fijará <strong>🏭 Producción Propia (UP [${capa.up_codigo}])</strong> como Fuente Rectora para <strong>[ING #${capa.ingrediente_id}] ${capa.ingrediente_nombre}</strong>:</div>
+                <ul style="margin:4px 0; padding-left:18px;">
+                    <li><strong>Crudo evaluado:</strong> [${sim.crudo_sku}] a $${val.crudoKg.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg (${sim.fuente_costo_crudo})</li>
+                    <li><strong>Merma aplicada:</strong> ${val.merma.toFixed(2)}% · <strong>Tarifa Tostadero:</strong> $${val.tarifaKg.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</li>
+                    <li><strong>Costo Base AP [${capa.ap_codigo}]:</strong> $${val.costoBaseAp.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg (+ MO AP $${val.moAp.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)</li>
+                    <li><strong>Nuevo Costo Final Ingrediente:</strong> <strong style="color:#34d399;">$${val.costoIng.toLocaleString('es-AR', {minimumFractionDigits: 2})} / kg</strong></li>
+                </ul>
+                ${crudoCambioDeOficial ? `
+                    <label style="display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.38); color:#fde68a; font-size:0.80rem; cursor:pointer;">
+                        <input type="checkbox" id="chk-guardar-crudo-receta-up" style="width:16px; height:16px; accent-color:#f59e0b;">
+                        <span>📌 Dejar también [${sim.crudo_sku}] guardado como insumo oficial en la Receta UP [${capa.up_codigo}]</span>
+                    </label>
+                ` : ''}
+                <div style="font-size:0.78rem; color:#94a3b8;">A continuación se abrirá la tabla de auditoría de precios ofrecidos para confirmar el impacto en las ${capa.fracciones_afectadas?.length || 0} fracciones${capa.mixes_afectados?.length ? ` y ${capa.mixes_afectados.length} mix(es) de LDN 3` : ''}.</div>
+            </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '✅ Continuar a Auditoría de Cadena',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#059669',
+        cancelButtonColor: '#475569',
+        background: '#151e2e',
+        color: '#f3f4f6',
+        preConfirm: () => ({
+            guardarEnRecetaUp: Boolean(document.getElementById('chk-guardar-crudo-receta-up')?.checked)
+        })
+    });
+
+    if (!confirmRes.isConfirmed) return;
+    const guardarEnRecetaUp = Boolean(confirmRes.value?.guardarEnRecetaUp);
+
+    try {
+        if (crudoCambioDeOficial && guardarEnRecetaUp) {
+            await fetch(`/api/produccion/tostaderos/${encodeURIComponent(capa.up_codigo)}/cambiar-crudo`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nuevo_crudo_sku: sim.crudo_sku })
+            });
+        }
+
+        const payloadSync = {
+            crudo_sku: sim.crudo_sku,
+            crudo_descripcion: sim.crudo_detalle?.descripcion || capa.crudo_actual?.descripcion || sim.crudo_sku,
+            crudo_costo_repo_kilo: Number(sim.crudo_detalle?.costo_repo_kilo ?? capa.crudo_actual?.costo_repo_kilo ?? val.crudoKg),
+            lote_costo_kilo: sim.crudo_detalle?.lote_reciente?.costo_kilo || null,
+            fuente_costo: sim.fuente_costo_crudo || 'REPO',
+            costo_crudo_kg: val.crudoKg,
+            colaborador_id: sim.colaborador_id || null,
+            servicio_id: sim.servicio_id || null,
+            tarifa_kg: val.tarifaKg,
+            merma_pct: val.merma,
+            costo_base_ap: val.costoBaseAp,
+            costo_ingrediente: val.costoIng
+        };
+
+        cerrarModuloConciliacionIA();
+
+        if (typeof window.sincronizarSimulacionPropiaLdn4DesdeMesa === 'function') {
+            await window.sincronizarSimulacionPropiaLdn4DesdeMesa(capa.up_codigo, payloadSync, true);
+        } else {
+            await fetch(`/api/produccion/ldn4/fuente-abastecimiento/${encodeURIComponent(capa.ap_codigo)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ modo_rector: 'PRODUCCION_UP' })
+            });
+            await fetch(`/api/logistica/bunker/tostadero-simulacion/${encodeURIComponent(capa.ap_codigo)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tarifa: val.tarifaKg,
+                    merma: val.merma,
+                    colaborador_id: sim.colaborador_id || null,
+                    servicio_id: sim.servicio_id || null,
+                    insumo_evaluado_sku: sim.crudo_sku,
+                    es_comparacion_bulto_comprado: false,
+                    fuente_costo: sim.fuente_costo_crudo || 'REPO',
+                    costo_repo_referencia_kg: payloadSync.crudo_costo_repo_kilo,
+                    costo_crudo_kg: val.crudoKg,
+                    costo_resultante_kg: val.costoBaseAp,
+                    updated_at: new Date().toISOString()
+                })
+            });
+            Swal.fire('¡Simulación Guardada!', `Producción Propia ($${val.costoIng.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg) registrada en [${capa.ap_codigo}].`, 'success');
+        }
+    } catch (err) {
+        console.error('Error al adoptar costo de producción propia:', err);
+        Swal.fire('Error', err.message || 'No se pudo sincronizar la producción propia.', 'error');
+    }
+}
+
+async function confirmarCostoFraccionadoPropioModal() {
+    const capa = datosEstadoActualConciliacion?.capa_produccion_propia;
+    if (!capa || !capa.habilitada || capa.tipo_ficha !== 'LDN2_FRACCIONADO') return;
+    const compAlim = (capa.componentes_receta || []).find(c => !c.es_insumo) || capa.componentes_receta?.[0] || null;
+    const sku = capa.articulo_id;
+    const ingId = compAlim ? compAlim.ingrediente_id : null;
+
+    cerrarModuloConciliacionIA();
+    if (typeof window.impactarFraccionQuirurgica === 'function') {
+        await window.impactarFraccionQuirurgica(sku, ingId);
+    } else {
+        Swal.fire(
+            'Costo de Fraccionado Propio',
+            `El costo elaborado de [${sku}] es $${capa.costo_total_elaborado_bulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}/bulto ($${capa.costo_total_elaborado_kilo.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg). Abrí la Pizarra para impactar sus listas.`,
+            'info'
+        );
+    }
+}
+
 window.abrirModuloConciliacionIA = abrirModuloConciliacionIA;
 window.tacharEtiqueta = tacharEtiqueta;
 window.cambiarModoEtiqueta = cambiarModoEtiqueta;
@@ -2009,4 +3051,15 @@ window.cerrarModuloConciliacionIA = cerrarModuloConciliacionIA;
 window.confirmarCostoReposicionDesdeIA = confirmarCostoReposicionDesdeIA;
 window.seleccionarEImpactarCostoTarjeta = seleccionarEImpactarCostoTarjeta;
 window.seleccionarCostoLoteTarjeta = seleccionarCostoLoteTarjeta;
+window.cambiarCrudoTabPropia = cambiarCrudoTabPropia;
+window.cambiarFuenteCrudoTabPropia = cambiarFuenteCrudoTabPropia;
+window.cambiarCostoCrudoManualTabPropia = cambiarCostoCrudoManualTabPropia;
+window.cambiarColaboradorTabPropia = cambiarColaboradorTabPropia;
+window.cambiarServicioTabPropia = cambiarServicioTabPropia;
+window.cambiarTarifaManualTabPropia = cambiarTarifaManualTabPropia;
+window.aplicarMermaTabPropia = aplicarMermaTabPropia;
+window.irAPanelLdnDesdeConciliacion = irAPanelLdnDesdeConciliacion;
+window.confirmarCostoProduccionPropiaModal = confirmarCostoProduccionPropiaModal;
+window.confirmarCostoFraccionadoPropioModal = confirmarCostoFraccionadoPropioModal;
+
 

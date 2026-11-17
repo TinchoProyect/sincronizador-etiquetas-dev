@@ -1652,8 +1652,8 @@
       }
     }
   </style>
-  <script src="/js/components/accordion-ldn1.js?v=2.0.13"></script>
-  <script src="/js/components/modalGestionCostos.js?v=2.0.13"></script>
+  <script src="/js/components/accordion-ldn1.js?v=2.0.15"></script>
+  <script src="/js/components/modalGestionCostos.js?v=2.0.15"></script>
 </head>
 
 <body>
@@ -3615,6 +3615,62 @@
       });
     };
 
+    window.sincronizarSimulacionPropiaLdn4DesdeMesa = async function(upCodigo, paramsPropia = {}, abrirModalCadena = true) {
+      const t = (tostaderosConfigsLDN4 || []).find(x => x.up_codigo === upCodigo);
+      if (!t) return;
+      if (paramsPropia.crudo_sku) t.crudo_sku = paramsPropia.crudo_sku;
+      if (paramsPropia.crudo_descripcion) t.crudo_nombre = paramsPropia.crudo_descripcion;
+      if (paramsPropia.crudo_costo_repo_kilo !== undefined) t.crudo_costo_repo_kilo = Number(paramsPropia.crudo_costo_repo_kilo) || 0;
+      if (paramsPropia.lote_costo_kilo !== undefined) t.lote_costo_kilo = paramsPropia.lote_costo_kilo;
+      if (paramsPropia.fuente_costo) t.fuente_costo = paramsPropia.fuente_costo;
+      if (paramsPropia.costo_crudo_kg !== undefined) t.costo_crudo_simulado = Math.max(0, parseFloat(paramsPropia.costo_crudo_kg) || 0);
+      if (paramsPropia.tarifa_kg !== undefined) t.tarifa_maquila_simulada = Math.max(0, parseFloat(paramsPropia.tarifa_kg) || 0);
+      if (paramsPropia.merma_pct !== undefined) t.merma_porc_simulada = Math.max(0, Math.min(90, parseFloat(paramsPropia.merma_pct) || 0));
+      t.modo_rector = 'PRODUCCION_UP';
+
+      tostaderoSeleccionadoCodigo = t.up_codigo;
+      refrescarUiTostaderoLdn4(t);
+      await guardarFuenteAbastecimientoLdn4(t);
+
+      // Estacionar también colaborador_id y servicio_id en tostadero_simulacion del AP
+      try {
+        const data = window.pizarraSimulacionMaster;
+        const apArt = (data?.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toUpperCase() === String(t.ap_codigo || '').trim().toUpperCase());
+        const prevSim = apArt?.propiedades_dinamicas?.tostadero_simulacion || {};
+        const payloadSim = {
+          ...prevSim,
+          colaborador_id: paramsPropia.colaborador_id !== undefined ? paramsPropia.colaborador_id : (prevSim.colaborador_id || null),
+          servicio_id: paramsPropia.servicio_id !== undefined ? paramsPropia.servicio_id : (prevSim.servicio_id || null),
+          tarifa: Number(t.tarifa_maquila_simulada),
+          merma: Number(t.merma_porc_simulada),
+          insumo_evaluado_sku: t.crudo_sku,
+          insumo_evaluado_descripcion: t.crudo_nombre,
+          es_comparacion_bulto_comprado: false,
+          fuente_costo: t.fuente_costo || 'REPO',
+          costo_repo_referencia_kg: Number(t.crudo_costo_repo_kilo || 0),
+          costo_crudo_kg: Number(t.costo_crudo_simulado),
+          costo_resultante_kg: Number((t.costo_base_ap_prod || 0).toFixed(2)),
+          updated_at: new Date().toISOString()
+        };
+        await fetch(`/api/logistica/bunker/tostadero-simulacion/${encodeURIComponent(t.ap_codigo)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payloadSim)
+        });
+        if (apArt) {
+          if (!apArt.propiedades_dinamicas || typeof apArt.propiedades_dinamicas !== 'object') apArt.propiedades_dinamicas = {};
+          apArt.propiedades_dinamicas.tostadero_simulacion = payloadSim;
+        }
+      } catch (eSim) {
+        console.warn('Aviso al estacionar tostadero_simulacion desde Mesa:', eSim);
+      }
+
+      if (abrirModalCadena) {
+        if (typeof window.cambiarContextoLDN === 'function') window.cambiarContextoLDN(4);
+        await actualizarTodasFraccionesDeTostadero(t.up_codigo);
+      }
+    };
+
     function cambiarCostoCrudoTostadero(upCodigo, nuevoCosto) {
       const t = (tostaderosConfigsLDN4 || []).find(x => x.up_codigo === upCodigo);
       if (!t) return;
@@ -4293,8 +4349,14 @@
                 <div style="background:rgba(15,23,42,0.65); border:1.5px solid ${modoRector === 'PRODUCCION_UP' ? '#10b981' : 'rgba(148,163,184,0.22)'}; border-radius:7px; padding:8px 10px; display:flex; flex-direction:column; gap:6px;">
                   <div style="display:flex; justify-content:space-between; align-items:center; gap:4px;">
                     <span style="font-size:0.71rem; font-weight:800; color:#6ee7b7;">🏭 A · PRODUCIR UP (${selTost.up_codigo})</span>
-                    <button type="button" style="padding:2px 6px; border-radius:4px; border:1px solid rgba(168,85,247,0.4); background:rgba(168,85,247,0.14); color:#d8b4fe; font-size:0.65rem; font-weight:700; cursor:pointer;"
-                      onclick="if (window.abrirEditorUpDirecto) window.abrirEditorUpDirecto('${selTost.up_codigo}', { onSaved: () => inicializarPizarra(true) });">🛠️ Receta UP</button>
+                    <div style="display:inline-flex; gap:4px;">
+                      ${selTost.ing_id ? `
+                        <button type="button" style="padding:2px 6px; border-radius:4px; border:1px solid rgba(16,185,129,0.45); background:rgba(16,185,129,0.16); color:#6ee7b7; font-size:0.65rem; font-weight:700; cursor:pointer;"
+                          onclick="window.abrirModuloConciliacionIA('ING-${selTost.ing_id}', null, { es_ingrediente: true, ingrediente_id: ${selTost.ing_id}, ldn4_up_codigo: '${selTost.up_codigo}', ldn4_ap_codigo: '${selTost.ap_codigo}', costo_prod_ing_kg: ${costoIngProd}, tab_inicial: 'PRODUCCION_PROPIA' })" title="Abrir simulador completo con historial de cocciones, colaboradores y 5 solapas">🏭 Simulador 5 Solapas</button>
+                      ` : ''}
+                      <button type="button" style="padding:2px 6px; border-radius:4px; border:1px solid rgba(168,85,247,0.4); background:rgba(168,85,247,0.14); color:#d8b4fe; font-size:0.65rem; font-weight:700; cursor:pointer;"
+                        onclick="if (window.abrirEditorUpDirecto) window.abrirEditorUpDirecto('${selTost.up_codigo}', { onSaved: () => inicializarPizarra(true) });">🛠️ Receta UP</button>
+                    </div>
                   </div>
                   <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
                     <label style="font-size:0.67rem; color:#94a3b8; display:flex; flex-direction:column; gap:2px;">

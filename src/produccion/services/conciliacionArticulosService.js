@@ -1,6 +1,7 @@
 const pool = require('../config/database');
 const { normalizarOfertaProveedor } = require('../utils/unitNormalizer');
 const { supabaseFetch } = require('../utils/supabaseHelper');
+const produccionPropiaCostosService = require('./produccionPropiaCostosService');
 let iaMonitor = null;
 try {
     iaMonitor = require('../../services/iaCreditoMonitorService');
@@ -1505,7 +1506,7 @@ class ConciliacionArticulosService {
                 esTargetCajaFraccionada = true;
             }
         }
-        const esGranel = (kilosUnidad >= 2) || Boolean(artLamda.es_ingrediente);
+        const esGranel = (kilosUnidad >= 2) || Boolean(artLamda.es_ingrediente) || Number(artLamda.familia_id) === 42;
         // En el Taller LAMDA toda materia prima se abastece a granel (1x10kg / 1x22.68kg / 1x25kg) salvo que el artículo LAMDA sea explícitamente un multi-pack (ej. 10x1kg)
         const esTargetGranelPuro = !esTargetCajaFraccionada;
 
@@ -2206,7 +2207,7 @@ class ConciliacionArticulosService {
         } else if (estrategiaGuardada && Array.isArray(estrategiaGuardada.tags_consolidados) && estrategiaGuardada.tags_consolidados.length > 0) {
             tagsActivosFinales = estrategiaGuardada.tags_consolidados.map(t => this.normalizarTagObjeto(t)).filter(t => t.texto);
             esRutaConsolidadaBD = true;
-        } else if (artLamda.es_ingrediente) {
+        } else if (artLamda.es_ingrediente || Number(artLamda.familia_id) === 42) {
             const fichaIng = this.extraerFichaSemantica(artLamda);
             const attrIng = fichaIng.atributos || {};
             const tagsPropuestos = [];
@@ -2526,14 +2527,28 @@ class ConciliacionArticulosService {
         });
         const recomendacionTopIA = capaChoferIA.find(c => c.prioridad_ia === 1) || capaChoferIA[0] || null;
 
+        // 5. CAPA 5 DETERMINISTA: PRODUCCIÓN PROPIA LAMDA (LDN 4 Tostadero / LDN 2 Fraccionado / LDN 3-5-6 Resumen)
+        let capaProduccionPropia = { habilitada: false };
+        try {
+            capaProduccionPropia = await produccionPropiaCostosService.resolverFichaProduccionPropia({
+                articuloId: artLamda.articulo_id,
+                ingredienteId: artLamda.ingrediente_id || null,
+                db: pool
+            });
+        } catch (errPropia) {
+            console.warn('⚠️ [CONCILIACION] Error no bloqueante al resolver Capa 5 Producción Propia:', errPropia.message);
+            capaProduccionPropia = { habilitada: false };
+        }
+
+        const duracionTotalFinal = Date.now() - t0Inicio;
         const historialInicial = [
             {
                 paso: 1,
                 nombre: esRutaConsolidadaBD 
-                    ? `⭐ Filtro Compuesto Unificado en BD [ ${estrategiaGuardada.estrategia_id} ] (${paso1Capturados.length} ofertas, ${duracionTotal}ms)`
+                    ? `⭐ Filtro Compuesto Unificado en BD [ ${estrategiaGuardada.estrategia_id} ] (${paso1Capturados.length} ofertas, ${duracionTotalFinal}ms)`
                     : tagsActivosFinales.length === 0
-                        ? `Paso 1: Sin filtros (Todas las ofertas vigentes: ${paso1Capturados.length}, ${duracionTotal}ms)`
-                        : `Paso 1: Filtro Compuesto Unificado (${paso1Capturados.length} ofertas, ${duracionTotal}ms)`,
+                        ? `Paso 1: Sin filtros (Todas las ofertas vigentes: ${paso1Capturados.length}, ${duracionTotalFinal}ms)`
+                        : `Paso 1: Filtro Compuesto Unificado (${paso1Capturados.length} ofertas, ${duracionTotalFinal}ms)`,
                 tipo: esRutaConsolidadaBD ? 'CONSOLIDADA_BD' : 'ETIQUETAS',
                 filas_restantes: paso1Capturados.length
             }
@@ -2544,6 +2559,7 @@ class ConciliacionArticulosService {
                 articulo_id: artLamda.articulo_id,
                 ingrediente_id: artLamda.ingrediente_id || null,
                 es_ingrediente: Boolean(artLamda.es_ingrediente),
+                familia_id: artLamda.familia_id || null,
                 descripcion: descGeneradaRaw,
                 familia: artLamda.familia_nombre || artLamda.rubro,
                 articulo_principal: articuloPrincipalRaw,
@@ -2561,7 +2577,7 @@ class ConciliacionArticulosService {
             paso_1_capturados: paso1Capturados.length,
             proveedores_conteo: proveedoresConteo,
 
-            // === ARQUITECTURA DE 4 CAPAS SELLADA ===
+            // === ARQUITECTURA DE 5 CAPAS DETERMINISTAS ===
             capa_lotes: lotesDeposito,
             capa_habitual: capaHabitual,
             capa_operador: {
@@ -2571,6 +2587,7 @@ class ConciliacionArticulosService {
                 es_ruta_consolidada: esRutaConsolidadaBD
             },
             capa_chofer_ia: capaChoferIA,
+            capa_produccion_propia: capaProduccionPropia,
             recomendacion_principal_ia: recomendacionTopIA,
             ficha_semantica_ia: fichaSemantica,
 
@@ -2580,7 +2597,7 @@ class ConciliacionArticulosService {
             historial_lotes_recientes: lotesDeposito,
             total_candidatos: nivel1Final.length + nivel2Sugerencias.length,
             historial_capas: historialInicial,
-            tiempo_ejecucion_ms: duracionTotal
+            tiempo_ejecucion_ms: duracionTotalFinal
         };
     }
 

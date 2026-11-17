@@ -21,6 +21,7 @@ const {
     construirCatalogoPreviewB2BLaboratorio,
     sincronizarManifestIngredientesB2B
 } = require('../services/desgloseIngredientesComercialService');
+const produccionPropiaCostosService = require('../services/produccionPropiaCostosService');
 
 // 🥣 Catálogo comercial dinámico de ingredientes resueltos recursivamente (sin pesos, porcentajes ni costos)
 router.get('/catalogo/ingredientes-comerciales', async (req, res) => {
@@ -5515,6 +5516,29 @@ router.get('/simulacion/inicializar', async (req, res) => {
     } catch (error) {
         console.error('❌ Error en GET /simulacion/inicializar:', error);
         res.status(500).json({ error: 'Error al inicializar los datos de simulación', detalle: error.message });
+    }
+});
+
+/**
+ * GET /api/produccion/produccion-propia/insumo-crudo/:sku
+ * Devuelve costo de reposición, stock y último lote físico de un bulto crudo alternativo
+ * para el selector interactivo de la Solapa 5 (Producción Propia LAMDA) en Mesa Integrada.
+ */
+router.get('/produccion-propia/insumo-crudo/:sku', async (req, res) => {
+    try {
+        const db = req.db || pool;
+        const sku = String(req.params.sku || '').trim();
+        if (!sku) {
+            return res.status(400).json({ success: false, error: 'SKU requerido.' });
+        }
+        const detalle = await produccionPropiaCostosService.obtenerDetalleInsumoCrudo({ sku, db });
+        if (!detalle) {
+            return res.status(404).json({ success: false, error: `Artículo ${sku} no encontrado.` });
+        }
+        res.json({ success: true, data: detalle });
+    } catch (error) {
+        console.error('❌ Error en GET /produccion-propia/insumo-crudo:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

@@ -1421,11 +1421,14 @@ function renderizarArticulosBunkerLDN1() {
                      <span style="font-weight: 700;">Sim: $${costoBaseTotalBultoMix.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
                    </div>`;
 
-            // Botón de acción quirúrgica individual para el Mix / AP + Inspector de Costos + Salto directo a su LDN
+            // Botón de acción quirúrgica individual para el Mix / AP + Inspector de Costos + Conciliación 5 Solapas + Salto directo a su LDN
             const btnRadiografiaMixHtml = `
-                <div style="display: inline-flex; gap: 3px; align-items: center;">
+                <div style="display: inline-flex; gap: 3px; align-items: center; flex-wrap: wrap;">
                     <button type="button" onclick="event.stopPropagation(); window.abrirRadiografiaCostosArticulo('${art.articulo_id}')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-size: 0.66rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 2px;" title="Ver radiografía financiera paso a paso">
                         📊 Costos
+                    </button>
+                    <button type="button" onclick="event.stopPropagation(); window.abrirModuloConciliacionIA('${art.articulo_id}')" style="background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.42); color: #6ee7b7; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; cursor: pointer;" title="Abrir Mesa Integrada (Proveedores vs Producción Propia LAMDA)">
+                        🤖 Conciliar
                     </button>
                     <button type="button" onclick="event.stopPropagation(); if (typeof window.cambiarContextoLDN === 'function') window.cambiarContextoLDN(${destinoLdnNum});" style="background: rgba(168, 85, 247, 0.15); border: 1px solid ${destinoLdnColor}; color: ${destinoLdnColor}; padding: 2px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: 700; cursor: pointer;" title="Ir a ${destinoLdnLabel} para ver y actualizar sus presentaciones comerciales finales">
                         ➔ LDN ${destinoLdnNum}
@@ -1697,11 +1700,16 @@ function renderizarArticulosBunkerLDN1() {
                      <span style="font-weight: 700;">Sim: $${costoBaseTotalBulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}${costoTiempoVal > 0 ? ` (c/MO: $${costoTotalConMoBulto.toLocaleString('es-AR', {minimumFractionDigits: 2})})` : ''}</span>
                    </div>`;
 
-            // Botón de acción quirúrgica individual + Inspector de Costos / Finanzas
+            // Botón de acción quirúrgica individual + Inspector de Costos / Finanzas + Conciliación 5 Solapas (Fraccionar vs Comprar Envasado)
             const btnRadiografiaHtml = `
-                <button type="button" onclick="event.stopPropagation(); window.abrirRadiografiaCostosArticulo('${art.articulo_id}')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 2px 7px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Ver radiografía financiera paso a paso de cómo se compone el costo y las listas de precios">
-                    📊 Costos
-                </button>
+                <div style="display: inline-flex; gap: 4px; align-items: center;">
+                    <button type="button" onclick="event.stopPropagation(); window.abrirRadiografiaCostosArticulo('${art.articulo_id}')" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 2px 7px; border-radius: 4px; font-size: 0.68rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Ver radiografía financiera paso a paso de cómo se compone el costo y las listas de precios">
+                        📊 Costos
+                    </button>
+                    <button type="button" onclick="event.stopPropagation(); window.abrirModuloConciliacionIA('${art.articulo_id}')" style="background: rgba(16, 185, 129, 0.14); border: 1px solid rgba(16, 185, 129, 0.42); color: #6ee7b7; padding: 2px 7px; border-radius: 4px; font-size: 0.67rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;" title="Comparar ofertas de proveedores vs Costo de Fraccionado Propio LAMDA (Solapa 5)">
+                        🤖 Conciliar
+                    </button>
+                </div>
             `;
             const targetIngIdQuirurgico = ingAlimObj ? ingAlimObj.id : (window.ingredienteSeleccionadoId || insumosEmpaqueReceta[0]?.ingrediente_id || ingredientesAsociados[0]?.id || null);
             const btnQuirurgicoHtml = estaSincronizado
