@@ -155,7 +155,7 @@
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       color: var(--text);
-      padding: 8px 12px;
+      padding: 6px 12px;
       border-bottom: 1px solid var(--border);
       box-shadow: 0 2px 12px rgba(62, 37, 25, 0.04);
     }
@@ -163,10 +163,10 @@
       max-width: 960px;
       margin: 0 auto;
       display: grid;
-      grid-template-columns: 44px minmax(0, 1fr) 44px;
+      grid-template-columns: 42px minmax(0, 1fr) 42px;
       align-items: center;
       gap: 8px;
-      min-height: 48px;
+      min-height: 44px;
     }
     .hero-left-slot {
       display: flex;
@@ -233,14 +233,14 @@
     }
     .brand-logo.has-horizontal-logo {
       width: auto;
-      max-width: 214px;
-      height: 44px;
+      max-width: 204px;
+      height: 38px;
       justify-content: center;
     }
     .brand-logo.has-principal-logo {
       width: auto;
-      max-width: 224px;
-      height: 60px;
+      max-width: 210px;
+      height: 46px;
       justify-content: center;
     }
     .brand-logo img {
@@ -392,81 +392,140 @@
     .container {
       max-width: 960px;
       margin: 0 auto;
-      padding: 10px 12px 20px;
+      padding: 8px 12px 20px;
     }
     @media (min-width: 768px) {
       .container {
-        padding: 18px 20px 28px;
+        padding: 16px 20px 28px;
       }
     }
 
-    /* Pastilla Compacta de Próxima Entrega (Portada Limpia) */
-    .delivery-strip-compact {
+    /* Única Franja Horizontal Compacta bajo la Marca (Envíos + Pago/Pedido) */
+    #catalogo-tienda-wrapper {
+      min-width: 0;
+      max-width: 100%;
+    }
+    .tienda-compact-strip {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 7px;
+      min-height: 36px;
       width: 100%;
-      background: var(--surface-warm);
+      max-width: 100%;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .strip-chip-envios {
+      flex-shrink: 0;
+      height: 36px;
+      padding: 0 12px;
+      border-radius: 999px;
       border: 1px solid var(--brand-border);
-      border-radius: 13px;
-      padding: 8px 12px;
-      margin-bottom: 10px;
+      background: var(--surface-warm);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 900;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 0.15s, background 0.15s, transform 0.1s;
+    }
+    .strip-chip-envios:hover {
+      border-color: var(--brand);
+    }
+    .strip-chip-envios:active {
+      transform: scale(0.97);
+    }
+    .strip-chip-envios.unlocked {
+      background: var(--ok-soft);
+      border-color: var(--ok-border);
+      color: var(--ok);
+    }
+    .strip-chip-envios.after-cutoff {
+      background: #fffbeb;
+      border-color: #f59e0b;
+      color: #92400e;
+    }
+    .strip-slot-pago {
+      flex: 1 1 0%;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      display: flex;
+    }
+    .strip-chip-pago {
+      width: 100%;
+      max-width: 100%;
+      height: 36px;
+      padding: 0 11px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.77rem;
+      font-weight: 800;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 9px;
+      gap: 6px;
       cursor: pointer;
-      text-align: left;
-      font-family: inherit;
-      color: var(--text);
-      transition: border-color 0.15s, background 0.15s;
+      min-width: 0;
+      overflow: hidden;
+      transition: border-color 0.15s, background 0.15s, transform 0.1s;
     }
-    .delivery-strip-compact:hover {
-      border-color: var(--brand);
+    .strip-chip-pago:hover {
+      border-color: var(--brand-border);
     }
-    .delivery-strip-compact.after-cutoff {
+    .strip-chip-pago:active {
+      transform: scale(0.985);
+    }
+    .strip-chip-pago.is-pending-transf {
+      background: #eff6ff;
+      border-color: #60a5fa;
+      color: #1e3a8a;
+    }
+    .strip-chip-pago.is-reclamo {
+      background: #fef2f2;
+      border-color: #ef4444;
+      color: #b91c1c;
+    }
+    .strip-chip-pago.is-verificando {
       background: #fffbeb;
       border-color: #f59e0b;
-    }
-    .delivery-strip-icon {
-      width: 26px;
-      height: 26px;
-      border-radius: 8px;
-      background: var(--card);
-      border: 1px solid var(--brand-border);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.84rem;
-      flex-shrink: 0;
-    }
-    .delivery-strip-main {
-      flex: 1;
-      min-width: 0;
-      font-size: 0.82rem;
-      font-weight: 800;
-      color: var(--text);
-      line-height: 1.3;
-    }
-    .delivery-strip-main strong {
-      color: var(--brand-dark);
-      font-weight: 900;
-    }
-    .delivery-strip-compact.after-cutoff .delivery-strip-main strong {
       color: #92400e;
     }
-    .delivery-strip-chevron {
-      font-size: 1.08rem;
-      font-weight: 900;
+    .strip-chip-pago.is-tracking {
+      background: var(--card);
+      border-color: var(--brand-border);
       color: var(--brand-dark);
+    }
+    .strip-chip-pago-text {
+      min-width: 0;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: left;
+    }
+    .strip-chip-chevron {
+      font-size: 0.96rem;
+      font-weight: 900;
       flex-shrink: 0;
       line-height: 1;
-      opacity: 0.8;
+      opacity: 0.85;
     }
 
     /* Buscador Desplegable y Categorías */
     .toolbar {
       display: flex;
       flex-direction: column;
-      gap: 9px;
-      margin-bottom: 12px;
+      gap: 7px;
+      margin-bottom: 9px;
     }
     .search-collapsible-wrap {
       display: none;
@@ -774,9 +833,9 @@
     }
     .cats-row {
       display: flex;
-      gap: 8px;
+      gap: 7px;
       overflow-x: auto;
-      padding-bottom: 4px;
+      padding-bottom: 2px;
       scrollbar-width: none;
       -ms-overflow-style: none;
       -webkit-overflow-scrolling: touch;
@@ -785,12 +844,12 @@
       display: none;
     }
     .cat-btn {
-      padding: 7px 14px;
+      padding: 6px 13px;
       border-radius: 999px;
       border: 1px solid var(--border);
       background: var(--card);
       color: var(--muted);
-      font-size: 0.83rem;
+      font-size: 0.8rem;
       font-weight: 800;
       font-family: inherit;
       cursor: pointer;
@@ -1996,7 +2055,7 @@
             📦 Mi pedido
           </button>
           <a id="desk-nav-coordinar" href="#" target="_blank" rel="noopener" class="desk-nav-pill" onclick="return onClickCoordinarGestor(event)">
-            💬 Coordinar
+            💬 Contacto
           </a>
           <button type="button" id="desk-nav-carrito" class="desk-nav-pill cart-pill" onclick="abrirAccionCarritoTienda()">
             <span>🛒</span>
@@ -2024,16 +2083,19 @@
 
     <!-- Bloque Catálogo de la Tienda Pública -->
     <div id="catalogo-tienda-wrapper">
-      <!-- Franja compacta, cálida y legible de próxima entrega o despacho nacional -->
-      <button type="button" class="delivery-strip-compact" id="delivery-banner" onclick="abrirDrawerNodoTienda()" title="Ver información de envíos y contacto">
-        <span class="delivery-strip-icon" id="delivery-badge-status">📅</span>
-        <span class="delivery-strip-main" id="delivery-date-text">Cargando información de entrega...</span>
-        <span class="delivery-strip-chevron" aria-hidden="true">›</span>
-      </button>
-      <div class="free-shipping-strip" id="free-shipping-banner"></div>
-
-      <!-- Banner recordatorio de pedido activo del vecino en este dispositivo -->
-      <div class="active-order-banner" id="mis-pedidos-recientes-banner"></div>
+      <!-- Única franja horizontal compacta bajo la marca: Envíos + Pago/Pedido -->
+      <div class="tienda-compact-strip" id="tienda-franja-compacta" data-testid="tienda-franja-compacta">
+        <button type="button" class="strip-chip-envios" id="btn-chip-envios" data-testid="btn-chip-envios" onclick="abrirModalEnviosTienda()" title="Ver modalidades de envío y envíos bonificados">
+          <span id="chip-envios-icon" aria-hidden="true">🚚</span>
+          <span id="chip-envios-label">Envíos</span>
+        </button>
+        <div class="strip-slot-pago" id="strip-slot-pago-pedido">
+          <button type="button" class="strip-chip-pago" data-testid="btn-chip-pago-pedido" onclick="abrirModalPagoTransferenciaRapido()">
+            <span class="strip-chip-pago-text">🏦 Pagos / Transferencia</span>
+            <span class="strip-chip-chevron" aria-hidden="true">›</span>
+          </button>
+        </div>
+      </div>
 
       <!-- Buscador desplegable (sin ocupar alto fijo innecesario) y Filtro de Categorías -->
       <div class="toolbar">
@@ -2089,13 +2151,13 @@
       <span class="bnav-label">Mi pedido</span>
     </button>
 
-    <a class="bnav-item" id="bnav-coordinar" href="#" target="_blank" rel="noopener" onclick="return onClickCoordinarGestor(event)">
+    <a class="bnav-item" id="bnav-coordinar" data-testid="bnav-contacto" href="#" target="_blank" rel="noopener" onclick="return onClickCoordinarGestor(event)">
       <span class="bnav-icon-wrap" aria-hidden="true">
         <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
         </svg>
       </span>
-      <span class="bnav-label">Coordinar</span>
+      <span class="bnav-label">Contacto</span>
     </a>
 
     <button type="button" class="bnav-item" id="bnav-carrito" onclick="abrirAccionCarritoTienda()">
@@ -2129,6 +2191,21 @@
   <!-- Modal Breve de 2 Pasos para Guardar Acceso Directo en Celular (iOS / Navegador) -->
   <div class="modal-backdrop" id="pwa-tienda-modal" style="z-index:275;" onclick="if(event.target===this) cerrarModalPwaTienda()">
     <div class="modal-card" id="pwa-tienda-modal-content" style="max-width:380px;"></div>
+  </div>
+
+  <!-- Modal Compacto de Envíos y Envíos Bonificados -->
+  <div class="modal-backdrop" id="envios-tienda-modal" data-testid="modal-envios-tienda" style="z-index:280;" onclick="if(event.target===this) cerrarModalEnviosTienda()">
+    <div class="modal-card" id="envios-tienda-modal-content" style="max-width:460px;"></div>
+  </div>
+
+  <!-- Modal / Sheet de Pago y Aviso de Transferencia -->
+  <div class="modal-backdrop" id="pago-rapido-tienda-modal" data-testid="modal-pago-transferencia-tienda" style="z-index:282;" onclick="if(event.target===this) cerrarModalPagoTransferenciaRapido()">
+    <div class="modal-card" id="pago-rapido-tienda-modal-content" style="max-width:480px;"></div>
+  </div>
+
+  <!-- Modal Liviano de Confirmación Previa antes de abrir WhatsApp -->
+  <div class="modal-backdrop" id="contacto-wa-confirm-modal" data-testid="modal-confirmar-whatsapp" style="z-index:285;" onclick="if(event.target===this) cerrarModalConfirmarWhatsAppTienda()">
+    <div class="modal-card" id="contacto-wa-confirm-modal-content" style="max-width:390px;"></div>
   </div>
 
   <script>
@@ -2495,25 +2572,25 @@
     }
 
     function renderizarBannerDispositivoAdminTienda() {
-      let bar = document.getElementById('admin-device-telemetry-pill');
+      const bar = document.getElementById('admin-device-telemetry-pill');
+      if (bar) bar.remove();
+      const boxDrawer = document.getElementById('drawer-admin-device-box');
+      if (!boxDrawer) return;
       const activo = esDispositivoAdminGestorTienda(STATE.slug);
       if (!activo) {
-        if (bar) bar.style.display = 'none';
+        boxDrawer.style.display = 'none';
+        boxDrawer.innerHTML = '';
         return;
       }
-      if (!bar) {
-        bar = document.createElement('div');
-        bar.id = 'admin-device-telemetry-pill';
-        bar.style.cssText = 'background:#0f172a;color:#e2e8f0;font-size:0.74rem;font-weight:700;padding:5px 12px;display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;border-bottom:1px solid #334155;';
-        document.body.insertBefore(bar, document.body.firstChild);
-      }
-      bar.style.display = 'flex';
-      bar.innerHTML = `
-        <span>🛠️ <strong>Dispositivo Admin / Gestor</strong> · Tus visitas están separadas y no alteran la conversión de vecinos</span>
-        <button type="button" onclick="desactivarModoAdminGestorEnEsteNavegador()"
-          style="background:#1e293b;color:#93c5fd;border:1px solid #475569;border-radius:999px;padding:2px 9px;font-family:inherit;font-size:0.7rem;font-weight:800;cursor:pointer;">
-          Cambiar a Cliente Real
-        </button>
+      boxDrawer.style.display = 'block';
+      boxDrawer.innerHTML = `
+        <div style="background:#0f172a; color:#e2e8f0; border-radius:13px; padding:11px 13px; font-size:0.75rem; font-weight:700; line-height:1.35;">
+          <div>🛠️ <strong>Dispositivo Gestor / Admin</strong> · Visitas separadas de las métricas de clientes.</div>
+          <button type="button" onclick="desactivarModoAdminGestorEnEsteNavegador()"
+            style="margin-top:8px; background:#1e293b; color:#93c5fd; border:1px solid #475569; border-radius:999px; padding:4px 11px; font-family:inherit; font-size:0.72rem; font-weight:800; cursor:pointer;">
+            Cambiar a Cliente Real
+          </button>
+        </div>
       `;
     }
 
@@ -2984,6 +3061,13 @@
         const pedMerged = { ...(cached.ped || {}), ...(data.pedido || {}) };
         if (STATE.ultimoPedidoConfirmado && STATE.ultimoPedidoConfirmado.codigo_pedido === pedMerged.codigo_pedido) {
           STATE.ultimoPedidoConfirmado = { ...STATE.ultimoPedidoConfirmado, ...pedMerged };
+        }
+        if (STATE.pedidoActivoBannerData?.pedido && STATE.pedidoActivoBannerData.pedido.codigo_pedido === pedMerged.codigo_pedido) {
+          STATE.pedidoActivoBannerData = {
+            ...STATE.pedidoActivoBannerData,
+            pedido: { ...STATE.pedidoActivoBannerData.pedido, ...pedMerged }
+          };
+          renderizarSlotCompactoPagoPedido();
         }
         const wrapEl = document.getElementById(`bloque-pago-transf-${ctxKey}`);
         if (wrapEl) {
@@ -3559,6 +3643,8 @@
       return `https://wa.me/${telWa}?text=${encodeURIComponent(saludo)}`;
     }
 
+    let _urlWhatsappPendienteConfirmar = '';
+
     function sincronizarEnlacesCoordinarGestor() {
       const href = obtenerUrlWhatsappCoordinarGestor();
       const esEc = esPerfilEcommerceTienda(STATE.nodo);
@@ -3567,27 +3653,81 @@
         const el = document.getElementById(idEl);
         if (!el) continue;
         el.setAttribute('href', href || '#');
-        el.setAttribute('title', `${esEc ? 'Consultar por WhatsApp con' : 'Coordinar por WhatsApp con'} ${gestorNombre}`);
+        el.setAttribute('title', `Comunicarte por WhatsApp con ${gestorNombre}`);
       }
       const deskCoord = document.getElementById('desk-nav-coordinar');
       if (deskCoord) {
-        deskCoord.textContent = esEc ? '💬 Contacto' : '💬 Coordinar';
+        deskCoord.textContent = '💬 Contacto';
       }
       const bnavCoordLbl = document.querySelector('#bnav-coordinar .bnav-label');
       if (bnavCoordLbl) {
-        bnavCoordLbl.textContent = esEc ? 'Contacto' : 'Coordinar';
+        bnavCoordLbl.textContent = 'Contacto';
       }
     }
 
-    function onClickCoordinarGestor(ev) {
-      const href = obtenerUrlWhatsappCoordinarGestor();
-      if (!href) {
-        if (ev) ev.preventDefault();
+    function onClickCoordinarGestor(ev, customHref = '') {
+      if (ev) ev.preventDefault();
+      const href = String(customHref || obtenerUrlWhatsappCoordinarGestor() || '').trim();
+      if (!href || href === '#') {
         abrirDrawerNodoTienda();
         return false;
       }
+      cerrarDrawerNodoTienda();
+      abrirConfirmacionContactoWhatsAppTienda(href);
+      return false;
+    }
+
+    function abrirConfirmacionContactoWhatsAppTienda(href) {
+      const modal = document.getElementById('contacto-wa-confirm-modal');
+      const box = document.getElementById('contacto-wa-confirm-modal-content');
+      if (!modal || !box) return;
+      _urlWhatsappPendienteConfirmar = String(href || '').trim();
+      const nombreTienda = String(STATE.nodo?.nombre_marca || 'la tienda').trim();
+
+      box.innerHTML = `
+        <div style="padding:20px 18px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;">
+            <div style="display:flex; align-items:center; gap:9px;">
+              <span style="width:38px; height:38px; border-radius:11px; background:#dcfce7; color:#15803d; display:inline-flex; align-items:center; justify-content:center; font-size:1.15rem; flex-shrink:0;">💬</span>
+              <div style="font-size:1.02rem; font-weight:900; color:var(--text);">Contacto por WhatsApp</div>
+            </div>
+            <button type="button" onclick="cerrarModalConfirmarWhatsAppTienda()" aria-label="Cerrar"
+              style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+          </div>
+          <p style="margin:0 0 16px 0; font-size:0.9rem; line-height:1.45; color:var(--text); font-weight:700;">
+            Vas a salir de la tienda para abrir WhatsApp y comunicarte con <strong>${esc(nombreTienda)}</strong>.
+          </p>
+          <div style="display:flex; gap:9px;">
+            <button type="button" data-testid="btn-cancelar-whatsapp" onclick="cerrarModalConfirmarWhatsAppTienda()"
+              style="flex:1; min-height:44px; padding:9px 12px; border-radius:11px; border:1.5px solid var(--border); background:var(--card); color:var(--text); font-family:inherit; font-size:0.88rem; font-weight:900; cursor:pointer;">
+              Cancelar
+            </button>
+            <button type="button" data-testid="btn-confirmar-abrir-whatsapp" onclick="ejecutarAperturaWhatsAppConfirmada()"
+              style="flex:1.15; min-height:44px; padding:9px 12px; border-radius:11px; border:none; background:#15803d; color:#ffffff; font-family:inherit; font-size:0.88rem; font-weight:900; cursor:pointer;">
+              Abrir WhatsApp
+            </button>
+          </div>
+        </div>
+      `;
+      modal.style.display = 'flex';
+      modal.classList.add('open');
+    }
+
+    function cerrarModalConfirmarWhatsAppTienda() {
+      _urlWhatsappPendienteConfirmar = '';
+      const modal = document.getElementById('contacto-wa-confirm-modal');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('open');
+      }
+    }
+
+    function ejecutarAperturaWhatsAppConfirmada() {
+      const href = _urlWhatsappPendienteConfirmar || obtenerUrlWhatsappCoordinarGestor();
+      cerrarModalConfirmarWhatsAppTienda();
+      if (!href) return;
       enviarTelemetriaTienda('clic_coordinar_gestor', { gestor_nombre: STATE.nodo?.gestor_nombre || '' }, 2000);
-      return true;
+      window.open(href, '_blank', 'noopener,noreferrer');
     }
 
     function alternarBuscadorTienda() {
@@ -3771,9 +3911,11 @@
 
           <!-- 5. Bloque Destacado Acceso Directo -->
           <div class="drawer-pwa-card" id="drawer-pwa-box" style="display:none;"></div>
+          <div id="drawer-admin-device-box" style="display:none;"></div>
         `;
 
         renderizarBarraPwaTienda();
+        renderizarBannerDispositivoAdminTienda();
         return;
       }
 
@@ -3861,9 +4003,11 @@
 
         <!-- 5. Bloque Destacado PWA (oculto automáticamente en modo standalone) -->
         <div class="drawer-pwa-card" id="drawer-pwa-box" style="display:none;"></div>
+        <div id="drawer-admin-device-box" style="display:none;"></div>
       `;
 
       renderizarBarraPwaTienda();
+      renderizarBannerDispositivoAdminTienda();
     }
 
     function calcularSubtotalProductosSoloCarrito() {
@@ -3876,92 +4020,209 @@
     }
 
     function renderBarraProgresoEnvioGratis() {
-      const strip = document.getElementById('free-shipping-banner');
-      if (!strip) return;
-      if (!esPerfilEcommerceTienda(STATE.nodo)) {
-        strip.style.display = 'none';
-        return;
+      const chip = document.getElementById('btn-chip-envios');
+      const iconEl = document.getElementById('chip-envios-icon');
+      const lblEl = document.getElementById('chip-envios-label');
+      if (chip) {
+        if (esPerfilEcommerceTienda(STATE.nodo)) {
+          const cfg = obtenerConfigPaqueteriaTienda(STATE.nodo);
+          const meta = Number(cfg.envio_gratis_desde_monto || 0);
+          const subtotal = calcularSubtotalProductosSoloCarrito();
+          const desbloqueado = Boolean(cfg.envio_gratis_activo && meta > 0 && subtotal >= meta);
+          chip.classList.toggle('unlocked', desbloqueado);
+          if (iconEl) iconEl.textContent = desbloqueado ? '🎁' : '🚚';
+          if (lblEl) lblEl.textContent = 'Envíos';
+        } else {
+          chip.classList.remove('unlocked');
+          if (lblEl) lblEl.textContent = 'Envíos';
+        }
       }
-      const cfg = obtenerConfigPaqueteriaTienda(STATE.nodo);
-      const meta = Number(cfg.envio_gratis_desde_monto || 0);
-      if (!cfg.envio_gratis_activo || meta <= 0) {
-        strip.style.display = 'none';
-        return;
-      }
-      const subtotal = calcularSubtotalProductosSoloCarrito();
-      const pct = Math.min(100, Math.max(0, Math.round((subtotal / meta) * 100)));
-      const desbloqueado = subtotal >= meta;
-      strip.classList.toggle('unlocked', desbloqueado);
-      strip.style.display = 'flex';
-      if (desbloqueado) {
-        strip.innerHTML = `
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-            <span>🎉 ¡Activaste <strong>Envío Bonificado a todo el país</strong>!</span>
-            <span>100%</span>
-          </div>
-          <div class="free-shipping-bar-track"><div class="free-shipping-bar-fill" style="width:100%;"></div></div>
-        `;
-      } else if (subtotal > 0) {
-        const falta = Math.max(0, meta - subtotal);
-        strip.innerHTML = `
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-            <span>🎁 Sumá <strong>${fmt(falta)}</strong> más para tener <strong>Envío Bonificado</strong></span>
-            <span style="color:var(--muted);">${pct}%</span>
-          </div>
-          <div class="free-shipping-bar-track"><div class="free-shipping-bar-fill" style="width:${pct}%;"></div></div>
-        `;
-      } else {
-        strip.innerHTML = `
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-            <span>🎁 <strong>Envío bonificado a todo el país</strong> en compras desde ${fmt(meta)}</span>
-          </div>
-        `;
+      if (document.getElementById('envios-tienda-modal')?.classList.contains('open')) {
+        renderContenidoModalEnviosTienda();
       }
     }
 
     function renderBannerEntrega() {
-      const banner = document.getElementById('delivery-banner');
-      const badge = document.getElementById('delivery-badge-status');
-      const mainTxt = document.getElementById('delivery-date-text');
-      if (!banner || !mainTxt) return;
+      const chip = document.getElementById('btn-chip-envios');
+      const iconEl = document.getElementById('chip-envios-icon');
+      if (!chip) return;
 
       if (esPerfilEcommerceTienda(STATE.nodo)) {
-        const cfg = obtenerConfigPaqueteriaTienda(STATE.nodo);
-        banner.classList.remove('after-cutoff');
-        banner.setAttribute('title', 'Ver cobertura nacional, correos habilitados y contacto');
-        if (badge) badge.textContent = '🚚';
-        mainTxt.innerHTML = `Envíos a todo el país · <strong>${esc(cfg.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles')}</strong>`;
+        chip.classList.remove('after-cutoff');
+        chip.setAttribute('title', 'Ver cobertura nacional, operadores postales y envíos bonificados');
+        if (iconEl) iconEl.textContent = '🚚';
         renderBarraProgresoEnvioGratis();
         return;
       }
 
-      renderBarraProgresoEnvioGratis();
       const prox = STATE.proximaEntrega;
-      const barrio = String(STATE.nodo?.barrio_zona || STATE.nodo?.nombre_marca || 'tu barrio').trim();
-      if (!prox || !prox.asignada) {
-        mainTxt.textContent = `Próxima entrega en ${barrio}`;
+      const pasoCorte = Boolean(prox?.paso_horario_corte);
+      chip.classList.toggle('after-cutoff', pasoCorte);
+      chip.setAttribute('title', 'Ver próxima entrega, punto de retiro y modalidades de envío');
+      if (iconEl) {
+        iconEl.textContent = pasoCorte ? '⏭️' : '🚚';
+      }
+      renderBarraProgresoEnvioGratis();
+    }
+
+    function abrirModalEnviosTienda() {
+      renderContenidoModalEnviosTienda();
+      const modal = document.getElementById('envios-tienda-modal');
+      if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('open');
+      }
+    }
+
+    function cerrarModalEnviosTienda() {
+      const modal = document.getElementById('envios-tienda-modal');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('open');
+      }
+    }
+
+    function renderContenidoModalEnviosTienda() {
+      const card = document.getElementById('envios-tienda-modal-content');
+      if (!card) return;
+      const nodo = STATE.nodo || {};
+      const nombreMarca = nodo.nombre_marca || 'la tienda';
+      const esEc = esPerfilEcommerceTienda(nodo);
+
+      if (esEc) {
+        const cfg = obtenerConfigPaqueteriaTienda(nodo);
+        const opsLabel = cfg.operadores_habilitados.map(formatearOperadorPostalTienda).join(' · ');
+        const modsLabel = [
+          cfg.permitir_domicilio ? '📦 Envío a domicilio' : '',
+          cfg.permitir_sucursal_correo ? '🏢 Retiro en sucursal de correo' : ''
+        ].filter(Boolean).join(' · ');
+        const meta = Number(cfg.envio_gratis_desde_monto || 0);
+        const subtotal = calcularSubtotalProductosSoloCarrito();
+        const pct = meta > 0 ? Math.min(100, Math.max(0, Math.round((subtotal / meta) * 100))) : 0;
+        const desbloqueado = Boolean(cfg.envio_gratis_activo && meta > 0 && subtotal >= meta);
+        const falta = Math.max(0, meta - subtotal);
+
+        card.innerHTML = `
+          <div style="padding:18px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
+              <div style="display:flex; align-items:center; gap:9px;">
+                <span style="width:38px; height:38px; border-radius:11px; background:var(--brand-light); color:var(--brand-dark); display:inline-flex; align-items:center; justify-content:center; font-size:1.15rem; flex-shrink:0;">🚚</span>
+                <div>
+                  <div style="font-size:1.02rem; font-weight:900; color:var(--text);">Envíos · ${esc(nombreMarca)}</div>
+                  <div style="font-size:0.76rem; font-weight:800; color:var(--muted);">Cobertura nacional y condiciones</div>
+                </div>
+              </div>
+              <button type="button" onclick="cerrarModalEnviosTienda()" aria-label="Cerrar"
+                style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+            </div>
+
+            ${cfg.envio_gratis_activo && meta > 0 ? `
+              <div style="background:${desbloqueado ? 'var(--ok-soft)' : '#fffbeb'}; border:1.5px solid ${desbloqueado ? 'var(--ok-border)' : '#fcd34d'}; border-radius:13px; padding:12px 13px; margin-bottom:12px;">
+                <div style="font-size:0.74rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; color:${desbloqueado ? 'var(--ok)' : '#92400e'}; margin-bottom:4px;">
+                  🎁 Envíos bonificados
+                </div>
+                <div style="font-size:0.88rem; font-weight:800; color:var(--text); line-height:1.35;">
+                  ${desbloqueado
+                    ? '¡Activaste <strong>Envío Bonificado a todo el país</strong> en tu carrito!'
+                    : (subtotal > 0
+                        ? `Envío bonificado desde <strong>${fmt(meta)}</strong> · Sumá <strong>${fmt(falta)}</strong> más en tu carrito para activarlo (${pct}%).`
+                        : `<strong>Envío bonificado a todo el país</strong> en compras desde <strong>${fmt(meta)}</strong>.`)
+                  }
+                </div>
+                <div style="margin-top:8px; height:7px; border-radius:999px; background:rgba(0,0,0,0.08); overflow:hidden;">
+                  <div style="height:100%; width:${desbloqueado ? 100 : pct}%; background:${desbloqueado ? '#16a34a' : 'var(--brand)'}; border-radius:999px; transition:width 0.25s;"></div>
+                </div>
+              </div>
+            ` : ''}
+
+            <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:13px; padding:12px 13px; font-size:0.82rem; line-height:1.45; margin-bottom:12px;">
+              <div style="font-size:0.9rem; font-weight:900; color:var(--text); margin-bottom:5px;">
+                ${esc(cfg.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles')}
+              </div>
+              <div><strong>Operadores postales:</strong> ${esc(opsLabel)}</div>
+              <div style="margin-top:3px;"><strong>Modalidades:</strong> ${esc(modsLabel)}</div>
+            </div>
+
+            <div style="border:1px solid var(--border); border-radius:13px; padding:11px 13px; font-size:0.79rem; margin-bottom:14px;">
+              <div style="font-size:0.73rem; font-weight:900; text-transform:uppercase; color:var(--muted); margin-bottom:6px;">Tarifas orientativas por región</div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                ${(cfg.tarifario_zonas || []).map(z => `
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding-top:5px; border-top:1px dashed var(--border);">
+                    <div>
+                      <div style="font-weight:800; color:var(--text);">${esc(z.nombre || 'Zona')}</div>
+                      <div style="font-size:0.72rem; color:var(--muted); font-weight:700;">${esc(z.plazo_dias || '')}</div>
+                    </div>
+                    <div style="text-align:right; font-size:0.76rem; font-weight:800; color:var(--text); white-space:nowrap;">
+                      ${cfg.permitir_domicilio ? `Dom: ${fmt(z.domicilio)}` : ''}
+                      ${cfg.permitir_domicilio && cfg.permitir_sucursal_correo ? ' · ' : ''}
+                      ${cfg.permitir_sucursal_correo ? `Suc: ${fmt(z.sucursal)}` : ''}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <button type="button" onclick="cerrarModalEnviosTienda()"
+              style="width:100%; min-height:42px; border:none; border-radius:11px; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer;">
+              Entendido
+            </button>
+          </div>
+        `;
         return;
       }
 
-      const asig = prox.asignada;
-      const pasoCorte = Boolean(prox.paso_horario_corte);
-      banner.classList.toggle('after-cutoff', pasoCorte);
-      if (badge) {
-        badge.textContent = pasoCorte ? '⏭️' : '📅';
-      }
+      const prox = STATE.proximaEntrega;
+      const asig = prox?.asignada || null;
+      const pasoCorte = Boolean(prox?.paso_horario_corte);
+      const barrio = nodo.barrio_zona || 'Tu barrio';
+      const cargoEnvio = Number(nodo.cargo_envio_barrial || 0);
 
-      const dia = String(asig.dia_entrega_nombre || '').trim();
-      const fechaCorta = String(asig.fecha_entrega_corta || '').trim();
-      const ventana = String(asig.ventana_retiro || '').trim();
-      const detalleFechaHora = (dia && fechaCorta)
-        ? `${dia} ${fechaCorta}${ventana ? `, ${ventana}` : ''}`
-        : String(asig.label_completo || '');
+      card.innerHTML = `
+        <div style="padding:18px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
+            <div style="display:flex; align-items:center; gap:9px;">
+              <span style="width:38px; height:38px; border-radius:11px; background:var(--brand-light); color:var(--brand-dark); display:inline-flex; align-items:center; justify-content:center; font-size:1.15rem; flex-shrink:0;">🚚</span>
+              <div>
+                <div style="font-size:1.02rem; font-weight:900; color:var(--text);">Envíos y Retiro · ${esc(nombreMarca)}</div>
+                <div style="font-size:0.76rem; font-weight:800; color:var(--muted);">Fechas y modalidades en ${esc(barrio)}</div>
+              </div>
+            </div>
+            <button type="button" onclick="cerrarModalEnviosTienda()" aria-label="Cerrar"
+              style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+          </div>
 
-      const prefijo = pasoCorte
-        ? `Próxima fecha en ${esc(barrio)}`
-        : `Próxima entrega en ${esc(barrio)}`;
+          <div style="background:${pasoCorte ? '#fffbeb' : 'var(--ok-soft)'}; border:1.5px solid ${pasoCorte ? '#fcd34d' : 'var(--ok-border)'}; border-radius:13px; padding:12px 13px; margin-bottom:12px;">
+            <div style="font-size:0.72rem; font-weight:900; text-transform:uppercase; color:${pasoCorte ? '#92400e' : 'var(--ok)'}; margin-bottom:4px;">
+              ${pasoCorte ? '⏭️ Horario de corte superado' : '📅 Próxima entrega programada'}
+            </div>
+            <div style="font-size:0.95rem; font-weight:900; color:var(--text); line-height:1.28;">
+              ${asig ? esc(asig.label_completo) : 'Por confirmar'}
+            </div>
+            ${prox?.mensaje_vecino ? `
+              <div style="font-size:0.79rem; font-weight:700; color:var(--muted); margin-top:4px; line-height:1.36;">
+                ${esc(prox.mensaje_vecino)}
+              </div>
+            ` : ''}
+          </div>
 
-      mainTxt.innerHTML = `${prefijo} · <strong>${esc(detalleFechaHora)}</strong>`;
+          <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:13px; padding:12px 13px; font-size:0.83rem; line-height:1.45; margin-bottom:14px;">
+            ${nodo.permitir_retiro_nodo !== false ? `
+              <div><strong>🏠 Punto de retiro (bonificado $0):</strong> ${esc(nodo.direccion_retiro || barrio)}</div>
+            ` : ''}
+            ${nodo.permitir_envio_barrial ? `
+              <div style="margin-top:6px;">
+                <strong>🛵 Envío a domicilio barrial:</strong>
+                ${cargoEnvio > 0 ? `<span style="color:var(--brand-dark); font-weight:900;">${fmt(cargoEnvio)}</span>` : '<span style="color:var(--ok); font-weight:900;">Envío bonificado ($0)</span>'}
+              </div>
+            ` : ''}
+          </div>
+
+          <button type="button" onclick="cerrarModalEnviosTienda()"
+            style="width:100%; min-height:42px; border:none; border-radius:11px; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer;">
+            Entendido
+          </button>
+        </div>
+      `;
     }
 
     function renderCategorias() {
@@ -4166,6 +4427,18 @@
 
     document.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Escape') return;
+      if (document.getElementById('contacto-wa-confirm-modal')?.classList.contains('open')) {
+        cerrarModalConfirmarWhatsAppTienda();
+        return;
+      }
+      if (document.getElementById('pago-rapido-tienda-modal')?.classList.contains('open')) {
+        cerrarModalPagoTransferenciaRapido();
+        return;
+      }
+      if (document.getElementById('envios-tienda-modal')?.classList.contains('open')) {
+        cerrarModalEnviosTienda();
+        return;
+      }
       if (document.getElementById('nodo-drawer')?.classList.contains('open')) {
         cerrarDrawerNodoTienda();
         return;
@@ -6131,14 +6404,154 @@
       refrescarBannerPedidosRecientes();
     }
 
+    function renderizarSlotCompactoPagoPedido() {
+      const slot = document.getElementById('strip-slot-pago-pedido');
+      if (!slot) return;
+      const data = STATE.pedidoActivoBannerData;
+      if (!data || !data.pedido || data.seguimiento?.anulado || Number(data.seguimiento?.hito_actual || 1) >= 6) {
+        slot.innerHTML = `
+          <button type="button" class="strip-chip-pago" data-testid="btn-chip-pago-pedido" onclick="abrirModalPagoTransferenciaRapido()">
+            <span class="strip-chip-pago-text">🏦 Pagos / Transferencia</span>
+            <span class="strip-chip-chevron" aria-hidden="true">›</span>
+          </button>
+        `;
+        return;
+      }
+
+      const ped = data.pedido;
+      const esPendTransf = !ped.pago_confirmado && ped.medio_pago === 'TRANSFERENCIA';
+      const reclamo = Boolean(ped.reclamo_pago_no_recibido);
+      const yaInformo = Number(ped.monto_declarado_cliente || 0) > 0;
+
+      if (esPendTransf) {
+        const cls = reclamo ? 'is-reclamo' : (yaInformo ? 'is-verificando' : 'is-pending-transf');
+        const texto = reclamo
+          ? `⚠️ #${esc(ped.codigo_pedido)} · Subir comprobante`
+          : (yaInformo
+              ? `🔔 #${esc(ped.codigo_pedido)} · En verificación`
+              : `🏦 Pedido #${esc(ped.codigo_pedido)} · Informar transferencia`);
+        slot.innerHTML = `
+          <button type="button" class="strip-chip-pago ${cls}" data-testid="btn-chip-pago-pedido" onclick="abrirModalPagoTransferenciaRapido()">
+            <span class="strip-chip-pago-text">${texto}</span>
+            <span class="strip-chip-chevron" aria-hidden="true">›</span>
+          </button>
+        `;
+        return;
+      }
+
+      slot.innerHTML = `
+        <button type="button" class="strip-chip-pago is-tracking" data-testid="btn-chip-pago-pedido" onclick="abrirSeguimientoPorToken('${esc(ped.tracking_token)}')">
+          <span class="strip-chip-pago-text">📦 Pedido #${esc(ped.codigo_pedido)} · Ver estado</span>
+          <span class="strip-chip-chevron" aria-hidden="true">›</span>
+        </button>
+      `;
+    }
+
+    function abrirModalPagoTransferenciaRapido() {
+      const modal = document.getElementById('pago-rapido-tienda-modal');
+      const card = document.getElementById('pago-rapido-tienda-modal-content');
+      if (!modal || !card) return;
+
+      const data = STATE.pedidoActivoBannerData;
+      const ped = data?.pedido || null;
+      const esPendTransf = Boolean(ped && !ped.pago_confirmado && ped.medio_pago === 'TRANSFERENCIA' && !data?.seguimiento?.anulado);
+
+      if (esPendTransf) {
+        const idLocal = obtenerIdentidadVecinoLocal(STATE.slug) || {};
+        const telResp = data?.identidad_vecino?.telefono_normalizado || idLocal.telefono_normalizado || idLocal.telefono_display || '';
+        const htmlTransf = renderizarTarjetaTransferenciaYAvisoHtml(
+          ped,
+          data.nodo || STATE.nodo,
+          'strip_' + ped.codigo_pedido,
+          { telefonoRespaldo: telResp }
+        );
+        card.innerHTML = `
+          <div style="padding:16px 16px 14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:11px;">
+              <div>
+                <div style="font-size:0.72rem; font-weight:900; text-transform:uppercase; color:var(--brand-dark);">Pago de tu compra</div>
+                <div style="font-size:1.02rem; font-weight:900; color:var(--text);">Pedido #${esc(ped.codigo_pedido)} · ${fmt(ped.total_vecino)}</div>
+              </div>
+              <button type="button" onclick="cerrarModalPagoTransferenciaRapido()" aria-label="Cerrar"
+                style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+            </div>
+            ${htmlTransf}
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button type="button" onclick="cerrarModalPagoTransferenciaRapido(); abrirSeguimientoPorToken('${esc(ped.tracking_token)}');"
+                style="flex:1; min-height:40px; padding:8px 12px; border-radius:10px; border:1px solid var(--border); background:var(--surface-warm); color:var(--text); font-family:inherit; font-size:0.82rem; font-weight:800; cursor:pointer;">
+                📍 Ver seguimiento del pedido
+              </button>
+            </div>
+          </div>
+        `;
+      } else {
+        const bco = resolverDatosBancariosOficialesTienda(STATE.nodo);
+        const medios = obtenerMediosPagoHabilitadosTienda(STATE.nodo);
+        const admiteEfvo = medios.some(m => m.codigo === 'EFECTIVO');
+        card.innerHTML = `
+          <div style="padding:18px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
+              <div style="display:flex; align-items:center; gap:9px;">
+                <span style="width:38px; height:38px; border-radius:11px; background:#eff6ff; color:#1d4ed8; display:inline-flex; align-items:center; justify-content:center; font-size:1.15rem; flex-shrink:0;">🏦</span>
+                <div>
+                  <div style="font-size:1.02rem; font-weight:900; color:var(--text);">Medios de pago</div>
+                  <div style="font-size:0.76rem; font-weight:800; color:var(--muted);">${esc(STATE.nodo?.nombre_marca || 'Tienda')}</div>
+                </div>
+              </div>
+              <button type="button" onclick="cerrarModalPagoTransferenciaRapido()" aria-label="Cerrar"
+                style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+            </div>
+
+            <div style="background:#eff6ff; border:1.5px solid #60a5fa; border-radius:14px; padding:13px 14px; margin-bottom:11px;">
+              <div style="font-size:0.73rem; font-weight:900; color:#1d4ed8; text-transform:uppercase;">🏦 Transferencia Bancaria</div>
+              <div style="font-size:1.14rem; font-weight:900; color:#0f172a; margin:4px 0 2px;">Alias: <span data-testid="alias-oficial-texto">${esc(bco.alias)}</span></div>
+              <div style="font-size:0.79rem; color:#334155; font-weight:700;">Titular: <strong>${esc(bco.titular)}</strong> · ${esc(bco.banco)}</div>
+              <div style="font-size:0.76rem; color:#475569; font-weight:700; margin-top:2px;">CBU: <span style="font-family:monospace;">${esc(bco.cbu)}</span></div>
+              <div style="display:flex; gap:8px; margin-top:10px;">
+                <button type="button" onclick="copiarDatoBancarioTienda(this, '${esc(bco.alias)}', '✅ Alias copiado')"
+                  style="flex:1; padding:8px 10px; border-radius:9px; border:none; background:#2563eb; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.8rem; cursor:pointer;">
+                  📋 Copiar Alias
+                </button>
+                <button type="button" onclick="copiarDatoBancarioTienda(this, '${esc(bco.cbu)}', '✅ CBU copiado')"
+                  style="flex:1; padding:8px 10px; border-radius:9px; border:1px solid #93c5fd; background:#ffffff; color:#1d4ed8; font-family:inherit; font-weight:900; font-size:0.8rem; cursor:pointer;">
+                  📋 Copiar CBU
+                </button>
+              </div>
+            </div>
+
+            ${admiteEfvo ? `
+              <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:10px 13px; margin-bottom:11px; font-size:0.82rem; font-weight:800; color:var(--text);">
+                💵 <strong>Efectivo al recibir o retirar:</strong> habilitado en esta tienda al momento de la entrega.
+              </div>
+            ` : ''}
+
+            <button type="button" onclick="cerrarModalPagoTransferenciaRapido(); accionBotonSeguirMiPedido();"
+              style="width:100%; min-height:42px; padding:9px 12px; border-radius:11px; border:1.5px solid var(--brand-border); background:var(--card); color:var(--brand-dark); font-family:inherit; font-size:0.84rem; font-weight:900; cursor:pointer;">
+              📦 Ya hice un pedido · Informar mi transferencia →
+            </button>
+          </div>
+        `;
+      }
+
+      modal.style.display = 'flex';
+      modal.classList.add('open');
+    }
+
+    function cerrarModalPagoTransferenciaRapido() {
+      const modal = document.getElementById('pago-rapido-tienda-modal');
+      if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('open');
+      }
+    }
+
     async function refrescarBannerPedidosRecientes() {
-      const banner = document.getElementById('mis-pedidos-recientes-banner');
       const liveDot = document.getElementById('bnav-pedido-dot');
-      if (!banner) return;
       const guardados = obtenerPedidosRecientesLocal();
       if (guardados.length === 0) {
-        banner.style.display = 'none';
+        STATE.pedidoActivoBannerData = null;
         if (liveDot) liveDot.style.display = 'none';
+        renderizarSlotCompactoPagoPedido();
         return;
       }
       let data = null;
@@ -6165,9 +6578,10 @@
           localStorage.setItem(_storageKeyPedidosVecino(), JSON.stringify(filtrados));
         } catch (_) {}
       }
-      if (!data) {
-        banner.style.display = 'none';
+      if (!data || data.seguimiento?.anulado || Number(data.seguimiento?.hito_actual || 1) >= 6) {
+        STATE.pedidoActivoBannerData = null;
         if (liveDot) liveDot.style.display = 'none';
+        renderizarSlotCompactoPagoPedido();
         return;
       }
       try {
@@ -6179,61 +6593,12 @@
             nombre_completo: data.identidad_vecino.nombre_completo || ''
           });
         }
-        const seg = data.seguimiento;
-        const ped = data.pedido;
-        if (seg.anulado || Number(seg.hito_actual || 1) >= 6) {
-          banner.style.display = 'none';
-          if (liveDot) liveDot.style.display = 'none';
-          return;
-        }
+        STATE.pedidoActivoBannerData = data;
         if (liveDot) liveDot.style.display = 'block';
-        const pasoActual = (seg.pasos || []).find(p => p.es_actual) || (seg.pasos || [])[0] || {};
-        const esPendTransf = !ped.pago_confirmado && ped.medio_pago === 'TRANSFERENCIA';
-        const reclamoBanner = Boolean(ped.reclamo_pago_no_recibido);
-        const yaInformoBanner = Number(ped.monto_declarado_cliente || 0) > 0;
-        const bcoBanner = resolverDatosBancariosOficialesTienda(data.nodo || STATE.nodo);
-        const montoPendBanner = ped.saldo_pendiente_acreditar !== undefined ? Number(ped.saldo_pendiente_acreditar || 0) : Number(ped.total_vecino || 0);
-
-        banner.style.display = 'flex';
-        banner.style.borderColor = reclamoBanner ? '#ef4444' : (esPendTransf && !yaInformoBanner ? '#60a5fa' : '');
-        banner.style.background = reclamoBanner ? '#fef2f2' : (esPendTransf && !yaInformoBanner ? '#eff6ff' : '');
-        banner.innerHTML = `
-          <div style="display:flex; align-items:center; gap:11px; min-width:0;">
-            <div style="width:40px; height:40px; border-radius:12px; background:${reclamoBanner ? '#fee2e2' : 'var(--brand-light)'}; border:1px solid ${reclamoBanner ? '#fca5a5' : 'var(--brand-border)'}; display:flex; align-items:center; justify-content:center; font-size:1.25rem; flex-shrink:0;">
-              ${reclamoBanner ? '⚠️' : (esPendTransf && !yaInformoBanner ? '🏦' : esc(pasoActual.icono || '📦'))}
-            </div>
-            <div style="min-width:0;">
-              <div style="font-size:0.74rem; font-weight:800; color:${reclamoBanner ? '#b91c1c' : 'var(--brand-dark)'}; text-transform:uppercase; letter-spacing:0.02em;">
-                ${reclamoBanner
-                  ? `Revisar transferencia · Pedido #${esc(ped.codigo_pedido)}`
-                  : (esPendTransf && !yaInformoBanner
-                      ? `Pedido #${esc(ped.codigo_pedido)} · Pendiente de transferencia (${fmt(montoPendBanner)})`
-                      : `Tu pedido #${esc(ped.codigo_pedido)} · Paso ${Number(seg.paso_actual_orden || 1)} de ${Number(seg.total_pasos || 5)}`)}
-              </div>
-              <div style="font-size:0.93rem; font-weight:900; color:var(--text);">
-                ${reclamoBanner
-                  ? 'Aún no impactó tu pago · Adjuntá el comprobante acá'
-                  : (esPendTransf && !yaInformoBanner
-                      ? `Alias: ${esc(bcoBanner.alias)} (${esc(bcoBanner.banco)})`
-                      : (esPendTransf && yaInformoBanner
-                          ? `🔔 Pago informado (${fmt(ped.monto_declarado_cliente)}) · Verificando banco`
-                          : esc(seg.titulo_estado_actual)))}
-              </div>
-            </div>
-          </div>
-          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-            <button type="button" onclick="abrirSeguimientoPorToken('${esc(ped.tracking_token)}')"
-              style="padding:8px 14px; border-radius:10px; border:none; background:${reclamoBanner ? '#dc2626' : (esPendTransf && !yaInformoBanner ? '#15803d' : 'var(--brand)')}; color:#ffffff; font-family:inherit; font-weight:800; font-size:0.82rem; cursor:pointer; white-space:nowrap;">
-              ${reclamoBanner ? '📎 Subir comprobante →' : (esPendTransf && !yaInformoBanner ? '✅ Pagar / Informar →' : '📍 Ver en vivo →')}
-            </button>
-            <button type="button" title="Ocultar aviso" onclick="descartarBannerPedidoLocal('${esc(ped.tracking_token)}')"
-              style="width:30px; height:30px; border-radius:8px; border:1px solid var(--border); background:#ffffff; color:var(--muted); font-weight:800; cursor:pointer;">
-              &times;
-            </button>
-          </div>
-        `;
+        renderizarSlotCompactoPagoPedido();
       } catch (_) {
-        banner.style.display = 'none';
+        STATE.pedidoActivoBannerData = null;
+        renderizarSlotCompactoPagoPedido();
       }
     }
 
@@ -7636,8 +8001,9 @@
               </div>
               ${waGestorHref ? `
                 <a href="${esc(waGestorHref)}" target="_blank" rel="noopener"
+                  onclick="return onClickCoordinarGestor(event, this.href)"
                   style="padding:6px 10px; border-radius:8px; background:#16a34a; color:#ffffff; font-size:0.76rem; font-weight:900; text-decoration:none; white-space:nowrap;">
-                  💬 WhatsApp
+                  💬 Contacto
                 </a>
               ` : ''}
             </div>

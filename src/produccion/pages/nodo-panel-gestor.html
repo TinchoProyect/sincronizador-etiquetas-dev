@@ -94,6 +94,10 @@
 
     * { box-sizing: border-box; }
 
+    html, body {
+      overflow-x: hidden;
+      max-width: 100%;
+    }
     body {
       margin: 0;
       font-family: var(--font-brand);
@@ -102,12 +106,15 @@
       padding-bottom: 48px;
       -webkit-font-smoothing: antialiased;
     }
+    body.is-home-portada {
+      padding-bottom: 14px;
+    }
 
-    /* Encabezado claro, cálido y austero */
+    /* Encabezado minimalista: marca compacta a la izquierda + menú ☰ a la derecha */
     .top-bar {
       background: var(--surface-header, #fffdfb);
       border-bottom: 1px solid var(--border);
-      padding: 9px 12px;
+      padding: 8px 12px;
       position: sticky;
       top: 0;
       z-index: 50;
@@ -116,10 +123,11 @@
       max-width: 780px;
       margin: 0 auto;
       display: flex;
+      flex-direction: row;
       justify-content: space-between;
       align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
+      flex-wrap: nowrap;
+      gap: 10px;
     }
     .brand-identity {
       display: flex;
@@ -128,23 +136,34 @@
       cursor: pointer;
       text-decoration: none;
       color: inherit;
+      min-width: 0;
+      flex: 1;
+    }
+    .brand-text-col {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
     }
     .brand-identity.logo-includes-text {
-      gap: 6px 12px;
-      flex-wrap: wrap;
+      gap: 10px;
+      flex-wrap: nowrap;
     }
     .brand-identity.logo-includes-text .brand-title {
-      display: none;
+      font-size: 0.78rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--brand-dark);
     }
     .brand-identity.logo-includes-text .brand-subtitle {
-      margin-top: 0;
-      font-size: 0.82rem;
-      font-weight: 800;
-      line-height: 1.25;
+      margin-top: 1px;
+      font-size: 0.76rem;
+      font-weight: 700;
+      line-height: 1.2;
       color: var(--muted);
     }
     .brand-emblem {
-      width: 40px;
+      width: 38px;
       height: 34px;
       display: flex;
       align-items: center;
@@ -152,9 +171,11 @@
       flex-shrink: 0;
     }
     .brand-emblem.has-horizontal-logo {
+      display: block;
       width: auto;
-      height: 44px;
-      max-width: 192px;
+      height: auto;
+      max-width: 152px;
+      flex-shrink: 0;
     }
     .brand-emblem img {
       max-width: 100%;
@@ -162,17 +183,20 @@
       object-fit: contain;
     }
     .brand-emblem.has-horizontal-logo img {
-      height: 44px;
       width: auto;
-      max-width: 192px;
+      height: auto;
+      max-height: 36px;
+      max-width: 152px;
       object-fit: contain;
       display: block;
     }
-    @media (max-width: 480px) {
-      .brand-emblem.has-horizontal-logo,
+    @media (max-width: 420px) {
+      .brand-emblem.has-horizontal-logo {
+        max-width: 140px;
+      }
       .brand-emblem.has-horizontal-logo img {
-        height: 40px;
-        max-width: 170px;
+        max-height: 32px;
+        max-width: 140px;
       }
     }
     .brand-monogram {
@@ -189,133 +213,326 @@
       justify-content: center;
     }
     .brand-title {
-      font-size: 1.08rem;
+      font-size: 1rem;
       font-weight: 900;
       color: var(--text);
       line-height: 1.15;
       letter-spacing: -0.01em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .brand-subtitle {
-      font-size: 0.8rem;
+      font-size: 0.76rem;
       color: var(--muted);
       font-weight: 700;
       margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
-    .top-actions {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-    .btn-top {
-      min-height: 38px;
-      padding: 6px 11px;
-      border-radius: 999px;
-      font-size: 0.84rem;
-      font-weight: 800;
+    .btn-gestor-hamburger {
+      position: relative;
+      width: 42px;
+      height: 42px;
+      min-width: 42px;
+      min-height: 42px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-family: inherit;
-      text-decoration: none;
       cursor: pointer;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      gap: 4px;
-      transition: background 0.15s, border-color 0.15s;
+      padding: 0;
+      flex-shrink: 0;
+      transition: background 0.15s, border-color 0.15s, transform 0.12s;
+      box-shadow: 0 1px 4px rgba(62, 37, 25, 0.04);
     }
-    .btn-top:hover {
+    .btn-gestor-hamburger:hover {
       background: var(--surface-warm);
+      border-color: var(--brand-border);
     }
-    .btn-top.brand {
-      background: var(--brand);
-      border-color: var(--brand);
-      color: #ffffff;
-    }
-    .btn-top.brand:hover {
-      background: var(--brand-dark);
+    .btn-gestor-hamburger:active {
+      transform: scale(0.96);
     }
 
-    .container {
-      max-width: 820px;
-      margin: 0 auto;
-      padding: 13px 12px 26px;
+    /* Drawer lateral derecho del Gestor (Menú ☰) */
+    .gestor-drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(37, 19, 11, 0.46);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      z-index: 3890;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
     }
-
-    /* Tablero Principal Austero */
-    .board-intro {
-      font-size: 0.92rem;
+    .gestor-drawer-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .gestor-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: min(88vw, 344px);
+      height: 100vh;
+      height: 100dvh;
+      background: var(--bg);
       color: var(--text);
-      font-weight: 800;
-      margin: 0 0 10px 2px;
-    }
-    .blocks-list {
+      z-index: 3900;
+      transform: translateX(104%);
+      transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      box-shadow: -14px 0 36px rgba(37, 19, 11, 0.22);
+      border-left: 1px solid var(--border);
+      overflow: hidden;
     }
-    .block-btn {
-      width: 100%;
-      min-height: 54px;
-      text-align: left;
+    .gestor-drawer.open {
+      transform: translateX(0);
+    }
+    .gestor-drawer-head {
+      padding: 14px 15px 12px;
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 13px;
-      padding: 10px 12px;
-      cursor: pointer;
-      font-family: inherit;
-      color: var(--text);
+      border-bottom: 1px solid var(--border);
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      box-shadow: 0 2px 6px rgba(62, 37, 25, 0.03);
-      transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      flex-shrink: 0;
     }
-    .block-btn:hover, .block-btn:active {
-      border-color: var(--brand-border);
-      box-shadow: 0 3px 10px rgba(62, 37, 25, 0.06);
-      transform: translateY(-1px);
-    }
-    .block-left {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-    }
-    .block-num {
-      width: 32px;
-      height: 32px;
-      border-radius: 9px;
-      background: var(--brand-soft);
-      color: var(--brand-dark);
+    .gestor-drawer-close {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface-warm);
+      color: var(--text);
+      font-size: 0.96rem;
       font-weight: 900;
-      font-size: 0.92rem;
-      display: flex;
+      cursor: pointer;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
     }
-    .block-title {
-      font-size: 0.98rem;
+    .gestor-drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 14px calc(22px + env(safe-area-inset-bottom, 0px));
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .gdrawer-group-title {
+      font-size: 0.72rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin: 0 0 7px 4px;
+    }
+    .gdrawer-group-list {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .gdrawer-item {
+      width: 100%;
+      min-height: 48px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
+      text-align: left;
+      text-decoration: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      transition: background 0.15s, border-color 0.15s;
+      box-shadow: 0 1px 4px rgba(62, 37, 25, 0.025);
+    }
+    .gdrawer-item:hover {
+      background: var(--surface-warm);
+      border-color: var(--brand-border);
+    }
+    .gdrawer-item-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      flex: 1;
+    }
+    .gdrawer-item-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--brand-soft);
+      color: var(--brand-dark);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .gdrawer-item-title {
+      font-size: 0.88rem;
       font-weight: 900;
       color: var(--text);
       line-height: 1.22;
     }
-    .block-meta {
-      font-size: 0.82rem;
-      color: var(--muted);
+    .gdrawer-item-sub {
+      font-size: 0.75rem;
       font-weight: 700;
-      margin-top: 2px;
-      line-height: 1.3;
-    }
-    .block-arrow {
-      font-size: 1.25rem;
       color: var(--muted);
-      font-weight: 800;
+      margin-top: 2px;
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .gdrawer-item-chevron {
+      font-size: 1.15rem;
+      font-weight: 900;
+      color: var(--brand-dark);
       flex-shrink: 0;
       line-height: 1;
+    }
+
+    .container {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 14px 12px 24px;
+    }
+    body.is-home-portada .container {
+      padding: 14px 12px 12px;
+    }
+
+    /* Portada Principal: Grilla 2x2 de Cuadrados Limpios */
+    .gestor-home-grid-2x2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .gestor-square-card {
+      width: 100%;
+      aspect-ratio: 1 / 0.96;
+      min-height: 150px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 18px;
+      padding: 15px 14px;
+      cursor: pointer;
+      font-family: inherit;
+      color: var(--text);
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 10px;
+      box-shadow: 0 3px 12px rgba(62, 37, 25, 0.04);
+      transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    @media (min-width: 600px) {
+      .gestor-square-card {
+        aspect-ratio: auto;
+        min-height: 162px;
+        padding: 18px 18px;
+      }
+    }
+    .gestor-square-card:hover,
+    .gestor-square-card:active {
+      border-color: var(--brand);
+      box-shadow: 0 6px 18px rgba(62, 37, 25, 0.08);
+      transform: translateY(-1px);
+    }
+    .gestor-square-card.has-alert {
+      border-color: #ef4444;
+      background: linear-gradient(180deg, #fffafa 0%, #ffffff 55%);
+    }
+    .sq-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+    }
+    .sq-card-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 13px;
+      background: var(--brand-soft);
+      border: 1px solid var(--brand-border);
+      color: var(--brand-dark);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.28rem;
+      flex-shrink: 0;
+    }
+    .sq-card-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 0.69rem;
+      font-weight: 900;
+      background: var(--surface-warm);
+      color: var(--brand-dark);
+      border: 1px solid var(--border);
+      white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sq-card-badge.alert {
+      background: #fef2f2;
+      color: #b91c1c;
+      border-color: #fca5a5;
+    }
+    .sq-card-badge.warn {
+      background: #fffbeb;
+      color: #92400e;
+      border-color: #fcd34d;
+    }
+    .sq-card-badge.ok {
+      background: var(--ok-soft);
+      color: var(--ok);
+      border-color: var(--ok-border);
+    }
+    .sq-card-body {
+      min-width: 0;
+      width: 100%;
+    }
+    .sq-card-title {
+      font-size: 1rem;
+      font-weight: 900;
+      color: var(--text);
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+    }
+    .sq-card-meta {
+      font-size: 0.77rem;
+      color: var(--muted);
+      font-weight: 700;
+      margin-top: 4px;
+      line-height: 1.28;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
 
     /* Cabecera de Navegación Interna al abrir un Bloque */
@@ -1086,6 +1303,10 @@
 
     /* === Escala Móvil Rebalanceada (Estándar limpio 14.5px) === */
     html { font-size: 14.5px; }
+    html, body {
+      overflow-x: hidden;
+      max-width: 100%;
+    }
     body { font-size: 14.5px; line-height: 1.42; }
     .cta-difusion-hero {
       width: 100%;
@@ -1644,17 +1865,6 @@
     }
 
     @media (max-width: 640px) {
-      .top-inner {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-      .top-actions {
-        width: 100%;
-      }
-      .btn-top {
-        flex: 1;
-        justify-content: center;
-      }
       .oferta-grid {
         grid-template-columns: 1fr 1fr;
       }
@@ -1667,34 +1877,37 @@
     }
   </style>
 </head>
-<body>
+<body class="is-home-portada">
 
-  <header class="top-bar">
+  <header class="top-bar" data-testid="gestor-header-minimal">
     <div class="top-inner">
-      <div class="brand-identity" onclick="volverAlTableroGestor()" title="Volver al tablero principal">
+      <div class="brand-identity" onclick="volverAlTableroGestor()" title="Volver al inicio">
         <div class="brand-emblem" id="gestor-logo-box"></div>
-        <div>
+        <div class="brand-text-col">
           <div class="brand-title" id="gestor-nodo-title">Cargando...</div>
           <div class="brand-subtitle" id="gestor-nodo-subtitle">Gestión comercial</div>
         </div>
       </div>
 
-      <div class="top-actions">
-        <a id="btn-abrir-tienda" href="#" target="_blank" class="btn-top">
-          🏪 Ver Tienda
-        </a>
-        <button type="button" class="btn-top brand" onclick="abrirModalDifusionTienda()">
-          📣 Difundir Tienda
-        </button>
-        <button type="button" id="btn-top-copiar-link-tienda" class="btn-top" onclick="copiarLinkTiendaVecinos()">
-          🔗 Copiar Link
-        </button>
-        <button type="button" id="btn-top-pwa-gestor" class="btn-top" style="display:none;" onclick="instalarAccesoDirectoGestor()" title="Crear acceso directo en mi celular">
-          📲 Acceso directo
-        </button>
-      </div>
+      <button type="button" id="btn-gestor-menu" data-testid="btn-gestor-menu-hamburguesa" class="btn-gestor-hamburger" aria-label="Abrir menú de gestión" title="Menú de gestión y tienda" onclick="abrirMenuGestor()">
+        <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="3.5" y1="6.5" x2="20.5" y2="6.5"></line>
+          <line x1="3.5" y1="12" x2="20.5" y2="12"></line>
+          <line x1="3.5" y1="17.5" x2="20.5" y2="17.5"></line>
+        </svg>
+      </button>
     </div>
   </header>
+
+  <!-- MENÚ DESPLEGABLE SUPERIOR DERECHO (☰) -->
+  <div id="gestor-drawer-backdrop" class="gestor-drawer-backdrop" onclick="cerrarMenuGestor()"></div>
+  <aside id="gestor-drawer" data-testid="drawer-gestor-menu" class="gestor-drawer" aria-label="Menú de gestión y difusión" aria-hidden="true">
+    <div class="gestor-drawer-head">
+      <div id="gestor-drawer-brand" style="display:flex; align-items:center; gap:9px; min-width:0; flex:1;"></div>
+      <button type="button" class="gestor-drawer-close" aria-label="Cerrar menú" onclick="cerrarMenuGestor()">✕</button>
+    </div>
+    <div id="gestor-drawer-body" class="gestor-drawer-body"></div>
+  </aside>
 
   <main class="container">
     <div id="gestor-main-view"></div>
@@ -1813,33 +2026,33 @@
       const esEc = esPerfilEcommerceGestor(n);
       const mod = obtenerModulosActivosGestor(n);
       const mapa = esEc ? {
-        subtitulo_cabecera: '🚚 Envíos a todo el país · Despacho directo',
-        btn_copiar_link: '🔗 Compartir link de mi tienda',
-        bloque_3_titulo: 'Envíos Nacionales y Despacho',
-        bloque_3_heading: '3. Envíos Nacionales y Despacho',
-        bloque_4_titulo: 'Ventas y Envíos',
-        bloque_4_heading: '4. Ventas y Envíos',
-        bloque_5_titulo: 'Estado de Cuenta Operativo',
-        bloque_5_heading: '5. Estado de Cuenta Operativo',
-        bloque_6_titulo: 'Liquidaciones y Ganancias',
-        bloque_6_heading: '6. Liquidaciones y Ganancias',
-        bloque_7_titulo: 'Clientes de mi Tienda',
-        bloque_7_heading: '7. Clientes de mi Tienda',
+        subtitulo_cabecera: 'Envíos a todo el país',
+        btn_copiar_link: 'Compartir link',
+        bloque_3_titulo: 'Envíos nacionales y despachos',
+        bloque_3_heading: 'Envíos nacionales y despachos',
+        bloque_4_titulo: 'Ventas y envíos',
+        bloque_4_heading: 'Ventas y envíos',
+        bloque_5_titulo: 'Estado de cuenta operativo',
+        bloque_5_heading: 'Estado de cuenta operativo',
+        bloque_6_titulo: 'Liquidaciones y ganancias',
+        bloque_6_heading: 'Liquidaciones y ganancias',
+        bloque_7_titulo: 'Clientes de mi tienda',
+        bloque_7_heading: 'Clientes de mi tienda',
         comprador_singular: 'cliente',
         comprador_plural: 'clientes'
       } : {
         subtitulo_cabecera: '',
-        btn_copiar_link: '🔗 Copiar Link',
-        bloque_3_titulo: 'Días de Entrega, Corte y Modalidades',
-        bloque_3_heading: '3. Días de Entrega, Corte y Envío Barrial',
-        bloque_4_titulo: mod.hoja_de_ruta ? 'Pedidos de Vecinos' : 'Pedidos de Clientes',
-        bloque_4_heading: mod.hoja_de_ruta ? '4. Pedidos de Vecinos' : '4. Pedidos de Clientes',
-        bloque_5_titulo: 'Cuentas Corrientes',
-        bloque_5_heading: '5. Cuentas Corrientes',
-        bloque_6_titulo: 'Liquidación',
-        bloque_6_heading: '6. Liquidación',
-        bloque_7_titulo: 'Compradores registrados',
-        bloque_7_heading: '7. Compradores registrados',
+        btn_copiar_link: 'Compartir link',
+        bloque_3_titulo: 'Entregas y medios de pago',
+        bloque_3_heading: 'Días de entrega, corte y medios de pago',
+        bloque_4_titulo: mod.hoja_de_ruta ? 'Pedidos y entregas' : 'Pedidos de clientes',
+        bloque_4_heading: mod.hoja_de_ruta ? 'Pedidos y entregas' : 'Pedidos de clientes',
+        bloque_5_titulo: 'Estado de cuenta operativo',
+        bloque_5_heading: 'Estado de cuenta operativo',
+        bloque_6_titulo: 'Liquidaciones y ganancias',
+        bloque_6_heading: 'Liquidaciones y ganancias',
+        bloque_7_titulo: 'Clientes de mi tienda',
+        bloque_7_heading: 'Clientes de mi tienda',
         comprador_singular: 'vecino',
         comprador_plural: 'vecinos'
       };
@@ -2000,9 +2213,9 @@
       if (btnBoard) {
         btnBoard.style.display = ocultar ? 'none' : 'flex';
       }
-      const btnTop = document.getElementById('btn-top-pwa-gestor');
-      if (btnTop) {
-        btnTop.style.display = (ocultar || !GSTATE.nodo) ? 'none' : 'inline-flex';
+      const btnMenuPwa = document.getElementById('btn-menu-pwa-gestor');
+      if (btnMenuPwa) {
+        btnMenuPwa.style.display = (ocultar || !GSTATE.nodo) ? 'none' : 'flex';
       }
     }
     window.actualizarVisibilidadBotonPwaGestor = actualizarVisibilidadBotonPwaGestor;
@@ -2416,27 +2629,19 @@
       const logoIncluyeTextoHdr = Boolean(logoHorizHdr && GSTATE.nodo.tema_visual?.logo_incluye_texto);
 
       const titleEl = document.getElementById('gestor-nodo-title');
-      if (titleEl) titleEl.textContent = `Gestión ${nombreMarcaHdr}`;
+      if (titleEl) {
+        titleEl.textContent = logoIncluyeTextoHdr ? 'Gestión' : `${nombreMarcaHdr} · Gestión`;
+      }
 
       const subEl = document.getElementById('gestor-nodo-subtitle');
       if (subEl) {
         if (esPerfilEcommerceGestor(GSTATE.nodo)) {
-          const partesEc = [];
-          if (logoIncluyeTextoHdr) partesEc.push(`Gestión ${nombreMarcaHdr}`);
-          partesEc.push(tMarca(GSTATE.nodo, 'subtitulo_cabecera'));
-          subEl.textContent = partesEc.join(' · ');
+          subEl.textContent = tMarca(GSTATE.nodo, 'subtitulo_cabecera') || 'Envíos a todo el país';
         } else {
-          const partes = [logoIncluyeTextoHdr ? `Gestión ${nombreMarcaHdr}` : 'Gestión comercial'];
-          if (GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro) {
-            partes.push(`📍 ${GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro}`);
-          }
-          subEl.textContent = partes.join(' · ');
+          subEl.textContent = (GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro)
+            ? `📍 ${GSTATE.nodo.barrio_zona || GSTATE.nodo.direccion_retiro}`
+            : 'Gestión comercial';
         }
-      }
-
-      const btnCopyTop = document.getElementById('btn-top-copiar-link-tienda');
-      if (btnCopyTop) {
-        btnCopyTop.textContent = tMarca(GSTATE.nodo, 'btn_copiar_link');
       }
 
       const logoBox = document.getElementById('gestor-logo-box');
@@ -2455,12 +2660,195 @@
 
       sincronizarTituloYMetaPwaGestor(nombreMarcaHdr);
 
-      const btnTienda = document.getElementById('btn-abrir-tienda');
-      if (btnTienda) btnTienda.href = `/tienda/${encodeURIComponent(GSTATE.slug)}`;
-
       renderVistaGestor();
+      renderizarMenuGestor();
       actualizarVisibilidadBotonPwaGestor();
       verificarEstadoRealAccesoDirectoGestor();
+    }
+
+    function abrirMenuGestor() {
+      renderizarMenuGestor();
+      const backdrop = document.getElementById('gestor-drawer-backdrop');
+      const drawer = document.getElementById('gestor-drawer');
+      if (backdrop) backdrop.classList.add('open');
+      if (drawer) {
+        drawer.classList.add('open');
+        drawer.setAttribute('aria-hidden', 'false');
+      }
+      document.body.style.overflow = 'hidden';
+    }
+
+    function cerrarMenuGestor() {
+      const backdrop = document.getElementById('gestor-drawer-backdrop');
+      const drawer = document.getElementById('gestor-drawer');
+      if (backdrop) backdrop.classList.remove('open');
+      if (drawer) {
+        drawer.classList.remove('open');
+        drawer.setAttribute('aria-hidden', 'true');
+      }
+      document.body.style.overflow = '';
+    }
+
+    function abrirSeccionDesdeMenuGestor(seccion) {
+      cerrarMenuGestor();
+      abrirSeccionGestor(seccion);
+    }
+
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape' && document.getElementById('gestor-drawer')?.classList.contains('open')) {
+        cerrarMenuGestor();
+      }
+    });
+
+    function renderizarMenuGestor() {
+      const brandEl = document.getElementById('gestor-drawer-brand');
+      const bodyEl = document.getElementById('gestor-drawer-body');
+      if (!brandEl || !bodyEl || !GSTATE.nodo) return;
+
+      const esEc = esPerfilEcommerceGestor();
+      const mod = obtenerModulosActivosGestor();
+      const nombreMarca = GSTATE.nodo.nombre_marca || 'Mi Tienda';
+      const iconoUrl = obtenerLogoIconoGestor(GSTATE.nodo);
+      const siglas = String(nombreMarca).split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
+
+      brandEl.innerHTML = `
+        ${iconoUrl
+          ? `<img src="${esc(iconoUrl)}" alt="${esc(nombreMarca)}" style="width:36px; height:36px; border-radius:10px; object-fit:contain; border:1px solid var(--border); background:#ffffff; flex-shrink:0;" />`
+          : `<div class="brand-monogram" style="flex-shrink:0;">${esc(siglas)}</div>`
+        }
+        <div style="min-width:0;">
+          <div style="font-size:0.94rem; font-weight:900; color:var(--text); line-height:1.15; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${esc(nombreMarca)} · Gestión</div>
+          <div style="font-size:0.74rem; font-weight:700; color:var(--muted); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Menú de secciones y difusión</div>
+        </div>
+      `;
+
+      const cfgPaq = GSTATE.nodo.config_paqueteria || {};
+      const proxTxt = GSTATE.proximaEntrega?.asignada?.label_completo || 'Configurar entrega y pagos';
+      const subLogistica = esEc
+        ? (cfgPaq.sla_despacho_label || 'Cobertura postal, tarifas y pagos')
+        : proxTxt;
+
+      const saldoNodo = Number(GSTATE.nodo.saldo_cuenta_corriente || 0);
+      const subCtaCte = `Saldo operativo: ${saldoNodo < 0 ? '-' + fmt(Math.abs(saldoNodo)) : fmt(saldoNodo)}`;
+
+      const pedidosActivos = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO');
+      const gananciaAcumulada = pedidosActivos.reduce((acc, p) => acc + Number(p.ganancia_total_gestor || 0), 0);
+      const canastos = (GSTATE.liquidacionTablero?.lotes || []).filter(c => Number(c.nodo_id) === Number(GSTATE.nodo?.id));
+      const lotesAbiertos = canastos.filter(c => !c.liquidacion_cerrada).length;
+      const subLiq = esEc
+        ? (pedidosActivos.length === 0 ? 'Detalle de liquidaciones y retenciones' : `Proyectado activo: +${fmt(gananciaAcumulada)}`)
+        : (lotesAbiertos > 0 ? `${lotesAbiertos} lote${lotesAbiertos === 1 ? '' : 's'} en curso para conciliar` : 'Resumen de lotes y ganancias');
+
+      const mostrarHojaDeRuta = Boolean(mod.hoja_de_ruta && !esEc);
+      const enviosListosReparto = mostrarHojaDeRuta ? pedidosActivos.filter(p => esPedidoEnHojaRutaActiva(p)) : [];
+      const mostrarPwa = !esModoPwaInstaladaGestor();
+      const tiendaHref = `/tienda/${encodeURIComponent(GSTATE.slug)}`;
+
+      bodyEl.innerHTML = `
+        <div>
+          <div class="gdrawer-group-title">Gestión y Finanzas</div>
+          <div class="gdrawer-group-list">
+            <button type="button" class="gdrawer-item" data-testid="menu-item-logistica" onclick="abrirSeccionDesdeMenuGestor('logistica')">
+              <div class="gdrawer-item-left">
+                <span class="gdrawer-item-icon">🚚</span>
+                <div style="min-width:0;">
+                  <div class="gdrawer-item-title">${esc(tMarca(GSTATE.nodo, 'bloque_3_titulo'))}</div>
+                  <div class="gdrawer-item-sub">${esc(subLogistica)}</div>
+                </div>
+              </div>
+              <span class="gdrawer-item-chevron">›</span>
+            </button>
+
+            ${mostrarHojaDeRuta ? `
+              <button type="button" class="gdrawer-item" data-testid="menu-item-reparto" onclick="abrirSeccionDesdeMenuGestor('reparto')">
+                <div class="gdrawer-item-left">
+                  <span class="gdrawer-item-icon">🚗</span>
+                  <div style="min-width:0;">
+                    <div class="gdrawer-item-title">Modo Reparto / Hoja de ruta</div>
+                    <div class="gdrawer-item-sub">${enviosListosReparto.length > 0 ? `${enviosListosReparto.length} entrega${enviosListosReparto.length === 1 ? '' : 's'} en ruta` : 'Ordenar paradas y conducción nocturna'}</div>
+                  </div>
+                </div>
+                <span class="gdrawer-item-chevron">›</span>
+              </button>
+            ` : ''}
+
+            <button type="button" class="gdrawer-item" data-testid="menu-item-ctacte" onclick="abrirSeccionDesdeMenuGestor('ctacte')">
+              <div class="gdrawer-item-left">
+                <span class="gdrawer-item-icon">📒</span>
+                <div style="min-width:0;">
+                  <div class="gdrawer-item-title">Estado de cuenta operativo</div>
+                  <div class="gdrawer-item-sub">${esc(subCtaCte)}</div>
+                </div>
+              </div>
+              <span class="gdrawer-item-chevron">›</span>
+            </button>
+
+            <button type="button" class="gdrawer-item" data-testid="menu-item-liquidacion" onclick="abrirSeccionDesdeMenuGestor('liquidacion')">
+              <div class="gdrawer-item-left">
+                <span class="gdrawer-item-icon">💰</span>
+                <div style="min-width:0;">
+                  <div class="gdrawer-item-title">Liquidaciones y ganancias</div>
+                  <div class="gdrawer-item-sub">${esc(subLiq)}</div>
+                </div>
+              </div>
+              <span class="gdrawer-item-chevron">›</span>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div class="gdrawer-group-title">Mi Tienda y Difusión</div>
+          <div class="gdrawer-group-list">
+            <a id="btn-abrir-tienda" data-testid="menu-item-ver-tienda" href="${esc(tiendaHref)}" target="_blank" rel="noopener" class="gdrawer-item" onclick="cerrarMenuGestor()">
+              <div class="gdrawer-item-left">
+                <span class="gdrawer-item-icon">🏪</span>
+                <div style="min-width:0;">
+                  <div class="gdrawer-item-title">Ver mi tienda</div>
+                  <div class="gdrawer-item-sub">Abrir catálogo público en una pestaña</div>
+                </div>
+              </div>
+              <span class="gdrawer-item-chevron">↗</span>
+            </a>
+
+            <button type="button" class="gdrawer-item" data-testid="menu-item-difundir" onclick="cerrarMenuGestor(); abrirModalDifusionTienda();">
+              <div class="gdrawer-item-left">
+                <span class="gdrawer-item-icon">📣</span>
+                <div style="min-width:0;">
+                  <div class="gdrawer-item-title">Difundir tienda</div>
+                  <div class="gdrawer-item-sub">QR de vidriera y mensajes listos</div>
+                </div>
+              </div>
+              <span class="gdrawer-item-chevron">›</span>
+            </button>
+
+            <button type="button" class="gdrawer-item" data-testid="menu-item-compartir-link" onclick="cerrarMenuGestor(); copiarLinkTiendaVecinos();">
+              <div class="gdrawer-item-left">
+                <span class="gdrawer-item-icon">🔗</span>
+                <div style="min-width:0;">
+                  <div class="gdrawer-item-title">Compartir link</div>
+                  <div class="gdrawer-item-sub">Copiar enlace directo de tu tienda</div>
+                </div>
+              </div>
+              <span class="gdrawer-item-chevron">📋</span>
+            </button>
+
+            <button type="button" id="btn-menu-pwa-gestor" data-testid="menu-item-pwa" class="gdrawer-item" style="display:${mostrarPwa ? 'flex' : 'none'};" onclick="cerrarMenuGestor(); instalarAccesoDirectoGestor();">
+              <div class="gdrawer-item-left">
+                <span class="gdrawer-item-icon">📲</span>
+                <div style="min-width:0;">
+                  <div class="gdrawer-item-title">Crear acceso directo en celular</div>
+                  <div class="gdrawer-item-sub">Guardar ícono de Gestión en inicio</div>
+                </div>
+              </div>
+              <span class="gdrawer-item-chevron">+</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    function irAVistaGestor(seccion) {
+      abrirSeccionGestor(seccion);
     }
 
     function abrirSeccionGestor(seccion) {
@@ -2504,8 +2892,8 @@
     function envolverSeccionInterna(tituloSeccion, contenidoHtml) {
       return `
         <div class="section-nav">
-          <button type="button" class="btn-back" onclick="volverAlTableroGestor()">
-            ← Volver al tablero
+          <button type="button" class="btn-back" data-testid="btn-volver-inicio-gestor" onclick="volverAlTableroGestor()">
+            ← Volver al inicio
           </button>
         </div>
         <h2 class="section-heading">${esc(tituloSeccion)}</h2>
@@ -2519,12 +2907,16 @@
       const mod = obtenerModulosActivosGestor();
       const esEc = esPerfilEcommerceGestor();
 
+      const esInicio = !['reparto', 'ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(GSTATE.vista) ||
+        (GSTATE.vista === 'reparto' && (!mod.hoja_de_ruta || esEc));
+      document.body.classList.toggle('is-home-portada', esInicio);
+
       if (GSTATE.vista === 'reparto' && mod.hoja_de_ruta && !esEc) {
         box.innerHTML = envolverSeccionInterna('🚗 Modo Reparto / Hoja de Ruta', renderSeccionReparto());
       } else if (GSTATE.vista === 'ofertas') {
-        box.innerHTML = envolverSeccionInterna('1. Mi Oferta y Márgenes', renderSeccionOfertas());
+        box.innerHTML = envolverSeccionInterna('Mi oferta y márgenes', renderSeccionOfertas());
       } else if (GSTATE.vista === 'propuestas') {
-        box.innerHTML = envolverSeccionInterna('2. Pedir Nueva Fracción', renderSeccionPropuestas());
+        box.innerHTML = envolverSeccionInterna('Pedir fracción', renderSeccionPropuestas());
       } else if (GSTATE.vista === 'logistica') {
         box.innerHTML = envolverSeccionInterna(tMarca(GSTATE.nodo, 'bloque_3_heading'), renderSeccionLogistica());
       } else if (GSTATE.vista === 'pedidos') {
@@ -2545,28 +2937,15 @@
     }
 
     // -------------------------------------------------------------------------
-    // PANTALLA PRINCIPAL AUSTERA: TABLERO DE BLOQUES
+    // PORTADA PRINCIPAL LIMPIA: SOLO 4 CUADRADOS EN GRILLA 2x2
     // -------------------------------------------------------------------------
     function renderTableroPrincipal() {
       const esEc = esPerfilEcommerceGestor();
       const mod = obtenerModulosActivosGestor();
-      const cfgPaq = GSTATE.nodo.config_paqueteria || {};
       const publicadas = GSTATE.ofertas.filter(o => o.publicado_tienda).length;
       const totalOfertas = GSTATE.ofertas.length;
+      const porPublicar = Math.max(0, totalOfertas - publicadas);
       const propPendientes = GSTATE.propuestas.filter(p => p.estado !== 'APROBADA').length;
-      const proxTxt = GSTATE.proximaEntrega?.asignada?.label_completo || 'Configurar día y horario';
-      const puedeRetiro = Boolean(mod.retiro_punto && GSTATE.nodo.permitir_retiro_nodo !== false);
-      const puedeReparto = Boolean(mod.reparto_zonal && (GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial ?? false));
-      const puedeEncomienda = Boolean(mod.envio_paqueteria || GSTATE.nodo.permitir_encomienda);
-      const modalidadesTxt = [];
-      if (puedeRetiro) modalidadesTxt.push('🏠 Punto de retiro');
-      if (puedeReparto) modalidadesTxt.push(`🚗 Reparto (${fmt(GSTATE.nodo.cargo_envio_barrial)})`);
-      if (puedeEncomienda) modalidadesTxt.push(esEc ? '📦 Correo Argentino · Andreani' : '📦 Encomienda prevista');
-      const envioTxt = modalidadesTxt.length ? modalidadesTxt.join(' · ') : '⚠️ Sin modalidad activa';
-
-      const metaLogistica = esEc
-        ? `${cfgPaq.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles'} · ${envioTxt}${cfgPaq.envio_gratis_activo && Number(cfgPaq.envio_gratis_desde_monto) > 0 ? ` · Bonificado desde ${fmt(cfgPaq.envio_gratis_desde_monto)}` : ''}`
-        : `${proxTxt} · ${envioTxt}`;
 
       const pedidosActivos = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO');
       const totalPedidos = pedidosActivos.length;
@@ -2576,167 +2955,94 @@
       const listosRecibirLote = !esEc && mod.canasto_consolidado
         ? pedidosActivos.filter(p => Number(p.hito_tracking_actual || 1) === 3 && p.lote_canasto_id && !p.lote_debito_registrado).length
         : 0;
-      const entregadosCant = pedidosActivos.filter(p => Number(p.hito_tracking_actual || 1) >= 6).length;
 
-      const saldoNodo = Number(GSTATE.nodo.saldo_cuenta_corriente || 0);
-      const canastos = (GSTATE.liquidacionTablero?.lotes || []).filter(c => Number(c.nodo_id) === Number(GSTATE.nodo?.id));
-      const lotesAbiertos = canastos.filter(c => !c.liquidacion_cerrada).length;
-      const gananciaAcumulada = pedidosActivos.reduce((acc, p) => acc + Number(p.ganancia_total_gestor || 0), 0);
+      const totClientes = Number(GSTATE.compradoresResumen?.total_compradores || GSTATE.compradores?.length || 0);
+      const actClientes = Number(GSTATE.compradoresResumen?.con_pedido_activo || 0);
+      const recClientes = Number(GSTATE.compradoresResumen?.recurrentes || 0);
 
-      const bloques = [
+      let badgePedidos = totalPedidos > 0 ? `${totalPedidos} activa${totalPedidos === 1 ? '' : 's'}` : 'Al día';
+      let badgePedidosCls = totalPedidos > 0 ? '' : 'ok';
+      let metaPedidos = totalPedidos === 0
+        ? (esEc ? 'Sin ventas activas aún' : 'Sin pedidos activos aún')
+        : (pendCobro > 0
+            ? `${pendCobro} pendiente${pendCobro === 1 ? '' : 's'} de cobro`
+            : `${totalPedidos} con pago verificado`);
+
+      if (pedidosReclamoPago.length > 0) {
+        badgePedidos = `🚨 ${pedidosReclamoPago.length} revisar`;
+        badgePedidosCls = 'alert';
+        metaPedidos = 'Solicitar comprobante de transferencia';
+      } else if (pedidosAvisoCliente.length > 0) {
+        badgePedidos = `🔔 ${pedidosAvisoCliente.length} aviso${pedidosAvisoCliente.length === 1 ? '' : 's'}`;
+        badgePedidosCls = 'warn';
+        metaPedidos = 'Transferencia en verificación bancaria';
+      } else if (listosRecibirLote > 0) {
+        badgePedidos = `📥 ${listosRecibirLote} lote`;
+        badgePedidosCls = 'ok';
+        metaPedidos = `${listosRecibirLote} pedido${listosRecibirLote === 1 ? '' : 's'} listo${listosRecibirLote === 1 ? '' : 's'} para recibir`;
+      }
+
+      const tarjetas2x2 = [
         {
-          num: '1',
           id: 'ofertas',
-          titulo: 'Mi Oferta y Márgenes',
+          icono: '🏷️',
+          titulo: 'Mi oferta y márgenes',
+          badge: totalOfertas > 0 ? `${publicadas}/${totalOfertas}` : '0',
+          badgeCls: publicadas > 0 ? 'ok' : '',
           meta: totalOfertas === 0
             ? 'Sin productos cargados aún'
-            : (totalOfertas > publicadas
-                ? `${publicadas} publicados · ${totalOfertas - publicadas} listo${totalOfertas - publicadas === 1 ? '' : 's'} para definir margen y publicar`
-                : `${publicadas} de ${totalOfertas} productos publicados en tu tienda`)
+            : (porPublicar > 0
+                ? `${publicadas} publicados · ${porPublicar} por publicar`
+                : `${publicadas} productos publicados`),
+          alerta: false
         },
         {
-          num: '2',
           id: 'propuestas',
-          titulo: 'Pedir Nueva Fracción',
+          icono: '⚖️',
+          titulo: 'Pedir fracción',
+          badge: propPendientes > 0 ? `${propPendientes} pend.` : 'Nuevo',
+          badgeCls: propPendientes > 0 ? 'warn' : '',
           meta: propPendientes > 0
             ? `${propPendientes} solicitud${propPendientes === 1 ? '' : 'es'} en cotización`
-            : 'Solicitar nuevos productos o presentaciones'
+            : 'Solicitar nueva presentación',
+          alerta: false
         },
         {
-          num: '3',
-          id: 'logistica',
-          titulo: tMarca(GSTATE.nodo, 'bloque_3_titulo'),
-          meta: metaLogistica
-        },
-        {
-          num: '4',
           id: 'pedidos',
+          icono: '📦',
           titulo: tMarca(GSTATE.nodo, 'bloque_4_titulo'),
-          meta: totalPedidos === 0
-            ? (esEc ? 'Aún no hay ventas registradas' : 'Aún no hay pedidos registrados')
-            : (listosRecibirLote > 0
-                ? `📥 ${listosRecibirLote} pedido${listosRecibirLote === 1 ? '' : 's'} listo${listosRecibirLote === 1 ? '' : 's'} para recibir lote · ${pendCobro} pend. cobro`
-                : `${totalPedidos} ${esEc ? (totalPedidos === 1 ? 'venta' : 'ventas') : (totalPedidos === 1 ? 'pedido' : 'pedidos')} (${entregadosCant} entregado${entregadosCant === 1 ? '' : 's'})${pendCobro > 0 ? ` · ${pendCobro} pend. verificación` : ' · pagos verificados'}`)
+          badge: badgePedidos,
+          badgeCls: badgePedidosCls,
+          meta: metaPedidos,
+          alerta: pedidosReclamoPago.length > 0
         },
         {
-          num: '5',
-          id: 'ctacte',
-          titulo: tMarca(GSTATE.nodo, 'bloque_5_titulo'),
-          meta: `Saldo operativo: ${saldoNodo < 0 ? '-' + fmt(Math.abs(saldoNodo)) : fmt(saldoNodo)}`
-        },
-        {
-          num: '6',
-          id: 'liquidacion',
-          titulo: tMarca(GSTATE.nodo, 'bloque_6_titulo'),
-          meta: esEc
-            ? (totalPedidos === 0 ? 'Sin liquidaciones cerradas aún' : `Ganancia proyectada en órdenes activas: +${fmt(gananciaAcumulada)}`)
-            : (canastos.length === 0
-                ? 'Sin lotes cerrados para liquidar'
-                : (lotesAbiertos > 0 ? `${lotesAbiertos} lote${lotesAbiertos === 1 ? '' : 's'} en curso para conciliar` : `${canastos.length} lote${canastos.length === 1 ? '' : 's'} liquidados`))
-        },
-        {
-          num: '7',
           id: 'compradores',
-          titulo: tMarca(GSTATE.nodo, 'bloque_7_titulo'),
-          meta: (() => {
-            const tot = Number(GSTATE.compradoresResumen?.total_compradores || GSTATE.compradores?.length || 0);
-            const act = Number(GSTATE.compradoresResumen?.con_pedido_activo || 0);
-            const rec = Number(GSTATE.compradoresResumen?.recurrentes || 0);
-            if (tot === 0) return 'Se registran automáticamente con cada compra en tu tienda';
-            const extras = [];
-            if (act > 0) extras.push(`${act} con orden activa`);
-            if (rec > 0) extras.push(`${rec} recurrente${rec === 1 ? '' : 's'}`);
-            return `${tot} ${esEc ? (tot === 1 ? 'cliente' : 'clientes') : (tot === 1 ? 'comprador' : 'compradores')}${extras.length ? ` · ${extras.join(' · ')}` : ''}`;
-          })()
+          icono: '👥',
+          titulo: 'Clientes de mi tienda',
+          badge: `${totClientes}`,
+          badgeCls: actClientes > 0 ? 'ok' : '',
+          meta: totClientes === 0
+            ? 'Se suman con cada compra'
+            : (actClientes > 0
+                ? `${actClientes} con orden activa${recClientes > 0 ? ` · ${recClientes} recurrente${recClientes === 1 ? '' : 's'}` : ''}`
+                : `${totClientes} registrado${totClientes === 1 ? '' : 's'}${recClientes > 0 ? ` · ${recClientes} recurrente${recClientes === 1 ? '' : 's'}` : ''}`),
+          alerta: false
         }
       ];
 
-      const mostrarHojaDeRuta = Boolean(mod.hoja_de_ruta && !esEc);
-      const enviosListosReparto = mostrarHojaDeRuta ? pedidosActivos.filter(p => esPedidoEnHojaRutaActiva(p)) : [];
-      const enviosEnHito3 = mostrarHojaDeRuta ? pedidosActivos.filter(p =>
-        String(p.modalidad_entrega || '').toUpperCase() === 'ENVIO_BARRIAL' &&
-        !p.ausente_pasa_retirar &&
-        Number(p.hito_tracking_actual || 1) === 3 &&
-        p.lote_canasto_id
-      ) : [];
-      const enviosEnCamino = enviosListosReparto.filter(p => Number(p.hito_tracking_actual || 1) === 5).length;
-
-      const slugIconPwa = encodeURIComponent(String(GSTATE.slug || GSTATE.nodo?.slug || '').trim());
-      const mostrarBtnPwa = !esModoPwaInstaladaGestor();
-
       return `
-        <div class="board-intro">
-          Hola ${esc((GSTATE.nodo.gestor_nombre || '').split(' ')[0] || 'Hola')}, elegí qué sección querés gestionar:
-        </div>
-        ${pedidosReclamoPago.length > 0 ? `
-          <div data-testid="banner-reclamo-pago-gestor" style="background:#fef2f2; border:2px solid #ef4444; border-radius:14px; padding:12px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-            <div style="flex:1; min-width:210px;">
-              <div style="font-size:0.78rem; font-weight:900; color:#b91c1c; text-transform:uppercase;">🚨 Comprobante de pago solicitado (${pedidosReclamoPago.length})</div>
-              <div style="font-size:0.86rem; font-weight:700; color:#7f1d1d; margin-top:2px; line-height:1.35;">
-                Aún no impactó en Banco Galicia la transferencia de ${pedidosReclamoPago.map(x => `<strong>#${esc(x.codigo_pedido)} (${esc(x.vecino_nombre)})</strong>`).join(', ')}. Pedile el comprobante para destrabar el armado.
+        <div class="gestor-home-grid-2x2" data-testid="gestor-home-grid-2x2">
+          ${tarjetas2x2.map(c => `
+            <button type="button" class="gestor-square-card${c.alerta ? ' has-alert' : ''}" data-testid="gestor-card-${esc(c.id)}" onclick="abrirSeccionGestor('${esc(c.id)}')">
+              <div class="sq-card-top">
+                <span class="sq-card-icon" aria-hidden="true">${c.icono}</span>
+                ${c.badge ? `<span class="sq-card-badge ${esc(c.badgeCls)}">${esc(c.badge)}</span>` : ''}
               </div>
-            </div>
-            <button type="button" onclick="irAVistaGestor('pedidos')"
-              style="padding:9px 14px; border-radius:10px; border:none; background:#dc2626; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.84rem; cursor:pointer;">
-              Ver y pedir comprobante →
-            </button>
-          </div>
-        ` : (pedidosAvisoCliente.length > 0 ? `
-          <div data-testid="banner-aviso-pago-gestor" style="background:#fffbeb; border:1.5px solid #f59e0b; border-radius:13px; padding:10px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-            <div style="font-size:0.84rem; font-weight:800; color:#92400e;">
-              🔔 ${pedidosAvisoCliente.length} ${pedidosAvisoCliente.length === 1 ? 'cliente informó su transferencia' : 'clientes informaron su transferencia'} · En verificación bancaria
-            </div>
-            <button type="button" onclick="irAVistaGestor('pedidos')"
-              style="padding:6px 12px; border-radius:9px; border:1px solid #f59e0b; background:#ffffff; color:#92400e; font-family:inherit; font-weight:800; font-size:0.8rem; cursor:pointer;">
-              Ver detalle →
-            </button>
-          </div>
-        ` : '')}
-        <button type="button" id="btn-instalar-pwa-gestor" class="cta-pwa-gestor" style="display:${mostrarBtnPwa ? 'flex' : 'none'};" onclick="instalarAccesoDirectoGestor()">
-          <div class="cta-pwa-gestor-left">
-            ${slugIconPwa ? `<img src="/api/produccion/nodos/pwa/${slugIconPwa}/icon-gestor-180.png?v=${encodeURIComponent(obtenerVersionPwaGestor())}" alt="Gestión ${esc(GSTATE.nodo.nombre_marca || '')}" class="cta-pwa-gestor-thumb" />` : '<span style="font-size:1.35rem;">📲</span>'}
-            <div>
-              <div class="cta-pwa-gestor-title">📲 Crear acceso directo en mi celular</div>
-              <div class="cta-pwa-gestor-sub">No instala nada pesado ni ocupa espacio: solo deja el ícono directo en tu pantalla.</div>
-            </div>
-          </div>
-          <span class="cta-pwa-gestor-pill">Agregar</span>
-        </button>
-        <button type="button" class="cta-difusion-hero" onclick="abrirModalDifusionTienda()">
-          <div class="cta-difusion-icon">📣</div>
-          <div class="cta-difusion-body">
-            <div class="cta-difusion-title">${esEc ? 'Compartir Link de mi Tienda Online y Productos' : 'Difundir mi Tienda y Productos por WhatsApp'}</div>
-            <div class="cta-difusion-sub">${esEc ? 'Copiá tu enlace para Instagram, TikTok o WhatsApp en un toque' : 'Compartí tu enlace directo o armá mensajes de difusión en un toque'}</div>
-          </div>
-          <div class="cta-difusion-arrow">›</div>
-        </button>
-        ${(mostrarHojaDeRuta && (puedeReparto || enviosListosReparto.length > 0)) ? `
-          <button type="button" class="cta-reparto-hero" onclick="abrirSeccionGestor('reparto')">
-            <div class="cta-difusion-icon" style="background:rgba(16,185,129,0.22); color:#34d399;">🚗</div>
-            <div class="cta-difusion-body">
-              <div class="cta-difusion-title" style="color:#ffffff;">Modo Reparto / Hoja de Ruta</div>
-              <div class="cta-difusion-sub" style="color:#cbd5e1;">
-                ${enviosListosReparto.length > 0
-                  ? `${enviosListosReparto.length} entrega${enviosListosReparto.length === 1 ? '' : 's'} en ruta${enviosEnCamino > 0 ? ` (${enviosEnCamino} en camino)` : ' listas para salir'} · GPS y Conducción Nocturna`
-                  : (enviosEnHito3.length > 0
-                      ? `📥 ${enviosEnHito3.length} envío${enviosEnHito3.length === 1 ? '' : 's'} listo${enviosEnHito3.length === 1 ? '' : 's'} para recibir lote y armar ruta`
-                      : 'Armá la vuelta, ordená paradas y activá Conducción Nocturna')}
+              <div class="sq-card-body">
+                <div class="sq-card-title">${esc(c.titulo)}</div>
+                <div class="sq-card-meta">${esc(c.meta)}</div>
               </div>
-            </div>
-            <div class="cta-difusion-arrow" style="color:#34d399;">›</div>
-          </button>
-        ` : ''}
-        <div class="blocks-list">
-          ${bloques.map(b => `
-            <button type="button" class="block-btn" onclick="abrirSeccionGestor('${b.id}')">
-              <div class="block-left">
-                <div class="block-num">${b.num}</div>
-                <div>
-                  <div class="block-title">${esc(b.titulo)}</div>
-                  <div class="block-meta">${esc(b.meta)}</div>
-                </div>
-              </div>
-              <div class="block-arrow">›</div>
             </button>
           `).join('')}
         </div>
@@ -5962,7 +6268,16 @@
         </div>
       `;
 
+      const accesoRapidoRepartoHtml = (!esEc && mod.hoja_de_ruta) ? `
+        <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+          <button type="button" class="btn-soft" onclick="abrirSeccionGestor('reparto')" style="border-color:var(--brand-border); color:var(--brand-dark);">
+            🚗 Modo Reparto / Hoja de ruta →
+          </button>
+        </div>
+      ` : '';
+
       return `
+        ${accesoRapidoRepartoHtml}
         ${alertaReclamoSecHtml}
         ${alertaInformadosSecHtml}
         ${alertaConfirmadosPendientesHtml}
