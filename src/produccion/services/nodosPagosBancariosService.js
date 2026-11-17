@@ -293,6 +293,7 @@ async function asegurarEsquemaPagosBancariosNodos(runner = null, opciones = {}) 
                 banco_recaudador = CASE
                     WHEN public.nodos_configuracion_canal.banco_recaudador IS NULL
                       OR public.nodos_configuracion_canal.banco_recaudador ILIKE '%provisori%'
+                      OR public.nodos_configuracion_canal.banco_recaudador ILIKE '%Galicia y Buenos Aires%'
                       OR public.nodos_configuracion_canal.alias_recaudador = 'pago.canasto'
                     THEN EXCLUDED.banco_recaudador
                     ELSE public.nodos_configuracion_canal.banco_recaudador
@@ -315,6 +316,7 @@ async function asegurarEsquemaPagosBancariosNodos(runner = null, opciones = {}) 
                     WHEN public.nodos_configuracion_canal.titular_recaudador IS NULL
                       OR public.nodos_configuracion_canal.titular_recaudador ILIKE '%provisori%'
                       OR public.nodos_configuracion_canal.titular_recaudador ILIKE '%canal nodos%'
+                      OR public.nodos_configuracion_canal.titular_recaudador ILIKE '%DU Nro.%'
                     THEN EXCLUDED.titular_recaudador
                     ELSE public.nodos_configuracion_canal.titular_recaudador
                 END,
@@ -467,6 +469,10 @@ async function asegurarEsquemaPagosBancariosNodos(runner = null, opciones = {}) 
               AND COALESCE(monto_acreditado_banco, 0) = 0
               AND COALESCE(total_vecino, 0) > 0;
         `);
+
+        try {
+            fs.mkdirSync(obtenerDirectorioComprobantesNodos(), { recursive: true });
+        } catch (_) {}
 
         _esquemaPagosInicializado = true;
     } finally {
