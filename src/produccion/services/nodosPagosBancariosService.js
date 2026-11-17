@@ -920,6 +920,17 @@ async function obtenerArchivoComprobanteAvisoPago(avisoId, opciones = {}) {
         throw err;
     }
 
+    if (opciones.requerirAutorizacion) {
+        const ctPre = String(opciones.comprobanteToken || '').trim();
+        const trkPre = String(opciones.trackingToken || '').trim();
+        const gtokPre = String(opciones.gestorToken || '').trim();
+        if (!ctPre && !trkPre && !gtokPre) {
+            const err = new Error('No autorizado para visualizar este comprobante.');
+            err.statusCode = 403;
+            throw err;
+        }
+    }
+
     const res = await db.query(
         `SELECT av.*, npv.tracking_token, nm.gestor_token
          FROM public.nodos_pedidos_avisos_pago av

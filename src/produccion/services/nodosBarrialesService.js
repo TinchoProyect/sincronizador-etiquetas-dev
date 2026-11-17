@@ -19586,6 +19586,11 @@ async function obtenerReciboPngAutorizadoPedido(pedidoId, opciones = {}) {
     }
 
     if (opciones.esHostPublico) {
+        if (!opciones.nodoAuth && !opciones.trackingToken && !opciones.portalToken) {
+            const err = new Error('No autorizado para visualizar este comprobante.');
+            err.statusCode = 403;
+            throw err;
+        }
         const pedRes = await db.query(
             `SELECT npv.id, npv.nodo_id, npv.tracking_token, npv.impactado_cta_cte_pago, npv.estado_pago,
                     nv.portal_token
