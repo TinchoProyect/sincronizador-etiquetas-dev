@@ -668,9 +668,9 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 
     // Asegurar regla de jerarquía Nivel 3 (marca) para Repostería -> Escurrida y preferencias UI
     (async () => {
+        const { pool: logisticaDbPool } = require('./config/database');
         try {
-            const { pool } = require('./config/database');
-            await pool.query(`
+            await logisticaDbPool.query(`
                 CREATE TABLE IF NOT EXISTS public.bunker_preferencias_ui (
                     clave VARCHAR(100) PRIMARY KEY,
                     valor JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -696,7 +696,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_bunker_preferencias_ui_clave_unq
                 ON public.bunker_preferencias_ui (clave);
             `);
-            await pool.query(`
+            await logisticaDbPool.query(`
                 INSERT INTO public.bunker_portal_b2b_jerarquia (familia_id, articulo_principal, eje_nivel_3, updated_at, reglas_nivel_4, reglas_nivel_5)
                 VALUES (31, 'Escurrida', 'marca', NOW(), '{}'::jsonb, '{}'::jsonb)
                 ON CONFLICT (familia_id, articulo_principal) DO NOTHING;
@@ -720,8 +720,10 @@ const server = app.listen(PORT, '0.0.0.0', () => {
         // confirmaciones de Standby, ediciones o cancelaciones del Portal B2B (sonda ~70ms si no hay cambios)
         const { revisarPedidosB2BRapido } = require('../actualizaPrecios/syncB2BPedidosRapido');
         setInterval(() => {
-            if (esModoLaboratorioOSinCredencialesB2B()) return;
-            revisarPedidosB2BRapido({ force: false, externalPool: pool }).catch(() => {});
+            try {
+                if (esModoLaboratorioOSinCredencialesB2B()) return;
+                revisarPedidosB2BRapido({ force: false, externalPool: logisticaDbPool }).catch(() => {});
+            } catch (_) {}
         }, 15 * 1000);
 
         // Respaldo continuo cada 45s para ingestar sobres de efectivo y retiros del Portal B2B
