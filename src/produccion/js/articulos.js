@@ -2848,6 +2848,13 @@ async function agregarArticuloExternoAlCarro(numero, nombre, esIntegra, btnEleme
                 }
             }
 
+            if (typeof window.actualizarEstadoCarro === 'function') {
+                await window.actualizarEstadoCarro();
+            }
+            if (typeof window.actualizarVisibilidadBotones === 'function') {
+                await window.actualizarVisibilidadBotones();
+            }
+
             console.log('✅ [EXTERNO] Resumen completo actualizado correctamente');
         } catch (updateError) {
             console.error('⚠️ [EXTERNO] Error al actualizar resumen:', updateError);

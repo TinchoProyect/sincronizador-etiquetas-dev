@@ -169,7 +169,7 @@ export async function actualizarVisibilidadBotones() {
         // Manejar visibilidad según el estado
         switch (data.estado) {
             case 'en_preparacion':
-                // Carro en preparación - mostrar botón de preparar y agregar artículos
+                // Carro en preparación - mostrar botón de preparar y agregar artículos, y limpiar paneles de estado preparado
                 if (btnCarroPreparado) {
                     btnCarroPreparado.style.display = 'inline-block';
                     btnCarroPreparado.disabled = false;
@@ -190,6 +190,15 @@ export async function actualizarVisibilidadBotones() {
                 }
                 if (btnGuardadoIngredientes) {
                     btnGuardadoIngredientes.style.display = 'none';
+                }
+                {
+                    const secSecundariosPrep = document.getElementById('seccion-articulos-secundarios');
+                    if (secSecundariosPrep) secSecundariosPrep.remove();
+                    const secInfVincPrep = document.getElementById('resumen-ingredientes-vinculados');
+                    if (secInfVincPrep) secInfVincPrep.remove();
+                    const kilosContPrep = document.getElementById('kilos-producidos-container');
+                    if (kilosContPrep) kilosContPrep.style.display = 'none';
+                    document.querySelectorAll('.articulo-container.segundo-plano').forEach(el => el.classList.remove('segundo-plano'));
                 }
                 break;
 
@@ -657,29 +666,61 @@ async function mostrarArticulosSecundariosEditables() {
             }
         }
 
-        // Generar HTML para artículos secundarios editables
+        // Generar HTML para artículos secundarios editables (Artículo Puente de salida)
         let html = `
             <div class="header-articulos-secundarios">
-                <h3>🔗 Artículos Vinculados (Editables)</h3>
-                <p class="descripcion-fase">Los artículos padres han sido procesados. Ahora puedes gestionar los artículos vinculados.</p>
+                <h3>🔗 Artículo Puente — Artículos Vinculados (Editables)</h3>
+                <p class="descripcion-fase">Los artículos padres (Unidad Productiva) fueron procesados. Acá podés gestionar e imprimir la etiqueta del Artículo Puente resultante.</p>
             </div>
             <div class="lista-articulos-secundarios">
         `;
 
-        // Iterar sobre los artículos padre del DOM para asegurar que mostremos botón de "Vincular" si falta
+        // Obtener padres desde el DOM; si aún no estuvieran pintados, respaldo determinista directo desde API
         const articulosPadresElementos = document.querySelectorAll('.articulo-container');
-        if (articulosPadresElementos.length === 0 && articulosVinculados.length === 0) {
+        let listaPadres = Array.from(articulosPadresElementos).map(padreEl => ({
+            numero: padreEl.getAttribute('data-numero'),
+            descripcion: padreEl.querySelector('.articulo-descripcion')?.textContent || 'Artículo Padre'
+        })).filter(p => p.numero);
+
+        if (listaPadres.length === 0) {
+            try {
+                const resPadresApi = await fetch(`/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
+                if (resPadresApi.ok) {
+                    const dataPadresApi = await resPadresApi.json();
+                    if (Array.isArray(dataPadresApi) && dataPadresApi.length > 0) {
+                        listaPadres = dataPadresApi.map(a => ({
+                            numero: a.numero || a.articulo_numero,
+                            descripcion: a.descripcion || a.nombre || 'Artículo Padre'
+                        })).filter(p => p.numero);
+                    }
+                }
+            } catch (errPadresApi) {
+                console.warn('⚠️ Aviso al consultar artículos padres por respaldo API:', errPadresApi);
+            }
+        }
+
+        if (listaPadres.length === 0 && Array.isArray(articulosVinculados) && articulosVinculados.length > 0) {
+            listaPadres = articulosVinculados.map(v => ({
+                numero: v.articulo_produccion_codigo,
+                descripcion: 'Unidad Productiva'
+            })).filter(p => p.numero);
+        }
+
+        if (listaPadres.length === 0 && articulosVinculados.length === 0) {
              console.log('ℹ️ No hay artículos vinculados ni padres para mostrar');
+             seccionSecundarios.style.display = 'none';
+             seccionSecundarios.classList.remove('activa');
              return;
         }
 
-        articulosPadresElementos.forEach(padreEl => {
-            const numeroPadre = padreEl.getAttribute('data-numero');
-            const descripcionPadreElement = padreEl.querySelector('.articulo-descripcion');
-            const descripcionPadre = descripcionPadreElement ? descripcionPadreElement.textContent : 'Artículo Padre';
+        listaPadres.forEach(padreObj => {
+            const numeroPadre = padreObj.numero;
+            const normPadre = String(numeroPadre || '').trim().toUpperCase();
 
-            // Buscar si tiene vínculo
-            const vinculo = articulosVinculados.find(v => v.articulo_produccion_codigo === numeroPadre);
+            // Buscar si tiene vínculo (comparación normalizada sin sensibilidad a mayúsculas/espacios)
+            const vinculo = articulosVinculados.find(
+                v => String(v.articulo_produccion_codigo || '').trim().toUpperCase() === normPadre
+            );
 
             if (vinculo) {
                 const codPuenteSafe = String(vinculo.articulo_kilo_codigo || '').replace(/'/g, "\\'");
@@ -1900,10 +1941,11 @@ export async function marcarCarroPreparado(carroIdParam) {
             }
         }
 
-        console.log('🔄 [PREPARADO] Iniciando actualización completa de la UI en paralelo...');
+        console.log('🔄 [PREPARADO] Iniciando actualización completa de la UI...');
 
+        // 1. Renderizar primero #lista-articulos y los paneles de datos en paralelo
         await Promise.all([
-            actualizarVisibilidadBotones(),
+            window.mostrarArticulosDelCarro ? window.mostrarArticulosDelCarro() : Promise.resolve(),
             window.actualizarEstadoCarro ? window.actualizarEstadoCarro() : Promise.resolve(),
             (async () => {
                 if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
@@ -1929,9 +1971,11 @@ export async function marcarCarroPreparado(carroIdParam) {
                     }
                 }
             })(),
-            window.mostrarArticulosDelCarro ? window.mostrarArticulosDelCarro() : Promise.resolve(),
             window.actualizarInformeIngresosManuales ? window.actualizarInformeIngresosManuales() : Promise.resolve()
         ]);
+
+        // 2. Recién con .articulo-container pintado en DOM, activar modo secundario (Artículo Puente), kilos producidos y Modo Dual
+        await actualizarVisibilidadBotones();
 
         console.log('✅ [PREPARADO] Actualización completa de UI finalizada');
         return true;
@@ -1996,34 +2040,41 @@ export async function revertirCarroPreparado(carroIdParam) {
 
         mostrarNotificacion('Preparación revertida exitosamente. El carro vuelve a estar en edición.', false);
 
-        // Actualizar UI y paneles de resumen
-        await actualizarVisibilidadBotones();
-        
-        if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
-            const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
-            await window.mostrarResumenIngredientes(ingredientes);
-            console.log('✅ [REVERSIÓN] Resumen de ingredientes actualizado');
-        }
-
-        if (window.obtenerResumenMixesCarro && window.mostrarResumenMixes) {
-            const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
-            window.mostrarResumenMixes(mixes);
-            console.log('✅ [REVERSIÓN] Resumen de mixes actualizado');
-        }
-
-        if (window.obtenerResumenArticulosCarro && window.mostrarResumenArticulos) {
-            const articulos = await window.obtenerResumenArticulosCarro(carroId, colaborador.id);
-            if (articulos && articulos.length > 0) {
-                window.mostrarResumenArticulos(articulos);
-                const seccionArticulos = document.getElementById('resumen-articulos');
-                if (seccionArticulos) {
-                    seccionArticulos.style.display = 'block';
+        // 1. Actualizar primero #lista-articulos y paneles de datos en paralelo
+        await Promise.all([
+            window.mostrarArticulosDelCarro ? window.mostrarArticulosDelCarro() : Promise.resolve(),
+            window.actualizarEstadoCarro ? window.actualizarEstadoCarro() : Promise.resolve(),
+            (async () => {
+                if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
+                    const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
+                    await window.mostrarResumenIngredientes(ingredientes);
                 }
-                console.log('✅ [REVERSIÓN] Resumen de artículos externos actualizado');
-            }
-        }
+            })(),
+            (async () => {
+                if (window.obtenerResumenMixesCarro && window.mostrarResumenMixes) {
+                    const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
+                    window.mostrarResumenMixes(mixes);
+                }
+            })(),
+            (async () => {
+                if (window.obtenerResumenArticulosCarro && window.mostrarResumenArticulos) {
+                    const articulos = await window.obtenerResumenArticulosCarro(carroId, colaborador.id);
+                    if (articulos && articulos.length > 0) {
+                        window.mostrarResumenArticulos(articulos);
+                        const seccionArticulos = document.getElementById('resumen-articulos');
+                        if (seccionArticulos) {
+                            seccionArticulos.style.display = 'block';
+                        }
+                    }
+                }
+            })(),
+            window.actualizarInformeIngresosManuales ? window.actualizarInformeIngresosManuales() : Promise.resolve()
+        ]);
 
-        // Disparar evento personalizado para que carro.js actualice la vista (artículos e ingresos manuales)
+        // 2. Actualizar visibilidad de botones y limpiar paneles de estado preparado
+        await actualizarVisibilidadBotones();
+
+        // Disparar evento personalizado para suscriptores adicionales
         const event = new CustomEvent('carroEstadoCambiado', { detail: { carroId } });
         document.dispatchEvent(event);
 

@@ -135,10 +135,16 @@ function configurarInputDual() {
 
     const baseFetch = window.fetch.bind(window);
     const burstCache = new Map();
+    let mutationEpoch = 0;
 
     window.invalidarCacheCarro = function() {
+        mutationEpoch += 1;
         burstCache.clear();
     };
+
+    function esPostSoloLectura(urlStr) {
+        return /\/api\/produccion\/articulos\/estado-recetas([?#]|$)/i.test(urlStr || '');
+    }
 
     function obtenerTtlCacheable(urlStr) {
         if (!urlStr || typeof urlStr !== 'string') return 0;
@@ -160,8 +166,13 @@ function configurarInputDual() {
         const rawUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
 
         if (method !== 'GET') {
+            if (method === 'POST' && esPostSoloLectura(rawUrl)) {
+                return baseFetch(input, init);
+            }
+            mutationEpoch += 1;
             burstCache.clear();
             return baseFetch(input, init).finally(() => {
+                mutationEpoch += 1;
                 burstCache.clear();
             });
         }
@@ -174,8 +185,9 @@ function configurarInputDual() {
         // Normalizar clave ignorando prefijo http://localhost:3002 para compartir ráfagas equivalentes
         const cacheKey = rawUrl.replace(/^https?:\/\/[^/]+/i, '');
         const now = Date.now();
+        const reqEpoch = mutationEpoch;
         const hit = burstCache.get(cacheKey);
-        if (hit && (now - hit.ts) < ttl) {
+        if (hit && hit.epoch === reqEpoch && (now - hit.ts) < ttl) {
             return hit.promise.then(snap => new Response(snap.bodyText, {
                 status: snap.status,
                 statusText: snap.statusText,
@@ -187,8 +199,9 @@ function configurarInputDual() {
             const bodyText = await resp.text();
             const headers = {};
             resp.headers.forEach((v, k) => { headers[k] = v; });
-            if (!resp.ok) {
-                burstCache.delete(cacheKey);
+            if (!resp.ok || reqEpoch !== mutationEpoch) {
+                const cur = burstCache.get(cacheKey);
+                if (cur && cur.promise === flight) burstCache.delete(cacheKey);
             }
             return {
                 status: resp.status,
@@ -197,11 +210,12 @@ function configurarInputDual() {
                 bodyText
             };
         }).catch((err) => {
-            burstCache.delete(cacheKey);
+            const cur = burstCache.get(cacheKey);
+            if (cur && cur.promise === flight) burstCache.delete(cacheKey);
             throw err;
         });
 
-        burstCache.set(cacheKey, { ts: now, promise: flight });
+        burstCache.set(cacheKey, { ts: now, epoch: reqEpoch, promise: flight });
         return flight.then(snap => new Response(snap.bodyText, {
             status: snap.status,
             statusText: snap.statusText,
@@ -228,17 +242,18 @@ async function inicializarEspacioTrabajo() {
             await validarCarroActivo(colaborador.id);
         });
 
-        // Cargar listado lateral, artículos del carro activo, resumen de ingredientes/mixes e ingresos manuales en paralelo
+        // 1. Cargar en paralelo listado lateral, artículos del carro activo y resúmenes de datos
         await Promise.all([
             actualizarEstadoCarro(),
             mostrarArticulosDelCarro(),
-            cargarResumenIngredientes(),
+            cargarResumenIngredientes({ omitirActualizarBotones: true }),
             typeof window.actualizarInformeIngresosManuales === 'function'
                 ? window.actualizarInformeIngresosManuales()
                 : Promise.resolve()
         ]);
 
-        // Configurar modo dual si aplica a los artículos cargados
+        // 2. Recién con #lista-articulos renderizado en DOM, activar botones, Artículo Puente secundario y Modo Dual
+        await actualizarVisibilidadBotones();
         configurarInputDual();
 
     } catch (error) {
@@ -372,7 +387,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // El estado inicial del carro ya se carga en paralelo dentro de inicializarEspacioTrabajo()
 });
 
-async function cargarResumenIngredientes() {
+async function cargarResumenIngredientes(opciones = {}) {
+    const omitirActualizarBotones = Boolean(opciones && opciones.omitirActualizarBotones);
     try {
         const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
         if (!carroId) {
@@ -432,8 +448,10 @@ async function cargarResumenIngredientes() {
             }
         }
 
-        // Actualizar visibilidad de los botones después de cargar ingredientes
-        await actualizarVisibilidadBotones();
+        // Actualizar visibilidad de los botones después de cargar ingredientes (salvo cuando inicializarEspacioTrabajo lo corre tras mostrarArticulosDelCarro)
+        if (!omitirActualizarBotones) {
+            await actualizarVisibilidadBotones();
+        }
 
     } catch (error) {
         console.error('Error al cargar resumen de ingredientes:', error);

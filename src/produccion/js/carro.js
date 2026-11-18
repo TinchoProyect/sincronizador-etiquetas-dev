@@ -1931,7 +1931,7 @@ export async function seleccionarCarro(carroId) {
         // 🎯 GESTIONAR VISIBILIDAD DE SECCIONES SEGÚN TIPO DE CARRO
         gestionarVisibilidadSeccionesPorTipo(tipoCarro);
 
-        // 📊 CARGAR TODOS LOS PANELES DEL CARRO EN PARALELO
+        // 📊 CARGAR TODOS LOS PANELES DE DATOS DEL CARRO EN PARALELO
         await Promise.all([
             mostrarArticulosDelCarro(),
             (async () => {
@@ -1962,11 +1962,13 @@ export async function seleccionarCarro(carroId) {
             })(),
             typeof window.actualizarInformeIngresosManuales === 'function'
                 ? window.actualizarInformeIngresosManuales()
-                : Promise.resolve(),
-            typeof window.actualizarVisibilidadBotones === 'function'
-                ? window.actualizarVisibilidadBotones()
                 : Promise.resolve()
         ]);
+
+        // 🔗 Recién con #lista-articulos renderizado en el DOM, activar botones, Artículo Puente secundario y Modo Dual
+        if (typeof window.actualizarVisibilidadBotones === 'function') {
+            await window.actualizarVisibilidadBotones();
+        }
 
         console.log('✅ [SELECCIÓN-CARRO] Carro seleccionado y UI actualizada completamente');
 
@@ -3076,7 +3078,10 @@ export async function mostrarArticulosDelCarro() {
                     if (relacionesResponse.ok) {
                         const relaciones = await relacionesResponse.json();
                         relaciones.forEach(rel => {
-                            relMap[rel.articulo_produccion_codigo] = rel;
+                            const keyExacta = rel.articulo_produccion_codigo;
+                            const keyNorm = String(keyExacta || '').trim().toUpperCase();
+                            if (keyExacta) relMap[keyExacta] = rel;
+                            if (keyNorm) relMap[keyNorm] = rel;
                         });
                     }
                 } catch (error) {
@@ -3224,7 +3229,7 @@ export async function mostrarArticulosDelCarro() {
             ${bannerLineaProductivaHtml}
             ${!esConfirmado ? `
                 <div class="agregar-articulo-container">
-                    <button id="agregar-articulo" class="btn btn-secondary">
+                    <button id="agregar-articulo" class="btn btn-secondary" style="${esPreparado ? 'display: none;' : ''}">
                         ${textoBotonAgregarArticulo}
                     </button>
                 </div>
@@ -3245,7 +3250,7 @@ export async function mostrarArticulosDelCarro() {
 
         for (let idxArt = 0; idxArt < articulos.length; idxArt++) {
             const art = articulos[idxArt];
-            const relacion = relacionesExistentes[art.numero];
+            const relacion = relacionesExistentes[String(art.numero || '').trim().toUpperCase()] || relacionesExistentes[art.numero];
             const tieneRelacion = !!relacion;
 
             // Artículo original (siempre se muestra)
@@ -3289,8 +3294,9 @@ export async function mostrarArticulosDelCarro() {
                 `;
             }
 
+            const claseSegundoPlano = (tipoCarro === 'externa' && esPreparado && !esConfirmado) ? ' segundo-plano' : '';
             html += `
-                <div class="articulo-container" data-numero="${art.numero}" style="flex-direction: column; align-items: stretch; gap: 6px;">
+                <div class="articulo-container${claseSegundoPlano}" data-numero="${art.numero}" style="flex-direction: column; align-items: stretch; gap: 6px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                         <div class="articulo-info">
                             <span class="articulo-codigo">${art.numero}</span>
@@ -4465,8 +4471,11 @@ async function procesarGuardadoVinculo() {
         // Cerrar modal
         cerrarModalEditarVinculo();
 
-        // Actualizar la vista del carro
+        // Actualizar la vista del carro y re-sincronizar panel secundario si ya está preparado
         await mostrarArticulosDelCarro();
+        if (typeof window.actualizarVisibilidadBotones === 'function') {
+            await window.actualizarVisibilidadBotones();
+        }
 
     } catch (error) {
         console.error('❌ Error al guardar vínculo:', error);
@@ -4498,8 +4507,11 @@ async function eliminarRelacionArticulo(articuloCodigo, relacionId) {
         // Mostrar notificación de éxito
         mostrarNotificacionExito('Vínculo eliminado correctamente');
 
-        // Actualizar la vista del carro
+        // Actualizar la vista del carro y re-sincronizar panel secundario si ya está preparado
         await mostrarArticulosDelCarro();
+        if (typeof window.actualizarVisibilidadBotones === 'function') {
+            await window.actualizarVisibilidadBotones();
+        }
 
     } catch (error) {
         console.error('Error al eliminar relación:', error);
@@ -4660,8 +4672,11 @@ async function procesarSeleccionVinculacion(articuloKiloCodigo, articuloKiloNomb
         // Cerrar modal y limpiar modo vinculación
         cerrarModalVinculacion();
 
-        // Actualizar la vista del carro
+        // Actualizar la vista del carro y re-sincronizar panel secundario si ya está preparado
         await mostrarArticulosDelCarro();
+        if (typeof window.actualizarVisibilidadBotones === 'function') {
+            await window.actualizarVisibilidadBotones();
+        }
 
     } catch (error) {
         console.error('Error al procesar vinculación:', error);

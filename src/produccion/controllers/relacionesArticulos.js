@@ -14,12 +14,13 @@ async function obtenerRelacionesCarro(carroId, usuarioId) {
                 aper.articulo_produccion_codigo, 
                 aper.articulo_kilo_codigo, 
                 COALESCE(aper.multiplicador_ingredientes, 1) as multiplicador_ingredientes,
-                a.nombre as articulo_kilo_nombre,
-                a.codigo_barras as articulo_kilo_codigo_barras
+                COALESCE(NULLIF(BTRIM(ba.descripcion_generada), ''), NULLIF(BTRIM(ba.descripcion), ''), a.nombre) as articulo_kilo_nombre,
+                COALESCE(NULLIF(BTRIM(a.codigo_barras), ''), NULLIF(BTRIM(ba.codigo_barras), '')) as articulo_kilo_codigo_barras
             FROM articulos_produccion_externa_relacion aper
-            LEFT JOIN articulos a ON a.numero = aper.articulo_kilo_codigo
-            WHERE aper.articulo_produccion_codigo IN (
-                SELECT articulo_numero FROM carros_articulos WHERE carro_id = $1
+            LEFT JOIN articulos a ON UPPER(BTRIM(a.numero)) = UPPER(BTRIM(aper.articulo_kilo_codigo))
+            LEFT JOIN bunker_articulos ba ON UPPER(BTRIM(ba.articulo_id)) = UPPER(BTRIM(aper.articulo_kilo_codigo))
+            WHERE UPPER(BTRIM(aper.articulo_produccion_codigo)) IN (
+                SELECT UPPER(BTRIM(articulo_numero)) FROM carros_articulos WHERE carro_id = $1
             )
               AND UPPER(BTRIM(aper.articulo_produccion_codigo)) <> UPPER(BTRIM(aper.articulo_kilo_codigo))
         `;
@@ -44,11 +45,12 @@ async function obtenerRelacionPorArticulo(articuloCodigo) {
                 aper.articulo_produccion_codigo,
                 aper.articulo_kilo_codigo,
                 COALESCE(aper.multiplicador_ingredientes, 1) as multiplicador_ingredientes,
-                a.nombre as articulo_kilo_nombre,
-                a.codigo_barras as articulo_kilo_codigo_barras
+                COALESCE(NULLIF(BTRIM(ba.descripcion_generada), ''), NULLIF(BTRIM(ba.descripcion), ''), a.nombre) as articulo_kilo_nombre,
+                COALESCE(NULLIF(BTRIM(a.codigo_barras), ''), NULLIF(BTRIM(ba.codigo_barras), '')) as articulo_kilo_codigo_barras
             FROM articulos_produccion_externa_relacion aper
-            LEFT JOIN articulos a ON a.numero = aper.articulo_kilo_codigo
-            WHERE aper.articulo_produccion_codigo = $1
+            LEFT JOIN articulos a ON UPPER(BTRIM(a.numero)) = UPPER(BTRIM(aper.articulo_kilo_codigo))
+            LEFT JOIN bunker_articulos ba ON UPPER(BTRIM(ba.articulo_id)) = UPPER(BTRIM(aper.articulo_kilo_codigo))
+            WHERE UPPER(BTRIM(aper.articulo_produccion_codigo)) = UPPER(BTRIM($1))
               AND UPPER(BTRIM(aper.articulo_produccion_codigo)) <> UPPER(BTRIM(aper.articulo_kilo_codigo))
             LIMIT 1
         `;
@@ -67,20 +69,26 @@ async function obtenerRelacionPorArticulo(articuloCodigo) {
  */
 async function obtenerRelacionesPorArticulos(articuloCodigos) {
     try {
+        const codigosNorm = (Array.isArray(articuloCodigos) ? articuloCodigos : [])
+            .map(c => String(c || '').trim().toUpperCase())
+            .filter(Boolean);
+        if (codigosNorm.length === 0) return [];
+
         const query = `
             SELECT
                 aper.id,
                 aper.articulo_produccion_codigo,
                 aper.articulo_kilo_codigo,
                 COALESCE(aper.multiplicador_ingredientes, 1) as multiplicador_ingredientes,
-                a.nombre as articulo_kilo_nombre,
-                a.codigo_barras as articulo_kilo_codigo_barras
+                COALESCE(NULLIF(BTRIM(ba.descripcion_generada), ''), NULLIF(BTRIM(ba.descripcion), ''), a.nombre) as articulo_kilo_nombre,
+                COALESCE(NULLIF(BTRIM(a.codigo_barras), ''), NULLIF(BTRIM(ba.codigo_barras), '')) as articulo_kilo_codigo_barras
             FROM articulos_produccion_externa_relacion aper
-            LEFT JOIN articulos a ON a.numero = aper.articulo_kilo_codigo
-            WHERE aper.articulo_produccion_codigo = ANY($1)
+            LEFT JOIN articulos a ON UPPER(BTRIM(a.numero)) = UPPER(BTRIM(aper.articulo_kilo_codigo))
+            LEFT JOIN bunker_articulos ba ON UPPER(BTRIM(ba.articulo_id)) = UPPER(BTRIM(aper.articulo_kilo_codigo))
+            WHERE UPPER(BTRIM(aper.articulo_produccion_codigo)) = ANY($1)
               AND UPPER(BTRIM(aper.articulo_produccion_codigo)) <> UPPER(BTRIM(aper.articulo_kilo_codigo))
         `;
-        const result = await pool.query(query, [articuloCodigos]);
+        const result = await pool.query(query, [codigosNorm]);
         return result.rows;
     } catch (error) {
         console.error('Error al obtener relaciones por artículos:', error);
