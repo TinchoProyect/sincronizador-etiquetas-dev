@@ -214,6 +214,7 @@ export default function Home({ setCurrentTab, profile, tramitesAlerts = { pedido
                 </div>
                 <div style={{ fontSize: '0.73rem', color: '#cbd5e1', marginTop: '1px' }}>
                   {tramitesAlerts.prepedidosPendientesCount > 0 && `${tramitesAlerts.prepedidosPendientesCount} lista(s) de colaborador recibida(s) • `}
+                  {tramitesAlerts.pedidosStandbyCount > 0 && `⏳ ${tramitesAlerts.pedidosStandbyCount} pedido(s) guardado(s) a confirmar • `}
                   {tramitesAlerts.pedidosActivosCount > 0 && `${tramitesAlerts.pedidosActivosCount} pedido(s) en trámite • `}
                   {cart.length > 0 && `Borrador en carrito (${cart.length} ítems)`}
                 </div>

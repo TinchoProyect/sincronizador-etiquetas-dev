@@ -7,6 +7,7 @@ require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const { Pool } = require('pg');
 const PoliticasDescuentoService = require('../presupuestos/services/politicasDescuentoService');
 const OfertasDinamicasService = require('../presupuestos/services/ofertasDinamicasService');
+const { esModoLaboratorioOSinCredencialesB2B } = require('./b2bAutoSyncTrigger');
 
 // ===== 1) Conexión a la Base de Datos Local =====
 const localPool = new Pool({
@@ -17,19 +18,21 @@ const localPool = new Pool({
   port: parseInt(process.env.DB_PORT || '5432'),
 });
 
-console.log('═══════════════════════════════════════════════════════');
-console.log('📡 [RECV-B2B-PEDIDOS] RECEPTOR DE PEDIDOS PORTAL B2B');
-console.log('═══════════════════════════════════════════════════════');
-console.log(`🔌 Conectado a BD Local: ${process.env.DB_NAME || 'etiquetas'}`);
-console.log(`🌍 Entorno: ${process.env.NODE_ENV || 'production'}`);
-console.log(`☁️  Supabase URL: ${process.env.SUPABASE_B2B_URL}`);
-console.log('═══════════════════════════════════════════════════════');
+if (require.main === module) {
+  console.log('═══════════════════════════════════════════════════════');
+  console.log('📡 [RECV-B2B-PEDIDOS] RECEPTOR DE PEDIDOS PORTAL B2B');
+  console.log('═══════════════════════════════════════════════════════');
+  console.log(`🔌 Conectado a BD Local: ${process.env.DB_NAME || 'etiquetas'}`);
+  console.log(`🌍 Entorno: ${process.env.NODE_ENV || 'production'}`);
+  console.log(`☁️  Supabase URL: ${process.env.SUPABASE_B2B_URL}`);
+  console.log('═══════════════════════════════════════════════════════');
+}
 
 // ===== 2) Configuración de API Supabase =====
 const SUPABASE_URL = process.env.SUPABASE_B2B_URL;
 const SUPABASE_KEY = process.env.SUPABASE_B2B_SERVICE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
+if ((!SUPABASE_URL || !SUPABASE_KEY) && require.main === module && !esModoLaboratorioOSinCredencialesB2B()) {
   console.error('💥 ERROR CRÍTICO: Variables de Supabase B2B faltantes en .env');
   process.exit(1);
 }
@@ -105,12 +108,30 @@ async function lookupLocalIva(db, articleCode) {
   return 21.0; // default alícuota
 }
 
-async function procesarPedidosB2B() {
+function interpretarModoPedidoPortal(pedido) {
+  const syncMsg = String(pedido.sync_mensaje || '').trim();
+  const estNorm = String(pedido.estado || '').trim().toLowerCase();
+  const esArchivado = syncMsg.startsWith('[ARCHIVADO_PORTAL]');
+  const esStandby = esArchivado || syncMsg.startsWith('[STANDBY_PORTAL]') || estNorm === 'standby';
+  const esConfirmacionStandby = syncMsg.startsWith('[CONFIRMADO_PORTAL]');
+  return { syncMsg, esArchivado, esStandby, esConfirmacionStandby };
+}
+
+async function procesarPedidosB2B(opts = {}) {
+  if (esModoLaboratorioOSinCredencialesB2B()) {
+    return { skipped: true, reason: 'modo_laboratorio_o_standby', nuevos: 0, actualizados: 0 };
+  }
+
   let localClient;
+  const activePool = opts.externalPool || localPool;
+  let nuevosCount = 0;
+  let actualizadosCount = 0;
   
   try {
     // 1. Descargar pedidos pendientes junto con sus ítems (PostgREST Join)
-    console.log('🔍 Consultando pedidos pendientes en Supabase...');
+    if (!opts.silent) {
+      console.log('🔍 Consultando pedidos pendientes en Supabase...');
+    }
     const url = `${SUPABASE_URL}/rest/v1/clientes_b2b_pedidos_cabecera?sync_estado=eq.Pendiente&select=*,clientes_b2b_pedidos_items(*)`;
     const options = {
       method: 'GET',
@@ -122,27 +143,131 @@ async function procesarPedidosB2B() {
     
     const response = await fetchWithRetry(url, options);
     const pedidos = await response.json();
-    console.log(`📊 Pedidos pendientes encontrados: ${pedidos.length}`);
-
-    if (pedidos.length === 0) {
-      console.log('✅ No hay pedidos pendientes de sincronización.');
-      return;
+    if (!opts.silent || pedidos.length > 0) {
+      console.log(`📊 Pedidos B2B pendientes encontrados: ${pedidos.length}`);
     }
 
-    localClient = await localPool.connect();
+    if (!Array.isArray(pedidos) || pedidos.length === 0) {
+      return { skipped: false, nuevos: 0, actualizados: 0 };
+    }
+
+    localClient = await activePool.connect();
 
     for (const pedido of pedidos) {
-      console.log(`\n📦 Procesando Pedido B2B (ID: ${pedido.id.slice(0, 8)}) para Cliente: ${pedido.cliente_id}`);
+      const modoPortal = interpretarModoPedidoPortal(pedido);
+      console.log(`\n📦 Procesando Pedido B2B (ID: ${pedido.id.slice(0, 8)}) para Cliente: ${pedido.cliente_id} [Standby:${modoPortal.esStandby} | Confirm:${modoPortal.esConfirmacionStandby}]`);
       
-      // A) Validar idempotencia local
+      // A) Buscar si el pedido ya existe localmente (por id_presupuesto_ext o b2b_pedidos_mapeo)
       const checkDup = await localClient.query(
-        `SELECT id FROM public.presupuestos WHERE id_presupuesto_ext = $1`,
+        `SELECT p.id, p.estado, p.secuencia, p.id_cliente, p.nota, p.activo,
+                EXISTS (
+                  SELECT 1 FROM public.factura_facturas f
+                  WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')
+                ) AS esta_facturado
+         FROM public.presupuestos p
+         LEFT JOIN public.b2b_pedidos_mapeo m ON m.local_presupuesto_id = p.id
+         WHERE p.id_presupuesto_ext = $1 OR m.supabase_pedido_id = $1
+         ORDER BY (p.id_presupuesto_ext = $1) DESC, p.id DESC
+         LIMIT 1`,
         [pedido.id]
       );
       
       if (checkDup.rows.length > 0) {
-        console.log(`⚠️ El pedido ya existe localmente (ID local: ${checkDup.rows[0].id}). Marcando como sincronizado.`);
-        await actualizarEstadoSupabase(pedido.id, 'Sincronizado', 'Pedido duplicado omitido con éxito.', 'En Preparacion');
+        const existingLocal = checkDup.rows[0];
+
+        // Caso A.1: El cliente confirmó desde el Portal un pedido que estaba guardado en Standby
+        if (modoPortal.esConfirmacionStandby) {
+          console.log(`▶️ [STANDBY->CONFIRMADO] Cliente confirmó Pedido B2B ${pedido.id.slice(0, 8)} (ID local #${existingLocal.id}). Activando para Producción...`);
+          let notaLimpia = String(pedido.observaciones !== undefined && pedido.observaciones !== null ? pedido.observaciones : (existingLocal.nota || '')).trim();
+          notaLimpia = notaLimpia.replace(/^\[Archivado por cliente\]\s*/i, '').trim();
+
+          await localClient.query(
+            `UPDATE public.presupuestos
+             SET estado = 'Presupuesto/Orden',
+                 secuencia = CASE WHEN COALESCE(secuencia, '') IN ('', 'Standby', 'STANDBY') THEN 'Imprimir' ELSE secuencia END,
+                 activo = true,
+                 archivado = false,
+                 modificado_portal = true,
+                 nota = COALESCE(NULLIF($2, ''), nota),
+                 fecha = CURRENT_DATE,
+                 fecha_entrega = CURRENT_DATE + INTERVAL '1 day',
+                 fecha_actualizacion = NOW()
+             WHERE id = $1`,
+            [existingLocal.id, notaLimpia]
+          );
+
+          // Registrar cuotas de ofertas dinámicas ahora que se confirmó
+          try {
+            const legacyClientId = String(existingLocal.id_cliente || '').trim();
+            const listRes = await localClient.query(
+              `SELECT lista_precios FROM public.clientes WHERE cliente_id = (CASE WHEN $1 ~ '^[0-9]+$' THEN $1::integer ELSE NULL END) LIMIT 1`,
+              [legacyClientId]
+            );
+            const legacyList = listRes.rows.length > 0 ? parseInt(listRes.rows[0].lista_precios, 10) : 1;
+            const mapaOfertas = await OfertasDinamicasService.obtenerOfertasActivasParaContexto({
+              clienteId: legacyClientId,
+              listaPrecioId: legacyList
+            }, localClient);
+            for (const it of (pedido.clientes_b2b_pedidos_items || [])) {
+              const cod = String(it.producto_codigo || '').trim();
+              const ofMatch = mapaOfertas[cod];
+              if (ofMatch) {
+                await OfertasDinamicasService.registrarConsumo({
+                  ofertaId: ofMatch.oferta_id,
+                  articuloNumero: cod,
+                  cantidadUnidades: parseFloat(it.cantidad || 0),
+                  pedidoId: pedido.id,
+                  presupuestoId: existingLocal.id,
+                  clienteId: legacyClientId,
+                  origen: 'PORTAL_B2B'
+                }, localClient);
+              }
+            }
+          } catch (eOfConf) {
+            console.warn('⚠️ [STANDBY->CONFIRMADO] Aviso evaluando cuotas de ofertas:', eOfConf.message);
+          }
+
+          actualizadosCount++;
+          await actualizarEstadoSupabase(pedido.id, 'Sincronizado', `Pedido confirmado e ingresado a preparación. ID Local: ${existingLocal.id}`, 'En Preparacion');
+          continue;
+        }
+
+        // Caso A.2: El cliente pausó a Standby o archivó/desarchivó desde el Portal un pedido aún no facturado ni despachado
+        if (modoPortal.esStandby) {
+          const secUpper = String(existingLocal.secuencia || '').toUpperCase().trim();
+          const noEditablePorDespacho = existingLocal.esta_facturado || ['PEDIDO_LISTO', 'RETIRA_DEPOSITO', 'EN_RUTA', 'ENTREGADO'].includes(secUpper);
+          if (!noEditablePorDespacho) {
+            let notaBase = String(pedido.observaciones !== undefined && pedido.observaciones !== null ? pedido.observaciones : (existingLocal.nota || '')).trim();
+            notaBase = notaBase.replace(/^\[Archivado por cliente\]\s*/i, '').trim();
+            const notaTarget = modoPortal.esArchivado
+              ? `[Archivado por cliente] ${notaBase || 'Guardado en Portal B2B'}`.trim()
+              : (notaBase || 'Pedido en Standby desde Portal B2B');
+
+            await localClient.query(
+              `UPDATE public.presupuestos
+               SET estado = 'Sin Confirmar',
+                   secuencia = 'Standby',
+                   nota = $2,
+                   modificado_portal = true,
+                   fecha_actualizacion = NOW()
+               WHERE id = $1`,
+              [existingLocal.id, notaTarget]
+            );
+            actualizadosCount++;
+            const prefijoSupa = modoPortal.esArchivado ? '[ARCHIVADO_PORTAL]' : '[STANDBY_PORTAL]';
+            await actualizarEstadoSupabase(pedido.id, 'Sincronizado', `${prefijoSupa} ID Local: ${existingLocal.id}`, 'Pendiente');
+            continue;
+          }
+        }
+
+        console.log(`⚠️ El pedido ya existe localmente (ID local: ${existingLocal.id}). Marcando como sincronizado.`);
+        const yaEsStandbyLocal = existingLocal.estado === 'Sin Confirmar' || existingLocal.secuencia === 'Standby';
+        await actualizarEstadoSupabase(
+          pedido.id,
+          'Sincronizado',
+          yaEsStandbyLocal ? `[STANDBY_PORTAL] ID Local: ${existingLocal.id}` : 'Pedido duplicado omitido con éxito.',
+          yaEsStandbyLocal ? 'Pendiente' : 'En Preparacion'
+        );
         continue;
       }
 
@@ -327,11 +452,17 @@ async function procesarPedidosB2B() {
           console.warn('⚠️ [SYNC-B2B] Error al evaluar política comercial:', errEval.message);
         }
 
-        // 4. Insertar encabezado del pedido
+        // 4. Insertar encabezado del pedido (respetando modo Standby / A Confirmar vs Confirmado)
         const fechaPedido = new Date(pedido.fecha_pedido);
         const fechaEntrega = new Date(fechaPedido);
         fechaEntrega.setDate(fechaEntrega.getDate() + 1);
-        const obsBase = (pedido.observaciones || 'Pedido ingresado desde el portal B2B').trim();
+        const obsDefault = modoPortal.esStandby
+          ? 'Pedido en Standby (pendiente de confirmación en Portal B2B)'
+          : 'Pedido ingresado desde el portal B2B';
+        let obsBase = (pedido.observaciones || obsDefault).trim();
+        if (modoPortal.esArchivado && !/^\[Archivado por cliente\]/i.test(obsBase)) {
+          obsBase = `[Archivado por cliente] ${obsBase}`;
+        }
         const notaFinal = (notaPolitica && !obsBase.toLowerCase().includes('bonif. comercial'))
           ? `${obsBase}${notaPolitica}`
           : obsBase;
@@ -341,11 +472,14 @@ async function procesarPedidosB2B() {
           ? Math.round((descuentoFinal / 100) * 10000) / 10000
           : Math.round((descuentoFinal || 0) * 10000) / 10000;
 
+        const estadoLocalInicial = modoPortal.esStandby ? 'Sin Confirmar' : 'Presupuesto/Orden';
+        const secuenciaLocalInicial = modoPortal.esStandby ? 'Standby' : 'Imprimir';
+
         const insertHeaderQuery = `
           INSERT INTO public.presupuestos 
           (id_presupuesto_ext, id_cliente, fecha, fecha_entrega, agente, tipo_comprobante, 
-          nota, estado, informe_generado, descuento, activo, usar_precios_bunker, estado_logistico, modificado_portal)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, true, $11, $12)
+          nota, estado, secuencia, informe_generado, descuento, activo, usar_precios_bunker, estado_logistico, modificado_portal)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, true, $12, $13)
           RETURNING id;
         `;
         
@@ -357,7 +491,8 @@ async function procesarPedidosB2B() {
           'Portal B2B',
           'Factura',
           notaFinal,
-          'Presupuesto/Orden',
+          estadoLocalInicial,
+          secuenciaLocalInicial,
           'Pendiente',
           descuentoDecimal,
           'PENDIENTE',
@@ -365,7 +500,7 @@ async function procesarPedidosB2B() {
         ]);
 
         const localPresupuestoId = headerRes.rows[0].id;
-        console.log(`✅ Encabezado creado en BD local. ID asignado: ${localPresupuestoId} (Descuento final: ${descuentoFinal}% -> decimal: ${descuentoDecimal})`);
+        console.log(`✅ Encabezado creado en BD local. ID asignado: ${localPresupuestoId} [Estado: ${estadoLocalInicial} | Secuencia: ${secuenciaLocalInicial}]`);
 
         // 5. Insertar ítems del pedido
         const insertItemQuery = `
@@ -396,37 +531,50 @@ async function procesarPedidosB2B() {
         
         console.log(`✅ Insertados ${itemsProcesados.length} ítems en detalle local.`);
 
-        // 6. Registrar consumo de cuotas de ofertas dinámicas
-        for (const it of itemsProcesados) {
-          if (it.ofertaInfo) {
-            try {
-              await OfertasDinamicasService.registrarConsumo({
-                ofertaId: it.ofertaInfo.oferta_id,
-                articuloNumero: it.trimmedCode,
-                cantidadUnidades: it.cantidad,
-                pedidoId: pedido.id,
-                presupuestoId: localPresupuestoId,
-                clienteId: legacyClientId,
-                origen: 'PORTAL_B2B'
-              }, localClient);
-              console.log(`📉 [OFERTAS-B2B] Consumo de cuota registrado para ${it.trimmedCode}: ${it.cantidad} u.`);
-            } catch (eCons) {
-              console.warn(`⚠️ [OFERTAS-B2B] Error registrando consumo de cuota para ${it.trimmedCode}:`, eCons.message);
+        // 6. Registrar consumo de cuotas de ofertas dinámicas SOLO si el pedido ya fue confirmado (no en Standby)
+        if (!modoPortal.esStandby) {
+          for (const it of itemsProcesados) {
+            if (it.ofertaInfo) {
+              try {
+                await OfertasDinamicasService.registrarConsumo({
+                  ofertaId: it.ofertaInfo.oferta_id,
+                  articuloNumero: it.trimmedCode,
+                  cantidadUnidades: it.cantidad,
+                  pedidoId: pedido.id,
+                  presupuestoId: localPresupuestoId,
+                  clienteId: legacyClientId,
+                  origen: 'PORTAL_B2B'
+                }, localClient);
+                console.log(`📉 [OFERTAS-B2B] Consumo de cuota registrado para ${it.trimmedCode}: ${it.cantidad} u.`);
+              } catch (eCons) {
+                console.warn(`⚠️ [OFERTAS-B2B] Error registrando consumo de cuota para ${it.trimmedCode}:`, eCons.message);
+              }
             }
           }
         }
 
         // 7. Confirmar la transacción
         await localClient.query('COMMIT');
+        nuevosCount++;
         console.log('💾 Transacción confirmada en BD local.');
 
-        // 4. Actualizar estado en Supabase
-        await actualizarEstadoSupabase(
-          pedido.id, 
-          'Sincronizado', 
-          `Pedido ingresado con éxito. ID Local: ${localPresupuestoId}`,
-          'En Preparacion'
-        );
+        // 8. Actualizar estado en Supabase (en Standby usamos estado='Pendiente' compatible con RLS del cliente)
+        if (modoPortal.esStandby) {
+          const prefijoSupa = modoPortal.esArchivado ? '[ARCHIVADO_PORTAL]' : '[STANDBY_PORTAL]';
+          await actualizarEstadoSupabase(
+            pedido.id,
+            'Sincronizado',
+            `${prefijoSupa} ID Local: ${localPresupuestoId}`,
+            'Pendiente'
+          );
+        } else {
+          await actualizarEstadoSupabase(
+            pedido.id, 
+            'Sincronizado', 
+            `Pedido ingresado con éxito. ID Local: ${localPresupuestoId}`,
+            'En Preparacion'
+          );
+        }
 
       } catch (err) {
         // En caso de fallo, hacer ROLLBACK
@@ -443,9 +591,11 @@ async function procesarPedidosB2B() {
       }
     }
 
+    return { skipped: false, nuevos: nuevosCount, actualizados: actualizadosCount };
   } catch (error) {
     console.error('❌ Error general durante la ingesta de pedidos:', error.message);
     process.exitCode = 1;
+    return { skipped: false, error: error.message, nuevos: nuevosCount, actualizados: actualizadosCount };
   } finally {
     if (localClient) {
       localClient.release();
@@ -625,12 +775,20 @@ async function auditarAutoCuracionOnboardingB2B() {
   }
 }
 
-procesarPedidosB2B()
-  .then(() => auditarAutoCuracionOnboardingB2B())
-  .catch(error => {
-    console.error('💥 Error fatal en ingesta de pedidos B2B:', error);
-    process.exitCode = 1;
-  })
-  .finally(() => {
-    localPool.end().catch(() => {});
-  });
+if (require.main === module) {
+  procesarPedidosB2B()
+    .then(() => {
+      if (!esModoLaboratorioOSinCredencialesB2B()) {
+        return auditarAutoCuracionOnboardingB2B();
+      }
+    })
+    .catch(error => {
+      console.error('💥 Error fatal en ingesta de pedidos B2B:', error);
+      process.exitCode = 1;
+    })
+    .finally(() => {
+      localPool.end().catch(() => {});
+    });
+} else {
+  module.exports = { procesarPedidosB2B, auditarAutoCuracionOnboardingB2B };
+}

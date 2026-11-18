@@ -22,6 +22,10 @@
                     <button id="btn-cargar-datos" class="btn-primary btn-compact">
                         📊 Cargar Presupuestos
                     </button>
+                    <button id="btn-actualizar-portal-rapido" type="button" onclick="if (window.actualizarPedidosPortalDesdePresupuestos) window.actualizarPedidosPortalDesdePresupuestos()" title="Revisar únicamente si ingresaron pedidos nuevos o actualizaciones desde el Portal B2B" style="background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 10px; font-size: 0.8rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                        <span id="icon-actualizar-portal-presu">🔄</span>
+                        <span id="lbl-actualizar-portal-presu">Actualizar Portal</span>
+                    </button>
                     <span class="stats-inline">
                         Total registros: <span id="total-registros">-</span>
                     </span>
@@ -553,7 +557,7 @@
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <script src="/js/presupuestos.js?v=032_smart_cuit_fallback"></script>
+    <script src="/js/presupuestos.js?v=033_standby_b2b"></script>
     <script src="/js/sync_config_modal.js?v=030_desc_esp_fix"></script>
     <script src="/js/politicasComercialesModal.js?v=031_politicas_max"></script>
     <!-- Panel nuevo de Google Sheets deshabilitado por defecto -->

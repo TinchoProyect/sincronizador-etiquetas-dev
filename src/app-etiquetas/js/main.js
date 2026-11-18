@@ -590,6 +590,7 @@ async function actualizarAlertasPizarra() {
 
     // 3. Consultar datos operativos con tolerancia a fallos multi-canal
     let pedidosActivos = [];
+    let pedidosStandby = [];
     let pedidosArmados12h = [];
     let produccionRealizada12h = [];
     let comprasEnEspera = [];
@@ -633,6 +634,7 @@ async function actualizarAlertasPizarra() {
         const dataPiz = await resPiz.json();
         if (dataPiz.success) {
           pedidosActivos = dataPiz.pedidos_activos || [];
+          pedidosStandby = dataPiz.pedidos_standby || [];
           pedidosArmados12h = dataPiz.pedidos_armados_12h || [];
           produccionRealizada12h = dataPiz.produccion_realizada_12h || [];
           comprasEnEspera = dataPiz.compras_en_espera || [];
@@ -1145,8 +1147,10 @@ async function actualizarAlertasPizarra() {
     const totalCrmCount = (seguimientosCrmResumen.hoy || []).length;
     const totalWaEntrantesCount = (alertasWaEntrantes && Array.isArray(alertasWaEntrantes.alertas)) ? alertasWaEntrantes.alertas.length : 0;
 
+    const totalStandbyCount = pedidosStandby.length;
+
     // Condición de Pantalla Limpia de Alertas
-    if (totalProdCount === 0 && totalEsperaCount === 0 && totalMantenimientoCount === 0 && totalDemandaCount === 0 && totalCrmCount === 0 && totalWaEntrantesCount === 0 && totalEntregasSinFacturarCount === 0 && totalMamusCount === 0 && !planTrabajoDeposito) {
+    if (totalProdCount === 0 && totalStandbyCount === 0 && totalEsperaCount === 0 && totalMantenimientoCount === 0 && totalDemandaCount === 0 && totalCrmCount === 0 && totalWaEntrantesCount === 0 && totalEntregasSinFacturarCount === 0 && totalMamusCount === 0 && !planTrabajoDeposito) {
       container.innerHTML = '';
       actualizarBotonLimpiarPizarra();
       return;
@@ -1180,6 +1184,31 @@ async function actualizarAlertasPizarra() {
     // Renderizar sección de Seguimientos Comerciales WhatsApp (CRM)
     if (totalCrmCount > 0 && typeof window.construirHtmlSeguimientosPizarra === 'function') {
       html += window.construirHtmlSeguimientosPizarra(seguimientosCrmResumen);
+    }
+
+    // Renderizar pedidos en Standby / A Confirmar (no entran a armado ni descuentan stock hasta confirmarse)
+    if (totalStandbyCount > 0) {
+      html += `
+        <div style="background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 10px; padding: 8px 12px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;">
+            <span style="font-size: 0.9rem; font-weight: 800; color: #b45309;">⏳ Pedidos en Standby — Sin Confirmar (${totalStandbyCount}):</span>
+            <a href="/presupuestos" style="font-size: 0.76rem; font-weight: 700; color: #92400e; text-decoration: underline;">Ver en Presupuestos ➔</a>
+          </div>
+          ${pedidosStandby.map(ps => {
+            const nomCli = (ps.cliente_nombre || `Cliente ${ps.id_cliente}`).trim();
+            const montoStr = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(Number(ps.total_estimado || 0));
+            const tagOrigen = ps.es_archivado_cliente
+              ? '🗂️ Archivado por cliente en Portal'
+              : (ps.origen === 'Portal B2B' ? '🌐 A confirmar por cliente en Portal' : '🏢 Standby Local');
+            return `
+              <div style="font-size: 0.85rem; color: #78350f; padding: 3px 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; border-top: 1px dashed rgba(245, 158, 11, 0.25);">
+                <span><strong>${nomCli}</strong> <span style="color:#92400e; font-size:0.8rem;">(#${ps.id} · ${ps.cant_items || 0} art. · ${montoStr})</span></span>
+                <span style="background: #fef3c7; border: 1px solid #fde68a; color: #92400e; padding: 1px 7px; border-radius: 999px; font-size: 0.73rem; font-weight: 700;">${tagOrigen}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
     }
 
     // Renderizar sección de Producción (pedidos activos destacados + unidades a producir plegadas)

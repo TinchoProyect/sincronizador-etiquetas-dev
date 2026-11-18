@@ -6,6 +6,7 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 const { Pool } = require('pg');
 const crypto = require('crypto');
+const { esModoLaboratorioOSinCredencialesB2B } = require('./b2bAutoSyncTrigger');
 
 // ===== 1) Conexión a la Base de Datos Local =====
 const localPool = new Pool({
@@ -16,15 +17,17 @@ const localPool = new Pool({
   port: parseInt(process.env.DB_PORT || '5432'),
 });
 
-console.log('═══════════════════════════════════════════════════════');
-console.log('📡 [SYNC-B2B-ESTADOS] SINCRONIZADOR UNIFICADO DE PEDIDOS Y ESTADOS B2B');
-console.log('═══════════════════════════════════════════════════════');
+if (require.main === module) {
+  console.log('═══════════════════════════════════════════════════════');
+  console.log('📡 [SYNC-B2B-ESTADOS] SINCRONIZADOR UNIFICADO DE PEDIDOS Y ESTADOS B2B');
+  console.log('═══════════════════════════════════════════════════════');
+}
 
 // ===== 2) Configuración de API Supabase =====
 const SUPABASE_URL = process.env.SUPABASE_B2B_URL;
 const SUPABASE_KEY = process.env.SUPABASE_B2B_SERVICE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
+if ((!SUPABASE_URL || !SUPABASE_KEY) && require.main === module && !esModoLaboratorioOSinCredencialesB2B()) {
   console.error('💥 ERROR CRÍTICO: Variables de Supabase B2B faltantes en .env');
   process.exit(1);
 }
@@ -60,6 +63,17 @@ async function fetchWithRetry(url, options = {}, retries = 3, delay = 1000) {
     }
   }
   throw new Error(`Agotados los ${retries} reintentos de conexión con Supabase.`);
+}
+
+function esFilaLocalEnStandby(row) {
+  const secuencia = (row.secuencia || '').toLowerCase().trim();
+  const estadoComprobante = (row.estado || '').toUpperCase().trim();
+  return (
+    secuencia === 'standby' ||
+    estadoComprobante === 'SIN CONFIRMAR' ||
+    estadoComprobante === 'STANDBY' ||
+    estadoComprobante === 'MUESTRA DE FRACCIONADOS'
+  );
 }
 
 function mapLocalStatusToSupabase(row) {
@@ -99,22 +113,23 @@ function mapLocalStatusToSupabase(row) {
   ) {
     return 'Listo para Entregar';
   }
+
+  // Estado Standby: Sin Confirmar / En espera de confirmación
+  // Se persiste en Supabase como 'Pendiente' + sync_mensaje='[STANDBY_PORTAL]...' para mantener compatibilidad con políticas RLS del cliente
+  if (esFilaLocalEnStandby(row)) {
+    return 'Pendiente';
+  }
   
   // Estado 2: En Proceso / Producción (Impreso o en Armado)
   if (secuencia === 'armar_pedido' || informeGenerado === 'generado' || secuencia === 'imprimir_modificado') {
     return 'En Proceso';
   }
 
-  // Estado Standby: Sin Confirmar / En espera de confirmación
-  if (secuencia === 'standby' || estadoComprobante === 'SIN CONFIRMAR' || estadoComprobante === 'STANDBY') {
-    return 'Standby';
-  }
-
   // Estado 1: Ingresado
   return 'En Preparacion';
 }
 
-async function actualizarEstadoSupabase(id, estado, facturado) {
+async function actualizarEstadoSupabase(id, estado, facturado, syncMensajeOverride) {
   try {
     const url = `${SUPABASE_URL}/rest/v1/clientes_b2b_pedidos_cabecera?id=eq.${id}`;
     const bodyPayload = {
@@ -123,6 +138,9 @@ async function actualizarEstadoSupabase(id, estado, facturado) {
     };
     if (facturado !== undefined) {
       bodyPayload.facturado = facturado;
+    }
+    if (syncMensajeOverride !== undefined) {
+      bodyPayload.sync_mensaje = syncMensajeOverride;
     }
     
     const options = {
@@ -523,6 +541,7 @@ async function subirPedidoEspecifico(localClient, idLocal) {
       total: parseFloat(totalFinal.toFixed(2)),
       observaciones: finalObs,
       sync_estado: 'Sincronizado',
+      sync_mensaje: esFilaLocalEnStandby(row) ? `[STANDBY_PORTAL] ID Local: ${row.id}` : `Sincronizado desde central. ID Local: ${row.id}`,
       facturado: row.esta_facturado || false
     };
 
@@ -696,6 +715,7 @@ async function subirPedidosLocales(localClient) {
       total: parseFloat(totalFinal.toFixed(2)),
       observaciones: row.nota ? String(row.nota).trim() : null,
       sync_estado: 'Sincronizado',
+      sync_mensaje: esFilaLocalEnStandby(row) ? `[STANDBY_PORTAL] ID Local: ${row.id}` : `Sincronizado desde central. ID Local: ${row.id}`,
       facturado: row.esta_facturado || false
     };
     
@@ -740,11 +760,18 @@ async function subirPedidosLocales(localClient) {
   }
 }
 
-async function sincronizarEstados() {
+async function sincronizarEstados(opts = {}) {
+  if (esModoLaboratorioOSinCredencialesB2B()) {
+    return { skipped: true, reason: 'modo_laboratorio_o_standby', cancelados: 0, cambiosEstado: 0 };
+  }
+
   let localClient;
+  const activePool = opts.externalPool || localPool;
+  let canceladosCount = 0;
+  let cambiosEstadoCount = 0;
   
   try {
-    localClient = await localPool.connect();
+    localClient = await activePool.connect();
     
     // Crear tabla de mapeo local si no existe
     await localClient.query(`
@@ -759,12 +786,14 @@ async function sincronizarEstados() {
     await subirPedidosLocales(localClient);
     
     // Fase 2: Sincronizar estados de pedidos existentes (de local a Supabase)
-    console.log('\n🔄 Fase 2: Sincronizando estados de pedidos recientes de Supabase...');
+    if (!opts.silent) {
+      console.log('\n🔄 Fase 2: Sincronizando estados de pedidos recientes de Supabase...');
+    }
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const dateStr = thirtyDaysAgo.toISOString();
     
-    let selectFields = 'id,estado,facturado,total,subtotal,iva,recibido_por_nombre,recibido_por_apellido,recibido_por_telefono,recibido_fecha,motivo_reclamo_recepcion,foto_reclamo_1,foto_reclamo_2,comentarios_recepcion,reclamado_fecha,entregado_chofer_nombre,entregado_chofer_fecha';
+    let selectFields = 'id,estado,sync_estado,sync_mensaje,facturado,total,subtotal,iva,recibido_por_nombre,recibido_por_apellido,recibido_por_telefono,recibido_fecha,motivo_reclamo_recepcion,foto_reclamo_1,foto_reclamo_2,comentarios_recepcion,reclamado_fecha,entregado_chofer_nombre,entregado_chofer_fecha';
     let url = `${SUPABASE_URL}/rest/v1/clientes_b2b_pedidos_cabecera?created_at=gte.${dateStr}&select=${selectFields}`;
     
     let response;
@@ -797,7 +826,7 @@ async function sincronizarEstados() {
     }
 
     if (fallbackToNoFacturado) {
-      selectFields = 'id,estado,total,subtotal,iva,recibido_por_nombre,recibido_por_apellido,recibido_por_telefono,recibido_fecha,motivo_reclamo_recepcion,foto_reclamo_1,foto_reclamo_2,comentarios_recepcion,reclamado_fecha,entregado_chofer_nombre,entregado_chofer_fecha';
+      selectFields = 'id,estado,sync_estado,sync_mensaje,total,subtotal,iva,recibido_por_nombre,recibido_por_apellido,recibido_por_telefono,recibido_fecha,motivo_reclamo_recepcion,foto_reclamo_1,foto_reclamo_2,comentarios_recepcion,reclamado_fecha,entregado_chofer_nombre,entregado_chofer_fecha';
       url = `${SUPABASE_URL}/rest/v1/clientes_b2b_pedidos_cabecera?created_at=gte.${dateStr}&select=${selectFields}`;
       response = await fetchWithRetry(url, {
         method: 'GET',
@@ -813,6 +842,12 @@ async function sincronizarEstados() {
 
     if (pedidosB2B.length > 0) {
       for (const pedido of pedidosB2B) {
+        // No pisar acciones pendientes de ingesta del cliente (confirmación/standby/nuevo pedido)
+        const estadoSupaTmp = String(pedido.estado || '').toUpperCase().trim();
+        if (String(pedido.sync_estado || '').trim() === 'Pendiente' && estadoSupaTmp !== 'CANCELLED' && estadoSupaTmp !== 'CANCELADO' && estadoSupaTmp !== 'RECLAMADO') {
+          continue;
+        }
+
         // Buscar si existe un mapeo en b2b_pedidos_mapeo
         const resMap = await localClient.query(
           `SELECT local_presupuesto_id FROM public.b2b_pedidos_mapeo WHERE supabase_pedido_id = $1 LIMIT 1`,
@@ -936,6 +971,7 @@ async function sincronizarEstados() {
           
           console.log(`🛑 El cliente canceló el pedido B2B ${pedido.id.slice(0, 8)} desde el portal .com.`);
           console.log(`🔄 Anulando integralmente y archivando presupuesto local correspondiente...`);
+          canceladosCount++;
           const localId = (resMap.rows.length > 0 ? resMap.rows[0].local_presupuesto_id : null) || row.id;
           if (localId) {
             const { anularPresupuestoIntegral } = require('../presupuestos/controllers/presupuestosWrite');
@@ -964,12 +1000,23 @@ async function sincronizarEstados() {
 
         const nuevoEstadoSupabase = mapLocalStatusToSupabase(row);
         const estaFacturadoLocal = row.esta_facturado || false;
+        const localEsStandby = esFilaLocalEnStandby(row);
+        const syncMsgActual = String(pedido.sync_mensaje || '').trim();
+        const supaMarcadoStandby = syncMsgActual.startsWith('[STANDBY_PORTAL]') || syncMsgActual.startsWith('[ARCHIVADO_PORTAL]') || String(pedido.estado || '').toLowerCase().trim() === 'standby';
 
         const requiereActualizarFacturado = !fallbackToNoFacturado && (pedido.facturado === null || pedido.facturado !== estaFacturadoLocal);
-        
-        if (pedido.estado !== nuevoEstadoSupabase || requiereActualizarFacturado) {
+        const requiereSincronizarTagStandby = (localEsStandby && !supaMarcadoStandby) || (!localEsStandby && supaMarcadoStandby);
+
+        if (pedido.estado !== nuevoEstadoSupabase || requiereActualizarFacturado || requiereSincronizarTagStandby) {
+          let nuevoSyncMensaje = undefined;
+          if (localEsStandby && !supaMarcadoStandby) {
+            nuevoSyncMensaje = `[STANDBY_PORTAL] ID Local: ${row.id}`;
+          } else if (!localEsStandby && supaMarcadoStandby) {
+            nuevoSyncMensaje = `Pedido confirmado en preparación. ID Local: ${row.id}`;
+          }
+          cambiosEstadoCount++;
           console.log(`🔄 Cambio detectado para Pedido ${pedido.id.slice(0, 8)}: [${pedido.estado}] ➔ [${nuevoEstadoSupabase}]` + (!fallbackToNoFacturado ? `, Facturado: [${pedido.facturado}] ➔ [${estaFacturadoLocal}]` : ''));
-          await actualizarEstadoSupabase(pedido.id, nuevoEstadoSupabase, fallbackToNoFacturado ? undefined : estaFacturadoLocal);
+          await actualizarEstadoSupabase(pedido.id, nuevoEstadoSupabase, fallbackToNoFacturado ? undefined : estaFacturadoLocal, nuevoSyncMensaje);
         }
 
         // Bucle espejo: Validar discrepancias numéricas (total local vs total en la nube)
@@ -993,11 +1040,15 @@ async function sincronizarEstados() {
       }
     }
 
-    console.log('✅ Sincronización de pedidos y estados completada con éxito.');
+    if (!opts.silent || canceladosCount > 0 || cambiosEstadoCount > 0) {
+      console.log('✅ Sincronización de pedidos y estados completada con éxito.');
+    }
+    return { skipped: false, cancelados: canceladosCount, cambiosEstado: cambiosEstadoCount };
 
   } catch (error) {
     console.error('❌ Error general durante la sincronización de estados:', error.message);
     process.exitCode = 1;
+    return { skipped: false, error: error.message, cancelados: canceladosCount, cambiosEstado: cambiosEstadoCount };
   } finally {
     if (localClient) {
       localClient.release();

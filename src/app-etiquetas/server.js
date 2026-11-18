@@ -448,6 +448,19 @@ router.post('/etiquetas/tratamiento', (req, res) => {
 
 let isSyncingB2B = false;
 
+// Sincronización liviana y austera: revisa únicamente si cayó algún pedido nuevo,
+// pedido en Standby o actualización/anulación de orden de compra desde el Portal B2B
+router.post('/sync-b2b-pedidos-rapido', async (req, res) => {
+  try {
+    const { revisarPedidosB2BRapido } = require('../actualizaPrecios/syncB2BPedidosRapido');
+    const resultado = await revisarPedidosB2BRapido({ force: true, externalPool: pool });
+    return res.json(resultado);
+  } catch (err) {
+    console.error('💥 [FAST-PEDIDOS-SYNC] Error:', err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 router.post('/sync-b2b', async (req, res) => {
   if (isSyncingB2B) {
     return res.status(409).json({ error: 'Ya hay una sincronización en curso. Por favor, espere.' });
@@ -1077,7 +1090,36 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
       ORDER BY f.emitida_en DESC
     `;
 
-    const [activosRes, listosRes, esperaRes, produccionRealizadaRes, demandaSatisfecha, entregadosSinFacturarRes, facturadosRecientesRes, planTrabajoDeposito] = await Promise.all([
+    const standbyQuery = `
+      SELECT 
+        p.id,
+        p.id_presupuesto_ext,
+        p.id_cliente,
+        COALESCE(NULLIF(TRIM(c.nombre || ' ' || COALESCE(c.apellido, '')), ''), NULLIF(TRIM(c.nombre), ''), bc.cliente_nombre, bc.razon_social, 'Cliente ' || p.id_cliente) AS cliente_nombre,
+        p.agente,
+        p.estado,
+        p.secuencia,
+        p.nota,
+        p.fecha,
+        p.fecha_actualizacion,
+        CASE WHEN p.agente = 'Portal B2B' THEN 'Portal B2B' ELSE 'Local' END AS origen,
+        (COALESCE(p.nota, '') ILIKE '[Archivado por cliente]%') AS es_archivado_cliente,
+        COUNT(pd.id)::int AS cant_items,
+        COALESCE(SUM(COALESCE(pd.cantidad, 0) * COALESCE(pd.precio1, 0)), 0) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) AS total_estimado
+      FROM public.presupuestos p
+      LEFT JOIN public.clientes c ON c.cliente_id::text = LTRIM(TRIM(p.id_cliente), '0')
+      LEFT JOIN public.bunker_clientes bc ON bc.codigo_bunker_cliente = p.id_cliente
+        OR (bc.lomas_soft_id IS NOT NULL AND LTRIM(TRIM(bc.lomas_soft_id), '0') = LTRIM(TRIM(p.id_cliente), '0'))
+      LEFT JOIN public.presupuestos_detalles pd ON pd.id_presupuesto = p.id
+      WHERE p.activo = true
+        AND COALESCE(p.archivado, false) = false
+        AND (p.estado IN ('Sin Confirmar', 'Standby') OR p.secuencia = 'Standby')
+        AND p.fecha >= CURRENT_DATE - INTERVAL '30 days'
+      GROUP BY p.id, p.id_presupuesto_ext, p.id_cliente, c.nombre, c.apellido, bc.cliente_nombre, bc.razon_social, p.agente, p.estado, p.secuencia, p.nota, p.fecha, p.fecha_actualizacion, p.descuento
+      ORDER BY COALESCE(p.fecha_actualizacion, p.fecha::timestamp) DESC, p.id DESC
+    `;
+
+    const [activosRes, listosRes, esperaRes, produccionRealizadaRes, demandaSatisfecha, entregadosSinFacturarRes, facturadosRecientesRes, planTrabajoDeposito, standbyRes] = await Promise.all([
       pool.query(activosQuery),
       pool.query(listosQuery),
       pool.query(esperaQuery),
@@ -1097,6 +1139,10 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
       obtenerPlanTrabajoDeposito(pool).catch(err => {
         console.warn('⚠️ Error consultando plan de trabajo de depósito en /pizarra/resumen_operativo:', err.message);
         return null;
+      }),
+      pool.query(standbyQuery).catch(err => {
+        console.warn('⚠️ Error consultando pedidos en standby en /pizarra/resumen_operativo:', err.message);
+        return { rows: [] };
       })
     ]);
 
@@ -1278,6 +1324,7 @@ router.get('/pizarra/resumen_operativo', async (req, res) => {
     res.json({
       success: true,
       pedidos_activos: activosRes.rows,
+      pedidos_standby: standbyRes.rows || [],
       pedidos_armados_12h: listosRes.rows,
       produccion_realizada_12h: produccionRealizadaRes.rows,
       compras_en_espera: esperaRes.rows.map(r => ({

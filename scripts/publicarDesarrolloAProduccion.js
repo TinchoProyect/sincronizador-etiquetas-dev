@@ -149,6 +149,18 @@ async function main() {
         }
     }
 
+    // Paso 3.b: Compilar y publicar Portal B2B (Cloudflare Workers) si existe b2b-portal
+    if (fs.existsSync(path.join(ROOT_DIR, 'b2b-portal', 'package.json'))) {
+        try {
+            console.log('\n3️⃣.b Compilando y desplegando Portal B2B en Cloudflare Workers (`b2b-portal`)...');
+            execSync('npm run b2b:build', { cwd: ROOT_DIR, stdio: 'inherit', windowsHide: true });
+            execSync('node scripts/deploy-b2b.js', { cwd: ROOT_DIR, stdio: 'inherit', windowsHide: true });
+            console.log('✅ Portal B2B compilado y publicado en Cloudflare Workers.');
+        } catch (b2bDeployErr) {
+            console.warn('⚠️ Aviso al desplegar `b2b-portal` en Cloudflare Workers:', b2bDeployErr.message);
+        }
+    }
+
     // Paso 4: Si existe la carpeta de Producción Respaldo en este equipo (PcAlmacen), alinearla con origin/main
     const localProdStandbyDir = 'C:\\Users\\Martin\\Documents\\sincronizador-etiquetas - copia';
     if (fs.existsSync(path.join(localProdStandbyDir, '.git'))) {

@@ -116,7 +116,53 @@ export default function App() {
     }
     return 'home';
   });
-  const [cart, setCart] = useState([]);
+  const [cart, setCart] = useState(() => {
+    try {
+      const cachedProfRaw = localStorage.getItem('b2b_cached_profile');
+      const cachedProf = cachedProfRaw ? JSON.parse(cachedProfRaw) : null;
+      const cid = cachedProf?.cliente_id || (esEntornoLocalLaboratorio() && !solicitaLoginExplicitoEnUrl() ? PERFIL_VISTA_LAB_LOCAL.cliente_id : null);
+      if (!cid) return [];
+      const rawCart = localStorage.getItem(`b2b_cart_v1_${cid}`);
+      const parsed = rawCart ? JSON.parse(rawCart) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const hydratedCartClienteRef = useRef(null);
+  const activeCartClienteId = profile?.cliente_id || ((!session && esEntornoLocalLaboratorio() && !solicitaLoginExplicitoEnUrl()) ? PERFIL_VISTA_LAB_LOCAL.cliente_id : null);
+
+  useEffect(() => {
+    if (!activeCartClienteId) {
+      hydratedCartClienteRef.current = null;
+      return;
+    }
+    if (hydratedCartClienteRef.current === activeCartClienteId) return;
+    try {
+      const rawCart = localStorage.getItem(`b2b_cart_v1_${activeCartClienteId}`);
+      const parsed = rawCart ? JSON.parse(rawCart) : [];
+      if (Array.isArray(parsed)) {
+        setCart(parsed);
+      }
+    } catch {
+      // ignore storage error
+    }
+    hydratedCartClienteRef.current = activeCartClienteId;
+  }, [activeCartClienteId]);
+
+  useEffect(() => {
+    if (!activeCartClienteId || hydratedCartClienteRef.current !== activeCartClienteId) return;
+    try {
+      if (Array.isArray(cart) && cart.length > 0) {
+        localStorage.setItem(`b2b_cart_v1_${activeCartClienteId}`, JSON.stringify(cart));
+      } else {
+        localStorage.removeItem(`b2b_cart_v1_${activeCartClienteId}`);
+      }
+    } catch {
+      // ignore quota error
+    }
+  }, [cart, activeCartClienteId]);
+
   const [pendingAction, setPendingAction] = useState(null);
   const [canToggleIva, setCanToggleIva] = useState(false);
   const [openIvaModalTrigger, setOpenIvaModalTrigger] = useState(0);
@@ -124,21 +170,41 @@ export default function App() {
   const [showVincularModal, setShowVincularModal] = useState(false);
   const mobileMenuRef = useRef(null);
 
-  // Alertas proactivas de pedidos activos y pre-pedidos pendientes
+  // Alertas proactivas de pedidos activos, pedidos en standby y pre-pedidos pendientes
   const [tramitesAlerts, setTramitesAlerts] = useState({
     pedidosActivosCount: 0,
+    pedidosStandbyCount: 0,
+    pedidosArchivadosCount: 0,
     prepedidosPendientesCount: 0
   });
 
   const fetchTramitesAlerts = async () => {
     if (!profile?.cliente_id || profile.cliente_id === 'LAB-DEMO') return;
     try {
-      // 1. Pedidos activos (no entregados ni cancelados)
+      // 1. Pedidos no entregados ni cancelados (separando Standby / Archivados de En Trámite)
       const { data: pData } = await supabase
         .from('clientes_b2b_pedidos_cabecera')
-        .select('id, estado')
+        .select('id, estado, sync_mensaje, observaciones')
         .eq('cliente_id', profile.cliente_id)
         .not('estado', 'in', '("Cancelado","CANCELLED","Eliminado","Entregado")');
+
+      let activosConfirmados = 0;
+      let standbyCount = 0;
+      let archivadosCount = 0;
+      for (const p of (pData || [])) {
+        const est = String(p.estado || '').trim().toLowerCase();
+        const syncMsg = String(p.sync_mensaje || '').toUpperCase();
+        const obs = String(p.observaciones || '');
+        const isArch = est === 'archivado' || syncMsg.includes('[ARCHIVADO_PORTAL]') || obs.includes('[Archivado por cliente]');
+        const isStb = !isArch && (est === 'standby' || est === 'sin confirmar' || syncMsg.includes('[STANDBY_PORTAL]'));
+        if (isArch) {
+          archivadosCount += 1;
+        } else if (isStb) {
+          standbyCount += 1;
+        } else {
+          activosConfirmados += 1;
+        }
+      }
 
       // 2. Pre-pedidos de colaborador pendientes
       const { data: prepData } = await supabase
@@ -148,7 +214,9 @@ export default function App() {
         .eq('estado', 'pendiente_revision');
 
       setTramitesAlerts({
-        pedidosActivosCount: pData ? pData.length : 0,
+        pedidosActivosCount: activosConfirmados,
+        pedidosStandbyCount: standbyCount,
+        pedidosArchivadosCount: archivadosCount,
         prepedidosPendientesCount: prepData ? prepData.length : 0
       });
     } catch (e) {
@@ -164,7 +232,7 @@ export default function App() {
     }
   }, [profile?.cliente_id, currentTab]);
 
-  const totalAlerts = tramitesAlerts.pedidosActivosCount + tramitesAlerts.prepedidosPendientesCount + (cart.length > 0 ? 1 : 0);
+  const totalAlerts = tramitesAlerts.pedidosActivosCount + tramitesAlerts.pedidosStandbyCount + tramitesAlerts.prepedidosPendientesCount + (cart.length > 0 ? 1 : 0);
 
   // Diagnostic timer for cold start + Precarga de directorio de clientes Cloud
   useEffect(() => {
@@ -350,6 +418,11 @@ export default function App() {
 
   const clearCart = () => {
     setCart([]);
+    if (activeCartClienteId) {
+      try {
+        localStorage.removeItem(`b2b_cart_v1_${activeCartClienteId}`);
+      } catch {}
+    }
   };
 
   // Detectar parámetros de Deep Link en la URL al montar

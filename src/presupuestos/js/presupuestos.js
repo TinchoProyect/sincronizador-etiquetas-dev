@@ -435,12 +435,18 @@ function updateStatsDisplay(stats) {
 async function handleCargarDatos(page = 1, maintainFilters = false) {
     console.log(`🔍 [PRESUPUESTOS-JS] Iniciando carga de datos - Página: ${page}...`);
 
-    // Sincronizar en segundo plano con el B2B de Supabase de forma pasiva
-    if (page === 1) {
+    // Sincronizar en segundo plano con el B2B de Supabase de forma pasiva y refrescar si entraron novedades
+    if (page === 1 && !window.__skipPassiveB2BSyncOnce) {
         fetch(`${CONFIG.API_BASE_URL}/sync/b2b-force`, { method: 'POST' })
             .then(res => res.json())
             .then(data => {
                 console.log('[SYNC-B2B-PASSIVE] Sincronización en segundo plano completada:', data);
+                if (data && Number(data.totalNovedades || 0) > 0) {
+                    window.__skipPassiveB2BSyncOnce = true;
+                    handleCargarDatos(1, true).finally(() => {
+                        window.__skipPassiveB2BSyncOnce = false;
+                    });
+                }
             })
             .catch(err => {
                 console.warn('[SYNC-B2B-PASSIVE] Falló la sincronización pasiva:', err);
@@ -1385,8 +1391,8 @@ function updatePresupuestosTable(data) {
                     ⏳ En Standby
                 </span>` : ''}
                 ${item.agente === 'Portal B2B' ?
-                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #e8f0fe; color: #1a73e8; border: 1px solid #d2e3fc; font-weight: bold; font-size: 0.75rem;">
-                    🌐 Creado en Portal
+                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: ${esStandby ? '#fffbeb' : '#e8f0fe'}; color: ${esStandby ? '#b45309' : '#1a73e8'}; border: 1px solid ${esStandby ? '#fcd34d' : '#d2e3fc'}; font-weight: bold; font-size: 0.75rem;">
+                    ${esStandby ? (String(item.nota || '').startsWith('[Archivado por cliente]') ? '🗂️ Archivado por Cliente (Portal)' : '⏳ Standby Cliente (Portal)') : '🌐 Creado en Portal'}
                 </span>` : ''}
                 ${item.modificado_portal ?
                 `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; font-weight: bold; font-size: 0.75rem;">
@@ -2741,6 +2747,7 @@ function updateStandByAccordion() {
             categoriaDisplay += (item.condicion_iva === 'Responsable Inscripto') ? ' A' : ' B';
         }
         const esAnuladoCliente = item.estado === 'Anulado por el Cliente';
+        const esStandby = true;
         return `
         <tr class="slide-up fila-standby" data-presupuesto-id="${item.id}" style="${esAnuladoCliente ? 'opacity: 0.55; background-color: rgba(239, 68, 68, 0.05); border-left: 4px solid #ef4444;' : 'border-left: 4px solid #ff9800;'}">
             <td class="text-center">
@@ -2762,8 +2769,8 @@ function updateStandByAccordion() {
                     ⏳ En Standby
                 </span>` : ''}
                 ${item.agente === 'Portal B2B' ?
-                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #e8f0fe; color: #1a73e8; border: 1px solid #d2e3fc; font-weight: bold; font-size: 0.75rem;">
-                    🌐 Creado en Portal
+                `<span class="estado-badge" style="display:block; margin-top:5px; background-color: ${esStandby ? '#fffbeb' : '#e8f0fe'}; color: ${esStandby ? '#b45309' : '#1a73e8'}; border: 1px solid ${esStandby ? '#fcd34d' : '#d2e3fc'}; font-weight: bold; font-size: 0.75rem;">
+                    ${esStandby ? (String(item.nota || '').startsWith('[Archivado por cliente]') ? '🗂️ Archivado por Cliente (Portal)' : '⏳ Standby Cliente (Portal)') : '🌐 Creado en Portal'}
                 </span>` : ''}
                 ${item.modificado_portal ?
                 `<span class="estado-badge" style="display:block; margin-top:5px; background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; font-weight: bold; font-size: 0.75rem;">
@@ -2806,6 +2813,30 @@ function updateStandByAccordion() {
 
 // Exponer función toggleAccordion globalmente para uso en onclick
 window.toggleAccordion = toggleAccordion;
+
+window.actualizarPedidosPortalDesdePresupuestos = async function () {
+    const btn = document.getElementById('btn-actualizar-portal-rapido');
+    const lbl = document.getElementById('lbl-actualizar-portal-presu');
+    if (btn && btn.disabled) return;
+    if (btn) btn.disabled = true;
+    if (lbl) lbl.textContent = 'Revisando...';
+    try {
+        const res = await fetch(`${CONFIG.API_BASE_URL}/sync/b2b-force`, { method: 'POST' });
+        const data = await res.json();
+        window.__skipPassiveB2BSyncOnce = true;
+        await handleCargarDatos(1, true);
+        window.__skipPassiveB2BSyncOnce = false;
+        const nov = Number(data?.totalNovedades || 0);
+        if (lbl) lbl.textContent = nov > 0 ? `✓ ${nov} novedad(es)` : '✓ Al día';
+    } catch (e) {
+        if (lbl) lbl.textContent = 'Reintentar';
+    } finally {
+        if (btn) btn.disabled = false;
+        setTimeout(() => {
+            if (lbl) lbl.textContent = 'Actualizar Portal';
+        }, 3000);
+    }
+};
 
 /**
  * Cambiar estado de presupuesto entre Standby (Sin Confirmar) y Confirmado (Presupuesto/Orden)

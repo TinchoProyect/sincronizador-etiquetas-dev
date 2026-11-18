@@ -38,11 +38,70 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
   const [error, setError] = useState(null);
   const [expandedPedidoId, setExpandedPedidoId] = useState(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isArchivedOpen, setIsArchivedOpen] = useState(false);
   const [openMonthKey, setOpenMonthKey] = useState(null);
   
   const [submitting, setSubmitting] = useState(false);
-  const [nota, setNota] = useState('');
+  const [submittingMode, setSubmittingMode] = useState(null);
+  const clienteStorageId = profile?.cliente_id || 'anon';
+
+  const [nota, setNota] = useState(() => {
+    try {
+      if (!profile?.cliente_id) return '';
+      return localStorage.getItem(`b2b_cart_nota_v1_${profile.cliente_id}`) || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const [editingOrderInfo, setEditingOrderInfo] = useState(() => {
+    try {
+      if (!profile?.cliente_id) return null;
+      const raw = localStorage.getItem(`b2b_editing_order_v1_${profile.cliente_id}`);
+      if (raw) return JSON.parse(raw);
+      const legacyId = localStorage.getItem('B2B_EDITANDO_PEDIDO_ID');
+      return legacyId ? { id: legacyId, codigoCorto: String(legacyId).substring(0, 8).toUpperCase(), modoPrevio: 'CONFIRMAR' } : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [politicaComercial, setPoliticaComercial] = useState(null);
+
+  useEffect(() => {
+    if (!profile?.cliente_id) return;
+    try {
+      const savedNota = localStorage.getItem(`b2b_cart_nota_v1_${profile.cliente_id}`);
+      if (savedNota !== null) setNota(savedNota);
+      const savedEdit = localStorage.getItem(`b2b_editing_order_v1_${profile.cliente_id}`);
+      if (savedEdit) {
+        setEditingOrderInfo(JSON.parse(savedEdit));
+      }
+    } catch {}
+  }, [profile?.cliente_id]);
+
+  useEffect(() => {
+    if (!profile?.cliente_id) return;
+    try {
+      if (nota && nota.trim()) {
+        localStorage.setItem(`b2b_cart_nota_v1_${clienteStorageId}`, nota);
+      } else {
+        localStorage.removeItem(`b2b_cart_nota_v1_${clienteStorageId}`);
+      }
+    } catch {}
+  }, [nota, clienteStorageId, profile?.cliente_id]);
+
+  const updateEditingOrderInfo = (info) => {
+    setEditingOrderInfo(info);
+    try {
+      if (info && info.id) {
+        localStorage.setItem(`b2b_editing_order_v1_${clienteStorageId}`, JSON.stringify(info));
+      } else {
+        localStorage.removeItem(`b2b_editing_order_v1_${clienteStorageId}`);
+        localStorage.removeItem('B2B_EDITANDO_PEDIDO_ID');
+      }
+    } catch {}
+  };
 
   useEffect(() => {
     if (profile?.cliente_id) {
@@ -434,24 +493,51 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
 
   const cartTotal = cart.reduce((acc, item) => acc + item.subtotal, 0);
 
-  const handleCheckout = async () => {
+  const esPedidoArchivadoPortal = (pedido) => {
+    const est = String(pedido?.estado || '').toLowerCase().trim();
+    const syncMsg = String(pedido?.sync_mensaje || '').toUpperCase();
+    const obs = String(pedido?.observaciones || '');
+    return est === 'archivado' || syncMsg.includes('[ARCHIVADO_PORTAL]') || obs.includes('[Archivado por cliente]');
+  };
+
+  const esPedidoStandbyPortal = (pedido) => {
+    if (esPedidoArchivadoPortal(pedido)) return false;
+    const est = String(pedido?.estado || '').toLowerCase().trim();
+    const syncMsg = String(pedido?.sync_mensaje || '').toUpperCase();
+    return est === 'standby' || est === 'sin confirmar' || syncMsg.includes('[STANDBY_PORTAL]');
+  };
+
+  const limpiarObservacionesVisibles = (obsRaw) => {
+    if (!obsRaw) return '';
+    return String(obsRaw)
+      .replace(/^\[Archivado por cliente\]\s*•?\s*/i, '')
+      .replace(/\s*•?\s*\(Bonif\. Comercial:[^)]+\)/gi, '')
+      .trim();
+  };
+
+  const handleGuardarOrden = async (modo = 'CONFIRMAR') => {
     if (cart.length === 0) return;
     setSubmitting(true);
+    setSubmittingMode(modo);
     
     try {
       const subtotal = cartTotal;
       const montoDescuento = politicaEval.aplica ? politicaEval.montoDescuento : 0.00;
       const total = cartTotal - montoDescuento;
-      const editandoPedidoId = localStorage.getItem('B2B_EDITANDO_PEDIDO_ID');
-      const isEdition = !!editandoPedidoId;
+      const prevOrderId = editingOrderInfo?.id || localStorage.getItem('B2B_EDITANDO_PEDIDO_ID') || null;
+      const isEdition = Boolean(prevOrderId);
 
-      let obs = nota.trim();
+      let obs = limpiarObservacionesVisibles(nota);
       if (politicaEval.aplica && politicaEval.porcentaje > 0) {
         const tag = `(Bonif. Comercial: ${politicaEval.porcentaje}% por volumen)`;
         obs = obs ? `${obs} • ${tag}` : tag;
       }
 
-      // 1. Insertar cabecera del pedido con guardarraíl para base de datos no migrada
+      const syncMensajeInicial = modo === 'STANDBY'
+        ? '[STANDBY_PORTAL] Guardado a confirmar'
+        : (modo === 'ARCHIVADO' ? '[ARCHIVADO_PORTAL] Guardado archivado' : null);
+
+      // 1. Insertar cabecera del pedido (siempre inicia en 'Borrador' para respetar RLS al insertar ítems)
       let header;
       let headerErr;
 
@@ -463,6 +549,7 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
         observaciones: obs || null,
         estado: 'Borrador',
         sync_estado: 'Pendiente',
+        sync_mensaje: syncMensajeInicial,
         es_edicion: isEdition
       };
 
@@ -488,12 +575,6 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
       }
 
       if (headerErr) throw headerErr;
-      registrarAccesoTelemetria(`✅ Confirmó Pedido B2B #${header.id} (${cart.length} ítems — Total: ${formatCurrency(total)})`, profile);
-      
-      // Limpiar marca de edición
-      if (isEdition) {
-        localStorage.removeItem('B2B_EDITANDO_PEDIDO_ID');
-      }
 
       // 2. Insertar ítems del pedido
       const itemsPayload = cart.map(item => ({
@@ -511,26 +592,64 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
 
       if (itemsErr) throw itemsErr;
 
-      // Alerta SweetAlert2
-      Swal.fire({
-        title: '¡Pedido Confirmado!',
-        text: `Su orden ha sido registrada con éxito (ID: ${header.id.slice(0, 8)}). Se ingresará a la grilla logística en la distribuidora para su armado en breve.`,
-        icon: 'success',
-        confirmButtonText: 'Listo',
-        confirmButtonColor: 'var(--accent)',
-        background: 'hsl(222, 47%, 11%)',
-        color: 'var(--text-primary)',
-        iconColor: 'var(--success)'
-      });
+      // 3. Recién cuando el nuevo pedido y sus ítems quedaron guardados con éxito, dar de baja la versión previa editada
+      if (prevOrderId && prevOrderId !== header.id) {
+        try {
+          await supabase
+            .from('clientes_b2b_pedidos_cabecera')
+            .update({ estado: 'CANCELLED' })
+            .eq('id', prevOrderId);
+        } catch (cancelPrevErr) {
+          console.warn('Advertencia al reemplazar versión previa del pedido:', cancelPrevErr);
+        }
+      }
+      updateEditingOrderInfo(null);
+
+      if (modo === 'STANDBY') {
+        registrarAccesoTelemetria(`⏳ Guardó Pedido en Standby #${header.id} (${cart.length} ítems — Total: ${formatCurrency(total)})`, profile);
+        Swal.fire({
+          title: '¡Guardado a Confirmar (Standby)!',
+          text: `El pedido #${header.id.slice(0, 8).toUpperCase()} quedó guardado en tu cuenta y visible en LAMDA como "Sin Confirmar". Podés revisarlo, editarlo o confirmarlo cuando tengas el visto bueno.`,
+          icon: 'info',
+          confirmButtonText: 'Entendido',
+          confirmButtonColor: '#d97706',
+          background: 'hsl(222, 47%, 11%)',
+          color: 'var(--text-primary)',
+          iconColor: '#f59e0b'
+        });
+      } else if (modo === 'ARCHIVADO') {
+        registrarAccesoTelemetria(`🗂️ Archivó Pedido #${header.id} (${cart.length} ítems — Total: ${formatCurrency(total)})`, profile);
+        setIsArchivedOpen(true);
+        Swal.fire({
+          title: '¡Pedido Archivado!',
+          text: `El pedido #${header.id.slice(0, 8).toUpperCase()} quedó guardado en la sección "Pedidos Archivados" sin entrar a preparación. Podrás retomarlo, editarlo o confirmarlo cuando quieras.`,
+          icon: 'success',
+          confirmButtonText: 'Listo',
+          confirmButtonColor: '#64748b',
+          background: 'hsl(222, 47%, 11%)',
+          color: 'var(--text-primary)'
+        });
+      } else {
+        registrarAccesoTelemetria(`✅ Confirmó Pedido B2B #${header.id} (${cart.length} ítems — Total: ${formatCurrency(total)})`, profile);
+        Swal.fire({
+          title: '¡Pedido Confirmado!',
+          text: `Su orden ha sido registrada con éxito (ID: ${header.id.slice(0, 8).toUpperCase()}). Ingresará a preparación en la distribuidora en unos instantes.`,
+          icon: 'success',
+          confirmButtonText: 'Listo',
+          confirmButtonColor: 'var(--accent)',
+          background: 'hsl(222, 47%, 11%)',
+          color: 'var(--text-primary)',
+          iconColor: 'var(--success)'
+        });
+      }
 
       clearCart();
       setNota('');
-      // Recargar el historial
       fetchPedidos();
     } catch (err) {
-      console.error('Error al enviar pedido:', err.message);
+      console.error('Error al guardar pedido:', err.message);
       Swal.fire({
-        title: 'Error al enviar pedido',
+        title: 'Error al guardar pedido',
         text: err.message,
         icon: 'error',
         confirmButtonText: 'Entendido',
@@ -540,13 +659,151 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
       });
     } finally {
       setSubmitting(false);
+      setSubmittingMode(null);
     }
   };
 
-  const handleClearCartPrompt = () => {
+  const handleCheckout = () => handleGuardarOrden('CONFIRMAR');
+
+  const handleConfirmarPedidoStandby = async (pedido) => {
+    const res = await Swal.fire({
+      title: '¿Confirmar este pedido ahora?',
+      html: `El pedido <b>#${pedido.id.substring(0, 8).toUpperCase()}</b> (${formatCurrency(pedido.total)}) saldrá de Standby e ingresará a la cola oficial de preparación y despacho de LAMDA.`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: '✅ Sí, confirmar compra',
+      cancelButtonText: 'Todavía no',
+      confirmButtonColor: '#059669',
+      cancelButtonColor: 'rgba(255,255,255,0.08)',
+      background: 'hsl(222, 47%, 11%)',
+      color: 'var(--text-primary)',
+      iconColor: '#10b981'
+    });
+    if (!res.isConfirmed) return;
+
+    try {
+      const { error: upErr } = await supabase
+        .from('clientes_b2b_pedidos_cabecera')
+        .update({
+          estado: 'En Preparacion',
+          sync_estado: 'Pendiente',
+          sync_mensaje: '[CONFIRMADO_PORTAL]'
+        })
+        .eq('id', pedido.id);
+
+      if (upErr) throw upErr;
+
+      registrarAccesoTelemetria(`✅ Confirmó Pedido desde Standby #${pedido.id}`, profile);
+      Swal.fire({
+        title: '¡Pedido Confirmado!',
+        text: `El pedido #${pedido.id.substring(0, 8).toUpperCase()} pasó a preparación en LAMDA.`,
+        icon: 'success',
+        confirmButtonText: 'Listo',
+        confirmButtonColor: 'var(--accent)',
+        background: 'hsl(222, 47%, 11%)',
+        color: 'var(--text-primary)'
+      });
+      fetchPedidos();
+    } catch (err) {
+      Swal.fire({
+        title: 'No se pudo confirmar',
+        text: err.message,
+        icon: 'error',
+        confirmButtonText: 'Aceptar',
+        background: 'hsl(222, 47%, 11%)',
+        color: 'var(--text-primary)'
+      });
+    }
+  };
+
+  const handleCambiarModoStandby = async (pedido, nuevoModo) => {
+    const eraActivoConfirmado = !esPedidoStandbyPortal(pedido) && !esPedidoArchivadoPortal(pedido);
+    if (eraActivoConfirmado && nuevoModo === 'STANDBY') {
+      const res = await Swal.fire({
+        title: '¿Pausar pedido y dejarlo A Confirmar?',
+        text: 'El pedido pasará a estado Standby (Sin Confirmar) en LAMDA y no se armará hasta que lo vuelvas a confirmar.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: '⏳ Sí, dejar a confirmar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#d97706',
+        cancelButtonColor: 'rgba(255,255,255,0.08)',
+        background: 'hsl(222, 47%, 11%)',
+        color: 'var(--text-primary)'
+      });
+      if (!res.isConfirmed) return;
+    }
+
+    try {
+      const nuevoSyncMensaje = nuevoModo === 'ARCHIVADO' ? '[ARCHIVADO_PORTAL]' : '[STANDBY_PORTAL]';
+      const { error: upErr } = await supabase
+        .from('clientes_b2b_pedidos_cabecera')
+        .update({
+          estado: 'Pendiente',
+          sync_estado: 'Pendiente',
+          sync_mensaje: nuevoSyncMensaje
+        })
+        .eq('id', pedido.id);
+
+      if (upErr) throw upErr;
+
+      if (nuevoModo === 'ARCHIVADO') {
+        setIsArchivedOpen(true);
+      }
+
+      Swal.fire({
+        title: nuevoModo === 'ARCHIVADO' ? 'Pedido Archivado' : 'Pedido en Standby (A Confirmar)',
+        text: nuevoModo === 'ARCHIVADO'
+          ? 'El pedido quedó guardado en tu sección de Archivados.'
+          : 'El pedido quedó guardado como "A Confirmar" y podrá confirmarse o editarse en cualquier momento.',
+        icon: 'success',
+        timer: 2600,
+        showConfirmButton: false,
+        background: 'hsl(222, 47%, 11%)',
+        color: 'var(--text-primary)'
+      });
+      fetchPedidos();
+    } catch (err) {
+      Swal.fire({
+        title: 'Error al actualizar estado',
+        text: err.message,
+        icon: 'error',
+        confirmButtonText: 'Aceptar',
+        background: 'hsl(222, 47%, 11%)',
+        color: 'var(--text-primary)'
+      });
+    }
+  };
+
+  const handleCancelarEdicionActiva = () => {
     Swal.fire({
-      title: '¿Eliminar Pedido?',
-      text: 'Se limpiará por completo la simulación actual y el carrito quedará vacío. Esta acción no se puede deshacer.',
+      title: '¿Salir del modo edición?',
+      text: 'Se vaciará el borrador actual en pantalla y tu pedido original guardado permanecerá intacto sin cambios.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Sí, descartar cambios',
+      cancelButtonText: 'Seguir editando',
+      confirmButtonColor: '#64748b',
+      cancelButtonColor: 'rgba(255,255,255,0.08)',
+      background: 'hsl(222, 47%, 11%)',
+      color: 'var(--text-primary)'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        updateEditingOrderInfo(null);
+        clearCart();
+        setNota('');
+      }
+    });
+  };
+
+  const handleClearCartPrompt = () => {
+    if (editingOrderInfo?.id) {
+      handleCancelarEdicionActiva();
+      return;
+    }
+    Swal.fire({
+      title: '¿Vaciar borrador actual?',
+      text: 'Se limpiará el carrito en curso. Si preferís no perderlo, podés usar "Dejar a Confirmar (Standby)" o "Guardar Archivado".',
       icon: 'warning',
       showCancelButton: true,
       confirmButtonText: 'Sí, vaciar',
@@ -558,6 +815,7 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
       iconColor: 'var(--danger)'
     }).then((result) => {
       if (result.isConfirmed) {
+        updateEditingOrderInfo(null);
         clearCart();
         setNota('');
       }
@@ -566,11 +824,11 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
 
   const handleAnularPedido = async (pedidoId) => {
     Swal.fire({
-      title: '¿Anular este pedido?',
-      text: 'Se enviará la solicitud de cancelación a la distribuidora. Esta acción no se puede revertir.',
+      title: '¿Eliminar / Anular este pedido?',
+      text: 'Se dará de baja este pedido en el portal y en la distribuidora. Esta acción no se puede revertir.',
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonText: 'Sí, anular',
+      confirmButtonText: 'Sí, eliminar',
       cancelButtonText: 'Cancelar',
       confirmButtonColor: 'var(--danger)',
       cancelButtonColor: 'rgba(255,255,255,0.05)',
@@ -587,9 +845,13 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
 
           if (patchError) throw patchError;
 
+          if (editingOrderInfo?.id === pedidoId) {
+            updateEditingOrderInfo(null);
+          }
+
           Swal.fire({
-            title: 'Pedido Anulado',
-            text: 'El pedido ha sido marcado como Cancelado. El sincronizador del sistema actualizará la cola de armado en unos instantes.',
+            title: 'Pedido Eliminado',
+            text: 'El pedido ha sido dado de baja correctamente.',
             icon: 'success',
             confirmButtonText: 'Entendido',
             confirmButtonColor: 'var(--accent)',
@@ -601,7 +863,7 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
         } catch (err) {
           console.error('Error al anular pedido:', err.message);
           Swal.fire({
-            title: 'Error al anular',
+            title: 'Error al eliminar',
             text: err.message,
             icon: 'error',
             confirmButtonText: 'Aceptar',
@@ -614,12 +876,15 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
   };
 
   const handleEditarPedido = async (pedido) => {
+    const avisoCarrito = cart.length > 0
+      ? ' Tené en cuenta que se reemplazará el borrador que tenés actualmente en el carrito.'
+      : '';
     Swal.fire({
       title: '¿Editar este pedido?',
-      text: 'Se cargarán los artículos de esta orden en el carrito actual con sus precios vigentes y se cancelará el pedido anterior para que puedas realizar tus modificaciones. ¿Deseas continuar?',
+      text: `Se cargarán los artículos de esta orden en tu carrito con precios vigentes. El pedido original quedará resguardado sin borrarse hasta que guardes o confirmes la nueva versión.${avisoCarrito}`,
       icon: 'question',
       showCancelButton: true,
-      confirmButtonText: 'Sí, editar',
+      confirmButtonText: 'Sí, cargar para editar',
       cancelButtonText: 'Cancelar',
       confirmButtonColor: 'var(--accent)',
       cancelButtonColor: 'rgba(255,255,255,0.05)',
@@ -640,52 +905,50 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
             .eq('cliente_id', profile.cliente_id);
 
           if (listError) throw listError;
-          if (!userLists || userLists.length === 0) {
-            throw new Error("El cliente no tiene listas de precios asignadas.");
-          }
-
-          const listIds = userLists.map(ul => ul.lista_id);
+          const listIds = (userLists || []).map(ul => ul.lista_id);
           const listPriorityMap = new Map();
-          for (const ul of userLists) {
+          for (const ul of (userLists || [])) {
             listPriorityMap.set(ul.lista_id, ul.es_principal ? 1 : 2);
           }
 
           // 2. Obtener códigos de los ítems del pedido (limpiando espacios)
           const oldItems = pedido.clientes_b2b_pedidos_items || [];
-          const codigos = oldItems.map(it => (it.producto_codigo || '').trim());
+          const codigos = oldItems.map(it => (it.producto_codigo || '').trim()).filter(Boolean);
 
           // 3. Consultar precios vigentes en Supabase
-          const { data: catalogPrices, error: catalogError } = await supabase
-            .from('clientes_b2b_catalogo_precios')
-            .select('producto_codigo, precio_final, lista_id')
-            .in('lista_id', listIds)
-            .in('producto_codigo', codigos);
-
-          if (catalogError) throw catalogError;
-
-          // 4. Mapear precios vigentes priorizando listas principales
           const priceMap = new Map();
-          for (const cp of catalogPrices || []) {
-            const cleanCode = (cp.producto_codigo || '').trim();
-            const existing = priceMap.get(cleanCode);
-            const currentPrice = parseFloat(cp.precio_final);
+          if (listIds.length > 0 && codigos.length > 0) {
+            const { data: catalogPrices, error: catalogError } = await supabase
+              .from('clientes_b2b_catalogo_precios')
+              .select('producto_codigo, precio_final, lista_id')
+              .in('lista_id', listIds)
+              .in('producto_codigo', codigos);
 
-            if (!existing) {
-              priceMap.set(cleanCode, cp);
-            } else {
-              const existingPrice = parseFloat(existing.precio_final);
-              const existingPriority = listPriorityMap.get(existing.lista_id) || 99;
-              const itemPriority = listPriorityMap.get(cp.lista_id) || 99;
+            if (catalogError) throw catalogError;
 
-              let shouldUpdate = false;
-              if (existingPrice <= 0 && currentPrice > 0) {
-                shouldUpdate = true;
-              } else if (currentPrice > 0 && itemPriority < existingPriority) {
-                shouldUpdate = true;
-              }
+            // 4. Mapear precios vigentes priorizando listas principales
+            for (const cp of catalogPrices || []) {
+              const cleanCode = (cp.producto_codigo || '').trim();
+              const existing = priceMap.get(cleanCode);
+              const currentPrice = parseFloat(cp.precio_final);
 
-              if (shouldUpdate) {
+              if (!existing) {
                 priceMap.set(cleanCode, cp);
+              } else {
+                const existingPrice = parseFloat(existing.precio_final);
+                const existingPriority = listPriorityMap.get(existing.lista_id) || 99;
+                const itemPriority = listPriorityMap.get(cp.lista_id) || 99;
+
+                let shouldUpdate = false;
+                if (existingPrice <= 0 && currentPrice > 0) {
+                  shouldUpdate = true;
+                } else if (currentPrice > 0 && itemPriority < existingPriority) {
+                  shouldUpdate = true;
+                }
+
+                if (shouldUpdate) {
+                  priceMap.set(cleanCode, cp);
+                }
               }
             }
           }
@@ -706,32 +969,35 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
             }, item.cantidad);
           }
 
-          // 7. Cancelar pedido anterior en Supabase
-          const { error: patchError } = await supabase
-            .from('clientes_b2b_pedidos_cabecera')
-            .update({ estado: 'CANCELLED' })
-            .eq('id', pedido.id);
+          // 7. Registrar vínculo de edición segura (NO se cancela el original hasta guardar el reemplazo)
+          const modoPrevio = esPedidoArchivadoPortal(pedido)
+            ? 'ARCHIVADO'
+            : (esPedidoStandbyPortal(pedido) ? 'STANDBY' : 'CONFIRMAR');
 
-          if (patchError) throw patchError;
+          updateEditingOrderInfo({
+            id: pedido.id,
+            codigoCorto: pedido.id.substring(0, 8).toUpperCase(),
+            modoPrevio
+          });
 
-          // Guardar marca de edición
-          localStorage.setItem('B2B_EDITANDO_PEDIDO_ID', pedido.id);
-
-          // 8. Establecer observaciones del pedido anterior si las tuviera
-          if (pedido.observaciones) {
-            setNota(pedido.observaciones);
-          }
+          // 8. Establecer observaciones limpias del pedido anterior
+          setNota(limpiarObservacionesVisibles(pedido.observaciones));
 
           Swal.fire({
-            title: 'Pedido listo para editar',
-            text: 'Los artículos han sido cargados en tu carrito con precios vigentes. Serás redirigido a la solapa de artículos.',
+            title: 'Pedido cargado para editar',
+            text: 'Podés ajustar cantidades en "Revisar Orden" o sumar productos desde el catálogo. Tu pedido original no se perderá si cerrás la pantalla.',
             icon: 'success',
-            confirmButtonText: 'Ir a artículos',
+            showCancelButton: true,
+            confirmButtonText: 'Ir al Catálogo',
+            cancelButtonText: 'Quedarme en Revisar Orden',
             confirmButtonColor: 'var(--accent)',
+            cancelButtonColor: '#334155',
             background: 'hsl(222, 47%, 11%)',
             color: 'var(--text-primary)'
-          }).then(() => {
-            setCurrentTab('articulos');
+          }).then((navRes) => {
+            if (navRes.isConfirmed) {
+              setCurrentTab('articulos');
+            }
           });
 
         } catch (err) {
@@ -749,10 +1015,14 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
     });
   };
 
-  const pedidosActivos = pedidos.filter(p => {
+  const pedidosNoFinalizados = pedidos.filter(p => {
     const est = (p.estado || '').toLowerCase().trim();
     return est !== 'cancelado' && est !== 'cancelled' && est !== 'eliminado' && getStepIndex(p.estado) !== 5;
   });
+  const pedidosStandby = pedidosNoFinalizados.filter(p => esPedidoStandbyPortal(p));
+  const pedidosArchivados = pedidosNoFinalizados.filter(p => esPedidoArchivadoPortal(p));
+  const pedidosActivos = pedidosNoFinalizados.filter(p => !esPedidoStandbyPortal(p) && !esPedidoArchivadoPortal(p));
+
   const pedidosEntregados = pedidos.filter(p => {
     const est = (p.estado || '').toLowerCase().trim();
     return est !== 'cancelado' && est !== 'cancelled' && est !== 'eliminado' && getStepIndex(p.estado) === 5;
@@ -1100,6 +1370,222 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
         </div>
       )}
 
+      {/* BANNER DE PEDIDOS GUARDADOS A CONFIRMAR (STANDBY) */}
+      {pedidosStandby.length > 0 && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(217, 119, 6, 0.16) 0%, rgba(15, 23, 42, 0.94) 100%)',
+          border: '1.5px solid rgba(245, 158, 11, 0.55)',
+          borderRadius: '16px',
+          padding: '1.25rem',
+          marginBottom: '1.5rem',
+          boxShadow: '0 10px 30px rgba(245, 158, 11, 0.14)',
+          animation: 'fadeIn 0.25s ease-out'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.85rem', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <div style={{
+                width: '38px',
+                height: '38px',
+                borderRadius: '10px',
+                background: 'rgba(245, 158, 11, 0.22)',
+                border: '1px solid rgba(245, 158, 11, 0.45)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fbbf24',
+                fontSize: '1.2rem',
+                flexShrink: 0
+              }}>
+                ⏳
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 900, color: '#fef3c7' }}>
+                  Pedidos Guardados a Confirmar — Standby ({pedidosStandby.length})
+                </h3>
+                <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.78rem', color: '#fde68a' }}>
+                  Guardados en tu cuenta y visibles en LAMDA como "Sin Confirmar". No entran a armado hasta que los confirmes.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={fetchPedidos}
+              style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              Actualizar
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            {pedidosStandby.map(ped => {
+              const items = ped.clientes_b2b_pedidos_items || [];
+              const itemsCount = items.length;
+              const isExpanded = expandedPedidoId === ped.id;
+              const obsLimpia = limpiarObservacionesVisibles(ped.observaciones);
+
+              return (
+                <div
+                  key={ped.id}
+                  style={{
+                    background: '#090d16',
+                    border: editingOrderInfo?.id === ped.id ? '1.5px solid #a855f7' : '1px solid rgba(245, 158, 11, 0.35)',
+                    borderRadius: '12px',
+                    padding: '0.9rem 1rem'
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '0.75rem'
+                  }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+                        <span style={{
+                          background: 'rgba(245, 158, 11, 0.2)',
+                          color: '#fbbf24',
+                          padding: '0.15rem 0.55rem',
+                          borderRadius: '6px',
+                          fontSize: '0.72rem',
+                          fontWeight: 800
+                        }}>
+                          ⏳ A CONFIRMAR • #{ped.id.substring(0, 8).toUpperCase()}
+                        </span>
+                        {editingOrderInfo?.id === ped.id && (
+                          <span style={{
+                            background: 'rgba(168, 85, 247, 0.2)',
+                            color: '#d8b4fe',
+                            padding: '0.15rem 0.5rem',
+                            borderRadius: '6px',
+                            fontSize: '0.7rem',
+                            fontWeight: 800
+                          }}>
+                            ✏️ En edición ahora
+                          </span>
+                        )}
+                        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                          Guardado el {new Date(ped.fecha_pedido).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} hs
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#f8fafc' }}>
+                        {itemsCount} artículo{itemsCount > 1 ? 's' : ''} • Total estimado: {formatCurrency(ped.total)}
+                      </div>
+                      {obsLimpia && (
+                        <div style={{ fontSize: '0.76rem', color: '#cbd5e1', marginTop: '0.2rem', fontStyle: 'italic' }}>
+                          💬 "{obsLimpia}"
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => handleConfirmarPedidoStandby(ped)}
+                        style={{
+                          background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                          color: 'white',
+                          border: 'none',
+                          padding: '0.48rem 0.85rem',
+                          borderRadius: '8px',
+                          fontSize: '0.79rem',
+                          fontWeight: 800,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.3rem',
+                          boxShadow: '0 4px 12px rgba(16, 185, 129, 0.28)'
+                        }}
+                        title="Confirmar compra y enviar a preparación en LAMDA"
+                      >
+                        <Check size={15} /> Confirmar Ahora
+                      </button>
+
+                      <button
+                        onClick={() => handleEditarPedido(ped)}
+                        style={{
+                          background: 'rgba(124, 58, 237, 0.2)',
+                          color: '#c084fc',
+                          border: '1px solid rgba(124, 58, 237, 0.4)',
+                          padding: '0.45rem 0.75rem',
+                          borderRadius: '8px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.3rem'
+                        }}
+                        title="Cargar en el carrito para modificar cantidades o sumar productos"
+                      >
+                        ✏️ Editar
+                      </button>
+
+                      <button
+                        onClick={() => handleCambiarModoStandby(ped, 'ARCHIVADO')}
+                        style={{
+                          background: 'rgba(100, 116, 139, 0.2)',
+                          color: '#cbd5e1',
+                          border: '1px solid rgba(148, 163, 184, 0.3)',
+                          padding: '0.45rem 0.7rem',
+                          borderRadius: '8px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                        title="Mover a Pedidos Archivados para más adelante"
+                      >
+                        🗂️ Archivar
+                      </button>
+
+                      <button
+                        onClick={() => toggleExpand(ped.id)}
+                        style={{
+                          background: '#1e293b',
+                          color: '#cbd5e1',
+                          border: '1px solid #334155',
+                          padding: '0.45rem 0.7rem',
+                          borderRadius: '8px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.3rem'
+                        }}
+                      >
+                        <Eye size={14} /> {isExpanded ? 'Ocultar' : 'Detalle'}
+                      </button>
+
+                      <button
+                        onClick={() => handleAnularPedido(ped.id)}
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.14)',
+                          color: '#f87171',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          padding: '0.45rem 0.65rem',
+                          borderRadius: '8px',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                        title="Eliminar este pedido guardado"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div style={{ marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px solid #1e293b' }}>
+                      {renderPedidoItemsBlock(ped, items)}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* BANNER DE ALERTA: PEDIDOS ACTIVOS EN TRÁMITE */}
       {pedidosActivos.length > 0 && (
         <div className="b2b-pedidos-activos-banner">
@@ -1211,6 +1697,25 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
                         <Eye size={14} /> {isExpanded ? 'Ocultar Detalle' : 'Ver Detalle'}
                       </button>
 
+                      {getStepIndex(ped.estado) === 1 && !ped.facturado && (
+                        <button
+                          onClick={() => handleCambiarModoStandby(ped, 'STANDBY')}
+                          style={{
+                            background: 'rgba(245, 158, 11, 0.16)',
+                            color: '#fbbf24',
+                            border: '1px solid rgba(245, 158, 11, 0.38)',
+                            padding: '0.45rem 0.75rem',
+                            borderRadius: '8px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                          title="Pausar este pedido y dejarlo A Confirmar (Standby)"
+                        >
+                          ⏳ Pasar a Standby
+                        </button>
+                      )}
+
                       <button
                         onClick={() => handleEditarPedido(ped)}
                         style={{
@@ -1297,6 +1802,61 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
                 <span>Delegar a Empleado</span>
               </button>
             </div>
+          </div>
+
+          {editingOrderInfo?.id && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(124, 58, 237, 0.18) 0%, rgba(30, 41, 59, 0.9) 100%)',
+              border: '1.5px solid rgba(168, 85, 247, 0.5)',
+              borderRadius: '12px',
+              padding: '0.8rem 1rem',
+              fontSize: '0.83rem',
+              color: '#f3e8ff',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '0.75rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                <span style={{ fontSize: '1.1rem' }}>✏️</span>
+                <span>
+                  Editando pedido <strong>#{editingOrderInfo.codigoCorto || String(editingOrderInfo.id).substring(0, 8).toUpperCase()}</strong>. Tu pedido original se mantiene resguardado hasta que confirmes o guardes los cambios.
+                </span>
+              </div>
+              <button
+                onClick={handleCancelarEdicionActiva}
+                style={{
+                  background: 'rgba(15, 23, 42, 0.7)',
+                  color: '#e2e8f0',
+                  border: '1px solid rgba(148, 163, 184, 0.35)',
+                  borderRadius: '8px',
+                  padding: '0.35rem 0.75rem',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                Cancelar edición
+              </button>
+            </div>
+          )}
+
+          <div style={{
+            background: 'rgba(16, 185, 129, 0.07)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            borderRadius: '10px',
+            padding: '0.55rem 0.9rem',
+            fontSize: '0.78rem',
+            color: '#a7f3d0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            <span>💾</span>
+            <span>
+              <strong>Autoguardado activo:</strong> Tu selección queda guardada en este navegador. Si necesitás consultar antes de comprar, usá <strong>"Dejar a Confirmar (Standby)"</strong> para resguardarla en tu cuenta.
+            </span>
           </div>
 
           {pedidosActivos.length > 0 && (
@@ -1502,42 +2062,98 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
               </div>
 
               {/* Acciones del Paso B */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.5rem' }}>
                 <button
-                  onClick={handleCheckout}
+                  onClick={() => handleGuardarOrden('CONFIRMAR')}
                   disabled={submitting}
                   className="btn-primary"
                   style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%', padding: '0.85rem' }}
                 >
-                  {submitting ? (
+                  {submitting && submittingMode === 'CONFIRMAR' ? (
                     <>
                       <Loader2 className="spinner" style={{ width: '18px', height: '18px', borderTopColor: 'var(--text-primary)' }} />
-                      <span>Enviando pedido...</span>
+                      <span>Confirmando pedido...</span>
                     </>
                   ) : (
-                    <span>Confirmar Compra</span>
+                    <span>✅ Confirmar Compra</span>
                   )}
                 </button>
 
                 <button
-                  onClick={handleClearCartPrompt}
+                  onClick={() => handleGuardarOrden('STANDBY')}
                   disabled={submitting}
                   className="filter-btn"
-                  style={{ width: '100%', borderColor: 'var(--danger)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem', background: 'rgba(239, 68, 68, 0.03)' }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.03)'}
+                  style={{
+                    width: '100%',
+                    borderColor: 'rgba(245, 158, 11, 0.55)',
+                    color: '#fbbf24',
+                    background: 'rgba(245, 158, 11, 0.1)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.15rem',
+                    padding: '0.7rem 0.8rem',
+                    fontWeight: 800
+                  }}
+                  title="Guardar el pedido en tu cuenta y en LAMDA como Sin Confirmar hasta tener el visto bueno definitivo"
                 >
-                  <Trash2 size={16} />
-                  <span>Eliminar Pedido</span>
+                  {submitting && submittingMode === 'STANDBY' ? (
+                    <span>Guardando en Standby...</span>
+                  ) : (
+                    <>
+                      <span>⏳ Dejar a Confirmar (Standby)</span>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 500, color: '#fde68a', opacity: 0.9 }}>
+                        Queda guardado sin entrar a armado hasta confirmarlo
+                      </span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => handleGuardarOrden('ARCHIVADO')}
+                  disabled={submitting}
+                  className="filter-btn"
+                  style={{
+                    width: '100%',
+                    borderColor: 'rgba(148, 163, 184, 0.35)',
+                    color: '#cbd5e1',
+                    background: 'rgba(100, 116, 139, 0.1)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.45rem',
+                    padding: '0.65rem',
+                    fontSize: '0.82rem'
+                  }}
+                  title="Guardar como pedido archivado para retomarlo más adelante"
+                >
+                  {submitting && submittingMode === 'ARCHIVADO' ? (
+                    <span>Archivando...</span>
+                  ) : (
+                    <span>🗂️ Guardar Archivado</span>
+                  )}
                 </button>
 
                 <button
                   onClick={() => setCurrentTab('articulos')}
                   disabled={submitting}
                   className="filter-btn"
-                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem' }}
+                  style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.7rem' }}
                 >
                   <span>Seguir Comprando</span>
+                </button>
+
+                <button
+                  onClick={handleClearCartPrompt}
+                  disabled={submitting}
+                  className="filter-btn"
+                  style={{ width: '100%', borderColor: 'var(--danger)', color: 'var(--danger)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.68rem', background: 'rgba(239, 68, 68, 0.03)', fontSize: '0.82rem' }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(239, 68, 68, 0.03)'}
+                >
+                  <Trash2 size={15} />
+                  <span>{editingOrderInfo?.id ? 'Cancelar Edición' : 'Vaciar Borrador'}</span>
                 </button>
               </div>
             </div>
@@ -1595,9 +2211,17 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
               {pedidosActivos.length === 0 ? (
                 <div className="empty-state" style={{ padding: '2rem 1.5rem', background: 'rgba(255,255,255,0.01)', border: '1px dashed var(--border-glass)', borderRadius: 'var(--radius-lg)' }}>
                   <Clock size={36} style={{ color: 'var(--text-muted)' }} />
-                  <p className="empty-state-title" style={{ fontSize: '1rem', marginTop: '0.5rem' }}>No tienes pedidos activos</p>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', maxWidth: '350px', margin: '0 auto' }}>
-                    Todos tus pedidos han sido entregados y archivados en el listado histórico inferior.
+                  <p className="empty-state-title" style={{ fontSize: '1rem', marginTop: '0.5rem' }}>
+                    {pedidosStandby.length > 0 || pedidosArchivados.length > 0
+                      ? 'No tenés pedidos confirmados en preparación en este momento'
+                      : 'No tienes pedidos activos'}
+                  </p>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', maxWidth: '420px', margin: '0 auto' }}>
+                    {pedidosStandby.length > 0
+                      ? 'Tus pedidos guardados "A Confirmar" aparecen en el recuadro ámbar superior listos para confirmar o editar cuando quieras.'
+                      : (pedidosArchivados.length > 0
+                        ? 'Tenés pedidos resguardados en el desplegable de "Pedidos Archivados" aquí debajo.'
+                        : 'Todos tus pedidos han sido entregados y archivados en el listado histórico inferior.')}
                   </p>
                 </div>
               ) : (
@@ -1700,6 +2324,16 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
                           
                           {(!pedido.facturado && (pedido.estado || '').toLowerCase().trim() !== 'cancelado') && (
                             <>
+                              {currentStep === 1 && (
+                                <button
+                                  onClick={() => handleCambiarModoStandby(pedido, 'STANDBY')}
+                                  className="filter-btn"
+                                  style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem', borderColor: 'rgba(245, 158, 11, 0.45)', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '0.35rem', background: 'rgba(245, 158, 11, 0.08)', borderRadius: '6px', cursor: 'pointer', transition: 'all 0.2s' }}
+                                  title="Pausar este pedido y dejarlo A Confirmar (Standby)"
+                                >
+                                  ⏳ Pasar a Standby
+                                </button>
+                              )}
                               <button 
                                 onClick={() => handleEditarPedido(pedido)}
                                 className="filter-btn"
@@ -2021,6 +2655,190 @@ export default function Pedidos({ profile, cart = [], addToCart, removeFromCart,
             </>
           )}
         </>
+      )}
+
+      {/* ACORDEÓN DE PEDIDOS ARCHIVADOS POR EL CLIENTE */}
+      {pedidosArchivados.length > 0 && (
+        <div className="historical-accordion-container" style={{ marginTop: '2rem' }}>
+          <button
+            onClick={() => setIsArchivedOpen(!isArchivedOpen)}
+            className="historical-accordion-header"
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              width: '100%',
+              padding: '1.05rem 1.4rem',
+              background: 'rgba(100, 116, 139, 0.08)',
+              border: '1px solid rgba(148, 163, 184, 0.28)',
+              borderRadius: 'var(--radius-lg)',
+              color: '#e2e8f0',
+              fontWeight: '700',
+              fontSize: '0.94rem',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
+              <span>🗂️</span>
+              <span>Pedidos Archivados — Guardados para después ({pedidosArchivados.length})</span>
+            </div>
+            {isArchivedOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
+
+          {isArchivedOpen && (
+            <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {pedidosArchivados.map((ped) => {
+                const items = ped.clientes_b2b_pedidos_items || [];
+                const itemsCount = items.length;
+                const isExpanded = expandedPedidoId === ped.id;
+                const obsLimpia = limpiarObservacionesVisibles(ped.observaciones);
+
+                return (
+                  <div
+                    key={ped.id}
+                    style={{
+                      background: '#090d16',
+                      border: '1px solid rgba(148, 163, 184, 0.28)',
+                      borderRadius: '12px',
+                      padding: '0.9rem 1rem'
+                    }}
+                  >
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '0.75rem'
+                    }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
+                          <span style={{
+                            background: 'rgba(100, 116, 139, 0.25)',
+                            color: '#cbd5e1',
+                            padding: '0.15rem 0.55rem',
+                            borderRadius: '6px',
+                            fontSize: '0.72rem',
+                            fontWeight: 800
+                          }}>
+                            🗂️ ARCHIVADO • #{ped.id.substring(0, 8).toUpperCase()}
+                          </span>
+                          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                            Guardado el {new Date(ped.fecha_pedido).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} hs
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#f8fafc' }}>
+                          {itemsCount} artículo{itemsCount > 1 ? 's' : ''} • Total estimado: {formatCurrency(ped.total)}
+                        </div>
+                        {obsLimpia && (
+                          <div style={{ fontSize: '0.76rem', color: '#cbd5e1', marginTop: '0.2rem', fontStyle: 'italic' }}>
+                            💬 "{obsLimpia}"
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                        <button
+                          onClick={() => handleConfirmarPedidoStandby(ped)}
+                          style={{
+                            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                            color: 'white',
+                            border: 'none',
+                            padding: '0.46rem 0.85rem',
+                            borderRadius: '8px',
+                            fontSize: '0.78rem',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.3rem'
+                          }}
+                        >
+                          <Check size={14} /> Confirmar Ahora
+                        </button>
+
+                        <button
+                          onClick={() => handleCambiarModoStandby(ped, 'STANDBY')}
+                          style={{
+                            background: 'rgba(245, 158, 11, 0.16)',
+                            color: '#fbbf24',
+                            border: '1px solid rgba(245, 158, 11, 0.38)',
+                            padding: '0.45rem 0.75rem',
+                            borderRadius: '8px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                          title="Mover a Pedidos A Confirmar (Standby)"
+                        >
+                          ⏳ Pasar a Standby
+                        </button>
+
+                        <button
+                          onClick={() => handleEditarPedido(ped)}
+                          style={{
+                            background: 'rgba(124, 58, 237, 0.2)',
+                            color: '#c084fc',
+                            border: '1px solid rgba(124, 58, 237, 0.4)',
+                            padding: '0.45rem 0.75rem',
+                            borderRadius: '8px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          ✏️ Editar
+                        </button>
+
+                        <button
+                          onClick={() => toggleExpand(ped.id)}
+                          style={{
+                            background: '#1e293b',
+                            color: '#cbd5e1',
+                            border: '1px solid #334155',
+                            padding: '0.45rem 0.7rem',
+                            borderRadius: '8px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.3rem'
+                          }}
+                        >
+                          <Eye size={14} /> {isExpanded ? 'Ocultar' : 'Detalle'}
+                        </button>
+
+                        <button
+                          onClick={() => handleAnularPedido(ped.id)}
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.14)',
+                            color: '#f87171',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            padding: '0.45rem 0.65rem',
+                            borderRadius: '8px',
+                            fontSize: '0.78rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                          title="Eliminar pedido archivado"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div style={{ marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px solid #1e293b' }}>
+                        {renderPedidoItemsBlock(ped, items)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ========================================================================= */}

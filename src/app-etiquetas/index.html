@@ -243,8 +243,12 @@
             <div id="pizarra-time" class="pizarra-time">--:--:--</div>
             <div id="pizarra-date" class="pizarra-date">Cargando fecha...</div>
           </div>
-          <!-- Derecha: Botón de Limpieza Pizarra + Contador Global de Tokens y Estado de Crédito IA -->
-          <div class="pizarra-top-actions" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto;">
+          <!-- Derecha: Botón austero de revisión rápida de pedidos B2B + Limpieza Pizarra + Crédito IA -->
+          <div class="pizarra-top-actions" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto;">
+            <button id="btn-sync-pedidos-rapido" type="button" onclick="if (window.actualizarPedidosPortalRapido) window.actualizarPedidosPortalRapido()" title="Revisar si ingresó algún pedido nuevo, pedido en Standby o actualización de orden desde el Portal B2B" style="background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; border-radius: 7px; padding: 4px 9px; font-size: 0.75rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; line-height: 1.2; transition: all 0.15s ease;">
+              <span id="icon-sync-pedidos-rapido" style="display: inline-block; font-size: 0.78rem;">🔄</span>
+              <span id="lbl-sync-pedidos-rapido">Actualizar</span>
+            </button>
             <button id="btn-limpiar-pizarra" class="btn-limpiar-pizarra" style="display: none; position: static;" title="Limpiar realizados" onclick="purgaManualAlertas()">
               <span>🧹</span>
               <span class="btn-limpiar-text">Limpiar realizados</span>
@@ -1017,6 +1021,57 @@ window.sincronizarB2BManual = async function() {
                 confirmButtonColor: '#4f46e5'
             });
         }
+    }
+};
+
+window.actualizarPedidosPortalRapido = async function() {
+    const btn = document.getElementById('btn-sync-pedidos-rapido');
+    const icon = document.getElementById('icon-sync-pedidos-rapido');
+    const lbl = document.getElementById('lbl-sync-pedidos-rapido');
+    if (!btn || btn.disabled) return;
+
+    btn.disabled = true;
+    btn.style.opacity = '0.75';
+    if (icon) icon.style.animation = 'sync-spin 0.8s linear infinite';
+    if (lbl) lbl.textContent = 'Revisando...';
+
+    try {
+        const res = await fetch('/api/sync-b2b-pedidos-rapido', { method: 'POST' });
+        const data = await res.json();
+
+        if (typeof actualizarAlertasPizarra === 'function') {
+            await actualizarAlertasPizarra();
+        }
+
+        const totalNov = Number(data?.totalNovedades || 0);
+        if (totalNov > 0) {
+            btn.style.borderColor = '#86efac';
+            btn.style.background = '#f0fdf4';
+            btn.style.color = '#166534';
+            if (lbl) lbl.textContent = `✓ ${totalNov} ${totalNov === 1 ? 'novedad' : 'novedades'}`;
+        } else {
+            btn.style.borderColor = '#cbd5e1';
+            btn.style.background = '#f8fafc';
+            btn.style.color = '#334155';
+            if (lbl) lbl.textContent = '✓ Al día';
+        }
+    } catch (err) {
+        console.warn('[FAST-SYNC] Error:', err);
+        btn.style.borderColor = '#fca5a5';
+        btn.style.color = '#b91c1c';
+        if (lbl) lbl.textContent = 'Reintentar';
+    } finally {
+        if (icon) icon.style.animation = '';
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        setTimeout(() => {
+            if (!btn.disabled) {
+                btn.style.borderColor = '#cbd5e1';
+                btn.style.background = '#f8fafc';
+                btn.style.color = '#475569';
+                if (lbl) lbl.textContent = 'Actualizar';
+            }
+        }, 3500);
     }
 };
 

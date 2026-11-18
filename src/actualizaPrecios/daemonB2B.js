@@ -134,7 +134,7 @@ function startActiveLoops() {
     require('dotenv').config({ path: path.resolve(__dirname, '../../.env'), override: true });
     if (esModoLaboratorioB2B()) return;
     executePedidosJob().catch(e => console.error('💥 [B2B-DAEMON] Error en ciclo Pedidos/Sobres:', e.message));
-  }, 60 * 1000); // Cada 1 minuto
+  }, 20 * 1000); // Cada 20 segundos
 
   setInterval(() => {
     require('dotenv').config({ path: path.resolve(__dirname, '../../.env'), override: true });

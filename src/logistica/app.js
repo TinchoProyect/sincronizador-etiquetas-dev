@@ -716,14 +716,20 @@ const server = app.listen(PORT, '0.0.0.0', () => {
             triggerB2BSync('ofertas', 'logistica:startup-catchup', 14000);
         }
 
-        // Respaldo continuo en el proceso LOGISTICA (:3005) para ingestar sobres, pedidos y retiros
-        // cada 60s aunque B2B_DAEMON no esté corriendo como proceso separado en PM2 (respeta candado Lab/Standby)
+        // Pulso liviano cada 15s en LOGISTICA (:3005) para detectar al instante pedidos nuevos,
+        // confirmaciones de Standby, ediciones o cancelaciones del Portal B2B (sonda ~70ms si no hay cambios)
+        const { revisarPedidosB2BRapido } = require('../actualizaPrecios/syncB2BPedidosRapido');
         setInterval(() => {
             if (esModoLaboratorioOSinCredencialesB2B()) return;
-            triggerB2BSync('pagosEfectivo', 'logistica:periodic-60s', 500);
-            triggerB2BSync('pedidos', 'logistica:periodic-60s', 2500);
-            triggerB2BSync('retiros', 'logistica:periodic-60s', 4500);
-        }, 60 * 1000);
+            revisarPedidosB2BRapido({ force: false, externalPool: pool }).catch(() => {});
+        }, 15 * 1000);
+
+        // Respaldo continuo cada 45s para ingestar sobres de efectivo y retiros del Portal B2B
+        setInterval(() => {
+            if (esModoLaboratorioOSinCredencialesB2B()) return;
+            triggerB2BSync('pagosEfectivo', 'logistica:periodic-45s', 500);
+            triggerB2BSync('retiros', 'logistica:periodic-45s', 2500);
+        }, 45 * 1000);
     })();
 });
 

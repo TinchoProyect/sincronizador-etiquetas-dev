@@ -2716,23 +2716,27 @@ async function cargarPresupuestosStandBy() {
     if (contador) contador.textContent = '0';
 
     try {
-        // Llamar al endpoint de presupuestos con filtro por estado
-        // IMPORTANTE: El módulo de presupuestos corre en puerto 3003
-        const response = await fetch('http://localhost:3003/api/presupuestos?estado=Muestra de Fraccionados');
+        // Llamar al endpoint de presupuestos trayendo todos los estados sin confirmar / Standby
+        const [resSinConfirmar, resMuestra] = await Promise.all([
+            fetch('http://localhost:3003/api/presupuestos?estado=Sin%20Confirmar'),
+            fetch('http://localhost:3003/api/presupuestos?estado=Muestra%20de%20Fraccionados')
+        ]);
 
-        if (!response.ok) {
-            throw new Error(`Error HTTP: ${response.status}`);
+        if (!resSinConfirmar.ok && !resMuestra.ok) {
+            throw new Error(`Error HTTP: ${resSinConfirmar.status}`);
         }
 
-        const data = await response.json();
-        console.log('📊 [STANDBY] Respuesta del servidor:', data);
+        const dataSinConfirmar = resSinConfirmar.ok ? await resSinConfirmar.json() : { data: [] };
+        const dataMuestra = resMuestra.ok ? await resMuestra.json() : { data: [] };
 
-        if (!data.success) {
-            throw new Error(data.message || 'Error al cargar presupuestos');
-        }
-
-        const presupuestos = data.data || [];
-        console.log(`✅ [STANDBY] Presupuestos recibidos: ${presupuestos.length}`);
+        const vistosIds = new Set();
+        const presupuestos = [...(dataSinConfirmar.data || []), ...(dataMuestra.data || [])].filter(p => {
+            if (!p || !p.id || vistosIds.has(p.id)) return false;
+            if (p.activo === false || p.archivado === true) return false;
+            vistosIds.add(p.id);
+            return true;
+        });
+        console.log(`✅ [STANDBY] Presupuestos sin confirmar recibidos: ${presupuestos.length}`);
 
         // Actualizar contador
         if (contador) {

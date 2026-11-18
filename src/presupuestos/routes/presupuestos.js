@@ -209,36 +209,19 @@ router.post('/sync/bidireccional-safe', validatePermissions('presupuestos.sync')
  * @access Privado
  */
 router.post('/sync/b2b-force', validatePermissions('presupuestos.sync'), async (req, res) => {
-    console.log('🔄 [PRESUPUESTOS-SYNC] Forzando sincronización en caliente de pedidos y estados B2B...');
-    const { exec } = require('child_process');
-    const path = require('path');
-
-    const scriptPedidos = path.join(__dirname, '../../actualizaPrecios/syncB2BPedidos.js');
-    const scriptEstados = path.join(__dirname, '../../actualizaPrecios/syncB2BEstados.js');
-
-    // Ejecutar primero la ingesta de pedidos y luego la actualización de estados
-    exec(`node "${scriptPedidos}"`, (errPedidos, stdoutPedidos, stderrPedidos) => {
-        if (errPedidos) {
-            console.error('❌ Error ejecutando syncB2BPedidos:', errPedidos);
-        }
-        console.log('stdoutPedidos:', stdoutPedidos);
-
-        exec(`node "${scriptEstados}"`, (errEstados, stdoutEstados, stderrEstados) => {
-            if (errEstados) {
-                console.error('❌ Error ejecutando syncB2BEstados:', errEstados);
-            }
-            console.log('stdoutEstados:', stdoutEstados);
-
-            res.json({
-                success: true,
-                message: 'Sincronización en caliente B2B completada con éxito',
-                details: {
-                    pedidos: stdoutPedidos,
-                    estados: stdoutEstados
-                }
-            });
+    console.log('🔄 [PRESUPUESTOS-SYNC] Revisando en caliente pedidos y actualizaciones del Portal B2B...');
+    try {
+        const { revisarPedidosB2BRapido } = require('../../actualizaPrecios/syncB2BPedidosRapido');
+        const resultado = await revisarPedidosB2BRapido({ force: true, externalPool: req.db });
+        return res.json({
+            success: true,
+            message: 'Sincronización en caliente B2B completada con éxito',
+            ...resultado
         });
-    });
+    } catch (err) {
+        console.error('❌ [PRESUPUESTOS-SYNC] Error en b2b-force:', err.message);
+        return res.status(500).json({ success: false, error: err.message });
+    }
 });
 
 /**
