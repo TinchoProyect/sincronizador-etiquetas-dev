@@ -12352,7 +12352,7 @@
         "character_maximum_length": null,
         "numeric_precision": 32,
         "numeric_scale": 0,
-        "is_nullable": "NO",
+        "is_nullable": "YES",
         "column_default": null
       },
       "total_venta_vecinos": {

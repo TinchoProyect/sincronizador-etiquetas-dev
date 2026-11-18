@@ -1576,7 +1576,7 @@ function extraerValorDirectoCelda(celda) {
  * Inspecciona el DOM del carro y recolecta ingredientes/insumos/mixes en rojo
  * y cualquier condición que indique que el carro aún no está listo para producir.
  */
-function recolectarPendientesPreparacionCarro(esExterno, lineaNegocio) {
+function recolectarPendientesPreparacionCarro(esExterno, lineaNegocio, cantArticulosBackend = null) {
     const pendientes = [];
     let primerElementoFaltante = null;
     const registrarPrimerElemento = (el) => {
@@ -1585,12 +1585,13 @@ function recolectarPendientesPreparacionCarro(esExterno, lineaNegocio) {
 
     const listaArticulos = document.getElementById('lista-articulos');
     const articulosDOM = listaArticulos ? listaArticulos.querySelectorAll('.articulo-container') : [];
-    if (listaArticulos && articulosDOM.length === 0) {
+    const carroVacio = cantArticulosBackend === 0 || (cantArticulosBackend === null && listaArticulos && articulosDOM.length === 0);
+    if (carroVacio) {
         registrarPrimerElemento(listaArticulos);
         pendientes.push({
             categoria: 'Carro sin artículos',
             nombre: 'No hay artículos cargados en el carro',
-            detalle: 'Agregá al menos un artículo antes de iniciar la producción'
+            detalle: 'El carro todavía no tiene artículos agregados'
         });
     }
 
@@ -1660,17 +1661,24 @@ function recolectarPendientesPreparacionCarro(esExterno, lineaNegocio) {
     }
 
     if (esExterno) {
-        document.querySelectorAll('#resumen-ingredientes .card-stock-personal.stock-personal-faltante').forEach(card => {
+        document.querySelectorAll('#resumen-ingredientes .card-stock-personal').forEach(card => {
+            const esFaltanteConsumo = card.classList.contains('stock-personal-faltante');
+            const sinStockEnCero = carroVacio && card.dataset?.sinStockActual === 'true';
+            if (!esFaltanteConsumo && !sinStockEnCero) return;
+
             registrarPrimerElemento(card);
             const nombre = card.dataset?.nombre || 'Ingrediente personal';
             const consumo = card.dataset?.consumo || '0';
             const disponible = card.dataset?.disponible || '0';
             const faltante = card.dataset?.faltante || '0';
             const unidad = card.dataset?.unidad || 'kg';
+            const detalle = esFaltanteConsumo
+                ? `Faltan ${faltante} ${unidad} (Requerido: ${consumo} ${unidad} · Disponible: ${disponible} ${unidad})`
+                : `Sin stock personal disponible en domicilio (Disponible: ${disponible} ${unidad})`;
             pendientes.push({
                 categoria: 'Stock Personal en Domicilio',
                 nombre,
-                detalle: `Faltan ${faltante} ${unidad} (Requerido: ${consumo} ${unidad} · Disponible: ${disponible} ${unidad})`
+                detalle
             });
         });
     }
@@ -1790,7 +1798,7 @@ export async function marcarCarroPreparado(carroIdParam) {
             console.warn('Aviso al verificar línea de negocio del carro:', errCheck);
         }
 
-        // ⛔ BLOQUEO ESTRICTO: Prohibido preparar carros vacíos (0 filas en carros_articulos)
+        // Consultar cantidad de artículos en backend para incluir aviso no restrictivo si estuviera vacío
         let cantArticulosBackend = null;
         try {
             const artCheckRes = await fetch(`/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
@@ -1802,89 +1810,19 @@ export async function marcarCarroPreparado(carroIdParam) {
             }
         } catch (_) {}
 
-        const articulosEnDom = document.querySelectorAll('#lista-articulos .articulo-container').length;
-        if (cantArticulosBackend === 0 || (cantArticulosBackend === null && articulosEnDom === 0)) {
-            if (typeof Swal !== 'undefined') {
-                await Swal.fire({
-                    icon: 'warning',
-                    title: '⛔ Carro vacío',
-                    text: 'No podés marcar como "Carro listo para producir" un carro sin artículos. Agregá al menos un artículo primero.',
-                    confirmButtonText: 'Entendido',
-                    confirmButtonColor: '#d97706'
-                });
-            } else {
-                alert('No podés preparar un carro vacío. Agregá al menos un artículo primero.');
-            }
-            restaurarBotonPreparado(btnCarroPreparado);
-            return false;
-        }
+        const { pendientes, primerElementoFaltante } = recolectarPendientesPreparacionCarro(esExterno, lineaNegocio, cantArticulosBackend);
+        const yaAvisoStockPersonal = pendientes.some(p => p.categoria === 'Stock Personal en Domicilio');
 
-        const { pendientes, primerElementoFaltante } = recolectarPendientesPreparacionCarro(esExterno, lineaNegocio);
-
-        let avisoStockPersonalMostrado = false;
-        let pendientesGenerales = pendientes;
-
-        // 🔔 En carros externos (Barritas / Granolas / UPs): si falta stock personal en domicilio (Miel / Aceite de Coco),
-        // mostrar ventana modal informativa SIN bloquear el avance del carro externo.
-        if (esExterno) {
-            const faltantesStockPersonal = pendientes.filter(
-                p => p.categoria === 'Stock Personal en Domicilio' || p.categoria === 'Ingrediente / Insumo en rojo'
-            );
-            pendientesGenerales = pendientes.filter(
-                p => p.categoria !== 'Stock Personal en Domicilio' && p.categoria !== 'Ingrediente / Insumo en rojo'
-            );
-
-            if (faltantesStockPersonal.length > 0) {
-                avisoStockPersonalMostrado = true;
-                const detalleDomHtml = faltantesStockPersonal.map(f => `
-                    <li style="margin-bottom:6px;">
-                        <strong>${escaparHtmlPreparado(f.nombre)}</strong>: <span style="color:#b45309;font-weight:700;">${escaparHtmlPreparado(f.detalle)}</span>
-                    </li>
-                `).join('');
-
-                let continuarCarroExterno = true;
-                if (typeof Swal !== 'undefined') {
-                    const resAviso = await Swal.fire({
-                        icon: 'warning',
-                        title: '⚠️ Falta Stock Personal en Domicilio',
-                        html: `
-                            <div style="text-align:left;font-size:0.94em;line-height:1.45;">
-                                <p style="margin-bottom:8px;">Te avisamos que figuran faltantes en el stock personal domiciliario del colaborador:</p>
-                                <ul style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px 10px 24px;margin-bottom:10px;">
-                                    ${detalleDomHtml}
-                                </ul>
-                                <p style="margin:0;color:#475569;font-size:0.9em;">Este aviso es solo informativo y <strong>no detiene el avance del carro externo</strong>.</p>
-                            </div>
-                        `,
-                        showCancelButton: true,
-                        confirmButtonText: '✅ Entendido, avanzar carro',
-                        cancelButtonText: 'Volver',
-                        confirmButtonColor: '#16a34a',
-                        cancelButtonColor: '#64748b',
-                        focusConfirm: true
-                    });
-                    continuarCarroExterno = !!resAviso.isConfirmed;
-                } else {
-                    const txtDom = faltantesStockPersonal.map(f => `• ${f.nombre}: ${f.detalle}`).join('\n');
-                    continuarCarroExterno = window.confirm(
-                        `⚠️ Aviso: Falta Stock Personal en Domicilio\n\n${txtDom}\n\nAceptar = Avanzar carro externo\nCancelar = Volver`
-                    );
-                }
-
-                if (!continuarCarroExterno) {
-                    restaurarBotonPreparado(btnCarroPreparado);
-                    return false;
-                }
-            }
-        }
-
-        const confirmarPendientes = await confirmarPreparacionConFaltantes(pendientesGenerales, primerElementoFaltante);
+        // Modal unificado NO restrictivo (misma lógica en carros internos y externos):
+        // muestra todos los avisos pendientes (carro sin artículos, stock personal en domicilio, insumos en rojo, etc.)
+        // y permite elegir "✅ Seguir adelante igual" para avanzar sin trabas.
+        const confirmarPendientes = await confirmarPreparacionConFaltantes(pendientes, primerElementoFaltante);
         if (!confirmarPendientes) {
             restaurarBotonPreparado(btnCarroPreparado);
             return false;
         }
 
-        if (esExterno && lineaNegocio === 4) {
+        if (esExterno && lineaNegocio === 4 && cantArticulosBackend !== 0) {
             try {
                 const seleccion = await solicitarArticuloLlevadoTostadero(carroId, colaborador.id);
                 if (!seleccion) {
@@ -1923,8 +1861,8 @@ export async function marcarCarroPreparado(carroIdParam) {
             window.invalidarCacheCarro();
         }
 
-        // Si el backend detectó faltante de stock personal y la UI aún no había mostrado el modal previo, informar sin frenar
-        if (!avisoStockPersonalMostrado && Array.isArray(prepData.advertencias_stock_personal) && prepData.advertencias_stock_personal.length > 0) {
+        // Si el backend detectó faltante de stock personal que aún no figuraba en el modal previo, informar sin frenar
+        if (!yaAvisoStockPersonal && Array.isArray(prepData.advertencias_stock_personal) && prepData.advertencias_stock_personal.length > 0) {
             const itemsAdvHtml = prepData.advertencias_stock_personal.map(a => `
                 <li style="margin-bottom:6px;">
                     <strong>${escaparHtmlPreparado(a.nombre)}</strong>:

@@ -1669,6 +1669,7 @@ function generarBloqueDashboard(lista, esInsumo, estadoCarro, carroFinalizado, m
         const valStockRestante = esInsumo ? Math.round(stockRestante).toString() : stockRestante.toFixed(2);
         const valFaltante = esInsumo ? Math.round(Math.abs(suficienciaReal)).toString() : Math.abs(suficienciaReal).toFixed(2);
         const faltaParaEsteCarro = consumo > 0.0001 && !tieneStock;
+        const sinStockDomicilio = stockOriginal <= 0.0001;
         const nombreSafeAttr = escaparAtributoHtml(ing.nombre || 'Desconocido');
 
         html += `
@@ -1678,6 +1679,7 @@ function generarBloqueDashboard(lista, esInsumo, estadoCarro, carroFinalizado, m
                  data-consumo="${valConsumo}"
                  data-disponible="${valStockOriginal}"
                  data-faltante="${valFaltante}"
+                 data-sin-stock-actual="${sinStockDomicilio ? 'true' : 'false'}"
                  data-unidad="${escaparAtributoHtml(unidadMedida)}"
                  style="background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
@@ -2439,14 +2441,11 @@ function generarTablaResumen(lista, titulo, esSeccionInsumo, carroFinalizado, es
                 mostrarBotones = (estadoCarro !== 'preparado' && estadoCarro !== 'confirmado');
             }
 
-            const apSkuDisp = ing.articulo_vinculado_numero ? String(ing.articulo_vinculado_numero).trim() : '';
-            const apKilosDisp = parseFloat(ing.ap_stock_disponible || 0);
-            const tieneStockEnAp = !tieneStock && apSkuDisp && apKilosDisp > 0.001 && tipoCarro !== 'externa';
             const carroIdActivo = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
             const deshabilitado = !carroIdActivo;
             const botonIngresoManual = deshabilitado
                 ? `<button disabled title="Seleccioná un carro primero">Ingreso manual</button>`
-                : `<button onclick="abrirModalIngresoManual(${ing.id}, ${carroIdActivo})" style="${tieneStockEnAp ? 'background:#0284c7;color:#fff;border:none;font-weight:700;' : ''}" title="${tieneStockEnAp ? `Pasar stock disponible desde Artículo Puente [${apSkuDisp}] (${apKilosDisp.toFixed(2)} kg)` : ''}">${tieneStockEnAp ? `📦 Pasar desde AP` : 'Ingreso manual'}</button>`;
+                : `<button onclick="abrirModalIngresoManual(${ing.id}, ${carroIdActivo})">Ingreso manual</button>`;
 
             let botonesAccion = '';
 
@@ -2513,9 +2512,6 @@ function generarTablaResumen(lista, titulo, esSeccionInsumo, carroFinalizado, es
 
             const valRequerido = esSeccionInsumo ? Math.round(cantidadNecesaria).toString() : cantidadNecesaria.toFixed(2);
             const valStockFinal = esSeccionInsumo ? Math.round(stockFinal).toString() : stockFinal.toFixed(2);
-            const badgePuenteApHtml = tieneStockEnAp
-                ? `<div style="font-size: 0.78em; color: #0369a1; font-weight: 700; margin-top: 3px;" title="Kilos ya asentados en el Artículo Puente listos para transferir a este ingrediente">🌉 AP [${apSkuDisp}]: ${apKilosDisp.toFixed(2)} kg disp.</div>`
-                : '';
 
             html += `
                 <tr class="${clasesFila.trim()}">
@@ -2524,7 +2520,6 @@ function generarTablaResumen(lista, titulo, esSeccionInsumo, carroFinalizado, es
                     <td class="${claseCeldaSustituible}" ${eventoDblClick} title="${!tieneStock ? 'Doble clic para sustituir ingrediente' : ''}">
                         ${valStockFinal}
                         ${cajasCerradasHtml}
-                        ${badgePuenteApHtml}
                     </td>
                     <td>${indicadorEstado}</td>
                     <td>${unidadDisplay}</td>
@@ -2683,8 +2678,8 @@ export async function mostrarResumenIngredientes(ingredientes) {
     } else if (Number(lineaNegocio) === 2) {
         html += `
             <div style="background: #f0f9ff; border-left: 4px solid #0284c7; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 12.5px; color: #0c4a6e; text-align: left;">
-                <strong>📦 2° Etapa — Envasado de Fracciones Comerciales:</strong>
-                Estos ingredientes simples se nutren del <strong>Artículo Puente por kilo</strong> (elaborado en la 1° etapa) o de bulto cerrado. Si figura faltante en el ingrediente del mix, usá <strong>"Ingreso manual"</strong> para volcar los kilos del Artículo Puente al ingrediente.
+                <strong>📦 Producción de Fracciones Comerciales (Línea 2):</strong>
+                Envasado de presentaciones comerciales con los ingredientes y envases listados abajo. Si figura faltante de stock, usá <strong>"Ingreso manual"</strong> para incorporar el bulto o insumo correspondiente.
             </div>
         `;
     }
