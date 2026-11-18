@@ -3238,7 +3238,8 @@
         return { estaAlDia: true, costoDesactualizado: false, diffCosto: 0, maxDiffPrecio: 0, listasDesactualizadas: 0, costoSinInsSim: 0, costoBaseBunkerBD: 0, costoBultoSim: 0, costoBultoBD: 0 };
       }
       const listas = data.listasPrecios || [];
-      const lista1Id = listas[0] ? listas[0].id : 1;
+      const lista1Obj = listas.find(l => Number(l.id) === 1) || listas[0];
+      const lista1Id = lista1Obj ? lista1Obj.id : 1;
       const kilos = (parseFloat(art.kilos_unidad) > 0) ? parseFloat(art.kilos_unidad) : 1;
       const skuLower = String(art.articulo_id || '').trim().toLowerCase();
 
@@ -3250,7 +3251,8 @@
       const costoBaseBunkerBD = Number((parseFloat(art.costo_base) || 0).toFixed(2));
       const costoBultoBD = Number((costoBaseBunkerBD + costoEmpaqueLista1).toFixed(2));
       const diffCosto = Number((costoBultoSim - costoBultoBD).toFixed(2));
-      const costoDesactualizado = (Math.abs(costoSinInsSim - costoBaseBunkerBD) > TOLERANCIA_REDONDEO_LDN4) || (costoBaseBunkerBD <= 0 && costoSinInsSim > TOLERANCIA_REDONDEO_LDN4);
+      const diffCostoBaseMaestro = Number(Math.abs(costoSinInsSim - costoBaseBunkerBD).toFixed(2));
+      const costoDesactualizado = (diffCostoBaseMaestro > TOLERANCIA_REDONDEO_LDN4) || (costoBaseBunkerBD <= 0 && costoSinInsSim > TOLERANCIA_REDONDEO_LDN4);
 
       let listasDesactualizadas = 0;
       let maxDiffPrecio = 0;
@@ -3268,8 +3270,8 @@
         if (!cascadaL) return;
 
         let precioObjetivo = Number(cascadaL.precioFinalCalculado.toFixed(2));
-        if (laSim && Math.abs((laSim.precio_simulado || 0) - (laSim.precio_inicial_simulado || 0)) > TOLERANCIA_REDONDEO_LDN4) {
-          if (Math.abs((laSim.costo_base_simulado || 0) - cascadaL.costoNetoBulto) <= TOLERANCIA_REDONDEO_LDN4) {
+        if (laSim && Number(Math.abs((laSim.precio_simulado || 0) - (laSim.precio_inicial_simulado || 0)).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4) {
+          if (Number(Math.abs((laSim.costo_base_simulado || 0) - cascadaL.costoNetoBulto).toFixed(2)) <= TOLERANCIA_REDONDEO_LDN4) {
             precioObjetivo = Number(laSim.precio_simulado.toFixed(2));
           }
         }
@@ -3286,13 +3288,14 @@
           maxDiffPrecio = diffP;
         }
 
+        const costoSinInsSimLista = Number((cascadaL.costoBaseSinInsumosLista ?? costoSinInsSim).toFixed(2));
         const costoSobrescritoBultoBD = (laActual.costo_base_sobrescrito !== null && parseFloat(laActual.costo_base_sobrescrito) > 0)
           ? Number((parseFloat(laActual.costo_base_sobrescrito) * kilos).toFixed(2))
           : costoBaseBunkerBD;
-        const diffCostoLista = Math.abs(costoSinInsSim - costoSobrescritoBultoBD);
+        const diffCostoLista = Number(Math.abs(costoSinInsSimLista - costoSobrescritoBultoBD).toFixed(2));
         const dispCambio = laSim && laSim.disponible !== undefined && Boolean(laSim.disponible) !== Boolean(laActual.disponible !== false);
 
-        if (Math.abs(diffP) > TOLERANCIA_REDONDEO_LDN4 || diffCostoLista > TOLERANCIA_REDONDEO_LDN4 || dispCambio) {
+        if (Number(Math.abs(diffP).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4 || diffCostoLista > TOLERANCIA_REDONDEO_LDN4 || dispCambio) {
           listasDesactualizadas++;
         }
       });
@@ -4845,7 +4848,7 @@
       // 1. Auditar Mix #109
       const ing109 = (data.ingredientes || []).find(i => Number(i.id) === 109);
       const costoMix109Bd = ing109 ? Number((parseFloat(ing109.costo_patron) || 0).toFixed(2)) : 0;
-      const mix109Pendiente = Math.abs(b.costo_kilo_mix109 - costoMix109Bd) > TOLERANCIA_REDONDEO_LDN4;
+      const mix109Pendiente = Number(Math.abs(Number((b.costo_kilo_mix109 || 0).toFixed(2)) - costoMix109Bd).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4;
 
       // 2. Auditar Pre-Mezcla MPB
       const artMpb = (data.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toUpperCase() === 'MPB');
@@ -4856,8 +4859,8 @@
       const costoMpbCbsBd = laMpb1 && laMpb1.costo_base_sobrescrito !== null
         ? Number((parseFloat(laMpb1.costo_base_sobrescrito) * kilosMpb).toFixed(2))
         : costoMpbSinMoBd;
-      const mpbPendiente = Math.abs(costoMpbSinMoSim - costoMpbSinMoBd) > TOLERANCIA_REDONDEO_LDN4
-        || Math.abs(costoMpbSinMoSim - costoMpbCbsBd) > TOLERANCIA_REDONDEO_LDN4;
+      const mpbPendiente = Number(Math.abs(costoMpbSinMoSim - costoMpbSinMoBd).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4
+        || Number(Math.abs(costoMpbSinMoSim - costoMpbCbsBd).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4;
 
       // 3. Auditar Artículo Puente BFX50G (costo_base y Lista 1 costo_base_sobrescrito + costo_tiempo)
       const artAp = (data.articulosBunker || []).find(a => String(a.articulo_id || '').trim().toUpperCase() === 'BFX50G');
@@ -4871,9 +4874,9 @@
       const moApBd = laAp1 ? Number((parseFloat(laAp1.costo_tiempo) || 0).toFixed(2)) : Number((b.mo_ap_taller || 0).toFixed(2));
       b.costo_base_ap_oficial_bd = costoBaseApBd;
       const diffApBase = Number((costoBaseApSim - costoBaseApBd).toFixed(2));
-      const apPendiente = Math.abs(diffApBase) > TOLERANCIA_REDONDEO_LDN4
-        || Math.abs(costoBaseApSim - costoBaseSobApBd) > TOLERANCIA_REDONDEO_LDN4
-        || Math.abs(Number((b.mo_ap_taller || 0).toFixed(2)) - moApBd) > TOLERANCIA_REDONDEO_LDN4;
+      const apPendiente = Number(Math.abs(diffApBase).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4
+        || Number(Math.abs(costoBaseApSim - costoBaseSobApBd).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4
+        || Number(Math.abs(Number((b.mo_ap_taller || 0).toFixed(2)) - moApBd).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4;
 
       // 4. Auditar Ingrediente Espejo #141 Barrita 20 x 50 (1kg)
       const ing141 = (data.ingredientes || []).find(i => Number(i.id) === 141);
@@ -5629,13 +5632,13 @@
         ? Number(parseFloat(laPm1.costo_base_sobrescrito).toFixed(2))
         : (artPreMezcla && parseFloat(artPreMezcla.kilos_unidad) > 0 ? Number(((parseFloat(artPreMezcla.costo_base) || 0) / parseFloat(artPreMezcla.kilos_unidad)).toFixed(2)) : costoKiloPmSim);
       const moPmBd = laPm1 ? Number((parseFloat(laPm1.costo_tiempo) || 0).toFixed(2)) : Number((parseFloat(g.mo_mezcla1) || 0).toFixed(2));
-      const preMezclaDesactualizada = Math.abs(costoKiloPmSim - costoKiloPmBd) > TOLERANCIA_REDONDEO_LDN4
-        || Math.abs((parseFloat(g.mo_mezcla1) || 0) - moPmBd) > TOLERANCIA_REDONDEO_LDN4;
+      const preMezclaDesactualizada = Number(Math.abs(costoKiloPmSim - costoKiloPmBd).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4
+        || Number(Math.abs((parseFloat(g.mo_mezcla1) || 0) - moPmBd).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4;
 
-      const apDesactualizado = Math.abs(diffApBase) > TOLERANCIA_REDONDEO_LDN4
-        || Math.abs(costoBaseApSim - costoBaseSobrescritoApBd) > TOLERANCIA_REDONDEO_LDN4
+      const apDesactualizado = Number(Math.abs(diffApBase).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4
+        || Number(Math.abs(costoBaseApSim - costoBaseSobrescritoApBd).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4
         || (costoBaseApBd <= 0 && costoBaseApSim > TOLERANCIA_REDONDEO_LDN4);
-      const ingDesactualizado = Math.abs(diffIng) > TOLERANCIA_REDONDEO_LDN4
+      const ingDesactualizado = Number(Math.abs(diffIng).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4
         || (costoIngBd <= 0 && costoIngSim > TOLERANCIA_REDONDEO_LDN4);
 
       const fraccs = obtenerFraccionesGranolaLDN6(g);
@@ -7130,8 +7133,8 @@
         const costoApCbsBultoBd = (laAP1 && laAP1.costo_base_sobrescrito !== null && parseFloat(laAP1.costo_base_sobrescrito) > 0)
           ? Number((parseFloat(laAP1.costo_base_sobrescrito) * kilosAP).toFixed(2))
           : costoApBultoBd;
-        const apPendiente = Math.abs(costoApBultoSim - costoApBultoBd) > TOLERANCIA_REDONDEO_LDN4
-          || Math.abs(costoApBultoSim - costoApCbsBultoBd) > TOLERANCIA_REDONDEO_LDN4;
+        const apPendiente = Number(Math.abs(costoApBultoSim - costoApBultoBd).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4
+          || Number(Math.abs(costoApBultoSim - costoApCbsBultoBd).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4;
 
         const moApKilo = kilosAP > 0 ? (moAp / kilosAP) : moAp;
         const costoNetoAP = Number(((costoApBultoSim / kilosAP) + moApKilo).toFixed(2));
@@ -7158,7 +7161,7 @@
         const apMatch = aps.find(a => String(a.articulo_numero || '').trim().toLowerCase() === vinc);
         const costoSimpleSim = apMatch ? apMatch.costoNetoAP : costoMixSim;
         const costoSimpleBd = Number((parseFloat(ing.costo_patron) || 0).toFixed(2));
-        const simplePendiente = Math.abs(costoSimpleSim - costoSimpleBd) > TOLERANCIA_REDONDEO_LDN4;
+        const simplePendiente = Number(Math.abs(costoSimpleSim - costoSimpleBd).toFixed(2)) > TOLERANCIA_REDONDEO_LDN4;
         simples.push({
           id: ing.id,
           nombre: ing.nombre,
@@ -10621,18 +10624,22 @@
           laSim.disponible_inicial = laSim.disponible;
 
           if (data.articulosListas) {
-            const laActual = data.articulosListas.find(c => c.lista_id === laSim.lista_id && c.articulo_numero === laSim.articulo_numero);
+            const laActual = data.articulosListas.find(c =>
+              c.lista_id === laSim.lista_id &&
+              String(c.articulo_numero || '').trim().toLowerCase() === String(laSim.articulo_numero || '').trim().toLowerCase()
+            );
             if (laActual) {
               laActual.precio_final = laSim.precio_simulado;
               laActual.margen_ganancia = laSim.margen_simulado;
               laActual.disponible = laSim.disponible;
-              laActual.costo_base_sobrescrito = costoKiloSim;
+              laActual.costo_base_sobrescrito = parseFloat(costoKiloSim.toFixed(4));
             }
           }
         });
 
         if (art && clavesActualizadas.length > 0) {
-          art.costo_base = Number((parseFloat(clavesActualizadas[0].costoKiloSim.toFixed(4)) * factor).toFixed(2));
+          const claveLista1 = clavesActualizadas.find(c => Number(c.laSim?.lista_id) === 1) || clavesActualizadas[0];
+          art.costo_base = Number((parseFloat(claveLista1.costoKiloSim.toFixed(4)) * factor).toFixed(2));
         }
 
         actualizarBannerCambios();
@@ -13690,14 +13697,20 @@
           });
         }
 
+        const lista1RefObj = listas.find(l => Number(l.id) === 1) || listas[0];
+        const lista1RefId = lista1RefObj ? lista1RefObj.id : 1;
+
         fraccsAImpactar.forEach(f => {
-          const cascada1 = calcularCascadaArticuloLista(f.articulo_id, (listas[0] ? listas[0].id : 1));
-          if (cascada1) f.costo_base = cascada1.costoBaseSinInsumosLista;
+          const cascada1 = calcularCascadaArticuloLista(f.articulo_id, lista1RefId);
+          if (cascada1) f.costo_base = Number(cascada1.costoBaseSinInsumosLista.toFixed(2));
 
           listas.forEach(l => {
             const key = `${l.id}_${f.articulo_id}`;
             const laSim = listasArticulosSim[key];
-            const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && c.articulo_numero === f.articulo_id);
+            const laActual = (data.articulosListas || []).find(c =>
+              c.lista_id === l.id &&
+              String(c.articulo_numero || '').trim().toUpperCase() === String(f.articulo_id || '').trim().toUpperCase()
+            );
             if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
 
             const cascada = calcularCascadaArticuloLista(f.articulo_id, l.id);
@@ -13759,7 +13772,10 @@
           throw new Error(errData.detalle || 'Error al aplicar actualización masiva de fracciones de granolas.');
         }
 
+        recalcularCascada();
         actualizarBannerCambios();
+        renderizarMixes();
+        renderizarArticulosPuente();
         renderizarArticulosBunker();
         renderizarGranolasLDN6();
         if (articuloSeleccionadoId) {
@@ -13820,6 +13836,7 @@
 
         // Actualizar en memoria todos los objetos simulados y maestros
         const data = window.pizarraSimulacionMaster;
+        const costoBaseFijadoLista1Mem = new Set();
         cambios.forEach(cambio => {
           const key = `${cambio.lista_id}_${cambio.articulo_numero}`;
           const laSim = listasArticulosSim[key];
@@ -13839,9 +13856,12 @@
             }
           }
           if (data && data.articulosBunker && laSim) {
-            const art = data.articulosBunker.find(a => (a.articulo_id || '').trim().toLowerCase() === (cambio.articulo_numero || '').trim().toLowerCase());
-            if (art) {
-              art.costo_base = laSim.costo_base_sin_insumos_simulado !== undefined ? laSim.costo_base_sin_insumos_simulado : laSim.costo_base_simulado;
+            const artKeyLower = (cambio.articulo_numero || '').trim().toLowerCase();
+            const art = data.articulosBunker.find(a => (a.articulo_id || '').trim().toLowerCase() === artKeyLower);
+            if (art && (Number(cambio.lista_id) === 1 || !costoBaseFijadoLista1Mem.has(artKeyLower))) {
+              const rawBaseMem = laSim.costo_base_sin_insumos_simulado !== undefined ? laSim.costo_base_sin_insumos_simulado : laSim.costo_base_simulado;
+              art.costo_base = Number((parseFloat(rawBaseMem) || 0).toFixed(2));
+              if (Number(cambio.lista_id) === 1) costoBaseFijadoLista1Mem.add(artKeyLower);
             }
           }
         });

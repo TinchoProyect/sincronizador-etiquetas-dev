@@ -5359,7 +5359,7 @@ router.get('/simulacion/inicializar', async (req, res) => {
                       AND (bp.pack_hijo_codigo = ba.articulo_id OR bp.pack_hijo_codigo = art.codigo_barras)
                 ) res_padres ON true
             `),
-            db.query(`SELECT id, nombre, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial FROM public.bunker_listas_precios WHERE activa = true`),
+            db.query(`SELECT id, nombre, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial FROM public.bunker_listas_precios WHERE activa = true ORDER BY id ASC`),
             db.query(`SELECT id, lista_id, articulo_numero, margen_ganancia, costo_base_sobrescrito, costo_tiempo, iva, precio_final, modo_calculo, modo_iva, es_patron, disponible, exencion_operativa, COALESCE(mano_obra_activa, true) as mano_obra_activa FROM public.bunker_lista_articulos`),
             db.query(`
                 SELECT li.id, li.lista_articulo_id, li.insumo_articulo_numero, li.cantidad, 
@@ -5663,6 +5663,7 @@ router.post('/simulacion/aplicar-precios', async (req, res) => {
         );
         const listasNodosSet = new Set(listasNodosRes.rows.map(r => Number(r.id)));
         const articulosNodosActualizados = new Set();
+        const articulosCostoBaseFijadoLista1 = new Set();
 
         const cambiosHistorial = [];
 
@@ -5742,15 +5743,22 @@ router.post('/simulacion/aplicar-precios', async (req, res) => {
             await client.query(query, values);
 
             // Sincronizar también el costo_base oficial en bunker_articulos si se proporcionó costo_base_sobrescrito
+            // Priorizando siempre Lista 1 cuando se impactan múltiples listas en un mismo lote
             if (costo_base_sobrescrito !== undefined && costo_base_sobrescrito !== null && parseFloat(costo_base_sobrescrito) > 0) {
-                await client.query(
-                    `UPDATE public.bunker_articulos 
-                     SET costo_base = ROUND(($1::numeric * COALESCE(kilos_unidad, 1)), 2),
-                         porcentaje_iva = COALESCE($2::numeric, porcentaje_iva),
-                         updated_at = CURRENT_TIMESTAMP
-                     WHERE LOWER(TRIM(articulo_id)) = LOWER(TRIM($3))`,
-                    [costo_base_sobrescrito, iva, articulo_numero]
-                );
+                const artKeyLower = String(articulo_numero || '').trim().toLowerCase();
+                if (Number(lista_id) === 1 || !articulosCostoBaseFijadoLista1.has(artKeyLower)) {
+                    await client.query(
+                        `UPDATE public.bunker_articulos 
+                         SET costo_base = ROUND(($1::numeric * COALESCE(kilos_unidad, 1)), 2),
+                             porcentaje_iva = COALESCE($2::numeric, porcentaje_iva),
+                             updated_at = CURRENT_TIMESTAMP
+                         WHERE LOWER(TRIM(articulo_id)) = LOWER(TRIM($3))`,
+                        [costo_base_sobrescrito, iva, articulo_numero]
+                    );
+                    if (Number(lista_id) === 1) {
+                        articulosCostoBaseFijadoLista1.add(artKeyLower);
+                    }
+                }
             }
         }
 

@@ -2497,8 +2497,9 @@ window.auditarEstadoListasArticuloPizarra = function(art, costoBaseTotalSim, ins
         else if (modoIva === 'SIN' || modoIva === 'EXENTO') ivaEf = 0;
 
         let precioObj = Number((((costoBaseTotalSim * (1 + (margenLista / 100))) + moLista) * (1 + (ivaEf / 100))).toFixed(2));
+        let casc = null;
         if (typeof window.calcularCascadaArticuloLista === 'function') {
-            const casc = window.calcularCascadaArticuloLista(art.articulo_id, l.id);
+            casc = window.calcularCascadaArticuloLista(art.articulo_id, l.id);
             if (casc && isFinite(casc.precioFinalCalculado)) {
                 precioObj = Number(casc.precioFinalCalculado.toFixed(2));
             }
@@ -2514,11 +2515,14 @@ window.auditarEstadoListasArticuloPizarra = function(art, costoBaseTotalSim, ins
             listasPendientesCount++;
             return;
         }
+        const costoSinInsSimLista = (casc && isFinite(casc.costoBaseSinInsumosLista))
+            ? Number(casc.costoBaseSinInsumosLista.toFixed(2))
+            : costoSinInsSim;
         const costoSobrescritoBultoBD = (laActual.costo_base_sobrescrito !== null && parseFloat(laActual.costo_base_sobrescrito) > 0)
             ? Number((parseFloat(laActual.costo_base_sobrescrito) * kilos).toFixed(2))
             : costoOficialBD;
-        const diffCostoLista = Math.abs(costoSinInsSim - costoSobrescritoBultoBD);
-        const diffPrecio = Math.abs(precioObj - precioBD);
+        const diffCostoLista = Number(Math.abs(costoSinInsSimLista - costoSobrescritoBultoBD).toFixed(2));
+        const diffPrecio = Number(Math.abs(precioObj - precioBD).toFixed(2));
         if ((precioBD > 0 && diffPrecio >= 0.5) || diffCostoLista >= 0.05) {
             listasPendientesCount++;
         }
