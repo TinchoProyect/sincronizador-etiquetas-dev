@@ -75,6 +75,76 @@ document.addEventListener('DOMContentLoaded', () => {
     let movimientosCuentaSeleccionada = [];
     let umbralAjusteMinimo = 50.00;
     let cliente = null;
+    let sobresPendientesCliente = [];
+
+    async function cargarSobresPendientesCliente() {
+        const bannerEl = document.getElementById('cc-banner-sobres-pendientes');
+        const btnHeaderRec = document.getElementById('btn-header-recepcion-efectivo');
+        if (!codigoBunkerCliente) return;
+
+        try {
+            const res = await fetch(`/api/logistica/pagos-efectivo?cliente_id=${encodeURIComponent(codigoBunkerCliente)}`);
+            const json = await res.json();
+            if (!json.success || !Array.isArray(json.sobres)) return;
+
+            sobresPendientesCliente = json.sobres.filter(s => ['PREPARADO', 'EN_TRANSITO', 'RECIBIDO_LOCAL'].includes(s.estado));
+
+            if (btnHeaderRec) {
+                btnHeaderRec.innerHTML = sobresPendientesCliente.length > 0
+                    ? `💵 Recepción Efectivo <span style="background:#16a34a; color:#fff; padding:1px 7px; border-radius:999px; font-size:0.8em; margin-left:4px; font-weight:800;">${sobresPendientesCliente.length} pend.</span>`
+                    : `💵 Recepción Efectivo`;
+            }
+
+            if (!bannerEl) return;
+            if (sobresPendientesCliente.length === 0) {
+                bannerEl.style.display = 'none';
+                bannerEl.innerHTML = '';
+                return;
+            }
+
+            bannerEl.style.display = 'block';
+            bannerEl.innerHTML = `
+                <div style="background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%); border: 2px solid #10b981; border-radius: 10px; padding: 14px 18px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.14);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: ${sobresPendientesCliente.length > 1 ? '10px' : '0'};">
+                        <div style="font-weight: 800; color: #065f46; font-size: 0.98em; display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 1.25em;">📦</span>
+                            <span>Aviso de Ensobrado Pendiente de Asentar (${sobresPendientesCliente.length})</span>
+                        </div>
+                        ${sobresPendientesCliente.length > 1 ? `
+                            <button type="button" onclick="window.location.href='recepcion-efectivo.html?cliente=${encodeURIComponent(codigoBunkerCliente)}'" style="background:#0d9488; color:#fff; border:none; border-radius:6px; padding:6px 12px; font-weight:700; cursor:pointer; font-size:0.84em;">
+                                Ver todos los sobres (${sobresPendientesCliente.length})
+                            </button>
+                        ` : ''}
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                        ${sobresPendientesCliente.map(s => {
+                            const esMostrador = s.modalidad_entrega === 'LOCAL' || s.estado === 'RECIBIDO_LOCAL';
+                            const fechaTxt = s.fecha_creacion ? new Date(s.fecha_creacion).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+                            return `
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; background: #ffffff; border: 1px solid #a7f3d0; border-radius: 8px; padding: 10px 14px;">
+                                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                        <span style="font-family: monospace; font-weight: 900; font-size: 1.05em; color: #6b21a8; background: #f3e8ff; border: 1px solid #d8b4fe; padding: 3px 8px; border-radius: 6px;">${s.codigo_sobre}</span>
+                                        <strong style="font-size: 1.1em; color: #15803d;">${formatCurrency(s.monto_declarado)}</strong>
+                                        <span style="font-size: 0.82em; font-weight: 700; color: ${esMostrador ? '#065f46' : '#5b21b6'}; background: ${esMostrador ? '#d1fae5' : '#ede9fe'}; padding: 2px 8px; border-radius: 999px;">
+                                            ${esMostrador ? '🏬 Entrega en Mostrador / Depósito LAMDA' : (s.estado === 'EN_TRANSITO' ? '🚚 En tránsito con chofer' : '🚚 Retiro por Chofer')}
+                                        </span>
+                                        ${fechaTxt ? `<span style="font-size: 0.78em; color: #64748b;">🕒 ${fechaTxt}</span>` : ''}
+                                    </div>
+                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                        <button type="button" onclick="window.location.href='recepcion-efectivo.html?cliente=${encodeURIComponent(codigoBunkerCliente)}&sobre=${encodeURIComponent(s.codigo_sobre)}'" style="background: #16a34a; color: #ffffff; border: none; border-radius: 6px; padding: 8px 14px; font-weight: 800; font-size: 0.86em; cursor: pointer; box-shadow: 0 2px 6px rgba(22, 163, 74, 0.25);">
+                                            🔍 Auditar y Asentar Ahora
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        } catch (errSob) {
+            console.warn('[CC-FRONT] No se pudieron consultar sobres pendientes del cliente:', errSob.message);
+        }
+    }
 
 
     // --- CARGAR DATOS GENERALES DEL CLIENTE Y SUS CUENTAS ---
@@ -115,6 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cuentasDelCliente = data.data;
             umbralAjusteMinimo = parseFloat(data.umbral_ajuste_minimo) || 50.00;
             actualizarComboCuentas();
+            cargarSobresPendientesCliente();
 
 
         } catch (error) {
@@ -1369,10 +1440,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const finActivaConIva = Number(simActual?.financiacion_total_con_iva || window.currentComposicionSaldo?.totales?.financiacion_activa_con_iva || 0);
         const saldoCapActual = Number(cuentaSeleccionada.saldo || 0);
 
+        const sobresAvisoHtml = sobresPendientesCliente.length > 0 ? `
+            <div style="margin-bottom: 14px; padding: 10px 12px; background: #ecfdf5; border: 2px solid #10b981; border-radius: 8px;">
+                <div style="font-size: 12.5px; font-weight: 800; color: #065f46; margin-bottom: 6px;">
+                    📦 ¡Atención! Este cliente ya declaró ${sobresPendientesCliente.length === 1 ? 'un sobre de efectivo' : `${sobresPendientesCliente.length} sobres de efectivo`} pendiente de asentar:
+                </div>
+                ${sobresPendientesCliente.map(s => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; background:#fff; border:1px solid #a7f3d0; border-radius:6px; padding:6px 10px; margin-bottom:5px; font-size:12px;">
+                        <span><strong style="color:#6b21a8;">${s.codigo_sobre}</strong> • <strong>${formatCurrency(s.monto_declarado)}</strong> (${s.modalidad_entrega === 'LOCAL' ? '🏬 Mostrador' : '🚚 Chofer'})</span>
+                        <button type="button" onclick="Swal.close(); window.location.href='recepcion-efectivo.html?cliente=${encodeURIComponent(codigoBunkerCliente)}&sobre=${encodeURIComponent(s.codigo_sobre)}'" style="background:#16a34a; color:#fff; border:none; border-radius:5px; padding:4px 10px; font-weight:800; cursor:pointer; font-size:11.5px;">
+                            🔍 Auditar ${s.codigo_sobre}
+                        </button>
+                    </div>
+                `).join('')}
+                <div style="font-size: 11px; color: #047857;">
+                    💡 Si querés asentar ese sobre, usá el botón verde para auditarlo y cerrar el registro en el Portal del cliente sin duplicar recibos.
+                </div>
+            </div>
+        ` : '';
+
         Swal.fire({
             title: '💵 Registrar Cobro / Pago Recibido',
             html: `
                 <div style="text-align: left; font-family: sans-serif; font-size: 0.95em;">
+                    ${sobresAvisoHtml}
                     <div style="margin-bottom: 12px;">
                         <label style="display:block; font-weight:600; margin-bottom:4px;">Monto del Pago (ARS) <span style="color:red">*</span></label>
                         <input type="number" id="swal-monto" class="swal2-input" style="width: 85%; margin: 0; font-family: monospace; font-weight: 700;" placeholder="0.00" value="${saldoCapActual > 0 ? saldoCapActual.toFixed(2) : ''}" step="0.01" min="0.01">

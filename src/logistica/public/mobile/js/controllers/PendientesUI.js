@@ -68,8 +68,11 @@ function renderizarListaPendientesMovil() {
         const esIngreso = !esSobre && !esContacto && (p.estado === 'Orden de Tratamiento' || p.estado === 'Orden de Retiro');
         if (esSobre) {
             cantSobres++;
-            const cid = String(p.cliente_id || p.id_cliente || '').trim().replace(/^0+/, '');
-            if (cid) clientesConSobrePool.add(cid);
+            const esEnMostrador = p.modalidad_entrega === 'LOCAL' || p.estado_sobre === 'RECIBIDO_LOCAL' || p.estado_logistico === 'EN_MOSTRADOR';
+            if (!esEnMostrador) {
+                const cid = String(p.cliente_id || p.id_cliente || '').trim().replace(/^0+/, '');
+                if (cid) clientesConSobrePool.add(cid);
+            }
         } else if (esContacto) {
             cantContactos++;
         } else if (esIngreso) {
@@ -162,31 +165,41 @@ function renderizarListaPendientesMovil() {
                 const codigoSobre = p.codigo_sobre || String(p.id).replace('SOB-', '');
                 const montoSobre = parseFloat(p.monto_declarado || p.total || 0);
                 const tieneFotos = Boolean(p.foto_frente_url || p.foto_dorso_url);
+                const esSobreEnDeposito = p.modalidad_entrega === 'LOCAL' || p.estado_sobre === 'RECIBIDO_LOCAL' || p.estado_logistico === 'EN_MOSTRADOR';
+                const codBunkerParam = p.codigo_bunker_cliente ? `&cliente=${encodeURIComponent(p.codigo_bunker_cliente)}` : '';
+                const urlAsentarMovil = `/pages/recepcion-efectivo.html?sobre=${encodeURIComponent(codigoSobre)}${codBunkerParam}&from=mobile`;
+
                 return `
-                <div class="entrega-card" style="border-left-color: #7c3aed; background: #faf5ff; display: flex; align-items: stretch; gap: 0.75rem; padding-left: 0.75rem;">
+                <div class="entrega-card" style="border-left-color: ${esSobreEnDeposito ? '#059669' : '#7c3aed'}; background: ${esSobreEnDeposito ? '#ecfdf5' : '#faf5ff'}; display: flex; align-items: stretch; gap: 0.75rem; padding-left: 0.75rem;">
                     <div style="display: flex; align-items: center; justify-content: center;">
-                        <input type="checkbox" class="chk-pedido" value="${p.id}" onchange="actualizarBotonAsignar()" style="width: 24px; height: 24px; accent-color: #7c3aed;">
+                        ${esSobreEnDeposito
+                            ? `<span title="Dejado en Mostrador / Depósito LAMDA (no requiere chofer)" style="font-size: 1.35rem; width: 24px; text-align: center;">🏬</span>`
+                            : `<input type="checkbox" class="chk-pedido" value="${p.id}" onchange="actualizarBotonAsignar()" style="width: 24px; height: 24px; accent-color: #7c3aed;">`
+                        }
                     </div>
                     <div style="flex: 1;">
-                        <div class="entrega-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                            <div style="font-weight: 800; color: #5b21b6; font-size: 1.05rem;">💵 SOBRE #${codigoSobre}</div>
+                        <div class="entrega-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 4px;">
+                            <div style="font-weight: 800; color: ${esSobreEnDeposito ? '#065f46' : '#5b21b6'}; font-size: 1.02rem;">${esSobreEnDeposito ? '🏬' : '💵'} SOBRE #${codigoSobre}</div>
                             <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end;">
-                                <span style="font-weight: 900; color: #5b21b6; font-size: 0.95rem; background: #ede9fe; border: 1px solid #ddd6fe; padding: 0.15rem 0.45rem; border-radius: 0.375rem;">$ ${montoSobre.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
-                                <div class="entrega-badge" style="background:#ede9fe; color:#6d28d9; margin: 0; font-weight:700;">✅ CERRADO</div>
+                                <span style="font-weight: 900; color: ${esSobreEnDeposito ? '#065f46' : '#5b21b6'}; font-size: 0.95rem; background: ${esSobreEnDeposito ? '#d1fae5' : '#ede9fe'}; border: 1px solid ${esSobreEnDeposito ? '#6ee7b7' : '#ddd6fe'}; padding: 0.15rem 0.45rem; border-radius: 0.375rem;">$ ${montoSobre.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                                <div class="entrega-badge" style="background:${esSobreEnDeposito ? '#059669' : '#ede9fe'}; color:${esSobreEnDeposito ? '#ffffff' : '#6d28d9'}; margin: 0; font-weight:700;">${esSobreEnDeposito ? '🏬 EN MOSTRADOR' : '✅ CERRADO'}</div>
                             </div>
                         </div>
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.25rem; gap: 6px;">
-                            <div class="entrega-cliente" style="font-size: 0.95rem;">👤 <strong>[#${p.cliente_id || p.id_cliente || 'S/N'}]</strong> ${p.cliente_nombre}</div>
-                            <div style="display: flex; gap: 6px; flex-shrink: 0;">
-                                ${tieneFotos ? `<button type="button" onclick="event.preventDefault(); event.stopPropagation(); window.verFotosSobreMovil('${codigoSobre}', '${p.foto_frente_url || ''}', '${p.foto_dorso_url || ''}')" style="background: #ede9fe; color: #6d28d9; border: 1px solid #c4b5fd; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer;">📷 Fotos</button>` : ''}
-                                <button type="button" onclick="event.preventDefault(); event.stopPropagation(); DomiciliosUI.abrirModalABM(${p.cliente_id || p.id_cliente})" style="background: #e2e8f0; color: #3b82f6; border: none; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; cursor: pointer;">📍 Domicilios</button>
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.35rem; gap: 6px; flex-wrap: wrap;">
+                            <div class="entrega-cliente" style="font-size: 0.95rem;">👤 <strong>[#${p.codigo_bunker_cliente || p.cliente_id || p.id_cliente || 'S/N'}]</strong> ${p.cliente_nombre}</div>
+                            <div style="display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap;">
+                                ${tieneFotos ? `<button type="button" onclick="event.preventDefault(); event.stopPropagation(); window.verFotosSobreMovil('${codigoSobre}', '${p.foto_frente_url || ''}', '${p.foto_dorso_url || ''}')" style="background: #ede9fe; color: #6d28d9; border: 1px solid #c4b5fd; padding: 5px 9px; border-radius: 6px; font-size: 0.76rem; font-weight: bold; cursor: pointer;">📷 Fotos</button>` : ''}
+                                ${!esSobreEnDeposito ? `<button type="button" onclick="event.preventDefault(); event.stopPropagation(); DomiciliosUI.abrirModalABM(${p.cliente_id || p.id_cliente})" style="background: #e2e8f0; color: #3b82f6; border: none; padding: 5px 9px; border-radius: 6px; font-size: 0.76rem; font-weight: bold; cursor: pointer;">📍 Domicilios</button>` : ''}
+                                <button type="button" onclick="event.preventDefault(); event.stopPropagation(); window.location.href='${urlAsentarMovil}'" style="background: #16a34a; color: #ffffff; border: none; padding: 5px 10px; border-radius: 6px; font-size: 0.78rem; font-weight: 800; cursor: pointer; box-shadow: 0 2px 4px rgba(22,163,74,0.25);">🔍 ${esSobreEnDeposito ? 'Auditar y Asentar' : 'Asentar'}</button>
                             </div>
                         </div>
                         <div class="entrega-direccion" style="margin-bottom: 0; font-size: 0.85rem;">
-                            📍 ${p.domicilio_direccion || 'Sin domicilio'} <br>
-                            <small style="margin-left: 1.25rem; color: #94a3b8;">${p.domicilio_localidad || ''}</small>
+                            ${esSobreEnDeposito
+                                ? `<span style="color:#065f46; font-weight:700;">🏬 Entrega en Mostrador / Depósito LAMDA — Listo para arqueo y acreditación</span>`
+                                : `📍 ${p.domicilio_direccion || 'Sin domicilio'} <br><small style="margin-left: 1.25rem; color: #94a3b8;">${p.domicilio_localidad || ''}</small>`
+                            }
                         </div>
-                        ${p.nota ? `<div style="font-size: 0.78rem; color: #6d28d9; padding: 0.4rem 0.5rem; background-color: #f3e8ff; border-radius: 0.375rem; border-left: 3px solid #7c3aed; margin-top: 6px;">💬 ${p.nota}</div>` : ''}
+                        ${p.nota ? `<div style="font-size: 0.78rem; color: ${esSobreEnDeposito ? '#065f46' : '#6d28d9'}; padding: 0.4rem 0.5rem; background-color: ${esSobreEnDeposito ? '#d1fae5' : '#f3e8ff'}; border-radius: 0.375rem; border-left: 3px solid ${esSobreEnDeposito ? '#059669' : '#7c3aed'}; margin-top: 6px;">💬 ${p.nota}</div>` : ''}
                     </div>
                 </div>`;
             }

@@ -674,7 +674,7 @@
             <span style="color: #cbd5e1; font-size: 0.9em;">Historial de deuda, cobros y movimientos comerciales de la distribuidora</span>
         </div>
         <div style="display: flex; gap: 12px;">
-            <button class="btn-premium" style="background:#8e4785; color:#fff; font-size: 0.95em;" onclick="irARecepcionEfectivo()">
+            <button id="btn-header-recepcion-efectivo" class="btn-premium" style="background:#8e4785; color:#fff; font-size: 0.95em;" onclick="irARecepcionEfectivo()">
                 💵 Recepción Efectivo
             </button>
             <button class="btn-premium" style="background:#eab308; color:#000; font-size: 0.95em;" onclick="window.location.href='listado-clientes.html'">
@@ -748,6 +748,9 @@
                 </div>
 
             </div>
+
+            <!-- Banner de Sobres de Efectivo Pendientes de Auditar / Acreditar -->
+            <div id="cc-banner-sobres-pendientes" style="display: none; margin-bottom: 20px;"></div>
 
             <!-- Card de Saldo Consolidado -->
             <div class="balance-hero-card clean" id="cc-balance-card">
@@ -947,6 +950,6 @@
     <!-- Script de configuración de variables globales -->
     <script src="/env-config.js?v=2"></script>
     <!-- Script de lógica frontend dedicado -->
-    <script src="../js/cuenta-corriente.js?v=1.2.1"></script>
+    <script src="../js/cuenta-corriente.js?v=1.2.2"></script>
 </body>
 </html>

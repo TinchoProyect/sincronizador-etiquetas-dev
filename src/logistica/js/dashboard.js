@@ -621,12 +621,16 @@ function obtenerPedidoHtml(pedido) {
         `;
     }
 
-    // Tarjeta especial para Ensobrados Activos (estado PREPARADO)
+    // Tarjeta especial para Ensobrados Activos (CHOFER para ruta o LOCAL en mostrador/depósito para asentar)
     if (esSobre) {
         const codigoSobre = pedido.codigo_sobre || pedido.id_presupuesto_ext || pedido.id;
         const montoSobre = parseFloat(pedido.monto_declarado || pedido.total || 0);
         const tieneFotos = Boolean(pedido.foto_frente_url || pedido.foto_dorso_url);
-        const clienteTienePedidoEnPool = state.pedidos.some(p => {
+        const esSobreEnDeposito = pedido.modalidad_entrega === 'LOCAL' || pedido.estado_sobre === 'RECIBIDO_LOCAL' || pedido.estado_logistico === 'EN_MOSTRADOR';
+        const codBunkerParam = pedido.codigo_bunker_cliente ? `&cliente=${encodeURIComponent(pedido.codigo_bunker_cliente)}` : '';
+        const urlAuditarSobre = `/pages/recepcion-efectivo.html?sobre=${encodeURIComponent(codigoSobre)}${codBunkerParam}`;
+
+        const clienteTienePedidoEnPool = !esSobreEnDeposito && state.pedidos.some(p => {
             const pEsSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true;
             const pCliNorm = String(p.cliente_id || p.id_cliente || '').trim().replace(/^0+/, '');
             return !pEsSobre && pCliNorm && pCliNorm === idCliNorm;
@@ -634,32 +638,30 @@ function obtenerPedidoHtml(pedido) {
 
         return `
             <div class="pedido-card tipo-sobre" 
-                 draggable="true" 
+                 draggable="${esSobreEnDeposito ? 'false' : 'true'}" 
                  data-id="${pedido.id}"
                  data-tipo="sobre"
                  data-pedido='${pedidoJson}'
-                 ondragstart="handleDragStart(event)" 
-                 ondragend="handleDragEnd(event)"
-                 oncontextmenu="mostrarMenuContextual(event, '${pedido.id}')"
-                 style="border-left: 5px solid #7c3aed; background-color: #f5f3ff;">
+                 ${esSobreEnDeposito ? '' : 'ondragstart="handleDragStart(event)" ondragend="handleDragEnd(event)" oncontextmenu="mostrarMenuContextual(event, \'' + pedido.id + '\')"'}
+                 style="border-left: 5px solid ${esSobreEnDeposito ? '#059669' : '#7c3aed'}; background-color: ${esSobreEnDeposito ? '#ecfdf5' : '#f5f3ff'};">
                 
                 <div class="pedido-header">
                     <div class="pedido-header-left">
-                        <span class="pedido-domicilio-indicator" style="background-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);" title="Retiro de Sobre de Efectivo"></span>
-                        <span class="pedido-cliente-id" style="font-size: 0.95rem; font-weight: 700; color: #6d28d9;">
-                            💵 SOBRE • Cli #${clienteId}
+                        <span class="pedido-domicilio-indicator" style="background-color: ${esSobreEnDeposito ? '#059669' : '#7c3aed'}; box-shadow: 0 0 0 2px ${esSobreEnDeposito ? 'rgba(5, 150, 105, 0.2)' : 'rgba(124, 58, 237, 0.2)'};" title="${esSobreEnDeposito ? 'Sobre en Mostrador / Depósito LAMDA' : 'Retiro de Sobre de Efectivo'}"></span>
+                        <span class="pedido-cliente-id" style="font-size: 0.95rem; font-weight: 700; color: ${esSobreEnDeposito ? '#065f46' : '#6d28d9'};">
+                            ${esSobreEnDeposito ? '🏬 SOBRE EN DEPÓSITO' : '💵 SOBRE'} • Cli #${clienteId}
                         </span>
                     </div>
                     <div class="pedido-header-badges">
-                        <span class="pedido-badge" style="background-color:#7c3aed; color:white; font-weight:bold;">
-                            ✅ PREPARADO
+                        <span class="pedido-badge" style="background-color:${esSobreEnDeposito ? '#059669' : '#7c3aed'}; color:white; font-weight:bold;">
+                            ${esSobreEnDeposito ? '🏬 EN MOSTRADOR' : '✅ PREPARADO'}
                         </span>
                     </div>
                 </div>
 
                 <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px;">
-                    <div class="badge-retiro-visual" style="background: #ede9fe; color: #5b21b6; border: 1px solid #c4b5fd; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; display: inline-block; font-weight: bold;">
-                        💵 Retiro Efectivo #${codigoSobre}
+                    <div class="badge-retiro-visual" style="background: ${esSobreEnDeposito ? '#d1fae5' : '#ede9fe'}; color: ${esSobreEnDeposito ? '#065f46' : '#5b21b6'}; border: 1px solid ${esSobreEnDeposito ? '#6ee7b7' : '#c4b5fd'}; padding: 2px 8px; border-radius: 4px; font-size: 0.72rem; display: inline-block; font-weight: bold;">
+                        ${esSobreEnDeposito ? `🏬 Mostrador #${codigoSobre} (Listo para asentar)` : `💵 Retiro Efectivo #${codigoSobre}`}
                     </div>
                     ${clienteTienePedidoEnPool ? `<div style="background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; padding: 2px 6px; border-radius: 4px; font-size: 0.71rem; font-weight: 700;">📦 Tiene pedido en pool</div>` : ''}
                 </div>
@@ -668,25 +670,30 @@ function obtenerPedidoHtml(pedido) {
                     ${clienteNombre}
                 </div>
                 <div class="pedido-direccion" style="margin-top: 0.2rem;">
-                    📍 ${pedido.domicilio_direccion || 'Sin dirección asignada'}
+                    ${esSobreEnDeposito ? '🏬 Entrega en Mostrador / Depósito LAMDA' : `📍 ${pedido.domicilio_direccion || 'Sin dirección asignada'}`}
                 </div>
                 <div class="pedido-footer">
                     <div class="pedido-monto">
                         💵 $${montoSobre.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
-                    <div class="pedido-footer-actions">
+                    <div class="pedido-footer-actions" style="display:flex; gap:4px; flex-wrap:wrap;">
                         ${tieneFotos ? `<button onclick="event.stopPropagation(); window.verFotosSobreLogistica('${codigoSobre}', '${pedido.foto_frente_url || ''}', '${pedido.foto_dorso_url || ''}')" class="btn-card-action" style="background-color: #6d28d9; color:white;" title="Ver fotos del sobre cerrado">📷 Fotos</button>` : ''}
+                        <button onclick="event.stopPropagation(); window.location.href='${urlAuditarSobre}'" class="btn-card-action" style="background-color: #16a34a; color:white; font-weight:700;" title="Abrir arqueo y acreditar en Cuenta Corriente">
+                            🔍 ${esSobreEnDeposito ? 'Auditar y Asentar' : 'Asentar'}
+                        </button>
                     </div>
                 </div>
             </div>
         `;
     }
 
-    // Detectar si este mismo cliente tiene un sobre PREPARADO en el pool para avisar visualmente
+    // Detectar si este mismo cliente tiene un sobre PREPARADO para CHOFER en el pool para avisar visualmente
     const clienteTieneSobreEnPool = state.pedidos.some(p => {
         const pEsSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true;
+        if (!pEsSobre) return false;
+        if (p.modalidad_entrega === 'LOCAL' || p.estado_sobre === 'RECIBIDO_LOCAL' || p.estado_logistico === 'EN_MOSTRADOR') return false;
         const pCliNorm = String(p.cliente_id || p.id_cliente || '').trim().replace(/^0+/, '');
-        return pEsSobre && pCliNorm && pCliNorm === idCliNorm;
+        return pCliNorm && pCliNorm === idCliNorm;
     });
 
     // Estilos específicos para Tratamientos/Retiros/Devoluciones

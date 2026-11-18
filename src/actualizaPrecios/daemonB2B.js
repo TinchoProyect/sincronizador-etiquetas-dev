@@ -125,11 +125,43 @@ async function executeCatalogJob() {
   runningJobs.catalog = false;
 }
 
+let daemonLoopsStarted = false;
+
+function startActiveLoops() {
+  if (daemonLoopsStarted) return;
+  daemonLoopsStarted = true;
+  setInterval(() => {
+    require('dotenv').config({ path: path.resolve(__dirname, '../../.env'), override: true });
+    if (esModoLaboratorioB2B()) return;
+    executePedidosJob().catch(e => console.error('💥 [B2B-DAEMON] Error en ciclo Pedidos/Sobres:', e.message));
+  }, 60 * 1000); // Cada 1 minuto
+
+  setInterval(() => {
+    require('dotenv').config({ path: path.resolve(__dirname, '../../.env'), override: true });
+    if (esModoLaboratorioB2B()) return;
+    executeCatalogJob().catch(e => console.error('💥 [B2B-DAEMON] Error en ciclo Catálogo:', e.message));
+  }, 15 * 60 * 1000); // Cada 15 minutos
+}
+
 // Ejecución Inicial al arrancar el Daemon
 async function runInitialSync() {
   if (esModoLaboratorioB2B()) {
-    console.log(`🔒 [B2B-DAEMON] MODO LABORATORIO ACTIVO (BD: ${process.env.DB_NAME || 'etiquetas_pruebas'}): Sincronización automática con Supabase B2B real PAUSADA preventivamente para no contaminar Producción.`);
-    setInterval(() => {}, 60 * 60 * 1000);
+    console.log(`🔒 [B2B-DAEMON] MODO LABORATORIO / STANDBY ACTIVO (BD: ${process.env.DB_NAME || 'etiquetas_pruebas'}): Sincronización automática en espera preventiva.`);
+    // Vigilar cada 60s por si el nodo pasa de Standby a Producción Titular activa sin reinicio manual de B2B_DAEMON
+    const standbyWatcher = setInterval(async () => {
+      try {
+        require('dotenv').config({ path: path.resolve(__dirname, '../../.env'), override: true });
+        if (!esModoLaboratorioB2B()) {
+          clearInterval(standbyWatcher);
+          console.log('🔓 [B2B-DAEMON] Nodo promovido a Producción Titular activa. Iniciando sincronización automática...');
+          await executeCatalogJob();
+          await executePedidosJob();
+          startActiveLoops();
+        }
+      } catch (e) {
+        console.error('⚠️ [B2B-DAEMON] Error verificando estado de salida de Standby:', e.message);
+      }
+    }, 60 * 1000);
     return;
   }
 
@@ -137,10 +169,7 @@ async function runInitialSync() {
   await executeCatalogJob();
   await executePedidosJob();
   console.log('🎉 [B2B-DAEMON] Sincronización de arranque completada. Entrando en ciclo regular.');
-  
-  // Programar intervalos
-  setInterval(executePedidosJob, 60 * 1000); // Cada 1 minuto
-  setInterval(executeCatalogJob, 15 * 60 * 1000); // Cada 15 minutos
+  startActiveLoops();
 }
 
 runInitialSync().catch(err => {

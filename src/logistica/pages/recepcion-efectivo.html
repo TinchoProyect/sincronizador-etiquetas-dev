@@ -205,6 +205,31 @@
         .btn-secondary:hover {
             background-color: #cbd5e1;
         }
+
+        @media (max-width: 768px) {
+            .header {
+                padding: 12px 14px;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .header h1 {
+                font-size: 1.12rem;
+            }
+            .container-box {
+                padding: 12px;
+            }
+            .bunker-panel {
+                padding: 12px;
+            }
+            .input-search, .select-filter {
+                min-width: 0;
+                width: 100%;
+            }
+            .filters-bar {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
@@ -213,7 +238,10 @@
         <h1>
             <span>💵</span> Recepción y Arqueo de Efectivo Ensobrado
         </h1>
-        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <a id="btn-volver-mobile" href="/mobile/" class="btn-action" style="display: none; background:#059669; color: white; text-decoration: none;" title="Volver a la App Móvil">
+                📱 Volver a App Móvil
+            </a>
             <button id="btn-volver-cc" class="btn-action" style="background:#8e4785; color: white;" title="Volver a la Ficha de Cuenta Corriente">
                 ← Volver a Cuenta Corriente
             </button>
@@ -281,8 +309,8 @@
                         <option value="LOCAL">🏬 Entrega en Local</option>
                     </select>
 
-                    <button id="btn-refrescar" class="btn-action btn-secondary" title="Refrescar lista">
-                        🔄 Actualizar
+                    <button id="btn-refrescar" class="btn-action" style="background:#0d9488; color:#ffffff;" title="Sincronizar nuevos avisos desde Portal B2B y actualizar lista">
+                        🔄 Sincronizar Portal B2B
                     </button>
                 </div>
             </div>
@@ -316,6 +344,6 @@
     </div>
 
     <!-- Script de lógica de recepción y arqueo -->
-    <script src="../js/recepcion-efectivo.js?v=1.0.6"></script>
+    <script src="../js/recepcion-efectivo.js?v=1.0.7"></script>
 </body>
 </html>

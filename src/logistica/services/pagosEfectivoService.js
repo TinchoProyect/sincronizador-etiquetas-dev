@@ -12,6 +12,10 @@ const {
     resolverDestinoContableClienteBunker,
     obtenerOCrearCuentaPrincipalBunker
 } = require('../../shared/nodosCuentaUnificadaHelper');
+const {
+    sincronizarPagosEfectivo,
+    esModoLaboratorioOSinCredencialesPagos
+} = require('../../actualizaPrecios/syncB2BPagosEfectivo');
 
 const SUPABASE_URL = process.env.SUPABASE_B2B_URL;
 const SUPABASE_KEY = process.env.SUPABASE_B2B_SERVICE_KEY;
@@ -22,25 +26,91 @@ const supabaseAdmin = (SUPABASE_URL && SUPABASE_KEY)
       })
     : null;
 
+function puedeSincronizarSupabaseEnVivo() {
+    return Boolean(supabaseAdmin) && !esModoLaboratorioOSinCredencialesPagos();
+}
+
 const CLOUDFLARE_PORTAL_URL = process.env.B2B_PORTAL_URL || 'https://proud-darkness-ac3d.miserrano75.workers.dev';
 
 class PagosEfectivoService {
+    static _syncPromise = null;
+    static _lastSyncAtMs = 0;
+
+    /**
+     * Sincroniza bidireccionalmente los sobres de efectivo con Supabase B2B
+     * (respetando el candado de Modo Laboratorio / Standby y evitando colisiones concurrentes).
+     *
+     * @param {Object} [opts]
+     * @param {boolean} [opts.force=false] - Si true, ignora la ventana de enfriamiento de 10s
+     * @param {number} [opts.timeoutMs=4500] - Tiempo máximo de espera antes de continuar en background
+     */
+    static async sincronizarConSupabase({ force = false, timeoutMs = 4500 } = {}) {
+        if (esModoLaboratorioOSinCredencialesPagos()) {
+            return { success: true, skipped: true, reason: 'modo_laboratorio_o_standby' };
+        }
+
+        const ahora = Date.now();
+        if (!force && this._lastSyncAtMs > 0 && (ahora - this._lastSyncAtMs) < 10000) {
+            return { success: true, skipped: true, reason: 'cooldown_reciente' };
+        }
+
+        if (!this._syncPromise) {
+            this._syncPromise = sincronizarPagosEfectivo({ externalPool: pool, silent: !force })
+                .then((res) => {
+                    this._lastSyncAtMs = Date.now();
+                    return res;
+                })
+                .catch((err) => {
+                    console.warn('⚠️ [PAGOS-EFECTIVO-SERVICE] Advertencia en sincronización automática con Supabase:', err.message);
+                    return { success: false, error: err.message };
+                })
+                .finally(() => {
+                    this._syncPromise = null;
+                });
+        }
+
+        if (!timeoutMs || timeoutMs <= 0) {
+            return this._syncPromise;
+        }
+
+        let timerId;
+        const timeoutPromise = new Promise((resolve) => {
+            timerId = setTimeout(() => resolve({ success: true, timedOutBackground: true }), timeoutMs);
+        });
+
+        try {
+            return await Promise.race([this._syncPromise, timeoutPromise]);
+        } finally {
+            clearTimeout(timerId);
+        }
+    }
+
     /**
      * Lista todos los sobres registrados en el sistema con filtros opcionales.
-     * Incluye datos del cliente búnker y su saldo de cuenta corriente actual.
+     * Antes de consultar la base local, sincroniza automáticamente cualquier sobre
+     * pendiente del Portal B2B en Supabase para evitar sobres invisibles.
      * 
      * @param {Object} filtros - Filtros de búsqueda
      * @param {string} [filtros.estado] - Estado ('PREPARADO', 'EN_TRANSITO', 'RECIBIDO_LOCAL', 'ACREDITADO', 'OBSERVADO', 'CANCELADO')
      * @param {string} [filtros.cliente_id] - Código de cliente (ej: 'CB-0034')
      * @param {string} [filtros.modalidad] - 'CHOFER' | 'LOCAL'
+     * @param {boolean} [filtros.forzar_sync] - Forzar consulta inmediata a Supabase ignorando cooldown
+     * @param {boolean} [filtros.omitir_sync] - Omitir sincronización previa si ya se ejecutó recién
      * @returns {Promise<Array>} Lista de sobres enriquecidos
      */
     static async listarSobres(filtros = {}) {
+        if (!filtros.omitir_sync) {
+            await PagosEfectivoService.sincronizarConSupabase({
+                force: Boolean(filtros.forzar_sync)
+            });
+        }
+
         let query = `
             SELECT 
                 p.id,
                 p.codigo_sobre,
-                p.cliente_id,
+                COALESCE(c.codigo_bunker_cliente, p.cliente_id) AS cliente_id,
+                p.cliente_id AS cliente_id_raw,
                 p.monto_declarado,
                 p.desglose_billetes,
                 p.foto_frente_url,
@@ -55,12 +125,10 @@ class PagosEfectivoService {
                 p.auditado_por,
                 p.fecha_auditoria,
                 p.chofer_nombre,
-                p.recibo_url,
-                p.monto_auditado,
-                p.auditado_por,
-                p.fecha_auditoria,
-                p.chofer_nombre,
                 p.fecha_retiro_chofer,
+                p.colaborador_nombre,
+                p.colaborador_telefono,
+                p.colaborador_email,
                 p.id_ruta,
                 p.orden_entrega,
                 p.id_domicilio_entrega,
@@ -75,8 +143,21 @@ class PagosEfectivoService {
                 cc.id AS cuenta_corriente_id,
                 COALESCE(cc.saldo, 0.00) AS saldo_cuenta_corriente
             FROM public.factura_pagos_efectivo p
-            LEFT JOIN public.bunker_clientes c ON c.codigo_bunker_cliente = p.cliente_id
-            LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = p.cliente_id
+            LEFT JOIN LATERAL (
+                SELECT bc.*
+                FROM public.bunker_clientes bc
+                WHERE bc.codigo_bunker_cliente = p.cliente_id
+                   OR (bc.lomas_soft_id IS NOT NULL AND ltrim(bc.lomas_soft_id, '0') = ltrim(p.cliente_id, '0'))
+                ORDER BY (bc.codigo_bunker_cliente = p.cliente_id) DESC, bc.id ASC
+                LIMIT 1
+            ) c ON true
+            LEFT JOIN LATERAL (
+                SELECT fcc.id, fcc.saldo
+                FROM public.factura_cuentas_corrientes fcc
+                WHERE fcc.codigo_bunker_cliente = COALESCE(c.codigo_bunker_cliente, p.cliente_id)
+                ORDER BY fcc.id ASC
+                LIMIT 1
+            ) cc ON true
             LEFT JOIN public.rutas r ON r.id = p.id_ruta
             WHERE 1=1
         `;
@@ -91,7 +172,11 @@ class PagosEfectivoService {
         }
 
         if (filtros.cliente_id) {
-            query += ` AND p.cliente_id = $${valIndex}`;
+            query += ` AND (
+                p.cliente_id = $${valIndex}
+                OR c.codigo_bunker_cliente = $${valIndex}
+                OR (c.lomas_soft_id IS NOT NULL AND ltrim(c.lomas_soft_id, '0') = ltrim($${valIndex}, '0'))
+            )`;
             values.push(filtros.cliente_id);
             valIndex++;
         }
@@ -102,7 +187,7 @@ class PagosEfectivoService {
             valIndex++;
         }
 
-        query += ` ORDER BY p.fecha_creacion DESC`;
+        query += ` ORDER BY p.fecha_creacion DESC, p.id DESC`;
 
         const res = await pool.query(query, values);
         return res.rows;
@@ -110,6 +195,7 @@ class PagosEfectivoService {
 
     /**
      * Obtiene los datos detallados de un sobre por su ID o Código.
+     * Si no existe aún en la base local, fuerza una sincronización inmediata con Supabase.
      * 
      * @param {number|string} identificador - ID numérico o código 'SOB-XXXX'
      * @returns {Promise<Object>} Sobre detallado
@@ -119,6 +205,7 @@ class PagosEfectivoService {
         const query = `
             SELECT 
                 p.*,
+                COALESCE(c.codigo_bunker_cliente, p.cliente_id) AS cliente_id,
                 COALESCE(c.razon_social, c.cliente_nombre, p.cliente_id) AS cliente_razon_social,
                 COALESCE(c.cliente_nombre, c.razon_social, p.cliente_id) AS cliente_nombre_fantasia,
                 c.cuit_cuil AS cliente_cuit,
@@ -127,12 +214,29 @@ class PagosEfectivoService {
                 cc.id AS cuenta_corriente_id,
                 COALESCE(cc.saldo, 0.00) AS saldo_cuenta_corriente
             FROM public.factura_pagos_efectivo p
-            LEFT JOIN public.bunker_clientes c ON c.codigo_bunker_cliente = p.cliente_id
-            LEFT JOIN public.factura_cuentas_corrientes cc ON cc.codigo_bunker_cliente = p.cliente_id
-            WHERE ${isId ? 'p.id = $1' : 'p.codigo_sobre = $1'}
+            LEFT JOIN LATERAL (
+                SELECT bc.*
+                FROM public.bunker_clientes bc
+                WHERE bc.codigo_bunker_cliente = p.cliente_id
+                   OR (bc.lomas_soft_id IS NOT NULL AND ltrim(bc.lomas_soft_id, '0') = ltrim(p.cliente_id, '0'))
+                ORDER BY (bc.codigo_bunker_cliente = p.cliente_id) DESC, bc.id ASC
+                LIMIT 1
+            ) c ON true
+            LEFT JOIN LATERAL (
+                SELECT fcc.id, fcc.saldo
+                FROM public.factura_cuentas_corrientes fcc
+                WHERE fcc.codigo_bunker_cliente = COALESCE(c.codigo_bunker_cliente, p.cliente_id)
+                ORDER BY fcc.id ASC
+                LIMIT 1
+            ) cc ON true
+            WHERE ${isId ? 'p.id = $1' : 'UPPER(TRIM(p.codigo_sobre)) = UPPER(TRIM($1))'}
         `;
 
-        const res = await pool.query(query, [identificador]);
+        let res = await pool.query(query, [identificador]);
+        if (res.rows.length === 0) {
+            await PagosEfectivoService.sincronizarConSupabase({ force: true, timeoutMs: 6000 });
+            res = await pool.query(query, [identificador]);
+        }
         if (res.rows.length === 0) {
             throw new Error(`No se encontró el sobre especificado (${identificador}).`);
         }
@@ -533,7 +637,7 @@ class PagosEfectivoService {
             const sobreActualizado = resUpdateSobre.rows[0];
 
             // 6. Intentar sincronizar inmediatamente con Supabase para evitar demoras o pisadas
-            if (supabaseAdmin) {
+            if (puedeSincronizarSupabaseEnVivo()) {
                 try {
                     const { error: supaErr } = await supabaseAdmin
                         .from('clientes_b2b_pagos_efectivo')
@@ -640,7 +744,7 @@ class PagosEfectivoService {
         console.log(`🔄 [PAGOS-EFECTIVO-SERVICE] Sobre ${sobreActualizado.codigo_sobre} pasó a estado: ${nuevoEstado}`);
 
         // Sincronizar en tiempo real con Supabase
-        if (supabaseAdmin) {
+        if (puedeSincronizarSupabaseEnVivo()) {
             try {
                 const supaPayload = {
                     estado: nuevoEstado,
@@ -786,7 +890,7 @@ class PagosEfectivoService {
         const sobreCreado = resLocal.rows[0];
 
         // 5. Inserción en Supabase (clientes_b2b_pagos_efectivo) para que el link público y el portal B2B lo reconozcan inmediatamente
-        if (supabaseAdmin) {
+        if (puedeSincronizarSupabaseEnVivo()) {
             try {
                 const { error: supaErr } = await supabaseAdmin
                     .from('clientes_b2b_pagos_efectivo')

@@ -1495,14 +1495,19 @@ const ClientesMobileController = {
             }
         }
 
+        const codBunkerCli = c.codigo_bunker_cliente || '';
         Swal.fire({
             title: `<div style="color:#f8fafc; font-size:1.15rem; font-weight:800;">⚙️ ${c.cliente_nombre}</div>`,
             background: '#1e293b',
             color: '#f8fafc',
             html: `
                 <div style="display:flex; flex-direction:column; gap:0.6rem; text-align:left; margin-top:0.5rem;">
+                    <div id="mob-slot-sobres-pendientes" style="display:none;"></div>
                     <button class="btn-modal-link" style="background:linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color:white; padding:0.7rem 1rem; border-radius:0.75rem; font-weight:800; border:none; cursor:pointer; display:flex; align-items:center; gap:0.5rem;" onclick="Swal.close(); ClientesMobileController.abrirDetalleSaldoYPoliticasMobile('${c.id}')">
                         💳 Ver Detalle de Saldo, Políticas y Enviar PDF
+                    </button>
+                    <button class="btn-modal-link" style="background:#8e4785; color:white; padding:0.65rem 1rem; border-radius:0.75rem; font-weight:700; border:none; cursor:pointer; display:flex; align-items:center; gap:0.5rem;" onclick="Swal.close(); window.location.href='/pages/recepcion-efectivo.html?${codBunkerCli ? 'cliente=' + encodeURIComponent(codBunkerCli) + '&' : ''}from=mobile'">
+                        💵 Bandeja de Sobres / Asentar Efectivo
                     </button>
                     ${wpNumero ? `
                         <a href="https://wa.me/${wpNumero.replace(/\D/g,'')}" target="_blank" class="btn-modal-link" style="background:#059669; color:white; padding:0.65rem 1rem; border-radius:0.75rem; font-weight:700; text-decoration:none; display:flex; align-items:center; gap:0.5rem;">
@@ -1521,8 +1526,47 @@ const ClientesMobileController = {
                 </div>
             `,
             showConfirmButton: false,
-            showCloseButton: true
+            showCloseButton: true,
+            didOpen: () => {
+                this.inyectarSobresPendientesEnSlotMobile(codBunkerCli || String(c.id), 'mob-slot-sobres-pendientes');
+            }
         });
+    },
+
+    async inyectarSobresPendientesEnSlotMobile(clienteIdent, slotId) {
+        if (!clienteIdent) return;
+        try {
+            const res = await fetch(`/api/logistica/pagos-efectivo?cliente_id=${encodeURIComponent(clienteIdent)}`);
+            const json = await res.json();
+            if (!json.success || !Array.isArray(json.sobres)) return;
+            const pend = json.sobres.filter(s => ['PREPARADO', 'EN_TRANSITO', 'RECIBIDO_LOCAL'].includes(s.estado));
+            const slot = document.getElementById(slotId);
+            if (!slot || pend.length === 0) return;
+
+            slot.style.display = 'flex';
+            slot.style.flexDirection = 'column';
+            slot.style.gap = '0.5rem';
+            slot.innerHTML = pend.map(s => {
+                const esMostrador = s.modalidad_entrega === 'LOCAL' || s.estado === 'RECIBIDO_LOCAL';
+                const urlSobre = `/pages/recepcion-efectivo.html?cliente=${encodeURIComponent(s.cliente_id || clienteIdent)}&sobre=${encodeURIComponent(s.codigo_sobre)}&from=mobile`;
+                return `
+                    <div style="background:rgba(16, 185, 129, 0.16); border:1.5px solid #10b981; border-radius:0.8rem; padding:0.7rem 0.85rem; display:flex; flex-direction:column; gap:0.45rem;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                            <span style="font-size:0.86rem; font-weight:900; color:#6ee7b7;">📦 SOBRE PENDIENTE: ${s.codigo_sobre}</span>
+                            <span style="font-size:0.76rem; font-weight:800; background:${esMostrador ? '#059669' : '#6d28d9'}; color:#fff; padding:2px 8px; border-radius:999px;">
+                                ${esMostrador ? '🏬 En Mostrador' : '🚚 Chofer'}
+                            </span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.5rem;">
+                            <strong style="font-size:1.15rem; color:#ffffff;">${this.formatearMonedaMobile(s.monto_declarado)}</strong>
+                            <button type="button" onclick="window.location.href='${urlSobre}'" style="background:#16a34a; color:#ffffff; border:none; border-radius:0.6rem; padding:0.5rem 0.85rem; font-weight:900; font-size:0.84rem; cursor:pointer; box-shadow:0 2px 8px rgba(22,163,74,0.35);">
+                                🔍 Auditar y Asentar
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } catch (_) {}
     },
 
     // =========================================================
@@ -2115,6 +2159,9 @@ const ClientesMobileController = {
                 <!-- CUERPO SCROLLABLE PANTALLA COMPLETA -->
                 <div id="cc-mob-scroll-body" style="flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:0.85rem 0.9rem 3.5rem; display:flex; flex-direction:column; gap:0.9rem; zoom:${savedZoomScale};">
 
+                    <!-- ALERTA DINÁMICA DE SOBRES PENDIENTES DE ASENTAR -->
+                    <div id="cc-mob-slot-sobres-pendientes" style="display:none;"></div>
+
                     <!-- 1. TARJETA PRINCIPAL CON CAPITAL Y FINANCIACIÓN SEPARADOS EN LETRA GRANDE -->
                     <div style="background:linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%); border:1.5px solid ${saldoContable > 0 ? 'rgba(248, 113, 113, 0.5)' : 'rgba(52, 211, 153, 0.45)'}; border-radius:1rem; padding:0.95rem; display:flex; flex-direction:column; gap:0.65rem; box-shadow:0 8px 24px rgba(0,0,0,0.35);">
 
@@ -2322,6 +2369,7 @@ const ClientesMobileController = {
             if (scrollBody && prevScrollTop > 0) {
                 scrollBody.scrollTop = prevScrollTop;
             }
+            this.inyectarSobresPendientesEnSlotMobile(codigoBunker || String(c.id), 'cc-mob-slot-sobres-pendientes');
 
             // Botones Cerrar / Volver y Zoom de letra
             const btnBack = document.getElementById('btn-cc-mob-back');

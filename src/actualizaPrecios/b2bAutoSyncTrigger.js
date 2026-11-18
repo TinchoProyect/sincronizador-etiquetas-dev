@@ -15,6 +15,8 @@ const SCRIPTS = {
   ofertas: { name: 'Ofertas Dinámicas', path: path.join(__dirname, 'syncB2BOfertas.js') },
   estados: { name: 'Estados Logísticos', path: path.join(__dirname, 'syncB2BEstados.js') },
   pedidos: { name: 'Pedidos B2B', path: path.join(__dirname, 'syncB2BPedidos.js') },
+  retiros: { name: 'Retiros B2B', path: path.join(__dirname, 'syncB2BRetiros.js') },
+  pagosEfectivo: { name: 'Sobres de Efectivo B2B', path: path.join(__dirname, 'syncB2BPagosEfectivo.js') },
   colaboradores: { name: 'Servicios Colaborador', path: path.join(__dirname, 'syncB2BColaboradores.js') }
 };
 
@@ -194,7 +196,10 @@ function createB2BAutoSyncMiddleware(moduleName = 'app') {
 
           if (url.includes('/bunker/clientes') || url.includes('/clientes') || url.includes('b2b-onboarding/invitar') || url.includes('completar-onboarding')) {
             triggerB2BSync('listas', motivo);
-          } else if (url.includes('cuentas-corrientes') || url.includes('pagos-efectivo') || url.includes('/facturacion/facturas')) {
+          } else if (url.includes('pagos-efectivo')) {
+            triggerB2BSync('pagosEfectivo', motivo);
+            triggerB2BSync('cuentas', motivo);
+          } else if (url.includes('cuentas-corrientes') || url.includes('/facturacion/facturas')) {
             triggerB2BSync('cuentas', motivo);
           } else if (url.includes('/jornadas') || url.includes('/tarifas')) {
             triggerB2BSync('colaboradores', motivo);

@@ -1490,9 +1490,16 @@ window.abrirModalAgregarPedidos = async () => {
         const listaContainer = document.getElementById('agregar-pedidos-lista');
 
         if (result.success && result.data && result.data.length > 0) {
-            // Filtrar pedidos que ya están en la ruta activa
+            // Filtrar pedidos que ya están en la ruta activa y excluir sobres dejados en mostrador/depósito (LOCAL)
             const idsEnRuta = new Set(state.entregas.map(e => String(e.id_presupuesto)));
-            const disponibles = result.data.filter(p => !idsEnRuta.has(String(p.id)));
+            const disponibles = result.data.filter(p => {
+                if (idsEnRuta.has(String(p.id))) return false;
+                const esSobre = String(p.id).startsWith('SOB-') || p.es_sobre_efectivo === true || p.estado === 'Sobre de Efectivo';
+                if (esSobre && (p.modalidad_entrega === 'LOCAL' || p.estado_sobre === 'RECIBIDO_LOCAL' || p.estado_logistico === 'EN_MOSTRADOR')) {
+                    return false;
+                }
+                return true;
+            });
 
             if (disponibles.length === 0) {
                 listaContainer.innerHTML = `

@@ -6,8 +6,9 @@ const PagosEfectivoService = require('../services/pagosEfectivoService');
 
 exports.listarSobres = async (req, res) => {
     try {
-        const { estado, cliente_id, modalidad } = req.query;
-        const sobres = await PagosEfectivoService.listarSobres({ estado, cliente_id, modalidad });
+        const { estado, cliente_id, modalidad, sync } = req.query;
+        const forzar_sync = sync === '1' || sync === 'true';
+        const sobres = await PagosEfectivoService.listarSobres({ estado, cliente_id, modalidad, forzar_sync });
         res.json({
             success: true,
             total: sobres.length,
@@ -15,6 +16,25 @@ exports.listarSobres = async (req, res) => {
         });
     } catch (error) {
         console.error('❌ [PAGOS-EFECTIVO-CTRL] Error al listar sobres:', error.message);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+exports.sincronizarSobres = async (req, res) => {
+    try {
+        const syncRes = await PagosEfectivoService.sincronizarConSupabase({ force: true, timeoutMs: 12000 });
+        const sobres = await PagosEfectivoService.listarSobres({ omitir_sync: true });
+        res.json({
+            success: true,
+            sync: syncRes,
+            total: sobres.length,
+            sobres
+        });
+    } catch (error) {
+        console.error('❌ [PAGOS-EFECTIVO-CTRL] Error al sincronizar sobres:', error.message);
         res.status(500).json({
             success: false,
             error: error.message

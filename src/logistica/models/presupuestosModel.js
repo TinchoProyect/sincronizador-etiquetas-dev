@@ -150,6 +150,14 @@ async function autoAsignarDomicilios(pool) {
  * INCLUYE AUTO-HEALING: Asigna automáticamente domicilios antes de retornar
  */
 async function obtenerPresupuestosDisponibles(pool) {
+    // PASO 0: Sincronizar sobres de efectivo pendientes desde Portal B2B (respeta candado Lab/Standby)
+    try {
+        const PagosEfectivoService = require('../services/pagosEfectivoService');
+        await PagosEfectivoService.sincronizarConSupabase();
+    } catch (syncErr) {
+        console.warn('[POOL-SOBRES] Aviso sincronizando sobres B2B:', syncErr.message);
+    }
+
     // PASO 1: Auto-asignar domicilios a presupuestos huérfanos
     await autoAsignarDomicilios(pool);
 
@@ -303,13 +311,13 @@ async function obtenerPresupuestosDisponibles(pool) {
             p.fecha_creacion as fecha,
             NULL as fecha_entrega,
             'Sobre de Efectivo' as estado,
-            'PENDIENTE_ASIGNAR' as estado_logistico,
+            CASE WHEN p.modalidad_entrega = 'LOCAL' OR p.estado = 'RECIBIDO_LOCAL' THEN 'EN_MOSTRADOR' ELSE 'PENDIENTE_ASIGNAR' END as estado_logistico,
             'Pedido_Listo' as secuencia,
             COALESCE(p.id_domicilio_entrega, cd.id) as id_domicilio_entrega,
             false as bloqueo_entrega,
             COALESCE(c.cliente_id::text, NULLIF(LTRIM(TRIM(bc.lomas_soft_id), '0'), ''), p.cliente_id) as id_cliente,
             NULL as agente,
-            COALESCE(NULLIF(TRIM(p.observaciones_cliente), ''), 'Retiro de Sobre ' || p.codigo_sobre) as nota,
+            COALESCE(NULLIF(TRIM(p.observaciones_cliente), ''), CASE WHEN p.modalidad_entrega = 'LOCAL' THEN 'Entrega en Mostrador ' || p.codigo_sobre ELSE 'Retiro de Sobre ' || p.codigo_sobre END) as nota,
             NULL as factura_id,
             NULL as motivo_no_entrega,
             NULL as factura_estado,
@@ -319,7 +327,7 @@ async function obtenerPresupuestosDisponibles(pool) {
             COALESCE(c.telefono, bc.whatsapp_facturas, p.colaborador_telefono) as cliente_telefono,
             COALESCE(cd.localidad, c.localidad) as cliente_localidad,
             COALESCE(bc.preferencia_facturacion, c.preferencia_facturacion, 'PREGUNTAR') as preferencia_facturacion,
-            cd.direccion as domicilio_direccion,
+            CASE WHEN p.modalidad_entrega = 'LOCAL' THEN 'Entrega en Mostrador / Depósito LAMDA' ELSE cd.direccion END as domicilio_direccion,
             COALESCE(cd.localidad, c.localidad) as domicilio_localidad,
             COALESCE(cd.provincia, bc.provincia, '') as domicilio_provincia,
             cd.latitud as domicilio_latitud,
@@ -334,6 +342,7 @@ async function obtenerPresupuestosDisponibles(pool) {
             p.id as sobre_id_numerico,
             p.codigo_sobre,
             p.cliente_id as codigo_bunker_cliente,
+            p.modalidad_entrega,
             COALESCE(p.monto_declarado, 0) as monto_declarado,
             p.foto_frente_url,
             p.foto_dorso_url,
@@ -358,8 +367,11 @@ async function obtenerPresupuestosDisponibles(pool) {
             )
         )
         WHERE p.id_ruta IS NULL
-          AND p.modalidad_entrega = 'CHOFER'
-          AND p.estado = 'PREPARADO'
+          AND (
+              (p.modalidad_entrega = 'CHOFER' AND p.estado = 'PREPARADO')
+              OR (p.modalidad_entrega = 'LOCAL' AND p.estado IN ('PREPARADO', 'RECIBIDO_LOCAL'))
+              OR p.estado = 'RECIBIDO_LOCAL'
+          )
         ORDER BY p.fecha_creacion DESC, p.id DESC
     `;
     const sobresResult = await pool.query(querySobres);

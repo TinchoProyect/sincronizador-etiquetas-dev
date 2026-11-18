@@ -706,12 +706,24 @@ const server = app.listen(PORT, '0.0.0.0', () => {
         }
 
         if (!esModoLaboratorioOSinCredencialesB2B()) {
-            console.log('⚡ [LOGISTICA-B2B] Programando sincronización catch-up inicial del Portal B2B (Producción Titular)...');
-            triggerB2BSync('precios', 'logistica:startup-catchup', 3000);
-            triggerB2BSync('listas', 'logistica:startup-catchup', 7000);
+            console.log('⚡ [LOGISTICA-B2B] Programando sincronización catch-up inicial y ciclo de ingesta Portal B2B (Producción Titular)...');
+            triggerB2BSync('pagosEfectivo', 'logistica:startup-catchup', 2000);
+            triggerB2BSync('precios', 'logistica:startup-catchup', 3500);
+            triggerB2BSync('pedidos', 'logistica:startup-catchup', 5500);
+            triggerB2BSync('retiros', 'logistica:startup-catchup', 7000);
+            triggerB2BSync('listas', 'logistica:startup-catchup', 9000);
             triggerB2BSync('politicas', 'logistica:startup-catchup', 11000);
             triggerB2BSync('ofertas', 'logistica:startup-catchup', 14000);
         }
+
+        // Respaldo continuo en el proceso LOGISTICA (:3005) para ingestar sobres, pedidos y retiros
+        // cada 60s aunque B2B_DAEMON no esté corriendo como proceso separado en PM2 (respeta candado Lab/Standby)
+        setInterval(() => {
+            if (esModoLaboratorioOSinCredencialesB2B()) return;
+            triggerB2BSync('pagosEfectivo', 'logistica:periodic-60s', 500);
+            triggerB2BSync('pedidos', 'logistica:periodic-60s', 2500);
+            triggerB2BSync('retiros', 'logistica:periodic-60s', 4500);
+        }, 60 * 1000);
     })();
 });
 

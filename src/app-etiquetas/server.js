@@ -464,6 +464,8 @@ router.post('/sync-b2b', async (req, res) => {
     { name: 'Ofertas Dinámicas', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BOfertas.js') },
     { name: 'Servicios Colaborador', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BColaboradores.js') },
     { name: 'Pedidos desde B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPedidos.js') },
+    { name: 'Retiros desde B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BRetiros.js') },
+    { name: 'Sobres de Efectivo B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPagosEfectivo.js') },
     { name: 'Estados Logísticos B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BEstados.js') },
   ];
 
@@ -513,6 +515,9 @@ router.post('/sync-b2b/:step', async (req, res) => {
     ofertas: { name: 'Ofertas Dinámicas', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BOfertas.js') },
     colaboradores: { name: 'Servicios Colaborador', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BColaboradores.js') },
     pedidos: { name: 'Pedidos desde B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPedidos.js') },
+    retiros: { name: 'Retiros desde B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BRetiros.js') },
+    'pagos-efectivo': { name: 'Sobres de Efectivo B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPagosEfectivo.js') },
+    pagosEfectivo: { name: 'Sobres de Efectivo B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BPagosEfectivo.js') },
     estados: { name: 'Estados Logísticos B2B', path: path.resolve(__dirname, '../actualizaPrecios/syncB2BEstados.js') },
   };
 

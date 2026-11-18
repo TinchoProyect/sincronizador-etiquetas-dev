@@ -4,26 +4,45 @@
 
 let todosLosSobres = [];
 let clienteActivo = null;
+let sobreAutoAbrir = null;
+let autoAbiertoEjecutado = false;
 
 document.addEventListener('DOMContentLoaded', () => {
     inicializarNavegacionCliente();
-    cargarSobres();
+    cargarSobres(Boolean(sobreAutoAbrir));
     configurarEventos();
 });
 
 function inicializarNavegacionCliente() {
     const urlParams = new URLSearchParams(window.location.search);
     const clienteUrl = urlParams.get('cliente');
+    const sobreUrl = urlParams.get('sobre');
+    const fromUrl = urlParams.get('from');
+
+    const btnVolverMobile = document.getElementById('btn-volver-mobile');
+    if (btnVolverMobile && (fromUrl === 'mobile' || window.innerWidth <= 768)) {
+        btnVolverMobile.style.display = 'inline-flex';
+    }
+
+    if (sobreUrl) {
+        sobreAutoAbrir = sobreUrl.trim();
+    }
 
     if (clienteUrl) {
         clienteActivo = clienteUrl;
         sessionStorage.setItem('ultimo_cliente_bunker_cc', clienteUrl);
-        // Pre-cargar filtro de búsqueda con el cliente
+        // Pre-cargar filtro de búsqueda con el sobre puntual o el cliente
         const inputFiltro = document.getElementById('filtro-busqueda');
         if (inputFiltro) {
-            inputFiltro.value = clienteUrl;
+            inputFiltro.value = sobreAutoAbrir || clienteUrl;
         }
     } else {
+        if (sobreAutoAbrir) {
+            const inputFiltro = document.getElementById('filtro-busqueda');
+            if (inputFiltro) {
+                inputFiltro.value = sobreAutoAbrir;
+            }
+        }
         clienteActivo = sessionStorage.getItem('ultimo_cliente_bunker_cc') || localStorage.getItem('ultimo_cliente_bunker_cc');
     }
 
@@ -53,25 +72,30 @@ function actualizarBotonVolverCC(codigoClienteNuevo) {
 }
 
 function configurarEventos() {
-    document.getElementById('btn-refrescar').addEventListener('click', cargarSobres);
+    document.getElementById('btn-refrescar').addEventListener('click', () => cargarSobres(true));
     document.getElementById('filtro-busqueda').addEventListener('input', filtrarSobres);
     document.getElementById('filtro-estado').addEventListener('change', filtrarSobres);
     document.getElementById('filtro-modalidad').addEventListener('change', filtrarSobres);
 }
 
-// Cargar sobres desde el backend
-async function cargarSobres() {
+// Cargar sobres desde el backend (sincronizando con Portal B2B Supabase)
+async function cargarSobres(forzarSync = false) {
     const tbody = document.getElementById('tabla-sobres-body');
+    const btnRefrescar = document.getElementById('btn-refrescar');
+    if (btnRefrescar) {
+        btnRefrescar.disabled = true;
+        btnRefrescar.innerHTML = '⏳ Sincronizando...';
+    }
     tbody.innerHTML = `
         <tr>
             <td colspan="8" style="text-align: center; padding: 30px; color: #64748b;">
-                🔄 Cargando sobres de efectivo...
+                🔄 ${forzarSync ? 'Sincronizando sobres del Portal B2B y actualizando bandeja...' : 'Cargando sobres de efectivo...'}
             </td>
         </tr>
     `;
 
     try {
-        const res = await fetch('/api/logistica/pagos-efectivo');
+        const res = await fetch(forzarSync ? '/api/logistica/pagos-efectivo?sync=1' : '/api/logistica/pagos-efectivo');
         const data = await res.json();
 
         if (!data.success) {
@@ -80,6 +104,26 @@ async function cargarSobres() {
 
         todosLosSobres = data.sobres || [];
         actualizarKPIs(todosLosSobres);
+
+        // Si se abrió con ?sobre=SOB-XXXX, asegurar visibilidad y abrir modal directo
+        if (sobreAutoAbrir && !autoAbiertoEjecutado) {
+            autoAbiertoEjecutado = true;
+            const targetNorm = sobreAutoAbrir.toUpperCase();
+            const encontrado = todosLosSobres.find(s => String(s.codigo_sobre || '').toUpperCase() === targetNorm);
+            if (encontrado) {
+                if (encontrado.cliente_id) {
+                    actualizarBotonVolverCC(encontrado.cliente_id);
+                }
+                const selEstado = document.getElementById('filtro-estado');
+                if (selEstado && selEstado.value === 'PENDIENTES_ACREDITAR' && !['PREPARADO', 'EN_TRANSITO', 'RECIBIDO_LOCAL'].includes(encontrado.estado)) {
+                    selEstado.value = 'TODOS';
+                }
+                filtrarSobres();
+                setTimeout(() => abrirModalAuditoria(encontrado.codigo_sobre), 120);
+                return;
+            }
+        }
+
         filtrarSobres();
 
     } catch (err) {
@@ -91,6 +135,11 @@ async function cargarSobres() {
                 </td>
             </tr>
         `;
+    } finally {
+        if (btnRefrescar) {
+            btnRefrescar.disabled = false;
+            btnRefrescar.innerHTML = '🔄 Sincronizar Portal B2B';
+        }
     }
 }
 
@@ -377,13 +426,13 @@ async function abrirModalAuditoria(codigoSobre) {
     };
 
     Swal.fire({
-        title: `<span style="color: #8e4785; font-size: 1.3rem; font-weight: 800;">Auditoría y Arqueo de Sobre ${sobre.codigo_sobre}</span>`,
-        width: '900px',
+        title: `<span style="color: #8e4785; font-size: 1.25rem; font-weight: 800;">Auditoría y Arqueo de Sobre ${sobre.codigo_sobre}</span>`,
+        width: 'min(900px, 96vw)',
         html: `
             <div style="text-align: left; font-size: 0.88rem; color: #1e293b; font-family: sans-serif;">
                 
                 <!-- Encabezado Cliente y Monto -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
                     <div>
                         <span style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Cliente</span>
                         <strong style="display: block; font-size: 1rem; color: #1e293b;">${sobre.cliente_razon_social || sobre.cliente_nombre_fantasia || 'Cliente'}</strong>
@@ -392,12 +441,12 @@ async function abrirModalAuditoria(codigoSobre) {
                     <div style="text-align: right;">
                         <span style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Monto Declarado en Sobre</span>
                         <span style="display: block; font-size: 1.4rem; font-weight: 800; color: #16a34a;">${formatCurrency(sobre.monto_declarado)}</span>
-                        <span style="font-size: 0.75rem; color: #64748b;">Modalidad: <strong>${sobre.modalidad_entrega === 'CHOFER' ? '🚚 Chofer' : '🏬 Local'}</strong></span>
+                        <span style="font-size: 0.75rem; color: #64748b;">Modalidad: <strong>${sobre.modalidad_entrega === 'CHOFER' ? '🚚 Chofer' : '🏬 Mostrador / Depósito LAMDA'}</strong></span>
                     </div>
                 </div>
 
-                <!-- Layout 2 Columnas: Fotos y Desglose Editable -->
-                <div style="display: grid; grid-template-columns: 1fr 1.25fr; gap: 16px; margin-bottom: 16px;">
+                <!-- Layout 2 Columnas Responsivo: Fotos y Desglose Editable -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 16px;">
                     
                     <!-- Columna Fotos -->
                     <div>

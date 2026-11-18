@@ -4,8 +4,11 @@ const pagosEfectivoController = require('../controllers/pagosEfectivoController'
 
 console.log('🔍 [PAGOS-EFECTIVO-ROUTES] Preparando rutas de Pagos en Efectivo...');
 
-// Listar sobres (?estado=PREPARADO&cliente_id=CB-XXXX&modalidad=CHOFER)
+// Listar sobres (?estado=PREPARADO&cliente_id=CB-XXXX&modalidad=CHOFER&sync=1)
 router.get('/', pagosEfectivoController.listarSobres);
+
+// Forzar sincronización bidireccional inmediata con Portal B2B (Supabase)
+router.post('/sincronizar', pagosEfectivoController.sincronizarSobres);
 
 // Obtener un sobre por ID o Código
 router.get('/:id', pagosEfectivoController.obtenerSobre);
