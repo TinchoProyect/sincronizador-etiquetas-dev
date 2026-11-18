@@ -24,7 +24,7 @@
     'use strict';
 
     const STORAGE_KEY_IA_CONFIG = 'lamda_crm_wa_ia_config_v1';
-    const URL_PORTAL_OFICIAL = 'https://portal-clientes-b2b.lamdaser.workers.dev';
+    const URL_PORTAL_OFICIAL = 'https://proud-darkness-ac3d.miserrano75.workers.dev';
 
     function escapar(str) {
         return String(str || '')
@@ -1486,8 +1486,8 @@
             : (tieneSaldoAFavor ? `Saldo a favor: ${saldoAFavorFmt}` : 'Cuenta al día ($0)');
 
         const badgePortal = yaIngresoPortal
-            ? `🟢 Ya usa el Portal${fechaUltimoIngresoTxt ? ` (últ. vez: ${fechaUltimoIngresoTxt})` : ''}`
-            : `🟠 Aún no entró al Portal${codigoActivacion ? ` (Cód: ${codigoActivacion})` : ''}`;
+            ? `🟢 Ya usa el Portal (tiene usuario y clave)${fechaUltimoIngresoTxt ? ` · últ. vez: ${fechaUltimoIngresoTxt}` : ''}`
+            : `🟠 Nunca entró al Portal → Requiere Invitación Inicial${codigoActivacion ? ` (Cód: ${codigoActivacion})` : ''}`;
 
         return {
             tieneSaldo,
@@ -1650,17 +1650,28 @@
         const idxCombinado = Math.abs(varIdx + semillaCliente);
         const modoAccion = st.modoAccionProactiva || 'AUTO';
 
-        const usaLinkActivacion = st.modoLink === 'ACTIVACION_CORTA' && st.linkActivacionCorto;
+        const urlBasePortal = String(st.urlPortalBase || URL_PORTAL_OFICIAL).replace(/\/+$/, '');
         const usaMagicLink = st.modoLink === 'MAGIC_LINK' && st.magicLinkDirecto;
+        const esModoInvitacionInicial = !usaMagicLink && (
+            !st.yaIngresoPortal ||
+            st.modoLink === 'INVITACION_INICIAL' ||
+            st.modoLink === 'ACTIVACION_CORTA'
+        ) && Boolean(st.linkActivacionCorto || st.codigoActivacion);
+        const linkInvitacionEfectivo = st.linkActivacionCorto
+            || (st.codigoActivacion ? `${urlBasePortal}/?t=${st.codigoActivacion}` : urlBasePortal);
         const linkElegido = usaMagicLink
             ? st.magicLinkDirecto
-            : (usaLinkActivacion ? st.linkActivacionCorto : (st.urlPortalBase || URL_PORTAL_OFICIAL));
+            : (esModoInvitacionInicial ? linkInvitacionEfectivo : urlBasePortal);
 
-        const infoDuraLinkPortal = (!st.yaIngresoPortal && st.codigoActivacion && !usaLinkActivacion && !usaMagicLink)
-            ? `${linkElegido}\nCódigo de acceso: *${st.codigoActivacion}*`
-            : `${linkElegido}`;
+        const infoDuraLinkPortal = usaMagicLink
+            ? `${st.magicLinkDirecto}`
+            : (esModoInvitacionInicial
+                ? (st.codigoActivacion
+                    ? `🔑 Invitación inicial al Portal de Clientes:\nCódigo de activación: *${st.codigoActivacion}*\nEntrá acá para crear tu clave por primera vez: ${linkInvitacionEfectivo}`
+                    : `${linkInvitacionEfectivo}`)
+                : `${urlBasePortal}`);
 
-        const baseLinkSeguimiento = String(linkElegido || '').trim();
+        const baseLinkSeguimiento = usaMagicLink ? String(st.magicLinkDirecto).trim() : urlBasePortal;
         const linkSeguimientoOrden = baseLinkSeguimiento
             ? (/[?&]tab=pedidos\b/i.test(baseLinkSeguimiento)
                 ? baseLinkSeguimiento
@@ -1669,9 +1680,13 @@
                     : `${baseLinkSeguimiento.replace(/\/+$/, '')}/?tab=pedidos`))
             : `${URL_PORTAL_OFICIAL}/?tab=pedidos`;
 
-        const infoDuraLinkSeguimientoOrden = (!st.yaIngresoPortal && st.codigoActivacion && !usaLinkActivacion && !usaMagicLink)
-            ? `${linkSeguimientoOrden}\nCódigo de acceso: *${st.codigoActivacion}*`
-            : `${linkSeguimientoOrden}`;
+        const infoDuraLinkSeguimientoOrden = usaMagicLink
+            ? `${linkSeguimientoOrden}`
+            : (esModoInvitacionInicial
+                ? (st.codigoActivacion
+                    ? `🔑 Invitación inicial al Portal (para activar tu cuenta y seguir tu pedido):\nCódigo de activación: *${st.codigoActivacion}*\nEntrá acá para crear tu clave e ingresar: ${linkInvitacionEfectivo}`
+                    : `${linkInvitacionEfectivo}`)
+                : `${linkSeguimientoOrden}`);
 
         const seleccionados = (st.catalogoArticulos || []).filter(a => st.idsSeleccionados.has(String(a.id)));
         const lid = Number(st.listaId) || 1;
@@ -2204,18 +2219,26 @@
                 ]);
         const saludoPrefijoCorto = AperturasCortasPortal[idxCombinado % AperturasCortasPortal.length];
 
-        const variantesTextoPortal = [
-            `${saludoPrefijoCorto}Te dejo acá abajo el link del portal por si querés ver precios actualizados o armar pedido.`,
-            `${saludoPrefijoCorto}Te paso el acceso a nuestro portal donde podés consultar todos los precios al día.`,
-            `${saludoPrefijoCorto}Te adjunto acá abajo el link del portal por si necesitás mirar algún precio esta semana.`
-        ];
+        const variantesTextoPortal = esModoInvitacionInicial
+            ? [
+                `${saludoPrefijoCorto}Te dejo acá abajo la invitación al portal para activar tu cuenta por primera vez y poder ver los precios actualizados o armar pedido.`,
+                `${saludoPrefijoCorto}Te paso acá abajo la invitación inicial a nuestro portal (con tu código de activación) para que crees tu clave y consultes todos los precios al día.`,
+                `${saludoPrefijoCorto}Te adjunto acá abajo la invitación para activar tu usuario en el portal por si necesitás mirar algún precio esta semana.`
+            ]
+            : [
+                `${saludoPrefijoCorto}Te dejo acá abajo el link del portal por si querés ver precios actualizados o armar pedido.`,
+                `${saludoPrefijoCorto}Te paso el acceso a nuestro portal donde podés consultar todos los precios al día.`,
+                `${saludoPrefijoCorto}Te adjunto acá abajo el link del portal por si necesitás mirar algún precio esta semana.`
+            ];
         const b1Portal = limpiarCierreAlFinalDeBurbuja(variantesTextoPortal[idxCombinado % variantesTextoPortal.length]);
 
         const paquetePortalSeparado = {
             burbuja1: b1Portal,
             burbuja2: infoDuraLinkPortal,
             burbuja3: elegirCierreCoherente(b1Portal, 1),
-            pasoEnEspera: `Texto corto sin cierre repetido + Link del Portal en 2da burbuja + Cierre en 3ra burbuja.`
+            pasoEnEspera: esModoInvitacionInicial
+                ? `Texto corto de bienvenida al portal + Invitación Inicial con Código de Activación en 2da burbuja + Cierre en 3ra burbuja.`
+                : `Texto corto sin cierre repetido + Link del Portal en 2da burbuja + Cierre en 3ra burbuja.`
         };
 
         // ----------------------------------------------------------------------------------
@@ -2373,9 +2396,12 @@
         // H. AVISO CORTO DE CUENTA CORRIENTE (SIN PDF, 1 SOLA BURBUJA) Y POLÍTICAS DE LISTA
         // ----------------------------------------------------------------------------------
         const textosSaldo = generarTextosMencionSaldoWa(st, infoContacto, ag3, 0);
-        const b1ConPuentePortal = /portal|link|acceso/i.test(cuerpoSaludoElegido)
+        const frasePuentePortalDefault = esModoInvitacionInicial
+            ? 'Te dejo acá abajo la invitación al portal para activar tu cuenta y mirar los precios actualizados.'
+            : 'Te dejo acá abajo el link del portal por si querés mirar precios.';
+        const b1ConPuentePortal = /portal|link|acceso|invitaci[oó]n/i.test(cuerpoSaludoElegido)
             ? limpiarCierreAlFinalDeBurbuja(cuerpoSaludoElegido)
-            : `${limpiarCierreAlFinalDeBurbuja(cuerpoSaludoElegido)} Te dejo acá abajo el link del portal por si querés mirar precios.`;
+            : `${limpiarCierreAlFinalDeBurbuja(cuerpoSaludoElegido)} ${frasePuentePortalDefault}`;
 
         const yaSaludamosHoy = Boolean(
             enCurso ||
@@ -2863,6 +2889,10 @@
         } else {
             const iaActiva = Boolean(st.razonamientoIa && st.razonamientoIa.usando_ia_real);
             const txtCompra = ag2.diasDesdeUltimaCompra !== null ? `🛒 Últ. compra: ${ag2.diasDesdeUltimaCompra}d` : '🛒 Cliente activo';
+            const usaInvitacionUi = !st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA';
+            const badgePortalBarraHtml = usaInvitacionUi
+                ? `<span style="background: #fffbeb; color: #92400e; border: 1px solid #f59e0b; padding: 1px 7px; border-radius: 999px; font-weight: 800; font-size: 0.68rem;" title="Este cliente NUNCA ingresó al Portal (no tiene usuario ni clave aún). Cuando envíes el Mensaje 2 se despacha automáticamente la Invitación Inicial con Código de Activación igual que desde Clientes Búnker.">🟠 Portal: Nunca entró → Invitación Inicial${st.codigoActivacion ? ` (Cód: ${escapar(st.codigoActivacion)})` : ''}</span>`
+                : `<span style="background: #dcfce7; color: #166534; border: 1px solid #86efac; padding: 1px 7px; border-radius: 999px; font-weight: 800; font-size: 0.68rem;" title="Este cliente ya ingresó al Portal B2B y cuenta con su usuario y contraseña activos. Se envía el link directo del Portal.">🟢 Portal: Ya tiene cuenta activa</span>`;
             barraMemoriaHtml += `
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; background: ${iaActiva ? '#ecfdf5' : '#f8fafc'}; border: 1px solid ${iaActiva ? '#6ee7b7' : '#cbd5e1'}; border-left: 4px solid ${iaActiva ? '#059669' : '#0284c7'}; border-radius: 8px; padding: 5px 10px; margin-bottom: 8px; font-size: 0.71rem; color: #0f172a;">
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
@@ -2872,6 +2902,7 @@
                         <span style="background: #dcfce7; color: #166534; border: 1px solid #86efac; padding: 1px 7px; border-radius: 999px; font-weight: 800; font-size: 0.68rem;" title="Agente Fiscalizador Determinista: verifica que el 100% de los precios del mensaje y del PDF pertenezcan estrictamente a la lista asignada de este cliente">
                             🔒 Fiscalizador Precios: Lista #${escapar(st.listaId || 1)} (${escapar(nombreListaFiscalizada)}) ✓
                         </span>
+                        ${badgePortalBarraHtml}
                         <span style="color: #475569; font-weight: 700;">${escapar(txtCompra)}</span>
                         <span style="color: ${ag3.tieneSaldo ? '#b45309' : '#047857'}; font-weight: 800;">💳 ${escapar(ag3.badgeCuenta)}</span>
                     </div>
@@ -3003,11 +3034,14 @@
             });
         }
 
+        const requiereInvitacionPortalPill = !st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA';
         pildorasRapidas.push({
             id: 'PORTAL',
             activo: !esModoAuto && modoActivo === 'PORTAL',
-            label: '🔗 + Link Portal',
-            title: 'Incluir el link del Portal B2B en una 2da burbuja separada',
+            label: requiereInvitacionPortalPill ? '🔑 + Invitación Portal (1ra vez)' : '🔗 + Link Portal',
+            title: requiereInvitacionPortalPill
+                ? 'Este cliente nunca entró al Portal: incluye en el Mensaje 2 la Invitación Inicial con Código de Activación para que cree su clave'
+                : 'Este cliente ya tiene usuario en el Portal: incluye el link directo del Portal B2B en el Mensaje 2',
             onclick: `window.sumarLinkPortalAlMensajeAsistenteWa()`
         });
 
@@ -3304,6 +3338,7 @@
                         pedidos_activos_en_curso: (st.rayosX?.pedidos_recientes || []).filter(p => !/entregad|anulad|cancelad|baja/i.test(`${p.estado || ''} ${p.secuencia || ''} ${p.estado_logistico || ''}`)).map(p => ({ id: p.id, estado: p.estado, secuencia: p.secuencia, total: p.total }))
                     },
                     linkPortalCliente: st.linkActivacionCorto || st.urlPortalBase || '',
+                    yaIngresoPortal: Boolean(st.yaIngresoPortal && st.modoLink !== 'INVITACION_INICIAL'),
                     instruccionOperador: instClean,
                     forzarRecalculo: true
                 })

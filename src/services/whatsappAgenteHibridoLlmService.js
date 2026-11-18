@@ -320,6 +320,7 @@ async function razonarAsistenciaHibridaClienteWa({
     habitualesCliente = [],
     estadoCuentaDeterminista = {},
     linkPortalCliente = '',
+    yaIngresoPortal = false,
     instruccionOperador = '',
     forzarRecalculo = false
 }) {
@@ -330,7 +331,7 @@ async function razonarAsistenciaHibridaClienteWa({
 
     const ultMsg = mensajesRecientes.length > 0 ? mensajesRecientes[mensajesRecientes.length - 1] : null;
     const instClean = String(instruccionOperador || '').trim();
-    const cacheKey = `${clienteNombre}_${contactoNombre}_${ultMsg?.id || ultMsg?.msg_id || mensajesRecientes.length}_${ultMsg?.cuerpo || ''}_${instClean}`;
+    const cacheKey = `${clienteNombre}_${contactoNombre}_${ultMsg?.id || ultMsg?.msg_id || mensajesRecientes.length}_${ultMsg?.cuerpo || ''}_${yaIngresoPortal ? 'P1' : 'P0'}_${instClean}`;
     if (!forzarRecalculo && !instClean && _cacheRazonamientoHibrido.has(cacheKey)) {
         const cached = _cacheRazonamientoHibrido.get(cacheKey);
         if (Date.now() - cached.ts < 90000) {
@@ -373,6 +374,10 @@ REGLAS INNEGOCIABLES DEL SISTEMA HÍBRIDO (CLAVIJAS DURAS):
      - "sugerir_adjuntar_pdf": false
      - En "burbuja1_dialogo": Agradecele por la transferencia ("muchas gracias por la transferencia"), confirmale que el pago ya quedó acreditado y su pedido/orden (mencionando el N° de orden si figura) ya está en curso de preparación, y ofrecele seguir en tiempo real el estado de la orden ingresando desde el link de la plataforma/app de abajo. (NO saludes de nuevo con "Hola" si ya veníamos hablando hoy; continuá natural, ej: "${apodoSugerido ? `${apodoSugerido}, muchas` : 'Muchas'} gracias por la transferencia! Ya quedó acreditada y tu orden está en preparación. Desde el link de abajo podés ingresar a la app para hacer el seguimiento en tiempo real del estado de tu pedido:").
      - En "burbuja3_cierre": "Apenas esté listo para salir te avisamos también por acá. Cualquier cosa estamos atentos."
+7. CONCIENCIA DE INVITACIÓN INICIAL AL PORTAL vs CLIENTE YA REGISTRADO Y AVISO DE PDF ADJUNTO:
+   - Revisá siempre "cliente.ya_ingreso_portal_anteriormente".
+   - Si "cliente.ya_ingreso_portal_anteriormente" es FALSE (el cliente NUNCA ingresó al Portal B2B y todavía NO tiene usuario ni contraseña) y vas a referenciar el portal ("tipo_burbuja2_determinista" = "LINK_PORTAL" o "LINK_SEGUIMIENTO_ORDEN"), en "burbuja1_dialogo" NO digas simplemente "te dejo el link del portal" como si ya tuviera clave: decile con naturalidad que abajo le dejás la invitación para activar su cuenta en el portal por primera vez y ver los precios actualizados (el Agente Determinista colocará su código de activación e invitación en la Burbuja 2). Si es TRUE, sí hablale directo del "link del portal" porque ya cuenta con su usuario y contraseña.
+   - Siempre que marques "sugerir_adjuntar_pdf": true, asegurate de que "burbuja1_dialogo" informe con naturalidad que también le adjuntás un PDF con la información de precios actualizados.
 `.trim();
 
     const historialFormateado = mensajesRecientes.slice(-14).map(m => {
@@ -433,7 +438,9 @@ REGLAS INNEGOCIABLES DEL SISTEMA HÍBRIDO (CLAVIJAS DURAS):
             razon_social: clienteNombre,
             contacto: contactoNombre,
             apodo_confianza: apodoSugerido,
-            link_portal_disponible: Boolean(linkPortalCliente)
+            link_portal_disponible: Boolean(linkPortalCliente),
+            ya_ingreso_portal_anteriormente: Boolean(yaIngresoPortal),
+            requiere_invitacion_inicial_primera_vez: !yaIngresoPortal
         },
         cuenta_corriente_determinista: estadoCuentaDeterminista,
         articulos_habituales_cliente: habitualesLimpios,

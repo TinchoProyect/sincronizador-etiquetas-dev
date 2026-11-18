@@ -5884,11 +5884,13 @@
         const saludoInicial = st.nombreCorto ? `Hola ${st.nombreCorto}! ¿Cómo estás? 😊\n` : `Hola! ¿Cómo estás? 😊\n`;
         const saludoBreve = st.nombreCorto ? `Hola ${st.nombreCorto}! ` : `Hola! `;
 
-        const usaLinkActivacion = st.modoLink === 'ACTIVACION_CORTA' && st.linkActivacionCorto;
+        const usaLinkActivacion = (st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA' || !st.yaIngresoPortal) && Boolean(st.linkActivacionCorto || st.codigoActivacion);
         const usaMagicLink = st.modoLink === 'MAGIC_LINK' && st.magicLinkDirecto;
+        const urlBase = String(st.urlPortalBase || URL_PORTAL_B2B_OFICIAL).replace(/\/+$/, '');
+        const linkInvEfectivo = st.linkActivacionCorto || (st.codigoActivacion ? `${urlBase}/?t=${st.codigoActivacion}` : urlBase);
         const linkElegido = usaMagicLink
             ? st.magicLinkDirecto
-            : (usaLinkActivacion ? st.linkActivacionCorto : (st.urlPortalBase || URL_PORTAL_B2B_OFICIAL));
+            : (usaLinkActivacion ? linkInvEfectivo : urlBase);
 
         const seleccionados = (st.catalogoArticulos || []).filter(a => st.idsSeleccionados.has(String(a.id)));
 
@@ -6001,9 +6003,28 @@
         const mensajesActuales = Array.isArray(estadoConsola.detalleActivo?.mensajes) ? estadoConsola.detalleActivo.mensajes : [];
         const det = detectarIntencionConversacionWa(mensajesActuales);
 
-        const mapaEstados = await obtenerMapaEstadosPortalB2BWa();
-        const estCli = codigoBunker ? mapaEstados[codigoBunker] : null;
-        const yaIngreso = estCli ? Boolean(estCli.ya_ingreso) : true;
+        let estCli = estadoConsola.rayosXActivo?.estado_portal_b2b || null;
+        const idLookupPortal = cli?.id || chatObj?.bunker_cliente_id || chatObj?.cliente_bunker_id || codigoBunker;
+        if (!estCli && idLookupPortal) {
+            try {
+                const rInv = await fetch(`/api/crm/whatsapp/clientes/${encodeURIComponent(idLookupPortal)}/preparar-invitacion-portal`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ forzarNueva: false })
+                });
+                const jInv = await rInv.json().catch(() => null);
+                if (rInv.ok && jInv?.estado_portal_b2b) {
+                    estCli = jInv.estado_portal_b2b;
+                }
+            } catch (_) {}
+        }
+        if (!estCli) {
+            const mapaEstados = await obtenerMapaEstadosPortalB2BWa();
+            estCli = codigoBunker ? mapaEstados[codigoBunker] : null;
+        }
+        const yaIngreso = estCli ? Boolean(estCli.ya_ingreso) : false;
+        const codAct = estCli?.codigo_activacion || '';
+        const linkAct = estCli?.link_invitacion_corto || estCli?.link_activacion_corto || (codAct ? `${URL_PORTAL_B2B_OFICIAL}/?t=${codAct}` : '');
 
         const stTemp = {
             pasoActual: pasoCodigo,
@@ -6011,9 +6032,10 @@
             listaId,
             charlaEnCurso: Boolean(det.charlaEnCurso),
             urlPortalBase: URL_PORTAL_B2B_OFICIAL,
-            codigoActivacion: estCli?.codigo_activacion || '',
-            linkActivacionCorto: estCli?.link_activacion_corto || '',
-            modoLink: (!yaIngreso && estCli?.link_activacion_corto) ? 'ACTIVACION_CORTA' : 'PORTAL_GENERAL',
+            yaIngresoPortal: yaIngreso,
+            codigoActivacion: codAct,
+            linkActivacionCorto: linkAct,
+            modoLink: !yaIngreso ? 'INVITACION_INICIAL' : 'PORTAL_GENERAL',
             magicLinkDirecto: '',
             catalogoArticulos: [],
             articulosHabituales: [],
@@ -6087,8 +6109,8 @@
         const rayosX = estadoConsola.rayosXActivo || (estadoConsola.detalleActivo && estadoConsola.detalleActivo.rayos_x) || null;
         const cliRx = rayosX?.cliente || null;
 
-        const clienteId = opciones.clienteId || cliRx?.id || chatObj?.cliente_bunker_id || null;
-        const codigoBunker = opciones.codigoBunker || cliRx?.codigo_bunker_cliente || chatObj?.codigo_bunker_cliente || '';
+        let clienteId = opciones.clienteId || cliRx?.id || chatObj?.bunker_cliente_id || chatObj?.cliente_bunker_id || null;
+        let codigoBunker = opciones.codigoBunker || cliRx?.codigo_bunker_cliente || chatObj?.codigo_bunker_cliente || '';
         const nombreCliente = opciones.nombreCliente || cliRx?.cliente_nombre || chatObj?.cliente_nombre || chatObj?.contacto_nombre || chatObj?.pushname_wa || 'Cliente';
         const telefonoCliente = opciones.telefono || chatObj?.telefono_normalizado || cliRx?.telefono || '';
         let tieneListaAsignada = opciones.tieneListaAsignada !== undefined
@@ -6188,6 +6210,15 @@
             console.warn('[WA-ASISTENTE-COMERCIAL] Error parcial cargando contexto:', err);
         }
 
+        if (sintesisMemoria) {
+            if (!codigoBunker && sintesisMemoria.codigo_bunker_cliente) {
+                codigoBunker = String(sintesisMemoria.codigo_bunker_cliente).trim();
+            }
+            if (!clienteId && sintesisMemoria.cliente_bunker_id) {
+                clienteId = Number(sintesisMemoria.cliente_bunker_id) || clienteId;
+            }
+        }
+
         if (catalogoData && catalogoData.mapaClientesBunkerListas instanceof Map) {
             const lomasNumLookup = parseInt(String(cliRx?.lomas_soft_id || chatObj?.lomas_soft_id || '').replace(/\D/g, ''), 10);
             const bCli = (clienteId && catalogoData.mapaClientesBunkerListas.get(`ID_${Number(clienteId)}`))
@@ -6195,6 +6226,12 @@
                 || (!isNaN(lomasNumLookup) && lomasNumLookup > 0 && catalogoData.mapaClientesBunkerListas.get(`LOMAS_${lomasNumLookup}`))
                 || null;
             if (bCli) {
+                if (!codigoBunker && bCli.codigo_bunker_cliente) {
+                    codigoBunker = String(bCli.codigo_bunker_cliente).trim();
+                }
+                if (!clienteId && bCli.id) {
+                    clienteId = Number(bCli.id) || clienteId;
+                }
                 if (Array.isArray(bCli.listas_precios) && bCli.listas_precios.length > 0) {
                     tieneListaAsignada = true;
                     listaId = Number(bCli.listas_precios[0].id) || listaId;
@@ -6207,14 +6244,31 @@
             }
         }
 
-        const estadoPortalCli = (codigoBunker && mapaEstadosPortal[codigoBunker]) ? mapaEstadosPortal[codigoBunker] : null;
+        let estadoPortalVivo = sintesisMemoria?.estado_portal_b2b || rayosX?.estado_portal_b2b || null;
+        if (!estadoPortalVivo && (clienteId || codigoBunker)) {
+            try {
+                const rInvVivo = await fetch(`/api/crm/whatsapp/clientes/${encodeURIComponent(clienteId || codigoBunker)}/preparar-invitacion-portal`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ forzarNueva: false })
+                });
+                const jInvVivo = await rInvVivo.json().catch(() => null);
+                if (rInvVivo.ok && jInvVivo?.estado_portal_b2b) {
+                    estadoPortalVivo = jInvVivo.estado_portal_b2b;
+                }
+            } catch (_) {}
+        }
+
+        const estadoPortalCli = estadoPortalVivo || ((codigoBunker && mapaEstadosPortal[codigoBunker]) ? mapaEstadosPortal[codigoBunker] : null);
         const yaIngresoPortal = estadoPortalCli ? Boolean(estadoPortalCli.ya_ingreso) : false;
         const fechaUltimoIngresoTxt = estadoPortalCli?.ultimo_ingreso
             ? new Date(estadoPortalCli.ultimo_ingreso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
             : '';
         const emailRegistradoPortal = estadoPortalCli?.email_registrado || '';
         const codigoActivacionCorto = estadoPortalCli?.codigo_activacion || '';
-        const linkActivacionCorto = estadoPortalCli?.link_activacion_corto || '';
+        const linkActivacionCorto = estadoPortalCli?.link_invitacion_corto
+            || estadoPortalCli?.link_activacion_corto
+            || (codigoActivacionCorto ? `${URL_PORTAL_B2B_OFICIAL}/?t=${codigoActivacionCorto}` : '');
 
         // 1. Normalizar todos los artículos del catálogo dinámico y enriquecerlos con la Jerarquía B2B,
         //    FILTRANDO ESTRICTAMENTE los artículos activos (disponible = true y precio > 0) en la Lista Asignada del cliente (igual que Artículos Búnker)
@@ -6465,7 +6519,8 @@
                                     })),
                                 comportamiento_pago: sintesisMemoria?.comportamiento_pago || {}
                             },
-                            linkPortalCliente: linkActivacionCorto || URL_PORTAL_B2B_OFICIAL,
+                            linkPortalCliente: (!yaIngresoPortal && linkActivacionCorto) ? linkActivacionCorto : URL_PORTAL_B2B_OFICIAL,
+                            yaIngresoPortal,
                             forzarRecalculo: forzarRelectura
                         })
                     });
@@ -6544,12 +6599,12 @@
 
         // Detectar todos los teléfonos / chats vinculados a este mismo cliente para poder cambiar de contacto en 1 clic
         const chatsDelMismoCliente = (estadoConsola.chats || []).filter(c => {
-            if (clienteId && Number(c.cliente_bunker_id) === Number(clienteId)) return true;
+            if (clienteId && Number(c.bunker_cliente_id || c.cliente_bunker_id) === Number(clienteId)) return true;
             if (codigoBunker && String(c.codigo_bunker_cliente || '').trim() === String(codigoBunker).trim()) return true;
             return Number(c.id) === Number(chatId);
         });
 
-        const modoLinkInicial = linkActivacionCorto ? 'ACTIVACION_CORTA' : 'PORTAL_GENERAL';
+        const modoLinkInicial = !yaIngresoPortal ? 'INVITACION_INICIAL' : 'PORTAL_GENERAL';
         window._contadorAperturasAsistenteWa = ((window._contadorAperturasAsistenteWa || 0) + 1) % 12;
 
         estadoAsistenteComercialWa = {
@@ -6841,17 +6896,37 @@
                         </div>
                         <textarea id="wa-asist-com-textarea" rows="${Math.min(5, Math.max(2, Math.ceil((textoBurbuja1Inicial || '').length / 95)))}" oninput="window.actualizarIndicadorLongitudAsistenteComercialWa()" style="width: 100%; padding: 7px 10px; border-radius: 8px; border: 1px solid #10b981; font-size: 0.85rem; font-family: inherit; box-sizing: border-box; resize: vertical; background: #ffffff; color: #0f172a; font-weight: 500;">${escaparHtml(textoBurbuja1Inicial)}</textarea>
 
-                        <!-- 2da burbuja: Info Dura separada (Link del Portal / Precios) -->
+                        <!-- 2da burbuja: Info Dura separada (Link / Invitación del Portal o Precios) -->
                         <div style="margin-top: 6px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
                                 <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 0.73rem; font-weight: 800; color: #0369a1; cursor: pointer;">
                                     <input type="checkbox" id="wa-asist-com-chk-burbuja2" ${mostrarB2Inicial ? 'checked' : ''} onchange="window.toggleSegundaBurbujaAsistenteWa(this.checked)">
-                                    <span>2️⃣ Mensaje 2 (separado) — Info dura: Link del Portal o Precios puntuales</span>
+                                    <span>2️⃣ Mensaje 2 (separado) — Info dura: ${(!st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA') ? 'Invitación Inicial al Portal' : 'Link del Portal'} o Precios puntuales</span>
                                 </label>
-                                <div style="display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap;">
-                                    <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Coloca o suma el Link del Portal B2B de este cliente en el Mensaje 2 sin borrar lo que escribiste en el Mensaje 1" style="padding: 1px 7px; border-radius: 5px; font-size: 0.68rem; font-weight: 800; cursor: pointer; border: 1px solid #0284c7; background: #e0f2fe; color: #0369a1;">
-                                        🔗 +Link Portal en Msj 2
-                                    </button>
+                                <div id="wa-asist-com-b2-portal-controls" style="display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap;">
+                                    ${(!st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA') ? `
+                                        <span style="font-size: 0.67rem; font-weight: 800; color: #92400e; background: #fffbeb; border: 1px solid #f59e0b; padding: 1px 7px; border-radius: 999px;" title="Este cliente nunca ingresó al Portal (o pediste enviarle invitación de 1ra vez). En el Mensaje 2 va el Código de Activación + Link de Alta.">
+                                            🟠 Sin clave aún → Invitación Inicial${st.codigoActivacion ? ` (${escaparHtml(st.codigoActivacion)})` : ''}
+                                        </span>
+                                        <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Coloca o suma la Invitación Inicial con Código de Activación de este cliente en el Mensaje 2" style="padding: 1px 7px; border-radius: 5px; font-size: 0.68rem; font-weight: 800; cursor: pointer; border: 1px solid #d97706; background: #fef3c7; color: #92400e;">
+                                            🔑 +Invitación Portal en Msj 2
+                                        </button>
+                                        ${st.yaIngresoPortal ? `
+                                            <button type="button" onclick="window.forzarInvitacionInicialPortalAsistenteWa(true)" title="Volver a enviar solo el Link directo del Portal (sin código de activación)" style="padding: 1px 6px; border-radius: 5px; font-size: 0.66rem; font-weight: 700; cursor: pointer; border: 1px solid #cbd5e1; background: #ffffff; color: #475569;">
+                                                ↩ Usar Link Simple
+                                            </button>
+                                        ` : ''}
+                                    ` : `
+                                        <span style="font-size: 0.67rem; font-weight: 800; color: #166534; background: #dcfce7; border: 1px solid #86efac; padding: 1px 7px; border-radius: 999px;" title="Este cliente ya ingresó al Portal y tiene usuario y contraseña creados.">
+                                            🟢 Ya tiene usuario y clave
+                                        </span>
+                                        <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Coloca o suma el Link directo del Portal B2B de este cliente en el Mensaje 2" style="padding: 1px 7px; border-radius: 5px; font-size: 0.68rem; font-weight: 800; cursor: pointer; border: 1px solid #0284c7; background: #e0f2fe; color: #0369a1;">
+                                            🔗 +Link Portal en Msj 2
+                                        </button>
+                                        <button type="button" id="btn-wa-forzar-inv-inicial" onclick="window.forzarInvitacionInicialPortalAsistenteWa(false)" title="Si el cliente olvidó su contraseña o cambió de teléfono, genera y coloca una nueva Invitación Inicial con Código de Activación" style="padding: 1px 7px; border-radius: 5px; font-size: 0.66rem; font-weight: 800; cursor: pointer; border: 1px solid #f59e0b; background: #fffbeb; color: #92400e;">
+                                            🔑 Enviar como Invitación (blanqueo)
+                                        </button>
+                                    `}
                                     <span style="font-size: 0.68rem; font-weight: 800; color: #166534; background: #dcfce7; border: 1px solid #86efac; padding: 1px 7px; border-radius: 999px;">
                                         🔒 Precios 100% Deterministas (Lista #${escaparHtml(listaId)})
                                     </span>
@@ -7038,6 +7113,9 @@
                 </div>
             `,
             didOpen: () => {
+                if (!borradorPrevio) {
+                    sincronizarCoherenciaEntreBurbujasWa();
+                }
                 actualizarEstilosPasosAsistenteComercialWa();
                 renderizarGridProductosAsistenteComercialWa();
                 renderizarChipsSeleccionadosBurbuja2Wa();
@@ -7156,6 +7234,8 @@
         const st = estadoAsistenteComercialWa;
         if (!st) return;
         st.sugerirAdjuntarPdfIa = Boolean(checked);
+        sincronizarCoherenciaEntreBurbujasWa();
+        window.actualizarIndicadorLongitudAsistenteComercialWa();
         persistirConfigModalPdfClienteEnServidorWa(st, {
             configuradoManualmente: true,
             adjuntarPdfDefault: Boolean(checked)
@@ -7172,6 +7252,8 @@
         const chkPdf = document.getElementById('wa-asist-com-chk-pdf');
         if (chkPdf) chkPdf.checked = true;
         st.sugerirAdjuntarPdfIa = true;
+        sincronizarCoherenciaEntreBurbujasWa();
+        window.actualizarIndicadorLongitudAsistenteComercialWa();
         persistirConfigModalPdfClienteEnServidorWa(st, {
             configuradoManualmente: true,
             adjuntarPdfDefault: true,
@@ -7272,6 +7354,8 @@
             chkPdfCc.checked = resultadoMesa?.proactivo?.modoResuelto === 'AVISO_CORTO_CUENTA';
         }
 
+        st._ultimoPuenteAutoInsertado = '';
+        sincronizarCoherenciaEntreBurbujasWa();
         actualizarEstilosPasosAsistenteComercialWa();
         renderizarChipsSeleccionadosBurbuja2Wa();
         window.actualizarIndicadorLongitudAsistenteComercialWa();
@@ -7349,12 +7433,164 @@
         window.actualizarIndicadorLongitudAsistenteComercialWa();
     };
 
+    function obtenerBloquePortalDeterministaWa(st) {
+        if (!st) return URL_PORTAL_B2B_OFICIAL;
+        if (st.modoLink === 'MAGIC_LINK' && st.magicLinkDirecto) {
+            return st.magicLinkDirecto;
+        }
+        const urlBase = String(st.urlPortalBase || URL_PORTAL_B2B_OFICIAL).replace(/\/+$/, '');
+        const esInvitacion = (
+            !st.yaIngresoPortal ||
+            st.modoLink === 'INVITACION_INICIAL' ||
+            st.modoLink === 'ACTIVACION_CORTA'
+        ) && Boolean(st.linkActivacionCorto || st.codigoActivacion);
+        if (esInvitacion) {
+            const linkInv = st.linkActivacionCorto || (st.codigoActivacion ? `${urlBase}/?t=${st.codigoActivacion}` : urlBase);
+            if (st.codigoActivacion) {
+                return `🔑 Invitación inicial al Portal de Clientes:\nCódigo de activación: *${st.codigoActivacion}*\nEntrá acá para crear tu clave por primera vez: ${linkInv}`;
+            }
+            return linkInv;
+        }
+        return urlBase;
+    }
+
+    function describirAlcancePdfNaturalWa(alcance) {
+        const alc = String(alcance || 'LISTA_COMPLETA').toUpperCase();
+        if (alc === 'ACTUALIZACIONES') return 'la actualización de precios';
+        if (alc === 'HABITUALES') return 'los precios actualizados de los artículos que solés llevar';
+        if (alc === 'SOLO_PADRES') return 'la lista actualizada de packs y presentaciones';
+        if (alc === 'FRACCIONADOS_LOCAL') return 'la lista actualizada de packs y fracciones para el local';
+        if (alc === 'SELECCIONADOS' || alc === 'FILTRADO_MODAL') return 'el detalle de precios actualizados';
+        return 'la lista de precios actualizada';
+    }
+
+    function refrescarControlesModoPortalBurbuja2Wa() {
+        const st = estadoAsistenteComercialWa;
+        const boxCtrl = document.getElementById('wa-asist-com-b2-portal-controls');
+        if (!st || !boxCtrl) return;
+        const esInv = !st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA';
+        boxCtrl.innerHTML = `
+            ${esInv ? `
+                <span style="font-size: 0.67rem; font-weight: 800; color: #92400e; background: #fffbeb; border: 1px solid #f59e0b; padding: 1px 7px; border-radius: 999px;" title="Este cliente nunca ingresó al Portal (o pediste enviarle invitación de 1ra vez). En el Mensaje 2 va el Código de Activación + Link de Alta.">
+                    🟠 Sin clave aún → Invitación Inicial${st.codigoActivacion ? ` (${escaparHtml(st.codigoActivacion)})` : ''}
+                </span>
+                <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Coloca o suma la Invitación Inicial con Código de Activación de este cliente en el Mensaje 2" style="padding: 1px 7px; border-radius: 5px; font-size: 0.68rem; font-weight: 800; cursor: pointer; border: 1px solid #d97706; background: #fef3c7; color: #92400e;">
+                    🔑 +Invitación Portal en Msj 2
+                </button>
+                ${st.yaIngresoPortal ? `
+                    <button type="button" onclick="window.forzarInvitacionInicialPortalAsistenteWa(true)" title="Volver a enviar solo el Link directo del Portal (sin código de activación)" style="padding: 1px 6px; border-radius: 5px; font-size: 0.66rem; font-weight: 700; cursor: pointer; border: 1px solid #cbd5e1; background: #ffffff; color: #475569;">
+                        ↩ Usar Link Simple
+                    </button>
+                ` : ''}
+            ` : `
+                <span style="font-size: 0.67rem; font-weight: 800; color: #166534; background: #dcfce7; border: 1px solid #86efac; padding: 1px 7px; border-radius: 999px;" title="Este cliente ya ingresó al Portal y tiene usuario y contraseña creados.">
+                    🟢 Ya tiene usuario y clave
+                </span>
+                <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Coloca o suma el Link directo del Portal B2B de este cliente en el Mensaje 2" style="padding: 1px 7px; border-radius: 5px; font-size: 0.68rem; font-weight: 800; cursor: pointer; border: 1px solid #0284c7; background: #e0f2fe; color: #0369a1;">
+                    🔗 +Link Portal en Msj 2
+                </button>
+                <button type="button" id="btn-wa-forzar-inv-inicial" onclick="window.forzarInvitacionInicialPortalAsistenteWa(false)" title="Si el cliente olvidó su contraseña o cambió de teléfono, genera y coloca una nueva Invitación Inicial con Código de Activación" style="padding: 1px 7px; border-radius: 5px; font-size: 0.66rem; font-weight: 800; cursor: pointer; border: 1px solid #f59e0b; background: #fffbeb; color: #92400e;">
+                    🔑 Enviar como Invitación (blanqueo)
+                </button>
+            `}
+            <span style="font-size: 0.68rem; font-weight: 800; color: #166534; background: #dcfce7; border: 1px solid #86efac; padding: 1px 7px; border-radius: 999px;">
+                🔒 Precios 100% Deterministas (Lista #${escaparHtml(st.listaId)})
+            </span>
+        `;
+    }
+
+    window.forzarInvitacionInicialPortalAsistenteWa = async function (volverLinkSimple = false) {
+        const st = estadoAsistenteComercialWa;
+        if (!st) return;
+        const statusEl = document.getElementById('wa-asist-com-status');
+        const btnInv = document.getElementById('btn-wa-forzar-inv-inicial');
+
+        if (volverLinkSimple) {
+            st.modoLink = 'PORTAL_GENERAL';
+            const area2 = document.getElementById('wa-asist-com-burbuja2');
+            const chkB2 = document.getElementById('wa-asist-com-chk-burbuja2');
+            if (area2 && chkB2?.checked && (/https?:\/\//i.test(area2.value) || /Código de activación:/i.test(area2.value))) {
+                area2.value = obtenerBloquePortalDeterministaWa(st);
+                area2.rows = 2;
+            }
+            if (st.resultadoMesa && typeof window.ejecutarMesaAgentesComercialesWa === 'function') {
+                st.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(st);
+                const boxMesa = document.getElementById('wa-asist-mesa-agentes-box');
+                if (boxMesa && typeof window.renderizarPanelMesaAgentesHtmlWa === 'function') {
+                    boxMesa.innerHTML = window.renderizarPanelMesaAgentesHtmlWa(st, st.resultadoMesa);
+                }
+            }
+            refrescarControlesModoPortalBurbuja2Wa();
+            sincronizarCoherenciaEntreBurbujasWa();
+            window.actualizarIndicadorLongitudAsistenteComercialWa();
+            return;
+        }
+
+        const idTarget = st.clienteId || st.codigoBunker;
+        if (btnInv) {
+            btnInv.disabled = true;
+            btnInv.textContent = '⏳ Generando código...';
+        }
+        try {
+            if (idTarget) {
+                const r = await fetch(`/api/crm/whatsapp/clientes/${encodeURIComponent(idTarget)}/preparar-invitacion-portal`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ forzarNueva: true })
+                });
+                const j = await r.json().catch(() => null);
+                if (r.ok && j?.estado_portal_b2b) {
+                    st.codigoActivacion = j.estado_portal_b2b.codigo_activacion || st.codigoActivacion;
+                    st.linkActivacionCorto = j.estado_portal_b2b.link_invitacion_corto || st.linkActivacionCorto;
+                }
+            }
+            st.modoLink = 'INVITACION_INICIAL';
+            const chkB2 = document.getElementById('wa-asist-com-chk-burbuja2');
+            const wrapB2 = document.getElementById('wa-asist-com-burbuja2-wrap');
+            const area2 = document.getElementById('wa-asist-com-burbuja2');
+            if (chkB2) chkB2.checked = true;
+            if (wrapB2) wrapB2.style.display = 'block';
+            if (area2) {
+                area2.value = obtenerBloquePortalDeterministaWa(st);
+                area2.rows = 3;
+            }
+            if (typeof window.ejecutarMesaAgentesComercialesWa === 'function') {
+                st.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(st);
+                const boxMesa = document.getElementById('wa-asist-mesa-agentes-box');
+                if (boxMesa && typeof window.renderizarPanelMesaAgentesHtmlWa === 'function') {
+                    boxMesa.innerHTML = window.renderizarPanelMesaAgentesHtmlWa(st, st.resultadoMesa);
+                }
+            }
+            refrescarControlesModoPortalBurbuja2Wa();
+            sincronizarCoherenciaEntreBurbujasWa();
+            window.actualizarIndicadorLongitudAsistenteComercialWa();
+
+            if (statusEl) {
+                statusEl.style.display = 'block';
+                statusEl.style.background = '#fffbeb';
+                statusEl.style.borderColor = '#fcd34d';
+                statusEl.style.color = '#92400e';
+                statusEl.innerHTML = `🔑 <strong>Invitación Inicial activa en el Mensaje 2</strong>${st.codigoActivacion ? ` (Código de activación: <strong>${escaparHtml(st.codigoActivacion)}</strong> · válido por 72hs)` : ''}. El cliente podrá crear o renovar su contraseña en un paso.`;
+            }
+        } catch (err) {
+            if (statusEl) {
+                statusEl.style.display = 'block';
+                statusEl.style.background = '#fef2f2';
+                statusEl.style.borderColor = '#fecaca';
+                statusEl.style.color = '#991b1b';
+                statusEl.textContent = `⚠️ No se pudo generar la nueva invitación: ${err.message}`;
+            }
+        } finally {
+            refrescarControlesModoPortalBurbuja2Wa();
+        }
+    };
+
     /**
-     * Sincroniza la coherencia entre Mensaje 1, Mensaje 2 y Mensaje 3 cuando el usuario
-     * activa o desactiva manualmente los checkboxes de Burbuja 2 o Burbuja 3:
-     *   - Si Burbuja 2 o Burbuja 3 están activas, quita cualquier cierre ("Estoy atento", etc.) del final de Burbuja 1.
-     *   - Si Burbuja 3 se activa y está vacía, le coloca un cierre que NO repita palabras de Burbuja 1.
-     *   - Si Burbuja 2 se activa y está vacía, le coloca el link del Portal y adapta el final de Burbuja 1.
+     * Sincroniza la coherencia entre Mensaje 1, Mensaje 2, Mensaje 3 y el PDF Adjunto de Precios:
+     *   - Si el cliente nunca entró al Portal, coloca el formato de Invitación Inicial (Código + Link) en Burbuja 2 y adapta el puente del Mensaje 1.
+     *   - Si el cliente ya entró al Portal, coloca el Link directo del Portal en Burbuja 2 y el puente de link en el Mensaje 1.
+     *   - Si se activa (o ya viene activo) "📄 Adjuntar PDF", informa automáticamente en el Mensaje 1 que también se adjunta el PDF de precios (combinándolo con naturalidad si además está activo el Link/Invitación o precios en Burbuja 2).
+     *   - Si se desactiva el PDF o la Burbuja 2, limpia automáticamente la mención correspondiente sin dejar frases colgadas ni cierres duplicados.
      */
     function sincronizarCoherenciaEntreBurbujasWa() {
         const st = estadoAsistenteComercialWa;
@@ -7363,78 +7599,195 @@
         const area3 = document.getElementById('wa-asist-com-burbuja3');
         const chkB2 = document.getElementById('wa-asist-com-chk-burbuja2');
         const chkB3 = document.getElementById('wa-asist-com-chk-burbuja3');
+        const chkPdf = document.getElementById('wa-asist-com-chk-pdf');
+        const selAlcPdf = document.getElementById('wa-asist-com-sel-alcance-pdf');
         if (!area1) return;
 
         const b2Activa = Boolean(chkB2 && chkB2.checked);
         const b3Activa = Boolean(chkB3 && chkB3.checked);
-
-        const limpiarCierre = typeof window.limpiarCierreRedundanteBurbuja1Wa === 'function'
-            ? window.limpiarCierreRedundanteBurbuja1Wa
-            : (t => String(t || '').replace(/(?:\r?\n|\s)+(?:estoy|quedo|quedamos|estamos)\s+atent[oa]s?(?:\s+por\s+cualquier\s+cosa)?[.!]*$/i, '').trim());
+        const pdfActivo = Boolean(chkPdf && chkPdf.checked);
+        const alcancePdf = selAlcPdf?.value || st?.alcancePdfAdjunto || 'LISTA_COMPLETA';
+        const descPdf = describirAlcancePdfNaturalWa(alcancePdf);
 
         if (b2Activa && area2 && !String(area2.value || '').trim()) {
-            const infoDuraLink = st?.resultadoMesa?.proactivo?.infoDuraLinkPortal
-                || st?.resultadoMesa?.proactivo?.linkElegido
-                || st?.linkActivacionCorto
-                || st?.urlPortalBase
-                || URL_PORTAL_B2B_OFICIAL;
-            area2.value = infoDuraLink;
+            const bloquePortal = obtenerBloquePortalDeterministaWa(st);
+            area2.value = bloquePortal;
+            area2.rows = Math.min(5, Math.max(2, bloquePortal.split('\n').length));
         }
 
-        if (b2Activa || b3Activa) {
-            // Quitar cualquier cierre prematuro ("Estoy atento.", etc.) del final del Mensaje 1
-            const limpio1 = limpiarCierre(area1.value);
-            if (limpio1) {
-                area1.value = limpio1;
-            }
-            // Si activó Burbuja 2 (Link del Portal) y el Mensaje 1 no menciona el link, agregar puente natural
-            if (b2Activa && area2 && /https?:\/\//i.test(area2.value) && !/portal|link|acceso|precios\s+actualizados/i.test(area1.value)) {
-                area1.value = `${area1.value.trim()} Te dejo acá abajo el link del portal por si querés mirar precios.`;
+        const txt2 = String(area2?.value || '').trim();
+        const b2TienePortal = b2Activa && (/https?:\/\//i.test(txt2) || /Código de activación:/i.test(txt2) || /Invitación inicial al Portal/i.test(txt2));
+        const b2EsInvitacion = b2TienePortal && (
+            /Código de activación:/i.test(txt2) ||
+            /Invitación inicial/i.test(txt2) ||
+            Boolean(st && (!st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA'))
+        );
+        const b2TienePrecios = b2Activa && !b2TienePortal && (/•\s*\*/.test(txt2) || /\$\s*\d/.test(txt2));
+
+        // 1. Extraer cualquier cierre final del Mensaje 1 para administrarlo según queden activas B2 / B3 / PDF
+        const regexCierreFinal = /(?:\r?\n|\s)+((?:Cualquier\s+cos(?:a|ita)\s+(?:estamos\s+atent[oa]s?|escribime(?:\s+por\s+ac[aá])?|avisame)|(?:Estoy|Quedo|Quedamos|Estamos)\s+atent[oa]s?(?:\s+por\s+cualquier\s+cosa)?|Quedamos\s+a\s+disposici[oó]n(?:\s+por\s+cualquier\s+(?:cosa|consulta))?|Avisame\s+cualquier\s+duda(?:\s+que\s+tengas)?)[.!]*)$/i;
+        let cuerpoBase = String(area1.value || '').trim();
+        const matchCierre = cuerpoBase.match(regexCierreFinal);
+        if (matchCierre && matchCierre[1]) {
+            if (st) st._ultimoCierreExtraidoB1 = matchCierre[1].trim();
+            cuerpoBase = cuerpoBase.slice(0, matchCierre.index).trim();
+        } else if (typeof window.limpiarCierreRedundanteBurbuja1Wa === 'function') {
+            const limpioFn = window.limpiarCierreRedundanteBurbuja1Wa(cuerpoBase);
+            if (limpioFn && limpioFn.length < cuerpoBase.length) {
+                const extraido = cuerpoBase.slice(limpioFn.length).trim();
+                if (extraido && st) st._ultimoCierreExtraidoB1 = extraido;
+                cuerpoBase = limpioFn.trim();
             }
         }
 
-        if (b3Activa && area3) {
-            const norm1 = String(area1.value || '').toLowerCase();
-            let txt3 = String(area3.value || '').trim();
-            const esTextoSaldoEnB3 = /saldo\s+pendiente|cuenta\s+corriente|bonificaci[oó]n\s+por\s+volumen|cuenta\s+al\s+d[ií]a/i.test(txt3);
-            const cierreIaContextual = String(
-                st?.razonamientoIa?.burbuja3_cierre
-                || st?.resultadoMesa?.proactivo?.cierreSugerido3raBurbuja
-                || ''
-            ).trim();
-            const cierresAlternativos = [
-                'Cualquier cosa estamos atentos.',
-                'Quedamos atentos por cualquier cosa.',
-                'Estoy atento por cualquier cosa.',
-                'Avisame cualquier duda que tengas.',
-                'Quedamos a disposición por cualquier consulta.'
-            ];
-            if (!esTextoSaldoEnB3 && (!txt3 || (norm1.includes('atento') && txt3.toLowerCase().includes('atento')))) {
-                if (cierreIaContextual && !(norm1.includes('atento') && cierreIaContextual.toLowerCase().includes('atento'))) {
-                    area3.value = cierreIaContextual;
-                } else {
-                    const elegido = cierresAlternativos.find(c => {
-                        const cl = c.toLowerCase();
-                        if (norm1.includes('atento') && cl.includes('atento')) return false;
-                        if (norm1.includes('escribime') && cl.includes('escribime')) return false;
-                        if (norm1.includes('avisame') && cl.includes('avisame')) return false;
-                        return true;
-                    }) || cierresAlternativos[0];
-                    area3.value = elegido;
+        // 2. Quitar cualquier puente automático insertado previamente por esta sincronización para recalcularlo limpio
+        if (st && st._ultimoPuenteAutoInsertado) {
+            const puentePrev = String(st._ultimoPuenteAutoInsertado);
+            if (puentePrev.startsWith('__COLON_PDF__')) {
+                const sufijoColon = puentePrev.replace('__COLON_PDF__', '');
+                if (sufijoColon && cuerpoBase.endsWith(sufijoColon)) {
+                    cuerpoBase = cuerpoBase.slice(0, cuerpoBase.length - sufijoColon.length).trimEnd() + ':';
+                }
+            } else {
+                const trimPrev = puentePrev.trim();
+                if (trimPrev && cuerpoBase.endsWith(trimPrev)) {
+                    cuerpoBase = cuerpoBase.slice(0, cuerpoBase.length - trimPrev.length).trim();
                 }
             }
-        } else if (!b2Activa && !b3Activa) {
-            // Si quedó solo el Mensaje 1, limpiamos cualquier puente colgado al link, y NO agregamos "Estoy atento" si es un tanteo o pregunta directa
-            const actual1 = String(area1.value || '').replace(/\s*Te dejo ac[aá] abajo el link del portal por si quer[eé]s mirar precios\.?$/i, '').trim();
-            const modoAct = st?.modoAccionProactiva || st?.resultadoMesa?.proactivo?.modoResuelto || '';
-            const esTanteoOPingPong = modoAct === 'TANTEO_CORTO' || modoAct === 'PING_PONG_TEMA' || /\?$/.test(actual1) || actual1.length <= 55;
-            if (actual1 && !esTanteoOPingPong && !/(?:atent[oa]s?|disposici[oó]n|escribime|avisame)[.!]*$/i.test(actual1)) {
-                const txt3Prev = String(area3?.value || '').trim();
-                const cierreRestaurar = (txt3Prev && txt3Prev.length < 80) ? txt3Prev : 'Estoy atento.';
-                area1.value = `${actual1}\n${cierreRestaurar}`;
-            } else {
-                area1.value = actual1;
+        }
+
+        // Limpiar también variantes estándar de puentes automáticos previos
+        cuerpoBase = cuerpoBase
+            .replace(/\s*\(y te adjunto tambi[eé]n ac[aá] en PDF [^)]+\):$/i, ':')
+            .replace(/(?:\r?\n|\s+)(?:Te adjunto ac[aá] en PDF [^.!\n]+? y abajo te dejo tambi[eé]n (?:el link del portal[^.!\n]*|la invitaci[oó]n al portal[^.!\n]*)\.|Tambi[eé]n te adjunto (?:ac[aá] )?en PDF [^.!\n]+\.|Te adjunto ac[aá] en PDF [^.!\n]+\.|Abajo te dejo tambi[eé]n (?:el link del portal[^.!\n]*|la invitaci[oó]n al portal[^.!\n]*)\.|Te dejo ac[aá] abajo el link del portal por si quer[eé]s mirar precios\.|Te dejo ac[aá] abajo el link del portal de precios\.|Te dejo ac[aá] abajo la invitaci[oó]n al portal[^.!\n]*\.)$/i, '')
+            .trim();
+
+        // Si se apagó el Link del Portal (Mensaje 2 apagado o sin link), limpiar cualquier oración colgante al final que prometía dejar abajo el link
+        if (!b2TienePortal) {
+            const regexOracionLinkColgada = /(?:\s+)((?:Te|Les)\s+(?:dejo|paso|adjunto|comparto)\s+(?:ac[aá]\s+abajo\s+|a\s+mano\s+)?(?:el\s+(?:link|acceso)\s+(?:del|a\s+nuestro)\s+portal|la\s+invitaci[oó]n\s+(?:inicial\s+)?(?:al|a\s+nuestro|para\s+activar\s+tu\s+\w+\s+en\s+el)\s+portal)[^.!?]*[.!?:])$/i;
+            const mLinkColg = cuerpoBase.match(regexOracionLinkColgada);
+            if (mLinkColg && cuerpoBase.slice(0, mLinkColg.index).trim().length >= 8) {
+                cuerpoBase = cuerpoBase.slice(0, mLinkColg.index).trim();
             }
+        } else if (b2EsInvitacion && !/invitaci[oó]n|activar|primera\s+vez|crear\s+tu\s+clave/i.test(cuerpoBase)) {
+            // Si el texto base ya hablaba de "el link del portal" pero el cliente NUNCA ingresó, adaptarlo a invitación inicial
+            cuerpoBase = cuerpoBase
+                .replace(/\bel\s+link\s+del\s+portal\b/gi, 'la invitación para activar tu cuenta en el portal')
+                .replace(/\bel\s+acceso\s+(?:directo\s+)?al\s+portal\b/gi, 'la invitación inicial al portal para activar tu cuenta');
+        }
+
+        // 3. Evaluar qué menciona ya naturalmente el cuerpoBase y construir el puente exacto según (PDF Adjunto + Burbuja 2)
+        const yaMencionaPortal = /\b(portal|link|invitaci[oó]n|activar\s+tu\s+cuenta)\b/i.test(cuerpoBase);
+        const yaMencionaPdf = /\bpdf\b/i.test(cuerpoBase);
+        let nuevoPuente = '';
+        let marcaPuenteGuardada = '';
+
+        if (pdfActivo && b2TienePortal) {
+            if (!yaMencionaPdf && !yaMencionaPortal) {
+                nuevoPuente = b2EsInvitacion
+                    ? ` Te adjunto acá en PDF ${descPdf} y abajo te dejo también la invitación al portal para activar tu cuenta.`
+                    : ` Te adjunto acá en PDF ${descPdf} y abajo te dejo también el link del portal de precios.`;
+                marcaPuenteGuardada = nuevoPuente;
+            } else if (yaMencionaPortal && !yaMencionaPdf) {
+                if (/:$/.test(cuerpoBase)) {
+                    const sufijo = ` (y te adjunto también acá en PDF ${descPdf}):`;
+                    cuerpoBase = cuerpoBase.slice(0, -1).trimEnd() + sufijo;
+                    marcaPuenteGuardada = `__COLON_PDF__${sufijo}`;
+                } else {
+                    nuevoPuente = ` También te adjunto acá en PDF ${descPdf}.`;
+                    marcaPuenteGuardada = nuevoPuente;
+                }
+            } else if (yaMencionaPdf && !yaMencionaPortal) {
+                nuevoPuente = b2EsInvitacion
+                    ? ` Abajo te dejo también la invitación al portal para activar tu cuenta.`
+                    : ` Abajo te dejo también el link del portal de precios.`;
+                marcaPuenteGuardada = nuevoPuente;
+            }
+        } else if (pdfActivo && b2TienePrecios) {
+            if (!yaMencionaPdf) {
+                if (/:$/.test(cuerpoBase)) {
+                    const sufijo = ` (y te adjunto también acá en PDF ${descPdf}):`;
+                    cuerpoBase = cuerpoBase.slice(0, -1).trimEnd() + sufijo;
+                    marcaPuenteGuardada = `__COLON_PDF__${sufijo}`;
+                } else {
+                    nuevoPuente = ` También te adjunto acá en PDF ${descPdf}.`;
+                    marcaPuenteGuardada = nuevoPuente;
+                }
+            }
+        } else if (pdfActivo && !b2Activa) {
+            if (!yaMencionaPdf) {
+                nuevoPuente = cuerpoBase.length <= 48
+                    ? ` Te adjunto acá en PDF ${descPdf}.`
+                    : ` También te adjunto acá en PDF ${descPdf}.`;
+                marcaPuenteGuardada = nuevoPuente;
+            }
+        } else if (!pdfActivo && b2TienePortal) {
+            if (!yaMencionaPortal) {
+                nuevoPuente = b2EsInvitacion
+                    ? ` Te dejo acá abajo la invitación al portal para activar tu cuenta por primera vez y mirar los precios actualizados.`
+                    : ` Te dejo acá abajo el link del portal de precios.`;
+                marcaPuenteGuardada = nuevoPuente;
+            }
+        }
+
+        if (st) {
+            st._ultimoPuenteAutoInsertado = marcaPuenteGuardada;
+        }
+
+        const texto1Armado = `${cuerpoBase}${nuevoPuente}`.trim();
+
+        // 4. Administrar el cierre entre Mensaje 1 y Mensaje 3
+        if (b2Activa || b3Activa) {
+            area1.value = texto1Armado;
+            if (b3Activa && area3) {
+                const norm1 = texto1Armado.toLowerCase();
+                let txt3 = String(area3.value || '').trim();
+                const esTextoSaldoEnB3 = /saldo\s+pendiente|cuenta\s+corriente|bonificaci[oó]n\s+por\s+volumen|cuenta\s+al\s+d[ií]a/i.test(txt3);
+                const cierreIaContextual = String(
+                    st?.razonamientoIa?.burbuja3_cierre
+                    || st?.resultadoMesa?.proactivo?.cierreSugerido3raBurbuja
+                    || ''
+                ).trim();
+                const cierresAlternativos = [
+                    'Cualquier cosa estamos atentos.',
+                    'Quedamos atentos por cualquier cosa.',
+                    'Estoy atento por cualquier cosa.',
+                    'Avisame cualquier duda que tengas.',
+                    'Quedamos a disposición por cualquier consulta.'
+                ];
+                if (!esTextoSaldoEnB3 && (!txt3 || (norm1.includes('atento') && txt3.toLowerCase().includes('atento')))) {
+                    if (cierreIaContextual && !(norm1.includes('atento') && cierreIaContextual.toLowerCase().includes('atento'))) {
+                        area3.value = cierreIaContextual;
+                    } else {
+                        const elegido = cierresAlternativos.find(c => {
+                            const cl = c.toLowerCase();
+                            if (norm1.includes('atento') && cl.includes('atento')) return false;
+                            if (norm1.includes('escribime') && cl.includes('escribime')) return false;
+                            if (norm1.includes('avisame') && cl.includes('avisame')) return false;
+                            return true;
+                        }) || cierresAlternativos[0];
+                        area3.value = elegido;
+                    }
+                }
+            }
+        } else {
+            const modoAct = st?.modoAccionProactiva || st?.resultadoMesa?.proactivo?.modoResuelto || '';
+            const esTanteoOPingPong = !pdfActivo && (modoAct === 'TANTEO_CORTO' || modoAct === 'PING_PONG_TEMA' || /\?$/.test(texto1Armado) || texto1Armado.length <= 55);
+            if (texto1Armado && !esTanteoOPingPong && !/(?:atent[oa]s?|disposici[oó]n|escribime|avisame)[.!]*$/i.test(texto1Armado)) {
+                const txt3Prev = String(area3?.value || '').trim();
+                const cierreGuardado = String(st?._ultimoCierreExtraidoB1 || '').trim();
+                const cierreRestaurar = (cierreGuardado && cierreGuardado.length < 85)
+                    ? cierreGuardado
+                    : ((txt3Prev && txt3Prev.length < 85 && !/saldo|cuenta\s+corriente/i.test(txt3Prev)) ? txt3Prev : 'Cualquier cosa estamos atentos.');
+                area1.value = `${texto1Armado}\n${cierreRestaurar}`;
+            } else {
+                area1.value = texto1Armado;
+            }
+        }
+
+        area1.rows = Math.min(6, Math.max(2, Math.ceil((area1.value || '').length / 92)));
+        if (area2 && b2Activa) {
+            area2.rows = Math.min(5, Math.max(2, String(area2.value || '').split('\n').length));
         }
     }
 
@@ -7449,11 +7802,7 @@
         const wrapB3 = document.getElementById('wa-asist-com-burbuja3-wrap');
         if (!st || !area1) return;
 
-        const infoDuraLink = st.resultadoMesa?.proactivo?.infoDuraLinkPortal
-            || st.resultadoMesa?.proactivo?.linkElegido
-            || st.linkActivacionCorto
-            || st.urlPortalBase
-            || URL_PORTAL_B2B_OFICIAL;
+        const infoDuraLink = obtenerBloquePortalDeterministaWa(st);
 
         // Si en la Burbuja 2 había una mención o explicación de saldo pendiente, la pasamos a la Burbuja 3 para no perderla
         const txt2Actual = String(area2?.value || '').trim();
@@ -7464,7 +7813,7 @@
 
         if (area2) {
             area2.value = infoDuraLink;
-            area2.rows = 2;
+            area2.rows = Math.min(5, Math.max(2, infoDuraLink.split('\n').length));
         }
         if (chkB2) chkB2.checked = true;
         if (wrapB2) wrapB2.style.display = 'block';
@@ -7921,6 +8270,8 @@
                 if (chkPdf && st.sugerirAdjuntarPdfIa) {
                     chkPdf.checked = true;
                 }
+                st._ultimoPuenteAutoInsertado = '';
+                sincronizarCoherenciaEntreBurbujasWa();
 
                 if (st.resultadoMesa && st.razonamientoIa?.explicacion_razonamiento) {
                     st.resultadoMesa.proactivo.diagnosticoEjecutivoAgente = st.razonamientoIa.explicacion_razonamiento;
@@ -8441,6 +8792,8 @@
             st.alcancePdfAdjunto = 'SELECCIONADOS';
         }
         renderizarChipsSeleccionadosBurbuja2Wa();
+        sincronizarCoherenciaEntreBurbujasWa();
+        window.actualizarIndicadorLongitudAsistenteComercialWa();
         renderizarGridProductosAsistenteComercialWa();
     };
 
@@ -8464,6 +8817,8 @@
         const chkPdf = document.getElementById('wa-asist-com-chk-pdf');
         if (chkPdf) chkPdf.checked = true;
         renderizarChipsSeleccionadosBurbuja2Wa();
+        sincronizarCoherenciaEntreBurbujasWa();
+        window.actualizarIndicadorLongitudAsistenteComercialWa();
         renderizarGridProductosAsistenteComercialWa();
 
         const statusEl = document.getElementById('wa-asist-com-status');
@@ -9525,11 +9880,7 @@
     window.insertarSoloLinkPortalEnBurbuja2Wa = function () {
         const st = estadoAsistenteComercialWa;
         if (!st) return;
-        const linkPortal = st.magicLinkDirecto
-            || st.linkActivacionCorto
-            || st.resultadoMesa?.proactivo?.infoDuraLinkPortal
-            || st.urlPortalBase
-            || URL_PORTAL_B2B_OFICIAL;
+        const bloquePortal = obtenerBloquePortalDeterministaWa(st);
         const chkB2 = document.getElementById('wa-asist-com-chk-burbuja2');
         const wrapB2 = document.getElementById('wa-asist-com-burbuja2-wrap');
         const area2 = document.getElementById('wa-asist-com-burbuja2');
@@ -9540,11 +9891,13 @@
         if (wrapB2) wrapB2.style.display = 'block';
         if (area2) {
             const actual = String(area2.value || '').trim();
+            const linkRef = st.linkActivacionCorto || st.urlPortalBase || URL_PORTAL_B2B_OFICIAL;
             if (!actual) {
-                area2.value = linkPortal;
-            } else if (!actual.includes(linkPortal)) {
-                area2.value = `${actual}\n\n🔗 Portal de Clientes: ${linkPortal}`;
+                area2.value = bloquePortal;
+            } else if (!actual.includes(linkRef) && !actual.includes('Código de activación:')) {
+                area2.value = `${actual}\n\n${bloquePortal}`;
             }
+            area2.rows = Math.min(5, Math.max(2, String(area2.value || '').split('\n').length));
         }
         if (chkB3 && !chkB3.checked) {
             chkB3.checked = true;
@@ -9553,6 +9906,7 @@
                 area3.value = st.resultadoMesa?.proactivo?.cierreSugerido3raBurbuja || 'Cualquier cosa estamos atentos.';
             }
         }
+        sincronizarCoherenciaEntreBurbujasWa();
         window.actualizarIndicadorLongitudAsistenteComercialWa();
     };
 
@@ -9597,6 +9951,8 @@
         }
         mostrarModalSwalAsistenteComercialWa(st);
         if (adjuntarAlMensaje) {
+            sincronizarCoherenciaEntreBurbujasWa();
+            window.actualizarIndicadorLongitudAsistenteComercialWa();
             const statusEl = document.getElementById('wa-asist-com-status');
             if (statusEl) {
                 const arts = obtenerArticulosParaPdfAdjuntoAsistenteWa(st);
@@ -10380,7 +10736,7 @@
                     body: JSON.stringify({
                         destinatarios: telefonoPrueba,
                         incluirDetalle: true,
-                        mensajeTexto: `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\nPortal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/`
+                        mensajeTexto: `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\n${obtenerBloquePortalDeterministaWa(st)}`
                     })
                 });
                 const dataCc = await respCc.json();
@@ -10581,7 +10937,7 @@
                     body: JSON.stringify({
                         destinatarios: telDestCc,
                         incluirDetalle: true,
-                        mensajeTexto: `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\nPortal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/`
+                        mensajeTexto: `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\n${obtenerBloquePortalDeterministaWa(st)}`
                     })
                 });
                 const dataCc = await respCc.json();

@@ -4,6 +4,9 @@
  */
 
 const express = require('express');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const router = express.Router();
 const pool = require('../../usuarios/pool');
 const crmWhatsappDb = require('../../services/crmWhatsappDbService');
@@ -12,6 +15,320 @@ const agenteHibridoLlm = require('../../services/whatsappAgenteHibridoLlmService
 const { calcularComposicionSaldo } = require('../../logistica/services/composicionSaldoService');
 const salvavidasService = require('../../logistica/services/salvavidasService');
 const historialPreciosService = require('../../produccion/services/historialPreciosService');
+const {
+    parsearContactoWhatsapp,
+    sincronizarListasClienteEnNube
+} = require('../../logistica/services/b2bDirectorySyncService');
+
+const PROD_SUPABASE_ID_GUARD = 'zysyxtbcvgswancxtpib';
+let _cacheJsonEstadosPortalHistorico = null;
+
+function leerMapaHistoricoPortalB2B() {
+    if (_cacheJsonEstadosPortalHistorico) return _cacheJsonEstadosPortalHistorico;
+    try {
+        const jsonPath = path.resolve(__dirname, '../js/b2b-estado-clientes.json');
+        if (fs.existsSync(jsonPath)) {
+            const raw = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+            if (raw && raw.clientes && typeof raw.clientes === 'object') {
+                _cacheJsonEstadosPortalHistorico = raw.clientes;
+                return _cacheJsonEstadosPortalHistorico;
+            }
+        }
+    } catch (_) {}
+    _cacheJsonEstadosPortalHistorico = {};
+    return _cacheJsonEstadosPortalHistorico;
+}
+
+function esModoLaboratorioOSandboxBloqueadoB2B() {
+    const dbName = String(process.env.DB_NAME || '').trim().toLowerCase();
+    const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || process.env.MODO_LABORATORIO || '').trim().toLowerCase();
+    const flagNube = String(process.env.LAMDA_MODO_PRUEBA_NUBE || '').trim().toLowerCase();
+    const isLab = dbName === 'etiquetas_pruebas' || flagLab === 'true' || flagLab === '1';
+    const isPruebaNube = flagNube === 'true' || flagNube === '1';
+    const supaUrl = String(process.env.SUPABASE_B2B_URL || '').trim().toLowerCase();
+    const supaKey = String(process.env.SUPABASE_B2B_SERVICE_KEY || '').trim();
+    if (!supaUrl || !supaKey || supaUrl.includes('127.0.0.1') || supaKey === 'modo_laboratorio_desconectado') {
+        return true;
+    }
+    if ((isLab || isPruebaNube) && supaUrl.includes(PROD_SUPABASE_ID_GUARD)) {
+        return true;
+    }
+    const sandboxOk = String(process.env.LAMDA_B2B_SANDBOX_ENABLED || '').trim().toLowerCase() === 'true';
+    if (isLab && !sandboxOk) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Determina de manera 100% fehaciente si el cliente ya ingresó alguna vez al Portal B2B
+ * (y por lo tanto ya tiene usuario y contraseña) o si NUNCA ingresó y requiere
+ * formato de Invitación Inicial con código de activación vigente (72hs) igual que Clientes Búnker.
+ */
+async function resolverEstadoYInvitacionPortalClienteWa(cliRow, { forzarNuevaInvitacion = false, asegurarTokenSiNoIngreso = true } = {}) {
+    const rawPortalEnv = String(process.env.B2B_PORTAL_URL || '').trim().replace(/\/+$/, '');
+    const portalUrl = (!rawPortalEnv || rawPortalEnv.includes('127.0.0.1:59999'))
+        ? 'https://proud-darkness-ac3d.miserrano75.workers.dev'
+        : rawPortalEnv;
+    const codBunker = String(cliRow?.codigo_bunker_cliente || '').trim();
+    if (!codBunker) {
+        return {
+            ya_ingreso: false,
+            requiere_invitacion_inicial: false,
+            ultimo_ingreso: null,
+            email_registrado: '',
+            codigo_activacion: '',
+            token_invitacion: '',
+            expires_at: null,
+            link_portal_general: portalUrl,
+            link_invitacion_corto: '',
+            modo_link_recomendado: 'PORTAL_GENERAL'
+        };
+    }
+
+    const mapaHist = leerMapaHistoricoPortalB2B();
+    const histCli = mapaHist[codBunker] || null;
+
+    let invLocalUsada = false;
+    let operoEnPortalLocal = false;
+    let ultimoIngresoIso = histCli?.ultimo_ingreso || null;
+    let emailRegistrado = (histCli?.email_registrado && !String(histCli.email_registrado).toLowerCase().endsWith('@lamdaclientes.com'))
+        ? String(histCli.email_registrado).trim()
+        : ((cliRow?.email_portal && !String(cliRow.email_portal).toLowerCase().endsWith('@lamdaclientes.com'))
+            ? String(cliRow.email_portal).trim()
+            : '');
+
+    try {
+        const invUsadaRes = await pool.query(
+            `SELECT created_at FROM public.portal_invitaciones WHERE cliente_id = $1 AND usado = true ORDER BY id DESC LIMIT 1`,
+            [codBunker]
+        );
+        if (invUsadaRes.rows.length > 0) {
+            invLocalUsada = true;
+            if (!ultimoIngresoIso && invUsadaRes.rows[0].created_at) {
+                ultimoIngresoIso = new Date(invUsadaRes.rows[0].created_at).toISOString();
+            }
+        }
+    } catch (_) {}
+
+    const lomasIdNum = (cliRow?.lomas_soft_id && /^\d+$/.test(String(cliRow.lomas_soft_id).trim()))
+        ? parseInt(String(cliRow.lomas_soft_id).trim(), 10)
+        : null;
+    if (lomasIdNum !== null) {
+        try {
+            const presPortalRes = await pool.query(`
+                SELECT MAX(fecha) AS ult_fecha
+                FROM public.presupuestos
+                WHERE NULLIF(regexp_replace(id_cliente::text, '^0+', ''), '')::integer = $1
+                  AND (agente = 'Portal B2B' OR modificado_portal = true)
+            `, [lomasIdNum]);
+            if (presPortalRes.rows[0]?.ult_fecha) {
+                operoEnPortalLocal = true;
+                if (!ultimoIngresoIso) {
+                    ultimoIngresoIso = new Date(presPortalRes.rows[0].ult_fecha).toISOString();
+                }
+            }
+        } catch (_) {}
+    }
+
+    const cloudBloqueadoPorLab = esModoLaboratorioOSandboxBloqueadoB2B();
+    const supaUrl = String(process.env.SUPABASE_B2B_URL || '').trim().replace(/\/+$/, '');
+    const supaKey = String(process.env.SUPABASE_B2B_SERVICE_KEY || '').trim();
+    let tienePerfilSupabase = false;
+    let perfilSupabaseUuid = null;
+
+    if (!cloudBloqueadoPorLab && supaUrl && supaKey) {
+        const ctrlSupa = new AbortController();
+        const timerSupa = setTimeout(() => ctrlSupa.abort(), 2600);
+        try {
+            const respProf = await fetch(
+                `${supaUrl}/rest/v1/clientes_b2b_perfiles?cliente_id=eq.${encodeURIComponent(codBunker)}&select=id,email,updated_at&limit=1`,
+                {
+                    headers: {
+                        apikey: supaKey,
+                        Authorization: `Bearer ${supaKey}`
+                    },
+                    signal: ctrlSupa.signal
+                }
+            );
+            if (respProf.ok) {
+                const profRows = await respProf.json();
+                if (Array.isArray(profRows) && profRows.length > 0) {
+                    tienePerfilSupabase = true;
+                    perfilSupabaseUuid = profRows[0].id || null;
+                    if (profRows[0].email && !String(profRows[0].email).toLowerCase().endsWith('@lamdaclientes.com')) {
+                        emailRegistrado = String(profRows[0].email).trim();
+                    }
+                    if (!ultimoIngresoIso && profRows[0].updated_at) {
+                        ultimoIngresoIso = profRows[0].updated_at;
+                    }
+                }
+            }
+        } catch (_) {
+            // Si la red tarda o no responde, continuamos con las señales deterministas locales
+        } finally {
+            clearTimeout(timerSupa);
+        }
+    }
+
+    const yaIngresoReal = Boolean(
+        tienePerfilSupabase ||
+        invLocalUsada ||
+        operoEnPortalLocal ||
+        Boolean(histCli?.ya_ingreso)
+    );
+
+    // Si YA ingresó al portal y no se pidió expresamente re-generar una invitación de blanqueo,
+    // el cliente ya tiene su usuario y contraseña -> enviar el link limpio del portal.
+    if (yaIngresoReal && !forzarNuevaInvitacion) {
+        return {
+            ya_ingreso: true,
+            ya_ingreso_historico: true,
+            requiere_invitacion_inicial: false,
+            ultimo_ingreso: ultimoIngresoIso,
+            email_registrado: emailRegistrado,
+            codigo_activacion: '',
+            token_invitacion: '',
+            expires_at: null,
+            link_portal_general: portalUrl,
+            link_invitacion_corto: '',
+            modo_link_recomendado: 'PORTAL_GENERAL'
+        };
+    }
+
+    if (!asegurarTokenSiNoIngreso) {
+        return {
+            ya_ingreso: false,
+            ya_ingreso_historico: yaIngresoReal,
+            requiere_invitacion_inicial: true,
+            ultimo_ingreso: ultimoIngresoIso,
+            email_registrado: emailRegistrado,
+            codigo_activacion: histCli?.codigo_activacion || '',
+            token_invitacion: '',
+            expires_at: null,
+            link_portal_general: portalUrl,
+            link_invitacion_corto: histCli?.link_activacion_corto || '',
+            modo_link_recomendado: 'INVITACION_INICIAL'
+        };
+    }
+
+    // Si se pidió explícitamente re-enviar invitación inicial / blanqueo en Producción, limpiar usuario previo bloqueado en Supabase Auth
+    if (forzarNuevaInvitacion && !cloudBloqueadoPorLab && supaUrl && supaKey && perfilSupabaseUuid) {
+        try {
+            await fetch(`${supaUrl}/auth/v1/admin/users/${encodeURIComponent(perfilSupabaseUuid)}`, {
+                method: 'DELETE',
+                headers: {
+                    apikey: supaKey,
+                    Authorization: `Bearer ${supaKey}`
+                }
+            }).catch(() => {});
+        } catch (_) {}
+    }
+
+    let tokenActivo = '';
+    let expiresAt = new Date(Date.now() + 72 * 3600 * 1000);
+
+    if (!forzarNuevaInvitacion) {
+        try {
+            const vigRes = await pool.query(`
+                SELECT token, expires_at
+                FROM public.portal_invitaciones
+                WHERE cliente_id = $1
+                  AND usado = false
+                  AND LENGTH(token) = 64
+                  AND token ~ '^[0-9a-fA-F]+$'
+                  AND created_at > (NOW() - INTERVAL '48 hours')
+                  AND expires_at > (NOW() + INTERVAL '12 hours')
+                ORDER BY id DESC
+                LIMIT 1
+            `, [codBunker]);
+            if (vigRes.rows.length > 0) {
+                tokenActivo = String(vigRes.rows[0].token).trim();
+                expiresAt = new Date(vigRes.rows[0].expires_at);
+            }
+        } catch (_) {}
+    }
+
+    if (!tokenActivo) {
+        tokenActivo = crypto.randomBytes(32).toString('hex');
+        expiresAt = new Date(Date.now() + 72 * 3600 * 1000);
+        try {
+            await pool.query(
+                `INSERT INTO public.portal_invitaciones (token, cliente_id, expires_at, usado)
+                 VALUES ($1, $2, $3, false)`,
+                [tokenActivo, codBunker, expiresAt]
+            );
+        } catch (errIns) {
+            console.warn('⚠️ [CRM-PORTAL-INV] Error insertando portal_invitaciones local:', errIns.message);
+        }
+    }
+
+    const codigoActivacion = tokenActivo.slice(0, 6);
+    const linkInvitacionCorto = `${portalUrl}/?t=${codigoActivacion}`;
+
+    // Sincronizar invitación activa + listas del cliente en Supabase Cloud (solo fuera de Modo Laboratorio)
+    if (!cloudBloqueadoPorLab && supaUrl && supaKey) {
+        sincronizarListasClienteEnNube(codBunker).catch(() => {});
+        try {
+            const { contactName, phoneMasked } = parsearContactoWhatsapp(cliRow?.whatsapp_facturas || '');
+            const bunkerNumMatch = codBunker.match(/(\d+)/);
+            const bunkerNum = bunkerNumMatch ? String(parseInt(bunkerNumMatch[1], 10)) : '';
+            const legacyId = cliRow?.lomas_soft_id ? String(cliRow.lomas_soft_id).trim() : null;
+            const legacyNum = (legacyId && /^\d+$/.test(legacyId)) ? String(parseInt(legacyId, 10)) : legacyId;
+            const cuitClean = cliRow?.cuit_cuil ? String(cliRow.cuit_cuil).replace(/\D/g, '') : null;
+            const nombreContactoInferido = (cliRow?.email_portal_nombre && String(cliRow.email_portal_nombre).trim())
+                ? String(cliRow.email_portal_nombre).trim()
+                : (contactName || null);
+            const cleanPortalMail = (cliRow?.email_portal && !String(cliRow.email_portal).toLowerCase().trim().endsWith('@lamdaclientes.com'))
+                ? String(cliRow.email_portal).trim()
+                : '';
+
+            const metadataCargoJson = JSON.stringify({
+                legacy_id: legacyId,
+                legacy_num: legacyNum,
+                bunker_num: bunkerNum,
+                cuit: cuitClean,
+                nombre: cliRow?.cliente_nombre || cliRow?.razon_social || codBunker,
+                contact_name: nombreContactoInferido || '',
+                phone_masked: phoneMasked
+            });
+
+            await fetch(`${supaUrl}/rest/v1/clientes_b2b_invitaciones?on_conflict=token`, {
+                method: 'POST',
+                headers: {
+                    apikey: supaKey,
+                    Authorization: `Bearer ${supaKey}`,
+                    'Content-Type': 'application/json',
+                    Prefer: 'resolution=merge-duplicates,return=minimal'
+                },
+                body: JSON.stringify({
+                    token: tokenActivo,
+                    cliente_id: codBunker,
+                    expires_at: expiresAt.toISOString(),
+                    usado: false,
+                    razon_social: cliRow?.razon_social || cliRow?.cliente_nombre || codBunker,
+                    email_portal: cleanPortalMail,
+                    email_portal_nombre: nombreContactoInferido,
+                    email_portal_cargo: metadataCargoJson
+                })
+            }).catch(() => {});
+        } catch (_) {}
+    }
+
+    return {
+        ya_ingreso: false,
+        ya_ingreso_historico: yaIngresoReal,
+        requiere_invitacion_inicial: true,
+        ultimo_ingreso: ultimoIngresoIso,
+        email_registrado: emailRegistrado,
+        codigo_activacion: codigoActivacion,
+        token_invitacion: tokenActivo,
+        expires_at: expiresAt.toISOString(),
+        link_portal_general: portalUrl,
+        link_invitacion_corto: linkInvitacionCorto,
+        modo_link_recomendado: 'INVITACION_INICIAL'
+    };
+}
 
 // Asegurar tablas al montar el router
 crmWhatsappDb.asegurarTablasCrmWhatsapp().catch(() => {});
@@ -455,6 +772,7 @@ router.get('/crm/whatsapp/chats/:id/detalle', async (req, res) => {
                     bc.id, bc.cliente_nombre, bc.razon_social, bc.codigo_bunker_cliente,
                     bc.cuit_cuil, bc.condicion_iva, bc.domicilio_fiscal,
                     bc.whatsapp_facturas, bc.lomas_soft_id,
+                    bc.email_portal, bc.email_portal_nombre, bc.email_portal_cargo,
                     c.telefono as lomas_telefono, c.celular as lomas_celular,
                     c.domicilio as lomas_domicilio, c.localidad as lomas_localidad,
                     EXISTS (
@@ -491,6 +809,10 @@ router.get('/crm/whatsapp/chats/:id/detalle', async (req, res) => {
             if (bcRes.rows.length > 0) {
                 const cli = bcRes.rows[0];
                 rayosX.cliente = cli;
+                rayosX.estado_portal_b2b = await resolverEstadoYInvitacionPortalClienteWa(cli, {
+                    forzarNuevaInvitacion: false,
+                    asegurarTokenSiNoIngreso: true
+                }).catch(() => null);
                 const listaClienteId = parseInt(cli.lista_asignada_id) || 1;
 
                 const lomasIdNum = (cli.lomas_soft_id && /^\d+$/.test(String(cli.lomas_soft_id).trim()))
@@ -1801,6 +2123,7 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
         // Obtener datos básicos del cliente en Búnker
         const bcRes = await pool.query(`
             SELECT id, cliente_nombre, razon_social, codigo_bunker_cliente, lomas_soft_id,
+                   cuit_cuil, whatsapp_facturas, email_portal, email_portal_nombre, email_portal_cargo,
                    EXISTS (
                        SELECT 1
                        FROM public.bunker_cliente_listas_precios bclp
@@ -2336,6 +2659,11 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
             ultimoMsgIdActual > 0
         ) ? existente.razonamiento_ia_json : null;
 
+        const estadoPortalB2B = await resolverEstadoYInvitacionPortalClienteWa(cli, {
+            forzarNuevaInvitacion: false,
+            asegurarTokenSiNoIngreso: true
+        }).catch(() => null);
+
         const duracionMs = Date.now() - t0;
         res.json({
             success: true,
@@ -2345,6 +2673,7 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
             novedades_incorporadas: novedadesIncorporadas,
             cliente_bunker_id: clienteId,
             codigo_bunker_cliente: cli.codigo_bunker_cliente,
+            estado_portal_b2b: estadoPortalB2B,
             articulos_habituales: articulosHabitualesArr,
             ciclo_compra: cicloCompra,
             comportamiento_pago: compPago,
@@ -2355,6 +2684,51 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
         });
     } catch (error) {
         console.error('❌ [CRM-SINTESIS-MEMORIA] Error en sintesis-hibrida:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/crm/whatsapp/clientes/:clienteId/preparar-invitacion-portal
+ * Resuelve en vivo el estado de ingreso al Portal B2B de un cliente (por id o codigo_bunker_cliente)
+ * y garantiza una invitación inicial activa (72hs) con código de activación si aún no ingresó
+ * o si el operador solicita explícitamente emitir una nueva invitación de alta/blanqueo.
+ */
+router.post('/crm/whatsapp/clientes/:clienteId/preparar-invitacion-portal', async (req, res) => {
+    try {
+        const rawParam = String(req.params.clienteId || '').trim();
+        if (!rawParam) {
+            return res.status(400).json({ success: false, error: 'Identificador de cliente requerido.' });
+        }
+        const forzarNueva = Boolean(req.body?.forzarNueva);
+        const bcRes = await pool.query(`
+            SELECT id, cliente_nombre, razon_social, codigo_bunker_cliente, lomas_soft_id,
+                   cuit_cuil, whatsapp_facturas, email_portal, email_portal_nombre, email_portal_cargo
+            FROM public.bunker_clientes
+            WHERE codigo_bunker_cliente = $1
+               OR (CASE WHEN $1 ~ '^[0-9]+$' AND LENGTH($1) < 10 THEN id = $1::integer ELSE false END)
+               OR lomas_soft_id = $1
+            ORDER BY CASE WHEN codigo_bunker_cliente = $1 THEN 0 ELSE 1 END ASC
+            LIMIT 1
+        `, [rawParam]);
+
+        if (bcRes.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Cliente no encontrado en Búnker.' });
+        }
+
+        const estadoPortal = await resolverEstadoYInvitacionPortalClienteWa(bcRes.rows[0], {
+            forzarNuevaInvitacion: forzarNueva,
+            asegurarTokenSiNoIngreso: true
+        });
+
+        res.json({
+            success: true,
+            cliente_bunker_id: bcRes.rows[0].id,
+            codigo_bunker_cliente: bcRes.rows[0].codigo_bunker_cliente,
+            estado_portal_b2b: estadoPortal
+        });
+    } catch (error) {
+        console.error('❌ [CRM-PORTAL-INV] Error preparando invitación de portal:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -2378,6 +2752,7 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
             habitualesCliente: Array.isArray(body.habitualesCliente) ? body.habitualesCliente : [],
             estadoCuentaDeterminista: body.estadoCuentaDeterminista || {},
             linkPortalCliente: body.linkPortalCliente || '',
+            yaIngresoPortal: Boolean(body.yaIngresoPortal),
             instruccionOperador: body.instruccionOperador || '',
             forzarRecalculo: Boolean(body.forzarRecalculo)
         });
