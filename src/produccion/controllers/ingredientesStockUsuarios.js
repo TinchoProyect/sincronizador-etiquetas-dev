@@ -88,7 +88,8 @@ async function registrarMovimientoStockUsuarioFIFO(params, db) {
         console.log(`- Saldo neto total del colaborador: ${saldoTotalNeto}`);
         console.log(`- Stock neto disponible para consumo: ${stockTotalDisponible}`);
 
-        if (saldoTotalNeto + 0.0001 < cantidadRestante || stockTotalDisponible + 0.0001 < cantidadRestante) {
+        const permitirSaldoNegativo = Boolean(params.permitir_saldo_negativo);
+        if (!permitirSaldoNegativo && (saldoTotalNeto + 0.0001 < cantidadRestante || stockTotalDisponible + 0.0001 < cantidadRestante)) {
             const error = `Saldo insuficiente en stock domiciliario para ingrediente #${ingrediente_id}. Disponible neto: ${saldoTotalNeto.toFixed(2)}, Requerido: ${cantidadRestante.toFixed(2)}`;
             console.error(`❌ ERROR: ${error}`);
             const errInsuf = new Error(error);
@@ -123,6 +124,25 @@ async function registrarMovimientoStockUsuarioFIFO(params, db) {
                 console.error(`❌ ERROR en operación de base de datos:`, dbError);
                 throw new Error(`Error en base de datos: ${dbError.message}`);
             }
+        }
+
+        // Si el saldo domiciliario era menor al requerido y se permite avance con aviso (carros externos: Barritas / Granolas),
+        // asentar el remanente negativo en el stock personal del colaborador sin tocar el depósito central.
+        if (permitirSaldoNegativo && cantidadRestante > 0.0001) {
+            const remanenteNegativo = -Number(cantidadRestante.toFixed(4));
+            await db.query(`
+                INSERT INTO ingredientes_stock_usuarios 
+                (ingrediente_id, usuario_id, cantidad, origen_carro_id, fecha_registro, origen_mix_id)
+                VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, $5)
+            `, [
+                ingrediente_id,
+                usuario_id,
+                remanenteNegativo,
+                carro_id,
+                params.origen_mix_id || null
+            ]);
+            console.log(`   ⚠️ Consumo domiciliario en descubierto registrado: ${remanenteNegativo} (origen_mix_id=${params.origen_mix_id || 'NULL'})`);
+            cantidadRestante = 0;
         }
         
         console.log(`\n✅ REGISTRO FIFO COMPLETADO EXITOSAMENTE`);

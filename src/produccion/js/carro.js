@@ -475,7 +475,8 @@ window.editarIngredienteCompuesto = async (mixId) => {
 };
 
 // Función para actualizar la información visual del carro activo
-export async function actualizarEstadoCarro() {
+export async function actualizarEstadoCarro(opciones = {}) {
+    const usarCache = Boolean(opciones && opciones.usarCache);
     const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     const wsContainer = document.getElementById('workspace-container');
     if (wsContainer) {
@@ -493,20 +494,22 @@ export async function actualizarEstadoCarro() {
     const colaborador = JSON.parse(colaboradorData);
 
     try {
-        console.log('Obteniendo carros para usuario:', colaborador.id);
-        // Obtener todos los carros del usuario
-        const response = await fetch(`http://localhost:3002/api/produccion/usuario/${colaborador.id}/carros`);
+        let carros;
+        if (usarCache && Array.isArray(window._carrosUsuarioCache) && window._ultimoColaboradorListaCarros === String(colaborador.id)) {
+            carros = window._carrosUsuarioCache;
+        } else {
+            console.log('Obteniendo carros para usuario:', colaborador.id);
+            const response = await fetch(`/api/produccion/usuario/${colaborador.id}/carros`);
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            console.error('Error response:', errorData);
-            throw new Error(errorData.error || 'Error al obtener carros del usuario');
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error('Error response:', errorData);
+                throw new Error(errorData.error || 'Error al obtener carros del usuario');
+            }
+
+            carros = await response.json();
+            carros = carros.sort((a, b) => new Date(b.fecha_inicio) - new Date(a.fecha_inicio));
         }
-
-        let carros = await response.json();
-
-        // Ordenar carros por fecha (más reciente primero)
-        carros = carros.sort((a, b) => new Date(b.fecha_inicio) - new Date(a.fecha_inicio));
 
         // INMERSIÓN VISUAL: Activar atmósfera si el carro activo es externo
         const workspaceContainer = document.getElementById('workspace-container');
@@ -593,7 +596,7 @@ export async function actualizarEstadoCarro() {
             window._gruposTemporalesExpandidos = new Set();
             // Solo al pulsar explícitamente el filtro 'abiertos' se despliega automáticamente Carros Abiertos
             window._acordeonAbiertosExpandido = (filtroNormalizado === 'abiertos');
-            actualizarEstadoCarro();
+            actualizarEstadoCarro({ usarCache: true });
         };
 
         const escCarroHtml = (val) => String(val === null || val === undefined ? '' : val)
@@ -789,6 +792,83 @@ export async function actualizarEstadoCarro() {
 
         // Agrupar carros por semanas y meses preservando el orden cronológico calendario
         const gruposMixtos = agruparCarrosPorSemanasYMeses(carrosFiltrados);
+        window._gruposMixtosRenderCache = gruposMixtos;
+
+        const fmtFechaRapida = (iso) => {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return String(iso);
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        };
+
+        window._renderFilasGrupoCarro = (indiceGrupo) => {
+            const grp = window._gruposMixtosRenderCache && window._gruposMixtosRenderCache[indiceGrupo];
+            if (!grp || !Array.isArray(grp.carros)) return '';
+            const carroIdActual = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+            return grp.carros.map(carro => {
+                const fecha = fmtFechaRapida(carro.fecha_inicio);
+                const estaActivo = String(carro.id) === String(carroIdActual);
+                const esExterno = carro.tipo_carro === 'externa';
+                const esFinalizado = carro.fecha_confirmacion !== null;
+                const esPreparado = carro.fecha_preparado !== null;
+                const esHoy = carro.esHoy;
+                const ldnFila = inferirLineaCarro(carro);
+
+                let clasesFila = esExterno ? 'carro-externo ' : 'carro-interno ';
+                if (estaActivo) clasesFila += 'carro-activo ';
+                if (esFinalizado) clasesFila += 'carro-finalizado ';
+                if (esHoy) clasesFila += 'carro-hoy ';
+
+                let tipoBadge = '';
+                if (esExterno) {
+                    let tagLinea = 'EXTERNO';
+                    if (ldnFila === 4) tagLinea = 'EXTERNO · L4 Tostadero';
+                    else if (ldnFila === 5) tagLinea = 'EXTERNO · L5 Barritas';
+                    else if (ldnFila === 6) tagLinea = 'EXTERNO · L6 Granolas';
+                    tipoBadge = `<span class="badge-tipo-carro externa" style="background:#e0e7ff;color:#3730a3;border:1px solid #818cf8;font-weight:800;" title="${escCarroHtml(carro.nombre_linea_negocio || 'Producción Externa')}">🚚 ${tagLinea}</span>`;
+                } else if (ldnFila === 3) {
+                    tipoBadge = `<span class="badge-tipo-carro interna" style="background: #dcfce7; color: #166534; border: 1px solid #86efac; font-weight: 700;" title="1° Etapa: Producción de Artículos Puente / Mixes a Granel x Kilo">🥣 INTERNO · L3 Puente/Mix</span>`;
+                } else if (ldnFila === 2) {
+                    tipoBadge = `<span class="badge-tipo-carro interna" style="background: #ccfbf1; color: #0f766e; border: 1px solid #5eead4; font-weight: 700;" title="2° Etapa: Producción de Fracciones Comerciales">🏭 INTERNO · L2 Fracciones</span>`;
+                } else {
+                    tipoBadge = `<span class="badge-tipo-carro interna" style="background: #ccfbf1; color: #0f766e; border: 1px solid #5eead4; font-weight: 700;">🏭 INTERNO</span>`;
+                }
+
+                const estadoBadge = esFinalizado
+                    ? `<span class="badge-estado-carro finalizado" style="font-size: 10.5px; padding: 2px 8px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-weight:700;">✅ Asentado</span>`
+                    : (esPreparado
+                        ? `<span class="badge-estado-carro preparado" style="font-size: 10.5px; padding: 2px 8px; background:#fef3c7; color:#92400e; border:1px solid #f59e0b; font-weight:800;">${esExterno ? '⏳ Abierto · En Tostadero' : '📦 Abierto · Listo'}</span>`
+                        : `<span class="badge-estado-carro en-edicion" style="font-size: 10.5px; padding: 2px 8px; background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; font-weight:700;">✏️ Abierto · En curso</span>`);
+
+                const artsFila = Array.isArray(carro.resumen_articulos) ? carro.resumen_articulos : [];
+                const insExtFila = Array.isArray(carro.insumos_externos) ? carro.insumos_externos : [];
+                const subArtTxt = artsFila.length > 0
+                    ? `<div style="font-size:11px;color:#475569;margin-top:2px;">${artsFila.slice(0, 2).map(a => `<span style="font-family:monospace;font-weight:700;">[${escCarroHtml(a.numero)}]</span>`).join(', ')}${artsFila.length > 2 ? ` +${artsFila.length - 2}` : ''}${esExterno && insExtFila[0] ? ` · <span style="color:#3730a3;font-weight:600;">${(parseFloat(insExtFila[0].kilos) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</span>` : ''}</div>`
+                    : '';
+
+                return `
+                    <tr class="${clasesFila.trim()}" onclick="seleccionarCarro(${carro.id})">
+                        <td>
+                            <div class="${esHoy ? 'celda-hoy' : ''}" style="font-weight: 700; color: #1e293b;">#${carro.id}</div>
+                        </td>
+                        <td>${fecha}</td>
+                        <td><strong>${carro.total_articulos}</strong> art.${subArtTxt}</td>
+                        <td>${tipoBadge}</td>
+                        <td>${estadoBadge}</td>
+                        <td>
+                            <div class="btn-group">
+                                ${estaActivo ?
+                                    `<span class="chip-activo-toggle" onclick="event.stopPropagation(); deseleccionarCarro()" title="Carro actualmente en vista. Clic para desmarcar">● Activo <span class="icon-close">✕</span></span>` :
+                                    ''
+                                }
+                                <button class="btn-eliminar" onclick="event.stopPropagation(); eliminarCarro(${carro.id})" title="Eliminar este carro">🗑️</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        };
 
         // Construir HTML con barra de filtros rápidos + sección superior de abiertos + agrupación mixta
         let html = `
@@ -820,12 +900,12 @@ export async function actualizarEstadoCarro() {
         gruposMixtos.forEach((grupo, indiceGrupo) => {
             const claseGrupo = grupo.esActual ? 'semana-actual' : '';
             const totalCarros = grupo.carros.length;
-            const esGrupoMensual = grupo.anio !== undefined; // Los grupos mensuales tienen propiedades anio y mes
+            const esGrupoMensual = grupo.anio !== undefined;
             const claveGrupo = String(grupo.etiqueta || indiceGrupo);
             const cantExtGrupo = grupo.carros.filter(c => c.tipo_carro === 'externa').length;
             const cantIntGrupo = totalCarros - cantExtGrupo;
 
-            // Todos los acordeones de períodos nacen cerrados/plegados por defecto hasta que el usuario los despliegue
+            // Renderizar filas del tbody únicamente cuando el acordeón está desplegado (evita ~5.600 nodos ocultos en DOM)
             const estaExpandido = window._gruposTemporalesExpandidos instanceof Set && window._gruposTemporalesExpandidos.has(claveGrupo);
             const indicadorColapso = estaExpandido ? '▼' : '▶';
             const displayTabla = estaExpandido ? 'table' : 'none';
@@ -862,87 +942,12 @@ export async function actualizarEstadoCarro() {
                                 <th>Acciones</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody data-loaded="${estaExpandido ? 'true' : 'false'}">
+                            ${estaExpandido ? window._renderFilasGrupoCarro(indiceGrupo) : ''}
+                        </tbody>
+                    </table>
+                </div>
             `;
-
-            grupo.carros.forEach(carro => {
-                const fecha = new Date(carro.fecha_inicio).toLocaleString();
-                const estaActivo = carro.id.toString() === carroId;
-                const esExterno = carro.tipo_carro === 'externa';
-                const esFinalizado = carro.fecha_confirmacion !== null;
-                const esPreparado = carro.fecha_preparado !== null;
-                const esHoy = carro.esHoy;
-                const ldnFila = inferirLineaCarro(carro);
-
-                // Aplicar clases CSS para diferenciación visual nítida Externo vs Interno
-                let clasesFila = esExterno ? 'carro-externo ' : 'carro-interno ';
-                if (estaActivo) {
-                    clasesFila += 'carro-activo ';
-                }
-                if (esFinalizado) {
-                    clasesFila += 'carro-finalizado ';
-                }
-                if (esHoy) {
-                    clasesFila += 'carro-hoy ';
-                }
-
-                let tipoBadge = '';
-                if (esExterno) {
-                    let tagLinea = 'EXTERNO';
-                    if (ldnFila === 4) tagLinea = 'EXTERNO · L4 Tostadero';
-                    else if (ldnFila === 5) tagLinea = 'EXTERNO · L5 Barritas';
-                    else if (ldnFila === 6) tagLinea = 'EXTERNO · L6 Granolas';
-                    tipoBadge = `<span class="badge-tipo-carro externa" style="background:#e0e7ff;color:#3730a3;border:1px solid #818cf8;font-weight:800;" title="${escCarroHtml(carro.nombre_linea_negocio || 'Producción Externa')}">🚚 ${tagLinea}</span>`;
-                } else {
-                    if (ldnFila === 3) {
-                        tipoBadge = `<span class="badge-tipo-carro interna" style="background: #dcfce7; color: #166534; border: 1px solid #86efac; font-weight: 700;" title="1° Etapa: Producción de Artículos Puente / Mixes a Granel x Kilo">🥣 INTERNO · L3 Puente/Mix</span>`;
-                    } else if (ldnFila === 2) {
-                        tipoBadge = `<span class="badge-tipo-carro interna" style="background: #ccfbf1; color: #0f766e; border: 1px solid #5eead4; font-weight: 700;" title="2° Etapa: Producción de Fracciones Comerciales">🏭 INTERNO · L2 Fracciones</span>`;
-                    } else {
-                        tipoBadge = `<span class="badge-tipo-carro interna" style="background: #ccfbf1; color: #0f766e; border: 1px solid #5eead4; font-weight: 700;">🏭 INTERNO</span>`;
-                    }
-                }
-
-                const estadoBadge = esFinalizado
-                    ? `<span class="badge-estado-carro finalizado" style="font-size: 10.5px; padding: 2px 8px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-weight:700;">✅ Asentado</span>`
-                    : (esPreparado
-                        ? `<span class="badge-estado-carro preparado" style="font-size: 10.5px; padding: 2px 8px; background:#fef3c7; color:#92400e; border:1px solid #f59e0b; font-weight:800;">${esExterno ? '⏳ Abierto · En Tostadero' : '📦 Abierto · Listo'}</span>`
-                        : `<span class="badge-estado-carro en-edicion" style="font-size: 10.5px; padding: 2px 8px; background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc; font-weight:700;">✏️ Abierto · En curso</span>`);
-
-                const artsFila = Array.isArray(carro.resumen_articulos) ? carro.resumen_articulos : [];
-                const insExtFila = Array.isArray(carro.insumos_externos) ? carro.insumos_externos : [];
-                const subArtTxt = artsFila.length > 0
-                    ? `<div style="font-size:11px;color:#475569;margin-top:2px;">${artsFila.slice(0, 2).map(a => `<span style="font-family:monospace;font-weight:700;">[${escCarroHtml(a.numero)}]</span>`).join(', ')}${artsFila.length > 2 ? ` +${artsFila.length - 2}` : ''}${esExterno && insExtFila[0] ? ` · <span style="color:#3730a3;font-weight:600;">${(parseFloat(insExtFila[0].kilos) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg</span>` : ''}</div>`
-                    : '';
-
-                html += `
-                    <tr class="${clasesFila.trim()}" onclick="seleccionarCarro(${carro.id})">
-                        <td>
-                            <div class="${esHoy ? 'celda-hoy' : ''}" style="font-weight: 700; color: #1e293b;">#${carro.id}</div>
-                        </td>
-
-                        <td>${fecha}</td>
-                        <td><strong>${carro.total_articulos}</strong> art.${subArtTxt}</td>
-                        <td>${tipoBadge}</td>
-                        <td>${estadoBadge}</td>
-                        <td>
-                            <div class="btn-group">
-                                ${estaActivo ?
-                                    `<span class="chip-activo-toggle" onclick="event.stopPropagation(); deseleccionarCarro()" title="Carro actualmente en vista. Clic para desmarcar">● Activo <span class="icon-close">✕</span></span>` :
-                                    ''
-                                }
-                                <button class="btn-eliminar" onclick="event.stopPropagation(); eliminarCarro(${carro.id})" title="Eliminar este carro">🗑️</button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            });
-
-            html += `
-                    </tbody>
-                </table>
-            </div>
-        `;
         });
 
         html += `</div>`; // cerrar carros-lista
@@ -1529,6 +1534,7 @@ window.toggleGrupoTemporal = function (indiceGrupo) {
     if (!grupo) return;
 
     const tabla = grupo.querySelector('.tabla-carros-grupo');
+    const tbody = tabla ? tabla.querySelector('tbody') : null;
     const indicador = grupo.querySelector('.indicador-colapso');
     const claveGrupo = grupo.dataset.claveGrupo || String(indiceGrupo);
 
@@ -1537,8 +1543,12 @@ window.toggleGrupoTemporal = function (indiceGrupo) {
         window._gruposTemporalesExpandidos = new Set();
     }
 
-    // Alternar visibilidad de la tabla
+    // Alternar visibilidad de la tabla (cargando filas bajo demanda la primera vez que se expande)
     if (tabla.style.display === 'none') {
+        if (tbody && tbody.dataset.loaded !== 'true' && typeof window._renderFilasGrupoCarro === 'function') {
+            tbody.innerHTML = window._renderFilasGrupoCarro(indiceGrupo);
+            tbody.dataset.loaded = 'true';
+        }
         tabla.style.display = 'table';
         indicador.textContent = '▼';
         grupo.classList.remove('colapsado');
@@ -1600,11 +1610,12 @@ function generarBloqueDashboard(lista, esInsumo, estadoCarro, carroFinalizado, m
         let suficienciaReal = 0;
 
         if (carroFinalizado) {
-            stockOriginal = parseFloat(ing.stock_snapshot || ing.stock_actual || 0);
+            const snapVal = ing.stock_snapshot !== null && ing.stock_snapshot !== undefined ? ing.stock_snapshot : (ing.stock_actual ?? 0);
+            stockOriginal = parseFloat(snapVal) || 0;
             stockRestante = stockOriginal - cantidadNecesaria;
             suficienciaReal = stockRestante;
         } else {
-            stockOriginal = parseFloat(ing.stock_actual || 0);
+            stockOriginal = parseFloat(ing.stock_actual ?? 0) || 0;
             stockRestante = stockOriginal;
             suficienciaReal = stockOriginal - cantidadNecesaria;
         }
@@ -1657,9 +1668,18 @@ function generarBloqueDashboard(lista, esInsumo, estadoCarro, carroFinalizado, m
         const valStockOriginal = esInsumo ? Math.round(stockOriginal).toString() : stockOriginal.toFixed(2);
         const valStockRestante = esInsumo ? Math.round(stockRestante).toString() : stockRestante.toFixed(2);
         const valFaltante = esInsumo ? Math.round(Math.abs(suficienciaReal)).toString() : Math.abs(suficienciaReal).toFixed(2);
+        const faltaParaEsteCarro = consumo > 0.0001 && !tieneStock;
+        const nombreSafeAttr = escaparAtributoHtml(ing.nombre || 'Desconocido');
 
         html += `
-            <div style="background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <div class="card-stock-personal ${faltaParaEsteCarro ? 'stock-personal-faltante' : ''}"
+                 data-ingrediente-id="${ing.id}"
+                 data-nombre="${nombreSafeAttr}"
+                 data-consumo="${valConsumo}"
+                 data-disponible="${valStockOriginal}"
+                 data-faltante="${valFaltante}"
+                 data-unidad="${escaparAtributoHtml(unidadMedida)}"
+                 style="background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                     <strong style="color: #343a40; font-size: 15px; text-align: left;">${ing.nombre || 'Desconocido'}</strong>
                     <span style="font-weight: bold; font-size: 13px; color: ${tieneStock ? '#495057' : '#dc3545'};">
@@ -1701,7 +1721,7 @@ window.desactivarIngredienteStockPersonal = async function(ingredienteId, ingred
     }
 
     try {
-        const response = await fetch(`http://localhost:3002/api/produccion/ingredientes/stock-usuario/${usuarioId}/${ingredienteId}`, {
+        const response = await fetch(`/api/produccion/ingredientes/stock-usuario/${usuarioId}/${ingredienteId}`, {
             method: 'DELETE'
         });
 
@@ -1863,25 +1883,24 @@ export async function seleccionarCarro(carroId) {
 
         console.log('Actualizando interfaz después de seleccionar carro...');
 
-        // --- UI / datos ---
-        await actualizarEstadoCarro();
-        await mostrarArticulosDelCarro();
-
-        // Obtener tipo de carro PRIMERO para gestionar visibilidad
+        // Actualizar indicador de carro activo en listado lateral (usando caché si ya fue cargada) y obtener estado del carro en paralelo
         let tipoCarro = 'interna';
         let lineaNegocioSel = null;
         let nombreLineaSel = null;
-        try {
-            const estadoResp = await fetch(`/api/produccion/carro/${carroId}/estado`);
-            if (estadoResp.ok) {
+
+        const [, estadoResp] = await Promise.all([
+            actualizarEstadoCarro({ usarCache: Array.isArray(window._carrosUsuarioCache) && window._carrosUsuarioCache.length > 0 }),
+            fetch(`/api/produccion/carro/${carroId}/estado`).catch(() => null)
+        ]);
+
+        if (estadoResp && estadoResp.ok) {
+            try {
                 const estadoData = await estadoResp.json();
                 tipoCarro = estadoData.tipo_carro || 'interna';
                 lineaNegocioSel = estadoData.linea_negocio;
                 nombreLineaSel = estadoData.nombre_linea_negocio;
                 console.log(`📊 [TIPO-CARRO] Tipo detectado: ${tipoCarro} (Línea: ${lineaNegocioSel})`);
-            }
-        } catch (error) {
-            console.warn('⚠️ No se pudo obtener tipo de carro, asumiendo interna');
+            } catch (_) {}
         }
 
         // Atmósfera visual de marca
@@ -1910,51 +1929,42 @@ export async function seleccionarCarro(carroId) {
         // 🎯 GESTIONAR VISIBILIDAD DE SECCIONES SEGÚN TIPO DE CARRO
         gestionarVisibilidadSeccionesPorTipo(tipoCarro);
 
-        // 📊 CARGAR DATOS SEGÚN TIPO DE CARRO
-
-        // Resumen de ingredientes (SIEMPRE)
-        const ingredientes = await obtenerResumenIngredientesCarro(carroId, usuarioId);
-        await mostrarResumenIngredientes(ingredientes);
-        console.log('✅ [REACTIVIDAD] Resumen de ingredientes actualizado');
-
-        // Resumen de mixes (SOLO si es carro externo)
-        if (tipoCarro === 'externa') {
-            const mixes = await obtenerResumenMixesCarro(carroId, usuarioId);
-            mostrarResumenMixes(mixes);
-            console.log('✅ [REACTIVIDAD] Resumen de mixes actualizado');
-        }
-
-        // Resumen de artículos externos (SOLO si es carro externo)
-        if (tipoCarro === 'externa') {
-            const articulos = await obtenerResumenArticulosCarro(carroId, usuarioId);
-            if (articulos && articulos.length > 0) {
-                mostrarResumenArticulos(articulos);
-                if (seccionArticulos) {
-                    seccionArticulos.style.display = 'block';
-                    console.log('✅ [REACTIVIDAD] Sección de artículos externos mostrada');
+        // 📊 CARGAR TODOS LOS PANELES DEL CARRO EN PARALELO
+        await Promise.all([
+            mostrarArticulosDelCarro(),
+            (async () => {
+                const ingredientes = await obtenerResumenIngredientesCarro(carroId, usuarioId);
+                await mostrarResumenIngredientes(ingredientes);
+                console.log('✅ [REACTIVIDAD] Resumen de ingredientes actualizado');
+            })(),
+            (async () => {
+                if (tipoCarro === 'externa') {
+                    const mixes = await obtenerResumenMixesCarro(carroId, usuarioId);
+                    mostrarResumenMixes(mixes);
+                    console.log('✅ [REACTIVIDAD] Resumen de mixes actualizado');
                 }
-            } else {
-                if (seccionArticulos) {
-                    seccionArticulos.style.display = 'none';
-                    console.log('ℹ️ [REACTIVIDAD] No hay artículos externos, sección oculta');
+            })(),
+            (async () => {
+                if (tipoCarro === 'externa') {
+                    const articulos = await obtenerResumenArticulosCarro(carroId, usuarioId);
+                    if (articulos && articulos.length > 0) {
+                        mostrarResumenArticulos(articulos);
+                        if (seccionArticulos) {
+                            seccionArticulos.style.display = 'block';
+                        }
+                    } else if (seccionArticulos) {
+                        seccionArticulos.style.display = 'none';
+                    }
+                    console.log('✅ [REACTIVIDAD] Resumen de artículos externos actualizado');
                 }
-            }
-            console.log('✅ [REACTIVIDAD] Resumen de artículos externos actualizado');
-        }
-
-        // Informe de ingresos manuales (si existe)
-        if (typeof window.actualizarInformeIngresosManuales === 'function') {
-            console.log('Actualizando ingresos manuales después de seleccionar carro...');
-            await window.actualizarInformeIngresosManuales();
-        }
-
-        // Visibilidad de botones según estado
-        if (typeof window.actualizarVisibilidadBotones === 'function') {
-            console.log('Actualizando visibilidad de botones después de seleccionar carro...');
-            await window.actualizarVisibilidadBotones();
-        } else {
-            console.warn('⚠️ actualizarVisibilidadBotones no está disponible al seleccionar carro');
-        }
+            })(),
+            typeof window.actualizarInformeIngresosManuales === 'function'
+                ? window.actualizarInformeIngresosManuales()
+                : Promise.resolve(),
+            typeof window.actualizarVisibilidadBotones === 'function'
+                ? window.actualizarVisibilidadBotones()
+                : Promise.resolve()
+        ]);
 
         console.log('✅ [SELECCIÓN-CARRO] Carro seleccionado y UI actualizada completamente');
 
@@ -2163,7 +2173,7 @@ export async function eliminarCarro(carroId) {
 export async function obtenerResumenIngredientesCarro(carroId, usuarioId) {
     try {
         // Verificar el tipo de carro
-        const responseTipoCarro = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+        const responseTipoCarro = await fetch(`/api/produccion/carro/${carroId}/estado`);
         let tipoCarro = 'interna';
         if (responseTipoCarro.ok) {
             const dataTipoCarro = await responseTipoCarro.json();
@@ -2172,68 +2182,61 @@ export async function obtenerResumenIngredientesCarro(carroId, usuarioId) {
             console.warn('⚠️ No se pudo obtener el tipo de carro, asumiendo interna');
         }
 
-        // Obtener ingredientes base
-        const responseBase = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes?usuarioId=${usuarioId}`);
+        const [responseBase, responseVinculados, responsePersonal] = await Promise.all([
+            fetch(`/api/produccion/carro/${carroId}/ingredientes?usuarioId=${usuarioId}`),
+            tipoCarro === 'externa'
+                ? fetch(`/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${usuarioId}`).catch(() => null)
+                : Promise.resolve(null),
+            tipoCarro === 'externa'
+                ? fetch(`/api/produccion/ingredientes/stock-usuario/${usuarioId}`).catch(() => null)
+                : Promise.resolve(null)
+        ]);
+
         if (!responseBase.ok) {
             throw new Error('No se pudo obtener el resumen de ingredientes');
         }
         const ingredientesBase = await responseBase.json();
 
-        // Obtener ingredientes de artículos vinculados (solo para carros externos)
         let ingredientesVinculados = [];
-
-        if (tipoCarro === 'externa') {
-            const responseVinculados = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/ingredientes-vinculados?usuarioId=${usuarioId}`);
-
-            if (responseVinculados.ok) {
-                ingredientesVinculados = await responseVinculados.json();
-                console.log(`🔗 Ingredientes vinculados obtenidos: ${ingredientesVinculados.length}`);
-            } else {
-                console.warn('❌ No se pudieron obtener ingredientes de artículos vinculados');
-            }
+        if (tipoCarro === 'externa' && responseVinculados && responseVinculados.ok) {
+            ingredientesVinculados = await responseVinculados.json();
+            console.log(`🔗 Ingredientes vinculados obtenidos: ${ingredientesVinculados.length}`);
         }
 
-        // Marcar ingredientes vinculados para diferenciarlos en UI
         ingredientesVinculados = ingredientesVinculados.map(ing => ({
             ...ing,
             es_de_articulo_vinculado: true
         }));
 
-        // Combinar ambos arrays (Omitimos los vinculados para no invadir el panel de stock personal)
         let ingredientesCombinados = [...ingredientesBase];
 
         // 🎯 TICKET #10 RE-OPEN: Incluir TODO el stock personal para mostrar el dashboard incluso en carros vacíos
-        if (tipoCarro === 'externa') {
+        if (tipoCarro === 'externa' && responsePersonal && responsePersonal.ok) {
             try {
-                const responsePersonal = await fetch(`http://localhost:3002/api/produccion/ingredientes/stock-usuario/${usuarioId}`);
-                if (responsePersonal.ok) {
-                    const stockPersonal = await responsePersonal.json();
-                    
-                    // Crear un mapa de los ingredientes ya requeridos en el carro
-                    const ingredientesRequeridosMap = new Map();
-                    ingredientesCombinados.forEach(ing => ingredientesRequeridosMap.set(ing.id, ing));
-                    
-                    // Añadir el stock personal que no esté requerido (o vacíos)
-                    stockPersonal.forEach(ingStock => {
-                        const ingId = ingStock.ingrediente_id || ingStock.id;
-                        if (!ingredientesRequeridosMap.has(ingId)) {
-                            ingredientesCombinados.push({
-                                id: ingId,
-                                nombre: ingStock.nombre_ingrediente || ingStock.nombre,
-                                unidad_medida: ingStock.unidad_medida,
-                                cantidad: 0, // Consumo inicial nulo
-                                stock_actual: parseFloat(ingStock.stock_total || 0),
-                                stock_snapshot: parseFloat(ingStock.stock_total || 0),
-                                capacidad_base: ingStock.capacidad_base,
-                                es_de_articulo_vinculado: false,
-                                sector_letra: 'Sin Sector'
-                            });
-                        } else {
-                            const match = ingredientesRequeridosMap.get(ingId);
-                            match.capacidad_base = ingStock.capacidad_base;
-                        }
-                    });
-                }
+                const stockPersonal = await responsePersonal.json();
+
+                const ingredientesRequeridosMap = new Map();
+                ingredientesCombinados.forEach(ing => ingredientesRequeridosMap.set(ing.id, ing));
+
+                stockPersonal.forEach(ingStock => {
+                    const ingId = ingStock.ingrediente_id || ingStock.id;
+                    if (!ingredientesRequeridosMap.has(ingId)) {
+                        ingredientesCombinados.push({
+                            id: ingId,
+                            nombre: ingStock.nombre_ingrediente || ingStock.nombre,
+                            unidad_medida: ingStock.unidad_medida,
+                            cantidad: 0,
+                            stock_actual: parseFloat(ingStock.stock_total || 0),
+                            stock_snapshot: parseFloat(ingStock.stock_total || 0),
+                            capacidad_base: ingStock.capacidad_base,
+                            es_de_articulo_vinculado: false,
+                            sector_letra: 'Sin Sector'
+                        });
+                    } else {
+                        const match = ingredientesRequeridosMap.get(ingId);
+                        match.capacidad_base = ingStock.capacidad_base;
+                    }
+                });
             } catch (err) {
                 console.warn('⚠️ No se pudo obtener el stock personal completo:', err);
             }
@@ -2993,8 +2996,13 @@ export async function mostrarArticulosDelCarro() {
 
         const colaborador = JSON.parse(colaboradorData);
 
-        // Obtener tipo y estado de carro
-        const responseTipoCarro = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/estado`);
+        // Obtener tipo/estado de carro, artículos y estimación de tiempos en paralelo
+        const [responseTipoCarro, response, resEst] = await Promise.all([
+            fetch(`/api/produccion/carro/${carroId}/estado`),
+            fetch(`/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`),
+            fetch(`/api/tiempos/carro/${carroId}/estimacion`).catch(() => null)
+        ]);
+
         let tipoCarro = 'interna';
         let estadoCarro = 'en_preparacion';
         let esConfirmado = false;
@@ -3006,7 +3014,7 @@ export async function mostrarArticulosDelCarro() {
         let iconoLineaNegocio = '🥜';
         let subtituloLineaNegocio = '';
 
-        if (responseTipoCarro.ok) {
+        if (responseTipoCarro && responseTipoCarro.ok) {
             const dataTipoCarro = await responseTipoCarro.json();
             window._carroActivoInfo = dataTipoCarro;
             tipoCarro = dataTipoCarro.tipo_carro || 'interna';
@@ -3020,24 +3028,21 @@ export async function mostrarArticulosDelCarro() {
             subtituloLineaNegocio = dataTipoCarro.subtitulo_linea_negocio || '';
         }
 
-        const response = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
-
-        if (!response.ok) {
+        if (!response || !response.ok) {
             throw new Error('Error al obtener artículos del carro');
         }
 
         const articulos = await response.json();
 
-        // ⏱️ Consulta de Estimación Predictiva de Tiempos para el Carro
+        // ⏱️ Estimación Predictiva de Tiempos para el Carro
         let estimacionCarro = null;
-        try {
-            const resEst = await fetch(`/api/tiempos/carro/${carroId}/estimacion`);
-            if (resEst.ok) {
+        if (resEst && resEst.ok) {
+            try {
                 estimacionCarro = await resEst.json();
                 window._estimacionCarroActual = estimacionCarro;
+            } catch (errEst) {
+                console.warn('No se pudo obtener la estimación predictiva de tiempo:', errEst);
             }
-        } catch (errEst) {
-            console.warn('No se pudo obtener la estimación predictiva de tiempo:', errEst);
         }
 
         const mapEstimacionArticulos = {};
@@ -3051,40 +3056,50 @@ export async function mostrarArticulosDelCarro() {
             actualizarTopbarEstimacion(estimacionCarro);
         }
 
-
-        // 🔍 BULK CHECK PARA RECETAS (Ticket #014)
-        let estadoRecetas = {};
-        try {
-            const articulosNumeros = articulos.map(art => art.numero);
-            if (articulosNumeros.length > 0) {
-                const estadoResponse = await fetch('http://localhost:3002/api/produccion/articulos/estado-recetas', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ articulos: articulosNumeros })
-                });
-                if (estadoResponse.ok) {
-                    estadoRecetas = await estadoResponse.json();
-                }
-            }
-        } catch (error) {
-            console.error('Error al realizar bulk check de estado de recetas:', error);
-        }
-
-        // Obtener relaciones existentes para carros externos
-        let relacionesExistentes = {};
-        if (tipoCarro === 'externa') {
-            try {
-                const relacionesResponse = await fetch(`http://localhost:3002/api/produccion/carro/${carroId}/relaciones-articulos?usuarioId=${colaborador.id}`);
-                if (relacionesResponse.ok) {
-                    const relaciones = await relacionesResponse.json();
-                    relaciones.forEach(rel => {
-                        relacionesExistentes[rel.articulo_produccion_codigo] = rel;
+        // Ejecutar en paralelo: estado de recetas, relaciones externas, artículos receta UP e ingredientes expandidos
+        const articulosNumeros = articulos.map(art => art.numero);
+        const [estadoRecetas, relacionesExistentes, articulosRecetaUpGlobal, ingredientesExpandidosPorArticulo] = await Promise.all([
+            (async () => {
+                if (articulosNumeros.length === 0) return {};
+                try {
+                    const estadoResponse = await fetch('/api/produccion/articulos/estado-recetas', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ articulos: articulosNumeros })
                     });
+                    if (estadoResponse.ok) return await estadoResponse.json();
+                } catch (error) {
+                    console.error('Error al realizar bulk check de estado de recetas:', error);
                 }
-            } catch (error) {
-                console.warn('Error al obtener relaciones:', error);
-            }
-        }
+                return {};
+            })(),
+            (async () => {
+                const relMap = {};
+                if (tipoCarro !== 'externa') return relMap;
+                try {
+                    const relacionesResponse = await fetch(`/api/produccion/carro/${carroId}/relaciones-articulos?usuarioId=${colaborador.id}`);
+                    if (relacionesResponse.ok) {
+                        const relaciones = await relacionesResponse.json();
+                        relaciones.forEach(rel => {
+                            relMap[rel.articulo_produccion_codigo] = rel;
+                        });
+                    }
+                } catch (error) {
+                    console.warn('Error al obtener relaciones:', error);
+                }
+                return relMap;
+            })(),
+            (async () => {
+                if (tipoCarro !== 'externa') return [];
+                try {
+                    return (await obtenerResumenArticulosCarro(carroId, colaborador.id)) || [];
+                } catch (errUpArt) {
+                    console.warn('No se pudieron obtener artículos de receta UP:', errUpArt);
+                    return [];
+                }
+            })(),
+            Promise.all(articulos.map(art => obtenerIngredientesExpandidos(art.numero).catch(() => [])))
+        ]);
 
         // Badge de estado dinámico
         let badgeEstadoHtml = '';
@@ -3233,7 +3248,8 @@ export async function mostrarArticulosDelCarro() {
             <div class="seccion-articulos">
         `;
 
-        for (const art of articulos) {
+        for (let idxArt = 0; idxArt < articulos.length; idxArt++) {
+            const art = articulos[idxArt];
             const relacion = relacionesExistentes[art.numero];
             const tieneRelacion = !!relacion;
 
@@ -3310,13 +3326,8 @@ export async function mostrarArticulosDelCarro() {
             `;
 
             // 🔗 PARA CARROS EXTERNOS: Mostrar Insumos/Mezclas de Receta UP y estado del Artículo Puente (AP)
-            let articulosRecetaUp = [];
+            const articulosRecetaUp = tipoCarro === 'externa' ? (articulosRecetaUpGlobal || []) : [];
             if (tipoCarro === 'externa') {
-                try {
-                    articulosRecetaUp = await obtenerResumenArticulosCarro(carroId, colaborador.id) || [];
-                } catch (errUpArt) {
-                    console.warn('No se pudieron obtener artículos de receta UP:', errUpArt);
-                }
 
                 if (articulosRecetaUp.length > 0) {
                     const detalleUpStr = articulosRecetaUp.map(ins => {
@@ -3466,8 +3477,8 @@ export async function mostrarArticulosDelCarro() {
             }
 
 
-            // Obtener y mostrar ingredientes expandidos para este artículo
-            const ingredientes = await obtenerIngredientesExpandidos(art.numero);
+            // Ingredientes expandidos precargados en paralelo para este artículo
+            const ingredientes = ingredientesExpandidosPorArticulo[idxArt] || [];
 
             if ((ingredientes && ingredientes.length > 0) || (articulosRecetaUp && articulosRecetaUp.length > 0)) {
                 html += `

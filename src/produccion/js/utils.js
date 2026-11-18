@@ -11,7 +11,7 @@ export function mostrarError(mensaje) {
 }
 
 // Función para cargar y mostrar los datos del colaborador
-export function cargarDatosColaborador(validarCarroActivo) {
+export async function cargarDatosColaborador(validarCarroActivo) {
     try {
         // Obtener datos del colaborador del localStorage
         const colaboradorData = localStorage.getItem('colaboradorActivo');
@@ -49,8 +49,10 @@ export function cargarDatosColaborador(validarCarroActivo) {
             nombreElement.textContent = colaborador.nombre || 'Usuario sin nombre';
         }
 
-        // Validar el carro activo
-        validarCarroActivo(colaborador.id);
+        // Validar el carro activo esperando su resolución
+        if (typeof validarCarroActivo === 'function') {
+            await validarCarroActivo(colaborador.id);
+        }
 
     } catch (error) {
         console.error('Error al cargar datos del colaborador:', error);

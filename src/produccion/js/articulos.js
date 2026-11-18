@@ -2451,19 +2451,22 @@ async function renderizarTarjetasProduccionExterna(articulos, contenedor, estado
             });
         }
 
-        // Obtener recetas completas para mostrar insumos base
-        let recetasPorArticulo = {};
-        for (const articulo of articulos) {
+        // Obtener recetas completas en paralelo (con caché en memoria) para mostrar insumos base sin demoras
+        if (!state.recetasExternasCache) state.recetasExternasCache = {};
+        await Promise.all(articulos.map(async (articulo) => {
+            if (state.recetasExternasCache[articulo.numero] !== undefined) return;
             try {
-                const recetaResponse = await fetch(`http://localhost:3002/api/produccion/recetas/${encodeURIComponent(articulo.numero)}`);
+                const recetaResponse = await fetch(`/api/produccion/recetas/${encodeURIComponent(articulo.numero)}`);
                 if (recetaResponse.ok) {
-                    const receta = await recetaResponse.json();
-                    recetasPorArticulo[articulo.numero] = receta;
+                    state.recetasExternasCache[articulo.numero] = await recetaResponse.json();
+                } else {
+                    state.recetasExternasCache[articulo.numero] = null;
                 }
             } catch (error) {
                 console.warn(`⚠️ No se pudo obtener receta para ${articulo.numero}`);
             }
-        }
+        }));
+        const recetasPorArticulo = state.recetasExternasCache;
 
         // Limpiar contenedor
         contenedor.innerHTML = '';

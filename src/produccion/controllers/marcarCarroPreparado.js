@@ -160,6 +160,7 @@ async function marcarCarroPreparado(req, res) {
         console.log(`- Omitidos (sin ID): ${ingredientesConsolidados.length - ingredientesValidos.length}`);
 
         // 4. Registrar movimientos de egreso según tipo de carro
+        const advertenciasStockPersonal = [];
         if (carro.tipo_carro === 'externa') {
             console.log('\n🏠 PROCESANDO CARRO EXTERNO');
             console.log('==========================================');
@@ -259,16 +260,22 @@ async function marcarCarroPreparado(req, res) {
 
                         } else {
                             // Ingrediente base de UP externa (ej. Miel #136 y Aceite de Coco #135 en domicilio del colaborador):
-                            // PROHIBIDO descontar silenciosamente del depósito central si falta saldo en domicilio.
+                            // Si falta saldo en domicilio, NO se bloquea el avance del carro externo ni se descuenta del depósito central;
+                            // se registra el consumo sobre el stock personal del colaborador y se devuelve advertencia informativa.
                             console.log(`🏠 INGREDIENTE DOMICILIARIO DE UP EXTERNA: ${ing.nombre} | Saldo neto: ${stockPersonal}`);
 
                             if (stockPersonal + 0.0001 < cantidadRedondeada) {
                                 const unidadTxt = ing.unidad_medida || 'kg';
-                                const errDomicilio = new Error(
-                                    `Saldo insuficiente en stock domiciliario del colaborador para "${ing.nombre}": disponible ${stockPersonal.toFixed(2)} ${unidadTxt}, requerido ${cantidadRedondeada.toFixed(2)} ${unidadTxt}. Registrá la entrega al colaborador antes de preparar el carro.`
-                                );
-                                errDomicilio.statusCode = 400;
-                                throw errDomicilio;
+                                const faltanteDom = Number((cantidadRedondeada - stockPersonal).toFixed(4));
+                                console.log(`⚠️ WARNING DOMICILIO: Stock personal insuficiente para "${ing.nombre}" (disponible ${stockPersonal.toFixed(2)} ${unidadTxt}, requerido ${cantidadRedondeada.toFixed(2)} ${unidadTxt}) — permitiendo avance con aviso.`);
+                                advertenciasStockPersonal.push({
+                                    id: ing.id,
+                                    nombre: ing.nombre,
+                                    disponible: Number(stockPersonal.toFixed(2)),
+                                    requerido: Number(cantidadRedondeada.toFixed(2)),
+                                    faltante: Number(faltanteDom.toFixed(2)),
+                                    unidad: unidadTxt
+                                });
                             }
 
                             const datosMovimiento = {
@@ -276,7 +283,8 @@ async function marcarCarroPreparado(req, res) {
                                 ingrediente_id: ing.id,
                                 cantidad: -cantidadRedondeada,
                                 carro_id: parseInt(carroId),
-                                origen_mix_id: ing.origen_mix_id
+                                origen_mix_id: ing.origen_mix_id,
+                                permitir_saldo_negativo: true
                             };
 
                             console.log('📝 DATOS PARA CONSUMO DOMICILIARIO:', JSON.stringify(datosMovimiento, null, 2));
@@ -524,7 +532,8 @@ async function marcarCarroPreparado(req, res) {
         return res.json({
             mensaje: 'Carro marcado como preparado correctamente',
             ingredientes: ingredientesValidos.length,
-            ingredientes_totales: ingredientesConsolidados.length
+            ingredientes_totales: ingredientesConsolidados.length,
+            advertencias_stock_personal: advertenciasStockPersonal
         });
 
     } catch (error) {

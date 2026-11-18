@@ -5051,6 +5051,162 @@ router.post('/clientes/:id/perfil-impresion', async (req, res) => {
 });
 
 /**
+ * Obtiene determinísticamente los artículos de depósito habilitados para abastecer
+ * un ingrediente específico en domicilio (ej: Miel -> solo presentaciones de Miel;
+ * Aceite de Coco -> solo presentaciones de Aceite de Coco), excluyendo productos
+ * secundarios saborizados o compuestos (ej: Maíz Frito Mostaza y Miel).
+ * GET /api/produccion/ingredientes/:id/articulos-abastecimiento
+ */
+router.get('/ingredientes/:id/articulos-abastecimiento', async (req, res) => {
+    try {
+        const ingredienteId = parseInt(req.params.id, 10);
+        if (!ingredienteId || isNaN(ingredienteId)) {
+            return res.status(400).json({ error: 'ID de ingrediente inválido' });
+        }
+
+        const normalizarTexto = (txt) =>
+            String(txt || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim();
+
+        const { rows: [ing] } = await pool.query(
+            'SELECT id, codigo, nombre, unidad_medida, articulo_vinculado_numero FROM public.ingredientes WHERE id = $1',
+            [ingredienteId]
+        );
+
+        if (!ing) {
+            return res.status(404).json({ error: 'Ingrediente no encontrado' });
+        }
+
+        // Referencia canónica en Búnker (por artículo vinculado directo o nutriente activo)
+        const { rows: refRows } = await pool.query(`
+            SELECT
+                ba.familia_id,
+                LOWER(BTRIM(COALESCE(ba.propiedades_dinamicas->>'articulo_principal', ''))) AS art_principal,
+                LOWER(BTRIM(COALESCE(ba.propiedades_dinamicas->'posiciones'->'pos_1'->>'valor', ''))) AS pos_1
+            FROM public.bunker_articulos ba
+            WHERE ba.familia_id IS NOT NULL
+              AND (
+                  UPPER(BTRIM(ba.articulo_id)) = UPPER(BTRIM(COALESCE($2, '')))
+                  OR EXISTS (
+                      SELECT 1 FROM public.ingrediente_articulos_nutrientes ian
+                      WHERE ian.ingrediente_id = $1
+                        AND COALESCE(ian.activo, true) = true
+                        AND UPPER(BTRIM(ian.articulo_numero)) = UPPER(BTRIM(ba.articulo_id))
+                  )
+              )
+            ORDER BY CASE WHEN UPPER(BTRIM(ba.articulo_id)) = UPPER(BTRIM(COALESCE($2, ''))) THEN 0 ELSE 1 END
+            LIMIT 1
+        `, [ingredienteId, ing.articulo_vinculado_numero || '']);
+
+        const refBunker = refRows[0] || null;
+        const ingNombreNorm = normalizarTexto(ing.nombre).replace(/\s*\((simple|mix)\)\s*$/i, '').trim();
+        const refPos1Norm = refBunker ? normalizarTexto(refBunker.pos_1) : '';
+        const exigirPos1 = Boolean(refBunker && refPos1Norm && ingNombreNorm.includes(refPos1Norm));
+
+        const { rows: allCandidates } = await pool.query(`
+            SELECT
+                a.numero,
+                COALESCE(NULLIF(BTRIM(ba.descripcion_generada), ''), NULLIF(BTRIM(ba.descripcion), ''), a.nombre) AS nombre,
+                a.nombre AS nombre_legacy,
+                a.codigo_barras,
+                ba.familia_id,
+                LOWER(BTRIM(COALESCE(ba.propiedades_dinamicas->>'articulo_principal', ''))) AS art_principal,
+                LOWER(BTRIM(COALESCE(ba.propiedades_dinamicas->'posiciones'->'pos_1'->>'valor', ''))) AS pos_1,
+                COALESCE(src.stock_consolidado, 0) AS stock_consolidado,
+                COALESCE(NULLIF(ba.kilos_unidad, 0), NULLIF(src.kilos_unidad, 0)) AS kilos_unidad,
+                (
+                    UPPER(BTRIM(a.numero)) = UPPER(BTRIM(COALESCE($2, '')))
+                    OR EXISTS (
+                        SELECT 1 FROM public.ingrediente_articulos_nutrientes ian
+                        WHERE ian.ingrediente_id = $1
+                          AND COALESCE(ian.activo, true) = true
+                          AND UPPER(BTRIM(ian.articulo_numero)) = UPPER(BTRIM(a.numero))
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM public.ingrediente_bunker_articulos iba
+                        WHERE iba.ingrediente_id = $1
+                          AND UPPER(BTRIM(iba.bunker_articulo_id::text)) = UPPER(BTRIM(a.numero))
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                        FROM public.recetas r
+                        JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
+                        WHERE UPPER(BTRIM(r.articulo_numero)) = UPPER(BTRIM(a.numero))
+                          AND ri.ingrediente_id = $1
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM public.receta_ingredientes ri_otro
+                              JOIN public.ingredientes i_otro ON i_otro.id = ri_otro.ingrediente_id
+                              WHERE ri_otro.receta_id = r.id
+                                AND ri_otro.ingrediente_id <> $1
+                                AND COALESCE(i_otro.es_insumo, false) = false
+                          )
+                    )
+                ) AS vinculo_explicito
+            FROM public.articulos a
+            LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = a.numero
+            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
+            WHERE COALESCE(src.solo_produccion_externa, false) = false
+        `, [ingredienteId, ing.articulo_vinculado_numero || '']);
+
+        const stopwords = new Set(['de', 'del', 'la', 'las', 'el', 'los', 'en', 'con', 'sin', 'por', 'para', 'y', 'o', 'a', 'x', 'simple', 'mix']);
+        const tokensIng = ingNombreNorm
+            .split(/[^a-z0-9]+/)
+            .filter(t => t.length >= 2 && !stopwords.has(t));
+        const stemsIng = tokensIng.map(t => (t.length >= 6 ? t.slice(0, 5) : t));
+        const primerStem = stemsIng[0] || '';
+
+        const filtrados = allCandidates.filter(art => {
+            if (art.vinculo_explicito) return true;
+
+            if (art.familia_id != null) {
+                if (refBunker && refBunker.familia_id != null && refBunker.art_principal) {
+                    if (Number(art.familia_id) !== Number(refBunker.familia_id)) return false;
+                    if (normalizarTexto(art.art_principal) !== normalizarTexto(refBunker.art_principal)) return false;
+                    if (exigirPos1) {
+                        return normalizarTexto(art.pos_1) === refPos1Norm;
+                    }
+                    return true;
+                }
+                const apNorm = normalizarTexto(art.art_principal);
+                const nomNorm = normalizarTexto(art.nombre);
+                if (!primerStem || !apNorm.startsWith(primerStem)) return false;
+                return stemsIng.every(st => nomNorm.includes(st));
+            }
+
+            const legacyNorm = normalizarTexto(art.nombre_legacy || art.nombre);
+            if (!primerStem || !legacyNorm.startsWith(primerStem)) return false;
+            return stemsIng.every(st => legacyNorm.includes(st));
+        });
+
+        filtrados.sort((a, b) => {
+            const stkA = parseFloat(a.stock_consolidado) > 0 ? 1 : 0;
+            const stkB = parseFloat(b.stock_consolidado) > 0 ? 1 : 0;
+            if (stkA !== stkB) return stkB - stkA;
+            if (a.vinculo_explicito !== b.vinculo_explicito) return a.vinculo_explicito ? -1 : 1;
+            return String(a.nombre || '').localeCompare(String(b.nombre || ''));
+        });
+
+        res.json({
+            success: true,
+            ingrediente: {
+                id: ing.id,
+                codigo: ing.codigo,
+                nombre: ing.nombre,
+                unidad_medida: ing.unidad_medida
+            },
+            data: filtrados
+        });
+    } catch (error) {
+        console.error('❌ [ABASTECIMIENTO EXTERNO] Error consultando artículos del ingrediente:', error);
+        res.status(500).json({ error: 'No se pudieron obtener las presentaciones del ingrediente' });
+    }
+});
+
+/**
  * Abastecimiento Atómico de Domicilio
  * Retira un artículo de ventas y lo transfiere a ingredientes_stock_usuarios
  * POST /api/produccion/ingredientes/abastecer-stock-personal
@@ -5068,25 +5224,28 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
         console.log(` > Destino: Ingrediente ${ingrediente_id}`);
         if (carro_id) console.log(` > Vinculado a Carro ID: ${carro_id}`);
 
-        // 1. Obtener los kilos por unidad del artículo seleccionado
+        // 1. Obtener los kilos por unidad del artículo seleccionado (priorizando Búnker y stock_real_consolidado)
         const checkArtQuery = `
-            SELECT src.kilos_unidad, src.descripcion 
-            FROM stock_real_consolidado src
-            WHERE src.articulo_numero = $1
+            SELECT
+                COALESCE(NULLIF(ba.kilos_unidad, 0), NULLIF(src.kilos_unidad, 0)) AS kilos_unidad,
+                COALESCE(NULLIF(BTRIM(ba.descripcion_generada), ''), NULLIF(BTRIM(ba.descripcion), ''), NULLIF(BTRIM(src.descripcion), ''), a.nombre) AS descripcion,
+                a.codigo_barras
+            FROM public.articulos a
+            LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = a.numero
+            LEFT JOIN public.stock_real_consolidado src ON src.articulo_numero = a.numero
+            WHERE a.numero = $1
             LIMIT 1
         `;
         const arts = await pool.query(checkArtQuery, [articulo_numero]);
         
         let kilosUnidad = 1; // Default de emergencia
         let nombreArt = 'Desconocido';
+        let codigoBarrasArt = null;
         
         if (arts.rows.length > 0) {
             if (arts.rows[0].kilos_unidad) kilosUnidad = parseFloat(arts.rows[0].kilos_unidad);
             if (arts.rows[0].descripcion) nombreArt = arts.rows[0].descripcion;
-        } else {
-            // Si el articulo no está explícitamente parametrizado, intentar sacarlo base general
-            const pureArt = await pool.query('SELECT nombre as descripcion FROM articulos WHERE numero = $1', [articulo_numero]);
-            if (pureArt.rows.length > 0) nombreArt = pureArt.rows[0].descripcion;
+            if (arts.rows[0].codigo_barras) codigoBarrasArt = arts.rows[0].codigo_barras;
         }
 
         const kilosTotales = parseFloat(cantidad) * kilosUnidad;
@@ -5101,11 +5260,12 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
             const outQuery = `
                 INSERT INTO stock_ventas_movimientos (
                     articulo_numero, codigo_barras, kilos, carro_id, usuario_id, cantidad, tipo, origen_ingreso, fecha
-                ) VALUES ($1, NULL, $2, $3, $4, $5, 'egreso', 'abastecimiento_domicilio', NOW())
+                ) VALUES ($1, $2, $3, $4, $5, $6, 'egreso', 'abastecimiento_domicilio', NOW())
                 RETURNING id;
             `;
             await client.query(outQuery, [
                 articulo_numero, 
+                codigoBarrasArt,
                 kilosTotales, 
                 carro_id ? parseInt(carro_id) : null,
                 usuario_id, 
@@ -5114,11 +5274,12 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
 
             // A.2) Descontar la cantidad directamente del stock_movimientos consolidado
             const updateConsolidado = `
-                UPDATE stock_real_consolidado 
-                SET 
-                  stock_movimientos = COALESCE(stock_movimientos, 0) - $1,
+                INSERT INTO stock_real_consolidado (articulo_numero, stock_movimientos, ultima_actualizacion)
+                VALUES ($2, -$1, NOW())
+                ON CONFLICT (articulo_numero)
+                DO UPDATE SET 
+                  stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) - $1,
                   ultima_actualizacion = NOW()
-                WHERE articulo_numero = $2
             `;
             await client.query(updateConsolidado, [
                 cantidad,
@@ -5151,6 +5312,16 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
                 WHERE id = $2
                   AND NULLIF(BTRIM(COALESCE(articulo_vinculado_numero, '')), '') IS NULL
             `, [articulo_numero, ingrediente_id]);
+
+            // C.2) Registrar relación nutriente idempotente para trazabilidad futura
+            await client.query(`
+                INSERT INTO public.ingrediente_articulos_nutrientes (ingrediente_id, articulo_numero, activo, manual)
+                SELECT $1, $2, true, true
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM public.ingrediente_articulos_nutrientes
+                    WHERE ingrediente_id = $1 AND UPPER(BTRIM(articulo_numero)) = UPPER(BTRIM($2))
+                )
+            `, [ingrediente_id, articulo_numero]);
 
             await client.query('COMMIT');
             client.release();

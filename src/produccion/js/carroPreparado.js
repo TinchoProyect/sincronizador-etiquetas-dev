@@ -1659,6 +1659,22 @@ function recolectarPendientesPreparacionCarro(esExterno, lineaNegocio) {
         });
     }
 
+    if (esExterno) {
+        document.querySelectorAll('#resumen-ingredientes .card-stock-personal.stock-personal-faltante').forEach(card => {
+            registrarPrimerElemento(card);
+            const nombre = card.dataset?.nombre || 'Ingrediente personal';
+            const consumo = card.dataset?.consumo || '0';
+            const disponible = card.dataset?.disponible || '0';
+            const faltante = card.dataset?.faltante || '0';
+            const unidad = card.dataset?.unidad || 'kg';
+            pendientes.push({
+                categoria: 'Stock Personal en Domicilio',
+                nombre,
+                detalle: `Faltan ${faltante} ${unidad} (Requerido: ${consumo} ${unidad} · Disponible: ${disponible} ${unidad})`
+            });
+        });
+    }
+
     if (esExterno && Number(lineaNegocio) !== 4) {
         document.querySelectorAll('#lista-articulos .articulo-vinculado-banner .btn-vincular-articulo').forEach(btn => {
             registrarPrimerElemento(btn.closest('.articulo-vinculado-banner') || btn);
@@ -1805,41 +1821,64 @@ export async function marcarCarroPreparado(carroIdParam) {
 
         const { pendientes, primerElementoFaltante } = recolectarPendientesPreparacionCarro(esExterno, lineaNegocio);
 
-        // ⛔ En carros externos: si falta saldo neto en el stock domiciliario del colaborador (Miel / Aceite de Coco),
-        // advertir claramente y bloquear en vez de descontar a escondidas del depósito central.
+        let avisoStockPersonalMostrado = false;
+        let pendientesGenerales = pendientes;
+
+        // 🔔 En carros externos (Barritas / Granolas / UPs): si falta stock personal en domicilio (Miel / Aceite de Coco),
+        // mostrar ventana modal informativa SIN bloquear el avance del carro externo.
         if (esExterno) {
-            const faltantesDomicilio = pendientes.filter(p => p.categoria === 'Ingrediente / Insumo en rojo');
-            if (faltantesDomicilio.length > 0) {
-                const detalleDomHtml = faltantesDomicilio.map(f => `
+            const faltantesStockPersonal = pendientes.filter(
+                p => p.categoria === 'Stock Personal en Domicilio' || p.categoria === 'Ingrediente / Insumo en rojo'
+            );
+            pendientesGenerales = pendientes.filter(
+                p => p.categoria !== 'Stock Personal en Domicilio' && p.categoria !== 'Ingrediente / Insumo en rojo'
+            );
+
+            if (faltantesStockPersonal.length > 0) {
+                avisoStockPersonalMostrado = true;
+                const detalleDomHtml = faltantesStockPersonal.map(f => `
                     <li style="margin-bottom:6px;">
-                        <strong>${escaparHtmlPreparado(f.nombre)}</strong>: <span style="color:#b91c1c;font-weight:700;">${escaparHtmlPreparado(f.detalle)}</span>
+                        <strong>${escaparHtmlPreparado(f.nombre)}</strong>: <span style="color:#b45309;font-weight:700;">${escaparHtmlPreparado(f.detalle)}</span>
                     </li>
                 `).join('');
+
+                let continuarCarroExterno = true;
                 if (typeof Swal !== 'undefined') {
-                    await Swal.fire({
-                        icon: 'error',
-                        title: '🏠 Saldo insuficiente en domicilio del colaborador',
+                    const resAviso = await Swal.fire({
+                        icon: 'warning',
+                        title: '⚠️ Falta Stock Personal en Domicilio',
                         html: `
                             <div style="text-align:left;font-size:0.94em;line-height:1.45;">
-                                <p style="margin-bottom:8px;">El colaborador no tiene saldo neto suficiente en su stock domiciliario para iniciar esta tanda externa:</p>
-                                <ul style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:10px 14px 10px 24px;margin-bottom:10px;">
+                                <p style="margin-bottom:8px;">Te avisamos que figuran faltantes en el stock personal domiciliario del colaborador:</p>
+                                <ul style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px 10px 24px;margin-bottom:10px;">
                                     ${detalleDomHtml}
                                 </ul>
-                                <p style="margin:0;color:#475569;font-size:0.9em;">Registrá primero la entrega de insumos al domicilio del colaborador (no se descuenta del depósito central por detrás).</p>
+                                <p style="margin:0;color:#475569;font-size:0.9em;">Este aviso es solo informativo y <strong>no detiene el avance del carro externo</strong>.</p>
                             </div>
                         `,
-                        confirmButtonText: 'Revisar stock domiciliario',
-                        confirmButtonColor: '#dc2626'
+                        showCancelButton: true,
+                        confirmButtonText: '✅ Entendido, avanzar carro',
+                        cancelButtonText: 'Volver',
+                        confirmButtonColor: '#16a34a',
+                        cancelButtonColor: '#64748b',
+                        focusConfirm: true
                     });
+                    continuarCarroExterno = !!resAviso.isConfirmed;
                 } else {
-                    alert('Saldo insuficiente en stock domiciliario del colaborador.');
+                    const txtDom = faltantesStockPersonal.map(f => `• ${f.nombre}: ${f.detalle}`).join('\n');
+                    continuarCarroExterno = window.confirm(
+                        `⚠️ Aviso: Falta Stock Personal en Domicilio\n\n${txtDom}\n\nAceptar = Avanzar carro externo\nCancelar = Volver`
+                    );
                 }
-                restaurarBotonPreparado(btnCarroPreparado);
-                return false;
+
+                if (!continuarCarroExterno) {
+                    restaurarBotonPreparado(btnCarroPreparado);
+                    return false;
+                }
             }
         }
 
-        const confirmarPendientes = await confirmarPreparacionConFaltantes(pendientes, primerElementoFaltante);
+        const confirmarPendientes = await confirmarPreparacionConFaltantes(pendientesGenerales, primerElementoFaltante);
         if (!confirmarPendientes) {
             restaurarBotonPreparado(btnCarroPreparado);
             return false;
@@ -1879,6 +1918,37 @@ export async function marcarCarroPreparado(carroIdParam) {
             throw new Error(errorData.error || `Error HTTP ${response.status}`);
         }
 
+        const prepData = await response.json().catch(() => ({}));
+        if (typeof window.invalidarCacheCarro === 'function') {
+            window.invalidarCacheCarro();
+        }
+
+        // Si el backend detectó faltante de stock personal y la UI aún no había mostrado el modal previo, informar sin frenar
+        if (!avisoStockPersonalMostrado && Array.isArray(prepData.advertencias_stock_personal) && prepData.advertencias_stock_personal.length > 0) {
+            const itemsAdvHtml = prepData.advertencias_stock_personal.map(a => `
+                <li style="margin-bottom:6px;">
+                    <strong>${escaparHtmlPreparado(a.nombre)}</strong>:
+                    <span style="color:#b45309;font-weight:700;">Faltan ${Number(a.faltante || 0).toFixed(2)} ${escaparHtmlPreparado(a.unidad || 'kg')} (Requerido: ${Number(a.requerido || 0).toFixed(2)} · Disponible: ${Number(a.disponible || 0).toFixed(2)})</span>
+                </li>
+            `).join('');
+            if (typeof Swal !== 'undefined') {
+                await Swal.fire({
+                    icon: 'warning',
+                    title: '⚠️ Falta Stock Personal en Domicilio',
+                    html: `
+                        <div style="text-align:left;font-size:0.94em;line-height:1.45;">
+                            <p style="margin-bottom:8px;">El carro externo avanzó correctamente. Tené en cuenta los siguientes faltantes en el stock personal del colaborador:</p>
+                            <ul style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px 14px 10px 24px;margin-bottom:10px;">
+                                ${itemsAdvHtml}
+                            </ul>
+                        </div>
+                    `,
+                    confirmButtonText: 'Entendido',
+                    confirmButtonColor: '#16a34a'
+                });
+            }
+        }
+
         // Mostrar notificación de éxito
         mostrarNotificacion('Carro marcado como preparado exitosamente');
 
@@ -1892,55 +1962,38 @@ export async function marcarCarroPreparado(carroIdParam) {
             }
         }
 
-        console.log('🔄 [PREPARADO] Iniciando actualización completa de la UI...');
+        console.log('🔄 [PREPARADO] Iniciando actualización completa de la UI en paralelo...');
 
-        // 1. Actualizar la visibilidad de los botones (esto crea el campo de kilos)
-        await actualizarVisibilidadBotones();
-        console.log('✅ [PREPARADO] Botones actualizados');
-
-        // 2. Actualizar el estado del carro en la lista
-        if (window.actualizarEstadoCarro) {
-            await window.actualizarEstadoCarro();
-            console.log('✅ [PREPARADO] Estado del carro actualizado');
-        }
-
-        // 3. 🔄 FORZAR RECARGA COMPLETA del panel derecho
-        console.log('🔄 [PREPARADO] Forzando recarga completa del panel derecho...');
-
-        // Obtener y mostrar ingredientes
-        if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
-            const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
-            await window.mostrarResumenIngredientes(ingredientes);
-            console.log('✅ [PREPARADO] Resumen de ingredientes actualizado');
-        }
-
-        // Obtener y mostrar mixes
-        if (window.obtenerResumenMixesCarro && window.mostrarResumenMixes) {
-            const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
-            window.mostrarResumenMixes(mixes);
-            console.log('✅ [PREPARADO] Resumen de mixes actualizado');
-        }
-
-        // Obtener y mostrar artículos externos (si aplica)
-        if (window.obtenerResumenArticulosCarro && window.mostrarResumenArticulos) {
-            const articulos = await window.obtenerResumenArticulosCarro(carroId, colaborador.id);
-            if (articulos && articulos.length > 0) {
-                window.mostrarResumenArticulos(articulos);
-                const seccionArticulos = document.getElementById('resumen-articulos');
-                if (seccionArticulos) {
-                    seccionArticulos.style.display = 'block';
+        await Promise.all([
+            actualizarVisibilidadBotones(),
+            window.actualizarEstadoCarro ? window.actualizarEstadoCarro() : Promise.resolve(),
+            (async () => {
+                if (window.obtenerResumenIngredientesCarro && window.mostrarResumenIngredientes) {
+                    const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
+                    await window.mostrarResumenIngredientes(ingredientes);
                 }
-                console.log('✅ [PREPARADO] Resumen de artículos externos actualizado');
-            }
-        }
-
-        // 4. Actualizar lista de artículos del carro y el informe de ingresos manuales/receta UP
-        if (window.mostrarArticulosDelCarro) {
-            await window.mostrarArticulosDelCarro();
-        }
-        if (window.actualizarInformeIngresosManuales) {
-            await window.actualizarInformeIngresosManuales();
-        }
+            })(),
+            (async () => {
+                if (window.obtenerResumenMixesCarro && window.mostrarResumenMixes) {
+                    const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
+                    window.mostrarResumenMixes(mixes);
+                }
+            })(),
+            (async () => {
+                if (window.obtenerResumenArticulosCarro && window.mostrarResumenArticulos) {
+                    const articulos = await window.obtenerResumenArticulosCarro(carroId, colaborador.id);
+                    if (articulos && articulos.length > 0) {
+                        window.mostrarResumenArticulos(articulos);
+                        const seccionArticulos = document.getElementById('resumen-articulos');
+                        if (seccionArticulos) {
+                            seccionArticulos.style.display = 'block';
+                        }
+                    }
+                }
+            })(),
+            window.mostrarArticulosDelCarro ? window.mostrarArticulosDelCarro() : Promise.resolve(),
+            window.actualizarInformeIngresosManuales ? window.actualizarInformeIngresosManuales() : Promise.resolve()
+        ]);
 
         console.log('✅ [PREPARADO] Actualización completa de UI finalizada');
         return true;
@@ -1997,6 +2050,10 @@ export async function revertirCarroPreparado(carroIdParam) {
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.error || `Error HTTP ${response.status}`);
+        }
+
+        if (typeof window.invalidarCacheCarro === 'function') {
+            window.invalidarCacheCarro();
         }
 
         mostrarNotificacion('Preparación revertida exitosamente. El carro vuelve a estar en edición.', false);

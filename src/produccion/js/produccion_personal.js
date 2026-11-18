@@ -128,6 +128,88 @@ function configurarInputDual() {
     }
 }
 
+// Deduplicador de ráfagas GET de solo lectura para evitar llamadas repetidas simultáneas al mismo carro
+(function instalarDeduplicadorRafagasCarro() {
+    if (window.__LAMDA_CARRO_DEDUP_INSTALLED__ || typeof window.fetch !== 'function') return;
+    window.__LAMDA_CARRO_DEDUP_INSTALLED__ = true;
+
+    const baseFetch = window.fetch.bind(window);
+    const burstCache = new Map();
+
+    window.invalidarCacheCarro = function() {
+        burstCache.clear();
+    };
+
+    function obtenerTtlCacheable(urlStr) {
+        if (!urlStr || typeof urlStr !== 'string') return 0;
+        if (/\/api\/roles\/[^/?#]+\/permisos([?#]|$)/i.test(urlStr)) return 60000;
+        if (/\/api\/produccion\/carro\/\d+\/(estado|articulos|articulos-resumen|ingredientes|ingredientes-vinculados|mixes|relaciones-articulos|ingresos-manuales)([?#]|$)/i.test(urlStr)) {
+            return 1500;
+        }
+        if (/\/api\/produccion\/ingredientes\/stock-usuario\/\d+([?#]|$)/i.test(urlStr)) {
+            return 1500;
+        }
+        if (/\/api\/tiempos\/carro\/\d+\/(estimacion|estado-medicion)([?#]|$)/i.test(urlStr)) {
+            return 1500;
+        }
+        return 0;
+    }
+
+    window.fetch = function(input, init) {
+        const method = ((init && init.method) || (input && typeof input === 'object' && input.method) || 'GET').toUpperCase();
+        const rawUrl = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+
+        if (method !== 'GET') {
+            burstCache.clear();
+            return baseFetch(input, init).finally(() => {
+                burstCache.clear();
+            });
+        }
+
+        const ttl = obtenerTtlCacheable(rawUrl);
+        if (ttl <= 0) {
+            return baseFetch(input, init);
+        }
+
+        // Normalizar clave ignorando prefijo http://localhost:3002 para compartir ráfagas equivalentes
+        const cacheKey = rawUrl.replace(/^https?:\/\/[^/]+/i, '');
+        const now = Date.now();
+        const hit = burstCache.get(cacheKey);
+        if (hit && (now - hit.ts) < ttl) {
+            return hit.promise.then(snap => new Response(snap.bodyText, {
+                status: snap.status,
+                statusText: snap.statusText,
+                headers: snap.headers
+            }));
+        }
+
+        const flight = baseFetch(input, init).then(async (resp) => {
+            const bodyText = await resp.text();
+            const headers = {};
+            resp.headers.forEach((v, k) => { headers[k] = v; });
+            if (!resp.ok) {
+                burstCache.delete(cacheKey);
+            }
+            return {
+                status: resp.status,
+                statusText: resp.statusText,
+                headers,
+                bodyText
+            };
+        }).catch((err) => {
+            burstCache.delete(cacheKey);
+            throw err;
+        });
+
+        burstCache.set(cacheKey, { ts: now, promise: flight });
+        return flight.then(snap => new Response(snap.bodyText, {
+            status: snap.status,
+            statusText: snap.statusText,
+            headers: snap.headers
+        }));
+    };
+})();
+
 // Función asíncrona para inicializar el espacio de trabajo
 async function inicializarEspacioTrabajo() {
     try {
@@ -142,23 +224,19 @@ async function inicializarEspacioTrabajo() {
 
         const colaborador = JSON.parse(colaboradorData);
 
-        // Los permisos se verifican automáticamente en actualizarEstadoCarro()
-
         await cargarDatosColaborador(async () => {
             await validarCarroActivo(colaborador.id);
         });
 
-        // Solo después de validar el carro, mostrar los artículos
-        await mostrarArticulosDelCarro();
-
-        
-        // Cargar y mostrar resumen de ingredientes y mixes
-        await cargarResumenIngredientes();
-
-        // Inicializar el informe de ingresos manuales
-        if (typeof window.actualizarInformeIngresosManuales === 'function') {
-            await window.actualizarInformeIngresosManuales();
-        }
+        // Cargar listado lateral, artículos del carro activo, resumen de ingredientes/mixes e ingresos manuales en paralelo
+        await Promise.all([
+            actualizarEstadoCarro(),
+            mostrarArticulosDelCarro(),
+            cargarResumenIngredientes(),
+            typeof window.actualizarInformeIngresosManuales === 'function'
+                ? window.actualizarInformeIngresosManuales()
+                : Promise.resolve()
+        ]);
 
         // Configurar modo dual si aplica a los artículos cargados
         configurarInputDual();
@@ -291,8 +369,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Mostrar estado inicial del carro
-    actualizarEstadoCarro();
+    // El estado inicial del carro ya se carga en paralelo dentro de inicializarEspacioTrabajo()
 });
 
 async function cargarResumenIngredientes() {
@@ -333,18 +410,15 @@ async function cargarResumenIngredientes() {
 
         const colaborador = JSON.parse(colaboradorData);
 
-        // Obtener el resumen consolidado de ingredientes
-        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
+        const [ingredientes, mixes, articulos] = await Promise.all([
+            obtenerResumenIngredientesCarro(carroId, colaborador.id),
+            obtenerResumenMixesCarro(carroId, colaborador.id),
+            obtenerResumenArticulosCarro(carroId, colaborador.id)
+        ]);
 
-        // Mostrar el resumen en la UI
-        mostrarResumenIngredientes(ingredientes);
-
-        // Obtener y mostrar el resumen de mixes
-        const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+        await mostrarResumenIngredientes(ingredientes);
         mostrarResumenMixes(mixes);
 
-        // Obtener y mostrar el resumen de artículos (solo para carros externos)
-        const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
         if (articulos && articulos.length > 0) {
             mostrarResumenArticulos(articulos);
             const seccionArticulos = document.getElementById('resumen-articulos');

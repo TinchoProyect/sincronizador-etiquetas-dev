@@ -1438,34 +1438,47 @@
 
     <!-- Modal de Abastecimiento Externo (Stock Ventas a Domicilio) -->
     <div id="modalAbastecimientoExterno" class="modal">
-        <div class="modal-content minimalist" style="display: flex; flex-direction: column;">
+        <div class="modal-content minimalist" style="display: flex; flex-direction: column; max-width: 580px; width: 95%;">
             <div class="modal-header" style="flex-shrink: 0;">
                 <h2>🚚 Abastecer Stock Personal</h2>
                 <span class="close-modal">&times;</span>
             </div>
             <div class="modal-body" style="display: flex; flex-direction: column; flex-grow: 1; overflow: hidden; padding-bottom: 0;">
-                <div class="ingrediente-info" style="flex-shrink: 0; background: #e3f2fd; padding: 12px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #90caf9;">
-                    <h3 id="nombre-ingrediente-abastecer" style="color: #1565c0; margin: 0 0 5px 0;"></h3>
-                    <p style="margin: 0; color: #424242; font-size: 14px;">Seleccione el artículo del depósito central para retirar y convertir en stock de su domicilio.</p>
+                <div class="ingrediente-info" style="flex-shrink: 0; background: #e3f2fd; padding: 10px 12px; border-radius: 6px; margin-bottom: 12px; border: 1px solid #90caf9;">
+                    <h3 id="nombre-ingrediente-abastecer" style="color: #1565c0; margin: 0 0 4px 0; font-size: 16px;"></h3>
+                    <p style="margin: 0; color: #424242; font-size: 13px;">Escaneá el código de barras o seleccioná la presentación correspondiente a este ingrediente.</p>
                 </div>
 
-                <div class="form-group" style="display: flex; flex-direction: column; flex-grow: 1; min-height: 0;">
-                    <label for="buscarArticuloAbastecer" style="flex-shrink: 0;">Buscar Artículo en Depósito:</label>
-                    <input type="text" id="buscarArticuloAbastecer" placeholder="Escriba el nombre del artículo..." autocomplete="off" style="flex-shrink: 0; margin-bottom: 5px;">
-                    <ul id="listaArticulosAbastecer" class="lista-resultados-busqueda" style="position: static; flex-grow: 1; max-height: none; overflow-y: auto; overflow-x: hidden; border: 1px solid #ccc; border-radius: 4px; box-shadow: none; padding: 0; margin: 0; list-style: none;"></ul>
+                <div class="form-group" style="flex-shrink: 0; margin-bottom: 10px;">
+                    <label for="codigoBarrasAbastecer" style="font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                        <span>📷 Buscar por Código de Barras o SKU:</span>
+                    </label>
+                    <div style="display: flex; gap: 6px;">
+                        <input type="text" id="codigoBarrasAbastecer" placeholder="Escaneá el código de barras del artículo que se lleva..." autocomplete="off" style="flex: 1; border: 1.5px solid #2563eb; background: #f8fafc; font-weight: 600;">
+                        <button type="button" id="btnBuscarCodigoAbastecer" class="btn btn-primary" style="padding: 6px 12px; white-space: nowrap;">Buscar</button>
+                    </div>
+                    <div id="alerta-escaner-abastecer" style="display: none; margin-top: 6px; padding: 7px 10px; border-radius: 5px; font-size: 12.5px; font-weight: 600;"></div>
                 </div>
 
-                <div class="form-group" style="flex-shrink: 0; margin-top: 15px;">
-                    <label for="cantidadBultosAbastecer">Cantidad a Retirar:</label>
-                    <input type="number" id="cantidadBultosAbastecer" min="1" step="0.1" placeholder="Ej: 1 (unidad/bulto)">
+                <div class="form-group" style="display: flex; flex-direction: column; flex-grow: 1; min-height: 150px; max-height: 250px;">
+                    <label for="buscarArticuloAbastecer" style="flex-shrink: 0; font-size: 13px; color: #475569; margin-bottom: 4px;">Presentaciones disponibles del ingrediente:</label>
+                    <input type="text" id="buscarArticuloAbastecer" placeholder="Filtrar dentro de las opciones (ej: 5kg, pura, bidón)..." autocomplete="off" style="flex-shrink: 0; margin-bottom: 6px; font-size: 13px;">
+                    <ul id="listaArticulosAbastecer" class="lista-resultados-busqueda" style="position: static; flex-grow: 1; max-height: none; overflow-y: auto; overflow-x: hidden; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: none; padding: 0; margin: 0; list-style: none; background: #fff;"></ul>
                 </div>
 
-                <div id="resumen-abastecimiento" style="flex-shrink: 0; display: none; background: #e8f5e9; padding: 12px; border-radius: 6px; margin-top: 15px; border: 1px solid #a5d6a7;">
+                <div id="articulo-seleccionado-abastecer" style="flex-shrink: 0; display: none; background: #eff6ff; border: 1.5px solid #60a5fa; border-radius: 6px; padding: 8px 12px; margin-top: 10px; font-size: 13px; color: #1e3a8a;"></div>
+
+                <div class="form-group" style="flex-shrink: 0; margin-top: 12px;">
+                    <label for="cantidadBultosAbastecer">Cantidad a Retirar (unidades / bultos):</label>
+                    <input type="number" id="cantidadBultosAbastecer" min="0.1" step="0.1" placeholder="Ej: 1 (unidad/bulto)">
+                </div>
+
+                <div id="resumen-abastecimiento" style="flex-shrink: 0; display: none; background: #e8f5e9; padding: 10px 12px; border-radius: 6px; margin-top: 10px; border: 1px solid #a5d6a7;">
                     <p style="margin: 0; color: #2e7d32; font-weight: bold;">📊 Se agregarán <span id="kilos-totales-abastecer">0</span> <span id="unidad-abastecer-label">kg</span> a su stock personal.</p>
                 </div>
             </div>
 
-            <div class="modal-actions" style="flex-shrink: 0; margin-top: 20px; padding: 15px 20px; border-top: 1px solid #dee2e6;">
+            <div class="modal-actions" style="flex-shrink: 0; margin-top: 14px; padding: 12px 20px; border-top: 1px solid #dee2e6;">
                 <button id="btnConfirmarAbastecimiento" class="btn btn-success" disabled>Confirmar Retiro</button>
                 <button class="btn btn-secondary close-modal">Cancelar</button>
             </div>
