@@ -5251,6 +5251,14 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
         const kilosTotales = parseFloat(cantidad) * kilosUnidad;
         console.log(` ⚖️ Conversión: ${cantidad} un * ${kilosUnidad} kg/un = ${kilosTotales.toFixed(2)} kg`);
 
+        let carroIdValido = null;
+        if (carro_id && !isNaN(parseInt(carro_id, 10))) {
+            const chkCarro = await pool.query('SELECT id FROM public.carros_produccion WHERE id = $1 LIMIT 1', [parseInt(carro_id, 10)]);
+            if (chkCarro.rows.length > 0) {
+                carroIdValido = chkCarro.rows[0].id;
+            }
+        }
+
         // INICIO DE LA TRANSACCIÓN
         const client = await pool.connect();
         await client.query('BEGIN');
@@ -5267,23 +5275,23 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
                 articulo_numero, 
                 codigoBarrasArt,
                 kilosTotales, 
-                carro_id ? parseInt(carro_id) : null,
-                usuario_id, 
-                cantidad
+                carroIdValido,
+                parseInt(usuario_id, 10), 
+                parseFloat(cantidad)
             ]);
 
             // A.2) Descontar la cantidad directamente del stock_movimientos consolidado
             const updateConsolidado = `
                 INSERT INTO stock_real_consolidado (articulo_numero, stock_movimientos, ultima_actualizacion)
-                VALUES ($2, -$1, NOW())
+                VALUES ($2::text, -($1::numeric), NOW())
                 ON CONFLICT (articulo_numero)
                 DO UPDATE SET 
-                  stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) - $1,
+                  stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) - ($1::numeric),
                   ultima_actualizacion = NOW()
             `;
             await client.query(updateConsolidado, [
-                cantidad,
-                articulo_numero
+                parseFloat(cantidad),
+                String(articulo_numero)
             ]);
 
             // A.3) Recalcular stock_consolidado usando la herramienta unificada
@@ -5298,30 +5306,30 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
                 RETURNING id;
             `;
             await client.query(inQuery, [
-                usuario_id,
-                ingrediente_id,
+                parseInt(usuario_id, 10),
+                parseInt(ingrediente_id, 10),
                 kilosTotales,
-                carro_id ? parseInt(carro_id) : null,
+                carroIdValido,
                 kilosUnidad
             ]);
 
             // C) Auto-vincular de forma permanente el ingrediente al artículo de compras SOLO si no posee vínculo previo
             await client.query(`
                 UPDATE public.ingredientes
-                SET articulo_vinculado_numero = $1
-                WHERE id = $2
+                SET articulo_vinculado_numero = $1::text
+                WHERE id = $2::int
                   AND NULLIF(BTRIM(COALESCE(articulo_vinculado_numero, '')), '') IS NULL
-            `, [articulo_numero, ingrediente_id]);
+            `, [String(articulo_numero), parseInt(ingrediente_id, 10)]);
 
             // C.2) Registrar relación nutriente idempotente para trazabilidad futura
             await client.query(`
                 INSERT INTO public.ingrediente_articulos_nutrientes (ingrediente_id, articulo_numero, activo, manual)
-                SELECT $1, $2, true, true
+                SELECT $1::int, $2::text, true, true
                 WHERE NOT EXISTS (
                     SELECT 1 FROM public.ingrediente_articulos_nutrientes
-                    WHERE ingrediente_id = $1 AND UPPER(BTRIM(articulo_numero)) = UPPER(BTRIM($2))
+                    WHERE ingrediente_id = $1::int AND UPPER(BTRIM(articulo_numero)) = UPPER(BTRIM($2::text))
                 )
-            `, [ingrediente_id, articulo_numero]);
+            `, [parseInt(ingrediente_id, 10), String(articulo_numero)]);
 
             await client.query('COMMIT');
             client.release();
