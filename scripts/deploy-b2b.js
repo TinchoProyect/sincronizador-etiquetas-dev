@@ -24,7 +24,10 @@ if (workersToken) {
     delete env.CLOUDFLARE_API_TOKEN;
 }
 
-let result = spawnSync('npx', ['wrangler', 'deploy'], {
+const nodeMajor = parseInt(String(process.versions.node || '18').split('.')[0], 10) || 18;
+const wranglerPkg = nodeMajor >= 22 ? 'wrangler' : 'wrangler@3.114.17';
+
+let result = spawnSync('npx', ['--yes', wranglerPkg, 'deploy'], {
     cwd: path.join(__dirname, '..', 'b2b-portal'),
     env: env,
     stdio: 'inherit',
@@ -32,8 +35,8 @@ let result = spawnSync('npx', ['wrangler', 'deploy'], {
 });
 
 if (result.status !== 0 && !workersToken) {
-    console.log('\n🔑 Sesión OAuth de Wrangler expirada. Abriendo autorización en el navegador...');
-    const loginRes = spawnSync('npx', ['wrangler', 'login'], {
+    console.log('\n🔑 Sesión OAuth de Wrangler expirada o no iniciada en este equipo. Abriendo autorización en el navegador...');
+    const loginRes = spawnSync('npx', ['--yes', wranglerPkg, 'login'], {
         cwd: path.join(__dirname, '..', 'b2b-portal'),
         env: env,
         stdio: 'inherit',
@@ -41,7 +44,7 @@ if (result.status !== 0 && !workersToken) {
     });
     if (loginRes.status === 0) {
         console.log('🚀 Reintentando despliegue tras iniciar sesión...');
-        result = spawnSync('npx', ['wrangler', 'deploy'], {
+        result = spawnSync('npx', ['--yes', wranglerPkg, 'deploy'], {
             cwd: path.join(__dirname, '..', 'b2b-portal'),
             env: env,
             stdio: 'inherit',
