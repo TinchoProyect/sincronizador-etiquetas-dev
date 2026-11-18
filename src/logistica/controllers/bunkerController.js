@@ -437,6 +437,16 @@ exports.crearArticulo = async (req, res) => {
 exports.eliminarArticulo = async (req, res) => {
     try {
         const { id } = req.params;
+        const { verificarDependenciasComboAntesDeEliminar } = require('../../produccion/services/combosCompuestosService');
+        const combosDep = await verificarDependenciasComboAntesDeEliminar(req.db, id);
+        if (Array.isArray(combosDep) && combosDep.length > 0) {
+            const listaTxt = combosDep.map(c => `[${c.combo_articulo_id}] ${c.combo_nombre} (${c.cantidad} u.)`).join('; ');
+            return res.status(409).json({
+                success: false,
+                error: `No se puede eliminar el artículo [${id}] porque integra ${combosDep.length} Combo(s) activo(s): ${listaTxt}. Quitá o reemplazá este componente primero.`,
+                dependencias_combos: combosDep
+            });
+        }
         const result = await BunkerService.eliminarArticuloTransaccional(req.db, id);
         if (result) {
             try {
@@ -451,6 +461,12 @@ exports.eliminarArticulo = async (req, res) => {
             res.status(404).json({ success: false, error: 'Artículo no encontrado en el Búnker' });
         }
     } catch (error) {
+        if (error && error.code === '23503') {
+            return res.status(409).json({
+                success: false,
+                error: `No se puede eliminar el artículo ${req.params.id} porque posee dependencias relacionales activas en el sistema.`
+            });
+        }
         console.error(`❌ [BUNKER] Error eliminando artículo ${req.params.id}:`, error);
         res.status(500).json({ success: false, error: 'Error interno eliminando artículo' });
     }

@@ -321,7 +321,8 @@ async function cargarGrafoRecetario(runner = null) {
         ingredientesRes,
         composicionRes,
         bunkerIngVincRes,
-        upRelRes
+        upRelRes,
+        combosCompRes
     ] = await Promise.all([
         db.query(`
             SELECT
@@ -332,6 +333,7 @@ async function cargarGrafoRecetario(runner = null) {
                 ba.rubro,
                 ba.sub_rubro,
                 COALESCE(bf.nombre, '') AS familia_nombre,
+                COALESCE(ba.es_combo, false) AS es_combo,
                 COALESCE(ba.es_pack, src.es_pack, false) AS es_pack,
                 COALESCE(NULLIF(TRIM(ba.pack_hijo_codigo), ''), NULLIF(TRIM(src.pack_hijo_codigo), '')) AS pack_hijo_codigo,
                 COALESCE(ba.pack_unidades, src.pack_unidades, 1) AS pack_unidades,
@@ -370,6 +372,11 @@ async function cargarGrafoRecetario(runner = null) {
         db.query(`
             SELECT id, articulo_produccion_codigo, articulo_kilo_codigo, COALESCE(multiplicador_ingredientes, 1) AS multiplicador_ingredientes, ingredientes_custom
             FROM public.articulos_produccion_externa_relacion
+        `).catch(() => ({ rows: [] })),
+        db.query(`
+            SELECT combo_articulo_id, componente_articulo_id, COALESCE(cantidad, 1) AS cantidad
+            FROM public.bunker_combos_componentes
+            ORDER BY orden ASC, id ASC
         `).catch(() => ({ rows: [] }))
     ]);
 
@@ -482,6 +489,18 @@ async function cargarGrafoRecetario(runner = null) {
         }
     }
 
+    const combosComponentesByUpper = new Map();
+    for (const row of combosCompRes.rows) {
+        const comboUpper = String(row.combo_articulo_id || '').trim().toUpperCase();
+        const compCod = String(row.componente_articulo_id || '').trim();
+        if (!comboUpper || !compCod) continue;
+        if (!combosComponentesByUpper.has(comboUpper)) combosComponentesByUpper.set(comboUpper, []);
+        combosComponentesByUpper.get(comboUpper).push({
+            componente_articulo_id: compCod,
+            cantidad: Math.max(1, parseFloat(row.cantidad) || 1)
+        });
+    }
+
     return {
         articulosByUpper,
         ingredientesById,
@@ -491,7 +510,8 @@ async function cargarGrafoRecetario(runner = null) {
         recetasByUpper,
         upRelByKiloUpper,
         skusProduccionUpSet,
-        skusPremezclaConsumidosPorUpSet
+        skusPremezclaConsumidosPorUpSet,
+        combosComponentesByUpper
     };
 }
 
@@ -506,7 +526,8 @@ function crearAcumulador() {
         contadorAparicion: 0,
         usoComposicionMix: false,
         cruzoUpExterna: false,
-        dobleEtapaUp: false
+        dobleEtapaUp: false,
+        esComboCompuesto: false
     };
 }
 
@@ -636,6 +657,27 @@ function resolverDesdeArticulo(grafo, codigoArticulo, factorPeso = 1, visitadosA
     const artRow = grafo.articulosByUpper.get(codUpper) || null;
     const receta = grafo.recetasByUpper.get(codUpper) || null;
     const upRel = grafo.upRelByKiloUpper.get(codUpper) || null;
+    const hijosCombo = grafo.combosComponentesByUpper ? grafo.combosComponentesByUpper.get(codUpper) : null;
+
+    // A0. Si el artículo es un Combo / Pack Compuesto (LDN 8), resolver y fusionar recursivamente todos sus SKUs hijos
+    if (Array.isArray(hijosCombo) && hijosCombo.length > 0) {
+        acum.esComboCompuesto = true;
+        for (const hc of hijosCombo) {
+            const subSku = String(hc.componente_articulo_id || '').trim();
+            if (!subSku || nextVisitadosArt.has(subSku.toUpperCase())) continue;
+            const subAcum = crearAcumulador();
+            resolverDesdeArticulo(grafo, subSku, factorPeso * (hc.cantidad || 1), nextVisitadosArt, visitadosIng, subAcum);
+            if (subAcum.pesosPorClave.size > 0) {
+                fusionarSubAcumulador(acum, subAcum, false);
+            } else {
+                const subArtRow = grafo.articulosByUpper.get(subSku.toUpperCase());
+                if (subArtRow && subArtRow.descripcion_display) {
+                    registrarHojaAlimenticia(acum, subArtRow.descripcion_display, factorPeso * (hc.cantidad || 1));
+                }
+            }
+        }
+        return acum;
+    }
 
     // A. Si el artículo es un Pack o apunta a un artículo hijo (ej. MFS10X300G -> MFSX300G, GDF5x1 -> GFGNFX1)
     const packHijo = artRow && artRow.pack_hijo_codigo ? String(artRow.pack_hijo_codigo).trim() : '';
@@ -765,6 +807,9 @@ function esSkuIntermedioInterno(grafo, codUpper, artRow) {
 }
 
 function clasificarLineaNegocioElaborada(acum) {
+    if (acum.esComboCompuesto) {
+        return { linea_negocio: 8, linea_etiqueta: 'Combo' };
+    }
     if (acum.cruzoUpExterna && acum.dobleEtapaUp) {
         return { linea_negocio: 6, linea_etiqueta: 'Granola' };
     }
@@ -793,7 +838,7 @@ async function construirCatalogoIngredientesComerciales(runner = null, opciones 
     const itemsPorIngredienteId = {};
 
     for (const [codUpper, artRow] of grafo.articulosByUpper.entries()) {
-        if (artRow.no_producido_por_lambda === true) continue;
+        if (artRow.no_producido_por_lambda === true && !artRow.es_combo) continue;
         if (esSkuIntermedioInterno(grafo, codUpper, artRow)) continue;
 
         const acum = resolverDesdeArticulo(grafo, artRow.articulo_id, 1, new Set(), new Set(), crearAcumulador());

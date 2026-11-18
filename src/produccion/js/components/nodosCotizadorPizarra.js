@@ -12,6 +12,7 @@
         nodos: [],
         catalogo: [],
         propuestas: [],
+        propuestas_combos: [],
         ofertas_gestor: [],
         presentaciones_planta_disponibles: [],
         fuentes: {
@@ -64,7 +65,8 @@
         3: { corto: 'Flujo 3 · Mixes', nombre: 'Flujo 3: Mezcla Interna (Carro Mix) a Fracción', color: '#a78bfa', bg: 'rgba(167, 139, 250, 0.14)' },
         4: { corto: 'Flujo 4 · Tostaderos', nombre: 'Flujo 4: Unidad Productiva Externa (Tostadero)', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.14)' },
         5: { corto: 'Flujo 5 · Barritas', nombre: 'Flujo 5: Pre-Mezcla + Elaboración Barritas', color: '#f87171', bg: 'rgba(248, 113, 113, 0.14)' },
-        6: { corto: 'Flujo 6 · Granolas', nombre: 'Flujo 6: Doble Mezcla + Horneado + Agregado Seco', color: '#fb923c', bg: 'rgba(251, 146, 60, 0.14)' }
+        6: { corto: 'Flujo 6 · Granolas', nombre: 'Flujo 6: Doble Mezcla + Horneado + Agregado Seco', color: '#fb923c', bg: 'rgba(251, 146, 60, 0.14)' },
+        8: { corto: 'LDN 8 · Combos', nombre: 'LDN 8: Combo / Pack Compuesto Multi-SKU', color: '#c4b5fd', bg: 'rgba(168, 85, 247, 0.18)' }
     };
 
     function fmtMoneda(val, decimales = 0) {
@@ -125,11 +127,16 @@
             ESTADO_NODOS.nodos = data.nodos || [];
             ESTADO_NODOS.catalogo = data.catalogo || [];
             ESTADO_NODOS.propuestas = data.propuestas || [];
+            ESTADO_NODOS.propuestas_combos = data.propuestas_combos || [];
             ESTADO_NODOS.ofertas_gestor = data.ofertas_gestor || [];
             ESTADO_NODOS.presentaciones_planta_disponibles = data.presentaciones_planta_disponibles || [];
             ESTADO_NODOS.fuentes = data.fuentes || ESTADO_NODOS.fuentes;
             ESTADO_NODOS.modoLaboratorio = Boolean(data.modo_laboratorio);
             ESTADO_NODOS.inicializado = true;
+
+            if (data.combos_estado && window.CombosPizarra && typeof window.CombosPizarra.aplicarDatosEstado === 'function') {
+                window.CombosPizarra.aplicarDatosEstado(data.combos_estado);
+            }
 
             actualizarBadgePropuestasPendientes();
             renderizarVistaNodosCompleta();
@@ -151,9 +158,14 @@
     }
 
     function actualizarBadgePropuestasPendientes() {
+        if (window.CombosPizarra && typeof window.CombosPizarra.sincronizarBadgesPendientesGlobal === 'function') {
+            window.CombosPizarra.sincronizarBadgesPendientesGlobal();
+        }
         const badge = document.getElementById('ldn-badge-7');
         if (!badge) return;
-        const pendientes = (ESTADO_NODOS.propuestas || []).filter(p => p.estado === 'PENDIENTE_COTIZACION').length;
+        const pendFracc = (ESTADO_NODOS.propuestas || []).filter(p => p.estado === 'PENDIENTE_COTIZACION').length;
+        const pendCombos = (ESTADO_NODOS.propuestas_combos || []).filter(p => p.estado === 'PENDIENTE_COTIZACION').length;
+        const pendientes = pendFracc + pendCombos;
         if (pendientes > 0) {
             badge.style.display = 'inline-flex';
             badge.textContent = `${pendientes} prop.`;
@@ -168,7 +180,11 @@
     function cambiarSubTabNodos(subTab) {
         ESTADO_NODOS.subTabActiva = subTab;
         renderizarVistaNodosCompleta();
-        if (subTab === 'cotizador') {
+        if (subTab === 'combos') {
+            if (window.CombosPizarra && typeof window.CombosPizarra.inicializar === 'function') {
+                window.CombosPizarra.inicializar('nodos-combos-subtab-mount');
+            }
+        } else if (subTab === 'cotizador') {
             recalcularMesaCotizacionEnVivo();
         } else if (subTab === 'abm_nodos') {
             if (ESTADO_NODOS.modoCreacionNuevo) {
@@ -234,6 +250,14 @@
                             ${pendientesCount > 0 ? `<span style="background:#f59e0b; color:#0f172a; padding:1px 7px; border-radius:999px; font-size:0.72rem; font-weight:800;">${pendientesCount} pend.</span>` : ''}
                         </button>
 
+                        <button id="nodos-subtab-btn-combos" onclick="window.NodosPizarra.cambiarSubTab('combos')"
+                            style="padding:8px 14px; border-radius:8px; font-weight:700; font-size:0.82rem; cursor:pointer; border:1px solid ${ESTADO_NODOS.subTabActiva === 'combos' ? '#a855f7' : '#334155'}; background:${ESTADO_NODOS.subTabActiva === 'combos' ? 'rgba(168,85,247,0.22)' : '#0f172a'}; color:${ESTADO_NODOS.subTabActiva === 'combos' ? '#e9d5ff' : '#cbd5e1'}; display:flex; align-items:center; gap:6px;">
+                            🎁 4. Combos y Packs
+                            <span id="nodos-subtab-combos-badge" style="display:${(ESTADO_NODOS.propuestas_combos || []).filter(p => p.estado === 'PENDIENTE_COTIZACION').length > 0 ? 'inline-block' : 'none'}; background:#f59e0b; color:#0f172a; padding:1px 7px; border-radius:999px; font-size:0.72rem; font-weight:800;">
+                                ${(ESTADO_NODOS.propuestas_combos || []).filter(p => p.estado === 'PENDIENTE_COTIZACION').length} pend.
+                            </span>
+                        </button>
+
                         <a href="/deposito-nodos" target="_blank"
                             style="text-decoration:none; padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; border:1px solid rgba(167,139,250,0.5); background:rgba(167,139,250,0.16); color:#ddd6fe; display:inline-flex; align-items:center; gap:5px;"
                             title="Abrir Mesa de Armado de Nodos y Canastos (Estación Nodos)">
@@ -262,14 +286,23 @@
 
                 <!-- CONTENIDO DINÁMICO DE LA SUB-PESTAÑA ACTIVA -->
                 <div id="nodos-subtab-body">
-                    ${ESTADO_NODOS.subTabActiva === 'cotizador'
-                        ? renderizarSubTabCotizador()
-                        : ESTADO_NODOS.subTabActiva === 'catalogo'
-                            ? renderizarSubTabCatalogo()
-                            : renderizarSubTabAbmNodos()}
+                    ${ESTADO_NODOS.subTabActiva === 'combos'
+                        ? `<div id="nodos-combos-subtab-mount"></div>`
+                        : ESTADO_NODOS.subTabActiva === 'cotizador'
+                            ? renderizarSubTabCotizador()
+                            : ESTADO_NODOS.subTabActiva === 'catalogo'
+                                ? renderizarSubTabCatalogo()
+                                : renderizarSubTabAbmNodos()}
                 </div>
             </div>
         `;
+
+        if (ESTADO_NODOS.subTabActiva === 'combos') {
+            if (window.CombosPizarra && typeof window.CombosPizarra.inicializar === 'function') {
+                window.CombosPizarra.inicializar('nodos-combos-subtab-mount');
+            }
+            return;
+        }
 
         if (ESTADO_NODOS.subTabActiva === 'cotizador') {
             if (!ESTADO_NODOS.propuestaActivaId && !ESTADO_NODOS.catalogoEditandoId && !ESTADO_NODOS.omitirAutoOrigenInicial) {
@@ -4646,11 +4679,15 @@
                         ESTADO_NODOS.nodos = data.nodos || [];
                         ESTADO_NODOS.catalogo = data.catalogo || [];
                         ESTADO_NODOS.propuestas = data.propuestas || [];
+                        ESTADO_NODOS.propuestas_combos = data.propuestas_combos || [];
                         ESTADO_NODOS.ofertas_gestor = data.ofertas_gestor || [];
                         ESTADO_NODOS.presentaciones_planta_disponibles = data.presentaciones_planta_disponibles || [];
                         ESTADO_NODOS.fuentes = data.fuentes || ESTADO_NODOS.fuentes;
                         ESTADO_NODOS.modoLaboratorio = Boolean(data.modo_laboratorio);
                         ESTADO_NODOS.inicializado = true;
+                        if (data.combos_estado && window.CombosPizarra && typeof window.CombosPizarra.aplicarDatosEstado === 'function') {
+                            window.CombosPizarra.aplicarDatosEstado(data.combos_estado);
+                        }
                         actualizarBadgePropuestasPendientes();
 
                         const params = new URLSearchParams(window.location.search);

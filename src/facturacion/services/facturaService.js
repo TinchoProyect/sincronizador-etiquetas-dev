@@ -356,6 +356,20 @@ const crearBorrador = async (datos) => {
                 if (resPresRetiro.rows.length > 0) {
                     stockDescontado = true;
                     console.log(`🛡️ [FACTURACION-SERVICE] Presupuesto #${datos.presupuesto_id} es Orden de Retiro / Administrativa NC -> forzando stock_descontado = TRUE.`);
+                } else {
+                    const resNodoYaDescontado = await client.query(
+                        `SELECT 1
+                         FROM public.nodos_pedidos_vecinos npv
+                         LEFT JOIN public.presupuestos pr ON pr.id = $1
+                         WHERE (npv.presupuesto_id_local = $1 OR (pr.id_presupuesto_ext IS NOT NULL AND npv.codigo_pedido = pr.id_presupuesto_ext))
+                           AND (COALESCE(npv.stock_descontado_fulfillment, false) = true OR COALESCE(npv.stock_descontado_deposito, false) = true)
+                         LIMIT 1`,
+                        [datos.presupuesto_id]
+                    );
+                    if (resNodoYaDescontado.rows.length > 0) {
+                        stockDescontado = true;
+                        console.log(`🛡️ [FACTURACION-SERVICE] Presupuesto #${datos.presupuesto_id} proviene de Pedido Tienda con stock ya descontado al despachar -> forzando stock_descontado = TRUE.`);
+                    }
                 }
             }
 
@@ -1048,6 +1062,25 @@ const registrarMovimientosStockFactura = async (factura, client) => {
         return;
     }
 
+    // Blindaje anti-doble-descuento de Stock en Tiendas / Nodos (Fulfillment Postal o Canastos Barriales):
+    // Si el presupuesto origen ya descontó físicamente stock al salir la mercadería de LAMDA, jamás volver a descontar al facturar.
+    if (esFactura && factura.presupuesto_id) {
+        const resNodoDesp = await client.query(
+            `SELECT npv.id, npv.codigo_pedido, npv.stock_descontado_fulfillment, npv.stock_descontado_deposito
+             FROM public.nodos_pedidos_vecinos npv
+             LEFT JOIN public.presupuestos pr ON pr.id = $1
+             WHERE (npv.presupuesto_id_local = $1 OR (pr.id_presupuesto_ext IS NOT NULL AND npv.codigo_pedido = pr.id_presupuesto_ext))
+               AND (COALESCE(npv.stock_descontado_fulfillment, false) = true OR COALESCE(npv.stock_descontado_deposito, false) = true)
+             LIMIT 1`,
+            [factura.presupuesto_id]
+        );
+        if (resNodoDesp.rows.length > 0) {
+            await client.query(`UPDATE public.factura_facturas SET stock_descontado = true WHERE id = $1`, [factura.id]);
+            console.log(`🛡️ [FACTURACION-SERVICE] Comprobante ID ${factura.id} corresponde a Pedido Tienda #${resNodoDesp.rows[0].codigo_pedido} con stock ya descontado en depósito. Se omite doble descuento.`);
+            return;
+        }
+    }
+
     // Blindaje Micro-Etapa 4: Si es Nota de Crédito asociada a una Orden de Retiro o Administrativa NC (o Mantenimiento),
     // jamás debe sumar stock físico a stock_real_consolidado (Variante B no mueve mercadería y Variante A ingresa a stock_mantenimiento).
     if (esNotaCredito && factura.presupuesto_id) {
@@ -1311,6 +1344,59 @@ const registrarMovimientosStockFactura = async (factura, client) => {
         const qtyDelta = esNotaCredito ? qty : -qty;
 
         console.log(`   - Resolvió: "${item.descripcion}" -> Código: ${articuloNumero} (${codigoBarras}) | Cantidad: ${qty} | Mov: ${tipoMov}`);
+
+        // Verificar si el artículo resuelto es un Combo Compuesto (LDN 8) en public.bunker_combos_componentes
+        const comboHijosRes = await client.query(`
+            SELECT bcc.componente_articulo_id, bcc.cantidad,
+                   a.codigo_barras, a.nombre,
+                   src.es_pack, src.pack_hijo_codigo, src.pack_unidades
+            FROM public.bunker_combos_componentes bcc
+            LEFT JOIN public.articulos a ON UPPER(TRIM(a.numero)) = UPPER(TRIM(bcc.componente_articulo_id))
+            LEFT JOIN public.stock_real_consolidado src ON UPPER(TRIM(src.articulo_numero)) = UPPER(TRIM(bcc.componente_articulo_id))
+            WHERE UPPER(TRIM(bcc.combo_articulo_id)) = UPPER(TRIM($1))
+            ORDER BY bcc.orden ASC, bcc.id ASC
+        `, [articuloNumero]).catch(() => ({ rows: [] }));
+
+        if (comboHijosRes.rows.length > 0) {
+            for (const ch of comboHijosRes.rows) {
+                let compSku = ch.componente_articulo_id;
+                let compBarcode = ch.codigo_barras || null;
+                let compQty = qty * Math.max(1, parseInt(ch.cantidad, 10) || 1);
+                if (ch.es_pack && ch.pack_hijo_codigo && parseInt(ch.pack_unidades, 10) > 0) {
+                    const nietoRes = await client.query(
+                        `SELECT numero, codigo_barras FROM public.articulos WHERE codigo_barras = $1 OR numero = $1 LIMIT 1`,
+                        [ch.pack_hijo_codigo]
+                    );
+                    if (nietoRes.rows.length > 0) {
+                        compSku = nietoRes.rows[0].numero;
+                        compBarcode = nietoRes.rows[0].codigo_barras || null;
+                        compQty = compQty * parseInt(ch.pack_unidades, 10);
+                    }
+                }
+                const compDelta = esNotaCredito ? compQty : -compQty;
+                const compObs = `${obs} [Combo ${articuloNumero} x${qty}]`;
+                await client.query(`
+                    INSERT INTO public.stock_ventas_movimientos (
+                        articulo_numero, codigo_barras, kilos, cantidad,
+                        carro_id, usuario_id, fecha, tipo, observaciones, origen_ingreso
+                    ) VALUES ($1, $2, 0, $3, NULL, NULL, NOW(), $4, $5, 'facturacion')
+                `, [compSku, compBarcode, compQty, tipoMov, compObs]);
+
+                await client.query(`
+                    INSERT INTO public.stock_real_consolidado (
+                        articulo_numero, stock_movimientos, stock_ajustes, es_pack, ultima_actualizacion
+                    ) VALUES ($1, $2, 0, FALSE, NOW())
+                    ON CONFLICT (articulo_numero)
+                    DO UPDATE SET
+                        stock_movimientos = COALESCE(stock_real_consolidado.stock_movimientos, 0) + $2,
+                        ultima_actualizacion = NOW()
+                `, [compSku, compDelta]);
+
+                await recalcularStockConsolidado(client, compSku);
+            }
+            console.log(`   🎁 [FACTURACION-SERVICE] Combo ${articuloNumero} explotado en ${comboHijosRes.rows.length} SKUs hijos.`);
+            continue;
+        }
 
         // Verificar si el artículo resuelto es un pack en public.stock_real_consolidado
         const packConfigRes = await client.query(`

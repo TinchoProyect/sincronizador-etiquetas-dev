@@ -172,8 +172,8 @@ const obtenerPedidosPorCliente = async (req, res) => {
             ),
             pedidos_listos_reservados AS (
                 SELECT 
-                    COALESCE(a_plr.numero, ba_plr.articulo_id::text, src_plr.articulo_numero, pd.articulo) as articulo_numero,
-                    SUM(COALESCE(pd.cantidad, 0)) as cantidad_reservada
+                    COALESCE(bcc_plr.componente_articulo_id, a_plr.numero, ba_plr.articulo_id::text, src_plr.articulo_numero, pd.articulo) as articulo_numero,
+                    SUM(COALESCE(pd.cantidad, 0) * COALESCE(bcc_plr.cantidad, 1)) as cantidad_reservada
                 FROM todos_presupuestos_activos tpa
                 ${joinClause.replace(/\bpc\b/g, 'tpa')}
                 LEFT JOIN LATERAL (
@@ -200,15 +200,17 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     ORDER BY (src_inner.codigo_barras = pd.articulo) DESC
                     LIMIT 1
                 ) src_plr ON true
+                LEFT JOIN public.bunker_combos_componentes bcc_plr
+                       ON UPPER(BTRIM(bcc_plr.combo_articulo_id)) = UPPER(BTRIM(COALESCE(ba_plr.articulo_id::text, a_plr.numero, pd.articulo)))
                 WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
                   AND COALESCE(pd.es_saldo_ingrediente, false) = false
                   AND tpa.secuencia IN ('Pedido_Listo', 'Standby', 'Retira_Deposito')
-                GROUP BY COALESCE(a_plr.numero, ba_plr.articulo_id::text, src_plr.articulo_numero, pd.articulo)
+                GROUP BY COALESCE(bcc_plr.componente_articulo_id, a_plr.numero, ba_plr.articulo_id::text, src_plr.articulo_numero, pd.articulo)
             ),
             demanda_global_activa AS (
                 SELECT 
-                    COALESCE(a_dga.numero, ba_dga.articulo_id::text, src_dga.articulo_numero, pd.articulo) as articulo_numero,
-                    SUM(COALESCE(pd.cantidad, 0)) as demanda_total_activa,
+                    COALESCE(bcc_dga.componente_articulo_id, a_dga.numero, ba_dga.articulo_id::text, src_dga.articulo_numero, pd.articulo) as articulo_numero,
+                    SUM(COALESCE(pd.cantidad, 0) * COALESCE(bcc_dga.cantidad, 1)) as demanda_total_activa,
                     COUNT(DISTINCT tpa.id) as total_pedidos_demandantes
                 FROM todos_presupuestos_activos tpa
                 ${joinClause.replace(/\bpc\b/g, 'tpa')}
@@ -236,10 +238,12 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     ORDER BY (src_inner.codigo_barras = pd.articulo) DESC
                     LIMIT 1
                 ) src_dga ON true
+                LEFT JOIN public.bunker_combos_componentes bcc_dga
+                       ON UPPER(BTRIM(bcc_dga.combo_articulo_id)) = UPPER(BTRIM(COALESCE(ba_dga.articulo_id::text, a_dga.numero, pd.articulo)))
                 WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
                   AND COALESCE(pd.es_saldo_ingrediente, false) = false
                   AND tpa.secuencia IN ('Imprimir', 'Imprimir_Modificado', 'Armar_Pedido')
-                GROUP BY COALESCE(a_dga.numero, ba_dga.articulo_id::text, src_dga.articulo_numero, pd.articulo)
+                GROUP BY COALESCE(bcc_dga.componente_articulo_id, a_dga.numero, ba_dga.articulo_id::text, src_dga.articulo_numero, pd.articulo)
             ),
             articulos_por_presupuesto AS (
                 SELECT 
@@ -252,14 +256,23 @@ const obtenerPedidosPorCliente = async (req, res) => {
                     pc.estado as presupuesto_estado,
                     pc.esta_facturado,
                     pc.origen_factura_canal,
-                    pd.articulo as articulo_numero,
-                    SUM(COALESCE(pd.cantidad, 0)) as cantidad,
+                    COALESCE(bcc_app.componente_articulo_id, pd.articulo) as articulo_numero,
+                    SUM(COALESCE(pd.cantidad, 0) * COALESCE(bcc_app.cantidad, 1)) as cantidad,
                     BOOL_OR(COALESCE(pd.es_saldo_ingrediente, false)) as es_saldo_ingrediente,
                     SUM(COALESCE(pd.kilos_saldo, 0)) as kilos_saldo
                 FROM presupuestos_confirmados pc
                 ${joinClause}
+                LEFT JOIN LATERAL (
+                    SELECT ba_c.articulo_id
+                    FROM public.bunker_articulos ba_c
+                    WHERE ba_c.articulo_id::text = pd.articulo OR ba_c.codigo_barras::text = pd.articulo
+                    ORDER BY (ba_c.articulo_id::text = pd.articulo) DESC
+                    LIMIT 1
+                ) ba_app ON true
+                LEFT JOIN public.bunker_combos_componentes bcc_app
+                       ON UPPER(BTRIM(bcc_app.combo_articulo_id)) = UPPER(BTRIM(COALESCE(ba_app.articulo_id::text, pd.articulo)))
                 WHERE pd.articulo IS NOT NULL AND TRIM(pd.articulo) != ''
-                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.id, pc.id_presupuesto_ext, pc.fecha, pc.secuencia, pc.estado, pc.esta_facturado, pc.origen_factura_canal, pd.articulo
+                GROUP BY pc.cliente_id_int, ${presupuestoIdFieldMain}, pc.id, pc.id_presupuesto_ext, pc.fecha, pc.secuencia, pc.estado, pc.esta_facturado, pc.origen_factura_canal, COALESCE(bcc_app.componente_articulo_id, pd.articulo)
             )
             SELECT 
                 app.cliente_id_int as cliente_id,

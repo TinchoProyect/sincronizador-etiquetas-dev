@@ -654,6 +654,90 @@ router.post('/cotizar-aprobar', async (req, res) => {
 });
 
 /**
+ * ============================================================================
+ * COMBOS / PACKS COMPUESTOS (LDN 8 + SOLICITUDES DESDE TIENDAS)
+ * ============================================================================
+ */
+router.get('/combos/estado', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const data = await nodosService.obtenerEstadoCombosPizarra();
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /combos/estado:', error);
+        res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/combos/previsualizar', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const preview = await nodosService.previsualizarCotizacionCombo(req.body || {});
+        res.json({ ok: true, ...preview });
+    } catch (error) {
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/combos/cotizar-aprobar', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const resultado = await nodosService.cotizarYAprobarCombo(req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /combos/cotizar-aprobar:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/propuestas-combos', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        const body = { ...(req.body || {}) };
+        if (req.nodoAuth) {
+            if (body.nodo_solicitante_id && Number(body.nodo_solicitante_id) !== Number(req.nodoAuth.id)) {
+                return res.status(403).json({ ok: false, error: 'No autorizado para enviar solicitudes en nombre de otra tienda.' });
+            }
+            body.nodo_solicitante_id = req.nodoAuth.id;
+        }
+        const propuesta = await nodosService.crearPropuestaComboGestor(body);
+        res.json({ ok: true, propuesta });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error creando propuesta de combo:', error);
+        res.status(error.statusCode || 400).json({
+            ok: false,
+            error: error.message,
+            combo_existente: error.combo_existente || null,
+            propuesta_existente: error.propuesta_existente || null
+        });
+    }
+});
+
+router.post('/propuestas-combos/:id/anular', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        const nodoIdRestringido = req.nodoAuth ? Number(req.nodoAuth.id) : (req.body?.nodo_id ? Number(req.body.nodo_id) : null);
+        const propuesta = await nodosService.anularODescartarPropuestaCombo(req.params.id, {
+            accion: 'anular',
+            nodoIdRestringido
+        });
+        res.json({ ok: true, propuesta });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error anulando propuesta de combo:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/propuestas-combos/:id/descartar', bloquearEnHostPublicoTienda, async (req, res) => {
+    try {
+        const motivo = req.body && req.body.motivo;
+        const propuesta = await nodosService.anularODescartarPropuestaCombo(req.params.id, {
+            accion: 'descartar',
+            motivo
+        });
+        res.json({ ok: true, propuesta });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error descartando propuesta de combo:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
  * POST /api/produccion/nodos/recalcular-cascada
  * Sincroniza todo el catálogo de Nodos con los costos vivos de los 6 Flujos de la Pizarra
  */

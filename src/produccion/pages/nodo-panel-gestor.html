@@ -2107,6 +2107,9 @@
       ofertas: [],
       catalogoBaseDisponible: [],
       propuestas: [],
+      propuestasCombos: [],
+      articulosElegiblesCombo: [],
+      combosCotizadosCatalogo: [],
       pedidos: [],
       compradores: [],
       compradoresResumen: { total_compradores: 0, con_pedido_activo: 0, recurrentes: 0 },
@@ -2129,6 +2132,13 @@
       propNombreEditadoManual: false,
       propComentarioTexto: '',
       propConfirmacionReciente: '',
+      propModo: 'fraccion', // 'fraccion' | 'combo'
+      propComboItems: [],   // [{ sku_nodo, cantidad }]
+      propComboFiltro: '',
+      propComboAlias: '',
+      propComboCat: '',
+      propComboTarget: '',
+      propComboComentario: '',
       liquidacionTablero: null,
       repartoOrdenManual: [],
       repartoIndice: 0,
@@ -2726,6 +2736,9 @@
       GSTATE.ofertas = data.todas_ofertas_gestor || [];
       GSTATE.catalogoBaseDisponible = Array.isArray(data.catalogo_base_disponible) ? data.catalogo_base_disponible : [];
       GSTATE.propuestas = data.propuestas_nodo || [];
+      GSTATE.propuestasCombos = Array.isArray(data.propuestas_combos_nodo) ? data.propuestas_combos_nodo : [];
+      GSTATE.articulosElegiblesCombo = Array.isArray(data.articulos_elegibles_combo) ? data.articulos_elegibles_combo : [];
+      GSTATE.combosCotizadosCatalogo = Array.isArray(data.combos_cotizados_catalogo) ? data.combos_cotizados_catalogo : [];
       GSTATE.pedidos = data.pedidos_nodo || [];
       GSTATE.movimientosCtaCte = data.movimientos_cta_cte || [];
       GSTATE.liquidacionesNodo = Array.isArray(data.liquidaciones_nodo) ? data.liquidaciones_nodo : [];
@@ -3055,7 +3068,7 @@
       } else if (GSTATE.vista === 'ofertas') {
         box.innerHTML = envolverSeccionInterna('Mi oferta y márgenes', renderSeccionOfertas());
       } else if (GSTATE.vista === 'propuestas') {
-        box.innerHTML = envolverSeccionInterna('Pedir fracción', renderSeccionPropuestas());
+        box.innerHTML = envolverSeccionInterna('Pedir fracción o armar combo', renderSeccionPropuestas());
       } else if (GSTATE.vista === 'logistica') {
         box.innerHTML = envolverSeccionInterna(tMarca(GSTATE.nodo, 'bloque_3_heading'), renderSeccionLogistica());
       } else if (GSTATE.vista === 'pedidos') {
@@ -3084,7 +3097,8 @@
       const publicadas = GSTATE.ofertas.filter(o => o.publicado_tienda).length;
       const totalOfertas = GSTATE.ofertas.length;
       const porPublicar = Math.max(0, totalOfertas - publicadas);
-      const propPendientes = GSTATE.propuestas.filter(p => p.estado !== 'APROBADA').length;
+      const propPendientes = GSTATE.propuestas.filter(p => p.estado !== 'APROBADA').length +
+        (GSTATE.propuestasCombos || []).filter(p => p.estado !== 'APROBADA').length;
 
       const pedidosActivos = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO');
       const totalPedidos = pedidosActivos.length;
@@ -3138,12 +3152,12 @@
         {
           id: 'propuestas',
           icono: '⚖️',
-          titulo: 'Pedir fracción',
+          titulo: 'Pedir fracción o combo',
           badge: propPendientes > 0 ? `${propPendientes} pend.` : 'Nuevo',
           badgeCls: propPendientes > 0 ? 'warn' : '',
           meta: propPendientes > 0
             ? `${propPendientes} solicitud${propPendientes === 1 ? '' : 'es'} en cotización`
-            : 'Solicitar nueva presentación',
+            : 'Nueva presentación o pack compuesto',
           alerta: false
         },
         {
@@ -4149,10 +4163,12 @@
             <div style="min-width:205px; flex:1;">
               <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                 ${skuOficial ? `<span style="font-family:monospace; font-size:0.76rem; font-weight:900; padding:2px 7px; border-radius:6px; background:var(--surface-warm); border:1px solid var(--border); color:var(--brand-dark);">[${esc(skuOficial)}]</span>` : ''}
+                ${of.es_combo ? `<span style="font-size:0.72rem; font-weight:900; padding:2px 8px; border-radius:999px; background:#f3e8ff; border:1px solid #d8b4fe; color:#6b21a8;">🎁 Combo</span>` : ''}
                 <span style="font-weight:900; font-size:0.96rem; color:var(--text);">${esc(nombreOficialLamda)}</span>
               </div>
               <div style="font-size:0.76rem; color:var(--muted); margin-top:2px;">
                 Catálogo oficial LAMDA · ${esc(catOficialLamda)} · <strong>${esc(of.presentacion_etiqueta || `${Math.round(Number(of.kilos_unidad) * 1000)}g`)}</strong>
+                ${of.es_combo && of.stock_armable !== null && of.stock_armable !== undefined ? ` · <strong style="color:var(--ok);">Stock armable: ${Number(of.stock_armable)} u.</strong>` : ''}
               </div>
             </div>
             <div class="oferta-pub-group" data-oferta-estado-box="${of.id}">
@@ -4193,6 +4209,12 @@
               </label>
             ` : ''}
           </div>
+
+          ${of.es_combo && Array.isArray(of.componentes_combo) && of.componentes_combo.length > 0 ? `
+            <div style="font-size:0.75rem; color:var(--text); background:#faf5ff; border:1px solid #e9d5ff; border-radius:8px; padding:6px 10px; margin-bottom:8px;">
+              <strong style="color:#6b21a8;">🎁 Incluye:</strong> ${of.componentes_combo.map(c => `${c.cantidad}x [${esc(c.sku)}] ${esc(c.nombre_oficial_lamda)}`).join(' · ')}
+            </div>
+          ` : ''}
 
           ${of.tiene_desglose_ingredientes ? `
             <div style="font-size:0.74rem; color:var(--muted); background:var(--surface-warm); border:1px solid var(--border); border-radius:8px; padding:5px 9px; margin-bottom:8px;">
@@ -4428,6 +4450,7 @@
                   <div>
                     <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                       ${skuCat ? `<span style="font-family:monospace; font-size:0.74rem; font-weight:900; padding:1px 6px; border-radius:5px; background:var(--surface-warm); border:1px solid var(--border); color:var(--brand-dark);">[${esc(skuCat)}]</span>` : ''}
+                      ${c.es_combo ? `<span style="font-size:0.7rem; font-weight:900; padding:1px 7px; border-radius:999px; background:#f3e8ff; border:1px solid #d8b4fe; color:#6b21a8;">🎁 Combo</span>` : ''}
                       <span style="font-weight:800; font-size:0.9rem;">${esc(nomLamda)}</span>
                     </div>
                     <div style="font-size:0.76rem; color:var(--muted); margin-top:2px;">
@@ -5032,6 +5055,12 @@
       GSTATE.propPrecioObjetivoTexto = '';
       GSTATE.propAliasVidrieraTexto = '';
       GSTATE.propComentarioTexto = '';
+      GSTATE.propComboItems = [];
+      GSTATE.propComboFiltro = '';
+      GSTATE.propComboAlias = '';
+      GSTATE.propComboCat = '';
+      GSTATE.propComboTarget = '';
+      GSTATE.propComboComentario = '';
       if (!conservarConfirmacion) {
         GSTATE.propConfirmacionReciente = '';
       }
@@ -5417,6 +5446,425 @@
       sincronizarBotonEnvioPropuestaDom();
     }
 
+    function cambiarModoPropuestaGestor(nuevoModo) {
+      GSTATE.propModo = nuevoModo === 'combo' ? 'combo' : 'fraccion';
+      GSTATE.propConfirmacionReciente = '';
+      renderVistaGestor();
+    }
+
+    function construirFirmaComboGestor(items = []) {
+      const acum = new Map();
+      for (const raw of (items || [])) {
+        const sku = String(raw?.sku_nodo || '').trim().toUpperCase();
+        const cant = Math.floor(Number(raw?.cantidad || 0));
+        if (!sku || cant < 1) continue;
+        acum.set(sku, (acum.get(sku) || 0) + cant);
+      }
+      return Array.from(acum.entries())
+        .sort((a, b) => a[0].localeCompare(b[0], 'en'))
+        .map(([s, c]) => `${s}:${c}`)
+        .join('|');
+    }
+
+    function evaluarEstadoComboGestor() {
+      const mapaElegibles = new Map((GSTATE.articulosElegiblesCombo || []).map(a => [String(a.sku_nodo).toUpperCase(), a]));
+      const itemsDet = [];
+      for (const it of (GSTATE.propComboItems || [])) {
+        const base = mapaElegibles.get(String(it.sku_nodo || '').toUpperCase());
+        if (!base) continue;
+        const cant = Math.max(1, Math.floor(Number(it.cantidad || 1)));
+        itemsDet.push({
+          ...base,
+          cantidad: cant,
+          kilos_subtotal: Number((Number(base.kilos_unidad || 0.25) * cant).toFixed(4)),
+          base_subtotal: Number((Number(base.precio_base_nodo_final || 0) * cant).toFixed(2))
+        });
+      }
+      const paso1Completo = itemsDet.length >= 2;
+      const firma = paso1Completo ? construirFirmaComboGestor(itemsDet) : '';
+      const kilosTot = Number(itemsDet.reduce((s, x) => s + x.kilos_subtotal, 0).toFixed(3));
+      const sumaBasesRef = Number(itemsDet.reduce((s, x) => s + x.base_subtotal, 0).toFixed(0));
+
+      let estadoFirma = { tipo: 'NUEVA_DISPONIBLE' };
+      if (paso1Completo && firma) {
+        const yaCot = (GSTATE.combosCotizadosCatalogo || []).find(c => String(c.firma_combo || '') === firma);
+        if (yaCot) {
+          estadoFirma = yaCot.en_mi_oferta
+            ? { tipo: 'EN_MI_OFERTA', combo: yaCot }
+            : { tipo: 'EN_CATALOGO_DISPONIBLE', combo: yaCot };
+        } else {
+          const yaPend = (GSTATE.propuestasCombos || []).find(
+            p => p.estado === 'PENDIENTE_COTIZACION' && String(p.firma_composicion || '') === firma
+          );
+          if (yaPend) {
+            estadoFirma = { tipo: 'YA_PENDIENTE', propuesta: yaPend };
+          }
+        }
+      }
+
+      const paso2Habilitado = paso1Completo;
+      const paso2Valido = Boolean(paso2Habilitado && estadoFirma.tipo === 'NUEVA_DISPONIBLE');
+      const paso3Habilitado = paso2Valido;
+      const aliasLimpio = String(GSTATE.propComboAlias || '').trim();
+      const puedeEnviar = Boolean(paso3Habilitado && aliasLimpio.length >= 3);
+
+      const clasePaso1 = !paso1Completo ? 'is-current' : 'is-done';
+      const clasePaso2 = !paso2Habilitado ? 'is-locked' : (!paso2Valido ? 'is-current' : 'is-done');
+      const clasePaso3 = !paso3Habilitado ? 'is-locked' : 'is-current';
+
+      return {
+        itemsDet,
+        paso1Completo,
+        firma,
+        kilosTot,
+        sumaBasesRef,
+        estadoFirma,
+        paso2Habilitado,
+        paso2Valido,
+        paso3Habilitado,
+        puedeEnviar,
+        clasePaso1,
+        clasePaso2,
+        clasePaso3
+      };
+    }
+
+    function modificarItemComboPropuestaGestor(skuNodo, delta) {
+      const skuClean = String(skuNodo || '').trim();
+      if (!skuClean) return;
+      const teniaDos = (GSTATE.propComboItems || []).length >= 2;
+      const idx = GSTATE.propComboItems.findIndex(x => x.sku_nodo.toUpperCase() === skuClean.toUpperCase());
+      if (idx >= 0) {
+        const nueva = GSTATE.propComboItems[idx].cantidad + Number(delta || 0);
+        if (nueva <= 0) GSTATE.propComboItems.splice(idx, 1);
+        else GSTATE.propComboItems[idx].cantidad = nueva;
+      } else if (delta > 0) {
+        GSTATE.propComboItems.push({ sku_nodo: skuClean, cantidad: Number(delta) });
+      }
+      // Reinicio en cascada si al quitar un artículo deja de cumplirse el Paso 1 (< 2 SKUs)
+      if (GSTATE.propComboItems.length < 2) {
+        GSTATE.propComboTarget = '';
+        GSTATE.propComboComentario = '';
+        GSTATE.propComboAlias = '';
+        GSTATE.propComboCat = '';
+      }
+      GSTATE.propConfirmacionReciente = '';
+      renderVistaGestor();
+      if (!teniaDos && GSTATE.propComboItems.length >= 2) {
+        acompanarScrollPasoGestor('prop-cmb-step-2');
+      }
+    }
+
+    function filtrarElegiblesComboGestor(texto) {
+      GSTATE.propComboFiltro = String(texto || '');
+      const listEl = document.getElementById('prop-cmb-elegibles-list');
+      if (listEl) listEl.innerHTML = renderListaElegiblesComboGestorHtml();
+    }
+
+    function renderListaElegiblesComboGestorHtml() {
+      const selMap = new Map((GSTATE.propComboItems || []).map(x => [x.sku_nodo.toUpperCase(), x.cantidad]));
+      const terms = normalizarTextoGestor(GSTATE.propComboFiltro || '').split(/\s+/).filter(Boolean);
+      const filtrados = (GSTATE.articulosElegiblesCombo || []).filter(a => {
+        if (terms.length === 0) return true;
+        const bolsa = normalizarTextoGestor(`${a.sku_nodo} ${a.nombre_oficial_lamda} ${a.categoria_oficial_lamda} ${a.presentacion_etiqueta || ''}`);
+        return terms.every(t => bolsa.includes(t));
+      });
+      if (filtrados.length === 0) {
+        return `<div style="padding:10px; font-size:0.78rem; color:var(--muted); text-align:center;">No encontramos artículos con ese término.</div>`;
+      }
+      return filtrados.slice(0, 45).map(a => {
+        const cantSel = selMap.get(String(a.sku_nodo).toUpperCase()) || 0;
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px; border-radius:9px; border:1px solid ${cantSel > 0 ? 'var(--brand)' : 'var(--border)'}; background:${cantSel > 0 ? 'var(--brand-soft)' : '#ffffff'};">
+            <div style="min-width:0; flex:1;">
+              <div style="font-size:0.8rem; font-weight:800; color:var(--text); line-height:1.25;">
+                <code style="font-size:0.72rem; color:var(--brand-dark);">[${esc(a.sku_nodo)}]</code> ${esc(a.nombre_oficial_lamda)}
+              </div>
+              <div style="font-size:0.71rem; color:var(--muted);">
+                ${esc(a.categoria_oficial_lamda)} · Costo Base ref.: <strong>${fmt(a.precio_base_nodo_final)}</strong>
+              </div>
+            </div>
+            ${cantSel === 0 ? `
+              <button type="button" class="btn-soft" data-testid="btn-gestor-sumar-combo-${esc(a.sku_nodo)}"
+                style="font-size:0.74rem; padding:5px 10px; font-weight:800; flex-shrink:0;"
+                onclick="modificarItemComboPropuestaGestor('${esc(a.sku_nodo)}', 1)">
+                + Sumar
+              </button>
+            ` : `
+              <div style="display:inline-flex; align-items:center; gap:5px; flex-shrink:0;">
+                <button type="button" class="btn-soft" style="padding:3px 8px; font-weight:900;" onclick="modificarItemComboPropuestaGestor('${esc(a.sku_nodo)}', -1)">−</button>
+                <strong style="min-width:18px; text-align:center; font-size:0.82rem; color:var(--brand-dark);">${cantSel}</strong>
+                <button type="button" class="btn-soft" style="padding:3px 8px; font-weight:900;" onclick="modificarItemComboPropuestaGestor('${esc(a.sku_nodo)}', 1)">+</button>
+              </div>
+            `}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function alEditarCamposComboGestor() {
+      const tEl = document.getElementById('prop-cmb-target');
+      if (tEl && !tEl.disabled) GSTATE.propComboTarget = tEl.value;
+      const cEl = document.getElementById('prop-cmb-comentario');
+      if (cEl && !cEl.disabled) GSTATE.propComboComentario = cEl.value;
+      const aEl = document.getElementById('prop-cmb-alias');
+      if (aEl && !aEl.disabled) GSTATE.propComboAlias = aEl.value;
+      const catEl = document.getElementById('prop-cmb-cat');
+      if (catEl && !catEl.disabled) GSTATE.propComboCat = catEl.value;
+
+      const ev = evaluarEstadoComboGestor();
+      const btn = document.getElementById('btn-enviar-combo-gestor');
+      if (btn) {
+        btn.disabled = !ev.puedeEnviar;
+        btn.style.opacity = ev.puedeEnviar ? '1' : '0.46';
+      }
+    }
+
+    async function enviarPropuestaComboGestor() {
+      const ev = evaluarEstadoComboGestor();
+      if (!ev.puedeEnviar) {
+        mostrarAvisoPantallaGestor('Completá al menos 2 artículos y el nombre comercial sugerido para tu tienda antes de enviar.', 'error');
+        return;
+      }
+      const btn = document.getElementById('btn-enviar-combo-gestor');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Enviando solicitud...';
+      }
+      try {
+        const resp = await fetchGestor('/api/produccion/nodos/propuestas-combos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodo_solicitante_id: GSTATE.nodo.id,
+            items: ev.itemsDet.map((it, idx) => ({
+              componente_articulo_id: it.sku_nodo,
+              cantidad: it.cantidad,
+              orden: idx + 1
+            })),
+            alias_vidriera_sugerido: String(GSTATE.propComboAlias || '').trim(),
+            categoria_vidriera_sugerida: String(GSTATE.propComboCat || '').trim() || null,
+            precio_objetivo_vecino: Number(GSTATE.propComboTarget || 0) || null,
+            comentario_gestor: String(GSTATE.propComboComentario || '').trim() || null
+          })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo enviar el combo: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Enviar solicitud de Combo';
+          }
+          return;
+        }
+        const cod = data.propuesta?.codigo_propuesta || '';
+        GSTATE.propConfirmacionReciente = `✅ ¡Solicitud de Combo enviada (${cod})! Cuando se apruebe su Costo Base aparecerá lista en Mi Oferta y Márgenes.`;
+        await cargarPanelGestor({ resetPropuesta: true });
+        GSTATE.propModo = 'combo';
+        renderVistaGestor();
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Error de conexión al enviar la solicitud de combo.', 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Enviar solicitud de Combo';
+        }
+      }
+    }
+
+    async function anularPropuestaComboGestor(propId) {
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/propuestas-combos/${Number(propId)}/anular`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nodo_id: GSTATE.nodo?.id || null })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo anular la solicitud: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
+          return;
+        }
+        GSTATE.propConfirmacionReciente = `✓ Solicitud de combo (${data.propuesta?.codigo_propuesta || ''}) anulada.`;
+        mostrarAvisoPantallaGestor(GSTATE.propConfirmacionReciente, 'ok');
+        await cargarPanelGestor();
+        renderVistaGestor();
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Falla de conexión al intentar anular la solicitud de combo.', 'error');
+      }
+    }
+
+    function renderFormularioPropuestaComboHtml() {
+      const ev = evaluarEstadoComboGestor();
+      const est = ev.estadoFirma;
+
+      let avisoPaso2Html = '';
+      if (ev.paso2Habilitado) {
+        if (est.tipo === 'EN_MI_OFERTA') {
+          avisoPaso2Html = `
+            <div style="padding:11px 12px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.3); font-size:0.8rem; line-height:1.45;">
+              <strong style="color:var(--ok);">✓ Ya tenés este combo en tu catálogo</strong> (${esc(est.combo.etiqueta_oficial_lamda)} · Costo Base <strong>${fmt(est.combo.precio_base_nodo_final)}</strong>).
+              <div style="margin-top:8px;">
+                <button type="button" class="btn-soft" style="font-size:0.76rem; padding:5px 11px;" onclick="abrirSeccionGestor('ofertas')">
+                  Ir a Mi Oferta y Márgenes →
+                </button>
+              </div>
+            </div>
+          `;
+        } else if (est.tipo === 'EN_CATALOGO_DISPONIBLE') {
+          avisoPaso2Html = `
+            <div style="padding:11px 12px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.3); font-size:0.8rem; line-height:1.45;">
+              <strong style="color:var(--ok);">✓ Esta combinación ya está cotizada</strong> (${esc(est.combo.etiqueta_oficial_lamda)} · Costo Base <strong>${fmt(est.combo.precio_base_nodo_final)}</strong>).<br>
+              Sumala directo a tu tienda en un toque:
+              <div style="margin-top:8px;">
+                <button type="button" class="btn-primary" style="font-size:0.78rem; padding:6px 12px;"
+                  onclick="sumarCatalogoBaseAMiOferta(${Number(est.combo.catalogo_id)}, true)">
+                  + Sumar a Mi Oferta y Márgenes
+                </button>
+              </div>
+            </div>
+          `;
+        } else if (est.tipo === 'YA_PENDIENTE') {
+          avisoPaso2Html = `
+            <div style="padding:11px 12px; border-radius:11px; background:var(--warn-soft); border:1px solid rgba(180,83,9,0.28); color:var(--warn); font-size:0.8rem; line-height:1.45;">
+              <strong>⏳ Solicitud en cotización (${esc(est.propuesta.codigo_propuesta)})</strong><br>
+              Ya enviaste esta misma combinación y está pendiente de aprobación.
+              <div style="margin-top:8px; display:flex; justify-content:flex-end;">
+                <button type="button" class="btn-soft"
+                  style="font-size:0.75rem; padding:5px 10px; border-color:rgba(185,28,28,0.35); color:#b91c1c; background:#fff5f5;"
+                  onclick="anularPropuestaComboGestor(${Number(est.propuesta.id)})">
+                  ✕ Anular solicitud
+                </button>
+              </div>
+            </div>
+          `;
+        }
+      }
+
+      return `
+        <div class="prop-steps-stack">
+          <!-- PASO 1: SELECCIONAR 2 O MÁS ARTÍCULOS EXISTENTES -->
+          <div id="prop-cmb-step-1" class="prop-step-card ${ev.clasePaso1}">
+            <div class="prop-step-head">
+              <div class="prop-step-title-wrap">
+                <span class="prop-step-num">1</span>
+                <span class="prop-step-title">Elegir 2 o más artículos oficiales</span>
+              </div>
+              <div>
+                ${renderBadgeEstadoPasoPropuesta(ev.clasePaso1, `${ev.itemsDet.length} artículos`, 'Elegí al menos 2')}
+              </div>
+            </div>
+
+            ${ev.itemsDet.length > 0 ? `
+              <div style="margin-bottom:9px; padding:8px 10px; border-radius:10px; background:var(--surface-warm); border:1px solid var(--border);">
+                <div style="font-size:0.73rem; font-weight:800; color:var(--brand-dark); margin-bottom:5px;">
+                  Seleccionados en tu combo (${ev.itemsDet.length} SKUs · ${formatearPesoCortoGestor(ev.kilosTot)}):
+                </div>
+                <div style="display:flex; flex-direction:column; gap:5px;">
+                  ${ev.itemsDet.map(it => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:0.78rem;">
+                      <span><strong>${it.cantidad}x</strong> [${esc(it.sku_nodo)}] ${esc(it.nombre_oficial_lamda)}</span>
+                      <div style="display:inline-flex; gap:4px;">
+                        <button type="button" class="btn-soft" style="padding:2px 7px;" onclick="modificarItemComboPropuestaGestor('${esc(it.sku_nodo)}', -1)">−</button>
+                        <button type="button" class="btn-soft" style="padding:2px 7px;" onclick="modificarItemComboPropuestaGestor('${esc(it.sku_nodo)}', 1)">+</button>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+
+            <input type="text" class="input-sm" style="width:100%; margin-bottom:7px;"
+              value="${esc(GSTATE.propComboFiltro)}"
+              placeholder="🔍 Buscar artículo por nombre o código SKU..."
+              oninput="filtrarElegiblesComboGestor(this.value)" />
+
+            <div id="prop-cmb-elegibles-list" style="display:flex; flex-direction:column; gap:6px; max-height:240px; overflow-y:auto;">
+              ${renderListaElegiblesComboGestorHtml()}
+            </div>
+          </div>
+
+          <!-- PASO 2: PRESENTACIÓN Y NOTAS DE ARMADO -->
+          <div id="prop-cmb-step-2" class="prop-step-card ${ev.clasePaso2}">
+            <div class="prop-step-head">
+              <div class="prop-step-title-wrap">
+                <span class="prop-step-num">2</span>
+                <span class="prop-step-title">Presentación y referencia</span>
+              </div>
+              <div>
+                ${renderBadgeEstadoPasoPropuesta(ev.clasePaso2, 'Verificado', 'Validando combinación')}
+              </div>
+            </div>
+
+            ${avisoPaso2Html}
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:9px; margin-top:${avisoPaso2Html ? '8px' : '0'};">
+              <div>
+                <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Suma bases individuales (ref.)</label>
+                <input type="text" class="input-sm" style="width:100%; background:var(--surface-warm); font-weight:800;" disabled
+                  value="${ev.paso2Habilitado ? fmt(ev.sumaBasesRef) : '—'}" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Precio venta pensado ($ opc.)</label>
+                <input type="text" inputmode="numeric" id="prop-cmb-target" class="input-sm" style="width:100%;"
+                  ${!ev.paso2Valido ? 'disabled' : ''}
+                  value="${esc(ev.paso2Valido ? GSTATE.propComboTarget : '')}"
+                  oninput="alEditarCamposComboGestor()"
+                  placeholder="Opcional" />
+              </div>
+            </div>
+
+            <div style="margin-top:8px;">
+              <label style="display:block; font-size:0.73rem; font-weight:800; margin-bottom:3px;">Notas o presentación especial (opcional)</label>
+              <input type="text" id="prop-cmb-comentario" class="input-sm" style="width:100%;"
+                ${!ev.paso2Valido ? 'disabled' : ''}
+                value="${esc(ev.paso2Valido ? GSTATE.propComboComentario : '')}"
+                oninput="alEditarCamposComboGestor()"
+                placeholder="Ej: Para desayuno familiar o caja regalo" />
+            </div>
+          </div>
+
+          <!-- PASO 3: NOMBRE COMERCIAL EN MI TIENDA Y ENVÍO -->
+          <div id="prop-cmb-step-3" class="prop-step-card ${ev.clasePaso3}">
+            <div class="prop-step-head">
+              <div class="prop-step-title-wrap">
+                <span class="prop-step-num">3</span>
+                <span class="prop-step-title">Nombre en mi tienda y envío</span>
+              </div>
+              <div>
+                ${renderBadgeEstadoPasoPropuesta(ev.clasePaso3, 'Listo', 'Definí el nombre')}
+              </div>
+            </div>
+
+            <div style="margin-bottom:8px;">
+              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Nombre comercial sugerido para mi vidriera *</label>
+              <input type="text" id="prop-cmb-alias" class="input-sm" style="width:100%;"
+                data-testid="input-gestor-combo-alias"
+                ${!ev.paso3Habilitado ? 'disabled' : ''}
+                value="${esc(ev.paso3Habilitado ? GSTATE.propComboAlias : '')}"
+                oninput="alEditarCamposComboGestor()"
+                placeholder="Ej: Combo Desayuno Energético" />
+            </div>
+
+            <div style="margin-bottom:10px;">
+              <label style="display:block; font-size:0.73rem; color:var(--muted); font-weight:800; margin-bottom:3px;">Categoría en mi tienda (opcional)</label>
+              <input type="text" id="prop-cmb-cat" class="input-sm" style="width:100%;"
+                ${!ev.paso3Habilitado ? 'disabled' : ''}
+                value="${esc(ev.paso3Habilitado ? GSTATE.propComboCat : '')}"
+                oninput="alEditarCamposComboGestor()"
+                placeholder="Ej: Combos y Packs" />
+            </div>
+
+            <button type="button" id="btn-enviar-combo-gestor" class="btn-primary"
+              data-testid="btn-gestor-enviar-combo"
+              ${ev.puedeEnviar ? '' : 'disabled'}
+              style="width:100%; opacity:${ev.puedeEnviar ? '1' : '0.46'};"
+              onclick="enviarPropuestaComboGestor()">
+              Enviar solicitud de Combo
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
     function renderSeccionPropuestas() {
       const disponibles = GSTATE.ingredientesDisponibles || [];
       const categoriasUnicas = Array.from(new Set(disponibles.map(i => i.categoria_lamda || i.categoria_gestor)));
@@ -5432,13 +5880,30 @@
         ? obtenerIngredientesFiltradosGestor(GSTATE.propCategoriaSel, GSTATE.propFiltroTexto)
         : [];
       const ingSel = ev.ingSel;
+      const esModoCombo = GSTATE.propModo === 'combo';
+      const totalSolicitudes = (GSTATE.propuestas?.length || 0) + (GSTATE.propuestasCombos?.length || 0);
 
       return `
         <div class="propuestas-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; align-items:start;">
           <div class="card">
-            <h3 style="margin:0 0 6px 0; font-size:1rem;">Solicitar Nueva Fracción</h3>
+            <div style="display:flex; gap:8px; margin-bottom:12px; padding:4px; border-radius:12px; background:var(--surface-warm); border:1px solid var(--border);">
+              <button type="button" data-testid="tab-propuesta-fraccion"
+                onclick="cambiarModoPropuestaGestor('fraccion')"
+                style="flex:1; padding:9px 10px; border-radius:9px; border:${!esModoCombo ? '1.5px solid var(--brand)' : '1px solid transparent'}; background:${!esModoCombo ? '#ffffff' : 'transparent'}; color:${!esModoCombo ? 'var(--brand-dark)' : 'var(--muted)'}; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer;">
+                ⚖️ Fracción individual
+              </button>
+              <button type="button" data-testid="tab-propuesta-combo"
+                onclick="cambiarModoPropuestaGestor('combo')"
+                style="flex:1; padding:9px 10px; border-radius:9px; border:${esModoCombo ? '1.5px solid var(--brand)' : '1px solid transparent'}; background:${esModoCombo ? '#ffffff' : 'transparent'}; color:${esModoCombo ? 'var(--brand-dark)' : 'var(--muted)'}; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer;">
+                🎁 Armar Combo / Pack
+              </button>
+            </div>
+
+            <h3 style="margin:0 0 6px 0; font-size:1rem;">${esModoCombo ? 'Solicitar Cotización de Combo / Pack' : 'Solicitar Nueva Fracción'}</h3>
             <p style="margin:0 0 12px 0; font-size:0.8rem; color:var(--muted);">
-              Completá los pasos en orden seleccionando el ingrediente oficial LAMDA. Cuando se cotice su Precio Base aparecerá en <strong>Mi Oferta y Márgenes</strong> con su SKU oficial.
+              ${esModoCombo
+                ? 'Combiná 2 o más artículos ya cotizados para proponer un pack cerrado. Una vez aprobado su Costo Base aparecerá en <strong>Mi Oferta y Márgenes</strong> para fijarle tu margen, fotos y videos.'
+                : 'Completá los pasos en orden seleccionando el ingrediente oficial LAMDA. Cuando se cotice su Precio Base aparecerá en <strong>Mi Oferta y Márgenes</strong> con su SKU oficial.'}
             </p>
 
             <div id="prop-confirmacion-reciente">
@@ -5449,6 +5914,7 @@
               ` : ''}
             </div>
 
+            ${esModoCombo ? renderFormularioPropuestaComboHtml() : `
             <div class="prop-steps-stack">
               <!-- PASO 1: FAMILIA / RUBRO OFICIAL LAMDA -->
               <div id="prop-step-1" class="prop-step-card ${ev.clasePaso1}">
@@ -5601,16 +6067,60 @@
                 </button>
               </div>
             </div>
+            `}
           </div>
 
           <div class="card">
-            <h3 style="margin:0 0 12px 0; font-size:1rem;">Mis Solicitudes (${GSTATE.propuestas.length})</h3>
+            <h3 style="margin:0 0 12px 0; font-size:1rem;">Mis Solicitudes (${totalSolicitudes})</h3>
             <div style="display:flex; flex-direction:column; gap:10px;">
-              ${GSTATE.propuestas.length === 0 ? `
+              ${totalSolicitudes === 0 ? `
                 <div style="padding:18px; border-radius:12px; border:1px dashed var(--border); color:var(--muted); font-size:0.84rem; text-align:center;">
-                  Todavía no enviaste solicitudes de fracciones.
+                  Todavía no enviaste solicitudes de fracciones ni combos.
                 </div>
-              ` : GSTATE.propuestas.map(p => {
+              ` : ''}
+              ${(GSTATE.propuestasCombos || []).map(pc => {
+                const esAp = pc.estado === 'APROBADA';
+                const esDesc = pc.estado === 'DESCARTADA';
+                const bBg = esAp ? 'var(--ok-soft)' : esDesc ? '#f3f4f6' : 'var(--warn-soft)';
+                const bCol = esAp ? 'var(--ok)' : esDesc ? 'var(--muted)' : 'var(--warn)';
+                const bLbl = esAp ? 'Cotizado' : esDesc ? 'Descartado' : 'En cotización';
+                return `
+                  <div data-testid="card-gestor-solicitud-combo-${pc.id}" style="padding:12px; border-radius:12px; border:1px solid #d8b4fe; background:#fdfaff;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="font-size:0.7rem; font-weight:900; padding:2px 7px; border-radius:999px; background:#f3e8ff; color:#6b21a8;">🎁 Combo</span>
+                        <strong style="font-size:0.9rem;">${esc(pc.alias_vidriera_sugerido || pc.codigo_propuesta)}</strong>
+                      </div>
+                      <span style="font-size:0.72rem; font-weight:800; padding:3px 9px; border-radius:999px; background:${bBg}; color:${bCol};">
+                        ${bLbl}
+                      </span>
+                    </div>
+                    <div style="font-size:0.76rem; color:var(--text); margin-top:5px; line-height:1.4;">
+                      ${(pc.items || []).map(it => `• <strong>${it.cantidad}x</strong> ${esc(it.etiqueta_oficial_lamda || `[${it.componente_articulo_id}] ${it.nombre_oficial_lamda}`)}`).join('<br>')}
+                    </div>
+                    <div style="font-size:0.74rem; color:var(--muted); margin-top:4px;">
+                      Código: <strong>${esc(pc.codigo_propuesta)}</strong> · Peso total: <strong>${esc(formatearPesoCortoGestor(pc.kilos_totales || 0.5))}</strong>
+                      ${pc.combo_sku_creado ? ` · SKU aprobado: <strong>[${esc(pc.combo_sku_creado)}]</strong>` : ''}
+                    </div>
+                    ${pc.comentario_gestor ? `<div style="margin-top:4px; font-size:0.75rem; color:var(--muted);">${esc(pc.comentario_gestor)}</div>` : ''}
+                    ${pc.respuesta_lamda ? `<div style="margin-top:5px; padding:6px 8px; border-radius:8px; background:#f8f7f5; font-size:0.75rem; color:var(--muted);">${esc(pc.respuesta_lamda)}</div>` : ''}
+                    <div style="margin-top:8px; display:flex; justify-content:flex-end; gap:8px;">
+                      ${esAp ? `
+                        <button type="button" class="btn-soft" style="font-size:0.75rem; padding:5px 10px;" onclick="abrirSeccionGestor('ofertas')">
+                          Ver en Mi Oferta y Márgenes →
+                        </button>
+                      ` : !esDesc ? `
+                        <button type="button" class="btn-soft"
+                          style="font-size:0.75rem; padding:5px 10px; border-color:rgba(185,28,28,0.35); color:#b91c1c; background:#fff5f5;"
+                          onclick="anularPropuestaComboGestor(${Number(pc.id)})">
+                          ✕ Anular solicitud
+                        </button>
+                      ` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+              ${GSTATE.propuestas.map(p => {
                 const gramosTxt = formatearPesoCortoGestor(p.kilos_sugeridos || 0.25);
                 const esHabilitacion = Boolean(p.articulo_bunker_sugerido_codigo);
                 const esAprobada = p.estado === 'APROBADA';

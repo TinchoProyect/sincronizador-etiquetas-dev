@@ -1,6 +1,6 @@
 {
-  "tableCount": 168,
-  "uniqueIndexCount": 242,
+  "tableCount": 171,
+  "uniqueIndexCount": 249,
   "tables": {
     "articulos": {
       "numero": {
@@ -734,6 +734,26 @@
         "data_type": "character varying",
         "udt_name": "varchar",
         "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "es_combo": {
+        "ordinal_position": 23,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "firma_combo": {
+        "ordinal_position": 24,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 500,
         "numeric_precision": null,
         "numeric_scale": null,
         "is_nullable": "YES",
@@ -1478,6 +1498,68 @@
         "numeric_scale": 0,
         "is_nullable": "YES",
         "column_default": "(date_part('year'::text, CURRENT_DATE))::integer"
+      }
+    },
+    "bunker_combos_componentes": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('bunker_combos_componentes_id_seq'::regclass)"
+      },
+      "combo_articulo_id": {
+        "ordinal_position": 2,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 60,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "componente_articulo_id": {
+        "ordinal_position": 3,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 60,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "cantidad": {
+        "ordinal_position": 4,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "orden": {
+        "ordinal_position": 5,
+        "data_type": "smallint",
+        "udt_name": "int2",
+        "character_maximum_length": null,
+        "numeric_precision": 16,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "1"
+      },
+      "created_at": {
+        "ordinal_position": 6,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
       }
     },
     "bunker_conciliacion_articulos": {
@@ -12006,6 +12088,66 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "'[]'::jsonb"
+      },
+      "es_combo": {
+        "ordinal_position": 40,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "firma_combo": {
+        "ordinal_position": 41,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 500,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "modo_precio_combo": {
+        "ordinal_position": 42,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'COSTO_MAS_MARGEN'::character varying"
+      },
+      "ajuste_comercial_combo_pct": {
+        "ordinal_position": 43,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 8,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "cargo_pack_combo": {
+        "ordinal_position": 44,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "NO",
+        "column_default": "0.00"
+      },
+      "precio_manual_override": {
+        "ordinal_position": 45,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_configuracion_canal": {
@@ -14478,6 +14620,26 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "es_combo": {
+        "ordinal_position": 14,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "componentes_combo_snapshot": {
+        "ordinal_position": 15,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_pedidos_vecinos": {
@@ -15250,6 +15412,220 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "stock_descontado_deposito": {
+        "ordinal_position": 78,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      }
+    },
+    "nodos_propuestas_combos": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_propuestas_combos_id_seq'::regclass)"
+      },
+      "codigo_propuesta": {
+        "ordinal_position": 2,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "nodo_solicitante_id": {
+        "ordinal_position": 3,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "firma_composicion": {
+        "ordinal_position": 4,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 500,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "alias_vidriera_sugerido": {
+        "ordinal_position": 5,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 180,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "categoria_vidriera_sugerida": {
+        "ordinal_position": 6,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "precio_objetivo_vecino": {
+        "ordinal_position": 7,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "comentario_gestor": {
+        "ordinal_position": 8,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "respuesta_lamda": {
+        "ordinal_position": 9,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "estado": {
+        "ordinal_position": 10,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'PENDIENTE_COTIZACION'::character varying"
+      },
+      "articulo_catalogo_id": {
+        "ordinal_position": 11,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "combo_sku_creado": {
+        "ordinal_position": 12,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 60,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "created_at": {
+        "ordinal_position": 13,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      "updated_at": {
+        "ordinal_position": 14,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      }
+    },
+    "nodos_propuestas_combos_items": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_propuestas_combos_items_id_seq'::regclass)"
+      },
+      "propuesta_combo_id": {
+        "ordinal_position": 2,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "componente_articulo_id": {
+        "ordinal_position": 3,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 60,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "articulo_catalogo_hijo_id": {
+        "ordinal_position": 4,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "cantidad": {
+        "ordinal_position": 5,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "orden": {
+        "ordinal_position": 6,
+        "data_type": "smallint",
+        "udt_name": "int2",
+        "character_maximum_length": null,
+        "numeric_precision": 16,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "1"
       }
     },
     "nodos_propuestas_fracciones": {
@@ -20072,6 +20448,16 @@
         "numeric_scale": 3,
         "is_nullable": "YES",
         "column_default": "0"
+      },
+      "es_combo": {
+        "ordinal_position": 16,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
       }
     },
     "stock_ventas_movimientos": {
@@ -20903,6 +21289,33 @@
       ],
       "has_expression_key": false,
       "sig": "bunker_clientes::(lomas_soft_id)[pred=]"
+    },
+    {
+      "table_name": "bunker_combos_componentes",
+      "index_name": "unq_bunker_combo_componente",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX unq_bunker_combo_componente ON public.bunker_combos_componentes USING btree (combo_articulo_id, componente_articulo_id)",
+      "index_predicate": "",
+      "key_columns": [
+        "combo_articulo_id",
+        "componente_articulo_id"
+      ],
+      "has_expression_key": false,
+      "sig": "bunker_combos_componentes::(combo_articulo_id, componente_articulo_id)[pred=]"
+    },
+    {
+      "table_name": "bunker_combos_componentes",
+      "index_name": "bunker_combos_componentes_pkey",
+      "is_primary": true,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX bunker_combos_componentes_pkey ON public.bunker_combos_componentes USING btree (id)",
+      "index_predicate": "",
+      "key_columns": [
+        "id"
+      ],
+      "has_expression_key": false,
+      "sig": "bunker_combos_componentes::(id)[pred=]"
     },
     {
       "table_name": "bunker_conciliacion_articulos",
@@ -23056,6 +23469,73 @@
       ],
       "has_expression_key": false,
       "sig": "nodos_pedidos_vecinos::(tracking_token)[pred=(tracking_token is not null)]"
+    },
+    {
+      "table_name": "nodos_propuestas_combos_items",
+      "index_name": "nodos_propuestas_combos_items_pkey",
+      "is_primary": true,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX nodos_propuestas_combos_items_pkey ON public.nodos_propuestas_combos_items USING btree (id)",
+      "index_predicate": "",
+      "key_columns": [
+        "id"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_propuestas_combos_items::(id)[pred=]"
+    },
+    {
+      "table_name": "nodos_propuestas_combos_items",
+      "index_name": "unq_nodos_prop_combo_item",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX unq_nodos_prop_combo_item ON public.nodos_propuestas_combos_items USING btree (propuesta_combo_id, componente_articulo_id)",
+      "index_predicate": "",
+      "key_columns": [
+        "propuesta_combo_id",
+        "componente_articulo_id"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_propuestas_combos_items::(propuesta_combo_id, componente_articulo_id)[pred=]"
+    },
+    {
+      "table_name": "nodos_propuestas_combos",
+      "index_name": "nodos_propuestas_combos_codigo_propuesta_key",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX nodos_propuestas_combos_codigo_propuesta_key ON public.nodos_propuestas_combos USING btree (codigo_propuesta)",
+      "index_predicate": "",
+      "key_columns": [
+        "codigo_propuesta"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_propuestas_combos::(codigo_propuesta)[pred=]"
+    },
+    {
+      "table_name": "nodos_propuestas_combos",
+      "index_name": "nodos_propuestas_combos_pkey",
+      "is_primary": true,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX nodos_propuestas_combos_pkey ON public.nodos_propuestas_combos USING btree (id)",
+      "index_predicate": "",
+      "key_columns": [
+        "id"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_propuestas_combos::(id)[pred=]"
+    },
+    {
+      "table_name": "nodos_propuestas_combos",
+      "index_name": "unq_nodos_prop_combo_pendiente",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX unq_nodos_prop_combo_pendiente ON public.nodos_propuestas_combos USING btree (nodo_solicitante_id, firma_composicion) WHERE ((estado)::text = 'PENDIENTE_COTIZACION'::text)",
+      "index_predicate": "((estado)::text = 'PENDIENTE_COTIZACION'::text)",
+      "key_columns": [
+        "nodo_solicitante_id",
+        "firma_composicion"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_propuestas_combos::(nodo_solicitante_id, firma_composicion)[pred=((estado)::text = 'pendiente_cotizacion'::text)]"
     },
     {
       "table_name": "nodos_propuestas_fracciones",

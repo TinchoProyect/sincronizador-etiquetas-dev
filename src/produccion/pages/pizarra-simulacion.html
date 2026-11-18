@@ -1704,7 +1704,7 @@
 
   <!-- BARRA DE CONTEXTO LDN LIBERADA Y DESPEJADA -->
   <div class="ldn-context-bar">
-    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; overflow-x: auto; width: 100%;">
+    <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; width: 100%;">
       <button class="ldn-tab active" id="ldn-btn-1" onclick="cambiarContextoLDN(1)" title="[LDN 1] Flujo 1: Comercialización Directa (Sin Receta)">
         <span class="ldn-tab-title">[LDN 1] Directo</span>
         <span class="ldn-incidence-badge" id="ldn-badge-1" style="display: none;"></span>
@@ -1732,6 +1732,10 @@
       <button class="ldn-tab" id="ldn-btn-7" onclick="cambiarContextoLDN(7)" title="Cotizador de Nodos (Marca Blanca), Padrón Aislado y Alta de Nodos con Etiqueta Zebra ^GFA" style="border-color: rgba(16, 185, 129, 0.45); background: rgba(16, 185, 129, 0.08);">
         <span class="ldn-tab-title" style="color: #6ee7b7;">🏘️ Cotizador Nodos</span>
         <span class="ldn-incidence-badge" id="ldn-badge-7" style="display: none;"></span>
+      </button>
+      <button class="ldn-tab" id="ldn-btn-8" onclick="cambiarContextoLDN(8)" title="[LDN 8] Combos y Packs Compuestos (Nodos Lista 8 y Listas Mayoristas B2B)" style="border-color: rgba(168, 85, 247, 0.48); background: rgba(168, 85, 247, 0.10);">
+        <span class="ldn-tab-title" style="color: #e9d5ff;">🎁 [LDN 8] Combos</span>
+        <span class="ldn-incidence-badge" id="ldn-badge-8" style="display: none;"></span>
       </button>
 
       <!-- Indicador Global de Enfoque Reactivo de Líneas de Negocio -->
@@ -1989,6 +1993,8 @@
 
   <!-- CONTENEDOR EXCLUSIVO: UNIDAD DE NEGOCIO NODOS BARRIALES (MARCA BLANCA) -->
   <div id="nodos-cotizador-container" style="display: none; padding: 12px 18px; max-width: 100%; overflow-x: hidden;"></div>
+  <!-- CONTENEDOR TRANSVERSAL: [LDN 8] COMBOS Y PACKS COMPUESTOS -->
+  <div id="combos-ldn8-container" style="display: none; padding: 12px 18px; max-width: 100%; overflow-x: hidden;"></div>
 
 
 
@@ -2640,6 +2646,44 @@
         }
       });
 
+      // 3.5. Resolver Combos Compuestos (LDN 8: public.bunker_combos_componentes) en cascada reactiva
+      if (Array.isArray(data.combosComponentes) && data.combosComponentes.length > 0) {
+        const compsPorCombo = new Map();
+        data.combosComponentes.forEach(cc => {
+          const cKey = String(cc.combo_articulo_id || '').trim().toUpperCase();
+          if (!cKey) return;
+          if (!compsPorCombo.has(cKey)) compsPorCombo.set(cKey, []);
+          compsPorCombo.get(cKey).push(cc);
+        });
+        data.articulosBunker.forEach(art => {
+          const cKey = String(art.articulo_id || '').trim().toUpperCase();
+          const listaHijos = compsPorCombo.get(cKey);
+          if (!art.es_combo && (!listaHijos || listaHijos.length === 0)) return;
+          if (!listaHijos || listaHijos.length === 0) return;
+
+          let sumaCostoHijos = 0;
+          listaHijos.forEach(cc => {
+            const skuHijo = String(cc.componente_articulo_id || '').trim();
+            const cantHijo = Math.max(1, parseFloat(cc.cantidad) || 1);
+            const hijoArt = data.articulosBunker.find(h => (h.articulo_id || '').trim().toUpperCase() === skuHijo.toUpperCase());
+            const hijoKilos = hijoArt && parseFloat(hijoArt.kilos_unidad) > 0 ? parseFloat(hijoArt.kilos_unidad) : 1;
+            const costoHijoKg = (hijoArt && articulosSim[hijoArt.articulo_id] !== undefined)
+              ? articulosSim[hijoArt.articulo_id]
+              : (articulosSim[skuHijo] !== undefined ? articulosSim[skuHijo] : 0);
+            const laHijoRef = data.articulosListas.find(c => (c.articulo_numero || '').trim().toUpperCase() === skuHijo.toUpperCase() && c.es_patron)
+              || data.articulosListas.find(c => (c.articulo_numero || '').trim().toUpperCase() === skuHijo.toUpperCase());
+            const insumosHijo = laHijoRef ? (insumosListasMap.get(laHijoRef.id) || []) : [];
+            const costoInsumosHijo = insumosHijo.reduce((s, ins) => s + (ins.incluido ? (parseFloat(ins.cantidad) * parseFloat(ins.costo_unitario_capturado)) : 0), 0);
+            const moHijo = (laHijoRef && laHijoRef.mano_obra_activa !== false) ? (parseFloat(laHijoRef.costo_tiempo) || 0) : 0;
+            const costoUnitarioHijoSim = (costoHijoKg * hijoKilos) + costoInsumosHijo + moHijo;
+            sumaCostoHijos += cantHijo * costoUnitarioHijoSim;
+          });
+
+          const comboKilos = parseFloat(art.kilos_unidad) > 0 ? parseFloat(art.kilos_unidad) : 1;
+          articulosSim[art.articulo_id] = sumaCostoHijos / comboKilos;
+        });
+      }
+
       // 4. Resolver precios y márgenes de todas las listas de artículos
       data.articulosListas.forEach(la => {
         const key = `${la.lista_id}_${la.articulo_numero}`;
@@ -2699,16 +2743,19 @@
             la.modo_iva
           );
         } else {
-          laSim.margen_simulado = calcularMargenGanancia(
-            costoBaseBultoSim,
-            laSim.precio_simulado,
-            costoTiempo,
-            parseFloat(la.iva) || 0,
-            la.modo_iva
-          );
+            laSim.margen_simulado = calcularMargenGanancia(
+              costoBaseBultoSim,
+              laSim.precio_simulado,
+              costoTiempo,
+              parseFloat(la.iva) || 0,
+              la.modo_iva
+            );
+          }
+        });
+        if (window.CombosPizarra && typeof window.CombosPizarra.refrescarSiVisible === 'function') {
+          window.CombosPizarra.refrescarSiVisible();
         }
-      });
-    }
+      }
 
     // Corre la simulación en caliente sobre todo el universo de datos en memoria para absorber redondeos y lotes antes de fijar el baseline
     function recalcularCascadaGlobalCompleta() {
@@ -2809,7 +2856,7 @@
               window._ldn4VerTodosManual = false;
               ctxDestino = (!isNaN(paramLdn) && paramLdn >= 1 && paramLdn <= 7) ? paramLdn : 4;
             }
-          } else if (!isNaN(paramLdn) && paramLdn >= 1 && paramLdn <= 7) {
+          } else if (!isNaN(paramLdn) && paramLdn >= 1 && paramLdn <= 8) {
             ctxDestino = paramLdn;
           }
         } catch (eUrl) {}
@@ -6446,12 +6493,24 @@
 
       const dashboard = document.getElementById('dashboard-container');
       const nodosContainer = document.getElementById('nodos-cotizador-container');
+      const combosContainer = document.getElementById('combos-ldn8-container');
       const leftPanel = document.getElementById('left-panel');
       const rightPanel = document.getElementById('right-panel');
       const articulosTitle = document.getElementById('articulos-title');
 
+      if (fase === 8) {
+        if (dashboard) dashboard.style.display = 'none';
+        if (nodosContainer) nodosContainer.style.display = 'none';
+        if (combosContainer) combosContainer.style.display = 'block';
+        if (window.CombosPizarra && typeof window.CombosPizarra.inicializar === 'function') {
+          window.CombosPizarra.inicializar('combos-ldn8-container');
+        }
+        return;
+      }
+
       if (fase === 7) {
         if (dashboard) dashboard.style.display = 'none';
+        if (combosContainer) combosContainer.style.display = 'none';
         if (nodosContainer) nodosContainer.style.display = 'block';
         if (window.NodosPizarra && typeof window.NodosPizarra.inicializar === 'function') {
           window.NodosPizarra.inicializar();
@@ -6459,6 +6518,7 @@
         return;
       } else {
         if (nodosContainer) nodosContainer.style.display = 'none';
+        if (combosContainer) combosContainer.style.display = 'none';
         if (dashboard) dashboard.style.display = 'grid';
       }
 
@@ -13866,7 +13926,8 @@
   </script>
   <script src="/api/produccion/ui/editor-up-receta-directo.js?v=1"></script>
   <script src="/api/produccion/nodos/comunicaciones-modal.js?v=1.0.0"></script>
-  <script src="/js/components/nodosCotizadorPizarra.js?v=3.0.1"></script>
+  <script src="/js/components/combosCotizadorPizarra.js?v=1.0.0"></script>
+  <script src="/js/components/nodosCotizadorPizarra.js?v=3.0.2"></script>
 </body>
 
 </html>

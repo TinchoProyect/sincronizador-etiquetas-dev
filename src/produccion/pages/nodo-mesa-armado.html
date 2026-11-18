@@ -874,6 +874,15 @@
                     const nom = formatearEtiquetaOficialItem(i);
                     const yaTienePeso = /\bx\s*\d+(?:[.,]\d+)?\s*(?:g|gr|kg)\b/i.test(nom);
                     const txt = pres && !yaTienePeso && !nom.toLowerCase().includes(pres.toLowerCase()) ? `${nom} (${pres})` : nom;
+                    if (i.es_combo && Array.isArray(i.componentes_combo) && i.componentes_combo.length > 0) {
+                        const sub = i.componentes_combo.map(c => {
+                            const skuH = c.sku || c.componente_articulo_id || '';
+                            const nomH = c.nombre_oficial_lamda || skuH;
+                            const cantTotH = Number(i.cantidad || 1) * Math.max(1, Number(c.cantidad || 1));
+                            return `<div style="margin-left:14px; font-size:0.76rem; color:#93c5fd;">↳ <strong>${cantTotH}x</strong> [${esc(skuH)}] ${esc(nomH)}</div>`;
+                        }).join('');
+                        return `<div style="margin:3px 0;"><span class="badge" style="background:rgba(168,85,247,0.22); color:#e9d5ff; border:1px solid rgba(168,85,247,0.45); font-size:0.68rem; padding:1px 6px;">🎁 COMBO</span> <strong>${i.cantidad}x</strong> ${esc(txt)}${sub}</div>`;
+                    }
                     return `<strong>${i.cantidad}x</strong> ${esc(txt)}`;
                 }).join(' · ');
 
@@ -1484,6 +1493,24 @@
 
                 const itemsHtml = (o.items || []).map(it => {
                     const etq = it.etiqueta_oficial_lamda || `[${it.sku_nodo}] ${it.nombre_oficial_lamda || it.nombre_publico}`;
+                    if (it.es_combo && Array.isArray(it.componentes_combo) && it.componentes_combo.length > 0) {
+                        const subHtml = it.componentes_combo.map(c => {
+                            const skuH = c.sku || c.componente_articulo_id || '';
+                            const nomH = c.nombre_oficial_lamda || skuH;
+                            const cantTotH = Number(it.cantidad || 1) * Math.max(1, Number(c.cantidad || 1));
+                            return `<div style="font-size:0.74rem; color:#93c5fd; padding-left:8px;">↳ <strong>${cantTotH}x</strong> [${esc(skuH)}] ${esc(nomH)}</div>`;
+                        }).join('');
+                        return `
+                            <div style="display:flex; flex-direction:column; gap:3px; padding:6px 11px; border-radius:8px; background:#0f172a; border:1px solid rgba(168,85,247,0.55); font-size:0.8rem;">
+                                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                    <span class="badge" style="background:rgba(168,85,247,0.22); color:#e9d5ff; border:1px solid rgba(168,85,247,0.45); font-size:0.68rem; padding:1px 6px;">🎁 COMBO</span>
+                                    <strong style="color:#38bdf8;">${it.cantidad}x</strong>
+                                    <span style="font-weight:700; color:#f8fafc;">${esc(etq)}</span>
+                                </div>
+                                ${subHtml}
+                            </div>
+                        `;
+                    }
                     return `
                         <div style="display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:7px; background:#0f172a; border:1px solid #334155; font-size:0.8rem;">
                             <strong style="color:#38bdf8;">${it.cantidad}x</strong>

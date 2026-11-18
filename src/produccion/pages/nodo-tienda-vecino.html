@@ -4557,9 +4557,10 @@
         if (STATE.categoriaActiva !== 'TODAS' && p.categoria_familiar !== STATE.categoriaActiva) return false;
         if (terms.length === 0) return true;
         const ingTxt = Array.isArray(p.ingredientes_comerciales) ? p.ingredientes_comerciales.join(' ') : '';
+        const compTxt = Array.isArray(p.componentes_vidriera) ? p.componentes_vidriera.map(c => c.nombre || '').join(' ') : '';
         const presTxt = obtenerPresentacionItem(p);
         const bolsa = normalizarTextoBusqueda(
-          `${p.nombre_publico || ''} ${p.categoria_familiar || ''} ${presTxt} ${p.sku_nodo || ''} ${p.narrativa_tienda || ''} ${ingTxt}`
+          `${p.nombre_publico || ''} ${p.categoria_familiar || ''} ${presTxt} ${p.sku_nodo || ''} ${p.narrativa_tienda || ''} ${ingTxt} ${compTxt}`
         );
         return terms.every(t => bolsa.includes(t));
       });
@@ -4693,11 +4694,16 @@
         );
         const ofertaIng = permitirBotonNodo
           ? g.presentaciones.find(x =>
-              x.mostrar_ingredientes !== false &&
-              Array.isArray(x.ingredientes_comerciales) &&
-              x.ingredientes_comerciales.length >= 2
+              x.mostrar_ingredientes !== false && (
+                (Array.isArray(x.ingredientes_comerciales) && x.ingredientes_comerciales.length >= 2) ||
+                (x.es_combo && Array.isArray(x.componentes_vidriera) && x.componentes_vidriera.length >= 2)
+              )
             ) || null
           : null;
+        const ofertaCombo = g.presentaciones.find(x => x.es_combo && Array.isArray(x.componentes_vidriera) && x.componentes_vidriera.length > 0) || null;
+        const resumenComboHtml = ofertaCombo
+          ? `<div style="font-size:0.73rem; color:var(--text); background:var(--surface-warm); border:1px solid var(--border); border-radius:8px; padding:4px 8px; margin-top:4px; line-height:1.35;"><strong>🎁 Incluye:</strong> ${ofertaCombo.componentes_vidriera.map(c => `${Number(c.cantidad || 1)}x ${esc(c.nombre)}`).join(' · ')}</div>`
+          : '';
         const ofertaPortada = g.presentaciones.find(x => x.portada_activa && x.portada_modo !== 'OCULTA') || null;
         const portadaActiva = ofertaPortada ? ofertaPortada.portada_activa : null;
         const ofertaDetalle = ofertaPortada ||
@@ -4727,6 +4733,7 @@
                     <div class="prod-title">${esc(g.nombre_publico)}</div>
                   </div>
                 ` : ''}
+                ${resumenComboHtml}
                 ${narrativaGrupo ? `
                   <button type="button" class="prod-narrativa-snippet"
                     onclick="abrirVisorFotosProducto(${Number(ofertaDetalle.oferta_id)})">
@@ -4736,7 +4743,7 @@
                 ${(ofertaIng || mostrarChipDetalleSinPortada) ? `
                   <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
                     ${mostrarChipDetalleSinPortada ? renderBotonFotosCompacto(ofertaDetalle) : ''}
-                    ${ofertaIng ? `<button type="button" class="btn-ver-ing" style="font-size:0.69rem; padding:3px 8px;" onclick="event.stopPropagation(); abrirModalIngredientesProducto(${Number(ofertaIng.oferta_id)})">🥣 Ingredientes</button>` : ''}
+                    ${ofertaIng ? `<button type="button" class="btn-ver-ing" style="font-size:0.69rem; padding:3px 8px;" onclick="event.stopPropagation(); abrirModalIngredientesProducto(${Number(ofertaIng.oferta_id)})">🥣 ¿Qué contiene?</button>` : ''}
                   </div>
                 ` : ''}
               </div>
@@ -4771,6 +4778,7 @@
                     </div>
                   ` : ''}
                 </div>
+                ${resumenComboHtml}
                 ${narrativaGrupo ? `
                   <button type="button" class="prod-narrativa-snippet"
                     onclick="abrirVisorFotosProducto(${Number(ofertaDetalle.oferta_id)})">
@@ -4806,7 +4814,9 @@
         Number(x.oferta_id) === Number(ofertaId) ||
         String(x.sku_nodo || '') === String(ofertaId || '')
       );
-      if (!prod || !Array.isArray(prod.ingredientes_comerciales) || prod.ingredientes_comerciales.length < 2) return;
+      const tieneIng = prod && Array.isArray(prod.ingredientes_comerciales) && prod.ingredientes_comerciales.length >= 2;
+      const tieneComp = prod && prod.es_combo && Array.isArray(prod.componentes_vidriera) && prod.componentes_vidriera.length >= 2;
+      if (!prod || (!tieneIng && !tieneComp)) return;
       STATE.ofertaIngredientesModalId = Number(prod.oferta_id);
       renderContenidoModalIngredientes();
       const modal = document.getElementById('ingredientes-modal');
@@ -4901,18 +4911,36 @@
           </button>
         </div>
 
-        <div style="padding-top:12px;">
-          <div style="font-size:0.78rem; font-weight:800; color:var(--muted);">
-            Ingredientes seleccionados (${lista.length}):
-          </div>
-          <div class="ing-chips-wrap">
-            ${lista.map(ing => `
-              <span class="ing-chip">
-                <span class="ing-chip-dot"></span>
-                <span>${esc(ing)}</span>
-              </span>
-            `).join('')}
-          </div>
+        <div style="padding-top:12px; display:flex; flex-direction:column; gap:12px;">
+          ${p.es_combo && Array.isArray(p.componentes_vidriera) && p.componentes_vidriera.length > 0 ? `
+            <div>
+              <div style="font-size:0.78rem; font-weight:800; color:var(--brand-dark); margin-bottom:6px;">
+                🎁 Este combo incluye (${p.componentes_vidriera.length}):
+              </div>
+              <div style="display:flex; flex-direction:column; gap:5px;">
+                ${p.componentes_vidriera.map(c => `
+                  <div style="font-size:0.84rem; font-weight:700; color:var(--text); background:var(--surface-warm); border:1px solid var(--border); border-radius:8px; padding:6px 10px;">
+                    <strong>${Number(c.cantidad || 1)}x</strong> ${esc(c.nombre)}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+          ${lista.length > 0 ? `
+            <div>
+              <div style="font-size:0.78rem; font-weight:800; color:var(--muted);">
+                Ingredientes seleccionados (${lista.length}):
+              </div>
+              <div class="ing-chips-wrap">
+                ${lista.map(ing => `
+                  <span class="ing-chip">
+                    <span class="ing-chip-dot"></span>
+                    <span>${esc(ing)}</span>
+                  </span>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
         </div>
 
         ${unica ? `
@@ -8923,7 +8951,12 @@
         presentaciones.map(x => String(x.narrativa_tienda || '').trim()).find(Boolean) || '';
       const permitirIng = STATE.nodo?.mostrar_ingredientes_tienda !== false;
       const ofertaIng = permitirIng
-        ? presentaciones.find(x => x.mostrar_ingredientes !== false && Array.isArray(x.ingredientes_comerciales) && x.ingredientes_comerciales.length >= 2) || null
+        ? presentaciones.find(x =>
+            x.mostrar_ingredientes !== false && (
+              (Array.isArray(x.ingredientes_comerciales) && x.ingredientes_comerciales.length >= 2) ||
+              (x.es_combo && Array.isArray(x.componentes_vidriera) && x.componentes_vidriera.length >= 2)
+            )
+          ) || null
         : null;
 
       panel.style.display = 'block';

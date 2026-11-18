@@ -5240,7 +5240,8 @@ router.get('/simulacion/inicializar', async (req, res) => {
             articulosProduccionExternaRelacion,
             tarifasRendimiento,
             mermasHistorial,
-            conciliacionesRecientes
+            conciliacionesRecientes,
+            combosComponentes
         ] = await Promise.all([
             obtenerIngredientes(),
             db.query(`SELECT mix_id, ingrediente_id, cantidad FROM public.ingrediente_composicion`),
@@ -5279,6 +5280,8 @@ router.get('/simulacion/inicializar', async (req, res) => {
                     ba.pack_hijo_codigo,
                     ba.pack_unidades,
                     ba.es_pack,
+                    COALESCE(ba.es_combo, false) AS es_combo,
+                    ba.firma_combo,
                     ba.familia_id,
                     ba.propiedades_dinamicas,
                     ba.rubro,
@@ -5493,7 +5496,12 @@ router.get('/simulacion/inicializar', async (req, res) => {
                        fecha_actualizacion_oferta, fecha_conciliacion
                 FROM public.bunker_conciliacion_articulos
                 ORDER BY UPPER(BTRIM(COALESCE(articulo_id, ''))), ingrediente_id, fecha_conciliacion DESC NULLS LAST, id DESC
-            `)
+            `),
+            db.query(`
+                SELECT combo_articulo_id, componente_articulo_id, cantidad, orden
+                FROM public.bunker_combos_componentes
+                ORDER BY combo_articulo_id ASC, orden ASC, id ASC
+            `).catch(() => ({ rows: [] }))
         ]);
 
         res.json({
@@ -5511,7 +5519,8 @@ router.get('/simulacion/inicializar', async (req, res) => {
             articulosProduccionExternaRelacion: articulosProduccionExternaRelacion.rows,
             tarifasRendimiento: tarifasRendimiento.rows,
             mermasHistorial: mermasHistorial.rows,
-            conciliacionesRecientes: conciliacionesRecientes.rows
+            conciliacionesRecientes: conciliacionesRecientes.rows,
+            combosComponentes: combosComponentes.rows
         });
     } catch (error) {
         console.error('❌ Error en GET /simulacion/inicializar:', error);
@@ -5763,6 +5772,15 @@ router.post('/simulacion/aplicar-precios', async (req, res) => {
             for (const artId of articulosNodosActualizados) {
                 await nodosBarrialesService.sincronizarCatalogoNodoDesdeBunker(artId);
             }
+        }
+        try {
+            const combosCompuestosService = require('../services/combosCompuestosService');
+            const skusToc = Array.from(new Set(actualizaciones.map(u => String(u.articulo_numero || '').trim()).filter(Boolean)));
+            if (skusToc.length > 0) {
+                await combosCompuestosService.recalcularCombosAfectadosPorCambio(pool, { skusModificados: skusToc });
+            }
+        } catch (comboSyncErr) {
+            console.warn('[PIZARRA->COMBOS] Aviso recalculando combos en cascada:', comboSyncErr.message);
         }
 
         res.json({ success: true, count: cambiosHistorial.length });

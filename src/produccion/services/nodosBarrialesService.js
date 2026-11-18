@@ -40,6 +40,7 @@ const {
     normalizarModoPortada,
     construirGaleriaYPortadaOferta
 } = require('./nodosFotosService');
+const combosCompuestosService = require('./combosCompuestosService');
 
 function normalizarModoVidrieraTienda(raw) {
     const val = String(raw || '').trim().toUpperCase();
@@ -3656,7 +3657,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 nombre_publico VARCHAR(180) NOT NULL,
                 categoria_familiar VARCHAR(100) DEFAULT 'Frutos Secos',
                 presentacion_etiqueta VARCHAR(80),
-                flujo_lamda INTEGER NOT NULL CHECK (flujo_lamda BETWEEN 1 AND 6),
+                flujo_lamda INTEGER NOT NULL CHECK (flujo_lamda BETWEEN 1 AND 8),
                 origen_tipo VARCHAR(40) NOT NULL DEFAULT 'INGREDIENTE',
                 ingrediente_origen_id INTEGER REFERENCES public.ingredientes(id) ON DELETE SET NULL,
                 articulo_bunker_origen_codigo VARCHAR(80),
@@ -4792,6 +4793,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
         }
 
         // 2) Normalizar artículos existentes del catálogo con su Anatomía Nativa LAMDA (SKUs sin NB-, Familias, Posiciones pos_1..pos_5, Ingredientes Simples Puente y Recetas)
+        await combosCompuestosService.asegurarEsquemaCombosCompuestos(client);
         const env181Res = await client.query(`SELECT COALESCE(costo_patron, 18.16) AS costo FROM public.ingredientes WHERE id = 181 LIMIT 1`);
         const costoFlowpack181 = Number(env181Res.rows[0]?.costo || 18.16);
 
@@ -4808,6 +4810,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
         `);
 
         for (const row of catExistentes.rows) {
+            if (row.es_combo || Number(row.flujo_lamda) === 8) continue;
             const skuOriginal = String(row.sku_nodo || '').trim();
             const anatomia = await resolverAnatomiaNativaArticuloNodo(client, row);
             const skuNativo = String(anatomia.sku_nativo || skuOriginal).trim();
@@ -6060,7 +6063,9 @@ async function obtenerEstadoCompletoNodos() {
         listasMayoristasRes,
         politicasRes,
         familiasRes,
-        plantaInfo
+        plantaInfo,
+        combosEstado,
+        mapaCombos
     ] = await Promise.all([
         db.query(`
             SELECT nm.*,
@@ -6198,7 +6203,9 @@ async function obtenerEstadoCompletoNodos() {
             WHERE activo = true
             ORDER BY id ASC
         `),
-        obtenerPresentacionesPlantaLamda()
+        obtenerPresentacionesPlantaLamda(),
+        combosCompuestosService.obtenerEstadoCombosPizarra(),
+        combosCompuestosService.obtenerMapaCombosYStockArmable(db)
     ]);
 
     if (fuentes) {
@@ -6207,10 +6214,26 @@ async function obtenerEstadoCompletoNodos() {
         fuentes.politicas_bunker_nodos = politicasRes.rows;
     }
 
+    const catalogoEnriquecido = catalogoRes.rows.map(c => {
+        const keyC = combosCompuestosService.normalizarSku(c.sku_nodo);
+        const infoC = mapaCombos.get(keyC);
+        if (c.es_combo || infoC) {
+            return {
+                ...c,
+                es_combo: true,
+                stock_armable: infoC ? infoC.stock_armable : 0,
+                componentes_combo: infoC ? infoC.componentes : []
+            };
+        }
+        return c;
+    });
+
     return {
         nodos: nodosRes.rows,
-        catalogo: catalogoRes.rows,
+        catalogo: catalogoEnriquecido,
         propuestas: propuestasRes.rows,
+        propuestas_combos: combosEstado ? combosEstado.propuestas_combos : [],
+        combos_estado: combosEstado,
         ofertas_gestor: ofertasRes.rows,
         fuentes,
         presentaciones_planta_disponibles: plantaInfo ? plantaInfo.disponiblesParaAdmin : [],
@@ -7798,6 +7821,9 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             skuDesdeCotizador: skuNodo,
             anatomiaOverride: anatomia
         });
+        await combosCompuestosService.recalcularCombosAfectadosPorCambio(client, {
+            skusModificados: [skuNodo]
+        });
 
         await client.query('COMMIT');
         articuloRow.bunker_descripcion_generada = articuloRow.nomenclatura_bunker;
@@ -7837,6 +7863,7 @@ async function recalcularCascadaCatalogoNodos(costosSimuladosIngredientes = {}) 
             LEFT JOIN public.ingredientes env ON env.id = nac.insumo_envase_id
             LEFT JOIN public.colaboradores_tarifas ct ON ct.id = nac.tarifa_colaborador_id
             WHERE nac.activo = true
+              AND COALESCE(nac.es_combo, false) = false
         `);
 
         let actualizados = 0;
@@ -7931,6 +7958,10 @@ async function recalcularCascadaCatalogoNodos(costosSimuladosIngredientes = {}) 
         }
 
         await sincronizarNodosConCircuitoOperativoLamda(client, { forzarPreciosNodos: true });
+        const cascadaCombos = await combosCompuestosService.recalcularCombosAfectadosPorCambio(client, {
+            todosLosCombos: true
+        });
+        actualizados += Number(cascadaCombos.combos_recalculados || 0);
         await client.query('COMMIT');
         return { actualizados };
     } catch (err) {
@@ -8023,6 +8054,24 @@ async function sincronizarCatalogoNodoDesdeBunker(articuloId, runnerOpt = null) 
         }
 
         // Caso B: Habilitado (disponible = true) en Lista Base Nodos Barriales -> insertar o actualizar en nodos_articulos_catalogo
+        if (ba.es_combo) {
+            if (row && row.activo === false) {
+                await q.query(`UPDATE public.nodos_articulos_catalogo SET activo = true, updated_at = NOW() WHERE id = $1`, [row.id]);
+            }
+            const precioListaCombo = Math.round(Number(laNodos.precio_final || 0));
+            if (row && precioListaCombo > 0 && Math.abs(precioListaCombo - Number(row.precio_base_nodo_final || 0)) >= 1) {
+                await q.query(
+                    `UPDATE public.nodos_articulos_catalogo
+                     SET precio_manual_override = $1, precio_base_nodo_final = $1, updated_at = NOW()
+                     WHERE id = $2`,
+                    [precioListaCombo, row.id]
+                );
+            }
+            await combosCompuestosService.recalcularCombosAfectadosPorCambio(q, { skusModificados: [skuExacto] });
+            if (ownClient) await q.query('COMMIT');
+            return { sincronizado: true, es_combo: true, sku_nodo: skuExacto, precio_base_nodo_final: precioListaCombo };
+        }
+
         const listasMayoristasDispRes = await q.query(
             `SELECT la.lista_id
              FROM public.bunker_lista_articulos la
@@ -8412,6 +8461,7 @@ async function sincronizarCatalogoNodoDesdeBunker(articuloId, runnerOpt = null) 
             );
         }
 
+        await combosCompuestosService.recalcularCombosAfectadosPorCambio(q, { skusModificados: [skuExacto] });
         if (ownClient) await q.query('COMMIT');
         return { sincronizado: true, sku_nodo: catalogoRowActual.sku_nodo, precio_base_nodo_final: precioBaseNodoFinal };
     } catch (err) {
@@ -8841,6 +8891,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                     nac.ingrediente_origen_id,
                     nac.articulo_bunker_origen_codigo,
                     nac.precio_base_nodo_final,
+                    COALESCE(nac.es_combo, ba.es_combo, false) AS es_combo,
+                    nac.firma_combo,
                     COALESCE(nac.fotos_catalogo_base, '[]'::jsonb) AS fotos_catalogo_base
              FROM public.nodos_ofertas_gestor nog
              JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
@@ -8944,7 +8996,9 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                         nac.presentacion_etiqueta,
                         nac.kilos_unidad,
                         nac.ingrediente_origen_id,
-                        nac.precio_base_nodo_final
+                        nac.precio_base_nodo_final,
+                        COALESCE(nac.es_combo, ba.es_combo, false) AS es_combo,
+                        nac.firma_combo
                  FROM public.nodos_articulos_catalogo nac
                  LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
                  LEFT JOIN public.bunker_familias bf ON bf.id = COALESCE(ba.familia_id, nac.familia_bunker_id)
@@ -8964,7 +9018,113 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             : Promise.resolve(null)
     ]);
 
+    const mapaCombosPortal = await combosCompuestosService.obtenerMapaCombosYStockArmable(db).catch(() => new Map());
+
+    let propuestasCombosEnriquecidas = [];
+    let articulosElegiblesCombo = [];
+    let combosCotizadosCatalogo = [];
+    if (esVistaGestor) {
+        const [propCombosRes, propCombosItemsRes, elegiblesComboRes, combosCatActivosRes] = await Promise.all([
+            db.query(
+                `SELECT npc.*
+                 FROM public.nodos_propuestas_combos npc
+                 WHERE npc.nodo_solicitante_id = $1
+                   AND COALESCE(npc.estado, '') <> 'ANULADA'
+                 ORDER BY npc.id DESC`,
+                [nodo.id]
+            ),
+            db.query(
+                `SELECT npci.*,
+                        COALESCE(ba.descripcion_generada, ba.descripcion, npci.componente_articulo_id) AS nombre_oficial_lamda,
+                        GREATEST(0.001, COALESCE(ba.kilos_unidad, 0.25))::numeric(12,4) AS kilos_unidad
+                 FROM public.nodos_propuestas_combos_items npci
+                 JOIN public.nodos_propuestas_combos npc ON npc.id = npci.propuesta_combo_id
+                 JOIN public.bunker_articulos ba ON ba.articulo_id = npci.componente_articulo_id
+                 WHERE npc.nodo_solicitante_id = $1
+                   AND COALESCE(npc.estado, '') <> 'ANULADA'
+                 ORDER BY npci.propuesta_combo_id ASC, npci.orden ASC, npci.id ASC`,
+                [nodo.id]
+            ),
+            db.query(
+                `SELECT nac.id AS catalogo_id,
+                        nac.sku_nodo,
+                        COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
+                        COALESCE(bf.nombre, ba.rubro, nac.familia_bunker_nombre, nac.categoria_familiar, 'Almacén') AS categoria_oficial_lamda,
+                        nac.presentacion_etiqueta,
+                        nac.kilos_unidad,
+                        nac.precio_base_nodo_final,
+                        EXISTS (
+                            SELECT 1 FROM public.nodos_ofertas_gestor nog
+                            WHERE nog.nodo_id = $1 AND nog.articulo_catalogo_id = nac.id
+                        ) AS en_mi_oferta
+                 FROM public.nodos_articulos_catalogo nac
+                 JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
+                 LEFT JOIN public.bunker_familias bf ON bf.id = COALESCE(ba.familia_id, nac.familia_bunker_id)
+                 WHERE nac.activo = true
+                   AND COALESCE(nac.es_combo, false) = false
+                   AND COALESCE(ba.es_combo, false) = false
+                   AND nac.precio_base_nodo_final > 0
+                 ORDER BY en_mi_oferta DESC,
+                          COALESCE(bf.nombre, ba.rubro, nac.familia_bunker_nombre, 'Almacén') ASC,
+                          COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) ASC`,
+                [nodo.id]
+            ),
+            db.query(
+                `SELECT nac.id AS catalogo_id,
+                        nac.sku_nodo,
+                        COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
+                        nac.presentacion_etiqueta,
+                        nac.kilos_unidad,
+                        nac.precio_base_nodo_final,
+                        nac.firma_combo,
+                        EXISTS (
+                            SELECT 1 FROM public.nodos_ofertas_gestor nog
+                            WHERE nog.nodo_id = $1 AND nog.articulo_catalogo_id = nac.id
+                        ) AS en_mi_oferta
+                 FROM public.nodos_articulos_catalogo nac
+                 LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
+                 WHERE nac.activo = true
+                   AND COALESCE(nac.es_combo, false) = true
+                   AND nac.firma_combo IS NOT NULL`,
+                [nodo.id]
+            )
+        ]);
+
+        const itemsComboPorProp = new Map();
+        for (const itc of propCombosItemsRes.rows) {
+            const pid = Number(itc.propuesta_combo_id);
+            if (!itemsComboPorProp.has(pid)) itemsComboPorProp.set(pid, []);
+            itemsComboPorProp.get(pid).push({
+                ...itc,
+                etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(itc.componente_articulo_id, itc.nombre_oficial_lamda)
+            });
+        }
+        propuestasCombosEnriquecidas = propCombosRes.rows.map(pc => {
+            const items = itemsComboPorProp.get(Number(pc.id)) || [];
+            const kilosTot = Number(items.reduce((acc, x) => acc + Number(x.kilos_unidad || 0) * Number(x.cantidad || 1), 0).toFixed(3));
+            return {
+                ...pc,
+                tipo_solicitud: 'COMBO',
+                kilos_totales: kilosTot,
+                items
+            };
+        });
+        articulosElegiblesCombo = elegiblesComboRes.rows.map(el => ({
+            ...el,
+            etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(el.sku_nodo, el.nombre_oficial_lamda)
+        }));
+        combosCotizadosCatalogo = combosCatActivosRes.rows.map(cc => ({
+            ...cc,
+            etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(cc.sku_nodo, cc.nombre_oficial_lamda)
+        }));
+    }
+
     const aliasSugeridoPorCatId = new Map();
+    for (const pc of propuestasCombosEnriquecidas) {
+        if (pc.articulo_catalogo_id && pc.alias_vidriera_sugerido && !aliasSugeridoPorCatId.has(Number(pc.articulo_catalogo_id))) {
+            aliasSugeridoPorCatId.set(Number(pc.articulo_catalogo_id), String(pc.alias_vidriera_sugerido).trim());
+        }
+    }
     const propuestasEnriquecidas = propuestasRes.rows.map(pr => {
         if (pr.articulo_catalogo_id && pr.alias_vidriera_sugerido && !aliasSugeridoPorCatId.has(Number(pr.articulo_catalogo_id))) {
             aliasSugeridoPorCatId.set(Number(pr.articulo_catalogo_id), String(pr.alias_vidriera_sugerido).trim());
@@ -9088,8 +9248,13 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 portadaModo: o.portada_modo,
                 portadaMediaId: o.portada_media_id
             });
+            const infoComboOferta = mapaCombosPortal.get(combosCompuestosService.normalizarSku(o.sku_nodo));
+            const esComboEfectivo = Boolean(o.es_combo || infoComboOferta);
             return {
                 ...o,
+                es_combo: esComboEfectivo,
+                stock_armable: esComboEfectivo ? (infoComboOferta ? infoComboOferta.stock_armable : 0) : null,
+                componentes_combo: esComboEfectivo && infoComboOferta ? infoComboOferta.componentes : [],
                 nombre_publico: nombreOficialLamda,
                 categoria_familiar: categoriaOficialLamda,
                 nombre_oficial_lamda: nombreOficialLamda,
@@ -9116,13 +9281,27 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         })
     );
 
+    const mapaNombreVidrieraPorSku = new Map();
+    for (const o of ofertasConDesglose) {
+        const skuKey = combosCompuestosService.normalizarSku(o.sku_nodo);
+        if (skuKey) {
+            mapaNombreVidrieraPorSku.set(skuKey, o.nombre_vidriera_efectivo || o.nombre_oficial_lamda || skuKey);
+        }
+    }
+
     const ofertasPublicadas = ofertasConDesglose
         .filter(o => o.publicado_tienda)
         .map(o => {
+            const componentesVidriera = (o.es_combo && Array.isArray(o.componentes_combo))
+                ? o.componentes_combo.map(c => ({
+                    cantidad: Number(c.cantidad || 1),
+                    nombre: mapaNombreVidrieraPorSku.get(combosCompuestosService.normalizarSku(c.sku)) || c.nombre_oficial_lamda || c.sku
+                }))
+                : [];
             const habilitarBotonIng = Boolean(
                 mostrarIngredientesNodo &&
                 o.mostrar_ingredientes !== false &&
-                o.tiene_desglose_ingredientes
+                (o.tiene_desglose_ingredientes || componentesVidriera.length >= 2)
             );
             const fotosEfectivas = (Array.isArray(o.fotos_vidriera) && o.fotos_vidriera.length > 0)
                 ? o.fotos_vidriera
@@ -9156,6 +9335,9 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 kilos_unidad: Number(o.kilos_unidad),
                 flujo_lamda: Number(o.flujo_lamda || 0) || null,
                 linea_negocio: o.linea_negocio || null,
+                es_combo: Boolean(o.es_combo),
+                stock_armable: o.es_combo ? Number(o.stock_armable || 0) : null,
+                componentes_vidriera: componentesVidriera,
                 precio_venta_vecino: Number(o.precio_venta_vecino),
                 destacado_tienda: Boolean(o.destacado_tienda),
                 mostrar_ingredientes: habilitarBotonIng,
@@ -9316,8 +9498,22 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         proxima_entrega: proximaEntrega,
         ofertas_publicadas: ofertasPublicadas,
         todas_ofertas_gestor: esVistaGestor ? ofertasConDesglose : [],
-        catalogo_base_disponible: esVistaGestor ? catDisponibleRes.rows : [],
+        catalogo_base_disponible: esVistaGestor
+            ? catDisponibleRes.rows.map(c => {
+                const ic = mapaCombosPortal.get(combosCompuestosService.normalizarSku(c.sku_nodo));
+                const esC = Boolean(c.es_combo || ic);
+                return {
+                    ...c,
+                    es_combo: esC,
+                    stock_armable: esC && ic ? ic.stock_armable : null,
+                    componentes_combo: esC && ic ? ic.componentes : []
+                };
+            })
+            : [],
         propuestas_nodo: esVistaGestor ? propuestasEnriquecidas : [],
+        propuestas_combos_nodo: esVistaGestor ? propuestasCombosEnriquecidas : [],
+        articulos_elegibles_combo: esVistaGestor ? articulosElegiblesCombo : [],
+        combos_cotizados_catalogo: esVistaGestor ? combosCotizadosCatalogo : [],
         pedidos_nodo: esVistaGestor ? pedidosConItems : [],
         movimientos_cta_cte: esVistaGestor ? movsRes.rows : [],
         liquidaciones_nodo: esVistaGestor ? liquidacionesNodo : [],
@@ -9639,6 +9835,8 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                     COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
                     nac.nombre_publico,
                     nac.presentacion_etiqueta,
+                    nac.kilos_unidad,
+                    COALESCE(nac.es_combo, ba.es_combo, false) AS es_combo,
                     nac.precio_base_nodo_final
              FROM public.nodos_ofertas_gestor nog
              JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
@@ -9647,6 +9845,10 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
             [nodo.id]
         );
         const mapaOfertas = new Map(ofertasRes.rows.map(o => [Number(o.id), o]));
+        const hayAlgunComboPedido = ofertasRes.rows.some(o => Boolean(o.es_combo));
+        const mapaCombosSnapshot = hayAlgunComboPedido
+            ? await combosCompuestosService.obtenerMapaCombosYStockArmable(client)
+            : new Map();
 
         let subtotalProductosVecino = 0;
         let totalBaseLamda = 0;
@@ -9674,6 +9876,20 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 ? String(of.nombre_vidriera_personalizado).trim()
                 : nombreOficialLamda;
 
+            const infoComboSnap = of.es_combo
+                ? mapaCombosSnapshot.get(combosCompuestosService.normalizarSku(of.sku_nodo))
+                : null;
+            const snapshotComps = (infoComboSnap && Array.isArray(infoComboSnap.componentes) && infoComboSnap.componentes.length > 0)
+                ? infoComboSnap.componentes.map(c => ({
+                    sku: c.sku,
+                    nombre_oficial_lamda: c.nombre_oficial_lamda,
+                    etiqueta_oficial_lamda: c.etiqueta_oficial_lamda,
+                    cantidad: c.cantidad,
+                    kilos_unidad: c.kilos_unidad,
+                    codigo_barras: c.codigo_barras || null
+                }))
+                : null;
+
             itemsValidados.push({
                 articulo_catalogo_id: of.articulo_catalogo_id,
                 sku_nodo: of.sku_nodo,
@@ -9681,6 +9897,8 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 nombre_vidriera_vecino: nombreVidrieraVecino,
                 nombre_publico: nombreOficialLamda,
                 presentacion_etiqueta: of.presentacion_etiqueta,
+                es_combo: Boolean(of.es_combo || snapshotComps),
+                componentes_combo_snapshot: snapshotComps,
                 cantidad: cant,
                 precio_unitario_vecino: pUnitVecino,
                 precio_unitario_base_lamda: pUnitBaseLamda,
@@ -10069,8 +10287,9 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 `INSERT INTO public.nodos_pedidos_items (
                     pedido_id, articulo_catalogo_id, sku_nodo, nombre_publico, nombre_vidriera_vecino,
                     presentacion_etiqueta, cantidad, precio_unitario_vecino, precio_unitario_base_lamda,
-                    subtotal_vecino, subtotal_base_lamda, ganancia_item_gestor
-                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+                    subtotal_vecino, subtotal_base_lamda, ganancia_item_gestor,
+                    es_combo, componentes_combo_snapshot
+                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)`,
                 [
                     pedidoRow.id,
                     it.articulo_catalogo_id,
@@ -10083,7 +10302,9 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                     it.precio_unitario_base_lamda,
                     it.subtotal_vecino,
                     it.subtotal_base_lamda,
-                    it.ganancia_item_gestor
+                    it.ganancia_item_gestor,
+                    Boolean(it.es_combo),
+                    it.componentes_combo_snapshot ? JSON.stringify(it.componentes_combo_snapshot) : null
                 ]
             );
         }
@@ -10214,7 +10435,8 @@ async function generarEtiquetaFulfillmentMarcaBlanca(pedidoId) {
         `SELECT npi.*,
                 COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial_lamda,
                 COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda,
-                COALESCE(nac.kilos_unidad, 0.30)::numeric(10,3) AS kilos_unidad
+                COALESCE(nac.kilos_unidad, 0.30)::numeric(10,3) AS kilos_unidad,
+                COALESCE(npi.es_combo, nac.es_combo, ba.es_combo, false) AS es_combo_item
          FROM public.nodos_pedidos_items npi
          LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
          LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
@@ -10222,6 +10444,9 @@ async function generarEtiquetaFulfillmentMarcaBlanca(pedidoId) {
          ORDER BY npi.id ASC`,
         [ped.id]
     );
+    const mapaCombosEtqF = itemsRes.rows.some(r => r.es_combo_item)
+        ? await combosCompuestosService.obtenerMapaCombosYStockArmable(db)
+        : new Map();
 
     let pesoCalcGramos = 0;
     for (const r of itemsRes.rows) {
@@ -10270,12 +10495,44 @@ async function generarEtiquetaFulfillmentMarcaBlanca(pedidoId) {
         peso_gramos: pesoFinalGramos,
         fecha_empaque_texto: fechaEmpaqueTexto,
         bultos_texto: 'CAJA 1/1',
-        items: itemsRes.rows.map(r => ({
-            cantidad: r.cantidad,
-            descripcion: formatearEtiquetaTecnicaArticulo(r.sku_oficial_lamda || r.sku_nodo, r.nombre_oficial_lamda || r.nombre_publico),
-            presentacion_etiqueta: r.presentacion_etiqueta
-        }))
+        items: expandirItemsChecklistEtiquetaConCombos(itemsRes.rows, mapaCombosEtqF)
     });
+}
+
+function expandirItemsChecklistEtiquetaConCombos(rows = [], mapaCombos = new Map()) {
+    const salida = [];
+    for (const r of rows) {
+        const skuOf = r.sku_oficial_lamda || r.sku_nodo || '';
+        const nomOf = r.nombre_oficial_lamda || r.nombre_publico || '';
+        const cantPadre = Math.max(1, Number(r.cantidad || 1));
+        const snap = Array.isArray(r.componentes_combo_snapshot) ? r.componentes_combo_snapshot : null;
+        const infoC = mapaCombos.get(combosCompuestosService.normalizarSku(skuOf));
+        const comps = (snap && snap.length > 0) ? snap : (infoC ? infoC.componentes : []);
+
+        if ((r.es_combo_item || r.es_combo) && comps.length > 0) {
+            salida.push({
+                cantidad: cantPadre,
+                descripcion: `COMBO ${formatearEtiquetaTecnicaArticulo(skuOf, nomOf)}`,
+                presentacion_etiqueta: r.presentacion_etiqueta
+            });
+            for (const c of comps) {
+                const skuH = c.sku || c.componente_articulo_id || '';
+                const nomH = c.nombre_oficial_lamda || skuH;
+                salida.push({
+                    cantidad: cantPadre * Math.max(1, Number(c.cantidad || 1)),
+                    descripcion: `> ${formatearEtiquetaTecnicaArticulo(skuH, nomH)}`,
+                    presentacion_etiqueta: ''
+                });
+            }
+        } else {
+            salida.push({
+                cantidad: cantPadre,
+                descripcion: formatearEtiquetaTecnicaArticulo(skuOf, nomOf),
+                presentacion_etiqueta: r.presentacion_etiqueta
+            });
+        }
+    }
+    return salida;
 }
 
 /**
@@ -10314,7 +10571,8 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
     const itemsRes = await db.query(
         `SELECT npi.*,
                 COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial_lamda,
-                COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda
+                COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda,
+                COALESCE(npi.es_combo, nac.es_combo, ba.es_combo, false) AS es_combo_item
          FROM public.nodos_pedidos_items npi
          LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
          LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
@@ -10322,6 +10580,9 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
          ORDER BY npi.id ASC`,
         [ped.id]
     );
+    const mapaCombosEtqV = itemsRes.rows.some(r => r.es_combo_item)
+        ? await combosCompuestosService.obtenerMapaCombosYStockArmable(db)
+        : new Map();
 
     const esEfectivo = ped.medio_pago === 'EFECTIVO' || String(ped.estado_pago).includes('COBRAR');
     return generarPreviewVisualEtiquetaPar({
@@ -10339,11 +10600,7 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
         estado_pago: esEfectivo ? 'COBRAR EFECTIVO' : 'PAGADO (TRANSFERENCIA)',
         monto_cobrar: esEfectivo ? Number(ped.total_vecino) : 0,
         bultos_texto: 'BOLSA 1/1',
-        items: itemsRes.rows.map(r => ({
-            cantidad: r.cantidad,
-            descripcion: formatearEtiquetaTecnicaArticulo(r.sku_oficial_lamda || r.sku_nodo, r.nombre_oficial_lamda || r.nombre_publico),
-            presentacion_etiqueta: r.presentacion_etiqueta
-        }))
+        items: expandirItemsChecklistEtiquetaConCombos(itemsRes.rows, mapaCombosEtqV)
     });
 }
 
@@ -10759,6 +11016,7 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
     `);
 
     for (const art of catRes.rows) {
+        if (art.es_combo || Number(art.flujo_lamda) === 8) continue;
         const esMatchOverride = Boolean(
             skuDesdeCotizador &&
             String(art.sku_nodo || '').trim().toUpperCase() === skuDesdeCotizador &&
@@ -11957,6 +12215,7 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
                    COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, npi.nombre_publico) AS nombre_oficial_lamda,
                    COALESCE(nac.kilos_unidad, 0.25)::numeric(10,3) AS kilos_unidad,
                    COALESCE(nac.flujo_lamda, 2)::int AS flujo_lamda,
+                   COALESCE(npi.es_combo, nac.es_combo, ba.es_combo, false) AS es_combo_item,
                    COALESCE(bf.nombre, ba.rubro, nac.familia_bunker_nombre, nac.categoria_familiar, 'Fraccionados') AS categoria_familiar
             FROM public.nodos_pedidos_items npi
             JOIN public.nodos_pedidos_vecinos npv ON npv.id = npi.pedido_id
@@ -11993,18 +12252,28 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
         `)
     ]);
 
+    const mapaCombosMesa = itemsRes.rows.some(r => r.es_combo_item)
+        ? await combosCompuestosService.obtenerMapaCombosYStockArmable(db)
+        : new Map();
+
     const itemsPorPedido = new Map();
     const itemsPorCanasto = new Map();
 
     for (const rawIt of itemsRes.rows) {
         const skuOf = rawIt.sku_oficial_lamda || rawIt.sku_nodo || '';
         const nomOf = rawIt.nombre_oficial_lamda || rawIt.nombre_publico;
+        const snapCombo = Array.isArray(rawIt.componentes_combo_snapshot) ? rawIt.componentes_combo_snapshot : null;
+        const infoComboM = mapaCombosMesa.get(combosCompuestosService.normalizarSku(skuOf));
+        const compsCombo = (snapCombo && snapCombo.length > 0) ? snapCombo : (infoComboM ? infoComboM.componentes : []);
+        const esComboEf = Boolean(rawIt.es_combo_item || rawIt.es_combo || compsCombo.length > 0);
         const it = {
             ...rawIt,
             sku_nodo: skuOf,
             nombre_oficial_lamda: nomOf,
             etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(skuOf, nomOf),
-            nombre_publico: nomOf
+            nombre_publico: nomOf,
+            es_combo: esComboEf,
+            componentes_combo: esComboEf ? compsCombo : []
         };
         const pid = Number(it.pedido_id);
         if (!itemsPorPedido.has(pid)) itemsPorPedido.set(pid, []);
@@ -12035,21 +12304,23 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
         const pedidosCanasto = pedidosPorCanasto.get(cid) || [];
         const itemsCanasto = itemsPorCanasto.get(cid) || [];
 
-        // Construir consolidado de mercadería a fraccionar para completar este Canasto
+        // Construir consolidado de mercadería a fraccionar/retirar de estantería para completar este Canasto (explotando Combos en sus SKUs hijos)
         const mapaConsolidado = new Map();
-        for (const it of itemsCanasto) {
-            const key = `${it.sku_nodo || it.nombre_publico}`;
+        const registrarUnidadConsolidadoCanasto = ({
+            articuloCatalogoId, sku, nombreOficial, presentacion, categoria, flujo, kilosU, cantidad, estaLista, codigoPedido, vecinoNombre, notaCombo
+        }) => {
+            const key = `${sku || nombreOficial}`;
             if (!mapaConsolidado.has(key)) {
                 mapaConsolidado.set(key, {
-                    articulo_catalogo_id: it.articulo_catalogo_id,
-                    sku_nodo: it.sku_nodo || 'S/C',
-                    nombre_oficial_lamda: it.nombre_oficial_lamda || it.nombre_publico,
-                    etiqueta_oficial_lamda: it.etiqueta_oficial_lamda || formatearEtiquetaTecnicaArticulo(it.sku_nodo, it.nombre_oficial_lamda || it.nombre_publico),
-                    nombre_publico: it.nombre_publico,
-                    presentacion_etiqueta: it.presentacion_etiqueta || '',
-                    categoria_familiar: it.categoria_familiar || '',
-                    flujo_lamda: Number(it.flujo_lamda || 2),
-                    kilos_unidad: Number(it.kilos_unidad || 0.25),
+                    articulo_catalogo_id: articuloCatalogoId || null,
+                    sku_nodo: sku || 'S/C',
+                    nombre_oficial_lamda: nombreOficial,
+                    etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(sku, nombreOficial),
+                    nombre_publico: nombreOficial,
+                    presentacion_etiqueta: presentacion || '',
+                    categoria_familiar: categoria || '',
+                    flujo_lamda: Number(flujo || 2),
+                    kilos_unidad: Number(kilosU || 0.25),
                     bolsas_totales: 0,
                     bolsas_listas: 0,
                     bolsas_pendientes: 0,
@@ -12058,22 +12329,60 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
                 });
             }
             const entry = mapaConsolidado.get(key);
-            const cant = Number(it.cantidad || 1);
-            const estaLista = ['ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'ENTREGADO_VECINO'].includes(it.estado_operativo);
-
-            entry.bolsas_totales += cant;
+            entry.bolsas_totales += cantidad;
             if (estaLista) {
-                entry.bolsas_listas += cant;
+                entry.bolsas_listas += cantidad;
             } else {
-                entry.bolsas_pendientes += cant;
+                entry.bolsas_pendientes += cantidad;
             }
             entry.kilos_totales = Number((entry.bolsas_totales * entry.kilos_unidad).toFixed(3));
             entry.vecinos_detalle.push({
-                codigo_pedido: it.codigo_pedido,
-                vecino_nombre: it.vecino_nombre,
-                cantidad: cant,
+                codigo_pedido: codigoPedido,
+                vecino_nombre: notaCombo ? `${vecinoNombre} (${notaCombo})` : vecinoNombre,
+                cantidad,
                 lista: estaLista
             });
+        };
+
+        for (const it of itemsCanasto) {
+            const cant = Number(it.cantidad || 1);
+            const estaLista = ['ARMADO_EN_CANASTO', 'EN_PODER_GESTOR', 'ENTREGADO_VECINO'].includes(it.estado_operativo);
+            if (it.es_combo && Array.isArray(it.componentes_combo) && it.componentes_combo.length > 0) {
+                for (const comp of it.componentes_combo) {
+                    const skuH = comp.sku || comp.componente_articulo_id || '';
+                    const nomH = comp.nombre_oficial_lamda || skuH;
+                    const cantH = cant * Math.max(1, Number(comp.cantidad || 1));
+                    registrarUnidadConsolidadoCanasto({
+                        articuloCatalogoId: null,
+                        sku: skuH,
+                        nombreOficial: nomH,
+                        presentacion: '',
+                        categoria: 'Componente Combo',
+                        flujo: 2,
+                        kilosU: Number(comp.kilos_unidad || 0.25),
+                        cantidad: cantH,
+                        estaLista,
+                        codigoPedido: it.codigo_pedido,
+                        vecinoNombre: it.vecino_nombre,
+                        notaCombo: `Combo ${it.sku_nodo}`
+                    });
+                }
+            } else {
+                registrarUnidadConsolidadoCanasto({
+                    articuloCatalogoId: it.articulo_catalogo_id,
+                    sku: it.sku_nodo || 'S/C',
+                    nombreOficial: it.nombre_oficial_lamda || it.nombre_publico,
+                    presentacion: it.presentacion_etiqueta || '',
+                    categoria: it.categoria_familiar || '',
+                    flujo: Number(it.flujo_lamda || 2),
+                    kilosU: Number(it.kilos_unidad || 0.25),
+                    cantidad: cant,
+                    estaLista,
+                    codigoPedido: it.codigo_pedido,
+                    vecinoNombre: it.vecino_nombre,
+                    notaCombo: ''
+                });
+            }
         }
 
         return {
@@ -12171,44 +12480,78 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
             const kgU = Number(it.kilos_unidad || 0.30);
             pesoEstimadoGramos += Math.round(kgU * 1000 * cant);
 
-            // Alimentar el consolidado de SKUs hacia Carros de Producción para órdenes habilitadas aún no despachadas
+            // Alimentar el consolidado de SKUs hacia Carros de Producción para órdenes habilitadas aún no despachadas (explotando Combos en sus SKUs hijos)
             if (habilitadoArmado && !yaDespachado) {
-                const skuKey = String(it.sku_nodo || it.nombre_publico).trim().toUpperCase();
-                if (!mapaConsolidadoFulfillment.has(skuKey)) {
-                    const stockActual = mapaStockPorSku.has(skuKey) ? Number(mapaStockPorSku.get(skuKey)) : 0;
-                    mapaConsolidadoFulfillment.set(skuKey, {
-                        articulo_catalogo_id: it.articulo_catalogo_id,
-                        sku_nodo: it.sku_nodo || 'S/C',
-                        nombre_oficial_lamda: it.nombre_oficial_lamda || it.nombre_publico,
-                        etiqueta_oficial_lamda: it.etiqueta_oficial_lamda || formatearEtiquetaTecnicaArticulo(it.sku_nodo, it.nombre_oficial_lamda || it.nombre_publico),
-                        presentacion_etiqueta: it.presentacion_etiqueta || '',
-                        categoria_familiar: it.categoria_familiar || '',
-                        flujo_lamda: Number(it.flujo_lamda || 2),
-                        kilos_unidad: kgU,
-                        unidades_requeridas: 0,
-                        unidades_empaquetadas: 0,
-                        unidades_pendientes_empaque: 0,
-                        kilos_requeridos: 0,
-                        stock_consolidado_actual: stockActual,
-                        faltante_fraccionar_unidades: 0,
-                        faltante_fraccionar_kilos: 0,
-                        ordenes_detalle: []
+                const acumularConsolidadoFulfillment = (skuF, nomF, presF, catF, flujoF, kgF, cantF, catIdF, notaComboF) => {
+                    const skuKey = String(skuF || nomF).trim().toUpperCase();
+                    if (!mapaConsolidadoFulfillment.has(skuKey)) {
+                        const stockActual = mapaStockPorSku.has(skuKey) ? Number(mapaStockPorSku.get(skuKey)) : 0;
+                        mapaConsolidadoFulfillment.set(skuKey, {
+                            articulo_catalogo_id: catIdF || null,
+                            sku_nodo: skuF || 'S/C',
+                            nombre_oficial_lamda: nomF,
+                            etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(skuF, nomF),
+                            presentacion_etiqueta: presF || '',
+                            categoria_familiar: catF || '',
+                            flujo_lamda: Number(flujoF || 2),
+                            kilos_unidad: kgF,
+                            unidades_requeridas: 0,
+                            unidades_empaquetadas: 0,
+                            unidades_pendientes_empaque: 0,
+                            kilos_requeridos: 0,
+                            stock_consolidado_actual: stockActual,
+                            faltante_fraccionar_unidades: 0,
+                            faltante_fraccionar_kilos: 0,
+                            ordenes_detalle: []
+                        });
+                    }
+                    const entry = mapaConsolidadoFulfillment.get(skuKey);
+                    entry.unidades_requeridas += cantF;
+                    if (yaEmpaquetado) entry.unidades_empaquetadas += cantF;
+                    else entry.unidades_pendientes_empaque += cantF;
+                    entry.kilos_requeridos = Number((entry.unidades_requeridas * entry.kilos_unidad).toFixed(3));
+                    entry.faltante_fraccionar_unidades = Math.max(0, Number((entry.unidades_requeridas - entry.stock_consolidado_actual).toFixed(2)));
+                    entry.faltante_fraccionar_kilos = Number((entry.faltante_fraccionar_unidades * entry.kilos_unidad).toFixed(3));
+                    entry.ordenes_detalle.push({
+                        codigo_pedido: p.codigo_pedido,
+                        nombre_marca: nRow.nombre_marca || '',
+                        destinatario: notaComboF
+                            ? `${ep?.destinatario_nombre || p.vecino_nombre} (${notaComboF})`
+                            : (ep?.destinatario_nombre || p.vecino_nombre),
+                        cantidad: cantF,
+                        empaquetado: yaEmpaquetado
                     });
+                };
+
+                if (it.es_combo && Array.isArray(it.componentes_combo) && it.componentes_combo.length > 0) {
+                    for (const comp of it.componentes_combo) {
+                        const skuH = comp.sku || comp.componente_articulo_id || '';
+                        const nomH = comp.nombre_oficial_lamda || skuH;
+                        acumularConsolidadoFulfillment(
+                            skuH,
+                            nomH,
+                            '',
+                            'Componente Combo',
+                            2,
+                            Number(comp.kilos_unidad || 0.25),
+                            cant * Math.max(1, Number(comp.cantidad || 1)),
+                            null,
+                            `Combo ${it.sku_nodo}`
+                        );
+                    }
+                } else {
+                    acumularConsolidadoFulfillment(
+                        it.sku_nodo || 'S/C',
+                        it.nombre_oficial_lamda || it.nombre_publico,
+                        it.presentacion_etiqueta || '',
+                        it.categoria_familiar || '',
+                        Number(it.flujo_lamda || 2),
+                        kgU,
+                        cant,
+                        it.articulo_catalogo_id,
+                        ''
+                    );
                 }
-                const entry = mapaConsolidadoFulfillment.get(skuKey);
-                entry.unidades_requeridas += cant;
-                if (yaEmpaquetado) entry.unidades_empaquetadas += cant;
-                else entry.unidades_pendientes_empaque += cant;
-                entry.kilos_requeridos = Number((entry.unidades_requeridas * entry.kilos_unidad).toFixed(3));
-                entry.faltante_fraccionar_unidades = Math.max(0, Number((entry.unidades_requeridas - entry.stock_consolidado_actual).toFixed(2)));
-                entry.faltante_fraccionar_kilos = Number((entry.faltante_fraccionar_unidades * entry.kilos_unidad).toFixed(3));
-                entry.ordenes_detalle.push({
-                    codigo_pedido: p.codigo_pedido,
-                    nombre_marca: nRow.nombre_marca || '',
-                    destinatario: ep?.destinatario_nombre || p.vecino_nombre,
-                    cantidad: cant,
-                    empaquetado: yaEmpaquetado
-                });
             }
         }
         pesoEstimadoGramos = Math.max(250, pesoEstimadoGramos + 180);
@@ -12554,17 +12897,32 @@ async function confirmarRetiroCanastoPorGestor(canastoId, payload = {}) {
         const origenRetiro = String(payload.origen_evento || 'DESPACHO_LOTE_NODO').trim();
 
         const pedsActivosCanRes = await client.query(
-            `SELECT id FROM public.nodos_pedidos_vecinos
+            `SELECT id, COALESCE(stock_descontado_deposito, false) AS stock_descontado_deposito
+             FROM public.nodos_pedidos_vecinos
              WHERE lote_canasto_id = $1
                AND COALESCE(estado_operativo, '') <> 'ANULADO'
-             ORDER BY id ASC`,
+             ORDER BY id ASC
+             FOR UPDATE`,
             [canasto.id]
         );
+
+        const idsSinDescontarCanasto = pedsActivosCanRes.rows
+            .filter(r => !r.stock_descontado_deposito)
+            .map(r => Number(r.id));
+
+        if (idsSinDescontarCanasto.length > 0) {
+            await combosCompuestosService.registrarEgresoStockConExplosionCombo(client, {
+                pedidoIds: idsSinDescontarCanasto,
+                origenIngreso: 'canasto_nodo_barrial',
+                observacionBase: `Despacho Canasto ${canasto.codigo_canasto} (${canasto.nombre_marca})`
+            });
+        }
 
         await client.query(
             `UPDATE public.nodos_pedidos_vecinos
              SET ubicacion_deposito = 'DESPACHADO_NODO',
                  etiqueta_impresa = true,
+                 stock_descontado_deposito = true,
                  fecha_armado_bolsa = COALESCE(fecha_armado_bolsa, NOW()),
                  fecha_entrega_gestor = COALESCE(fecha_entrega_gestor, NOW()),
                  updated_at = NOW()
@@ -12747,11 +13105,16 @@ async function reabrirCanastoParaPruebaLaboratorio(canastoId) {
             [canasto.id]
         );
 
+        await combosCompuestosService.revertirEgresoStockCanastoLaboratorio(client, {
+            codigoCanasto: canasto.codigo_canasto
+        });
+
         await client.query(
             `UPDATE public.nodos_pedidos_vecinos
              SET estado_operativo = 'ARMADO_EN_CANASTO',
                  hito_tracking_actual = 3,
                  ubicacion_deposito = 'ESTACION_NODOS',
+                 stock_descontado_deposito = false,
                  fecha_entrega_gestor = NULL,
                  fecha_en_camino_vecino = NULL,
                  fecha_entregado_vecino = NULL,
@@ -14125,58 +14488,13 @@ async function confirmarDespachoPostalPedido(pedidoId, payload = {}) {
                 detalle: `Despachado por ${operadorLabel} · Seguimiento #${guiaResuelta.numero_tracking}`
             });
 
-            // c) Descontar stock real consolidado de los SKUs despachados (1 sola vez por orden)
+            // c) Descontar stock real consolidado de los SKUs despachados (1 sola vez por orden, explotando Combos en sus SKUs hijos)
             if (!ped.stock_descontado_fulfillment) {
-                const itemsStockRes = await client.query(
-                    `SELECT COALESCE(nac.sku_nodo, npi.sku_nodo) AS sku_oficial,
-                            SUM(npi.cantidad)::numeric(12,2) AS cantidad_total,
-                            MAX(COALESCE(nac.kilos_unidad, 0.25))::numeric(10,3) AS kilos_unidad,
-                            MAX(ba.codigo_barras) AS codigo_barras
-                     FROM public.nodos_pedidos_items npi
-                     LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npi.articulo_catalogo_id
-                     LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, npi.sku_nodo))
-                     WHERE npi.pedido_id = $1::int
-                     GROUP BY COALESCE(nac.sku_nodo, npi.sku_nodo)`,
-                    [pid]
-                );
-
-                for (const stIt of itemsStockRes.rows) {
-                    const skuArt = String(stIt.sku_oficial || '').trim();
-                    const cantEgreso = Number(stIt.cantidad_total || 0);
-                    if (!skuArt || cantEgreso <= 0) continue;
-                    const kilosEgreso = Number((cantEgreso * Number(stIt.kilos_unidad || 0.25)).toFixed(3));
-
-                    await client.query(
-                        `INSERT INTO public.stock_ventas_movimientos (
-                            articulo_numero, codigo_barras, kilos, cantidad, fecha, tipo, origen_ingreso, observaciones
-                         ) VALUES ($1, $2, $3, $4, NOW(), 'egreso_venta', 'fulfillment_paqueteria', $5)`,
-                        [
-                            skuArt,
-                            stIt.codigo_barras || null,
-                            kilosEgreso,
-                            cantEgreso,
-                            `Despacho Postal ${ped.nombre_marca} #${ped.codigo_pedido} (${operadorLabel} #${guiaResuelta.numero_tracking})`
-                        ]
-                    );
-
-                    const updStock = await client.query(
-                        `UPDATE public.stock_real_consolidado
-                         SET stock_movimientos = COALESCE(stock_movimientos, 0) - $1,
-                             stock_consolidado = COALESCE(stock_lomasoft, 0) + (COALESCE(stock_movimientos, 0) - $1) + COALESCE(stock_ajustes, 0),
-                             ultima_actualizacion = NOW()
-                         WHERE UPPER(articulo_numero) = UPPER($2)`,
-                        [cantEgreso, skuArt]
-                    );
-                    if (updStock.rowCount === 0) {
-                        await client.query(
-                            `INSERT INTO public.stock_real_consolidado (
-                                articulo_numero, stock_lomasoft, stock_movimientos, stock_ajustes, stock_consolidado, ultima_actualizacion
-                             ) VALUES ($1, 0, $2, 0, $2, NOW())
-                             ON CONFLICT DO NOTHING`,
-                            [skuArt, -cantEgreso]
-                        );
-                    }
-                }
+                await combosCompuestosService.registrarEgresoStockConExplosionCombo(client, {
+                    pedidoIds: [pid],
+                    origenIngreso: 'fulfillment_paqueteria',
+                    observacionBase: `Despacho Postal ${ped.nombre_marca} #${ped.codigo_pedido} (${operadorLabel} #${guiaResuelta.numero_tracking})`
+                });
             }
 
             // d) Registrar DEBITO automático (Costo Base LAMDA + Retención Fiscal s/Margen + Costo Flete Real LAMDA) en Cuenta Corriente operativa
@@ -19765,6 +20083,12 @@ module.exports = {
     actualizarConfiguracionCuentaCanalNodos,
     crearPropuestaFraccion,
     anularODescartarPropuestaFraccion,
+    crearPropuestaComboGestor: combosCompuestosService.crearPropuestaComboGestor,
+    anularODescartarPropuestaCombo: combosCompuestosService.anularODescartarPropuestaCombo,
+    previsualizarCotizacionCombo: combosCompuestosService.previsualizarCotizacionCombo,
+    cotizarYAprobarCombo: combosCompuestosService.cotizarYAprobarCombo,
+    obtenerEstadoCombosPizarra: combosCompuestosService.obtenerEstadoCombosPizarra,
+    construirFirmaComposicionCombo: combosCompuestosService.construirFirmaComposicionCombo,
     sumarArticuloCatalogoANodo,
     cotizarYAprobarArticuloNodo,
     recalcularCascadaCatalogoNodos,

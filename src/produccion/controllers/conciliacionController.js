@@ -1031,6 +1031,17 @@ class ConciliacionController {
                     await nodosBarrialesService.sincronizarCatalogoNodoDesdeBunker(artId);
                 }
             }
+            try {
+                const combosCompuestosService = require('../services/combosCompuestosService');
+                const skusProp = Array.isArray(articulosActualizados)
+                    ? articulosActualizados.map(x => String(x?.articulo_id || x?.sku || x || '').trim()).filter(Boolean)
+                    : [];
+                if (skusProp.length > 0) {
+                    await combosCompuestosService.recalcularCombosAfectadosPorCambio(pool, { skusModificados: skusProp });
+                }
+            } catch (comboErr) {
+                console.warn('[CONCILIACION->COMBOS] Aviso recalculando combos en cascada:', comboErr.message);
+            }
 
             return res.json({
                 success: true,
