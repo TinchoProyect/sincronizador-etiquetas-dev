@@ -1786,11 +1786,45 @@ router.put('/carro/:carroId/ingreso-manual-editar/:uuid', editarIngresoManual);
 // ==========================================
 
 const {
+    obtenerCatalogoAbrirCaja,
+    obtenerAprendizajeCaja,
     obtenerSugerenciasCajas,
     buscarCajas,
     obtenerLoteSugerido,
     registrarAperturaCaja
 } = require('../controllers/abrirCaja');
+
+/**
+ * Obtener catálogo indexable + aprendizajes + últimas cajas con stock
+ * GET /api/produccion/abrir-caja/catalogo
+ */
+router.get('/abrir-caja/catalogo', async (req, res) => {
+    try {
+        await obtenerCatalogoAbrirCaja(req, res);
+    } catch (error) {
+        console.error('❌ [ABRIR-CAJA] Error en ruta /abrir-caja/catalogo:', error);
+        res.status(500).json({
+            error: 'Error al obtener catálogo de Abrir Caja',
+            detalle: error.message
+        });
+    }
+});
+
+/**
+ * Obtener aprendizaje automático para una caja específica
+ * GET /api/produccion/abrir-caja/aprendizaje?codigo_caja=XXX
+ */
+router.get('/abrir-caja/aprendizaje', async (req, res) => {
+    try {
+        await obtenerAprendizajeCaja(req, res);
+    } catch (error) {
+        console.error('❌ [ABRIR-CAJA] Error en ruta /abrir-caja/aprendizaje:', error);
+        res.status(500).json({
+            error: 'Error al obtener aprendizaje de caja',
+            detalle: error.message
+        });
+    }
+});
 
 /**
  * Obtener o generar lote sugerido para apertura de caja

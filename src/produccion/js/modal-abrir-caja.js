@@ -1,139 +1,434 @@
 /**
- * Modal "Abrir Caja Manual" - Desempacar producto de cajas cerradas a unidades
- * Versión: 4.0 - UX Clara + Búsqueda por Nombre + Asignación de Lote e Impresión Dual
- * 
- * @module modal-abrir-caja
+ * Modal "Abrir Caja Cerrada" v5.1
+ * - Flujo físico real: 1° Caja Búnker (escaneo o búsqueda) -> 2° Fracción Búnker aprendida -> 3° Operador + Lote heredado + Impresión Zebra
+ * - Catálogo exclusivo public.bunker_articulos (cero artículos legacy)
+ * - Buscador en vivo (0 ms) sobre palabras completas del Diccionario Búnker (propiedades_dinamicas) + nomenclador
+ * - Aprendizaje automático Caja -> Fracción + Unidades por caja + Multiplicador de cajas
+ * - Herencia automática del lote de la caja padre e impresión Zebra de pares (Artículo + Lote) al finalizar
  */
 
 const ModalAbrirCaja = (function () {
     'use strict';
 
-    // Variables privadas del módulo
+    const STORAGE_ULTIMO_USUARIO = 'abrirCajaUltimoUsuarioId';
+
     let modalElement = null;
-    let datosArticuloUnidad = null; // El contenido (la unidad a extraer)
-    let cajaSeleccionada = null;    // El origen (la caja cerrada)
-    let loteActual = '';            // Código de lote asignado
-    let origenLote = 'generado';    // 'lote_caja' o 'generado'
-    let etiquetasImpresas = false;
-    let modoManual = false;
+    let inicializado = false;
 
-    // Formatear fechas predeterminadas (hoy y hoy + 8 meses)
-    function obtenerFechasPorDefecto() {
-        const hoy = new Date();
-        const elabDia = String(hoy.getDate()).padStart(2, '0');
-        const elabMes = String(hoy.getMonth() + 1).padStart(2, '0');
-        const elabAnio = hoy.getFullYear();
-        const elaboracion = `${elabDia}/${elabMes}/${elabAnio}`;
+    // Caché en memoria del catálogo Búnker y vínculos aprendidos
+    let catalogoBunker = [];
+    let mapaPorSku = new Map();
+    let aprendizajesLista = [];
+    let ultimasCajasConStock = [];
+    let usuariosCargados = false;
 
-        const venc = new Date(hoy);
-        venc.setMonth(venc.getMonth() + 8);
-        const vencDia = String(venc.getDate()).padStart(2, '0');
-        const vencMes = String(venc.getMonth() + 1).padStart(2, '0');
-        const vencAnio = venc.getFullYear();
-        const vencimiento = `${vencDia}/${vencMes}/${vencAnio}`;
+    // Estado de la operación activa
+    let cajaSeleccionada = null;
+    let datosArticuloUnidad = null;
+    let unidadPreseleccionadaContextual = null; // Cuando se abre desde clic derecho en un faltante
+    let fuenteSeleccionUnidad = '';             // 'aprendido' | 'contextual' | 'manual'
+    let loteActual = '';
+    let loteProveedor = '';
+    let origenLote = 'generado';                // 'lote_caja' | 'generado' | 'manual'
 
-        return { elaboracion, vencimiento };
-    }
+    // Navegación por teclado en los dos omnibox
+    let resultadosCajaVisibles = [];
+    let indiceHighlightCaja = -1;
+    let resultadosUnidadVisibles = [];
+    let indiceHighlightUnidad = -1;
+    let timerAutoScanCaja = null;
+    let timerAutoScanUnidad = null;
+    let huboAperturasEnSesion = false;
 
-    // Normalizar texto
+    // ==========================================
+    // NORMALIZACIÓN Y MOTOR DE BÚSQUEDA BÚNKER
+    // ==========================================
+
     function normalizarTexto(texto) {
         if (!texto) return '';
-        return texto.toString()
+        return String(texto)
             .toLowerCase()
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
             .replace(/ñ/g, 'n');
     }
 
+    /**
+     * Construye la bolsa de búsqueda de un artículo Búnker indexando:
+     * 1. Nomenclador Búnker visible (descripcion_generada)
+     * 2. Familia / Rubro
+     * 3. Palabras COMPLETAS del Diccionario Búnker (propiedades_dinamicas: articulo_principal y posiciones[].valor,
+     *    incluyendo atributos silenciosos y modos abreviados, omitiendo abreviaturas sueltas de diccionario y códigos SKU)
+     * 4. Variantes de género (ej: tostado <-> tostada) y presentaciones pegadas (ej: "2 x 5kg" -> "2x5kg 2x5 x5kg x5")
+     */
+    function construirBolsaBusquedaBunker(art) {
+        if (!art) return '';
+        const tokens = [];
+
+        const descGen = art.descripcion_generada || art.descripcion || '';
+        if (descGen) {
+            tokens.push(descGen);
+            // Variantes pegadas de presentaciones ("2 x 5kg" -> "2x5kg 2x5 x5kg x5", "x 5kg" -> "x5kg x5")
+            const regexPres = /(\b\d+\s*[xX]\s*\d+(?:[.,]\d+)?\s*(?:kg|g|gr|un|u)?|\b[xX]\s*\d+(?:[.,]\d+)?\s*(?:kg|g|gr|un|u)?)/gi;
+            let match;
+            while ((match = regexPres.exec(descGen)) !== null) {
+                const compacto = match[0].replace(/\s+/g, '');
+                tokens.push(compacto);
+                const sinUnidad = compacto.replace(/(kg|g|gr|un|u)$/i, '');
+                if (sinUnidad && sinUnidad !== compacto) tokens.push(sinUnidad);
+            }
+            const mSub = descGen.match(/\b\d+\s*[xX]\s*(\d+(?:[.,]\d+)?)\s*(kg|g|gr)?/i);
+            if (mSub) {
+                tokens.push(`x${mSub[1]}${mSub[2] || ''}`);
+                tokens.push(`x${mSub[1]}`);
+            }
+        }
+
+        if (art.descripcion_corta && art.descripcion_corta !== descGen) {
+            tokens.push(art.descripcion_corta);
+        }
+
+        const famNombre = art.familia_nombre || art.propiedades_dinamicas?.familia_nombre;
+        if (famNombre) tokens.push(famNombre);
+        if (art.rubro) tokens.push(art.rubro);
+        if (art.sub_rubro) tokens.push(art.sub_rubro);
+
+        let pd = art.propiedades_dinamicas;
+        if (typeof pd === 'string') {
+            try { pd = JSON.parse(pd); } catch (_) { pd = null; }
+        }
+
+        if (pd && typeof pd === 'object') {
+            if (pd.articulo_principal) tokens.push(pd.articulo_principal);
+            if (pd.familia_nombre) tokens.push(pd.familia_nombre);
+
+            const posObj = pd.posiciones;
+            if (posObj && typeof posObj === 'object') {
+                Object.keys(posObj).forEach(key => {
+                    if (key.startsWith('asistente_') || key.startsWith('rendimiento_') || key.startsWith('tostadero_') || key.startsWith('_meta')) {
+                        return;
+                    }
+                    const item = posObj[key];
+                    if (item && typeof item === 'object' && item.valor) {
+                        const valorCompleto = String(item.valor).trim();
+                        tokens.push(valorCompleto);
+
+                        // Palabras compuestas pegadas (ej: "Extra Light" -> "extralight", "Non Pareil" -> "nonpareil")
+                        if (/\s+/.test(valorCompleto)) {
+                            tokens.push(valorCompleto.replace(/\s+/g, ''));
+                        }
+
+                        // Flexiones de género en palabras descriptivas completas (ej: "Peladas" <-> "pelado", "Tostado" <-> "tostada")
+                        valorCompleto.split(/[\s/]+/).forEach(w => {
+                            if (w.length > 4) {
+                                if (/os$/i.test(w)) {
+                                    tokens.push(w.slice(0, -2) + 'o', w.slice(0, -2) + 'a', w.slice(0, -2) + 'as');
+                                } else if (/as$/i.test(w)) {
+                                    tokens.push(w.slice(0, -2) + 'a', w.slice(0, -2) + 'o', w.slice(0, -2) + 'os');
+                                } else if (/o$/i.test(w)) {
+                                    tokens.push(w.slice(0, -1) + 'a', w.slice(0, -1) + 'os', w.slice(0, -1) + 'as');
+                                } else if (/a$/i.test(w)) {
+                                    tokens.push(w.slice(0, -1) + 'o', w.slice(0, -1) + 'as', w.slice(0, -1) + 'os');
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+        }
+
+        return normalizarTexto(tokens.filter(Boolean).join(' '));
+    }
+
+    // Asegurar Single Source of Truth global si la página aún no lo definió
+    if (typeof window.obtenerTextoBusquedaArticulo !== 'function') {
+        window.obtenerTextoBusquedaArticulo = construirBolsaBusquedaBunker;
+    }
+
     // ==========================================
-    // INICIALIZACIÓN
+    // DEDUCCIÓN DE UNIDADES Y SIMILITUD BÚNKER
+    // ==========================================
+
+    function deducirFormatoCaja(caja) {
+        if (!caja) return { unidades: null, kilosHijoEsperados: null, etiquetaFuente: '' };
+
+        const packU = parseInt(caja.pack_unidades, 10) || 0;
+        const desc = String(caja.descripcion_generada || caja.descripcion || '');
+        const m = desc.match(/\b(\d{1,3})\s*[xX]\s*(\d+(?:[.,]\d+)?)\s*(kg|kilos?|k|g|gr|gramos?|un|u)?\b/i);
+
+        if (m) {
+            const mult = parseInt(m[1], 10);
+            const valorPeso = parseFloat(String(m[2]).replace(',', '.'));
+            const unidadRaw = (m[3] || '').toLowerCase();
+            let kilosHijo = null;
+            if (valorPeso > 0) {
+                if (unidadRaw.startsWith('g')) {
+                    kilosHijo = valorPeso / 1000;
+                } else if (unidadRaw.startsWith('k') || valorPeso <= 25) {
+                    kilosHijo = valorPeso;
+                } else if (valorPeso >= 50) {
+                    kilosHijo = valorPeso / 1000;
+                }
+            }
+            if (mult >= 2 && mult <= 200) {
+                return {
+                    unidades: packU > 1 ? packU : mult,
+                    kilosHijoEsperados: kilosHijo,
+                    etiquetaFuente: `✨ Deducido de "${m[0].trim()}"`
+                };
+            }
+        }
+
+        if (packU > 1) {
+            const kuCaja = parseFloat(caja.kilos_unidad) || 0;
+            return {
+                unidades: packU,
+                kilosHijoEsperados: kuCaja > 0 ? (kuCaja / packU) : null,
+                etiquetaFuente: `✨ Configurado en Búnker (${packU} un.)`
+            };
+        }
+
+        return { unidades: null, kilosHijoEsperados: null, etiquetaFuente: '' };
+    }
+
+    function extraerAtributosCompletosSet(art) {
+        const set = new Set();
+        let pd = art?.propiedades_dinamicas;
+        if (typeof pd === 'string') {
+            try { pd = JSON.parse(pd); } catch (_) { pd = null; }
+        }
+        if (pd?.posiciones && typeof pd.posiciones === 'object') {
+            Object.values(pd.posiciones).forEach(p => {
+                if (p && p.valor) {
+                    set.add(normalizarTexto(p.valor));
+                }
+            });
+        }
+        return set;
+    }
+
+    function sugerirFraccionesPorSimilitud(caja, formatoCaja) {
+        if (!caja || !catalogoBunker.length) return [];
+
+        let pdCaja = caja.propiedades_dinamicas;
+        if (typeof pdCaja === 'string') {
+            try { pdCaja = JSON.parse(pdCaja); } catch (_) { pdCaja = null; }
+        }
+        const principalCaja = normalizarTexto(pdCaja?.articulo_principal || '');
+        const attrsCaja = extraerAtributosCompletosSet(caja);
+        const kuCaja = parseFloat(caja.kilos_unidad) || 0;
+        const kilosHijoEsp = formatoCaja?.kilosHijoEsperados || null;
+
+        const candidatos = [];
+
+        for (const cand of catalogoBunker) {
+            if (cand.articulo_numero === caja.articulo_numero) continue;
+
+            // Evitar sugerir otra caja padre explícita (ej. "2 x 5kg" o es_pack con pack_unidades > 1)
+            const descCand = String(cand.descripcion_generada || cand.descripcion || '');
+            if (/\b\d+\s*[xX]\s*\d+/.test(descCand) || (cand.es_pack && (parseInt(cand.pack_unidades, 10) || 0) > 1)) {
+                continue;
+            }
+
+            let pdCand = cand.propiedades_dinamicas;
+            if (typeof pdCand === 'string') {
+                try { pdCand = JSON.parse(pdCand); } catch (_) { pdCand = null; }
+            }
+            const principalCand = normalizarTexto(pdCand?.articulo_principal || '');
+
+            // Si ambos definen artículo principal y no coinciden, descartar (ej: no sugerir Almendra para Nuez)
+            if (principalCaja && principalCand && principalCaja !== principalCand) {
+                continue;
+            }
+
+            let score = 0;
+            if (caja.familia_id && cand.familia_id && Number(caja.familia_id) === Number(cand.familia_id)) {
+                score += 20;
+            }
+            if (principalCaja && principalCaja === principalCand) {
+                score += 45;
+            }
+
+            const attrsCand = extraerAtributosCompletosSet(cand);
+            attrsCaja.forEach(val => {
+                if (attrsCand.has(val)) score += 18;
+            });
+
+            const kuCand = parseFloat(cand.kilos_unidad) || 0;
+            if (kilosHijoEsp && kuCand > 0) {
+                if (Math.abs(kuCand - kilosHijoEsp) < 0.02) {
+                    score += 55;
+                } else {
+                    score -= 20;
+                }
+            } else if (kuCaja > 0 && kuCand > 0 && kuCand < kuCaja) {
+                const ratio = kuCaja / kuCand;
+                if (ratio >= 2 && ratio <= 50 && Math.abs(ratio - Math.round(ratio)) < 0.01) {
+                    score += 35;
+                }
+            }
+
+            if (score >= 55) {
+                candidatos.push({ art: cand, score });
+            }
+        }
+
+        candidatos.sort((a, b) => b.score - a.score);
+        return candidatos.slice(0, 4).map(c => c.art);
+    }
+
+    // ==========================================
+    // FECHAS Y UTILIDADES
+    // ==========================================
+
+    function obtenerFechasPorDefecto() {
+        const hoy = new Date();
+        const elab = `${String(hoy.getDate()).padStart(2, '0')}/${String(hoy.getMonth() + 1).padStart(2, '0')}/${hoy.getFullYear()}`;
+        const vencDate = new Date(hoy);
+        vencDate.setMonth(vencDate.getMonth() + 8);
+        const venc = `${String(vencDate.getDate()).padStart(2, '0')}/${String(vencDate.getMonth() + 1).padStart(2, '0')}/${vencDate.getFullYear()}`;
+        return { elaboracion: elab, vencimiento: venc };
+    }
+
+    function escaparHtml(str) {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    // ==========================================
+    // INICIALIZACIÓN Y LISTENERS
     // ==========================================
 
     function inicializarModal() {
         modalElement = document.getElementById('modal-abrir-caja');
+        if (!modalElement) return false;
 
-        if (!modalElement) {
-            console.error('❌ [ABRIR-CAJA] Modal no encontrado en el DOM');
-            return false;
+        if (!inicializado) {
+            configurarEventListeners();
+            hacerDraggable();
+            inicializado = true;
         }
-
-        console.log('✅ [ABRIR-CAJA] Modal encontrado, configurando listeners...');
-        configurarEventListeners();
-        hacerDraggable();
         return true;
     }
 
     function configurarEventListeners() {
-        // Tabs de búsqueda de CAJA
-        document.getElementById('btn-codigo-caja')?.addEventListener('click', () => cambiarModoBusquedaCaja('codigo'));
-        document.getElementById('btn-descripcion-caja')?.addEventListener('click', () => cambiarModoBusquedaCaja('descripcion'));
+        const inputCaja = document.getElementById('ac-input-omnibox-caja');
+        const btnLimpiarCaja = document.getElementById('ac-limpiar-omnibox-caja');
+        const inputUnidad = document.getElementById('ac-input-omnibox-unidad');
+        const btnLimpiarUnidad = document.getElementById('ac-limpiar-omnibox-unidad');
 
-        // Búsqueda CAJA - Código
-        const inputCodigo = document.getElementById('input-codigo-caja');
-        if (inputCodigo) {
-            inputCodigo.addEventListener('input', debounce(buscarPorCodigo, 300));
-            inputCodigo.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    buscarPorCodigo();
-                }
+        // Omnibox Paso 1 (Caja)
+        if (inputCaja) {
+            inputCaja.addEventListener('input', () => {
+                const val = inputCaja.value;
+                if (btnLimpiarCaja) btnLimpiarCaja.style.display = val ? 'block' : 'none';
+                filtrarOmniboxCaja(val);
+            });
+            inputCaja.addEventListener('keydown', manejarTecladoOmniboxCaja);
+            inputCaja.addEventListener('focus', () => {
+                if (inputCaja.value.trim()) filtrarOmniboxCaja(inputCaja.value);
             });
         }
-
-        // Búsqueda CAJA - Descripción
-        const inputDesc = document.getElementById('input-descripcion-caja');
-        if (inputDesc) {
-            inputDesc.addEventListener('input', debounce(buscarPorDescripcion, 400));
-        }
-
-        // Búsqueda UNIDAD (Paso 1 Manual por Nombre)
-        const inputBusquedaUnidad = document.getElementById('input-busqueda-unidad');
-        if (inputBusquedaUnidad) {
-            inputBusquedaUnidad.addEventListener('input', debounce(buscarUnidadAvanzada, 300));
-            inputBusquedaUnidad.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    buscarUnidadAvanzada();
-                }
-            });
-        }
-
-        // Botón Cambiar Unidad
-        document.getElementById('btn-cambiar-unidad')?.addEventListener('click', configurarModoManual);
-
-        // Botón Regenerar Lote
-        document.getElementById('btn-regenerar-lote')?.addEventListener('click', () => {
-            solicitarLoteSugerido(cajaSeleccionada?.articulo_numero, datosArticuloUnidad?.articulo_numero, true);
+        btnLimpiarCaja?.addEventListener('click', () => {
+            if (inputCaja) {
+                inputCaja.value = '';
+                btnLimpiarCaja.style.display = 'none';
+                filtrarOmniboxCaja('');
+                inputCaja.focus();
+            }
         });
 
-        // Entrada manual en input de lote
+        // Omnibox Paso 2 (Unidad/Fracción)
+        if (inputUnidad) {
+            inputUnidad.addEventListener('input', () => {
+                const val = inputUnidad.value;
+                if (btnLimpiarUnidad) btnLimpiarUnidad.style.display = val ? 'block' : 'none';
+                filtrarOmniboxUnidad(val);
+            });
+            inputUnidad.addEventListener('keydown', manejarTecladoOmniboxUnidad);
+            inputUnidad.addEventListener('focus', () => {
+                if (inputUnidad.value.trim()) filtrarOmniboxUnidad(inputUnidad.value);
+            });
+        }
+        btnLimpiarUnidad?.addEventListener('click', () => {
+            if (inputUnidad) {
+                inputUnidad.value = '';
+                btnLimpiarUnidad.style.display = 'none';
+                filtrarOmniboxUnidad('');
+                inputUnidad.focus();
+            }
+        });
+
+        // Botones Cambiar (Reinicio en cascada)
+        document.getElementById('ac-btn-cambiar-caja')?.addEventListener('click', reiniciarACambioDeCaja);
+        document.getElementById('ac-btn-cambiar-unidad')?.addEventListener('click', activarModoCambioUnidad);
+
+        // Stepper de cantidad de cajas a abrir
+        document.getElementById('ac-btn-menos-cajas')?.addEventListener('click', () => ajustarCantidadCajas(-1));
+        document.getElementById('ac-btn-mas-cajas')?.addEventListener('click', () => ajustarCantidadCajas(1));
+        document.getElementById('ac-cantidad-cajas')?.addEventListener('input', () => {
+            normalizarCantidadCajasInput();
+            actualizarVistaPreviaConversion();
+            actualizarEstadoPasosYBotones();
+        });
+
+        // Unidades por caja
+        document.getElementById('abrir-caja-cantidad')?.addEventListener('input', () => {
+            const badgeFuente = document.getElementById('ac-fuente-unidades-badge');
+            if (badgeFuente) badgeFuente.textContent = '✏️ Editado manual';
+            actualizarVistaPreviaConversion();
+            actualizarEstadoPasosYBotones();
+        });
+
+        // Operador (recordar en localStorage)
+        document.getElementById('abrir-caja-usuario')?.addEventListener('change', (e) => {
+            if (e.target.value) {
+                try { localStorage.setItem(STORAGE_ULTIMO_USUARIO, String(e.target.value)); } catch (_) {}
+            }
+            actualizarEstadoPasosYBotones();
+        });
+
+        // Lote y fechas
+        document.getElementById('btn-regenerar-lote')?.addEventListener('click', () => {
+            solicitarLoteSugerido(cajaSeleccionada?.articulo_numero, true);
+        });
         document.getElementById('abrir-caja-lote')?.addEventListener('input', (e) => {
             loteActual = e.target.value.trim().toUpperCase();
             e.target.value = loteActual;
-            actualizarInfoLote();
-            validarFormulario();
+            origenLote = 'manual';
+            actualizarInfoLoteUI();
+            actualizarEstadoPasosYBotones();
+        });
+        document.getElementById('ac-toggle-fechas')?.addEventListener('click', () => {
+            const box = document.getElementById('ac-fechas-collapse');
+            if (!box) return;
+            const visible = box.style.display === 'grid';
+            box.style.display = visible ? 'none' : 'grid';
         });
 
-        // Botones de Acción
-        document.getElementById('btn-imprimir-caja')?.addEventListener('click', imprimirEtiquetas);
-        document.getElementById('btn-confirmar-caja')?.addEventListener('click', confirmarApertura);
+        // Acciones finales
+        document.getElementById('btn-confirmar-caja')?.addEventListener('click', () => ejecutarApertura(true));
+        document.getElementById('btn-solo-abrir-caja')?.addEventListener('click', () => ejecutarApertura(false));
 
-        // Validación y sincronización de cantidad
-        document.getElementById('abrir-caja-usuario')?.addEventListener('change', validarFormulario);
-        document.getElementById('abrir-caja-cantidad')?.addEventListener('input', () => {
-            actualizarContadorEtiquetas();
-            validarFormulario();
+        // Cerrar con Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modalElement && modalElement.style.display === 'flex') {
+                cerrarModal();
+            }
         });
     }
 
     function hacerDraggable() {
         const modal = document.querySelector('#modal-abrir-caja .modal-content');
         const header = document.getElementById('modal-abrir-caja-header');
-
         if (!modal || !header) return;
 
         let isDragging = false;
-        let currentX, currentY, initialX, initialY;
+        let initialX = 0;
+        let initialY = 0;
 
         header.addEventListener('mousedown', (e) => {
             if (e.target.classList.contains('modal-close')) return;
@@ -145,11 +440,9 @@ const ModalAbrirCaja = (function () {
         document.addEventListener('mousemove', (e) => {
             if (!isDragging) return;
             e.preventDefault();
-            currentX = e.clientX - initialX;
-            currentY = e.clientY - initialY;
             modal.style.position = 'fixed';
-            modal.style.left = currentX + 'px';
-            modal.style.top = currentY + 'px';
+            modal.style.left = (e.clientX - initialX) + 'px';
+            modal.style.top = (e.clientY - initialY) + 'px';
             modal.style.transform = 'none';
         });
 
@@ -159,759 +452,1279 @@ const ModalAbrirCaja = (function () {
     }
 
     // ==========================================
-    // FLUJO Y ESTADOS
+    // CARGA DE CATÁLOGO BÚNKER Y OPERADORES
     // ==========================================
 
-    /**
-     * PASO 1 (Modo Manual): Búsqueda clara del producto a extraer por nombre
-     */
-    function configurarModoManual() {
-        modoManual = true;
-
-        mostrarElemento('paso-seleccion-unidad', true);
-        mostrarElemento('paso-seleccion-caja', false);
-
-        const inputBusqueda = document.getElementById('input-busqueda-unidad');
-        if (inputBusqueda) inputBusqueda.value = '';
-        const resUnidad = document.getElementById('resultados-unidad');
-        if (resUnidad) resUnidad.style.display = 'none';
-
-        document.getElementById('btn-cambiar-unidad').style.display = 'none';
-
-        datosArticuloUnidad = null;
-        cajaSeleccionada = null;
-        loteActual = '';
-        etiquetasImpresas = false;
-
-        setTimeout(() => document.getElementById('input-busqueda-unidad')?.focus(), 100);
-        console.log('🛠️ [ABRIR-CAJA] Paso 1 activado: Selección de producto por nombre');
-    }
-
-    /**
-     * PASO 2 (Modo Contextual o tras elegir unidad): Selección de caja, lote y confirmación
-     */
-    async function configurarModoContextual(articuloNumero, datosArticulo) {
-        datosArticuloUnidad = datosArticulo || { articulo_numero: articuloNumero };
-
-        mostrarElemento('paso-seleccion-unidad', false);
-        mostrarElemento('paso-seleccion-caja', true);
-
-        // Botón de cambiar disponible siempre que se abrió o se seleccionó
-        document.getElementById('btn-cambiar-unidad').style.display = 'inline-block';
-
-        // Llenar info de la unidad a extraer
-        const descripcion = datosArticuloUnidad.descripcion || datosArticuloUnidad.nombre || '-';
-        const sku = datosArticuloUnidad.articulo_numero || datosArticuloUnidad.codigo || articuloNumero;
-        const barcode = datosArticuloUnidad.codigo_barras || datosArticuloUnidad.codigo || sku;
-        const stock = datosArticuloUnidad.stock_disponible !== undefined
-            ? parseFloat(datosArticuloUnidad.stock_disponible).toFixed(2)
-            : (datosArticuloUnidad.stock_consolidado !== undefined 
-                ? parseFloat(datosArticuloUnidad.stock_consolidado).toFixed(2)
-                : (datosArticuloUnidad.stock !== undefined ? parseFloat(datosArticuloUnidad.stock).toFixed(2) : '-'));
-
-        document.getElementById('unidad-descripcion-caja').textContent = descripcion;
-        document.getElementById('unidad-codigo-caja').textContent = sku;
-        const elBarcode = document.getElementById('unidad-barcode-caja');
-        if (elBarcode) elBarcode.textContent = barcode;
-        document.getElementById('unidad-stock-caja').textContent = `${stock} un.`;
-
-        // Pre-cargar fechas de envasado/vencimiento sugeridas
-        const fechasDef = obtenerFechasPorDefecto();
-        const inputElab = document.getElementById('abrir-caja-fecha-elab');
-        const inputVenc = document.getElementById('abrir-caja-fecha-venc');
-        if (inputElab && !inputElab.value) inputElab.value = fechasDef.elaboracion;
-        if (inputVenc && !inputVenc.value) inputVenc.value = fechasDef.vencimiento;
-
-        // Resetear caja seleccionada
-        document.getElementById('caja-seleccionada-display').style.display = 'none';
-        cajaSeleccionada = null;
-        etiquetasImpresas = false;
-
-        document.getElementById('btn-imprimir-caja').disabled = true;
-        document.getElementById('btn-confirmar-caja').disabled = true;
-
-        actualizarContadorEtiquetas();
-
-        // Cargar usuarios y sugerencias de cajas
-        await cargarUsuarios();
-        await cargarSugerencias(sku);
-
-        // Obtener lote preliminar para la unidad
-        await solicitarLoteSugerido(null, sku);
-
-        console.log(`✅ [ABRIR-CAJA] Unidad lista para desempacar: ${sku} - ${descripcion}`);
-    }
-
-    // ==========================================
-    // BÚSQUEDA DEL PRODUCTO A EXTRAER (PASO 1)
-    // ==========================================
-
-    async function buscarUnidadAvanzada() {
-        const input = document.getElementById('input-busqueda-unidad');
-        const texto = input?.value.trim();
-
-        if (!texto || texto.length < 2) {
-            const container = document.getElementById('resultados-unidad');
-            if (container) container.style.display = 'none';
-            return;
-        }
-
-        const container = document.getElementById('resultados-unidad');
-        if (container) {
-            container.innerHTML = '<div style="padding: 12px; color: #1976d2;"><i class="fas fa-spinner fa-spin"></i> Buscando artículos...</div>';
-            container.style.display = 'block';
-        }
-
+    async function cargarCatalogoBunker() {
         try {
-            // Usamos el endpoint unificado /api/produccion/buscar-articulos que aplica AND sobre tokens
-            const response = await fetch(`/api/produccion/buscar-articulos?q=${encodeURIComponent(texto)}`);
-            if (!response.ok) throw new Error('Error al buscar artículos');
+            const resp = await fetch('/api/produccion/abrir-caja/catalogo');
+            if (!resp.ok) throw new Error('Error al obtener catálogo Búnker');
+            const data = await resp.json();
 
-            const data = await response.json();
-            const resultados = data.articulos || data.data || [];
-
-            mostrarResultadosUnidad(resultados);
-        } catch (error) {
-            console.error('❌ [ABRIR-CAJA] Error búsqueda avanzada de unidad:', error);
-            if (container) container.innerHTML = '<div style="padding: 12px; color: #d32f2f;">Error al consultar artículos. Intente nuevamente.</div>';
-        }
-    }
-
-    function mostrarResultadosUnidad(resultados) {
-        const container = document.getElementById('resultados-unidad');
-        if (!container) return;
-
-        container.innerHTML = '';
-
-        if (!resultados || resultados.length === 0) {
-            container.innerHTML = '<div style="padding: 12px; color: #757575; font-size: 13px;">No se encontraron artículos con esa descripción. Intente con otra palabra.</div>';
-            container.style.display = 'block';
-            return;
-        }
-
-        const muestra = resultados.slice(0, 40);
-
-        muestra.forEach(art => {
-            const div = document.createElement('div');
-            div.style.cssText = 'padding: 10px 14px; border-bottom: 1px solid #e0e0e0; cursor: pointer; transition: background-color 0.15s;';
-
-            const nombre = art.descripcion || art.nombre || '-';
-            const sku = art.articulo_numero || art.codigo || '-';
-            const barcode = art.codigo_barras || '-';
-            const stock = parseFloat(art.stock_consolidado ?? art.stock_disponible ?? art.stock ?? 0).toFixed(2);
-
-            div.innerHTML = `
-                <div style="font-weight: 700; color: #0d47a1; font-size: 14px;">${nombre}</div>
-                <div style="font-size: 12px; color: #555; margin-top: 3px; display: flex; gap: 12px;">
-                    <span>SKU: <strong style="font-family: monospace;">${sku}</strong></span>
-                    <span>Cód. Barras: <span style="font-family: monospace;">${barcode}</span></span>
-                    <span>Stock: <strong style="color: ${parseFloat(stock) > 0 ? '#2e7d32' : '#c62828'};">${stock} un.</strong></span>
-                </div>
-            `;
-
-            div.onclick = () => {
-                seleccionarUnidad({
-                    articulo_numero: sku,
-                    descripcion: nombre,
-                    codigo_barras: barcode,
-                    stock_disponible: stock,
-                    kilos_unidad: art.kilos_unidad || 0
-                });
-            };
-
-            div.addEventListener('mouseenter', () => div.style.backgroundColor = '#e3f2fd');
-            div.addEventListener('mouseleave', () => div.style.backgroundColor = 'white');
-
-            container.appendChild(div);
-        });
-
-        if (resultados.length > 40) {
-            const footer = document.createElement('div');
-            footer.style.padding = '8px';
-            footer.style.textAlign = 'center';
-            footer.style.color = '#757575';
-            footer.style.fontSize = '12px';
-            footer.style.background = '#f9f9f9';
-            footer.textContent = `Mostrando los primeros 40 de ${resultados.length} resultados. Escriba más detalles para acotar.`;
-            container.appendChild(footer);
-        }
-
-        container.style.display = 'block';
-    }
-
-    function seleccionarUnidad(articulo) {
-        console.log('✅ [ABRIR-CAJA] Unidad seleccionada:', articulo);
-        const numero = articulo.articulo_numero || articulo.codigo;
-        configurarModoContextual(numero, articulo);
-    }
-
-    // ==========================================
-    // SUGERENCIAS Y BÚSQUEDA DE CAJA (PASO 2)
-    // ==========================================
-
-    function cambiarModoBusquedaCaja(modo) {
-        const btnCodigo = document.getElementById('btn-codigo-caja');
-        const btnDesc = document.getElementById('btn-descripcion-caja');
-        const containerCodigo = document.getElementById('container-codigo-caja');
-        const containerDesc = document.getElementById('container-descripcion-caja');
-
-        if (modo === 'codigo') {
-            btnCodigo?.classList.add('active');
-            btnDesc?.classList.remove('active');
-            if (containerCodigo) containerCodigo.style.display = 'block';
-            if (containerDesc) containerDesc.style.display = 'none';
-            document.getElementById('input-codigo-caja')?.focus();
-        } else {
-            btnCodigo?.classList.remove('active');
-            btnDesc?.classList.add('active');
-            if (containerCodigo) containerCodigo.style.display = 'none';
-            if (containerDesc) containerDesc.style.display = 'block';
-            document.getElementById('input-descripcion-caja')?.focus();
-        }
-
-        ocultarResultadosCaja();
-    }
-
-    async function cargarSugerencias(articuloNumero) {
-        try {
-            const response = await fetch(`/api/produccion/abrir-caja/sugerencias?articulo_unidad=${articuloNumero}`);
-            if (!response.ok) return;
-
-            const data = await response.json();
-            if (data.success && data.sugerencias && data.sugerencias.length > 0) {
-                mostrarSugerencias(data.sugerencias);
-            } else {
-                const container = document.getElementById('sugerencias-container-caja');
-                if (container) container.style.display = 'none';
-            }
-        } catch (error) {
-            console.error('❌ [ABRIR-CAJA] Error al cargar sugerencias de cajas:', error);
-        }
-    }
-
-    function mostrarSugerencias(sugerencias) {
-        const container = document.getElementById('sugerencias-container-caja');
-        const lista = document.getElementById('sugerencias-lista-caja');
-
-        if (!container || !lista) return;
-        lista.innerHTML = '';
-
-        sugerencias.forEach((sug, idx) => {
-            const div = document.createElement('div');
-            div.style.cssText = `
-                padding: 10px 14px;
-                background: ${idx === 0 ? '#e8f5e9' : '#f9f9f9'};
-                border: 2px solid ${idx === 0 ? '#4caf50' : '#e0e0e0'};
-                border-radius: 6px;
-                cursor: pointer;
-                transition: all 0.2s ease;
-            `;
-            div.setAttribute('title', 'Clic para seleccionar esta caja de origen');
-
-            div.innerHTML = `
-                <div style="font-weight: 700; color: #212121; font-size: 13px;">${sug.descripcion_caja}</div>
-                <div style="font-size: 12px; color: #616161; margin-top: 3px; display: flex; gap: 12px;">
-                    <span>Código: <strong style="font-family: monospace;">${sug.codigo_caja}</strong></span>
-                    <span>Stock: <strong style="color: ${parseFloat(sug.stock_actual) > 0 ? '#2e7d32' : '#c62828'};">${parseFloat(sug.stock_actual).toFixed(2)} cajas</strong></span>
-                    ${idx === 0 ? '<span style="color: #2e7d32; font-weight: 700;">⭐ Frecuente</span>' : ''}
-                </div>
-            `;
-
-            div.addEventListener('click', () => seleccionarCaja({
-                articulo_numero: sug.codigo_caja,
-                descripcion: sug.descripcion_caja,
-                codigo_barras: sug.codigo_barras,
-                stock_actual: sug.stock_actual,
-                pack_unidades: sug.pack_unidades || sug.cantidad_promedio || 0
+            catalogoBunker = (data.articulos || []).map(art => ({
+                ...art,
+                _bolsaBusqueda: construirBolsaBusquedaBunker(art)
             }));
 
-            lista.appendChild(div);
+            mapaPorSku.clear();
+            catalogoBunker.forEach(art => {
+                mapaPorSku.set(String(art.articulo_numero).trim(), art);
+            });
+
+            aprendizajesLista = data.aprendizajes || [];
+            ultimasCajasConStock = data.ultimas_cajas_con_stock || [];
+
+            renderizarUltimasCajasConStock();
+        } catch (error) {
+            console.error('❌ [ABRIR-CAJA] Error cargando catálogo Búnker:', error);
+            mostrarMensaje('Error al cargar catálogo Búnker. Verifique conexión.', 'error');
+        }
+    }
+
+    async function cargarUsuariosYPreseleccionar() {
+        const select = document.getElementById('abrir-caja-usuario');
+        if (!select) return;
+
+        try {
+            if (!usuariosCargados || select.options.length <= 1) {
+                const resp = await fetch('/api/usuarios/con-permiso/Produccion');
+                if (resp.ok) {
+                    const usuarios = await resp.json();
+                    select.innerHTML = '<option value="">-- Seleccionar operador --</option>';
+                    usuarios.forEach(u => {
+                        const opt = document.createElement('option');
+                        opt.value = String(u.id);
+                        opt.textContent = u.nombre_completo;
+                        select.appendChild(opt);
+                    });
+                    usuariosCargados = true;
+                }
+            }
+
+            // Preseleccionar operador activo o último operador usado en esta PC
+            if (!select.value) {
+                let idPreferido = null;
+                try {
+                    const colabRaw = localStorage.getItem('colaboradorActivo');
+                    if (colabRaw) {
+                        const colab = JSON.parse(colabRaw);
+                        if (colab && colab.id) idPreferido = String(colab.id);
+                    }
+                    if (!idPreferido) {
+                        idPreferido = localStorage.getItem(STORAGE_ULTIMO_USUARIO);
+                    }
+                } catch (_) {}
+
+                if (idPreferido && Array.from(select.options).some(o => o.value === String(idPreferido))) {
+                    select.value = String(idPreferido);
+                }
+            }
+        } catch (error) {
+            console.error('❌ [ABRIR-CAJA] Error al cargar operadores:', error);
+        }
+    }
+
+    function renderizarUltimasCajasConStock() {
+        const wrap = document.getElementById('ac-ultimas-cajas-wrap');
+        const lista = document.getElementById('ac-ultimas-cajas-lista');
+        if (!wrap || !lista) return;
+
+        // Si estamos en modo contextual con cajas sugeridas propias, priorizamos esas
+        if (unidadPreseleccionadaContextual) {
+            wrap.style.display = 'none';
+            return;
+        }
+
+        lista.innerHTML = '';
+        if (!ultimasCajasConStock || ultimasCajasConStock.length === 0) {
+            wrap.style.display = 'none';
+            return;
+        }
+
+        ultimasCajasConStock.forEach(item => {
+            const artCaja = mapaPorSku.get(item.codigo_caja);
+            if (!artCaja || parseFloat(artCaja.stock_actual || 0) < 1) return;
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'ac-chip';
+            btn.innerHTML = `
+                <span>📦 <strong>${escaparHtml(artCaja.descripcion)}</strong></span>
+                <span style="color:#15803d; font-weight:800;">(${parseFloat(artCaja.stock_actual).toFixed(0)} cj)</span>
+                <span style="color:#64748b;">➔ ${item.unidades_por_caja}× ${escaparHtml(item.codigo_unidad)}</span>
+            `;
+            btn.addEventListener('click', () => seleccionarCaja(artCaja));
+            lista.appendChild(btn);
         });
 
-        container.style.display = 'block';
+        wrap.style.display = lista.children.length > 0 ? 'block' : 'none';
     }
 
-    async function buscarPorCodigo() {
-        const input = document.getElementById('input-codigo-caja');
-        const codigo = input?.value.trim();
+    // ==========================================
+    // OMNIBÚSQUEDA EN VIVO — PASO 1 (CAJA BÚNKER)
+    // ==========================================
 
-        if (!codigo) {
-            ocultarResultadosCaja();
+    function buscarMatchExactoCodigo(queryRaw, excluirSku = null) {
+        const limpio = String(queryRaw || '').trim();
+        if (!limpio) return null;
+        const upper = limpio.toUpperCase();
+
+        // 1° Código de barras oficial o local
+        const porBarcode = catalogoBunker.find(a =>
+            a.articulo_numero !== excluirSku &&
+            ((a.codigo_barras && String(a.codigo_barras).trim() === limpio) ||
+             (a.codigo_barras_local && String(a.codigo_barras_local).trim() === limpio))
+        );
+        if (porBarcode) return porBarcode;
+
+        // 2° SKU exacto (solo si no tiene espacios)
+        if (!/\s/.test(limpio)) {
+            const porSku = catalogoBunker.find(a =>
+                a.articulo_numero !== excluirSku &&
+                String(a.articulo_numero).trim().toUpperCase() === upper
+            );
+            if (porSku) return porSku;
+        }
+
+        return null;
+    }
+
+    function filtrarOmniboxCaja(textoRaw) {
+        clearTimeout(timerAutoScanCaja);
+        const dropdown = document.getElementById('ac-resultados-caja');
+        const tokensInfo = document.getElementById('ac-tokens-caja');
+        if (!dropdown) return;
+
+        const limpio = String(textoRaw || '').trim();
+        if (!limpio) {
+            dropdown.style.display = 'none';
+            resultadosCajaVisibles = [];
+            indiceHighlightCaja = -1;
+            if (tokensInfo) {
+                tokensInfo.innerHTML = '💡 Filtra en vivo sobre el Diccionario Búnker (palabras completas + nomenclador, separadas por espacio).';
+            }
             return;
         }
 
-        try {
-            const response = await fetch(`/api/produccion/abrir-caja/buscar?codigo_barras=${encodeURIComponent(codigo)}`);
-            if (!response.ok) throw new Error('Error en búsqueda por código');
-
-            const data = await response.json();
-            if (data.success && data.resultados && data.resultados.length > 0) {
-                seleccionarCaja(data.resultados[0]);
-            } else {
-                mostrarMensaje('No se encontró caja con ese código de barras en el depósito.', 'warning');
+        // Auto-selección rápida si es lectura de pistola numérica pura (>= 6 dígitos) con match exacto y stock >= 1
+        if (/^\d{6,}$/.test(limpio)) {
+            const exactoScan = buscarMatchExactoCodigo(limpio);
+            if (exactoScan && parseFloat(exactoScan.stock_actual || 0) >= 1) {
+                timerAutoScanCaja = setTimeout(() => {
+                    if (document.getElementById('ac-input-omnibox-caja')?.value.trim() === limpio && !cajaSeleccionada) {
+                        seleccionarCaja(exactoScan);
+                    }
+                }, 130);
             }
-        } catch (error) {
-            console.error('❌ [ABRIR-CAJA] Error búsqueda código:', error);
-            mostrarMensaje('Error al buscar caja por código', 'error');
+        }
+
+        const norm = normalizarTexto(limpio);
+        const terminos = norm.split(/\s+/).filter(Boolean);
+
+        // Coincidencia por código de barras O por todos los grupos de caracteres en la bolsa Búnker
+        const coincidencias = catalogoBunker.filter(art => {
+            if (terminos.length === 1) {
+                const unico = limpio.toUpperCase();
+                if ((art.codigo_barras && String(art.codigo_barras).includes(limpio)) ||
+                    (art.codigo_barras_local && String(art.codigo_barras_local).includes(limpio)) ||
+                    String(art.articulo_numero).toUpperCase() === unico) {
+                    return true;
+                }
+            }
+            return terminos.every(t => art._bolsaBusqueda.includes(t));
+        });
+
+        // Ordenar: 1° con stock >= 1 (priorizando cajas con aprendizaje o formato NxM), 2° sin stock abajo
+        const setCajasAprendidas = new Set(aprendizajesLista.map(a => a.codigo_caja));
+        coincidencias.sort((a, b) => {
+            const stockA = parseFloat(a.stock_actual || 0) >= 1 ? 1 : 0;
+            const stockB = parseFloat(b.stock_actual || 0) >= 1 ? 1 : 0;
+            if (stockA !== stockB) return stockB - stockA;
+
+            const aprA = setCajasAprendidas.has(a.articulo_numero) ? 1 : 0;
+            const aprB = setCajasAprendidas.has(b.articulo_numero) ? 1 : 0;
+            if (aprA !== aprB) return aprB - aprA;
+
+            return String(a.descripcion).localeCompare(String(b.descripcion), 'es', { sensitivity: 'base' });
+        });
+
+        const conStockCount = coincidencias.filter(c => parseFloat(c.stock_actual || 0) >= 1).length;
+        if (tokensInfo) {
+            const pills = terminos.map(t => `<span style="background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; font-weight:700;">${escaparHtml(t)}</span>`).join(' + ');
+            tokensInfo.innerHTML = `🔎 Filtro activo: ${pills} — <strong>${conStockCount}</strong> con stock${coincidencias.length > conStockCount ? ` (${coincidencias.length - conStockCount} en stock 0)` : ''}`;
+        }
+
+        resultadosCajaVisibles = coincidencias.slice(0, 35);
+        indiceHighlightCaja = resultadosCajaVisibles.findIndex(a => parseFloat(a.stock_actual || 0) >= 1);
+
+        renderizarDropdownArticulos(dropdown, resultadosCajaVisibles, indiceHighlightCaja, true, (artElegido) => {
+            if (parseFloat(artElegido.stock_actual || 0) < 1) {
+                mostrarMensaje(`⚠️ La caja "${artElegido.descripcion}" figura con stock ${parseFloat(artElegido.stock_actual || 0).toFixed(2)}. Debe tener al menos 1 caja disponible.`, 'warning');
+                return;
+            }
+            seleccionarCaja(artElegido);
+        });
+    }
+
+    function manejarTecladoOmniboxCaja(e) {
+        const input = e.target;
+        if (e.key === 'ArrowDown') {
+            if (resultadosCajaVisibles.length > 0) {
+                e.preventDefault();
+                indiceHighlightCaja = Math.min(resultadosCajaVisibles.length - 1, indiceHighlightCaja + 1);
+                actualizarHighlightVisual('ac-resultados-caja', indiceHighlightCaja);
+            }
+        } else if (e.key === 'ArrowUp') {
+            if (resultadosCajaVisibles.length > 0) {
+                e.preventDefault();
+                indiceHighlightCaja = Math.max(0, indiceHighlightCaja - 1);
+                actualizarHighlightVisual('ac-resultados-caja', indiceHighlightCaja);
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            clearTimeout(timerAutoScanCaja);
+            const val = input.value.trim();
+            if (!val) return;
+
+            // 1° Match exacto por código de barras / SKU (pistola lectora)
+            const exacto = buscarMatchExactoCodigo(val);
+            if (exacto) {
+                if (parseFloat(exacto.stock_actual || 0) < 1) {
+                    mostrarMensaje(`⚠️ La caja escaneada "${exacto.descripcion}" figura sin stock disponible (${parseFloat(exacto.stock_actual || 0).toFixed(2)}).`, 'warning');
+                    return;
+                }
+                seleccionarCaja(exacto);
+                return;
+            }
+
+            // 2° Elemento resaltado en la lista filtrada
+            const candidato = resultadosCajaVisibles[indiceHighlightCaja] || resultadosCajaVisibles[0];
+            if (candidato) {
+                if (parseFloat(candidato.stock_actual || 0) < 1) {
+                    mostrarMensaje(`⚠️ "${candidato.descripcion}" no tiene stock de cajas cerradas (${parseFloat(candidato.stock_actual || 0).toFixed(2)}).`, 'warning');
+                    return;
+                }
+                seleccionarCaja(candidato);
+            } else {
+                mostrarMensaje('No se encontró ninguna caja en Búnker con ese código o descripción.', 'warning');
+            }
         }
     }
 
-    async function buscarPorDescripcion() {
-        const input = document.getElementById('input-descripcion-caja');
-        const desc = input?.value.trim();
+    // ==========================================
+    // OMNIBÚSQUEDA EN VIVO — PASO 2 (FRACCIÓN BÚNKER)
+    // ==========================================
 
-        if (!desc || desc.length < 2) {
-            ocultarResultadosCaja();
+    function filtrarOmniboxUnidad(textoRaw) {
+        clearTimeout(timerAutoScanUnidad);
+        const dropdown = document.getElementById('ac-resultados-unidad');
+        const tokensInfo = document.getElementById('ac-tokens-unidad');
+        if (!dropdown) return;
+
+        const excluirSku = cajaSeleccionada?.articulo_numero || null;
+        const limpio = String(textoRaw || '').trim();
+        if (!limpio) {
+            dropdown.style.display = 'none';
+            resultadosUnidadVisibles = [];
+            indiceHighlightUnidad = -1;
+            if (tokensInfo) {
+                tokensInfo.innerHTML = '💡 La primera vez elegís la fracción y el sistema la aprende automáticamente para las próximas cajas.';
+            }
             return;
         }
 
-        try {
-            const response = await fetch(`/api/produccion/abrir-caja/buscar?descripcion=${encodeURIComponent(desc)}`);
-            if (!response.ok) throw new Error('Error en búsqueda de caja');
-
-            const data = await response.json();
-            if (data.success && data.resultados && data.resultados.length > 0) {
-                mostrarResultadosCaja(data.resultados);
-            } else {
-                mostrarMensaje('No se encontraron cajas con esa descripción.', 'warning');
+        if (/^\d{6,}$/.test(limpio)) {
+            const exactoScan = buscarMatchExactoCodigo(limpio, excluirSku);
+            if (exactoScan) {
+                timerAutoScanUnidad = setTimeout(() => {
+                    if (document.getElementById('ac-input-omnibox-unidad')?.value.trim() === limpio && !datosArticuloUnidad) {
+                        seleccionarUnidad(exactoScan, 'manual');
+                    }
+                }, 130);
             }
-        } catch (error) {
-            console.error('❌ [ABRIR-CAJA] Error búsqueda descripción:', error);
-            mostrarMensaje('Error al buscar cajas', 'error');
+        }
+
+        const norm = normalizarTexto(limpio);
+        const terminos = norm.split(/\s+/).filter(Boolean);
+
+        const coincidencias = catalogoBunker.filter(art => {
+            if (excluirSku && art.articulo_numero === excluirSku) return false;
+            if (terminos.length === 1) {
+                const unico = limpio.toUpperCase();
+                if ((art.codigo_barras && String(art.codigo_barras).includes(limpio)) ||
+                    (art.codigo_barras_local && String(art.codigo_barras_local).includes(limpio)) ||
+                    String(art.articulo_numero).toUpperCase() === unico) {
+                    return true;
+                }
+            }
+            return terminos.every(t => art._bolsaBusqueda.includes(t));
+        });
+
+        if (tokensInfo) {
+            const pills = terminos.map(t => `<span style="background:#dbeafe; color:#1d4ed8; padding:1px 6px; border-radius:4px; font-weight:700;">${escaparHtml(t)}</span>`).join(' + ');
+            tokensInfo.innerHTML = `🔎 Filtro activo: ${pills} — <strong>${coincidencias.length}</strong> fracciones Búnker`;
+        }
+
+        resultadosUnidadVisibles = coincidencias.slice(0, 35);
+        indiceHighlightUnidad = resultadosUnidadVisibles.length > 0 ? 0 : -1;
+
+        renderizarDropdownArticulos(dropdown, resultadosUnidadVisibles, indiceHighlightUnidad, false, (artElegido) => {
+            seleccionarUnidad(artElegido, 'manual');
+        });
+    }
+
+    function manejarTecladoOmniboxUnidad(e) {
+        const input = e.target;
+        if (e.key === 'ArrowDown') {
+            if (resultadosUnidadVisibles.length > 0) {
+                e.preventDefault();
+                indiceHighlightUnidad = Math.min(resultadosUnidadVisibles.length - 1, indiceHighlightUnidad + 1);
+                actualizarHighlightVisual('ac-resultados-unidad', indiceHighlightUnidad);
+            }
+        } else if (e.key === 'ArrowUp') {
+            if (resultadosUnidadVisibles.length > 0) {
+                e.preventDefault();
+                indiceHighlightUnidad = Math.max(0, indiceHighlightUnidad - 1);
+                actualizarHighlightVisual('ac-resultados-unidad', indiceHighlightUnidad);
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            clearTimeout(timerAutoScanUnidad);
+            const val = input.value.trim();
+            if (!val) return;
+
+            const exacto = buscarMatchExactoCodigo(val, cajaSeleccionada?.articulo_numero);
+            if (exacto) {
+                seleccionarUnidad(exacto, 'manual');
+                return;
+            }
+
+            const candidato = resultadosUnidadVisibles[indiceHighlightUnidad] || resultadosUnidadVisibles[0];
+            if (candidato) {
+                seleccionarUnidad(candidato, 'manual');
+            }
         }
     }
 
-    function mostrarResultadosCaja(resultados) {
-        const container = document.getElementById('resultados-caja');
-        if (!container) return;
-        container.innerHTML = '';
+    function renderizarDropdownArticulos(dropdown, lista, highlightIdx, exigirStockCaja, onSelect) {
+        dropdown.innerHTML = '';
 
-        resultados.forEach(res => {
-            const div = document.createElement('div');
-            div.style.cssText = 'padding: 10px; border-bottom: 1px solid #e0e0e0; cursor: pointer; transition: background 0.15s;';
+        if (!lista || lista.length === 0) {
+            dropdown.innerHTML = '<div style="padding: 12px; color: #64748b; font-size: 13px;">No se encontraron artículos en Búnker con esos términos.</div>';
+            dropdown.style.display = 'block';
+            return;
+        }
 
-            div.innerHTML = `
-                <div style="font-weight: 700; color: #212121; font-size: 13px;">${res.descripcion}</div>
-                <div style="font-size: 12px; color: #616161; margin-top: 3px; display: flex; gap: 12px;">
-                    <span>Código: <strong style="font-family: monospace;">${res.articulo_numero}</strong></span>
-                    <span>Stock: <strong style="color: ${parseFloat(res.stock_actual) > 0 ? '#2e7d32' : '#c62828'};">${parseFloat(res.stock_actual).toFixed(2)} cajas</strong></span>
-                    ${res.pack_unidades ? `<span>Unidades: <strong>${res.pack_unidades}</strong></span>` : ''}
+        lista.forEach((art, idx) => {
+            const stock = parseFloat(art.stock_actual || 0);
+            const sinStockCaja = exigirStockCaja && stock < 1;
+
+            const row = document.createElement('div');
+            row.className = 'ac-item-row'
+                + (idx === highlightIdx ? ' ac-item-highlighted' : '')
+                + (sinStockCaja ? ' ac-item-nostock' : '');
+
+            const formato = exigirStockCaja ? deducirFormatoCaja(art) : null;
+            const apr = exigirStockCaja ? aprendizajesLista.find(a => a.codigo_caja === art.articulo_numero) : null;
+            const unidHint = apr
+                ? `<span style="background:#dcfce7; color:#15803d; padding:1px 6px; border-radius:4px; font-weight:700;">⚡ ${apr.unidades_por_caja}× ${escaparHtml(apr.codigo_unidad)}</span>`
+                : (formato?.unidades ? `<span style="background:#e0f2fe; color:#0369a1; padding:1px 6px; border-radius:4px; font-weight:700;">${formato.unidades} un/caja</span>` : '');
+
+            row.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <div style="font-weight:700; color:#0f172a; font-size:13.5px;">${escaparHtml(art.descripcion)}</div>
+                    ${unidHint}
+                </div>
+                <div style="font-size:11.5px; color:#475569; margin-top:3px; display:flex; flex-wrap:wrap; gap:12px;">
+                    <span>SKU: <strong style="font-family:monospace;">${escaparHtml(art.articulo_numero)}</strong></span>
+                    <span>Cód. Barras: <span style="font-family:monospace;">${escaparHtml(art.codigo_barras || '-')}</span></span>
+                    <span>Stock: <strong style="color:${stock >= 1 ? '#15803d' : '#dc2626'};">${stock.toFixed(2)} ${exigirStockCaja ? 'cajas' : 'un.'}</strong>${sinStockCaja ? ' ⚠️ Sin stock' : ''}</span>
+                    ${art.lote_padre_activo && exigirStockCaja ? `<span>Lote: <strong style="font-family:monospace; color:#0f766e;">${escaparHtml(art.lote_padre_activo)}</strong></span>` : ''}
                 </div>
             `;
 
-            div.addEventListener('click', () => seleccionarCaja(res));
-            div.addEventListener('mouseenter', () => div.style.background = '#f1f8e9');
-            div.addEventListener('mouseleave', () => div.style.background = 'white');
-
-            container.appendChild(div);
+            row.addEventListener('click', () => onSelect(art));
+            dropdown.appendChild(row);
         });
 
-        container.style.display = 'block';
+        dropdown.style.display = 'block';
     }
 
-    function ocultarResultadosCaja() {
-        const container = document.getElementById('resultados-caja');
-        if (container) container.style.display = 'none';
+    function actualizarHighlightVisual(dropdownId, nuevoIdx) {
+        const dropdown = document.getElementById(dropdownId);
+        if (!dropdown) return;
+        const filas = dropdown.querySelectorAll('.ac-item-row');
+        filas.forEach((f, idx) => {
+            if (idx === nuevoIdx) {
+                f.classList.add('ac-item-highlighted');
+                f.scrollIntoView({ block: 'nearest' });
+            } else {
+                f.classList.remove('ac-item-highlighted');
+            }
+        });
     }
 
-    function seleccionarCaja(caja) {
+    // ==========================================
+    // SELECCIÓN Y FLUJO PROGRESIVO DE PASOS
+    // ==========================================
+
+    async function seleccionarCaja(caja) {
         cajaSeleccionada = caja;
+        ocultarMensaje();
 
-        document.getElementById('caja-nombre').textContent = caja.descripcion;
-        document.getElementById('caja-codigo').textContent = caja.articulo_numero;
-        const elBarcode = document.getElementById('caja-barcode');
-        if (elBarcode) elBarcode.textContent = caja.codigo_barras || '-';
-        document.getElementById('caja-stock').textContent = `${parseFloat(caja.stock_actual || 0).toFixed(2)} cajas`;
-        document.getElementById('caja-seleccionada-display').style.display = 'block';
+        // Actualizar tarjeta de Paso 1
+        document.getElementById('ac-caja-nombre').textContent = caja.descripcion;
+        document.getElementById('ac-caja-sku').textContent = caja.articulo_numero;
+        document.getElementById('ac-caja-barcode').textContent = caja.codigo_barras || '-';
+        document.getElementById('ac-caja-stock').textContent = `${parseFloat(caja.stock_actual || 0).toFixed(2)} cajas`;
 
-        ocultarResultadosCaja();
-
-        // Si la caja ya tiene pack_unidades definido, autocompletar cantidad
-        const inputCant = document.getElementById('abrir-caja-cantidad');
-        if (inputCant && caja.pack_unidades && parseInt(caja.pack_unidades) > 0) {
-            inputCant.value = caja.pack_unidades;
-        } else if (inputCant && (!inputCant.value || parseInt(inputCant.value) <= 0)) {
-            inputCant.value = 12; // Valor sugerido habitual si no está configurado
+        const loteInfoSpan = document.getElementById('ac-caja-lote-info');
+        const loteTextoEl = document.getElementById('ac-caja-lote-texto');
+        if (caja.lote_padre_activo) {
+            if (loteTextoEl) loteTextoEl.textContent = caja.lote_padre_activo;
+            if (loteInfoSpan) loteInfoSpan.style.display = 'inline';
+        } else if (loteInfoSpan) {
+            loteInfoSpan.style.display = 'none';
         }
 
-        // Limpiar inputs de búsqueda de caja
-        const inputCodigo = document.getElementById('input-codigo-caja');
-        const inputDesc = document.getElementById('input-descripcion-caja');
-        if (inputCodigo) inputCodigo.value = '';
-        if (inputDesc) inputDesc.value = '';
+        document.getElementById('ac-caja-buscador-wrap').style.display = 'none';
+        document.getElementById('ac-caja-resumen-card').style.display = 'block';
+        document.getElementById('ac-resultados-caja').style.display = 'none';
 
-        // Solicitar lote sugerido vinculado a la caja
-        solicitarLoteSugerido(caja.articulo_numero, datosArticuloUnidad?.articulo_numero);
+        // Configurar tope de cajas a abrir según stock real entero disponible
+        const maxCajas = Math.max(1, Math.floor(parseFloat(caja.stock_actual || 1)));
+        const inputCantCajas = document.getElementById('ac-cantidad-cajas');
+        if (inputCantCajas) {
+            inputCantCajas.max = String(maxCajas);
+            inputCantCajas.value = '1';
+        }
+        const hintMax = document.getElementById('ac-max-cajas-hint');
+        if (hintMax) hintMax.textContent = `Disp: ${maxCajas} caja${maxCajas === 1 ? '' : 's'}`;
 
-        actualizarContadorEtiquetas();
-        validarFormulario();
-        mostrarMensaje('Caja seleccionada correctamente', 'success');
+        // Herencia inmediata del lote del artículo padre (o consulta al servidor si no estaba en caché)
+        if (caja.lote_padre_activo) {
+            loteActual = String(caja.lote_padre_activo).trim();
+            loteProveedor = caja.lote_padre_proveedor || '';
+            origenLote = 'lote_caja';
+            const inputLote = document.getElementById('abrir-caja-lote');
+            if (inputLote) inputLote.value = loteActual;
+            actualizarInfoLoteUI();
+        } else {
+            solicitarLoteSugerido(caja.articulo_numero, false);
+        }
 
-        console.log('✅ [ABRIR-CAJA] Caja de origen seleccionada:', caja.articulo_numero);
+        // Resolver Paso 2: ¿Aprendido, Contextual o Primera Vez?
+        const formatoCaja = deducirFormatoCaja(caja);
+        const inputUnidPorCaja = document.getElementById('abrir-caja-cantidad');
+        const badgeFuenteUnid = document.getElementById('ac-fuente-unidades-badge');
+
+        // Caso A: Ya venía fijada una unidad desde clic derecho en tabla de faltantes
+        if (unidadPreseleccionadaContextual && unidadPreseleccionadaContextual.articulo_numero !== caja.articulo_numero) {
+            const aprEspecifico = aprendizajesLista.find(a =>
+                a.codigo_caja === caja.articulo_numero &&
+                a.codigo_unidad === unidadPreseleccionadaContextual.articulo_numero
+            );
+            if (aprEspecifico && inputUnidPorCaja) {
+                inputUnidPorCaja.value = String(aprEspecifico.unidades_por_caja);
+                if (badgeFuenteUnid) badgeFuenteUnid.textContent = `⚡ Aprendido (${aprEspecifico.unidades_por_caja} un.)`;
+            } else if (formatoCaja.unidades && inputUnidPorCaja) {
+                inputUnidPorCaja.value = String(formatoCaja.unidades);
+                if (badgeFuenteUnid) badgeFuenteUnid.textContent = formatoCaja.etiquetaFuente;
+            }
+            seleccionarUnidad(unidadPreseleccionadaContextual, 'contextual');
+            return;
+        }
+
+        // Caso B: Aprendizaje previo de esta caja en abrir_caja_aprendizaje
+        const apr = aprendizajesLista.find(a => a.codigo_caja === caja.articulo_numero);
+        if (apr) {
+            const unidAprendida = mapaPorSku.get(apr.codigo_unidad);
+            if (unidAprendida && unidAprendida.articulo_numero !== caja.articulo_numero) {
+                if (inputUnidPorCaja) inputUnidPorCaja.value = String(apr.unidades_por_caja);
+                if (badgeFuenteUnid) {
+                    badgeFuenteUnid.textContent = `⚡ Aprendido (${apr.veces_usado} ${apr.veces_usado === 1 ? 'vez' : 'veces'})`;
+                }
+                seleccionarUnidad(unidAprendida, 'aprendido', apr.veces_usado);
+                return;
+            }
+        }
+
+        // Caso C: Vínculo pack_hijo_codigo configurado en Búnker (solo lectura)
+        if (caja.pack_hijo_codigo) {
+            const hijoBunker = mapaPorSku.get(caja.pack_hijo_codigo)
+                || catalogoBunker.find(a => a.codigo_barras === caja.pack_hijo_codigo);
+            if (hijoBunker && hijoBunker.articulo_numero !== caja.articulo_numero) {
+                const uDef = formatoCaja.unidades || 2;
+                if (inputUnidPorCaja) inputUnidPorCaja.value = String(uDef);
+                if (badgeFuenteUnid) badgeFuenteUnid.textContent = formatoCaja.etiquetaFuente || '✨ Vínculo Búnker';
+                seleccionarUnidad(hijoBunker, 'aprendido', 1);
+                return;
+            }
+        }
+
+        // Caso D: Primera vez que se abre esta caja -> pre-llenar unidades deducidas y ofrecer sugerencias por similitud
+        datosArticuloUnidad = null;
+        if (formatoCaja.unidades && inputUnidPorCaja) {
+            inputUnidPorCaja.value = String(formatoCaja.unidades);
+            if (badgeFuenteUnid) badgeFuenteUnid.textContent = formatoCaja.etiquetaFuente;
+        } else if (inputUnidPorCaja) {
+            inputUnidPorCaja.value = '';
+            if (badgeFuenteUnid) badgeFuenteUnid.textContent = '';
+        }
+
+        mostrarBuscadorUnidadConSugerencias(caja, formatoCaja);
+        actualizarVistaPreviaConversion();
+        actualizarEstadoPasosYBotones();
+
+        setTimeout(() => document.getElementById('ac-input-omnibox-unidad')?.focus(), 60);
+    }
+
+    function mostrarBuscadorUnidadConSugerencias(caja, formatoCaja) {
+        document.getElementById('ac-unidad-resumen-card').style.display = 'none';
+        document.getElementById('ac-unidad-buscador-wrap').style.display = 'block';
+
+        const sugWrap = document.getElementById('ac-sugerencias-unidad-similitud');
+        const sugLista = document.getElementById('ac-lista-unidad-similitud');
+        if (!sugWrap || !sugLista) return;
+
+        sugLista.innerHTML = '';
+        const sugeridos = sugerirFraccionesPorSimilitud(caja, formatoCaja || deducirFormatoCaja(caja));
+
+        if (sugeridos.length > 0) {
+            sugeridos.forEach(cand => {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'ac-chip';
+                chip.innerHTML = `
+                    <span>🎯 <strong>${escaparHtml(cand.descripcion)}</strong></span>
+                    <span style="font-family:monospace; color:#475569;">[${escaparHtml(cand.articulo_numero)}]</span>
+                `;
+                chip.addEventListener('click', () => seleccionarUnidad(cand, 'manual'));
+                sugLista.appendChild(chip);
+            });
+            sugWrap.style.display = 'block';
+        } else {
+            sugWrap.style.display = 'none';
+        }
+    }
+
+    function seleccionarUnidad(unidadArt, fuente = 'manual', vecesUsado = 0) {
+        datosArticuloUnidad = unidadArt;
+        fuenteSeleccionUnidad = fuente;
+
+        document.getElementById('ac-unidad-nombre').textContent = unidadArt.descripcion;
+        document.getElementById('ac-unidad-sku').textContent = unidadArt.articulo_numero;
+        document.getElementById('ac-unidad-barcode').textContent = unidadArt.codigo_barras || '-';
+        document.getElementById('ac-unidad-stock').textContent = `${parseFloat(unidadArt.stock_actual || 0).toFixed(2)} un.`;
+
+        document.getElementById('ac-unidad-buscador-wrap').style.display = 'none';
+        document.getElementById('ac-resultados-unidad').style.display = 'none';
+        document.getElementById('ac-unidad-resumen-card').style.display = 'block';
+
+        // Si las unidades por caja aún estaban vacías (ej: caja decía "x 10kg" y fracción "x 5kg"), deducir por cociente exacto de kilos Búnker
+        const inputUnidPorCaja = document.getElementById('abrir-caja-cantidad');
+        const badgeFuenteUnid = document.getElementById('ac-fuente-unidades-badge');
+        if (inputUnidPorCaja && (!inputUnidPorCaja.value || parseInt(inputUnidPorCaja.value, 10) < 1) && cajaSeleccionada) {
+            const kuCaja = parseFloat(cajaSeleccionada.kilos_unidad) || 0;
+            const kuUnid = parseFloat(unidadArt.kilos_unidad) || 0;
+            if (kuCaja > 0 && kuUnid > 0 && kuCaja > kuUnid) {
+                const ratio = kuCaja / kuUnid;
+                if (ratio >= 2 && ratio <= 200 && Math.abs(ratio - Math.round(ratio)) < 0.02) {
+                    inputUnidPorCaja.value = String(Math.round(ratio));
+                    if (badgeFuenteUnid) {
+                        badgeFuenteUnid.textContent = `✨ Deducido (${kuCaja}kg ÷ ${kuUnid}kg = ${Math.round(ratio)})`;
+                    }
+                }
+            }
+        }
+
+        const badgePaso2 = document.getElementById('ac-badge-paso-2');
+        if (badgePaso2) {
+            if (fuente === 'aprendido') {
+                badgePaso2.style.background = '#dcfce7';
+                badgePaso2.style.color = '#15803d';
+                badgePaso2.textContent = vecesUsado > 1 ? `⚡ Aprendido (${vecesUsado} usos)` : '⚡ Aprendido automáticamente';
+            } else if (fuente === 'contextual') {
+                badgePaso2.style.background = '#dbeafe';
+                badgePaso2.style.color = '#1d4ed8';
+                badgePaso2.textContent = '🎯 Producto solicitado';
+            } else {
+                badgePaso2.style.background = '#e0f2fe';
+                badgePaso2.style.color = '#0369a1';
+                badgePaso2.textContent = '✔ Se aprenderá al confirmar';
+            }
+        }
+
+        actualizarVistaPreviaConversion();
+        actualizarEstadoPasosYBotones();
+
+        // Si falta elegir unidades por caja, enfocar ese input; si ya está todo, enfocar botón principal
+        if (inputUnidPorCaja && (!inputUnidPorCaja.value || parseInt(inputUnidPorCaja.value, 10) < 1)) {
+            setTimeout(() => inputUnidPorCaja.focus(), 50);
+        }
+    }
+
+    function reiniciarACambioDeCaja() {
+        cajaSeleccionada = null;
+        if (!unidadPreseleccionadaContextual) {
+            datosArticuloUnidad = null;
+        }
+        loteActual = '';
+        loteProveedor = '';
+        origenLote = 'generado';
+
+        document.getElementById('ac-caja-resumen-card').style.display = 'none';
+        document.getElementById('ac-caja-buscador-wrap').style.display = 'block';
+
+        const inputCaja = document.getElementById('ac-input-omnibox-caja');
+        const btnLimpiarCaja = document.getElementById('ac-limpiar-omnibox-caja');
+        if (inputCaja) inputCaja.value = '';
+        if (btnLimpiarCaja) btnLimpiarCaja.style.display = 'none';
+        filtrarOmniboxCaja('');
+
+        if (!unidadPreseleccionadaContextual) {
+            document.getElementById('ac-unidad-resumen-card').style.display = 'none';
+            document.getElementById('ac-unidad-buscador-wrap').style.display = 'block';
+            document.getElementById('ac-sugerencias-unidad-similitud').style.display = 'none';
+            const inputUnidad = document.getElementById('ac-input-omnibox-unidad');
+            if (inputUnidad) inputUnidad.value = '';
+            const inputCant = document.getElementById('abrir-caja-cantidad');
+            if (inputCant) inputCant.value = '';
+            const badgeFuente = document.getElementById('ac-fuente-unidades-badge');
+            if (badgeFuente) badgeFuente.textContent = '';
+        }
+
+        const inputLote = document.getElementById('abrir-caja-lote');
+        if (inputLote) inputLote.value = '';
+
+        renderizarUltimasCajasConStock();
+        actualizarVistaPreviaConversion();
+        actualizarEstadoPasosYBotones();
+        ocultarMensaje();
+
+        setTimeout(() => inputCaja?.focus(), 60);
+    }
+
+    function activarModoCambioUnidad() {
+        unidadPreseleccionadaContextual = null;
+        datosArticuloUnidad = null;
+
+        const inputUnidad = document.getElementById('ac-input-omnibox-unidad');
+        const btnLimpiarUnidad = document.getElementById('ac-limpiar-omnibox-unidad');
+        if (inputUnidad) inputUnidad.value = '';
+        if (btnLimpiarUnidad) btnLimpiarUnidad.style.display = 'none';
+        filtrarOmniboxUnidad('');
+
+        mostrarBuscadorUnidadConSugerencias(cajaSeleccionada, deducirFormatoCaja(cajaSeleccionada));
+        actualizarVistaPreviaConversion();
+        actualizarEstadoPasosYBotones();
+
+        setTimeout(() => inputUnidad?.focus(), 60);
+    }
+
+    function ajustarCantidadCajas(delta) {
+        const input = document.getElementById('ac-cantidad-cajas');
+        if (!input || !cajaSeleccionada) return;
+        const max = Math.max(1, Math.floor(parseFloat(cajaSeleccionada.stock_actual || 1)));
+        const actual = parseInt(input.value, 10) || 1;
+        const nuevo = Math.min(max, Math.max(1, actual + delta));
+        input.value = String(nuevo);
+        actualizarVistaPreviaConversion();
+        actualizarEstadoPasosYBotones();
+    }
+
+    function normalizarCantidadCajasInput() {
+        const input = document.getElementById('ac-cantidad-cajas');
+        if (!input || !cajaSeleccionada) return;
+        const max = Math.max(1, Math.floor(parseFloat(cajaSeleccionada.stock_actual || 1)));
+        let val = parseInt(input.value, 10);
+        if (isNaN(val) || val < 1) val = 1;
+        if (val > max) val = max;
+        input.value = String(val);
+    }
+
+    function actualizarVistaPreviaConversion() {
+        const preview = document.getElementById('ac-conversion-preview');
+        const displayEtiquetas = document.getElementById('display-cant-etiquetas');
+        const btnConfirmar = document.getElementById('btn-confirmar-caja');
+
+        const cantCajas = Math.max(1, parseInt(document.getElementById('ac-cantidad-cajas')?.value, 10) || 1);
+        const unidPorCaja = parseInt(document.getElementById('abrir-caja-cantidad')?.value, 10) || 0;
+        const totalUnidades = cantCajas * unidPorCaja;
+
+        if (displayEtiquetas) {
+            if (totalUnidades > 0 && datosArticuloUnidad) {
+                displayEtiquetas.textContent = `${totalUnidades} ${totalUnidades === 1 ? 'par' : 'pares'} (${totalUnidades}× Artículo "${datosArticuloUnidad.articulo_numero}" + ${totalUnidades}× Lote "${loteActual || '...'}")`;
+            } else {
+                displayEtiquetas.textContent = '0 pares (Artículo + Lote)';
+            }
+        }
+
+        if (btnConfirmar) {
+            btnConfirmar.textContent = totalUnidades > 0
+                ? `🖨️ Confirmar e Imprimir en Zebra (${totalUnidades} ${totalUnidades === 1 ? 'par' : 'pares'})`
+                : '🖨️ Confirmar e Imprimir en Zebra';
+        }
+
+        if (!preview) return;
+        if (!cajaSeleccionada || !datosArticuloUnidad || unidPorCaja < 1) {
+            preview.style.display = 'none';
+            return;
+        }
+
+        const stockCajaRestante = Math.max(0, (parseFloat(cajaSeleccionada.stock_actual || 0) - cantCajas)).toFixed(2);
+        const stockUnidNuevo = (parseFloat(datosArticuloUnidad.stock_actual || 0) + totalUnidades).toFixed(2);
+
+        preview.innerHTML = `
+            📉 Sale: <strong>−${cantCajas} ${cantCajas === 1 ? 'caja' : 'cajas'}</strong> de <code>${escaparHtml(cajaSeleccionada.articulo_numero)}</code> (quedan ${stockCajaRestante})
+            &nbsp;&nbsp;➜&nbsp;&nbsp;
+            📈 Entra: <strong>+${totalUnidades} un.</strong> de <code>${escaparHtml(datosArticuloUnidad.articulo_numero)}</code> (pasa a ${stockUnidNuevo})
+        `;
+        preview.style.display = 'block';
+    }
+
+    function actualizarEstadoPasosYBotones() {
+        const paso1 = document.getElementById('ac-paso-1');
+        const paso2 = document.getElementById('ac-paso-2');
+        const paso3 = document.getElementById('ac-paso-3');
+        const badge1 = document.getElementById('ac-badge-paso-1');
+        const badge2 = document.getElementById('ac-badge-paso-2');
+        const badge3 = document.getElementById('ac-badge-paso-3');
+
+        const tieneCaja = Boolean(cajaSeleccionada);
+        const unidPorCaja = parseInt(document.getElementById('abrir-caja-cantidad')?.value, 10) || 0;
+        const cantCajas = parseInt(document.getElementById('ac-cantidad-cajas')?.value, 10) || 0;
+        const tienePaso2 = tieneCaja && Boolean(datosArticuloUnidad) && unidPorCaja >= 1 && cantCajas >= 1;
+
+        // Paso 1 visual
+        if (paso1) {
+            paso1.className = 'ac-step-card ' + (tieneCaja ? 'ac-step-done' : 'ac-step-active');
+        }
+        if (badge1) {
+            if (tieneCaja) {
+                badge1.style.background = '#dcfce7';
+                badge1.style.color = '#15803d';
+                badge1.textContent = '✔ Caja lista';
+            } else {
+                badge1.style.background = '#e0f2fe';
+                badge1.style.color = '#0369a1';
+                badge1.textContent = 'Escaneá o buscá en Búnker';
+            }
+        }
+
+        // Controles de Paso 2
+        const controlesPaso2 = [
+            'ac-input-omnibox-unidad',
+            'ac-btn-menos-cajas',
+            'ac-cantidad-cajas',
+            'ac-btn-mas-cajas',
+            'abrir-caja-cantidad'
+        ];
+        controlesPaso2.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = !tieneCaja;
+        });
+
+        if (paso2) {
+            if (!tieneCaja) {
+                paso2.className = 'ac-step-card ac-step-locked';
+                if (badge2) {
+                    badge2.style.background = '#e2e8f0';
+                    badge2.style.color = '#475569';
+                    badge2.textContent = 'Completá el paso anterior';
+                }
+            } else if (tienePaso2) {
+                paso2.className = 'ac-step-card ac-step-done';
+            } else {
+                paso2.className = 'ac-step-card ac-step-active';
+                if (badge2 && !datosArticuloUnidad) {
+                    badge2.style.background = '#e0f2fe';
+                    badge2.style.color = '#0369a1';
+                    badge2.textContent = 'Elegí fracción y cantidad';
+                }
+            }
+        }
+
+        // Controles de Paso 3
+        const controlesPaso3 = [
+            'abrir-caja-usuario',
+            'abrir-caja-lote',
+            'btn-regenerar-lote',
+            'abrir-caja-fecha-elab',
+            'abrir-caja-fecha-venc',
+            'ac-check-continuar'
+        ];
+        controlesPaso3.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = !tienePaso2;
+        });
+
+        const usuarioVal = document.getElementById('abrir-caja-usuario')?.value;
+        const loteVal = document.getElementById('abrir-caja-lote')?.value.trim();
+        const todoListo = tienePaso2 && Boolean(usuarioVal) && Boolean(loteVal);
+
+        if (paso3) {
+            if (!tienePaso2) {
+                paso3.className = 'ac-step-card ac-step-locked';
+                if (badge3) {
+                    badge3.style.background = '#e2e8f0';
+                    badge3.style.color = '#475569';
+                    badge3.textContent = 'Completá el paso anterior';
+                }
+            } else if (todoListo) {
+                paso3.className = 'ac-step-card ac-step-active';
+                if (badge3) {
+                    badge3.style.background = '#dcfce7';
+                    badge3.style.color = '#15803d';
+                    badge3.textContent = '✔ Listo para confirmar';
+                }
+            } else {
+                paso3.className = 'ac-step-card ac-step-active';
+                if (badge3) {
+                    badge3.style.background = '#fef3c7';
+                    badge3.style.color = '#b45309';
+                    badge3.textContent = 'Seleccioná operador';
+                }
+            }
+        }
+
+        const btnConfirmar = document.getElementById('btn-confirmar-caja');
+        const btnSoloAbrir = document.getElementById('btn-solo-abrir-caja');
+        if (btnConfirmar) btnConfirmar.disabled = !todoListo;
+        if (btnSoloAbrir) btnSoloAbrir.disabled = !todoListo;
     }
 
     // ==========================================
-    // GESTIÓN DE LOTES Y TRAZABILIDAD
+    // HERENCIA DE LOTE E IMPRESIÓN ZEBRA
     // ==========================================
 
-    async function solicitarLoteSugerido(codigoCaja = null, codigoUnidad = null, forzarNuevo = false) {
+    async function solicitarLoteSugerido(codigoCaja, forzarNuevo = false) {
         try {
             let url = `/api/produccion/abrir-caja/lote-sugerido?forzar_nuevo=${forzarNuevo ? '1' : '0'}`;
             if (codigoCaja) url += `&codigo_caja=${encodeURIComponent(codigoCaja)}`;
-            if (codigoUnidad) url += `&codigo_unidad=${encodeURIComponent(codigoUnidad)}`;
 
-            const response = await fetch(url);
-            if (!response.ok) throw new Error('Error al consultar lote');
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error('Error consultando lote');
+            const data = await resp.json();
 
-            const data = await response.json();
             if (data.success && data.lote) {
                 loteActual = data.lote;
+                loteProveedor = data.proveedor || '';
                 origenLote = data.origen || 'generado';
 
                 const inputLote = document.getElementById('abrir-caja-lote');
                 if (inputLote) inputLote.value = loteActual;
 
-                actualizarInfoLote(data.descripcion);
+                actualizarInfoLoteUI();
+                actualizarVistaPreviaConversion();
+                actualizarEstadoPasosYBotones();
             }
         } catch (error) {
-            console.error('❌ [ABRIR-CAJA] Error al obtener lote:', error);
-            // Fallback: generar código rápido en cliente
+            console.error('❌ [ABRIR-CAJA] Error obteniendo lote:', error);
             if (!loteActual) {
                 loteActual = 'L' + Math.random().toString(36).substring(2, 9).toUpperCase();
+                origenLote = 'generado';
                 const inputLote = document.getElementById('abrir-caja-lote');
                 if (inputLote) inputLote.value = loteActual;
-                actualizarInfoLote();
+                actualizarInfoLoteUI();
+                actualizarEstadoPasosYBotones();
             }
         }
     }
 
-    function actualizarInfoLote(descripcionExtra = '') {
+    function actualizarInfoLoteUI() {
         const badge = document.getElementById('badge-origen-lote');
         const info = document.getElementById('info-lote-origen');
 
         if (badge) {
             if (origenLote === 'lote_caja') {
-                badge.style.background = '#e8f5e9';
-                badge.style.color = '#2e7d32';
-                badge.textContent = '🟢 Heredado de Caja';
+                badge.style.background = '#dcfce7';
+                badge.style.color = '#15803d';
+                badge.textContent = '🟢 Heredado de Caja Padre';
+            } else if (origenLote === 'manual') {
+                badge.style.background = '#fef3c7';
+                badge.style.color = '#b45309';
+                badge.textContent = '✏️ Lote Manual';
             } else {
-                badge.style.background = '#e3f2fd';
-                badge.style.color = '#1565c0';
-                badge.textContent = '✨ Lote Generado';
+                badge.style.background = '#e0f2fe';
+                badge.style.color = '#0369a1';
+                badge.textContent = '✨ Lote Nuevo (Caja sin lote)';
             }
         }
 
         if (info) {
-            if (descripcionExtra) {
-                info.textContent = descripcionExtra;
-            } else if (origenLote === 'lote_caja') {
-                info.textContent = 'Lote vinculado a la partida de la caja seleccionada.';
+            if (origenLote === 'lote_caja') {
+                info.textContent = `Trazabilidad heredada de la caja padre${loteProveedor ? ' (' + loteProveedor + ')' : ''}.`;
+            } else if (origenLote === 'manual') {
+                info.textContent = 'Código de lote ingresado manualmente para las etiquetas.';
             } else {
-                info.textContent = 'Lote nuevo asignado a las unidades extraídas.';
+                info.textContent = 'La caja padre no tenía lote vinculado; se generó un código nuevo.';
             }
         }
     }
 
-    function actualizarContadorEtiquetas() {
-        const cantidadInput = document.getElementById('abrir-caja-cantidad')?.value;
-        const cantidad = parseInt(cantidadInput) || 0;
-        const display = document.getElementById('display-cant-etiquetas');
-        const btnImprimir = document.getElementById('btn-imprimir-caja');
+    /**
+     * Despacha la impresión en Zebra de N pares (Etiqueta de Artículo + Etiqueta de Lote)
+     * usando el motor oficial /api/produccion/articulos/imprimir-etiqueta (con puente Zebra Cloud/Local)
+     * y respaldo local en puerto 3000.
+     */
+    async function enviarImpresionZebra(articuloUnidad, totalUnidades, lote, fechaElab, fechaVenc) {
+        const payload = {
+            articulo: {
+                numero: articuloUnidad.articulo_numero,
+                nombre: articuloUnidad.descripcion_generada || articuloUnidad.descripcion,
+                codigo_barras: articuloUnidad.codigo_barras || articuloUnidad.articulo_numero
+            },
+            cantidad: totalUnidades,
+            lote: lote,
+            fechas: (fechaElab && fechaVenc) ? {
+                elaboracion: fechaElab,
+                vencimiento: fechaVenc
+            } : null
+        };
 
-        if (display) {
-            if (cantidad > 0) {
-                display.textContent = `${cantidad} pares de etiquetas (${cantidad} de producto + ${cantidad} de lote)`;
-            } else {
-                display.textContent = `0 etiquetas listas para imprimir`;
-            }
-        }
+        let resPrint = await fetch('/api/produccion/articulos/imprimir-etiqueta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).catch(() => null);
 
-        if (btnImprimir) {
-            if (cantidad > 0) {
-                btnImprimir.textContent = `🏷️ Imprimir ${cantidad} Etiquetas (con Lote)`;
-            } else {
-                btnImprimir.textContent = `🏷️ Imprimir Etiquetas (con Lote)`;
-            }
-        }
-    }
-
-    // ==========================================
-    // IMPRESIÓN DE ETIQUETAS (CON LOTE)
-    // ==========================================
-
-    async function imprimirEtiquetas() {
-        const cantidad = parseInt(document.getElementById('abrir-caja-cantidad')?.value);
-        const loteInput = document.getElementById('abrir-caja-lote')?.value.trim();
-        const lote = loteInput || loteActual;
-
-        if (!cantidad || cantidad < 1) {
-            mostrarMensaje('Ingrese la cantidad de unidades que trae la caja', 'warning');
-            return;
-        }
-
-        if (!datosArticuloUnidad) {
-            mostrarMensaje('Error: datos del producto a extraer no disponibles', 'error');
-            return;
-        }
-
-        const fechaElab = document.getElementById('abrir-caja-fecha-elab')?.value.trim();
-        const fechaVenc = document.getElementById('abrir-caja-fecha-venc')?.value.trim();
-
-        try {
-            mostrarMensaje(`Enviando ${cantidad} etiquetas con Lote ${lote} a la impresora...`, 'info');
-
-            const payload = {
-                articulo: {
-                    nombre: datosArticuloUnidad.descripcion || datosArticuloUnidad.nombre,
-                    numero: datosArticuloUnidad.articulo_numero || datosArticuloUnidad.codigo,
-                    codigo_barras: datosArticuloUnidad.codigo_barras || datosArticuloUnidad.articulo_numero
-                },
-                cantidad: cantidad,
-                lote: lote,
-                fechas: (fechaElab && fechaVenc) ? {
-                    elaboracion: fechaElab,
-                    vencimiento: fechaVenc
-                } : null
-            };
-
-            const response = await fetch('http://localhost:3000/api/imprimir', {
+        if (!resPrint || !resPrint.ok) {
+            resPrint = await fetch('http://localhost:3000/api/imprimir', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+        }
 
-            if (!response.ok) throw new Error('Error al conectar con la impresora');
-
-            etiquetasImpresas = true;
-            mostrarMensaje(`✅ ${cantidad} etiquetas impresas exitosamente con Lote ${lote}`, 'success');
-            validarFormulario();
-
-            console.log('✅ [ABRIR-CAJA] Impresión completada con Lote:', lote);
-        } catch (error) {
-            console.error('❌ [ABRIR-CAJA] Error impresión:', error);
-            mostrarMensaje(`Error al imprimir etiquetas: ${error.message}`, 'error');
+        if (!resPrint || !resPrint.ok) {
+            throw new Error('No se pudo conectar con la impresora Zebra');
         }
     }
 
     // ==========================================
-    // REGISTRO Y APERTURA DE CAJA
+    // EJECUCIÓN ATÓMICA (ABRIR + IMPRIMIR ZEBRA)
     // ==========================================
 
-    async function confirmarApertura() {
-        if (!validarFormulario()) {
-            mostrarMensaje('Complete los campos obligatorios (Usuario, Cantidad y Caja de Origen)', 'warning');
+    async function ejecutarApertura(imprimirEnZebra = true) {
+        const usuarioId = parseInt(document.getElementById('abrir-caja-usuario')?.value, 10);
+        const cantCajas = Math.max(1, parseInt(document.getElementById('ac-cantidad-cajas')?.value, 10) || 1);
+        const unidPorCaja = parseInt(document.getElementById('abrir-caja-cantidad')?.value, 10) || 0;
+        const totalUnidades = cantCajas * unidPorCaja;
+        const lote = document.getElementById('abrir-caja-lote')?.value.trim() || loteActual;
+        const fechaElab = document.getElementById('abrir-caja-fecha-elab')?.value.trim();
+        const fechaVenc = document.getElementById('abrir-caja-fecha-venc')?.value.trim();
+        const mantenerAbierto = Boolean(document.getElementById('ac-check-continuar')?.checked);
+
+        if (!cajaSeleccionada || !datosArticuloUnidad || !usuarioId || unidPorCaja < 1 || !lote) {
+            mostrarMensaje('Complete todos los campos requeridos antes de confirmar.', 'warning');
             return;
         }
 
-        const lote = document.getElementById('abrir-caja-lote')?.value.trim() || loteActual;
+        try {
+            localStorage.setItem(STORAGE_ULTIMO_USUARIO, String(usuarioId));
+        } catch (_) {}
 
-        if (!etiquetasImpresas) {
-            const confirmarSinImprimir = confirm(
-                `⚠️ Aún no has impreso las etiquetas con el lote asignado (${lote}).\n\n¿Deseas imprimir las etiquetas antes de continuar?`
-            );
-            if (confirmarSinImprimir) {
-                await imprimirEtiquetas();
-                return;
-            }
-        }
-
-        const usuarioId = parseInt(document.getElementById('abrir-caja-usuario').value);
-        const cantidad = parseInt(document.getElementById('abrir-caja-cantidad').value);
+        const btnConfirmar = document.getElementById('btn-confirmar-caja');
+        const btnSoloAbrir = document.getElementById('btn-solo-abrir-caja');
+        if (btnConfirmar) btnConfirmar.disabled = true;
+        if (btnSoloAbrir) btnSoloAbrir.disabled = true;
 
         try {
-            document.getElementById('btn-confirmar-caja').disabled = true;
-            document.getElementById('btn-imprimir-caja').disabled = true;
+            mostrarMensaje('Registrando apertura de caja y trazabilidad en Búnker...', 'info');
 
-            mostrarMensaje('Procesando apertura y actualización de stock...', 'info');
-
-            const response = await fetch('/api/produccion/abrir-caja', {
+            const resp = await fetch('/api/produccion/abrir-caja', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     codigo_caja: cajaSeleccionada.articulo_numero,
-                    codigo_unidad: datosArticuloUnidad.articulo_numero || datosArticuloUnidad.codigo,
-                    cantidad_unidades: cantidad,
+                    codigo_unidad: datosArticuloUnidad.articulo_numero,
+                    cantidad_cajas: cantCajas,
+                    unidades_por_caja: unidPorCaja,
+                    cantidad_unidades: totalUnidades,
                     usuario_id: usuarioId,
                     lote: lote,
-                    kilos_caja: 0,
+                    kilos_caja: cajaSeleccionada.kilos_unidad || 0,
                     kilos_unidad: datosArticuloUnidad.kilos_unidad || 0
                 })
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detalle || errorData.error || 'Error al abrir caja');
+            const result = await resp.json();
+            if (!resp.ok || !result.success) {
+                throw new Error(result.detalle || result.error || 'Error al registrar apertura');
             }
 
-            const result = await response.json();
+            huboAperturasEnSesion = true;
 
-            mostrarMensaje(`✅ Caja abierta con éxito: ${cantidad} unidades sumadas al stock (Lote: ${lote})`, 'success');
-
-            setTimeout(() => {
-                cerrarModal();
-                if (typeof window.actualizarResumenFaltantes === 'function') {
-                    window.actualizarResumenFaltantes();
-                }
-                setTimeout(() => location.reload(), 600);
-            }, 1800);
-
-            console.log('✅ [ABRIR-CAJA] Apertura exitosa:', result);
-        } catch (error) {
-            console.error('❌ [ABRIR-CAJA] Error al confirmar apertura:', error);
-            mostrarMensaje(`Error: ${error.message}`, 'error');
-            document.getElementById('btn-confirmar-caja').disabled = false;
-            document.getElementById('btn-imprimir-caja').disabled = false;
-        }
-    }
-
-    function validarFormulario() {
-        const usuario = document.getElementById('abrir-caja-usuario')?.value;
-        const cantidad = document.getElementById('abrir-caja-cantidad')?.value;
-        const lote = document.getElementById('abrir-caja-lote')?.value.trim();
-        const btnImprimir = document.getElementById('btn-imprimir-caja');
-        const btnConfirmar = document.getElementById('btn-confirmar-caja');
-
-        const datosCompletos = usuario && cantidad && parseInt(cantidad) > 0 && cajaSeleccionada && datosArticuloUnidad && lote;
-
-        if (btnImprimir) {
-            btnImprimir.disabled = !cajaSeleccionada || !datosArticuloUnidad || !cantidad || parseInt(cantidad) < 1 || !lote;
-        }
-        if (btnConfirmar) {
-            btnConfirmar.disabled = !datosCompletos;
-        }
-
-        return datosCompletos;
-    }
-
-    async function cargarUsuarios() {
-        try {
-            const response = await fetch('/api/usuarios/con-permiso/Produccion');
-            if (!response.ok) throw new Error('Error al cargar usuarios');
-
-            const usuarios = await response.json();
-            const select = document.getElementById('abrir-caja-usuario');
-
-            if (select) {
-                const valorPrevio = select.value;
-                select.innerHTML = '<option value="">-- Seleccionar usuario --</option>';
-                usuarios.forEach(u => {
-                    const opt = document.createElement('option');
-                    opt.value = u.id;
-                    opt.textContent = u.nombre_completo;
-                    select.appendChild(opt);
+            // Actualizar caché en memoria (stocks y aprendizaje) sin recargar página
+            if (result.stocks_actualizados) {
+                Object.entries(result.stocks_actualizados).forEach(([sku, nuevoStock]) => {
+                    const item = mapaPorSku.get(sku);
+                    if (item) item.stock_actual = nuevoStock;
                 });
-                if (valorPrevio) select.value = valorPrevio;
+            }
+
+            const idxApr = aprendizajesLista.findIndex(a =>
+                a.codigo_caja === cajaSeleccionada.articulo_numero &&
+                a.codigo_unidad === datosArticuloUnidad.articulo_numero
+            );
+            if (idxApr >= 0) {
+                aprendizajesLista[idxApr].unidades_por_caja = unidPorCaja;
+                aprendizajesLista[idxApr].veces_usado = (aprendizajesLista[idxApr].veces_usado || 1) + cantCajas;
+                const actualizado = aprendizajesLista.splice(idxApr, 1)[0];
+                aprendizajesLista.unshift(actualizado);
+            } else {
+                aprendizajesLista.unshift({
+                    codigo_caja: cajaSeleccionada.articulo_numero,
+                    codigo_unidad: datosArticuloUnidad.articulo_numero,
+                    unidades_por_caja: unidPorCaja,
+                    veces_usado: cantCajas
+                });
+            }
+
+            // Enviar impresión automática a Zebra si corresponde
+            let avisoImpresion = '';
+            if (imprimirEnZebra) {
+                try {
+                    mostrarMensaje(`🖨️ Enviando ${totalUnidades} pares (Artículo + Lote ${lote}) a impresora Zebra...`, 'info');
+                    await enviarImpresionZebra(datosArticuloUnidad, totalUnidades, lote, fechaElab, fechaVenc);
+                    avisoImpresion = ` | 🖨️ ${totalUnidades} pares impresos en Zebra`;
+                } catch (printErr) {
+                    console.error('❌ [ABRIR-CAJA] Error en impresión Zebra:', printErr);
+                    mostrarMensaje(
+                        `✅ Stock actualizado (+${totalUnidades} un. de ${datosArticuloUnidad.articulo_numero}, Lote ${lote}), pero falló la conexión con Zebra: ${printErr.message}`,
+                        'warning'
+                    );
+                    refrescarVistasProduccionEnFondo();
+                    if (btnConfirmar) btnConfirmar.disabled = false;
+                    if (btnSoloAbrir) btnSoloAbrir.disabled = false;
+                    return;
+                }
+            }
+
+            mostrarMensaje(
+                `✅ Apertura exitosa: −${cantCajas} caja(s) ➜ +${totalUnidades} un. de ${datosArticuloUnidad.descripcion} (Lote: ${lote})${avisoImpresion}`,
+                'success'
+            );
+
+            refrescarVistasProduccionEnFondo();
+
+            if (mantenerAbierto) {
+                unidadPreseleccionadaContextual = null;
+                await cargarCatalogoBunker();
+                setTimeout(() => {
+                    reiniciarACambioDeCaja();
+                    mostrarMensaje(`✅ Última apertura lista (+${totalUnidades} un. Lote ${lote}). Escaneá la siguiente caja.`, 'success');
+                }, 650);
+            } else {
+                setTimeout(() => {
+                    cerrarModal();
+                }, 1100);
             }
         } catch (error) {
-            console.error('❌ [ABRIR-CAJA] Error al cargar usuarios:', error);
+            console.error('❌ [ABRIR-CAJA] Error al ejecutar apertura:', error);
+            mostrarMensaje(`❌ ${error.message}`, 'error');
+            if (btnConfirmar) btnConfirmar.disabled = false;
+            if (btnSoloAbrir) btnSoloAbrir.disabled = false;
         }
     }
+
+    function refrescarVistasProduccionEnFondo() {
+        try {
+            if (typeof window.actualizarResumenFaltantes === 'function') {
+                window.actualizarResumenFaltantes();
+            }
+            if (typeof window.cargarPedidosArticulos === 'function') {
+                window.cargarPedidosArticulos();
+            }
+            if (typeof window.cargarPedidosPorCliente === 'function') {
+                window.cargarPedidosPorCliente();
+            }
+        } catch (e) {
+            console.warn('⚠️ [ABRIR-CAJA] Aviso refrescando tablas en segundo plano:', e);
+        }
+    }
+
+    // ==========================================
+    // MODO CONTEXTUAL (CLIC DERECHO EN FALTANTES)
+    // ==========================================
+
+    async function prepararModoContextualDesdeFaltante(articuloNumero, datosArticulo) {
+        const unidBunker = mapaPorSku.get(String(articuloNumero).trim()) || (datosArticulo ? {
+            articulo_numero: datosArticulo.articulo_numero || datosArticulo.codigo || articuloNumero,
+            descripcion: datosArticulo.descripcion || datosArticulo.nombre || articuloNumero,
+            codigo_barras: datosArticulo.codigo_barras || '',
+            stock_actual: datosArticulo.stock_consolidado ?? datosArticulo.stock_disponible ?? 0,
+            kilos_unidad: datosArticulo.kilos_unidad || 0
+        } : null);
+
+        if (!unidBunker) return;
+        unidadPreseleccionadaContextual = unidBunker;
+        seleccionarUnidad(unidBunker, 'contextual');
+
+        // Buscar si existen cajas aprendidas con stock >= 1 para esta unidad
+        try {
+            const resp = await fetch(`/api/produccion/abrir-caja/sugerencias?articulo_unidad=${encodeURIComponent(unidBunker.articulo_numero)}`);
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const sugs = data.sugerencias || [];
+
+            const wrapCtx = document.getElementById('ac-sugerencias-caja-contextual');
+            const listaCtx = document.getElementById('ac-lista-caja-contextual');
+
+            if (sugs.length === 1) {
+                // Si hay una única caja habitual con stock, preseleccionarla directo
+                const unicaCaja = mapaPorSku.get(sugs[0].codigo_caja);
+                if (unicaCaja && parseFloat(unicaCaja.stock_actual || 0) >= 1) {
+                    await seleccionarCaja(unicaCaja);
+                    return;
+                }
+            }
+
+            if (sugs.length > 0 && wrapCtx && listaCtx) {
+                listaCtx.innerHTML = '';
+                sugs.forEach((s, i) => {
+                    const artCaja = mapaPorSku.get(s.codigo_caja);
+                    if (!artCaja) return;
+                    const chip = document.createElement('button');
+                    chip.type = 'button';
+                    chip.className = 'ac-chip';
+                    chip.innerHTML = `
+                        <span>${i === 0 ? '⭐' : '📦'} <strong>${escaparHtml(artCaja.descripcion)}</strong></span>
+                        <span style="color:#15803d; font-weight:800;">(${parseFloat(artCaja.stock_actual).toFixed(0)} cj)</span>
+                    `;
+                    chip.addEventListener('click', () => seleccionarCaja(artCaja));
+                    listaCtx.appendChild(chip);
+                });
+                wrapCtx.style.display = listaCtx.children.length > 0 ? 'block' : 'none';
+            }
+        } catch (err) {
+            console.error('❌ [ABRIR-CAJA] Error consultando sugerencias contextuales:', err);
+        }
+    }
+
+    // ==========================================
+    // MENSAJES, RESET Y APERTURA / CIERRE
+    // ==========================================
 
     function mostrarMensaje(texto, tipo) {
         const el = document.getElementById('mensaje-abrir-caja');
         if (!el) return;
 
         el.textContent = texto;
-        el.className = tipo === 'success' ? 'alert alert-success' :
-            tipo === 'error' ? 'alert alert-danger' :
-            tipo === 'warning' ? 'alert alert-warning' : 'alert alert-info';
-        el.style.display = 'block';
-
         if (tipo === 'success') {
-            setTimeout(() => { if (el) el.style.display = 'none'; }, 6000);
+            el.style.background = '#dcfce7';
+            el.style.color = '#14532d';
+            el.style.border = '1px solid #86efac';
+        } else if (tipo === 'error') {
+            el.style.background = '#fee2e2';
+            el.style.color = '#991b1b';
+            el.style.border = '1px solid #fca5a5';
+        } else if (tipo === 'warning') {
+            el.style.background = '#fef3c7';
+            el.style.color = '#92400e';
+            el.style.border = '1px solid #fcd34d';
+        } else {
+            el.style.background = '#e0f2fe';
+            el.style.color = '#075985';
+            el.style.border = '1px solid #7dd3fc';
         }
+        el.style.display = 'block';
     }
 
-    function resetearModal() {
-        datosArticuloUnidad = null;
+    function ocultarMensaje() {
+        const el = document.getElementById('mensaje-abrir-caja');
+        if (el) el.style.display = 'none';
+    }
+
+    function resetearEstadoVisual() {
         cajaSeleccionada = null;
+        datosArticuloUnidad = null;
+        unidadPreseleccionadaContextual = null;
+        fuenteSeleccionUnidad = '';
         loteActual = '';
+        loteProveedor = '';
         origenLote = 'generado';
-        etiquetasImpresas = false;
-        modoManual = false;
+        huboAperturasEnSesion = false;
 
-        const select = document.getElementById('abrir-caja-usuario');
+        const fechasDef = obtenerFechasPorDefecto();
+        const inputElab = document.getElementById('abrir-caja-fecha-elab');
+        const inputVenc = document.getElementById('abrir-caja-fecha-venc');
+        if (inputElab) inputElab.value = fechasDef.elaboracion;
+        if (inputVenc) inputVenc.value = fechasDef.vencimiento;
+        const boxFechas = document.getElementById('ac-fechas-collapse');
+        if (boxFechas) boxFechas.style.display = 'none';
+
+        document.getElementById('ac-caja-resumen-card').style.display = 'none';
+        document.getElementById('ac-caja-buscador-wrap').style.display = 'block';
+        document.getElementById('ac-sugerencias-caja-contextual').style.display = 'none';
+
+        document.getElementById('ac-unidad-resumen-card').style.display = 'none';
+        document.getElementById('ac-unidad-buscador-wrap').style.display = 'block';
+        document.getElementById('ac-sugerencias-unidad-similitud').style.display = 'none';
+
+        const inputCaja = document.getElementById('ac-input-omnibox-caja');
+        const inputUnidad = document.getElementById('ac-input-omnibox-unidad');
         const inputCant = document.getElementById('abrir-caja-cantidad');
-        const inputCod = document.getElementById('input-codigo-caja');
-        const inputDesc = document.getElementById('input-descripcion-caja');
-        const inputBusquedaUnidad = document.getElementById('input-busqueda-unidad');
+        const inputCantCajas = document.getElementById('ac-cantidad-cajas');
         const inputLote = document.getElementById('abrir-caja-lote');
+        const badgeFuente = document.getElementById('ac-fuente-unidades-badge');
 
-        if (select) select.value = '';
+        if (inputCaja) inputCaja.value = '';
+        if (inputUnidad) inputUnidad.value = '';
         if (inputCant) inputCant.value = '';
-        if (inputCod) inputCod.value = '';
-        if (inputDesc) inputDesc.value = '';
-        if (inputBusquedaUnidad) inputBusquedaUnidad.value = '';
+        if (inputCantCajas) inputCantCajas.value = '1';
         if (inputLote) inputLote.value = '';
+        if (badgeFuente) badgeFuente.textContent = '';
 
-        ocultarResultadosCaja();
-        const resultadosUnidad = document.getElementById('resultados-unidad');
-        if (resultadosUnidad) resultadosUnidad.style.display = 'none';
+        document.getElementById('ac-limpiar-omnibox-caja').style.display = 'none';
+        document.getElementById('ac-limpiar-omnibox-unidad').style.display = 'none';
+        document.getElementById('ac-resultados-caja').style.display = 'none';
+        document.getElementById('ac-resultados-unidad').style.display = 'none';
 
-        const sugerenciasContainer = document.getElementById('sugerencias-container-caja');
-        if (sugerenciasContainer) sugerenciasContainer.style.display = 'none';
+        ocultarMensaje();
+        actualizarVistaPreviaConversion();
+        actualizarEstadoPasosYBotones();
+    }
 
-        document.getElementById('caja-seleccionada-display').style.display = 'none';
-        document.getElementById('mensaje-abrir-caja').style.display = 'none';
+    async function abrir(articuloNumero = null, datosArticulo = null) {
+        if (!modalElement && !inicializarModal()) {
+            alert('Error: Modal Abrir Caja no encontrado en la página.');
+            return;
+        }
 
-        cambiarModoBusquedaCaja('codigo');
-        actualizarContadorEtiquetas();
+        resetearEstadoVisual();
+        modalElement.style.display = 'flex';
 
-        document.getElementById('btn-imprimir-caja').disabled = true;
-        document.getElementById('btn-confirmar-caja').disabled = true;
+        await Promise.all([
+            cargarCatalogoBunker(),
+            cargarUsuariosYPreseleccionar()
+        ]);
+
+        if (articuloNumero) {
+            await prepararModoContextualDesdeFaltante(articuloNumero, datosArticulo);
+        }
+
+        actualizarEstadoPasosYBotones();
+        if (!cajaSeleccionada) {
+            setTimeout(() => document.getElementById('ac-input-omnibox-caja')?.focus(), 80);
+        }
     }
 
     function cerrarModal() {
         if (modalElement) modalElement.style.display = 'none';
-    }
-
-    function debounce(func, wait) {
-        let timeout;
-        return function (...args) {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(this, args), wait);
-        };
-    }
-
-    function mostrarElemento(id, mostrar) {
-        const el = document.getElementById(id);
-        if (el) el.style.display = mostrar ? 'block' : 'none';
-    }
-
-    // ==========================================
-    // API PÚBLICA
-    // ==========================================
-
-    function abrir(articuloNumero = null, datosArticulo = null) {
-        console.log(`📦 [ABRIR-CAJA] Solicitud de apertura. Arg:`, articuloNumero);
-
-        if (!modalElement) {
-            if (!inicializarModal()) {
-                alert('Error: Modal Abrir Caja no inicializado.');
-                return;
-            }
-        }
-
-        resetearModal();
-        modalElement.style.display = 'flex';
-
-        if (articuloNumero) {
-            // MODO CONTEXTUAL: Ya tenemos el artículo
-            modoManual = false;
-            configurarModoContextual(articuloNumero, datosArticulo);
-        } else {
-            // MODO MANUAL: Paso 1 Búsqueda por Nombre
-            configurarModoManual();
+        if (huboAperturasEnSesion) {
+            refrescarVistasProduccionEnFondo();
         }
     }
 
     return {
-        abrir: abrir,
+        abrir,
         cerrar: cerrarModal
     };
 })();
 
-// Menú contextual en tabla de producción
+// Menú contextual en tabla de producción (clic derecho sobre faltante)
 window.agregarOpcionAbrirCajaAlMenu = function (menuContextual, articuloNumero, datosArticulo) {
     if (!menuContextual) return;
 
@@ -938,10 +1751,7 @@ window.agregarOpcionAbrirCajaAlMenu = function (menuContextual, articuloNumero, 
 
         if (window.ModalAbrirCaja && typeof window.ModalAbrirCaja.abrir === 'function') {
             window.ModalAbrirCaja.abrir(articuloNumero, datosArticulo);
-        } else {
-            console.error('❌ [ABRIR-CAJA] ModalAbrirCaja no disponible');
         }
-
         return false;
     }, true);
 
@@ -951,21 +1761,15 @@ window.agregarOpcionAbrirCajaAlMenu = function (menuContextual, articuloNumero, 
     menuContextual.insertBefore(opcion, menuContextual.firstChild);
 };
 
-// Exponer módulo globalmente
 window.ModalAbrirCaja = ModalAbrirCaja;
 
-// Inicialización de listener del botón global
 document.addEventListener('DOMContentLoaded', function () {
     const btnGlobal = document.getElementById('btn-abrir-caja-global');
     if (btnGlobal) {
         btnGlobal.addEventListener('click', function (e) {
             e.preventDefault();
-            console.log('🔘 [ABRIR-CAJA] Click en botón global detectado');
             if (window.ModalAbrirCaja && typeof window.ModalAbrirCaja.abrir === 'function') {
                 window.ModalAbrirCaja.abrir();
-            } else {
-                console.error('❌ [ABRIR-CAJA] Módulo no listo');
-                alert('El módulo de Abrir Caja no está listo aún. Intente de nuevo.');
             }
         });
     }

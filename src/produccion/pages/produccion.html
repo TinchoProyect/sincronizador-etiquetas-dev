@@ -2240,153 +2240,406 @@
         </footer>
     </div>
 
-    <!-- Modal Abrir Caja (HTML estático para evitar problemas de timing) -->
-    <script>console.log('🔍 [DEBUG] Cargando modal-abrir-caja en HTML...');</script>
+    <!-- Modal Abrir Caja v5.1 (Flujo Físico: 1° Caja Búnker -> 2° Fracción Aprendida -> 3° Operador + Lote Heredado + Impresión Zebra) -->
+    <style>
+        #modal-abrir-caja .ac-step-card {
+            border: 1.5px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+            background: #ffffff;
+            transition: all 0.2s ease;
+        }
+        #modal-abrir-caja .ac-step-card.ac-step-active {
+            border: 2px solid #0284c7;
+            box-shadow: 0 4px 14px rgba(2, 132, 199, 0.12);
+        }
+        #modal-abrir-caja .ac-step-card.ac-step-done {
+            border: 1.5px solid #22c55e;
+            background: #f8fafc;
+        }
+        #modal-abrir-caja .ac-step-card.ac-step-locked {
+            opacity: 0.42;
+            background: #f1f5f9;
+            pointer-events: none;
+            user-select: none;
+        }
+        #modal-abrir-caja .ac-step-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 8px;
+        }
+        #modal-abrir-caja .ac-step-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        #modal-abrir-caja .ac-step-num {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #0284c7;
+            color: #fff;
+            font-size: 12px;
+            font-weight: 800;
+        }
+        #modal-abrir-caja .ac-step-done .ac-step-num {
+            background: #16a34a;
+        }
+        #modal-abrir-caja .ac-step-locked .ac-step-num {
+            background: #94a3b8;
+        }
+        #modal-abrir-caja .ac-badge {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 9px;
+            border-radius: 999px;
+            white-space: nowrap;
+        }
+        #modal-abrir-caja .ac-omnibox {
+            width: 100%;
+            padding: 11px 38px 11px 14px;
+            border: 2px solid #38bdf8;
+            border-radius: 8px;
+            font-size: 14.5px;
+            font-weight: 500;
+            color: #0f172a;
+            background: #fff;
+            box-sizing: border-box;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        #modal-abrir-caja .ac-omnibox:focus {
+            outline: none;
+            border-color: #0284c7;
+            box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.2);
+        }
+        #modal-abrir-caja .ac-dropdown {
+            display: none;
+            max-height: 240px;
+            overflow-y: auto;
+            background: #ffffff;
+            border: 2px solid #0284c7;
+            border-radius: 8px;
+            margin-top: 6px;
+            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16);
+        }
+        #modal-abrir-caja .ac-item-row {
+            padding: 9px 12px;
+            border-bottom: 1px solid #e2e8f0;
+            cursor: pointer;
+            transition: background-color 0.12s;
+        }
+        #modal-abrir-caja .ac-item-row:last-child {
+            border-bottom: none;
+        }
+        #modal-abrir-caja .ac-item-row:hover,
+        #modal-abrir-caja .ac-item-row.ac-item-highlighted {
+            background-color: #e0f2fe;
+        }
+        #modal-abrir-caja .ac-item-row.ac-item-nostock {
+            opacity: 0.55;
+            background-color: #f8fafc;
+            cursor: not-allowed;
+        }
+        #modal-abrir-caja .ac-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 7px;
+            border: 1px solid #bae6fd;
+            background: #f0f9ff;
+            color: #0369a1;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            text-align: left;
+        }
+        #modal-abrir-caja .ac-chip:hover {
+            background: #e0f2fe;
+            border-color: #0284c7;
+            transform: translateY(-1px);
+        }
+        #modal-abrir-caja .ac-stepper {
+            display: inline-flex;
+            align-items: center;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 7px;
+            overflow: hidden;
+            background: #fff;
+        }
+        #modal-abrir-caja .ac-stepper button {
+            border: none;
+            background: #f1f5f9;
+            color: #0f172a;
+            font-weight: 800;
+            font-size: 16px;
+            width: 34px;
+            height: 36px;
+            cursor: pointer;
+        }
+        #modal-abrir-caja .ac-stepper button:hover:not(:disabled) {
+            background: #e2e8f0;
+        }
+        #modal-abrir-caja .ac-stepper input {
+            width: 60px;
+            height: 36px;
+            border: none;
+            text-align: center;
+            font-size: 15px;
+            font-weight: 800;
+            color: #0f172a;
+            outline: none;
+        }
+    </style>
+
     <div id="modal-abrir-caja" class="modal-overlay" style="display: none;">
-        <div class="modal-content" style="max-width: 680px; max-height: 90vh; overflow-y: auto;">
-            <div class="modal-header" style="cursor: move;" id="modal-abrir-caja-header">
-                <h3>📦 Abrir Caja Cerrada (Desempacar Producto)</h3>
-                <button class="modal-close" onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()"
+        <div class="modal-content" style="max-width: 740px; width: 95%; max-height: 92vh; overflow-y: auto; border-radius: 12px;">
+            <div class="modal-header" style="cursor: move; padding: 14px 20px; background: #0f172a; color: #fff; border-radius: 12px 12px 0 0;" id="modal-abrir-caja-header">
+                <div>
+                    <h3 style="margin: 0; color: #fff; font-size: 17px;">📦 Abrir Caja Cerrada (Desempacar a Unidades Búnker)</h3>
+                    <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Escaneá la caja de origen, verificá la fracción aprendida e imprimí artículo + lote en Zebra</div>
+                </div>
+                <button class="modal-close" style="color: #fff; opacity: 0.85;" onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()"
                     aria-label="Cerrar">&times;</button>
             </div>
-            <div class="modal-body">
-                <!-- PASO 1: SELECCIÓN DE UNIDAD (Solo visible en modo manual) -->
-                <div id="paso-seleccion-unidad" style="display: none; margin-bottom: 20px;">
-                    <div
-                        style="background-color: #e8f4fd; color: #0d47a1; padding: 12px 16px; border-radius: 6px; border-left: 4px solid #1976d2; margin-bottom: 15px; font-size: 13px; line-height: 1.4;">
-                        <strong style="font-size: 14px; display: block; margin-bottom: 4px;">📦 Paso 1: ¿Qué producto vas a extraer de la caja cerrada?</strong>
-                        Como la caja aún está cerrada y no tienes el código de barras a mano, <strong>busca primero por Nombre o Descripción</strong> del artículo que vas a obtener.
+
+            <div class="modal-body" style="padding: 16px 20px; background: #f8fafc;">
+                <!-- PASO 1: CAJA DE ORIGEN (FÍSICO EN DEPÓSITO) -->
+                <div id="ac-paso-1" class="ac-step-card ac-step-active">
+                    <div class="ac-step-header">
+                        <div class="ac-step-title">
+                            <span class="ac-step-num">1</span>
+                            <span>Caja Cerrada a Abrir (Origen en Depósito)</span>
+                        </div>
+                        <span id="ac-badge-paso-1" class="ac-badge" style="background: #e0f2fe; color: #0369a1;">Escaneá o buscá en Búnker</span>
                     </div>
 
-                    <div class="buscador-unidad">
-                        <label style="font-weight: 600; margin-bottom: 8px; display: block; color: #333;">🔍 Buscar Producto por Nombre (la unidad a extraer):</label>
-                        <div style="position: relative;">
-                            <input type="text" id="input-busqueda-unidad" class="form-control"
-                                placeholder="Escribe el nombre del producto (ej: almendra pelada, nuez, caju)..." autocomplete="off" style="font-size: 14px; padding: 10px 12px;">
-                            <small style="color: #666; display: block; margin-top: 5px;">
-                                💡 Puedes escribir varias palabras separadas por espacios. Al hacer clic en un producto se cargará para seleccionar su caja de origen.
-                            </small>
+                    <!-- Buscador unificado de Caja (visible cuando no hay caja elegida) -->
+                    <div id="ac-caja-buscador-wrap">
+                        <!-- Sugerencias cuando viene por clic derecho desde un faltante -->
+                        <div id="ac-sugerencias-caja-contextual" style="display: none; margin-bottom: 10px;">
+                            <div style="font-size: 12px; font-weight: 700; color: #15803d; margin-bottom: 5px;">💡 Cajas habituales con stock para extraer este producto:</div>
+                            <div id="ac-lista-caja-contextual" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
                         </div>
-                        <div id="resultados-unidad"
-                            style="display: none; max-height: 260px; overflow-y: auto; background: white; border: 2px solid #2196f3; border-radius: 6px; margin-top: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.12);">
+
+                        <!-- Accesos rápidos de cajas frecuentes con stock -->
+                        <div id="ac-ultimas-cajas-wrap" style="display: none; margin-bottom: 10px;">
+                            <div style="font-size: 11.5px; font-weight: 700; color: #475569; margin-bottom: 5px;">⚡ Aperturas frecuentes con stock disponible (1 clic):</div>
+                            <div id="ac-ultimas-cajas-lista" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+                        </div>
+
+                        <div style="position: relative;">
+                            <input type="text" id="ac-input-omnibox-caja" class="ac-omnibox"
+                                placeholder="🔫 Escaneá el código de barras de la caja o escribí palabras (ej: nuez cuarto extra 2x5)..."
+                                autocomplete="off">
+                            <button type="button" id="ac-limpiar-omnibox-caja" title="Limpiar búsqueda"
+                                style="display: none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: none; background: transparent; font-size: 16px; color: #64748b; cursor: pointer;">✕</button>
+                        </div>
+                        <div id="ac-tokens-caja" style="font-size: 11.5px; color: #64748b; margin-top: 5px; min-height: 16px;">
+                            💡 Filtra en vivo sobre el Diccionario Búnker (palabras completas + nomenclador, separadas por espacio).
+                        </div>
+                        <div id="ac-resultados-caja" class="ac-dropdown"></div>
+                    </div>
+
+                    <!-- Resumen de Caja Seleccionada -->
+                    <div id="ac-caja-resumen-card" style="display: none; background: #ecfdf5; border: 1.5px solid #86efac; border-radius: 8px; padding: 10px 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+                            <div>
+                                <div style="font-weight: 800; color: #14532d; font-size: 15.5px;" id="ac-caja-nombre">-</div>
+                                <div style="font-size: 12.5px; color: #166534; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 14px;">
+                                    <span>SKU: <strong id="ac-caja-sku" style="font-family: monospace;">-</strong></span>
+                                    <span>Cód. Barras: <strong id="ac-caja-barcode" style="font-family: monospace;">-</strong></span>
+                                    <span>Stock actual: <strong id="ac-caja-stock" style="color: #15803d;">-</strong></span>
+                                    <span id="ac-caja-lote-info" style="display: none;">Lote Padre: <strong id="ac-caja-lote-texto" style="font-family: monospace; color: #0f766e;">-</strong></span>
+                                </div>
+                            </div>
+                            <button type="button" id="ac-btn-cambiar-caja"
+                                style="background: #fff; border: 1px solid #16a34a; color: #15803d; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                                🔄 Cambiar Caja
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- PASO 2: SELECCIÓN DE CAJA Y DATOS (Contenedor principal) -->
-                <div id="paso-seleccion-caja">
-                    <div id="unidad-info-container"
-                        style="margin-bottom: 20px; padding: 14px 16px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3; position: relative;">
-                        <button id="btn-cambiar-unidad"
-                            style="position: absolute; right: 12px; top: 12px; background: #fff; border: 1px solid #1976d2; color: #1976d2; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; padding: 4px 10px; display: none;">
-                            🔄 Cambiar Producto
-                        </button>
-                        <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #1565c0; font-weight: 700; margin-bottom: 2px;">
-                            ✔ Producto a extraer (Unidad)
+                <!-- PASO 2: FRACCIÓN DESTINO Y CANTIDADES EXTRAÍDAS -->
+                <div id="ac-paso-2" class="ac-step-card ac-step-locked">
+                    <div class="ac-step-header">
+                        <div class="ac-step-title">
+                            <span class="ac-step-num">2</span>
+                            <span>Fracción Búnker Obtenida y Unidades</span>
                         </div>
-                        <div style="font-size: 17px; font-weight: 700; color: #0d47a1;" id="unidad-descripcion-caja">-</div>
-                        <div style="font-size: 13px; color: #424242; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 15px;">
-                            <span>Código SKU: <strong id="unidad-codigo-caja" style="font-family: monospace; color: #212121;">-</strong></span>
-                            <span>Cód. Barras: <strong id="unidad-barcode-caja" style="font-family: monospace; color: #212121;">-</strong></span>
-                            <span>Stock actual: <strong id="unidad-stock-caja" style="color: #1976d2;">-</strong></span>
+                        <span id="ac-badge-paso-2" class="ac-badge" style="background: #e2e8f0; color: #475569;">Completá el paso anterior</span>
+                    </div>
+
+                    <!-- Buscador de Fracción Destino (visible la 1° vez o al tocar Cambiar) -->
+                    <div id="ac-unidad-buscador-wrap">
+                        <div id="ac-sugerencias-unidad-similitud" style="display: none; margin-bottom: 10px;">
+                            <div style="font-size: 12px; font-weight: 700; color: #0369a1; margin-bottom: 5px;">⭐ Fracciones Búnker sugeridas para esta caja (1 clic):</div>
+                            <div id="ac-lista-unidad-similitud" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+                        </div>
+
+                        <div style="position: relative;">
+                            <input type="text" id="ac-input-omnibox-unidad" class="ac-omnibox" disabled
+                                placeholder="🔍 Buscá o escaneá la fracción que sale de la caja (ej: nuez cuarto extra x5)..."
+                                autocomplete="off">
+                            <button type="button" id="ac-limpiar-omnibox-unidad" title="Limpiar búsqueda"
+                                style="display: none; position: absolute; right: 10px; top: 50%; transform: translateY(-50%); border: none; background: transparent; font-size: 16px; color: #64748b; cursor: pointer;">✕</button>
+                        </div>
+                        <div id="ac-tokens-unidad" style="font-size: 11.5px; color: #64748b; margin-top: 5px; min-height: 16px;">
+                            💡 La primera vez elegís la fracción y el sistema la aprende automáticamente para las próximas cajas.
+                        </div>
+                        <div id="ac-resultados-unidad" class="ac-dropdown"></div>
+                    </div>
+
+                    <!-- Resumen de Fracción Seleccionada (auto-completada por aprendizaje o elegida) -->
+                    <div id="ac-unidad-resumen-card" style="display: none; background: #eff6ff; border: 1.5px solid #93c5fd; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+                            <div>
+                                <div style="font-weight: 800; color: #1e3a8a; font-size: 15.5px;" id="ac-unidad-nombre">-</div>
+                                <div style="font-size: 12.5px; color: #1e40af; margin-top: 4px; display: flex; flex-wrap: wrap; gap: 14px;">
+                                    <span>SKU: <strong id="ac-unidad-sku" style="font-family: monospace;">-</strong></span>
+                                    <span>Cód. Barras: <strong id="ac-unidad-barcode" style="font-family: monospace;">-</strong></span>
+                                    <span>Stock actual: <strong id="ac-unidad-stock">-</strong></span>
+                                </div>
+                            </div>
+                            <button type="button" id="ac-btn-cambiar-unidad"
+                                style="background: #fff; border: 1px solid #2563eb; color: #1d4ed8; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                                🔄 Cambiar Fracción
+                            </button>
                         </div>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="abrir-caja-usuario" style="font-weight: 600;">👤 Operador / Usuario: <span
-                                    style="color: #d32f2f;">*</span></label>
-                            <select id="abrir-caja-usuario" class="form-control" required>
-                                <option value="">-- Seleccionar usuario --</option>
+                    <!-- Fila de Cantidades: Cajas a Abrir x Unidades por Caja -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; align-items: start;">
+                        <div>
+                            <label style="font-size: 12.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 5px;">
+                                📦 ¿Cuántas cajas vas a abrir ahora?
+                            </label>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div class="ac-stepper">
+                                    <button type="button" id="ac-btn-menos-cajas" disabled>−</button>
+                                    <input type="number" id="ac-cantidad-cajas" value="1" min="1" step="1" disabled>
+                                    <button type="button" id="ac-btn-mas-cajas" disabled>+</button>
+                                </div>
+                                <span id="ac-max-cajas-hint" style="font-size: 11.5px; color: #64748b;">Máx: -</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                                <label for="abrir-caja-cantidad" style="font-size: 12.5px; font-weight: 700; color: #334155; margin: 0;">
+                                    🔢 Unidades que trae CADA caja:
+                                </label>
+                                <span id="ac-fuente-unidades-badge" style="font-size: 11px; color: #0369a1; font-weight: 700;"></span>
+                            </div>
+                            <input type="number" id="abrir-caja-cantidad" class="form-control" min="1" step="1"
+                                placeholder="Ej: 2" style="height: 38px; font-weight: 800; font-size: 15px;" disabled required>
+                        </div>
+                    </div>
+
+                    <!-- Vista previa en vivo del movimiento neto -->
+                    <div id="ac-conversion-preview" style="display: none; margin-top: 10px; padding: 8px 12px; border-radius: 7px; background: #f0fdf4; border: 1px dashed #4ade80; font-size: 12.5px; color: #14532d; font-weight: 600;">
+                    </div>
+                </div>
+
+                <!-- PASO 3: OPERADOR, HERENCIA DE LOTE E IMPRESIÓN ZEBRA -->
+                <div id="ac-paso-3" class="ac-step-card ac-step-locked" style="margin-bottom: 6px;">
+                    <div class="ac-step-header">
+                        <div class="ac-step-title">
+                            <span class="ac-step-num">3</span>
+                            <span>Operador, Lote de Trazabilidad e Impresión Zebra</span>
+                        </div>
+                        <span id="ac-badge-paso-3" class="ac-badge" style="background: #e2e8f0; color: #475569;">Completá el paso anterior</span>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1.25fr; gap: 14px; align-items: start;">
+                        <div>
+                            <label for="abrir-caja-usuario" style="font-size: 12.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 5px;">
+                                👤 Operador: <span style="color: #dc2626;">*</span>
+                            </label>
+                            <select id="abrir-caja-usuario" class="form-control" style="height: 38px; font-weight: 600;" disabled required>
+                                <option value="">-- Seleccionar operador --</option>
                             </select>
                         </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="abrir-caja-cantidad" style="font-weight: 600;">🔢 Unidades que trae la caja:
-                                <span style="color: #d32f2f;">*</span></label>
-                            <input type="number" id="abrir-caja-cantidad" class="form-control" min="1" step="1"
-                                placeholder="Ej: 12" required>
-                            <small style="color: #757575;">¿Cuántas unidades se obtienen de la caja?</small>
-                        </div>
-                    </div>
 
-                    <div id="sugerencias-container-caja" style="margin: 15px 0; display: none;">
-                        <label style="font-weight: 600; color: #388e3c;">💡 Cajas sugeridas para este producto:</label>
-                        <div id="sugerencias-lista-caja"
-                            style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;"></div>
-                    </div>
-
-                    <div class="buscador-manual" style="margin-top: 15px;">
-                        <label style="font-weight: 600; margin-bottom: 8px; display: block;">🔍 Buscar Caja de Origen:</label>
-                        <div class="search-mode-tabs">
-                            <button type="button" id="btn-codigo-caja" class="search-tab active">Código de Barras</button>
-                            <button type="button" id="btn-descripcion-caja" class="search-tab">Descripción</button>
-                        </div>
-                        <div id="container-codigo-caja" style="position: relative;">
-                            <input type="text" id="input-codigo-caja" class="form-control"
-                                placeholder="Escanear código de barras de la caja..." autocomplete="off">
-                        </div>
-                        <div id="container-descripcion-caja" style="position: relative; display: none;">
-                            <input type="text" id="input-descripcion-caja" class="form-control"
-                                placeholder="Buscar caja por descripción..." autocomplete="off">
-                            <small style="color: #757575; display: block; margin-top: 5px;">💡 Escribe palabras separadas por espacio</small>
-                        </div>
-                        <div id="resultados-caja"
-                            style="display: none; max-height: 200px; overflow-y: auto; background: white; border: 2px solid #2196f3; border-radius: 4px; margin-top: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
-                        </div>
-                    </div>
-
-                    <div id="caja-seleccionada-display"
-                        style="display: none; margin: 15px 0; padding: 14px 16px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #4caf50;">
-                        <div style="font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #2e7d32; font-weight: 700; margin-bottom: 2px;">
-                            📦 Caja de origen seleccionada
-                        </div>
-                        <div style="font-weight: 700; color: #1b5e20; font-size: 16px;" id="caja-nombre">-</div>
-                        <div style="font-size: 13px; color: #424242; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 15px;">
-                            <span>Código: <strong id="caja-codigo" style="font-family: monospace;">-</strong></span>
-                            <span>Cód. Barras: <strong id="caja-barcode" style="font-family: monospace;">-</strong></span>
-                            <span>Stock de Cajas: <strong id="caja-stock" style="color: #2e7d32;">-</strong></span>
-                        </div>
-                    </div>
-
-                    <!-- SECCIÓN DE LOTE Y TRAZABILIDAD -->
-                    <div id="seccion-lote-caja" style="margin: 15px 0; padding: 14px 16px; background: #fffde7; border-radius: 8px; border-left: 4px solid #fbc02d; border: 1px solid #fff59d;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <label style="font-weight: 700; color: #f57f17; font-size: 14px; margin: 0;">
-                                🏷️ Lote y Trazabilidad de las Unidades:
-                            </label>
-                            <span id="badge-origen-lote" style="font-size: 11px; padding: 2px 8px; border-radius: 12px; background: #e0f2f1; color: #00796b; font-weight: 600;">Lote Automático</span>
-                        </div>
-                        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
-                            <input type="text" id="abrir-caja-lote" class="form-control" style="font-family: monospace; font-weight: 700; font-size: 15px; letter-spacing: 1px; max-width: 200px;" placeholder="Lote asignado...">
-                            <button type="button" id="btn-regenerar-lote" class="btn btn-sm" style="background: #fff; border: 1px solid #ccc; font-size: 12px;" title="Generar un nuevo código de lote">🔄 Nuevo Lote</button>
-                            <span style="font-size: 12px; color: #616161;" id="info-lote-origen">Este lote se imprimirá en las etiquetas.</span>
-                        </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px;">
-                            <div>
-                                <label style="font-size: 12px; font-weight: 600; color: #555; margin-bottom: 2px; display: block;">Fecha Elaboración / Envasado:</label>
-                                <input type="text" id="abrir-caja-fecha-elab" class="form-control form-control-sm" placeholder="DD/MM/AAAA">
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                                <label for="abrir-caja-lote" style="font-size: 12.5px; font-weight: 700; color: #334155; margin: 0;">
+                                    🏷️ Lote heredado por las unidades:
+                                </label>
+                                <span id="badge-origen-lote" class="ac-badge" style="background: #e0f2f1; color: #00796b;">Automático</span>
                             </div>
-                            <div>
-                                <label style="font-size: 12px; font-weight: 600; color: #555; margin-bottom: 2px; display: block;">Fecha Vencimiento:</label>
-                                <input type="text" id="abrir-caja-fecha-venc" class="form-control form-control-sm" placeholder="DD/MM/AAAA">
+                            <div style="display: flex; gap: 6px; align-items: center;">
+                                <input type="text" id="abrir-caja-lote" class="form-control" disabled
+                                    style="height: 38px; font-family: monospace; font-weight: 800; font-size: 14.5px; letter-spacing: 1px;"
+                                    placeholder="Lote...">
+                                <button type="button" id="btn-regenerar-lote" class="btn" disabled
+                                    style="height: 38px; padding: 0 10px; background: #fff; border: 1px solid #cbd5e1; font-size: 12px; white-space: nowrap;"
+                                    title="Generar un código de lote nuevo (solo si no querés usar el lote heredado)">🔄 Nuevo</button>
+                            </div>
+                            <div id="info-lote-origen" style="font-size: 11px; color: #64748b; margin-top: 3px;">
+                                Las unidades heredan el lote de la caja padre para su trazabilidad.
                             </div>
                         </div>
-                        <div style="margin-top: 10px; font-size: 12px; color: #424242; background: rgba(255,255,255,0.7); padding: 6px 10px; border-radius: 4px;">
-                            🖨️ <span id="display-cant-etiquetas" style="font-weight: 600;">0 etiquetas listas para imprimir</span> (cada unidad recibe su etiqueta de producto y su etiqueta de lote con código de barras).
+                    </div>
+
+                    <!-- Fechas compactas desplegables + Resumen Zebra -->
+                    <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <div style="font-size: 12px; color: #0f172a;">
+                            🖨️ Zebra imprimirá: <strong id="display-cant-etiquetas" style="color: #0369a1;">0 pares (Artículo + Lote)</strong>
+                        </div>
+                        <button type="button" id="ac-toggle-fechas"
+                            style="background: none; border: none; color: #0284c7; font-size: 12px; font-weight: 600; cursor: pointer; padding: 0;">
+                            📅 Ver/editar fechas ENV y VTO ▾
+                        </button>
+                    </div>
+
+                    <div id="ac-fechas-collapse" style="display: none; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; background: #f8fafc; padding: 8px 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <div>
+                            <label style="font-size: 11.5px; font-weight: 600; color: #475569; display: block; margin-bottom: 2px;">Fecha Envasado (ENV):</label>
+                            <input type="text" id="abrir-caja-fecha-elab" class="form-control" style="height: 32px; font-size: 13px;" placeholder="DD/MM/AAAA" disabled>
+                        </div>
+                        <div>
+                            <label style="font-size: 11.5px; font-weight: 600; color: #475569; display: block; margin-bottom: 2px;">Fecha Vencimiento (VTO):</label>
+                            <input type="text" id="abrir-caja-fecha-venc" class="form-control" style="height: 32px; font-size: 13px;" placeholder="DD/MM/AAAA" disabled>
                         </div>
                     </div>
 
-                    <div id="mensaje-abrir-caja" style="display: none; margin-top: 15px;"></div>
-                </div> <!-- Fin de paso-seleccion-caja -->
-            </div>
-            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <button id="btn-imprimir-caja" class="btn btn-info" disabled style="font-weight: 600;">🏷️ Imprimir Etiquetas (con Lote)</button>
+                    <div style="margin-top: 8px; display: flex; align-items: center; gap: 7px;">
+                        <input type="checkbox" id="ac-check-continuar" style="width: 15px; height: 15px; cursor: pointer;" disabled>
+                        <label for="ac-check-continuar" style="font-size: 12px; color: #475569; cursor: pointer; margin: 0;">
+                            🔁 Seguir en esta ventana al terminar para escanear otra caja seguida
+                        </label>
+                    </div>
                 </div>
-                <div style="display: flex; gap: 10px;">
-                    <button class="btn btn-secondary"
-                        onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()">Cancelar</button>
-                    <button id="btn-confirmar-caja" class="btn btn-success" disabled style="font-weight: 700;">🔓 Confirmar Apertura de Caja</button>
+
+                <div id="mensaje-abrir-caja" style="display: none; margin-top: 10px; padding: 10px 14px; border-radius: 8px; font-weight: 600; font-size: 13px;"></div>
+            </div>
+
+            <div class="modal-footer" style="padding: 12px 20px; background: #fff; border-top: 1px solid #e2e8f0; border-radius: 0 0 12px 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <button class="btn btn-secondary" style="padding: 9px 16px;"
+                    onclick="if(window.ModalAbrirCaja) window.ModalAbrirCaja.cerrar()">Cancelar</button>
+
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button id="btn-solo-abrir-caja" class="btn" disabled
+                        style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 9px 14px; font-size: 13px;"
+                        title="Registrar el movimiento de stock sin enviar impresión a la Zebra">
+                        🔓 Solo mover stock (sin etiqueta)
+                    </button>
+                    <button id="btn-confirmar-caja" class="btn btn-success" disabled
+                        style="padding: 10px 18px; font-size: 14.5px; font-weight: 800; box-shadow: 0 3px 10px rgba(22, 163, 74, 0.25);">
+                        🖨️ Confirmar e Imprimir en Zebra
+                    </button>
                 </div>
             </div>
         </div>
@@ -2397,8 +2650,7 @@
     <script src="/js/modal-pack-dual-search.js?v=3.0"></script>
     <script src="/js/configurar-carros-ui.js?v=2.5_recetas_inline_y_skus_barra"></script>
     <script src="/js/derivar-compras.js?v=1.1"></script>
-    <script>console.log('🔍 [DEBUG] Modal HTML cargado, ID:', document.getElementById('modal-abrir-caja') ? 'ENCONTRADO' : 'NO ENCONTRADO');</script>
-    <script src="/js/modal-abrir-caja.js?v=4.0"></script>
+    <script src="/js/modal-abrir-caja.js?v=5.1_bunker_lote_zebra"></script>
 
     <!-- Script Máquina Estados Verificación Continua -->
     <script src="/js/verificacion-continua.js?v=1.8_nodos_scanner"></script>

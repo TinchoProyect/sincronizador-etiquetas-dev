@@ -404,31 +404,38 @@ async function buscarArticulos(req, res) {
             `;
             params = [busqueda];
         } else {
-            // Búsqueda INTELIGENTE por tokens (grupos de palabras)
-            const terminos = busqueda.split(' ').filter(t => t.trim() !== '');
+            // Búsqueda INTELIGENTE por tokens sobre catálogo Búnker (descripción nomenclada + palabras completas del diccionario en propiedades_dinamicas)
+            const terminos = busqueda.split(/\s+/).filter(t => t.trim() !== '');
             let whereConds = [];
             params = [];
             
             terminos.forEach((term, index) => {
                 const paramIdx = index + 1;
-                // El token debe estar en la descripcion o ser un match al codigo
-                whereConds.push(`(COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion) ILIKE $${paramIdx} OR src.articulo_numero ILIKE $${paramIdx} OR src.codigo_barras ILIKE $${paramIdx})`);
+                whereConds.push(`(
+                    COALESCE(ba.descripcion_generada, ba.descripcion, '') ILIKE $${paramIdx}
+                    OR COALESCE(bf.nombre, '') ILIKE $${paramIdx}
+                    OR COALESCE(ba.codigo_barras, a.codigo_barras, src.codigo_barras, '') ILIKE $${paramIdx}
+                    OR COALESCE(ba.propiedades_dinamicas::text, '') ILIKE $${paramIdx}
+                    OR REPLACE(COALESCE(ba.descripcion_generada, ''), ' ', '') ILIKE $${paramIdx}
+                )`);
                 params.push(`%${term}%`);
             });
             const filterSQL = whereConds.length > 0 ? whereConds.join(' AND ') : '1=1';
 
             query = `
                 SELECT 
-                    src.articulo_numero as codigo,
-                    COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion) as descripcion,
-                    src.codigo_barras,
-                    src.stock_consolidado,
-                    src.es_pack,
-                    src.pack_hijo_codigo,
-                    src.pack_unidades,
-                    src.kilos_unidad
-                FROM stock_real_consolidado src
-                LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = src.articulo_numero
+                    ba.articulo_id as codigo,
+                    COALESCE(ba.descripcion_generada, ba.descripcion) as descripcion,
+                    COALESCE(NULLIF(BTRIM(ba.codigo_barras), ''), NULLIF(BTRIM(ba.propiedades_dinamicas->>'codigo_barras_local'), ''), NULLIF(BTRIM(a.codigo_barras), ''), NULLIF(BTRIM(src.codigo_barras), '')) as codigo_barras,
+                    COALESCE(src.stock_consolidado, 0) as stock_consolidado,
+                    COALESCE(ba.es_pack, src.es_pack, false) as es_pack,
+                    COALESCE(ba.pack_hijo_codigo, src.pack_hijo_codigo) as pack_hijo_codigo,
+                    COALESCE(ba.pack_unidades, src.pack_unidades, 0) as pack_unidades,
+                    COALESCE(NULLIF(ba.kilos_unidad, 0), NULLIF(src.kilos_unidad, 0), 0) as kilos_unidad
+                FROM public.bunker_articulos ba
+                LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+                LEFT JOIN public.stock_real_consolidado src ON BTRIM(src.articulo_numero) = BTRIM(ba.articulo_id)
+                LEFT JOIN public.articulos a ON BTRIM(a.numero) = BTRIM(ba.articulo_id)
                 WHERE ${filterSQL}
                 ORDER BY descripcion
                 LIMIT 50
