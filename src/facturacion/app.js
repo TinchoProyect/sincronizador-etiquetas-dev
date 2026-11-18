@@ -291,8 +291,16 @@ const inicializarServidor = async () => {
             console.log('🎉 [FACTURACION] =====================================');
             
             // Iniciar cliente de WhatsApp Web en segundo plano
-            console.log('🔌 [FACTURACION] Inicializando cliente de WhatsApp...');
-            whatsappService.inicializarWhatsApp();
+            // En Linux/Cloud escalonamos 2.5s tras el arranque para no colisionar con el pico de CPU de `pm2 restart all`
+            const delayWaMs = process.platform !== 'win32' ? 2500 : 0;
+            console.log(`🔌 [FACTURACION] Inicializando cliente de WhatsApp${delayWaMs > 0 ? ` (escalonado ${delayWaMs}ms)` : ''}...`);
+            if (delayWaMs > 0) {
+                setTimeout(() => {
+                    whatsappService.inicializarWhatsApp();
+                }, delayWaMs);
+            } else {
+                whatsappService.inicializarWhatsApp();
+            }
         });
         
         return server;

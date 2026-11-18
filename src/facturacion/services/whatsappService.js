@@ -103,6 +103,8 @@ let lastError = null;
 let initializeTimeout = null;
 let _reciclandoMotorPromise = null;
 let _fallosContextoConsecutivos = 0;
+let _reintentosArranqueConsecutivos = 0;
+let _timerReintentoArranque = null;
 
 /**
  * Detecta errores fatales de contexto/frame desprendido en Puppeteer/Chromium
@@ -200,37 +202,48 @@ async function asegurarMotorConectadoParaEnvio() {
 }
 
 /**
- * Limpiar lockfiles residuales físicos en disco de Chromium
+ * Limpiar lockfiles residuales físicos y symlinks huérfanos en disco de Chromium (Windows y Linux)
  */
 const limpiarLockFiles = (sessionPath) => {
     try {
         if (!fs.existsSync(sessionPath)) return;
-        const lockFiles = ['lockfile', 'SingletonLock', 'SingletonCookie', 'Singleton Socket'];
-        lockFiles.forEach(file => {
-            const filePath = path.join(sessionPath, file);
-            if (fs.existsSync(filePath)) {
+        const dirsToClean = [sessionPath, path.join(sessionPath, 'Default')];
+        const lockFiles = ['lockfile', 'SingletonLock', 'SingletonCookie', 'SingletonSocket', 'Singleton Socket'];
+
+        dirsToClean.forEach(dirPath => {
+            if (!fs.existsSync(dirPath)) return;
+            lockFiles.forEach(file => {
+                const filePath = path.join(dirPath, file);
                 try {
-                    console.log(`🧹 [WHATSAPP-SERVICE] Eliminando lockfile residual: ${file}`);
-                    fs.unlinkSync(filePath);
-                } catch (e) {
-                    console.warn(`⚠️ [WHATSAPP-SERVICE] No se pudo eliminar lockfile ${file}:`, e.message);
-                }
-            }
-        });
-        const files = fs.readdirSync(sessionPath);
-        files.forEach(file => {
-            if (file.toLowerCase().includes('lock')) {
-                const filePath = path.join(sessionPath, file);
-                try {
-                    const stat = fs.statSync(filePath);
-                    if (stat.isFile()) {
-                        console.log(`🧹 [WHATSAPP-SERVICE] Eliminando residuo de lock encontrado: ${file}`);
-                        fs.unlinkSync(filePath);
+                    // En Linux SingletonLock/SingletonCookie/SingletonSocket son symlinks rotos (fs.existsSync da false),
+                    // por eso usamos lstatSync para detectarlos sin seguir el destino del symlink.
+                    const lstat = fs.lstatSync(filePath);
+                    if (lstat) {
+                        console.log(`🧹 [WHATSAPP-SERVICE] Eliminando lockfile/symlink residual: ${file}`);
+                        fs.rmSync(filePath, { force: true });
                     }
                 } catch (e) {
-                    // Ignorar
+                    if (e && e.code !== 'ENOENT') {
+                        console.warn(`⚠️ [WHATSAPP-SERVICE] No se pudo eliminar lockfile ${file}:`, e.message);
+                    }
                 }
-            }
+            });
+
+            try {
+                const entries = fs.readdirSync(dirPath);
+                entries.forEach(file => {
+                    if (file.toLowerCase().includes('lock') || file.startsWith('Singleton')) {
+                        const filePath = path.join(dirPath, file);
+                        try {
+                            const lstat = fs.lstatSync(filePath);
+                            if (lstat.isFile() || lstat.isSymbolicLink()) {
+                                console.log(`🧹 [WHATSAPP-SERVICE] Eliminando residuo de lock encontrado: ${file}`);
+                                fs.rmSync(filePath, { force: true });
+                            }
+                        } catch (_) {}
+                    }
+                });
+            } catch (_) {}
         });
     } catch (err) {
         console.error('⚠️ [WHATSAPP-SERVICE] Error en limpieza de lockfiles:', err.message);
@@ -248,8 +261,10 @@ const killZombieChrome = () => {
         if (process.platform !== 'win32') {
             const linuxCmd = `pkill -9 -f "[s]ession-lamda-billing" 2>/dev/null || true`;
             exec(linuxCmd, () => {
-                console.log('✅ [WHATSAPP-SERVICE] Limpieza de procesos zombies de Chromium (Linux) completada.');
-                resolve();
+                setTimeout(() => {
+                    console.log('✅ [WHATSAPP-SERVICE] Limpieza de procesos zombies de Chromium (Linux) completada.');
+                    resolve();
+                }, 450);
             });
             return;
         }
@@ -289,6 +304,14 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
         await shutdown();
     }
 
+    if (_timerReintentoArranque) {
+        clearTimeout(_timerReintentoArranque);
+        _timerReintentoArranque = null;
+    }
+    if (!isFallback) {
+        _reintentosArranqueConsecutivos = 0;
+    }
+
     console.log(`🔌 [WHATSAPP-SERVICE] Iniciando servicio de WhatsApp (isFallback: ${isFallback})...`);
     connectionStatus = 'CONECTANDO';
     connectionStep = 1;
@@ -325,6 +348,21 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
         // Limpiar lockfiles residuales si existen
         limpiarLockFiles(sessionPath);
 
+        // Blindaje Linux Headless (Google Cloud): neutralizar DBUS_SESSION_BUS_ADDRESS heredado de sesiones SSH
+        // efímeras tras `pm2 restart --update-env` (evita aborto fatal libdbus `pending != NULL` al cerrar SSH).
+        let puppeteerEnv = process.env;
+        if (process.platform !== 'win32') {
+            process.env.DBUS_SESSION_BUS_ADDRESS = '/dev/null';
+            process.env.NO_AT_BRIDGE = '1';
+            delete process.env.XDG_RUNTIME_DIR;
+            puppeteerEnv = {
+                ...process.env,
+                DBUS_SESSION_BUS_ADDRESS: '/dev/null',
+                NO_AT_BRIDGE: '1'
+            };
+            delete puppeteerEnv.XDG_RUNTIME_DIR;
+        }
+
         client = new Client({
             authStrategy: new LocalAuth({
                 clientId: 'lamda-billing',
@@ -337,18 +375,23 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
             puppeteer: {
                 headless: true,
                 protocolTimeout: 120000,
+                env: puppeteerEnv,
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-accelerated-2d-canvas',
                     '--no-first-run',
+                    '--no-default-browser-check',
                     '--no-zygote',
                     '--disable-gpu',
                     '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
                     '--disable-extensions',
                     '--disable-background-networking',
                     '--disable-default-apps',
+                    '--disable-notifications',
+                    '--password-store=basic',
+                    '--use-mock-keychain',
                     '--disable-sync',
                     '--disable-translate',
                     '--hide-scrollbars',
@@ -383,6 +426,7 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
         client.on('ready', () => {
             console.log('✅ [WHATSAPP-SERVICE] Cliente de WhatsApp Web listo y conectado.');
             clearInitTimeout();
+            _reintentosArranqueConsecutivos = 0;
             connectionStatus = 'CONECTADO';
             connectionStep = 4;
             connectionStepText = '¡Listo! Dispositivo conectado.';
@@ -576,13 +620,30 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
         }, 5000);
 
         client.initialize().catch(async err => {
-            console.error('❌ [WHATSAPP-SERVICE] Error en initialize():', err.message);
+            const msgErr = (err && err.message) ? err.message : String(err);
+            console.error('❌ [WHATSAPP-SERVICE] Error en initialize():', msgErr);
             clearInitTimeout();
             connectionStatus = 'DESCONECTADO';
             connectionStep = 0;
-            connectionStepText = `Error al inicializar: ${err.message}`;
-            lastError = err.message;
+            connectionStepText = `Error al inicializar: ${msgErr}`;
+            lastError = msgErr;
             await shutdown();
+
+            // Auto-recuperación ante fallos transitorios de lanzamiento de Chromium en reinicios masivos (sin borrar sesión QR)
+            const maxReintentos = 3;
+            const esFalloLanzamiento = /Failed to launch the browser process|dbus|SingletonLock|Protocol error|Target closed|ECONNREFUSED/i.test(msgErr);
+            if (!esModoLaboratorioWa() && (sessionExistsAfterForce || esFalloLanzamiento) && _reintentosArranqueConsecutivos < maxReintentos) {
+                _reintentosArranqueConsecutivos += 1;
+                const esperaMs = _reintentosArranqueConsecutivos === 1 ? 8000 : (_reintentosArranqueConsecutivos === 2 ? 18000 : 35000);
+                console.warn(`♻️ [WHATSAPP-AUTO-RETRY] Reintentando levantar navegador de WhatsApp (${_reintentosArranqueConsecutivos}/${maxReintentos}) en ${esperaMs / 1000}s conservando sesión vinculada...`);
+                connectionStepText = `Reintentando iniciar motor automáticamente (${_reintentosArranqueConsecutivos}/${maxReintentos})...`;
+                _timerReintentoArranque = setTimeout(() => {
+                    _timerReintentoArranque = null;
+                    if (connectionStatus === 'DESCONECTADO') {
+                        inicializarWhatsApp(false, true).catch(() => {});
+                    }
+                }, esperaMs);
+            }
         });
 
     } catch (error) {
