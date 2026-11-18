@@ -94,12 +94,16 @@
 
     * { box-sizing: border-box; }
 
-    html, body {
-      overflow-x: hidden;
+    html {
       max-width: 100%;
+      -webkit-text-size-adjust: 100%;
     }
     body {
       margin: 0;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+      overflow-x: clip;
       font-family: var(--font-brand);
       background: var(--bg);
       color: var(--text);
@@ -577,10 +581,14 @@
       border-radius: 12px;
       padding: 12px;
       margin-bottom: 10px;
+      min-width: 0;
+      max-width: 100%;
       box-shadow: 0 2px 6px rgba(62, 37, 25, 0.025);
     }
     .input-sm {
       min-height: 38px;
+      min-width: 0;
+      max-width: 100%;
       padding: 7px 10px;
       border-radius: 9px;
       border: 1.5px solid var(--border);
@@ -590,6 +598,10 @@
       font-size: 0.92rem;
       font-weight: 700;
       outline: none;
+    }
+    select.input-sm {
+      text-overflow: ellipsis;
+      overflow: hidden;
     }
     .input-sm:disabled {
       background: #eee7df;
@@ -1555,16 +1567,85 @@
     }
 
     /* Flujo guiado con desbloqueo progresivo y pasos atenuados ("apaisados") */
+    .propuestas-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+      gap: 14px;
+      align-items: start;
+      width: 100%;
+      max-width: 100%;
+    }
+    .propuestas-grid > * {
+      min-width: 0;
+      max-width: 100%;
+    }
+    .prop-mode-tabs {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 6px;
+      margin-bottom: 12px;
+      padding: 4px;
+      border-radius: 12px;
+      background: var(--surface-warm);
+      border: 1px solid var(--border);
+      width: 100%;
+      max-width: 100%;
+    }
+    .prop-mode-tab {
+      min-width: 0;
+      min-height: 40px;
+      padding: 8px 8px;
+      border-radius: 9px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-family: inherit;
+      font-weight: 900;
+      font-size: 0.81rem;
+      line-height: 1.2;
+      text-align: center;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .prop-mode-tab.is-active {
+      border: 1.5px solid var(--brand);
+      background: #ffffff;
+      color: var(--brand-dark);
+      box-shadow: 0 1px 4px rgba(62, 37, 25, 0.06);
+    }
+    .prop-peso-precio-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.95fr);
+      gap: 10px;
+      margin-bottom: 9px;
+    }
+    .prop-two-col-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 9px;
+    }
+    .prop-peso-precio-grid > *,
+    .prop-two-col-grid > * {
+      min-width: 0;
+    }
     .prop-steps-stack {
       display: flex;
       flex-direction: column;
       gap: 12px;
+      min-width: 0;
+      max-width: 100%;
     }
     .prop-step-card {
       border-radius: 14px;
       padding: 13px 14px;
       border: 1.5px solid var(--border);
       background: #fffdfb;
+      min-width: 0;
+      max-width: 100%;
+      overflow-wrap: anywhere;
       transition: opacity 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background-color 0.22s ease;
       scroll-margin-top: 86px;
     }
@@ -1634,6 +1715,11 @@
       padding: 3px 9px;
       border-radius: 999px;
       white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: inline-block;
+      vertical-align: middle;
     }
     .prop-step-status.current {
       background: var(--brand-soft);
@@ -1653,6 +1739,11 @@
       padding: 3px 9px;
       border-radius: 999px;
       white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: inline-block;
+      vertical-align: middle;
     }
     .prop-step-card.is-current select:focus,
     .prop-step-card.is-current input:focus {
@@ -2003,15 +2094,44 @@
       transform: scale(0.985);
     }
 
+    @media (max-width: 760px) {
+      .propuestas-grid {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 12px;
+      }
+    }
+
     @media (max-width: 640px) {
       .oferta-grid {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       }
       .ventana-item-row {
-        grid-template-columns: 1fr 1fr !important;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
       }
       .propuestas-grid {
-        grid-template-columns: 1fr !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+      .propuestas-grid .card {
+        padding: 11px;
+      }
+      .prop-step-card {
+        padding: 11px 11px;
+      }
+      .propuestas-grid .input-sm {
+        font-size: 16px;
+        min-height: 42px;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .prop-peso-precio-grid,
+      .prop-two-col-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+      }
+      .prop-mode-tab {
+        font-size: 0.78rem;
+        padding: 7px 5px;
       }
     }
   </style>
@@ -4874,7 +4994,7 @@
             ? ' (cotizada)'
             : '';
         const labelOf = p.label_oficial || (p.sku ? `[${p.sku}] ${p.descripcion_generada || p.etiqueta}` : p.etiqueta);
-        return `<span style="display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:999px; background:#edf7f1; border:1px solid rgba(31,111,74,0.28); color:var(--ok); font-weight:800; font-size:0.72rem;">✓ ${esc(labelOf)}${esc(sub)}</span>`;
+        return `<span style="display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:999px; background:#edf7f1; border:1px solid rgba(31,111,74,0.28); color:var(--ok); font-weight:800; font-size:0.72rem; max-width:100%; overflow-wrap:anywhere;">✓ ${esc(labelOf)}${esc(sub)}</span>`;
       }).join(' ');
 
       return `
@@ -5226,12 +5346,12 @@
       if (selIng) {
         selIng.disabled = !evSync.paso2Habilitado;
         if (!evSync.paso2Habilitado) {
-          selIng.innerHTML = `<option value="">Elegí primero una familia / rubro en el Paso 1...</option>`;
+          selIng.innerHTML = `<option value="">Elegí primero familia / rubro...</option>`;
         } else if (filtrados.length === 0) {
           selIng.innerHTML = `<option value="">Sin coincidencias en ${esc(GSTATE.propCategoriaSel)}</option>`;
         } else {
           selIng.innerHTML = `
-            <option value="" ${!ingSel ? 'selected' : ''}>— Seleccioná un ingrediente LAMDA (${filtrados.length}) —</option>
+            <option value="" ${!ingSel ? 'selected' : ''}>Seleccioná ingrediente LAMDA (${filtrados.length})...</option>
             ${filtrados.map(i => `
               <option value="${i.id}" ${Number(i.id) === Number(GSTATE.propIngredienteIdSel) ? 'selected' : ''}>
                 ${esc(i.label_oficial || i.nombre_claro)}
@@ -5575,8 +5695,8 @@
       return filtrados.slice(0, 45).map(a => {
         const cantSel = selMap.get(String(a.sku_nodo).toUpperCase()) || 0;
         return `
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px; border-radius:9px; border:1px solid ${cantSel > 0 ? 'var(--brand)' : 'var(--border)'}; background:${cantSel > 0 ? 'var(--brand-soft)' : '#ffffff'};">
-            <div style="min-width:0; flex:1;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px; border-radius:9px; border:1px solid ${cantSel > 0 ? 'var(--brand)' : 'var(--border)'}; background:${cantSel > 0 ? 'var(--brand-soft)' : '#ffffff'}; min-width:0; max-width:100%;">
+            <div style="min-width:0; flex:1; overflow-wrap:anywhere;">
               <div style="font-size:0.8rem; font-weight:800; color:var(--text); line-height:1.25;">
                 <code style="font-size:0.72rem; color:var(--brand-dark);">[${esc(a.sku_nodo)}]</code> ${esc(a.nombre_oficial_lamda)}
               </div>
@@ -5760,9 +5880,9 @@
                 </div>
                 <div style="display:flex; flex-direction:column; gap:5px;">
                   ${ev.itemsDet.map(it => `
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:0.78rem;">
-                      <span><strong>${it.cantidad}x</strong> [${esc(it.sku_nodo)}] ${esc(it.nombre_oficial_lamda)}</span>
-                      <div style="display:inline-flex; gap:4px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:0.78rem; min-width:0;">
+                      <span style="min-width:0; flex:1; overflow-wrap:anywhere;"><strong>${it.cantidad}x</strong> [${esc(it.sku_nodo)}] ${esc(it.nombre_oficial_lamda)}</span>
+                      <div style="display:inline-flex; gap:4px; flex-shrink:0;">
                         <button type="button" class="btn-soft" style="padding:2px 7px;" onclick="modificarItemComboPropuestaGestor('${esc(it.sku_nodo)}', -1)">−</button>
                         <button type="button" class="btn-soft" style="padding:2px 7px;" onclick="modificarItemComboPropuestaGestor('${esc(it.sku_nodo)}', 1)">+</button>
                       </div>
@@ -5796,7 +5916,7 @@
 
             ${avisoPaso2Html}
 
-            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:9px; margin-top:${avisoPaso2Html ? '8px' : '0'};">
+            <div class="prop-two-col-grid" style="margin-top:${avisoPaso2Html ? '8px' : '0'};">
               <div>
                 <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Suma bases individuales (ref.)</label>
                 <input type="text" class="input-sm" style="width:100%; background:var(--surface-warm); font-weight:800;" disabled
@@ -5884,17 +6004,17 @@
       const totalSolicitudes = (GSTATE.propuestas?.length || 0) + (GSTATE.propuestasCombos?.length || 0);
 
       return `
-        <div class="propuestas-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:14px; align-items:start;">
+        <div class="propuestas-grid">
           <div class="card">
-            <div style="display:flex; gap:8px; margin-bottom:12px; padding:4px; border-radius:12px; background:var(--surface-warm); border:1px solid var(--border);">
+            <div class="prop-mode-tabs">
               <button type="button" data-testid="tab-propuesta-fraccion"
-                onclick="cambiarModoPropuestaGestor('fraccion')"
-                style="flex:1; padding:9px 10px; border-radius:9px; border:${!esModoCombo ? '1.5px solid var(--brand)' : '1px solid transparent'}; background:${!esModoCombo ? '#ffffff' : 'transparent'}; color:${!esModoCombo ? 'var(--brand-dark)' : 'var(--muted)'}; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer;">
+                class="prop-mode-tab ${!esModoCombo ? 'is-active' : ''}"
+                onclick="cambiarModoPropuestaGestor('fraccion')">
                 ⚖️ Fracción individual
               </button>
               <button type="button" data-testid="tab-propuesta-combo"
-                onclick="cambiarModoPropuestaGestor('combo')"
-                style="flex:1; padding:9px 10px; border-radius:9px; border:${esModoCombo ? '1.5px solid var(--brand)' : '1px solid transparent'}; background:${esModoCombo ? '#ffffff' : 'transparent'}; color:${esModoCombo ? 'var(--brand-dark)' : 'var(--muted)'}; font-family:inherit; font-weight:900; font-size:0.82rem; cursor:pointer;">
+                class="prop-mode-tab ${esModoCombo ? 'is-active' : ''}"
+                onclick="cambiarModoPropuestaGestor('combo')">
                 🎁 Armar Combo / Pack
               </button>
             </div>
@@ -5928,7 +6048,7 @@
                   </div>
                 </div>
                 <select id="prop-categoria" class="input-sm" style="width:100%;" onchange="alCambiarCategoriaPropuestaGestor(this.value)">
-                  <option value="" ${!ev.paso1Completo ? 'selected' : ''}>— Seleccioná una familia / rubro —</option>
+                  <option value="" ${!ev.paso1Completo ? 'selected' : ''}>Seleccioná familia / rubro...</option>
                   ${categoriasUnicas.map(cat => {
                     const count = disponibles.filter(i => (i.categoria_lamda || i.categoria_gestor) === cat).length;
                     return `<option value="${esc(cat)}" ${cat === GSTATE.propCategoriaSel ? 'selected' : ''}>${esc(cat)} (${count})</option>`;
@@ -5958,9 +6078,9 @@
                   ${!ev.paso2Habilitado ? 'disabled' : ''}
                   onchange="alCambiarIngredientePropuestaGestor(this.value)">
                   ${!ev.paso2Habilitado
-                    ? `<option value="">Elegí primero una familia / rubro en el Paso 1...</option>`
+                    ? `<option value="">Elegí primero familia / rubro...</option>`
                     : `
-                      <option value="" ${!ingSel ? 'selected' : ''}>— Seleccioná un ingrediente LAMDA (${filtrados.length}) —</option>
+                      <option value="" ${!ingSel ? 'selected' : ''}>Seleccioná ingrediente LAMDA (${filtrados.length})...</option>
                       ${filtrados.map(i => `
                         <option value="${i.id}" ${Number(i.id) === Number(GSTATE.propIngredienteIdSel) ? 'selected' : ''}>
                           ${esc(i.label_oficial || i.nombre_claro)}
@@ -5990,10 +6110,10 @@
                   ${renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel, !ev.paso3Habilitado)}
                 </div>
 
-                <div style="display:grid; grid-template-columns: 1.25fr 0.95fr; gap:10px; margin-bottom:9px;">
+                <div class="prop-peso-precio-grid">
                   <div>
                     <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Otro peso manual</label>
-                    <div style="display:flex; gap:5px; align-items:stretch;">
+                    <div style="display:flex; gap:5px; align-items:stretch; min-width:0;">
                       <input type="text" inputmode="decimal" autocomplete="off" id="prop-peso-manual" class="input-sm"
                         style="flex:1; min-width:0;"
                         ${!ev.paso3Habilitado ? 'disabled' : ''}
@@ -6002,7 +6122,7 @@
                         oninput="alEscribirPesoManualGestor(this.value)"
                         onblur="alSalirPesoManualGestor()" />
                       <select id="prop-peso-unidad" class="input-sm"
-                        style="width:74px; padding-left:7px; padding-right:4px; font-weight:800; background:var(--surface-warm);"
+                        style="width:74px; flex-shrink:0; padding-left:7px; padding-right:4px; font-weight:800; background:var(--surface-warm);"
                         ${!ev.paso3Habilitado ? 'disabled' : ''}
                         onchange="alCambiarUnidadPesoManualGestor(this.value)">
                         <option value="g" ${GSTATE.propUnidadPesoManual === 'g' ? 'selected' : ''}>g</option>
@@ -6085,13 +6205,13 @@
                 const bCol = esAp ? 'var(--ok)' : esDesc ? 'var(--muted)' : 'var(--warn)';
                 const bLbl = esAp ? 'Cotizado' : esDesc ? 'Descartado' : 'En cotización';
                 return `
-                  <div data-testid="card-gestor-solicitud-combo-${pc.id}" style="padding:12px; border-radius:12px; border:1px solid #d8b4fe; background:#fdfaff;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                        <span style="font-size:0.7rem; font-weight:900; padding:2px 7px; border-radius:999px; background:#f3e8ff; color:#6b21a8;">🎁 Combo</span>
-                        <strong style="font-size:0.9rem;">${esc(pc.alias_vidriera_sugerido || pc.codigo_propuesta)}</strong>
+                  <div data-testid="card-gestor-solicitud-combo-${pc.id}" style="padding:12px; border-radius:12px; border:1px solid #d8b4fe; background:#fdfaff; min-width:0; max-width:100%; overflow-wrap:anywhere;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; min-width:0;">
+                      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; flex:1;">
+                        <span style="font-size:0.7rem; font-weight:900; padding:2px 7px; border-radius:999px; background:#f3e8ff; color:#6b21a8; flex-shrink:0;">🎁 Combo</span>
+                        <strong style="font-size:0.9rem; min-width:0; overflow-wrap:anywhere;">${esc(pc.alias_vidriera_sugerido || pc.codigo_propuesta)}</strong>
                       </div>
-                      <span style="font-size:0.72rem; font-weight:800; padding:3px 9px; border-radius:999px; background:${bBg}; color:${bCol};">
+                      <span style="font-size:0.72rem; font-weight:800; padding:3px 9px; border-radius:999px; background:${bBg}; color:${bCol}; flex-shrink:0; white-space:nowrap;">
                         ${bLbl}
                       </span>
                     </div>
@@ -6133,10 +6253,10 @@
                   : p.nombre_sugerido;
 
                 return `
-                  <div style="padding:12px; border-radius:12px; border:1px solid var(--border); background:#fffdfb;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                      <strong style="font-size:0.9rem;">${esc(tituloTecnico)}</strong>
-                      <span style="font-size:0.72rem; font-weight:800; padding:3px 9px; border-radius:999px; background:${badgeBg}; color:${badgeColor};">
+                  <div style="padding:12px; border-radius:12px; border:1px solid var(--border); background:#fffdfb; min-width:0; max-width:100%; overflow-wrap:anywhere;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px; min-width:0;">
+                      <strong style="font-size:0.9rem; min-width:0; flex:1; overflow-wrap:anywhere;">${esc(tituloTecnico)}</strong>
+                      <span style="font-size:0.72rem; font-weight:800; padding:3px 9px; border-radius:999px; background:${badgeBg}; color:${badgeColor}; flex-shrink:0; white-space:nowrap;">
                         ${badgeLabel}
                       </span>
                     </div>
