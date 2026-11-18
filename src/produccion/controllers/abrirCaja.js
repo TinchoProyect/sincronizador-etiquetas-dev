@@ -144,7 +144,8 @@ async function obtenerCatalogoAbrirCaja(req, res) {
                 ba.sub_rubro,
                 ba.propiedades_dinamicas,
                 lote_activo.lote_codigo_corto AS lote_padre_activo,
-                lote_activo.proveedor_nombre AS lote_padre_proveedor
+                lote_activo.proveedor_nombre AS lote_padre_proveedor,
+                COALESCE(lotes_activos_lat.lotes_json, '[]'::jsonb) AS lotes_padre_activos
             FROM public.bunker_articulos ba
             LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
             LEFT JOIN public.stock_real_consolidado src ON BTRIM(src.articulo_numero) = BTRIM(ba.articulo_id)
@@ -165,6 +166,31 @@ async function obtenerCatalogoAbrirCaja(req, res) {
                     v.fecha_vinculacion DESC
                 LIMIT 1
             ) lote_activo ON true
+            LEFT JOIN LATERAL (
+                SELECT jsonb_agg(
+                    jsonb_build_object(
+                        'lote_codigo_corto', sub.lote_codigo_corto,
+                        'proveedor_nombre', sub.proveedor_nombre,
+                        'cajas_cerradas', sub.cajas_cerradas
+                    )
+                    ORDER BY sub.primera_fecha ASC
+                ) AS lotes_json
+                FROM (
+                    SELECT
+                        BTRIM(v.lote_codigo_corto) AS lote_codigo_corto,
+                        MAX(v.proveedor_nombre) AS proveedor_nombre,
+                        ROUND(SUM(GREATEST(0, d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)))::numeric, 2) AS cajas_cerradas,
+                        MIN(v.fecha_vinculacion) AS primera_fecha
+                    FROM public.bunker_lotes_destinos d
+                    JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
+                    WHERE (d.tipo_destino = 'ARTICULO_BUNKER' OR d.tipo_destino = 'BUNKER')
+                      AND BTRIM(d.destino_id) = BTRIM(ba.articulo_id)
+                      AND v.lote_codigo_corto IS NOT NULL
+                      AND BTRIM(v.lote_codigo_corto) <> ''
+                      AND (d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) > 0
+                    GROUP BY BTRIM(v.lote_codigo_corto)
+                ) sub
+            ) lotes_activos_lat ON true
             WHERE ba.articulo_id IS NOT NULL
               AND BTRIM(ba.articulo_id) <> ''
             ORDER BY BTRIM(ba.articulo_id)
@@ -448,32 +474,57 @@ async function obtenerLoteSugerido(req, res) {
         let loteSugerido = null;
         let proveedor = null;
         let origen = 'generado';
+        let lotesActivos = [];
 
-        // 1. Si no se fuerza lote nuevo y se proporciona código de caja padre, heredar su lote de trazabilidad
+        // 1. Si no se fuerza lote nuevo y se proporciona código de caja padre, consultar todos sus lotes cerrados activos
         if (!forzarNuevo && codigo_caja) {
-            const query = `
+            const activosRes = await pool.query(`
                 SELECT
-                    v.lote_codigo_corto,
-                    v.lote_id_supabase,
-                    v.proveedor_nombre,
-                    (d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) AS cajas_cerradas_lote
+                    BTRIM(v.lote_codigo_corto) AS lote_codigo_corto,
+                    MAX(v.proveedor_nombre) AS proveedor_nombre,
+                    ROUND(SUM(GREATEST(0, d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)))::numeric, 2) AS cajas_cerradas,
+                    MIN(v.fecha_vinculacion) AS primera_fecha
                 FROM public.bunker_lotes_destinos d
                 JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
                 WHERE (d.tipo_destino = 'ARTICULO_BUNKER' OR d.tipo_destino = 'BUNKER')
                   AND BTRIM(d.destino_id) = BTRIM($1)
                   AND v.lote_codigo_corto IS NOT NULL
                   AND BTRIM(v.lote_codigo_corto) <> ''
-                ORDER BY
-                    CASE WHEN (d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) > 0 THEN 0 ELSE 1 END ASC,
-                    CASE WHEN (d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) > 0 THEN v.fecha_vinculacion END ASC,
-                    v.fecha_vinculacion DESC
-                LIMIT 1
-            `;
-            const result = await pool.query(query, [codigo_caja.trim()]);
-            if (result.rows.length > 0 && result.rows[0].lote_codigo_corto) {
-                loteSugerido = result.rows[0].lote_codigo_corto.trim();
-                proveedor = result.rows[0].proveedor_nombre || null;
+                  AND (d.cantidad_asignada - COALESCE(d.cantidad_abierta, 0)) > 0
+                GROUP BY BTRIM(v.lote_codigo_corto)
+                ORDER BY MIN(v.fecha_vinculacion) ASC
+            `, [codigo_caja.trim()]);
+
+            lotesActivos = activosRes.rows;
+
+            if (lotesActivos.length > 0) {
+                loteSugerido = lotesActivos[0].lote_codigo_corto;
+                proveedor = lotesActivos[0].proveedor_nombre || null;
                 origen = 'lote_caja';
+            } else {
+                // Respaldo: último lote histórico vinculado a la caja si todas figuraban abiertas
+                const fallbackRes = await pool.query(`
+                    SELECT BTRIM(v.lote_codigo_corto) AS lote_codigo_corto, v.proveedor_nombre
+                    FROM public.bunker_lotes_destinos d
+                    JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
+                    WHERE (d.tipo_destino = 'ARTICULO_BUNKER' OR d.tipo_destino = 'BUNKER')
+                      AND BTRIM(d.destino_id) = BTRIM($1)
+                      AND v.lote_codigo_corto IS NOT NULL
+                      AND BTRIM(v.lote_codigo_corto) <> ''
+                    ORDER BY v.fecha_vinculacion DESC
+                    LIMIT 1
+                `, [codigo_caja.trim()]);
+
+                if (fallbackRes.rows.length > 0) {
+                    loteSugerido = fallbackRes.rows[0].lote_codigo_corto;
+                    proveedor = fallbackRes.rows[0].proveedor_nombre || null;
+                    origen = 'lote_caja';
+                    lotesActivos = [{
+                        lote_codigo_corto: loteSugerido,
+                        proveedor_nombre: proveedor,
+                        cajas_cerradas: 0
+                    }];
+                }
             }
         }
 
@@ -492,7 +543,9 @@ async function obtenerLoteSugerido(req, res) {
             success: true,
             lote: loteSugerido,
             proveedor,
-            origen
+            origen,
+            lotes_activos: lotesActivos,
+            requiere_seleccion_lote: lotesActivos.length > 1
         });
     } catch (error) {
         console.error('❌ [ABRIR-CAJA] Error al sugerir lote:', error);

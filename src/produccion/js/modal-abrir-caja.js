@@ -29,7 +29,8 @@ const ModalAbrirCaja = (function () {
     let fuenteSeleccionUnidad = '';             // 'aprendido' | 'contextual' | 'manual'
     let loteActual = '';
     let loteProveedor = '';
-    let origenLote = 'generado';                // 'lote_caja' | 'generado' | 'manual'
+    let origenLote = 'generado';                // 'lote_unico' | 'multi_pendiente' | 'lote_confirmado' | 'generado' | 'manual'
+    let lotesPadreActivos = [];                 // Lista de lotes cerrados activos de la caja seleccionada
 
     // Navegación por teclado en los dos omnibox
     let resultadosCajaVisibles = [];
@@ -391,22 +392,64 @@ const ModalAbrirCaja = (function () {
             actualizarEstadoPasosYBotones();
         });
 
-        // Lote y fechas
+        // Lote y fechas opcionales
         document.getElementById('btn-regenerar-lote')?.addEventListener('click', () => {
             solicitarLoteSugerido(cajaSeleccionada?.articulo_numero, true);
         });
-        document.getElementById('abrir-caja-lote')?.addEventListener('input', (e) => {
-            loteActual = e.target.value.trim().toUpperCase();
-            e.target.value = loteActual;
-            origenLote = 'manual';
-            actualizarInfoLoteUI();
-            actualizarEstadoPasosYBotones();
-        });
-        document.getElementById('ac-toggle-fechas')?.addEventListener('click', () => {
+        const inputLoteEl = document.getElementById('abrir-caja-lote');
+        if (inputLoteEl) {
+            inputLoteEl.addEventListener('input', (e) => {
+                loteActual = e.target.value.trim().toUpperCase();
+                e.target.value = loteActual;
+                const matchActivo = lotesPadreActivos.find(l => String(l.lote_codigo_corto).toUpperCase() === loteActual);
+                if (matchActivo) {
+                    origenLote = lotesPadreActivos.length > 1 ? 'lote_confirmado' : 'lote_unico';
+                    loteProveedor = matchActivo.proveedor_nombre || '';
+                } else {
+                    origenLote = 'manual';
+                }
+                renderizarAlertaMultiLote();
+                actualizarInfoLoteUI();
+                actualizarVistaPreviaConversion();
+                actualizarEstadoPasosYBotones();
+            });
+            inputLoteEl.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    loteActual = inputLoteEl.value.trim().toUpperCase();
+                    inputLoteEl.value = loteActual;
+                    const matchActivo = lotesPadreActivos.find(l => String(l.lote_codigo_corto).toUpperCase() === loteActual);
+                    if (matchActivo) {
+                        origenLote = lotesPadreActivos.length > 1 ? 'lote_confirmado' : 'lote_unico';
+                        loteProveedor = matchActivo.proveedor_nombre || '';
+                    } else if (loteActual) {
+                        origenLote = 'manual';
+                    }
+                    renderizarAlertaMultiLote();
+                    actualizarInfoLoteUI();
+                    actualizarVistaPreviaConversion();
+                    actualizarEstadoPasosYBotones();
+                    document.getElementById('btn-confirmar-caja')?.focus();
+                }
+            });
+        }
+
+        // Checkbox opcional para incluir Elaboración y Vencimiento (por defecto apagado)
+        document.getElementById('ac-check-incluir-fechas')?.addEventListener('change', (e) => {
             const box = document.getElementById('ac-fechas-collapse');
+            const inputElab = document.getElementById('abrir-caja-fecha-elab');
+            const inputVenc = document.getElementById('abrir-caja-fecha-venc');
             if (!box) return;
-            const visible = box.style.display === 'grid';
-            box.style.display = visible ? 'none' : 'grid';
+
+            if (e.target.checked) {
+                const fechasDef = obtenerFechasPorDefecto();
+                if (inputElab && !inputElab.value.trim()) inputElab.value = fechasDef.elaboracion;
+                if (inputVenc && !inputVenc.value.trim()) inputVenc.value = fechasDef.vencimiento;
+                box.style.display = 'grid';
+                setTimeout(() => inputElab?.focus(), 40);
+            } else {
+                box.style.display = 'none';
+            }
         });
 
         // Acciones finales
@@ -880,8 +923,13 @@ const ModalAbrirCaja = (function () {
 
         const loteInfoSpan = document.getElementById('ac-caja-lote-info');
         const loteTextoEl = document.getElementById('ac-caja-lote-texto');
-        if (caja.lote_padre_activo) {
-            if (loteTextoEl) loteTextoEl.textContent = caja.lote_padre_activo;
+        lotesPadreActivos = Array.isArray(caja.lotes_padre_activos) ? caja.lotes_padre_activos : [];
+
+        if (lotesPadreActivos.length > 1) {
+            if (loteTextoEl) loteTextoEl.textContent = `${lotesPadreActivos.length} lotes en stock`;
+            if (loteInfoSpan) loteInfoSpan.style.display = 'inline';
+        } else if (lotesPadreActivos.length === 1 || caja.lote_padre_activo) {
+            if (loteTextoEl) loteTextoEl.textContent = lotesPadreActivos[0]?.lote_codigo_corto || caja.lote_padre_activo;
             if (loteInfoSpan) loteInfoSpan.style.display = 'inline';
         } else if (loteInfoSpan) {
             loteInfoSpan.style.display = 'none';
@@ -901,15 +949,34 @@ const ModalAbrirCaja = (function () {
         const hintMax = document.getElementById('ac-max-cajas-hint');
         if (hintMax) hintMax.textContent = `Disp: ${maxCajas} caja${maxCajas === 1 ? '' : 's'}`;
 
-        // Herencia inmediata del lote del artículo padre (o consulta al servidor si no estaba en caché)
-        if (caja.lote_padre_activo) {
-            loteActual = String(caja.lote_padre_activo).trim();
-            loteProveedor = caja.lote_padre_proveedor || '';
-            origenLote = 'lote_caja';
+        // Lógica de lote: 1 lote único -> automático silencioso; >1 lotes -> pide escanear/elegir sin trabar; 0 -> consulta servidor
+        if (lotesPadreActivos.length === 1) {
+            loteActual = String(lotesPadreActivos[0].lote_codigo_corto).trim();
+            loteProveedor = lotesPadreActivos[0].proveedor_nombre || '';
+            origenLote = 'lote_unico';
             const inputLote = document.getElementById('abrir-caja-lote');
             if (inputLote) inputLote.value = loteActual;
+            renderizarAlertaMultiLote();
+            actualizarInfoLoteUI();
+        } else if (lotesPadreActivos.length > 1) {
+            // Dejamos precargado el primero (FIFO) para no trabar el flujo si decide continuar directo, pero pedimos escanear
+            loteActual = String(lotesPadreActivos[0].lote_codigo_corto).trim();
+            loteProveedor = lotesPadreActivos[0].proveedor_nombre || '';
+            origenLote = 'multi_pendiente';
+            const inputLote = document.getElementById('abrir-caja-lote');
+            if (inputLote) inputLote.value = loteActual;
+            renderizarAlertaMultiLote();
+            actualizarInfoLoteUI();
+        } else if (caja.lote_padre_activo) {
+            loteActual = String(caja.lote_padre_activo).trim();
+            loteProveedor = caja.lote_padre_proveedor || '';
+            origenLote = 'lote_unico';
+            const inputLote = document.getElementById('abrir-caja-lote');
+            if (inputLote) inputLote.value = loteActual;
+            renderizarAlertaMultiLote();
             actualizarInfoLoteUI();
         } else {
+            renderizarAlertaMultiLote();
             solicitarLoteSugerido(caja.articulo_numero, false);
         }
 
@@ -1058,9 +1125,17 @@ const ModalAbrirCaja = (function () {
         actualizarVistaPreviaConversion();
         actualizarEstadoPasosYBotones();
 
-        // Si falta elegir unidades por caja, enfocar ese input; si ya está todo, enfocar botón principal
+        // Foco inteligente: si falta cantidad -> foco en cantidad; si hay múltiples lotes sin escanear -> foco en lote listo para pistola
         if (inputUnidPorCaja && (!inputUnidPorCaja.value || parseInt(inputUnidPorCaja.value, 10) < 1)) {
             setTimeout(() => inputUnidPorCaja.focus(), 50);
+        } else if (origenLote === 'multi_pendiente') {
+            setTimeout(() => {
+                const inputLote = document.getElementById('abrir-caja-lote');
+                if (inputLote && !inputLote.disabled) {
+                    inputLote.focus();
+                    inputLote.select();
+                }
+            }, 60);
         }
     }
 
@@ -1072,6 +1147,8 @@ const ModalAbrirCaja = (function () {
         loteActual = '';
         loteProveedor = '';
         origenLote = 'generado';
+        lotesPadreActivos = [];
+        renderizarAlertaMultiLote();
 
         document.getElementById('ac-caja-resumen-card').style.display = 'none';
         document.getElementById('ac-caja-buscador-wrap').style.display = 'block';
@@ -1250,6 +1327,7 @@ const ModalAbrirCaja = (function () {
             'abrir-caja-usuario',
             'abrir-caja-lote',
             'btn-regenerar-lote',
+            'ac-check-incluir-fechas',
             'abrir-caja-fecha-elab',
             'abrir-caja-fecha-venc',
             'ac-check-continuar'
@@ -1274,9 +1352,15 @@ const ModalAbrirCaja = (function () {
             } else if (todoListo) {
                 paso3.className = 'ac-step-card ac-step-active';
                 if (badge3) {
-                    badge3.style.background = '#dcfce7';
-                    badge3.style.color = '#15803d';
-                    badge3.textContent = '✔ Listo para confirmar';
+                    if (origenLote === 'multi_pendiente') {
+                        badge3.style.background = '#fef3c7';
+                        badge3.style.color = '#b45309';
+                        badge3.textContent = '⚠️ Varios lotes (podés escanear o seguir)';
+                    } else {
+                        badge3.style.background = '#dcfce7';
+                        badge3.style.color = '#15803d';
+                        badge3.textContent = '✔ Listo para confirmar';
+                    }
                 }
             } else {
                 paso3.className = 'ac-step-card ac-step-active';
@@ -1298,6 +1382,65 @@ const ModalAbrirCaja = (function () {
     // HERENCIA DE LOTE E IMPRESIÓN ZEBRA
     // ==========================================
 
+    function renderizarAlertaMultiLote() {
+        const alerta = document.getElementById('ac-alerta-multi-lote');
+        const titulo = document.getElementById('ac-alerta-multi-lote-titulo');
+        const chipsCont = document.getElementById('ac-chips-multi-lote');
+        if (!alerta || !chipsCont) return;
+
+        if (!cajaSeleccionada || !Array.isArray(lotesPadreActivos) || lotesPadreActivos.length <= 1) {
+            alerta.style.display = 'none';
+            chipsCont.innerHTML = '';
+            return;
+        }
+
+        const yaConfirmado = origenLote === 'lote_confirmado';
+        alerta.style.background = yaConfirmado ? '#f0fdf4' : '#fffbeb';
+        alerta.style.borderColor = yaConfirmado ? '#86efac' : '#fcd34d';
+        alerta.style.color = yaConfirmado ? '#14532d' : '#92400e';
+
+        if (titulo) {
+            titulo.textContent = yaConfirmado
+                ? `✔ Lote ${loteActual} seleccionado entre los ${lotesPadreActivos.length} lotes en stock:`
+                : `⚠️ Hay ${lotesPadreActivos.length} lotes en stock: escaneá la etiqueta de lote de la caja o elegí uno (si no, usará ${loteActual}):`;
+        }
+
+        chipsCont.innerHTML = '';
+        lotesPadreActivos.forEach(item => {
+            const cod = String(item.lote_codigo_corto).trim();
+            const esActivo = cod.toUpperCase() === String(loteActual).toUpperCase();
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.style.cssText = `
+                padding: 4px 10px;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: 700;
+                cursor: pointer;
+                border: 1.5px solid ${esActivo ? '#16a34a' : '#cbd5e1'};
+                background: ${esActivo ? '#dcfce7' : '#ffffff'};
+                color: ${esActivo ? '#14532d' : '#334155'};
+            `;
+            const cjTxt = parseFloat(item.cajas_cerradas || 0) > 0 ? ` (${parseFloat(item.cajas_cerradas).toFixed(0)} cj)` : '';
+            btn.innerHTML = `🏷️ <span style="font-family:monospace;">${escaparHtml(cod)}</span>${escaparHtml(cjTxt)}`;
+            btn.addEventListener('click', () => {
+                loteActual = cod;
+                loteProveedor = item.proveedor_nombre || '';
+                origenLote = 'lote_confirmado';
+                const inputLote = document.getElementById('abrir-caja-lote');
+                if (inputLote) inputLote.value = loteActual;
+                renderizarAlertaMultiLote();
+                actualizarInfoLoteUI();
+                actualizarVistaPreviaConversion();
+                actualizarEstadoPasosYBotones();
+                document.getElementById('btn-confirmar-caja')?.focus();
+            });
+            chipsCont.appendChild(btn);
+        });
+
+        alerta.style.display = 'block';
+    }
+
     async function solicitarLoteSugerido(codigoCaja, forzarNuevo = false) {
         try {
             let url = `/api/produccion/abrir-caja/lote-sugerido?forzar_nuevo=${forzarNuevo ? '1' : '0'}`;
@@ -1310,11 +1453,22 @@ const ModalAbrirCaja = (function () {
             if (data.success && data.lote) {
                 loteActual = data.lote;
                 loteProveedor = data.proveedor || '';
-                origenLote = data.origen || 'generado';
+                if (forzarNuevo) {
+                    origenLote = 'generado';
+                } else if (Array.isArray(data.lotes_activos) && data.lotes_activos.length > 1) {
+                    lotesPadreActivos = data.lotes_activos;
+                    origenLote = 'multi_pendiente';
+                } else if (data.origen === 'lote_caja') {
+                    lotesPadreActivos = Array.isArray(data.lotes_activos) ? data.lotes_activos : [];
+                    origenLote = 'lote_unico';
+                } else {
+                    origenLote = 'generado';
+                }
 
                 const inputLote = document.getElementById('abrir-caja-lote');
                 if (inputLote) inputLote.value = loteActual;
 
+                renderizarAlertaMultiLote();
                 actualizarInfoLoteUI();
                 actualizarVistaPreviaConversion();
                 actualizarEstadoPasosYBotones();
@@ -1337,14 +1491,22 @@ const ModalAbrirCaja = (function () {
         const info = document.getElementById('info-lote-origen');
 
         if (badge) {
-            if (origenLote === 'lote_caja') {
+            if (origenLote === 'lote_unico') {
                 badge.style.background = '#dcfce7';
                 badge.style.color = '#15803d';
-                badge.textContent = '🟢 Heredado de Caja Padre';
+                badge.textContent = '🟢 Único lote en stock (auto)';
+            } else if (origenLote === 'lote_confirmado') {
+                badge.style.background = '#dcfce7';
+                badge.style.color = '#15803d';
+                badge.textContent = '🟢 Lote confirmado';
+            } else if (origenLote === 'multi_pendiente') {
+                badge.style.background = '#fef3c7';
+                badge.style.color = '#b45309';
+                badge.textContent = `🟡 Sugerido (hay ${lotesPadreActivos.length} lotes)`;
             } else if (origenLote === 'manual') {
                 badge.style.background = '#fef3c7';
                 badge.style.color = '#b45309';
-                badge.textContent = '✏️ Lote Manual';
+                badge.textContent = '✏️ Lote Manual / Escaneado';
             } else {
                 badge.style.background = '#e0f2fe';
                 badge.style.color = '#0369a1';
@@ -1353,10 +1515,14 @@ const ModalAbrirCaja = (function () {
         }
 
         if (info) {
-            if (origenLote === 'lote_caja') {
-                info.textContent = `Trazabilidad heredada de la caja padre${loteProveedor ? ' (' + loteProveedor + ')' : ''}.`;
+            if (origenLote === 'lote_unico') {
+                info.textContent = `Único lote activo de la caja padre${loteProveedor ? ' (' + loteProveedor + ')' : ''}.`;
+            } else if (origenLote === 'lote_confirmado') {
+                info.textContent = `Lote verificado de la caja padre${loteProveedor ? ' (' + loteProveedor + ')' : ''}.`;
+            } else if (origenLote === 'multi_pendiente') {
+                info.textContent = 'Podés escanear el lote de la caja ahora o confirmar directo con el sugerido.';
             } else if (origenLote === 'manual') {
-                info.textContent = 'Código de lote ingresado manualmente para las etiquetas.';
+                info.textContent = 'Código de lote ingresado o escaneado manualmente.';
             } else {
                 info.textContent = 'La caja padre no tenía lote vinculado; se generó un código nuevo.';
             }
@@ -1364,11 +1530,10 @@ const ModalAbrirCaja = (function () {
     }
 
     /**
-     * Despacha la impresión en Zebra de N pares (Etiqueta de Artículo + Etiqueta de Lote)
-     * usando el motor oficial /api/produccion/articulos/imprimir-etiqueta (con puente Zebra Cloud/Local)
-     * y respaldo local en puerto 3000.
+     * Despacha la impresión en Zebra de N pares (Etiqueta de Artículo + Etiqueta de Lote).
+     * Por defecto NO envía fechas de elaboración/vencimiento salvo que el operador marque el check explícito.
      */
-    async function enviarImpresionZebra(articuloUnidad, totalUnidades, lote, fechaElab, fechaVenc) {
+    async function enviarImpresionZebra(articuloUnidad, totalUnidades, lote, incluirFechas = false, fechaElab = '', fechaVenc = '') {
         const payload = {
             articulo: {
                 numero: articuloUnidad.articulo_numero,
@@ -1377,7 +1542,7 @@ const ModalAbrirCaja = (function () {
             },
             cantidad: totalUnidades,
             lote: lote,
-            fechas: (fechaElab && fechaVenc) ? {
+            fechas: (incluirFechas && fechaElab && fechaVenc) ? {
                 elaboracion: fechaElab,
                 vencimiento: fechaVenc
             } : null
@@ -1412,6 +1577,7 @@ const ModalAbrirCaja = (function () {
         const unidPorCaja = parseInt(document.getElementById('abrir-caja-cantidad')?.value, 10) || 0;
         const totalUnidades = cantCajas * unidPorCaja;
         const lote = document.getElementById('abrir-caja-lote')?.value.trim() || loteActual;
+        const incluirFechas = Boolean(document.getElementById('ac-check-incluir-fechas')?.checked);
         const fechaElab = document.getElementById('abrir-caja-fecha-elab')?.value.trim();
         const fechaVenc = document.getElementById('abrir-caja-fecha-venc')?.value.trim();
         const mantenerAbierto = Boolean(document.getElementById('ac-check-continuar')?.checked);
@@ -1487,7 +1653,7 @@ const ModalAbrirCaja = (function () {
             if (imprimirEnZebra) {
                 try {
                     mostrarMensaje(`🖨️ Enviando ${totalUnidades} pares (Artículo + Lote ${lote}) a impresora Zebra...`, 'info');
-                    await enviarImpresionZebra(datosArticuloUnidad, totalUnidades, lote, fechaElab, fechaVenc);
+                    await enviarImpresionZebra(datosArticuloUnidad, totalUnidades, lote, incluirFechas, fechaElab, fechaVenc);
                     avisoImpresion = ` | 🖨️ ${totalUnidades} pares impresos en Zebra`;
                 } catch (printErr) {
                     console.error('❌ [ABRIR-CAJA] Error en impresión Zebra:', printErr);
@@ -1645,15 +1811,19 @@ const ModalAbrirCaja = (function () {
         loteActual = '';
         loteProveedor = '';
         origenLote = 'generado';
+        lotesPadreActivos = [];
         huboAperturasEnSesion = false;
 
-        const fechasDef = obtenerFechasPorDefecto();
+        // Por defecto NO incluir fechas de elaboración/vencimiento en etiquetas de artículos
+        const chkFechas = document.getElementById('ac-check-incluir-fechas');
         const inputElab = document.getElementById('abrir-caja-fecha-elab');
         const inputVenc = document.getElementById('abrir-caja-fecha-venc');
-        if (inputElab) inputElab.value = fechasDef.elaboracion;
-        if (inputVenc) inputVenc.value = fechasDef.vencimiento;
+        if (chkFechas) chkFechas.checked = false;
+        if (inputElab) inputElab.value = '';
+        if (inputVenc) inputVenc.value = '';
         const boxFechas = document.getElementById('ac-fechas-collapse');
         if (boxFechas) boxFechas.style.display = 'none';
+        renderizarAlertaMultiLote();
 
         document.getElementById('ac-caja-resumen-card').style.display = 'none';
         document.getElementById('ac-caja-buscador-wrap').style.display = 'block';

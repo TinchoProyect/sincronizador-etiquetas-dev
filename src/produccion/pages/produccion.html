@@ -2562,6 +2562,14 @@
                         <span id="ac-badge-paso-3" class="ac-badge" style="background: #e2e8f0; color: #475569;">Completá el paso anterior</span>
                     </div>
 
+                    <!-- Aviso no bloqueante cuando la caja tiene más de 1 lote activo en stock -->
+                    <div id="ac-alerta-multi-lote" style="display: none; margin-bottom: 10px; padding: 9px 12px; border-radius: 8px; background: #fffbeb; border: 1.5px solid #fcd34d; color: #92400e; font-size: 12px;">
+                        <div style="font-weight: 700; margin-bottom: 5px;" id="ac-alerta-multi-lote-titulo">
+                            ⚠️ Hay varios lotes activos en stock para esta caja: escaneá la etiqueta de lote (o tocá cuál es):
+                        </div>
+                        <div id="ac-chips-multi-lote" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+                    </div>
+
                     <div style="display: grid; grid-template-columns: 1fr 1.25fr; gap: 14px; align-items: start;">
                         <div>
                             <label for="abrir-caja-usuario" style="font-size: 12.5px; font-weight: 700; color: #334155; display: block; margin-bottom: 5px;">
@@ -2582,7 +2590,7 @@
                             <div style="display: flex; gap: 6px; align-items: center;">
                                 <input type="text" id="abrir-caja-lote" class="form-control" disabled
                                     style="height: 38px; font-family: monospace; font-weight: 800; font-size: 14.5px; letter-spacing: 1px;"
-                                    placeholder="Lote...">
+                                    placeholder="Escanear o escribir lote...">
                                 <button type="button" id="btn-regenerar-lote" class="btn" disabled
                                     style="height: 38px; padding: 0 10px; background: #fff; border: 1px solid #cbd5e1; font-size: 12px; white-space: nowrap;"
                                     title="Generar un código de lote nuevo (solo si no querés usar el lote heredado)">🔄 Nuevo</button>
@@ -2593,20 +2601,20 @@
                         </div>
                     </div>
 
-                    <!-- Fechas compactas desplegables + Resumen Zebra -->
+                    <!-- Resumen Zebra + Checkbox opcional para incluir Elaboración / Vencimiento (desmarcado por defecto) -->
                     <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                         <div style="font-size: 12px; color: #0f172a;">
                             🖨️ Zebra imprimirá: <strong id="display-cant-etiquetas" style="color: #0369a1;">0 pares (Artículo + Lote)</strong>
                         </div>
-                        <button type="button" id="ac-toggle-fechas"
-                            style="background: none; border: none; color: #0284c7; font-size: 12px; font-weight: 600; cursor: pointer; padding: 0;">
-                            📅 Ver/editar fechas ENV y VTO ▾
-                        </button>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #0369a1; cursor: pointer; margin: 0;">
+                            <input type="checkbox" id="ac-check-incluir-fechas" style="width: 15px; height: 15px; cursor: pointer;" disabled>
+                            <span>📅 Agregar Elaboración y Vencimiento</span>
+                        </label>
                     </div>
 
-                    <div id="ac-fechas-collapse" style="display: none; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; background: #f8fafc; padding: 8px 10px; border-radius: 6px; border: 1px solid #e2e8f0;">
+                    <div id="ac-fechas-collapse" style="display: none; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; background: #f8fafc; padding: 8px 10px; border-radius: 6px; border: 1px solid #cbd5e1;">
                         <div>
-                            <label style="font-size: 11.5px; font-weight: 600; color: #475569; display: block; margin-bottom: 2px;">Fecha Envasado (ENV):</label>
+                            <label style="font-size: 11.5px; font-weight: 600; color: #475569; display: block; margin-bottom: 2px;">Fecha Elaboración / Envasado (ENV):</label>
                             <input type="text" id="abrir-caja-fecha-elab" class="form-control" style="height: 32px; font-size: 13px;" placeholder="DD/MM/AAAA" disabled>
                         </div>
                         <div>
@@ -2650,7 +2658,7 @@
     <script src="/js/modal-pack-dual-search.js?v=3.0"></script>
     <script src="/js/configurar-carros-ui.js?v=2.5_recetas_inline_y_skus_barra"></script>
     <script src="/js/derivar-compras.js?v=1.1"></script>
-    <script src="/js/modal-abrir-caja.js?v=5.1_bunker_lote_zebra"></script>
+    <script src="/js/modal-abrir-caja.js?v=5.2_sin_fechas_multilote"></script>
 
     <!-- Script Máquina Estados Verificación Continua -->
     <script src="/js/verificacion-continua.js?v=1.8_nodos_scanner"></script>
