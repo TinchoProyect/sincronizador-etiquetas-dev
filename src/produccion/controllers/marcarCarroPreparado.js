@@ -1,6 +1,6 @@
 const { obtenerIngredientesBaseCarro } = require('./carroIngredientes');
 const { registrarMovimientoIngrediente } = require('./ingredientesMovimientos');
-const { registrarMovimientoStockUsuarioFIFO } = require('./ingredientesStockUsuarios');
+const { obtenerCompromisosCarrosExternos } = require('../utils/stockDomiciliarioHelper');
 
 /**
  * Marca un carro como preparado y registra los movimientos de ingredientes
@@ -183,10 +183,14 @@ async function marcarCarroPreparado(req, res) {
 
             // Solo procesar ingredientes si hay ingredientes válidos
             if (ingredientesValidos.length > 0) {
-                console.log('\n🔄 INICIANDO PROCESAMIENTO DE INGREDIENTES VÁLIDOS');
+                console.log('\n🔄 INICIANDO VERIFICACIÓN DE INGREDIENTES VÁLIDOS (SIN DESCUENTO PREMATURO DOMICILIARIO)');
                 console.log('================================================');
 
-                // 🔧 CORRECCIÓN CRÍTICA: Distinguir entre ingredientes de usuario vs ingredientes vinculados
+                const compromisosOtrosMap = await obtenerCompromisosCarrosExternos(db, usuarioId, {
+                    excluirCarroId: parseInt(carroId, 10)
+                });
+
+                // 🔧 Distinguir entre ingredientes domiciliarios de UP vs ingredientes vinculados post-cocción
                 for (let i = 0; i < ingredientesValidos.length; i++) {
                     const ing = ingredientesValidos[i];
 
@@ -205,25 +209,10 @@ async function marcarCarroPreparado(req, res) {
                             throw new Error(`Ingrediente "${ing.nombre}" no tiene cantidad válida: ${ing.cantidad}`);
                         }
 
-                        console.log(`\n🔍 ORIGEN MIX ID:`, ing.origen_mix_id);
-
                         // Redondear cantidad a 4 decimales para evitar problemas de precisión
                         const cantidadRedondeada = Number(ing.cantidad.toFixed(4));
-                        console.log(`📊 Cantidad redondeada: ${cantidadRedondeada}`);
 
-                        // 🔧 LÓGICA CORREGIDA: Considerar el contexto de origen del ingrediente
-                        console.log(`\n🔍 DETERMINANDO TIPO DE INGREDIENTE: ${ing.nombre}`);
-                        console.log(`==========================================`);
-                        console.log(`🏷️ CONTEXTO DE ORIGEN: ${ing._contexto_origen || 'no definido'}`);
-
-                        // 🔍 LOG CRÍTICO: Verificar si el ingrediente tiene contexto de origen
-                        if (!ing._contexto_origen) {
-                            console.log(`⚠️ PROBLEMA CRÍTICO: Ingrediente "${ing.nombre}" NO tiene contexto de origen definido`);
-                            console.log(`🔍 Propiedades del ingrediente:`, Object.keys(ing));
-                            console.log(`🔍 Contenido completo del ingrediente:`, JSON.stringify(ing, null, 2));
-                        }
-
-                        // Verificar el SALDO NETO REAL del colaborador en domicilio (ingresos positivos menos consumos negativos)
+                        // Verificar el SALDO FÍSICO REAL del colaborador hoy en domicilio
                         const stockPersonalQuery = `
                             SELECT COALESCE(SUM(cantidad), 0) as stock_personal
                             FROM ingredientes_stock_usuarios
@@ -235,61 +224,41 @@ async function marcarCarroPreparado(req, res) {
                         // También obtener el stock general para comparación en ingredientes vinculados
                         const stockGeneral = parseFloat(ing.stock_actual) || 0;
 
-                        console.log(`📊 ANÁLISIS DE STOCK:`);
-                        console.log(`- Saldo neto personal en domicilio: ${stockPersonal}`);
-                        console.log(`- Stock general (ingredientes.stock_actual): ${stockGeneral}`);
-                        console.log(`- Cantidad requerida: ${cantidadRedondeada}`);
-
-                        // 🎯 CRITERIO CORREGIDO: Los ingredientes vinculados NO se descontarán en preparación
                         if (ing._contexto_origen === 'vinculado') {
                             console.log(`🔧 INGREDIENTE VINCULADO DETECTADO - VALIDANDO STOCK SIN DESCONTAR`);
-                            console.log(`📊 Stock general disponible: ${stockGeneral}`);
-
-                            // 🛡️ FLEXIBILIDAD: Permitir stock negativo con advertencia clara
                             if (stockGeneral < cantidadRedondeada) {
                                 const faltante = cantidadRedondeada - stockGeneral;
-                                console.log(`⚠️ WARNING: Stock general insuficiente (permitiendo continuar)`);
-                                console.log(`   - Disponible: ${stockGeneral}`);
-                                console.log(`   - Requerido: ${cantidadRedondeada}`);
-                                console.log(`   - Faltante: ${faltante.toFixed(2)} kg`);
-                                console.log(`   - El stock quedará en negativo al finalizar producción`);
+                                console.log(`⚠️ WARNING: Stock general insuficiente (permitiendo continuar). Faltante: ${faltante.toFixed(2)} kg`);
                             }
-
-                            // ✅ Solo validar stock, NO registrar movimiento: se descontará en finalizarProduccion.js
                             console.log(`✅ Validación completada para ingrediente vinculado ${ing.nombre} (se descontará al asentar)`);
-
                         } else {
-                            // Ingrediente base de UP externa (ej. Miel #136 y Aceite de Coco #135 en domicilio del colaborador):
-                            // Si falta saldo en domicilio, NO se bloquea el avance del carro externo ni se descuenta del depósito central;
-                            // se registra el consumo sobre el stock personal del colaborador y se devuelve advertencia informativa.
-                            console.log(`🏠 INGREDIENTE DOMICILIARIO DE UP EXTERNA: ${ing.nombre} | Saldo neto: ${stockPersonal}`);
+                            // Ingrediente domiciliario de UP externa (ej. Miel #136 y Aceite de Coco #135):
+                            // NO se descuenta al pasar a "preparado" (el colaborador aún no cocinó).
+                            // Se evalúa el saldo proyectado contemplando otros carros externos preparados abiertos
+                            // y el descuento real se ejecuta de forma idempotente recién en finalizarProduccion.js.
+                            const comprometidoOtros = Number((compromisosOtrosMap.get(Number(ing.id))?.kilos_comprometidos || 0).toFixed(4));
+                            const comprometidoTotal = Number((comprometidoOtros + cantidadRedondeada).toFixed(4));
+                            const proyectadoPostCoccion = Number((stockPersonal - comprometidoTotal).toFixed(4));
 
-                            if (stockPersonal + 0.0001 < cantidadRedondeada) {
+                            console.log(`🏠 INGREDIENTE DOMICILIARIO DE UP EXTERNA: ${ing.nombre} | En casa: ${stockPersonal} | Otros carros: ${comprometidoOtros} | Este carro: ${cantidadRedondeada} | Proyectado: ${proyectadoPostCoccion}`);
+
+                            if (proyectadoPostCoccion < -0.0001) {
                                 const unidadTxt = ing.unidad_medida || 'kg';
-                                const faltanteDom = Number((cantidadRedondeada - stockPersonal).toFixed(4));
-                                console.log(`⚠️ WARNING DOMICILIO: Stock personal insuficiente para "${ing.nombre}" (disponible ${stockPersonal.toFixed(2)} ${unidadTxt}, requerido ${cantidadRedondeada.toFixed(2)} ${unidadTxt}) — permitiendo avance con aviso.`);
+                                const faltanteDom = Number(Math.abs(proyectadoPostCoccion).toFixed(4));
+                                console.log(`⚠️ WARNING DOMICILIO: Proyectado insuficiente para "${ing.nombre}" (en casa ${stockPersonal.toFixed(2)} ${unidadTxt}, comprometido total ${comprometidoTotal.toFixed(2)} ${unidadTxt}) — permitiendo avance con aviso.`);
                                 advertenciasStockPersonal.push({
                                     id: ing.id,
                                     nombre: ing.nombre,
                                     disponible: Number(stockPersonal.toFixed(2)),
+                                    comprometido_otros: Number(comprometidoOtros.toFixed(2)),
                                     requerido: Number(cantidadRedondeada.toFixed(2)),
+                                    comprometido_total: Number(comprometidoTotal.toFixed(2)),
                                     faltante: Number(faltanteDom.toFixed(2)),
                                     unidad: unidadTxt
                                 });
                             }
 
-                            const datosMovimiento = {
-                                usuario_id: parseInt(usuarioId),
-                                ingrediente_id: ing.id,
-                                cantidad: -cantidadRedondeada,
-                                carro_id: parseInt(carroId),
-                                origen_mix_id: ing.origen_mix_id,
-                                permitir_saldo_negativo: true
-                            };
-
-                            console.log('📝 DATOS PARA CONSUMO DOMICILIARIO:', JSON.stringify(datosMovimiento, null, 2));
-                            await registrarMovimientoStockUsuarioFIFO(datosMovimiento, db);
-                            console.log(`✅ Consumo domiciliario registrado correctamente para ${ing.nombre}`);
+                            console.log(`✅ Compromiso domiciliario verificado para ${ing.nombre} (se descontará al confirmar producción)`);
                         }
 
                         console.log(`==========================================\n`);

@@ -1604,100 +1604,178 @@ function generarBloqueDashboard(lista, esInsumo, estadoCarro, carroFinalizado, m
             cantidadNecesaria = isNaN(parsed) ? 0 : parsed;
         }
 
-        let stockOriginal = 0;
-        let stockRestante = 0;
-        let consumo = cantidadNecesaria;
-        let suficienciaReal = 0;
+        const esHistoricoConfirmado = (estadoCarro === 'confirmado') || (ing.stock_snapshot !== null && ing.stock_snapshot !== undefined);
+        const unidadMedida = esInsumo ? 'u' : (ing.unidad_medida || 'kg');
+        const nombreSafeAttr = escaparAtributoHtml(ing.nombre || 'Desconocido');
+        const nombreJsSafe = String(ing.nombre || 'Desconocido').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const unidadJsSafe = String(unidadMedida || 'kg').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
-        if (carroFinalizado) {
+        if (esHistoricoConfirmado) {
             const snapVal = ing.stock_snapshot !== null && ing.stock_snapshot !== undefined ? ing.stock_snapshot : (ing.stock_actual ?? 0);
-            stockOriginal = parseFloat(snapVal) || 0;
-            stockRestante = stockOriginal - cantidadNecesaria;
-            suficienciaReal = stockRestante;
-        } else {
-            stockOriginal = parseFloat(ing.stock_actual ?? 0) || 0;
-            stockRestante = stockOriginal;
-            suficienciaReal = stockOriginal - cantidadNecesaria;
+            const stockPreCoccion = parseFloat(snapVal) || 0;
+            const stockRestante = stockPreCoccion - cantidadNecesaria;
+            const tieneStock = stockRestante >= -0.01;
+            const valConsumo = esInsumo ? Math.round(cantidadNecesaria).toString() : cantidadNecesaria.toFixed(2);
+            const valPre = esInsumo ? Math.round(stockPreCoccion).toString() : stockPreCoccion.toFixed(2);
+            const valPost = esInsumo ? Math.round(stockRestante).toString() : stockRestante.toFixed(2);
+
+            html += `
+                <div class="card-stock-personal"
+                     data-ingrediente-id="${ing.id}"
+                     data-nombre="${nombreSafeAttr}"
+                     data-consumo="${valConsumo}"
+                     data-disponible="${valPost}"
+                     data-faltante="0.00"
+                     data-sin-stock-actual="false"
+                     data-unidad="${escaparAtributoHtml(unidadMedida)}"
+                     style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <strong style="color: #0f172a; font-size: 15px;">${ing.nombre || 'Desconocido'}</strong>
+                        <span style="font-size: 11px; font-weight: 700; background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 999px; border: 1px solid #86efac;">✅ Descontado al confirmar</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; background: white; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; font-size: 12px;">
+                        <div>
+                            <div style="color: #64748b; font-size: 10.5px; font-weight: 700; text-transform: uppercase;">Pre-Cocción</div>
+                            <div style="font-weight: 800; color: #334155; font-size: 13.5px;">${valPre} ${unidadMedida}</div>
+                        </div>
+                        <div>
+                            <div style="color: #64748b; font-size: 10.5px; font-weight: 700; text-transform: uppercase;">Consumido</div>
+                            <div style="font-weight: 800; color: #b45309; font-size: 13.5px;">-${valConsumo} ${unidadMedida}</div>
+                        </div>
+                        <div>
+                            <div style="color: #64748b; font-size: 10.5px; font-weight: 700; text-transform: uppercase;">Saldo Post</div>
+                            <div style="font-weight: 800; color: ${tieneStock ? '#15803d' : '#dc2626'}; font-size: 13.5px;">${valPost} ${unidadMedida}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            return;
         }
 
-        const tieneStock = suficienciaReal >= -0.01;
-        
-        let valorReferenciaParaBarra = ing.capacidad_base ? parseFloat(ing.capacidad_base) : stockOriginal;
+        // MODO VIVO (Carro en edición O Carro preparado pendiente de confirmar/asentar):
+        // El stock en casa NO fue descontado aún; mostramos En Casa | Comprometido | Proyectado post-cocción.
+        const stockEnCasa = parseFloat(ing.stock_en_casa ?? ing.stock_actual ?? 0) || 0;
+        const consumoEsteCarro = cantidadNecesaria;
+        const comprometidoOtros = parseFloat(ing.comprometido_otros_carros ?? 0) || 0;
+        const otrosCarrosCount = parseInt(ing.otros_carros_count ?? 0, 10) || 0;
+        const comprometidoTotal = ing.comprometido_total !== undefined
+            ? (parseFloat(ing.comprometido_total) || 0)
+            : Number((consumoEsteCarro + comprometidoOtros).toFixed(4));
+        const proyectadoPostCoccion = ing.proyectado_post_coccion !== undefined
+            ? (parseFloat(ing.proyectado_post_coccion) || 0)
+            : Number((stockEnCasa - comprometidoTotal).toFixed(4));
+
+        const tieneStockProyectado = proyectadoPostCoccion >= -0.01;
+
+        let valorReferenciaParaBarra = ing.capacidad_base ? parseFloat(ing.capacidad_base) : Math.max(stockEnCasa, comprometidoTotal);
         if (isNaN(valorReferenciaParaBarra) || valorReferenciaParaBarra <= 0) {
-            valorReferenciaParaBarra = stockOriginal;
+            valorReferenciaParaBarra = Math.max(stockEnCasa, comprometidoTotal, 1);
         }
 
-        const porcentajeReal = valorReferenciaParaBarra > 0 ? Math.max(0, (stockRestante / valorReferenciaParaBarra) * 100) : 0;
+        const porcentajeReal = valorReferenciaParaBarra > 0 ? Math.max(0, (stockEnCasa / valorReferenciaParaBarra) * 100) : 0;
         const porcentajeVisual = Math.min(100, porcentajeReal);
         const haySobreStock = porcentajeReal > 100;
 
-        let colorBarra = '#28a745';
+        let colorBarra = '#16a34a';
         if (haySobreStock) {
-            colorBarra = '#19692c';
-        } else if (!tieneStock || porcentajeReal < 20) {
-            colorBarra = '#dc3545';
-        } else if (porcentajeReal < 50) {
-            colorBarra = '#fd7e14';
+            colorBarra = '#15803d';
+        } else if (!tieneStockProyectado) {
+            colorBarra = '#dc2626';
+        } else if (proyectadoPostCoccion < comprometidoTotal * 0.25) {
+            colorBarra = '#f59e0b';
         }
 
-        let botonesAccion = '';
-        if (!carroFinalizado && estadoCarro === 'en_preparacion') {
-            const carroIdActivo = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
-            const deshabilitado = !carroIdActivo;
-            
-            const valAjusteStock = esInsumo ? Math.round(stockOriginal) : stockOriginal;
-            const botonAjusteRapido = deshabilitado
-                ? `<button disabled title="Seleccioná un carro primero" style="padding: 4px 8px; font-size: 11px; border: 1px solid #ccc; border-radius: 4px; background: #f8f9fa;">✎ Ajuste Rápido</button>`
-                : `<button onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}', ${valAjusteStock}, ${carroIdActivo})" style="padding: 4px 8px; font-size: 11px; border: 1px solid #17a2b8; border-radius: 4px; background: #e0f7fa; color: #006064; cursor: pointer;">✎ Ajuste Rápido</button>`;
-            
-            const botonAbastecer = `<button onclick="window.abrirModalAbastecimientoExterno(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}')" style="padding: 4px 8px; font-size: 11px; border: 1px solid #28a745; border-radius: 4px; background: #e8f5e9; color: #2e7d32; cursor: pointer; margin-left: 8px;">🚚 Abastecer</button>`;
-            const botonDesactivar = `<button onclick="window.desactivarIngredienteStockPersonal(${ing.id}, '${ing.nombre.replace(/'/g, "\\'")}')" style="padding: 4px 8px; font-size: 11px; border: 1px solid #dc3545; border-radius: 4px; background: #fff5f5; color: #dc3545; cursor: pointer; margin-left: 8px;">🚫 Desactivar</button>`;
-            
-            botonesAccion = `<div style="margin-top: 8px; text-align: right;">${botonAjusteRapido}${botonAbastecer}${botonDesactivar}</div>`;
-        }
+        const carroIdActivo = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+        const deshabilitado = !carroIdActivo;
+        const valAjusteStock = esInsumo ? Math.round(stockEnCasa) : Number(stockEnCasa.toFixed(4));
 
-        const unidadMedida = esInsumo ? 'u' : (ing.unidad_medida || '');
-        let badgeSobreStock = '';
-        if (haySobreStock) {
-            const excedente = stockRestante - valorReferenciaParaBarra;
-            const valExcedente = esInsumo ? Math.round(excedente).toString() : excedente.toFixed(2);
-            badgeSobreStock = `<span style="color: #19692c; font-weight: bold; background: #e8f5e9; padding: 2px 6px; border-radius: 4px; border: 1px solid #19692c; font-size: 10px; margin-left: 5px;">📦 SOBRE-STOCK (+${valExcedente} ${unidadMedida})</span>`;
-        }
+        const botonAjusteRapido = deshabilitado
+            ? `<button disabled title="Seleccioná un carro primero" style="padding: 5px 8px; font-size: 11px; border: 1px solid #ccc; border-radius: 5px; background: #f8f9fa;">✎ Ajuste Rápido</button>`
+            : `<button type="button" onclick="window.abrirModalAjusteDesdeCarro(${ing.id}, '${nombreJsSafe}', ${valAjusteStock}, ${carroIdActivo})" style="padding: 5px 9px; font-size: 11.5px; font-weight: 600; border: 1px solid #0891b2; border-radius: 5px; background: #ecfeff; color: #0e7490; cursor: pointer;">✎ Ajuste Rápido</button>`;
 
-        const valConsumo = esInsumo ? Math.round(consumo).toString() : consumo.toFixed(2);
-        const valStockOriginal = esInsumo ? Math.round(stockOriginal).toString() : stockOriginal.toFixed(2);
-        const valStockRestante = esInsumo ? Math.round(stockRestante).toString() : stockRestante.toFixed(2);
-        const valFaltante = esInsumo ? Math.round(Math.abs(suficienciaReal)).toString() : Math.abs(suficienciaReal).toFixed(2);
-        const faltaParaEsteCarro = consumo > 0.0001 && !tieneStock;
-        const sinStockDomicilio = stockOriginal <= 0.0001;
-        const nombreSafeAttr = escaparAtributoHtml(ing.nombre || 'Desconocido');
+        const botonCompraExterna = `<button type="button" onclick="window.abrirModalCompraExternaCarro(${ing.id}, '${nombreJsSafe}', ${Number(stockEnCasa.toFixed(4))}, ${Number(comprometidoTotal.toFixed(4))}, '${unidadJsSafe}', ${carroIdActivo || 'null'})" style="padding: 5px 9px; font-size: 11.5px; font-weight: 700; border: 1px solid #7c3aed; border-radius: 5px; background: #f5f3ff; color: #6d28d9; cursor: pointer;">🛒 Compra Externa</button>`;
+
+        const botonAbastecer = `<button type="button" onclick="window.abrirModalAbastecimientoExterno(${ing.id}, '${nombreJsSafe}')" style="padding: 5px 9px; font-size: 11.5px; font-weight: 700; border: 1px solid #16a34a; border-radius: 5px; background: #f0fdf4; color: #15803d; cursor: pointer;">🚚 Abastecer</button>`;
+
+        const botonDesactivar = estadoCarro === 'en_preparacion'
+            ? `<button type="button" onclick="window.desactivarIngredienteStockPersonal(${ing.id}, '${nombreJsSafe}')" style="padding: 5px 8px; font-size: 11px; border: 1px solid #fca5a5; border-radius: 5px; background: #fff5f5; color: #dc2626; cursor: pointer;">🚫 Desactivar</button>`
+            : '';
+
+        const botonesAccion = `<div style="margin-top: 10px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px;">${botonAjusteRapido}${botonCompraExterna}${botonAbastecer}${botonDesactivar}</div>`;
+
+        const valEnCasa = esInsumo ? Math.round(stockEnCasa).toString() : stockEnCasa.toFixed(2);
+        const valConsumoCarro = esInsumo ? Math.round(consumoEsteCarro).toString() : consumoEsteCarro.toFixed(2);
+        const valCompOtros = esInsumo ? Math.round(comprometidoOtros).toString() : comprometidoOtros.toFixed(2);
+        const valCompTotal = esInsumo ? Math.round(comprometidoTotal).toString() : comprometidoTotal.toFixed(2);
+        const valProyectado = esInsumo ? Math.round(proyectadoPostCoccion).toString() : proyectadoPostCoccion.toFixed(2);
+        const valFaltante = tieneStockProyectado
+            ? '0.00'
+            : (esInsumo ? Math.round(Math.abs(proyectadoPostCoccion)).toString() : Math.abs(proyectadoPostCoccion).toFixed(2));
+
+        const faltaParaProyectado = comprometidoTotal > 0.0001 && !tieneStockProyectado;
+        const sinStockDomicilio = stockEnCasa <= 0.0001;
+
+        const detalleCompromisoSub = otrosCarrosCount > 0
+            ? `Este carro: ${valConsumoCarro} · Otros ${otrosCarrosCount}: ${valCompOtros}`
+            : `Este carro: ${valConsumoCarro} ${unidadMedida}`;
 
         html += `
-            <div class="card-stock-personal ${faltaParaEsteCarro ? 'stock-personal-faltante' : ''}"
+            <div class="card-stock-personal ${faltaParaProyectado ? 'stock-personal-faltante' : ''}"
                  data-ingrediente-id="${ing.id}"
                  data-nombre="${nombreSafeAttr}"
-                 data-consumo="${valConsumo}"
-                 data-disponible="${valStockOriginal}"
+                 data-consumo="${valCompTotal}"
+                 data-consumo-carro="${valConsumoCarro}"
+                 data-comprometido-otros="${valCompOtros}"
+                 data-disponible="${valEnCasa}"
+                 data-proyectado="${valProyectado}"
                  data-faltante="${valFaltante}"
                  data-sin-stock-actual="${sinStockDomicilio ? 'true' : 'false'}"
                  data-unidad="${escaparAtributoHtml(unidadMedida)}"
-                 style="background: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                    <strong style="color: #343a40; font-size: 15px; text-align: left;">${ing.nombre || 'Desconocido'}</strong>
-                    <span style="font-weight: bold; font-size: 13px; color: ${tieneStock ? '#495057' : '#dc3545'};">
-                        Consumo: ${valConsumo} ${unidadMedida} / Disponible: ${valStockOriginal} ${unidadMedida}
-                    </span>
+                 style="background: white; border: 1.5px solid ${faltaParaProyectado ? '#fca5a5' : '#e2e8f0'}; border-radius: 10px; padding: 14px; box-shadow: 0 1px 3px rgba(15,23,42,0.06);">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <strong style="color: #0f172a; font-size: 15px; text-align: left;">${ing.nombre || 'Desconocido'}</strong>
+                    ${estadoCarro === 'preparado'
+                        ? `<span style="font-size: 11px; font-weight: 700; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 999px;">⏳ Se descuenta al asentar</span>`
+                        : `<span style="font-size: 11px; font-weight: 700; background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 999px;">🏠 Stock en Domicilio</span>`
+                    }
                 </div>
-                
-                <div style="height: 12px; background-color: #e9ecef; border-radius: 6px; overflow: hidden; position: relative;">
-                    <div style="height: 100%; width: ${porcentajeVisual}%; background-color: ${colorBarra}; transition: width 0.5s ease;"></div>
+
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; text-align: left;">
+                    <div>
+                        <div style="font-size: 10.5px; font-weight: 800; color: #475569; text-transform: uppercase; letter-spacing: 0.3px;">Stock en Casa</div>
+                        <div style="font-size: 15px; font-weight: 800; color: ${stockEnCasa > 0 ? '#0f172a' : (stockEnCasa < -0.001 ? '#dc2626' : '#2563eb')}; margin-top: 2px;">
+                            ${valEnCasa} <small style="font-size: 11px; font-weight: 600; color: #64748b;">${unidadMedida}</small>
+                        </div>
+                        <div style="font-size: 10.5px; color: #64748b;">Físico hoy sin usar</div>
+                    </div>
+                    <div style="border-left: 1px solid #e2e8f0; padding-left: 8px;">
+                        <div style="font-size: 10.5px; font-weight: 800; color: #92400e; text-transform: uppercase; letter-spacing: 0.3px;">Comprometido</div>
+                        <div style="font-size: 15px; font-weight: 800; color: #b45309; margin-top: 2px;">
+                            ${valCompTotal} <small style="font-size: 11px; font-weight: 600; color: #92400e;">${unidadMedida}</small>
+                        </div>
+                        <div style="font-size: 10.5px; color: #78350f;" title="${escaparAtributoHtml(detalleCompromisoSub)}">${detalleCompromisoSub}</div>
+                    </div>
+                    <div style="border-left: 1px solid #e2e8f0; padding-left: 8px;">
+                        <div style="font-size: 10.5px; font-weight: 800; color: ${tieneStockProyectado ? '#166534' : '#991b1b'}; text-transform: uppercase; letter-spacing: 0.3px;">Proyectado</div>
+                        <div style="font-size: 15px; font-weight: 800; color: ${tieneStockProyectado ? '#15803d' : '#dc2626'}; margin-top: 2px;">
+                            ${proyectadoPostCoccion > 0 ? '+' : ''}${valProyectado} <small style="font-size: 11px; font-weight: 600;">${unidadMedida}</small>
+                        </div>
+                        <div style="font-size: 10.5px; font-weight: 600; color: ${tieneStockProyectado ? '#15803d' : '#dc2626'};">
+                            ${tieneStockProyectado ? 'Post-cocción OK' : `Faltan ${valFaltante} ${unidadMedida}`}
+                        </div>
+                    </div>
                 </div>
-                
-                <div style="display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: #6c757d; align-items: center;">
-                    <span style="display:flex; align-items:center;">${!carroFinalizado && estadoCarro === 'en_preparacion' ? 'Stock Físico / Actual:' : 'Restante tras producción:'} <strong style="color: ${colorBarra}; margin-left:4px;">${valStockRestante} ${unidadMedida} (${porcentajeReal.toFixed(0)}%)</strong> ${badgeSobreStock}</span>
-                    ${!tieneStock ? `<span style="color: #dc3545; font-weight: bold;">⚠️ Stock Insuficiente (Faltan ${valFaltante})</span>` : ''}
+
+                <div style="height: 8px; background-color: #e2e8f0; border-radius: 6px; overflow: hidden; position: relative;">
+                    <div style="height: 100%; width: ${porcentajeVisual}%; background-color: ${colorBarra}; transition: width 0.4s ease;"></div>
                 </div>
-                
+
+                ${!tieneStockProyectado ? `
+                    <div style="margin-top: 6px; font-size: 11.5px; color: #b91c1c; font-weight: 600; text-align: left;">
+                        ⚠️ Faltan <strong>${valFaltante} ${unidadMedida}</strong> para cubrir los carros abiertos (podés registrar <strong>🛒 Compra Externa</strong> o <strong>🚚 Abastecer</strong> antes de asentar).
+                    </div>
+                ` : ''}
+
                 ${botonesAccion}
             </div>
         `;
@@ -1706,6 +1784,162 @@ function generarBloqueDashboard(lista, esInsumo, estadoCarro, carroFinalizado, m
     html += `</div>`;
     return html;
 }
+
+window.abrirModalCompraExternaCarro = async function(ingredienteId, ingredienteNombre, stockActualCasa = 0, comprometidoTotal = 0, unidadMedida = 'kg', carroId = null) {
+    const colaboradorData = localStorage.getItem('colaboradorActivo');
+    if (!colaboradorData) {
+        alert('No se detectó el colaborador activo.');
+        return;
+    }
+    const colaborador = JSON.parse(colaboradorData);
+    const stockCasaNum = Number(parseFloat(stockActualCasa) || 0);
+    const compNum = Number(parseFloat(comprometidoTotal) || 0);
+    const faltanteSugerido = Math.max(0, Number((compNum - stockCasaNum).toFixed(2)));
+    const reqId = `ce_carro_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    if (typeof Swal === 'undefined') {
+        const cantTxt = window.prompt(`Cantidad comprada en comercio para ${ingredienteNombre} (${unidadMedida}):`, faltanteSugerido > 0 ? String(faltanteSugerido) : '');
+        if (!cantTxt) return;
+        const cantVal = parseFloat(String(cantTxt).replace(',', '.'));
+        if (isNaN(cantVal) || cantVal <= 0) {
+            alert('Ingresá una cantidad válida mayor a 0.');
+            return;
+        }
+        const resp = await fetch('/api/produccion/ingredientes/stock-usuario/compra-externa', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                usuario_id: colaborador.id,
+                ingrediente_id: ingredienteId,
+                cantidad: cantVal,
+                carro_referencia_id: carroId,
+                request_id: reqId
+            })
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            alert(err.error || 'No se pudo registrar la compra externa.');
+            return;
+        }
+        await actualizarResumenIngredientes();
+        return;
+    }
+
+    const { value: formData } = await Swal.fire({
+        title: `🛒 Compra Externa en Comercio`,
+        width: 520,
+        html: `
+            <div style="text-align: left; font-size: 13.5px; color: #1e293b;">
+                <div style="background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px;">
+                    <div style="font-weight: 800; color: #5b21b6; font-size: 14.5px;">${escaparAtributoHtml(ingredienteNombre)}</div>
+                    <div style="font-size: 12px; color: #475569; margin-top: 3px;">
+                        Colaborador: <strong>${escaparAtributoHtml(colaborador.nombre_completo || colaborador.nombre || 'Colaborador')}</strong> ·
+                        Suma directo a su stock domiciliario <strong>sin tocar el Depósito Central LAMDA</strong>.
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <label for="swal-ce-cantidad" style="font-weight: 700; color: #0f172a;">Cantidad comprada (${escaparAtributoHtml(unidadMedida)}) <span style="color:#dc2626;">*</span></label>
+                        ${faltanteSugerido > 0 ? `<button type="button" id="btn-ce-cubrir-faltante" style="padding: 3px 8px; font-size: 11.5px; font-weight: 700; border-radius: 6px; border: 1px solid #7c3aed; background: #ede9fe; color: #5b21b6; cursor: pointer;">⚡ Cubrir faltante (${faltanteSugerido.toFixed(2)} ${escaparAtributoHtml(unidadMedida)})</button>` : ''}
+                    </div>
+                    <input id="swal-ce-cantidad" type="text" inputmode="decimal" placeholder="Ej: 1.50" value="${faltanteSugerido > 0 ? faltanteSugerido.toFixed(2) : ''}" style="width: 100%; box-sizing: border-box; padding: 9px 11px; font-size: 16px; font-weight: 800; border: 1.5px solid #7c3aed; border-radius: 7px; color: #0f172a;">
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                    <div>
+                        <label for="swal-ce-comercio" style="font-weight: 600; font-size: 12px; color: #475569; display: block; margin-bottom: 3px;">Comercio / Proveedor (opcional)</label>
+                        <input id="swal-ce-comercio" type="text" placeholder="Ej: Dietética / Mayorista" style="width: 100%; box-sizing: border-box; padding: 7px 9px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                    </div>
+                    <div>
+                        <label for="swal-ce-comp" style="font-weight: 600; font-size: 12px; color: #475569; display: block; margin-bottom: 3px;">Ticket / Nota (opcional)</label>
+                        <input id="swal-ce-comp" type="text" placeholder="Ej: Envase 1.5L / Ticket" style="width: 100%; box-sizing: border-box; padding: 7px 9px; font-size: 13px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                    </div>
+                </div>
+
+                <div id="swal-ce-preview" style="background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 8px; padding: 9px 12px; font-size: 12.5px; color: #064e3b; line-height: 1.45;"></div>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: '✅ Asentar Compra Externa',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#7c3aed',
+        didOpen: () => {
+            const inpCant = document.getElementById('swal-ce-cantidad');
+            const previewEl = document.getElementById('swal-ce-preview');
+            const btnFalt = document.getElementById('btn-ce-cubrir-faltante');
+
+            const renderPrev = () => {
+                const c = parseFloat(String(inpCant.value || '').replace(',', '.'));
+                const suma = (!isNaN(c) && c > 0) ? c : 0;
+                const nuevoCasa = stockCasaNum + suma;
+                const nuevoProy = nuevoCasa - compNum;
+                previewEl.innerHTML = `
+                    <div>🏠 <strong>Stock en casa:</strong> ${stockCasaNum.toFixed(2)} + <strong>${suma.toFixed(2)}</strong> = <strong>${nuevoCasa.toFixed(2)} ${escaparAtributoHtml(unidadMedida)}</strong></div>
+                    <div style="margin-top: 2px; color: ${nuevoProy >= -0.01 ? '#065f46' : '#b91c1c'};">
+                        📊 <strong>Proyectado tras carros abiertos (${compNum.toFixed(2)} ${escaparAtributoHtml(unidadMedida)}):</strong> <strong>${nuevoProy >= 0 ? '+' : ''}${nuevoProy.toFixed(2)} ${escaparAtributoHtml(unidadMedida)}</strong>
+                    </div>
+                `;
+            };
+
+            inpCant.addEventListener('input', renderPrev);
+            if (btnFalt) {
+                btnFalt.addEventListener('click', () => {
+                    inpCant.value = faltanteSugerido.toFixed(2);
+                    renderPrev();
+                    inpCant.focus();
+                });
+            }
+            renderPrev();
+            setTimeout(() => { inpCant.focus(); inpCant.select(); }, 40);
+        },
+        preConfirm: async () => {
+            const rawCant = document.getElementById('swal-ce-cantidad')?.value || '';
+            const cantVal = parseFloat(String(rawCant).replace(',', '.'));
+            if (isNaN(cantVal) || cantVal <= 0) {
+                Swal.showValidationMessage('Ingresá una cantidad comprada mayor a 0.');
+                return false;
+            }
+            const comercio = document.getElementById('swal-ce-comercio')?.value || '';
+            const comp = document.getElementById('swal-ce-comp')?.value || '';
+
+            try {
+                const resp = await fetch('/api/produccion/ingredientes/stock-usuario/compra-externa', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        usuario_id: colaborador.id,
+                        ingrediente_id: ingredienteId,
+                        cantidad: cantVal,
+                        comercio_origen: comercio,
+                        comprobante_ref: comp,
+                        carro_referencia_id: carroId,
+                        request_id: reqId
+                    })
+                });
+                const json = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    throw new Error(json.error || 'No se pudo registrar la compra externa');
+                }
+                return json;
+            } catch (err) {
+                Swal.showValidationMessage(err.message);
+                return false;
+            }
+        }
+    });
+
+    if (formData && formData.success) {
+        await actualizarResumenIngredientes();
+        Swal.fire({
+            icon: 'success',
+            title: 'Compra externa asentada',
+            html: `Nuevo stock en casa de <strong>${escaparAtributoHtml(ingredienteNombre)}</strong>: <strong>${Number(formData.saldo_nuevo).toFixed(2)} ${escaparAtributoHtml(unidadMedida)}</strong> (Proyectado: <strong>${Number(formData.proyectado_post_coccion) >= 0 ? '+' : ''}${Number(formData.proyectado_post_coccion).toFixed(2)} ${escaparAtributoHtml(unidadMedida)}</strong>).`,
+            timer: 2400,
+            showConfirmButton: false
+        });
+    }
+};
 
 // 🎯 TICKET: Función para desactivar (ocultar) ingredientes del stock personal
 window.desactivarIngredienteStockPersonal = async function(ingredienteId, ingredienteNombre) {

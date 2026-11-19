@@ -1,4 +1,6 @@
 const { registrarMovimientoStockVentas } = require('./stockVentasMovimientos');
+const { registrarMovimientoStockUsuarioFIFO } = require('./ingredientesStockUsuarios');
+const { obtenerIngredientesRecetaPadreCarroExterno } = require('../utils/stockDomiciliarioHelper');
 const CuentaCorrienteService = require('../../logistica/services/cuentaCorrienteService');
 
 /**
@@ -234,13 +236,48 @@ async function
                   )
             `, [carroId]);
 
-            // Sumar también los insumos pre-horno egresados del stock domiciliario del colaborador para este carro (ej. Miel #136 y Aceite #135 en Línea 6)
-            const { rows: egresosDomicilioRows } = await db.query(`
-                SELECT COALESCE(SUM(ABS(CAST(cantidad AS DECIMAL(20,10)))), 0) AS kilos_domicilio
+            // 🏠 DESCUENTO IDEMPOTENTE DE STOCK DOMICILIARIO AL CONFIRMAR (y cálculo exacto de Masa Pre-Horno en L5 y L6):
+            // Si el carro aún no tiene egresos negativos en `ingredientes_stock_usuarios` (`origen_carro_id = carroId`),
+            // descontamos en este instante transaccional los ingredientes de la receta padre de la UP (`tipo_movimiento = 'consumo_produccion'`).
+            // Si la guardia anti-tipeo posterior rechaza el asiento (ROLLBACK), este descuento también se revierte limpiamente.
+            let { rows: egresosDomicilioRows } = await db.query(`
+                SELECT COALESCE(SUM(ABS(CAST(cantidad AS DECIMAL(20,10)))), 0) AS kilos_domicilio,
+                       COUNT(*)::int AS filas_consumo
                 FROM public.ingredientes_stock_usuarios
                 WHERE origen_carro_id = $1
                   AND cantidad < 0
             `, [carroId]);
+
+            if ((egresosDomicilioRows[0]?.filas_consumo || 0) === 0) {
+                const itemsDomiciliarios = await obtenerIngredientesRecetaPadreCarroExterno(db, carroId);
+                for (const itemDom of itemsDomiciliarios) {
+                    if (itemDom.es_insumo || !(itemDom.cantidad > 0)) continue;
+                    const cantEgreso = Number(itemDom.cantidad.toFixed(4));
+                    await registrarMovimientoStockUsuarioFIFO({
+                        usuario_id: parseInt(usuarioId, 10),
+                        ingrediente_id: itemDom.id,
+                        cantidad: -cantEgreso,
+                        carro_id: parseInt(carroId, 10),
+                        origen_mix_id: itemDom.origen_mix_id || null,
+                        permitir_saldo_negativo: true,
+                        tipo_movimiento: 'consumo_produccion',
+                        observaciones: `Consumo por producción confirmada — Carro #${carroId}`
+                    }, db);
+                    console.log(`🏠 [FINALIZAR PRODUCCIÓN] Consumo domiciliario asentado para ${itemDom.nombre} (#${itemDom.id}): -${cantEgreso} kg`);
+                }
+
+                const recargaDom = await db.query(`
+                    SELECT COALESCE(SUM(ABS(CAST(cantidad AS DECIMAL(20,10)))), 0) AS kilos_domicilio,
+                           COUNT(*)::int AS filas_consumo
+                    FROM public.ingredientes_stock_usuarios
+                    WHERE origen_carro_id = $1
+                      AND cantidad < 0
+                `, [carroId]);
+                egresosDomicilioRows = recargaDom.rows;
+            } else {
+                console.log(`🛡️ [FINALIZAR PRODUCCIÓN] Guardia idempotente: carro #${carroId} ya registraba consumo domiciliario previo (${egresosDomicilioRows[0].filas_consumo} fila/s); no se duplica.`);
+            }
+
             const kilosDomicilioPreHorno = parseFloat(egresosDomicilioRows[0]?.kilos_domicilio) || 0;
 
             if (egresosStock.length > 0) {
@@ -437,29 +474,26 @@ async function
                             }, db);
                             console.log(`✅ #${ing.id} ${ing.nombre} descontado de Stock Central: -${cantidadRequerida} kg`);
                         } else {
-                            // Descuento de stock satélite del colaborador (Fase Externa)
-                            console.log(`🔄 DESCUENTO SATÉLITE (Fase Externa): ${ing.nombre} | Requerido: ${cantidadRequerida} | Colaborador ID: ${usuarioId}`);
-
-                            const satStockRes = await db.query(
-                                'SELECT stock_actual FROM public.colaborador_stock_satelite WHERE usuario_id = $1 AND ingrediente_id = $2',
-                                [usuarioId, ing.id]
+                            // Fase externa post-cocción (unificado sobre ingredientes_stock_usuarios con guardia idempotente; eliminada referencia muerta a colaborador_stock_satelite)
+                            const { rows: yaDescVinc } = await db.query(
+                                `SELECT 1 FROM public.ingredientes_stock_usuarios
+                                  WHERE origen_carro_id = $1 AND ingrediente_id = $2 AND cantidad < 0 LIMIT 1`,
+                                [parseInt(carroId, 10), ing.id]
                             );
-                            const stockSateliteAnterior = satStockRes.rows.length > 0 ? parseFloat(satStockRes.rows[0].stock_actual) : 0;
-
-                            await db.query(
-                                `INSERT INTO public.colaborador_stock_satelite_movimientos 
-                                    (usuario_id, ingrediente_id, kilos, tipo, carro_id, observaciones)
-                                 VALUES ($1, $2, $3, $4, $5, $6)`,
-                                [
-                                    usuarioId,
-                                    ing.id,
-                                    -cantidadRequerida,
-                                    'egreso_produccion',
-                                    parseInt(carroId),
-                                    `Egreso por asentado carro externo #${carroId} - Insumo consumido en cocción (stock satélite)`
-                                ]
-                            );
-                            console.log(`✅ ${ing.nombre} descontado de Stock Satélite: -${cantidadRequerida} (Stock anterior: ${stockSateliteAnterior})`);
+                            if (yaDescVinc.length === 0) {
+                                await registrarMovimientoStockUsuarioFIFO({
+                                    usuario_id: parseInt(usuarioId, 10),
+                                    ingrediente_id: ing.id,
+                                    cantidad: -Number(cantidadRequerida.toFixed(4)),
+                                    carro_id: parseInt(carroId, 10),
+                                    permitir_saldo_negativo: true,
+                                    tipo_movimiento: 'consumo_produccion',
+                                    observaciones: `Egreso domiciliario por asentado carro externo #${carroId} (${historialData.articulo_fraccionado_id})`
+                                }, db);
+                                console.log(`✅ ${ing.nombre} (#${ing.id}) descontado de Stock Domiciliario: -${cantidadRequerida} kg`);
+                            } else {
+                                console.log(`ℹ️ ${ing.nombre} (#${ing.id}) ya figuraba descontado en Stock Domiciliario para carro #${carroId}; omitiendo duplicado.`);
+                            }
                         }
                     }
                 } else {

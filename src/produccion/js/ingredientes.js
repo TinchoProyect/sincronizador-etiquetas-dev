@@ -1,5 +1,6 @@
 import { esMix } from './mix.js';
 import { modalIngredienteHTML, inicializarModalIngrediente, abrirModalNuevoIngrediente, cargarCategorias, getCategoriasCatalogo, abrirSubFormularioCategoria, cargarSectores, getSectoresDisponibles } from './components/modalIngrediente.js';
+import { inicializarModalesStockDomiciliario, abrirModalGestionStockDomiciliario, abrirModalKardexDomiciliario, abrirModalAsignarIngredienteColaborador } from './components/modalStockDomiciliario.js';
 
 // Variables globales
 let ingredienteEditando = null;
@@ -494,6 +495,51 @@ async function actualizarTablaFiltrada() {
     await actualizarTablaIngredientes(ingredientesFiltrados, esVistaUsuario);
 }
 
+// Sincroniza controles exclusivos del Depósito Central vs. Depósito Domiciliario del Colaborador
+function sincronizarInterfazModoVista(usuarioId = null) {
+    const esUsuario = Boolean(usuarioId);
+    if (esUsuario && window.modoAjusteActivo && typeof window.cancelarModoAjuste === 'function') {
+        window.cancelarModoAjuste();
+    }
+
+    const idsExclusivosPlanta = [
+        'btn-gestionar-sectores',
+        'btn-gestionar-categorias',
+        'btn-nuevo-ingrediente',
+        'btn-iniciar-ajuste'
+    ];
+    idsExclusivosPlanta.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = esUsuario ? 'none' : '';
+    });
+
+    const accSector = document.getElementById('accordion-sector-almacen')?.closest('.config-accordion');
+    if (accSector) accSector.style.display = esUsuario ? 'none' : '';
+
+    const btnAsignarUsuario = document.getElementById('btn-asignar-ingrediente-usuario');
+    const tituloEl = document.getElementById('titulo-seccion-ingredientes');
+
+    if (esUsuario) {
+        const itemUsr = document.querySelector(`.sector-item[data-usuario-id="${usuarioId}"]`);
+        const nombreColab = itemUsr ? itemUsr.textContent.replace(/^👤\s*/, '').trim() : `Colaborador #${usuarioId}`;
+
+        if (tituloEl) {
+            tituloEl.innerHTML = `🏠 Depósito Domiciliario de <span style="color:#1d4ed8;">${nombreColab}</span> <span style="font-size:0.58em;font-weight:700;background:#dbeafe;color:#1e40af;border:1px solid #93c5fd;padding:3px 9px;border-radius:999px;vertical-align:middle;margin-left:6px;">🔒 Aislado del Depósito Central</span>`;
+        }
+        if (btnAsignarUsuario) {
+            btnAsignarUsuario.style.display = 'inline-flex';
+            btnAsignarUsuario.onclick = () => abrirModalAsignarIngredienteColaborador(usuarioId, nombreColab);
+        }
+    } else {
+        if (tituloEl) {
+            tituloEl.textContent = 'Lista de Ingredientes';
+        }
+        if (btnAsignarUsuario) {
+            btnAsignarUsuario.style.display = 'none';
+        }
+    }
+}
+
 // Función para cargar los ingredientes según la vista actual
 async function cargarIngredientes(usuarioId = null) {
     try {
@@ -501,6 +547,7 @@ async function cargarIngredientes(usuarioId = null) {
 
         if (usuarioId) {
             vistaActual = `usuario-${usuarioId}`;
+            sincronizarInterfazModoVista(usuarioId);
 
             // 🛡️ LIMPIEZA DE ESTADO: Limpiar todos los filtros al cambiar a vista usuario
             filtrosActivos.clear();
@@ -517,6 +564,7 @@ async function cargarIngredientes(usuarioId = null) {
             response = await fetch(`/api/produccion/ingredientes/stock-usuario/${usuarioId}`);
         } else {
             vistaActual = 'deposito';
+            sincronizarInterfazModoVista(null);
             response = await fetch('/api/produccion/ingredientes');
         }
 
@@ -1023,70 +1071,78 @@ async function actualizarTablaIngredientes(ingredientes, esVistaUsuario = false)
     const fragment = document.createDocumentFragment();
 
     if (esVistaUsuario) {
+        const usuarioIdActivo = parseInt(vistaActual.replace('usuario-', ''), 10);
         const groupContent = document.createElement('div');
         groupContent.className = 'sector-group-content';
 
         ingredientes.forEach(ingrediente => {
             const ingredienteIdReal = ingrediente.ingrediente_id || ingrediente.id;
-            const esMix = ingrediente.esMix || ingrediente.tipo_origen === 'Mix' || ingrediente.tipo === 'Mix';
-            const mixButtons = esMix
-                ? `<button class="btn-tarjeta primary" onclick="if(window.gestionarComposicionMix) gestionarComposicionMix(${ingredienteIdReal})">📋 Fórmula</button>`
-                : `<button class="btn-tarjeta primary" style="padding: 8px 12px;" onclick="if(window.gestionarComposicionMix) gestionarComposicionMix(${ingredienteIdReal})" title="Crear Fórmula">➕🧪</button>`;
-                
+            const stockEnCasa = parseFloat(ingrediente.stock_en_casa ?? ingrediente.stock_total ?? 0) || 0;
+            const comprometido = parseFloat(ingrediente.comprometido_abiertos ?? 0) || 0;
+            const carrosCount = parseInt(ingrediente.carros_abiertos_count ?? 0, 10) || 0;
+            const proyectado = ingrediente.proyectado_post_coccion !== undefined
+                ? (parseFloat(ingrediente.proyectado_post_coccion) || 0)
+                : (stockEnCasa - comprometido);
+            const unidad = ingrediente.unidad_medida || 'kg';
+
             const card = document.createElement('div');
-            const isChecked = window.ingredientesAjusteSeleccionados && window.ingredientesAjusteSeleccionados.has(ingredienteIdReal);
-            card.className = `tarjeta-ingrediente ${parseFloat(ingrediente.stock_total || 0) <= 0 ? 'con-stock-cero' : ''} ${isChecked ? 'tarjeta-seleccionada' : ''}`;
-            
-            const esInsumo = ingrediente.es_insumo === true;
-            
+            card.className = `tarjeta-ingrediente ${stockEnCasa <= 0 && comprometido <= 0 ? 'con-stock-cero' : ''}`;
+            card.dataset.ingredienteId = ingredienteIdReal;
+
+            const fmtCasa = window.formatearStock ? window.formatearStock(stockEnCasa) : stockEnCasa.toFixed(2).replace('.', ',');
+            const fmtComp = window.formatearStock ? window.formatearStock(comprometido) : comprometido.toFixed(2).replace('.', ',');
+            const fmtProyAbs = window.formatearStock ? window.formatearStock(proyectado) : proyectado.toFixed(2).replace('.', ',');
+            const fmtProyConSigno = proyectado > 0.0005 ? `+${fmtProyAbs}` : fmtProyAbs;
+            const colorProy = proyectado >= -0.01 ? '#15803d' : '#dc2626';
+
             card.innerHTML = `
-            <div class="tarjeta-cuerpo" style="position: relative; padding: 6px 10px;">
-                <div class="tarjeta-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; padding: 0;">
+            <div class="tarjeta-cuerpo" style="position: relative; padding: 8px 12px;">
+                <div class="tarjeta-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding: 0;">
                     <div style="display: flex; align-items: center; gap: 8px; flex: 1; overflow: hidden;">
-                        <input type="checkbox" class="checkbox-ajuste" data-id="${ingredienteIdReal}" onchange="window.toggleSeleccionAjuste(this)" ${isChecked ? "checked" : ""}>
+                        <span style="font-size: 0.72rem; font-weight: 800; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; padding: 2px 6px; border-radius: 5px; flex-shrink: 0;">🏠 Domicilio</span>
                         <h3 class="tarjeta-titulo" style="margin: 0; font-size: 1rem; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${ingrediente.nombre_ingrediente || ingrediente.nombre}">${ingrediente.nombre_ingrediente || ingrediente.nombre}</h3>
-                        ${esInsumo ? `<span class="badge-insumo" style="background-color: #64748b; color: white; font-size: 0.65rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; margin-left: 6px; flex-shrink: 0; text-transform: uppercase;">📦 Insumo</span>` : ''}
                     </div>
                     <span class="tarjeta-codigo" style="margin: 0 0 0 8px; font-size: 0.8rem; flex-shrink: 0;">${ingrediente.codigo || '-'}</span>
                 </div>
-                ${ingrediente.descripcion ? `<p class="tarjeta-descripcion" title="${ingrediente.descripcion}" style="margin-bottom: 4px; font-size: 0.75rem; line-height: 1.1;">${ingrediente.descripcion}</p>` : `<p class="tarjeta-descripcion" style="display: none;">-</p>`}
 
-                <div class="tarjeta-stats" style="display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0;">
-                    <!-- STOCK ASIGNADO -->
-                    <div class="stat-item ${parseFloat(ingrediente.stock_total || 0) <= 0 ? 'stock-cero' : ''}" style="display: flex; flex-direction: row; flex-wrap: nowrap; justify-content: space-between; align-items: baseline; margin-bottom: 0px; padding: 2px 4px;">
-                        <span class="stat-label" style="font-size: 0.70rem; color: #64748b; font-weight: 700; letter-spacing: 0.5px; margin: 0; width: auto !important; flex-shrink: 0; display: inline-block;">STOCK ASIGNADO</span>
-                        <span class="stat-value" style="font-size: 1.4rem; font-weight: 900; color: ${window.obtenerColorStock ? window.obtenerColorStock(ingrediente.stock_total) : '#3b82f6'}; line-height: 1; margin: 0; width: auto !important; text-align: right; display: inline-block; white-space: nowrap;">
-                            ${window.formatearStock ? window.formatearStock(ingrediente.stock_total) : parseFloat(ingrediente.stock_total).toFixed(3)} 
-                            <small style="font-size: 0.85rem; font-weight: 600; color: #64748b;">${ingrediente.unidad_medida}</small>
-                        </span>
-                    </div>
-
-                    <!-- ✅ VALORIZACIÓN: Costo Patrón y Capitalizado del Ingrediente/Insumo (Comentarios en español) -->
-                    ${window.mostrarValoresMonetarios ? `
-                    <div style="display: flex; flex-direction: column; padding: 4px; border-top: 1px dashed #cbd5e1; background: #f0fdf4; border-radius: 4px; margin-top: 4px; margin-bottom: 2px;">
-                        <div style="display: flex; flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                            <span style="font-size: 0.65rem; color: #047857; font-weight: 700; letter-spacing: 0.5px;">COSTO PATRÓN</span>
-                            <span style="font-size: 0.85rem; font-weight: bold; color: #047857;">
-                                $${parseFloat(ingrediente.costo_patron || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/${ingrediente.unidad_medida === 'Unidad' ? 'u' : 'kg'}
-                            </span>
-                        </div>
-                        <div style="display: flex; flex-direction: row; justify-content: space-between; align-items: center; border-top: 1px dotted #bbf7d0; padding-top: 2px;">
-                            <span style="font-size: 0.65rem; color: #065f46; font-weight: 700; letter-spacing: 0.5px;">VALOR CAPITAL</span>
-                            <span style="font-size: 1.05rem; font-weight: 900; color: #10b981;">
-                                $${(parseFloat(ingrediente.costo_patron || 0) * parseFloat(ingrediente.stock_total || 0)).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
-                            </span>
+                <div class="tarjeta-stats" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 9px; margin: 4px 0;">
+                    <div>
+                        <div style="font-size: 0.65rem; color: #475569; font-weight: 800; text-transform: uppercase;">En Casa</div>
+                        <div class="stat-value" style="font-size: 1.15rem; font-weight: 900; color: ${window.obtenerColorStock ? window.obtenerColorStock(stockEnCasa) : '#0f172a'}; line-height: 1.15; margin-top: 2px;">
+                            ${fmtCasa} <small style="font-size: 0.72rem; font-weight: 600; color: #64748b;">${unidad}</small>
                         </div>
                     </div>
-                    ` : ''}
+                    <div style="border-left: 1px solid #cbd5e1; padding-left: 7px;">
+                        <div style="font-size: 0.65rem; color: #92400e; font-weight: 800; text-transform: uppercase;">Comprometido (${carrosCount})</div>
+                        <div style="font-size: 1.1rem; font-weight: 800; color: ${comprometido > 0 ? '#b45309' : '#64748b'}; line-height: 1.15; margin-top: 2px;">
+                            ${fmtComp} <small style="font-size: 0.72rem; font-weight: 600; color: #64748b;">${unidad}</small>
+                        </div>
+                    </div>
+                    <div style="border-left: 1px solid #cbd5e1; padding-left: 7px;">
+                        <div style="font-size: 0.65rem; color: ${proyectado >= -0.01 ? '#166534' : '#991b1b'}; font-weight: 800; text-transform: uppercase;">Proyectado</div>
+                        <div style="font-size: 1.1rem; font-weight: 900; color: ${colorProy}; line-height: 1.15; margin-top: 2px;">
+                            ${fmtProyConSigno} <small style="font-size: 0.72rem; font-weight: 600;">${unidad}</small>
+                        </div>
+                    </div>
                 </div>
+
+                ${window.mostrarValoresMonetarios ? `
+                <div style="display: flex; flex-direction: column; padding: 4px 6px; border-top: 1px dashed #cbd5e1; background: #f0fdf4; border-radius: 4px; margin-top: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 0.65rem; color: #047857; font-weight: 700;">COSTO PATRÓN</span>
+                        <span style="font-size: 0.82rem; font-weight: bold; color: #047857;">$${parseFloat(ingrediente.costo_patron || 0).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}/${unidad === 'Unidad' ? 'u' : 'kg'}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px dotted #bbf7d0; padding-top: 2px;">
+                        <span style="font-size: 0.65rem; color: #065f46; font-weight: 700;">VALOR EN CASA</span>
+                        <span style="font-size: 0.95rem; font-weight: 900; color: #10b981;">$${(parseFloat(ingrediente.costo_patron || 0) * stockEnCasa).toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                </div>
+                ` : ''}
             </div>
-            
-            <div class="tarjeta-footer">
-                ${mixButtons}
-                <button class="btn-tarjeta-sector" onclick="if(window.abrirModalSector) abrirModalSector(${ingredienteIdReal}, ${ingrediente.sector_id || 'null'})" title="Cambiar Sector">📍</button>
-                <button class="btn-tarjeta action" onclick="if(window.abrirModalImpresionGeneral) abrirModalImpresionGeneral(${ingredienteIdReal}, '${(ingrediente.nombre_ingrediente || ingrediente.nombre).replace(/'/g, "\\'")}')">🖨️ Etiquetas</button>
-                <button class="btn-tarjeta action" style="background: #0284c7; color: white;" onclick="window.abrirModalDesglose(${ingredienteIdReal})" title="Auditar Stock y Lotes">🔎 Desglose</button>
-                <button class="btn-tarjeta adjust" onclick="if(window.editarIngrediente) editarIngrediente(${ingredienteIdReal})" title="Editar Detalles y Stock Restante">✏️ Editar</button>
+
+            <div class="tarjeta-footer" style="display: flex; gap: 8px; justify-content: flex-end; padding: 8px 12px;">
+                <button type="button" class="btn-tarjeta action" style="background: #0284c7; color: white; flex: 1;" onclick="window.abrirModalKardexDomiciliario(${usuarioIdActivo}, ${ingredienteIdReal})" title="Ver Kardex Domiciliario y Carros Abiertos">🔎 Kardex / Desglose</button>
+                <button type="button" class="btn-tarjeta adjust" style="background: #2563eb; color: white; flex: 1; font-weight: 700;" onclick="window.abrirModalGestionStockDomiciliario(${usuarioIdActivo}, ${ingredienteIdReal}, 'ajustar')" title="Ajustar en Casa, Compra Externa o Abastecer desde Depósito LAMDA">✏️ Gestionar Stock</button>
             </div>`;
             groupContent.appendChild(card);
         });
@@ -1310,11 +1366,15 @@ async function crearIngrediente(datos) {
 // Función para actualizar un ingrediente
 async function actualizarIngrediente(id, datos) {
     try {
+        if (vistaActual.startsWith('usuario-')) {
+            throw new Error('Operación bloqueada: no se puede editar el padrón del Depósito Central desde la solapa de un colaborador.');
+        }
         guardarEstadoFiltros();
         const response = await fetch(`/api/produccion/ingredientes/${id}`, {
             method: 'PUT',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Lamda-Vista': vistaActual
             },
             body: JSON.stringify(datos)
         });
@@ -1362,6 +1422,10 @@ async function eliminarIngrediente(id) {
 
 // Función para editar un ingrediente
 async function editarIngrediente(id) {
+    if (vistaActual.startsWith('usuario-')) {
+        const uid = parseInt(vistaActual.replace('usuario-', ''), 10);
+        return abrirModalGestionStockDomiciliario(uid, id, 'ajustar');
+    }
     try {
         const response = await fetch(`/api/produccion/ingredientes/${id}`);
         if (!response.ok) {
@@ -1585,6 +1649,14 @@ async function borrarCategoria(id) {
     }
 }
 document.addEventListener('DOMContentLoaded', async () => {
+    // Inicializar modales exclusivos de Stock Domiciliario de Colaboradores
+    inicializarModalesStockDomiciliario(async (uid) => {
+        await cargarIngredientes(uid);
+        if (typeof window.inicializarSectoresPanel === 'function') {
+            await window.inicializarSectoresPanel(uid);
+        }
+    });
+
     // Inyectar modal dinámicamente
     const contenedor = document.getElementById('contenedor-modal-ingrediente');
     if (contenedor) {
@@ -1862,6 +1934,9 @@ window.eliminarIngrediente = eliminarIngrediente;
 window.gestionarComposicionMix = gestionarComposicionMix;
 window.eliminarComposicionMix = eliminarComposicionMix;
 window.cargarIngredientes = cargarIngredientes;
+window.abrirModalGestionStockDomiciliario = abrirModalGestionStockDomiciliario;
+window.abrirModalKardexDomiciliario = abrirModalKardexDomiciliario;
+window.abrirModalAsignarIngredienteColaborador = abrirModalAsignarIngredienteColaborador;
 window.toggleVinculo = toggleVinculo;
 window.abrirTrazabilidadDesdeFicha = abrirTrazabilidadDesdeFicha;
 window.cargarSectores = async () => {
@@ -1957,6 +2032,10 @@ window.abrirCajaDestinoClick = async function(vinculoId, destinoId, loteId, idCo
 
 // Funciones para gestionar el modal de mix
 function gestionarComposicionMix(id) {
+    if (vistaActual.startsWith('usuario-')) {
+        Swal.fire('Vista de Colaborador', 'Las fórmulas maestras solo pueden editarse desde la solapa general "📦 Depósito".', 'info');
+        return;
+    }
     const modalMix = document.getElementById('modal-mix');
     modalMix.style.display = 'block';
 
@@ -2139,6 +2218,10 @@ window.iniciarTrasladoIngrediente = async function(ingredienteId, nombreIngredie
 // FUNCIONES UI DE SECTOR
 // ============================================
 window.abrirModalSector = async function(ingredienteId, sectorActualId) {
+    if (vistaActual.startsWith('usuario-')) {
+        Swal.fire('Vista de Colaborador', 'Los sectores físicos pertenecen exclusivamente al Depósito Central LAMDA.', 'info');
+        return;
+    }
     if (typeof sectoresDisponibles === 'undefined' || sectoresDisponibles.length === 0) {
         Swal.fire('Error', 'No hay sectores cargados. Por favor refresque la página.', 'error');
         return;
@@ -2214,6 +2297,10 @@ window.ingredientesAjusteSeleccionados = new Map(); // Mapa id => {nombre, stock
 
 // FASE 1: INICIAR Y ELEGIR USUARIO
 window.iniciarFlujoAjuste = async () => {
+    if (vistaActual.startsWith('usuario-')) {
+        Swal.fire('Vista de Colaborador', 'El Ajuste Puntual masivo es exclusivo del Depósito Central LAMDA. Para un colaborador usá "✏️ Gestionar Stock" en su tarjeta.', 'info');
+        return;
+    }
     try {
         const response = await fetch('/api/usuarios');
         if (!response.ok) throw new Error('Error al cargar usuarios');
@@ -2429,9 +2516,13 @@ window.procesarAjustes = async () => {
     try {
         const res = await fetch('/api/produccion/ingredientes/ajustar-stock', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Lamda-Vista': vistaActual
+            },
             body: JSON.stringify({
                 usuario_id: window.usuarioAjusteGlobal.id,
+                vista_origen: vistaActual,
                 ajustes: ajustesValidar
             })
         });
@@ -2628,6 +2719,10 @@ function renderDesgloseOfertasReposicion(ofertas, factor, esMapeado = false) {
 }
 
 window.abrirModalDesglose = async function(ingredienteId) {
+    if (vistaActual.startsWith('usuario-')) {
+        const uid = parseInt(vistaActual.replace('usuario-', ''), 10);
+        return abrirModalKardexDomiciliario(uid, ingredienteId);
+    }
     // Buscar ingrediente en la memoria local correspondiente a la vista activa (Comentarios en español)
     let ingrediente = null;
     if (vistaActual.startsWith('usuario-')) {

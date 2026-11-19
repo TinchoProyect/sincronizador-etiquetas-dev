@@ -596,7 +596,7 @@
                     <div class="content-section">
                         <!-- Barra de acciones superior -->
                         <div class="actions-bar">
-                            <h2>Lista de Ingredientes</h2>
+                            <h2 id="titulo-seccion-ingredientes">Lista de Ingredientes</h2>
                             <div class="actions-buttons">
                                 <button id="btn-gestionar-sectores" class="btn-inventario"
                                     onclick="abrirVentana('sectores.html', 'gestionSectores')"
@@ -610,6 +610,7 @@
                                 </button>
                                 <button id="btn-nuevo-ingrediente" class="btn-agregar">+ Nuevo Ingrediente</button>
                                 <button id="btn-iniciar-ajuste" class="btn-agregar" style="background-color: #6366f1;" onclick="window.iniciarFlujoAjuste()">⚖️ Ajuste Puntual</button>
+                                <button id="btn-asignar-ingrediente-usuario" class="btn-agregar" style="display: none; background-color: #2563eb;">➕ Asignar / Abastecer ingrediente</button>
                             </div>
                         </div>
 
@@ -1174,7 +1175,7 @@
     </div>
 
     <script src="/js/services/supabaseService.js"></script>
-    <script type="module" src="/js/ingredientes.js?v=4_etiquetas_zebra"></script>
+    <script type="module" src="/js/ingredientes.js?v=5_stock_domiciliario"></script>
     <script type="module" src="/js/mix.js"></script>
     <script type="module" src="/js/ajusteRapido.js"></script>
     <script>
@@ -1240,7 +1241,7 @@
         });
 
         // Función para cargar usuarios con stock y crear lista en panel
-        async function inicializarSectoresPanel() {
+        async function inicializarSectoresPanel(preservarUsuarioActivoId = null) {
             try {
                 const response = await fetch('/api/produccion/ingredientes/usuarios-con-stock');
 
@@ -1252,7 +1253,7 @@
                 usuariosConStock = await response.json();
 
                 // Renderizar lista de sectores en el panel
-                renderizarSectoresPanel();
+                renderizarSectoresPanel(preservarUsuarioActivoId);
 
             } catch (error) {
                 console.error('❌ Error al cargar usuarios con stock:', error);
@@ -1260,15 +1261,16 @@
         }
 
         // Función para renderizar sectores en el panel lateral
-        function renderizarSectoresPanel() {
+        function renderizarSectoresPanel(preservarUsuarioActivoId = null) {
             const container = document.getElementById('sectores-lista-container');
             if (!container) return;
 
+            const uidActivo = preservarUsuarioActivoId || (tabActiva.startsWith('usuario-') ? parseInt(tabActiva.replace('usuario-', ''), 10) : null);
             container.innerHTML = '';
 
             // Crear item para Depósito
             const depositoItem = document.createElement('div');
-            depositoItem.className = 'sector-item activo';
+            depositoItem.className = uidActivo ? 'sector-item' : 'sector-item activo';
             depositoItem.dataset.tab = 'deposito';
             depositoItem.textContent = '📦 Depósito';
             depositoItem.onclick = () => activarSector(depositoItem, 'deposito');
@@ -1277,7 +1279,7 @@
             // Crear items para usuarios con stock
             usuariosConStock.forEach(usuario => {
                 const item = document.createElement('div');
-                item.className = 'sector-item';
+                item.className = (uidActivo && Number(usuario.usuario_id) === Number(uidActivo)) ? 'sector-item activo' : 'sector-item';
                 item.dataset.tab = `usuario-${usuario.usuario_id}`;
                 item.dataset.usuarioId = usuario.usuario_id;
                 item.textContent = `👤 ${usuario.nombre_completo}`;
@@ -1358,6 +1360,7 @@
         window.tabActiva = () => tabActiva;
         window.activarTabDeposito = activarTabDeposito;
         window.activarTabUsuario = activarTabUsuario;
+        window.inicializarSectoresPanel = inicializarSectoresPanel;
     </script>
 </body>
 

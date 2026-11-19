@@ -443,6 +443,275 @@ router.delete('/ingredientes/stock-usuario/:usuarioId/:ingredienteId', async (re
     }
 });
 
+// ==========================================
+// GESTIÓN DEDICADA Y KARDEX DE STOCK DOMICILIARIO POR COLABORADOR
+// ==========================================
+const compraExternaRequestIds = new Map();
+
+router.get('/ingredientes/stock-usuario/:usuarioId/:ingredienteId/kardex', async (req, res) => {
+    try {
+        const usuarioId = parseInt(req.params.usuarioId, 10);
+        const ingredienteId = parseInt(req.params.ingredienteId, 10);
+        if (isNaN(usuarioId) || isNaN(ingredienteId)) {
+            return res.status(400).json({ error: 'IDs de usuario o ingrediente inválidos' });
+        }
+
+        const [{ rows: [usr] }, { rows: [ing] }] = await Promise.all([
+            pool.query('SELECT id, nombre_completo, usuario FROM public.usuarios WHERE id = $1 LIMIT 1', [usuarioId]),
+            pool.query('SELECT id, codigo, nombre, unidad_medida, stock_actual AS stock_deposito_central FROM public.ingredientes WHERE id = $1 LIMIT 1', [ingredienteId])
+        ]);
+
+        if (!usr) return res.status(404).json({ error: 'Colaborador no encontrado' });
+        if (!ing) return res.status(404).json({ error: 'Ingrediente no encontrado' });
+
+        const { obtenerCompromisosCarrosExternos } = require('../utils/stockDomiciliarioHelper');
+        const compromisosMap = await obtenerCompromisosCarrosExternos(pool, usuarioId);
+        const compIng = compromisosMap.get(ingredienteId);
+
+        const { rows: movRows } = await pool.query(
+            `SELECT sub.*,
+                    cp.fecha_preparado AS carro_fecha_preparado,
+                    cp.fecha_confirmacion AS carro_fecha_confirmacion
+               FROM (
+                   SELECT isu.id,
+                          isu.ingrediente_id,
+                          isu.usuario_id,
+                          ROUND(isu.cantidad::numeric, 4) AS cantidad,
+                          isu.origen_carro_id,
+                          isu.carro_referencia_id,
+                          isu.fecha_registro,
+                          isu.contexto_envase,
+                          isu.articulo_origen_numero,
+                          isu.observaciones,
+                          COALESCE(
+                              isu.tipo_movimiento,
+                              CASE
+                                  WHEN isu.cantidad < 0 AND isu.origen_carro_id IS NOT NULL THEN 'consumo_produccion'
+                                  WHEN isu.cantidad > 0 AND isu.contexto_envase IS NOT NULL THEN 'abastecimiento_deposito'
+                                  ELSE 'ajuste_inventario'
+                              END
+                          ) AS tipo_movimiento,
+                          ROUND(SUM(isu.cantidad) OVER (ORDER BY isu.fecha_registro ASC, isu.id ASC)::numeric, 4) AS saldo_acumulado
+                     FROM public.ingredientes_stock_usuarios isu
+                    WHERE isu.usuario_id = $1
+                      AND isu.ingrediente_id = $2
+               ) sub
+               LEFT JOIN public.carros_produccion cp
+                 ON cp.id = COALESCE(sub.origen_carro_id, sub.carro_referencia_id)
+              ORDER BY sub.fecha_registro DESC, sub.id DESC
+              LIMIT 150`,
+            [usuarioId, ingredienteId]
+        );
+
+        const { rows: [saldoRow] } = await pool.query(
+            'SELECT COALESCE(ROUND(SUM(cantidad)::numeric, 4), 0) AS stock_en_casa FROM public.ingredientes_stock_usuarios WHERE usuario_id = $1 AND ingrediente_id = $2',
+            [usuarioId, ingredienteId]
+        );
+
+        const stockEnCasa = Number(parseFloat(saldoRow?.stock_en_casa || 0).toFixed(4));
+        const comprometidoAbiertos = Number((compIng?.kilos_comprometidos || 0).toFixed(4));
+        const proyectadoPostCoccion = Number((stockEnCasa - comprometidoAbiertos).toFixed(4));
+
+        return res.json({
+            success: true,
+            usuario: usr,
+            ingrediente: {
+                id: ing.id,
+                codigo: ing.codigo,
+                nombre: ing.nombre,
+                unidad_medida: ing.unidad_medida || 'Kilo',
+                stock_deposito_central: Number(parseFloat(ing.stock_deposito_central || 0).toFixed(4))
+            },
+            resumen: {
+                stock_en_casa: stockEnCasa,
+                comprometido_abiertos: comprometidoAbiertos,
+                carros_abiertos_count: compIng?.carros_count || 0,
+                proyectado_post_coccion: proyectadoPostCoccion
+            },
+            carros_abiertos: compIng?.carros_detalle || [],
+            movimientos: movRows.map(m => ({
+                ...m,
+                cantidad: Number(parseFloat(m.cantidad || 0).toFixed(4)),
+                saldo_acumulado: Number(parseFloat(m.saldo_acumulado || 0).toFixed(4))
+            }))
+        });
+    } catch (error) {
+        console.error('❌ Error al obtener Kardex domiciliario:', error);
+        return res.status(500).json({ error: 'No se pudo obtener el Kardex domiciliario', detalle: error.message });
+    }
+});
+
+router.post('/ingredientes/stock-usuario/ajustar-casa', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { usuario_id, ingrediente_id, stock_fisico_real, observaciones, carro_referencia_id, permitir_alta_en_cero } = req.body || {};
+        const usuarioIdNum = parseInt(usuario_id, 10);
+        const ingredienteIdNum = parseInt(ingrediente_id, 10);
+        const stockRealNum = parseFloat(String(stock_fisico_real ?? '').replace(',', '.'));
+
+        if (isNaN(usuarioIdNum) || isNaN(ingredienteIdNum) || isNaN(stockRealNum) || stockRealNum < 0) {
+            return res.status(400).json({ error: 'Indicá un colaborador, ingrediente y un stock físico real mayor o igual a 0.' });
+        }
+        if (stockRealNum > 500) {
+            return res.status(400).json({ error: `El stock ingresado (${stockRealNum} kg) parece excesivo o un código de barras. Verificá el número.` });
+        }
+
+        await client.query('BEGIN');
+
+        const { rows: [ing] } = await client.query(
+            'SELECT id, nombre, unidad_medida FROM public.ingredientes WHERE id = $1 LIMIT 1',
+            [ingredienteIdNum]
+        );
+        if (!ing) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Ingrediente no encontrado' });
+        }
+
+        const { rows: [prev] } = await client.query(
+            `SELECT COALESCE(ROUND(SUM(cantidad)::numeric, 4), 0) AS stock_anterior,
+                    COUNT(*)::int AS filas
+               FROM public.ingredientes_stock_usuarios
+              WHERE usuario_id = $1 AND ingrediente_id = $2`,
+            [usuarioIdNum, ingredienteIdNum]
+        );
+        const stockAnterior = Number(parseFloat(prev?.stock_anterior || 0).toFixed(4));
+        const filasPrevias = Number(prev?.filas || 0);
+        const diferencia = Number((stockRealNum - stockAnterior).toFixed(4));
+        const carroRef = (carro_referencia_id && !isNaN(parseInt(carro_referencia_id, 10))) ? parseInt(carro_referencia_id, 10) : null;
+
+        let movimientoId = null;
+        if (Math.abs(diferencia) >= 0.0005 || (filasPrevias === 0 && permitir_alta_en_cero)) {
+            const obsTexto = String(observaciones || '').trim() || `Conteo físico en domicilio fijado en ${stockRealNum.toFixed(2)} ${ing.unidad_medida || 'kg'}`;
+            const { rows: [ins] } = await client.query(
+                `INSERT INTO public.ingredientes_stock_usuarios
+                    (usuario_id, ingrediente_id, cantidad, origen_carro_id, carro_referencia_id, fecha_registro, origen_mix_id, tipo_movimiento, observaciones)
+                 VALUES ($1, $2, $3, NULL, $4, NOW(), NULL, 'ajuste_inventario', $5)
+                 RETURNING id`,
+                [usuarioIdNum, ingredienteIdNum, diferencia, carroRef, obsTexto]
+            );
+            movimientoId = ins.id;
+        }
+
+        await client.query('COMMIT');
+
+        const { obtenerCompromisosCarrosExternos } = require('../utils/stockDomiciliarioHelper');
+        const compMap = await obtenerCompromisosCarrosExternos(pool, usuarioIdNum);
+        const comprometido = Number((compMap.get(ingredienteIdNum)?.kilos_comprometidos || 0).toFixed(4));
+
+        return res.json({
+            success: true,
+            movimiento_id: movimientoId,
+            stock_anterior: stockAnterior,
+            stock_nuevo: Number(stockRealNum.toFixed(4)),
+            diferencia,
+            comprometido_abiertos: comprometido,
+            proyectado_post_coccion: Number((stockRealNum - comprometido).toFixed(4))
+        });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ Error en POST /ingredientes/stock-usuario/ajustar-casa:', error);
+        return res.status(500).json({ error: 'No se pudo ajustar el stock domiciliario', detalle: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+router.post('/ingredientes/stock-usuario/compra-externa', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const {
+            usuario_id,
+            ingrediente_id,
+            cantidad,
+            comercio_origen,
+            comprobante_ref,
+            observaciones,
+            carro_referencia_id,
+            request_id
+        } = req.body || {};
+
+        const usuarioIdNum = parseInt(usuario_id, 10);
+        const ingredienteIdNum = parseInt(ingrediente_id, 10);
+        const cantNum = parseFloat(String(cantidad ?? '').replace(',', '.'));
+
+        if (isNaN(usuarioIdNum) || isNaN(ingredienteIdNum) || isNaN(cantNum) || cantNum <= 0) {
+            return res.status(400).json({ error: 'Indicá una cantidad comprada mayor a 0.' });
+        }
+        if (cantNum > 500) {
+            return res.status(400).json({ error: `La cantidad ingresada (${cantNum} kg) parece excesiva o un código de barras. Verificá el número.` });
+        }
+
+        const nowTs = Date.now();
+        for (const [k, ts] of compraExternaRequestIds.entries()) {
+            if (nowTs - ts > 120000) compraExternaRequestIds.delete(k);
+        }
+        const reqKey = request_id ? String(request_id).trim() : '';
+        if (reqKey && compraExternaRequestIds.has(reqKey)) {
+            return res.status(409).json({ error: 'Esta compra externa ya fue asentada recientemente (doble envío bloqueado).' });
+        }
+
+        await client.query('BEGIN');
+
+        const { rows: [ing] } = await client.query(
+            'SELECT id, nombre, unidad_medida FROM public.ingredientes WHERE id = $1 LIMIT 1',
+            [ingredienteIdNum]
+        );
+        if (!ing) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Ingrediente no encontrado' });
+        }
+
+        const { rows: [prev] } = await client.query(
+            'SELECT COALESCE(ROUND(SUM(cantidad)::numeric, 4), 0) AS saldo_anterior FROM public.ingredientes_stock_usuarios WHERE usuario_id = $1 AND ingrediente_id = $2',
+            [usuarioIdNum, ingredienteIdNum]
+        );
+        const saldoAnterior = Number(parseFloat(prev?.saldo_anterior || 0).toFixed(4));
+        const kilosSumados = Number(cantNum.toFixed(4));
+        const carroRef = (carro_referencia_id && !isNaN(parseInt(carro_referencia_id, 10))) ? parseInt(carro_referencia_id, 10) : null;
+
+        const partesObs = ['Compra externa en comercio'];
+        if (comercio_origen && String(comercio_origen).trim()) partesObs.push(`Comercio: ${String(comercio_origen).trim()}`);
+        if (comprobante_ref && String(comprobante_ref).trim()) partesObs.push(`Comp.: ${String(comprobante_ref).trim()}`);
+        if (observaciones && String(observaciones).trim()) partesObs.push(String(observaciones).trim());
+        const obsFinal = partesObs.join(' · ');
+
+        const { rows: [ins] } = await client.query(
+            `INSERT INTO public.ingredientes_stock_usuarios
+                (usuario_id, ingrediente_id, cantidad, origen_carro_id, carro_referencia_id, fecha_registro, origen_mix_id, tipo_movimiento, observaciones)
+             VALUES ($1, $2, $3, NULL, $4, NOW(), NULL, 'compra_externa', $5)
+             RETURNING id`,
+            [usuarioIdNum, ingredienteIdNum, kilosSumados, carroRef, obsFinal]
+        );
+
+        const saldoNuevo = Number((saldoAnterior + kilosSumados).toFixed(4));
+        await client.query('COMMIT');
+
+        if (reqKey) compraExternaRequestIds.set(reqKey, Date.now());
+
+        const { obtenerCompromisosCarrosExternos } = require('../utils/stockDomiciliarioHelper');
+        const compMap = await obtenerCompromisosCarrosExternos(pool, usuarioIdNum);
+        const comprometido = Number((compMap.get(ingredienteIdNum)?.kilos_comprometidos || 0).toFixed(4));
+
+        return res.json({
+            success: true,
+            movimiento_id: ins.id,
+            ingrediente_nombre: ing.nombre,
+            unidad_medida: ing.unidad_medida || 'Kilo',
+            saldo_anterior: saldoAnterior,
+            kilos_sumados: kilosSumados,
+            saldo_nuevo: saldoNuevo,
+            comprometido_abiertos: comprometido,
+            proyectado_post_coccion: Number((saldoNuevo - comprometido).toFixed(4))
+        });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ Error en POST /ingredientes/stock-usuario/compra-externa:', error);
+        return res.status(500).json({ error: 'No se pudo registrar la compra externa', detalle: error.message });
+    } finally {
+        client.release();
+    }
+});
+
 router.get('/ingredientes/nuevo-codigo', async (req, res) => {
     try {
         console.log('Recibida solicitud GET /ingredientes/nuevo-codigo');
@@ -1073,6 +1342,12 @@ router.post('/ingredientes', async (req, res) => {
 
 router.put('/ingredientes/:id', async (req, res) => {
     try {
+        const vistaHdr = String(req.headers['x-lamda-vista'] || req.body?.vista_origen || '').toLowerCase();
+        if (vistaHdr.startsWith('usuario') || req.body?.es_stock_usuario === true) {
+            return res.status(409).json({
+                error: 'Operación bloqueada: no está permitido modificar datos ni stock del Depósito Central desde la solapa de un colaborador.'
+            });
+        }
         const id = parseInt(req.params.id);
         if (isNaN(id)) {
             return res.status(400).json({ error: 'ID inválido' });
@@ -2745,14 +3020,24 @@ router.post('/ingredientes-stock-usuarios', async (req, res) => {
             });
         }
 
+        const cantNum = parseFloat(cantidad);
+        const esEgresoConsumo = cantNum < 0;
         const query = `
             INSERT INTO ingredientes_stock_usuarios 
-            (usuario_id, ingrediente_id, cantidad, origen_carro_id, fecha_registro, origen_mix_id)
-            VALUES ($1, $2, $3, $4, NOW(), $5)
+            (usuario_id, ingrediente_id, cantidad, origen_carro_id, carro_referencia_id, fecha_registro, origen_mix_id, tipo_movimiento)
+            VALUES ($1, $2, $3, $4, $5, NOW(), $6, $7)
             RETURNING id
         `;
 
-        const params = [usuario_id, ingrediente_id, cantidad, origen_carro_id, origen_mix_id];
+        const params = [
+            usuario_id,
+            ingrediente_id,
+            cantNum,
+            esEgresoConsumo ? origen_carro_id : null,
+            !esEgresoConsumo ? (origen_carro_id || null) : null,
+            origen_mix_id || null,
+            req.body.tipo_movimiento || (esEgresoConsumo ? 'consumo_produccion' : 'abastecimiento_deposito')
+        ];
         console.log('\n📝 QUERY A EJECUTAR:', query);
         console.log('📊 PARÁMETROS:', params);
 
@@ -4695,9 +4980,13 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
             // vinculados a un origen_carro_id, de lo contrario se borrarán si el operario 
             // cierra/elimina el carro desde donde invocó funcionalmente el ajuste.
             const carroIdFinal = null;
-            const observacionesFinal = carro_id
-                ? `${observaciones} - Ajuste Manual Permanente en Stock Personal (vía carro externo)`
-                : `${observaciones} - Ajuste Manual Permanente desde Visor`;
+            const carroRefId = (carro_id && !isNaN(parseInt(carro_id, 10))) ? parseInt(carro_id, 10) : null;
+            const obsBase = observaciones && String(observaciones).trim()
+                ? String(observaciones).trim()
+                : `Ajuste rápido a ${stockRealNum.toFixed(2)} kg`;
+            const observacionesFinal = carroRefId
+                ? `${obsBase} (vía carro externo #${carroRefId})`
+                : `${obsBase}`;
 
             const queryAjusteUsuario = `
         INSERT INTO ingredientes_stock_usuarios (
@@ -4705,20 +4994,25 @@ router.post('/ingredientes/ajuste-rapido', async (req, res) => {
           ingrediente_id,
           cantidad,
           origen_carro_id,
+          carro_referencia_id,
           fecha_registro,
-          origen_mix_id
-        ) VALUES ($1, $2, $3, $4, NOW(), NULL)
+          origen_mix_id,
+          tipo_movimiento,
+          observaciones
+        ) VALUES ($1, $2, $3, $4, $5, NOW(), NULL, 'ajuste_inventario', $6)
         RETURNING id
       `;
 
             console.log(`🔍 [DEBUG] Ejecutando INSERT en ingredientes_stock_usuarios...`);
-            console.log(`🔍 [DEBUG] Parámetros:`, [usuario_id, ingrediente_id, diferenciaUsuario, carroIdFinal]);
+            console.log(`🔍 [DEBUG] Parámetros:`, [usuario_id, ingrediente_id, diferenciaUsuario, carroIdFinal, carroRefId]);
 
             const resultAjuste = await req.db.query(queryAjusteUsuario, [
                 usuario_id,
                 ingrediente_id,
                 diferenciaUsuario,  // Cantidad con signo (+ o -)
-                carroIdFinal        // 🆕 Puede ser NULL
+                carroIdFinal,       // Regla dura: SIEMPRE NULL en ajustes
+                carroRefId,
+                observacionesFinal
             ]);
 
             console.log(`📝 [STOCK PERSONAL] Observaciones: ${observacionesFinal}`);
@@ -5361,20 +5655,21 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
         await client.query('BEGIN');
 
         try {
-            // A) Declarar la BAJA de `stock_ventas_movimientos`
+            // A) Declarar la BAJA de `stock_ventas_movimientos` (desacoplado de carro_id para que borrar un borrador no revierta retiros reales a domicilio)
+            const obsAbastecimiento = `Retiro abastecimiento domicilio: ${cantNum} u. de [${articulo_numero}] ${nombreArt} (${kilosTotales.toFixed(2)} kg)${carroIdValido ? ` [ref carro #${carroIdValido}]` : ''}`;
             const outQuery = `
                 INSERT INTO stock_ventas_movimientos (
-                    articulo_numero, codigo_barras, kilos, carro_id, usuario_id, cantidad, tipo, origen_ingreso, fecha
-                ) VALUES ($1, $2, $3, $4, $5, $6, 'egreso', 'abastecimiento_domicilio', NOW())
+                    articulo_numero, codigo_barras, kilos, carro_id, usuario_id, cantidad, tipo, origen_ingreso, observaciones, fecha
+                ) VALUES ($1, $2, $3, NULL, $4, $5, 'egreso', 'abastecimiento_domicilio', $6, NOW())
                 RETURNING id;
             `;
             await client.query(outQuery, [
                 articulo_numero, 
                 codigoBarrasArt,
                 kilosTotales, 
-                carroIdValido,
                 parseInt(usuario_id, 10), 
-                parseFloat(cantidad)
+                parseFloat(cantidad),
+                obsAbastecimiento
             ]);
 
             // A.2) Descontar la cantidad directamente del stock_movimientos consolidado
@@ -5403,10 +5698,11 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
             const saldoAnterior = parseFloat(prevSaldoRes.rows[0]?.saldo_anterior || 0);
 
             // B) Declarar el ALTA de stock personal en el domicilio para ese operario
+            // Regla dura: origen_carro_id = NULL siempre en ingresos; carro_referencia_id guarda el carro solo como metadato informativo
             const inQuery = `
                 INSERT INTO ingredientes_stock_usuarios (
-                    usuario_id, ingrediente_id, cantidad, origen_carro_id, fecha_registro, origen_mix_id, contexto_envase
-                ) VALUES ($1, $2, $3, $4, NOW(), NULL, $5)
+                    usuario_id, ingrediente_id, cantidad, origen_carro_id, carro_referencia_id, fecha_registro, origen_mix_id, contexto_envase, tipo_movimiento, articulo_origen_numero, observaciones
+                ) VALUES ($1, $2, $3, NULL, $4, NOW(), NULL, $5, 'abastecimiento_deposito', $6, $7)
                 RETURNING id;
             `;
             await client.query(inQuery, [
@@ -5414,7 +5710,9 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
                 ingredienteIdNum,
                 kilosTotales,
                 carroIdValido,
-                kilosUnidad
+                kilosUnidad,
+                String(articulo_numero),
+                obsAbastecimiento
             ]);
 
             const postSaldoRes = await client.query(
@@ -5480,6 +5778,12 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
 // MÓDULO DE AJUSTE PUNTUAL DE STOCK FÍSICO
 // ==========================================
 router.post('/ingredientes/ajustar-stock', async (req, res) => {
+    const vistaHdr = String(req.headers['x-lamda-vista'] || req.body?.vista_origen || '').toLowerCase();
+    if (vistaHdr.startsWith('usuario') || req.body?.es_stock_usuario === true) {
+        return res.status(409).json({
+            error: 'Operación bloqueada: el Ajuste Puntual masivo es exclusivo del Depósito Central LAMDA. Para un colaborador usá "Gestionar Stock" sobre su tarjeta.'
+        });
+    }
     const { usuario_id, ajustes } = req.body;
     
     if (!usuario_id || !ajustes || !Array.isArray(ajustes) || ajustes.length === 0) {

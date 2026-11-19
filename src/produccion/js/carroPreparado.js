@@ -1924,7 +1924,7 @@ export async function marcarCarroPreparado(carroIdParam) {
             const itemsAdvHtml = prepData.advertencias_stock_personal.map(a => `
                 <li style="margin-bottom:6px;">
                     <strong>${escaparHtmlPreparado(a.nombre)}</strong>:
-                    <span style="color:#b45309;font-weight:700;">Faltan ${Number(a.faltante || 0).toFixed(2)} ${escaparHtmlPreparado(a.unidad || 'kg')} (Requerido: ${Number(a.requerido || 0).toFixed(2)} · Disponible: ${Number(a.disponible || 0).toFixed(2)})</span>
+                    <span style="color:#b45309;font-weight:700;">Proyectado -${Number(a.faltante || 0).toFixed(2)} ${escaparHtmlPreparado(a.unidad || 'kg')} (En casa: ${Number(a.disponible || 0).toFixed(2)} · Comprometido total: ${Number(a.comprometido_total ?? a.requerido ?? 0).toFixed(2)})</span>
                 </li>
             `).join('');
             if (typeof Swal !== 'undefined') {

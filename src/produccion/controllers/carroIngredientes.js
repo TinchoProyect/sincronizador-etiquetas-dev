@@ -3,6 +3,7 @@ const db = require('../config/database');
 const { expandirIngrediente } = require('../utils/ingredientes/expandirIngredientes');
 const { consolidarIngredientes } = require('../utils/ingredientes/consolidarIngredientes');
 const { validarPropiedadCarro } = require('./carro');
+const { obtenerCompromisosCarrosExternos } = require('../utils/stockDomiciliarioHelper');
 
 /**
  * Extrae la letra del sector desde la descripción o nombre.
@@ -386,24 +387,31 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
             throw new Error('El carro no pertenece al usuario especificado');
         }
 
-        // 🛑 VERIFICACIÓN DE ESTADO: Si el carro está preparado, devolver HISTÓRICO
-        const estaPreparado = await esCarroPreparado(carroId);
-        if (estaPreparado) {
-            // Necesitamos saber el tipo de carro
-            const queryTipoCarro = 'SELECT tipo_carro FROM carros_produccion WHERE id = $1';
-            const tipoCarroResult = await pool.query(queryTipoCarro, [carroId]);
-            const tipoCarro = tipoCarroResult.rows[0]?.tipo_carro || 'interna';
+        // 🛑 VERIFICACIÓN DE ESTADO:
+        // - En carros INTERNOS, el descuento se ejecuta al pasar a "preparado", por lo que `fecha_preparado` congela el histórico.
+        // - En carros EXTERNOS, el stock domiciliario (`ingredientes_stock_usuarios`) permanece vivo mientras el carro no esté
+        //   confirmado (`fecha_confirmacion IS NULL`), salvo registros legacy que ya tuvieran consumo negativo asentado.
+        const estadoCarroRes = await pool.query(
+            `SELECT cp.tipo_carro,
+                    cp.fecha_preparado,
+                    cp.fecha_confirmacion,
+                    EXISTS (
+                        SELECT 1 FROM public.ingredientes_stock_usuarios isu
+                         WHERE isu.origen_carro_id = cp.id AND isu.cantidad < 0
+                    ) AS tiene_consumo_domiciliario
+               FROM public.carros_produccion cp
+              WHERE cp.id = $1`,
+            [carroId]
+        );
+        const infoEstadoCarro = estadoCarroRes.rows[0] || {};
+        const tipoCarroCheck = infoEstadoCarro.tipo_carro || 'interna';
+        const usarHistoricoCongelado = tipoCarroCheck === 'externa'
+            ? Boolean(infoEstadoCarro.fecha_confirmacion || infoEstadoCarro.tiene_consumo_domiciliario)
+            : Boolean(infoEstadoCarro.fecha_preparado);
 
-            console.log(`❄️ CARRO PREPARADO DETECTADO: Usando datos congelados`);
-            const ingredientesHistoricos = await obtenerIngredientesHistoricos(carroId, tipoCarro);
-
-            if (tipoCarro === 'externa') {
-                console.log(`🚚 CARRO EXTERNO PREPARADO: Retornando base histórica`);
-                // En Fase 2 (Carro asimilado), los vinculados se cargan asincrónicamente por la UI.
-                // Si los concatenamos aquí provocaríamos una duplicación matemática en la tabla (Regression #1).
-                return ingredientesHistoricos;
-            }
-
+        if (usarHistoricoCongelado) {
+            console.log(`❄️ CARRO CON CONSUMO ASENTADO DETECTADO (${tipoCarroCheck}): Usando datos históricos`);
+            const ingredientesHistoricos = await obtenerIngredientesHistoricos(carroId, tipoCarroCheck);
             return ingredientesHistoricos;
         }
 
@@ -576,7 +584,11 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
         console.log(`\n🔍 TIPO DE CARRO: ${tipoCarro} `);
         console.log(`Usuario del carro: ${carroUsuarioId} `);
 
-        // 4. Agregar stock_actual a cada ingrediente consolidado según el tipo de carro
+        // 4. Agregar stock_actual y compromisos de carros abiertos según el tipo de carro
+        const compromisosOtrosMap = tipoCarro === 'externa'
+            ? await obtenerCompromisosCarrosExternos(pool, carroUsuarioId, { excluirCarroId: parseInt(carroId, 10) })
+            : new Map();
+
         const ingredientesConStock = await Promise.all(
             ingredientesConsolidados.map(async (ingrediente) => {
                 if (ingrediente.id) {
@@ -584,18 +596,36 @@ async function obtenerIngredientesBaseCarro(carroId, usuarioId) {
                         let stockActual = 0;
 
                         if (tipoCarro === 'externa') {
-                            console.log(`\n📦 Obteniendo stock de usuario para ingrediente ${ingrediente.id} `);
-                            // Consultar stock del usuario para carros externos
+                            console.log(`\n📦 Obteniendo stock domiciliario y compromisos para ingrediente ${ingrediente.id} `);
                             const queryStockUsuario = `
-                                SELECT SUM(cantidad) as stock_usuario, MAX(contexto_envase) as capacidad_base
+                                SELECT COALESCE(SUM(cantidad), 0) as stock_usuario,
+                                       (
+                                           SELECT contexto_envase
+                                             FROM ingredientes_stock_usuarios
+                                            WHERE usuario_id = $1 AND ingrediente_id = $2 AND contexto_envase IS NOT NULL
+                                            ORDER BY fecha_registro DESC LIMIT 1
+                                       ) as capacidad_base
                                 FROM ingredientes_stock_usuarios
                                 WHERE usuario_id = $1 AND ingrediente_id = $2
-                                GROUP BY ingrediente_id
                             `;
                             const stockUsuarioResult = await pool.query(queryStockUsuario, [carroUsuarioId, ingrediente.id]);
-                            stockActual = stockUsuarioResult.rows[0]?.stock_usuario || 0;
+                            stockActual = Number((parseFloat(stockUsuarioResult.rows[0]?.stock_usuario) || 0).toFixed(4));
                             ingrediente.capacidad_base = stockUsuarioResult.rows[0]?.capacidad_base || null;
-                            console.log(`Stock usuario encontrado: ${stockActual} | Capacidad base: ${ingrediente.capacidad_base}`);
+
+                            const compOtros = compromisosOtrosMap.get(Number(ingrediente.id));
+                            const comprometidoOtros = Number((compOtros?.kilos_comprometidos || 0).toFixed(4));
+                            const consumoEsteCarro = Number((parseFloat(ingrediente.cantidad) || 0).toFixed(4));
+                            const comprometidoTotal = Number((comprometidoOtros + consumoEsteCarro).toFixed(4));
+                            const proyectadoPostCoccion = Number((stockActual - comprometidoTotal).toFixed(4));
+
+                            ingrediente.stock_en_casa = stockActual;
+                            ingrediente.comprometido_otros_carros = comprometidoOtros;
+                            ingrediente.otros_carros_count = compOtros?.carros_count || 0;
+                            ingrediente.otros_carros_detalle = compOtros?.carros_detalle || [];
+                            ingrediente.comprometido_total = comprometidoTotal;
+                            ingrediente.proyectado_post_coccion = proyectadoPostCoccion;
+
+                            console.log(`Stock en casa: ${stockActual} | Comprometido otros: ${comprometidoOtros} | Comprometido total: ${comprometidoTotal} | Proyectado: ${proyectadoPostCoccion}`);
                         } else {
                             console.log(`\n📦 Obteniendo stock REAL para ingrediente ${ingrediente.id} (tabla ingredientes + sustituciones)`);
                             // 🔧 CORRECCIÓN CRÍTICA: Incluir sustituciones en el cálculo

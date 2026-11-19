@@ -71,19 +71,23 @@ async function editarIngresoManual(req, res) {
 
         // 🔍 PASO 2: Insertar el nuevo movimiento
 
-        // A. Insertar Stock Usuario (si existe)
+        // A. Insertar Stock Usuario (si existe) — Regla dura: ingresos positivos jamás llevan origen_carro_id
         if (stockUsuario) {
-            // Este endpoint va hacia la tabla ingredientes_stock_usuarios. Lo manejamos manualmente aquí
+            const cantUsr = parseFloat(stockUsuario.cantidad) || 0;
+            const esEgresoConsumo = cantUsr < 0;
             const updateStockUsuario = `
-                INSERT INTO ingredientes_stock_usuarios (usuario_id, ingrediente_id, cantidad, origen_carro_id, origen_mix_id)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO ingredientes_stock_usuarios
+                    (usuario_id, ingrediente_id, cantidad, origen_carro_id, carro_referencia_id, origen_mix_id, tipo_movimiento)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
             `;
             await client.query(updateStockUsuario, [
-                stockUsuario.usuario_id, 
-                stockUsuario.ingrediente_id, 
-                stockUsuario.cantidad, 
-                stockUsuario.origen_carro_id, 
-                stockUsuario.origen_mix_id
+                stockUsuario.usuario_id,
+                stockUsuario.ingrediente_id,
+                cantUsr,
+                esEgresoConsumo ? (stockUsuario.origen_carro_id || null) : null,
+                !esEgresoConsumo ? (stockUsuario.origen_carro_id || null) : null,
+                stockUsuario.origen_mix_id || null,
+                esEgresoConsumo ? 'consumo_produccion' : 'abastecimiento_deposito'
             ]);
         }
 

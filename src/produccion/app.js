@@ -1714,6 +1714,16 @@ httpServer.listen(PORT, () => {
             console.warn('⚠️ [STARTUP-LDN3-LDN5] Advertencia al ejecutar saneamiento estructural:', errMig35.message);
         });
 
+    // Esquema idempotente y desacople de retiros para Stock Domiciliario de Colaboradores
+    const { asegurarEsquemaStockDomiciliario } = require('./migrations/saneamientoStockDomiciliario');
+    asegurarEsquemaStockDomiciliario(db)
+        .then(resDom => {
+            console.log('✅ [STARTUP-STOCK-DOMICILIARIO] Esquema y desacople verificados:', JSON.stringify(resDom));
+        })
+        .catch(errDom => {
+            console.warn('⚠️ [STARTUP-STOCK-DOMICILIARIO] Advertencia al verificar esquema domiciliario:', errDom.message);
+        });
+
     // Esquema Nodos (incluyendo fotos_vidriera / fotos_catalogo_base) y aprovisionamiento + perfiles idempotentes de Paraíso y MANSO
     // Escalonado 2.5s con reintento ante deadlock (40P01) cuando PM2 reinicia simultáneamente LOGISTICA y PRODUCCION
     const { provisionarNodoManso } = require('./scripts/provisionarNodoManso');

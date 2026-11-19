@@ -640,13 +640,20 @@ async function eliminarIngrediente(id) {
 async function obtenerUsuariosConStock() {
     try {
         const query = `
-            SELECT DISTINCT 
+            SELECT
                 u.id as usuario_id,
                 u.nombre_completo,
                 COUNT(DISTINCT isu.ingrediente_id) as total_ingredientes,
                 COALESCE(SUM(isu.cantidad), 0) as stock_total
             FROM usuarios u
-            INNER JOIN ingredientes_stock_usuarios isu ON u.id = isu.usuario_id
+            LEFT JOIN ingredientes_stock_usuarios isu ON u.id = isu.usuario_id
+            WHERE EXISTS (
+                SELECT 1 FROM public.ingredientes_stock_usuarios x WHERE x.usuario_id = u.id
+            )
+            OR EXISTS (
+                SELECT 1 FROM public.carros_produccion cp
+                WHERE cp.usuario_id = u.id AND cp.tipo_carro = 'externa'
+            )
             GROUP BY u.id, u.nombre_completo
             ORDER BY u.nombre_completo ASC;
         `;
@@ -661,18 +668,20 @@ async function obtenerUsuariosConStock() {
 }
 
 /**
- * Obtiene el stock consolidado de ingredientes para un usuario específico
- * Balance consolidado: Una fila por ingrediente con suma total de movimientos
- * Muestra tanto saldos positivos como negativos (oculta solo ceros exactos)
+ * Obtiene el stock consolidado de ingredientes domiciliarios para un colaborador específico,
+ * enriquecido con los kilos comprometidos en carros externos abiertos (`preparado` sin confirmar)
+ * y el saldo proyectado post-cocción.
  * @param {number} usuarioId - ID del usuario
- * @returns {Promise<Array>} Lista de ingredientes con stock del usuario
+ * @returns {Promise<Array>} Lista de ingredientes con stock y compromisos del colaborador
  */
 async function obtenerStockPorUsuario(usuarioId) {
     try {
-        // Consulta SQL para obtener los ingredientes asignados a un operario
-        // con su costo patrón vigente y valorización total calculada (comentarios en español)
+        const { obtenerCompromisosCarrosExternos } = require('../utils/stockDomiciliarioHelper');
+        const compromisosMap = await obtenerCompromisosCarrosExternos(pool, usuarioId);
+        const idsComprometidos = Array.from(compromisosMap.keys());
+
         const query = `
-            SELECT 
+            SELECT
                 i.id,
                 i.id as ingrediente_id,
                 i.codigo,
@@ -689,13 +698,13 @@ async function obtenerStockPorUsuario(usuarioId) {
                 (COALESCE(i.costo_patron, 0.00) * COALESCE(SUM(isu.cantidad), 0)) as valorizacion_total,
                 (
                     SELECT contexto_envase
-                    FROM ingredientes_stock_usuarios 
+                    FROM ingredientes_stock_usuarios
                     WHERE ingrediente_id = i.id AND usuario_id = $1 AND contexto_envase IS NOT NULL
                     ORDER BY fecha_registro DESC LIMIT 1
                 ) as capacidad_base,
-                CASE 
+                CASE
                     WHEN EXISTS (
-                        SELECT 1 FROM ingrediente_composicion ic 
+                        SELECT 1 FROM ingrediente_composicion ic
                         WHERE ic.mix_id = i.id
                     ) THEN 'Mix'
                     ELSE 'Simple'
@@ -703,35 +712,61 @@ async function obtenerStockPorUsuario(usuarioId) {
             FROM public.ingredientes i
             LEFT JOIN sectores_ingredientes s ON i.sector_id = s.id
             LEFT JOIN categorias_ingredientes c ON i.categoria_id = c.id
-            INNER JOIN public.ingredientes_stock_usuarios isu ON i.id = isu.ingrediente_id
-            WHERE isu.usuario_id = $1
-              AND COALESCE(i.es_insumo, false) = false
+            LEFT JOIN public.ingredientes_stock_usuarios isu
+                ON i.id = isu.ingrediente_id AND isu.usuario_id = $1
+            WHERE COALESCE(i.es_insumo, false) = false
               AND (
-                  EXISTS (
-                      SELECT 1
-                      FROM public.articulos_produccion_externa_relacion rel
-                      JOIN public.recetas r_up ON UPPER(BTRIM(r_up.articulo_numero)) = UPPER(BTRIM(rel.articulo_produccion_codigo))
-                      JOIN public.receta_ingredientes ri_up ON ri_up.receta_id = r_up.id
-                      WHERE ri_up.ingrediente_id = i.id
+                  (
+                      EXISTS (
+                          SELECT 1 FROM public.ingredientes_stock_usuarios isu_any
+                          WHERE isu_any.usuario_id = $1 AND isu_any.ingrediente_id = i.id
+                      )
+                      AND (
+                          EXISTS (
+                              SELECT 1
+                              FROM public.articulos_produccion_externa_relacion rel
+                              JOIN public.recetas r_up ON UPPER(BTRIM(r_up.articulo_numero)) = UPPER(BTRIM(rel.articulo_produccion_codigo))
+                              JOIN public.receta_ingredientes ri_up ON ri_up.receta_id = r_up.id
+                              WHERE ri_up.ingrediente_id = i.id
+                          )
+                          OR EXISTS (
+                              SELECT 1
+                              FROM public.ingredientes_stock_usuarios isu_dom
+                              WHERE isu_dom.usuario_id = $1
+                                AND isu_dom.ingrediente_id = i.id
+                                AND (
+                                    isu_dom.contexto_envase IS NOT NULL
+                                    OR isu_dom.origen_carro_id IS NULL
+                                    OR isu_dom.tipo_movimiento IN ('abastecimiento_deposito', 'compra_externa', 'ajuste_inventario')
+                                )
+                          )
+                      )
                   )
-                  OR EXISTS (
-                      SELECT 1
-                      FROM public.ingredientes_stock_usuarios isu_env
-                      WHERE isu_env.usuario_id = $1
-                        AND isu_env.ingrediente_id = i.id
-                        AND isu_env.contexto_envase IS NOT NULL
-                  )
+                  OR i.id = ANY($2::int[])
               )
             GROUP BY i.id, i.codigo, i.nombre, i.descripcion, i.unidad_medida, i.categoria_id, c.nombre, i.costo_patron, i.sector_id, s.nombre, s.descripcion
             ORDER BY i.nombre ASC;
         `;
 
-        const result = await pool.query(query, [usuarioId]);
+        const result = await pool.query(query, [usuarioId, idsComprometidos]);
 
-        return result.rows.map(ing => ({
-            ...ing,
-            sector_letra: extraerLetraSector(ing.sector_descripcion, ing.sector_nombre) || ing.sector_nombre || ing.sector_descripcion || null
-        }));
+        return result.rows.map(ing => {
+            const stockEnCasa = Number((parseFloat(ing.stock_total) || 0).toFixed(4));
+            const comp = compromisosMap.get(Number(ing.id));
+            const comprometidoAbiertos = Number((comp?.kilos_comprometidos || 0).toFixed(4));
+            const proyectadoPostCoccion = Number((stockEnCasa - comprometidoAbiertos).toFixed(4));
+
+            return {
+                ...ing,
+                stock_total: stockEnCasa,
+                stock_en_casa: stockEnCasa,
+                comprometido_abiertos: comprometidoAbiertos,
+                carros_abiertos_count: comp?.carros_count || 0,
+                carros_abiertos_detalle: comp?.carros_detalle || [],
+                proyectado_post_coccion: proyectadoPostCoccion,
+                sector_letra: extraerLetraSector(ing.sector_descripcion, ing.sector_nombre) || ing.sector_nombre || ing.sector_descripcion || null
+            };
+        });
     } catch (error) {
         console.error(`❌ Error en obtenerStockPorUsuario para usuario ${usuarioId}:`, error);
         throw new Error('No se pudo obtener el stock del usuario');

@@ -19,19 +19,20 @@ async function contarRegistrosRelacionados(carroId) {
         const tipoCarroResult = await pool.query(tipoCarroQuery, [carroId]);
         const tipoCarro = tipoCarroResult.rows[0]?.tipo_carro || 'interna';
 
-        // Queries base que siempre se ejecutan
+        // Queries base que siempre se ejecutan (excluyendo abastecimientos domiciliarios permanentes)
         const countStockQuery = `
             SELECT COUNT(*) as count FROM stock_ventas_movimientos 
             WHERE carro_id = $1
+              AND COALESCE(origen_ingreso, '') <> 'abastecimiento_domicilio'
         `;
         const countArticulosQuery = `
             SELECT COUNT(*) as count FROM carros_articulos 
             WHERE carro_id = $1
         `;
 
-        // Query condicional según tipo de carro
+        // Query condicional según tipo de carro (en externos solo contar consumos negativos del carro)
         const countMovimientosQuery = tipoCarro === 'externa'
-            ? `SELECT COUNT(*) as count FROM ingredientes_stock_usuarios WHERE origen_carro_id = $1`
+            ? `SELECT COUNT(*) as count FROM ingredientes_stock_usuarios WHERE origen_carro_id = $1 AND cantidad < 0`
             : `SELECT COUNT(*) as count FROM ingredientes_movimientos WHERE carro_id = $1`;
 
         // Query para historial de producción externa
@@ -97,9 +98,26 @@ async function eliminarRegistrosRelacionados(carroId) {
 
         // 1. Eliminar movimientos de ingredientes según tipo de carro
         if (conteos.tipoCarro === 'externa') {
-            // EXCEPCIÓN AL SISTEMA INMUTABLE: Solo para eliminación completa de carros
-            await pool.query('DELETE FROM ingredientes_stock_usuarios WHERE origen_carro_id = $1', [carroId]);
-            console.log(`Eliminados ${conteos.ingredientes} movimientos de stock de usuarios`);
+            // Protección dura: desacoplar cualquier ingreso positivo que pudiera apuntar al carro y borrar SOLO consumos negativos
+            await pool.query(
+                `UPDATE ingredientes_stock_usuarios
+                    SET carro_referencia_id = COALESCE(carro_referencia_id, origen_carro_id),
+                        origen_carro_id = NULL
+                  WHERE origen_carro_id = $1
+                    AND cantidad >= 0`,
+                [carroId]
+            );
+            await pool.query('DELETE FROM ingredientes_stock_usuarios WHERE origen_carro_id = $1 AND cantidad < 0', [carroId]);
+            console.log(`Eliminados ${conteos.ingredientes} egresos de consumo en stock de usuarios (ingresos domiciliarios preservados)`);
+
+            // Preservar también en stock_ventas_movimientos cualquier retiro de abastecimiento domiciliario permanente
+            await pool.query(
+                `UPDATE stock_ventas_movimientos
+                    SET carro_id = NULL
+                  WHERE carro_id = $1
+                    AND COALESCE(origen_ingreso, '') = 'abastecimiento_domicilio'`,
+                [carroId]
+            );
         }
 
         // 🔧 CORRECCIÓN CRÍTICA: La eliminación de registros dispara el trigger nativo "actualizar_stock_ingrediente" en BD.
