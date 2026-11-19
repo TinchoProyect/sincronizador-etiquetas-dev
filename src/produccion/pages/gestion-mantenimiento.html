@@ -1264,6 +1264,140 @@
             return 1;
         }
 
+        /**
+         * Detecta si un artículo comercial es una caja/pack multi-unidad (ej: "24 x 50g", "10 x 300g", "6 x 1kg", "10 x 300")
+         * evitando falsos positivos con calibres/grados como "25-27 x 10kg", "9/11 x 10kg", "34 - 36 x 2kg" o "W4 x 22.68kg".
+         */
+        function deducirPackDesdeNombre(nombre, kilosUnidadBD = 0) {
+            if (!nombre) return { esPack: false, piezasPorPack: 0, pesoPiezaKg: 0, kilosPack: kilosUnidadBD || 0 };
+            const norm = String(nombre).replace(/,/g, '.').trim();
+            const regex = /(?:^|\s)(\d{1,3})\s*[xX]\s*(\d+(?:\.\d+)?)\s*(kg|k|g|gr|grs|ml|l|litros)?\.?(?=\s|$|\)|,)/gi;
+            let match;
+            while ((match = regex.exec(norm)) !== null) {
+                const startIdx = match.index;
+                const antes = norm.slice(0, startIdx).trimEnd();
+                // Descartar calibres tipo "34 - 36 x 2kg" o "25/27 x 10kg"
+                if (antes.endsWith('-') || antes.endsWith('/')) continue;
+
+                const nPiezas = parseInt(match[1], 10);
+                const valUnit = parseFloat(match[2]);
+                const unidad = (match[3] || '').toLowerCase();
+
+                if (!nPiezas || nPiezas < 2 || isNaN(valUnit) || valUnit <= 0) continue;
+                if (unidad === 'unidades' || unidad === 'u') continue;
+
+                let mult = 1;
+                if (unidad.startsWith('g') || unidad === 'ml') {
+                    mult = 0.001;
+                } else if (!unidad && valUnit >= 20) {
+                    // Ej: "Mix/F/Secas/Tropical 10 x 300" (300g implícitos)
+                    mult = 0.001;
+                }
+
+                const pesoPiezaDeducido = valUnit * mult;
+                const kilosPackDeducido = nPiezas * pesoPiezaDeducido;
+
+                // Si la BD ya provee kilos_unidad, exigir coherencia (±15%) para eliminar cualquier falso positivo residual
+                if (kilosUnidadBD > 0) {
+                    const diffRel = Math.abs(kilosPackDeducido - kilosUnidadBD) / kilosUnidadBD;
+                    if (diffRel > 0.15) continue;
+                }
+
+                const kilosFinal = kilosUnidadBD > 0 ? kilosUnidadBD : kilosPackDeducido;
+                return {
+                    esPack: true,
+                    piezasPorPack: nPiezas,
+                    pesoPiezaKg: kilosFinal / nPiezas,
+                    kilosPack: kilosFinal
+                };
+            }
+            return { esPack: false, piezasPorPack: 0, pesoPiezaKg: 0, kilosPack: kilosUnidadBD || 0 };
+        }
+
+        function actualizarResumenAsignarModal() {
+            const inputCant = document.getElementById('asignar-input-cantidad');
+            const inputKilos = document.getElementById('asignar-input-kilos');
+            const inputDivisor = document.getElementById('asignar-input-divisor');
+            const divEquiv = document.getElementById('asignar-equivalencia-viva');
+            const divAvisoCalle = document.getElementById('asignar-aviso-kilos-calle');
+            const divGuardia = document.getElementById('asignar-resumen-guardia');
+
+            if (!articuloAsignarSeleccionado || !inputCant) {
+                if (divEquiv) divEquiv.style.display = 'none';
+                if (divAvisoCalle) divAvisoCalle.style.display = 'none';
+                if (divGuardia) divGuardia.style.display = 'none';
+                return;
+            }
+
+            const cant = parseFloat(inputCant.value);
+            const ku = articuloAsignarSeleccionado.kilos_unidad || 0;
+            const esPack = Boolean(articuloAsignarSeleccionado.es_pack);
+            const divisor = esPack
+                ? (parseInt(inputDivisor?.value, 10) || articuloAsignarSeleccionado.piezas_por_pack || 1)
+                : 0;
+            const kilosCalc = (!isNaN(cant) && cant > 0 && ku > 0)
+                ? (Math.round(cant * ku * 10000) / 10000)
+                : (parseFloat(inputKilos?.value) || 0);
+            const piezasEquiv = (esPack && !isNaN(cant) && cant > 0 && divisor > 0)
+                ? Math.round(cant * divisor * 100) / 100
+                : 0;
+
+            const fmtKg = (v) => Number(v || 0).toFixed(3).replace('.', ',');
+            const fmtKg2 = (v) => Number(v || 0).toFixed(2).replace('.', ',');
+            const fmtNum = (v) => Number(v || 0).toFixed(4).replace(/\.?0+$/, '');
+
+            if (divEquiv) {
+                if (!isNaN(cant) && cant > 0) {
+                    divEquiv.style.display = 'block';
+                    if (esPack) {
+                        divEquiv.innerHTML = `= <b>${fmtNum(cant)} cajas/packs</b> de <code>${articuloAsignarSeleccionado.codigo}</code> · <b>${fmtNum(piezasEquiv)} piezas sueltas</b> · <b>${fmtKg(kilosCalc)} kg</b>`;
+                    } else {
+                        divEquiv.innerHTML = `= <b>${fmtNum(cant)} bulto(s)</b> de <code>${articuloAsignarSeleccionado.codigo}</code>${kilosCalc > 0 ? ` · <b>${fmtKg(kilosCalc)} kg</b>` : ''}`;
+                    }
+                } else {
+                    divEquiv.style.display = 'none';
+                }
+            }
+
+            // Aviso suave informativo cuando el peso validado en depósito difiere del declarado en calle
+            const kilosCalle = window._kilosAsignarInicial || 0;
+            if (divAvisoCalle) {
+                if (kilosCalle > 0 && kilosCalc > 0 && Math.abs(kilosCalle - kilosCalc) > 0.05) {
+                    divAvisoCalle.style.display = 'block';
+                    divAvisoCalle.innerHTML = `ℹ️ <b>Nota:</b> en calle se declararon <b>${fmtKg2(kilosCalle)} kg</b>; al guardar se tomarán <b>${fmtNum(cant)} ${esPack ? 'cajas' : 'u.'} (${fmtKg2(kilosCalc)} kg reales)</b> y se actualizará el peso del retiro.`;
+                } else {
+                    divAvisoCalle.style.display = 'none';
+                }
+            }
+
+            // Guardia visual anti-error antes de guardar
+            if (divGuardia) {
+                if (!isNaN(cant) && cant > 0) {
+                    const bultosCalle = window._bultosAsignarInicial || 0;
+                    const esAlertaCajas = esPack && cant >= 2 && (bultosCalle <= 1 || !window._usoPiezasSueltas);
+                    divGuardia.style.display = 'block';
+                    if (esAlertaCajas) {
+                        divGuardia.style.background = '#fff3cd';
+                        divGuardia.style.border = '1px solid #f59e0b';
+                        divGuardia.style.color = '#854d0e';
+                        divGuardia.innerHTML = `⚠️ <b>ATENCIÓN:</b> Estás vinculando <b>${fmtNum(cant)} CAJAS completas (${fmtNum(piezasEquiv)} unidades / ${fmtKg2(kilosCalc)} kg)</b>${bultosCalle > 0 ? ` sobre un retiro de ${bultosCalle} bulto(s)` : ''}. Si son piezas sueltas, ingresalas arriba en <b>"Unidades / piezas sueltas contadas"</b>.`;
+                    } else if (esPack) {
+                        divGuardia.style.background = '#d1fae5';
+                        divGuardia.style.border = '1px solid #6ee7b7';
+                        divGuardia.style.color = '#065f46';
+                        divGuardia.innerHTML = `✅ Estás vinculando <b>${fmtNum(cant)} caja(s)</b> (<b>${fmtNum(piezasEquiv)} unidades sueltas</b> / <b>${fmtKg2(kilosCalc)} kg</b>).`;
+                    } else {
+                        divGuardia.style.background = '#e8f4f8';
+                        divGuardia.style.border = '1px solid #bae6fd';
+                        divGuardia.style.color = '#0c4a6e';
+                        divGuardia.innerHTML = `✅ Estás vinculando <b>${fmtNum(cant)} bulto(s)</b> de ${articuloAsignarSeleccionado.codigo}${kilosCalc > 0 ? ` (<b>${fmtKg2(kilosCalc)} kg</b>)` : ''}.`;
+                    }
+                } else {
+                    divGuardia.style.display = 'none';
+                }
+            }
+        }
+
         let articuloAsignarSeleccionado = null;
         let busquedaAsignarTimeout = null;
 
@@ -1271,15 +1405,28 @@
             articuloAsignarSeleccionado = null;
             window._kilosAsignarInicial = (kilosActual && parseFloat(kilosActual) > 0) ? parseFloat(kilosActual) : 0;
             window._articuloAsignarActual = articuloActual || '';
+            window._usoPiezasSueltas = false;
+            window._bultosAsignarInicial = 0;
+
+            if (window.mantenimientoStockData && idMovimiento) {
+                const movItem = window.mantenimientoStockData.find(a => a.id === idMovimiento);
+                if (movItem) {
+                    const parsedObs = robustParseObservations(movItem.observaciones);
+                    if (Array.isArray(parsedObs) && parsedObs.length > 0) {
+                        const bSum = parsedObs.reduce((s, d) => s + (parseInt(d.bultos, 10) || 0), 0);
+                        if (bSum > 0) window._bultosAsignarInicial = bSum;
+                    }
+                }
+            }
             
             Swal.fire({
                 title: articuloActual ? '✏️ Reasignar Artículo Oficial' : 'Asignar Artículo Oficial',
-                width: '600px',
+                width: '620px',
                 html: `
                     <div style="text-align: left;">
-                        <p style="margin-bottom: 15px; color: #555;">${articuloActual ? 'Reasigne el artículo maestro del catálogo para corregir la clasificación de este bulto.' : 'Seleccione el artículo maestro y la cantidad real para vincular a este bulto logístico.'}</p>
+                        <p style="margin-bottom: 12px; color: #555; font-size: 0.92em;">${articuloActual ? 'Reasigne el artículo maestro del catálogo para corregir la clasificación de este bulto.' : 'Seleccione el artículo maestro y la cantidad real para vincular a este bulto logístico.'}</p>
                         
-                        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <div style="display: flex; gap: 10px; margin-bottom: 12px;">
                             <button type="button" id="btn-asignar-modo-codigo" class="btn btn-sm btn-info active" style="flex: 1; padding: 5px; font-weight: bold;" onclick="setModoBusquedaAsignar('codigo')">Búsqueda por Código</button>
                             <button type="button" id="btn-asignar-modo-desc" class="btn btn-sm btn-secondary" style="flex: 1; padding: 5px; font-weight: bold;" onclick="setModoBusquedaAsignar('descripcion')">Búsqueda por Descripción</button>
                         </div>
@@ -1296,29 +1443,48 @@
                         
                         <div id="asignar-resultados" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; margin-top: 10px; display: none; background: #fff;"></div>
                         
-                        <div id="asignar-articulo-seleccionado" style="margin-top: 15px; padding: 10px; background-color: #e8f4f8; border-left: 4px solid #17a2b8; display: none;">
+                        <div id="asignar-articulo-seleccionado" style="margin-top: 12px; padding: 10px; background-color: #e8f4f8; border-left: 4px solid #17a2b8; display: none;">
                             <span style="font-size: 12px; color: #666; display: block;">Artículo Seleccionado:</span>
                             <strong id="asignar-texto-seleccionado"></strong>
                         </div>
-                        
-                        <div style="margin-top: 20px;">
-                            <label style="font-weight: bold; display: block; margin-bottom: 5px;">Cantidad Real / Unidades:</label>
-                            <input type="number" id="asignar-input-cantidad" class="form-control" placeholder="Ej: 15.5" min="0.0001" step="any" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
-                        </div>
 
-                        <!-- CALCULADORA DE KILOS -->
-                        <div id="asignar-calculadora-kilos" style="margin-top: 15px; padding: 12px; background-color: #fcf8e3; border: 1px solid #faebcc; border-radius: 4px; display: none;">
-                            <span style="font-size: 13px; font-weight: bold; color: #8a6d3b; display: block; margin-bottom: 5px;">⚖️ Calculador de Unidades por Peso (Opcional):</span>
-                            <div style="display: flex; align-items: center; gap: 10px;">
-                                <div style="flex: 1;">
-                                    <label style="font-size: 12px; color: #666; display: block; margin-bottom: 3px;">Kilos devueltos/reales:</label>
-                                    <input type="number" id="asignar-input-kilos" class="form-control" placeholder="Ej: 4.785" min="0.0001" step="any" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                        <!-- CONVERSOR DE PIEZAS SUELTAS (SOLO PARA SKU CAJA/PACK N x PESO) -->
+                        <div id="asignar-calculadora-piezas" style="margin-top: 12px; padding: 12px; background-color: #eff6ff; border: 2px solid #3b82f6; border-radius: 6px; display: none;">
+                            <span id="asignar-titulo-piezas" style="font-size: 13px; font-weight: 800; color: #1e3a8a; display: block; margin-bottom: 8px;">🔢 Unidades / piezas sueltas contadas:</span>
+                            <div style="display: flex; align-items: flex-end; gap: 10px;">
+                                <div style="flex: 2;">
+                                    <label style="font-size: 12px; color: #1e40af; font-weight: 600; display: block; margin-bottom: 3px;">Piezas / unidades contadas en mesa:</label>
+                                    <input type="number" id="asignar-input-piezas" class="form-control" placeholder="Ej: 9" min="0.01" step="any" style="width: 100%; padding: 8px; border: 2px solid #2563eb; border-radius: 4px; font-weight: bold; font-size: 15px; box-sizing: border-box;">
                                 </div>
-                                <div style="flex: 1; padding-top: 15px;">
-                                    <span id="asignar-texto-peso-unitario" style="font-size: 13px; color: #666; font-weight: 500;">Peso unitario: -</span>
+                                <div style="flex: 1;">
+                                    <label style="font-size: 11px; color: #475569; display: block; margin-bottom: 3px;">Piezas por pack:</label>
+                                    <input type="number" id="asignar-input-divisor" class="form-control" min="1" step="1" style="width: 100%; padding: 8px; border: 1px solid #93c5fd; border-radius: 4px; background: #fff; font-weight: bold; box-sizing: border-box;">
                                 </div>
                             </div>
                         </div>
+                        
+                        <div style="margin-top: 14px;">
+                            <label id="asignar-label-cantidad" style="font-weight: bold; display: block; margin-bottom: 5px;">Cantidad de Cajas / Bultos del SKU (fracción facturable):</label>
+                            <input type="number" id="asignar-input-cantidad" class="form-control" placeholder="Ej: 0.375" min="0.0001" step="any" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                            <div id="asignar-equivalencia-viva" style="display: none; margin-top: 5px; font-size: 12.5px; color: #0f766e;"></div>
+                        </div>
+
+                        <!-- CALCULADORA DE KILOS -->
+                        <div id="asignar-calculadora-kilos" style="margin-top: 12px; padding: 12px; background-color: #fcf8e3; border: 1px solid #faebcc; border-radius: 4px; display: none;">
+                            <span style="font-size: 13px; font-weight: bold; color: #8a6d3b; display: block; margin-bottom: 5px;">⚖️ Calculador de Bultos por Peso (Opcional):</span>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <div style="flex: 1;">
+                                    <label style="font-size: 12px; color: #666; display: block; margin-bottom: 3px;">Kilos devueltos/reales:</label>
+                                    <input type="number" id="asignar-input-kilos" class="form-control" placeholder="Ej: 0.45" min="0.0001" step="any" style="width: 100%; padding: 6px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;">
+                                </div>
+                                <div style="flex: 1; padding-top: 15px;">
+                                    <span id="asignar-texto-peso-unitario" style="font-size: 13px; color: #666; font-weight: 500;">Peso del bulto: -</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="asignar-aviso-kilos-calle" style="display: none; margin-top: 10px; padding: 8px 10px; background: #f1f5f9; border-left: 4px solid #64748b; border-radius: 4px; font-size: 12px; color: #334155;"></div>
+                        <div id="asignar-resumen-guardia" style="display: none; margin-top: 10px; padding: 10px 12px; border-radius: 6px; font-size: 13px;"></div>
                     </div>
                 `,
                 showCancelButton: true,
@@ -1329,6 +1495,8 @@
                     const inputDesc = document.getElementById('asignar-input-desc');
                     const inputCant = document.getElementById('asignar-input-cantidad');
                     const inputKilos = document.getElementById('asignar-input-kilos');
+                    const inputPiezas = document.getElementById('asignar-input-piezas');
+                    const inputDivisor = document.getElementById('asignar-input-divisor');
                     
                     if (window._kilosAsignarInicial > 0 && inputKilos) {
                         inputKilos.value = window._kilosAsignarInicial;
@@ -1339,10 +1507,10 @@
                     if (articuloActual) {
                         setModoBusquedaAsignar('descripcion');
                         if (inputDesc) {
-                            setTimeout(() => inputDesc.focus(), 100);
+                            setTimeout(() => { if (!articuloAsignarSeleccionado) inputDesc.focus(); }, 100);
                         }
                     } else if (inputCodigo) {
-                        setTimeout(() => inputCodigo.focus(), 100);
+                        setTimeout(() => { if (!articuloAsignarSeleccionado) inputCodigo.focus(); }, 100);
                     }
                     
                     // Buscar por código con Enter
@@ -1362,44 +1530,118 @@
                         }, 400);
                     });
 
-                    // Sincronización bidireccional
+                    // Sincronización triple: Piezas Sueltas <-> Fracción SKU <-> Kilos Reales
+                    const recalcularDesdePiezas = () => {
+                        const piezas = parseFloat(inputPiezas?.value);
+                        const divisor = parseInt(inputDivisor?.value, 10) || (articuloAsignarSeleccionado?.piezas_por_pack || 0);
+                        const ku = (articuloAsignarSeleccionado && articuloAsignarSeleccionado.kilos_unidad) ? articuloAsignarSeleccionado.kilos_unidad : 0;
+                        window._usoPiezasSueltas = true;
+                        if (piezas > 0 && divisor > 0) {
+                            const fraccion = Math.round((piezas / divisor) * 10000) / 10000;
+                            inputCant.value = fraccion;
+                            if (ku > 0 && inputKilos) {
+                                inputKilos.value = Math.round((fraccion * ku) * 10000) / 10000;
+                            }
+                        } else if (inputPiezas?.value === '') {
+                            inputCant.value = '';
+                            if (inputKilos) inputKilos.value = '';
+                        }
+                        actualizarResumenAsignarModal();
+                    };
+
+                    if (inputPiezas) {
+                        inputPiezas.addEventListener('input', recalcularDesdePiezas);
+                    }
+                    if (inputDivisor) {
+                        inputDivisor.addEventListener('input', () => {
+                            const divNuevo = parseInt(inputDivisor.value, 10);
+                            if (articuloAsignarSeleccionado && divNuevo > 0) {
+                                articuloAsignarSeleccionado.piezas_por_pack = divNuevo;
+                                const titPiezas = document.getElementById('asignar-titulo-piezas');
+                                if (titPiezas) titPiezas.textContent = `🔢 Unidades / piezas sueltas contadas (el pack trae ${divNuevo}):`;
+                            }
+                            if (inputPiezas && parseFloat(inputPiezas.value) > 0) {
+                                recalcularDesdePiezas();
+                            } else {
+                                actualizarResumenAsignarModal();
+                            }
+                        });
+                    }
+
                     if (inputKilos && inputCant) {
                         inputKilos.addEventListener('input', function() {
                             const kilos = parseFloat(inputKilos.value);
                             const ku = (articuloAsignarSeleccionado && articuloAsignarSeleccionado.kilos_unidad) ? articuloAsignarSeleccionado.kilos_unidad : 0;
+                            const divisor = parseInt(inputDivisor?.value, 10) || (articuloAsignarSeleccionado?.piezas_por_pack || 0);
                             if (kilos > 0 && ku > 0) {
-                                const units = kilos / ku;
-                                inputCant.value = Math.round(units * 10000) / 10000;
+                                const units = Math.round((kilos / ku) * 10000) / 10000;
+                                inputCant.value = units;
+                                if (articuloAsignarSeleccionado?.es_pack && inputPiezas && divisor > 0) {
+                                    inputPiezas.value = Math.round((units * divisor) * 100) / 100;
+                                }
                             } else if (inputKilos.value === '') {
                                 inputCant.value = '';
+                                if (inputPiezas) inputPiezas.value = '';
                             }
+                            actualizarResumenAsignarModal();
                         });
                         
                         inputCant.addEventListener('input', function() {
                             const units = parseFloat(inputCant.value);
                             const ku = (articuloAsignarSeleccionado && articuloAsignarSeleccionado.kilos_unidad) ? articuloAsignarSeleccionado.kilos_unidad : 0;
-                            if (units > 0 && ku > 0) {
-                                const kilos = units * ku;
-                                inputKilos.value = Math.round(kilos * 10000) / 10000;
+                            const divisor = parseInt(inputDivisor?.value, 10) || (articuloAsignarSeleccionado?.piezas_por_pack || 0);
+                            if (units > 0) {
+                                if (ku > 0) {
+                                    inputKilos.value = Math.round((units * ku) * 10000) / 10000;
+                                }
+                                if (articuloAsignarSeleccionado?.es_pack && inputPiezas && divisor > 0) {
+                                    inputPiezas.value = Math.round((units * divisor) * 100) / 100;
+                                }
                             } else if (inputCant.value === '') {
                                 inputKilos.value = '';
+                                if (inputPiezas) inputPiezas.value = '';
                             }
+                            actualizarResumenAsignarModal();
                         });
                     }
                 },
                 preConfirm: () => {
                     const cantInput = document.getElementById('asignar-input-cantidad');
+                    const kilosInput = document.getElementById('asignar-input-kilos');
+                    const divisorInput = document.getElementById('asignar-input-divisor');
                     if (!articuloAsignarSeleccionado) {
                         Swal.showValidationMessage('Debe buscar y seleccionar un artículo oficial de la lista.');
                         return false;
                     }
-                    if (!cantInput.value || parseFloat(cantInput.value) <= 0) {
+                    const cantVal = parseFloat(cantInput.value);
+                    if (!cantInput.value || isNaN(cantVal) || cantVal <= 0) {
                         Swal.showValidationMessage('Debe ingresar una Cantidad válida mayor a 0.');
                         return false;
                     }
+
+                    const ku = articuloAsignarSeleccionado.kilos_unidad || 0;
+                    const kilosReales = (kilosInput && parseFloat(kilosInput.value) > 0)
+                        ? Math.round(parseFloat(kilosInput.value) * 10000) / 10000
+                        : (ku > 0 ? Math.round(cantVal * ku * 10000) / 10000 : null);
+
+                    // Guardia anti-confusión cajas vs piezas sueltas
+                    if (articuloAsignarSeleccionado.es_pack && cantVal >= 2 && (window._bultosAsignarInicial <= 1 || !window._usoPiezasSueltas)) {
+                        const divPack = parseInt(divisorInput?.value, 10) || articuloAsignarSeleccionado.piezas_por_pack || 1;
+                        const totalPiezas = Math.round(cantVal * divPack * 100) / 100;
+                        const okCajas = confirm(
+                            `⚠️ VERIFICACIÓN DE CAJAS COMPLETAS\n\n` +
+                            `Vas a vincular ${cantVal} CAJAS completas de ${articuloAsignarSeleccionado.codigo} ` +
+                            `(${totalPiezas} unidades / ${(kilosReales || 0).toFixed(2)} kg).\n\n` +
+                            `Si en realidad son unidades sueltas, cancelá y escribilo en "Unidades / piezas sueltas contadas".\n\n` +
+                            `¿Confirmás que son ${cantVal} CAJAS completas?`
+                        );
+                        if (!okCajas) return false;
+                    }
+
                     return {
                         articulo_numero: articuloAsignarSeleccionado.codigo,
-                        cantidad: parseFloat(cantInput.value)
+                        cantidad: cantVal,
+                        kilos_reales: kilosReales
                     };
                 }
             }).then(async (result) => {
@@ -1407,7 +1649,8 @@
                     const payload = {
                         movimiento_id: idMovimiento,
                         articulo_numero: result.value.articulo_numero,
-                        cantidad: result.value.cantidad
+                        cantidad: result.value.cantidad,
+                        kilos_reales: result.value.kilos_reales
                     };
                     
                     Swal.fire({
@@ -1985,22 +2228,61 @@
                 ku = deducirKilosUnidadDesdeNombre(descripcion);
             }
 
+            const packInfo = deducirPackDesdeNombre(descripcion, ku);
+            if ((!ku || ku <= 0) && packInfo.kilosPack > 0) {
+                ku = packInfo.kilosPack;
+            }
+
+            window._usoPiezasSueltas = false;
             articuloAsignarSeleccionado = { 
                 codigo, 
                 descripcion,
-                kilos_unidad: ku
+                kilos_unidad: ku,
+                es_pack: packInfo.esPack,
+                piezas_por_pack: packInfo.piezasPorPack,
+                peso_pieza_kg: packInfo.pesoPiezaKg
             };
             
             const divSelect = document.getElementById('asignar-articulo-seleccionado');
             const textSelect = document.getElementById('asignar-texto-seleccionado');
             const resDiv = document.getElementById('asignar-resultados');
             const inputCant = document.getElementById('asignar-input-cantidad');
+            const labelCant = document.getElementById('asignar-label-cantidad');
+            const divPiezas = document.getElementById('asignar-calculadora-piezas');
+            const titPiezas = document.getElementById('asignar-titulo-piezas');
+            const inputPiezas = document.getElementById('asignar-input-piezas');
+            const inputDivisor = document.getElementById('asignar-input-divisor');
             
             if (divSelect) divSelect.style.display = 'block';
             if (textSelect) textSelect.innerHTML = `${descripcion} <span style="color: #666; font-family: monospace;">(${codigo})</span>`;
             if (resDiv) resDiv.style.display = 'none';
 
-            // Configurar calculadora
+            if (labelCant) {
+                labelCant.textContent = packInfo.esPack
+                    ? `Cantidad de Cajas / Packs del SKU (fracción facturable):`
+                    : `Cantidad de Bultos / Unidades del SKU (fracción facturable):`;
+            }
+
+            // Configurar bloque de piezas sueltas si es caja/pack N x peso
+            if (divPiezas) {
+                if (packInfo.esPack) {
+                    divPiezas.style.display = 'block';
+                    if (titPiezas) {
+                        const pesoUnitGr = Math.round(packInfo.pesoPiezaKg * 1000);
+                        const pesoTxt = packInfo.pesoPiezaKg >= 1
+                            ? `${packInfo.pesoPiezaKg.toFixed(2).replace(/\.?0+$/, '')} kg`
+                            : `${pesoUnitGr}g`;
+                        titPiezas.textContent = `🔢 Unidades / piezas sueltas contadas (el pack trae ${packInfo.piezasPorPack} × ${pesoTxt}):`;
+                    }
+                    if (inputDivisor) inputDivisor.value = packInfo.piezasPorPack;
+                    if (inputPiezas) inputPiezas.value = '';
+                } else {
+                    divPiezas.style.display = 'none';
+                    if (inputPiezas) inputPiezas.value = '';
+                }
+            }
+
+            // Configurar calculadora de kilos
             const divCalc = document.getElementById('asignar-calculadora-kilos');
             const textPeso = document.getElementById('asignar-texto-peso-unitario');
             const inputKilos = document.getElementById('asignar-input-kilos');
@@ -2008,21 +2290,35 @@
             if (divCalc) {
                 if (ku > 0) {
                     divCalc.style.display = 'block';
-                    if (textPeso) textPeso.innerHTML = `Peso unitario: <b>${ku} kg</b>`;
+                    if (textPeso) {
+                        textPeso.innerHTML = packInfo.esPack
+                            ? `Peso caja completa: <b>${ku} kg</b>`
+                            : `Peso del bulto: <b>${ku} kg</b>`;
+                    }
                     const currentKilos = parseFloat(inputKilos ? inputKilos.value : 0) || window._kilosAsignarInicial || 0;
                     if (currentKilos > 0 && inputKilos) {
                         inputKilos.value = currentKilos;
-                        const units = currentKilos / ku;
-                        if (inputCant) inputCant.value = Math.round(units * 10000) / 10000;
+                        const units = Math.round((currentKilos / ku) * 10000) / 10000;
+                        if (inputCant) inputCant.value = units;
+                        if (packInfo.esPack && inputPiezas && packInfo.piezasPorPack > 0) {
+                            inputPiezas.value = Math.round((units * packInfo.piezasPorPack) * 100) / 100;
+                        }
                     }
                 } else {
                     divCalc.style.display = 'none';
                 }
             }
 
-            if (inputCant) {
+            actualizarResumenAsignarModal();
+
+            if (packInfo.esPack && inputPiezas) {
+                setTimeout(() => {
+                    inputPiezas.focus();
+                    inputPiezas.select();
+                }, 30);
+            } else if (inputCant) {
                 if (!inputCant.value) inputCant.value = '';
-                inputCant.focus();
+                setTimeout(() => inputCant.focus(), 30);
             }
         };
         

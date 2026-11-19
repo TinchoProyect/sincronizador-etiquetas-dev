@@ -3370,10 +3370,19 @@ async function imprimirComprobanteArribo(req, res) {
 const asignarArticuloOficial = async (req, res) => {
     const client = await pool.connect();
     try {
-        const { movimiento_id, articulo_numero, cantidad } = req.body;
+        const { movimiento_id, articulo_numero, cantidad, kilos_reales } = req.body;
         if (!movimiento_id || !articulo_numero || !cantidad) {
             throw new Error('Parámetros incompletos. Se requiere ID de Movimiento, Número de Artículo y Cantidad.');
         }
+
+        const cantidadNum = parseFloat(cantidad);
+        if (isNaN(cantidadNum) || cantidadNum <= 0) {
+            throw new Error('La cantidad debe ser un número válido mayor a 0.');
+        }
+        const kilosRealesNum = (kilos_reales !== undefined && kilos_reales !== null && kilos_reales !== '')
+            ? parseFloat(kilos_reales)
+            : null;
+        const tieneKilosRealesValidos = (kilosRealesNum !== null && !isNaN(kilosRealesNum) && kilosRealesNum > 0);
 
         await client.query('BEGIN');
 
@@ -3423,25 +3432,56 @@ const asignarArticuloOficial = async (req, res) => {
             SET stock_mantenimiento = COALESCE(stock_mantenimiento, 0) + $1,
                 ultima_actualizacion = NOW()
             WHERE articulo_numero = $2 OR codigo_barras = $2
-        `, [parseFloat(cantidad) || 0, skuOficial]);
+        `, [cantidadNum, skuOficial]);
 
-        // 2.5. Actualizamos mantenimiento_movimientos
+        // 2.5. Si llegó peso real validado en depósito, sincronizarlo también en el JSON de observaciones
+        // para que la grilla de Mantenimiento no siga arrastrando un peso estimado erróneo de la calle.
+        let obsActualizadas = mov.observaciones;
+        if (tieneKilosRealesValidos && mov.observaciones) {
+            try {
+                const parsedObs = typeof mov.observaciones === 'string' ? JSON.parse(mov.observaciones) : mov.observaciones;
+                if (Array.isArray(parsedObs) && parsedObs.length > 0) {
+                    const kilosPrevios = parseFloat(parsedObs[0].kilos);
+                    const kilosRedondeados = Math.round(kilosRealesNum * 10000) / 10000;
+                    if (!isNaN(kilosPrevios) && Math.abs(kilosPrevios - kilosRedondeados) > 0.0005 && parsedObs[0].kilos_calle_original === undefined) {
+                        parsedObs[0].kilos_calle_original = kilosPrevios;
+                    }
+                    parsedObs[0].kilos = kilosRedondeados;
+                    obsActualizadas = JSON.stringify(parsedObs);
+                }
+            } catch (_) {
+                // Si observaciones no era JSON puro, no alterarlo
+            }
+        }
+
+        // Actualizamos mantenimiento_movimientos
         const updateMov = await client.query(`
             UPDATE public.mantenimiento_movimientos
-            SET articulo_numero = $1, cantidad = $3
+            SET articulo_numero = $1,
+                cantidad = $3,
+                observaciones = $4
             WHERE id = $2
             RETURNING id_orden_tratamiento
-        `, [skuOficial, movimiento_id, cantidad]);
+        `, [skuOficial, movimiento_id, cantidadNum, obsActualizadas]);
 
         const id_orden_tratamiento = updateMov.rows[0].id_orden_tratamiento;
 
-        // 3. Propagación a la orden original (para trazabilidad y PDF de Arribo)
+        // 3. Propagación a la orden original (SKU + peso real validado en depósito)
         if (id_orden_tratamiento) {
-            await client.query(`
-                UPDATE public.ordenes_tratamiento_detalles
-                SET articulo_numero = $1
-                WHERE id_orden_tratamiento = $2
-            `, [skuOficial, id_orden_tratamiento]);
+            if (tieneKilosRealesValidos) {
+                await client.query(`
+                    UPDATE public.ordenes_tratamiento_detalles
+                    SET articulo_numero = $1,
+                        kilos = $3
+                    WHERE id_orden_tratamiento = $2
+                `, [skuOficial, id_orden_tratamiento, Math.round(kilosRealesNum * 10000) / 10000]);
+            } else {
+                await client.query(`
+                    UPDATE public.ordenes_tratamiento_detalles
+                    SET articulo_numero = $1
+                    WHERE id_orden_tratamiento = $2
+                `, [skuOficial, id_orden_tratamiento]);
+            }
         }
 
         await client.query('COMMIT');
