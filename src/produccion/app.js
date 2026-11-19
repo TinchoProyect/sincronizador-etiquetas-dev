@@ -1725,13 +1725,19 @@ httpServer.listen(PORT, () => {
         });
 
     // Ampliación idempotente del CHECK constraint de Mantenimiento para tipo_movimiento 'DESCARTE'
+    // + Tabla de motivos de descarte, columnas de costo snapshot y backfill valorizado
     const { asegurarCheckDescarteMantenimiento } = require('./migrations/asegurarCheckDescarteMantenimiento');
+    const { asegurarEsquemaDescartesMantenimiento } = require('./migrations/asegurarEsquemaDescartesMantenimiento');
     asegurarCheckDescarteMantenimiento(db)
         .then(resDesc => {
             console.log('✅ [STARTUP-MANTENIMIENTO-DESCARTE] CHECK constraint verificado:', JSON.stringify(resDesc));
+            return asegurarEsquemaDescartesMantenimiento(db);
+        })
+        .then(resEsq => {
+            console.log('✅ [STARTUP-MANTENIMIENTO-DESCARTE] Esquema motivos/costos y backfill verificados:', JSON.stringify(resEsq));
         })
         .catch(errDesc => {
-            console.warn('⚠️ [STARTUP-MANTENIMIENTO-DESCARTE] Advertencia al verificar CHECK DESCARTE:', errDesc.message);
+            console.warn('⚠️ [STARTUP-MANTENIMIENTO-DESCARTE] Advertencia al verificar esquema DESCARTE:', errDesc.message);
         });
 
     // Esquema Nodos (incluyendo fotos_vidriera / fotos_catalogo_base) y aprovisionamiento + perfiles idempotentes de Paraíso y MANSO

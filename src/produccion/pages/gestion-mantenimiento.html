@@ -277,6 +277,490 @@
                 opacity: 1;
             }
         }
+
+        /* ==============================================================
+           REDESIGN PROFESIONAL MANTENIMIENTO (Full-width + 6 cols + KPIs)
+           ============================================================== */
+        .container {
+            max-width: 100% !important;
+            width: 100%;
+            padding: 12px 20px 24px 20px;
+            box-sizing: border-box;
+        }
+
+        .container > header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 12px 18px;
+            margin-bottom: 12px;
+        }
+
+        .mant-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .mant-header-left h1 {
+            margin: 0;
+            font-size: 1.35rem;
+            line-height: 1.2;
+        }
+
+        .btn-toggle-filtros {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+            border-radius: 6px;
+            padding: 7px 12px;
+            font-size: 0.88rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.18s, color 0.18s;
+            white-space: nowrap;
+        }
+
+        .btn-toggle-filtros:hover {
+            background: #dbeafe;
+        }
+
+        .btn-toggle-filtros.is-collapsed {
+            background: #1d4ed8;
+            color: #ffffff;
+            border-color: #1d4ed8;
+        }
+
+        .ingredientes-container {
+            height: auto !important;
+            min-height: calc(100vh - 104px);
+            align-items: stretch;
+        }
+
+        .panel-config {
+            width: 235px;
+            min-width: 205px !important;
+            max-width: 400px;
+            flex-shrink: 0;
+        }
+
+        .panel-config.collapsed {
+            display: none !important;
+        }
+
+        .panel-config .config-header {
+            padding: 14px 15px;
+        }
+
+        .panel-config .config-body {
+            padding: 12px;
+            font-size: 0.9rem;
+        }
+
+        .panel-main {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .panel-main-content {
+            padding: 14px 18px;
+        }
+
+        .tabs-header {
+            flex-wrap: wrap;
+            gap: 2px;
+            margin-bottom: 14px;
+        }
+
+        .tab-btn {
+            padding: 10px 10px;
+            font-size: 0.86rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+
+        .tab-count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            border-radius: 999px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        /* Tabla Stock Mantenimiento (6 columnas limpias) */
+        .mant-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.92rem;
+        }
+
+        .mant-table thead th {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            color: #475569;
+            background: #f8fafc;
+            border-bottom: 2px solid #e2e8f0;
+            padding: 10px 10px;
+            white-space: nowrap;
+        }
+
+        .mant-table tbody td {
+            padding: 11px 10px;
+            vertical-align: middle;
+            border-bottom: 1px solid #eef2f7;
+        }
+
+        .mant-table tbody tr:hover {
+            background: #f8fafc;
+        }
+
+        .mant-item-title {
+            font-weight: 700;
+            color: #0f172a;
+            font-size: 0.95rem;
+            line-height: 1.3;
+        }
+
+        .mant-item-rt {
+            display: inline-block;
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+            border-radius: 5px;
+            padding: 1px 6px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            margin-right: 6px;
+        }
+
+        .mant-item-sku {
+            font-family: Consolas, monospace;
+            background: #f1f5f9;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            margin-right: 6px;
+        }
+
+        .mant-item-sub {
+            color: #475569;
+            font-size: 0.84rem;
+            margin-top: 3px;
+            line-height: 1.35;
+        }
+
+        .mant-meta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 6px;
+        }
+
+        .mant-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            padding: 2px 7px;
+            border-radius: 999px;
+            font-size: 0.76rem;
+            font-weight: 600;
+            background: #f1f5f9;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .mant-chip-ruta { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+        .mant-chip-doc { background: #ecfeff; color: #0e7490; border-color: #a5f3fc; }
+        .mant-chip-tto { background: #ecfdf5; color: #047857; border-color: #a7f3d0; }
+        .mant-chip-obs { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+
+        .mant-stage-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.79rem;
+            font-weight: 700;
+            line-height: 1.25;
+            white-space: nowrap;
+        }
+
+        .stage-danger  { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+        .stage-purple  { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+        .stage-amber   { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+        .stage-success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+        .stage-info    { background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; }
+
+        .mant-stock-qty {
+            font-weight: 700;
+            font-size: 1rem;
+            color: #92400e;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .mant-stock-kg {
+            font-size: 0.82rem;
+            color: #64748b;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* Acciones: CTA primario 1-clic + menú secundario inteligente sin clipping */
+        .mant-actions-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: nowrap;
+        }
+
+        .mant-cta-btn {
+            border: none;
+            border-radius: 6px;
+            padding: 7px 11px;
+            font-size: 0.83rem;
+            font-weight: 700;
+            color: #fff;
+            cursor: pointer;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+            transition: filter 0.15s, transform 0.1s;
+        }
+
+        .mant-cta-btn:hover:not(:disabled) { filter: brightness(0.93); }
+        .mant-cta-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        .mant-menu-wrap {
+            position: relative;
+            display: inline-flex;
+        }
+
+        .mant-more-btn {
+            background: #f1f5f9;
+            color: #334155;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 6px 9px;
+            font-size: 0.9rem;
+            font-weight: 800;
+            cursor: pointer;
+            line-height: 1;
+            transition: background 0.15s;
+        }
+
+        .mant-more-btn:hover {
+            background: #e2e8f0;
+        }
+
+        .mant-menu-popover {
+            display: none;
+            position: fixed;
+            min-width: 245px;
+            max-width: 290px;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+            z-index: 3000;
+            padding: 5px 0;
+            overflow: hidden;
+        }
+
+        .mant-menu-popover.open {
+            display: block;
+        }
+
+        .mant-menu-popover button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+            text-align: left;
+            padding: 9px 14px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 0.86rem;
+            font-weight: 600;
+            color: #1e293b;
+            transition: background 0.12s;
+        }
+
+        .mant-menu-popover button:hover:not(:disabled) {
+            background: #f1f5f9;
+        }
+
+        .mant-menu-popover button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
+        .mant-menu-sep {
+            height: 1px;
+            background: #e2e8f0;
+            margin: 4px 0;
+        }
+
+        .mant-menu-note {
+            padding: 7px 14px;
+            font-size: 0.78rem;
+            color: #92400e;
+            background: #fffbeb;
+            font-weight: 600;
+            border-top: 1px solid #fde68a;
+            border-bottom: 1px solid #fde68a;
+            margin: 3px 0;
+        }
+
+        .mant-row-timestamp {
+            font-size: 0.75rem;
+            color: #64748b;
+            margin-top: 5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* ==============================================================
+           PESTAÑA REGISTRO DE DESCARTES (KPIs + Filtros + Tabla)
+           ============================================================== */
+        .descartes-filtros-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            gap: 10px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 16px;
+        }
+
+        .descartes-filtro-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 135px;
+        }
+
+        .descartes-filtro-item.grow {
+            flex: 1;
+            min-width: 210px;
+        }
+
+        .descartes-filtro-item label {
+            font-size: 0.76rem;
+            font-weight: 700;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .descartes-filtro-item input,
+        .descartes-filtro-item select {
+            height: 36px;
+            padding: 6px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            background: #fff;
+            font-size: 0.88rem;
+            box-sizing: border-box;
+        }
+
+        .descartes-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(180px, 1fr));
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        @media (max-width: 1024px) {
+            .descartes-kpi-grid {
+                grid-template-columns: repeat(2, minmax(160px, 1fr));
+            }
+        }
+
+        .descartes-kpi-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 14px 16px;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+            border-left: 4px solid #64748b;
+        }
+
+        .descartes-kpi-card.kpi-kilos { border-left-color: #0284c7; }
+        .descartes-kpi-card.kpi-unidades { border-left-color: #7c3aed; }
+        .descartes-kpi-card.kpi-costo { border-left-color: #dc2626; background: #fffafa; }
+        .descartes-kpi-card.kpi-nc { border-left-color: #d97706; }
+
+        .descartes-kpi-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #475569;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            margin-bottom: 6px;
+        }
+
+        .descartes-kpi-value {
+            font-size: 1.45rem;
+            font-weight: 800;
+            color: #0f172a;
+            font-variant-numeric: tabular-nums;
+            line-height: 1.15;
+        }
+
+        .descartes-kpi-card.kpi-costo .descartes-kpi-value {
+            color: #b91c1c;
+        }
+
+        .descartes-kpi-sub {
+            font-size: 0.78rem;
+            color: #64748b;
+            margin-top: 4px;
+        }
+
+        .descarte-motivo-pill {
+            display: inline-block;
+            background: #fef2f2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+            border-radius: 999px;
+            padding: 2px 9px;
+            font-size: 0.79rem;
+            font-weight: 700;
+        }
+
+        #tabla-descartes thead th,
+        #tabla-descartes tbody td {
+            padding: 9px 7px;
+        }
     </style>
 
     <!-- SweetAlert2 -->
@@ -286,13 +770,18 @@
 <body>
     <div class="container">
         <header>
-            <h1>🛠️ Gestión de Almacén de Mantenimiento</h1>
+            <div class="mant-header-left">
+                <button type="button" id="btn-toggle-filtros" class="btn-toggle-filtros" onclick="togglePanelFiltros()" title="Mostrar u ocultar panel de filtros">
+                    ☰ Filtros
+                </button>
+                <h1>🛠️ Gestión de Almacén de Mantenimiento</h1>
+            </div>
             <a href="produccion.html" class="back-button">← Volver al Panel</a>
         </header>
 
         <main class="ingredientes-container">
-            <!-- PANEL IZQUIERDO: FILTROS (Simplificado por ahora) -->
-            <div class="panel-config" id="panel-config" style="width: 300px;">
+            <!-- PANEL IZQUIERDO: FILTROS (235px colapsable) -->
+            <div class="panel-config" id="panel-config" style="width: 235px;">
                 <div class="panel-resizer" id="panel-resizer"></div>
                 <div class="config-header">
                     <h2>⚙️ Filtros</h2>
@@ -354,8 +843,8 @@
                     <div class="tabs-container">
                         <div class="tabs-header">
                             <button class="tab-btn active" onclick="switchTab('taller')">🛠️ Stock Mantenimiento</button>
-                            <button class="tab-btn" onclick="switchTab('mostrador')">🧍‍♂️ Esperando Cliente
-                                (Mostrador)</button>
+                            <button class="tab-btn" onclick="switchTab('descartes')">📉 Registro de Descartes <span id="badge-count-descartes" class="tab-count-badge" style="display:none;">0</span></button>
+                            <button class="tab-btn" onclick="switchTab('mostrador')">🧍‍♂️ Esperando Cliente (Mostrador)</button>
                             <button class="tab-btn" onclick="switchTab('reparto')">🚚 Esperando Reparto (Ruta)</button>
                             <button class="tab-btn" onclick="switchTab('tratamientos')">🏕️ Tratamientos (Carpas)</button>
                         </div>
@@ -378,21 +867,20 @@
                             </div>
 
                             <div class="table-responsive">
-                                <table class="tabla-ingredientes">
+                                <table class="tabla-ingredientes mant-table">
                                     <thead>
                                         <tr>
-                                            <th style="width: 40px; text-align: center;"><input type="checkbox" id="chk-all-mantenimiento" onchange="toggleAllMantenimiento(this)"></th>
-                                            <th>Artículo (ID)</th>
-                                            <th>Origen (Cliente)</th>
-                                            <th>Stock Cuarentena</th>
-                                            <th>Conciliación</th>
-                                            <th>Estado</th>
-                                            <th>Última Act.</th>
+                                            <th style="width: 38px; text-align: center;"><input type="checkbox" id="chk-all-mantenimiento" onchange="toggleAllMantenimiento(this)"></th>
+                                            <th style="min-width: 280px;">Ticket y Artículo</th>
+                                            <th style="min-width: 170px;">Origen (Cliente)</th>
+                                            <th style="width: 130px; text-align: right;">Stock Cuarentena</th>
+                                            <th style="width: 175px;">Etapa</th>
+                                            <th style="width: 250px;">Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tbody-stock">
                                         <tr>
-                                            <td colspan="7" class="text-center">Cargando...</td>
+                                            <td colspan="6" class="text-center">Cargando...</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -428,6 +916,93 @@
                         </div>
 
                     </div> <!-- CIERRRE TAB TALLER -->
+
+                    <!-- TAB REGISTRO DE DESCARTES VALORIZADO -->
+                    <div id="tab-descartes" class="tab-content">
+                        <div class="content-section">
+                            <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                                <h2>📉 Registro de Descartes Valorizado (Pérdida a Costo Real)</h2>
+                                <button class="refresh-btn" onclick="cargarRegistroDescartes()">🔄 Actualizar</button>
+                            </div>
+
+                            <div class="descartes-filtros-bar">
+                                <div class="descartes-filtro-item">
+                                    <label for="desc-filtro-desde">Desde</label>
+                                    <input type="date" id="desc-filtro-desde" onchange="cargarRegistroDescartes()">
+                                </div>
+                                <div class="descartes-filtro-item">
+                                    <label for="desc-filtro-hasta">Hasta</label>
+                                    <input type="date" id="desc-filtro-hasta" onchange="cargarRegistroDescartes()">
+                                </div>
+                                <div class="descartes-filtro-item" style="min-width: 200px;">
+                                    <label for="desc-filtro-motivo">Motivo de Descarte</label>
+                                    <select id="desc-filtro-motivo" onchange="cargarRegistroDescartes()">
+                                        <option value="">Todos los motivos</option>
+                                    </select>
+                                </div>
+                                <div class="descartes-filtro-item" style="min-width: 175px;">
+                                    <label for="desc-filtro-origen">Origen</label>
+                                    <select id="desc-filtro-origen" onchange="cargarRegistroDescartes()">
+                                        <option value="TODOS">Todos</option>
+                                        <option value="DEVOLUCION_CLIENTE">Devolución de Cliente</option>
+                                        <option value="INTERNO">Movimiento Interno</option>
+                                    </select>
+                                </div>
+                                <div class="descartes-filtro-item grow">
+                                    <label for="desc-filtro-q">Buscar (artículo, cliente, RT, NC, motivo)</label>
+                                    <input type="text" id="desc-filtro-q" placeholder="Ej: BF24X50 Gorina aplastamiento..." onkeydown="if (event.key === 'Enter') cargarRegistroDescartes()">
+                                </div>
+                                <div style="display: flex; gap: 6px; align-items: center;">
+                                    <button type="button" class="mant-cta-btn" style="background: #0284c7; height: 36px;" onclick="cargarRegistroDescartes()">🔍 Filtrar</button>
+                                    <button type="button" class="mant-more-btn" style="height: 36px; padding: 0 12px; font-weight: 600;" onclick="limpiarFiltrosDescartes()">Limpiar</button>
+                                </div>
+                            </div>
+
+                            <div class="descartes-kpi-grid">
+                                <div class="descartes-kpi-card kpi-kilos">
+                                    <div class="descartes-kpi-label">⚖️ Kilos Descartados</div>
+                                    <div class="descartes-kpi-value" id="kpi-desc-kilos">0,00 kg</div>
+                                    <div class="descartes-kpi-sub" id="kpi-desc-registros">0 registros</div>
+                                </div>
+                                <div class="descartes-kpi-card kpi-unidades">
+                                    <div class="descartes-kpi-label">📦 Bultos / Unidades</div>
+                                    <div class="descartes-kpi-value" id="kpi-desc-unidades">0,000 u.</div>
+                                    <div class="descartes-kpi-sub">Volumen físico dado de baja</div>
+                                </div>
+                                <div class="descartes-kpi-card kpi-costo">
+                                    <div class="descartes-kpi-label">💸 Costo Real Perdido</div>
+                                    <div class="descartes-kpi-value" id="kpi-desc-costo">$ 0,00</div>
+                                    <div class="descartes-kpi-sub">Pérdida valorizada a costo LAMDA</div>
+                                </div>
+                                <div class="descartes-kpi-card kpi-nc">
+                                    <div class="descartes-kpi-label">🧾 Crédito Emitido en NC</div>
+                                    <div class="descartes-kpi-value" id="kpi-desc-nc-total">$ 0,00</div>
+                                    <div class="descartes-kpi-sub" id="kpi-desc-nc-neto">Neto sin IVA: $ 0,00</div>
+                                </div>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="tabla-ingredientes mant-table" id="tabla-descartes">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 118px;">Fecha / Resp.</th>
+                                            <th style="min-width: 145px;">Artículo / SKU</th>
+                                            <th style="min-width: 138px;">Origen / Cliente</th>
+                                            <th style="min-width: 148px;">Motivo y Obs.</th>
+                                            <th style="width: 88px; text-align: right;">Cant. / Kg</th>
+                                            <th style="width: 118px; text-align: right;">Costo Perdido</th>
+                                            <th style="width: 138px;">NC Asociada</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tbody-descartes">
+                                        <tr>
+                                            <td colspan="7" class="text-center">Cargando registro de descartes...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div> <!-- CIERRE TAB DESCARTES -->
 
                     <!-- TAB MOSTRADOR -->
                     <div id="tab-mostrador" class="tab-content">
@@ -911,9 +1486,257 @@
             return parsed;
         }
 
+        function escapeHtmlMant(str) {
+            return String(str == null ? '' : str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function formatearMonedaARS(valor) {
+            const n = Number(valor) || 0;
+            return '$ ' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        function formatearNumeroAR(valor, decimales = 2) {
+            const n = Number(valor) || 0;
+            return n.toLocaleString('es-AR', { minimumFractionDigits: decimales, maximumFractionDigits: decimales });
+        }
+
+        function togglePanelFiltros(forceState = null) {
+            const panel = document.getElementById('panel-config');
+            const btn = document.getElementById('btn-toggle-filtros');
+            if (!panel) return;
+            const shouldCollapse = forceState !== null ? Boolean(forceState) : !panel.classList.contains('collapsed');
+            panel.classList.toggle('collapsed', shouldCollapse);
+            if (btn) {
+                btn.classList.toggle('is-collapsed', shouldCollapse);
+                btn.innerHTML = shouldCollapse ? '☰ Mostrar Filtros' : '☰ Filtros';
+            }
+            try {
+                localStorage.setItem('mantenimientoFiltrosCollapsed', shouldCollapse ? '1' : '0');
+            } catch (e) {}
+        }
+
+        function cerrarMenusAccion() {
+            document.querySelectorAll('.mant-menu-popover.open').forEach(el => el.classList.remove('open'));
+        }
+
+        function toggleAccionMenu(btn, event) {
+            if (event) event.stopPropagation();
+            const wrap = btn.closest('.mant-menu-wrap');
+            const menu = wrap ? wrap.querySelector('.mant-menu-popover') : null;
+            if (!menu) return;
+            const wasOpen = menu.classList.contains('open');
+            cerrarMenusAccion();
+            if (wasOpen) return;
+
+            // Medir sin parpadeo y posicionar en coordenadas de viewport (cero clipping)
+            menu.style.visibility = 'hidden';
+            menu.classList.add('open');
+            const rect = btn.getBoundingClientRect();
+            const menuWidth = menu.offsetWidth || 250;
+            const menuHeight = menu.offsetHeight || 220;
+
+            const left = Math.max(12, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 12));
+            let top = rect.bottom + 6;
+            if (window.innerHeight - rect.bottom < menuHeight + 14 && rect.top > menuHeight + 14) {
+                top = rect.top - menuHeight - 6;
+                menu.classList.add('dropdown-up');
+            } else {
+                menu.classList.remove('dropdown-up');
+                if (top + menuHeight > window.innerHeight - 10) {
+                    top = Math.max(10, window.innerHeight - menuHeight - 10);
+                }
+            }
+
+            menu.style.left = `${left}px`;
+            menu.style.top = `${top}px`;
+            menu.style.visibility = 'visible';
+        }
+
+        document.addEventListener('click', () => cerrarMenusAccion());
+        window.addEventListener('scroll', () => cerrarMenusAccion(), true);
+        window.addEventListener('resize', () => cerrarMenusAccion());
+
+        window.motivosDescarteCache = [];
+
+        async function cargarMotivosDescarteCache(force = false) {
+            if (!force && Array.isArray(window.motivosDescarteCache) && window.motivosDescarteCache.length > 0) {
+                return window.motivosDescarteCache;
+            }
+            try {
+                const res = await fetch('/api/produccion/mantenimiento/motivos-descarte');
+                const json = await res.json();
+                if (json && json.success && Array.isArray(json.data)) {
+                    window.motivosDescarteCache = json.data;
+                    const selFiltro = document.getElementById('desc-filtro-motivo');
+                    if (selFiltro) {
+                        const prevVal = selFiltro.value;
+                        selFiltro.innerHTML = '<option value="">Todos los motivos</option>' +
+                            json.data.map(m => `<option value="${m.id}">${escapeHtmlMant(m.nombre)}${m.veces_usado > 0 ? ` (${m.veces_usado})` : ''}</option>`).join('');
+                        if (prevVal) selFiltro.value = prevVal;
+                    }
+                }
+            } catch (err) {
+                console.warn('⚠️ No se pudieron cargar motivos de descarte:', err.message);
+            }
+            return window.motivosDescarteCache;
+        }
+
+        function limpiarFiltrosDescartes() {
+            const ids = ['desc-filtro-desde', 'desc-filtro-hasta', 'desc-filtro-motivo', 'desc-filtro-q'];
+            ids.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            const orig = document.getElementById('desc-filtro-origen');
+            if (orig) orig.value = 'TODOS';
+            cargarRegistroDescartes();
+        }
+
+        function formatearDetalleDescarteObs(obsRaw, motivoNombre) {
+            let txt = String(obsRaw || '').replace(/^\[DESCARTE\]\s*/i, '').trim();
+            if (!txt) return '';
+            const mot = String(motivoNombre || '').trim();
+            if (mot && txt.toLowerCase() === mot.toLowerCase()) return '';
+            if (mot && txt.toLowerCase().startsWith(mot.toLowerCase())) {
+                txt = txt.slice(mot.length).replace(/^[\s—\-:]+/, '').trim();
+            }
+            return txt;
+        }
+
+        async function cargarRegistroDescartes() {
+            const tbody = document.getElementById('tbody-descartes');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center">⏳ Cargando registro de descartes...</td></tr>';
+
+            try {
+                const params = new URLSearchParams();
+                const desde = document.getElementById('desc-filtro-desde')?.value || '';
+                const hasta = document.getElementById('desc-filtro-hasta')?.value || '';
+                const motivoId = document.getElementById('desc-filtro-motivo')?.value || '';
+                const origen = document.getElementById('desc-filtro-origen')?.value || 'TODOS';
+                const q = (document.getElementById('desc-filtro-q')?.value || '').trim();
+
+                if (desde) params.set('desde', desde);
+                if (hasta) params.set('hasta', hasta);
+                if (motivoId) params.set('motivo_id', motivoId);
+                if (origen && origen !== 'TODOS') params.set('origen', origen);
+                if (q) params.set('q', q);
+
+                const res = await fetch('/api/produccion/mantenimiento/descartes' + (params.toString() ? '?' + params.toString() : ''));
+                const json = await res.json();
+                if (!res.ok || !json.success) {
+                    throw new Error(json.error || 'Error al consultar descartes');
+                }
+
+                const r = json.resumen || {};
+                const rows = json.data || [];
+
+                const elKilos = document.getElementById('kpi-desc-kilos');
+                const elRegs = document.getElementById('kpi-desc-registros');
+                const elUnid = document.getElementById('kpi-desc-unidades');
+                const elCosto = document.getElementById('kpi-desc-costo');
+                const elNcTot = document.getElementById('kpi-desc-nc-total');
+                const elNcNeto = document.getElementById('kpi-desc-nc-neto');
+                const elBadge = document.getElementById('badge-count-descartes');
+
+                if (elKilos) elKilos.textContent = `${formatearNumeroAR(r.total_kilos || 0, 2)} kg`;
+                if (elRegs) elRegs.textContent = `${r.total_registros || 0} registro${(r.total_registros || 0) === 1 ? '' : 's'}`;
+                if (elUnid) elUnid.textContent = `${formatearNumeroAR(r.total_unidades || 0, 3)} u.`;
+                if (elCosto) elCosto.textContent = formatearMonedaARS(r.total_costo_perdido || 0);
+                if (elNcTot) elNcTot.textContent = formatearMonedaARS(r.total_nc_total || 0);
+                if (elNcNeto) elNcNeto.textContent = `Neto sin IVA: ${formatearMonedaARS(r.total_nc_neto || 0)}`;
+
+                if (elBadge && !desde && !hasta && !motivoId && (!origen || origen === 'TODOS') && !q) {
+                    const cnt = r.total_registros || 0;
+                    elBadge.textContent = String(cnt);
+                    elBadge.style.display = cnt > 0 ? 'inline-flex' : 'none';
+                }
+
+                if (rows.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center" style="padding: 24px; color: #64748b;">✅ No hay descartes registrados con los filtros actuales.</td></tr>';
+                    return;
+                }
+
+                const tipoNcMap = { 3: 'NC A', 8: 'NC B', 13: 'NC C', 203: 'NC A', 208: 'NC B' };
+
+                tbody.innerHTML = rows.map(item => {
+                    const fechaStr = item.fecha_movimiento
+                        ? new Date(item.fecha_movimiento).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+                        : '-';
+                    const codigoTxt = item.articulo_numero
+                        ? item.articulo_numero
+                        : (item.ingrediente_id ? `ING-${item.ingrediente_id}` : 'S/C');
+                    const obsDetalle = formatearDetalleDescarteObs(item.observaciones, item.motivo_nombre);
+
+                    const origenHtml = item.origen_tipo === 'DEVOLUCION_CLIENTE'
+                        ? `<div style="font-weight:700; color:#0f172a; font-size:0.86rem;">#${escapeHtmlMant(item.cliente_id || '-')} ${escapeHtmlMant(item.cliente_nombre || 'Cliente')}</div>
+                           <div class="mant-meta-row" style="margin-top:3px;">
+                               ${item.id_orden_tratamiento ? `<span class="mant-chip mant-chip-ruta">RT-${item.id_orden_tratamiento}</span>` : ''}
+                               ${item.id_presupuesto_origen ? `<span class="mant-chip mant-chip-doc">Doc #${item.id_presupuesto_origen}</span>` : ''}
+                           </div>`
+                        : `<span class="mant-stage-pill stage-info">🔄 Interno</span>`;
+
+                    let ncHtml = '<span style="color:#94a3b8; font-size:0.84rem;">—</span>';
+                    if (item.nc_id) {
+                        const pref = tipoNcMap[Number(item.nc_tipo_cbte)] || 'NC';
+                        const nro = (item.nc_pto_vta && item.nc_cbte_nro)
+                            ? `${pref} ${String(item.nc_pto_vta).padStart(4, '0')}-${String(item.nc_cbte_nro).padStart(8, '0')}`
+                            : `NC #${item.nc_id}`;
+                        ncHtml = `
+                            <div style="font-weight:700; color:#b45309; font-size:0.82rem; white-space:nowrap;">🧾 ${escapeHtmlMant(nro)}</div>
+                            <div style="font-size:0.79rem; color:#475569;">Total: <strong>${formatearMonedaARS(item.nc_imp_total)}</strong></div>
+                            <div style="font-size:0.74rem; color:#64748b;">Neto: ${formatearMonedaARS(item.nc_imp_neto)}</div>
+                        `;
+                    }
+
+                    const costoUnit = parseFloat(item.costo_unitario_snapshot || 0);
+                    const costoTot = parseFloat(item.costo_total_descarte || 0);
+
+                    return `
+                        <tr>
+                            <td style="font-size:0.81rem; color:#334155;">
+                                <div style="white-space:nowrap; font-weight:600;">${escapeHtmlMant(fechaStr)}</div>
+                                <div style="font-size:0.76rem; color:#64748b; margin-top:3px;">👤 ${escapeHtmlMant(item.responsable_nombre || 'SISTEMA')}</div>
+                            </td>
+                            <td>
+                                <div class="mant-item-title" style="font-size:0.88rem;"><span class="mant-item-sku">${escapeHtmlMant(codigoTxt)}</span>${escapeHtmlMant(item.descripcion || codigoTxt)}</div>
+                            </td>
+                            <td>${origenHtml}</td>
+                            <td>
+                                <span class="descarte-motivo-pill">${escapeHtmlMant(item.motivo_nombre || 'Sin clasificar')}</span>
+                                ${obsDetalle ? `<div class="mant-item-sub" style="margin-top:4px;">${escapeHtmlMant(obsDetalle)}</div>` : ''}
+                            </td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">
+                                <div class="mant-stock-qty" style="font-size:0.93rem;">${formatearNumeroAR(item.cantidad, 3)} u.</div>
+                                <div class="mant-stock-kg">${formatearNumeroAR(item.kilos_descartados, 2)} kg</div>
+                            </td>
+                            <td style="text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;">
+                                <div style="font-weight:800; color:#b91c1c; font-size:0.93rem;">${formatearMonedaARS(costoTot)}</div>
+                                <div style="font-size:0.73rem; color:#64748b;">Unit: ${formatearMonedaARS(costoUnit)}</div>
+                            </td>
+                            <td>${ncHtml}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error(error);
+                tbody.innerHTML = `<tr><td colspan="7" style="color:#dc2626; text-align:center; padding:18px;">❌ Error: ${escapeHtmlMant(error.message)}</td></tr>`;
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             initResizer();
             cargarFiltrosGuardados(); // 1. Restaurar estado de localStorage
+
+            // Restaurar estado colapsado del panel de filtros (abierto por defecto en escritorio)
+            try {
+                const collapsedStored = localStorage.getItem('mantenimientoFiltrosCollapsed');
+                if (collapsedStored === '1') {
+                    togglePanelFiltros(true);
+                }
+            } catch (e) {}
             
             // 2. Vincular auto-guardado a los checkboxes fijos
             const checkboxes = [
@@ -931,6 +1754,8 @@
 
             // 4. Cargar el resto
             cargarStock();
+            cargarMotivosDescarteCache(true);
+            cargarRegistroDescartes();
             cargarMostrador();
             cargarReparto();
             cargarTratamientos();
@@ -967,6 +1792,7 @@
         // Logística Inversa - Navegación de Pestañas
         // ==========================================
         function switchTab(tabId) {
+            cerrarMenusAccion();
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
 
@@ -975,6 +1801,10 @@
             if (btn) btn.classList.add('active');
 
             if (tabId === 'taller') cargarStock();
+            if (tabId === 'descartes') {
+                cargarMotivosDescarteCache(true);
+                cargarRegistroDescartes();
+            }
             if (tabId === 'mostrador') cargarMostrador();
             if (tabId === 'reparto') cargarReparto();
             if (tabId === 'tratamientos') cargarTratamientos();
@@ -2358,23 +3188,49 @@
             return `Hace ${Math.round(elapsed / msAnio)} años`;
         }
 
+        function formatearComprobanteOficialHist(h) {
+            if (h && h.pto_vta && h.cbte_nro) {
+                const tipoMap = { 1: 'Fac A', 6: 'Fac B', 11: 'Fac C', 201: 'Fac A', 206: 'Fac B' };
+                const pref = tipoMap[Number(h.tipo_cbte)] || 'Fac';
+                const pv = String(h.pto_vta).padStart(4, '0');
+                const nro = String(h.cbte_nro).padStart(8, '0');
+                return `${pref} ${pv}-${nro}`;
+            }
+            if (h && h.comprobante_lomasoft) {
+                return `Fac ${h.comprobante_lomasoft}`;
+            }
+            return null;
+        }
+
         async function abrirModalVincularPresupuesto(idMovimiento, clienteId, articuloNumero, cantidad, fechaRef, nombreArticulo = '', clienteNombre = '') {
+            const stockItem = (window.mantenimientoStockData || []).find(x => String(x.id) === String(idMovimiento)) || null;
+            const retiroRutaId = (stockItem && stockItem.origen_ruta_id != null && stockItem.origen_ruta_id !== '')
+                ? Number(stockItem.origen_ruta_id)
+                : null;
+            const fechaRetiroMs = (stockItem && stockItem.fecha_retiro_origen)
+                ? new Date(stockItem.fecha_retiro_origen).getTime()
+                : null;
+            const contextoRutaHtml = retiroRutaId
+                ? `<div style="margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #7dd3fc; color: #0369a1; border-radius: 999px; padding: 2px 10px; font-size: 0.82em; font-weight: 700;">🚚 Retiro recibido en Hoja de Ruta #${retiroRutaId}</div>`
+                : '';
+
             Swal.fire({
                 title: 'Vincular Documento de Origen',
                 html: `
                     <div style="text-align: left;">
-                        <div style="margin-bottom: 15px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; padding: 10px 12px; text-align: left;">
+                        <div style="margin-bottom: 14px; background: #e0f2fe; border: 1px solid #bae6fd; border-radius: 6px; padding: 10px 12px; text-align: left;">
                             <small style="color: #0369a1; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 3px;">👤 Cliente de Origen:</small>
-                            <span style="color: #0c4a6e; font-size: 1.1em; font-weight: bold;">[Cliente #${clienteId || 'N/A'}] ${clienteNombre || 'Desconocido'}</span>
+                            <div style="color: #0c4a6e; font-size: 1.08em; font-weight: bold;">[Cliente #${clienteId || 'N/A'}] ${escapeHtmlMant(clienteNombre || 'Desconocido')}</div>
+                            ${contextoRutaHtml}
                         </div>
-                        <p style="margin-bottom: 15px; color: #555;">Seleccione el presupuesto / factura origen para vincular a este artículo.</p>
-                        <h4 style="color: #2c3e50; margin-bottom: 15px;">📦 Artículo: ${nombreArticulo || articuloNumero}</h4>
-                        <div id="vinculacion-resultados" style="max-height: 400px; overflow-y: auto; padding: 5px; background: #fff;">
+                        <p style="margin-bottom: 10px; color: #555; font-size: 0.92em;">Seleccione la factura / presupuesto original correspondiente a la mercadería devuelta.</p>
+                        <h4 style="color: #1e293b; margin: 0 0 12px 0;">📦 Artículo: ${escapeHtmlMant(nombreArticulo || articuloNumero)} <span style="font-family: Consolas, monospace; font-size: 0.85em; color: #475569;">(${escapeHtmlMant(articuloNumero)})</span></h4>
+                        <div id="vinculacion-resultados" style="max-height: 440px; overflow-y: auto; padding: 4px; background: #fff;">
                             <div style="text-align: center; padding: 20px; color: #666; font-style: italic;">⏳ Consultando historial...</div>
                         </div>
                     </div>
                 `,
-                width: 600,
+                width: 680,
                 showCancelButton: true,
                 showConfirmButton: false,
                 cancelButtonText: 'Cancelar',
@@ -2400,6 +3256,24 @@
                         }
 
                         if (historial.length > 0) {
+                            // Detectar si un comprobante pertenece al mismo reparto que trajo el retiro o a una entrega posterior
+                            const evaluarAlertaEntrega = (h) => {
+                                const mismaRuta = retiroRutaId != null && h.id_ruta != null && Number(h.id_ruta) === retiroRutaId;
+                                const fechaEntMs = h.fecha_entrega_real ? new Date(h.fecha_entrega_real).getTime() : null;
+                                const entregaPosterior = !mismaRuta && fechaRetiroMs != null && fechaEntMs != null && fechaEntMs > (fechaRetiroMs + 60 * 1000);
+                                return { mismaRuta, entregaPosterior, esAdvertencia: mismaRuta || entregaPosterior };
+                            };
+
+                            // Primera factura válida anterior al retiro -> destacada como ⭐ Sugerida
+                            let suggestedPresupuestoId = null;
+                            if (retiroRutaId != null || fechaRetiroMs != null) {
+                                const hayAlgunaAdvertencia = historial.some(x => evaluarAlertaEntrega(x).esAdvertencia);
+                                const primeroAnterior = historial.find(x => !evaluarAlertaEntrega(x).esAdvertencia);
+                                if (primeroAnterior && (hayAlgunaAdvertencia || historial.length >= 1)) {
+                                    suggestedPresupuestoId = primeroAnterior.id_presupuesto;
+                                }
+                            }
+
                             // Agrupar por Año -> Mes
                             const grupos = {};
                             historial.forEach(item => {
@@ -2453,16 +3327,25 @@
                                     mesDiv.appendChild(mesHeader);
 
                                     mesGroup.items.forEach(h => {
+                                        const alerta = evaluarAlertaEntrega(h);
+                                        const esSugerida = suggestedPresupuestoId != null && String(h.id_presupuesto) === String(suggestedPresupuestoId);
+
                                         const itemDiv = document.createElement('div');
-                                        itemDiv.style.cssText = 'padding: 12px 15px; border-top: 1px solid #eee; transition: background 0.2s;';
+                                        itemDiv.className = 'vinculacion-card' + (alerta.esAdvertencia ? ' vinculacion-card-alerta' : (esSugerida ? ' vinculacion-card-sugerida' : ''));
+                                        if (alerta.esAdvertencia) {
+                                            itemDiv.style.cssText = 'padding: 12px 14px; margin: 8px; border: 2px solid #f59e0b; background: #fffbeb; border-radius: 8px; transition: background 0.2s;';
+                                        } else if (esSugerida) {
+                                            itemDiv.style.cssText = 'padding: 12px 14px; margin: 8px; border: 2px solid #16a34a; background: #f0fdf4; border-radius: 8px; transition: background 0.2s;';
+                                        } else {
+                                            itemDiv.style.cssText = 'padding: 12px 15px; border-top: 1px solid #eee; transition: background 0.2s;';
+                                        }
                                         
-                                        const fecha = new Date(h.fecha).toLocaleDateString();
+                                        const fecha = new Date(h.fecha).toLocaleDateString('es-AR');
                                         const precioHist = parseFloat(h.precio_neto_historico || 0);
                                         const precioAct = parseFloat(precioActual || 0);
                                         const tiempoRel = tiempoRelativo(h.fecha);
                                         const descuentoPct = parseFloat(h.descuento_porcentaje || 0);
 
-                                        let pricingHTML = '';
                                         const diff = precioAct - precioHist;
                                         const pctNum = precioHist > 0 ? ((diff / precioHist) * 100) : 0;
                                         const diffPercentFormatted = Math.abs(pctNum).toFixed(1).replace('.', ',');
@@ -2477,20 +3360,44 @@
                                             badgeDiff = `<span style="background: #cce5ff; color: #004085; padding: 2px 8px; border-radius: 4px; font-size: 0.8em;">Bajó ${diffPercentFormatted}% (-$${diffAmountFormatted})</span>`;
                                         }
                                         
-                                        const tituloPresupuesto = h.comprobante_lomasoft ? `Presupuesto #${h.id_presupuesto} <span style="margin-left: 8px; color: #00796b;">📄 Fac: ${h.comprobante_lomasoft}</span>` : `Presupuesto #${h.id_presupuesto}`;
-                                        const origenFacturacionTrigger = (h.comprobante_lomasoft || h.origen_facturacion || '').includes('LOMASOFT') ? 'LOMASOFT' : 'LAMDA';
+                                        const facLabel = formatearComprobanteOficialHist(h);
+                                        const tituloPresupuesto = facLabel
+                                            ? `<span style="color: #0f766e;">📄 ${escapeHtmlMant(facLabel)}</span> <span style="color:#64748b; font-weight:600; font-size:0.88em;">· Presup. #${h.id_presupuesto}</span>`
+                                            : `Presupuesto #${h.id_presupuesto}`;
+
+                                        const rutaChipHtml = h.id_ruta
+                                            ? `<span style="font-size: 0.8em; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: ${alerta.mismaRuta ? '#fef3c7' : '#eff6ff'}; color: ${alerta.mismaRuta ? '#b45309' : '#1d4ed8'}; border: 1px solid ${alerta.mismaRuta ? '#f59e0b' : '#bfdbfe'}; margin-left: 6px;">🚚 Ruta #${h.id_ruta}</span>`
+                                            : '';
+
+                                        let bannerSuperiorHtml = '';
+                                        if (alerta.mismaRuta) {
+                                            bannerSuperiorHtml = `
+                                                <div class="alerta-misma-ruta-banner" style="background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; border-radius: 6px; padding: 7px 10px; margin-bottom: 10px; font-size: 0.84em; font-weight: 700;">
+                                                    ⚠️ Entregada en este mismo reparto (Ruta #${h.id_ruta}) — Usala solo si fue rechazo en puerta en el acto
+                                                </div>`;
+                                        } else if (alerta.entregaPosterior) {
+                                            bannerSuperiorHtml = `
+                                                <div class="alerta-misma-ruta-banner" style="background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; border-radius: 6px; padding: 7px 10px; margin-bottom: 10px; font-size: 0.84em; font-weight: 700;">
+                                                    ⚠️ Entregada con posterioridad al retiro — Verificá antes de vincular
+                                                </div>`;
+                                        } else if (esSugerida) {
+                                            bannerSuperiorHtml = `
+                                                <div class="badge-entrega-sugerida" style="background: #dcfce7; border: 1px solid #16a34a; color: #166534; border-radius: 6px; padding: 6px 10px; margin-bottom: 10px; font-size: 0.84em; font-weight: 700;">
+                                                    ⭐ Sugerida (entrega anterior al retiro)
+                                                </div>`;
+                                        }
 
                                         // Renderizar lista de artículos en el presupuesto si viene del backend
                                         let itemsDetalleHtml = '';
                                         if (h.items_detalle && h.items_detalle.length > 0) {
                                             const itemsRows = h.items_detalle.map(it => {
-                                                return `<li style="margin-bottom: 3px; font-size: 0.9em; color: #495057; text-align: left;">
-                                                    <strong>[${it.codigo}]</strong> ${it.nombre} — <strong>${it.cantidad.toFixed(2).replace('.', ',')} u.</strong>
+                                                return `<li style="margin-bottom: 3px; font-size: 0.88em; color: #495057; text-align: left;">
+                                                    <strong>[${escapeHtmlMant(it.codigo)}]</strong> ${escapeHtmlMant(it.nombre)} — <strong>${Number(it.cantidad || 0).toFixed(2).replace('.', ',')} u.</strong>
                                                 </li>`;
                                             }).join('');
                                             itemsDetalleHtml = `
-                                                <div style="margin-top: 8px; margin-bottom: 8px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px; text-align: left;">
-                                                    <div style="font-size: 0.85em; font-weight: bold; color: #495057; border-bottom: 1px dashed #ced4da; padding-bottom: 4px; margin-bottom: 6px;">📦 Artículos del Comprobante:</div>
+                                                <div style="margin-top: 8px; margin-bottom: 8px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 9px 10px; text-align: left;">
+                                                    <div style="font-size: 0.83em; font-weight: bold; color: #495057; border-bottom: 1px dashed #ced4da; padding-bottom: 4px; margin-bottom: 6px;">📦 Artículos del Comprobante:</div>
                                                     <ul style="margin: 0; padding-left: 15px; list-style-type: square; line-height: 1.4;">
                                                         ${itemsRows}
                                                     </ul>
@@ -2499,45 +3406,79 @@
                                         }
 
                                         itemDiv.innerHTML = `
+                                            ${bannerSuperiorHtml}
                                             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                                                 <div>
-                                                    <div style="font-weight: bold; color: #2c3e50;">${tituloPresupuesto} <span style="font-weight: normal; color: #888; font-size: 0.9em;">(${fecha})</span></div>
-                                                    <div style="font-size: 0.85em; margin-top: 4px; padding: 2px 6px; border-radius: 4px; display: inline-block; background-color: ${(h.origen_facturacion||'').includes('LOMASOFT') ? '#e0f7fa' : ((h.origen_facturacion||'').includes('LAMDA') ? '#e8f5e9' : '#f8f9fa')}; border: 1px solid ${(h.origen_facturacion||'').includes('LOMASOFT') ? '#4dd0e1' : ((h.origen_facturacion||'').includes('LAMDA') ? '#81c784' : '#ddd')}; color: ${(h.origen_facturacion||'').includes('LOMASOFT') ? '#006064' : ((h.origen_facturacion||'').includes('LAMDA') ? '#1b5e20' : '#666')};">
-                                                        🏢 <strong>${h.origen_facturacion || 'NO FACTURADO'}</strong>
+                                                    <div style="font-weight: bold; color: #2c3e50;">${tituloPresupuesto} <span style="font-weight: normal; color: #64748b; font-size: 0.88em;">(${fecha})</span>${rutaChipHtml}</div>
+                                                    <div style="font-size: 0.82em; margin-top: 4px; padding: 2px 6px; border-radius: 4px; display: inline-block; background-color: ${(h.origen_facturacion||'').includes('LOMASOFT') ? '#e0f7fa' : ((h.origen_facturacion||'').includes('LAMDA') ? '#e8f5e9' : '#f8f9fa')}; border: 1px solid ${(h.origen_facturacion||'').includes('LOMASOFT') ? '#4dd0e1' : ((h.origen_facturacion||'').includes('LAMDA') ? '#81c784' : '#ddd')}; color: ${(h.origen_facturacion||'').includes('LOMASOFT') ? '#006064' : ((h.origen_facturacion||'').includes('LAMDA') ? '#1b5e20' : '#666')};">
+                                                        🏢 <strong>${escapeHtmlMant(h.origen_facturacion || 'NO FACTURADO')}</strong>
                                                     </div>
-                                                    <div style="font-size: 0.85em; color: #28a745; margin-top: 4px;">🕒 ${tiempoRel}</div>
-                                                    ${descuentoPct > 0 ? `<div style="font-size: 0.85em; color: #d9534f; margin-top: 4px; font-weight: bold; background: #f8dbdb; display: inline-block; padding: 2px 6px; border-radius: 4px;">🏷️ Tiene ${descuentoPct.toFixed(2).replace('.', ',')}% de Descuento Global</div>` : ''}
+                                                    <span style="font-size: 0.82em; color: #15803d; margin-left: 8px;">🕒 ${tiempoRel}</span>
+                                                    ${descuentoPct > 0 ? `<div style="font-size: 0.82em; color: #b91c1c; margin-top: 4px; font-weight: bold; background: #fee2e2; display: inline-block; padding: 2px 6px; border-radius: 4px;">🏷️ Tiene ${descuentoPct.toFixed(2).replace('.', ',')}% de Descuento Global</div>` : ''}
                                                 </div>
                                                 <div style="text-align: right;">
-                                                    <div style="font-size: 0.9em; color: #666;">Cant: <strong>${h.cantidad}</strong></div>
+                                                    <div style="font-size: 0.9em; color: #475569;">Cant: <strong>${h.cantidad}</strong></div>
                                                 </div>
                                             </div>
                                             
                                             ${itemsDetalleHtml}
                                             
-                                            <div style="background: #fafafa; padding: 10px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-                                                <div style="font-size: 0.9em;">
-                                                    <div style="margin-bottom: 4px;">Histórico: <strong>$${precioHist.toFixed(2).replace('.', ',')}</strong></div>
-                                                    <div style="color: #666;">Actual: <strong>$${precioAct.toFixed(2).replace('.', ',')}</strong></div>
+                                            <div style="background: rgba(255,255,255,0.85); border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+                                                <div style="font-size: 0.88em;">
+                                                    <div style="margin-bottom: 3px;">Histórico: <strong>$${precioHist.toFixed(2).replace('.', ',')}</strong></div>
+                                                    <div style="color: #64748b;">Actual: <strong>$${precioAct.toFixed(2).replace('.', ',')}</strong></div>
                                                     <div style="margin-top: 4px;">${badgeDiff}</div>
                                                 </div>
                                                 <div style="display: flex; gap: 8px;">
-                                                    <button class="btn-historico" style="background: #2c3e50; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;" onclick="confirmarUsoHistorico('${idMovimiento}', '${h.id_presupuesto}', '${clienteId}', '${articuloNumero}', '${cantidad}', '${fechaRef}', '${precioHist}', '${descuentoPct}', '${h.comprobante_lomasoft || ''}', '${h.id_presupuesto}', '${origenFacturacionTrigger}')">
+                                                    <button type="button" class="btn-historico" style="background: ${esSugerida ? '#15803d' : '#2c3e50'}; color: white; border: none; padding: 7px 12px; border-radius: 5px; cursor: pointer; font-size: 0.85em; font-weight: 700;">
                                                         ↩️ Usar Histórico ($${precioHist.toFixed(0).replace('.', ',')})
                                                     </button>
                                                     ${Math.abs(diff) >= 0.05 ? `
-                                                    <button class="btn-actual" style="background: white; color: #2c3e50; border: 1px solid #2c3e50; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">
+                                                    <button type="button" class="btn-actual" style="background: white; color: #2c3e50; border: 1px solid #2c3e50; padding: 7px 12px; border-radius: 5px; cursor: pointer; font-size: 0.85em; font-weight: 600;">
                                                          Usar Actual ($${precioAct.toFixed(0).replace('.', ',')})
                                                     </button>` : ''}
                                                 </div>
                                             </div>
                                         `;
 
+                                        const confirmarOVincular = (precioElegido, descElegido) => {
+                                            if (alerta.esAdvertencia) {
+                                                const etiquetaDoc = facLabel ? `${facLabel} (Presup. #${h.id_presupuesto})` : `Presupuesto #${h.id_presupuesto}`;
+                                                Swal.fire({
+                                                    title: '⚠️ Comprobante del mismo reparto',
+                                                    html: `
+                                                        <div style="text-align:left; font-size:0.95em; line-height:1.5;">
+                                                            <p>Estás seleccionando <strong>${escapeHtmlMant(etiquetaDoc)}</strong>, que fue entregada en la <strong>misma Hoja de Ruta #${h.id_ruta || retiroRutaId}</strong> (o con posterioridad al retiro).</p>
+                                                            <p style="color:#92400e; background:#fffbeb; border:1px solid #f59e0b; border-radius:6px; padding:9px;">
+                                                                Si el cliente devolvió mercadería de una <b>compra anterior</b>, cancelá y elegí la factura destacada en verde (<b>⭐ Sugerida</b>).
+                                                            </p>
+                                                            <p>¿Confirmás que esta mercadería corresponde a un <b>rechazo en puerta en el acto</b> sobre esta factura?</p>
+                                                        </div>
+                                                    `,
+                                                    icon: 'warning',
+                                                    showCancelButton: true,
+                                                    confirmButtonColor: '#d97706',
+                                                    cancelButtonColor: '#64748b',
+                                                    confirmButtonText: 'Sí, fue rechazo en puerta',
+                                                    cancelButtonText: 'Volver y elegir otra'
+                                                }).then(rConfirm => {
+                                                    if (rConfirm.isConfirmed) {
+                                                        ejecutarVinculacionPresupuesto(idMovimiento, h.id_presupuesto, clienteId, articuloNumero, cantidad, fechaRef, precioElegido, descElegido, h.comprobante_lomasoft);
+                                                    } else {
+                                                        abrirModalVincularPresupuesto(idMovimiento, clienteId, articuloNumero, cantidad, fechaRef, nombreArticulo, clienteNombre);
+                                                    }
+                                                });
+                                            } else {
+                                                Swal.close();
+                                                ejecutarVinculacionPresupuesto(idMovimiento, h.id_presupuesto, clienteId, articuloNumero, cantidad, fechaRef, precioElegido, descElegido, h.comprobante_lomasoft);
+                                            }
+                                        };
+
                                         const btnHist = itemDiv.querySelector('.btn-historico');
-                                        btnHist.onclick = () => { Swal.close(); ejecutarVinculacionPresupuesto(idMovimiento, h.id_presupuesto, clienteId, articuloNumero, cantidad, fechaRef, precioHist, descuentoPct, h.comprobante_lomasoft); };
+                                        btnHist.onclick = () => confirmarOVincular(precioHist, descuentoPct);
 
                                         const btnAct = itemDiv.querySelector('.btn-actual');
-                                        if (btnAct) btnAct.onclick = () => { Swal.close(); ejecutarVinculacionPresupuesto(idMovimiento, h.id_presupuesto, clienteId, articuloNumero, cantidad, fechaRef, precioAct, 0, h.comprobante_lomasoft); };
+                                        if (btnAct) btnAct.onclick = () => confirmarOVincular(precioAct, 0);
 
                                         mesDiv.appendChild(itemDiv);
                                     });
@@ -2721,446 +3662,416 @@
             tbody.innerHTML = '';
             
             if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center">✅ No hay artículos que coincidan con los filtros actuales.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center" style="padding: 22px; color: #64748b;">✅ No hay artículos que coincidan con los filtros actuales.</td></tr>';
                 return;
             }
 
             data.forEach(item => {
                 // Formatear cliente
-                let clienteHtml = '<span style="color: #999; font-style: italic;">Sin Origen</span>';
+                let clienteHtml = '<span style="color: #94a3b8; font-style: italic;">Sin Origen</span>';
                 let btnDisabled = 'disabled';
-                let btnTitle = 'Requiere origen para conciliar';
 
-                // Modificacion por QA:
-                if (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado')))) {
-                    clienteHtml = `<span style="color: #17a2b8; font-weight: bold;">🔄 Movimiento Interno</span><br><small>Traslado de Depósito</small>`;
+                const esRetornoLogistica = (item.tipo_movimiento === 'RETORNO_TRATAMIENTO' && item.id_orden_tratamiento != null);
+                const esInterno = (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado')))) && !esRetornoLogistica;
+
+                if (esInterno) {
+                    clienteHtml = `<div style="color: #0e7490; font-weight: 700; font-size: 0.88rem;">🔄 Movimiento Interno</div><div style="color: #64748b; font-size: 0.78rem;">Traslado de Depósito</div>`;
                 } else if (item.cliente_id) {
-                    clienteHtml = `<span title="${item.cliente_nombre || ''}">
-                        <strong>#${item.cliente_id}</strong>
-                        <br>
-                        <small>${item.cliente_nombre || ''}</small>
-                    </span>`;
-
-                    if (item.estado === 'CONCILIADO') {
-                        btnDisabled = 'disabled';
-                        btnTitle = 'Ya conciliado';
-                    } else {
-                        btnDisabled = '';
-                        btnTitle = 'Buscar Nota de Crédito';
-                    }
+                    clienteHtml = `
+                        <div title="${escapeHtmlMant(item.cliente_nombre || '')}" style="line-height: 1.3;">
+                            <div style="font-weight: 700; color: #0f172a;">#${escapeHtmlMant(item.cliente_id)}</div>
+                            <div style="font-size: 0.84rem; color: #334155;">${escapeHtmlMant(item.cliente_nombre || '')}</div>
+                        </div>`;
+                    btnDisabled = (item.estado === 'CONCILIADO') ? 'disabled' : '';
                 }
 
                 const row = document.createElement('tr');
                 const fechaRef = item.ultima_actualizacion ? new Date(item.ultima_actualizacion).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
 
-                // Cálculo de peso y formato CORRECTO
-                const cantidad = parseFloat(item.stock_mantenimiento);
+                // Cálculo de peso y formato
+                const cantidad = parseFloat(item.stock_mantenimiento) || 0;
                 const kilosUnidad = parseFloat(item.kilos_unidad) || 1;
-                
-                // Corrección de Bug: Si es una orden de tratamiento, extraer el kilaje real de las observaciones
                 let realKilos = 0;
+                let parsedRT = [];
                 if (item.tipo_movimiento === 'RETIRO_TRATAMIENTO' || item.tipo_movimiento === 'RETORNO_TRATAMIENTO') {
                     try {
-                        let parsed = robustParseObservations(item.observaciones);
+                        const parsed = robustParseObservations(item.observaciones);
                         if (Array.isArray(parsed) && parsed.length > 0) {
+                            parsedRT = parsed;
                             realKilos = parsed.reduce((sum, d) => sum + (parseFloat(d.kilos) || 0), 0);
                         }
-                    } catch(e) {}
+                    } catch (e) {}
                 }
-                
                 const pesoTotal = realKilos > 0 ? realKilos : (cantidad * kilosUnidad);
 
-                let tituloPrincipal = item.articulo_numero ? item.articulo_numero : (item.descripcion ? item.descripcion : 'Ingrediente Desconocido');
-                if (item.id_orden_tratamiento) {
-                    tituloPrincipal = `<b style="font-size:1.05em; color:#0e6cc4;">RT-${item.id_orden_tratamiento}</b> - ${tituloPrincipal}`;
-                }
                 let nombreMapeadoLocal = item.id_orden_tratamiento ? `RT-${item.id_orden_tratamiento}` : '';
                 let labelBultosLocal = '';
+                if (parsedRT.length > 0) {
+                    nombreMapeadoLocal = `RT-${item.id_orden_tratamiento || '??'} - ${parsedRT[0].desc || ''}`;
+                    labelBultosLocal = `${parsedRT[0].bultos || 1} bultos`;
+                }
 
-                // Determinar contenido de la celda de acción
                 // Lomasoft deprecado en flujo activo: la consolidación rige por NC ARCA local (tolerancia pasiva a registros históricos ya conciliados)
                 const esHistoricoConciliado = (item.estado === 'CONCILIADO');
                 const esArcaOK = (item.estado_nc === 'COMPLETADO');
                 const esArcaBorrador = (item.estado_nc === 'BORRADOR');
                 const esConsolidado = esArcaOK || esHistoricoConciliado;
-                const esRetornoLogistica = (item.tipo_movimiento === 'RETORNO_TRATAMIENTO' && item.id_orden_tratamiento != null);
-                const esInterno = (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado')))) && !esRetornoLogistica;
 
-                let actionCell = '';
+                // Columna 4: Stock Cuarentena
                 let stockCellHtml = `
-                    ${cantidad.toFixed(3).replace('.', ',')} u.
-                    <br><small>(${pesoTotal.toFixed(2).replace('.', ',')} kg)</small>
+                    <div class="mant-stock-qty">${cantidad.toFixed(3).replace('.', ',')} u.</div>
+                    <div class="mant-stock-kg">${pesoTotal.toFixed(2).replace('.', ',')} kg</div>
                 `;
-
-                if (esRetornoLogistica) {
-                    actionCell = `
-                    <div class="dropdown">
-                         <button class="btn-accion" style="background-color: #17a2b8;">⚡ Acciones ▼</button>
-                         <div class="dropdown-content">
-                             <button onclick="enviarALogistica(${item.id}, ${item.id_orden_tratamiento})" style="color: #fff; background-color: #28a745; font-weight: bold; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                 📦 Enviar a Logística (Pendientes)
-                             </button>
-                             <button onclick="abrirModalTransferencia('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})" style="color: #6f42c1; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; background: none; border-bottom: none; border-left: none; border-right: none;">
-                                 🧪 Enviar a Ingredientes
-                             </button>
-                             <button onclick="liberarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, 'Transformación de semillas concluida', '${item.usuario_id || ''}', ${item.id})" style="color: #fd7e14; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; background: none; border-bottom: none; border-left: none; border-right: none;">
-                                 📦 Convertir a Artículo
-                             </button>
-                             <button onclick="descartarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.ingrediente_id || ''}', ${item.id})" style="color: #b02a37; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; background: none; border-bottom: none; border-left: none; border-right: none;">
-                                 🗑️ Descartar / Desecho
-                             </button>
-                             <button onclick="limpiarRegistroMantenimiento(${item.id}, 'Retorno')" style="color: #6c757d; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                 🧹 Limpiar Registro (Visual)
-                             </button>
-                         </div>
-                    </div>
-                    <div style="margin-top: 5px;">
-                        <span style="color: #155724; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px;">[✅ TRATAMIENTO CERRADO]</span>
-                    </div>
-                    `;
-                } else if (esInterno) {
-                    let dropInterno = '';
-                    if (item.ingrediente_id) {
-                        dropInterno += `
-                            <button onclick="abrirModalRetornoIngrediente('${item.ingrediente_id}', ${cantidad}, '${tituloPrincipal}', ${item.id})" style="color: #28a745; font-weight: bold; background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                📦 Devolver a Ingredientes
-                            </button>
-                            <button onclick="descartarStock(null, '', ${cantidad}, ${kilosUnidad}, '${item.ingrediente_id}', ${item.id})" style="color: #b02a37; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                🗑️ Descartar / Desecho
-                            </button>
-                            <button onclick="window.anularTrasladoInternoAgrupado(null, '${item.ingrediente_id}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                ↩️ Anular Movimiento Interno
-                            </button>
-                            <button onclick="limpiarRegistroMantenimiento(${item.id}, '${item.descripcion || item.ingrediente_id || ''}')" style="color: #6c757d; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                🧹 Limpiar Registro (Visual)
-                            </button>
-                        `;
-                    } else {
-                        dropInterno += `
-                            <button onclick="liberarStock(null, '${item.articulo_numero || ''}', ${cantidad}, 'Vuelva a Ventas internamente', '${item.usuario_id || ''}', ${item.id})" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                📦 Devolver a Ventas
-                            </button>
-                            <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                🧪 Convertir a Ingredientes
-                            </button>
-                            <button onclick="descartarStock(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '', ${item.id})" style="color: #b02a37; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                🗑️ Descartar / Desecho
-                            </button>
-                            <button onclick="window.anularTrasladoInternoAgrupado('${item.articulo_numero}', null)" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                ↩️ Anular Traslado Interno
-                            </button>
-                            <button onclick="limpiarRegistroMantenimiento(${item.id}, '${item.articulo_numero || item.ingrediente_id || 'Registro'}')" style="color: #6c757d; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
-                                🧹 Limpiar Registro (Visual)
-                            </button>
-                        `;
-                    }
-
-                    actionCell = `
-                    <div class="dropdown">
-                        <button class="btn-accion">⚡ Acciones ▼</button>
-                        <div class="dropdown-content">${dropInterno}</div>
-                    </div>
-                    <div style="margin-top: 5px;">
-                        ${item.ingrediente_id ? 
-                            '<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px;">[⚖️ GRANEL]</span>' : 
-                            '<span style="color: #155724; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px;">[📦 PAQUETE]</span>'}
-                    </div>
-                    `;
-                } else if (item.tipo_movimiento === 'RETIRO_TRATAMIENTO') {
-                    // Módulo Logística Fase 4
-                    let detalles = 'Tratamiento logístico';
-                    let nombreMapeado = '📌 Orden de Tratamiento';
-                    let realKilos = 0;
-                    try {
-                        let parsed = robustParseObservations(item.observaciones);
-                        if(Array.isArray(parsed) && parsed.length > 0) {
-                            nombreMapeado = `RT-${item.id_orden_tratamiento || '??'} - ` + parsed[0].desc; // Modificado por requerimiento
-                            labelBultosLocal = parsed[0].bultos + ' bultos';
-                            nombreMapeadoLocal = nombreMapeado;
-                            detalles = parsed.map(d => `<span>- ${d.desc} (${d.kilos}kg - ${d.bultos} bultos)</span><br><small style="color:#666;"><i>Motivo: ${d.motivo}</i></small><br><small style="color:#333;"><i>Chofer: ${d.chofer || 'N/A'} | R. Carga: ${d.responsable || 'N/A'}</i></small>`).join('<br>');
-                            realKilos = parsed.reduce((sum, d) => sum + (parseFloat(d.kilos) || 0), 0);
-                        }
-                    } catch(e) {}
-                    
-                    if (!item.articulo_numero) {
-                        if (realKilos > 0) {
-                            stockCellHtml = `
-                                <span style="font-weight: bold; color: #0056b3;">${realKilos.toFixed(2).replace('.', ',')} kg</span>
-                                <br><small style="color:#666;">(Peso Bruto por Bulto)</small>
-                            `;
-                        } else {
-                            stockCellHtml = `<span style="color:#999; font-style:italic;">-</span>`;
-                        }
-                    }
-                    
-                    tituloPrincipal = `<b style="font-size:1.05em; color:#0e6cc4;">${nombreMapeado}</b><br>${detalles}`;
-                    
-                    let innerActions = `
-                             <button style="color: #6c757d; font-weight: normal; text-align: left; padding: 10px; width: 100%; border:none; background:none; cursor:default;">
-                                 [Ingresado vía App Chofer]
-                             </button>
-                             <button onclick="descargarReporteArribo(${item.id})" style="color: #6610f2; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                 📄 Comprobante de Arribo
-                             </button>
-                             <button onclick="abrirModalCorregirRecepcion(${item.id}, ${item.id_orden_tratamiento || 'null'}, '${encodeURIComponent(item.observaciones || '')}')" style="color: #0d6efd; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                 ✏️ Corregir / Pesar en Depósito
-                             </button>`;
-
-                    let statusTags = '';
-
-                    if (!item.articulo_numero) {
-                        innerActions += `
-                             <button onclick="abrirModalAsignarArticulo(${item.id}, '', ${realKilos || 0})" style="color: #fd7e14; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                 🔗 Asignar Artículo Oficial
-                             </button>`;
-                        statusTags += `<span style="color: #dc3545; font-weight: bold; font-size: 0.8em; border: 1px solid #f5c6cb; background: #f8d7da; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[FALTA ARTÍCULO]</span>`;
-                    } else if (!item.id_presupuesto_origen) {
-                        innerActions += `
-                             <button onclick="abrirModalVincularPresupuesto(${item.id}, '${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, '${fechaRef}', decodeURIComponent('${encodeURIComponent(item.descripcion || '')}'), decodeURIComponent('${encodeURIComponent(item.cliente_nombre || '')}'))" style="color: #6f42c1; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                 🔗 Vincular Documento Origen
-                             </button>
-                             <button onclick="abrirModalAsignarArticulo(${item.id}, '${item.articulo_numero}', ${realKilos || 0})" style="color: #fd7e14; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                 ✏️ Reasignar Artículo Oficial
-                             </button>
-                             <button onclick="desasignarArticuloOficial(${item.id})" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                 🔄 Retrotraer Calificación (Volver a Faltante)
-                             </button>`;
-                        statusTags += `<span style="color: #dc3545; font-weight: bold; font-size: 0.8em; border: 1px solid #f5c6cb; background: #f8d7da; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[FALTA DOCUMENTO]</span>`;
-                    } else {
-                        // Registro completamente enriquecido y vinculado (Secuencia estricta: primero NC ARCA, luego destino físico)
-                        if (!esConsolidado) {
-                            if (esArcaBorrador) {
-                                statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #ffc107; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">⚠️ Enviado a Facturación</span>`;
-                            } else {
-                                let arcaBtnDisabled = btnDisabled ? 'disabled' : '';
-                                innerActions += `
-                                 <button onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}', '${item.id}')" style="color: #17a2b8; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;" ${arcaBtnDisabled}>
-                                     🧾 Emitir NC ARCA
-                                 </button>`;
-                                statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[PENDIENTE NC]</span>`;
-                            }
-                        }
-
-                        innerActions += `
-                             <button onclick="desvincularPresupuesto(${item.id})" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                 🔗 Desvincular Documento / Revertir
-                             </button>`;
-
-                        if (esArcaOK) {
-                            statusTags += `<span style="color: #28a745; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[✅ NC EMITIDA]</span>`;
-                        } else if (esHistoricoConciliado) {
-                            statusTags += `<span style="color: #28a745; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[✅ CONCILIADO]</span>`;
-                        }
-
-                        // Secuencia estricta post-NC: recién con NC ARCA emitida (o conciliación histórica) se habilitan los destinos físicos
-                        if (esConsolidado) {
-                            innerActions += `
-                                 <button onclick="enviarInmediatoTratamientoDirecto(${item.id}, ${cantidad}, '${item.cliente_id || ''}', decodeURIComponent('${encodeURIComponent(nombreMapeado)}'))" style="color: #17a2b8; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                     ⛺ Enviar a Tratamiento
-                                 </button>
-                                 <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa', '${item.usuario_id || ''}', ${item.id})" style="color: #28a745; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                     📦 Enviar a Ventas (Devolución)
-                                 </button>
-                                 <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})" style="color: #6f42c1; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                     🧪 Convertir a Ingredientes
-                                 </button>
-                                 <button onclick="descartarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.ingrediente_id || ''}', ${item.id})" style="color: #b02a37; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                     🗑️ Descartar / Desecho
-                                 </button>`;
-                        } else {
-                            innerActions += `
-                                 <div style="padding: 10px; border-top: 1px solid #ddd; text-align: center; color: #856404; background-color: #fff3cd; font-size: 0.9em; font-weight: bold;">
-                                     ⚠️ Destinos bloqueados hasta emitir NC ARCA
-                                 </div>`;
-                        }
-                    }
-                    
-                    statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px;">[🏕️ AGUARDA CARPA]</span>`;
-
-                    actionCell = `
-                    <div class="dropdown">
-                         <button class="btn-accion" style="background-color: #28a745;">⚡ Acciones ▼</button>
-                         <div class="dropdown-content">
-                             ${innerActions}
-                             <button onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero || ''}', ${item.id || 'null'}, ${item.id_orden_tratamiento || 'null'})" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;" ${btnDisabled}>
-                                 🗑️ Eliminar Recepción
-                             </button>
-                             <button onclick="limpiarRegistroMantenimiento(${item.id}, '${item.articulo_numero || ''}')" style="color: #6c757d; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                 🧹 Limpiar Registro (Visual)
-                             </button>
-                         </div>
-                    </div>
-                    <div style="margin-top: 5px;">
-                        ${statusTags}
-                    </div>
-                    `;
-                } else if (esConsolidado) {
-                    let comprobanteInfo = '';
-                    if (esArcaOK) {
-                        comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>✅ NC ARCA Emitida</b></span>`;
-                    } else if (esHistoricoConciliado && item.nc_nro) {
-                        const fechaNC = item.nc_fecha ? new Date(item.nc_fecha).toLocaleDateString() : '';
-                        comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>${item.nc_tipo || 'NC'}</b> ${item.nc_nro} (${fechaNC})</span>`;
-                    }
-
-                    actionCell = `
-                    <div class="dropdown">
-                        <button class="btn-accion">⚡ Acciones ▼</button>
-                        <div class="dropdown-content">
-                            <button onclick="liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa', '${item.usuario_id || ''}', ${item.id})">
-                                📦 Enviar a Ventas
-                            </button>
-                            <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})">
-                                🧪 Enviar a Ingredientes
-                            </button>
-                            <button onclick="descartarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.ingrediente_id || ''}', ${item.id})" style="color: #b02a37; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
-                                🗑️ Descartar / Desecho
-                            </button>
-                            <button onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero || ''}', ${item.id || 'null'}, ${item.id_orden_tratamiento || 'null'})" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;" ${btnDisabled}>
-                                🗑️ Eliminar Recepción
-                            </button>
-                            <button onclick="limpiarRegistroMantenimiento(${item.id}, '${item.articulo_numero || ''}')" style="color: #6c757d; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
-                                🧹 Limpiar Registro (Visual)
-                            </button>
-                        </div>
-                    </div>
-                    <div style="margin-top: 5px;">
-                        <span style="color: green; font-weight: bold; font-size: 0.8em; border: 1px solid green; padding: 2px 5px; border-radius: 4px;">✅ Consolidado</span>${comprobanteInfo}
-                    </div>
-                    `;
-                } else {
-                    let lomasoftBtnHtml = '';
-                    let ncActionHtml = '';
-                    
-                    let eliminarDisabled = btnDisabled ? 'disabled' : '';
-
-                    if (esArcaBorrador) {
-                        ncActionHtml = `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #ffc107; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">⚠️ Enviado a Facturación</span>`;
-                        eliminarDisabled = 'disabled';
-                    } else if (item.articulo_numero && !item.id_presupuesto_origen && item.cliente_id) {
-                        // Caso "Bulto" enriquecido: Tiene Artículo y Cliente, pero AÚN no tiene un Documento Origen Vinculado.
-                        lomasoftBtnHtml = `
-                        <button class="btn-accion" style="background-color: #6f42c1; color: white; border: none; font-weight: bold;" onclick="abrirModalVincularPresupuesto(${item.id}, '${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, '${fechaRef}', decodeURIComponent('${encodeURIComponent(item.descripcion || '')}'), decodeURIComponent('${encodeURIComponent(item.cliente_nombre || '')}'))">
-                            🔗 Vincular Documento
-                        </button>`;
-                    } else {
-                        // Circuito fiscal activo exclusivo ARCA local (Lomasoft deprecado)
-                        let arcaBtnDisabled = btnDisabled ? 'disabled' : '';
-                        let opacity = btnDisabled ? '0.5' : '1';
-                        ncActionHtml = `
-                        <button class="btn-accion" style="background-color: #17a2b8; border: none; opacity: ${opacity}" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}', '${item.id}')" ${arcaBtnDisabled}>🧾 Emitir NC ARCA</button>`;
-                    }
-
-                    let pdfActionHtml = '';
-                    if (item.hash) {
-                        pdfActionHtml = `<button class="btn-accion" style="background-color: #dc2626; color: white; border: none; margin-top: 5px;" onclick="descargarPDFTratamiento('${item.hash}')">
-                            📄 Imprimir PDF Trazabilidad
-                        </button>`;
-                    }
-
-                    actionCell = `
-                    <div style="display: flex; gap: 5px; flex-direction: column;">
-                        ${lomasoftBtnHtml}
-                        ${ncActionHtml}
-                        ${pdfActionHtml}
-                        <button class="btn-accion" style="background-color: #dc3545; color: white; border: none; margin-top: 5px;" onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero || ''}', ${item.id || 'null'}, ${item.id_orden_tratamiento || 'null'})" ${eliminarDisabled}>
-                            🗑️ Eliminar Recepción
-                        </button>
-                    </div>
-                    `;
+                if (item.tipo_movimiento === 'RETIRO_TRATAMIENTO' && !item.articulo_numero) {
+                    stockCellHtml = realKilos > 0
+                        ? `<div class="mant-stock-qty" style="color: #0369a1;">${realKilos.toFixed(2).replace('.', ',')} kg</div><div class="mant-stock-kg">Peso bruto bulto</div>`
+                        : `<span style="color:#94a3b8; font-style:italic;">Sin pesar</span>`;
                 }
-                
-                let subtitulo = '';
+
+                // Columna 2: Ticket y Artículo + chips horizontales (sin sopa de <br>)
+                const rtBadgeHtml = item.id_orden_tratamiento ? `<span class="mant-item-rt">RT-${item.id_orden_tratamiento}</span>` : '';
+                const skuBadgeHtml = item.articulo_numero ? `<span class="mant-item-sku">${escapeHtmlMant(item.articulo_numero)}</span>` : '';
+
+                let tituloTexto = '';
                 if (item.articulo_numero) {
-                    subtitulo = item.descripcion || '';
-                } else if (item.ingrediente_id) {
-                    subtitulo = 'Ingrediente a Granel';
+                    tituloTexto = escapeHtmlMant(item.descripcion || item.articulo_numero);
+                } else if (parsedRT.length > 0 && parsedRT[0].desc) {
+                    tituloTexto = escapeHtmlMant(parsedRT[0].desc);
+                } else if (item.descripcion) {
+                    tituloTexto = escapeHtmlMant(item.descripcion);
                 } else {
-                    subtitulo = 'Movimiento Interno';
+                    tituloTexto = 'Bulto sin clasificar';
                 }
 
+                let subLineaHtml = '';
+                const chips = [];
+
+                if (!esInterno) {
+                    if (item.origen_ruta_id != null) {
+                        chips.push(`<span class="mant-chip mant-chip-ruta">🚚 Ruta #${item.origen_ruta_id}</span>`);
+                    } else {
+                        chips.push(`<span class="mant-chip">🧍‍♂️ Mostrador</span>`);
+                    }
+                } else if (item.ingrediente_id) {
+                    chips.push(`<span class="mant-chip">⚖️ Granel #${item.ingrediente_id}</span>`);
+                }
+
+                if (parsedRT.length > 0) {
+                    const p0 = parsedRT[0];
+                    if (item.articulo_numero && p0.desc) {
+                        subLineaHtml = `<div class="mant-item-sub">📦 Retiro: ${escapeHtmlMant(p0.desc)}${p0.bultos ? ` (${p0.bultos} bultos)` : ''}</div>`;
+                    } else if (parsedRT.length > 1) {
+                        subLineaHtml = `<div class="mant-item-sub">${parsedRT.map(d => `${escapeHtmlMant(d.desc)} (${d.kilos}kg · ${d.bultos}b)`).join(' · ')}</div>`;
+                    }
+                    if (p0.motivo) chips.push(`<span class="mant-chip mant-chip-obs" title="${escapeHtmlMant(p0.motivo)}">💬 ${escapeHtmlMant(p0.motivo)}</span>`);
+                    if (p0.chofer && p0.chofer !== 'N/A') chips.push(`<span class="mant-chip">👤 Chofer: ${escapeHtmlMant(p0.chofer)}</span>`);
+                    if (p0.responsable && p0.responsable !== 'N/A') chips.push(`<span class="mant-chip">🤝 Resp: ${escapeHtmlMant(p0.responsable)}</span>`);
+                } else if (item.observaciones && item.tipo_movimiento !== 'RETIRO_TRATAMIENTO') {
+                    chips.push(`<span class="mant-chip mant-chip-obs" title="${escapeHtmlMant(item.observaciones)}">📝 ${escapeHtmlMant(item.observaciones)}</span>`);
+                }
+
+                if (item.id_presupuesto_origen) {
+                    chips.push(`<span class="mant-chip mant-chip-doc">📄 Doc #${item.id_presupuesto_origen}</span>`);
+                }
                 if (item.origen_facturacion && item.origen_facturacion !== 'PENDIENTE') {
-                    subtitulo += `<br><span style="color:#e67e22; font-weight:bold; font-size:0.85em;">🏷️ Origen Facturación: ${item.origen_facturacion}</span>`;
+                    chips.push(`<span class="mant-chip">🏢 ${escapeHtmlMant(item.origen_facturacion)}</span>`);
                 }
-
                 if (item.historial_tratamientos) {
                     let hArray = [];
                     try {
                         hArray = typeof item.historial_tratamientos === 'string' ? JSON.parse(item.historial_tratamientos) : item.historial_tratamientos;
-                    } catch(e) {}
-
-                    if (hArray && hArray.length > 0) {
-                        subtitulo += `<div style="margin-top: 5px; font-size: 0.8em;">`;
+                    } catch (e) {}
+                    if (Array.isArray(hArray) && hArray.length > 0) {
                         hArray.forEach(tto => {
-                            let fFinStr = tto.fecha_fin ? new Date(tto.fecha_fin).toLocaleDateString() : 'N/A';
-                            subtitulo += `<span title="Tratamiento #${tto.tratamiento_id} (${tto.tipo_tratamiento}) - Fin: ${fFinStr}" style="display:inline-block; margin-right:3px; padding:2px 4px; background:#e2f0d9; color:#385723; border:1px solid #c5e0b3; border-radius:3px; font-weight:bold;">🛡️ TTO #${tto.tratamiento_id}</span>`;
+                            const fFinStr = tto.fecha_fin ? new Date(tto.fecha_fin).toLocaleDateString('es-AR') : 'N/A';
+                            chips.push(`<span class="mant-chip mant-chip-tto" title="Tratamiento #${tto.tratamiento_id} (${escapeHtmlMant(tto.tipo_tratamiento || '')}) - Fin: ${fFinStr}">🛡️ TTO #${tto.tratamiento_id}</span>`);
                         });
-                        subtitulo += `</div>`;
                     }
                 }
 
-                // Mejorar visualización del subtitulo para externos dependiendo si es Hoja de Ruta o Mostrador
-                if (!esInterno) {
-                    if (item.origen_ruta_id != null) {
-                        subtitulo += ` <span style="color:#007bff; font-weight:bold; font-size:0.85em; margin-left:5px;">[🚚 Ruta #${item.origen_ruta_id}]</span>`;
+                const tituloColHtml = `
+                    <div class="mant-item-title">${rtBadgeHtml}${skuBadgeHtml}${tituloTexto}</div>
+                    ${subLineaHtml}
+                    ${chips.length > 0 ? `<div class="mant-meta-row">${chips.join('')}</div>` : ''}
+                `;
+
+                // Columna 5 (Etapa) y Columna 6 (Acciones: CTA primario + popover inteligente)
+                let stageHtml = '<span class="mant-stage-pill stage-info">🔒 En Custodia</span>';
+                let primaryCtaHtml = '';
+                let secondaryMenuItems = '';
+
+                if (esRetornoLogistica) {
+                    stageHtml = `<span class="mant-stage-pill stage-success">✅ Tratamiento Cerrado</span>`;
+                    primaryCtaHtml = `
+                        <button type="button" class="mant-cta-btn" style="background: #16a34a;" onclick="enviarALogistica(${item.id}, ${item.id_orden_tratamiento})">
+                            📦 A Logística
+                        </button>`;
+                    secondaryMenuItems = `
+                        <button type="button" onclick="cerrarMenusAccion(); abrirModalTransferencia('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})" style="color: #6d28d9;">
+                            🧪 Enviar a Ingredientes
+                        </button>
+                        <button type="button" onclick="cerrarMenusAccion(); liberarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, 'Transformación de semillas concluida', '${item.usuario_id || ''}', ${item.id})" style="color: #d97706;">
+                            📦 Convertir a Artículo
+                        </button>
+                        <button type="button" onclick="cerrarMenusAccion(); descartarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.ingrediente_id || ''}', ${item.id})" style="color: #b91c1c;">
+                            🗑️ Descartar / Desecho
+                        </button>
+                        <div class="mant-menu-sep"></div>
+                        <button type="button" onclick="cerrarMenusAccion(); limpiarRegistroMantenimiento(${item.id}, 'Retorno')" style="color: #64748b;">
+                            🧹 Limpiar Registro (Visual)
+                        </button>
+                    `;
+                } else if (esInterno) {
+                    if (item.ingrediente_id) {
+                        stageHtml = `<span class="mant-stage-pill stage-amber">⚖️ Interno · Granel</span>`;
+                        primaryCtaHtml = `
+                            <button type="button" class="mant-cta-btn" style="background: #16a34a;" onclick="abrirModalRetornoIngrediente('${item.ingrediente_id}', ${cantidad}, decodeURIComponent('${encodeURIComponent(item.descripcion || String(item.ingrediente_id))}'), ${item.id})">
+                                📦 A Ingredientes
+                            </button>`;
+                        secondaryMenuItems = `
+                            <button type="button" onclick="cerrarMenusAccion(); descartarStock(null, '', ${cantidad}, ${kilosUnidad}, '${item.ingrediente_id}', ${item.id})" style="color: #b91c1c;">
+                                🗑️ Descartar / Desecho
+                            </button>
+                            <div class="mant-menu-sep"></div>
+                            <button type="button" onclick="cerrarMenusAccion(); window.anularTrasladoInternoAgrupado(null, '${item.ingrediente_id}')" style="color: #dc2626;">
+                                ↩️ Anular Movimiento Interno
+                            </button>
+                            <button type="button" onclick="cerrarMenusAccion(); limpiarRegistroMantenimiento(${item.id}, '${escapeHtmlMant(item.descripcion || item.ingrediente_id || '')}')" style="color: #64748b;">
+                                🧹 Limpiar Registro (Visual)
+                            </button>
+                        `;
                     } else {
-                        subtitulo += ` <span style="color:#28a745; font-weight:bold; font-size:0.85em; margin-left:5px;">[🧍‍♂️ Mostrador]</span>`;
+                        stageHtml = `<span class="mant-stage-pill stage-info">📦 Interno · Paquete</span>`;
+                        primaryCtaHtml = `
+                            <button type="button" class="mant-cta-btn" style="background: #16a34a;" onclick="liberarStock(null, '${item.articulo_numero || ''}', ${cantidad}, 'Vuelva a Ventas internamente', '${item.usuario_id || ''}', ${item.id})">
+                                📦 A Ventas
+                            </button>`;
+                        secondaryMenuItems = `
+                            <button type="button" onclick="cerrarMenusAccion(); abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})" style="color: #6d28d9;">
+                                🧪 Convertir a Ingredientes
+                            </button>
+                            <button type="button" onclick="cerrarMenusAccion(); descartarStock(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '', ${item.id})" style="color: #b91c1c;">
+                                🗑️ Descartar / Desecho
+                            </button>
+                            <div class="mant-menu-sep"></div>
+                            <button type="button" onclick="cerrarMenusAccion(); window.anularTrasladoInternoAgrupado('${item.articulo_numero}', null)" style="color: #dc2626;">
+                                ↩️ Anular Traslado Interno
+                            </button>
+                            <button type="button" onclick="cerrarMenusAccion(); limpiarRegistroMantenimiento(${item.id}, '${item.articulo_numero || item.ingrediente_id || 'Registro'}')" style="color: #64748b;">
+                                🧹 Limpiar Registro (Visual)
+                            </button>
+                        `;
                     }
+                } else if (item.tipo_movimiento === 'RETIRO_TRATAMIENTO') {
+                    const commonRtTools = `
+                        <button type="button" onclick="cerrarMenusAccion(); descargarReporteArribo(${item.id})" style="color: #4f46e5;">
+                            📄 Comprobante de Arribo
+                        </button>
+                        <button type="button" onclick="cerrarMenusAccion(); abrirModalCorregirRecepcion(${item.id}, ${item.id_orden_tratamiento || 'null'}, '${encodeURIComponent(item.observaciones || '')}')" style="color: #0284c7;">
+                            ✏️ Corregir / Pesar en Depósito
+                        </button>
+                    `;
+                    const dangerRtTools = `
+                        <div class="mant-menu-sep"></div>
+                        <button type="button" onclick="cerrarMenusAccion(); eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero || ''}', ${item.id || 'null'}, ${item.id_orden_tratamiento || 'null'})" style="color: #dc2626;" ${btnDisabled}>
+                            🗑️ Eliminar Recepción
+                        </button>
+                        <button type="button" onclick="cerrarMenusAccion(); limpiarRegistroMantenimiento(${item.id}, '${item.articulo_numero || ''}')" style="color: #64748b;">
+                            🧹 Limpiar Registro (Visual)
+                        </button>
+                    `;
+
+                    if (!item.articulo_numero) {
+                        stageHtml = `<span class="mant-stage-pill stage-danger">1 · Falta Artículo</span>`;
+                        primaryCtaHtml = `
+                            <button type="button" class="mant-cta-btn" style="background: #ea580c;" onclick="abrirModalAsignarArticulo(${item.id}, '', ${realKilos || 0})">
+                                🔗 Asignar Artículo
+                            </button>`;
+                        secondaryMenuItems = commonRtTools + dangerRtTools;
+                    } else if (!item.id_presupuesto_origen) {
+                        stageHtml = `<span class="mant-stage-pill stage-purple">2 · Falta Documento</span>`;
+                        primaryCtaHtml = `
+                            <button type="button" class="mant-cta-btn" style="background: #7c3aed;" onclick="abrirModalVincularPresupuesto(${item.id}, '${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, '${fechaRef}', decodeURIComponent('${encodeURIComponent(item.descripcion || '')}'), decodeURIComponent('${encodeURIComponent(item.cliente_nombre || '')}'))">
+                                🔗 Vincular Doc.
+                            </button>`;
+                        secondaryMenuItems = `
+                            <button type="button" onclick="cerrarMenusAccion(); abrirModalAsignarArticulo(${item.id}, '${item.articulo_numero}', ${realKilos || 0})" style="color: #d97706;">
+                                ✏️ Reasignar Artículo Oficial
+                            </button>
+                            <button type="button" onclick="cerrarMenusAccion(); desasignarArticuloOficial(${item.id})" style="color: #dc2626;">
+                                🔄 Retrotraer Calificación
+                            </button>
+                            <div class="mant-menu-sep"></div>
+                            ${commonRtTools}
+                            ${dangerRtTools}
+                        `;
+                    } else if (!esConsolidado) {
+                        if (esArcaBorrador) {
+                            stageHtml = `<span class="mant-stage-pill stage-amber">⏳ Enviado a Facturación</span>`;
+                            primaryCtaHtml = `<button type="button" class="mant-cta-btn" style="background: #d97706;" disabled>⏳ En Facturación</button>`;
+                        } else {
+                            stageHtml = `<span class="mant-stage-pill stage-amber">3 · Pendiente NC</span>`;
+                            primaryCtaHtml = `
+                                <button type="button" class="mant-cta-btn" style="background: #0284c7;" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}', '${item.id}')" ${btnDisabled}>
+                                    🧾 Emitir NC ARCA
+                                </button>`;
+                        }
+                        secondaryMenuItems = `
+                            <div class="mant-menu-note">⚠️ Destinos bloqueados hasta emitir NC ARCA</div>
+                            <button type="button" onclick="cerrarMenusAccion(); desvincularPresupuesto(${item.id})" style="color: #dc2626;">
+                                🔗 Desvincular Documento / Revertir
+                            </button>
+                            <div class="mant-menu-sep"></div>
+                            ${commonRtTools}
+                            ${dangerRtTools}
+                        `;
+                    } else {
+                        // Etapa 4: NC ARCA emitida -> Destinos físicos habilitados
+                        stageHtml = esArcaOK
+                            ? `<span class="mant-stage-pill stage-success">4 · ✅ NC Emitida</span>`
+                            : `<span class="mant-stage-pill stage-success">4 · ✅ Conciliado</span>`;
+                        primaryCtaHtml = `
+                            <button type="button" class="mant-cta-btn" style="background: #16a34a;" onclick="toggleAccionMenu(this, event)">
+                                🎯 Destino Final ▾
+                            </button>`;
+                        secondaryMenuItems = `
+                            <button type="button" onclick="cerrarMenusAccion(); enviarInmediatoTratamientoDirecto(${item.id}, ${cantidad}, '${item.cliente_id || ''}', decodeURIComponent('${encodeURIComponent(nombreMapeadoLocal)}'))" style="color: #0284c7;">
+                                ⛺ Enviar a Tratamiento
+                            </button>
+                            <button type="button" onclick="cerrarMenusAccion(); liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa', '${item.usuario_id || ''}', ${item.id})" style="color: #15803d;">
+                                📦 Enviar a Ventas (Devolución)
+                            </button>
+                            <button type="button" onclick="cerrarMenusAccion(); abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})" style="color: #6d28d9;">
+                                🧪 Convertir a Ingredientes
+                            </button>
+                            <button type="button" onclick="cerrarMenusAccion(); descartarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.ingrediente_id || ''}', ${item.id})" style="color: #b91c1c;">
+                                🗑️ Descartar / Desecho
+                            </button>
+                            <div class="mant-menu-sep"></div>
+                            <button type="button" onclick="cerrarMenusAccion(); desvincularPresupuesto(${item.id})" style="color: #dc2626;">
+                                🔗 Desvincular Documento / Revertir
+                            </button>
+                            ${commonRtTools}
+                            ${dangerRtTools}
+                        `;
+                    }
+                } else if (esConsolidado) {
+                    let ncSubInfo = '';
+                    if (!esArcaOK && esHistoricoConciliado && item.nc_nro) {
+                        const fechaNC = item.nc_fecha ? new Date(item.nc_fecha).toLocaleDateString('es-AR') : '';
+                        ncSubInfo = `<div style="font-size: 0.75rem; color: #15803d; margin-top: 3px;">${escapeHtmlMant(item.nc_tipo || 'NC')} ${escapeHtmlMant(item.nc_nro)} (${fechaNC})</div>`;
+                    }
+                    stageHtml = `<span class="mant-stage-pill stage-success">✅ ${esArcaOK ? 'NC Emitida' : 'Consolidado'}</span>${ncSubInfo}`;
+                    primaryCtaHtml = `
+                        <button type="button" class="mant-cta-btn" style="background: #16a34a;" onclick="toggleAccionMenu(this, event)">
+                            🎯 Destino Final ▾
+                        </button>`;
+                    secondaryMenuItems = `
+                        <button type="button" onclick="cerrarMenusAccion(); liberarStock('${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, 'Reintegro a Ventas tras Logística Inversa', '${item.usuario_id || ''}', ${item.id})" style="color: #15803d;">
+                            📦 Enviar a Ventas
+                        </button>
+                        <button type="button" onclick="cerrarMenusAccion(); abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})" style="color: #6d28d9;">
+                            🧪 Enviar a Ingredientes
+                        </button>
+                        <button type="button" onclick="cerrarMenusAccion(); descartarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.ingrediente_id || ''}', ${item.id})" style="color: #b91c1c;">
+                            🗑️ Descartar / Desecho
+                        </button>
+                        <div class="mant-menu-sep"></div>
+                        <button type="button" onclick="cerrarMenusAccion(); eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero || ''}', ${item.id || 'null'}, ${item.id_orden_tratamiento || 'null'})" style="color: #dc2626;" ${btnDisabled}>
+                            🗑️ Eliminar Recepción
+                        </button>
+                        <button type="button" onclick="cerrarMenusAccion(); limpiarRegistroMantenimiento(${item.id}, '${item.articulo_numero || ''}')" style="color: #64748b;">
+                            🧹 Limpiar Registro (Visual)
+                        </button>
+                    `;
+                } else {
+                    let eliminarDisabled = btnDisabled ? 'disabled' : '';
+                    if (esArcaBorrador) {
+                        stageHtml = `<span class="mant-stage-pill stage-amber">⏳ Enviado a Facturación</span>`;
+                        primaryCtaHtml = `<button type="button" class="mant-cta-btn" style="background: #d97706;" disabled>⏳ En Facturación</button>`;
+                        eliminarDisabled = 'disabled';
+                    } else if (item.articulo_numero && !item.id_presupuesto_origen && item.cliente_id) {
+                        stageHtml = `<span class="mant-stage-pill stage-purple">2 · Falta Documento</span>`;
+                        primaryCtaHtml = `
+                            <button type="button" class="mant-cta-btn" style="background: #7c3aed;" onclick="abrirModalVincularPresupuesto(${item.id}, '${item.cliente_id}', '${item.articulo_numero}', ${cantidad}, '${fechaRef}', decodeURIComponent('${encodeURIComponent(item.descripcion || '')}'), decodeURIComponent('${encodeURIComponent(item.cliente_nombre || '')}'))">
+                                🔗 Vincular Doc.
+                            </button>`;
+                    } else {
+                        stageHtml = `<span class="mant-stage-pill stage-amber">3 · Pendiente NC</span>`;
+                        primaryCtaHtml = `
+                            <button type="button" class="mant-cta-btn" style="background: #0284c7;" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}', '${item.id}')" ${btnDisabled}>
+                                🧾 Emitir NC ARCA
+                            </button>`;
+                    }
+
+                    secondaryMenuItems = `
+                        ${item.hash ? `<button type="button" onclick="cerrarMenusAccion(); descargarPDFTratamiento('${item.hash}')" style="color: #b91c1c;">📄 Imprimir PDF Trazabilidad</button>` : ''}
+                        <button type="button" onclick="cerrarMenusAccion(); eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero || ''}', ${item.id || 'null'}, ${item.id_orden_tratamiento || 'null'})" style="color: #dc2626;" ${eliminarDisabled}>
+                            🗑️ Eliminar Recepción
+                        </button>
+                    `;
                 }
 
-                if (item.id_presupuesto_origen) {
-                    subtitulo += `<br><span style="color:#17a2b8; font-weight:bold; font-size:0.85em;">📄 Doc. Origen: #${item.id_presupuesto_origen}</span>`;
-                }
-
-                if (item.observaciones && item.tipo_movimiento !== 'RETIRO_TRATAMIENTO') {
-                    subtitulo += `<br><span style="color:#6c757d; font-style:italic; font-size:0.85em;">📝 Obs: ${item.observaciones}</span>`;
-                }
+                // Construir celda de acciones (si primaryCta abre el menú, omitir doble botón `⋯`, si no, mostrar CTA + `⋯`)
+                const ctaAbreMenu = primaryCtaHtml.includes('toggleAccionMenu');
+                let actionCellHtml = `
+                    <div class="mant-actions-wrap">
+                        ${ctaAbreMenu ? `
+                            <div class="mant-menu-wrap">
+                                ${primaryCtaHtml}
+                                <div class="mant-menu-popover">${secondaryMenuItems}</div>
+                            </div>
+                        ` : `
+                            ${primaryCtaHtml}
+                            ${secondaryMenuItems ? `
+                                <div class="mant-menu-wrap">
+                                    <button type="button" class="mant-more-btn" onclick="toggleAccionMenu(this, event)" title="Más acciones">⋯</button>
+                                    <div class="mant-menu-popover">${secondaryMenuItems}</div>
+                                </div>
+                            ` : ''}
+                        `}
+                    </div>
+                `;
 
                 const rowId = item.id || '';
-                // QA Bugfix: All items should be selectable for physical treatments/tents, UNLESS they belong to an active tent.
                 let disabled = '';
                 let bgStyle = '';
-                let statusBadge = '<span class="status-cuarentena">🔒 En Custodia</span>';
-                
+
                 if (item.tratamiento_estado) {
                     disabled = 'disabled';
                     bgStyle = 'background-color: #fdf5e6; color: #856404;';
-                    // Override status badge
-                    statusBadge = `<span style="background-color: #ffc107; color: #856404; padding: 5px; border-radius: 4px; font-weight: bold; font-size: 0.85em; border: 1px solid #ffeeba;">⛺ Carpa ${item.tratamiento_id} - ${item.tratamiento_estado}</span>`;
-                    
-                    // Override action cell
-                    actionCell = `<div style="text-align: center; color: #856404; font-size: 0.9em; font-weight: bold;">
-                        🔒 Bloqueado Físicamente
-                        <br><small>Asignado al Tratamiento: ${item.tipo_tratamiento || '⛺'}</small>
-                        ${item.hash ? `<br><button onclick="descargarPDFTratamiento('${item.hash}')" style="background:#dc2626; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.9em; margin-top:8px;" title="Certificado de Retiro/Tratamiento">📄 PDF Trazabilidad</button>` : ''}
-                    </div>`;
+                    stageHtml = `<span class="mant-stage-pill stage-amber">⛺ Carpa #${item.tratamiento_id} · ${escapeHtmlMant(item.tratamiento_estado)}</span>`;
+                    actionCellHtml = `
+                        <div style="color: #92400e; font-size: 0.84rem; font-weight: 700;">
+                            🔒 En Carpa (${escapeHtmlMant(item.tipo_tratamiento || 'Tratamiento')})
+                            ${item.hash ? `<div style="margin-top:4px;"><button type="button" class="mant-cta-btn" style="background:#dc2626; padding:4px 8px; font-size:0.78rem;" onclick="descargarPDFTratamiento('${item.hash}')">📄 PDF Trazabilidad</button></div>` : ''}
+                        </div>`;
                 }
-                
+
                 if (bgStyle) {
                     row.setAttribute('style', bgStyle);
                 }
-                
+
+                const fechaCompacta = item.ultima_actualizacion
+                    ? new Date(item.ultima_actualizacion).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    : '';
+
                 row.innerHTML = `
-                <td style="text-align: center;">
-                    <input type="checkbox" class="chk-item-stock" ${disabled} onchange="evaluarSeleccionTratamiento()" data-articulo="${item.articulo_numero || ''}" data-ingrediente="${item.ingrediente_id || ''}" data-cliente="${item.cliente_id || ''}" data-cliente-nombre="${encodeURIComponent(item.cliente_nombre || '')}" data-tratamiento-logistico="${encodeURIComponent(nombreMapeadoLocal)}" data-bultos-origen="${encodeURIComponent(labelBultosLocal)}" data-kilos="${pesoTotal}" data-id="${rowId}">
-                </td>
-                <td>
-                    <strong>${tituloPrincipal}</strong>
-                    ${subtitulo ? `<br><small style="color:#666;">${subtitulo}</small>` : ''}
-                </td>
-                <td>${clienteHtml}</td>
-                <td style="font-size: 1.1em; color: #856404;">
-                    ${stockCellHtml}
-                </td>
-                <td>
-                    ${actionCell}
-                </td>
-                <td>${statusBadge}</td>
-                <td>
-                    ${new Date(item.ultima_actualizacion).toLocaleString()}
-                    ${esInterno ? `<br><small style="color: #007bff; font-weight: bold; margin-top: 5px; display: inline-block;">👤 Responsable: ${item.usuario || 'SISTEMA'}</small>` : ''}
-                </td>
-            `;
+                    <td style="text-align: center;">
+                        <input type="checkbox" class="chk-item-stock" ${disabled} onchange="evaluarSeleccionTratamiento()" data-articulo="${item.articulo_numero || ''}" data-ingrediente="${item.ingrediente_id || ''}" data-cliente="${item.cliente_id || ''}" data-cliente-nombre="${encodeURIComponent(item.cliente_nombre || '')}" data-tratamiento-logistico="${encodeURIComponent(nombreMapeadoLocal)}" data-bultos-origen="${encodeURIComponent(labelBultosLocal)}" data-kilos="${pesoTotal}" data-id="${rowId}">
+                    </td>
+                    <td>${tituloColHtml}</td>
+                    <td>${clienteHtml}</td>
+                    <td style="text-align: right;">${stockCellHtml}</td>
+                    <td>${stageHtml}</td>
+                    <td>
+                        ${actionCellHtml}
+                        <div class="mant-row-timestamp">
+                            <span>🕒 ${escapeHtmlMant(fechaCompacta)}</span>
+                            ${esInterno ? `<span style="color: #0284c7; font-weight: 600;">👤 ${escapeHtmlMant(item.usuario || 'SISTEMA')}</span>` : ''}
+                        </div>
+                    </td>
+                `;
                 tbody.appendChild(row);
             });
         }
@@ -3493,12 +4404,21 @@
                 ? `#${articuloActivo}`
                 : (ingredienteId && ingredienteId !== 'null' ? `Ingrediente #${ingredienteId}` : 'S/C');
 
+            // Traer catálogo actualizado de motivos estandarizados (ordenados por uso)
+            const motivosLista = await cargarMotivosDescarteCache(true);
+
             let optionsHtml = '<option value="-1" disabled selected>Seleccione responsable (OBLIGATORIO)</option>';
             if (window.operariosActivosCache) {
                 window.operariosActivosCache.forEach(op => {
-                    optionsHtml += `<option value="${op.id}">${op.nombre}</option>`;
+                    optionsHtml += `<option value="${op.id}">${escapeHtmlMant(op.nombre)}</option>`;
                 });
             }
+
+            let motivosOptionsHtml = '<option value="" disabled selected>Seleccione motivo de descarte (OBLIGATORIO)</option>';
+            (motivosLista || []).forEach(m => {
+                motivosOptionsHtml += `<option value="${m.id}">${escapeHtmlMant(m.nombre)}${m.veces_usado > 0 ? ` (${m.veces_usado})` : ''}</option>`;
+            });
+            motivosOptionsHtml += '<option value="__NUEVO__">➕ Agregar nuevo motivo...</option>';
 
             const result = await Swal.fire({
                 title: '🗑️ ¿Descartar / Desecho Definitivo?',
@@ -3506,24 +4426,36 @@
                 html: `
                     <div style="background: #fff5f5; border: 1px solid #f5c6cb; border-radius: 8px; padding: 15px; text-align: left; margin-bottom: 15px; font-family: sans-serif;">
                         <div style="font-size: 14px; font-weight: bold; color: #b02a37; border-bottom: 1px solid #f5c6cb; padding-bottom: 5px; margin-bottom: 8px;">🗑️ Mercadería a Descartar (Fin del camino):</div>
-                        <div style="font-size: 16px; color: #111; margin-bottom: 4px;"><b>Descripción:</b> ${nombreOrigen || 'Sin Descripción'}</div>
-                        <div style="font-size: 14px; color: #333; margin-bottom: 4px;"><b>Código:</b> ${codigoLabel}</div>
+                        <div style="font-size: 16px; color: #111; margin-bottom: 4px;"><b>Descripción:</b> ${escapeHtmlMant(nombreOrigen || 'Sin Descripción')}</div>
+                        <div style="font-size: 14px; color: #333; margin-bottom: 4px;"><b>Código:</b> ${escapeHtmlMant(codigoLabel)}</div>
                         <div style="font-size: 14px; color: #333;"><b>Cantidad / Peso:</b> ${cantNum} u. (${pesoTotal.toFixed(2).replace('.', ',')} kg)</div>
                         <div style="font-size: 12px; color: #721c24; margin-top: 8px; font-weight: 600;">
-                            ⚠️ Se descontará únicamente de Mantenimiento. CERO impacto en Stock Comercial (Ventas) ni en Ingredientes.
+                            ⚠️ Se descontará únicamente de Mantenimiento y se valorizará a costo real en el Registro de Descartes. CERO impacto en Stock Comercial (Ventas) ni en Ingredientes.
                         </div>
                     </div>
 
                     <div style="margin-top: 12px; text-align: left; width: 100%; box-sizing: border-box;">
                         <label for="swal-descarte-responsable"><b>Responsable de Descarte (OBLIGATORIO):</b></label><br>
-                        <select id="swal-descarte-responsable" class="swal2-select" style="display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin: 5px 0 0 0; font-size: 16px; border-color: #dc3545; padding: 10px;" required>
+                        <select id="swal-descarte-responsable" class="swal2-select" style="display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin: 5px 0 0 0; font-size: 15px; border-color: #dc3545; padding: 10px;" required>
                             ${optionsHtml}
                         </select>
                     </div>
 
-                    <div style="margin-top: 15px; text-align: left; width: 100%; box-sizing: border-box;">
-                        <label for="swal-descarte-motivo"><b>Motivo / Nota Auditable del Descarte (OBLIGATORIO):</b></label><br>
-                        <textarea id="swal-descarte-motivo" class="swal2-textarea" placeholder="Ej: Barritas sueltas vencidas / envase roto no apto para venta ni materia prima..." style="display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin: 5px 0 0 0; min-height: 80px; font-size: 14px; padding: 10px;"></textarea>
+                    <div style="margin-top: 14px; text-align: left; width: 100%; box-sizing: border-box;">
+                        <label for="swal-descarte-motivo-select"><b>Motivo Estandarizado del Descarte (OBLIGATORIO):</b></label><br>
+                        <select id="swal-descarte-motivo-select" class="swal2-select" style="display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin: 5px 0 0 0; font-size: 15px; border-color: #b02a37; padding: 10px;" required>
+                            ${motivosOptionsHtml}
+                        </select>
+                    </div>
+
+                    <div id="swal-descarte-motivo-nuevo-wrap" style="display: none; margin-top: 12px; text-align: left; width: 100%; box-sizing: border-box; background: #fffbeb; border: 1px solid #f59e0b; border-radius: 6px; padding: 10px;">
+                        <label for="swal-descarte-motivo-nuevo" style="color: #92400e;"><b>➕ Nuevo Motivo (se guardará para futuros descartes):</b></label>
+                        <input type="text" id="swal-descarte-motivo-nuevo" class="swal2-input" maxlength="120" placeholder="Ej: Rotura de empaque en transporte..." style="display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin: 6px 0 0 0; font-size: 14px; padding: 9px 10px;">
+                    </div>
+
+                    <div style="margin-top: 14px; text-align: left; width: 100%; box-sizing: border-box;">
+                        <label for="swal-descarte-obs-extra"><b>Observación puntual adicional (opcional):</b></label><br>
+                        <textarea id="swal-descarte-obs-extra" class="swal2-textarea" placeholder="Detalle puntual del caso (ej: 9 barritas aplastadas en caja de entrega anterior)..." style="display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin: 5px 0 0 0; min-height: 70px; font-size: 14px; padding: 10px;"></textarea>
                     </div>
                 `,
                 icon: 'warning',
@@ -3532,18 +4464,44 @@
                 cancelButtonColor: '#6c757d',
                 confirmButtonText: '🗑️ Confirmar Descarte Definitivo',
                 cancelButtonText: 'Cancelar',
+                didOpen: () => {
+                    const selMotivo = document.getElementById('swal-descarte-motivo-select');
+                    const wrapNuevo = document.getElementById('swal-descarte-motivo-nuevo-wrap');
+                    const inputNuevo = document.getElementById('swal-descarte-motivo-nuevo');
+                    if (selMotivo && wrapNuevo) {
+                        selMotivo.addEventListener('change', () => {
+                            const esNuevo = selMotivo.value === '__NUEVO__';
+                            wrapNuevo.style.display = esNuevo ? 'block' : 'none';
+                            if (esNuevo && inputNuevo) {
+                                setTimeout(() => inputNuevo.focus(), 40);
+                            }
+                        });
+                    }
+                },
                 preConfirm: () => {
                     const resp = document.getElementById('swal-descarte-responsable').value;
-                    const motivo = document.getElementById('swal-descarte-motivo').value.trim();
+                    const motivoSel = document.getElementById('swal-descarte-motivo-select').value;
+                    const motivoNuevo = (document.getElementById('swal-descarte-motivo-nuevo')?.value || '').trim();
+                    const obsExtra = (document.getElementById('swal-descarte-obs-extra')?.value || '').trim();
+
                     if (resp === '-1' || !resp) {
                         Swal.showValidationMessage('⚠️ Debe indicar quién es el operario Responsable.');
                         return false;
                     }
-                    if (!motivo || motivo.length < 3) {
-                        Swal.showValidationMessage('⚠️ Debe ingresar una nota/motivo auditable (mínimo 3 caracteres).');
+                    if (!motivoSel) {
+                        Swal.showValidationMessage('⚠️ Debe seleccionar un motivo de descarte (o elegir "➕ Agregar nuevo motivo...").');
                         return false;
                     }
-                    return { responsable: resp, motivo };
+                    if (motivoSel === '__NUEVO__' && motivoNuevo.length < 3) {
+                        Swal.showValidationMessage('⚠️ Escriba el nombre del nuevo motivo (mínimo 3 caracteres).');
+                        return false;
+                    }
+                    return {
+                        responsable: resp,
+                        motivo_descarte_id: motivoSel === '__NUEVO__' ? null : parseInt(motivoSel, 10),
+                        motivo_nuevo: motivoSel === '__NUEVO__' ? motivoNuevo : null,
+                        observaciones: obsExtra
+                    };
                 }
             });
 
@@ -3562,17 +4520,28 @@
                         articulo_numero: (articuloActivo && articuloActivo !== 'null') ? articuloActivo : null,
                         ingrediente_id: (ingredienteId && ingredienteId !== 'null') ? ingredienteId : null,
                         cantidad: cantNum,
-                        observaciones: payload.motivo,
+                        motivo_descarte_id: payload.motivo_descarte_id,
+                        motivo_nuevo: payload.motivo_nuevo,
+                        observaciones: payload.observaciones,
                         responsable: payload.responsable
                     })
                 });
 
                 const data = await res.json();
                 if (data.success) {
-                    Swal.fire('Descarte Registrado', data.message || 'La mercadería fue descartada definitivamente de Mantenimiento.', 'success').then(() => {
+                    const costoInfo = (data.costo_total_descarte !== undefined && data.costo_total_descarte !== null)
+                        ? `<br><br><span style="color:#b91c1c; font-weight:bold;">💸 Pérdida registrada a costo: ${formatearMonedaARS(data.costo_total_descarte)}</span>`
+                        : '';
+                    Swal.fire({
+                        title: 'Descarte Registrado',
+                        html: `${escapeHtmlMant(data.message || 'La mercadería fue descartada definitivamente de Mantenimiento.')}${costoInfo}`,
+                        icon: 'success'
+                    }).then(() => {
                         setTimeout(() => {
                             cargarStock();
                             cargarHistorial();
+                            cargarMotivosDescarteCache(true);
+                            cargarRegistroDescartes();
                         }, 200);
                     });
                 } else {

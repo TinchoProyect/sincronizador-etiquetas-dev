@@ -1,6 +1,6 @@
 {
-  "tableCount": 172,
-  "uniqueIndexCount": 250,
+  "tableCount": 173,
+  "uniqueIndexCount": 252,
   "tables": {
     "abrir_caja_aprendizaje": {
       "codigo_caja": {
@@ -11372,6 +11372,68 @@
         "column_default": null
       }
     },
+    "mantenimiento_motivos_descarte": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('mantenimiento_motivos_descarte_id_seq'::regclass)"
+      },
+      "nombre": {
+        "ordinal_position": 2,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "nombre_normalizado": {
+        "ordinal_position": 3,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "veces_usado": {
+        "ordinal_position": 4,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      "activo": {
+        "ordinal_position": 5,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "true"
+      },
+      "created_at": {
+        "ordinal_position": 6,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      }
+    },
     "mantenimiento_movimientos": {
       "id": {
         "ordinal_position": 1,
@@ -11490,6 +11552,46 @@
         "character_maximum_length": null,
         "numeric_precision": 32,
         "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "motivo_descarte_id": {
+        "ordinal_position": 13,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "costo_unitario_snapshot": {
+        "ordinal_position": 14,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "costo_total_descarte": {
+        "ordinal_position": 15,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "costo_fuente": {
+        "ordinal_position": 16,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
       }
@@ -23191,6 +23293,32 @@
       ],
       "has_expression_key": false,
       "sig": "mantenimiento_conciliaciones::(id)[pred=]"
+    },
+    {
+      "table_name": "mantenimiento_motivos_descarte",
+      "index_name": "mantenimiento_motivos_descarte_pkey",
+      "is_primary": true,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX mantenimiento_motivos_descarte_pkey ON public.mantenimiento_motivos_descarte USING btree (id)",
+      "index_predicate": "",
+      "key_columns": [
+        "id"
+      ],
+      "has_expression_key": false,
+      "sig": "mantenimiento_motivos_descarte::(id)[pred=]"
+    },
+    {
+      "table_name": "mantenimiento_motivos_descarte",
+      "index_name": "mantenimiento_motivos_descarte_nombre_normalizado_key",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX mantenimiento_motivos_descarte_nombre_normalizado_key ON public.mantenimiento_motivos_descarte USING btree (nombre_normalizado)",
+      "index_predicate": "",
+      "key_columns": [
+        "nombre_normalizado"
+      ],
+      "has_expression_key": false,
+      "sig": "mantenimiento_motivos_descarte::(nombre_normalizado)[pred=]"
     },
     {
       "table_name": "mantenimiento_movimientos",

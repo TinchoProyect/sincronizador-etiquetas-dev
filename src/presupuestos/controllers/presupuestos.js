@@ -4209,7 +4209,11 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
                     END as origen_facturacion,
                     f.pto_vta,
                     f.cbte_nro,
+                    f.tipo_cbte,
                     f.id as factura_id,
+                    p.id_ruta,
+                    p.fecha_entrega_real,
+                    r.nombre_ruta,
                     p.usar_precios_bunker,
                     d.cantidad,
                     d.precio1 as precio_unitario_historico, -- Precio con IVA guardado
@@ -4224,12 +4228,14 @@ const obtenerHistorialArticuloCliente = async (req, res) => {
                     END as descuento_porcentaje
                 FROM presupuestos p
                 JOIN presupuestos_detalles d ON d.id_presupuesto = p.id
+                LEFT JOIN public.rutas r ON r.id = p.id_ruta
                 LEFT JOIN (
-                    -- Subquery para traer la última factura aprobada por si hay múltiples
-                    SELECT id, presupuesto_id, pto_vta, cbte_nro, estado,
+                    -- Subquery para traer la última factura aprobada (excluyendo NCs) por si hay múltiples
+                    SELECT id, presupuesto_id, pto_vta, cbte_nro, tipo_cbte, estado,
                            ROW_NUMBER() OVER(PARTITION BY presupuesto_id ORDER BY id DESC) as rn
                     FROM factura_facturas 
                     WHERE estado IN ('APROBADA', 'APROBADA_LOCAL')
+                      AND tipo_cbte IN (1, 6, 11, 201, 206, 211)
                 ) f ON f.presupuesto_id = p.id AND f.rn = 1
                 WHERE (p.id_cliente = $1::text OR LTRIM(p.id_cliente::text, '0') = LTRIM($1::text, '0'))
                   AND (

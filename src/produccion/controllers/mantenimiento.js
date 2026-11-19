@@ -1,5 +1,10 @@
 const pool = require('../config/database');
 const { asegurarCheckDescarteMantenimiento } = require('../migrations/asegurarCheckDescarteMantenimiento');
+const {
+    asegurarEsquemaDescartesMantenimiento,
+    normalizarMotivoDescarte,
+    calcularCostoDescarteParaMovimiento
+} = require('../migrations/asegurarEsquemaDescartesMantenimiento');
 
 /**
  * Servicio modular de Higiene Visual para registros en Mantenimiento.
@@ -41,7 +46,8 @@ async function getStockMantenimiento(req, res) {
                     mm.id_orden_tratamiento,
                     COALESCE(p.id_cliente::text, ot.id_cliente::text) AS cliente_id,
                     COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Desconocido') as cliente_nombre,
-                    p.id_ruta AS origen_ruta_id,
+                    COALESCE(p.id_ruta, ot.id_ruta) AS origen_ruta_id,
+                    ot.fecha_validacion_chofer AS fecha_retiro_origen,
                     COALESCE(p.comprobante_lomasoft, p_padre.comprobante_lomasoft) AS presup_comprobante_lomasoft,
                     p.fecha AS presup_fecha,
                     p.estado AS estado_presupuesto,
@@ -100,6 +106,7 @@ async function getStockMantenimiento(req, res) {
                 COALESCE(u_resp.nombre_completo, NULLIF(TRIM(sc.usuario), ''), 'SISTEMA') AS usuario,
                 sc.historial_tratamientos,
                 sc.origen_ruta_id,
+                sc.fecha_retiro_origen,
                 COALESCE(s.kilos_unidad, 1) as kilos_unidad, 
                 sc.cliente_id,
                 CASE 
@@ -1039,13 +1046,23 @@ async function transferirAIngredientes(req, res) {
 async function descartarStock(req, res) {
     try {
         await asegurarCheckDescarteMantenimiento(pool);
+        await asegurarEsquemaDescartesMantenimiento(pool);
     } catch (errCheck) {
-        console.warn('⚠️ [MANTENIMIENTO] No se pudo verificar CHECK DESCARTE antes de descartar:', errCheck.message);
+        console.warn('⚠️ [MANTENIMIENTO] No se pudo verificar esquema DESCARTE antes de descartar:', errCheck.message);
     }
 
     const client = await pool.connect();
     try {
-        const { movimiento_id, articulo_numero, ingrediente_id, cantidad, observaciones, responsable } = req.body || {};
+        const {
+            movimiento_id,
+            articulo_numero,
+            ingrediente_id,
+            cantidad,
+            motivo_descarte_id,
+            motivo_nuevo,
+            observaciones,
+            responsable
+        } = req.body || {};
 
         if (!movimiento_id) {
             return res.status(400).json({ success: false, error: 'Se requiere movimiento_id para ejecutar el descarte.' });
@@ -1054,12 +1071,52 @@ async function descartarStock(req, res) {
         if (!responsableStr || responsableStr === '-1') {
             return res.status(400).json({ success: false, error: 'Debe seleccionar obligatoriamente un operario Responsable para el descarte.' });
         }
-        const motivoLimpio = String(observaciones || '').trim();
-        if (motivoLimpio.length < 3) {
-            return res.status(400).json({ success: false, error: 'Debe ingresar un motivo / nota auditable obligatoria (mínimo 3 caracteres).' });
+
+        const motivoIdNum = motivo_descarte_id !== undefined && motivo_descarte_id !== null && String(motivo_descarte_id).trim() !== ''
+            ? parseInt(motivo_descarte_id, 10)
+            : null;
+        const motivoNuevoLimpio = String(motivo_nuevo || '').trim().replace(/\s+/g, ' ');
+        const obsExtraLimpia = String(observaciones || '').trim().replace(/\s+/g, ' ');
+
+        if (!motivoIdNum && motivoNuevoLimpio.length < 3 && obsExtraLimpia.length < 3) {
+            return res.status(400).json({
+                success: false,
+                error: 'Debe seleccionar un motivo de descarte o ingresar uno nuevo (mínimo 3 caracteres).'
+            });
         }
 
         await client.query('BEGIN');
+
+        // 1. Resolver o crear/deduplicar el motivo estandarizado
+        let motivoRes = null;
+        let detalleAdicional = obsExtraLimpia;
+
+        if (motivoIdNum && !isNaN(motivoIdNum)) {
+            const qMot = await client.query(
+                'SELECT id, nombre FROM public.mantenimiento_motivos_descarte WHERE id = $1 LIMIT 1',
+                [motivoIdNum]
+            );
+            if (qMot.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: 'El motivo de descarte seleccionado no existe.' });
+            }
+            motivoRes = qMot.rows[0];
+        } else {
+            const nombreNuevo = (motivoNuevoLimpio.length >= 3 ? motivoNuevoLimpio : obsExtraLimpia).slice(0, 120);
+            if (motivoNuevoLimpio.length < 3) {
+                // Retrocompatibilidad: si un caller legado mandó solo `observaciones`, no duplicar como detalle extra
+                detalleAdicional = '';
+            }
+            const norm = normalizarMotivoDescarte(nombreNuevo);
+            const qInsMot = await client.query(`
+                INSERT INTO public.mantenimiento_motivos_descarte (nombre, nombre_normalizado, veces_usado, activo)
+                VALUES ($1, $2, 0, TRUE)
+                ON CONFLICT (nombre_normalizado)
+                DO UPDATE SET activo = TRUE
+                RETURNING id, nombre
+            `, [nombreNuevo, norm]);
+            motivoRes = qInsMot.rows[0];
+        }
 
         const resOrig = await client.query(`
             SELECT id, articulo_numero, ingrediente_id, cantidad, estado, id_presupuesto_origen, id_orden_tratamiento
@@ -1107,7 +1164,30 @@ async function descartarStock(req, res) {
             `, [cantDescartar, articuloRealNumero]);
         }
 
-        const obsDescarte = `[DESCARTE] ${motivoLimpio}`;
+        // 2. Congelar costo real de pérdida usando el motor oficial LAMDA (o NC origen si existe)
+        let costoSnapshot = { costoUnitario: 0, costoTotal: 0, fuente: 'NO_DISPONIBLE' };
+        try {
+            costoSnapshot = await calcularCostoDescarteParaMovimiento(client, {
+                id_presupuesto_origen: movOrigen.id_presupuesto_origen || null,
+                id_orden_tratamiento: movOrigen.id_orden_tratamiento || null,
+                articulo_numero: articuloRealNumero,
+                ingrediente_id: ingFinal,
+                cantidad: cantDescartar
+            });
+        } catch (errCosto) {
+            console.warn('⚠️ [MANTENIMIENTO] No se pudo calcular costo al descartar:', errCosto.message);
+        }
+
+        // 3. Incrementar contador de uso del motivo
+        await client.query(
+            'UPDATE public.mantenimiento_motivos_descarte SET veces_usado = veces_usado + 1 WHERE id = $1',
+            [motivoRes.id]
+        );
+
+        const obsDescarte = detalleAdicional
+            ? `[DESCARTE] ${motivoRes.nombre} — ${detalleAdicional}`
+            : `[DESCARTE] ${motivoRes.nombre}`;
+
         const insDescarte = await client.query(`
             INSERT INTO public.mantenimiento_movimientos (
                 id_presupuesto_origen,
@@ -1119,8 +1199,12 @@ async function descartarStock(req, res) {
                 tipo_movimiento,
                 observaciones,
                 fecha_movimiento,
-                estado
-            ) VALUES ($1, $2, $3, $4, $5, $6, 'DESCARTE', $7, NOW(), 'FINALIZADO')
+                estado,
+                motivo_descarte_id,
+                costo_unitario_snapshot,
+                costo_total_descarte,
+                costo_fuente
+            ) VALUES ($1, $2, $3, $4, $5, $6, 'DESCARTE', $7, NOW(), 'FINALIZADO', $8, $9, $10, $11)
             RETURNING id
         `, [
             movOrigen.id_presupuesto_origen || null,
@@ -1129,18 +1213,27 @@ async function descartarStock(req, res) {
             ingFinal,
             cantDescartar,
             responsableStr,
-            obsDescarte
+            obsDescarte,
+            motivoRes.id,
+            costoSnapshot.costoUnitario,
+            costoSnapshot.costoTotal,
+            costoSnapshot.fuente
         ]);
 
         await cleanUpMaintenanceRecord(client, movOrigen.id, 'Mantenimiento -> Descarte');
 
         await client.query('COMMIT');
-        console.log(`🗑️ [MANTENIMIENTO] Descarte registrado. MovOrigen #${movOrigen.id} -> Descarte #${insDescarte.rows[0].id} | Art: ${articuloRealNumero || 'ING-' + ingFinal} | Cant: ${cantDescartar} | Resp: ${responsableStr}`);
+        console.log(`🗑️ [MANTENIMIENTO] Descarte registrado. MovOrigen #${movOrigen.id} -> Descarte #${insDescarte.rows[0].id} | Art: ${articuloRealNumero || 'ING-' + ingFinal} | Cant: ${cantDescartar} | Motivo: ${motivoRes.nombre} | Costo: $${costoSnapshot.costoTotal} (${costoSnapshot.fuente}) | Resp: ${responsableStr}`);
 
         res.json({
             success: true,
-            message: 'Mercadería descartada y dada de baja de Mantenimiento correctamente.',
-            id_movimiento_descarte: insDescarte.rows[0].id
+            message: 'Mercadería descartada y valorizada en Registro de Descartes correctamente.',
+            id_movimiento_descarte: insDescarte.rows[0].id,
+            motivo_descarte_id: motivoRes.id,
+            motivo_nombre: motivoRes.nombre,
+            costo_unitario_snapshot: costoSnapshot.costoUnitario,
+            costo_total_descarte: costoSnapshot.costoTotal,
+            costo_fuente: costoSnapshot.fuente
         });
     } catch (error) {
         await client.query('ROLLBACK');
@@ -1148,6 +1241,209 @@ async function descartarStock(req, res) {
         res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();
+    }
+}
+
+/**
+ * Listar catálogo de motivos de descarte activos ordenados por frecuencia de uso
+ * GET /api/produccion/mantenimiento/motivos-descarte
+ */
+async function getMotivosDescarte(req, res) {
+    try {
+        await asegurarEsquemaDescartesMantenimiento(pool);
+        const result = await pool.query(`
+            SELECT id, nombre, veces_usado, activo, created_at
+            FROM public.mantenimiento_motivos_descarte
+            WHERE activo = TRUE
+            ORDER BY veces_usado DESC, nombre ASC
+        `);
+        res.json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ [MANTENIMIENTO] Error al listar motivos de descarte:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+/**
+ * Registro valorizado de descartes con KPIs de pérdida real a costo y crédito NC
+ * GET /api/produccion/mantenimiento/descartes?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&q=...&motivo_id=...&origen=...
+ */
+async function getRegistroDescartes(req, res) {
+    try {
+        await asegurarEsquemaDescartesMantenimiento(pool);
+
+        const { desde, hasta, q, motivo_id, origen } = req.query || {};
+        const params = [];
+        const where = [
+            `mm.tipo_movimiento = 'DESCARTE'`,
+            `mm.estado IS DISTINCT FROM 'REVERTIDO'`,
+            `mm.estado IS DISTINCT FROM 'ANULADO'`
+        ];
+
+        if (desde && /^\d{4}-\d{2}-\d{2}$/.test(String(desde).trim())) {
+            params.push(String(desde).trim());
+            where.push(`(mm.fecha_movimiento AT TIME ZONE 'America/Argentina/Buenos_Aires')::date >= $${params.length}::date`);
+        }
+        if (hasta && /^\d{4}-\d{2}-\d{2}$/.test(String(hasta).trim())) {
+            params.push(String(hasta).trim());
+            where.push(`(mm.fecha_movimiento AT TIME ZONE 'America/Argentina/Buenos_Aires')::date <= $${params.length}::date`);
+        }
+        if (motivo_id && /^\d+$/.test(String(motivo_id).trim())) {
+            params.push(parseInt(motivo_id, 10));
+            where.push(`mm.motivo_descarte_id = $${params.length}`);
+        }
+        const origenNorm = String(origen || 'TODOS').trim().toUpperCase();
+        if (origenNorm === 'DEVOLUCION_CLIENTE') {
+            where.push(`(mm.id_presupuesto_origen IS NOT NULL OR mm.id_orden_tratamiento IS NOT NULL)`);
+        } else if (origenNorm === 'INTERNO') {
+            where.push(`(mm.id_presupuesto_origen IS NULL AND mm.id_orden_tratamiento IS NULL)`);
+        }
+
+        // Búsqueda universal LAMDA: términos separados por espacios = AND acumulativo
+        const tokens = String(q || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+        for (const tok of tokens) {
+            params.push(`%${tok}%`);
+            const idx = params.length;
+            where.push(`(
+                LOWER(COALESCE(mm.articulo_numero, '')) LIKE $${idx}
+                OR LOWER(COALESCE(a.nombre, i.nombre, '')) LIKE $${idx}
+                OR LOWER(COALESCE(mmd.nombre, '')) LIKE $${idx}
+                OR LOWER(COALESCE(mm.observaciones, '')) LIKE $${idx}
+                OR LOWER(COALESCE(c.nombre, '') || ' ' || COALESCE(c.apellido, '') || ' ' || COALESCE(c.otros, '')) LIKE $${idx}
+                OR LOWER(COALESCE(u.nombre_completo, mm.usuario, '')) LIKE $${idx}
+                OR LOWER(COALESCE('RT-' || mm.id_orden_tratamiento::text, '')) LIKE $${idx}
+                OR LOWER(COALESCE(mm.id_presupuesto_origen::text, '')) LIKE $${idx}
+                OR LOWER(COALESCE(LPAD(nc.nc_pto_vta::text, 4, '0') || '-' || LPAD(nc.nc_cbte_nro::text, 8, '0'), '')) LIKE $${idx}
+            )`);
+        }
+
+        const sql = `
+            SELECT
+                mm.id,
+                mm.fecha_movimiento,
+                mm.articulo_numero,
+                mm.ingrediente_id,
+                COALESCE(a.nombre, i.nombre, mm.articulo_numero, 'Ingrediente #' || mm.ingrediente_id::text) AS descripcion,
+                mm.cantidad,
+                CASE
+                    WHEN mm.articulo_numero IS NOT NULL THEN COALESCE(NULLIF(s.kilos_unidad, 0), 1)
+                    ELSE 1
+                END AS kilos_unidad,
+                ROUND((
+                    mm.cantidad * CASE
+                        WHEN mm.articulo_numero IS NOT NULL THEN COALESCE(NULLIF(s.kilos_unidad, 0), 1)
+                        ELSE 1
+                    END
+                )::numeric, 3) AS kilos_descartados,
+                mm.motivo_descarte_id,
+                COALESCE(mmd.nombre, 'Sin clasificar') AS motivo_nombre,
+                mm.observaciones,
+                mm.costo_unitario_snapshot,
+                COALESCE(mm.costo_total_descarte, 0) AS costo_total_descarte,
+                mm.costo_fuente,
+                mm.id_presupuesto_origen,
+                mm.id_orden_tratamiento,
+                COALESCE(p.id_cliente::text, ot.id_cliente::text) AS cliente_id,
+                CASE
+                    WHEN mm.id_presupuesto_origen IS NOT NULL OR mm.id_orden_tratamiento IS NOT NULL THEN
+                        NULLIF(TRIM(COALESCE(c.nombre || ' ' || COALESCE(c.apellido, ''), c.nombre, c.apellido, c.otros, '')), '')
+                    ELSE NULL
+                END AS cliente_nombre,
+                CASE
+                    WHEN mm.id_presupuesto_origen IS NOT NULL OR mm.id_orden_tratamiento IS NOT NULL THEN 'DEVOLUCION_CLIENTE'
+                    ELSE 'INTERNO'
+                END AS origen_tipo,
+                COALESCE(u.nombre_completo, NULLIF(TRIM(mm.usuario), ''), 'SISTEMA') AS responsable_nombre,
+                nc.nc_id,
+                nc.nc_tipo_cbte,
+                nc.nc_pto_vta,
+                nc.nc_cbte_nro,
+                nc.nc_cae,
+                COALESCE(nc.nc_imp_neto, 0) AS nc_imp_neto,
+                COALESCE(nc.nc_imp_total, 0) AS nc_imp_total
+            FROM public.mantenimiento_movimientos mm
+            LEFT JOIN public.articulos a ON (mm.articulo_numero = a.numero OR mm.articulo_numero = a.codigo_barras)
+            LEFT JOIN public.ingredientes i ON mm.ingrediente_id = i.id
+            LEFT JOIN public.stock_real_consolidado s ON (mm.articulo_numero = s.articulo_numero OR mm.articulo_numero = s.codigo_barras)
+            LEFT JOIN public.mantenimiento_motivos_descarte mmd ON mm.motivo_descarte_id = mmd.id
+            LEFT JOIN public.usuarios u ON u.id::text = mm.usuario::text
+            LEFT JOIN public.ordenes_tratamiento ot ON mm.id_orden_tratamiento = ot.id
+            LEFT JOIN public.presupuestos p ON mm.id_presupuesto_origen = p.id
+            LEFT JOIN public.clientes c ON COALESCE(p.id_cliente::text, ot.id_cliente::text) = c.cliente_id::text
+            LEFT JOIN LATERAL (
+                SELECT
+                    ff.id AS nc_id,
+                    ff.tipo_cbte AS nc_tipo_cbte,
+                    ff.pto_vta AS nc_pto_vta,
+                    ff.cbte_nro AS nc_cbte_nro,
+                    ff.cae AS nc_cae,
+                    ff.imp_neto AS nc_imp_neto,
+                    ff.imp_total AS nc_imp_total
+                FROM public.mantenimiento_movimientos mm_nc
+                JOIN public.factura_facturas ff
+                  ON ff.id = (SUBSTRING(mm_nc.observaciones FROM '\\[NC Generada ID: (\\d+)\\]'))::int
+                WHERE mm_nc.tipo_movimiento = 'EMISION_NC'
+                  AND mm_nc.estado IS DISTINCT FROM 'ANULADO'
+                  AND mm_nc.estado IS DISTINCT FROM 'REVERTIDO'
+                  AND ff.estado IN ('APROBADA', 'APROBADA_LOCAL')
+                  AND (
+                      (mm.id_presupuesto_origen IS NOT NULL AND mm_nc.id_presupuesto_origen = mm.id_presupuesto_origen)
+                      OR (mm.id_orden_tratamiento IS NOT NULL AND mm_nc.observaciones LIKE '%[MovID: ' || (
+                          SELECT id FROM public.mantenimiento_movimientos
+                          WHERE id_orden_tratamiento = mm.id_orden_tratamiento AND tipo_movimiento = 'RETIRO_TRATAMIENTO'
+                          ORDER BY id DESC LIMIT 1
+                      )::text || ']%')
+                  )
+                  AND (
+                      mm_nc.articulo_numero = mm.articulo_numero
+                      OR mm_nc.articulo_numero = a.numero
+                      OR mm_nc.articulo_numero = a.codigo_barras
+                  )
+                ORDER BY ff.id DESC
+                LIMIT 1
+            ) nc ON TRUE
+            WHERE ${where.join(' AND ')}
+            ORDER BY mm.fecha_movimiento DESC, mm.id DESC
+            LIMIT 500
+        `;
+
+        const result = await pool.query(sql, params);
+        const rows = result.rows;
+
+        // Deduplicar NC por nc_id al acumular KPIs para no duplicar montos si hubiera 2 descartes sobre la misma NC
+        const ncsContabilizadas = new Set();
+        let totalKilos = 0;
+        let totalUnidades = 0;
+        let totalCostoPerdido = 0;
+        let totalNcNeto = 0;
+        let totalNcTotal = 0;
+
+        for (const r of rows) {
+            totalKilos += parseFloat(r.kilos_descartados) || 0;
+            totalUnidades += parseFloat(r.cantidad) || 0;
+            totalCostoPerdido += parseFloat(r.costo_total_descarte) || 0;
+            if (r.nc_id && !ncsContabilizadas.has(r.nc_id)) {
+                ncsContabilizadas.add(r.nc_id);
+                totalNcNeto += parseFloat(r.nc_imp_neto) || 0;
+                totalNcTotal += parseFloat(r.nc_imp_total) || 0;
+            }
+        }
+
+        res.json({
+            success: true,
+            resumen: {
+                total_registros: rows.length,
+                total_kilos: Math.round(totalKilos * 1000) / 1000,
+                total_unidades: Math.round(totalUnidades * 1000) / 1000,
+                total_costo_perdido: Math.round(totalCostoPerdido * 100) / 100,
+                total_nc_neto: Math.round(totalNcNeto * 100) / 100,
+                total_nc_total: Math.round(totalNcTotal * 100) / 100
+            },
+            data: rows
+        });
+    } catch (error) {
+        console.error('❌ [MANTENIMIENTO] Error al obtener registro de descartes:', error.message);
+        res.status(500).json({ success: false, error: error.message });
     }
 }
 
@@ -4369,6 +4665,8 @@ module.exports = {
     getHistorialMantenimiento,
     liberarStock,
     descartarStock,
+    getMotivosDescarte,
+    getRegistroDescartes,
     transferirAIngredientes,
     revertirMovimiento,
     deshacerConciliacion,
