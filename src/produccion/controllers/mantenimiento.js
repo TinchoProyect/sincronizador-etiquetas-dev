@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { asegurarCheckDescarteMantenimiento } = require('../migrations/asegurarCheckDescarteMantenimiento');
 
 /**
  * Servicio modular de Higiene Visual para registros en Mantenimiento.
@@ -1021,6 +1022,129 @@ async function transferirAIngredientes(req, res) {
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('❌ Error en transferencia:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Descartar / Dar de Baja Definitiva Stock en Mantenimiento (Fin del camino)
+ * Clon simétrico de liberarStock / transferirAIngredientes:
+ * 1. Bloquea el movimiento origen con FOR UPDATE y valida que siga activo.
+ * 2. Descuenta únicamente `stock_mantenimiento` en `stock_real_consolidado` (cero impacto en Ventas ni Ingredientes).
+ * 3. Inserta asiento terminal inmutable `tipo_movimiento = 'DESCARTE'` con estado `'FINALIZADO'`.
+ * 4. Cierra el lote origen mediante `cleanUpMaintenanceRecord(client, movimiento_id, "Mantenimiento -> Descarte")`.
+ */
+async function descartarStock(req, res) {
+    try {
+        await asegurarCheckDescarteMantenimiento(pool);
+    } catch (errCheck) {
+        console.warn('⚠️ [MANTENIMIENTO] No se pudo verificar CHECK DESCARTE antes de descartar:', errCheck.message);
+    }
+
+    const client = await pool.connect();
+    try {
+        const { movimiento_id, articulo_numero, ingrediente_id, cantidad, observaciones, responsable } = req.body || {};
+
+        if (!movimiento_id) {
+            return res.status(400).json({ success: false, error: 'Se requiere movimiento_id para ejecutar el descarte.' });
+        }
+        const responsableStr = responsable !== undefined && responsable !== null ? String(responsable).trim() : '';
+        if (!responsableStr || responsableStr === '-1') {
+            return res.status(400).json({ success: false, error: 'Debe seleccionar obligatoriamente un operario Responsable para el descarte.' });
+        }
+        const motivoLimpio = String(observaciones || '').trim();
+        if (motivoLimpio.length < 3) {
+            return res.status(400).json({ success: false, error: 'Debe ingresar un motivo / nota auditable obligatoria (mínimo 3 caracteres).' });
+        }
+
+        await client.query('BEGIN');
+
+        const resOrig = await client.query(`
+            SELECT id, articulo_numero, ingrediente_id, cantidad, estado, id_presupuesto_origen, id_orden_tratamiento
+            FROM public.mantenimiento_movimientos
+            WHERE id = $1
+            FOR UPDATE
+        `, [movimiento_id]);
+
+        if (resOrig.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ success: false, error: 'Movimiento de Mantenimiento no encontrado.' });
+        }
+
+        const movOrigen = resOrig.rows[0];
+        if (['FINALIZADO', 'ANULADO', 'REVERTIDO'].includes(movOrigen.estado)) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ success: false, error: 'Este registro de Mantenimiento ya fue cerrado o descartado previamente.' });
+        }
+
+        const cantDescartar = parseFloat(cantidad !== undefined && cantidad !== null && cantidad !== '' ? cantidad : movOrigen.cantidad);
+        if (isNaN(cantDescartar) || cantDescartar <= 0) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ success: false, error: 'La cantidad a descartar debe ser mayor a 0.' });
+        }
+
+        const artCandidato = (movOrigen.articulo_numero || articulo_numero || '').toString().trim();
+        const ingFinal = movOrigen.ingrediente_id || (ingrediente_id && ingrediente_id !== 'null' ? parseInt(ingrediente_id, 10) : null) || null;
+        let articuloRealNumero = null;
+
+        if (artCandidato && artCandidato !== 'null') {
+            articuloRealNumero = artCandidato;
+            const checkArt = await client.query(
+                'SELECT articulo_numero FROM public.stock_real_consolidado WHERE articulo_numero = $1 OR codigo_barras = $1 LIMIT 1',
+                [artCandidato]
+            );
+            if (checkArt.rows.length > 0) {
+                articuloRealNumero = checkArt.rows[0].articulo_numero;
+            }
+
+            await client.query(`
+                UPDATE public.stock_real_consolidado
+                SET stock_mantenimiento = GREATEST(0, COALESCE(stock_mantenimiento, 0) - $1),
+                    ultima_actualizacion = NOW()
+                WHERE articulo_numero = $2
+            `, [cantDescartar, articuloRealNumero]);
+        }
+
+        const obsDescarte = `[DESCARTE] ${motivoLimpio}`;
+        const insDescarte = await client.query(`
+            INSERT INTO public.mantenimiento_movimientos (
+                id_presupuesto_origen,
+                id_orden_tratamiento,
+                articulo_numero,
+                ingrediente_id,
+                cantidad,
+                usuario,
+                tipo_movimiento,
+                observaciones,
+                fecha_movimiento,
+                estado
+            ) VALUES ($1, $2, $3, $4, $5, $6, 'DESCARTE', $7, NOW(), 'FINALIZADO')
+            RETURNING id
+        `, [
+            movOrigen.id_presupuesto_origen || null,
+            movOrigen.id_orden_tratamiento || null,
+            articuloRealNumero,
+            ingFinal,
+            cantDescartar,
+            responsableStr,
+            obsDescarte
+        ]);
+
+        await cleanUpMaintenanceRecord(client, movOrigen.id, 'Mantenimiento -> Descarte');
+
+        await client.query('COMMIT');
+        console.log(`🗑️ [MANTENIMIENTO] Descarte registrado. MovOrigen #${movOrigen.id} -> Descarte #${insDescarte.rows[0].id} | Art: ${articuloRealNumero || 'ING-' + ingFinal} | Cant: ${cantDescartar} | Resp: ${responsableStr}`);
+
+        res.json({
+            success: true,
+            message: 'Mercadería descartada y dada de baja de Mantenimiento correctamente.',
+            id_movimiento_descarte: insDescarte.rows[0].id
+        });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('❌ [MANTENIMIENTO] Error al descartar stock:', error.message);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();
@@ -4204,6 +4328,7 @@ module.exports = {
     confirmarConciliacion,
     getHistorialMantenimiento,
     liberarStock,
+    descartarStock,
     transferirAIngredientes,
     revertirMovimiento,
     deshacerConciliacion,

@@ -12,6 +12,7 @@ router.use((req, res, next) => {
 router.get('/stock', mantenimientoCtrl.getStockMantenimiento);
 router.post('/conciliar/confirmar', mantenimientoCtrl.confirmarConciliacion);
 router.post('/liberar', mantenimientoCtrl.liberarStock);
+router.post('/descartar', mantenimientoCtrl.descartarStock);
 router.get('/historial', mantenimientoCtrl.getHistorialMantenimiento);
 router.get('/vigia-auditor', mantenimientoCtrl.diagnosticoVigiaAuditor);
 router.post('/transferir-ingrediente', mantenimientoCtrl.transferirAIngredientes);

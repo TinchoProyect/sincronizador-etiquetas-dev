@@ -4,6 +4,7 @@
  */
 
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 
 // Importar modelos y controladores del escritorio (Dashboard Gerencial)
@@ -1806,6 +1807,198 @@ router.post('/retiros/:id/validar', async (req, res) => {
 });
 
 /**
+ * @route POST /api/logistica/movil/retiros/en-ruta
+ * @desc Carga directa de un Retiro / Devolución en mano durante la Hoja de Ruta activa
+ *       reutilizando exactamente `ordenes_tratamiento` + `ordenes_tratamiento_detalles` (estado_logistico = 'EN_CAMINO').
+ * @access Privado (requiere token)
+ */
+router.post('/retiros/en-ruta', async (req, res) => {
+    try {
+        const choferId = extraerChoferIdDeRequest(req);
+        if (!choferId) {
+            return res.status(401).json({
+                success: false,
+                error: req.headers.authorization ? 'Token inválido' : 'Token no proporcionado'
+            });
+        }
+
+        const {
+            id_ruta,
+            id_cliente,
+            id_domicilio_entrega,
+            descripcion_externa,
+            kilos,
+            bultos,
+            motivo,
+            responsable_nombre,
+            responsable_apellido,
+            responsable_celular,
+            chofer_nombre,
+            fecha_evento
+        } = req.body || {};
+
+        const rutaIdNum = parseInt(id_ruta, 10);
+        const clienteIdNum = parseInt(id_cliente, 10);
+        const kilosVal = parseFloat(String(kilos ?? '').replace(',', '.'));
+        const bultosVal = parseInt(bultos, 10);
+        const descLimpia = String(descripcion_externa || '').trim();
+        const motivoLimpio = String(motivo || '').trim();
+        const respNombre = String(responsable_nombre || '').trim();
+
+        if (!rutaIdNum || isNaN(rutaIdNum)) {
+            return res.status(400).json({ success: false, error: 'Se requiere una Hoja de Ruta activa válida.' });
+        }
+        if (!clienteIdNum || isNaN(clienteIdNum)) {
+            return res.status(400).json({ success: false, error: 'Debe seleccionar un cliente válido.' });
+        }
+        if (!respNombre) {
+            return res.status(400).json({ success: false, error: 'El Nombre del Responsable es obligatorio para la trazabilidad.' });
+        }
+        if (!descLimpia) {
+            return res.status(400).json({ success: false, error: 'La descripción del artículo es obligatoria.' });
+        }
+        if (isNaN(kilosVal) || kilosVal <= 0) {
+            return res.status(400).json({ success: false, error: 'Los Kilos deben ser un número mayor a 0.' });
+        }
+        if (isNaN(bultosVal) || bultosVal < 1) {
+            return res.status(400).json({ success: false, error: 'La cantidad de Bultos debe ser un entero mayor o igual a 1.' });
+        }
+        if (!motivoLimpio) {
+            return res.status(400).json({ success: false, error: 'El motivo a tratar es obligatorio.' });
+        }
+
+        const client = await req.db.connect();
+        try {
+            await client.query('BEGIN');
+
+            const rutaCheck = await client.query(`
+                SELECT id, estado, en_pausa, id_chofer
+                FROM rutas
+                WHERE id = $1
+                FOR UPDATE
+            `, [rutaIdNum]);
+
+            if (rutaCheck.rowCount === 0) {
+                await client.query('ROLLBACK');
+                return res.status(404).json({ success: false, error: 'Hoja de Ruta no encontrada.' });
+            }
+            const rutaRow = rutaCheck.rows[0];
+            if (!['EN_CAMINO', 'ARMANDO'].includes(rutaRow.estado)) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, error: 'No se pueden cargar retiros en una Hoja de Ruta ya finalizada.' });
+            }
+            if (rutaRow.en_pausa) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({ success: false, error: 'La ruta está en pausa. Reanudala antes de cargar un retiro.' });
+            }
+
+            let choferNombreFinal = String(chofer_nombre || '').trim();
+            if (!choferNombreFinal) {
+                const uRes = await client.query('SELECT nombre_completo FROM usuarios WHERE id = $1', [choferId]);
+                choferNombreFinal = uRes.rows[0]?.nombre_completo || 'Chofer Móvil';
+            }
+
+            let domicilioIdFinal = id_domicilio_entrega ? parseInt(id_domicilio_entrega, 10) : null;
+            if (!domicilioIdFinal || isNaN(domicilioIdFinal)) {
+                const domRes = await client.query(`
+                    SELECT cd.id
+                    FROM clientes_domicilios cd
+                    JOIN clientes c ON cd.id_cliente = c.id
+                    WHERE c.cliente_id = $1 AND cd.activo = true
+                    ORDER BY cd.es_predeterminado DESC, cd.id ASC
+                    LIMIT 1
+                `, [clienteIdNum]);
+                domicilioIdFinal = domRes.rows[0]?.id || null;
+            }
+
+            // Heredar orden de entrega si el cliente ya está en esta ruta; si no, agregar al final
+            const ordRes = await client.query(`
+                SELECT COALESCE(
+                    (SELECT MIN(orden_entrega) FROM presupuestos WHERE id_ruta = $1 AND id_cliente::text = $2::text),
+                    (SELECT COALESCE(MAX(orden_entrega), 0) + 1 FROM presupuestos WHERE id_ruta = $1),
+                    999
+                ) AS orden_calc
+            `, [rutaIdNum, clienteIdNum]);
+            const ordenEntregaCalc = parseInt(ordRes.rows[0]?.orden_calc, 10) || 999;
+
+            const qrHash = crypto.randomBytes(32).toString('hex');
+
+            const insOrden = await client.query(`
+                INSERT INTO ordenes_tratamiento (
+                    id_cliente,
+                    id_ruta,
+                    id_chofer,
+                    id_domicilio_entrega,
+                    codigo_qr_hash,
+                    estado_logistico,
+                    fecha_creacion,
+                    fecha_validacion_chofer,
+                    orden_entrega,
+                    responsable_nombre,
+                    responsable_apellido,
+                    responsable_celular,
+                    chofer_nombre
+                ) VALUES (
+                    $1, $2, $3, $4, $5, 'EN_CAMINO', NOW(), COALESCE($6::timestamp, NOW()), $7, $8, $9, $10, $11
+                )
+                RETURNING id, codigo_qr_hash, estado_logistico
+            `, [
+                clienteIdNum,
+                rutaIdNum,
+                choferId,
+                domicilioIdFinal,
+                qrHash,
+                fecha_evento || null,
+                ordenEntregaCalc,
+                respNombre,
+                String(responsable_apellido || '').trim() || null,
+                String(responsable_celular || '').trim() || null,
+                choferNombreFinal
+            ]);
+
+            const nuevaOrden = insOrden.rows[0];
+
+            await client.query(`
+                INSERT INTO ordenes_tratamiento_detalles (
+                    id_orden_tratamiento,
+                    descripcion_externa,
+                    kilos,
+                    bultos,
+                    motivo
+                ) VALUES ($1, $2, $3, $4, $5)
+            `, [
+                nuevaOrden.id,
+                descLimpia,
+                kilosVal,
+                bultosVal,
+                motivoLimpio
+            ]);
+
+            await client.query('COMMIT');
+            console.log(`📦 [MOVIL] Retiro en ruta RT-${nuevaOrden.id} creado en EN_CAMINO | Ruta #${rutaIdNum} | Cliente #${clienteIdNum} | ${kilosVal} kg / ${bultosVal} bulto(s)`);
+
+            res.status(201).json({
+                success: true,
+                message: `Retiro RT-${nuevaOrden.id} cargado en la Hoja de Ruta.`,
+                data: {
+                    id_orden: nuevaOrden.id,
+                    hash: nuevaOrden.codigo_qr_hash,
+                    estado_logistico: nuevaOrden.estado_logistico
+                }
+            });
+        } catch (err) {
+            await client.query('ROLLBACK');
+            throw err;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('❌ [MOVIL] Error creando retiro en ruta:', error);
+        res.status(500).json({ success: false, error: error.message || 'Error al registrar retiro en ruta.' });
+    }
+});
+
+/**
  * @route POST /api/logistica/movil/retiros/:id/contingencia
  * @desc El Chofer carga a mano los datos saltándose el pre-checkin del cliente
  */
@@ -1957,6 +2150,23 @@ router.post('/rutas/finalizar', async (req, res) => {
         try {
             await client.query('BEGIN');
 
+            // Blindaje anti-doble-clic: bloquear la fila de la ruta activa dentro de la transacción
+            const lockRuta = await client.query(`
+                SELECT id, estado
+                FROM rutas
+                WHERE id = $1
+                  AND estado IN ('EN_CAMINO', 'ARMANDO')
+                FOR UPDATE
+            `, [ruta.id]);
+
+            if (lockRuta.rowCount === 0) {
+                await client.query('ROLLBACK');
+                return res.status(409).json({
+                    success: false,
+                    error: 'Esta Hoja de Ruta ya fue finalizada previamente.'
+                });
+            }
+
             // 1. Verificar pedidos pendientes
             const pendientesQuery = `
                 SELECT COUNT(*) as pendientes
@@ -1987,7 +2197,7 @@ router.post('/rutas/finalizar', async (req, res) => {
                 RETURNING id, chofer_nombre
             `, [ruta.id]);
 
-            // 2b. Inyección Atómica en Mantenimiento (Cuarentena)
+            // 2b. Inyección Atómica en Mantenimiento (Cuarentena) con idempotencia NOT EXISTS y metadatos completos
             if (updatedTR.rows.length > 0) {
                 const ids = updatedTR.rows.map(r => r.id);
                 await client.query(`
@@ -2005,12 +2215,25 @@ router.post('/rutas/finalizar', async (req, res) => {
                         COALESCE((SELECT SUM(bultos) FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = ot.id), 0),
                         COALESCE(ot.chofer_nombre, (SELECT u.nombre_completo FROM rutas r JOIN usuarios u ON r.id_chofer = u.id WHERE r.id = ot.id_ruta), 'Chofer Móvil'),
                         'RETIRO_TRATAMIENTO',
-                        COALESCE((SELECT json_agg(json_build_object('desc', descripcion_externa, 'kilos', kilos, 'bultos', bultos, 'motivo', motivo))::text 
-                         FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = ot.id), '[]'),
+                        COALESCE((SELECT json_agg(json_build_object(
+                            'desc', d.descripcion_externa,
+                            'kilos', d.kilos,
+                            'bultos', d.bultos,
+                            'motivo', d.motivo,
+                            'chofer', COALESCE(ot.chofer_nombre, (SELECT u.nombre_completo FROM rutas r JOIN usuarios u ON r.id_chofer = u.id WHERE r.id = ot.id_ruta), 'Chofer Móvil'),
+                            'responsable', NULLIF(TRIM(COALESCE(ot.responsable_nombre, '') || ' ' || COALESCE(ot.responsable_apellido, '')), '')
+                        ))::text FROM ordenes_tratamiento_detalles d WHERE d.id_orden_tratamiento = ot.id), '[]'),
                         NOW(),
                         'PENDIENTE'
                     FROM ordenes_tratamiento ot
                     WHERE ot.id = ANY($1::int[])
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM mantenimiento_movimientos mm
+                          WHERE mm.id_orden_tratamiento = ot.id
+                            AND mm.tipo_movimiento = 'RETIRO_TRATAMIENTO'
+                            AND mm.estado IS DISTINCT FROM 'ANULADO'
+                      )
                 `, [ids]);
             }
 
@@ -2327,10 +2550,19 @@ router.delete('/retiros/:id', async (req, res) => {
         try {
             await client.query('BEGIN');
             
-            const verify = await client.query('SELECT estado_logistico FROM ordenes_tratamiento WHERE id = $1', [id]);
+            const verify = await client.query(`
+                SELECT ot.estado_logistico, ot.id_ruta, r.estado AS ruta_estado
+                FROM ordenes_tratamiento ot
+                LEFT JOIN rutas r ON r.id = ot.id_ruta
+                WHERE ot.id = $1
+                FOR UPDATE OF ot
+            `, [id]);
             if (verify.rowCount === 0) throw new Error('Orden no encontrada');
-            if (verify.rows[0].estado_logistico !== 'PENDIENTE_CLIENTE' && verify.rows[0].estado_logistico !== 'PENDIENTE_VALIDACION') {
-                throw new Error('Solo se pueden descartar órdenes pendientes.');
+            const estOrden = verify.rows[0].estado_logistico;
+            const estRuta = verify.rows[0].ruta_estado;
+            const puedeAnularEnCamino = (estOrden === 'EN_CAMINO' && (!verify.rows[0].id_ruta || ['EN_CAMINO', 'ARMANDO'].includes(estRuta)));
+            if (!['PENDIENTE_CLIENTE', 'PENDIENTE_VALIDACION'].includes(estOrden) && !puedeAnularEnCamino) {
+                throw new Error('Solo se pueden anular órdenes pendientes o retiros de una Hoja de Ruta aún abierta.');
             }
             
             // Evaluamos si usamos Soft Delete basado en la integridad histórica (Hijos en Mantenimiento)

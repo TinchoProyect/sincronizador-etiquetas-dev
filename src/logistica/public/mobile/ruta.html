@@ -158,12 +158,15 @@
     <div id="modal-contingencia-checkin" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10000; align-items: center; justify-content: center; padding: 15px;">
         <div style="background: white; width: 100%; max-width: 500px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); overflow: hidden; display: flex; flex-direction: column; max-height: 90vh;">
             <div style="background: #1e3a8a; color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center;">
-                <h2 style="margin: 0; font-size: 1.2rem;">📋 Carga Contingente (Check-in)</h2>
+                <h2 id="modal-contingencia-titulo" style="margin: 0; font-size: 1.2rem;">📋 Carga Contingente (Check-in)</h2>
                 <button onclick="window.cerrarModalContingencia()" style="background: none; border: none; color: white; font-size: 1.5rem;">&times;</button>
             </div>
             <div style="padding: 20px; overflow-y: auto;">
                 <form id="form-contingencia-checkin" onsubmit="window.guardarCheckinContingencia(event)">
                     <input type="hidden" id="checkin-hash" value="">
+                    <input type="hidden" id="checkin-cliente-id" value="">
+                    <input type="hidden" id="checkin-domicilio-id" value="">
+                    <div id="checkin-cliente-banner" style="display: none; margin-bottom: 14px; padding: 10px 12px; background: #eff6ff; border-left: 4px solid #2563eb; border-radius: 6px; font-size: 0.92rem; color: #1e3a8a; font-weight: 700;"></div>
                     
                     <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                         <div style="flex: 1;">
@@ -247,7 +250,7 @@
     <script src="js/controllers/AcomodarRutaUI.js?v=17"></script>
     <script src="js/controllers/SelectorRutaUI.js?v=3"></script>
     <script src="js/controllers/PendientesUI.js?v=21"></script>
-    <script src="js/controllers/RutaActivaUI.js?v=21"></script>
+    <script src="js/controllers/RutaActivaUI.js?v=22"></script>
     <script src="js/controllers/HistorialUI.js?v=17"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {

@@ -425,14 +425,27 @@ async function cambiarEstado(req, res) {
                         SELECT 
                             ot.id,
                             COALESCE((SELECT SUM(bultos) FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = ot.id), 0),
-                            ot.chofer_nombre,
+                            COALESCE(ot.chofer_nombre, (SELECT u.nombre_completo FROM rutas r JOIN usuarios u ON r.id_chofer = u.id WHERE r.id = ot.id_ruta), 'Chofer'),
                             'RETIRO_TRATAMIENTO',
-                            (SELECT json_agg(json_build_object('desc', descripcion_externa, 'kilos', kilos, 'bultos', bultos, 'motivo', motivo))::text 
-                             FROM ordenes_tratamiento_detalles WHERE id_orden_tratamiento = ot.id),
+                            COALESCE((SELECT json_agg(json_build_object(
+                                'desc', d.descripcion_externa,
+                                'kilos', d.kilos,
+                                'bultos', d.bultos,
+                                'motivo', d.motivo,
+                                'chofer', COALESCE(ot.chofer_nombre, (SELECT u.nombre_completo FROM rutas r JOIN usuarios u ON r.id_chofer = u.id WHERE r.id = ot.id_ruta), 'Chofer'),
+                                'responsable', NULLIF(TRIM(COALESCE(ot.responsable_nombre, '') || ' ' || COALESCE(ot.responsable_apellido, '')), '')
+                            ))::text FROM ordenes_tratamiento_detalles d WHERE d.id_orden_tratamiento = ot.id), '[]'),
                             NOW(),
                             'PENDIENTE'
                         FROM ordenes_tratamiento ot
                         WHERE ot.id = ANY($1::int[])
+                          AND NOT EXISTS (
+                              SELECT 1
+                              FROM mantenimiento_movimientos mm
+                              WHERE mm.id_orden_tratamiento = ot.id
+                                AND mm.tipo_movimiento = 'RETIRO_TRATAMIENTO'
+                                AND mm.estado IS DISTINCT FROM 'ANULADO'
+                          )
                     `, [ids]);
                 }
 

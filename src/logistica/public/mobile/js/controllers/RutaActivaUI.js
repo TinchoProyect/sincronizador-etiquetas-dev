@@ -34,8 +34,15 @@ function renderizarEntregas() {
         const isArmando = state.ruta.estado === 'ARMANDO';
         
         let headerActionsHTML = '';
+        const enPausaHeader = Boolean(state.ruta.en_pausa);
+        const btnRetiroEnRutaHTML = `
+                <button id="btn-cargar-retiro-ruta" onclick="window.abrirRetiroEnRuta()" ${enPausaHeader ? 'disabled' : ''} style="background: ${enPausaHeader ? '#cbd5e1' : '#d97706'}; color: ${enPausaHeader ? '#64748b' : 'white'}; padding: 11px 16px; border: none; border-radius: 8px; font-weight: 800; font-size: 0.98rem; box-shadow: 0 2px 5px rgba(217,119,6,0.28); width: 100%; cursor: ${enPausaHeader ? 'not-allowed' : 'pointer'};">
+                    📦 Cargar Retiro / Devolución
+                </button>
+        `;
         if (ruta100Porciento) {
             headerActionsHTML = `
+                ${btnRetiroEnRutaHTML}
                 <button onclick="finalizarRutaDelDia()" style="background: #dc2626; color: white; padding: 14px 16px; border: none; border-radius: 8px; font-weight: 800; font-size: 1.1rem; box-shadow: 0 4px 6px rgba(220,38,38,0.3); width: 100%; animation: pulse 2s infinite;">
                     🏁 FINALIZAR HOJA DE RUTA
                 </button>
@@ -57,6 +64,7 @@ function renderizarEntregas() {
                 <button onclick="window.abrirModalAcomodar()" style="background: #3b82f6; color: white; padding: 10px 16px; border: none; border-radius: 6px; font-weight: bold; font-size: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); width: 100%;">
                     🗺️ Acomodar Ruta
                 </button>
+                ${btnRetiroEnRutaHTML}
             `;
         }
 
@@ -291,13 +299,20 @@ function renderizarEntregas() {
                             ${esEntregaTratamiento ? '📦 Entrega de Tratamiento' : '✅ Check-in Completado'}: <span style="font-weight: normal;">${d.bultos} bulto(s) (${d.kilos}kg) de ${d.descripcion_externa}</span>
                         </div>
                     `;
-                    if (!completado && !esEntregaTratamiento) {
+                    if (!esEntregaTratamiento && !(state.ruta && state.ruta.en_pausa)) {
                         btnCompletarCargaHTML = `
                             <button class="btn-confirmar-sm" 
                                     onclick="window.abrirModalContingencia('${entrega.hash}', true)" 
                                     style="padding: 0.5rem; font-weight: bold; border-radius: 0.5rem; background: #f3f4f6; color: #4b5563; border: 1px solid #d1d5db; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
                                 ✏️ Modificar
                             </button>
+                            ${completado ? `
+                            <button class="btn-confirmar-sm" 
+                                    onclick="window.anularRetiroEnRuta(${entrega.id_orden_real})" 
+                                    style="padding: 0.5rem; font-weight: bold; border-radius: 0.5rem; background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                                🗑️ Anular
+                            </button>
+                            ` : ''}
                         `;
                     }
                 } else {
@@ -1871,6 +1886,234 @@ window.generarQRChoferPayload = async (idCliente, nombreCliente) => {
 };
 
 
+// --- Carga Directa de Retiro / Devolución en Ruta (reutilizando #modal-contingencia-checkin) ---
+
+window.abrirRetiroEnRuta = () => {
+    if (!state.ruta) {
+        Swal.fire('Atención', 'No hay una Hoja de Ruta activa seleccionada.', 'warning');
+        return;
+    }
+    if (state.ruta.en_pausa) {
+        Swal.fire('Ruta en Pausa', 'Reanudá la ruta antes de cargar un retiro o devolución.', 'warning');
+        return;
+    }
+
+    // Extraer clientes únicos presentes en las paradas de esta Hoja de Ruta
+    const mapaClientes = new Map();
+    (state.entregas || []).forEach(e => {
+        if (e.es_visita_preventa || String(e.id_presupuesto).startsWith('PR-')) return;
+        const cid = parseInt(e.cliente?.id, 10);
+        if (!cid || isNaN(cid)) return;
+        if (!mapaClientes.has(cid)) {
+            mapaClientes.set(cid, {
+                id: cid,
+                nombre: e.cliente?.nombre || `Cliente #${cid}`,
+                domicilioId: e.domicilio?.id ? parseInt(e.domicilio.id, 10) : null,
+                direccion: e.domicilio?.direccion || ''
+            });
+        }
+    });
+    const clientesRuta = Array.from(mapaClientes.values());
+
+    const listaRutaHtml = clientesRuta.length > 0
+        ? `
+            <div style="margin-bottom: 14px;">
+                <div style="font-size: 0.78rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 6px;">
+                    🚚 Clientes de esta Hoja de Ruta (1 toque)
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto;">
+                    ${clientesRuta.map((c, i) => `
+                        <button type="button" class="btn-sel-cliente-ruta"
+                                data-cid="${c.id}"
+                                data-nombre="${encodeURIComponent(c.nombre)}"
+                                data-dom="${c.domicilioId || ''}"
+                                style="text-align: left; padding: 10px 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-left: 4px solid #d97706; border-radius: 8px; cursor: pointer; width: 100%;">
+                            <div style="font-weight: 800; color: #1e293b; font-size: 0.92rem;">${i + 1}. [${c.id}] ${c.nombre}</div>
+                            ${c.direccion ? `<div style="font-size: 0.78rem; color: #64748b; margin-top: 2px;">📍 ${c.direccion}</div>` : ''}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `
+        : '';
+
+    Swal.fire({
+        title: '📦 Cargar Retiro / Devolución',
+        html: `
+            <div style="text-align: left;">
+                ${listaRutaHtml}
+                <div style="border-top: 1px dashed #cbd5e1; padding-top: 10px;">
+                    <div style="font-size: 0.78rem; font-weight: 800; color: #475569; text-transform: uppercase; margin-bottom: 6px;">
+                        🔍 O buscar otro cliente del padrón
+                    </div>
+                    <input id="swal-retiro-cliente-search" class="swal2-input" placeholder="Nombre o código de cliente..." style="width: 100%; box-sizing: border-box; margin: 0 0 8px 0; font-size: 0.95rem;" autocomplete="off">
+                    <div id="swal-retiro-cliente-results" style="max-height: 150px; overflow-y: auto; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; text-align: left;"></div>
+                </div>
+            </div>
+        `,
+        showCancelButton: true,
+        showConfirmButton: false,
+        cancelButtonText: 'Cancelar',
+        didOpen: () => {
+            document.querySelectorAll('.btn-sel-cliente-ruta').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const cid = parseInt(btn.dataset.cid, 10);
+                    const nombre = decodeURIComponent(btn.dataset.nombre || '');
+                    const domId = btn.dataset.dom ? parseInt(btn.dataset.dom, 10) : null;
+                    Swal.close();
+                    window.abrirModalRetiroEnRutaCheckin(cid, nombre, domId);
+                });
+            });
+
+            const inputElement = document.getElementById('swal-retiro-cliente-search');
+            const resultsBox = document.getElementById('swal-retiro-cliente-results');
+            let timeoutToken;
+            if (inputElement && resultsBox) {
+                inputElement.addEventListener('input', (e) => {
+                    clearTimeout(timeoutToken);
+                    const query = e.target.value.trim();
+                    if (query.length < 2) {
+                        resultsBox.innerHTML = '';
+                        return;
+                    }
+                    timeoutToken = setTimeout(async () => {
+                        resultsBox.innerHTML = '<div style="padding: 10px; color:#64748b;">Buscando...</div>';
+                        try {
+                            const res = await fetch(`${API_BASE_URL}/api/logistica/tratamientos/clientes?q=${encodeURIComponent(query)}`);
+                            const data = await res.json();
+                            if (data.success && data.data.length > 0) {
+                                resultsBox.innerHTML = data.data.map(c => {
+                                    const nomCompleto = `${c.nombre || ''} ${c.apellido || ''}`.trim() || `Cliente #${c.id}`;
+                                    return `
+                                        <div class="res-retiro-cliente-item"
+                                             data-cid="${c.id}"
+                                             data-nombre="${encodeURIComponent(nomCompleto)}"
+                                             style="padding: 10px; border-bottom: 1px solid #e2e8f0; cursor: pointer; color:#1e293b; font-weight: bold;">
+                                            [${c.id}] ${nomCompleto}
+                                        </div>
+                                    `;
+                                }).join('');
+                                resultsBox.querySelectorAll('.res-retiro-cliente-item').forEach(row => {
+                                    row.addEventListener('click', () => {
+                                        const cid = parseInt(row.dataset.cid, 10);
+                                        const nom = decodeURIComponent(row.dataset.nombre || '');
+                                        Swal.close();
+                                        window.abrirModalRetiroEnRutaCheckin(cid, nom, null);
+                                    });
+                                });
+                            } else {
+                                resultsBox.innerHTML = '<div style="padding: 10px; color:#64748b;">Sin resultados</div>';
+                            }
+                        } catch (err) {
+                            resultsBox.innerHTML = '<div style="padding: 10px; color:#ef4444;">Error de red</div>';
+                        }
+                    }, 350);
+                });
+            }
+        }
+    });
+};
+
+window.abrirModalRetiroEnRutaCheckin = async (clienteId, clienteNombre, domicilioId = null) => {
+    try {
+        const modal = document.getElementById('modal-contingencia-checkin');
+        const form = document.getElementById('form-contingencia-checkin');
+        const hashInput = document.getElementById('checkin-hash');
+        const clienteInput = document.getElementById('checkin-cliente-id');
+        const domInput = document.getElementById('checkin-domicilio-id');
+        const banner = document.getElementById('checkin-cliente-banner');
+        const titulo = document.getElementById('modal-contingencia-titulo');
+        const btnSubmit = document.getElementById('btn-submit-contingencia');
+        const selectChofer = document.getElementById('checkin-chofer-nombre');
+
+        if (!modal || !form || !hashInput || !clienteInput) {
+            Swal.fire('Error de UI', 'El formulario de Check-in no está disponible en esta vista.', 'error');
+            return;
+        }
+
+        try {
+            if (!state.choferes || state.choferes.length === 0) {
+                const sesion = JSON.parse(localStorage.getItem('sesion_chofer') || '{}');
+                const resChoferes = await fetch(`${API_BASE_URL}/api/logistica/usuarios/choferes`, {
+                    headers: sesion.token ? { 'Authorization': `Bearer ${sesion.token}` } : {}
+                });
+                const dataChoferes = await resChoferes.json();
+                if (dataChoferes.success) state.choferes = dataChoferes.data;
+            }
+            if (state.choferes && state.choferes.length > 0 && selectChofer) {
+                selectChofer.innerHTML = '<option value="">Seleccione Chofer</option>' +
+                    state.choferes.map(c => `<option value="${c.nombre_completo}">${c.nombre_completo}</option>`).join('');
+            }
+        } catch (e) { console.error('[MODAL] Error cargando dropdown choferes:', e); }
+
+        form.reset();
+        hashInput.value = '';
+        clienteInput.value = String(clienteId);
+        if (domInput) domInput.value = domicilioId ? String(domicilioId) : '';
+
+        if (banner) {
+            banner.textContent = `📦 Retiro en ruta — [#${clienteId}] ${clienteNombre}`;
+            banner.style.display = 'block';
+        }
+        if (titulo) titulo.textContent = '📦 Cargar Retiro / Devolución';
+        if (btnSubmit) btnSubmit.textContent = 'Confirmar y Subir al Camión';
+
+        const ahora = new Date();
+        ahora.setMinutes(ahora.getMinutes() - ahora.getTimezoneOffset());
+        const inputFecha = document.getElementById('checkin-fecha');
+        if (inputFecha) inputFecha.value = ahora.toISOString().slice(0, 16);
+
+        const choferDefault = (state.ruta && state.ruta.chofer && state.ruta.chofer.nombre_completo)
+            || (state.sesion && (state.sesion.nombre || state.sesion.usuario))
+            || '';
+        if (selectChofer && choferDefault) {
+            selectChofer.value = choferDefault;
+            if (!selectChofer.value) {
+                const opt = document.createElement('option');
+                opt.value = choferDefault;
+                opt.textContent = choferDefault;
+                selectChofer.appendChild(opt);
+                selectChofer.value = choferDefault;
+            }
+        }
+
+        modal.style.display = 'flex';
+    } catch (error) {
+        console.error('[RETIRO-EN-RUTA] Error abriendo modal:', error);
+        Swal.fire('Error', 'No se pudo abrir el formulario de retiro.', 'error');
+    }
+};
+
+window.anularRetiroEnRuta = async (idOrden) => {
+    const confirmRes = await Swal.fire({
+        title: `🗑️ ¿Anular Retiro RT-${idOrden}?`,
+        text: 'Se eliminará este retiro de la Hoja de Ruta abierta.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc2626',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Sí, anular',
+        cancelButtonText: 'Cancelar'
+    });
+    if (!confirmRes.isConfirmed) return;
+
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/logistica/movil/retiros/${idOrden}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${state.sesion.token}` }
+        });
+        const data = await res.json();
+        if (data.success) {
+            await Swal.fire({ icon: 'success', title: 'Retiro anulado', timer: 1400, showConfirmButton: false });
+            cargarRutaActiva();
+        } else {
+            Swal.fire('Error', data.error || 'No se pudo anular el retiro.', 'error');
+        }
+    } catch (err) {
+        Swal.fire('Error de Red', err.message, 'error');
+    }
+};
+
 // --- Carga Contingente Dinámica (Check-in Chofer) ---
 
 window.abrirModalContingencia = async (hash, esEdicion) => {
@@ -1884,6 +2127,11 @@ window.abrirModalContingencia = async (hash, esEdicion) => {
         const modal = document.getElementById('modal-contingencia-checkin');
         const form = document.getElementById('form-contingencia-checkin');
         const hashInput = document.getElementById('checkin-hash');
+        const clienteInput = document.getElementById('checkin-cliente-id');
+        const domInput = document.getElementById('checkin-domicilio-id');
+        const banner = document.getElementById('checkin-cliente-banner');
+        const titulo = document.getElementById('modal-contingencia-titulo');
+        const btnSubmit = document.getElementById('btn-submit-contingencia');
 
         // Guard: DOM elements must exist
         if (!modal || !form || !hashInput) {
@@ -1891,6 +2139,12 @@ window.abrirModalContingencia = async (hash, esEdicion) => {
             Swal.fire('Error de UI', 'El formulario de Check-in no está disponible en esta vista.', 'error');
             return;
         }
+
+        if (clienteInput) clienteInput.value = '';
+        if (domInput) domInput.value = '';
+        if (banner) { banner.textContent = ''; banner.style.display = 'none'; }
+        if (titulo) titulo.textContent = esEdicion ? '✏️ Modificar Check-in' : '📋 Carga Contingente (Check-in)';
+        if (btnSubmit) btnSubmit.textContent = 'Confirmar Check-in';
         
         // ALWAYS load chofer dropdown first (before reset to avoid visual flash)
         const selectChofer = document.getElementById('checkin-chofer-nombre');
@@ -1976,20 +2230,24 @@ window.cerrarModalContingencia = () => {
 window.guardarCheckinContingencia = async (event) => {
     event.preventDefault();
     const btnSubmit = document.getElementById('btn-submit-contingencia');
+    const textoOriginalBtn = btnSubmit.textContent;
     btnSubmit.disabled = true;
     btnSubmit.textContent = 'Guardando...';
 
-    const hash = document.getElementById('checkin-hash').value;
+    const hash = (document.getElementById('checkin-hash')?.value || '').trim();
+    const clienteIdRuta = (document.getElementById('checkin-cliente-id')?.value || '').trim();
+    const domicilioIdRuta = (document.getElementById('checkin-domicilio-id')?.value || '').trim();
+    const esRetiroEnRuta = (!hash && clienteIdRuta !== '');
     
     // Captura y Sanitización
     const kilosRaw = document.getElementById('checkin-kilos').value.trim();
     const kilosVal = parseFloat(kilosRaw.replace(',', '.'));
-    const bultosVal = parseInt(document.getElementById('checkin-bultos').value);
+    const bultosVal = parseInt(document.getElementById('checkin-bultos').value, 10);
 
     if (isNaN(kilosVal) || kilosVal <= 0) {
         Swal.fire('Atención', 'Los Kilos deben ser expresados en valores numéricos mayores a 0', 'warning');
         btnSubmit.disabled = false;
-        btnSubmit.textContent = 'Confirmar Check-in';
+        btnSubmit.textContent = textoOriginalBtn;
         return;
     }
 
@@ -2006,20 +2264,43 @@ window.guardarCheckinContingencia = async (event) => {
     };
 
     try {
-        const response = await fetch(`${API_BASE_URL}/api/logistica/tratamientos/chofer/checkin/${hash}`, {
-            method: 'PUT',
-            headers: { 
-                'Authorization': `Bearer ${state.sesion.token}`,
-                'Content-Type': 'application/json' 
-            },
-            body: JSON.stringify(payload)
-        });
+        let response;
+        if (esRetiroEnRuta) {
+            response = await fetch(`${API_BASE_URL}/api/logistica/movil/retiros/en-ruta`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${state.sesion.token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    ...payload,
+                    id_ruta: state.ruta ? state.ruta.id : null,
+                    id_cliente: parseInt(clienteIdRuta, 10),
+                    id_domicilio_entrega: domicilioIdRuta ? parseInt(domicilioIdRuta, 10) : null
+                })
+            });
+        } else {
+            response = await fetch(`${API_BASE_URL}/api/logistica/tratamientos/chofer/checkin/${hash}`, {
+                method: 'PUT',
+                headers: { 
+                    'Authorization': `Bearer ${state.sesion.token}`,
+                    'Content-Type': 'application/json' 
+                },
+                body: JSON.stringify(payload)
+            });
+        }
 
         const data = await response.json();
 
         if (data.success) {
             window.cerrarModalContingencia();
-            Swal.fire('¡Carga Completada!', 'El check-in se ha guardado exitosamente.', 'success');
+            Swal.fire(
+                esRetiroEnRuta ? '📦 Retiro Cargado en Ruta' : '¡Carga Completada!',
+                esRetiroEnRuta
+                    ? `Retiro RT-${data.data?.id_orden || ''} subido al camión. Al finalizar la Hoja de Ruta viajará a Mantenimiento.`
+                    : 'El check-in se ha guardado exitosamente.',
+                'success'
+            );
             
             // Recargar Ruta Activa para refrescar visualmente las tarjetas y el estado de los botones
             cargarRutaActiva();
@@ -2031,7 +2312,7 @@ window.guardarCheckinContingencia = async (event) => {
         Swal.fire('Falla de Red', error.message, 'error');
     } finally {
         btnSubmit.disabled = false;
-        btnSubmit.textContent = 'Confirmar Check-in';
+        btnSubmit.textContent = textoOriginalBtn;
     }
 };
 

@@ -1724,6 +1724,16 @@ httpServer.listen(PORT, () => {
             console.warn('⚠️ [STARTUP-STOCK-DOMICILIARIO] Advertencia al verificar esquema domiciliario:', errDom.message);
         });
 
+    // Ampliación idempotente del CHECK constraint de Mantenimiento para tipo_movimiento 'DESCARTE'
+    const { asegurarCheckDescarteMantenimiento } = require('./migrations/asegurarCheckDescarteMantenimiento');
+    asegurarCheckDescarteMantenimiento(db)
+        .then(resDesc => {
+            console.log('✅ [STARTUP-MANTENIMIENTO-DESCARTE] CHECK constraint verificado:', JSON.stringify(resDesc));
+        })
+        .catch(errDesc => {
+            console.warn('⚠️ [STARTUP-MANTENIMIENTO-DESCARTE] Advertencia al verificar CHECK DESCARTE:', errDesc.message);
+        });
+
     // Esquema Nodos (incluyendo fotos_vidriera / fotos_catalogo_base) y aprovisionamiento + perfiles idempotentes de Paraíso y MANSO
     // Escalonado 2.5s con reintento ante deadlock (40P01) cuando PM2 reinicia simultáneamente LOGISTICA y PRODUCCION
     const { provisionarNodoManso } = require('./scripts/provisionarNodoManso');

@@ -41,6 +41,12 @@
             border: 1px solid #d6d8db;
         }
 
+        .badge-descarte {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
         .btn-conciliar {
             background-color: #007bff;
             color: white;
@@ -2300,11 +2306,7 @@
                 
                 if (data.success) {
                     Swal.fire('Vínculo Exitoso', 'Se ha generado la Orden de Retiro en el módulo de Presupuestos y se vinculó correctamente al registro.', 'success').then(() => {
-                        if (data.origen_facturacion === 'LOMASOFT') {
-                            conciliar(clienteId, articuloNumero, cantidad, fechaRef, data.id_nuevo_presupuesto);
-                        } else {
-                            cargarStock();
-                        }
+                        cargarStock();
                     });
                 } else {
                     throw new Error(data.error || 'Falla al vincular');
@@ -2480,17 +2482,13 @@
                 let labelBultosLocal = '';
 
                 // Determinar contenido de la celda de acción
-                const esLomasoftOK = (item.estado === 'CONCILIADO');
+                // Lomasoft deprecado en flujo activo: la consolidación rige por NC ARCA local (tolerancia pasiva a registros históricos ya conciliados)
+                const esHistoricoConciliado = (item.estado === 'CONCILIADO');
                 const esArcaOK = (item.estado_nc === 'COMPLETADO');
                 const esArcaBorrador = (item.estado_nc === 'BORRADOR');
-                const esConsolidado = (item.origen_facturacion === 'LOMASOFT') ? esLomasoftOK : esArcaOK;
+                const esConsolidado = esArcaOK || esHistoricoConciliado;
                 const esRetornoLogistica = (item.tipo_movimiento === 'RETORNO_TRATAMIENTO' && item.id_orden_tratamiento != null);
                 const esInterno = (item.ingrediente_id != null || (!item.cliente_id && (item.cliente_nombre === 'Desconocido' || (item.cliente_nombre || '').includes('Traslado')))) && !esRetornoLogistica;
-
-                // [VIGÍA DEPURADOR TICKET 17] - Se inyecta log para certificar el estado de la fila
-                if (item.id_presupuesto_origen) {
-                    console.log(`[VIGÍA TICKET 17] ID Fila: ${item.id} | Origen DB: ${item.origen_facturacion} | Conciliado Lomasoft: ${esLomasoftOK} | NC Emitida: ${esArcaOK}`);
-                }
 
                 let actionCell = '';
                 let stockCellHtml = `
@@ -2512,6 +2510,9 @@
                              <button onclick="liberarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, 'Transformación de semillas concluida', '${item.usuario_id || ''}', ${item.id})" style="color: #fd7e14; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; background: none; border-bottom: none; border-left: none; border-right: none;">
                                  📦 Convertir a Artículo
                              </button>
+                             <button onclick="descartarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.ingrediente_id || ''}', ${item.id})" style="color: #b02a37; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; background: none; border-bottom: none; border-left: none; border-right: none;">
+                                 🗑️ Descartar / Desecho
+                             </button>
                              <button onclick="limpiarRegistroMantenimiento(${item.id}, 'Retorno')" style="color: #6c757d; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                  🧹 Limpiar Registro (Visual)
                              </button>
@@ -2528,6 +2529,9 @@
                             <button onclick="abrirModalRetornoIngrediente('${item.ingrediente_id}', ${cantidad}, '${tituloPrincipal}', ${item.id})" style="color: #28a745; font-weight: bold; background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 📦 Devolver a Ingredientes
                             </button>
+                            <button onclick="descartarStock(null, '', ${cantidad}, ${kilosUnidad}, '${item.ingrediente_id}', ${item.id})" style="color: #b02a37; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                🗑️ Descartar / Desecho
+                            </button>
                             <button onclick="window.anularTrasladoInternoAgrupado(null, '${item.ingrediente_id}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 ↩️ Anular Movimiento Interno
                             </button>
@@ -2542,6 +2546,9 @@
                             </button>
                             <button onclick="abrirModalTransferencia(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})" style="background: none; border: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 🧪 Convertir a Ingredientes
+                            </button>
+                            <button onclick="descartarStock(null, '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '', ${item.id})" style="color: #b02a37; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
+                                🗑️ Descartar / Desecho
                             </button>
                             <button onclick="window.anularTrasladoInternoAgrupado('${item.articulo_numero}', null)" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; background: none; border-bottom: none; border-left: none; border-right: none; text-align: left; padding: 10px; cursor: pointer; width: 100%;">
                                 ↩️ Anular Traslado Interno
@@ -2624,8 +2631,8 @@
                              </button>`;
                         statusTags += `<span style="color: #dc3545; font-weight: bold; font-size: 0.8em; border: 1px solid #f5c6cb; background: #f8d7da; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[FALTA DOCUMENTO]</span>`;
                     } else {
-                        // Registro completamente enriquecido y vinculado
-                        if (item.origen_facturacion !== 'LOMASOFT' && !esArcaOK) {
+                        // Registro completamente enriquecido y vinculado (Secuencia estricta: primero NC ARCA, luego destino físico)
+                        if (!esConsolidado) {
                             if (esArcaBorrador) {
                                 statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #ffc107; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">⚠️ Enviado a Facturación</span>`;
                             } else {
@@ -2636,37 +2643,21 @@
                                  </button>`;
                                 statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[PENDIENTE NC]</span>`;
                             }
-                        } else if ((item.origen_facturacion || '').includes('LOMASOFT') && !esLomasoftOK) {
-                            // [TICKET 17] Inyectar dinámicamente la opción de Conciliar Lomas Soft para devoluciones logísticas
-                            let lomasoftDisabled = btnDisabled ? 'disabled' : '';
-                            innerActions += `
-                             <button onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}', '${item.id_presupuesto_origen}')" style="color: #6f42c1; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;" ${lomasoftDisabled}>
-                                 🔍 Conciliar Lomas Soft
-                             </button>`;
-                            statusTags += `<span style="color: #856404; font-weight: bold; font-size: 0.8em; border: 1px solid #ffeeba; background: #fff3cd; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[PENDIENTE CONCILIACIÓN]</span>`;
                         }
-                        
+
                         innerActions += `
                              <button onclick="desvincularPresupuesto(${item.id})" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
                                  🔗 Desvincular Documento / Revertir
                              </button>`;
-                        
-                        if (item.origen_facturacion !== 'LOMASOFT' && esArcaOK) {
+
+                        if (esArcaOK) {
                             statusTags += `<span style="color: #28a745; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[✅ NC EMITIDA]</span>`;
-                        } else if (esLomasoftOK) {
-                            statusTags += `<span style="color: #28a745; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[✅ CONCILIADO LOMASOFT]</span>`;
-                            // Opción para deshacer vínculo Lomasoft
-                            innerActions += `
-                             <button onclick="deshacerConciliacion('${item.articulo_numero}', '${item.id_presupuesto_origen || ''}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
-                                 🔗 Deshacer Vínculo Lomasoft
-                             </button>`;
+                        } else if (esHistoricoConciliado) {
+                            statusTags += `<span style="color: #28a745; font-weight: bold; font-size: 0.8em; border: 1px solid #c3e6cb; background: #d4edda; padding: 2px 5px; border-radius: 4px; margin-right: 4px;">[✅ CONCILIADO]</span>`;
                         }
 
-                        // [TICKET 17] Bloqueo de Acciones Prematuras
-                        const requiereConciliacionLomasoft = ((item.origen_facturacion || '').includes('LOMASOFT') && !esLomasoftOK);
-
-                        if (!requiereConciliacionLomasoft) {
-                            // Acciones de salida logísticas desbloqueadas solo si NO adeuda conciliación
+                        // Secuencia estricta post-NC: recién con NC ARCA emitida (o conciliación histórica) se habilitan los destinos físicos
+                        if (esConsolidado) {
                             innerActions += `
                                  <button onclick="enviarInmediatoTratamientoDirecto(${item.id}, ${cantidad}, '${item.cliente_id || ''}', decodeURIComponent('${encodeURIComponent(nombreMapeado)}'))" style="color: #17a2b8; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
                                      ⛺ Enviar a Tratamiento
@@ -2676,12 +2667,14 @@
                                  </button>
                                  <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})" style="color: #6f42c1; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
                                      🧪 Convertir a Ingredientes
+                                 </button>
+                                 <button onclick="descartarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.ingrediente_id || ''}', ${item.id})" style="color: #b02a37; font-weight: bold; border-top: 1px solid #ddd; text-align: left; padding: 10px; cursor: pointer; width: 100%; border-bottom: none; border-left: none; border-right: none; background: none;">
+                                     🗑️ Descartar / Desecho
                                  </button>`;
                         } else {
-                            // Mostrar mensaje de bloqueo
                             innerActions += `
                                  <div style="padding: 10px; border-top: 1px solid #ddd; text-align: center; color: #856404; background-color: #fff3cd; font-size: 0.9em; font-weight: bold;">
-                                     ⚠️ Acciones bloqueadas hasta finalizar conciliación
+                                     ⚠️ Destinos bloqueados hasta emitir NC ARCA
                                  </div>`;
                         }
                     }
@@ -2707,11 +2700,11 @@
                     `;
                 } else if (esConsolidado) {
                     let comprobanteInfo = '';
-                    if (esLomasoftOK && item.nc_nro) {
+                    if (esArcaOK) {
+                        comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>✅ NC ARCA Emitida</b></span>`;
+                    } else if (esHistoricoConciliado && item.nc_nro) {
                         const fechaNC = item.nc_fecha ? new Date(item.nc_fecha).toLocaleDateString() : '';
                         comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>${item.nc_tipo || 'NC'}</b> ${item.nc_nro} (${fechaNC})</span>`;
-                    } else if (esArcaOK) {
-                        comprobanteInfo = `<br><span style="color: #28a745; font-size: 0.9em; display: inline-block; margin-top: 4px;">🔗 <b>✅ NC ARCA Emitida</b></span>`;
                     }
 
                     actionCell = `
@@ -2724,10 +2717,9 @@
                             <button onclick="abrirModalTransferencia('${item.cliente_id}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.usuario_id || ''}', '${item.ingrediente_id || ''}', ${item.id})">
                                 🧪 Enviar a Ingredientes
                             </button>
-                            ${esLomasoftOK ? `
-                            <button onclick="deshacerConciliacion('${item.articulo_numero}', '${item.id_presupuesto_origen || ''}')" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
-                                🔗 Deshacer Vínculo Lomasoft
-                            </button>` : ''}
+                            <button onclick="descartarStock('${item.cliente_id || ''}', '${item.articulo_numero || ''}', ${cantidad}, ${kilosUnidad}, '${item.ingrediente_id || ''}', ${item.id})" style="color: #b02a37; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;">
+                                🗑️ Descartar / Desecho
+                            </button>
                             <button onclick="eliminarRecepcionGlobal('${item.cliente_id}', '${item.articulo_numero || ''}', ${item.id || 'null'}, ${item.id_orden_tratamiento || 'null'})" style="color: #dc3545; font-weight: bold; border-top: 1px solid #ddd; margin-top: 4px; padding-top: 8px;" ${btnDisabled}>
                                 🗑️ Eliminar Recepción
                             </button>
@@ -2756,28 +2748,11 @@
                             🔗 Vincular Documento
                         </button>`;
                     } else {
-                        // Botón Lomasoft
-                        // [TICKET 16] Herencia de Conciliación: La entidad enriquecida reutiliza 
-                        // el motor de conciliación estándar de Lomas Soft ('/api/produccion/mantenimiento/conciliar/*').
-                        // No se crean endpoints paralelos; el documento, la alteración de estados 
-                        // y la comunicación son idénticas al flujo de devoluciones nativas.
-                        if ((item.origen_facturacion || '').includes('LOMASOFT')) {
-                            let lomasoftDisabled = btnDisabled ? 'disabled' : '';
-                            // [TICKET 29] Salto Relacional: Se envía la Venta Original para luego triangular la Orden de Retiro en el onClick
-                            const idFactura = item.id_presupuesto_origen;
-                            lomasoftBtnHtml = `
-                        <button class="btn-conciliar" onclick="conciliar('${item.cliente_id}', '${item.articulo_numero}', '${item.stock_mantenimiento}', '${fechaRef}', '${idFactura}')" ${lomasoftDisabled} title="${btnTitle}">
-                            🔍 Conciliar Lomas Soft
-                        </button>`;
-                        }
-                        
-                        // Botón ARCA
-                        if (item.origen_facturacion !== 'LOMASOFT') {
-                            let arcaBtnDisabled = btnDisabled ? 'disabled' : '';
-                            let opacity = btnDisabled ? '0.5' : '1';
-                            ncActionHtml = `
+                        // Circuito fiscal activo exclusivo ARCA local (Lomasoft deprecado)
+                        let arcaBtnDisabled = btnDisabled ? 'disabled' : '';
+                        let opacity = btnDisabled ? '0.5' : '1';
+                        ncActionHtml = `
                         <button class="btn-accion" style="background-color: #17a2b8; border: none; opacity: ${opacity}" onclick="abrirModalNC('${item.articulo_numero}', ${cantidad}, '${item.cliente_id}', '${item.id_presupuesto_origen}', '${item.id}')" ${arcaBtnDisabled}>🧾 Emitir NC ARCA</button>`;
-                        }
                     }
 
                     let pdfActionHtml = '';
@@ -3196,6 +3171,120 @@
             } catch (error) {
                 console.error(error);
                 Swal.fire('Error', 'Error al liberar stock: ' + error.message, 'error');
+            }
+        }
+
+        async function descartarStock(clienteId, articuloActivo, cantidadOriginal, kilosUnidadParam, ingredienteId, movimientoId) {
+            let nombreOrigen = '';
+            let realKilos = 0;
+            let kilosUnidad = parseFloat(kilosUnidadParam) || 1;
+
+            if (window.mantenimientoStockData && movimientoId) {
+                const item = window.mantenimientoStockData.find(a => a.id === movimientoId);
+                if (item) {
+                    nombreOrigen = item.descripcion || '';
+                    kilosUnidad = parseFloat(item.kilos_unidad) || kilosUnidad;
+                    const parsed = robustParseObservations(item.observaciones);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        realKilos = parsed.reduce((sum, d) => sum + (parseFloat(d.kilos) || 0), 0);
+                    }
+                }
+            }
+
+            const cantNum = parseFloat(cantidadOriginal) || 0;
+            const pesoTotal = realKilos > 0 ? realKilos : (cantNum * kilosUnidad);
+            const codigoLabel = (articuloActivo && articuloActivo !== 'null')
+                ? `#${articuloActivo}`
+                : (ingredienteId && ingredienteId !== 'null' ? `Ingrediente #${ingredienteId}` : 'S/C');
+
+            let optionsHtml = '<option value="-1" disabled selected>Seleccione responsable (OBLIGATORIO)</option>';
+            if (window.operariosActivosCache) {
+                window.operariosActivosCache.forEach(op => {
+                    optionsHtml += `<option value="${op.id}">${op.nombre}</option>`;
+                });
+            }
+
+            const result = await Swal.fire({
+                title: '🗑️ ¿Descartar / Desecho Definitivo?',
+                customClass: { popup: 'swal-wide-liberar' },
+                html: `
+                    <div style="background: #fff5f5; border: 1px solid #f5c6cb; border-radius: 8px; padding: 15px; text-align: left; margin-bottom: 15px; font-family: sans-serif;">
+                        <div style="font-size: 14px; font-weight: bold; color: #b02a37; border-bottom: 1px solid #f5c6cb; padding-bottom: 5px; margin-bottom: 8px;">🗑️ Mercadería a Descartar (Fin del camino):</div>
+                        <div style="font-size: 16px; color: #111; margin-bottom: 4px;"><b>Descripción:</b> ${nombreOrigen || 'Sin Descripción'}</div>
+                        <div style="font-size: 14px; color: #333; margin-bottom: 4px;"><b>Código:</b> ${codigoLabel}</div>
+                        <div style="font-size: 14px; color: #333;"><b>Cantidad / Peso:</b> ${cantNum} u. (${pesoTotal.toFixed(2).replace('.', ',')} kg)</div>
+                        <div style="font-size: 12px; color: #721c24; margin-top: 8px; font-weight: 600;">
+                            ⚠️ Se descontará únicamente de Mantenimiento. CERO impacto en Stock Comercial (Ventas) ni en Ingredientes.
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 12px; text-align: left; width: 100%; box-sizing: border-box;">
+                        <label for="swal-descarte-responsable"><b>Responsable de Descarte (OBLIGATORIO):</b></label><br>
+                        <select id="swal-descarte-responsable" class="swal2-select" style="display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin: 5px 0 0 0; font-size: 16px; border-color: #dc3545; padding: 10px;" required>
+                            ${optionsHtml}
+                        </select>
+                    </div>
+
+                    <div style="margin-top: 15px; text-align: left; width: 100%; box-sizing: border-box;">
+                        <label for="swal-descarte-motivo"><b>Motivo / Nota Auditable del Descarte (OBLIGATORIO):</b></label><br>
+                        <textarea id="swal-descarte-motivo" class="swal2-textarea" placeholder="Ej: Barritas sueltas vencidas / envase roto no apto para venta ni materia prima..." style="display: block; width: 100%; max-width: 100%; box-sizing: border-box; margin: 5px 0 0 0; min-height: 80px; font-size: 14px; padding: 10px;"></textarea>
+                    </div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#b02a37',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: '🗑️ Confirmar Descarte Definitivo',
+                cancelButtonText: 'Cancelar',
+                preConfirm: () => {
+                    const resp = document.getElementById('swal-descarte-responsable').value;
+                    const motivo = document.getElementById('swal-descarte-motivo').value.trim();
+                    if (resp === '-1' || !resp) {
+                        Swal.showValidationMessage('⚠️ Debe indicar quién es el operario Responsable.');
+                        return false;
+                    }
+                    if (!motivo || motivo.length < 3) {
+                        Swal.showValidationMessage('⚠️ Debe ingresar una nota/motivo auditable (mínimo 3 caracteres).');
+                        return false;
+                    }
+                    return { responsable: resp, motivo };
+                }
+            });
+
+            if (!result.isConfirmed) return;
+            const payload = result.value;
+
+            try {
+                Swal.fire({ title: 'Registrando descarte...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+                const res = await fetch('/api/produccion/mantenimiento/descartar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        movimiento_id: movimientoId,
+                        cliente_id: clienteId || null,
+                        articulo_numero: (articuloActivo && articuloActivo !== 'null') ? articuloActivo : null,
+                        ingrediente_id: (ingredienteId && ingredienteId !== 'null') ? ingredienteId : null,
+                        cantidad: cantNum,
+                        observaciones: payload.motivo,
+                        responsable: payload.responsable
+                    })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    Swal.fire('Descarte Registrado', data.message || 'La mercadería fue descartada definitivamente de Mantenimiento.', 'success').then(() => {
+                        setTimeout(() => {
+                            cargarStock();
+                            cargarHistorial();
+                        }, 200);
+                    });
+                } else {
+                    throw new Error(data.error || 'Error desconocido al descartar stock');
+                }
+            } catch (error) {
+                console.error(error);
+                Swal.fire('Error', 'Error al descartar mercadería: ' + error.message, 'error');
             }
         }
 
@@ -4031,6 +4120,7 @@
                     if (mov.tipo_movimiento === 'INGRESO') badgeClass = 'badge-ingreso';
                     if (mov.tipo_movimiento === 'LIBERACION') badgeClass = 'badge-liberacion';
                     if (mov.tipo_movimiento === 'TRANSF_INGREDIENTE') badgeClass = 'badge-transferencia';
+                    if (mov.tipo_movimiento === 'DESCARTE') badgeClass = 'badge-descarte';
                     if (mov.tipo_movimiento === 'EMISION_NC') badgeClass = 'badge-transferencia';
                     if (mov.tipo_movimiento === 'REVERSION') badgeClass = 'badge-ajuste'; // Color neutro
 
