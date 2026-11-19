@@ -1437,9 +1437,11 @@
 
 .bunker-subcat-title {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    word-break: break-word;
+    line-height: 1.34;
 }
 
 .bunker-subcat-actions {
@@ -1456,25 +1458,30 @@
 .btn-ing-movil {
     display: inline-flex;
     align-items: center;
-    gap: 0.22rem;
-    padding: 0.18rem 0.48rem;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
     border-radius: 999px;
-    border: 1px solid rgba(168, 85, 247, 0.48);
-    background: rgba(168, 85, 247, 0.18);
+    border: 1px solid rgba(168, 85, 247, 0.52);
+    background: rgba(168, 85, 247, 0.2);
     color: #e9d5ff;
-    font-size: 0.67rem;
+    font-size: 0.95rem;
     font-weight: 700;
     text-transform: none;
     letter-spacing: 0;
-    line-height: 1.2;
+    line-height: 1;
     cursor: pointer;
     flex-shrink: 0;
-    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.15s ease, background 0.15s ease;
 }
 
 .btn-ing-movil:active {
-    transform: scale(0.96);
-    background: rgba(168, 85, 247, 0.3);
+    transform: scale(0.95);
+    background: rgba(168, 85, 247, 0.34);
 }
 
 .btn-ing-movil.granola {
@@ -1495,8 +1502,11 @@
 
 .bunker-atributo-name {
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    word-break: break-word;
+    line-height: 1.34;
 }
 
 .bunker-subcat-header.n3 {

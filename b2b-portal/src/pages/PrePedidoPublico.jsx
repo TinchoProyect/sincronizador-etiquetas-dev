@@ -898,7 +898,7 @@ export default function PrePedidoPublico({ path }) {
               ⭐
             </span>
           )}
-          <h4 className={`product-name ${ofertaActiva ? 'product-name-oferta' : ''}`} style={{ fontSize: '0.92rem', fontWeight: '600', margin: 0, flex: 1, lineHeight: '1.25' }}>
+          <h4 className={`product-name ${ofertaActiva ? 'product-name-oferta' : ''}`} style={{ fontSize: '0.92rem', fontWeight: '600', margin: 0, flex: '1 1 150px', minWidth: 0, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35' }}>
             {displayLabel || product.producto_descripcion}
           </h4>
           {delegacion?.mostrar_precios && esModoNeto && (

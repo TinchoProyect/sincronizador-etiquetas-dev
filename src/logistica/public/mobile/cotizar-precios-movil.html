@@ -16,7 +16,7 @@
     <meta name="application-name" content="LAMDA">
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="css/mobile.css">
-    <link rel="stylesheet" href="css/comercial.css?v=16">
+    <link rel="stylesheet" href="css/comercial.css?v=17">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="/env-config.js?v=2"></script>
     <style>
@@ -71,8 +71,8 @@
             padding: 0.65rem 0.85rem;
             margin-bottom: 0.5rem;
             display: flex;
-            align-items: center;
-            gap: 0.75rem;
+            align-items: flex-start;
+            gap: 0.65rem;
             cursor: pointer;
             transition: all 0.15s ease;
             user-select: none;
@@ -87,6 +87,8 @@
         .item-cotiz-checkbox {
             width: 20px;
             height: 20px;
+            margin-top: 0.15rem;
+            flex-shrink: 0;
             accent-color: #10b981;
             cursor: pointer;
             border-radius: 4px;
@@ -158,16 +160,18 @@
 
     <!-- BUSCADOR UNIVERSAL LAMDA & FAMILIAS -->
     <div style="padding: 0.75rem 1rem 0.25rem; background: #0f172a; position: sticky; top: 0; z-index: 100;">
-        <!-- Input con motor de búsqueda LAMDA y botón habituales -->
+        <!-- Input con motor de búsqueda LAMDA, habituales y conmutador Con IVA / Sin IVA -->
         <div style="display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.5rem;">
-            <div style="position: relative; flex: 1; display: flex; align-items: center;">
-                <input type="text" id="input-buscar-articulos-cotiz" class="wizard-input-mobile" placeholder="🔍 Buscar por nombre, gramaje, cereal..." style="padding-right: 2.2rem; font-size: 0.9rem; border-radius: 0.75rem; width: 100%;" oninput="CotizadorPreciosMovil.filtrarArticulos(this.value)">
+            <div style="position: relative; flex: 1; min-width: 0; display: flex; align-items: center;">
+                <input type="text" id="input-buscar-articulos-cotiz" class="wizard-input-mobile" placeholder="🔍 Buscar por nombre, gramaje, cereal..." style="padding-right: 2.2rem; font-size: 0.88rem; border-radius: 0.75rem; width: 100%;" oninput="CotizadorPreciosMovil.filtrarArticulos(this.value)">
                 <button id="btn-clear-search-cotiz" onclick="CotizadorPreciosMovil.limpiarBusqueda()" style="position: absolute; right: 10px; background: none; border: none; font-size: 1.1rem; color: #94a3b8; cursor: pointer; display: none;">✕</button>
             </div>
-            <button type="button" id="btn-toggle-habituales-cotiz" class="btn-toggle-habituales" onclick="CotizadorPreciosMovil.toggleFiltroHabituales()" title="Filtrar por artículos habituales del cliente" style="display: none; white-space: nowrap; padding: 0.55rem 0.75rem; font-size: 0.82rem; height: 42px; border-radius: 0.75rem;">
+            <button type="button" id="btn-toggle-habituales-cotiz" class="btn-toggle-habituales" onclick="CotizadorPreciosMovil.toggleFiltroHabituales()" title="Filtrar por artículos habituales del cliente" style="display: none; white-space: nowrap; padding: 0.45rem 0.6rem; font-size: 0.78rem; height: 40px; border-radius: 0.75rem; flex-shrink: 0; gap: 0.25rem;">
                 <span class="habituales-star">⭐</span>
-                <span>Habituales</span>
                 <span id="habituales-cotiz-count" class="habituales-count" style="display: none;">0</span>
+            </button>
+            <button type="button" id="btn-toggle-modo-iva-cotiz" class="btn-toggle-modo-iva con-iva" onclick="CotizadorPreciosMovil.toggleModoIVA()" title="Precios Finales (Con IVA incluido). Tocar para ver Netos (Sin IVA)." style="height: 40px; padding: 0 0.68rem; flex-shrink: 0;">
+                <span id="lbl-modo-iva-cotiz">C/IVA</span>
             </button>
         </div>
 
@@ -208,13 +212,17 @@
 
     <!-- BARRA FLOTANTE INFERIOR -->
     <footer class="sticky-footer-cotiz">
-        <div>
-            <div style="font-size: 0.72rem; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Selección</div>
-            <div style="font-size: 0.95rem; font-weight: 900; color: #34d399;" id="lbl-resumen-seleccion">
-                0 artículos
+        <div style="min-width: 0; flex: 1; padding-right: 0.5rem;">
+            <div style="display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
+                <span style="font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; font-weight: 700;">Selección</span>
+                <span id="lbl-cotiz-iva-footer" style="font-size: 0.64rem; font-weight: 800; padding: 0.08rem 0.42rem; border-radius: 999px; background: rgba(16,185,129,0.18); color: #34d399; border: 1px solid rgba(16,185,129,0.35);">Con IVA</span>
+            </div>
+            <div style="display: flex; align-items: baseline; gap: 0.4rem; flex-wrap: wrap; margin-top: 1px;">
+                <span style="font-size: 0.92rem; font-weight: 900; color: #34d399;" id="lbl-resumen-seleccion">0 artículos</span>
+                <span style="font-size: 0.78rem; font-weight: 800; color: #e2e8f0; display: none;" id="lbl-resumen-subtotal-cotiz"></span>
             </div>
         </div>
-        <button type="button" class="btn-confirm" id="btn-abrir-despacho" onclick="CotizadorPreciosMovil.abrirModalConfiguracionYDespacho()" style="padding: 0.7rem 1.25rem; font-size: 0.88rem; font-weight: 800; border-radius: 0.75rem; background: linear-gradient(135deg, #7c3aed 0%, #581c87 100%); color: white; border: none; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);">
+        <button type="button" class="btn-confirm" id="btn-abrir-despacho" onclick="CotizadorPreciosMovil.abrirModalConfiguracionYDespacho()" style="flex: 0 0 auto; margin-left: 0; padding: 0.68rem 1.05rem; font-size: 0.85rem; font-weight: 800; border-radius: 0.75rem; background: linear-gradient(135deg, #7c3aed 0%, #581c87 100%); color: white; border: none; cursor: pointer; display: flex; align-items: center; gap: 0.35rem; box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4); white-space: nowrap;">
             <span>Configurar y Enviar</span> <span>📤</span>
         </button>
     </footer>
@@ -222,7 +230,7 @@
     <!-- SCRIPTS -->
     <script src="js/mobile.js?v=15"></script>
     <script src="js/utils/lamdaCatalogoHelpers.js?v=1"></script>
-    <script src="js/controllers/CotizadorPreciosMovil.js?v=30"></script>
+    <script src="js/controllers/CotizadorPreciosMovil.js?v=31"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             if (!verificarSesion()) {

@@ -656,7 +656,9 @@ const WizardController = {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = `btn-ing-movil ${variantCls}`.trim();
-        btn.innerText = '🥣 ¿Qué contiene?';
+        btn.innerText = '🥣';
+        btn.title = '¿Qué contiene?';
+        btn.setAttribute('aria-label', '¿Qué contiene?');
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (window.LamdaCatalogoHelpers) {

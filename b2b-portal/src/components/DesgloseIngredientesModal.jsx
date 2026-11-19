@@ -119,27 +119,30 @@ export function BotonVerIngredientesB2B({ onClick, compact = false }) {
         if (e && typeof e.stopPropagation === 'function') e.stopPropagation();
         if (typeof onClick === 'function') onClick(e);
       }}
-      title="Ver ingredientes de la receta"
+      title="¿Qué contiene?"
+      aria-label="¿Qué contiene?"
+      className={`b2b-btn-que-contiene ${compact ? 'is-compact' : ''}`.trim()}
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: compact ? '3px' : '4px',
-        backgroundColor: 'rgba(245, 158, 11, 0.13)',
+        justifyContent: 'center',
+        width: '32px',
+        height: '32px',
+        minWidth: '32px',
+        minHeight: '32px',
+        padding: 0,
+        backgroundColor: 'rgba(245, 158, 11, 0.16)',
         color: '#fbbf24',
-        border: '1px solid rgba(245, 158, 11, 0.38)',
-        borderRadius: '8px',
-        padding: compact ? '2px 7px' : '3px 8px',
-        fontSize: compact ? '0.68rem' : '0.72rem',
-        fontWeight: 700,
+        border: '1px solid rgba(245, 158, 11, 0.45)',
+        borderRadius: '999px',
+        fontSize: '0.95rem',
+        lineHeight: 1,
         cursor: 'pointer',
-        whiteSpace: 'nowrap',
         flexShrink: 0,
-        marginLeft: compact ? 'auto' : undefined,
         transition: 'all 0.15s ease'
       }}
     >
-      <span>🥣</span>
-      <span>¿Qué contiene?</span>
+      <span aria-hidden="true">🥣</span>
     </button>
   );
 }

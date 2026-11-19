@@ -171,6 +171,7 @@ window.CotizadorPreciosMovil = {
             }
 
             this.modoIVA = 'con_iva';
+            this.actualizarBotonModoIVA();
 
             await this.cargarArticulosHabituales();
             await this.cargarArticulosCatalogo();
@@ -259,8 +260,11 @@ window.CotizadorPreciosMovil = {
             }
         }
 
-        // Auto-detección de IVA
-        this.modoIVA = 'con_iva';
+        // Auto-detección de modo IVA según condición fiscal del cliente (paridad exacta con Pedido)
+        const condIva = (this.cliente && this.cliente.condicion_iva) ? this.cliente.condicion_iva.toLowerCase() : '';
+        const isRI = condIva.includes('inscripto');
+        this.modoIVA = isRI ? 'sin_iva' : 'con_iva';
+        this.actualizarBotonModoIVA();
 
         // 5. Asignar lista activa
         if (tieneLista) {
@@ -468,6 +472,29 @@ window.CotizadorPreciosMovil = {
         this.filtrarArticulos(this.terminoBusqueda);
     },
 
+    toggleModoIVA() {
+        this.modoIVA = (this.modoIVA === 'con_iva') ? 'sin_iva' : 'con_iva';
+        this.actualizarBotonModoIVA();
+        this.renderCatalogo();
+    },
+
+    actualizarBotonModoIVA() {
+        const btn = document.getElementById('btn-toggle-modo-iva-cotiz');
+        const lbl = document.getElementById('lbl-modo-iva-cotiz');
+        if (btn && lbl) {
+            if (this.modoIVA === 'sin_iva') {
+                lbl.innerText = 'S/IVA';
+                btn.className = 'btn-toggle-modo-iva sin-iva';
+                btn.title = 'Precios Netos (Sin IVA). Tocar para ver con IVA.';
+            } else {
+                lbl.innerText = 'C/IVA';
+                btn.className = 'btn-toggle-modo-iva con-iva';
+                btn.title = 'Precios Finales (Con IVA incluido). Tocar para ver Netos.';
+            }
+        }
+        this.actualizarResumenSeleccion();
+    },
+
     tildarHabituales() {
         if (this.articulosHabituales.size === 0) {
             Swal.fire({
@@ -540,10 +567,12 @@ window.CotizadorPreciosMovil = {
             const subSubCat = a.sub_sub_categoria || null;
             const subSubSubCat = a.sub_sub_sub_categoria || null;
 
-            const precioFinal = parseFloat(a.precio_final || a.precio_venta || 0);
-            const precioNeto = parseFloat(a.precio_neto || (precioFinal / (1 + (a.iva || 21)/100)));
-            const precioKiloFinal = parseFloat(a.precio_kilo || (a.kilos_unidad > 0 ? precioFinal / a.kilos_unidad : 0));
-            const precioKiloNeto = parseFloat(a.precio_kilo_neto || (a.kilos_unidad > 0 ? precioNeto / a.kilos_unidad : 0));
+            const kilos = parseFloat(a.kilos_unidad || 1.0) || 1.0;
+            const ivaPct = parseFloat(a.iva || a.iva_porcentaje || 21);
+            const precioFinal = parseFloat(a.precio_final || (a.precio_venta * (1 + ivaPct / 100)) || 0);
+            const precioNeto = parseFloat(a.precio_venta || a.precio_neto || (precioFinal / (1 + ivaPct / 100)) || 0);
+            const precioKiloFinal = parseFloat(a.precio_kilo || (precioFinal / kilos));
+            const precioKiloNeto = precioNeto / kilos;
 
             const esPack = (packData.es_pack === true) || (a.es_pack === true || a.es_pack === 't' || a.es_pack === 'true');
             const packUnits = parseInt(packData.pack_unidades || a.pack_unidades || 1, 10);
@@ -569,9 +598,9 @@ window.CotizadorPreciosMovil = {
                 sub_categoria: subCat ? subCat.trim() : null,
                 sub_sub_categoria: subSubCat ? subSubCat.trim() : null,
                 sub_sub_sub_categoria: subSubSubCat ? subSubSubCat.trim() : null,
-                kilos_unidad: parseFloat(a.kilos_unidad || 1),
+                kilos_unidad: kilos,
                 presentacion_str: a.presentacion_str || (a.kilos_unidad ? `${a.kilos_unidad}kg` : 'Unidad'),
-                iva: parseFloat(a.iva || a.iva_porcentaje || 21),
+                iva: ivaPct,
                 precio_bulto_final: precioFinal,
                 precio_bulto_neto: precioNeto,
                 precio_kilo_final: precioKiloFinal,
@@ -581,6 +610,7 @@ window.CotizadorPreciosMovil = {
                 sub_rubro: a.sub_rubro || '',
                 es_pack: esPack,
                 pack_unidades: packUnits,
+                pack_hijo_codigo: packHijoCodigo,
                 stock_fisico: window.LamdaCatalogoHelpers ? window.LamdaCatalogoHelpers.normalizarStockComercial(a.stock_fisico !== undefined ? a.stock_fisico : (a.stock_consolidado || 0)) : (parseFloat(a.stock_fisico !== undefined ? a.stock_fisico : (a.stock_consolidado || 0)) || 0),
                 stock_reservado: window.LamdaCatalogoHelpers ? window.LamdaCatalogoHelpers.normalizarStockComercial(a.stock_reservado || 0) : (parseFloat(a.stock_reservado || 0) || 0),
                 stock_disponible: window.LamdaCatalogoHelpers ? window.LamdaCatalogoHelpers.normalizarStockComercial(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)) : (parseFloat(a.stock_disponible !== undefined ? a.stock_disponible : (a.stock_consolidado || 0)) || 0),
@@ -711,7 +741,7 @@ window.CotizadorPreciosMovil = {
         const ingIdx = this.registrarIngGrupo(titulo, info);
         const linea = Number(info.linea_negocio);
         const variantCls = linea === 6 ? 'granola' : (linea === 5 ? 'barrita' : '');
-        return `<button type="button" class="btn-ing-movil ${variantCls}" onclick="event.stopPropagation(); CotizadorPreciosMovil.abrirIngByIdx(${ingIdx})">🥣 ¿Qué contiene?</button>`;
+        return `<button type="button" class="btn-ing-movil ${variantCls}" title="¿Qué contiene?" aria-label="¿Qué contiene?" onclick="event.stopPropagation(); CotizadorPreciosMovil.abrirIngByIdx(${ingIdx})">🥣</button>`;
     },
 
     renderCatalogo() {
@@ -1128,25 +1158,37 @@ window.CotizadorPreciosMovil = {
         return outHtml;
     },
 
+    obtenerPreciosEfectivosArticulo(art, modoIva = null) {
+        const modo = modoIva || this.modoIVA || 'con_iva';
+        const esModoNeto = (modo === 'sin_iva');
+        const oferta = art.oferta_activa;
+        const precioBultoOriginal = esModoNeto ? art.precio_bulto_neto : art.precio_bulto_final;
+        const precioKiloOriginal = esModoNeto ? art.precio_kilo_neto : art.precio_kilo_final;
+
+        const precioBulto = oferta
+            ? (esModoNeto ? (oferta.precio_oferta_neto || precioBultoOriginal) : (oferta.precio_oferta_final || precioBultoOriginal))
+            : precioBultoOriginal;
+        const precioKilo = oferta
+            ? (esModoNeto ? (oferta.precio_kilo_oferta_neto || precioKiloOriginal) : (oferta.precio_kilo_oferta_final || precioKiloOriginal))
+            : precioKiloOriginal;
+
+        return { esModoNeto, precioBultoOriginal, precioKiloOriginal, precioBulto, precioKilo };
+    },
+
     renderCardArticulo(art, opts = {}) {
         const Helpers = window.LamdaCatalogoHelpers;
         const isSel = this.articulosSeleccionados.has(art.id);
         const habData = this.obtenerInfoHabitual(art);
         const oferta = art.oferta_activa;
-        const precioBultoOriginal = this.modoIVA === 'con_iva' ? art.precio_bulto_final : art.precio_bulto_neto;
-        const precioKiloOriginal = this.modoIVA === 'con_iva' ? art.precio_kilo_final : art.precio_kilo_neto;
-
-        const precioBulto = oferta 
-            ? (this.modoIVA === 'con_iva' ? (oferta.precio_oferta_final || precioBultoOriginal) : (oferta.precio_oferta_neto || precioBultoOriginal))
-            : precioBultoOriginal;
-        const precioKilo = oferta 
-            ? (this.modoIVA === 'con_iva' ? (oferta.precio_kilo_oferta_final || precioKiloOriginal) : (oferta.precio_kilo_oferta_neto || precioKiloOriginal))
-            : precioKiloOriginal;
+        const ivaPct = parseFloat(art.iva || 21);
+        const { esModoNeto, precioBultoOriginal, precioBulto, precioKilo } = this.obtenerPreciosEfectivosArticulo(art);
 
         const cardStyle = oferta 
             ? 'style="border-color: rgba(239, 68, 68, 0.5) !important; background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, #1e293b 100%) !important; box-shadow: 0 0 10px rgba(239, 68, 68, 0.15);"' 
             : '';
-        const titleStyle = oferta ? 'style="margin: 0; font-size: 0.88rem; font-weight: 800; color: #f87171; line-height: 1.25;"' : 'style="margin: 0; font-size: 0.88rem; font-weight: 800; color: #f8fafc; line-height: 1.25;"';
+        const titleStyle = oferta
+            ? 'style="margin: 0; font-size: 0.9rem; font-weight: 800; color: #f87171; line-height: 1.35; white-space: normal; word-break: break-word;"'
+            : 'style="margin: 0; font-size: 0.9rem; font-weight: 800; color: #f8fafc; line-height: 1.35; white-space: normal; word-break: break-word;"';
 
         const stockFisRaw = art.stock_fisico !== undefined ? art.stock_fisico : (art.stock_consolidado || 0);
         const stockResRaw = art.stock_reservado || 0;
@@ -1177,19 +1219,24 @@ window.CotizadorPreciosMovil = {
         const cantFotosPartida = Array.isArray(infoPartida?.imagenes) ? infoPartida.imagenes.length : 0;
         const safeCod = codLookup.replace(/'/g, "\\'");
 
+        const ivaPillHtml = esModoNeto
+            ? `<span class="bunker-iva-pill" style="background:rgba(99,102,241,0.18); color:#a5b4fc; border-color:rgba(99,102,241,0.35);">Neto (+${ivaPct}%)</span>`
+            : `<span class="bunker-iva-pill">${ivaPct}% IVA</span>`;
+
         return `
             <div class="item-cotiz-card ${isSel ? 'selected' : ''}" ${cardStyle} onclick="CotizadorPreciosMovil.toggleArticulo('${art.id}')">
                 <input type="checkbox" class="item-cotiz-checkbox" ${isSel ? 'checked' : ''} onclick="event.stopPropagation(); CotizadorPreciosMovil.toggleArticulo('${art.id}')">
                 <div style="flex: 1; min-width: 0;">
-                    <div style="display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.2rem; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 0.35rem; margin-bottom: 0.25rem; flex-wrap: wrap;">
                         <span class="badge-code-gray" style="font-size:0.68rem; padding:0.1rem 0.35rem;">${art.codigo || 'S/C'}</span>
+                        ${ivaPillHtml}
                         ${art.es_pack ? '<span style="font-size:0.65rem; font-weight:800; color:#38bdf8; background:rgba(56,189,248,0.15); padding:0.1rem 0.35rem; border-radius:4px;">📦 PACK ' + art.pack_unidades + 'U</span>' : ''}
                         ${habData ? `<span style="font-size:0.65rem; font-weight:800; color:#facc15; background:rgba(234,179,8,0.18); border:1px solid rgba(234,179,8,0.3); padding:0.1rem 0.4rem; border-radius:4px;">⭐ Habitual ${habData.frecuencia_compra ? '(' + habData.frecuencia_compra + ')' : ''}</span>` : ''}
                         ${oferta ? `<span style="font-size:0.65rem; font-weight:800; color:#fca5a5; background:rgba(239,68,68,0.22); border:1px solid rgba(239,68,68,0.45); padding:0.1rem 0.4rem; border-radius:4px;">🔥 OFERTA ${oferta.descuento_porcentaje}% OFF</span>` : ''}
                         ${btnIngFallback}
                         ${cantFotosPartida > 0 ? `<button type="button" onclick="event.stopPropagation(); CotizadorPreciosMovil.verFotosPartidaArticulo('${safeCod}')" style="font-size:0.66rem; font-weight:800; color:#5eead4; background:rgba(13,148,136,0.22); border:1px solid rgba(20,184,166,0.5); padding:0.1rem 0.45rem; border-radius:5px; cursor:pointer;">📷 Ver partida (${cantFotosPartida})</button>` : ''}
                     </div>
-                    <h4 ${titleStyle} class="text-truncate" title="${Helpers ? Helpers.escapeHtml(art.nomenclatura) : art.nomenclatura}">${Helpers ? Helpers.escapeHtml(tituloTarjeta) : tituloTarjeta}</h4>
+                    <h4 ${titleStyle} title="${Helpers ? Helpers.escapeHtml(art.nomenclatura) : art.nomenclatura}">${Helpers ? Helpers.escapeHtml(tituloTarjeta) : tituloTarjeta}</h4>
                     <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                         <span>Pres: <strong>${art.presentacion_str}</strong> ${art.kilos_unidad > 1 ? `(${art.kilos_unidad} kg)` : ''}</span>
                         ${stockRes > 0 ? `
@@ -1203,7 +1250,7 @@ window.CotizadorPreciosMovil = {
                         `}
                     </div>
                 </div>
-                <div style="text-align: right; white-space: nowrap;">
+                <div style="text-align: right; white-space: nowrap; flex-shrink: 0;">
                     ${oferta ? `
                         <div style="font-size: 0.72rem; color: #94a3b8; text-decoration: line-through;">
                             $ ${precioBultoOriginal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1278,9 +1325,44 @@ window.CotizadorPreciosMovil = {
     actualizarResumenSeleccion() {
         const count = this.articulosSeleccionados.size;
         const resEl = document.getElementById('lbl-resumen-seleccion');
+        const subEl = document.getElementById('lbl-resumen-subtotal-cotiz');
+        const pillIvaFooter = document.getElementById('lbl-cotiz-iva-footer');
         const btnDespacho = document.getElementById('btn-abrir-despacho');
+        const esModoNeto = (this.modoIVA === 'sin_iva');
+
+        if (pillIvaFooter) {
+            if (esModoNeto) {
+                pillIvaFooter.innerText = 'Sin IVA (Neto)';
+                pillIvaFooter.style.background = 'rgba(99,102,241,0.22)';
+                pillIvaFooter.style.color = '#a5b4fc';
+                pillIvaFooter.style.borderColor = 'rgba(99,102,241,0.45)';
+            } else {
+                pillIvaFooter.innerText = 'Con IVA';
+                pillIvaFooter.style.background = 'rgba(16,185,129,0.18)';
+                pillIvaFooter.style.color = '#34d399';
+                pillIvaFooter.style.borderColor = 'rgba(16,185,129,0.35)';
+            }
+        }
 
         if (resEl) resEl.innerText = `${count} artículo${count === 1 ? '' : 's'}`;
+
+        if (subEl) {
+            if (count > 0 && Array.isArray(this.todosLosArticulos) && this.todosLosArticulos.length > 0) {
+                let sumaUnitarios = 0;
+                this.todosLosArticulos.forEach(art => {
+                    if (this.articulosSeleccionados.has(art.id)) {
+                        const { precioBulto } = this.obtenerPreciosEfectivosArticulo(art);
+                        sumaUnitarios += (parseFloat(precioBulto) || 0);
+                    }
+                });
+                subEl.innerText = `· $ ${sumaUnitarios.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                subEl.style.display = 'inline';
+            } else {
+                subEl.innerText = '';
+                subEl.style.display = 'none';
+            }
+        }
+
         if (btnDespacho) {
             btnDespacho.style.opacity = count > 0 ? '1' : '0.6';
         }
@@ -1559,12 +1641,24 @@ window.CotizadorPreciosMovil = {
             cancelButtonText: 'Cancelar',
             confirmButtonColor: '#7c3aed',
             cancelButtonColor: '#475569',
+            didOpen: () => {
+                const selIva = document.getElementById('swal-cotiz-select-iva');
+                if (selIva) {
+                    selIva.addEventListener('change', () => {
+                        this.modoIVA = selIva.value;
+                        this.actualizarBotonModoIVA();
+                        this.renderCatalogo();
+                    });
+                }
+            },
             preConfirm: () => {
                 this.modoIVA = document.getElementById('swal-cotiz-select-iva').value;
                 this.modoPrecio = document.getElementById('swal-cotiz-select-modo-precio').value;
                 this.mostrarHijos = document.getElementById('chk-swal-hijos') ? document.getElementById('chk-swal-hijos').checked : true;
                 this.ocultarColumnaIVA = document.getElementById('chk-swal-ocultar-iva') ? document.getElementById('chk-swal-ocultar-iva').checked : false;
                 this.tituloInforme = document.getElementById('swal-cotiz-input-titulo').value.trim() || 'Consulta de Precios';
+                this.actualizarBotonModoIVA();
+                this.renderCatalogo();
                 return true;
             }
         });
@@ -1612,9 +1706,52 @@ window.CotizadorPreciosMovil = {
             textoPoliticaWp = `\n💡 Consulte por bonificaciones y escalas de descuento comercial por volumen.`;
         }
 
+        const esModoNeto = (this.modoIVA === 'sin_iva');
+        const leyendaIvaTexto = this.ocultarColumnaIVA
+            ? ''
+            : `\n📌 Valores expresados ${esModoNeto ? 'SIN IVA (precios netos + IVA)' : 'CON IVA incluido'}.`;
+
         let defaultMsg = this.esProspecto
-            ? `Hola, te enviamos la cotización de precios actualizada de LAMDA.${textoPoliticaWp}\nQuedamos atentos a cualquier consulta. ¡Muchas gracias!`
-            : `Hola ${this.cliente.nombre}, te enviamos la cotización de precios actualizada de LAMDA.${textoPoliticaWp}\nQuedamos atentos a cualquier consulta. ¡Muchas gracias!`;
+            ? `Hola, te enviamos la cotización de precios actualizada de LAMDA.${leyendaIvaTexto}${textoPoliticaWp}\nQuedamos atentos a cualquier consulta. ¡Muchas gracias!`
+            : `Hola ${this.cliente.nombre}, te enviamos la cotización de precios actualizada de LAMDA.${leyendaIvaTexto}${textoPoliticaWp}\nQuedamos atentos a cualquier consulta. ¡Muchas gracias!`;
+
+        // Resumen / Vista previa rápida de valores según modalidad Con IVA / Sin IVA
+        const Helpers = window.LamdaCatalogoHelpers;
+        const selItems = this.todosLosArticulos.filter(a => this.articulosSeleccionados.has(a.id));
+        let sumaPreview = 0;
+        const previewRowsHtml = selItems.slice(0, 5).map(art => {
+            const { precioBulto } = this.obtenerPreciosEfectivosArticulo(art);
+            sumaPreview += (parseFloat(precioBulto) || 0);
+            const nomClean = Helpers ? Helpers.escapeHtml(Helpers.embellecerTituloComercial(art.nomenclatura) || art.nomenclatura) : art.nomenclatura;
+            return `
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem; font-size:0.74rem; padding:0.18rem 0; border-bottom:1px dashed rgba(255,255,255,0.06);">
+                    <span style="color:#e2e8f0; flex:1; min-width:0; word-break:break-word;">${nomClean}</span>
+                    <strong style="color:${esModoNeto ? '#a5b4fc' : '#34d399'}; white-space:nowrap;">$ ${precioBulto.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                </div>
+            `;
+        }).join('');
+        if (selItems.length > 5) {
+            selItems.slice(5).forEach(art => {
+                const { precioBulto } = this.obtenerPreciosEfectivosArticulo(art);
+                sumaPreview += (parseFloat(precioBulto) || 0);
+            });
+        }
+        const previewBoxHtml = `
+            <div style="margin-bottom:0.8rem; background:#0f172a; border:1px solid ${esModoNeto ? 'rgba(99,102,241,0.45)' : 'rgba(16,185,129,0.4)'}; border-radius:0.7rem; padding:0.55rem 0.7rem;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:0.4rem; margin-bottom:0.35rem; flex-wrap:wrap;">
+                    <span style="font-size:0.7rem; font-weight:800; text-transform:uppercase; color:#94a3b8;">Vista previa (${selItems.length} ${selItems.length === 1 ? 'art.' : 'arts.'})</span>
+                    <span style="font-size:0.68rem; font-weight:800; padding:0.1rem 0.48rem; border-radius:999px; background:${esModoNeto ? 'rgba(99,102,241,0.2)' : 'rgba(16,185,129,0.18)'}; color:${esModoNeto ? '#a5b4fc' : '#34d399'}; border:1px solid ${esModoNeto ? 'rgba(99,102,241,0.45)' : 'rgba(16,185,129,0.4)'};">
+                        ${esModoNeto ? 'S/IVA · Precios Sin IVA (Netos)' : 'C/IVA · Precios Con IVA'}
+                    </span>
+                </div>
+                ${previewRowsHtml}
+                ${selItems.length > 5 ? `<div style="font-size:0.7rem; color:#94a3b8; margin-top:0.2rem;">+ ${selItems.length - 5} artículo(s) adicional(es) en el PDF...</div>` : ''}
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.35rem; padding-top:0.25rem; font-size:0.76rem; font-weight:800; color:#f8fafc;">
+                    <span>Suma ref. unitaria (${esModoNeto ? 'Sin IVA' : 'Con IVA'}):</span>
+                    <span style="color:${esModoNeto ? '#a5b4fc' : '#34d399'};">$ ${sumaPreview.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+            </div>
+        `;
 
         // Render contactos WhatsApp
         let wpHtml = '';
@@ -1658,6 +1795,9 @@ window.CotizadorPreciosMovil = {
 
         const etapa2Html = `
             <div style="text-align:left; font-size:0.85rem; color:#f8fafc;">
+                <!-- VISTA PREVIA CON MODALIDAD CON IVA / SIN IVA -->
+                ${previewBoxHtml}
+
                 <!-- BOTÓN COMPARTIR DIRECTO WHATSAPP NATIVO -->
                 <button type="button" id="btn-swal-share-whatsapp-native" class="btn-modal-link" style="background:#059669; color:white; padding:0.65rem 1rem; border-radius:0.75rem; font-weight:800; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:0.5rem; width:100%; margin-bottom:0.85rem; font-size:0.85rem; box-shadow:0 4px 12px rgba(5,150,105,0.35);">
                     📲 Compartir por WhatsApp (Elegir Contacto)
@@ -1785,6 +1925,12 @@ window.CotizadorPreciosMovil = {
         const resultadoArticulos = [];
 
         articulosSeleccionadosList.forEach(art => {
+            const oferta = art.oferta_activa;
+            const pBultoFinalEf = oferta && oferta.precio_oferta_final ? oferta.precio_oferta_final : art.precio_bulto_final;
+            const pBultoNetoEf = oferta && oferta.precio_oferta_neto ? oferta.precio_oferta_neto : art.precio_bulto_neto;
+            const pKiloFinalEf = oferta && oferta.precio_kilo_oferta_final ? oferta.precio_kilo_oferta_final : art.precio_kilo_final;
+            const pKiloNetoEf = oferta && oferta.precio_kilo_oferta_neto ? oferta.precio_kilo_oferta_neto : art.precio_kilo_neto;
+
             // Padre principal
             const padreItem = {
                 articulo_id: art.articulo_id,
@@ -1794,10 +1940,10 @@ window.CotizadorPreciosMovil = {
                 kilos_unidad: art.kilos_unidad,
                 presentacion_str: art.presentacion_str,
                 iva: art.iva,
-                precio_bulto_final: art.precio_bulto_final,
-                precio_bulto_neto: art.precio_bulto_neto,
-                precio_kilo_final: art.precio_kilo_final,
-                precio_kilo_neto: art.precio_kilo_neto,
+                precio_bulto_final: pBultoFinalEf,
+                precio_bulto_neto: pBultoNetoEf,
+                precio_kilo_final: pKiloFinalEf,
+                precio_kilo_neto: pKiloNetoEf,
                 familia_nombre: art.familia_nombre,
                 articulo_principal: art.articulo_principal,
                 propiedades_dinamicas: art.propiedades_dinamicas,
@@ -1820,8 +1966,8 @@ window.CotizadorPreciosMovil = {
 
                 const factorKg = parseFloat(art.kilos_unidad || 1);
                 const factorKgHijo = (hijoObjReal && hijoObjReal.kilos_unidad) ? parseFloat(hijoObjReal.kilos_unidad) : (factorKg / packUnits);
-                const pFinalHijo = factorKgHijo * art.precio_kilo_final;
-                const pNetoHijo = factorKgHijo * art.precio_kilo_neto;
+                const pFinalHijo = factorKgHijo * pKiloFinalEf;
+                const pNetoHijo = factorKgHijo * pKiloNetoEf;
                 const presStrHijo = (hijoObjReal && hijoObjReal.presentacion_str) ? hijoObjReal.presentacion_str : (factorKgHijo < 1.0 ? `${Math.round(factorKgHijo * 1000)} g` : `${factorKgHijo.toFixed(2)} kg`);
                 const nomHijo = (hijoObjReal && (hijoObjReal.nomenclatura || hijoObjReal.descripcion)) ? (hijoObjReal.nomenclatura || hijoObjReal.descripcion) : padreItem.nomenclatura;
 
@@ -1835,8 +1981,8 @@ window.CotizadorPreciosMovil = {
                     iva: art.iva,
                     precio_bulto_final: pFinalHijo,
                     precio_bulto_neto: pNetoHijo,
-                    precio_kilo_final: art.precio_kilo_final,
-                    precio_kilo_neto: art.precio_kilo_neto,
+                    precio_kilo_final: pKiloFinalEf,
+                    precio_kilo_neto: pKiloNetoEf,
                     familia_nombre: art.familia_nombre,
                     articulo_principal: art.articulo_principal,
                     propiedades_dinamicas: art.propiedades_dinamicas,
@@ -1906,9 +2052,15 @@ window.CotizadorPreciosMovil = {
             Swal.close();
 
             if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                const modoEfectivo = modoIva || this.modoIVA || 'con_iva';
+                const notaIvaShare = this.ocultarColumnaIVA
+                    ? ''
+                    : ` (valores expresados ${modoEfectivo === 'sin_iva' ? 'SIN IVA - netos' : 'CON IVA incluido'})`;
                 await navigator.share({
                     title: `Cotización LAMDA - ${this.cliente.nombre}`,
-                    text: customMsg || (this.esProspecto ? 'Hola, te adjuntamos la cotización de precios de LAMDA.' : `Hola ${this.cliente.nombre}, te adjuntamos la cotización de precios.`),
+                    text: customMsg || (this.esProspecto
+                        ? `Hola, te adjuntamos la cotización de precios de LAMDA${notaIvaShare}.`
+                        : `Hola ${this.cliente.nombre}, te adjuntamos la cotización de precios${notaIvaShare}.`),
                     files: [file]
                 });
             } else {

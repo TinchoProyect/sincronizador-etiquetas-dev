@@ -804,8 +804,11 @@ export default function Articulos({
               fontWeight: '600', 
               color: 'var(--text-primary)', 
               margin: 0, 
-              flex: 1, 
-              lineHeight: '1.25' 
+              flex: '1 1 150px',
+              minWidth: 0,
+              whiteSpace: 'normal',
+              wordBreak: 'break-word',
+              lineHeight: '1.35' 
             }}
           >
             {displayLabel || product.producto_descripcion}
