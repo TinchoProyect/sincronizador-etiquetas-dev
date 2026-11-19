@@ -1,6 +1,6 @@
 // src/produccion/js/abastecimientoExterno.js
 
-import { actualizarResumenIngredientes } from './carro.js';
+import { actualizarResumenIngredientes, obtenerResumenIngredientesCarro, mostrarResumenIngredientes } from './carro.js';
 
 let modal = null;
 let inputCodigoBarras = null;
@@ -19,6 +19,12 @@ let ingredienteDestinoId = null;
 let ingredienteDestinoNombre = '';
 let articuloSeleccionado = null;
 let articulosDelIngrediente = [];
+let abastecimientoEnVuelo = false;
+let currentAbastecimientoRequestId = null;
+
+function generarRequestIdAbastecimiento() {
+    return `abast_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
 const DEFAULT_KILOS_FALLBACK = 1;
 
@@ -237,6 +243,7 @@ window.abrirModalAbastecimientoExterno = async function(ingredienteId, nombreIng
     ingredienteDestinoNombre = nombreIngrediente || '';
     articuloSeleccionado = null;
     articulosDelIngrediente = [];
+    currentAbastecimientoRequestId = null;
 
     if (inputCodigoBarras) inputCodigoBarras.value = '';
     if (inputBusqueda) inputBusqueda.value = '';
@@ -353,6 +360,7 @@ function seleccionarArticulo(art, { desdeEscaner = false } = {}) {
         kilos_unidad: kgU,
         unidad_medida: unidadMedida
     };
+    currentAbastecimientoRequestId = generarRequestIdAbastecimiento();
 
     if (desdeEscaner) {
         mostrarAlertaEscaner(
@@ -407,13 +415,21 @@ function calcularKilos() {
     const totalKilos = cant * (articuloSeleccionado.kilos_unidad || DEFAULT_KILOS_FALLBACK);
     spanKilosTotales.textContent = totalKilos.toFixed(2);
     divResumen.style.display = 'block';
-    btnConfirmar.disabled = false;
+    if (!abastecimientoEnVuelo) {
+        btnConfirmar.disabled = false;
+    }
 }
 
-async function confirmarAbastecimiento() {
+async function confirmarAbastecimiento(forzarRepetido = false) {
+    if (abastecimientoEnVuelo) {
+        console.warn('⏳ [ABASTECIMIENTO] Envío en curso, ignorando clic/Enter duplicado');
+        return;
+    }
     if (!articuloSeleccionado || !ingredienteDestinoId) return;
 
     const cantidad = parseFloat(inputCantidad.value);
+    if (isNaN(cantidad) || cantidad <= 0) return;
+
     const colaboradorData = localStorage.getItem('colaboradorActivo');
 
     if (!colaboradorData) {
@@ -427,15 +443,23 @@ async function confirmarAbastecimiento() {
     const carroId = workspaceContainer?.dataset?.carroId || sessionStorage.getItem('carroActivo');
     const parsedCarroId = carroId ? parseInt(carroId, 10) : null;
 
+    if (!currentAbastecimientoRequestId) {
+        currentAbastecimientoRequestId = generarRequestIdAbastecimiento();
+    }
+
+    abastecimientoEnVuelo = true;
     btnConfirmar.disabled = true;
     btnConfirmar.innerHTML = 'Procesando...';
+    if (inputCantidad) inputCantidad.disabled = true;
 
     const payload = {
         articulo_numero: articuloSeleccionado.numero,
         cantidad: cantidad,
         ingrediente_id: ingredienteDestinoId,
         usuario_id: usuarioId,
-        carro_id: parsedCarroId
+        carro_id: parsedCarroId,
+        request_id: currentAbastecimientoRequestId,
+        confirmar_repetido: Boolean(forzarRepetido)
     };
 
     try {
@@ -447,8 +471,41 @@ async function confirmarAbastecimiento() {
 
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
+            if (response.status === 409 && err.codigo === 'POSIBLE_DUPLICADO_RECIENTE') {
+                abastecimientoEnVuelo = false;
+                if (inputCantidad) inputCantidad.disabled = false;
+                btnConfirmar.disabled = false;
+                btnConfirmar.innerHTML = 'Confirmar Retiro';
+
+                let deseaRepetir = false;
+                if (typeof Swal !== 'undefined') {
+                    const resDup = await Swal.fire({
+                        icon: 'warning',
+                        title: '⚠️ Retiro idéntico recién registrado',
+                        html: `<p style="font-size:0.95em;line-height:1.45;">${escaparHtml(err.error || 'Hace pocos segundos ya acreditaste un retiro idéntico de este insumo.')}</p><p style="margin-top:8px;font-weight:600;">¿Confirmás retirar un SEGUNDO bulto/unidad adicional?</p>`,
+                        showCancelButton: true,
+                        confirmButtonText: 'Sí, retirar adicional',
+                        cancelButtonText: 'No, ya estaba cargado',
+                        confirmButtonColor: '#d97706',
+                        cancelButtonColor: '#2563eb',
+                        focusCancel: true
+                    });
+                    deseaRepetir = !!resDup.isConfirmed;
+                } else {
+                    deseaRepetir = window.confirm(`${err.error || 'Hace pocos segundos ya acreditaste un retiro idéntico.'}\n\n¿Confirmás retirar un segundo bulto adicional?`);
+                }
+
+                if (deseaRepetir) {
+                    currentAbastecimientoRequestId = generarRequestIdAbastecimiento();
+                    return await confirmarAbastecimiento(true);
+                }
+                cerrarModal();
+                return;
+            }
             throw new Error(err.error || err.detalles || 'Fallo interno en el servidor');
         }
+
+        currentAbastecimientoRequestId = null;
 
         if (typeof window.invalidarCacheCarro === 'function') {
             window.invalidarCacheCarro();
@@ -474,13 +531,20 @@ async function confirmarAbastecimiento() {
             alert(mensajeExito);
         }
 
-        if (typeof actualizarResumenIngredientes === 'function') {
+        // Refrescar inmediatamente sin esperar el debounce de 500ms para que el saldo domiciliario se vea al instante
+        if (parsedCarroId && typeof obtenerResumenIngredientesCarro === 'function' && typeof mostrarResumenIngredientes === 'function') {
+            const ingredientes = await obtenerResumenIngredientesCarro(parsedCarroId, usuarioId);
+            await mostrarResumenIngredientes(ingredientes);
+        } else if (typeof actualizarResumenIngredientes === 'function') {
             await actualizarResumenIngredientes();
         }
     } catch (error) {
         alert('Hubo un error al confirmar el abastecimiento: ' + error.message);
         btnConfirmar.disabled = false;
         btnConfirmar.innerHTML = 'Confirmar Retiro';
+    } finally {
+        abastecimientoEnVuelo = false;
+        if (inputCantidad) inputCantidad.disabled = false;
     }
 }
 

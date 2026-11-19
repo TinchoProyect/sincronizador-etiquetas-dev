@@ -5211,14 +5211,66 @@ router.get('/ingredientes/:id/articulos-abastecimiento', async (req, res) => {
  * Retira un artículo de ventas y lo transfiere a ingredientes_stock_usuarios
  * POST /api/produccion/ingredientes/abastecer-stock-personal
  */
+const abastecimientoInFlightSet = new Set();
+const abastecimientoRequestIdMap = new Map();
+const abastecimientoRecienteMap = new Map();
+
+function limpiarCachesGuardiaAbastecimiento(now) {
+    for (const [k, ts] of abastecimientoRequestIdMap.entries()) {
+        if (now - ts > 120000) abastecimientoRequestIdMap.delete(k);
+    }
+    for (const [k, ts] of abastecimientoRecienteMap.entries()) {
+        if (now - ts > 60000) abastecimientoRecienteMap.delete(k);
+    }
+}
+
 router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
+    const { articulo_numero, cantidad, ingrediente_id, usuario_id, carro_id, request_id, confirmar_repetido } = req.body || {};
+
+    if (!articulo_numero || !cantidad || !ingrediente_id || !usuario_id) {
+        return res.status(400).json({ error: 'Faltan parámetros obligatorios para el abastecimiento atómico' });
+    }
+
+    const cantNum = parseFloat(cantidad);
+    const usuarioIdNum = parseInt(usuario_id, 10);
+    const ingredienteIdNum = parseInt(ingrediente_id, 10);
+    const artNorm = String(articulo_numero).trim().toUpperCase();
+
+    if (isNaN(cantNum) || cantNum <= 0 || isNaN(usuarioIdNum) || isNaN(ingredienteIdNum)) {
+        return res.status(400).json({ error: 'Parámetros numéricos inválidos en el abastecimiento' });
+    }
+
+    const nowTs = Date.now();
+    limpiarCachesGuardiaAbastecimiento(nowTs);
+
+    const reqIdNorm = request_id ? String(request_id).trim() : '';
+    if (reqIdNorm && abastecimientoRequestIdMap.has(reqIdNorm)) {
+        return res.status(409).json({
+            codigo: 'REQUEST_DUPLICADO',
+            error: 'Este retiro ya fue procesado recientemente (doble envío bloqueado).'
+        });
+    }
+
+    const inFlightKey = `${usuarioIdNum}:${ingredienteIdNum}:${artNorm}`;
+    if (abastecimientoInFlightSet.has(inFlightKey)) {
+        return res.status(409).json({
+            codigo: 'EN_PROCESO',
+            error: 'Ya hay un retiro en curso para este ingrediente; aguardá unos segundos.'
+        });
+    }
+
+    const dupSignature = `${usuarioIdNum}:${ingredienteIdNum}:${artNorm}:${cantNum.toFixed(4)}`;
+    const ultimoTs = abastecimientoRecienteMap.get(dupSignature);
+    if (!confirmar_repetido && ultimoTs && (nowTs - ultimoTs) < 20000) {
+        const segHace = Math.max(1, Math.round((nowTs - ultimoTs) / 1000));
+        return res.status(409).json({
+            codigo: 'POSIBLE_DUPLICADO_RECIENTE',
+            error: `Hace ${segHace}s ya se acreditó un retiro idéntico (${cantNum} u. de [${articulo_numero}]).`
+        });
+    }
+
+    abastecimientoInFlightSet.add(inFlightKey);
     try {
-        const { articulo_numero, cantidad, ingrediente_id, usuario_id, carro_id } = req.body;
-
-        if (!articulo_numero || !cantidad || !ingrediente_id || !usuario_id) {
-            return res.status(400).json({ error: 'Faltan parámetros obligatorios para el abastecimiento atómico' });
-        }
-
         console.log(`\n🚚 [ABASTECIMIENTO EXTERNO] Solicitud de Usuario ${usuario_id}`);
         console.log(` > Retirando ${cantidad} unidades del Articulo: ${articulo_numero}`);
         console.log(` > Destino: Ingrediente ${ingrediente_id}`);
@@ -5333,6 +5385,10 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
 
             await client.query('COMMIT');
             client.release();
+
+            const commitTs = Date.now();
+            if (reqIdNorm) abastecimientoRequestIdMap.set(reqIdNorm, commitTs);
+            abastecimientoRecienteMap.set(dupSignature, commitTs);
             
             console.log(`✅ [ABASTECIMIENTO EXTERNO] Transacción Atómica Exitosa.`);
             res.json({ success: true, kilos_acreditados: kilosTotales });
@@ -5347,6 +5403,8 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
     } catch (error) {
         console.error('❌ [ABASTECIMIENTO EXTERNO] Error general:', error);
         res.status(500).json({ error: 'Hubo un problema al procesar el mandato de abastecimiento' });
+    } finally {
+        abastecimientoInFlightSet.delete(inFlightKey);
     }
 });
 

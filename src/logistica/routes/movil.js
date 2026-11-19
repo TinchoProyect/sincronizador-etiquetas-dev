@@ -1129,7 +1129,7 @@ router.post('/entregas/escanear-qr', async (req, res) => {
                             recibido_por_apellido: null,
                             recibido_por_telefono: null
                         };
-                        await fetch(url, {
+                        const supResp = await fetch(url, {
                             method: 'PATCH',
                             headers: {
                                 'apikey': SUPABASE_KEY,
@@ -1139,7 +1139,11 @@ router.post('/entregas/escanear-qr', async (req, res) => {
                             },
                             body: JSON.stringify(patchBody)
                         });
-                        console.log(`[MOVIL-SCAN] ✅ Supabase pedido ${uuid} actualizado a Entregado (montos sincronizados: ${newTotal !== null})`);
+                        if (supResp.ok) {
+                            console.log(`[MOVIL-SCAN] ✅ Supabase pedido ${uuid} actualizado a Entregado`);
+                        } else {
+                            console.warn(`[MOVIL-SCAN] ⚠️ Supabase respondió HTTP ${supResp.status} al actualizar pedido ${uuid}`);
+                        }
                     } catch (supErr) {
                         console.error(`[MOVIL-SCAN] Error silencioso actualizando Supabase: ${supErr.message}`);
                     }

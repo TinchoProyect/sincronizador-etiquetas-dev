@@ -41,12 +41,16 @@ async function marcarCarroPreparado(req, res) {
             });
         }
 
-        // 2b. Consultar artículos del carro (si está vacío, permitir avanzar cuando el usuario confirmó en el modal no restrictivo)
+        // 2b. Prohibir estrictamente marcar como preparado un carro vacío (0 filas en carros_articulos)
         const { rows: articulosDelCarro } = await db.query(
             'SELECT id, articulo_numero, cantidad FROM carros_articulos WHERE carro_id = $1',
             [carroId]
         );
-        const carroSinArticulos = !articulosDelCarro || articulosDelCarro.length === 0;
+        if (!articulosDelCarro || articulosDelCarro.length === 0) {
+            const errVacio = new Error('No se puede preparar un carro vacío. Agregá al menos un artículo antes de marcar "Carro listo para producir".');
+            errVacio.statusCode = 400;
+            throw errVacio;
+        }
 
         // 3. Obtener ingredientes según el tipo de carro
         let ingredientesConsolidados;
@@ -103,10 +107,10 @@ async function marcarCarroPreparado(req, res) {
             ingredientesConsolidados = await obtenerIngredientesBaseCarro(carroId, usuarioId);
         }
 
-        // Validación flexible cuando el carro es externo o se avanzó sin artículos tras confirmación explícita
+        // Validación mejorada para carros externos
         if (!ingredientesConsolidados || ingredientesConsolidados.length === 0) {
-            if (carro.tipo_carro === 'externa' || carroSinArticulos) {
-                console.log('⚠️ Carro sin ingredientes calculados - permitiendo continuar por decisión del usuario');
+            if (carro.tipo_carro === 'externa') {
+                console.log('⚠️ Carro externo sin ingredientes - permitiendo continuar para asignación/vinculación');
                 ingredientesConsolidados = [];
             } else {
                 throw new Error('No se encontraron ingredientes para los artículos del carro');
@@ -141,10 +145,10 @@ async function marcarCarroPreparado(req, res) {
             return true;
         });
 
-        // ✅ MODIFICACIÓN CLAVE: Permitir continuar con 0 ingredientes válidos para carros externos o carros avanzados sin artículos
+        // ✅ MODIFICACIÓN CLAVE: Permitir continuar con 0 ingredientes válidos para carros externos (ej. cuando consumen solo pre-mezcla UP)
         if (ingredientesValidos.length === 0) {
-            if (carro.tipo_carro === 'externa' || carroSinArticulos) {
-                console.log('✅ Carro sin movimientos de ingredientes requeridos - continuando');
+            if (carro.tipo_carro === 'externa') {
+                console.log('✅ Carro externo sin ingredientes de almacén - saltando movimientos de ingredientes');
             } else {
                 throw new Error('No se encontraron ingredientes válidos para registrar movimientos');
             }

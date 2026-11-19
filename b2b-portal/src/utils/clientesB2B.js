@@ -22,7 +22,7 @@ export const CLIENTES_B2B_REGISTRO = [
     "nombre": "Nicolas",
     "razon_social": "Tus Frutos Secos",
     "email": "serranonico03@gmail.com",
-    "phone": "[{\"id\":\"cont_muenj2da_69he\",\"numero\":\"5492216699400\",\"nombre\":\"Nico\",\"cargo\":\"Titular\",\"enviar_alerta\":true,\"default_resumen\":true,\"default\":true}]"
+    "phone": "[{\"id\":\"cont_muenj2da_69he\",\"numero\":\"5492216699400\",\"nombre\":\"Nico\",\"cargo\":\"Titular\",\"enviar_alerta\":true,\"default_resumen\":true,\"default\":true,\"default_efectivo\":true}]"
   },
   {
     "bunker_id": "CB-0003",
@@ -650,6 +650,39 @@ export const CLIENTES_B2B_REGISTRO = [
     "razon_social": "PAPARAZZO, JOSE GABRIEL",
     "email": "cb-0059@lamdaclientes.com",
     "phone": "[{\"id\":\"cont_mvgy6h37_zf37\",\"numero\":\"5492213556828\",\"nombre\":\"Sole\",\"cargo\":\"Titular\",\"enviar_alerta\":true,\"default_factura\":true,\"default_resumen\":true}]"
+  },
+  {
+    "bunker_id": "CB-0060",
+    "legacy_id": "0762",
+    "legacy_num": "762",
+    "bunker_num": "60",
+    "cuit": "20209462983",
+    "nombre": "MIGUEL ANGEL",
+    "razon_social": "FILIMAKIS, MIGUEL ANGEL",
+    "email": "mikemiky306@hotmail.com",
+    "phone": "[{\"id\":\"cont_mwe09lqt_m4bk\",\"numero\":\"5492213648631\",\"nombre\":\"Migel\",\"cargo\":\"Titular\",\"enviar_alerta\":true,\"default_factura\":true,\"default_resumen\":true}]"
+  },
+  {
+    "bunker_id": "CB-0061",
+    "legacy_id": "0439",
+    "legacy_num": "439",
+    "bunker_num": "61",
+    "cuit": "30715792083",
+    "nombre": "Fabrica 28 y 66",
+    "razon_social": "FACTORIA GONNET S.A.",
+    "email": "cb-0061@lamdaclientes.com",
+    "phone": "[{\"id\":\"cont_mwf7usoq_2eha\",\"numero\":\"5492216011429\",\"nombre\":\"More\",\"cargo\":\"Compras\",\"enviar_alerta\":true,\"default_factura\":true,\"default_resumen\":true},{\"id\":\"cont_mwf804xp_l2on\",\"numero\":\"5492212261216\",\"nombre\":\"Graciela\",\"cargo\":\"Pagos\",\"enviar_alerta\":true,\"default_factura\":true,\"default_resumen\":true}]"
+  },
+  {
+    "bunker_id": "CB-0062",
+    "legacy_id": "0678",
+    "legacy_num": "678",
+    "bunker_num": "62",
+    "cuit": "20184618479",
+    "nombre": "Nacho",
+    "razon_social": "LANCHARES, IGNACIO FEDERICO",
+    "email": "pizzalagartoignacio@gmail.com",
+    "phone": "[{\"id\":\"cont_mwme8784_3xo7\",\"numero\":\"5492214001714\",\"nombre\":\"Nacho\",\"cargo\":\"Dueño\",\"enviar_alerta\":true,\"default_factura\":true,\"default_resumen\":true}]"
   }
 ];
 

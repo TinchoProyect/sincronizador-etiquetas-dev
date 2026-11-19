@@ -1839,7 +1839,7 @@ export async function marcarCarroPreparado(carroIdParam) {
             console.warn('Aviso al verificar línea de negocio del carro:', errCheck);
         }
 
-        // Consultar cantidad de artículos en backend para incluir aviso no restrictivo si estuviera vacío
+        // ⛔ BLOQUEO ESTRICTO: Prohibido preparar carros vacíos (0 filas en carros_articulos)
         let cantArticulosBackend = null;
         try {
             const artCheckRes = await fetch(`/api/produccion/carro/${carroId}/articulos?usuarioId=${colaborador.id}`);
@@ -1851,11 +1851,28 @@ export async function marcarCarroPreparado(carroIdParam) {
             }
         } catch (_) {}
 
+        const articulosEnDom = document.querySelectorAll('#lista-articulos .articulo-container').length;
+        if (cantArticulosBackend === 0 || (cantArticulosBackend === null && articulosEnDom === 0)) {
+            if (typeof Swal !== 'undefined') {
+                await Swal.fire({
+                    icon: 'warning',
+                    title: '⛔ Carro vacío',
+                    text: 'No podés marcar como "Carro listo para producir" un carro sin artículos. Agregá al menos un artículo primero.',
+                    confirmButtonText: 'Entendido',
+                    confirmButtonColor: '#d97706'
+                });
+            } else {
+                alert('No podés preparar un carro vacío. Agregá al menos un artículo primero.');
+            }
+            restaurarBotonPreparado(btnCarroPreparado);
+            return false;
+        }
+
         const { pendientes, primerElementoFaltante } = recolectarPendientesPreparacionCarro(esExterno, lineaNegocio, cantArticulosBackend);
         const yaAvisoStockPersonal = pendientes.some(p => p.categoria === 'Stock Personal en Domicilio');
 
-        // Modal unificado NO restrictivo (misma lógica en carros internos y externos):
-        // muestra todos los avisos pendientes (carro sin artículos, stock personal en domicilio, insumos en rojo, etc.)
+        // Modal unificado NO restrictivo (misma lógica en carros internos y externos con artículos):
+        // muestra todos los avisos pendientes (stock personal en domicilio, insumos en rojo, mixes, etc.)
         // y permite elegir "✅ Seguir adelante igual" para avanzar sin trabas.
         const confirmarPendientes = await confirmarPreparacionConFaltantes(pendientes, primerElementoFaltante);
         if (!confirmarPendientes) {
@@ -1863,7 +1880,7 @@ export async function marcarCarroPreparado(carroIdParam) {
             return false;
         }
 
-        if (esExterno && lineaNegocio === 4 && cantArticulosBackend !== 0) {
+        if (esExterno && lineaNegocio === 4) {
             try {
                 const seleccion = await solicitarArticuloLlevadoTostadero(carroId, colaborador.id);
                 if (!seleccion) {

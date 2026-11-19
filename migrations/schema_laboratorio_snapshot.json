@@ -808,7 +808,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "firma_combo": {
@@ -12148,7 +12148,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'[]'::jsonb"
       },
       "es_combo": {
@@ -12158,7 +12158,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "firma_combo": {
@@ -12178,7 +12178,7 @@
         "character_maximum_length": 40,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'COSTO_MAS_MARGEN'::character varying"
       },
       "ajuste_comercial_combo_pct": {
@@ -12188,7 +12188,7 @@
         "character_maximum_length": null,
         "numeric_precision": 8,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "cargo_pack_combo": {
@@ -12198,7 +12198,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "precio_manual_override": {
@@ -12310,7 +12310,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       }
     },
@@ -12492,7 +12492,7 @@
         "character_maximum_length": 40,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'RENDICION_DIRECTA_NODO'::character varying"
       },
       "tipo_liquidacion": {
@@ -12502,7 +12502,7 @@
         "character_maximum_length": 40,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'CANASTO_SEMANAL'::character varying"
       },
       "cantidad_ordenes": {
@@ -12512,7 +12512,7 @@
         "character_maximum_length": null,
         "numeric_precision": 32,
         "numeric_scale": 0,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0"
       },
       "total_envio_cobrado_clientes": {
@@ -12522,7 +12522,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "total_costo_flete_lamda": {
@@ -12532,7 +12532,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "detalle_ordenes_json": {
@@ -12542,7 +12542,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'[]'::jsonb"
       },
       "total_retencion_iva_margen": {
@@ -12552,7 +12552,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "total_retencion_iibb_margen": {
@@ -12562,7 +12562,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "total_retencion_fiscal_margen": {
@@ -12572,7 +12572,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       }
     },
@@ -12874,7 +12874,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "total_retencion_iibb_margen": {
@@ -12884,7 +12884,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "total_retencion_fiscal_margen": {
@@ -12894,7 +12894,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       }
     },
@@ -13266,7 +13266,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "true"
       },
       "permitir_reparto_propio": {
@@ -13276,7 +13276,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "true"
       },
       "permitir_encomienda": {
@@ -13286,7 +13286,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "bajada_marca": {
@@ -13316,7 +13316,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'{}'::jsonb"
       },
       "usar_cuenta_madre_unificada": {
@@ -13326,7 +13326,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "perfil_operativo": {
@@ -13336,7 +13336,7 @@
         "character_maximum_length": 40,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'vecinal'::character varying"
       },
       "modulos_activos": {
@@ -13346,7 +13346,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'{}'::jsonb"
       },
       "config_paqueteria": {
@@ -13356,7 +13356,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'{}'::jsonb"
       },
       "diccionario_textos": {
@@ -13366,7 +13366,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'{}'::jsonb"
       },
       "plantilla_origen_id": {
@@ -13386,7 +13386,7 @@
         "character_maximum_length": null,
         "numeric_precision": 5,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "21.00"
       },
       "alicuota_iibb_margen_pct": {
@@ -13396,7 +13396,7 @@
         "character_maximum_length": null,
         "numeric_precision": 5,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "4.00"
       },
       "banco_display": {
@@ -13446,7 +13446,7 @@
         "character_maximum_length": 24,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'PORTADAS'::character varying"
       }
     },
@@ -13710,7 +13710,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'[]'::jsonb"
       },
       "narrativa_tienda": {
@@ -13730,7 +13730,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'[]'::jsonb"
       },
       "portada_modo": {
@@ -13740,7 +13740,7 @@
         "character_maximum_length": 20,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "'AUTO'::character varying"
       },
       "portada_media_id": {
@@ -14690,7 +14690,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "componentes_combo_snapshot": {
@@ -15082,7 +15082,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "motivo_anulacion_ajuste": {
@@ -15202,7 +15202,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "fecha_ausente_reparto": {
@@ -15232,7 +15232,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "true"
       },
       "incluido_reparto_manual": {
@@ -15242,7 +15242,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "vecino_email": {
@@ -15272,7 +15272,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "movimiento_cc_id": {
@@ -15312,7 +15312,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0"
       },
       "stock_descontado_fulfillment": {
@@ -15322,7 +15322,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "alicuota_iva_margen_pct": {
@@ -15332,7 +15332,7 @@
         "character_maximum_length": null,
         "numeric_precision": 5,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "21.00"
       },
       "alicuota_iibb_margen_pct": {
@@ -15342,7 +15342,7 @@
         "character_maximum_length": null,
         "numeric_precision": 5,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "4.00"
       },
       "retencion_iva_margen": {
@@ -15352,7 +15352,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "retencion_iibb_margen": {
@@ -15362,7 +15362,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "retencion_fiscal_margen": {
@@ -15372,7 +15372,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "monto_declarado_cliente": {
@@ -15382,7 +15382,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "monto_acreditado_banco": {
@@ -15392,7 +15392,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "cantidad_avisos_pago": {
@@ -15402,7 +15402,7 @@
         "character_maximum_length": null,
         "numeric_precision": 32,
         "numeric_scale": 0,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0"
       },
       "ultimo_aviso_pago_at": {
@@ -15422,7 +15422,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "reclamo_pago_motivo": {
@@ -15462,7 +15462,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "recibo_wa_detalle": {
@@ -15482,7 +15482,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       }
     },
@@ -16676,7 +16676,7 @@
         "character_maximum_length": null,
         "numeric_precision": 14,
         "numeric_scale": 2,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "0.00"
       },
       "activo": {
@@ -16686,7 +16686,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "true"
       },
       "portal_token": {
@@ -16736,7 +16736,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       },
       "gps_updated_at": {
@@ -20518,7 +20518,7 @@
         "character_maximum_length": null,
         "numeric_precision": null,
         "numeric_scale": null,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": "false"
       }
     },
