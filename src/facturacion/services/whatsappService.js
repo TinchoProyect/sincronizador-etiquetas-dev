@@ -438,7 +438,7 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
             }
             // Sincronizar en segundo plano los chats recientes con clientes Búnker al conectar
             setTimeout(() => {
-                sincronizarChatsRecientes({ maxChats: 45, mensajesPorChat: 15 }).catch(err => {
+                sincronizarChatsRecientes({ maxChats: 45, mensajesPorChat: 30 }).catch(err => {
                     console.warn('⚠️ [WHATSAPP-SERVICE] Error en sincronización inicial CRM:', err.message);
                 });
             }, 4000);
@@ -852,7 +852,7 @@ const enviarFacturaPdf = async (facturaId, pdfBuffer, numeros, nroComprobante = 
             const sentMsg = await enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, media, { caption: mensajeTexto, sendMediaAsDocument: true });
             
             await crmWhatsappDb.registrarMensajeWhatsapp({
-                msgId: sentMsg?.id?._serialized || null,
+                msgId: sentMsg?.id?.id || sentMsg?.id?._serialized || null,
                 chatId: canonicalChatId || `${sanitizado}@c.us`,
                 telefono: sanitizado,
                 fromMe: true,
@@ -970,7 +970,7 @@ const enviarDocumentoPdf = async (pdfBuffer, numeros, filename, mensajeTexto = '
             const sentMsg = await enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, media, { caption: mensajeTexto, sendMediaAsDocument: true });
             
             await crmWhatsappDb.registrarMensajeWhatsapp({
-                msgId: sentMsg?.id?._serialized || null,
+                msgId: sentMsg?.id?.id || sentMsg?.id?._serialized || null,
                 chatId: canonicalChatId || `${sanitizado}@c.us`,
                 telefono: sanitizado,
                 fromMe: true,
@@ -1090,7 +1090,7 @@ const enviarMensajeTexto = async (numeros, mensajeTexto) => {
             const sentMsg = await enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, mensajeTexto);
             
             await crmWhatsappDb.registrarMensajeWhatsapp({
-                msgId: sentMsg?.id?._serialized || null,
+                msgId: sentMsg?.id?.id || sentMsg?.id?._serialized || null,
                 chatId: canonicalChatId || `${sanitizado}@c.us`,
                 telefono: sanitizado,
                 fromMe: true,
@@ -1158,7 +1158,7 @@ const enviarImagenBase64 = async (numeros, base64Data, mimeType, filename, mensa
             const sentMsg = await enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, media, { caption: mensajeTexto });
             
             await crmWhatsappDb.registrarMensajeWhatsapp({
-                msgId: sentMsg?.id?._serialized || null,
+                msgId: sentMsg?.id?.id || sentMsg?.id?._serialized || null,
                 chatId: canonicalChatId || `${sanitizado}@c.us`,
                 telefono: sanitizado,
                 fromMe: true,
@@ -1224,7 +1224,7 @@ const sincronizarNoLeidosRapido = async () => {
                         const rawMsgs = (c.msgs && typeof c.msgs.getModelsArray === 'function')
                             ? c.msgs.getModelsArray()
                             : [];
-                        const ultimos = rawMsgs.slice(-5);
+                        const ultimos = rawMsgs.slice(-20);
                         const mensajes = [];
                         for (let j = 0; j < ultimos.length; j++) {
                             try {
@@ -1302,7 +1302,7 @@ let sincronizandoChatsRecientesEnCurso = false;
 /**
  * Sincronizar las conversaciones recientes de WhatsApp con la base de datos local CRM
  */
-const sincronizarChatsRecientes = async ({ maxChats = 45, mensajesPorChat = 15, marcarVistoChatId = null } = {}) => {
+const sincronizarChatsRecientes = async ({ maxChats = 45, mensajesPorChat = 30, marcarVistoChatId = null } = {}) => {
     if (esModoPruebaNubeWa() || esModoEspejoWa()) {
         return { success: true, skippedByCloudTestGuard: true, message: 'Sincronización entrante de clientes silenciada en Modo Prueba Nube para no competir con PcAlmacen.' };
     }

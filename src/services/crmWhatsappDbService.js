@@ -111,6 +111,9 @@ async function asegurarTablasCrmWhatsapp() {
         tablasVerificadas = true;
         console.log('✅ [CRM-WHATSAPP-DB] Tablas crm_whatsapp_chats y crm_whatsapp_mensajes verificadas.');
         await sembrarDirectorioClientesEnChats();
+        await deduplicarAdjuntosSalientesDuplicados().catch(errDup => {
+            console.warn('⚠️ [CRM-WHATSAPP-DB] Error en deduplicación inicial de adjuntos:', errDup.message);
+        });
     } catch (error) {
         console.error('❌ [CRM-WHATSAPP-DB] Error verificando tablas:', error.message);
     }
@@ -289,6 +292,17 @@ async function resolverClienteBunkerPorTelefono(telefonoRaw, forceRefresh = fals
     };
 }
 
+function limpiarPrefijoAdjuntoCuerpo(texto) {
+    return String(texto || '')
+        .replace(/^(?:📄|📷|📎)\s*\[[^\]]+\]\s*/u, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function tienePrefijoAdjuntoCuerpo(texto) {
+    return /^(?:📄|📷|📎)\s*\[[^\]]+\]/u.test(String(texto || '').trim());
+}
+
 /**
  * Registra un mensaje entrante o saliente en la base de datos y actualiza el estado del chat.
  * Si fromMe = true (enviado desde celular o desde LAMDA), apaga automáticamente la alerta (esperando_respuesta = false).
@@ -332,29 +346,45 @@ async function registrarMensajeWhatsapp({
 
     const rawId = msgId ? String(msgId).split('_').pop() : null;
     const idUnicoMsg = rawId || `lamda-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    const cuerpoNormalizadoSinPrefijo = limpiarPrefijoAdjuntoCuerpo(textoResumen);
 
     try {
-        // 1. Verificar si ya existe el mensaje (por msg_id o por contenido/timestamp idéntico en ventana de 25s) para evitar duplicar burbujas ni contadores
+        // 1. Verificar si ya existe el mensaje (por msg_id, por texto exacto, por texto normalizado sin prefijo 📄/📷 [archivo], o por media_filename en ventana de 35s)
         const msgExistente = await pool.query(`
-            SELECT id, msg_id, ack, cuerpo
+            SELECT id, msg_id, ack, cuerpo, media_filename, media_mimetype
             FROM public.crm_whatsapp_mensajes
             WHERE msg_id = $1
                OR (
                    chat_id = $2
                    AND from_me = $3
-                   AND TRIM(COALESCE(cuerpo, '')) = TRIM($4)
-                   AND TRIM($4) <> ''
-                   AND ABS(EXTRACT(EPOCH FROM (fecha_mensaje - $5::timestamp))) <= 25
+                   AND ABS(EXTRACT(EPOCH FROM (fecha_mensaje - $5::timestamp))) <= 35
+                   AND (
+                       (TRIM(COALESCE(cuerpo, '')) = TRIM($4) AND TRIM($4) <> '')
+                       OR (
+                           $6 <> ''
+                           AND REGEXP_REPLACE(
+                                   REGEXP_REPLACE(TRIM(COALESCE(cuerpo, '')), '^(📄|📷|📎)\\s*\\[[^\\]]+\\]\\s*', ''),
+                                   '\\s+', ' ', 'g'
+                               ) = $6
+                       )
+                       OR (
+                           $7::text IS NOT NULL AND $7::text <> ''
+                           AND media_filename IS NOT NULL
+                           AND LOWER(TRIM(media_filename)) = LOWER(TRIM($7::text))
+                       )
+                   )
                )
-            ORDER BY id ASC
+            ORDER BY (msg_id = $1) DESC, id ASC
             LIMIT 1
-        `, [idUnicoMsg, chatId, Boolean(fromMe), textoResumen, fechaMsg]);
+        `, [idUnicoMsg, chatId, Boolean(fromMe), textoResumen, fechaMsg, cuerpoNormalizadoSinPrefijo, mediaFilename || null]);
         const esMensajeNuevo = msgExistente.rows.length === 0;
 
-        // Si el mensaje ya tenía una transcripción de audio ("🎤 Audio: ..."), nunca pisarla con "🎤 Mensaje de audio" genérico en los barridos periódicos
+        // Preservar transcripciones de audio y también prefijo visible de adjunto ("📄 [archivo.pdf] ...")
         let textoResumenEfectivo = textoResumen;
         const cuerpoPrevioMsg = msgExistente.rows[0]?.cuerpo ? String(msgExistente.rows[0].cuerpo).trim() : '';
         if ((cuerpoPrevioMsg.startsWith('🎤 Audio:') || (cuerpoPrevioMsg.startsWith('🎤') && cuerpoPrevioMsg !== '🎤 Mensaje de audio')) && (textoResumenEfectivo === '🎤 Mensaje de audio' || !cuerpoLimpio)) {
+            textoResumenEfectivo = cuerpoPrevioMsg;
+        } else if (tienePrefijoAdjuntoCuerpo(cuerpoPrevioMsg) && !tienePrefijoAdjuntoCuerpo(textoResumenEfectivo)) {
             textoResumenEfectivo = cuerpoPrevioMsg;
         }
 
@@ -482,17 +512,34 @@ async function registrarMensajeWhatsapp({
             ]);
         }
 
-        // 3. Insertar o actualizar el mensaje en el historial (sin duplicar burbujas ni pisar transcripciones de audio)
+        // 3. Insertar o actualizar el mensaje en el historial (sin duplicar burbujas, reconciliando msg_id lamda-* -> 3EB0... real y preservando adjunto/transcripción)
         if (!esMensajeNuevo && msgExistente.rows[0]) {
+            const filaExist = msgExistente.rows[0];
+            const prevEsTemporal = String(filaExist.msg_id || '').startsWith('lamda-');
+            const nuevoEsReal = idUnicoMsg && !String(idUnicoMsg).startsWith('lamda-');
+            let msgIdReconciliado = filaExist.msg_id;
+            if (prevEsTemporal && nuevoEsReal && idUnicoMsg !== filaExist.msg_id) {
+                const colision = await pool.query(
+                    'SELECT id FROM public.crm_whatsapp_mensajes WHERE msg_id = $1 AND id <> $2 LIMIT 1',
+                    [idUnicoMsg, filaExist.id]
+                );
+                if (colision.rows.length === 0) {
+                    msgIdReconciliado = idUnicoMsg;
+                }
+            }
+
             await pool.query(`
                 UPDATE public.crm_whatsapp_mensajes
-                SET ack = GREATEST(ack, $2),
+                SET msg_id = $2,
+                    ack = GREATEST(ack, $3),
+                    media_filename = COALESCE(media_filename, $5),
+                    media_mimetype = COALESCE(media_mimetype, $6),
                     cuerpo = CASE
-                        WHEN (cuerpo LIKE '🎤 Audio:%' OR (cuerpo LIKE '🎤%' AND cuerpo <> '🎤 Mensaje de audio')) AND ($3 = '🎤 Mensaje de audio' OR $3 = '') THEN cuerpo
-                        ELSE COALESCE(NULLIF($3, ''), cuerpo)
+                        WHEN (cuerpo LIKE '🎤 Audio:%' OR (cuerpo LIKE '🎤%' AND cuerpo <> '🎤 Mensaje de audio')) AND ($4 = '🎤 Mensaje de audio' OR $4 = '') THEN cuerpo
+                        ELSE COALESCE(NULLIF($4, ''), cuerpo)
                     END
                 WHERE id = $1
-            `, [msgExistente.rows[0].id, ack || 1, textoResumenEfectivo]);
+            `, [filaExist.id, msgIdReconciliado, ack || 1, textoResumenEfectivo, mediaFilename || null, mediaMimetype || null]);
         } else {
             await pool.query(`
                 INSERT INTO public.crm_whatsapp_mensajes (
@@ -502,9 +549,14 @@ async function registrarMensajeWhatsapp({
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 ON CONFLICT (msg_id) DO UPDATE
                 SET ack = GREATEST(public.crm_whatsapp_mensajes.ack, EXCLUDED.ack),
+                    media_filename = COALESCE(public.crm_whatsapp_mensajes.media_filename, EXCLUDED.media_filename),
+                    media_mimetype = COALESCE(public.crm_whatsapp_mensajes.media_mimetype, EXCLUDED.media_mimetype),
                     cuerpo = CASE
                         WHEN (public.crm_whatsapp_mensajes.cuerpo LIKE '🎤 Audio:%' OR (public.crm_whatsapp_mensajes.cuerpo LIKE '🎤%' AND public.crm_whatsapp_mensajes.cuerpo <> '🎤 Mensaje de audio'))
                              AND (EXCLUDED.cuerpo = '🎤 Mensaje de audio' OR EXCLUDED.cuerpo = '')
+                        THEN public.crm_whatsapp_mensajes.cuerpo
+                        WHEN public.crm_whatsapp_mensajes.cuerpo ~ '^(📄|📷|📎)\s*\[[^\]]+\]'
+                             AND NOT (COALESCE(EXCLUDED.cuerpo, '') ~ '^(📄|📷|📎)\s*\[[^\]]+\]')
                         THEN public.crm_whatsapp_mensajes.cuerpo
                         ELSE COALESCE(NULLIF(EXCLUDED.cuerpo, ''), public.crm_whatsapp_mensajes.cuerpo)
                     END
@@ -610,12 +662,13 @@ async function actualizarTranscripcionAudioMensaje({ msgId, chatId, cuerpoFormat
 async function actualizarAckMensaje(msgId, chatId, nuevoAck) {
     if (!msgId || typeof nuevoAck !== 'number') return;
     await asegurarTablasCrmWhatsapp();
+    const rawId = String(msgId).split('_').pop();
     try {
         await pool.query(`
             UPDATE public.crm_whatsapp_mensajes
             SET ack = GREATEST(ack, $2)
-            WHERE msg_id = $1
-        `, [msgId, nuevoAck]);
+            WHERE msg_id = $1 OR msg_id = $3
+        `, [rawId, nuevoAck, String(msgId)]);
 
         if (chatId) {
             await pool.query(`
@@ -628,6 +681,79 @@ async function actualizarAckMensaje(msgId, chatId, nuevoAck) {
     } catch (err) {
         console.warn('⚠️ [CRM-WHATSAPP-DB] Error actualizando ACK:', err.message);
     }
+}
+
+/**
+ * Rutina idempotente de saneamiento: fusiona pares duplicados donde un envío saliente de LAMDA
+ * quedó con `msg_id LIKE 'lamda-%'` y segundos después ingresó su eco real (`3EB0...`) desde WhatsApp Web.
+ * Conserva la fila con el `msg_id` real y su `ack`, enriquecida con el prefijo del adjunto (`📄 [archivo.pdf]`),
+ * y elimina únicamente la fila temporal redundante. Nunca toca mensajes únicos.
+ */
+async function deduplicarAdjuntosSalientesDuplicados() {
+    const pares = await pool.query(`
+        SELECT DISTINCT ON (a.id)
+            a.id AS temp_id,
+            a.cuerpo AS temp_cuerpo,
+            a.media_filename AS temp_filename,
+            a.media_mimetype AS temp_mimetype,
+            a.ack AS temp_ack,
+            b.id AS real_id,
+            b.cuerpo AS real_cuerpo,
+            b.ack AS real_ack
+        FROM public.crm_whatsapp_mensajes a
+        JOIN public.crm_whatsapp_mensajes b
+          ON b.chat_id = a.chat_id
+         AND b.from_me = TRUE
+         AND b.id <> a.id
+         AND b.msg_id NOT LIKE 'lamda-%'
+         AND ABS(EXTRACT(EPOCH FROM (a.fecha_mensaje - b.fecha_mensaje))) <= 35
+         AND (
+             (
+                 a.media_filename IS NOT NULL AND a.media_filename <> ''
+                 AND b.media_filename IS NOT NULL
+                 AND LOWER(TRIM(a.media_filename)) = LOWER(TRIM(b.media_filename))
+             )
+             OR (
+                 REGEXP_REPLACE(
+                     REGEXP_REPLACE(TRIM(COALESCE(a.cuerpo, '')), '^(📄|📷|📎)\\s*\\[[^\\]]+\\]\\s*', ''),
+                     '\\s+', ' ', 'g'
+                 ) = REGEXP_REPLACE(
+                     REGEXP_REPLACE(TRIM(COALESCE(b.cuerpo, '')), '^(📄|📷|📎)\\s*\\[[^\\]]+\\]\\s*', ''),
+                     '\\s+', ' ', 'g'
+                 )
+                 AND TRIM(COALESCE(b.cuerpo, '')) <> ''
+             )
+         )
+        WHERE a.from_me = TRUE
+          AND a.msg_id LIKE 'lamda-%'
+        ORDER BY a.id ASC, ABS(EXTRACT(EPOCH FROM (a.fecha_mensaje - b.fecha_mensaje))) ASC
+    `);
+
+    if (pares.rows.length === 0) return 0;
+
+    let fusionados = 0;
+    for (const p of pares.rows) {
+        const cuerpoFinal = (tienePrefijoAdjuntoCuerpo(p.temp_cuerpo) && !tienePrefijoAdjuntoCuerpo(p.real_cuerpo))
+            ? p.temp_cuerpo
+            : (p.real_cuerpo || p.temp_cuerpo);
+
+        await pool.query(`
+            UPDATE public.crm_whatsapp_mensajes
+            SET cuerpo = $2,
+                media_filename = COALESCE(media_filename, $3),
+                media_mimetype = COALESCE(media_mimetype, $4),
+                ack = GREATEST(ack, $5)
+            WHERE id = $1
+        `, [p.real_id, cuerpoFinal, p.temp_filename || null, p.temp_mimetype || null, p.temp_ack || 1]);
+
+        await pool.query('DELETE FROM public.crm_whatsapp_mensajes WHERE id = $1', [p.temp_id]);
+        fusionados++;
+    }
+
+    if (fusionados > 0) {
+        console.log(`🧹 [CRM-WHATSAPP-DB] Fusionados ${fusionados} pares de mensajes/adjuntos salientes duplicados (lamda-* -> msg_id real).`);
+    }
+    return fusionados;
 }
 
 /**
@@ -904,6 +1030,7 @@ module.exports = {
     verificarAudioYaTranscrito,
     actualizarTranscripcionAudioMensaje,
     actualizarAckMensaje,
+    deduplicarAdjuntosSalientesDuplicados,
     rematchearChatsConBunker,
     sembrarDirectorioClientesEnChats,
     sincronizarEstadoNoLeidosDesdeWa

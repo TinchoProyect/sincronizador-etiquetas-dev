@@ -266,7 +266,7 @@
                 display: none;
                 align-items: center;
                 justify-content: center;
-                padding: 14px;
+                padding: 8px;
             }
             #modal-consola-whatsapp-lamda.wa-hub-maximized {
                 padding: 0;
@@ -274,7 +274,7 @@
             .wa-hub-shell {
                 width: 100%;
                 max-width: 1520px;
-                height: 92vh;
+                height: 93vh;
                 background: #ffffff;
                 border-radius: 14px;
                 box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
@@ -294,11 +294,11 @@
             .wa-hub-topbar {
                 background: #075e54;
                 color: #ffffff;
-                padding: 10px 18px;
+                padding: 7px 14px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                gap: 12px;
+                gap: 8px;
                 flex-shrink: 0;
             }
             .wa-hub-grid {
@@ -574,31 +574,58 @@
                 min-height: 0;
                 background: #efeae2;
                 border-right: 1px solid #e2e8f0;
+                overflow: hidden;
             }
             .wa-conv-header {
                 background: #f0f2f5;
-                padding: 10px 16px;
+                padding: 6px 14px;
                 border-bottom: 1px solid #d1d7db;
                 display: flex;
-                justify-content: space-between;
-                align-items: center;
-                gap: 8px;
-                flex-wrap: wrap;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 4px;
+                flex-shrink: 0;
             }
             .wa-conv-messages {
                 flex: 1;
+                min-height: 240px;
                 overflow-y: auto;
-                padding: 16px 20px;
+                padding: 12px 16px;
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
+                gap: 6px;
+            }
+            .wa-unread-divider {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin: 6px 0 4px;
+                user-select: none;
+            }
+            .wa-unread-divider::before,
+            .wa-unread-divider::after {
+                content: '';
+                flex: 1;
+                height: 1px;
+                background: #86efac;
+            }
+            .wa-unread-divider span {
+                background: #dcfce7;
+                color: #166534;
+                border: 1px solid #86efac;
+                border-radius: 999px;
+                padding: 2px 10px;
+                font-size: 0.71rem;
+                font-weight: 800;
+                white-space: nowrap;
+                box-shadow: 0 1px 2px rgba(22, 101, 52, 0.08);
             }
             .wa-bubble {
-                max-width: 76%;
-                padding: 8px 12px;
+                max-width: 78%;
+                padding: 7px 11px;
                 border-radius: 10px;
-                font-size: 0.9rem;
-                line-height: 1.38;
+                font-size: 0.88rem;
+                line-height: 1.36;
                 position: relative;
                 box-shadow: 0 1px 2px rgba(0,0,0,0.08);
                 word-wrap: break-word;
@@ -620,42 +647,114 @@
                 justify-content: flex-end;
                 align-items: center;
                 gap: 5px;
-                font-size: 0.7rem;
+                font-size: 0.69rem;
                 color: #64748b;
-                margin-top: 3px;
+                margin-top: 2px;
             }
-            .wa-quick-bar {
+            /* Barra Única de Herramientas y Atajos (1 sola línea ~38px) */
+            .wa-tools-bar {
                 background: #f8fafc;
-                padding: 7px 12px;
+                padding: 5px 12px;
                 border-top: 1px solid #e2e8f0;
                 display: flex;
-                gap: 6px;
-                flex-wrap: wrap;
+                justify-content: space-between;
                 align-items: center;
+                gap: 6px;
+                flex-wrap: nowrap;
+                flex-shrink: 0;
+                min-height: 36px;
+                box-sizing: border-box;
             }
-            .wa-quick-chip {
+            .wa-tools-left {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                min-width: 0;
+                flex: 1;
+                overflow: hidden;
+            }
+            .wa-tools-right {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                flex-shrink: 0;
+            }
+            .wa-tool-btn {
+                border-radius: 6px;
+                padding: 4px 9px;
+                font-size: 0.74rem;
+                font-weight: 800;
+                cursor: pointer;
+                white-space: nowrap;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                transition: filter 0.14s, background 0.14s;
+            }
+            .wa-tool-btn:hover {
+                filter: brightness(0.95);
+            }
+            .wa-atajos-wrap {
+                position: relative;
+                display: inline-flex;
+            }
+            .wa-atajos-popover {
+                display: none;
+                position: fixed;
+                width: 262px;
+                max-width: calc(100vw - 24px);
                 background: #ffffff;
                 border: 1px solid #cbd5e1;
-                color: #0f172a;
-                border-radius: 14px;
-                padding: 4px 10px;
-                font-size: 0.76rem;
-                font-weight: 600;
-                cursor: pointer;
-                white-space: normal;
-                line-height: 1.25;
-                text-align: center;
+                border-radius: 10px;
+                box-shadow: 0 14px 32px rgba(15, 23, 42, 0.2), 0 4px 10px rgba(15, 23, 42, 0.08);
+                z-index: 25000;
+                padding: 6px;
+                box-sizing: border-box;
             }
-            .wa-quick-chip:hover {
+            .wa-atajos-popover.open {
+                display: block;
+            }
+            .wa-atajos-item {
+                display: flex;
+                align-items: center;
+                gap: 9px;
+                width: 100%;
+                padding: 8px 10px;
+                border: none;
+                background: transparent;
+                border-radius: 7px;
+                text-align: left;
+                cursor: pointer;
+                font-size: 0.81rem;
+                font-weight: 700;
+                color: #0f172a;
+                transition: background 0.12s;
+                box-sizing: border-box;
+            }
+            .wa-atajos-item:hover {
                 background: #f0fdf4;
-                border-color: #22c55e;
+                color: #14532d;
+            }
+            .wa-atajos-sep {
+                height: 1px;
+                background: #e2e8f0;
+                margin: 4px 6px;
             }
             .wa-conv-input-area {
                 background: #f0f2f5;
-                padding: 10px 14px;
+                padding: 7px 12px;
+                border-top: 1px solid #e2e8f0;
                 display: flex;
                 gap: 8px;
-                align-items: flex-end;
+                align-items: center;
+                flex-shrink: 0;
+            }
+            .wa-conv-input-actions {
+                display: flex;
+                flex-direction: row;
+                gap: 6px;
+                flex-shrink: 0;
+                align-items: stretch;
             }
 
             /* Columna 3: Rayos X Comerciales del Cliente */
@@ -838,19 +937,10 @@
                     font-size: 0.85rem !important;
                     padding: 7px 10px !important;
                 }
-                #wa-hub-asistente-contextual-bar {
+                .wa-tools-bar {
                     padding: 5px 8px !important;
+                    flex-wrap: wrap !important;
                     gap: 5px !important;
-                }
-                .wa-quick-bar {
-                    padding: 5px 8px !important;
-                    flex-wrap: nowrap !important;
-                    overflow-x: auto !important;
-                    -webkit-overflow-scrolling: touch !important;
-                }
-                .wa-quick-chip {
-                    flex-shrink: 0 !important;
-                    white-space: nowrap !important;
                 }
                 .wa-conv-input-area {
                     padding: 8px !important;
@@ -861,14 +951,12 @@
                 .wa-conv-input-area textarea {
                     width: 100% !important;
                     box-sizing: border-box !important;
-                    min-height: 52px !important;
+                    min-height: 46px !important;
                 }
-                .wa-conv-input-area > div {
-                    flex-direction: row !important;
+                .wa-conv-input-actions {
                     width: 100% !important;
-                    gap: 6px !important;
                 }
-                .wa-conv-input-area > div > button {
+                .wa-conv-input-actions > button {
                     flex: 1 !important;
                     padding: 8px 6px !important;
                     font-size: 0.8rem !important;
@@ -909,8 +997,64 @@
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
+
+    function formatearPreviewUnaLineaWa(texto) {
+        if (!texto) return '';
+        return String(texto)
+            .replace(/\r?\n+/g, ' · ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    window.cerrarMenuAtajosConsolaWa = function () {
+        const pop = document.getElementById('wa-atajos-popover');
+        const btn = document.getElementById('btn-wa-atajos-menu');
+        if (pop) pop.classList.remove('open');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+    };
+
+    window.toggleMenuAtajosConsolaWa = function (btn, event) {
+        if (event) event.stopPropagation();
+        const pop = document.getElementById('wa-atajos-popover');
+        if (!btn || !pop) return;
+        const abrir = !pop.classList.contains('open');
+        window.cerrarMenuAtajosConsolaWa();
+        if (!abrir) return;
+
+        pop.style.visibility = 'hidden';
+        pop.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
+
+        const rect = btn.getBoundingClientRect();
+        const popW = pop.offsetWidth || 262;
+        const popH = pop.offsetHeight || 225;
+        const pad = 10;
+
+        const left = Math.max(pad, Math.min(rect.right - popW, window.innerWidth - popW - pad));
+        let top = rect.top - popH - 6;
+        if (top < pad) {
+            top = Math.min(rect.bottom + 6, window.innerHeight - popH - pad);
+        }
+        pop.style.left = `${left}px`;
+        pop.style.top = `${Math.max(pad, top)}px`;
+        pop.style.visibility = 'visible';
+    };
+
+    document.addEventListener('click', function (ev) {
+        const wrap = document.getElementById('wa-atajos-wrap');
+        if (wrap && !wrap.contains(ev.target)) {
+            window.cerrarMenuAtajosConsolaWa();
+        }
+    });
+
+    document.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape') {
+            window.cerrarMenuAtajosConsolaWa();
+        }
+    });
 
     /**
      * 1. Consulta para la Pizarra Central
@@ -1006,7 +1150,7 @@
                 ? `<span style="background:#16a34a; color:#fff; padding:0px 6px; border-radius:8px; font-size:0.68rem; font-weight:800; margin-left:4px;">${cantNoLeidos} sin ver</span>`
                 : `<span style="background:#0284c7; color:#fff; padding:0px 6px; border-radius:8px; font-size:0.68rem; font-weight:800; margin-left:4px;">● Marcado no leído</span>`;
             const haceTxt = formatearTiempoRelativo(ch.ultimo_mensaje_at);
-            const previewTxt = escaparHtml(ch.ultimo_mensaje_texto || 'Mensaje recibido');
+            const previewTxt = escaparHtml(formatearPreviewUnaLineaWa(ch.ultimo_mensaje_texto || 'Mensaje recibido'));
 
             html += `
                 <div class="pizarra-wa-entrante-card">
@@ -1172,36 +1316,36 @@
             <div class="wa-hub-shell">
                 <!-- Barra Superior -->
                 <div class="wa-hub-topbar" ondblclick="window.toggleMaximizarConsolaWa()">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <span style="font-size: 1.4rem;">💬</span>
-                        <div>
-                            <div style="font-weight: 800; font-size: 1.05rem; letter-spacing: 0.01em;">WhatsApp LAMDA — Consola Comercial & CRM</div>
-                            <div style="font-size: 0.76rem; color: #bbf7d0;">Sincronizado en espejo con tu celular · Identificación automática Búnker</div>
+                    <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
+                        <span style="font-size: 1.25rem; flex-shrink: 0;">💬</span>
+                        <div style="min-width: 0;">
+                            <div style="font-weight: 800; font-size: 0.96rem; letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">WhatsApp LAMDA — Consola Comercial & CRM</div>
+                            <div style="font-size: 0.72rem; color: #bbf7d0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Sincronizado en espejo con tu celular · Identificación automática Búnker</div>
                         </div>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                        <div class="wa-hub-col-resizer-box" style="display: inline-flex; align-items: center; gap: 4px; background: rgba(0,0,0,0.22); padding: 3px 7px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);" title="Ajustar ancho de las 3 columnas (también podés arrastrar las barras grises divisorias ⋮ con el mouse)">
-                            <span style="font-size: 0.72rem; font-weight: 800; color: #a7f3d0;">📐 Columnas:</span>
-                            <button type="button" onclick="window.ajustarAnchoColumnaWa('TOGGLE_LEFT')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 7px; border-radius: 5px; font-size: 0.72rem; font-weight: 800; cursor: pointer;" title="Plegar o desplegar la columna izquierda de Chats">
+                    <div style="display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; flex-shrink: 0;">
+                        <div class="wa-hub-col-resizer-box" style="display: inline-flex; align-items: center; gap: 3px; background: rgba(0,0,0,0.22); padding: 2px 6px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.2); white-space: nowrap;" title="Ajustar ancho de las 3 columnas (también podés arrastrar las barras grises divisorias ⋮ con el mouse)">
+                            <span style="font-size: 0.7rem; font-weight: 800; color: #a7f3d0;">📐 Columnas:</span>
+                            <button type="button" onclick="window.ajustarAnchoColumnaWa('TOGGLE_LEFT')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 6px; border-radius: 5px; font-size: 0.7rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Plegar o desplegar la columna izquierda de Chats">
                                 ◀ Chats
                             </button>
-                            <button type="button" onclick="window.ajustarAnchoColumnaWa('RESET')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 7px; border-radius: 5px; font-size: 0.72rem; font-weight: 800; cursor: pointer;" title="Restaurar ancho equilibrado de las 3 columnas">
+                            <button type="button" onclick="window.ajustarAnchoColumnaWa('RESET')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 6px; border-radius: 5px; font-size: 0.7rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Restaurar ancho equilibrado de las 3 columnas">
                                 ⚖️ Normal
                             </button>
-                            <button type="button" onclick="window.ajustarAnchoColumnaWa('WIDEN_RIGHT')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 7px; border-radius: 5px; font-size: 0.72rem; font-weight: 800; cursor: pointer;" title="Ensanchar o alternar el ancho de la Columna 3 (Ficha y Cuenta Corriente)">
-                                ↔ Ensanchar Derecha
+                            <button type="button" onclick="window.ajustarAnchoColumnaWa('WIDEN_RIGHT')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 6px; border-radius: 5px; font-size: 0.7rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Ensanchar o alternar el ancho de la Columna 3 (Ficha y Cuenta Corriente)">
+                                ↔ Derecha
                             </button>
                         </div>
-                        <button type="button" onclick="window.iniciarNuevoChatClienteBunker()" style="background: #25D366; color: #052e16; border: none; padding: 6px 11px; border-radius: 8px; font-size: 0.8rem; font-weight: 800; cursor: pointer;">
+                        <button type="button" onclick="window.iniciarNuevoChatClienteBunker()" style="background: #25D366; color: #052e16; border: none; padding: 5px 10px; border-radius: 7px; font-size: 0.76rem; font-weight: 800; cursor: pointer; white-space: nowrap;">
                             ➕ Hablar con Cliente Búnker
                         </button>
-                        <button type="button" id="btn-wa-hub-sync" onclick="window.sincronizarChatsWhatsappLamda()" style="background: rgba(255,255,255,0.16); color: #ffffff; border: 1px solid rgba(255,255,255,0.3); padding: 6px 11px; border-radius: 8px; font-size: 0.8rem; font-weight: 700; cursor: pointer;">
+                        <button type="button" id="btn-wa-hub-sync" onclick="window.sincronizarChatsWhatsappLamda()" style="background: rgba(255,255,255,0.16); color: #ffffff; border: 1px solid rgba(255,255,255,0.3); padding: 5px 9px; border-radius: 7px; font-size: 0.76rem; font-weight: 700; cursor: pointer; white-space: nowrap;">
                             🔄 Traer Chats
                         </button>
-                        <button type="button" id="btn-wa-hub-maximize" onclick="window.toggleMaximizarConsolaWa()" style="background: rgba(255,255,255,0.18); color: #ffffff; border: 1px solid rgba(255,255,255,0.35); height: 34px; padding: 0 10px; border-radius: 8px; font-size: 0.8rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="Maximizar / Restaurar tamaño de pantalla">
+                        <button type="button" id="btn-wa-hub-maximize" onclick="window.toggleMaximizarConsolaWa()" style="background: rgba(255,255,255,0.18); color: #ffffff; border: 1px solid rgba(255,255,255,0.35); height: 30px; padding: 0 9px; border-radius: 7px; font-size: 0.76rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;" title="Maximizar / Restaurar tamaño de pantalla">
                             ⛶ Maximizar
                         </button>
-                        <button type="button" onclick="window.cerrarConsolaWhatsappLamda()" style="background: rgba(255,255,255,0.15); color: #ffffff; border: none; width: 34px; height: 34px; border-radius: 50%; font-size: 1.2rem; font-weight: 800; cursor: pointer;" title="Cerrar consola">
+                        <button type="button" onclick="window.cerrarConsolaWhatsappLamda()" style="background: rgba(255,255,255,0.15); color: #ffffff; border: none; width: 30px; height: 30px; border-radius: 50%; font-size: 1.15rem; font-weight: 800; cursor: pointer; flex-shrink: 0;" title="Cerrar consola">
                             &times;
                         </button>
                     </div>
@@ -1440,7 +1584,7 @@
                 await fetch('/api/crm/whatsapp/sincronizar', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ maxChats: 25, mensajesPorChat: 12 })
+                    body: JSON.stringify({ maxChats: 25, mensajesPorChat: 30 })
                 });
                 if (estadoConsola.abierta) {
                     await cargarListaChatsConsola(true);
@@ -1691,7 +1835,7 @@
                 ? `<span title="En Modo Personal / Silenciado en Pizarra" style="font-size:0.75rem;">🔒</span>`
                 : '';
             const textoMsg = g.tieneComunicacionReal
-                ? `${c.ultimo_mensaje_from_me ? renderizarIconoAck(c.ultimo_mensaje_ack) + ' ' : ''}${escaparHtml(c.ultimo_mensaje_texto || '')}`
+                ? `${c.ultimo_mensaje_from_me ? renderizarIconoAck(c.ultimo_mensaje_ack) + ' ' : ''}${escaparHtml(formatearPreviewUnaLineaWa(c.ultimo_mensaje_texto || ''))}`
                 : `<span style="color:#94a3b8; font-style:italic;">Sin comunicación registrada aún</span>`;
 
             return `
@@ -1753,7 +1897,7 @@
                 ? `<span style="background:#dcfce7; color:#15803d; font-size:0.63rem; font-weight:800; padding:0px 5px; border-radius:4px; border:1px solid #86efac;">Activo</span>`
                 : '';
             const textoMsgCt = tieneMsgCt
-                ? `${ct.ultimo_mensaje_from_me ? renderizarIconoAck(ct.ultimo_mensaje_ack) + ' ' : ''}${escaparHtml(ct.ultimo_mensaje_texto || '')}`
+                ? `${ct.ultimo_mensaje_from_me ? renderizarIconoAck(ct.ultimo_mensaje_ack) + ' ' : ''}${escaparHtml(formatearPreviewUnaLineaWa(ct.ultimo_mensaje_texto || ''))}`
                 : `<span style="color:#94a3b8; font-style:italic;">Sin mensajes en este número</span>`;
 
             subContactosHtml += `
@@ -2141,31 +2285,63 @@
             ? (estadoConsola.chats || []).filter(c => Number(c.bunker_cliente_id) === Number(chat.bunker_cliente_id))
             : [];
         const selectorMultiContactosHtml = contactosMismoCliente.length > 1
-            ? `<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap; margin-top:4px;">
-                <span style="font-size:0.7rem; font-weight:700; color:#64748b;">Contactos del cliente:</span>
+            ? `<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap; margin-top:2px;">
+                <span style="font-size:0.69rem; font-weight:700; color:#64748b;">Contactos:</span>
                 ${contactosMismoCliente.map(ct => {
                     const esAct = Number(ct.id) === Number(chat.id);
                     const nom = escaparHtml(ct.contacto_nombre || ct.telefono_normalizado);
                     const crg = ct.contacto_cargo ? ` (${escaparHtml(ct.contacto_cargo)})` : '';
-                    return `<button type="button" onclick="window.seleccionarChatConsola(${ct.id}, true)" style="background:${esAct ? '#075e54' : '#ffffff'}; color:${esAct ? '#ffffff' : '#334155'}; border:1px solid ${esAct ? '#075e54' : '#cbd5e1'}; border-radius:999px; padding:2px 8px; font-size:0.71rem; font-weight:${esAct ? '800' : '600'}; cursor:pointer;">👤 ${nom}${crg}</button>`;
+                    return `<button type="button" onclick="window.seleccionarChatConsola(${ct.id}, true)" style="background:${esAct ? '#075e54' : '#ffffff'}; color:${esAct ? '#ffffff' : '#334155'}; border:1px solid ${esAct ? '#075e54' : '#cbd5e1'}; border-radius:999px; padding:1.5px 7px; font-size:0.7rem; font-weight:${esAct ? '800' : '600'}; cursor:pointer; white-space:nowrap;">👤 ${nom}${crg}</button>`;
                 }).join('')}
                </div>`
             : '';
+
+        // Detectar bloque de mensajes entrantes recientes / no leídos al final del hilo para insertar separador visual claro
+        let idxInicioBloqueEntrante = -1;
+        let cantBloqueEntrante = 0;
+        if (Array.isArray(mensajes) && mensajes.length > 0) {
+            const ultimoMsg = mensajes[mensajes.length - 1];
+            if (!ultimoMsg.from_me) {
+                let i = mensajes.length - 1;
+                while (i >= 0 && !mensajes[i].from_me) {
+                    i--;
+                }
+                const primerEntranteIdx = i + 1;
+                const cantContigua = mensajes.length - primerEntranteIdx;
+                const noLeidosNum = parseInt(chat.no_leidos || 0, 10);
+                // Mostrar separador si el chat espera respuesta, tiene no_leidos > 0, o hay una ráfaga entrante (>= 2) tras un mensaje nuestro
+                if (primerEntranteIdx > 0 && (chat.esperando_respuesta || noLeidosNum > 0 || cantContigua >= 2)) {
+                    idxInicioBloqueEntrante = primerEntranteIdx;
+                    cantBloqueEntrante = cantContigua;
+                }
+            }
+        }
 
         let burbujasHtml = '';
         if (!mensajes || mensajes.length === 0) {
             burbujasHtml = `
                 <div style="margin: auto; background: rgba(255,255,255,0.85); padding: 14px 20px; border-radius: 10px; text-align: center; color: #475569; font-size: 0.85rem;">
-                    No hay mensajes guardados todavía en este hilo. Podés escribir abajo o tocar <strong>"Traer Chats Recientes del Celular"</strong> arriba.
+                    No hay mensajes guardados todavía en este hilo. Podés escribir abajo o tocar <strong>"Traer Chats"</strong> arriba.
                 </div>
             `;
         } else {
-            mensajes.forEach(m => {
+            mensajes.forEach((m, idxMsg) => {
+                if (idxMsg === idxInicioBloqueEntrante && cantBloqueEntrante > 0) {
+                    const etiquetaBloque = chat.esperando_respuesta || parseInt(chat.no_leidos || 0, 10) > 0
+                        ? `🟢 ${cantBloqueEntrante} ${cantBloqueEntrante === 1 ? 'mensaje nuevo sin leer' : 'mensajes nuevos sin leer'}`
+                        : `💬 ${cantBloqueEntrante} mensajes entrantes del cliente`;
+                    burbujasHtml += `
+                        <div id="wa-unread-divider-anchor" class="wa-unread-divider">
+                            <span>${etiquetaBloque}</span>
+                        </div>
+                    `;
+                }
+
                 const hora = m.fecha_mensaje
                     ? new Date(m.fecha_mensaje).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
                     : '';
                 const origenBadge = (m.origen_envio && m.origen_envio.startsWith('lamda_'))
-                    ? `<span style="background:rgba(0,0,0,0.06); padding:1px 5px; border-radius:4px; font-size:0.66rem;">LAMDA</span>`
+                    ? `<span style="background:rgba(0,0,0,0.06); padding:1px 5px; border-radius:4px; font-size:0.65rem;">LAMDA</span>`
                     : '';
 
                 burbujasHtml += `
@@ -2181,117 +2357,121 @@
             });
         }
 
+        const det = typeof detectarIntencionConversacionWa === 'function'
+            ? detectarIntencionConversacionWa(mensajes)
+            : { codigo: 'GENERAL', etiqueta: '💬 Conversación Comercial', pasoSugerido: 'PASO_1_PORTAL', ultimoRecibido: '' };
+        const esPrioritario = det.codigo === 'PIDE_LISTA_PRECIOS' || det.codigo === 'CONSULTA_PRECIO_PRODUCTO' || chat.esperando_respuesta;
+        const bgTools = det.codigo === 'PIDE_LISTA_PRECIOS'
+            ? 'linear-gradient(90deg, #ecfdf5 0%, #f0fdfa 100%)'
+            : (det.codigo === 'CONSULTA_PRECIO_PRODUCTO' ? 'linear-gradient(90deg, #eff6ff 0%, #f0f9ff 100%)' : '#f8fafc');
+        const borradorGuardado = textoEnCurso || obtenerBorradorChatWa(chat.id);
+        const tieneBorrador = borradorGuardado.trim().length > 0;
+        const tituloJsSafe = String(chat.cliente_nombre || chat.contacto_nombre || chat.pushname_wa || chat.telefono_normalizado || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
         colConv.innerHTML = `
-            <!-- Encabezado del Chat -->
+            <!-- Encabezado Compacto del Chat (Identidad + Controles propios + Chips Multicontacto en ancho completo) -->
             <div class="wa-conv-header">
-                <div>
-                    <div style="font-weight: 800; font-size: 0.98rem; color: #0f172a; display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
-                        <button type="button" class="wa-mob-nav-pill" onclick="window.cambiarTabMovilConsolaWa('chats')" title="Volver a la lista de chats">← Chats</button>
-                        <button type="button" class="wa-mob-nav-pill" onclick="window.cambiarTabMovilConsolaWa('xray')" style="background:#ecfdf5; border-color:#6ee7b7; color:#065f46;" title="Ver Ficha / Rayos X del Cliente">📊 Ficha</button>
-                        <span>${titulo}</span>
-                        ${badgeLegacyHdr}
-                        ${badgeBunkerHdr}
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0;">
+                    <div style="min-width: 0; flex: 1;">
+                        <div style="font-weight: 800; font-size: 0.94rem; color: #0f172a; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; line-height: 1.2;">
+                            <button type="button" class="wa-mob-nav-pill" onclick="window.cambiarTabMovilConsolaWa('chats')" title="Volver a la lista de chats">← Chats</button>
+                            <button type="button" class="wa-mob-nav-pill" onclick="window.cambiarTabMovilConsolaWa('xray')" style="background:#ecfdf5; border-color:#6ee7b7; color:#065f46;" title="Ver Ficha / Rayos X del Cliente">📊 Ficha</button>
+                            <span>${titulo}</span>
+                            ${badgeLegacyHdr}
+                            ${badgeBunkerHdr}
+                        </div>
+                        <div style="font-size: 0.73rem; color: #475569; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${subinfo}</div>
                     </div>
-                    <div style="font-size: 0.76rem; color: #475569;">${subinfo}</div>
-                    ${selectorMultiContactosHtml}
-                </div>
-                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                    <button type="button" onclick="window.abrirAsistenteComercialConversacionWa({ chatId: ${chat.id} })" style="background: linear-gradient(135deg, #059669, #0d9488); border: none; color: #ffffff; padding: 5px 10px; border-radius: 6px; font-size: 0.76rem; font-weight: 800; cursor: pointer; box-shadow: 0 1px 2px rgba(5,150,105,0.28);" title="Asistente Comercial Conversacional: Pasar Link del Portal B2B, Lista de Precios, ver qué compra este cliente y sugerir respuestas cortas paso a paso">
-                        💬 Asistente: Precios, Portal e Historial
-                    </button>
-                    <button type="button" onclick="window.abrirAsistentePoliticasFinanciacionWa({ chatId: ${chat.id}, escenario: 'PAGOS_PARCIALES' })" style="background: linear-gradient(135deg, #1e40af, #0284c7); border: none; color: #ffffff; padding: 5px 10px; border-radius: 6px; font-size: 0.76rem; font-weight: 800; cursor: pointer; box-shadow: 0 1px 2px rgba(2,132,199,0.25);" title="Abrir Asistente de Políticas, Financiación y Pagos Parciales para este cliente">
-                        🛡️ Políticas y Pagos Parciales
-                    </button>
-                    ${chat.esperando_respuesta ? `
-                        <button type="button" onclick="window.marcarChatAtendidoWa(${chat.id})" style="background: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 5px 10px; border-radius: 6px; font-size: 0.76rem; font-weight: 800; cursor: pointer;">
-                            ✓ Marcar como visto
+                    <div style="display: flex; gap: 5px; align-items: center; flex-wrap: nowrap; flex-shrink: 0;">
+                        ${chat.esperando_respuesta ? `
+                            <button type="button" onclick="window.marcarChatAtendidoWa(${chat.id})" style="background: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 4px 9px; border-radius: 6px; font-size: 0.73rem; font-weight: 800; cursor: pointer; white-space: nowrap;">
+                                ✓ Visto
+                            </button>
+                        ` : ''}
+                        <button type="button" onclick="window.cambiarPrivacidadRapidaWa(${chat.id}, '${escaparHtml(tituloJsSafe)}')" style="background: #ffffff; border: 1px solid #cbd5e1; color: #334155; padding: 4px 9px; border-radius: 6px; font-size: 0.73rem; font-weight: 700; cursor: pointer; white-space: nowrap;" title="Cambiar entre Modo Comercial y Modo Personal">
+                            ${modoPrivTxt} ▾
                         </button>
-                    ` : ''}
-                    <button type="button" onclick="window.cambiarPrivacidadRapidaWa(${chat.id}, '${titulo.replace(/'/g, "\\'")}')" style="background: #ffffff; border: 1px solid #cbd5e1; color: #334155; padding: 5px 10px; border-radius: 6px; font-size: 0.76rem; font-weight: 700; cursor: pointer;" title="Cambiar entre Modo Comercial y Modo Personal">
-                        ${modoPrivTxt} ▾
-                    </button>
+                    </div>
                 </div>
+                ${selectorMultiContactosHtml}
             </div>
 
-            <!-- Historial de Mensajes -->
+            <!-- Historial de Mensajes (Área protagonista amplia) -->
             <div id="wa-hub-messages-scroll" class="wa-conv-messages">
                 ${burbujasHtml}
             </div>
 
-            <!-- Barra de Asistencia Contextual en Vivo (Detecta consulta del cliente sin responder sola) -->
-            ${(() => {
-                const det = typeof detectarIntencionConversacionWa === 'function'
-                    ? detectarIntencionConversacionWa(mensajes)
-                    : { codigo: 'GENERAL', etiqueta: '💬 Conversación Comercial', pasoSugerido: 'PASO_1_PORTAL', ultimoRecibido: '' };
-                const esPrioritario = det.codigo === 'PIDE_LISTA_PRECIOS' || det.codigo === 'CONSULTA_PRECIO_PRODUCTO' || chat.esperando_respuesta;
-                const bgBanner = det.codigo === 'PIDE_LISTA_PRECIOS'
-                    ? 'linear-gradient(90deg, #ecfdf5 0%, #f0fdfa 100%)'
-                    : (det.codigo === 'CONSULTA_PRECIO_PRODUCTO' ? 'linear-gradient(90deg, #eff6ff 0%, #f0f9ff 100%)' : '#f8fafc');
-                const borderBanner = det.codigo === 'PIDE_LISTA_PRECIOS' ? '#6ee7b7' : (det.codigo === 'CONSULTA_PRECIO_PRODUCTO' ? '#93c5fd' : '#e2e8f0');
-                return `
-                    <div id="wa-hub-asistente-contextual-bar" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; background: ${bgBanner}; border-top: 1px solid ${borderBanner}; padding: 6px 12px; font-size: 0.75rem;">
-                        <div style="display: flex; align-items: center; gap: 6px; min-width: 180px; flex: 1;">
-                            <span style="background: ${esPrioritario ? '#059669' : '#475569'}; color: #fff; font-weight: 800; padding: 2px 7px; border-radius: 999px; font-size: 0.68rem; white-space: nowrap;">
-                                ${escaparHtml(det.etiqueta)}
-                            </span>
-                            <span style="color: #334155; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escaparHtml(det.ultimoRecibido || '')}">
-                                ${det.ultimoRecibido ? `Último del cliente: "${escaparHtml(det.ultimoRecibido.slice(0, 75))}${det.ultimoRecibido.length > 75 ? '…' : ''}"` : 'Asistencia paso a paso lista para el operador'}
-                            </span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
-                            <button type="button" onclick="window.insertarAtajoTextoWa('SALUDO')" style="background: #ffffff; border: 1px solid #0284c7; color: #0369a1; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer;" title="Escribe un saludo corto y variado de semana en el cuadro de abajo (clic varias veces para cambiar la frase)">
-                                👋 Saludo corto (Variar 🎲)
+            <!-- Barra Única de Herramientas Comerciales y Atajos (1 sola línea ~38px) -->
+            <div id="wa-hub-tools-bar" class="wa-tools-bar" style="background: ${bgTools};">
+                <div class="wa-tools-left">
+                    <span style="background: ${esPrioritario ? '#059669' : '#475569'}; color: #fff; font-weight: 800; padding: 2px 8px; border-radius: 999px; font-size: 0.69rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;" title="${escaparHtml(det.ultimoRecibido || det.etiqueta)}">
+                        ${escaparHtml(det.etiqueta)}
+                    </span>
+                </div>
+                <div class="wa-tools-right">
+                    <button type="button" id="btn-wa-tool-asistente" class="wa-tool-btn" onclick="window.abrirAsistenteComercialConversacionWa({ chatId: ${chat.id}, pasoInicial: '${det.pasoSugerido}' })" style="background: linear-gradient(135deg, #059669, #0d9488); border: none; color: #ffffff;" title="Asistente Comercial: Lista de Precios, Link del Portal B2B, qué compra y respuestas paso a paso">
+                        💬 Asistente
+                    </button>
+                    <button type="button" id="btn-wa-tool-politicas" class="wa-tool-btn" onclick="window.abrirAsistentePoliticasFinanciacionWa({ chatId: ${chat.id}, escenario: 'PAGOS_PARCIALES' })" style="background: linear-gradient(135deg, #1e40af, #0284c7); border: none; color: #ffffff;" title="Asistente de Políticas, Financiación y Pagos Parciales">
+                        🛡️ Políticas
+                    </button>
+                    <div id="wa-atajos-wrap" class="wa-atajos-wrap">
+                        <button type="button" id="btn-wa-atajos-menu" class="wa-tool-btn" aria-haspopup="true" aria-expanded="false" onclick="window.toggleMenuAtajosConsolaWa(this, event)" style="background: #ffffff; border: 1px solid #94a3b8; color: #0f172a;" title="Atajos rápidos de texto y seguimiento">
+                            ⚡ Atajos ▾
+                        </button>
+                        <div id="wa-atajos-popover" class="wa-atajos-popover" role="menu">
+                            <button type="button" class="wa-atajos-item" data-atajo="CBU" onclick="window.cerrarMenuAtajosConsolaWa(); window.insertarAtajoTextoWa('CBU');">
+                                <span>🏦</span><span>Pegar CBU Galicia</span>
                             </button>
-                            <button type="button" onclick="window.insertarPasoRapidoAsistenteEnCuadroWa(${chat.id}, 'PASO_1_PORTAL')" style="background: #ffffff; border: 1px solid #10b981; color: #047857; padding: 3px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer;" title="Escribe en el cuadro de abajo el Link del Portal + pregunta corta sin enviarlo automáticamente">
-                                🔗 Link Portal
+                            <button type="button" class="wa-atajos-item" data-atajo="SALUDO" onclick="window.cerrarMenuAtajosConsolaWa(); window.insertarAtajoTextoWa('SALUDO');">
+                                <span>👋</span><span>Saludo corto (Variar 🎲)</span>
                             </button>
-                            <button type="button" onclick="window.abrirAsistenteComercialConversacionWa({ chatId: ${chat.id}, pasoInicial: '${det.pasoSugerido}' })" style="background: #059669; border: none; color: #ffffff; padding: 4px 10px; border-radius: 6px; font-size: 0.73rem; font-weight: 800; cursor: pointer;" title="Abrir el Asistente Comercial Híbrido con último hilo, qué compra, cada cuánto compra, cómo paga y redacción proactiva">
-                                💬 Asistente Híbrido ↗
+                            <button type="button" class="wa-atajos-item" data-atajo="PORTAL" onclick="window.cerrarMenuAtajosConsolaWa(); window.insertarPasoRapidoAsistenteEnCuadroWa(${chat.id}, 'PASO_1_PORTAL');">
+                                <span>🔗</span><span>Pegar Link Portal B2B</span>
+                            </button>
+                            <button type="button" class="wa-atajos-item" data-atajo="PEDIDO_CAMINO" onclick="window.cerrarMenuAtajosConsolaWa(); window.insertarAtajoTextoWa('PEDIDO_CAMINO');">
+                                <span>🚚</span><span>Mercadería en camino</span>
+                            </button>
+                            <div class="wa-atajos-sep"></div>
+                            <button type="button" class="wa-atajos-item" data-atajo="SEGUIMIENTO" onclick="window.cerrarMenuAtajosConsolaWa(); window.programarSeguimientoDesdeChatWa();">
+                                <span>📅</span><span>Agendar Seguimiento</span>
                             </button>
                         </div>
                     </div>
-                `;
-            })()}
-
-            <!-- Barra Horizontal de Atajos LAMDA -->
-            <div class="wa-quick-bar">
-                <span style="font-size: 0.72rem; font-weight: 800; color: #64748b;">⚡ Atajos:</span>
-                <button type="button" class="wa-quick-chip" onclick="window.abrirAsistenteComercialConversacionWa({ chatId: ${chat.id} })" style="background: #ecfdf5; border-color: #6ee7b7; color: #047857; font-weight: 800;">💬 Lista de Precios / Portal / Qué Compra</button>
-                <button type="button" class="wa-quick-chip" onclick="window.abrirAsistentePoliticasFinanciacionWa({ chatId: ${chat.id}, escenario: 'PAGOS_PARCIALES' })" style="background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; font-weight: 800;">🛡️ Políticas / Pagos Parciales</button>
-                <button type="button" class="wa-quick-chip" onclick="window.insertarAtajoTextoWa('CBU')">🏦 Pegar CBU Galicia</button>
-                <button type="button" class="wa-quick-chip" onclick="window.insertarAtajoTextoWa('SALUDO')">👋 Saludo Comercial</button>
-                <button type="button" class="wa-quick-chip" onclick="window.insertarAtajoTextoWa('PEDIDO_CAMINO')">🚚 Mercadería en camino</button>
-                <button type="button" class="wa-quick-chip" onclick="window.programarSeguimientoDesdeChatWa()">📅 Agendar Seguimiento</button>
+                </div>
             </div>
 
             <!-- Indicador de Borrador Reservado (no se pierde al cerrar la ventana) -->
-            ${(() => {
-                const borradorGuardado = textoEnCurso || obtenerBorradorChatWa(chat.id);
-                const tieneBorrador = borradorGuardado.trim().length > 0;
-                return `
-                    <div id="wa-hub-borrador-banner" style="display: ${tieneBorrador ? 'flex' : 'none'}; justify-content: space-between; align-items: center; background: #ecfdf5; border-top: 1px solid #a7f3d0; padding: 4px 14px; font-size: 0.75rem; color: #065f46; font-weight: 700;">
-                        <span>💾 Borrador reservado en este chat (podés cerrar la ventana para consultar precios y no se pierde)</span>
-                        <button type="button" onclick="window.limpiarBorradorChatWa(${chat.id})" style="background: none; border: none; color: #dc2626; font-size: 0.73rem; font-weight: 800; cursor: pointer; text-decoration: underline;">🗑️ Limpiar borrador</button>
-                    </div>
-                    <!-- Área de Escritura -->
-                    <div class="wa-conv-input-area">
-                        <textarea id="wa-hub-input-texto" rows="${tieneBorrador && borradorGuardado.length > 90 ? 5 : 2}" placeholder="Escribí un mensaje para enviar por WhatsApp (se guarda solo como borrador)..." oninput="window.guardarBorradorChatWa(${chat.id}, this.value)" onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); window.enviarMensajeDesdeConsolaWa(${chat.id}); }" style="flex: 1; padding: 9px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.9rem; font-family: inherit; resize: vertical;">${escaparHtml(borradorGuardado)}</textarea>
-                        <div style="display: flex; flex-direction: column; gap: 5px; flex-shrink: 0;">
-                            <button type="button" onclick="window.enviarMensajeDesdeConsolaWa(${chat.id})" style="background: #128c7e; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 800; font-size: 0.88rem; cursor: pointer; white-space: nowrap;" title="Enviar mensaje ahora mismo por WhatsApp">
-                                🚀 Enviar Ahora
-                            </button>
-                            <button type="button" onclick="window.programarMensajeDesdeConsolaWa(${chat.id})" style="background: #0284c7; color: white; border: none; padding: 7px 12px; border-radius: 8px; font-weight: 800; font-size: 0.78rem; cursor: pointer; white-space: nowrap;" title="Reservar / Programar este mensaje para el Lunes u otro día y horario (Seguimientos WhatsApp)">
-                                📅 Programar / Reservar
-                            </button>
-                        </div>
-                    </div>
-                `;
-            })()}
+            <div id="wa-hub-borrador-banner" style="display: ${tieneBorrador ? 'flex' : 'none'}; justify-content: space-between; align-items: center; background: #ecfdf5; border-top: 1px solid #a7f3d0; padding: 3px 12px; font-size: 0.72rem; color: #065f46; font-weight: 700; flex-shrink: 0;">
+                <span>💾 Borrador reservado en este chat</span>
+                <button type="button" onclick="window.limpiarBorradorChatWa(${chat.id})" style="background: none; border: none; color: #dc2626; font-size: 0.72rem; font-weight: 800; cursor: pointer; text-decoration: underline;">🗑️ Limpiar</button>
+            </div>
+
+            <!-- Área de Escritura Compacta (Botones horizontales) -->
+            <div class="wa-conv-input-area">
+                <textarea id="wa-hub-input-texto" rows="${tieneBorrador && borradorGuardado.length > 90 ? 3 : 2}" placeholder="Escribí un mensaje para enviar por WhatsApp (Enter envía, Shift+Enter salta línea)..." oninput="window.guardarBorradorChatWa(${chat.id}, this.value)" onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); window.enviarMensajeDesdeConsolaWa(${chat.id}); }" style="flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.88rem; font-family: inherit; resize: vertical; min-height: 40px; max-height: 110px; line-height: 1.3;">${escaparHtml(borradorGuardado)}</textarea>
+                <div class="wa-conv-input-actions">
+                    <button type="button" id="btn-wa-enviar-ahora" onclick="window.enviarMensajeDesdeConsolaWa(${chat.id})" style="background: #128c7e; color: white; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 0.84rem; cursor: pointer; white-space: nowrap;" title="Enviar mensaje ahora mismo por WhatsApp">
+                        🚀 Enviar
+                    </button>
+                    <button type="button" id="btn-wa-programar" onclick="window.programarMensajeDesdeConsolaWa(${chat.id})" style="background: #0284c7; color: white; border: none; padding: 8px 11px; border-radius: 8px; font-weight: 800; font-size: 0.78rem; cursor: pointer; white-space: nowrap;" title="Reservar / Programar este mensaje para otro día y horario (Seguimientos WhatsApp)">
+                        📅 Programar
+                    </button>
+                </div>
+            </div>
         `;
 
         const scrollContainer = document.getElementById('wa-hub-messages-scroll');
         if (scrollContainer && scrollAlFinal) {
             scrollContainer.scrollTop = scrollContainer.scrollHeight;
+            const dividerEl = document.getElementById('wa-unread-divider-anchor');
+            if (dividerEl) {
+                const topDividerRel = dividerEl.offsetTop - scrollContainer.offsetTop;
+                // Si el bloque de mensajes nuevos es más alto que la ventana visible, arrancar mirando desde el separador de nuevos (con 56px de contexto del mensaje previo)
+                if (topDividerRel < scrollContainer.scrollTop) {
+                    scrollContainer.scrollTop = Math.max(0, topDividerRel - 56);
+                }
+            }
         }
         if (restaurarFoco) {
             const inp = document.getElementById('wa-hub-input-texto');
