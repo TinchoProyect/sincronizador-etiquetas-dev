@@ -5080,6 +5080,16 @@ router.get('/ingredientes/:id/articulos-abastecimiento', async (req, res) => {
             return res.status(404).json({ error: 'Ingrediente no encontrado' });
         }
 
+        const usuarioIdQuery = req.query.usuario_id ? parseInt(req.query.usuario_id, 10) : null;
+        let saldoPersonalActual = null;
+        if (usuarioIdQuery && !isNaN(usuarioIdQuery)) {
+            const { rows: saldoRows } = await pool.query(
+                'SELECT COALESCE(ROUND(SUM(cantidad)::numeric, 4), 0) AS saldo FROM public.ingredientes_stock_usuarios WHERE usuario_id = $1 AND ingrediente_id = $2',
+                [usuarioIdQuery, ingredienteId]
+            );
+            saldoPersonalActual = parseFloat(saldoRows[0]?.saldo || 0);
+        }
+
         // Referencia canónica en Búnker (por artículo vinculado directo o nutriente activo)
         const { rows: refRows } = await pool.query(`
             SELECT
@@ -5117,6 +5127,8 @@ router.get('/ingredientes/:id/articulos-abastecimiento', async (req, res) => {
                 LOWER(BTRIM(COALESCE(ba.propiedades_dinamicas->'posiciones'->'pos_1'->>'valor', ''))) AS pos_1,
                 COALESCE(src.stock_consolidado, 0) AS stock_consolidado,
                 COALESCE(NULLIF(ba.kilos_unidad, 0), NULLIF(src.kilos_unidad, 0)) AS kilos_unidad,
+                COALESCE(ba.es_pack, src.es_pack, false) AS es_pack,
+                (UPPER(BTRIM(a.numero)) = UPPER(BTRIM(COALESCE($2, '')))) AS es_vinculado_directo,
                 (
                     UPPER(BTRIM(a.numero)) = UPPER(BTRIM(COALESCE($2, '')))
                     OR EXISTS (
@@ -5182,11 +5194,43 @@ router.get('/ingredientes/:id/articulos-abastecimiento', async (req, res) => {
             return stemsIng.every(st => legacyNorm.includes(st));
         });
 
-        filtrados.sort((a, b) => {
+        const esPackComercial = (art) =>
+            Boolean(art.es_pack) || /\b\d+\s*x\s*\d+/i.test(String(art.nombre || ''));
+
+        const esBultoInsumoIndustrial = (art) => {
+            if (esPackComercial(art)) return false;
+            const skuUpper = String(art.numero || '').trim().toUpperCase();
+            const nomLower = normalizarTexto(art.nombre || '');
+            const kg = parseFloat(art.kilos_unidad) || 0;
+            return (
+                skuUpper.startsWith('EMB-') ||
+                /\b(bidon|balde|tambor|bulto|bolsa|caja)\b/.test(nomLower) ||
+                kg >= 2
+            );
+        };
+
+        const filtradosConMeta = filtrados.map(art => ({
+            ...art,
+            es_pack_comercial: esPackComercial(art),
+            es_bulto_insumo: esBultoInsumoIndustrial(art)
+        }));
+
+        filtradosConMeta.sort((a, b) => {
             const stkA = parseFloat(a.stock_consolidado) > 0 ? 1 : 0;
             const stkB = parseFloat(b.stock_consolidado) > 0 ? 1 : 0;
             if (stkA !== stkB) return stkB - stkA;
+
+            // Priorizar bultos/envases industriales unitarios (ej. EMB-P2VF21 Bidón 5kg) sobre packs comerciales multi-frasco (6x1kg, 12x500g) o frascos chicos (400g)
+            if (a.es_bulto_insumo !== b.es_bulto_insumo) return a.es_bulto_insumo ? -1 : 1;
+
             if (a.vinculo_explicito !== b.vinculo_explicito) return a.vinculo_explicito ? -1 : 1;
+
+            if (a.es_pack_comercial !== b.es_pack_comercial) return a.es_pack_comercial ? 1 : -1;
+
+            const kgA = parseFloat(a.kilos_unidad) || 0;
+            const kgB = parseFloat(b.kilos_unidad) || 0;
+            if (Math.abs(kgB - kgA) > 0.001) return kgB - kgA;
+
             return String(a.nombre || '').localeCompare(String(b.nombre || ''));
         });
 
@@ -5196,9 +5240,10 @@ router.get('/ingredientes/:id/articulos-abastecimiento', async (req, res) => {
                 id: ing.id,
                 codigo: ing.codigo,
                 nombre: ing.nombre,
-                unidad_medida: ing.unidad_medida
+                unidad_medida: ing.unidad_medida,
+                saldo_personal_actual: saldoPersonalActual
             },
-            data: filtrados
+            data: filtradosConMeta
         });
     } catch (error) {
         console.error('❌ [ABASTECIMIENTO EXTERNO] Error consultando artículos del ingrediente:', error);
@@ -5350,6 +5395,13 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
             const { recalcularStockConsolidado } = require('../utils/recalcularStock');
             await recalcularStockConsolidado(client, articulo_numero);
 
+            // B.0) Consultar saldo domiciliario anterior para devolver desglose matemático exacto
+            const prevSaldoRes = await client.query(
+                'SELECT COALESCE(ROUND(SUM(cantidad)::numeric, 4), 0) AS saldo_anterior FROM public.ingredientes_stock_usuarios WHERE usuario_id = $1::int AND ingrediente_id = $2::int',
+                [usuarioIdNum, ingredienteIdNum]
+            );
+            const saldoAnterior = parseFloat(prevSaldoRes.rows[0]?.saldo_anterior || 0);
+
             // B) Declarar el ALTA de stock personal en el domicilio para ese operario
             const inQuery = `
                 INSERT INTO ingredientes_stock_usuarios (
@@ -5358,12 +5410,18 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
                 RETURNING id;
             `;
             await client.query(inQuery, [
-                parseInt(usuario_id, 10),
-                parseInt(ingrediente_id, 10),
+                usuarioIdNum,
+                ingredienteIdNum,
                 kilosTotales,
                 carroIdValido,
                 kilosUnidad
             ]);
+
+            const postSaldoRes = await client.query(
+                'SELECT COALESCE(ROUND(SUM(cantidad)::numeric, 4), 0) AS saldo_actual FROM public.ingredientes_stock_usuarios WHERE usuario_id = $1::int AND ingrediente_id = $2::int',
+                [usuarioIdNum, ingredienteIdNum]
+            );
+            const saldoActual = parseFloat(postSaldoRes.rows[0]?.saldo_actual || 0);
 
             // C) Auto-vincular de forma permanente el ingrediente al artículo de compras SOLO si no posee vínculo previo
             await client.query(`
@@ -5390,8 +5448,17 @@ router.post('/ingredientes/abastecer-stock-personal', async (req, res) => {
             if (reqIdNorm) abastecimientoRequestIdMap.set(reqIdNorm, commitTs);
             abastecimientoRecienteMap.set(dupSignature, commitTs);
             
-            console.log(`✅ [ABASTECIMIENTO EXTERNO] Transacción Atómica Exitosa.`);
-            res.json({ success: true, kilos_acreditados: kilosTotales });
+            console.log(`✅ [ABASTECIMIENTO EXTERNO] Transacción Atómica Exitosa (Saldo: ${saldoAnterior.toFixed(2)} -> ${saldoActual.toFixed(2)}).`);
+            res.json({
+                success: true,
+                articulo_numero: String(articulo_numero),
+                articulo_descripcion: nombreArt,
+                cantidad_envases: cantNum,
+                kilos_unidad: kilosUnidad,
+                kilos_acreditados: Number(kilosTotales.toFixed(4)),
+                saldo_anterior: saldoAnterior,
+                saldo_actual: saldoActual
+            });
             
         } catch (trxError) {
             await client.query('ROLLBACK');

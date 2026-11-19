@@ -9,24 +9,33 @@ let alertaEscaner = null;
 let inputBusqueda = null;
 let listaResultados = null;
 let divSeleccionado = null;
+let subtextoEnvaseUnitario = null;
 let inputCantidad = null;
+let btnRestarBulto = null;
+let btnSumarBulto = null;
+let presetButtons = [];
 let btnConfirmar = null;
 let nombreIngredienteDisplay = null;
-let spanKilosTotales = null;
 let divResumen = null;
+let desgloseLinea1 = null;
+let desgloseLinea2 = null;
+let desgloseLinea3 = null;
 
 let ingredienteDestinoId = null;
 let ingredienteDestinoNombre = '';
+let ingredienteUnidadBase = 'kg';
+let saldoActualDomicilio = 0;
+let consumoCarroActual = 0;
 let articuloSeleccionado = null;
 let articulosDelIngrediente = [];
 let abastecimientoEnVuelo = false;
 let currentAbastecimientoRequestId = null;
 
+const DEFAULT_KILOS_FALLBACK = 1;
+
 function generarRequestIdAbastecimiento() {
     return `abast_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
-
-const DEFAULT_KILOS_FALLBACK = 1;
 
 function escaparHtml(str) {
     return String(str === null || str === undefined ? '' : str)
@@ -40,6 +49,11 @@ function escaparHtml(str) {
 function normalizar(texto) {
     if (!texto) return '';
     return String(texto).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+function formatearConSigno(valor) {
+    const n = Number(valor) || 0;
+    return `${n >= 0 ? '+' : ''}${n.toFixed(2)}`;
 }
 
 function deducirKilosUnidadDesdeNombre(nombre) {
@@ -87,7 +101,7 @@ function deducirKilosUnidadDesdeNombre(nombre) {
 }
 
 function deducirUnidadMedidaDesdeNombre(nombre) {
-    if (!nombre) return 'kg';
+    if (!nombre) return ingredienteUnidadBase || 'kg';
     const norm = nombre.toLowerCase();
     if (norm.includes('litro') || norm.includes(' l ') || norm.endsWith(' l') || /\d+\s*l\b/.test(norm)) {
         return 'L';
@@ -114,6 +128,25 @@ function mostrarAlertaEscaner(mensaje, tipo = 'warning') {
     alertaEscaner.style.display = 'block';
 }
 
+function actualizarPillsPresetActiva(cantEntera) {
+    presetButtons.forEach(btn => {
+        const n = parseInt(btn.dataset.cant || '0', 10);
+        const activo = n === cantEntera;
+        btn.style.background = activo ? '#1d4ed8' : '#ffffff';
+        btn.style.color = activo ? '#ffffff' : '#334155';
+        btn.style.borderColor = activo ? '#1d4ed8' : '#cbd5e1';
+    });
+}
+
+function setearCantidadEntera(nuevaCant) {
+    if (!inputCantidad || abastecimientoEnVuelo) return;
+    const cantLimpia = Math.max(1, Math.round(Number(nuevaCant) || 1));
+    inputCantidad.value = String(cantLimpia);
+    currentAbastecimientoRequestId = generarRequestIdAbastecimiento();
+    actualizarPillsPresetActiva(cantLimpia);
+    calcularKilos();
+}
+
 function inicializarModal() {
     modal = document.getElementById('modalAbastecimientoExterno');
     if (!modal || modal.dataset.initialized === 'true') return;
@@ -125,13 +158,19 @@ function inicializarModal() {
     inputBusqueda = document.getElementById('buscarArticuloAbastecer');
     listaResultados = document.getElementById('listaArticulosAbastecer');
     divSeleccionado = document.getElementById('articulo-seleccionado-abastecer');
+    subtextoEnvaseUnitario = document.getElementById('subtexto-envase-unitario');
     inputCantidad = document.getElementById('cantidadBultosAbastecer');
+    btnRestarBulto = document.getElementById('btnRestarBultoAbastecer');
+    btnSumarBulto = document.getElementById('btnSumarBultoAbastecer');
+    presetButtons = Array.from(modal.querySelectorAll('.btn-preset-bultos'));
     btnConfirmar = document.getElementById('btnConfirmarAbastecimiento');
     nombreIngredienteDisplay = document.getElementById('nombre-ingrediente-abastecer');
-    spanKilosTotales = document.getElementById('kilos-totales-abastecer');
     divResumen = document.getElementById('resumen-abastecimiento');
+    desgloseLinea1 = document.getElementById('desglose-retiro-linea1');
+    desgloseLinea2 = document.getElementById('desglose-retiro-linea2');
+    desgloseLinea3 = document.getElementById('desglose-retiro-linea3');
 
-    const btnCloseElements = modal.querySelectorAll('.close-modal');
+    const btnCloseElements = modal.querySelectorAll('.close-modal, .btn-cancelar-abastecer');
     btnCloseElements.forEach(btn => btn.addEventListener('click', cerrarModal));
 
     if (inputCodigoBarras) {
@@ -145,7 +184,6 @@ function inicializarModal() {
             mostrarAlertaEscaner(null);
             const val = inputCodigoBarras.value.trim();
             if (val.length >= 3) {
-                // Selección instantánea si coincide exactamente con código de barras o SKU del ingrediente
                 const matchDirecto = buscarCoincidenciaExactaEnLista(val);
                 if (matchDirecto) {
                     seleccionarArticulo(matchDirecto, { desdeEscaner: true });
@@ -163,7 +201,9 @@ function inicializarModal() {
     }
 
     if (inputBusqueda) {
-        inputBusqueda.addEventListener('input', renderizarListaFiltrada);
+        inputBusqueda.addEventListener('input', () => {
+            renderizarListaFiltrada({ autoSeleccionarPrimero: true });
+        });
         inputBusqueda.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 e.preventDefault();
@@ -176,18 +216,52 @@ function inicializarModal() {
         });
     }
 
+    if (btnRestarBulto) {
+        btnRestarBulto.addEventListener('click', () => {
+            const actual = parseInt(inputCantidad?.value || '1', 10) || 1;
+            setearCantidadEntera(Math.max(1, actual - 1));
+        });
+    }
+
+    if (btnSumarBulto) {
+        btnSumarBulto.addEventListener('click', () => {
+            const actual = parseInt(inputCantidad?.value || '1', 10) || 1;
+            setearCantidadEntera(actual + 1);
+        });
+    }
+
+    presetButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const cant = parseInt(btn.dataset.cant || '1', 10) || 1;
+            setearCantidadEntera(cant);
+        });
+    });
+
     if (inputCantidad) {
-        inputCantidad.addEventListener('input', calcularKilos);
+        inputCantidad.addEventListener('input', () => {
+            currentAbastecimientoRequestId = generarRequestIdAbastecimiento();
+            const n = parseInt(inputCantidad.value, 10);
+            actualizarPillsPresetActiva(!isNaN(n) ? n : 0);
+            calcularKilos();
+        });
+        inputCantidad.addEventListener('blur', () => {
+            const n = parseInt(inputCantidad.value, 10);
+            if (isNaN(n) || n < 1) {
+                setearCantidadEntera(1);
+            } else {
+                setearCantidadEntera(n);
+            }
+        });
         inputCantidad.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !btnConfirmar.disabled) {
                 e.preventDefault();
-                confirmarAbastecimiento();
+                confirmarAbastecimiento(false);
             }
         });
     }
 
     if (btnConfirmar) {
-        btnConfirmar.addEventListener('click', confirmarAbastecimiento);
+        btnConfirmar.addEventListener('click', () => confirmarAbastecimiento(false));
     }
 }
 
@@ -212,7 +286,6 @@ async function procesarCodigoBarrasOSku(codigoRaw, mostrarErrorSiNoExiste = true
 
     if (!mostrarErrorSiNoExiste) return;
 
-    // Consultar si ese código pertenece a OTRO artículo del depósito que no corresponde al ingrediente
     try {
         const resp = await fetch(`/api/produccion/articulos?codigo_barras=${encodeURIComponent(query)}`);
         if (resp.ok) {
@@ -235,6 +308,21 @@ async function procesarCodigoBarrasOSku(codigoRaw, mostrarErrorSiNoExiste = true
     );
 }
 
+function leerContextoDomCardPersonal(ingredienteId) {
+    saldoActualDomicilio = 0;
+    consumoCarroActual = 0;
+    ingredienteUnidadBase = 'kg';
+
+    const card = document.querySelector(`#resumen-ingredientes .card-stock-personal[data-ingrediente-id="${ingredienteId}"]`);
+    if (card) {
+        const disp = parseFloat(card.dataset?.disponible);
+        const cons = parseFloat(card.dataset?.consumo);
+        if (!isNaN(disp)) saldoActualDomicilio = disp;
+        if (!isNaN(cons)) consumoCarroActual = cons;
+        if (card.dataset?.unidad) ingredienteUnidadBase = card.dataset.unidad;
+    }
+}
+
 window.abrirModalAbastecimientoExterno = async function(ingredienteId, nombreIngrediente) {
     if (!modal) inicializarModal();
     if (!modal) return;
@@ -245,12 +333,19 @@ window.abrirModalAbastecimientoExterno = async function(ingredienteId, nombreIng
     articulosDelIngrediente = [];
     currentAbastecimientoRequestId = null;
 
+    leerContextoDomCardPersonal(ingredienteId);
+
     if (inputCodigoBarras) inputCodigoBarras.value = '';
     if (inputBusqueda) inputBusqueda.value = '';
-    if (inputCantidad) inputCantidad.value = '';
+    if (inputCantidad) inputCantidad.value = '1';
+    actualizarPillsPresetActiva(1);
+
     if (divSeleccionado) {
         divSeleccionado.style.display = 'none';
         divSeleccionado.innerHTML = '';
+    }
+    if (subtextoEnvaseUnitario) {
+        subtextoEnvaseUnitario.textContent = 'Seleccioná un envase arriba';
     }
     mostrarAlertaEscaner(null);
     if (divResumen) divResumen.style.display = 'none';
@@ -259,7 +354,13 @@ window.abrirModalAbastecimientoExterno = async function(ingredienteId, nombreIng
         btnConfirmar.innerHTML = 'Confirmar Retiro';
     }
 
-    nombreIngredienteDisplay.textContent = `Abasteciendo: ${nombreIngrediente}`;
+    let usuarioId = null;
+    try {
+        const colabRaw = localStorage.getItem('colaboradorActivo');
+        if (colabRaw) usuarioId = JSON.parse(colabRaw)?.id || null;
+    } catch (_) {}
+
+    nombreIngredienteDisplay.textContent = `Ingrediente: ${nombreIngrediente} · Saldo actual en domicilio: ${saldoActualDomicilio.toFixed(2)} ${ingredienteUnidadBase || 'kg'}`;
     listaResultados.style.display = 'block';
     listaResultados.innerHTML = '<li style="padding: 12px; color: #475569; font-size: 13px;">⏳ Cargando presentaciones de ' + escaparHtml(nombreIngrediente) + '...</li>';
 
@@ -269,10 +370,21 @@ window.abrirModalAbastecimientoExterno = async function(ingredienteId, nombreIng
     }, 40);
 
     try {
-        const response = await fetch(`/api/produccion/ingredientes/${encodeURIComponent(ingredienteId)}/articulos-abastecimiento`);
+        const qs = usuarioId ? `?usuario_id=${encodeURIComponent(usuarioId)}` : '';
+        const response = await fetch(`/api/produccion/ingredientes/${encodeURIComponent(ingredienteId)}/articulos-abastecimiento${qs}`);
         if (response.ok) {
             const payload = await response.json();
             articulosDelIngrediente = Array.isArray(payload.data) ? payload.data : [];
+            if (payload.ingrediente && payload.ingrediente.saldo_personal_actual !== null && payload.ingrediente.saldo_personal_actual !== undefined) {
+                const saldoDb = parseFloat(payload.ingrediente.saldo_personal_actual);
+                if (!isNaN(saldoDb)) {
+                    saldoActualDomicilio = saldoDb;
+                }
+            }
+            if (payload.ingrediente && payload.ingrediente.unidad_medida) {
+                ingredienteUnidadBase = payload.ingrediente.unidad_medida;
+            }
+            nombreIngredienteDisplay.textContent = `Ingrediente: ${nombreIngrediente} · Saldo actual en domicilio: ${saldoActualDomicilio.toFixed(2)} ${ingredienteUnidadBase || 'kg'}`;
         } else {
             articulosDelIngrediente = [];
         }
@@ -281,11 +393,12 @@ window.abrirModalAbastecimientoExterno = async function(ingredienteId, nombreIng
         articulosDelIngrediente = [];
     }
 
-    renderizarListaFiltrada();
-
-    // Si solo existe 1 única presentación válida, preseleccionarla para ahorrar un clic
-    if (articulosDelIngrediente.length === 1 && !articuloSeleccionado) {
-        seleccionarArticulo(articulosDelIngrediente[0], { desdeEscaner: false });
+    // Preseleccionar por defecto el primer bulto/envase prioritario con stock (o el primero de la lista)
+    if (articulosDelIngrediente.length > 0 && !articuloSeleccionado) {
+        const preferido = articulosDelIngrediente.find(a => (parseFloat(a.stock_consolidado) || 0) > 0) || articulosDelIngrediente[0];
+        seleccionarArticulo(preferido, { desdeEscaner: false, mantenerFocoEscaner: true });
+    } else {
+        renderizarListaFiltrada({ autoSeleccionarPrimero: false });
     }
 };
 
@@ -295,52 +408,96 @@ function cerrarModal() {
     }
 }
 
-function renderizarListaFiltrada() {
+function obtenerResultadosFiltradosActuales() {
+    const query = (inputBusqueda ? inputBusqueda.value : '').trim();
+    const tokens = normalizar(query).split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return articulosDelIngrediente;
+    return articulosDelIngrediente.filter(art => {
+        const bolsa = normalizar(`${art.numero || ''} ${art.nombre || ''} ${art.codigo_barras || ''}`);
+        return tokens.every(t => bolsa.includes(t));
+    });
+}
+
+function renderizarListaFiltrada({ autoSeleccionarPrimero = false } = {}) {
     if (!listaResultados) return;
     listaResultados.innerHTML = '';
     listaResultados.style.display = 'block';
 
-    const query = (inputBusqueda ? inputBusqueda.value : '').trim();
-    const tokens = normalizar(query).split(/\s+/).filter(Boolean);
-
-    const resultados = tokens.length === 0
-        ? articulosDelIngrediente
-        : articulosDelIngrediente.filter(art => {
-            const bolsa = normalizar(`${art.numero || ''} ${art.nombre || ''} ${art.codigo_barras || ''}`);
-            return tokens.every(t => bolsa.includes(t));
-        });
+    const resultados = obtenerResultadosFiltradosActuales();
 
     if (resultados.length === 0) {
         listaResultados.innerHTML = `<li style="padding: 12px; color: #64748b; font-size: 13px;">No hay presentaciones de <strong>${escaparHtml(ingredienteDestinoNombre)}</strong> que coincidan con el filtro.</li>`;
         return;
     }
 
+    if (autoSeleccionarPrimero) {
+        const sigueEnLista = articuloSeleccionado && resultados.some(r => r.numero === articuloSeleccionado.numero);
+        if (!sigueEnLista) {
+            const mejor = resultados.find(r => (parseFloat(r.stock_consolidado) || 0) > 0) || resultados[0];
+            if (mejor) {
+                seleccionarArticulo(mejor, { desdeEscaner: false, mantenerFocoBusqueda: true });
+                return;
+            }
+        }
+    }
+
     resultados.forEach(art => {
         const li = document.createElement('li');
         const esSeleccionado = articuloSeleccionado && articuloSeleccionado.numero === art.numero;
-        li.style.padding = '9px 12px';
+        li.style.padding = '8px 11px';
         li.style.cursor = 'pointer';
         li.style.borderBottom = '1px solid #e2e8f0';
         li.style.background = esSeleccionado ? '#dbeafe' : '#ffffff';
-        li.style.transition = 'background 0.15s';
+        li.style.borderLeft = esSeleccionado ? '4px solid #1d4ed8' : '4px solid transparent';
+        li.style.transition = 'background 0.12s';
+
+        li.addEventListener('mouseenter', () => {
+            if (!esSeleccionado) li.style.background = '#f1f5f9';
+        });
+        li.addEventListener('mouseleave', () => {
+            li.style.background = esSeleccionado ? '#dbeafe' : '#ffffff';
+        });
 
         const stockNum = parseFloat(art.stock_consolidado) || 0;
         const statusColor = stockNum > 0 ? '#15803d' : '#b91c1c';
-        const kgU = parseFloat(art.kilos_unidad) || deducirKilosUnidadDesdeNombre(art.nombre);
+        const kgU = parseFloat(art.kilos_unidad) > 0
+            ? parseFloat(art.kilos_unidad)
+            : deducirKilosUnidadDesdeNombre(art.nombre);
         const unidadTxt = deducirUnidadMedidaDesdeNombre(art.nombre);
-        const barrasTxt = art.codigo_barras ? `🔖 ${escaparHtml(art.codigo_barras)}` : 'Sin cód. barras';
+
+        const esPack = Boolean(art.es_pack_comercial) || /\b\d+\s*x\s*\d+/i.test(String(art.nombre || ''));
+        const esBulto = Boolean(art.es_bulto_insumo) || (!esPack && kgU >= 2);
+
+        let badgeTipoHtml = '';
+        if (esBulto) {
+            badgeTipoHtml = '<span style="font-size: 10.5px; font-weight: 800; color: #065f46; background: #d1fae5; border: 1px solid #6ee7b7; padding: 1px 6px; border-radius: 4px;">🏭 Bulto Insumo</span>';
+        } else if (esPack) {
+            badgeTipoHtml = '<span style="font-size: 10.5px; font-weight: 700; color: #475569; background: #f1f5f9; border: 1px solid #cbd5e1; padding: 1px 6px; border-radius: 4px;">📦 Pack multi-unid.</span>';
+        } else if (kgU < 1) {
+            badgeTipoHtml = '<span style="font-size: 10.5px; font-weight: 800; color: #92400e; background: #fef3c7; border: 1px solid #fcd34d; padding: 1px 6px; border-radius: 4px;">⚠️ Fracción chica</span>';
+        }
+
+        const colorPesoBg = kgU < 1 ? '#fffbeb' : '#eff6ff';
+        const colorPesoBd = kgU < 1 ? '#f59e0b' : '#60a5fa';
+        const colorPesoTx = kgU < 1 ? '#92400e' : '#1e40af';
 
         li.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
-                <div style="font-weight: 700; font-size: 13.5px; color: #0f172a;">
-                    <span style="font-family: monospace; color: #1d4ed8;">[${escaparHtml(art.numero)}]</span> ${escaparHtml(art.nombre || 'Sin nombre')}
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div style="font-weight: 700; font-size: 13px; color: #0f172a; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                    <span style="font-family: monospace; color: #1d4ed8;">[${escaparHtml(art.numero)}]</span>
+                    <span>${escaparHtml(art.nombre || 'Sin nombre')}</span>
+                    ${badgeTipoHtml}
                 </div>
-                ${esSeleccionado ? '<span style="font-size: 11px; font-weight: 800; color: #1d4ed8; background: #eff6ff; border: 1px solid #93c5fd; padding: 1px 7px; border-radius: 999px;">✓ Seleccionado</span>' : ''}
+                ${esSeleccionado ? '<span style="font-size: 11px; font-weight: 800; color: #ffffff; background: #1d4ed8; padding: 2px 8px; border-radius: 999px;">✓ Seleccionado</span>' : ''}
             </div>
-            <div style="display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; margin-top: 4px; color: #475569;">
-                <span>${barrasTxt}</span>
-                <span>⚖️ <strong>${kgU.toFixed(2)} ${unidadTxt}</strong> / u</span>
-                <span style="color: ${statusColor}; font-weight: 700;">📊 Stock Depósito: ${stockNum.toFixed(2)}</span>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; margin-top: 5px;">
+                <span style="background: ${colorPesoBg}; border: 1px solid ${colorPesoBd}; color: ${colorPesoTx}; font-weight: 800; padding: 1px 8px; border-radius: 5px;">
+                    ⚖️ 1 envase = ${kgU.toFixed(2)} ${unidadTxt}
+                </span>
+                <span style="color: ${statusColor}; font-weight: 800; background: ${stockNum > 0 ? '#f0fdf4' : '#fef2f2'}; border: 1px solid ${stockNum > 0 ? '#bbf7d0' : '#fecaca'}; padding: 1px 8px; border-radius: 5px;">
+                    📊 Stock Depósito: ${Number.isInteger(stockNum) ? stockNum : stockNum.toFixed(2)} u.
+                </span>
+                ${art.codigo_barras ? `<span style="color: #64748b; font-size: 11.5px;">🔖 ${escaparHtml(art.codigo_barras)}</span>` : ''}
             </div>
         `;
 
@@ -349,7 +506,7 @@ function renderizarListaFiltrada() {
     });
 }
 
-function seleccionarArticulo(art, { desdeEscaner = false } = {}) {
+function seleccionarArticulo(art, { desdeEscaner = false, mantenerFocoEscaner = false, mantenerFocoBusqueda = false } = {}) {
     const kgU = parseFloat(art.kilos_unidad) > 0
         ? parseFloat(art.kilos_unidad)
         : deducirKilosUnidadDesdeNombre(art.nombre || art.descripcion);
@@ -364,35 +521,46 @@ function seleccionarArticulo(art, { desdeEscaner = false } = {}) {
 
     if (desdeEscaner) {
         mostrarAlertaEscaner(
-            `✅ Código reconocido: <strong>[${escaparHtml(art.numero)}] ${escaparHtml(art.nombre || '')}</strong>`,
+            `✅ Código reconocido: <strong>[${escaparHtml(art.numero)}] ${escaparHtml(art.nombre || '')}</strong> (1 envase = ${kgU.toFixed(2)} ${unidadMedida})`,
             'success'
         );
     } else {
         mostrarAlertaEscaner(null);
     }
 
+    const stockDep = parseFloat(art.stock_consolidado) || 0;
     if (divSeleccionado) {
         divSeleccionado.innerHTML = `
-            ✅ <strong>Artículo a retirar:</strong> <span style="font-family: monospace;">[${escaparHtml(art.numero)}]</span> ${escaparHtml(art.nombre || '')}
-            ${art.codigo_barras ? `<span style="color:#475569; margin-left:6px;">(🔖 ${escaparHtml(art.codigo_barras)})</span>` : ''}
-            — <strong>${kgU.toFixed(2)} ${unidadMedida}/u</strong>
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+                <div>
+                    ✅ <strong>Envase elegido:</strong>
+                    <span style="font-family: monospace; font-weight: 800;">[${escaparHtml(art.numero)}]</span>
+                    <strong>${escaparHtml(art.nombre || '')}</strong>
+                </div>
+                <span style="background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; font-weight: 800; font-size: 12px; padding: 2px 8px; border-radius: 6px;">
+                    1 envase = ${kgU.toFixed(2)} ${unidadMedida} · Stock: ${Number.isInteger(stockDep) ? stockDep : stockDep.toFixed(2)} u.
+                </span>
+            </div>
         `;
         divSeleccionado.style.display = 'block';
     }
 
-    if (!inputCantidad.value || parseFloat(inputCantidad.value) <= 0) {
+    if (subtextoEnvaseUnitario) {
+        subtextoEnvaseUnitario.innerHTML = `Cada unidad equivale a <strong>${kgU.toFixed(2)} ${unidadMedida}</strong>`;
+    }
+
+    const cantActual = parseInt(inputCantidad?.value || '0', 10);
+    if (!inputCantidad.value || isNaN(cantActual) || cantActual < 1) {
         inputCantidad.value = '1';
+        actualizarPillsPresetActiva(1);
+    } else {
+        actualizarPillsPresetActiva(cantActual);
     }
 
-    const labelUnidad = document.getElementById('unidad-abastecer-label');
-    if (labelUnidad) {
-        labelUnidad.textContent = unidadMedida;
-    }
-
-    renderizarListaFiltrada();
+    renderizarListaFiltrada({ autoSeleccionarPrimero: false });
     calcularKilos();
 
-    if (desdeEscaner && inputCantidad) {
+    if (desdeEscaner && inputCantidad && !mantenerFocoEscaner && !mantenerFocoBusqueda) {
         inputCantidad.focus();
         inputCantidad.select();
     }
@@ -400,23 +568,65 @@ function seleccionarArticulo(art, { desdeEscaner = false } = {}) {
 
 function calcularKilos() {
     if (!articuloSeleccionado) {
-        btnConfirmar.disabled = true;
-        divResumen.style.display = 'none';
+        if (btnConfirmar) {
+            btnConfirmar.disabled = true;
+            btnConfirmar.innerHTML = 'Confirmar Retiro';
+        }
+        if (divResumen) divResumen.style.display = 'none';
         return;
     }
 
-    const cant = parseFloat(inputCantidad.value);
-    if (isNaN(cant) || cant <= 0) {
-        btnConfirmar.disabled = true;
-        divResumen.style.display = 'none';
+    const cantRaw = parseInt(inputCantidad.value, 10);
+    if (isNaN(cantRaw) || cantRaw < 1) {
+        if (btnConfirmar) {
+            btnConfirmar.disabled = true;
+            btnConfirmar.innerHTML = 'Confirmar Retiro';
+        }
+        if (divResumen) divResumen.style.display = 'none';
         return;
     }
 
-    const totalKilos = cant * (articuloSeleccionado.kilos_unidad || DEFAULT_KILOS_FALLBACK);
-    spanKilosTotales.textContent = totalKilos.toFixed(2);
-    divResumen.style.display = 'block';
-    if (!abastecimientoEnVuelo) {
+    const kgUnidad = articuloSeleccionado.kilos_unidad || DEFAULT_KILOS_FALLBACK;
+    const unidad = articuloSeleccionado.unidad_medida || ingredienteUnidadBase || 'kg';
+    const totalKilos = cantRaw * kgUnidad;
+    const nuevoSaldo = saldoActualDomicilio + totalKilos;
+    const stockDep = parseFloat(articuloSeleccionado.stock_consolidado) || 0;
+
+    if (desgloseLinea1) {
+        const avisoStockDep = cantRaw > stockDep
+            ? ` <span style="font-size: 11.5px; font-weight: 700; color: #b45309; background: #fef3c7; border: 1px solid #fcd34d; padding: 1px 6px; border-radius: 4px; margin-left: 6px;">⚠️ Supera stock en depósito (${Number.isInteger(stockDep) ? stockDep : stockDep.toFixed(2)} u.)</span>`
+            : '';
+        desgloseLinea1.innerHTML = `📦 Retiro actual: ${cantRaw} × ${kgUnidad.toFixed(2)} ${unidad} = <span style="color: #15803d; text-decoration: underline;">+${totalKilos.toFixed(2)} ${unidad}</span>${avisoStockDep}`;
+    }
+
+    if (desgloseLinea2) {
+        const colPrev = saldoActualDomicilio < -0.001 ? '#b91c1c' : '#334155';
+        const colNuevo = nuevoSaldo < -0.001 ? '#b91c1c' : '#15803d';
+        desgloseLinea2.innerHTML = `🏠 Saldo actual en domicilio: <strong style="color: ${colPrev};">${saldoActualDomicilio.toFixed(2)} ${unidad}</strong> &nbsp;→&nbsp; Nuevo saldo resultante: <strong style="color: ${colNuevo}; font-size: 14px;">${nuevoSaldo.toFixed(2)} ${unidad}</strong>`;
+    }
+
+    if (desgloseLinea3) {
+        if (consumoCarroActual > 0.001) {
+            const restoTrasCarro = nuevoSaldo - consumoCarroActual;
+            if (restoTrasCarro >= -0.005) {
+                desgloseLinea3.innerHTML = `🎯 Consumo de este carro: <strong>${consumoCarroActual.toFixed(2)} ${unidad}</strong> · <span style="color: #065f46; font-weight: 700;">✅ Cubre el carro (quedarán ${restoTrasCarro.toFixed(2)} ${unidad} libres)</span>`;
+            } else {
+                desgloseLinea3.innerHTML = `🎯 Consumo de este carro: <strong>${consumoCarroActual.toFixed(2)} ${unidad}</strong> · <span style="color: #b45309; font-weight: 700;">⚠️ Aún faltarían ${Math.abs(restoTrasCarro).toFixed(2)} ${unidad} para cubrir este carro</span>`;
+            }
+            desgloseLinea3.style.display = 'block';
+        } else {
+            desgloseLinea3.innerHTML = '';
+            desgloseLinea3.style.display = 'none';
+        }
+    }
+
+    if (divResumen) {
+        divResumen.style.display = 'block';
+    }
+
+    if (btnConfirmar && !abastecimientoEnVuelo) {
         btnConfirmar.disabled = false;
+        btnConfirmar.innerHTML = `Confirmar retiro (+${totalKilos.toFixed(2)} ${unidad})`;
     }
 }
 
@@ -427,8 +637,11 @@ async function confirmarAbastecimiento(forzarRepetido = false) {
     }
     if (!articuloSeleccionado || !ingredienteDestinoId) return;
 
-    const cantidad = parseFloat(inputCantidad.value);
-    if (isNaN(cantidad) || cantidad <= 0) return;
+    const cantidad = parseInt(inputCantidad.value, 10);
+    if (isNaN(cantidad) || cantidad < 1) {
+        alert('Ingresá una cantidad entera mayor o igual a 1 envase.');
+        return;
+    }
 
     const colaboradorData = localStorage.getItem('colaboradorActivo');
 
@@ -451,6 +664,8 @@ async function confirmarAbastecimiento(forzarRepetido = false) {
     btnConfirmar.disabled = true;
     btnConfirmar.innerHTML = 'Procesando...';
     if (inputCantidad) inputCantidad.disabled = true;
+    if (btnRestarBulto) btnRestarBulto.disabled = true;
+    if (btnSumarBulto) btnSumarBulto.disabled = true;
 
     const payload = {
         articulo_numero: articuloSeleccionado.numero,
@@ -474,15 +689,16 @@ async function confirmarAbastecimiento(forzarRepetido = false) {
             if (response.status === 409 && err.codigo === 'POSIBLE_DUPLICADO_RECIENTE') {
                 abastecimientoEnVuelo = false;
                 if (inputCantidad) inputCantidad.disabled = false;
-                btnConfirmar.disabled = false;
-                btnConfirmar.innerHTML = 'Confirmar Retiro';
+                if (btnRestarBulto) btnRestarBulto.disabled = false;
+                if (btnSumarBulto) btnSumarBulto.disabled = false;
+                calcularKilos();
 
                 let deseaRepetir = false;
                 if (typeof Swal !== 'undefined') {
                     const resDup = await Swal.fire({
                         icon: 'warning',
                         title: '⚠️ Retiro idéntico recién registrado',
-                        html: `<p style="font-size:0.95em;line-height:1.45;">${escaparHtml(err.error || 'Hace pocos segundos ya acreditaste un retiro idéntico de este insumo.')}</p><p style="margin-top:8px;font-weight:600;">¿Confirmás retirar un SEGUNDO bulto/unidad adicional?</p>`,
+                        html: `<p style="font-size:0.95em;line-height:1.45;">${escaparHtml(err.error || 'Hace pocos segundos ya acreditaste un retiro idéntico de este insumo.')}</p><p style="margin-top:8px;font-weight:600;">¿Confirmás retirar bultos adicionales?</p>`,
                         showCancelButton: true,
                         confirmButtonText: 'Sí, retirar adicional',
                         cancelButtonText: 'No, ya estaba cargado',
@@ -492,7 +708,7 @@ async function confirmarAbastecimiento(forzarRepetido = false) {
                     });
                     deseaRepetir = !!resDup.isConfirmed;
                 } else {
-                    deseaRepetir = window.confirm(`${err.error || 'Hace pocos segundos ya acreditaste un retiro idéntico.'}\n\n¿Confirmás retirar un segundo bulto adicional?`);
+                    deseaRepetir = window.confirm(`${err.error || 'Hace pocos segundos ya acreditaste un retiro idéntico.'}\n\n¿Confirmás retirar bultos adicionales?`);
                 }
 
                 if (deseaRepetir) {
@@ -505,30 +721,41 @@ async function confirmarAbastecimiento(forzarRepetido = false) {
             throw new Error(err.error || err.detalles || 'Fallo interno en el servidor');
         }
 
+        const respData = await response.json().catch(() => ({}));
         currentAbastecimientoRequestId = null;
 
         if (typeof window.invalidarCacheCarro === 'function') {
             window.invalidarCacheCarro();
         }
 
-        const totalKilos = cantidad * (articuloSeleccionado.kilos_unidad || DEFAULT_KILOS_FALLBACK);
-        const u = articuloSeleccionado.unidad_medida || 'kg';
-        const mensajeExito = `✅ Retiro confirmado: ${cantidad} x ${articuloSeleccionado.kilos_unidad} ${u} (Total: ${totalKilos.toFixed(2)} ${u})`;
+        const kgU = articuloSeleccionado.kilos_unidad || DEFAULT_KILOS_FALLBACK;
+        const totalKilos = respData.kilos_acreditados !== undefined
+            ? parseFloat(respData.kilos_acreditados)
+            : (cantidad * kgU);
+        const saldoAnt = respData.saldo_anterior !== undefined
+            ? parseFloat(respData.saldo_anterior)
+            : saldoActualDomicilio;
+        const saldoNvo = respData.saldo_actual !== undefined
+            ? parseFloat(respData.saldo_actual)
+            : (saldoAnt + totalKilos);
+        const u = articuloSeleccionado.unidad_medida || ingredienteUnidadBase || 'kg';
+
+        const mensajeExito = `${formatearConSigno(totalKilos)} ${u} ingresados (${cantidad} × ${kgU.toFixed(2)} ${u}) · Saldo anterior: ${saldoAnt.toFixed(2)} ${u} → Saldo actual: ${saldoNvo.toFixed(2)} ${u}`;
         cerrarModal();
 
-        if (typeof window.mostrarNotificacionExito === 'function') {
-            window.mostrarNotificacionExito(mensajeExito);
-        } else if (typeof Swal !== 'undefined') {
+        if (typeof Swal !== 'undefined') {
             Swal.fire({
                 toast: true,
                 position: 'top-end',
                 icon: 'success',
-                title: mensajeExito,
+                title: `✅ ${mensajeExito}`,
                 showConfirmButton: false,
-                timer: 3000
+                timer: 4500
             });
+        } else if (typeof window.mostrarNotificacionExito === 'function') {
+            window.mostrarNotificacionExito(`✅ ${mensajeExito}`);
         } else {
-            alert(mensajeExito);
+            alert(`✅ ${mensajeExito}`);
         }
 
         // Refrescar inmediatamente sin esperar el debounce de 500ms para que el saldo domiciliario se vea al instante
@@ -540,11 +767,12 @@ async function confirmarAbastecimiento(forzarRepetido = false) {
         }
     } catch (error) {
         alert('Hubo un error al confirmar el abastecimiento: ' + error.message);
-        btnConfirmar.disabled = false;
-        btnConfirmar.innerHTML = 'Confirmar Retiro';
+        calcularKilos();
     } finally {
         abastecimientoEnVuelo = false;
         if (inputCantidad) inputCantidad.disabled = false;
+        if (btnRestarBulto) btnRestarBulto.disabled = false;
+        if (btnSumarBulto) btnSumarBulto.disabled = false;
     }
 }
 
