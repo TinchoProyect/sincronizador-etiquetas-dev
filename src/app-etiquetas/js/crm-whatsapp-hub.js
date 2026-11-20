@@ -40,7 +40,8 @@
         _firmaListaChats: '',
         _firmaDetalleChat: '',
         _asistenteLoadSeq: 0,
-        _asistenteChatRenderizadoId: null
+        _asistenteChatRenderizadoId: null,
+        _autoEjecutarAgenteTrasAbrir: null
     };
 
     const CATEGORIAS_CONTACTO_UI = {
@@ -50,6 +51,14 @@
         PERSONAL:       { label: '🔒 Personal',       corto: '🔒 Personal',  bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
         IGNORADO_BOT:   { label: '🚫 Ignorar / Bot',  corto: '🚫 Bot',       bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
         SIN_CLASIFICAR: { label: '❓ Sin clasificar', corto: '❓ Otro',      bg: '#f8fafc', color: '#475569', border: '#cbd5e1' }
+    };
+
+    const ROLES_OPERATIVOS_UI = {
+        DUENO_TITULAR:   { icon: '👑', label: '👑 Dueño / Titular',     corto: '👑 Dueño',      bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
+        COMPRAS_PEDIDOS: { icon: '🛒', label: '🛒 Compras / Pedidos',   corto: '🛒 Compras',    bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
+        PAGOS_ADMIN:     { icon: '💳', label: '💳 Pagos / Admin',       corto: '💳 Pagos',      bg: '#dcfce7', color: '#166534', border: '#86efac' },
+        RECEPCION_LOCAL: { icon: '🏪', label: '🏪 Recepción / Local',   corto: '🏪 Recepción',  bg: '#f3e8ff', color: '#6b21a8', border: '#d8b4fe' },
+        COMPARTIDO:      { icon: '👥', label: '👥 Teléfono Compartido', corto: '👥 Compartido', bg: '#f1f5f9', color: '#334155', border: '#cbd5e1' }
     };
 
     /**
@@ -1447,6 +1456,138 @@
                     gap: 10px !important;
                 }
             }
+
+            /* === Fase 3.5: Stepper Visual Vivo, Selector de Rol Operativo y Chip de Trato Aprendido === */
+            @keyframes waStepperPulse {
+                0%, 100% { transform: scale(1); opacity: 1; }
+                50% { transform: scale(1.25); opacity: 0.55; }
+            }
+            .wa-copilot-stepper {
+                background: #f8fafc;
+                border: 1px solid #bfdbfe;
+                border-left: 3px solid #2563eb;
+                border-radius: 9px;
+                padding: 8px 10px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                box-shadow: 0 2px 6px rgba(37, 99, 235, 0.08);
+            }
+            .wa-copilot-stepper.error {
+                background: #fef2f2;
+                border-color: #fca5a5;
+                border-left-color: #dc2626;
+                box-shadow: none;
+            }
+            .wa-stepper-hdr {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 6px;
+                font-size: 0.72rem;
+                font-weight: 800;
+                color: #1e3a8a;
+            }
+            .wa-stepper-timer {
+                font-size: 0.66rem;
+                font-weight: 800;
+                color: #2563eb;
+                background: #dbeafe;
+                padding: 1px 6px;
+                border-radius: 999px;
+                font-variant-numeric: tabular-nums;
+            }
+            .wa-stepper-list {
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }
+            .wa-stepper-row {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 0.72rem;
+                line-height: 1.3;
+                color: #94a3b8;
+                transition: color 0.15s ease;
+            }
+            .wa-stepper-row.done {
+                color: #15803d;
+                font-weight: 700;
+            }
+            .wa-stepper-row.active {
+                color: #0f172a;
+                font-weight: 800;
+            }
+            .wa-stepper-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                background: #2563eb;
+                flex-shrink: 0;
+                animation: waStepperPulse 1.15s ease-in-out infinite;
+            }
+            .wa-stepper-sub {
+                font-size: 0.68rem;
+                color: #475569;
+                padding-left: 16px;
+                line-height: 1.3;
+            }
+            .wa-rol-wrap {
+                position: relative;
+                display: inline-flex;
+            }
+            .wa-rol-popover {
+                position: fixed;
+                z-index: 99999;
+                min-width: 220px;
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 10px;
+                box-shadow: 0 10px 28px rgba(15, 23, 42, 0.2);
+                padding: 5px;
+                display: none;
+                flex-direction: column;
+                gap: 2px;
+            }
+            .wa-rol-popover.open {
+                display: flex;
+            }
+            .wa-rol-guardrail-banner {
+                background: #fffbeb;
+                border: 1px solid #fcd34d;
+                border-left: 3px solid #d97706;
+                border-radius: 8px;
+                padding: 7px 9px;
+                font-size: 0.71rem;
+                color: #78350f;
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+                line-height: 1.35;
+            }
+            .wa-trato-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                background: #f5f3ff;
+                border: 1px solid #c4b5fd;
+                color: #5b21b6;
+                border-radius: 999px;
+                padding: 1.5px 7px;
+                font-size: 0.68rem;
+                font-weight: 800;
+            }
+            .wa-trato-chip button {
+                border: none;
+                background: transparent;
+                color: inherit;
+                cursor: pointer;
+                padding: 0 2px;
+                font-size: 0.7rem;
+                font-weight: 800;
+                line-height: 1;
+            }
         `;
         document.head.appendChild(style);
     }
@@ -1502,6 +1643,196 @@
         if (pop) pop.classList.remove('open');
         if (btn) btn.setAttribute('aria-expanded', 'false');
     };
+
+    window.cerrarMenuRolConsolaWa = function () {
+        const pop = document.getElementById('wa-rol-popover');
+        const btn = document.getElementById('btn-wa-rol-menu');
+        if (pop) pop.classList.remove('open');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+    };
+
+    window.toggleMenuRolConsolaWa = function (btn, event) {
+        if (event) event.stopPropagation();
+        const pop = document.getElementById('wa-rol-popover');
+        if (!btn || !pop) return;
+        const abrir = !pop.classList.contains('open');
+        window.cerrarMenuAtajosConsolaWa();
+        window.cerrarMenuCategoriaConsolaWa();
+        window.cerrarMenuRolConsolaWa();
+        if (!abrir) return;
+
+        pop.style.visibility = 'hidden';
+        pop.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
+
+        const rect = btn.getBoundingClientRect();
+        const popW = pop.offsetWidth || 226;
+        const popH = pop.offsetHeight || 220;
+        const pad = 10;
+        const left = Math.max(pad, Math.min(rect.right - popW, window.innerWidth - popW - pad));
+        let top = rect.bottom + 6;
+        if (top + popH > window.innerHeight - pad) {
+            top = Math.max(pad, rect.top - popH - 6);
+        }
+        pop.style.left = `${left}px`;
+        pop.style.top = `${top}px`;
+        pop.style.visibility = 'visible';
+    };
+
+    window.cambiarRolOperativoChatWa = async function (chatPk, nuevoRol) {
+        window.cerrarMenuRolConsolaWa();
+        try {
+            const res = await fetch(`/api/crm/whatsapp/chats/${chatPk}/config`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ rol_operativo: nuevoRol || null })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.success) {
+                estadoConsola._firmaDetalleChat = '';
+                const meta = nuevoRol ? ROLES_OPERATIVOS_UI[nuevoRol] : null;
+                if (estadoAsistenteComercialWa && Number(estadoAsistenteComercialWa.chatId) === Number(chatPk)) {
+                    estadoAsistenteComercialWa.rolOperativo = nuevoRol || null;
+                    estadoAsistenteComercialWa._ignorarGuardrailRol = false;
+                }
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: 'success',
+                        title: meta ? `Rol actualizado: ${meta.label}` : 'Rol operativo limpiado',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                }
+                await cargarListaChatsConsola(false);
+                if (estadoConsola.chatActivoId === chatPk) {
+                    await seleccionarChatConsola(chatPk, false);
+                    if (estadoAsistenteComercialWa && Number(estadoAsistenteComercialWa.chatId) === Number(chatPk)) {
+                        estadoAsistenteComercialWa.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(estadoAsistenteComercialWa);
+                        renderizarBoxMesaAgentesSegunModoWa(estadoAsistenteComercialWa, estadoAsistenteComercialWa.resultadoMesa);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Error cambiando rol operativo:', err);
+        }
+    };
+
+    window.editarTratoContactoChatWa = async function (chatPk) {
+        const st = estadoAsistenteComercialWa;
+        const chatActual = estadoConsola.detalleActivo?.chat || {};
+        const apodoActual = (st && Number(st.chatId) === Number(chatPk))
+            ? (st.apodoPreferido || '')
+            : (chatActual.apodo_preferido || '');
+        const notaActual = (st && Number(st.chatId) === Number(chatPk))
+            ? (st.notaTrato || '')
+            : (chatActual.memoria_trato_json?.nota_trato || '');
+
+        if (typeof Swal === 'undefined') return;
+        const res = await Swal.fire({
+            title: '✨ Cómo llamar a este contacto',
+            width: '440px',
+            html: `
+                <div style="text-align:left; font-size:0.82rem; color:#334155; display:flex; flex-direction:column; gap:10px;">
+                    <div>
+                        <label style="font-weight:800; display:block; margin-bottom:4px;">Nombre o apodo preferido para el Asistente:</label>
+                        <input id="swal-wa-apodo-pref" type="text" value="${escaparHtml(apodoActual)}" placeholder="Ej: Fran, Ale, Ceci (vacío = usar agenda)" style="width:100%; padding:7px 9px; border:1px solid #cbd5e1; border-radius:7px; box-sizing:border-box; font-size:0.85rem;">
+                    </div>
+                    <div>
+                        <label style="font-weight:800; display:block; margin-bottom:4px;">Nota breve de trato (opcional):</label>
+                        <input id="swal-wa-nota-trato" type="text" value="${escaparHtml(notaActual)}" placeholder="Ej: Atiende Fran aunque el tel esté agendado como Alejandro" style="width:100%; padding:7px 9px; border:1px solid #cbd5e1; border-radius:7px; box-sizing:border-box; font-size:0.82rem;">
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '💾 Guardar trato',
+            confirmButtonColor: '#6d28d9',
+            cancelButtonText: 'Cancelar',
+            preConfirm: () => ({
+                apodo: (document.getElementById('swal-wa-apodo-pref')?.value || '').trim(),
+                nota: (document.getElementById('swal-wa-nota-trato')?.value || '').trim()
+            })
+        });
+        if (!res.isConfirmed || !res.value) return;
+        try {
+            const r = await fetch(`/api/crm/whatsapp/chats/${chatPk}/config`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    apodo_preferido: res.value.apodo || null,
+                    nota_trato: res.value.nota
+                })
+            });
+            const j = await r.json().catch(() => ({}));
+            if (r.ok && j.success) {
+                estadoConsola._firmaDetalleChat = '';
+                if (estadoConsola.detalleActivo?.chat && Number(estadoConsola.detalleActivo.chat.id) === Number(chatPk)) {
+                    estadoConsola.detalleActivo.chat.apodo_preferido = j.data?.apodo_preferido || null;
+                    estadoConsola.detalleActivo.chat.memoria_trato_json = j.data?.memoria_trato_json || {};
+                }
+                if (st && Number(st.chatId) === Number(chatPk)) {
+                    st.apodoPreferido = j.data?.apodo_preferido || '';
+                    st.notaTrato = j.data?.memoria_trato_json?.nota_trato || '';
+                    st.memoriaTratoJson = j.data?.memoria_trato_json || {};
+                    st.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(st);
+                    renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa);
+                }
+                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: '✨ Preferencia de trato guardada', timer: 2000, showConfirmButton: false });
+            }
+        } catch (err) {
+            console.error('Error guardando trato:', err);
+        }
+    };
+
+    window.descartarApodoAprendidoChatWa = async function (chatPk) {
+        try {
+            const r = await fetch(`/api/crm/whatsapp/chats/${chatPk}/config`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ descartar_apodo: true })
+            });
+            const j = await r.json().catch(() => ({}));
+            if (r.ok && j.success) {
+                estadoConsola._firmaDetalleChat = '';
+                if (estadoConsola.detalleActivo?.chat && Number(estadoConsola.detalleActivo.chat.id) === Number(chatPk)) {
+                    estadoConsola.detalleActivo.chat.apodo_preferido = null;
+                    estadoConsola.detalleActivo.chat.memoria_trato_json = j.data?.memoria_trato_json || {};
+                }
+                if (estadoAsistenteComercialWa && Number(estadoAsistenteComercialWa.chatId) === Number(chatPk)) {
+                    estadoAsistenteComercialWa.apodoPreferido = '';
+                    estadoAsistenteComercialWa.memoriaTratoJson = j.data?.memoria_trato_json || {};
+                    estadoAsistenteComercialWa.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(estadoAsistenteComercialWa);
+                    renderizarBoxMesaAgentesSegunModoWa(estadoAsistenteComercialWa, estadoAsistenteComercialWa.resultadoMesa);
+                }
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: 'Trato aprendido descartado (vuelve al nombre de agenda)', timer: 2200, showConfirmButton: false });
+                }
+            }
+        } catch (err) {
+            console.error('Error descartando apodo:', err);
+        }
+    };
+
+    function mostrarToastAprendizajeTratoWa(chatPk, aprendizaje) {
+        if (!aprendizaje || !aprendizaje.valor) return;
+        const st = estadoAsistenteComercialWa;
+        if (st && Number(st.chatId) === Number(chatPk)) {
+            st.apodoPreferido = aprendizaje.valor;
+            st.memoriaTratoJson = { ...(st.memoriaTratoJson || {}), apodo: aprendizaje.valor, apodo_origen: aprendizaje.origen, apodo_reemplaza: aprendizaje.anterior || '' };
+            renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa || window.ejecutarMesaAgentesComercialesWa(st));
+        }
+        if (typeof Swal !== 'undefined') {
+            Swal.fire({
+                toast: true,
+                position: 'top-end',
+                icon: 'success',
+                html: `<div style="font-size:0.77rem; line-height:1.35;">✨ Aprendí que a este contacto le decís <strong>"${escaparHtml(aprendizaje.valor)}"</strong>${aprendizaje.anterior ? ` <span style="color:#64748b;">(en lugar de ${escaparHtml(aprendizaje.anterior)})</span>` : ''}. <button type="button" onclick="window.descartarApodoAprendidoChatWa(${Number(chatPk)}); Swal.close();" style="margin-left:6px; border:1px solid #cbd5e1; background:#ffffff; color:#475569; border-radius:4px; padding:1px 6px; font-size:0.7rem; font-weight:800; cursor:pointer;">Deshacer</button></div>`,
+                timer: 4800,
+                showConfirmButton: false
+            });
+        }
+    }
 
     window.toggleMenuCategoriaConsolaWa = function (btn, event) {
         if (event) event.stopPropagation();
@@ -1612,12 +1943,17 @@
         if (catWrap && !catWrap.contains(ev.target)) {
             window.cerrarMenuCategoriaConsolaWa();
         }
+        const rolWrap = document.getElementById('wa-rol-wrap');
+        if (rolWrap && !rolWrap.contains(ev.target)) {
+            window.cerrarMenuRolConsolaWa();
+        }
     });
 
     document.addEventListener('keydown', function (ev) {
         if (ev.key === 'Escape') {
             window.cerrarMenuAtajosConsolaWa();
             window.cerrarMenuCategoriaConsolaWa();
+            window.cerrarMenuRolConsolaWa();
         }
     });
 
@@ -3422,12 +3758,46 @@
                 ${contactosMismoCliente.map(ct => {
                     const esAct = Number(ct.id) === Number(chat.id);
                     const esHab = contactoHabitualId && Number(ct.id) === contactoHabitualId;
-                    const nom = escaparHtml(ct.contacto_nombre || ct.telefono_normalizado);
+                    const nom = escaparHtml(ct.apodo_preferido || ct.contacto_nombre || ct.telefono_normalizado);
+                    const rolMetaCt = ct.rol_operativo ? ROLES_OPERATIVOS_UI[ct.rol_operativo] : null;
+                    const icRol = rolMetaCt ? rolMetaCt.icon : '👤';
                     const crg = ct.contacto_cargo ? ` (${escaparHtml(ct.contacto_cargo)})` : '';
-                    return `<button type="button" onclick="window.seleccionarChatConsola(${ct.id}, true)" title="${esHab ? 'Contacto habitual / más reciente en WhatsApp' : 'Cambiar a este contacto del cliente'}" style="background:${esAct ? '#075e54' : '#ffffff'}; color:${esAct ? '#ffffff' : '#334155'}; border:1px solid ${esAct ? '#075e54' : (esHab ? '#10b981' : '#cbd5e1')}; border-radius:999px; padding:1.5px 7px; font-size:0.7rem; font-weight:${esAct || esHab ? '800' : '600'}; cursor:pointer; white-space:nowrap;">${esHab ? '★ ' : ''}👤 ${nom}${crg}</button>`;
+                    return `<button type="button" onclick="window.seleccionarChatConsola(${ct.id}, true)" title="${rolMetaCt ? rolMetaCt.label : (esHab ? 'Contacto habitual / más reciente en WhatsApp' : 'Cambiar a este contacto del cliente')}" style="background:${esAct ? '#075e54' : '#ffffff'}; color:${esAct ? '#ffffff' : '#334155'}; border:1px solid ${esAct ? '#075e54' : (esHab ? '#10b981' : '#cbd5e1')}; border-radius:999px; padding:1.5px 7px; font-size:0.7rem; font-weight:${esAct || esHab ? '800' : '600'}; cursor:pointer; white-space:nowrap;">${esHab ? '★ ' : ''}${icRol} ${nom}${crg}</button>`;
                 }).join('')}
                </div>`
             : '';
+
+        // Fase 3.5: Selector rápido 1-clic de Rol Operativo (solo para chats comerciales)
+        const esChatComercialRol = catActualKey === 'CLIENTE_BUNKER' || catActualKey === 'PROSPECTO';
+        const rolActualKey = chat.rol_operativo || '';
+        const rolActualUi = rolActualKey ? ROLES_OPERATIVOS_UI[rolActualKey] : null;
+        const rolSugHist = (!rolActualKey && chat.rol_sugerido_historial && ROLES_OPERATIVOS_UI[chat.rol_sugerido_historial.rol])
+            ? { ...chat.rol_sugerido_historial, ui: ROLES_OPERATIVOS_UI[chat.rol_sugerido_historial.rol] }
+            : null;
+        const selectorRolHtml = esChatComercialRol ? `
+            <div id="wa-rol-wrap" class="wa-rol-wrap">
+                <button type="button" id="btn-wa-rol-menu" aria-haspopup="true" aria-expanded="false" onclick="window.toggleMenuRolConsolaWa(this, event)" style="background: ${rolActualUi ? rolActualUi.bg : '#f8fafc'}; border: 1px solid ${rolActualUi ? rolActualUi.border : '#cbd5e1'}; color: ${rolActualUi ? rolActualUi.color : '#475569'}; padding: 4px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Rol operativo de este teléfono (sincronizado con Búnker)">
+                    ${rolActualUi ? rolActualUi.corto : '🏷️ Definir rol'} ▾
+                </button>
+                <div id="wa-rol-popover" class="wa-rol-popover" role="menu">
+                    ${rolSugHist ? `
+                        <button type="button" class="wa-categoria-item" style="background:#fffbeb; color:#92400e; border:1px solid #fde68a; margin-bottom:3px;" onclick="window.cambiarRolOperativoChatWa(${chat.id}, '${rolSugHist.rol}')" title="${escaparHtml(rolSugHist.motivo || '')}">
+                            <span>💡 Sugerido: ${rolSugHist.ui.corto}</span><span>✓</span>
+                        </button>
+                    ` : ''}
+                    ${Object.keys(ROLES_OPERATIVOS_UI).map(rk => {
+                        const rm = ROLES_OPERATIVOS_UI[rk];
+                        return `<button type="button" class="wa-categoria-item ${rolActualKey === rk ? 'active' : ''}" data-rol="${rk}" onclick="window.cambiarRolOperativoChatWa(${chat.id}, '${rk}')"><span>${rm.label}</span>${rolActualKey === rk ? '<span>✓</span>' : ''}</button>`;
+                    }).join('')}
+                    ${rolActualKey ? `
+                        <div class="wa-atajos-sep"></div>
+                        <button type="button" class="wa-categoria-item" data-rol="" onclick="window.cambiarRolOperativoChatWa(${chat.id}, '')">
+                            <span>🧹 Quitar rol</span>
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        ` : '';
 
         // Detectar bloque de mensajes entrantes recientes / no leídos al final del hilo para insertar separador visual claro
         let idxInicioBloqueEntrante = -1;
@@ -3546,6 +3916,7 @@
                                 ✓ Visto
                             </button>
                         ` : ''}
+                        ${selectorRolHtml}
                         <div id="wa-categoria-wrap" class="wa-categoria-wrap">
                             <button type="button" id="btn-wa-categoria-menu" aria-haspopup="true" aria-expanded="false" onclick="window.toggleMenuCategoriaConsolaWa(this, event)" style="background: ${catBtnBg}; border: 1px solid ${catBtnBorder}; color: ${catBtnColor}; padding: 4px 9px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Clasificar contacto en 1 clic">
                                 ${catBtnLabel} ▾
@@ -3949,6 +4320,9 @@
             }
             input.value = '';
             window.guardarBorradorChatWa(chatPk, '');
+            if (data.aprendizaje_detectado) {
+                mostrarToastAprendizajeTratoWa(chatPk, data.aprendizaje_detectado);
+            }
             await seleccionarChatConsola(chatPk, true);
             await cargarListaChatsConsola(true);
             if (typeof window.actualizarAlertasPizarra === 'function') window.actualizarAlertasPizarra();
@@ -7448,6 +7822,118 @@
     /**
      * Abre el Asistente Comercial Conversacional (Modal para el Operador)
      */
+    // ======================================================================================
+    // ⏱️ FASE 3.5: STEPPER VISUAL VIVO EN COLUMNA 3 (Progreso real por etapas + Cancelar/Reintentar)
+    // ======================================================================================
+    let _stepperCopilotoState = {
+        timerId: null,
+        startedAt: 0,
+        abortCtrl: null,
+        containerId: '',
+        titulo: '',
+        pasos: [],
+        activoIdx: 0,
+        subtitulo: ''
+    };
+
+    function construirHtmlStepperCopilotoWa(stateObj) {
+        const s = stateObj || _stepperCopilotoState;
+        const elapsed = s.startedAt ? Math.max(0, Math.floor((Date.now() - s.startedAt) / 1000)) : 0;
+        const subEfectivo = elapsed >= 5
+            ? 'Un segundo más, terminando el análisis para darte la mejor sugerencia...'
+            : (s.subtitulo || '');
+        const rowsHtml = (s.pasos || []).map((label, idx) => {
+            const esDone = idx < s.activoIdx;
+            const esAct = idx === s.activoIdx;
+            const cls = esDone ? 'done' : (esAct ? 'active' : '');
+            const icono = esDone
+                ? '<span style="color:#16a34a; font-weight:900; width:10px; text-align:center;">✓</span>'
+                : (esAct
+                    ? '<span class="wa-stepper-dot"></span>'
+                    : '<span style="width:8px; height:8px; border-radius:50%; background:#cbd5e1; flex-shrink:0;"></span>');
+            return `<div class="wa-stepper-row ${cls}">${icono}<span>${escaparHtml(label)}</span></div>`;
+        }).join('');
+
+        return `
+            <div id="wa-copilot-live-stepper" class="wa-copilot-stepper" role="status" aria-live="polite">
+                <div class="wa-stepper-hdr">
+                    <span>${escaparHtml(s.titulo || 'Preparando sugerencia...')}</span>
+                    <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
+                        <span class="wa-stepper-timer" id="wa-stepper-sec-badge">${elapsed}s</span>
+                        <button type="button" id="btn-wa-stepper-cancelar" onclick="window.cancelarOperacionCopilotoCol3Wa()" style="background:#ffffff; border:1px solid #cbd5e1; color:#475569; border-radius:5px; padding:1px 6px; font-size:0.65rem; font-weight:800; cursor:pointer;" title="Cancelar esta espera y redactar directo">✕ Cancelar</button>
+                    </div>
+                </div>
+                <div class="wa-stepper-list">${rowsHtml}</div>
+                ${subEfectivo ? `<div class="wa-stepper-sub">${escaparHtml(subEfectivo)}</div>` : ''}
+            </div>
+        `;
+    }
+
+    function detenerStepperCopilotoCol3Wa() {
+        if (_stepperCopilotoState.timerId) {
+            clearInterval(_stepperCopilotoState.timerId);
+            _stepperCopilotoState.timerId = null;
+        }
+        _stepperCopilotoState.abortCtrl = null;
+    }
+
+    function iniciarStepperCopilotoCol3Wa({ containerEl, containerId = '', titulo = 'Asistente pensando...', pasos = [], activoIdx = 0, subtitulo = '', abortCtrl = null } = {}) {
+        detenerStepperCopilotoCol3Wa();
+        _stepperCopilotoState = {
+            timerId: null,
+            startedAt: Date.now(),
+            abortCtrl,
+            containerId: containerId || (containerEl ? containerEl.id : ''),
+            titulo,
+            pasos,
+            activoIdx,
+            subtitulo
+        };
+        const render = () => {
+            const target = containerEl && containerEl.isConnected
+                ? containerEl
+                : (_stepperCopilotoState.containerId ? document.getElementById(_stepperCopilotoState.containerId) : null);
+            if (!target) return;
+            target.innerHTML = construirHtmlStepperCopilotoWa(_stepperCopilotoState);
+        };
+        render();
+        _stepperCopilotoState.timerId = setInterval(() => {
+            const badge = document.getElementById('wa-stepper-sec-badge');
+            const elapsed = Math.max(0, Math.floor((Date.now() - _stepperCopilotoState.startedAt) / 1000));
+            if (badge) {
+                badge.textContent = `${elapsed}s`;
+                if (elapsed === 5) render();
+            } else {
+                detenerStepperCopilotoCol3Wa();
+            }
+        }, 1000);
+        return {
+            avanzar(nuevoIdx, nuevoSubtitulo, nuevosPasos) {
+                if (Array.isArray(nuevosPasos)) _stepperCopilotoState.pasos = nuevosPasos;
+                _stepperCopilotoState.activoIdx = nuevoIdx;
+                if (nuevoSubtitulo !== undefined) _stepperCopilotoState.subtitulo = nuevoSubtitulo;
+                render();
+            },
+            setAbortCtrl(ctrl) {
+                _stepperCopilotoState.abortCtrl = ctrl;
+            },
+            detener: detenerStepperCopilotoCol3Wa
+        };
+    }
+
+    window.cancelarOperacionCopilotoCol3Wa = function () {
+        if (_stepperCopilotoState.abortCtrl) {
+            try { _stepperCopilotoState.abortCtrl.abort(); } catch (_) {}
+        }
+        detenerStepperCopilotoCol3Wa();
+        if (estadoAsistenteComercialWa) {
+            estadoAsistenteComercialWa.cargandoEspecialista = '';
+            estadoAsistenteComercialWa._especialistaInflight = false;
+            estadoAsistenteComercialWa.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(estadoAsistenteComercialWa);
+            renderizarBoxMesaAgentesSegunModoWa(estadoAsistenteComercialWa, estadoAsistenteComercialWa.resultadoMesa);
+        }
+    };
+
     window.abrirAsistenteComercialConversacionWa = async function (opciones = {}) {
         let chatId = opciones.chatId ? Number(opciones.chatId) : Number(estadoConsola.chatActivoId || 0);
         if (chatId && (!estadoConsola.detalleActivo || Number(estadoConsola.detalleActivo?.chat?.id) !== Number(chatId))) {
@@ -7455,10 +7941,11 @@
                 await window.seleccionarChatConsola(chatId, false);
             }
         }
-        let chatObj = estadoConsola.chatActivoDatos
-            || (estadoConsola.detalleActivo && estadoConsola.detalleActivo.chat)
-            || (estadoConsola.chats || []).find(c => Number(c.id) === Number(chatId))
-            || null;
+        let chatObj = (estadoConsola.detalleActivo && estadoConsola.detalleActivo.chat && (!chatId || Number(estadoConsola.detalleActivo.chat.id) === Number(chatId)))
+            ? estadoConsola.detalleActivo.chat
+            : (estadoConsola.chatActivoDatos
+                || (estadoConsola.chats || []).find(c => Number(c.id) === Number(chatId))
+                || null);
         if (!chatObj && estadoConsola.chats && estadoConsola.chats.length > 0) {
             const filtrados = typeof obtenerChatsFiltrados === 'function' ? obtenerChatsFiltrados() : estadoConsola.chats;
             chatObj = filtrados[0] || estadoConsola.chats[0];
@@ -7504,19 +7991,23 @@
         }
         const yaTieneSintesisLocal = Boolean(clienteId && window._cacheSintesisMemoriaClientesWa.has(Number(clienteId)) && !forzarRelectura);
 
+        let stepperCargaCol3 = null;
         if (usarModoInlineCol3) {
             window.cambiarTabColumna3Wa('ASISTENTE');
-            paneAsistCol3.innerHTML = `
-                <div id="wa-asist-col3-loader" style="margin: auto; text-align: center; padding: 26px 14px; color: #065f46;">
-                    <div style="font-size: 1.55rem; margin-bottom: 6px;">${yaTieneSintesisLocal ? '⚡' : '🧠'}</div>
-                    <div style="font-weight: 800; font-size: 0.85rem; color: #0f172a;">
-                        ${yaTieneSintesisLocal ? 'Levantando Asistente Híbrido...' : 'Analizando contexto comercial...'}
-                    </div>
-                    <div style="font-size: 0.74rem; color: #64748b; margin-top: 4px; line-height: 1.35;">
-                        ${escaparHtml(nombreCliente)} · Lista #${escaparHtml(listaId)}
-                    </div>
-                </div>
-            `;
+            paneAsistCol3.innerHTML = `<div id="wa-asist-col3-loader" style="padding: 14px 4px;"></div>`;
+            const loaderBox = document.getElementById('wa-asist-col3-loader');
+            stepperCargaCol3 = iniciarStepperCopilotoCol3Wa({
+                containerEl: loaderBox,
+                containerId: 'wa-asist-col3-loader',
+                titulo: `${nombreCliente} · Lista #${listaId}`,
+                pasos: [
+                    '📂 Leyendo ficha, cuenta y entregas',
+                    '🧠 Agente analizando conversación y redactando',
+                    '✨ Aplicando precios y formato LAMDA'
+                ],
+                activoIdx: 0,
+                subtitulo: yaTieneSintesisLocal ? 'Recuperando síntesis en memoria...' : 'Consultando saldo, habituales y últimos pedidos...'
+            });
         } else {
             Swal.fire({
                 title: yaTieneSintesisLocal
@@ -7802,12 +8293,22 @@
         }
 
         // 3b. Si en los últimos 6 mensajes hay algún audio (entrante o saliente de Martín) aún sin transcribir, transcribirlo en caliente antes de correr el asistente
+        let pasoIdxAgente = 1;
         if (chatId > 0 && Array.isArray(mensajesChat) && mensajesChat.length > 0) {
             const ult6Aud = mensajesChat.slice(-6).filter(m =>
                 (m.tipo_mensaje === 'ptt' || m.tipo_mensaje === 'audio') &&
                 (!m.cuerpo || String(m.cuerpo).trim() === '🎤 Mensaje de audio')
             );
             if (ult6Aud.length > 0) {
+                if (stepperCargaCol3) {
+                    pasoIdxAgente = 2;
+                    stepperCargaCol3.avanzar(1, `Escuchando ${ult6Aud.length} audio(s) reciente(s)...`, [
+                        '📂 Leyendo ficha, cuenta y entregas',
+                        '🎧 Revisando audios recientes',
+                        '🧠 Agente analizando conversación y redactando',
+                        '✨ Aplicando precios y formato LAMDA'
+                    ]);
+                }
                 try {
                     const trRes = await fetch(`/api/crm/whatsapp/chats/${encodeURIComponent(chatId)}/transcribir-audios`, {
                         method: 'POST',
@@ -7841,9 +8342,26 @@
             : [];
 
         const contactoNombreChat = String(chatObj?.contacto_nombre || chatObj?.pushname_wa || '').trim();
-        const nombreCorto = obtenerNombrePilaCortoWa(contactoNombreChat || nombreCliente);
+        const contactoCargoChat = String(chatObj?.contacto_cargo || '').trim();
+        const rolOperativoChat = chatObj?.rol_operativo || null;
+        const esTelefonoCompartidoChat = String(rolOperativoChat || '').toUpperCase() === 'COMPARTIDO';
+        const apodoPreferidoChat = String(chatObj?.apodo_preferido || '').trim();
+        const memoriaTratoChat = (chatObj?.memoria_trato_json && typeof chatObj.memoria_trato_json === 'object') ? chatObj.memoria_trato_json : {};
+        const notaTratoChat = String(memoriaTratoChat.nota_trato || '').trim();
+        const otrosContactosCliente = Array.isArray(estadoConsola.detalleActivo?.otros_contactos_cliente)
+            ? estadoConsola.detalleActivo.otros_contactos_cliente
+            : [];
+        // Prioridad estricta Fase 3.5: apodo_preferido > (si COMPARTIDO, neutro '') > agenda
+        const nombreCorto = apodoPreferidoChat || (esTelefonoCompartidoChat ? '' : obtenerNombrePilaCortoWa(contactoNombreChat || nombreCliente));
 
-        // 4b. Ejecutar razonamiento híbrido IA (Gemini 2.5 Flash — 2 Carriles x 8 Especialistas) sobre la base determinista
+        // Verificar si venimos de un Salto 1-Clic desde el Guardrail de Cobranza (auto-disparar especialista objetivo directo)
+        let saltoAgentePendiente = null;
+        if (estadoConsola._autoEjecutarAgenteTrasAbrir && Number(estadoConsola._autoEjecutarAgenteTrasAbrir.chatId) === Number(chatId)) {
+            saltoAgentePendiente = estadoConsola._autoEjecutarAgenteTrasAbrir;
+            estadoConsola._autoEjecutarAgenteTrasAbrir = null;
+        }
+
+        // 4b. Ejecutar razonamiento híbrido IA (2 Carriles x 8 Especialistas) sobre la base determinista
         let razonamientoIa = null;
         let errorCriticoIa = '';
         let articulosPdfSugeridosIa = [];
@@ -7851,21 +8369,32 @@
         let sugerirAdjuntarPdfCcIa = false;
         let habilitarGestionFacturaIa = false;
         const ultimoMsgChat = Array.isArray(mensajesChat) && mensajesChat.length > 0 ? mensajesChat[mensajesChat.length - 1] : null;
-        const carrilAutoInicial = Boolean(chatObj?.esperando_respuesta || (ultimoMsgChat && !ultimoMsgChat.from_me)) ? 'ENTRANTE' : 'SALIENTE';
+        const carrilAutoInicial = saltoAgentePendiente?.carril
+            || (Boolean(chatObj?.esperando_respuesta || (ultimoMsgChat && !ultimoMsgChat.from_me)) ? 'ENTRANTE' : 'SALIENTE');
+        const agenteObjInicial = saltoAgentePendiente?.agenteObjetivo || 'AUTO';
         const comprobantePrevioMismoChat = (estadoAsistenteComercialWa && Number(estadoAsistenteComercialWa.chatId) === Number(chatId))
             ? (estadoAsistenteComercialWa.comprobanteLeido || null)
             : null;
 
-        if (!forzarRelectura && !comprobantePrevioMismoChat && sintesisMemoria && sintesisMemoria.razonamiento_ia_guardado && sintesisMemoria.razonamiento_ia_guardado.usando_ia_real) {
+        if (!saltoAgentePendiente && !forzarRelectura && !comprobantePrevioMismoChat && sintesisMemoria && sintesisMemoria.razonamiento_ia_guardado && sintesisMemoria.razonamiento_ia_guardado.usando_ia_real) {
             razonamientoIa = sintesisMemoria.razonamiento_ia_guardado;
         } else if (sintesisMemoria && sintesisMemoria.ia_cognitiva && sintesisMemoria.ia_cognitiva.disponible === false) {
-            errorCriticoIa = 'El servicio de Inteligencia Artificial (Gemini) no tiene credenciales activas configuradas en el servidor.';
-        } else if (Array.isArray(mensajesChat) && mensajesChat.length > 0) {
+            errorCriticoIa = 'El servicio de Inteligencia Artificial no tiene credenciales activas configuradas en el servidor.';
+        } else if (Array.isArray(mensajesChat) && (mensajesChat.length > 0 || saltoAgentePendiente)) {
+            const saldoCtxNum = Number(rayosX?.cuenta_corriente?.saldo_actual || 0);
+            const subCtxIa = saldoCtxNum > 100
+                ? `Revisando Lista #${listaId} y saldo de $${Math.round(saldoCtxNum).toLocaleString('es-AR')}...`
+                : `Revisando Lista #${listaId} y últimos mensajes del hilo...`;
+            const ctrlIa = new AbortController();
+            if (stepperCargaCol3) {
+                stepperCargaCol3.setAbortCtrl(ctrlIa);
+                stepperCargaCol3.avanzar(pasoIdxAgente, subCtxIa);
+            }
             try {
                 if (typeof Swal !== 'undefined' && Swal.isVisible()) {
                     Swal.update({
-                        title: '🧠 Gemini Analizando Conversación...',
-                        html: 'Interpretando el pedido completo, descartando negaciones y seleccionando códigos deterministas del catálogo...'
+                        title: '🧠 Asistente Analizando Conversación...',
+                        html: subCtxIa
                     });
                     Swal.showLoading();
                 }
@@ -7876,7 +8405,6 @@
                     familia: a.familia_b2b || a.familia_nombre || '',
                     stock_disponible: Number(a.stock_real || 0)
                 }));
-                const ctrlIa = new AbortController();
                 const timerIa = setTimeout(() => ctrlIa.abort(), 35000);
                 let respIa = null;
                 try {
@@ -7890,8 +8418,14 @@
                             clienteNombre: nombreCliente,
                             contactoNombre: contactoNombreChat,
                             apodoSugerido: nombreCorto,
+                            apodoConfirmadoMartin: apodoPreferidoChat,
+                            notaTrato: notaTratoChat,
+                            rolOperativo: rolOperativoChat,
+                            contactoCargo: contactoCargoChat,
+                            esTelefonoCompartido: esTelefonoCompartidoChat,
+                            otrosContactosCliente,
                             carril: carrilAutoInicial,
-                            agenteObjetivo: 'AUTO',
+                            agenteObjetivo: agenteObjInicial,
                             comprobanteLeido: comprobantePrevioMismoChat,
                             contextoLogistico: rayosX?.logistica_resumen || null,
                             diasSinCompra: sintesisMemoria?.ciclo_compra?.dias_desde_ultima_compra ?? null,
@@ -7919,7 +8453,7 @@
                             },
                             linkPortalCliente: (!yaIngresoPortal && linkActivacionCorto) ? linkActivacionCorto : URL_PORTAL_B2B_OFICIAL,
                             yaIngresoPortal,
-                            forzarRecalculo: forzarRelectura
+                            forzarRecalculo: forzarRelectura || Boolean(saltoAgentePendiente)
                         })
                     });
                     respIa = await httpResIa.json().catch(() => ({
@@ -7933,20 +8467,23 @@
                 if (respIa && respIa.success && respIa.razonamiento && respIa.razonamiento.usando_ia_real) {
                     razonamientoIa = respIa.razonamiento;
                 } else {
-                    errorCriticoIa = respIa?.error || respIa?.razonamiento?.motivo_fallback || 'El servicio Gemini no respondió o devolvió un error de conexión.';
+                    errorCriticoIa = respIa?.error || respIa?.razonamiento?.motivo_fallback || 'El servicio de IA no respondió. Podés reintentar o redactar directo.';
                     if (sintesisMemoria?.razonamiento_ia_guardado?.usando_ia_real) {
                         razonamientoIa = sintesisMemoria.razonamiento_ia_guardado;
                     }
                 }
             } catch (errIa) {
                 errorCriticoIa = errIa?.name === 'AbortError'
-                    ? 'Tiempo de espera agotado (35s): el servicio de IA (Gemini) tardó demasiado en responder.'
-                    : (errIa?.message || 'Fallo crítico al conectar con el servicio de IA (Gemini).');
+                    ? 'Análisis cancelado o demorado. Podés reintentar o redactar directo en el borrador.'
+                    : (errIa?.message || 'No se pudo conectar con el asistente IA.');
                 if (sintesisMemoria?.razonamiento_ia_guardado?.usando_ia_real) {
                     razonamientoIa = sintesisMemoria.razonamiento_ia_guardado;
                 }
-                console.error('❌ [WA-ASISTENTE-HIBRIDO-IA] Error crítico en conexión Gemini:', errIa);
+                console.error('❌ [WA-ASISTENTE-HIBRIDO-IA] Error en conexión IA:', errIa);
             }
+        }
+        if (stepperCargaCol3) {
+            stepperCargaCol3.avanzar(pasoIdxAgente + 1, 'Aplicando precios exactos de tu lista y formato WhatsApp...');
         }
 
         if (razonamientoIa && razonamientoIa.usando_ia_real) {
@@ -8013,6 +8550,14 @@
             codigoBunker,
             nombreCliente,
             contactoNombreChat,
+            contactoCargoChat,
+            rolOperativo: rolOperativoChat,
+            apodoPreferido: apodoPreferidoChat,
+            notaTrato: notaTratoChat,
+            memoriaTratoJson: memoriaTratoChat,
+            otrosContactosCliente,
+            _ignorarGuardrailRol: false,
+            _borradorOriginalB1: '',
             nombreCorto,
             telefonoCliente,
             chatsDelMismoCliente,
@@ -8079,6 +8624,7 @@
         await inicializarConfigPdfGuardadaEnEstadoWa(estadoAsistenteComercialWa);
 
         if (usarModoInlineCol3) {
+            if (stepperCargaCol3) stepperCargaCol3.detener();
             // Guard anti-race: si el operador ya cambió a otro chat o disparó una carga más nueva, descartar este resultado
             if (myLoadSeq !== estadoConsola._asistenteLoadSeq || (chatId && Number(estadoConsola.chatActivoId) !== Number(chatId))) {
                 return;
@@ -8090,10 +8636,13 @@
             : null;
         estadoAsistenteComercialWa.resultadoMesa = resultadoMesa;
 
-        // Auto-detectar Carril del Copiloto: Entrante si el cliente espera respuesta o habló último, Saliente si iniciamos gestión
+        // Auto-detectar Carril del Copiloto (respetando salto directo de Guardrail si aplica)
         const esEntranteAuto = Boolean(chatObj?.esperando_respuesta || resultadoMesa?.ag1?.clienteHabloUltimo);
-        estadoConsola.carrilAsistente = esEntranteAuto ? 'ENTRANTE' : 'SALIENTE';
+        estadoConsola.carrilAsistente = saltoAgentePendiente?.carril || (esEntranteAuto ? 'ENTRANTE' : 'SALIENTE');
         estadoAsistenteComercialWa.carrilAsistente = estadoConsola.carrilAsistente;
+        if (saltoAgentePendiente?.agenteObjetivo) {
+            estadoAsistenteComercialWa.agenteEspecialistaActivo = saltoAgentePendiente.agenteObjetivo;
+        }
 
         mostrarModalSwalAsistenteComercialWa(estadoAsistenteComercialWa);
     };
@@ -8147,12 +8696,80 @@
 
         const alertaErrHtml = (st.errorCriticoIa || st.errorCriticoSintesis)
             ? `
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; background:#fef2f2; border:1px solid #fca5a5; border-left:3px solid #dc2626; border-radius:7px; padding:5px 8px; font-size:0.69rem; color:#991b1b;">
-                    <span style="min-width:0; flex:1; line-height:1.25;">⚠️ <strong>IA sin conexión</strong> (${escaparHtml(String(st.errorCriticoIa || st.errorCriticoSintesis).slice(0, 68))})</span>
-                    <button type="button" onclick="window.forzarRelecturaProfundaClienteWa()" style="background:#dc2626; color:#fff; border:none; border-radius:5px; padding:2px 7px; font-size:0.66rem; font-weight:800; cursor:pointer; flex-shrink:0;">🔄 Reintentar</button>
+                <div id="wa-copilot-error-card" class="wa-copilot-stepper error">
+                    <div class="wa-stepper-hdr" style="color:#991b1b;">
+                        <span>⚠️ El asistente no pudo completar la sugerencia</span>
+                        <button type="button" onclick="window.ejecutarAgenteEspecializadoCol3Wa('${carril}', '${agenteActivo}')" style="background:#dc2626; color:#fff; border:none; border-radius:5px; padding:2px 8px; font-size:0.67rem; font-weight:800; cursor:pointer; flex-shrink:0;">🔄 Reintentar</button>
+                    </div>
+                    <div style="font-size:0.69rem; color:#7f1d1d; line-height:1.3;">
+                        ${escaparHtml(String(st.errorCriticoIa || st.errorCriticoSintesis).slice(0, 120))} Podés reintentar o escribir directo en el borrador.
+                    </div>
                 </div>
             `
             : '';
+
+        // Fase 3.5: Chip visible, editable y descartable de Trato Aprendido ("Efecto Alejandro -> Fran")
+        const apodoPrefUi = String(st.apodoPreferido || '').trim();
+        const notaTratoUi = String(st.notaTrato || '').trim();
+        const origenApodoUi = String(st.memoriaTratoJson?.apodo_origen || '').trim();
+        const reemplazaApodoUi = String(st.memoriaTratoJson?.apodo_reemplaza || '').trim();
+        const tooltipTrato = [
+            apodoPrefUi ? `Trato activo: "${apodoPrefUi}"` : '',
+            origenApodoUi === 'edicion_borrador' ? `Aprendido al editar borrador${reemplazaApodoUi ? ` (${reemplazaApodoUi} → ${apodoPrefUi})` : ''}` : (origenApodoUi === 'chat_directo' ? 'Aprendido desde tus envíos en el chat' : (origenApodoUi === 'manual' ? 'Configurado manualmente' : '')),
+            notaTratoUi ? `Nota: ${notaTratoUi}` : ''
+        ].filter(Boolean).join(' · ');
+
+        const chipTratoHtml = (apodoPrefUi || notaTratoUi)
+            ? `
+                <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                    <span id="wa-copilot-trato-chip" class="wa-trato-chip" title="${escaparHtml(tooltipTrato)}">
+                        <span>✨ Trato: "${escaparHtml(apodoPrefUi || notaTratoUi.slice(0, 22))}"</span>
+                        <button type="button" onclick="window.editarTratoContactoChatWa(${st.chatId})" title="Editar apodo o nota de trato">✏️</button>
+                        ${apodoPrefUi ? `<button type="button" onclick="window.descartarApodoAprendidoChatWa(${st.chatId})" title="Descartar aprendizaje y volver al nombre de agenda">×</button>` : ''}
+                    </span>
+                    ${notaTratoUi && apodoPrefUi ? `<span style="font-size:0.66rem; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:210px;" title="${escaparHtml(notaTratoUi)}">${escaparHtml(notaTratoUi)}</span>` : ''}
+                </div>
+            `
+            : '';
+
+        // Fase 3.5: Guardrail de Rol Operativo al elegir Cobranza / Cuenta Corriente en contacto de Compras, Recepción o Compartido
+        const esAgenteCobranzaUi = agenteActivo === 'CUENTA_CORRIENTE' || agenteActivo === 'COBRANZA_COMPROBANTES';
+        const rolOpActual = String(st.rolOperativo || '').toUpperCase();
+        const rolSensibleCobranza = rolOpActual === 'COMPRAS_PEDIDOS' || rolOpActual === 'RECEPCION_LOCAL' || rolOpActual === 'COMPARTIDO';
+        let bloqueGuardrailRolHtml = '';
+        if (esAgenteCobranzaUi && rolSensibleCobranza && !st._ignorarGuardrailRol) {
+            const rolMetaAct = ROLES_OPERATIVOS_UI[rolOpActual] || { label: rolOpActual };
+            const hermanos = Array.isArray(st.otrosContactosCliente) && st.otrosContactosCliente.length > 0
+                ? st.otrosContactosCliente
+                : (estadoConsola.chats || []).filter(c => st.clienteId && Number(c.bunker_cliente_id) === Number(st.clienteId) && Number(c.id) !== Number(st.chatId));
+            const destinoPagos = hermanos.find(c => String(c.rol_operativo || '').toUpperCase() === 'PAGOS_ADMIN')
+                || hermanos.find(c => String(c.rol_operativo || '').toUpperCase() === 'DUENO_TITULAR')
+                || null;
+            const nomActualContacto = st.apodoPreferido || st.contactoNombreChat || 'este contacto';
+            const nomDest = destinoPagos ? (destinoPagos.apodo_preferido || destinoPagos.contacto_nombre || destinoPagos.telefono_normalizado) : '';
+            const rolDestUi = destinoPagos && destinoPagos.rol_operativo ? ROLES_OPERATIVOS_UI[destinoPagos.rol_operativo] : null;
+            const iconDest = rolDestUi ? rolDestUi.icon : '👑';
+            bloqueGuardrailRolHtml = `
+                <div id="wa-copilot-rol-guardrail" class="wa-rol-guardrail-banner">
+                    <div>
+                        ⚠️ Estás hablando con <strong>${escaparHtml(nomActualContacto)}</strong> (${rolMetaAct.label}).
+                        ${destinoPagos
+                            ? `Para gestionar cobranza / cuenta corriente conviene escribirle a <strong>${escaparHtml(nomDest)}</strong>${rolDestUi ? ` (${rolDestUi.corto})` : ''}.`
+                            : `Este teléfono no figura como Pagos ni Dueño. Confirmá si querés gestionar saldo por esta línea.`}
+                    </div>
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        ${destinoPagos ? `
+                            <button type="button" id="btn-wa-saltar-contacto-pagos" onclick="window.saltarAContactoPagosConAgenteWa(${Number(destinoPagos.id)}, '${carril}', '${agenteActivo}')" style="background:#d97706; color:#ffffff; border:none; border-radius:6px; padding:4px 9px; font-size:0.7rem; font-weight:800; cursor:pointer; white-space:nowrap;">
+                                ${iconDest} Saltar al chat de ${escaparHtml(nomDest)} →
+                            </button>
+                        ` : ''}
+                        <button type="button" onclick="window.ignorarGuardrailRolCopilotoWa()" style="background:#ffffff; color:#78350f; border:1px solid #fcd34d; border-radius:6px; padding:3px 8px; font-size:0.68rem; font-weight:700; cursor:pointer;">
+                            Continuar acá
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
 
         // Comprobante leído por Gemini Vision (si ya se escaneó) o acceso rápido 1-clic si hay imagen reciente en el hilo
         let bloqueComprobanteHtml = '';
@@ -8254,24 +8871,24 @@
                         ${portalTxt}
                     </div>
                     <div style="display:flex; gap:3px; flex-shrink:0;">
+                        ${(!apodoPrefUi && !notaTratoUi && st.chatId) ? `<button type="button" onclick="window.editarTratoContactoChatWa(${st.chatId})" title="Definir apodo o nota de trato para este contacto" style="background:#f5f3ff; border:1px solid #ddd6fe; color:#5b21b6; border-radius:5px; padding:2px 5px; font-size:0.66rem; font-weight:800; cursor:pointer;">✨</button>` : ''}
                         <button type="button" onclick="window.rotarVarianteSaludoAsistenteWa()" title="Generar otra variante con el especialista activo" style="background:#ffffff; border:1px solid #cbd5e1; color:#1d4ed8; border-radius:5px; padding:2px 6px; font-size:0.68rem; font-weight:800; cursor:pointer;">🎲</button>
                         <button type="button" onclick="window.forzarRelecturaProfundaClienteWa()" title="Re-analizar contexto del cliente en vivo" style="background:#ffffff; border:1px solid #86efac; color:#065f46; border-radius:5px; padding:2px 6px; font-size:0.68rem; font-weight:800; cursor:pointer;">🔄</button>
                     </div>
                 </div>
 
+                ${chipTratoHtml}
+                ${bloqueGuardrailRolHtml}
                 ${alertaErrHtml}
                 ${bloqueComprobanteHtml}
                 ${bloqueGestionFacturaHtml}
 
-                ${cargandoEsp ? `
-                    <div style="background:#eff6ff; border:1px solid #93c5fd; border-left:3px solid #2563eb; border-radius:7px; padding:5px 8px; font-size:0.71rem; color:#1e40af; font-weight:700;">
-                        ⏳ Razonando con especialista <strong>${escaparHtml(etiquetasEspecialistas[cargandoEsp] || cargandoEsp)}</strong>...
-                    </div>
-                ` : (diagTxt ? `
+                <div id="wa-copilot-inline-stepper-host" style="display:${cargandoEsp ? 'block' : 'none'};"></div>
+                ${!cargandoEsp && diagTxt ? `
                     <div style="background:#f0f9ff; border:1px solid #bae6fd; border-left:3px solid #0284c7; border-radius:7px; padding:5px 8px; font-size:0.71rem; color:#0f172a; line-height:1.3;" title="${escaparHtml(diagTxt)}">
                         <strong style="color:#0369a1;">🧠 ${escaparHtml(badgeEspActivo)}:</strong> ${escaparHtml(diagTxt.length > 140 ? diagTxt.slice(0, 137) + '…' : diagTxt)}
                     </div>
-                ` : '')}
+                ` : ''}
 
                 <!-- Píldoras de Especialistas del Carril Activo -->
                 <div class="wa-copilot-pills">
@@ -8299,8 +8916,31 @@
     }
 
     /**
-     * Fase 3: Ejecuta un Especialista puntual de los 2 Carriles en backend sin bloquear la consola
-     * y actualiza las Burbujas 1/2/3, los adjuntos sugeridos (PDF Precios / PDF CC) y la cabecera del Copiloto.
+     * Fase 3.5: Salto 1-clic desde el Guardrail de Cobranza/CC hacia el contacto de Pagos / Dueño
+     * disparando automáticamente el especialista objetivo (CUENTA_CORRIENTE o COBRANZA_COMPROBANTES).
+     */
+    window.saltarAContactoPagosConAgenteWa = async function (destChatPk, carril = 'SALIENTE', agenteObjetivo = 'CUENTA_CORRIENTE') {
+        const targetId = Number(destChatPk);
+        if (!targetId) return;
+        estadoConsola._autoEjecutarAgenteTrasAbrir = {
+            chatId: targetId,
+            carril: String(carril || 'SALIENTE').toUpperCase(),
+            agenteObjetivo: String(agenteObjetivo || 'CUENTA_CORRIENTE').toUpperCase()
+        };
+        estadoConsola._firmaDetalleChat = '';
+        await window.seleccionarChatConsola(targetId, true);
+    };
+
+    window.ignorarGuardrailRolCopilotoWa = function () {
+        const st = estadoAsistenteComercialWa;
+        if (!st) return;
+        st._ignorarGuardrailRol = true;
+        renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa || window.ejecutarMesaAgentesComercialesWa(st));
+    };
+
+    /**
+     * Fase 3 + 3.5: Ejecuta un Especialista puntual de los 2 Carriles con Stepper Visual Vivo,
+     * segundero, botón Cancelar (AbortController) y manejo no técnico de errores.
      */
     window.ejecutarAgenteEspecializadoCol3Wa = async function (carril, agenteCodigo, opcionesExtra = {}) {
         const st = estadoAsistenteComercialWa;
@@ -8309,13 +8949,53 @@
 
         const carrilNorm = String(carril || st.carrilAsistente || 'ENTRANTE').toUpperCase();
         const agenteNorm = String(agenteCodigo || 'AUTO').toUpperCase();
+        const nombresEsp = {
+            AUTO: 'Auto',
+            VENTAS_COTIZADOR: 'Ventas',
+            COBRANZA_COMPROBANTES: 'Cobranza',
+            LOGISTICA_ENTREGAS: 'Logística',
+            RECLAMO_DEVOLUCION: 'Reclamo',
+            CUENTA_CORRIENTE: 'Cuenta Corriente',
+            REACTIVACION_PORTAL: 'Reactivación',
+            POST_ENTREGA: 'Post-Entrega',
+            SALUDO_PUNTUAL: 'Saludo'
+        };
+        const nomEspUi = nombresEsp[agenteNorm] || agenteNorm;
+
         estadoConsola.carrilAsistente = carrilNorm;
         st.carrilAsistente = carrilNorm;
         st.agenteEspecialistaActivo = agenteNorm;
         st.cargandoEspecialista = agenteNorm;
+        st.errorCriticoIa = '';
         st._especialistaInflight = true;
 
         renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa || window.ejecutarMesaAgentesComercialesWa(st));
+
+        const ctrlEsp = new AbortController();
+        const hostStepper = document.getElementById('wa-copilot-inline-stepper-host');
+        const ag3Ctx = st.resultadoMesa?.ag3 || {};
+        const subContexto = (agenteNorm === 'CUENTA_CORRIENTE' || agenteNorm === 'COBRANZA_COMPROBANTES')
+            ? (ag3Ctx.tieneSaldo ? `Consultando saldo ${ag3Ctx.saldoFmt} y facturas abiertas...` : 'Revisando movimientos de cuenta corriente...')
+            : (agenteNorm === 'VENTAS_COTIZADOR' ? `Buscando artículos y precios en Lista #${st.listaId || 1}...`
+                : (agenteNorm === 'LOGISTICA_ENTREGAS' || agenteNorm === 'POST_ENTREGA'
+                    ? 'Verificando estado real del último pedido y entrega...'
+                    : `Redactando sugerencia en estilo LAMDA...`));
+
+        const stepperEsp = hostStepper
+            ? iniciarStepperCopilotoCol3Wa({
+                containerEl: hostStepper,
+                containerId: 'wa-copilot-inline-stepper-host',
+                titulo: `Agente ${nomEspUi} en curso`,
+                pasos: [
+                    '📂 Ficha y contexto del cliente listos',
+                    `🧠 Agente ${nomEspUi} redactando`,
+                    '✨ Aplicando precios y formato LAMDA'
+                ],
+                activoIdx: 1,
+                subtitulo: subContexto,
+                abortCtrl: ctrlEsp
+            })
+            : null;
 
         try {
             const resIa = await window.generarConIaGenerativaMesaAgentesWa(
@@ -8326,11 +9006,17 @@
                     carril: carrilNorm,
                     agenteObjetivo: agenteNorm,
                     comprobanteLeido: opcionesExtra.comprobanteLeido !== undefined ? opcionesExtra.comprobanteLeido : st.comprobanteLeido,
-                    forzarRecalculo: true
+                    forzarRecalculo: true,
+                    signal: ctrlEsp.signal
                 }
             );
 
+            if (stepperEsp) {
+                stepperEsp.avanzar(2, 'Estampando precios deterministas y formato WhatsApp...');
+            }
+
             st.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(st);
+            st._borradorOriginalB1 = resIa.burbuja1 || '';
 
             const area1 = document.getElementById('wa-asist-com-textarea');
             const area2 = document.getElementById('wa-asist-com-burbuja2');
@@ -8365,8 +9051,11 @@
             renderizarChipsSeleccionadosBurbuja2Wa();
             window.actualizarIndicadorLongitudAsistenteComercialWa();
         } catch (err) {
-            st.errorCriticoIa = err?.message || 'Error ejecutando especialista';
+            if (!err?.canceladoPorUsuario) {
+                st.errorCriticoIa = err?.message || 'No se pudo generar la sugerencia.';
+            }
         } finally {
+            if (stepperEsp) stepperEsp.detener();
             st.cargandoEspecialista = '';
             st._especialistaInflight = false;
             st.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(st);
@@ -8385,7 +9074,9 @@
         if (target === 'SALIENTE') {
             const ag3 = st.resultadoMesa?.ag3 || {};
             const ag2 = st.resultadoMesa?.ag2 || {};
-            const sugSaliente = ag3.tieneSaldo
+            const rolOp = String(st.rolOperativo || '').toUpperCase();
+            const rolNoCobranza = rolOp === 'COMPRAS_PEDIDOS' || rolOp === 'RECEPCION_LOCAL';
+            const sugSaliente = (ag3.tieneSaldo && !rolNoCobranza)
                 ? 'CUENTA_CORRIENTE'
                 : (ag2.logisticaResumen?.entregado_reciente_48h
                     ? 'POST_ENTREGA'
@@ -8455,6 +9146,22 @@
             btnEl.disabled = true;
             btnEl.textContent = '⏳ Leyendo imagen...';
         }
+        const hostStepper = document.getElementById('wa-copilot-inline-stepper-host');
+        let stepperImg = null;
+        if (hostStepper && estadoAsistenteComercialWa && Number(estadoAsistenteComercialWa.chatId) === Number(chatPk)) {
+            hostStepper.style.display = 'block';
+            stepperImg = iniciarStepperCopilotoCol3Wa({
+                containerEl: hostStepper,
+                containerId: 'wa-copilot-inline-stepper-host',
+                titulo: 'Leyendo imagen / comprobante',
+                pasos: [
+                    '🔍 Analizando comprobante de transferencia',
+                    '💳 Preparando respuesta con datos exactos'
+                ],
+                activoIdx: 0,
+                subtitulo: 'Extrayendo banco, importe, fecha y número de operación...'
+            });
+        }
         try {
             const r = await fetch(`/api/crm/whatsapp/chats/${encodeURIComponent(chatPk)}/leer-imagen`, {
                 method: 'POST',
@@ -8501,6 +9208,13 @@
                 Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: `Error leyendo imagen: ${err.message}`, timer: 3200, showConfirmButton: false });
             }
         } finally {
+            if (stepperImg) {
+                stepperImg.detener();
+                if (hostStepper && hostStepper.isConnected) {
+                    hostStepper.style.display = 'none';
+                    hostStepper.innerHTML = '';
+                }
+            }
             if (btnEl && btnEl.isConnected) {
                 btnEl.disabled = false;
                 btnEl.textContent = txtOrig || '🔍 Leer comprobante / imagen';
@@ -8539,6 +9253,9 @@
                 || resultadoMesa?.proactivo?.mensajePrincipal
                 || (resultadoMesa?.ag4?.estrategias?.[0]?.burbuja1)
                 || construirTextoPasoAsistenteComercialWa(st));
+        if (!borradorPrevio) {
+            st._borradorOriginalB1 = textoBurbuja1Inicial || '';
+        }
         const textoBurbuja2Inicial = borradorPrevio
             ? borradorPrevio.b2
             : (resultadoMesa?.proactivo?.burbuja2 || '');
@@ -8810,6 +9527,9 @@
                 || resultadoMesa?.proactivo?.mensajePrincipal
                 || (resultadoMesa?.ag4?.estrategias?.[0]?.burbuja1)
                 || construirTextoPasoAsistenteComercialWa(st));
+        if (!borradorPrevio) {
+            st._borradorOriginalB1 = textoBurbuja1Inicial || '';
+        }
         const textoBurbuja2Inicial = borradorPrevio
             ? borradorPrevio.b2
             : (resultadoMesa?.proactivo?.burbuja2 || '');
@@ -10343,7 +11063,10 @@
                 const wrapB3 = document.getElementById('wa-asist-com-burbuja3-wrap');
                 const chkPdf = document.getElementById('wa-asist-com-chk-pdf');
 
-                if (area1 && resIa.burbuja1) area1.value = resIa.burbuja1;
+                if (area1 && resIa.burbuja1) {
+                    area1.value = resIa.burbuja1;
+                    st._borradorOriginalB1 = resIa.burbuja1;
+                }
                 if (area2) area2.value = resIa.burbuja2 || '';
                 if (chkB2) chkB2.checked = Boolean(resIa.burbuja2);
                 if (wrapB2) wrapB2.style.display = resIa.burbuja2 ? 'block' : 'none';
@@ -12949,12 +13672,16 @@
         }
         if (btnB1) btnB1.disabled = true;
 
-        const enviarTextoUnico = async (msgTxt) => {
+        const enviarTextoUnico = async (msgTxt, esPrimeraBurbuja = false) => {
             if (st.chatId) {
+                const payloadEnvio = { mensajeTexto: msgTxt, texto: msgTxt };
+                if (esPrimeraBurbuja && st._borradorOriginalB1) {
+                    payloadEnvio.borradorOriginalB1 = st._borradorOriginalB1;
+                }
                 const res = await fetch(`/api/crm/whatsapp/chats/${st.chatId}/enviar`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mensajeTexto: msgTxt, texto: msgTxt })
+                    body: JSON.stringify(payloadEnvio)
                 });
                 const data = await res.json();
                 if (!res.ok || !data.success) {
@@ -12962,6 +13689,9 @@
                         ? data.detalles[0].error
                         : (data?.error || 'No se pudo enviar el mensaje.');
                     throw new Error(detalleErr);
+                }
+                if (esPrimeraBurbuja && data.aprendizaje_detectado) {
+                    mostrarToastAprendizajeTratoWa(st.chatId, data.aprendizaje_detectado);
                 }
             } else {
                 const res = await fetch('/api/crm/whatsapp/enviar-directo', {
@@ -13018,7 +13748,7 @@
                     nombreArchivoBase: alcPdf === 'ACTUALIZACIONES' ? 'Actualizacion_Precios_LAMDA' : 'Lista_de_Precios_LAMDA'
                 });
             } else if (texto1) {
-                await enviarTextoUnico(texto1);
+                await enviarTextoUnico(texto1, true);
             }
 
             if (chkPdfCc && cuentaIdCc) {

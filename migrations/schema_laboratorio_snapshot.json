@@ -7084,6 +7084,46 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "false"
+      },
+      "rol_operativo": {
+        "ordinal_position": 27,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 32,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "rol_manual": {
+        "ordinal_position": 28,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "apodo_preferido": {
+        "ordinal_position": 29,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 60,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "memoria_trato_json": {
+        "ordinal_position": 30,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'{}'::jsonb"
       }
     },
     "crm_whatsapp_mensajes": {

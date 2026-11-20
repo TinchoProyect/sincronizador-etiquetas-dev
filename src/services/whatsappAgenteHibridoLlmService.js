@@ -402,7 +402,8 @@ function resolverCarrilYAgenteEspecialista({
     estadoCuentaDeterminista = {},
     contextoLogistico = {},
     diasSinCompra = null,
-    comprobanteLeido = null
+    comprobanteLeido = null,
+    rolOperativo = null
 }) {
     const arrMsgs = Array.isArray(mensajesRecientes) ? mensajesRecientes : [];
     const ultMsg = arrMsgs.length > 0 ? arrMsgs[arrMsgs.length - 1] : null;
@@ -450,7 +451,8 @@ function resolverCarrilYAgenteEspecialista({
 
     // CARRIL SALIENTE (Proactivo)
     const saldo = Number(estadoCuentaDeterminista?.saldo_total || 0);
-    if (saldo > 100) {
+    const rolNoCobranza = rolOperativo === 'COMPRAS_PEDIDOS' || rolOperativo === 'RECEPCION_LOCAL';
+    if (saldo > 100 && !rolNoCobranza) {
         return { carril: 'SALIENTE', agente: 'CUENTA_CORRIENTE' };
     }
     if (contextoLogistico?.entregado_reciente_48h) {
@@ -464,8 +466,18 @@ function resolverCarrilYAgenteEspecialista({
 
 /**
  * Construye el prompt corto, enfocado y libre de contradicciones para cada uno de los 8 especialistas
+ * incorporando reglas de Trato Aprendido (apodoConfirmadoMartin), Teléfono Compartido y Rol Operativo.
  */
-function construirPromptEspecialistaWa({ carril, agente, apodoSugerido, yaHablamosHoy }) {
+function construirPromptEspecialistaWa({
+    carril,
+    agente,
+    apodoSugerido,
+    apodoConfirmadoMartin = '',
+    notaTrato = '',
+    rolOperativo = null,
+    esTelefonoCompartido = false,
+    yaHablamosHoy
+}) {
     const reglasBase = [
         'Sos el copiloto comercial de Martín en el WhatsApp mayorista B2B de LAMDA (frutos secos, disecados, semillas, cereales, mixes, granolas y barritas).',
         'REGLAS INNEGOCIABLES:',
@@ -479,6 +491,19 @@ function construirPromptEspecialistaWa({ carril, agente, apodoSugerido, yaHablam
         '- Si existe "instruccion_operador_prioritaria", obedecela con prioridad absoluta.',
         '- Cierre estilo Martín cuando corresponda Burbuja 3: "Cualquier cosa estamos atentos." o "Quedamos atentos por cualquier cosa." (evitá repetir siempre "escribime por acá").'
     ];
+
+    if (apodoConfirmadoMartin) {
+        reglasBase.push(`- TRATO CONFIRMADO POR MARTÍN: Martín llama a este interlocutor "${apodoConfirmadoMartin}". Usá SIEMPRE "${apodoConfirmadoMartin}" al dirigirte a esta persona e ignorá cualquier otro nombre histórico de agenda.${notaTrato ? ` Nota de trato: ${notaTrato}.` : ''}`);
+    } else if (esTelefonoCompartido || rolOperativo === 'COMPARTIDO') {
+        reglasBase.push('- TELÉFONO EMPRESARIAL COMPARTIDO: Varias personas operan esta misma línea. NO asumas un nombre de persona fijo al saludar (usá saludo neutro/plural como "Hola, cómo andan?" o "Buen día, cómo vienen?"), SALVO que alguien se haya presentado explícitamente por su nombre en los últimos 2 mensajes.');
+    } else if (notaTrato) {
+        reglasBase.push(`- NOTA DE TRATO DE MARTÍN: ${notaTrato}.`);
+    }
+
+    const esAgenteCobranza = agente === 'COBRANZA_COMPROBANTES' || agente === 'CUENTA_CORRIENTE';
+    if (!esAgenteCobranza && (rolOperativo === 'COMPRAS_PEDIDOS' || rolOperativo === 'RECEPCION_LOCAL')) {
+        reglasBase.push(`- ROL DEL INTERLOCUTOR (${rolOperativo}): Esta persona atiende compras/pedidos o recepción del local, NO maneja pagos ni cuenta corriente. JAMÁS menciones deuda, saldos pendientes ni cobranza en este mensaje.`);
+    }
 
     const bloquesEspecialista = {
         // 📥 CARRIL ENTRANTE
@@ -552,6 +577,12 @@ async function razonarAsistenciaHibridaClienteWa({
     clienteNombre = '',
     contactoNombre = '',
     apodoSugerido = '',
+    apodoConfirmadoMartin = '',
+    notaTrato = '',
+    rolOperativo = null,
+    contactoCargo = '',
+    esTelefonoCompartido = false,
+    otrosContactosCliente = [],
     mensajesRecientes = [],
     catalogoCompacto = [],
     habitualesCliente = [],
@@ -571,6 +602,12 @@ async function razonarAsistenciaHibridaClienteWa({
         throw new Error('GEMINI_NO_CONFIGURADO: No se encontró GEMINI_API_KEY activa en el servidor.');
     }
 
+    const rolNorm = rolOperativo ? String(rolOperativo).trim().toUpperCase() : null;
+    const esCompartidoReal = Boolean(esTelefonoCompartido || rolNorm === 'COMPARTIDO');
+    const apodoConfirmadoClean = String(apodoConfirmadoMartin || '').trim();
+    const notaTratoClean = String(notaTrato || '').trim();
+    const apodoEfectivo = apodoConfirmadoClean || (esCompartidoReal ? '' : String(apodoSugerido || '').trim());
+
     const { carril: carrilFinal, agente: agenteFinal } = resolverCarrilYAgenteEspecialista({
         carrilSolicitado: carril,
         agenteObjetivo,
@@ -578,7 +615,8 @@ async function razonarAsistenciaHibridaClienteWa({
         estadoCuentaDeterminista,
         contextoLogistico,
         diasSinCompra,
-        comprobanteLeido
+        comprobanteLeido,
+        rolOperativo: rolNorm
     });
 
     const ultMsg = mensajesRecientes.length > 0 ? mensajesRecientes[mensajesRecientes.length - 1] : null;
@@ -586,6 +624,9 @@ async function razonarAsistenciaHibridaClienteWa({
     const cacheKey = [
         clienteNombre,
         contactoNombre,
+        rolNorm || '',
+        apodoConfirmadoClean,
+        notaTratoClean,
         carrilFinal,
         agenteFinal,
         ultMsg?.id || ultMsg?.msg_id || mensajesRecientes.length,
@@ -621,7 +662,11 @@ async function razonarAsistenciaHibridaClienteWa({
     const systemInstruction = construirPromptEspecialistaWa({
         carril: carrilFinal,
         agente: agenteFinal,
-        apodoSugerido,
+        apodoSugerido: apodoEfectivo,
+        apodoConfirmadoMartin: apodoConfirmadoClean,
+        notaTrato: notaTratoClean,
+        rolOperativo: rolNorm,
+        esTelefonoCompartido: esCompartidoReal,
         yaHablamosHoy
     });
 
@@ -686,8 +731,16 @@ async function razonarAsistenciaHibridaClienteWa({
         instruccion_operador_prioritaria: instClean || null,
         cliente: {
             razon_social: clienteNombre,
-            contacto: contactoNombre,
-            apodo_confianza: apodoSugerido,
+            contacto_agenda: contactoNombre,
+            apodo_confianza: apodoEfectivo,
+            apodo_confirmado_por_martin: apodoConfirmadoClean || null,
+            nota_trato: notaTratoClean || null,
+            rol_operativo: rolNorm || 'SIN_DEFINIR',
+            cargo_agenda: contactoCargo || null,
+            es_telefono_compartido: esCompartidoReal,
+            otros_contactos_cliente: Array.isArray(otrosContactosCliente) && otrosContactosCliente.length > 0
+                ? otrosContactosCliente.slice(0, 6).map(c => ({ nombre: c.contacto_nombre || c.nombre || '', rol: c.rol_operativo || c.contacto_cargo || '' }))
+                : undefined,
             dias_sin_compra: diasSinCompra,
             link_portal_disponible: Boolean(linkPortalCliente),
             ya_ingreso_portal_anteriormente: Boolean(yaIngresoPortal)
@@ -773,7 +826,8 @@ async function razonarAsistenciaHibridaClienteWa({
     let b3Final = aplicarClavijasTextoDeterministaWa(parsed.burbuja3_cierre || '');
     let sugerirPdfFinal = Boolean(parsed.sugerir_adjuntar_pdf);
     let sugerirPdfCcFinal = Boolean(parsed.sugerir_adjuntar_pdf_cc);
-    let habilitarGestionFacturaFinal = Boolean(parsed.habilitar_gestion_factura);
+    let habilitarGestionFacturaFinal = agenteFinal === 'RECLAMO_DEVOLUCION'
+        || (Boolean(parsed.habilitar_gestion_factura) && /\b(nota\s+de\s+cr[eé]dito|nc\b|refactur|anular\s+factura|reclamo)\b/i.test(instClean));
     let codsSel = Array.isArray(parsed.codigos_articulos_seleccionados)
         ? parsed.codigos_articulos_seleccionados.map(c => String(c || '').trim()).filter(Boolean)
         : [];

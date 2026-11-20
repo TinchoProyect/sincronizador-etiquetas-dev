@@ -625,6 +625,199 @@ async function enriquecerContextoDeterministaRazonamientoWa({
     };
 }
 
+/**
+ * Fase 3.5: Sugiere un rol operativo a partir de los últimos mensajes del hilo ($0 IA)
+ * únicamente cuando chat.rol_operativo aún está sin definir (NULL).
+ */
+function sugerirRolOperativoPorHistorial(mensajes = []) {
+    if (!Array.isArray(mensajes) || mensajes.length === 0) return null;
+    const recientes = mensajes.slice(-20);
+    let ptsPagos = 0;
+    let ptsCompras = 0;
+    let ptsRecepcion = 0;
+
+    for (const m of recientes) {
+        const txt = String(m?.cuerpo || '').toLowerCase();
+        if (!txt) continue;
+        if (/entrega confirmada|su pedido #\d+ ha sido entregado|prueba interna/i.test(txt)) continue;
+        if (/\b(transferencia|comprobante|cbu|alias|factura|saldo|cuenta corriente|pago|recibo|retencion|afip|arca)\b/i.test(txt)) ptsPagos += (m.from_me ? 1 : 2);
+        if (/\b(lista de precios|precio|precios|stock|armame|mandame|necesito|pedido|kilo|kilos|kg|bolsa|almendra|nuez|mix|granola)\b/i.test(txt)) ptsCompras += (m.from_me ? 1 : 2);
+        if (/\b(cuando llega|chofer|camion|reparto|horarios|estamos abiertos|recibimos|dejar en el local|mostrador)\b/i.test(txt)) ptsRecepcion += (m.from_me ? 1 : 2);
+    }
+
+    const maxPts = Math.max(ptsPagos, ptsCompras, ptsRecepcion);
+    if (maxPts < 3) return null;
+    if (ptsPagos === maxPts && ptsPagos > ptsCompras) {
+        return { rol: 'PAGOS_ADMIN', motivo: 'Intercambia comprobantes, facturas o pagos' };
+    }
+    if (ptsCompras === maxPts && ptsCompras >= ptsRecepcion) {
+        return { rol: 'COMPRAS_PEDIDOS', motivo: 'Consulta precios, stock o realiza pedidos' };
+    }
+    if (ptsRecepcion === maxPts) {
+        return { rol: 'RECEPCION_LOCAL', motivo: 'Coordina recepción y entregas en el local' };
+    }
+    return null;
+}
+
+/**
+ * Fase 3.5: Lista negra estricta de palabras que JAMÁS deben aprenderse como apodo de persona
+ */
+const STOPWORDS_APODO_WA = new Set([
+    'hola', 'buen', 'buena', 'buenas', 'buenos', 'dia', 'dias', 'tarde', 'tardes', 'noche', 'noches',
+    'como', 'todo', 'toda', 'todos', 'bien', 'que', 'che', 'dale', 'ok', 'okay', 'genial', 'perfecto',
+    'bueno', 'gracias', 'muchas', 'porfa', 'por', 'favor', 'escuchame', 'fijate', 'decime', 'mira',
+    'avisame', 'contame', 'pasame', 'mandame', 'espera', 'te', 'les', 'se', 'me', 'nos', 'aca', 'ahi',
+    'ahora', 'hoy', 'manana', 'ayer', 'siempre', 'nunca', 'solo', 'solamente', 'justo', 'recien',
+    'estimado', 'estimada', 'equipo', 'chicos', 'chicas', 'gente', 'amigo', 'amiga', 'maestro',
+    'campeon', 'crack', 'genio', 'hermano', 'hermana', 'capo', 'rey', 'pedido', 'orden', 'factura',
+    'saldo', 'lista', 'precio', 'precios', 'pago', 'transferencia', 'comprobante', 'reparto', 'envio',
+    'entrega', 'martin', 'lamda', 'si', 'no', 'ya', 'paso', 'mando', 'dejo', 'adjunto', 'cualquier',
+    'cosa', 'cosita', 'abrazo', 'saludos', 'saludo', 'disculpa', 'perdon', 'consulta', 'duda', 'tema',
+    'cliente', 'proveedor', 'dueno', 'duena', 'titular', 'compras', 'pagos', 'local', 'negocio',
+    'empresa', 'encargado', 'encargada', 'empleado', 'empleada', 'mostrador', 'deposito', 'sucursal',
+    'hace', 'estoy', 'estamos', 'quedo', 'quedamos', 'vamos', 'queres', 'queria', 'necesitas', 'tenes',
+    'podes', 'algun', 'alguna', 'algo', 'unos', 'unas', 'para', 'con', 'sin', 'sobre', 'desde', 'hasta'
+]);
+
+function normalizarTokenNombreWa(raw) {
+    return String(raw || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z]/g, '')
+        .trim();
+}
+
+function capitalizarNombreWa(raw) {
+    const limpio = String(raw || '').trim();
+    if (!limpio) return '';
+    return limpio.charAt(0).toUpperCase() + limpio.slice(1).toLowerCase();
+}
+
+/**
+ * Extrae un vocativo personal al inicio de un mensaje de WhatsApp ("Hola Fran...", "Buen día Ale...", "Fran, escuchame...")
+ * con validación estricta contra falsos positivos ($0 IA).
+ */
+function extraerVocativoInicialWa(texto, { descartados = [], nombreComercio = '' } = {}) {
+    const txt = String(texto || '').trim();
+    if (!txt || txt.length < 4) return null;
+    const primeraLinea = txt.split(/\r?\n/)[0].slice(0, 80).trim();
+    if (!primeraLinea) return null;
+
+    let candidato = null;
+    // Patrón 1: Saludo / conector + Nombre (ej: "Hola Fran, cómo andás", "Buen día Ale!")
+    const mSaludo = primeraLinea.match(/^(?:hola|buen\s+d[ií]a|buenos\s+d[ií]as|buenas(?:\s+tardes|\s+noches)?|che|dale|ok|bien|gracias)[,!.\s]+([A-ZÁÉÍÓÚÑa-záéíóúñ]{2,16})(?=[\s,!?.:]|$)/i);
+    if (mSaludo && mSaludo[1]) {
+        candidato = mSaludo[1];
+    } else {
+        // Patrón 2: Nombre directo al inicio seguido de coma o signo de exclamación (ej: "Fran, escuchame...", "Ale! Cómo va?")
+        const mDirecto = primeraLinea.match(/^([A-ZÁÉÍÓÚÑa-záéíóúñ]{2,16})[,!]\s+\S/);
+        if (mDirecto && mDirecto[1]) {
+            candidato = mDirecto[1];
+        }
+    }
+
+    if (!candidato) return null;
+    const norm = normalizarTokenNombreWa(candidato);
+    if (!norm || norm.length < 2 || norm.length > 16) return null;
+    if (STOPWORDS_APODO_WA.has(norm)) return null;
+
+    const setDesc = new Set((Array.isArray(descartados) ? descartados : []).map(normalizarTokenNombreWa).filter(Boolean));
+    if (setDesc.has(norm)) return null;
+
+    // Evitar confundir el nombre del comercio con el nombre de pila (ej. "Sopresatta", "Nuts")
+    const comercioTokens = String(nombreComercio || '').split(/\s+/).map(normalizarTokenNombreWa).filter(t => t.length >= 4);
+    if (comercioTokens.includes(norm)) return null;
+
+    return capitalizarNombreWa(candidato);
+}
+
+/**
+ * Fase 3.5: Detecta y persiste el aprendizaje de trato/apodo cuando Martín edita un borrador del Asistente
+ * ("Hola Alejandro..." -> "Fran, escuchame...") o saluda por otro nombre en el chat directo.
+ */
+async function procesarAprendizajeTratoAlEnviarWa({ chat, mensajeEnviado, borradorOriginalB1 = '' }) {
+    if (!chat || !chat.id || !mensajeEnviado) return null;
+    try {
+        const memActual = (chat.memoria_trato_json && typeof chat.memoria_trato_json === 'object')
+            ? { ...chat.memoria_trato_json }
+            : {};
+        const descartados = Array.isArray(memActual.descartados) ? memActual.descartados : [];
+        const nombreComercio = chat.cliente_nombre || '';
+
+        const vocEnviado = extraerVocativoInicialWa(mensajeEnviado, { descartados, nombreComercio });
+        if (!vocEnviado) return null;
+
+        const normEnviado = normalizarTokenNombreWa(vocEnviado);
+        const normActualPref = normalizarTokenNombreWa(chat.apodo_preferido || '');
+        if (normActualPref && normEnviado === normActualPref) return null;
+
+        const tieneBorrador = String(borradorOriginalB1 || '').trim().length >= 5;
+        let debeAprender = false;
+        let origen = 'edicion_borrador';
+        let apodoAnterior = chat.apodo_preferido || chat.contacto_nombre || '';
+
+        if (tieneBorrador) {
+            const vocOriginal = extraerVocativoInicialWa(borradorOriginalB1, { nombreComercio });
+            const normOriginal = normalizarTokenNombreWa(vocOriginal || '');
+            // Si Martín reemplazó el nombre del borrador (o agregó uno donde no había) -> aprende en 1er envío
+            if (normEnviado !== normOriginal) {
+                debeAprender = true;
+                origen = 'edicion_borrador';
+                apodoAnterior = vocOriginal || chat.apodo_preferido || chat.contacto_nombre || '';
+            }
+        } else {
+            // Envío directo en Columna 2: no pisar manual ni líneas compartidas; aprender solo si difiere del nombre de agenda
+            if (chat.rol_operativo === 'COMPARTIDO' || memActual.apodo_origen === 'manual') return null;
+            const primerNombreAgenda = normalizarTokenNombreWa(String(chat.contacto_nombre || '').split(/[\s,-/]+/)[0] || '');
+            if (!chat.apodo_preferido && normEnviado !== primerNombreAgenda) {
+                debeAprender = true;
+                origen = 'chat_directo';
+                apodoAnterior = chat.contacto_nombre || '';
+            }
+        }
+
+        if (!debeAprender) return null;
+
+        const nuevaMemoria = {
+            ...memActual,
+            apodo: vocEnviado,
+            apodo_origen: origen,
+            apodo_reemplaza: String(apodoAnterior || '').trim(),
+            detectado_en: new Date().toISOString(),
+            descartados
+        };
+
+        await pool.query(`
+            UPDATE public.crm_whatsapp_chats
+            SET apodo_preferido = $2,
+                memoria_trato_json = $3::jsonb,
+                updated_at = NOW()
+            WHERE id = $1
+        `, [chat.id, vocEnviado, JSON.stringify(nuevaMemoria)]);
+
+        if (chat.bunker_cliente_id) {
+            await pool.query(`
+                UPDATE public.crm_cliente_sintesis_memoria
+                SET razonamiento_ia_json = NULL,
+                    ultimo_msg_id_razonado = 0,
+                    ultima_actualizacion_en = NOW()
+                WHERE cliente_bunker_id = $1
+            `, [chat.bunker_cliente_id]).catch(() => {});
+        }
+
+        return {
+            tipo: 'APODO',
+            valor: vocEnviado,
+            anterior: String(apodoAnterior || '').trim(),
+            origen
+        };
+    } catch (err) {
+        console.warn('⚠️ [CRM-WA-TRATO] Error procesando aprendizaje de trato:', err.message);
+        return null;
+    }
+}
+
 // Asegurar tablas al montar el router
 crmWhatsappDb.asegurarTablasCrmWhatsapp().catch(() => {});
 
@@ -1728,11 +1921,43 @@ router.get('/crm/whatsapp/chats/:id/detalle', async (req, res) => {
             }
         }
 
+        // Fase 3.5: Sugerencia determinista de rol por historial (solo si rol_operativo aún es NULL)
+        chat.rol_sugerido_historial = (!chat.rol_operativo && (chat.categoria_contacto === 'CLIENTE_BUNKER' || chat.categoria_contacto === 'PROSPECTO'))
+            ? sugerirRolOperativoPorHistorial(mensajesUnicos)
+            : null;
+
+        // Fase 3.5: Hermanos del mismo cliente Búnker (para Guardrail de Cobranza y salto 1-clic a Pagos/Dueño)
+        let otrosContactosCliente = [];
+        if (chat.bunker_cliente_id) {
+            try {
+                const ocRes = await pool.query(`
+                    SELECT id, contacto_nombre, contacto_cargo, rol_operativo, apodo_preferido,
+                           telefono_normalizado, ultimo_mensaje_at, ultimo_mensaje_texto
+                    FROM public.crm_whatsapp_chats
+                    WHERE bunker_cliente_id = $1
+                      AND id <> $2
+                      AND COALESCE(modo_privacidad, 'ACTIVO') <> 'OCULTO'
+                    ORDER BY
+                        CASE rol_operativo
+                            WHEN 'PAGOS_ADMIN' THEN 1
+                            WHEN 'DUENO_TITULAR' THEN 2
+                            WHEN 'COMPRAS_PEDIDOS' THEN 3
+                            WHEN 'RECEPCION_LOCAL' THEN 4
+                            WHEN 'COMPARTIDO' THEN 5
+                            ELSE 6
+                        END ASC,
+                        ultimo_mensaje_at DESC NULLS LAST
+                `, [chat.bunker_cliente_id, chat.id]);
+                otrosContactosCliente = ocRes.rows;
+            } catch (_) {}
+        }
+
         res.json({
             success: true,
             chat,
             mensajes: mensajesUnicos,
-            rayos_x: rayosX
+            rayos_x: rayosX,
+            otros_contactos_cliente: otrosContactosCliente
         });
     } catch (error) {
         console.error('❌ [CRM-WA-HUB] Error en detalle de chat:', error.message);
@@ -1914,7 +2139,7 @@ router.post('/crm/whatsapp/chats/:id/leer-imagen', async (req, res) => {
 router.post('/crm/whatsapp/chats/:id/enviar', async (req, res) => {
     try {
         const chatPk = parseInt(req.params.id);
-        const { mensajeTexto } = req.body;
+        const { mensajeTexto, borradorOriginalB1 } = req.body;
 
         if (!mensajeTexto || !String(mensajeTexto).trim()) {
             return res.status(400).json({ success: false, error: 'El mensaje no puede estar vacío.' });
@@ -1926,7 +2151,7 @@ router.post('/crm/whatsapp/chats/:id/enviar', async (req, res) => {
         }
 
         const chat = chatRes.rows[0];
-        const response = await fetch('http://localhost:3004/facturacion/whatsapp/enviar-mensaje', {
+        const response = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/enviar-mensaje', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1963,9 +2188,17 @@ router.post('/crm/whatsapp/chats/:id/enviar', async (req, res) => {
             WHERE id = $1
         `, [chatPk, String(mensajeTexto).trim()]);
 
+        // Fase 3.5: Aprendizaje automático determinista de trato/apodo (0 tokens IA extra)
+        const aprendizajeDetectado = await procesarAprendizajeTratoAlEnviarWa({
+            chat,
+            mensajeEnviado: String(mensajeTexto).trim(),
+            borradorOriginalB1: String(borradorOriginalB1 || '')
+        });
+
         res.json({
             success: true,
             message: 'Mensaje enviado correctamente.',
+            aprendizaje_detectado: aprendizajeDetectado,
             data
         });
     } catch (error) {
@@ -1992,7 +2225,7 @@ router.post('/crm/whatsapp/enviar-directo', async (req, res) => {
             return res.status(400).json({ success: false, error: 'El mensaje no puede estar vacío.' });
         }
 
-        const response = await fetch('http://localhost:3004/facturacion/whatsapp/enviar-mensaje', {
+        const response = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/enviar-mensaje', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2054,7 +2287,7 @@ router.post('/crm/whatsapp/enviar-documento', async (req, res) => {
             });
         }
 
-        const response = await fetch('http://localhost:3004/facturacion/whatsapp/enviar-documento', {
+        const response = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/enviar-documento', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2122,7 +2355,7 @@ router.post('/crm/whatsapp/chats/:id/marcar-atendido', async (req, res) => {
 
         const chat = result.rows[0];
         // Sincronizar también el visto hacia WhatsApp Web para que no vuelva a encenderse como no leído
-        fetch('http://localhost:3004/facturacion/whatsapp/sincronizar-chats', {
+        fetch('http://127.0.0.1:3004/facturacion/whatsapp/sincronizar-chats', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ marcarVistoChatId: chat.chat_id })
@@ -2152,7 +2385,11 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
             bunker_cliente_id,
             contacto_nombre,
             contacto_cargo,
-            desvincular_cliente
+            desvincular_cliente,
+            rol_operativo,
+            apodo_preferido,
+            nota_trato,
+            descartar_apodo
         } = req.body;
 
         const chatRes = await pool.query('SELECT * FROM public.crm_whatsapp_chats WHERE id = $1 LIMIT 1', [chatPk]);
@@ -2244,6 +2481,57 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
         const nuevoContactoNombre = contacto_nombre !== undefined ? contacto_nombre : actual.contacto_nombre;
         const nuevoContactoCargo = contacto_cargo !== undefined ? contacto_cargo : actual.contacto_cargo;
 
+        // Fase 3.5: Rol operativo + Apodo / Memoria de Trato
+        let nuevoRolOperativo = actual.rol_operativo || null;
+        let nuevoRolManual = Boolean(actual.rol_manual);
+        let cambioRolOTrato = false;
+
+        if (rol_operativo !== undefined) {
+            const rolClean = rol_operativo ? String(rol_operativo).trim().toUpperCase() : null;
+            if (rolClean && crmWhatsappDb.ROLES_OPERATIVOS_VALIDOS.has(rolClean)) {
+                nuevoRolOperativo = rolClean;
+                nuevoRolManual = true;
+            } else {
+                nuevoRolOperativo = null;
+                nuevoRolManual = false;
+            }
+            cambioRolOTrato = true;
+        }
+
+        let nuevoApodoPref = actual.apodo_preferido || null;
+        const memTratoActual = (actual.memoria_trato_json && typeof actual.memoria_trato_json === 'object')
+            ? { ...actual.memoria_trato_json }
+            : {};
+
+        if (descartar_apodo === true) {
+            const prevDesc = Array.isArray(memTratoActual.descartados) ? memTratoActual.descartados.slice() : [];
+            if (actual.apodo_preferido && !prevDesc.some(d => normalizarTokenNombreWa(d) === normalizarTokenNombreWa(actual.apodo_preferido))) {
+                prevDesc.push(String(actual.apodo_preferido).trim());
+            }
+            nuevoApodoPref = null;
+            memTratoActual.apodo = '';
+            memTratoActual.apodo_origen = 'descartado';
+            memTratoActual.descartados = prevDesc.slice(-12);
+            cambioRolOTrato = true;
+        } else if (apodo_preferido !== undefined) {
+            const cleanAp = String(apodo_preferido || '').trim().slice(0, 60);
+            nuevoApodoPref = cleanAp || null;
+            memTratoActual.apodo = cleanAp;
+            memTratoActual.apodo_origen = cleanAp ? 'manual' : '';
+            if (cleanAp && Array.isArray(memTratoActual.descartados)) {
+                memTratoActual.descartados = memTratoActual.descartados.filter(
+                    d => normalizarTokenNombreWa(d) !== normalizarTokenNombreWa(cleanAp)
+                );
+            }
+            memTratoActual.detectado_en = new Date().toISOString();
+            cambioRolOTrato = true;
+        }
+
+        if (nota_trato !== undefined) {
+            memTratoActual.nota_trato = String(nota_trato || '').trim().slice(0, 240);
+            cambioRolOTrato = true;
+        }
+
         const updRes = await pool.query(`
             UPDATE public.crm_whatsapp_chats
             SET modo_privacidad = $2,
@@ -2261,6 +2549,10 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
                 categoria_manual = $14,
                 esperando_respuesta = $15,
                 no_leidos = $16,
+                rol_operativo = $17,
+                rol_manual = $18,
+                apodo_preferido = $19,
+                memoria_trato_json = $20::jsonb,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING *
@@ -2280,8 +2572,34 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
             nuevaCategoria,
             nuevaCategoriaManual,
             nuevoEsperando,
-            nuevoNoLeidos
+            nuevoNoLeidos,
+            nuevoRolOperativo,
+            nuevoRolManual,
+            nuevoApodoPref,
+            JSON.stringify(memTratoActual)
         ]);
+
+        // Sincronizar rol_operativo bidireccionalmente con bunker_clientes.whatsapp_facturas
+        let rolSincronizadoBunker = false;
+        if (rol_operativo !== undefined && nuevoBunkerId && typeof crmWhatsappDb.sincronizarRolOperativoEnBunkerWhatsapp === 'function') {
+            const syncRes = await crmWhatsappDb.sincronizarRolOperativoEnBunkerWhatsapp(
+                nuevoBunkerId,
+                actual.telefono_normalizado,
+                nuevoRolOperativo
+            );
+            rolSincronizadoBunker = Boolean(syncRes?.sincronizado);
+        }
+
+        // Invalidar caché de razonamiento IA si cambió rol o trato/apodo
+        if (cambioRolOTrato && nuevoBunkerId) {
+            await pool.query(`
+                UPDATE public.crm_cliente_sintesis_memoria
+                SET razonamiento_ia_json = NULL,
+                    ultimo_msg_id_razonado = 0,
+                    ultima_actualizacion_en = NOW()
+                WHERE cliente_bunker_id = $1
+            `, [nuevoBunkerId]).catch(() => {});
+        }
 
         // Si se marcó como PERSONAL / OCULTO, propagar aislamiento a todos los teléfonos hermanos de esa misma persona/ficha
         let propagados = 0;
@@ -2299,7 +2617,8 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
         res.json({
             success: true,
             data: updRes.rows[0],
-            propagados
+            propagados,
+            rol_sincronizado_bunker: rolSincronizadoBunker
         });
     } catch (error) {
         console.error('❌ [CRM-WA-HUB] Error actualizando configuración del chat:', error.message);
@@ -2388,7 +2707,7 @@ router.post('/crm/whatsapp/sincronizar', async (req, res) => {
 
         let syncRemoto = { success: false, message: 'No conectado' };
         try {
-            const response = await fetch('http://localhost:3004/facturacion/whatsapp/sincronizar-chats', {
+            const response = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/sincronizar-chats', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(req.body || {})
@@ -3617,9 +3936,45 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
         const body = req.body || {};
         const mensajesArr = Array.isArray(body.mensajesRecientes) ? body.mensajesRecientes : [];
         const cliIdNum = parseInt(body.clienteId, 10) || 0;
+        const chatIdNum = parseInt(body.chatId, 10) || 0;
         const agenteObjNorm = String(body.agenteObjetivo || 'AUTO').trim().toUpperCase();
         const carrilReq = body.carril ? String(body.carril).trim().toUpperCase() : '';
         const instruccionOperador = String(body.instruccionOperador || '').trim();
+
+        // Fase 3.5: Resolver deterministamente rol_operativo, apodo_preferido, memoria_trato y otros contactos desde crm_whatsapp_chats
+        let rolOperativo = body.rolOperativo || null;
+        let contactoCargo = body.contactoCargo || '';
+        let apodoConfirmadoMartin = body.apodoConfirmadoMartin || '';
+        let notaTrato = body.notaTrato || '';
+        let otrosContactosCliente = Array.isArray(body.otrosContactosCliente) ? body.otrosContactosCliente : [];
+        if (chatIdNum > 0) {
+            try {
+                const chMeta = await pool.query(`
+                    SELECT id, bunker_cliente_id, rol_operativo, contacto_cargo, apodo_preferido, memoria_trato_json
+                    FROM public.crm_whatsapp_chats
+                    WHERE id = $1
+                    LIMIT 1
+                `, [chatIdNum]);
+                if (chMeta.rows.length > 0) {
+                    const rowCh = chMeta.rows[0];
+                    if (!rolOperativo && rowCh.rol_operativo) rolOperativo = rowCh.rol_operativo;
+                    if (!contactoCargo && rowCh.contacto_cargo) contactoCargo = rowCh.contacto_cargo;
+                    if (!apodoConfirmadoMartin && rowCh.apodo_preferido) apodoConfirmadoMartin = rowCh.apodo_preferido;
+                    if (!notaTrato && rowCh.memoria_trato_json?.nota_trato) notaTrato = rowCh.memoria_trato_json.nota_trato;
+                    if (otrosContactosCliente.length === 0 && rowCh.bunker_cliente_id) {
+                        const ocRes = await pool.query(`
+                            SELECT id, contacto_nombre, contacto_cargo, rol_operativo, apodo_preferido
+                            FROM public.crm_whatsapp_chats
+                            WHERE bunker_cliente_id = $1 AND id <> $2 AND COALESCE(modo_privacidad, 'ACTIVO') <> 'OCULTO'
+                            LIMIT 6
+                        `, [rowCh.bunker_cliente_id, chatIdNum]);
+                        otrosContactosCliente = ocRes.rows;
+                    }
+                }
+            } catch (_) {}
+        }
+
+        const esTelefonoCompartido = Boolean(body.esTelefonoCompartido || String(rolOperativo || '').toUpperCase() === 'COMPARTIDO');
 
         const enriquecido = await enriquecerContextoDeterministaRazonamientoWa({
             clienteId: cliIdNum,
@@ -3631,7 +3986,13 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
         const resultado = await agenteHibridoLlm.razonarAsistenciaHibridaClienteWa({
             clienteNombre: body.clienteNombre || '',
             contactoNombre: body.contactoNombre || '',
-            apodoSugerido: body.apodoSugerido || '',
+            apodoSugerido: apodoConfirmadoMartin || (esTelefonoCompartido ? '' : (body.apodoSugerido || '')),
+            apodoConfirmadoMartin,
+            notaTrato,
+            rolOperativo,
+            contactoCargo,
+            esTelefonoCompartido,
+            otrosContactosCliente,
             mensajesRecientes: mensajesArr,
             catalogoCompacto: Array.isArray(body.catalogoCompacto) ? body.catalogoCompacto : [],
             habitualesCliente: Array.isArray(body.habitualesCliente) ? body.habitualesCliente : [],

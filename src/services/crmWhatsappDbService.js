@@ -351,6 +351,21 @@ async function asegurarTablasCrmWhatsapp() {
 
             CREATE INDEX IF NOT EXISTS idx_crm_wa_chats_categoria
             ON public.crm_whatsapp_chats(categoria_contacto, esperando_respuesta);
+
+            ALTER TABLE public.crm_whatsapp_chats
+            ADD COLUMN IF NOT EXISTS rol_operativo VARCHAR(32) NULL;
+
+            ALTER TABLE public.crm_whatsapp_chats
+            ADD COLUMN IF NOT EXISTS rol_manual BOOLEAN NOT NULL DEFAULT false;
+
+            ALTER TABLE public.crm_whatsapp_chats
+            ADD COLUMN IF NOT EXISTS apodo_preferido VARCHAR(60) NULL;
+
+            ALTER TABLE public.crm_whatsapp_chats
+            ADD COLUMN IF NOT EXISTS memoria_trato_json JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+            CREATE INDEX IF NOT EXISTS idx_crm_wa_chats_rol_operativo
+            ON public.crm_whatsapp_chats(rol_operativo);
         `);
         await pool.query(`
             ALTER TABLE public.factura_cuenta_corriente_movimientos
@@ -367,6 +382,9 @@ async function asegurarTablasCrmWhatsapp() {
         });
         await clasificarChatsExistentesIdempotente().catch(errCat => {
             console.warn('⚠️ [CRM-WHATSAPP-DB] Error clasificando categorías iniciales de chats:', errCat.message);
+        });
+        await clasificarRolesOperativosExistentesIdempotente().catch(errRol => {
+            console.warn('⚠️ [CRM-WHATSAPP-DB] Error clasificando roles operativos iniciales:', errRol.message);
         });
     } catch (error) {
         console.error('❌ [CRM-WHATSAPP-DB] Error verificando tablas:', error.message);
@@ -415,6 +433,15 @@ async function obtenerDirectorioClientes(forceRefresh = false) {
                                 contactos.push({
                                     nombre: ct.nombre || 'Contacto',
                                     cargo: ct.cargo || '',
+                                    rol_operativo: ROLES_OPERATIVOS_VALIDOS.has(String(ct.rol_operativo || '').toUpperCase())
+                                        ? String(ct.rol_operativo).toUpperCase()
+                                        : null,
+                                    flagsBunker: {
+                                        default_factura: ct.default_factura,
+                                        default_resumen: ct.default_resumen,
+                                        default_presupuesto: ct.default_presupuesto,
+                                        default_difusion: ct.default_difusion
+                                    },
                                     numeroOriginal: ct.numero,
                                     esExplicito: true,
                                     ...infoTel
@@ -1360,21 +1387,32 @@ async function sembrarDirectorioClientesEnChats() {
                 vistosClave.add(claveTel);
 
                 const chatId = `${ct.limpio}@c.us`;
+                const rolInferidoSiembra = inferirRolOperativoDeterminista({
+                    rolExplicito: ct.rol_operativo || null,
+                    cargo: ct.cargo || '',
+                    nombre: ct.nombre || '',
+                    clienteNombre: cli.cliente_nombre || '',
+                    flagsBunker: ct.flagsBunker || null
+                });
 
                 await pool.query(`
                     INSERT INTO public.crm_whatsapp_chats (
                         chat_id, telefono_normalizado, ultimos_digitos,
                         bunker_cliente_id, cliente_nombre, codigo_bunker_cliente,
-                        contacto_nombre, contacto_cargo, es_cliente_bunker,
+                        contacto_nombre, contacto_cargo, rol_operativo, es_cliente_bunker,
                         modo_privacidad, esperando_respuesta, no_leidos,
                         ultimo_mensaje_texto, ultimo_mensaje_from_me, ultimo_mensaje_ack, ultimo_mensaje_at
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, 'ACTIVO', false, 0, 'Cliente Búnker vinculado', true, 2, NULL)
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, 'ACTIVO', false, 0, 'Cliente Búnker vinculado', true, 2, NULL)
                     ON CONFLICT (chat_id) DO UPDATE SET
                         bunker_cliente_id = EXCLUDED.bunker_cliente_id,
                         cliente_nombre = EXCLUDED.cliente_nombre,
                         codigo_bunker_cliente = EXCLUDED.codigo_bunker_cliente,
                         contacto_nombre = COALESCE(NULLIF(EXCLUDED.contacto_nombre, ''), public.crm_whatsapp_chats.contacto_nombre),
                         contacto_cargo = COALESCE(NULLIF(EXCLUDED.contacto_cargo, ''), public.crm_whatsapp_chats.contacto_cargo),
+                        rol_operativo = CASE
+                            WHEN public.crm_whatsapp_chats.rol_manual THEN public.crm_whatsapp_chats.rol_operativo
+                            ELSE COALESCE(NULLIF(EXCLUDED.rol_operativo, ''), public.crm_whatsapp_chats.rol_operativo)
+                        END,
                         es_cliente_bunker = true
                 `, [
                     chatId,
@@ -1384,7 +1422,8 @@ async function sembrarDirectorioClientesEnChats() {
                     cli.cliente_nombre,
                     cli.codigo_bunker_cliente,
                     ct.nombre || cli.cliente_nombre,
-                    ct.cargo || ''
+                    ct.cargo || '',
+                    rolInferidoSiembra
                 ]);
             }
         }
@@ -1574,9 +1613,187 @@ async function sincronizarEstadoNoLeidosDesdeWa(listaNoLeidosWa = []) {
     }
 }
 
+/**
+ * Taxonomía cerrada de Roles Operativos por contacto / línea WhatsApp (Fase 3.5)
+ */
+const ROLES_OPERATIVOS_VALIDOS = new Set([
+    'DUENO_TITULAR',
+    'COMPRAS_PEDIDOS',
+    'PAGOS_ADMIN',
+    'RECEPCION_LOCAL',
+    'COMPARTIDO'
+]);
+
+function normalizarTextoRol(str) {
+    return String(str || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
+ * Infiere de forma 100% determinista ($0 IA) el rol operativo inicial de un contacto
+ * a partir de su cargo, nombre vs. razón social y flags en bunker_clientes.whatsapp_facturas.
+ * Devuelve null cuando el cargo es ambiguo ("Contacto Lomas", "Teléfono Ficha" o vacío).
+ */
+function inferirRolOperativoDeterminista({ rolExplicito = null, cargo = '', nombre = '', clienteNombre = '', flagsBunker = null } = {}) {
+    const expNorm = String(rolExplicito || '').trim().toUpperCase();
+    if (ROLES_OPERATIVOS_VALIDOS.has(expNorm)) return expNorm;
+
+    const cargoNorm = normalizarTextoRol(cargo);
+    const nomNorm = normalizarTextoRol(nombre);
+    const cliNorm = normalizarTextoRol(clienteNombre);
+
+    if (cargoNorm) {
+        if (/(duen[oa]|titular|soci[oa]|propietari|director|gerente)/.test(cargoNorm)) {
+            return 'DUENO_TITULAR';
+        }
+        if (/(pago|pagos|admin|administracion|contad|tesorer|cobranz|factur)/.test(cargoNorm)) {
+            return 'PAGOS_ADMIN';
+        }
+        if (/(compra|compras|pedido|pedidos|encargad)/.test(cargoNorm)) {
+            return 'COMPRAS_PEDIDOS';
+        }
+        if (/(recepci|emplead|deposito|mostrador|vendedor|caja|logistica|sucursal)/.test(cargoNorm)) {
+            return 'RECEPCION_LOCAL';
+        }
+        if (/(empresa|negocio|institucional|compartid|general|oficina|central|local)/.test(cargoNorm)) {
+            return 'COMPARTIDO';
+        }
+    }
+
+    if (nomNorm && cliNorm && nomNorm.length >= 3 && (nomNorm === cliNorm || /^(empresa|negocio|local|mostrador|administracion|compras)$/.test(nomNorm))) {
+        if (nomNorm === 'administracion') return 'PAGOS_ADMIN';
+        if (nomNorm === 'compras') return 'COMPRAS_PEDIDOS';
+        return 'COMPARTIDO';
+    }
+
+    if (flagsBunker && flagsBunker.default_resumen === true && flagsBunker.default_presupuesto === false && flagsBunker.default_difusion === false) {
+        return 'PAGOS_ADMIN';
+    }
+
+    return null;
+}
+
+/**
+ * Clasifica de forma idempotente el rol_operativo inicial en todos los chats comerciales sin rol fijado manualmente.
+ */
+async function clasificarRolesOperativosExistentesIdempotente() {
+    const { rows } = await pool.query(`
+        SELECT id, bunker_cliente_id, telefono_normalizado, contacto_nombre, contacto_cargo, cliente_nombre, rol_operativo, rol_manual
+        FROM public.crm_whatsapp_chats
+        WHERE rol_operativo IS NULL
+          AND COALESCE(rol_manual, false) = false
+          AND categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO')
+    `);
+    if (rows.length === 0) return { revisados: 0, actualizados: 0 };
+
+    // Indexar contactos estructurados de bunker_clientes.whatsapp_facturas por bunker_cliente_id
+    const dir = await obtenerDirectorioClientes(false).catch(() => []);
+    const mapaDir = new Map(dir.map(d => [Number(d.bunker_cliente_id), d]));
+
+    let actualizados = 0;
+    for (const ch of rows) {
+        const cliDir = ch.bunker_cliente_id ? mapaDir.get(Number(ch.bunker_cliente_id)) : null;
+        const infoTel = analizarTelefono(ch.telefono_normalizado);
+        const matchCt = cliDir?.contactos?.find(ct =>
+            (ct.cola10 && infoTel.cola10 && ct.cola10 === infoTel.cola10) ||
+            (ct.cola8 && infoTel.cola8 && ct.cola8 === infoTel.cola8)
+        ) || null;
+
+        const rolInf = inferirRolOperativoDeterminista({
+            rolExplicito: matchCt?.rol_operativo || null,
+            cargo: ch.contacto_cargo || matchCt?.cargo || '',
+            nombre: ch.contacto_nombre || matchCt?.nombre || '',
+            clienteNombre: ch.cliente_nombre || cliDir?.cliente_nombre || '',
+            flagsBunker: matchCt?.flagsBunker || null
+        });
+
+        if (rolInf) {
+            await pool.query(
+                `UPDATE public.crm_whatsapp_chats SET rol_operativo = $2 WHERE id = $1 AND rol_operativo IS NULL AND COALESCE(rol_manual, false) = false`,
+                [ch.id, rolInf]
+            );
+            actualizados++;
+        }
+    }
+    if (actualizados > 0) {
+        console.log(`🏷️ [CRM-WHATSAPP-DB] Roles operativos iniciales inferidos: ${actualizados}/${rows.length} chats.`);
+    }
+    return { revisados: rows.length, actualizados };
+}
+
+/**
+ * Sincroniza rol_operativo de vuelta hacia el objeto de contacto coincidente (últimos 10 dígitos)
+ * dentro de public.bunker_clientes.whatsapp_facturas SIN pisar cargo ni flags existentes.
+ */
+async function sincronizarRolOperativoEnBunkerWhatsapp(bunkerClienteId, telefonoNormalizado, nuevoRolOperativo) {
+    const cliId = parseInt(bunkerClienteId, 10);
+    if (!cliId || !telefonoNormalizado) return { sincronizado: false };
+
+    const rolValido = nuevoRolOperativo && ROLES_OPERATIVOS_VALIDOS.has(String(nuevoRolOperativo).toUpperCase())
+        ? String(nuevoRolOperativo).toUpperCase()
+        : null;
+
+    try {
+        const res = await pool.query(
+            `SELECT id, whatsapp_facturas FROM public.bunker_clientes WHERE id = $1 LIMIT 1`,
+            [cliId]
+        );
+        if (res.rows.length === 0 || !res.rows[0].whatsapp_facturas) {
+            return { sincronizado: false };
+        }
+        const raw = res.rows[0].whatsapp_facturas;
+        let parsed;
+        try {
+            parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        } catch (_) {
+            return { sincronizado: false };
+        }
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+            return { sincronizado: false };
+        }
+
+        const targetInfo = analizarTelefono(telefonoNormalizado);
+        let modificado = false;
+        const actualizado = parsed.map(ct => {
+            if (!ct || !ct.numero) return ct;
+            const ctInfo = analizarTelefono(ct.numero);
+            const coincide = (targetInfo.cola10 && ctInfo.cola10 && targetInfo.cola10 === ctInfo.cola10)
+                || (targetInfo.cola8 && ctInfo.cola8 && targetInfo.cola8 === ctInfo.cola8);
+            if (!coincide) return ct;
+            modificado = true;
+            const copia = { ...ct };
+            if (rolValido) {
+                copia.rol_operativo = rolValido;
+            } else {
+                delete copia.rol_operativo;
+            }
+            return copia;
+        });
+
+        if (!modificado) return { sincronizado: false };
+
+        await pool.query(
+            `UPDATE public.bunker_clientes SET whatsapp_facturas = $2 WHERE id = $1`,
+            [cliId, JSON.stringify(actualizado)]
+        );
+        cacheClientesBunker = null;
+        cacheClientesTs = 0;
+        return { sincronizado: true, rol_operativo: rolValido };
+    } catch (err) {
+        console.warn('⚠️ [CRM-WHATSAPP-DB] Error sincronizando rol_operativo en bunker_clientes:', err.message);
+        return { sincronizado: false, error: err.message };
+    }
+}
+
 module.exports = {
     TIPOS_MENSAJE_PROTOCOLO_IGNORADOS,
     CATEGORIAS_CONTACTO_VALIDAS,
+    ROLES_OPERATIVOS_VALIDOS,
     esTipoMensajeProtocoloIgnorado,
     invalidarCacheCategoriasCrm,
     analizarTelefono,
@@ -1584,6 +1801,9 @@ module.exports = {
     obtenerDirectorioClientes,
     resolverClienteBunkerPorTelefono,
     determinarCategoriaContactoAutomatica,
+    inferirRolOperativoDeterminista,
+    clasificarRolesOperativosExistentesIdempotente,
+    sincronizarRolOperativoEnBunkerWhatsapp,
     registrarMensajeWhatsapp,
     verificarAudioYaTranscrito,
     actualizarTranscripcionAudioMensaje,

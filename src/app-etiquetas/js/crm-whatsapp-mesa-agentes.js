@@ -179,6 +179,8 @@
     }
 
     function resolverInfoContactoDeterminista(st) {
+        const apodoPref = String(st?.apodoPreferido || '').trim();
+        const esCompartido = String(st?.rolOperativo || '').toUpperCase() === 'COMPARTIDO';
         const raw = String(st?.contactoNombreChat || st?.nombreCorto || st?.nombreCliente || '').trim();
         const primeraPalabra = raw
             .replace(/\(.*?\)/g, '')
@@ -189,12 +191,15 @@
             ? (primeraPalabra.charAt(0).toUpperCase() + primeraPalabra.slice(1).toLowerCase())
             : '';
         const nomHist = String(st?.sintesisMemoria?.contacto_hilo?.nombre_pila_detectado || '').trim();
-        const apodo = nomHist || String(st?.nombreCorto || '').trim() || nomPila;
+        // Prioridad estricta Fase 3.5: apodo_preferido > (si es COMPARTIDO, neutro '') > historial > agenda
+        const apodo = apodoPref || (esCompartido ? '' : (nomHist || String(st?.nombreCorto || '').trim() || nomPila));
         const momento = obtenerSaludoMomentoActual();
         return {
-            nombrePila: nomPila || apodo,
-            nombreFormalPila: nomPila || apodo,
+            nombrePila: apodoPref || nomPila || apodo,
+            nombreFormalPila: apodoPref || nomPila || apodo,
             apodoCorto: apodo,
+            apodoConfirmado: apodoPref,
+            esCompartido,
             saludoMomento: momento.lower,
             saludoMomentoCap: momento.cap
         };
@@ -509,6 +514,14 @@
             : (st?.comprobanteLeido || null);
 
         const ctrl = new AbortController();
+        const onExternalAbort = () => ctrl.abort();
+        if (opciones.signal) {
+            if (opciones.signal.aborted) {
+                ctrl.abort();
+            } else {
+                opciones.signal.addEventListener('abort', onExternalAbort, { once: true });
+            }
+        }
         const timer = setTimeout(() => ctrl.abort(), 32000);
         try {
             const catalogoCompactoIa = (st?.catalogoArticulos || []).slice(0, 320).map(a => ({
@@ -519,6 +532,10 @@
                 stock_disponible: Number(a.stock_real || 0)
             }));
 
+            const apodoConf = String(st?.apodoPreferido || '').trim();
+            const rolOp = st?.rolOperativo || null;
+            const esComp = String(rolOp || '').toUpperCase() === 'COMPARTIDO';
+
             const r = await fetch('/api/crm/whatsapp/asistente-hibrido/razonar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -528,7 +545,13 @@
                     chatId: st?.chatId || 0,
                     clienteNombre: st?.nombreCliente || '',
                     contactoNombre: st?.contactoNombreChat || '',
-                    apodoSugerido: st?.nombreCorto || '',
+                    apodoSugerido: apodoConf || (esComp ? '' : (st?.nombreCorto || '')),
+                    apodoConfirmadoMartin: apodoConf,
+                    notaTrato: st?.notaTrato || '',
+                    rolOperativo: rolOp,
+                    contactoCargo: st?.contactoCargoChat || '',
+                    esTelefonoCompartido: esComp,
+                    otrosContactosCliente: Array.isArray(st?.otrosContactosCliente) ? st.otrosContactosCliente : [],
                     carril: carrilObjetivo || undefined,
                     agenteObjetivo,
                     comprobanteLeido,
@@ -617,13 +640,21 @@
                 pasoEnEspera: raz.explicacion_razonamiento || 'Mensaje generado con Gemini 2.5 Flash + Clavijas Deterministas.'
             };
         } catch (err) {
-            const msg = err?.name === 'AbortError'
-                ? 'Tiempo de espera agotado (32s): el servicio de IA (Gemini) no respondió.'
-                : (err?.message || 'No se pudo conectar con el servicio de IA (Gemini).');
-            st.errorCriticoIa = msg;
-            throw new Error(msg);
+            const fueCanceladoUsuario = Boolean(opciones.signal && opciones.signal.aborted);
+            const msg = fueCanceladoUsuario
+                ? 'CANCELADO_POR_USUARIO'
+                : (err?.name === 'AbortError'
+                    ? 'El asistente tardó más de lo habitual (32s). Podés reintentar o redactar directo.'
+                    : (err?.message || 'No se pudo conectar con el servicio de IA (Gemini).'));
+            if (!fueCanceladoUsuario) st.errorCriticoIa = msg;
+            const errOut = new Error(msg);
+            if (fueCanceladoUsuario) errOut.canceladoPorUsuario = true;
+            throw errOut;
         } finally {
             clearTimeout(timer);
+            if (opciones.signal) {
+                try { opciones.signal.removeEventListener('abort', onExternalAbort); } catch (_) {}
+            }
         }
     };
 
