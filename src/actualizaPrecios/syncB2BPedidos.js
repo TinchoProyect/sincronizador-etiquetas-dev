@@ -166,8 +166,10 @@ async function procesarPedidosB2B(opts = {}) {
                 ) AS esta_facturado
          FROM public.presupuestos p
          LEFT JOIN public.b2b_pedidos_mapeo m ON m.local_presupuesto_id = p.id
-         WHERE p.id_presupuesto_ext = $1 OR m.supabase_pedido_id = $1
-         ORDER BY (p.id_presupuesto_ext = $1) DESC, p.id DESC
+         WHERE p.id_presupuesto_ext = $1::text
+            OR (CASE WHEN $1::text ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+                     THEN m.supabase_pedido_id = $1::uuid ELSE false END)
+         ORDER BY (p.id_presupuesto_ext = $1::text) DESC, p.id DESC
          LIMIT 1`,
         [pedido.id]
       );
@@ -594,7 +596,9 @@ async function procesarPedidosB2B(opts = {}) {
     return { skipped: false, nuevos: nuevosCount, actualizados: actualizadosCount };
   } catch (error) {
     console.error('❌ Error general durante la ingesta de pedidos:', error.message);
-    process.exitCode = 1;
+    if (require.main === module) {
+      process.exitCode = 1;
+    }
     return { skipped: false, error: error.message, nuevos: nuevosCount, actualizados: actualizadosCount };
   } finally {
     if (localClient) {
