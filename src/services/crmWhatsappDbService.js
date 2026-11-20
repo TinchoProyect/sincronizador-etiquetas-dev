@@ -959,7 +959,13 @@ async function actualizarTranscripcionAudioMensaje({ msgId, chatId, cuerpoFormat
 
         const cliId = updated[0]?.bunker_cliente_id;
         if (cliId) {
-            await pool.query(`DELETE FROM public.crm_cliente_sintesis_memoria WHERE cliente_id = $1`, [cliId]).catch(() => {});
+            await pool.query(`
+                UPDATE public.crm_cliente_sintesis_memoria
+                SET razonamiento_ia_json = NULL,
+                    ultimo_msg_id_razonado = 0,
+                    ultima_actualizacion_en = NOW()
+                WHERE cliente_bunker_id = $1
+            `, [cliId]).catch(() => {});
         }
         return updated[0] || null;
     } catch (err) {

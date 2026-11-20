@@ -1,7 +1,7 @@
 const axios = require('axios');
 const iaMonitor = require('../../services/iaCreditoMonitorService');
 
-const API_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const API_MODEL = iaMonitor.MODELO_GEMINI_OFICIAL || 'gemini-3.8-flash';
 
 // JSON Schema para la respuesta estructurada de un lote
 const responseSchema = {

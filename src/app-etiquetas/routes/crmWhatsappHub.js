@@ -330,6 +330,301 @@ async function resolverEstadoYInvitacionPortalClienteWa(cliRow, { forzarNuevaInv
     };
 }
 
+/**
+ * Fase 3: Resuelve desde PostgreSQL el estado logístico real del último pedido / entrega del cliente
+ * (presupuestos + rutas + chofer en usuarios + entregas_eventos + ítems reales en presupuestos_detalles)
+ * para los especialistas LOGISTICA_ENTREGAS y POST_ENTREGA.
+ */
+async function obtenerContextoLogisticoClienteWa(lomasIdNum) {
+    if (!lomasIdNum || !Number.isFinite(Number(lomasIdNum))) {
+        return {
+            estado_normalizado: 'SIN_PEDIDO_ACTIVO',
+            ultimo_pedido: null,
+            ultimo_entregado: null,
+            entregado_reciente_48h: false
+        };
+    }
+    try {
+        const resPed = await pool.query(`
+            SELECT
+                p.id,
+                p.fecha,
+                p.estado,
+                p.secuencia,
+                p.estado_logistico,
+                p.fecha_asignacion_ruta,
+                p.fecha_entrega,
+                p.fecha_entrega_estimada,
+                p.fecha_entrega_real,
+                p.id_ruta,
+                p.orden_entrega,
+                p.punto_entrega,
+                p.motivo_no_entrega,
+                r.nombre_ruta,
+                r.estado AS ruta_estado,
+                r.fecha_salida AS ruta_fecha_salida,
+                r.fecha_finalizacion AS ruta_fecha_finalizacion,
+                u.nombre_completo AS chofer_nombre,
+                ee.receptor_nombre,
+                ee.receptor_vinculo,
+                ee.fecha_entrega AS evento_fecha_entrega,
+                ee.tipo_evento AS evento_tipo,
+                COALESCE((SELECT SUM(pd.cantidad * pd.precio1) FROM public.presupuestos_detalles pd WHERE pd.id_presupuesto = p.id), 0) AS total
+            FROM public.presupuestos p
+            LEFT JOIN public.rutas r ON r.id = p.id_ruta
+            LEFT JOIN public.usuarios u ON u.id = r.id_chofer
+            LEFT JOIN LATERAL (
+                SELECT receptor_nombre, receptor_vinculo, fecha_entrega, tipo_evento
+                FROM public.entregas_eventos
+                WHERE id_presupuesto = p.id
+                ORDER BY fecha_entrega DESC NULLS LAST, id DESC
+                LIMIT 1
+            ) ee ON true
+            WHERE NULLIF(regexp_replace(p.id_cliente::text, '^0+', ''), '')::integer = $1
+              AND (p.estado IS NULL OR LOWER(TRIM(p.estado)) NOT IN ('anulado', 'anulada', 'cancelado', 'cancelada', 'baja', 'eliminado', 'eliminada'))
+              AND (p.activo IS NULL OR p.activo = true)
+            ORDER BY p.id DESC
+            LIMIT 6
+        `, [Number(lomasIdNum)]);
+
+        if (resPed.rows.length === 0) {
+            return {
+                estado_normalizado: 'SIN_PEDIDO_ACTIVO',
+                ultimo_pedido: null,
+                ultimo_entregado: null,
+                entregado_reciente_48h: false
+            };
+        }
+
+        const normalizarEstadoPedido = (row) => {
+            const combo = `${row.estado_logistico || ''} ${row.estado || ''} ${row.secuencia || ''} ${row.evento_tipo || ''}`.toLowerCase();
+            if (row.fecha_entrega_real || row.evento_fecha_entrega || /entregad/i.test(combo)) {
+                return 'ENTREGADO';
+            }
+            const rutaSt = String(row.ruta_estado || '').toLowerCase();
+            if (/en_camino|en camino|en_reparto|reparto|en_curso|despach|salio/i.test(`${combo} ${rutaSt}`) || (row.id_ruta && !/finaliz|cerrad|complet|cancel/i.test(rutaSt) && /curso|activ|reparto|camino|iniciad/i.test(rutaSt))) {
+                return 'EN_CAMINO';
+            }
+            return 'EN_PREPARACION';
+        };
+
+        const mapearResumen = (row, items = []) => {
+            if (!row) return null;
+            const fechaEntReal = row.evento_fecha_entrega || row.fecha_entrega_real || row.fecha_entrega || null;
+            return {
+                presupuesto_id: Number(row.id),
+                estado_normalizado: normalizarEstadoPedido(row),
+                estado_raw: row.estado || '',
+                estado_logistico: row.estado_logistico || '',
+                secuencia: row.secuencia || '',
+                fecha_pedido: row.fecha ? new Date(row.fecha).toISOString() : null,
+                fecha_entrega_estimada: row.fecha_entrega_estimada ? new Date(row.fecha_entrega_estimada).toISOString() : null,
+                fecha_entrega_real: fechaEntReal ? new Date(fechaEntReal).toISOString() : null,
+                id_ruta: row.id_ruta ? Number(row.id_ruta) : null,
+                nombre_ruta: row.nombre_ruta || '',
+                ruta_estado: row.ruta_estado || '',
+                chofer_nombre: row.chofer_nombre || '',
+                receptor_nombre: row.receptor_nombre || '',
+                receptor_vinculo: row.receptor_vinculo || '',
+                punto_entrega: row.punto_entrega || '',
+                motivo_no_entrega: row.motivo_no_entrega || '',
+                total: Number(row.total || 0),
+                items_principales: items
+            };
+        };
+
+        const cargarItemsPedido = async (presId) => {
+            if (!presId) return [];
+            try {
+                const itRes = await pool.query(`
+                    SELECT
+                        pd.articulo AS codigo,
+                        COALESCE(NULLIF(TRIM(ba.descripcion_generada), ''), pd.articulo) AS nombre,
+                        pd.cantidad
+                    FROM public.presupuestos_detalles pd
+                    LEFT JOIN public.bunker_articulos ba ON LOWER(TRIM(ba.articulo_id)) = LOWER(TRIM(pd.articulo))
+                    WHERE pd.id_presupuesto = $1
+                    ORDER BY (pd.cantidad * COALESCE(pd.precio1, 0)) DESC, pd.id ASC
+                    LIMIT 6
+                `, [presId]);
+                return itRes.rows.map(r => ({
+                    codigo: String(r.codigo || '').trim(),
+                    nombre: String(r.nombre || '').trim(),
+                    cantidad: Number(r.cantidad || 0)
+                }));
+            } catch (_) {
+                return [];
+            }
+        };
+
+        const primero = resPed.rows[0];
+        const estadoPrimero = normalizarEstadoPedido(primero);
+        const rowEntregado = estadoPrimero === 'ENTREGADO'
+            ? primero
+            : (resPed.rows.find(r => normalizarEstadoPedido(r) === 'ENTREGADO') || null);
+
+        const itemsPrimero = await cargarItemsPedido(primero.id);
+        const itemsEntregado = (rowEntregado && rowEntregado.id !== primero.id)
+            ? await cargarItemsPedido(rowEntregado.id)
+            : (rowEntregado ? itemsPrimero : []);
+
+        const ultimoPedido = mapearResumen(primero, itemsPrimero);
+        const ultimoEntregado = rowEntregado ? mapearResumen(rowEntregado, itemsEntregado) : null;
+        const tsEnt = ultimoEntregado?.fecha_entrega_real ? new Date(ultimoEntregado.fecha_entrega_real).getTime() : 0;
+        const entregadoReciente48h = tsEnt > 0 && (Date.now() - tsEnt) <= (72 * 3600 * 1000);
+
+        return {
+            estado_normalizado: estadoPrimero,
+            ultimo_pedido: ultimoPedido,
+            ultimo_entregado: ultimoEntregado,
+            entregado_reciente_48h: entregadoReciente48h
+        };
+    } catch (err) {
+        console.warn('⚠️ [CRM-WA-HUB] Error consultando contexto logístico:', err.message);
+        return {
+            estado_normalizado: 'SIN_PEDIDO_ACTIVO',
+            ultimo_pedido: null,
+            ultimo_entregado: null,
+            entregado_reciente_48h: false
+        };
+    }
+}
+
+/**
+ * Fase 3: Enriquece server-side el contexto determinista del cliente para POST /asistente-hibrido/razonar
+ * garantizando tramo_real exacto (EN_TERMINO | GRACIA_NATURAL | COMODIN | SALVAVIDAS_FINANCIADO),
+ * saldo/capas reales de composicionSaldoService + salvavidasService, logística real y días sin compra.
+ */
+async function enriquecerContextoDeterministaRazonamientoWa({
+    clienteId,
+    estadoCuentaBase = {},
+    contextoLogisticoBase = null,
+    diasSinCompraBase = null
+} = {}) {
+    const outCuenta = { ...(estadoCuentaBase || {}) };
+    let outLogistica = contextoLogisticoBase || null;
+    let outDiasSinCompra = (diasSinCompraBase !== null && diasSinCompraBase !== undefined)
+        ? Number(diasSinCompraBase)
+        : null;
+
+    if (!clienteId || Number(clienteId) <= 0) {
+        return {
+            estadoCuentaDeterminista: outCuenta,
+            contextoLogistico: outLogistica || { estado_normalizado: 'SIN_PEDIDO_ACTIVO', ultimo_pedido: null, ultimo_entregado: null },
+            diasSinCompra: outDiasSinCompra
+        };
+    }
+
+    try {
+        const cliRes = await pool.query(`
+            SELECT id, codigo_bunker_cliente, lomas_soft_id
+            FROM public.bunker_clientes
+            WHERE id = $1
+            LIMIT 1
+        `, [Number(clienteId)]);
+
+        if (cliRes.rows.length > 0) {
+            const cli = cliRes.rows[0];
+            const lomasIdNum = (cli.lomas_soft_id && /^\d+$/.test(String(cli.lomas_soft_id).trim()))
+                ? parseInt(String(cli.lomas_soft_id).trim(), 10)
+                : null;
+
+            // 1. Cuenta Corriente determinista (composicionSaldo + salvavidas)
+            if (cli.codigo_bunker_cliente) {
+                try {
+                    const ccRes = await pool.query(`
+                        SELECT id, saldo, saldo_apertura
+                        FROM public.factura_cuentas_corrientes
+                        WHERE TRIM(codigo_bunker_cliente) = TRIM($1)
+                        ORDER BY creada_en ASC, id ASC
+                    `, [cli.codigo_bunker_cliente]);
+                    if (ccRes.rows.length > 0) {
+                        const cc = ccRes.rows[0];
+                        const saldoConsolidado = ccRes.rows.length > 1
+                            ? ccRes.rows.reduce((acc, r) => acc + (parseFloat(r.saldo) || 0), 0)
+                            : parseFloat(cc.saldo ?? cc.saldo_apertura ?? 0);
+
+                        let comp = null;
+                        let salv = null;
+                        try { comp = await calcularComposicionSaldo(cc.id, pool); } catch (_) {}
+                        try { salv = await salvavidasService.calcularSimulacionCuenta(cc.id, { persistir_sombra: false }, pool); } catch (_) {}
+
+                        const finConIva = Number(salv?.financiacion_total_con_iva || 0);
+                        const saldoTotalProy = finConIva > 1
+                            ? Number(salv?.saldo_total_proyectado_con_iva || (saldoConsolidado + finConIva))
+                            : saldoConsolidado;
+                        const antigMax = Number(comp?.antiguedad_maxima_dias || 0);
+
+                        // Mapear tramo real estricto a las 4 categorías canónicas de LAMDA
+                        let tramoReal = 'EN_TERMINO';
+                        const estSalv = String(salv?.estado_general || '').toUpperCase();
+                        const capasSim = Array.isArray(salv?.capas_simuladas) ? salv.capas_simuladas : [];
+                        const tieneCapaSalvavidas = capasSim.some(c => /FINANCIAD|SALVAVIDAS/i.test(String(c.tramo || c.estado || '')) && Number(c.financiacion_con_iva || c.financiacion || 0) > 1);
+                        const tieneCapaComodin = capasSim.some(c => /COMODIN/i.test(String(c.tramo || c.estado || '')));
+
+                        if (saldoConsolidado <= 100) {
+                            tramoReal = 'EN_TERMINO';
+                        } else if (finConIva > 1 || tieneCapaSalvavidas || /FINANCIAD|SALVAVIDAS|MORA|ATRASO_CRITICO/i.test(estSalv)) {
+                            tramoReal = 'SALVAVIDAS_FINANCIADO';
+                        } else if (tieneCapaComodin || /COMODIN/i.test(estSalv) || (antigMax >= 11 && antigMax <= 14)) {
+                            tramoReal = 'COMODIN';
+                        } else if (/GRACIA|CORTESIA/i.test(estSalv) || (antigMax >= 8 && antigMax <= 10)) {
+                            tramoReal = 'GRACIA_NATURAL';
+                        } else {
+                            tramoReal = 'EN_TERMINO';
+                        }
+
+                        outCuenta.saldo_capital = Math.round(saldoConsolidado * 100) / 100;
+                        outCuenta.financiacion_total_con_iva = Math.round(finConIva * 100) / 100;
+                        outCuenta.saldo_total = Math.round(saldoTotalProy * 100) / 100;
+                        outCuenta.tiene_saldo_a_favor = saldoConsolidado < -10;
+                        outCuenta.antiguedad_maxima_dias = antigMax;
+                        outCuenta.tramo_real = tramoReal;
+                        outCuenta.condicion_comercial = comp?.condicion_comercial || estSalv || tramoReal;
+                        outCuenta.capas_abiertas = (Array.isArray(comp?.capas) ? comp.capas : []).slice(0, 5).map(c => ({
+                            comprobante: c.comprobante || c.descripcion || '',
+                            fecha: c.fecha || '',
+                            saldo_pendiente: Number(c.saldo_pendiente || c.monto || 0),
+                            dias: Number(c.dias_antiguedad || c.dias || 0)
+                        }));
+                    }
+                } catch (eCc) {
+                    console.warn('⚠️ [CRM-WA-RAZONAR] Error enriqueciendo CC determinista:', eCc.message);
+                }
+            }
+
+            // 2. Contexto logístico real desde PostgreSQL
+            if (!outLogistica && lomasIdNum !== null) {
+                outLogistica = await obtenerContextoLogisticoClienteWa(lomasIdNum);
+            }
+
+            // 3. Días sin compra reales
+            if (outDiasSinCompra === null && lomasIdNum !== null) {
+                try {
+                    const dcRes = await pool.query(`
+                        SELECT GREATEST(0, EXTRACT(DAY FROM (NOW() - MAX(COALESCE(fecha_actualizacion, fecha))))::int) AS dias
+                        FROM public.presupuestos
+                        WHERE NULLIF(regexp_replace(id_cliente::text, '^0+', ''), '')::integer = $1
+                          AND (estado IS NULL OR LOWER(TRIM(estado)) NOT IN ('anulado', 'anulada', 'cancelado', 'cancelada', 'baja', 'eliminado', 'eliminada'))
+                          AND (activo IS NULL OR activo = true)
+                    `, [lomasIdNum]);
+                    if (dcRes.rows[0]?.dias !== null && dcRes.rows[0]?.dias !== undefined) {
+                        outDiasSinCompra = Number(dcRes.rows[0].dias);
+                    }
+                } catch (_) {}
+            }
+        }
+    } catch (err) {
+        console.warn('⚠️ [CRM-WA-RAZONAR] Error en enriquecimiento determinista:', err.message);
+    }
+
+    return {
+        estadoCuentaDeterminista: outCuenta,
+        contextoLogistico: outLogistica || { estado_normalizado: 'SIN_PEDIDO_ACTIVO', ultimo_pedido: null, ultimo_entregado: null },
+        diasSinCompra: outDiasSinCompra
+    };
+}
+
 // Asegurar tablas al montar el router
 crmWhatsappDb.asegurarTablasCrmWhatsapp().catch(() => {});
 
@@ -1189,6 +1484,7 @@ router.get('/crm/whatsapp/chats/:id/detalle', async (req, res) => {
                             LIMIT 5
                         `, [lomasIdNum]);
                         rayosX.pedidos_recientes = pedRes.rows;
+                        rayosX.logistica_resumen = await obtenerContextoLogisticoClienteWa(lomasIdNum);
                     } catch (ePed) {
                         console.warn('⚠️ [CRM-WA-HUB] Error consultando pedidos cliente:', ePed.message);
                     }
@@ -1397,10 +1693,9 @@ router.get('/crm/whatsapp/chats/:id/detalle', async (req, res) => {
             }
         }
 
-        // Si entre los últimos 4 mensajes hay algún audio entrante sin transcribir ("🎤 Mensaje de audio"), transcribirlo en caliente
-        const ultimos4 = mensajesUnicos.slice(-4);
-        const audiosSinTranscribir = ultimos4.filter(m =>
-            !m.from_me &&
+        // Si entre los últimos 6 mensajes hay algún audio (entrante o saliente de Martín) sin transcribir ("🎤 Mensaje de audio"), transcribirlo en caliente
+        const ultimos6 = mensajesUnicos.slice(-6);
+        const audiosSinTranscribir = ultimos6.filter(m =>
             (m.tipo_mensaje === 'ptt' || m.tipo_mensaje === 'audio') &&
             (!m.cuerpo || String(m.cuerpo).trim() === '🎤 Mensaje de audio')
         );
@@ -1410,7 +1705,8 @@ router.get('/crm/whatsapp/chats/:id/detalle', async (req, res) => {
                     whatsappAudioTranscriber.transcribirAudiosDeChatViaDevTools({
                         chatId: chat.chat_id,
                         msgIds: audiosSinTranscribir.map(m => m.msg_id).filter(Boolean),
-                        maxAudios: 3
+                        maxAudios: 4,
+                        incluirSalientes: true
                     }),
                     new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 3500))
                 ]);
@@ -1446,28 +1742,167 @@ router.get('/crm/whatsapp/chats/:id/detalle', async (req, res) => {
 
 /**
  * POST /api/crm/whatsapp/chats/:id/transcribir-audios
- * Desencripta y transcribe bajo demanda los últimos audios del chat usando Whisper local.
+ * Desencripta y transcribe bajo demanda audios del chat (entrantes y salientes de Martín).
+ * Soporta tanto extracción en caliente vía DevToolsActivePort como audioBase64 directo (imputado a AUDIOS).
  */
 router.post('/crm/whatsapp/chats/:id/transcribir-audios', async (req, res) => {
     try {
-        const chatPk = parseInt(req.params.id);
+        const chatPk = parseInt(req.params.id, 10);
         const chatRes = await pool.query('SELECT * FROM public.crm_whatsapp_chats WHERE id = $1 LIMIT 1', [chatPk]);
         if (chatRes.rows.length === 0) {
             return res.status(404).json({ success: false, error: 'Chat no encontrado.' });
         }
         const chat = chatRes.rows[0];
         const msgIds = Array.isArray(req.body?.msgIds) ? req.body.msgIds : [];
-        const maxAudios = parseInt(req.body?.maxAudios) || 4;
+        const maxAudios = parseInt(req.body?.maxAudios, 10) || 4;
+        const incluirSalientes = req.body?.incluirSalientes !== false;
+        const audioBase64Raw = String(req.body?.audioBase64 || '').replace(/^data:audio\/[^;]+;base64,/i, '').trim();
+
+        // Modo directo por base64 (ej. pruebas o reenvío directo de audio)
+        if (audioBase64Raw && audioBase64Raw.length >= 32) {
+            const targetMsgId = String(req.body?.msgId || msgIds[0] || '').trim();
+            const mimeType = String(req.body?.mimeType || 'audio/ogg').trim();
+            const esSaliente = Boolean(req.body?.fromMe);
+            const resDirecto = await whatsappAudioTranscriber.descargarYTranscribirAudioWhatsApp({
+                base64Ogg: audioBase64Raw,
+                mimeType,
+                detalleOrigen: esSaliente ? 'Audio saliente Martín' : 'Audio entrante cliente'
+            });
+            let actualizado = false;
+            if (resDirecto && resDirecto.ok && resDirecto.cuerpoFormateado && targetMsgId) {
+                const rowUpd = await crmWhatsappDb.actualizarTranscripcionAudioMensaje({
+                    msgId: targetMsgId,
+                    chatId: chat.chat_id,
+                    cuerpoFormateado: resDirecto.cuerpoFormateado
+                });
+                actualizado = Boolean(rowUpd);
+            }
+            return res.json({
+                success: Boolean(resDirecto?.ok),
+                encontrados: 1,
+                transcritos: resDirecto?.ok ? 1 : 0,
+                resultados: resDirecto?.ok ? [{
+                    msgId: targetMsgId || 'directo',
+                    fromMe: esSaliente,
+                    texto: resDirecto.texto,
+                    cuerpo: resDirecto.cuerpoFormateado,
+                    actualizado
+                }] : []
+            });
+        }
 
         const resultado = await whatsappAudioTranscriber.transcribirAudiosDeChatViaDevTools({
             chatId: chat.chat_id,
             msgIds,
-            maxAudios
+            maxAudios,
+            incluirSalientes
         });
         res.json(resultado);
     } catch (error) {
         console.error('❌ [CRM-WA-HUB] Error en transcribir-audios:', error.message);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/crm/whatsapp/chats/:id/leer-imagen
+ * Fase 3 Multimodal: Lee e interpreta una imagen del chat (comprobante de transferencia, captura bancaria,
+ * remito o foto de producto) usando Gemini 2.5 Flash Vision.
+ * Persiste un resumen no destructivo sobre filas genéricas ('📷 Imagen') y devuelve el comprobante estructurado.
+ */
+router.post('/crm/whatsapp/chats/:id/leer-imagen', async (req, res) => {
+    try {
+        const chatPk = parseInt(req.params.id, 10);
+        const chatRes = await pool.query(`
+            SELECT c.*, COALESCE(c.cliente_nombre, bc.cliente_nombre) AS nombre_cliente_efectivo
+            FROM public.crm_whatsapp_chats c
+            LEFT JOIN public.bunker_clientes bc ON bc.id = c.bunker_cliente_id
+            WHERE c.id = $1
+            LIMIT 1
+        `, [chatPk]);
+        if (chatRes.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Chat no encontrado.' });
+        }
+        const chat = chatRes.rows[0];
+        const msgIdReq = req.body?.msgId ? String(req.body.msgId).trim() : null;
+        const imageBase64Raw = String(req.body?.imageBase64 || '').replace(/^data:image\/[^;]+;base64,/i, '').trim();
+
+        let imageBuffer = null;
+        let mimeType = String(req.body?.mimeType || 'image/jpeg').trim();
+        let resolvedMsgId = msgIdReq;
+        let origenImagen = 'base64_directo';
+
+        if (imageBase64Raw && imageBase64Raw.length >= 64) {
+            imageBuffer = Buffer.from(imageBase64Raw, 'base64');
+        } else {
+            const extr = await whatsappAudioTranscriber.extraerImagenDeChatViaDevTools({
+                chatId: chat.chat_id,
+                msgId: msgIdReq
+            });
+            if (!extr || !extr.success || !extr.imageBuffer) {
+                return res.status(422).json({
+                    success: false,
+                    error: extr?.message || extr?.error || 'No se pudo obtener la imagen desde WhatsApp Web (sesión no disponible o archivo expirado).'
+                });
+            }
+            imageBuffer = extr.imageBuffer;
+            mimeType = extr.mimeType || mimeType;
+            resolvedMsgId = resolvedMsgId || extr.msgId || null;
+            origenImagen = extr.origen || 'devtools';
+        }
+
+        const comprobante = await agenteHibridoLlm.leerComprobanteImagenConGemini({
+            imageBuffer,
+            mimeType,
+            contextoCliente: chat.nombre_cliente_efectivo || chat.contacto_nombre || ''
+        });
+
+        let resumenMensaje = '';
+        if (comprobante.es_comprobante_pago) {
+            const partes = [];
+            if (comprobante.banco) partes.push(comprobante.banco);
+            if (comprobante.importe !== null && comprobante.importe !== undefined) {
+                const impFmt = Number(comprobante.importe).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                partes.push(`$${impFmt}`);
+            }
+            if (comprobante.nro_operacion) partes.push(`Op. ${comprobante.nro_operacion}`);
+            if (comprobante.fecha) partes.push(comprobante.fecha);
+            if (comprobante.cuit_titular) partes.push(`CUIT ${comprobante.cuit_titular}`);
+            resumenMensaje = `📷 Comprobante leído: ${partes.length > 0 ? partes.join(' · ') : (comprobante.resumen_corto || 'Transferencia')}`;
+        } else {
+            resumenMensaje = `📷 Imagen leída: ${comprobante.resumen_corto || comprobante.tipo_documento || 'Sin texto relevante'}`;
+        }
+
+        // Actualización no destructiva solo si existe la fila con texto genérico '📷 Imagen'
+        let cuerpoActualizado = false;
+        if (resolvedMsgId) {
+            const rawShortId = String(resolvedMsgId).split('_').pop();
+            const updRes = await pool.query(`
+                UPDATE public.crm_whatsapp_mensajes
+                SET cuerpo = $2
+                WHERE (msg_id = $1 OR msg_id = $3)
+                  AND (
+                      COALESCE(TRIM(cuerpo), '') = ''
+                      OR TRIM(cuerpo) = '📷 Imagen'
+                      OR TRIM(cuerpo) LIKE '📷 Comprobante leído:%'
+                      OR TRIM(cuerpo) LIKE '📷 Imagen leída:%'
+                  )
+                RETURNING id, msg_id, cuerpo
+            `, [rawShortId, resumenMensaje, String(resolvedMsgId)]).catch(() => ({ rows: [] }));
+            cuerpoActualizado = updRes.rows.length > 0;
+        }
+
+        res.json({
+            success: true,
+            msg_id: resolvedMsgId,
+            origen: origenImagen,
+            comprobante,
+            resumen_mensaje: resumenMensaje,
+            cuerpo_actualizado: cuerpoActualizado
+        });
+    } catch (error) {
+        console.error('❌ [CRM-WA-HUB] Error en leer-imagen:', error.message);
+        res.status(503).json({ success: false, error: error.message });
     }
 });
 
@@ -2980,10 +3415,9 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
                 `, [chatIdsUnificados]);
                 mensajesRecientesChat = ult25Res.rows;
 
-                // Si entre las últimas 4 burbujas hay algún audio entrante sin transcribir ("🎤 Mensaje de audio"), transcribirlo antes de armar la respuesta del asistente
-                const ult4Sint = mensajesRecientesChat.slice(-4);
-                const audiosSinTrSint = ult4Sint.filter(m =>
-                    !m.from_me &&
+                // Si entre las últimas 6 burbujas hay algún audio (entrante o saliente de Martín) sin transcribir, transcribirlo antes de armar la respuesta
+                const ult6Sint = mensajesRecientesChat.slice(-6);
+                const audiosSinTrSint = ult6Sint.filter(m =>
                     (m.tipo_mensaje === 'ptt' || m.tipo_mensaje === 'audio') &&
                     (!m.cuerpo || String(m.cuerpo).trim() === '🎤 Mensaje de audio')
                 );
@@ -2993,7 +3427,8 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
                             whatsappAudioTranscriber.transcribirAudiosDeChatViaDevTools({
                                 chatId: chatRow.chat_id,
                                 msgIds: audiosSinTrSint.map(m => m.msg_id).filter(Boolean),
-                                maxAudios: 3
+                                maxAudios: 4,
+                                incluirSalientes: true
                             }),
                             new Promise(resolve => setTimeout(() => resolve({ timeout: true }), 7500))
                         ]);
@@ -3173,14 +3608,26 @@ router.post('/crm/whatsapp/clientes/:clienteId/preparar-invitacion-portal', asyn
 
 /**
  * POST /api/crm/whatsapp/asistente-hibrido/razonar
- * Ejecuta el Comité de Agentes Cognitivos (Gemini 2.5 Flash) sobre la base determinista
- * del cliente, el historial del chat y el catálogo real de LAMDA, y persiste el razonamiento
- * en public.crm_cliente_sintesis_memoria para lectura instantánea en próximas aperturas.
+ * Fase 3: Ejecuta el Motor de 2 Carriles (Entrante / Saliente) y 8 Agentes Especializados (Gemini 2.5 Flash)
+ * enriquecido server-side con la Capa Determinista de LAMDA (CC + tramo_real, Logística real, Portal B2B,
+ * catálogo y comprobantes leídos).
  */
 router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
     try {
         const body = req.body || {};
         const mensajesArr = Array.isArray(body.mensajesRecientes) ? body.mensajesRecientes : [];
+        const cliIdNum = parseInt(body.clienteId, 10) || 0;
+        const agenteObjNorm = String(body.agenteObjetivo || 'AUTO').trim().toUpperCase();
+        const carrilReq = body.carril ? String(body.carril).trim().toUpperCase() : '';
+        const instruccionOperador = String(body.instruccionOperador || '').trim();
+
+        const enriquecido = await enriquecerContextoDeterministaRazonamientoWa({
+            clienteId: cliIdNum,
+            estadoCuentaBase: body.estadoCuentaDeterminista || {},
+            contextoLogisticoBase: body.contextoLogistico || null,
+            diasSinCompraBase: body.diasSinCompra ?? null
+        });
+
         const resultado = await agenteHibridoLlm.razonarAsistenciaHibridaClienteWa({
             clienteNombre: body.clienteNombre || '',
             contactoNombre: body.contactoNombre || '',
@@ -3188,16 +3635,22 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
             mensajesRecientes: mensajesArr,
             catalogoCompacto: Array.isArray(body.catalogoCompacto) ? body.catalogoCompacto : [],
             habitualesCliente: Array.isArray(body.habitualesCliente) ? body.habitualesCliente : [],
-            estadoCuentaDeterminista: body.estadoCuentaDeterminista || {},
+            estadoCuentaDeterminista: enriquecido.estadoCuentaDeterminista,
+            contextoLogistico: enriquecido.contextoLogistico,
+            comprobanteLeido: body.comprobanteLeido || null,
+            diasSinCompra: enriquecido.diasSinCompra,
             linkPortalCliente: body.linkPortalCliente || '',
             yaIngresoPortal: Boolean(body.yaIngresoPortal),
-            instruccionOperador: body.instruccionOperador || '',
+            carril: carrilReq,
+            agenteObjetivo: agenteObjNorm,
+            instruccionOperador,
             forzarRecalculo: Boolean(body.forzarRecalculo)
         });
 
-        const cliIdNum = parseInt(body.clienteId, 10);
+        // Solo persistir caché automático en BD cuando fue AUTO sin instrucción ad-hoc ni especialista forzado
         const ultMsgId = mensajesArr.length > 0 ? Number(mensajesArr[mensajesArr.length - 1].id || 0) : 0;
-        if (cliIdNum > 0 && resultado && resultado.usando_ia_real) {
+        const esCorridaDefaultAuto = (agenteObjNorm === 'AUTO' || !agenteObjNorm) && !instruccionOperador && !body.comprobanteLeido;
+        if (cliIdNum > 0 && esCorridaDefaultAuto && resultado && resultado.usando_ia_real) {
             await asegurarTablaSintesisMemoriaCliente().catch(() => {});
             await pool.query(`
                 UPDATE public.crm_cliente_sintesis_memoria
@@ -3208,7 +3661,16 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
             `, [JSON.stringify(resultado), ultMsgId, cliIdNum]).catch(() => {});
         }
 
-        res.json({ success: true, razonamiento: resultado });
+        res.json({
+            success: true,
+            razonamiento: resultado,
+            contexto_determinista: {
+                tramo_real: enriquecido.estadoCuentaDeterminista?.tramo_real || 'EN_TERMINO',
+                saldo_total: Number(enriquecido.estadoCuentaDeterminista?.saldo_total || 0),
+                logistica_estado: enriquecido.contextoLogistico?.estado_normalizado || 'SIN_PEDIDO_ACTIVO',
+                dias_sin_compra: enriquecido.diasSinCompra
+            }
+        });
     } catch (error) {
         console.error('❌ [CRM-ASISTENTE-HIBRIDO-LLM] Error crítico en conexión Gemini:', error.message);
         res.status(503).json({
@@ -3222,7 +3684,7 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
 /**
  * POST /api/crm/whatsapp/asistente-hibrido/transcribir-instruccion-voz
  * Transcribe un audio grabado por el operador desde el micrófono del navegador (wav/ogg)
- * usando Gemini multimodal para instruir al Comité de Agentes Híbridos.
+ * usando Gemini multimodal (imputado al módulo AUDIOS) para instruir al Asistente Híbrido.
  */
 router.post('/crm/whatsapp/asistente-hibrido/transcribir-instruccion-voz', async (req, res) => {
     try {
@@ -3232,7 +3694,7 @@ router.post('/crm/whatsapp/asistente-hibrido/transcribir-instruccion-voz', async
             return res.status(400).json({ success: false, error: 'Audio de instrucción vacío o inválido.' });
         }
         const buf = Buffer.from(cleanB64, 'base64');
-        const texto = await agenteHibridoLlm.transcribirAudioOggConGemini(buf, mimeType || 'audio/wav');
+        const texto = await agenteHibridoLlm.transcribirAudioOggConGemini(buf, mimeType || 'audio/wav', 'Instrucción de voz operador');
         res.json({ success: true, texto });
     } catch (error) {
         console.error('❌ [CRM-ASISTENTE-VOZ] Error transcribiendo instrucción de voz:', error.message);

@@ -16,9 +16,20 @@ const LEDGER_FILE = path.join(DATA_DIR, 'ia_credito_ledger.json');
 const PUBLIC_TEMP_DIR = path.join(ROOT_DIR, 'src/app-etiquetas/temp');
 const PUBLIC_LEDGER_FILE = path.join(PUBLIC_TEMP_DIR, 'ia_credito_ledger.json');
 
-// Precios de referencia Gemini Flash (USD por 1M de tokens)
-const PRECIO_INPUT_POR_MILLON = 0.15;
-const PRECIO_OUTPUT_POR_MILLON = 0.60;
+// Modelo oficial unificado y tarifario de referencia Gemini Flash (USD por 1M de tokens)
+// Verificado empíricamente en vivo contra Google AI Studio (Nov 2026): gemini-3.8-flash (HTTP 200) y gemini-flash-latest (HTTP 200).
+const MODELO_GEMINI_OFICIAL = 'gemini-3.8-flash';
+const MODELOS_GEMINI_FALLBACK = ['gemini-3.8-flash', 'gemini-flash-latest'];
+const PRECIO_INPUT_POR_MILLON = 0.30;
+const PRECIO_OUTPUT_POR_MILLON = 2.50;
+
+function normalizarModeloGeminiValido(rawModel) {
+    const limpio = String(rawModel || '').trim();
+    if (!limpio) return MODELO_GEMINI_OFICIAL;
+    // Redirigir modelos deprecados (HTTP 404 en Google AI Studio Nov 2026) al modelo oficial vigente
+    if (/^gemini-(?:1\.5|2\.0|2\.5)-flash/i.test(limpio)) return MODELO_GEMINI_OFICIAL;
+    return limpio;
+}
 
 /**
  * Lee en caliente GEMINI_API_KEY y GEMINI_MODEL desde el archivo .env en la raíz del proyecto
@@ -45,7 +56,7 @@ function leerCredencialesGeminiEnCaliente() {
     } catch (_) {}
 
     if (!key) key = String(process.env.GEMINI_API_KEY || '').trim();
-    if (!model) model = String(process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
+    model = normalizarModeloGeminiValido(model || process.env.GEMINI_MODEL || MODELO_GEMINI_OFICIAL);
 
     const disponible = Boolean(key && !key.includes('YOUR_GEMINI_API_KEY') && key.length > 15);
     return { apiKey: disponible ? key : '', model, disponible };
@@ -197,6 +208,11 @@ function registrarEventoIaSistema({
 }
 
 module.exports = {
+    MODELO_GEMINI_OFICIAL,
+    MODELOS_GEMINI_FALLBACK,
+    PRECIO_INPUT_POR_MILLON,
+    PRECIO_OUTPUT_POR_MILLON,
+    normalizarModeloGeminiValido,
     leerCredencialesGeminiEnCaliente,
     leerLedgerDisco,
     guardarLedgerDisco,

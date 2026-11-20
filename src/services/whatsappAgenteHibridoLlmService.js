@@ -1,21 +1,23 @@
 /**
- * Motor Híbrido Multi-Agente (IA Generativa Gemini + Clavijas Deterministas LAMDA)
- * Sistema LAMDA — Consola Comercial & CRM WhatsApp
+ * Motor Híbrido Multi-Agente por 2 Carriles (IA Generativa Gemini 2.5 Flash + Clavijas Deterministas LAMDA)
+ * Sistema LAMDA — Consola Comercial & CRM WhatsApp (Fase 3)
  *
- * Filosofía Arquitectónica (Híbrido Real):
- * 1. CAPA COGNITIVA (IA Gemini 2.5 Flash):
- *    - Escucha nativamente los audios Ogg Opus de WhatsApp en español rioplatense (~1.5s).
- *    - Razona la frase entera del cliente (intención, apuro, negaciones como "el mix ese no te lo pido por ahora",
- *      presentaciones pedidas, promesas puente previas como "En un ratin te paso todo" -> "Ok").
- *    - Selecciona los códigos exactos del catálogo Búnker a cotizar y redacta el diálogo humano corto (Burbuja 1 y 3).
+ * Arquitectura de 2 Carriles y 8 Especialistas con Prompts Cortos y Enfocados:
+ * 📥 CARRIL ENTRANTE (Reactivo):
+ *   1. VENTAS_COTIZADOR      — Cotizaciones, exclusiones, fracciones vs. bultos, PDF / Portal B2B
+ *   2. COBRANZA_COMPROBANTES — Saldo exacto, acuse de transferencias/comprobantes, CBU Galicia
+ *   3. LOGISTICA_ENTREGAS    — Estado real del último presupuesto y hoja de ruta (chofer, fecha, estado)
+ *   4. RECLAMO_DEVOLUCION    — Contención sobria y empática sin inventar montos + acceso a Factura / NC
  *
- * 2. CAPA DETERMINISTA (Clavijas Duras Intocables en Código + PostgreSQL):
- *    - Los PRECIOS por kilo y por bulto jamás los escribe la IA: se calculan e inyectan 100% desde la base de datos
- *      según la lista asignada al cliente y los códigos seleccionados.
- *    - El SALDO de cuenta corriente (Capital + Financiación, antigüedad y facturas abiertas) proviene 100% de
- *      composicionSaldoService.
- *    - El LINK del Portal B2B (?t=XXXXXX) proviene del registro oficial del cliente.
- *    - Guardrails de salida: prohibición estricta de signos "¿" / "¡" y de la palabra "interés" / "intereses".
+ * 📤 CARRIL SALIENTE (Proactivo):
+ *   1. CUENTA_CORRIENTE      — Tono adaptado al tramo real (EN_TERMINO / GRACIA_NATURAL / COMODIN / SALVAVIDAS_FINANCIADO)
+ *   2. REACTIVACION_PORTAL   — Anclado en habituales reales, días sin compra e Invitación vs. Link Portal B2B
+ *   3. POST_ENTREGA          — Chequeo breve apoyado en la mercadería entregada real (sin repetir saludo si ya hablamos hoy)
+ *   4. SALUDO_PUNTUAL        — 1 sola burbuja corta conectada al último contexto real del hilo
+ *
+ * 👁️ MULTIMODAL:
+ *   - transcribirAudioOggConGemini()  -> Imputa consumo al módulo AUDIOS en ia_credito_ledger.json
+ *   - leerComprobanteImagenConGemini() -> Extrae banco, fecha, importe, operación, CUIT/titular de comprobantes
  */
 
 const fs = require('fs');
@@ -26,6 +28,18 @@ const iaMonitor = require('./iaCreditoMonitorService');
 let _vertexAuthClient = null;
 let _ultimoUsageGemini = null;
 const _cacheRazonamientoHibrido = new Map();
+
+const CARRILES_AGENTES_WA = {
+    ENTRANTE: ['VENTAS_COTIZADOR', 'COBRANZA_COMPROBANTES', 'LOGISTICA_ENTREGAS', 'RECLAMO_DEVOLUCION'],
+    SALIENTE: ['CUENTA_CORRIENTE', 'REACTIVACION_PORTAL', 'POST_ENTREGA', 'SALUDO_PUNTUAL']
+};
+
+const DATOS_BANCARIOS_LAMDA = {
+    banco: 'Banco Galicia',
+    cuenta: '4007844-1 373-4',
+    cbu: '0070373230004007844141',
+    alias: 'lamda.ser.martin'
+};
 
 function obtenerContextoHorarioArgentina() {
     const ahora = new Date();
@@ -46,8 +60,10 @@ function obtenerContextoHorarioArgentina() {
 }
 
 /**
- * Limpia signos de apertura "¿" y "¡", reemplaza cualquier mención prohibida de "interés" por "financiación"
- * y corrige determinísticamente el saludo horario ("buen día" / "buenas tardes" / "buenas noches") según la hora real de Argentina.
+ * Capa Determinista de Clavijas de Texto:
+ * - Elimina signos de apertura "¿" y "¡"
+ * - Reemplaza "interés" / "intereses" por "financiación"
+ * - Sincroniza "buen día" / "buenas tardes" / "buenas noches" con la hora real de Argentina
  */
 function aplicarClavijasTextoDeterministaWa(texto) {
     if (!texto) return '';
@@ -74,10 +90,10 @@ function aplicarClavijasTextoDeterministaWa(texto) {
 }
 
 /**
- * Busca GEMINI_API_KEY en memoria o leyendo en caliente .env y src/facturacion/.env
- * (permite activarla sin siquiera reiniciar el servidor Node.js)
+ * Busca GEMINI_API_KEY (principal y backup) en caliente desde .env / src/facturacion/.env
  */
 function leerApiKeyGeminiEnCaliente() {
+    const credCentral = iaMonitor.leerCredencialesGeminiEnCaliente();
     const candidatosEnv = [
         path.resolve(__dirname, '../../.env'),
         path.resolve(__dirname, '../facturacion/.env')
@@ -86,20 +102,23 @@ function leerApiKeyGeminiEnCaliente() {
         try {
             if (!fs.existsSync(envPath)) continue;
             const contenido = fs.readFileSync(envPath, 'utf8');
-            const match = contenido.match(/^\s*GEMINI_API_KEY\s*=\s*([^\r\n#]+)/m);
-            if (match && match[1]) {
-                const val = match[1].trim().replace(/^["']|["']$/g, '');
-                if (val.length > 15 && !val.includes('YOUR_GEMINI_API_KEY')) {
-                    process.env.GEMINI_API_KEY = val;
-                    const matchBackup = contenido.match(/^\s*GEMINI_API_KEY_BACKUP\s*=\s*([^\r\n#]+)/m);
-                    if (matchBackup && matchBackup[1]) {
-                        process.env.GEMINI_API_KEY_BACKUP = matchBackup[1].trim().replace(/^["']|["']$/g, '');
+            const matchBackup = contenido.match(/^\s*GEMINI_API_KEY_BACKUP\s*=\s*([^\r\n#]+)/m);
+            if (matchBackup && matchBackup[1]) {
+                process.env.GEMINI_API_KEY_BACKUP = matchBackup[1].trim().replace(/^["']|["']$/g, '');
+            }
+            if (!credCentral.disponible) {
+                const match = contenido.match(/^\s*GEMINI_API_KEY\s*=\s*([^\r\n#]+)/m);
+                if (match && match[1]) {
+                    const val = match[1].trim().replace(/^["']|["']$/g, '');
+                    if (val.length > 15 && !val.includes('YOUR_GEMINI_API_KEY')) {
+                        process.env.GEMINI_API_KEY = val;
+                        return val;
                     }
-                    return val;
                 }
             }
         } catch (_) {}
     }
+    if (credCentral.disponible) return credCentral.apiKey;
     const enMemoria = String(process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || '').trim();
     if (enMemoria && enMemoria.length > 15 && !enMemoria.includes('YOUR_GEMINI_API_KEY')) {
         return enMemoria;
@@ -107,9 +126,6 @@ function leerApiKeyGeminiEnCaliente() {
     return '';
 }
 
-/**
- * Verifica si hay credenciales de IA activas (GEMINI_API_KEY directa o Vertex AI en GOOGLE_SA_KEY_FILE)
- */
 function obtenerModoCredencialGemini() {
     const apiKey = leerApiKeyGeminiEnCaliente();
     const apiKeyBackup = String(process.env.GEMINI_API_KEY_BACKUP || '').trim();
@@ -129,46 +145,45 @@ function obtenerModoCredencialGemini() {
 }
 
 /**
- * Ejecuta una llamada multimodal / estructurada a Gemini Flash (vía API Key o Vertex AI Service Account)
+ * Invocador unificado de Gemini 2.5 Flash con modelo válido, tarifario USD unificado e imputación exacta por módulo
  */
-async function invocarGemini25Flash({ systemInstruction, parts, responseSchema = null, temperature = 0.15, timeoutMs = 28000 }) {
+async function invocarGemini25Flash({
+    systemInstruction,
+    parts,
+    responseSchema = null,
+    temperature = 0.15,
+    timeoutMs = 28000,
+    moduloLedger = 'COMERCIAL_CRM',
+    detalleLedger = 'Asistente Comercial'
+}) {
     const cred = obtenerModoCredencialGemini();
     if (!cred.disponible) {
         throw new Error('GEMINI_NO_CONFIGURADO: Falta configurar GEMINI_API_KEY en .env (o habilitar Vertex AI).');
     }
 
-    const modeloPrimario = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
-    const modelosCandidatos = [modeloPrimario, 'gemini-flash-latest'];
+    const credCentral = iaMonitor.leerCredencialesGeminiEnCaliente();
+    const modeloPrimario = iaMonitor.normalizarModeloGeminiValido(credCentral.model || iaMonitor.MODELO_GEMINI_OFICIAL);
+    const modelosCandidatos = Array.from(new Set([modeloPrimario, ...iaMonitor.MODELOS_GEMINI_FALLBACK]));
     const keysCandidatas = cred.modo === 'API_KEY' ? (cred.apiKeys || [cred.apiKey]) : ['VERTEX'];
     let ultimoError = null;
 
     for (const activeKey of keysCandidatas) {
         for (const modelName of modelosCandidatos) {
-            const generationConfig = {
-                temperature
-            };
+            const generationConfig = { temperature };
             if (responseSchema) {
                 generationConfig.responseMimeType = 'application/json';
                 generationConfig.responseSchema = responseSchema;
             }
-            if (modelName.includes('2.5') || modelName.includes('3.')) {
+            if (modelName.includes('2.5')) {
                 generationConfig.thinkingConfig = { thinkingBudget: 0 };
             }
 
             const bodyPayload = {
-                contents: [
-                    {
-                        role: 'user',
-                        parts
-                    }
-                ],
+                contents: [{ role: 'user', parts }],
                 generationConfig
             };
-
             if (systemInstruction) {
-                bodyPayload.systemInstruction = {
-                    parts: [{ text: systemInstruction }]
-                };
+                bodyPayload.systemInstruction = { parts: [{ text: systemInstruction }] };
             }
 
             let url = '';
@@ -193,7 +208,7 @@ async function invocarGemini25Flash({ systemInstruction, parts, responseSchema =
             }
 
             const controller = new AbortController();
-            const perAttemptTimeout = Math.min(Number(timeoutMs) || 14000, 13000);
+            const perAttemptTimeout = Math.min(Number(timeoutMs) || 15000, 15000);
             const timer = setTimeout(() => controller.abort(), perAttemptTimeout);
             try {
                 const res = await fetch(url, {
@@ -206,38 +221,29 @@ async function invocarGemini25Flash({ systemInstruction, parts, responseSchema =
                     const errTxt = await res.text().catch(() => '');
                     ultimoError = new Error(`Gemini (${modelName}) HTTP ${res.status}: ${errTxt.slice(0, 240)}`);
                     iaMonitor.registrarEventoIaSistema({
-                        modulo: 'COMERCIAL_CRM',
-                        detalle: `Error HTTP ${res.status}`,
+                        modulo: moduloLedger,
+                        detalle: `${detalleLedger} (HTTP ${res.status})`,
                         modelo: modelName,
                         errorMsg: ultimoError.message
                     });
                     if (res.status === 404) continue;
-                    break; // Probar siguiente API key si hay 429/403/5xx
+                    break;
                 }
                 const data = await res.json();
-                const um = data?.usageMetadata || {};
-                const pTok = Number(um.promptTokenCount || 1500);
-                const cTok = Number(um.candidatesTokenCount || 220);
-                const tTok = Number(um.totalTokenCount || (pTok + cTok));
-                // Tarifa oficial Gemini Flash (~$0.30 / 1M input, ~$2.50 / 1M output)
-                const costoUsd = Number(((pTok * 0.0000003) + (cTok * 0.0000025)).toFixed(6));
+                const metricas = iaMonitor.calcularMetricasTokens(data, modelName);
                 _ultimoUsageGemini = {
                     modelName,
-                    promptTokens: pTok,
-                    completionTokens: cTok,
-                    totalTokens: tTok,
-                    costoUsd,
+                    promptTokens: metricas.promptTokens,
+                    completionTokens: metricas.outputTokens,
+                    totalTokens: metricas.totalTokens,
+                    costoUsd: metricas.costoUsd,
+                    modulo: moduloLedger,
                     timestamp: Date.now()
                 };
                 iaMonitor.registrarEventoIaSistema({
-                    modulo: 'COMERCIAL_CRM',
-                    detalle: 'Asistencia Comercial / Audio',
-                    usageDirecto: {
-                        promptTokens: pTok,
-                        outputTokens: cTok,
-                        totalTokens: tTok,
-                        costoUsd
-                    },
+                    modulo: moduloLedger,
+                    detalle: detalleLedger,
+                    rawResponseData: data,
                     modelo: modelName
                 });
                 const partsResp = data?.candidates?.[0]?.content?.parts || [];
@@ -254,17 +260,13 @@ async function invocarGemini25Flash({ systemInstruction, parts, responseSchema =
 }
 
 /**
- * 🎙️ AGENTE OÍDO MULTIMODAL:
- * Escucha directamente el buffer de audio (.ogg de WhatsApp o .webm del micrófono del operador) con Gemini Flash en ~1.5 segundos,
- * entendiendo el español rioplatense y todos los artículos e instrucciones comerciales del rubro LAMDA.
+ * 🎙️ AGENTE OÍDO MULTIMODAL (Imputado al rubro AUDIOS en ia_credito_ledger.json)
  */
-async function transcribirAudioOggConGemini(audioBuffer, mimeType = 'audio/ogg') {
+async function transcribirAudioOggConGemini(audioBuffer, mimeType = 'audio/ogg', detalleOrigen = 'Transcripción Audio WA') {
     if (!audioBuffer || audioBuffer.length < 32) {
         throw new Error('Buffer de audio vacío.');
     }
     const rawMime = String(mimeType || 'audio/ogg').split(';')[0].trim().toLowerCase() || 'audio/ogg';
-    // Nota técnica: La API REST de Gemini rechaza "audio/webm" con HTTP 400 INVALID_ARGUMENT,
-    // pero procesa contenedores WebM/Opus perfectamente cuando se declaran como "audio/ogg" o "video/webm".
     const candidatosMime = (rawMime === 'audio/webm' || rawMime === 'application/octet-stream')
         ? ['audio/ogg', 'video/webm']
         : [rawMime, 'audio/ogg', 'video/webm'];
@@ -273,7 +275,7 @@ async function transcribirAudioOggConGemini(audioBuffer, mimeType = 'audio/ogg')
     const systemPrompt = [
         'Sos el transcriptor experto en español argentino (rioplatense) de LAMDA, distribuidora mayorista de frutos secos, frutas disecadas, frutas glaseadas/escurridas (abrillantadas), cereales, semillas, legumbres, mixes, granolas y barritas.',
         'Escuchá el audio y devolvé ÚNICAMENTE la transcripción exacta en texto plano de lo que dice la persona, sin agregar comentarios ni introducciones.',
-        'Prestá especial atención a términos del rubro e instrucciones operativas: higos turcos, higos negros, damasco turco, damascos, castañas de cajú, castañas tostadas sin sal, castañas tostadas y saladas, castañas de Pará, avellanas, almendras Non Pareil / Guara, nueces mariposa / Chandler, fruta escurrida / abrillantada, fruta glaseada, pasas de uva Flame / Sultanina / Jumbo, arándanos, dátiles, ciruelas Presidente, lentejón, garbanzos, porotos, azúcar mascabo, mix de frutos secos, granolas, fracciones chicas, por un kilo, por dos kilos, por 5 kilos, por 10 kilos, PDF adjunto, lista de precios.'
+        'Prestá especial atención a términos del rubro e instrucciones operativas: higos turcos, higos negros, damasco turco, castañas de cajú, castañas tostadas sin sal, castañas tostadas y saladas, avellanas, almendras Non Pareil / Guara, nueces mariposa / Chandler, fruta abrillantada/escurrida, pasas de uva Flame / Sultanina / Jumbo, arándanos, dátiles, ciruelas Presidente, azúcar mascabo, mixes, granolas, barritas, fracciones chicas, por 1kg/2kg/5kg/10kg, PDF adjunto, lista de precios, transferencia, comprobante, cuenta corriente.'
     ].join(' ');
 
     let ultimoErr = null;
@@ -282,18 +284,13 @@ async function transcribirAudioOggConGemini(audioBuffer, mimeType = 'audio/ogg')
             const texto = await invocarGemini25Flash({
                 systemInstruction: systemPrompt,
                 parts: [
-                    {
-                        inlineData: {
-                            mimeType: mimeIntento,
-                            data: audioBase64
-                        }
-                    },
-                    {
-                        text: 'Transcribí exactamente este mensaje de voz en español argentino.'
-                    }
+                    { inlineData: { mimeType: mimeIntento, data: audioBase64 } },
+                    { text: 'Transcribí exactamente este mensaje de voz en español argentino.' }
                 ],
                 temperature: 0.05,
-                timeoutMs: 22000
+                timeoutMs: 22000,
+                moduloLedger: 'AUDIOS',
+                detalleLedger: detalleOrigen
             });
             const limpio = String(texto || '').replace(/^["'«»]+|["'«»]+$/g, '').trim();
             if (limpio) return limpio;
@@ -306,22 +303,267 @@ async function transcribirAudioOggConGemini(audioBuffer, mimeType = 'audio/ogg')
 }
 
 /**
- * 🧠 COMITÉ MULTI-AGENTE HÍBRIDO (Razonamiento IA + Clavijas Deterministas):
- * Analiza la conversación completa, el catálogo real de LAMDA y la radiografía determinista del cliente,
- * devolviendo los códigos exactos a cotizar (respetando exclusiones), los artículos sugeridos para PDF adjunto
- * y las burbujas con cintura táctica.
+ * 👁️ AGENTE VISIÓN MULTIMODAL:
+ * Analiza una imagen enviada en el chat (comprobante de transferencia, depósito, cheque o foto de mercadería)
+ * y extrae datos estructurados para conciliar sin abrir el celular.
+ */
+async function leerComprobanteImagenConGemini({ imageBuffer, mimeType = 'image/jpeg', contextoCliente = '' } = {}) {
+    if (!imageBuffer || imageBuffer.length < 32) {
+        throw new Error('Imagen vacía o inválida para analizar.');
+    }
+    const cleanMime = String(mimeType || 'image/jpeg').split(';')[0].trim().toLowerCase();
+    const mimeFinal = /^image\/(jpeg|jpg|png|webp|gif)$/i.test(cleanMime)
+        ? (cleanMime === 'image/jpg' ? 'image/jpeg' : cleanMime)
+        : 'image/jpeg';
+    const imageBase64 = Buffer.from(imageBuffer).toString('base64');
+
+    const systemInstruction = [
+        'Sos el analista visual administrativo de LAMDA (distribuidora mayorista en Argentina).',
+        'Inspeccioná la imagen adjunta (habitualmente un comprobante bancario, Mercado Pago, transferencia, depósito, cheque o foto de mercadería) y extraé con precisión absoluta los campos visibles.',
+        'Reglas estrictas:',
+        '1. JAMÁS inventes dígitos, fechas ni importes que no sean legibles en la imagen. Si un campo no aparece, devolvé "" (o 0 en importe).',
+        '2. En "importe" devolvé el número decimal exacto en formato numérico (ej: 254904.92 para "$ 254.904,92").',
+        '3. En "resumen_corto" redactá 1 línea clara en español argentino sin signos "¿" ni "¡" (ej: "Transferencia Banco Galicia por $254.904,92 del 19/11 (Op. 849201) - Titular: Sopresatta SRL").'
+    ].join('\n');
+
+    const responseSchema = {
+        type: 'OBJECT',
+        properties: {
+            es_comprobante_pago: { type: 'BOOLEAN' },
+            tipo_documento: {
+                type: 'STRING',
+                description: 'TRANSFERENCIA, DEPOSITO, CHEQUE, MERCADO_PAGO, FACTURA, FOTO_MERCADERIA, OTRO'
+            },
+            banco: { type: 'STRING', description: 'Banco o billetera origen/emisora (ej: Banco Galicia, Mercado Pago, Banco Provincia)' },
+            fecha: { type: 'STRING', description: 'Fecha visible del comprobante (ej: 19/11/2026 o 19/11/2026 14:32)' },
+            importe: { type: 'NUMBER', description: 'Importe numérico exacto (0 si no aplica)' },
+            moneda: { type: 'STRING', description: 'ARS o USD' },
+            nro_operacion: { type: 'STRING', description: 'Número de operación, COELSA ID o referencia visible' },
+            cuit_titular: { type: 'STRING', description: 'CUIT/CUIL visible del pagador o titular' },
+            titular_origen: { type: 'STRING', description: 'Nombre o razón social de quien envía el pago' },
+            destinatario: { type: 'STRING', description: 'Cuenta o titular destinatario visible' },
+            observaciones: { type: 'STRING', description: 'Detalle adicional breve si hay foto de mercadería, reclamo o leyenda relevante' },
+            resumen_corto: { type: 'STRING', description: 'Resumen conciso en 1 sola línea para mostrar en el chat y en el Copiloto' }
+        },
+        required: [
+            'es_comprobante_pago',
+            'tipo_documento',
+            'banco',
+            'fecha',
+            'importe',
+            'moneda',
+            'nro_operacion',
+            'cuit_titular',
+            'titular_origen',
+            'destinatario',
+            'observaciones',
+            'resumen_corto'
+        ]
+    };
+
+    const rawText = await invocarGemini25Flash({
+        systemInstruction,
+        parts: [
+            { inlineData: { mimeType: mimeFinal, data: imageBase64 } },
+            { text: `Analizá esta imagen del chat${contextoCliente ? ` (cliente: ${contextoCliente})` : ''} y devolvé el JSON estructurado.` }
+        ],
+        responseSchema,
+        temperature: 0.05,
+        timeoutMs: 24000,
+        moduloLedger: 'COMERCIAL_CRM',
+        detalleLedger: 'Visión Comprobante / Imagen'
+    });
+
+    const parsed = JSON.parse(rawText);
+    return {
+        es_comprobante_pago: Boolean(parsed.es_comprobante_pago),
+        tipo_documento: String(parsed.tipo_documento || 'OTRO').trim().toUpperCase(),
+        banco: String(parsed.banco || '').trim(),
+        fecha: String(parsed.fecha || '').trim(),
+        importe: Number(parsed.importe || 0),
+        moneda: String(parsed.moneda || 'ARS').trim().toUpperCase(),
+        nro_operacion: String(parsed.nro_operacion || '').trim(),
+        cuit_titular: String(parsed.cuit_titular || '').trim(),
+        titular_origen: String(parsed.titular_origen || '').trim(),
+        destinatario: String(parsed.destinatario || '').trim(),
+        observaciones: aplicarClavijasTextoDeterministaWa(parsed.observaciones || ''),
+        resumen_corto: aplicarClavijasTextoDeterministaWa(parsed.resumen_corto || 'Imagen analizada'),
+        _usage: _ultimoUsageGemini || null
+    };
+}
+
+/**
+ * Clasificador liviano de Carril y Agente Especialista cuando agenteObjetivo === 'AUTO'
+ */
+function resolverCarrilYAgenteEspecialista({
+    carrilSolicitado = '',
+    agenteObjetivo = 'AUTO',
+    mensajesRecientes = [],
+    estadoCuentaDeterminista = {},
+    contextoLogistico = {},
+    diasSinCompra = null,
+    comprobanteLeido = null
+}) {
+    const arrMsgs = Array.isArray(mensajesRecientes) ? mensajesRecientes : [];
+    const ultMsg = arrMsgs.length > 0 ? arrMsgs[arrMsgs.length - 1] : null;
+    const ultEntrantes = arrMsgs.filter(m => !m.from_me).slice(-3);
+    const txtEntranteNorm = ultEntrantes
+        .map(m => String(m.cuerpo || ''))
+        .join(' ')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+    const objNorm = String(agenteObjetivo || 'AUTO').trim().toUpperCase();
+    let carril = String(carrilSolicitado || '').trim().toUpperCase();
+
+    // Si el operador eligió explícitamente un especialista, respetar su carril automáticamente
+    if (CARRILES_AGENTES_WA.ENTRANTE.includes(objNorm)) {
+        return { carril: 'ENTRANTE', agente: objNorm };
+    }
+    if (CARRILES_AGENTES_WA.SALIENTE.includes(objNorm)) {
+        return { carril: 'SALIENTE', agente: objNorm };
+    }
+
+    if (carril !== 'ENTRANTE' && carril !== 'SALIENTE') {
+        carril = (ultMsg && !ultMsg.from_me) ? 'ENTRANTE' : 'SALIENTE';
+    }
+
+    if (carril === 'ENTRANTE') {
+        // 1. Reclamo / devolución / diferencia en factura o mercadería
+        if (/\b(reclamo|error\s+en|mal\s+estado|fe[oa]s?|vencid|hongos?|bichos?|devoluc|nota\s+de\s+credito|diferencia\s+en|falt[oó]|faltaron|me\s+cobraron\s+de\s+m[aá]s|vino\s+roto|vino\s+mal)\b/i.test(txtEntranteNorm)) {
+            return { carril: 'ENTRANTE', agente: 'RECLAMO_DEVOLUCION' };
+        }
+        // 2. Cobranza / transferencia / comprobante / CBU / saldo
+        if (comprobanteLeido?.es_comprobante_pago ||
+            /\b(transfer|comprobante|cbu|alias|pagu[eé]|te\s+pas[eé]\s+el\s+pago|saldo|cuenta\s+corriente|cuanto\s+debo|cuanto\s+te\s+debo|efectivo|ensobrado|recibo|resumen\s+de\s+cuenta)\b/i.test(txtEntranteNorm) ||
+            (estadoCuentaDeterminista?.tiene_saldo_a_favor && (estadoCuentaDeterminista?.pedidos_activos_en_curso || []).length > 0)) {
+            return { carril: 'ENTRANTE', agente: 'COBRANZA_COMPROBANTES' };
+        }
+        // 3. Logística / entrega / camión / chofer / cuándo llega
+        if (/\b(cuando\s+llega|a\s+que\s+hora\s+pasa|camion|chofer|reparto|hoja\s+de\s+ruta|salio\s+el\s+pedido|envio|entrega|llegan\s+hoy|pasan\s+hoy|estado\s+del\s+pedido|mi\s+pedido)\b/i.test(txtEntranteNorm)) {
+            return { carril: 'ENTRANTE', agente: 'LOGISTICA_ENTREGAS' };
+        }
+        // 4. Default entrante comercial: Ventas / Cotizador
+        return { carril: 'ENTRANTE', agente: 'VENTAS_COTIZADOR' };
+    }
+
+    // CARRIL SALIENTE (Proactivo)
+    const saldo = Number(estadoCuentaDeterminista?.saldo_total || 0);
+    if (saldo > 100) {
+        return { carril: 'SALIENTE', agente: 'CUENTA_CORRIENTE' };
+    }
+    if (contextoLogistico?.entregado_reciente_48h) {
+        return { carril: 'SALIENTE', agente: 'POST_ENTREGA' };
+    }
+    if (diasSinCompra !== null && Number(diasSinCompra) > 30) {
+        return { carril: 'SALIENTE', agente: 'REACTIVACION_PORTAL' };
+    }
+    return { carril: 'SALIENTE', agente: 'SALUDO_PUNTUAL' };
+}
+
+/**
+ * Construye el prompt corto, enfocado y libre de contradicciones para cada uno de los 8 especialistas
+ */
+function construirPromptEspecialistaWa({ carril, agente, apodoSugerido, yaHablamosHoy }) {
+    const reglasBase = [
+        'Sos el copiloto comercial de Martín en el WhatsApp mayorista B2B de LAMDA (frutos secos, disecados, semillas, cereales, mixes, granolas y barritas).',
+        'REGLAS INNEGOCIABLES:',
+        '- Tono real de Martín: argentino rioplatense cercano, claro, humano y breve. CERO signos de apertura "¿" ni "¡".',
+        '- PROHIBIDO usar la palabra "interés" o "intereses": siempre decir "financiación".',
+        '- JAMÁS inventes precios de artículos ni montos de saldo: la Capa Determinista de LAMDA estampa precios exactos y links en Burbuja 2.',
+        yaHablamosHoy
+            ? '- YA HABLAMOS HOY con este cliente: NO vuelvas a saludar con "Hola X, buen día". Continuá directo al pie.'
+            : '- Si abrís conversación hoy, usá el saludo acorde a la franja horaria de Argentina indicada.',
+        '- Respetá "ya_ingreso_portal_anteriormente": si es false, hablá de "invitación para activar tu cuenta por primera vez en el portal"; si es true, del "link del portal".',
+        '- Si existe "instruccion_operador_prioritaria", obedecela con prioridad absoluta.',
+        '- Cierre estilo Martín cuando corresponda Burbuja 3: "Cualquier cosa estamos atentos." o "Quedamos atentos por cualquier cosa." (evitá repetir siempre "escribime por acá").'
+    ];
+
+    const bloquesEspecialista = {
+        // 📥 CARRIL ENTRANTE
+        VENTAS_COTIZADOR: [
+            'ESPECIALISTA ACTIVO: 📥 ENTRANTE · VENTAS_COTIZADOR.',
+            '- Leé la intención completa y respetá exclusiones/negaciones ("el mix no" -> agregalo en "conceptos_excluidos" y JAMÁS lo pongas en "codigos_articulos_seleccionados").',
+            '- Distinguí presentaciones chicas (1kg/2kg) vs. bultos cerrados (5kg/10kg+): si pidió fracciones chicas y existe 1kg/2kg en catálogo, NO pongas cajas de 10kg en "codigos_articulos_seleccionados" (máx. 6-8 códigos en cuerpo).',
+            '- En "codigos_articulos_pdf_sugeridos" poné variantes relacionadas útiles para enviar en PDF adjunto prolijo y activá "sugerir_adjuntar_pdf": true si suma valor o lo pidió el operador.',
+            '- Nunca elijas códigos internos ("PROD AP/UP Externo", "Caja MICRO").',
+            '- Si corresponde pasar precios seleccionados usá tipo_burbuja2_determinista="PRECIOS_SELECCIONADOS"; si pidió lista general o portal usá "LINK_PORTAL".'
+        ],
+        COBRANZA_COMPROBANTES: [
+            'ESPECIALISTA ACTIVO: 📥 ENTRANTE · COBRANZA_COMPROBANTES.',
+            '- Apoyate estrictamente en "cuenta_corriente_determinista" (composicionSaldoService) y en "comprobante_leido" si se analizó una imagen.',
+            '- Si el cliente envió comprobante o aviso de pago: agradecelo por su nombre, confirmá los datos leídos (banco/importe/fecha solo si figuran en comprobante_leido) sin inventar nada y aclarale que ya lo pasamos a administración para acreditar.',
+            '- Si el cliente ya transfirió por adelantado con saldo a favor y tiene pedido activo ("pedidos_activos_en_curso"), ofrecele seguir su orden en vivo y usá tipo_burbuja2_determinista="LINK_SEGUIMIENTO_ORDEN".',
+            '- Si pidió datos bancarios para transferir, incluí los datos exactos de "datos_bancarios_lamda" (Banco Galicia / CBU / Alias) o consultá si quiere el Extracto PDF ("sugerir_adjuntar_pdf_cc": true).',
+            '- Si preguntó cuánto debe, respondé con claridad usando SOLO el saldo exacto de "cuenta_corriente_determinista" y sugerí "sugerir_adjuntar_pdf_cc": true.'
+        ],
+        LOGISTICA_ENTREGAS: [
+            'ESPECIALISTA ACTIVO: 📥 ENTRANTE · LOGISTICA_ENTREGAS.',
+            '- Respondé con certeza usando ÚNICAMENTE "contexto_logistico_determinista" (presupuesto #, estado_normalizado: EN_PREPARACION / EN_CAMINO / ENTREGADO / SIN_PEDIDO_ACTIVO, ruta, chofer, fecha_salida, fecha_entrega_real y receptor).',
+            '- Si el estado es EN_CAMINO, informá que ya está en ruta (mencionando chofer/fecha solo si están cargados).',
+            '- Si es EN_PREPARACION, informá que el pedido # está en armado/asignación y apenas salga le avisamos (ofreciendo "LINK_SEGUIMIENTO_ORDEN" si tiene Portal).',
+            '- Si es ENTREGADO, confirmá fecha y receptor reales si figuran. JAMÁS inventes horarios de llegada ni nombres de chofer que no estén en los datos.'
+        ],
+        RECLAMO_DEVOLUCION: [
+            'ESPECIALISTA ACTIVO: 📥 ENTRANTE · RECLAMO_DEVOLUCION.',
+            '- Respuesta sobria, empática, profesional y serena (tono del Taller LAMDA que asume responsabilidad).',
+            '- Acusá recibo concreto del inconveniente mencionado, pedí el dato faltante mínimo (lote/foto/cantidad si aún no la pasó) y transmití que lo revisamos de inmediato para resolverlo.',
+            '- JAMÁS inventes montos de descuento, notas de crédito ni promesas monetarias no confirmadas.',
+            '- Dejá tipo_burbuja2_determinista="VACIA", sugerir_adjuntar_pdf=false y habilitá "habilitar_gestion_factura": true.'
+        ],
+        // 📤 CARRIL SALIENTE
+        CUENTA_CORRIENTE: [
+            'ESPECIALISTA ACTIVO: 📤 SALIENTE · CUENTA_CORRIENTE.',
+            '- Adaptá el tono exactamente al "tramo_real" de "cuenta_corriente_determinista":',
+            '  * EN_TERMINO (<=7d): toque muy cordial y breve, recordando beneficio 5% (> $300k) y cuenta al día.',
+            '  * GRACIA_NATURAL (8-14d): recordatorio amable mencionando que está cerrando el plazo habitual de cuenta corriente.',
+            '  * COMODIN (15-21d): mensaje cercano pero claro detallando las facturas abiertas y consultando cómo prefieren organizarse para achicar el saldo.',
+            '  * SALVAVIDAS_FINANCIADO (>21d): mensaje respetuoso, transparente y ordenado sobre el saldo pendiente y las condiciones de financiación (NUNCA digas "interés").',
+            '- Mencioná las facturas abiertas reales de "capas_saldo" sin inventar cifras, y activá "sugerir_adjuntar_pdf_cc": true si tiene saldo > $100.'
+        ],
+        REACTIVACION_PORTAL: [
+            'ESPECIALISTA ACTIVO: 📤 SALIENTE · REACTIVACION_PORTAL.',
+            '- Anclate en los "articulos_habituales_cliente" reales (mencioná 1 o 2 productos que suele llevar con naturalidad) y en los "dias_sin_compra" sin sonar invasivo.',
+            '- Si "ya_ingreso_portal_anteriormente" es false, comentale que le dejás la invitación para activar por primera vez su acceso al Portal B2B y ver precios actualizados.',
+            '- Si es true, recordale que tiene los precios actualizados en el Portal B2B y usá tipo_burbuja2_determinista="LINK_PORTAL".'
+        ],
+        POST_ENTREGA: [
+            'ESPECIALISTA ACTIVO: 📤 SALIENTE · POST_ENTREGA.',
+            '- Chequeo breve y genuino apoyado en la mercadería entregada real ("contexto_logistico_determinista.ultimo_entregado.items", ej: preguntar si llegó todo bien con los productos que recibieron).',
+            '- Si ya hubo conversación hoy ("ya_hablamos_hoy": true), NO repitas el saludo inicial.',
+            '- Mantenelo corto (1 burbuja principal y tipo_burbuja2_determinista="VACIA", salvo que el operador pida sumar portal/PDF).'
+        ],
+        SALUDO_PUNTUAL: [
+            'ESPECIALISTA ACTIVO: 📤 SALIENTE · SALUDO_PUNTUAL.',
+            '- Redactá UNA SOLA burbuja bien corta y natural (1 a 2 líneas máx.) conectada al último tema real del historial (o a cómo vienen de stock esta semana si no hubo charla reciente).',
+            '- PROHIBIDO usar frases clonadas genéricas. Dejá tipo_burbuja2_determinista="VACIA", burbuja3_cierre="" y sugerir_adjuntar_pdf=false.'
+        ]
+    };
+
+    const bloque = bloquesEspecialista[agente] || bloquesEspecialista.VENTAS_COTIZADOR;
+    return [...reglasBase, '', ...bloque].join('\n');
+}
+
+/**
+ * 🧠 MOTOR COGNITIVO POR 2 CARRILES (Entrante / Saliente)
  */
 async function razonarAsistenciaHibridaClienteWa({
-    clienteNombre,
-    contactoNombre,
-    apodoSugerido,
+    clienteNombre = '',
+    contactoNombre = '',
+    apodoSugerido = '',
     mensajesRecientes = [],
     catalogoCompacto = [],
     habitualesCliente = [],
     estadoCuentaDeterminista = {},
+    contextoLogistico = {},
+    diasSinCompra = null,
     linkPortalCliente = '',
     yaIngresoPortal = false,
     instruccionOperador = '',
+    carril = '',
+    agenteObjetivo = 'AUTO',
+    comprobanteLeido = null,
     forzarRecalculo = false
 }) {
     const cred = obtenerModoCredencialGemini();
@@ -329,9 +571,30 @@ async function razonarAsistenciaHibridaClienteWa({
         throw new Error('GEMINI_NO_CONFIGURADO: No se encontró GEMINI_API_KEY activa en el servidor.');
     }
 
+    const { carril: carrilFinal, agente: agenteFinal } = resolverCarrilYAgenteEspecialista({
+        carrilSolicitado: carril,
+        agenteObjetivo,
+        mensajesRecientes,
+        estadoCuentaDeterminista,
+        contextoLogistico,
+        diasSinCompra,
+        comprobanteLeido
+    });
+
     const ultMsg = mensajesRecientes.length > 0 ? mensajesRecientes[mensajesRecientes.length - 1] : null;
     const instClean = String(instruccionOperador || '').trim();
-    const cacheKey = `${clienteNombre}_${contactoNombre}_${ultMsg?.id || ultMsg?.msg_id || mensajesRecientes.length}_${ultMsg?.cuerpo || ''}_${yaIngresoPortal ? 'P1' : 'P0'}_${instClean}`;
+    const cacheKey = [
+        clienteNombre,
+        contactoNombre,
+        carrilFinal,
+        agenteFinal,
+        ultMsg?.id || ultMsg?.msg_id || mensajesRecientes.length,
+        String(ultMsg?.cuerpo || '').slice(0, 60),
+        yaIngresoPortal ? 'P1' : 'P0',
+        comprobanteLeido?.nro_operacion || '',
+        instClean
+    ].join('|');
+
     if (!forzarRecalculo && !instClean && _cacheRazonamientoHibrido.has(cacheKey)) {
         const cached = _cacheRazonamientoHibrido.get(cacheKey);
         if (Date.now() - cached.ts < 90000) {
@@ -339,46 +602,28 @@ async function razonarAsistenciaHibridaClienteWa({
         }
     }
 
-    const systemInstruction = `
-Sos el Director del Comité de Agentes Comerciales Híbridos de LAMDA (distribuidora mayorista B2B de frutos secos, frutas disecadas, semillas, cereales, legumbres, mixes y granolas), asistiendo a Martín en su WhatsApp.
+    // Detectar si ya hubo conversación real hoy (fecha local Argentina)
+    const hoyIsoAr = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+    const yaHablamosHoy = mensajesRecientes.some(m => {
+        if (!m || !m.from_me) return false;
+        const rawF = m.fecha_mensaje || m.creado_en || m.fecha;
+        if (!rawF) return false;
+        try {
+            const fAr = new Date(rawF).toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+            const txt = String(m.cuerpo || '');
+            const esAuto = /entrega confirmada|comprobante de pago recibido|extracto de cuenta corriente|su pedido #\d+ ha sido entregado/i.test(txt);
+            return fAr === hoyIsoAr && !esAuto;
+        } catch (_) {
+            return false;
+        }
+    });
 
-REGLAS INNEGOCIABLES DEL SISTEMA HÍBRIDO (CLAVIJAS DURAS):
-1. JAMÁS inventes precios ni escribas importes de artículos en burbuja1 ni burbuja3. El Agente Fiscalizador Determinista de LAMDA estampará los precios reales de la Lista Asignada del cliente tanto en la Burbuja 2 como en el PDF adjunto.
-2. RAZONAMIENTO DE EXCLUSIONES Y NEGACIONES: Leé la oración completa del cliente. Si el cliente menciona un producto para decir que NO lo quiere (ejemplo: "El mix ese no te lo pido por ahora", "poroto no me mandes"), JAMÁS lo incluyas en "codigos_articulos_seleccionados" y agregalo en "conceptos_excluidos".
-3. PRESENTACIONES CHICAS vs CAJAS GRANDES (10kg+) Y DIVISIÓN CUERPO vs PDF ADJUNTO:
-   - En "codigos_articulos_seleccionados" poné lo que va en el CUERPO DEL MENSAJE (Burbuja 2): lo que el cliente pidió explícitamente (máx 6-8 artículos).
-   - Si el cliente pidió presentaciones chicas ("por 1 kg, por 2 kg", "fracciones chicas") y para ese producto ya existe presentación de 1kg o 2kg en el catálogo (ej: Avellanas Peladas x 2kg "APx2"), NO incluyas cajas grandes de 10kg (ej: "AP15+X10") en "codigos_articulos_seleccionados". Solo incluí un bulto de 5kg si no existe de 1kg (ej: Higo Turco x 2kg y x 5kg).
-   - En "codigos_articulos_pdf_sugeridos" seleccioná artículos RELACIONADOS / COMPLEMENTARIOS en presentaciones acordes para enviar en un PDF adjunto prolijo sin recargar el texto del chat: por ejemplo, si pidió castañas de cajú, sugerí en el PDF las Castañas de Cajú Tostadas sin sal y Tostadas y Saladas en 1kg/2kg; si pidió higos turcos, sugerí Damasco Turco en 1kg/5kg y Ciruelas/Dátiles/Habituales en fracciones chicas.
-   - Si hay artículos complementarios útiles o si el operador pide agregar ofertas/relacionados o adjuntar PDF, poné "sugerir_adjuntar_pdf": true.
-   - Nunca selecciones códigos internos de producción ("PROD AP Externo", "PROD UP Externo", "Caja MICRO").
-4. OBEDIENCIA PRIORITARIA AL OPERADOR ("instruccion_operador_prioritaria"):
-   - Si Martín (el operador) da una instrucción hablada o escrita en "instruccion_operador_prioritaria" (por ejemplo: "agregale las ofertas de castañas tostadas y saladas y damasco turco en fracciones chicas, sacá la caja de 10kg, mandale PDF adjunto"), esa instrucción tiene PRIORIDAD ABSOLUTA: actualizá "codigos_articulos_seleccionados" y/o "codigos_articulos_pdf_sugeridos", activá "sugerir_adjuntar_pdf": true si pide PDF o si el cuerpo quedaría muy largo, y adaptá "burbuja1_dialogo" y "burbuja3_cierre" comentándole al cliente que en el mensaje tiene lo que consultó y en el PDF adjunto las variantes relacionadas (ej: castañas tostadas/saladas, damasco turco, etc.).
-5. CINTURA TÁCTICA DE WHATSAPP Y REDACCIÓN CONTEXTUAL NO CLÓNICA:
-   - Nunca uses signos de apertura "¿" ni "¡" (en WhatsApp real solo se usa "?" y "!" al cerrar).
-   - Nunca uses la palabra "interés" ni "intereses": siempre se dice "financiación".
-   - Si hoy ya saludamos al cliente o si nosotros ya le mandamos un mensaje puente como "En un ratin te paso todo" (incluso si el cliente después contestó "Ok" o "Dale"), NO vuelvas a saludar con "Hola X, buen día, cómo estás?". Continuá directo al pie.
-   - PROHIBIDO SALUDAR A TODOS LOS CLIENTES IGUAL CON FRASES DE MOLDE: Cuando abras semana o retomes contacto (ej. última charla hace varios días), mirá de qué hablaron realmente en la última interacción del historial (si pidió algo puntual, si coordinaron entrega, si quedó en revisar stock, o cuáles son sus "articulos_habituales_cliente") y redactá "burbuja1_dialogo" conectado con esa conversación real, no como un robot que les dice lo mismo a todos.
-   - AUDIOS VIEJOS SIN TRANSCRIBIR: Si un mensaje del historial dice literalmente "🎤 Mensaje de audio" (sin texto transcrito al lado) y es de días anteriores (ej. de la semana pasada), NO digas "ahí escuché tu audio" como si fuera de recién; abrí la semana con naturalidad consultando cómo vienen de stock/reposición para esta semana (mencionando si querés alguno de sus artículos habituales).
-   - CIERRE CONTEXTUAL EN BURBUJA 3 Y MULETILLA DE MARTÍN: No uses de forma repetitiva "Cualquier cosa escribime por acá". Redactá siempre en "burbuja3_cierre" un cierre natural adaptado a cómo viene la charla con ese cliente; y cuando corresponda un cierre corto de cortesía, usá el estilo real de Martín ("Cualquier cosa estamos atentos.", "Quedamos atentos por cualquier cosa.", "Estoy atento por cualquier cosa."). Siempre completá "burbuja3_cierre" con una frase contextual lista por si Martín decide desplegar el 3er mensaje.
-6. PAGO ADELANTADO / TRANSFERENCIA RECIBIDA CON SALDO A FAVOR Y SEGUIMIENTO DE ORDEN ("PAGO_ADELANTADO_SEGUIMIENTO_ORDEN"):
-   - Si en el historial reciente de hoy/ayer se ve la secuencia donde:
-     (a) Nosotros le enviamos un presupuesto/orden ("Hola, te enviamos el presupuesto N° ... de LAMDA") o existe un pedido activo en curso ("pedidos_activos_en_curso" en "cuenta_corriente_determinista"),
-     (b) El cliente transfirió o pagó por adelantado (ej. mandó foto/imagen de transferencia o aviso de pago), y
-     (c) Nosotros ya le enviamos el comprobante/recibo ("Comprobante de pago recibido (REC-PAGO-...)" y/o el texto automático "Ha quedado un saldo a favor de $..." porque la mercadería todavía no se entregó y el recibo deja saldo a favor en cuenta corriente), o bien "cuenta_corriente_determinista.tiene_saldo_a_favor" es true con pedido activo en preparación,
-     y todavía NO le enviamos el link de seguimiento después de ese recibo:
-   - Entonces OBLIGATORIAMENTE clasificá:
-     - "situacion_dialogo": "PAGO_ADELANTADO_SEGUIMIENTO_ORDEN"
-     - "modo_accion_sugerido": "SEGUIMIENTO_ORDEN"
-     - "tipo_burbuja2_determinista": "LINK_SEGUIMIENTO_ORDEN"
-     - "codigos_articulos_seleccionados": []
-     - "sugerir_adjuntar_pdf": false
-     - En "burbuja1_dialogo": Agradecele por la transferencia ("muchas gracias por la transferencia"), confirmale que el pago ya quedó acreditado y su pedido/orden (mencionando el N° de orden si figura) ya está en curso de preparación, y ofrecele seguir en tiempo real el estado de la orden ingresando desde el link de la plataforma/app de abajo. (NO saludes de nuevo con "Hola" si ya veníamos hablando hoy; continuá natural, ej: "${apodoSugerido ? `${apodoSugerido}, muchas` : 'Muchas'} gracias por la transferencia! Ya quedó acreditada y tu orden está en preparación. Desde el link de abajo podés ingresar a la app para hacer el seguimiento en tiempo real del estado de tu pedido:").
-     - En "burbuja3_cierre": "Apenas esté listo para salir te avisamos también por acá. Cualquier cosa estamos atentos."
-7. CONCIENCIA DE INVITACIÓN INICIAL AL PORTAL vs CLIENTE YA REGISTRADO Y AVISO DE PDF ADJUNTO:
-   - Revisá siempre "cliente.ya_ingreso_portal_anteriormente".
-   - Si "cliente.ya_ingreso_portal_anteriormente" es FALSE (el cliente NUNCA ingresó al Portal B2B y todavía NO tiene usuario ni contraseña) y vas a referenciar el portal ("tipo_burbuja2_determinista" = "LINK_PORTAL" o "LINK_SEGUIMIENTO_ORDEN"), en "burbuja1_dialogo" NO digas simplemente "te dejo el link del portal" como si ya tuviera clave: decile con naturalidad que abajo le dejás la invitación para activar su cuenta en el portal por primera vez y ver los precios actualizados (el Agente Determinista colocará su código de activación e invitación en la Burbuja 2). Si es TRUE, sí hablale directo del "link del portal" porque ya cuenta con su usuario y contraseña.
-   - Siempre que marques "sugerir_adjuntar_pdf": true, asegurate de que "burbuja1_dialogo" informe con naturalidad que también le adjuntás un PDF con la información de precios actualizados.
-`.trim();
+    const systemInstruction = construirPromptEspecialistaWa({
+        carril: carrilFinal,
+        agente: agenteFinal,
+        apodoSugerido,
+        yaHablamosHoy
+    });
 
     const historialFormateado = mensajesRecientes.slice(-14).map(m => {
         const quien = m.from_me ? 'NOSOTROS (Martín/LAMDA)' : `CLIENTE (${apodoSugerido || contactoNombre || clienteNombre})`;
@@ -386,117 +631,112 @@ REGLAS INNEGOCIABLES DEL SISTEMA HÍBRIDO (CLAVIJAS DURAS):
         return `[${fecha}] ${quien}: ${String(m.cuerpo || '').replace(/\s+/g, ' ').trim()}`;
     }).join('\n');
 
-    const catalogoFiltradoBase = (Array.isArray(catalogoCompacto) ? catalogoCompacto : [])
-        .filter(c => !/^(?:PROD\s+(?:AP|UP)\s+Externo|Caja\s+MICRO|Bolsa\s+Polipropileno)/i.test(String(c?.nombre || '')));
+    // Solo inyectar catálogo cuando el agente realmente lo necesita (ahorra tokens y mejora velocidad/foco)
+    const necesitaCatalogo = agenteFinal === 'VENTAS_COTIZADOR' || agenteFinal === 'REACTIVACION_PORTAL' || instClean.length > 0;
+    let catalogoComercialLimpio = [];
+    if (necesitaCatalogo) {
+        const catalogoFiltradoBase = (Array.isArray(catalogoCompacto) ? catalogoCompacto : [])
+            .filter(c => !/^(?:PROD\s+(?:AP|UP)\s+Externo|Caja\s+MICRO|Bolsa\s+Polipropileno)/i.test(String(c?.nombre || '')));
 
-    // Optimización de velocidad y foco: filtrar el catálogo relevante para los últimos mensajes + instrucción + habituales
-    // (evita enviar 350 artículos pesados cuando es un saludo semanal, respondiendo en ~2.5s en vez de agotar 28s)
-    const textoContextoBusqueda = `${historialFormateado} ${instClean}`
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '');
-    const palabrasClaveContexto = Array.from(new Set(
-        textoContextoBusqueda
-            .split(/[^a-z0-9]+/)
-            .filter(w => w.length >= 3 && !['hola', 'buen', 'dia', 'buenas', 'tardes', 'como', 'estas', 'todo', 'bien', 'para', 'esta', 'semana', 'dale', 'gracias', 'martin', 'lamda', 'nosotros', 'cliente', 'mensaje', 'audio', 'por', 'los', 'las', 'que', 'una', 'uno', 'con', 'sin', 'del'].includes(w))
-    ));
+        const textoContextoBusqueda = `${historialFormateado} ${instClean}`
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+        const palabrasClaveContexto = Array.from(new Set(
+            textoContextoBusqueda
+                .split(/[^a-z0-9]+/)
+                .filter(w => w.length >= 3 && !['hola', 'buen', 'dia', 'buenas', 'tardes', 'como', 'estas', 'todo', 'bien', 'para', 'esta', 'semana', 'dale', 'gracias', 'martin', 'lamda', 'nosotros', 'cliente', 'mensaje', 'audio', 'por', 'los', 'las', 'que', 'una', 'uno', 'con', 'sin', 'del'].includes(w))
+        ));
 
-    let catalogoSeleccionPrompt = [];
-    if (palabrasClaveContexto.length > 0) {
-        const coincidencias = catalogoFiltradoBase.filter(c => {
-            const nomNorm = `${c.nombre || ''} ${c.familia || ''} ${c.codigo || ''}`
-                .toLowerCase()
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '');
-            return palabrasClaveContexto.some(w => nomNorm.includes(w));
-        });
-        catalogoSeleccionPrompt = coincidencias.slice(0, 80);
-    }
-    if (catalogoSeleccionPrompt.length < 30) {
-        const vistosCod = new Set(catalogoSeleccionPrompt.map(c => c.codigo));
-        for (const item of catalogoFiltradoBase) {
-            if (!vistosCod.has(item.codigo)) {
-                catalogoSeleccionPrompt.push(item);
-                vistosCod.add(item.codigo);
-            }
-            if (catalogoSeleccionPrompt.length >= 65) break;
+        let catalogoSeleccionPrompt = [];
+        if (palabrasClaveContexto.length > 0) {
+            const coincidencias = catalogoFiltradoBase.filter(c => {
+                const nomNorm = `${c.nombre || ''} ${c.familia || ''} ${c.codigo || ''}`
+                    .toLowerCase()
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '');
+                return palabrasClaveContexto.some(w => nomNorm.includes(w));
+            });
+            catalogoSeleccionPrompt = coincidencias.slice(0, 75);
         }
+        if (catalogoSeleccionPrompt.length < 25) {
+            const vistosCod = new Set(catalogoSeleccionPrompt.map(c => c.codigo));
+            for (const item of catalogoFiltradoBase) {
+                if (!vistosCod.has(item.codigo)) {
+                    catalogoSeleccionPrompt.push(item);
+                    vistosCod.add(item.codigo);
+                }
+                if (catalogoSeleccionPrompt.length >= 55) break;
+            }
+        }
+        catalogoComercialLimpio = catalogoSeleccionPrompt
+            .map(c => `${c.codigo} | ${c.nombre} | ${c.kilos_unidad || 1}kg | stock:${Number(c.stock_disponible || 0) > 0 ? c.stock_disponible : 0}`);
     }
-
-    const catalogoComercialLimpio = catalogoSeleccionPrompt
-        .map(c => `${c.codigo} | ${c.nombre} | ${c.kilos_unidad || 1}kg | stock:${Number(c.stock_disponible || 0) > 0 ? c.stock_disponible : 0}`);
 
     const habitualesLimpios = (Array.isArray(habitualesCliente) ? habitualesCliente : [])
-        .slice(0, 15)
-        .map(h => `${h.codigo || ''} | ${h.nombre || ''}`);
+        .slice(0, 12)
+        .map(h => `${h.codigo || h.articulo_id || ''} | ${h.nombre || h.descripcion || ''}`);
 
     const ctxHorario = obtenerContextoHorarioArgentina();
-    const promptUsuario = JSON.stringify({
-        hora_local_argentina: `${ctxHorario.fechaHoraTxt} (Franja: ${ctxHorario.franja} — Saludo obligatorio si saludás: "${ctxHorario.saludoObligatorio}")`,
+    const payloadContexto = {
+        carril_activo: carrilFinal,
+        especialista_activo: agenteFinal,
+        hora_local_argentina: `${ctxHorario.fechaHoraTxt} (${ctxHorario.franja} — saludo: "${ctxHorario.saludoObligatorio}")`,
+        ya_hablamos_hoy: yaHablamosHoy,
         instruccion_operador_prioritaria: instClean || null,
         cliente: {
             razon_social: clienteNombre,
             contacto: contactoNombre,
             apodo_confianza: apodoSugerido,
+            dias_sin_compra: diasSinCompra,
             link_portal_disponible: Boolean(linkPortalCliente),
-            ya_ingreso_portal_anteriormente: Boolean(yaIngresoPortal),
-            requiere_invitacion_inicial_primera_vez: !yaIngresoPortal
+            ya_ingreso_portal_anteriormente: Boolean(yaIngresoPortal)
         },
         cuenta_corriente_determinista: estadoCuentaDeterminista,
+        contexto_logistico_determinista: contextoLogistico || {},
+        comprobante_leido: comprobanteLeido || null,
+        datos_bancarios_lamda: (agenteFinal === 'COBRANZA_COMPROBANTES' || agenteFinal === 'CUENTA_CORRIENTE') ? DATOS_BANCARIOS_LAMDA : undefined,
         articulos_habituales_cliente: habitualesLimpios,
         historial_reciente_whatsapp: historialFormateado,
-        catalogo_bunker_disponible_formato_codigo_nombre_kg_stock: catalogoComercialLimpio
-    });
+        catalogo_bunker_codigo_nombre_kg_stock: catalogoComercialLimpio.length > 0 ? catalogoComercialLimpio : undefined
+    };
 
     const responseSchema = {
         type: 'OBJECT',
         properties: {
-            situacion_dialogo: {
-                type: 'STRING',
-                description: 'Código táctico: PAGO_ADELANTADO_SEGUIMIENTO_ORDEN, CLIENTE_CONSULTA_PUNTUAL, CLIENTE_PIDE_LISTA, CLIENTE_ENVIA_PEDIDO, CLIENTE_RESPONDE_TANTEO_O_SALUDO, SILENCIO_TRAS_RESUMEN_CUENTA, NOSOTROS_YA_TANTEAMOS_HOY, CLIENTE_POSTERGA_O_ESTA_BIEN, CLIENTE_AGRADECE_O_CONFIRMA, INICIAR_SALUDO_SEMANAL'
-            },
-            titulo_intencion: {
-                type: 'STRING',
-                description: 'Título corto (máx 55 caracteres) describiendo la situación actual del chat'
-            },
-            explicacion_razonamiento: {
-                type: 'STRING',
-                description: 'Explicación breve y clara para Martín de qué interpretó el agente (qué puso en el cuerpo del mensaje, qué descartó y qué preparó en el PDF de relacionados)'
-            },
-            modo_accion_sugerido: {
-                type: 'STRING',
-                description: 'Uno de: SEGUIMIENTO_ORDEN, COTIZAR, RESPONDER_CONTEXTO, TANTEO_CORTO, PING_PONG_TEMA, PASAR_PORTAL, AVISO_CORTO_CUENTA, SALUDAR_SEMANA'
-            },
+            situacion_dialogo: { type: 'STRING', description: 'Código breve de situación del chat' },
+            titulo_intencion: { type: 'STRING', description: 'Título corto (máx 55 caracteres)' },
+            explicacion_razonamiento: { type: 'STRING', description: 'Resumen breve (1 línea) para Martín de qué criterio aplicó el especialista' },
+            modo_accion_sugerido: { type: 'STRING', description: 'Código del especialista o acción sugerida' },
             codigos_articulos_seleccionados: {
                 type: 'ARRAY',
                 items: { type: 'STRING' },
-                description: 'Lista de códigos exactos (primer campo antes de | en catalogo_bunker_disponible) para el CUERPO DEL MENSAJE (Burbuja 2). Si pidió fracciones chicas (1kg/2kg), NO poner cajas de 10kg si existe de 1kg o 2kg.'
+                description: 'Códigos exactos del catálogo para Burbuja 2 (vacío si no corresponde cotizar)'
             },
             codigos_articulos_pdf_sugeridos: {
                 type: 'ARRAY',
                 items: { type: 'STRING' },
-                description: 'Lista de códigos exactos de artículos RELACIONADOS / COMPLEMENTARIOS en fracciones acordes (ej: castañas tostadas sin sal / con sal, damasco turco, más los cotizados) para enviar en el PDF adjunto de precios verificados de su lista.'
+                description: 'Códigos exactos sugeridos para PDF de precios (vacío si no aplica)'
             },
-            sugerir_adjuntar_pdf: {
-                type: 'BOOLEAN',
-                description: 'true si conviene adjuntar el PDF con los artículos relacionados/ofertas de su lista o si el operador lo pidió.'
-            },
+            sugerir_adjuntar_pdf: { type: 'BOOLEAN', description: 'true si conviene adjuntar PDF de lista de precios' },
+            sugerir_adjuntar_pdf_cc: { type: 'BOOLEAN', description: 'true si conviene adjuntar PDF de Extracto de Cuenta Corriente' },
+            habilitar_gestion_factura: { type: 'BOOLEAN', description: 'true si corresponde habilitar acceso directo a Gestionar Factura / NC' },
             conceptos_excluidos: {
                 type: 'ARRAY',
                 items: { type: 'STRING' },
-                description: 'Palabras o productos que el cliente mencionó pero aclaró que NO quiere o que deja para después (ej: ["mix"])'
+                description: 'Productos o términos que el cliente aclaró que NO quiere'
             },
             burbuja1_dialogo: {
                 type: 'STRING',
-                description: 'Texto de la Burbuja 1 para WhatsApp (corto, natural, sin signos ¿ ni ¡, sin precios ni links adentro, y sin repetir Hola si ya hablamos hoy)'
+                description: 'Burbuja 1 corta y natural en estilo Martín (sin ¿/¡, sin palabra interés, sin precios inventados)'
             },
             tipo_burbuja2_determinista: {
                 type: 'STRING',
-                description: 'LINK_SEGUIMIENTO_ORDEN (si ya pagó/transfirió por adelantado y corresponde pasarle el link directo al seguimiento del estado de su orden), PRECIOS_SELECCIONADOS (si corresponde estampar los precios deterministas de codigos_articulos_seleccionados), LINK_PORTAL (si corresponde estampar el link general del portal), o VACIA (si es mensaje de 1 sola burbuja)'
+                description: 'PRECIOS_SELECCIONADOS, LINK_PORTAL, LINK_SEGUIMIENTO_ORDEN o VACIA'
             },
             burbuja3_cierre: {
                 type: 'STRING',
-                description: 'Texto corto y contextual de cierre para la Burbuja 3 adaptado a la charla (usando el estilo real de Martín como "Cualquier cosa estamos atentos." o comentando el PDF adjunto si aplica; evitá repetir siempre "Cualquier cosa escribime por acá")'
+                description: 'Cierre breve estilo Martín (vacío si es SALUDO_PUNTUAL o mensaje único corto)'
             }
         },
         required: [
@@ -507,6 +747,8 @@ REGLAS INNEGOCIABLES DEL SISTEMA HÍBRIDO (CLAVIJAS DURAS):
             'codigos_articulos_seleccionados',
             'codigos_articulos_pdf_sugeridos',
             'sugerir_adjuntar_pdf',
+            'sugerir_adjuntar_pdf_cc',
+            'habilitar_gestion_factura',
             'conceptos_excluidos',
             'burbuja1_dialogo',
             'tipo_burbuja2_determinista',
@@ -516,34 +758,68 @@ REGLAS INNEGOCIABLES DEL SISTEMA HÍBRIDO (CLAVIJAS DURAS):
 
     const rawJsonText = await invocarGemini25Flash({
         systemInstruction,
-        parts: [{ text: promptUsuario }],
+        parts: [{ text: JSON.stringify(payloadContexto) }],
         responseSchema,
-        temperature: 0.35,
-        timeoutMs: 28000
+        temperature: 0.3,
+        timeoutMs: 26000,
+        moduloLedger: 'COMERCIAL_CRM',
+        detalleLedger: `${carrilFinal} · ${agenteFinal}`
     });
 
     const parsed = JSON.parse(rawJsonText);
+
+    // Clavijas deterministas por especialista (garantizan cumplimiento estricto de negocio)
+    let tipoB2Final = String(parsed.tipo_burbuja2_determinista || 'VACIA').trim().toUpperCase();
+    let b3Final = aplicarClavijasTextoDeterministaWa(parsed.burbuja3_cierre || '');
+    let sugerirPdfFinal = Boolean(parsed.sugerir_adjuntar_pdf);
+    let sugerirPdfCcFinal = Boolean(parsed.sugerir_adjuntar_pdf_cc);
+    let habilitarGestionFacturaFinal = Boolean(parsed.habilitar_gestion_factura);
+    let codsSel = Array.isArray(parsed.codigos_articulos_seleccionados)
+        ? parsed.codigos_articulos_seleccionados.map(c => String(c || '').trim()).filter(Boolean)
+        : [];
+    let codsPdf = Array.isArray(parsed.codigos_articulos_pdf_sugeridos)
+        ? parsed.codigos_articulos_pdf_sugeridos.map(c => String(c || '').trim()).filter(Boolean)
+        : [];
+
+    if (agenteFinal === 'SALUDO_PUNTUAL' && !instClean) {
+        tipoB2Final = 'VACIA';
+        b3Final = '';
+        sugerirPdfFinal = false;
+        sugerirPdfCcFinal = false;
+        codsSel = [];
+        codsPdf = [];
+    } else if (agenteFinal === 'RECLAMO_DEVOLUCION') {
+        habilitarGestionFacturaFinal = true;
+        if (!instClean) {
+            tipoB2Final = 'VACIA';
+            sugerirPdfFinal = false;
+            codsSel = [];
+        }
+    } else if (agenteFinal === 'CUENTA_CORRIENTE' && Number(estadoCuentaDeterminista?.saldo_total || 0) > 100) {
+        sugerirPdfCcFinal = true;
+    }
+
     const resultadoBlindado = {
         usando_ia_real: true,
         modo_credencial: cred.modo,
+        carril_utilizado: carrilFinal,
+        agente_utilizado: agenteFinal,
         _usage: _ultimoUsageGemini || null,
-        situacion_dialogo: String(parsed.situacion_dialogo || 'CLIENTE_CONSULTA_PUNTUAL').trim(),
+        situacion_dialogo: String(parsed.situacion_dialogo || agenteFinal).trim(),
         titulo_intencion: aplicarClavijasTextoDeterministaWa(parsed.titulo_intencion || ''),
         explicacion_razonamiento: aplicarClavijasTextoDeterministaWa(parsed.explicacion_razonamiento || ''),
-        modo_accion_sugerido: String(parsed.modo_accion_sugerido || 'COTIZAR').trim(),
-        codigos_articulos_seleccionados: Array.isArray(parsed.codigos_articulos_seleccionados)
-            ? parsed.codigos_articulos_seleccionados.map(c => String(c || '').trim()).filter(Boolean)
-            : [],
-        codigos_articulos_pdf_sugeridos: Array.isArray(parsed.codigos_articulos_pdf_sugeridos)
-            ? parsed.codigos_articulos_pdf_sugeridos.map(c => String(c || '').trim()).filter(Boolean)
-            : [],
-        sugerir_adjuntar_pdf: Boolean(parsed.sugerir_adjuntar_pdf),
+        modo_accion_sugerido: String(parsed.modo_accion_sugerido || agenteFinal).trim(),
+        codigos_articulos_seleccionados: codsSel,
+        codigos_articulos_pdf_sugeridos: codsPdf,
+        sugerir_adjuntar_pdf: sugerirPdfFinal,
+        sugerir_adjuntar_pdf_cc: sugerirPdfCcFinal,
+        habilitar_gestion_factura: habilitarGestionFacturaFinal,
         conceptos_excluidos: Array.isArray(parsed.conceptos_excluidos)
             ? parsed.conceptos_excluidos.map(c => String(c || '').trim().toLowerCase()).filter(Boolean)
             : [],
         burbuja1_dialogo: aplicarClavijasTextoDeterministaWa(parsed.burbuja1_dialogo || ''),
-        tipo_burbuja2_determinista: String(parsed.tipo_burbuja2_determinista || 'VACIA').trim(),
-        burbuja3_cierre: aplicarClavijasTextoDeterministaWa(parsed.burbuja3_cierre || '')
+        tipo_burbuja2_determinista: tipoB2Final,
+        burbuja3_cierre: b3Final
     };
 
     _cacheRazonamientoHibrido.set(cacheKey, { ts: Date.now(), data: resultadoBlindado });
@@ -551,8 +827,12 @@ REGLAS INNEGOCIABLES DEL SISTEMA HÍBRIDO (CLAVIJAS DURAS):
 }
 
 module.exports = {
+    CARRILES_AGENTES_WA,
+    DATOS_BANCARIOS_LAMDA,
     obtenerModoCredencialGemini,
     aplicarClavijasTextoDeterministaWa,
     transcribirAudioOggConGemini,
+    leerComprobanteImagenConGemini,
+    resolverCarrilYAgenteEspecialista,
     razonarAsistenciaHibridaClienteWa
 };

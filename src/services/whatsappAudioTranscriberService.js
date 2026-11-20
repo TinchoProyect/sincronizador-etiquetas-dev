@@ -60,17 +60,18 @@ function descargarBufferHttps(urlStr, timeoutMs = 15000) {
 }
 
 /**
- * Desencripta un archivo de audio/ptt de WhatsApp a partir de su directPath y mediaKey
+ * Desencripta cualquier archivo multimedia de WhatsApp (audio/ptt, image, document, video)
+ * a partir de su directPath y mediaKey usando HKDF-SHA256 + AES-256-CBC.
  */
-async function desencriptarAudioWhatsApp({ directPath, mediaKey, encBuffer }) {
+async function desencriptarMediaWhatsApp({ directPath, mediaKey, encBuffer, tipoMedia = 'audio' }) {
     if (!mediaKey) {
-        throw new Error('Falta mediaKey para desencriptar el audio de WhatsApp.');
+        throw new Error(`Falta mediaKey para desencriptar ${tipoMedia} de WhatsApp.`);
     }
 
     let rawEnc = encBuffer;
     if (!rawEnc) {
         if (!directPath) {
-            throw new Error('Falta directPath para descargar el audio de WhatsApp.');
+            throw new Error(`Falta directPath para descargar ${tipoMedia} de WhatsApp.`);
         }
         const url = directPath.startsWith('http')
             ? directPath
@@ -79,11 +80,18 @@ async function desencriptarAudioWhatsApp({ directPath, mediaKey, encBuffer }) {
     }
 
     if (!rawEnc || rawEnc.length <= 16) {
-        throw new Error('El buffer encriptado del audio está vacío o incompleto.');
+        throw new Error(`El buffer encriptado de ${tipoMedia} está vacío o incompleto.`);
     }
 
+    const tipoNorm = String(tipoMedia || 'audio').trim().toLowerCase();
+    const hkdfLabel = tipoNorm === 'image'
+        ? 'WhatsApp Image Keys'
+        : (tipoNorm === 'document'
+            ? 'WhatsApp Document Keys'
+            : (tipoNorm === 'video' ? 'WhatsApp Video Keys' : 'WhatsApp Audio Keys'));
+
     const mediaKeyBuf = Buffer.from(String(mediaKey).trim(), 'base64');
-    const info = Buffer.from('WhatsApp Audio Keys', 'utf8');
+    const info = Buffer.from(hkdfLabel, 'utf8');
     const salt = Buffer.alloc(32, 0);
     const expanded = Buffer.from(crypto.hkdfSync('sha256', mediaKeyBuf, salt, info, 112));
 
@@ -96,6 +104,13 @@ async function desencriptarAudioWhatsApp({ directPath, mediaKey, encBuffer }) {
     const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 
     return decrypted;
+}
+
+/**
+ * Desencripta un archivo de audio/ptt de WhatsApp a partir de su directPath y mediaKey
+ */
+async function desencriptarAudioWhatsApp({ directPath, mediaKey, encBuffer }) {
+    return desencriptarMediaWhatsApp({ directPath, mediaKey, encBuffer, tipoMedia: 'audio' });
 }
 
 /**
@@ -231,15 +246,15 @@ function programarApagadoInactivoWhisperWorker() {
 }
 
 /**
- * Transcribe un Buffer Ogg Opus de WhatsApp en un proceso hijo aislado (1 a la vez en cola secuencial)
- * para no bloquear jamás el event loop del servidor HTTP de WhatsApp (3004) ni CRM (3000).
+ * Transcribe un Buffer de audio de WhatsApp priorizando Gemini 2.5 Flash multimodal (imputado a AUDIOS)
+ * con fallback local a Whisper Small en worker hijo aislado.
  */
-async function transcribirBufferOggWhatsApp(oggBuffer) {
+async function transcribirBufferOggWhatsApp(oggBuffer, { mimeType = 'audio/ogg', detalleOrigen = 'Audio WhatsApp' } = {}) {
     // 1. Prioridad Cognitiva Multimodal (Gemini 2.5 Flash en ~1.5s si está activo en .env)
     const credIa = agenteHibridoLlm.obtenerModoCredencialGemini();
     if (credIa && credIa.disponible) {
         try {
-            const textoGemini = await agenteHibridoLlm.transcribirAudioOggConGemini(oggBuffer);
+            const textoGemini = await agenteHibridoLlm.transcribirAudioOggConGemini(oggBuffer, mimeType, detalleOrigen);
             if (textoGemini && textoGemini.length >= 2) {
                 return refinarTranscripcionRubroLamda(textoGemini);
             }
@@ -290,9 +305,9 @@ async function transcribirBufferOggWhatsApp(oggBuffer) {
 
 /**
  * Proceso integral: recibe { directPath, mediaKey } o { oggBuffer } o { base64Ogg },
- * desencripta, transcribe con Whisper y formatea el cuerpo para CRM WhatsApp.
+ * desencripta, transcribe con Gemini/Whisper y formatea el cuerpo para CRM WhatsApp.
  */
-async function descargarYTranscribirAudioWhatsApp({ directPath, mediaKey, oggBuffer, base64Ogg }) {
+async function descargarYTranscribirAudioWhatsApp({ directPath, mediaKey, oggBuffer, base64Ogg, mimeType = 'audio/ogg', detalleOrigen = 'Audio WhatsApp' }) {
     let bufferFinal = oggBuffer;
     if (!bufferFinal && base64Ogg) {
         bufferFinal = Buffer.from(String(base64Ogg), 'base64');
@@ -300,7 +315,7 @@ async function descargarYTranscribirAudioWhatsApp({ directPath, mediaKey, oggBuf
     if (!bufferFinal) {
         bufferFinal = await desencriptarAudioWhatsApp({ directPath, mediaKey });
     }
-    const texto = await transcribirBufferOggWhatsApp(bufferFinal);
+    const texto = await transcribirBufferOggWhatsApp(bufferFinal, { mimeType, detalleOrigen });
     if (!texto) {
         return {
             ok: false,
@@ -317,46 +332,57 @@ async function descargarYTranscribirAudioWhatsApp({ directPath, mediaKey, oggBuf
 }
 
 /**
- * Conecta de forma no intrusiva al Chromium de WhatsApp Web vía DevToolsActivePort,
- * extrae directPath y mediaKey de los últimos audios del chat y los transcribe en caliente.
+ * Helper interno para conectarse de forma no intrusiva al Chromium de WhatsApp Web vía DevToolsActivePort
  */
-async function transcribirAudiosDeChatViaDevTools({ chatId, msgIds = [], maxAudios = 4 } = {}) {
+async function conectarWhatsAppWebDevTools() {
+    const devToolsPortPath = path.resolve(__dirname, '../facturacion/.wwebjs_auth/session-lamda-billing/DevToolsActivePort');
+    if (!fs.existsSync(devToolsPortPath)) {
+        return { ok: false, message: 'No se encontró sesión activa de WhatsApp Web (DevToolsActivePort).' };
+    }
+    const lines = fs.readFileSync(devToolsPortPath, 'utf8').trim().split(/\r?\n/);
+    const port = lines[0]?.trim();
+    const wsPath = lines[1]?.trim();
+    if (!port || !wsPath) {
+        return { ok: false, message: 'DevToolsActivePort inválido.' };
+    }
+    const puppeteer = require(path.resolve(__dirname, '../facturacion/node_modules/puppeteer'));
+    const browser = await puppeteer.connect({
+        browserWSEndpoint: `ws://127.0.0.1:${port}${wsPath}`,
+        defaultViewport: null
+    });
+    const pages = await browser.pages();
+    const waPage = pages.find(p => p.url().includes('web.whatsapp.com')) || pages[0];
+    if (!waPage) {
+        try { browser.disconnect(); } catch (_) {}
+        return { ok: false, message: 'No se encontró pestaña de WhatsApp Web.' };
+    }
+    return { ok: true, browser, waPage };
+}
+
+/**
+ * Conecta de forma no intrusiva al Chromium de WhatsApp Web vía DevToolsActivePort,
+ * extrae directPath y mediaKey de los últimos audios del chat (entrantes y salientes) y los transcribe en caliente.
+ */
+async function transcribirAudiosDeChatViaDevTools({ chatId, msgIds = [], maxAudios = 4, incluirSalientes = true } = {}) {
     if (!chatId) {
         return { success: false, message: 'Se requiere chatId.' };
     }
 
-    const devToolsPortPath = path.resolve(__dirname, '../facturacion/.wwebjs_auth/session-lamda-billing/DevToolsActivePort');
-    if (!fs.existsSync(devToolsPortPath)) {
-        return { success: false, message: 'No se encontró sesión activa de WhatsApp Web (DevToolsActivePort).' };
-    }
-
     let browser = null;
     try {
-        const lines = fs.readFileSync(devToolsPortPath, 'utf8').trim().split(/\r?\n/);
-        const port = lines[0]?.trim();
-        const wsPath = lines[1]?.trim();
-        if (!port || !wsPath) {
-            return { success: false, message: 'DevToolsActivePort inválido.' };
+        const conn = await conectarWhatsAppWebDevTools();
+        if (!conn.ok) {
+            return { success: false, message: conn.message };
         }
-
-        const puppeteer = require(path.resolve(__dirname, '../facturacion/node_modules/puppeteer'));
-        browser = await puppeteer.connect({
-            browserWSEndpoint: `ws://127.0.0.1:${port}${wsPath}`,
-            defaultViewport: null
-        });
-
-        const pages = await browser.pages();
-        const waPage = pages.find(p => p.url().includes('web.whatsapp.com')) || pages[0];
-        if (!waPage) {
-            return { success: false, message: 'No se encontró pestaña de WhatsApp Web.' };
-        }
+        browser = conn.browser;
+        const waPage = conn.waPage;
 
         const targetPhone = String(chatId).split('@')[0].replace(/\D/g, '');
         const requestedIds = Array.isArray(msgIds)
             ? msgIds.map(id => String(id).split('_').pop()).filter(Boolean)
             : [];
 
-        const audiosExtraidos = await waPage.evaluate((phoneDigits, reqIds, limitCount) => {
+        const audiosExtraidos = await waPage.evaluate((phoneDigits, reqIds, limitCount, permitirSalientes) => {
             const lista = [];
             try {
                 if (typeof window.require !== 'function') return lista;
@@ -389,14 +415,15 @@ async function transcribirAudiosDeChatViaDevTools({ chatId, msgIds = [], maxAudi
                         const esFromMe = Boolean(m.id.fromMe || m.fromMe);
                         if (Array.isArray(reqIds) && reqIds.length > 0) {
                             if (!reqIds.includes(shortId)) continue;
-                        } else if (esFromMe) {
-                            // Por defecto solo transcribir audios entrantes del cliente
+                        } else if (esFromMe && !permitirSalientes) {
                             continue;
                         }
                         if (m.directPath && m.mediaKey) {
                             lista.push({
                                 msgId: shortId,
                                 chatId: phoneChatId,
+                                fromMe: esFromMe,
+                                mimetype: m.mimetype || 'audio/ogg',
                                 directPath: m.directPath,
                                 mediaKey: m.mediaKey,
                                 timestamp: m.t || 0
@@ -407,7 +434,7 @@ async function transcribirAudiosDeChatViaDevTools({ chatId, msgIds = [], maxAudi
                 }
             } catch (e) {}
             return lista;
-        }, targetPhone, requestedIds, maxAudios);
+        }, targetPhone, requestedIds, maxAudios, Boolean(incluirSalientes));
 
         try { browser.disconnect(); } catch (_) {}
         browser = null;
@@ -424,6 +451,7 @@ async function transcribirAudiosDeChatViaDevTools({ chatId, msgIds = [], maxAudi
                     });
                     resultados.push({
                         msgId: aud.msgId,
+                        fromMe: Boolean(aud.fromMe),
                         texto: cached.texto,
                         cuerpo: cached.cuerpoFormateado,
                         actualizado: true
@@ -435,7 +463,9 @@ async function transcribirAudiosDeChatViaDevTools({ chatId, msgIds = [], maxAudi
                 if (!promiseTr) {
                     promiseTr = descargarYTranscribirAudioWhatsApp({
                         directPath: aud.directPath,
-                        mediaKey: aud.mediaKey
+                        mediaKey: aud.mediaKey,
+                        mimeType: aud.mimetype || 'audio/ogg',
+                        detalleOrigen: aud.fromMe ? 'Audio saliente Martín' : 'Audio entrante cliente'
                     }).finally(() => {
                         _inflightMsgTranscriptions.delete(aud.msgId);
                     });
@@ -452,13 +482,14 @@ async function transcribirAudiosDeChatViaDevTools({ chatId, msgIds = [], maxAudi
                     });
                     resultados.push({
                         msgId: aud.msgId,
+                        fromMe: Boolean(aud.fromMe),
                         texto: resTr.texto,
                         cuerpo: resTr.cuerpoFormateado,
                         actualizado: Boolean(rowUpd)
                     });
                 }
             } catch (errOne) {
-                console.warn(`⚠️ [WHISPER-DEVTOOLS] Error transcribiendo ${aud.msgId}:`, errOne.message);
+                console.warn(`⚠️ [AUDIO-DEVTOOLS] Error transcribiendo ${aud.msgId}:`, errOne.message);
             }
         }
 
@@ -480,11 +511,132 @@ async function transcribirAudiosDeChatViaDevTools({ chatId, msgIds = [], maxAudi
     }
 }
 
+/**
+ * Extrae y desencripta una imagen (ej. comprobante de transferencia) de un chat vía DevToolsActivePort.
+ * Intenta primero descarga completa HKDF ('WhatsApp Image Keys') y cae en fallback al thumbnail base64 si el CDN expiró.
+ */
+async function extraerImagenDeChatViaDevTools({ chatId, msgId = null } = {}) {
+    if (!chatId) {
+        return { success: false, message: 'Se requiere chatId.' };
+    }
+    let browser = null;
+    try {
+        const conn = await conectarWhatsAppWebDevTools();
+        if (!conn.ok) {
+            return { success: false, message: conn.message };
+        }
+        browser = conn.browser;
+        const waPage = conn.waPage;
+
+        const targetPhone = String(chatId).split('@')[0].replace(/\D/g, '');
+        const reqShortId = msgId ? String(msgId).split('_').pop() : '';
+
+        const imgMeta = await waPage.evaluate((phoneDigits, shortIdObjetivo) => {
+            try {
+                if (typeof window.require !== 'function') return null;
+                const mod = window.require('WAWebChatCollection');
+                const rawChats = (mod && mod.ChatCollection && typeof mod.ChatCollection.getModelsArray === 'function')
+                    ? (mod.ChatCollection.getModelsArray() || [])
+                    : [];
+
+                for (let i = 0; i < rawChats.length; i++) {
+                    const c = rawChats[i];
+                    if (!c || !c.id || c.isGroup) continue;
+                    const rawId = c.id._serialized || '';
+                    let phoneChatId = rawId;
+                    if (rawId.endsWith('@lid') && c.contact && c.contact.phoneNumber) {
+                        phoneChatId = c.contact.phoneNumber._serialized || (c.contact.phoneNumber.user ? `${c.contact.phoneNumber.user}@c.us` : rawId);
+                    }
+                    const digits = phoneChatId.split('@')[0].replace(/\D/g, '');
+                    if (!digits || (digits !== phoneDigits && !digits.endsWith(phoneDigits.slice(-10)))) continue;
+
+                    const rawMsgs = (c.msgs && typeof c.msgs.getModelsArray === 'function')
+                        ? c.msgs.getModelsArray()
+                        : [];
+
+                    for (let j = rawMsgs.length - 1; j >= 0; j--) {
+                        const m = rawMsgs[j];
+                        if (!m || !m.id) continue;
+                        if (m.type !== 'image' && m.type !== 'document') continue;
+                        const shortId = m.id.id || (m.id._serialized ? String(m.id._serialized).split('_').pop() : null);
+                        if (!shortId) continue;
+                        if (shortIdObjetivo && shortId !== shortIdObjetivo) continue;
+                        if (!shortIdObjetivo && m.type !== 'image') continue;
+
+                        return {
+                            msgId: shortId,
+                            chatId: phoneChatId,
+                            type: m.type,
+                            mimetype: m.mimetype || 'image/jpeg',
+                            caption: m.caption || '',
+                            directPath: m.directPath || '',
+                            mediaKey: m.mediaKey || '',
+                            thumbnailBase64: (typeof m.body === 'string' && m.body.length > 80) ? m.body : ''
+                        };
+                    }
+                }
+            } catch (e) {}
+            return null;
+        }, targetPhone, reqShortId);
+
+        try { browser.disconnect(); } catch (_) {}
+        browser = null;
+
+        if (!imgMeta) {
+            return { success: false, message: 'No se encontró la imagen solicitada en la sesión activa de WhatsApp Web.' };
+        }
+
+        let imageBuffer = null;
+        let mimeType = imgMeta.mimetype || 'image/jpeg';
+        let origen = 'cdn_full';
+
+        if (imgMeta.directPath && imgMeta.mediaKey) {
+            try {
+                imageBuffer = await desencriptarMediaWhatsApp({
+                    directPath: imgMeta.directPath,
+                    mediaKey: imgMeta.mediaKey,
+                    tipoMedia: imgMeta.type === 'document' ? 'document' : 'image'
+                });
+            } catch (errDec) {
+                console.warn(`⚠️ [IMG-DEVTOOLS] Fallback a thumbnail para ${imgMeta.msgId}:`, errDec.message);
+            }
+        }
+
+        if ((!imageBuffer || imageBuffer.length < 32) && imgMeta.thumbnailBase64) {
+            imageBuffer = Buffer.from(imgMeta.thumbnailBase64, 'base64');
+            mimeType = 'image/jpeg';
+            origen = 'thumbnail_fallback';
+        }
+
+        if (!imageBuffer || imageBuffer.length < 32) {
+            return { success: false, message: 'No se pudo descargar ni recuperar la imagen desde WhatsApp Web.' };
+        }
+
+        return {
+            success: true,
+            msgId: imgMeta.msgId,
+            chatId: imgMeta.chatId || chatId,
+            imageBuffer,
+            mimeType,
+            caption: imgMeta.caption || '',
+            origen
+        };
+    } catch (err) {
+        return { success: false, error: err.message };
+    } finally {
+        if (browser) {
+            try { browser.disconnect(); } catch (_) {}
+        }
+    }
+}
+
 module.exports = {
+    desencriptarMediaWhatsApp,
     desencriptarAudioWhatsApp,
     decodificarOggOpusAPcm16k,
     transcribirBufferOggWhatsApp,
     descargarYTranscribirAudioWhatsApp,
     transcribirAudiosDeChatViaDevTools,
+    extraerImagenDeChatViaDevTools,
     refinarTranscripcionRubroLamda
 };

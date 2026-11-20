@@ -3476,9 +3476,36 @@
                     ? `<span style="background:rgba(0,0,0,0.06); padding:1px 5px; border-radius:4px; font-size:0.65rem;">LAMDA</span>`
                     : '';
 
+                const cuerpoTrim = String(m.cuerpo || '').trim();
+                const msgIdSafe = escaparHtml(String(m.msg_id || '').replace(/'/g, ''));
+                const esAudioSinTranscribir = (m.tipo_mensaje === 'ptt' || m.tipo_mensaje === 'audio')
+                    && (!cuerpoTrim || cuerpoTrim === '🎤 Mensaje de audio');
+                const esImagenChat = m.tipo_mensaje === 'image' || cuerpoTrim.startsWith('📷');
+                const yaLeidaImagen = cuerpoTrim.startsWith('📷 Comprobante leído:') || cuerpoTrim.startsWith('📷 Imagen leída:');
+
+                let botonAccionMediaHtml = '';
+                if (esAudioSinTranscribir) {
+                    botonAccionMediaHtml = `
+                        <div style="margin-top:5px;">
+                            <button type="button" class="wa-btn-media-inline wa-btn-transcribir-audio" data-msg-id="${msgIdSafe}" onclick="window.transcribirAudioIndividualChatWa(${chat.id}, '${msgIdSafe}', this)" style="background:#f0fdf4; border:1px solid #86efac; color:#166534; border-radius:6px; padding:2px 8px; font-size:0.69rem; font-weight:800; cursor:pointer;">
+                                📝 Transcribir${m.from_me ? ' mi audio' : ''}
+                            </button>
+                        </div>
+                    `;
+                } else if (esImagenChat) {
+                    botonAccionMediaHtml = `
+                        <div style="margin-top:5px;">
+                            <button type="button" class="wa-btn-media-inline wa-btn-leer-imagen" data-msg-id="${msgIdSafe}" onclick="window.leerImagenComprobanteChatWa(${chat.id}, '${msgIdSafe}', this)" style="background:${yaLeidaImagen ? '#f8fafc' : '#eff6ff'}; border:1px solid ${yaLeidaImagen ? '#cbd5e1' : '#93c5fd'}; color:${yaLeidaImagen ? '#475569' : '#1d4ed8'}; border-radius:6px; padding:2px 8px; font-size:0.69rem; font-weight:800; cursor:pointer;">
+                                🔍 ${yaLeidaImagen ? 'Re-leer comprobante / imagen' : 'Leer comprobante / imagen'}
+                            </button>
+                        </div>
+                    `;
+                }
+
                 burbujasHtml += `
                     <div class="wa-bubble ${m.from_me ? 'outgoing' : 'incoming'}">
                         <div style="white-space: pre-wrap;">${escaparHtml(m.cuerpo)}</div>
+                        ${botonAccionMediaHtml}
                         <div class="wa-bubble-meta">
                             ${origenBadge}
                             <span>${hora}</span>
@@ -7774,21 +7801,21 @@
             );
         }
 
-        // 3b. Si en los últimos 4 mensajes hay algún audio entrante aún sin transcribir ("🎤 Mensaje de audio"), transcribirlo en caliente antes de correr el asistente
+        // 3b. Si en los últimos 6 mensajes hay algún audio (entrante o saliente de Martín) aún sin transcribir, transcribirlo en caliente antes de correr el asistente
         if (chatId > 0 && Array.isArray(mensajesChat) && mensajesChat.length > 0) {
-            const ult4Aud = mensajesChat.slice(-4).filter(m =>
-                !m.from_me &&
+            const ult6Aud = mensajesChat.slice(-6).filter(m =>
                 (m.tipo_mensaje === 'ptt' || m.tipo_mensaje === 'audio') &&
                 (!m.cuerpo || String(m.cuerpo).trim() === '🎤 Mensaje de audio')
             );
-            if (ult4Aud.length > 0) {
+            if (ult6Aud.length > 0) {
                 try {
                     const trRes = await fetch(`/api/crm/whatsapp/chats/${encodeURIComponent(chatId)}/transcribir-audios`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            msgIds: ult4Aud.map(m => m.msg_id).filter(Boolean),
-                            maxAudios: 3
+                            msgIds: ult6Aud.map(m => m.msg_id).filter(Boolean),
+                            maxAudios: 4,
+                            incluirSalientes: true
                         })
                     }).then(r => r.json()).catch(() => null);
                     if (trRes && trRes.success && Array.isArray(trRes.resultados) && trRes.resultados.length > 0) {
@@ -7816,13 +7843,20 @@
         const contactoNombreChat = String(chatObj?.contacto_nombre || chatObj?.pushname_wa || '').trim();
         const nombreCorto = obtenerNombrePilaCortoWa(contactoNombreChat || nombreCliente);
 
-        // 4b. Ejecutar razonamiento híbrido IA (Gemini) sobre la base determinista (o levantar el ya guardado en PostgreSQL en 0ms si no hubo mensajes nuevos)
+        // 4b. Ejecutar razonamiento híbrido IA (Gemini 2.5 Flash — 2 Carriles x 8 Especialistas) sobre la base determinista
         let razonamientoIa = null;
         let errorCriticoIa = '';
         let articulosPdfSugeridosIa = [];
         let sugerirAdjuntarPdfIa = false;
+        let sugerirAdjuntarPdfCcIa = false;
+        let habilitarGestionFacturaIa = false;
+        const ultimoMsgChat = Array.isArray(mensajesChat) && mensajesChat.length > 0 ? mensajesChat[mensajesChat.length - 1] : null;
+        const carrilAutoInicial = Boolean(chatObj?.esperando_respuesta || (ultimoMsgChat && !ultimoMsgChat.from_me)) ? 'ENTRANTE' : 'SALIENTE';
+        const comprobantePrevioMismoChat = (estadoAsistenteComercialWa && Number(estadoAsistenteComercialWa.chatId) === Number(chatId))
+            ? (estadoAsistenteComercialWa.comprobanteLeido || null)
+            : null;
 
-        if (!forzarRelectura && sintesisMemoria && sintesisMemoria.razonamiento_ia_guardado && sintesisMemoria.razonamiento_ia_guardado.usando_ia_real) {
+        if (!forzarRelectura && !comprobantePrevioMismoChat && sintesisMemoria && sintesisMemoria.razonamiento_ia_guardado && sintesisMemoria.razonamiento_ia_guardado.usando_ia_real) {
             razonamientoIa = sintesisMemoria.razonamiento_ia_guardado;
         } else if (sintesisMemoria && sintesisMemoria.ia_cognitiva && sintesisMemoria.ia_cognitiva.disponible === false) {
             errorCriticoIa = 'El servicio de Inteligencia Artificial (Gemini) no tiene credenciales activas configuradas en el servidor.';
@@ -7852,9 +7886,15 @@
                         signal: ctrlIa.signal,
                         body: JSON.stringify({
                             clienteId: clienteId || 0,
+                            chatId: chatId || 0,
                             clienteNombre: nombreCliente,
                             contactoNombre: contactoNombreChat,
                             apodoSugerido: nombreCorto,
+                            carril: carrilAutoInicial,
+                            agenteObjetivo: 'AUTO',
+                            comprobanteLeido: comprobantePrevioMismoChat,
+                            contextoLogistico: rayosX?.logistica_resumen || null,
+                            diasSinCompra: sintesisMemoria?.ciclo_compra?.dias_desde_ultima_compra ?? null,
                             mensajesRecientes: mensajesChat.slice(-14),
                             catalogoCompacto: catalogoCompactoIa,
                             habitualesCliente: articulosHabituales.slice(0, 20).map(h => ({
@@ -7911,6 +7951,8 @@
 
         if (razonamientoIa && razonamientoIa.usando_ia_real) {
             sugerirAdjuntarPdfIa = Boolean(razonamientoIa.sugerir_adjuntar_pdf);
+            sugerirAdjuntarPdfCcIa = Boolean(razonamientoIa.sugerir_adjuntar_pdf_cc);
+            habilitarGestionFacturaIa = Boolean(razonamientoIa.habilitar_gestion_factura);
             if (Array.isArray(razonamientoIa.conceptos_excluidos) && razonamientoIa.conceptos_excluidos.length > 0) {
                 razonamientoIa.conceptos_excluidos.forEach(c => {
                     if (!tokensNegadosCliente.includes(c)) tokensNegadosCliente.push(c);
@@ -8009,6 +8051,11 @@
             articulosPdfSugeridosIa,
             idsPdfSeleccionados: new Set((articulosPdfSugeridosIa || []).map(a => String(a.id))),
             sugerirAdjuntarPdfIa,
+            sugerirAdjuntarPdfCcIa,
+            habilitarGestionFacturaIa,
+            agenteEspecialistaActivo: razonamientoIa?.agente_utilizado || 'AUTO',
+            comprobanteLeido: comprobantePrevioMismoChat,
+            cargandoEspecialista: '',
             alcancePdfAdjunto: (idsPreseleccionadosInicial.length > 0 || (articulosPdfSugeridosIa || []).length > 0)
                 ? 'SELECCIONADOS'
                 : (cambiosPreciosPendientes.length > 0 ? 'ACTUALIZACIONES' : 'LISTA_COMPLETA'),
@@ -8075,16 +8122,14 @@
     }
 
     /**
-     * Renderiza la cabecera compacta del Copiloto Vivo dentro de Columna 3 (sin repetir ficha ni últimos mensajes)
+     * Renderiza la cabecera compacta del Copiloto Vivo dentro de Columna 3 (Fase 3: 2 Carriles x 8 Especialistas + Multimodal)
      */
     function renderizarCabeceraCopilotoCol3Wa(st, resultadoMesa) {
         if (!st || !resultadoMesa) return '';
-        const { ag1 = {}, ag2 = {}, ag3 = {}, proactivo = {}, infoContacto = {} } = resultadoMesa;
-        const modoActivo = proactivo.modoResuelto || 'TANTEO_CORTO';
-        const esModoAuto = !st.modoAccionProactiva || st.modoAccionProactiva === 'AUTO';
+        const { ag1 = {}, ag2 = {}, ag3 = {}, proactivo = {} } = resultadoMesa;
         const carril = st.carrilAsistente || estadoConsola.carrilAsistente || (ag1.clienteHabloUltimo ? 'ENTRANTE' : 'SALIENTE');
-        const apodoUi = infoContacto.apodoCorto || infoContacto.nombrePila || 'cliente';
-        const hayPendientesGestionPrecios = Number(ag2.cantPendientesNotificar || 0) > 0;
+        const agenteActivo = String(st.agenteEspecialistaActivo || proactivo.agenteUtilizado || 'AUTO').toUpperCase();
+        const cargandoEsp = String(st.cargandoEspecialista || '').trim();
         const requiereInvitacionPortal = !st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA';
 
         // 1 línea de micro-resumen con datos duros
@@ -8103,116 +8148,86 @@
         const alertaErrHtml = (st.errorCriticoIa || st.errorCriticoSintesis)
             ? `
                 <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; background:#fef2f2; border:1px solid #fca5a5; border-left:3px solid #dc2626; border-radius:7px; padding:5px 8px; font-size:0.69rem; color:#991b1b;">
-                    <span style="min-width:0; flex:1; line-height:1.25;">⚠️ <strong>IA sin conexión</strong> (reglas locales activas)</span>
+                    <span style="min-width:0; flex:1; line-height:1.25;">⚠️ <strong>IA sin conexión</strong> (${escaparHtml(String(st.errorCriticoIa || st.errorCriticoSintesis).slice(0, 68))})</span>
                     <button type="button" onclick="window.forzarRelecturaProfundaClienteWa()" style="background:#dc2626; color:#fff; border:none; border-radius:5px; padding:2px 7px; font-size:0.66rem; font-weight:800; cursor:pointer; flex-shrink:0;">🔄 Reintentar</button>
                 </div>
             `
             : '';
 
-        // Píldoras de objetivo según Carril (conectadas a elegirAccionProactivaAsistenteWa existente)
-        const pildoras = [
-            {
-                id: 'AUTO',
-                activo: esModoAuto,
-                label: '🧠 Auto',
-                title: 'Sugerencia automática según historial, pagos y charla',
-                onclick: `window.elegirAccionProactivaAsistenteWa('AUTO')`
-            }
-        ];
-
-        if (carril === 'ENTRANTE') {
-            if (ag1.situacionDialogo === 'PAGO_ADELANTADO_SEGUIMIENTO_ORDEN' || ag3.tieneSaldoAFavor || ag2.pedidoActivoEnCurso) {
-                pildoras.push({
-                    id: 'SEGUIMIENTO_ORDEN',
-                    activo: !esModoAuto && modoActivo === 'SEGUIMIENTO_ORDEN',
-                    label: '📦 Seguimiento Orden',
-                    title: 'Ofrecer seguimiento de la orden en la app',
-                    onclick: `window.elegirAccionProactivaAsistenteWa('SEGUIMIENTO_ORDEN')`
-                });
-            }
-            pildoras.push({
-                id: 'PORTAL',
-                activo: !esModoAuto && modoActivo === 'PORTAL',
-                label: requiereInvitacionPortal ? '🔑 Invitación Portal' : '🔗 Link Portal',
-                title: 'Sumar acceso/link del Portal B2B en Burbuja 2',
-                onclick: `window.sumarLinkPortalAlMensajeAsistenteWa()`
-            });
-            if (hayPendientesGestionPrecios) {
-                pildoras.push({
-                    id: 'ACTUALIZACIONES_PENDIENTES',
-                    activo: !esModoAuto && modoActivo === 'ACTUALIZACIONES_PENDIENTES',
-                    label: `🔔 Cambios (${ag2.cantPendientesNotificar})`,
-                    title: 'Incluir actualizaciones de precio pendientes',
-                    onclick: `window.elegirAccionProactivaAsistenteWa('ACTUALIZACIONES_PENDIENTES')`
-                });
-            }
-            if (ag3.tieneSaldo) {
-                pildoras.push({
-                    id: 'AVISO_CORTO_CUENTA',
-                    activo: !esModoAuto && modoActivo === 'AVISO_CORTO_CUENTA',
-                    label: '💬 Saldo corto',
-                    title: 'Recordatorio corto de saldo con adjunto CC',
-                    onclick: `window.elegirAccionProactivaAsistenteWa('AVISO_CORTO_CUENTA')`
-                });
-            }
-            pildoras.push({
-                id: 'TANTEO_CORTO',
-                activo: !esModoAuto && modoActivo === 'TANTEO_CORTO',
-                label: '⚡ Corto 1 línea',
-                title: 'Respuesta breve en 1 sola línea',
-                onclick: `window.achicarMensajeProactivoAsistenteWa()`
-            });
-        } else {
-            pildoras.push({
-                id: 'TANTEO_CORTO',
-                activo: !esModoAuto && modoActivo === 'TANTEO_CORTO',
-                label: `👋 Saludo ("Hola ${escaparHtml(apodoUi)}")`,
-                title: 'Saludo corto de apertura para reactivar charla',
-                onclick: `window.elegirAccionProactivaAsistenteWa('TANTEO_CORTO')`
-            });
-            if (ag3.tieneSaldo) {
-                pildoras.push({
-                    id: 'AVISO_CORTO_CUENTA',
-                    activo: !esModoAuto && modoActivo === 'AVISO_CORTO_CUENTA',
-                    label: '💬 Recordar saldo',
-                    title: 'Aviso corto de cuenta corriente',
-                    onclick: `window.elegirAccionProactivaAsistenteWa('AVISO_CORTO_CUENTA')`
-                });
-                pildoras.push({
-                    id: 'SALDO_Y_POLITICAS',
-                    activo: !esModoAuto && modoActivo === 'SALDO_Y_POLITICAS',
-                    label: '📋 Políticas 7d/14d',
-                    title: 'Explicar plazos de cuenta y bonificación 5%',
-                    onclick: `window.elegirAccionProactivaAsistenteWa('SALDO_Y_POLITICAS')`
-                });
-            }
-            if (ag1.enviamosResumenCuentaReciente || ag1.situacionDialogo === 'NOSOTROS_YA_TANTEAMOS_HOY') {
-                pildoras.push({
-                    id: 'PING_PONG_TEMA',
-                    activo: !esModoAuto && modoActivo === 'PING_PONG_TEMA',
-                    label: '💬 2° Ping-Pong',
-                    title: 'Continuar la charla tras el saludo inicial',
-                    onclick: `window.elegirAccionProactivaAsistenteWa('PING_PONG_TEMA')`
-                });
-            }
-            if (hayPendientesGestionPrecios) {
-                pildoras.push({
-                    id: 'ACTUALIZACIONES_PENDIENTES',
-                    activo: !esModoAuto && modoActivo === 'ACTUALIZACIONES_PENDIENTES',
-                    label: `🔔 Cambios (${ag2.cantPendientesNotificar})`,
-                    title: 'Enviar cambios de precio pendientes',
-                    onclick: `window.elegirAccionProactivaAsistenteWa('ACTUALIZACIONES_PENDIENTES')`
-                });
-            }
-            pildoras.push({
-                id: 'PORTAL',
-                activo: !esModoAuto && modoActivo === 'PORTAL',
-                label: requiereInvitacionPortal ? '🔑 Invitación Portal' : '🔗 Link Portal',
-                title: 'Sumar link/invitación del Portal B2B en Burbuja 2',
-                onclick: `window.sumarLinkPortalAlMensajeAsistenteWa()`
-            });
+        // Comprobante leído por Gemini Vision (si ya se escaneó) o acceso rápido 1-clic si hay imagen reciente en el hilo
+        let bloqueComprobanteHtml = '';
+        if (st.comprobanteLeido) {
+            const c = st.comprobanteLeido;
+            const impTxt = (c.importe !== null && c.importe !== undefined)
+                ? `$${Number(c.importe).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : '';
+            const lineaDatos = [c.banco, impTxt, c.nro_operacion ? `Op. ${c.nro_operacion}` : '', c.fecha, c.cuit_titular ? `CUIT ${c.cuit_titular}` : '']
+                .filter(Boolean)
+                .join(' · ');
+            bloqueComprobanteHtml = `
+                <div id="wa-copilot-comprobante-card" style="background:#ecfdf5; border:1px solid #6ee7b7; border-left:3px solid #059669; border-radius:7px; padding:6px 8px; font-size:0.7rem; color:#065f46; display:flex; flex-direction:column; gap:4px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                        <strong>🧾 ${c.es_comprobante_pago ? 'Comprobante detectado' : 'Imagen analizada'}</strong>
+                        <button type="button" onclick="window.ejecutarAgenteEspecializadoCol3Wa('ENTRANTE', 'COBRANZA_COMPROBANTES')" style="background:#059669; color:#ffffff; border:none; border-radius:5px; padding:2px 7px; font-size:0.66rem; font-weight:800; cursor:pointer;">💳 Acusar recibo</button>
+                    </div>
+                    <div style="color:#0f172a; font-weight:700; line-height:1.3;">${escaparHtml(lineaDatos || c.resumen_corto || 'Datos extraídos')}</div>
+                </div>
+            `;
+        } else if (ag1.tieneImagenReciente && st.chatId) {
+            const imgMsgIdSafe = escaparHtml(String(ag1.ultimaImagenMsgId || '').replace(/'/g, ''));
+            bloqueComprobanteHtml = `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:7px; padding:5px 8px; font-size:0.7rem; color:#1e40af;">
+                    <span>📷 Imagen reciente en el hilo</span>
+                    <button type="button" id="btn-wa-copilot-leer-comprobante" onclick="window.leerImagenComprobanteChatWa(${st.chatId}, '${imgMsgIdSafe}', this)" style="background:#2563eb; color:#ffffff; border:none; border-radius:5px; padding:2px 8px; font-size:0.67rem; font-weight:800; cursor:pointer; white-space:nowrap;">🔍 Leer comprobante</button>
+                </div>
+            `;
         }
 
+        // Acceso directo a Gestionar Factura / NC cuando actúa RECLAMO_DEVOLUCION
+        let bloqueGestionFacturaHtml = '';
+        if (proactivo.habilitarGestionFactura || st.habilitarGestionFacturaIa) {
+            const facReciente = Array.isArray(st.rayosX?.ultimas_facturas) && st.rayosX.ultimas_facturas.length > 0
+                ? st.rayosX.ultimas_facturas[0]
+                : null;
+            const accionFac = facReciente
+                ? `window.iniciarSecuenciaGestionComprobanteWa(${st.chatId}, ${facReciente.id})`
+                : `window.cambiarSolapaColumna3Wa('ficha')`;
+            bloqueGestionFacturaHtml = `
+                <div id="wa-copilot-gestion-factura-cta" style="display:flex; justify-content:space-between; align-items:center; gap:6px; background:#fff7ed; border:1px solid #fdba74; border-left:3px solid #ea580c; border-radius:7px; padding:5px 8px; font-size:0.7rem; color:#9a3412;">
+                    <span style="font-weight:700;">🛠️ Reclamo / Ajuste detectado</span>
+                    <button type="button" onclick="${accionFac}" style="background:#ea580c; color:#ffffff; border:none; border-radius:5px; padding:3px 8px; font-size:0.67rem; font-weight:800; cursor:pointer; white-space:nowrap;">🛠️ Gestionar Factura / NC</button>
+                </div>
+            `;
+        }
+
+        // Píldoras de Especialistas del Motor Backend Fase 3 (4 Entrante + Auto / 4 Saliente)
+        const pildoras = carril === 'ENTRANTE'
+            ? [
+                { id: 'AUTO', label: '🧠 Auto', title: 'Clasificador automático del Carril Entrante' },
+                { id: 'VENTAS_COTIZADOR', label: '💲 Ventas', title: 'Especialista en cotizaciones, fracciones vs. bultos y exclusiones' },
+                { id: 'COBRANZA_COMPROBANTES', label: '💳 Cobranza', title: 'Saldo exacto, acuse de comprobante leído y CBU Galicia' },
+                { id: 'LOGISTICA_ENTREGAS', label: '🚚 Logística', title: 'Estado real del último pedido, hoja de ruta y chofer' },
+                { id: 'RECLAMO_DEVOLUCION', label: '🛠️ Reclamo', title: 'Contención sobria sin inventar montos + acceso a Factura / NC' }
+            ]
+            : [
+                { id: 'CUENTA_CORRIENTE', label: '💰 Cuenta Corriente', title: 'Gestión proactiva de saldo adaptada al tramo real (En término / Gracia / Comodín / Financiado)' },
+                { id: 'REACTIVACION_PORTAL', label: '🔄 Reactivación', title: 'Anclada en artículos habituales reales y Portal B2B (Invitación vs. Link)' },
+                { id: 'POST_ENTREGA', label: '📦 Post-Entrega', title: 'Chequeo breve sobre la mercadería entregada real' },
+                { id: 'SALUDO_PUNTUAL', label: '👋 Saludo', title: '1 sola burbuja corta conectada al último contexto real' }
+            ];
+
+        const etiquetasEspecialistas = {
+            AUTO: 'Auto',
+            VENTAS_COTIZADOR: 'Ventas',
+            COBRANZA_COMPROBANTES: 'Cobranza',
+            LOGISTICA_ENTREGAS: 'Logística',
+            RECLAMO_DEVOLUCION: 'Reclamo',
+            CUENTA_CORRIENTE: 'Cuenta Corriente',
+            REACTIVACION_PORTAL: 'Reactivación',
+            POST_ENTREGA: 'Post-Entrega',
+            SALUDO_PUNTUAL: 'Saludo'
+        };
+        const badgeEspActivo = etiquetasEspecialistas[agenteActivo] || agenteActivo;
         const diagTxt = String(proactivo.diagnosticoEjecutivoAgente || ag1.tituloIntencion || '').trim();
 
         return `
@@ -8239,26 +8254,35 @@
                         ${portalTxt}
                     </div>
                     <div style="display:flex; gap:3px; flex-shrink:0;">
-                        <button type="button" onclick="window.rotarVarianteSaludoAsistenteWa()" title="Probar otra variante de redacción" style="background:#ffffff; border:1px solid #cbd5e1; color:#1d4ed8; border-radius:5px; padding:2px 6px; font-size:0.68rem; font-weight:800; cursor:pointer;">🎲</button>
+                        <button type="button" onclick="window.rotarVarianteSaludoAsistenteWa()" title="Generar otra variante con el especialista activo" style="background:#ffffff; border:1px solid #cbd5e1; color:#1d4ed8; border-radius:5px; padding:2px 6px; font-size:0.68rem; font-weight:800; cursor:pointer;">🎲</button>
                         <button type="button" onclick="window.forzarRelecturaProfundaClienteWa()" title="Re-analizar contexto del cliente en vivo" style="background:#ffffff; border:1px solid #86efac; color:#065f46; border-radius:5px; padding:2px 6px; font-size:0.68rem; font-weight:800; cursor:pointer;">🔄</button>
                     </div>
                 </div>
 
                 ${alertaErrHtml}
+                ${bloqueComprobanteHtml}
+                ${bloqueGestionFacturaHtml}
 
-                ${diagTxt ? `
-                    <div style="background:#f0f9ff; border:1px solid #bae6fd; border-left:3px solid #0284c7; border-radius:7px; padding:5px 8px; font-size:0.71rem; color:#0f172a; line-height:1.3;" title="${escaparHtml(diagTxt)}">
-                        <strong style="color:#0369a1;">🧠</strong> ${escaparHtml(diagTxt.length > 145 ? diagTxt.slice(0, 142) + '…' : diagTxt)}
+                ${cargandoEsp ? `
+                    <div style="background:#eff6ff; border:1px solid #93c5fd; border-left:3px solid #2563eb; border-radius:7px; padding:5px 8px; font-size:0.71rem; color:#1e40af; font-weight:700;">
+                        ⏳ Razonando con especialista <strong>${escaparHtml(etiquetasEspecialistas[cargandoEsp] || cargandoEsp)}</strong>...
                     </div>
-                ` : ''}
+                ` : (diagTxt ? `
+                    <div style="background:#f0f9ff; border:1px solid #bae6fd; border-left:3px solid #0284c7; border-radius:7px; padding:5px 8px; font-size:0.71rem; color:#0f172a; line-height:1.3;" title="${escaparHtml(diagTxt)}">
+                        <strong style="color:#0369a1;">🧠 ${escaparHtml(badgeEspActivo)}:</strong> ${escaparHtml(diagTxt.length > 140 ? diagTxt.slice(0, 137) + '…' : diagTxt)}
+                    </div>
+                ` : '')}
 
-                <!-- Píldoras de Objetivo según Carril -->
+                <!-- Píldoras de Especialistas del Carril Activo -->
                 <div class="wa-copilot-pills">
-                    ${pildoras.map(p => `
-                        <button type="button" class="wa-copilot-pill ${p.activo ? 'active' : ''}" onclick="${p.onclick}" title="${escaparHtml(p.title)}">
-                            ${p.label}
-                        </button>
-                    `).join('')}
+                    ${pildoras.map(p => {
+                        const esActiva = (p.id === agenteActivo) || (p.id === 'AUTO' && agenteActivo === 'AUTO');
+                        return `
+                            <button type="button" data-especialista="${p.id}" class="wa-copilot-pill ${esActiva ? 'active' : ''}" ${cargandoEsp ? 'disabled' : ''} onclick="window.ejecutarAgenteEspecializadoCol3Wa('${carril}', '${p.id}')" title="${escaparHtml(p.title)}">
+                                ${p.label}
+                            </button>
+                        `;
+                    }).join('')}
                 </div>
             </div>
         `;
@@ -8274,18 +8298,214 @@
         }
     }
 
+    /**
+     * Fase 3: Ejecuta un Especialista puntual de los 2 Carriles en backend sin bloquear la consola
+     * y actualiza las Burbujas 1/2/3, los adjuntos sugeridos (PDF Precios / PDF CC) y la cabecera del Copiloto.
+     */
+    window.ejecutarAgenteEspecializadoCol3Wa = async function (carril, agenteCodigo, opcionesExtra = {}) {
+        const st = estadoAsistenteComercialWa;
+        if (!st || typeof window.generarConIaGenerativaMesaAgentesWa !== 'function') return;
+        if (st._especialistaInflight) return;
+
+        const carrilNorm = String(carril || st.carrilAsistente || 'ENTRANTE').toUpperCase();
+        const agenteNorm = String(agenteCodigo || 'AUTO').toUpperCase();
+        estadoConsola.carrilAsistente = carrilNorm;
+        st.carrilAsistente = carrilNorm;
+        st.agenteEspecialistaActivo = agenteNorm;
+        st.cargandoEspecialista = agenteNorm;
+        st._especialistaInflight = true;
+
+        renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa || window.ejecutarMesaAgentesComercialesWa(st));
+
+        try {
+            const resIa = await window.generarConIaGenerativaMesaAgentesWa(
+                st,
+                st.resultadoMesa || window.ejecutarMesaAgentesComercialesWa(st),
+                opcionesExtra.instruccionOperador || '',
+                {
+                    carril: carrilNorm,
+                    agenteObjetivo: agenteNorm,
+                    comprobanteLeido: opcionesExtra.comprobanteLeido !== undefined ? opcionesExtra.comprobanteLeido : st.comprobanteLeido,
+                    forzarRecalculo: true
+                }
+            );
+
+            st.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(st);
+
+            const area1 = document.getElementById('wa-asist-com-textarea');
+            const area2 = document.getElementById('wa-asist-com-burbuja2');
+            const chkB2 = document.getElementById('wa-asist-com-chk-burbuja2');
+            const wrapB2 = document.getElementById('wa-asist-com-burbuja2-wrap');
+            const area3 = document.getElementById('wa-asist-com-burbuja3');
+            const chkB3 = document.getElementById('wa-asist-com-chk-burbuja3');
+            const wrapB3 = document.getElementById('wa-asist-com-burbuja3-wrap');
+            const chkPdf = document.getElementById('wa-asist-com-chk-pdf');
+            const chkPdfCc = document.getElementById('wa-asist-com-chk-pdf-cc');
+
+            if (area1) {
+                area1.value = resIa.burbuja1 || '';
+                area1.rows = Math.min(5, Math.max(2, Math.ceil((area1.value || '').length / 46)));
+            }
+            if (area2) area2.value = resIa.burbuja2 || '';
+            if (chkB2) chkB2.checked = Boolean(resIa.burbuja2);
+            if (wrapB2) wrapB2.style.display = resIa.burbuja2 ? 'block' : 'none';
+
+            if (area3) {
+                area3.value = resIa.burbuja3 || '';
+                area3.rows = area3.value && area3.value.split('\n').length > 1 ? Math.min(4, area3.value.split('\n').length + 1) : 1;
+            }
+            if (chkB3) chkB3.checked = Boolean(resIa.burbuja3);
+            if (wrapB3) wrapB3.style.display = resIa.burbuja3 ? 'block' : 'none';
+
+            if (chkPdf) chkPdf.checked = Boolean(resIa.sugerirAdjuntarPdf);
+            if (chkPdfCc) chkPdfCc.checked = Boolean(resIa.sugerirAdjuntarPdfCc);
+
+            st._ultimoPuenteAutoInsertado = '';
+            sincronizarCoherenciaEntreBurbujasWa();
+            renderizarChipsSeleccionadosBurbuja2Wa();
+            window.actualizarIndicadorLongitudAsistenteComercialWa();
+        } catch (err) {
+            st.errorCriticoIa = err?.message || 'Error ejecutando especialista';
+        } finally {
+            st.cargandoEspecialista = '';
+            st._especialistaInflight = false;
+            st.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(st);
+            renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa);
+        }
+    };
+
     window.cambiarCarrilAsistenteCol3Wa = function (nuevoCarril) {
         const st = estadoAsistenteComercialWa;
         const target = nuevoCarril === 'SALIENTE' ? 'SALIENTE' : 'ENTRANTE';
         estadoConsola.carrilAsistente = target;
         if (!st) return;
+        const cambioReal = st.carrilAsistente !== target;
         st.carrilAsistente = target;
-        if (target === 'SALIENTE' && (!st.modoAccionProactiva || st.modoAccionProactiva === 'AUTO')) {
-            st.modoAccionProactiva = st.resultadoMesa?.ag3?.tieneSaldo ? 'AVISO_CORTO_CUENTA' : 'TANTEO_CORTO';
-        } else if (target === 'ENTRANTE') {
-            st.modoAccionProactiva = 'AUTO';
+
+        if (target === 'SALIENTE') {
+            const ag3 = st.resultadoMesa?.ag3 || {};
+            const ag2 = st.resultadoMesa?.ag2 || {};
+            const sugSaliente = ag3.tieneSaldo
+                ? 'CUENTA_CORRIENTE'
+                : (ag2.logisticaResumen?.entregado_reciente_48h
+                    ? 'POST_ENTREGA'
+                    : ((ag2.diasDesdeUltimaCompra !== null && Number(ag2.diasDesdeUltimaCompra) > 30) ? 'REACTIVACION_PORTAL' : 'SALUDO_PUNTUAL'));
+            if (cambioReal) {
+                window.ejecutarAgenteEspecializadoCol3Wa('SALIENTE', sugSaliente);
+                return;
+            }
+        } else if (cambioReal) {
+            window.ejecutarAgenteEspecializadoCol3Wa('ENTRANTE', 'AUTO');
+            return;
         }
-        sincronizarMesaAgentesYEditorWa();
+        renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa || window.ejecutarMesaAgentesComercialesWa(st));
+    };
+
+    /**
+     * Fase 3 Multimodal: Transcribe un audio individual (entrante o saliente de Martín) desde la burbuja del chat.
+     */
+    window.transcribirAudioIndividualChatWa = async function (chatPk, msgId, btnEl) {
+        const txtOrig = btnEl ? btnEl.textContent : '';
+        if (btnEl) {
+            btnEl.disabled = true;
+            btnEl.textContent = '⏳ Transcribiendo...';
+        }
+        try {
+            const r = await fetch(`/api/crm/whatsapp/chats/${encodeURIComponent(chatPk)}/transcribir-audios`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    msgIds: msgId ? [msgId] : [],
+                    maxAudios: 2,
+                    incluirSalientes: true
+                })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (r.ok && data.success && Number(data.transcritos || 0) > 0) {
+                estadoConsola._firmaDetalleChat = '';
+                await seleccionarChatConsola(chatPk, false);
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: '🎤 Audio transcrito correctamente', timer: 2000, showConfirmButton: false });
+                }
+            } else {
+                const msgErr = data?.message || data?.error || 'No se pudo obtener el audio desde WhatsApp Web (sesión no activa o audio antiguo).';
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: msgErr.slice(0, 95), timer: 3200, showConfirmButton: false });
+                }
+            }
+        } catch (err) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: `Error transcribiendo: ${err.message}`, timer: 3000, showConfirmButton: false });
+            }
+        } finally {
+            if (btnEl && btnEl.isConnected) {
+                btnEl.disabled = false;
+                btnEl.textContent = txtOrig || '📝 Transcribir';
+            }
+        }
+    };
+
+    /**
+     * Fase 3 Multimodal: Lee e interpreta una imagen (comprobante de transferencia / captura) con Gemini 2.5 Flash Vision
+     * y la conecta directamente al Copiloto (COBRANZA_COMPROBANTES).
+     */
+    window.leerImagenComprobanteChatWa = async function (chatPk, msgId, btnEl) {
+        const txtOrig = btnEl ? btnEl.textContent : '';
+        if (btnEl) {
+            btnEl.disabled = true;
+            btnEl.textContent = '⏳ Leyendo imagen...';
+        }
+        try {
+            const r = await fetch(`/api/crm/whatsapp/chats/${encodeURIComponent(chatPk)}/leer-imagen`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ msgId: msgId || null })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data.success || !data.comprobante) {
+                const msgErr = data?.error || 'No se pudo leer la imagen desde WhatsApp Web.';
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: msgErr.slice(0, 95), timer: 3500, showConfirmButton: false });
+                }
+                return;
+            }
+
+            if (estadoAsistenteComercialWa && Number(estadoAsistenteComercialWa.chatId) === Number(chatPk)) {
+                estadoAsistenteComercialWa.comprobanteLeido = data.comprobante;
+            }
+            if (data.cuerpo_actualizado) {
+                estadoConsola._firmaDetalleChat = '';
+                await seleccionarChatConsola(chatPk, false);
+            }
+            if (estadoAsistenteComercialWa && Number(estadoAsistenteComercialWa.chatId) === Number(chatPk)) {
+                estadoAsistenteComercialWa.comprobanteLeido = data.comprobante;
+                renderizarBoxMesaAgentesSegunModoWa(estadoAsistenteComercialWa, estadoAsistenteComercialWa.resultadoMesa || window.ejecutarMesaAgentesComercialesWa(estadoAsistenteComercialWa));
+                if (data.comprobante.es_comprobante_pago) {
+                    await window.ejecutarAgenteEspecializadoCol3Wa('ENTRANTE', 'COBRANZA_COMPROBANTES', { comprobanteLeido: data.comprobante });
+                }
+            }
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'success',
+                    title: data.comprobante.es_comprobante_pago
+                        ? `🧾 Comprobante leído${data.comprobante.importe ? ` ($${Number(data.comprobante.importe).toLocaleString('es-AR')})` : ''}`
+                        : '📷 Imagen analizada',
+                    timer: 2600,
+                    showConfirmButton: false
+                });
+            }
+        } catch (err) {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: `Error leyendo imagen: ${err.message}`, timer: 3200, showConfirmButton: false });
+            }
+        } finally {
+            if (btnEl && btnEl.isConnected) {
+                btnEl.disabled = false;
+                btnEl.textContent = txtOrig || '🔍 Leer comprobante / imagen';
+            }
+        }
     };
 
     /**
@@ -8330,7 +8550,7 @@
         const chkPdfInicial = borradorPrevio ? Boolean(borradorPrevio.chkPdf) : Boolean(st.sugerirAdjuntarPdfIa);
         const chkPdfCcInicial = borradorPrevio
             ? Boolean(borradorPrevio.chkPdfCc)
-            : (resultadoMesa?.proactivo?.modoResuelto === 'AVISO_CORTO_CUENTA');
+            : Boolean(st.sugerirAdjuntarPdfCcIa || resultadoMesa?.proactivo?.sugerirAdjuntarPdfCc || resultadoMesa?.proactivo?.modoResuelto === 'CUENTA_CORRIENTE');
         if (borradorPrevio && borradorPrevio.alcancePdf) {
             st.alcancePdfAdjunto = borradorPrevio.alcancePdf;
         }
@@ -8601,7 +8821,7 @@
         const chkPdfInicial = borradorPrevio ? Boolean(borradorPrevio.chkPdf) : Boolean(st.sugerirAdjuntarPdfIa);
         const chkPdfCcInicial = borradorPrevio
             ? Boolean(borradorPrevio.chkPdfCc)
-            : (resultadoMesa?.proactivo?.modoResuelto === 'AVISO_CORTO_CUENTA');
+            : Boolean(st.sugerirAdjuntarPdfCcIa || resultadoMesa?.proactivo?.sugerirAdjuntarPdfCc || resultadoMesa?.proactivo?.modoResuelto === 'CUENTA_CORRIENTE');
         if (borradorPrevio && borradorPrevio.alcancePdf) {
             st.alcancePdfAdjunto = borradorPrevio.alcancePdf;
         }
@@ -9201,7 +9421,7 @@
 
         const chkPdfCc = document.getElementById('wa-asist-com-chk-pdf-cc');
         if (chkPdfCc) {
-            chkPdfCc.checked = resultadoMesa?.proactivo?.modoResuelto === 'AVISO_CORTO_CUENTA';
+            chkPdfCc.checked = Boolean(resultadoMesa?.proactivo?.sugerirAdjuntarPdfCc || resultadoMesa?.proactivo?.modoResuelto === 'CUENTA_CORRIENTE' || resultadoMesa?.proactivo?.modoResuelto === 'AVISO_CORTO_CUENTA');
         }
 
         st._ultimoPuenteAutoInsertado = '';
@@ -9222,6 +9442,14 @@
         const st = estadoAsistenteComercialWa;
         if (!st) return;
         st.varianteSaludoIdx = ((st.varianteSaludoIdx || 0) + 1) % 12;
+        if (typeof window.ejecutarAgenteEspecializadoCol3Wa === 'function') {
+            window.ejecutarAgenteEspecializadoCol3Wa(
+                st.carrilAsistente || 'ENTRANTE',
+                st.agenteEspecialistaActivo || 'AUTO',
+                { instruccionOperador: 'Proponé una variante diferente de redacción con el mismo objetivo, breve y natural.' }
+            );
+            return;
+        }
         sincronizarMesaAgentesYEditorWa();
     };
 
