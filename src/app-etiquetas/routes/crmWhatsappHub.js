@@ -462,9 +462,371 @@ function generarTokensCodigoCliente(r) {
 }
 
 /**
+ * CTEs compartidas de telemetría comercial real para Bandeja de Hoy y Columna 1
+ */
+const SQL_CTES_TELEMETRIA_CHATS = `
+    WITH deuda_cli AS (
+        SELECT
+            TRIM(codigo_bunker_cliente) AS cod,
+            SUM(COALESCE(saldo, 0))::numeric AS saldo_pendiente,
+            MAX(actualizada_en) AS cc_actualizada_en
+        FROM public.factura_cuentas_corrientes
+        WHERE TRIM(COALESCE(codigo_bunker_cliente, '')) <> ''
+        GROUP BY TRIM(codigo_bunker_cliente)
+    ),
+    ult_presup AS (
+        SELECT
+            NULLIF(regexp_replace(TRIM(p.id_cliente::text), '^0+', ''), '')::integer AS lomas_id,
+            MAX(p.fecha) AS ultima_compra_at,
+            MAX(CASE WHEN UPPER(COALESCE(p.estado_logistico, '')) LIKE 'ENTREGADO%' THEN COALESCE(p.fecha_actualizacion, p.fecha) END) AS ultimo_entregado_presup_at
+        FROM public.presupuestos p
+        WHERE (p.activo IS NULL OR p.activo = true)
+          AND (p.archivado IS NULL OR p.archivado = false)
+          AND (p.estado IS NULL OR LOWER(TRIM(p.estado)) NOT IN ('anulado', 'anulada', 'cancelado', 'cancelada', 'baja', 'eliminado', 'eliminada'))
+          AND TRIM(COALESCE(p.id_cliente::text, '')) ~ '^0*[0-9]+$'
+        GROUP BY 1
+    ),
+    entregas_wa AS (
+        SELECT
+            m.chat_id,
+            MAX(m.fecha_mensaje) AS ultimo_entregado_wa_at
+        FROM public.crm_whatsapp_mensajes m
+        WHERE m.from_me = true
+          AND m.fecha_mensaje >= NOW() - INTERVAL '48 hours'
+          AND (m.cuerpo ILIKE '%Entrega Confirmada%' OR m.cuerpo ILIKE '%ha sido entregado%')
+        GROUP BY m.chat_id
+    ),
+    ms AS (
+        SELECT
+            chat_id,
+            COUNT(*)::int AS cant_mensajes_reales,
+            COUNT(*) FILTER (WHERE fecha_mensaje >= CURRENT_DATE AND from_me = false)::int AS in_hoy,
+            COUNT(*) FILTER (WHERE fecha_mensaje >= CURRENT_DATE AND from_me = true)::int AS out_hoy,
+            MAX(fecha_mensaje) AS real_ultimo_mensaje_at
+        FROM public.crm_whatsapp_mensajes
+        GROUP BY chat_id
+    )
+`;
+
+function unificarYEnriquecerFilasChats(rawRows = []) {
+    const ahoraMs = Date.now();
+    const LIMITE_ENTREGADO_48H_MS = 48 * 3600 * 1000;
+
+    // 1. Normalizar fecha real de comunicación y métricas comerciales
+    for (const r of rawRows) {
+        const esPlaceholderSinMsgs = (r.ultimo_mensaje_texto === 'Cliente Búnker vinculado' && Number(r.cant_mensajes_reales || 0) === 0);
+        if (esPlaceholderSinMsgs) {
+            r.ultimo_mensaje_at = null;
+            r.tiene_comunicacion_real = false;
+        } else {
+            r.ultimo_mensaje_at = r.real_ultimo_mensaje_at || r.ultimo_mensaje_at || null;
+            r.tiene_comunicacion_real = Boolean(r.ultimo_mensaje_at);
+        }
+
+        r.saldo_pendiente = Number(r.saldo_pendiente || 0);
+        r.antiguedad_deuda_dias = Number(r.antiguedad_deuda_dias || 0);
+        r.dias_sin_compra = (r.dias_sin_compra !== null && r.dias_sin_compra !== undefined && !isNaN(Number(r.dias_sin_compra)))
+            ? Number(r.dias_sin_compra)
+            : null;
+
+        const tsPresup = r.ultimo_entregado_presup_at ? new Date(r.ultimo_entregado_presup_at).getTime() : 0;
+        const tsWa = r.ultimo_entregado_wa_at ? new Date(r.ultimo_entregado_wa_at).getTime() : 0;
+        const tsEntMax = Math.max(tsPresup || 0, tsWa || 0);
+        r.ultimo_entregado_at = tsEntMax > 0 ? new Date(tsEntMax).toISOString() : null;
+        r.entregado_reciente = Boolean(tsEntMax > 0 && (ahoraMs - tsEntMax) <= LIMITE_ENTREGADO_48H_MS);
+    }
+
+    // 2. Unificar chats duplicados (@c.us vs @lid) del mismo contacto/cliente Búnker
+    //    Sin fusionar dos teléfonos distintos (@c.us) aunque compartan nombre de pila
+    const filasUnificadas = [];
+    for (const r of rawRows) {
+        if (r.bunker_cliente_id) {
+            const esLidR = String(r.chat_id || '').endsWith('@lid');
+            const nombreR = String(r.contacto_nombre || '').trim().toLowerCase();
+            const digR = String(r.ultimos_digitos || '').trim();
+
+            const existente = filasUnificadas.find(ex => {
+                if (ex.bunker_cliente_id !== r.bunker_cliente_id) return false;
+                const esLidEx = String(ex.chat_id || '').endsWith('@lid');
+                const nombreEx = String(ex.contacto_nombre || '').trim().toLowerCase();
+                const digEx = String(ex.ultimos_digitos || '').trim();
+
+                if (!esLidR && !esLidEx && digR && digEx && digR === digEx) return true;
+                if ((esLidR || esLidEx) && nombreR && nombreEx && nombreR === nombreEx) return true;
+                return false;
+            });
+
+            if (existente) {
+                existente.esperando_respuesta = Boolean(existente.esperando_respuesta || r.esperando_respuesta);
+                existente.no_leidos = Math.max(Number(existente.no_leidos || 0), Number(r.no_leidos || 0));
+                existente.cant_mensajes_reales = Number(existente.cant_mensajes_reales || 0) + Number(r.cant_mensajes_reales || 0);
+                existente.in_hoy = Number(existente.in_hoy || 0) + Number(r.in_hoy || 0);
+                existente.out_hoy = Number(existente.out_hoy || 0) + Number(r.out_hoy || 0);
+                existente.tiene_comunicacion_real = Boolean(existente.tiene_comunicacion_real || r.tiene_comunicacion_real);
+                existente.saldo_pendiente = Math.max(Number(existente.saldo_pendiente || 0), Number(r.saldo_pendiente || 0));
+                existente.antiguedad_deuda_dias = Math.max(Number(existente.antiguedad_deuda_dias || 0), Number(r.antiguedad_deuda_dias || 0));
+                if (existente.dias_sin_compra === null && r.dias_sin_compra !== null) {
+                    existente.dias_sin_compra = r.dias_sin_compra;
+                }
+                if (r.entregado_reciente) {
+                    existente.entregado_reciente = true;
+                    const tsExE = existente.ultimo_entregado_at ? new Date(existente.ultimo_entregado_at).getTime() : 0;
+                    const tsRE = r.ultimo_entregado_at ? new Date(r.ultimo_entregado_at).getTime() : 0;
+                    if (tsRE > tsExE) existente.ultimo_entregado_at = r.ultimo_entregado_at;
+                }
+                if (!existente.etiqueta_crm && r.etiqueta_crm) existente.etiqueta_crm = r.etiqueta_crm;
+                if (!existente.nota_rapida && r.nota_rapida) existente.nota_rapida = r.nota_rapida;
+                const fechaEx = existente.ultimo_mensaje_at ? new Date(existente.ultimo_mensaje_at).getTime() : 0;
+                const fechaR = r.ultimo_mensaje_at ? new Date(r.ultimo_mensaje_at).getTime() : 0;
+                if (fechaR > fechaEx) {
+                    existente.ultimo_mensaje_at = r.ultimo_mensaje_at;
+                    if (r.ultimo_mensaje_texto && r.ultimo_mensaje_texto !== 'Cliente Búnker vinculado') {
+                        existente.ultimo_mensaje_texto = r.ultimo_mensaje_texto;
+                    }
+                    existente.ultimo_mensaje_from_me = r.ultimo_mensaje_from_me;
+                    existente.ultimo_mensaje_ack = r.ultimo_mensaje_ack;
+                } else if (existente.ultimo_mensaje_texto === 'Cliente Búnker vinculado' && r.ultimo_mensaje_texto && r.ultimo_mensaje_texto !== 'Cliente Búnker vinculado') {
+                    existente.ultimo_mensaje_texto = r.ultimo_mensaje_texto;
+                }
+                if (String(existente.chat_id || '').endsWith('@lid') && String(r.chat_id || '').endsWith('@c.us')) {
+                    existente.id = r.id;
+                    existente.chat_id = r.chat_id;
+                    existente.telefono_normalizado = r.telefono_normalizado || existente.telefono_normalizado;
+                    existente.ultimos_digitos = r.ultimos_digitos || existente.ultimos_digitos;
+                }
+                continue;
+            }
+        }
+        filasUnificadas.push(r);
+    }
+    return filasUnificadas;
+}
+
+async function calcularContadoresTabsConsolaWa() {
+    const res = await pool.query(`
+        SELECT
+            COUNT(DISTINCT COALESCE(c.bunker_cliente_id::text, 'raw_' || c.id::text)) FILTER (
+                WHERE c.esperando_respuesta = true
+                  AND c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO')
+                  AND c.modo_privacidad = 'ACTIVO'
+                  AND (c.silenciado_hasta IS NULL OR c.silenciado_hasta <= NOW())
+            )::int AS por_atender,
+            COUNT(DISTINCT COALESCE(c.bunker_cliente_id::text, 'raw_' || c.id::text)) FILTER (
+                WHERE c.categoria_contacto = 'CLIENTE_BUNKER'
+                  AND c.modo_privacidad != 'OCULTO'
+            )::int AS clientes,
+            COUNT(*) FILTER (
+                WHERE c.categoria_contacto IN ('PROSPECTO', 'PROVEEDOR', 'PERSONAL', 'IGNORADO_BOT', 'SIN_CLASIFICAR')
+                   OR c.modo_privacidad IN ('SILENCIADO_PIZARRA', 'OCULTO')
+                   OR (c.silenciado_hasta IS NOT NULL AND c.silenciado_hasta > NOW())
+            )::int AS otros
+        FROM public.crm_whatsapp_chats c
+    `);
+    return res.rows[0] || { por_atender: 0, clientes: 0, otros: 0 };
+}
+
+/**
+ * GET /api/crm/whatsapp/bandeja-hoy
+ * Portada operativa "Bandeja de Hoy" (Carril Entrante + Agenda Saliente con 3 KPIs reales + Contadores de 3 Solapas)
+ */
+router.get('/crm/whatsapp/bandeja-hoy', async (req, res) => {
+    try {
+        await crmWhatsappDb.asegurarTablasCrmWhatsapp();
+        if (!multiContactosSembradosEnHub && typeof crmWhatsappDb.sembrarDirectorioClientesEnChats === 'function') {
+            multiContactosSembradosEnHub = true;
+            await crmWhatsappDb.sembrarDirectorioClientesEnChats();
+        }
+
+        const query = `
+            ${SQL_CTES_TELEMETRIA_CHATS}
+            SELECT
+                c.*,
+                COALESCE(c.cliente_nombre, bc.cliente_nombre) AS cliente_nombre,
+                COALESCE(c.codigo_bunker_cliente, bc.codigo_bunker_cliente) AS codigo_bunker_cliente,
+                bc.razon_social AS bunker_razon_social,
+                bc.lomas_soft_id,
+                (c.silenciado_hasta IS NOT NULL AND c.silenciado_hasta > NOW()) AS esta_silenciado_temporal,
+                COALESCE(ms.cant_mensajes_reales, 0)::int AS cant_mensajes_reales,
+                COALESCE(ms.in_hoy, 0)::int AS in_hoy,
+                COALESCE(ms.out_hoy, 0)::int AS out_hoy,
+                ms.real_ultimo_mensaje_at,
+                COALESCE(dc.saldo_pendiente, 0)::numeric AS saldo_pendiente,
+                COALESCE(
+                    NULLIF(sm.comportamiento_pago_json->'composicion'->>'antiguedad_maxima_dias', '')::int,
+                    CASE WHEN COALESCE(dc.saldo_pendiente, 0) > 100 AND dc.cc_actualizada_en IS NOT NULL
+                         THEN GREATEST(0, EXTRACT(DAY FROM (NOW() - dc.cc_actualizada_en))::int)
+                         ELSE 0 END
+                )::int AS antiguedad_deuda_dias,
+                COALESCE(
+                    CASE WHEN up.ultima_compra_at IS NOT NULL THEN GREATEST(0, EXTRACT(DAY FROM (NOW() - up.ultima_compra_at))::int) ELSE NULL END,
+                    NULLIF(sm.ciclo_compra_json->>'dias_desde_ultima_compra', '')::int
+                ) AS dias_sin_compra,
+                up.ultima_compra_at,
+                up.ultimo_entregado_presup_at,
+                ew.ultimo_entregado_wa_at
+            FROM public.crm_whatsapp_chats c
+            LEFT JOIN public.bunker_clientes bc ON bc.id = c.bunker_cliente_id
+            LEFT JOIN deuda_cli dc ON dc.cod = TRIM(COALESCE(bc.codigo_bunker_cliente, c.codigo_bunker_cliente, ''))
+            LEFT JOIN ult_presup up ON up.lomas_id = (
+                CASE WHEN TRIM(COALESCE(bc.lomas_soft_id, '')) ~ '^0*[0-9]+$'
+                     THEN NULLIF(regexp_replace(TRIM(bc.lomas_soft_id), '^0+', ''), '')::integer
+                     ELSE NULL END
+            )
+            LEFT JOIN entregas_wa ew ON ew.chat_id = c.chat_id
+            LEFT JOIN ms ON ms.chat_id = c.chat_id
+            LEFT JOIN public.crm_cliente_sintesis_memoria sm ON sm.cliente_bunker_id = c.bunker_cliente_id
+            WHERE c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO')
+              AND c.modo_privacidad != 'OCULTO'
+            ORDER BY
+                c.esperando_respuesta DESC,
+                COALESCE(ms.real_ultimo_mensaje_at, CASE WHEN c.ultimo_mensaje_texto = 'Cliente Búnker vinculado' THEN NULL ELSE c.ultimo_mensaje_at END) DESC NULLS LAST
+            LIMIT 800
+        `;
+
+        const [result, contadoresTabs] = await Promise.all([
+            pool.query(query),
+            calcularContadoresTabsConsolaWa()
+        ]);
+        const rows = unificarYEnriquecerFilasChats(result.rows);
+
+        // 1. Carril Entrante: Clientes Búnker y Prospectos esperando respuesta activa
+        const entrantes = rows
+            .filter(r =>
+                r.esperando_respuesta === true &&
+                ['CLIENTE_BUNKER', 'PROSPECTO'].includes(r.categoria_contacto) &&
+                r.modo_privacidad === 'ACTIVO' &&
+                !r.esta_silenciado_temporal
+            )
+            .sort((a, b) => {
+                const ta = a.ultimo_mensaje_at ? new Date(a.ultimo_mensaje_at).getTime() : 0;
+                const tb = b.ultimo_mensaje_at ? new Date(b.ultimo_mensaje_at).getTime() : 0;
+                return tb - ta;
+            })
+            .slice(0, 15)
+            .map(r => ({
+                id: r.id,
+                chat_id: r.chat_id,
+                bunker_cliente_id: r.bunker_cliente_id,
+                cliente_nombre: r.cliente_nombre || r.contacto_nombre || r.pushname_wa || r.telefono_normalizado,
+                contacto_nombre: r.contacto_nombre || r.pushname_wa || '',
+                codigo_bunker_cliente: r.codigo_bunker_cliente || '',
+                lomas_soft_id: r.lomas_soft_id || '',
+                categoria_contacto: r.categoria_contacto,
+                no_leidos: Number(r.no_leidos || 0),
+                ultimo_mensaje_texto: r.ultimo_mensaje_texto || '',
+                ultimo_mensaje_at: r.ultimo_mensaje_at,
+                saldo_pendiente: r.saldo_pendiente
+            }));
+
+        // 2. Agrupar por cliente Búnker único (quedándonos con el contacto más activo/habitual para el 1-clic)
+        const mapaClientes = new Map();
+        for (const r of rows) {
+            if (!r.bunker_cliente_id || r.categoria_contacto !== 'CLIENTE_BUNKER') continue;
+            const key = Number(r.bunker_cliente_id);
+            const tsR = r.ultimo_mensaje_at ? new Date(r.ultimo_mensaje_at).getTime() : 0;
+            const prev = mapaClientes.get(key);
+            if (!prev) {
+                mapaClientes.set(key, {
+                    chat_id_pk: r.id,
+                    bunker_cliente_id: key,
+                    cliente_nombre: r.cliente_nombre || r.contacto_nombre || r.telefono_normalizado,
+                    contacto_nombre: r.contacto_nombre || r.pushname_wa || '',
+                    codigo_bunker_cliente: r.codigo_bunker_cliente || '',
+                    lomas_soft_id: r.lomas_soft_id || '',
+                    saldo_pendiente: r.saldo_pendiente,
+                    antiguedad_deuda_dias: r.antiguedad_deuda_dias,
+                    dias_sin_compra: r.dias_sin_compra,
+                    ultimo_entregado_at: r.ultimo_entregado_at,
+                    entregado_reciente: r.entregado_reciente,
+                    _tsMsg: tsR,
+                    _esperando: Boolean(r.esperando_respuesta)
+                });
+            } else {
+                prev.saldo_pendiente = Math.max(prev.saldo_pendiente, r.saldo_pendiente);
+                prev.antiguedad_deuda_dias = Math.max(prev.antiguedad_deuda_dias, r.antiguedad_deuda_dias);
+                if (prev.dias_sin_compra === null && r.dias_sin_compra !== null) prev.dias_sin_compra = r.dias_sin_compra;
+                if (r.entregado_reciente) {
+                    prev.entregado_reciente = true;
+                    const tsPrevE = prev.ultimo_entregado_at ? new Date(prev.ultimo_entregado_at).getTime() : 0;
+                    const tsRE = r.ultimo_entregado_at ? new Date(r.ultimo_entregado_at).getTime() : 0;
+                    if (tsRE > tsPrevE) prev.ultimo_entregado_at = r.ultimo_entregado_at;
+                }
+                if ((r.esperando_respuesta && !prev._esperando) || (Boolean(r.esperando_respuesta) === prev._esperando && tsR > prev._tsMsg)) {
+                    prev.chat_id_pk = r.id;
+                    prev.contacto_nombre = r.contacto_nombre || r.pushname_wa || prev.contacto_nombre;
+                    prev._tsMsg = tsR;
+                    prev._esperando = Boolean(r.esperando_respuesta);
+                }
+            }
+        }
+        const clientesUnicos = Array.from(mapaClientes.values());
+
+        const conDeudaAll = clientesUnicos
+            .filter(c => c.saldo_pendiente > 100)
+            .sort((a, b) => (b.antiguedad_deuda_dias - a.antiguedad_deuda_dias) || (b.saldo_pendiente - a.saldo_pendiente));
+
+        const sinCompra30dAll = clientesUnicos
+            .filter(c => c.dias_sin_compra !== null && c.dias_sin_compra > 30)
+            .sort((a, b) => (b.dias_sin_compra || 0) - (a.dias_sin_compra || 0));
+
+        const entregadosRecientesAll = clientesUnicos
+            .filter(c => c.entregado_reciente === true)
+            .sort((a, b) => {
+                const ta = a.ultimo_entregado_at ? new Date(a.ultimo_entregado_at).getTime() : 0;
+                const tb = b.ultimo_entregado_at ? new Date(b.ultimo_entregado_at).getTime() : 0;
+                return tb - ta;
+            });
+
+        const limpiarItem = (c) => ({
+            id: c.chat_id_pk,
+            bunker_cliente_id: c.bunker_cliente_id,
+            cliente_nombre: c.cliente_nombre,
+            contacto_nombre: c.contacto_nombre,
+            codigo_bunker_cliente: c.codigo_bunker_cliente,
+            lomas_soft_id: c.lomas_soft_id,
+            saldo_pendiente: c.saldo_pendiente,
+            antiguedad_deuda_dias: c.antiguedad_deuda_dias,
+            dias_sin_compra: c.dias_sin_compra,
+            ultimo_entregado_at: c.ultimo_entregado_at
+        });
+
+        res.json({
+            success: true,
+            entrantes,
+            agenda: {
+                con_deuda: {
+                    total: conDeudaAll.length,
+                    monto_total: conDeudaAll.reduce((acc, c) => acc + c.saldo_pendiente, 0),
+                    items: conDeudaAll.slice(0, 5).map(limpiarItem)
+                },
+                sin_compra_30d: {
+                    total: sinCompra30dAll.length,
+                    items: sinCompra30dAll.slice(0, 5).map(limpiarItem)
+                },
+                entregados_recientes: {
+                    total: entregadosRecientesAll.length,
+                    items: entregadosRecientesAll.slice(0, 5).map(limpiarItem)
+                }
+            },
+            contadores_tabs: {
+                por_atender: entrantes.length,
+                clientes: Number(contadoresTabs.clientes || clientesUnicos.length),
+                otros: Number(contadoresTabs.otros || 0)
+            }
+        });
+    } catch (error) {
+        console.error('❌ [CRM-WA-HUB] Error generando Bandeja de Hoy:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * GET /api/crm/whatsapp/chats
  * Lista de conversaciones para la Columna 1 de la Consola de 3 Columnas
- * Filtros: SIN_RESPONDER | CLIENTES | NO_AGENDADOS | PRIVADOS | TODOS
+ * Filtros: SIN_RESPONDER | CLIENTES | OTROS (y compatibles: NO_AGENDADOS | PRIVADOS | TODOS)
+ * Subfiltros:
+ *   - En CLIENTES: TODOS | CON_DEUDA | SIN_COMPRA_30D | ENTREGADO_RECIENTE
+ *   - En OTROS:    TODOS | PROSPECTO | PROVEEDOR | PERSONAL_BOTS | PERSONAL | IGNORADO_BOT
  */
 router.get('/crm/whatsapp/chats', async (req, res) => {
     try {
@@ -475,13 +837,30 @@ router.get('/crm/whatsapp/chats', async (req, res) => {
         }
 
         const filtro = String(req.query.filtro || 'CLIENTES').toUpperCase();
+        const subfiltro = String(req.query.subfiltro || 'TODOS').toUpperCase();
         const q = String(req.query.q || '').trim().toLowerCase();
 
         let whereClause = `WHERE 1=1`;
         if (filtro === 'SIN_RESPONDER') {
             whereClause += ` AND c.esperando_respuesta = true AND c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO') AND c.modo_privacidad = 'ACTIVO' AND (c.silenciado_hasta IS NULL OR c.silenciado_hasta <= NOW())`;
         } else if (filtro === 'CLIENTES') {
-            whereClause += ` AND c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO') AND c.modo_privacidad != 'OCULTO'`;
+            if (q.length > 0) {
+                whereClause += ` AND c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO') AND c.modo_privacidad != 'OCULTO'`;
+            } else {
+                whereClause += ` AND c.categoria_contacto = 'CLIENTE_BUNKER' AND c.modo_privacidad != 'OCULTO'`;
+            }
+        } else if (filtro === 'OTROS') {
+            if (subfiltro === 'PROSPECTO') {
+                whereClause += ` AND c.categoria_contacto = 'PROSPECTO'`;
+            } else if (subfiltro === 'PROVEEDOR') {
+                whereClause += ` AND c.categoria_contacto = 'PROVEEDOR'`;
+            } else if (subfiltro === 'PERSONAL_BOTS') {
+                whereClause += ` AND (c.categoria_contacto IN ('PERSONAL', 'IGNORADO_BOT') OR c.modo_privacidad IN ('SILENCIADO_PIZARRA', 'OCULTO') OR (c.silenciado_hasta IS NOT NULL AND c.silenciado_hasta > NOW()))`;
+            } else if (['PERSONAL', 'IGNORADO_BOT', 'SIN_CLASIFICAR'].includes(subfiltro)) {
+                whereClause += ` AND c.categoria_contacto = '${subfiltro}'`;
+            } else {
+                whereClause += ` AND (c.categoria_contacto IN ('PROSPECTO', 'PROVEEDOR', 'PERSONAL', 'IGNORADO_BOT', 'SIN_CLASIFICAR') OR c.modo_privacidad IN ('SILENCIADO_PIZARRA', 'OCULTO') OR (c.silenciado_hasta IS NOT NULL AND c.silenciado_hasta > NOW()))`;
+            }
         } else if (filtro === 'NO_AGENDADOS') {
             whereClause += ` AND c.categoria_contacto IN ('PROVEEDOR', 'PROSPECTO', 'SIN_CLASIFICAR') AND c.es_cliente_bunker = false AND c.modo_privacidad != 'OCULTO'`;
         } else if (filtro === 'PRIVADOS') {
@@ -489,11 +868,11 @@ router.get('/crm/whatsapp/chats', async (req, res) => {
         } else if (['CLIENTE_BUNKER', 'PROSPECTO', 'PROVEEDOR', 'PERSONAL', 'IGNORADO_BOT'].includes(filtro)) {
             whereClause += ` AND c.categoria_contacto = '${filtro}'`;
         } else {
-            // TODOS comerciales (excluyendo bots ignorados y ocultos puros)
             whereClause += ` AND c.categoria_contacto <> 'IGNORADO_BOT' AND c.modo_privacidad != 'OCULTO'`;
         }
 
         const query = `
+            ${SQL_CTES_TELEMETRIA_CHATS}
             SELECT 
                 c.*,
                 COALESCE(c.cliente_nombre, bc.cliente_nombre) AS cliente_nombre,
@@ -504,19 +883,32 @@ router.get('/crm/whatsapp/chats', async (req, res) => {
                 COALESCE(ms.cant_mensajes_reales, 0)::int AS cant_mensajes_reales,
                 COALESCE(ms.in_hoy, 0)::int AS in_hoy,
                 COALESCE(ms.out_hoy, 0)::int AS out_hoy,
-                ms.real_ultimo_mensaje_at
+                ms.real_ultimo_mensaje_at,
+                COALESCE(dc.saldo_pendiente, 0)::numeric AS saldo_pendiente,
+                COALESCE(
+                    NULLIF(sm.comportamiento_pago_json->'composicion'->>'antiguedad_maxima_dias', '')::int,
+                    CASE WHEN COALESCE(dc.saldo_pendiente, 0) > 100 AND dc.cc_actualizada_en IS NOT NULL
+                         THEN GREATEST(0, EXTRACT(DAY FROM (NOW() - dc.cc_actualizada_en))::int)
+                         ELSE 0 END
+                )::int AS antiguedad_deuda_dias,
+                COALESCE(
+                    CASE WHEN up.ultima_compra_at IS NOT NULL THEN GREATEST(0, EXTRACT(DAY FROM (NOW() - up.ultima_compra_at))::int) ELSE NULL END,
+                    NULLIF(sm.ciclo_compra_json->>'dias_desde_ultima_compra', '')::int
+                ) AS dias_sin_compra,
+                up.ultima_compra_at,
+                up.ultimo_entregado_presup_at,
+                ew.ultimo_entregado_wa_at
             FROM public.crm_whatsapp_chats c
             LEFT JOIN public.bunker_clientes bc ON bc.id = c.bunker_cliente_id
-            LEFT JOIN (
-                SELECT 
-                    chat_id,
-                    COUNT(*)::int AS cant_mensajes_reales,
-                    COUNT(*) FILTER (WHERE fecha_mensaje >= CURRENT_DATE AND from_me = false)::int AS in_hoy,
-                    COUNT(*) FILTER (WHERE fecha_mensaje >= CURRENT_DATE AND from_me = true)::int AS out_hoy,
-                    MAX(fecha_mensaje) AS real_ultimo_mensaje_at
-                FROM public.crm_whatsapp_mensajes
-                GROUP BY chat_id
-            ) ms ON ms.chat_id = c.chat_id
+            LEFT JOIN deuda_cli dc ON dc.cod = TRIM(COALESCE(bc.codigo_bunker_cliente, c.codigo_bunker_cliente, ''))
+            LEFT JOIN ult_presup up ON up.lomas_id = (
+                CASE WHEN TRIM(COALESCE(bc.lomas_soft_id, '')) ~ '^0*[0-9]+$'
+                     THEN NULLIF(regexp_replace(TRIM(bc.lomas_soft_id), '^0+', ''), '')::integer
+                     ELSE NULL END
+            )
+            LEFT JOIN entregas_wa ew ON ew.chat_id = c.chat_id
+            LEFT JOIN ms ON ms.chat_id = c.chat_id
+            LEFT JOIN public.crm_cliente_sintesis_memoria sm ON sm.cliente_bunker_id = c.bunker_cliente_id
             ${whereClause}
             ORDER BY 
                 c.esperando_respuesta DESC,
@@ -524,77 +916,32 @@ router.get('/crm/whatsapp/chats', async (req, res) => {
             LIMIT 800
         `;
 
-        const result = await pool.query(query);
-        let rows = result.rows;
+        const [result, contadoresTabs] = await Promise.all([
+            pool.query(query),
+            calcularContadoresTabsConsolaWa()
+        ]);
+        let rows = unificarYEnriquecerFilasChats(result.rows);
 
-        // Normalizar fecha real de comunicación en cada fila (ignorando placeholders sin mensajes)
-        for (const r of rows) {
-            const esPlaceholderSinMsgs = (r.ultimo_mensaje_texto === 'Cliente Búnker vinculado' && Number(r.cant_mensajes_reales || 0) === 0);
-            if (esPlaceholderSinMsgs) {
-                r.ultimo_mensaje_at = null;
-                r.tiene_comunicacion_real = false;
-            } else {
-                r.ultimo_mensaje_at = r.real_ultimo_mensaje_at || r.ultimo_mensaje_at || null;
-                r.tiene_comunicacion_real = Boolean(r.ultimo_mensaje_at);
+        // Aplicar subfiltro comercial en CLIENTES después de unificar
+        if (filtro === 'CLIENTES') {
+            if (subfiltro === 'CON_DEUDA') {
+                rows = rows
+                    .filter(r => Number(r.saldo_pendiente || 0) > 100)
+                    .sort((a, b) => (Number(b.antiguedad_deuda_dias || 0) - Number(a.antiguedad_deuda_dias || 0)) || (Number(b.saldo_pendiente || 0) - Number(a.saldo_pendiente || 0)));
+            } else if (subfiltro === 'SIN_COMPRA_30D') {
+                rows = rows
+                    .filter(r => r.dias_sin_compra !== null && Number(r.dias_sin_compra) > 30)
+                    .sort((a, b) => Number(b.dias_sin_compra || 0) - Number(a.dias_sin_compra || 0));
+            } else if (subfiltro === 'ENTREGADO_RECIENTE') {
+                rows = rows
+                    .filter(r => Boolean(r.entregado_reciente))
+                    .sort((a, b) => {
+                        const ta = a.ultimo_entregado_at ? new Date(a.ultimo_entregado_at).getTime() : 0;
+                        const tb = b.ultimo_entregado_at ? new Date(b.ultimo_entregado_at).getTime() : 0;
+                        return tb - ta;
+                    });
             }
         }
-
-        // Unificar chats duplicados (@c.us vs @lid) del mismo contacto/cliente Búnker
-        // Sin fusionar dos teléfonos distintos (@c.us) aunque compartan nombre de pila
-        const filasUnificadas = [];
-        for (const r of rows) {
-            if (r.bunker_cliente_id) {
-                const esLidR = String(r.chat_id || '').endsWith('@lid');
-                const nombreR = String(r.contacto_nombre || '').trim().toLowerCase();
-                const digR = String(r.ultimos_digitos || '').trim();
-
-                const existente = filasUnificadas.find(ex => {
-                    if (ex.bunker_cliente_id !== r.bunker_cliente_id) return false;
-                    const esLidEx = String(ex.chat_id || '').endsWith('@lid');
-                    const nombreEx = String(ex.contacto_nombre || '').trim().toLowerCase();
-                    const digEx = String(ex.ultimos_digitos || '').trim();
-
-                    // Mismo teléfono real (cola de 8 dígitos)
-                    if (!esLidR && !esLidEx && digR && digEx && digR === digEx) return true;
-                    // Espejo @lid <-> @c.us del mismo contacto por nombre
-                    if ((esLidR || esLidEx) && nombreR && nombreEx && nombreR === nombreEx) return true;
-                    return false;
-                });
-
-                if (existente) {
-                    existente.esperando_respuesta = Boolean(existente.esperando_respuesta || r.esperando_respuesta);
-                    existente.no_leidos = Math.max(Number(existente.no_leidos || 0), Number(r.no_leidos || 0));
-                    existente.cant_mensajes_reales = Number(existente.cant_mensajes_reales || 0) + Number(r.cant_mensajes_reales || 0);
-                    existente.in_hoy = Number(existente.in_hoy || 0) + Number(r.in_hoy || 0);
-                    existente.out_hoy = Number(existente.out_hoy || 0) + Number(r.out_hoy || 0);
-                    existente.tiene_comunicacion_real = Boolean(existente.tiene_comunicacion_real || r.tiene_comunicacion_real);
-                    if (!existente.etiqueta_crm && r.etiqueta_crm) existente.etiqueta_crm = r.etiqueta_crm;
-                    if (!existente.nota_rapida && r.nota_rapida) existente.nota_rapida = r.nota_rapida;
-                    const fechaEx = existente.ultimo_mensaje_at ? new Date(existente.ultimo_mensaje_at).getTime() : 0;
-                    const fechaR = r.ultimo_mensaje_at ? new Date(r.ultimo_mensaje_at).getTime() : 0;
-                    if (fechaR > fechaEx) {
-                        existente.ultimo_mensaje_at = r.ultimo_mensaje_at;
-                        if (r.ultimo_mensaje_texto && r.ultimo_mensaje_texto !== 'Cliente Búnker vinculado') {
-                            existente.ultimo_mensaje_texto = r.ultimo_mensaje_texto;
-                        }
-                        existente.ultimo_mensaje_from_me = r.ultimo_mensaje_from_me;
-                        existente.ultimo_mensaje_ack = r.ultimo_mensaje_ack;
-                    } else if (existente.ultimo_mensaje_texto === 'Cliente Búnker vinculado' && r.ultimo_mensaje_texto && r.ultimo_mensaje_texto !== 'Cliente Búnker vinculado') {
-                        existente.ultimo_mensaje_texto = r.ultimo_mensaje_texto;
-                    }
-                    // Preferir el chat_id @c.us como primario si el existente era @lid
-                    if (String(existente.chat_id || '').endsWith('@lid') && String(r.chat_id || '').endsWith('@c.us')) {
-                        existente.id = r.id;
-                        existente.chat_id = r.chat_id;
-                        existente.telefono_normalizado = r.telefono_normalizado || existente.telefono_normalizado;
-                        existente.ultimos_digitos = r.ultimos_digitos || existente.ultimos_digitos;
-                    }
-                    continue;
-                }
-            }
-            filasUnificadas.push(r);
-        }
-        rows = filasUnificadas;
 
         // Filtrado acumulativo (Política Universal de Búsqueda LAMDA: espacios = AND)
         // Soporta búsqueda por Número Legacy (lomas_soft_id), Código Búnker (CB-XXXX), Nombre de Cliente, Contacto, Teléfono o Mensaje
@@ -680,7 +1027,8 @@ router.get('/crm/whatsapp/chats', async (req, res) => {
 
         res.json({
             success: true,
-            data: rows
+            data: rows,
+            contadores_tabs: contadoresTabs
         });
     } catch (error) {
         console.error('❌ [CRM-WA-HUB] Error listando chats:', error.message);
@@ -1007,6 +1355,28 @@ router.get('/crm/whatsapp/chats/:id/detalle', async (req, res) => {
                     rayosX.seguimientos = segRes.rows;
                 } catch (eSeg) {
                     console.warn('⚠️ [CRM-WA-HUB] Error consultando seguimientos cliente:', eSeg.message);
+                }
+
+                // 2.e Artículos habituales y síntesis rápida en memoria (para Ficha & CC en Columna 3)
+                try {
+                    const smRes = await pool.query(`
+                        SELECT articulos_habituales_json, ciclo_compra_json, comportamiento_pago_json
+                        FROM public.crm_cliente_sintesis_memoria
+                        WHERE cliente_bunker_id = $1
+                        LIMIT 1
+                    `, [chat.bunker_cliente_id]);
+                    if (smRes.rows.length > 0) {
+                        const smRow = smRes.rows[0];
+                        rayosX.articulos_habituales = Array.isArray(smRow.articulos_habituales_json)
+                            ? smRow.articulos_habituales_json.slice(0, 12)
+                            : [];
+                        rayosX.ciclo_compra = smRow.ciclo_compra_json || null;
+                        rayosX.comportamiento_pago = smRow.comportamiento_pago_json || null;
+                    } else {
+                        rayosX.articulos_habituales = [];
+                    }
+                } catch (eSm) {
+                    rayosX.articulos_habituales = [];
                 }
             }
         }

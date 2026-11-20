@@ -13,12 +13,23 @@
 
     let estadoConsola = {
         abierta: false,
-        filtroActivo: 'CLIENTES', // 'SIN_RESPONDER' | 'CLIENTES' | 'NO_AGENDADOS' | 'PRIVADOS' | 'TODOS'
+        filtroActivo: 'CLIENTES', // 'SIN_RESPONDER' | 'CLIENTES' | 'OTROS'
+        subfiltroClientes: 'TODOS', // 'TODOS' | 'CON_DEUDA' | 'SIN_COMPRA_30D' | 'ENTREGADO_RECIENTE'
+        subfiltroOtros: 'TODOS', // 'TODOS' | 'PROSPECTO' | 'PROVEEDOR' | 'PERSONAL_BOTS'
+        tabCol3Activa: 'ASISTENTE', // 'ASISTENTE' | 'FICHA'
+        carrilAsistente: 'ENTRANTE', // 'ENTRANTE' | 'SALIENTE'
+        vistaBandejaHoy: false,
+        bandejaHoy: null,
+        contadoresTabs: {
+            por_atender: 0,
+            clientes: 0,
+            otros: 0
+        },
         busqueda: '',
         chats: [],
         chatActivoId: null,
         detalleActivo: null,
-        acordeonesAbiertos: new Set(), // Por defecto siempre plegados al abrir la página/consola
+        acordeonesAbiertos: new Set(),
         contadores: {
             clientes_sin_responder: 0,
             no_agendados_sin_responder: 0,
@@ -27,7 +38,9 @@
         },
         pollingInterval: null,
         _firmaListaChats: '',
-        _firmaDetalleChat: ''
+        _firmaDetalleChat: '',
+        _asistenteLoadSeq: 0,
+        _asistenteChatRenderizadoId: null
     };
 
     const CATEGORIAS_CONTACTO_UI = {
@@ -335,13 +348,26 @@
                 flex-shrink: 0;
             }
             .wa-hub-grid {
-                --wa-col-left: 320px;
-                --wa-col-right: 410px;
+                --wa-col-left: 300px;
+                --wa-col-right: 420px;
                 display: grid;
-                grid-template-columns: var(--wa-col-left, 320px) 9px minmax(250px, 1fr) 9px var(--wa-col-right, 410px);
+                grid-template-columns: var(--wa-col-left, 300px) 9px minmax(300px, 1fr) 9px var(--wa-col-right, 420px);
                 flex: 1;
                 min-height: 0;
                 background: #f8fafc;
+            }
+            @media (max-width: 1400px) {
+                .wa-hub-grid {
+                    --wa-col-left: 278px;
+                    --wa-col-right: 378px;
+                }
+            }
+            .wa-hub-grid.modo-bandeja-hoy {
+                grid-template-columns: var(--wa-col-left, 300px) 9px minmax(320px, 1fr) !important;
+            }
+            .wa-hub-grid.modo-bandeja-hoy #wa-splitter-right,
+            .wa-hub-grid.modo-bandeja-hoy #wa-hub-col-xray {
+                display: none !important;
             }
             .wa-col-splitter {
                 background: #e2e8f0;
@@ -387,28 +413,110 @@
                 min-height: 0;
             }
             .wa-filter-tabs {
-                display: flex;
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
                 gap: 4px;
-                padding: 7px 8px;
+                padding: 6px 7px;
                 background: #f1f5f9;
                 border-bottom: 1px solid #e2e8f0;
-                overflow-x: auto;
+                flex-shrink: 0;
             }
             .wa-filter-tab {
                 border: 1px solid #cbd5e1;
                 background: #ffffff;
                 color: #334155;
-                font-size: 0.71rem;
-                font-weight: 700;
-                padding: 4px 7px;
-                border-radius: 14px;
+                font-size: 0.68rem;
+                font-weight: 800;
+                padding: 5px 5px;
+                border-radius: 8px;
                 cursor: pointer;
                 white-space: nowrap;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+                min-width: 0;
+                overflow: hidden;
+                transition: background 0.12s, color 0.12s, border-color 0.12s;
+            }
+            .wa-filter-tab:hover {
+                background: #f8fafc;
+                border-color: #94a3b8;
             }
             .wa-filter-tab.active {
                 background: #128c7e;
                 color: #ffffff;
                 border-color: #075e54;
+            }
+            .wa-tab-cnt {
+                background: rgba(15, 23, 42, 0.08);
+                color: inherit;
+                font-size: 0.64rem;
+                font-weight: 800;
+                padding: 0 5px;
+                border-radius: 999px;
+                line-height: 1.45;
+                flex-shrink: 0;
+            }
+            .wa-filter-tab.active .wa-tab-cnt {
+                background: rgba(255, 255, 255, 0.24);
+                color: #ffffff;
+            }
+            .wa-tab-cnt.has-alert {
+                background: #16a34a;
+                color: #ffffff;
+            }
+            .wa-subfilter-bar {
+                display: flex;
+                gap: 4px;
+                padding: 5px 7px;
+                background: #f8fafc;
+                border-bottom: 1px solid #e2e8f0;
+                flex-wrap: wrap;
+                flex-shrink: 0;
+            }
+            .wa-subfilter-chip {
+                border: 1px solid #cbd5e1;
+                background: #ffffff;
+                color: #475569;
+                font-size: 0.67rem;
+                font-weight: 700;
+                padding: 2.5px 7px;
+                border-radius: 999px;
+                cursor: pointer;
+                white-space: nowrap;
+                transition: all 0.12s;
+            }
+            .wa-subfilter-chip:hover {
+                border-color: #64748b;
+                color: #0f172a;
+            }
+            .wa-subfilter-chip.active {
+                background: #0f172a;
+                color: #ffffff;
+                border-color: #0f172a;
+            }
+            .wa-flat-divider {
+                padding: 5px 12px;
+                font-size: 0.68rem;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: 0.03em;
+                color: #64748b;
+                background: #f8fafc;
+                border-top: 1px solid #e2e8f0;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            .wa-kpi-chip-sm {
+                display: inline-flex;
+                align-items: center;
+                gap: 2px;
+                font-size: 0.63rem;
+                font-weight: 800;
+                padding: 0.5px 5px;
+                border-radius: 4px;
+                white-space: nowrap;
+                flex-shrink: 0;
             }
             .wa-chat-list {
                 flex: 1;
@@ -844,24 +952,74 @@
                 align-items: stretch;
             }
 
-            /* Columna 3: Rayos X Comerciales del Cliente */
+            /* Columna 3: 2 Solapas Vivas (Asistente Híbrido | Ficha & CC) */
             .wa-col-xray {
                 background: #ffffff;
                 display: flex;
                 flex-direction: column;
                 min-height: 0;
+                overflow: hidden;
+                padding: 0;
+                gap: 0;
+            }
+            .wa-xray-tabs {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                background: #f1f5f9;
+                border-bottom: 1px solid #cbd5e1;
+                padding: 5px 8px 0 8px;
+                gap: 6px;
+                flex-shrink: 0;
+            }
+            .wa-xray-tab {
+                border: 1px solid transparent;
+                border-bottom: none;
+                background: transparent;
+                color: #475569;
+                font-size: 0.76rem;
+                font-weight: 800;
+                padding: 7px 8px;
+                border-radius: 8px 8px 0 0;
+                cursor: pointer;
+                white-space: nowrap;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 5px;
+                transition: all 0.12s;
+            }
+            .wa-xray-tab:hover {
+                color: #0f172a;
+                background: rgba(255, 255, 255, 0.55);
+            }
+            .wa-xray-tab.active {
+                background: #ffffff;
+                color: #065f46;
+                border-color: #cbd5e1;
+                position: relative;
+                top: 1px;
+                box-shadow: 0 -2px 6px rgba(15, 23, 42, 0.04);
+            }
+            .wa-xray-pane {
+                flex: 1;
+                min-height: 0;
                 overflow-y: auto;
-                padding: 14px;
-                gap: 12px;
+                overflow-x: hidden;
+                padding: 10px 11px;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                box-sizing: border-box;
             }
             .wa-xray-card {
                 background: #f8fafc;
                 border: 1px solid #e2e8f0;
                 border-radius: 10px;
-                padding: 10px 12px;
+                padding: 9px 11px;
+                box-sizing: border-box;
             }
             .wa-xray-title {
-                font-size: 0.78rem;
+                font-size: 0.75rem;
                 font-weight: 800;
                 text-transform: uppercase;
                 letter-spacing: 0.03em;
@@ -870,6 +1028,241 @@
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
+                gap: 6px;
+            }
+            .wa-xray-notes-accordion {
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 9px;
+                padding: 7px 10px;
+            }
+            .wa-xray-notes-accordion summary {
+                cursor: pointer;
+                font-size: 0.74rem;
+                font-weight: 800;
+                color: #475569;
+                list-style: none;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                user-select: none;
+            }
+            .wa-xray-notes-accordion summary::-webkit-details-marker {
+                display: none;
+            }
+
+            /* Portada Operativa: Bandeja de Hoy */
+            .wa-bandeja-hoy {
+                flex: 1;
+                min-height: 0;
+                overflow-y: auto;
+                overflow-x: hidden;
+                background: #f8fafc;
+                padding: 18px 22px;
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                box-sizing: border-box;
+            }
+            .wa-bandeja-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                flex-wrap: wrap;
+                padding-bottom: 10px;
+                border-bottom: 1px solid #e2e8f0;
+            }
+            .wa-bandeja-section {
+                background: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                padding: 14px 16px;
+                box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+            }
+            .wa-bandeja-section-title {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 10px;
+            }
+            .wa-bandeja-entrante-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 10px;
+                padding: 8px 10px;
+                border-radius: 8px;
+                border: 1px solid #dcfce7;
+                border-left: 4px solid #16a34a;
+                background: #f0fdf4;
+                cursor: pointer;
+                transition: background 0.12s;
+            }
+            .wa-bandeja-entrante-row:hover {
+                background: #dcfce7;
+            }
+            .wa-bandeja-kpi-grid {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 12px;
+            }
+            @media (max-width: 1120px) {
+                .wa-bandeja-kpi-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+            .wa-bandeja-kpi-card {
+                border: 1px solid #e2e8f0;
+                border-radius: 11px;
+                padding: 12px;
+                background: #ffffff;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                transition: box-shadow 0.14s, border-color 0.14s;
+                min-width: 0;
+            }
+            .wa-bandeja-kpi-card:hover {
+                box-shadow: 0 4px 12px rgba(15, 23, 42, 0.07);
+                border-color: #94a3b8;
+            }
+            .wa-bandeja-kpi-head {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 8px;
+                cursor: pointer;
+            }
+            .wa-bandeja-kpi-num {
+                font-size: 1.55rem;
+                font-weight: 900;
+                line-height: 1;
+            }
+            .wa-bandeja-kpi-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 6px;
+                padding: 5px 7px;
+                border-radius: 6px;
+                background: #f8fafc;
+                border: 1px solid #f1f5f9;
+                font-size: 0.74rem;
+                cursor: pointer;
+                transition: background 0.12s;
+            }
+            .wa-bandeja-kpi-item:hover {
+                background: #eff6ff;
+                border-color: #bfdbfe;
+            }
+
+            /* Copiloto Vivo en Columna 3 (Tab 1) */
+            .wa-copilot-carril-bar {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 4px;
+                background: #e2e8f0;
+                padding: 3px;
+                border-radius: 8px;
+            }
+            .wa-copilot-carril-btn {
+                border: none;
+                border-radius: 6px;
+                padding: 5px 6px;
+                font-size: 0.71rem;
+                font-weight: 800;
+                cursor: pointer;
+                background: transparent;
+                color: #475569;
+                white-space: nowrap;
+                transition: all 0.12s;
+            }
+            .wa-copilot-carril-btn.active {
+                background: #ffffff;
+                color: #065f46;
+                box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+            }
+            .wa-copilot-microbar {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 6px;
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 5px 8px;
+                font-size: 0.69rem;
+                color: #334155;
+            }
+            .wa-copilot-pills {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 4px;
+            }
+            .wa-copilot-pill {
+                padding: 3px 8px;
+                border-radius: 999px;
+                font-size: 0.68rem;
+                font-weight: 800;
+                cursor: pointer;
+                border: 1px solid #cbd5e1;
+                background: #ffffff;
+                color: #334155;
+                white-space: nowrap;
+                transition: all 0.12s;
+            }
+            .wa-copilot-pill:hover {
+                border-color: #0284c7;
+                color: #0369a1;
+            }
+            .wa-copilot-pill.active {
+                background: #0284c7;
+                border-color: #0284c7;
+                color: #ffffff;
+            }
+            .wa-copilot-box {
+                background: #f8fafc;
+                border: 1.5px solid #86efac;
+                border-radius: 10px;
+                padding: 8px 9px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                box-sizing: border-box;
+            }
+            .wa-copilot-prod-box {
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 10px;
+                padding: 8px 9px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                box-sizing: border-box;
+            }
+            .wa-copilot-actions {
+                position: sticky;
+                bottom: -10px;
+                background: #ffffff;
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+                padding: 8px 2px 6px 2px;
+                margin-top: auto;
+                border-top: 1px solid #cbd5e1;
+                box-shadow: 0 -4px 10px rgba(15, 23, 42, 0.06);
+                z-index: 4;
+            }
+            .wa-copilot-test-details {
+                font-size: 0.7rem;
+                color: #64748b;
+            }
+            .wa-copilot-test-details summary {
+                cursor: pointer;
+                font-weight: 700;
+                user-select: none;
             }
             .wa-hub-mobile-tabs {
                 display: none;
@@ -1489,67 +1882,78 @@
                 <!-- Barra Superior -->
                 <div class="wa-hub-topbar" ondblclick="window.toggleMaximizarConsolaWa()">
                     <div style="display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1;">
-                        <span style="font-size: 1.25rem; flex-shrink: 0;">💬</span>
+                        <span style="font-size: 1.2rem; flex-shrink: 0;">💬</span>
                         <div style="min-width: 0;">
-                            <div style="font-weight: 800; font-size: 0.96rem; letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">WhatsApp LAMDA — Consola Comercial & CRM</div>
-                            <div style="font-size: 0.72rem; color: #bbf7d0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Sincronizado en espejo con tu celular · Identificación automática Búnker</div>
+                            <div style="font-weight: 800; font-size: 0.94rem; letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">WhatsApp LAMDA — Consola Comercial & CRM</div>
+                            <div style="font-size: 0.7rem; color: #bbf7d0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Espejo WhatsApp · Copiloto Híbrido Búnker</div>
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; flex-shrink: 0;">
+                        <button type="button" id="btn-wa-hub-bandeja" onclick="window.volverABandejaHoyWa()" style="background: rgba(255,255,255,0.2); color: #ffffff; border: 1px solid rgba(255,255,255,0.35); padding: 5px 9px; border-radius: 7px; font-size: 0.74rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Volver a la portada operativa Bandeja de Hoy">
+                            🏠 Bandeja
+                        </button>
                         <div class="wa-hub-col-resizer-box" style="display: inline-flex; align-items: center; gap: 3px; background: rgba(0,0,0,0.22); padding: 2px 6px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.2); white-space: nowrap;" title="Ajustar ancho de las 3 columnas (también podés arrastrar las barras grises divisorias ⋮ con el mouse)">
-                            <span style="font-size: 0.7rem; font-weight: 800; color: #a7f3d0;">📐 Columnas:</span>
-                            <button type="button" onclick="window.ajustarAnchoColumnaWa('TOGGLE_LEFT')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 6px; border-radius: 5px; font-size: 0.7rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Plegar o desplegar la columna izquierda de Chats">
+                            <span style="font-size: 0.68rem; font-weight: 800; color: #a7f3d0;">📐</span>
+                            <button type="button" onclick="window.ajustarAnchoColumnaWa('TOGGLE_LEFT')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 6px; border-radius: 5px; font-size: 0.69rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Plegar o desplegar la columna izquierda de Chats">
                                 ◀ Chats
                             </button>
-                            <button type="button" onclick="window.ajustarAnchoColumnaWa('RESET')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 6px; border-radius: 5px; font-size: 0.7rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Restaurar ancho equilibrado de las 3 columnas">
+                            <button type="button" onclick="window.ajustarAnchoColumnaWa('RESET')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 6px; border-radius: 5px; font-size: 0.69rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Restaurar ancho equilibrado de las 3 columnas">
                                 ⚖️ Normal
                             </button>
-                            <button type="button" onclick="window.ajustarAnchoColumnaWa('WIDEN_RIGHT')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 6px; border-radius: 5px; font-size: 0.7rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Ensanchar o alternar el ancho de la Columna 3 (Ficha y Cuenta Corriente)">
+                            <button type="button" onclick="window.ajustarAnchoColumnaWa('WIDEN_RIGHT')" style="background: rgba(255,255,255,0.16); color: #fff; border: 1px solid rgba(255,255,255,0.28); padding: 3px 6px; border-radius: 5px; font-size: 0.69rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Ensanchar o alternar el ancho de la Columna 3 (Asistente / Ficha & CC)">
                                 ↔ Derecha
                             </button>
                         </div>
-                        <button type="button" onclick="window.iniciarNuevoChatClienteBunker()" style="background: #25D366; color: #052e16; border: none; padding: 5px 10px; border-radius: 7px; font-size: 0.76rem; font-weight: 800; cursor: pointer; white-space: nowrap;">
-                            ➕ Hablar con Cliente Búnker
+                        <button type="button" onclick="window.iniciarNuevoChatClienteBunker()" style="background: #25D366; color: #052e16; border: none; padding: 5px 9px; border-radius: 7px; font-size: 0.74rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Iniciar conversación con un Cliente Búnker">
+                            ➕ Cliente Búnker
                         </button>
-                        <button type="button" id="btn-wa-hub-sync" onclick="window.sincronizarChatsWhatsappLamda()" style="background: rgba(255,255,255,0.16); color: #ffffff; border: 1px solid rgba(255,255,255,0.3); padding: 5px 9px; border-radius: 7px; font-size: 0.76rem; font-weight: 700; cursor: pointer; white-space: nowrap;">
-                            🔄 Traer Chats
+                        <button type="button" id="btn-wa-hub-sync" onclick="window.sincronizarChatsWhatsappLamda()" style="background: rgba(255,255,255,0.16); color: #ffffff; border: 1px solid rgba(255,255,255,0.3); padding: 5px 8px; border-radius: 7px; font-size: 0.74rem; font-weight: 700; cursor: pointer; white-space: nowrap;">
+                            🔄 Traer
                         </button>
-                        <button type="button" id="btn-wa-hub-maximize" onclick="window.toggleMaximizarConsolaWa()" style="background: rgba(255,255,255,0.18); color: #ffffff; border: 1px solid rgba(255,255,255,0.35); height: 30px; padding: 0 9px; border-radius: 7px; font-size: 0.76rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;" title="Maximizar / Restaurar tamaño de pantalla">
+                        <button type="button" id="btn-wa-hub-maximize" onclick="window.toggleMaximizarConsolaWa()" style="background: rgba(255,255,255,0.18); color: #ffffff; border: 1px solid rgba(255,255,255,0.35); height: 29px; padding: 0 8px; border-radius: 7px; font-size: 0.74rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;" title="Maximizar / Restaurar tamaño de pantalla">
                             ⛶ Maximizar
                         </button>
-                        <button type="button" onclick="window.cerrarConsolaWhatsappLamda()" style="background: rgba(255,255,255,0.15); color: #ffffff; border: none; width: 30px; height: 30px; border-radius: 50%; font-size: 1.15rem; font-weight: 800; cursor: pointer; flex-shrink: 0;" title="Cerrar consola">
+                        <button type="button" onclick="window.cerrarConsolaWhatsappLamda()" style="background: rgba(255,255,255,0.15); color: #ffffff; border: none; width: 29px; height: 29px; border-radius: 50%; font-size: 1.15rem; font-weight: 800; cursor: pointer; flex-shrink: 0;" title="Cerrar consola">
                             &times;
                         </button>
                     </div>
                 </div>
 
-                <!-- Cuerpo en 3 Columnas Redimensionables -->
                 <!-- Barra de Solapas Móvil (solo visible en <= 768px) -->
                 <div id="wa-hub-mobile-tabs" class="wa-hub-mobile-tabs">
                     <button type="button" class="wa-hub-mob-tab active" data-wa-mob-tab="chats" onclick="window.cambiarTabMovilConsolaWa('chats')">
-                        💬 Lista de Chats
+                        💬 Lista
                     </button>
                     <button type="button" class="wa-hub-mob-tab" data-wa-mob-tab="conv" onclick="window.cambiarTabMovilConsolaWa('conv')">
-                        💭 Conversación
+                        💭 Chat
                     </button>
                     <button type="button" class="wa-hub-mob-tab" data-wa-mob-tab="xray" onclick="window.cambiarTabMovilConsolaWa('xray')">
-                        📊 Ficha / Rayos X
+                        ✨ Asistente / Ficha
                     </button>
                 </div>
 
                 <!-- Cuerpo en 3 Columnas Redimensionables -->
-                <div id="wa-hub-grid" class="wa-hub-grid" data-mobile-tab="chats">
-                    <!-- COLUMNA 1: Lista de Chats y Filtros -->
+                <div id="wa-hub-grid" class="wa-hub-grid modo-bandeja-hoy" data-mobile-tab="chats">
+                    <!-- COLUMNA 1: Buscador + 3 Solapas Claras + Chips Rápidos + Lista Escaneable -->
                     <div id="wa-hub-col-chats" class="wa-col-chats" style="overflow: hidden;">
-                        <div style="padding: 10px; border-bottom: 1px solid #e2e8f0;">
-                            <input type="text" id="wa-hub-search-input" placeholder="🔍 Buscar Nº Legacy (042), Búnker (CB-0014), nombre o contacto..." oninput="window.filtrarBusquedaConsolaWa(this.value)" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.84rem; box-sizing: border-box;">
+                        <div style="padding: 8px 9px; border-bottom: 1px solid #e2e8f0; flex-shrink: 0;">
+                            <input type="text" id="wa-hub-search-input" placeholder="🔍 Buscar cliente, Nº Legacy, CB-0014 o contacto..." oninput="window.filtrarBusquedaConsolaWa(this.value)" style="width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.81rem; box-sizing: border-box;">
                         </div>
-                        <div class="wa-filter-tabs">
-                            <button type="button" class="wa-filter-tab" data-filtro="SIN_RESPONDER" onclick="window.cambiarFiltroConsolaWa('SIN_RESPONDER')" title="Clientes Búnker y Prospectos esperando respuesta">🟢 No leídos</button>
-                            <button type="button" class="wa-filter-tab active" data-filtro="CLIENTES" onclick="window.cambiarFiltroConsolaWa('CLIENTES')" title="Clientes Búnker y Prospectos activos">👥 Clientes</button>
-                            <button type="button" class="wa-filter-tab" data-filtro="NO_AGENDADOS" onclick="window.cambiarFiltroConsolaWa('NO_AGENDADOS')" title="Proveedores y otros contactos no vinculados">🚚 Prov.</button>
-                            <button type="button" class="wa-filter-tab" data-filtro="PRIVADOS" onclick="window.cambiarFiltroConsolaWa('PRIVADOS')" title="Contactos personales, silenciados y bots ignorados">🔒 Privados</button>
+                        <div id="wa-hub-filter-tabs" class="wa-filter-tabs">
+                            <button type="button" class="wa-filter-tab" data-filtro="SIN_RESPONDER" onclick="window.cambiarFiltroConsolaWa('SIN_RESPONDER')" title="Clientes Búnker y Prospectos esperando respuesta">
+                                <span>📥 Atender</span>
+                                <span id="wa-tab-cnt-por-atender" class="wa-tab-cnt">0</span>
+                            </button>
+                            <button type="button" class="wa-filter-tab active" data-filtro="CLIENTES" onclick="window.cambiarFiltroConsolaWa('CLIENTES')" title="Clientes Búnker ordenados por actividad o agenda comercial">
+                                <span>🏢 Clientes</span>
+                                <span id="wa-tab-cnt-clientes" class="wa-tab-cnt">0</span>
+                            </button>
+                            <button type="button" class="wa-filter-tab" data-filtro="OTROS" onclick="window.cambiarFiltroConsolaWa('OTROS')" title="Prospectos, Proveedores, Personal y Bots">
+                                <span>🗂️ Otros</span>
+                                <span id="wa-tab-cnt-otros" class="wa-tab-cnt">0</span>
+                            </button>
                         </div>
+                        <div id="wa-hub-subfilter-bar" class="wa-subfilter-bar"></div>
                         <div id="wa-hub-chat-list" class="wa-chat-list"></div>
                     </div>
 
@@ -1558,54 +1962,58 @@
                         <span>⋮</span>
                     </div>
 
-                    <!-- COLUMNA 2: El Chat al Estilo WhatsApp Web + Atajos LAMDA -->
-                    <div id="wa-hub-col-conv" class="wa-col-conv" style="min-width: 0;">
-                        <div style="margin: auto; text-align: center; padding: 30px; color: #64748b;">
-                            <div style="font-size: 2.8rem; margin-bottom: 8px;">💬</div>
-                            <div style="font-weight: 700; font-size: 1.05rem; color: #334155;">Seleccioná un cliente a la izquierda</div>
-                            <p style="font-size: 0.86rem; max-width: 380px; margin: 6px auto 14px;">
-                                Acá vas a ver la conversación igual que en WhatsApp Web y a la derecha toda la radiografía comercial del cliente en tiempo real.
-                            </p>
-                            <button type="button" onclick="window.sincronizarChatsWhatsappLamda()" style="background: #128c7e; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 700; cursor: pointer;">
-                                🔄 Sincronizar conversaciones desde mi WhatsApp
-                            </button>
-                        </div>
-                    </div>
+                    <!-- COLUMNA 2: Portada "Bandeja de Hoy" o Conversación Activa -->
+                    <div id="wa-hub-col-conv" class="wa-col-conv" style="min-width: 0;"></div>
 
                     <!-- Divisor Vertical Arrastrable Derecho (Col 2 <-> Col 3) -->
-                    <div id="wa-splitter-right" class="wa-col-splitter" title="Arrastrá con el mouse para ensanchar o achicar la ficha de Rayos X (Doble clic para ampliar/restaurar)">
+                    <div id="wa-splitter-right" class="wa-col-splitter" title="Arrastrá con el mouse para ensanchar o achicar el panel derecho (Doble clic para ampliar/restaurar)">
                         <span>⋮</span>
                     </div>
 
-                    <!-- COLUMNA 3: Rayos X del Cliente (Contexto Comercial en Vivo) -->
+                    <!-- COLUMNA 3: 2 Solapas Vivas (Asistente Híbrido | Ficha & CC) -->
                     <div id="wa-hub-col-xray" class="wa-col-xray" style="min-width: 0;">
-                        <div style="margin: auto; text-align: center; padding: 20px; color: #94a3b8;">
-                            <div style="font-size: 2rem; margin-bottom: 6px;">📊</div>
-                            <div style="font-weight: 700; font-size: 0.92rem; color: #475569;">Columna 3: Rayos X del Cliente</div>
-                            <p style="font-size: 0.8rem;">Al abrir un chat verás acá su Saldo en Cuenta Corriente, Últimos Pedidos, Facturas, Seguimientos y el interruptor de Privacidad.</p>
+                        <div id="wa-xray-tabs-bar" class="wa-xray-tabs">
+                            <button type="button" id="wa-xray-tab-ASISTENTE" class="wa-xray-tab active" onclick="window.cambiarTabColumna3Wa('ASISTENTE')">
+                                ✨ Asistente Híbrido
+                            </button>
+                            <button type="button" id="wa-xray-tab-FICHA" class="wa-xray-tab" onclick="window.cambiarTabColumna3Wa('FICHA')">
+                                📊 Ficha &amp; CC
+                            </button>
                         </div>
+                        <div id="wa-xray-pane-asistente" class="wa-xray-pane"></div>
+                        <div id="wa-xray-pane-ficha" class="wa-xray-pane" style="display: none;"></div>
                     </div>
                 </div>
             </div>
         `;
         document.body.appendChild(modal);
         inicializarSplittersColumnasWa();
+        renderizarSubfiltrosCol1Wa();
         return modal;
     }
 
-    const STORAGE_KEY_LAYOUT_COLS = 'lamda_wa_hub_cols_v1';
+    const STORAGE_KEY_LAYOUT_COLS = 'lamda_wa_hub_cols_v2';
+
+    function obtenerAnchosDefaultResponsivosWa() {
+        if (window.innerWidth <= 1400) {
+            return { left: 278, right: 378 };
+        }
+        return { left: 300, right: 420 };
+    }
 
     function aplicarAnchosColumnasWa(leftPx, rightPx, guardar = true) {
         const grid = document.getElementById('wa-hub-grid');
         if (!grid) return;
-        const l = Math.max(0, Math.min(620, Number(leftPx)));
-        const r = Math.max(0, Math.min(720, Number(rightPx)));
+        const l = Math.max(0, Math.min(540, Number(leftPx)));
+        const r = Math.max(0, Math.min(680, Number(rightPx)));
         grid.style.setProperty('--wa-col-left', `${l}px`);
         grid.style.setProperty('--wa-col-right', `${r}px`);
         const colChats = document.getElementById('wa-hub-col-chats');
         const colXray = document.getElementById('wa-hub-col-xray');
         if (colChats) colChats.style.display = l < 40 ? 'none' : 'flex';
-        if (colXray) colXray.style.display = r < 40 ? 'none' : 'flex';
+        if (colXray && !grid.classList.contains('modo-bandeja-hoy')) {
+            colXray.style.display = r < 40 ? 'none' : 'flex';
+        }
         if (guardar) {
             try {
                 localStorage.setItem(STORAGE_KEY_LAYOUT_COLS, JSON.stringify({ left: l, right: r }));
@@ -1614,34 +2022,41 @@
     }
 
     function obtenerAnchosColumnasActualesWa() {
+        const def = obtenerAnchosDefaultResponsivosWa();
         const grid = document.getElementById('wa-hub-grid');
-        if (!grid) return { left: 320, right: 410 };
+        if (!grid) return def;
         const st = getComputedStyle(grid);
-        const l = parseInt(st.getPropertyValue('--wa-col-left')) || 320;
-        const r = parseInt(st.getPropertyValue('--wa-col-right')) || 410;
+        const l = parseInt(st.getPropertyValue('--wa-col-left')) || def.left;
+        const r = parseInt(st.getPropertyValue('--wa-col-right')) || def.right;
         return { left: l, right: r };
     }
 
     window.ajustarAnchoColumnaWa = function (accion) {
         const act = obtenerAnchosColumnasActualesWa();
+        const def = obtenerAnchosDefaultResponsivosWa();
         if (accion === 'TOGGLE_LEFT') {
-            const nuevoLeft = act.left < 100 ? 320 : 0;
+            const nuevoLeft = act.left < 100 ? def.left : 0;
             aplicarAnchosColumnasWa(nuevoLeft, act.right, true);
         } else if (accion === 'WIDEN_RIGHT') {
-            const nuevoRight = act.right < 430 ? 500 : (act.right < 540 ? 600 : 370);
+            const nuevoRight = act.right < 450 ? 500 : (act.right < 560 ? 590 : def.right);
             aplicarAnchosColumnasWa(act.left, nuevoRight, true);
         } else {
-            aplicarAnchosColumnasWa(320, 410, true);
+            aplicarAnchosColumnasWa(def.left, def.right, true);
         }
     };
 
     function inicializarSplittersColumnasWa() {
+        const def = obtenerAnchosDefaultResponsivosWa();
         try {
             const guardado = JSON.parse(localStorage.getItem(STORAGE_KEY_LAYOUT_COLS) || 'null');
             if (guardado && typeof guardado.left === 'number' && typeof guardado.right === 'number') {
                 aplicarAnchosColumnasWa(guardado.left, guardado.right, false);
+            } else {
+                aplicarAnchosColumnasWa(def.left, def.right, false);
             }
-        } catch (e) {}
+        } catch (e) {
+            aplicarAnchosColumnasWa(def.left, def.right, false);
+        }
 
         const spLeft = document.getElementById('wa-splitter-left');
         const spRight = document.getElementById('wa-splitter-right');
@@ -1658,7 +2073,7 @@
                     const act = obtenerAnchosColumnasActualesWa();
                     let nuevoLeft = eMove.clientX - rectGrid.left;
                     if (nuevoLeft < 90) nuevoLeft = 0;
-                    else if (nuevoLeft < 200) nuevoLeft = 200;
+                    else if (nuevoLeft < 220) nuevoLeft = 220;
                     aplicarAnchosColumnasWa(nuevoLeft, act.right, false);
                 };
                 const onUp = () => {
@@ -1683,7 +2098,7 @@
                     const act = obtenerAnchosColumnasActualesWa();
                     let nuevoRight = rectGrid.right - eMove.clientX;
                     if (nuevoRight < 90) nuevoRight = 0;
-                    else if (nuevoRight < 240) nuevoRight = 240;
+                    else if (nuevoRight < 300) nuevoRight = 300;
                     aplicarAnchosColumnasWa(act.left, nuevoRight, false);
                 };
                 const onUp = () => {
@@ -1698,6 +2113,335 @@
             });
         }
     }
+
+    function actualizarContadoresTabsUiWa(contadores) {
+        if (!contadores) return;
+        estadoConsola.contadoresTabs = {
+            por_atender: Number(contadores.por_atender || 0),
+            clientes: Number(contadores.clientes || 0),
+            otros: Number(contadores.otros || 0)
+        };
+        const elAt = document.getElementById('wa-tab-cnt-por-atender');
+        const elCl = document.getElementById('wa-tab-cnt-clientes');
+        const elOt = document.getElementById('wa-tab-cnt-otros');
+        if (elAt) {
+            elAt.textContent = String(estadoConsola.contadoresTabs.por_atender);
+            if (estadoConsola.contadoresTabs.por_atender > 0) elAt.classList.add('has-alert');
+            else elAt.classList.remove('has-alert');
+        }
+        if (elCl) elCl.textContent = String(estadoConsola.contadoresTabs.clientes);
+        if (elOt) elOt.textContent = String(estadoConsola.contadoresTabs.otros);
+    }
+
+    function renderizarSubfiltrosCol1Wa() {
+        const bar = document.getElementById('wa-hub-subfilter-bar');
+        if (!bar) return;
+        if (estadoConsola.filtroActivo === 'CLIENTES') {
+            bar.style.display = 'flex';
+            const act = estadoConsola.subfiltroClientes || 'TODOS';
+            const ag = estadoConsola.bandejaHoy?.agenda || null;
+            const cDeuda = ag?.con_deuda ? ` (${ag.con_deuda.total})` : '';
+            const c30d = ag?.sin_compra_30d ? ` (${ag.sin_compra_30d.total})` : '';
+            const cEnt = ag?.entregados_recientes ? ` (${ag.entregados_recientes.total})` : '';
+            const chips = [
+                { id: 'TODOS', label: 'Todos' },
+                { id: 'CON_DEUDA', label: `💰 Con deuda${cDeuda}` },
+                { id: 'SIN_COMPRA_30D', label: `🔄 >30d${c30d}` },
+                { id: 'ENTREGADO_RECIENTE', label: `🚚 Recientes${cEnt}` }
+            ];
+            bar.innerHTML = chips.map(ch => `
+                <button type="button" class="wa-subfilter-chip ${act === ch.id ? 'active' : ''}" data-subfiltro="${ch.id}" onclick="window.cambiarSubfiltroConsolaWa('${ch.id}')">
+                    ${ch.label}
+                </button>
+            `).join('');
+        } else if (estadoConsola.filtroActivo === 'OTROS') {
+            bar.style.display = 'flex';
+            const act = estadoConsola.subfiltroOtros || 'TODOS';
+            const chips = [
+                { id: 'TODOS', label: 'Todos' },
+                { id: 'PROSPECTO', label: '🌱 Prospectos' },
+                { id: 'PROVEEDOR', label: '🚚 Proveedores' },
+                { id: 'PERSONAL_BOTS', label: '🔒 Personal / Bots' }
+            ];
+            bar.innerHTML = chips.map(ch => `
+                <button type="button" class="wa-subfilter-chip ${act === ch.id ? 'active' : ''}" data-subfiltro="${ch.id}" onclick="window.cambiarSubfiltroConsolaWa('${ch.id}')">
+                    ${ch.label}
+                </button>
+            `).join('');
+        } else {
+            bar.style.display = 'none';
+            bar.innerHTML = '';
+        }
+    }
+
+    window.cambiarSubfiltroConsolaWa = async function (nuevoSubfiltro) {
+        if (estadoConsola.filtroActivo === 'CLIENTES') {
+            estadoConsola.subfiltroClientes = nuevoSubfiltro || 'TODOS';
+        } else if (estadoConsola.filtroActivo === 'OTROS') {
+            estadoConsola.subfiltroOtros = nuevoSubfiltro || 'TODOS';
+        }
+        estadoConsola._firmaListaChats = '';
+        renderizarSubfiltrosCol1Wa();
+        await cargarListaChatsConsola();
+    };
+
+    function formatearMontoCortoArsWa(val) {
+        const n = Number(val || 0);
+        if (!Number.isFinite(n) || n <= 0) return '$0';
+        if (n >= 1000000) return `$${(n / 1000000).toFixed(2).replace('.', ',')}M`;
+        if (n >= 10000) return `$${Math.round(n / 1000).toLocaleString('es-AR')}k`;
+        return `$${Math.round(n).toLocaleString('es-AR')}`;
+    }
+
+    function establecerModoBandejaHoyWa(activo) {
+        const grid = document.getElementById('wa-hub-grid');
+        const colXray = document.getElementById('wa-hub-col-xray');
+        estadoConsola.vistaBandejaHoy = Boolean(activo);
+        if (grid) {
+            if (activo) {
+                grid.classList.add('modo-bandeja-hoy');
+            } else {
+                grid.classList.remove('modo-bandeja-hoy');
+                const actW = obtenerAnchosColumnasActualesWa();
+                if (colXray) colXray.style.display = actW.right < 40 ? 'none' : 'flex';
+            }
+        }
+        const btnBandeja = document.getElementById('btn-wa-hub-bandeja');
+        if (btnBandeja) {
+            btnBandeja.style.background = activo ? '#ffffff' : 'rgba(255,255,255,0.2)';
+            btnBandeja.style.color = activo ? '#075e54' : '#ffffff';
+        }
+    }
+
+    function renderizarBandejaHoyHtmlWa(datos) {
+        const colConv = document.getElementById('wa-hub-col-conv');
+        if (!colConv) return;
+        const entrantes = Array.isArray(datos?.entrantes) ? datos.entrantes : [];
+        const ag = datos?.agenda || {
+            con_deuda: { total: 0, monto_total: 0, items: [] },
+            sin_compra_30d: { total: 0, items: [] },
+            entregados_recientes: { total: 0, items: [] }
+        };
+        const fechaHoyTxt = new Date().toLocaleDateString('es-AR', {
+            weekday: 'long', day: '2-digit', month: '2-digit'
+        });
+
+        const bloqueEntrantesHtml = entrantes.length === 0
+            ? `
+                <div style="display: flex; align-items: center; gap: 12px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; padding: 13px 16px;">
+                    <div style="font-size: 1.45rem; flex-shrink: 0;">✅</div>
+                    <div>
+                        <div style="font-weight: 800; font-size: 0.92rem; color: #065f46;">Al día — 0 mensajes comerciales pendientes</div>
+                        <div style="font-size: 0.78rem; color: #047857; margin-top: 2px;">Cuando escriba un Cliente Búnker o Prospecto aparecerá acá y en <strong>📥 Atender</strong>.</div>
+                    </div>
+                </div>
+            `
+            : `
+                <div style="display: flex; flex-direction: column; gap: 7px;">
+                    ${entrantes.slice(0, 8).map(it => {
+                        const cod = it.codigo_bunker_cliente ? `<span class="wa-badge-num-bunker">#${escaparHtml(it.codigo_bunker_cliente)}</span>` : '';
+                        const nom = escaparHtml(it.cliente_nombre || it.contacto_nombre || 'Cliente');
+                        const prev = escaparHtml(formatearPreviewUnaLineaWa(it.ultimo_mensaje_texto || 'Mensaje recibido'));
+                        const hace = formatearTiempoRelativo(it.ultimo_mensaje_at);
+                        const badgeNl = it.no_leidos > 0
+                            ? `<span style="background:#16a34a; color:#fff; font-size:0.68rem; font-weight:800; padding:1px 7px; border-radius:999px;">${it.no_leidos}</span>`
+                            : `<span style="background:#0284c7; color:#fff; font-size:0.68rem; font-weight:800; padding:1px 7px; border-radius:999px;">●</span>`;
+                        return `
+                            <div class="wa-bandeja-entrante-row" onclick="window.seleccionarChatConsola(${Number(it.id)}, true)">
+                                <div style="min-width: 0; flex: 1;">
+                                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                                        <strong style="font-size: 0.87rem; color: #0f172a;">${nom}</strong>
+                                        ${cod}
+                                        ${badgeNl}
+                                        <span style="font-size: 0.71rem; color: #15803d; font-weight: 700;">${hace}</span>
+                                    </div>
+                                    <div style="font-size: 0.78rem; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;">
+                                        “${prev}”
+                                    </div>
+                                </div>
+                                <button type="button" style="background: #128c7e; color: #ffffff; border: none; border-radius: 7px; padding: 6px 11px; font-size: 0.75rem; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
+                                    Atender →
+                                </button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+
+        const renderKpiItems = (items, tipo) => {
+            if (!items || items.length === 0) {
+                const emptyTxt = tipo === 'ENTREGADO_RECIENTE'
+                    ? 'Sin entregas registradas en las últimas 48h.'
+                    : 'Sin clientes en esta categoría hoy.';
+                return `<div style="font-size: 0.74rem; color: #94a3b8; font-style: italic; padding: 6px 2px;">${emptyTxt}</div>`;
+            }
+            return `
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    ${items.slice(0, 3).map(c => {
+                        let datoDer = '';
+                        if (tipo === 'CON_DEUDA') {
+                            datoDer = `<span style="color:#b91c1c; font-weight:800; white-space:nowrap;">${formatearMontoCortoArsWa(c.saldo_pendiente)}${c.antiguedad_deuda_dias > 0 ? ` · ${c.antiguedad_deuda_dias}d` : ''}</span>`;
+                        } else if (tipo === 'SIN_COMPRA_30D') {
+                            datoDer = `<span style="color:#1d4ed8; font-weight:800; white-space:nowrap;">${c.dias_sin_compra}d</span>`;
+                        } else {
+                            datoDer = `<span style="color:#0f766e; font-weight:800; white-space:nowrap;">${formatearTiempoRelativo(c.ultimo_entregado_at)}</span>`;
+                        }
+                        return `
+                            <div class="wa-bandeja-kpi-item" onclick="event.stopPropagation(); window.seleccionarChatConsola(${Number(c.id)}, true)" title="Abrir chat y Copiloto con ${escaparHtml(c.cliente_nombre)}">
+                                <span style="font-weight: 700; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1;">
+                                    ${escaparHtml(c.cliente_nombre)}
+                                </span>
+                                ${datoDer}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        };
+
+        colConv.innerHTML = `
+            <div id="wa-bandeja-hoy-view" class="wa-bandeja-hoy">
+                <div class="wa-bandeja-header">
+                    <div>
+                        <div style="font-size: 1.18rem; font-weight: 900; color: #0f172a; letter-spacing: -0.01em;">
+                            📋 Bandeja de Hoy
+                        </div>
+                        <div style="font-size: 0.78rem; color: #64748b; margin-top: 1px;">
+                            <span style="text-transform: capitalize;">${escaparHtml(fechaHoyTxt)}</span> · Elegí un mensaje pendiente o dispará gestión comercial en 1 clic
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 7px; align-items: center;">
+                        <button type="button" onclick="window.cargarYRenderizarBandejaHoyWa(true)" style="background: #ffffff; color: #334155; border: 1px solid #cbd5e1; border-radius: 7px; padding: 6px 11px; font-size: 0.76rem; font-weight: 800; cursor: pointer;">
+                            🔄 Actualizar
+                        </button>
+                        <button type="button" onclick="window.iniciarNuevoChatClienteBunker()" style="background: #128c7e; color: #ffffff; border: none; border-radius: 7px; padding: 6px 12px; font-size: 0.76rem; font-weight: 800; cursor: pointer;">
+                            ➕ Iniciar gestión con cliente
+                        </button>
+                    </div>
+                </div>
+
+                <!-- BLOQUE 1: CARRIL ENTRANTE -->
+                <div class="wa-bandeja-section">
+                    <div class="wa-bandeja-section-title">
+                        <div style="font-weight: 800; font-size: 0.9rem; color: #0f172a; display: flex; align-items: center; gap: 7px;">
+                            <span>📥 Carril Entrante — Requieren respuesta</span>
+                            <span style="background: ${entrantes.length > 0 ? '#16a34a' : '#dcfce7'}; color: ${entrantes.length > 0 ? '#ffffff' : '#166534'}; font-size: 0.71rem; font-weight: 800; padding: 2px 8px; border-radius: 999px;">
+                                ${entrantes.length}
+                            </span>
+                        </div>
+                        ${entrantes.length > 0 ? `
+                            <button type="button" onclick="window.cambiarFiltroConsolaWa('SIN_RESPONDER')" style="background: none; border: none; color: #0284c7; font-size: 0.75rem; font-weight: 800; cursor: pointer;">
+                                Ver todos en lista →
+                            </button>
+                        ` : ''}
+                    </div>
+                    ${bloqueEntrantesHtml}
+                </div>
+
+                <!-- BLOQUE 2: CARRIL SALIENTE — AGENDA COMERCIAL SUGERIDA -->
+                <div class="wa-bandeja-section">
+                    <div class="wa-bandeja-section-title">
+                        <div style="font-weight: 800; font-size: 0.9rem; color: #0f172a;">
+                            📤 Carril Saliente — Agenda Comercial Sugerida
+                        </div>
+                        <span style="font-size: 0.73rem; color: #64748b;">Datos reales PostgreSQL · Tocá una tarjeta para filtrar Columna 1</span>
+                    </div>
+
+                    <div class="wa-bandeja-kpi-grid">
+                        <!-- KPI 1: Con saldo pendiente -->
+                        <div class="wa-bandeja-kpi-card" id="wa-kpi-card-CON_DEUDA" style="border-top: 3px solid #dc2626;">
+                            <div class="wa-bandeja-kpi-head" onclick="window.aplicarFiltroAgendaBandejaHoyWa('CON_DEUDA')">
+                                <div>
+                                    <div style="font-size: 0.78rem; font-weight: 800; color: #991b1b;">💰 Con saldo pendiente</div>
+                                    <div style="font-size: 0.69rem; color: #64748b; margin-top: 1px;">Saldo abierto &gt; $100</div>
+                                </div>
+                                <div class="wa-bandeja-kpi-num" style="color: #dc2626;">${Number(ag.con_deuda?.total || 0)}</div>
+                            </div>
+                            ${renderKpiItems(ag.con_deuda?.items, 'CON_DEUDA')}
+                            <button type="button" onclick="window.aplicarFiltroAgendaBandejaHoyWa('CON_DEUDA')" style="margin-top: auto; background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; border-radius: 7px; padding: 5px 8px; font-size: 0.73rem; font-weight: 800; cursor: pointer; width: 100%;">
+                                Filtrar en Clientes (${Number(ag.con_deuda?.total || 0)}) →
+                            </button>
+                        </div>
+
+                        <!-- KPI 2: Sin compra > 30 días -->
+                        <div class="wa-bandeja-kpi-card" id="wa-kpi-card-SIN_COMPRA_30D" style="border-top: 3px solid #2563eb;">
+                            <div class="wa-bandeja-kpi-head" onclick="window.aplicarFiltroAgendaBandejaHoyWa('SIN_COMPRA_30D')">
+                                <div>
+                                    <div style="font-size: 0.78rem; font-weight: 800; color: #1e40af;">🔄 Sin compra &gt; 30 días</div>
+                                    <div style="font-size: 0.69rem; color: #64748b; margin-top: 1px;">Oportunidad de reactivación</div>
+                                </div>
+                                <div class="wa-bandeja-kpi-num" style="color: #2563eb;">${Number(ag.sin_compra_30d?.total || 0)}</div>
+                            </div>
+                            ${renderKpiItems(ag.sin_compra_30d?.items, 'SIN_COMPRA_30D')}
+                            <button type="button" onclick="window.aplicarFiltroAgendaBandejaHoyWa('SIN_COMPRA_30D')" style="margin-top: auto; background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; border-radius: 7px; padding: 5px 8px; font-size: 0.73rem; font-weight: 800; cursor: pointer; width: 100%;">
+                                Filtrar en Clientes (${Number(ag.sin_compra_30d?.total || 0)}) →
+                            </button>
+                        </div>
+
+                        <!-- KPI 3: Entregados hoy / ayer -->
+                        <div class="wa-bandeja-kpi-card" id="wa-kpi-card-ENTREGADO_RECIENTE" style="border-top: 3px solid #0d9488;">
+                            <div class="wa-bandeja-kpi-head" onclick="window.aplicarFiltroAgendaBandejaHoyWa('ENTREGADO_RECIENTE')">
+                                <div>
+                                    <div style="font-size: 0.78rem; font-weight: 800; color: #115e59;">🚚 Entregados hoy / ayer</div>
+                                    <div style="font-size: 0.69rem; color: #64748b; margin-top: 1px;">Post-entrega últimas 48h</div>
+                                </div>
+                                <div class="wa-bandeja-kpi-num" style="color: #0d9488;">${Number(ag.entregados_recientes?.total || 0)}</div>
+                            </div>
+                            ${renderKpiItems(ag.entregados_recientes?.items, 'ENTREGADO_RECIENTE')}
+                            <button type="button" onclick="window.aplicarFiltroAgendaBandejaHoyWa('ENTREGADO_RECIENTE')" style="margin-top: auto; background: #f0fdfa; color: #115e59; border: 1px solid #99f6e4; border-radius: 7px; padding: 5px 8px; font-size: 0.73rem; font-weight: 800; cursor: pointer; width: 100%;">
+                                Filtrar en Clientes (${Number(ag.entregados_recientes?.total || 0)}) →
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    window.cargarYRenderizarBandejaHoyWa = async function (mostrarLoader = false) {
+        establecerModoBandejaHoyWa(true);
+        const colConv = document.getElementById('wa-hub-col-conv');
+        if (mostrarLoader && colConv) {
+            colConv.innerHTML = `<div style="margin:auto; color:#64748b; font-weight:700; font-size:0.86rem;">⏳ Actualizando Bandeja de Hoy...</div>`;
+        }
+        try {
+            const res = await fetch('/api/crm/whatsapp/bandeja-hoy');
+            const data = await res.json();
+            if (data && data.success) {
+                estadoConsola.bandejaHoy = data;
+                if (data.contadores_tabs) {
+                    actualizarContadoresTabsUiWa(data.contadores_tabs);
+                }
+                renderizarSubfiltrosCol1Wa();
+                if (estadoConsola.vistaBandejaHoy) {
+                    renderizarBandejaHoyHtmlWa(data);
+                }
+            }
+        } catch (err) {
+            console.warn('Error cargando Bandeja de Hoy:', err);
+        }
+    };
+
+    window.volverABandejaHoyWa = async function () {
+        estadoConsola.chatActivoId = null;
+        estadoConsola._asistenteChatRenderizadoId = null;
+        document.querySelectorAll('#wa-hub-chat-list .wa-chat-item.active').forEach(el => el.classList.remove('active'));
+        await window.cargarYRenderizarBandejaHoyWa(false);
+    };
+
+    window.aplicarFiltroAgendaBandejaHoyWa = async function (subfiltro) {
+        estadoConsola.filtroActivo = 'CLIENTES';
+        estadoConsola.subfiltroClientes = subfiltro || 'TODOS';
+        estadoConsola._firmaListaChats = '';
+        document.querySelectorAll('#modal-consola-whatsapp-lamda .wa-filter-tab').forEach(btn => {
+            if (btn.getAttribute('data-filtro') === 'CLIENTES') btn.classList.add('active');
+            else btn.classList.remove('active');
+        });
+        renderizarSubfiltrosCol1Wa();
+        await cargarListaChatsConsola();
+        const listEl = document.getElementById('wa-hub-chat-list');
+        if (listEl) listEl.scrollTop = 0;
+    };
 
     /**
      * Abre la Consola de 3 Columnas
@@ -1721,36 +2465,53 @@
         const modal = asegurarModalConsolaDom();
         modal.style.display = 'flex';
         estadoConsola.abierta = true;
-        // Siempre iniciar con los acordeones plegados por defecto al abrir la consola
         estadoConsola.acordeonesAbiertos.clear();
         estadoConsola._firmaListaChats = '';
         estadoConsola._firmaDetalleChat = '';
 
         if (chatIdSeleccionado) {
-            estadoConsola.chatActivoId = chatIdSeleccionado;
+            estadoConsola.chatActivoId = Number(chatIdSeleccionado);
+            establecerModoBandejaHoyWa(false);
+        } else {
+            // Regla Fase 2: al abrir sin chatId NO elegir chats[0] al azar; mostrar Bandeja de Hoy
+            estadoConsola.chatActivoId = null;
+            estadoConsola._asistenteChatRenderizadoId = null;
+            establecerModoBandejaHoyWa(true);
         }
 
-        await cargarListaChatsConsola();
+        renderizarSubfiltrosCol1Wa();
 
         // Pre-calentar en segundo plano el catálogo de precios y el mapa del Portal B2B
-        // para que al abrir el Asistente Comercial la respuesta sea instantánea
         setTimeout(() => {
             obtenerCatalogoDinamicoAsistenteWa().catch(() => {});
             obtenerMapaEstadosPortalB2BWa().catch(() => {});
         }, 150);
 
         if (estadoConsola.chatActivoId) {
-            await seleccionarChatConsola(estadoConsola.chatActivoId, true);
-        } else if (estadoConsola.chats.length > 0) {
-            await seleccionarChatConsola(estadoConsola.chats[0].id, true);
+            await Promise.all([
+                cargarListaChatsConsola(),
+                seleccionarChatConsola(estadoConsola.chatActivoId, true)
+            ]);
+            // Actualizar métricas de Bandeja en segundo plano para poblar contadores de chips
+            fetch('/api/crm/whatsapp/bandeja-hoy').then(r => r.json()).then(d => {
+                if (d && d.success) {
+                    estadoConsola.bandejaHoy = d;
+                    if (d.contadores_tabs) actualizarContadoresTabsUiWa(d.contadores_tabs);
+                    renderizarSubfiltrosCol1Wa();
+                }
+            }).catch(() => {});
+        } else {
+            await Promise.all([
+                window.cargarYRenderizarBandejaHoyWa(true),
+                cargarListaChatsConsola()
+            ]);
         }
+
         if (window.innerWidth <= 768 && typeof window.cambiarTabMovilConsolaWa === 'function') {
             window.cambiarTabMovilConsolaWa(chatIdSeleccionado ? 'conv' : 'chats');
         }
-        if (false) {
-        }
 
-        // Sincronización silenciosa automática al abrir la consola (trae lo enviado desde el celular sin tener que tocar "Traer Chats")
+        // Sincronización silenciosa automática al abrir la consola
         const sincronizarSilenciosoConCelular = async () => {
             if (estadoConsola._syncSilenciosoEnCurso) return;
             estadoConsola._syncSilenciosoEnCurso = true;
@@ -1764,6 +2525,8 @@
                     await cargarListaChatsConsola(true);
                     if (estadoConsola.chatActivoId) {
                         await seleccionarChatConsola(estadoConsola.chatActivoId, false);
+                    } else if (estadoConsola.vistaBandejaHoy) {
+                        await window.cargarYRenderizarBandejaHoyWa(false);
                     }
                 }
             } catch (_) {
@@ -1814,19 +2577,27 @@
     };
 
     window.cambiarFiltroConsolaWa = async function (nuevoFiltro) {
-        estadoConsola.filtroActivo = nuevoFiltro;
+        let filtroNorm = String(nuevoFiltro || 'CLIENTES').toUpperCase();
+        if (filtroNorm === 'NO_AGENDADOS') {
+            filtroNorm = 'OTROS';
+            estadoConsola.subfiltroOtros = 'PROVEEDOR';
+        } else if (filtroNorm === 'PRIVADOS') {
+            filtroNorm = 'OTROS';
+            estadoConsola.subfiltroOtros = 'PERSONAL_BOTS';
+        }
+        estadoConsola.filtroActivo = filtroNorm;
         estadoConsola._firmaListaChats = '';
         document.querySelectorAll('#modal-consola-whatsapp-lamda .wa-filter-tab').forEach(btn => {
-            if (btn.getAttribute('data-filtro') === nuevoFiltro) btn.classList.add('active');
+            if (btn.getAttribute('data-filtro') === filtroNorm) btn.classList.add('active');
             else btn.classList.remove('active');
         });
+        renderizarSubfiltrosCol1Wa();
         await cargarListaChatsConsola();
     };
 
     window.filtrarBusquedaConsolaWa = async function (valor) {
         estadoConsola.busqueda = valor || '';
         estadoConsola._firmaListaChats = '';
-        // Regla explícita del Director: al usar el buscador NO se deben desplegar todos los acordeones automáticamente
         await cargarListaChatsConsola();
     };
 
@@ -2130,21 +2901,118 @@
     }
 
     /**
-     * Carga la lista de chats para la Columna 1, agrupando contactos por cliente
-     * y organizando los clientes en acordeones cronológicos (Hoy, Ayer, Semana Pasada, Meses) plegados por defecto.
+     * Renderiza una tarjeta plana y escaneable de cliente/contacto en Columna 1 (Cero acordeones cerrados)
+     */
+    function renderizarTarjetaPlanaGrupoWa(g) {
+        const ctActivoEnGrupo = g.contactos.find(ct => Number(ct.id) === Number(estadoConsola.chatActivoId)) || null;
+        const c = ctActivoEnGrupo || g.contactos[0];
+        const isSelected = Boolean(ctActivoEnGrupo);
+        const isWaiting = g.algunoEsperando === true;
+        const titulo = escaparHtml(g.cliente_nombre || c.contacto_nombre || c.pushname_wa || c.telefono_normalizado);
+        const codTag = g.codigo_bunker_cliente
+            ? `<span class="wa-badge-num-bunker" title="Código Búnker">#${escaparHtml(g.codigo_bunker_cliente)}</span>`
+            : (g.lomas_soft_id ? `<span class="wa-badge-num-legacy">Nº ${escaparHtml(g.lomas_soft_id)}</span>` : '');
+
+        const catKeyItem = c.categoria_contacto || (c.es_cliente_bunker ? 'CLIENTE_BUNKER' : 'SIN_CLASIFICAR');
+        const catMetaItem = CATEGORIAS_CONTACTO_UI[catKeyItem];
+        const catBadgeItem = (catKeyItem !== 'CLIENTE_BUNKER' && catMetaItem)
+            ? `<span class="wa-cat-pill" style="background:${catMetaItem.bg}; color:${catMetaItem.color}; border:1px solid ${catMetaItem.border};">${catMetaItem.corto}</span>`
+            : '';
+
+        const privBadge = (c.modo_privacidad !== 'ACTIVO' || c.esta_silenciado_temporal)
+            ? `<span title="Silenciado / Personal" style="font-size:0.72rem;">🔒</span>`
+            : '';
+
+        const tiempoTxt = g.tieneComunicacionReal
+            ? formatearTiempoRelativo(c.ultimo_mensaje_at || g.maxFechaRealIso)
+            : '';
+
+        // Badges de telemetría comercial (solo cuando aplican, compactos y de lectura inmediata)
+        const badgesTelemetria = [];
+        if (Number(g.saldo_pendiente || 0) > 100) {
+            badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;" title="Saldo pendiente en Cuenta Corriente">💰 ${formatearMontoCortoArsWa(g.saldo_pendiente)}</span>`);
+        }
+        if (g.dias_sin_compra !== null && Number(g.dias_sin_compra) > 30) {
+            badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;" title="Días desde la última compra">🔄 ${g.dias_sin_compra}d</span>`);
+        }
+        if (g.entregado_reciente) {
+            badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#f0fdfa; color:#0f766e; border:1px solid #99f6e4;" title="Pedido entregado en las últimas 48h">🚚 48h</span>`);
+        }
+        if (g.contactos.length > 1) {
+            badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1;" title="${g.contactos.length} contactos vinculados (cambiá desde el encabezado del chat)">👥 ${g.contactos.length}</span>`);
+        }
+        const etq = ETIQUETAS_CRM[c.etiqueta_crm || ''];
+        if (c.etiqueta_crm && etq) {
+            badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:${etq.bg}; color:${etq.color};">${etq.label.split(' ')[0]}</span>`);
+        }
+
+        const nombreContactoHabitual = (c.cliente_nombre && c.contacto_nombre && c.contacto_nombre !== c.cliente_nombre)
+            ? `👤 ${escaparHtml(c.contacto_nombre)}`
+            : (!c.bunker_cliente_id ? `📱 ${escaparHtml(c.ultimos_digitos || c.telefono_normalizado)}` : '');
+
+        const textoMsg = g.tieneComunicacionReal
+            ? `${c.ultimo_mensaje_from_me ? renderizarIconoAck(c.ultimo_mensaje_ack) + ' ' : ''}${escaparHtml(formatearPreviewUnaLineaWa(c.ultimo_mensaje_texto || ''))}`
+            : `<span style="color:#94a3b8; font-style:italic;">Sin mensajes previos</span>`;
+
+        const totalNoLeidos = g.contactos.reduce((acc, ct) => acc + parseInt(ct.no_leidos || 0, 10), 0);
+        const idsTodosGrupo = g.contactos.map(ct => ct.id).join(',');
+
+        return `
+            <div class="wa-chat-item ${isSelected ? 'active' : ''} ${isWaiting ? 'waiting' : ''}" data-chat-id="${c.id}" data-group-chat-ids="${idsTodosGrupo}" onclick="window.seleccionarChatConsola(${c.id}, true)">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 5px;">
+                    <div style="display: flex; align-items: center; gap: 4px; min-width: 0; flex: 1; overflow: hidden;">
+                        <span style="font-weight: 800; font-size: 0.84rem; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${privBadge}${titulo}
+                        </span>
+                        ${codTag}
+                        ${catBadgeItem}
+                    </div>
+                    <span style="font-size: 0.68rem; color: ${isWaiting ? '#16a34a' : '#64748b'}; font-weight: ${isWaiting ? '800' : '600'}; flex-shrink: 0;">
+                        ${tiempoTxt}
+                    </span>
+                </div>
+                ${(nombreContactoHabitual || badgesTelemetria.length > 0) ? `
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px; flex-wrap: wrap;">
+                        ${nombreContactoHabitual ? `<span style="font-size: 0.71rem; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 135px;">${nombreContactoHabitual}</span>` : ''}
+                        <div style="display: flex; align-items: center; gap: 3px; flex-wrap: wrap; margin-left: auto;">
+                            ${badgesTelemetria.join('')}
+                        </div>
+                    </div>
+                ` : ''}
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 1px;">
+                    <div style="font-size: 0.75rem; color: #475569; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+                        ${textoMsg}
+                    </div>
+                    ${isWaiting ? `<span style="background:${totalNoLeidos > 0 ? '#16a34a' : '#0284c7'}; color:#fff; font-size:0.64rem; font-weight:800; padding:1px 6px; border-radius:999px; flex-shrink:0;">${totalNoLeidos > 0 ? totalNoLeidos : '●'}</span>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Carga la lista plana y escaneable de Columna 1 (3 Solapas Claras + Subfiltros rápidos, CERO acordeones cerrados)
      */
     async function cargarListaChatsConsola(silencioso = false) {
         const listEl = document.getElementById('wa-hub-chat-list');
         if (!listEl) return;
 
         try {
+            const subfiltroActual = estadoConsola.filtroActivo === 'CLIENTES'
+                ? (estadoConsola.subfiltroClientes || 'TODOS')
+                : (estadoConsola.filtroActivo === 'OTROS' ? (estadoConsola.subfiltroOtros || 'TODOS') : 'TODOS');
+
             const params = new URLSearchParams({
                 filtro: estadoConsola.filtroActivo,
+                subfiltro: subfiltroActual,
                 q: estadoConsola.busqueda
             });
             const res = await fetch(`/api/crm/whatsapp/chats?${params.toString()}`);
             const data = await res.json();
             if (!data.success) return;
+
+            if (data.contadores_tabs) {
+                actualizarContadoresTabsUiWa(data.contadores_tabs);
+            }
 
             const rawChats = data.data || [];
             // Unificar en cliente posibles filas duplicadas (@c.us vs @lid) del mismo contacto/cliente Búnker
@@ -2171,6 +3039,8 @@
                         ex.out_hoy = Number(ex.out_hoy || 0) + Number(r.out_hoy || 0);
                         ex.cant_mensajes_reales = Number(ex.cant_mensajes_reales || 0) + Number(r.cant_mensajes_reales || 0);
                         ex.tiene_comunicacion_real = Boolean(ex.tiene_comunicacion_real || r.tiene_comunicacion_real);
+                        ex.saldo_pendiente = Math.max(Number(ex.saldo_pendiente || 0), Number(r.saldo_pendiente || 0));
+                        ex.antiguedad_deuda_dias = Math.max(Number(ex.antiguedad_deuda_dias || 0), Number(r.antiguedad_deuda_dias || 0));
                         if (!ex.etiqueta_crm && r.etiqueta_crm) ex.etiqueta_crm = r.etiqueta_crm;
                         if (!ex.nota_rapida && r.nota_rapida) ex.nota_rapida = r.nota_rapida;
                         const fEx = ex.ultimo_mensaje_at ? new Date(ex.ultimo_mensaje_at).getTime() : 0;
@@ -2196,12 +3066,12 @@
             estadoConsola.chats = chatsUnificados;
 
             // Polling inteligente sin parpadeo: comparar firma ligera de estado antes de tocar el DOM
-            // (el resaltado de chatActivoId se aplica in-place desde seleccionarChatConsola sin reconstruir la lista)
             const firmaListaActual = [
                 estadoConsola.filtroActivo,
+                subfiltroActual,
                 estadoConsola.busqueda,
                 chatsUnificados.map(c =>
-                    `${c.id}:${c.no_leidos || 0}:${c.esperando_respuesta ? 1 : 0}:${c.ultimo_mensaje_ack || 0}:${c.categoria_contacto || ''}:${c.modo_privacidad || ''}:${c.ultimo_mensaje_at || ''}:${String(c.ultimo_mensaje_texto || '').slice(0, 40)}`
+                    `${c.id}:${c.no_leidos || 0}:${c.esperando_respuesta ? 1 : 0}:${c.ultimo_mensaje_ack || 0}:${c.categoria_contacto || ''}:${c.modo_privacidad || ''}:${c.ultimo_mensaje_at || ''}:${Math.round(Number(c.saldo_pendiente || 0))}:${String(c.ultimo_mensaje_texto || '').slice(0, 40)}`
                 ).join(';')
             ].join('||');
             if (silencioso && firmaListaActual === estadoConsola._firmaListaChats) {
@@ -2210,18 +3080,28 @@
             estadoConsola._firmaListaChats = firmaListaActual;
 
             if (estadoConsola.chats.length === 0) {
+                const msgVacio = estadoConsola.filtroActivo === 'SIN_RESPONDER'
+                    ? '✅ Al día — 0 mensajes comerciales sin responder.'
+                    : `No hay contactos en esta vista${estadoConsola.busqueda ? ` para <strong>"${escaparHtml(estadoConsola.busqueda)}"</strong>` : ''}.`;
                 listEl.innerHTML = `
-                    <div style="padding: 28px 16px; text-align: center; color: #64748b; font-size: 0.86rem;">
-                        <p style="margin-bottom: 10px;">No hay conversaciones en la vista <strong>${estadoConsola.filtroActivo}</strong>${estadoConsola.busqueda ? ` para <strong>"${escaparHtml(estadoConsola.busqueda)}"</strong>` : ''}.</p>
-                        <button type="button" onclick="window.sincronizarChatsWhatsappLamda()" style="background: #f0fdf4; border: 1px solid #86efac; color: #166534; padding: 6px 12px; border-radius: 6px; font-weight: 700; cursor: pointer;">
-                            🔄 Traer chats recientes de WhatsApp
-                        </button>
+                    <div style="padding: 28px 16px; text-align: center; color: #64748b; font-size: 0.83rem;">
+                        <p style="margin-bottom: 10px; font-weight: 600;">${msgVacio}</p>
+                        ${estadoConsola.filtroActivo === 'CLIENTES' && subfiltroActual !== 'TODOS' ? `
+                            <button type="button" onclick="window.cambiarSubfiltroConsolaWa('TODOS')" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155; padding: 5px 11px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 0.76rem;">
+                                Ver todos los clientes
+                            </button>
+                        ` : `
+                            <button type="button" onclick="window.sincronizarChatsWhatsappLamda()" style="background: #f0fdf4; border: 1px solid #86efac; color: #166534; padding: 6px 12px; border-radius: 6px; font-weight: 700; cursor: pointer; font-size: 0.76rem;">
+                                🔄 Traer chats recientes
+                            </button>
+                        `}
                     </div>
                 `;
                 return;
             }
 
-            // 1. Agrupar contactos que pertenecen al mismo cliente (bunker_cliente_id)
+            // 1. Agrupar contactos que pertenecen al mismo cliente (bunker_cliente_id) en vista CLIENTES
+            const agruparPorCliente = estadoConsola.filtroActivo === 'CLIENTES' || estadoConsola.filtroActivo === 'SIN_RESPONDER';
             const mapaGrupos = new Map();
             const listaGrupos = [];
             estadoConsola.chats.forEach((c, idx) => {
@@ -2229,7 +3109,7 @@
                 c.tiene_comunicacion_real = tieneReal;
                 c.fechaRealMs = (tieneReal && c.ultimo_mensaje_at) ? new Date(c.ultimo_mensaje_at).getTime() : 0;
 
-                const groupKey = c.bunker_cliente_id ? `bc_${c.bunker_cliente_id}` : `raw_${c.id}`;
+                const groupKey = (agruparPorCliente && c.bunker_cliente_id) ? `bc_${c.bunker_cliente_id}` : `raw_${c.id}`;
                 if (!mapaGrupos.has(groupKey)) {
                     const nuevoGrupo = {
                         groupKey,
@@ -2237,16 +3117,32 @@
                         cliente_nombre: c.cliente_nombre || c.contacto_nombre || c.pushname_wa || c.telefono_normalizado,
                         codigo_bunker_cliente: c.codigo_bunker_cliente || '',
                         lomas_soft_id: c.lomas_soft_id || '',
+                        saldo_pendiente: Number(c.saldo_pendiente || 0),
+                        antiguedad_deuda_dias: Number(c.antiguedad_deuda_dias || 0),
+                        dias_sin_compra: c.dias_sin_compra !== null && c.dias_sin_compra !== undefined ? Number(c.dias_sin_compra) : null,
+                        entregado_reciente: Boolean(c.entregado_reciente),
+                        ultimo_entregado_ms: c.ultimo_entregado_at ? new Date(c.ultimo_entregado_at).getTime() : 0,
                         contactos: [],
                         ordenAparicion: idx
                     };
                     mapaGrupos.set(groupKey, nuevoGrupo);
                     listaGrupos.push(nuevoGrupo);
                 }
-                mapaGrupos.get(groupKey).contactos.push(c);
+                const g = mapaGrupos.get(groupKey);
+                g.saldo_pendiente = Math.max(g.saldo_pendiente, Number(c.saldo_pendiente || 0));
+                g.antiguedad_deuda_dias = Math.max(g.antiguedad_deuda_dias, Number(c.antiguedad_deuda_dias || 0));
+                if (g.dias_sin_compra === null && c.dias_sin_compra !== null && c.dias_sin_compra !== undefined) {
+                    g.dias_sin_compra = Number(c.dias_sin_compra);
+                }
+                if (c.entregado_reciente) {
+                    g.entregado_reciente = true;
+                    const tsE = c.ultimo_entregado_at ? new Date(c.ultimo_entregado_at).getTime() : 0;
+                    if (tsE > g.ultimo_entregado_ms) g.ultimo_entregado_ms = tsE;
+                }
+                g.contactos.push(c);
             });
 
-            // 2. Ordenar los contactos de cada cliente poniendo primero el contacto activo por el cual nos comunicamos
+            // 2. Ordenar los contactos de cada grupo poniendo primero el contacto habitual / más activo
             listaGrupos.forEach(g => {
                 g.contactos.sort((a, b) => {
                     const wA = a.esperando_respuesta ? 1 : 0;
@@ -2255,143 +3151,42 @@
                     const inA = Number(a.in_hoy || 0) > 0 ? 1 : 0;
                     const inB = Number(b.in_hoy || 0) > 0 ? 1 : 0;
                     if (inA !== inB) return inB - inA;
-                    const outA = Number(a.out_hoy || 0) > 0 ? 1 : 0;
-                    const outB = Number(b.out_hoy || 0) > 0 ? 1 : 0;
-                    if (outA !== outB) return outB - outA;
                     return (b.fechaRealMs || 0) - (a.fechaRealMs || 0);
                 });
-
                 g.algunoEsperando = g.contactos.some(ct => ct.esperando_respuesta === true);
                 g.tieneComunicacionReal = g.contactos.some(ct => ct.tiene_comunicacion_real === true);
                 g.maxFechaRealMs = Math.max(0, ...g.contactos.map(ct => ct.fechaRealMs || 0));
-                g.totalInHoy = g.contactos.reduce((acc, ct) => acc + Number(ct.in_hoy || 0), 0);
-                g.totalOutHoy = g.contactos.reduce((acc, ct) => acc + Number(ct.out_hoy || 0), 0);
-                g.esConversacionActivaHoy = Boolean(g.algunoEsperando || g.totalInHoy > 0);
+                g.maxFechaRealIso = g.maxFechaRealMs > 0 ? new Date(g.maxFechaRealMs).toISOString() : null;
             });
 
-            // 3. Clasificar cada grupo de cliente en su acordeón temporal correspondiente
-            const mapaAcordeones = new Map();
-            listaGrupos.forEach(g => {
-                const infoAcc = clasificarGrupoEnAcordeonTemporal(g);
-                if (!mapaAcordeones.has(infoAcc.key)) {
-                    mapaAcordeones.set(infoAcc.key, {
-                        ...infoAcc,
-                        grupos: []
-                    });
-                }
-                mapaAcordeones.get(infoAcc.key).grupos.push(g);
-            });
-
-            const acordeonesOrdenados = Array.from(mapaAcordeones.values()).sort((a, b) => a.ordenBucket - b.ordenBucket);
-            const hayBusquedaActiva = estadoConsola.busqueda.trim().length > 0;
-
-            // 4. Renderizar acordeones (siempre plegados por defecto al abrir, y sin desplegarse solos al buscar)
+            // 3. Ordenar lista plana según subfiltro comercial o actividad real
             let html = '';
-            acordeonesOrdenados.forEach(acc => {
-                // Ordenar clientes dentro del acordeón
-                if (acc.key === 'ACC_HOY') {
-                    // Dentro de Hoy: primero Conversación Activa, luego Contactados Hoy (mensaje enviado), y por hora descendente
-                    acc.grupos.sort((a, b) => {
-                        const actA = a.esConversacionActivaHoy ? 1 : 0;
-                        const actB = b.esConversacionActivaHoy ? 1 : 0;
-                        if (actA !== actB) return actB - actA;
-                        return (b.maxFechaRealMs || 0) - (a.maxFechaRealMs || 0);
-                    });
-                } else if (acc.key === 'ACC_SIN_CONTACTO') {
-                    acc.grupos.sort((a, b) => String(a.cliente_nombre || '').localeCompare(String(b.cliente_nombre || ''), 'es'));
-                } else {
-                    acc.grupos.sort((a, b) => (b.maxFechaRealMs || 0) - (a.maxFechaRealMs || 0));
+            if (estadoConsola.filtroActivo === 'CLIENTES' && subfiltroActual === 'CON_DEUDA') {
+                listaGrupos.sort((a, b) => (b.antiguedad_deuda_dias - a.antiguedad_deuda_dias) || (b.saldo_pendiente - a.saldo_pendiente));
+                html = listaGrupos.map(renderizarTarjetaPlanaGrupoWa).join('');
+            } else if (estadoConsola.filtroActivo === 'CLIENTES' && subfiltroActual === 'SIN_COMPRA_30D') {
+                listaGrupos.sort((a, b) => (Number(b.dias_sin_compra || 0) - Number(a.dias_sin_compra || 0)));
+                html = listaGrupos.map(renderizarTarjetaPlanaGrupoWa).join('');
+            } else if (estadoConsola.filtroActivo === 'CLIENTES' && subfiltroActual === 'ENTREGADO_RECIENTE') {
+                listaGrupos.sort((a, b) => (b.ultimo_entregado_ms - a.ultimo_entregado_ms));
+                html = listaGrupos.map(renderizarTarjetaPlanaGrupoWa).join('');
+            } else {
+                const conHistorial = listaGrupos.filter(g => g.tieneComunicacionReal);
+                const sinHistorial = listaGrupos.filter(g => !g.tieneComunicacionReal);
+                conHistorial.sort((a, b) => {
+                    const wA = a.algunoEsperando ? 1 : 0;
+                    const wB = b.algunoEsperando ? 1 : 0;
+                    if (wA !== wB) return wB - wA;
+                    return (b.maxFechaRealMs || 0) - (a.maxFechaRealMs || 0);
+                });
+                sinHistorial.sort((a, b) => String(a.cliente_nombre || '').localeCompare(String(b.cliente_nombre || ''), 'es'));
+
+                html = conHistorial.map(renderizarTarjetaPlanaGrupoWa).join('');
+                if (sinHistorial.length > 0) {
+                    html += `<div class="wa-flat-divider">Sin conversación previa (${sinHistorial.length})</div>`;
+                    html += sinHistorial.map(renderizarTarjetaPlanaGrupoWa).join('');
                 }
-
-                const estaAbierto = estadoConsola.acordeonesAbiertos.has(acc.key);
-                const cantClientes = acc.grupos.length;
-                const cantContactos = acc.grupos.reduce((sum, g) => sum + g.contactos.length, 0);
-
-                let resumenDerecha = `${cantClientes} ${cantClientes === 1 ? 'cliente' : 'clientes'}`;
-                if (acc.key === 'ACC_HOY') {
-                    const cantActivos = acc.grupos.filter(g => g.esConversacionActivaHoy).length;
-                    const cantEnviados = cantClientes - cantActivos;
-                    resumenDerecha = `${cantClientes} clientes (${cantActivos} act. / ${cantEnviados} env.)`;
-                } else if (cantContactos > cantClientes) {
-                    resumenDerecha = `${cantClientes} ${cantClientes === 1 ? 'cliente' : 'clientes'} · ${cantContactos} cont.`;
-                }
-
-                // Si el usuario está buscando y el acordeón está plegado, mostrar píldoras rápidas de los clientes hallados sin abrir todos los acordeones
-                let chipsBusquedaHtml = '';
-                if (hayBusquedaActiva) {
-                    const primeros = acc.grupos.slice(0, 4).map(g => {
-                        const ctDef = g.contactos[0];
-                        const numLeg = g.lomas_soft_id ? `Nº ${escaparHtml(g.lomas_soft_id)}` : (g.codigo_bunker_cliente ? `#${escaparHtml(g.codigo_bunker_cliente)}` : '');
-                        const multiTxt = g.contactos.length > 1 ? ` · 👥 ${g.contactos.length}` : '';
-                        return `<span class="wa-search-preview-chip" onclick="event.stopPropagation(); window.seleccionarChatConsola(${ctDef.id}, true)" title="Abrir directo el chat de ${escaparHtml(g.cliente_nombre)}">🎯 ${escaparHtml(g.cliente_nombre)} ${numLeg ? `<strong style="color:#1e40af;">(${numLeg})</strong>` : ''}${multiTxt}</span>`;
-                    }).join('');
-                    const extraCnt = acc.grupos.length > 4 ? `<span style="font-size:0.7rem; color:#64748b; font-weight:700;">+${acc.grupos.length - 4} más</span>` : '';
-                    chipsBusquedaHtml = `
-                        <div id="wa-acc-chips-${acc.key}" style="display:${!estaAbierto ? 'flex' : 'none'}; flex-wrap:wrap; gap:4px; margin-top:3px; align-items:center;">
-                            ${primeros}${extraCnt}
-                        </div>
-                    `;
-                }
-
-                let interiorHtml = '';
-                if (acc.key === 'ACC_HOY') {
-                    const activosHoy = acc.grupos.filter(g => g.esConversacionActivaHoy);
-                    const enviadosHoy = acc.grupos.filter(g => !g.esConversacionActivaHoy);
-                    let contadorGlobalHoy = 0;
-
-                    if (activosHoy.length > 0) {
-                        interiorHtml += `
-                            <div class="wa-acc-subdivider" style="background:#f0fdf4; color:#15803d;">
-                                <span>🔥 En conversación activa hoy</span>
-                                <span>${activosHoy.length}</span>
-                            </div>
-                        `;
-                        activosHoy.forEach(g => {
-                            contadorGlobalHoy++;
-                            interiorHtml += renderizarTarjetaGrupoClienteHtml(g, contadorGlobalHoy, true);
-                        });
-                    }
-                    if (enviadosHoy.length > 0) {
-                        interiorHtml += `
-                            <div class="wa-acc-subdivider" style="background:#f0f9ff; color:#0369a1;">
-                                <span>📨 Ya contactados hoy (mensaje enviado)</span>
-                                <span>${enviadosHoy.length}</span>
-                            </div>
-                        `;
-                        enviadosHoy.forEach(g => {
-                            contadorGlobalHoy++;
-                            interiorHtml += renderizarTarjetaGrupoClienteHtml(g, contadorGlobalHoy, true);
-                        });
-                    }
-                } else {
-                    acc.grupos.forEach((g, idxGrupo) => {
-                        interiorHtml += renderizarTarjetaGrupoClienteHtml(g, idxGrupo + 1, false);
-                    });
-                }
-
-                html += `
-                    <div class="wa-acc-section">
-                        <div class="wa-acc-header" style="background:${acc.bgHeader}; border-left: 4px solid ${acc.borderLeft};" onclick="window.toggleAcordeonChatsWa('${acc.key}')">
-                            <div class="wa-acc-header-row">
-                                <div class="wa-acc-title" style="color:${acc.colorTexto};">
-                                    <span id="wa-acc-arrow-${acc.key}" class="wa-acc-arrow">${estaAbierto ? '▼' : '▶'}</span>
-                                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escaparHtml(acc.titulo)}</span>
-                                </div>
-                                <span class="wa-acc-count-pill" style="background:${acc.bgPill}; color:${acc.colorPill};">
-                                    ${resumenDerecha}
-                                </span>
-                            </div>
-                            <div style="font-size:0.7rem; color:#64748b; padding-left:20px;">
-                                ${escaparHtml(acc.subtitulo)}
-                            </div>
-                            ${chipsBusquedaHtml}
-                        </div>
-                        <div id="wa-acc-body-${acc.key}" style="display:${estaAbierto ? 'block' : 'none'}; border-top:1px solid #e2e8f0;">
-                            ${interiorHtml}
-                        </div>
-                    </div>
-                `;
-            });
+            }
 
             const prevScrollList = listEl.scrollTop;
             listEl.innerHTML = html;
@@ -2404,35 +3199,91 @@
     }
 
     /**
-     * Selecciona un chat y renderiza la Columna 2 (Conversación) y Columna 3 (Rayos X del Cliente)
+     * Cambia entre las 2 Solapas Vivas de Columna 3: 'ASISTENTE' | 'FICHA'
+     */
+    window.cambiarTabColumna3Wa = function (tab) {
+        const target = tab === 'FICHA' ? 'FICHA' : 'ASISTENTE';
+        estadoConsola.tabCol3Activa = target;
+        const btnAsist = document.getElementById('wa-xray-tab-ASISTENTE');
+        const btnFicha = document.getElementById('wa-xray-tab-FICHA');
+        const paneAsist = document.getElementById('wa-xray-pane-asistente');
+        const paneFicha = document.getElementById('wa-xray-pane-ficha');
+        if (btnAsist) btnAsist.classList.toggle('active', target === 'ASISTENTE');
+        if (btnFicha) btnFicha.classList.toggle('active', target === 'FICHA');
+        if (paneAsist) paneAsist.style.display = target === 'ASISTENTE' ? 'flex' : 'none';
+        if (paneFicha) paneFicha.style.display = target === 'FICHA' ? 'flex' : 'none';
+    };
+
+    /**
+     * Enfoca el Copiloto vivo en Columna 3 Solapa 1 sin abrir ningún modal SweetAlert2
+     */
+    window.enfocarAsistenteHibridoCol3Wa = async function () {
+        const chatPk = Number(estadoConsola.chatActivoId || estadoConsola.detalleActivo?.chat?.id || 0);
+        if (!chatPk) return;
+
+        // Si el usuario había colapsado la columna derecha, reabrirla al ancho cómodo
+        const act = obtenerAnchosColumnasActualesWa();
+        const def = obtenerAnchosDefaultResponsivosWa();
+        if (act.right < 260) {
+            aplicarAnchosColumnasWa(act.left, def.right, true);
+        }
+        establecerModoBandejaHoyWa(false);
+        window.cambiarTabColumna3Wa('ASISTENTE');
+
+        if (window.innerWidth <= 768 && typeof window.cambiarTabMovilConsolaWa === 'function') {
+            window.cambiarTabMovilConsolaWa('xray');
+        }
+
+        const paneAsist = document.getElementById('wa-xray-pane-asistente');
+        const yaCargadoParaChat = Number(estadoConsola._asistenteChatRenderizadoId) === chatPk && Boolean(document.getElementById('wa-asist-com-textarea'));
+        if (!yaCargadoParaChat) {
+            estadoConsola._asistenteLoadSeq = (estadoConsola._asistenteLoadSeq || 0) + 1;
+            const mySeq = estadoConsola._asistenteLoadSeq;
+            await window.abrirAsistenteComercialConversacionWa({
+                chatId: chatPk,
+                modoInlineCol3: true,
+                loadSeq: mySeq
+            });
+        } else {
+            const area = document.getElementById('wa-asist-com-textarea');
+            if (area) {
+                area.focus();
+                if (paneAsist) paneAsist.scrollTop = 0;
+            }
+        }
+    };
+
+    /**
+     * Selecciona un chat y renderiza Columna 2 (Conversación) + Columna 3 (2 Solapas Vivas: Asistente Híbrido | Ficha & CC)
      */
     window.seleccionarChatConsola = async function (chatPk, scrollAlFinal = true) {
         if (scrollAlFinal && window.innerWidth <= 768 && typeof window.cambiarTabMovilConsolaWa === 'function') {
             window.cambiarTabMovilConsolaWa('conv');
         }
-        estadoConsola.chatActivoId = chatPk;
+        const chatPkNum = Number(chatPk);
+        const eraOtroChat = Number(estadoConsola.chatActivoId) !== chatPkNum || estadoConsola.vistaBandejaHoy;
+        estadoConsola.chatActivoId = chatPkNum;
+        establecerModoBandejaHoyWa(false);
+
         document.querySelectorAll('#wa-hub-chat-list .wa-chat-item').forEach(el => {
-            if (Number(el.getAttribute('data-chat-id')) === Number(chatPk)) {
+            const directId = Number(el.getAttribute('data-chat-id'));
+            const grpIds = String(el.getAttribute('data-group-chat-ids') || '').split(',').map(Number);
+            if (directId === chatPkNum || grpIds.includes(chatPkNum)) {
                 el.classList.add('active');
             } else {
                 el.classList.remove('active');
             }
         });
-        document.querySelectorAll('#wa-hub-chat-list .wa-client-group').forEach(grp => {
-            if (grp.querySelector('.wa-chat-item.active')) {
-                grp.classList.add('has-active');
-            } else {
-                grp.classList.remove('has-active');
-            }
-        });
 
         try {
-            const res = await fetch(`/api/crm/whatsapp/chats/${chatPk}/detalle`);
+            const res = await fetch(`/api/crm/whatsapp/chats/${chatPkNum}/detalle`);
             const data = await res.json();
             if (!data.success) return;
 
-            // Polling inteligente de 6s: comparar firma ligera (ultimo_mensaje_id, ack, no_leidos, categoria_contacto, etc.)
-            // Si no hubo cambios reales, NO destruir ni re-renderizar el DOM de las columnas 2 y 3
+            // Guard anti-race si el usuario cambió rápido de chat
+            if (Number(estadoConsola.chatActivoId) !== chatPkNum) return;
+
+            // Polling inteligente de 6s: comparar firma ligera antes de tocar el DOM
             const msgsArr = Array.isArray(data.mensajes) ? data.mensajes : [];
             const lastMsg = msgsArr.length > 0 ? msgsArr[msgsArr.length - 1] : null;
             const firmaAcks = msgsArr.slice(-8).map(m => `${m.id || m.msg_id || ''}:${m.ack || 0}:${String(m.cuerpo || '').length}`).join(',');
@@ -2453,7 +3304,7 @@
                 Array.isArray(data.rayos_x?.seguimientos) ? data.rayos_x.seguimientos.length : 0
             ].join('|');
 
-            const mismoChat = estadoConsola.detalleActivo && estadoConsola.detalleActivo.chat && Number(estadoConsola.detalleActivo.chat.id) === Number(chatPk);
+            const mismoChat = !eraOtroChat && estadoConsola.detalleActivo && estadoConsola.detalleActivo.chat && Number(estadoConsola.detalleActivo.chat.id) === chatPkNum;
 
             estadoConsola.detalleActivo = data;
             estadoConsola.chatActivoDatos = data.chat;
@@ -2467,16 +3318,16 @@
             // Si el usuario estaba escribiendo en el input del mismo chat y es solo un refresco de fondo, conservar texto, cursor y scroll
             const inputExistente = document.getElementById('wa-hub-input-texto');
             const scrollExistente = document.getElementById('wa-hub-messages-scroll');
-            const textoEnCurso = (inputExistente && !scrollAlFinal) ? inputExistente.value : '';
+            const textoEnCurso = (inputExistente && !scrollAlFinal && mismoChat) ? inputExistente.value : '';
             const estabaEnFoco = (inputExistente && document.activeElement === inputExistente);
             const selStart = (estabaEnFoco && typeof inputExistente.selectionStart === 'number') ? inputExistente.selectionStart : null;
             const selEnd = (estabaEnFoco && typeof inputExistente.selectionEnd === 'number') ? inputExistente.selectionEnd : null;
-            const prevScrollMsgs = (scrollExistente && !scrollAlFinal) ? scrollExistente.scrollTop : null;
+            const prevScrollMsgs = (scrollExistente && !scrollAlFinal && mismoChat) ? scrollExistente.scrollTop : null;
 
             renderizarColumnaConversacion(data.chat, data.mensajes, scrollAlFinal, textoEnCurso, estabaEnFoco);
             renderizarColumnaRayosX(data.chat, data.rayos_x);
 
-            if (!scrollAlFinal) {
+            if (!scrollAlFinal && mismoChat) {
                 const newScroll = document.getElementById('wa-hub-messages-scroll');
                 if (newScroll && prevScrollMsgs !== null) {
                     newScroll.scrollTop = prevScrollMsgs;
@@ -2486,13 +3337,51 @@
                     try { newInp.setSelectionRange(selStart, selEnd); } catch (_) {}
                 }
             }
+
+            // Orquestación del Copiloto Vivo en Columna 3 (SOLO al cambiar de chat, nunca durante polling de fondo)
+            const necesitaCargarCopiloto = !mismoChat || Number(estadoConsola._asistenteChatRenderizadoId) !== chatPkNum;
+            if (necesitaCargarCopiloto) {
+                const catChat = data.chat?.categoria_contacto || (data.chat?.es_cliente_bunker ? 'CLIENTE_BUNKER' : 'SIN_CLASIFICAR');
+                const esChatComercial = catChat === 'CLIENTE_BUNKER' || catChat === 'PROSPECTO';
+                const paneAsist = document.getElementById('wa-xray-pane-asistente');
+
+                if (esChatComercial) {
+                    window.cambiarTabColumna3Wa('ASISTENTE');
+                    estadoConsola._asistenteLoadSeq = (estadoConsola._asistenteLoadSeq || 0) + 1;
+                    const mySeq = estadoConsola._asistenteLoadSeq;
+                    // Auto-cargar Asistente Híbrido inline en Columna 3 (sin Swal bloqueante)
+                    window.abrirAsistenteComercialConversacionWa({
+                        chatId: chatPkNum,
+                        modoInlineCol3: true,
+                        loadSeq: mySeq
+                    });
+                } else {
+                    window.cambiarTabColumna3Wa('FICHA');
+                    estadoConsola._asistenteChatRenderizadoId = null;
+                    if (paneAsist) {
+                        const catMeta = CATEGORIAS_CONTACTO_UI[catChat] || CATEGORIAS_CONTACTO_UI.SIN_CLASIFICAR;
+                        paneAsist.innerHTML = `
+                            <div style="margin: auto; text-align: center; padding: 24px 14px; color: #475569;">
+                                <div style="font-size: 1.8rem; margin-bottom: 6px;">✨</div>
+                                <div style="font-weight: 800; font-size: 0.88rem; color: #0f172a; margin-bottom: 4px;">Contacto clasificado como ${escaparHtml(catMeta.label)}</div>
+                                <p style="font-size: 0.76rem; color: #64748b; margin: 0 0 12px; line-height: 1.4;">
+                                    El Asistente Comercial se activa automáticamente solo en Clientes Búnker y Prospectos para ahorrar ruido y créditos IA.
+                                </p>
+                                <button type="button" onclick="window.abrirAsistenteComercialConversacionWa({ chatId: ${chatPkNum}, modoInlineCol3: true })" style="background: #0f766e; color: #ffffff; border: none; padding: 7px 13px; border-radius: 7px; font-size: 0.76rem; font-weight: 800; cursor: pointer;">
+                                    ✨ Cargar Asistente igualmente
+                                </button>
+                            </div>
+                        `;
+                    }
+                }
+            }
         } catch (err) {
             console.error('Error cargando detalle del chat:', err);
         }
     };
 
     /**
-     * Renderiza la Columna 2: Conversación + Barra de Acciones Rápidas LAMDA
+     * Renderiza la Columna 2: Conversación + Barra de Herramientas Conectada al Copiloto
      */
     function renderizarColumnaConversacion(chat, mensajes, scrollAlFinal, textoEnCurso = '', restaurarFoco = false) {
         const colConv = document.getElementById('wa-hub-col-conv');
@@ -2513,18 +3402,29 @@
         const catBtnColor = chat.esta_silenciado_temporal ? '#92400e' : catActualUi.color;
         const catBtnBorder = chat.esta_silenciado_temporal ? '#fcd34d' : catActualUi.border;
 
-        // Si el cliente activo tiene múltiples contactos en la lista, mostrar selector rápido entre sus contactos
+        // Chips multicontacto destacando el contacto habitual / más reciente (★)
         const contactosMismoCliente = chat.bunker_cliente_id
-            ? (estadoConsola.chats || []).filter(c => Number(c.bunker_cliente_id) === Number(chat.bunker_cliente_id))
+            ? (estadoConsola.chats || [])
+                .filter(c => Number(c.bunker_cliente_id) === Number(chat.bunker_cliente_id))
+                .slice()
+                .sort((a, b) => {
+                    const ta = a.ultimo_mensaje_at && a.ultimo_mensaje_texto !== 'Cliente Búnker vinculado' ? new Date(a.ultimo_mensaje_at).getTime() : 0;
+                    const tb = b.ultimo_mensaje_at && b.ultimo_mensaje_texto !== 'Cliente Búnker vinculado' ? new Date(b.ultimo_mensaje_at).getTime() : 0;
+                    return tb - ta;
+                })
             : [];
+        const contactoHabitualId = contactosMismoCliente.length > 1 && contactosMismoCliente[0]?.tiene_comunicacion_real
+            ? Number(contactosMismoCliente[0].id)
+            : null;
         const selectorMultiContactosHtml = contactosMismoCliente.length > 1
             ? `<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap; margin-top:2px;">
                 <span style="font-size:0.69rem; font-weight:700; color:#64748b;">Contactos:</span>
                 ${contactosMismoCliente.map(ct => {
                     const esAct = Number(ct.id) === Number(chat.id);
+                    const esHab = contactoHabitualId && Number(ct.id) === contactoHabitualId;
                     const nom = escaparHtml(ct.contacto_nombre || ct.telefono_normalizado);
                     const crg = ct.contacto_cargo ? ` (${escaparHtml(ct.contacto_cargo)})` : '';
-                    return `<button type="button" onclick="window.seleccionarChatConsola(${ct.id}, true)" style="background:${esAct ? '#075e54' : '#ffffff'}; color:${esAct ? '#ffffff' : '#334155'}; border:1px solid ${esAct ? '#075e54' : '#cbd5e1'}; border-radius:999px; padding:1.5px 7px; font-size:0.7rem; font-weight:${esAct ? '800' : '600'}; cursor:pointer; white-space:nowrap;">👤 ${nom}${crg}</button>`;
+                    return `<button type="button" onclick="window.seleccionarChatConsola(${ct.id}, true)" title="${esHab ? 'Contacto habitual / más reciente en WhatsApp' : 'Cambiar a este contacto del cliente'}" style="background:${esAct ? '#075e54' : '#ffffff'}; color:${esAct ? '#ffffff' : '#334155'}; border:1px solid ${esAct ? '#075e54' : (esHab ? '#10b981' : '#cbd5e1')}; border-radius:999px; padding:1.5px 7px; font-size:0.7rem; font-weight:${esAct || esHab ? '800' : '600'}; cursor:pointer; white-space:nowrap;">${esHab ? '★ ' : ''}👤 ${nom}${crg}</button>`;
                 }).join('')}
                </div>`
             : '';
@@ -2542,7 +3442,6 @@
                 const primerEntranteIdx = i + 1;
                 const cantContigua = mensajes.length - primerEntranteIdx;
                 const noLeidosNum = parseInt(chat.no_leidos || 0, 10);
-                // Mostrar separador si el chat espera respuesta, tiene no_leidos > 0, o hay una ráfaga entrante (>= 2) tras un mensaje nuestro
                 if (primerEntranteIdx > 0 && (chat.esperando_respuesta || noLeidosNum > 0 || cantContigua >= 2)) {
                     idxInicioBloqueEntrante = primerEntranteIdx;
                     cantBloqueEntrante = cantContigua;
@@ -2553,8 +3452,8 @@
         let burbujasHtml = '';
         if (!mensajes || mensajes.length === 0) {
             burbujasHtml = `
-                <div style="margin: auto; background: rgba(255,255,255,0.85); padding: 14px 20px; border-radius: 10px; text-align: center; color: #475569; font-size: 0.85rem;">
-                    No hay mensajes guardados todavía en este hilo. Podés escribir abajo o tocar <strong>"Traer Chats"</strong> arriba.
+                <div style="margin: auto; background: rgba(255,255,255,0.88); padding: 14px 20px; border-radius: 10px; text-align: center; color: #475569; font-size: 0.84rem; max-width: 340px;">
+                    Sin mensajes guardados aún en este número.<br>Podés usar el <strong>✨ Asistente Híbrido</strong> a la derecha o escribir abajo.
                 </div>
             `;
         } else {
@@ -2599,30 +3498,29 @@
             : (det.codigo === 'CONSULTA_PRECIO_PRODUCTO' ? 'linear-gradient(90deg, #eff6ff 0%, #f0f9ff 100%)' : '#f8fafc');
         const borradorGuardado = textoEnCurso || obtenerBorradorChatWa(chat.id);
         const tieneBorrador = borradorGuardado.trim().length > 0;
-        const tituloJsSafe = String(chat.cliente_nombre || chat.contacto_nombre || chat.pushname_wa || chat.telefono_normalizado || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
         colConv.innerHTML = `
-            <!-- Encabezado Compacto del Chat (Identidad + Controles propios + Chips Multicontacto en ancho completo) -->
+            <!-- Encabezado Compacto del Chat -->
             <div class="wa-conv-header">
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0;">
                     <div style="min-width: 0; flex: 1;">
                         <div style="font-weight: 800; font-size: 0.94rem; color: #0f172a; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; line-height: 1.2;">
-                            <button type="button" class="wa-mob-nav-pill" onclick="window.cambiarTabMovilConsolaWa('chats')" title="Volver a la lista de chats">← Chats</button>
-                            <button type="button" class="wa-mob-nav-pill" onclick="window.cambiarTabMovilConsolaWa('xray')" style="background:#ecfdf5; border-color:#6ee7b7; color:#065f46;" title="Ver Ficha / Rayos X del Cliente">📊 Ficha</button>
+                            <button type="button" class="wa-mob-nav-pill" onclick="window.cambiarTabMovilConsolaWa('chats')" title="Volver a la lista">← Lista</button>
+                            <button type="button" class="wa-mob-nav-pill" onclick="window.cambiarTabMovilConsolaWa('xray')" style="background:#ecfdf5; border-color:#6ee7b7; color:#065f46;" title="Ver Asistente / Ficha">✨ Copiloto</button>
                             <span>${titulo}</span>
                             ${badgeLegacyHdr}
                             ${badgeBunkerHdr}
                         </div>
-                        <div style="font-size: 0.73rem; color: #475569; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${subinfo}</div>
+                        <div style="font-size: 0.72rem; color: #475569; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${subinfo}</div>
                     </div>
                     <div style="display: flex; gap: 5px; align-items: center; flex-wrap: nowrap; flex-shrink: 0;">
                         ${chat.esperando_respuesta ? `
-                            <button type="button" onclick="window.marcarChatAtendidoWa(${chat.id})" style="background: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 4px 9px; border-radius: 6px; font-size: 0.73rem; font-weight: 800; cursor: pointer; white-space: nowrap;">
+                            <button type="button" onclick="window.marcarChatAtendidoWa(${chat.id})" style="background: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 4px 9px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer; white-space: nowrap;">
                                 ✓ Visto
                             </button>
                         ` : ''}
                         <div id="wa-categoria-wrap" class="wa-categoria-wrap">
-                            <button type="button" id="btn-wa-categoria-menu" aria-haspopup="true" aria-expanded="false" onclick="window.toggleMenuCategoriaConsolaWa(this, event)" style="background: ${catBtnBg}; border: 1px solid ${catBtnBorder}; color: ${catBtnColor}; padding: 4px 9px; border-radius: 6px; font-size: 0.73rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Clasificar contacto en 1 clic (Negocio vs Personal / Proveedor / Bot)">
+                            <button type="button" id="btn-wa-categoria-menu" aria-haspopup="true" aria-expanded="false" onclick="window.toggleMenuCategoriaConsolaWa(this, event)" style="background: ${catBtnBg}; border: 1px solid ${catBtnBorder}; color: ${catBtnColor}; padding: 4px 9px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Clasificar contacto en 1 clic">
                                 ${catBtnLabel} ▾
                             </button>
                             <div id="wa-categoria-popover" class="wa-categoria-popover" role="menu">
@@ -2657,22 +3555,19 @@
                 ${burbujasHtml}
             </div>
 
-            <!-- Barra Única de Herramientas Comerciales y Atajos (1 sola línea ~38px) -->
+            <!-- Barra Única Conectada al Copiloto en Columna 3 (Cero botones duplicados) -->
             <div id="wa-hub-tools-bar" class="wa-tools-bar" style="background: ${bgTools};">
                 <div class="wa-tools-left">
-                    <span style="background: ${esPrioritario ? '#059669' : '#475569'}; color: #fff; font-weight: 800; padding: 2px 8px; border-radius: 999px; font-size: 0.69rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;" title="${escaparHtml(det.ultimoRecibido || det.etiqueta)}">
+                    <span style="background: ${esPrioritario ? '#059669' : '#475569'}; color: #fff; font-weight: 800; padding: 2px 8px; border-radius: 999px; font-size: 0.68rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;" title="${escaparHtml(det.ultimoRecibido || det.etiqueta)}">
                         ${escaparHtml(det.etiqueta)}
                     </span>
                 </div>
                 <div class="wa-tools-right">
-                    <button type="button" id="btn-wa-tool-asistente" class="wa-tool-btn" onclick="window.abrirAsistenteComercialConversacionWa({ chatId: ${chat.id}, pasoInicial: '${det.pasoSugerido}' })" style="background: linear-gradient(135deg, #059669, #0d9488); border: none; color: #ffffff;" title="Asistente Comercial: Lista de Precios, Link del Portal B2B, qué compra y respuestas paso a paso">
-                        💬 Asistente
-                    </button>
-                    <button type="button" id="btn-wa-tool-politicas" class="wa-tool-btn" onclick="window.abrirAsistentePoliticasFinanciacionWa({ chatId: ${chat.id}, escenario: 'PAGOS_PARCIALES' })" style="background: linear-gradient(135deg, #1e40af, #0284c7); border: none; color: #ffffff;" title="Asistente de Políticas, Financiación y Pagos Parciales">
-                        🛡️ Políticas
+                    <button type="button" id="btn-wa-tool-asistente" class="wa-tool-btn" onclick="window.enfocarAsistenteHibridoCol3Wa()" style="background: linear-gradient(135deg, #059669, #0d9488); border: none; color: #ffffff;" title="Enfocar el Asistente Híbrido vivo en la Columna 3 (sin tapar el chat)">
+                        ✨ Asistente Híbrido
                     </button>
                     <div id="wa-atajos-wrap" class="wa-atajos-wrap">
-                        <button type="button" id="btn-wa-atajos-menu" class="wa-tool-btn" aria-haspopup="true" aria-expanded="false" onclick="window.toggleMenuAtajosConsolaWa(this, event)" style="background: #ffffff; border: 1px solid #94a3b8; color: #0f172a;" title="Atajos rápidos de texto y seguimiento">
+                        <button type="button" id="btn-wa-atajos-menu" class="wa-tool-btn" aria-haspopup="true" aria-expanded="false" onclick="window.toggleMenuAtajosConsolaWa(this, event)" style="background: #ffffff; border: 1px solid #94a3b8; color: #0f172a;" title="Atajos rápidos de texto, políticas y seguimiento">
                             ⚡ Atajos ▾
                         </button>
                         <div id="wa-atajos-popover" class="wa-atajos-popover" role="menu">
@@ -2689,29 +3584,32 @@
                                 <span>🚚</span><span>Mercadería en camino</span>
                             </button>
                             <div class="wa-atajos-sep"></div>
+                            <button type="button" class="wa-atajos-item" data-atajo="POLITICAS" onclick="window.cerrarMenuAtajosConsolaWa(); window.abrirAsistentePoliticasFinanciacionWa({ chatId: ${chat.id}, escenario: 'PAGOS_PARCIALES' });">
+                                <span>🛡️</span><span>Políticas / Pagos Parciales</span>
+                            </button>
                             <button type="button" class="wa-atajos-item" data-atajo="SEGUIMIENTO" onclick="window.cerrarMenuAtajosConsolaWa(); window.programarSeguimientoDesdeChatWa();">
-                                <span>📅</span><span>Agendar Seguimiento</span>
+                                <span>📅</span><span>Reservar / Agendar Seguimiento</span>
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Indicador de Borrador Reservado (no se pierde al cerrar la ventana) -->
+            <!-- Indicador de Borrador Reservado -->
             <div id="wa-hub-borrador-banner" style="display: ${tieneBorrador ? 'flex' : 'none'}; justify-content: space-between; align-items: center; background: #ecfdf5; border-top: 1px solid #a7f3d0; padding: 3px 12px; font-size: 0.72rem; color: #065f46; font-weight: 700; flex-shrink: 0;">
                 <span>💾 Borrador reservado en este chat</span>
                 <button type="button" onclick="window.limpiarBorradorChatWa(${chat.id})" style="background: none; border: none; color: #dc2626; font-size: 0.72rem; font-weight: 800; cursor: pointer; text-decoration: underline;">🗑️ Limpiar</button>
             </div>
 
-            <!-- Área de Escritura Compacta (Botones horizontales) -->
+            <!-- Área de Escritura Compacta -->
             <div class="wa-conv-input-area">
-                <textarea id="wa-hub-input-texto" rows="${tieneBorrador && borradorGuardado.length > 90 ? 3 : 2}" placeholder="Escribí un mensaje para enviar por WhatsApp (Enter envía, Shift+Enter salta línea)..." oninput="window.guardarBorradorChatWa(${chat.id}, this.value)" onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); window.enviarMensajeDesdeConsolaWa(${chat.id}); }" style="flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.88rem; font-family: inherit; resize: vertical; min-height: 40px; max-height: 110px; line-height: 1.3;">${escaparHtml(borradorGuardado)}</textarea>
+                <textarea id="wa-hub-input-texto" rows="${tieneBorrador && borradorGuardado.length > 90 ? 3 : 2}" placeholder="Escribí un mensaje para enviar por WhatsApp (Enter envía, Shift+Enter salta línea)..." oninput="window.guardarBorradorChatWa(${chat.id}, this.value)" onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); window.enviarMensajeDesdeConsolaWa(${chat.id}); }" style="flex: 1; padding: 7px 10px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.87rem; font-family: inherit; resize: vertical; min-height: 40px; max-height: 110px; line-height: 1.3;">${escaparHtml(borradorGuardado)}</textarea>
                 <div class="wa-conv-input-actions">
-                    <button type="button" id="btn-wa-enviar-ahora" onclick="window.enviarMensajeDesdeConsolaWa(${chat.id})" style="background: #128c7e; color: white; border: none; padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 0.84rem; cursor: pointer; white-space: nowrap;" title="Enviar mensaje ahora mismo por WhatsApp">
+                    <button type="button" id="btn-wa-enviar-ahora" onclick="window.enviarMensajeDesdeConsolaWa(${chat.id})" style="background: #128c7e; color: white; border: none; padding: 8px 13px; border-radius: 8px; font-weight: 800; font-size: 0.83rem; cursor: pointer; white-space: nowrap;" title="Enviar mensaje ahora mismo por WhatsApp">
                         🚀 Enviar
                     </button>
-                    <button type="button" id="btn-wa-programar" onclick="window.programarMensajeDesdeConsolaWa(${chat.id})" style="background: #0284c7; color: white; border: none; padding: 8px 11px; border-radius: 8px; font-weight: 800; font-size: 0.78rem; cursor: pointer; white-space: nowrap;" title="Reservar / Programar este mensaje para otro día y horario (Seguimientos WhatsApp)">
-                        📅 Programar
+                    <button type="button" id="btn-wa-programar" onclick="window.programarMensajeDesdeConsolaWa(${chat.id})" style="background: #0284c7; color: white; border: none; padding: 8px 11px; border-radius: 8px; font-weight: 800; font-size: 0.78rem; cursor: pointer; white-space: nowrap;" title="Reservar este mensaje como borrador programado para otro día/horario">
+                        📅 Reservar
                     </button>
                 </div>
             </div>
@@ -2723,7 +3621,6 @@
             const dividerEl = document.getElementById('wa-unread-divider-anchor');
             if (dividerEl) {
                 const topDividerRel = dividerEl.offsetTop - scrollContainer.offsetTop;
-                // Si el bloque de mensajes nuevos es más alto que la ventana visible, arrancar mirando desde el separador de nuevos (con 56px de contexto del mensaje previo)
                 if (topDividerRel < scrollContainer.scrollTop) {
                     scrollContainer.scrollTop = Math.max(0, topDividerRel - 56);
                 }
@@ -2736,11 +3633,11 @@
     }
 
     /**
-     * Renderiza la Columna 3: Rayos X Comerciales del Cliente en Tiempo Real
+     * Renderiza la Solapa 2 de Columna 3: 📊 Ficha & CC (Datos duros limpios sin duplicaciones)
      */
     function renderizarColumnaRayosX(chat, rayosX) {
-        const colXray = document.getElementById('wa-hub-col-xray');
-        if (!colXray) return;
+        const paneFicha = document.getElementById('wa-xray-pane-ficha') || document.getElementById('wa-hub-col-xray');
+        if (!paneFicha) return;
 
         estadoConsola.rayosXActivo = rayosX;
         const cli = rayosX?.cliente;
@@ -2748,88 +3645,54 @@
         const facturas = rayosX?.ultimas_facturas || [];
         const pedidos = rayosX?.pedidos_recientes || [];
         const seguimientos = rayosX?.seguimientos || [];
+        const habituales = Array.isArray(rayosX?.articulos_habituales) ? rayosX.articulos_habituales : [];
 
-        // Opciones de etiqueta CRM
         const opcionesEtiqueta = Object.entries(ETIQUETAS_CRM).map(([key, val]) => {
             const sel = (chat.etiqueta_crm || '') === key ? 'selected' : '';
             return `<option value="${key}" ${sel}>${val.label}</option>`;
         }).join('');
+        const tieneEtiquetaONota = Boolean((chat.etiqueta_crm && chat.etiqueta_crm.trim()) || (chat.nota_rapida && chat.nota_rapida.trim()));
 
-        let html = `
-            <!-- 1. Clasificación CRM y Nota Rápida de la Conversación -->
-            <div class="wa-xray-card" style="background: #f0fdf4; border-color: #bbf7d0;">
-                <div class="wa-xray-title" style="color: #166534;">
-                    <span>🏷️ Estado CRM del Chat</span>
-                </div>
-                <select onchange="window.guardarEtiquetaNotaChatWa(${chat.id}, this.value, null)" style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #86efac; font-size: 0.84rem; font-weight: 700; margin-bottom: 8px; background: #fff;">
-                    ${opcionesEtiqueta}
-                </select>
-                <textarea id="wa-xray-nota-rapida" rows="2" placeholder="📌 Nota rápida de este cliente/chat (se guarda al salir del campo)..." onblur="window.guardarEtiquetaNotaChatWa(${chat.id}, null, this.value)" style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.8rem; box-sizing: border-box; resize: vertical;">${escaparHtml(chat.nota_rapida || '')}</textarea>
-            </div>
-        `;
+        let html = '';
 
         if (!cli) {
             html += `
                 <div class="wa-xray-card" style="border-color: #fde68a; background: #fffbeb;">
                     <div class="wa-xray-title" style="color: #92400e;">❓ Número no vinculado a Búnker</div>
-                    <p style="font-size: 0.8rem; color: #78350f; margin: 4px 0 10px;">
+                    <p style="font-size: 0.78rem; color: #78350f; margin: 4px 0 9px; line-height: 1.35;">
                         Este número (<strong>+${escaparHtml(chat.telefono_normalizado)}</strong>) todavía no está asociado a un cliente de Búnker.
                     </p>
-                    <button type="button" onclick="window.vincularChatConClienteBunkerModal(${chat.id})" style="width: 100%; background: #d97706; color: white; border: none; padding: 7px 10px; border-radius: 6px; font-weight: 700; font-size: 0.8rem; cursor: pointer; margin-bottom: 6px;">
-                        🔗 Vincular a un Cliente de Búnker
-                    </button>
-                    <button type="button" onclick="window.cambiarPrivacidadRapidaWa(${chat.id}, '${escaparHtml(chat.telefono_normalizado)}')" style="width: 100%; background: #ffffff; color: #475569; border: 1px solid #cbd5e1; padding: 6px 10px; border-radius: 6px; font-weight: 700; font-size: 0.78rem; cursor: pointer;">
-                        🔒 Es contacto personal / Ocultar
+                    <button type="button" onclick="window.vincularChatConClienteBunkerModal(${chat.id})" style="width: 100%; background: #d97706; color: white; border: none; padding: 7px 10px; border-radius: 7px; font-weight: 800; font-size: 0.78rem; cursor: pointer;">
+                        🔗 Vincular a Cliente de Búnker
                     </button>
                 </div>
             `;
         } else {
-            const saldoColor = cc.saldo_actual > 0 ? '#dc2626' : '#16a34a';
+            const saldoColor = cc.saldo_actual > 0.01 ? '#dc2626' : '#16a34a';
             const saldoFormateado = Number(cc.saldo_actual || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
 
             html += `
-                <!-- 2. Ficha del Cliente Búnker -->
-                <div class="wa-xray-card">
-                    <div class="wa-xray-title">
-                        <span>🏢 Cliente Búnker #${escaparHtml(cli.codigo_bunker_cliente || cli.id)}</span>
-                        <button type="button" onclick="window.vincularChatConClienteBunkerModal(${chat.id})" style="background:none; border:none; color:#0284c7; font-size:0.72rem; cursor:pointer; text-decoration:underline;">Cambiar</button>
-                    </div>
-                    <div style="font-weight: 800; font-size: 0.94rem; color: #0f172a;">${escaparHtml(cli.cliente_nombre)}</div>
-                    ${cli.razon_social ? `<div style="font-size: 0.78rem; color: #475569;">Razón Social: ${escaparHtml(cli.razon_social)}</div>` : ''}
-                    ${cli.cuit_cuil ? `<div style="font-size: 0.76rem; color: #64748b;">CUIT: ${escaparHtml(cli.cuit_cuil)} (${escaparHtml(cli.condicion_iva || '-')})</div>` : ''}
-                    ${cli.lista_asignada_id ? `<div style="font-size: 0.76rem; color: #0f766e; font-weight: 700;">🏷️ Lista Asignada: Lista #${cli.lista_asignada_id} (${escaparHtml(cli.lista_asignada_nombre || '')})</div>` : ''}
-                    ${cli.lomas_localidad || cli.domicilio_fiscal ? `<div style="font-size: 0.76rem; color: #64748b;">📍 ${escaparHtml(cli.lomas_localidad || cli.domicilio_fiscal)}</div>` : ''}
-                    <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e2e8f0;">
-                        <button type="button" onclick="window.abrirAsistenteComercialConversacionWa({ chatId: ${chat.id} })" style="width: 100%; background: #ecfdf5; border: 1px solid #6ee7b7; color: #065f46; padding: 6px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800; cursor: pointer; text-align: left;">
-                            💬 Asistente: Lista de Precios, Portal y Qué Compra
-                        </button>
-                        <button type="button" onclick="window.abrirAsistentePoliticasFinanciacionWa({ chatId: ${chat.id}, escenario: 'PAGOS_PARCIALES' })" style="width: 100%; background: #eff6ff; border: 1px solid #93c5fd; color: #1e40af; padding: 6px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 800; cursor: pointer; text-align: left;">
-                            🛡️ Asistente: Políticas y Pagos Parciales
-                        </button>
-                    </div>
-                </div>
-
-                <!-- 3. Estado de Cuenta Corriente -->
+                <!-- 1. Cuenta Corriente + Capas de Deuda (Acción única: Extracto PDF + Políticas) -->
                 <div class="wa-xray-card" style="${cc.saldo_actual > 0.01 ? 'border-color: #fecaca; background: #fffbfa;' : ''}">
                     <div class="wa-xray-title">
                         <span>💰 Cuenta Corriente ${cli.codigo_bunker_cliente ? `<a href="${resolverUrlModuloLamda(3005, `/pages/cuenta-corriente.html?cliente=${encodeURIComponent(cli.codigo_bunker_cliente)}`)}" target="_blank" style="font-size:0.7rem; color:#0284c7; font-weight:700; text-decoration:none; margin-left:4px; text-transform:none;">Ver CC ↗</a>` : ''}</span>
-                        <span style="font-size: 0.96rem; font-weight: 800; color: ${saldoColor};">${saldoFormateado}</span>
+                        <span style="font-size: 0.96rem; font-weight: 900; color: ${saldoColor};">${saldoFormateado}</span>
                     </div>
                     ${(cc.composicion && Array.isArray(cc.composicion.capas) && cc.composicion.capas.length > 0) ? `
                         <div style="margin-bottom: 6px; padding: 5px 7px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px;">
-                            <div style="font-size: 0.69rem; font-weight: 800; color: #991b1b; margin-bottom: 3px;">⏳ Composición de Saldo Pendiente:</div>
+                            <div style="font-size: 0.68rem; font-weight: 800; color: #991b1b; margin-bottom: 3px;">⏳ Capas de Saldo Pendiente:</div>
                             <div style="display: flex; flex-direction: column; gap: 3px;">
                                 ${cc.composicion.capas.map(capa => {
                                     const descCorta = String(capa.descripcion || capa.tipo_comprobante || 'Comprobante').replace(/\s*\(CAE:[^)]*\)/i, '').trim();
                                     const mPend = Number(capa.monto_pendiente || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
-                                    const diasBadge = capa.antiguedad_dias > 0 ? `Hace ${capa.antiguedad_dias}d` : 'Hoy';
+                                    const diasBadge = capa.antiguedad_dias > 0 ? `${capa.antiguedad_dias}d` : 'Hoy';
                                     const badgeBg = capa.antiguedad_dias > 14 ? '#dc2626' : (capa.antiguedad_dias > 7 ? '#d97706' : '#16a34a');
                                     return `
-                                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.72rem; background:#ffffff; padding:2px 6px; border-radius:4px; border:1px solid #fee2e2;">
-                                            <span style="color:#1e293b; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:165px;" title="${escaparHtml(capa.descripcion || '')}">${escaparHtml(descCorta)}</span>
+                                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.71rem; background:#ffffff; padding:2px 6px; border-radius:4px; border:1px solid #fee2e2; gap:4px;">
+                                            <span style="color:#1e293b; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1;" title="${escaparHtml(capa.descripcion || '')}">${escaparHtml(descCorta)}</span>
                                             <span style="display:inline-flex; align-items:center; gap:4px; flex-shrink:0;">
                                                 <strong style="color:#b91c1c;">${mPend}</strong>
-                                                <span style="background:${badgeBg}; color:#fff; font-size:0.64rem; font-weight:800; padding:0px 5px; border-radius:8px;">${diasBadge}</span>
+                                                <span style="background:${badgeBg}; color:#fff; font-size:0.63rem; font-weight:800; padding:0px 5px; border-radius:8px;">${diasBadge}</span>
                                             </span>
                                         </div>
                                     `;
@@ -2838,37 +3701,34 @@
                         </div>
                     ` : ''}
                     ${cc.ultimos_movimientos.length === 0 ? `
-                        <div style="font-size: 0.78rem; color: #64748b;">Sin movimientos recientes registrados.</div>
+                        <div style="font-size: 0.76rem; color: #64748b;">Sin movimientos recientes registrados.</div>
                     ` : cc.ultimos_movimientos.slice(0, 4).map(m => {
                         const f = m.fecha_movimiento ? new Date(m.fecha_movimiento).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '';
                         const montoTxt = Number(m.monto || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
                         const descLimpia = String(m.descripcion || m.tipo_comprobante || m.origen_tipo || 'Movimiento').replace(/\s+/g, ' ').replace(/\s*\(CAE:[^)]*\)/i, '').trim();
                         const esDebito = m.tipo_movimiento === 'DEBITO';
                         return `
-                            <div style="display:flex; justify-content:space-between; font-size:0.74rem; padding:3px 0; border-bottom:1px dashed #e2e8f0;" title="${escaparHtml(String(m.descripcion || '').replace(/\s+/g, ' ').trim())}">
-                                <span style="color:#334155; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:190px;">${f} · ${escaparHtml(descLimpia)}</span>
+                            <div style="display:flex; justify-content:space-between; font-size:0.73rem; padding:3px 0; border-bottom:1px dashed #e2e8f0; gap:6px;" title="${escaparHtml(String(m.descripcion || '').replace(/\s+/g, ' ').trim())}">
+                                <span style="color:#334155; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1;">${f} · ${escaparHtml(descLimpia)}</span>
                                 <strong style="color:${esDebito ? '#b91c1c' : '#15803d'}; flex-shrink:0;">${esDebito ? '+' : '-'}${montoTxt}</strong>
                             </div>
                         `;
                     }).join('')}
-                    <div style="margin-top: 8px; padding-top: 7px; border-top: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 5px;">
-                        <button type="button" onclick="window.abrirAsistentePoliticasFinanciacionWa({ chatId: ${chat.id}, escenario: 'PAGOS_PARCIALES' })" style="width: 100%; background: linear-gradient(135deg, #1e40af, #0284c7); color: #ffffff; border: none; border-radius: 6px; padding: 7px 8px; font-size: 0.74rem; font-weight: 800; cursor: pointer; white-space: normal; line-height: 1.25; text-align: center; box-shadow: 0 1px 3px rgba(2,132,199,0.25);">
-                            🛡️ Asistente: Políticas y Pagos Parciales
-                        </button>
-                        <button type="button" onclick="window.abrirAsistentePoliticasFinanciacionWa({ chatId: ${chat.id}, escenario: 'EXTRACTO_CON_POLITICAS', incluirPdf: true, incluirSaldo: true })" style="width: 100%; background: #f8fafc; color: #0f766e; border: 1px solid #99f6e4; border-radius: 6px; padding: 6px 8px; font-size: 0.72rem; font-weight: 800; cursor: pointer; white-space: normal; line-height: 1.25; text-align: center;">
+                    <div style="margin-top: 8px; padding-top: 7px; border-top: 1px solid #e2e8f0;">
+                        <button type="button" id="btn-wa-ficha-extracto-politicas" onclick="window.abrirAsistentePoliticasFinanciacionWa({ chatId: ${chat.id}, escenario: 'EXTRACTO_CON_POLITICAS', incluirPdf: true, incluirSaldo: true })" style="width: 100%; background: #f0fdfa; color: #0f766e; border: 1px solid #99f6e4; border-radius: 7px; padding: 6px 8px; font-size: 0.73rem; font-weight: 800; cursor: pointer; text-align: center;">
                             📄 Enviar Extracto PDF + Políticas
                         </button>
                     </div>
                 </div>
 
-                <!-- 3.5. Últimas Facturas Emitidas + Secuencia de Gestión Comercial -->
+                <!-- 2. Últimas Facturas / NC -->
                 <div class="wa-xray-card" style="border-color: #cbd5e1;">
                     <div class="wa-xray-title">
                         <span>🧾 Últimas Facturas (${facturas.length})</span>
-                        <a href="${resolverUrlModuloLamda(3004, '/pages/facturas.html')}" target="_blank" style="font-size:0.72rem; color:#0284c7; font-weight:700; text-decoration:none;">🏛️ Bandeja ARCA ↗</a>
+                        <a href="${resolverUrlModuloLamda(3004, '/pages/facturas.html')}" target="_blank" style="font-size:0.7rem; color:#0284c7; font-weight:700; text-decoration:none; text-transform:none;">🏛️ Bandeja ARCA ↗</a>
                     </div>
                     ${facturas.length === 0 ? `
-                        <div style="font-size: 0.78rem; color: #64748b;">Sin facturas emitidas recientes.</div>
+                        <div style="font-size: 0.76rem; color: #64748b;">Sin facturas emitidas recientes.</div>
                     ` : facturas.map(f => {
                         const esNC = [3, 8, 13].includes(Number(f.tipo_cbte));
                         const esBorrador = f.estado === 'BORRADOR';
@@ -2883,22 +3743,21 @@
                         const items = Array.isArray(f.items) ? f.items : [];
                         const ncsAsociadas = Array.isArray(f.ncs_asociadas) ? f.ncs_asociadas : [];
                         return `
-                            <div style="padding: 6px 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.76rem; ${esBorrador ? 'background:#fffbeb; padding:6px; border-radius:6px; margin-bottom:4px; border:1px solid #fde68a;' : ''}">
+                            <div style="padding: 5px 0; border-bottom: 1px dashed #e2e8f0; font-size: 0.74rem; ${esBorrador ? 'background:#fffbeb; padding:6px; border-radius:6px; margin-bottom:4px; border:1px solid #fde68a;' : ''}">
                                 <div style="display:flex; justify-content:space-between; align-items:center; gap: 4px;">
-                                    <div>
+                                    <div style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                                         <strong style="color:${esNC ? '#b91c1c' : '#0f172a'};">${tipoLetra} ${nroComp}</strong>
-                                        <span style="color:#64748b; font-size:0.7rem;">(${fechaTxt})</span>
-                                        ${esBorrador ? `<span style="background:#fef08a; color:#854d0e; font-size:0.65rem; font-weight:800; padding:1px 5px; border-radius:4px; margin-left:3px;">EN BANDEJA ARCA</span>` : ''}
+                                        <span style="color:#64748b; font-size:0.68rem;">(${fechaTxt})</span>
                                     </div>
-                                    <div style="display:flex; align-items:center; gap:6px;">
+                                    <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
                                         <strong style="color:${esNC ? '#b91c1c' : '#0f172a'};">${totTxt}</strong>
                                         ${!esNC && !esBorrador ? `
-                                            <button type="button" onclick="window.iniciarSecuenciaGestionComprobanteWa(${chat.id}, ${f.id})" title="Iniciar Secuencia Estándar de Gestión Comercial o Depositar NC + Nueva Factura en Bandeja ARCA" style="background:#fff7ed; border:1px solid #fdba74; color:#c2410c; border-radius:4px; padding:2px 6px; font-size:0.68rem; font-weight:800; cursor:pointer;">
+                                            <button type="button" onclick="window.iniciarSecuenciaGestionComprobanteWa(${chat.id}, ${f.id})" title="Gestionar factura o depositar NC + Nueva Factura en Bandeja ARCA" style="background:#fff7ed; border:1px solid #fdba74; color:#c2410c; border-radius:4px; padding:1.5px 5px; font-size:0.66rem; font-weight:800; cursor:pointer;">
                                                 🛠️ Gestionar
                                             </button>
                                         ` : `
-                                            <a href="${resolverUrlModuloLamda(3004, '/pages/facturas.html')}" target="_blank" style="background:#e0f2fe; border:1px solid #7dd3fc; color:#0369a1; border-radius:4px; padding:2px 6px; font-size:0.66rem; font-weight:800; text-decoration:none;">
-                                                🏛️ Ver ARCA
+                                            <a href="${resolverUrlModuloLamda(3004, '/pages/facturas.html')}" target="_blank" style="background:#e0f2fe; border:1px solid #7dd3fc; color:#0369a1; border-radius:4px; padding:1.5px 5px; font-size:0.65rem; font-weight:800; text-decoration:none;">
+                                                🏛️ ARCA
                                             </a>
                                         `}
                                     </div>
@@ -2906,19 +3765,19 @@
                                 ${ncsAsociadas.length > 0 ? `
                                     <div style="margin-top:3px; display:flex; flex-wrap:wrap; gap:4px;">
                                         ${ncsAsociadas.map(nc => `
-                                            <span style="font-size:0.67rem; font-weight:700; padding:1px 6px; border-radius:4px; background:${nc.estado === 'BORRADOR' ? '#fef3c7' : '#dcfce7'}; color:${nc.estado === 'BORRADOR' ? '#92400e' : '#166534'}; border:1px solid ${nc.estado === 'BORRADOR' ? '#fcd34d' : '#86efac'};">
-                                                ${nc.estado === 'BORRADOR' ? `📝 NC Borrador #${nc.id} en Bandeja ARCA (-$${Number(nc.imp_total || 0).toLocaleString('es-AR', {minimumFractionDigits:2})})` : `✅ NC Emitida #${nc.cbte_nro || nc.id} (-$${Number(nc.imp_total || 0).toLocaleString('es-AR', {minimumFractionDigits:2})})`}
+                                            <span style="font-size:0.65rem; font-weight:700; padding:1px 5px; border-radius:4px; background:${nc.estado === 'BORRADOR' ? '#fef3c7' : '#dcfce7'}; color:${nc.estado === 'BORRADOR' ? '#92400e' : '#166534'}; border:1px solid ${nc.estado === 'BORRADOR' ? '#fcd34d' : '#86efac'};">
+                                                ${nc.estado === 'BORRADOR' ? `📝 NC Borrador #${nc.id}` : `✅ NC #${nc.cbte_nro || nc.id}`} (-$${Number(nc.imp_total || 0).toLocaleString('es-AR', {minimumFractionDigits:2})})
                                             </span>
                                         `).join('')}
                                     </div>
                                 ` : ''}
                                 ${items.length > 0 ? `
-                                    <div style="margin-top:3px; padding-left:6px; border-left:2px solid #e2e8f0; color:#475569; font-size:0.7rem;">
-                                        ${items.map(it => {
+                                    <div style="margin-top:3px; padding-left:6px; border-left:2px solid #e2e8f0; color:#475569; font-size:0.68rem;">
+                                        ${items.slice(0, 4).map(it => {
                                             const pNeto = Number(it.p_unit || 0);
                                             return `<div style="display:flex; justify-content:space-between; gap:4px;">
-                                                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:175px;">• ${escaparHtml(it.articulo_id || '')} (${Number(it.qty || 1)}u)</span>
-                                                <span style="color:#334155; font-weight:600;">$${pNeto.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} neto</span>
+                                                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1;">• ${escaparHtml(it.articulo_id || '')} (${Number(it.qty || 1)}u)</span>
+                                                <span style="color:#334155; font-weight:600; flex-shrink:0;">$${pNeto.toLocaleString('es-AR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                                             </div>`;
                                         }).join('')}
                                     </div>
@@ -2928,41 +3787,66 @@
                     }).join('')}
                 </div>
 
-                <!-- 4. Últimos Pedidos / Presupuestos -->
+                <!-- 3. Últimos Pedidos -->
                 <div class="wa-xray-card">
                     <div class="wa-xray-title">
                         <span>📦 Últimos Pedidos (${pedidos.length})</span>
-                        <a href="/presupuestos" target="_blank" style="font-size:0.72rem; color:#0284c7; text-decoration:none;">Ir a Presupuestos ↗</a>
+                        <a href="/presupuestos" target="_blank" style="font-size:0.7rem; color:#0284c7; text-decoration:none; text-transform:none;">Presupuestos ↗</a>
                     </div>
                     ${pedidos.length === 0 ? `
-                        <div style="font-size: 0.78rem; color: #64748b;">No se encontraron presupuestos recientes.</div>
+                        <div style="font-size: 0.76rem; color: #64748b;">No se encontraron presupuestos recientes.</div>
                     ` : pedidos.map(p => {
                         const f = p.fecha ? new Date(p.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '';
                         const tot = Number(p.total || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
                         const est = escaparHtml(p.estado_logistico || p.secuencia || p.estado || 'Activo');
                         return `
-                            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.76rem; padding:4px 0; border-bottom:1px dashed #e2e8f0;">
-                                <div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.74rem; padding:4px 0; border-bottom:1px dashed #e2e8f0; gap:6px;">
+                                <div style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
                                     <strong>#${p.id}</strong> (${f})
-                                    <span style="background:#e2e8f0; color:#334155; padding:1px 5px; border-radius:4px; font-size:0.68rem;">${est}</span>
+                                    <span style="background:#e2e8f0; color:#334155; padding:1px 5px; border-radius:4px; font-size:0.66rem;">${est}</span>
                                 </div>
-                                <strong>${tot}</strong>
+                                <strong style="flex-shrink:0;">${tot}</strong>
                             </div>
                         `;
                     }).join('')}
                 </div>
 
-                <!-- 5. Seguimientos Programados -->
+                <!-- 4. Ficha Búnker + Lista Asignada + Artículos Habituales (Sin botones duplicados) -->
+                <div class="wa-xray-card">
+                    <div class="wa-xray-title">
+                        <span>🏢 Ficha Búnker #${escaparHtml(cli.codigo_bunker_cliente || cli.id)}</span>
+                        <button type="button" onclick="window.vincularChatConClienteBunkerModal(${chat.id})" style="background:none; border:none; color:#0284c7; font-size:0.7rem; cursor:pointer; text-decoration:underline; text-transform:none;">Cambiar</button>
+                    </div>
+                    <div style="font-weight: 800; font-size: 0.9rem; color: #0f172a;">${escaparHtml(cli.cliente_nombre)}</div>
+                    ${cli.razon_social ? `<div style="font-size: 0.75rem; color: #475569;">Razón Social: ${escaparHtml(cli.razon_social)}</div>` : ''}
+                    ${cli.cuit_cuil ? `<div style="font-size: 0.74rem; color: #64748b;">CUIT: ${escaparHtml(cli.cuit_cuil)} (${escaparHtml(cli.condicion_iva || '-')})</div>` : ''}
+                    ${cli.lista_asignada_id ? `<div style="font-size: 0.74rem; color: #0f766e; font-weight: 800; margin-top: 2px;">🏷️ Lista #${cli.lista_asignada_id} (${escaparHtml(cli.lista_asignada_nombre || '')})</div>` : ''}
+                    ${cli.lomas_localidad || cli.domicilio_fiscal ? `<div style="font-size: 0.74rem; color: #64748b;">📍 ${escaparHtml(cli.lomas_localidad || cli.domicilio_fiscal)}</div>` : ''}
+                    ${habituales.length > 0 ? `
+                        <div style="margin-top: 7px; padding-top: 7px; border-top: 1px dashed #e2e8f0;">
+                            <div style="font-size: 0.69rem; font-weight: 800; color: #475569; margin-bottom: 4px;">🛒 Artículos Habituales (${habituales.length}):</div>
+                            <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                ${habituales.slice(0, 8).map(h => `
+                                    <span style="background: #ffffff; border: 1px solid #cbd5e1; color: #1e293b; border-radius: 6px; padding: 2px 6px; font-size: 0.68rem; font-weight: 700;" title="[${escaparHtml(h.articulo_id || '')}] ${escaparHtml(h.descripcion || '')}">
+                                        ${escaparHtml(h.descripcion || h.articulo_id || '')}${h.frecuencia_compra ? ` <strong style="color:#059669;">(${h.frecuencia_compra}x)</strong>` : ''}
+                                    </span>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+
+                <!-- 5. Seguimientos WA Reservados -->
                 <div class="wa-xray-card" style="border-color: #bbf7d0;">
                     <div class="wa-xray-title">
                         <span>📅 Seguimientos WA (${seguimientos.length})</span>
                         <div style="display:flex; gap:4px;">
-                            <button type="button" onclick="window.programarMensajeDesdeConsolaWa(${chat.id})" style="background:#dcfce7; border:1px solid #86efac; color:#166534; border-radius:4px; padding:2px 6px; font-size:0.7rem; font-weight:800; cursor:pointer;" title="Reservar el mensaje actual o programar uno nuevo">➕ Programar</button>
-                            <button type="button" onclick="window.abrirMonitorCompletoSeguimientosWa()" style="background:#f1f5f9; border:1px solid #cbd5e1; color:#334155; border-radius:4px; padding:2px 6px; font-size:0.68rem; font-weight:700; cursor:pointer;" title="Abrir Monitor General de Seguimientos WhatsApp">🗂️ Monitor</button>
+                            <button type="button" onclick="window.programarMensajeDesdeConsolaWa(${chat.id})" style="background:#dcfce7; border:1px solid #86efac; color:#166534; border-radius:4px; padding:2px 6px; font-size:0.68rem; font-weight:800; cursor:pointer; text-transform:none;">➕ Reservar</button>
+                            <button type="button" onclick="window.abrirMonitorCompletoSeguimientosWa()" style="background:#f1f5f9; border:1px solid #cbd5e1; color:#334155; border-radius:4px; padding:2px 6px; font-size:0.68rem; font-weight:700; cursor:pointer; text-transform:none;">🗂️ Monitor</button>
                         </div>
                     </div>
                     ${seguimientos.length === 0 ? `
-                        <div style="font-size: 0.78rem; color: #64748b;">Sin envíos programados para este cliente.</div>
+                        <div style="font-size: 0.75rem; color: #64748b;">Sin recordatorios reservados para este cliente.</div>
                     ` : seguimientos.slice(0, 4).map(s => {
                         let msgs = s.mensajes;
                         if (typeof msgs === 'string') {
@@ -2972,24 +3856,22 @@
                         const primerTexto = String(msgs[0] || '').trim();
                         const esPend = s.estado === 'PENDIENTE';
                         return `
-                            <div style="font-size:0.75rem; padding:6px 0; border-bottom:1px dashed #e2e8f0;">
+                            <div style="font-size:0.73rem; padding:5px 0; border-bottom:1px dashed #e2e8f0;">
                                 <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
                                     <span>
                                         <strong style="color:${esPend ? '#d97706' : '#16a34a'};">${esPend ? '🟡 PENDIENTE' : '🟢 ' + s.estado}</strong>
-                                        · <strong>${s.fecha_programada}</strong> (${s.hora_programada || '09:00'} hs)
-                                        <span style="background:#f1f5f9; color:#334155; padding:1px 5px; border-radius:4px; font-size:0.65rem; font-weight:700;">💬 ${msgs.length} ${msgs.length === 1 ? 'parte' : 'partes'}</span>
+                                        · <strong>${s.fecha_programada}</strong> (${s.hora_programada || '09:00'})
                                     </span>
                                     ${esPend ? `
-                                        <div style="display:flex; gap:3px; flex-wrap:wrap;">
-                                            <button type="button" onclick="window.enviarPruebaSeguimientoWhatsApp && window.enviarPruebaSeguimientoWhatsApp(${s.id})" title="Enviar prueba a mi propio WhatsApp (221 661 5746)" style="background:#eff6ff; border:1px solid #93c5fd; color:#1d4ed8; border-radius:4px; padding:1px 5px; font-size:0.66rem; font-weight:800; cursor:pointer;">🧪 Prueba</button>
-                                            <button type="button" onclick="window.cargarSeguimientoAlChatWa(${chat.id}, ${s.id})" title="Volcar este mensaje reservado a la caja del chat" style="background:#e0f2fe; border:1px solid #7dd3fc; color:#0369a1; border-radius:4px; padding:1px 5px; font-size:0.66rem; font-weight:800; cursor:pointer;">📥 Al chat</button>
-                                            <button type="button" onclick="window.enviarSeguimientoDesdeConsolaWa(${s.id}, ${chat.id})" title="Enviar ahora mismo por WhatsApp" style="background:#dcfce7; border:1px solid #86efac; color:#166534; border-radius:4px; padding:1px 5px; font-size:0.66rem; font-weight:800; cursor:pointer;">🚀 Enviar</button>
-                                            <button type="button" onclick="window.editarSeguimientoEnModuloCompletoWa(${s.id})" title="Editar o dividir en el Programador Completo" style="background:#f8fafc; border:1px solid #cbd5e1; color:#334155; border-radius:4px; padding:1px 5px; font-size:0.66rem; cursor:pointer;">✏️</button>
+                                        <div style="display:flex; gap:3px;">
+                                            <button type="button" onclick="window.cargarSeguimientoAlChatWa(${chat.id}, ${s.id})" title="Volcar al chat" style="background:#e0f2fe; border:1px solid #7dd3fc; color:#0369a1; border-radius:4px; padding:1px 5px; font-size:0.65rem; font-weight:800; cursor:pointer;">📥 Chat</button>
+                                            <button type="button" onclick="window.enviarSeguimientoDesdeConsolaWa(${s.id}, ${chat.id})" title="Enviar ahora" style="background:#dcfce7; border:1px solid #86efac; color:#166534; border-radius:4px; padding:1px 5px; font-size:0.65rem; font-weight:800; cursor:pointer;">🚀</button>
+                                            <button type="button" onclick="window.editarSeguimientoEnModuloCompletoWa(${s.id})" title="Editar" style="background:#f8fafc; border:1px solid #cbd5e1; color:#334155; border-radius:4px; padding:1px 5px; font-size:0.65rem; cursor:pointer;">✏️</button>
                                         </div>
                                     ` : ''}
                                 </div>
-                                ${s.nota_interna ? `<div style="font-size:0.69rem; color:#0369a1; margin-top:2px;">📝 ${escaparHtml(s.nota_interna)}</div>` : ''}
-                                ${primerTexto ? `<div style="font-size:0.71rem; color:#475569; margin-top:2px; background:#f8fafc; padding:3px 6px; border-radius:4px; border-left:2px solid #94a3b8; max-height:44px; overflow:hidden; text-overflow:ellipsis;">“${escaparHtml(primerTexto.substring(0, 140))}${primerTexto.length > 140 ? '...' : ''}”</div>` : ''}
+                                ${s.nota_interna ? `<div style="font-size:0.68rem; color:#0369a1; margin-top:2px;">📝 ${escaparHtml(s.nota_interna)}</div>` : ''}
+                                ${primerTexto ? `<div style="font-size:0.7rem; color:#475569; margin-top:2px; background:#f8fafc; padding:3px 6px; border-radius:4px; border-left:2px solid #94a3b8; max-height:42px; overflow:hidden; text-overflow:ellipsis;">“${escaparHtml(primerTexto.substring(0, 120))}${primerTexto.length > 120 ? '...' : ''}”</div>` : ''}
                             </div>
                         `;
                     }).join('')}
@@ -2997,7 +3879,25 @@
             `;
         }
 
-        colXray.innerHTML = html;
+        // Acordeón discreto al pie: Etiqueta CRM + Nota interna (solo abierto si el chat ya tiene una)
+        html += `
+            <details id="wa-xray-notes-accordion" class="wa-xray-notes-accordion" ${tieneEtiquetaONota ? 'open' : ''}>
+                <summary>
+                    <span>🏷️ Etiqueta CRM y Nota interna</span>
+                    <span style="font-size: 0.68rem; color: ${tieneEtiquetaONota ? '#16a34a' : '#94a3b8'};">
+                        ${tieneEtiquetaONota ? '● Con datos ▾' : 'Opcional ▾'}
+                    </span>
+                </summary>
+                <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+                    <select onchange="window.guardarEtiquetaNotaChatWa(${chat.id}, this.value, null)" style="width: 100%; padding: 5px 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.78rem; font-weight: 700; background: #ffffff;">
+                        ${opcionesEtiqueta}
+                    </select>
+                    <textarea id="wa-xray-nota-rapida" rows="2" placeholder="📌 Nota interna de este cliente/chat (se guarda al salir del campo)..." onblur="window.guardarEtiquetaNotaChatWa(${chat.id}, null, this.value)" style="width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.78rem; box-sizing: border-box; resize: vertical;">${escaparHtml(chat.nota_rapida || '')}</textarea>
+                </div>
+            </details>
+        `;
+
+        paneFicha.innerHTML = html;
     }
 
     /**
@@ -6559,7 +7459,14 @@
         let listaId = Number(opciones.listaId || cliRx?.lista_asignada_id || chatObj?.lista_asignada_id || 1);
         let listaNombreInterna = opciones.listaNombre || cliRx?.lista_asignada_nombre || chatObj?.lista_asignada_nombre || `Lista #${listaId}`;
 
-        if (typeof Swal === 'undefined') {
+        const paneAsistCol3 = document.getElementById('wa-xray-pane-asistente');
+        const usarModoInlineCol3 = Boolean(
+            estadoConsola.abierta && paneAsistCol3 && opciones.forzarModalSwal !== true
+        );
+        const myLoadSeq = opciones.loadSeq || ((estadoConsola._asistenteLoadSeq || 0) + 1);
+        estadoConsola._asistenteLoadSeq = myLoadSeq;
+
+        if (!usarModoInlineCol3 && typeof Swal === 'undefined') {
             alert('SweetAlert2 no está disponible en esta vista.');
             return;
         }
@@ -6570,16 +7477,31 @@
         }
         const yaTieneSintesisLocal = Boolean(clienteId && window._cacheSintesisMemoriaClientesWa.has(Number(clienteId)) && !forzarRelectura);
 
-        Swal.fire({
-            title: yaTieneSintesisLocal
-                ? '⚡ Levantando Síntesis en Memoria...'
-                : '🧠 Preparando Asistente Comercial...',
-            html: yaTieneSintesisLocal
-                ? 'Recuperando perfil sintetizado del cliente y verificando únicamente si hubo últimas novedades...'
-                : '1ra lectura profunda: analizando historial de compras, pagos y conversación para guardar la síntesis en memoria...',
-            allowOutsideClick: false,
-            didOpen: () => Swal.showLoading()
-        });
+        if (usarModoInlineCol3) {
+            window.cambiarTabColumna3Wa('ASISTENTE');
+            paneAsistCol3.innerHTML = `
+                <div id="wa-asist-col3-loader" style="margin: auto; text-align: center; padding: 26px 14px; color: #065f46;">
+                    <div style="font-size: 1.55rem; margin-bottom: 6px;">${yaTieneSintesisLocal ? '⚡' : '🧠'}</div>
+                    <div style="font-weight: 800; font-size: 0.85rem; color: #0f172a;">
+                        ${yaTieneSintesisLocal ? 'Levantando Asistente Híbrido...' : 'Analizando contexto comercial...'}
+                    </div>
+                    <div style="font-size: 0.74rem; color: #64748b; margin-top: 4px; line-height: 1.35;">
+                        ${escaparHtml(nombreCliente)} · Lista #${escaparHtml(listaId)}
+                    </div>
+                </div>
+            `;
+        } else {
+            Swal.fire({
+                title: yaTieneSintesisLocal
+                    ? '⚡ Levantando Síntesis en Memoria...'
+                    : '🧠 Preparando Asistente Comercial...',
+                html: yaTieneSintesisLocal
+                    ? 'Recuperando perfil sintetizado del cliente y verificando únicamente si hubo últimas novedades...'
+                    : '1ra lectura profunda: analizando historial de compras, pagos y conversación para guardar la síntesis en memoria...',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading()
+            });
+        }
 
         let catalogoData = { articulos: [], listas: [] };
         let compradosRaw = [];
@@ -7109,10 +8031,22 @@
 
         await inicializarConfigPdfGuardadaEnEstadoWa(estadoAsistenteComercialWa);
 
+        if (usarModoInlineCol3) {
+            // Guard anti-race: si el operador ya cambió a otro chat o disparó una carga más nueva, descartar este resultado
+            if (myLoadSeq !== estadoConsola._asistenteLoadSeq || (chatId && Number(estadoConsola.chatActivoId) !== Number(chatId))) {
+                return;
+            }
+        }
+
         const resultadoMesa = typeof window.ejecutarMesaAgentesComercialesWa === 'function'
             ? window.ejecutarMesaAgentesComercialesWa(estadoAsistenteComercialWa)
             : null;
         estadoAsistenteComercialWa.resultadoMesa = resultadoMesa;
+
+        // Auto-detectar Carril del Copiloto: Entrante si el cliente espera respuesta o habló último, Saliente si iniciamos gestión
+        const esEntranteAuto = Boolean(chatObj?.esperando_respuesta || resultadoMesa?.ag1?.clienteHabloUltimo);
+        estadoConsola.carrilAsistente = esEntranteAuto ? 'ENTRANTE' : 'SALIENTE';
+        estadoAsistenteComercialWa.carrilAsistente = estadoConsola.carrilAsistente;
 
         mostrarModalSwalAsistenteComercialWa(estadoAsistenteComercialWa);
     };
@@ -7140,8 +8074,494 @@
         };
     }
 
+    /**
+     * Renderiza la cabecera compacta del Copiloto Vivo dentro de Columna 3 (sin repetir ficha ni últimos mensajes)
+     */
+    function renderizarCabeceraCopilotoCol3Wa(st, resultadoMesa) {
+        if (!st || !resultadoMesa) return '';
+        const { ag1 = {}, ag2 = {}, ag3 = {}, proactivo = {}, infoContacto = {} } = resultadoMesa;
+        const modoActivo = proactivo.modoResuelto || 'TANTEO_CORTO';
+        const esModoAuto = !st.modoAccionProactiva || st.modoAccionProactiva === 'AUTO';
+        const carril = st.carrilAsistente || estadoConsola.carrilAsistente || (ag1.clienteHabloUltimo ? 'ENTRANTE' : 'SALIENTE');
+        const apodoUi = infoContacto.apodoCorto || infoContacto.nombrePila || 'cliente';
+        const hayPendientesGestionPrecios = Number(ag2.cantPendientesNotificar || 0) > 0;
+        const requiereInvitacionPortal = !st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA';
+
+        // 1 línea de micro-resumen con datos duros
+        const saldoTxt = ag3.tieneSaldo
+            ? `<span style="color:#dc2626; font-weight:800;">Saldo ${escaparHtml(ag3.saldoFmt || '')}</span>`
+            : (ag3.tieneSaldoAFavor
+                ? `<span style="color:#047857; font-weight:800;">A favor ${escaparHtml(ag3.saldoAFavorFmt || '')}</span>`
+                : `<span style="color:#15803d; font-weight:700;">Al día</span>`);
+        const compraTxt = ag2.diasDesdeUltimaCompra !== null && ag2.diasDesdeUltimaCompra !== undefined
+            ? `Últ. compra ${ag2.diasDesdeUltimaCompra}d`
+            : `${(st.articulosHabituales || []).length} hab.`;
+        const portalTxt = requiereInvitacionPortal
+            ? `<span style="color:#b45309; font-weight:800;" title="Nunca ingresó al Portal B2B — corresponde Invitación Inicial">Portal 🟠</span>`
+            : `<span style="color:#15803d; font-weight:800;" title="Cuenta Portal B2B activa">Portal 🟢</span>`;
+
+        const alertaErrHtml = (st.errorCriticoIa || st.errorCriticoSintesis)
+            ? `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; background:#fef2f2; border:1px solid #fca5a5; border-left:3px solid #dc2626; border-radius:7px; padding:5px 8px; font-size:0.69rem; color:#991b1b;">
+                    <span style="min-width:0; flex:1; line-height:1.25;">⚠️ <strong>IA sin conexión</strong> (reglas locales activas)</span>
+                    <button type="button" onclick="window.forzarRelecturaProfundaClienteWa()" style="background:#dc2626; color:#fff; border:none; border-radius:5px; padding:2px 7px; font-size:0.66rem; font-weight:800; cursor:pointer; flex-shrink:0;">🔄 Reintentar</button>
+                </div>
+            `
+            : '';
+
+        // Píldoras de objetivo según Carril (conectadas a elegirAccionProactivaAsistenteWa existente)
+        const pildoras = [
+            {
+                id: 'AUTO',
+                activo: esModoAuto,
+                label: '🧠 Auto',
+                title: 'Sugerencia automática según historial, pagos y charla',
+                onclick: `window.elegirAccionProactivaAsistenteWa('AUTO')`
+            }
+        ];
+
+        if (carril === 'ENTRANTE') {
+            if (ag1.situacionDialogo === 'PAGO_ADELANTADO_SEGUIMIENTO_ORDEN' || ag3.tieneSaldoAFavor || ag2.pedidoActivoEnCurso) {
+                pildoras.push({
+                    id: 'SEGUIMIENTO_ORDEN',
+                    activo: !esModoAuto && modoActivo === 'SEGUIMIENTO_ORDEN',
+                    label: '📦 Seguimiento Orden',
+                    title: 'Ofrecer seguimiento de la orden en la app',
+                    onclick: `window.elegirAccionProactivaAsistenteWa('SEGUIMIENTO_ORDEN')`
+                });
+            }
+            pildoras.push({
+                id: 'PORTAL',
+                activo: !esModoAuto && modoActivo === 'PORTAL',
+                label: requiereInvitacionPortal ? '🔑 Invitación Portal' : '🔗 Link Portal',
+                title: 'Sumar acceso/link del Portal B2B en Burbuja 2',
+                onclick: `window.sumarLinkPortalAlMensajeAsistenteWa()`
+            });
+            if (hayPendientesGestionPrecios) {
+                pildoras.push({
+                    id: 'ACTUALIZACIONES_PENDIENTES',
+                    activo: !esModoAuto && modoActivo === 'ACTUALIZACIONES_PENDIENTES',
+                    label: `🔔 Cambios (${ag2.cantPendientesNotificar})`,
+                    title: 'Incluir actualizaciones de precio pendientes',
+                    onclick: `window.elegirAccionProactivaAsistenteWa('ACTUALIZACIONES_PENDIENTES')`
+                });
+            }
+            if (ag3.tieneSaldo) {
+                pildoras.push({
+                    id: 'AVISO_CORTO_CUENTA',
+                    activo: !esModoAuto && modoActivo === 'AVISO_CORTO_CUENTA',
+                    label: '💬 Saldo corto',
+                    title: 'Recordatorio corto de saldo con adjunto CC',
+                    onclick: `window.elegirAccionProactivaAsistenteWa('AVISO_CORTO_CUENTA')`
+                });
+            }
+            pildoras.push({
+                id: 'TANTEO_CORTO',
+                activo: !esModoAuto && modoActivo === 'TANTEO_CORTO',
+                label: '⚡ Corto 1 línea',
+                title: 'Respuesta breve en 1 sola línea',
+                onclick: `window.achicarMensajeProactivoAsistenteWa()`
+            });
+        } else {
+            pildoras.push({
+                id: 'TANTEO_CORTO',
+                activo: !esModoAuto && modoActivo === 'TANTEO_CORTO',
+                label: `👋 Saludo ("Hola ${escaparHtml(apodoUi)}")`,
+                title: 'Saludo corto de apertura para reactivar charla',
+                onclick: `window.elegirAccionProactivaAsistenteWa('TANTEO_CORTO')`
+            });
+            if (ag3.tieneSaldo) {
+                pildoras.push({
+                    id: 'AVISO_CORTO_CUENTA',
+                    activo: !esModoAuto && modoActivo === 'AVISO_CORTO_CUENTA',
+                    label: '💬 Recordar saldo',
+                    title: 'Aviso corto de cuenta corriente',
+                    onclick: `window.elegirAccionProactivaAsistenteWa('AVISO_CORTO_CUENTA')`
+                });
+                pildoras.push({
+                    id: 'SALDO_Y_POLITICAS',
+                    activo: !esModoAuto && modoActivo === 'SALDO_Y_POLITICAS',
+                    label: '📋 Políticas 7d/14d',
+                    title: 'Explicar plazos de cuenta y bonificación 5%',
+                    onclick: `window.elegirAccionProactivaAsistenteWa('SALDO_Y_POLITICAS')`
+                });
+            }
+            if (ag1.enviamosResumenCuentaReciente || ag1.situacionDialogo === 'NOSOTROS_YA_TANTEAMOS_HOY') {
+                pildoras.push({
+                    id: 'PING_PONG_TEMA',
+                    activo: !esModoAuto && modoActivo === 'PING_PONG_TEMA',
+                    label: '💬 2° Ping-Pong',
+                    title: 'Continuar la charla tras el saludo inicial',
+                    onclick: `window.elegirAccionProactivaAsistenteWa('PING_PONG_TEMA')`
+                });
+            }
+            if (hayPendientesGestionPrecios) {
+                pildoras.push({
+                    id: 'ACTUALIZACIONES_PENDIENTES',
+                    activo: !esModoAuto && modoActivo === 'ACTUALIZACIONES_PENDIENTES',
+                    label: `🔔 Cambios (${ag2.cantPendientesNotificar})`,
+                    title: 'Enviar cambios de precio pendientes',
+                    onclick: `window.elegirAccionProactivaAsistenteWa('ACTUALIZACIONES_PENDIENTES')`
+                });
+            }
+            pildoras.push({
+                id: 'PORTAL',
+                activo: !esModoAuto && modoActivo === 'PORTAL',
+                label: requiereInvitacionPortal ? '🔑 Invitación Portal' : '🔗 Link Portal',
+                title: 'Sumar link/invitación del Portal B2B en Burbuja 2',
+                onclick: `window.sumarLinkPortalAlMensajeAsistenteWa()`
+            });
+        }
+
+        const diagTxt = String(proactivo.diagnosticoEjecutivoAgente || ag1.tituloIntencion || '').trim();
+
+        return `
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+                <!-- Switch de Carril (Entrante vs Saliente) -->
+                <div class="wa-copilot-carril-bar" role="tablist" aria-label="Carril del Asistente">
+                    <button type="button" id="btn-wa-carril-ENTRANTE" class="wa-copilot-carril-btn ${carril === 'ENTRANTE' ? 'active' : ''}" onclick="window.cambiarCarrilAsistenteCol3Wa('ENTRANTE')">
+                        📥 Responder entrante
+                    </button>
+                    <button type="button" id="btn-wa-carril-SALIENTE" class="wa-copilot-carril-btn ${carril === 'SALIENTE' ? 'active' : ''}" onclick="window.cambiarCarrilAsistenteCol3Wa('SALIENTE')">
+                        📤 Iniciar gestión
+                    </button>
+                </div>
+
+                <!-- Micro-resumen 1 línea de datos duros + Re-analizar -->
+                <div class="wa-copilot-microbar">
+                    <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap; min-width:0; flex:1; line-height:1.3;">
+                        <strong style="color:#065f46;">Lista #${escaparHtml(st.listaId || 1)}</strong>
+                        <span style="color:#cbd5e1;">·</span>
+                        ${saldoTxt}
+                        <span style="color:#cbd5e1;">·</span>
+                        <span style="color:#475569; font-weight:700;">${escaparHtml(compraTxt)}</span>
+                        <span style="color:#cbd5e1;">·</span>
+                        ${portalTxt}
+                    </div>
+                    <div style="display:flex; gap:3px; flex-shrink:0;">
+                        <button type="button" onclick="window.rotarVarianteSaludoAsistenteWa()" title="Probar otra variante de redacción" style="background:#ffffff; border:1px solid #cbd5e1; color:#1d4ed8; border-radius:5px; padding:2px 6px; font-size:0.68rem; font-weight:800; cursor:pointer;">🎲</button>
+                        <button type="button" onclick="window.forzarRelecturaProfundaClienteWa()" title="Re-analizar contexto del cliente en vivo" style="background:#ffffff; border:1px solid #86efac; color:#065f46; border-radius:5px; padding:2px 6px; font-size:0.68rem; font-weight:800; cursor:pointer;">🔄</button>
+                    </div>
+                </div>
+
+                ${alertaErrHtml}
+
+                ${diagTxt ? `
+                    <div style="background:#f0f9ff; border:1px solid #bae6fd; border-left:3px solid #0284c7; border-radius:7px; padding:5px 8px; font-size:0.71rem; color:#0f172a; line-height:1.3;" title="${escaparHtml(diagTxt)}">
+                        <strong style="color:#0369a1;">🧠</strong> ${escaparHtml(diagTxt.length > 145 ? diagTxt.slice(0, 142) + '…' : diagTxt)}
+                    </div>
+                ` : ''}
+
+                <!-- Píldoras de Objetivo según Carril -->
+                <div class="wa-copilot-pills">
+                    ${pildoras.map(p => `
+                        <button type="button" class="wa-copilot-pill ${p.activo ? 'active' : ''}" onclick="${p.onclick}" title="${escaparHtml(p.title)}">
+                            ${p.label}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    function renderizarBoxMesaAgentesSegunModoWa(st, resultadoMesa) {
+        const boxMesa = document.getElementById('wa-asist-mesa-agentes-box');
+        if (!boxMesa || !st || !resultadoMesa) return;
+        if (boxMesa.getAttribute('data-modo') === 'columna3') {
+            boxMesa.innerHTML = renderizarCabeceraCopilotoCol3Wa(st, resultadoMesa);
+        } else if (typeof window.renderizarPanelMesaAgentesHtmlWa === 'function') {
+            boxMesa.innerHTML = window.renderizarPanelMesaAgentesHtmlWa(st, resultadoMesa);
+        }
+    }
+
+    window.cambiarCarrilAsistenteCol3Wa = function (nuevoCarril) {
+        const st = estadoAsistenteComercialWa;
+        const target = nuevoCarril === 'SALIENTE' ? 'SALIENTE' : 'ENTRANTE';
+        estadoConsola.carrilAsistente = target;
+        if (!st) return;
+        st.carrilAsistente = target;
+        if (target === 'SALIENTE' && (!st.modoAccionProactiva || st.modoAccionProactiva === 'AUTO')) {
+            st.modoAccionProactiva = st.resultadoMesa?.ag3?.tieneSaldo ? 'AVISO_CORTO_CUENTA' : 'TANTEO_CORTO';
+        } else if (target === 'ENTRANTE') {
+            st.modoAccionProactiva = 'AUTO';
+        }
+        sincronizarMesaAgentesYEditorWa();
+    };
+
+    /**
+     * Renderiza el Copiloto Vivo del Asistente Híbrido integrado en Columna 3 Solapa 1
+     * (Preserva el 100% de los IDs y funciones del Asistente sin tapar el chat con ningún SweetAlert2)
+     */
+    function renderizarPanelAsistenteEnColumna3Wa(st) {
+        const paneAsist = document.getElementById('wa-xray-pane-asistente');
+        if (!paneAsist || !st) return;
+
+        // Si había un modal SweetAlert2 abierto (ej. el Configurador de PDF completo), cerrarlo limpiamente
+        if (typeof Swal !== 'undefined' && typeof Swal.isVisible === 'function' && Swal.isVisible()) {
+            Swal.close();
+        }
+
+        const {
+            listaId = 1,
+            todosArticulos = st.catalogoArticulos || [],
+            articulosMencionadosChat = [],
+            cambiosPreciosPendientes = [],
+            articulosHabituales = [],
+            articulosSimilares = [],
+            rayosX,
+            resultadoMesa
+        } = st;
+
+        const borradorPrevio = st._borradorMensajesEnCurso || null;
+        const textoBurbuja1Inicial = borradorPrevio
+            ? borradorPrevio.b1
+            : (resultadoMesa?.proactivo?.burbuja1
+                || resultadoMesa?.proactivo?.mensajePrincipal
+                || (resultadoMesa?.ag4?.estrategias?.[0]?.burbuja1)
+                || construirTextoPasoAsistenteComercialWa(st));
+        const textoBurbuja2Inicial = borradorPrevio
+            ? borradorPrevio.b2
+            : (resultadoMesa?.proactivo?.burbuja2 || '');
+        const textoBurbuja3Inicial = borradorPrevio
+            ? borradorPrevio.b3
+            : (resultadoMesa?.proactivo?.burbuja3 || '');
+        const mostrarB2Inicial = borradorPrevio ? Boolean(borradorPrevio.chkB2) : Boolean(textoBurbuja2Inicial);
+        const mostrarB3Inicial = borradorPrevio ? Boolean(borradorPrevio.chkB3) : Boolean(textoBurbuja3Inicial);
+        const chkPdfInicial = borradorPrevio ? Boolean(borradorPrevio.chkPdf) : Boolean(st.sugerirAdjuntarPdfIa);
+        const chkPdfCcInicial = borradorPrevio
+            ? Boolean(borradorPrevio.chkPdfCc)
+            : (resultadoMesa?.proactivo?.modoResuelto === 'AVISO_CORTO_CUENTA');
+        if (borradorPrevio && borradorPrevio.alcancePdf) {
+            st.alcancePdfAdjunto = borradorPrevio.alcancePdf;
+        }
+
+        const articulosConStock = (st.catalogoArticulos || []).filter(a => {
+            enriquecerMetadatosFiltrosArticuloWa(a);
+            return esArticuloActivoEnListaWa(a, st.listaId);
+        });
+        const totalConStock = articulosConStock.length;
+        const totalPadresConStock = articulosConStock.filter(a => a.es_articulo_padre).length;
+        const totalFraccLocalConStock = articulosConStock.filter(a => esArticuloFraccionadoLocalWa(a)).length;
+        const cantSelPuntual = obtenerArticulosSeleccionadosYSugeridosPdfWa(st).length;
+        const cantFiltradosPdfCustom = Array.isArray(st.articulosPdfConfiguradosEnModal) ? st.articulosPdfConfiguradosEnModal.length : 0;
+        const alcanceActualPdf = st.alcancePdfAdjunto || 'LISTA_COMPLETA';
+
+        const bannerSinListaAsignadaHtml = st.tieneListaAsignada === false
+            ? `<div style="background: #fef2f2; border: 1.5px solid #ef4444; border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px;">
+                   <div style="font-size: 0.71rem; font-weight: 800; color: #991b1b;">⚠️ Sin Lista de Precios asignada en Búnker:</div>
+                   <select onchange="window.cambiarListaPrecioManualAsistenteWa(this.value)" style="width: 100%; padding: 3px 6px; border-radius: 5px; border: 1px solid #dc2626; font-size: 0.72rem; font-weight: 800; background: #ffffff; color: #7f1d1d;">
+                       ${(st.listasDisponibles || []).map(l => `<option value="${Number(l.id)}" ${Number(l.id) === Number(listaId) ? 'selected' : ''}>Lista #${Number(l.id)} — ${escaparHtml(l.nombre)}</option>`).join('')}
+                   </select>
+               </div>`
+            : '';
+
+        const headerCopilotoHtml = renderizarCabeceraCopilotoCol3Wa(st, resultadoMesa);
+        const esInvPortal = !st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA';
+
+        paneAsist.innerHTML = `
+            ${bannerSinListaAsignadaHtml}
+
+            <!-- 1. Cabecera Copiloto (Switch Carril + Micro-resumen + Píldoras) -->
+            <div id="wa-asist-mesa-agentes-box" data-modo="columna3">
+                ${headerCopilotoHtml}
+            </div>
+
+            <!-- 2. Editor de Borrador Vivo (Burbujas 1/2/3 + PDF Compacto) -->
+            <div class="wa-copilot-box">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px; flex-wrap: nowrap;">
+                    <span style="font-weight: 800; font-size: 0.74rem; color: #065f46; white-space: nowrap;">✍️ Borrador</span>
+                    <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+                        <div style="display: inline-flex; gap: 2px; background: #e2e8f0; padding: 1.5px; border-radius: 6px; flex-shrink: 0;">
+                            <button type="button" id="btn-wa-apertura-SALUDO" onclick="window.cambiarModoAperturaAsistenteWa(false)" style="padding: 2px 6px; border-radius: 4px; border: none; font-size: 0.65rem; font-weight: 800; cursor: pointer; white-space: nowrap;">👋 Saludo</button>
+                            <button type="button" id="btn-wa-apertura-EN_CURSO" onclick="window.cambiarModoAperturaAsistenteWa(true)" style="padding: 2px 6px; border-radius: 4px; border: none; font-size: 0.65rem; font-weight: 800; cursor: pointer; white-space: nowrap;">⚡ Directo</button>
+                        </div>
+                        <span id="wa-asist-com-long-badge" style="font-size: 0.64rem; font-weight: 800; padding: 1.5px 6px; border-radius: 999px; background: #dcfce7; color: #166534; white-space: nowrap;">✅ Corto</span>
+                    </div>
+                </div>
+
+                <!-- Burbuja 1 -->
+                <textarea id="wa-asist-com-textarea" rows="${Math.min(4, Math.max(2, Math.ceil((textoBurbuja1Inicial || '').length / 46)))}" oninput="window.actualizarIndicadorLongitudAsistenteComercialWa()" style="width: 100%; padding: 6px 8px; border-radius: 7px; border: 1px solid #10b981; font-size: 0.81rem; font-family: inherit; box-sizing: border-box; resize: vertical; background: #ffffff; color: #0f172a; line-height: 1.32;">${escaparHtml(textoBurbuja1Inicial)}</textarea>
+
+                <!-- Burbuja 2 (Precios / Link Portal) -->
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px; flex-wrap: wrap;">
+                        <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 0.71rem; font-weight: 800; color: #0369a1; cursor: pointer;">
+                            <input type="checkbox" id="wa-asist-com-chk-burbuja2" ${mostrarB2Inicial ? 'checked' : ''} onchange="window.toggleSegundaBurbujaAsistenteWa(this.checked)">
+                            <span>2️⃣ Precios / Link Portal</span>
+                        </label>
+                        <div id="wa-asist-com-b2-portal-controls" style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;">
+                            ${esInvPortal ? `
+                                <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Insertar Invitación Inicial con Código de Activación" style="padding: 1px 6px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer; border: 1px solid #d97706; background: #fef3c7; color: #92400e;">🔑 +Invitación</button>
+                                ${st.yaIngresoPortal ? `<button type="button" onclick="window.forzarInvitacionInicialPortalAsistenteWa(true)" style="padding: 1px 5px; border-radius: 5px; font-size: 0.63rem; font-weight: 700; cursor: pointer; border: 1px solid #cbd5e1; background: #ffffff; color: #475569;">↩ Link</button>` : ''}
+                            ` : `
+                                <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Insertar Link directo del Portal B2B" style="padding: 1px 6px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer; border: 1px solid #0284c7; background: #e0f2fe; color: #0369a1;">🔗 +Portal</button>
+                                <button type="button" id="btn-wa-forzar-inv-inicial" onclick="window.forzarInvitacionInicialPortalAsistenteWa(false)" title="Generar nueva invitación con código (blanqueo)" style="padding: 1px 5px; border-radius: 5px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #f59e0b; background: #fffbeb; color: #92400e;">🔑 Blanqueo</button>
+                            `}
+                        </div>
+                    </div>
+                    <div id="wa-asist-com-chips-b2" style="display: flex; flex-wrap: wrap; gap: 3px;"></div>
+                    <div id="wa-asist-com-burbuja2-wrap" style="display: ${mostrarB2Inicial ? 'block' : 'none'};">
+                        <textarea id="wa-asist-com-burbuja2" rows="2" oninput="window.actualizarIndicadorLongitudAsistenteComercialWa()" placeholder="Link del portal o precios puntuales (burbuja separada)..." style="width: 100%; padding: 5px 8px; border-radius: 7px; border: 1px solid #7dd3fc; font-size: 0.78rem; font-family: inherit; box-sizing: border-box; resize: vertical; background: #ffffff; color: #0f172a;">${escaparHtml(textoBurbuja2Inicial)}</textarea>
+                    </div>
+                </div>
+
+                <!-- Burbuja 3 (Cierre / Saldo) -->
+                <div style="display: flex; flex-direction: column; gap: 3px;">
+                    <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 0.71rem; font-weight: 800; color: #0f766e; cursor: pointer;">
+                        <input type="checkbox" id="wa-asist-com-chk-burbuja3" ${mostrarB3Inicial ? 'checked' : ''} onchange="window.toggleTerceraBurbujaAsistenteWa(this.checked)">
+                        <span>3️⃣ Cierre / Saldo</span>
+                    </label>
+                    <div id="wa-asist-com-burbuja3-wrap" style="display: ${mostrarB3Inicial ? 'block' : 'none'};">
+                        <textarea id="wa-asist-com-burbuja3" rows="${textoBurbuja3Inicial.split('\n').length > 1 ? Math.min(4, textoBurbuja3Inicial.split('\n').length + 1) : 1}" oninput="window.actualizarIndicadorLongitudAsistenteComercialWa()" placeholder="Cierre corto o comentario de saldo..." style="width: 100%; padding: 5px 8px; border-radius: 7px; border: 1px solid #5eead4; font-size: 0.78rem; font-family: inherit; box-sizing: border-box; resize: vertical; background: #ffffff; color: #0f172a;">${escaparHtml(textoBurbuja3Inicial)}</textarea>
+                    </div>
+                </div>
+
+                <!-- Selector Rápido de PDF + Personalizar PDF completo bajo demanda -->
+                <div style="display: flex; flex-direction: column; gap: 5px; padding-top: 6px; border-top: 1px dashed #cbd5e1;">
+                    <div style="display: flex; align-items: center; gap: 5px; background: #fffbeb; border: 1px solid #f59e0b; padding: 4px 6px; border-radius: 7px;">
+                        <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-weight: 800; font-size: 0.7rem; color: #b45309; white-space: nowrap;">
+                            <input type="checkbox" id="wa-asist-com-chk-pdf" ${chkPdfInicial ? 'checked' : ''} onchange="window.toggleAdjuntarPdfAsistenteWa(this.checked)">
+                            <span id="lbl-wa-asist-com-chk-pdf">📄 PDF:</span>
+                        </label>
+                        <select id="wa-asist-com-sel-alcance-pdf" onchange="window.cambiarAlcancePdfDirectoAsistenteWa(this.value)" style="flex: 1; min-width: 0; padding: 2px 5px; border-radius: 5px; border: 1px solid #fcd34d; background: #ffffff; color: #78350f; font-size: 0.7rem; font-weight: 800; cursor: pointer;">
+                            <option value="LISTA_COMPLETA" ${alcanceActualPdf === 'LISTA_COMPLETA' ? 'selected' : ''}>Lista Completa (${totalConStock})</option>
+                            <option value="SOLO_PADRES" ${alcanceActualPdf === 'SOLO_PADRES' ? 'selected' : ''}>Solo Packs / Padre (${totalPadresConStock})</option>
+                            <option value="FRACCIONADOS_LOCAL" ${alcanceActualPdf === 'FRACCIONADOS_LOCAL' ? 'selected' : ''}>Fracc. Local (${totalFraccLocalConStock})</option>
+                            <option value="HABITUALES" ${alcanceActualPdf === 'HABITUALES' ? 'selected' : ''}>Habituales (${articulosHabituales.length})</option>
+                            <option value="ACTUALIZACIONES" ${alcanceActualPdf === 'ACTUALIZACIONES' ? 'selected' : ''}>Actualizaciones (${cambiosPreciosPendientes.length})</option>
+                            <option value="SELECCIONADOS" id="opt-wa-asist-pdf-sel" ${alcanceActualPdf === 'SELECCIONADOS' ? 'selected' : ''}>Seleccionados (${cantSelPuntual})</option>
+                            ${cantFiltradosPdfCustom > 0 ? `<option value="FILTRADO_MODAL" ${alcanceActualPdf === 'FILTRADO_MODAL' ? 'selected' : ''}>Filtrado Config (${cantFiltradosPdfCustom})</option>` : ''}
+                        </select>
+                    </div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 5px; flex-wrap: wrap;">
+                        <button type="button" id="btn-wa-personalizar-pdf-completo" onclick="window.abrirModalListaPreciosBunkerDesdeCrmWa(document.getElementById('wa-asist-com-sel-alcance-pdf')?.value || 'AUTO')" style="background: #ffffff; color: #92400e; border: 1px solid #d97706; padding: 3px 8px; border-radius: 6px; font-size: 0.68rem; font-weight: 800; cursor: pointer; white-space: nowrap;">
+                            ⚙️ Personalizar PDF completo ↗
+                        </button>
+                        ${(resultadoMesa?.ag3?.cuentaId || rayosX?.cuenta_corriente?.cuenta_id) ? `
+                            <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-weight: 800; font-size: 0.68rem; color: #6d28d9; background: #faf5ff; border: 1px solid #d8b4fe; padding: 2.5px 7px; border-radius: 6px; white-space: nowrap;">
+                                <input type="checkbox" id="wa-asist-com-chk-pdf-cc" ${chkPdfCcInicial ? 'checked' : ''}>
+                                <span>📄 Resumen CC PDF</span>
+                            </label>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <!-- Instrucción por Voz / Texto a la IA -->
+                <div style="display: flex; gap: 4px; align-items: center; padding-top: 5px; border-top: 1px dashed #cbd5e1;">
+                    <button type="button" id="btn-wa-asist-com-voz" onclick="window.toggleDictadoVozInstruccionAgenteWa()" style="background: #7c3aed; color: #ffffff; border: none; padding: 5px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer; flex-shrink: 0;" title="Dictar instrucción por voz al Asistente">
+                        🎙️
+                    </button>
+                    <input type="text" id="wa-asist-com-ia-prompt" onkeydown="if(event.key==='Enter'){event.preventDefault();window.pedirRedaccionIaEnVivoAsistenteWa();}" placeholder="Instrucción IA (ej: sumá nuez x 5kg)..." style="flex: 1; min-width: 0; padding: 5px 7px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.74rem; background: #ffffff; box-sizing: border-box;">
+                    <button type="button" id="btn-wa-asist-com-ia-run" onclick="window.pedirRedaccionIaEnVivoAsistenteWa()" style="background: #0284c7; color: #ffffff; border: none; padding: 5px 9px; border-radius: 6px; font-size: 0.71rem; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
+                        ✨ Adaptar
+                    </button>
+                </div>
+            </div>
+
+            <!-- 3. Selector Rápido Inline de Artículos / Precios (1 columna limpia) -->
+            <div class="wa-copilot-prod-box">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px;">
+                    <span style="font-weight: 800; font-size: 0.73rem; color: #0f172a;">🛒 Productos &amp; Precios (Lista #${escaparHtml(listaId)})</span>
+                    <span id="wa-asist-com-count-filtrados" style="font-size: 0.65rem; font-weight: 800; color: #0369a1; background: #e0f2fe; padding: 1px 6px; border-radius: 999px;"></span>
+                </div>
+                <div style="display: flex; gap: 3px; flex-wrap: wrap;">
+                    ${articulosMencionadosChat.length > 0 ? `<button type="button" id="tab-wa-prod-MENCIONADOS" onclick="window.cambiarTabProductosAsistenteComercialWa('MENCIONADOS')" style="padding: 2px 6px; border-radius: 5px; border: 1px solid #f59e0b; background: #fef3c7; color: #92400e; font-size: 0.66rem; font-weight: 800; cursor: pointer;">💬 Menc. (${articulosMencionadosChat.length})</button>` : ''}
+                    ${cambiosPreciosPendientes.length > 0 ? `<button type="button" id="tab-wa-prod-CAMBIOS_PENDIENTES" onclick="window.cambiarTabProductosAsistenteComercialWa('CAMBIOS_PENDIENTES')" style="padding: 2px 6px; border-radius: 5px; border: 1px solid #f59e0b; background: #fffbeb; color: #92400e; font-size: 0.66rem; font-weight: 800; cursor: pointer;">🔔 Camb. (${cambiosPreciosPendientes.length})</button>` : ''}
+                    <button type="button" id="tab-wa-prod-HABITUALES" onclick="window.cambiarTabProductosAsistenteComercialWa('HABITUALES')" style="padding: 2px 6px; border-radius: 5px; border: 1px solid #10b981; background: #ecfdf5; color: #065f46; font-size: 0.66rem; font-weight: 800; cursor: pointer;">🛒 Habituales (${articulosHabituales.length})</button>
+                    <button type="button" id="tab-wa-prod-SIMILARES" onclick="window.cambiarTabProductosAsistenteComercialWa('SIMILARES')" style="padding: 2px 6px; border-radius: 5px; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; font-size: 0.66rem; font-weight: 800; cursor: pointer;">✨ Sim. (${articulosSimilares.length})</button>
+                    <button type="button" id="tab-wa-prod-TODOS" onclick="window.cambiarTabProductosAsistenteComercialWa('TODOS')" style="padding: 2px 6px; border-radius: 5px; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; font-size: 0.66rem; font-weight: 800; cursor: pointer;">🔍 Catálogo (${todosArticulos.length})</button>
+                </div>
+                <div style="display: flex; gap: 4px; align-items: center;">
+                    <input type="text" id="wa-asist-com-search" placeholder="🔍 Filtrar (ej: nuez, menor que 2, padre, ldn 3)..." oninput="window.filtrarBuscadorAsistenteComercialWa(this.value)" style="flex: 1; min-width: 0; padding: 5px 8px; border-radius: 6px; border: 1px solid #94a3b8; font-size: 0.74rem; color: #0f172a; box-sizing: border-box;">
+                    <button type="button" onclick="window.limpiarSeleccionProductosAsistenteComercialWa()" title="Limpiar artículos seleccionados" style="background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; padding: 4px 7px; border-radius: 6px; font-size: 0.66rem; font-weight: 800; cursor: pointer; white-space: nowrap;">
+                        Sel (<span id="wa-asist-com-count-sel">0</span>) ✖
+                    </button>
+                </div>
+                <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" id="btn-wa-asist-sumar-pdf" onclick="window.sumarFiltradosAlPdfAsistenteWa()" style="background: #fffbeb; border: 1px solid #f59e0b; color: #b45309; padding: 3px 7px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer;">📄 +Filtrados al PDF</button>
+                    <button type="button" id="btn-wa-asist-sumar-b2" onclick="window.seleccionarFiltradosEnBurbuja2Wa()" style="background: #ecfdf5; border: 1px solid #10b981; color: #065f46; padding: 3px 7px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer;">✅ +En Burbuja 2</button>
+                    <button type="button" id="btn-wa-limpiar-filtros" onclick="window.limpiarFiltrosBuscadorAsistenteWa()" style="display: none; padding: 3px 7px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer; border: 1px solid #ef4444; background: #fef2f2; color: #b91c1c;">🧹 Limpiar</button>
+                </div>
+                <details style="font-size: 0.67rem; color: #475569;">
+                    <summary style="cursor: pointer; font-weight: 800; user-select: none;">🎛️ Filtros avanzados (LDN / Padre / kg)</summary>
+                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 5px; padding: 5px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;">
+                        <div style="display: flex; gap: 3px; flex-wrap: wrap;">
+                            <button type="button" id="btn-wa-ldn-TODAS" onclick="window.toggleFiltroLdnAsistenteWa(0)" style="padding: 2px 5px; border-radius: 4px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #0f172a; background: #0f172a; color: #fff;">Todas</button>
+                            <button type="button" id="btn-wa-ldn-1" onclick="window.toggleFiltroLdnAsistenteWa(1)" style="padding: 2px 5px; border-radius: 4px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #cbd5e1; background: #fff; color: #334155;">LDN 1</button>
+                            <button type="button" id="btn-wa-ldn-2" onclick="window.toggleFiltroLdnAsistenteWa(2)" style="padding: 2px 5px; border-radius: 4px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #86efac; background: #fff; color: #15803d;">LDN 2</button>
+                            <button type="button" id="btn-wa-ldn-3" onclick="window.toggleFiltroLdnAsistenteWa(3)" style="padding: 2px 5px; border-radius: 4px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #c4b5fd; background: #fff; color: #5b21b6;">LDN 3</button>
+                            <button type="button" id="btn-wa-ldn-4" onclick="window.toggleFiltroLdnAsistenteWa(4)" style="padding: 2px 5px; border-radius: 4px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #fde68a; background: #fff; color: #92400e;">LDN 4</button>
+                            <button type="button" id="btn-wa-ldn-5" onclick="window.toggleFiltroLdnAsistenteWa(5)" style="padding: 2px 5px; border-radius: 4px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #fecdd3; background: #fff; color: #9f1239;">LDN 5</button>
+                            <button type="button" id="btn-wa-ldn-6" onclick="window.toggleFiltroLdnAsistenteWa(6)" style="padding: 2px 5px; border-radius: 4px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #bae6fd; background: #fff; color: #0369a1;">LDN 6</button>
+                        </div>
+                        <div style="display: flex; gap: 3px; flex-wrap: wrap; align-items: center;">
+                            <button type="button" id="btn-wa-padre-SOLO_PADRE" onclick="window.setFiltroTipoPadreAsistenteWa('SOLO_PADRE')" style="padding: 2px 6px; border-radius: 4px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #c084fc; background: #fff; color: #6b21a8;">📦 Padre</button>
+                            <button type="button" id="btn-wa-padre-SOLO_INDIVIDUAL" onclick="window.setFiltroTipoPadreAsistenteWa('SOLO_INDIVIDUAL')" style="padding: 2px 6px; border-radius: 4px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #cbd5e1; background: #fff; color: #334155;">🔹 Indiv.</button>
+                            <select id="wa-asist-filtro-frac-op" onchange="window.setFiltroFraccionAsistenteWa()" style="padding: 1.5px 3px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 0.64rem; background: #fff;">
+                                <option value="">kg</option>
+                                <option value="<">&lt;</option>
+                                <option value="<=">&le;</option>
+                                <option value=">=">&ge;</option>
+                                <option value=">">&gt;</option>
+                            </select>
+                            <input type="number" id="wa-asist-filtro-frac-kg" step="0.1" min="0" placeholder="kg" oninput="window.setFiltroFraccionAsistenteWa()" style="width: 44px; padding: 1.5px 4px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 0.65rem;">
+                            <button type="button" id="btn-wa-frac-lt2" onclick="window.aplicarPresetFraccionAsistenteWa('<', 2)" style="padding: 1.5px 4px; border-radius: 4px; font-size: 0.62rem; font-weight: 800; cursor: pointer; border: 1px solid #cbd5e1; background: #fff;">&lt;2k</button>
+                            <button type="button" id="btn-wa-frac-gt2" onclick="window.aplicarPresetFraccionAsistenteWa('>', 2)" style="padding: 1.5px 4px; border-radius: 4px; font-size: 0.62rem; font-weight: 800; cursor: pointer; border: 1px solid #cbd5e1; background: #fff;">&gt;2k</button>
+                        </div>
+                    </div>
+                </details>
+                <div id="wa-asist-com-productos-grid" style="display: grid; grid-template-columns: 1fr; gap: 4px; max-height: 165px; overflow-y: auto; padding-right: 2px;"></div>
+            </div>
+
+            <!-- 4. Banner de estado -->
+            <div id="wa-asist-com-status" style="display: none; padding: 7px 9px; border-radius: 8px; border: 1px solid #93c5fd; font-size: 0.73rem;"></div>
+
+            <!-- 5. Botonera de Salida + Prueba interna colapsable -->
+            <div class="wa-copilot-actions">
+                <div style="display: flex; gap: 5px; align-items: stretch;">
+                    <button type="button" id="btn-wa-asist-com-enviar-real" onclick="window.enviarAsistenteComercialAlClienteRealWa(false)" style="flex: 1; background: #128c7e; color: #ffffff; border: none; padding: 8px 10px; border-radius: 8px; font-weight: 800; font-size: 0.78rem; cursor: pointer; box-shadow: 0 2px 4px rgba(18,140,126,0.25);">
+                        🚀 Enviar por WhatsApp
+                    </button>
+                    <button type="button" id="btn-wa-asist-com-pasar-chat" onclick="window.volcarAsistenteComercialAlBorradorWa()" style="background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; padding: 8px 9px; border-radius: 8px; font-weight: 800; font-size: 0.73rem; cursor: pointer; white-space: nowrap;" title="Volcar el borrador armado al cuadro de escritura del chat sin enviar todavía">
+                        📥 Al chat
+                    </button>
+                    <button type="button" onclick="window.programarAsistenteComercialWa()" style="background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; padding: 8px 9px; border-radius: 8px; font-weight: 800; font-size: 0.74rem; cursor: pointer;" title="Reservar borrador para otro día/horario">
+                        📅
+                    </button>
+                </div>
+                <details class="wa-copilot-test-details">
+                    <summary>🧪 Prueba interna (enviar a mi celular)</summary>
+                    <div style="display: flex; gap: 5px; align-items: center; margin-top: 5px; background: #fffbeb; border: 1px solid #fde68a; padding: 5px 7px; border-radius: 7px;">
+                        <input type="text" id="wa-asist-com-tel-prueba" value="5492216615746" title="Teléfono de prueba interno" style="flex: 1; min-width: 0; padding: 4px 6px; border-radius: 5px; border: 1px solid #f59e0b; font-size: 0.72rem; font-weight: 800; color: #78350f; background: #ffffff;">
+                        <button type="button" id="btn-wa-asist-com-test" onclick="window.ejecutarEnvioPruebaAsistenteComercialWa()" style="background: #d97706; color: #ffffff; border: none; padding: 5px 8px; border-radius: 5px; font-weight: 800; font-size: 0.71rem; cursor: pointer; white-space: nowrap;">
+                            🧪 Enviar Prueba
+                        </button>
+                    </div>
+                </details>
+            </div>
+        `;
+
+        estadoConsola._asistenteChatRenderizadoId = Number(st.chatId || 0);
+        window.cambiarTabColumna3Wa('ASISTENTE');
+
+        if (!borradorPrevio) {
+            sincronizarCoherenciaEntreBurbujasWa();
+        }
+        actualizarEstilosPasosAsistenteComercialWa();
+        renderizarGridProductosAsistenteComercialWa();
+        renderizarChipsSeleccionadosBurbuja2Wa();
+        window.actualizarIndicadorLongitudAsistenteComercialWa();
+    }
+
     function mostrarModalSwalAsistenteComercialWa(st) {
         if (!st) return;
+
+        // Fase 2: si la Consola está abierta con el panel Columna 3 Solapa 1, renderizar SIEMPRE inline (cero megamodal SweetAlert2)
+        if (estadoConsola.abierta && document.getElementById('wa-xray-pane-asistente')) {
+            renderizarPanelAsistenteEnColumna3Wa(st);
+            return;
+        }
+
         const {
             chatId,
             clienteId,
@@ -7736,10 +9156,7 @@
         const st = estadoAsistenteComercialWa;
         if (!st) return;
         st.mostrarRadiografia3Tarjetas = !st.mostrarRadiografia3Tarjetas;
-        const boxMesa = document.getElementById('wa-asist-mesa-agentes-box');
-        if (boxMesa && typeof window.renderizarPanelMesaAgentesHtmlWa === 'function' && st.resultadoMesa) {
-            boxMesa.innerHTML = window.renderizarPanelMesaAgentesHtmlWa(st, st.resultadoMesa);
-        }
+        renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa);
     };
 
     function sincronizarMesaAgentesYEditorWa() {
@@ -7750,10 +9167,7 @@
             : null;
         st.resultadoMesa = resultadoMesa;
 
-        const boxMesa = document.getElementById('wa-asist-mesa-agentes-box');
-        if (boxMesa && typeof window.renderizarPanelMesaAgentesHtmlWa === 'function' && resultadoMesa) {
-            boxMesa.innerHTML = window.renderizarPanelMesaAgentesHtmlWa(st, resultadoMesa);
-        }
+        renderizarBoxMesaAgentesSegunModoWa(st, resultadoMesa);
 
         const b1 = resultadoMesa?.proactivo?.burbuja1
             || resultadoMesa?.proactivo?.mensajePrincipal
@@ -7905,6 +9319,19 @@
         const boxCtrl = document.getElementById('wa-asist-com-b2-portal-controls');
         if (!st || !boxCtrl) return;
         const esInv = !st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA';
+        const esCol3 = document.getElementById('wa-asist-mesa-agentes-box')?.getAttribute('data-modo') === 'columna3';
+        if (esCol3) {
+            boxCtrl.innerHTML = esInv
+                ? `
+                    <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Insertar Invitación Inicial con Código de Activación" style="padding: 1px 6px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer; border: 1px solid #d97706; background: #fef3c7; color: #92400e;">🔑 +Invitación</button>
+                    ${st.yaIngresoPortal ? `<button type="button" onclick="window.forzarInvitacionInicialPortalAsistenteWa(true)" style="padding: 1px 5px; border-radius: 5px; font-size: 0.63rem; font-weight: 700; cursor: pointer; border: 1px solid #cbd5e1; background: #ffffff; color: #475569;">↩ Link</button>` : ''}
+                `
+                : `
+                    <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Insertar Link directo del Portal B2B" style="padding: 1px 6px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer; border: 1px solid #0284c7; background: #e0f2fe; color: #0369a1;">🔗 +Portal</button>
+                    <button type="button" id="btn-wa-forzar-inv-inicial" onclick="window.forzarInvitacionInicialPortalAsistenteWa(false)" title="Generar nueva invitación con código (blanqueo)" style="padding: 1px 5px; border-radius: 5px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #f59e0b; background: #fffbeb; color: #92400e;">🔑 Blanqueo</button>
+                `;
+            return;
+        }
         boxCtrl.innerHTML = `
             ${esInv ? `
                 <span style="font-size: 0.67rem; font-weight: 800; color: #92400e; background: #fffbeb; border: 1px solid #f59e0b; padding: 1px 7px; border-radius: 999px;" title="Este cliente nunca ingresó al Portal (o pediste enviarle invitación de 1ra vez). En el Mensaje 2 va el Código de Activación + Link de Alta.">
@@ -7951,10 +9378,7 @@
             }
             if (st.resultadoMesa && typeof window.ejecutarMesaAgentesComercialesWa === 'function') {
                 st.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(st);
-                const boxMesa = document.getElementById('wa-asist-mesa-agentes-box');
-                if (boxMesa && typeof window.renderizarPanelMesaAgentesHtmlWa === 'function') {
-                    boxMesa.innerHTML = window.renderizarPanelMesaAgentesHtmlWa(st, st.resultadoMesa);
-                }
+                renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa);
             }
             refrescarControlesModoPortalBurbuja2Wa();
             sincronizarCoherenciaEntreBurbujasWa();
@@ -7992,10 +9416,7 @@
             }
             if (typeof window.ejecutarMesaAgentesComercialesWa === 'function') {
                 st.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(st);
-                const boxMesa = document.getElementById('wa-asist-mesa-agentes-box');
-                if (boxMesa && typeof window.renderizarPanelMesaAgentesHtmlWa === 'function') {
-                    boxMesa.innerHTML = window.renderizarPanelMesaAgentesHtmlWa(st, st.resultadoMesa);
-                }
+                renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa);
             }
             refrescarControlesModoPortalBurbuja2Wa();
             sincronizarCoherenciaEntreBurbujasWa();
@@ -8712,10 +10133,7 @@
                 if (st.resultadoMesa && st.razonamientoIa?.explicacion_razonamiento) {
                     st.resultadoMesa.proactivo.diagnosticoEjecutivoAgente = st.razonamientoIa.explicacion_razonamiento;
                 }
-                const boxMesa = document.getElementById('wa-asist-mesa-agentes-box');
-                if (boxMesa && typeof window.renderizarPanelMesaAgentesHtmlWa === 'function' && st.resultadoMesa) {
-                    boxMesa.innerHTML = window.renderizarPanelMesaAgentesHtmlWa(st, st.resultadoMesa);
-                }
+                renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa);
 
                 actualizarEstilosPasosAsistenteComercialWa();
                 renderizarGridProductosAsistenteComercialWa();
@@ -8732,10 +10150,7 @@
                 }
             }
         } catch (err) {
-            const boxMesa = document.getElementById('wa-asist-mesa-agentes-box');
-            if (boxMesa && typeof window.renderizarPanelMesaAgentesHtmlWa === 'function' && st.resultadoMesa) {
-                boxMesa.innerHTML = window.renderizarPanelMesaAgentesHtmlWa(st, st.resultadoMesa);
-            }
+            renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa);
             if (statusEl) {
                 statusEl.style.display = 'block';
                 statusEl.style.background = '#fef2f2';
@@ -9331,18 +10746,25 @@
         const chars = t1.length + t2.length + t3.length;
         const burbujas = [t1, t2, t3].filter(Boolean).length || 1;
 
+        const esCol3 = document.getElementById('wa-asist-mesa-agentes-box')?.getAttribute('data-modo') === 'columna3';
         if (chars <= 520) {
             badge.style.background = '#dcfce7';
             badge.style.color = '#166534';
-            badge.textContent = `✅ Ideal para WhatsApp (${burbujas} ${burbujas === 1 ? 'mensaje corto' : 'mensajes cortos separados'})`;
+            badge.textContent = esCol3
+                ? `✅ Corto (${burbujas} msj)`
+                : `✅ Ideal para WhatsApp (${burbujas} ${burbujas === 1 ? 'mensaje corto' : 'mensajes cortos separados'})`;
         } else if (chars <= 800) {
             badge.style.background = '#fef3c7';
             badge.style.color = '#92400e';
-            badge.textContent = `⚠️ Longitud media (${burbujas} mensajes)`;
+            badge.textContent = esCol3
+                ? `⚠️ Medio (${burbujas} msj)`
+                : `⚠️ Longitud media (${burbujas} mensajes)`;
         } else {
             badge.style.background = '#fee2e2';
             badge.style.color = '#991b1b';
-            badge.textContent = `🚨 Texto largo — En WhatsApp conviene ir paso a paso`;
+            badge.textContent = esCol3
+                ? `🚨 Largo (${burbujas} msj)`
+                : `🚨 Texto largo — En WhatsApp conviene ir paso a paso`;
         }
     };
 
@@ -11224,7 +12646,17 @@
             inputChat.value = texto;
             inputChat.rows = Math.min(7, Math.max(3, texto.split('\n').length));
         }
-        Swal.close();
+        if (typeof Swal !== 'undefined' && typeof Swal.isVisible === 'function' && Swal.isVisible()) {
+            Swal.close();
+        }
+        const statusEl = document.getElementById('wa-asist-com-status');
+        if (statusEl) {
+            statusEl.style.display = 'block';
+            statusEl.style.background = '#ecfdf5';
+            statusEl.style.borderColor = '#6ee7b7';
+            statusEl.style.color = '#065f46';
+            statusEl.innerHTML = '📥 <strong>Borrador volcado al cuadro de chat.</strong> Podés editarlo o enviarlo desde Columna 2.';
+        }
         if (inputChat) inputChat.focus();
     };
 
@@ -11248,7 +12680,9 @@
             guardarBorradorChatWa(st.chatId, texto);
             const inputChat = document.getElementById('wa-hub-input-texto');
             if (inputChat) inputChat.value = texto;
-            Swal.close();
+            if (typeof Swal !== 'undefined' && typeof Swal.isVisible === 'function' && Swal.isVisible()) {
+                Swal.close();
+            }
             window.programarMensajeDesdeConsolaWa(st.chatId);
         }
     };
@@ -11404,7 +12838,23 @@
                 limpiarBorradorChatWa(st.chatId);
             }
 
-            Swal.close();
+            if (typeof Swal !== 'undefined' && typeof Swal.isVisible === 'function' && Swal.isVisible()) {
+                Swal.close();
+            }
+            if (btnReal) {
+                btnReal.disabled = false;
+                btnReal.textContent = document.getElementById('wa-asist-mesa-agentes-box')?.getAttribute('data-modo') === 'columna3'
+                    ? '🚀 Enviar por WhatsApp'
+                    : '🚀 Enviar Ahora al Cliente';
+            }
+            if (btnB1) btnB1.disabled = false;
+            if (statusEl) {
+                statusEl.style.display = 'block';
+                statusEl.style.background = '#ecfdf5';
+                statusEl.style.borderColor = '#6ee7b7';
+                statusEl.style.color = '#065f46';
+                statusEl.innerHTML = '✅ <strong>Mensaje enviado por WhatsApp.</strong>';
+            }
 
             if (st.chatId && typeof window.seleccionarChatConsola === 'function') {
                 await window.seleccionarChatConsola(st.chatId, true);
@@ -11422,7 +12872,9 @@
             }
             if (btnReal) {
                 btnReal.disabled = false;
-                btnReal.textContent = '🚀 Enviar Ahora al Cliente';
+                btnReal.textContent = document.getElementById('wa-asist-mesa-agentes-box')?.getAttribute('data-modo') === 'columna3'
+                    ? '🚀 Enviar por WhatsApp'
+                    : '🚀 Enviar Ahora al Cliente';
             }
             if (btnB1) btnB1.disabled = false;
         }
