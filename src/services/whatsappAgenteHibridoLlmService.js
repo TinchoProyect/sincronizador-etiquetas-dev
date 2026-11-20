@@ -476,8 +476,23 @@ function construirPromptEspecialistaWa({
     notaTrato = '',
     rolOperativo = null,
     esTelefonoCompartido = false,
+    tipoAccesoPortal = '',
+    aprobadorNombre = '',
+    requiereValidacion4Digitos = false,
     yaHablamosHoy
 }) {
+    const tipoPortalNorm = String(tipoAccesoPortal || '').trim().toUpperCase();
+    const esArmadorActivo = tipoPortalNorm === 'ENCARGADO_ARMADOR_PEDIDO';
+    const esArmadorPendiente = tipoPortalNorm === 'ENCARGADO_ARMADOR_PENDIENTE';
+    const esEmpleadoPortal = esArmadorActivo || esArmadorPendiente;
+    const aprobTxt = String(aprobadorNombre || '').trim() || 'el titular';
+
+    const reglaPortalBase = esArmadorActivo
+        ? `- ACCESO PORTAL DE ESTE CONTACTO (ENCARGADO_ARMADOR_PEDIDO): Esta persona NO usa el Portal de Titular ni ve Cuenta Corriente. Tiene un LINK ESPECIAL DE ARMADOR DE PEDIDO para armar la lista de mercadería y mandársela a ${aprobTxt} para que la apruebe.${requiereValidacion4Digitos ? ' La 1ra vez le pedirá los últimos 4 dígitos de su celular.' : ''} Hablale de "tu link para armar el pedido" (para que después lo apruebe ${aprobTxt}). PROHIBIDO hablarle de "activar cuenta/clave del Portal", "Portal de Titular", saldos o Cuenta Corriente.`
+        : (esArmadorPendiente
+            ? `- ACCESO PORTAL DE ESTE CONTACTO (ENCARGADO_ARMADOR_PENDIENTE): Esta persona es empleado/encargado y todavía NO tiene habilitado su link especial de Armador de Pedido. PROHIBIDO prometerle un link abajo, PROHIBIDO pasar link o código de activación del Portal Titular y PROHIBIDO mencionar Cuenta Corriente. Dejá tipo_burbuja2_determinista="VACIA" (o "PRECIOS_SELECCIONADOS" si cotizás artículos puntuales).`
+            : '- Respetá "tipo_acceso_portal" y "ya_ingreso_portal_anteriormente": si es TITULAR_INVITACION_INICIAL (false), hablá de "invitación para activar tu cuenta por primera vez en el portal"; si es TITULAR_ACTIVO (true), del "link del portal".');
+
     const reglasBase = [
         'Sos el copiloto comercial de Martín en el WhatsApp mayorista B2B de LAMDA (frutos secos, disecados, semillas, cereales, mixes, granolas y barritas).',
         'REGLAS INNEGOCIABLES:',
@@ -487,7 +502,7 @@ function construirPromptEspecialistaWa({
         yaHablamosHoy
             ? '- YA HABLAMOS HOY con este cliente: NO vuelvas a saludar con "Hola X, buen día". Continuá directo al pie.'
             : '- Si abrís conversación hoy, usá el saludo acorde a la franja horaria de Argentina indicada.',
-        '- Respetá "ya_ingreso_portal_anteriormente": si es false, hablá de "invitación para activar tu cuenta por primera vez en el portal"; si es true, del "link del portal".',
+        reglaPortalBase,
         '- Si existe "instruccion_operador_prioritaria", obedecela con prioridad absoluta.',
         '- Cierre estilo Martín cuando corresponda Burbuja 3: "Cualquier cosa estamos atentos." o "Quedamos atentos por cualquier cosa." (evitá repetir siempre "escribime por acá").'
     ];
@@ -513,7 +528,11 @@ function construirPromptEspecialistaWa({
             '- Distinguí presentaciones chicas (1kg/2kg) vs. bultos cerrados (5kg/10kg+): si pidió fracciones chicas y existe 1kg/2kg en catálogo, NO pongas cajas de 10kg en "codigos_articulos_seleccionados" (máx. 6-8 códigos en cuerpo).',
             '- En "codigos_articulos_pdf_sugeridos" poné variantes relacionadas útiles para enviar en PDF adjunto prolijo y activá "sugerir_adjuntar_pdf": true si suma valor o lo pidió el operador.',
             '- Nunca elijas códigos internos ("PROD AP/UP Externo", "Caja MICRO").',
-            '- Si corresponde pasar precios seleccionados usá tipo_burbuja2_determinista="PRECIOS_SELECCIONADOS"; si pidió lista general o portal usá "LINK_PORTAL".'
+            esArmadorActivo
+                ? `- Si corresponde pasar precios seleccionados usá tipo_burbuja2_determinista="PRECIOS_SELECCIONADOS"; si pidió lista general o armar pedido usá "LINK_PORTAL" y aclarale que ahí puede armar el pedido para que después lo apruebe ${aprobTxt}.`
+                : (esArmadorPendiente
+                    ? '- Si corresponde pasar precios seleccionados usá tipo_burbuja2_determinista="PRECIOS_SELECCIONADOS"; si no, dejá tipo_burbuja2_determinista="VACIA" (NUNCA uses "LINK_PORTAL" porque aún no tiene link de Armador habilitado).'
+                    : '- Si corresponde pasar precios seleccionados usá tipo_burbuja2_determinista="PRECIOS_SELECCIONADOS"; si pidió lista general o portal usá "LINK_PORTAL".')
         ],
         COBRANZA_COMPROBANTES: [
             'ESPECIALISTA ACTIVO: 📥 ENTRANTE · COBRANZA_COMPROBANTES.',
@@ -527,7 +546,9 @@ function construirPromptEspecialistaWa({
             'ESPECIALISTA ACTIVO: 📥 ENTRANTE · LOGISTICA_ENTREGAS.',
             '- Respondé con certeza usando ÚNICAMENTE "contexto_logistico_determinista" (presupuesto #, estado_normalizado: EN_PREPARACION / EN_CAMINO / ENTREGADO / SIN_PEDIDO_ACTIVO, ruta, chofer, fecha_salida, fecha_entrega_real y receptor).',
             '- Si el estado es EN_CAMINO, informá que ya está en ruta (mencionando chofer/fecha solo si están cargados).',
-            '- Si es EN_PREPARACION, informá que el pedido # está en armado/asignación y apenas salga le avisamos (ofreciendo "LINK_SEGUIMIENTO_ORDEN" si tiene Portal).',
+            esEmpleadoPortal
+                ? '- Si es EN_PREPARACION, informá que el pedido # está en armado/asignación y apenas salga le avisamos. Dejá tipo_burbuja2_determinista="VACIA" (NO ofrecer link de seguimiento de Portal Titular a un empleado).'
+                : '- Si es EN_PREPARACION, informá que el pedido # está en armado/asignación y apenas salga le avisamos (ofreciendo "LINK_SEGUIMIENTO_ORDEN" si tiene Portal).',
             '- Si es ENTREGADO, confirmá fecha y receptor reales si figuran. JAMÁS inventes horarios de llegada ni nombres de chofer que no estén en los datos.'
         ],
         RECLAMO_DEVOLUCION: [
@@ -550,8 +571,11 @@ function construirPromptEspecialistaWa({
         REACTIVACION_PORTAL: [
             'ESPECIALISTA ACTIVO: 📤 SALIENTE · REACTIVACION_PORTAL.',
             '- Anclate en los "articulos_habituales_cliente" reales (mencioná 1 o 2 productos que suele llevar con naturalidad) y en los "dias_sin_compra" sin sonar invasivo.',
-            '- Si "ya_ingreso_portal_anteriormente" es false, comentale que le dejás la invitación para activar por primera vez su acceso al Portal B2B y ver precios actualizados.',
-            '- Si es true, recordale que tiene los precios actualizados en el Portal B2B y usá tipo_burbuja2_determinista="LINK_PORTAL".'
+            esArmadorActivo
+                ? `- Usá tipo_burbuja2_determinista="LINK_PORTAL" y comentale con naturalidad que abajo le dejás su link para ir armando el pedido y mandárselo a ${aprobTxt} para que lo apruebe (jamás hables de clave/invitación ni Cuenta Corriente).`
+                : (esArmadorPendiente
+                    ? '- Como todavía no tiene link de Armador habilitado, preguntale con calidez cómo vienen de stock con sus habituales y qué necesitan reponer, dejando tipo_burbuja2_determinista="VACIA" (sin prometer link abajo).'
+                    : '- Si "tipo_acceso_portal" es TITULAR_INVITACION_INICIAL ("ya_ingreso_portal_anteriormente" false), comentale que le dejás la invitación para activar por primera vez su acceso al Portal B2B y ver precios actualizados; si es TITULAR_ACTIVO (true), recordale que tiene los precios actualizados en el Portal B2B. En ambos casos usá tipo_burbuja2_determinista="LINK_PORTAL".')
         ],
         POST_ENTREGA: [
             'ESPECIALISTA ACTIVO: 📤 SALIENTE · POST_ENTREGA.',
@@ -591,6 +615,9 @@ async function razonarAsistenciaHibridaClienteWa({
     diasSinCompra = null,
     linkPortalCliente = '',
     yaIngresoPortal = false,
+    tipoAccesoPortal = '',
+    aprobadorNombre = '',
+    requiereValidacion4Digitos = false,
     instruccionOperador = '',
     carril = '',
     agenteObjetivo = 'AUTO',
@@ -607,6 +634,11 @@ async function razonarAsistenciaHibridaClienteWa({
     const apodoConfirmadoClean = String(apodoConfirmadoMartin || '').trim();
     const notaTratoClean = String(notaTrato || '').trim();
     const apodoEfectivo = apodoConfirmadoClean || (esCompartidoReal ? '' : String(apodoSugerido || '').trim());
+    const tipoPortalNorm = String(tipoAccesoPortal || '').trim().toUpperCase()
+        || ((rolNorm === 'COMPRAS_PEDIDOS' || rolNorm === 'RECEPCION_LOCAL')
+            ? (linkPortalCliente ? 'ENCARGADO_ARMADOR_PEDIDO' : 'ENCARGADO_ARMADOR_PENDIENTE')
+            : (yaIngresoPortal ? 'TITULAR_ACTIVO' : 'TITULAR_INVITACION_INICIAL'));
+    const aprobadorClean = String(aprobadorNombre || '').trim();
 
     const { carril: carrilFinal, agente: agenteFinal } = resolverCarrilYAgenteEspecialista({
         carrilSolicitado: carril,
@@ -625,6 +657,8 @@ async function razonarAsistenciaHibridaClienteWa({
         clienteNombre,
         contactoNombre,
         rolNorm || '',
+        tipoPortalNorm,
+        aprobadorClean,
         apodoConfirmadoClean,
         notaTratoClean,
         carrilFinal,
@@ -667,6 +701,9 @@ async function razonarAsistenciaHibridaClienteWa({
         notaTrato: notaTratoClean,
         rolOperativo: rolNorm,
         esTelefonoCompartido: esCompartidoReal,
+        tipoAccesoPortal: tipoPortalNorm,
+        aprobadorNombre: aprobadorClean,
+        requiereValidacion4Digitos: Boolean(requiereValidacion4Digitos),
         yaHablamosHoy
     });
 
@@ -742,8 +779,10 @@ async function razonarAsistenciaHibridaClienteWa({
                 ? otrosContactosCliente.slice(0, 6).map(c => ({ nombre: c.contacto_nombre || c.nombre || '', rol: c.rol_operativo || c.contacto_cargo || '' }))
                 : undefined,
             dias_sin_compra: diasSinCompra,
-            link_portal_disponible: Boolean(linkPortalCliente),
-            ya_ingreso_portal_anteriormente: Boolean(yaIngresoPortal)
+            tipo_acceso_portal: tipoPortalNorm,
+            aprobador_pedido_nombre: aprobadorClean || null,
+            link_portal_disponible: tipoPortalNorm !== 'ENCARGADO_ARMADOR_PENDIENTE' && Boolean(linkPortalCliente),
+            ya_ingreso_portal_anteriormente: tipoPortalNorm === 'TITULAR_ACTIVO'
         },
         cuenta_corriente_determinista: estadoCuentaDeterminista,
         contexto_logistico_determinista: contextoLogistico || {},
@@ -853,11 +892,19 @@ async function razonarAsistenciaHibridaClienteWa({
         sugerirPdfCcFinal = true;
     }
 
+    // Blindaje determinista de link Portal por Rol (cero fugas de link titular hacia empleados)
+    if (tipoPortalNorm === 'ENCARGADO_ARMADOR_PENDIENTE' && (tipoB2Final === 'LINK_PORTAL' || tipoB2Final === 'LINK_SEGUIMIENTO_ORDEN')) {
+        tipoB2Final = 'VACIA';
+    } else if (tipoPortalNorm === 'ENCARGADO_ARMADOR_PEDIDO' && tipoB2Final === 'LINK_SEGUIMIENTO_ORDEN') {
+        tipoB2Final = 'VACIA';
+    }
+
     const resultadoBlindado = {
         usando_ia_real: true,
         modo_credencial: cred.modo,
         carril_utilizado: carrilFinal,
         agente_utilizado: agenteFinal,
+        tipo_acceso_portal: tipoPortalNorm,
         _usage: _ultimoUsageGemini || null,
         situacion_dialogo: String(parsed.situacion_dialogo || agenteFinal).trim(),
         titulo_intencion: aplicarClavijasTextoDeterministaWa(parsed.titulo_intencion || ''),

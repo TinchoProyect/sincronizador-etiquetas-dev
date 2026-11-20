@@ -60,19 +60,158 @@ function esModoLaboratorioOSandboxBloqueadoB2B() {
     return false;
 }
 
-/**
- * Determina de manera 100% fehaciente si el cliente ya ingresó alguna vez al Portal B2B
- * (y por lo tanto ya tiene usuario y contraseña) o si NUNCA ingresó y requiere
- * formato de Invitación Inicial con código de activación vigente (72hs) igual que Clientes Búnker.
- */
-async function resolverEstadoYInvitacionPortalClienteWa(cliRow, { forzarNuevaInvitacion = false, asegurarTokenSiNoIngreso = true } = {}) {
+const _cacheAuthLoginB2B = new Map();
+const _cacheDelegacionesB2B = new Map();
+let _delegacionesLabMemoria = null;
+
+function resolverUrlPortalB2BOficialWa() {
     const rawPortalEnv = String(process.env.B2B_PORTAL_URL || '').trim().replace(/\/+$/, '');
-    const portalUrl = (!rawPortalEnv || rawPortalEnv.includes('127.0.0.1:59999'))
+    return (!rawPortalEnv || rawPortalEnv.includes('127.0.0.1:59999') || rawPortalEnv.includes('localhost'))
         ? 'https://proud-darkness-ac3d.miserrano75.workers.dev'
         : rawPortalEnv;
+}
+
+function normalizarDigitosTelPortalWa(tel) {
+    return String(tel || '').replace(/\D/g, '').trim();
+}
+
+function telefonosCoincidenPortalWa(telA, telB) {
+    const a = normalizarDigitosTelPortalWa(telA);
+    const b = normalizarDigitosTelPortalWa(telB);
+    if (a.length < 7 || b.length < 7) return false;
+    return a === b || a.slice(-8) === b.slice(-8) || a.endsWith(b) || b.endsWith(a);
+}
+
+function normalizarNombreSimplePortalWa(txt) {
+    return String(txt || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function obtenerStoreDelegacionesLabWa() {
+    if (_delegacionesLabMemoria) return _delegacionesLabMemoria;
+    // Snapshot espejo de solo lectura para pruebas locales en Modo Laboratorio (0 tráfico hacia Supabase Cloud)
+    _delegacionesLabMemoria = new Map([
+        ['CB-0003', [
+            {
+                id: 'cc112be9-d80d-4b25-9f5c-096786d7135e',
+                cliente_id: 'CB-0003',
+                token: '77e544b524d8a0ded5a3af71b5638853',
+                nombre_empresa: 'The Green Corner',
+                nombre_colaborador: 'Richard',
+                mostrar_precios: true,
+                mostrar_sin_iva: true,
+                permitir_toggle_iva: true,
+                ver_stock: false,
+                tipo_enlace: 'permanente',
+                listas_ids: [5],
+                activo: true,
+                telefono_colaborador: '5492215032728',
+                aprobador_nombre: 'Cecilia',
+                aprobador_telefono: '5492216122330',
+                dispositivo_vinculado_hash: null,
+                dispositivo_vinculado_en: null,
+                expires_at: null,
+                created_at: '2026-10-27T16:46:40.74133+00:00'
+            }
+        ]],
+        ['CB-0013', [
+            {
+                id: '642de9a3-4eb3-4ef2-aaf5-9e917126e8fe',
+                cliente_id: 'CB-0013',
+                token: '841f5192652eaa6326b32f5c041f0ac6',
+                nombre_empresa: 'TITO I SRL',
+                nombre_colaborador: 'Fiambrería',
+                mostrar_precios: true,
+                mostrar_sin_iva: false,
+                permitir_toggle_iva: true,
+                ver_stock: false,
+                tipo_enlace: 'permanente',
+                listas_ids: [5],
+                activo: true,
+                telefono_colaborador: null,
+                aprobador_nombre: null,
+                aprobador_telefono: null,
+                dispositivo_vinculado_hash: null,
+                dispositivo_vinculado_en: null,
+                expires_at: null,
+                created_at: '2026-09-29T14:34:23.660391+00:00'
+            }
+        ]]
+    ]);
+    return _delegacionesLabMemoria;
+}
+
+/**
+ * Consulta las delegaciones activas de Pre-Pedido (clientes_b2b_delegaciones) de un cliente.
+ * - En Producción: GET liviano a Supabase Cloud con caché en memoria de 60s.
+ * - En Modo Laboratorio: usa exclusivamente el store local en memoria (0 llamadas / 0 escrituras a Supabase Cloud).
+ */
+async function obtenerDelegacionesActivasClienteB2BWa(codBunker, { forzarRefresco = false } = {}) {
+    const cod = String(codBunker || '').trim();
+    if (!cod) return [];
+
+    const ahoraMs = Date.now();
+    if (esModoLaboratorioOSandboxBloqueadoB2B()) {
+        const store = obtenerStoreDelegacionesLabWa();
+        const rows = store.get(cod) || [];
+        return rows.filter(d => d && d.activo !== false && (!d.expires_at || new Date(d.expires_at).getTime() > ahoraMs));
+    }
+
+    if (!forzarRefresco && _cacheDelegacionesB2B.has(cod)) {
+        const cached = _cacheDelegacionesB2B.get(cod);
+        if (ahoraMs - cached.ts < 60000) {
+            return cached.rows;
+        }
+    }
+
+    const supaUrl = String(process.env.SUPABASE_B2B_URL || '').trim().replace(/\/+$/, '');
+    const supaKey = String(process.env.SUPABASE_B2B_SERVICE_KEY || '').trim();
+    if (!supaUrl || !supaKey) return [];
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 2600);
+    try {
+        const resp = await fetch(
+            `${supaUrl}/rest/v1/clientes_b2b_delegaciones?cliente_id=eq.${encodeURIComponent(cod)}&activo=eq.true&order=created_at.desc`,
+            {
+                headers: {
+                    apikey: supaKey,
+                    Authorization: `Bearer ${supaKey}`
+                },
+                signal: ctrl.signal
+            }
+        );
+        if (!resp.ok) return [];
+        const raw = await resp.json().catch(() => []);
+        const vigentes = (Array.isArray(raw) ? raw : []).filter(d =>
+            d && d.activo !== false && (!d.expires_at || new Date(d.expires_at).getTime() > ahoraMs)
+        );
+        _cacheDelegacionesB2B.set(cod, { ts: ahoraMs, rows: vigentes });
+        return vigentes;
+    } catch (_) {
+        return [];
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+/**
+ * Determina de manera 100% fehaciente si el TITULAR del cliente ya ingresó alguna vez al Portal B2B
+ * (evitando falsos positivos de los perfiles pre-provisionados con email placeholder @lamdaclientes.com
+ * que nunca iniciaron sesión: solo cuenta como activo si tiene last_sign_in_at real, email real activado,
+ * invitación marcada usada o pedido operado desde Portal B2B).
+ */
+async function resolverEstadoYInvitacionPortalClienteWa(cliRow, { forzarNuevaInvitacion = false, asegurarTokenSiNoIngreso = true } = {}) {
+    const portalUrl = resolverUrlPortalB2BOficialWa();
     const codBunker = String(cliRow?.codigo_bunker_cliente || '').trim();
     if (!codBunker) {
         return {
+            tipo_acceso_portal: 'TITULAR_ACTIVO',
             ya_ingreso: false,
             requiere_invitacion_inicial: false,
             ultimo_ingreso: null,
@@ -134,54 +273,123 @@ async function resolverEstadoYInvitacionPortalClienteWa(cliRow, { forzarNuevaInv
     const cloudBloqueadoPorLab = esModoLaboratorioOSandboxBloqueadoB2B();
     const supaUrl = String(process.env.SUPABASE_B2B_URL || '').trim().replace(/\/+$/, '');
     const supaKey = String(process.env.SUPABASE_B2B_SERVICE_KEY || '').trim();
-    let tienePerfilSupabase = false;
+    let tienePerfilSupabaseActivo = false;
     let perfilSupabaseUuid = null;
 
     if (!cloudBloqueadoPorLab && supaUrl && supaKey) {
-        const ctrlSupa = new AbortController();
-        const timerSupa = setTimeout(() => ctrlSupa.abort(), 2600);
-        try {
-            const respProf = await fetch(
-                `${supaUrl}/rest/v1/clientes_b2b_perfiles?cliente_id=eq.${encodeURIComponent(codBunker)}&select=id,email,updated_at&limit=1`,
-                {
-                    headers: {
-                        apikey: supaKey,
-                        Authorization: `Bearer ${supaKey}`
-                    },
-                    signal: ctrlSupa.signal
-                }
-            );
-            if (respProf.ok) {
-                const profRows = await respProf.json();
-                if (Array.isArray(profRows) && profRows.length > 0) {
-                    tienePerfilSupabase = true;
-                    perfilSupabaseUuid = profRows[0].id || null;
-                    if (profRows[0].email && !String(profRows[0].email).toLowerCase().endsWith('@lamdaclientes.com')) {
-                        emailRegistrado = String(profRows[0].email).trim();
+        const cachedAuth = _cacheAuthLoginB2B.get(codBunker);
+        if (!forzarNuevaInvitacion && cachedAuth && (Date.now() - cachedAuth.ts < 300000)) {
+            tienePerfilSupabaseActivo = cachedAuth.activo;
+            perfilSupabaseUuid = cachedAuth.uuid;
+            if (cachedAuth.emailReal) emailRegistrado = cachedAuth.emailReal;
+            if (cachedAuth.ultimoIngreso) ultimoIngresoIso = cachedAuth.ultimoIngreso;
+        } else {
+            const ctrlSupa = new AbortController();
+            const timerSupa = setTimeout(() => ctrlSupa.abort(), 3000);
+            try {
+                const respProf = await fetch(
+                    `${supaUrl}/rest/v1/clientes_b2b_perfiles?cliente_id=eq.${encodeURIComponent(codBunker)}&select=id,email,updated_at&limit=1`,
+                    {
+                        headers: {
+                            apikey: supaKey,
+                            Authorization: `Bearer ${supaKey}`
+                        },
+                        signal: ctrlSupa.signal
                     }
-                    if (!ultimoIngresoIso && profRows[0].updated_at) {
-                        ultimoIngresoIso = profRows[0].updated_at;
+                );
+                if (respProf.ok) {
+                    const profRows = await respProf.json();
+                    if (Array.isArray(profRows) && profRows.length > 0) {
+                        const prof = profRows[0];
+                        perfilSupabaseUuid = prof.id || null;
+                        const emailPerf = String(prof.email || '').trim().toLowerCase();
+                        const esPlaceholderLamda = !emailPerf || emailPerf.endsWith('@lamdaclientes.com');
+                        let emailRealDetectado = esPlaceholderLamda ? '' : String(prof.email || '').trim();
+                        let lastSignInReal = null;
+
+                        // Verificar last_sign_in_at en Supabase Auth para distinguir perfiles pre-creados (@lamdaclientes.com) de logins reales
+                        if (perfilSupabaseUuid) {
+                            try {
+                                const respAuth = await fetch(
+                                    `${supaUrl}/auth/v1/admin/users/${encodeURIComponent(perfilSupabaseUuid)}`,
+                                    {
+                                        headers: {
+                                            apikey: supaKey,
+                                            Authorization: `Bearer ${supaKey}`
+                                        },
+                                        signal: ctrlSupa.signal
+                                    }
+                                );
+                                if (respAuth.ok) {
+                                    const authData = await respAuth.json().catch(() => null);
+                                    const authUser = authData?.user || authData;
+                                    if (authUser?.last_sign_in_at) {
+                                        lastSignInReal = authUser.last_sign_in_at;
+                                    }
+                                    const authMail = String(authUser?.email || '').trim().toLowerCase();
+                                    if (authMail && !authMail.endsWith('@lamdaclientes.com')) {
+                                        emailRealDetectado = String(authUser.email).trim();
+                                    }
+                                }
+                            } catch (_) {}
+                        }
+
+                        // Evidencia real de ingreso/activación:
+                        //   1) last_sign_in_at no nulo en Auth, OR
+                        //   2) email real (no @lamdaclientes.com) activado en perfil
+                        // Si el perfil es placeholder @lamdaclientes.com y last_sign_in_at es null -> NO ingresó nunca!
+                        if (lastSignInReal) {
+                            tienePerfilSupabaseActivo = true;
+                            ultimoIngresoIso = lastSignInReal;
+                        } else if (!esPlaceholderLamda && emailRealDetectado) {
+                            tienePerfilSupabaseActivo = true;
+                            if (!ultimoIngresoIso && prof.updated_at) {
+                                ultimoIngresoIso = prof.updated_at;
+                            }
+                        } else {
+                            tienePerfilSupabaseActivo = false;
+                        }
+
+                        if (emailRealDetectado) {
+                            emailRegistrado = emailRealDetectado;
+                        }
+
+                        _cacheAuthLoginB2B.set(codBunker, {
+                            ts: Date.now(),
+                            activo: tienePerfilSupabaseActivo,
+                            uuid: perfilSupabaseUuid,
+                            emailReal: emailRealDetectado,
+                            ultimoIngreso: ultimoIngresoIso
+                        });
                     }
                 }
+            } catch (_) {
+                // Si la red tarda o no responde, continuamos con las señales deterministas locales
+            } finally {
+                clearTimeout(timerSupa);
             }
-        } catch (_) {
-            // Si la red tarda o no responde, continuamos con las señales deterministas locales
-        } finally {
-            clearTimeout(timerSupa);
         }
     }
 
+    const histIngresoValido = Boolean(
+        histCli?.ya_ingreso && (
+            histCli?.ultimo_ingreso ||
+            (histCli?.email_registrado && !String(histCli.email_registrado).toLowerCase().endsWith('@lamdaclientes.com'))
+        )
+    );
+
     const yaIngresoReal = Boolean(
-        tienePerfilSupabase ||
+        tienePerfilSupabaseActivo ||
         invLocalUsada ||
         operoEnPortalLocal ||
-        Boolean(histCli?.ya_ingreso)
+        (cloudBloqueadoPorLab && histIngresoValido)
     );
 
     // Si YA ingresó al portal y no se pidió expresamente re-generar una invitación de blanqueo,
     // el cliente ya tiene su usuario y contraseña -> enviar el link limpio del portal.
     if (yaIngresoReal && !forzarNuevaInvitacion) {
         return {
+            tipo_acceso_portal: 'TITULAR_ACTIVO',
             ya_ingreso: true,
             ya_ingreso_historico: true,
             requiere_invitacion_inicial: false,
@@ -198,6 +406,7 @@ async function resolverEstadoYInvitacionPortalClienteWa(cliRow, { forzarNuevaInv
 
     if (!asegurarTokenSiNoIngreso) {
         return {
+            tipo_acceso_portal: 'TITULAR_INVITACION_INICIAL',
             ya_ingreso: false,
             ya_ingreso_historico: yaIngresoReal,
             requiere_invitacion_inicial: true,
@@ -214,6 +423,7 @@ async function resolverEstadoYInvitacionPortalClienteWa(cliRow, { forzarNuevaInv
 
     // Si se pidió explícitamente re-enviar invitación inicial / blanqueo en Producción, limpiar usuario previo bloqueado en Supabase Auth
     if (forzarNuevaInvitacion && !cloudBloqueadoPorLab && supaUrl && supaKey && perfilSupabaseUuid) {
+        _cacheAuthLoginB2B.delete(codBunker);
         try {
             await fetch(`${supaUrl}/auth/v1/admin/users/${encodeURIComponent(perfilSupabaseUuid)}`, {
                 method: 'DELETE',
@@ -226,6 +436,7 @@ async function resolverEstadoYInvitacionPortalClienteWa(cliRow, { forzarNuevaInv
     }
 
     let tokenActivo = '';
+    let codigoActivacionDirecto = '';
     let expiresAt = new Date(Date.now() + 72 * 3600 * 1000);
 
     if (!forzarNuevaInvitacion) {
@@ -249,25 +460,31 @@ async function resolverEstadoYInvitacionPortalClienteWa(cliRow, { forzarNuevaInv
         } catch (_) {}
     }
 
-    if (!tokenActivo) {
+    if (!tokenActivo && cloudBloqueadoPorLab && !forzarNuevaInvitacion && histCli?.codigo_activacion) {
+        codigoActivacionDirecto = String(histCli.codigo_activacion).trim();
+    }
+
+    if (!tokenActivo && !codigoActivacionDirecto) {
         tokenActivo = crypto.randomBytes(32).toString('hex');
         expiresAt = new Date(Date.now() + 72 * 3600 * 1000);
-        try {
-            await pool.query(
-                `INSERT INTO public.portal_invitaciones (token, cliente_id, expires_at, usado)
-                 VALUES ($1, $2, $3, false)`,
-                [tokenActivo, codBunker, expiresAt]
-            );
-        } catch (errIns) {
-            console.warn('⚠️ [CRM-PORTAL-INV] Error insertando portal_invitaciones local:', errIns.message);
+        if (!cloudBloqueadoPorLab || forzarNuevaInvitacion) {
+            try {
+                await pool.query(
+                    `INSERT INTO public.portal_invitaciones (token, cliente_id, expires_at, usado)
+                     VALUES ($1, $2, $3, false)`,
+                    [tokenActivo, codBunker, expiresAt]
+                );
+            } catch (errIns) {
+                console.warn('⚠️ [CRM-PORTAL-INV] Error insertando portal_invitaciones local:', errIns.message);
+            }
         }
     }
 
-    const codigoActivacion = tokenActivo.slice(0, 6);
+    const codigoActivacion = codigoActivacionDirecto || tokenActivo.slice(0, 6);
     const linkInvitacionCorto = `${portalUrl}/?t=${codigoActivacion}`;
 
     // Sincronizar invitación activa + listas del cliente en Supabase Cloud (solo fuera de Modo Laboratorio)
-    if (!cloudBloqueadoPorLab && supaUrl && supaKey) {
+    if (!cloudBloqueadoPorLab && supaUrl && supaKey && tokenActivo) {
         sincronizarListasClienteEnNube(codBunker).catch(() => {});
         try {
             const { contactName, phoneMasked } = parsearContactoWhatsapp(cliRow?.whatsapp_facturas || '');
@@ -316,6 +533,7 @@ async function resolverEstadoYInvitacionPortalClienteWa(cliRow, { forzarNuevaInv
     }
 
     return {
+        tipo_acceso_portal: 'TITULAR_INVITACION_INICIAL',
         ya_ingreso: false,
         ya_ingreso_historico: yaIngresoReal,
         requiere_invitacion_inicial: true,
@@ -327,6 +545,189 @@ async function resolverEstadoYInvitacionPortalClienteWa(cliRow, { forzarNuevaInv
         link_portal_general: portalUrl,
         link_invitacion_corto: linkInvitacionCorto,
         modo_link_recomendado: 'INVITACION_INICIAL'
+    };
+}
+
+/**
+ * Contrato Único Determinista de Acceso Portal B2B por Rol Operativo:
+ *   1. TITULAR_ACTIVO              -> Dueño/Pagos/Compartido con ingreso real al Portal
+ *   2. TITULAR_INVITACION_INICIAL  -> Dueño/Pagos/Compartido que nunca ingresó (/?t=<codigo6>)
+ *   3. ENCARGADO_ARMADOR_PEDIDO    -> COMPRAS_PEDIDOS / RECEPCION_LOCAL con delegación activa (/#/pre-pedido?token=...)
+ *   4. ENCARGADO_ARMADOR_PENDIENTE -> COMPRAS_PEDIDOS / RECEPCION_LOCAL sin delegación personal (bloqueo estricto: jamás cae al link titular)
+ */
+async function resolverAccesoPortalParaChatWa({
+    cli,
+    chat = null,
+    otrosContactos = [],
+    forzarNuevaInvitacion = false,
+    asegurarTokenSiNoIngreso = true,
+    forzarRefrescoDelegaciones = false
+} = {}) {
+    const portalUrl = resolverUrlPortalB2BOficialWa();
+    const rolNorm = String(chat?.rol_operativo || '').trim().toUpperCase();
+    const esRolEmpleado = rolNorm === 'COMPRAS_PEDIDOS' || rolNorm === 'RECEPCION_LOCAL';
+
+    if (!esRolEmpleado) {
+        const base = await resolverEstadoYInvitacionPortalClienteWa(cli, {
+            forzarNuevaInvitacion,
+            asegurarTokenSiNoIngreso
+        });
+        const tipo = (base.ya_ingreso && !forzarNuevaInvitacion)
+            ? 'TITULAR_ACTIVO'
+            : 'TITULAR_INVITACION_INICIAL';
+        return {
+            ...base,
+            tipo_acceso_portal: tipo,
+            rol_operativo: rolNorm || null,
+            es_empleado_armador: false,
+            link_armador_pedido: '',
+            delegacion_armador: null,
+            delegaciones_genericas_cliente: [],
+            aprobador_sugerido: null,
+            simulado_laboratorio: esModoLaboratorioOSandboxBloqueadoB2B()
+        };
+    }
+
+    // Rol de empleado (COMPRAS_PEDIDOS / RECEPCION_LOCAL): jamás emitir ni exponer link o invitación del Titular
+    const codBunker = String(cli?.codigo_bunker_cliente || chat?.codigo_bunker_cliente || '').trim();
+    const delegaciones = codBunker
+        ? await obtenerDelegacionesActivasClienteB2BWa(codBunker, { forzarRefresco: forzarRefrescoDelegaciones })
+        : [];
+
+    // Resolver aprobador sugerido (Dueño/Titular o Pagos del mismo cliente)
+    let hermanos = Array.isArray(otrosContactos) ? otrosContactos : [];
+    const cliIdRef = Number(cli?.id || chat?.bunker_cliente_id || 0);
+    if (hermanos.length === 0 && cliIdRef > 0) {
+        try {
+            const rHer = await pool.query(`
+                SELECT id, contacto_nombre, contacto_cargo, rol_operativo, apodo_preferido, telefono_normalizado
+                FROM public.crm_whatsapp_chats
+                WHERE bunker_cliente_id = $1
+                  AND id <> $2
+                  AND COALESCE(modo_privacidad, 'ACTIVO') <> 'OCULTO'
+                ORDER BY
+                    CASE rol_operativo
+                        WHEN 'DUENO_TITULAR' THEN 1
+                        WHEN 'PAGOS_ADMIN' THEN 2
+                        ELSE 3
+                    END ASC,
+                    ultimo_mensaje_at DESC NULLS LAST
+                LIMIT 8
+            `, [cliIdRef, Number(chat?.id || 0)]);
+            hermanos = rHer.rows;
+        } catch (_) {}
+    }
+
+    const candidatosAprobadores = hermanos
+        .filter(h => ['DUENO_TITULAR', 'PAGOS_ADMIN'].includes(String(h.rol_operativo || '').toUpperCase()))
+        .map(h => ({
+            chat_id: h.id,
+            nombre: String(h.apodo_preferido || h.contacto_nombre || '').trim() || 'Titular',
+            telefono: normalizarDigitosTelPortalWa(h.telefono_normalizado),
+            rol_operativo: String(h.rol_operativo || '').toUpperCase()
+        }));
+    const aprobadorSugerido = candidatosAprobadores[0] || null;
+
+    const telChat = normalizarDigitosTelPortalWa(chat?.telefono_normalizado);
+    const nombresGenericos = new Set(['colaborador', 'colaborador mostrador', 'mostrador', 'local', 'fiambreria', 'deposito', 'compras', 'ventas', 'sucursal', 'operador', 'empleado', 'empleada']);
+    const nombreChatNorm = normalizarNombreSimplePortalWa(chat?.contacto_nombre || chat?.apodo_preferido || '');
+    const apodoChatNorm = normalizarNombreSimplePortalWa(chat?.apodo_preferido || '');
+
+    // 1. Match personal exacto por teléfono del colaborador
+    let delPersonal = delegaciones.find(d => d.telefono_colaborador && telefonosCoincidenPortalWa(d.telefono_colaborador, telChat)) || null;
+    // 2. Match personal secundario por nombre exacto no-genérico (solo si esa delegación no pertenece a otro teléfono)
+    if (!delPersonal && nombreChatNorm && !nombresGenericos.has(nombreChatNorm)) {
+        delPersonal = delegaciones.find(d => {
+            if (d.telefono_colaborador && !telefonosCoincidenPortalWa(d.telefono_colaborador, telChat)) return false;
+            const nomDel = normalizarNombreSimplePortalWa(d.nombre_colaborador);
+            if (!nomDel || nombresGenericos.has(nomDel)) return false;
+            return nomDel === nombreChatNorm || (apodoChatNorm && nomDel === apodoChatNorm);
+        }) || null;
+    }
+
+    // Delegaciones genéricas vigentes del mismo cliente sin teléfono asignado (ej. "Fiambrería" en Tito CB-0013)
+    const delegacionesGenericas = delegaciones
+        .filter(d => (!delPersonal || d.id !== delPersonal.id) && !normalizarDigitosTelPortalWa(d.telefono_colaborador))
+        .map(d => ({
+            id: d.id,
+            token: d.token,
+            nombre_colaborador: d.nombre_colaborador || 'Colaborador',
+            mostrar_precios: Boolean(d.mostrar_precios),
+            mostrar_sin_iva: Boolean(d.mostrar_sin_iva),
+            tipo_enlace: d.tipo_enlace || 'permanente',
+            created_at: d.created_at || null,
+            link: `${portalUrl}/#/pre-pedido?token=${d.token}`
+        }));
+
+    if (delPersonal) {
+        const linkArmador = `${portalUrl}/#/pre-pedido?token=${delPersonal.token}`;
+        const telColabClean = normalizarDigitosTelPortalWa(delPersonal.telefono_colaborador || '');
+        const dispositivoVinculado = Boolean(delPersonal.dispositivo_vinculado_hash && String(delPersonal.dispositivo_vinculado_hash).trim());
+        const requiereValidacion4Digitos = Boolean(telColabClean.length >= 4 && !dispositivoVinculado);
+        const ultimos4Telefono = telColabClean.length >= 4 ? telColabClean.slice(-4) : '';
+        const aprobadorNombre = String(delPersonal.aprobador_nombre || aprobadorSugerido?.nombre || '').trim();
+        const aprobadorTelefono = normalizarDigitosTelPortalWa(delPersonal.aprobador_telefono || aprobadorSugerido?.telefono || '');
+
+        return {
+            tipo_acceso_portal: 'ENCARGADO_ARMADOR_PEDIDO',
+            rol_operativo: rolNorm,
+            es_empleado_armador: true,
+            ya_ingreso: false,
+            requiere_invitacion_inicial: false,
+            ultimo_ingreso: null,
+            email_registrado: '',
+            codigo_activacion: '',
+            token_invitacion: '',
+            expires_at: delPersonal.expires_at || null,
+            link_portal_general: '',
+            link_invitacion_corto: '',
+            link_armador_pedido: linkArmador,
+            modo_link_recomendado: 'ARMADOR_PEDIDO',
+            delegacion_armador: {
+                id: delPersonal.id,
+                token: delPersonal.token,
+                nombre_colaborador: delPersonal.nombre_colaborador || chat?.contacto_nombre || 'Operador',
+                telefono_colaborador: delPersonal.telefono_colaborador || null,
+                aprobador_nombre: aprobadorNombre,
+                aprobador_telefono: aprobadorTelefono || null,
+                mostrar_precios: Boolean(delPersonal.mostrar_precios),
+                mostrar_sin_iva: Boolean(delPersonal.mostrar_sin_iva),
+                permitir_toggle_iva: delPersonal.permitir_toggle_iva !== false,
+                ver_stock: Boolean(delPersonal.ver_stock),
+                tipo_enlace: delPersonal.tipo_enlace || 'permanente',
+                dispositivo_vinculado: dispositivoVinculado,
+                requiere_validacion_4_digitos: requiereValidacion4Digitos,
+                ultimos_4_telefono: ultimos4Telefono,
+                link: linkArmador,
+                simulado_laboratorio: Boolean(delPersonal.simulado_laboratorio)
+            },
+            delegaciones_genericas_cliente: delegacionesGenericas,
+            aprobador_sugerido: aprobadorSugerido,
+            aprobadores_disponibles: candidatosAprobadores,
+            simulado_laboratorio: esModoLaboratorioOSandboxBloqueadoB2B()
+        };
+    }
+
+    return {
+        tipo_acceso_portal: 'ENCARGADO_ARMADOR_PENDIENTE',
+        rol_operativo: rolNorm,
+        es_empleado_armador: true,
+        ya_ingreso: false,
+        requiere_invitacion_inicial: false,
+        ultimo_ingreso: null,
+        email_registrado: '',
+        codigo_activacion: '',
+        token_invitacion: '',
+        expires_at: null,
+        link_portal_general: '',
+        link_invitacion_corto: '',
+        link_armador_pedido: '',
+        modo_link_recomendado: 'ARMADOR_PENDIENTE',
+        delegacion_armador: null,
+        delegaciones_genericas_cliente: delegacionesGenericas,
+        aprobador_sugerido: aprobadorSugerido,
+        aprobadores_disponibles: candidatosAprobadores,
+        simulado_laboratorio: esModoLaboratorioOSandboxBloqueadoB2B()
     };
 }
 
@@ -3838,23 +4239,45 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
             ]);
         }
 
+        let chatRowPortal = null;
+        if (chatId > 0) {
+            try {
+                const rChP = await pool.query(`
+                    SELECT id, bunker_cliente_id, codigo_bunker_cliente, telefono_normalizado,
+                           contacto_nombre, contacto_cargo, rol_operativo, apodo_preferido
+                    FROM public.crm_whatsapp_chats
+                    WHERE id = $1
+                    LIMIT 1
+                `, [chatId]);
+                if (rChP.rows.length > 0) chatRowPortal = rChP.rows[0];
+            } catch (_) {}
+        }
+
+        const estadoPortalB2B = await resolverAccesoPortalParaChatWa({
+            cli,
+            chat: chatRowPortal,
+            forzarNuevaInvitacion: false,
+            asegurarTokenSiNoIngreso: true
+        }).catch(() => null);
+
         const ultimoMsgIdActual = mensajesRecientesChat.length > 0
             ? Number(mensajesRecientesChat[mensajesRecientesChat.length - 1].id || 0)
             : 0;
+        const razGuardadoRaw = existente?.razonamiento_ia_json || null;
+        const coincideChatYPortal = !razGuardadoRaw ? false : (
+            (!chatId || !razGuardadoRaw._chat_id_razonado || Number(razGuardadoRaw._chat_id_razonado) === Number(chatId)) &&
+            (!estadoPortalB2B?.tipo_acceso_portal || !razGuardadoRaw._tipo_acceso_portal || razGuardadoRaw._tipo_acceso_portal === estadoPortalB2B.tipo_acceso_portal)
+        );
         const razonamientoIaGuardado = (
             !forzarCompleta &&
             !huboCambios &&
             existente &&
-            existente.razonamiento_ia_json &&
-            existente.razonamiento_ia_json.usando_ia_real &&
+            razGuardadoRaw &&
+            razGuardadoRaw.usando_ia_real &&
+            coincideChatYPortal &&
             Number(existente.ultimo_msg_id_razonado || 0) === ultimoMsgIdActual &&
             ultimoMsgIdActual > 0
-        ) ? existente.razonamiento_ia_json : null;
-
-        const estadoPortalB2B = await resolverEstadoYInvitacionPortalClienteWa(cli, {
-            forzarNuevaInvitacion: false,
-            asegurarTokenSiNoIngreso: true
-        }).catch(() => null);
+        ) ? razGuardadoRaw : null;
 
         const duracionMs = Date.now() - t0;
         res.json({
@@ -3882,9 +4305,9 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
 
 /**
  * POST /api/crm/whatsapp/clientes/:clienteId/preparar-invitacion-portal
- * Resuelve en vivo el estado de ingreso al Portal B2B de un cliente (por id o codigo_bunker_cliente)
- * y garantiza una invitación inicial activa (72hs) con código de activación si aún no ingresó
- * o si el operador solicita explícitamente emitir una nueva invitación de alta/blanqueo.
+ * Resuelve en vivo el acceso determinista al Portal B2B según el rol_operativo del chat (si se envía chatId):
+ *   - TITULAR_ACTIVO / TITULAR_INVITACION_INICIAL para Dueño / Pagos / Compartido
+ *   - ENCARGADO_ARMADOR_PEDIDO / ENCARGADO_ARMADOR_PENDIENTE para Compras / Recepción (jamás filtra link titular)
  */
 router.post('/crm/whatsapp/clientes/:clienteId/preparar-invitacion-portal', async (req, res) => {
     try {
@@ -3893,6 +4316,7 @@ router.post('/crm/whatsapp/clientes/:clienteId/preparar-invitacion-portal', asyn
             return res.status(400).json({ success: false, error: 'Identificador de cliente requerido.' });
         }
         const forzarNueva = Boolean(req.body?.forzarNueva);
+        const chatIdReq = parseInt(req.body?.chatId || req.query?.chatId, 10) || 0;
         const bcRes = await pool.query(`
             SELECT id, cliente_nombre, razon_social, codigo_bunker_cliente, lomas_soft_id,
                    cuit_cuil, whatsapp_facturas, email_portal, email_portal_nombre, email_portal_cargo
@@ -3908,15 +4332,33 @@ router.post('/crm/whatsapp/clientes/:clienteId/preparar-invitacion-portal', asyn
             return res.status(404).json({ success: false, error: 'Cliente no encontrado en Búnker.' });
         }
 
-        const estadoPortal = await resolverEstadoYInvitacionPortalClienteWa(bcRes.rows[0], {
+        let chatRow = null;
+        if (chatIdReq > 0) {
+            try {
+                const rCh = await pool.query(`
+                    SELECT id, bunker_cliente_id, codigo_bunker_cliente, telefono_normalizado,
+                           contacto_nombre, contacto_cargo, rol_operativo, apodo_preferido
+                    FROM public.crm_whatsapp_chats
+                    WHERE id = $1
+                    LIMIT 1
+                `, [chatIdReq]);
+                if (rCh.rows.length > 0) chatRow = rCh.rows[0];
+            } catch (_) {}
+        }
+
+        const estadoPortal = await resolverAccesoPortalParaChatWa({
+            cli: bcRes.rows[0],
+            chat: chatRow,
             forzarNuevaInvitacion: forzarNueva,
-            asegurarTokenSiNoIngreso: true
+            asegurarTokenSiNoIngreso: true,
+            forzarRefrescoDelegaciones: Boolean(req.body?.forzarRefresco)
         });
 
         res.json({
             success: true,
             cliente_bunker_id: bcRes.rows[0].id,
             codigo_bunker_cliente: bcRes.rows[0].codigo_bunker_cliente,
+            chat_id: chatIdReq || null,
             estado_portal_b2b: estadoPortal
         });
     } catch (error) {
@@ -3926,9 +4368,233 @@ router.post('/crm/whatsapp/clientes/:clienteId/preparar-invitacion-portal', asyn
 });
 
 /**
+ * POST /api/crm/whatsapp/chats/:chatId/habilitar-armador-pedido
+ * Habilita (crea o vincula) un enlace especial de Armador de Pre-Pedido (/#/pre-pedido?token=...)
+ * para un empleado (COMPRAS_PEDIDOS / RECEPCION_LOCAL) sin login de titular ni acceso a Cuenta Corriente.
+ * En Modo Laboratorio simula la operación en memoria local (0 escrituras en Supabase Cloud).
+ */
+router.post('/crm/whatsapp/chats/:chatId/habilitar-armador-pedido', async (req, res) => {
+    try {
+        const chatIdNum = parseInt(req.params.chatId, 10);
+        if (!chatIdNum) {
+            return res.status(400).json({ success: false, error: 'chatId inválido.' });
+        }
+
+        const chRes = await pool.query(`
+            SELECT c.id, c.bunker_cliente_id, c.codigo_bunker_cliente, c.cliente_nombre,
+                   c.telefono_normalizado, c.contacto_nombre, c.contacto_cargo, c.rol_operativo, c.apodo_preferido,
+                   bc.razon_social, bc.lomas_soft_id, bc.ver_stock, bc.cuit_cuil, bc.whatsapp_facturas,
+                   bc.email_portal, bc.email_portal_nombre, bc.email_portal_cargo
+            FROM public.crm_whatsapp_chats c
+            JOIN public.bunker_clientes bc ON bc.id = c.bunker_cliente_id
+            WHERE c.id = $1
+            LIMIT 1
+        `, [chatIdNum]);
+
+        if (chRes.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Chat no encontrado o no vinculado a un cliente Búnker.' });
+        }
+
+        const row = chRes.rows[0];
+        const codBunker = String(row.codigo_bunker_cliente || '').trim();
+        if (!codBunker) {
+            return res.status(400).json({ success: false, error: 'El cliente no tiene codigo_bunker_cliente asignado.' });
+        }
+
+        const body = req.body || {};
+        const modo = String(body.modo || 'CREAR_PERSONAL').trim().toUpperCase();
+        const delegacionIdExistente = String(body.delegacion_id || '').trim();
+        const nombreColaborador = String(body.nombre_colaborador || row.apodo_preferido || row.contacto_nombre || 'Operador').trim();
+        const telColaborador = normalizarDigitosTelPortalWa(body.telefono_colaborador || row.telefono_normalizado);
+        const aprobadorNombre = String(body.aprobador_nombre || 'Titular').trim();
+        const aprobadorTelefono = normalizarDigitosTelPortalWa(body.aprobador_telefono || '');
+        const mostrarPrecios = body.mostrar_precios !== false;
+        const mostrarSinIva = Boolean(body.mostrar_sin_iva);
+        const tipoEnlace = body.tipo_enlace === 'unico' ? 'unico' : 'permanente';
+
+        if (!telColaborador || telColaborador.length < 6) {
+            return res.status(400).json({
+                success: false,
+                error: 'El contacto no tiene un número de teléfono válido para proteger el enlace de Armador.'
+            });
+        }
+
+        // Obtener listas asignadas localmente (solo lectura)
+        let listIds = [];
+        try {
+            const rListas = await pool.query(
+                `SELECT bunker_lista_precio_id FROM public.bunker_cliente_listas_precios WHERE bunker_cliente_id = $1`,
+                [row.bunker_cliente_id]
+            );
+            listIds = rListas.rows.map(r => parseInt(r.bunker_lista_precio_id, 10)).filter(n => !isNaN(n));
+        } catch (_) {}
+        if (listIds.length === 0) listIds = [1];
+
+        const cloudBloqueadoPorLab = esModoLaboratorioOSandboxBloqueadoB2B();
+        const nombreEmpresa = String(row.cliente_nombre || row.razon_social || codBunker).trim();
+
+        if (cloudBloqueadoPorLab) {
+            // MODO LABORATORIO: 100% simulado en memoria local (0 escrituras en Supabase Cloud)
+            const store = obtenerStoreDelegacionesLabWa();
+            const actuales = store.get(codBunker) ? [...store.get(codBunker)] : [];
+
+            if ((modo === 'VINCULAR_EXISTENTE' || modo === 'REUTILIZAR_EXISTENTE') && delegacionIdExistente) {
+                const idx = actuales.findIndex(d => String(d.id) === delegacionIdExistente);
+                if (idx === -1) {
+                    return res.status(404).json({ success: false, error: 'Delegación previa no encontrada en Laboratorio.' });
+                }
+                actuales[idx] = {
+                    ...actuales[idx],
+                    nombre_colaborador: nombreColaborador,
+                    telefono_colaborador: telColaborador,
+                    aprobador_nombre: aprobadorNombre || actuales[idx].aprobador_nombre || null,
+                    aprobador_telefono: aprobadorTelefono || actuales[idx].aprobador_telefono || null,
+                    mostrar_precios: mostrarPrecios,
+                    mostrar_sin_iva: mostrarSinIva,
+                    simulado_laboratorio: true,
+                    updated_at: new Date().toISOString()
+                };
+                store.set(codBunker, actuales);
+            } else {
+                const tokenSim = crypto.randomBytes(16).toString('hex');
+                const nuevaSim = {
+                    id: `lab-sim-${tokenSim.slice(0, 12)}`,
+                    cliente_id: codBunker,
+                    token: tokenSim,
+                    nombre_empresa: nombreEmpresa,
+                    nombre_colaborador: nombreColaborador,
+                    telefono_colaborador: telColaborador,
+                    aprobador_nombre: aprobadorNombre || null,
+                    aprobador_telefono: aprobadorTelefono || null,
+                    mostrar_precios: mostrarPrecios,
+                    mostrar_sin_iva: mostrarSinIva,
+                    permitir_toggle_iva: true,
+                    ver_stock: Boolean(row.ver_stock),
+                    tipo_enlace: tipoEnlace,
+                    listas_ids: listIds,
+                    activo: true,
+                    dispositivo_vinculado_hash: null,
+                    dispositivo_vinculado_en: null,
+                    expires_at: null,
+                    created_at: new Date().toISOString(),
+                    simulado_laboratorio: true
+                };
+                store.set(codBunker, [nuevaSim, ...actuales]);
+            }
+
+            const estadoNuevo = await resolverAccesoPortalParaChatWa({
+                cli: { ...row, id: row.bunker_cliente_id },
+                chat: row,
+                forzarRefrescoDelegaciones: true
+            });
+
+            return res.json({
+                success: true,
+                simulado_laboratorio: true,
+                modo,
+                message: '🧪 Modo Laboratorio: link de Armador simulado localmente (0 escrituras en Supabase Cloud).',
+                estado_portal_b2b: estadoNuevo
+            });
+        }
+
+        // PRODUCCIÓN: escribir en Supabase clientes_b2b_delegaciones
+        const supaUrl = String(process.env.SUPABASE_B2B_URL || '').trim().replace(/\/+$/, '');
+        const supaKey = String(process.env.SUPABASE_B2B_SERVICE_KEY || '').trim();
+        if (!supaUrl || !supaKey) {
+            return res.status(503).json({ success: false, error: 'Credenciales de Supabase B2B no disponibles.' });
+        }
+
+        try {
+            const listasNube = await sincronizarListasClienteEnNube(codBunker);
+            if (Array.isArray(listasNube) && listasNube.length > 0) listIds = listasNube;
+        } catch (_) {}
+
+        if ((modo === 'VINCULAR_EXISTENTE' || modo === 'REUTILIZAR_EXISTENTE') && delegacionIdExistente) {
+            const patchPayload = {
+                nombre_colaborador: nombreColaborador,
+                telefono_colaborador: telColaborador,
+                aprobador_nombre: aprobadorNombre || null,
+                aprobador_telefono: aprobadorTelefono || null,
+                mostrar_precios: mostrarPrecios,
+                mostrar_sin_iva: mostrarSinIva,
+                listas_ids: listIds,
+                updated_at: new Date().toISOString()
+            };
+            const rPatch = await fetch(
+                `${supaUrl}/rest/v1/clientes_b2b_delegaciones?id=eq.${encodeURIComponent(delegacionIdExistente)}&cliente_id=eq.${encodeURIComponent(codBunker)}`,
+                {
+                    method: 'PATCH',
+                    headers: {
+                        apikey: supaKey,
+                        Authorization: `Bearer ${supaKey}`,
+                        'Content-Type': 'application/json',
+                        Prefer: 'return=representation'
+                    },
+                    body: JSON.stringify(patchPayload)
+                }
+            );
+            if (!rPatch.ok) {
+                const errTxt = await rPatch.text().catch(() => '');
+                throw new Error(`No se pudo vincular la delegación en Supabase (${rPatch.status}): ${errTxt.slice(0, 140)}`);
+            }
+        } else {
+            const token = crypto.randomBytes(16).toString('hex');
+            const insertPayload = {
+                cliente_id: codBunker,
+                token,
+                nombre_empresa: nombreEmpresa,
+                nombre_colaborador: nombreColaborador,
+                telefono_colaborador: telColaborador,
+                aprobador_nombre: aprobadorNombre || null,
+                aprobador_telefono: aprobadorTelefono || null,
+                mostrar_precios: mostrarPrecios,
+                mostrar_sin_iva: mostrarSinIva,
+                permitir_toggle_iva: true,
+                ver_stock: Boolean(row.ver_stock),
+                tipo_enlace: tipoEnlace,
+                listas_ids: listIds,
+                activo: true
+            };
+            const rPost = await fetch(`${supaUrl}/rest/v1/clientes_b2b_delegaciones`, {
+                method: 'POST',
+                headers: {
+                    apikey: supaKey,
+                    Authorization: `Bearer ${supaKey}`,
+                    'Content-Type': 'application/json',
+                    Prefer: 'return=representation'
+                },
+                body: JSON.stringify(insertPayload)
+            });
+            if (!rPost.ok) {
+                const errTxt = await rPost.text().catch(() => '');
+                throw new Error(`No se pudo crear la delegación en Supabase (${rPost.status}): ${errTxt.slice(0, 140)}`);
+            }
+        }
+
+        _cacheDelegacionesB2B.delete(codBunker);
+        const estadoNuevo = await resolverAccesoPortalParaChatWa({
+            cli: { ...row, id: row.bunker_cliente_id },
+            chat: row,
+            forzarRefrescoDelegaciones: true
+        });
+
+        res.json({
+            success: true,
+            simulado_laboratorio: false,
+            modo,
+            message: 'Link de Armador de Pedido habilitado correctamente.',
+            estado_portal_b2b: estadoNuevo
+        });
+    } catch (error) {
+        console.error('❌ [CRM-ARMADOR] Error habilitando armador de pedido:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * POST /api/crm/whatsapp/asistente-hibrido/razonar
  * Fase 3: Ejecuta el Motor de 2 Carriles (Entrante / Saliente) y 8 Agentes Especializados (Gemini 2.5 Flash)
- * enriquecido server-side con la Capa Determinista de LAMDA (CC + tramo_real, Logística real, Portal B2B,
+ * enriquecido server-side con la Capa Determinista de LAMDA (CC + tramo_real, Logística real, Portal B2B por Rol,
  * catálogo y comprobantes leídos).
  */
 router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
@@ -3941,32 +4607,36 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
         const carrilReq = body.carril ? String(body.carril).trim().toUpperCase() : '';
         const instruccionOperador = String(body.instruccionOperador || '').trim();
 
-        // Fase 3.5: Resolver deterministamente rol_operativo, apodo_preferido, memoria_trato y otros contactos desde crm_whatsapp_chats
+        // Fase 3.5 + Portal por Rol: Resolver deterministamente rol_operativo, apodo_preferido, memoria_trato y otros contactos desde crm_whatsapp_chats
         let rolOperativo = body.rolOperativo || null;
         let contactoCargo = body.contactoCargo || '';
         let apodoConfirmadoMartin = body.apodoConfirmadoMartin || '';
         let notaTrato = body.notaTrato || '';
         let otrosContactosCliente = Array.isArray(body.otrosContactosCliente) ? body.otrosContactosCliente : [];
+        let chatRowDb = null;
+        let cliRowDb = null;
         if (chatIdNum > 0) {
             try {
                 const chMeta = await pool.query(`
-                    SELECT id, bunker_cliente_id, rol_operativo, contacto_cargo, apodo_preferido, memoria_trato_json
+                    SELECT id, bunker_cliente_id, codigo_bunker_cliente, telefono_normalizado,
+                           contacto_nombre, rol_operativo, contacto_cargo, apodo_preferido, memoria_trato_json
                     FROM public.crm_whatsapp_chats
                     WHERE id = $1
                     LIMIT 1
                 `, [chatIdNum]);
                 if (chMeta.rows.length > 0) {
                     const rowCh = chMeta.rows[0];
+                    chatRowDb = rowCh;
                     if (!rolOperativo && rowCh.rol_operativo) rolOperativo = rowCh.rol_operativo;
                     if (!contactoCargo && rowCh.contacto_cargo) contactoCargo = rowCh.contacto_cargo;
                     if (!apodoConfirmadoMartin && rowCh.apodo_preferido) apodoConfirmadoMartin = rowCh.apodo_preferido;
                     if (!notaTrato && rowCh.memoria_trato_json?.nota_trato) notaTrato = rowCh.memoria_trato_json.nota_trato;
                     if (otrosContactosCliente.length === 0 && rowCh.bunker_cliente_id) {
                         const ocRes = await pool.query(`
-                            SELECT id, contacto_nombre, contacto_cargo, rol_operativo, apodo_preferido
+                            SELECT id, contacto_nombre, contacto_cargo, rol_operativo, apodo_preferido, telefono_normalizado
                             FROM public.crm_whatsapp_chats
                             WHERE bunker_cliente_id = $1 AND id <> $2 AND COALESCE(modo_privacidad, 'ACTIVO') <> 'OCULTO'
-                            LIMIT 6
+                            LIMIT 8
                         `, [rowCh.bunker_cliente_id, chatIdNum]);
                         otrosContactosCliente = ocRes.rows;
                     }
@@ -3974,10 +4644,53 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
             } catch (_) {}
         }
 
+        const effectiveCliId = cliIdNum || Number(chatRowDb?.bunker_cliente_id || 0);
+        if (effectiveCliId > 0) {
+            try {
+                const rCli = await pool.query(`
+                    SELECT id, cliente_nombre, razon_social, codigo_bunker_cliente, lomas_soft_id,
+                           cuit_cuil, whatsapp_facturas, email_portal, email_portal_nombre, email_portal_cargo
+                    FROM public.bunker_clientes
+                    WHERE id = $1
+                    LIMIT 1
+                `, [effectiveCliId]);
+                if (rCli.rows.length > 0) cliRowDb = rCli.rows[0];
+            } catch (_) {}
+        }
+
+        // Resolver deterministamente acceso Portal B2B según rol_operativo del chat
+        let accesoPortal = null;
+        if (cliRowDb) {
+            const chatParaPortal = chatRowDb
+                ? { ...chatRowDb, rol_operativo: rolOperativo || chatRowDb.rol_operativo }
+                : (rolOperativo ? { id: chatIdNum, rol_operativo: rolOperativo } : null);
+            accesoPortal = await resolverAccesoPortalParaChatWa({
+                cli: cliRowDb,
+                chat: chatParaPortal,
+                otrosContactos: otrosContactosCliente,
+                forzarNuevaInvitacion: false,
+                asegurarTokenSiNoIngreso: false
+            }).catch(() => null);
+        }
+
+        const tipoAccesoPortal = accesoPortal?.tipo_acceso_portal
+            || String(body.tipoAccesoPortal || '').trim().toUpperCase()
+            || (Boolean(body.yaIngresoPortal) ? 'TITULAR_ACTIVO' : 'TITULAR_INVITACION_INICIAL');
+        const aprobadorNombrePortal = accesoPortal?.delegacion_armador?.aprobador_nombre
+            || accesoPortal?.aprobador_sugerido?.nombre
+            || String(body.aprobadorNombre || '').trim();
+        const requiereValidacion4DigitosPortal = Boolean(accesoPortal?.delegacion_armador?.requiere_validacion_4_digitos);
+        const linkPortalEfectivo = tipoAccesoPortal === 'ENCARGADO_ARMADOR_PEDIDO'
+            ? (accesoPortal?.link_armador_pedido || '')
+            : (tipoAccesoPortal === 'ENCARGADO_ARMADOR_PENDIENTE'
+                ? ''
+                : (accesoPortal?.link_invitacion_corto || accesoPortal?.link_portal_general || body.linkPortalCliente || ''));
+        const yaIngresoPortalEfectivo = tipoAccesoPortal === 'TITULAR_ACTIVO';
+
         const esTelefonoCompartido = Boolean(body.esTelefonoCompartido || String(rolOperativo || '').toUpperCase() === 'COMPARTIDO');
 
         const enriquecido = await enriquecerContextoDeterministaRazonamientoWa({
-            clienteId: cliIdNum,
+            clienteId: effectiveCliId,
             estadoCuentaBase: body.estadoCuentaDeterminista || {},
             contextoLogisticoBase: body.contextoLogistico || null,
             diasSinCompraBase: body.diasSinCompra ?? null
@@ -4000,18 +4713,26 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
             contextoLogistico: enriquecido.contextoLogistico,
             comprobanteLeido: body.comprobanteLeido || null,
             diasSinCompra: enriquecido.diasSinCompra,
-            linkPortalCliente: body.linkPortalCliente || '',
-            yaIngresoPortal: Boolean(body.yaIngresoPortal),
+            linkPortalCliente: linkPortalEfectivo,
+            yaIngresoPortal: yaIngresoPortalEfectivo,
+            tipoAccesoPortal,
+            aprobadorNombre: aprobadorNombrePortal,
+            requiereValidacion4Digitos: requiereValidacion4DigitosPortal,
             carril: carrilReq,
             agenteObjetivo: agenteObjNorm,
             instruccionOperador,
             forzarRecalculo: Boolean(body.forzarRecalculo)
         });
 
+        if (resultado && typeof resultado === 'object') {
+            resultado._chat_id_razonado = chatIdNum || null;
+            resultado._tipo_acceso_portal = tipoAccesoPortal;
+        }
+
         // Solo persistir caché automático en BD cuando fue AUTO sin instrucción ad-hoc ni especialista forzado
         const ultMsgId = mensajesArr.length > 0 ? Number(mensajesArr[mensajesArr.length - 1].id || 0) : 0;
         const esCorridaDefaultAuto = (agenteObjNorm === 'AUTO' || !agenteObjNorm) && !instruccionOperador && !body.comprobanteLeido;
-        if (cliIdNum > 0 && esCorridaDefaultAuto && resultado && resultado.usando_ia_real) {
+        if (effectiveCliId > 0 && esCorridaDefaultAuto && resultado && resultado.usando_ia_real) {
             await asegurarTablaSintesisMemoriaCliente().catch(() => {});
             await pool.query(`
                 UPDATE public.crm_cliente_sintesis_memoria
@@ -4019,7 +4740,7 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
                     ultimo_msg_id_razonado = $2,
                     ultima_actualizacion_en = NOW()
                 WHERE cliente_bunker_id = $3
-            `, [JSON.stringify(resultado), ultMsgId, cliIdNum]).catch(() => {});
+            `, [JSON.stringify(resultado), ultMsgId, effectiveCliId]).catch(() => {});
         }
 
         res.json({
@@ -4029,7 +4750,8 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
                 tramo_real: enriquecido.estadoCuentaDeterminista?.tramo_real || 'EN_TERMINO',
                 saldo_total: Number(enriquecido.estadoCuentaDeterminista?.saldo_total || 0),
                 logistica_estado: enriquecido.contextoLogistico?.estado_normalizado || 'SIN_PEDIDO_ACTIVO',
-                dias_sin_compra: enriquecido.diasSinCompra
+                dias_sin_compra: enriquecido.diasSinCompra,
+                tipo_acceso_portal: tipoAccesoPortal
             }
         });
     } catch (error) {

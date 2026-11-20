@@ -2222,6 +2222,52 @@ exports.habilitarColaboradorPrepedido = async (req, res) => {
         const targetClienteId = cliente.codigo_bunker_cliente;
         const nombreEmpresa = cliente.cliente_nombre || cliente.razon_social || targetClienteId;
 
+        const activeCloudflareUrl = 'https://proud-darkness-ac3d.miserrano75.workers.dev';
+        const portalUrl = (process.env.B2B_PORTAL_URL && !process.env.B2B_PORTAL_URL.includes('localhost') && !process.env.B2B_PORTAL_URL.includes('127.0.0.1'))
+            ? process.env.B2B_PORTAL_URL
+            : activeCloudflareUrl;
+
+        if (esModoLaboratorioOSinCredencialesB2B()) {
+            const tokenSim = crypto.randomBytes(16).toString('hex');
+            const telAprobadorCleanSim = sanitizarNumero(aprobador_telefono);
+            const linkSim = `${portalUrl}/#/pre-pedido?token=${tokenSim}`;
+            const ultimos4Sim = telOperadorClean.slice(-4);
+            const nombreColabSim = (nombre_colaborador || 'Operador').trim();
+            const textoSim = (mensaje_texto || '').trim()
+                ? (mensaje_texto || '').trim()
+                    .replace(/\[Enlace_PrePedido\]|\[Enlace_Al_Portal\]/g, linkSim)
+                    .replace(/\[Ultimos_4_Digitos\]/g, ultimos4Sim)
+                : `Hola ${nombreColabSim}, te habilitamos el enlace para armar pedidos de *${nombreEmpresa}* y enviarlos para aprobación.\n\n🔒 La primera vez ingresá los últimos 4 dígitos de tu teléfono (*${ultimos4Sim}*).\n\n👉 Ingresá acá: ${linkSim}`;
+
+            return res.json({
+                success: true,
+                simulado_laboratorio: true,
+                whatsappEnviado: false,
+                whatsappError: null,
+                message: '🧪 Modo Laboratorio: acceso de operador simulado localmente (0 escrituras en Supabase Cloud).',
+                data: {
+                    id: `lab-sim-${tokenSim.slice(0, 12)}`,
+                    cliente_id: targetClienteId,
+                    token: tokenSim,
+                    nombre_empresa: nombreEmpresa,
+                    nombre_colaborador: nombreColabSim,
+                    telefono_colaborador: telOperadorClean,
+                    aprobador_nombre: (aprobador_nombre || 'Administración').trim(),
+                    aprobador_telefono: telAprobadorCleanSim || null,
+                    mostrar_precios: mostrar_precios !== false,
+                    mostrar_sin_iva: Boolean(mostrar_sin_iva),
+                    permitir_toggle_iva: permitir_toggle_iva !== false,
+                    ver_stock: ver_stock !== undefined ? Boolean(ver_stock) : Boolean(cliente.ver_stock),
+                    tipo_enlace: tipo_enlace === 'unico' ? 'unico' : 'permanente',
+                    listas_ids: [1],
+                    activo: true,
+                    simulado_laboratorio: true,
+                    link: linkSim,
+                    mensajeTexto: textoSim
+                }
+            });
+        }
+
         // 1. Sincronizar listas de precios del cliente en la nube para asegurar catálogo actualizado
         let listIds = [];
         try {
@@ -2267,11 +2313,6 @@ exports.habilitarColaboradorPrepedido = async (req, res) => {
             .single();
 
         if (insErr) throw insErr;
-
-        const activeCloudflareUrl = 'https://proud-darkness-ac3d.miserrano75.workers.dev';
-        const portalUrl = (process.env.B2B_PORTAL_URL && !process.env.B2B_PORTAL_URL.includes('localhost'))
-            ? process.env.B2B_PORTAL_URL
-            : activeCloudflareUrl;
 
         const linkPrePedido = `${portalUrl}/#/pre-pedido?token=${token}`;
         const ultimos4 = telOperadorClean.slice(-4);
@@ -2351,6 +2392,14 @@ exports.desvincularDispositivoDelegacion = async (req, res) => {
             return res.status(400).json({ success: false, message: 'ID de delegación requerido.' });
         }
 
+        if (esModoLaboratorioOSinCredencialesB2B()) {
+            return res.json({
+                success: true,
+                simulado_laboratorio: true,
+                message: '🧪 Modo Laboratorio: desvinculación simulada sin modificar Supabase Cloud.'
+            });
+        }
+
         const { error } = await supabaseAdmin
             .from('clientes_b2b_delegaciones')
             .update({
@@ -2381,6 +2430,14 @@ exports.revocarDelegacionCliente = async (req, res) => {
         const { id } = req.params;
         if (!id) {
             return res.status(400).json({ success: false, message: 'ID de delegación requerido.' });
+        }
+
+        if (esModoLaboratorioOSinCredencialesB2B()) {
+            return res.json({
+                success: true,
+                simulado_laboratorio: true,
+                message: '🧪 Modo Laboratorio: revocación simulada sin modificar Supabase Cloud.'
+            });
         }
 
         const { error } = await supabaseAdmin

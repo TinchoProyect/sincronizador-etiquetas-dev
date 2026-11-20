@@ -1240,6 +1240,129 @@
                 flex-direction: column;
                 gap: 6px;
                 box-sizing: border-box;
+                transition: box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+            }
+            @keyframes waCopilotFocusPulse {
+                0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55); border-color: #059669; background: #ecfdf5; }
+                45% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.18); border-color: #059669; background: #f0fdf4; }
+                100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); border-color: #86efac; background: #f8fafc; }
+            }
+            .wa-copilot-highlight-pulse {
+                animation: waCopilotFocusPulse 1.15s ease-out;
+            }
+            .wa-copilot-draft-textarea {
+                width: 100%;
+                min-height: 120px;
+                max-height: 240px;
+                padding: 8px 10px;
+                border-radius: 8px;
+                border: 1.5px solid #10b981;
+                font-size: 0.82rem;
+                font-family: inherit;
+                box-sizing: border-box;
+                resize: vertical;
+                background: #ffffff;
+                color: #0f172a;
+                line-height: 1.42;
+                overflow-y: auto;
+                transition: border-color 0.15s ease, box-shadow 0.15s ease;
+            }
+            .wa-copilot-draft-textarea:focus {
+                outline: none;
+                border-color: #059669;
+                box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.16);
+            }
+            .wa-portal-role-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                padding: 2px 7px;
+                border-radius: 999px;
+                font-size: 0.65rem;
+                font-weight: 800;
+                line-height: 1.25;
+                white-space: nowrap;
+            }
+            .wa-portal-role-badge.armador {
+                background: #e0f2fe;
+                color: #0369a1;
+                border: 1px solid #7dd3fc;
+            }
+            .wa-portal-role-badge.pendiente {
+                background: #fffbeb;
+                color: #92400e;
+                border: 1px solid #fbbf24;
+            }
+            .wa-portal-role-badge.titular-activo {
+                background: #dcfce7;
+                color: #166534;
+                border: 1px solid #86efac;
+            }
+            .wa-portal-role-badge.titular-inv {
+                background: #fef3c7;
+                color: #92400e;
+                border: 1px solid #f59e0b;
+            }
+            .wa-multi-contacts-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 3px;
+                background: #f1f5f9;
+                color: #1e293b;
+                border: 1px solid #cbd5e1;
+                border-radius: 999px;
+                padding: 1px 7px;
+                font-size: 0.65rem;
+                font-weight: 800;
+                cursor: pointer;
+                white-space: nowrap;
+                transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+            }
+            .wa-multi-contacts-btn:hover {
+                background: #e0f2fe;
+                border-color: #38bdf8;
+                color: #0369a1;
+            }
+            .wa-grupo-contactos-popover {
+                position: fixed;
+                display: none;
+                width: 288px;
+                max-width: calc(100vw - 20px);
+                max-height: 300px;
+                overflow-y: auto;
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 11px;
+                box-shadow: 0 14px 32px rgba(15, 23, 42, 0.24);
+                z-index: 25500;
+                padding: 6px;
+                box-sizing: border-box;
+            }
+            .wa-grupo-contactos-popover.open {
+                display: block;
+            }
+            .wa-grupo-contacto-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                width: 100%;
+                padding: 7px 8px;
+                border: 1px solid transparent;
+                background: transparent;
+                border-radius: 8px;
+                text-align: left;
+                cursor: pointer;
+                transition: background 0.12s ease, border-color 0.12s ease;
+                box-sizing: border-box;
+            }
+            .wa-grupo-contacto-row:hover {
+                background: #f0f9ff;
+                border-color: #bae6fd;
+            }
+            .wa-grupo-contacto-row.active {
+                background: #ecfdf5;
+                border-color: #6ee7b7;
             }
             .wa-copilot-prod-box {
                 background: #ffffff;
@@ -1651,6 +1774,123 @@
         if (btn) btn.setAttribute('aria-expanded', 'false');
     };
 
+    window.cerrarPopoverContactosGrupoWa = function () {
+        const pop = document.getElementById('wa-grupo-contactos-popover');
+        if (pop) {
+            pop.classList.remove('open');
+            pop.innerHTML = '';
+        }
+        document.querySelectorAll('.wa-multi-contacts-btn[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+    };
+
+    window.togglePopoverContactosGrupoWa = function (btn, idsCsv, event) {
+        if (event) {
+            event.stopPropagation();
+            event.preventDefault();
+        }
+        if (!btn) return;
+        const ids = String(idsCsv || '').split(',').map(Number).filter(Boolean);
+        if (ids.length === 0) return;
+
+        let pop = document.getElementById('wa-grupo-contactos-popover');
+        const estabaAbiertoMismo = Boolean(pop && pop.classList.contains('open') && pop.getAttribute('data-owner-ids') === String(idsCsv));
+        window.cerrarMenuAtajosConsolaWa();
+        window.cerrarMenuCategoriaConsolaWa();
+        window.cerrarMenuRolConsolaWa();
+        window.cerrarPopoverContactosGrupoWa();
+        if (estabaAbiertoMismo) return;
+
+        if (!pop) {
+            pop = document.createElement('div');
+            pop.id = 'wa-grupo-contactos-popover';
+            pop.className = 'wa-grupo-contactos-popover';
+            pop.setAttribute('role', 'menu');
+            document.body.appendChild(pop);
+        }
+
+        const contactos = ids
+            .map(id => (estadoConsola.chats || []).find(c => Number(c.id) === id))
+            .filter(Boolean);
+        if (contactos.length === 0) return;
+
+        const tituloCli = contactos[0].cliente_nombre || 'Contactos del cliente';
+        const codTag = contactos[0].codigo_bunker_cliente ? ` · #${contactos[0].codigo_bunker_cliente}` : '';
+
+        const filasHtml = contactos.map(ct => {
+            const esActivo = Number(ct.id) === Number(estadoConsola.chatActivoId);
+            const rolKey = String(ct.rol_operativo || '').toUpperCase();
+            const rolMeta = rolKey && ROLES_OPERATIVOS_UI[rolKey] ? ROLES_OPERATIVOS_UI[rolKey] : null;
+            const iconoRol = rolMeta ? rolMeta.icon : '👤';
+            const nom = ct.apodo_preferido || ct.contacto_nombre || ct.pushname_wa || ct.telefono_normalizado || 'Contacto';
+            const subRol = rolMeta ? rolMeta.corto : (ct.contacto_cargo ? ct.contacto_cargo : 'Sin rol');
+            const tiempoTxt = ct.tiene_comunicacion_real
+                ? formatearTiempoRelativo(ct.ultimo_mensaje_at)
+                : 'Sin mensajes';
+            const dotEsp = ct.esperando_respuesta
+                ? `<span title="Esperando respuesta" style="width:7px; height:7px; border-radius:50%; background:#16a34a; display:inline-block; flex-shrink:0;"></span>`
+                : '';
+
+            return `
+                <button type="button" class="wa-grupo-contacto-row ${esActivo ? 'active' : ''}" data-contacto-chat-id="${Number(ct.id)}" onclick="event.stopPropagation(); window.cerrarPopoverContactosGrupoWa(); window.seleccionarChatConsola(${Number(ct.id)}, true);">
+                    <div style="display:flex; align-items:center; gap:7px; min-width:0; flex:1;">
+                        <span style="font-size:0.95rem; flex-shrink:0;">${iconoRol}</span>
+                        <div style="min-width:0; flex:1;">
+                            <div style="display:flex; align-items:center; gap:4px;">
+                                <span style="font-weight:800; font-size:0.78rem; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escaparHtml(nom)}</span>
+                                ${esActivo ? `<span style="font-size:0.65rem; font-weight:800; color:#059669;">✓</span>` : ''}
+                                ${dotEsp}
+                            </div>
+                            <div style="font-size:0.68rem; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                ${escaparHtml(subRol)}${ct.contacto_cargo && rolMeta && ct.contacto_cargo.toLowerCase() !== rolMeta.corto.toLowerCase() ? ` · ${escaparHtml(ct.contacto_cargo)}` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    <span style="font-size:0.65rem; font-weight:700; color:${ct.tiene_comunicacion_real ? '#475569' : '#94a3b8'}; white-space:nowrap; flex-shrink:0;">${escaparHtml(tiempoTxt)}</span>
+                </button>
+            `;
+        }).join('');
+
+        pop.setAttribute('data-owner-ids', String(idsCsv));
+        pop.innerHTML = `
+            <div style="padding:4px 8px 6px 8px; border-bottom:1px solid #e2e8f0; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                <span style="font-size:0.71rem; font-weight:800; color:#334155; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">👥 ${escaparHtml(tituloCli)}${escaparHtml(codTag)}</span>
+                <span style="font-size:0.64rem; font-weight:800; color:#64748b; flex-shrink:0;">${contactos.length}</span>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:2px;">
+                ${filasHtml}
+            </div>
+        `;
+
+        pop.style.visibility = 'hidden';
+        pop.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
+
+        const rect = btn.getBoundingClientRect();
+        const popW = pop.offsetWidth || 288;
+        const popH = pop.offsetHeight || 220;
+        const pad = 10;
+        const left = Math.max(pad, Math.min(rect.left, window.innerWidth - popW - pad));
+        let top = rect.bottom + 6;
+        if (top + popH > window.innerHeight - pad) {
+            top = Math.max(pad, rect.top - popH - 6);
+        }
+        pop.style.left = `${left}px`;
+        pop.style.top = `${top}px`;
+        pop.style.visibility = 'visible';
+    };
+
+    window.autoAjustarAlturaTextareaCopilotoWa = function (el) {
+        const area = el || document.getElementById('wa-asist-com-textarea');
+        if (!area) return;
+        const esCol3 = document.getElementById('wa-asist-mesa-agentes-box')?.getAttribute('data-modo') === 'columna3';
+        if (!esCol3) return;
+        const minH = 120;
+        const maxH = 240;
+        area.style.height = 'auto';
+        const hDeseada = Math.max(minH, Math.min(maxH, area.scrollHeight + 4));
+        area.style.height = `${hDeseada}px`;
+    };
+
     window.toggleMenuRolConsolaWa = function (btn, event) {
         if (event) event.stopPropagation();
         const pop = document.getElementById('wa-rol-popover');
@@ -1695,6 +1935,7 @@
                     estadoAsistenteComercialWa.rolOperativo = nuevoRol || null;
                     estadoAsistenteComercialWa._ignorarGuardrailRol = false;
                 }
+                estadoConsola._asistenteChatRenderizadoId = 0;
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({
                         toast: true,
@@ -1947,6 +2188,10 @@
         if (rolWrap && !rolWrap.contains(ev.target)) {
             window.cerrarMenuRolConsolaWa();
         }
+        const grpPop = document.getElementById('wa-grupo-contactos-popover');
+        if (grpPop && grpPop.classList.contains('open') && !grpPop.contains(ev.target) && !ev.target.closest('.wa-multi-contacts-btn')) {
+            window.cerrarPopoverContactosGrupoWa();
+        }
     });
 
     document.addEventListener('keydown', function (ev) {
@@ -1954,6 +2199,7 @@
             window.cerrarMenuAtajosConsolaWa();
             window.cerrarMenuCategoriaConsolaWa();
             window.cerrarMenuRolConsolaWa();
+            window.cerrarPopoverContactosGrupoWa();
         }
     });
 
@@ -3274,8 +3520,9 @@
         if (g.entregado_reciente) {
             badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#f0fdfa; color:#0f766e; border:1px solid #99f6e4;" title="Pedido entregado en las últimas 48h">🚚 48h</span>`);
         }
+        const idsTodosGrupo = g.contactos.map(ct => ct.id).join(',');
         if (g.contactos.length > 1) {
-            badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1;" title="${g.contactos.length} contactos vinculados (cambiá desde el encabezado del chat)">👥 ${g.contactos.length}</span>`);
+            badgesTelemetria.push(`<button type="button" class="wa-multi-contacts-btn" aria-haspopup="true" aria-expanded="false" onclick="window.togglePopoverContactosGrupoWa(this, '${idsTodosGrupo}', event)" title="Ver y abrir cualquiera de los ${g.contactos.length} contactos de ${titulo}">👥 ${g.contactos.length} contactos ▾</button>`);
         }
         const etq = ETIQUETAS_CRM[c.etiqueta_crm || ''];
         if (c.etiqueta_crm && etq) {
@@ -3291,7 +3538,6 @@
             : `<span style="color:#94a3b8; font-style:italic;">Sin mensajes previos</span>`;
 
         const totalNoLeidos = g.contactos.reduce((acc, ct) => acc + parseInt(ct.no_leidos || 0, 10), 0);
-        const idsTodosGrupo = g.contactos.map(ct => ct.id).join(',');
 
         return `
             <div class="wa-chat-item ${isSelected ? 'active' : ''} ${isWaiting ? 'waiting' : ''}" data-chat-id="${c.id}" data-group-chat-ids="${idsTodosGrupo}" onclick="window.seleccionarChatConsola(${c.id}, true)">
@@ -3570,9 +3816,25 @@
             window.cambiarTabMovilConsolaWa('xray');
         }
 
+        const dispararPulsoVisualCopiloto = () => {
+            const pane = document.getElementById('wa-xray-pane-asistente');
+            const box = pane?.querySelector('.wa-copilot-box') || pane;
+            if (!box) return;
+            box.classList.remove('wa-copilot-highlight-pulse');
+            void box.offsetWidth;
+            box.classList.add('wa-copilot-highlight-pulse');
+            clearTimeout(box._pulseTimer);
+            box._pulseTimer = setTimeout(() => {
+                if (box.isConnected) box.classList.remove('wa-copilot-highlight-pulse');
+            }, 1250);
+        };
+
         const paneAsist = document.getElementById('wa-xray-pane-asistente');
-        const yaCargadoParaChat = Number(estadoConsola._asistenteChatRenderizadoId) === chatPk && Boolean(document.getElementById('wa-asist-com-textarea'));
-        if (!yaCargadoParaChat) {
+        const areaExistente = document.getElementById('wa-asist-com-textarea');
+        const tieneTextoBorrador = Boolean(areaExistente && String(areaExistente.value || '').trim().length > 0);
+        const yaCargadoParaChat = Number(estadoConsola._asistenteChatRenderizadoId) === chatPk && Boolean(areaExistente);
+
+        if (!yaCargadoParaChat || !tieneTextoBorrador) {
             estadoConsola._asistenteLoadSeq = (estadoConsola._asistenteLoadSeq || 0) + 1;
             const mySeq = estadoConsola._asistenteLoadSeq;
             await window.abrirAsistenteComercialConversacionWa({
@@ -3580,11 +3842,24 @@
                 modoInlineCol3: true,
                 loadSeq: mySeq
             });
+            dispararPulsoVisualCopiloto();
+            const areaNueva = document.getElementById('wa-asist-com-textarea');
+            if (areaNueva) {
+                window.autoAjustarAlturaTextareaCopilotoWa(areaNueva);
+                areaNueva.focus();
+            }
         } else {
-            const area = document.getElementById('wa-asist-com-textarea');
-            if (area) {
-                area.focus();
-                if (paneAsist) paneAsist.scrollTop = 0;
+            if (paneAsist) {
+                paneAsist.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+            dispararPulsoVisualCopiloto();
+            if (areaExistente) {
+                window.autoAjustarAlturaTextareaCopilotoWa(areaExistente);
+                areaExistente.focus();
+                try {
+                    const len = areaExistente.value.length;
+                    areaExistente.setSelectionRange(len, len);
+                } catch (_) {}
             }
         }
     };
@@ -3976,7 +4251,9 @@
                                 <span>👋</span><span>Saludo corto (Variar 🎲)</span>
                             </button>
                             <button type="button" class="wa-atajos-item" data-atajo="PORTAL" onclick="window.cerrarMenuAtajosConsolaWa(); window.insertarPasoRapidoAsistenteEnCuadroWa(${chat.id}, 'PASO_1_PORTAL');">
-                                <span>🔗</span><span>Pegar Link Portal B2B</span>
+                                ${['COMPRAS_PEDIDOS', 'RECEPCION_LOCAL'].includes(String(chat.rol_operativo || '').toUpperCase())
+                                    ? '<span>🛒</span><span>Pegar Link Armador Pedido</span>'
+                                    : '<span>🔗</span><span>Pegar Link Portal B2B</span>'}
                             </button>
                             <button type="button" class="wa-atajos-item" data-atajo="PEDIDO_CAMINO" onclick="window.cerrarMenuAtajosConsolaWa(); window.insertarAtajoTextoWa('PEDIDO_CAMINO');">
                                 <span>🚚</span><span>Mercadería en camino</span>
@@ -7615,13 +7892,49 @@
      * 3. Si la conversación YA está iniciada (st.charlaEnCurso === true, ej: ya le pusimos "Ya te paso"),
      *    NO repite "Hola Javier! ¿Cómo estás?" sino que continúa directamente el hilo de conversación.
      */
+    function resolverTipoAccesoPortalHubWa(st) {
+        const raw = String(st?.tipoAccesoPortal || st?.estadoPortalB2B?.tipo_acceso_portal || '').trim().toUpperCase();
+        if (raw) return raw;
+        const rol = String(st?.rolOperativo || '').trim().toUpperCase();
+        if (rol === 'COMPRAS_PEDIDOS' || rol === 'RECEPCION_LOCAL') {
+            return (st?.delegacionArmador?.link || st?.estadoPortalB2B?.link_armador_pedido)
+                ? 'ENCARGADO_ARMADOR_PEDIDO'
+                : 'ENCARGADO_ARMADOR_PENDIENTE';
+        }
+        return (st?.yaIngresoPortal && st?.modoLink !== 'INVITACION_INICIAL' && st?.modoLink !== 'ACTIVACION_CORTA')
+            ? 'TITULAR_ACTIVO'
+            : 'TITULAR_INVITACION_INICIAL';
+    }
+
     function construirTextoPasoAsistenteComercialWa(st) {
         if (!st) return '';
         const enCurso = Boolean(st.charlaEnCurso);
-        const saludoInicial = st.nombreCorto ? `Hola ${st.nombreCorto}! ¿Cómo estás? 😊\n` : `Hola! ¿Cómo estás? 😊\n`;
+        const saludoInicial = st.nombreCorto ? `Hola ${st.nombreCorto}! Cómo estás?\n` : `Hola! Cómo estás?\n`;
         const saludoBreve = st.nombreCorto ? `Hola ${st.nombreCorto}! ` : `Hola! `;
 
-        const usaLinkActivacion = (st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA' || !st.yaIngresoPortal) && Boolean(st.linkActivacionCorto || st.codigoActivacion);
+        const tipoAcceso = resolverTipoAccesoPortalHubWa(st);
+        const delArm = st.delegacionArmador || st.estadoPortalB2B?.delegacion_armador || null;
+
+        if (tipoAcceso === 'ENCARGADO_ARMADOR_PEDIDO' && delArm?.link && (st.pasoActual === 'PASO_1_PORTAL' || st.pasoActual === 'PASO_2_EXPLICAR_PORTAL')) {
+            const introLink = enCurso ? `Acá te dejo` : `${saludoInicial}Te paso`;
+            const aprob = String(delArm.aprobador_nombre || st.aprobadorSugerido?.nombre || '').trim();
+            const lineas = [
+                `${introLink} tu link para ir armando el pedido${aprob ? ` y mandárselo a ${aprob} para que lo apruebe` : ''}:`,
+                `🛒 ${delArm.link}`
+            ];
+            if (delArm.requiere_validacion_4_digitos && delArm.ultimos_4_telefono) {
+                lineas.push(`🔒 La 1ra vez que lo abras te va a pedir los últimos 4 dígitos de tu celu (*${delArm.ultimos_4_telefono}*) para vincular tu dispositivo.`);
+            }
+            lineas.push('');
+            lineas.push('Cualquier cosa avisame.');
+            return lineas.join('\n');
+        }
+
+        if (tipoAcceso === 'ENCARGADO_ARMADOR_PENDIENTE' && (st.pasoActual === 'PASO_1_PORTAL' || st.pasoActual === 'PASO_2_EXPLICAR_PORTAL')) {
+            return '';
+        }
+
+        const usaLinkActivacion = (tipoAcceso === 'TITULAR_INVITACION_INICIAL' || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA' || !st.yaIngresoPortal) && Boolean(st.linkActivacionCorto || st.codigoActivacion);
         const usaMagicLink = st.modoLink === 'MAGIC_LINK' && st.magicLinkDirecto;
         const urlBase = String(st.urlPortalBase || URL_PORTAL_B2B_OFICIAL).replace(/\/+$/, '');
         const linkInvEfectivo = st.linkActivacionCorto || (st.codigoActivacion ? `${urlBase}/?t=${st.codigoActivacion}` : urlBase);
@@ -7641,14 +7954,14 @@
                     `${introLink} tu link personal de nuestro Portal de Clientes, donde tenés toda la lista de precios siempre actualizada al día (código de activación: *${st.codigoActivacion}*):`,
                     `🔗 ${linkElegido}`,
                     ``,
-                    `¿Buscás algún artículo en particular?`
+                    `Buscás algún artículo en particular?`
                 ].join('\n');
             }
             return [
                 `${introLink} el link de nuestro Portal de Clientes, donde tenés toda la lista de precios siempre actualizada al día:`,
                 `🔗 ${linkElegido}`,
                 ``,
-                `¿Buscás algún artículo en particular?`
+                `Buscás algún artículo en particular?`
             ].join('\n');
         }
 
@@ -7730,24 +8043,29 @@
      */
     window.insertarPasoRapidoAsistenteEnCuadroWa = async function (chatId, pasoCodigo = 'PASO_1_PORTAL') {
         const idChat = Number(chatId || estadoConsola.chatActivoId || 0);
-        const chatObj = (estadoConsola.chats || []).find(c => Number(c.id) === idChat);
+        const chatObj = (estadoConsola.chats || []).find(c => Number(c.id) === idChat) || estadoConsola.detalleActivo?.chat || null;
         const cli = estadoConsola.rayosXActivo?.cliente || null;
         const codigoBunker = cli?.codigo_bunker_cliente || chatObj?.codigo_bunker_cliente || '';
-        const nombreBase = cli?.cliente_nombre || chatObj?.cliente_nombre || chatObj?.contacto_nombre || '';
-        const nombreCorto = obtenerNombrePilaCortoWa(nombreBase);
+        const apodoPref = String(chatObj?.apodo_preferido || '').trim();
+        const nombreBase = apodoPref || chatObj?.contacto_nombre || cli?.cliente_nombre || chatObj?.cliente_nombre || '';
+        const nombreCorto = apodoPref || obtenerNombrePilaCortoWa(nombreBase);
         const listaId = Number(cli?.lista_asignada_id || chatObj?.lista_asignada_id || 1);
+        const rolOp = String(chatObj?.rol_operativo || '').trim().toUpperCase() || null;
 
         const mensajesActuales = Array.isArray(estadoConsola.detalleActivo?.mensajes) ? estadoConsola.detalleActivo.mensajes : [];
         const det = detectarIntencionConversacionWa(mensajesActuales);
 
-        let estCli = estadoConsola.rayosXActivo?.estado_portal_b2b || null;
+        // Resolver siempre estado Portal por chat/rol (nunca mezclar link titular con empleado)
+        let estCli = (estadoAsistenteComercialWa && Number(estadoAsistenteComercialWa.chatId) === idChat && estadoAsistenteComercialWa.estadoPortalB2B)
+            ? estadoAsistenteComercialWa.estadoPortalB2B
+            : null;
         const idLookupPortal = cli?.id || chatObj?.bunker_cliente_id || chatObj?.cliente_bunker_id || codigoBunker;
         if (!estCli && idLookupPortal) {
             try {
                 const rInv = await fetch(`/api/crm/whatsapp/clientes/${encodeURIComponent(idLookupPortal)}/preparar-invitacion-portal`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ forzarNueva: false })
+                    body: JSON.stringify({ forzarNueva: false, chatId: idChat || undefined })
                 });
                 const jInv = await rInv.json().catch(() => null);
                 if (rInv.ok && jInv?.estado_portal_b2b) {
@@ -7755,24 +8073,43 @@
                 }
             } catch (_) {}
         }
-        if (!estCli) {
+        if (!estCli && !['COMPRAS_PEDIDOS', 'RECEPCION_LOCAL'].includes(rolOp || '')) {
             const mapaEstados = await obtenerMapaEstadosPortalB2BWa();
             estCli = codigoBunker ? mapaEstados[codigoBunker] : null;
         }
-        const yaIngreso = estCli ? Boolean(estCli.ya_ingreso) : false;
+
+        const tipoAcceso = estCli?.tipo_acceso_portal
+            || (['COMPRAS_PEDIDOS', 'RECEPCION_LOCAL'].includes(rolOp || '') ? 'ENCARGADO_ARMADOR_PENDIENTE' : (estCli?.ya_ingreso ? 'TITULAR_ACTIVO' : 'TITULAR_INVITACION_INICIAL'));
+
+        if (tipoAcceso === 'ENCARGADO_ARMADOR_PENDIENTE') {
+            window.abrirModalHabilitarArmadorDesdeCrmWa(idChat, {
+                insertarEnInputChat: true,
+                estadoPortal: estCli
+            });
+            return;
+        }
+
+        const yaIngreso = tipoAcceso === 'TITULAR_ACTIVO';
         const codAct = estCli?.codigo_activacion || '';
         const linkAct = estCli?.link_invitacion_corto || estCli?.link_activacion_corto || (codAct ? `${URL_PORTAL_B2B_OFICIAL}/?t=${codAct}` : '');
 
         const stTemp = {
             pasoActual: pasoCodigo,
             nombreCorto,
+            rolOperativo: rolOp,
+            tipoAccesoPortal: tipoAcceso,
+            estadoPortalB2B: estCli,
+            delegacionArmador: estCli?.delegacion_armador || null,
+            aprobadorSugerido: estCli?.aprobador_sugerido || null,
             listaId,
             charlaEnCurso: Boolean(det.charlaEnCurso),
             urlPortalBase: URL_PORTAL_B2B_OFICIAL,
             yaIngresoPortal: yaIngreso,
             codigoActivacion: codAct,
             linkActivacionCorto: linkAct,
-            modoLink: !yaIngreso ? 'INVITACION_INICIAL' : 'PORTAL_GENERAL',
+            modoLink: tipoAcceso === 'ENCARGADO_ARMADOR_PEDIDO'
+                ? 'ARMADOR_PEDIDO'
+                : (!yaIngreso ? 'INVITACION_INICIAL' : 'PORTAL_GENERAL'),
             magicLinkDirecto: '',
             catalogoArticulos: [],
             articulosHabituales: [],
@@ -7780,7 +8117,7 @@
         };
         const texto = construirTextoPasoAsistenteComercialWa(stTemp);
         const input = document.getElementById('wa-hub-input-texto');
-        if (input) {
+        if (input && texto) {
             input.value = texto;
             input.rows = Math.min(7, Math.max(3, texto.split('\n').length));
             if (idChat) guardarBorradorChatWa(idChat, texto);
@@ -8120,13 +8457,13 @@
             }
         }
 
-        let estadoPortalVivo = sintesisMemoria?.estado_portal_b2b || rayosX?.estado_portal_b2b || null;
+        let estadoPortalVivo = sintesisMemoria?.estado_portal_b2b || null;
         if (!estadoPortalVivo && (clienteId || codigoBunker)) {
             try {
                 const rInvVivo = await fetch(`/api/crm/whatsapp/clientes/${encodeURIComponent(clienteId || codigoBunker)}/preparar-invitacion-portal`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ forzarNueva: false })
+                    body: JSON.stringify({ forzarNueva: false, chatId: chatId || undefined })
                 });
                 const jInvVivo = await rInvVivo.json().catch(() => null);
                 if (rInvVivo.ok && jInvVivo?.estado_portal_b2b) {
@@ -8135,16 +8472,26 @@
             } catch (_) {}
         }
 
-        const estadoPortalCli = estadoPortalVivo || ((codigoBunker && mapaEstadosPortal[codigoBunker]) ? mapaEstadosPortal[codigoBunker] : null);
-        const yaIngresoPortal = estadoPortalCli ? Boolean(estadoPortalCli.ya_ingreso) : false;
+        const rolChatParaPortal = String(chatObj?.rol_operativo || estadoConsola.detalleActivo?.chat?.rol_operativo || '').trim().toUpperCase();
+        const esRolEmpleadoPortal = rolChatParaPortal === 'COMPRAS_PEDIDOS' || rolChatParaPortal === 'RECEPCION_LOCAL';
+        const estadoPortalCli = estadoPortalVivo || (!esRolEmpleadoPortal && codigoBunker && mapaEstadosPortal[codigoBunker] ? mapaEstadosPortal[codigoBunker] : null);
+        const tipoAccesoPortal = estadoPortalCli?.tipo_acceso_portal
+            || (esRolEmpleadoPortal ? 'ENCARGADO_ARMADOR_PENDIENTE' : (estadoPortalCli?.ya_ingreso ? 'TITULAR_ACTIVO' : 'TITULAR_INVITACION_INICIAL'));
+        const delegacionArmador = estadoPortalCli?.delegacion_armador || null;
+        const delegacionesGenericasCliente = Array.isArray(estadoPortalCli?.delegaciones_genericas_cliente) ? estadoPortalCli.delegaciones_genericas_cliente : [];
+        const aprobadorSugerido = estadoPortalCli?.aprobador_sugerido || null;
+        const aprobadoresDisponibles = Array.isArray(estadoPortalCli?.aprobadores_disponibles) ? estadoPortalCli.aprobadores_disponibles : [];
+        const yaIngresoPortal = tipoAccesoPortal === 'TITULAR_ACTIVO';
         const fechaUltimoIngresoTxt = estadoPortalCli?.ultimo_ingreso
             ? new Date(estadoPortalCli.ultimo_ingreso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
             : '';
         const emailRegistradoPortal = estadoPortalCli?.email_registrado || '';
-        const codigoActivacionCorto = estadoPortalCli?.codigo_activacion || '';
-        const linkActivacionCorto = estadoPortalCli?.link_invitacion_corto
-            || estadoPortalCli?.link_activacion_corto
-            || (codigoActivacionCorto ? `${URL_PORTAL_B2B_OFICIAL}/?t=${codigoActivacionCorto}` : '');
+        const codigoActivacionCorto = esRolEmpleadoPortal ? '' : (estadoPortalCli?.codigo_activacion || '');
+        const linkActivacionCorto = esRolEmpleadoPortal
+            ? ''
+            : (estadoPortalCli?.link_invitacion_corto
+                || estadoPortalCli?.link_activacion_corto
+                || (codigoActivacionCorto ? `${URL_PORTAL_B2B_OFICIAL}/?t=${codigoActivacionCorto}` : ''));
 
         // 1. Normalizar todos los artículos del catálogo dinámico y enriquecerlos con la Jerarquía B2B,
         //    FILTRANDO ESTRICTAMENTE los artículos activos (disponible = true y precio > 0) en la Lista Asignada del cliente (igual que Artículos Búnker)
@@ -8451,8 +8798,14 @@
                                     })),
                                 comportamiento_pago: sintesisMemoria?.comportamiento_pago || {}
                             },
-                            linkPortalCliente: (!yaIngresoPortal && linkActivacionCorto) ? linkActivacionCorto : URL_PORTAL_B2B_OFICIAL,
+                            linkPortalCliente: tipoAccesoPortal === 'ENCARGADO_ARMADOR_PEDIDO'
+                                ? (delegacionArmador?.link || '')
+                                : (tipoAccesoPortal === 'ENCARGADO_ARMADOR_PENDIENTE'
+                                    ? ''
+                                    : ((!yaIngresoPortal && linkActivacionCorto) ? linkActivacionCorto : URL_PORTAL_B2B_OFICIAL)),
                             yaIngresoPortal,
+                            tipoAccesoPortal,
+                            aprobadorNombre: delegacionArmador?.aprobador_nombre || aprobadorSugerido?.nombre || '',
                             forzarRecalculo: forzarRelectura || Boolean(saltoAgentePendiente)
                         })
                     });
@@ -8541,7 +8894,11 @@
             return Number(c.id) === Number(chatId);
         });
 
-        const modoLinkInicial = !yaIngresoPortal ? 'INVITACION_INICIAL' : 'PORTAL_GENERAL';
+        const modoLinkInicial = tipoAccesoPortal === 'ENCARGADO_ARMADOR_PEDIDO'
+            ? 'ARMADOR_PEDIDO'
+            : (tipoAccesoPortal === 'ENCARGADO_ARMADOR_PENDIENTE'
+                ? 'ARMADOR_PENDIENTE'
+                : (!yaIngresoPortal ? 'INVITACION_INICIAL' : 'PORTAL_GENERAL'));
         window._contadorAperturasAsistenteWa = ((window._contadorAperturasAsistenteWa || 0) + 1) % 12;
 
         estadoAsistenteComercialWa = {
@@ -8567,6 +8924,12 @@
             listaNombre: listaNombreInterna,
             listaNombreInterna,
             urlPortalBase: URL_PORTAL_B2B_OFICIAL,
+            estadoPortalB2B: estadoPortalCli,
+            tipoAccesoPortal,
+            delegacionArmador,
+            delegacionesGenericasCliente,
+            aprobadorSugerido,
+            aprobadoresDisponibles,
             yaIngresoPortal,
             fechaUltimoIngresoTxt,
             emailRegistradoPortal,
@@ -8679,7 +9042,8 @@
         const carril = st.carrilAsistente || estadoConsola.carrilAsistente || (ag1.clienteHabloUltimo ? 'ENTRANTE' : 'SALIENTE');
         const agenteActivo = String(st.agenteEspecialistaActivo || proactivo.agenteUtilizado || 'AUTO').toUpperCase();
         const cargandoEsp = String(st.cargandoEspecialista || '').trim();
-        const requiereInvitacionPortal = !st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA';
+        const tipoPortalCab = resolverTipoAccesoPortalHubWa(st);
+        const delCab = st.delegacionArmador || st.estadoPortalB2B?.delegacion_armador || null;
 
         // 1 línea de micro-resumen con datos duros
         const saldoTxt = ag3.tieneSaldo
@@ -8690,9 +9054,13 @@
         const compraTxt = ag2.diasDesdeUltimaCompra !== null && ag2.diasDesdeUltimaCompra !== undefined
             ? `Últ. compra ${ag2.diasDesdeUltimaCompra}d`
             : `${(st.articulosHabituales || []).length} hab.`;
-        const portalTxt = requiereInvitacionPortal
-            ? `<span style="color:#b45309; font-weight:800;" title="Nunca ingresó al Portal B2B — corresponde Invitación Inicial">Portal 🟠</span>`
-            : `<span style="color:#15803d; font-weight:800;" title="Cuenta Portal B2B activa">Portal 🟢</span>`;
+        const portalTxt = tipoPortalCab === 'ENCARGADO_ARMADOR_PEDIDO'
+            ? `<span style="color:#0369a1; font-weight:800;" title="Link Armador de Pedido (sin Cuenta Corriente)${delCab?.aprobador_nombre ? ` · Aprueba ${escaparHtml(delCab.aprobador_nombre)}` : ''}">Armador 🛒</span>`
+            : (tipoPortalCab === 'ENCARGADO_ARMADOR_PENDIENTE'
+                ? `<span style="color:#b45309; font-weight:800;" title="Empleado sin link de Armador de Pedido habilitado todavía">Sin Armador ⚠️</span>`
+                : (tipoPortalCab === 'TITULAR_INVITACION_INICIAL'
+                    ? `<span style="color:#b45309; font-weight:800;" title="Titular nunca ingresó al Portal B2B — corresponde Invitación Inicial">Invitación 🔑</span>`
+                    : `<span style="color:#15803d; font-weight:800;" title="Titular con cuenta Portal B2B activa">Portal 👑</span>`));
 
         const alertaErrHtml = (st.errorCriticoIa || st.errorCriticoSintesis)
             ? `
@@ -9293,7 +9661,8 @@
             : '';
 
         const headerCopilotoHtml = renderizarCabeceraCopilotoCol3Wa(st, resultadoMesa);
-        const esInvPortal = !st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA';
+        const tipoAccesoCol3 = resolverTipoAccesoPortalHubWa(st);
+        const esEmpCol3 = tipoAccesoCol3 === 'ENCARGADO_ARMADOR_PEDIDO' || tipoAccesoCol3 === 'ENCARGADO_ARMADOR_PENDIENTE';
 
         paneAsist.innerHTML = `
             ${bannerSinListaAsignadaHtml}
@@ -9316,25 +9685,17 @@
                     </div>
                 </div>
 
-                <!-- Burbuja 1 -->
-                <textarea id="wa-asist-com-textarea" rows="${Math.min(4, Math.max(2, Math.ceil((textoBurbuja1Inicial || '').length / 46)))}" oninput="window.actualizarIndicadorLongitudAsistenteComercialWa()" style="width: 100%; padding: 6px 8px; border-radius: 7px; border: 1px solid #10b981; font-size: 0.81rem; font-family: inherit; box-sizing: border-box; resize: vertical; background: #ffffff; color: #0f172a; line-height: 1.32;">${escaparHtml(textoBurbuja1Inicial)}</textarea>
+                <!-- Burbuja 1 (Editor amplio con auto-resize dinámico 120px..240px) -->
+                <textarea id="wa-asist-com-textarea" class="wa-copilot-draft-textarea" rows="5" oninput="window.actualizarIndicadorLongitudAsistenteComercialWa()" placeholder="Redactá o ajustá el mensaje sugerido...">${escaparHtml(textoBurbuja1Inicial)}</textarea>
 
-                <!-- Burbuja 2 (Precios / Link Portal) -->
+                <!-- Burbuja 2 (Precios / Link Portal según Rol Operativo) -->
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px; flex-wrap: wrap;">
                         <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 0.71rem; font-weight: 800; color: #0369a1; cursor: pointer;">
                             <input type="checkbox" id="wa-asist-com-chk-burbuja2" ${mostrarB2Inicial ? 'checked' : ''} onchange="window.toggleSegundaBurbujaAsistenteWa(this.checked)">
-                            <span>2️⃣ Precios / Link Portal</span>
+                            <span>${esEmpCol3 ? '2️⃣ Precios / Link Armador' : '2️⃣ Precios / Link Portal'}</span>
                         </label>
-                        <div id="wa-asist-com-b2-portal-controls" style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;">
-                            ${esInvPortal ? `
-                                <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Insertar Invitación Inicial con Código de Activación" style="padding: 1px 6px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer; border: 1px solid #d97706; background: #fef3c7; color: #92400e;">🔑 +Invitación</button>
-                                ${st.yaIngresoPortal ? `<button type="button" onclick="window.forzarInvitacionInicialPortalAsistenteWa(true)" style="padding: 1px 5px; border-radius: 5px; font-size: 0.63rem; font-weight: 700; cursor: pointer; border: 1px solid #cbd5e1; background: #ffffff; color: #475569;">↩ Link</button>` : ''}
-                            ` : `
-                                <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Insertar Link directo del Portal B2B" style="padding: 1px 6px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer; border: 1px solid #0284c7; background: #e0f2fe; color: #0369a1;">🔗 +Portal</button>
-                                <button type="button" id="btn-wa-forzar-inv-inicial" onclick="window.forzarInvitacionInicialPortalAsistenteWa(false)" title="Generar nueva invitación con código (blanqueo)" style="padding: 1px 5px; border-radius: 5px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #f59e0b; background: #fffbeb; color: #92400e;">🔑 Blanqueo</button>
-                            `}
-                        </div>
+                        <div id="wa-asist-com-b2-portal-controls" style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;"></div>
                     </div>
                     <div id="wa-asist-com-chips-b2" style="display: flex; flex-wrap: wrap; gap: 3px;"></div>
                     <div id="wa-asist-com-burbuja2-wrap" style="display: ${mostrarB2Inicial ? 'block' : 'none'};">
@@ -9484,10 +9845,12 @@
         if (!borradorPrevio) {
             sincronizarCoherenciaEntreBurbujasWa();
         }
+        refrescarControlesModoPortalBurbuja2Wa();
         actualizarEstilosPasosAsistenteComercialWa();
         renderizarGridProductosAsistenteComercialWa();
         renderizarChipsSeleccionadosBurbuja2Wa();
         window.actualizarIndicadorLongitudAsistenteComercialWa();
+        window.autoAjustarAlturaTextareaCopilotoWa();
     }
 
     function mostrarModalSwalAsistenteComercialWa(st) {
@@ -10233,11 +10596,33 @@
 
     function obtenerBloquePortalDeterministaWa(st) {
         if (!st) return URL_PORTAL_B2B_OFICIAL;
+        const tipoAcceso = resolverTipoAccesoPortalHubWa(st);
+
+        if (tipoAcceso === 'ENCARGADO_ARMADOR_PENDIENTE') {
+            return '';
+        }
+
+        if (tipoAcceso === 'ENCARGADO_ARMADOR_PEDIDO') {
+            const del = st.delegacionArmador || st.estadoPortalB2B?.delegacion_armador || null;
+            const linkArm = String(del?.link || st.estadoPortalB2B?.link_armador_pedido || '').trim();
+            if (!linkArm) return '';
+            const aprob = String(del?.aprobador_nombre || st.aprobadorSugerido?.nombre || '').trim();
+            const lineas = [
+                `🛒 Link para armar el pedido${aprob ? ` (lo revisa y aprueba ${aprob})` : ''}:`,
+                linkArm
+            ];
+            if (del?.requiere_validacion_4_digitos && del?.ultimos_4_telefono) {
+                lineas.push(`🔒 La 1ra vez que lo abras te va a pedir los últimos 4 dígitos de tu celu (*${del.ultimos_4_telefono}*) para vincular tu dispositivo.`);
+            }
+            return lineas.join('\n');
+        }
+
         if (st.modoLink === 'MAGIC_LINK' && st.magicLinkDirecto) {
             return st.magicLinkDirecto;
         }
         const urlBase = String(st.urlPortalBase || URL_PORTAL_B2B_OFICIAL).replace(/\/+$/, '');
         const esInvitacion = (
+            tipoAcceso === 'TITULAR_INVITACION_INICIAL' ||
             !st.yaIngresoPortal ||
             st.modoLink === 'INVITACION_INICIAL' ||
             st.modoLink === 'ACTIVACION_CORTA'
@@ -10266,15 +10651,54 @@
         const st = estadoAsistenteComercialWa;
         const boxCtrl = document.getElementById('wa-asist-com-b2-portal-controls');
         if (!st || !boxCtrl) return;
-        const esInv = !st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA';
+        const tipoAcceso = resolverTipoAccesoPortalHubWa(st);
+        const delArm = st.delegacionArmador || st.estadoPortalB2B?.delegacion_armador || null;
+        const esInv = tipoAcceso === 'TITULAR_INVITACION_INICIAL' || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA';
         const esCol3 = document.getElementById('wa-asist-mesa-agentes-box')?.getAttribute('data-modo') === 'columna3';
+
+        if (tipoAcceso === 'ENCARGADO_ARMADOR_PEDIDO') {
+            const aprobTxt = delArm?.aprobador_nombre ? ` · Aprueba ${escaparHtml(delArm.aprobador_nombre)}` : '';
+            const lockTxt = delArm?.requiere_validacion_4_digitos
+                ? ` · 🔒 4 díg. (${escaparHtml(delArm.ultimos_4_telefono || '')})`
+                : (delArm?.dispositivo_vinculado ? ' · 📱 Vinculado' : '');
+            boxCtrl.innerHTML = `
+                <span id="wa-portal-role-badge" class="wa-portal-role-badge armador" title="Link especial de Armador de Pre-Pedido (sin Cuenta Corriente ni login de titular)${aprobTxt}${lockTxt}">
+                    🛒 Link Armador Pedido (sin CC)
+                </span>
+                <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Insertar link de Armador de Pedido en el Mensaje 2" style="padding: 1.5px 6px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer; border: 1px solid #0284c7; background: #e0f2fe; color: #0369a1;">
+                    🛒 +Armador
+                </button>
+            `;
+            return;
+        }
+
+        if (tipoAcceso === 'ENCARGADO_ARMADOR_PENDIENTE') {
+            const nomColab = st.apodoPreferido || st.contactoNombreChat || 'este contacto';
+            const cantGen = Array.isArray(st.delegacionesGenericasCliente) ? st.delegacionesGenericasCliente.length : 0;
+            boxCtrl.innerHTML = `
+                <span id="wa-portal-role-badge" class="wa-portal-role-badge pendiente" title="Empleado sin link personal de Armador habilitado. Nunca se filtra el link del titular.">
+                    ⚠️ Sin link Armador${cantGen > 0 ? ` (${cantGen} gen.)` : ''}
+                </span>
+                <button type="button" id="btn-wa-habilitar-armador-col3" onclick="window.abrirModalHabilitarArmadorDesdeCrmWa(${Number(st.chatId || 0)})" title="Habilitar enlace de Armador de Pre-Pedido para ${escaparHtml(nomColab)}" style="padding: 1.5px 7px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer; border: 1px solid #d97706; background: #fef3c7; color: #92400e;">
+                    👷 Habilitar Armador
+                </button>
+            `;
+            return;
+        }
+
         if (esCol3) {
             boxCtrl.innerHTML = esInv
                 ? `
+                    <span id="wa-portal-role-badge" class="wa-portal-role-badge titular-inv" title="Titular sin primer ingreso real al Portal B2B — corresponde Invitación Inicial${st.codigoActivacion ? ` (${escaparHtml(st.codigoActivacion)})` : ''}">
+                        🔑 Invitación Titular 1ra vez
+                    </span>
                     <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Insertar Invitación Inicial con Código de Activación" style="padding: 1px 6px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer; border: 1px solid #d97706; background: #fef3c7; color: #92400e;">🔑 +Invitación</button>
                     ${st.yaIngresoPortal ? `<button type="button" onclick="window.forzarInvitacionInicialPortalAsistenteWa(true)" style="padding: 1px 5px; border-radius: 5px; font-size: 0.63rem; font-weight: 700; cursor: pointer; border: 1px solid #cbd5e1; background: #ffffff; color: #475569;">↩ Link</button>` : ''}
                 `
                 : `
+                    <span id="wa-portal-role-badge" class="wa-portal-role-badge titular-activo" title="Titular con cuenta activa en el Portal B2B (usuario y clave)">
+                        👑 Link Portal Titular
+                    </span>
                     <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Insertar Link directo del Portal B2B" style="padding: 1px 6px; border-radius: 5px; font-size: 0.65rem; font-weight: 800; cursor: pointer; border: 1px solid #0284c7; background: #e0f2fe; color: #0369a1;">🔗 +Portal</button>
                     <button type="button" id="btn-wa-forzar-inv-inicial" onclick="window.forzarInvitacionInicialPortalAsistenteWa(false)" title="Generar nueva invitación con código (blanqueo)" style="padding: 1px 5px; border-radius: 5px; font-size: 0.63rem; font-weight: 800; cursor: pointer; border: 1px solid #f59e0b; background: #fffbeb; color: #92400e;">🔑 Blanqueo</button>
                 `;
@@ -10282,8 +10706,8 @@
         }
         boxCtrl.innerHTML = `
             ${esInv ? `
-                <span style="font-size: 0.67rem; font-weight: 800; color: #92400e; background: #fffbeb; border: 1px solid #f59e0b; padding: 1px 7px; border-radius: 999px;" title="Este cliente nunca ingresó al Portal (o pediste enviarle invitación de 1ra vez). En el Mensaje 2 va el Código de Activación + Link de Alta.">
-                    🟠 Sin clave aún → Invitación Inicial${st.codigoActivacion ? ` (${escaparHtml(st.codigoActivacion)})` : ''}
+                <span id="wa-portal-role-badge" class="wa-portal-role-badge titular-inv" title="Este titular nunca ingresó al Portal (o pediste invitación de 1ra vez).">
+                    🔑 Invitación Titular 1ra vez${st.codigoActivacion ? ` (${escaparHtml(st.codigoActivacion)})` : ''}
                 </span>
                 <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Coloca o suma la Invitación Inicial con Código de Activación de este cliente en el Mensaje 2" style="padding: 1px 7px; border-radius: 5px; font-size: 0.68rem; font-weight: 800; cursor: pointer; border: 1px solid #d97706; background: #fef3c7; color: #92400e;">
                     🔑 +Invitación Portal en Msj 2
@@ -10294,8 +10718,8 @@
                     </button>
                 ` : ''}
             ` : `
-                <span style="font-size: 0.67rem; font-weight: 800; color: #166534; background: #dcfce7; border: 1px solid #86efac; padding: 1px 7px; border-radius: 999px;" title="Este cliente ya ingresó al Portal y tiene usuario y contraseña creados.">
-                    🟢 Ya tiene usuario y clave
+                <span id="wa-portal-role-badge" class="wa-portal-role-badge titular-activo" title="Este titular ya ingresó al Portal y tiene usuario y contraseña creados.">
+                    👑 Link Portal Titular
                 </span>
                 <button type="button" onclick="window.insertarSoloLinkPortalEnBurbuja2Wa()" title="Coloca o suma el Link directo del Portal B2B de este cliente en el Mensaje 2" style="padding: 1px 7px; border-radius: 5px; font-size: 0.68rem; font-weight: 800; cursor: pointer; border: 1px solid #0284c7; background: #e0f2fe; color: #0369a1;">
                     🔗 +Link Portal en Msj 2
@@ -10310,14 +10734,213 @@
         `;
     }
 
+    /**
+     * Modal rápido 1-clic (Opción A) para habilitar o vincular el enlace de Armador de Pre-Pedido
+     * para un empleado (COMPRAS_PEDIDOS / RECEPCION_LOCAL) sin exponer nunca el link del titular.
+     */
+    window.abrirModalHabilitarArmadorDesdeCrmWa = async function (chatIdParam, opts = {}) {
+        const idChat = Number(chatIdParam || estadoAsistenteComercialWa?.chatId || estadoConsola.chatActivoId || 0);
+        if (!idChat || typeof Swal === 'undefined') return;
+
+        const chatObj = (estadoConsola.chats || []).find(c => Number(c.id) === idChat) || estadoConsola.detalleActivo?.chat || null;
+        const st = (estadoAsistenteComercialWa && Number(estadoAsistenteComercialWa.chatId) === idChat) ? estadoAsistenteComercialWa : null;
+        let estadoPortal = opts.estadoPortal || st?.estadoPortalB2B || null;
+
+        if (!estadoPortal) {
+            const idLookup = chatObj?.bunker_cliente_id || chatObj?.codigo_bunker_cliente || st?.clienteId || st?.codigoBunker;
+            if (idLookup) {
+                try {
+                    const r = await fetch(`/api/crm/whatsapp/clientes/${encodeURIComponent(idLookup)}/preparar-invitacion-portal`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ forzarNueva: false, chatId: idChat })
+                    });
+                    const j = await r.json().catch(() => null);
+                    if (r.ok && j?.estado_portal_b2b) estadoPortal = j.estado_portal_b2b;
+                } catch (_) {}
+            }
+        }
+
+        const nomColabDef = String(chatObj?.apodo_preferido || chatObj?.contacto_nombre || st?.contactoNombreChat || 'Operador').trim();
+        const telColabDef = String(chatObj?.telefono_normalizado || st?.telefonoCliente || '').replace(/\D/g, '');
+        const ult4Def = telColabDef.length >= 4 ? telColabDef.slice(-4) : '----';
+        const nomCliente = String(chatObj?.cliente_nombre || st?.nombreCliente || 'Cliente').trim();
+        const aprobadores = Array.isArray(estadoPortal?.aprobadores_disponibles) && estadoPortal.aprobadores_disponibles.length > 0
+            ? estadoPortal.aprobadores_disponibles
+            : (estadoPortal?.aprobador_sugerido ? [estadoPortal.aprobador_sugerido] : []);
+        const aprobDef = aprobadores[0] || { nombre: '', telefono: '' };
+        const genericas = Array.isArray(estadoPortal?.delegaciones_genericas_cliente) ? estadoPortal.delegaciones_genericas_cliente : [];
+        const esSimLab = Boolean(estadoPortal?.simulado_laboratorio);
+
+        const bloqueGenericasHtml = genericas.length > 0
+            ? `
+                <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:8px 10px; margin-bottom:10px;">
+                    <div style="font-size:0.75rem; font-weight:800; color:#0369a1; margin-bottom:5px;">
+                        🔗 Este cliente ya tiene ${genericas.length === 1 ? 'un enlace genérico activo' : `${genericas.length} enlaces genéricos activos`} (sin teléfono asignado):
+                    </div>
+                    <label style="display:flex; align-items:flex-start; gap:7px; font-size:0.77rem; color:#0f172a; margin-bottom:5px; cursor:pointer;">
+                        <input type="radio" name="wa-armador-modo" value="CREAR_PERSONAL" checked style="margin-top:2px;">
+                        <span><strong>Crear enlace personal nuevo para ${escaparHtml(nomColabDef)}</strong> (con candado de últimos 4 dígitos *${escaparHtml(ult4Def)}*)</span>
+                    </label>
+                    ${genericas.map((g, idx) => `
+                        <label style="display:flex; align-items:flex-start; gap:7px; font-size:0.77rem; color:#0f172a; margin-top:4px; cursor:pointer;">
+                            <input type="radio" name="wa-armador-modo" value="VINCULAR_EXISTENTE:${escaparHtml(g.id)}" style="margin-top:2px;">
+                            <span><strong>Vincular enlace existente "${escaparHtml(g.nombre_colaborador)}"</strong> a ${escaparHtml(nomColabDef)} (le agrega candado de celular y aprobador)${idx === 0 ? '' : ''}</span>
+                        </label>
+                    `).join('')}
+                </div>
+            `
+            : '';
+
+        const aprobSelectHtml = aprobadores.length > 1
+            ? `
+                <select id="wa-arm-aprobador-sel" onchange="const opt=this.options[this.selectedIndex]; document.getElementById('wa-arm-aprob-nom').value=opt.dataset.nom||''; document.getElementById('wa-arm-aprob-tel').value=opt.dataset.tel||'';" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.8rem; margin-bottom:6px;">
+                    ${aprobadores.map(a => `<option value="${escaparHtml(a.telefono)}" data-nom="${escaparHtml(a.nombre)}" data-tel="${escaparHtml(a.telefono)}">👑 ${escaparHtml(a.nombre)} (${escaparHtml(a.telefono)})</option>`).join('')}
+                </select>
+            `
+            : '';
+
+        const res = await Swal.fire({
+            title: `👷 Habilitar Armador para ${escaparHtml(nomColabDef)}`,
+            width: '520px',
+            html: `
+                <div style="text-align:left; font-size:0.81rem; color:#1e293b;">
+                    <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:7px 10px; margin-bottom:10px; font-size:0.76rem; color:#334155;">
+                        <strong>${escaparHtml(nomCliente)}</strong> · Enlace especial <strong>sin login de titular ni Cuenta Corriente</strong>. El empleado arma el pre-pedido y se lo envía al dueño para aprobar.
+                    </div>
+                    ${esSimLab ? `
+                        <div style="background:#eff6ff; border:1px solid #93c5fd; border-radius:8px; padding:6px 9px; margin-bottom:10px; font-size:0.73rem; color:#1d4ed8; font-weight:700;">
+                            🧪 Modo Laboratorio: se simula en memoria local sin escribir ni modificar Supabase Cloud.
+                        </div>
+                    ` : ''}
+                    ${bloqueGenericasHtml}
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                        <div>
+                            <label style="display:block; font-size:0.73rem; font-weight:800; color:#475569; margin-bottom:3px;">Nombre del operador</label>
+                            <input id="wa-arm-colab-nom" type="text" value="${escaparHtml(nomColabDef)}" style="width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.8rem;">
+                        </div>
+                        <div>
+                            <label style="display:block; font-size:0.73rem; font-weight:800; color:#475569; margin-bottom:3px;">Teléfono (candado *${escaparHtml(ult4Def)}*)</label>
+                            <input id="wa-arm-colab-tel" type="text" value="${escaparHtml(telColabDef)}" style="width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.8rem; background:#f8fafc;">
+                        </div>
+                    </div>
+                    <div style="margin-bottom:8px;">
+                        <label style="display:block; font-size:0.73rem; font-weight:800; color:#475569; margin-bottom:3px;">Dueño / Aprobador del pedido</label>
+                        ${aprobSelectHtml}
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                            <input id="wa-arm-aprob-nom" type="text" placeholder="Nombre del aprobador" value="${escaparHtml(aprobDef.nombre || '')}" style="width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.8rem;">
+                            <input id="wa-arm-aprob-tel" type="text" placeholder="WhatsApp aprobador" value="${escaparHtml(aprobDef.telefono || '')}" style="width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.8rem;">
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:14px; flex-wrap:wrap; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:8px 10px;">
+                        <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.78rem; font-weight:700; cursor:pointer;">
+                            <input id="wa-arm-mostrar-precios" type="checkbox" checked>
+                            <span>Mostrar precios en el catálogo</span>
+                        </label>
+                        <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.78rem; font-weight:700; cursor:pointer;">
+                            <input id="wa-arm-sin-iva" type="checkbox">
+                            <span>Mostrar sin IVA</span>
+                        </label>
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '✅ Habilitar link Armador',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#0284c7',
+            preConfirm: () => {
+                const modoRadio = document.querySelector('input[name="wa-armador-modo"]:checked')?.value || 'CREAR_PERSONAL';
+                let modo = 'CREAR_PERSONAL';
+                let delegacionId = '';
+                if (modoRadio.startsWith('VINCULAR_EXISTENTE:')) {
+                    modo = 'VINCULAR_EXISTENTE';
+                    delegacionId = modoRadio.slice('VINCULAR_EXISTENTE:'.length);
+                }
+                const nombreCol = String(document.getElementById('wa-arm-colab-nom')?.value || '').trim();
+                const telCol = String(document.getElementById('wa-arm-colab-tel')?.value || '').replace(/\D/g, '');
+                if (!telCol || telCol.length < 6) {
+                    Swal.showValidationMessage('Ingresá un teléfono válido para el operador.');
+                    return false;
+                }
+                return {
+                    modo,
+                    delegacion_id: delegacionId || undefined,
+                    nombre_colaborador: nombreCol || nomColabDef,
+                    telefono_colaborador: telCol,
+                    aprobador_nombre: String(document.getElementById('wa-arm-aprob-nom')?.value || '').trim(),
+                    aprobador_telefono: String(document.getElementById('wa-arm-aprob-tel')?.value || '').replace(/\D/g, ''),
+                    mostrar_precios: Boolean(document.getElementById('wa-arm-mostrar-precios')?.checked),
+                    mostrar_sin_iva: Boolean(document.getElementById('wa-arm-sin-iva')?.checked)
+                };
+            }
+        });
+
+        if (!res.isConfirmed || !res.value) return;
+
+        try {
+            const resp = await fetch(`/api/crm/whatsapp/chats/${idChat}/habilitar-armador-pedido`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(res.value)
+            });
+            const data = await resp.json().catch(() => null);
+            if (!resp.ok || !data?.success || !data?.estado_portal_b2b) {
+                throw new Error(data?.error || `Error HTTP ${resp.status}`);
+            }
+
+            const estNuevo = data.estado_portal_b2b;
+            if (st) {
+                st.estadoPortalB2B = estNuevo;
+                st.tipoAccesoPortal = estNuevo.tipo_acceso_portal || 'ENCARGADO_ARMADOR_PEDIDO';
+                st.delegacionArmador = estNuevo.delegacion_armador || null;
+                st.delegacionesGenericasCliente = estNuevo.delegaciones_genericas_cliente || [];
+                st.modoLink = 'ARMADOR_PEDIDO';
+                if (typeof window.ejecutarMesaAgentesComercialesWa === 'function') {
+                    st.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(st);
+                    renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa);
+                }
+                refrescarControlesModoPortalBurbuja2Wa();
+                if (!opts.insertarEnInputChat) {
+                    window.insertarSoloLinkPortalEnBurbuja2Wa();
+                }
+            }
+
+            if (opts.insertarEnInputChat) {
+                await window.insertarPasoRapidoAsistenteEnCuadroWa(idChat, 'PASO_1_PORTAL');
+            }
+
+            Swal.fire({
+                toast: true,
+                position: 'top-end',
+                icon: 'success',
+                title: data.simulado_laboratorio
+                    ? '🧪 Link Armador simulado en Lab (0 escrituras en Supabase)'
+                    : '🛒 Link Armador de Pedido habilitado y listo',
+                timer: 3200,
+                showConfirmButton: false
+            });
+        } catch (err) {
+            Swal.fire({
+                icon: 'error',
+                title: 'No se pudo habilitar el enlace',
+                text: err.message
+            });
+        }
+    };
+
     window.forzarInvitacionInicialPortalAsistenteWa = async function (volverLinkSimple = false) {
         const st = estadoAsistenteComercialWa;
         if (!st) return;
+        const tipoAct = resolverTipoAccesoPortalHubWa(st);
+        if (tipoAct === 'ENCARGADO_ARMADOR_PEDIDO' || tipoAct === 'ENCARGADO_ARMADOR_PENDIENTE') {
+            return;
+        }
         const statusEl = document.getElementById('wa-asist-com-status');
         const btnInv = document.getElementById('btn-wa-forzar-inv-inicial');
 
         if (volverLinkSimple) {
             st.modoLink = 'PORTAL_GENERAL';
+            st.tipoAccesoPortal = st.yaIngresoPortal ? 'TITULAR_ACTIVO' : 'TITULAR_INVITACION_INICIAL';
             const area2 = document.getElementById('wa-asist-com-burbuja2');
             const chkB2 = document.getElementById('wa-asist-com-chk-burbuja2');
             if (area2 && chkB2?.checked && (/https?:\/\//i.test(area2.value) || /Código de activación:/i.test(area2.value))) {
@@ -10344,15 +10967,17 @@
                 const r = await fetch(`/api/crm/whatsapp/clientes/${encodeURIComponent(idTarget)}/preparar-invitacion-portal`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ forzarNueva: true })
+                    body: JSON.stringify({ forzarNueva: true, chatId: st.chatId || undefined })
                 });
                 const j = await r.json().catch(() => null);
                 if (r.ok && j?.estado_portal_b2b) {
+                    st.estadoPortalB2B = j.estado_portal_b2b;
                     st.codigoActivacion = j.estado_portal_b2b.codigo_activacion || st.codigoActivacion;
                     st.linkActivacionCorto = j.estado_portal_b2b.link_invitacion_corto || st.linkActivacionCorto;
                 }
             }
             st.modoLink = 'INVITACION_INICIAL';
+            st.tipoAccesoPortal = 'TITULAR_INVITACION_INICIAL';
             const chkB2 = document.getElementById('wa-asist-com-chk-burbuja2');
             const wrapB2 = document.getElementById('wa-asist-com-burbuja2-wrap');
             const area2 = document.getElementById('wa-asist-com-burbuja2');
@@ -10421,13 +11046,21 @@
         }
 
         const txt2 = String(area2?.value || '').trim();
-        const b2TienePortal = b2Activa && (/https?:\/\//i.test(txt2) || /Código de activación:/i.test(txt2) || /Invitación inicial al Portal/i.test(txt2));
-        const b2EsInvitacion = b2TienePortal && (
+        const tipoAccesoSync = resolverTipoAccesoPortalHubWa(st);
+        const b2TienePortal = b2Activa && (/https?:\/\//i.test(txt2) || /Código de activación:/i.test(txt2) || /Invitación inicial al Portal/i.test(txt2) || /Link para armar el pedido/i.test(txt2));
+        const b2EsArmador = b2TienePortal && (
+            tipoAccesoSync === 'ENCARGADO_ARMADOR_PEDIDO' ||
+            /\/#\/pre-pedido\?token=/i.test(txt2) ||
+            /Link para armar el pedido/i.test(txt2)
+        );
+        const b2EsInvitacion = b2TienePortal && !b2EsArmador && (
             /Código de activación:/i.test(txt2) ||
             /Invitación inicial/i.test(txt2) ||
+            tipoAccesoSync === 'TITULAR_INVITACION_INICIAL' ||
             Boolean(st && (!st.yaIngresoPortal || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA'))
         );
         const b2TienePrecios = b2Activa && !b2TienePortal && (/•\s*\*/.test(txt2) || /\$\s*\d/.test(txt2));
+        const aprobArmadorNombre = String(st?.delegacionArmador?.aprobador_nombre || st?.aprobadorSugerido?.nombre || '').trim();
 
         // 1. Extraer cualquier cierre final del Mensaje 1 para administrarlo según queden activas B2 / B3 / PDF
         const regexCierreFinal = /(?:\r?\n|\s)+((?:Cualquier\s+cos(?:a|ita)\s+(?:estamos\s+atent[oa]s?|escribime(?:\s+por\s+ac[aá])?|avisame)|(?:Estoy|Quedo|Quedamos|Estamos)\s+atent[oa]s?(?:\s+por\s+cualquier\s+cosa)?|Quedamos\s+a\s+disposici[oó]n(?:\s+por\s+cualquier\s+(?:cosa|consulta))?|Avisame\s+cualquier\s+duda(?:\s+que\s+tengas)?)[.!]*)$/i;
@@ -10489,9 +11122,11 @@
 
         if (pdfActivo && b2TienePortal) {
             if (!yaMencionaPdf && !yaMencionaPortal) {
-                nuevoPuente = b2EsInvitacion
-                    ? ` Te adjunto acá en PDF ${descPdf} y abajo te dejo también la invitación al portal para activar tu cuenta.`
-                    : ` Te adjunto acá en PDF ${descPdf} y abajo te dejo también el link del portal de precios.`;
+                nuevoPuente = b2EsArmador
+                    ? ` Te adjunto acá en PDF ${descPdf} y abajo te dejo también tu link para armar el pedido${aprobArmadorNombre ? ` así después lo aprueba ${aprobArmadorNombre}` : ''}.`
+                    : (b2EsInvitacion
+                        ? ` Te adjunto acá en PDF ${descPdf} y abajo te dejo también la invitación al portal para activar tu cuenta.`
+                        : ` Te adjunto acá en PDF ${descPdf} y abajo te dejo también el link del portal de precios.`);
                 marcaPuenteGuardada = nuevoPuente;
             } else if (yaMencionaPortal && !yaMencionaPdf) {
                 if (/:$/.test(cuerpoBase)) {
@@ -10503,9 +11138,11 @@
                     marcaPuenteGuardada = nuevoPuente;
                 }
             } else if (yaMencionaPdf && !yaMencionaPortal) {
-                nuevoPuente = b2EsInvitacion
-                    ? ` Abajo te dejo también la invitación al portal para activar tu cuenta.`
-                    : ` Abajo te dejo también el link del portal de precios.`;
+                nuevoPuente = b2EsArmador
+                    ? ` Abajo te dejo también tu link para armar el pedido${aprobArmadorNombre ? ` así después lo aprueba ${aprobArmadorNombre}` : ''}.`
+                    : (b2EsInvitacion
+                        ? ` Abajo te dejo también la invitación al portal para activar tu cuenta.`
+                        : ` Abajo te dejo también el link del portal de precios.`);
                 marcaPuenteGuardada = nuevoPuente;
             }
         } else if (pdfActivo && b2TienePrecios) {
@@ -10528,9 +11165,11 @@
             }
         } else if (!pdfActivo && b2TienePortal) {
             if (!yaMencionaPortal) {
-                nuevoPuente = b2EsInvitacion
-                    ? ` Te dejo acá abajo la invitación al portal para activar tu cuenta por primera vez y mirar los precios actualizados.`
-                    : ` Te dejo acá abajo el link del portal de precios.`;
+                nuevoPuente = b2EsArmador
+                    ? ` Te dejo acá abajo tu link para armar el pedido${aprobArmadorNombre ? ` así después lo aprueba ${aprobArmadorNombre}` : ''}.`
+                    : (b2EsInvitacion
+                        ? ` Te dejo acá abajo la invitación al portal para activar tu cuenta por primera vez y mirar los precios actualizados.`
+                        : ` Te dejo acá abajo el link del portal de precios.`);
                 marcaPuenteGuardada = nuevoPuente;
             }
         }
@@ -10590,7 +11229,12 @@
             }
         }
 
-        area1.rows = Math.min(6, Math.max(2, Math.ceil((area1.value || '').length / 92)));
+        const esCol3Len = document.getElementById('wa-asist-mesa-agentes-box')?.getAttribute('data-modo') === 'columna3';
+        if (esCol3Len) {
+            window.autoAjustarAlturaTextareaCopilotoWa(area1);
+        } else {
+            area1.rows = Math.min(6, Math.max(2, Math.ceil((area1.value || '').length / 92)));
+        }
         if (area2 && b2Activa) {
             area2.rows = Math.min(5, Math.max(2, String(area2.value || '').split('\n').length));
         }
@@ -10607,7 +11251,12 @@
         const wrapB3 = document.getElementById('wa-asist-com-burbuja3-wrap');
         if (!st || !area1) return;
 
+        if (resolverTipoAccesoPortalHubWa(st) === 'ENCARGADO_ARMADOR_PENDIENTE') {
+            window.abrirModalHabilitarArmadorDesdeCrmWa(st.chatId);
+            return;
+        }
         const infoDuraLink = obtenerBloquePortalDeterministaWa(st);
+        if (!infoDuraLink) return;
 
         // Si en la Burbuja 2 había una mención o explicación de saldo pendiente, la pasamos a la Burbuja 3 para no perderla
         const txt2Actual = String(area2?.value || '').trim();
@@ -11690,6 +12339,7 @@
         const chkB3 = document.getElementById('wa-asist-com-chk-burbuja3')?.checked;
         const badge = document.getElementById('wa-asist-com-long-badge');
         if (!area1 || !badge) return;
+        window.autoAjustarAlturaTextareaCopilotoWa(area1);
 
         const t1 = String(area1.value || '').trim();
         const t2 = chkB2 ? String(area2?.value || '').trim() : '';
@@ -12687,7 +13337,13 @@
     window.insertarSoloLinkPortalEnBurbuja2Wa = function () {
         const st = estadoAsistenteComercialWa;
         if (!st) return;
+        const tipoAcceso = resolverTipoAccesoPortalHubWa(st);
+        if (tipoAcceso === 'ENCARGADO_ARMADOR_PENDIENTE') {
+            window.abrirModalHabilitarArmadorDesdeCrmWa(st.chatId);
+            return;
+        }
         const bloquePortal = obtenerBloquePortalDeterministaWa(st);
+        if (!bloquePortal) return;
         const chkB2 = document.getElementById('wa-asist-com-chk-burbuja2');
         const wrapB2 = document.getElementById('wa-asist-com-burbuja2-wrap');
         const area2 = document.getElementById('wa-asist-com-burbuja2');
@@ -12698,10 +13354,12 @@
         if (wrapB2) wrapB2.style.display = 'block';
         if (area2) {
             const actual = String(area2.value || '').trim();
-            const linkRef = st.linkActivacionCorto || st.urlPortalBase || URL_PORTAL_B2B_OFICIAL;
+            const linkRef = tipoAcceso === 'ENCARGADO_ARMADOR_PEDIDO'
+                ? (st.delegacionArmador?.link || '/#/pre-pedido?token=')
+                : (st.linkActivacionCorto || st.urlPortalBase || URL_PORTAL_B2B_OFICIAL);
             if (!actual) {
                 area2.value = bloquePortal;
-            } else if (!actual.includes(linkRef) && !actual.includes('Código de activación:')) {
+            } else if (!actual.includes(linkRef) && !actual.includes('Código de activación:') && !actual.includes('/#/pre-pedido?token=')) {
                 area2.value = `${actual}\n\n${bloquePortal}`;
             }
             area2.rows = Math.min(5, Math.max(2, String(area2.value || '').split('\n').length));

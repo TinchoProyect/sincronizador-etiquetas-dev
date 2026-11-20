@@ -249,9 +249,14 @@
             ? `(capital ${saldoCapitalFmt} + financiación ${financiacionFmt})`
             : (antiguedadMax > 0 ? `(de hace ${antiguedadMax} días)` : '');
 
-        const yaIngresoPortal = Boolean(st?.yaIngresoPortal);
+        const tipoAccesoPortal = String(st?.tipoAccesoPortal || st?.estadoPortalB2B?.tipo_acceso_portal || '').trim().toUpperCase()
+            || (['COMPRAS_PEDIDOS', 'RECEPCION_LOCAL'].includes(String(st?.rolOperativo || '').toUpperCase())
+                ? (st?.delegacionArmador?.link ? 'ENCARGADO_ARMADOR_PEDIDO' : 'ENCARGADO_ARMADOR_PENDIENTE')
+                : (st?.yaIngresoPortal ? 'TITULAR_ACTIVO' : 'TITULAR_INVITACION_INICIAL'));
+        const yaIngresoPortal = tipoAccesoPortal === 'TITULAR_ACTIVO';
         const codigoActivacion = String(st?.codigoActivacion || '').trim();
         const linkActivacionCorto = String(st?.linkActivacionCorto || '').trim();
+        const delArm = st?.delegacionArmador || st?.estadoPortalB2B?.delegacion_armador || null;
 
         const badgeCuenta = tieneSaldo
             ? (tieneFinanciacionActiva
@@ -259,9 +264,13 @@
                 : `Saldo CC: ${saldoFmt}${antiguedadMax > 0 ? ` (${antiguedadMax}d)` : ''}`)
             : (tieneSaldoAFavor ? `Saldo a favor: ${saldoAFavorFmt}` : 'Cuenta al día ($0)');
 
-        const badgePortal = yaIngresoPortal
-            ? '🟢 Ya usa el Portal (usuario y clave activos)'
-            : `🟠 Nunca entró al Portal → Invitación Inicial${codigoActivacion ? ` (Cód: ${codigoActivacion})` : ''}`;
+        const badgePortal = tipoAccesoPortal === 'ENCARGADO_ARMADOR_PEDIDO'
+            ? `🛒 Link Armador Pedido (sin CC${delArm?.aprobador_nombre ? ` · Aprueba ${delArm.aprobador_nombre}` : ''})`
+            : (tipoAccesoPortal === 'ENCARGADO_ARMADOR_PENDIENTE'
+                ? '⚠️ Empleado sin link de Armador habilitado todavía'
+                : (yaIngresoPortal
+                    ? '👑 Portal Titular activo (usuario y clave)'
+                    : `🔑 Titular sin ingreso → Invitación Inicial${codigoActivacion ? ` (Cód: ${codigoActivacion})` : ''}`));
 
         return {
             tieneSaldo,
@@ -348,12 +357,47 @@
 
     window.generarTextosMencionSaldoWa = generarTextosMencionSaldoWa;
 
+    function resolverTipoAccesoPortalMesa(st) {
+        const raw = String(st?.tipoAccesoPortal || st?.estadoPortalB2B?.tipo_acceso_portal || '').trim().toUpperCase();
+        if (raw) return raw;
+        const rol = String(st?.rolOperativo || '').trim().toUpperCase();
+        if (rol === 'COMPRAS_PEDIDOS' || rol === 'RECEPCION_LOCAL') {
+            return (st?.delegacionArmador?.link || st?.estadoPortalB2B?.link_armador_pedido)
+                ? 'ENCARGADO_ARMADOR_PEDIDO'
+                : 'ENCARGADO_ARMADOR_PENDIENTE';
+        }
+        return (st?.yaIngresoPortal && st?.modoLink !== 'INVITACION_INICIAL' && st?.modoLink !== 'ACTIVACION_CORTA')
+            ? 'TITULAR_ACTIVO'
+            : 'TITULAR_INVITACION_INICIAL';
+    }
+
     function construirBloquePortalDeterminista(st) {
+        const tipo = resolverTipoAccesoPortalMesa(st);
+
+        if (tipo === 'ENCARGADO_ARMADOR_PENDIENTE') {
+            return '';
+        }
+
+        if (tipo === 'ENCARGADO_ARMADOR_PEDIDO') {
+            const del = st?.delegacionArmador || st?.estadoPortalB2B?.delegacion_armador || null;
+            const linkArm = String(del?.link || st?.estadoPortalB2B?.link_armador_pedido || '').trim();
+            if (!linkArm) return '';
+            const aprob = String(del?.aprobador_nombre || st?.aprobadorSugerido?.nombre || '').trim();
+            const lineas = [
+                `🛒 Link para armar el pedido${aprob ? ` (lo revisa y aprueba ${aprob})` : ''}:`,
+                linkArm
+            ];
+            if (del?.requiere_validacion_4_digitos && del?.ultimos_4_telefono) {
+                lineas.push(`🔒 La 1ra vez que lo abras te va a pedir los últimos 4 dígitos de tu celu (*${del.ultimos_4_telefono}*) para vincular tu dispositivo.`);
+            }
+            return lineas.join('\n');
+        }
+
         const urlBase = String(st?.urlPortalBase || URL_PORTAL_OFICIAL).replace(/\/+$/, '');
         if (st?.modoLink === 'MAGIC_LINK' && st?.magicLinkDirecto) {
             return st.magicLinkDirecto;
         }
-        const esInv = (!st?.yaIngresoPortal || st?.modoLink === 'INVITACION_INICIAL' || st?.modoLink === 'ACTIVACION_CORTA')
+        const esInv = (tipo === 'TITULAR_INVITACION_INICIAL' || !st?.yaIngresoPortal || st?.modoLink === 'INVITACION_INICIAL' || st?.modoLink === 'ACTIVACION_CORTA')
             && Boolean(st?.linkActivacionCorto || st?.codigoActivacion);
         if (esInv) {
             const linkInv = st.linkActivacionCorto || `${urlBase}/?t=${st.codigoActivacion}`;
@@ -395,8 +439,11 @@
             logisticaResumen && (logisticaResumen.estado_normalizado === 'EN_PREPARACION' || logisticaResumen.estado_normalizado === 'EN_CAMINO')
         );
 
+        const tipoAccesoPortal = resolverTipoAccesoPortalMesa(st);
         const infoDuraLinkPortal = construirBloquePortalDeterminista(st);
-        const infoDuraLinkSeguimientoOrden = infoDuraLinkPortal;
+        const infoDuraLinkSeguimientoOrden = (tipoAccesoPortal === 'ENCARGADO_ARMADOR_PEDIDO' || tipoAccesoPortal === 'ENCARGADO_ARMADOR_PENDIENTE')
+            ? ''
+            : infoDuraLinkPortal;
 
         const raz = (st?.razonamientoIa && st.razonamientoIa.usando_ia_real) ? st.razonamientoIa : null;
         let burbuja1 = '';
@@ -571,10 +618,16 @@
                             .filter(p => !/entregad|anulad|cancelad|baja/i.test(`${p.estado || ''} ${p.secuencia || ''} ${p.estado_logistico || ''}`))
                             .map(p => ({ id: p.id, estado: p.estado, secuencia: p.secuencia, total: p.total }))
                     },
-                    linkPortalCliente: (!st?.yaIngresoPortal && st?.linkActivacionCorto)
-                        ? st.linkActivacionCorto
-                        : (st?.urlPortalBase || URL_PORTAL_OFICIAL),
-                    yaIngresoPortal: Boolean(st?.yaIngresoPortal && st?.modoLink !== 'INVITACION_INICIAL'),
+                    linkPortalCliente: resolverTipoAccesoPortalMesa(st) === 'ENCARGADO_ARMADOR_PEDIDO'
+                        ? String(st?.delegacionArmador?.link || st?.estadoPortalB2B?.link_armador_pedido || '')
+                        : (resolverTipoAccesoPortalMesa(st) === 'ENCARGADO_ARMADOR_PENDIENTE'
+                            ? ''
+                            : ((!st?.yaIngresoPortal && st?.linkActivacionCorto)
+                                ? st.linkActivacionCorto
+                                : (st?.urlPortalBase || URL_PORTAL_OFICIAL))),
+                    yaIngresoPortal: resolverTipoAccesoPortalMesa(st) === 'TITULAR_ACTIVO',
+                    tipoAccesoPortal: resolverTipoAccesoPortalMesa(st),
+                    aprobadorNombre: String(st?.delegacionArmador?.aprobador_nombre || st?.aprobadorSugerido?.nombre || '').trim(),
                     instruccionOperador: instClean,
                     forzarRecalculo: Boolean(opciones.forzarRecalculo || instClean || agenteObjetivo !== 'AUTO')
                 })
