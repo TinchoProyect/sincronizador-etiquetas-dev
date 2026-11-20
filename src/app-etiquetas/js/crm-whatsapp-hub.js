@@ -25,8 +25,41 @@
             total_chats_visibles: 0,
             total_privados_o_silenciados: 0
         },
-        pollingInterval: null
+        pollingInterval: null,
+        _firmaListaChats: '',
+        _firmaDetalleChat: ''
     };
+
+    const CATEGORIAS_CONTACTO_UI = {
+        CLIENTE_BUNKER: { label: '🏢 Cliente Búnker', corto: '🏢 Cliente', bg: '#dcfce7', color: '#166534', border: '#86efac' },
+        PROSPECTO:      { label: '🌱 Prospecto',      corto: '🌱 Prospecto', bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
+        PROVEEDOR:      { label: '🚚 Proveedor',      corto: '🚚 Proveedor', bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
+        PERSONAL:       { label: '🔒 Personal',       corto: '🔒 Personal',  bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+        IGNORADO_BOT:   { label: '🚫 Ignorar / Bot',  corto: '🚫 Bot',       bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
+        SIN_CLASIFICAR: { label: '❓ Sin clasificar', corto: '❓ Otro',      bg: '#f8fafc', color: '#475569', border: '#cbd5e1' }
+    };
+
+    /**
+     * Resuelve URLs entre entorno multi-puerto local (http://localhost:300X/...)
+     * y Producción unificada en Google Cloud (https://logistica.lamdaser.com/gw/300X/... o raíz para :3005).
+     */
+    function resolverUrlModuloLamda(puerto, ruta = '/') {
+        const cleanPath = String(ruta || '/').startsWith('/') ? String(ruta) : `/${ruta}`;
+        const rawLocal = `http://localhost:${puerto}${cleanPath}`;
+        if (typeof window.LAMDA_RESOLVE_URL === 'function') {
+            return window.LAMDA_RESOLVE_URL(rawLocal);
+        }
+        const host = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : '';
+        const isCloud = (window.location && window.location.pathname && window.location.pathname.indexOf('/gw/300') === 0)
+            || (host && host !== 'localhost' && host !== '127.0.0.1');
+        if (isCloud) {
+            return Number(puerto) === 3005
+                ? `${window.location.origin}${cleanPath}`
+                : `${window.location.origin}/gw/${puerto}${cleanPath}`;
+        }
+        return rawLocal;
+    }
+    window.resolverUrlModuloLamda = resolverUrlModuloLamda;
 
     const ETIQUETAS_CRM = {
         '': { label: 'Sin etiqueta comercial', bg: '#f1f5f9', color: '#475569' },
@@ -356,7 +389,7 @@
             .wa-filter-tabs {
                 display: flex;
                 gap: 4px;
-                padding: 8px 10px;
+                padding: 7px 8px;
                 background: #f1f5f9;
                 border-bottom: 1px solid #e2e8f0;
                 overflow-x: auto;
@@ -365,9 +398,9 @@
                 border: 1px solid #cbd5e1;
                 background: #ffffff;
                 color: #334155;
-                font-size: 0.74rem;
+                font-size: 0.71rem;
                 font-weight: 700;
-                padding: 4px 8px;
+                padding: 4px 7px;
                 border-radius: 14px;
                 cursor: pointer;
                 white-space: nowrap;
@@ -740,6 +773,60 @@
                 background: #e2e8f0;
                 margin: 4px 6px;
             }
+            .wa-categoria-wrap {
+                position: relative;
+                display: inline-flex;
+            }
+            .wa-categoria-popover {
+                position: fixed;
+                display: none;
+                width: 224px;
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 10px;
+                box-shadow: 0 12px 28px rgba(15, 23, 42, 0.22);
+                z-index: 25000;
+                padding: 5px;
+                box-sizing: border-box;
+            }
+            .wa-categoria-popover.open {
+                display: block;
+            }
+            .wa-categoria-item {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                width: 100%;
+                padding: 7px 9px;
+                border: none;
+                background: transparent;
+                border-radius: 7px;
+                text-align: left;
+                cursor: pointer;
+                font-size: 0.78rem;
+                font-weight: 700;
+                color: #0f172a;
+                transition: background 0.12s;
+                box-sizing: border-box;
+            }
+            .wa-categoria-item:hover {
+                background: #f1f5f9;
+            }
+            .wa-categoria-item.active {
+                background: #ecfdf5;
+                color: #065f46;
+            }
+            .wa-cat-pill {
+                display: inline-flex;
+                align-items: center;
+                padding: 1px 6px;
+                border-radius: 999px;
+                font-size: 0.64rem;
+                font-weight: 800;
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
             .wa-conv-input-area {
                 background: #f0f2f5;
                 padding: 7px 12px;
@@ -1016,11 +1103,91 @@
         if (btn) btn.setAttribute('aria-expanded', 'false');
     };
 
+    window.cerrarMenuCategoriaConsolaWa = function () {
+        const pop = document.getElementById('wa-categoria-popover');
+        const btn = document.getElementById('btn-wa-categoria-menu');
+        if (pop) pop.classList.remove('open');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+    };
+
+    window.toggleMenuCategoriaConsolaWa = function (btn, event) {
+        if (event) event.stopPropagation();
+        const pop = document.getElementById('wa-categoria-popover');
+        if (!btn || !pop) return;
+        const abrir = !pop.classList.contains('open');
+        window.cerrarMenuAtajosConsolaWa();
+        window.cerrarMenuCategoriaConsolaWa();
+        if (!abrir) return;
+
+        pop.style.visibility = 'hidden';
+        pop.classList.add('open');
+        btn.setAttribute('aria-expanded', 'true');
+
+        const rect = btn.getBoundingClientRect();
+        const popW = pop.offsetWidth || 224;
+        const popH = pop.offsetHeight || 220;
+        const pad = 10;
+
+        const left = Math.max(pad, Math.min(rect.right - popW, window.innerWidth - popW - pad));
+        let top = rect.bottom + 6;
+        if (top + popH > window.innerHeight - pad) {
+            top = Math.max(pad, rect.top - popH - 6);
+        }
+        pop.style.left = `${left}px`;
+        pop.style.top = `${top}px`;
+        pop.style.visibility = 'visible';
+    };
+
+    window.cambiarCategoriaRapidaWa = async function (chatPk, nuevaCategoria) {
+        window.cerrarMenuCategoriaConsolaWa();
+        const payload = {};
+        if (nuevaCategoria === 'SILENCIAR_24H') {
+            payload.modo_privacidad = 'ACTIVO';
+            payload.silenciar_horas = 24;
+        } else {
+            payload.categoria_contacto = nuevaCategoria;
+        }
+        try {
+            const res = await fetch(`/api/crm/whatsapp/chats/${chatPk}/config`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                estadoConsola._firmaListaChats = '';
+                estadoConsola._firmaDetalleChat = '';
+                const meta = CATEGORIAS_CONTACTO_UI[nuevaCategoria];
+                const labelTxt = nuevaCategoria === 'SILENCIAR_24H'
+                    ? '🕒 Silenciado en Pizarra por 24h'
+                    : (meta ? `Clasificado como ${meta.label}` : 'Categoría actualizada');
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: 'success',
+                        title: labelTxt + (data.propagados > 0 ? ` (+${data.propagados} tel. hermano)` : ''),
+                        timer: 2200,
+                        showConfirmButton: false
+                    });
+                }
+                if (typeof window.actualizarAlertasPizarra === 'function') window.actualizarAlertasPizarra();
+                if (estadoConsola.abierta) {
+                    await cargarListaChatsConsola(false);
+                    if (estadoConsola.chatActivoId === chatPk) await seleccionarChatConsola(chatPk, false);
+                }
+            }
+        } catch (err) {
+            console.error('Error cambiando categoría de contacto:', err);
+        }
+    };
+
     window.toggleMenuAtajosConsolaWa = function (btn, event) {
         if (event) event.stopPropagation();
         const pop = document.getElementById('wa-atajos-popover');
         if (!btn || !pop) return;
         const abrir = !pop.classList.contains('open');
+        window.cerrarMenuCategoriaConsolaWa();
         window.cerrarMenuAtajosConsolaWa();
         if (!abrir) return;
 
@@ -1048,11 +1215,16 @@
         if (wrap && !wrap.contains(ev.target)) {
             window.cerrarMenuAtajosConsolaWa();
         }
+        const catWrap = document.getElementById('wa-categoria-wrap');
+        if (catWrap && !catWrap.contains(ev.target)) {
+            window.cerrarMenuCategoriaConsolaWa();
+        }
     });
 
     document.addEventListener('keydown', function (ev) {
         if (ev.key === 'Escape') {
             window.cerrarMenuAtajosConsolaWa();
+            window.cerrarMenuCategoriaConsolaWa();
         }
     });
 
@@ -1373,10 +1545,10 @@
                             <input type="text" id="wa-hub-search-input" placeholder="🔍 Buscar Nº Legacy (042), Búnker (CB-0014), nombre o contacto..." oninput="window.filtrarBusquedaConsolaWa(this.value)" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.84rem; box-sizing: border-box;">
                         </div>
                         <div class="wa-filter-tabs">
-                            <button type="button" class="wa-filter-tab" data-filtro="SIN_RESPONDER" onclick="window.cambiarFiltroConsolaWa('SIN_RESPONDER')">🟢 No leídos</button>
-                            <button type="button" class="wa-filter-tab active" data-filtro="CLIENTES" onclick="window.cambiarFiltroConsolaWa('CLIENTES')">👥 Clientes</button>
-                            <button type="button" class="wa-filter-tab" data-filtro="NO_AGENDADOS" onclick="window.cambiarFiltroConsolaWa('NO_AGENDADOS')">❓ No agendados</button>
-                            <button type="button" class="wa-filter-tab" data-filtro="PRIVADOS" onclick="window.cambiarFiltroConsolaWa('PRIVADOS')">🔒 Modo Personal</button>
+                            <button type="button" class="wa-filter-tab" data-filtro="SIN_RESPONDER" onclick="window.cambiarFiltroConsolaWa('SIN_RESPONDER')" title="Clientes Búnker y Prospectos esperando respuesta">🟢 No leídos</button>
+                            <button type="button" class="wa-filter-tab active" data-filtro="CLIENTES" onclick="window.cambiarFiltroConsolaWa('CLIENTES')" title="Clientes Búnker y Prospectos activos">👥 Clientes</button>
+                            <button type="button" class="wa-filter-tab" data-filtro="NO_AGENDADOS" onclick="window.cambiarFiltroConsolaWa('NO_AGENDADOS')" title="Proveedores y otros contactos no vinculados">🚚 Prov.</button>
+                            <button type="button" class="wa-filter-tab" data-filtro="PRIVADOS" onclick="window.cambiarFiltroConsolaWa('PRIVADOS')" title="Contactos personales, silenciados y bots ignorados">🔒 Privados</button>
                         </div>
                         <div id="wa-hub-chat-list" class="wa-chat-list"></div>
                     </div>
@@ -1551,6 +1723,8 @@
         estadoConsola.abierta = true;
         // Siempre iniciar con los acordeones plegados por defecto al abrir la consola
         estadoConsola.acordeonesAbiertos.clear();
+        estadoConsola._firmaListaChats = '';
+        estadoConsola._firmaDetalleChat = '';
 
         if (chatIdSeleccionado) {
             estadoConsola.chatActivoId = chatIdSeleccionado;
@@ -1641,6 +1815,7 @@
 
     window.cambiarFiltroConsolaWa = async function (nuevoFiltro) {
         estadoConsola.filtroActivo = nuevoFiltro;
+        estadoConsola._firmaListaChats = '';
         document.querySelectorAll('#modal-consola-whatsapp-lamda .wa-filter-tab').forEach(btn => {
             if (btn.getAttribute('data-filtro') === nuevoFiltro) btn.classList.add('active');
             else btn.classList.remove('active');
@@ -1650,6 +1825,7 @@
 
     window.filtrarBusquedaConsolaWa = async function (valor) {
         estadoConsola.busqueda = valor || '';
+        estadoConsola._firmaListaChats = '';
         // Regla explícita del Director: al usar el buscador NO se deben desplegar todos los acordeones automáticamente
         await cargarListaChatsConsola();
     };
@@ -1831,6 +2007,11 @@
             const tiempoTxt = g.tieneComunicacionReal ? formatearTiempoRelativo(c.ultimo_mensaje_at) : 'Sin mensajes';
             const etq = ETIQUETAS_CRM[c.etiqueta_crm || ''];
             const etqBadge = c.etiqueta_crm && etq ? `<span style="background:${etq.bg}; color:${etq.color}; font-size:0.66rem; padding:1px 5px; border-radius:4px; font-weight:700;">${etq.label}</span>` : '';
+            const catKeyItem = c.categoria_contacto || (c.es_cliente_bunker ? 'CLIENTE_BUNKER' : 'SIN_CLASIFICAR');
+            const catMetaItem = CATEGORIAS_CONTACTO_UI[catKeyItem];
+            const catBadgeItem = (catKeyItem !== 'CLIENTE_BUNKER' && catMetaItem)
+                ? `<span class="wa-cat-pill" style="background:${catMetaItem.bg}; color:${catMetaItem.color}; border:1px solid ${catMetaItem.border};">${catMetaItem.corto}</span>`
+                : '';
             const privBadge = (c.modo_privacidad !== 'ACTIVO' || c.esta_silenciado_temporal)
                 ? `<span title="En Modo Personal / Silenciado en Pizarra" style="font-size:0.75rem;">🔒</span>`
                 : '';
@@ -1848,6 +2029,7 @@
                             </span>
                             ${legacyTag}
                             ${codTag}
+                            ${catBadgeItem}
                         </div>
                         <span style="font-size: 0.7rem; color: ${isWaiting ? '#16a34a' : '#64748b'}; font-weight: ${isWaiting ? '800' : '600'}; flex-shrink: 0;">
                             ${tiempoTxt}
@@ -2012,6 +2194,20 @@
                 chatsUnificados.push(r);
             });
             estadoConsola.chats = chatsUnificados;
+
+            // Polling inteligente sin parpadeo: comparar firma ligera de estado antes de tocar el DOM
+            // (el resaltado de chatActivoId se aplica in-place desde seleccionarChatConsola sin reconstruir la lista)
+            const firmaListaActual = [
+                estadoConsola.filtroActivo,
+                estadoConsola.busqueda,
+                chatsUnificados.map(c =>
+                    `${c.id}:${c.no_leidos || 0}:${c.esperando_respuesta ? 1 : 0}:${c.ultimo_mensaje_ack || 0}:${c.categoria_contacto || ''}:${c.modo_privacidad || ''}:${c.ultimo_mensaje_at || ''}:${String(c.ultimo_mensaje_texto || '').slice(0, 40)}`
+                ).join(';')
+            ].join('||');
+            if (silencioso && firmaListaActual === estadoConsola._firmaListaChats) {
+                return;
+            }
+            estadoConsola._firmaListaChats = firmaListaActual;
 
             if (estadoConsola.chats.length === 0) {
                 listEl.innerHTML = `
@@ -2197,7 +2393,11 @@
                 `;
             });
 
+            const prevScrollList = listEl.scrollTop;
             listEl.innerHTML = html;
+            if (silencioso && prevScrollList > 0) {
+                listEl.scrollTop = prevScrollList;
+            }
         } catch (err) {
             if (!silencioso) console.error('Error cargando chats consola:', err);
         }
@@ -2231,31 +2431,61 @@
             const data = await res.json();
             if (!data.success) return;
 
-            // Si es un refresco silencioso de fondo (cada 6s) y no entraron mensajes nuevos ni cambió el texto del último mensaje (ej: transcripción de audio), no destruir el DOM bajo el mouse
-            const msgsPrev = (estadoConsola.detalleActivo && Array.isArray(estadoConsola.detalleActivo.mensajes))
-                ? estadoConsola.detalleActivo.mensajes
-                : null;
-            const cantPrev = msgsPrev ? msgsPrev.length : -1;
-            const cantNueva = Array.isArray(data.mensajes) ? data.mensajes.length : 0;
-            const ultimoCuerpoPrev = (msgsPrev && msgsPrev.length > 0) ? String(msgsPrev[msgsPrev.length - 1].cuerpo || '') : '';
-            const ultimoCuerpoNuevo = (Array.isArray(data.mensajes) && data.mensajes.length > 0) ? String(data.mensajes[data.mensajes.length - 1].cuerpo || '') : '';
+            // Polling inteligente de 6s: comparar firma ligera (ultimo_mensaje_id, ack, no_leidos, categoria_contacto, etc.)
+            // Si no hubo cambios reales, NO destruir ni re-renderizar el DOM de las columnas 2 y 3
+            const msgsArr = Array.isArray(data.mensajes) ? data.mensajes : [];
+            const lastMsg = msgsArr.length > 0 ? msgsArr[msgsArr.length - 1] : null;
+            const firmaAcks = msgsArr.slice(-8).map(m => `${m.id || m.msg_id || ''}:${m.ack || 0}:${String(m.cuerpo || '').length}`).join(',');
+            const firmaDetalleActual = [
+                data.chat?.id || '',
+                msgsArr.length,
+                lastMsg ? (lastMsg.id || lastMsg.msg_id || '') : '',
+                lastMsg ? String(lastMsg.cuerpo || '').slice(0, 60) : '',
+                firmaAcks,
+                data.chat?.no_leidos || 0,
+                data.chat?.esperando_respuesta ? 1 : 0,
+                data.chat?.categoria_contacto || '',
+                data.chat?.modo_privacidad || '',
+                data.chat?.esta_silenciado_temporal ? 1 : 0,
+                data.chat?.etiqueta_crm || '',
+                data.chat?.nota_rapida || '',
+                Number(data.rayos_x?.cuenta_corriente?.saldo_actual || 0).toFixed(2),
+                Array.isArray(data.rayos_x?.seguimientos) ? data.rayos_x.seguimientos.length : 0
+            ].join('|');
+
             const mismoChat = estadoConsola.detalleActivo && estadoConsola.detalleActivo.chat && Number(estadoConsola.detalleActivo.chat.id) === Number(chatPk);
 
             estadoConsola.detalleActivo = data;
             estadoConsola.chatActivoDatos = data.chat;
             estadoConsola.rayosXActivo = data.rayos_x;
 
-            if (!scrollAlFinal && mismoChat && cantPrev === cantNueva && ultimoCuerpoPrev === ultimoCuerpoNuevo) {
+            if (!scrollAlFinal && mismoChat && firmaDetalleActual === estadoConsola._firmaDetalleChat) {
                 return;
             }
+            estadoConsola._firmaDetalleChat = firmaDetalleActual;
 
-            // Si el usuario estaba escribiendo en el input del mismo chat y es solo un refresco de fondo, conservar su texto
+            // Si el usuario estaba escribiendo en el input del mismo chat y es solo un refresco de fondo, conservar texto, cursor y scroll
             const inputExistente = document.getElementById('wa-hub-input-texto');
+            const scrollExistente = document.getElementById('wa-hub-messages-scroll');
             const textoEnCurso = (inputExistente && !scrollAlFinal) ? inputExistente.value : '';
             const estabaEnFoco = (inputExistente && document.activeElement === inputExistente);
+            const selStart = (estabaEnFoco && typeof inputExistente.selectionStart === 'number') ? inputExistente.selectionStart : null;
+            const selEnd = (estabaEnFoco && typeof inputExistente.selectionEnd === 'number') ? inputExistente.selectionEnd : null;
+            const prevScrollMsgs = (scrollExistente && !scrollAlFinal) ? scrollExistente.scrollTop : null;
 
             renderizarColumnaConversacion(data.chat, data.mensajes, scrollAlFinal, textoEnCurso, estabaEnFoco);
             renderizarColumnaRayosX(data.chat, data.rayos_x);
+
+            if (!scrollAlFinal) {
+                const newScroll = document.getElementById('wa-hub-messages-scroll');
+                if (newScroll && prevScrollMsgs !== null) {
+                    newScroll.scrollTop = prevScrollMsgs;
+                }
+                const newInp = document.getElementById('wa-hub-input-texto');
+                if (newInp && estabaEnFoco && selStart !== null && selEnd !== null) {
+                    try { newInp.setSelectionRange(selStart, selEnd); } catch (_) {}
+                }
+            }
         } catch (err) {
             console.error('Error cargando detalle del chat:', err);
         }
@@ -2276,9 +2506,12 @@
             ? `<span class="wa-badge-num-bunker" style="margin-left:4px;" title="Código Búnker">#${escaparHtml(chat.codigo_bunker_cliente)}</span>`
             : '';
         const subinfo = `📱 +${escaparHtml(chat.telefono_normalizado)} ${chat.contacto_nombre ? `· 👤 ${escaparHtml(chat.contacto_nombre)}` : ''} ${chat.contacto_cargo ? `(${escaparHtml(chat.contacto_cargo)})` : ''}`;
-        const modoPrivTxt = chat.esta_silenciado_temporal
-            ? '🕒 Modo Personal (24h)'
-            : (chat.modo_privacidad === 'SILENCIADO_PIZARRA' ? '🔇 Modo Personal' : (chat.modo_privacidad === 'OCULTO' ? '👁️‍🗨️ Oculto' : '🟢 Comercial Activo'));
+        const catActualKey = chat.categoria_contacto || (chat.es_cliente_bunker ? 'CLIENTE_BUNKER' : 'SIN_CLASIFICAR');
+        const catActualUi = CATEGORIAS_CONTACTO_UI[catActualKey] || CATEGORIAS_CONTACTO_UI.SIN_CLASIFICAR;
+        const catBtnLabel = chat.esta_silenciado_temporal ? '🕒 Silenciado 24h' : catActualUi.label;
+        const catBtnBg = chat.esta_silenciado_temporal ? '#fef3c7' : catActualUi.bg;
+        const catBtnColor = chat.esta_silenciado_temporal ? '#92400e' : catActualUi.color;
+        const catBtnBorder = chat.esta_silenciado_temporal ? '#fcd34d' : catActualUi.border;
 
         // Si el cliente activo tiene múltiples contactos en la lista, mostrar selector rápido entre sus contactos
         const contactosMismoCliente = chat.bunker_cliente_id
@@ -2388,9 +2621,32 @@
                                 ✓ Visto
                             </button>
                         ` : ''}
-                        <button type="button" onclick="window.cambiarPrivacidadRapidaWa(${chat.id}, '${escaparHtml(tituloJsSafe)}')" style="background: #ffffff; border: 1px solid #cbd5e1; color: #334155; padding: 4px 9px; border-radius: 6px; font-size: 0.73rem; font-weight: 700; cursor: pointer; white-space: nowrap;" title="Cambiar entre Modo Comercial y Modo Personal">
-                            ${modoPrivTxt} ▾
-                        </button>
+                        <div id="wa-categoria-wrap" class="wa-categoria-wrap">
+                            <button type="button" id="btn-wa-categoria-menu" aria-haspopup="true" aria-expanded="false" onclick="window.toggleMenuCategoriaConsolaWa(this, event)" style="background: ${catBtnBg}; border: 1px solid ${catBtnBorder}; color: ${catBtnColor}; padding: 4px 9px; border-radius: 6px; font-size: 0.73rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Clasificar contacto en 1 clic (Negocio vs Personal / Proveedor / Bot)">
+                                ${catBtnLabel} ▾
+                            </button>
+                            <div id="wa-categoria-popover" class="wa-categoria-popover" role="menu">
+                                <button type="button" class="wa-categoria-item ${catActualKey === 'CLIENTE_BUNKER' ? 'active' : ''}" data-cat="CLIENTE_BUNKER" onclick="window.cambiarCategoriaRapidaWa(${chat.id}, 'CLIENTE_BUNKER')">
+                                    <span>🏢 Cliente Búnker</span>${catActualKey === 'CLIENTE_BUNKER' ? '<span>✓</span>' : ''}
+                                </button>
+                                <button type="button" class="wa-categoria-item ${catActualKey === 'PROSPECTO' ? 'active' : ''}" data-cat="PROSPECTO" onclick="window.cambiarCategoriaRapidaWa(${chat.id}, 'PROSPECTO')">
+                                    <span>🌱 Prospecto</span>${catActualKey === 'PROSPECTO' ? '<span>✓</span>' : ''}
+                                </button>
+                                <button type="button" class="wa-categoria-item ${catActualKey === 'PROVEEDOR' ? 'active' : ''}" data-cat="PROVEEDOR" onclick="window.cambiarCategoriaRapidaWa(${chat.id}, 'PROVEEDOR')">
+                                    <span>🚚 Proveedor</span>${catActualKey === 'PROVEEDOR' ? '<span>✓</span>' : ''}
+                                </button>
+                                <button type="button" class="wa-categoria-item ${catActualKey === 'PERSONAL' ? 'active' : ''}" data-cat="PERSONAL" onclick="window.cambiarCategoriaRapidaWa(${chat.id}, 'PERSONAL')">
+                                    <span>🔒 Personal</span>${catActualKey === 'PERSONAL' ? '<span>✓</span>' : ''}
+                                </button>
+                                <button type="button" class="wa-categoria-item ${catActualKey === 'IGNORADO_BOT' ? 'active' : ''}" data-cat="IGNORADO_BOT" onclick="window.cambiarCategoriaRapidaWa(${chat.id}, 'IGNORADO_BOT')">
+                                    <span>🚫 Ignorar / Bot</span>${catActualKey === 'IGNORADO_BOT' ? '<span>✓</span>' : ''}
+                                </button>
+                                <div class="wa-atajos-sep"></div>
+                                <button type="button" class="wa-categoria-item" data-cat="SILENCIAR_24H" onclick="window.cambiarCategoriaRapidaWa(${chat.id}, 'SILENCIAR_24H')">
+                                    <span>🕒 Silenciar Pizarra 24h</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 ${selectorMultiContactosHtml}
@@ -2556,7 +2812,7 @@
                 <!-- 3. Estado de Cuenta Corriente -->
                 <div class="wa-xray-card" style="${cc.saldo_actual > 0.01 ? 'border-color: #fecaca; background: #fffbfa;' : ''}">
                     <div class="wa-xray-title">
-                        <span>💰 Cuenta Corriente ${cli.codigo_bunker_cliente ? `<a href="http://localhost:3005/pages/cuenta-corriente.html?cliente=${encodeURIComponent(cli.codigo_bunker_cliente)}" target="_blank" style="font-size:0.7rem; color:#0284c7; font-weight:700; text-decoration:none; margin-left:4px; text-transform:none;">Ver CC ↗</a>` : ''}</span>
+                        <span>💰 Cuenta Corriente ${cli.codigo_bunker_cliente ? `<a href="${resolverUrlModuloLamda(3005, `/pages/cuenta-corriente.html?cliente=${encodeURIComponent(cli.codigo_bunker_cliente)}`)}" target="_blank" style="font-size:0.7rem; color:#0284c7; font-weight:700; text-decoration:none; margin-left:4px; text-transform:none;">Ver CC ↗</a>` : ''}</span>
                         <span style="font-size: 0.96rem; font-weight: 800; color: ${saldoColor};">${saldoFormateado}</span>
                     </div>
                     ${(cc.composicion && Array.isArray(cc.composicion.capas) && cc.composicion.capas.length > 0) ? `
@@ -2609,7 +2865,7 @@
                 <div class="wa-xray-card" style="border-color: #cbd5e1;">
                     <div class="wa-xray-title">
                         <span>🧾 Últimas Facturas (${facturas.length})</span>
-                        <a href="http://localhost:3004/pages/facturas.html" target="_blank" style="font-size:0.72rem; color:#0284c7; font-weight:700; text-decoration:none;">🏛️ Bandeja ARCA ↗</a>
+                        <a href="${resolverUrlModuloLamda(3004, '/pages/facturas.html')}" target="_blank" style="font-size:0.72rem; color:#0284c7; font-weight:700; text-decoration:none;">🏛️ Bandeja ARCA ↗</a>
                     </div>
                     ${facturas.length === 0 ? `
                         <div style="font-size: 0.78rem; color: #64748b;">Sin facturas emitidas recientes.</div>
@@ -2641,7 +2897,7 @@
                                                 🛠️ Gestionar
                                             </button>
                                         ` : `
-                                            <a href="http://localhost:3004/pages/facturas.html" target="_blank" style="background:#e0f2fe; border:1px solid #7dd3fc; color:#0369a1; border-radius:4px; padding:2px 6px; font-size:0.66rem; font-weight:800; text-decoration:none;">
+                                            <a href="${resolverUrlModuloLamda(3004, '/pages/facturas.html')}" target="_blank" style="background:#e0f2fe; border:1px solid #7dd3fc; color:#0369a1; border-radius:4px; padding:2px 6px; font-size:0.66rem; font-weight:800; text-decoration:none;">
                                                 🏛️ Ver ARCA
                                             </a>
                                         `}
@@ -3574,7 +3830,7 @@
                     }
                     for (const bPrev of borradoresPrevios) {
                         try {
-                            await fetch(`http://localhost:3004/facturacion/facturas/${bPrev.id}`, { method: 'DELETE' });
+                            await fetch(resolverUrlModuloLamda(3004, `/facturacion/facturas/${bPrev.id}`), { method: 'DELETE' });
                         } catch (eDel) {
                             console.warn('No se pudo eliminar borrador previo:', eDel);
                         }
@@ -3614,7 +3870,7 @@
                     }))
                 };
 
-                const res3004 = await fetch('http://localhost:3004/facturacion/facturas', {
+                const res3004 = await fetch(resolverUrlModuloLamda(3004, '/facturacion/facturas'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload3004)
@@ -3634,7 +3890,7 @@
                 await cargarListaChatsConsola(true);
 
                 const precargarParam = seleccionados.map(it => `${encodeURIComponent(it.articulo_id || '')}:${Number(it.qty_elegida || it.qty || 1)}`).join(',');
-                const urlArmador = `http://localhost:3003/pages/crear-presupuesto.html?modo=factura_directa&cliente=${encodeURIComponent(lomasClienteId)}&precargar=${precargarParam}&factura_origen=${fac.id}`;
+                const urlArmador = resolverUrlModuloLamda(3003, `/pages/crear-presupuesto.html?modo=factura_directa&cliente=${encodeURIComponent(lomasClienteId)}&precargar=${precargarParam}&factura_origen=${fac.id}`);
 
                 const rNext = await Swal.fire({
                     icon: 'success',
@@ -3661,7 +3917,7 @@
                 if (rNext.isConfirmed) {
                     window.open(urlArmador, '_blank');
                 } else if (rNext.isDenied) {
-                    window.open('http://localhost:3004/pages/facturas.html', '_blank');
+                    window.open(resolverUrlModuloLamda(3004, '/pages/facturas.html'), '_blank');
                 }
             } catch (err) {
                 console.error('Error creando Nota de Crédito:', err);
@@ -3677,7 +3933,7 @@
         window.abrirArmadorNuevaFacturaDesdeWa = function () {
             const seleccionados = recolectarSeleccionados();
             const precargarParam = seleccionados.map(it => `${encodeURIComponent(it.articulo_id || '')}:${Number(it.qty_elegida || it.qty || 1)}`).join(',');
-            const urlArmador = `http://localhost:3003/pages/crear-presupuesto.html?modo=factura_directa&cliente=${encodeURIComponent(lomasClienteId)}&precargar=${precargarParam}&factura_origen=${fac.id}`;
+            const urlArmador = resolverUrlModuloLamda(3003, `/pages/crear-presupuesto.html?modo=factura_directa&cliente=${encodeURIComponent(lomasClienteId)}&precargar=${precargarParam}&factura_origen=${fac.id}`);
             window.open(urlArmador, '_blank');
         };
 
@@ -3753,7 +4009,7 @@
         const alertaNcsPreviasHtml = ncsAsociadas.length > 0 ? `
             <div style="background:#fef3c7; border:1px solid #f59e0b; padding:8px 12px; border-radius:8px; margin-bottom:10px; font-size:0.8rem; color:#92400e; display:flex; justify-content:space-between; align-items:center;">
                 <span>ℹ️ <strong>NC ya vinculada:</strong> ${ncsAsociadas.map(nc => `${nc.estado === 'BORRADOR' ? `Borrador NC #${nc.id}` : `NC Emitida #${nc.cbte_nro || nc.id}`} (-$${fmt(nc.imp_total)})`).join(', ')}</span>
-                <a href="http://localhost:3004/pages/facturas.html" target="_blank" style="color:#0369a1; font-weight:800; text-decoration:underline;">Ver en Bandeja ↗</a>
+                <a href="${resolverUrlModuloLamda(3004, '/pages/facturas.html')}" target="_blank" style="color:#0369a1; font-weight:800; text-decoration:underline;">Ver en Bandeja ↗</a>
             </div>
         ` : '';
 
@@ -9532,9 +9788,7 @@
             chatId: st?.chatId || null
         };
 
-        const urlFacturacionWa = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-            ? 'http://localhost:3004/facturacion/whatsapp/enviar-documento'
-            : '/api/facturacion/whatsapp/enviar-documento';
+        const urlFacturacionWa = resolverUrlModuloLamda(3004, '/facturacion/whatsapp/enviar-documento');
 
         let resEnvio = null;
         try {

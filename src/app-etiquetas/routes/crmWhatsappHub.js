@@ -348,12 +348,13 @@ router.get('/crm/whatsapp/alertas-pizarra', async (req, res) => {
                 bunker_cliente_id, cliente_nombre, codigo_bunker_cliente,
                 contacto_nombre, contacto_cargo, pushname_wa,
                 es_cliente_bunker, modo_privacidad, silenciado_hasta,
+                categoria_contacto, categoria_manual,
                 etiqueta_crm, esperando_respuesta, no_leidos,
                 ultimo_mensaje_texto, ultimo_mensaje_from_me, ultimo_mensaje_ack,
                 ultimo_mensaje_at
             FROM public.crm_whatsapp_chats
             WHERE esperando_respuesta = true
-              AND es_cliente_bunker = true
+              AND categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO')
               AND modo_privacidad = 'ACTIVO'
               AND (silenciado_hasta IS NULL OR silenciado_hasta <= NOW())
             ORDER BY ultimo_mensaje_at DESC
@@ -364,20 +365,23 @@ router.get('/crm/whatsapp/alertas-pizarra', async (req, res) => {
             SELECT
                 COUNT(*) FILTER (
                     WHERE esperando_respuesta = true 
-                      AND es_cliente_bunker = true 
+                      AND categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO')
                       AND modo_privacidad = 'ACTIVO'
                       AND (silenciado_hasta IS NULL OR silenciado_hasta <= NOW())
                 )::int AS clientes_sin_responder,
                 COUNT(*) FILTER (
                     WHERE esperando_respuesta = true 
-                      AND es_cliente_bunker = false 
+                      AND categoria_contacto = 'PROSPECTO'
                       AND modo_privacidad = 'ACTIVO'
+                      AND (silenciado_hasta IS NULL OR silenciado_hasta <= NOW())
                 )::int AS no_agendados_sin_responder,
                 COUNT(*) FILTER (
-                    WHERE modo_privacidad != 'OCULTO'
+                    WHERE categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO')
+                      AND modo_privacidad != 'OCULTO'
                 )::int AS total_chats_visibles,
                 COUNT(*) FILTER (
-                    WHERE modo_privacidad IN ('SILENCIADO_PIZARRA', 'OCULTO')
+                    WHERE categoria_contacto IN ('PERSONAL', 'IGNORADO_BOT', 'PROVEEDOR')
+                       OR modo_privacidad IN ('SILENCIADO_PIZARRA', 'OCULTO')
                        OR (silenciado_hasta IS NOT NULL AND silenciado_hasta > NOW())
                 )::int AS total_privados_o_silenciados
             FROM public.crm_whatsapp_chats
@@ -475,16 +479,18 @@ router.get('/crm/whatsapp/chats', async (req, res) => {
 
         let whereClause = `WHERE 1=1`;
         if (filtro === 'SIN_RESPONDER') {
-            whereClause += ` AND c.esperando_respuesta = true AND c.modo_privacidad != 'OCULTO'`;
+            whereClause += ` AND c.esperando_respuesta = true AND c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO') AND c.modo_privacidad = 'ACTIVO' AND (c.silenciado_hasta IS NULL OR c.silenciado_hasta <= NOW())`;
         } else if (filtro === 'CLIENTES') {
-            whereClause += ` AND c.es_cliente_bunker = true AND c.modo_privacidad != 'OCULTO'`;
+            whereClause += ` AND c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO') AND c.modo_privacidad != 'OCULTO'`;
         } else if (filtro === 'NO_AGENDADOS') {
-            whereClause += ` AND c.es_cliente_bunker = false AND c.modo_privacidad != 'OCULTO'`;
+            whereClause += ` AND c.categoria_contacto IN ('PROVEEDOR', 'PROSPECTO', 'SIN_CLASIFICAR') AND c.es_cliente_bunker = false AND c.modo_privacidad != 'OCULTO'`;
         } else if (filtro === 'PRIVADOS') {
-            whereClause += ` AND (c.modo_privacidad IN ('SILENCIADO_PIZARRA', 'OCULTO') OR (c.silenciado_hasta IS NOT NULL AND c.silenciado_hasta > NOW()))`;
+            whereClause += ` AND (c.categoria_contacto IN ('PERSONAL', 'IGNORADO_BOT') OR c.modo_privacidad IN ('SILENCIADO_PIZARRA', 'OCULTO') OR (c.silenciado_hasta IS NOT NULL AND c.silenciado_hasta > NOW()))`;
+        } else if (['CLIENTE_BUNKER', 'PROSPECTO', 'PROVEEDOR', 'PERSONAL', 'IGNORADO_BOT'].includes(filtro)) {
+            whereClause += ` AND c.categoria_contacto = '${filtro}'`;
         } else {
-            // TODOS (excepto ocultos puros, a menos que busque en PRIVADOS)
-            whereClause += ` AND c.modo_privacidad != 'OCULTO'`;
+            // TODOS comerciales (excluyendo bots ignorados y ocultos puros)
+            whereClause += ` AND c.categoria_contacto <> 'IGNORADO_BOT' AND c.modo_privacidad != 'OCULTO'`;
         }
 
         const query = `
@@ -1335,6 +1341,7 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
         const {
             modo_privacidad,
             silenciar_horas,
+            categoria_contacto,
             etiqueta_crm,
             nota_rapida,
             bunker_cliente_id,
@@ -1351,6 +1358,35 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
         const actual = chatRes.rows[0];
         let nuevoModo = modo_privacidad !== undefined ? modo_privacidad : actual.modo_privacidad;
         let nuevoSilenciadoHasta = actual.silenciado_hasta;
+        let nuevaCategoria = actual.categoria_contacto || 'SIN_CLASIFICAR';
+        let nuevaCategoriaManual = Boolean(actual.categoria_manual);
+        let nuevoEsperando = Boolean(actual.esperando_respuesta);
+        let nuevoNoLeidos = parseInt(actual.no_leidos || 0, 10);
+
+        const categoriasPermitidas = new Set(['CLIENTE_BUNKER', 'PROSPECTO', 'PROVEEDOR', 'PERSONAL', 'IGNORADO_BOT']);
+        if (categoria_contacto !== undefined && categoriasPermitidas.has(String(categoria_contacto).toUpperCase())) {
+            nuevaCategoria = String(categoria_contacto).toUpperCase();
+            nuevaCategoriaManual = true;
+            if (modo_privacidad === undefined) {
+                if (nuevaCategoria === 'CLIENTE_BUNKER' || nuevaCategoria === 'PROSPECTO') {
+                    nuevoModo = 'ACTIVO';
+                    nuevoSilenciadoHasta = null;
+                } else if (nuevaCategoria === 'PROVEEDOR') {
+                    nuevoModo = 'SILENCIADO_PIZARRA';
+                    nuevoSilenciadoHasta = null;
+                } else if (nuevaCategoria === 'PERSONAL' || nuevaCategoria === 'IGNORADO_BOT') {
+                    nuevoModo = 'OCULTO';
+                    nuevoSilenciadoHasta = null;
+                    nuevoEsperando = false;
+                    nuevoNoLeidos = 0;
+                }
+            }
+        } else if (modo_privacidad === 'OCULTO') {
+            nuevaCategoria = 'PERSONAL';
+            nuevaCategoriaManual = true;
+            nuevoEsperando = false;
+            nuevoNoLeidos = 0;
+        }
 
         if (silenciar_horas !== undefined) {
             if (silenciar_horas === null || silenciar_horas === 0) {
@@ -1373,6 +1409,9 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
             nuevoCodigoBunker = null;
             nuevoEsCliente = false;
             nuevaVinculacionManual = true;
+            if (categoria_contacto === undefined && nuevaCategoria === 'CLIENTE_BUNKER') {
+                nuevaCategoria = 'PERSONAL';
+            }
         } else if (bunker_cliente_id !== undefined && bunker_cliente_id !== null && bunker_cliente_id !== '') {
             const bcRes = await pool.query(
                 'SELECT id, cliente_nombre, razon_social, codigo_bunker_cliente FROM public.bunker_clientes WHERE id = $1 LIMIT 1',
@@ -1385,6 +1424,13 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
                 nuevoCodigoBunker = bc.codigo_bunker_cliente;
                 nuevoEsCliente = true;
                 nuevaVinculacionManual = true;
+                if (categoria_contacto === undefined) {
+                    nuevaCategoria = 'CLIENTE_BUNKER';
+                    nuevaCategoriaManual = true;
+                    if (modo_privacidad === undefined && nuevoModo === 'OCULTO') {
+                        nuevoModo = 'ACTIVO';
+                    }
+                }
             }
         }
 
@@ -1406,6 +1452,10 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
                 vinculacion_manual = $10,
                 contacto_nombre = $11,
                 contacto_cargo = $12,
+                categoria_contacto = $13,
+                categoria_manual = $14,
+                esperando_respuesta = $15,
+                no_leidos = $16,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING *
@@ -1421,12 +1471,30 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
             nuevoEsCliente,
             nuevaVinculacionManual,
             nuevoContactoNombre,
-            nuevoContactoCargo
+            nuevoContactoCargo,
+            nuevaCategoria,
+            nuevaCategoriaManual,
+            nuevoEsperando,
+            nuevoNoLeidos
         ]);
+
+        // Si se marcó como PERSONAL / OCULTO, propagar aislamiento a todos los teléfonos hermanos de esa misma persona/ficha
+        let propagados = 0;
+        if (nuevaCategoria === 'PERSONAL' && typeof crmWhatsappDb.propagarCategoriaPersonalEnCliente === 'function') {
+            propagados = await crmWhatsappDb.propagarCategoriaPersonalEnCliente({
+                bunkerClienteId: nuevoBunkerId,
+                clienteNombre: nuevoClienteNombre || '',
+                contactoNombre: nuevoContactoNombre || '',
+                pushnameWa: actual.pushname_wa || ''
+            });
+        } else if (typeof crmWhatsappDb.invalidarCacheCategoriasCrm === 'function') {
+            crmWhatsappDb.invalidarCacheCategoriasCrm();
+        }
 
         res.json({
             success: true,
-            data: updRes.rows[0]
+            data: updRes.rows[0],
+            propagados
         });
     } catch (error) {
         console.error('❌ [CRM-WA-HUB] Error actualizando configuración del chat:', error.message);

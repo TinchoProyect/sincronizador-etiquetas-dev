@@ -490,6 +490,10 @@ async function inicializarWhatsApp(force = false, isFallback = false) {
 
                 const timestampMs = msg.timestamp ? msg.timestamp * 1000 : Date.now();
                 const rawBody = (msg.type === 'chat' ? msg.body : (msg._data?.caption || msg.body || '')) || '';
+                // Ignorar eventos de protocolo WhatsApp (call_log, notification_template, e2e_notification, revoked, etc.)
+                if (crmWhatsappDb.esTipoMensajeProtocoloIgnorado(msg.type, rawBody)) {
+                    return;
+                }
                 const cuerpo = String(rawBody).startsWith('/9j/') ? (msg._data?.caption || '') : rawBody;
                 const cleanMsgId = msg.id?.id || (msg.id?._serialized ? String(msg.id._serialized).split('_').pop() : null);
 
@@ -1224,12 +1228,24 @@ const sincronizarNoLeidosRapido = async () => {
                         const rawMsgs = (c.msgs && typeof c.msgs.getModelsArray === 'function')
                             ? c.msgs.getModelsArray()
                             : [];
+                        const tiposIgnorados = {
+                            e2e_notification: 1, notification_template: 1, call_log: 1, revoked: 1,
+                            rich_response: 1, gp2: 1, protocol: 1, biz_content_placeholder: 1,
+                            ciphertext: 1, notification: 1, broadcast_notification: 1, group_notification: 1,
+                            unknown: 1, oversized: 1, hsm: 1
+                        };
                         const ultimos = rawMsgs.slice(-20);
                         const mensajes = [];
+                        let tuvoSoloProtocolo = false;
                         for (let j = 0; j < ultimos.length; j++) {
                             try {
                                 const m = ultimos[j];
                                 if (!m || !m.id) continue;
+                                const tipoLower = String(m.type || 'chat').toLowerCase();
+                                if (tiposIgnorados[tipoLower]) {
+                                    tuvoSoloProtocolo = true;
+                                    continue;
+                                }
                                 const rawBody = (m.type === 'chat' ? m.body : (m.caption || m.body || '')) || '';
                                 const cleanBody = String(rawBody).startsWith('/9j/') ? (m.caption || '') : rawBody;
                                 mensajes.push({
@@ -1246,6 +1262,8 @@ const sincronizarNoLeidosRapido = async () => {
                                 });
                             } catch (eM) {}
                         }
+
+                        if (mensajes.length === 0 && tuvoSoloProtocolo) continue;
 
                         lista.push({
                             chatId: phoneChatId,
@@ -1414,12 +1432,20 @@ const sincronizarChatsRecientes = async ({ maxChats = 45, mensajesPorChat = 30, 
                             ? c.msgs.getModelsArray()
                             : [];
 
+                        const tiposIgnorados = {
+                            e2e_notification: 1, notification_template: 1, call_log: 1, revoked: 1,
+                            rich_response: 1, gp2: 1, protocol: 1, biz_content_placeholder: 1,
+                            ciphertext: 1, notification: 1, broadcast_notification: 1, group_notification: 1,
+                            unknown: 1, oversized: 1, hsm: 1
+                        };
                         const ultimos = rawMsgs.slice(-limitMsgs);
                         const mensajes = [];
                         for (let j = 0; j < ultimos.length; j++) {
                             try {
                                 const m = ultimos[j];
                                 if (!m || !m.id) continue;
+                                const tipoLower = String(m.type || 'chat').toLowerCase();
+                                if (tiposIgnorados[tipoLower]) continue;
                                 const rawBody = (m.type === 'chat' ? m.body : (m.caption || m.body || '')) || '';
                                 const cleanBody = String(rawBody).startsWith('/9j/') ? (m.caption || '') : rawBody;
                                 mensajes.push({
@@ -1483,11 +1509,15 @@ const sincronizarChatsRecientes = async ({ maxChats = 45, mensajesPorChat = 30, 
 
         for (const ch of (chatsExtraidos || [])) {
             try {
-                if (ch.unreadCount > 0 || ch.unreadCount === -1) {
-                    chatsNoLeidos.push(ch);
+                const ordenados = [...(ch.mensajes || [])]
+                    .filter(m => !crmWhatsappDb.esTipoMensajeProtocoloIgnorado(m?.tipoMensaje, m?.cuerpo))
+                    .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+                if (ordenados.length === 0) {
+                    continue;
                 }
-
-                const ordenados = [...(ch.mensajes || [])].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+                if (ch.unreadCount > 0 || ch.unreadCount === -1) {
+                    chatsNoLeidos.push({ ...ch, mensajes: ordenados });
+                }
                 let esCliente = false;
 
                 for (let idx = 0; idx < ordenados.length; idx++) {

@@ -10,7 +10,245 @@ const pool = require('../usuarios/pool');
 let tablasVerificadas = false;
 let cacheClientesBunker = null;
 let cacheClientesTs = 0;
+let cacheProveedores = null;
+let cacheProveedoresTs = 0;
+let cacheAislados = null;
+let cacheAisladosTs = 0;
 const CACHE_TTL_MS = 20000; // 20 segundos de caché para cruce ultrarrápido en ráfagas de mensajes
+
+const TIPOS_MENSAJE_PROTOCOLO_IGNORADOS = new Set([
+    'e2e_notification',
+    'notification_template',
+    'call_log',
+    'revoked',
+    'rich_response',
+    'gp2',
+    'protocol',
+    'biz_content_placeholder',
+    'ciphertext',
+    'notification',
+    'broadcast_notification',
+    'group_notification',
+    'unknown',
+    'oversized',
+    'hsm'
+]);
+
+const CATEGORIAS_CONTACTO_VALIDAS = new Set([
+    'CLIENTE_BUNKER',
+    'PROSPECTO',
+    'PROVEEDOR',
+    'PERSONAL',
+    'IGNORADO_BOT'
+]);
+
+/**
+ * Determina si un evento/mensaje de WhatsApp es ruido técnico de protocolo (no conversacional)
+ * que jamás debe guardarse como burbuja ni disparar alertas de "No leído".
+ */
+function esTipoMensajeProtocoloIgnorado(tipoMensaje, cuerpo = '') {
+    const tipo = String(tipoMensaje || '').trim().toLowerCase();
+    if (tipo && TIPOS_MENSAJE_PROTOCOLO_IGNORADOS.has(tipo)) {
+        return true;
+    }
+    const txt = String(cuerpo || '').trim();
+    if (/^💬\s*\[(e2e_notification|notification_template|call_log|revoked|rich_response|gp2|protocol|biz_content_placeholder|ciphertext|notification|broadcast_notification|group_notification|unknown)\]/i.test(txt)) {
+        return true;
+    }
+    return false;
+}
+
+function normalizarTextoSimple(texto) {
+    return String(texto || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9@\s]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function extraerTokensNombrePersona(texto) {
+    const stopwords = new Set([
+        'srl', 'soc', 'del', 'las', 'los', 'con', 'sin', 'por', 'para', 'contacto', 'lomas',
+        'hermano', 'hermana', 'titular', 'cliente', 'tel', 'telefono', 'whatsapp', 'casa',
+        'local', 'sucursal', 'dietetica', 'almacen', 'verduleria', 'mercado', 'sin', 'gluten',
+        'calle', 'av', 'nro', 'num', 'la', 'el', 'de', 'y'
+    ]);
+    return normalizarTextoSimple(texto)
+        .split(' ')
+        .filter(w => w.length >= 3 && !/^\d+$/.test(w) && !stopwords.has(w));
+}
+
+function invalidarCacheCategoriasCrm() {
+    cacheAislados = null;
+    cacheAisladosTs = 0;
+    cacheProveedores = null;
+    cacheProveedoresTs = 0;
+}
+
+function esContactoBotOSpam(telefono, pushname, contactoNombre) {
+    const tel = String(telefono || '').replace(/\D/g, '');
+    if (!tel || tel === '0' || tel.length < 8) return true;
+    const rawNames = [pushname, contactoNombre].map(s => String(s || '').trim()).filter(Boolean);
+    for (const rn of rawNames) {
+        if (rn.startsWith('@')) return true;
+        const norm = normalizarTextoSimple(rn);
+        if (/^(whatsapp|meta\s*ai|andreani|correo\s*argentino|oca\b|mercado\s*(libre|pago)|promociones\b|movistar\b|personal\s*flow|claro\b|claroargentina|tuenti\b|banco\s+|galicia\b|santander\b|bbva\b|macro\b|naranja\s*x|uala\b|brubank\b|pedidosya\b|rappi\b|uber\b|cabify\b|afip\b|arca\b|arba\b|edelap\b|camuzzi\b|absa\b)/i.test(norm)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function esContactoProveedorPorNombre(pushname, contactoNombre) {
+    const comb = normalizarTextoSimple(`${pushname || ''} ${contactoNombre || ''}`);
+    if (!comb) return false;
+    return /\b(logistica|transporte|flete|fletes|expreso|mayorista|distribuidora|proveedor|kennilar|dicomere|villares|rtc|molino|frigorifico|importadora)\b/i.test(comb);
+}
+
+function esContactoProspectoPorTexto(pushname, contactoNombre, cuerpo = '', mediaFilename = '') {
+    const fn = normalizarTextoSimple(mediaFilename || '');
+    if (/(cotizacion|lista.*precio|presupuesto|prospecto|catalogo)/i.test(fn)) return true;
+
+    const c = normalizarTextoSimple(cuerpo || '');
+    if (/(cotizacion_consulta_de_precios|prospecto|lista de precios lamda|portal b2b|invitacion.*portal)/i.test(c)) return true;
+
+    const rawNom = String(pushname || contactoNombre || '').trim();
+    // Código legacy numérico al inicio del nombre agendado (ej: "670 Abril")
+    if (/^\d{2,4}\s+[a-záéíóúñ]/i.test(rawNom)) return true;
+
+    const nomNorm = normalizarTextoSimple(rawNom);
+    if (/\b(dietetica|almacen|verduleria|sin gluten|fiambreria|panaderia|kiosco|autoservicio|minimercado|granola|frutos secos|naturales|don emilio|pivara|sizglu)\b/i.test(nomNorm)) {
+        return true;
+    }
+    return false;
+}
+
+async function obtenerDirectorioProveedores(forceRefresh = false) {
+    const ahora = Date.now();
+    if (!forceRefresh && cacheProveedores && (ahora - cacheProveedoresTs) < 60000) {
+        return cacheProveedores;
+    }
+    try {
+        const res = await pool.query(`SELECT id, nombre, contacto, telefono FROM public.proveedores`);
+        const lista = res.rows.map(r => {
+            const infoTel = analizarTelefono(r.telefono);
+            return {
+                id: r.id,
+                nombreNorm: normalizarTextoSimple(r.nombre),
+                contactoNorm: normalizarTextoSimple(r.contacto),
+                cola10: infoTel.cola10,
+                cola8: infoTel.cola8
+            };
+        });
+        cacheProveedores = lista;
+        cacheProveedoresTs = ahora;
+        return lista;
+    } catch (_) {
+        cacheProveedores = [];
+        cacheProveedoresTs = ahora;
+        return [];
+    }
+}
+
+async function obtenerContextoAisladosPersonales(forceRefresh = false) {
+    const ahora = Date.now();
+    if (!forceRefresh && cacheAislados && (ahora - cacheAisladosTs) < 15000) {
+        return cacheAislados;
+    }
+    try {
+        const res = await pool.query(`
+            SELECT bunker_cliente_id, cliente_nombre, contacto_nombre, pushname_wa
+            FROM public.crm_whatsapp_chats
+            WHERE (bunker_cliente_id IS NOT NULL AND (modo_privacidad = 'OCULTO' OR categoria_contacto = 'PERSONAL'))
+               OR (categoria_manual = true AND categoria_contacto = 'PERSONAL')
+        `);
+        const bunkerIdsAislados = new Set();
+        const gruposTokensPersona = [];
+        for (const r of res.rows) {
+            if (r.bunker_cliente_id) bunkerIdsAislados.add(Number(r.bunker_cliente_id));
+            // Construir conjuntos de tokens de nombre (ej. "edit agustina nunez" -> ['edit','agustina','nunez'])
+            const tokens = Array.from(new Set([
+                ...extraerTokensNombrePersona(r.cliente_nombre),
+                ...extraerTokensNombrePersona(r.pushname_wa),
+                ...extraerTokensNombrePersona(r.contacto_nombre)
+            ]));
+            if (tokens.length >= 2) {
+                gruposTokensPersona.push(new Set(tokens));
+            }
+        }
+        cacheAislados = { bunkerIdsAislados, gruposTokensPersona };
+        cacheAisladosTs = ahora;
+        return cacheAislados;
+    } catch (_) {
+        return { bunkerIdsAislados: new Set(), gruposTokensPersona: [] };
+    }
+}
+
+function coincidePersonaAisladaPorNombre(gruposTokensPersona, ...textos) {
+    if (!gruposTokensPersona || gruposTokensPersona.length === 0) return false;
+    const tokensCandidato = Array.from(new Set(textos.flatMap(t => extraerTokensNombrePersona(t))));
+    if (tokensCandidato.length < 2) return false;
+    for (const grupoSet of gruposTokensPersona) {
+        let matches = 0;
+        for (const tk of tokensCandidato) {
+            if (grupoSet.has(tk)) matches++;
+        }
+        if (matches >= 2) return true;
+    }
+    return false;
+}
+
+async function determinarCategoriaContactoAutomatica({
+    telefono,
+    pushname,
+    contactoNombre,
+    bunkerClienteId = null,
+    esClienteBunker = false,
+    modoPrivacidad = 'ACTIVO',
+    cuerpo = '',
+    mediaFilename = '',
+    tienePdfComercial = false
+}) {
+    const aislados = await obtenerContextoAisladosPersonales(false);
+
+    // 1. Cliente Búnker: es CLIENTE_BUNKER salvo que su ficha esté aislada como OCULTO/PERSONAL
+    if (bunkerClienteId || esClienteBunker) {
+        if (modoPrivacidad === 'OCULTO' || (bunkerClienteId && aislados.bunkerIdsAislados.has(Number(bunkerClienteId)))) {
+            return 'PERSONAL';
+        }
+        return 'CLIENTE_BUNKER';
+    }
+
+    // 2. Bots / Spam / Operadoras / Couriers automáticos
+    if (esContactoBotOSpam(telefono, pushname, contactoNombre)) {
+        return 'IGNORADO_BOT';
+    }
+
+    // 3. Propagación por nombre a 2dos teléfonos de personas marcadas como OCULTO / PERSONAL (ej. Edit Agustina)
+    if (modoPrivacidad === 'OCULTO' || coincidePersonaAisladaPorNombre(aislados.gruposTokensPersona, pushname, contactoNombre)) {
+        return 'PERSONAL';
+    }
+
+    // 4. Proveedores (cruce por teléfono en public.proveedores o nombre comercial de proveedor/transporte)
+    const proveedores = await obtenerDirectorioProveedores(false);
+    const infoTel = analizarTelefono(telefono);
+    const matchProvTel = proveedores.some(p =>
+        (p.cola10 && infoTel.cola10 && p.cola10.length === 10 && p.cola10 === infoTel.cola10) ||
+        (p.cola8 && infoTel.cola8 && p.cola8.length >= 8 && p.cola8 === infoTel.cola8)
+    );
+    if (matchProvTel || esContactoProveedorPorNombre(pushname, contactoNombre)) {
+        return 'PROVEEDOR';
+    }
+
+    // 5. Prospecto comercial (PDF/cotización enviada o comercio/código legacy) vs Personal
+    if (tienePdfComercial || esContactoProspectoPorTexto(pushname, contactoNombre, cuerpo, mediaFilename)) {
+        return 'PROSPECTO';
+    }
+
+    return 'PERSONAL';
+}
 
 /**
  * Extrae únicamente dígitos y calcula colas de comparación (8 y 10 dígitos)
@@ -105,6 +343,16 @@ async function asegurarTablasCrmWhatsapp() {
             CREATE INDEX IF NOT EXISTS idx_crm_wa_msg_chat_fecha ON public.crm_whatsapp_mensajes(chat_id, fecha_mensaje DESC);
         `);
         await pool.query(`
+            ALTER TABLE public.crm_whatsapp_chats
+            ADD COLUMN IF NOT EXISTS categoria_contacto VARCHAR(24) NOT NULL DEFAULT 'SIN_CLASIFICAR';
+
+            ALTER TABLE public.crm_whatsapp_chats
+            ADD COLUMN IF NOT EXISTS categoria_manual BOOLEAN NOT NULL DEFAULT false;
+
+            CREATE INDEX IF NOT EXISTS idx_crm_wa_chats_categoria
+            ON public.crm_whatsapp_chats(categoria_contacto, esperando_respuesta);
+        `);
+        await pool.query(`
             ALTER TABLE public.factura_cuenta_corriente_movimientos
             ADD COLUMN IF NOT EXISTS origen_tipo VARCHAR(100) GENERATED ALWAYS AS (tipo_comprobante) STORED;
         `).catch(() => {});
@@ -113,6 +361,12 @@ async function asegurarTablasCrmWhatsapp() {
         await sembrarDirectorioClientesEnChats();
         await deduplicarAdjuntosSalientesDuplicados().catch(errDup => {
             console.warn('⚠️ [CRM-WHATSAPP-DB] Error en deduplicación inicial de adjuntos:', errDup.message);
+        });
+        await limpiarMensajesProtocoloHistoricos().catch(errProto => {
+            console.warn('⚠️ [CRM-WHATSAPP-DB] Error limpiando mensajes de protocolo:', errProto.message);
+        });
+        await clasificarChatsExistentesIdempotente().catch(errCat => {
+            console.warn('⚠️ [CRM-WHATSAPP-DB] Error clasificando categorías iniciales de chats:', errCat.message);
         });
     } catch (error) {
         console.error('❌ [CRM-WHATSAPP-DB] Error verificando tablas:', error.message);
@@ -329,6 +583,10 @@ async function registrarMensajeWhatsapp({
     if (chatId.endsWith('@g.us') || chatId.includes('broadcast') || chatId.endsWith('@newsletter')) {
         return null;
     }
+    // Filtro estricto de eventos de protocolo WhatsApp (jamás persistir ni activar alertas falsas)
+    if (esTipoMensajeProtocoloIgnorado(tipoMensaje, cuerpo)) {
+        return null;
+    }
 
     const infoTel = await resolverClienteBunkerPorTelefono(telefono || chatId);
     if (!infoTel.limpio) return null;
@@ -349,11 +607,11 @@ async function registrarMensajeWhatsapp({
     const cuerpoNormalizadoSinPrefijo = limpiarPrefijoAdjuntoCuerpo(textoResumen);
 
     try {
-        // 1. Verificar si ya existe el mensaje (por msg_id, por texto exacto, por texto normalizado sin prefijo 📄/📷 [archivo], o por media_filename en ventana de 35s)
+        // 1. Verificar si ya existe el mensaje en ESTE chat (por msg_id, por texto exacto, por texto normalizado sin prefijo 📄/📷 [archivo], o por media_filename en ventana de 35s)
         const msgExistente = await pool.query(`
             SELECT id, msg_id, ack, cuerpo, media_filename, media_mimetype
             FROM public.crm_whatsapp_mensajes
-            WHERE msg_id = $1
+            WHERE (msg_id = $1 AND chat_id = $2)
                OR (
                    chat_id = $2
                    AND from_me = $3
@@ -428,13 +686,43 @@ async function registrarMensajeWhatsapp({
             const ultimoAtActual = chatActual.ultimo_mensaje_at ? new Date(chatActual.ultimo_mensaje_at).getTime() : 0;
             const esMasReciente = fechaMsg.getTime() >= (ultimoAtActual - 5000);
 
-            if (esMasReciente || tieneUnreadExplicito) {
-                const nuevoEsperando = tieneUnreadExplicito
+            // Resolver categoría automática solo si el operador no fijó una categoría manual
+            let nuevaCategoria = chatActual.categoria_contacto || 'SIN_CLASIFICAR';
+            let nuevoModoPriv = chatActual.modo_privacidad || 'ACTIVO';
+            const esPdfComercialEnvio = Boolean(fromMe) && esContactoProspectoPorTexto('', '', textoResumenEfectivo, mediaFilename);
+            if (!chatActual.categoria_manual) {
+                if (nuevaCategoria === 'SIN_CLASIFICAR' || (bunkerIdFinal && nuevaCategoria !== 'CLIENTE_BUNKER' && nuevaCategoria !== 'PERSONAL') || (esPdfComercialEnvio && nuevaCategoria === 'PERSONAL' && !bunkerIdFinal)) {
+                    nuevaCategoria = await determinarCategoriaContactoAutomatica({
+                        telefono: infoTel.limpio,
+                        pushname: pushnameWa || chatActual.pushname_wa,
+                        contactoNombre: contactoNombreFinal || chatActual.contacto_nombre,
+                        bunkerClienteId: bunkerIdFinal,
+                        esClienteBunker: esClienteFinal,
+                        modoPrivacidad: nuevoModoPriv,
+                        cuerpo: textoResumenEfectivo,
+                        mediaFilename,
+                        tienePdfComercial: esPdfComercialEnvio
+                    });
+                }
+                if (nuevaCategoria === 'IGNORADO_BOT') {
+                    nuevoModoPriv = 'OCULTO';
+                } else if (nuevaCategoria === 'PROSPECTO' && esPdfComercialEnvio && nuevoModoPriv === 'OCULTO') {
+                    nuevoModoPriv = 'ACTIVO';
+                }
+            }
+
+            if (esMasReciente || tieneUnreadExplicito || nuevaCategoria !== chatActual.categoria_contacto) {
+                let nuevoEsperando = tieneUnreadExplicito
                     ? esNoLeidoExplicito
                     : (fromMe ? false : (esMensajeNuevo ? true : Boolean(chatActual.esperando_respuesta)));
-                const nuevoNoLeidos = tieneUnreadExplicito
+                let nuevoNoLeidos = tieneUnreadExplicito
                     ? cantNoLeidosExplicito
                     : (fromMe ? 0 : (esMensajeNuevo ? (parseInt(chatActual.no_leidos || 0) + 1) : parseInt(chatActual.no_leidos || 0)));
+
+                if (nuevaCategoria === 'IGNORADO_BOT') {
+                    nuevoEsperando = false;
+                    nuevoNoLeidos = 0;
+                }
 
                 await pool.query(`
                     UPDATE public.crm_whatsapp_chats
@@ -458,6 +746,8 @@ async function registrarMensajeWhatsapp({
                         ultimo_mensaje_from_me = CASE WHEN $15::boolean THEN $12 ELSE ultimo_mensaje_from_me END,
                         ultimo_mensaje_ack = CASE WHEN $15::boolean THEN $13 ELSE ultimo_mensaje_ack END,
                         ultimo_mensaje_at = CASE WHEN $15::boolean THEN $14 ELSE ultimo_mensaje_at END,
+                        categoria_contacto = $16,
+                        modo_privacidad = $17,
                         updated_at = NOW()
                     WHERE chat_id = $1
                 `, [
@@ -475,23 +765,44 @@ async function registrarMensajeWhatsapp({
                     fromMe,
                     ack || 1,
                     fechaMsg,
-                    esMasReciente
+                    esMasReciente,
+                    nuevaCategoria,
+                    nuevoModoPriv
                 ]);
             }
         } else {
-            // Crear el chat por primera vez
-            const esperandoInicial = tieneUnreadExplicito ? esNoLeidoExplicito : (fromMe ? false : true);
-            const noLeidosInicial = tieneUnreadExplicito ? cantNoLeidosExplicito : (fromMe ? 0 : 1);
+            // Crear el chat por primera vez con categoría automática (Negocio vs Personal / Proveedor / Bot)
+            const esPdfComercialEnvio = Boolean(fromMe) && esContactoProspectoPorTexto('', '', textoResumenEfectivo, mediaFilename);
+            const categoriaInicial = await determinarCategoriaContactoAutomatica({
+                telefono: infoTel.limpio,
+                pushname: pushnameWa,
+                contactoNombre: contactoNombreFinal,
+                bunkerClienteId: bunkerIdFinal,
+                esClienteBunker: esClienteFinal,
+                modoPrivacidad: 'ACTIVO',
+                cuerpo: textoResumenEfectivo,
+                mediaFilename,
+                tienePdfComercial: esPdfComercialEnvio
+            });
+            const modoPrivInicial = (categoriaInicial === 'IGNORADO_BOT' || categoriaInicial === 'PERSONAL')
+                ? 'OCULTO'
+                : (categoriaInicial === 'PROVEEDOR' ? 'SILENCIADO_PIZARRA' : 'ACTIVO');
+            const esperandoInicial = categoriaInicial === 'IGNORADO_BOT'
+                ? false
+                : (tieneUnreadExplicito ? esNoLeidoExplicito : (fromMe ? false : true));
+            const noLeidosInicial = categoriaInicial === 'IGNORADO_BOT'
+                ? 0
+                : (tieneUnreadExplicito ? cantNoLeidosExplicito : (fromMe ? 0 : 1));
 
             await pool.query(`
                 INSERT INTO public.crm_whatsapp_chats (
                     chat_id, telefono_normalizado, ultimos_digitos,
                     bunker_cliente_id, cliente_nombre, codigo_bunker_cliente,
                     contacto_nombre, contacto_cargo, pushname_wa,
-                    es_cliente_bunker, modo_privacidad,
+                    es_cliente_bunker, modo_privacidad, categoria_contacto,
                     esperando_respuesta, no_leidos,
                     ultimo_mensaje_texto, ultimo_mensaje_from_me, ultimo_mensaje_ack, ultimo_mensaje_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ACTIVO', $11, $12, $13, $14, $15, $16)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
             `, [
                 chatId,
                 infoTel.limpio,
@@ -503,6 +814,8 @@ async function registrarMensajeWhatsapp({
                 contactoCargoFinal,
                 pushnameWa,
                 esClienteFinal,
+                modoPrivInicial,
+                categoriaInicial,
                 esperandoInicial,
                 noLeidosInicial,
                 textoResumenEfectivo,
@@ -757,6 +1070,230 @@ async function deduplicarAdjuntosSalientesDuplicados() {
 }
 
 /**
+ * Rutina idempotente de saneamiento: elimina eventos técnicos de protocolo WhatsApp
+ * (call_log, notification_template, e2e_notification, revoked, rich_response, etc.)
+ * y recalcula ultimo_mensaje_* y esperando_respuesta de los chats afectados.
+ */
+async function limpiarMensajesProtocoloHistoricos() {
+    const tiposArr = Array.from(TIPOS_MENSAJE_PROTOCOLO_IGNORADOS);
+    const delRes = await pool.query(`
+        DELETE FROM public.crm_whatsapp_mensajes
+        WHERE LOWER(COALESCE(tipo_mensaje, '')) = ANY($1::text[])
+           OR TRIM(COALESCE(cuerpo, '')) ~* '^💬\\s*\\[(e2e_notification|notification_template|call_log|revoked|rich_response|gp2|protocol|biz_content_placeholder|ciphertext|notification|broadcast_notification|group_notification|unknown)\\]'
+        RETURNING chat_id
+    `, [tiposArr]);
+
+    const chatsAfectados = new Set(delRes.rows.map(r => r.chat_id));
+
+    // Detectar también chats cuyo ultimo_mensaje_texto todavía exhibe una etiqueta de protocolo
+    const chatsTextoProto = await pool.query(`
+        SELECT chat_id
+        FROM public.crm_whatsapp_chats
+        WHERE TRIM(COALESCE(ultimo_mensaje_texto, '')) ~* '^💬\\s*\\[(e2e_notification|notification_template|call_log|revoked|rich_response|gp2|protocol|biz_content_placeholder|ciphertext|notification|broadcast_notification|group_notification|unknown)\\]'
+    `);
+    chatsTextoProto.rows.forEach(r => chatsAfectados.add(r.chat_id));
+
+    let chatsRecalculados = 0;
+    for (const cid of chatsAfectados) {
+        const ultRes = await pool.query(`
+            SELECT cuerpo, from_me, ack, fecha_mensaje
+            FROM public.crm_whatsapp_mensajes
+            WHERE chat_id = $1
+            ORDER BY fecha_mensaje DESC, id DESC
+            LIMIT 1
+        `, [cid]);
+
+        if (ultRes.rows.length > 0) {
+            const ult = ultRes.rows[0];
+            await pool.query(`
+                UPDATE public.crm_whatsapp_chats
+                SET ultimo_mensaje_texto = $2,
+                    ultimo_mensaje_from_me = $3,
+                    ultimo_mensaje_ack = $4,
+                    ultimo_mensaje_at = $5,
+                    esperando_respuesta = CASE WHEN $3 = true THEN false ELSE esperando_respuesta END,
+                    no_leidos = CASE WHEN $3 = true THEN 0 ELSE no_leidos END,
+                    updated_at = NOW()
+                WHERE chat_id = $1
+            `, [cid, ult.cuerpo, Boolean(ult.from_me), ult.ack || 1, ult.fecha_mensaje]);
+        } else {
+            await pool.query(`
+                UPDATE public.crm_whatsapp_chats
+                SET ultimo_mensaje_texto = NULL,
+                    ultimo_mensaje_from_me = false,
+                    ultimo_mensaje_ack = 0,
+                    ultimo_mensaje_at = NULL,
+                    esperando_respuesta = false,
+                    no_leidos = 0,
+                    updated_at = NOW()
+                WHERE chat_id = $1
+            `, [cid]);
+        }
+        chatsRecalculados++;
+    }
+
+    if (delRes.rowCount > 0 || chatsRecalculados > 0) {
+        console.log(`🧹 [CRM-WHATSAPP-DB] Limpieza de protocolo WA: ${delRes.rowCount} eventos eliminados, ${chatsRecalculados} chats recalculados.`);
+    }
+    return { eliminados: delRes.rowCount, chatsRecalculados };
+}
+
+/**
+ * Propaga el aislamiento PERSONAL / OCULTO a todos los teléfonos del mismo cliente Búnker
+ * y también a posibles segundos números no vinculados que compartan nombre y apellido (>=2 tokens).
+ */
+async function propagarCategoriaPersonalEnCliente({ bunkerClienteId = null, clienteNombre = '', contactoNombre = '', pushnameWa = '' } = {}) {
+    let propagados = 0;
+    if (bunkerClienteId) {
+        const resB = await pool.query(`
+            UPDATE public.crm_whatsapp_chats
+            SET categoria_contacto = 'PERSONAL',
+                modo_privacidad = 'OCULTO',
+                esperando_respuesta = false,
+                no_leidos = 0,
+                updated_at = NOW()
+            WHERE bunker_cliente_id = $1
+              AND (categoria_contacto <> 'PERSONAL' OR modo_privacidad <> 'OCULTO' OR esperando_respuesta = true)
+        `, [Number(bunkerClienteId)]);
+        propagados += resB.rowCount;
+    }
+
+    const tokensBase = Array.from(new Set([
+        ...extraerTokensNombrePersona(clienteNombre),
+        ...extraerTokensNombrePersona(contactoNombre),
+        ...extraerTokensNombrePersona(pushnameWa)
+    ]));
+    if (tokensBase.length >= 2) {
+        const baseSet = new Set(tokensBase);
+        const sinVinc = await pool.query(`
+            SELECT id, contacto_nombre, pushname_wa
+            FROM public.crm_whatsapp_chats
+            WHERE bunker_cliente_id IS NULL
+              AND categoria_manual = false
+              AND (categoria_contacto <> 'PERSONAL' OR modo_privacidad <> 'OCULTO' OR esperando_respuesta = true)
+        `);
+        for (const r of sinVinc.rows) {
+            if (coincidePersonaAisladaPorNombre([baseSet], r.pushname_wa, r.contacto_nombre)) {
+                await pool.query(`
+                    UPDATE public.crm_whatsapp_chats
+                    SET categoria_contacto = 'PERSONAL',
+                        modo_privacidad = 'OCULTO',
+                        esperando_respuesta = false,
+                        no_leidos = 0,
+                        updated_at = NOW()
+                    WHERE id = $1
+                `, [r.id]);
+                propagados++;
+            }
+        }
+    }
+    invalidarCacheCategoriasCrm();
+    return propagados;
+}
+
+/**
+ * Clasificación idempotente inicial y de respaldo para todos los chats en crm_whatsapp_chats
+ * que aún no tienen categoría manual (categoria_manual = false).
+ * Garantiza separación estricta: CLIENTE_BUNKER, PROSPECTO, PROVEEDOR, PERSONAL, IGNORADO_BOT.
+ */
+async function clasificarChatsExistentesIdempotente() {
+    invalidarCacheCategoriasCrm();
+    await obtenerDirectorioProveedores(true);
+    await obtenerContextoAisladosPersonales(true);
+
+    // 1. Propagar primero aislamiento a todos los teléfonos de fichas Búnker OCULTO/PERSONAL o marcadas manualmente como PERSONAL
+    const ocultosRes = await pool.query(`
+        SELECT DISTINCT bunker_cliente_id, cliente_nombre, contacto_nombre, pushname_wa
+        FROM public.crm_whatsapp_chats
+        WHERE (bunker_cliente_id IS NOT NULL AND (modo_privacidad = 'OCULTO' OR categoria_contacto = 'PERSONAL'))
+           OR (categoria_manual = true AND categoria_contacto = 'PERSONAL')
+    `);
+    for (const oc of ocultosRes.rows) {
+        await propagarCategoriaPersonalEnCliente({
+            bunkerClienteId: oc.bunker_cliente_id,
+            clienteNombre: oc.cliente_nombre,
+            contactoNombre: oc.contacto_nombre,
+            pushnameWa: oc.pushname_wa
+        });
+    }
+
+    // 2. Identificar chats sin bunker_cliente_id a los que LAMDA ya envió PDFs/cotizaciones comerciales
+    const pdfComRes = await pool.query(`
+        SELECT DISTINCT chat_id
+        FROM public.crm_whatsapp_mensajes
+        WHERE from_me = true
+          AND (
+              LOWER(COALESCE(media_filename, '')) ~ '(cotizacion|lista|presupuesto|prospecto|catalogo)'
+              OR LOWER(COALESCE(cuerpo, '')) ~ '(cotizacion_consulta_de_precios|prospecto|lista de precios lamda|portal b2b)'
+          )
+    `);
+    const chatsConPdfComercial = new Set(pdfComRes.rows.map(r => r.chat_id));
+
+    // 3. Evaluar chats no manuales (o SIN_CLASIFICAR)
+    const chatsRes = await pool.query(`
+        SELECT id, chat_id, telefono_normalizado, bunker_cliente_id, es_cliente_bunker,
+               cliente_nombre, contacto_nombre, pushname_wa, modo_privacidad,
+               categoria_contacto, categoria_manual, ultimo_mensaje_texto, esperando_respuesta
+        FROM public.crm_whatsapp_chats
+        WHERE categoria_manual = false OR categoria_contacto = 'SIN_CLASIFICAR'
+    `);
+
+    let actualizados = 0;
+    const resumen = { CLIENTE_BUNKER: 0, PROSPECTO: 0, PROVEEDOR: 0, PERSONAL: 0, IGNORADO_BOT: 0 };
+
+    for (const ch of chatsRes.rows) {
+        const catNueva = await determinarCategoriaContactoAutomatica({
+            telefono: ch.telefono_normalizado || ch.chat_id,
+            pushname: ch.pushname_wa,
+            contactoNombre: ch.contacto_nombre,
+            bunkerClienteId: ch.bunker_cliente_id,
+            esClienteBunker: Boolean(ch.es_cliente_bunker),
+            modoPrivacidad: ch.modo_privacidad || 'ACTIVO',
+            cuerpo: ch.ultimo_mensaje_texto || '',
+            mediaFilename: '',
+            tienePdfComercial: chatsConPdfComercial.has(ch.chat_id)
+        });
+        resumen[catNueva] = (resumen[catNueva] || 0) + 1;
+
+        let nuevoModo = ch.modo_privacidad || 'ACTIVO';
+        let nuevoEsp = Boolean(ch.esperando_respuesta);
+        let limpiarNoLeidos = false;
+
+        if (catNueva === 'IGNORADO_BOT') {
+            nuevoModo = 'OCULTO';
+            nuevoEsp = false;
+            limpiarNoLeidos = true;
+        } else if (catNueva === 'PERSONAL') {
+            nuevoModo = 'OCULTO';
+            if (!ch.bunker_cliente_id) {
+                nuevoEsp = false;
+                limpiarNoLeidos = true;
+            }
+        } else if (catNueva === 'PROVEEDOR' && nuevoModo === 'ACTIVO') {
+            nuevoModo = 'SILENCIADO_PIZARRA';
+        }
+
+        if (catNueva !== ch.categoria_contacto || nuevoModo !== ch.modo_privacidad || nuevoEsp !== Boolean(ch.esperando_respuesta)) {
+            await pool.query(`
+                UPDATE public.crm_whatsapp_chats
+                SET categoria_contacto = $2,
+                    modo_privacidad = $3,
+                    esperando_respuesta = $4,
+                    no_leidos = CASE WHEN $5::boolean THEN 0 ELSE no_leidos END,
+                    updated_at = NOW()
+                WHERE id = $1
+            `, [ch.id, catNueva, nuevoModo, nuevoEsp, limpiarNoLeidos]);
+            actualizados++;
+        }
+    }
+
+    if (actualizados > 0) {
+        console.log(`🏷️ [CRM-WHATSAPP-DB] Clasificación automática de chats actualizada (${actualizados} cambios):`, JSON.stringify(resumen));
+    }
+    return { actualizados, resumen };
+}
+
+/**
  * Re-ejecuta el cruce de todos los chats no vinculados manualmente contra bunker_clientes
  */
 async function rematchearChatsConBunker() {
@@ -940,11 +1477,21 @@ async function sincronizarEstadoNoLeidosDesdeWa(listaNoLeidosWa = []) {
 
         for (const item of listaNoLeidosWa) {
             if (!item || !item.chatId) continue;
+
+            const rawMensajes = Array.isArray(item.mensajes) ? item.mensajes : [];
+            const mensajesReales = rawMensajes.filter(m => !esTipoMensajeProtocoloIgnorado(m?.tipoMensaje, m?.cuerpo));
+
+            // Si WhatsApp reportó unreadCount pero todos los mensajes del lote son ruido de protocolo, no activar alerta falsa
+            if (rawMensajes.length > 0 && mensajesReales.length === 0) {
+                continue;
+            }
+            if (rawMensajes.length === 0 && esTipoMensajeProtocoloIgnorado('', item.ultimoTexto)) {
+                continue;
+            }
+
             chatIdsNoLeidos.push(item.chatId);
 
-            const ordenados = Array.isArray(item.mensajes)
-                ? [...item.mensajes].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
-                : [];
+            const ordenados = [...mensajesReales].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
             if (ordenados.length > 0) {
                 for (let i = 0; i < ordenados.length; i++) {
@@ -970,8 +1517,8 @@ async function sincronizarEstadoNoLeidosDesdeWa(listaNoLeidosWa = []) {
                 const cant = item.unreadCount === -1 ? -1 : (item.unreadCount > 0 ? item.unreadCount : 1);
                 const upd = await pool.query(`
                     UPDATE public.crm_whatsapp_chats
-                    SET esperando_respuesta = true,
-                        no_leidos = $2,
+                    SET esperando_respuesta = CASE WHEN categoria_contacto = 'IGNORADO_BOT' THEN false ELSE true END,
+                        no_leidos = CASE WHEN categoria_contacto = 'IGNORADO_BOT' THEN 0 ELSE $2 END,
                         updated_at = NOW()
                     WHERE chat_id = $1
                 `, [item.chatId, cant]);
@@ -1022,15 +1569,23 @@ async function sincronizarEstadoNoLeidosDesdeWa(listaNoLeidosWa = []) {
 }
 
 module.exports = {
+    TIPOS_MENSAJE_PROTOCOLO_IGNORADOS,
+    CATEGORIAS_CONTACTO_VALIDAS,
+    esTipoMensajeProtocoloIgnorado,
+    invalidarCacheCategoriasCrm,
     analizarTelefono,
     asegurarTablasCrmWhatsapp,
     obtenerDirectorioClientes,
     resolverClienteBunkerPorTelefono,
+    determinarCategoriaContactoAutomatica,
     registrarMensajeWhatsapp,
     verificarAudioYaTranscrito,
     actualizarTranscripcionAudioMensaje,
     actualizarAckMensaje,
     deduplicarAdjuntosSalientesDuplicados,
+    limpiarMensajesProtocoloHistoricos,
+    propagarCategoriaPersonalEnCliente,
+    clasificarChatsExistentesIdempotente,
     rematchearChatsConBunker,
     sembrarDirectorioClientesEnChats,
     sincronizarEstadoNoLeidosDesdeWa
