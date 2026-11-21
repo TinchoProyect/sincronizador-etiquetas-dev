@@ -100,7 +100,7 @@ function extraerPaletaNodoPwa(nodo) {
         fondoGestor,
         fondoGestorOscuro,
         acentoSol,
-        isotipoRelPath: String(logos.isotipo || '').trim()
+        isotipoRelPath: String(logos.isotipo_png || logos.isotipo || '').trim()
     };
 }
 

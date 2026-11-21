@@ -2419,9 +2419,10 @@
       const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-192.png?v=${vPwa}` : String(urlImg || '').trim();
       const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-gestor-180.png?v=${vPwa}` : String(urlImg || '').trim();
       if (iconPwa192) {
-        let linkIcon = document.querySelector('link[rel="icon"]');
+        let linkIcon = document.getElementById('nodo-favicon-png') || document.querySelector('link[rel="icon"]');
         if (!linkIcon) {
           linkIcon = document.createElement('link');
+          linkIcon.id = 'nodo-favicon-png';
           linkIcon.rel = 'icon';
           linkIcon.type = 'image/png';
           document.head.appendChild(linkIcon);
@@ -2652,7 +2653,7 @@
 
     function obtenerLogoVerticalGestor(nodo) {
       const logos = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? (nodo.tema_visual.logos || {}) : {};
-      return logos.principal || logos.vertical || logos.horizontal || nodo?.logo_original_base64 || nodo?.logo_mono_preview_base64 || '';
+      return logos.vertical_png || logos.vertical || logos.principal_png || logos.principal || logos.horizontal_png || logos.horizontal || nodo?.logo_original_base64 || nodo?.logo_mono_preview_base64 || '';
     }
 
     function obtenerLogoIconoGestor(nodo) {

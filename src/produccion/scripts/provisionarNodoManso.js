@@ -117,7 +117,7 @@ async function provisionarNodoManso(opciones = {}) {
             cargo_envio_barrial: 0,
             margen_gestor_default_pct: Number(seed.margen_gestor_default_pct || 28),
             config_ventanas_corte: Array.isArray(seed.config_ventanas_corte) ? seed.config_ventanas_corte : undefined,
-            color_primario: seed.color_primario || '#672833',
+            color_primario: seed.color_primario || '#4F1F27',
             latitud: seed.latitud,
             longitud: seed.longitud,
             logo_original_base64: seed.logo_original_base64 || null,

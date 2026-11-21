@@ -419,25 +419,25 @@ const TEMA_VISUAL_PARAISO_OFICIAL = {
     }
 };
 
-// Paleta exacta muestreada píxel a píxel desde la lámina gráfica oficial de MANSO (Franjas 2 y 3)
+// Paleta oficial extraída de los SVG vectoriales definitivos de MANSO (Marrón Oscuro Pleno #4F1F27 + Crema Cálido #FBF4E2)
 const TEMA_VISUAL_MANSO_OFICIAL = {
     paleta: {
-        primario: '#0F4246',
-        primario_oscuro: '#092B2E',
-        terracota: '#672833',
-        terracota_oscuro: '#4E1D26',
-        ocre: '#C99B3D',
-        pistacho: '#85B1B4',
-        pistacho_texto: '#0F4246',
-        pistacho_suave: '#E6F1F1',
-        amarillo_sol: '#E3B857',
-        fondo: '#FAF6EC',
-        fondo_icono_tienda: '#672833',
-        superficie_calida: '#F4EBD6',
+        primario: '#4F1F27',
+        primario_oscuro: '#3B161C',
+        terracota: '#4F1F27',
+        terracota_oscuro: '#3B161C',
+        ocre: '#B68445',
+        pistacho: '#8FA67A',
+        pistacho_texto: '#364B26',
+        pistacho_suave: '#EEF4E7',
+        amarillo_sol: '#E8C37D',
+        fondo: '#FBF4E2',
+        fondo_icono_tienda: '#4F1F27',
+        superficie_calida: '#F3E8CE',
         tarjeta: '#FFFFFF',
-        texto: '#2C1B1E',
-        texto_secundario: '#6E5358',
-        borde: '#E5DAC6'
+        texto: '#2B1418',
+        texto_secundario: '#6D4E53',
+        borde: '#E4D6BA'
     },
     tipografia: {
         familia: "'Nunito', sans-serif",
@@ -445,23 +445,33 @@ const TEMA_VISUAL_MANSO_OFICIAL = {
     },
     logo_incluye_texto: true,
     logos: {
-        principal: '/img/nodos/manso/logo-principal.png',
-        horizontal: '/img/nodos/manso/logo-horizontal.png',
-        vertical: '/img/nodos/manso/logo-principal.png',
-        isotipo: '/img/nodos/manso/isotipo.png',
+        principal: '/img/nodos/manso/logo-faja.svg',
+        principal_png: '/img/nodos/manso/logo-principal.png',
+        horizontal: '/img/nodos/manso/logo-horizontal.svg',
+        horizontal_png: '/img/nodos/manso/logo-horizontal.png',
+        vertical: '/img/nodos/manso/logo-cuadrado.svg',
+        vertical_png: '/img/nodos/manso/logo-cuadrado.png',
+        isotipo: '/img/nodos/manso/isotipo.svg',
+        isotipo_png: '/img/nodos/manso/isotipo.png',
+        favicon_svg: '/img/nodos/manso/favicon.svg',
+        favicon_32: '/img/nodos/manso/favicon-32.png',
+        apple_touch_icon: '/img/nodos/manso/apple-touch-icon.png',
+        icon_192: '/img/nodos/manso/icon-192.png',
+        icon_512: '/img/nodos/manso/icon-512.png',
+        og_share: '/img/nodos/manso/og-share.png',
         zebra_mono: '/img/nodos/manso/logo-termico-bn.png'
     }
 };
 
 const LOGO_ZPL_CONFIG_MANSO_OFICIAL = {
-    width: 208,
-    height: 62,
-    threshold: 140,
+    width: 280,
+    height: 58,
+    threshold: 150,
     mode: 'threshold',
     padding: 2,
     invert: false,
     modo_cabecera: 'banner_completo',
-    iniciales: 'MO'
+    iniciales: 'M'
 };
 
 function leerLogoZebraMansoDataUrl() {

@@ -65,17 +65,28 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
             const temaOficial = nodosService.TEMA_VISUAL_MANSO_OFICIAL;
             const cfgZplOficial = nodosService.LOGO_ZPL_CONFIG_MANSO_OFICIAL;
 
+            const colorPrimarioActual = String(row.color_primario || '').trim().toLowerCase();
+            const gfaPrefixOficial = '^GFA,2030,2030,35,';
             const faltaIdentidadOficialManso =
-                String(row.color_primario || '').trim().toLowerCase() === '#c69f9f' ||
-                !row.color_primario ||
+                !colorPrimarioActual ||
+                colorPrimarioActual === '#c69f9f' ||
+                colorPrimarioActual === '#672833' ||
+                colorPrimarioActual !== '#4f1f27' ||
                 tvActual?.logo_incluye_texto !== true ||
                 tvActual?.logos?.principal !== temaOficial.logos.principal ||
                 tvActual?.logos?.horizontal !== temaOficial.logos.horizontal ||
+                tvActual?.logos?.vertical !== temaOficial.logos.vertical ||
                 tvActual?.logos?.isotipo !== temaOficial.logos.isotipo ||
+                tvActual?.logos?.og_share !== temaOficial.logos.og_share ||
+                tvActual?.logos?.favicon_svg !== temaOficial.logos.favicon_svg ||
+                tvActual?.paleta?.primario !== temaOficial.paleta.primario ||
                 tvActual?.paleta?.terracota !== temaOficial.paleta.terracota ||
+                tvActual?.paleta?.fondo !== temaOficial.paleta.fondo ||
+                tvActual?.paleta?.pistacho !== temaOficial.paleta.pistacho ||
                 cfgZplActual?.modo_cabecera !== 'banner_completo' ||
                 Number(cfgZplActual?.width || 0) !== cfgZplOficial.width ||
-                !String(row.logo_zpl_gfa || '').startsWith('^GFA,1612,1612,26,');
+                Number(cfgZplActual?.height || 0) !== cfgZplOficial.height ||
+                !String(row.logo_zpl_gfa || '').startsWith(gfaPrefixOficial);
 
             const modulosManso = nodosService.resolverModulosActivosNodo(
                 {
@@ -102,19 +113,19 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
                 ? (seedManso.subtitulo_marca || 'Frutos Secos · Snacks · Boxes')
                 : subRaw;
             const nuevaBajada = String(row.bajada_marca || '').trim() || seedManso.bajada_marca || 'Que nunca falte algo rico';
-            const nuevoColor = (!row.color_primario || String(row.color_primario).trim().toLowerCase() === '#c69f9f')
-                ? '#672833'
+            const nuevoColor = (!colorPrimarioActual || colorPrimarioActual === '#c69f9f' || colorPrimarioActual === '#672833')
+                ? '#4F1F27'
                 : row.color_primario;
 
             let zplGfaFinal = seedManso.logo_zpl_gfa || row.logo_zpl_gfa || null;
             let zplMonoPreviewFinal = seedManso.logo_mono_preview_base64 || row.logo_mono_preview_base64 || null;
-            if (!String(zplGfaFinal || '').startsWith('^GFA,1612,1612,26,')) {
-                const zebraDataUrl = nodosService.leerLogoZebraMansoDataUrl();
+            const zebraDataUrl = nodosService.leerLogoZebraMansoDataUrl();
+            if (!String(zplGfaFinal || '').startsWith(gfaPrefixOficial)) {
                 if (zebraDataUrl) {
                     const conv = await nodosService.convertirLogoAZplGfa({
                         imageBase64: zebraDataUrl,
                         nombreMarca: 'MANSO',
-                        iniciales: 'MO',
+                        iniciales: cfgZplOficial.iniciales || 'M',
                         width: cfgZplOficial.width,
                         height: cfgZplOficial.height,
                         threshold: cfgZplOficial.threshold,
@@ -166,7 +177,7 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
                         nuevaBajada,
                         nuevoColor,
                         JSON.stringify(temaOficial),
-                        seedManso.logo_original_base64 || null,
+                        seedManso.logo_original_base64 || zebraDataUrl || null,
                         zplMonoPreviewFinal,
                         zplGfaFinal,
                         JSON.stringify(cfgZplOficial),

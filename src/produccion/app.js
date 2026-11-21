@@ -185,9 +185,11 @@ function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}
         ? `Seguimiento en vivo de tu pedido #${extraContext.codigoPedido} en ${nombreMarca}${nodo?.barrio_zona ? ` (${nodo.barrio_zona})` : ''}.`
         : `${bajada || 'Pedidos comunitarios del barrio'}${nodo?.barrio_zona ? ` · ${nodo.barrio_zona}` : ''}.`;
 
-    const ogImagePath = logosTv.vertical || logosTv.horizontal || '';
+    const ogImagePath = logosTv.og_share || logosTv.vertical_png || logosTv.vertical || logosTv.horizontal_png || logosTv.horizontal || '';
     const ogImageAbs = aUrlAbsolutaNodos(baseUrl, ogImagePath);
-    const faviconPath = logosTv.isotipo || '';
+    const faviconSvgPath = logosTv.favicon_svg || '';
+    const favicon32Path = logosTv.favicon_32 || '';
+    const faviconPath = logosTv.isotipo_png || logosTv.isotipo || '';
     const ogUrl = aUrlAbsolutaNodos(baseUrl, req.originalUrl || req.path || '');
     const paletaTv = (tv.paleta && typeof tv.paleta === 'object') ? tv.paleta : {};
     const slugCanonico = String(nodo?.slug || '').trim();
@@ -214,16 +216,27 @@ function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}
             : String(paletaTv.fondo || '#FBF8F3').trim();
 
         metaTags.push(`<link id="nodo-pwa-manifest" rel="manifest" href="${escHtmlAttrNodos(manifestHref)}">`);
-        metaTags.push(`<link rel="icon" type="image/png" sizes="192x192" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-192.png?v=${encodeURIComponent(pwaV)}">`);
+        if (!esGestor && faviconSvgPath) {
+            metaTags.push(`<link id="nodo-favicon-svg" rel="icon" type="image/svg+xml" href="${escHtmlAttrNodos(faviconSvgPath)}?v=${encodeURIComponent(pwaV)}">`);
+        }
+        if (!esGestor && favicon32Path) {
+            metaTags.push(`<link id="nodo-favicon-32" rel="icon" type="image/png" sizes="32x32" href="${escHtmlAttrNodos(favicon32Path)}?v=${encodeURIComponent(pwaV)}">`);
+        }
+        metaTags.push(`<link id="nodo-favicon-png" rel="icon" type="image/png" sizes="192x192" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-192.png?v=${encodeURIComponent(pwaV)}">`);
         metaTags.push(`<link id="nodo-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-180.png?v=${encodeURIComponent(pwaV)}">`);
         metaTags.push(`<meta name="theme-color" content="${escHtmlAttrNodos(themeColor)}">`);
         metaTags.push(`<meta name="mobile-web-app-capable" content="yes">`);
         metaTags.push(`<meta name="apple-mobile-web-app-capable" content="yes">`);
         metaTags.push(`<meta name="apple-mobile-web-app-status-bar-style" content="${esGestor ? 'black-translucent' : 'default'}">`);
         metaTags.push(`<meta name="apple-mobile-web-app-title" content="${escHtmlAttrNodos(appShortTitle)}">`);
-    } else if (faviconPath) {
-        metaTags.push(`<link rel="icon" type="image/png" href="${escHtmlAttrNodos(faviconPath)}">`);
-        metaTags.push(`<link rel="apple-touch-icon" href="${escHtmlAttrNodos(faviconPath)}">`);
+    } else if (faviconSvgPath || faviconPath) {
+        if (faviconSvgPath) {
+            metaTags.push(`<link id="nodo-favicon-svg" rel="icon" type="image/svg+xml" href="${escHtmlAttrNodos(faviconSvgPath)}">`);
+        }
+        if (faviconPath) {
+            metaTags.push(`<link id="nodo-favicon-png" rel="icon" type="image/png" href="${escHtmlAttrNodos(faviconPath)}">`);
+            metaTags.push(`<link rel="apple-touch-icon" href="${escHtmlAttrNodos(faviconPath)}">`);
+        }
     }
     if (!esGestor) {
         metaTags.push(`<meta name="description" content="${escHtmlAttrNodos(ogDesc)}">`);
@@ -231,7 +244,14 @@ function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}
         metaTags.push(`<meta property="og:title" content="${escHtmlAttrNodos(ogTitle)}">`);
         metaTags.push(`<meta property="og:description" content="${escHtmlAttrNodos(ogDesc)}">`);
         if (ogUrl) metaTags.push(`<meta property="og:url" content="${escHtmlAttrNodos(ogUrl)}">`);
-        if (ogImageAbs) metaTags.push(`<meta property="og:image" content="${escHtmlAttrNodos(ogImageAbs)}">`);
+        if (ogImageAbs) {
+            metaTags.push(`<meta property="og:image" content="${escHtmlAttrNodos(ogImageAbs)}">`);
+            if (logosTv.og_share) {
+                metaTags.push(`<meta property="og:image:type" content="image/png">`);
+                metaTags.push(`<meta property="og:image:width" content="1200">`);
+                metaTags.push(`<meta property="og:image:height" content="630">`);
+            }
+        }
         metaTags.push(`<meta name="twitter:card" content="${ogImageAbs ? 'summary_large_image' : 'summary'}">`);
     }
 

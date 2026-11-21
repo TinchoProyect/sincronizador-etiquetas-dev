@@ -1722,7 +1722,7 @@
                                 <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                                     <span style="font-size:0.7rem; color:#94a3b8;">Paletas sugeridas:</span>
                                     ${[
-                                        { label: 'Manso Bordó', hex: '#672833' },
+                                        { label: 'Manso Cacao', hex: '#4F1F27' },
                                         { label: 'Paraíso Terracota', hex: '#D36344' },
                                         { label: 'Terracota Tierra', hex: '#a2553b' },
                                         { label: 'Cacao Tostado', hex: '#654B30' },

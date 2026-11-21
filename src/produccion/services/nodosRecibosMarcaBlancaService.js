@@ -96,6 +96,10 @@ async function cargarImagenLogoTienda(nodoRow = {}) {
     const tv = (nodoRow.tema_visual && typeof nodoRow.tema_visual === 'object') ? nodoRow.tema_visual : {};
     const logos = (tv.logos && typeof tv.logos === 'object') ? tv.logos : {};
     const candidatosRutas = [
+        logos.horizontal_png,
+        logos.principal_png,
+        logos.vertical_png,
+        logos.isotipo_png,
         logos.horizontal,
         logos.principal,
         logos.vertical,

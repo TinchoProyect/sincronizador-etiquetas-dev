@@ -3351,14 +3351,43 @@
     function aplicarFaviconTienda(urlImg) {
       const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
       const vPwa = encodeURIComponent(obtenerVersionPwaTienda());
+      const logosTv = (STATE.nodo?.tema_visual && typeof STATE.nodo.tema_visual === 'object') ? (STATE.nodo.tema_visual.logos || {}) : {};
+      const faviconSvg = String(logosTv.favicon_svg || '').trim();
+      const favicon32 = String(logosTv.favicon_32 || '').trim();
       const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-192.png?v=${vPwa}` : String(urlImg || '').trim();
       const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=${vPwa}` : String(urlImg || '').trim();
+
+      if (faviconSvg) {
+        let linkSvg = document.getElementById('nodo-favicon-svg') || document.querySelector('link[rel="icon"][type="image/svg+xml"]');
+        if (!linkSvg) {
+          linkSvg = document.createElement('link');
+          linkSvg.id = 'nodo-favicon-svg';
+          linkSvg.rel = 'icon';
+          linkSvg.type = 'image/svg+xml';
+          document.head.appendChild(linkSvg);
+        }
+        linkSvg.href = `${faviconSvg}?v=${vPwa}`;
+      }
+      if (favicon32) {
+        let link32 = document.getElementById('nodo-favicon-32');
+        if (!link32) {
+          link32 = document.createElement('link');
+          link32.id = 'nodo-favicon-32';
+          link32.rel = 'icon';
+          link32.type = 'image/png';
+          link32.sizes = '32x32';
+          document.head.appendChild(link32);
+        }
+        link32.href = `${favicon32}?v=${vPwa}`;
+      }
       if (iconPwa192) {
-        let linkIcon = document.querySelector('link[rel="icon"]');
+        let linkIcon = document.getElementById('nodo-favicon-png') || document.querySelector('link[rel="icon"][type="image/png"]:not(#nodo-favicon-32)');
         if (!linkIcon) {
           linkIcon = document.createElement('link');
+          linkIcon.id = 'nodo-favicon-png';
           linkIcon.rel = 'icon';
           linkIcon.type = 'image/png';
+          linkIcon.sizes = '192x192';
           document.head.appendChild(linkIcon);
         }
         linkIcon.href = iconPwa192;
