@@ -281,14 +281,40 @@ function paginarItemsEtiqueta(items = []) {
     return paginas;
 }
 
+function partirNombreMostradorDosLineas(nombreRaw = '', maxLinea1 = 15, maxLinea2 = 18) {
+    const limpio = limpiarTextoZpl(nombreRaw).toUpperCase().replace(/\s+/g, ' ').trim();
+    if (!limpio) return ['CLIENTE'];
+    if (limpio.length <= maxLinea1) return [limpio];
+    const palabras = limpio.split(' ');
+    let l1 = '';
+    let i = 0;
+    while (i < palabras.length) {
+        const cand = l1 ? `${l1} ${palabras[i]}` : palabras[i];
+        if (cand.length <= maxLinea2 || !l1) {
+            l1 = cand;
+            i++;
+        } else {
+            break;
+        }
+    }
+    const resto = palabras.slice(i).join(' ').trim();
+    if (!resto) return [l1.substring(0, maxLinea2)];
+    return [l1.substring(0, maxLinea2), resto.substring(0, maxLinea2)];
+}
+
 /**
  * Genera el código ZPL completo del Par Gemelo en rollo de doble columna:
- * - Izquierda (X=23): Identidad Marca Blanca del Nodo + Vecino + Dirección/Ventana + QR + Estado de Pago invertido (^FR)
+ * - formato_etiqueta === 'mostrador_local': Jerarquía de mostrador comercial (RETIRA EN MOSTRADOR,
+ *   Nombre/Apellido en fuente gigante ^A0N,32,30, #NB destacado, TEL, banda PAGADO/COBRAR EFVO, cero "VECINO"/"NODO").
+ * - default ('vecinal'): Identidad Marca Blanca del Nodo + Vecino + Dirección/Ventana + QR + Estado de Pago invertido (^FR).
  * - Derecha (X=443): Checklist de armado con gramaje siempre visible al final.
  */
 function generarEtiquetaZplParNodo(params = {}) {
+    const formatoEtiqueta = String(params.formato_etiqueta || 'vecinal').trim().toLowerCase();
+    const esMostradorLocal = formatoEtiqueta === 'mostrador_local';
+
     const nombreMarca = limpiarTextoZpl(params.nombre_marca || 'ALMACEN VERDE CITY BELL').toUpperCase();
-    const subtituloMarca = limpiarTextoZpl(params.bajada_marca || params.subtitulo_marca || 'Pedido Vecinal - Entrega Fresca');
+    const subtituloMarca = limpiarTextoZpl(params.bajada_marca || params.subtitulo_marca || (esMostradorLocal ? 'Retiro en Mostrador' : 'Pedido Vecinal - Entrega Fresca'));
     const logoGfa = (params.logo_zpl_gfa && params.logo_zpl_gfa.startsWith('^GFA'))
         ? params.logo_zpl_gfa
         : '';
@@ -297,8 +323,9 @@ function generarEtiquetaZplParNodo(params = {}) {
     const pedidoCodigo = limpiarTextoZpl(params.pedido_codigo || 'NB-1042');
     const vecinoNombre = limpiarTextoZpl(params.vecino_nombre || 'MARIA LAURA GOMEZ').toUpperCase();
     const vecinoTelefono = limpiarTextoZpl(params.vecino_telefono || '221-554-8910');
-    const modalidadEntrega = limpiarTextoZpl(params.modalidad_entrega || 'RETIRO EN NODO (17:00 A 20:00 HS)');
+    const modalidadEntrega = limpiarTextoZpl(params.modalidad_entrega || (esMostradorLocal ? 'RETIRA EN MOSTRADOR' : 'RETIRO EN NODO (17:00 A 20:00 HS)'));
     const direccionBarrial = limpiarTextoZpl(params.direccion_barrial || 'Cantilo 452 e/ 13c y 14 - City Bell');
+    const puntoMostradorCorto = limpiarTextoZpl(params.punto_retiro_corto || params.direccion_barrial || nombreMarca).toUpperCase();
     const estadoPago = limpiarTextoZpl(params.estado_pago || 'PAGADO (TRANSFERENCIA)');
     const montoCobrar = Number(params.monto_cobrar || 0);
     const bultosTexto = limpiarTextoZpl(params.bultos_texto || 'BOLSA 1/1');
@@ -313,7 +340,8 @@ function generarEtiquetaZplParNodo(params = {}) {
     const bloquesZpl = paginas.map((itemsPagina, pageIndex) => {
         const numHoja = pageIndex + 1;
         const esContinuacion = numHoja > 1;
-        const textoBanderaPago = estadoPago.includes('EFECTIVO') && montoCobrar > 0
+        const esCobrarEfvo = estadoPago.includes('EFECTIVO') && montoCobrar > 0;
+        const textoBanderaPago = esCobrarEfvo
             ? `COBRAR EFECTIVO: $${montoCobrar.toLocaleString('es-AR')}`
             : estadoPago;
 
@@ -330,17 +358,63 @@ function generarEtiquetaZplParNodo(params = {}) {
         const xRightBadge = Math.min(315, 25 + Math.min(logoCabecera.width, 280) + 10);
         const bloqueCabeceraIzqZpl = logoGfa && logoCabecera.esBannerCompleto
             ? [
-                `^FO25,8${logoGfa}^FS`,
+                `^FO25,6${logoGfa}^FS`,
                 ...(esContinuacion ? [
-                    `^FO${xRightBadge},18^A0N,17,17^FDHOJA ${numHoja}/${totalHojas}^FS`,
-                    `^FO${xRightBadge},40^A0N,14,14^FDCONT. CHECK^FS`
+                    `^FO${xRightBadge},16^A0N,17,17^FDHOJA ${numHoja}/${totalHojas}^FS`,
+                    `^FO${xRightBadge},38^A0N,14,14^FDCONT. CHECK^FS`
                 ] : [])
             ]
             : [
-                logoGfa ? `^FO25,14${logoGfa}^FS` : '^FO25,14^GB108,54,3^FS^FO42,30^A0N,24,24^FDNODO^FS',
-                `^FO142,16^A0N,${fontTituloZpl}^FD${nombreMarca.substring(0, 32)}^FS`,
-                `^FO142,42^A0N,15,14^FD${esContinuacion ? `CONTINUACION CHECKLIST (HOJA ${numHoja}/${totalHojas})` : subtituloMarca.substring(0, 44)}^FS`
+                logoGfa ? `^FO25,10${logoGfa}^FS` : '^FO25,10^GB108,52,3^FS^FO38,26^A0N,22,22^FDLOCAL^FS',
+                `^FO142,14^A0N,${fontTituloZpl}^FD${nombreMarca.substring(0, 32)}^FS`,
+                `^FO142,40^A0N,15,14^FD${esContinuacion ? `CONTINUACION CHECKLIST (HOJA ${numHoja}/${totalHojas})` : subtituloMarca.substring(0, 44)}^FS`
             ];
+
+        if (esMostradorLocal) {
+            const lineasNombre = partirNombreMostradorDosLineas(vecinoNombre, 15, 18);
+            const esNombreDoble = lineasNombre.length > 1;
+            const bloqueNombreZpl = esNombreDoble
+                ? [
+                    `^FO23,98^A0N,28,26^FD${lineasNombre[0]}^FS`,
+                    `^FO23,126^A0N,28,26^FD${lineasNombre[1]}^FS`
+                ]
+                : [
+                    `^FO23,104^A0N,32,30^FD${lineasNombre[0]}^FS`
+                ];
+            const textoPagoMostrador = esCobrarEfvo
+                ? `COBRAR EFVO $${montoCobrar.toLocaleString('es-AR')}`
+                : 'PAGADO';
+
+            return [
+                '^XA',
+                '^CI28',
+                '^PW830',
+                '^LL280',
+                // ================= COLUMNA IZQUIERDA (X=23): MOSTRADOR COMERCIAL =================
+                ...bloqueCabeceraIzqZpl,
+                // Franja invertida RETIRA EN MOSTRADOR + #NB destacado
+                '^FO23,68^GB372,24,24^FS',
+                '^FO30,72^FR^A0N,18,17^FDRETIRA EN MOSTRADOR^FS',
+                `^FO262,71^FR^A0N,19,18^FD#${pedidoCodigo.substring(0, 12)}^FS`,
+                // Nombre y apellido gigante para escaneo visual en estanteria de mostrador
+                ...bloqueNombreZpl,
+                `^FO23,156^A0N,16,15^FDTEL: ${vecinoTelefono.substring(0, 16)} | ${puntoMostradorCorto.substring(0, 22)}^FS`,
+                '^FO23,174^GB372,2,2^FS',
+                // QR + Banda invertida PAGADO / COBRAR EFVO
+                `^FO25,180^BQN,2,3^FDMA,${pedidoCodigo}-H${numHoja}^FS`,
+                '^FO118,180^GB277,86,86^FS',
+                `^FO128,189^FR^A0N,22,20^FD${textoPagoMostrador.substring(0, 22)}^FS`,
+                `^FO128,218^FR^A0N,19,18^FDPEDIDO #${pedidoCodigo} | ${bultosTexto}^FS`,
+                `^FO128,244^FR^A0N,15,15^FD${nombreMarca.substring(0, 18)} - HOJA ${numHoja}/${totalHojas}^FS`,
+
+                // ================= COLUMNA DERECHA (X=443): CHECKLIST DE ARMADO =================
+                `^FO443,16^A0N,21,21^FDCHECKLIST #${pedidoCodigo} (${totalItemsPedido} ITEMS)^FS`,
+                `^FO443,40^A0N,16,16^FDCLIENTE: ${vecinoNombre.substring(0, 23)} [HOJA ${numHoja}/${totalHojas}]^FS`,
+                '^FO443,60^GB368,2,2^FS',
+                lineasChecklistZpl,
+                '^XZ'
+            ].join('\n');
+        }
 
         return [
             '^XA',
@@ -373,6 +447,7 @@ function generarEtiquetaZplParNodo(params = {}) {
 
     return {
         zpl: bloquesZpl.join('\n\n'),
+        formato_etiqueta: esMostradorLocal ? 'mostrador_local' : 'vecinal',
         totalHojas,
         totalItemsPedido,
         paginas
@@ -414,8 +489,11 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
         }
     }
 
+    const formatoEtiqueta = String(params.formato_etiqueta || 'vecinal').trim().toLowerCase();
+    const esMostradorLocal = formatoEtiqueta === 'mostrador_local';
+
     const nombreMarca = limpiarTextoZpl(params.nombre_marca || 'ALMACEN VERDE CITY BELL').toUpperCase();
-    const subtituloMarca = limpiarTextoZpl(params.bajada_marca || params.subtitulo_marca || 'Pedido Vecinal - Entrega Fresca');
+    const subtituloMarca = limpiarTextoZpl(params.bajada_marca || params.subtitulo_marca || (esMostradorLocal ? 'Retiro en Mostrador' : 'Pedido Vecinal - Entrega Fresca'));
     const logoCabecera = resolverModoCabeceraLogo({
         logoGfa: params.logo_zpl_gfa,
         logoImg,
@@ -424,13 +502,15 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
     const pedidoCodigo = limpiarTextoZpl(params.pedido_codigo || 'NB-1042');
     const vecinoNombre = limpiarTextoZpl(params.vecino_nombre || 'MARIA LAURA GOMEZ').toUpperCase();
     const vecinoTelefono = limpiarTextoZpl(params.vecino_telefono || '221-554-8910');
-    const modalidadEntrega = limpiarTextoZpl(params.modalidad_entrega || 'RETIRO EN NODO (17:00 A 20:00 HS)');
+    const modalidadEntrega = limpiarTextoZpl(params.modalidad_entrega || (esMostradorLocal ? 'RETIRA EN MOSTRADOR' : 'RETIRO EN NODO (17:00 A 20:00 HS)'));
     const direccionBarrial = limpiarTextoZpl(params.direccion_barrial || 'Cantilo 452 e/ 13c y 14 - City Bell');
+    const puntoMostradorCorto = limpiarTextoZpl(params.punto_retiro_corto || params.direccion_barrial || nombreMarca).toUpperCase();
     const estadoPago = limpiarTextoZpl(params.estado_pago || 'PAGADO (TRANSFERENCIA)');
     const montoCobrar = Number(params.monto_cobrar || 0);
     const bultosTexto = limpiarTextoZpl(params.bultos_texto || 'BOLSA 1/1');
 
-    const textoBanderaPago = estadoPago.includes('EFECTIVO') && montoCobrar > 0
+    const esCobrarEfvo = estadoPago.includes('EFECTIVO') && montoCobrar > 0;
+    const textoBanderaPago = esCobrarEfvo
         ? `COBRAR EFECTIVO: $${montoCobrar.toLocaleString('es-AR')}`
         : estadoPago;
 
@@ -453,103 +533,183 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
 
         // ================= DIBUJAR ETIQUETA IZQUIERDA =================
         if (logoImg && logoCabecera.esBannerCompleto) {
-            const scalePv = Math.min(1, (labelW - 22) / logoImg.width, 64 / logoImg.height);
+            const maxHLogo = esMostradorLocal ? 58 : 64;
+            const scalePv = Math.min(1, (labelW - 22) / logoImg.width, maxHLogo / logoImg.height);
             const drawW = Math.round(logoImg.width * scalePv);
             const drawH = Math.round(logoImg.height * scalePv);
-            ctx.drawImage(logoImg, leftX + 10, rowY + 6 + Math.round((64 - drawH) / 2), drawW, drawH);
+            const drawX = esMostradorLocal ? leftX + Math.round((labelW - drawW) / 2) : leftX + 10;
+            ctx.drawImage(logoImg, drawX, rowY + 4 + Math.round((maxHLogo - drawH) / 2), drawW, drawH);
             if (esContinuacion) {
                 const bx = Math.min(leftX + labelW - 95, leftX + 14 + drawW);
                 ctx.textAlign = 'left';
                 ctx.textBaseline = 'top';
                 ctx.fillStyle = '#b45309';
                 ctx.font = 'bold 11px Arial';
-                ctx.fillText(`HOJA ${numHoja}/${totalHojas}`, bx, rowY + 18);
+                ctx.fillText(`HOJA ${numHoja}/${totalHojas}`, bx, rowY + 14);
                 ctx.font = 'bold 9.5px Arial';
-                ctx.fillText('CONT. CHECK', bx, rowY + 36);
+                ctx.fillText('CONT. CHECK', bx, rowY + 30);
             }
         } else {
             if (logoImg) {
-                ctx.drawImage(logoImg, leftX + 10, rowY + 10, 112, 56);
+                ctx.drawImage(logoImg, leftX + 10, rowY + 8, 112, 54);
             } else {
-                dibujarMonogramaEnCanvas(ctx, 112, 56, nombreMarca);
+                dibujarMonogramaEnCanvas(ctx, 112, 54, nombreMarca);
             }
 
             ctx.fillStyle = '#0f172a';
             ctx.textAlign = 'left';
             ctx.textBaseline = 'top';
             ctx.font = nombreMarca.length > 21 ? 'bold 13px Arial' : 'bold 15px Arial';
-            ctx.fillText(nombreMarca.substring(0, 32), leftX + 128, rowY + 14);
+            ctx.fillText(nombreMarca.substring(0, 32), leftX + 128, rowY + 12);
 
             const textoSub = esContinuacion
                 ? `CONTINUACION CHECKLIST (HOJA ${numHoja}/${totalHojas})`
                 : subtituloMarca.substring(0, 44);
             ctx.font = textoSub.length > 30 ? 'bold 10px Arial' : 'bold 11px Arial';
             ctx.fillStyle = esContinuacion ? '#b45309' : '#334155';
-            ctx.fillText(textoSub, leftX + 128, rowY + 38);
+            ctx.fillText(textoSub, leftX + 128, rowY + 34);
         }
 
         ctx.fillStyle = '#000000';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
 
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(leftX + 10, rowY + 72, labelW - 20, 2);
+        if (esMostradorLocal) {
+            // Franja negra invertida: RETIRA EN MOSTRADOR + #NB destacado
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(leftX + 10, rowY + 64, labelW - 20, 24);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 13px Arial';
+            ctx.fillText('RETIRA EN MOSTRADOR', leftX + 18, rowY + 69);
+            ctx.textAlign = 'right';
+            ctx.font = 'bold 14px monospace';
+            ctx.fillText(`#${pedidoCodigo.substring(0, 12)}`, leftX + labelW - 18, rowY + 69);
+            ctx.textAlign = 'left';
 
-        ctx.font = 'bold 13px Arial';
-        ctx.fillText(`VECINO: ${vecinoNombre.substring(0, 26)}`, leftX + 10, rowY + 80);
+            // Nombre gigante del cliente para lectura rapida en mostrador
+            const lineasNombre = partirNombreMostradorDosLineas(vecinoNombre, 15, 18);
+            ctx.fillStyle = '#000000';
+            if (lineasNombre.length > 1) {
+                ctx.font = 'bold 20px Arial';
+                ctx.fillText(lineasNombre[0], leftX + 12, rowY + 93);
+                ctx.fillText(lineasNombre[1], leftX + 12, rowY + 117);
+            } else {
+                ctx.font = 'bold 24px Arial';
+                ctx.fillText(lineasNombre[0], leftX + 12, rowY + 99);
+            }
 
-        ctx.font = 'bold 11px Arial';
-        ctx.fillText(modalidadEntrega.substring(0, 38), leftX + 10, rowY + 102);
+            ctx.font = 'bold 11px Arial';
+            ctx.fillText(`TEL: ${vecinoTelefono.substring(0, 16)} | ${puntoMostradorCorto.substring(0, 22)}`, leftX + 12, rowY + 146);
 
-        ctx.font = '10.5px Arial';
-        ctx.fillText(`${direccionBarrial.substring(0, 36)} | Tel: ${vecinoTelefono}`, leftX + 10, rowY + 122);
+            ctx.fillRect(leftX + 10, rowY + 163, labelW - 20, 2);
 
-        ctx.fillRect(leftX + 10, rowY + 144, labelW - 20, 2);
-
-        // Simulación QR a la izquierda
-        const qrX = leftX + 12;
-        const qrY = rowY + 154;
-        const qrSize = 82;
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(qrX, qrY, qrSize, qrSize);
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(qrX + 6, qrY + 6, 20, 20);
-        ctx.fillRect(qrX + qrSize - 26, qrY + 6, 20, 20);
-        ctx.fillRect(qrX + 6, qrY + qrSize - 26, 20, 20);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(qrX + 10, qrY + 10, 12, 12);
-        ctx.fillRect(qrX + qrSize - 22, qrY + 10, 12, 12);
-        ctx.fillRect(qrX + 10, qrY + qrSize - 22, 12, 12);
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(qrX + 13, qrY + 13, 6, 6);
-        ctx.fillRect(qrX + qrSize - 19, qrY + 13, 6, 6);
-        ctx.fillRect(qrX + 13, qrY + qrSize - 19, 6, 6);
-        for (let r = 0; r < 6; r++) {
-            for (let c = 0; c < 6; c++) {
-                if ((r + c + pageIndex) % 2 === 0) {
-                    ctx.fillRect(qrX + 30 + c * 7, qrY + 30 + r * 7, 5, 5);
+            // QR compacto izquierda
+            const qrX = leftX + 12;
+            const qrY = rowY + 170;
+            const qrSize = 76;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(qrX, qrY, qrSize, qrSize);
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(qrX + 6, qrY + 6, 18, 18);
+            ctx.fillRect(qrX + qrSize - 24, qrY + 6, 18, 18);
+            ctx.fillRect(qrX + 6, qrY + qrSize - 24, 18, 18);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(qrX + 10, qrY + 10, 10, 10);
+            ctx.fillRect(qrX + qrSize - 20, qrY + 10, 10, 10);
+            ctx.fillRect(qrX + 10, qrY + qrSize - 20, 10, 10);
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(qrX + 12, qrY + 12, 6, 6);
+            ctx.fillRect(qrX + qrSize - 18, qrY + 12, 6, 6);
+            ctx.fillRect(qrX + 12, qrY + qrSize - 18, 6, 6);
+            for (let r = 0; r < 5; r++) {
+                for (let c = 0; c < 5; c++) {
+                    if ((r + c + pageIndex) % 2 === 0) {
+                        ctx.fillRect(qrX + 28 + c * 7, qrY + 28 + r * 7, 5, 5);
+                    }
                 }
             }
+            ctx.font = 'bold 9px monospace';
+            ctx.fillText(pedidoCodigo, qrX + 10, qrY + qrSize + 4);
+
+            // Banda invertida derecha: PAGADO / COBRAR EFVO
+            const bandX = leftX + 98;
+            const bandY = rowY + 170;
+            const bandW = labelW - 108;
+            const bandH = 88;
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(bandX, bandY, bandW, bandH);
+
+            ctx.fillStyle = '#ffffff';
+            const textoPagoMostrador = esCobrarEfvo
+                ? `COBRAR EFVO $${montoCobrar.toLocaleString('es-AR')}`
+                : 'PAGADO';
+            ctx.font = 'bold 17px Arial';
+            ctx.fillText(textoPagoMostrador.substring(0, 22), bandX + 10, bandY + 10);
+            ctx.font = 'bold 13px Arial';
+            ctx.fillText(`PEDIDO #${pedidoCodigo} | ${bultosTexto}`, bandX + 10, bandY + 37);
+            ctx.font = 'bold 10.5px monospace';
+            ctx.fillText(`${nombreMarca.substring(0, 18)} · HOJA ${numHoja}/${totalHojas}`, bandX + 10, bandY + 62);
+        } else {
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(leftX + 10, rowY + 72, labelW - 20, 2);
+
+            ctx.font = 'bold 13px Arial';
+            ctx.fillText(`VECINO: ${vecinoNombre.substring(0, 26)}`, leftX + 10, rowY + 80);
+
+            ctx.font = 'bold 11px Arial';
+            ctx.fillText(modalidadEntrega.substring(0, 38), leftX + 10, rowY + 102);
+
+            ctx.font = '10.5px Arial';
+            ctx.fillText(`${direccionBarrial.substring(0, 36)} | Tel: ${vecinoTelefono}`, leftX + 10, rowY + 122);
+
+            ctx.fillRect(leftX + 10, rowY + 144, labelW - 20, 2);
+
+            // Simulación QR a la izquierda
+            const qrX = leftX + 12;
+            const qrY = rowY + 154;
+            const qrSize = 82;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(qrX, qrY, qrSize, qrSize);
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(qrX + 6, qrY + 6, 20, 20);
+            ctx.fillRect(qrX + qrSize - 26, qrY + 6, 20, 20);
+            ctx.fillRect(qrX + 6, qrY + qrSize - 26, 20, 20);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(qrX + 10, qrY + 10, 12, 12);
+            ctx.fillRect(qrX + qrSize - 22, qrY + 10, 12, 12);
+            ctx.fillRect(qrX + 10, qrY + qrSize - 22, 12, 12);
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(qrX + 13, qrY + 13, 6, 6);
+            ctx.fillRect(qrX + qrSize - 19, qrY + 13, 6, 6);
+            ctx.fillRect(qrX + 13, qrY + qrSize - 19, 6, 6);
+            for (let r = 0; r < 6; r++) {
+                for (let c = 0; c < 6; c++) {
+                    if ((r + c + pageIndex) % 2 === 0) {
+                        ctx.fillRect(qrX + 30 + c * 7, qrY + 30 + r * 7, 5, 5);
+                    }
+                }
+            }
+            ctx.font = 'bold 9px monospace';
+            ctx.fillText(pedidoCodigo, qrX + 14, qrY + qrSize + 4);
+
+            // Banda invertida (^FR) negra con texto blanco
+            const bandX = leftX + 104;
+            const bandY = rowY + 154;
+            const bandW = labelW - 114;
+            const bandH = 96;
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(bandX, bandY, bandW, bandH);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 12.5px Arial';
+            ctx.fillText(textoBanderaPago.substring(0, 27), bandX + 10, bandY + 14);
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText(`PEDIDO #${pedidoCodigo} | ${bultosTexto}`, bandX + 10, bandY + 42);
+            ctx.font = '11px monospace';
+            ctx.fillText(`HOJA ETIQUETA ${numHoja} DE ${totalHojas}`, bandX + 10, bandY + 68);
         }
-        ctx.font = 'bold 9px monospace';
-        ctx.fillText(pedidoCodigo, qrX + 14, qrY + qrSize + 4);
-
-        // Banda invertida (^FR) negra con texto blanco
-        const bandX = leftX + 104;
-        const bandY = rowY + 154;
-        const bandW = labelW - 114;
-        const bandH = 96;
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(bandX, bandY, bandW, bandH);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 12.5px Arial';
-        ctx.fillText(textoBanderaPago.substring(0, 27), bandX + 10, bandY + 14);
-        ctx.font = 'bold 12px Arial';
-        ctx.fillText(`PEDIDO #${pedidoCodigo} | ${bultosTexto}`, bandX + 10, bandY + 42);
-        ctx.font = '11px monospace';
-        ctx.fillText(`HOJA ETIQUETA ${numHoja} DE ${totalHojas}`, bandX + 10, bandY + 68);
 
         // ================= DIBUJAR ETIQUETA DERECHA (CHECKLIST SIN RECORTE DE GRAMAJE) =================
         ctx.fillStyle = '#000000';
@@ -557,7 +717,7 @@ async function generarPreviewVisualEtiquetaPar(params = {}) {
         ctx.fillText(`CHECKLIST #${pedidoCodigo} (${totalItemsPedido} ITEMS)`, rightX + 12, rowY + 14);
 
         ctx.font = 'bold 11px Arial';
-        ctx.fillText(`VECINO: ${vecinoNombre.substring(0, 24)} [HOJA ${numHoja}/${totalHojas}]`, rightX + 12, rowY + 36);
+        ctx.fillText(`${esMostradorLocal ? 'CLIENTE' : 'VECINO'}: ${vecinoNombre.substring(0, 24)} [HOJA ${numHoja}/${totalHojas}]`, rightX + 12, rowY + 36);
 
         ctx.fillRect(rightX + 10, rowY + 54, labelW - 20, 2);
 

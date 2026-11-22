@@ -777,10 +777,12 @@
       strip.innerHTML = CSTATE.nodos.map(n => {
         const sel = Number(n.id) === Number(CSTATE.nodoSeleccionadoId);
         const usaMadre = n.contabilidad.usar_cuenta_madre_unificada;
-        const esFulfillment = n.perfil_operativo === 'ecommerce_fulfillment';
-        const badgePerfil = esFulfillment
-          ? `<span class="badge-pill" style="background:#fef3c7; color:#92400e;">📦 Tienda Online · Fulfillment</span>`
-          : `<span class="badge-pill" style="background:#ecfdf5; color:#047857;">🏘️ Vecinal · Barrial</span>`;
+        const perfilN = normalizarPerfilCentro(n.perfil_operativo);
+        const badgePerfil = perfilN === 'REDES'
+          ? `<span class="badge-pill" style="background:#fef3c7; color:#92400e;">🚀 REDES · Tienda Online</span>`
+          : (perfilN === 'LOCALES'
+              ? `<span class="badge-pill" style="background:#f1f5f9; color:#1e293b; border:1px solid #cbd5e1;">🏪 LOCALES · Pick-up Point</span>`
+              : `<span class="badge-pill" style="background:#ecfdf5; color:#047857;">🏡 VECINOS · Barrial</span>`);
         const badgeContable = usaMadre
           ? `<span class="badge-pill" style="background:#ede9fe; color:#5b21b6;">🔗 Madre Unificada (${esc(n.contabilidad.codigo_cuenta_operativa)})</span>`
           : `<span class="badge-pill" style="background:#e0f2fe; color:#0369a1;">🏢 Subcuenta Propia (${esc(n.contabilidad.codigo_cuenta_operativa)})</span>`;
@@ -958,7 +960,7 @@
             <div class="qr-access-box">
               <div class="qr-access-head">
                 <div>
-                  <div style="font-weight:900; font-size:0.9rem; color:#15803d;">🛒 Entrar como Cliente (${n.perfil_operativo === 'ecommerce_fulfillment' ? 'Tienda Online' : 'Tienda Vecinal'})</div>
+                  <div style="font-weight:900; font-size:0.9rem; color:#15803d;">🛒 Entrar como Cliente (${normalizarPerfilCentro(n.perfil_operativo) === 'REDES' ? 'Tienda Online' : (normalizarPerfilCentro(n.perfil_operativo) === 'LOCALES' ? 'Tienda Pick-up Local' : 'Tienda Vecinal')})</div>
                   <div style="font-size:0.75rem; color:var(--muted);">Vista pública de compra de ${esc(n.nombre_marca)}</div>
                 </div>
                 <div style="display:flex; gap:4px;">
@@ -1079,18 +1081,22 @@
             <!-- RESUMEN COMERCIAL OPERATIVO -->
             <div class="kpi-grid-4">
               <div class="kpi-box">
-                <div class="kpi-label">${n.perfil_operativo === 'ecommerce_fulfillment' ? '📦 Ventas y Envíos' : '📦 Pedidos Vecinales'}</div>
+                <div class="kpi-label">${normalizarPerfilCentro(n.perfil_operativo) === 'REDES' ? '📦 Ventas y Envíos' : (normalizarPerfilCentro(n.perfil_operativo) === 'LOCALES' ? '🏪 Pedidos Pick-up Local' : '📦 Pedidos Vecinales')}</div>
                 <div class="kpi-val">${com.pedidos_activos} <span style="font-size:0.84rem; font-weight:700; color:var(--muted);">activos</span></div>
-                <div class="kpi-sub">${com.pedidos_historicos} históricos · ${com.pedidos_hoy} hoy · ${com.vecinos_registrados} ${n.perfil_operativo === 'ecommerce_fulfillment' ? 'clientes' : 'vecinos'}</div>
+                <div class="kpi-sub">${com.pedidos_historicos} históricos · ${com.pedidos_hoy} hoy · ${com.vecinos_registrados} ${normalizarPerfilCentro(n.perfil_operativo) === 'VECINOS' ? 'vecinos' : 'clientes'}</div>
               </div>
               <div class="kpi-box">
-                <div class="kpi-label">${n.perfil_operativo === 'ecommerce_fulfillment' ? '🚚 Modalidad Operativa' : '📅 Próximo Corte / Entrega'}</div>
+                <div class="kpi-label">${normalizarPerfilCentro(n.perfil_operativo) === 'REDES' ? '🚚 Modalidad Operativa' : (normalizarPerfilCentro(n.perfil_operativo) === 'LOCALES' ? '🏪 Retiro en Local · Camioneta LAMDA' : '📅 Próximo Corte / Entrega')}</div>
                 <div class="kpi-val" style="font-size:1.02rem; line-height:1.25; margin-top:6px;">
-                  ${n.perfil_operativo === 'ecommerce_fulfillment'
+                  ${normalizarPerfilCentro(n.perfil_operativo) === 'REDES'
                     ? esc(n.config_paqueteria?.sla_despacho_label || 'Envíos a todo el país · 24/48 hs')
-                    : esc(com.proxima_entrega?.label_completo || 'Sin ventana activa')}
+                    : (normalizarPerfilCentro(n.perfil_operativo) === 'LOCALES'
+                        ? esc([n.config_retiro_local?.dias_atencion || 'Lunes a Viernes', n.config_retiro_local?.horario_atencion || ''].filter(Boolean).join(' · ') || 'Retiro en mostrador')
+                        : esc(com.proxima_entrega?.label_completo || 'Sin ventana activa'))}
                 </div>
-                <div class="kpi-sub">${esc(com.proxima_entrega?.corte_texto || `${com.ofertas_publicadas} ofertas publicadas`)}</div>
+                <div class="kpi-sub">${normalizarPerfilCentro(n.perfil_operativo) === 'LOCALES'
+                  ? esc(`🚐 Abastecimiento: ${n.config_retiro_local?.abastecimiento_dias_label || com.proxima_entrega?.label_completo || 'Camioneta LAMDA'}`)
+                  : esc(com.proxima_entrega?.corte_texto || `${com.ofertas_publicadas} ofertas publicadas`)}</div>
               </div>
               <div class="kpi-box">
                 <div class="kpi-label">🧺 Canastos / Lotes</div>
@@ -1905,10 +1911,17 @@
     }
 
     // =========================================================================
-    // ABM DE TIENDA / PERFIL OPERATIVO / CLONADOR EN 1 CLIC
+    // ABM DE TIENDA / PERFILES BASE (CAPA A) + PERILLAS ABIERTAS (CAPA B)
     // =========================================================================
+    function normalizarPerfilCentro(raw) {
+      const v = String(raw || '').trim().toLowerCase();
+      if (v === 'redes' || v === 'ecommerce_fulfillment' || v === 'creador_online' || v === 'fulfillment_lamda') return 'REDES';
+      if (v === 'locales' || v === 'local' || v === 'comercio_pickup' || v === 'pickup_point' || v === 'local_fisico') return 'LOCALES';
+      return 'VECINOS';
+    }
+
     const PRESETS_MODULOS_CENTRO = {
-      vecinal: {
+      VECINOS: {
         retiro_punto: true,
         reparto_zonal: true,
         hoja_de_ruta: true,
@@ -1916,9 +1929,14 @@
         venta_continua_24_7: false,
         despacho_desde_lamda: false,
         canasto_consolidado: true,
-        cobro_efectivo_entrega: true
+        cobro_efectivo_entrega: true,
+        mostrador_entrega_rapida: false,
+        checkout_omitir_paso_entrega_si_unico: true,
+        mostrar_horarios_comerciales: false,
+        abastecimiento_modo: 'retiro_deposito',
+        etiqueta_zpl_formato: 'vecinal'
       },
-      ecommerce_fulfillment: {
+      REDES: {
         retiro_punto: false,
         reparto_zonal: false,
         hoja_de_ruta: false,
@@ -1926,8 +1944,34 @@
         venta_continua_24_7: true,
         despacho_desde_lamda: true,
         canasto_consolidado: false,
-        cobro_efectivo_entrega: false
+        cobro_efectivo_entrega: false,
+        mostrador_entrega_rapida: false,
+        checkout_omitir_paso_entrega_si_unico: true,
+        mostrar_horarios_comerciales: false,
+        abastecimiento_modo: 'despacho_correo',
+        etiqueta_zpl_formato: 'postal_fulfillment'
+      },
+      LOCALES: {
+        retiro_punto: true,
+        reparto_zonal: false,
+        hoja_de_ruta: false,
+        envio_paqueteria: false,
+        venta_continua_24_7: false,
+        despacho_desde_lamda: false,
+        canasto_consolidado: true,
+        cobro_efectivo_entrega: false,
+        mostrador_entrega_rapida: true,
+        checkout_omitir_paso_entrega_si_unico: true,
+        mostrar_horarios_comerciales: true,
+        abastecimiento_modo: 'camioneta_lamda',
+        etiqueta_zpl_formato: 'mostrador_local'
       }
+    };
+
+    const SUBTITULOS_DEFAULT_CENTRO = {
+      VECINOS: 'Comunidad Barrial - Entrega Fresca',
+      REDES: 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País',
+      LOCALES: 'Retiro en Local · Compra Online Sin Cargo'
     };
 
     function obtenerConfigPaqueteriaDefaultCentro() {
@@ -1995,11 +2039,12 @@
         : null;
 
       const baseRef = editNodo || origenClon || null;
-      const perfilInicial = baseRef?.perfil_operativo === 'ecommerce_fulfillment' ? 'ecommerce_fulfillment' : 'vecinal';
+      const perfilInicial = normalizarPerfilCentro(baseRef?.perfil_operativo || 'VECINOS');
       const modBase = {
         ...PRESETS_MODULOS_CENTRO[perfilInicial],
         ...((baseRef?.modulos_activos && typeof baseRef.modulos_activos === 'object') ? baseRef.modulos_activos : {})
       };
+      const cfgLocalRef = (baseRef?.config_retiro_local && typeof baseRef.config_retiro_local === 'object') ? baseRef.config_retiro_local : {};
       const paqDef = obtenerConfigPaqueteriaDefaultCentro();
       const paqRef = (baseRef?.config_paqueteria && typeof baseRef.config_paqueteria === 'object') ? baseRef.config_paqueteria : {};
       const paqInicial = {
@@ -2023,14 +2068,17 @@
       const usarUnificadaPre = editNodo ? Boolean(editNodo.contabilidad?.usar_cuenta_madre_unificada) : true;
 
       const switchesDefs = [
-        { key: 'retiro_punto', label: '🏠 Punto de retiro presencial', desc: 'Habilita retirar en domicilio del referente' },
-        { key: 'reparto_zonal', label: '🚗 Reparto zonal propio', desc: 'Envío local hecho por el referente' },
-        { key: 'hoja_de_ruta', label: '🗺️ Módulo Hoja de Ruta y GPS', desc: 'Mapa Leaflet, paradas y modo conducción' },
+        { key: 'retiro_punto', label: '🏪 Punto de retiro presencial', desc: 'Retiro sin cargo en local comercial o punto del gestor' },
+        { key: 'reparto_zonal', label: '🚗 Reparto zonal propio', desc: 'Envío local a domicilio realizado por el nodo' },
+        { key: 'hoja_de_ruta', label: '🗺️ Módulo Hoja de Ruta y GPS', desc: 'Mapa Leaflet, paradas y botón Salió a reparto' },
         { key: 'envio_paqueteria', label: '📦 Envío por Paquetería Nacional', desc: 'Checkout postal por CP + Correo Argentino / Andreani' },
         { key: 'venta_continua_24_7', label: '⏱️ Venta continua 24/7', desc: 'Sin cierre por ventana semanal; despacho 24/48 hs' },
-        { key: 'despacho_desde_lamda', label: '🏭 Fulfillment directo desde LAMDA', desc: 'Armado y despacho desde depósito central La Plata' },
-        { key: 'canasto_consolidado', label: '🧺 Consolidar en Canasto Semanal', desc: 'Agrupa bolsas por ventana para retiro del referente' },
-        { key: 'cobro_efectivo_entrega', label: '💵 Efectivo al entregar', desc: 'Pago en mano al recibir (editable autónomamente por tienda)' }
+        { key: 'despacho_desde_lamda', label: '🏭 Fulfillment directo desde LAMDA', desc: 'Armado y despacho individual al correo desde planta' },
+        { key: 'canasto_consolidado', label: '🧺 Consolidar en Canasto / Lote', desc: 'Agrupa bolsas por corte para retiro o camioneta LAMDA' },
+        { key: 'cobro_efectivo_entrega', label: '💵 Efectivo al entregar', desc: 'Habilita pago en mano (desactivado = 100% digital)' },
+        { key: 'mostrador_entrega_rapida', label: '⚡ Mostrador rápido en Panel', desc: 'Buscador por apellido/#NB y entrega en 1 toque' },
+        { key: 'checkout_omitir_paso_entrega_si_unico', label: '⏩ Saltar paso Entrega si es único', desc: 'Arranca en Tus Datos cuando hay 1 sola modalidad' },
+        { key: 'mostrar_horarios_comerciales', label: '🕒 Mostrar horario comercial local', desc: 'Exhibe días/horarios de atención del local en tienda y tracking' }
       ];
 
       box.innerHTML = `
@@ -2038,13 +2086,13 @@
           <div>
             <h3 style="margin:0; font-size:1.15rem; font-weight:900;">
               ${editNodo
-                ? `⚙️ Configurar Tienda y Perfil Operativo · ${esc(editNodo.nombre_marca)}`
-                : '➕ Nueva Tienda / Marca (Perfiles Clonables)'}
+                ? `⚙️ Configurar Tienda · Capa A (Perfil) + Capa B (Perillas) · ${esc(editNodo.nombre_marca)}`
+                : '➕ Nueva Tienda / Marca (Perfiles Base + Perillas Abiertas)'}
             </h3>
             <div style="font-size:0.8rem; color:var(--muted); margin-top:3px;">
               ${editNodo
                 ? `Código ${esc(editNodo.codigo_nodo)} · /tienda/${esc(editNodo.slug)}`
-                : 'Creá una nueva marca barrial o tienda online de creador con fulfillment desde LAMDA.'}
+                : 'Elegí un perfil base (VECINOS, REDES o LOCALES) y personalizá cualquier perilla individual sin cambiar de perfil.'}
             </div>
           </div>
           <button type="button" class="btn" onclick="cerrarModalAbmTiendaCentro()">✕ Cerrar</button>
@@ -2058,11 +2106,15 @@
             <select id="abm-centro-clonar-select" onchange="onCambioClonarPlantillaCentro(this.value)"
               style="width:100%; padding:9px 11px; border-radius:9px; border:1px solid #4ade80; font-family:inherit; font-size:0.86rem; font-weight:800; background:#fff;">
               <option value="">— Sin plantilla (configuración manual desde cero) —</option>
-              ${CSTATE.nodos.map(nd => `
-                <option value="${Number(nd.id)}" ${Number(origenClon?.id || 0) === Number(nd.id) ? 'selected' : ''}>
-                  ${esc(nd.nombre_marca)} (${nd.perfil_operativo === 'ecommerce_fulfillment' ? '📦 Tienda Online · Fulfillment LAMDA' : '🏘️ Vecinal · Punto Barrial'})
-                </option>
-              `).join('')}
+              ${CSTATE.nodos.map(nd => {
+                const pfN = normalizarPerfilCentro(nd.perfil_operativo);
+                const pfLbl = pfN === 'REDES' ? '🚀 REDES · Tienda Online' : (pfN === 'LOCALES' ? '🏪 LOCALES · Pick-up Point' : '🏡 VECINOS · Barrial');
+                return `
+                  <option value="${Number(nd.id)}" ${Number(origenClon?.id || 0) === Number(nd.id) ? 'selected' : ''}>
+                    ${esc(nd.nombre_marca)} (${pfLbl})
+                  </option>
+                `;
+              }).join('')}
             </select>
             <label style="display:flex; align-items:center; gap:7px; margin-top:8px; font-size:0.79rem; font-weight:700; color:#166534; cursor:pointer;">
               <input type="checkbox" id="abm-centro-clonar-ofertas" checked />
@@ -2071,24 +2123,31 @@
           </div>
         ` : ''}
 
-        <!-- 1. PERFIL OPERATIVO -->
+        <!-- 1. CAPA A — PERFIL OPERATIVO BASE (3 MOLDES) -->
         <div style="margin-bottom:14px;">
           <div style="font-size:0.79rem; font-weight:900; text-transform:uppercase; color:var(--muted); margin-bottom:6px;">
-            1. Perfil Operativo Base
+            1. Capa A — Perfil Operativo Base (precarga perillas por defecto)
           </div>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px;">
-            <label id="card-perfil-vecinal" style="display:flex; align-items:flex-start; gap:9px; padding:11px 13px; border-radius:11px; border:2px solid ${perfilInicial === 'vecinal' ? '#16a34a' : 'var(--border)'}; background:${perfilInicial === 'vecinal' ? '#f0fdf4' : '#fff'}; cursor:pointer;">
-              <input type="radio" name="abm-centro-perfil" value="vecinal" ${perfilInicial === 'vecinal' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('vecinal')" style="margin-top:3px;" />
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px;">
+            <label id="card-perfil-VECINOS" data-perfil-card="VECINOS" style="display:flex; align-items:flex-start; gap:9px; padding:11px 13px; border-radius:11px; border:2px solid ${perfilInicial === 'VECINOS' ? '#16a34a' : 'var(--border)'}; background:${perfilInicial === 'VECINOS' ? '#f0fdf4' : '#fff'}; cursor:pointer;">
+              <input type="radio" name="abm-centro-perfil" value="VECINOS" ${perfilInicial === 'VECINOS' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('VECINOS')" style="margin-top:3px;" />
               <div>
-                <div style="font-weight:900; font-size:0.88rem;">🏘️ Vecinal / Punto Barrial</div>
-                <div style="font-size:0.75rem; color:var(--muted);">Ventana semanal, canasto consolidado, retiro en punto o Hoja de Ruta (ej. Paraíso).</div>
+                <div style="font-weight:900; font-size:0.88rem;">🏡 VECINOS</div>
+                <div style="font-size:0.74rem; color:var(--muted);">Gestor barrial: canasto en depósito + retiro o Hoja de Ruta propia (ej. Paraíso).</div>
               </div>
             </label>
-            <label id="card-perfil-fulfillment" style="display:flex; align-items:flex-start; gap:9px; padding:11px 13px; border-radius:11px; border:2px solid ${perfilInicial === 'ecommerce_fulfillment' ? '#d97706' : 'var(--border)'}; background:${perfilInicial === 'ecommerce_fulfillment' ? '#fffbeb' : '#fff'}; cursor:pointer;">
-              <input type="radio" name="abm-centro-perfil" value="ecommerce_fulfillment" ${perfilInicial === 'ecommerce_fulfillment' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('ecommerce_fulfillment')" style="margin-top:3px;" />
+            <label id="card-perfil-REDES" data-perfil-card="REDES" style="display:flex; align-items:flex-start; gap:9px; padding:11px 13px; border-radius:11px; border:2px solid ${perfilInicial === 'REDES' ? '#d97706' : 'var(--border)'}; background:${perfilInicial === 'REDES' ? '#fffbeb' : '#fff'}; cursor:pointer;">
+              <input type="radio" name="abm-centro-perfil" value="REDES" ${perfilInicial === 'REDES' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('REDES')" style="margin-top:3px;" />
               <div>
-                <div style="font-weight:900; font-size:0.88rem;">📦 Tienda Online / Fulfillment LAMDA</div>
-                <div style="font-size:0.75rem; color:var(--muted);">Creadores e-commerce: cero stock propio, armado en LAMDA + Correo Argentino / Andreani (ej. MANSO).</div>
+                <div style="font-weight:900; font-size:0.88rem;">🚀 REDES</div>
+                <div style="font-size:0.74rem; color:var(--muted);">Creador / marca online 24/7: fulfillment LAMDA + Correo Argentino / Andreani (ej. MANSO).</div>
+              </div>
+            </label>
+            <label id="card-perfil-LOCALES" data-perfil-card="LOCALES" style="display:flex; align-items:flex-start; gap:9px; padding:11px 13px; border-radius:11px; border:2px solid ${perfilInicial === 'LOCALES' ? '#1e293b' : 'var(--border)'}; background:${perfilInicial === 'LOCALES' ? '#f1f5f9' : '#fff'}; cursor:pointer;">
+              <input type="radio" name="abm-centro-perfil" value="LOCALES" ${perfilInicial === 'LOCALES' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('LOCALES')" style="margin-top:3px;" />
+              <div>
+                <div style="font-weight:900; font-size:0.88rem;">🏪 LOCALES</div>
+                <div style="font-size:0.74rem; color:var(--muted);">Comercio Pick-up Point: camioneta LAMDA al local, cero envío a domicilio, mostrador ágil (ej. Moro).</div>
               </div>
             </label>
           </div>
@@ -2102,23 +2161,23 @@
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(195px, 1fr)); gap:10px;">
             <div>
               <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Nombre de la Marca *</label>
-              <input type="text" id="abm-centro-marca" value="${esc(editNodo?.nombre_marca || '')}" placeholder="Ej: CLARICHUNS / NUEVA MARCA"
+              <input type="text" id="abm-centro-marca" value="${esc(editNodo?.nombre_marca || '')}" placeholder="Ej: MORO / NUEVA MARCA"
                 oninput="if(!CSTATE.abmDraft.editarId){ document.getElementById('abm-centro-slug').value = _armarSlugSugeridoCentro(this.value); }"
                 style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem; font-weight:800;" />
             </div>
             <div>
               <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Slug URL (/tienda/...) *</label>
-              <input type="text" id="abm-centro-slug" value="${esc(editNodo?.slug || '')}" placeholder="ej: nueva-marca"
+              <input type="text" id="abm-centro-slug" value="${esc(editNodo?.slug || '')}" placeholder="ej: moro"
                 style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:monospace; font-size:0.84rem;" />
             </div>
             <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Creador / Referente *</label>
-              <input type="text" id="abm-centro-gestor" value="${esc(editNodo?.gestor_nombre || '')}" placeholder="Ej: Clara / Referente"
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Titular / Referente *</label>
+              <input type="text" id="abm-centro-gestor" value="${esc(editNodo?.gestor_nombre || '')}" placeholder="Ej: Agustín Chiste"
                 style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem;" />
             </div>
             <div>
               <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">WhatsApp Atención</label>
-              <input type="text" id="abm-centro-telefono" value="${esc(editNodo?.gestor_telefono || '')}" placeholder="Ej: 54911..."
+              <input type="text" id="abm-centro-telefono" value="${esc(editNodo?.gestor_telefono || '')}" placeholder="Ej: 549221..."
                 style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem;" />
             </div>
           </div>
@@ -2126,7 +2185,7 @@
           <div style="display:grid; grid-template-columns:1.8fr 0.85fr 0.75fr 0.75fr 0.55fr; gap:10px; margin-top:10px;">
             <div>
               <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Subtítulo público de la tienda</label>
-              <input type="text" id="abm-centro-subtitulo" value="${esc(editNodo?.subtitulo_marca || (perfilInicial === 'ecommerce_fulfillment' ? 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País' : 'Comunidad Barrial - Entrega Fresca'))}"
+              <input type="text" id="abm-centro-subtitulo" value="${esc(editNodo?.subtitulo_marca || SUBTITULOS_DEFAULT_CENTRO[perfilInicial])}"
                 style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.83rem;" />
             </div>
             <div>
@@ -2194,22 +2253,84 @@
           </label>
         </div>
 
-        <!-- 3. SWITCHES MODULARES -->
+        <!-- 3. CAPA B — PERILLAS INDIVIDUALES ABIERTAS -->
         <div style="background:#fff; border:1px solid var(--border); border-radius:12px; padding:13px 14px; margin-bottom:14px;">
           <div style="font-size:0.79rem; font-weight:900; text-transform:uppercase; color:var(--muted); margin-bottom:8px;">
-            3. Módulos Operativos Activos (<code>modulos_activos</code>)
+            3. Capa B — Perillas Individuales Abiertas (<code>modulos_activos</code> · overrides por nodo)
           </div>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(230px, 1fr)); gap:8px;">
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(225px, 1fr)); gap:8px; margin-bottom:12px;">
             ${switchesDefs.map(sw => `
               <label style="display:flex; align-items:flex-start; gap:8px; padding:8px 10px; border-radius:9px; border:1px solid var(--border); background:#f8fafc; cursor:pointer;">
                 <input type="checkbox" id="abm-mod-${sw.key}" data-mod-key="${sw.key}" ${modBase[sw.key] ? 'checked' : ''}
                   onchange="sincronizarVisibilidadPanelesAbmCentro()" style="margin-top:3px;" />
                 <div>
-                  <div style="font-size:0.81rem; font-weight:800;">${sw.label}</div>
+                  <div style="font-size:0.8rem; font-weight:800;">${sw.label}</div>
                   <div style="font-size:0.71rem; color:var(--muted); line-height:1.25;">${sw.desc}</div>
                 </div>
               </label>
             `).join('')}
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px; padding-top:10px; border-top:1px dashed var(--border);">
+            <div>
+              <label for="abm-mod-abastecimiento_modo" style="display:block; font-size:0.75rem; font-weight:900; color:var(--text); margin-bottom:4px;">🚐 Abastecimiento LAMDA → Nodo</label>
+              <select id="abm-mod-abastecimiento_modo" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.83rem; font-weight:800; background:#fff;">
+                <option value="retiro_deposito" ${modBase.abastecimiento_modo === 'retiro_deposito' ? 'selected' : ''}>🏃 Retira Gestor en Depósito LAMDA (Retira_Deposito)</option>
+                <option value="camioneta_lamda" ${modBase.abastecimiento_modo === 'camioneta_lamda' ? 'selected' : ''}>🚐 Envía Camioneta LAMDA al Local (Pedido_Listo → :3005)</option>
+                <option value="despacho_correo" ${modBase.abastecimiento_modo === 'despacho_correo' ? 'selected' : ''}>📮 Despacho Directo Individual a Correo</option>
+              </select>
+            </div>
+            <div>
+              <label for="abm-mod-etiqueta_zpl_formato" style="display:block; font-size:0.75rem; font-weight:900; color:var(--text); margin-bottom:4px;">🏷️ Formato Etiqueta Térmica Zebra 203 dpi</label>
+              <select id="abm-mod-etiqueta_zpl_formato" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.83rem; font-weight:800; background:#fff;">
+                <option value="vecinal" ${modBase.etiqueta_zpl_formato === 'vecinal' ? 'selected' : ''}>🏡 Estándar Vecinal (Par 50×80)</option>
+                <option value="mostrador_local" ${modBase.etiqueta_zpl_formato === 'mostrador_local' ? 'selected' : ''}>🏪 Mostrador Comercio (Nombre gigante + RETIRA EN MOSTRADOR)</option>
+                <option value="postal_fulfillment" ${modBase.etiqueta_zpl_formato === 'postal_fulfillment' ? 'selected' : ''}>📦 Fulfillment Postal Nacional (Guía Correo)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3B. CONFIGURACIÓN DEL LOCAL / PUNTO DE RETIRO -->
+        <div id="abm-centro-retiro-local-box" style="display:${modBase.retiro_punto ? 'block' : 'none'}; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:12px; padding:13px 14px; margin-bottom:14px;">
+          <div style="font-size:0.79rem; font-weight:900; text-transform:uppercase; color:#1e293b; margin-bottom:9px;">
+            🏪 Configuración del Local / Punto de Retiro (<code>config_retiro_local</code>)
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px;">
+            <div>
+              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Nombre del Local / Punto</label>
+              <input type="text" id="abm-local-nombre-punto" value="${esc(cfgLocalRef.nombre_punto || editNodo?.nombre_marca || '')}" placeholder="Ej: Moro Almacén de Bebidas"
+                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; font-weight:700; background:#fff;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Dirección corta (títulos / tracking)</label>
+              <input type="text" id="abm-local-dir-corta" value="${esc(cfgLocalRef.direccion_corta || editNodo?.direccion_retiro || '')}" placeholder="Ej: Av. 7 N° 202 (esq. 36)"
+                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; font-weight:700; background:#fff;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Dirección completa</label>
+              <input type="text" id="abm-local-dir-completa" value="${esc(cfgLocalRef.direccion_completa || editNodo?.direccion_retiro || '')}" placeholder="Ej: Av. 7 N° 202 esquina 36, Centro, La Plata"
+                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; background:#fff;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Días de atención</label>
+              <input type="text" id="abm-local-dias" value="${esc(cfgLocalRef.dias_atencion || '')}" placeholder="Ej: Lunes a Viernes"
+                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; font-weight:700; background:#fff;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Horario comercial de retiro</label>
+              <input type="text" id="abm-local-horario" value="${esc(cfgLocalRef.horario_atencion || '')}" placeholder="Ej: 10:00 a 21:00 hs"
+                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; font-weight:700; background:#fff;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Días de bajada camioneta LAMDA</label>
+              <input type="text" id="abm-local-abast-dias" value="${esc(cfgLocalRef.abastecimiento_dias_label || '')}" placeholder="Ej: Martes y Viernes"
+                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; background:#fff;" />
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Indicaciones en mostrador para el cliente</label>
+            <input type="text" id="abm-local-referencias" value="${esc(cfgLocalRef.referencias_mostrador || '')}" placeholder="Ej: Retirá por mostrador indicando tu apellido o número de pedido"
+              style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; background:#fff;" />
           </div>
         </div>
 
@@ -2295,33 +2416,36 @@
       const modRep = Boolean(document.getElementById('abm-mod-reparto_zonal')?.checked);
       const modPaq = Boolean(document.getElementById('abm-mod-envio_paqueteria')?.checked);
       const barrialBox = document.getElementById('abm-centro-barrial-fields');
+      const localBox = document.getElementById('abm-centro-retiro-local-box');
       const paqBox = document.getElementById('abm-centro-paqueteria-box');
       if (barrialBox) barrialBox.style.display = (modRet || modRep) ? 'grid' : 'none';
+      if (localBox) localBox.style.display = modRet ? 'block' : 'none';
       if (paqBox) paqBox.style.display = modPaq ? 'block' : 'none';
     }
 
     function onCambioPerfilOperativoCentro(nuevoPerfil) {
-      const p = nuevoPerfil === 'ecommerce_fulfillment' ? 'ecommerce_fulfillment' : 'vecinal';
+      const p = normalizarPerfilCentro(nuevoPerfil);
       const preset = PRESETS_MODULOS_CENTRO[p];
       Object.keys(preset).forEach(k => {
-        const chk = document.getElementById(`abm-mod-${k}`);
-        if (chk) chk.checked = Boolean(preset[k]);
+        const el = document.getElementById(`abm-mod-${k}`);
+        if (!el) return;
+        if (el.tagName === 'SELECT') el.value = String(preset[k]);
+        else el.checked = Boolean(preset[k]);
       });
-      const cVec = document.getElementById('card-perfil-vecinal');
-      const cFul = document.getElementById('card-perfil-fulfillment');
-      if (cVec) {
-        cVec.style.borderColor = p === 'vecinal' ? '#16a34a' : 'var(--border)';
-        cVec.style.background = p === 'vecinal' ? '#f0fdf4' : '#fff';
-      }
-      if (cFul) {
-        cFul.style.borderColor = p === 'ecommerce_fulfillment' ? '#d97706' : 'var(--border)';
-        cFul.style.background = p === 'ecommerce_fulfillment' ? '#fffbeb' : '#fff';
-      }
+      const estilosPerfil = {
+        VECINOS: { border: '#16a34a', bg: '#f0fdf4' },
+        REDES: { border: '#d97706', bg: '#fffbeb' },
+        LOCALES: { border: '#1e293b', bg: '#f1f5f9' }
+      };
+      ['VECINOS', 'REDES', 'LOCALES'].forEach(pk => {
+        const card = document.getElementById(`card-perfil-${pk}`);
+        if (!card) return;
+        card.style.borderColor = p === pk ? estilosPerfil[pk].border : 'var(--border)';
+        card.style.background = p === pk ? estilosPerfil[pk].bg : '#fff';
+      });
       const subEl = document.getElementById('abm-centro-subtitulo');
       if (subEl && !CSTATE.abmDraft?.editarId) {
-        subEl.value = p === 'ecommerce_fulfillment'
-          ? 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País'
-          : 'Comunidad Barrial - Entrega Fresca';
+        subEl.value = SUBTITULOS_DEFAULT_CENTRO[p];
       }
       sincronizarVisibilidadPanelesAbmCentro();
     }
@@ -2363,14 +2487,14 @@
 
       const editarId = CSTATE.abmDraft?.editarId || null;
       const clonarOrigenId = !editarId ? (document.getElementById('abm-centro-clonar-select')?.value || '') : '';
-      const perfil = document.querySelector('input[name="abm-centro-perfil"]:checked')?.value || 'vecinal';
+      const perfil = normalizarPerfilCentro(document.querySelector('input[name="abm-centro-perfil"]:checked')?.value || 'VECINOS');
       const nombreMarca = document.getElementById('abm-centro-marca')?.value?.trim() || '';
       const slug = document.getElementById('abm-centro-slug')?.value?.trim() || '';
       const gestorNombre = document.getElementById('abm-centro-gestor')?.value?.trim() || '';
       const clienteMadreId = Number(document.getElementById('abm-centro-cliente-madre')?.value || 0);
 
       if (!nombreMarca || !gestorNombre) {
-        mostrarError('Completá el Nombre de la Marca y el nombre del Creador / Referente.');
+        mostrarError('Completá el Nombre de la Marca y el nombre del Titular / Referente.');
         return;
       }
       if (!clienteMadreId) {
@@ -2379,8 +2503,10 @@
       }
 
       const modulos = {};
-      Object.keys(PRESETS_MODULOS_CENTRO.vecinal).forEach(k => {
-        modulos[k] = Boolean(document.getElementById(`abm-mod-${k}`)?.checked);
+      Object.keys(PRESETS_MODULOS_CENTRO.VECINOS).forEach(k => {
+        const el = document.getElementById(`abm-mod-${k}`);
+        if (!el) return;
+        modulos[k] = el.tagName === 'SELECT' ? el.value : Boolean(el.checked);
       });
       if (!modulos.retiro_punto && !modulos.reparto_zonal && !modulos.envio_paqueteria) {
         mostrarError('Habilitá al menos una modalidad de entrega (Retiro, Reparto Zonal o Paquetería Nacional).');
@@ -2421,10 +2547,21 @@
         usar_cuenta_madre_unificada: Boolean(document.getElementById('abm-centro-usar-madre-unificada')?.checked),
         perfil_operativo: perfil,
         modulos_activos: modulos,
+        cobro_efectivo_entrega: Boolean(modulos.cobro_efectivo_entrega),
         permitir_retiro_nodo: Boolean(modulos.retiro_punto),
         permitir_reparto_propio: Boolean(modulos.reparto_zonal),
         permitir_envio_barrial: Boolean(modulos.reparto_zonal),
         permitir_encomienda: Boolean(modulos.envio_paqueteria),
+        config_retiro_local: {
+          nombre_punto: document.getElementById('abm-local-nombre-punto')?.value?.trim() || nombreMarca,
+          direccion_corta: document.getElementById('abm-local-dir-corta')?.value?.trim() || document.getElementById('abm-centro-direccion')?.value?.trim() || '',
+          direccion_completa: document.getElementById('abm-local-dir-completa')?.value?.trim() || document.getElementById('abm-centro-direccion')?.value?.trim() || '',
+          dias_atencion: document.getElementById('abm-local-dias')?.value?.trim() || '',
+          horario_atencion: document.getElementById('abm-local-horario')?.value?.trim() || '',
+          referencias_mostrador: document.getElementById('abm-local-referencias')?.value?.trim() || '',
+          abastecimiento_dias_label: document.getElementById('abm-local-abast-dias')?.value?.trim() || '',
+          mostrar_mapa_link: true
+        },
         clonar_ofertas_margenes: Boolean(document.getElementById('abm-centro-clonar-ofertas')?.checked ?? true),
         config_paqueteria: {
           operadores_habilitados: operadores,

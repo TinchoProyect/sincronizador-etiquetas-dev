@@ -90,17 +90,23 @@ const PROVINCIAS_ARGENTINA_CANONICAS = [
     { codigo: 'AR-T', nombre: 'Tucumán' }
 ];
 
+const ABASTECIMIENTO_MODOS_VALIDOS = ['retiro_deposito', 'camioneta_lamda', 'despacho_correo'];
+const ETIQUETA_ZPL_FORMATOS_VALIDOS = ['vecinal', 'mostrador_local', 'postal_fulfillment'];
+
 function normalizarPerfilOperativoNodo(raw) {
     const val = String(raw || '').trim().toLowerCase();
-    if (val === 'ecommerce_fulfillment' || val === 'creador_online' || val === 'fulfillment_lamda') {
-        return 'ecommerce_fulfillment';
+    if (val === 'redes' || val === 'ecommerce_fulfillment' || val === 'creador_online' || val === 'fulfillment_lamda') {
+        return 'REDES';
     }
-    return 'vecinal';
+    if (val === 'locales' || val === 'local' || val === 'comercio_pickup' || val === 'pickup_point' || val === 'local_fisico') {
+        return 'LOCALES';
+    }
+    return 'VECINOS';
 }
 
-function obtenerPresetModulosActivos(perfilRaw = 'vecinal') {
+function obtenerPresetModulosActivos(perfilRaw = 'VECINOS') {
     const perfil = normalizarPerfilOperativoNodo(perfilRaw);
-    if (perfil === 'ecommerce_fulfillment') {
+    if (perfil === 'REDES') {
         return {
             retiro_punto: false,
             reparto_zonal: false,
@@ -109,7 +115,29 @@ function obtenerPresetModulosActivos(perfilRaw = 'vecinal') {
             venta_continua_24_7: true,
             despacho_desde_lamda: true,
             canasto_consolidado: false,
-            cobro_efectivo_entrega: false
+            cobro_efectivo_entrega: false,
+            mostrador_entrega_rapida: false,
+            checkout_omitir_paso_entrega_si_unico: true,
+            mostrar_horarios_comerciales: false,
+            abastecimiento_modo: 'despacho_correo',
+            etiqueta_zpl_formato: 'postal_fulfillment'
+        };
+    }
+    if (perfil === 'LOCALES') {
+        return {
+            retiro_punto: true,
+            reparto_zonal: false,
+            hoja_de_ruta: false,
+            envio_paqueteria: false,
+            venta_continua_24_7: false,
+            despacho_desde_lamda: false,
+            canasto_consolidado: true,
+            cobro_efectivo_entrega: false,
+            mostrador_entrega_rapida: true,
+            checkout_omitir_paso_entrega_si_unico: true,
+            mostrar_horarios_comerciales: true,
+            abastecimiento_modo: 'camioneta_lamda',
+            etiqueta_zpl_formato: 'mostrador_local'
         };
     }
     return {
@@ -120,7 +148,54 @@ function obtenerPresetModulosActivos(perfilRaw = 'vecinal') {
         venta_continua_24_7: false,
         despacho_desde_lamda: false,
         canasto_consolidado: true,
-        cobro_efectivo_entrega: true
+        cobro_efectivo_entrega: true,
+        mostrador_entrega_rapida: false,
+        checkout_omitir_paso_entrega_si_unico: true,
+        mostrar_horarios_comerciales: false,
+        abastecimiento_modo: 'retiro_deposito',
+        etiqueta_zpl_formato: 'vecinal'
+    };
+}
+
+function obtenerPresetDiccionarioTextosNodo(perfilRaw = 'VECINOS') {
+    const perfil = normalizarPerfilOperativoNodo(perfilRaw);
+    if (perfil === 'REDES') {
+        return {
+            chip_entrega_label: 'Envíos',
+            comprador_singular: 'cliente',
+            comprador_plural: 'clientes',
+            hito_6_titulo_retiro: 'Entregado'
+        };
+    }
+    if (perfil === 'LOCALES') {
+        return {
+            chip_entrega_label: 'Retiro en local',
+            comprador_singular: 'cliente',
+            comprador_plural: 'clientes',
+            hito_6_titulo_retiro: '¡Retirado en mostrador!'
+        };
+    }
+    return {
+        chip_entrega_label: 'Envíos',
+        comprador_singular: 'vecino',
+        comprador_plural: 'vecinos',
+        hito_6_titulo_retiro: 'Entregado'
+    };
+}
+
+function normalizarConfigRetiroLocal(raw = {}, nodoFallback = {}) {
+    const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+    const dirFallback = String(nodoFallback?.direccion_retiro || '').trim();
+    const marcaFallback = String(nodoFallback?.nombre_marca || '').trim();
+    return {
+        nombre_punto: String(src.nombre_punto || marcaFallback || '').trim(),
+        direccion_corta: String(src.direccion_corta || dirFallback || '').trim(),
+        direccion_completa: String(src.direccion_completa || dirFallback || '').trim(),
+        dias_atencion: String(src.dias_atencion || '').trim(),
+        horario_atencion: String(src.horario_atencion || '').trim(),
+        referencias_mostrador: String(src.referencias_mostrador || '').trim(),
+        mostrar_mapa_link: src.mostrar_mapa_link !== undefined ? Boolean(src.mostrar_mapa_link) : true,
+        abastecimiento_dias_label: String(src.abastecimiento_dias_label || '').trim()
     };
 }
 
@@ -141,7 +216,7 @@ function resolverModulosActivosNodo(nodoLike = {}, overridesRaw = null) {
         if (nodoLike.permitir_reparto_propio !== undefined || nodoLike.permitir_envio_barrial !== undefined) {
             baseLegacy.reparto_zonal = Boolean(nodoLike.permitir_reparto_propio ?? nodoLike.permitir_envio_barrial);
         }
-        if (nodoLike.permitir_encomienda !== undefined && perfil === 'vecinal') {
+        if (nodoLike.permitir_encomienda !== undefined && perfil === 'VECINOS') {
             baseLegacy.envio_paqueteria = Boolean(nodoLike.permitir_encomienda);
         }
     }
@@ -158,7 +233,15 @@ function resolverModulosActivosNodo(nodoLike = {}, overridesRaw = null) {
 
     const resultado = {};
     for (const k of Object.keys(preset)) {
-        resultado[k] = Boolean(merged[k]);
+        if (k === 'abastecimiento_modo') {
+            const v = String(merged[k] || preset[k]).trim().toLowerCase();
+            resultado[k] = ABASTECIMIENTO_MODOS_VALIDOS.includes(v) ? v : preset[k];
+        } else if (k === 'etiqueta_zpl_formato') {
+            const v = String(merged[k] || preset[k]).trim().toLowerCase();
+            resultado[k] = ETIQUETA_ZPL_FORMATOS_VALIDOS.includes(v) ? v : preset[k];
+        } else {
+            resultado[k] = Boolean(merged[k]);
+        }
     }
     return resultado;
 }
@@ -476,6 +559,71 @@ const LOGO_ZPL_CONFIG_MANSO_OFICIAL = {
 
 function leerLogoZebraMansoDataUrl() {
     const p = path.join(__dirname, '..', 'img', 'nodos', 'manso', 'logo-termico-bn.png');
+    try {
+        if (fs.existsSync(p)) {
+            return `data:image/png;base64,${fs.readFileSync(p).toString('base64')}`;
+        }
+    } catch (_) {}
+    return null;
+}
+
+// Paleta oficial Bodega Urbana de MORO (Pizarra Mate #1E1E1C + Piedra Cálida #F7F5F0 + Madera Barrica #B8894A)
+const TEMA_VISUAL_MORO_OFICIAL = {
+    paleta: {
+        primario: '#1E1E1C',
+        primario_oscuro: '#111110',
+        terracota: '#1E1E1C',
+        terracota_oscuro: '#111110',
+        ocre: '#B8894A',
+        pistacho: '#2D5A3C',
+        pistacho_texto: '#2D5A3C',
+        pistacho_suave: '#EAF2EC',
+        amarillo_sol: '#D4A96A',
+        fondo: '#F7F5F0',
+        fondo_icono_tienda: '#1E1E1C',
+        superficie_calida: '#EFEAE0',
+        tarjeta: '#FFFFFF',
+        texto: '#1E1E1C',
+        texto_secundario: '#5C574F',
+        borde: '#DFD8C8'
+    },
+    tipografia: {
+        familia: "'Nunito', sans-serif",
+        google_font: 'Nunito:wght@500;600;700;800;900'
+    },
+    logo_incluye_texto: true,
+    logos: {
+        principal: '/img/nodos/moro/logo-faja.svg',
+        principal_png: '/img/nodos/moro/logo-principal.png',
+        horizontal: '/img/nodos/moro/logo-horizontal.svg',
+        horizontal_png: '/img/nodos/moro/logo-horizontal.png',
+        vertical: '/img/nodos/moro/logo-cuadrado.svg',
+        vertical_png: '/img/nodos/moro/logo-cuadrado.png',
+        isotipo: '/img/nodos/moro/isotipo.svg',
+        isotipo_png: '/img/nodos/moro/isotipo.png',
+        favicon_svg: '/img/nodos/moro/favicon.svg',
+        favicon_32: '/img/nodos/moro/favicon-32.png',
+        apple_touch_icon: '/img/nodos/moro/apple-touch-icon.png',
+        icon_192: '/img/nodos/moro/icon-192.png',
+        icon_512: '/img/nodos/moro/icon-512.png',
+        og_share: '/img/nodos/moro/og-share.png',
+        zebra_mono: '/img/nodos/moro/logo-termico-bn.png'
+    }
+};
+
+const LOGO_ZPL_CONFIG_MORO_OFICIAL = {
+    width: 280,
+    height: 58,
+    threshold: 150,
+    mode: 'threshold',
+    padding: 2,
+    invert: false,
+    modo_cabecera: 'banner_completo',
+    iniciales: 'MO'
+};
+
+function leerLogoZebraMoroDataUrl() {
+    const p = path.join(__dirname, '..', 'img', 'nodos', 'moro', 'logo-termico-bn.png');
     try {
         if (fs.existsSync(p)) {
             return `data:image/png;base64,${fs.readFileSync(p).toString('base64')}`;
@@ -3375,9 +3523,16 @@ function _calcularDistanciaMetrosGeo(lat1, lng1, lat2, lng2) {
  */
 function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = [], envioPostal = null) {
     const modOpUpper = String(pedido.modalidad_entrega || '').toUpperCase();
+    // Capa B estricta: decidir flujo postal por la modalidad real del pedido, jamás por perfil_operativo
     const esPedidoPostal = Boolean(envioPostal) ||
-        ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(modOpUpper) ||
-        normalizarPerfilOperativoNodo(nodo?.perfil_operativo) === 'ecommerce_fulfillment';
+        ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(modOpUpper);
+
+    const modulosNodo = resolverModulosActivosNodo(nodo);
+    const cfgLocal = normalizarConfigRetiroLocal(nodo?.config_retiro_local, nodo);
+    const dic = {
+        ...obtenerPresetDiccionarioTextosNodo(nodo?.perfil_operativo),
+        ...((nodo?.diccionario_textos && typeof nodo.diccionario_textos === 'object' && !Array.isArray(nodo.diccionario_textos)) ? nodo.diccionario_textos : {})
+    };
 
     const marca = nodo.nombre_marca || 'nuestra tienda';
     const gestor = nodo.gestor_nombre || marca;
@@ -3503,13 +3658,32 @@ function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = [], envi
     const esAusentePasaRetirar = Boolean(pedido.ausente_pasa_retirar) && !esAnulado && hitoActual < 6;
     const motivoAusencia = String(pedido.motivo_ausencia || '').trim();
 
+    const usarHorarioComercial = !esEnvio && Boolean(modulosNodo.mostrar_horarios_comerciales);
+    const nombrePuntoLocal = cfgLocal.nombre_punto || marca;
+    const dirCortaLocal = cfgLocal.direccion_corta || dirRetiro;
+    const dirCompletaLocal = cfgLocal.direccion_completa || dirRetiro;
+    const horarioComercialTxt = [cfgLocal.dias_atencion, cfgLocal.horario_atencion].filter(Boolean).join(' de ');
+    const esAbastecimientoCamioneta = modulosNodo.abastecimiento_modo === 'camioneta_lamda';
+
+    const tituloHito4Retiro = usarHorarioComercial
+        ? `¡Listo para retirar en ${nombrePuntoLocal}${dirCortaLocal ? ` (${dirCortaLocal})` : ''}!`
+        : `¡Listo para retirar en ${marca}!`;
+    const descHito4Retiro = usarHorarioComercial
+        ? `Ya podés pasar a retirarlo por ${dirCompletaLocal}${horarioComercialTxt ? ` (${horarioComercialTxt})` : ''}.${cfgLocal.referencias_mostrador ? ` ${cfgLocal.referencias_mostrador}.` : ''}`
+        : `Ya podés pasar a retirarlo por ${dirRetiro}${pedido.ventana_horaria_label ? ` (${pedido.ventana_horaria_label})` : ''}.`;
+    const tituloHito6Final = !esEnvio
+        ? (dic.hito_6_titulo_retiro || (modulosNodo.mostrador_entrega_rapida ? '¡Retirado en mostrador!' : 'Entregado'))
+        : 'Entregado';
+
     const definiciones = [
         {
             hito_numero: 1,
             codigo: 'CONFIRMADO_VECINO',
             icono: '📝',
             titulo: 'Pedido confirmado',
-            descripcion: `Tu pedido quedó registrado en ${marca} para la entrega programada (${pedido.fecha_entrega_label || 'próximo reparto'}).`,
+            descripcion: usarHorarioComercial
+                ? `Tu pedido quedó registrado en ${nombrePuntoLocal} para el próximo envío al local (${pedido.fecha_entrega_label || cfgLocal.abastecimiento_dias_label || 'próxima entrega'}).`
+                : `Tu pedido quedó registrado en ${marca} para la entrega programada (${pedido.fecha_entrega_label || 'próximo reparto'}).`,
             fecha_fallback: pedido.created_at
         },
         {
@@ -3517,7 +3691,7 @@ function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = [], envi
             codigo: 'EN_PREPARACION',
             icono: '🥣',
             titulo: 'En preparación',
-            descripcion: 'Estamos seleccionando y fraccionando tus productos frescos.',
+            descripcion: 'Estamos seleccionando y preparando tus productos frescos.',
             fecha_fallback: pedido.fecha_en_preparacion || pedido.fecha_armado_bolsa
         },
         {
@@ -3525,7 +3699,9 @@ function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = [], envi
             codigo: 'ARMADO_EN_CANASTO',
             icono: '📦',
             titulo: 'Controlado y embolsado',
-            descripcion: 'Tus productos ya fueron controlados uno por uno y embolsados con tu nombre.',
+            descripcion: esAbastecimientoCamioneta
+                ? `Tu paquete ya está armado con tu nombre y sale en el próximo reparto hacia ${nombrePuntoLocal}.`
+                : 'Tus productos ya fueron controlados uno por uno y embolsados con tu nombre.',
             fecha_fallback: pedido.fecha_armado_bolsa
         },
         esAusentePasaRetirar
@@ -3543,15 +3719,15 @@ function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = [], envi
                     codigo: 'EN_PODER_GESTOR',
                     icono: '🏡',
                     titulo: `Ya llegó a ${marca}`,
-                    descripcion: `${gestor} ya recibió tu bolsa en el barrio y la prepara para salir hacia tu domicilio.`,
+                    descripcion: `${gestor} ya recibió tu bolsa y la prepara para salir hacia tu domicilio.`,
                     fecha_fallback: pedido.fecha_entrega_gestor
                 }
                 : {
                     hito_numero: 4,
                     codigo: 'EN_PODER_GESTOR',
-                    icono: '🎉',
-                    titulo: `¡Listo para retirar en ${marca}!`,
-                    descripcion: `Ya podés pasar a retirarlo por ${dirRetiro}${pedido.ventana_horaria_label ? ` (${pedido.ventana_horaria_label})` : ''}.`,
+                    icono: usarHorarioComercial ? '🏪' : '🎉',
+                    titulo: tituloHito4Retiro,
+                    descripcion: descHito4Retiro,
                     fecha_fallback: pedido.fecha_entrega_gestor
                 })
     ];
@@ -3571,7 +3747,7 @@ function construirTimelineMarcaBlancaPedido(pedido, nodo, eventosRows = [], envi
         hito_numero: 6,
         codigo: 'ENTREGADO_VECINO',
         icono: '✅',
-        titulo: 'Entregado',
+        titulo: tituloHito6Final,
         descripcion: `¡Gracias por tu compra en ${marca}! Que disfrutes tus productos.`,
         fecha_fallback: pedido.fecha_entregado_vecino
     });
@@ -3944,9 +4120,10 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS saldo_cta_cte_madre_post_cierre NUMERIC(14,2);
 
             ALTER TABLE public.nodos_maestro
-                ADD COLUMN IF NOT EXISTS perfil_operativo VARCHAR(40) NOT NULL DEFAULT 'vecinal',
+                ADD COLUMN IF NOT EXISTS perfil_operativo VARCHAR(40) NOT NULL DEFAULT 'VECINOS',
                 ADD COLUMN IF NOT EXISTS modulos_activos JSONB NOT NULL DEFAULT '{}'::jsonb,
                 ADD COLUMN IF NOT EXISTS config_paqueteria JSONB NOT NULL DEFAULT '{}'::jsonb,
+                ADD COLUMN IF NOT EXISTS config_retiro_local JSONB NOT NULL DEFAULT '{}'::jsonb,
                 ADD COLUMN IF NOT EXISTS diccionario_textos JSONB NOT NULL DEFAULT '{}'::jsonb,
                 ADD COLUMN IF NOT EXISTS plantilla_origen_id INTEGER REFERENCES public.nodos_maestro(id) ON DELETE SET NULL;
 
@@ -6285,7 +6462,7 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
 
     const perfilOperativoEfectivo = payload.perfil_operativo !== undefined
         ? normalizarPerfilOperativoNodo(payload.perfil_operativo)
-        : normalizarPerfilOperativoNodo(existenteRow?.perfil_operativo || 'vecinal');
+        : normalizarPerfilOperativoNodo(existenteRow?.perfil_operativo || 'VECINOS');
 
     const cambioDePerfil = Boolean(existenteRow) &&
         normalizarPerfilOperativoNodo(existenteRow.perfil_operativo) !== perfilOperativoEfectivo;
@@ -6335,9 +6512,6 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
     modulosActivosEfectivos.retiro_punto = permitirRetiro;
     modulosActivosEfectivos.reparto_zonal = permitirReparto;
     modulosActivosEfectivos.envio_paqueteria = permitirEncomienda;
-    if (!permitirReparto && perfilOperativoEfectivo === 'ecommerce_fulfillment') {
-        modulosActivosEfectivos.hoja_de_ruta = false;
-    }
 
     if (!permitirRetiro && !permitirReparto && !permitirEncomienda) {
         throw new Error('Debés habilitar al menos una modalidad activa de entrega (Punto de Retiro, Reparto Zonal o Paquetería Nacional).');
@@ -6352,12 +6526,25 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
             : configPaqueteriaPrev
     );
 
+    const configRetiroLocalPrev = (existenteRow?.config_retiro_local && typeof existenteRow.config_retiro_local === 'object' && !Array.isArray(existenteRow.config_retiro_local))
+        ? existenteRow.config_retiro_local
+        : {};
+    const configRetiroLocalEfectiva = normalizarConfigRetiroLocal(
+        (payload.config_retiro_local && typeof payload.config_retiro_local === 'object' && !Array.isArray(payload.config_retiro_local))
+            ? { ...configRetiroLocalPrev, ...payload.config_retiro_local }
+            : configRetiroLocalPrev,
+        {
+            nombre_marca: nombreMarca,
+            direccion_retiro: payload.direccion_retiro !== undefined ? payload.direccion_retiro : existenteRow?.direccion_retiro
+        }
+    );
+
     const diccionarioTextosPrev = (existenteRow?.diccionario_textos && typeof existenteRow.diccionario_textos === 'object' && !Array.isArray(existenteRow.diccionario_textos))
         ? existenteRow.diccionario_textos
         : {};
     const diccionarioTextosEfectivo = (payload.diccionario_textos && typeof payload.diccionario_textos === 'object' && !Array.isArray(payload.diccionario_textos))
-        ? { ...diccionarioTextosPrev, ...payload.diccionario_textos }
-        : diccionarioTextosPrev;
+        ? { ...(cambioDePerfil ? obtenerPresetDiccionarioTextosNodo(perfilOperativoEfectivo) : diccionarioTextosPrev), ...payload.diccionario_textos }
+        : (cambioDePerfil ? obtenerPresetDiccionarioTextosNodo(perfilOperativoEfectivo) : diccionarioTextosPrev);
 
     const plantillaOrigenIdEfectiva = payload.plantilla_origen_id !== undefined
         ? (payload.plantilla_origen_id ? Number(payload.plantilla_origen_id) : null)
@@ -6370,9 +6557,11 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
         ? normalizarAlicuotaFiscalNodo(payload.alicuota_iibb_margen_pct, 4)
         : normalizarAlicuotaFiscalNodo(existenteRow?.alicuota_iibb_margen_pct, 4);
 
-    const subtituloDefaultPerfil = perfilOperativoEfectivo === 'ecommerce_fulfillment'
+    const subtituloDefaultPerfil = perfilOperativoEfectivo === 'REDES'
         ? 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País'
-        : 'Comunidad Barrial - Entrega Fresca';
+        : (perfilOperativoEfectivo === 'LOCALES'
+            ? 'Retiro en Local · Compra Online Sin Cargo'
+            : 'Comunidad Barrial - Entrega Fresca');
 
     const limpiarLogoOriginal = Boolean(payload.limpiar_logo_original);
     const logoOriginalEfectivo = limpiarLogoOriginal
@@ -6550,6 +6739,7 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     alicuota_iva_margen_pct = $45,
                     alicuota_iibb_margen_pct = $46,
                     cobro_efectivo_entrega = $47,
+                    config_retiro_local = $48::jsonb,
                     updated_at = NOW()
                 WHERE id = $32
                 RETURNING *`,
@@ -6609,7 +6799,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     plantillaOrigenIdEfectiva,
                     alicuotaIvaMargenEfectiva,
                     alicuotaIibbMargenEfectiva,
-                    cobroEfectivoEntregaEfectivo
+                    cobroEfectivoEntregaEfectivo,
+                    JSON.stringify(configRetiroLocalEfectiva)
                 ]
             );
             nodoGuardado = upd.rows[0];
@@ -6662,9 +6853,9 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     latitud, longitud, mostrar_ingredientes_tienda, gestor_token,
                     bajada_marca, slug_historico, tema_visual,
                     perfil_operativo, modulos_activos, config_paqueteria, diccionario_textos, plantilla_origen_id,
-                    alicuota_iva_margen_pct, alicuota_iibb_margen_pct, cobro_efectivo_entrega
+                    alicuota_iva_margen_pct, alicuota_iibb_margen_pct, cobro_efectivo_entrega, config_retiro_local
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$38,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$35,$36,$37::jsonb,$39,$40::jsonb,$41::jsonb,$42::jsonb,$43,$44,$45,$46
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$38,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$35,$36,$37::jsonb,$39,$40::jsonb,$41::jsonb,$42::jsonb,$43,$44,$45,$46,$47::jsonb
                 ) RETURNING *`,
                 [
                     codigoNodo,
@@ -6721,7 +6912,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     plantillaOrigenIdEfectiva,
                     alicuotaIvaMargenEfectiva,
                     alicuotaIibbMargenEfectiva,
-                    cobroEfectivoEntregaEfectivo
+                    cobroEfectivoEntregaEfectivo,
+                    JSON.stringify(configRetiroLocalEfectiva)
                 ]
             );
             nodoGuardado = ins.rows[0];
@@ -6862,7 +7054,17 @@ async function clonarNodoMaestro(origenId, payload = {}) {
             ? { ...(origen.config_paqueteria || {}), ...payload.config_paqueteria }
             : (origen.config_paqueteria || {})
     );
+    const configRetiroLocalHeredada = normalizarConfigRetiroLocal(
+        (payload.config_retiro_local && typeof payload.config_retiro_local === 'object')
+            ? { ...(origen.config_retiro_local || {}), ...payload.config_retiro_local }
+            : (origen.config_retiro_local || {}),
+        {
+            nombre_marca: nombreMarcaNueva,
+            direccion_retiro: payload.direccion_retiro !== undefined ? payload.direccion_retiro : ''
+        }
+    );
     const dicTextosHeredado = {
+        ...obtenerPresetDiccionarioTextosNodo(perfilHeredado),
         ...((origen.diccionario_textos && typeof origen.diccionario_textos === 'object') ? origen.diccionario_textos : {}),
         ...((payload.diccionario_textos && typeof payload.diccionario_textos === 'object') ? payload.diccionario_textos : {})
     };
@@ -6881,9 +7083,11 @@ async function clonarNodoMaestro(origenId, payload = {}) {
         nombre_marca: nombreMarcaNueva,
         slug: slugCandidato,
         bajada_marca: payload.bajada_marca !== undefined ? payload.bajada_marca : null,
-        subtitulo_marca: payload.subtitulo_marca || (perfilHeredado === 'ecommerce_fulfillment'
+        subtitulo_marca: payload.subtitulo_marca || (perfilHeredado === 'REDES'
             ? 'Alimentos Naturales y Frutos Secos · Envíos a Todo el País'
-            : (origen.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca')),
+            : (perfilHeredado === 'LOCALES'
+                ? 'Retiro en Local · Compra Online Sin Cargo'
+                : (origen.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca'))),
         gestor_nombre: gestorNombreNuevo,
         gestor_telefono: payload.gestor_telefono || '',
         gestor_email: payload.gestor_email || '',
@@ -6930,6 +7134,7 @@ async function clonarNodoMaestro(origenId, payload = {}) {
         perfil_operativo: perfilHeredado,
         modulos_activos: modulosHeredados,
         config_paqueteria: configPaqHeredada,
+        config_retiro_local: configRetiroLocalHeredada,
         diccionario_textos: dicTextosHeredado,
         plantilla_origen_id: origen.id,
         alicuota_iva_margen_pct: payload.alicuota_iva_margen_pct !== undefined
@@ -9363,9 +9568,13 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
     const perfilOperativoNodo = normalizarPerfilOperativoNodo(nodo.perfil_operativo);
     const modulosActivosNodo = resolverModulosActivosNodo(nodo);
     const configPaqueteriaNodo = normalizarConfigPaqueteria(nodo.config_paqueteria);
-    const diccionarioTextosNodo = (nodo.diccionario_textos && typeof nodo.diccionario_textos === 'object' && !Array.isArray(nodo.diccionario_textos))
-        ? nodo.diccionario_textos
-        : {};
+    const configRetiroLocalNodo = normalizarConfigRetiroLocal(nodo.config_retiro_local, nodo);
+    const diccionarioTextosNodo = {
+        ...obtenerPresetDiccionarioTextosNodo(perfilOperativoNodo),
+        ...((nodo.diccionario_textos && typeof nodo.diccionario_textos === 'object' && !Array.isArray(nodo.diccionario_textos))
+            ? nodo.diccionario_textos
+            : {})
+    };
 
     const puedeRetiroNodo = Boolean(modulosActivosNodo.retiro_punto && nodo.permitir_retiro_nodo !== false);
     const puedeRepartoPropio = Boolean(modulosActivosNodo.reparto_zonal && (nodo.permitir_reparto_propio ?? nodo.permitir_envio_barrial ?? false));
@@ -9399,6 +9608,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             perfil_operativo: perfilOperativoNodo,
             modulos_activos: modulosActivosNodo,
             config_paqueteria: configPaqueteriaNodo,
+            config_retiro_local: configRetiroLocalNodo,
             diccionario_textos: diccionarioTextosNodo,
             mostrar_ingredientes_tienda: mostrarIngredientesNodo,
             permitir_retiro_nodo: puedeRetiroNodo,
@@ -9431,6 +9641,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             perfil_operativo: perfilOperativoNodo,
             modulos_activos: modulosActivosNodo,
             config_paqueteria: configPaqueteriaNodo,
+            config_retiro_local: configRetiroLocalNodo,
             diccionario_textos: diccionarioTextosNodo,
             permitir_envio_barrial: puedeRepartoPropio,
             permitir_retiro_nodo: puedeRetiroNodo,
@@ -9439,8 +9650,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             permitir_efectivo: permiteEfectivoNodo,
             mostrar_ingredientes_tienda: mostrarIngredientesNodo,
             cargo_envio_barrial: nodo.cargo_envio_barrial,
-            zona_centro_lat: puedeRepartoPropio && nodo.latitud != null ? Number(nodo.latitud) : null,
-            zona_centro_lng: puedeRepartoPropio && nodo.longitud != null ? Number(nodo.longitud) : null,
+            zona_centro_lat: (puedeRepartoPropio || puedeRetiroNodo) && nodo.latitud != null ? Number(nodo.latitud) : null,
+            zona_centro_lng: (puedeRepartoPropio || puedeRetiroNodo) && nodo.longitud != null ? Number(nodo.longitud) : null,
             config_ventanas_corte: nodo.config_ventanas_corte,
             color_primario: nodo.color_primario,
             tema_visual: (nodo.tema_visual && typeof nodo.tema_visual === 'object') ? nodo.tema_visual : {},
@@ -9584,14 +9795,20 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
         retiro_punto: permitirRetiro,
         reparto_zonal: permitirReparto,
         envio_paqueteria: permitirEncomienda,
-        cobro_efectivo_entrega: cobroEfectivoEntrega,
-        ...(perfilActual === 'ecommerce_fulfillment' && !permitirReparto ? { hoja_de_ruta: false } : {})
+        cobro_efectivo_entrega: cobroEfectivoEntrega
     });
 
     const configPaqActual = normalizarConfigPaqueteria(actual.config_paqueteria);
     const configPaqNueva = (payload.config_paqueteria && typeof payload.config_paqueteria === 'object' && configPaqActual.permitir_editar_gestor !== false)
         ? normalizarConfigPaqueteria({ ...configPaqActual, ...payload.config_paqueteria })
         : configPaqActual;
+
+    const configRetiroPrev = (actual.config_retiro_local && typeof actual.config_retiro_local === 'object' && !Array.isArray(actual.config_retiro_local))
+        ? actual.config_retiro_local
+        : {};
+    const configRetiroNueva = (payload.config_retiro_local && typeof payload.config_retiro_local === 'object' && !Array.isArray(payload.config_retiro_local))
+        ? normalizarConfigRetiroLocal({ ...configRetiroPrev, ...payload.config_retiro_local }, actual)
+        : normalizarConfigRetiroLocal(configRetiroPrev, actual);
 
     const ventanas = Array.isArray(payload.config_ventanas_corte)
         ? payload.config_ventanas_corte
@@ -9623,6 +9840,7 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             config_paqueteria = $19::jsonb,
             cobro_efectivo_entrega = $20,
             modo_vidriera_tienda = $21,
+            config_retiro_local = $22::jsonb,
             updated_at = NOW()
          WHERE id = $13
          RETURNING *`,
@@ -9647,7 +9865,8 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             JSON.stringify(modulosNuevos),
             JSON.stringify(configPaqNueva),
             cobroEfectivoEntrega,
-            modoVidrieraTienda
+            modoVidrieraTienda,
+            JSON.stringify(configRetiroNueva)
         ]
     );
 
@@ -10555,8 +10774,8 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
 
     const pedRes = await db.query(
         `SELECT npv.*,
-                nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca,
-                nm.perfil_operativo, nm.modulos_activos,
+                nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca, nm.direccion_retiro,
+                nm.perfil_operativo, nm.modulos_activos, nm.config_retiro_local,
                 nm.logo_zpl_gfa, nm.logo_mono_preview_base64, nm.logo_zpl_config,
                 npep.id AS envio_postal_id
          FROM public.nodos_pedidos_vecinos npv
@@ -10569,14 +10788,19 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
         throw new Error('Pedido vecinal no encontrado.');
     }
     const ped = pedRes.rows[0];
+    const modUpperPed = String(ped.modalidad_entrega || '').toUpperCase();
 
+    // Capa B estricta: la etiqueta postal se decide por el pedido real, nunca por perfil_operativo
     if (
         ped.envio_postal_id ||
-        normalizarPerfilOperativoNodo(ped.perfil_operativo) === 'ecommerce_fulfillment' ||
-        ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(String(ped.modalidad_entrega || '').toUpperCase())
+        ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(modUpperPed)
     ) {
         return generarEtiquetaFulfillmentMarcaBlanca(pedidoId);
     }
+
+    const modulosPed = resolverModulosActivosNodo(ped);
+    const cfgLocalPed = normalizarConfigRetiroLocal(ped.config_retiro_local, ped);
+    const formatoZplEfectivo = modulosPed.etiqueta_zpl_formato === 'mostrador_local' ? 'mostrador_local' : 'vecinal';
 
     const itemsRes = await db.query(
         `SELECT npi.*,
@@ -10596,6 +10820,7 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
 
     const esEfectivo = ped.medio_pago === 'EFECTIVO' || String(ped.estado_pago).includes('COBRAR');
     return generarPreviewVisualEtiquetaPar({
+        formato_etiqueta: formatoZplEfectivo,
         nombre_marca: ped.nombre_marca,
         bajada_marca: ped.bajada_marca,
         subtitulo_marca: ped.subtitulo_marca,
@@ -10605,8 +10830,11 @@ async function generarEtiquetaDePedidoExistente(pedidoId) {
         pedido_codigo: ped.codigo_pedido,
         vecino_nombre: ped.vecino_nombre,
         vecino_telefono: ped.vecino_telefono,
-        modalidad_entrega: `${ped.modalidad_entrega === 'ENVIO_BARRIAL' ? 'ENVIO BARRIAL' : 'RETIRO EN NODO'} (${ped.ventana_horaria_label || ''})`,
+        modalidad_entrega: formatoZplEfectivo === 'mostrador_local'
+            ? 'RETIRA EN MOSTRADOR'
+            : `${modUpperPed === 'ENVIO_BARRIAL' ? 'ENVIO BARRIAL' : 'RETIRO EN NODO'} (${ped.ventana_horaria_label || ''})`,
         direccion_barrial: ped.direccion_entrega || '',
+        punto_retiro_corto: cfgLocalPed.direccion_corta || ped.direccion_retiro || ped.nombre_marca,
         estado_pago: esEfectivo ? 'COBRAR EFECTIVO' : 'PAGADO (TRANSFERENCIA)',
         monto_cobrar: esEfectivo ? Number(ped.total_vecino) : 0,
         bultos_texto: 'BOLSA 1/1',
@@ -10681,10 +10909,13 @@ async function sincronizarCanastosEstacionNodos(runner = null) {
                COALESCE(SUM(npv.ganancia_total_gestor) FILTER (WHERE ${condElegibleArmadoSql}), 0)::numeric(14,2) AS ganancia_estimada_gestor
         FROM public.nodos_pedidos_vecinos npv
         JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+        LEFT JOIN public.nodos_pedidos_envios_postales ep_excl ON ep_excl.pedido_id = npv.id
         WHERE COALESCE(
             (nm.modulos_activos->>'canasto_consolidado')::boolean,
-            CASE WHEN LOWER(COALESCE(nm.perfil_operativo, 'vecinal')) = 'ecommerce_fulfillment' THEN false ELSE true END
+            CASE WHEN UPPER(COALESCE(nm.perfil_operativo, 'VECINOS')) IN ('REDES', 'ECOMMERCE_FULFILLMENT') THEN false ELSE true END
         ) = true
+          AND ep_excl.id IS NULL
+          AND UPPER(COALESCE(npv.modalidad_entrega, '')) NOT IN ('PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL')
           AND (${condElegibleArmadoSql})
         GROUP BY npv.nodo_id, nm.codigo_nodo, npv.fecha_entrega_label
         ORDER BY MIN(npv.fecha_entrega_comprometida) ASC, npv.nodo_id ASC
@@ -11662,9 +11893,12 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
         LEFT JOIN public.nodos_pedidos_envios_postales npep ON npep.pedido_id = npv.id
         WHERE npv.lote_canasto_id IS NULL
           AND (
-              LOWER(COALESCE(nm.perfil_operativo, 'vecinal')) = 'ecommerce_fulfillment'
-              OR npep.id IS NOT NULL
+              npep.id IS NOT NULL
               OR UPPER(COALESCE(npv.modalidad_entrega, '')) IN ('PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL')
+              OR (
+                  COALESCE((nm.modulos_activos->>'despacho_desde_lamda')::boolean, UPPER(COALESCE(nm.perfil_operativo, 'VECINOS')) IN ('REDES', 'ECOMMERCE_FULFILLMENT')) = true
+                  AND COALESCE((nm.modulos_activos->>'canasto_consolidado')::boolean, UPPER(COALESCE(nm.perfil_operativo, 'VECINOS')) NOT IN ('REDES', 'ECOMMERCE_FULFILLMENT')) = false
+              )
           )
         ORDER BY npv.id ASC
     `);
@@ -12150,7 +12384,7 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
             SELECT nm.id, nm.codigo_nodo, nm.slug, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca,
                    nm.gestor_nombre, nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro,
                    nm.color_primario, nm.codigo_bunker_cliente,
-                   nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria,
+                   nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local,
                    COALESCE(nm.usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada,
                    nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre,
                    CASE WHEN COALESCE(nm.usar_cuenta_madre_unificada, false) AND nm.codigo_bunker_cliente_madre IS NOT NULL
@@ -12181,6 +12415,9 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
                    nm.direccion_retiro,
                    nm.color_primario,
                    nm.codigo_bunker_cliente,
+                   nm.perfil_operativo,
+                   nm.modulos_activos,
+                   nm.config_retiro_local,
                    COALESCE(nm.usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada,
                    nm.cliente_madre_bunker_id,
                    nm.codigo_bunker_cliente_madre,
@@ -12395,8 +12632,14 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
             }
         }
 
+        const modCan = resolverModulosActivosNodo(c);
+        const cfgLocCan = normalizarConfigRetiroLocal(c.config_retiro_local, c);
         return {
             ...c,
+            perfil_operativo: normalizarPerfilOperativoNodo(c.perfil_operativo),
+            modulos_activos: modCan,
+            abastecimiento_modo: modCan.abastecimiento_modo,
+            config_retiro_local: cfgLocCan,
             total_bolsas: Number(c.total_bolsas || 0),
             bolsas_armadas: Number(c.bolsas_armadas || 0),
             total_kilos_lote: Number(c.total_kilos_lote || 0),
@@ -12417,7 +12660,7 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
     const canastosListosRetiro = canastosDetallados.filter(c => c.estado_canasto === 'LISTO_ESTACION_NODOS').length;
 
     // =========================================================================
-    // COLA FIFO FULFILLMENT PAQUETERÍA 24/7 (Tiendas Online / ecommerce_fulfillment)
+    // COLA FIFO FULFILLMENT PAQUETERÍA 24/7 (Órdenes postales / sin canasto)
     // =========================================================================
     const mapaNodosPorId = new Map(nodosRes.rows.map(n => [Number(n.id), n]));
     const mapaPostalPorPedido = new Map(enviosPostalesRes.rows.map(ep => [Number(ep.pedido_id), ep]));
@@ -12426,10 +12669,11 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
     const pedidosFulfillmentRaw = pedidosRes.rows.filter(p => {
         if (Number(p.lote_canasto_id || 0) > 0) return false;
         const nRow = mapaNodosPorId.get(Number(p.nodo_id));
-        const esEc = nRow && normalizarPerfilOperativoNodo(nRow.perfil_operativo) === 'ecommerce_fulfillment';
+        const modN = nRow ? resolverModulosActivosNodo(nRow) : null;
+        const esSoloFul = Boolean(modN && modN.despacho_desde_lamda && !modN.canasto_consolidado);
         const tienePostal = mapaPostalPorPedido.has(Number(p.id)) ||
-            ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(String(p.modalidad_entrega || '').toUpperCase());
-        return Boolean(esEc || tienePostal);
+            ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(String(p.modalidad_entrega || '').toUpperCase());
+        return Boolean(esSoloFul || tienePostal);
     });
 
     // Orden FIFO por fecha de conciliación de pago o creación
@@ -12612,15 +12856,19 @@ async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
         });
     }
 
-    const nodosEcommerce = nodosRes.rows.filter(n => normalizarPerfilOperativoNodo(n.perfil_operativo) === 'ecommerce_fulfillment');
+    const nodosEcommerce = nodosRes.rows.filter(n => {
+        const mn = resolverModulosActivosNodo(n);
+        return Boolean(mn.envio_paqueteria || mn.despacho_desde_lamda);
+    });
     const pedidosVecinalesAguardandoPago = pedidosRes.rows
         .filter(p => {
             if (Number(p.lote_canasto_id || 0) > 0) return false;
             const nRow = mapaNodosPorId.get(Number(p.nodo_id));
-            const esEc = nRow && normalizarPerfilOperativoNodo(nRow.perfil_operativo) === 'ecommerce_fulfillment';
+            const mn = nRow ? resolverModulosActivosNodo(nRow) : null;
+            const usaCanasto = mn ? Boolean(mn.canasto_consolidado) : true;
             const tienePostal = mapaPostalPorPedido.has(Number(p.id)) ||
                 ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(String(p.modalidad_entrega || '').toUpperCase());
-            if (esEc || tienePostal) return false;
+            if (!usaCanasto || tienePostal) return false;
             return !pagosBancariosService.esPedidoHabilitadoArmadoDepositoNodos(p);
         })
         .map(p => {
@@ -12688,13 +12936,20 @@ async function armarBolsaPedidoVecino(pedidoId, payload = {}) {
     const operario = String(payload.operario || 'Equipo Depósito').trim();
 
     const pedRes = await db.query(
-        'SELECT * FROM public.nodos_pedidos_vecinos WHERE id = $1 LIMIT 1',
+        `SELECT npv.*, nm.perfil_operativo, nm.modulos_activos
+         FROM public.nodos_pedidos_vecinos npv
+         JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
+         WHERE npv.id = $1 LIMIT 1`,
         [Number(pedidoId)]
     );
     if (pedRes.rows.length === 0) {
         throw new Error('Pedido vecinal no encontrado.');
     }
     const ped = pedRes.rows[0];
+    const modPed = resolverModulosActivosNodo(ped);
+    const secuenciaListoAbastecimiento = modPed.abastecimiento_modo === 'camioneta_lamda'
+        ? 'Pedido_Listo'
+        : 'Retira_Deposito';
 
     if (['EN_PODER_GESTOR', 'EN_CAMINO_VECINO', 'ENTREGADO_VECINO'].includes(String(ped.estado_operativo || '').toUpperCase())) {
         throw new Error('Este pedido ya fue retirado por el Gestor del Nodo.');
@@ -12713,6 +12968,7 @@ async function armarBolsaPedidoVecino(pedidoId, payload = {}) {
              SET estado_operativo = 'CONFIRMADO_VECINO',
                  hito_tracking_actual = 1,
                  ubicacion_deposito = 'PENDIENTE_TALLER',
+                 secuencia_operativa_lamda = 'Armar_Pedido',
                  fecha_armado_bolsa = NULL,
                  operario_armado = NULL,
                  updated_at = NOW()
@@ -12727,21 +12983,23 @@ async function armarBolsaPedidoVecino(pedidoId, payload = {}) {
         await db.query(
             `UPDATE public.nodos_pedidos_vecinos
              SET ubicacion_deposito = 'ESTACION_NODOS',
+                 secuencia_operativa_lamda = $3::varchar,
                  etiqueta_impresa = true,
                  fecha_armado_bolsa = COALESCE(fecha_armado_bolsa, NOW()),
                  operario_armado = $1::varchar,
                  updated_at = NOW()
              WHERE id = $2::int`,
-            [operario, Number(pedidoId)]
+            [operario, Number(pedidoId), secuenciaListoAbastecimiento]
         );
         await registrarTransicionHitoPedidoVecino(db, Number(pedidoId), 3, {
             origen: 'MESA_ARMADO_DEPOSITO',
             actor: operario,
-            detalle: `Bolsa controlada y alojada en Canasto por ${operario}`
+            detalle: `Bolsa controlada y alojada en Canasto por ${operario} (${secuenciaListoAbastecimiento})`
         });
     }
 
     await sincronizarCanastosEstacionNodos();
+    await sincronizarNodosConCircuitoOperativoLamda();
 
     const etiqueta = !desmarcar ? await generarEtiquetaDePedidoExistente(pedidoId) : null;
     await sincronizarCanastosEstacionNodos();
@@ -12754,6 +13012,7 @@ async function armarBolsaPedidoVecino(pedidoId, payload = {}) {
         vecino_nombre: ped.vecino_nombre,
         estado_operativo: nuevoEstado,
         ubicacion_deposito: nuevaUbicacion,
+        secuencia_operativa_lamda: desmarcar ? 'Armar_Pedido' : secuenciaListoAbastecimiento,
         etiqueta,
         canasto: canastoActualizado,
         tablero
@@ -12770,6 +13029,18 @@ async function armarTodasBolsasDeCanasto(canastoId, payload = {}) {
 
     const operario = String(payload.operario || 'Equipo Depósito').trim();
 
+    const canNodoRes = await db.query(
+        `SELECT nle.id, nm.perfil_operativo, nm.modulos_activos
+         FROM public.nodos_lotes_estacion nle
+         JOIN public.nodos_maestro nm ON nm.id = nle.nodo_id
+         WHERE nle.id = $1::int LIMIT 1`,
+        [Number(canastoId)]
+    );
+    const modCan = resolverModulosActivosNodo(canNodoRes.rows[0] || {});
+    const secuenciaListoCanasto = modCan.abastecimiento_modo === 'camioneta_lamda'
+        ? 'Pedido_Listo'
+        : 'Retira_Deposito';
+
     const pedsPendArmar = await db.query(
         `SELECT id FROM public.nodos_pedidos_vecinos
          WHERE lote_canasto_id = $1
@@ -12781,25 +13052,27 @@ async function armarTodasBolsasDeCanasto(canastoId, payload = {}) {
     await db.query(
         `UPDATE public.nodos_pedidos_vecinos
          SET ubicacion_deposito = 'ESTACION_NODOS',
+             secuencia_operativa_lamda = $3::varchar,
              etiqueta_impresa = true,
              fecha_armado_bolsa = COALESCE(fecha_armado_bolsa, NOW()),
              operario_armado = COALESCE(operario_armado, $1),
              updated_at = NOW()
          WHERE lote_canasto_id = $2
            AND COALESCE(estado_operativo, '') <> 'ANULADO'
-           AND COALESCE(hito_tracking_actual, 1) < 3`,
-        [operario, Number(canastoId)]
+           AND COALESCE(hito_tracking_actual, 1) < 4`,
+        [operario, Number(canastoId), secuenciaListoCanasto]
     );
 
     for (const r of pedsPendArmar.rows) {
         await registrarTransicionHitoPedidoVecino(db, r.id, 3, {
             origen: 'MESA_ARMADO_LOTE',
             actor: operario,
-            detalle: `Bolsa controlada en cierre de Canasto por ${operario}`
+            detalle: `Bolsa controlada en cierre de Canasto por ${operario} (${secuenciaListoCanasto})`
         });
     }
 
     await sincronizarCanastosEstacionNodos();
+    await sincronizarNodosConCircuitoOperativoLamda();
     const etiquetaCanasto = await generarEtiquetaQrMaestroCanasto(canastoId);
     await sincronizarCanastosEstacionNodos();
     const tablero = await obtenerTableroMesaArmadoDeposito();
@@ -13510,7 +13783,9 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
         };
 
         const nRow = mapaNodosLiq.get(Number(p.nodo_id));
-        const esEc = (nRow && normalizarPerfilOperativoNodo(nRow.perfil_operativo) === 'ecommerce_fulfillment') ||
+        const modNLiq = nRow ? resolverModulosActivosNodo(nRow) : null;
+        const esSoloFul = Boolean(modNLiq && modNLiq.despacho_desde_lamda && !modNLiq.canasto_consolidado);
+        const esEc = esSoloFul ||
             Boolean(p.postal_operador) ||
             ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(String(p.modalidad_entrega || '').toUpperCase());
 
@@ -13676,7 +13951,10 @@ async function obtenerTableroLiquidacionCobros(filtros = {}) {
     }
 
     const tiendasFulfillment = nodosRes.rows
-        .filter(n => normalizarPerfilOperativoNodo(n.perfil_operativo) === 'ecommerce_fulfillment' || (pedidosFulfillmentPorNodo.get(Number(n.id)) || []).length > 0)
+        .filter(n => {
+            const mn = resolverModulosActivosNodo(n);
+            return Boolean(mn.envio_paqueteria || mn.despacho_desde_lamda || (pedidosFulfillmentPorNodo.get(Number(n.id)) || []).length > 0);
+        })
         .map(n => {
             const nid = Number(n.id);
             const pedsTienda = (pedidosFulfillmentPorNodo.get(nid) || []).slice().sort((a, b) => Number(b.id) - Number(a.id));
@@ -14045,12 +14323,13 @@ async function conciliarPagoPedidoVecino(pedidoId, payload = {}) {
             despachoReciboEfectivoId = Number(ped.id);
         }
 
-        // Si la orden pertenece a E-Commerce Fulfillment / Paquetería (sin canasto semanal),
+        // Si la orden corresponde a paquetería/fulfillment individual (sin canasto consolidado),
         // al conciliar su pago pasa de inmediato a Hito 2 (EN_PREPARACION) e ingresa a la cola FIFO 24/7 de Depósito.
+        const modPedConc = resolverModulosActivosNodo(ped);
         const esOrdenFulfillment = !ped.lote_canasto_id && (
             Boolean(ped.envio_postal_id) ||
-            normalizarPerfilOperativoNodo(ped.perfil_operativo) === 'ecommerce_fulfillment' ||
-            ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(String(ped.modalidad_entrega || '').toUpperCase())
+            ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(String(ped.modalidad_entrega || '').toUpperCase()) ||
+            (Boolean(modPedConc.despacho_desde_lamda) && !Boolean(modPedConc.canasto_consolidado))
         );
         if (esOrdenFulfillment && Number(ped.hito_tracking_actual || 1) < 2) {
             await registrarTransicionHitoPedidoVecino(client, ped.id, 2, {
@@ -17025,10 +17304,15 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
     const perfilOp = normalizarPerfilOperativoNodo(nodoRow.perfil_operativo);
     const modulosOp = resolverModulosActivosNodo(nodoRow);
     const configPaqOp = normalizarConfigPaqueteria(nodoRow.config_paqueteria);
+    const configRetiroLocalOp = normalizarConfigRetiroLocal(nodoRow.config_retiro_local, nodoRow);
+    const dicTextosOp = {
+        ...obtenerPresetDiccionarioTextosNodo(perfilOp),
+        ...((nodoRow.diccionario_textos && typeof nodoRow.diccionario_textos === 'object' && !Array.isArray(nodoRow.diccionario_textos)) ? nodoRow.diccionario_textos : {})
+    };
 
     const timeline = construirTimelineMarcaBlancaPedido(
         pedidoRow,
-        { ...nodoRow, perfil_operativo: perfilOp, config_paqueteria: configPaqOp },
+        { ...nodoRow, perfil_operativo: perfilOp, modulos_activos: modulosOp, config_paqueteria: configPaqOp, config_retiro_local: configRetiroLocalOp, diccionario_textos: dicTextosOp },
         evsRes.rows,
         envioPostal
     );
@@ -17115,7 +17399,7 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             slug_historico: nodoRow.slug_historico || null,
             nombre_marca: nodoRow.nombre_marca,
             bajada_marca: nodoRow.bajada_marca || null,
-            subtitulo_marca: nodoRow.subtitulo_marca || (perfilOp === 'ecommerce_fulfillment' ? 'Tienda Oficial · Envíos a Todo el País' : 'Comunidad Barrial - Entrega Fresca'),
+            subtitulo_marca: nodoRow.subtitulo_marca || (perfilOp === 'REDES' ? 'Tienda Oficial · Envíos a Todo el País' : (perfilOp === 'LOCALES' ? 'Retiro en Local · Compra Online' : 'Comunidad Barrial - Entrega Fresca')),
             gestor_nombre: nodoRow.gestor_nombre,
             gestor_telefono: nodoRow.gestor_telefono,
             barrio_zona: nodoRow.barrio_zona,
@@ -17132,7 +17416,9 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             solo_transferencia_bancaria: Boolean(cfgBancoSeg.solo_transferencia_bancaria === true),
             perfil_operativo: perfilOp,
             modulos_activos: modulosOp,
-            config_paqueteria: configPaqOp
+            config_paqueteria: configPaqOp,
+            config_retiro_local: configRetiroLocalOp,
+            diccionario_textos: dicTextosOp
         },
         pedido: pedidoEnriquecido,
         items: itemsRes.rows.map(it => ({
@@ -17172,7 +17458,7 @@ async function obtenerSeguimientoPublicoPedidoVecino(slug, trackingToken) {
                 nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
                 nm.logo_original_base64, nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
                 nm.cuil_display, nm.numero_cuenta_display,
-                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.diccionario_textos
+                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local, nm.diccionario_textos
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
@@ -17274,7 +17560,7 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
                 nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
                 nm.logo_original_base64, nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
                 nm.cuil_display, nm.numero_cuenta_display,
-                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.diccionario_textos
+                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local, nm.diccionario_textos
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
@@ -17355,6 +17641,11 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
     const perfilOpWa = normalizarPerfilOperativoNodo(primera.perfil_operativo);
     const modulosOpWa = resolverModulosActivosNodo(primera);
     const configPaqWa = normalizarConfigPaqueteria(primera.config_paqueteria);
+    const configRetiroLocalWa = normalizarConfigRetiroLocal(primera.config_retiro_local, primera);
+    const dicTextosWa = {
+        ...obtenerPresetDiccionarioTextosNodo(perfilOpWa),
+        ...((primera.diccionario_textos && typeof primera.diccionario_textos === 'object' && !Array.isArray(primera.diccionario_textos)) ? primera.diccionario_textos : {})
+    };
     const dfltGalWa = pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT;
     const cfgBancoWa = await pagosBancariosService.obtenerConfiguracionBancariaCanalNodos();
     const nodoPublico = {
@@ -17362,7 +17653,7 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
         slug_historico: primera.slug_historico || null,
         nombre_marca: primera.nombre_marca,
         bajada_marca: primera.bajada_marca || null,
-        subtitulo_marca: primera.subtitulo_marca || (perfilOpWa === 'ecommerce_fulfillment' ? 'Tienda Oficial · Envíos a Todo el País' : 'Comunidad Barrial - Entrega Fresca'),
+        subtitulo_marca: primera.subtitulo_marca || (perfilOpWa === 'REDES' ? 'Tienda Oficial · Envíos a Todo el País' : (perfilOpWa === 'LOCALES' ? 'Retiro en Local · Compra Online' : 'Comunidad Barrial - Entrega Fresca')),
         gestor_nombre: primera.gestor_nombre || '',
         gestor_telefono: primera.gestor_telefono || '',
         barrio_zona: primera.barrio_zona || '',
@@ -17379,7 +17670,9 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
         solo_transferencia_bancaria: Boolean(cfgBancoWa.solo_transferencia_bancaria === true),
         perfil_operativo: perfilOpWa,
         modulos_activos: modulosOpWa,
-        config_paqueteria: configPaqWa
+        config_paqueteria: configPaqWa,
+        config_retiro_local: configRetiroLocalWa,
+        diccionario_textos: dicTextosWa
     };
 
     const esModoLab = esModoLaboratorioNodos();
@@ -17510,7 +17803,7 @@ async function buscarSeguimientoPublicoPorTelefonoYPedido(slug, payload = {}) {
                 nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
                 nm.logo_original_base64, nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
                 nm.cuil_display, nm.numero_cuenta_display,
-                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.diccionario_textos
+                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local, nm.diccionario_textos
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
@@ -19115,7 +19408,7 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
                 nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
                 nm.cuil_display, nm.numero_cuenta_display,
                 nm.permitir_envio_barrial, nm.permitir_retiro_nodo, nm.permitir_reparto_propio, nm.permitir_encomienda, nm.cargo_envio_barrial,
-                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.diccionario_textos
+                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local, nm.diccionario_textos
          FROM public.nodos_vecinos nv
          JOIN public.nodos_maestro nm ON nm.id = nv.nodo_id
          WHERE nv.portal_token = $1
@@ -19161,7 +19454,12 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
         cargo_envio_barrial: Number(row.cargo_envio_barrial || 0),
         perfil_operativo: normalizarPerfilOperativoNodo(row.perfil_operativo),
         modulos_activos: resolverModulosActivosNodo(row),
-        config_paqueteria: normalizarConfigPaqueteria(row.config_paqueteria)
+        config_paqueteria: normalizarConfigPaqueteria(row.config_paqueteria),
+        config_retiro_local: normalizarConfigRetiroLocal(row.config_retiro_local, row),
+        diccionario_textos: {
+            ...obtenerPresetDiccionarioTextosNodo(row.perfil_operativo),
+            ...((row.diccionario_textos && typeof row.diccionario_textos === 'object' && !Array.isArray(row.diccionario_textos)) ? row.diccionario_textos : {})
+        }
     };
 
     const [pedsRes, itemsRes, evsRes, pagosMovsRes, postalesPortalRes] = await Promise.all([
@@ -20184,8 +20482,13 @@ module.exports = {
     obtenerArchivoComprobanteAvisoPagoNodos,
     obtenerReciboPngAutorizadoPedido,
     reenviarReciboWhatsAppPorGestor,
+    obtenerPresetDiccionarioTextosNodo,
+    normalizarConfigRetiroLocal,
     TEMA_VISUAL_PARAISO_OFICIAL,
     TEMA_VISUAL_MANSO_OFICIAL,
     LOGO_ZPL_CONFIG_MANSO_OFICIAL,
-    leerLogoZebraMansoDataUrl
+    leerLogoZebraMansoDataUrl,
+    TEMA_VISUAL_MORO_OFICIAL,
+    LOGO_ZPL_CONFIG_MORO_OFICIAL,
+    leerLogoZebraMoroDataUrl
 };

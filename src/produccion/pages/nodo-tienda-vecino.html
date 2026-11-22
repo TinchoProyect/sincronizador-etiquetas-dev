@@ -2490,19 +2490,17 @@
       { codigo: 'AR-T', nombre: 'Tucumán' }
     ];
 
-    function esPerfilEcommerceTienda(nodoObj = STATE.nodo) {
-      const n = nodoObj || {};
-      const perf = String(n.perfil_operativo || '').trim().toLowerCase();
-      if (perf === 'ecommerce_fulfillment' || perf === 'creador_online' || perf === 'fulfillment_lamda') return true;
-      const mod = (n.modulos_activos && typeof n.modulos_activos === 'object') ? n.modulos_activos : {};
-      if (mod.envio_paqueteria && mod.retiro_punto === false && mod.reparto_zonal === false) return true;
-      return false;
+    function normalizarPerfilTienda(raw) {
+      const p = String(raw || '').trim().toLowerCase();
+      if (p === 'redes' || p === 'ecommerce_fulfillment' || p === 'creador_online' || p === 'fulfillment_lamda') return 'REDES';
+      if (p === 'locales' || p === 'local' || p === 'comercio_pickup' || p === 'pickup_point' || p === 'local_fisico') return 'LOCALES';
+      return 'VECINOS';
     }
 
     function obtenerModulosActivosTienda(nodoObj = STATE.nodo) {
       const n = nodoObj || {};
-      const esEc = esPerfilEcommerceTienda(n);
-      const base = esEc
+      const perf = normalizarPerfilTienda(n.perfil_operativo);
+      const base = perf === 'REDES'
         ? {
             retiro_punto: false,
             reparto_zonal: false,
@@ -2511,20 +2509,83 @@
             venta_continua_24_7: true,
             despacho_desde_lamda: true,
             canasto_consolidado: false,
-            cobro_efectivo_entrega: false
+            cobro_efectivo_entrega: false,
+            mostrador_entrega_rapida: false,
+            checkout_omitir_paso_entrega_si_unico: true,
+            mostrar_horarios_comerciales: false,
+            abastecimiento_modo: 'despacho_correo',
+            etiqueta_zpl_formato: 'postal_fulfillment'
           }
-        : {
-            retiro_punto: true,
-            reparto_zonal: true,
-            hoja_de_ruta: true,
-            envio_paqueteria: false,
-            venta_continua_24_7: false,
-            despacho_desde_lamda: false,
-            canasto_consolidado: true,
-            cobro_efectivo_entrega: true
-          };
+        : (perf === 'LOCALES'
+            ? {
+                retiro_punto: true,
+                reparto_zonal: false,
+                hoja_de_ruta: false,
+                envio_paqueteria: false,
+                venta_continua_24_7: false,
+                despacho_desde_lamda: false,
+                canasto_consolidado: true,
+                cobro_efectivo_entrega: false,
+                mostrador_entrega_rapida: true,
+                checkout_omitir_paso_entrega_si_unico: true,
+                mostrar_horarios_comerciales: true,
+                abastecimiento_modo: 'camioneta_lamda',
+                etiqueta_zpl_formato: 'mostrador_local'
+              }
+            : {
+                retiro_punto: true,
+                reparto_zonal: true,
+                hoja_de_ruta: true,
+                envio_paqueteria: false,
+                venta_continua_24_7: false,
+                despacho_desde_lamda: false,
+                canasto_consolidado: true,
+                cobro_efectivo_entrega: true,
+                mostrador_entrega_rapida: false,
+                checkout_omitir_paso_entrega_si_unico: true,
+                mostrar_horarios_comerciales: false,
+                abastecimiento_modo: 'retiro_deposito',
+                etiqueta_zpl_formato: 'vecinal'
+              });
       const raw = (n.modulos_activos && typeof n.modulos_activos === 'object') ? n.modulos_activos : {};
       return { ...base, ...raw };
+    }
+
+    function obtenerInfoRetiroLocalTienda(nodoObj = STATE.nodo) {
+      const n = nodoObj || {};
+      const c = (n.config_retiro_local && typeof n.config_retiro_local === 'object') ? n.config_retiro_local : {};
+      const nombrePunto = String(c.nombre_punto || n.nombre_marca || 'Local').trim();
+      const dirCorta = String(c.direccion_corta || n.direccion_retiro || n.barrio_zona || '').trim();
+      const dirCompleta = String(c.direccion_completa || n.direccion_retiro || dirCorta || '').trim();
+      const dias = String(c.dias_atencion || '').trim();
+      const horario = String(c.horario_atencion || '').trim();
+      const horarioResumen = [dias, horario].filter(Boolean).join(' ');
+      return {
+        nombre_punto: nombrePunto,
+        direccion_corta: dirCorta,
+        direccion_completa: dirCompleta,
+        dias_atencion: dias,
+        horario_atencion: horario,
+        horario_resumen: horarioResumen,
+        referencias_mostrador: String(c.referencias_mostrador || '').trim(),
+        abastecimiento_dias_label: String(c.abastecimiento_dias_label || '').trim(),
+        mostrar_mapa_link: c.mostrar_mapa_link !== false
+      };
+    }
+
+    function esRetiroComercialLocalTienda(nodoObj = STATE.nodo) {
+      const n = nodoObj || {};
+      const mod = obtenerModulosActivosTienda(n);
+      return Boolean(mod.mostrar_horarios_comerciales && mod.retiro_punto && n.permitir_retiro_nodo !== false);
+    }
+
+    function esPerfilEcommerceTienda(nodoObj = STATE.nodo) {
+      const n = nodoObj || {};
+      const mod = obtenerModulosActivosTienda(n);
+      const puedeRetiro = Boolean(mod.retiro_punto && n.permitir_retiro_nodo !== false);
+      const puedeReparto = Boolean(mod.reparto_zonal && (n.permitir_reparto_propio ?? n.permitir_envio_barrial ?? false));
+      const puedePaq = Boolean(mod.envio_paqueteria || n.permitir_encomienda);
+      return Boolean(puedePaq && !puedeRetiro && !puedeReparto);
     }
 
     function obtenerConfigPaqueteriaTienda(nodoObj = STATE.nodo) {
@@ -2567,21 +2628,33 @@
       const dic = (n.diccionario_textos && typeof n.diccionario_textos === 'object') ? n.diccionario_textos : {};
       if (dic[clave]) return String(dic[clave]);
       const esEc = esPerfilEcommerceTienda(n);
+      const esLocal = esRetiroComercialLocalTienda(n);
       const mapa = esEc
         ? {
             comprador_singular: 'Cliente',
             carrito_contenedor: 'carrito',
             productos_pedido: 'Productos de tu compra',
             resumen_compra: 'Compra online',
+            chip_entrega_label: 'Envíos',
             banner_entrega_default: 'Envíos a todo el país · Despacho en 24 a 48 hs hábiles'
           }
-        : {
-            comprador_singular: 'Vecino/a',
-            carrito_contenedor: 'canasto',
-            productos_pedido: 'Productos en tu bolsa',
-            resumen_compra: 'Compra vecinal',
-            banner_entrega_default: 'Próxima entrega programada'
-          };
+        : (esLocal
+            ? {
+                comprador_singular: 'Cliente',
+                carrito_contenedor: 'carrito',
+                productos_pedido: 'Productos de tu pedido',
+                resumen_compra: 'Retiro en local',
+                chip_entrega_label: 'Retiro en local',
+                banner_entrega_default: 'Retiro sin cargo en el local'
+              }
+            : {
+                comprador_singular: 'Vecino/a',
+                carrito_contenedor: 'canasto',
+                productos_pedido: 'Productos en tu bolsa',
+                resumen_compra: 'Compra vecinal',
+                chip_entrega_label: 'Envíos',
+                banner_entrega_default: 'Próxima entrega programada'
+              });
       return mapa[clave] || clave;
     }
 
@@ -4045,10 +4118,13 @@
       if (!headSummary || !bodyEl) return;
 
       const nodo = STATE.nodo || {};
+      const mod = obtenerModulosActivosTienda(nodo);
       const esEc = esPerfilEcommerceTienda(nodo);
+      const esLocal = esRetiroComercialLocalTienda(nodo);
+      const infoLocal = obtenerInfoRetiroLocalTienda(nodo);
       const nombreMarca = nodo.nombre_marca || 'Tienda';
       const barrio = nodo.barrio_zona || 'Tu barrio';
-      const gestorNombre = nodo.gestor_nombre || (esEc ? nombreMarca : 'Referente barrial');
+      const gestorNombre = nodo.gestor_nombre || (esEc || esLocal ? nombreMarca : 'Referente barrial');
       const iconoUrl = obtenerLogoIconoNodo(nodo);
       const siglas = String(nombreMarca).split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
       const waHref = obtenerUrlWhatsappCoordinarGestor();
@@ -4063,7 +4139,7 @@
             ${esc(nombreMarca)}
           </div>
           <div style="font-size:0.77rem; font-weight:800; color:var(--brand-dark); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-            ${esEc ? '🚚 Envíos a todo el país' : `📍 ${esc(barrio)}`}
+            ${esEc ? '🚚 Envíos a todo el país' : (esLocal ? `🏪 ${esc(infoLocal.direccion_corta || barrio)}` : `📍 ${esc(barrio)}`)}
           </div>
         </div>
       `;
@@ -4162,6 +4238,102 @@
       const prox = STATE.proximaEntrega;
       const asig = prox?.asignada || null;
       const pasoCorte = Boolean(prox?.paso_horario_corte);
+      const permiteEfvoDrawer = obtenerMediosPagoHabilitadosTienda(nodo).some(m => m.codigo === 'EFECTIVO');
+
+      if (esLocal) {
+        const mapsUrl = infoLocal.mostrar_mapa_link && infoLocal.direccion_completa
+          ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(infoLocal.direccion_completa)}`
+          : '';
+        bodyEl.innerHTML = `
+          <!-- 1. Retiro sin cargo en local comercial -->
+          <div class="drawer-section-card">
+            <div style="display:inline-block; font-size:0.7rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; padding:3px 9px; border-radius:999px; background:var(--ok-soft); color:var(--ok); border:1px solid var(--ok-border); margin-bottom:7px;">
+              🏪 Retiro sin cargo en local
+            </div>
+            <div style="font-size:0.96rem; font-weight:900; color:var(--text); line-height:1.28;">
+              ${esc(infoLocal.nombre_punto)}
+            </div>
+            <div style="font-size:0.84rem; font-weight:800; color:var(--brand-dark); margin-top:3px;">
+              📍 ${esc(infoLocal.direccion_completa || infoLocal.direccion_corta)}
+            </div>
+            ${infoLocal.horario_resumen ? `
+              <div style="margin-top:8px; padding-top:8px; border-top:1px dashed var(--border); font-size:0.8rem; line-height:1.42;">
+                <div><strong>🕒 Horario de retiro:</strong> ${esc(infoLocal.horario_resumen)}</div>
+                ${infoLocal.abastecimiento_dias_label ? `<div style="margin-top:3px;"><strong>📦 Llegada de pedidos al local:</strong> ${esc(infoLocal.abastecimiento_dias_label)}</div>` : ''}
+                ${asig ? `<div style="margin-top:3px; color:var(--muted);"><strong>Próxima llegada:</strong> ${esc(asig.dia_entrega_nombre)} ${esc(asig.fecha_entrega_corta)}</div>` : ''}
+              </div>
+            ` : ''}
+            ${mapsUrl ? `
+              <a href="${esc(mapsUrl)}" target="_blank" rel="noopener"
+                style="display:inline-flex; align-items:center; gap:6px; margin-top:9px; font-size:0.79rem; font-weight:800; color:var(--brand); text-decoration:none;">
+                🗺️ Ver ubicación en Google Maps →
+              </a>
+            ` : ''}
+          </div>
+
+          <!-- 2. Atención del Local -->
+          <div class="drawer-section-card">
+            <div style="font-size:0.72rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted);">
+              Atención del local · ${esc(nombreMarca)}
+            </div>
+            <div style="font-size:0.96rem; font-weight:900; color:var(--text); margin-top:3px;">
+              Consultas con ${esc(infoLocal.nombre_punto)}
+            </div>
+            <div style="font-size:0.78rem; font-weight:700; color:var(--muted); margin-top:2px; margin-bottom:10px;">
+              Consultas sobre productos, disponibilidad y retiro en mostrador.
+            </div>
+            ${waHref ? `
+              <a id="drawer-wa-gestor-link" href="${esc(waHref)}" target="_blank" rel="noopener"
+                onclick="return onClickCoordinarGestor(event)"
+                style="display:flex; align-items:center; justify-content:center; gap:8px; width:100%; min-height:42px; padding:9px 14px; border-radius:11px; background:#15803d; color:#ffffff; font-size:0.86rem; font-weight:900; text-decoration:none;">
+                <span>💬 Escribir por WhatsApp</span>
+              </a>
+            ` : ''}
+          </div>
+
+          <!-- 3. Seguimiento y Mi Cuenta -->
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button type="button" class="drawer-action-btn" id="drawer-btn-seguir-pedido" onclick="cerrarDrawerNodoTienda(); accionBotonSeguirMiPedido();">
+              <span>📦 Seguir estado de mi pedido</span>
+              <span style="color:var(--brand); font-weight:900;">›</span>
+            </button>
+            ${STATE.portalToken ? `
+              <button type="button" class="drawer-action-btn" id="drawer-btn-mi-cuenta" onclick="cerrarDrawerNodoTienda(); activarVistaMiCuenta();">
+                <span>👤 Mi Cuenta y comprobantes</span>
+                <span style="color:var(--brand); font-weight:900;">›</span>
+              </button>
+            ` : ''}
+          </div>
+
+          <!-- 4. Cómo comprar y retirar -->
+          <div class="drawer-section-card" style="background:var(--surface-warm);">
+            <div style="font-size:0.76rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; color:var(--brand-dark); margin-bottom:9px;">
+              ✨ Cómo comprar y retirar en ${esc(nombreMarca)}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px; font-size:0.8rem; line-height:1.34;">
+              <div style="display:flex; align-items:flex-start; gap:9px;">
+                <span style="width:20px; height:20px; border-radius:999px; background:var(--brand); color:#fff; font-size:0.72rem; font-weight:900; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">1</span>
+                <div><strong>Elegí tus productos</strong> online y confirmá con ${permiteEfvoDrawer ? 'transferencia o efectivo' : 'transferencia bancaria'}.</div>
+              </div>
+              <div style="display:flex; align-items:flex-start; gap:9px;">
+                <span style="width:20px; height:20px; border-radius:999px; background:var(--brand); color:#fff; font-size:0.72rem; font-weight:900; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">2</span>
+                <div><strong>Te avisamos cuando llega al local</strong> en ${esc(infoLocal.direccion_corta || infoLocal.direccion_completa)}.</div>
+              </div>
+              <div style="display:flex; align-items:flex-start; gap:9px;">
+                <span style="width:20px; height:20px; border-radius:999px; background:var(--brand); color:#fff; font-size:0.72rem; font-weight:900; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px;">3</span>
+                <div><strong>Retirás sin cargo por mostrador</strong> ${infoLocal.horario_resumen ? `(${esc(infoLocal.horario_resumen)})` : ''} indicando tu nombre o número de pedido.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="drawer-pwa-card" id="drawer-pwa-box" style="display:none;"></div>
+          <div id="drawer-admin-device-box" style="display:none;"></div>
+        `;
+        renderizarBarraPwaTienda();
+        renderizarBannerDispositivoAdminTienda();
+        return;
+      }
+
       const envioTxt = nodo.permitir_envio_barrial
         ? `🛵 Envío barrial: ${Number(nodo.cargo_envio_barrial) > 0 ? fmt(nodo.cargo_envio_barrial) : 'Sin cargo'}`
         : '🏠 Modalidad: Retiro en punto de retiro';
@@ -4271,10 +4443,14 @@
           const desbloqueado = Boolean(cfg.envio_gratis_activo && meta > 0 && subtotal >= meta);
           chip.classList.toggle('unlocked', desbloqueado);
           if (iconEl) iconEl.textContent = desbloqueado ? '🎁' : '🚚';
-          if (lblEl) lblEl.textContent = 'Envíos';
+          if (lblEl) lblEl.textContent = tMarca(STATE.nodo, 'chip_entrega_label') || 'Envíos';
+        } else if (esRetiroComercialLocalTienda(STATE.nodo)) {
+          chip.classList.remove('unlocked');
+          if (iconEl) iconEl.textContent = '🏪';
+          if (lblEl) lblEl.textContent = tMarca(STATE.nodo, 'chip_entrega_label') || 'Retiro en local';
         } else {
           chip.classList.remove('unlocked');
-          if (lblEl) lblEl.textContent = 'Envíos';
+          if (lblEl) lblEl.textContent = tMarca(STATE.nodo, 'chip_entrega_label') || 'Envíos';
         }
       }
       if (document.getElementById('envios-tienda-modal')?.classList.contains('open')) {
@@ -4291,6 +4467,15 @@
         chip.classList.remove('after-cutoff');
         chip.setAttribute('title', 'Ver cobertura nacional, operadores postales y envíos bonificados');
         if (iconEl) iconEl.textContent = '🚚';
+        renderBarraProgresoEnvioGratis();
+        return;
+      }
+
+      if (esRetiroComercialLocalTienda(STATE.nodo)) {
+        chip.classList.remove('after-cutoff');
+        const infoLoc = obtenerInfoRetiroLocalTienda(STATE.nodo);
+        chip.setAttribute('title', `Retiro sin cargo en ${infoLoc.nombre_punto} · ${infoLoc.direccion_corta}`);
+        if (iconEl) iconEl.textContent = '🏪';
         renderBarraProgresoEnvioGratis();
         return;
       }
@@ -4416,6 +4601,57 @@
       const pasoCorte = Boolean(prox?.paso_horario_corte);
       const barrio = nodo.barrio_zona || 'Tu barrio';
       const cargoEnvio = Number(nodo.cargo_envio_barrial || 0);
+      const esLocal = esRetiroComercialLocalTienda(nodo);
+
+      if (esLocal) {
+        const infoLoc = obtenerInfoRetiroLocalTienda(nodo);
+        card.innerHTML = `
+          <div style="padding:18px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px;">
+              <div style="display:flex; align-items:center; gap:9px;">
+                <span style="width:38px; height:38px; border-radius:11px; background:var(--brand-light); color:var(--brand-dark); display:inline-flex; align-items:center; justify-content:center; font-size:1.15rem; flex-shrink:0;">🏪</span>
+                <div>
+                  <div style="font-size:1.02rem; font-weight:900; color:var(--text);">Retiro en Local · ${esc(nombreMarca)}</div>
+                  <div style="font-size:0.76rem; font-weight:800; color:var(--muted);">Retiro sin cargo en mostrador ($0)</div>
+                </div>
+              </div>
+              <button type="button" onclick="cerrarModalEnviosTienda()" aria-label="Cerrar"
+                style="border:none; background:var(--surface-warm); color:var(--text); width:32px; height:32px; border-radius:999px; font-weight:900; cursor:pointer;">✕</button>
+            </div>
+
+            <div style="background:var(--ok-soft); border:1.5px solid var(--ok-border); border-radius:13px; padding:12px 13px; margin-bottom:12px;">
+              <div style="font-size:0.72rem; font-weight:900; text-transform:uppercase; color:var(--ok); margin-bottom:4px;">
+                📍 Punto de Retiro Sin Cargo
+              </div>
+              <div style="font-size:0.96rem; font-weight:900; color:var(--text); line-height:1.28;">
+                ${esc(infoLoc.nombre_punto)}
+              </div>
+              <div style="font-size:0.84rem; font-weight:800; color:var(--brand-dark); margin-top:3px;">
+                ${esc(infoLoc.direccion_completa || infoLoc.direccion_corta)}
+              </div>
+              ${infoLoc.horario_resumen ? `
+                <div style="font-size:0.82rem; font-weight:800; color:var(--text); margin-top:6px;">
+                  🕒 ${esc(infoLoc.horario_resumen)}
+                </div>
+              ` : ''}
+            </div>
+
+            <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:13px; padding:12px 13px; font-size:0.82rem; line-height:1.45; margin-bottom:14px;">
+              ${infoLoc.abastecimiento_dias_label ? `<div><strong>📦 Días de llegada de pedidos al local:</strong> ${esc(infoLoc.abastecimiento_dias_label)}</div>` : ''}
+              ${asig ? `<div style="margin-top:4px;"><strong>📅 Próxima tanda disponible:</strong> ${esc(asig.dia_entrega_nombre)} ${esc(asig.fecha_entrega_corta)} (cierre ${esc(asig.label_corte)})</div>` : ''}
+              ${infoLoc.referencias_mostrador ? `<div style="margin-top:4px; color:var(--muted);">${esc(infoLoc.referencias_mostrador)}.</div>` : ''}
+              ${nodo.permitir_envio_barrial ? `<div style="margin-top:6px;"><strong>🛵 Envío local a domicilio:</strong> ${cargoEnvio > 0 ? fmt(cargoEnvio) : 'Sin cargo'}</div>` : ''}
+              ${nodo.permitir_encomienda ? `<div style="margin-top:6px;"><strong>📦 Envíos a todo el país:</strong> disponibles por correo en el checkout</div>` : ''}
+            </div>
+
+            <button type="button" onclick="cerrarModalEnviosTienda()"
+              style="width:100%; min-height:42px; border:none; border-radius:11px; background:var(--brand); color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer;">
+              Entendido
+            </button>
+          </div>
+        `;
+        return;
+      }
 
       card.innerHTML = `
         <div style="padding:18px;">
@@ -5073,13 +5309,22 @@
         puedeRetiro,
         puedeReparto,
         puedeEncomienda,
+        totalModalidades: [puedeRetiro, puedeReparto, puedeEncomienda].filter(Boolean).length,
+        esSoloRetiro: Boolean(puedeRetiro && !puedeReparto && !puedeEncomienda),
+        esSoloReparto: Boolean(puedeReparto && !puedeRetiro && !puedeEncomienda),
         esPostalExclusivo: Boolean(puedeEncomienda && !puedeRetiro && !puedeReparto)
       };
     }
 
     function esCheckoutPostalNacional(nodoObj = STATE.nodo) {
       const cap = obtenerCapacidadesEntregaTienda(nodoObj);
-      return Boolean(cap.esPostalExclusivo || esPerfilEcommerceTienda(nodoObj));
+      return Boolean(cap.esPostalExclusivo);
+    }
+
+    function esModalidadPostalActivaWizard(nodoObj = STATE.nodo) {
+      if (esCheckoutPostalNacional(nodoObj)) return true;
+      const m = String(STATE.checkoutWiz?.modalidadElegida || '').toUpperCase();
+      return m === 'PAQUETERIA_NACIONAL' || m === 'PAQUETERIA_DOMICILIO' || m === 'PAQUETERIA_SUCURSAL';
     }
 
     function asegurarModalidadEntregaValida() {
@@ -5255,8 +5500,20 @@
     }
 
     function obtenerPasosCheckoutWizard() {
-      if (esCheckoutPostalNacional()) {
+      const cap = obtenerCapacidadesEntregaTienda();
+      const mod = obtenerModulosActivosTienda();
+      const omitirUnico = mod.checkout_omitir_paso_entrega_si_unico !== false;
+      if (cap.esPostalExclusivo) {
         return ['cp_modalidad', 'destino_postal', 'destinatario_postal', 'pago', 'revision'];
+      }
+      if (cap.esSoloRetiro && omitirUnico) {
+        return ['datos', 'pago', 'revision'];
+      }
+      if (cap.esSoloReparto && omitirUnico) {
+        return ['datos', 'direccion', 'pago', 'revision'];
+      }
+      if (esModalidadPostalActivaWizard()) {
+        return ['entrega', 'cp_modalidad', 'destino_postal', 'destinatario_postal', 'pago', 'revision'];
       }
       if (STATE.checkoutWiz.modalidadElegida === 'ENVIO_BARRIAL') {
         return ['entrega', 'datos', 'direccion', 'pago', 'revision'];
@@ -5294,7 +5551,7 @@
         return nom.length >= 3 && dniDigits.length >= 7 && dniDigits.length <= 11 && telDigits.length >= 8 && emOk;
       }
       if (pasoKey === 'entrega') {
-        return w.modalidadElegida === 'RETIRO_NODO' || w.modalidadElegida === 'ENVIO_BARRIAL';
+        return ['RETIRO_NODO', 'ENVIO_BARRIAL', 'PAQUETERIA_NACIONAL', 'PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL'].includes(w.modalidadElegida);
       }
       if (pasoKey === 'datos') {
         const nom = String(w.nombre || '').trim();
@@ -5310,7 +5567,7 @@
         return Boolean(w.medioPagoElegido) && codsHab.includes(w.medioPagoElegido);
       }
       if (pasoKey === 'revision') {
-        if (esCheckoutPostalNacional()) {
+        if (esModalidadPostalActivaWizard()) {
           return validarPasoCheckoutWizard('cp_modalidad') &&
                  validarPasoCheckoutWizard('destino_postal') &&
                  validarPasoCheckoutWizard('destinatario_postal') &&
@@ -5338,12 +5595,29 @@
       const cpPre = String(idGuardada.cp_postal || '').replace(/\D+/g, '').slice(0, 4);
       const opGuardado = String(idGuardada.operador_postal || '').toUpperCase();
       const opPre = cfgPaq.operadores_habilitados.includes(opGuardado) ? opGuardado : cfgPaq.operador_default;
-      const esPostal = esCheckoutPostalNacional();
+      const cap = obtenerCapacidadesEntregaTienda(STATE.nodo);
+      const mod = obtenerModulosActivosTienda(STATE.nodo);
+      const omitirUnico = mod.checkout_omitir_paso_entrega_si_unico !== false;
+      const esPostal = cap.esPostalExclusivo;
+
+      let pasoInicial = 'entrega';
+      let modalidadInicial = '';
+      if (esPostal) {
+        pasoInicial = 'cp_modalidad';
+      } else if (cap.esSoloRetiro && omitirUnico) {
+        pasoInicial = 'datos';
+        modalidadInicial = 'RETIRO_NODO';
+        STATE.modalidadEntrega = 'RETIRO_NODO';
+      } else if (cap.esSoloReparto && omitirUnico) {
+        pasoInicial = 'datos';
+        modalidadInicial = 'ENVIO_BARRIAL';
+        STATE.modalidadEntrega = 'ENVIO_BARRIAL';
+      }
 
       STATE.mostrarMapaCheckoutVecino = false;
       STATE.checkoutWiz = {
-        pasoActualKey: esPostal ? 'cp_modalidad' : 'entrega',
-        modalidadElegida: '',
+        pasoActualKey: pasoInicial,
+        modalidadElegida: modalidadInicial,
         medioPagoElegido: '',
         nombre: nombrePre,
         telefono: telPre,
@@ -5806,12 +6080,16 @@
 
     function renderCabeceraMarcaCheckoutWizard(pasoNumero, totalPasos, modoConfirmado = false) {
       const nodo = STATE.nodo || {};
-      const esPostal = esCheckoutPostalNacional(nodo);
+      const esPostal = esModalidadPostalActivaWizard(nodo);
+      const esLocal = !esPostal && esRetiroComercialLocalTienda(nodo);
+      const infoLocal = obtenerInfoRetiroLocalTienda(nodo);
       const cfgPaq = obtenerConfigPaqueteriaTienda(nodo);
       const prox = STATE.proximaEntrega?.asignada;
       const proxLabel = esPostal
         ? (cfgPaq.sla_despacho_label || 'Envíos a todo el país')
-        : (prox ? prox.label_completo : 'Próxima ventana');
+        : (esLocal
+            ? `${infoLocal.direccion_corta || infoLocal.nombre_punto}${infoLocal.horario_resumen ? ' · ' + infoLocal.horario_resumen : ''}`
+            : (prox ? prox.label_completo : 'Próxima ventana'));
       const logoHorizontal = nodo.tema_visual?.logos?.horizontal || '';
       const logoIncluyeTexto = Boolean(logoHorizontal && nodo.tema_visual?.logo_incluye_texto);
       const logoFallback = logoHorizontal || nodo.logo_original_base64 || nodo.logo_mono_preview_base64 || obtenerLogoIconoNodo(nodo) || '';
@@ -6051,6 +6329,9 @@
         const cargoEnvioNum = Number(STATE.nodo?.cargo_envio_barrial || 0);
         const costoEnvioBadge = cargoEnvioNum > 0 ? `Costo de envío: +${fmt(cargoEnvioNum)}` : 'Envío sin cargo';
         const pasoValido = validarPasoCheckoutWizard('entrega');
+        const infoLocal = obtenerInfoRetiroLocalTienda(STATE.nodo);
+        const esLocal = esRetiroComercialLocalTienda(STATE.nodo);
+        const esModPostalSel = ['PAQUETERIA_NACIONAL', 'PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL'].includes(w.modalidadElegida);
 
         stageHtml = `
           <h2 class="chk-wiz-question">¿Cómo querés recibir tu pedido?</h2>
@@ -6061,8 +6342,8 @@
                 class="chk-big-card ${w.modalidadElegida === 'RETIRO_NODO' ? 'active' : ''}"
                 onclick="seleccionarModalidadCheckoutWizard('RETIRO_NODO')">
                 <div>
-                  <div class="chk-big-card-title">🏠 Retiro en punto de entrega</div>
-                  <div class="chk-big-card-sub">${esc(STATE.nodo?.direccion_retiro || STATE.nodo?.barrio_zona || 'Punto de retiro')}</div>
+                  <div class="chk-big-card-title">${esLocal ? `🏪 Retiro en ${esc(infoLocal.nombre_punto)}` : '🏠 Retiro en punto de entrega'}</div>
+                  <div class="chk-big-card-sub">${esc(infoLocal.direccion_corta || STATE.nodo?.direccion_retiro || STATE.nodo?.barrio_zona || 'Punto de retiro')}${infoLocal.horario_resumen ? ` · ${esc(infoLocal.horario_resumen)}` : ''}</div>
                   <span class="chk-big-price-badge">Sin cargo</span>
                 </div>
                 <span class="chk-big-radio">✓</span>
@@ -6074,8 +6355,20 @@
                 onclick="seleccionarModalidadCheckoutWizard('ENVIO_BARRIAL')">
                 <div>
                   <div class="chk-big-card-title">🛵 Envío a domicilio</div>
-                  <div class="chk-big-card-sub">Reparto en ${esc(STATE.nodo?.barrio_zona || 'tu barrio')}</div>
+                  <div class="chk-big-card-sub">Reparto en ${esc(STATE.nodo?.barrio_zona || 'tu zona')}</div>
                   <span class="chk-big-price-badge">${esc(costoEnvioBadge)}</span>
+                </div>
+                <span class="chk-big-radio">✓</span>
+              </button>
+            ` : ''}
+            ${capEntrega.puedeEncomienda ? `
+              <button type="button" id="chk-opt-paqueteria"
+                class="chk-big-card ${esModPostalSel ? 'active' : ''}"
+                onclick="seleccionarModalidadCheckoutWizard('PAQUETERIA_NACIONAL')">
+                <div>
+                  <div class="chk-big-card-title">📦 Envío a todo el país (Correo)</div>
+                  <div class="chk-big-card-sub">Cotizá con tu Código Postal a domicilio o sucursal</div>
+                  <span class="chk-big-price-badge">Envío postal nacional</span>
                 </div>
                 <span class="chk-big-radio">✓</span>
               </button>
@@ -6092,14 +6385,27 @@
         `;
       } else if (w.pasoActualKey === 'datos') {
         const pasoValido = validarPasoCheckoutWizard('datos');
+        const esRetiroUnicoDirecto = capEntrega.esSoloRetiro && w.modalidadElegida === 'RETIRO_NODO';
+        const infoLocal = obtenerInfoRetiroLocalTienda(STATE.nodo);
+        const bannerRetiroUnicoHtml = esRetiroUnicoDirecto ? `
+          <div data-testid="chk-banner-retiro-local" style="margin:0 0 16px 0; padding:12px 14px; border-radius:14px; background:var(--ok-soft); border:1.5px solid var(--ok-border); color:var(--text);">
+            <div style="font-size:0.74rem; font-weight:900; text-transform:uppercase; color:var(--ok); letter-spacing:0.03em; margin-bottom:3px;">
+              🏪 Retiro sin cargo ($0)
+            </div>
+            <div style="font-size:0.9rem; font-weight:900; line-height:1.34;">
+              Retiro sin cargo en ${esc(infoLocal.nombre_punto)}${infoLocal.direccion_corta ? ` · ${esc(infoLocal.direccion_corta)}` : ''}${infoLocal.horario_resumen ? ` · ${esc(infoLocal.horario_resumen)}` : ''}
+            </div>
+          </div>
+        ` : '';
         stageHtml = `
+          ${bannerRetiroUnicoHtml}
           <h2 class="chk-wiz-question">¿A nombre de quién preparamos tu pedido?</h2>
           ${w.teniaDatosGuardados ? `
             <div style="margin:0 0 16px 0; padding:11px 13px; border-radius:12px; background:var(--ok-soft); border:1px solid var(--ok-border); color:var(--ok); font-size:0.86rem; font-weight:800; line-height:1.4;">
               ✓ Cargamos tus datos guardados. Si están bien, tocá <strong>Continuar</strong>.
             </div>
           ` : `
-            <p class="chk-wiz-lead">Te avisamos por WhatsApp cuando tu pedido esté listo.</p>
+            <p class="chk-wiz-lead">${esRetiroUnicoDirecto ? 'Te avisamos por WhatsApp apenas tu pedido esté listo en mostrador.' : 'Te avisamos por WhatsApp cuando tu pedido esté listo.'}</p>
           `}
 
           <div class="chk-field-lg">
@@ -6238,7 +6544,9 @@
           </button>
         `;
       } else {
-        const esPostal = esCheckoutPostalNacional();
+        const esPostal = esModalidadPostalActivaWizard();
+        const esLocal = !esPostal && esRetiroComercialLocalTienda(STATE.nodo);
+        const infoLocal = obtenerInfoRetiroLocalTienda(STATE.nodo);
         const opLbl = formatearOperadorPostalTienda(w.operadorPostal);
         const esSucursalPostal = w.modalidadElegida === 'PAQUETERIA_SUCURSAL';
         const esEnvio = w.modalidadElegida === 'ENVIO_BARRIAL';
@@ -6250,7 +6558,9 @@
           ? destinoPostalTxt
           : (esEnvio
               ? `🛵 Envío a domicilio — ${w.direccion}${w.entrecalles ? ' (' + w.entrecalles + ')' : ''}`
-              : `🏠 Retiro en punto de entrega — ${STATE.nodo?.direccion_retiro || STATE.nodo?.barrio_zona || ''}`);
+              : (esLocal
+                  ? `🏪 Retiro sin cargo en ${infoLocal.nombre_punto} · ${infoLocal.direccion_corta || infoLocal.direccion_completa}`
+                  : `🏠 Retiro en punto de entrega — ${STATE.nodo?.direccion_retiro || STATE.nodo?.barrio_zona || ''}`));
         const aliasMostrar = resolverDatosBancariosOficialesTienda(STATE.nodo).alias;
         const pagoTexto = w.medioPagoElegido === 'EFECTIVO'
           ? '💵 Efectivo al recibir / retirar'
@@ -6258,10 +6568,12 @@
         const cfgPaq = obtenerConfigPaqueteriaTienda(STATE.nodo);
         const plazoTexto = esPostal
           ? `${cfgPaq.sla_despacho_label}${res.cotizacionPostal?.plazo_dias ? ' · Correo: ' + res.cotizacionPostal.plazo_dias : ''}`
-          : (prox ? prox.label_completo : 'Próxima ventana');
+          : (esLocal
+              ? `${infoLocal.horario_resumen || 'Horario comercial'}${prox ? ` (próxima llegada al local: ${prox.dia_entrega_nombre} ${prox.fecha_entrega_corta})` : ''}`
+              : (prox ? prox.label_completo : 'Próxima ventana'));
         const lineaEnvioResumen = esPostal
           ? `Envío postal (${opLbl} · CP ${w.cpPostal})`
-          : (esEnvio ? 'Envío a domicilio' : 'Retiro en punto de entrega');
+          : (esEnvio ? 'Envío a domicilio' : (esLocal ? `Retiro en ${infoLocal.nombre_punto}` : 'Retiro en punto de entrega'));
 
         stageHtml = `
           <h2 class="chk-wiz-question">Revisá y confirmá tu pedido</h2>
@@ -6280,13 +6592,13 @@
 
             <div style="margin-top:12px; display:flex; flex-direction:column; gap:7px; font-size:0.88rem; line-height:1.4;">
               <div><span style="color:var(--muted); font-weight:800;">Entrega:</span> <strong>${esc(entregaTexto)}</strong></div>
-              <div><span style="color:var(--muted); font-weight:800;">${esPostal ? 'Despacho:' : 'Fecha estimada:'}</span> <strong>${esc(plazoTexto)}</strong></div>
-              <div><span style="color:var(--muted); font-weight:800;">${esPostal ? 'Recibe:' : 'Vecino/a:'}</span> <strong>${esc(w.nombre)}${esPostal && w.dniPostal ? ` · DNI ${esc(w.dniPostal)}` : ''} · 📱 ${esc(w.telefono)}</strong></div>
+              <div><span style="color:var(--muted); font-weight:800;">${esPostal ? 'Despacho:' : (esLocal ? 'Horario de retiro:' : 'Fecha estimada:')}</span> <strong>${esc(plazoTexto)}</strong></div>
+              <div><span style="color:var(--muted); font-weight:800;">${esPostal ? 'Recibe:' : `${esc(tMarca(STATE.nodo, 'comprador_singular'))}:`}</span> <strong>${esc(w.nombre)}${esPostal && w.dniPostal ? ` · DNI ${esc(w.dniPostal)}` : ''} · 📱 ${esc(w.telefono)}</strong></div>
               <div><span style="color:var(--muted); font-weight:800;">Abonás con:</span> <strong>${esc(pagoTexto)}</strong></div>
             </div>
           </div>
 
-          <div style="background:#3e2519; color:#fffdfb; border-radius:16px; padding:15px 18px;">
+          <div style="background:var(--brand-dark, #3e2519); color:#fffdfb; border-radius:16px; padding:15px 18px;">
             <div style="display:flex; justify-content:space-between; font-size:0.88rem; color:#d9c8bb; font-weight:700;">
               <span>Subtotal productos</span>
               <span>${fmt(res.subtotal)}</span>
@@ -6338,7 +6650,7 @@
       sincronizarInputsPasoVisibleCheckout();
 
       const w = STATE.checkoutWiz;
-      const esPostal = esCheckoutPostalNacional();
+      const esPostal = esModalidadPostalActivaWizard();
       STATE.modalidadEntrega = w.modalidadElegida || STATE.modalidadEntrega;
       STATE.medioPago = w.medioPagoElegido || STATE.medioPago;
       const res = calcularResumenCarrito();
@@ -7713,7 +8025,7 @@
         const telWa = telGestorDigits.startsWith('54') ? telGestorDigits : `549${telGestorDigits}`;
         return `https://wa.me/${telWa}?text=${encodeURIComponent(textoBase)}`;
       };
-      const esEcSeg = esPerfilEcommerceTienda(nodo) || ped.modalidad_entrega === 'PAQUETERIA_DOMICILIO' || ped.modalidad_entrega === 'PAQUETERIA_SUCURSAL';
+      const esEcSeg = Boolean(ped.envio_postal || seg.es_ecommerce_postal) || ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(String(ped.modalidad_entrega || '').toUpperCase());
       const envPost = ped.envio_postal || seg.envio_postal || null;
       const opPostalLbl = envPost?.operador_postal_label || formatearOperadorPostalTienda(envPost?.operador_postal || '');
       const waGestorHref = armarHrefWaGestor(`Hola ${nodo.gestor_nombre || ''}! Te consulto por mi pedido #${ped.codigo_pedido} en ${nodo.nombre_marca}.`);

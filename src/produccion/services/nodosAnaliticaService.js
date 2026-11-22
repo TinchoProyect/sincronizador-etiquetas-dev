@@ -849,6 +849,42 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
             ? calcularProximaEntregaFn(r.config_ventanas_corte)
             : null;
 
+        const rawPerfil = String(r.perfil_operativo || 'VECINOS').trim().toLowerCase();
+        const perfilCanon = (rawPerfil === 'redes' || rawPerfil === 'ecommerce_fulfillment' || rawPerfil === 'creador_online' || rawPerfil === 'fulfillment_lamda')
+            ? 'REDES'
+            : ((rawPerfil === 'locales' || rawPerfil === 'local' || rawPerfil === 'comercio_pickup' || rawPerfil === 'pickup_point' || rawPerfil === 'local_fisico')
+                ? 'LOCALES'
+                : 'VECINOS');
+        const presetMod = perfilCanon === 'REDES'
+            ? {
+                retiro_punto: false, reparto_zonal: false, hoja_de_ruta: false, envio_paqueteria: true,
+                venta_continua_24_7: true, despacho_desde_lamda: true, canasto_consolidado: false,
+                cobro_efectivo_entrega: false, mostrador_entrega_rapida: false,
+                checkout_omitir_paso_entrega_si_unico: true, mostrar_horarios_comerciales: false,
+                abastecimiento_modo: 'despacho_correo', etiqueta_zpl_formato: 'postal_fulfillment'
+            }
+            : (perfilCanon === 'LOCALES'
+                ? {
+                    retiro_punto: true, reparto_zonal: false, hoja_de_ruta: false, envio_paqueteria: false,
+                    venta_continua_24_7: false, despacho_desde_lamda: false, canasto_consolidado: true,
+                    cobro_efectivo_entrega: false, mostrador_entrega_rapida: true,
+                    checkout_omitir_paso_entrega_si_unico: true, mostrar_horarios_comerciales: true,
+                    abastecimiento_modo: 'camioneta_lamda', etiqueta_zpl_formato: 'mostrador_local'
+                }
+                : {
+                    retiro_punto: true, reparto_zonal: true, hoja_de_ruta: true, envio_paqueteria: false,
+                    venta_continua_24_7: false, despacho_desde_lamda: false, canasto_consolidado: true,
+                    cobro_efectivo_entrega: true, mostrador_entrega_rapida: false,
+                    checkout_omitir_paso_entrega_si_unico: true, mostrar_horarios_comerciales: false,
+                    abastecimiento_modo: 'retiro_deposito', etiqueta_zpl_formato: 'vecinal'
+                });
+        const modGuard = (r.modulos_activos && typeof r.modulos_activos === 'object' && !Array.isArray(r.modulos_activos)) ? r.modulos_activos : {};
+        const cobroEfvoVal = Boolean(
+            r.cobro_efectivo_entrega ??
+            modGuard.cobro_efectivo_entrega ??
+            presetMod.cobro_efectivo_entrega
+        );
+
         return {
             id: Number(r.id),
             codigo_nodo: r.codigo_nodo,
@@ -864,24 +900,18 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
             color_primario: r.color_primario || '#16a34a',
             tema_visual: (r.tema_visual && typeof r.tema_visual === 'object') ? r.tema_visual : {},
             activo: r.activo !== false,
-            perfil_operativo: String(r.perfil_operativo || 'vecinal').trim().toLowerCase() === 'ecommerce_fulfillment'
-                ? 'ecommerce_fulfillment'
-                : 'vecinal',
-            cobro_efectivo_entrega: Boolean(
-                r.cobro_efectivo_entrega ??
-                (r.modulos_activos && typeof r.modulos_activos === 'object' ? r.modulos_activos.cobro_efectivo_entrega : undefined) ??
-                (String(r.perfil_operativo || 'vecinal').trim().toLowerCase() !== 'ecommerce_fulfillment')
-            ),
+            perfil_operativo: perfilCanon,
+            cobro_efectivo_entrega: cobroEfvoVal,
             modulos_activos: {
-                ...((r.modulos_activos && typeof r.modulos_activos === 'object' && !Array.isArray(r.modulos_activos)) ? r.modulos_activos : {}),
-                cobro_efectivo_entrega: Boolean(
-                    r.cobro_efectivo_entrega ??
-                    (r.modulos_activos && typeof r.modulos_activos === 'object' ? r.modulos_activos.cobro_efectivo_entrega : undefined) ??
-                    (String(r.perfil_operativo || 'vecinal').trim().toLowerCase() !== 'ecommerce_fulfillment')
-                )
+                ...presetMod,
+                ...modGuard,
+                cobro_efectivo_entrega: cobroEfvoVal
             },
             config_paqueteria: (r.config_paqueteria && typeof r.config_paqueteria === 'object' && !Array.isArray(r.config_paqueteria))
                 ? r.config_paqueteria
+                : {},
+            config_retiro_local: (r.config_retiro_local && typeof r.config_retiro_local === 'object' && !Array.isArray(r.config_retiro_local))
+                ? r.config_retiro_local
                 : {},
             diccionario_textos: (r.diccionario_textos && typeof r.diccionario_textos === 'object' && !Array.isArray(r.diccionario_textos))
                 ? r.diccionario_textos

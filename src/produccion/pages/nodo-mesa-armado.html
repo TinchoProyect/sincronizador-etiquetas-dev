@@ -705,6 +705,15 @@
             };
         }
 
+        function obtenerBadgeAbastecimientoCanasto(c) {
+            const modo = String(c?.abastecimiento_modo || c?.modulos_activos?.abastecimiento_modo || 'retiro_deposito').toLowerCase();
+            if (modo === 'camioneta_lamda') {
+                const dest = c?.config_retiro_local?.direccion_corta || c?.direccion_retiro || c?.nombre_marca || 'Local';
+                return `<span class="badge" data-testid="badge-abastecimiento-canasto" style="background:rgba(14,165,233,0.18); color:#7dd3fc; border:1px solid rgba(56,189,248,0.5); font-size:0.72rem;">🚐 Envía Camioneta LAMDA → ${esc(dest)}</span>`;
+            }
+            return `<span class="badge" data-testid="badge-abastecimiento-canasto" style="background:rgba(245,158,11,0.14); color:#fcd34d; border:1px solid rgba(245,158,11,0.4); font-size:0.72rem;">🏃 Retira Gestor en Depósito</span>`;
+        }
+
         function renderizarListaCanastos() {
             const cont = document.getElementById('lista-canastos-container');
             if (!cont) return;
@@ -750,6 +759,10 @@
                             <span style="font-family:monospace; font-size:0.7rem; background:rgba(255,255,255,0.07); color:#cbd5e1; padding:2px 7px; border-radius:5px;">
                                 ${esc(c.codigo_canasto)}
                             </span>
+                        </div>
+
+                        <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                            ${obtenerBadgeAbastecimientoCanasto(c)}
                         </div>
 
                         <div style="padding:6px 9px; border-radius:7px; background:rgba(255,255,255,0.03); border:1px solid #1e293b; font-size:0.78rem; color:#e2e8f0; font-weight:700;">
@@ -914,7 +927,7 @@
                             </div>
 
                             <div style="font-size:0.74rem; color:#94a3b8; display:flex; gap:14px; flex-wrap:wrap;">
-                                <span>📍 ${p.modalidad_entrega === 'ENVIO_BARRIAL' ? `🛵 Envío Barrial: ${esc(p.direccion_entrega)}` : `🏠 Retiro en Nodo (${esc(p.ventana_horaria_label || '')})`}</span>
+                                <span>📍 ${p.modalidad_entrega === 'ENVIO_BARRIAL' ? `🛵 Envío Barrial: ${esc(p.direccion_entrega)}` : (canasto.modulos_activos?.mostrar_horarios_comerciales ? `🏪 Retiro en Local (${esc(canasto.config_retiro_local?.direccion_corta || canasto.direccion_retiro || '')})` : `🏠 Retiro en Nodo (${esc(p.ventana_horaria_label || '')})`)}</span>
                                 <span>📱 WhatsApp: ${esc(p.vecino_telefono)}</span>
                                 <span>🏭 Costo Base LAMDA: <strong style="color:#cbd5e1;">${fmtMoneda(p.total_base_lamda)}</strong></span>
                             </div>
@@ -959,6 +972,7 @@
                                 <span class="badge" style="background:${meta.bg}; color:${meta.color}; border:1px solid ${meta.border}; font-size:0.76rem;">
                                     ${meta.texto}
                                 </span>
+                                ${obtenerBadgeAbastecimientoCanasto(canasto)}
                             </div>
                             <div style="font-size:0.82rem; color:#94a3b8; margin-top:4px;">
                                 📅 Ventana de entrega: <strong style="color:#38bdf8;">${esc(canasto.fecha_entrega_label)}</strong> ·

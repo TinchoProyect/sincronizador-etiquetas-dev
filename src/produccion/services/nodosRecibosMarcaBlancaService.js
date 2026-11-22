@@ -188,7 +188,9 @@ async function obtenerDatosReciboMarcaBlanca(pedidoId, runner = null) {
                 nm.color_primario,
                 nm.tema_visual,
                 nm.logo_original_base64,
-                nm.perfil_operativo
+                nm.perfil_operativo,
+                nm.modulos_activos,
+                nm.config_retiro_local
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          WHERE npv.id = $1::int
@@ -243,8 +245,19 @@ async function obtenerDatosReciboMarcaBlanca(pedidoId, runner = null) {
         };
     });
 
-    const esPostal = String(ped.perfil_operativo || '').toLowerCase() === 'ecommerce_fulfillment' ||
-        ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(String(ped.modalidad_entrega || '').toUpperCase());
+    const modEntUpper = String(ped.modalidad_entrega || '').toUpperCase();
+    const esPostal = ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(modEntUpper);
+    const modAct = (ped.modulos_activos && typeof ped.modulos_activos === 'object') ? ped.modulos_activos : {};
+    const cfgLoc = (ped.config_retiro_local && typeof ped.config_retiro_local === 'object') ? ped.config_retiro_local : {};
+    let puntoRetiroLabel = '';
+    let puntoRetiroHorarioLabel = '';
+    if (!esPostal && modEntUpper !== 'ENVIO_BARRIAL' && (modAct.mostrar_horarios_comerciales || cfgLoc.direccion_corta)) {
+        const nomP = sanitizarTextoMarcaBlancaRecibo(cfgLoc.nombre_punto || nombreMarca);
+        const dirC = sanitizarTextoMarcaBlancaRecibo(cfgLoc.direccion_corta || ped.direccion_retiro || '');
+        const hor = [cfgLoc.dias_atencion, cfgLoc.horario_atencion].filter(Boolean).join(' de ');
+        puntoRetiroLabel = `Retiro sin cargo: ${nomP}${dirC ? ` · ${dirC}` : ''}`;
+        puntoRetiroHorarioLabel = hor ? `Horario de retiro: ${hor}` : '';
+    }
 
     return {
         pedido_id: Number(ped.id),
@@ -263,6 +276,8 @@ async function obtenerDatosReciboMarcaBlanca(pedidoId, runner = null) {
         subtotal_productos: Number(ped.subtotal_productos_vecino || 0),
         cargo_envio: Number(ped.cargo_envio_barrial || 0),
         cargo_envio_label: esPostal ? 'Envío postal' : 'Envío a domicilio',
+        punto_retiro_label: puntoRetiroLabel,
+        punto_retiro_horario_label: puntoRetiroHorarioLabel,
         monto_ajuste: Number(ped.monto_ajuste_credito || 0),
         total_cobrado: Number(ped.total_vecino || 0),
         pago_confirmado: Boolean(ped.impactado_cta_cte_pago) ||
@@ -321,7 +336,7 @@ async function renderizarPngReciboMarcaBlanca(datos) {
         + (datos.monto_ajuste > 0 ? 40 : 0)
         + 52;
     const altoTotalBox = 112;
-    const altoFooter = 72;
+    const altoFooter = datos.punto_retiro_label ? (datos.punto_retiro_horario_label ? 116 : 96) : 72;
     const H = 56 + altoHeader + altoMeta + altoItems + altoTotalBox + altoFooter;
 
     const canvas = createCanvas(W, H);
@@ -536,14 +551,34 @@ async function renderizarPngReciboMarcaBlanca(datos) {
     y += altoTotalBox;
 
     // Pie limpio de agradecimiento de la tienda
-    ctx.fillStyle = '#64748B';
-    ctx.font = '600 16px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(
-        `Comprobante emitido por ${datos.marca.nombre} · ¡Muchas gracias por tu compra!`,
-        W / 2,
-        y + 26
-    );
+    if (datos.punto_retiro_label) {
+        ctx.fillStyle = datos.marca.color_texto;
+        ctx.font = 'bold 15px sans-serif';
+        ctx.fillText(datos.punto_retiro_label, W / 2, y + 18);
+        let yThanks = y + 44;
+        if (datos.punto_retiro_horario_label) {
+            ctx.fillStyle = '#334155';
+            ctx.font = '600 14.5px sans-serif';
+            ctx.fillText(datos.punto_retiro_horario_label, W / 2, y + 40);
+            yThanks = y + 66;
+        }
+        ctx.fillStyle = '#64748B';
+        ctx.font = '600 15px sans-serif';
+        ctx.fillText(
+            `Comprobante emitido por ${datos.marca.nombre} · ¡Muchas gracias por tu compra!`,
+            W / 2,
+            yThanks
+        );
+    } else {
+        ctx.fillStyle = '#64748B';
+        ctx.font = '600 16px sans-serif';
+        ctx.fillText(
+            `Comprobante emitido por ${datos.marca.nombre} · ¡Muchas gracias por tu compra!`,
+            W / 2,
+            y + 26
+        );
+    }
     ctx.textAlign = 'left';
 
     return canvas.toBuffer('image/png');

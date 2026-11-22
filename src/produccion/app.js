@@ -1760,13 +1760,15 @@ httpServer.listen(PORT, () => {
             console.warn('⚠️ [STARTUP-MANTENIMIENTO-DESCARTE] Advertencia al verificar esquema DESCARTE:', errDesc.message);
         });
 
-    // Esquema Nodos (incluyendo fotos_vidriera / fotos_catalogo_base) y aprovisionamiento + perfiles idempotentes de Paraíso y MANSO
+    // Esquema Nodos (incluyendo fotos_vidriera / fotos_catalogo_base) y aprovisionamiento + perfiles idempotentes de Paraíso, MANSO y MORO
     // Escalonado 2.5s con reintento ante deadlock (40P01) cuando PM2 reinicia simultáneamente LOGISTICA y PRODUCCION
     const { provisionarNodoManso } = require('./scripts/provisionarNodoManso');
+    const { provisionarNodoMoro } = require('./scripts/provisionarNodoMoro');
     const { migrarPerfilesOperativosNodos } = require('./scripts/migrarPerfilesOperativosNodos');
     const ejecutarBootstrapNodosConReintento = async (intento = 1) => {
         try {
             await provisionarNodoManso({ log: true });
+            await provisionarNodoMoro({ log: true });
             await migrarPerfilesOperativosNodos({ log: true });
         } catch (errManso) {
             if (intento < 3 && (errManso?.code === '40P01' || /deadlock/i.test(String(errManso?.message || '')))) {

@@ -13650,6 +13650,16 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "'PORTADAS'::character varying"
+      },
+      "config_retiro_local": {
+        "ordinal_position": 56,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'{}'::jsonb"
       }
     },
     "nodos_movimientos_cta_cte": {

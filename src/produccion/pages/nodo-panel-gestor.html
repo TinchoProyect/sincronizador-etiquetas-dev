@@ -2215,6 +2215,7 @@
       vista: 'inicio', // 'inicio' | 'reparto' | 'ofertas' | 'propuestas' | 'logistica' | 'pedidos' | 'ctacte' | 'liquidacion' | 'compradores'
       filtroPagoPedidos: 'TODOS',
       filtroOperativoPedidos: 'TODOS',
+      busquedaPedidosMostrador: '',
       filtroCompradores: 'TODOS',
       busquedaCompradores: '',
       ofertasEstadoTab: '', // 'ACTIVOS' | 'DESACTIVADOS' | 'TODOS'
@@ -2272,18 +2273,46 @@
       return '$' + Math.round(Number(n) || 0).toLocaleString('es-AR');
     }
 
-    function esPerfilEcommerceGestor(nodoRef = GSTATE.nodo) {
-      const p = String(nodoRef?.perfil_operativo || '').trim().toLowerCase();
-      return p === 'ecommerce_fulfillment';
+    function normalizarPerfilGestor(raw) {
+      const p = String(raw || '').trim().toLowerCase();
+      if (p === 'redes' || p === 'ecommerce_fulfillment' || p === 'creador_online' || p === 'fulfillment_lamda') return 'REDES';
+      if (p === 'locales' || p === 'local' || p === 'comercio_pickup' || p === 'pickup_point' || p === 'local_fisico') return 'LOCALES';
+      return 'VECINOS';
     }
 
     function obtenerModulosActivosGestor(nodoRef = GSTATE.nodo) {
-      const esEc = esPerfilEcommerceGestor(nodoRef);
-      const preset = esEc
-        ? { retiro_punto: false, reparto_zonal: false, hoja_de_ruta: false, envio_paqueteria: true, venta_continua_24_7: true, despacho_desde_lamda: true, canasto_consolidado: false, cobro_efectivo_entrega: false }
-        : { retiro_punto: true, reparto_zonal: true, hoja_de_ruta: true, envio_paqueteria: false, venta_continua_24_7: false, despacho_desde_lamda: false, canasto_consolidado: true, cobro_efectivo_entrega: true };
+      const perf = normalizarPerfilGestor(nodoRef?.perfil_operativo);
+      const preset = perf === 'REDES'
+        ? {
+            retiro_punto: false, reparto_zonal: false, hoja_de_ruta: false, envio_paqueteria: true,
+            venta_continua_24_7: true, despacho_desde_lamda: true, canasto_consolidado: false,
+            cobro_efectivo_entrega: false, mostrador_entrega_rapida: false,
+            checkout_omitir_paso_entrega_si_unico: true, mostrar_horarios_comerciales: false,
+            abastecimiento_modo: 'despacho_correo', etiqueta_zpl_formato: 'postal_fulfillment'
+          }
+        : (perf === 'LOCALES'
+            ? {
+                retiro_punto: true, reparto_zonal: false, hoja_de_ruta: false, envio_paqueteria: false,
+                venta_continua_24_7: false, despacho_desde_lamda: false, canasto_consolidado: true,
+                cobro_efectivo_entrega: false, mostrador_entrega_rapida: true,
+                checkout_omitir_paso_entrega_si_unico: true, mostrar_horarios_comerciales: true,
+                abastecimiento_modo: 'camioneta_lamda', etiqueta_zpl_formato: 'mostrador_local'
+              }
+            : {
+                retiro_punto: true, reparto_zonal: true, hoja_de_ruta: true, envio_paqueteria: false,
+                venta_continua_24_7: false, despacho_desde_lamda: false, canasto_consolidado: true,
+                cobro_efectivo_entrega: true, mostrador_entrega_rapida: false,
+                checkout_omitir_paso_entrega_si_unico: true, mostrar_horarios_comerciales: false,
+                abastecimiento_modo: 'retiro_deposito', etiqueta_zpl_formato: 'vecinal'
+              });
       const raw = (nodoRef?.modulos_activos && typeof nodoRef.modulos_activos === 'object') ? nodoRef.modulos_activos : {};
       return { ...preset, ...raw };
+    }
+
+    function esPerfilEcommerceGestor(nodoRef = GSTATE.nodo) {
+      const n = nodoRef || {};
+      const mod = obtenerModulosActivosGestor(n);
+      return Boolean(mod.envio_paqueteria && !mod.retiro_punto && !mod.reparto_zonal);
     }
 
     function tMarca(nodoRef, clave) {
@@ -2294,6 +2323,7 @@
       }
       const esEc = esPerfilEcommerceGestor(n);
       const mod = obtenerModulosActivosGestor(n);
+      const esMostrador = Boolean(mod.mostrador_entrega_rapida || mod.mostrar_horarios_comerciales);
       const mapa = esEc ? {
         subtitulo_cabecera: 'Envíos a todo el país',
         btn_copiar_link: 'Compartir link',
@@ -2307,6 +2337,21 @@
         bloque_6_heading: 'Liquidaciones y ganancias',
         bloque_7_titulo: 'Clientes de mi tienda',
         bloque_7_heading: 'Clientes de mi tienda',
+        comprador_singular: 'cliente',
+        comprador_plural: 'clientes'
+      } : (esMostrador ? {
+        subtitulo_cabecera: n.config_retiro_local?.direccion_corta ? `Retiro en local · ${n.config_retiro_local.direccion_corta}` : 'Retiro en local',
+        btn_copiar_link: 'Compartir link',
+        bloque_3_titulo: 'Horarios del local y cobros',
+        bloque_3_heading: 'Horarios de mostrador, llegadas y medios de pago',
+        bloque_4_titulo: 'Mostrador y entregas',
+        bloque_4_heading: 'Pedidos y entregas en mostrador',
+        bloque_5_titulo: 'Estado de cuenta operativo',
+        bloque_5_heading: 'Estado de cuenta operativo',
+        bloque_6_titulo: 'Liquidaciones y ganancias',
+        bloque_6_heading: 'Liquidaciones y ganancias',
+        bloque_7_titulo: 'Clientes del local',
+        bloque_7_heading: 'Clientes del local',
         comprador_singular: 'cliente',
         comprador_plural: 'clientes'
       } : {
@@ -2324,7 +2369,7 @@
         bloque_7_heading: 'Clientes de mi tienda',
         comprador_singular: 'vecino',
         comprador_plural: 'vecinos'
-      };
+      });
       return mapa[clave] ?? clave;
     }
 
@@ -6615,6 +6660,9 @@
         `;
       }
 
+      const mod = obtenerModulosActivosGestor();
+      const cfgLocal = (GSTATE.nodo.config_retiro_local && typeof GSTATE.nodo.config_retiro_local === 'object') ? GSTATE.nodo.config_retiro_local : {};
+      const mostrarRepartoControles = Boolean(mod.reparto_zonal || mod.hoja_de_ruta || GSTATE.nodo.permitir_reparto_propio || GSTATE.nodo.permitir_envio_barrial);
       const ventanas = Array.isArray(GSTATE.nodo.config_ventanas_corte) && GSTATE.nodo.config_ventanas_corte.length > 0
         ? GSTATE.nodo.config_ventanas_corte
         : [{ dia_entrega: 'Miércoles', cierre_dia: 'Martes', cierre_hora: '14:00', ventana_retiro: '17:00 a 20:00 hs' }];
@@ -6623,15 +6671,45 @@
 
       return `
         <div class="card">
+          ${mod.mostrar_horarios_comerciales ? `
+            <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:16px;">
+              <div style="font-size:0.94rem; font-weight:900; color:var(--text); margin-bottom:8px;">🏪 Datos y Horario Comercial de Retiro en Mostrador</div>
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px;">
+                <div>
+                  <label style="display:block; font-size:0.78rem; font-weight:800; color:var(--muted); margin-bottom:3px;">Nombre del Local</label>
+                  <input type="text" id="cfg-local-nombre" class="input-sm" style="width:100%;" value="${esc(cfgLocal.nombre_punto || GSTATE.nodo.nombre_marca || '')}" />
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.78rem; font-weight:800; color:var(--muted); margin-bottom:3px;">Dirección visible</label>
+                  <input type="text" id="cfg-local-dir-corta" class="input-sm" style="width:100%;" value="${esc(cfgLocal.direccion_corta || GSTATE.nodo.direccion_retiro || '')}" />
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.78rem; font-weight:800; color:var(--muted); margin-bottom:3px;">Días de atención</label>
+                  <input type="text" id="cfg-local-dias" class="input-sm" style="width:100%;" value="${esc(cfgLocal.dias_atencion || 'Lunes a Viernes')}" />
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.78rem; font-weight:800; color:var(--muted); margin-bottom:3px;">Horario de retiro</label>
+                  <input type="text" id="cfg-local-horario" class="input-sm" style="width:100%;" value="${esc(cfgLocal.horario_atencion || '10:00 a 21:00 hs')}" />
+                </div>
+              </div>
+              <div style="margin-top:8px;">
+                <label style="display:block; font-size:0.78rem; font-weight:800; color:var(--muted); margin-bottom:3px;">Indicaciones en mostrador</label>
+                <input type="text" id="cfg-local-ref" class="input-sm" style="width:100%;" value="${esc(cfgLocal.referencias_mostrador || '')}" />
+              </div>
+            </div>
+          ` : ''}
+
           <p style="margin:0 0 14px 0; font-size:0.84rem; color:var(--muted);">
-            Los pedidos que ingresen después del horario de corte pasan automáticamente a la siguiente fecha de entrega.
+            ${mod.abastecimiento_modo === 'camioneta_lamda'
+              ? 'Días de corte y llegada de pedidos al local. Los pedidos recibidos después del horario de corte pasan automáticamente a la siguiente llegada.'
+              : 'Los pedidos que ingresen después del horario de corte pasan automáticamente a la siguiente fecha de entrega.'}
           </p>
 
           <div id="ventanas-editor-list" style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px;">
             ${ventanas.map((v, idx) => `
               <div class="ventana-item-row" style="display:grid; grid-template-columns: 1fr 1fr 0.8fr 1.3fr auto; gap:10px; align-items:end; background:#fffdfb; border:1px solid var(--border); padding:12px; border-radius:12px;">
                 <div>
-                  <label style="display:block; font-size:0.74rem; font-weight:800; color:var(--muted); margin-bottom:3px;">Día de Entrega</label>
+                  <label style="display:block; font-size:0.74rem; font-weight:800; color:var(--muted); margin-bottom:3px;">${mod.abastecimiento_modo === 'camioneta_lamda' ? 'Día Llegada Local' : 'Día de Entrega'}</label>
                   <select class="input-sm v-dia-entrega" style="width:100%;">
                     ${diasSemana.map(d => `<option value="${d}" ${v.dia_entrega === d ? 'selected' : ''}>${d}</option>`).join('')}
                   </select>
@@ -6647,7 +6725,7 @@
                   <input type="time" class="input-sm v-cierre-hora" style="width:100%;" value="${esc(v.cierre_hora || '14:00')}" />
                 </div>
                 <div>
-                  <label style="display:block; font-size:0.74rem; font-weight:800; color:var(--muted); margin-bottom:3px;">Horario Retiro / Reparto</label>
+                  <label style="display:block; font-size:0.74rem; font-weight:800; color:var(--muted); margin-bottom:3px;">Horario Retiro</label>
                   <input type="text" class="input-sm v-ventana-retiro" style="width:100%;" value="${esc(v.ventana_retiro || '17:00 a 20:00 hs')}" />
                 </div>
                 <button type="button" class="btn-soft" onclick="eliminarVentanaRow(${idx})" title="Quitar día">✕</button>
@@ -6656,7 +6734,7 @@
           </div>
 
           <button type="button" class="btn-soft" onclick="agregarVentanaRow()" style="margin-bottom:16px;">
-            + Agregar otro día de entrega
+            + Agregar otro día
           </button>
 
           <hr style="border:none; border-top:1px solid var(--border); margin:14px 0;" />
@@ -6666,11 +6744,13 @@
               <label style="display:block; font-size:0.94rem; font-weight:800; margin-bottom:6px; color:var(--text);">Domicilio del punto de retiro</label>
               <input type="text" id="cfg-direccion-retiro" class="input-sm" style="width:100%;" value="${esc(GSTATE.nodo.direccion_retiro || '')}" />
             </div>
-            <div id="cfg-cargo-envio-wrap" style="${(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial) ? '' : 'opacity:0.48; transition:opacity 0.15s;'}">
-              <label style="display:block; font-size:0.94rem; font-weight:800; margin-bottom:6px; color:var(--text);">Costo de reparto propio a domicilio ($)</label>
-              <input type="number" step="100" id="cfg-cargo-envio" class="input-sm" style="width:100%;" value="${Number(GSTATE.nodo.cargo_envio_barrial || 0)}" ${(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial) ? '' : 'disabled'} />
-              <div style="font-size:0.86rem; color:var(--ok); font-weight:700; margin-top:5px;">100% acreditado a tu favor cuando activás reparto propio</div>
-            </div>
+            ${mostrarRepartoControles ? `
+              <div id="cfg-cargo-envio-wrap" style="${(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial) ? '' : 'opacity:0.48; transition:opacity 0.15s;'}">
+                <label style="display:block; font-size:0.94rem; font-weight:800; margin-bottom:6px; color:var(--text);">Costo de reparto propio a domicilio ($)</label>
+                <input type="number" step="100" id="cfg-cargo-envio" class="input-sm" style="width:100%;" value="${Number(GSTATE.nodo.cargo_envio_barrial || 0)}" ${(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial) ? '' : 'disabled'} />
+                <div style="font-size:0.86rem; color:var(--ok); font-weight:700; margin-top:5px;">100% acreditado a tu favor cuando activás reparto propio</div>
+              </div>
+            ` : ''}
           </div>
 
           <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:18px;">
@@ -6678,24 +6758,25 @@
             <div class="cfg-switch-card">
               <label class="switch-label">
                 <input type="checkbox" id="cfg-permitir-retiro" ${GSTATE.nodo.permitir_retiro_nodo !== false ? 'checked' : ''} />
-                <span>🏠 Habilitar punto de retiro</span>
+                <span>${mod.mostrar_horarios_comerciales ? '🏪 Habilitar retiro en local sin cargo' : '🏠 Habilitar punto de retiro'}</span>
               </label>
             </div>
-            <div class="cfg-switch-card">
-              <label class="switch-label">
-                <input type="checkbox" id="cfg-permitir-reparto" ${(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial) ? 'checked' : ''} onchange="actualizarEstadoCargoEnvioGestor()" />
-                <span>🚗 Habilitar reparto propio a domicilio</span>
-              </label>
-            </div>
-            <div class="cfg-switch-card">
-              <label class="switch-label">
-                <input type="checkbox" id="cfg-permitir-encomienda" ${GSTATE.nodo.permitir_encomienda ? 'checked' : ''} />
-                <span>📦 Encomienda nacional / correo <span style="font-weight:700; color:var(--muted);">(previsión futura)</span></span>
-              </label>
-              <div style="font-size:0.86rem; color:var(--muted); font-weight:600; padding-left:35px; margin-top:2px;">
-                Deja previsto el perfil postal de tu tienda para la próxima etapa de envíos.
+            ${mostrarRepartoControles ? `
+              <div class="cfg-switch-card">
+                <label class="switch-label">
+                  <input type="checkbox" id="cfg-permitir-reparto" ${(GSTATE.nodo.permitir_reparto_propio ?? GSTATE.nodo.permitir_envio_barrial) ? 'checked' : ''} onchange="actualizarEstadoCargoEnvioGestor()" />
+                  <span>🚗 Habilitar reparto propio a domicilio</span>
+                </label>
               </div>
-            </div>
+            ` : ''}
+            ${mod.envio_paqueteria ? `
+              <div class="cfg-switch-card">
+                <label class="switch-label">
+                  <input type="checkbox" id="cfg-permitir-encomienda" ${GSTATE.nodo.permitir_encomienda ? 'checked' : ''} />
+                  <span>📦 Envíos por Paquetería Nacional</span>
+                </label>
+              </div>
+            ` : ''}
             <div class="cfg-switch-card">
               <label class="switch-label">
                 <input type="checkbox" id="cfg-mostrar-ingredientes" ${GSTATE.nodo.mostrar_ingredientes_tienda !== false ? 'checked' : ''} />
@@ -6752,13 +6833,11 @@
 
     async function guardarConfigLogisticaGestor() {
       const cobroEfectivoSwitch = Boolean(document.getElementById('cfg-cobro-efectivo-entrega')?.checked);
+      const modAct = obtenerModulosActivosGestor();
       if (esPerfilEcommerceGestor()) {
         const cfgPrev = GSTATE.nodo.config_paqueteria || {};
+        // Capa B: jamás pisar overrides de Admin al guardar desde Panel Gestor
         const payloadEc = {
-          permitir_retiro_nodo: false,
-          permitir_reparto_propio: false,
-          permitir_envio_barrial: false,
-          permitir_encomienda: true,
           cobro_efectivo_entrega: cobroEfectivoSwitch,
           mostrar_ingredientes_tienda: Boolean(document.getElementById('cfg-mostrar-ingredientes')?.checked ?? true),
           config_paqueteria: {
@@ -6787,23 +6866,37 @@
         return;
       }
 
-      const permitirRetiro = Boolean(document.getElementById('cfg-permitir-retiro')?.checked);
-      const permitirReparto = Boolean(document.getElementById('cfg-permitir-reparto')?.checked);
-      const permitirEncomienda = Boolean(document.getElementById('cfg-permitir-encomienda')?.checked);
-      if (!permitirRetiro && !permitirReparto) {
-        alert('Activá al menos Punto de retiro o Reparto propio a domicilio para que tus compradores puedan completar pedidos.');
+      const elRetiro = document.getElementById('cfg-permitir-retiro');
+      const elReparto = document.getElementById('cfg-permitir-reparto');
+      const elEncom = document.getElementById('cfg-permitir-encomienda');
+      const permitirRetiro = elRetiro ? Boolean(elRetiro.checked) : Boolean(modAct.retiro_punto);
+      const permitirReparto = elReparto ? Boolean(elReparto.checked) : Boolean(modAct.reparto_zonal);
+      const permitirEncomienda = elEncom ? Boolean(elEncom.checked) : Boolean(modAct.envio_paqueteria);
+      if (!permitirRetiro && !permitirReparto && !permitirEncomienda) {
+        alert('Debe quedar activa al menos una modalidad de entrega en tu tienda.');
         return;
       }
+      const cfgLocalPrev = (GSTATE.nodo.config_retiro_local && typeof GSTATE.nodo.config_retiro_local === 'object') ? GSTATE.nodo.config_retiro_local : {};
       const payload = {
         config_ventanas_corte: leerVentanasDesdeDom(),
-        direccion_retiro: document.getElementById('cfg-direccion-retiro').value.trim(),
-        cargo_envio_barrial: Number(document.getElementById('cfg-cargo-envio').value || 0),
+        direccion_retiro: document.getElementById('cfg-direccion-retiro')?.value?.trim() ?? GSTATE.nodo.direccion_retiro ?? '',
+        cargo_envio_barrial: document.getElementById('cfg-cargo-envio') ? Number(document.getElementById('cfg-cargo-envio').value || 0) : Number(GSTATE.nodo.cargo_envio_barrial || 0),
         permitir_retiro_nodo: permitirRetiro,
         permitir_reparto_propio: permitirReparto,
         permitir_encomienda: permitirEncomienda,
         permitir_envio_barrial: permitirReparto,
         cobro_efectivo_entrega: cobroEfectivoSwitch,
-        mostrar_ingredientes_tienda: Boolean(document.getElementById('cfg-mostrar-ingredientes')?.checked ?? true)
+        mostrar_ingredientes_tienda: Boolean(document.getElementById('cfg-mostrar-ingredientes')?.checked ?? true),
+        ...(document.getElementById('cfg-local-dias') ? {
+          config_retiro_local: {
+            ...cfgLocalPrev,
+            nombre_punto: document.getElementById('cfg-local-nombre')?.value?.trim() || cfgLocalPrev.nombre_punto || GSTATE.nodo.nombre_marca,
+            direccion_corta: document.getElementById('cfg-local-dir-corta')?.value?.trim() || cfgLocalPrev.direccion_corta || '',
+            dias_atencion: document.getElementById('cfg-local-dias')?.value?.trim() || '',
+            horario_atencion: document.getElementById('cfg-local-horario')?.value?.trim() || '',
+            referencias_mostrador: document.getElementById('cfg-local-ref')?.value?.trim() || ''
+          }
+        } : {})
       };
 
       try {
@@ -6894,24 +6987,43 @@
       if (hito === 3) {
         return { texto: `📦 Controlado y embolsado (3/${totalPasos})`, bg: '#e0f2fe', fg: '#0369a1', bd: '#bae6fd' };
       }
+      const modHito = obtenerModulosActivosGestor();
+      const esMostradorHito = Boolean(modHito.mostrador_entrega_rapida);
       if (hito === 4) {
         return esEnvio
           ? { texto: `🏡 Ya en ${marca} · Listo p/ reparto (4/6)`, bg: 'var(--brand-soft)', fg: 'var(--brand-dark)', bd: 'var(--brand-border)' }
-          : { texto: `🎉 Listo p/ retirar en ${marca} (4/5)`, bg: '#dcfce7', fg: '#166534', bd: '#86efac' };
+          : (esMostradorHito
+              ? { texto: `🏪 Listo en mostrador (4/5)`, bg: '#dcfce7', fg: '#166534', bd: '#86efac' }
+              : { texto: `🎉 Listo p/ retirar en ${marca} (4/5)`, bg: '#dcfce7', fg: '#166534', bd: '#86efac' });
       }
       if (hito === 5) {
         return { texto: `🛵 En camino al vecino (5/6)`, bg: '#ede9fe', fg: '#5b21b6', bd: '#c4b5fd' };
       }
-      return { texto: `✅ Entregado (${totalPasos}/${totalPasos})`, bg: '#dcfce7', fg: '#14532d', bd: '#86efac' };
+      return {
+        texto: (!esEnvio && esMostradorHito) ? `✅ Retirado en mostrador (${totalPasos}/${totalPasos})` : `✅ Entregado (${totalPasos}/${totalPasos})`,
+        bg: '#dcfce7', fg: '#14532d', bd: '#86efac'
+      };
+    }
+
+    function filtrarBusquedaMostradorGestor(valor) {
+      GSTATE.busquedaPedidosMostrador = String(valor || '');
+      const q = GSTATE.busquedaPedidosMostrador.trim().toLowerCase();
+      document.querySelectorAll('[data-pedido-mostrador-card]').forEach(el => {
+        const bolsa = String(el.getAttribute('data-pedido-mostrador-search') || '').toLowerCase();
+        el.style.display = (!q || bolsa.includes(q)) ? '' : 'none';
+      });
     }
 
     function renderSeccionPedidos() {
       const esEc = esPerfilEcommerceGestor();
       const mod = obtenerModulosActivosGestor();
+      const esMostrador = Boolean(mod.mostrador_entrega_rapida);
+      const tieneRepartoZonal = Boolean(mod.reparto_zonal || mod.hoja_de_ruta);
+      const esCamionetaLamda = mod.abastecimiento_modo === 'camioneta_lamda';
       const todos = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() !== 'ANULADO');
       const anulados = (GSTATE.pedidos || []).filter(p => String(p.estado_operativo || '').toUpperCase() === 'ANULADO');
 
-      // Detectar lotes controlados en Verificación (Hito 3) pendientes de recepción de 1 toque (solo perfil vecinal con canasto)
+      // Detectar lotes controlados en Verificación (Hito 3) pendientes de recepción de 1 toque (nodos con canasto consolidado)
       const mapaLotes = new Map();
       if (!esEc && mod.canasto_consolidado) {
         for (const p of todos) {
@@ -6983,13 +7095,15 @@
           <div style="display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap;">
             <div style="flex:1; min-width:220px;">
               <div style="font-size:0.86rem; font-weight:900; color:#15803d; text-transform:uppercase; letter-spacing:0.03em;">
-                📦 Lote controlado · Listo para recibir en ${esc(GSTATE.nodo?.nombre_marca || 'tu punto de retiro')}
+                ${esCamionetaLamda ? `🚐 Lote listo / en camino al local · ${esc(GSTATE.nodo?.nombre_marca || 'Local')}` : `📦 Lote controlado · Listo para recibir en ${esc(GSTATE.nodo?.nombre_marca || 'tu punto de retiro')}`}
               </div>
               <div style="font-size:1.15rem; font-weight:900; color:#14532d; margin-top:4px;">
-                ${esc(l.codigo_canasto)} (${l.pedidos.length} ${l.pedidos.length === 1 ? 'bolsa de vecino' : 'bolsas de vecinos'})
+                ${esc(l.codigo_canasto)} (${l.pedidos.length} ${l.pedidos.length === 1 ? (esMostrador ? 'paquete de cliente' : 'bolsa de vecino') : (esMostrador ? 'paquetes de clientes' : 'bolsas de vecinos')})
               </div>
               <div style="font-size:0.94rem; color:#166534; font-weight:600; margin-top:4px; line-height:1.4;">
-                Al confirmar la recepción, los vecinos verán en vivo que su pedido ya llegó al barrio y podrás marcar salidas a reparto o entregas en 1 toque.
+                ${esMostrador
+                  ? 'Al confirmar la recepción (o cuando el reparto entrega el lote), cada cliente verá en vivo que su pedido está listo para retirar en mostrador.'
+                  : 'Al confirmar la recepción, los vecinos verán en vivo que su pedido ya llegó al barrio y podrás marcar salidas a reparto o entregas en 1 toque.'}
               </div>
             </div>
             <button type="button" id="btn-recibir-lote-${l.canasto_id}" onclick="confirmarRecepcionLoteGestor(${l.canasto_id})"
@@ -7060,6 +7174,17 @@
         ${bannersPrepHtml}
 
         <div class="card">
+          ${esMostrador ? `
+            <div style="margin-bottom:12px;">
+              <input type="search" id="input-busqueda-mostrador" data-testid="input-busqueda-mostrador"
+                class="input-sm"
+                style="width:100%; font-size:0.95rem; font-weight:700; padding:10px 14px; border:1.5px solid var(--brand-border); background:#ffffff;"
+                placeholder="🔎 Buscar cliente por apellido, nombre o #NB-..."
+                value="${esc(GSTATE.busquedaPedidosMostrador || '')}"
+                oninput="filtrarBusquedaMostradorGestor(this.value)" />
+            </div>
+          ` : ''}
+
           <!-- Filtros por etapa operativa -->
           <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('TODOS')"
@@ -7078,16 +7203,18 @@
             ` : `
               <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('EN_NODO')"
                 style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'EN_NODO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
-                🏡 En punto de retiro (${cantEnNodo})
+                ${esMostrador ? `🏪 En mostrador / Listos para retirar (${cantEnNodo})` : `🏡 En punto de retiro (${cantEnNodo})`}
               </button>
-              <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('REPARTO')"
-                style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'REPARTO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
-                🛵 En camino (${cantReparto})
-              </button>
+              ${tieneRepartoZonal ? `
+                <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('REPARTO')"
+                  style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'REPARTO' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
+                  🛵 En camino (${cantReparto})
+                </button>
+              ` : ''}
             `}
             <button type="button" class="btn-soft" onclick="filtrarEstadoOperativoPedidosGestor('ENTREGADOS')"
               style="min-height:36px; font-size:0.82rem; padding:6px 10px; ${GSTATE.filtroOperativoPedidos === 'ENTREGADOS' ? 'background:var(--brand); color:#fff; border-color:var(--brand);' : ''}">
-              ✅ Entregados (${cantEntregados})
+              ✅ ${esMostrador ? 'Retirados' : 'Entregados'} (${cantEntregados})
             </button>
           </div>
 
@@ -7138,10 +7265,14 @@
               const urlCarrier = String(p.postal_url_tracking_carrier || '').trim();
               const lineaEntregaHtml = esPostal
                 ? `🚚 <strong>${esc(opLbl)}</strong> · ${String(p.postal_modalidad || modUpper).includes('SUCURSAL') ? '🏢 Sucursal' : '📦 Domicilio'}: ${esc([p.postal_localidad_nombre, p.postal_provincia_nombre].filter(Boolean).join(', ') || p.direccion_entrega || '')}${p.postal_cp_destino ? ` (CP ${esc(p.postal_cp_destino)})` : ''}${guiaPostal ? ` · <strong>Guía #${esc(guiaPostal)}</strong>` : ''}`
-                : `${esc(p.fecha_entrega_label)} · ${esEnvio ? `🛵 ${Boolean(p.incluido_reparto_manual) && modUpper === 'RETIRO_NODO' ? 'Reparto manual' : 'Envío'}: ${esc(p.direccion_entrega)}${p.entrecalles_referencia ? ` (${esc(p.entrecalles_referencia)})` : ''}` : '🏠 Punto de retiro'}`;
+                : `${esc(p.fecha_entrega_label)} · ${esEnvio ? `🛵 ${Boolean(p.incluido_reparto_manual) && modUpper === 'RETIRO_NODO' ? 'Reparto manual' : 'Envío'}: ${esc(p.direccion_entrega)}${p.entrecalles_referencia ? ` (${esc(p.entrecalles_referencia)})` : ''}` : (esMostrador ? '🏪 Retira en mostrador' : '🏠 Punto de retiro')}`;
+
+              const qBusqMostrador = String(GSTATE.busquedaPedidosMostrador || '').trim().toLowerCase();
+              const bolsaBusquedaPed = `${p.codigo_pedido || ''} ${p.vecino_nombre || ''} ${p.vecino_telefono || ''}`.toLowerCase();
+              const ocultoPorBusq = esMostrador && qBusqMostrador && !bolsaBusquedaPed.includes(qBusqMostrador);
 
               return `
-                <div style="border:1px solid ${hito >= 6 ? 'rgba(22,163,74,0.45)' : (pagado ? 'rgba(47,111,78,0.4)' : 'var(--border)')}; border-radius:12px; padding:12px; background:#fffdfb;">
+                <div data-pedido-mostrador-card="${p.id}" data-pedido-mostrador-search="${esc(bolsaBusquedaPed)}" style="${ocultoPorBusq ? 'display:none;' : ''} border:1px solid ${hito >= 6 ? 'rgba(22,163,74,0.45)' : (pagado ? 'rgba(47,111,78,0.4)' : 'var(--border)')}; border-radius:12px; padding:12px; background:#fffdfb;">
                   <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
                     <div style="flex:1; min-width:190px;">
                       <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
@@ -7183,9 +7314,9 @@
                         </button>
                       ` : ''}
                       ${puedeMarcarEntregado ? `
-                        <button type="button" onclick="tocarBotonEntregadoGestor(${p.id})"
-                          style="flex:1; min-width:150px; min-height:40px; padding:8px 12px; border-radius:9px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.88rem; cursor:pointer;">
-                          ${pagado ? '✅ Marcar Entregado' : `✅ Entregado${esEfvo ? ' / Cobrar' : ''}`}
+                        <button type="button" data-testid="btn-entregar-pedido-gestor-${p.id}" onclick="tocarBotonEntregadoGestor(${p.id})"
+                          style="flex:1; min-width:150px; min-height:42px; padding:8px 14px; border-radius:9px; border:none; background:#16a34a; color:#ffffff; font-family:inherit; font-weight:900; font-size:0.9rem; cursor:pointer;">
+                          ${pagado ? (esMostrador ? '✅ Entregado en mostrador' : '✅ Marcar Entregado') : `✅ Entregado${esEfvo ? ' / Cobrar' : ''}`}
                         </button>
                       ` : ''}
                     </div>

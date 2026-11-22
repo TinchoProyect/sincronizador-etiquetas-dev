@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <rect width="1024" height="1024" rx="72" fill="#1E1E1C"/>
+  <rect x="44" y="44" width="936" height="936" rx="48" fill="none" stroke="#B8894A" stroke-width="6" opacity="0.72"/>
+  <g transform="translate(154, 306) scale(1.66)">
+    
+    <path d="M0,162 V18 H20 L56,94 L92,18 H112 V162 H93 V54 L62,122 H50 L19,54 V162 Z" fill="#F7F5F0"/>
+    <path d="M176,18 H178 A40,40 0 0 1 218,58 V122 A40,40 0 0 1 178,162 H176 A40,40 0 0 1 136,122 V58 A40,40 0 0 1 176,18 Z M176,37 H178 A21,21 0 0 1 199,58 V122 A21,21 0 0 1 178,143 H176 A21,21 0 0 1 155,122 V58 A21,21 0 0 1 176,37 Z" fill="#F7F5F0" fill-rule="evenodd"/>
+    <path d="M148.5,0 H205.5 A1.5,1.5 0 0 1 207,1.5 V8.5 A1.5,1.5 0 0 1 205.5,10 H148.5 A1.5,1.5 0 0 1 147,8.5 V1.5 A1.5,1.5 0 0 1 148.5,0 Z" fill="#D4A96A"/>
+    <path d="M242,162 V18 H288 A36,41 0 0 1 324,59 A36,41 0 0 1 292,99 L326,162 H304 L275,100 H261 V162 Z M261,37 H287 A18,22 0 0 1 305,59 A18,22 0 0 1 287,81 H261 Z" fill="#F7F5F0" fill-rule="evenodd"/>
+    <path d="M387,4 H391 A39,39 0 0 1 430,43 V105 A39,39 0 0 1 391,144 H387 A39,39 0 0 1 348,105 V43 A39,39 0 0 1 387,4 Z M387,23 H391 A20,20 0 0 1 411,43 V105 A20,20 0 0 1 391,125 H387 A20,20 0 0 1 367,105 V43 A20,20 0 0 1 387,23 Z" fill="#F7F5F0" fill-rule="evenodd"/>
+    <path d="M360.5,152 H417.5 A1.5,1.5 0 0 1 419,153.5 V160.5 A1.5,1.5 0 0 1 417.5,162 H360.5 A1.5,1.5 0 0 1 359,160.5 V153.5 A1.5,1.5 0 0 1 360.5,152 Z" fill="#D4A96A"/>
+  
+  </g>
+  <rect x="192" y="618" width="640" height="4" rx="2" fill="#B8894A"/>
+  <g transform="translate(229.70,660.00) scale(2.0500)"><path d="M0.5,16 L6,0.5 L11.5,16 M2.4,11.2 H9.6" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(265.30,660.00) scale(2.0500)"><path d="M1,0.5 V15.5 H9.5" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(295.77,660.00) scale(2.0500)"><path d="M1,16 V1 L7,10.5 L13,1 V16" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(335.47,660.00) scale(2.0500)"><path d="M0.5,16 L6,0.5 L11.5,16 M2.4,11.2 H9.6" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(371.07,660.00) scale(2.0500)"><path d="M10.5,3.2 C9.3,1.4 7.6,0.6 5.8,0.6 C2.6,0.6 0.8,3.6 0.8,8.2 C0.8,12.8 2.6,15.6 5.8,15.6 C7.7,15.6 9.3,14.8 10.5,13" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(404.62,660.00) scale(2.0500)"><path d="M9.5,1 H1 V15.5 H9.5 M1,8.1 H8.2 M4.2,-1.6 L7.2,-4.4" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(436.12,660.00) scale(2.0500)"><path d="M1,16 V1 L10.5,15.5 V0.5" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(496.05,660.00) scale(2.0500)"><path d="M1,1 V15.5 H5.5 C9.2,15.5 11,12.7 11,8.2 C11,3.7 9.2,1 5.5,1 Z" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(530.62,660.00) scale(2.0500)"><path d="M9.5,1 H1 V15.5 H9.5 M1,8.1 H8.2" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(587.47,660.00) scale(2.0500)"><path d="M1,1 V15.5 H6.4 C9,15.5 10.4,14 10.4,11.7 C10.4,9.6 9.1,8.3 6.8,8.1 H1 M6.2,8.1 C8.5,7.9 9.7,6.6 9.7,4.5 C9.7,2.3 8.4,1 6,1 H1" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(620.61,660.00) scale(2.0500)"><path d="M9.5,1 H1 V15.5 H9.5 M1,8.1 H8.2" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(652.11,660.00) scale(2.0500)"><path d="M1,1 V15.5 H6.4 C9,15.5 10.4,14 10.4,11.7 C10.4,9.6 9.1,8.3 6.8,8.1 H1 M6.2,8.1 C8.5,7.9 9.7,6.6 9.7,4.5 C9.7,2.3 8.4,1 6,1 H1" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(685.25,660.00) scale(2.0500)"><path d="M1.6,0.5 V16" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(702.81,660.00) scale(2.0500)"><path d="M1,1 V15.5 H5.5 C9.2,15.5 11,12.7 11,8.2 C11,3.7 9.2,1 5.5,1 Z" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(737.39,660.00) scale(2.0500)"><path d="M0.5,16 L6,0.5 L11.5,16 M2.4,11.2 H9.6" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+<g transform="translate(772.99,660.00) scale(2.0500)"><path d="M9.6,3.2 C8.8,1.5 7.2,0.7 5.2,0.7 C2.6,0.7 1,2.2 1,4.3 C1,6.5 2.5,7.4 5.5,8.2 C8.5,9 10,10.1 10,12.2 C10,14.4 8.1,15.7 5.3,15.7 C3,15.7 1.3,14.7 0.5,12.9" fill="none" stroke="#F7F5F0" stroke-width="1.659" stroke-linecap="butt" stroke-linejoin="bevel"/></g>
+</svg>

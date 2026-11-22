@@ -335,14 +335,14 @@ async function asegurarEsquemaPagosBancariosNodos(runner = null, opciones = {}) 
             ]
         );
 
-        // Inicializar una única vez cobro_efectivo_entrega cuando es NULL (paraiso/vecinal=true, manso/ecommerce_fulfillment=false)
+        // Inicializar una única vez cobro_efectivo_entrega cuando es NULL (VECINOS=true, REDES/LOCALES=false)
         await client.query(`
             UPDATE public.nodos_maestro
             SET cobro_efectivo_entrega = CASE
-                WHEN LOWER(COALESCE(slug, '')) = 'manso' THEN false
+                WHEN LOWER(COALESCE(slug, '')) IN ('manso', 'moro') THEN false
                 WHEN LOWER(COALESCE(slug, '')) = 'paraiso' THEN true
                 WHEN modulos_activos ? 'cobro_efectivo_entrega' THEN COALESCE((modulos_activos->>'cobro_efectivo_entrega')::boolean, false)
-                WHEN LOWER(COALESCE(perfil_operativo, 'vecinal')) = 'ecommerce_fulfillment' THEN false
+                WHEN UPPER(COALESCE(perfil_operativo, 'VECINOS')) IN ('REDES', 'ECOMMERCE_FULFILLMENT', 'LOCALES') THEN false
                 ELSE true
             END
             WHERE cobro_efectivo_entrega IS NULL;
@@ -1521,11 +1521,15 @@ async function ingestarExtractoGaliciaParaNodos(fileBuffer, filtros = {}) {
  * al lote abierto vigente del nodo o a su próxima ventana de entrega para que jamás quede huérfano.
  */
 async function _asegurarVentanaCanastoVigenteAlConciliarVecinal(client, pedRow, helpers) {
-    const perfil = String(pedRow.perfil_operativo || 'vecinal').toLowerCase();
+    const perfil = String(pedRow.perfil_operativo || 'VECINOS').toUpperCase();
     const modulos = (pedRow.modulos_activos && typeof pedRow.modulos_activos === 'object') ? pedRow.modulos_activos : {};
+    const modEntregaUpper = String(pedRow.modalidad_entrega || '').toUpperCase();
+    if (['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(modEntregaUpper)) {
+        return null;
+    }
     const usaCanasto = modulos.canasto_consolidado !== undefined
         ? Boolean(modulos.canasto_consolidado)
-        : (perfil !== 'ecommerce_fulfillment');
+        : !['REDES', 'ECOMMERCE_FULFILLMENT'].includes(perfil);
     if (!usaCanasto) return null;
 
     // Consultar si existe lote para su fecha_entrega_label actual
@@ -1992,10 +1996,15 @@ async function conciliarCreditosBancariosNodos(payload = {}, helpers = {}) {
                 await _asegurarVentanaCanastoVigenteAlConciliarVecinal(client, ped, helpers);
 
                 if (helpers.registrarTransicionHitoPedidoVecino && Number(ped.hito_tracking_actual || 1) < 2) {
+                    const modsPed = (ped.modulos_activos && typeof ped.modulos_activos === 'object') ? ped.modulos_activos : {};
+                    const perfilUp = String(ped.perfil_operativo || 'VECINOS').toUpperCase();
+                    const usaCanastoPed = modsPed.canasto_consolidado !== undefined
+                        ? Boolean(modsPed.canasto_consolidado)
+                        : !['REDES', 'ECOMMERCE_FULFILLMENT'].includes(perfilUp);
                     const esFulfillment = !ped.lote_canasto_id && (
                         Boolean(ped.envio_postal_id) ||
-                        String(ped.perfil_operativo || '').toLowerCase() === 'ecommerce_fulfillment' ||
-                        ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA'].includes(String(ped.modalidad_entrega || '').toUpperCase())
+                        ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(String(ped.modalidad_entrega || '').toUpperCase()) ||
+                        !usaCanastoPed
                     );
                     await helpers.registrarTransicionHitoPedidoVecino(client, ped.id, 2, {
                         estadoOverride: esFulfillment ? 'EN_PREPARACION' : 'CONFIRMADO_VECINO',

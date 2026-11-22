@@ -41,8 +41,9 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
     const { rows } = await db.query(
         `SELECT id, codigo_nodo, slug, nombre_marca, subtitulo_marca, bajada_marca,
                 color_primario, tema_visual, logo_original_base64, logo_mono_preview_base64,
-                logo_zpl_gfa, logo_zpl_config,
-                perfil_operativo, modulos_activos, config_paqueteria, diccionario_textos,
+                logo_zpl_gfa, logo_zpl_config, direccion_retiro,
+                perfil_operativo, modulos_activos, config_paqueteria, config_retiro_local, diccionario_textos,
+                cobro_efectivo_entrega,
                 permitir_retiro_nodo, permitir_reparto_propio, permitir_envio_barrial, permitir_encomienda
          FROM public.nodos_maestro
          ORDER BY id ASC`
@@ -53,8 +54,9 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
         const slugLower = String(row.slug || '').trim().toLowerCase();
 
         if (slugLower === 'manso') {
-            const yaEsFulfillment = String(row.perfil_operativo || '').trim().toLowerCase() === 'ecommerce_fulfillment';
+            const yaEsRedes = String(row.perfil_operativo || '').trim() === 'REDES';
             const tieneModulos = row.modulos_activos && typeof row.modulos_activos === 'object' && Object.keys(row.modulos_activos).length > 0;
+            const tieneNuevasPerillas = Boolean(row.modulos_activos?.abastecimiento_modo && row.modulos_activos?.etiqueta_zpl_formato);
             const tienePaq = row.config_paqueteria && typeof row.config_paqueteria === 'object' && Object.keys(row.config_paqueteria).length > 0;
             const subRaw = String(row.subtitulo_marca || '').trim();
             const subTieneJergaBarrial = !subRaw || /barrial|barrio|vecin|comunidad/i.test(subRaw);
@@ -88,22 +90,12 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
                 Number(cfgZplActual?.height || 0) !== cfgZplOficial.height ||
                 !String(row.logo_zpl_gfa || '').startsWith(gfaPrefixOficial);
 
-            const modulosManso = nodosService.resolverModulosActivosNodo(
-                {
-                    perfil_operativo: 'ecommerce_fulfillment',
-                    modulos_activos: yaEsFulfillment && tieneModulos ? row.modulos_activos : {}
-                },
-                {
-                    retiro_punto: false,
-                    reparto_zonal: false,
-                    hoja_de_ruta: false,
-                    envio_paqueteria: true,
-                    venta_continua_24_7: true,
-                    despacho_desde_lamda: true,
-                    canasto_consolidado: false,
-                    cobro_efectivo_entrega: false
-                }
-            );
+            // Preserva overrides existentes de Capa B completando solo perillas nuevas desde preset REDES
+            const modulosManso = nodosService.resolverModulosActivosNodo({
+                perfil_operativo: 'REDES',
+                modulos_activos: tieneModulos ? row.modulos_activos : {},
+                cobro_efectivo_entrega: row.cobro_efectivo_entrega ?? false
+            });
 
             const configPaqManso = nodosService.normalizarConfigPaqueteria(
                 tienePaq ? row.config_paqueteria : nodosService.obtenerConfigPaqueteriaDefault()
@@ -139,26 +131,23 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
             }
 
             const requiereUpdate =
-                !yaEsFulfillment ||
+                !yaEsRedes ||
                 !tieneModulos ||
+                !tieneNuevasPerillas ||
                 !tienePaq ||
                 subTieneJergaBarrial ||
                 subEsDefaultGenerico ||
                 !String(row.bajada_marca || '').trim() ||
-                faltaIdentidadOficialManso ||
-                row.permitir_retiro_nodo !== false ||
-                row.permitir_reparto_propio !== false ||
-                row.permitir_envio_barrial !== false ||
-                row.permitir_encomienda !== true;
+                faltaIdentidadOficialManso;
 
             if (requiereUpdate) {
                 await db.query(
                     `UPDATE public.nodos_maestro SET
-                        perfil_operativo = 'ecommerce_fulfillment',
-                        permitir_retiro_nodo = false,
-                        permitir_reparto_propio = false,
-                        permitir_envio_barrial = false,
-                        permitir_encomienda = true,
+                        perfil_operativo = 'REDES',
+                        permitir_retiro_nodo = $12,
+                        permitir_reparto_propio = $13,
+                        permitir_envio_barrial = $13,
+                        permitir_encomienda = $14,
                         subtitulo_marca = $2,
                         bajada_marca = $3,
                         color_primario = $4,
@@ -182,38 +171,47 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
                         zplGfaFinal,
                         JSON.stringify(cfgZplOficial),
                         JSON.stringify(modulosManso),
-                        JSON.stringify(configPaqManso)
+                        JSON.stringify(configPaqManso),
+                        Boolean(modulosManso.retiro_punto),
+                        Boolean(modulosManso.reparto_zonal),
+                        Boolean(modulosManso.envio_paqueteria)
                     ]
                 );
                 actualizados.push({
                     id: row.id,
                     slug: row.slug,
-                    perfil_operativo: 'ecommerce_fulfillment',
+                    perfil_operativo: 'REDES',
                     color_primario: nuevoColor
                 });
             }
         } else {
-            // Paraíso y cualquier otro nodo vecinal previo conservan perfil_operativo = 'vecinal' y sus flags intactos
-            const perfilActual = nodosService.normalizarPerfilOperativoNodo(row.perfil_operativo || 'vecinal');
-            if (perfilActual === 'vecinal') {
-                const tieneModulos = row.modulos_activos && typeof row.modulos_activos === 'object' && Object.keys(row.modulos_activos).length > 0;
-                if (!tieneModulos || !row.perfil_operativo) {
-                    const modulosVecinal = nodosService.resolverModulosActivosNodo({
-                        perfil_operativo: 'vecinal',
-                        permitir_retiro_nodo: row.permitir_retiro_nodo !== false,
-                        permitir_reparto_propio: Boolean(row.permitir_reparto_propio ?? row.permitir_envio_barrial ?? true),
-                        permitir_encomienda: Boolean(row.permitir_encomienda)
-                    });
-                    await db.query(
-                        `UPDATE public.nodos_maestro SET
-                            perfil_operativo = 'vecinal',
-                            modulos_activos = $2::jsonb,
-                            updated_at = NOW()
-                         WHERE id = $1`,
-                        [row.id, JSON.stringify(modulosVecinal)]
-                    );
-                    actualizados.push({ id: row.id, slug: row.slug, perfil_operativo: 'vecinal' });
-                }
+            // Paraíso -> VECINOS, Moro -> LOCALES y cualquier otro nodo normalizan su perfil canónico
+            // preservando 100% de sus overrides de Capa B y su estética actual
+            const perfilCanon = slugLower === 'moro'
+                ? 'LOCALES'
+                : nodosService.normalizarPerfilOperativoNodo(row.perfil_operativo || 'VECINOS');
+            const tieneModulos = row.modulos_activos && typeof row.modulos_activos === 'object' && Object.keys(row.modulos_activos).length > 0;
+            const tieneNuevasPerillas = Boolean(row.modulos_activos?.abastecimiento_modo && row.modulos_activos?.etiqueta_zpl_formato);
+            const perfilExacto = String(row.perfil_operativo || '').trim() === perfilCanon;
+            if (!perfilExacto || !tieneModulos || !tieneNuevasPerillas) {
+                const modulosCanon = nodosService.resolverModulosActivosNodo({
+                    perfil_operativo: perfilCanon,
+                    modulos_activos: tieneModulos ? row.modulos_activos : {},
+                    cobro_efectivo_entrega: row.cobro_efectivo_entrega,
+                    permitir_retiro_nodo: row.permitir_retiro_nodo,
+                    permitir_reparto_propio: row.permitir_reparto_propio,
+                    permitir_envio_barrial: row.permitir_envio_barrial,
+                    permitir_encomienda: row.permitir_encomienda
+                });
+                await db.query(
+                    `UPDATE public.nodos_maestro SET
+                        perfil_operativo = $2,
+                        modulos_activos = $3::jsonb,
+                        updated_at = NOW()
+                     WHERE id = $1`,
+                    [row.id, perfilCanon, JSON.stringify(modulosCanon)]
+                );
+                actualizados.push({ id: row.id, slug: row.slug, perfil_operativo: perfilCanon });
             }
         }
     }
