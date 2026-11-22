@@ -778,6 +778,9 @@
         const sel = Number(n.id) === Number(CSTATE.nodoSeleccionadoId);
         const usaMadre = n.contabilidad.usar_cuenta_madre_unificada;
         const perfilN = normalizarPerfilCentro(n.perfil_operativo);
+        const modN = (n.modulos_activos && typeof n.modulos_activos === 'object') ? n.modulos_activos : {};
+        const esFulfillment = perfilN === 'REDES' || Boolean(modN.despacho_desde_lamda && !modN.canasto_consolidado);
+        const esLocalCard = perfilN === 'LOCALES' || (Boolean(modN.retiro_punto) && !Boolean(modN.reparto_zonal) && !Boolean(modN.envio_paqueteria));
         const badgePerfil = perfilN === 'REDES'
           ? `<span class="badge-pill" style="background:#fef3c7; color:#92400e;">🚀 REDES · Tienda Online</span>`
           : (perfilN === 'LOCALES'
@@ -800,7 +803,7 @@
                   ${esc(n.nombre_marca)}
                 </div>
                 <div style="font-size:0.78rem; color:var(--muted); margin-top:1px;">
-                  👤 ${esc(n.gestor_nombre || 'Sin referente')} · ${esFulfillment ? '🚚 Cobertura Nacional' : `📍 ${esc(n.barrio_zona || 'Sin zona')}`}
+                  👤 ${esc(n.gestor_nombre || 'Sin referente')} · ${esFulfillment ? '🚚 Cobertura Nacional' : (esLocalCard ? `🏪 ${esc(n.config_retiro_local?.direccion_corta || n.barrio_zona || 'Local físico')}` : `📍 ${esc(n.barrio_zona || 'Sin zona')}`)}
                 </div>
               </div>
               <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
@@ -822,7 +825,7 @@
             <div style="margin-top:9px; padding:8px 0 0 6px; border-top:1px dashed var(--border); display:flex; gap:8px; flex-wrap:wrap; font-size:0.74rem; font-weight:700; color:#475569;">
               <span>📦 ${n.comercial.pedidos_activos} activos</span>
               <span>·</span>
-              <span>${esFulfillment ? '🚚 Fulfillment 24/7' : `🧺 ${n.comercial.canastos_en_curso} canastos`}</span>
+              <span>${esFulfillment ? '🚚 Fulfillment 24/7' : (esLocalCard ? `🚐 ${n.comercial.canastos_en_curso} lotes a local` : `🧺 ${n.comercial.canastos_en_curso} canastos`)}</span>
               <span>·</span>
               <span>📡 ${n.comercial.visitantes_reales_hoy} visitas hoy</span>
               ${n.comercial.carritos_sin_cerrar > 0 ? `<span style="color:#b45309;">· 🛒 ${n.comercial.carritos_sin_cerrar} en carrito</span>` : ''}
