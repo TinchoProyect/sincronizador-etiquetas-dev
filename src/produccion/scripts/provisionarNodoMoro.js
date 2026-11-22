@@ -213,7 +213,7 @@ async function provisionarNodoMoro(opciones = {}) {
             cargo_envio_barrial: 0,
             margen_gestor_default_pct: 28,
             config_ventanas_corte: MORO_VENTANAS_CORTE,
-            color_primario: '#1E1E1C',
+            color_primario: '#182132',
             latitud: -34.903948,
             longitud: -57.964282,
             logo_original_base64: zebraDataUrl,

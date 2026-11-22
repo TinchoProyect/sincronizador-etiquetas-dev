@@ -567,25 +567,25 @@ function leerLogoZebraMansoDataUrl() {
     return null;
 }
 
-// Paleta oficial Bodega Urbana de MORO (Pizarra Mate #1E1E1C + Piedra Cálida #F7F5F0 + Madera Barrica #B8894A)
+// Paleta oficial extraída de los SVG vectoriales definitivos de MORO (Azul Noche Pizarra #182132 + Gris Hielo #9BA2B8)
 const TEMA_VISUAL_MORO_OFICIAL = {
     paleta: {
-        primario: '#1E1E1C',
-        primario_oscuro: '#111110',
-        terracota: '#1E1E1C',
-        terracota_oscuro: '#111110',
-        ocre: '#B8894A',
-        pistacho: '#2D5A3C',
-        pistacho_texto: '#2D5A3C',
-        pistacho_suave: '#EAF2EC',
-        amarillo_sol: '#D4A96A',
-        fondo: '#F7F5F0',
-        fondo_icono_tienda: '#1E1E1C',
-        superficie_calida: '#EFEAE0',
+        primario: '#182132',
+        primario_oscuro: '#111826',
+        terracota: '#182132',
+        terracota_oscuro: '#111826',
+        ocre: '#5C6E91',
+        pistacho: '#4E7F6B',
+        pistacho_texto: '#235342',
+        pistacho_suave: '#EAF3EF',
+        amarillo_sol: '#9BA2B8',
+        fondo: '#F4F6FA',
+        fondo_icono_tienda: '#182132',
+        superficie_calida: '#E9EDF5',
         tarjeta: '#FFFFFF',
-        texto: '#1E1E1C',
-        texto_secundario: '#5C574F',
-        borde: '#DFD8C8'
+        texto: '#182132',
+        texto_secundario: '#525C73',
+        borde: '#D5DCE8'
     },
     tipografia: {
         familia: "'Nunito', sans-serif",
@@ -612,11 +612,11 @@ const TEMA_VISUAL_MORO_OFICIAL = {
 };
 
 const LOGO_ZPL_CONFIG_MORO_OFICIAL = {
-    width: 280,
+    width: 368,
     height: 58,
-    threshold: 150,
+    threshold: 145,
     mode: 'threshold',
-    padding: 2,
+    padding: 4,
     invert: false,
     modo_cabecera: 'banner_completo',
     iniciales: 'MO'

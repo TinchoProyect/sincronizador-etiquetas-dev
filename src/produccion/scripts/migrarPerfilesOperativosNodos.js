@@ -184,12 +184,121 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
                     color_primario: nuevoColor
                 });
             }
+        } else if (slugLower === 'moro') {
+            const yaEsLocales = String(row.perfil_operativo || '').trim() === 'LOCALES';
+            const tieneModulos = row.modulos_activos && typeof row.modulos_activos === 'object' && Object.keys(row.modulos_activos).length > 0;
+            const tieneNuevasPerillas = Boolean(row.modulos_activos?.abastecimiento_modo && row.modulos_activos?.etiqueta_zpl_formato);
+
+            const tvActual = (row.tema_visual && typeof row.tema_visual === 'object') ? row.tema_visual : {};
+            const cfgZplActual = (row.logo_zpl_config && typeof row.logo_zpl_config === 'object') ? row.logo_zpl_config : {};
+            const temaOficial = nodosService.TEMA_VISUAL_MORO_OFICIAL;
+            const cfgZplOficial = nodosService.LOGO_ZPL_CONFIG_MORO_OFICIAL;
+            const zebraDataUrl = nodosService.leerLogoZebraMoroDataUrl();
+            const gfaBytesPerRow = Math.ceil(cfgZplOficial.width / 8);
+            const gfaTotalBytes = gfaBytesPerRow * cfgZplOficial.height;
+            const gfaPrefixOficial = `^GFA,${gfaTotalBytes},${gfaTotalBytes},${gfaBytesPerRow},`;
+
+            const colorPrimarioActual = String(row.color_primario || '').trim().toLowerCase();
+            const faltaIdentidadOficialMoro =
+                !colorPrimarioActual ||
+                colorPrimarioActual === '#1e1e1c' ||
+                colorPrimarioActual !== '#182132' ||
+                tvActual?.logo_incluye_texto !== true ||
+                tvActual?.logos?.principal !== temaOficial.logos.principal ||
+                tvActual?.logos?.horizontal !== temaOficial.logos.horizontal ||
+                tvActual?.logos?.vertical !== temaOficial.logos.vertical ||
+                tvActual?.logos?.isotipo !== temaOficial.logos.isotipo ||
+                tvActual?.logos?.og_share !== temaOficial.logos.og_share ||
+                tvActual?.logos?.favicon_svg !== temaOficial.logos.favicon_svg ||
+                tvActual?.paleta?.primario !== temaOficial.paleta.primario ||
+                tvActual?.paleta?.primario_oscuro !== temaOficial.paleta.primario_oscuro ||
+                tvActual?.paleta?.terracota !== temaOficial.paleta.terracota ||
+                tvActual?.paleta?.fondo !== temaOficial.paleta.fondo ||
+                tvActual?.paleta?.superficie_calida !== temaOficial.paleta.superficie_calida ||
+                tvActual?.paleta?.ocre !== temaOficial.paleta.ocre ||
+                tvActual?.paleta?.amarillo_sol !== temaOficial.paleta.amarillo_sol ||
+                tvActual?.paleta?.pistacho !== temaOficial.paleta.pistacho ||
+                tvActual?.paleta?.borde !== temaOficial.paleta.borde ||
+                cfgZplActual?.modo_cabecera !== 'banner_completo' ||
+                Number(cfgZplActual?.width || 0) !== cfgZplOficial.width ||
+                Number(cfgZplActual?.height || 0) !== cfgZplOficial.height ||
+                Number(cfgZplActual?.padding ?? -1) !== cfgZplOficial.padding ||
+                !String(row.logo_zpl_gfa || '').startsWith(gfaPrefixOficial) ||
+                (Boolean(zebraDataUrl) && String(row.logo_original_base64 || '') !== zebraDataUrl);
+
+            const modulosMoro = nodosService.resolverModulosActivosNodo({
+                perfil_operativo: 'LOCALES',
+                modulos_activos: tieneModulos ? row.modulos_activos : {},
+                cobro_efectivo_entrega: row.cobro_efectivo_entrega ?? false,
+                permitir_retiro_nodo: row.permitir_retiro_nodo,
+                permitir_reparto_propio: row.permitir_reparto_propio,
+                permitir_envio_barrial: row.permitir_envio_barrial,
+                permitir_encomienda: row.permitir_encomienda
+            });
+
+            if (!yaEsLocales || !tieneModulos || !tieneNuevasPerillas || faltaIdentidadOficialMoro) {
+                let zplGfaFinal = row.logo_zpl_gfa || null;
+                let zplMonoPreviewFinal = row.logo_mono_preview_base64 || null;
+                const necesitaRegenerarZpl =
+                    Boolean(zebraDataUrl) && (
+                        !String(row.logo_zpl_gfa || '').startsWith(gfaPrefixOficial) ||
+                        String(row.logo_original_base64 || '') !== zebraDataUrl ||
+                        Number(cfgZplActual?.width || 0) !== cfgZplOficial.width ||
+                        Number(cfgZplActual?.height || 0) !== cfgZplOficial.height ||
+                        Number(cfgZplActual?.padding ?? -1) !== cfgZplOficial.padding
+                    );
+
+                if (necesitaRegenerarZpl) {
+                    const conv = await nodosService.convertirLogoAZplGfa({
+                        imageBase64: zebraDataUrl,
+                        nombreMarca: 'MORO',
+                        iniciales: cfgZplOficial.iniciales || 'MO',
+                        width: cfgZplOficial.width,
+                        height: cfgZplOficial.height,
+                        threshold: cfgZplOficial.threshold,
+                        mode: cfgZplOficial.mode,
+                        padding: cfgZplOficial.padding,
+                        invert: false
+                    });
+                    zplGfaFinal = conv.logo_zpl_gfa;
+                    zplMonoPreviewFinal = conv.logo_mono_preview_base64;
+                }
+
+                await db.query(
+                    `UPDATE public.nodos_maestro SET
+                        perfil_operativo = 'LOCALES',
+                        color_primario = $2,
+                        tema_visual = $3::jsonb,
+                        logo_original_base64 = COALESCE($4, logo_original_base64),
+                        logo_mono_preview_base64 = COALESCE($5, logo_mono_preview_base64),
+                        logo_zpl_gfa = COALESCE($6, logo_zpl_gfa),
+                        logo_zpl_config = $7::jsonb,
+                        modulos_activos = $8::jsonb,
+                        updated_at = NOW()
+                     WHERE id = $1`,
+                    [
+                        row.id,
+                        '#182132',
+                        JSON.stringify(temaOficial),
+                        zebraDataUrl || null,
+                        zplMonoPreviewFinal,
+                        zplGfaFinal,
+                        JSON.stringify(cfgZplOficial),
+                        JSON.stringify(modulosMoro)
+                    ]
+                );
+                actualizados.push({
+                    id: row.id,
+                    slug: row.slug,
+                    perfil_operativo: 'LOCALES',
+                    color_primario: '#182132',
+                    zpl_regenerado: necesitaRegenerarZpl
+                });
+            }
         } else {
-            // Paraíso -> VECINOS, Moro -> LOCALES y cualquier otro nodo normalizan su perfil canónico
+            // Paraíso -> VECINOS y cualquier otro nodo normalizan su perfil canónico
             // preservando 100% de sus overrides de Capa B y su estética actual
-            const perfilCanon = slugLower === 'moro'
-                ? 'LOCALES'
-                : nodosService.normalizarPerfilOperativoNodo(row.perfil_operativo || 'VECINOS');
+            const perfilCanon = nodosService.normalizarPerfilOperativoNodo(row.perfil_operativo || 'VECINOS');
             const tieneModulos = row.modulos_activos && typeof row.modulos_activos === 'object' && Object.keys(row.modulos_activos).length > 0;
             const tieneNuevasPerillas = Boolean(row.modulos_activos?.abastecimiento_modo && row.modulos_activos?.etiqueta_zpl_formato);
             const perfilExacto = String(row.perfil_operativo || '').trim() === perfilCanon;
