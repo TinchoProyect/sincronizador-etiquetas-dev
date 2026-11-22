@@ -187,16 +187,28 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
         } else if (slugLower === 'moro') {
             const yaEsLocales = String(row.perfil_operativo || '').trim() === 'LOCALES';
             const tieneModulos = row.modulos_activos && typeof row.modulos_activos === 'object' && Object.keys(row.modulos_activos).length > 0;
-            const tieneNuevasPerillas = Boolean(row.modulos_activos?.abastecimiento_modo && row.modulos_activos?.etiqueta_zpl_formato);
+            const tieneNuevasPerillas = Boolean(
+                row.modulos_activos?.abastecimiento_modo &&
+                row.modulos_activos?.etiqueta_zpl_formato &&
+                typeof row.modulos_activos?.ocultar_franja_info_superior === 'boolean'
+            );
 
             const tvActual = (row.tema_visual && typeof row.tema_visual === 'object') ? row.tema_visual : {};
+            const dicActual = (row.diccionario_textos && typeof row.diccionario_textos === 'object') ? row.diccionario_textos : {};
             const cfgZplActual = (row.logo_zpl_config && typeof row.logo_zpl_config === 'object') ? row.logo_zpl_config : {};
-            const temaOficial = nodosService.TEMA_VISUAL_MORO_OFICIAL;
+            const temaOficial = nodosService.enriquecerTemaVisualConVersionAssets(nodosService.TEMA_VISUAL_MORO_OFICIAL);
             const cfgZplOficial = nodosService.LOGO_ZPL_CONFIG_MORO_OFICIAL;
             const zebraDataUrl = nodosService.leerLogoZebraMoroDataUrl();
             const gfaBytesPerRow = Math.ceil(cfgZplOficial.width / 8);
             const gfaTotalBytes = gfaBytesPerRow * cfgZplOficial.height;
             const gfaPrefixOficial = `^GFA,${gfaTotalBytes},${gfaTotalBytes},${gfaBytesPerRow},`;
+
+            const faltaSubtituloCatalogo = !String(dicActual.subtitulo_catalogo || '').trim();
+            const dicFinalMoro = {
+                ...nodosService.obtenerPresetDiccionarioTextosNodo('LOCALES'),
+                ...dicActual,
+                subtitulo_catalogo: String(dicActual.subtitulo_catalogo || '').trim() || 'FRUTOS SECOS'
+            };
 
             const colorPrimarioActual = String(row.color_primario || '').trim().toLowerCase();
             const faltaIdentidadOficialMoro =
@@ -204,8 +216,10 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
                 colorPrimarioActual === '#1e1e1c' ||
                 colorPrimarioActual !== '#182132' ||
                 tvActual?.logo_incluye_texto !== true ||
+                tvActual?.assets_version !== temaOficial.assets_version ||
                 tvActual?.logos?.principal !== temaOficial.logos.principal ||
                 tvActual?.logos?.horizontal !== temaOficial.logos.horizontal ||
+                tvActual?.logos?.gestor_header !== temaOficial.logos.gestor_header ||
                 tvActual?.logos?.vertical !== temaOficial.logos.vertical ||
                 tvActual?.logos?.isotipo !== temaOficial.logos.isotipo ||
                 tvActual?.logos?.og_share !== temaOficial.logos.og_share ||
@@ -236,7 +250,7 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
                 permitir_encomienda: row.permitir_encomienda
             });
 
-            if (!yaEsLocales || !tieneModulos || !tieneNuevasPerillas || faltaIdentidadOficialMoro) {
+            if (!yaEsLocales || !tieneModulos || !tieneNuevasPerillas || faltaIdentidadOficialMoro || faltaSubtituloCatalogo) {
                 let zplGfaFinal = row.logo_zpl_gfa || null;
                 let zplMonoPreviewFinal = row.logo_mono_preview_base64 || null;
                 const necesitaRegenerarZpl =
@@ -274,6 +288,7 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
                         logo_zpl_gfa = COALESCE($6, logo_zpl_gfa),
                         logo_zpl_config = $7::jsonb,
                         modulos_activos = $8::jsonb,
+                        diccionario_textos = $9::jsonb,
                         updated_at = NOW()
                      WHERE id = $1`,
                     [
@@ -284,7 +299,8 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
                         zplMonoPreviewFinal,
                         zplGfaFinal,
                         JSON.stringify(cfgZplOficial),
-                        JSON.stringify(modulosMoro)
+                        JSON.stringify(modulosMoro),
+                        JSON.stringify(dicFinalMoro)
                     ]
                 );
                 actualizados.push({
@@ -292,6 +308,8 @@ async function migrarPerfilesOperativosNodos(opciones = {}) {
                     slug: row.slug,
                     perfil_operativo: 'LOCALES',
                     color_primario: '#182132',
+                    assets_version: temaOficial.assets_version,
+                    subtitulo_catalogo: dicFinalMoro.subtitulo_catalogo,
                     zpl_regenerado: necesitaRegenerarZpl
                 });
             }

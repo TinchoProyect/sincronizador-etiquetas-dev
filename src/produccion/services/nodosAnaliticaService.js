@@ -861,6 +861,7 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
                 venta_continua_24_7: true, despacho_desde_lamda: true, canasto_consolidado: false,
                 cobro_efectivo_entrega: false, mostrador_entrega_rapida: false,
                 checkout_omitir_paso_entrega_si_unico: true, mostrar_horarios_comerciales: false,
+                ocultar_franja_info_superior: false,
                 abastecimiento_modo: 'despacho_correo', etiqueta_zpl_formato: 'postal_fulfillment'
             }
             : (perfilCanon === 'LOCALES'
@@ -869,6 +870,7 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
                     venta_continua_24_7: false, despacho_desde_lamda: false, canasto_consolidado: true,
                     cobro_efectivo_entrega: false, mostrador_entrega_rapida: true,
                     checkout_omitir_paso_entrega_si_unico: true, mostrar_horarios_comerciales: true,
+                    ocultar_franja_info_superior: true,
                     abastecimiento_modo: 'camioneta_lamda', etiqueta_zpl_formato: 'mostrador_local'
                 }
                 : {
@@ -876,6 +878,7 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
                     venta_continua_24_7: false, despacho_desde_lamda: false, canasto_consolidado: true,
                     cobro_efectivo_entrega: true, mostrador_entrega_rapida: false,
                     checkout_omitir_paso_entrega_si_unico: true, mostrar_horarios_comerciales: false,
+                    ocultar_franja_info_superior: false,
                     abastecimiento_modo: 'retiro_deposito', etiqueta_zpl_formato: 'vecinal'
                 });
         const modGuard = (r.modulos_activos && typeof r.modulos_activos === 'object' && !Array.isArray(r.modulos_activos)) ? r.modulos_activos : {};
@@ -898,7 +901,7 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
             barrio_zona: r.barrio_zona || '',
             direccion_retiro: r.direccion_retiro || '',
             color_primario: r.color_primario || '#16a34a',
-            tema_visual: (r.tema_visual && typeof r.tema_visual === 'object') ? r.tema_visual : {},
+            tema_visual: require('./nodosBarrialesService').enriquecerTemaVisualConVersionAssets(r.tema_visual),
             activo: r.activo !== false,
             perfil_operativo: perfilCanon,
             cobro_efectivo_entrega: cobroEfvoVal,

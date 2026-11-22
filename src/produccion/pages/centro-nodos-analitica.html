@@ -1933,6 +1933,7 @@
         mostrador_entrega_rapida: false,
         checkout_omitir_paso_entrega_si_unico: true,
         mostrar_horarios_comerciales: false,
+        ocultar_franja_info_superior: false,
         abastecimiento_modo: 'retiro_deposito',
         etiqueta_zpl_formato: 'vecinal'
       },
@@ -1948,6 +1949,7 @@
         mostrador_entrega_rapida: false,
         checkout_omitir_paso_entrega_si_unico: true,
         mostrar_horarios_comerciales: false,
+        ocultar_franja_info_superior: false,
         abastecimiento_modo: 'despacho_correo',
         etiqueta_zpl_formato: 'postal_fulfillment'
       },
@@ -1963,6 +1965,7 @@
         mostrador_entrega_rapida: true,
         checkout_omitir_paso_entrega_si_unico: true,
         mostrar_horarios_comerciales: true,
+        ocultar_franja_info_superior: true,
         abastecimiento_modo: 'camioneta_lamda',
         etiqueta_zpl_formato: 'mostrador_local'
       }
@@ -2078,7 +2081,8 @@
         { key: 'cobro_efectivo_entrega', label: '💵 Efectivo al entregar', desc: 'Habilita pago en mano (desactivado = 100% digital)' },
         { key: 'mostrador_entrega_rapida', label: '⚡ Mostrador rápido en Panel', desc: 'Buscador por apellido/#NB y entrega en 1 toque' },
         { key: 'checkout_omitir_paso_entrega_si_unico', label: '⏩ Saltar paso Entrega si es único', desc: 'Arranca en Tus Datos cuando hay 1 sola modalidad' },
-        { key: 'mostrar_horarios_comerciales', label: '🕒 Mostrar horario comercial local', desc: 'Exhibe días/horarios de atención del local en tienda y tracking' }
+        { key: 'mostrar_horarios_comerciales', label: '🕒 Mostrar horario comercial local', desc: 'Exhibe días/horarios de atención del local en tienda y tracking' },
+        { key: 'ocultar_franja_info_superior', label: '✨ Despejar franja superior (mover al menú ☰)', desc: 'Quita los chips Retiro/Pagos de arriba de los rubros y los aloja en el menú ☰' }
       ];
 
       box.innerHTML = `
@@ -2182,11 +2186,16 @@
             </div>
           </div>
 
-          <div style="display:grid; grid-template-columns:1.8fr 0.85fr 0.75fr 0.75fr 0.55fr; gap:10px; margin-top:10px;">
+          <div style="display:grid; grid-template-columns:1.4fr 1.1fr 0.75fr 0.7fr 0.7fr 0.55fr; gap:10px; margin-top:10px;">
             <div>
               <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Subtítulo público de la tienda</label>
               <input type="text" id="abm-centro-subtitulo" value="${esc(editNodo?.subtitulo_marca || SUBTITULOS_DEFAULT_CENTRO[perfilInicial])}"
                 style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.83rem;" />
+            </div>
+            <div>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;" title="Se muestra centrado arriba de la tira de rubros en la tienda (opcional, ej: FRUTOS SECOS)">Línea sobre rubros</label>
+              <input type="text" id="abm-centro-subtitulo-catalogo" value="${esc(editNodo?.diccionario_textos?.subtitulo_catalogo || '')}" placeholder="Ej: FRUTOS SECOS"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.83rem; font-weight:700;" />
             </div>
             <div>
               <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Margen inicial (%)</label>
@@ -2529,6 +2538,7 @@
       }));
 
       const cliObj = (CSTATE.clientesBunker || []).find(c => Number(c.id) === clienteMadreId);
+      const nodoPrev = editarId ? (CSTATE.nodos || []).find(n => Number(n.id) === Number(editarId)) : null;
       const payload = {
         nombre_marca: nombreMarca,
         slug,
@@ -2547,6 +2557,10 @@
         usar_cuenta_madre_unificada: Boolean(document.getElementById('abm-centro-usar-madre-unificada')?.checked),
         perfil_operativo: perfil,
         modulos_activos: modulos,
+        diccionario_textos: {
+          ...((nodoPrev?.diccionario_textos && typeof nodoPrev.diccionario_textos === 'object') ? nodoPrev.diccionario_textos : {}),
+          subtitulo_catalogo: document.getElementById('abm-centro-subtitulo-catalogo')?.value?.trim() || ''
+        },
         cobro_efectivo_entrega: Boolean(modulos.cobro_efectivo_entrega),
         permitir_retiro_nodo: Boolean(modulos.retiro_punto),
         permitir_reparto_propio: Boolean(modulos.reparto_zonal),

@@ -167,7 +167,8 @@ function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}
     let html = fs.readFileSync(htmlPath, 'utf8');
 
     const baseUrl = construirBaseUrlAbsolutaNodos(req);
-    const tv = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? nodo.tema_visual : {};
+    const { enriquecerTemaVisualConVersionAssets } = require('./services/nodosBarrialesService');
+    const tv = enriquecerTemaVisualConVersionAssets(nodo?.tema_visual);
     const logosTv = (tv.logos && typeof tv.logos === 'object') ? tv.logos : {};
     const nombreMarca = String(nodo?.nombre_marca || 'Tienda').trim();
     const bajada = String(nodo?.bajada_marca || nodo?.subtitulo_marca || '').trim();
@@ -215,12 +216,13 @@ function renderizarHtmlMarcaBlancaConMeta(fileName, nodo, req, extraContext = {}
             ? String(paletaTv.primario || '#654830').trim()
             : String(paletaTv.fondo || '#FBF8F3').trim();
 
+        const conVersionSiFalta = (u, v) => (String(u || '').includes('?v=') || String(u || '').includes('&v=')) ? u : `${u}?v=${encodeURIComponent(v)}`;
         metaTags.push(`<link id="nodo-pwa-manifest" rel="manifest" href="${escHtmlAttrNodos(manifestHref)}">`);
         if (!esGestor && faviconSvgPath) {
-            metaTags.push(`<link id="nodo-favicon-svg" rel="icon" type="image/svg+xml" href="${escHtmlAttrNodos(faviconSvgPath)}?v=${encodeURIComponent(pwaV)}">`);
+            metaTags.push(`<link id="nodo-favicon-svg" rel="icon" type="image/svg+xml" href="${escHtmlAttrNodos(conVersionSiFalta(faviconSvgPath, pwaV))}">`);
         }
         if (!esGestor && favicon32Path) {
-            metaTags.push(`<link id="nodo-favicon-32" rel="icon" type="image/png" sizes="32x32" href="${escHtmlAttrNodos(favicon32Path)}?v=${encodeURIComponent(pwaV)}">`);
+            metaTags.push(`<link id="nodo-favicon-32" rel="icon" type="image/png" sizes="32x32" href="${escHtmlAttrNodos(conVersionSiFalta(favicon32Path, pwaV))}">`);
         }
         metaTags.push(`<link id="nodo-favicon-png" rel="icon" type="image/png" sizes="192x192" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-192.png?v=${encodeURIComponent(pwaV)}">`);
         metaTags.push(`<link id="nodo-apple-touch-icon" rel="apple-touch-icon" sizes="180x180" href="/api/produccion/nodos/pwa/${slugEnc}/icon-${rolIcon}-180.png?v=${encodeURIComponent(pwaV)}">`);
@@ -357,11 +359,20 @@ app.use('/img/nodos', (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
         return res.status(405).end();
     }
+    if (req.query && req.query.v) {
+        res.setHeader('Cache-Control', 'public, max-age=604800');
+    } else {
+        res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+    }
     return next();
 }, express.static(path.join(__dirname, 'img', 'nodos'), {
     dotfiles: 'deny',
     index: false,
-    maxAge: '7d'
+    setHeaders: (res, _filePath) => {
+        if (!res.getHeader('Cache-Control')) {
+            res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+        }
+    }
 }));
 
 // 🖼️ Servidor estático blindado para galerías WebP + MP4 publicadas de Nodos Barriales

@@ -182,7 +182,11 @@ async function provisionarNodoMoro(opciones = {}) {
 
         const zebraDataUrl = nodosService.leerLogoZebraMoroDataUrl();
         const modulosMoro = nodosService.obtenerPresetModulosActivos('LOCALES');
-        const dicTextosMoro = nodosService.obtenerPresetDiccionarioTextosNodo('LOCALES');
+        const dicTextosMoro = {
+            ...nodosService.obtenerPresetDiccionarioTextosNodo('LOCALES'),
+            subtitulo_catalogo: 'FRUTOS SECOS'
+        };
+        const temaVisualMoro = nodosService.enriquecerTemaVisualConVersionAssets(nodosService.TEMA_VISUAL_MORO_OFICIAL);
 
         nodoMoro = await nodosService.guardarNodoMaestro({
             codigo_nodo: codigoNodoDeseado,
@@ -218,7 +222,7 @@ async function provisionarNodoMoro(opciones = {}) {
             longitud: -57.964282,
             logo_original_base64: zebraDataUrl,
             logo_zpl_config: nodosService.LOGO_ZPL_CONFIG_MORO_OFICIAL,
-            tema_visual: nodosService.TEMA_VISUAL_MORO_OFICIAL
+            tema_visual: temaVisualMoro
         });
 
         creadoEnEstaCorrida = true;

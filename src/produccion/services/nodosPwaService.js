@@ -240,7 +240,7 @@ function dibujarMonogramaFallback(ctx, cx, cy, boxSize, nombreMarca, colorMarca)
 
 async function cargarImagenIsotipoLocal(isotipoRelPath) {
     if (!isotipoRelPath) return null;
-    const cleanRel = isotipoRelPath.replace(/^\/+/, '');
+    const cleanRel = String(isotipoRelPath || '').split('?')[0].replace(/^\/+/, '');
     const fullPath = path.join(__dirname, '..', cleanRel);
     if (!fs.existsSync(fullPath)) return null;
 

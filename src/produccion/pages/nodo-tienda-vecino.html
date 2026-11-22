@@ -239,9 +239,38 @@
     }
     .brand-logo.has-principal-logo {
       width: auto;
-      max-width: 210px;
-      height: 46px;
+      max-width: 224px;
+      height: 60px;
       justify-content: center;
+    }
+    .catalogo-subtitulo-bar {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin: 2px 0 8px;
+      padding: 2px 4px;
+      text-align: center;
+    }
+    .catalogo-subtitulo-bar.visible {
+      display: flex;
+    }
+    .catalogo-subtitulo-bar::before,
+    .catalogo-subtitulo-bar::after {
+      content: '';
+      flex: 1;
+      max-width: 72px;
+      height: 1px;
+      background: var(--border);
+    }
+    .catalogo-subtitulo-texto {
+      font-family: var(--font-brand);
+      font-size: 0.94rem;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--brand);
+      line-height: 1.15;
     }
     .brand-logo img {
       max-width: 100%;
@@ -2305,6 +2334,9 @@
         </div>
       </div>
 
+      <!-- Subtítulo de línea comercial por encima de los rubros (opcional por nodo, ej: FRUTOS SECOS) -->
+      <div class="catalogo-subtitulo-bar" id="catalogo-subtitulo-bar" data-testid="catalogo-subtitulo-bar"></div>
+
       <!-- Buscador desplegable (sin ocupar alto fijo innecesario) y Filtro de Categorías -->
       <div class="toolbar">
         <div class="search-collapsible-wrap" id="search-collapsible-wrap">
@@ -2513,6 +2545,7 @@
             mostrador_entrega_rapida: false,
             checkout_omitir_paso_entrega_si_unico: true,
             mostrar_horarios_comerciales: false,
+            ocultar_franja_info_superior: false,
             abastecimiento_modo: 'despacho_correo',
             etiqueta_zpl_formato: 'postal_fulfillment'
           }
@@ -2529,6 +2562,7 @@
                 mostrador_entrega_rapida: true,
                 checkout_omitir_paso_entrega_si_unico: true,
                 mostrar_horarios_comerciales: true,
+                ocultar_franja_info_superior: true,
                 abastecimiento_modo: 'camioneta_lamda',
                 etiqueta_zpl_formato: 'mostrador_local'
               }
@@ -2544,6 +2578,7 @@
                 mostrador_entrega_rapida: false,
                 checkout_omitir_paso_entrega_si_unico: true,
                 mostrar_horarios_comerciales: false,
+                ocultar_franja_info_superior: false,
                 abastecimiento_modo: 'retiro_deposito',
                 etiqueta_zpl_formato: 'vecinal'
               });
@@ -3421,12 +3456,20 @@
       });
     }
 
+    function resolverUrlAssetTienda(url, nodo = STATE.nodo) {
+      const raw = String(url || '').trim();
+      if (!raw || !raw.startsWith('/img/nodos/')) return raw;
+      if (/[?&]v=/.test(raw)) return raw;
+      const v = String(nodo?.tema_visual?.assets_version || obtenerVersionPwaTienda() || '2').trim();
+      return `${raw}?v=${encodeURIComponent(v)}`;
+    }
+
     function aplicarFaviconTienda(urlImg) {
       const slugAct = String(STATE.slug || detectarSlugInicial() || '').trim();
       const vPwa = encodeURIComponent(obtenerVersionPwaTienda());
       const logosTv = (STATE.nodo?.tema_visual && typeof STATE.nodo.tema_visual === 'object') ? (STATE.nodo.tema_visual.logos || {}) : {};
-      const faviconSvg = String(logosTv.favicon_svg || '').trim();
-      const favicon32 = String(logosTv.favicon_32 || '').trim();
+      const faviconSvg = resolverUrlAssetTienda(logosTv.favicon_svg || '', STATE.nodo);
+      const favicon32 = resolverUrlAssetTienda(logosTv.favicon_32 || '', STATE.nodo);
       const iconPwa192 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-192.png?v=${vPwa}` : String(urlImg || '').trim();
       const iconPwa180 = slugAct ? `/api/produccion/nodos/pwa/${encodeURIComponent(slugAct)}/icon-tienda-180.png?v=${vPwa}` : String(urlImg || '').trim();
 
@@ -3439,7 +3482,7 @@
           linkSvg.type = 'image/svg+xml';
           document.head.appendChild(linkSvg);
         }
-        linkSvg.href = `${faviconSvg}?v=${vPwa}`;
+        linkSvg.href = faviconSvg;
       }
       if (favicon32) {
         let link32 = document.getElementById('nodo-favicon-32');
@@ -3451,7 +3494,7 @@
           link32.sizes = '32x32';
           document.head.appendChild(link32);
         }
-        link32.href = `${favicon32}?v=${vPwa}`;
+        link32.href = favicon32;
       }
       if (iconPwa192) {
         let linkIcon = document.getElementById('nodo-favicon-png') || document.querySelector('link[rel="icon"][type="image/png"]:not(#nodo-favicon-32)');
@@ -3711,7 +3754,7 @@
 
     function obtenerLogoIconoNodo(nodo) {
       const logos = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? (nodo.tema_visual.logos || {}) : {};
-      return logos.isotipo || logos.horizontal || nodo?.logo_original_base64 || nodo?.logo_mono_preview_base64 || '';
+      return resolverUrlAssetTienda(logos.isotipo || logos.horizontal || '', nodo) || nodo?.logo_original_base64 || nodo?.logo_mono_preview_base64 || '';
     }
 
     function aplicarPaletaTienda(hexONodo) {
@@ -3868,11 +3911,11 @@
       document.getElementById('brand-subtitle').textContent = bajadaEfectiva;
 
       const logoBox = document.getElementById('brand-logo-box');
-      const logoPrincipal = STATE.nodo.tema_visual?.logos?.principal || '';
-      const logoHorizontal = STATE.nodo.tema_visual?.logos?.horizontal || '';
+      const logoPrincipal = resolverUrlAssetTienda(STATE.nodo.tema_visual?.logos?.principal || '', STATE.nodo);
+      const logoHorizontal = resolverUrlAssetTienda(STATE.nodo.tema_visual?.logos?.horizontal || '', STATE.nodo);
       const logoCabecera = logoPrincipal || logoHorizontal;
       const logoIncluyeTexto = Boolean(logoCabecera && STATE.nodo.tema_visual?.logo_incluye_texto);
-      const logoIsotipo = STATE.nodo.tema_visual?.logos?.isotipo || '';
+      const logoIsotipo = resolverUrlAssetTienda(STATE.nodo.tema_visual?.logos?.isotipo || '', STATE.nodo);
       const logoSrc = logoIncluyeTexto
         ? logoCabecera
         : (logoIsotipo || logoCabecera || STATE.nodo.logo_original_base64 || STATE.nodo.logo_mono_preview_base64 || '');
@@ -3891,6 +3934,7 @@
       }
 
       sincronizarEnlacesCoordinarGestor();
+      renderSubtituloCatalogoTienda();
       renderBannerEntrega();
       renderizarDrawerNodoTienda();
       renderCategorias();
@@ -4269,6 +4313,21 @@
                 🗺️ Ver ubicación en Google Maps →
               </a>
             ` : ''}
+            <button type="button" class="drawer-action-btn" id="drawer-btn-retiro-local" data-testid="drawer-btn-retiro-local"
+              onclick="cerrarDrawerNodoTienda(); abrirModalEnviosTienda();"
+              style="margin-top:10px; background:var(--surface-warm);">
+              <span>🏪 Retiro en local — horarios y dirección</span>
+              <span style="color:var(--brand); font-weight:900;">›</span>
+            </button>
+          </div>
+
+          <!-- 1b. Medios de pago / Transferencia -->
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <button type="button" class="drawer-action-btn" id="drawer-btn-pagos-transferencia" data-testid="drawer-btn-pagos-transferencia"
+              onclick="cerrarDrawerNodoTienda(); abrirModalPagoTransferenciaRapido();">
+              <span>🏦 Medios de pago / Transferencia</span>
+              <span style="color:var(--brand); font-weight:900;">›</span>
+            </button>
           </div>
 
           <!-- 2. Atención del Local -->
@@ -4458,7 +4517,51 @@
       }
     }
 
+    function renderSubtituloCatalogoTienda() {
+      const bar = document.getElementById('catalogo-subtitulo-bar');
+      if (!bar) return;
+      const dic = (STATE.nodo?.diccionario_textos && typeof STATE.nodo.diccionario_textos === 'object') ? STATE.nodo.diccionario_textos : {};
+      const texto = String(dic.subtitulo_catalogo || '').trim();
+      if (!texto) {
+        bar.classList.remove('visible');
+        bar.innerHTML = '';
+        return;
+      }
+      bar.innerHTML = `<span class="catalogo-subtitulo-texto">${esc(texto)}</span>`;
+      bar.classList.add('visible');
+    }
+
+    function actualizarVisibilidadFranjaInfoSuperior() {
+      const franja = document.getElementById('tienda-franja-compacta');
+      if (!franja) return;
+      const mod = obtenerModulosActivosTienda(STATE.nodo);
+      const ocultarPorConfig = Boolean(mod.ocultar_franja_info_superior);
+      if (!ocultarPorConfig) {
+        franja.style.display = '';
+        const chipEnv = document.getElementById('btn-chip-envios');
+        if (chipEnv) chipEnv.style.display = '';
+        return;
+      }
+      const data = STATE.pedidoActivoBannerData;
+      const ped = data?.pedido || null;
+      const hayPedidoPendienteTransf = Boolean(
+        ped &&
+        !data?.seguimiento?.anulado &&
+        Number(data?.seguimiento?.hito_actual || 1) < 6 &&
+        !ped.pago_confirmado &&
+        ped.medio_pago === 'TRANSFERENCIA'
+      );
+      if (hayPedidoPendienteTransf) {
+        franja.style.display = '';
+        const chipEnv = document.getElementById('btn-chip-envios');
+        if (chipEnv) chipEnv.style.display = 'none';
+      } else {
+        franja.style.display = 'none';
+      }
+    }
+
     function renderBannerEntrega() {
+      actualizarVisibilidadFranjaInfoSuperior();
       const chip = document.getElementById('btn-chip-envios');
       const iconEl = document.getElementById('chip-envios-icon');
       if (!chip) return;
@@ -6090,7 +6193,7 @@
         : (esLocal
             ? `${infoLocal.direccion_corta || infoLocal.nombre_punto}${infoLocal.horario_resumen ? ' · ' + infoLocal.horario_resumen : ''}`
             : (prox ? prox.label_completo : 'Próxima ventana'));
-      const logoHorizontal = nodo.tema_visual?.logos?.horizontal || '';
+      const logoHorizontal = resolverUrlAssetTienda(nodo.tema_visual?.logos?.horizontal || '', nodo);
       const logoIncluyeTexto = Boolean(logoHorizontal && nodo.tema_visual?.logo_incluye_texto);
       const logoFallback = logoHorizontal || nodo.logo_original_base64 || nodo.logo_mono_preview_base64 || obtenerLogoIconoNodo(nodo) || '';
       const bajadaEfectiva = nodo.bajada_marca || nodo.subtitulo_marca || (
@@ -7183,6 +7286,7 @@
     }
 
     function renderizarSlotCompactoPagoPedido() {
+      actualizarVisibilidadFranjaInfoSuperior();
       const slot = document.getElementById('strip-slot-pago-pedido');
       if (!slot) return;
       const data = STATE.pedidoActivoBannerData;

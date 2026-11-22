@@ -119,6 +119,7 @@ function obtenerPresetModulosActivos(perfilRaw = 'VECINOS') {
             mostrador_entrega_rapida: false,
             checkout_omitir_paso_entrega_si_unico: true,
             mostrar_horarios_comerciales: false,
+            ocultar_franja_info_superior: false,
             abastecimiento_modo: 'despacho_correo',
             etiqueta_zpl_formato: 'postal_fulfillment'
         };
@@ -136,6 +137,7 @@ function obtenerPresetModulosActivos(perfilRaw = 'VECINOS') {
             mostrador_entrega_rapida: true,
             checkout_omitir_paso_entrega_si_unico: true,
             mostrar_horarios_comerciales: true,
+            ocultar_franja_info_superior: true,
             abastecimiento_modo: 'camioneta_lamda',
             etiqueta_zpl_formato: 'mostrador_local'
         };
@@ -152,6 +154,7 @@ function obtenerPresetModulosActivos(perfilRaw = 'VECINOS') {
         mostrador_entrega_rapida: false,
         checkout_omitir_paso_entrega_si_unico: true,
         mostrar_horarios_comerciales: false,
+        ocultar_franja_info_superior: false,
         abastecimiento_modo: 'retiro_deposito',
         etiqueta_zpl_formato: 'vecinal'
     };
@@ -162,6 +165,7 @@ function obtenerPresetDiccionarioTextosNodo(perfilRaw = 'VECINOS') {
     if (perfil === 'REDES') {
         return {
             chip_entrega_label: 'Envíos',
+            subtitulo_catalogo: '',
             comprador_singular: 'cliente',
             comprador_plural: 'clientes',
             hito_6_titulo_retiro: 'Entregado'
@@ -170,6 +174,7 @@ function obtenerPresetDiccionarioTextosNodo(perfilRaw = 'VECINOS') {
     if (perfil === 'LOCALES') {
         return {
             chip_entrega_label: 'Retiro en local',
+            subtitulo_catalogo: '',
             comprador_singular: 'cliente',
             comprador_plural: 'clientes',
             hito_6_titulo_retiro: '¡Retirado en mostrador!'
@@ -177,6 +182,7 @@ function obtenerPresetDiccionarioTextosNodo(perfilRaw = 'VECINOS') {
     }
     return {
         chip_entrega_label: 'Envíos',
+        subtitulo_catalogo: '',
         comprador_singular: 'vecino',
         comprador_plural: 'vecinos',
         hito_6_titulo_retiro: 'Entregado'
@@ -567,6 +573,59 @@ function leerLogoZebraMansoDataUrl() {
     return null;
 }
 
+// Cache-busting determinista por contenido (sha1 8 chars + mtime) para todos los assets estáticos en /img/nodos/*
+const _cacheHashAssetsNodos = new Map();
+
+function versionarUrlAssetNodo(rutaRaw) {
+    const raw = String(rutaRaw || '').trim();
+    if (!raw || !raw.startsWith('/img/nodos/')) return raw;
+    const cleanPath = raw.split('?')[0];
+    const rel = cleanPath.replace(/^\/+/, '');
+    const baseProdDir = path.resolve(__dirname, '..');
+    const absPath = path.resolve(baseProdDir, rel);
+    if (!absPath.startsWith(baseProdDir)) return cleanPath;
+    try {
+        if (!fs.existsSync(absPath)) return raw;
+        const stat = fs.statSync(absPath);
+        const cached = _cacheHashAssetsNodos.get(absPath);
+        if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) {
+            return `${cleanPath}?v=${cached.hash}`;
+        }
+        const hash = crypto.createHash('sha1').update(fs.readFileSync(absPath)).digest('hex').slice(0, 8);
+        _cacheHashAssetsNodos.set(absPath, { mtimeMs: stat.mtimeMs, size: stat.size, hash });
+        return `${cleanPath}?v=${hash}`;
+    } catch (_) {
+        return raw;
+    }
+}
+
+function enriquecerTemaVisualConVersionAssets(temaVisualRaw) {
+    const tv = (temaVisualRaw && typeof temaVisualRaw === 'object' && !Array.isArray(temaVisualRaw))
+        ? temaVisualRaw
+        : {};
+    if (!tv.logos || typeof tv.logos !== 'object') return tv;
+    const logosVersionados = {};
+    const hashes = [];
+    for (const [k, v] of Object.entries(tv.logos)) {
+        if (typeof v === 'string' && v.trim().startsWith('/img/nodos/')) {
+            const verUrl = versionarUrlAssetNodo(v);
+            logosVersionados[k] = verUrl;
+            const m = verUrl.match(/[?&]v=([a-z0-9_-]+)/i);
+            if (m) hashes.push(`${k}:${m[1]}`);
+        } else {
+            logosVersionados[k] = v;
+        }
+    }
+    const assetsVersion = hashes.length > 0
+        ? crypto.createHash('sha1').update(hashes.sort().join('|')).digest('hex').slice(0, 8)
+        : String(tv.assets_version || '');
+    return {
+        ...tv,
+        ...(assetsVersion ? { assets_version: assetsVersion } : {}),
+        logos: logosVersionados
+    };
+}
+
 // Paleta oficial extraída de los SVG vectoriales definitivos de MORO (Azul Noche Pizarra #182132 + Gris Hielo #9BA2B8)
 const TEMA_VISUAL_MORO_OFICIAL = {
     paleta: {
@@ -597,6 +656,7 @@ const TEMA_VISUAL_MORO_OFICIAL = {
         principal_png: '/img/nodos/moro/logo-principal.png',
         horizontal: '/img/nodos/moro/logo-horizontal.svg',
         horizontal_png: '/img/nodos/moro/logo-horizontal.png',
+        gestor_header: '/img/nodos/moro/isotipo.svg',
         vertical: '/img/nodos/moro/logo-cuadrado.svg',
         vertical_png: '/img/nodos/moro/logo-cuadrado.png',
         isotipo: '/img/nodos/moro/isotipo.svg',
@@ -9654,7 +9714,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             zona_centro_lng: (puedeRepartoPropio || puedeRetiroNodo) && nodo.longitud != null ? Number(nodo.longitud) : null,
             config_ventanas_corte: nodo.config_ventanas_corte,
             color_primario: nodo.color_primario,
-            tema_visual: (nodo.tema_visual && typeof nodo.tema_visual === 'object') ? nodo.tema_visual : {},
+            tema_visual: enriquecerTemaVisualConVersionAssets(nodo.tema_visual),
             logo_original_base64: nodo.logo_original_base64
         };
 
@@ -9713,7 +9773,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 gestor_nombre: nodo.gestor_nombre,
                 barrio_zona: nodo.barrio_zona,
                 color_primario: nodo.color_primario,
-                tema_visual: (nodo.tema_visual && typeof nodo.tema_visual === 'object') ? nodo.tema_visual : {}
+                tema_visual: enriquecerTemaVisualConVersionAssets(nodo.tema_visual)
             }
         ],
         proxima_entrega: proximaEntrega,
@@ -17405,7 +17465,7 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             barrio_zona: nodoRow.barrio_zona,
             direccion_retiro: nodoRow.direccion_retiro,
             color_primario: nodoRow.color_primario || '#a2553b',
-            tema_visual: (nodoRow.tema_visual && typeof nodoRow.tema_visual === 'object') ? nodoRow.tema_visual : {},
+            tema_visual: enriquecerTemaVisualConVersionAssets(nodoRow.tema_visual),
             logo_original_base64: nodoRow.logo_original_base64 || null,
             banco_display: nodoRow.banco_display || cfgBancoSeg.banco_display || dfltGal.banco_display,
             alias_bancario_display: nodoRow.alias_bancario_display || cfgBancoSeg.alias_bancario_display || dfltGal.alias_bancario_display,
@@ -17659,7 +17719,7 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
         barrio_zona: primera.barrio_zona || '',
         direccion_retiro: primera.direccion_retiro || '',
         color_primario: primera.color_primario || '#a2553b',
-        tema_visual: (primera.tema_visual && typeof primera.tema_visual === 'object') ? primera.tema_visual : {},
+        tema_visual: enriquecerTemaVisualConVersionAssets(primera.tema_visual),
         logo_original_base64: primera.logo_original_base64 || null,
         banco_display: primera.banco_display || cfgBancoWa.banco_display || dfltGalWa.banco_display,
         alias_bancario_display: primera.alias_bancario_display || cfgBancoWa.alias_bancario_display || dfltGalWa.alias_bancario_display,
@@ -19036,7 +19096,7 @@ async function obtenerDatosQrAccesoNodo(idOrSlug) {
         barrio_zona: n.barrio_zona || '',
         direccion_retiro: n.direccion_retiro || '',
         color_primario: n.color_primario || '#16a34a',
-        tema_visual: (n.tema_visual && typeof n.tema_visual === 'object') ? n.tema_visual : {}
+        tema_visual: enriquecerTemaVisualConVersionAssets(n.tema_visual)
     };
 }
 
@@ -19438,7 +19498,7 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
         barrio_zona: row.barrio_zona || '',
         direccion_retiro: row.direccion_retiro || '',
         color_primario: row.color_primario || '#a2553b',
-        tema_visual: (row.tema_visual && typeof row.tema_visual === 'object') ? row.tema_visual : {},
+        tema_visual: enriquecerTemaVisualConVersionAssets(row.tema_visual),
         logo_original_base64: row.logo_original_base64 || null,
         banco_display: row.banco_display || cfgBancoPortal.banco_display || dfltGalPortal.banco_display,
         alias_bancario_display: row.alias_bancario_display || cfgBancoPortal.alias_bancario_display || dfltGalPortal.alias_bancario_display,
@@ -19786,7 +19846,7 @@ async function obtenerKitCompartirNodo(nodoId) {
             permitir_encomienda: Boolean(n.permitir_encomienda),
             cargo_envio_barrial: Number(n.cargo_envio_barrial || 0),
             color_primario: n.color_primario || '#a2553b',
-            tema_visual: (n.tema_visual && typeof n.tema_visual === 'object') ? n.tema_visual : {}
+            tema_visual: enriquecerTemaVisualConVersionAssets(n.tema_visual)
         },
         proxima_entrega: proximaEntrega,
         ofertas_publicadas: ofertasRes.rows.map(o => ({
@@ -20490,5 +20550,7 @@ module.exports = {
     leerLogoZebraMansoDataUrl,
     TEMA_VISUAL_MORO_OFICIAL,
     LOGO_ZPL_CONFIG_MORO_OFICIAL,
-    leerLogoZebraMoroDataUrl
+    leerLogoZebraMoroDataUrl,
+    versionarUrlAssetNodo,
+    enriquecerTemaVisualConVersionAssets
 };

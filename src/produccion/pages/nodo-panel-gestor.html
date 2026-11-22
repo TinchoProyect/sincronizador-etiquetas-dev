@@ -174,6 +174,20 @@
       justify-content: center;
       flex-shrink: 0;
     }
+    .brand-emblem.has-emblem-logo {
+      width: 44px;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .brand-emblem.has-emblem-logo img {
+      width: 44px;
+      height: 44px;
+      object-fit: contain;
+      display: block;
+    }
     .brand-emblem.has-horizontal-logo {
       display: block;
       width: auto;
@@ -2691,19 +2705,38 @@
       modalEl.style.display = 'flex';
     }
 
+    function resolverUrlAssetGestor(url, nodo) {
+      const raw = String(url || '').trim();
+      if (!raw || !raw.startsWith('/img/nodos/')) return raw;
+      if (/[?&]v=/.test(raw)) return raw;
+      const v = String(nodo?.tema_visual?.assets_version || '2').trim();
+      return `${raw}?v=${encodeURIComponent(v)}`;
+    }
+
+    function obtenerLogoHeaderGestor(nodo) {
+      const logos = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? (nodo.tema_visual.logos || {}) : {};
+      if (logos.gestor_header) {
+        return { src: resolverUrlAssetGestor(logos.gestor_header, nodo), esEmblema: true };
+      }
+      if (logos.horizontal) {
+        return { src: resolverUrlAssetGestor(logos.horizontal, nodo), esEmblema: false };
+      }
+      return { src: '', esEmblema: false };
+    }
+
     function obtenerLogoHorizontalGestor(nodo) {
       const logos = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? (nodo.tema_visual.logos || {}) : {};
-      return logos.horizontal || '';
+      return resolverUrlAssetGestor(logos.horizontal || '', nodo);
     }
 
     function obtenerLogoVerticalGestor(nodo) {
       const logos = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? (nodo.tema_visual.logos || {}) : {};
-      return logos.vertical_png || logos.vertical || logos.principal_png || logos.principal || logos.horizontal_png || logos.horizontal || nodo?.logo_original_base64 || nodo?.logo_mono_preview_base64 || '';
+      return resolverUrlAssetGestor(logos.vertical_png || logos.vertical || logos.principal_png || logos.principal || logos.horizontal_png || logos.horizontal || '', nodo) || nodo?.logo_original_base64 || nodo?.logo_mono_preview_base64 || '';
     }
 
     function obtenerLogoIconoGestor(nodo) {
       const logos = (nodo?.tema_visual && typeof nodo.tema_visual === 'object') ? (nodo.tema_visual.logos || {}) : {};
-      return logos.isotipo || logos.horizontal || nodo?.logo_original_base64 || nodo?.logo_mono_preview_base64 || '';
+      return resolverUrlAssetGestor(logos.isotipo || logos.horizontal || '', nodo) || nodo?.logo_original_base64 || nodo?.logo_mono_preview_base64 || '';
     }
 
     function aplicarPaletaNodo(hexONodo) {
@@ -2943,8 +2976,8 @@
       const nombreMarcaHdr = GSTATE.nodo.nombre_marca || 'Mi Tienda';
       const bajadaMarcaHdr = String(GSTATE.nodo.bajada_marca || '').trim();
       const tituloCompletoHdr = bajadaMarcaHdr ? `${nombreMarcaHdr} · ${bajadaMarcaHdr}` : nombreMarcaHdr;
-      const logoHorizHdr = obtenerLogoHorizontalGestor(GSTATE.nodo);
-      const logoIncluyeTextoHdr = Boolean(logoHorizHdr && GSTATE.nodo.tema_visual?.logo_incluye_texto);
+      const hdrLogo = obtenerLogoHeaderGestor(GSTATE.nodo);
+      const logoIncluyeTextoHdr = Boolean(hdrLogo.src && GSTATE.nodo.tema_visual?.logo_incluye_texto);
 
       const titleEl = document.getElementById('gestor-nodo-title');
       if (titleEl) {
@@ -2965,8 +2998,9 @@
       const logoBox = document.getElementById('gestor-logo-box');
       if (logoBox) {
         const logoFallback = GSTATE.nodo.logo_original_base64 || GSTATE.nodo.logo_mono_preview_base64 || obtenerLogoIconoGestor(GSTATE.nodo) || '';
-        const logoSrc = logoHorizHdr || logoFallback;
-        logoBox.classList.toggle('has-horizontal-logo', Boolean(logoHorizHdr));
+        const logoSrc = hdrLogo.src || logoFallback;
+        logoBox.classList.toggle('has-emblem-logo', Boolean(hdrLogo.src && hdrLogo.esEmblema));
+        logoBox.classList.toggle('has-horizontal-logo', Boolean(hdrLogo.src && !hdrLogo.esEmblema));
         logoBox.closest('.brand-identity')?.classList.toggle('logo-includes-text', logoIncluyeTextoHdr);
         if (logoSrc) {
           logoBox.innerHTML = `<img src="${esc(logoSrc)}" alt="${esc(tituloCompletoHdr)}">`;
