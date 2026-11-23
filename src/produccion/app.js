@@ -55,7 +55,7 @@ app.use((req, res, next) => {
         (req.method === 'GET' || req.method === 'HEAD') &&
         !pLower.endsWith('_orig.webp') &&
         !pLower.endsWith('_tmp.mp4') &&
-        /^\/media\/nodos\/\d+\/\d+\/[a-z0-9_-]+\.(?:webp|mp4)$/i.test(p);
+        /^\/media\/nodos\/\d+\/(?:\d+|bienvenida)\/[a-z0-9_-]+\.(?:webp|mp4)$/i.test(p);
 
     const esImagenMarcaPublicaNodo =
         (req.method === 'GET' || req.method === 'HEAD') &&
