@@ -2504,7 +2504,16 @@ router.post('/tienda/:slug/telemetria', limitarTelemetriaPublicaTienda, async (r
                 userAgent: req.headers['user-agent'] || ''
             }
         );
-        return res.json({ ok: true, registrado: Boolean(resultado?.ok) });
+        if (!resultado?.ok) {
+            console.warn(
+                `⚠️ [NodosTelemetria] Evento omitido (slug="${req.params.slug}", tipo="${bodyObj?.tipo_evento || bodyObj?.evento || ''}", motivo="${resultado?.motivo || 'desconocido'}")`
+            );
+        }
+        return res.json({
+            ok: true,
+            registrado: Boolean(resultado?.ok),
+            motivo: resultado?.ok ? null : (resultado?.motivo || null)
+        });
     } catch (error) {
         console.warn('⚠️ [NodosTelemetria] Evento descartado sin bloquear tienda:', error.message);
         return res.status(200).json({ ok: true, registrado: false });
@@ -2557,7 +2566,7 @@ router.get('/centro-analitica/radar', bloquearEnDominioPublicoTienda, async (req
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
         const data = await nodosAnaliticaService.obtenerRadarAnaliticaNodos({
             nodoId: req.query.nodo_id || 'todos',
-            rango: req.query.rango || 'hoy',
+            rango: req.query.rango || '7d',
             fecha: req.query.fecha || null,
             audiencia: req.query.audiencia || 'clientes',
             limiteEventos: req.query.limite || 400

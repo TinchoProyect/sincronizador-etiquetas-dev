@@ -536,18 +536,18 @@
           <select id="radar-rango-select" onchange="onCambioRangoRadar()"
             style="padding:6px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.8rem; font-weight:700; background:#fff;">
             <option value="hoy">📅 Día específico / Hoy</option>
-            <option value="7d">📆 Últimos 7 días</option>
+            <option value="7d" selected>📆 Últimos 7 días</option>
             <option value="30d">🗓️ Últimos 30 días</option>
             <option value="todo">♾️ Histórico completo</option>
           </select>
 
           <select id="radar-fecha-select" onchange="cargarRadarAnalitica()"
-            style="padding:6px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.8rem; font-weight:700; background:#fff;">
+            style="padding:6px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.8rem; font-weight:700; background:#fff; display:none;">
           </select>
 
           <select id="radar-audiencia-select" onchange="cargarRadarAnalitica()"
             style="padding:6px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.8rem; font-weight:800; background:#eff6ff; color:#1e3a8a;">
-            <option value="clientes">👥 Solo Clientes Reales (Conversión Pura)</option>
+            <option value="clientes" selected>👥 Solo Clientes Reales (Conversión Pura)</option>
             <option value="admin_gestor">🛠️ Solo Dispositivos Admin / Gestor</option>
             <option value="todos">🌐 Todos los ingresos (Clientes + Admin + Bots)</option>
           </select>
@@ -563,7 +563,9 @@
         </div>
       </div>
 
+      <div id="radar-audiencia-alert-box" style="margin-bottom:12px;"></div>
       <div id="radar-kpis-container" class="kpi-grid-5"></div>
+      <div id="radar-embudo-box" style="margin-bottom:14px;"></div>
       <div id="radar-comparativa-nodos-box" style="margin-bottom:14px;"></div>
       <div id="radar-insights-container" class="insights-grid-3"></div>
       <div id="radar-feed-container" class="panel-card"></div>
@@ -592,7 +594,7 @@
       modoQrTienda: 'directo', // 'directo' | 'afiche'
       radar: {
         nodoFiltro: 'todos',
-        rango: 'hoy',
+        rango: '7d',
         fecha: '',
         audiencia: 'clientes',
         vistaPlana: false,
@@ -827,8 +829,9 @@
               <span>·</span>
               <span>${esFulfillment ? '🚚 Fulfillment 24/7' : (esLocalCard ? `🚐 ${n.comercial.canastos_en_curso} lotes a local` : `🧺 ${n.comercial.canastos_en_curso} canastos`)}</span>
               <span>·</span>
-              <span>📡 ${n.comercial.visitantes_reales_hoy} visitas hoy</span>
-              ${n.comercial.carritos_sin_cerrar > 0 ? `<span style="color:#b45309;">· 🛒 ${n.comercial.carritos_sin_cerrar} en carrito</span>` : ''}
+              <span>📡 ${Number(n.comercial.visitantes_reales_7d || 0)} clientes (7d)${Number(n.comercial.visitantes_reales_hoy || 0) > 0 ? ` · ${n.comercial.visitantes_reales_hoy} hoy` : ''}</span>
+              ${Number(n.comercial.visitantes_admin_7d || 0) > 0 ? `<span style="color:#64748b;">· 🛠️ ${n.comercial.visitantes_admin_7d} gestor/adm</span>` : ''}
+              ${Number(n.comercial.carritos_sin_cerrar || 0) > 0 ? `<span style="color:#b45309;">· 🛒 ${n.comercial.carritos_sin_cerrar} en carrito</span>` : ''}
             </div>
           </div>
         `;
@@ -1487,14 +1490,22 @@
           return `Buscó en la lupa: "${ev.termino_busqueda || ''}"`;
         case 'clic_que_contiene':
           return `Consultó "¿Qué contiene?": ${ev.producto_nombre || ev.sku_nodo || ''}`;
+        case 'clic_coordinar_gestor':
+          return `💬 Abrió contacto WhatsApp con gestor${ev.detalle ? ' (' + ev.detalle + ')' : ''}`;
         case 'vista_producto':
           return `Visualizó producto: ${ev.producto_nombre || ev.sku_nodo || ''}`;
         case 'carrito_agregar':
           return `Sumó al carrito: ${ev.producto_nombre || ev.sku_nodo || ''} (en carrito: ${ev.carrito_unidades} u. · ${fmtMoneda(ev.carrito_subtotal)})`;
         case 'carrito_quitar':
           return `Quitó del carrito: ${ev.producto_nombre || ev.sku_nodo || ''} (en carrito: ${ev.carrito_unidades} u.)`;
+        case 'carrito_vaciar':
+          return `🧹 Vació el carrito${ev.producto_nombre ? ' (' + ev.producto_nombre + ')' : ''}`;
         case 'inicio_checkout':
           return `Inició Checkout de confirmación (${ev.carrito_unidades} u. · ${fmtMoneda(ev.carrito_subtotal)})`;
+        case 'checkout_paso':
+          return `🪜 Avanzó paso Checkout: ${ev.detalle || 'siguiente paso'}`;
+        case 'checkout_abandono':
+          return `🚪 Cerró Checkout sin confirmar (${ev.detalle || 'abandonado'})`;
         case 'pedido_confirmado':
           return `✅ Confirmó Pedido ${ev.codigo_pedido ? '#' + ev.codigo_pedido : ''} (${fmtMoneda(ev.carrito_subtotal)})`;
         case 'marcar_admin_gestor':
@@ -1504,8 +1515,24 @@
       }
     }
 
+    function cambiarAudienciaYRangoRadar(nuevaAudiencia, nuevoRango = null) {
+      if (nuevaAudiencia) {
+        CSTATE.radar.audiencia = nuevaAudiencia;
+        const selAud = document.getElementById('radar-audiencia-select');
+        if (selAud) selAud.value = nuevaAudiencia;
+      }
+      if (nuevoRango) {
+        CSTATE.radar.rango = nuevoRango;
+        const selRan = document.getElementById('radar-rango-select');
+        if (selRan) selRan.value = nuevoRango;
+        const selFec = document.getElementById('radar-fecha-select');
+        if (selFec) selFec.style.display = nuevoRango === 'hoy' ? 'inline-block' : 'none';
+      }
+      cargarRadarAnalitica();
+    }
+
     async function cargarRadarAnalitica(silencioso = false) {
-      const rango = document.getElementById('radar-rango-select')?.value || CSTATE.radar.rango || 'hoy';
+      const rango = document.getElementById('radar-rango-select')?.value || CSTATE.radar.rango || '7d';
       const fechaSel = document.getElementById('radar-fecha-select')?.value || CSTATE.radar.fecha || '';
       const audiencia = document.getElementById('radar-audiencia-select')?.value || 'clientes';
       CSTATE.radar.rango = rango;
@@ -1552,10 +1579,156 @@
         selFecha.style.display = rango === 'hoy' ? 'inline-block' : 'none';
       }
 
+      renderizarBannerAudienciaRadar();
       renderizarKpisRadar();
+      renderizarEmbudoRadar();
       renderizarComparativaNodosRadar();
       renderizarInsightsRadar();
       renderizarFeedRadar();
+    }
+
+    function renderizarBannerAudienciaRadar() {
+      const box = document.getElementById('radar-audiencia-alert-box');
+      const data = CSTATE.radar.datos;
+      if (!box || !data) return;
+
+      const k = data.kpis || {};
+      const ra = data.resumen_audiencias || {};
+      const cg = data.contexto_global || {};
+      const aud = data.filtros?.audiencia || 'clientes';
+      const rango = data.filtros?.rango || '7d';
+      const evAdmin = Number(ra.eventos_admin_gestor || 0);
+      const visAdmin = Number(ra.visitantes_admin_gestor || 0);
+      const evCli = Number(ra.eventos_clientes || 0);
+      const visCli = Number(ra.visitantes_clientes || 0);
+      const hitsBots = Number(ra.hits_bots || 0);
+      const ultAct = ra.ultima_actividad_periodo_arg || cg.ultima_actividad_arg || null;
+
+      // Caso 1: Anti-pantalla vacía (0 clientes puros en el filtro, pero SÍ hay actividad Admin/Gestor en el período)
+      if (aud === 'clientes' && Number(k.total_eventos || 0) === 0 && evAdmin > 0) {
+        box.innerHTML = `
+          <div id="radar-banner-anti-vacio" style="background:#fffbeb; border:1.5px solid #fcd34d; border-left:5px solid #d97706; border-radius:12px; padding:12px 15px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:260px;">
+              <div style="font-size:0.88rem; font-weight:900; color:#92400e;">
+                📡 Telemetría activa — Sin clientes externos en este período, pero sí hay actividad de Gestor / Admin
+              </div>
+              <div style="font-size:0.8rem; color:#78350f; margin-top:3px; line-height:1.4;">
+                Se registraron <strong>${evAdmin} interacciones</strong> de <strong>${visAdmin} dispositivo(s) Admin / Gestor</strong>${Number(ra.carritos_admin || 0) > 0 ? ` · <strong>${ra.carritos_admin} carrito(s)</strong> abierto(s)` : ''}${hitsBots > 0 ? ` · ${hitsBots} bots/previews` : ''}${ultAct ? ` · Última actividad: <strong>${esc(ultAct)} hs</strong>` : ''}.
+                El filtro <em>Solo Clientes Reales</em> las mantiene separadas para preservar la conversión comercial pura.
+              </div>
+            </div>
+            <div style="display:flex; gap:7px; flex-wrap:wrap;">
+              <button type="button" class="btn solid-dark" onclick="cambiarAudienciaYRangoRadar('todos')">
+                🌐 Ver Todos (${Number(ra.eventos_totales || evAdmin)} ev.)
+              </button>
+              <button type="button" class="btn" style="background:#fff; border-color:#d97706; color:#92400e;" onclick="cambiarAudienciaYRangoRadar('admin_gestor')">
+                🛠️ Solo Admin / Gestor (${evAdmin})
+              </button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Caso 2: 0 eventos en la ventana actual (ni clientes ni admin), pero SÍ hay actividad en histórico
+      if (Number(k.total_eventos || 0) === 0 && evAdmin === 0 && Number(cg.eventos_historico_total || 0) > 0) {
+        box.innerHTML = `
+          <div id="radar-banner-historico" style="background:#eff6ff; border:1px solid #bfdbfe; border-left:5px solid #2563eb; border-radius:12px; padding:11px 15px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="flex:1; min-width:240px;">
+              <div style="font-size:0.86rem; font-weight:900; color:#1e3a8a;">
+                🗓️ Sin visitas en esta ventana — El Radar tiene ${Number(cg.eventos_historico_total)} eventos acumulados en histórico
+              </div>
+              <div style="font-size:0.79rem; color:#1e40af; margin-top:2px;">
+                Última actividad registrada: <strong>${esc(cg.ultima_actividad_arg || '—')} hs</strong> (${Number(cg.eventos_historico_clientes || 0)} de clientes · ${Number(cg.eventos_historico_admin || 0)} de Admin/Gestor).
+              </div>
+            </div>
+            <div style="display:flex; gap:7px; flex-wrap:wrap;">
+              ${rango === 'hoy' ? `<button type="button" class="btn solid-blue" onclick="cambiarAudienciaYRangoRadar('${esc(aud)}', '7d')">📆 Ver Últimos 7 días</button>` : ''}
+              <button type="button" class="btn solid-dark" onclick="cambiarAudienciaYRangoRadar('todos', 'todo')">
+                ♾️ Ver Histórico completo (Todos)
+              </button>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Caso 3: Hay clientes reales Y también hay dispositivos Admin/Gestor separados en el período
+      if (aud === 'clientes' && (visAdmin > 0 || hitsBots > 0)) {
+        box.innerHTML = `
+          <div id="radar-banner-separados" style="background:#f8fafc; border:1px solid var(--border); border-left:4px solid #0284c7; border-radius:10px; padding:8px 13px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; font-size:0.79rem;">
+            <div style="color:#334155;">
+              🛡️ <strong>Conversión pura activa:</strong> se muestran <strong>${visCli} cliente(s)</strong> (${evCli} ev.). Separados automáticamente:
+              ${visAdmin > 0 ? `<strong>+${visAdmin} Admin/Gestor</strong> (${evAdmin} ev.)` : ''}
+              ${visAdmin > 0 && hitsBots > 0 ? ' · ' : ''}
+              ${hitsBots > 0 ? `<strong>${hitsBots} previews/bots</strong>` : ''}${ultAct ? ` · Última actividad: ${esc(ultAct)} hs` : ''}.
+            </div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button type="button" class="btn" style="padding:4px 9px; font-size:0.74rem;" onclick="cambiarAudienciaYRangoRadar('todos')">🌐 Ver Todos</button>
+              ${visAdmin > 0 ? `<button type="button" class="btn" style="padding:4px 9px; font-size:0.74rem;" onclick="cambiarAudienciaYRangoRadar('admin_gestor')">🛠️ Ver Admin/Gestor</button>` : ''}
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      // Caso 4: El operador está viendo 'admin_gestor' o 'todos'
+      if (aud !== 'clientes') {
+        box.innerHTML = `
+          <div style="background:#f1f5f9; border:1px solid #cbd5e1; border-left:4px solid #334155; border-radius:10px; padding:8px 13px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; font-size:0.79rem;">
+            <div style="color:#1e293b;">
+              ${aud === 'admin_gestor'
+                ? `🛠️ Viendo <strong>Solo Dispositivos Admin / Gestor</strong> (${visAdmin} disp. · ${evAdmin} ev.). En este período también hubo <strong>${visCli} cliente(s) reales</strong> (${evCli} ev.).`
+                : `🌐 Viendo <strong>Todos los ingresos</strong>: <strong>${visCli} cliente(s) reales</strong> (${evCli} ev.) + <strong>${visAdmin} Admin/Gestor</strong> (${evAdmin} ev.)${hitsBots > 0 ? ` + ${hitsBots} bots` : ''}.`}
+            </div>
+            <button type="button" class="btn" style="padding:4px 9px; font-size:0.74rem; background:#fff;" onclick="cambiarAudienciaYRangoRadar('clientes')">
+              👥 Volver a Solo Clientes Reales
+            </button>
+          </div>
+        `;
+        return;
+      }
+
+      box.innerHTML = '';
+    }
+
+    function renderizarEmbudoRadar() {
+      const box = document.getElementById('radar-embudo-box');
+      const data = CSTATE.radar.datos;
+      if (!box || !data) return;
+      const k = data.kpis || {};
+      if (Number(k.total_eventos || 0) === 0) {
+        box.innerHTML = '';
+        return;
+      }
+      const pasosDetalle = Array.isArray(data.embudo_checkout) ? data.embudo_checkout : [];
+      const pasosTxt = pasosDetalle.length > 0
+        ? `<div style="margin-top:8px; padding-top:8px; border-top:1px dashed var(--border); display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+             <span style="font-size:0.72rem; font-weight:800; color:var(--muted); text-transform:uppercase;">Pasos Checkout:</span>
+             ${pasosDetalle.map(p => `<span class="chip">🪜 ${esc(p.paso_detalle)} <strong>(${p.eventos})</strong></span>`).join('')}
+           </div>`
+        : '';
+
+      box.innerHTML = `
+        <div class="panel-card" style="padding:11px 15px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:0.78rem; font-weight:800;">
+            <span style="font-size:0.72rem; color:var(--muted); text-transform:uppercase; margin-right:4px;">Embudo Tienda:</span>
+            <span class="chip">👀 Ingresos: <strong>${k.ingresos_tienda}</strong></span>
+            <span style="color:#94a3b8;">→</span>
+            <span class="chip">🔎 Interés/Prod.: <strong>${(k.clics_categorias || 0) + (k.busquedas_lupa || 0) + (k.consultas_producto || 0)}</strong></span>
+            <span style="color:#94a3b8;">→</span>
+            <span class="chip">🛒 Carrito: <strong>${k.visitantes_con_carrito}</strong></span>
+            <span style="color:#94a3b8;">→</span>
+            <span class="chip">🧾 Checkout: <strong>${k.visitantes_checkout}</strong></span>
+            <span style="color:#94a3b8;">→</span>
+            <span class="chip" style="${Number(k.abandonos_checkout || 0) > 0 ? 'background:#fff7ed; border-color:#fed7aa; color:#9a3412;' : ''}">🪜 Pasos: <strong>${k.pasos_checkout || 0}</strong>${Number(k.abandonos_checkout || 0) > 0 ? ` · 🚪 ${k.abandonos_checkout} aband.` : ''}</span>
+            <span style="color:#94a3b8;">→</span>
+            <span class="chip" style="background:#f0fdf4; border-color:#86efac; color:#166534;">✅ Pedidos: <strong>${k.pedidos_confirmados}</strong></span>
+            ${Number(k.clics_whatsapp || 0) > 0 ? `<span class="chip" style="background:#ecfdf5; border-color:#a7f3d0; color:#047857;">💬 WhatsApp: <strong>${k.clics_whatsapp}</strong></span>` : ''}
+          </div>
+          ${pasosTxt}
+        </div>
+      `;
     }
 
     function renderizarKpisRadar() {
@@ -1570,7 +1743,9 @@
           <div class="kpi-val">${k.visitantes_unicos}</div>
           <div class="kpi-sub">
             <strong>${k.visitantes_identificados}</strong> identificados · ${k.visitantes_nuevos} nuevos · ${k.visitantes_recurrentes} recurrentes
-            ${k.visitantes_admin_gestor > 0 && data.filtros.audiencia === 'clientes' ? `<br><span style="color:#64748b;">(+${k.visitantes_admin_gestor} Admin/Gestor separados)</span>` : ''}
+            ${k.visitantes_admin_gestor > 0 && data.filtros.audiencia === 'clientes'
+              ? `<br><a href="javascript:void(0)" onclick="cambiarAudienciaYRangoRadar('todos')" style="color:#b45309; font-weight:800; text-decoration:underline;">(+${k.visitantes_admin_gestor} Admin/Gestor separados · ${k.eventos_admin_gestor || 0} ev.)</a>`
+              : ''}
           </div>
         </div>
 
@@ -1578,7 +1753,7 @@
           <div class="kpi-label">🔎 Navegación e Interés</div>
           <div class="kpi-val">${k.clics_categorias + k.busquedas_lupa + k.consultas_producto}</div>
           <div class="kpi-sub">
-            ${k.ingresos_tienda} ingresos · ${k.clics_categorias} rubros · ${k.busquedas_lupa} búsquedas · ${k.consultas_producto} "¿Qué contiene?"
+            ${k.ingresos_tienda} ing. · ${k.clics_categorias} rubros · ${k.busquedas_lupa} lupa · ${k.vistas_producto || 0} fotos · ${k.clics_que_contiene || 0} "¿Qué contiene?"${Number(k.clics_whatsapp || 0) > 0 ? ` · 💬 ${k.clics_whatsapp} WA` : ''}
           </div>
         </div>
 
@@ -1589,7 +1764,7 @@
             ${k.carritos_sin_cerrar_monto > 0 ? `<span style="font-size:0.9rem; font-weight:800;">(${fmtMoneda(k.carritos_sin_cerrar_monto)})</span>` : ''}
           </div>
           <div class="kpi-sub">
-            ${k.carritos_abandonados_total} abandonados (+10 min) · ${k.visitantes_con_carrito} armaron carrito · ${k.visitantes_checkout} en checkout
+            ${k.carritos_abandonados_total} abandonados (+10 min) · ${k.visitantes_con_carrito} armaron carrito · ${k.visitantes_checkout} en checkout${Number(k.abandonos_checkout || 0) > 0 ? ` · ${k.abandonos_checkout} cierres` : ''}
           </div>
         </div>
 
@@ -1618,7 +1793,7 @@
       const box = document.getElementById('radar-comparativa-nodos-box');
       const data = CSTATE.radar.datos;
       if (!box || !data) return;
-      if (String(data.filtros.nodo_id) !== 'todos' || !Array.isArray(data.por_nodo) || data.por_nodo.length <= 1) {
+      if (String(data.filtros.nodo_id) !== 'todos' || !Array.isArray(data.por_nodo) || data.por_nodo.length === 0) {
         box.innerHTML = '';
         return;
       }
@@ -1661,7 +1836,7 @@
                     <div style="border:1px solid ${c.estado_carrito === 'ABANDONADO' ? '#fcd34d' : '#cbd5e1'}; background:${c.estado_carrito === 'ABANDONADO' ? '#fffbeb' : '#f8fafc'}; border-radius:10px; padding:9px 11px; font-size:0.79rem;">
                       <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
                         <div>
-                          <strong>${c.identificado ? '👤 ' + esc(c.vecino_nombre) : '🕵️ Visitante ' + esc(c.alias_corto)}</strong>
+                          <strong>${c.es_admin_gestor ? '🛠️ ' + esc(c.etiqueta_dispositivo || (c.vecino_nombre ? c.vecino_nombre + ' (Admin/Gestor)' : 'Admin/Gestor ' + c.alias_corto)) : (c.identificado ? '👤 ' + esc(c.vecino_nombre) : '🕵️ Visitante ' + esc(c.alias_corto))}</strong>
                           <span class="badge-pill" style="background:#fff; border:1px solid var(--border); margin-left:4px;">${esc((c.nodo_nombre || '').split('·')[0].trim())}</span>
                         </div>
                         <span class="badge-pill" style="background:${c.estado_carrito === 'ABANDONADO' ? '#fef3c7' : '#dcfce7'}; color:${c.estado_carrito === 'ABANDONADO' ? '#92400e' : '#166534'};">
@@ -1771,14 +1946,26 @@
       }
 
       const grupos = data.radar_visitantes || [];
+      const raFeed = data.resumen_audiencias || {};
+      const cgFeed = data.contexto_global || {};
+      const msgVacioFeed = (data.filtros?.audiencia === 'clientes' && Number(raFeed.eventos_admin_gestor || 0) > 0)
+        ? `No hay visitas de <strong>Clientes Reales</strong> en este filtro, pero sí se registraron <strong>${raFeed.eventos_admin_gestor} eventos de Admin/Gestor</strong>${raFeed.ultima_actividad_periodo_arg ? ` (última actividad: ${esc(raFeed.ultima_actividad_periodo_arg)} hs)` : ''}.
+           <div style="margin-top:10px; display:flex; justify-content:center; gap:8px; flex-wrap:wrap;">
+             <button type="button" class="btn solid-dark" onclick="cambiarAudienciaYRangoRadar('todos')">🌐 Ver Todos los ingresos</button>
+             <button type="button" class="btn" onclick="cambiarAudienciaYRangoRadar('admin_gestor')">🛠️ Ver Solo Admin / Gestor</button>
+           </div>`
+        : (Number(cgFeed.eventos_historico_total || 0) > 0
+            ? `No hay visitas en esta ventana. Última actividad en histórico: <strong>${esc(cgFeed.ultima_actividad_arg || '—')} hs</strong> (${cgFeed.eventos_historico_total} eventos).
+               <div style="margin-top:10px;"><button type="button" class="btn solid-dark" onclick="cambiarAudienciaYRangoRadar('todos', 'todo')">♾️ Ver Histórico completo</button></div>`
+            : `No hay visitas registradas para este filtro. Abrí la tienda desde un enlace o cambiá el rango de fechas.`);
       container.innerHTML = `
         <div class="panel-title">
           <span>📡 Radar de Visitantes y Compradores (${grupos.length} sesiones agrupadas)</span>
           <span style="font-size:0.76rem; font-weight:600; color:var(--muted);">Tocá una fila para desplegar el recorrido paso a paso</span>
         </div>
         ${grupos.length === 0
-          ? `<div style="padding:28px; text-align:center; color:var(--muted); font-size:0.88rem;">
-               No hay visitas registradas para este filtro. Abrí la tienda desde un enlace o cambiá el rango de fechas.
+          ? `<div style="padding:28px; text-align:center; color:var(--muted); font-size:0.88rem; line-height:1.5;">
+               ${msgVacioFeed}
              </div>`
           : grupos.map(g => {
               const claseEstado = g.es_admin_gestor
@@ -1821,6 +2008,8 @@
                         ${g.categorias_vistas.map(c => `<span class="chip">📂 ${esc(c)}</span>`).join('')}
                         ${g.busquedas.map(b => `<span class="chip" style="background:#eff6ff; color:#1e40af;">🔍 "${esc(b)}"</span>`).join('')}
                         ${g.productos_interes.slice(0, 3).map(p => `<span class="chip" style="background:#f0fdf4; color:#166534;">🥣 ${esc(p)}</span>`).join('')}
+                        ${Number(g.clics_whatsapp || 0) > 0 ? `<span class="chip" style="background:#ecfdf5; color:#047857;">💬 WA (${g.clics_whatsapp})</span>` : ''}
+                        ${g.abandono_checkout && !g.compro_en_visita ? `<span class="chip" style="background:#fff7ed; color:#9a3412;">🚪 Abandonó checkout</span>` : ''}
                       </div>
                     </div>
 
@@ -1882,7 +2071,7 @@
 
     async function abrirContactoInternoCarritoRadar(idxCart) {
       try {
-        const carts = CSTATE.radar?.data?.carritos_sin_cerrar || [];
+        const carts = CSTATE.radar?.datos?.carritos_sin_cerrar || [];
         const c = carts[idxCart];
         if (!c) return;
         await asegurarModalOmnicanalCargado();

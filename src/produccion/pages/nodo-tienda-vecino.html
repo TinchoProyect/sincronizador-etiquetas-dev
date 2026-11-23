@@ -2845,14 +2845,62 @@
       }
     }
 
+    function tieneHistorialGestorOAdminLocal(slugRef = STATE.slug) {
+      try {
+        const sClean = String(slugRef || '').trim().toLowerCase();
+        const rol = String(localStorage.getItem('lamda_nodo_dispositivo_rol') || '').trim().toUpperCase();
+        if (rol === 'ADMIN') return true;
+        if (sClean && (localStorage.getItem('lamda_nodo_gestor_slug_' + sClean) === '1' || localStorage.getItem('lamda_nodo_gestor_token_' + sClean))) {
+          return true;
+        }
+        if (sClean && localStorage.getItem('lamda_nodo_cliente_forzado_' + sClean) === '1') {
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    }
+
+    function obtenerEtiquetaDispositivoTienda(slugRef = STATE.slug) {
+      try {
+        if (typeof esModoEspejoLocal === 'function' && esModoEspejoLocal()) return 'Modo Espejo Local';
+        const sClean = String(slugRef || '').trim().toLowerCase();
+        if (sClean) {
+          const etqNodo = String(localStorage.getItem('lamda_nodo_gestor_etiqueta_' + sClean) || '').trim();
+          if (etqNodo) return etqNodo;
+          if (localStorage.getItem('lamda_nodo_gestor_slug_' + sClean) === '1' || localStorage.getItem('lamda_nodo_gestor_token_' + sClean)) {
+            return `Gestor ${STATE.nodo?.nombre_marca || sClean}`;
+          }
+        }
+        const rol = String(localStorage.getItem('lamda_nodo_dispositivo_rol') || '').trim().toUpperCase();
+        if (rol === 'ADMIN') {
+          return String(localStorage.getItem('lamda_nodo_dispositivo_etiqueta') || '').trim() || 'Admin / Prueba Móvil';
+        }
+      } catch (_) {}
+      return '';
+    }
+
     function esDispositivoAdminGestorTienda(slugRef = STATE.slug) {
       try {
         if (typeof esModoEspejoLocal === 'function' && esModoEspejoLocal()) return true;
+        const sClean = String(slugRef || '').trim().toLowerCase();
+        // 1. Override explícito a Cliente Real para este nodo (o global)
+        if (sClean && localStorage.getItem('lamda_nodo_cliente_forzado_' + sClean) === '1') return false;
         const rol = String(localStorage.getItem('lamda_nodo_dispositivo_rol') || '').trim().toUpperCase();
         if (rol === 'CLIENTE_FORZADO') return false;
-        if (rol === 'ADMIN' || rol === 'GESTOR') return true;
-        const sClean = String(slugRef || '').trim().toLowerCase();
-        if (sClean && localStorage.getItem('lamda_nodo_gestor_token_' + sClean)) return true;
+        // 2. Marca explícita de Admin global (?modo_admin=1 o Centro de Nodos)
+        if (rol === 'ADMIN') return true;
+        // 3. Marca de Gestor estrictamente acotada al nodo actual (evita contaminación cross-nodo)
+        if (sClean && (localStorage.getItem('lamda_nodo_gestor_slug_' + sClean) === '1' || localStorage.getItem('lamda_nodo_gestor_token_' + sClean))) {
+          return true;
+        }
+        // 4. Migración limpia del valor legacy global 'GESTOR': solo aplica si la etiqueta coincide con este nodo
+        if (rol === 'GESTOR') {
+          const etqLegacy = String(localStorage.getItem('lamda_nodo_dispositivo_etiqueta') || '').trim().toLowerCase();
+          const marcaActual = String(STATE.nodo?.nombre_marca || '').trim().toLowerCase();
+          if (sClean && etqLegacy && (etqLegacy.includes(sClean) || (marcaActual && etqLegacy.includes(marcaActual)))) {
+            return true;
+          }
+        }
       } catch (_) {}
       return false;
     }
@@ -2861,13 +2909,16 @@
       const p = _URL_LAUNCH_PARAMS.modo_admin_param;
       if (p === null) return;
       try {
+        const sClean = String(STATE.slug || detectarSlugInicial() || '').trim().toLowerCase();
         if (p === '1' || p.toLowerCase() === 'true') {
           localStorage.setItem('lamda_nodo_dispositivo_rol', 'ADMIN');
+          if (sClean) localStorage.removeItem('lamda_nodo_cliente_forzado_' + sClean);
           if (!localStorage.getItem('lamda_nodo_dispositivo_etiqueta')) {
             localStorage.setItem('lamda_nodo_dispositivo_etiqueta', 'Admin / Prueba Móvil');
           }
         } else if (p === '0' || p.toLowerCase() === 'false') {
           localStorage.setItem('lamda_nodo_dispositivo_rol', 'CLIENTE_FORZADO');
+          if (sClean) localStorage.setItem('lamda_nodo_cliente_forzado_' + sClean, '1');
         }
         const u = new URL(window.location.href);
         u.searchParams.delete('modo_admin');
@@ -2876,13 +2927,40 @@
     }
 
     function desactivarModoAdminGestorEnEsteNavegador() {
+      const sClean = String(STATE.slug || '').trim().toLowerCase();
       try {
-        localStorage.setItem('lamda_nodo_dispositivo_rol', 'CLIENTE_FORZADO');
+        if (sClean) localStorage.setItem('lamda_nodo_cliente_forzado_' + sClean, '1');
+        const rol = String(localStorage.getItem('lamda_nodo_dispositivo_rol') || '').trim().toUpperCase();
+        if (rol === 'ADMIN' || rol === 'GESTOR') {
+          localStorage.setItem('lamda_nodo_dispositivo_rol', 'CLIENTE_FORZADO');
+        }
       } catch (_) {}
       enviarTelemetriaTienda('marcar_admin_gestor', {
         accion_admin_gestor: 'DESACTIVAR',
         es_admin_gestor: false,
-        detalle: 'Cambio manual a modo Cliente Real'
+        detalle: `Cambio manual a modo Cliente Real (${sClean || 'tienda'})`
+      }, 0);
+      renderizarBannerDispositivoAdminTienda();
+    }
+
+    function reactivarModoAdminGestorEnEsteNavegador() {
+      const sClean = String(STATE.slug || '').trim().toLowerCase();
+      try {
+        if (sClean) localStorage.removeItem('lamda_nodo_cliente_forzado_' + sClean);
+        const esGestorDeEsteNodo = Boolean(sClean && (localStorage.getItem('lamda_nodo_gestor_slug_' + sClean) === '1' || localStorage.getItem('lamda_nodo_gestor_token_' + sClean)));
+        if (esGestorDeEsteNodo) {
+          if (String(localStorage.getItem('lamda_nodo_dispositivo_rol') || '').trim().toUpperCase() === 'CLIENTE_FORZADO') {
+            localStorage.removeItem('lamda_nodo_dispositivo_rol');
+          }
+        } else {
+          localStorage.setItem('lamda_nodo_dispositivo_rol', 'ADMIN');
+        }
+      } catch (_) {}
+      enviarTelemetriaTienda('marcar_admin_gestor', {
+        accion_admin_gestor: 'ACTIVAR',
+        es_admin_gestor: true,
+        etiqueta_dispositivo: obtenerEtiquetaDispositivoTienda(sClean) || 'Admin / Gestor',
+        detalle: `Reactivación manual de modo Gestor/Admin (${sClean || 'tienda'})`
       }, 0);
       renderizarBannerDispositivoAdminTienda();
     }
@@ -2893,21 +2971,35 @@
       const boxDrawer = document.getElementById('drawer-admin-device-box');
       if (!boxDrawer) return;
       const activo = esDispositivoAdminGestorTienda(STATE.slug);
-      if (!activo) {
-        boxDrawer.style.display = 'none';
-        boxDrawer.innerHTML = '';
+      if (activo) {
+        const etq = obtenerEtiquetaDispositivoTienda(STATE.slug) || 'Gestor / Admin';
+        boxDrawer.style.display = 'block';
+        boxDrawer.innerHTML = `
+          <div style="background:#0f172a; color:#e2e8f0; border-radius:13px; padding:11px 13px; font-size:0.75rem; font-weight:700; line-height:1.35;">
+            <div>🛠️ <strong>${esc(etq)}</strong> · Visitas separadas de las métricas de clientes.</div>
+            <button type="button" onclick="desactivarModoAdminGestorEnEsteNavegador()"
+              style="margin-top:8px; background:#1e293b; color:#93c5fd; border:1px solid #475569; border-radius:999px; padding:4px 11px; font-family:inherit; font-size:0.72rem; font-weight:800; cursor:pointer;">
+              Cambiar a Cliente Real
+            </button>
+          </div>
+        `;
         return;
       }
-      boxDrawer.style.display = 'block';
-      boxDrawer.innerHTML = `
-        <div style="background:#0f172a; color:#e2e8f0; border-radius:13px; padding:11px 13px; font-size:0.75rem; font-weight:700; line-height:1.35;">
-          <div>🛠️ <strong>Dispositivo Gestor / Admin</strong> · Visitas separadas de las métricas de clientes.</div>
-          <button type="button" onclick="desactivarModoAdminGestorEnEsteNavegador()"
-            style="margin-top:8px; background:#1e293b; color:#93c5fd; border:1px solid #475569; border-radius:999px; padding:4px 11px; font-family:inherit; font-size:0.72rem; font-weight:800; cursor:pointer;">
-            Cambiar a Cliente Real
-          </button>
-        </div>
-      `;
+      if (tieneHistorialGestorOAdminLocal(STATE.slug)) {
+        boxDrawer.style.display = 'block';
+        boxDrawer.innerHTML = `
+          <div style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; border-radius:13px; padding:10px 12px; font-size:0.74rem; font-weight:700; line-height:1.35;">
+            <div>👥 <strong>Navegando como Cliente Real</strong> · Tus interacciones cuentan en las métricas de esta tienda.</div>
+            <button type="button" onclick="reactivarModoAdminGestorEnEsteNavegador()"
+              style="margin-top:7px; background:#ffffff; color:#0f172a; border:1px solid #cbd5e1; border-radius:999px; padding:4px 11px; font-family:inherit; font-size:0.71rem; font-weight:800; cursor:pointer;">
+              🛠️ Volver a modo Gestor / Admin
+            </button>
+          </div>
+        `;
+        return;
+      }
+      boxDrawer.style.display = 'none';
+      boxDrawer.innerHTML = '';
     }
 
     function construirSnapshotCarritoTelemetria() {
@@ -2939,12 +3031,12 @@
       };
     }
 
-    function enviarTelemetriaTienda(tipoEvento, extra = {}, dedupeMs = 1500) {
+    function enviarTelemetriaTienda(tipoEvento, extra = {}, dedupeMs = 1500, opts = {}) {
       try {
         const slugTarget = String(extra.nodo_slug || STATE.slug || detectarSlugInicial() || '').trim();
         if (!slugTarget) return;
 
-        const keyDedupe = `${slugTarget}:${tipoEvento}:${extra.categoria_nombre || ''}:${extra.termino_busqueda || ''}:${extra.oferta_id || ''}:${extra.cantidad || ''}`;
+        const keyDedupe = `${slugTarget}:${tipoEvento}:${extra.categoria_nombre || ''}:${extra.termino_busqueda || ''}:${extra.oferta_id || ''}:${extra.cantidad || ''}:${extra.detalle || ''}`;
         const ahora = Date.now();
         if (dedupeMs > 0) {
           const prevTs = _TEL_DEDUPE_MAP.get(keyDedupe) || 0;
@@ -2959,19 +3051,20 @@
           }
         } catch (_) {}
 
-        let etiquetaDisp = '';
-        try {
-          etiquetaDisp = localStorage.getItem('lamda_nodo_dispositivo_etiqueta') || '';
-        } catch (_) {}
+        const esAdminEfectivo = extra.es_admin_gestor !== undefined
+          ? Boolean(extra.es_admin_gestor)
+          : esDispositivoAdminGestorTienda(slugTarget);
+
+        const etiquetaDisp = esAdminEfectivo
+          ? (extra.etiqueta_dispositivo || obtenerEtiquetaDispositivoTienda(slugTarget) || undefined)
+          : undefined;
 
         const body = {
           tipo_evento: tipoEvento,
           visitor_id: obtenerVisitorIdTienda(),
           session_id: obtenerSessionIdTienda(),
-          es_admin_gestor: extra.es_admin_gestor !== undefined
-            ? Boolean(extra.es_admin_gestor)
-            : esDispositivoAdminGestorTienda(slugTarget),
-          etiqueta_dispositivo: etiquetaDisp || undefined,
+          es_admin_gestor: esAdminEfectivo,
+          etiqueta_dispositivo: etiquetaDisp,
           utm_source: _URL_LAUNCH_PARAMS.utm_source || undefined,
           utm_medium: _URL_LAUNCH_PARAMS.utm_medium || undefined,
           utm_campaign: _URL_LAUNCH_PARAMS.utm_campaign || undefined,
@@ -2980,13 +3073,26 @@
           portal_token: STATE.portalToken || idLocal.portal_token || undefined,
           vecino_nombre: extra.vecino_nombre || idLocal.nombre_completo || window._savedVecinoNombre || undefined,
           vecino_telefono: extra.vecino_telefono || idLocal.telefono_display || idLocal.telefono_normalizado || window._savedVecinoTel || undefined,
-          ...extra
+          ...extra,
+          es_admin_gestor: esAdminEfectivo
         };
 
-        fetch(`/api/produccion/nodos/tienda/${encodeURIComponent(slugTarget)}/telemetria`, {
+        const url = `/api/produccion/nodos/tienda/${encodeURIComponent(slugTarget)}/telemetria`;
+        const jsonPayload = JSON.stringify(body);
+
+        if (opts && opts.beacon && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          try {
+            const blob = new Blob([jsonPayload], { type: 'application/json' });
+            if (navigator.sendBeacon(url, blob)) {
+              return;
+            }
+          } catch (_) {}
+        }
+
+        fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          body: jsonPayload,
           keepalive: true
         }).catch(() => {});
       } catch (_) {}
@@ -4083,7 +4189,11 @@
       const href = _urlWhatsappPendienteConfirmar || obtenerUrlWhatsappCoordinarGestor();
       cerrarModalConfirmarWhatsAppTienda();
       if (!href) return;
-      enviarTelemetriaTienda('clic_coordinar_gestor', { gestor_nombre: STATE.nodo?.gestor_nombre || '' }, 2000);
+      const gestorEtq = STATE.nodo?.gestor_nombre || STATE.nodo?.nombre_marca || 'gestor';
+      enviarTelemetriaTienda('clic_coordinar_gestor', {
+        gestor_nombre: gestorEtq,
+        detalle: `WhatsApp con ${gestorEtq}`
+      }, 2000, { beacon: true });
       window.open(href, '_blank', 'noopener,noreferrer');
     }
 
@@ -5399,6 +5509,17 @@
           cantidad: nuevo,
           ...snap
         }, 250);
+        if (delta < 0 && snap.carrito_unidades === 0) {
+          enviarTelemetriaTienda('carrito_vaciar', {
+            oferta_id: Number(ofertaId),
+            sku_nodo: prodRef?.sku_nodo || '',
+            producto_nombre: prodRef?.nombre_publico || '',
+            carrito_snapshot: [],
+            carrito_unidades: 0,
+            carrito_subtotal: 0,
+            detalle: 'Carrito vaciado al quitar último producto'
+          }, 400);
+        }
       }
     }
 
@@ -5742,7 +5863,8 @@
         emailPostal: String(idGuardada.email_contacto || '').trim(),
         cotizacionPostal: cpPre.length === 4 ? cotizarEnvioPostalLocalTienda(cpPre, res.subtotal) : null,
         teniaDatosGuardados: Boolean(nombrePre.length >= 2 && telPre.replace(/\D/g, '').length >= 8),
-        enviandoPedido: false
+        enviandoPedido: false,
+        pedidoConfirmado: false
       };
 
       document.body.style.overflow = 'hidden';
@@ -5760,9 +5882,19 @@
     }
 
     function cerrarModalCheckout() {
+      const modal = document.getElementById('checkout-modal');
+      const estabaAbierto = Boolean(modal && modal.style.display === 'flex');
+      if (estabaAbierto && STATE.checkoutWiz && !STATE.checkoutWiz.pedidoConfirmado) {
+        const snap = construirSnapshotCarritoTelemetria();
+        if (snap.carrito_unidades > 0) {
+          enviarTelemetriaTienda('checkout_abandono', {
+            detalle: `Cerró en paso: ${STATE.checkoutWiz.pasoActualKey || 'inicio'}`,
+            ...snap
+          }, 800, { beacon: true });
+        }
+      }
       destruirMapaCheckoutVecino();
       document.body.style.overflow = '';
-      const modal = document.getElementById('checkout-modal');
       if (modal) modal.style.display = 'none';
     }
 
@@ -6005,7 +6137,12 @@
       const pasos = obtenerPasosCheckoutWizard();
       const idx = pasos.indexOf(actual);
       if (idx >= 0 && idx < pasos.length - 1) {
-        STATE.checkoutWiz.pasoActualKey = pasos[idx + 1];
+        const siguiente = pasos[idx + 1];
+        STATE.checkoutWiz.pasoActualKey = siguiente;
+        enviarTelemetriaTienda('checkout_paso', {
+          detalle: `${actual} → ${siguiente}`,
+          ...construirSnapshotCarritoTelemetria()
+        }, 300);
         renderContenidoModalCheckout();
       }
     }
@@ -6855,6 +6992,7 @@
         }
 
         w.enviandoPedido = false;
+        w.pedidoConfirmado = true;
         const ped = data.pedido;
         const pagoInfo = data.nodo_pago_info;
         const itemsConfirmados = (Array.isArray(ped?.items) && ped.items.length > 0)
@@ -8491,6 +8629,9 @@
       } catch (_) {}
 
       actualizarBotonesCabeceraMiCuenta();
+      enviarTelemetriaTienda('vista_mi_cuenta', {
+        portal_token: STATE.portalToken || undefined
+      }, 3000);
       await cargarPortalMiCuenta(false);
 
       detenerPollingMiCuenta();
@@ -9523,6 +9664,12 @@
       track.scrollLeft = 0;
       actualizarIndicadoresVisorFotos();
       renderizarFichaInferiorVisorProducto();
+      enviarTelemetriaTienda('vista_producto', {
+        oferta_id: Number(prod.oferta_id),
+        sku_nodo: prod.sku_nodo || '',
+        producto_nombre: prod.nombre_publico || '',
+        categoria_nombre: prod.categoria_familiar || ''
+      }, 1500);
 
       if (!VISOR_FOTOS_STATE.historyPushed) {
         try {

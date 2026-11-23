@@ -10,10 +10,13 @@ const TIPOS_EVENTO_TIENDA_PERMITIDOS = new Set([
     'busqueda_lupa',
     'vista_producto',
     'clic_que_contiene',
+    'clic_coordinar_gestor',
     'carrito_agregar',
     'carrito_quitar',
     'carrito_vaciar',
     'inicio_checkout',
+    'checkout_paso',
+    'checkout_abandono',
     'pedido_confirmado',
     'marcar_admin_gestor'
 ]);
@@ -455,9 +458,9 @@ async function registrarEventoTelemetriaTienda(slugOrId, payload = {}, reqMeta =
         user_agent: userAgent
     });
 
-    // Consultar visitante previo para preservar marca Admin/Gestor e identidad conocida
+    // Consultar visitante previo para identidad conocida y trazabilidad por nodo
     const prevRes = await db.query(
-        `SELECT id, vecino_id, vecino_nombre, vecino_telefono, telefono_normalizado,
+        `SELECT id, ultimo_nodo_id, vecino_id, vecino_nombre, vecino_telefono, telefono_normalizado,
                 es_admin_gestor, etiqueta_dispositivo, ultimo_origen_trafico, ultima_visita_at
          FROM public.nodos_tienda_visitantes
          WHERE visitor_id = $1
@@ -466,17 +469,23 @@ async function registrarEventoTelemetriaTienda(slugOrId, payload = {}, reqMeta =
     );
     const prev = prevRes.rows[0] || null;
 
-    let esAdminGestor = Boolean(payload.es_admin_gestor);
+    // Clasificación por evento y por nodo (sin efecto sticky irreversible entre nodos ni al pasar a Cliente Real)
     const accionAdmin = String(payload.accion_admin_gestor || '').trim().toUpperCase();
+    let esAdminGestor;
     if (accionAdmin === 'DESACTIVAR') {
         esAdminGestor = false;
     } else if (accionAdmin === 'ACTIVAR') {
         esAdminGestor = true;
-    } else if (!esAdminGestor && prev?.es_admin_gestor) {
-        esAdminGestor = true;
+    } else if (payload.es_admin_gestor !== undefined && payload.es_admin_gestor !== null) {
+        esAdminGestor = Boolean(payload.es_admin_gestor);
+    } else {
+        // Fallback solo para llamadas sin flag explícito: heredar únicamente si pertenece al mismo nodo
+        esAdminGestor = Boolean(prev?.es_admin_gestor && Number(prev?.ultimo_nodo_id) === Number(nodo.id));
     }
 
-    const etiquetaDispositivo = limpiarTextoCorto(payload.etiqueta_dispositivo, 120) || prev?.etiqueta_dispositivo || null;
+    const etiquetaDispositivo = esAdminGestor
+        ? (limpiarTextoCorto(payload.etiqueta_dispositivo, 120) || (Number(prev?.ultimo_nodo_id) === Number(nodo.id) ? prev?.etiqueta_dispositivo : null) || null)
+        : null;
 
     // Resolver identidad progresiva si vienen pistas (portal_token, tracking_token, teléfono o pedido_id)
     let vecinoId = prev?.vecino_id ? Number(prev.vecino_id) : null;
@@ -537,16 +546,24 @@ async function registrarEventoTelemetriaTienda(slugOrId, payload = {}, reqMeta =
         }
     }
 
-    const tieneSnapshot = Array.isArray(payload.carrito_snapshot);
-    const snapshotLimpio = tieneSnapshot ? sanitizarSnapshotCarrito(payload.carrito_snapshot) : null;
-    const carritoUnidades = payload.carrito_unidades !== undefined
-        ? Math.max(0, Math.round(Number(payload.carrito_unidades || 0)))
-        : (snapshotLimpio ? snapshotLimpio.reduce((acc, x) => acc + x.cantidad, 0) : null);
-    const carritoSubtotal = payload.carrito_subtotal !== undefined
-        ? Math.max(0, Number(Number(payload.carrito_subtotal || 0).toFixed(2)))
-        : (snapshotLimpio ? Number(snapshotLimpio.reduce((acc, x) => acc + x.subtotal, 0).toFixed(2)) : null);
+    const esCarritoVaciar = tipoEvento === 'carrito_vaciar';
+    const tieneSnapshot = esCarritoVaciar || Array.isArray(payload.carrito_snapshot);
+    const snapshotLimpio = esCarritoVaciar
+        ? []
+        : (Array.isArray(payload.carrito_snapshot) ? sanitizarSnapshotCarrito(payload.carrito_snapshot) : null);
+    const carritoUnidades = esCarritoVaciar
+        ? 0
+        : (payload.carrito_unidades !== undefined
+            ? Math.max(0, Math.round(Number(payload.carrito_unidades || 0)))
+            : (snapshotLimpio ? snapshotLimpio.reduce((acc, x) => acc + x.cantidad, 0) : null));
+    const carritoSubtotal = esCarritoVaciar
+        ? 0
+        : (payload.carrito_subtotal !== undefined
+            ? Math.max(0, Number(Number(payload.carrito_subtotal || 0).toFixed(2)))
+            : (snapshotLimpio ? Number(snapshotLimpio.reduce((acc, x) => acc + x.subtotal, 0).toFixed(2)) : null));
 
-    const esEventoCarrito = ['carrito_agregar', 'carrito_quitar', 'carrito_vaciar', 'inicio_checkout'].includes(tipoEvento);
+    const esEventoCarrito = ['carrito_agregar', 'carrito_quitar', 'carrito_vaciar', 'inicio_checkout'].includes(tipoEvento) ||
+        (['checkout_paso', 'checkout_abandono'].includes(tipoEvento) && tieneSnapshot);
     const esPedidoConfirmado = tipoEvento === 'pedido_confirmado';
 
     const nuevaSesion = !prev || !prev.ultima_visita_at ||
@@ -588,7 +605,7 @@ async function registrarEventoTelemetriaTienda(slugOrId, payload = {}, reqMeta =
             telefono_normalizado = COALESCE($6::varchar, telefono_normalizado),
             identificado_via = COALESCE($7::varchar, identificado_via),
             es_admin_gestor = $8::boolean,
-            etiqueta_dispositivo = COALESCE($9::varchar, etiqueta_dispositivo),
+            etiqueta_dispositivo = CASE WHEN $8::boolean THEN COALESCE($9::varchar, etiqueta_dispositivo) ELSE NULL END,
             dispositivo_modo = $10::varchar,
             sistema_operativo = $11::varchar,
             ultimo_origen_trafico = $12::varchar,
@@ -772,7 +789,14 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
             COALESCE(of_stats.ofertas_publicadas, 0)::int AS ofertas_publicadas,
             COALESCE(vec_stats.vecinos_registrados, 0)::int AS vecinos_registrados,
             COALESCE(tel_stats.visitantes_reales_hoy, 0)::int AS visitantes_reales_hoy,
-            COALESCE(cart_stats.carritos_activos, 0)::int AS carritos_sin_cerrar
+            COALESCE(tel_stats.visitantes_admin_hoy, 0)::int AS visitantes_admin_hoy,
+            COALESCE(tel_stats.visitantes_reales_7d, 0)::int AS visitantes_reales_7d,
+            COALESCE(tel_stats.visitantes_admin_7d, 0)::int AS visitantes_admin_7d,
+            COALESCE(tel_stats.eventos_reales_7d, 0)::int AS eventos_reales_7d,
+            COALESCE(tel_stats.eventos_admin_7d, 0)::int AS eventos_admin_7d,
+            tel_stats.ultimo_evento_arg AS ultimo_evento_arg,
+            COALESCE(cart_stats.carritos_activos, 0)::int AS carritos_sin_cerrar,
+            COALESCE(cart_stats.carritos_activos_admin, 0)::int AS carritos_sin_cerrar_admin
         FROM public.nodos_maestro nm
         LEFT JOIN public.bunker_clientes bc_propia ON bc_propia.id = nm.bunker_cliente_id
         LEFT JOIN LATERAL (
@@ -825,20 +849,62 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
             WHERE nodo_id = nm.id
         ) vec_stats ON true
         LEFT JOIN LATERAL (
-            SELECT COUNT(DISTINCT visitor_id) AS visitantes_reales_hoy
+            SELECT
+                COUNT(DISTINCT visitor_id) FILTER (
+                    WHERE es_admin_gestor = false
+                      AND es_ia_bot = false
+                      AND (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date =
+                          (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
+                ) AS visitantes_reales_hoy,
+                COUNT(DISTINCT visitor_id) FILTER (
+                    WHERE es_admin_gestor = true
+                      AND es_ia_bot = false
+                      AND (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date =
+                          (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
+                ) AS visitantes_admin_hoy,
+                COUNT(DISTINCT visitor_id) FILTER (
+                    WHERE es_admin_gestor = false
+                      AND es_ia_bot = false
+                      AND created_at >= NOW() - INTERVAL '7 days'
+                ) AS visitantes_reales_7d,
+                COUNT(DISTINCT visitor_id) FILTER (
+                    WHERE es_admin_gestor = true
+                      AND es_ia_bot = false
+                      AND created_at >= NOW() - INTERVAL '7 days'
+                ) AS visitantes_admin_7d,
+                COUNT(*) FILTER (
+                    WHERE es_admin_gestor = false
+                      AND es_ia_bot = false
+                      AND created_at >= NOW() - INTERVAL '7 days'
+                ) AS eventos_reales_7d,
+                COUNT(*) FILTER (
+                    WHERE es_admin_gestor = true
+                      AND es_ia_bot = false
+                      AND created_at >= NOW() - INTERVAL '7 days'
+                ) AS eventos_admin_7d,
+                TO_CHAR(
+                    MAX(created_at) FILTER (WHERE es_ia_bot = false) AT TIME ZONE 'America/Argentina/Buenos_Aires',
+                    'YYYY-MM-DD HH24:MI'
+                ) AS ultimo_evento_arg
             FROM public.nodos_tienda_eventos
             WHERE nodo_id = nm.id
-              AND es_admin_gestor = false
-              AND es_ia_bot = false
-              AND (created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date =
-                  (NOW() AT TIME ZONE 'America/Argentina/Buenos_Aires')::date
         ) tel_stats ON true
         LEFT JOIN LATERAL (
-            SELECT COUNT(*) AS carritos_activos
-            FROM public.nodos_tienda_visitantes
-            WHERE carrito_actual_nodo_id = nm.id
-              AND carrito_actual_unidades > 0
-              AND es_admin_gestor = false
+            SELECT
+                COUNT(*) FILTER (WHERE COALESCE(last_c.es_admin_gestor, v.es_admin_gestor) = false) AS carritos_activos,
+                COUNT(*) FILTER (WHERE COALESCE(last_c.es_admin_gestor, v.es_admin_gestor) = true) AS carritos_activos_admin
+            FROM public.nodos_tienda_visitantes v
+            LEFT JOIN LATERAL (
+                SELECT e_c.es_admin_gestor
+                FROM public.nodos_tienda_eventos e_c
+                WHERE e_c.visitor_id = v.visitor_id
+                  AND e_c.nodo_id = v.carrito_actual_nodo_id
+                  AND e_c.tipo_evento IN ('carrito_agregar', 'carrito_quitar', 'carrito_vaciar', 'inicio_checkout', 'checkout_paso', 'checkout_abandono', 'pedido_confirmado')
+                ORDER BY e_c.created_at DESC, e_c.id DESC
+                LIMIT 1
+            ) last_c ON true
+            WHERE v.carrito_actual_nodo_id = nm.id
+              AND v.carrito_actual_unidades > 0
         ) cart_stats ON true
         ORDER BY nm.activo DESC, nm.id ASC
     `);
@@ -964,7 +1030,14 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
                 ofertas_publicadas: Number(r.ofertas_publicadas || 0),
                 vecinos_registrados: Number(r.vecinos_registrados || 0),
                 visitantes_reales_hoy: Number(r.visitantes_reales_hoy || 0),
+                visitantes_admin_hoy: Number(r.visitantes_admin_hoy || 0),
+                visitantes_reales_7d: Number(r.visitantes_reales_7d || 0),
+                visitantes_admin_7d: Number(r.visitantes_admin_7d || 0),
+                eventos_reales_7d: Number(r.eventos_reales_7d || 0),
+                eventos_admin_7d: Number(r.eventos_admin_7d || 0),
+                ultimo_evento_arg: r.ultimo_evento_arg || null,
                 carritos_sin_cerrar: Number(r.carritos_sin_cerrar || 0),
+                carritos_sin_cerrar_admin: Number(r.carritos_sin_cerrar_admin || 0),
                 proxima_entrega: proximaEntrega ? {
                     label_completo: proximaEntrega.asignada?.label_completo || '',
                     fecha_entrega_iso: proximaEntrega.asignada?.fecha_entrega_iso || '',
@@ -1227,7 +1300,7 @@ async function obtenerFichaDetalleNodo(idOrSlug, { calcularProximaEntregaFn = nu
  */
 async function obtenerRadarAnaliticaNodos({
     nodoId = null,
-    rango = 'hoy',
+    rango = '7d',
     fecha = null,
     audiencia = 'clientes',
     limiteEventos = 400
@@ -1245,34 +1318,38 @@ async function obtenerRadarAnaliticaNodos({
     `);
     const hoyArg = hoyArgRes.rows[0].hoy;
 
-    const modoRango = String(rango || 'hoy').trim().toLowerCase();
+    const modoRango = String(rango || '7d').trim().toLowerCase();
     const fechaSeleccionada = (fecha && /^\d{4}-\d{2}-\d{2}$/.test(String(fecha).trim()))
         ? String(fecha).trim()
         : hoyArg;
 
-    // Construir cláusula temporal SQL segura
+    // Construir cláusula base (nodo + ventana temporal, SIN filtro de audiencia)
+    // y cláusula completa (agregando filtro de audiencia).
     const params = [];
-    const conds = [];
+    const baseConds = [];
 
     if (filtroNodoId) {
         params.push(filtroNodoId);
-        conds.push(`e.nodo_id = $${params.length}::int`);
+        baseConds.push(`e.nodo_id = $${params.length}::int`);
     }
 
     if (modoRango === '7d') {
-        conds.push(`e.created_at >= NOW() - INTERVAL '7 days'`);
+        baseConds.push(`e.created_at >= NOW() - INTERVAL '7 days'`);
     } else if (modoRango === '30d') {
-        conds.push(`e.created_at >= NOW() - INTERVAL '30 days'`);
+        baseConds.push(`e.created_at >= NOW() - INTERVAL '30 days'`);
     } else if (modoRango === 'todo') {
         // Sin recorte de fecha
     } else {
         params.push(fechaSeleccionada);
-        conds.push(`(e.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date = $${params.length}::date`);
+        baseConds.push(`(e.created_at AT TIME ZONE 'America/Argentina/Buenos_Aires')::date = $${params.length}::date`);
     }
 
+    const whereBaseSql = baseConds.length > 0 ? `WHERE ${baseConds.join(' AND ')}` : '';
+
     const aud = String(audiencia || 'clientes').trim().toLowerCase();
+    const conds = [...baseConds];
     if (aud === 'admin_gestor') {
-        conds.push(`e.es_admin_gestor = true`);
+        conds.push(`e.es_admin_gestor = true AND e.es_ia_bot = false`);
     } else if (aud === 'todos') {
         // Incluye clientes, admin/gestor y bots identificados con insignias
     } else {
@@ -1282,32 +1359,25 @@ async function obtenerRadarAnaliticaNodos({
 
     const whereSql = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
 
-    // Fechas recientes con actividad para el selector rápido (estilo LAMDA B2B / Institucional)
+    // Fechas recientes con actividad + contexto global del nodo (sin recorte de audiencia)
     const paramsFechas = [];
     let whereFechas = `WHERE es_ia_bot = false`;
+    let whereNodoOnly = '';
     if (filtroNodoId) {
         paramsFechas.push(filtroNodoId);
         whereFechas += ` AND nodo_id = $1::int`;
+        whereNodoOnly = `WHERE nodo_id = $1::int`;
     }
-    const fechasDispRes = await db.query(
-        `SELECT
-            TO_CHAR(created_at AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD') AS fecha,
-            COUNT(DISTINCT visitor_id) FILTER (WHERE es_admin_gestor = false)::int AS visitantes_clientes,
-            COUNT(DISTINCT visitor_id) FILTER (WHERE es_admin_gestor = true)::int AS visitantes_admin,
-            COUNT(*)::int AS eventos
-         FROM public.nodos_tienda_eventos
-         ${whereFechas}
-         GROUP BY 1
-         ORDER BY 1 DESC
-         LIMIT 30`,
-        paramsFechas
-    );
 
     const lim = Math.min(800, Math.max(50, Number(limiteEventos) || 400));
     const paramsEventos = [...params, lim];
 
     const [
+        fechasDispRes,
+        contextoGlobalRes,
+        resumenAudienciasRes,
         kpisRes,
+        embudoCheckoutRes,
         origenesRes,
         porNodoRes,
         topCategoriasRes,
@@ -1317,36 +1387,103 @@ async function obtenerRadarAnaliticaNodos({
     ] = await Promise.all([
         db.query(
             `SELECT
+                TO_CHAR(created_at AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD') AS fecha,
+                COUNT(DISTINCT visitor_id) FILTER (WHERE es_admin_gestor = false)::int AS visitantes_clientes,
+                COUNT(DISTINCT visitor_id) FILTER (WHERE es_admin_gestor = true)::int AS visitantes_admin,
+                COUNT(*)::int AS eventos
+             FROM public.nodos_tienda_eventos
+             ${whereFechas}
+             GROUP BY 1
+             ORDER BY 1 DESC
+             LIMIT 30`,
+            paramsFechas
+        ),
+        db.query(
+            `SELECT
+                COUNT(*) FILTER (WHERE es_ia_bot = false)::int AS eventos_historico_total,
+                COUNT(*) FILTER (WHERE es_admin_gestor = false AND es_ia_bot = false)::int AS eventos_historico_clientes,
+                COUNT(*) FILTER (WHERE es_admin_gestor = true AND es_ia_bot = false)::int AS eventos_historico_admin,
+                COUNT(*) FILTER (WHERE es_admin_gestor = false AND es_ia_bot = false AND created_at >= NOW() - INTERVAL '7 days')::int AS eventos_7d_clientes,
+                COUNT(*) FILTER (WHERE es_admin_gestor = true AND es_ia_bot = false AND created_at >= NOW() - INTERVAL '7 days')::int AS eventos_7d_admin,
+                COUNT(DISTINCT visitor_id) FILTER (WHERE es_admin_gestor = false AND es_ia_bot = false AND created_at >= NOW() - INTERVAL '7 days')::int AS visitantes_7d_clientes,
+                COUNT(DISTINCT visitor_id) FILTER (WHERE es_admin_gestor = true AND es_ia_bot = false AND created_at >= NOW() - INTERVAL '7 days')::int AS visitantes_7d_admin,
+                TO_CHAR(MAX(created_at) FILTER (WHERE es_ia_bot = false) AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD HH24:MI') AS ultima_actividad_arg,
+                TO_CHAR(MAX(created_at) FILTER (WHERE es_ia_bot = false) AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD') AS ultima_actividad_fecha,
+                TO_CHAR(MAX(created_at) FILTER (WHERE es_admin_gestor = true AND es_ia_bot = false) AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD HH24:MI') AS ultima_actividad_admin_arg,
+                TO_CHAR(MAX(created_at) FILTER (WHERE es_admin_gestor = false AND es_ia_bot = false) AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD HH24:MI') AS ultima_actividad_cliente_arg
+             FROM public.nodos_tienda_eventos
+             ${whereNodoOnly}`,
+            paramsFechas
+        ),
+        db.query(
+            `SELECT
+                COUNT(*)::int AS eventos_totales_periodo,
+                COUNT(*) FILTER (WHERE e.es_admin_gestor = false AND e.es_ia_bot = false)::int AS eventos_clientes_periodo,
+                COUNT(*) FILTER (WHERE e.es_admin_gestor = true AND e.es_ia_bot = false)::int AS eventos_admin_gestor_periodo,
+                COUNT(*) FILTER (WHERE e.es_ia_bot = true)::int AS hits_bots_periodo,
+                COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.es_ia_bot = false)::int AS visitantes_humanos_periodo,
+                COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.es_admin_gestor = false AND e.es_ia_bot = false)::int AS visitantes_clientes_periodo,
+                COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.es_admin_gestor = true AND e.es_ia_bot = false)::int AS visitantes_admin_gestor_periodo,
+                TO_CHAR(MAX(e.created_at) FILTER (WHERE e.es_ia_bot = false) AT TIME ZONE 'America/Argentina/Buenos_Aires', 'YYYY-MM-DD HH24:MI') AS ultima_actividad_periodo_arg
+             FROM public.nodos_tienda_eventos e
+             ${whereBaseSql}`,
+            params
+        ),
+        db.query(
+            `SELECT
                 COUNT(*)::int AS total_eventos,
                 COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.es_ia_bot = false)::int AS visitantes_totales,
                 COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.es_admin_gestor = false AND e.es_ia_bot = false)::int AS visitantes_reales,
-                COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.es_admin_gestor = true)::int AS visitantes_admin_gestor,
+                COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.es_admin_gestor = true AND e.es_ia_bot = false)::int AS visitantes_admin_gestor,
                 COUNT(DISTINCT e.visitor_id) FILTER (
-                    WHERE e.es_admin_gestor = false AND e.es_ia_bot = false AND COALESCE(v.total_sesiones, 1) <= 1
+                    WHERE e.es_ia_bot = false AND COALESCE(v.total_sesiones, 1) <= 1
                 )::int AS visitantes_nuevos,
                 COUNT(DISTINCT e.visitor_id) FILTER (
-                    WHERE e.es_admin_gestor = false AND e.es_ia_bot = false AND COALESCE(v.total_sesiones, 1) > 1
+                    WHERE e.es_ia_bot = false AND COALESCE(v.total_sesiones, 1) > 1
                 )::int AS visitantes_recurrentes,
                 COUNT(DISTINCT e.visitor_id) FILTER (
-                    WHERE e.es_admin_gestor = false AND e.es_ia_bot = false
+                    WHERE e.es_ia_bot = false
                       AND (e.vecino_id IS NOT NULL OR v.vecino_id IS NOT NULL OR COALESCE(v.vecino_nombre, '') <> '')
                 )::int AS visitantes_identificados,
                 COUNT(*) FILTER (WHERE e.tipo_evento IN ('vista_tienda', 'vista_seguimiento', 'vista_mi_cuenta') AND e.es_ia_bot = false)::int AS ingresos_tienda,
                 COUNT(*) FILTER (WHERE e.tipo_evento = 'categoria_seleccionada')::int AS clics_categorias,
                 COUNT(*) FILTER (WHERE e.tipo_evento = 'busqueda_lupa')::int AS busquedas_lupa,
+                COUNT(*) FILTER (WHERE e.tipo_evento = 'vista_producto')::int AS vistas_producto,
+                COUNT(*) FILTER (WHERE e.tipo_evento = 'clic_que_contiene')::int AS clics_que_contiene,
                 COUNT(*) FILTER (WHERE e.tipo_evento IN ('clic_que_contiene', 'vista_producto'))::int AS consultas_producto,
+                COUNT(*) FILTER (WHERE e.tipo_evento = 'vista_mi_cuenta')::int AS vistas_mi_cuenta,
+                COUNT(*) FILTER (WHERE e.tipo_evento = 'clic_coordinar_gestor')::int AS clics_whatsapp,
+                COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.tipo_evento = 'clic_coordinar_gestor')::int AS visitantes_con_whatsapp,
                 COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.tipo_evento = 'carrito_agregar')::int AS visitantes_con_carrito,
                 COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.tipo_evento = 'inicio_checkout')::int AS visitantes_checkout,
+                COUNT(*) FILTER (WHERE e.tipo_evento = 'checkout_paso')::int AS pasos_checkout,
+                COUNT(*) FILTER (WHERE e.tipo_evento = 'checkout_abandono')::int AS abandonos_checkout,
+                COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.tipo_evento = 'checkout_abandono')::int AS visitantes_abandono_checkout,
                 COUNT(*) FILTER (WHERE e.tipo_evento = 'pedido_confirmado')::int AS eventos_pedido_confirmado,
                 COUNT(DISTINCT e.visitor_id) FILTER (
                     WHERE e.tipo_evento = 'pedido_confirmado' AND e.es_admin_gestor = false
                 )::int AS compradores_unicos_reales,
+                COUNT(DISTINCT e.visitor_id) FILTER (
+                    WHERE e.tipo_evento = 'pedido_confirmado' AND e.es_admin_gestor = true
+                )::int AS compradores_unicos_admin,
                 COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.dispositivo_modo = 'Celular' AND e.es_ia_bot = false)::int AS disp_celulares,
                 COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.dispositivo_modo = 'PC' AND e.es_ia_bot = false)::int AS disp_pcs,
                 COUNT(*) FILTER (WHERE e.es_ia_bot = true)::int AS hits_bots
              FROM public.nodos_tienda_eventos e
              LEFT JOIN public.nodos_tienda_visitantes v ON v.visitor_id = e.visitor_id
              ${whereSql}`,
+            params
+        ),
+        db.query(
+            `SELECT
+                COALESCE(NULLIF(TRIM(e.detalle), ''), 'paso') AS paso_detalle,
+                COUNT(*)::int AS eventos,
+                COUNT(DISTINCT e.visitor_id)::int AS visitantes
+             FROM public.nodos_tienda_eventos e
+             ${whereSql ? `${whereSql} AND` : 'WHERE'} e.tipo_evento = 'checkout_paso'
+             GROUP BY 1
+             ORDER BY eventos DESC, visitantes DESC
+             LIMIT 12`,
             params
         ),
         db.query(
@@ -1473,6 +1610,9 @@ async function obtenerRadarAnaliticaNodos({
                 COALESCE(nv.telefono_whatsapp, v.vecino_telefono) AS vecino_telefono_resuelto,
                 v.identificado_via,
                 v.etiqueta_dispositivo,
+                v.es_admin_gestor AS visitante_es_admin_gestor,
+                COALESCE(last_cart_ev.es_admin_gestor, v.es_admin_gestor) AS carrito_es_admin_gestor,
+                v.carrito_actual_nodo_id,
                 COALESCE(v.total_sesiones, 1)::int AS total_sesiones_visitante,
                 COALESCE(v.total_pedidos_confirmados, 0)::int AS total_pedidos_visitante,
                 COALESCE(v.carrito_actual_unidades, 0)::int AS carrito_actual_unidades,
@@ -1484,6 +1624,15 @@ async function obtenerRadarAnaliticaNodos({
              LEFT JOIN public.nodos_articulos_catalogo nac ON UPPER(nac.sku_nodo) = UPPER(COALESCE(e.sku_nodo, ''))
              LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(COALESCE(nac.sku_nodo, e.sku_nodo, ''))
              LEFT JOIN public.nodos_tienda_visitantes v ON v.visitor_id = e.visitor_id
+             LEFT JOIN LATERAL (
+                 SELECT e_c.es_admin_gestor
+                 FROM public.nodos_tienda_eventos e_c
+                 WHERE e_c.visitor_id = v.visitor_id
+                   AND e_c.nodo_id = v.carrito_actual_nodo_id
+                   AND e_c.tipo_evento IN ('carrito_agregar', 'carrito_quitar', 'carrito_vaciar', 'inicio_checkout', 'checkout_paso', 'checkout_abandono', 'pedido_confirmado')
+                 ORDER BY e_c.created_at DESC, e_c.id DESC
+                 LIMIT 1
+             ) last_cart_ev ON true
              LEFT JOIN public.nodos_vecinos nv ON nv.id = COALESCE(e.vecino_id, v.vecino_id)
              ${whereSql}
              ORDER BY e.created_at DESC, e.id DESC
@@ -1492,48 +1641,77 @@ async function obtenerRadarAnaliticaNodos({
         )
     ]);
 
-    // Consultar Carritos en Curso / Abandonados actualmente abiertos
+    // Consultar Carritos en Curso / Abandonados actualmente abiertos (respetando rol exacto del nodo del carrito)
     const cartParams = [];
-    const cartConds = [`v.carrito_actual_unidades > 0`];
+    const cartBaseConds = [`v.carrito_actual_unidades > 0`];
     if (filtroNodoId) {
         cartParams.push(filtroNodoId);
-        cartConds.push(`v.carrito_actual_nodo_id = $${cartParams.length}::int`);
+        cartBaseConds.push(`v.carrito_actual_nodo_id = $${cartParams.length}::int`);
     }
+    const cartConds = [...cartBaseConds];
     if (aud === 'admin_gestor') {
-        cartConds.push(`v.es_admin_gestor = true`);
+        cartConds.push(`COALESCE(last_cart_ev.es_admin_gestor, v.es_admin_gestor) = true`);
     } else if (aud !== 'todos') {
-        cartConds.push(`v.es_admin_gestor = false`);
+        cartConds.push(`COALESCE(last_cart_ev.es_admin_gestor, v.es_admin_gestor) = false`);
     }
 
-    const carritosAbiertosRes = await db.query(
-        `SELECT
-            v.visitor_id,
-            v.carrito_actual_nodo_id AS nodo_id,
-            nm.slug AS nodo_slug,
-            nm.nombre_marca AS nodo_nombre,
-            nm.color_primario AS nodo_color,
-            COALESCE(nv.id, v.vecino_id) AS vecino_id,
-            COALESCE(nv.nombre_completo, v.vecino_nombre) AS vecino_nombre,
-            COALESCE(nv.telefono_whatsapp, v.vecino_telefono) AS vecino_telefono,
-            v.identificado_via,
-            v.es_admin_gestor,
-            v.etiqueta_dispositivo,
-            v.dispositivo_modo,
-            v.sistema_operativo,
-            v.ultimo_origen_trafico,
-            v.carrito_actual_unidades,
-            v.carrito_actual_subtotal,
-            v.carrito_actual_json,
-            v.carrito_actualizado_at,
-            EXTRACT(EPOCH FROM (NOW() - COALESCE(v.carrito_actualizado_at, v.ultima_visita_at)))::int AS segundos_inactivo
-         FROM public.nodos_tienda_visitantes v
-         LEFT JOIN public.nodos_maestro nm ON nm.id = v.carrito_actual_nodo_id
-         LEFT JOIN public.nodos_vecinos nv ON nv.id = v.vecino_id
-         WHERE ${cartConds.join(' AND ')}
-         ORDER BY COALESCE(v.carrito_actualizado_at, v.ultima_visita_at) DESC
-         LIMIT 40`,
-        cartParams
-    );
+    const [carritosAbiertosRes, carritosResumenRes] = await Promise.all([
+        db.query(
+            `SELECT
+                v.visitor_id,
+                v.carrito_actual_nodo_id AS nodo_id,
+                nm.slug AS nodo_slug,
+                nm.nombre_marca AS nodo_nombre,
+                nm.color_primario AS nodo_color,
+                COALESCE(nv.id, v.vecino_id) AS vecino_id,
+                COALESCE(nv.nombre_completo, v.vecino_nombre) AS vecino_nombre,
+                COALESCE(nv.telefono_whatsapp, v.vecino_telefono) AS vecino_telefono,
+                v.identificado_via,
+                COALESCE(last_cart_ev.es_admin_gestor, v.es_admin_gestor) AS es_admin_gestor,
+                v.etiqueta_dispositivo,
+                v.dispositivo_modo,
+                v.sistema_operativo,
+                v.ultimo_origen_trafico,
+                v.carrito_actual_unidades,
+                v.carrito_actual_subtotal,
+                v.carrito_actual_json,
+                v.carrito_actualizado_at,
+                EXTRACT(EPOCH FROM (NOW() - COALESCE(v.carrito_actualizado_at, v.ultima_visita_at)))::int AS segundos_inactivo
+             FROM public.nodos_tienda_visitantes v
+             LEFT JOIN public.nodos_maestro nm ON nm.id = v.carrito_actual_nodo_id
+             LEFT JOIN public.nodos_vecinos nv ON nv.id = v.vecino_id
+             LEFT JOIN LATERAL (
+                 SELECT e_c.es_admin_gestor
+                 FROM public.nodos_tienda_eventos e_c
+                 WHERE e_c.visitor_id = v.visitor_id
+                   AND e_c.nodo_id = v.carrito_actual_nodo_id
+                   AND e_c.tipo_evento IN ('carrito_agregar', 'carrito_quitar', 'carrito_vaciar', 'inicio_checkout', 'checkout_paso', 'checkout_abandono', 'pedido_confirmado')
+                 ORDER BY e_c.created_at DESC, e_c.id DESC
+                 LIMIT 1
+             ) last_cart_ev ON true
+             WHERE ${cartConds.join(' AND ')}
+             ORDER BY COALESCE(v.carrito_actualizado_at, v.ultima_visita_at) DESC
+             LIMIT 40`,
+            cartParams
+        ),
+        db.query(
+            `SELECT
+                COUNT(*) FILTER (WHERE COALESCE(last_cart_ev.es_admin_gestor, v.es_admin_gestor) = false)::int AS carritos_clientes,
+                COUNT(*) FILTER (WHERE COALESCE(last_cart_ev.es_admin_gestor, v.es_admin_gestor) = true)::int AS carritos_admin
+             FROM public.nodos_tienda_visitantes v
+             LEFT JOIN LATERAL (
+                 SELECT e_c.es_admin_gestor
+                 FROM public.nodos_tienda_eventos e_c
+                 WHERE e_c.visitor_id = v.visitor_id
+                   AND e_c.nodo_id = v.carrito_actual_nodo_id
+                   AND e_c.tipo_evento IN ('carrito_agregar', 'carrito_quitar', 'carrito_vaciar', 'inicio_checkout', 'checkout_paso', 'checkout_abandono', 'pedido_confirmado')
+                 ORDER BY e_c.created_at DESC, e_c.id DESC
+                 LIMIT 1
+             ) last_cart_ev ON true
+             WHERE ${cartBaseConds.join(' AND ')}`,
+            cartParams
+        )
+    ]);
 
     const catalogoSkuOficialRes = await db.query(
         `SELECT UPPER(nac.sku_nodo) AS sku_upper,
@@ -1573,6 +1751,7 @@ async function obtenerRadarAnaliticaNodos({
             vecino_nombre: c.vecino_nombre || null,
             vecino_telefono: c.vecino_telefono || null,
             es_admin_gestor: Boolean(c.es_admin_gestor),
+            etiqueta_dispositivo: c.es_admin_gestor ? (c.etiqueta_dispositivo || null) : null,
             dispositivo_modo: c.dispositivo_modo || 'Celular',
             sistema_operativo: c.sistema_operativo || 'Otro',
             origen_trafico: c.ultimo_origen_trafico || 'Directo',
@@ -1585,12 +1764,16 @@ async function obtenerRadarAnaliticaNodos({
         };
     });
 
-    // Agrupar eventos por (visitor_id + nodo_id + fecha_arg) para el Radar estilo Acordeón B2B
+    // Agrupar eventos por (visitor_id + nodo_id + fecha_arg + rol) para el Radar estilo Acordeón B2B
     const gruposMap = new Map();
     for (const ev of eventosRes.rows) {
-        const key = `${ev.visitor_id}::${ev.nodo_id}::${ev.fecha_arg}`;
+        const rolKey = ev.es_admin_gestor ? 'adm' : 'cli';
+        const key = `${ev.visitor_id}::${ev.nodo_id}::${ev.fecha_arg}::${rolKey}`;
         if (!gruposMap.has(key)) {
             const alias = '#' + String(ev.visitor_id || '').slice(-4).toUpperCase();
+            const carritoPerteneceAGrupo =
+                Number(ev.carrito_actual_nodo_id) === Number(ev.nodo_id) &&
+                Boolean(ev.carrito_es_admin_gestor) === Boolean(ev.es_admin_gestor);
             gruposMap.set(key, {
                 grupo_key: key,
                 visitor_id: ev.visitor_id,
@@ -1610,7 +1793,7 @@ async function obtenerRadarAnaliticaNodos({
                 identificado_via: ev.identificado_via || null,
                 es_admin_gestor: Boolean(ev.es_admin_gestor),
                 es_ia_bot: Boolean(ev.es_ia_bot),
-                etiqueta_dispositivo: ev.etiqueta_dispositivo || null,
+                etiqueta_dispositivo: ev.es_admin_gestor ? (ev.etiqueta_dispositivo || null) : null,
                 es_recurrente: Number(ev.total_sesiones_visitante || 1) > 1,
                 total_sesiones_historicas: Number(ev.total_sesiones_visitante || 1),
                 dispositivo_modo: ev.dispositivo_modo || 'Celular',
@@ -1620,12 +1803,15 @@ async function obtenerRadarAnaliticaNodos({
                 compro_en_visita: false,
                 codigos_pedido: [],
                 iniciaron_checkout: false,
+                abandono_checkout: false,
+                pasos_checkout: [],
+                clics_whatsapp: 0,
                 categorias_vistas: [],
                 busquedas: [],
                 productos_interes: [],
-                carrito_actual_unidades: Number(ev.carrito_actual_unidades || 0),
-                carrito_actual_subtotal: Number(ev.carrito_actual_subtotal || 0),
-                carrito_actual_items: normalizarItemsCarritoLamda(ev.carrito_actual_json),
+                carrito_actual_unidades: carritoPerteneceAGrupo ? Number(ev.carrito_actual_unidades || 0) : 0,
+                carrito_actual_subtotal: carritoPerteneceAGrupo ? Number(ev.carrito_actual_subtotal || 0) : 0,
+                carrito_actual_items: carritoPerteneceAGrupo ? normalizarItemsCarritoLamda(ev.carrito_actual_json) : [],
                 eventos: []
             });
         }
@@ -1650,6 +1836,17 @@ async function obtenerRadarAnaliticaNodos({
         }
         if (ev.tipo_evento === 'inicio_checkout') {
             g.iniciaron_checkout = true;
+        }
+        if (ev.tipo_evento === 'checkout_paso' && ev.detalle) {
+            if (!g.pasos_checkout.includes(ev.detalle)) {
+                g.pasos_checkout.push(ev.detalle);
+            }
+        }
+        if (ev.tipo_evento === 'checkout_abandono') {
+            g.abandono_checkout = true;
+        }
+        if (ev.tipo_evento === 'clic_coordinar_gestor') {
+            g.clics_whatsapp += 1;
         }
         if (ev.tipo_evento === 'categoria_seleccionada' && ev.categoria_nombre && ev.categoria_nombre !== 'TODAS') {
             if (!g.categorias_vistas.includes(ev.categoria_nombre)) {
@@ -1685,11 +1882,19 @@ async function obtenerRadarAnaliticaNodos({
     }
 
     const k = kpisRes.rows[0] || {};
+    const ra = resumenAudienciasRes.rows[0] || {};
+    const cg = contextoGlobalRes.rows[0] || {};
+    const cr = carritosResumenRes.rows[0] || {};
+
+    const visitantesRealesPeriodo = Number(ra.visitantes_clientes_periodo || 0);
+    const visitantesAdminPeriodo = Number(ra.visitantes_admin_gestor_periodo || 0);
+    const hitsBotsPeriodo = Number(ra.hits_bots_periodo || 0);
+
     const baseVisitantesConversion = aud === 'admin_gestor'
         ? Number(k.visitantes_admin_gestor || 0)
         : Number(k.visitantes_reales || 0);
     const pedidosParaConversion = aud === 'admin_gestor'
-        ? Number(k.eventos_pedido_confirmado || 0)
+        ? Number(k.compradores_unicos_admin || 0)
         : Number(k.compradores_unicos_reales || 0);
     const tasaConversionPct = baseVisitantesConversion > 0
         ? Number(((pedidosParaConversion / baseVisitantesConversion) * 100).toFixed(1))
@@ -1707,23 +1912,58 @@ async function obtenerRadarAnaliticaNodos({
             hoy_argentina: hoyArg,
             audiencia: aud
         },
+        resumen_audiencias: {
+            eventos_totales: Number(ra.eventos_totales_periodo || 0),
+            eventos_clientes: Number(ra.eventos_clientes_periodo || 0),
+            eventos_admin_gestor: Number(ra.eventos_admin_gestor_periodo || 0),
+            hits_bots: hitsBotsPeriodo,
+            visitantes_humanos: Number(ra.visitantes_humanos_periodo || 0),
+            visitantes_clientes: visitantesRealesPeriodo,
+            visitantes_admin_gestor: visitantesAdminPeriodo,
+            ultima_actividad_periodo_arg: ra.ultima_actividad_periodo_arg || null,
+            carritos_clientes: Number(cr.carritos_clientes || 0),
+            carritos_admin: Number(cr.carritos_admin || 0)
+        },
+        contexto_global: {
+            eventos_historico_total: Number(cg.eventos_historico_total || 0),
+            eventos_historico_clientes: Number(cg.eventos_historico_clientes || 0),
+            eventos_historico_admin: Number(cg.eventos_historico_admin || 0),
+            eventos_7d_clientes: Number(cg.eventos_7d_clientes || 0),
+            eventos_7d_admin: Number(cg.eventos_7d_admin || 0),
+            visitantes_7d_clientes: Number(cg.visitantes_7d_clientes || 0),
+            visitantes_7d_admin: Number(cg.visitantes_7d_admin || 0),
+            ultima_actividad_arg: cg.ultima_actividad_arg || null,
+            ultima_actividad_fecha: cg.ultima_actividad_fecha || null,
+            ultima_actividad_admin_arg: cg.ultima_actividad_admin_arg || null,
+            ultima_actividad_cliente_arg: cg.ultima_actividad_cliente_arg || null
+        },
         fechas_disponibles: fechasDispRes.rows,
         kpis: {
             total_eventos: Number(k.total_eventos || 0),
             visitantes_unicos: aud === 'admin_gestor'
                 ? Number(k.visitantes_admin_gestor || 0)
                 : (aud === 'todos' ? Number(k.visitantes_totales || 0) : Number(k.visitantes_reales || 0)),
-            visitantes_reales: Number(k.visitantes_reales || 0),
-            visitantes_admin_gestor: Number(k.visitantes_admin_gestor || 0),
+            visitantes_reales: visitantesRealesPeriodo,
+            visitantes_admin_gestor: visitantesAdminPeriodo,
+            eventos_clientes: Number(ra.eventos_clientes_periodo || 0),
+            eventos_admin_gestor: Number(ra.eventos_admin_gestor_periodo || 0),
             visitantes_nuevos: Number(k.visitantes_nuevos || 0),
             visitantes_recurrentes: Number(k.visitantes_recurrentes || 0),
             visitantes_identificados: Number(k.visitantes_identificados || 0),
             ingresos_tienda: Number(k.ingresos_tienda || 0),
             clics_categorias: Number(k.clics_categorias || 0),
             busquedas_lupa: Number(k.busquedas_lupa || 0),
+            vistas_producto: Number(k.vistas_producto || 0),
+            clics_que_contiene: Number(k.clics_que_contiene || 0),
             consultas_producto: Number(k.consultas_producto || 0),
+            vistas_mi_cuenta: Number(k.vistas_mi_cuenta || 0),
+            clics_whatsapp: Number(k.clics_whatsapp || 0),
+            visitantes_con_whatsapp: Number(k.visitantes_con_whatsapp || 0),
             visitantes_con_carrito: Number(k.visitantes_con_carrito || 0),
             visitantes_checkout: Number(k.visitantes_checkout || 0),
+            pasos_checkout: Number(k.pasos_checkout || 0),
+            abandonos_checkout: Number(k.abandonos_checkout || 0),
+            visitantes_abandono_checkout: Number(k.visitantes_abandono_checkout || 0),
             pedidos_confirmados: Number(k.eventos_pedido_confirmado || 0),
             compradores_unicos_reales: Number(k.compradores_unicos_reales || 0),
             tasa_conversion_pct: tasaConversionPct,
@@ -1733,9 +1973,10 @@ async function obtenerRadarAnaliticaNodos({
             dispositivos: {
                 celulares: Number(k.disp_celulares || 0),
                 pcs: Number(k.disp_pcs || 0),
-                bots: Number(k.hits_bots || 0)
+                bots: hitsBotsPeriodo
             }
         },
+        embudo_checkout: embudoCheckoutRes.rows,
         origenes_trafico: origenesRes.rows,
         por_nodo: porNodoRes.rows,
         top_categorias: topCategoriasRes.rows,

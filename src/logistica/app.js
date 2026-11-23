@@ -218,6 +218,14 @@ app.use((req, res, next) => {
         reqPath.startsWith('/api/produccion') ||
         reqPath.startsWith('/api/tiempos') ||
         reqPath.startsWith('/api/facturacion') ||
+        reqPath.startsWith('/centro-nodos') ||
+        reqPath.startsWith('/deposito-nodos') ||
+        reqPath.startsWith('/liquidacion-nodos') ||
+        reqPath.startsWith('/tienda') ||
+        reqPath.startsWith('/gestor') ||
+        reqPath.startsWith('/seguimiento') ||
+        reqPath.startsWith('/img/nodos') ||
+        reqPath.startsWith('/media/nodos') ||
         reqPath === '/lamda-cloud-runtime.js' ||
         reqPath === '/lamda-manifest.json' ||
         reqPath === '/lamda-prueba-manifest.json' ||

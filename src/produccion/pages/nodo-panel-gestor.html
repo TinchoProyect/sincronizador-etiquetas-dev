@@ -2926,8 +2926,15 @@
       GSTATE.nodo = data.nodo;
       GSTATE.slug = data.nodo.slug;
       try {
-        localStorage.setItem('lamda_nodo_dispositivo_rol', 'GESTOR');
-        localStorage.setItem('lamda_nodo_dispositivo_etiqueta', `Gestor ${data.nodo.nombre_marca || data.nodo.slug}`);
+        const slugNormGestor = String(data.nodo.slug || GSTATE.slug || '').trim().toLowerCase();
+        if (slugNormGestor) {
+          localStorage.setItem('lamda_nodo_gestor_slug_' + slugNormGestor, '1');
+          localStorage.setItem('lamda_nodo_gestor_etiqueta_' + slugNormGestor, `Gestor ${data.nodo.nombre_marca || slugNormGestor}`);
+        }
+        // Limpiar marca global legacy 'GESTOR' para que abrir /gestor/:slug nunca contamine otros nodos
+        if (String(localStorage.getItem('lamda_nodo_dispositivo_rol') || '').trim().toUpperCase() === 'GESTOR') {
+          localStorage.removeItem('lamda_nodo_dispositivo_rol');
+        }
       } catch (_) {}
       GSTATE.modoLaboratorio = Boolean(data.modo_laboratorio);
       GSTATE.telefonoPruebas = String(data.telefono_whatsapp_pruebas || '5492216615746');
