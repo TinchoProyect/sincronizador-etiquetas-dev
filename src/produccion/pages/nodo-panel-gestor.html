@@ -2253,6 +2253,7 @@
       aficheQrDataUrl: '',
       difusionModo: 'tienda',
       difusionOfertaId: 0,
+      difusionIncluirVideo: false,
       movimientosCtaCte: [],
       ingredientesDisponibles: [],
       propCategoriaSel: '',
@@ -3699,12 +3700,37 @@
       }
     }
 
+    function obtenerVideoBienvenidaGestor() {
+      const raw = (GSTATE.nodo && GSTATE.nodo.config_video_bienvenida && typeof GSTATE.nodo.config_video_bienvenida === 'object')
+        ? GSTATE.nodo.config_video_bienvenida
+        : ((GSTATE.compartirKit?.nodo?.config_video_bienvenida && typeof GSTATE.compartirKit.nodo.config_video_bienvenida === 'object')
+            ? GSTATE.compartirKit.nodo.config_video_bienvenida
+            : {});
+      const tiene = Boolean(raw.tiene_video && (raw.url_whatsapp || raw.url_web));
+      const activo = tiene && raw.activo !== false;
+      return {
+        tiene_video: tiene,
+        activo,
+        mostrar_en_tienda: activo && Boolean(raw.mostrar_en_tienda),
+        habilitar_en_difusion: activo && Boolean(raw.habilitar_en_difusion),
+        etiqueta_boton: String(raw.etiqueta_boton || '¿Cómo funciona?'),
+        url_whatsapp: raw.url_whatsapp || raw.url_web || '',
+        url_web: raw.url_web || raw.url_whatsapp || '',
+        poster_url: raw.poster_url || raw.url_poster || '',
+        duration_sec: raw.duration_sec ? Number(raw.duration_sec) : null,
+        bytes_whatsapp: raw.bytes_whatsapp ? Number(raw.bytes_whatsapp) : null,
+        tiene_audio: raw.tiene_audio !== false,
+        updated_at: raw.updated_at || ''
+      };
+    }
+
     function abrirModalDifusionTienda(ofertaIdInicial = 0) {
       if (!GSTATE.nodo) return;
       const modal = document.getElementById('modal-recibo-gestor');
       const body = document.getElementById('modal-recibo-gestor-body');
       if (!modal || !body) return;
 
+      GSTATE.difusionIncluirVideo = false;
       const ofertasPub = obtenerOfertasPublicadasDifusion();
       if (Number(ofertaIdInicial) > 0) {
         GSTATE.difusionModo = 'oferta';
@@ -3792,6 +3818,13 @@
       const urlActual = obtenerUrlDifusionActual();
       const textoSugerido = generarTextoSugeridoDifusion();
       const puedeNativo = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+      const vidBienvenida = obtenerVideoBienvenidaGestor();
+      const puedeUsarVideoDifusion = GSTATE.difusionModo === 'tienda'
+        && vidBienvenida.tiene_video
+        && vidBienvenida.activo
+        && vidBienvenida.habilitar_en_difusion;
+      const incluirVideoAhora = puedeUsarVideoDifusion && Boolean(GSTATE.difusionIncluirVideo);
+      const vidPesoMb = vidBienvenida.bytes_whatsapp ? `${(vidBienvenida.bytes_whatsapp / (1024 * 1024)).toFixed(1)} MB` : '';
 
       body.innerHTML = `
         <div style="background:var(--surface-warm); color:var(--text); padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
@@ -3817,6 +3850,46 @@
               🛍️ Producto / oferta puntual
             </button>
           </div>
+
+          ${puedeUsarVideoDifusion ? `
+            <div id="difusion-video-selector-wrap" style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:11px 12px;">
+              <div style="font-size:0.74rem; font-weight:900; color:var(--brand-dark); margin-bottom:7px;">
+                Formato de invitación (100% a tu elección):
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <button type="button" id="btn-difusion-solo-link"
+                  onclick="cambiarFormatoDifusionVideo(false)"
+                  style="padding:9px 10px; border-radius:10px; font-weight:800; font-size:0.8rem; cursor:pointer; text-align:left; border:1.5px solid ${!incluirVideoAhora ? 'var(--brand)' : 'var(--border)'}; background:${!incluirVideoAhora ? '#fff' : 'rgba(255,255,255,0.6)'}; color:var(--text); box-shadow:${!incluirVideoAhora ? '0 2px 8px rgba(0,0,0,0.06)' : 'none'};">
+                  <div>🔗 Solo link + mensaje</div>
+                  <div style="font-size:0.7rem; font-weight:600; color:var(--muted); margin-top:2px;">Clásico, directo y liviano</div>
+                </button>
+                <button type="button" id="btn-difusion-con-video"
+                  onclick="cambiarFormatoDifusionVideo(true)"
+                  style="padding:9px 10px; border-radius:10px; font-weight:800; font-size:0.8rem; cursor:pointer; text-align:left; border:1.5px solid ${incluirVideoAhora ? 'var(--brand)' : 'var(--border)'}; background:${incluirVideoAhora ? '#fff' : 'rgba(255,255,255,0.6)'}; color:var(--text); box-shadow:${incluirVideoAhora ? '0 2px 8px rgba(0,0,0,0.06)' : 'none'};">
+                  <div>🎬 Con video promocional</div>
+                  <div style="font-size:0.7rem; font-weight:600; color:var(--muted); margin-top:2px;">Presentación ${vidBienvenida.duration_sec ? `${Math.round(vidBienvenida.duration_sec)}s` : ''} ${vidBienvenida.tiene_audio ? 'con audio' : ''}</div>
+                </button>
+              </div>
+
+              ${incluirVideoAhora ? `
+                <div id="difusion-video-preview-box" style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                  <video id="difusion-video-preview-player" controls playsinline preload="metadata"
+                    ${vidBienvenida.poster_url ? `poster="${esc(vidBienvenida.poster_url)}"` : ''}
+                    src="${esc(vidBienvenida.url_web || vidBienvenida.url_whatsapp)}"
+                    style="width:104px; aspect-ratio:9/16; border-radius:11px; background:#0f172a; object-fit:cover; border:1.5px solid var(--border); flex-shrink:0;"></video>
+                  <div style="flex:1; min-width:170px; font-size:0.77rem; line-height:1.45; color:var(--text);">
+                    <div style="font-weight:900; color:var(--brand-dark); margin-bottom:4px;">
+                      Vista previa con sonido ${vidBienvenida.duration_sec ? `· ${Math.round(vidBienvenida.duration_sec)}s` : ''} ${vidPesoMb ? `· ${vidPesoMb}` : ''}
+                    </div>
+                    <div style="color:var(--muted);">
+                      • <strong>Desde el celular:</strong> tocá <em>Compartir video + mensaje</em> para adjuntar el MP4 y el texto en WhatsApp o redes en 1 toque.<br>
+                      • <strong>Desde computadora:</strong> descargá el MP4 y pegalo junto con el mensaje de abajo.
+                    </div>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          ` : ''}
 
           ${GSTATE.difusionModo === 'oferta' ? `
             <div>
@@ -3852,7 +3925,7 @@
 
           <div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-              <label for="difusion-texto-textarea" style="font-size:0.75rem; font-weight:800; color:var(--muted);">Mensaje sugerido (podés editarlo antes de enviar)</label>
+              <label for="difusion-texto-textarea" style="font-size:0.75rem; font-weight:800; color:var(--muted);">Mensaje sugerido ${incluirVideoAhora ? '(va como epígrafe junto al video)' : '(podés editarlo antes de enviar)'}</label>
               <button type="button" onclick="restablecerTextoDifusionTienda()"
                 style="background:none; border:none; color:var(--brand-dark); font-size:0.74rem; font-weight:800; cursor:pointer; padding:0;">
                 ↺ Restablecer texto
@@ -3862,20 +3935,37 @@
               style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; font-family:inherit; font-size:0.82rem; line-height:1.45; resize:vertical; background:#fffdfb; color:var(--text);">${esc(textoSugerido)}</textarea>
           </div>
 
-          <div style="display:flex; gap:8px; flex-wrap:wrap;">
-            <button type="button" class="btn-primary" onclick="abrirWhatsAppDifusionLibre()" style="flex:1; min-width:190px;">
-              💬 Compartir en WhatsApp (elegir contacto/grupo)
-            </button>
-            ${puedeNativo ? `
-              <button type="button" class="btn-soft" onclick="compartirKitNativo()" style="padding:10px 14px;">
-                📤 Otras opciones
+          ${incluirVideoAhora ? `
+            <div style="display:grid; gap:8px;">
+              <button type="button" id="btn-difusion-compartir-video" class="btn-primary" onclick="compartirVideoDifusionGestor()" style="width:100%;">
+                🎬 Compartir video + mensaje (WhatsApp / Redes)
               </button>
-            ` : `
-              <button type="button" class="btn-soft" onclick="compartirKitNativo()" style="padding:10px 14px;">
-                📋 Copiar texto completo
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button type="button" class="btn-soft" onclick="descargarVideoBienvenidaGestor()" style="flex:1; min-width:155px; font-size:0.8rem; padding:9px 12px;">
+                  ⬇️ 1. Descargar video .mp4
+                </button>
+                <button type="button" class="btn-soft" onclick="abrirWhatsAppDifusionLibre()" style="flex:1; min-width:165px; font-size:0.8rem; padding:9px 12px;">
+                  💬 2. Abrir WhatsApp con texto
+                </button>
+              </div>
+              <div id="difusion-video-status" style="display:none; font-size:0.77rem; font-weight:700; padding:8px 10px; border-radius:9px; background:var(--surface-warm); border:1px solid var(--border); color:var(--text);"></div>
+            </div>
+          ` : `
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button type="button" class="btn-primary" onclick="abrirWhatsAppDifusionLibre()" style="flex:1; min-width:190px;">
+                💬 Compartir en WhatsApp (elegir contacto/grupo)
               </button>
-            `}
-          </div>
+              ${puedeNativo ? `
+                <button type="button" class="btn-soft" onclick="compartirKitNativo()" style="padding:10px 14px;">
+                  📤 Otras opciones
+                </button>
+              ` : `
+                <button type="button" class="btn-soft" onclick="compartirKitNativo()" style="padding:10px 14px;">
+                  📋 Copiar texto completo
+                </button>
+              `}
+            </div>
+          `}
 
           <div style="border-top:1px solid var(--border); padding-top:14px;">
             <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; background:var(--surface-warm); border:1px solid var(--border); border-radius:14px; padding:12px 14px;">
@@ -3914,11 +4004,155 @@
 
     function cambiarModoDifusionTienda(modo) {
       GSTATE.difusionModo = modo === 'oferta' ? 'oferta' : 'tienda';
-      if (GSTATE.difusionModo === 'oferta' && !GSTATE.difusionOfertaId) {
-        const first = obtenerOfertasPublicadasDifusion()[0];
-        if (first) GSTATE.difusionOfertaId = Number(first.oferta_id);
+      if (GSTATE.difusionModo === 'oferta') {
+        GSTATE.difusionIncluirVideo = false;
+        if (!GSTATE.difusionOfertaId) {
+          const first = obtenerOfertasPublicadasDifusion()[0];
+          if (first) GSTATE.difusionOfertaId = Number(first.oferta_id);
+        }
       }
       renderizarCuerpoModalDifusion(false);
+    }
+
+    function cambiarFormatoDifusionVideo(incluir) {
+      const taPrev = document.getElementById('difusion-texto-textarea');
+      const textoPrevio = taPrev ? taPrev.value : null;
+      GSTATE.difusionIncluirVideo = Boolean(incluir);
+      renderizarCuerpoModalDifusion(false);
+      if (textoPrevio !== null) {
+        const taPost = document.getElementById('difusion-texto-textarea');
+        if (taPost) taPost.value = textoPrevio;
+      }
+    }
+
+    function _nombreArchivoVideoDifusionGestor() {
+      const slug = String(GSTATE.nodo?.slug || GSTATE.compartirKit?.nodo?.slug || 'tienda')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '-');
+      return `${slug}-presentacion.mp4`;
+    }
+
+    async function descargarVideoBienvenidaGestor() {
+      const vid = obtenerVideoBienvenidaGestor();
+      const url = vid.url_whatsapp || vid.url_web;
+      if (!url) {
+        mostrarAvisoPantallaGestor('No hay video disponible para descargar.', 'error');
+        return;
+      }
+      const statusEl = document.getElementById('difusion-video-status');
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.textContent = '⬇️ Descargando video .mp4 listo para WhatsApp...';
+      }
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const blob = await resp.blob();
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = _nombreArchivoVideoDifusionGestor();
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+        if (statusEl) {
+          statusEl.textContent = '✅ Video descargado. Paso 2: abrí WhatsApp con el botón de la derecha y adjuntalo desde tu galería o carpeta Descargas.';
+        }
+      } catch (err) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = _nombreArchivoVideoDifusionGestor();
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.click();
+        if (statusEl) {
+          statusEl.textContent = '⬇️ Se abrió el video para guardar. Luego abrí WhatsApp con el mensaje sugerido.';
+        }
+      }
+    }
+
+    async function compartirVideoDifusionGestor() {
+      const vid = obtenerVideoBienvenidaGestor();
+      const urlVideo = vid.url_whatsapp || vid.url_web;
+      if (!urlVideo) {
+        mostrarAvisoPantallaGestor('No hay video disponible en este nodo.', 'error');
+        return;
+      }
+      const ta = document.getElementById('difusion-texto-textarea');
+      const texto = (ta?.value || generarTextoSugeridoDifusion()).trim();
+      const nombreMarca = GSTATE.compartirKit?.nodo?.nombre_marca || GSTATE.nodo?.nombre_marca || 'Tienda';
+      const btn = document.getElementById('btn-difusion-compartir-video');
+      const statusEl = document.getElementById('difusion-video-status');
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Preparando video MP4...';
+      }
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.textContent = '⏳ Preparando archivo de video con sonido para compartir...';
+      }
+
+      try {
+        const resp = await fetch(urlVideo);
+        if (!resp.ok) throw new Error(`No se pudo descargar el video (HTTP ${resp.status})`);
+        const blob = await resp.blob();
+        const file = new File([blob], _nombreArchivoVideoDifusionGestor(), { type: 'video/mp4' });
+
+        const soportaShareFiles = typeof navigator !== 'undefined'
+          && typeof navigator.share === 'function'
+          && typeof navigator.canShare === 'function'
+          && navigator.canShare({ files: [file] });
+
+        if (soportaShareFiles) {
+          try {
+            await navigator.clipboard?.writeText(texto);
+          } catch (_) {}
+          if (statusEl) {
+            statusEl.textContent = '📲 Abriendo menú para elegir WhatsApp o redes (el texto también quedó copiado por si necesitás pegarlo como epígrafe).';
+          }
+          await navigator.share({
+            files: [file],
+            title: nombreMarca,
+            text: texto
+          });
+          if (statusEl) {
+            statusEl.textContent = '✅ Video compartido.';
+          }
+          return;
+        }
+
+        // Fallback claro en escritorio o navegadores sin Web Share de archivos
+        const objUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.download = _nombreArchivoVideoDifusionGestor();
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(objUrl), 5000);
+        try {
+          await navigator.clipboard?.writeText(texto);
+        } catch (_) {}
+        if (statusEl) {
+          statusEl.innerHTML = '💻 <strong>Modo escritorio (2 pasos):</strong> ya descargamos el <code>.mp4</code> y copiamos tu mensaje. Tocá <strong>💬 2. Abrir WhatsApp con texto</strong> y arrastrá el video descargado en el chat o grupo.';
+        }
+      } catch (err) {
+        if (err && err.name === 'AbortError') {
+          if (statusEl) statusEl.style.display = 'none';
+        } else {
+          if (statusEl) {
+            statusEl.textContent = 'Usá los 2 pasos de abajo: 1) Descargar video .mp4 y 2) Abrir WhatsApp con texto.';
+          }
+        }
+      } finally {
+        const btnPost = document.getElementById('btn-difusion-compartir-video');
+        if (btnPost) {
+          btnPost.disabled = false;
+          btnPost.textContent = '🎬 Compartir video + mensaje (WhatsApp / Redes)';
+        }
+      }
     }
 
     function seleccionarOfertaDifusionTienda(ofertaId) {
@@ -6694,6 +6928,8 @@
               </label>
             </div>
 
+            ${renderizarBloqueVideoBienvenidaGestor()}
+
             <button type="button" class="btn-primary" id="btn-guardar-config-tienda" style="width:100%; max-width:340px;" onclick="guardarConfigLogisticaGestor()">
               Guardar Configuración
             </button>
@@ -6826,11 +7062,42 @@
             </div>
           </div>
 
+          ${renderizarBloqueVideoBienvenidaGestor()}
+
           ${renderizarBloqueMediosPagoGestor()}
 
           <button type="button" class="btn-primary" id="btn-guardar-config-tienda" style="width:100%; max-width:340px;" onclick="guardarConfigLogisticaGestor()">
             Guardar Configuración
           </button>
+        </div>
+      `;
+    }
+
+    function renderizarBloqueVideoBienvenidaGestor() {
+      const vid = obtenerVideoBienvenidaGestor();
+      if (!vid.tiene_video || !vid.activo) return '';
+      return `
+        <div id="cfg-video-bienvenida-card" style="background:var(--surface-warm); border:1.5px solid var(--border); border-radius:14px; padding:14px 16px; margin-bottom:18px;">
+          <div style="font-size:0.94rem; font-weight:900; color:var(--text); margin-bottom:4px;">
+            🎬 Video de presentación (100% opcional)
+          </div>
+          <div style="font-size:0.8rem; color:var(--muted); margin-bottom:12px; line-height:1.4;">
+            Elegí con total libertad dónde querés usar el video promocional con sonido de tu tienda. Podés prenderlo o apagarlo cuando quieras.
+          </div>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <div class="cfg-switch-card" style="background:#fff;">
+              <label class="switch-label">
+                <input type="checkbox" id="cfg-video-difusion" ${vid.habilitar_en_difusion ? 'checked' : ''} />
+                <span>📲 Habilitar opción de video en mi Kit de Difusión (al compartir por WhatsApp podés elegir link solo o con video)</span>
+              </label>
+            </div>
+            <div class="cfg-switch-card" style="background:#fff;">
+              <label class="switch-label">
+                <input type="checkbox" id="cfg-video-tienda" ${vid.mostrar_en_tienda ? 'checked' : ''} />
+                <span>🛍️ Mostrar botón discreto "${esc(vid.etiqueta_boton)}" en mi Tienda Pública (sin popup ni reproducción automática)</span>
+              </label>
+            </div>
+          </div>
         </div>
       `;
     }
@@ -6875,12 +7142,23 @@
     async function guardarConfigLogisticaGestor() {
       const cobroEfectivoSwitch = Boolean(document.getElementById('cfg-cobro-efectivo-entrega')?.checked);
       const modAct = obtenerModulosActivosGestor();
+      const chkVidDif = document.getElementById('cfg-video-difusion');
+      const chkVidTie = document.getElementById('cfg-video-tienda');
+      const videoPrefPayload = (chkVidDif || chkVidTie)
+        ? {
+            config_video_bienvenida: {
+              habilitar_en_difusion: Boolean(chkVidDif ? chkVidDif.checked : true),
+              mostrar_en_tienda: Boolean(chkVidTie ? chkVidTie.checked : true)
+            }
+          }
+        : {};
       if (esPerfilEcommerceGestor()) {
         const cfgPrev = GSTATE.nodo.config_paqueteria || {};
         // Capa B: jamás pisar overrides de Admin al guardar desde Panel Gestor
         const payloadEc = {
           cobro_efectivo_entrega: cobroEfectivoSwitch,
           mostrar_ingredientes_tienda: Boolean(document.getElementById('cfg-mostrar-ingredientes')?.checked ?? true),
+          ...videoPrefPayload,
           config_paqueteria: {
             ...cfgPrev,
             sla_despacho_label: document.getElementById('cfg-paq-sla')?.value?.trim() || 'Despacho en 24 a 48 hs hábiles',
@@ -6899,6 +7177,7 @@
             mostrarAvisoPantallaGestor('No se pudo guardar: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
             return;
           }
+          GSTATE.compartirKit = null;
           mostrarAvisoPantallaGestor('✅ Configuración de envíos y medios de pago actualizada.', 'ok');
           await cargarPanelGestor();
         } catch (_) {
@@ -6928,6 +7207,7 @@
         permitir_envio_barrial: permitirReparto,
         cobro_efectivo_entrega: cobroEfectivoSwitch,
         mostrar_ingredientes_tienda: Boolean(document.getElementById('cfg-mostrar-ingredientes')?.checked ?? true),
+        ...videoPrefPayload,
         ...(document.getElementById('cfg-local-dias') ? {
           config_retiro_local: {
             ...cfgLocalPrev,
@@ -6951,6 +7231,7 @@
           mostrarAvisoPantallaGestor('No se pudo guardar la configuración: ' + (data.error || `Error HTTP ${resp.status}`), 'error');
           return;
         }
+        GSTATE.compartirKit = null;
         mostrarAvisoPantallaGestor('✅ Días de entrega, corte y envío barrial actualizados.', 'ok');
         await cargarPanelGestor();
       } catch (_) {

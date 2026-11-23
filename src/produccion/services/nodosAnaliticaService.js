@@ -11,6 +11,8 @@ const TIPOS_EVENTO_TIENDA_PERMITIDOS = new Set([
     'vista_producto',
     'clic_que_contiene',
     'clic_coordinar_gestor',
+    'video_bienvenida_apertura',
+    'video_bienvenida_play',
     'carrito_agregar',
     'carrito_quitar',
     'carrito_vaciar',
@@ -982,6 +984,7 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
             config_retiro_local: (r.config_retiro_local && typeof r.config_retiro_local === 'object' && !Array.isArray(r.config_retiro_local))
                 ? r.config_retiro_local
                 : {},
+            config_video_bienvenida: require('./nodosFotosService').normalizarConfigVideoBienvenida(r.config_video_bienvenida),
             diccionario_textos: (r.diccionario_textos && typeof r.diccionario_textos === 'object' && !Array.isArray(r.diccionario_textos))
                 ? r.diccionario_textos
                 : {},
@@ -1454,6 +1457,9 @@ async function obtenerRadarAnaliticaNodos({
                 COUNT(*) FILTER (WHERE e.tipo_evento = 'vista_mi_cuenta')::int AS vistas_mi_cuenta,
                 COUNT(*) FILTER (WHERE e.tipo_evento = 'clic_coordinar_gestor')::int AS clics_whatsapp,
                 COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.tipo_evento = 'clic_coordinar_gestor')::int AS visitantes_con_whatsapp,
+                COUNT(*) FILTER (WHERE e.tipo_evento = 'video_bienvenida_apertura')::int AS aperturas_video_bienvenida,
+                COUNT(*) FILTER (WHERE e.tipo_evento = 'video_bienvenida_play')::int AS reproducciones_video_bienvenida,
+                COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.tipo_evento IN ('video_bienvenida_apertura', 'video_bienvenida_play'))::int AS visitantes_video_bienvenida,
                 COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.tipo_evento = 'carrito_agregar')::int AS visitantes_con_carrito,
                 COUNT(DISTINCT e.visitor_id) FILTER (WHERE e.tipo_evento = 'inicio_checkout')::int AS visitantes_checkout,
                 COUNT(*) FILTER (WHERE e.tipo_evento = 'checkout_paso')::int AS pasos_checkout,
@@ -1806,6 +1812,7 @@ async function obtenerRadarAnaliticaNodos({
                 abandono_checkout: false,
                 pasos_checkout: [],
                 clics_whatsapp: 0,
+                vio_video_bienvenida: false,
                 categorias_vistas: [],
                 busquedas: [],
                 productos_interes: [],
@@ -1847,6 +1854,9 @@ async function obtenerRadarAnaliticaNodos({
         }
         if (ev.tipo_evento === 'clic_coordinar_gestor') {
             g.clics_whatsapp += 1;
+        }
+        if (ev.tipo_evento === 'video_bienvenida_apertura' || ev.tipo_evento === 'video_bienvenida_play') {
+            g.vio_video_bienvenida = true;
         }
         if (ev.tipo_evento === 'categoria_seleccionada' && ev.categoria_nombre && ev.categoria_nombre !== 'TODAS') {
             if (!g.categorias_vistas.includes(ev.categoria_nombre)) {
@@ -1959,6 +1969,9 @@ async function obtenerRadarAnaliticaNodos({
             vistas_mi_cuenta: Number(k.vistas_mi_cuenta || 0),
             clics_whatsapp: Number(k.clics_whatsapp || 0),
             visitantes_con_whatsapp: Number(k.visitantes_con_whatsapp || 0),
+            aperturas_video_bienvenida: Number(k.aperturas_video_bienvenida || 0),
+            reproducciones_video_bienvenida: Number(k.reproducciones_video_bienvenida || 0),
+            visitantes_video_bienvenida: Number(k.visitantes_video_bienvenida || 0),
             visitantes_con_carrito: Number(k.visitantes_con_carrito || 0),
             visitantes_checkout: Number(k.visitantes_checkout || 0),
             pasos_checkout: Number(k.pasos_checkout || 0),

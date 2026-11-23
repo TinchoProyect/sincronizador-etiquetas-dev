@@ -384,7 +384,7 @@ app.use('/media/nodos', (req, res, next) => {
     }
     const subPath = String(req.path || '');
     const subLower = subPath.toLowerCase();
-    if (subLower.endsWith('_orig.webp') || subLower.endsWith('_tmp.mp4') || !/^\/\d+\/\d+\/[a-z0-9_-]+\.(?:webp|mp4)$/i.test(subPath)) {
+    if (subLower.endsWith('_orig.webp') || subLower.endsWith('_tmp.mp4') || !/^\/\d+\/(?:\d+|bienvenida)\/[a-z0-9_-]+\.(?:webp|mp4)$/i.test(subPath)) {
         return res.status(403).json({ ok: false, error: 'Acceso restringido al recurso multimedia.' });
     }
     res.setHeader('X-Content-Type-Options', 'nosniff');

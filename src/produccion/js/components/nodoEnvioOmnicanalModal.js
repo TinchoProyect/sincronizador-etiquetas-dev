@@ -468,6 +468,7 @@
         const enviarEm = Boolean(document.getElementById('lomni-chk-canal-em')?.checked);
         const adjuntarQr = Boolean(document.getElementById('lomni-chk-adjuntar-qr')?.checked);
         const qrTipo = String(document.getElementById('lomni-sel-qr-tipo')?.value || 'tienda_afiche');
+        const adjuntarVideo = Boolean(document.getElementById('lomni-chk-adjuntar-video')?.checked);
         const asunto = String(document.getElementById('lomni-input-asunto')?.value || '').trim();
         const mensajeTexto = String(document.getElementById('lomni-input-mensaje')?.value || '').trim();
 
@@ -525,6 +526,7 @@
                     destinatarios_email: destEm,
                     plantilla_tipo: _estadoActual.plantillaActiva,
                     adjuntar_qr: adjuntarQr,
+                    adjuntar_video_bienvenida: adjuntarVideo,
                     qr_tipo: qrTipo,
                     asunto,
                     mensaje_texto: mensajeTexto,
@@ -542,7 +544,8 @@
                     bloques.push(`
                         <div style="padding:8px 11px; border-radius:8px; background:#f0fdf4; border:1px solid #86efac; color:#14532d; font-size:12px;">
                             <strong>📱 WhatsApp Interno (:3004):</strong> Destinos: <code>${esc(rJson.whatsapp.destinatarios.join(', '))}</code>
-                            ${rJson.whatsapp.adjunto_qr ? ` · 🖼️ Adjunto: <code>${esc(rJson.whatsapp.adjunto_qr)}</code>` : ''}
+                            ${rJson.whatsapp.adjunto_qr ? ` · 🖼️ QR: <code>${esc(rJson.whatsapp.adjunto_qr)}</code>` : ''}
+                            ${rJson.whatsapp.adjunto_video ? ` · 🎬 Video: <code>${esc(rJson.whatsapp.adjunto_video)}</code>` : ''}
                             ${simBadge}
                         </div>
                     `);
@@ -806,6 +809,26 @@
                                 <img id="lomni-img-qr-preview" src="" alt="Preview QR"
                                     style="width:74px; height:74px; border-radius:8px; border:1px solid #cbd5e1; background:#ffffff; padding:3px; object-fit:contain; display:none;" />
                             </div>
+
+                            ${data.video_bienvenida && data.video_bienvenida.disponible ? `
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding-top:8px; border-top:1px dashed #cbd5e1;">
+                                    <div style="flex:1; min-width:240px;">
+                                        <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-weight:800; font-size:12.8px; color:#0f172a;">
+                                            <input type="checkbox" id="lomni-chk-adjuntar-video" ${opciones.adjuntarVideoInicial ? 'checked' : ''}
+                                                style="width:16px; height:16px; accent-color:#16a34a; cursor:pointer;" />
+                                            🎬 Adjuntar también el Video de Presentación MP4 por WhatsApp (opcional)
+                                        </label>
+                                        <div style="margin-top:4px; font-size:11.5px; color:#475569; font-weight:600;">
+                                            ${Number(data.video_bienvenida.duration_sec || 0).toFixed(0)}s · ${(Number(data.video_bienvenida.bytes_whatsapp || 0) / (1024 * 1024)).toFixed(1)} MB · ${data.video_bienvenida.tiene_audio ? '🔊 Con música y sonido' : 'Sin audio'} ·
+                                            <a href="${esc(data.video_bienvenida.url_whatsapp)}" target="_blank" rel="noopener" style="color:#0284c7; font-weight:800; text-decoration:underline;">Ver video ↗</a>
+                                        </div>
+                                    </div>
+                                    ${data.video_bienvenida.poster_url ? `
+                                        <img src="${esc(data.video_bienvenida.poster_url)}" alt="Póster video"
+                                            style="width:48px; height:74px; border-radius:8px; border:1px solid #cbd5e1; object-fit:cover; background:#0f172a; flex-shrink:0;" />
+                                    ` : ''}
+                                </div>
+                            ` : ''}
                         </div>
 
                         <!-- 3. Vista Previa Editable de Asunto y Cuerpo -->

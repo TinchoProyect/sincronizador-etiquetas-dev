@@ -1186,6 +1186,74 @@ const enviarImagenBase64 = async (numeros, base64Data, mimeType, filename, mensa
 };
 
 /**
+ * Enviar un archivo de video MP4 desde ruta local controlada por WhatsApp (respetando 100% blindaje de Laboratorio).
+ * @param {string} numeros - Números separados por coma
+ * @param {string} filePath - Ruta absoluta ya validada al archivo .mp4
+ * @param {string} filename - Nombre visible del archivo
+ * @param {string} mensajeTexto - Epígrafe opcional del video
+ */
+const enviarVideoArchivo = async (numeros, filePath, filename = 'video.mp4', mensajeTexto = '') => {
+    const simRes = interceptarEnvioEnModoSeguro(numeros, "VIDEO_MP4", filename);
+    if (simRes) return simRes;
+    await asegurarMotorConectadoParaEnvio();
+
+    if (!numeros || !numeros.trim()) {
+        throw new Error('No se especificaron números telefónicos de destino.');
+    }
+    if (!filePath || !fs.existsSync(filePath)) {
+        throw new Error('El archivo de video MP4 especificado no existe en disco.');
+    }
+
+    const listaNumeros = numeros.split(',')
+        .map(n => n.replace(/[^0-9]/g, '').trim())
+        .filter(n => n.length > 0);
+
+    if (listaNumeros.length === 0) {
+        throw new Error('Ninguno de los números telefónicos provistos es válido.');
+    }
+
+    console.log(`🎬 [WHATSAPP-SERVICE] Enviando video "${filename}" a ${listaNumeros.length} destinatarios.`);
+    const media = MessageMedia.fromFilePath(filePath);
+    media.mimetype = 'video/mp4';
+    media.filename = filename || path.basename(filePath);
+
+    const redirVid = aplicarRedireccionSeguraWhatsApp(listaNumeros, mensajeTexto, `VIDEO (${media.filename})`);
+    const listaEnvioVid = redirVid.listaFinal;
+    const captionFinal = redirVid.textoFinal;
+    const resultados = [];
+
+    for (let numero of listaEnvioVid) {
+        try {
+            const { sanitizado, targetChatId, canonicalChatId } = await resolverChatId(numero);
+            console.log(`🎬 [WHATSAPP-SERVICE] Enviando video MP4 a: ${targetChatId}`);
+
+            const sentMsg = await enviarMensajeSeguroWWebJS(targetChatId, canonicalChatId, media, { caption: captionFinal });
+
+            await crmWhatsappDb.registrarMensajeWhatsapp({
+                msgId: sentMsg?.id?.id || sentMsg?.id?._serialized || null,
+                chatId: canonicalChatId || `${sanitizado}@c.us`,
+                telefono: sanitizado,
+                fromMe: true,
+                cuerpo: `🎬 [${media.filename}] ${captionFinal || ''}`.trim(),
+                tipoMensaje: 'video',
+                mediaFilename: media.filename,
+                mediaMimetype: 'video/mp4',
+                ack: 1,
+                origenEnvio: 'lamda_video'
+            }).catch(() => {});
+
+            console.log(`✅ [WHATSAPP-SERVICE] Video enviado con éxito a: ${sanitizado}`);
+            resultados.push({ numero: sanitizado, success: true });
+        } catch (err) {
+            console.error(`❌ [WHATSAPP-SERVICE] Error enviando video a ${numero}:`, err.message);
+            resultados.push({ numero, success: false, error: err.message });
+        }
+    }
+
+    return resultados;
+};
+
+/**
  * Extrae únicamente la lista de chats actualmente No Leídos (unreadCount > 0 o -1) desde WhatsApp Web
  * y apaga en BD todos los que ya fueron vistos en el celular (unreadCount === 0).
  */
@@ -1781,6 +1849,7 @@ module.exports = {
     enviarDocumentoPdf,
     enviarMensajeTexto,
     enviarImagenBase64,
+    enviarVideoArchivo,
     sincronizarChatsRecientes,
     transcribirAudiosDeChat,
     shutdown

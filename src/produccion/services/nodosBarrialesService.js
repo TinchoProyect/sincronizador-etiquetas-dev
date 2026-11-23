@@ -38,7 +38,8 @@ const recibosMarcaBlancaService = require('./nodosRecibosMarcaBlancaService');
 const {
     normalizarArrayVideosBd,
     normalizarModoPortada,
-    construirGaleriaYPortadaOferta
+    construirGaleriaYPortadaOferta,
+    normalizarConfigVideoBienvenida
 } = require('./nodosFotosService');
 const combosCompuestosService = require('./combosCompuestosService');
 
@@ -4184,6 +4185,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS modulos_activos JSONB NOT NULL DEFAULT '{}'::jsonb,
                 ADD COLUMN IF NOT EXISTS config_paqueteria JSONB NOT NULL DEFAULT '{}'::jsonb,
                 ADD COLUMN IF NOT EXISTS config_retiro_local JSONB NOT NULL DEFAULT '{}'::jsonb,
+                ADD COLUMN IF NOT EXISTS config_video_bienvenida JSONB NOT NULL DEFAULT '{}'::jsonb,
                 ADD COLUMN IF NOT EXISTS diccionario_textos JSONB NOT NULL DEFAULT '{}'::jsonb,
                 ADD COLUMN IF NOT EXISTS plantilla_origen_id INTEGER REFERENCES public.nodos_maestro(id) ON DELETE SET NULL;
 
@@ -9651,6 +9653,26 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
     const nroCuentaEfectivo = nodo.numero_cuenta_display || cfgCanalActiva.numero_cuenta_recaudador;
 
     const modoVidrieraNodo = normalizarModoVidrieraTienda(nodo.modo_vidriera_tienda);
+    const configVideoBienvenidaNodo = normalizarConfigVideoBienvenida(nodo.config_video_bienvenida);
+    const configVideoBienvenidaPublico = (configVideoBienvenidaNodo.tiene_video && configVideoBienvenidaNodo.activo && configVideoBienvenidaNodo.mostrar_en_tienda)
+        ? {
+            tiene_video: true,
+            activo: true,
+            mostrar_en_tienda: true,
+            etiqueta_boton: configVideoBienvenidaNodo.etiqueta_boton,
+            url_web: configVideoBienvenidaNodo.url_web,
+            url_whatsapp: configVideoBienvenidaNodo.url_whatsapp,
+            poster_url: configVideoBienvenidaNodo.poster_url,
+            width: configVideoBienvenidaNodo.width,
+            height: configVideoBienvenidaNodo.height,
+            duration_sec: configVideoBienvenidaNodo.duration_sec,
+            tiene_audio: configVideoBienvenidaNodo.tiene_audio
+        }
+        : {
+            tiene_video: false,
+            activo: false,
+            mostrar_en_tienda: false
+        };
 
     const { gestor_token: _omitGestorToken, ...nodoSinToken } = nodo;
     const nodoPublico = esVistaGestor
@@ -9669,6 +9691,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             modulos_activos: modulosActivosNodo,
             config_paqueteria: configPaqueteriaNodo,
             config_retiro_local: configRetiroLocalNodo,
+            config_video_bienvenida: configVideoBienvenidaNodo,
             diccionario_textos: diccionarioTextosNodo,
             mostrar_ingredientes_tienda: mostrarIngredientesNodo,
             permitir_retiro_nodo: puedeRetiroNodo,
@@ -9702,6 +9725,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             modulos_activos: modulosActivosNodo,
             config_paqueteria: configPaqueteriaNodo,
             config_retiro_local: configRetiroLocalNodo,
+            config_video_bienvenida: configVideoBienvenidaPublico,
             diccionario_textos: diccionarioTextosNodo,
             permitir_envio_barrial: puedeRepartoPropio,
             permitir_retiro_nodo: puedeRetiroNodo,
@@ -9878,6 +9902,21 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
         ? normalizarModoVidrieraTienda(payload.modo_vidriera_tienda)
         : normalizarModoVidrieraTienda(actual.modo_vidriera_tienda);
 
+    const configVideoPrev = normalizarConfigVideoBienvenida(actual.config_video_bienvenida);
+    let configVideoNueva = configVideoPrev;
+    if (payload.config_video_bienvenida && typeof payload.config_video_bienvenida === 'object' && configVideoPrev.tiene_video && configVideoPrev.activo) {
+        configVideoNueva = normalizarConfigVideoBienvenida({
+            ...configVideoPrev,
+            mostrar_en_tienda: payload.config_video_bienvenida.mostrar_en_tienda !== undefined
+                ? Boolean(payload.config_video_bienvenida.mostrar_en_tienda)
+                : configVideoPrev.mostrar_en_tienda,
+            habilitar_en_difusion: payload.config_video_bienvenida.habilitar_en_difusion !== undefined
+                ? Boolean(payload.config_video_bienvenida.habilitar_en_difusion)
+                : configVideoPrev.habilitar_en_difusion,
+            updated_at: new Date().toISOString()
+        });
+    }
+
     const upd = await db.query(
         `UPDATE public.nodos_maestro SET
             nombre_marca = COALESCE($1, nombre_marca),
@@ -9901,6 +9940,7 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             cobro_efectivo_entrega = $20,
             modo_vidriera_tienda = $21,
             config_retiro_local = $22::jsonb,
+            config_video_bienvenida = $23::jsonb,
             updated_at = NOW()
          WHERE id = $13
          RETURNING *`,
@@ -9926,7 +9966,8 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             JSON.stringify(configPaqNueva),
             cobroEfectivoEntrega,
             modoVidrieraTienda,
-            JSON.stringify(configRetiroNueva)
+            JSON.stringify(configRetiroNueva),
+            JSON.stringify(configVideoNueva)
         ]
     );
 
@@ -19176,6 +19217,7 @@ async function obtenerContactosOmnicanalNodo(idOrSlug) {
                 bunker_cliente_id, codigo_bunker_cliente,
                 cliente_madre_bunker_id, codigo_bunker_cliente_madre,
                 COALESCE(usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada,
+                COALESCE(config_video_bienvenida, '{}'::jsonb) AS config_video_bienvenida,
                 activo
          FROM public.nodos_maestro
          WHERE id = $1::int
@@ -19363,6 +19405,7 @@ async function obtenerContactosOmnicanalNodo(idOrSlug) {
             usar_cuenta_madre_unificada: Boolean(nm.usar_cuenta_madre_unificada),
             cliente_madre_bunker_id: nm.cliente_madre_bunker_id ? Number(nm.cliente_madre_bunker_id) : null,
             codigo_bunker_cliente_madre: nm.codigo_bunker_cliente_madre || null,
+            config_video_bienvenida: normalizarConfigVideoBienvenida(nm.config_video_bienvenida),
             bunker_cliente_id: nm.bunker_cliente_id ? Number(nm.bunker_cliente_id) : null,
             codigo_bunker_cliente: nm.codigo_bunker_cliente || null
         },
@@ -19782,8 +19825,10 @@ async function obtenerKitCompartirNodo(nodoId) {
             `SELECT id, codigo_nodo, slug, slug_historico, nombre_marca, bajada_marca, subtitulo_marca,
                     gestor_nombre, barrio_zona, direccion_retiro,
                     permitir_envio_barrial, permitir_retiro_nodo, permitir_reparto_propio, permitir_encomienda,
-                    cargo_envio_barrial,
-                    color_primario, tema_visual, config_ventanas_corte, activo
+                    cargo_envio_barrial, perfil_operativo, config_paqueteria,
+                    color_primario, tema_visual, config_ventanas_corte,
+                    COALESCE(config_video_bienvenida, '{}'::jsonb) AS config_video_bienvenida,
+                    activo
              FROM public.nodos_maestro
              WHERE id = $1::int
              LIMIT 1`,
@@ -19845,8 +19890,11 @@ async function obtenerKitCompartirNodo(nodoId) {
             permitir_reparto_propio: puedeRepartoKit,
             permitir_encomienda: Boolean(n.permitir_encomienda),
             cargo_envio_barrial: Number(n.cargo_envio_barrial || 0),
+            perfil_operativo: normalizarPerfilOperativoNodo(n.perfil_operativo),
+            config_paqueteria: normalizarConfigPaqueteria(n.config_paqueteria),
             color_primario: n.color_primario || '#a2553b',
-            tema_visual: enriquecerTemaVisualConVersionAssets(n.tema_visual)
+            tema_visual: enriquecerTemaVisualConVersionAssets(n.tema_visual),
+            config_video_bienvenida: normalizarConfigVideoBienvenida(n.config_video_bienvenida)
         },
         proxima_entrega: proximaEntrega,
         ofertas_publicadas: ofertasRes.rows.map(o => ({

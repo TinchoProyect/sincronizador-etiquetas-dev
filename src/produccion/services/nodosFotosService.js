@@ -24,7 +24,10 @@ const MAX_FOTOS_POR_OFERTA = 8;
 const MAX_VIDEOS_POR_OFERTA = 2;
 const MAX_VIDEO_DURATION_SEC = 25;
 const MAX_VIDEO_UPLOAD_BYTES = 45 * 1024 * 1024;
+const MAX_WELCOME_VIDEO_DURATION_SEC = 75;
+const MAX_WELCOME_VIDEO_UPLOAD_BYTES = 80 * 1024 * 1024;
 const VIDEO_TRANSCODE_TIMEOUT_MS = 60000;
+const WELCOME_VIDEO_TRANSCODE_TIMEOUT_MS = 120000;
 const MAX_ORIG_DIM = 1600;
 const MAX_PUB_DIM = 1280;
 const MAX_PREVIEW_DIM = 960;
@@ -1021,7 +1024,8 @@ function ejecutarProcesoConTimeout(bin, args, timeoutMs = 30000, captureStdoutBu
     });
 }
 
-async function inspeccionarVideoConFfprobe(filePath) {
+async function inspeccionarVideoConFfprobe(filePath, opciones = {}) {
+    const maxBytes = Number(opciones?.maxBytes) > 0 ? Number(opciones.maxBytes) : MAX_VIDEO_UPLOAD_BYTES;
     if (!filePath || !fs.existsSync(filePath)) {
         const err = new Error('No se recibió un archivo de video válido.');
         err.statusCode = 400;
@@ -1033,8 +1037,9 @@ async function inspeccionarVideoConFfprobe(filePath) {
         err.statusCode = 400;
         throw err;
     }
-    if (stat.size > MAX_VIDEO_UPLOAD_BYTES) {
-        const err = new Error('El video supera el peso máximo permitido (45 MB).');
+    if (stat.size > maxBytes) {
+        const maxMb = Math.round(maxBytes / (1024 * 1024));
+        const err = new Error(`El video supera el peso máximo permitido (${maxMb} MB).`);
         err.statusCode = 400;
         throw err;
     }
@@ -1080,12 +1085,18 @@ async function inspeccionarVideoConFfprobe(filePath) {
         throw err;
     }
 
-    const tieneAudio = streams.some(s => s && s.codec_type === 'audio');
+    const aStream = streams.find(s => s && s.codec_type === 'audio') || null;
     return {
         width,
         height,
         duration_sec: durationRaw,
-        tiene_audio: tieneAudio
+        tiene_audio: Boolean(aStream),
+        video_codec: String(vStream.codec_name || '').toLowerCase(),
+        pix_fmt: String(vStream.pix_fmt || '').toLowerCase(),
+        audio_codec: aStream ? String(aStream.codec_name || '').toLowerCase() : null,
+        audio_channels: aStream ? Number(aStream.channels || 0) : 0,
+        audio_sample_rate: aStream ? Number(aStream.sample_rate || 0) : 0,
+        bytes: stat.size
     };
 }
 
@@ -1397,11 +1408,328 @@ async function importarFotoSugeridaOferta({ ofertaId, nodoAuthId = null, fotoSug
     });
 }
 
+// ============================================================================
+// VIDEO DE BIENVENIDA / PRESENTACIÓN POR NODO (100% OPCIONAL · CON AUDIO AAC)
+// ============================================================================
+
+function normalizarConfigVideoBienvenida(raw = {}) {
+    const obj = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+    const urlWa = String(obj.url_whatsapp || '').trim();
+    const urlWeb = String(obj.url_web || '').trim();
+    const posterUrl = String(obj.poster_url || '').trim();
+    const tieneVideo = Boolean(urlWa || urlWeb);
+    const activo = tieneVideo && obj.activo !== false;
+    const mostrarEnTienda = activo && obj.mostrar_en_tienda === true;
+    const habilitarEnDifusion = activo && obj.habilitar_en_difusion === true;
+    const etiquetaRaw = String(obj.etiqueta_boton || '').trim();
+    const etiquetaBoton = etiquetaRaw ? etiquetaRaw.slice(0, 40) : '¿Cómo funciona?';
+
+    return {
+        tiene_video: tieneVideo,
+        activo,
+        mostrar_en_tienda: mostrarEnTienda,
+        habilitar_en_difusion: habilitarEnDifusion,
+        etiqueta_boton: etiquetaBoton,
+        url_whatsapp: urlWa,
+        url_web: urlWeb || urlWa,
+        poster_url: posterUrl,
+        whatsapp_filename: String(obj.whatsapp_filename || '').trim(),
+        web_filename: String(obj.web_filename || '').trim(),
+        poster_filename: String(obj.poster_filename || '').trim(),
+        width: Number(obj.width || 0),
+        height: Number(obj.height || 0),
+        duration_sec: Number(obj.duration_sec || 0),
+        bytes_whatsapp: Number(obj.bytes_whatsapp || 0),
+        bytes_web: Number(obj.bytes_web || 0),
+        tiene_audio: Boolean(obj.tiene_audio),
+        updated_at: obj.updated_at || null
+    };
+}
+
+function obtenerCarpetaBienvenidaDisco(nodoId) {
+    const nId = Number(nodoId);
+    if (!Number.isInteger(nId) || nId <= 0) {
+        const err = new Error('Identificador de nodo inválido para video de bienvenida.');
+        err.statusCode = 400;
+        throw err;
+    }
+    return path.join(obtenerDirectorioMediaNodos(), String(nId), 'bienvenida');
+}
+
+function resolverRutaArchivoVideoBienvenidaDisco(nodoId, configRaw, variante = 'whatsapp') {
+    const cfg = normalizarConfigVideoBienvenida(configRaw);
+    if (!cfg.tiene_video) return null;
+    const fname = variante === 'web'
+        ? (cfg.web_filename || path.basename(cfg.url_web.split('?')[0] || ''))
+        : (cfg.whatsapp_filename || path.basename(cfg.url_whatsapp.split('?')[0] || ''));
+    if (!fname || !/^[a-z0-9_-]+\.mp4$/i.test(fname)) return null;
+    const dir = obtenerCarpetaBienvenidaDisco(nodoId);
+    const full = path.resolve(dir, fname);
+    const root = path.resolve(obtenerDirectorioMediaNodos());
+    if (!full.startsWith(root) || !fs.existsSync(full)) return null;
+    return { fullPath: full, filename: fname, cfg };
+}
+
+function limpiarArchivosBienvenidaObsoletos(nodoId, conservarNombres = []) {
+    try {
+        const dir = obtenerCarpetaBienvenidaDisco(nodoId);
+        if (!fs.existsSync(dir)) return;
+        const keep = new Set(conservarNombres.map(x => String(x || '').toLowerCase()));
+        for (const entry of fs.readdirSync(dir)) {
+            if (!keep.has(entry.toLowerCase())) {
+                try { fs.unlinkSync(path.join(dir, entry)); } catch (_) {}
+            }
+        }
+    } catch (_) {}
+}
+
+/**
+ * Sube o ingesta el video promocional/bienvenida de un Nodo preservando intacta la pista de audio AAC.
+ * Genera dos variantes optimizadas:
+ *   - WhatsApp/Reels (`bienvenida_wa_<id>.mp4`): remux lossless si ya es H.264/AAC <= 1080x1920 <= 14 MB, o H.264 + AAC 128k.
+ *   - Tienda Web (`bienvenida_web_<id>.mp4`): liviana H.264 + AAC 96k +faststart para carga rápida con sonido.
+ *   - Póster (`bienvenida_poster_<id>.webp`): fotograma limpio tomado a t=2.6s (o 25% si el video es muy corto).
+ */
+async function subirOIngestarVideoBienvenidaNodo({
+    nodoId,
+    tempFilePath,
+    preservarArchivoOrigen = false,
+    activo = null,
+    mostrarEnTienda = null,
+    habilitarEnDifusion = null,
+    etiquetaBoton = null
+}) {
+    const nId = Number(nodoId);
+    if (!Number.isInteger(nId) || nId <= 0) {
+        const err = new Error('Identificador de Nodo inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    try {
+        const probeIn = await inspeccionarVideoConFfprobe(tempFilePath, {
+            maxBytes: MAX_WELCOME_VIDEO_UPLOAD_BYTES
+        });
+        if (probeIn.duration_sec > MAX_WELCOME_VIDEO_DURATION_SEC + 1) {
+            const err = new Error(`El video de presentación dura ${Math.round(probeIn.duration_sec)}s y supera el máximo permitido (${MAX_WELCOME_VIDEO_DURATION_SEC}s).`);
+            err.statusCode = 400;
+            throw err;
+        }
+
+        return await encolarTareaVideo(async () => {
+            const nodoPre = await db.query(
+                `SELECT id, slug, nombre_marca, COALESCE(config_video_bienvenida, '{}'::jsonb) AS config_video_bienvenida
+                 FROM public.nodos_maestro WHERE id = $1 LIMIT 1`,
+                [nId]
+            );
+            if (nodoPre.rows.length === 0) {
+                const err = new Error('Nodo no encontrado.');
+                err.statusCode = 404;
+                throw err;
+            }
+            const prevCfg = normalizarConfigVideoBienvenida(nodoPre.rows[0].config_video_bienvenida);
+
+            const dir = obtenerCarpetaBienvenidaDisco(nId);
+            fs.mkdirSync(dir, { recursive: true });
+
+            const vidTag = `${Date.now().toString(36)}${crypto.randomBytes(3).toString('hex')}`.toLowerCase();
+            const waName = `bienvenida_wa_${vidTag}.mp4`;
+            const webName = `bienvenida_web_${vidTag}.mp4`;
+            const posterName = `bienvenida_poster_${vidTag}.webp`;
+
+            const waPath = path.join(dir, waName);
+            const waTmpPath = path.join(dir, `${waName}_tmp.mp4`);
+            const webPath = path.join(dir, webName);
+            const webTmpPath = path.join(dir, `${webName}_tmp.mp4`);
+            const posterPath = path.join(dir, posterName);
+
+            const { ffmpeg } = resolverBinariosMultimedia();
+
+            const puedeRemuxDirectoWa = (
+                probeIn.video_codec === 'h264' &&
+                probeIn.pix_fmt === 'yuv420p' &&
+                probeIn.width <= 1080 &&
+                probeIn.height <= 1920 &&
+                probeIn.bytes <= 14 * 1024 * 1024 &&
+                (!probeIn.tiene_audio || probeIn.audio_codec === 'aac')
+            );
+
+            const ffArgsWa = puedeRemuxDirectoWa
+                ? ['-y', '-i', tempFilePath, '-c:v', 'copy', ...(probeIn.tiene_audio ? ['-c:a', 'copy'] : ['-an']), '-movflags', '+faststart', waTmpPath]
+                : [
+                    '-y', '-threads', '1', '-i', tempFilePath,
+                    '-vf', "scale='min(1080,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                    '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'high', '-pix_fmt', 'yuv420p',
+                    '-crf', '21', '-maxrate', '2400k', '-bufsize', '4800k', '-r', '30',
+                    ...(probeIn.tiene_audio ? ['-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-ar', '48000'] : ['-an']),
+                    '-movflags', '+faststart', '-threads', '1', waTmpPath
+                ];
+
+            const ffArgsWeb = [
+                '-y', '-threads', '1', '-i', tempFilePath,
+                '-vf', "scale='min(720,iw)':'min(1280,ih)':force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                '-c:v', 'libx264', '-preset', 'veryfast', '-profile:v', 'main', '-pix_fmt', 'yuv420p',
+                '-crf', '25', '-maxrate', '950k', '-bufsize', '1900k', '-r', '30',
+                ...(probeIn.tiene_audio ? ['-c:a', 'aac', '-b:a', '96k', '-ac', '2', '-ar', '48000'] : ['-an']),
+                '-movflags', '+faststart', '-threads', '1', webTmpPath
+            ];
+
+            try {
+                await ejecutarProcesoConTimeout(ffmpeg, ffArgsWa, WELCOME_VIDEO_TRANSCODE_TIMEOUT_MS, false);
+                fs.renameSync(waTmpPath, waPath);
+
+                await ejecutarProcesoConTimeout(ffmpeg, ffArgsWeb, WELCOME_VIDEO_TRANSCODE_TIMEOUT_MS, false);
+                fs.renameSync(webTmpPath, webPath);
+
+                const probeWa = await inspeccionarVideoConFfprobe(waPath, { maxBytes: MAX_WELCOME_VIDEO_UPLOAD_BYTES });
+                const probeWeb = await inspeccionarVideoConFfprobe(webPath, { maxBytes: MAX_WELCOME_VIDEO_UPLOAD_BYTES });
+
+                const seekSec = probeWa.duration_sec >= 4.0
+                    ? 2.6
+                    : Math.max(0.2, Number((probeWa.duration_sec * 0.25).toFixed(2)));
+                const frameRes = await ejecutarProcesoConTimeout(
+                    ffmpeg,
+                    ['-y', '-threads', '1', '-ss', String(seekSec), '-i', waPath, '-frames:v', '1', '-f', 'image2pipe', '-vcodec', 'png', '-'],
+                    15000,
+                    true
+                );
+                const posterBuffer = await sharp(frameRes.stdoutBuffer, { failOnError: false })
+                    .resize(720, 1280, { fit: 'inside', withoutEnlargement: true })
+                    .webp({ quality: 86, effort: 4 })
+                    .toBuffer();
+                fs.writeFileSync(posterPath, posterBuffer);
+
+                const ts = Date.now();
+                const activoFinal = activo !== null ? Boolean(activo) : (prevCfg.tiene_video ? prevCfg.activo : true);
+                const mostrarFinal = mostrarEnTienda !== null
+                    ? Boolean(mostrarEnTienda)
+                    : (prevCfg.tiene_video ? prevCfg.mostrar_en_tienda : true);
+                const difusionFinal = habilitarEnDifusion !== null
+                    ? Boolean(habilitarEnDifusion)
+                    : (prevCfg.tiene_video ? prevCfg.habilitar_en_difusion : true);
+                const etiquetaFinal = etiquetaBoton !== null && String(etiquetaBoton).trim()
+                    ? String(etiquetaBoton).trim().slice(0, 40)
+                    : (prevCfg.etiqueta_boton || '¿Cómo funciona?');
+
+                const nuevaConfig = normalizarConfigVideoBienvenida({
+                    activo: activoFinal,
+                    mostrar_en_tienda: activoFinal && mostrarFinal,
+                    habilitar_en_difusion: activoFinal && difusionFinal,
+                    etiqueta_boton: etiquetaFinal,
+                    url_whatsapp: `/media/nodos/${nId}/bienvenida/${waName}?v=${ts}`,
+                    url_web: `/media/nodos/${nId}/bienvenida/${webName}?v=${ts}`,
+                    poster_url: `/media/nodos/${nId}/bienvenida/${posterName}?v=${ts}`,
+                    whatsapp_filename: waName,
+                    web_filename: webName,
+                    poster_filename: posterName,
+                    width: probeWa.width,
+                    height: probeWa.height,
+                    duration_sec: Number(probeWa.duration_sec.toFixed(1)),
+                    bytes_whatsapp: probeWa.bytes,
+                    bytes_web: probeWeb.bytes,
+                    tiene_audio: Boolean(probeWa.tiene_audio && probeWeb.tiene_audio),
+                    updated_at: new Date(ts).toISOString()
+                });
+
+                await db.query(
+                    `UPDATE public.nodos_maestro
+                     SET config_video_bienvenida = $1::jsonb,
+                         updated_at = NOW()
+                     WHERE id = $2`,
+                    [JSON.stringify(nuevaConfig), nId]
+                );
+
+                limpiarArchivosBienvenidaObsoletos(nId, [waName, webName, posterName]);
+                return nuevaConfig;
+            } catch (procErr) {
+                for (const p of [waTmpPath, webTmpPath, waPath, webPath, posterPath]) {
+                    if (fs.existsSync(p)) { try { fs.unlinkSync(p); } catch (_) {} }
+                }
+                throw procErr;
+            }
+        });
+    } finally {
+        if (!preservarArchivoOrigen && tempFilePath && fs.existsSync(tempFilePath)) {
+            try { fs.unlinkSync(tempFilePath); } catch (_) {}
+        }
+    }
+}
+
+async function actualizarPreferenciasVideoBienvenidaNodo({
+    nodoId,
+    esAdmin = false,
+    activo,
+    mostrar_en_tienda,
+    habilitar_en_difusion,
+    etiqueta_boton
+}) {
+    const nId = Number(nodoId);
+    const res = await db.query(
+        `SELECT id, COALESCE(config_video_bienvenida, '{}'::jsonb) AS config_video_bienvenida
+         FROM public.nodos_maestro WHERE id = $1 LIMIT 1`,
+        [nId]
+    );
+    if (res.rows.length === 0) {
+        const err = new Error('Nodo no encontrado.');
+        err.statusCode = 404;
+        throw err;
+    }
+    const prev = normalizarConfigVideoBienvenida(res.rows[0].config_video_bienvenida);
+    if (!prev.tiene_video) {
+        return prev;
+    }
+    const nuevoActivo = esAdmin && activo !== undefined ? Boolean(activo) : prev.activo;
+    const nuevoMostrarTienda = mostrar_en_tienda !== undefined ? Boolean(mostrar_en_tienda) : prev.mostrar_en_tienda;
+    const nuevoDifusion = habilitar_en_difusion !== undefined ? Boolean(habilitar_en_difusion) : prev.habilitar_en_difusion;
+    const nuevaEtiqueta = (esAdmin && etiqueta_boton !== undefined && String(etiqueta_boton).trim())
+        ? String(etiqueta_boton).trim().slice(0, 40)
+        : prev.etiqueta_boton;
+
+    const actualizado = normalizarConfigVideoBienvenida({
+        ...prev,
+        activo: nuevoActivo,
+        mostrar_en_tienda: nuevoActivo ? nuevoMostrarTienda : false,
+        habilitar_en_difusion: nuevoActivo ? nuevoDifusion : false,
+        etiqueta_boton: nuevaEtiqueta,
+        updated_at: new Date().toISOString()
+    });
+
+    await db.query(
+        `UPDATE public.nodos_maestro
+         SET config_video_bienvenida = $1::jsonb,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [JSON.stringify(actualizado), nId]
+    );
+    return actualizado;
+}
+
+async function eliminarVideoBienvenidaNodo({ nodoId }) {
+    const nId = Number(nodoId);
+    const res = await db.query('SELECT id FROM public.nodos_maestro WHERE id = $1 LIMIT 1', [nId]);
+    if (res.rows.length === 0) {
+        const err = new Error('Nodo no encontrado.');
+        err.statusCode = 404;
+        throw err;
+    }
+    await db.query(
+        `UPDATE public.nodos_maestro
+         SET config_video_bienvenida = '{}'::jsonb,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [nId]
+    );
+    limpiarArchivosBienvenidaObsoletos(nId, []);
+    return normalizarConfigVideoBienvenida({});
+}
+
 module.exports = {
     MAX_FOTOS_POR_OFERTA,
     MAX_VIDEOS_POR_OFERTA,
     MAX_VIDEO_DURATION_SEC,
     MAX_VIDEO_UPLOAD_BYTES,
+    MAX_WELCOME_VIDEO_DURATION_SEC,
+    MAX_WELCOME_VIDEO_UPLOAD_BYTES,
     esModoLaboratorioFotos,
     obtenerDirectorioMediaNodos,
     esFotoIdSeguro,
@@ -1419,5 +1747,11 @@ module.exports = {
     agregarVideoOferta,
     eliminarVideoOferta,
     configurarPortadaOferta,
-    importarFotoSugeridaOferta
+    importarFotoSugeridaOferta,
+    normalizarConfigVideoBienvenida,
+    obtenerCarpetaBienvenidaDisco,
+    resolverRutaArchivoVideoBienvenidaDisco,
+    subirOIngestarVideoBienvenidaNodo,
+    actualizarPreferenciasVideoBienvenidaNodo,
+    eliminarVideoBienvenidaNodo
 };

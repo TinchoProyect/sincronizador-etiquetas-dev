@@ -19,6 +19,9 @@ router.post('/enviar-mensaje', whatsappController.enviarMensaje);
 // Ruta genérica para enviar una imagen en base64 por WhatsApp
 router.post('/enviar-imagen', whatsappController.enviarImagen);
 
+// Ruta genérica para enviar un video MP4 local validado por WhatsApp
+router.post('/enviar-video', whatsappController.enviarVideo);
+
 // Ruta para sincronizar conversaciones recientes de WhatsApp hacia el CRM local
 router.post('/sincronizar-chats', whatsappController.sincronizarChats);
 

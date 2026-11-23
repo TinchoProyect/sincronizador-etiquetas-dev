@@ -1492,6 +1492,10 @@
           return `Consultó "¿Qué contiene?": ${ev.producto_nombre || ev.sku_nodo || ''}`;
         case 'clic_coordinar_gestor':
           return `💬 Abrió contacto WhatsApp con gestor${ev.detalle ? ' (' + ev.detalle + ')' : ''}`;
+        case 'video_bienvenida_apertura':
+          return `🎬 Abrió video de presentación${ev.detalle ? ' (' + ev.detalle + ')' : ''}`;
+        case 'video_bienvenida_play':
+          return `▶️ Reprodujo video de presentación (con audio)`;
         case 'vista_producto':
           return `Visualizó producto: ${ev.producto_nombre || ev.sku_nodo || ''}`;
         case 'carrito_agregar':
@@ -1725,6 +1729,7 @@
             <span style="color:#94a3b8;">→</span>
             <span class="chip" style="background:#f0fdf4; border-color:#86efac; color:#166534;">✅ Pedidos: <strong>${k.pedidos_confirmados}</strong></span>
             ${Number(k.clics_whatsapp || 0) > 0 ? `<span class="chip" style="background:#ecfdf5; border-color:#a7f3d0; color:#047857;">💬 WhatsApp: <strong>${k.clics_whatsapp}</strong></span>` : ''}
+            ${(Number(k.aperturas_video_bienvenida || 0) > 0 || Number(k.reproducciones_video_bienvenida || 0) > 0) ? `<span class="chip" style="background:#f5f3ff; border-color:#c4b5fd; color:#5b21b6;">🎬 Video: <strong>${k.reproducciones_video_bienvenida || 0}</strong> play (${k.aperturas_video_bienvenida || 0} ap.)</span>` : ''}
           </div>
           ${pasosTxt}
         </div>
@@ -1753,7 +1758,7 @@
           <div class="kpi-label">🔎 Navegación e Interés</div>
           <div class="kpi-val">${k.clics_categorias + k.busquedas_lupa + k.consultas_producto}</div>
           <div class="kpi-sub">
-            ${k.ingresos_tienda} ing. · ${k.clics_categorias} rubros · ${k.busquedas_lupa} lupa · ${k.vistas_producto || 0} fotos · ${k.clics_que_contiene || 0} "¿Qué contiene?"${Number(k.clics_whatsapp || 0) > 0 ? ` · 💬 ${k.clics_whatsapp} WA` : ''}
+            ${k.ingresos_tienda} ing. · ${k.clics_categorias} rubros · ${k.busquedas_lupa} lupa · ${k.vistas_producto || 0} fotos · ${k.clics_que_contiene || 0} "¿Qué contiene?"${Number(k.clics_whatsapp || 0) > 0 ? ` · 💬 ${k.clics_whatsapp} WA` : ''}${(Number(k.aperturas_video_bienvenida || 0) > 0 || Number(k.reproducciones_video_bienvenida || 0) > 0) ? ` · 🎬 ${k.reproducciones_video_bienvenida || 0} play/${k.aperturas_video_bienvenida || 0} ap.` : ''}
           </div>
         </div>
 
@@ -2009,6 +2014,7 @@
                         ${g.busquedas.map(b => `<span class="chip" style="background:#eff6ff; color:#1e40af;">🔍 "${esc(b)}"</span>`).join('')}
                         ${g.productos_interes.slice(0, 3).map(p => `<span class="chip" style="background:#f0fdf4; color:#166534;">🥣 ${esc(p)}</span>`).join('')}
                         ${Number(g.clics_whatsapp || 0) > 0 ? `<span class="chip" style="background:#ecfdf5; color:#047857;">💬 WA (${g.clics_whatsapp})</span>` : ''}
+                        ${g.vio_video_bienvenida ? `<span class="chip" style="background:#f5f3ff; border-color:#c4b5fd; color:#5b21b6;">🎬 Vio video</span>` : ''}
                         ${g.abandono_checkout && !g.compro_en_visita ? `<span class="chip" style="background:#fff7ed; color:#9a3412;">🚪 Abandonó checkout</span>` : ''}
                       </div>
                     </div>
@@ -2601,6 +2607,10 @@
           </div>
         </div>
 
+        <div id="abm-video-bienvenida-section" style="margin-bottom:14px;">
+          ${renderizarHtmlSeccionVideoBienvenidaAbm(editNodo)}
+        </div>
+
         <div id="abm-centro-feedback" style="display:none; margin-bottom:10px; padding:10px 12px; border-radius:9px; font-size:0.83rem; font-weight:800;"></div>
 
         <div style="display:flex; justify-content:flex-end; gap:10px;">
@@ -2610,6 +2620,265 @@
           </button>
         </div>
       `;
+    }
+
+    function fmtMbVideoAbm(bytes) {
+      const n = Number(bytes || 0);
+      if (!Number.isFinite(n) || n <= 0) return '—';
+      return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    function renderizarHtmlSeccionVideoBienvenidaAbm(nodo) {
+      if (!nodo) {
+        return `
+          <div style="background:#f8fafc; border:1px dashed #cbd5e1; border-radius:12px; padding:11px 14px; font-size:0.79rem; color:var(--muted);">
+            <strong>🎬 Video de presentación / bienvenida (100% opcional):</strong>
+            Los nodos nuevos nacen en modo clásico sin video. Una vez creada la tienda, si este nodo quiere usar un video promocional con sonido, podés cargarlo desde <em>⚙️ Configurar Tienda</em>.
+          </div>
+        `;
+      }
+      const vid = (nodo.config_video_bienvenida && typeof nodo.config_video_bienvenida === 'object')
+        ? nodo.config_video_bienvenida
+        : {};
+      const tieneVideo = Boolean(vid.tiene_video && (vid.url_whatsapp || vid.url_web));
+      const activo = tieneVideo && vid.activo !== false;
+      const mostrarEnTienda = activo && Boolean(vid.mostrar_en_tienda);
+      const habilitarEnDifusion = activo && Boolean(vid.habilitar_en_difusion);
+      const etiquetaBoton = String(vid.etiqueta_boton || '¿Cómo funciona?');
+      const previewUrl = vid.url_web || vid.url_whatsapp || '';
+      const posterUrl = vid.poster_url || vid.url_poster || '';
+      const estadoBadge = !tieneVideo
+        ? `<span class="badge-pill" style="background:#f1f5f9; color:#475569;">Sin video (modo clásico)</span>`
+        : (activo
+          ? `<span class="badge-pill" style="background:#dcfce7; color:#166534;">✅ Video disponible</span>`
+          : `<span class="badge-pill" style="background:#fef3c7; color:#92400e;">⏸️ Pausado por Admin</span>`);
+
+      return `
+        <div style="background:linear-gradient(135deg, #f5f3ff 0%, #ffffff 100%); border:1.5px solid #c4b5fd; border-radius:12px; padding:14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+            <div>
+              <div style="font-size:0.86rem; font-weight:900; color:#4c1d95;">🎬 Video de Presentación / Bienvenida (100% Opcional)</div>
+              <div style="font-size:0.75rem; color:#6d28d9; margin-top:2px;">
+                Control maestro para este nodo. Si está activo, el gestor decide con libertad si lo usa en WhatsApp o en su tienda.
+              </div>
+            </div>
+            ${estadoBadge}
+          </div>
+
+          ${tieneVideo ? `
+            <div style="display:grid; grid-template-columns:138px 1fr; gap:14px; align-items:start;">
+              <div style="display:flex; flex-direction:column; gap:6px; align-items:center;">
+                <video controls playsinline preload="metadata"
+                  ${posterUrl ? `poster="${esc(posterUrl)}"` : ''}
+                  src="${esc(previewUrl)}"
+                  style="width:132px; aspect-ratio:9/16; border-radius:12px; background:#0f172a; object-fit:cover; border:2px solid #ddd6fe; box-shadow:0 4px 12px rgba(76,29,149,0.14);"></video>
+                <div style="font-size:0.69rem; color:#4c1d95; font-weight:800; text-align:center; line-height:1.35;">
+                  ${vid.duration_sec ? `⏱️ ${Math.round(Number(vid.duration_sec))}s · ` : ''}${vid.tiene_audio === false ? '🔇 Sin audio' : '🔊 Con audio'}<br>
+                  WA: ${fmtMbVideoAbm(vid.bytes_whatsapp)} · Web: ${fmtMbVideoAbm(vid.bytes_web)}
+                </div>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:9px;">
+                <label style="display:flex; align-items:flex-start; gap:8px; padding:8px 10px; background:#fff; border:1px solid #ddd6fe; border-radius:9px; cursor:pointer; font-size:0.81rem;">
+                  <input type="checkbox" id="abm-vid-activo" ${activo ? 'checked' : ''} style="margin-top:2px; width:16px; height:16px;" />
+                  <span>
+                    <strong style="color:#1e1b4b;">Habilitar video promocional en este nodo (perilla maestra)</strong><br>
+                    <span style="font-size:0.73rem; color:var(--muted);">Si se desactiva, el video queda resguardado en disco pero desaparece del Panel Gestor, Tienda y Modal Omnicanal.</span>
+                  </span>
+                </label>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                  <label style="display:flex; align-items:flex-start; gap:7px; padding:8px 10px; background:#fff; border:1px solid var(--border); border-radius:9px; cursor:pointer; font-size:0.78rem;">
+                    <input type="checkbox" id="abm-vid-difusion" ${habilitarEnDifusion ? 'checked' : ''} style="margin-top:2px; width:15px; height:15px;" />
+                    <span>
+                      <strong>📲 En Kit de Difusión</strong><br>
+                      <span style="font-size:0.71rem; color:var(--muted);">Permite al gestor elegir si manda link solo o con video.</span>
+                    </span>
+                  </label>
+                  <label style="display:flex; align-items:flex-start; gap:7px; padding:8px 10px; background:#fff; border:1px solid var(--border); border-radius:9px; cursor:pointer; font-size:0.78rem;">
+                    <input type="checkbox" id="abm-vid-tienda" ${mostrarEnTienda ? 'checked' : ''} style="margin-top:2px; width:15px; height:15px;" />
+                    <span>
+                      <strong>🛍️ En Tienda Pública</strong><br>
+                      <span style="font-size:0.71rem; color:var(--muted);">Botón discreto sin popup ni autoplay invasivo.</span>
+                    </span>
+                  </label>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr auto; gap:8px; align-items:end;">
+                  <div>
+                    <label for="abm-vid-etiqueta" style="display:block; font-size:0.73rem; font-weight:800; color:#4c1d95; margin-bottom:3px;">Texto del botón discreto en tienda (máx. 40 car.)</label>
+                    <input type="text" id="abm-vid-etiqueta" maxlength="40" value="${esc(etiquetaBoton)}" placeholder="¿Cómo funciona?"
+                      style="width:100%; padding:7px 10px; border-radius:8px; border:1px solid #c4b5fd; font-size:0.81rem; font-weight:700; background:#fff;" />
+                  </div>
+                  <button type="button" id="abm-vid-btn-guardar-pref" class="btn solid-green" style="padding:8px 13px; font-size:0.79rem;"
+                    onclick="guardarPreferenciasVideoBienvenidaAbm(${Number(nodo.id)})">
+                    💾 Guardar preferencias
+                  </button>
+                </div>
+
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding-top:6px; border-top:1px dashed #ddd6fe;">
+                  <input type="file" id="abm-vid-file" accept="video/mp4,video/quicktime,video/webm"
+                    style="font-size:0.75rem; max-width:250px;" />
+                  <button type="button" id="abm-vid-btn-subir" class="btn" style="font-size:0.76rem; padding:6px 10px;"
+                    onclick="subirVideoBienvenidaAbm(${Number(nodo.id)})">
+                    🔄 Reemplazar MP4
+                  </button>
+                  <button type="button" id="abm-vid-btn-eliminar" class="btn" style="font-size:0.76rem; padding:6px 10px; color:#b91c1c; border-color:#fecaca; background:#fef2f2;"
+                    onclick="eliminarVideoBienvenidaAbm(${Number(nodo.id)})">
+                    🗑️ Quitar video
+                  </button>
+                </div>
+              </div>
+            </div>
+          ` : `
+            <div style="font-size:0.79rem; color:#475569; line-height:1.45; margin-bottom:10px;">
+              Este nodo funciona hoy en <strong>modo clásico sin video</strong> (cero ruido visual en su tienda ni en su panel).
+              Si querés habilitarle opcionalmente un video vertical con sonido (MP4 hasta 75 seg / 80 MB), subilo acá:
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+              <input type="file" id="abm-vid-file" accept="video/mp4,video/quicktime,video/webm"
+                style="font-size:0.78rem; background:#fff; padding:6px 8px; border-radius:8px; border:1px solid #c4b5fd; flex:1; min-width:220px;" />
+              <button type="button" id="abm-vid-btn-subir" class="btn solid-green" style="font-size:0.8rem; padding:8px 14px;"
+                onclick="subirVideoBienvenidaAbm(${Number(nodo.id)})">
+                ⬆️ Subir video MP4 (con sonido)
+              </button>
+            </div>
+          `}
+
+          <div id="abm-vid-feedback" style="display:none; margin-top:9px; padding:8px 10px; border-radius:8px; font-size:0.78rem; font-weight:800;"></div>
+        </div>
+      `;
+    }
+
+    function mostrarFeedbackVideoAbm(mensaje, esError = false) {
+      const fb = document.getElementById('abm-vid-feedback');
+      if (!fb) return;
+      fb.style.display = 'block';
+      fb.style.background = esError ? '#fef2f2' : '#f0fdf4';
+      fb.style.border = esError ? '1px solid #fecaca' : '1px solid #86efac';
+      fb.style.color = esError ? '#991b1b' : '#166534';
+      fb.textContent = mensaje;
+    }
+
+    function actualizarVideoNodoEnMemoriaAbm(nodoId, nuevaConfigVideo) {
+      const idx = (CSTATE.nodos || []).findIndex(x => Number(x.id) === Number(nodoId));
+      if (idx >= 0) {
+        CSTATE.nodos[idx].config_video_bienvenida = nuevaConfigVideo;
+      }
+      const nodoActual = idx >= 0 ? CSTATE.nodos[idx] : null;
+      const cont = document.getElementById('abm-video-bienvenida-section');
+      if (cont && nodoActual) {
+        cont.innerHTML = renderizarHtmlSeccionVideoBienvenidaAbm(nodoActual);
+      }
+    }
+
+    async function guardarPreferenciasVideoBienvenidaAbm(nodoId) {
+      const btn = document.getElementById('abm-vid-btn-guardar-pref');
+      const payload = {
+        activo: Boolean(document.getElementById('abm-vid-activo')?.checked),
+        mostrar_en_tienda: Boolean(document.getElementById('abm-vid-tienda')?.checked),
+        habilitar_en_difusion: Boolean(document.getElementById('abm-vid-difusion')?.checked),
+        etiqueta_boton: (document.getElementById('abm-vid-etiqueta')?.value || '').trim() || '¿Cómo funciona?'
+      };
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Guardando...';
+      }
+      try {
+        const resp = await fetch(`/api/produccion/nodos/maestro/${Number(nodoId)}/video-bienvenida/preferencias`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.error || 'No se pudieron guardar las preferencias del video.');
+        }
+        actualizarVideoNodoEnMemoriaAbm(nodoId, data.config_video_bienvenida);
+        mostrarFeedbackVideoAbm('✅ Preferencias del video guardadas correctamente.');
+      } catch (err) {
+        mostrarFeedbackVideoAbm(`❌ ${err.message || 'Error guardando preferencias.'}`, true);
+      } finally {
+        const btnPost = document.getElementById('abm-vid-btn-guardar-pref');
+        if (btnPost) {
+          btnPost.disabled = false;
+          btnPost.textContent = '💾 Guardar preferencias';
+        }
+      }
+    }
+
+    async function subirVideoBienvenidaAbm(nodoId) {
+      const input = document.getElementById('abm-vid-file');
+      const file = input?.files?.[0];
+      if (!file) {
+        mostrarFeedbackVideoAbm('Seleccioná primero un archivo .mp4 vertical desde tu computadora.', true);
+        return;
+      }
+      const btn = document.getElementById('abm-vid-btn-subir');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Procesando MP4 + audio...';
+      }
+      mostrarFeedbackVideoAbm('⏳ Subiendo y generando variantes WhatsApp + Web (preservando audio)...');
+      try {
+        const fd = new FormData();
+        fd.append('video', file);
+        const chkAct = document.getElementById('abm-vid-activo');
+        const chkTie = document.getElementById('abm-vid-tienda');
+        const chkDif = document.getElementById('abm-vid-difusion');
+        const inpEtq = document.getElementById('abm-vid-etiqueta');
+        if (chkAct) fd.append('activo', String(Boolean(chkAct.checked)));
+        if (chkTie) fd.append('mostrar_en_tienda', String(Boolean(chkTie.checked)));
+        if (chkDif) fd.append('habilitar_en_difusion', String(Boolean(chkDif.checked)));
+        if (inpEtq && inpEtq.value.trim()) fd.append('etiqueta_boton', inpEtq.value.trim());
+
+        const resp = await fetch(`/api/produccion/nodos/maestro/${Number(nodoId)}/video-bienvenida`, {
+          method: 'POST',
+          body: fd
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.error || 'No se pudo procesar el video de bienvenida.');
+        }
+        actualizarVideoNodoEnMemoriaAbm(nodoId, data.config_video_bienvenida);
+        mostrarFeedbackVideoAbm('✅ Video cargado y optimizado (WhatsApp + Web con sonido preservado).');
+      } catch (err) {
+        mostrarFeedbackVideoAbm(`❌ ${err.message || 'Error subiendo video.'}`, true);
+      } finally {
+        const btnPost = document.getElementById('abm-vid-btn-subir');
+        if (btnPost) {
+          btnPost.disabled = false;
+          btnPost.textContent = '🔄 Reemplazar MP4';
+        }
+      }
+    }
+
+    async function eliminarVideoBienvenidaAbm(nodoId) {
+      if (!confirm('¿Quitar el video de bienvenida de este nodo? Volverá al modo clásico sin video en su tienda y panel gestor.')) {
+        return;
+      }
+      const btn = document.getElementById('abm-vid-btn-eliminar');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Quitando...';
+      }
+      try {
+        const resp = await fetch(`/api/produccion/nodos/maestro/${Number(nodoId)}/video-bienvenida`, {
+          method: 'DELETE'
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.error || 'No se pudo quitar el video.');
+        }
+        actualizarVideoNodoEnMemoriaAbm(nodoId, data.config_video_bienvenida || {});
+        mostrarFeedbackVideoAbm('✅ Video eliminado. El nodo volvió al modo clásico sin video.');
+      } catch (err) {
+        mostrarFeedbackVideoAbm(`❌ ${err.message || 'Error eliminando video.'}`, true);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🗑️ Quitar video';
+        }
+      }
     }
 
     function sincronizarVisibilidadPanelesAbmCentro() {
@@ -2848,6 +3117,6 @@
       }
     });
   </script>
-  <script src="/api/produccion/nodos/comunicaciones-modal.js?v=1.0.0"></script>
+  <script src="/api/produccion/nodos/comunicaciones-modal.js?v=1.1.0"></script>
 </body>
 </html>

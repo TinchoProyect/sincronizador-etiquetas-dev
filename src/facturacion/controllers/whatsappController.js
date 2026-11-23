@@ -440,6 +440,76 @@ const enviarImagen = async (req, res) => {
 };
 
 /**
+ * Enviar un video MP4 validado desde almacenamiento multimedia local de Nodos por WhatsApp
+ * POST /api/facturacion/whatsapp/enviar-video
+ */
+const enviarVideo = async (req, res) => {
+    console.log('🎬 [WHATSAPP-CTRL] Petición de envío de video MP4');
+    try {
+        const fs = require('fs');
+        const path = require('path');
+        const { destinatarios, filePath, filename, mensajeTexto } = req.body || {};
+
+        const destinatariosStr = Array.isArray(destinatarios)
+            ? destinatarios.map(n => String(n || '').trim()).filter(Boolean).join(', ')
+            : String(destinatarios || '').trim();
+
+        if (!destinatariosStr) {
+            return res.status(400).json({
+                success: false,
+                error: 'Faltan destinatarios',
+                message: 'Por favor, especifique el número o números de teléfono de destino.'
+            });
+        }
+
+        const resolvedPath = filePath ? path.resolve(String(filePath)) : '';
+        const allowedRoots = [
+            path.resolve(process.cwd(), 'data', 'nodos-fotos'),
+            process.env.NODOS_MEDIA_DIR ? path.resolve(process.env.NODOS_MEDIA_DIR) : null,
+            process.env.NODOS_MEDIA_DIR_LAB ? path.resolve(process.env.NODOS_MEDIA_DIR_LAB) : null,
+            process.platform !== 'win32' ? '/opt/lamda/nodos-fotos' : null
+        ].filter(Boolean);
+
+        const enRaizSegura = resolvedPath && allowedRoots.some(root => resolvedPath.toLowerCase().startsWith(root.toLowerCase() + path.sep));
+        if (!enRaizSegura || !/\.mp4$/i.test(resolvedPath) || !fs.existsSync(resolvedPath)) {
+            return res.status(400).json({
+                success: false,
+                error: 'Archivo de video inválido',
+                message: 'El archivo MP4 indicado no es válido o no se encuentra en el repositorio multimedia autorizado.'
+            });
+        }
+
+        const envios = await whatsappService.enviarVideoArchivo(
+            destinatariosStr,
+            resolvedPath,
+            String(filename || path.basename(resolvedPath)).trim(),
+            String(mensajeTexto || '').trim()
+        );
+
+        const fallidos = envios.filter(e => !e.success);
+        if (fallidos.length === envios.length) {
+            return responderFalloEnviosWhatsapp(res, envios);
+        }
+
+        res.json({
+            success: true,
+            message: 'Envío de WhatsApp de video procesado.',
+            data: {
+                destinatarios: destinatariosStr,
+                resultados: envios
+            }
+        });
+    } catch (error) {
+        console.error('❌ [WHATSAPP-CTRL] Error al enviar video MP4:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno en el servidor al enviar video por WhatsApp',
+            message: error.message
+        });
+    }
+};
+
+/**
  * Iniciar, reiniciar suavemente (sin perder QR) o forzar la conexión de WhatsApp
  */
 const conectar = async (req, res) => {
@@ -516,6 +586,7 @@ module.exports = {
     enviarDocumento,
     enviarMensaje,
     enviarImagen,
+    enviarVideo,
     conectar,
     sincronizarChats,
     transcribirAudiosChat

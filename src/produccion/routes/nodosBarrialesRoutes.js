@@ -33,6 +33,20 @@ const uploadVideoNodoDisco = multer({
     }
 });
 
+const uploadVideoBienvenidaDisco = multer({
+    storage: multer.diskStorage({
+        destination: (_req, _file, cb) => cb(null, os.tmpdir()),
+        filename: (_req, file, cb) => {
+            const rawExt = path.extname(String(file.originalname || '.mp4')).replace(/[^a-zA-Z0-9.]/g, '').slice(0, 10) || '.mp4';
+            cb(null, `lamda_vid_bienv_${Date.now()}_${Math.random().toString(36).slice(2, 10)}${rawExt}`);
+        }
+    }),
+    limits: {
+        fileSize: 80 * 1024 * 1024,
+        files: 1
+    }
+});
+
 const uploadComprobantePagoMemoria = multer({
     storage: multer.memoryStorage(),
     limits: {
@@ -99,6 +113,24 @@ function middlewareSubidaVideoUnico(req, res, next) {
                 error: esTamano
                     ? 'El video supera el peso máximo permitido (45 MB). Grabá un clip más corto.'
                     : ('Error recibiendo el video: ' + err.message)
+            });
+        }
+        return next();
+    });
+}
+
+function middlewareSubidaVideoBienvenida(req, res, next) {
+    return uploadVideoBienvenidaDisco.single('video')(req, res, (err) => {
+        if (err) {
+            if (req.file && req.file.path && fs.existsSync(req.file.path)) {
+                try { fs.unlinkSync(req.file.path); } catch (_) {}
+            }
+            const esTamano = err.code === 'LIMIT_FILE_SIZE';
+            return res.status(400).json({
+                ok: false,
+                error: esTamano
+                    ? 'El video de presentación supera el peso máximo permitido (80 MB).'
+                    : ('Error recibiendo el video de presentación: ' + err.message)
             });
         }
         return next();
@@ -2717,6 +2749,11 @@ router.get('/comunicaciones/nodo/:idOrSlug/contexto', bloquearEnDominioPublicoTi
             }
         } catch (_) {}
 
+        const videoBienvCfg = nodosFotosService.normalizarConfigVideoBienvenida(datosContactos.nodo_detalle?.config_video_bienvenida);
+        const videoBienvDisco = videoBienvCfg.tiene_video && videoBienvCfg.activo
+            ? nodosFotosService.resolverRutaArchivoVideoBienvenidaDisco(datosContactos.nodo_detalle.id, videoBienvCfg, 'whatsapp')
+            : null;
+
         res.json({
             ok: true,
             modo_laboratorio: esModoLaboratorioWaSegura(),
@@ -2726,6 +2763,18 @@ router.get('/comunicaciones/nodo/:idOrSlug/contexto', bloquearEnDominioPublicoTi
                 step_text: estadoWa?.stepText || ''
             },
             nodo: datosContactos.nodo_detalle,
+            video_bienvenida: {
+                disponible: Boolean(videoBienvCfg.tiene_video && videoBienvCfg.activo && videoBienvDisco),
+                activo: Boolean(videoBienvCfg.activo),
+                mostrar_en_tienda: Boolean(videoBienvCfg.mostrar_en_tienda),
+                habilitar_en_difusion: Boolean(videoBienvCfg.habilitar_en_difusion),
+                url_whatsapp: videoBienvCfg.url_whatsapp || '',
+                url_web: videoBienvCfg.url_web || '',
+                poster_url: videoBienvCfg.poster_url || '',
+                duration_sec: videoBienvCfg.duration_sec || 0,
+                bytes_whatsapp: videoBienvCfg.bytes_whatsapp || 0,
+                tiene_audio: Boolean(videoBienvCfg.tiene_audio)
+            },
             cliente_operativo: datosContactos.cliente_operativo,
             contactos_whatsapp: datosContactos.contactos_whatsapp,
             contactos_email: datosContactos.contactos_email,
@@ -2762,6 +2811,7 @@ router.post('/comunicaciones/nodo/:idOrSlug/enviar', bloquearEnDominioPublicoTie
         const enviarWhatsapp = Boolean(body.enviar_whatsapp);
         const enviarEmail = Boolean(body.enviar_email);
         const adjuntarQr = body.adjuntar_qr !== false;
+        const adjuntarVideoBienvenida = Boolean(body.adjuntar_video_bienvenida);
         const qrTipo = String(body.qr_tipo || 'tienda_afiche').trim();
         const asunto = String(body.asunto || '').trim();
         const mensajeTexto = String(body.mensaje_texto || '').trim();
@@ -2806,12 +2856,25 @@ router.post('/comunicaciones/nodo/:idOrSlug/enviar', bloquearEnDominioPublicoTie
             qrImgInfo = await resolverImagenQrParaEnvio(nodoDet, qrPayload, qrTipo);
         }
 
+        let videoBienvArchivo = null;
+        if (adjuntarVideoBienvenida) {
+            const cfgVid = nodosFotosService.normalizarConfigVideoBienvenida(nodoDet.config_video_bienvenida);
+            if (!cfgVid.tiene_video || !cfgVid.activo) {
+                return res.status(400).json({ ok: false, error: 'Este Nodo no tiene un video de presentación activo para adjuntar.' });
+            }
+            videoBienvArchivo = nodosFotosService.resolverRutaArchivoVideoBienvenidaDisco(nodoDet.id, cfgVid, 'whatsapp');
+            if (!videoBienvArchivo) {
+                return res.status(404).json({ ok: false, error: 'El archivo MP4 del video de presentación no está disponible en disco.' });
+            }
+        }
+
         const resultadoWhatsapp = {
             attempted: enviarWhatsapp,
             ok: false,
             simulated: false,
             destinatarios: listaWa,
             adjunto_qr: qrImgInfo ? qrImgInfo.filename : null,
+            adjunto_video: videoBienvArchivo ? `${nodoDet.slug || 'nodo'}-presentacion.mp4` : null,
             resultados: [],
             error: null
         };
@@ -2831,45 +2894,82 @@ router.post('/comunicaciones/nodo/:idOrSlug/enviar', bloquearEnDominioPublicoTie
         if (enviarWhatsapp) {
             promesas.push((async () => {
                 try {
-                    const endpointWa = qrImgInfo
-                        ? 'http://127.0.0.1:3004/facturacion/whatsapp/enviar-imagen'
-                        : 'http://127.0.0.1:3004/facturacion/whatsapp/enviar-mensaje';
-                    const payloadWa = qrImgInfo
+                    const soloVideoSinQr = Boolean(videoBienvArchivo && !qrImgInfo);
+                    const endpointWa = soloVideoSinQr
+                        ? 'http://127.0.0.1:3004/facturacion/whatsapp/enviar-video'
+                        : (qrImgInfo
+                            ? 'http://127.0.0.1:3004/facturacion/whatsapp/enviar-imagen'
+                            : 'http://127.0.0.1:3004/facturacion/whatsapp/enviar-mensaje');
+                    const payloadWa = soloVideoSinQr
                         ? {
                             destinatarios: listaWa.join(', '),
-                            base64Data: qrImgInfo.base64Data,
-                            mimeType: qrImgInfo.mimeType,
-                            filename: qrImgInfo.filename,
+                            filePath: videoBienvArchivo.fullPath,
+                            filename: `${nodoDet.slug || 'nodo'}-presentacion.mp4`,
                             mensajeTexto
                         }
-                        : {
-                            destinatarios: listaWa.join(', '),
-                            mensajeTexto
-                        };
+                        : (qrImgInfo
+                            ? {
+                                destinatarios: listaWa.join(', '),
+                                base64Data: qrImgInfo.base64Data,
+                                mimeType: qrImgInfo.mimeType,
+                                filename: qrImgInfo.filename,
+                                mensajeTexto
+                            }
+                            : {
+                                destinatarios: listaWa.join(', '),
+                                mensajeTexto
+                            });
 
                     const wpRes = await fetch(endpointWa, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payloadWa),
-                        signal: AbortSignal.timeout(45000)
+                        signal: AbortSignal.timeout(60000)
                     });
                     const wpJson = await wpRes.json().catch(() => ({}));
-                    const dets = Array.isArray(wpJson?.data?.resultados)
+                    let dets = Array.isArray(wpJson?.data?.resultados)
                         ? wpJson.data.resultados
                         : (Array.isArray(wpJson?.detalles) ? wpJson.detalles : []);
 
-                    resultadoWhatsapp.resultados = dets;
-                    resultadoWhatsapp.simulated = dets.some(r => Boolean(r && r.simulated));
-
                     if (!wpRes.ok || !wpJson.success) {
+                        resultadoWhatsapp.resultados = dets;
+                        resultadoWhatsapp.simulated = dets.some(r => Boolean(r && r.simulated));
                         resultadoWhatsapp.ok = false;
                         resultadoWhatsapp.error = wpJson.error || wpJson.message || `Error HTTP ${wpRes.status} en motor WhatsApp (:3004).`;
-                    } else {
-                        const exitosos = dets.filter(r => r && (r.success === true || r.status === 'enviado'));
-                        resultadoWhatsapp.ok = dets.length === 0 ? true : exitosos.length > 0;
-                        if (!resultadoWhatsapp.ok) {
-                            resultadoWhatsapp.error = dets[0]?.error || 'No se pudo entregar el mensaje por WhatsApp.';
+                        return;
+                    }
+
+                    // Si pidió QR + Video juntos, enviamos el MP4 a continuación como segundo adjunto limpio
+                    if (videoBienvArchivo && qrImgInfo) {
+                        const vidRes = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/enviar-video', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                destinatarios: listaWa.join(', '),
+                                filePath: videoBienvArchivo.fullPath,
+                                filename: `${nodoDet.slug || 'nodo'}-presentacion.mp4`,
+                                mensajeTexto: `🎬 Video de presentación · ${nodoDet.nombre_marca || 'Tienda'}`
+                            }),
+                            signal: AbortSignal.timeout(60000)
+                        });
+                        const vidJson = await vidRes.json().catch(() => ({}));
+                        const detsVid = Array.isArray(vidJson?.data?.resultados) ? vidJson.data.resultados : [];
+                        dets = [...dets, ...detsVid];
+                        if (!vidRes.ok || !vidJson.success) {
+                            resultadoWhatsapp.resultados = dets;
+                            resultadoWhatsapp.simulated = dets.some(r => Boolean(r && r.simulated));
+                            resultadoWhatsapp.ok = false;
+                            resultadoWhatsapp.error = vidJson.error || vidJson.message || `El texto/QR salió pero falló el adjunto de video (HTTP ${vidRes.status}).`;
+                            return;
                         }
+                    }
+
+                    resultadoWhatsapp.resultados = dets;
+                    resultadoWhatsapp.simulated = dets.some(r => Boolean(r && r.simulated));
+                    const exitosos = dets.filter(r => r && (r.success === true || r.status === 'enviado'));
+                    resultadoWhatsapp.ok = dets.length === 0 ? true : exitosos.length > 0;
+                    if (!resultadoWhatsapp.ok) {
+                        resultadoWhatsapp.error = dets[0]?.error || 'No se pudo entregar el mensaje por WhatsApp.';
                     }
                 } catch (errWa) {
                     resultadoWhatsapp.ok = false;
@@ -2943,6 +3043,66 @@ router.post('/comunicaciones/nodo/:idOrSlug/enviar', bloquearEnDominioPublicoTie
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en POST /comunicaciones/nodo/:idOrSlug/enviar:', error.message);
         res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+// ============================================================================
+// VIDEO DE BIENVENIDA / PRESENTACIÓN POR NODO (ABM ADMIN — 100% OPCIONAL)
+// ============================================================================
+
+router.post('/maestro/:id/video-bienvenida', bloquearEnDominioPublicoTienda, middlewareSubidaVideoBienvenida, async (req, res) => {
+    try {
+        if (!req.file || !req.file.path) {
+            return res.status(400).json({ ok: false, error: 'Debés seleccionar un archivo de video MP4.' });
+        }
+        await nodosService.asegurarEsquemaNodosBarriales();
+        const body = req.body || {};
+        const parseOptBool = (val) => (val === undefined || val === null || val === '') ? null : (val === true || val === 'true' || val === '1');
+        const configVideo = await nodosFotosService.subirOIngestarVideoBienvenidaNodo({
+            nodoId: Number(req.params.id),
+            tempFilePath: req.file.path,
+            preservarArchivoOrigen: false,
+            activo: parseOptBool(body.activo),
+            mostrarEnTienda: parseOptBool(body.mostrar_en_tienda),
+            habilitarEnDifusion: parseOptBool(body.habilitar_en_difusion),
+            etiquetaBoton: body.etiqueta_boton || null
+        });
+        res.json({ ok: true, config_video_bienvenida: configVideo });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error subiendo video de bienvenida:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.put('/maestro/:id/video-bienvenida/preferencias', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales();
+        const body = req.body || {};
+        const configVideo = await nodosFotosService.actualizarPreferenciasVideoBienvenidaNodo({
+            nodoId: Number(req.params.id),
+            esAdmin: true,
+            activo: body.activo,
+            mostrar_en_tienda: body.mostrar_en_tienda,
+            habilitar_en_difusion: body.habilitar_en_difusion,
+            etiqueta_boton: body.etiqueta_boton
+        });
+        res.json({ ok: true, config_video_bienvenida: configVideo });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error actualizando preferencias de video de bienvenida:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.delete('/maestro/:id/video-bienvenida', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales();
+        const configVideo = await nodosFotosService.eliminarVideoBienvenidaNodo({
+            nodoId: Number(req.params.id)
+        });
+        res.json({ ok: true, config_video_bienvenida: configVideo });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error eliminando video de bienvenida:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 

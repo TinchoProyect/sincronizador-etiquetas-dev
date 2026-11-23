@@ -2243,6 +2243,179 @@
       background: var(--brand-dark);
       border-color: var(--brand-dark);
     }
+
+    /* Acceso discreto y visor vertical 9:16 para Video de Bienvenida (100% opcional) */
+    .tienda-video-strip {
+      display: none;
+      margin: 0 0 10px 0;
+      justify-content: center;
+    }
+    .tienda-video-strip.visible {
+      display: flex;
+    }
+    .tienda-video-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 5px 13px 5px 6px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-warm);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.81rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+      transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+      max-width: 100%;
+    }
+    .tienda-video-pill:hover {
+      border-color: var(--brand);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+    .tienda-video-pill-thumb {
+      width: 24px;
+      height: 34px;
+      border-radius: 7px;
+      overflow: hidden;
+      background: var(--brand);
+      position: relative;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    .tienda-video-pill-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      filter: brightness(0.76);
+    }
+    .tienda-video-pill-play {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-size: 0.68rem;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+    }
+    .tienda-video-pill-meta {
+      font-size: 0.72rem;
+      font-weight: 800;
+      color: var(--brand-dark);
+      background: var(--brand-soft);
+      padding: 2px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .video-bienvenida-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 310;
+      background: rgba(15, 23, 42, 0.84);
+      backdrop-filter: blur(5px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 14px;
+    }
+    .video-bienvenida-backdrop.open {
+      display: flex;
+    }
+    .video-bienvenida-sheet {
+      width: min(390px, 94vw);
+      max-height: 92dvh;
+      background: #0f172a;
+      color: #ffffff;
+      border-radius: 20px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+    }
+    .video-bienvenida-head {
+      padding: 11px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.86));
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .video-bienvenida-close {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff;
+      font-size: 0.95rem;
+      font-weight: 900;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .video-bienvenida-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      max-height: calc(92dvh - 116px);
+      background: #000000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .video-bienvenida-stage video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #000000;
+    }
+    .video-bienvenida-play-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: rgba(0, 0, 0, 0.28);
+      border: none;
+      color: #ffffff;
+      cursor: pointer;
+      transition: opacity 0.18s ease;
+    }
+    .video-bienvenida-play-circle {
+      width: 68px;
+      height: 68px;
+      border-radius: 999px;
+      background: var(--brand);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.7rem;
+      padding-left: 5px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+      border: 2px solid rgba(255, 255, 255, 0.85);
+    }
+    .video-bienvenida-foot {
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: #0f172a;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
   </style>
 </head>
 <body>
@@ -2336,6 +2509,9 @@
 
       <!-- Subtítulo de línea comercial por encima de los rubros (opcional por nodo, ej: FRUTOS SECOS) -->
       <div class="catalogo-subtitulo-bar" id="catalogo-subtitulo-bar" data-testid="catalogo-subtitulo-bar"></div>
+
+      <!-- Acceso discreto al video de presentación (100% opcional por nodo; oculto si no aplica) -->
+      <div class="tienda-video-strip" id="tienda-video-bienvenida-wrap" data-testid="tienda-video-bienvenida-wrap"></div>
 
       <!-- Buscador desplegable (sin ocupar alto fijo innecesario) y Filtro de Categorías -->
       <div class="toolbar">
@@ -2446,6 +2622,11 @@
   <!-- Modal Liviano de Confirmación Previa antes de abrir WhatsApp -->
   <div class="modal-backdrop" id="contacto-wa-confirm-modal" data-testid="modal-confirmar-whatsapp" style="z-index:285;" onclick="if(event.target===this) cerrarModalConfirmarWhatsAppTienda()">
     <div class="modal-card" id="contacto-wa-confirm-modal-content" style="max-width:390px;"></div>
+  </div>
+
+  <!-- Visor vertical 9:16 del Video de Presentación (100% opcional, sin popup ni autoplay invasivo) -->
+  <div class="video-bienvenida-backdrop" id="modal-video-bienvenida" data-testid="modal-video-bienvenida" role="dialog" aria-modal="true" aria-label="Video de presentación" onclick="if(event.target===this) cerrarModalVideoBienvenidaTienda()">
+    <div class="video-bienvenida-sheet" id="modal-video-bienvenida-sheet"></div>
   </div>
 
   <script>
@@ -4042,6 +4223,7 @@
       sincronizarEnlacesCoordinarGestor();
       renderSubtituloCatalogoTienda();
       renderBannerEntrega();
+      renderAccesoVideoBienvenidaTienda();
       renderizarDrawerNodoTienda();
       renderCategorias();
       renderCatalogo();
@@ -4346,6 +4528,7 @@
 
           <!-- 3. Seguimiento de Pedido y Mi Cuenta -->
           <div style="display:flex; flex-direction:column; gap:8px;">
+            ${renderizarBotonVideoDrawerTienda()}
             <button type="button" class="drawer-action-btn" id="drawer-btn-seguir-pedido" onclick="cerrarDrawerNodoTienda(); accionBotonSeguirMiPedido();">
               <span>📦 Seguir estado de mi pedido</span>
               <span style="color:var(--brand); font-weight:900;">›</span>
@@ -4462,6 +4645,7 @@
 
           <!-- 3. Seguimiento y Mi Cuenta -->
           <div style="display:flex; flex-direction:column; gap:8px;">
+            ${renderizarBotonVideoDrawerTienda()}
             <button type="button" class="drawer-action-btn" id="drawer-btn-seguir-pedido" onclick="cerrarDrawerNodoTienda(); accionBotonSeguirMiPedido();">
               <span>📦 Seguir estado de mi pedido</span>
               <span style="color:var(--brand); font-weight:900;">›</span>
@@ -4549,6 +4733,7 @@
 
         <!-- 3. Seguimiento de Pedido y Mi Cuenta -->
         <div style="display:flex; flex-direction:column; gap:8px;">
+          ${renderizarBotonVideoDrawerTienda()}
           <button type="button" class="drawer-action-btn" id="drawer-btn-seguir-pedido" onclick="cerrarDrawerNodoTienda(); accionBotonSeguirMiPedido();">
             <span>📦 Seguir estado de mi pedido</span>
             <span style="color:var(--brand); font-weight:900;">›</span>
@@ -4640,6 +4825,172 @@
       bar.innerHTML = `<span class="catalogo-subtitulo-texto">${esc(texto)}</span>`;
       bar.classList.add('visible');
     }
+
+    function obtenerVideoBienvenidaTienda(nodoObj = STATE.nodo) {
+      const raw = (nodoObj && nodoObj.config_video_bienvenida && typeof nodoObj.config_video_bienvenida === 'object')
+        ? nodoObj.config_video_bienvenida
+        : {};
+      const urlWeb = String(raw.url_web || raw.url_whatsapp || '').trim();
+      const disponible = Boolean(
+        raw.tiene_video
+        && raw.activo !== false
+        && raw.mostrar_en_tienda !== false
+        && urlWeb
+      );
+      return {
+        disponible,
+        url_web: urlWeb,
+        poster_url: String(raw.poster_url || raw.url_poster || '').trim(),
+        etiqueta_boton: String(raw.etiqueta_boton || '¿Cómo funciona?').trim() || '¿Cómo funciona?',
+        duration_sec: raw.duration_sec ? Math.round(Number(raw.duration_sec)) : null,
+        tiene_audio: raw.tiene_audio !== false,
+        updated_at: String(raw.updated_at || '').trim()
+      };
+    }
+
+    function renderizarBotonVideoDrawerTienda() {
+      const vid = obtenerVideoBienvenidaTienda(STATE.nodo);
+      if (!vid.disponible) return '';
+      return `
+        <button type="button" class="drawer-action-btn" id="drawer-btn-video-bienvenida" data-testid="drawer-btn-video-bienvenida"
+          onclick="cerrarDrawerNodoTienda(); abrirModalVideoBienvenidaTienda('menu_drawer');">
+          <span>🎬 ${esc(vid.etiqueta_boton)}${vid.duration_sec ? ` (${vid.duration_sec}s)` : ''}</span>
+          <span style="color:var(--brand); font-weight:900;">▶</span>
+        </button>
+      `;
+    }
+
+    function renderAccesoVideoBienvenidaTienda() {
+      const wrap = document.getElementById('tienda-video-bienvenida-wrap');
+      if (!wrap) return;
+      const vid = obtenerVideoBienvenidaTienda(STATE.nodo);
+      if (!vid.disponible) {
+        wrap.classList.remove('visible');
+        wrap.innerHTML = '';
+        return;
+      }
+      const posterSrc = vid.poster_url || '';
+      const metaTexto = [
+        vid.duration_sec ? `${vid.duration_sec}s` : '',
+        vid.tiene_audio ? '🔊' : ''
+      ].filter(Boolean).join(' ');
+
+      wrap.innerHTML = `
+        <button type="button" class="tienda-video-pill" id="btn-abrir-video-bienvenida" data-testid="btn-abrir-video-bienvenida"
+          onclick="abrirModalVideoBienvenidaTienda('franja_tienda')">
+          <span class="tienda-video-pill-thumb" aria-hidden="true">
+            ${posterSrc ? `<img src="${esc(posterSrc)}" alt="" loading="lazy" />` : ''}
+            <span class="tienda-video-pill-play">▶</span>
+          </span>
+          <span>${esc(vid.etiqueta_boton)}</span>
+          ${metaTexto ? `<span class="tienda-video-pill-meta">${esc(metaTexto)}</span>` : ''}
+        </button>
+      `;
+      wrap.classList.add('visible');
+    }
+
+    function abrirModalVideoBienvenidaTienda(origen = 'franja_tienda') {
+      const vid = obtenerVideoBienvenidaTienda(STATE.nodo);
+      const modal = document.getElementById('modal-video-bienvenida');
+      const sheet = document.getElementById('modal-video-bienvenida-sheet');
+      if (!vid.disponible || !modal || !sheet) return;
+
+      const videoSrc = vid.url_web;
+      const posterSrc = vid.poster_url || '';
+      const nombreMarca = STATE.nodo?.nombre_marca || 'Tienda';
+
+      sheet.innerHTML = `
+        <div class="video-bienvenida-head">
+          <div style="min-width:0;">
+            <div style="font-size:0.72rem; font-weight:800; color:#cbd5e1; text-transform:uppercase; letter-spacing:0.04em;">
+              ${esc(nombreMarca)}
+            </div>
+            <div style="font-size:0.93rem; font-weight:900; color:#ffffff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+              🎬 ${esc(vid.etiqueta_boton)}
+            </div>
+          </div>
+          <button type="button" class="video-bienvenida-close" id="btn-cerrar-video-bienvenida" aria-label="Cerrar video" onclick="cerrarModalVideoBienvenidaTienda()">✕</button>
+        </div>
+
+        <div class="video-bienvenida-stage">
+          <video id="tienda-video-bienvenida-player" data-testid="tienda-video-bienvenida-player"
+            controls playsinline preload="metadata"
+            ${posterSrc ? `poster="${esc(posterSrc)}"` : ''}
+            src="${esc(videoSrc)}"></video>
+          <button type="button" class="video-bienvenida-play-overlay" id="video-bienvenida-play-overlay"
+            aria-label="Reproducir video con sonido"
+            onclick="iniciarReproduccionVideoBienvenidaTienda()">
+            <span class="video-bienvenida-play-circle">▶</span>
+            <span style="font-size:0.8rem; font-weight:900; background:rgba(15,23,42,0.75); padding:5px 12px; border-radius:999px; border:1px solid rgba(255,255,255,0.22);">
+              ${vid.tiene_audio ? '🔊 Tocá para ver con sonido' : '▶ Tocá para reproducir'}
+            </span>
+          </button>
+        </div>
+
+        <div class="video-bienvenida-foot">
+          <span style="font-size:0.75rem; color:#cbd5e1; font-weight:700;">
+            ${vid.duration_sec ? `⏱️ ${vid.duration_sec} seg` : 'Presentación'}${vid.tiene_audio ? ' · 🔊 Audio activado' : ''}
+          </span>
+          <button type="button" onclick="cerrarModalVideoBienvenidaTienda()"
+            style="background:var(--brand); color:#fff; border:none; border-radius:999px; padding:7px 14px; font-family:inherit; font-size:0.79rem; font-weight:900; cursor:pointer;">
+            Ir a la tienda →
+          </button>
+        </div>
+      `;
+
+      const player = document.getElementById('tienda-video-bienvenida-player');
+      let playEnviado = false;
+      if (player) {
+        player.muted = false;
+        player.volume = 1;
+        player.addEventListener('play', () => {
+          const ov = document.getElementById('video-bienvenida-play-overlay');
+          if (ov) ov.style.display = 'none';
+          if (!playEnviado) {
+            playEnviado = true;
+            enviarTelemetriaTienda('video_bienvenida_play', { detalle: String(origen || 'franja_tienda') }, 2500);
+          }
+        });
+      }
+
+      modal.classList.add('open');
+      document.body.style.overflow = 'hidden';
+      enviarTelemetriaTienda('video_bienvenida_apertura', { detalle: String(origen || 'franja_tienda') }, 1500);
+    }
+
+    function iniciarReproduccionVideoBienvenidaTienda() {
+      const player = document.getElementById('tienda-video-bienvenida-player');
+      const ov = document.getElementById('video-bienvenida-play-overlay');
+      if (ov) ov.style.display = 'none';
+      if (!player) return;
+      player.muted = false;
+      player.volume = 1;
+      const prom = player.play();
+      if (prom && typeof prom.catch === 'function') {
+        prom.catch(() => {
+          if (ov) ov.style.display = 'flex';
+        });
+      }
+    }
+
+    function cerrarModalVideoBienvenidaTienda() {
+      const modal = document.getElementById('modal-video-bienvenida');
+      const player = document.getElementById('tienda-video-bienvenida-player');
+      if (player) {
+        try { player.pause(); } catch (_) {}
+      }
+      if (modal) modal.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    document.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') {
+        const modalVid = document.getElementById('modal-video-bienvenida');
+        if (modalVid && modalVid.classList.contains('open')) {
+          cerrarModalVideoBienvenidaTienda();
+        }
+      }
+    });
 
     function actualizarVisibilidadFranjaInfoSuperior() {
       const franja = document.getElementById('tienda-franja-compacta');
@@ -9739,6 +10090,8 @@
 
       if (tokInicial) {
         abrirSeguimientoPorToken(tokInicial);
+      } else if (params.get('video') === '1' && obtenerVideoBienvenidaTienda(STATE.nodo).disponible) {
+        abrirModalVideoBienvenidaTienda('link_directo_video');
       }
     });
   </script>
