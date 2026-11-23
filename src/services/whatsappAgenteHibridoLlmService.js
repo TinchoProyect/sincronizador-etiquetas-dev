@@ -145,7 +145,26 @@ function obtenerModoCredencialGemini() {
 }
 
 /**
- * Invocador unificado de Gemini 2.5 Flash con modelo válido, tarifario USD unificado e imputación exacta por módulo
+ * Desactiva thinking interno innecesario en toda la familia Gemini Flash con soporte thinkingBudget
+ * (2.5+, 3.x+, 4.x+, flash-latest), excluyendo variantes legacy (1.5/2.0) y modelos TTS/Image.
+ */
+function aplicarThinkingBudgetCeroSiFlash(generationConfig, modelName) {
+    const m = String(modelName || '').trim().toLowerCase();
+    const esFlashConThinking = /flash/.test(m)
+        && !/(?:^|-)gemini-(?:1\.|2\.0)/.test(m)
+        && !/(?:-tts|-image)\b/.test(m);
+    if (esFlashConThinking) {
+        generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    }
+    return generationConfig;
+}
+
+const CODIGOS_HTTP_ROTACION_API_KEY = new Set([401, 402, 403, 429]);
+const CODIGOS_HTTP_FALLBACK_MODELO = new Set([404, 500, 502, 503, 504]);
+
+/**
+ * Invocador unificado de Gemini Flash con modelo válido, presupuesto total de tiempo (deadlineMs),
+ * thinkingBudget=0 para respuestas rápidas, rotación de backup key solo ante auth/cuota e imputación por módulo.
  */
 async function invocarGemini25Flash({
     systemInstruction,
@@ -165,18 +184,36 @@ async function invocarGemini25Flash({
     const modeloPrimario = iaMonitor.normalizarModeloGeminiValido(credCentral.model || iaMonitor.MODELO_GEMINI_OFICIAL);
     const modelosCandidatos = Array.from(new Set([modeloPrimario, ...iaMonitor.MODELOS_GEMINI_FALLBACK]));
     const keysCandidatas = cred.modo === 'API_KEY' ? (cred.apiKeys || [cred.apiKey]) : ['VERTEX'];
+
+    const totalBudgetMs = Math.max(8000, Math.min(Number(timeoutMs) || 26000, 30000));
+    const startedAt = Date.now();
+    const deadlineAt = startedAt + totalBudgetMs;
     let ultimoError = null;
 
-    for (const activeKey of keysCandidatas) {
-        for (const modelName of modelosCandidatos) {
+    for (let keyIdx = 0; keyIdx < keysCandidatas.length; keyIdx++) {
+        const activeKey = keysCandidatas[keyIdx];
+        const keyTag = cred.modo === 'API_KEY' ? `key#${keyIdx + 1}` : 'vertex';
+        let rotarSiguienteKey = false;
+
+        for (let modelIdx = 0; modelIdx < modelosCandidatos.length; modelIdx++) {
+            const modelName = modelosCandidatos[modelIdx];
+            const restanteMs = deadlineAt - Date.now();
+            if (restanteMs < 2500) {
+                console.warn(`⏱️ [GEMINI-LLM] Presupuesto total agotado (${Date.now() - startedAt}ms/${totalBudgetMs}ms) antes de probar ${modelName} (${keyTag}, ${detalleLedger}).`);
+                break;
+            }
+
+            const hayFallbackModelo = modelIdx < modelosCandidatos.length - 1;
+            const perAttemptTimeout = hayFallbackModelo
+                ? Math.min(restanteMs, Math.max(12000, Math.round(totalBudgetMs * 0.70)))
+                : restanteMs;
+
             const generationConfig = { temperature };
             if (responseSchema) {
                 generationConfig.responseMimeType = 'application/json';
                 generationConfig.responseSchema = responseSchema;
             }
-            if (modelName.includes('2.5')) {
-                generationConfig.thinkingConfig = { thinkingBudget: 0 };
-            }
+            aplicarThinkingBudgetCeroSiFlash(generationConfig, modelName);
 
             const bodyPayload = {
                 contents: [{ role: 'user', parts }],
@@ -208,7 +245,7 @@ async function invocarGemini25Flash({
             }
 
             const controller = new AbortController();
-            const perAttemptTimeout = Math.min(Number(timeoutMs) || 15000, 15000);
+            const tAttempt0 = Date.now();
             const timer = setTimeout(() => controller.abort(), perAttemptTimeout);
             try {
                 const res = await fetch(url, {
@@ -217,26 +254,35 @@ async function invocarGemini25Flash({
                     body: JSON.stringify(bodyPayload),
                     signal: controller.signal
                 });
+                const elapsedMs = Date.now() - tAttempt0;
                 if (!res.ok) {
                     const errTxt = await res.text().catch(() => '');
                     ultimoError = new Error(`Gemini (${modelName}) HTTP ${res.status}: ${errTxt.slice(0, 240)}`);
+                    console.warn(`⚠️ [GEMINI-LLM] HTTP ${res.status} en ${modelName} (${keyTag}, ${elapsedMs}ms, ${detalleLedger}): ${errTxt.slice(0, 160).replace(/\s+/g, ' ')}`);
                     iaMonitor.registrarEventoIaSistema({
                         modulo: moduloLedger,
                         detalle: `${detalleLedger} (HTTP ${res.status})`,
                         modelo: modelName,
                         errorMsg: ultimoError.message
                     });
-                    if (res.status === 404) continue;
+                    if (CODIGOS_HTTP_ROTACION_API_KEY.has(res.status)) {
+                        rotarSiguienteKey = true;
+                        break;
+                    }
+                    if (CODIGOS_HTTP_FALLBACK_MODELO.has(res.status)) continue;
                     break;
                 }
                 const data = await res.json();
                 const metricas = iaMonitor.calcularMetricasTokens(data, modelName);
+                const thoughtsTokens = Number(data?.usageMetadata?.thoughtsTokenCount || 0);
                 _ultimoUsageGemini = {
                     modelName,
                     promptTokens: metricas.promptTokens,
                     completionTokens: metricas.outputTokens,
+                    thoughtsTokens,
                     totalTokens: metricas.totalTokens,
                     costoUsd: metricas.costoUsd,
+                    latencyMs: elapsedMs,
                     modulo: moduloLedger,
                     timestamp: Date.now()
                 };
@@ -250,11 +296,20 @@ async function invocarGemini25Flash({
                 const partTexto = partsResp.find(p => typeof p.text === 'string' && !p.thought) || partsResp[0];
                 return String(partTexto?.text || '').trim();
             } catch (err) {
-                ultimoError = err;
+                const elapsedMs = Date.now() - tAttempt0;
+                const fueTimeout = err?.name === 'AbortError' || /aborted/i.test(String(err?.message || ''));
+                const motivo = fueTimeout
+                    ? `Timeout tras ${elapsedMs}ms (límite intento ${perAttemptTimeout}ms)`
+                    : (err?.message || 'Error de conexión');
+                ultimoError = new Error(`Gemini (${modelName}) ${motivo}`);
+                console.warn(`⚠️ [GEMINI-LLM] Fallo en ${modelName} (${keyTag}, ${elapsedMs}ms, ${detalleLedger}): ${motivo}`);
+                // Ante timeout o error de red nunca rotar a GEMINI_API_KEY_BACKUP; solo probar modelo fallback si queda margen en deadlineAt.
             } finally {
                 clearTimeout(timer);
             }
         }
+
+        if (!rotarSiguienteKey) break;
     }
     throw ultimoError || new Error('Error invocando Gemini.');
 }
@@ -278,8 +333,12 @@ async function transcribirAudioOggConGemini(audioBuffer, mimeType = 'audio/ogg',
         'Prestá especial atención a términos del rubro e instrucciones operativas: higos turcos, higos negros, damasco turco, castañas de cajú, castañas tostadas sin sal, castañas tostadas y saladas, avellanas, almendras Non Pareil / Guara, nueces mariposa / Chandler, fruta abrillantada/escurrida, pasas de uva Flame / Sultanina / Jumbo, arándanos, dátiles, ciruelas Presidente, azúcar mascabo, mixes, granolas, barritas, fracciones chicas, por 1kg/2kg/5kg/10kg, PDF adjunto, lista de precios, transferencia, comprobante, cuenta corriente.'
     ].join(' ');
 
+    const audioStartedAt = Date.now();
+    const audioDeadlineMs = 24000;
     let ultimoErr = null;
     for (const mimeIntento of candidatosMime) {
+        const restanteAudioMs = audioDeadlineMs - (Date.now() - audioStartedAt);
+        if (restanteAudioMs < 4000) break;
         try {
             const texto = await invocarGemini25Flash({
                 systemInstruction: systemPrompt,
@@ -288,7 +347,7 @@ async function transcribirAudioOggConGemini(audioBuffer, mimeType = 'audio/ogg',
                     { text: 'Transcribí exactamente este mensaje de voz en español argentino.' }
                 ],
                 temperature: 0.05,
-                timeoutMs: 22000,
+                timeoutMs: Math.min(22000, restanteAudioMs),
                 moduloLedger: 'AUDIOS',
                 detalleLedger: detalleOrigen
             });
@@ -296,6 +355,9 @@ async function transcribirAudioOggConGemini(audioBuffer, mimeType = 'audio/ogg',
             if (limpio) return limpio;
         } catch (err) {
             ultimoErr = err;
+            const msgErr = String(err?.message || '');
+            // Solo probar otro MIME ante rechazo de formato/payload (ej. HTTP 400), no multiplicar timeouts o errores de auth/cuota
+            if (/Timeout|aborted|HTTP\s*(401|402|403|429)/i.test(msgErr)) break;
         }
     }
     if (ultimoErr) throw ultimoErr;

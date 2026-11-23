@@ -3,6 +3,17 @@ const iaMonitor = require('../../services/iaCreditoMonitorService');
 
 const API_MODEL = iaMonitor.MODELO_GEMINI_OFICIAL || 'gemini-3.8-flash';
 
+function aplicarThinkingBudgetCeroSiFlash(generationConfig, modelName) {
+    const m = String(modelName || '').trim().toLowerCase();
+    const esFlashConThinking = /flash/.test(m)
+        && !/(?:^|-)gemini-(?:1\.|2\.0)/.test(m)
+        && !/(?:-tts|-image)\b/.test(m);
+    if (esFlashConThinking) {
+        generationConfig.thinkingConfig = { thinkingBudget: 0 };
+    }
+    return generationConfig;
+}
+
 // JSON Schema para la respuesta estructurada de un lote
 const responseSchema = {
     type: "OBJECT",
@@ -83,9 +94,7 @@ ${JSON.stringify(subLote, null, 2)}
         responseSchema: responseSchema,
         temperature: 0.1
     };
-    if (API_MODEL.includes('2.5')) {
-        generationConfig.thinkingConfig = { thinkingBudget: 0 };
-    }
+    aplicarThinkingBudgetCeroSiFlash(generationConfig, modelActivo);
 
     const payload = {
         contents: [{
@@ -98,9 +107,10 @@ ${JSON.stringify(subLote, null, 2)}
 
     console.log(`🤖 [GEMINI-SERVICE] Enviando sub-lote de ${subLote.length} transacciones al modelo ${modelActivo}...`);
     
+    const tSub0 = Date.now();
     let response;
     try {
-        response = await axios.post(url, payload, { timeout: 14000 });
+        response = await axios.post(url, payload, { timeout: 18000 });
         iaMonitor.registrarEventoIaSistema({
             modulo: 'CUENTAS_BANCARIAS',
             detalle: `Conciliación extracto (${subLote.length} movs)`,
@@ -108,11 +118,14 @@ ${JSON.stringify(subLote, null, 2)}
             modelo: modelActivo
         });
     } catch (err) {
+        const elapsedMs = Date.now() - tSub0;
+        const msgErr = err.response?.data?.error?.message || err.message;
+        console.warn(`⚠️ [GEMINI-SERVICE] Fallo en ${modelActivo} (${elapsedMs}ms, sub-lote ${subLote.length}): ${msgErr}`);
         iaMonitor.registrarEventoIaSistema({
             modulo: 'CUENTAS_BANCARIAS',
             detalle: `Error conciliación (${subLote.length} movs)`,
             modelo: modelActivo,
-            errorMsg: err.response?.data?.error?.message || err.message
+            errorMsg: msgErr
         });
         throw err;
     }
@@ -121,7 +134,9 @@ ${JSON.stringify(subLote, null, 2)}
         throw new Error('Respuesta inválida o vacía de la API de Gemini.');
     }
     
-    const textResponse = response.data.candidates[0].content.parts[0].text;
+    const partsResp = response.data.candidates[0].content.parts || [];
+    const partTexto = partsResp.find(p => typeof p.text === 'string' && !p.thought) || partsResp[0];
+    const textResponse = String(partTexto?.text || '').trim();
     const parsedData = JSON.parse(textResponse);
     
     return parsedData.movimientos || [];
@@ -209,7 +224,8 @@ async function verificarSaludIA() {
     }
     try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelActivo}:generateContent?key=${apiKey}`;
-        const payload = { contents: [{ parts: [{ text: "ping" }] }] };
+        const generationConfig = aplicarThinkingBudgetCeroSiFlash({ temperature: 0, maxOutputTokens: 8 }, modelActivo);
+        const payload = { contents: [{ parts: [{ text: "ping" }] }], generationConfig };
         const res = await axios.post(url, payload, { timeout: 7000 });
         if (res.status === 200) {
             iaMonitor.registrarEventoIaSistema({

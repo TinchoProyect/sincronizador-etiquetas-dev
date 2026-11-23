@@ -2684,10 +2684,10 @@ class ConciliacionArticulosService {
      * Invoca a Gemini Flash con esquema JSON estricto y registro en el Ledger oficial de Tokens IA (módulo PRODUCCION_LOTES).
      * Los precios jamás los redacta la IA: solo audita, filtra o reordena IDs existentes.
      */
-    async _invocarGeminiConciliacionJson({ systemInstruction, userText, responseSchema, detalleLedger = 'Comité Chofer IA' }) {
+    async _invocarGeminiConciliacionJson({ systemInstruction, userText, responseSchema, detalleLedger = 'Comité Chofer IA', timeoutMs = 24000 }) {
         const cred = iaMonitor ? iaMonitor.leerCredencialesGeminiEnCaliente() : {
             apiKey: String(process.env.GEMINI_API_KEY || '').trim(),
-            model: String(process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim(),
+            model: String(process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim(),
             disponible: Boolean(process.env.GEMINI_API_KEY && String(process.env.GEMINI_API_KEY).length > 15)
         };
         if (!cred.disponible || !cred.apiKey) {
@@ -2698,17 +2698,47 @@ class ConciliacionArticulosService {
         const keys = [cred.apiKey];
         if (backupKey && backupKey.length > 15 && backupKey !== cred.apiKey) keys.push(backupKey);
 
-        const modelos = Array.from(new Set([cred.model || 'gemini-2.5-flash', 'gemini-2.5-flash', 'gemini-flash-latest']));
+        const modeloOficial = iaMonitor?.MODELO_GEMINI_OFICIAL || 'gemini-3.8-flash';
+        const modeloPrimario = iaMonitor?.normalizarModeloGeminiValido
+            ? iaMonitor.normalizarModeloGeminiValido(cred.model || modeloOficial)
+            : (cred.model || modeloOficial);
+        const fallbacks = Array.isArray(iaMonitor?.MODELOS_GEMINI_FALLBACK) && iaMonitor.MODELOS_GEMINI_FALLBACK.length > 0
+            ? iaMonitor.MODELOS_GEMINI_FALLBACK
+            : ['gemini-3.8-flash', 'gemini-flash-latest'];
+        const modelos = Array.from(new Set([modeloPrimario, ...fallbacks]));
+
+        const CODIGOS_ROTACION_KEY = new Set([401, 402, 403, 429]);
+        const CODIGOS_FALLBACK_MODELO = new Set([404, 500, 502, 503, 504]);
+        const totalBudgetMs = Math.max(8000, Math.min(Number(timeoutMs) || 24000, 30000));
+        const startedAt = Date.now();
+        const deadlineAt = startedAt + totalBudgetMs;
         let ultimoError = null;
 
-        for (const activeKey of keys) {
-            for (const modelName of modelos) {
+        for (let keyIdx = 0; keyIdx < keys.length; keyIdx++) {
+            const activeKey = keys[keyIdx];
+            const keyTag = `key#${keyIdx + 1}`;
+            let rotarSiguienteKey = false;
+
+            for (let modelIdx = 0; modelIdx < modelos.length; modelIdx++) {
+                const modelName = modelos[modelIdx];
+                const restanteMs = deadlineAt - Date.now();
+                if (restanteMs < 2500) {
+                    console.warn(`⏱️ [GEMINI-CONCILIACION] Presupuesto total agotado (${Date.now() - startedAt}ms/${totalBudgetMs}ms) antes de probar ${modelName} (${keyTag}, ${detalleLedger}).`);
+                    break;
+                }
+
+                const hayFallbackModelo = modelIdx < modelos.length - 1;
+                const perAttemptTimeout = hayFallbackModelo
+                    ? Math.min(restanteMs, Math.max(12000, Math.round(totalBudgetMs * 0.70)))
+                    : restanteMs;
+
                 const generationConfig = {
                     temperature: 0.1,
                     responseMimeType: 'application/json',
                     responseSchema
                 };
-                if (modelName.includes('2.5') || modelName.includes('3.')) {
+                const mNorm = String(modelName || '').trim().toLowerCase();
+                if (/flash/.test(mNorm) && !/(?:^|-)gemini-(?:1\.|2\.0)/.test(mNorm) && !/(?:-tts|-image)\b/.test(mNorm)) {
                     generationConfig.thinkingConfig = { thinkingBudget: 0 };
                 }
 
@@ -2720,7 +2750,8 @@ class ConciliacionArticulosService {
 
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(activeKey)}`;
                 const controller = new AbortController();
-                const timer = setTimeout(() => controller.abort(), 14000);
+                const tAttempt0 = Date.now();
+                const timer = setTimeout(() => controller.abort(), perAttemptTimeout);
                 try {
                     const res = await fetch(url, {
                         method: 'POST',
@@ -2728,10 +2759,16 @@ class ConciliacionArticulosService {
                         body: JSON.stringify(payload),
                         signal: controller.signal
                     });
+                    const elapsedMs = Date.now() - tAttempt0;
                     if (!res.ok) {
                         const errTxt = await res.text().catch(() => '');
                         ultimoError = new Error(`Gemini (${modelName}) HTTP ${res.status}: ${errTxt.slice(0, 200)}`);
-                        if (res.status === 404) continue;
+                        console.warn(`⚠️ [GEMINI-CONCILIACION] HTTP ${res.status} en ${modelName} (${keyTag}, ${elapsedMs}ms, ${detalleLedger}): ${errTxt.slice(0, 160).replace(/\s+/g, ' ')}`);
+                        if (CODIGOS_ROTACION_KEY.has(res.status)) {
+                            rotarSiguienteKey = true;
+                            break;
+                        }
+                        if (CODIGOS_FALLBACK_MODELO.has(res.status)) continue;
                         break;
                     }
                     const data = await res.json();
@@ -2749,11 +2786,19 @@ class ConciliacionArticulosService {
                     if (!rawText) throw new Error('Respuesta vacía de Gemini.');
                     return { parsed: JSON.parse(rawText), modelo: modelName };
                 } catch (err) {
-                    ultimoError = err;
+                    const elapsedMs = Date.now() - tAttempt0;
+                    const fueTimeout = err?.name === 'AbortError' || /aborted/i.test(String(err?.message || ''));
+                    const motivo = fueTimeout
+                        ? `Timeout tras ${elapsedMs}ms (límite intento ${perAttemptTimeout}ms)`
+                        : (err?.message || 'Error de conexión');
+                    ultimoError = new Error(`Gemini (${modelName}) ${motivo}`);
+                    console.warn(`⚠️ [GEMINI-CONCILIACION] Fallo en ${modelName} (${keyTag}, ${elapsedMs}ms, ${detalleLedger}): ${motivo}`);
                 } finally {
                     clearTimeout(timer);
                 }
             }
+
+            if (!rotarSiguienteKey) break;
         }
         throw ultimoError || new Error('No se pudo conectar con Gemini IA.');
     }
