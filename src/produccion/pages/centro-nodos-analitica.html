@@ -2378,7 +2378,7 @@
                 style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem;" />
             </div>
             <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">WhatsApp Atención</label>
+              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;" title="Teléfono interno/logístico del titular con LAMDA (y respaldo automático si la tienda no configura un WhatsApp comercial separado)">Tel. Titular / Operativo LAMDA</label>
               <input type="text" id="abm-centro-telefono" value="${esc(editNodo?.gestor_telefono || '')}" placeholder="Ej: 549221..."
                 style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem;" />
             </div>
@@ -2607,6 +2607,10 @@
           </div>
         </div>
 
+        <div id="abm-perfil-publico-section" style="margin-bottom:14px;">
+          ${renderizarHtmlSeccionPerfilPublicoAbm(editNodo)}
+        </div>
+
         <div id="abm-video-bienvenida-section" style="margin-bottom:14px;">
           ${renderizarHtmlSeccionVideoBienvenidaAbm(editNodo)}
         </div>
@@ -2620,6 +2624,161 @@
           </button>
         </div>
       `;
+      setTimeout(() => actualizarValidacionPerfilAbmCentro(false), 0);
+    }
+
+    function parsearWhatsappArAbmCentro(raw = '') {
+      const txt = String(raw ?? '').trim();
+      if (!txt) return { vacio: true, ok: true, valor: '', display: '', inputFormateado: '', error: '' };
+      let d = txt.replace(/\D+/g, '');
+      if (d.startsWith('0054')) d = d.slice(2);
+      if (d.startsWith('549') && d.length >= 12) d = d.slice(3);
+      else if (d.startsWith('54') && d.length >= 12) d = d.slice(2);
+      if (d.startsWith('0')) d = d.slice(1);
+      if (d.length === 12) {
+        if (d.startsWith('1115')) d = '11' + d.slice(4);
+        else if (d.slice(3, 5) === '15') d = d.slice(0, 3) + d.slice(5);
+        else if (d.slice(4, 6) === '15') d = d.slice(0, 4) + d.slice(6);
+      }
+      if (d.length === 11 && d.startsWith('9')) d = d.slice(1);
+      if (!/^[1-9]\d{9}$/.test(d) || d.startsWith('15')) {
+        return { vacio: false, ok: false, valor: '', display: '', inputFormateado: '', error: 'Ingresá 10 dígitos de celular AR (cód. área + número sin 0 ni 15).' };
+      }
+      const inputFormateado = d.startsWith('11')
+        ? `11 ${d.slice(2, 6)}-${d.slice(6)}`
+        : `${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6)}`;
+      return { vacio: false, ok: true, valor: `549${d}`, display: `+54 9 ${inputFormateado}`, inputFormateado, error: '' };
+    }
+
+    function parsearEmailAbmCentro(raw = '') {
+      const v = String(raw ?? '').trim().toLowerCase();
+      if (!v) return { vacio: true, ok: true, valor: '', error: '' };
+      if (v.length > 140 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) {
+        return { vacio: false, ok: false, valor: '', error: 'Correo electrónico inválido.' };
+      }
+      return { vacio: false, ok: true, valor: v, error: '' };
+    }
+
+    function parsearInstagramAbmCentro(raw = '') {
+      let txt = String(raw ?? '').trim();
+      if (!txt) return { vacio: true, ok: true, usuario: '', url: '', error: '' };
+      txt = txt.replace(/^https?:\/\//i, '').replace(/^(?:www\.|m\.)?instagram\.com\//i, '');
+      txt = txt.split(/[?#]/)[0].trim();
+      const primer = txt.split('/').filter(Boolean)[0] || '';
+      const usuario = primer.replace(/^@+/, '').trim().toLowerCase();
+      const resv = new Set(['p', 'reel', 'reels', 'stories', 'explore', 'accounts', 'direct', 'tv', 'channel']);
+      if (!usuario || resv.has(usuario) || usuario.length > 30 || !/^[a-z0-9._]+$/.test(usuario) || usuario.startsWith('.') || usuario.endsWith('.') || usuario.includes('..')) {
+        return { vacio: false, ok: false, usuario: '', url: '', error: 'Usuario de Instagram inválido (ej: @manso.ok).' };
+      }
+      return { vacio: false, ok: true, usuario, url: `https://www.instagram.com/${usuario}/`, error: '' };
+    }
+
+    function renderizarHtmlSeccionPerfilPublicoAbm(nodo) {
+      const perf = (nodo?.config_perfil_publico && typeof nodo.config_perfil_publico === 'object')
+        ? nodo.config_perfil_publico
+        : {};
+      const waParsed = parsearWhatsappArAbmCentro(perf.whatsapp_tienda || '');
+      const mostrarWa = perf.mostrar_whatsapp_tienda !== undefined ? Boolean(perf.mostrar_whatsapp_tienda) : true;
+      const emailTienda = String(perf.email_tienda || '').trim();
+      const mostrarEmail = Boolean(emailTienda && perf.mostrar_email_tienda);
+      const emailLamda = emailTienda ? (perf.usar_email_para_lamda !== undefined ? Boolean(perf.usar_email_para_lamda) : true) : true;
+      const igUser = String(perf.instagram_usuario || '').trim();
+      const mostrarIg = igUser ? (perf.mostrar_instagram_tienda !== undefined ? Boolean(perf.mostrar_instagram_tienda) : true) : true;
+      const igDif = Boolean(igUser && perf.incluir_instagram_en_difusion);
+
+      return `
+        <div style="background:linear-gradient(135deg, #f0f9ff 0%, #ffffff 100%); border:1.5px solid #bae6fd; border-radius:12px; padding:13px 14px;">
+          <div style="margin-bottom:10px;">
+            <div style="font-size:0.86rem; font-weight:900; color:#0c4a6e;">👤 Mi Perfil Público y Contacto de la Tienda (100% Opcional · Espejo Panel Gestor)</div>
+            <div style="font-size:0.74rem; color:#0369a1; margin-top:2px;">
+              Canales comerciales autogestionables por el nodo. No alteran el teléfono operativo/logístico ni los datos fiscales de Cuenta Madre.
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+            <!-- WhatsApp Comercial Tienda -->
+            <div style="background:#fff; border:1px solid #e0f2fe; border-radius:10px; padding:10px;">
+              <label style="display:block; font-size:0.74rem; font-weight:900; color:#0f172a; margin-bottom:4px;">💬 WhatsApp Atención Tienda</label>
+              <div style="display:flex; align-items:center; border:1px solid var(--border-strong); border-radius:8px; overflow:hidden; background:#fff;">
+                <span style="padding:6px 8px; background:#f8fafc; border-right:1px solid var(--border); font-size:0.74rem; font-weight:900; color:#0369a1; white-space:nowrap;">+54 9</span>
+                <input type="text" id="abm-perfil-wa" value="${esc(waParsed.inputFormateado || '')}" placeholder="Vacío = usa Tel. Titular"
+                  oninput="actualizarValidacionPerfilAbmCentro(false)" onblur="actualizarValidacionPerfilAbmCentro(true)"
+                  style="flex:1; min-width:0; border:none; outline:none; padding:6px 8px; font-size:0.8rem; font-weight:700;" />
+              </div>
+              <div id="abm-perfil-wa-estado" style="font-size:0.7rem; font-weight:700; color:var(--muted); margin-top:4px; min-height:16px;"></div>
+              <label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:0.73rem; font-weight:700; cursor:pointer;">
+                <input type="checkbox" id="abm-perfil-wa-mostrar" ${mostrarWa ? 'checked' : ''} />
+                <span>Mostrar WhatsApp en tienda</span>
+              </label>
+            </div>
+
+            <!-- Email Oficial de Marca -->
+            <div style="background:#fff; border:1px solid #e0f2fe; border-radius:10px; padding:10px;">
+              <label style="display:block; font-size:0.74rem; font-weight:900; color:#0f172a; margin-bottom:4px;">✉️ Email Oficial de Marca</label>
+              <input type="email" id="abm-perfil-email" value="${esc(emailTienda)}" placeholder="Ej: marca@gmail.com"
+                oninput="actualizarValidacionPerfilAbmCentro(false)" onblur="actualizarValidacionPerfilAbmCentro(true)"
+                style="width:100%; padding:6px 8px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.8rem; font-weight:700;" />
+              <div id="abm-perfil-email-estado" style="font-size:0.7rem; font-weight:700; color:var(--muted); margin-top:4px; min-height:16px;"></div>
+              <label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:0.73rem; font-weight:700; cursor:pointer;">
+                <input type="checkbox" id="abm-perfil-email-tienda" ${mostrarEmail ? 'checked' : ''} />
+                <span>Mostrar correo en tienda (☰)</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:6px; margin-top:4px; font-size:0.73rem; font-weight:700; cursor:pointer;">
+                <input type="checkbox" id="abm-perfil-email-lamda" ${emailLamda ? 'checked' : ''} />
+                <span>Incluir en Modal Omnicanal LAMDA</span>
+              </label>
+            </div>
+
+            <!-- Instagram Marca -->
+            <div style="background:#fff; border:1px solid #e0f2fe; border-radius:10px; padding:10px;">
+              <label style="display:block; font-size:0.74rem; font-weight:900; color:#0f172a; margin-bottom:4px;">📸 Instagram de Marca</label>
+              <input type="text" id="abm-perfil-ig" value="${esc(igUser ? '@' + igUser : '')}" placeholder="Ej: @manso.ok"
+                oninput="actualizarValidacionPerfilAbmCentro(false)" onblur="actualizarValidacionPerfilAbmCentro(true)"
+                style="width:100%; padding:6px 8px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.8rem; font-weight:700;" />
+              <div id="abm-perfil-ig-estado" style="font-size:0.7rem; font-weight:700; color:var(--muted); margin-top:4px; min-height:16px;"></div>
+              <label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:0.73rem; font-weight:700; cursor:pointer;">
+                <input type="checkbox" id="abm-perfil-ig-tienda" ${mostrarIg ? 'checked' : ''} />
+                <span>Mostrar IG en tienda pública</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:6px; margin-top:4px; font-size:0.73rem; font-weight:700; cursor:pointer;">
+                <input type="checkbox" id="abm-perfil-ig-difusion" ${igDif ? 'checked' : ''} />
+                <span>Firmar con @IG en difusión</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function actualizarValidacionPerfilAbmCentro(formatear = false) {
+      const waEl = document.getElementById('abm-perfil-wa');
+      const waSt = document.getElementById('abm-perfil-wa-estado');
+      const emEl = document.getElementById('abm-perfil-email');
+      const emSt = document.getElementById('abm-perfil-email-estado');
+      const igEl = document.getElementById('abm-perfil-ig');
+      const igSt = document.getElementById('abm-perfil-ig-estado');
+      if (!waEl || !emEl || !igEl) return;
+
+      const wa = parsearWhatsappArAbmCentro(waEl.value);
+      if (formatear && !wa.vacio && wa.ok) waEl.value = wa.inputFormateado;
+      if (waSt) {
+        waSt.style.color = wa.vacio ? 'var(--muted)' : (wa.ok ? '#15803d' : '#b91c1c');
+        waSt.textContent = wa.vacio ? 'Fallback automático al Tel. Titular.' : (wa.ok ? `✅ ${wa.display}` : `⚠️ ${wa.error}`);
+      }
+
+      const em = parsearEmailAbmCentro(emEl.value);
+      if (formatear && !em.vacio && em.ok) emEl.value = em.valor;
+      if (emSt) {
+        emSt.style.color = em.vacio ? 'var(--muted)' : (em.ok ? '#15803d' : '#b91c1c');
+        emSt.textContent = em.vacio ? 'Sin correo de marca.' : (em.ok ? `✅ ${em.valor}` : `⚠️ ${em.error}`);
+      }
+
+      const ig = parsearInstagramAbmCentro(igEl.value);
+      if (formatear && !ig.vacio && ig.ok) igEl.value = `@${ig.usuario}`;
+      if (igSt) {
+        igSt.style.color = ig.vacio ? 'var(--muted)' : (ig.ok ? '#15803d' : '#b91c1c');
+        igSt.textContent = ig.vacio ? 'Sin perfil IG.' : (ig.ok ? `✅ @${ig.usuario}` : `⚠️ ${ig.error}`);
+      }
     }
 
     function fmtMbVideoAbm(bytes) {
@@ -3000,12 +3159,31 @@
 
       const cliObj = (CSTATE.clientesBunker || []).find(c => Number(c.id) === clienteMadreId);
       const nodoPrev = editarId ? (CSTATE.nodos || []).find(n => Number(n.id) === Number(editarId)) : null;
+
+      const perfWa = parsearWhatsappArAbmCentro(document.getElementById('abm-perfil-wa')?.value || '');
+      if (!perfWa.ok) return mostrarError(`WhatsApp Atención Tienda: ${perfWa.error}`);
+      const perfEm = parsearEmailAbmCentro(document.getElementById('abm-perfil-email')?.value || '');
+      if (!perfEm.ok) return mostrarError(`Email Oficial de Marca: ${perfEm.error}`);
+      const perfIg = parsearInstagramAbmCentro(document.getElementById('abm-perfil-ig')?.value || '');
+      if (!perfIg.ok) return mostrarError(`Instagram de Marca: ${perfIg.error}`);
+
       const payload = {
         nombre_marca: nombreMarca,
         slug,
         subtitulo_marca: document.getElementById('abm-centro-subtitulo')?.value?.trim() || '',
         gestor_nombre: gestorNombre,
         gestor_telefono: document.getElementById('abm-centro-telefono')?.value?.trim() || '',
+        gestor_email: nodoPrev?.gestor_email || '',
+        config_perfil_publico: {
+          whatsapp_tienda: perfWa.valor,
+          mostrar_whatsapp_tienda: Boolean(document.getElementById('abm-perfil-wa-mostrar')?.checked ?? true),
+          email_tienda: perfEm.valor,
+          mostrar_email_tienda: Boolean(perfEm.valor && document.getElementById('abm-perfil-email-tienda')?.checked),
+          usar_email_para_lamda: Boolean(perfEm.valor && (document.getElementById('abm-perfil-email-lamda')?.checked ?? true)),
+          instagram_usuario: perfIg.usuario,
+          mostrar_instagram_tienda: Boolean(perfIg.usuario && (document.getElementById('abm-perfil-ig-tienda')?.checked ?? true)),
+          incluir_instagram_en_difusion: Boolean(perfIg.usuario && document.getElementById('abm-perfil-ig-difusion')?.checked)
+        },
         barrio_zona: document.getElementById('abm-centro-barrio')?.value?.trim() || '',
         direccion_retiro: document.getElementById('abm-centro-direccion')?.value?.trim() || '',
         cargo_envio_barrial: Number(document.getElementById('abm-centro-cargo-barrial')?.value || 0),

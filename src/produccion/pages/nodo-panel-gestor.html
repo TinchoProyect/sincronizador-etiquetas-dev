@@ -3103,6 +3103,12 @@
       const enviosListosReparto = mostrarHojaDeRuta ? pedidosActivos.filter(p => esPedidoEnHojaRutaActiva(p)) : [];
       const mostrarPwa = !esModoPwaInstaladaGestor();
       const tiendaHref = `/tienda/${encodeURIComponent(GSTATE.slug)}`;
+      const perfilMenu = obtenerPerfilPublicoGestor();
+      const resumenCanalesPerfil = [
+        perfilMenu.whatsapp_tienda ? 'WhatsApp' : '',
+        perfilMenu.email_tienda ? 'Email' : '',
+        perfilMenu.instagram_usuario ? `@${perfilMenu.instagram_usuario}` : ''
+      ].filter(Boolean).join(' · ') || 'WhatsApp tienda, correo e Instagram (opcional)';
 
       bodyEl.innerHTML = `
         <div>
@@ -3159,6 +3165,17 @@
         <div>
           <div class="gdrawer-group-title">Mi Tienda y Difusión</div>
           <div class="gdrawer-group-list">
+            <button type="button" class="gdrawer-item" data-testid="menu-item-perfil" onclick="abrirSeccionDesdeMenuGestor('perfil')">
+              <div class="gdrawer-item-left">
+                <span class="gdrawer-item-icon">👤</span>
+                <div style="min-width:0;">
+                  <div class="gdrawer-item-title">Mi Perfil y Contacto</div>
+                  <div class="gdrawer-item-sub">${esc(resumenCanalesPerfil)}</div>
+                </div>
+              </div>
+              <span class="gdrawer-item-chevron">›</span>
+            </button>
+
             <a id="btn-abrir-tienda" data-testid="menu-item-ver-tienda" href="${esc(tiendaHref)}" target="_blank" rel="noopener" class="gdrawer-item" onclick="cerrarMenuGestor()">
               <div class="gdrawer-item-left">
                 <span class="gdrawer-item-icon">🏪</span>
@@ -3241,7 +3258,7 @@
       const mod = obtenerModulosActivosGestor();
       if (hash === 'reparto' && (!mod.hoja_de_ruta || esPerfilEcommerceGestor())) {
         GSTATE.vista = 'inicio';
-      } else if (['reparto', 'ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(hash)) {
+      } else if (['reparto', 'ofertas', 'propuestas', 'logistica', 'perfil', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(hash)) {
         GSTATE.vista = hash;
       } else {
         GSTATE.vista = 'inicio';
@@ -3267,7 +3284,7 @@
       const mod = obtenerModulosActivosGestor();
       const esEc = esPerfilEcommerceGestor();
 
-      const esInicio = !['reparto', 'ofertas', 'propuestas', 'logistica', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(GSTATE.vista) ||
+      const esInicio = !['reparto', 'ofertas', 'propuestas', 'logistica', 'perfil', 'pedidos', 'ctacte', 'liquidacion', 'compradores'].includes(GSTATE.vista) ||
         (GSTATE.vista === 'reparto' && (!mod.hoja_de_ruta || esEc));
       document.body.classList.toggle('is-home-portada', esInicio);
 
@@ -3279,6 +3296,9 @@
         box.innerHTML = envolverSeccionInterna('Pedir fracción o armar combo', renderSeccionPropuestas());
       } else if (GSTATE.vista === 'logistica') {
         box.innerHTML = envolverSeccionInterna(tMarca(GSTATE.nodo, 'bloque_3_heading'), renderSeccionLogistica());
+      } else if (GSTATE.vista === 'perfil') {
+        box.innerHTML = envolverSeccionInterna('👤 Mi Perfil y Contacto', renderSeccionPerfilGestor());
+        setTimeout(() => actualizarEstadoFormularioPerfilGestor(false), 0);
       } else if (GSTATE.vista === 'pedidos') {
         box.innerHTML = envolverSeccionInterna(tMarca(GSTATE.nodo, 'bloque_4_heading'), renderSeccionPedidos());
       } else if (GSTATE.vista === 'ctacte') {
@@ -3482,6 +3502,10 @@
       const corte = GSTATE.compartirKit?.proxima_entrega?.asignada?.label_corte
         || GSTATE.proximaEntrega?.asignada?.label_corte
         || '';
+      const perfilDif = obtenerPerfilPublicoGestor();
+      const firmaIgTxt = (perfilDif.instagram_usuario && perfilDif.incluir_instagram_en_difusion)
+        ? `📸 Seguinos en Instagram: @${perfilDif.instagram_usuario}`
+        : '';
 
       if (esPerfilEcommerceGestor(nodoKit)) {
         const slaTxt = nodoKit.config_paqueteria?.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles';
@@ -3499,7 +3523,8 @@
               `¡Hola! Mirá esta opción disponible en nuestra tienda online: *${of.nombre_publico}${descPres}* a *${fmt(of.precio_venta_vecino)}* 🛒`,
               url,
               `🚚 Envíos a todo el país (${slaTxt})`,
-              gratisTxt
+              gratisTxt,
+              firmaIgTxt
             ].filter(Boolean).join('\n');
           }
         }
@@ -3508,7 +3533,8 @@
           `¡Hola! Te comparto nuestra tienda online con envíos a todo el país:`,
           url,
           `🚚 ${slaTxt}`,
-          gratisTxt
+          gratisTxt,
+          firmaIgTxt
         ].filter(Boolean).join('\n');
       }
 
@@ -3525,7 +3551,8 @@
             `¡Hola! Te comparto esta opción disponible hoy: *${of.nombre_publico}${descPres}* a *${fmt(of.precio_venta_vecino)}* 🛒`,
             `Podés ver detalles y pedirlo directo acá:`,
             url,
-            prox ? `📅 Próxima entrega: ${prox}${corte ? ` · Cierre: ${corte}` : ''}` : ''
+            prox ? `📅 Próxima entrega: ${prox}${corte ? ` · Cierre: ${corte}` : ''}` : '',
+            firmaIgTxt
           ].filter(Boolean).join('\n');
         }
       }
@@ -3536,7 +3563,8 @@
         url,
         prox ? `📅 *Próxima entrega:* ${prox}` : '',
         corte ? `⏰ *Cierre de pedidos:* ${corte}` : '',
-        `💬 Si querés consultar o sumar algo, respondeme por acá.`
+        `💬 Si querés consultar o sumar algo, respondeme por acá.`,
+        firmaIgTxt
       ].filter(Boolean).join('\n');
     }
 
@@ -3921,6 +3949,18 @@
                 📋 Copiar link
               </button>
             </div>
+            ${obtenerPerfilPublicoGestor().instagram_usuario ? `
+              <div id="difusion-instagram-utm-bar" style="margin-top:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:8px 11px; border-radius:10px; background:linear-gradient(135deg, #fdf2f8 0%, #fff7ed 100%); border:1px solid #fbcfe8;">
+                <div style="font-size:0.74rem; color:#831843; font-weight:800;">
+                  📸 Para tu Bio o Sticker de Historia (<strong>@${esc(obtenerPerfilPublicoGestor().instagram_usuario)}</strong>): mide visitas y pedidos en Radar
+                </div>
+                <button type="button" id="btn-difusion-copiar-ig-utm" data-testid="btn-difusion-copiar-ig-utm"
+                  onclick="copiarUrlDifusionInstagram()"
+                  style="padding:6px 11px; border-radius:8px; border:1px solid #ec4899; background:#ffffff; color:#9d174d; font-family:inherit; font-size:0.75rem; font-weight:900; cursor:pointer; white-space:nowrap;">
+                  📸 Copiar link Instagram
+                </button>
+              </div>
+            ` : ''}
           </div>
 
           <div>
@@ -4176,6 +4216,34 @@
         .catch(() => mostrarAvisoPantallaGestor('No se pudo copiar automáticamente; seleccionalo desde la casilla.', 'error'));
     }
 
+    function construirUrlDifusionInstagram() {
+      const baseUrl = obtenerUrlDifusionActual();
+      if (!baseUrl) return '';
+      try {
+        const u = new URL(baseUrl);
+        u.searchParams.set('utm_source', 'instagram');
+        return u.toString();
+      } catch (_) {
+        const sep = baseUrl.includes('?') ? '&' : '?';
+        return `${baseUrl}${sep}utm_source=instagram`;
+      }
+    }
+
+    function copiarUrlDifusionInstagram() {
+      const urlIg = construirUrlDifusionInstagram();
+      if (!urlIg) return;
+      navigator.clipboard?.writeText(urlIg)
+        .then(() => mostrarAvisoPantallaGestor(`📸 Link para Instagram copiado (atribución automática en Radar): ${urlIg}`, 'ok'))
+        .catch(() => {
+          const inp = document.getElementById('difusion-link-input');
+          if (inp) {
+            inp.value = urlIg;
+            inp.select();
+          }
+          mostrarAvisoPantallaGestor('Link de Instagram cargado en la casilla para copiar.', 'ok');
+        });
+    }
+
     function abrirWhatsAppDifusionLibre() {
       const ta = document.getElementById('difusion-texto-textarea');
       const texto = (ta?.value || generarTextoSugeridoDifusion()).trim();
@@ -4367,6 +4435,13 @@
       ctx.font = `700 22px ${fontStack}`;
       ctx.textBaseline = 'alphabetic';
       ctx.fillText(urlPublica, W / 2, cursorY, W - 130);
+
+      const perfilAfiche = obtenerPerfilPublicoGestor();
+      if (perfilAfiche.instagram_usuario && perfilAfiche.incluir_instagram_en_difusion) {
+        ctx.fillStyle = accent;
+        ctx.font = `800 24px ${fontStack}`;
+        ctx.fillText(`Instagram: @${perfilAfiche.instagram_usuario}`, W / 2, cursorY + 34, W - 130);
+      }
 
       try {
         const out = canvas.toDataURL('image/png');
@@ -7236,6 +7311,434 @@
         await cargarPanelGestor();
       } catch (_) {
         mostrarAvisoPantallaGestor('Error de comunicación al guardar la configuración logística.', 'error');
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // 3b. MI PERFIL Y CONTACTO DE LA TIENDA (100% OPCIONAL + MÁSCARA AR)
+    // -------------------------------------------------------------------------
+    function obtenerPerfilPublicoGestor() {
+      const raw = (GSTATE.nodo && GSTATE.nodo.config_perfil_publico && typeof GSTATE.nodo.config_perfil_publico === 'object')
+        ? GSTATE.nodo.config_perfil_publico
+        : ((GSTATE.compartirKit?.nodo?.config_perfil_publico && typeof GSTATE.compartirKit.nodo.config_perfil_publico === 'object')
+            ? GSTATE.compartirKit.nodo.config_perfil_publico
+            : {});
+      return {
+        whatsapp_tienda: String(raw.whatsapp_tienda || '').trim(),
+        whatsapp_tienda_display: String(raw.whatsapp_tienda_display || '').trim(),
+        mostrar_whatsapp_tienda: raw.mostrar_whatsapp_tienda !== undefined ? Boolean(raw.mostrar_whatsapp_tienda) : true,
+        email_tienda: String(raw.email_tienda || '').trim().toLowerCase(),
+        mostrar_email_tienda: Boolean(raw.email_tienda && raw.mostrar_email_tienda),
+        usar_email_para_lamda: Boolean(raw.email_tienda && (raw.usar_email_para_lamda !== undefined ? raw.usar_email_para_lamda : true)),
+        instagram_usuario: String(raw.instagram_usuario || '').trim().toLowerCase(),
+        instagram_url: String(raw.instagram_url || '').trim(),
+        mostrar_instagram_tienda: Boolean(raw.instagram_usuario && (raw.mostrar_instagram_tienda !== undefined ? raw.mostrar_instagram_tienda : true)),
+        incluir_instagram_en_difusion: Boolean(raw.instagram_usuario && raw.incluir_instagram_en_difusion),
+        updated_at: raw.updated_at || null
+      };
+    }
+
+    function parsearWhatsappArPerfil(raw = '') {
+      const txt = String(raw ?? '').trim();
+      if (!txt) {
+        return { vacio: true, ok: true, valor: '', local10: '', display: '', inputFormateado: '', avisoSaneado: '', error: '' };
+      }
+      let d = txt.replace(/\D+/g, '');
+      const notasSaneado = [];
+      if (d.startsWith('0054')) d = d.slice(2);
+      if (d.startsWith('549') && d.length >= 12) {
+        d = d.slice(3);
+      } else if (d.startsWith('54') && d.length >= 12) {
+        d = d.slice(2);
+      }
+      if (d.startsWith('0')) {
+        d = d.slice(1);
+        notasSaneado.push('quitamos el 0 inicial');
+      }
+      if (d.length === 12) {
+        if (d.startsWith('1115')) {
+          d = '11' + d.slice(4);
+          notasSaneado.push('quitamos el 15');
+        } else if (d.slice(3, 5) === '15') {
+          d = d.slice(0, 3) + d.slice(5);
+          notasSaneado.push('quitamos el 15');
+        } else if (d.slice(4, 6) === '15') {
+          d = d.slice(0, 4) + d.slice(6);
+          notasSaneado.push('quitamos el 15');
+        }
+      }
+      if (d.length === 11 && d.startsWith('9')) {
+        d = d.slice(1);
+      }
+      if (!/^[1-9]\d{9}$/.test(d) || d.startsWith('15')) {
+        const faltan = Math.max(0, 10 - d.length);
+        const msg = d.length < 10
+          ? `Faltan ${faltan} dígito${faltan === 1 ? '' : 's'} (ingresá código de área + número sin 0 ni 15, total 10 dígitos).`
+          : 'Número inválido: ingresá solo 10 dígitos de celular argentino (código de área + número, sin 0 ni 15). Ej: 221 670-2981.';
+        return { vacio: false, ok: false, valor: '', local10: d, display: '', inputFormateado: '', avisoSaneado: '', error: msg };
+      }
+      const inputFormateado = d.startsWith('11')
+        ? `11 ${d.slice(2, 6)}-${d.slice(6)}`
+        : `${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6)}`;
+      return {
+        vacio: false,
+        ok: true,
+        valor: `549${d}`,
+        local10: d,
+        display: `+54 9 ${inputFormateado}`,
+        inputFormateado,
+        avisoSaneado: notasSaneado.length > 0 ? ` (${notasSaneado.join(' y ')})` : '',
+        error: ''
+      };
+    }
+
+    function parsearEmailPerfil(raw = '') {
+      const limpio = String(raw ?? '').trim().toLowerCase();
+      if (!limpio) return { vacio: true, ok: true, valor: '', error: '' };
+      if (limpio.length > 140 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(limpio)) {
+        return { vacio: false, ok: false, valor: '', error: 'Ingresá un correo electrónico válido (ej: tu.marca@gmail.com).' };
+      }
+      return { vacio: false, ok: true, valor: limpio, error: '' };
+    }
+
+    function parsearInstagramPerfil(raw = '') {
+      let txt = String(raw ?? '').trim();
+      if (!txt) return { vacio: true, ok: true, usuario: '', url: '', error: '' };
+      txt = txt.replace(/^https?:\/\//i, '').replace(/^(?:www\.|m\.)?instagram\.com\//i, '');
+      txt = txt.split(/[?#]/)[0].trim();
+      const primerSeg = txt.split('/').filter(Boolean)[0] || '';
+      const usuario = primerSeg.replace(/^@+/, '').trim().toLowerCase();
+      const reservadas = new Set(['p', 'reel', 'reels', 'stories', 'explore', 'accounts', 'direct', 'tv', 'channel']);
+      if (!usuario || reservadas.has(usuario)) {
+        return { vacio: false, ok: false, usuario: '', url: '', error: 'Ingresá tu usuario o link de perfil (ej: @manso.ok), no el enlace de una publicación.' };
+      }
+      if (usuario.length > 30 || !/^[a-z0-9._]+$/.test(usuario) || usuario.startsWith('.') || usuario.endsWith('.') || usuario.includes('..')) {
+        return { vacio: false, ok: false, usuario: '', url: '', error: 'El usuario de Instagram solo admite letras, números, puntos y guiones bajos (máx. 30 caracteres).' };
+      }
+      return { vacio: false, ok: true, usuario, url: `https://www.instagram.com/${usuario}/`, error: '' };
+    }
+
+    function renderSeccionPerfilGestor() {
+      const perfil = obtenerPerfilPublicoGestor();
+      const waInicialParse = parsearWhatsappArPerfil(perfil.whatsapp_tienda);
+      const waFallbackParse = parsearWhatsappArPerfil(GSTATE.nodo?.gestor_telefono || '');
+      const waFallbackLabel = waFallbackParse.ok && waFallbackParse.display
+        ? waFallbackParse.display
+        : (GSTATE.nodo?.gestor_telefono || 'sin teléfono cargado');
+
+      return `
+        <div class="card" id="seccion-mi-perfil-gestor" data-testid="seccion-mi-perfil-gestor">
+          <div style="background:var(--surface-warm); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:16px; font-size:0.83rem; line-height:1.45; color:var(--text);">
+            <strong>✨ Canales propios de tu marca (100% opcionales):</strong>
+            Configurá un WhatsApp exclusivo para tu tienda, un correo de marca o tu cuenta de Instagram.
+            Si dejás un campo vacío, tu tienda sigue funcionando exactamente como hasta hoy sin mostrar elementos vacíos.
+            <div style="margin-top:5px; font-size:0.78rem; color:var(--muted);">
+              🛡️ <strong>Blindaje operativo:</strong> cambiar estos canales públicos <strong>jamás altera</strong> tu teléfono titular, datos fiscales ni tu vínculo de entregas/cuenta corriente con LAMDA.
+            </div>
+          </div>
+
+          <!-- 1. WHATSAPP COMERCIAL DE LA TIENDA -->
+          <div style="border:1px solid var(--border); border-radius:14px; padding:14px 16px; margin-bottom:14px; background:#fff;">
+            <div style="font-size:0.95rem; font-weight:900; color:var(--text); margin-bottom:3px;">💬 WhatsApp de Atención de mi Tienda</div>
+            <div style="font-size:0.78rem; color:var(--muted); margin-bottom:10px; line-height:1.4;">
+              Número al que llegan los clientes cuando tocan <em>Contacto</em>, envían aviso de pago o consultan por su pedido en la tienda.
+            </div>
+
+            <div style="display:flex; gap:8px; align-items:stretch; flex-wrap:wrap;">
+              <div style="display:flex; align-items:center; flex:1; min-width:230px; border:1.5px solid var(--border); border-radius:10px; overflow:hidden; background:#fffdfb;">
+                <span style="padding:10px 12px; background:var(--surface-warm); border-right:1px solid var(--border); font-weight:900; font-size:0.88rem; color:var(--brand-dark); white-space:nowrap;">🇦🇷 +54 9</span>
+                <input type="tel" id="perfil-wa-input" data-testid="perfil-wa-input"
+                  value="${esc(waInicialParse.inputFormateado || '')}"
+                  placeholder="Ej: 221 670-2981 ó 11 5555-4444"
+                  autocomplete="tel"
+                  oninput="actualizarEstadoFormularioPerfilGestor(false)"
+                  onblur="actualizarEstadoFormularioPerfilGestor(true)"
+                  style="flex:1; min-width:0; border:none; outline:none; padding:10px 12px; font-family:inherit; font-size:0.92rem; font-weight:800; background:transparent; color:var(--text);" />
+              </div>
+              <button type="button" id="btn-perfil-probar-wa" data-testid="btn-perfil-probar-wa" class="btn-soft"
+                onclick="probarWhatsappPerfilGestor()" style="white-space:nowrap; padding:10px 14px;">
+                🧪 Probar link
+              </button>
+            </div>
+
+            <div id="perfil-wa-estado" data-testid="perfil-wa-estado" style="margin-top:7px; font-size:0.78rem; font-weight:700; color:var(--muted);">
+              ${waInicialParse.vacio
+                ? `Sin número dedicado: tu tienda usa el WhatsApp actual (${esc(waFallbackLabel)}).`
+                : `✅ Formato validado: ${esc(waInicialParse.display)}`}
+            </div>
+
+            <div class="cfg-switch-card" style="margin-top:11px; background:var(--surface-warm);">
+              <label class="switch-label">
+                <input type="checkbox" id="perfil-wa-mostrar" data-testid="perfil-wa-mostrar"
+                  ${perfil.mostrar_whatsapp_tienda ? 'checked' : ''}
+                  onchange="actualizarEstadoFormularioPerfilGestor(false)" />
+                <span>Mostrar botón de WhatsApp en mi tienda pública</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 2. EMAIL OFICIAL DE MARCA -->
+          <div style="border:1px solid var(--border); border-radius:14px; padding:14px 16px; margin-bottom:14px; background:#fff;">
+            <div style="font-size:0.95rem; font-weight:900; color:var(--text); margin-bottom:3px;">✉️ Correo Electrónico Oficial de la Marca (Opcional)</div>
+            <div style="font-size:0.78rem; color:var(--muted); margin-bottom:10px; line-height:1.4;">
+              Por ejemplo un Gmail exclusivo de tu tienda para consultas de clientes o comunicaciones formales con LAMDA.
+            </div>
+
+            <input type="email" id="perfil-email-input" data-testid="perfil-email-input"
+              class="input-sm" style="width:100%; font-size:0.9rem; font-weight:700;"
+              value="${esc(perfil.email_tienda || '')}"
+              placeholder="Ej: tu.tienda@gmail.com"
+              oninput="actualizarEstadoFormularioPerfilGestor(false)"
+              onblur="actualizarEstadoFormularioPerfilGestor(true)" />
+
+            <div id="perfil-email-estado" data-testid="perfil-email-estado" style="margin-top:6px; font-size:0.78rem; font-weight:700; color:var(--muted);"></div>
+
+            <div id="perfil-email-switches-wrap" style="display:flex; flex-direction:column; gap:8px; margin-top:11px; transition:opacity 0.15s;">
+              <div class="cfg-switch-card" style="background:var(--surface-warm);">
+                <label class="switch-label">
+                  <input type="checkbox" id="perfil-email-mostrar-tienda" data-testid="perfil-email-mostrar-tienda"
+                    ${perfil.mostrar_email_tienda ? 'checked' : ''} />
+                  <span>🛍️ Mostrar este correo en el menú de contacto (☰) de mi tienda pública</span>
+                </label>
+              </div>
+              <div class="cfg-switch-card" style="background:var(--surface-warm);">
+                <label class="switch-label">
+                  <input type="checkbox" id="perfil-email-lamda" data-testid="perfil-email-lamda"
+                    ${perfil.email_tienda ? (perfil.usar_email_para_lamda ? 'checked' : '') : 'checked'} />
+                  <span>📨 Recibir también en este correo comunicaciones y reportes de LAMDA (sin modificar datos fiscales)</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. INSTAGRAM DE LA MARCA -->
+          <div style="border:1px solid var(--border); border-radius:14px; padding:14px 16px; margin-bottom:16px; background:#fff;">
+            <div style="font-size:0.95rem; font-weight:900; color:var(--text); margin-bottom:3px;">📸 Instagram de mi Marca (Opcional)</div>
+            <div style="font-size:0.78rem; color:var(--muted); margin-bottom:10px; line-height:1.4;">
+              Podés escribir tu <code>@usuario</code> o pegar directamente el enlace completo de tu perfil.
+            </div>
+
+            <div style="display:flex; gap:8px; align-items:stretch; flex-wrap:wrap;">
+              <input type="text" id="perfil-ig-input" data-testid="perfil-ig-input"
+                class="input-sm" style="flex:1; min-width:220px; font-size:0.9rem; font-weight:700;"
+                value="${esc(perfil.instagram_usuario ? '@' + perfil.instagram_usuario : '')}"
+                placeholder="Ej: @paraiso.saludable ó instagram.com/paraiso.saludable"
+                oninput="actualizarEstadoFormularioPerfilGestor(false)"
+                onblur="actualizarEstadoFormularioPerfilGestor(true)" />
+              <button type="button" id="btn-perfil-probar-ig" data-testid="btn-perfil-probar-ig" class="btn-soft"
+                onclick="probarInstagramPerfilGestor()" style="white-space:nowrap; padding:10px 14px;">
+                🔗 Abrir perfil
+              </button>
+            </div>
+
+            <div id="perfil-ig-estado" data-testid="perfil-ig-estado" style="margin-top:6px; font-size:0.78rem; font-weight:700; color:var(--muted);"></div>
+
+            <div id="perfil-ig-switches-wrap" style="display:flex; flex-direction:column; gap:8px; margin-top:11px; transition:opacity 0.15s;">
+              <div class="cfg-switch-card" style="background:var(--surface-warm);">
+                <label class="switch-label">
+                  <input type="checkbox" id="perfil-ig-mostrar-tienda" data-testid="perfil-ig-mostrar-tienda"
+                    ${perfil.instagram_usuario ? (perfil.mostrar_instagram_tienda ? 'checked' : '') : 'checked'} />
+                  <span>🛍️ Mostrar mi Instagram de forma discreta en mi tienda pública</span>
+                </label>
+              </div>
+              <div class="cfg-switch-card" style="background:var(--surface-warm);">
+                <label class="switch-label">
+                  <input type="checkbox" id="perfil-ig-en-difusion" data-testid="perfil-ig-en-difusion"
+                    ${perfil.incluir_instagram_en_difusion ? 'checked' : ''} />
+                  <span>📣 Incluir mi @Instagram al pie de mensajes y afiche QR del Kit de Difusión</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div id="perfil-guardar-feedback" style="display:none; margin-bottom:12px; padding:10px 12px; border-radius:10px; font-size:0.82rem; font-weight:800;"></div>
+
+          <button type="button" id="btn-guardar-perfil-gestor" data-testid="btn-guardar-perfil-gestor"
+            class="btn-primary" style="width:100%; max-width:340px;"
+            onclick="guardarPerfilContactoGestor()">
+            💾 Guardar Mi Perfil y Contacto
+          </button>
+        </div>
+      `;
+    }
+
+    function actualizarEstadoFormularioPerfilGestor(formatearAlSalir = false) {
+      const waInp = document.getElementById('perfil-wa-input');
+      const waEst = document.getElementById('perfil-wa-estado');
+      const btnProbarWa = document.getElementById('btn-perfil-probar-wa');
+      const emInp = document.getElementById('perfil-email-input');
+      const emEst = document.getElementById('perfil-email-estado');
+      const emWrap = document.getElementById('perfil-email-switches-wrap');
+      const emSwTienda = document.getElementById('perfil-email-mostrar-tienda');
+      const emSwLamda = document.getElementById('perfil-email-lamda');
+      const igInp = document.getElementById('perfil-ig-input');
+      const igEst = document.getElementById('perfil-ig-estado');
+      const igWrap = document.getElementById('perfil-ig-switches-wrap');
+      const igSwTienda = document.getElementById('perfil-ig-mostrar-tienda');
+      const igSwDif = document.getElementById('perfil-ig-en-difusion');
+      const btnProbarIg = document.getElementById('btn-perfil-probar-ig');
+      const btnGuardar = document.getElementById('btn-guardar-perfil-gestor');
+      if (!waInp || !emInp || !igInp) return;
+
+      const waRes = parsearWhatsappArPerfil(waInp.value);
+      const waFallback = parsearWhatsappArPerfil(GSTATE.nodo?.gestor_telefono || '');
+      const waFallbackDisp = waFallback.ok && waFallback.display ? waFallback.display : (GSTATE.nodo?.gestor_telefono || 'sin teléfono');
+
+      if (formatearAlSalir && !waRes.vacio && waRes.ok && waRes.inputFormateado) {
+        waInp.value = waRes.inputFormateado;
+      }
+      if (waEst) {
+        if (waRes.vacio) {
+          waEst.style.color = 'var(--muted)';
+          waEst.textContent = `Sin número dedicado: tu tienda usa el WhatsApp actual (${waFallbackDisp}).`;
+        } else if (waRes.ok) {
+          waEst.style.color = '#15803d';
+          waEst.textContent = `✅ Formato listo para WhatsApp: ${waRes.display}${waRes.avisoSaneado}`;
+        } else {
+          waEst.style.color = '#b91c1c';
+          waEst.textContent = `⚠️ ${waRes.error}`;
+        }
+      }
+      if (btnProbarWa) {
+        const tieneParaProbar = (!waRes.vacio && waRes.ok) || (waRes.vacio && Boolean(waFallback.valor));
+        btnProbarWa.disabled = !tieneParaProbar;
+      }
+
+      const emRes = parsearEmailPerfil(emInp.value);
+      if (formatearAlSalir && !emRes.vacio && emRes.ok) {
+        emInp.value = emRes.valor;
+      }
+      if (emEst) {
+        if (emRes.vacio) {
+          emEst.style.color = 'var(--muted)';
+          emEst.textContent = 'Opcional: si lo dejás vacío, no se muestra correo en tu tienda.';
+        } else if (emRes.ok) {
+          emEst.style.color = '#15803d';
+          emEst.textContent = `✅ Correo válido: ${emRes.valor}`;
+        } else {
+          emEst.style.color = '#b91c1c';
+          emEst.textContent = `⚠️ ${emRes.error}`;
+        }
+      }
+      const emActivo = !emRes.vacio && emRes.ok;
+      if (emWrap) emWrap.style.opacity = emActivo ? '1' : '0.46';
+      if (emSwTienda) emSwTienda.disabled = !emActivo;
+      if (emSwLamda) emSwLamda.disabled = !emActivo;
+
+      const igRes = parsearInstagramPerfil(igInp.value);
+      if (formatearAlSalir && !igRes.vacio && igRes.ok) {
+        igInp.value = `@${igRes.usuario}`;
+      }
+      if (igEst) {
+        if (igRes.vacio) {
+          igEst.style.color = 'var(--muted)';
+          igEst.textContent = 'Opcional: si lo dejás vacío, no se muestra Instagram en tu tienda ni en difusión.';
+        } else if (igRes.ok) {
+          igEst.style.color = '#15803d';
+          igEst.textContent = `✅ Perfil listo: @${igRes.usuario} (${igRes.url})`;
+        } else {
+          igEst.style.color = '#b91c1c';
+          igEst.textContent = `⚠️ ${igRes.error}`;
+        }
+      }
+      const igActivo = !igRes.vacio && igRes.ok;
+      if (igWrap) igWrap.style.opacity = igActivo ? '1' : '0.46';
+      if (igSwTienda) igSwTienda.disabled = !igActivo;
+      if (igSwDif) igSwDif.disabled = !igActivo;
+      if (btnProbarIg) btnProbarIg.disabled = !igActivo;
+
+      if (btnGuardar) {
+        btnGuardar.disabled = !(waRes.ok && emRes.ok && igRes.ok);
+      }
+    }
+
+    function probarWhatsappPerfilGestor() {
+      const waInp = document.getElementById('perfil-wa-input');
+      const waRes = parsearWhatsappArPerfil(waInp?.value || '');
+      const numero = (!waRes.vacio && waRes.ok)
+        ? waRes.valor
+        : parsearWhatsappArPerfil(GSTATE.nodo?.gestor_telefono || '').valor;
+      if (!numero) {
+        mostrarAvisoPantallaGestor('Ingresá primero un número de WhatsApp argentino válido de 10 dígitos.', 'error');
+        return;
+      }
+      const marca = GSTATE.nodo?.nombre_marca || 'mi tienda';
+      const txt = `Hola! Prueba de enlace de WhatsApp de atención para ${marca}.`;
+      window.open(`https://wa.me/${numero}?text=${encodeURIComponent(txt)}`, '_blank', 'noopener');
+    }
+
+    function probarInstagramPerfilGestor() {
+      const igInp = document.getElementById('perfil-ig-input');
+      const igRes = parsearInstagramPerfil(igInp?.value || '');
+      if (!igRes.ok || !igRes.url) {
+        mostrarAvisoPantallaGestor('Ingresá primero un usuario de Instagram válido.', 'error');
+        return;
+      }
+      window.open(igRes.url, '_blank', 'noopener');
+    }
+
+    async function guardarPerfilContactoGestor() {
+      actualizarEstadoFormularioPerfilGestor(true);
+      const waRes = parsearWhatsappArPerfil(document.getElementById('perfil-wa-input')?.value || '');
+      const emRes = parsearEmailPerfil(document.getElementById('perfil-email-input')?.value || '');
+      const igRes = parsearInstagramPerfil(document.getElementById('perfil-ig-input')?.value || '');
+      const fb = document.getElementById('perfil-guardar-feedback');
+      const btn = document.getElementById('btn-guardar-perfil-gestor');
+
+      const mostrarFb = (msg, esError = false) => {
+        if (!fb) return;
+        fb.style.display = 'block';
+        fb.style.background = esError ? '#fef2f2' : '#f0fdf4';
+        fb.style.border = esError ? '1px solid #fecaca' : '1px solid #86efac';
+        fb.style.color = esError ? '#991b1b' : '#166534';
+        fb.textContent = msg;
+      };
+
+      if (!waRes.ok) return mostrarFb(waRes.error, true);
+      if (!emRes.ok) return mostrarFb(emRes.error, true);
+      if (!igRes.ok) return mostrarFb(igRes.error, true);
+
+      const payload = {
+        config_perfil_publico: {
+          whatsapp_tienda: waRes.valor,
+          mostrar_whatsapp_tienda: Boolean(document.getElementById('perfil-wa-mostrar')?.checked ?? true),
+          email_tienda: emRes.valor,
+          mostrar_email_tienda: Boolean(emRes.valor && document.getElementById('perfil-email-mostrar-tienda')?.checked),
+          usar_email_para_lamda: Boolean(emRes.valor && (document.getElementById('perfil-email-lamda')?.checked ?? true)),
+          instagram_usuario: igRes.usuario,
+          mostrar_instagram_tienda: Boolean(igRes.usuario && (document.getElementById('perfil-ig-mostrar-tienda')?.checked ?? true)),
+          incluir_instagram_en_difusion: Boolean(igRes.usuario && document.getElementById('perfil-ig-en-difusion')?.checked)
+        }
+      };
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Guardando...';
+      }
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/perfil-contacto`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarFb(data.error || `Error HTTP ${resp.status} al guardar tu perfil.`, true);
+          return;
+        }
+        GSTATE.compartirKit = null;
+        GSTATE.aficheQrDataUrl = '';
+        mostrarAvisoPantallaGestor('✅ Mi Perfil y Contacto actualizado correctamente.', 'ok');
+        await cargarPanelGestor();
+        mostrarFb('✅ Cambios guardados y aplicados en tu tienda.');
+      } catch (_) {
+        mostrarFb('Error de comunicación al guardar Mi Perfil y Contacto.', true);
+      } finally {
+        const btnPost = document.getElementById('btn-guardar-perfil-gestor');
+        if (btnPost) {
+          btnPost.textContent = '💾 Guardar Mi Perfil y Contacto';
+        }
+        actualizarEstadoFormularioPerfilGestor(false);
       }
     }
 

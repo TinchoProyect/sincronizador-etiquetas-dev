@@ -1493,6 +1493,24 @@ router.put('/gestor/:nodoId/config-logistica', autenticarGestorSiPublicoOToken, 
 });
 
 /**
+ * PUT /api/produccion/nodos/gestor/:nodoId/perfil-contacto
+ * Autogestión segura de "Mi Perfil y Contacto" (WhatsApp comercial de tienda, Email oficial de marca e Instagram).
+ * Aislado 100%: actualiza únicamente `config_perfil_publico`, sin alterar jamás el teléfono operativo/contable en LAMDA.
+ */
+router.put('/gestor/:nodoId/perfil-contacto', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para editar el perfil de otro Nodo.' });
+        }
+        const resultado = await nodosService.actualizarPerfilContactoGestorNodo(req.params.nodoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en PUT /gestor/:nodoId/perfil-contacto:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
  * GET /api/produccion/nodos/gestor/:nodoId/compartir-kit
  * Devuelve URL pública oficial Marca Blanca, QR PNG limpio y ofertas publicadas compartibles
  * para difusión directa del Gestor (WhatsApp abierto, redes, descarga QR).

@@ -2416,6 +2416,72 @@
       background: #0f172a;
       border-top: 1px solid rgba(255, 255, 255, 0.1);
     }
+
+    /* Canales opcionales del Perfil Público (Instagram + Email) — ocultos si no aplica */
+    .tienda-footer-perfil {
+      display: none;
+      margin: 22px 0 8px 0;
+      padding: 14px 12px 6px;
+      border-top: 1px dashed var(--border);
+      text-align: center;
+    }
+    .tienda-footer-perfil.visible {
+      display: block;
+    }
+    .tienda-footer-perfil-links {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .tienda-footer-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--surface-warm);
+      color: var(--text);
+      font-size: 0.78rem;
+      font-weight: 800;
+      text-decoration: none;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+    .tienda-footer-pill:hover {
+      border-color: var(--brand);
+      transform: translateY(-1px);
+    }
+    .drawer-ig-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      width: 100%;
+      min-height: 40px;
+      padding: 8px 13px;
+      margin-top: 8px;
+      border-radius: 11px;
+      border: 1px solid var(--border);
+      background: var(--surface-warm);
+      color: var(--text);
+      font-size: 0.84rem;
+      font-weight: 900;
+      text-decoration: none;
+    }
+    .drawer-email-row {
+      margin-top: 8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.78rem;
+    }
   </style>
 </head>
 <body>
@@ -2524,6 +2590,9 @@
 
       <!-- Grilla de Productos Publicados por el Gestor -->
       <div class="products-grid" id="products-grid"></div>
+
+      <!-- Pie discreto de canales públicos opcionales (Instagram / Email) — oculto si no aplica -->
+      <footer class="tienda-footer-perfil" id="tienda-footer-perfil-social" data-testid="tienda-footer-perfil-social"></footer>
     </div>
   </main>
 
@@ -3411,9 +3480,9 @@
       const trackingTok = String(ped.tracking_token || '').trim();
       const telRespaldo = String(opciones.telefonoRespaldo || ped.vecino_telefono || '').trim();
       const nombreMarca = String(fuenteBanco?.nombre_marca || STATE.nodo?.nombre_marca || 'la tienda').trim();
-      const telGestorDigits = String(fuenteBanco?.gestor_telefono || STATE.nodo?.gestor_telefono || '').replace(/\D/g, '');
+      const telGestorDigits = obtenerWhatsappPublicoEfectivoTienda(fuenteBanco || STATE.nodo);
       const waOpcionalHref = telGestorDigits
-        ? `https://wa.me/${telGestorDigits.startsWith('54') ? telGestorDigits : '549' + telGestorDigits}?text=${encodeURIComponent(`Hola! Te paso el aviso de transferencia de mi pedido #${ped.codigo_pedido} en ${nombreMarca} por ${fmt(montoSugeridoInput)}.`)}`
+        ? `https://wa.me/${telGestorDigits}?text=${encodeURIComponent(`Hola! Te paso el aviso de transferencia de mi pedido #${ped.codigo_pedido} en ${nombreMarca} por ${fmt(montoSugeridoInput)}.`)}`
         : '';
 
       const yaInformoTodoSinReclamo = !reclamoActivo && declarado > 0 && saldoPendDeclarar <= 0.5;
@@ -4227,6 +4296,7 @@
       renderizarDrawerNodoTienda();
       renderCategorias();
       renderCatalogo();
+      renderizarPiePerfilPublicoTienda();
       actualizarBarraCarrito();
       if (VISOR_FOTOS_STATE.abierto) {
         renderizarFichaInferiorVisorProducto();
@@ -4277,11 +4347,100 @@
       cargarTienda('');
     }
 
+    function obtenerPerfilContactoPublicoTienda(nodoObj = STATE.nodo) {
+      const n = nodoObj || {};
+      const p = (n.config_perfil_publico && typeof n.config_perfil_publico === 'object') ? n.config_perfil_publico : {};
+      const mostrarWa = p.mostrar_whatsapp_tienda !== undefined ? Boolean(p.mostrar_whatsapp_tienda) : true;
+      const rawWa = mostrarWa
+        ? String(p.whatsapp_tienda_efectivo || n.whatsapp_tienda_efectivo || n.gestor_telefono || '').replace(/\D+/g, '')
+        : '';
+      const waFinal = rawWa ? (rawWa.startsWith('54') ? rawWa : `549${rawWa}`) : '';
+      const emailTienda = (p.mostrar_email_tienda && p.email_tienda) ? String(p.email_tienda).trim().toLowerCase() : '';
+      const igUsuario = (p.mostrar_instagram_tienda && p.instagram_usuario) ? String(p.instagram_usuario).replace(/^@+/, '').trim().toLowerCase() : '';
+      const igUrl = igUsuario ? (String(p.instagram_url || '').trim() || `https://www.instagram.com/${igUsuario}/`) : '';
+      return {
+        whatsapp_efectivo: waFinal,
+        mostrar_whatsapp_tienda: Boolean(mostrarWa && waFinal),
+        email_tienda: emailTienda,
+        mostrar_email_tienda: Boolean(emailTienda),
+        instagram_usuario: igUsuario,
+        instagram_url: igUrl,
+        mostrar_instagram_tienda: Boolean(igUsuario && igUrl)
+      };
+    }
+
+    function obtenerWhatsappPublicoEfectivoTienda(nodoObj = STATE.nodo) {
+      return obtenerPerfilContactoPublicoTienda(nodoObj).whatsapp_efectivo;
+    }
+
+    function copiarEmailTiendaPublica(emailStr) {
+      const clean = String(emailStr || '').trim();
+      if (!clean) return;
+      navigator.clipboard?.writeText(clean)
+        .then(() => {
+          if (typeof mostrarToastTienda === 'function') {
+            mostrarToastTienda(`✉️ Correo copiado: ${clean}`);
+          }
+        })
+        .catch(() => {});
+    }
+
+    function renderizarCanalesAdicionalesDrawerTienda(nodoObj = STATE.nodo) {
+      const perf = obtenerPerfilContactoPublicoTienda(nodoObj);
+      if (!perf.mostrar_instagram_tienda && !perf.mostrar_email_tienda) return '';
+      return `
+        ${perf.mostrar_instagram_tienda ? `
+          <a id="drawer-ig-link" data-testid="drawer-ig-link" href="${esc(perf.instagram_url)}" target="_blank" rel="noopener" class="drawer-ig-btn">
+            <span>📸</span>
+            <span>Seguinos en @${esc(perf.instagram_usuario)}</span>
+          </a>
+        ` : ''}
+        ${perf.mostrar_email_tienda ? `
+          <div id="drawer-email-box" data-testid="drawer-email-box" class="drawer-email-row">
+            <a href="mailto:${esc(perf.email_tienda)}" style="color:var(--text); font-weight:800; text-decoration:none; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+              ✉️ ${esc(perf.email_tienda)}
+            </a>
+            <button type="button" onclick="copiarEmailTiendaPublica('${esc(perf.email_tienda)}'); this.textContent='✓';"
+              style="border:1px solid var(--border); background:#fff; color:var(--brand-dark); border-radius:7px; padding:4px 8px; font-family:inherit; font-size:0.72rem; font-weight:900; cursor:pointer; flex-shrink:0;">
+              Copiar
+            </button>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    function renderizarPiePerfilPublicoTienda() {
+      const foot = document.getElementById('tienda-footer-perfil-social');
+      if (!foot) return;
+      const perf = obtenerPerfilContactoPublicoTienda(STATE.nodo);
+      if (!perf.mostrar_instagram_tienda && !perf.mostrar_email_tienda) {
+        foot.classList.remove('visible');
+        foot.innerHTML = '';
+        return;
+      }
+      foot.innerHTML = `
+        <div class="tienda-footer-perfil-links">
+          ${perf.mostrar_instagram_tienda ? `
+            <a id="footer-ig-link" data-testid="footer-ig-link" href="${esc(perf.instagram_url)}" target="_blank" rel="noopener" class="tienda-footer-pill">
+              <span>📸</span>
+              <span>@${esc(perf.instagram_usuario)}</span>
+            </a>
+          ` : ''}
+          ${perf.mostrar_email_tienda ? `
+            <a id="footer-email-link" data-testid="footer-email-link" href="mailto:${esc(perf.email_tienda)}" class="tienda-footer-pill">
+              <span>✉️</span>
+              <span>${esc(perf.email_tienda)}</span>
+            </a>
+          ` : ''}
+        </div>
+      `;
+      foot.classList.add('visible');
+    }
+
     function obtenerUrlWhatsappCoordinarGestor() {
       const nodo = STATE.nodo || {};
-      const telDigits = String(nodo.gestor_telefono || '').replace(/\D+/g, '');
-      if (!telDigits) return '';
-      const telWa = telDigits.startsWith('54') ? telDigits : `549${telDigits}`;
+      const telWa = obtenerWhatsappPublicoEfectivoTienda(nodo);
+      if (!telWa) return '';
       const saludo = esPerfilEcommerceTienda(nodo)
         ? `Hola ${nodo.gestor_nombre || ''}! Te escribo desde la tienda online de ${nodo.nombre_marca || 'la marca'}.`
         : `Hola ${nodo.gestor_nombre || ''}! Te escribo desde la tienda vecinal de ${nodo.nombre_marca || 'nuestro barrio'}.`;
@@ -4299,6 +4458,9 @@
         if (!el) continue;
         el.setAttribute('href', href || '#');
         el.setAttribute('title', `Comunicarte por WhatsApp con ${gestorNombre}`);
+        if (idEl === 'bnav-coordinar' || idEl === 'desk-nav-coordinar') {
+          el.style.display = href ? '' : 'none';
+        }
       }
       const deskCoord = document.getElementById('desk-nav-coordinar');
       if (deskCoord) {
@@ -4524,6 +4686,7 @@
                 <span>💬 Escribir por WhatsApp</span>
               </a>
             ` : ''}
+            ${renderizarCanalesAdicionalesDrawerTienda(nodo)}
           </div>
 
           <!-- 3. Seguimiento de Pedido y Mi Cuenta -->
@@ -4641,6 +4804,7 @@
                 <span>💬 Escribir por WhatsApp</span>
               </a>
             ` : ''}
+            ${renderizarCanalesAdicionalesDrawerTienda(nodo)}
           </div>
 
           <!-- 3. Seguimiento y Mi Cuenta -->
@@ -4729,6 +4893,7 @@
               <span>💬 Escribir por WhatsApp</span>
             </a>
           ` : ''}
+          ${renderizarCanalesAdicionalesDrawerTienda(nodo)}
         </div>
 
         <!-- 3. Seguimiento de Pedido y Mi Cuenta -->
@@ -7532,8 +7697,7 @@
 
       const mostrarOpcionesWaDirecto = () => {
         _ultimoPayloadWaTienda = { destinatario_nombre: nombreMarca, telefono_original: '', mensaje };
-        const telGestorClean = String(STATE.nodo?.gestor_telefono || '').replace(/\D/g, '');
-        const telGestorWa = telGestorClean ? (telGestorClean.startsWith('54') ? telGestorClean : `549${telGestorClean}`) : '';
+        const telGestorWa = obtenerWhatsappPublicoEfectivoTienda(STATE.nodo);
         const waShareUrl = `https://wa.me/${telGestorWa}?text=${encodeURIComponent(mensaje)}`;
         if (box) {
           box.innerHTML = `
@@ -8609,13 +8773,12 @@
       const esModoLabTracking = Boolean(data.modo_laboratorio);
       const telPruebasTracking = String(data.telefono_whatsapp_pruebas || '5492216615746').replace(/\D+/g, '') || '5492216615746';
       const armarHrefWaGestor = (textoBase) => {
-        const telGestorDigits = String(nodo.gestor_telefono || '').replace(/\D+/g, '');
-        if (!telGestorDigits && !esModoLabTracking) return '';
+        const telWa = obtenerWhatsappPublicoEfectivoTienda(nodo);
+        if (!telWa) return '';
         if (esModoLabTracking) {
-          const msgLab = `[PRUEBA LAB · Aviso a Gestor: ${nodo.gestor_nombre || 'Gestor'} (${nodo.gestor_telefono || '-'})]\n\n${textoBase}`;
+          const msgLab = `[PRUEBA LAB · Aviso a Tienda: ${nodo.nombre_marca || nodo.gestor_nombre || 'Tienda'} (${telWa})]\n\n${textoBase}`;
           return `https://wa.me/${telPruebasTracking}?text=${encodeURIComponent(msgLab)}`;
         }
-        const telWa = telGestorDigits.startsWith('54') ? telGestorDigits : `549${telGestorDigits}`;
         return `https://wa.me/${telWa}?text=${encodeURIComponent(textoBase)}`;
       };
       const esEcSeg = Boolean(ped.envio_postal || seg.es_ecommerce_postal) || ['PAQUETERIA_DOMICILIO', 'PAQUETERIA_SUCURSAL', 'ENCOMIENDA', 'ENVIO_POSTAL'].includes(String(ped.modalidad_entrega || '').toUpperCase());
@@ -9118,9 +9281,9 @@
       const pendTransf = Number(res.total_pendiente_transferencia || 0);
       const pendEfvo = Number(res.total_pendiente_efectivo || 0);
 
-      const telGestorDigits = String(nodo.gestor_telefono || '').replace(/\D+/g, '');
-      const waGestorHref = telGestorDigits
-        ? `https://wa.me/${telGestorDigits.startsWith('54') ? telGestorDigits : '549' + telGestorDigits}?text=${encodeURIComponent(`Hola ${nodo.gestor_nombre || ''}! Te escribo desde mi cuenta en ${nodo.nombre_marca}.`)}`
+      const telGestorWaMc = obtenerWhatsappPublicoEfectivoTienda(nodo);
+      const waGestorHref = telGestorWaMc
+        ? `https://wa.me/${telGestorWaMc}?text=${encodeURIComponent(`Hola ${nodo.gestor_nombre || ''}! Te escribo desde mi cuenta en ${nodo.nombre_marca}.`)}`
         : '';
 
       // Bloque contextual de pago dentro de la tarjeta principal de estado de cuenta

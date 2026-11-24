@@ -206,6 +206,202 @@ function normalizarConfigRetiroLocal(raw = {}, nodoFallback = {}) {
     };
 }
 
+/**
+ * Normaliza y valida un número de celular WhatsApp de Argentina a formato canónico `549XXXXXXXXXX` (13 dígitos).
+ * - Acepta entradas con `+54 9`, `0` inicial de área, `15` pegado después del código de área (2, 3 o 4 dígitos), guiones o espacios.
+ * - Si el valor viene vacío devuelve `{ ok: true, valor: '', display: '' }` (100% opcional).
+ */
+function normalizarWhatsappArgentina(raw = '') {
+    const txt = String(raw ?? '').trim();
+    if (!txt) {
+        return { ok: true, valor: '', display: '', local10: '' };
+    }
+    let d = txt.replace(/\D+/g, '');
+    if (d.startsWith('0054')) d = d.slice(2);
+    if (d.startsWith('549') && d.length >= 12) {
+        d = d.slice(3);
+    } else if (d.startsWith('54') && d.length >= 12) {
+        d = d.slice(2);
+    }
+    if (d.startsWith('0')) {
+        d = d.slice(1);
+    }
+    // Quitar prefijo móvil `15` pegado después del código de área (2, 3 o 4 dígitos -> total 12 dígitos)
+    if (d.length === 12) {
+        if (d.startsWith('1115')) {
+            d = '11' + d.slice(4);
+        } else if (d.slice(3, 5) === '15') {
+            d = d.slice(0, 3) + d.slice(5);
+        } else if (d.slice(4, 6) === '15') {
+            d = d.slice(0, 4) + d.slice(6);
+        }
+    }
+    // Caso `9` suelto adelante de los 10 dígitos
+    if (d.length === 11 && d.startsWith('9')) {
+        d = d.slice(1);
+    }
+    if (!/^[1-9]\d{9}$/.test(d) || d.startsWith('15')) {
+        return {
+            ok: false,
+            valor: '',
+            display: '',
+            local10: '',
+            error: 'Ingresá un celular argentino válido de 10 dígitos (código de área + número, sin 0 ni 15). Ej: 221 670-2981 o 11 5555-4444.'
+        };
+    }
+    const valor = `549${d}`;
+    const display = d.startsWith('11')
+        ? `+54 9 11 ${d.slice(2, 6)}-${d.slice(6)}`
+        : `+54 9 ${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6)}`;
+    return { ok: true, valor, display, local10: d };
+}
+
+/**
+ * Normaliza y valida una casilla de correo electrónico oficial de marca (100% opcional).
+ */
+function normalizarEmailPerfilNodo(raw = '') {
+    const limpio = String(raw ?? '').trim().toLowerCase();
+    if (!limpio) {
+        return { ok: true, valor: '' };
+    }
+    if (limpio.length > 140 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(limpio)) {
+        return {
+            ok: false,
+            valor: '',
+            error: 'Ingresá un correo electrónico válido (ej: tienda@gmail.com).'
+        };
+    }
+    return { ok: true, valor: limpio };
+}
+
+/**
+ * Normaliza y valida un usuario o enlace de perfil de Instagram (100% opcional).
+ * Acepta `@usuario`, `usuario` o `https://instagram.com/usuario/`.
+ */
+function normalizarInstagramUsuario(raw = '') {
+    let txt = String(raw ?? '').trim();
+    if (!txt) {
+        return { ok: true, usuario: '', url: '' };
+    }
+    txt = txt.replace(/^https?:\/\//i, '').replace(/^(?:www\.|m\.)?instagram\.com\//i, '');
+    txt = txt.split(/[?#]/)[0].trim();
+    const primerSeg = txt.split('/').filter(Boolean)[0] || '';
+    const usuario = primerSeg.replace(/^@+/, '').trim().toLowerCase();
+    const rutasReservadas = new Set(['p', 'reel', 'reels', 'stories', 'explore', 'accounts', 'direct', 'tv', 'channel']);
+    if (!usuario || rutasReservadas.has(usuario)) {
+        return {
+            ok: false,
+            usuario: '',
+            url: '',
+            error: 'Ingresá el usuario o enlace de tu perfil de Instagram (ej: @manso.ok), no el link de una publicación.'
+        };
+    }
+    if (
+        usuario.length > 30 ||
+        !/^[a-z0-9._]+$/.test(usuario) ||
+        usuario.startsWith('.') ||
+        usuario.endsWith('.') ||
+        usuario.includes('..')
+    ) {
+        return {
+            ok: false,
+            usuario: '',
+            url: '',
+            error: 'El usuario de Instagram solo puede contener letras, números, puntos y guiones bajos (hasta 30 caracteres).'
+        };
+    }
+    return {
+        ok: true,
+        usuario,
+        url: `https://www.instagram.com/${usuario}/`
+    };
+}
+
+/**
+ * Normaliza la estructura JSONB `config_perfil_publico` de un Nodo (100% opcional).
+ * Cuando `estricto === true` (guardado desde Panel Gestor o ABM), lanza Error HTTP 400 ante cualquier formato inválido.
+ */
+function normalizarConfigPerfilPublico(raw = {}, opciones = {}) {
+    const estricto = Boolean(opciones?.estricto);
+    const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+
+    const resWa = normalizarWhatsappArgentina(src.whatsapp_tienda ?? '');
+    if (estricto && !resWa.ok) {
+        const err = new Error(resWa.error);
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const resEm = normalizarEmailPerfilNodo(src.email_tienda ?? '');
+    if (estricto && !resEm.ok) {
+        const err = new Error(resEm.error);
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const resIg = normalizarInstagramUsuario(src.instagram_usuario ?? '');
+    if (estricto && !resIg.ok) {
+        const err = new Error(resIg.error);
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const emailVal = resEm.ok ? resEm.valor : '';
+    const igUser = resIg.ok ? resIg.usuario : '';
+    const igUrl = resIg.ok ? resIg.url : '';
+
+    return {
+        whatsapp_tienda: resWa.ok ? resWa.valor : '',
+        whatsapp_tienda_display: resWa.ok ? resWa.display : '',
+        mostrar_whatsapp_tienda: src.mostrar_whatsapp_tienda !== undefined ? Boolean(src.mostrar_whatsapp_tienda) : true,
+        email_tienda: emailVal,
+        mostrar_email_tienda: Boolean(emailVal) && Boolean(src.mostrar_email_tienda),
+        usar_email_para_lamda: Boolean(emailVal) && (src.usar_email_para_lamda !== undefined ? Boolean(src.usar_email_para_lamda) : true),
+        instagram_usuario: igUser,
+        instagram_url: igUrl,
+        mostrar_instagram_tienda: Boolean(igUser) && (src.mostrar_instagram_tienda !== undefined ? Boolean(src.mostrar_instagram_tienda) : true),
+        incluir_instagram_en_difusion: Boolean(igUser) && Boolean(src.incluir_instagram_en_difusion),
+        updated_at: src.updated_at || null
+    };
+}
+
+/**
+ * Resuelve los canales públicos efectivos para la Tienda del Vecino, Seguimiento y Mi Cuenta:
+ * - Si `mostrar_whatsapp_tienda` está apagado => oculta WhatsApp (`''`).
+ * - Si el nodo configuró `whatsapp_tienda` dedicado => usa ese número (sin exponer jamás el teléfono personal/logístico `gestor_telefono`).
+ * - Si no configuró WhatsApp dedicado => fallback transparente al `gestor_telefono` actual.
+ * - Solo expone Email e Instagram si el nodo activó sus perillas de visibilidad pública.
+ */
+function construirPerfilContactoPublicoTienda(nodoLike = {}) {
+    const perfil = normalizarConfigPerfilPublico(nodoLike?.config_perfil_publico);
+    let whatsappEfectivo = '';
+    if (perfil.mostrar_whatsapp_tienda) {
+        if (perfil.whatsapp_tienda) {
+            whatsappEfectivo = perfil.whatsapp_tienda;
+        } else {
+            const fallbackNorm = normalizarWhatsappArgentina(nodoLike?.gestor_telefono || '');
+            whatsappEfectivo = fallbackNorm.ok && fallbackNorm.valor
+                ? fallbackNorm.valor
+                : String(nodoLike?.gestor_telefono || '').replace(/\D+/g, '');
+        }
+    }
+    const dispEfectivo = whatsappEfectivo
+        ? (normalizarWhatsappArgentina(whatsappEfectivo).display || whatsappEfectivo)
+        : '';
+
+    return {
+        whatsapp_tienda_efectivo: whatsappEfectivo,
+        whatsapp_tienda_display: dispEfectivo,
+        mostrar_whatsapp_tienda: Boolean(perfil.mostrar_whatsapp_tienda && whatsappEfectivo),
+        usa_whatsapp_dedicado: Boolean(perfil.whatsapp_tienda),
+        email_tienda: (perfil.mostrar_email_tienda && perfil.email_tienda) ? perfil.email_tienda : '',
+        mostrar_email_tienda: Boolean(perfil.mostrar_email_tienda && perfil.email_tienda),
+        instagram_usuario: (perfil.mostrar_instagram_tienda && perfil.instagram_usuario) ? perfil.instagram_usuario : '',
+        instagram_url: (perfil.mostrar_instagram_tienda && perfil.instagram_url) ? perfil.instagram_url : '',
+        mostrar_instagram_tienda: Boolean(perfil.mostrar_instagram_tienda && perfil.instagram_usuario)
+    };
+}
+
 function resolverModulosActivosNodo(nodoLike = {}, overridesRaw = null) {
     const perfil = normalizarPerfilOperativoNodo(nodoLike?.perfil_operativo);
     const preset = obtenerPresetModulosActivos(perfil);
@@ -4186,6 +4382,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS config_paqueteria JSONB NOT NULL DEFAULT '{}'::jsonb,
                 ADD COLUMN IF NOT EXISTS config_retiro_local JSONB NOT NULL DEFAULT '{}'::jsonb,
                 ADD COLUMN IF NOT EXISTS config_video_bienvenida JSONB NOT NULL DEFAULT '{}'::jsonb,
+                ADD COLUMN IF NOT EXISTS config_perfil_publico JSONB NOT NULL DEFAULT '{}'::jsonb,
                 ADD COLUMN IF NOT EXISTS diccionario_textos JSONB NOT NULL DEFAULT '{}'::jsonb,
                 ADD COLUMN IF NOT EXISTS plantilla_origen_id INTEGER REFERENCES public.nodos_maestro(id) ON DELETE SET NULL;
 
@@ -6751,6 +6948,15 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
             throw new Error('Para activar Cuenta Madre Unificada debe seleccionar un Cliente Titular Madre válido.');
         }
 
+        const configPerfilPrevio = normalizarConfigPerfilPublico(existenteRow?.config_perfil_publico || {});
+        const configPerfilPublicoEfectivo = (payload.config_perfil_publico && typeof payload.config_perfil_publico === 'object')
+            ? normalizarConfigPerfilPublico({
+                ...configPerfilPrevio,
+                ...payload.config_perfil_publico,
+                updated_at: new Date().toISOString()
+            }, { estricto: true })
+            : (idExistente ? configPerfilPrevio : normalizarConfigPerfilPublico({}));
+
         let nodoGuardado;
         if (idExistente) {
             const upd = await client.query(
@@ -6802,6 +7008,7 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     alicuota_iibb_margen_pct = $46,
                     cobro_efectivo_entrega = $47,
                     config_retiro_local = $48::jsonb,
+                    config_perfil_publico = $49::jsonb,
                     updated_at = NOW()
                 WHERE id = $32
                 RETURNING *`,
@@ -6862,7 +7069,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     alicuotaIvaMargenEfectiva,
                     alicuotaIibbMargenEfectiva,
                     cobroEfectivoEntregaEfectivo,
-                    JSON.stringify(configRetiroLocalEfectiva)
+                    JSON.stringify(configRetiroLocalEfectiva),
+                    JSON.stringify(configPerfilPublicoEfectivo)
                 ]
             );
             nodoGuardado = upd.rows[0];
@@ -6915,9 +7123,10 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     latitud, longitud, mostrar_ingredientes_tienda, gestor_token,
                     bajada_marca, slug_historico, tema_visual,
                     perfil_operativo, modulos_activos, config_paqueteria, diccionario_textos, plantilla_origen_id,
-                    alicuota_iva_margen_pct, alicuota_iibb_margen_pct, cobro_efectivo_entrega, config_retiro_local
+                    alicuota_iva_margen_pct, alicuota_iibb_margen_pct, cobro_efectivo_entrega, config_retiro_local,
+                    config_perfil_publico
                 ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$38,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$35,$36,$37::jsonb,$39,$40::jsonb,$41::jsonb,$42::jsonb,$43,$44,$45,$46,$47::jsonb
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$38,$14,$15,$16,$17,$18,$19,$32,$33,$34,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$35,$36,$37::jsonb,$39,$40::jsonb,$41::jsonb,$42::jsonb,$43,$44,$45,$46,$47::jsonb,$48::jsonb
                 ) RETURNING *`,
                 [
                     codigoNodo,
@@ -6975,7 +7184,8 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     alicuotaIvaMargenEfectiva,
                     alicuotaIibbMargenEfectiva,
                     cobroEfectivoEntregaEfectivo,
-                    JSON.stringify(configRetiroLocalEfectiva)
+                    JSON.stringify(configRetiroLocalEfectiva),
+                    JSON.stringify(configPerfilPublicoEfectivo)
                 ]
             );
             nodoGuardado = ins.rows[0];
@@ -9654,6 +9864,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
 
     const modoVidrieraNodo = normalizarModoVidrieraTienda(nodo.modo_vidriera_tienda);
     const configVideoBienvenidaNodo = normalizarConfigVideoBienvenida(nodo.config_video_bienvenida);
+    const configPerfilGestorNodo = normalizarConfigPerfilPublico(nodo.config_perfil_publico);
+    const perfilPublicoTienda = construirPerfilContactoPublicoTienda(nodo);
     const configVideoBienvenidaPublico = (configVideoBienvenidaNodo.tiene_video && configVideoBienvenidaNodo.activo && configVideoBienvenidaNodo.mostrar_en_tienda)
         ? {
             tiene_video: true,
@@ -9692,6 +9904,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             config_paqueteria: configPaqueteriaNodo,
             config_retiro_local: configRetiroLocalNodo,
             config_video_bienvenida: configVideoBienvenidaNodo,
+            config_perfil_publico: configPerfilGestorNodo,
+            whatsapp_tienda_efectivo: perfilPublicoTienda.whatsapp_tienda_efectivo,
             diccionario_textos: diccionarioTextosNodo,
             mostrar_ingredientes_tienda: mostrarIngredientesNodo,
             permitir_retiro_nodo: puedeRetiroNodo,
@@ -9710,7 +9924,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             subtitulo_marca: nodo.subtitulo_marca,
             modo_vidriera_tienda: modoVidrieraNodo,
             gestor_nombre: nodo.gestor_nombre,
-            gestor_telefono: nodo.gestor_telefono,
+            gestor_telefono: perfilPublicoTienda.whatsapp_tienda_efectivo,
+            whatsapp_tienda_efectivo: perfilPublicoTienda.whatsapp_tienda_efectivo,
             barrio_zona: nodo.barrio_zona,
             direccion_retiro: nodo.direccion_retiro,
             banco_display: bancoEfectivo,
@@ -9726,6 +9941,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             config_paqueteria: configPaqueteriaNodo,
             config_retiro_local: configRetiroLocalNodo,
             config_video_bienvenida: configVideoBienvenidaPublico,
+            config_perfil_publico: perfilPublicoTienda,
             diccionario_textos: diccionarioTextosNodo,
             permitir_envio_barrial: puedeRepartoPropio,
             permitir_retiro_nodo: puedeRetiroNodo,
@@ -9948,7 +10164,7 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
             payload.nombre_marca || actual.nombre_marca,
             payload.subtitulo_marca ?? actual.subtitulo_marca,
             payload.gestor_nombre || actual.gestor_nombre,
-            payload.gestor_telefono ?? actual.gestor_telefono,
+            actual.gestor_telefono, // Blindaje: el teléfono titular/operativo LAMDA nunca se sobrescribe desde Panel Gestor
             payload.barrio_zona ?? actual.barrio_zona,
             payload.direccion_retiro ?? actual.direccion_retiro,
             payload.alias_bancario_display ?? actual.alias_bancario_display,
@@ -9972,6 +10188,71 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
     );
 
     return upd.rows[0];
+}
+
+/**
+ * Autogestión segura de "Mi Perfil y Contacto" desde el Panel del Gestor (100% opcional):
+ * - Valida estrictamente WhatsApp comercial de Argentina (`549` + 10 dígitos), Email de marca y usuario de Instagram.
+ * - Actualiza EXCLUSIVAMENTE `public.nodos_maestro.config_perfil_publico`.
+ * - JAMÁS modifica `gestor_telefono`, `bunker_clientes`, `public.clientes` ni `public.clientes_domicilios`.
+ */
+async function actualizarPerfilContactoGestorNodo(nodoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+
+    const nid = Number(nodoId || 0);
+    if (!Number.isInteger(nid) || nid <= 0) {
+        const err = new Error('Identificador de Nodo inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const resAct = await db.query(
+        `SELECT id, slug, nombre_marca, gestor_telefono, COALESCE(config_perfil_publico, '{}'::jsonb) AS config_perfil_publico
+         FROM public.nodos_maestro
+         WHERE id = $1
+         LIMIT 1`,
+        [nid]
+    );
+    if (resAct.rows.length === 0) {
+        const err = new Error('Nodo no encontrado.');
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const actual = resAct.rows[0];
+    const prev = normalizarConfigPerfilPublico(actual.config_perfil_publico);
+    const fuente = (payload && typeof payload.config_perfil_publico === 'object' && payload.config_perfil_publico !== null)
+        ? payload.config_perfil_publico
+        : (payload || {});
+
+    const nuevoPerfil = normalizarConfigPerfilPublico({
+        ...prev,
+        ...(fuente.whatsapp_tienda !== undefined ? { whatsapp_tienda: fuente.whatsapp_tienda } : {}),
+        ...(fuente.mostrar_whatsapp_tienda !== undefined ? { mostrar_whatsapp_tienda: Boolean(fuente.mostrar_whatsapp_tienda) } : {}),
+        ...(fuente.email_tienda !== undefined ? { email_tienda: fuente.email_tienda } : {}),
+        ...(fuente.mostrar_email_tienda !== undefined ? { mostrar_email_tienda: Boolean(fuente.mostrar_email_tienda) } : {}),
+        ...(fuente.usar_email_para_lamda !== undefined ? { usar_email_para_lamda: Boolean(fuente.usar_email_para_lamda) } : {}),
+        ...(fuente.instagram_usuario !== undefined ? { instagram_usuario: fuente.instagram_usuario } : {}),
+        ...(fuente.mostrar_instagram_tienda !== undefined ? { mostrar_instagram_tienda: Boolean(fuente.mostrar_instagram_tienda) } : {}),
+        ...(fuente.incluir_instagram_en_difusion !== undefined ? { incluir_instagram_en_difusion: Boolean(fuente.incluir_instagram_en_difusion) } : {}),
+        updated_at: new Date().toISOString()
+    }, { estricto: true });
+
+    const upd = await db.query(
+        `UPDATE public.nodos_maestro
+         SET config_perfil_publico = $1::jsonb,
+             updated_at = NOW()
+         WHERE id = $2
+         RETURNING id, slug, nombre_marca, gestor_telefono, config_perfil_publico`,
+        [JSON.stringify(nuevoPerfil), nid]
+    );
+
+    const row = upd.rows[0];
+    return {
+        nodo_id: Number(row.id),
+        config_perfil_publico: nuevoPerfil,
+        perfil_publico_efectivo: construirPerfilContactoPublicoTienda(row)
+    };
 }
 
 async function cotizarEnvioPostalTienda(slug, cpRaw = '', subtotalProductos = 0) {
@@ -10710,7 +10991,7 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 cuil: nodo.cuil_display || cfgCanalPedido.cuil_recaudador,
                 numero_cuenta: nodo.numero_cuenta_display || cfgCanalPedido.numero_cuenta_recaudador,
                 gestor_nombre: nodo.gestor_nombre,
-                gestor_telefono: nodo.gestor_telefono,
+                gestor_telefono: construirPerfilContactoPublicoTienda(nodo).whatsapp_tienda_efectivo,
                 direccion_retiro: nodo.direccion_retiro
             }
         };
@@ -17494,6 +17775,7 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
         comprobante_digital: comprobanteDigitalSeg
     };
 
+    const perfilPubSeg = construirPerfilContactoPublicoTienda(nodoRow);
     return {
         nodo: {
             slug: nodoRow.slug,
@@ -17502,7 +17784,9 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             bajada_marca: nodoRow.bajada_marca || null,
             subtitulo_marca: nodoRow.subtitulo_marca || (perfilOp === 'REDES' ? 'Tienda Oficial · Envíos a Todo el País' : (perfilOp === 'LOCALES' ? 'Retiro en Local · Compra Online' : 'Comunidad Barrial - Entrega Fresca')),
             gestor_nombre: nodoRow.gestor_nombre,
-            gestor_telefono: nodoRow.gestor_telefono,
+            gestor_telefono: perfilPubSeg.whatsapp_tienda_efectivo,
+            whatsapp_tienda_efectivo: perfilPubSeg.whatsapp_tienda_efectivo,
+            config_perfil_publico: perfilPubSeg,
             barrio_zona: nodoRow.barrio_zona,
             direccion_retiro: nodoRow.direccion_retiro,
             color_primario: nodoRow.color_primario || '#a2553b',
@@ -17559,7 +17843,8 @@ async function obtenerSeguimientoPublicoPedidoVecino(slug, trackingToken) {
                 nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
                 nm.logo_original_base64, nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
                 nm.cuil_display, nm.numero_cuenta_display,
-                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local, nm.diccionario_textos
+                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local, nm.diccionario_textos,
+                COALESCE(nm.config_perfil_publico, '{}'::jsonb) AS config_perfil_publico
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
@@ -17661,7 +17946,8 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
                 nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
                 nm.logo_original_base64, nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
                 nm.cuil_display, nm.numero_cuenta_display,
-                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local, nm.diccionario_textos
+                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local, nm.diccionario_textos,
+                COALESCE(nm.config_perfil_publico, '{}'::jsonb) AS config_perfil_publico
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
@@ -17749,6 +18035,7 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
     };
     const dfltGalWa = pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT;
     const cfgBancoWa = await pagosBancariosService.obtenerConfiguracionBancariaCanalNodos();
+    const perfilPubWa = construirPerfilContactoPublicoTienda(primera);
     const nodoPublico = {
         slug: primera.nm_slug,
         slug_historico: primera.slug_historico || null,
@@ -17756,7 +18043,9 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
         bajada_marca: primera.bajada_marca || null,
         subtitulo_marca: primera.subtitulo_marca || (perfilOpWa === 'REDES' ? 'Tienda Oficial · Envíos a Todo el País' : (perfilOpWa === 'LOCALES' ? 'Retiro en Local · Compra Online' : 'Comunidad Barrial - Entrega Fresca')),
         gestor_nombre: primera.gestor_nombre || '',
-        gestor_telefono: primera.gestor_telefono || '',
+        gestor_telefono: perfilPubWa.whatsapp_tienda_efectivo,
+        whatsapp_tienda_efectivo: perfilPubWa.whatsapp_tienda_efectivo,
+        config_perfil_publico: perfilPubWa,
         barrio_zona: primera.barrio_zona || '',
         direccion_retiro: primera.direccion_retiro || '',
         color_primario: primera.color_primario || '#a2553b',
@@ -17904,7 +18193,8 @@ async function buscarSeguimientoPublicoPorTelefonoYPedido(slug, payload = {}) {
                 nm.gestor_telefono, nm.barrio_zona, nm.direccion_retiro, nm.color_primario, nm.tema_visual,
                 nm.logo_original_base64, nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
                 nm.cuil_display, nm.numero_cuenta_display,
-                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local, nm.diccionario_textos
+                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local, nm.diccionario_textos,
+                COALESCE(nm.config_perfil_publico, '{}'::jsonb) AS config_perfil_publico
          FROM public.nodos_pedidos_vecinos npv
          JOIN public.nodos_maestro nm ON nm.id = npv.nodo_id
          LEFT JOIN public.nodos_vecinos nv ON nv.id = npv.vecino_id
@@ -19218,6 +19508,7 @@ async function obtenerContactosOmnicanalNodo(idOrSlug) {
                 cliente_madre_bunker_id, codigo_bunker_cliente_madre,
                 COALESCE(usar_cuenta_madre_unificada, false) AS usar_cuenta_madre_unificada,
                 COALESCE(config_video_bienvenida, '{}'::jsonb) AS config_video_bienvenida,
+                COALESCE(config_perfil_publico, '{}'::jsonb) AS config_perfil_publico,
                 activo
          FROM public.nodos_maestro
          WHERE id = $1::int
@@ -19376,6 +19667,26 @@ async function obtenerContactosOmnicanalNodo(idOrSlug) {
         });
     }
 
+    const perfilPublicoOmni = normalizarConfigPerfilPublico(nm.config_perfil_publico);
+    if (perfilPublicoOmni.whatsapp_tienda) {
+        registrarWa({
+            numero: perfilPublicoOmni.whatsapp_tienda,
+            nombre: nm.nombre_marca || nm.gestor_nombre || 'Tienda',
+            cargo: 'WhatsApp Atención Tienda',
+            origen: `Mi Perfil Tienda (${nm.codigo_nodo})`,
+            preferido: mapaWa.size === 0
+        });
+    }
+    if (perfilPublicoOmni.email_tienda && perfilPublicoOmni.usar_email_para_lamda) {
+        registrarEmail({
+            email: perfilPublicoOmni.email_tienda,
+            nombre: nm.nombre_marca || nm.gestor_nombre || 'Tienda',
+            cargo: 'Email Oficial Tienda',
+            origen: `Mi Perfil Tienda (${nm.codigo_nodo})`,
+            preferido: mapaEmail.size === 0
+        });
+    }
+
     const contactosWhatsapp = Array.from(mapaWa.values());
     if (contactosWhatsapp.length > 0 && !contactosWhatsapp.some(c => c.seleccionado_default)) {
         contactosWhatsapp[0].seleccionado_default = true;
@@ -19406,6 +19717,7 @@ async function obtenerContactosOmnicanalNodo(idOrSlug) {
             cliente_madre_bunker_id: nm.cliente_madre_bunker_id ? Number(nm.cliente_madre_bunker_id) : null,
             codigo_bunker_cliente_madre: nm.codigo_bunker_cliente_madre || null,
             config_video_bienvenida: normalizarConfigVideoBienvenida(nm.config_video_bienvenida),
+            config_perfil_publico: perfilPublicoOmni,
             bunker_cliente_id: nm.bunker_cliente_id ? Number(nm.bunker_cliente_id) : null,
             codigo_bunker_cliente: nm.codigo_bunker_cliente || null
         },
@@ -19511,7 +19823,8 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
                 nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display,
                 nm.cuil_display, nm.numero_cuenta_display,
                 nm.permitir_envio_barrial, nm.permitir_retiro_nodo, nm.permitir_reparto_propio, nm.permitir_encomienda, nm.cargo_envio_barrial,
-                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local, nm.diccionario_textos
+                nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local, nm.diccionario_textos,
+                COALESCE(nm.config_perfil_publico, '{}'::jsonb) AS config_perfil_publico
          FROM public.nodos_vecinos nv
          JOIN public.nodos_maestro nm ON nm.id = nv.nodo_id
          WHERE nv.portal_token = $1
@@ -19530,6 +19843,7 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
     const vid = Number(row.id);
     const cfgBancoPortal = await pagosBancariosService.obtenerConfiguracionBancariaCanalNodos();
     const dfltGalPortal = pagosBancariosService.CUENTA_OFICIAL_GALICIA_DEFAULT;
+    const perfilPubMiCuenta = construirPerfilContactoPublicoTienda(row);
     const nodoInfo = {
         slug: row.nm_slug,
         slug_historico: row.slug_historico || null,
@@ -19537,7 +19851,9 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
         bajada_marca: row.bajada_marca || null,
         subtitulo_marca: row.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
         gestor_nombre: row.gestor_nombre || '',
-        gestor_telefono: row.gestor_telefono || '',
+        gestor_telefono: perfilPubMiCuenta.whatsapp_tienda_efectivo,
+        whatsapp_tienda_efectivo: perfilPubMiCuenta.whatsapp_tienda_efectivo,
+        config_perfil_publico: perfilPubMiCuenta,
         barrio_zona: row.barrio_zona || '',
         direccion_retiro: row.direccion_retiro || '',
         color_primario: row.color_primario || '#a2553b',
@@ -19828,6 +20144,7 @@ async function obtenerKitCompartirNodo(nodoId) {
                     cargo_envio_barrial, perfil_operativo, config_paqueteria,
                     color_primario, tema_visual, config_ventanas_corte,
                     COALESCE(config_video_bienvenida, '{}'::jsonb) AS config_video_bienvenida,
+                    COALESCE(config_perfil_publico, '{}'::jsonb) AS config_perfil_publico,
                     activo
              FROM public.nodos_maestro
              WHERE id = $1::int
@@ -19894,7 +20211,8 @@ async function obtenerKitCompartirNodo(nodoId) {
             config_paqueteria: normalizarConfigPaqueteria(n.config_paqueteria),
             color_primario: n.color_primario || '#a2553b',
             tema_visual: enriquecerTemaVisualConVersionAssets(n.tema_visual),
-            config_video_bienvenida: normalizarConfigVideoBienvenida(n.config_video_bienvenida)
+            config_video_bienvenida: normalizarConfigVideoBienvenida(n.config_video_bienvenida),
+            config_perfil_publico: normalizarConfigPerfilPublico(n.config_perfil_publico)
         },
         proxima_entrega: proximaEntrega,
         ofertas_publicadas: ofertasRes.rows.map(o => ({
@@ -20592,6 +20910,12 @@ module.exports = {
     reenviarReciboWhatsAppPorGestor,
     obtenerPresetDiccionarioTextosNodo,
     normalizarConfigRetiroLocal,
+    normalizarWhatsappArgentina,
+    normalizarEmailPerfilNodo,
+    normalizarInstagramUsuario,
+    normalizarConfigPerfilPublico,
+    construirPerfilContactoPublicoTienda,
+    actualizarPerfilContactoGestorNodo,
     TEMA_VISUAL_PARAISO_OFICIAL,
     TEMA_VISUAL_MANSO_OFICIAL,
     LOGO_ZPL_CONFIG_MANSO_OFICIAL,

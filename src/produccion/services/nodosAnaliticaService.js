@@ -966,6 +966,7 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
             subtitulo_marca: r.subtitulo_marca || '',
             gestor_nombre: r.gestor_nombre || '',
             gestor_telefono: r.gestor_telefono || '',
+            gestor_email: r.gestor_email || '',
             barrio_zona: r.barrio_zona || '',
             direccion_retiro: r.direccion_retiro || '',
             color_primario: r.color_primario || '#16a34a',
@@ -985,6 +986,7 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
                 ? r.config_retiro_local
                 : {},
             config_video_bienvenida: require('./nodosFotosService').normalizarConfigVideoBienvenida(r.config_video_bienvenida),
+            config_perfil_publico: require('./nodosBarrialesService').normalizarConfigPerfilPublico(r.config_perfil_publico),
             diccionario_textos: (r.diccionario_textos && typeof r.diccionario_textos === 'object' && !Array.isArray(r.diccionario_textos))
                 ? r.diccionario_textos
                 : {},
