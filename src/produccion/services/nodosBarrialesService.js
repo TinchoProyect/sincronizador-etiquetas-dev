@@ -1636,31 +1636,195 @@ function normalizarEjeCategoriaBunker(txt) {
         .replace(/[\s-]+/g, '_');
 }
 
-function resolverIdentidadTecnicaIngrediente(ing = {}, familiaNombreDb = null, categoriaIngNombreDb = null, idsCompuestosSet = new Set()) {
+const FAMILIAS_BUNKER_TECNICAS_EXCLUIDAS = [41, 42, 46];
+const FAMILIAS_BUNKER_FRACCIONES_EXCLUIDAS = [41, 42, 46, 47];
+
+function normalizarTextoTextoLibreTaxonomia(val) {
+    return typeof val === 'string' ? val.trim() : '';
+}
+
+function resolverIdentidadTecnicaIngrediente(ing = {}, familiaNombreDb = null, categoriaFallbackOpcional = null, idsCompuestosSet = new Set()) {
     const id = Number(ing.id || 0);
-    const clasif = clasificarIngredienteEnFlujo(ing, idsCompuestosSet);
+    const setCompuestos = idsCompuestosSet instanceof Set
+        ? idsCompuestosSet
+        : (categoriaFallbackOpcional instanceof Set ? categoriaFallbackOpcional : new Set());
+    const clasif = clasificarIngredienteEnFlujo(ing, setCompuestos);
     const nombreOficial = String(ing.nombre || '').trim();
     const codigoOficial = ing.codigo !== undefined && ing.codigo !== null && String(ing.codigo).trim() !== ''
         ? String(ing.codigo).trim()
         : null;
     const labelOficial = formatearEtiquetaTecnicaIngrediente(ing);
-    const categoriaLamda = String(familiaNombreDb || categoriaIngNombreDb || '').trim()
+    const famTxt = normalizarTextoTextoLibreTaxonomia(familiaNombreDb);
+    const fallbackTxt = (typeof categoriaFallbackOpcional === 'string') ? categoriaFallbackOpcional.trim() : '';
+    const categoriaLamda = famTxt
+        || fallbackTxt
         || (clasif.flujo === 6 ? 'Cereales'
             : clasif.flujo === 5 ? 'Cereales'
             : clasif.flujo === 3 ? 'Frutos Secos'
-            : 'Sin Familia Asignada');
+            : 'Sin Familia en Búnker');
 
     return {
         id,
         codigo: codigoOficial,
         nombre_oficial: nombreOficial,
         label_oficial: labelOficial,
+        articulo_vinculado_numero: ing.articulo_vinculado_numero || null,
         categoria_lamda: categoriaLamda,
         flujo: clasif.flujo,
         flujo_nombre: clasif.flujo_nombre,
         origen_tipo: clasif.origen_tipo,
         es_pack_barritas: Boolean(id === 141 || clasif.flujo === 5)
     };
+}
+
+/**
+ * Devuelve las Familias Comerciales Oficiales del Diccionario Búnker (public.bunker_familias),
+ * excluyendo familias técnicas internas (41 Para Clasificar, 42 Produccion, 46 Insumos).
+ */
+async function obtenerFamiliasComercialesBunkerOficiales(runner = null, { incluirCombos = true } = {}) {
+    const q = runner || db;
+    const excluidas = incluirCombos ? FAMILIAS_BUNKER_TECNICAS_EXCLUIDAS : FAMILIAS_BUNKER_FRACCIONES_EXCLUIDAS;
+    const res = await q.query(
+        `SELECT id, codigo_familia, nombre, abreviatura
+         FROM public.bunker_familias
+         WHERE COALESCE(activo, true) = true
+           AND id <> ALL($1::int[])
+         ORDER BY nombre ASC`,
+        [excluidas]
+    );
+    return res.rows.map(r => ({
+        id: Number(r.id),
+        codigo_familia: r.codigo_familia || null,
+        nombre: String(r.nombre || '').trim(),
+        abreviatura: r.abreviatura || ''
+    }));
+}
+
+/**
+ * Fuente Única de Taxonomía Oficial Búnker para ingredientes (Pilar 1):
+ * Resuelve de forma 100% determinista sobre public.bunker_familias y propiedades_dinamicas.articulo_principal
+ * sin consultar jamás la tabla legacy public.categorias_ingredientes.
+ *
+ * Prioridad 1: Recetas de fraccionamiento (receta_ingredientes -> recetas -> bunker_articulos -> bunker_familias).
+ * Prioridad 2: Vínculo directo de bulto cerrado (ingredientes.articulo_vinculado_numero -> bunker_articulos -> bunker_familias).
+ *
+ * Si ingredienteIdOrIds es un número/string escalar, devuelve el objeto de taxonomía o null.
+ * Si es null/undefined o un array de IDs, devuelve un Map<number, objetoTaxonomia>.
+ */
+async function resolverTaxonomiaOficialIngredienteBunker(runner = null, ingredienteIdOrIds = null) {
+    const q = runner || db;
+    const esEscalar = ingredienteIdOrIds !== null
+        && ingredienteIdOrIds !== undefined
+        && !Array.isArray(ingredienteIdOrIds);
+    const filtroIds = esEscalar
+        ? [Number(ingredienteIdOrIds)].filter(n => Number.isFinite(n) && n > 0)
+        : (Array.isArray(ingredienteIdOrIds)
+            ? ingredienteIdOrIds.map(Number).filter(n => Number.isFinite(n) && n > 0)
+            : null);
+
+    if (Array.isArray(filtroIds) && filtroIds.length === 0) {
+        return esEscalar ? null : new Map();
+    }
+
+    const excluidas = FAMILIAS_BUNKER_FRACCIONES_EXCLUIDAS;
+    const [recRes, dirRes] = await Promise.all([
+        q.query(
+            `SELECT DISTINCT ON (ri.ingrediente_id)
+                    ri.ingrediente_id,
+                    ba.articulo_id AS bunker_sku,
+                    ba.descripcion_generada AS bunker_descripcion_generada,
+                    ba.descripcion AS bunker_descripcion,
+                    ba.familia_id,
+                    bf.nombre AS familia_nombre,
+                    bf.abreviatura AS familia_abreviatura,
+                    ba.rubro,
+                    ba.sub_rubro,
+                    COALESCE(
+                        NULLIF(TRIM(CASE
+                            WHEN jsonb_typeof(ba.propiedades_dinamicas->'articulo_principal') = 'object'
+                                THEN ba.propiedades_dinamicas->'articulo_principal'->>'valor'
+                            ELSE ba.propiedades_dinamicas->>'articulo_principal'
+                        END), ''),
+                        NULLIF(TRIM(ba.descripcion), '')
+                    ) AS articulo_principal
+             FROM public.receta_ingredientes ri
+             JOIN public.recetas r ON r.id = ri.receta_id
+             JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(r.articulo_numero)
+             JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+             WHERE COALESCE(bf.activo, true) = true
+               AND ba.familia_id <> ALL($1::int[])
+               AND ($2::int[] IS NULL OR ri.ingrediente_id = ANY($2::int[]))
+             ORDER BY ri.ingrediente_id,
+                      CASE WHEN UPPER(ba.articulo_id) NOT LIKE 'NB-%' AND UPPER(ba.articulo_id) NOT LIKE 'EMB-%' THEN 0 ELSE 1 END,
+                      CASE WHEN COALESCE(ba.es_pack, false) = false THEN 0 ELSE 1 END,
+                      CASE WHEN COALESCE(ba.kilos_unidad, 1) BETWEEN 0.05 AND 1.05 THEN 0 ELSE 1 END,
+                      ba.kilos_unidad ASC,
+                      ba.articulo_id ASC`,
+            [excluidas, filtroIds]
+        ),
+        q.query(
+            `SELECT i.id AS ingrediente_id,
+                    ba.articulo_id AS bunker_sku,
+                    ba.descripcion_generada AS bunker_descripcion_generada,
+                    ba.descripcion AS bunker_descripcion,
+                    ba.familia_id,
+                    bf.nombre AS familia_nombre,
+                    bf.abreviatura AS familia_abreviatura,
+                    ba.rubro,
+                    ba.sub_rubro,
+                    COALESCE(
+                        NULLIF(TRIM(CASE
+                            WHEN jsonb_typeof(ba.propiedades_dinamicas->'articulo_principal') = 'object'
+                                THEN ba.propiedades_dinamicas->'articulo_principal'->>'valor'
+                            ELSE ba.propiedades_dinamicas->>'articulo_principal'
+                        END), ''),
+                        NULLIF(TRIM(ba.descripcion), '')
+                    ) AS articulo_principal
+             FROM public.ingredientes i
+             JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(i.articulo_vinculado_numero)
+             JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+             WHERE i.articulo_vinculado_numero IS NOT NULL
+               AND TRIM(i.articulo_vinculado_numero) <> ''
+               AND COALESCE(bf.activo, true) = true
+               AND ba.familia_id <> ALL($1::int[])
+               AND ($2::int[] IS NULL OR i.id = ANY($2::int[]))`,
+            [excluidas, filtroIds]
+        )
+    ]);
+
+    const mapaDirecto = new Map();
+    for (const row of dirRes.rows) {
+        mapaDirecto.set(Number(row.ingrediente_id), row);
+    }
+
+    const normalizarFila = (row, origen, rowComplemento = null) => ({
+        ingrediente_id: Number(row.ingrediente_id),
+        familia_bunker_id: Number(row.familia_id),
+        familia_bunker_nombre: String(row.familia_nombre || '').trim(),
+        familia_abreviatura: row.familia_abreviatura || '',
+        articulo_principal_bunker: String(row.articulo_principal || rowComplemento?.articulo_principal || '').trim() || null,
+        bunker_sku_referencia: String(row.bunker_sku || '').trim() || null,
+        bunker_descripcion_generada: String(row.bunker_descripcion_generada || row.bunker_descripcion || '').trim() || null,
+        bunker_rubro: String(row.rubro || rowComplemento?.rubro || '').trim() || null,
+        bunker_sub_rubro: String(row.sub_rubro || rowComplemento?.sub_rubro || '').trim() || null,
+        origen_taxonomia: origen
+    });
+
+    const resultado = new Map();
+    for (const row of recRes.rows) {
+        const ingId = Number(row.ingrediente_id);
+        resultado.set(ingId, normalizarFila(row, 'RECETA_BUNKER', mapaDirecto.get(ingId) || null));
+    }
+    for (const [ingId, row] of mapaDirecto.entries()) {
+        if (!resultado.has(ingId)) {
+            resultado.set(ingId, normalizarFila(row, 'BULTO_VINCULADO', null));
+        }
+    }
+
+    if (esEscalar) {
+        return resultado.get(Number(ingredienteIdOrIds)) || null;
+    }
+    return resultado;
 }
 
 /**
@@ -2121,17 +2285,34 @@ function derivarSkuYNomenclaturaDesdeHermano(hermano = {}, kilosUnidad = 0.25, p
     }
 
     let skuDerivado = idHermano;
-    if (idHermano.toUpperCase() === 'CCTX1' && gramos < 1000) {
+    const esHermanoCodigoTemporal = /^(EMB-|NB-)/i.test(idHermano);
+    if (esHermanoCodigoTemporal) {
+        const propH = (hermano.propiedades_dinamicas && typeof hermano.propiedades_dinamicas === 'object')
+            ? hermano.propiedades_dinamicas
+            : {};
+        const prefDic = derivarPrefijoSkuDesdeDiccionario({
+            incluir_familia: Boolean(propH.incluir_familia),
+            abreviatura_familia: propH.abreviatura_familia || hermano.familia_abrev_db || '',
+            familia_nombre: hermano.familia_nombre_db || propH.familia_nombre || '',
+            articulo_principal: propH.articulo_principal || hermano.descripcion || '',
+            abreviatura_principal: propH.abreviatura_principal || '',
+            posiciones: propH.posiciones || {}
+        }, '');
+        const sufijoTemp = (gramos >= 1000 && gramos % 1000 === 0) ? `X${gramos / 1000}` : `X${gramos}G`;
+        skuDerivado = `${prefDic}${sufijoTemp}`;
+    } else if (idHermano.toUpperCase() === 'CCTX1' && gramos < 1000) {
         skuDerivado = `CCTSx${gramos}`;
     } else if (gramos >= 1000 && gramos % 1000 === 0) {
         const kgEntero = gramos / 1000;
-        skuDerivado = idHermano.replace(/([xX])\d+([gG]|KG|kg)?$/, `$1${kgEntero}`);
+        skuDerivado = /([xX])(\d+(?:[.,]\d+)?[A-Za-z]?|K|KG)$/i.test(idHermano)
+            ? idHermano.replace(/([xX])(\d+(?:[.,]\d+)?[A-Za-z]?|K|KG)$/i, `$1${kgEntero}`)
+            : `${idHermano}X${kgEntero}`;
     } else if (/([xX])\d+([gG])$/.test(idHermano)) {
         skuDerivado = idHermano.replace(/([xX])\d+([gG])$/, `$1${gramos}$2`);
     } else if (/([xX])\d+$/.test(idHermano) && Number(hermano.kilos_unidad) < 1) {
         skuDerivado = idHermano.replace(/([xX])\d+$/, `$1${gramos}`);
-    } else if (/([xX])(\d+|K|KG)$/i.test(idHermano)) {
-        skuDerivado = idHermano.replace(/([xX])(\d+|K|KG)$/i, `X${gramos}G`);
+    } else if (/([xX])(\d+(?:[.,]\d+)?[A-Za-z]?|K|KG)$/i.test(idHermano)) {
+        skuDerivado = idHermano.replace(/([xX])(\d+(?:[.,]\d+)?[A-Za-z]?|K|KG)$/i, `X${gramos}G`);
     } else {
         skuDerivado = `${idHermano}X${gramos}G`;
     }
@@ -2368,8 +2549,12 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
         }
     }
 
-    // Caso A: Buscar artículos hermanos canónicos en public.bunker_articulos que consuman el mismo ingrediente_id
+    // Caso A: Buscar artículos hermanos canónicos en public.bunker_articulos:
+    //  1) Hermanos fraccionados con receta sobre el mismo ingrediente_id (sin NB-/EMB-)
+    //  2) Extensión Pilar 2: Bulto cerrado vinculado directo en ingredientes.articulo_vinculado_numero
+    //  3) Respaldo: Referencia de receta en Búnker con código EMB- (solo para heredar anatomía; genera SKU limpio)
     let hermanos = [];
+    let hermanoOrigenTipo = 'RECETA_FRACCIONADA';
     if (ingId) {
         const hermRes = await q.query(
             `SELECT ba.*, bf.nombre AS familia_nombre_db, bf.abreviatura AS familia_abrev_db
@@ -2382,15 +2567,57 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                AND UPPER(ba.articulo_id) NOT LIKE 'EMB-%'
                AND UPPER(ba.articulo_id) <> 'CCTX250G'
                AND COALESCE(ba.familia_id, 0) > 0
-               AND COALESCE(ba.familia_id, 0) <> 42
+               AND COALESCE(ba.familia_id, 0) <> ALL($3::int[])
              ORDER BY
                CASE WHEN ABS(COALESCE(ba.kilos_unidad, 1) - $2) < 0.0005 THEN 0 ELSE 1 END,
                CASE WHEN COALESCE(ba.kilos_unidad, 1) < 1 THEN 0 ELSE 1 END,
                ABS(COALESCE(ba.kilos_unidad, 1) - $2) ASC,
                ba.articulo_id ASC`,
-            [ingId, kilos]
+            [ingId, kilos, FAMILIAS_BUNKER_FRACCIONES_EXCLUIDAS]
         );
         hermanos = hermRes.rows;
+
+        if (hermanos.length === 0 && ingResuelto?.articulo_vinculado_numero) {
+            const bultoRes = await q.query(
+                `SELECT ba.*, bf.nombre AS familia_nombre_db, bf.abreviatura AS familia_abrev_db
+                 FROM public.bunker_articulos ba
+                 LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+                 WHERE UPPER(ba.articulo_id) = UPPER($1)
+                   AND UPPER(ba.articulo_id) NOT LIKE 'NB-%'
+                   AND COALESCE(ba.familia_id, 0) > 0
+                   AND COALESCE(ba.familia_id, 0) <> ALL($2::int[])
+                 LIMIT 1`,
+                [ingResuelto.articulo_vinculado_numero, FAMILIAS_BUNKER_FRACCIONES_EXCLUIDAS]
+            );
+            if (bultoRes.rows.length > 0) {
+                hermanos = bultoRes.rows;
+                hermanoOrigenTipo = 'BULTO_VINCULADO';
+            }
+        }
+
+        if (hermanos.length === 0) {
+            const hermEmbRes = await q.query(
+                `SELECT ba.*, bf.nombre AS familia_nombre_db, bf.abreviatura AS familia_abrev_db
+                 FROM public.bunker_articulos ba
+                 LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+                 JOIN public.recetas r ON UPPER(r.articulo_numero) = UPPER(ba.articulo_id)
+                 JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
+                 WHERE ri.ingrediente_id = $1
+                   AND UPPER(ba.articulo_id) NOT LIKE 'NB-%'
+                   AND COALESCE(ba.familia_id, 0) > 0
+                   AND COALESCE(ba.familia_id, 0) <> ALL($3::int[])
+                 ORDER BY
+                   CASE WHEN COALESCE(ba.kilos_unidad, 1) < 1 THEN 0 ELSE 1 END,
+                   ABS(COALESCE(ba.kilos_unidad, 1) - $2) ASC,
+                   ba.articulo_id ASC
+                 LIMIT 3`,
+                [ingId, kilos, FAMILIAS_BUNKER_FRACCIONES_EXCLUIDAS]
+            );
+            if (hermEmbRes.rows.length > 0) {
+                hermanos = hermEmbRes.rows;
+                hermanoOrigenTipo = 'RECETA_REFERENCIA';
+            }
+        }
     }
 
     if (hermanos.length > 0) {
@@ -2398,8 +2625,9 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
         const derivado = derivarSkuYNomenclaturaDesdeHermano(hermanoRef, kilos, art.pack_unidades);
 
         const exactoEnHermanos = hermanos.find(
-            h => String(h.articulo_id).toUpperCase() === String(derivado.sku_nativo).toUpperCase()
-        ) || (Math.abs(Number(hermanoRef.kilos_unidad) - kilos) < 0.0005 ? hermanoRef : null);
+            h => !/^(NB-|EMB-)/i.test(String(h.articulo_id || ''))
+                && String(h.articulo_id).toUpperCase() === String(derivado.sku_nativo).toUpperCase()
+        ) || (!/^(NB-|EMB-)/i.test(String(hermanoRef.articulo_id || '')) && Math.abs(Number(hermanoRef.kilos_unidad) - kilos) < 0.0005 ? hermanoRef : null);
 
         let insumoEnvaseRecetaId = null;
         if (exactoEnHermanos) {
@@ -2477,6 +2705,7 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
             requiere_diccionario_bunker: false,
             hermano_referencia_sku: baseArt.articulo_id,
             hermano_origen_sku: baseArt.articulo_id,
+            hermano_origen_tipo: hermanoOrigenTipo,
             ingrediente_comercial_id: ingId,
             ingrediente_comercial_codigo: ingResuelto?.codigo || null,
             ingrediente_comercial_nombre: ingResuelto?.nombre || art.ing_origen_nombre || null,
@@ -4227,6 +4456,8 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 nodo_solicitante_id INTEGER REFERENCES public.nodos_maestro(id) ON DELETE SET NULL,
                 nombre_sugerido VARCHAR(180) NOT NULL,
                 categoria_sugerida VARCHAR(100) DEFAULT 'Frutos Secos',
+                familia_bunker_id INTEGER REFERENCES public.bunker_familias(id) ON DELETE SET NULL,
+                articulo_principal_bunker VARCHAR(120),
                 flujo_sugerido INTEGER NOT NULL DEFAULT 2 CHECK (flujo_sugerido BETWEEN 1 AND 6),
                 ingrediente_sugerido_id INTEGER REFERENCES public.ingredientes(id) ON DELETE SET NULL,
                 articulo_bunker_sugerido_codigo VARCHAR(80),
@@ -4437,7 +4668,9 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ADD COLUMN IF NOT EXISTS fotos_catalogo_base JSONB NOT NULL DEFAULT '[]'::jsonb;
 
             ALTER TABLE public.nodos_propuestas_fracciones
-                ADD COLUMN IF NOT EXISTS alias_vidriera_sugerido TEXT;
+                ADD COLUMN IF NOT EXISTS alias_vidriera_sugerido TEXT,
+                ADD COLUMN IF NOT EXISTS familia_bunker_id INTEGER REFERENCES public.bunker_familias(id) ON DELETE SET NULL,
+                ADD COLUMN IF NOT EXISTS articulo_principal_bunker VARCHAR(120);
 
             ALTER TABLE public.nodos_pedidos_items
                 ADD COLUMN IF NOT EXISTS nombre_vidriera_vecino TEXT;
@@ -5974,13 +6207,49 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                     CASE
                         WHEN COALESCE(npf.kilos_sugeridos, 0.25) >= 1 THEN TRIM(TO_CHAR(npf.kilos_sugeridos, 'FM9990.##')) || ' kg'
                         ELSE ROUND(COALESCE(npf.kilos_sugeridos, 0.25) * 1000)::text || 'g'
-                    END,
-                categoria_sugerida = COALESCE(ci.nombre, npf.categoria_sugerida)
+                    END
             FROM public.ingredientes ing
-            LEFT JOIN public.categorias_ingredientes ci ON ci.id = ing.categoria_id
             WHERE npf.ingrediente_sugerido_id = ing.id
               AND LEFT(TRIM(COALESCE(npf.nombre_sugerido, '')), 1) <> '[';
         `);
+
+        // Backfill idempotente de familia_bunker_id, articulo_principal_bunker y categoria_sugerida oficial en propuestas históricas (cero categorias_ingredientes)
+        const propsSinFamRes = await client.query(`
+            SELECT npf.id,
+                   npf.ingrediente_sugerido_id,
+                   nac.familia_bunker_id AS cat_familia_id,
+                   bf_cat.nombre AS cat_familia_nombre,
+                   nac.articulo_principal_bunker AS cat_articulo_principal
+            FROM public.nodos_propuestas_fracciones npf
+            LEFT JOIN public.nodos_articulos_catalogo nac ON nac.id = npf.articulo_catalogo_id
+            LEFT JOIN public.bunker_familias bf_cat ON bf_cat.id = nac.familia_bunker_id
+            WHERE npf.familia_bunker_id IS NULL
+               OR NULLIF(TRIM(COALESCE(npf.articulo_principal_bunker, '')), '') IS NULL
+        `);
+        if (propsSinFamRes.rows.length > 0) {
+            const ingIdsBackfill = propsSinFamRes.rows
+                .map(r => Number(r.ingrediente_sugerido_id || 0))
+                .filter(n => n > 0);
+            const taxBackfillMap = ingIdsBackfill.length > 0
+                ? await resolverTaxonomiaOficialIngredienteBunker(client, ingIdsBackfill)
+                : new Map();
+            for (const pr of propsSinFamRes.rows) {
+                const tax = pr.ingrediente_sugerido_id ? taxBackfillMap.get(Number(pr.ingrediente_sugerido_id)) : null;
+                const famIdRes = tax?.familia_bunker_id || (pr.cat_familia_id ? Number(pr.cat_familia_id) : null);
+                const famNomRes = tax?.familia_bunker_nombre || pr.cat_familia_nombre || null;
+                const artPrinRes = tax?.articulo_principal_bunker || pr.cat_articulo_principal || null;
+                if (famIdRes || artPrinRes) {
+                    await client.query(
+                        `UPDATE public.nodos_propuestas_fracciones
+                         SET familia_bunker_id = COALESCE(familia_bunker_id, $2),
+                             articulo_principal_bunker = COALESCE(NULLIF(TRIM(articulo_principal_bunker), ''), $3),
+                             categoria_sugerida = COALESCE($4, categoria_sugerida)
+                         WHERE id = $1`,
+                        [Number(pr.id), famIdRes, artPrinRes, famNomRes]
+                    );
+                }
+            }
+        }
 
         // 7) Parametrización fiscal idempotente sobre el margen comercial del Nodo (IVA 21% + IIBB 4%)
         await client.query(`
@@ -6118,13 +6387,11 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
  * utilizando únicamente ingredientes simples puente y hermanos nativos deterministas.
  */
 async function obtenerFuentesCostoSeisFlujos() {
-    const [ingRes, compRes, mixPadresRes, artDirectosRes, envasesRes, tarifasRes, cuentasRes, clientesRes, hermanosRes, cfgCanalRes] = await Promise.all([
+    const [ingRes, compRes, mixPadresRes, artDirectosRes, envasesRes, tarifasRes, cuentasRes, clientesRes, taxonomiaBunkerMap, cfgCanalRes] = await Promise.all([
         db.query(`
             SELECT i.id, i.codigo, i.nombre, COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_patron,
-                   i.articulo_vinculado_numero, COALESCE(i.es_insumo, false) AS es_insumo,
-                   i.categoria_id, ci.nombre AS categoria_ingrediente_nombre
+                   i.articulo_vinculado_numero, COALESCE(i.es_insumo, false) AS es_insumo
             FROM public.ingredientes i
-            LEFT JOIN public.categorias_ingredientes ci ON ci.id = i.categoria_id
             WHERE COALESCE(i.es_insumo, false) = false
               AND i.id < 8000
               AND i.nombre NOT ILIKE '%Fuera de Servicio%'
@@ -6230,30 +6497,7 @@ async function obtenerFuentesCostoSeisFlujos() {
             WHERE bc.codigo_bunker_cliente NOT LIKE 'CB-NODO-%'
             ORDER BY bc.id ASC
         `),
-        db.query(`
-            SELECT DISTINCT ON (ri.ingrediente_id)
-                   ri.ingrediente_id,
-                   ba.articulo_id AS hermano_sku,
-                   ba.descripcion_generada AS hermano_descripcion_generada,
-                   ba.descripcion AS hermano_articulo_principal,
-                   ba.familia_id AS hermano_familia_id,
-                   bf.nombre AS hermano_familia_nombre
-            FROM public.receta_ingredientes ri
-            JOIN public.recetas r ON r.id = ri.receta_id
-            JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(r.articulo_numero)
-            LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
-            WHERE COALESCE(ba.es_pack, false) = false
-              AND ba.familia_id IS NOT NULL
-              AND COALESCE(ba.familia_id, 0) <> 42
-              AND UPPER(ba.articulo_id) NOT LIKE 'NB-%'
-              AND UPPER(ba.articulo_id) NOT LIKE 'EMB-%'
-            ORDER BY ri.ingrediente_id,
-                     CASE
-                         WHEN ba.kilos_unidad BETWEEN 0.10 AND 1.00 THEN 0
-                         ELSE 1
-                     END,
-                     ba.kilos_unidad ASC
-        `),
+        resolverTaxonomiaOficialIngredienteBunker(db),
         db.query(`
             SELECT id, cuenta_bancaria_id, banco_recaudador, alias_recaudador, cbu_recaudador, titular_recaudador, updated_at
             FROM public.nodos_configuracion_canal
@@ -6263,7 +6507,6 @@ async function obtenerFuentesCostoSeisFlujos() {
 
     const idsCompuestosSet = new Set(compRes.rows.map(r => Number(r.ingrediente_padre_id)));
     const idsPreMezclasIntermedias = new Set([109, 132, 133, 134, 135, 136, 140]);
-    const mapaHermanos = new Map(hermanosRes.rows.map(r => [Number(r.ingrediente_id), r]));
     const mapaMixPadres = new Map(
         mixPadresRes.rows.map(r => {
             const codP = r.padre_codigo !== null && r.padre_codigo !== undefined && String(r.padre_codigo).trim() !== ''
@@ -6290,11 +6533,11 @@ async function obtenerFuentesCostoSeisFlujos() {
         })
         .map(ing => {
             const idNum = Number(ing.id);
-            const herm = mapaHermanos.get(idNum) || null;
+            const tax = taxonomiaBunkerMap.get(idNum) || null;
             const ident = resolverIdentidadTecnicaIngrediente(
                 ing,
-                herm ? herm.hermano_familia_nombre : null,
-                ing.categoria_ingrediente_nombre || null,
+                tax ? tax.familia_bunker_nombre : null,
+                null,
                 idsCompuestosSet
             );
             const mixPadre = mapaMixPadres.get(idNum) || null;
@@ -6303,6 +6546,11 @@ async function obtenerFuentesCostoSeisFlujos() {
                 codigo: ing.codigo,
                 nombre: ing.nombre,
                 label_oficial: ident.label_oficial,
+                familia_bunker_id: tax ? tax.familia_bunker_id : null,
+                familia_bunker_nombre: tax ? tax.familia_bunker_nombre : null,
+                articulo_principal_bunker: tax ? tax.articulo_principal_bunker : null,
+                bunker_rubro: tax ? tax.bunker_rubro : null,
+                bunker_sub_rubro: tax ? tax.bunker_sub_rubro : null,
                 categoria_lamda: ident.categoria_lamda,
                 es_pack_barritas: ident.es_pack_barritas,
                 costo_kg: Number(ing.costo_patron),
@@ -6311,9 +6559,9 @@ async function obtenerFuentesCostoSeisFlujos() {
                 flujo: ident.flujo,
                 flujo_nombre: ident.flujo_nombre,
                 origen_tipo: ident.origen_tipo,
-                hermano_sku_base: herm ? herm.hermano_sku : null,
-                hermano_descripcion_generada: herm ? herm.hermano_descripcion_generada : null,
-                hermano_familia_id: herm ? Number(herm.hermano_familia_id) : null
+                hermano_sku_base: tax ? tax.bunker_sku_referencia : null,
+                hermano_descripcion_generada: tax ? tax.bunker_descripcion_generada : null,
+                hermano_familia_id: tax ? tax.familia_bunker_id : null
             };
         });
 
@@ -6397,7 +6645,6 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
                 i.codigo AS ingrediente_codigo,
                 i.nombre AS ingrediente_nombre,
                 i.articulo_vinculado_numero,
-                ci.nombre AS categoria_ingrediente_nombre,
                 COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_insumo_kg,
                 nac.id AS catalogo_nodo_id,
                 nac.precio_base_nodo_final,
@@ -6426,7 +6673,6 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
             JOIN public.recetas r ON UPPER(r.articulo_numero) = UPPER(ba.articulo_id)
             JOIN public.receta_ingredientes ri ON ri.receta_id = r.id
             JOIN public.ingredientes i ON i.id = ri.ingrediente_id AND COALESCE(i.es_insumo, false) = false
-            LEFT JOIN public.categorias_ingredientes ci ON ci.id = i.categoria_id
             LEFT JOIN public.nodos_articulos_catalogo nac
               ON UPPER(nac.sku_nodo) = UPPER(ba.articulo_id)
              AND nac.activo = true
@@ -6434,7 +6680,7 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
               AND UPPER(ba.articulo_id) NOT LIKE 'EMB-%'
               AND UPPER(ba.articulo_id) <> 'CCTX250G'
               AND COALESCE(ba.familia_id, 0) > 0
-              AND COALESCE(ba.familia_id, 0) <> 42
+              AND COALESCE(ba.familia_id, 0) NOT IN (41, 42, 46, 47)
               AND (
                   (COALESCE(ba.es_pack, false) = false AND COALESCE(ba.kilos_unidad, 1) <= 1.05)
                   OR (ri.ingrediente_id = 141 AND COALESCE(ba.kilos_unidad, 1) <= 1.25)
@@ -6521,7 +6767,7 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
                     articulo_vinculado_numero: row.articulo_vinculado_numero
                 },
                 row.familia_nombre,
-                row.categoria_ingrediente_nombre,
+                null,
                 idsCompuestosSet
             );
             disponiblesParaAdmin.push({
@@ -6634,7 +6880,9 @@ async function obtenerEstadoCompletoNodos() {
             SELECT nac.*,
                    COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS bunker_descripcion_generada,
                    COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
-                   COALESCE(nac.familia_bunker_nombre, 'Frutos Secos') AS bunker_familia_nombre,
+                   COALESCE(bf.nombre, nac.familia_bunker_nombre, 'Frutos Secos') AS bunker_familia_nombre,
+                   ba.rubro AS bunker_rubro,
+                   ba.sub_rubro AS bunker_sub_rubro,
                    ing.codigo AS ingrediente_origen_codigo,
                    ing.nombre AS ingrediente_origen_nombre,
                    ing.articulo_vinculado_numero AS ingrediente_origen_puente,
@@ -6646,6 +6894,7 @@ async function obtenerEstadoCompletoNodos() {
                    COALESCE(src.stock_consolidado, 0)::numeric(12,2) AS stock_fisico_bunker
             FROM public.nodos_articulos_catalogo nac
             LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
+            LEFT JOIN public.bunker_familias bf ON bf.id = COALESCE(ba.familia_id, nac.familia_bunker_id)
             LEFT JOIN public.ingredientes ing ON ing.id = nac.ingrediente_origen_id
             LEFT JOIN public.ingredientes env ON env.id = nac.insumo_envase_id
             LEFT JOIN public.colaboradores_tarifas ct ON ct.id = nac.tarifa_colaborador_id
@@ -6656,6 +6905,7 @@ async function obtenerEstadoCompletoNodos() {
         `),
         db.query(`
             SELECT npf.*,
+                   bf.nombre AS familia_bunker_nombre,
                    nm.nombre_marca AS nodo_solicitante_nombre,
                    nm.gestor_nombre AS nodo_gestor_nombre,
                    nm.color_primario AS nodo_color,
@@ -6667,6 +6917,7 @@ async function obtenerEstadoCompletoNodos() {
                    env.nombre AS envase_sugerido_nombre,
                    COALESCE(env.costo_patron, 0)::numeric(14,2) AS envase_sugerido_costo
             FROM public.nodos_propuestas_fracciones npf
+            LEFT JOIN public.bunker_familias bf ON bf.id = npf.familia_bunker_id
             LEFT JOIN public.nodos_maestro nm ON nm.id = npf.nodo_solicitante_id
             LEFT JOIN public.ingredientes ing ON ing.id = npf.ingrediente_sugerido_id
             LEFT JOIN public.ingredientes env ON env.id = npf.insumo_envase_sugerido_id
@@ -7691,20 +7942,27 @@ async function crearPropuestaFraccion(payload = {}) {
     }
 
     let ingRow = null;
+    let taxonomiaOficial = null;
     if (ingId) {
-        const ingRes = await db.query(
-            `SELECT i.id, i.codigo, i.nombre, i.articulo_vinculado_numero,
-                    ci.nombre AS categoria_lamda
-             FROM public.ingredientes i
-             LEFT JOIN public.categorias_ingredientes ci ON ci.id = i.categoria_id
-             WHERE i.id = $1 AND COALESCE(i.es_insumo, false) = false
-             LIMIT 1`,
-            [ingId]
-        );
+        const [ingRes, taxRes] = await Promise.all([
+            db.query(
+                `SELECT i.id, i.codigo, i.nombre, i.articulo_vinculado_numero,
+                        COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_patron
+                 FROM public.ingredientes i
+                 WHERE i.id = $1 AND COALESCE(i.es_insumo, false) = false
+                 LIMIT 1`,
+                [ingId]
+            ),
+            resolverTaxonomiaOficialIngredienteBunker(db, ingId)
+        ]);
         if (ingRes.rows.length === 0) {
             throw new Error('El ingrediente seleccionado no existe en el padrón oficial de LAMDA.');
         }
         ingRow = ingRes.rows[0];
+        taxonomiaOficial = taxRes;
+        if (!taxonomiaOficial || !taxonomiaOficial.familia_bunker_id) {
+            throw new Error('Este ingrediente aún no está vinculado a una Familia Oficial del Búnker LAMDA. Vinculalo primero en el Búnker antes de solicitar fracciones.');
+        }
     }
 
     const etPeso = kilos >= 1 ? `${Number(kilos.toFixed(2))} kg` : `${Math.round(kilos * 1000)}g`;
@@ -7770,15 +8028,46 @@ async function crearPropuestaFraccion(payload = {}) {
         FROM public.nodos_propuestas_fracciones
     `);
     const codigoPropuesta = `PROP-NB-${String(Number(maxRes.rows[0].max_num || 0) + 1).padStart(3, '0')}`;
-    const categoriaOficial = String(payload.categoria_sugerida || ingRow?.categoria_lamda || 'Frutos Secos').trim();
+
+    let familiaBunkerId = taxonomiaOficial?.familia_bunker_id || null;
+    let familiaBunkerNombre = taxonomiaOficial?.familia_bunker_nombre || null;
+    let articuloPrincipalBunker = taxonomiaOficial?.articulo_principal_bunker || null;
+
+    if (!familiaBunkerId && payload.articulo_bunker_sugerido_codigo) {
+        const baRefRes = await db.query(
+            `SELECT ba.familia_id, bf.nombre AS familia_nombre,
+                    COALESCE(
+                        NULLIF(TRIM(CASE
+                            WHEN jsonb_typeof(ba.propiedades_dinamicas->'articulo_principal') = 'object'
+                                THEN ba.propiedades_dinamicas->'articulo_principal'->>'valor'
+                            ELSE ba.propiedades_dinamicas->>'articulo_principal'
+                        END), ''),
+                        NULLIF(TRIM(ba.descripcion), '')
+                    ) AS articulo_principal
+             FROM public.bunker_articulos ba
+             JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+             WHERE UPPER(ba.articulo_id) = UPPER($1)
+               AND ba.familia_id <> ALL($2::int[])
+             LIMIT 1`,
+            [String(payload.articulo_bunker_sugerido_codigo).trim(), FAMILIAS_BUNKER_FRACCIONES_EXCLUIDAS]
+        );
+        if (baRefRes.rows[0]) {
+            familiaBunkerId = Number(baRefRes.rows[0].familia_id);
+            familiaBunkerNombre = String(baRefRes.rows[0].familia_nombre || '').trim();
+            articuloPrincipalBunker = String(baRefRes.rows[0].articulo_principal || '').trim() || null;
+        }
+    }
+
+    const categoriaOficial = String(familiaBunkerNombre || payload.categoria_sugerida || 'Frutos Secos').trim();
 
     const ins = await db.query(
         `INSERT INTO public.nodos_propuestas_fracciones (
             codigo_propuesta, nodo_solicitante_id, nombre_sugerido, alias_vidriera_sugerido,
-            categoria_sugerida, flujo_sugerido, ingrediente_sugerido_id, articulo_bunker_sugerido_codigo,
+            categoria_sugerida, familia_bunker_id, articulo_principal_bunker,
+            flujo_sugerido, ingrediente_sugerido_id, articulo_bunker_sugerido_codigo,
             kilos_sugeridos, insumo_envase_sugerido_id, segundos_estimados,
             precio_objetivo_vecino, comentario_gestor, estado
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'PENDIENTE_COTIZACION')
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'PENDIENTE_COTIZACION')
         RETURNING *`,
         [
             codigoPropuesta,
@@ -7786,6 +8075,8 @@ async function crearPropuestaFraccion(payload = {}) {
             nombreSugerido,
             aliasVidrieraSugerido,
             categoriaOficial,
+            familiaBunkerId,
+            articuloPrincipalBunker,
             Number(payload.flujo_sugerido || 2),
             ingId,
             payload.articulo_bunker_sugerido_codigo || null,
@@ -7797,7 +8088,10 @@ async function crearPropuestaFraccion(payload = {}) {
         ]
     );
 
-    return ins.rows[0];
+    return {
+        ...ins.rows[0],
+        familia_bunker_nombre: familiaBunkerNombre || categoriaOficial
+    };
 }
 
 /**
@@ -8810,6 +9104,7 @@ async function sincronizarCatalogoNodoDesdeBunker(articuloId, runnerOpt = null) 
                     articulo_vinculado_numero: ingredienteAlimento.articulo_vinculado_numero
                 },
                 familiaBunkerNombre,
+                null,
                 idsCompSet
             );
             flujoLamda = Number(ident.flujo || 2);
@@ -9302,12 +9597,11 @@ function calcularProximaEntregaNodo(configVentanas = [], fechaReferenciaInput = 
  * sin diccionarios intermedios y sin exponer costos ni fórmulas internas.
  */
 async function obtenerCatalogoIngredientesSolicitablesGestor() {
-    const [ingRes, compRes, famRes, plantaInfo] = await Promise.all([
+    const [ingRes, compRes, taxonomiaBunkerMap, plantaInfo] = await Promise.all([
         db.query(`
             SELECT i.id, i.codigo, i.nombre, i.articulo_vinculado_numero,
-                   ci.nombre AS categoria_ingrediente_nombre
+                   COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_patron
             FROM public.ingredientes i
-            LEFT JOIN public.categorias_ingredientes ci ON ci.id = i.categoria_id
             WHERE COALESCE(i.es_insumo, false) = false
               AND i.id < 8000
               AND i.nombre NOT ILIKE '%Fuera de Servicio%'
@@ -9319,27 +9613,13 @@ async function obtenerCatalogoIngredientesSolicitablesGestor() {
             SELECT DISTINCT mix_id AS ingrediente_padre_id
             FROM public.ingrediente_composicion
         `),
-        db.query(`
-            SELECT DISTINCT ON (ri.ingrediente_id)
-                   ri.ingrediente_id,
-                   bf.nombre AS familia_nombre
-            FROM public.receta_ingredientes ri
-            JOIN public.recetas r ON r.id = ri.receta_id
-            JOIN public.bunker_articulos ba ON ba.articulo_id = r.articulo_numero
-            LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
-            WHERE COALESCE(ba.familia_id, 0) > 0
-              AND COALESCE(ba.familia_id, 0) <> 42
-            ORDER BY ri.ingrediente_id,
-                     CASE WHEN COALESCE(ba.kilos_unidad, 1) BETWEEN 0.05 AND 1.00 THEN 0 ELSE 1 END,
-                     ba.kilos_unidad ASC
-        `),
+        resolverTaxonomiaOficialIngredienteBunker(db),
         obtenerPresentacionesPlantaLamda()
     ]);
 
     const idsCompuestosSet = new Set(compRes.rows.map(r => Number(r.ingrediente_padre_id)));
     // Excluir pre-mezclas e insumos internos de UP externa (se exponen sus ingredientes puente terminados: #122, #131, #141, etc.)
     const idsIntermediosExcluidos = new Set([109, 132, 133, 134, 135, 136, 140]);
-    const mapaFamilias = new Map(famRes.rows.map(r => [Number(r.ingrediente_id), r.familia_nombre]));
     const mapaPresGestor = plantaInfo ? plantaInfo.porIngredienteGestor : new Map();
 
     return ingRes.rows
@@ -9347,20 +9627,34 @@ async function obtenerCatalogoIngredientesSolicitablesGestor() {
             const idNum = Number(ing.id);
             if (idsCompuestosSet.has(idNum)) return false;
             if (idsIntermediosExcluidos.has(idNum)) return false;
+            // Pilar 1: 100% determinista sobre bunker_familias oficiales + costo comercial activo
+            const tax = taxonomiaBunkerMap.get(idNum);
+            if (!tax || !tax.familia_bunker_id || !tax.familia_bunker_nombre) return false;
+            if (Number(ing.costo_patron || 0) <= 0) return false;
             return true;
         })
         .map(ing => {
             const idNum = Number(ing.id);
-            const fam = mapaFamilias.get(idNum) || ing.categoria_ingrediente_nombre || null;
-            const ident = resolverIdentidadTecnicaIngrediente(ing, fam, idsCompuestosSet);
+            const tax = taxonomiaBunkerMap.get(idNum);
+            const ident = resolverIdentidadTecnicaIngrediente(
+                ing,
+                tax.familia_bunker_nombre,
+                null,
+                idsCompuestosSet
+            );
             return {
                 id: idNum,
                 codigo: ident.codigo,
                 nombre_oficial: ident.nombre_oficial,
                 label_oficial: ident.label_oficial,
                 nombre_claro: ident.label_oficial,
-                categoria_lamda: ident.categoria_lamda,
-                categoria_gestor: ident.categoria_lamda,
+                familia_bunker_id: tax.familia_bunker_id,
+                familia_bunker_nombre: tax.familia_bunker_nombre,
+                articulo_principal_bunker: tax.articulo_principal_bunker || 'Otros',
+                bunker_sku_referencia: tax.bunker_sku_referencia || null,
+                origen_taxonomia: tax.origen_taxonomia,
+                categoria_lamda: tax.familia_bunker_nombre,
+                categoria_gestor: tax.familia_bunker_nombre,
                 articulo_vinculado_numero: ident.articulo_vinculado_numero,
                 flujo: ident.flujo,
                 flujo_nombre: ident.flujo_nombre,
@@ -9369,8 +9663,10 @@ async function obtenerCatalogoIngredientesSolicitablesGestor() {
             };
         })
         .sort((a, b) => {
-            const diffCat = String(a.categoria_lamda || '').localeCompare(String(b.categoria_lamda || ''), 'es');
-            if (diffCat !== 0) return diffCat;
+            const diffFam = String(a.familia_bunker_nombre || '').localeCompare(String(b.familia_bunker_nombre || ''), 'es');
+            if (diffFam !== 0) return diffFam;
+            const diffPrin = String(a.articulo_principal_bunker || '').localeCompare(String(b.articulo_principal_bunker || ''), 'es');
+            if (diffPrin !== 0) return diffPrin;
             return String(a.nombre_oficial || '').localeCompare(String(b.nombre_oficial || ''), 'es');
         });
 }
@@ -9454,7 +9750,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
 
     const mostrarIngredientesNodo = nodo.mostrar_ingredientes_tienda !== false;
 
-    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes, ingredientesSolicitables, catDisponibleRes, catalogoIngredientes] = await Promise.all([
+    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes, ingredientesSolicitables, familiasBunkerOficiales, catDisponibleRes, catalogoIngredientes] = await Promise.all([
         db.query(
             `SELECT nog.*,
                     nac.sku_nodo,
@@ -9488,11 +9784,16 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         db.query(
             `SELECT npf.id, npf.codigo_propuesta, npf.nodo_solicitante_id, npf.nombre_sugerido,
                     npf.alias_vidriera_sugerido, npf.articulo_catalogo_id,
-                    npf.categoria_sugerida, npf.ingrediente_sugerido_id, npf.flujo_sugerido,
+                    npf.familia_bunker_id,
+                    COALESCE(bf.nombre, npf.categoria_sugerida) AS familia_bunker_nombre,
+                    npf.articulo_principal_bunker,
+                    COALESCE(bf.nombre, npf.categoria_sugerida) AS categoria_sugerida,
+                    npf.ingrediente_sugerido_id, npf.flujo_sugerido,
                     npf.articulo_bunker_sugerido_codigo, npf.kilos_sugeridos, npf.precio_objetivo_vecino,
                     npf.comentario_gestor, npf.estado, npf.respuesta_lamda, npf.created_at,
                     ing.codigo AS ingrediente_codigo, ing.nombre AS ingrediente_nombre
              FROM public.nodos_propuestas_fracciones npf
+             LEFT JOIN public.bunker_familias bf ON bf.id = npf.familia_bunker_id
              LEFT JOIN public.ingredientes ing ON ing.id = npf.ingrediente_sugerido_id
              WHERE npf.nodo_solicitante_id = $1
                AND COALESCE(npf.estado, '') <> 'ANULADA'
@@ -9565,6 +9866,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             )
             : Promise.resolve({ rows: [] }),
         esVistaGestor ? obtenerCatalogoIngredientesSolicitablesGestor() : Promise.resolve([]),
+        esVistaGestor ? obtenerFamiliasComercialesBunkerOficiales(db, { incluirCombos: true }) : Promise.resolve([]),
         esVistaGestor
             ? db.query(
                 `SELECT nac.id AS catalogo_id,
@@ -10136,7 +10438,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         telefono_whatsapp_pruebas: '5492216615746',
         telefono_whatsapp_pruebas_display: '221 661 5746',
         modo_laboratorio: esModoLaboratorioNodos(),
-        ingredientes_sugeribles: esVistaGestor ? ingredientesSolicitables : []
+        ingredientes_sugeribles: esVistaGestor ? ingredientesSolicitables : [],
+        familias_bunker_oficiales: esVistaGestor ? familiasBunkerOficiales : []
     };
 }
 
@@ -21039,5 +21342,7 @@ module.exports = {
     LOGO_ZPL_CONFIG_MORO_OFICIAL,
     leerLogoZebraMoroDataUrl,
     versionarUrlAssetNodo,
-    enriquecerTemaVisualConVersionAssets
+    enriquecerTemaVisualConVersionAssets,
+    obtenerFamiliasComercialesBunkerOficiales,
+    resolverTaxonomiaOficialIngredienteBunker
 };

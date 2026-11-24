@@ -16142,6 +16142,26 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "familia_bunker_id": {
+        "ordinal_position": 20,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "articulo_principal_bunker": {
+        "ordinal_position": 21,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "nodos_reparto_radar": {

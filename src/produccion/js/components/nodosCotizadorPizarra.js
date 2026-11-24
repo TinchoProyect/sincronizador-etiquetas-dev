@@ -108,11 +108,28 @@
         return Number(fallbackCosto) || 0;
     }
 
+    function aplicarSubTabInicialDesdeUrl() {
+        if (ESTADO_NODOS._subtabUrlAplicado) return;
+        try {
+            const params = new URLSearchParams(window.location.search || '');
+            const subtabUrl = String(params.get('subtab') || '').trim().toLowerCase();
+            if (['abm_nodos', 'catalogo', 'cotizador', 'combos'].includes(subtabUrl)) {
+                ESTADO_NODOS.subTabActiva = subtabUrl;
+            }
+        } catch (_) {}
+        ESTADO_NODOS._subtabUrlAplicado = true;
+    }
+
     async function cargarDatosNodosBarriales(forzar = false) {
+        aplicarSubTabInicialDesdeUrl();
         if (ESTADO_NODOS.cargando) return;
         if (ESTADO_NODOS.inicializado && !forzar) {
             actualizarBadgePropuestasPendientes();
             renderizarVistaNodosCompleta();
+            if (ESTADO_NODOS.subTabActiva === 'cotizador') recalcularMesaCotizacionEnVivo();
+            if (ESTADO_NODOS.subTabActiva === 'combos' && window.CombosPizarra && typeof window.CombosPizarra.inicializar === 'function') {
+                window.CombosPizarra.inicializar('nodos-combos-subtab-mount');
+            }
             return;
         }
 
@@ -140,6 +157,11 @@
 
             actualizarBadgePropuestasPendientes();
             renderizarVistaNodosCompleta();
+            if (ESTADO_NODOS.subTabActiva === 'cotizador') {
+                recalcularMesaCotizacionEnVivo();
+            } else if (ESTADO_NODOS.subTabActiva === 'combos' && window.CombosPizarra && typeof window.CombosPizarra.inicializar === 'function') {
+                window.CombosPizarra.inicializar('nodos-combos-subtab-mount');
+            }
         } catch (err) {
             console.error('❌ [NodosCotizador] Error cargando datos:', err);
             const container = document.getElementById('nodos-cotizador-container');
@@ -381,6 +403,7 @@
                     </div>
 
                     <div style="font-size:0.76rem; color:#cbd5e1; display:flex; gap:10px; flex-wrap:wrap;">
+                        ${(prop.familia_bunker_nombre || prop.categoria_sugerida) ? `<span>🏛️ Familia: <strong style="color:#bae6fd;">${escaparHtml(prop.familia_bunker_nombre || prop.categoria_sugerida)}</strong>${prop.articulo_principal_bunker ? ` › <strong style="color:#e2e8f0;">${escaparHtml(prop.articulo_principal_bunker)}</strong>` : ''}</span>` : ''}
                         <span>⚖️ Fracción: <strong>${gramosProp}g</strong> (${Number(prop.kilos_sugeridos || 0.25)} kg)</span>
                         ${(prop.ingrediente_label_oficial || prop.ingrediente_sugerido_nombre) ? `<span>🌾 Ingrediente FK #${Number(prop.ingrediente_sugerido_id || 0)}: <strong>${escaparHtml(prop.ingrediente_label_oficial || prop.ingrediente_sugerido_nombre)}</strong> (${fmtMoneda(prop.ingrediente_sugerido_costo_kg)}/kg)</span>` : ''}
                         ${prop.ingrediente_articulo_vinculado ? `<span>🔗 Puente: <code style="color:#7dd3fc;">${escaparHtml(prop.ingrediente_articulo_vinculado)}</code></span>` : ''}
@@ -561,9 +584,10 @@
 
                     <div style="display:grid; grid-template-columns: 1fr 1.35fr; gap:10px; margin-bottom:12px;">
                         <div>
-                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Familia / Rubro Oficial LAMDA</label>
+                            <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">🏛️ Familia Oficial LAMDA (<code>bunker_familias</code>)</label>
                             <input type="text" id="cot-categoria" readonly value="Frutos Secos"
-                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0b1120; color:#cbd5e1; font-size:0.81rem; box-sizing:border-box; cursor:not-allowed;">
+                                style="width:100%; padding:8px; border-radius:7px; border:1px solid #334155; background:#0b1120; color:#bae6fd; font-weight:800; font-size:0.81rem; box-sizing:border-box; cursor:not-allowed;">
+                            <div id="cot-rubro-secundario" style="font-size:0.68rem; color:#94a3b8; margin-top:3px; min-height:14px;"></div>
                         </div>
                         <div>
                             <label style="display:block; font-size:0.74rem; color:#cbd5e1; margin-bottom:4px;">Disponibilidad en Listas del Búnker</label>
@@ -913,7 +937,7 @@
                         <tr style="background:#0f172a; color:#94a3b8; text-align:left; position:sticky; top:0; z-index:1; border-bottom:1px solid #334155;">
                             <th style="padding:8px 10px;">SKU Búnker / Flujo</th>
                             <th style="padding:8px 10px;">Nomenclatura Oficial LAMDA (Búnker)</th>
-                            <th style="padding:8px 10px;">Familia / Rubro</th>
+                            <th style="padding:8px 10px;">Familia Oficial</th>
                             <th style="padding:8px 10px;">Costo MP / Base</th>
                             <th style="padding:8px 10px;">Ref. Lista Mayorista</th>
                             <th style="padding:8px 10px; text-align:right;">Habilitar en Nodos</th>
@@ -2317,8 +2341,13 @@
                 bunkerNomEl.value = anat.nomenclatura_bunker || '';
             }
             if (catEl) {
-                const rubroTxt = anat.rubro ? `${anat.rubro}${anat.sub_rubro ? ` / ${anat.sub_rubro}` : ''}` : (anat.familia_nombre || 'Frutos Secos');
-                catEl.value = rubroTxt;
+                catEl.value = anat.familia_nombre || 'Sin Familia en Búnker';
+            }
+            const rubroSecEl = document.getElementById('cot-rubro-secundario');
+            if (rubroSecEl) {
+                const rubroTxt = anat.rubro ? `${anat.rubro}${anat.sub_rubro ? ` / ${anat.sub_rubro}` : ''}` : '';
+                const anclaTxt = anat.articulo_principal ? `Ancla: ${anat.articulo_principal}` : '';
+                rubroSecEl.textContent = [anclaTxt, rubroTxt ? `Rubro Búnker: ${rubroTxt}` : ''].filter(Boolean).join(' · ');
             }
             if (envEl && anat.insumo_envase_id && !ESTADO_NODOS.catalogoEditandoId && !opciones.desdeCasoB) {
                 envEl.value = String(anat.insumo_envase_id);
@@ -2340,7 +2369,10 @@
                     badgeEl.style.background = 'rgba(56,189,248,0.12)';
                     badgeEl.style.border = '1px solid rgba(56,189,248,0.40)';
                     badgeEl.style.color = '#bae6fd';
-                    badgeEl.innerHTML = `🧬 <strong>Caso A (Clonado determinista de hermano Búnker <code>${escaparHtml(anat.hermano_origen_sku || '')}</code>):</strong> <code>[${escaparHtml(anat.sku_nativo)}] ${escaparHtml(anat.nomenclatura_bunker)}</code> · Familia <strong>${escaparHtml(anat.familia_nombre || '')}</strong> (${escaparHtml(anat.rubro || '')}${anat.sub_rubro ? `/${escaparHtml(anat.sub_rubro)}` : ''}) · Bolsa: <strong>${escaparHtml(nombreBolsa)}</strong>`;
+                    const etiquetaOrigenCasoA = anat.hermano_origen_tipo === 'BULTO_VINCULADO'
+                        ? `bulto cerrado vinculado <code>${escaparHtml(anat.hermano_origen_sku || '')}</code>`
+                        : `hermano Búnker <code>${escaparHtml(anat.hermano_origen_sku || '')}</code>`;
+                    badgeEl.innerHTML = `🧬 <strong>Caso A (Clonado determinista desde ${etiquetaOrigenCasoA}):</strong> <code>[${escaparHtml(anat.sku_nativo)}] ${escaparHtml(anat.nomenclatura_bunker)}</code> · Familia <strong>${escaparHtml(anat.familia_nombre || '')}</strong>${anat.rubro ? ` <span style="color:#94a3b8;">(Rubro: ${escaparHtml(anat.rubro)}${anat.sub_rubro ? `/${escaparHtml(anat.sub_rubro)}` : ''})</span>` : ''} · Bolsa: <strong>${escaparHtml(nombreBolsa)}</strong>`;
                 } else {
                     badgeEl.style.background = 'rgba(245,158,11,0.14)';
                     badgeEl.style.border = '1px solid rgba(245,158,11,0.45)';
@@ -2528,7 +2560,13 @@
 
         if (costoEl) costoEl.value = costoVivo.toFixed(2);
         if (kilosEl) kilosEl.value = kilosSug.toFixed(2);
-        if (catEl) catEl.value = prop.categoria_sugerida || itemIng?.categoria_lamda || itemIng?.categoria_gestor || 'FRUTOS SECOS';
+        if (catEl) catEl.value = prop.familia_bunker_nombre || itemIng?.familia_bunker_nombre || prop.categoria_sugerida || itemIng?.categoria_lamda || 'Frutos Secos';
+        const rubroSecPropEl = document.getElementById('cot-rubro-secundario');
+        if (rubroSecPropEl) {
+            const anclaProp = prop.articulo_principal_bunker || itemIng?.articulo_principal_bunker || '';
+            const rubroProp = itemIng?.bunker_rubro ? `${itemIng.bunker_rubro}${itemIng.bunker_sub_rubro ? ` / ${itemIng.bunker_sub_rubro}` : ''}` : '';
+            rubroSecPropEl.textContent = [anclaProp ? `Ancla: ${anclaProp}` : '', rubroProp ? `Rubro Búnker: ${rubroProp}` : ''].filter(Boolean).join(' · ');
+        }
         if (envEl && prop.insumo_envase_sugerido_id) envEl.value = String(prop.insumo_envase_sugerido_id);
         if (prop.segundos_estimados) fijarSegundosEnMesa(prop.segundos_estimados, true);
 
@@ -2569,7 +2607,13 @@
         if (bunkerNomEl) bunkerNomEl.value = cat.bunker_descripcion_generada || cat.nombre_publico || '';
         if (compMayEl) compMayEl.value = Boolean(cat.compartido_mayorista) ? 'true' : 'false';
         if (skuEl) skuEl.value = cat.sku_nodo;
-        if (catEl) catEl.value = cat.bunker_rubro ? `${cat.bunker_rubro}${cat.bunker_sub_rubro ? ` / ${cat.bunker_sub_rubro}` : ''}` : (cat.categoria_familiar || 'FRUTOS SECOS');
+        if (catEl) catEl.value = cat.bunker_familia_nombre || cat.familia_bunker_nombre || cat.categoria_familiar || 'Frutos Secos';
+        const rubroSecCatEl = document.getElementById('cot-rubro-secundario');
+        if (rubroSecCatEl) {
+            const anclaCat = cat.articulo_principal_bunker ? `Ancla: ${cat.articulo_principal_bunker}` : '';
+            const rubroCat = cat.bunker_rubro ? `Rubro Búnker: ${cat.bunker_rubro}${cat.bunker_sub_rubro ? ` / ${cat.bunker_sub_rubro}` : ''}` : '';
+            rubroSecCatEl.textContent = [anclaCat, rubroCat].filter(Boolean).join(' · ');
+        }
         if (envEl && cat.insumo_envase_id) envEl.value = String(cat.insumo_envase_id);
         fijarSegundosEnMesa(cat.segundos_fraccionamiento || 35, true);
         if (margenL) margenL.value = Number(cat.margen_lamda_pct || 22);
@@ -4691,6 +4735,7 @@
                         actualizarBadgePropuestasPendientes();
 
                         const params = new URLSearchParams(window.location.search);
+                        aplicarSubTabInicialDesdeUrl();
                         if (params.get('tab') === 'nodos' && typeof window.cambiarContextoLDN === 'function') {
                             window.cambiarContextoLDN(7);
                         }

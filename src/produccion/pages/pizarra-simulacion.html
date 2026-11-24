@@ -3044,6 +3044,8 @@
             }
           } else if (!isNaN(paramLdn) && paramLdn >= 1 && paramLdn <= 8) {
             ctxDestino = paramLdn;
+          } else if (String(urlParams.get('tab') || '').trim().toLowerCase() === 'nodos') {
+            ctxDestino = 7;
           }
         } catch (eUrl) {}
       }

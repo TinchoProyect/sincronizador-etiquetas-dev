@@ -491,7 +491,11 @@
       <div class="topbar-actions">
         <button type="button" id="btn-top-nueva-tienda" class="btn-top" style="background:#16a34a; border-color:#15803d; color:#fff; font-weight:900;" onclick="abrirModalAbmTiendaCentro(null, null)">➕ Nueva Tienda / 🧬 Clonar</button>
         <a href="http://localhost:3000/" id="btn-top-menu-principal" class="btn-top">← Menú Principal</a>
-        <a href="http://localhost:3002/pages/pizarra-simulacion.html?tab=nodos" id="btn-top-pizarra-nodos" class="btn-top">🎛️ Alta de Nodos y Pizarra</a>
+        <a href="http://localhost:3002/pages/pizarra-simulacion.html?tab=nodos" id="btn-top-pizarra-nodos" class="btn-top">
+          🎛️ Alta de Nodos y Pizarra
+          <span id="badge-centro-solicitudes-pendientes" data-testid="badge-centro-solicitudes-pendientes"
+            style="display:none; padding:1px 7px; border-radius:999px; background:#f59e0b; color:#0f172a; font-size:0.72rem; font-weight:900; line-height:1.35;">0</span>
+        </a>
         <a href="/deposito-nodos" id="btn-top-mesa-armado" class="btn-top">📦 Mesa de Armado</a>
         <a href="/liquidacion-nodos" id="btn-top-liquidacion-nodos" class="btn-top">💰 Liquidación y Cobros</a>
         <a href="http://localhost:3005/pages/listado-clientes.html" id="btn-top-clientes-bunker" class="btn-top">📒 Clientes Búnker</a>
@@ -592,6 +596,7 @@
       verMovimientosMadreGlobal: false,
       qrCachePorNodo: {},
       modoQrTienda: 'directo', // 'directo' | 'afiche'
+      solicitudesPendientes: { fracciones: 0, combos: 0, total: 0 },
       radar: {
         nodoFiltro: 'todos',
         rango: '7d',
@@ -630,6 +635,39 @@
       if (elMenu) elMenu.setAttribute('href', resolverUrlModuloLamda(3000, '/'));
       if (elPizarra) elPizarra.setAttribute('href', resolverUrlModuloLamda(3002, '/pages/pizarra-simulacion.html?tab=nodos'));
       if (elClientes) elClientes.setAttribute('href', resolverUrlModuloLamda(3005, '/pages/listado-clientes.html'));
+    }
+
+    function renderizarBadgeSolicitudesPendientesCentro() {
+      const badge = document.getElementById('badge-centro-solicitudes-pendientes');
+      const btn = document.getElementById('btn-top-pizarra-nodos');
+      if (!badge) return;
+      const sp = CSTATE.solicitudesPendientes || { fracciones: 0, combos: 0, total: 0 };
+      const total = Number(sp.total || 0);
+      const fracc = Number(sp.fracciones || 0);
+      const combos = Number(sp.combos || 0);
+      if (total > 0) {
+        badge.style.display = 'inline-flex';
+        badge.textContent = `⏳ ${total} pend.`;
+        const detalle = `${fracc} fracción(es) · ${combos} combo(s) pendientes de cotización en Pizarra Nodos`;
+        badge.title = detalle;
+        if (btn) {
+          const subtabDestino = fracc > 0 ? 'cotizador' : 'combos';
+          btn.setAttribute('href', resolverUrlModuloLamda(3002, `/pages/pizarra-simulacion.html?tab=nodos&subtab=${subtabDestino}`));
+          btn.title = detalle;
+          btn.style.borderColor = '#f59e0b';
+          btn.style.boxShadow = '0 0 0 1px rgba(245, 158, 11, 0.35)';
+        }
+      } else {
+        badge.style.display = 'none';
+        badge.textContent = '0';
+        badge.title = 'Sin solicitudes pendientes de cotización';
+        if (btn) {
+          btn.setAttribute('href', resolverUrlModuloLamda(3002, '/pages/pizarra-simulacion.html?tab=nodos'));
+          btn.title = 'Abrir Pizarra Nodos y Cotizador';
+          btn.style.borderColor = '';
+          btn.style.boxShadow = '';
+        }
+      }
     }
 
     function fmtMoneda(n) {
@@ -752,6 +790,8 @@
 
       CSTATE.nodos = Array.isArray(data.nodos) ? data.nodos : [];
       CSTATE.modoLaboratorio = Boolean(data.modo_laboratorio);
+      CSTATE.solicitudesPendientes = data.solicitudes_pendientes || { fracciones: 0, combos: 0, total: 0 };
+      renderizarBadgeSolicitudesPendientesCentro();
       renderizarPillsNodosRadar();
 
       if (seleccionarInicial && CSTATE.nodos.length > 0 && !CSTATE.nodoSeleccionadoId) {

@@ -763,7 +763,8 @@ async function registrarEventoTelemetriaTienda(slugOrId, payload = {}, reqMeta =
 async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {}) {
     await asegurarEsquemaAnaliticaNodos();
 
-    const nodosRes = await db.query(`
+    const [nodosRes, pendFraccRes, pendCombosRes] = await Promise.all([
+        db.query(`
         SELECT
             nm.*,
             bc_propia.codigo_bunker_cliente AS propia_codigo_bc,
@@ -909,7 +910,15 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
               AND v.carrito_actual_unidades > 0
         ) cart_stats ON true
         ORDER BY nm.activo DESC, nm.id ASC
-    `);
+    `),
+        db.query(`SELECT COUNT(*)::int AS cnt FROM public.nodos_propuestas_fracciones WHERE estado = 'PENDIENTE_COTIZACION'`)
+            .catch(() => ({ rows: [{ cnt: 0 }] })),
+        db.query(`SELECT COUNT(*)::int AS cnt FROM public.nodos_propuestas_combos WHERE estado = 'PENDIENTE_COTIZACION'`)
+            .catch(() => ({ rows: [{ cnt: 0 }] }))
+    ]);
+
+    const pendFracc = Number(pendFraccRes.rows[0]?.cnt || 0);
+    const pendCombos = Number(pendCombosRes.rows[0]?.cnt || 0);
 
     const nodos = nodosRes.rows.map((r) => {
         const usaMadre = Boolean(r.usar_cuenta_madre_unificada && r.madre_bc_id);
@@ -1060,6 +1069,11 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
         modo_laboratorio: String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true'
             && String(process.env.DB_NAME || '').trim() === 'etiquetas_pruebas',
         total_nodos: nodos.length,
+        solicitudes_pendientes: {
+            fracciones: pendFracc,
+            combos: pendCombos,
+            total: pendFracc + pendCombos
+        },
         nodos
     };
 }

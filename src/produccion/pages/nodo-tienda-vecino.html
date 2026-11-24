@@ -3357,12 +3357,17 @@
       }, 900);
     }
 
-    function seleccionarCategoriaTienda(catNombre) {
-      STATE.categoriaActiva = catNombre;
+    function claveCategoriaTienda(catTxt) {
+      return normalizarTextoBusqueda(String(catTxt || '').trim());
+    }
+
+    function seleccionarCategoriaTienda(catClave, catLabel = '') {
+      const claveNorm = (!catClave || catClave === 'TODAS') ? 'TODAS' : claveCategoriaTienda(catClave);
+      STATE.categoriaActiva = claveNorm || 'TODAS';
       renderCategorias();
       renderCatalogo();
-      if (catNombre && catNombre !== 'TODAS') {
-        enviarTelemetriaTienda('categoria_seleccionada', { categoria_nombre: catNombre }, 1200);
+      if (STATE.categoriaActiva !== 'TODAS') {
+        enviarTelemetriaTienda('categoria_seleccionada', { categoria_nombre: catLabel || catClave }, 1200);
       }
     }
 
@@ -5441,21 +5446,40 @@
     }
 
     function renderCategorias() {
-      const catsSet = new Set(['TODAS']);
+      const catsMap = new Map();
       STATE.productos.forEach(p => {
-        if (p.categoria_familiar) catsSet.add(p.categoria_familiar);
+        const rawLabel = String(p.categoria_familiar || '').replace(/\s+/g, ' ').trim();
+        if (!rawLabel) return;
+        const key = claveCategoriaTienda(rawLabel);
+        if (!key) return;
+        if (!catsMap.has(key)) {
+          catsMap.set(key, rawLabel);
+        }
       });
+      if (STATE.categoriaActiva !== 'TODAS' && !catsMap.has(STATE.categoriaActiva)) {
+        STATE.categoriaActiva = 'TODAS';
+      }
       const row = document.getElementById('cats-row');
       if (STATE.productos.length === 0) {
         row.innerHTML = '';
         return;
       }
-      row.innerHTML = Array.from(catsSet).map(cat => `
-        <button type="button" class="cat-btn ${STATE.categoriaActiva === cat ? 'active' : ''}"
-          onclick="seleccionarCategoriaTienda('${esc(cat)}')">
-          ${cat === 'TODAS' ? 'Todos los productos' : esc(cat)}
-        </button>
-      `).join('');
+      const botones = [
+        `<button type="button" class="cat-btn ${STATE.categoriaActiva === 'TODAS' ? 'active' : ''}" data-cat-key="TODAS"
+          onclick="seleccionarCategoriaTienda('TODAS', 'Todos los productos')">
+          Todos los productos
+        </button>`
+      ];
+      const ordenadas = Array.from(catsMap.entries()).sort((a, b) => a[1].localeCompare(b[1], 'es'));
+      ordenadas.forEach(([key, label]) => {
+        botones.push(`
+          <button type="button" class="cat-btn ${STATE.categoriaActiva === key ? 'active' : ''}" data-cat-key="${esc(key)}"
+            onclick="seleccionarCategoriaTienda(decodeURIComponent('${encodeURIComponent(key)}'), decodeURIComponent('${encodeURIComponent(label)}'))">
+            ${esc(label)}
+          </button>
+        `);
+      });
+      row.innerHTML = botones.join('');
     }
 
     function obtenerModoVidrieraTienda() {
@@ -5558,7 +5582,7 @@
       const terms = qNorm.split(/\s+/).filter(Boolean);
 
       const filtrados = STATE.productos.filter(p => {
-        if (STATE.categoriaActiva !== 'TODAS' && p.categoria_familiar !== STATE.categoriaActiva) return false;
+        if (STATE.categoriaActiva !== 'TODAS' && claveCategoriaTienda(p.categoria_familiar) !== STATE.categoriaActiva) return false;
         if (terms.length === 0) return true;
         const ingTxt = Array.isArray(p.ingredientes_comerciales) ? p.ingredientes_comerciales.join(' ') : '';
         const compTxt = Array.isArray(p.componentes_vidriera) ? p.componentes_vidriera.map(c => c.nombre || '').join(' ') : '';
