@@ -4839,6 +4839,49 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             CREATE UNIQUE INDEX IF NOT EXISTS unq_nodos_grupos_vidriera_nodo_clave
                 ON public.nodos_grupos_vidriera (nodo_id, clave_producto_base);
 
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'lamda_imagenes_base_ingrediente_id_fkey'
+                      AND conrelid = 'public.lamda_imagenes_base'::regclass
+                ) THEN
+                    ALTER TABLE public.lamda_imagenes_base
+                        ADD CONSTRAINT lamda_imagenes_base_ingrediente_id_fkey
+                        FOREIGN KEY (ingrediente_id) REFERENCES public.ingredientes(id) ON DELETE CASCADE;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'lamda_imagenes_base_tipo_ancla_check'
+                      AND conrelid = 'public.lamda_imagenes_base'::regclass
+                ) THEN
+                    ALTER TABLE public.lamda_imagenes_base
+                        ADD CONSTRAINT lamda_imagenes_base_tipo_ancla_check
+                        CHECK (tipo_ancla IN ('INGREDIENTE', 'PRODUCTO_BASE', 'ARTICULO_SKU'));
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'nodos_grupos_vidriera_nodo_id_fkey'
+                      AND conrelid = 'public.nodos_grupos_vidriera'::regclass
+                ) THEN
+                    ALTER TABLE public.nodos_grupos_vidriera
+                        ADD CONSTRAINT nodos_grupos_vidriera_nodo_id_fkey
+                        FOREIGN KEY (nodo_id) REFERENCES public.nodos_maestro(id) ON DELETE CASCADE;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'nodos_grupos_vidriera_imagen_origen_modo_check'
+                      AND conrelid = 'public.nodos_grupos_vidriera'::regclass
+                ) THEN
+                    ALTER TABLE public.nodos_grupos_vidriera
+                        ADD CONSTRAINT nodos_grupos_vidriera_imagen_origen_modo_check
+                        CHECK (imagen_origen_modo IN ('LAMDA_BASE', 'PROPIA', 'SIN_IMAGEN'));
+                END IF;
+            END $$;
+
             ALTER TABLE public.nodos_ofertas_gestor
                 ADD COLUMN IF NOT EXISTS imagen_origen_modo VARCHAR(20) NOT NULL DEFAULT 'HEREDAR_GRUPO';
 
