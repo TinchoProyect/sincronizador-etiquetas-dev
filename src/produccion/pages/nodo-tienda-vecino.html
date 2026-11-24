@@ -4350,6 +4350,8 @@
     function obtenerPerfilContactoPublicoTienda(nodoObj = STATE.nodo) {
       const n = nodoObj || {};
       const p = (n.config_perfil_publico && typeof n.config_perfil_publico === 'object') ? n.config_perfil_publico : {};
+      const nombreEfectivo = String(p.nombre_contacto_efectivo || n.nombre_contacto_efectivo || n.gestor_nombre || '').trim();
+      const usaNombreCustom = Boolean(p.usa_nombre_contacto_personalizado);
       const mostrarWa = p.mostrar_whatsapp_tienda !== undefined ? Boolean(p.mostrar_whatsapp_tienda) : true;
       const rawWa = mostrarWa
         ? String(p.whatsapp_tienda_efectivo || n.whatsapp_tienda_efectivo || n.gestor_telefono || '').replace(/\D+/g, '')
@@ -4359,6 +4361,8 @@
       const igUsuario = (p.mostrar_instagram_tienda && p.instagram_usuario) ? String(p.instagram_usuario).replace(/^@+/, '').trim().toLowerCase() : '';
       const igUrl = igUsuario ? (String(p.instagram_url || '').trim() || `https://www.instagram.com/${igUsuario}/`) : '';
       return {
+        nombre_contacto_efectivo: nombreEfectivo,
+        usa_nombre_contacto_personalizado: usaNombreCustom,
         whatsapp_efectivo: waFinal,
         mostrar_whatsapp_tienda: Boolean(mostrarWa && waFinal),
         email_tienda: emailTienda,
@@ -4367,6 +4371,10 @@
         instagram_url: igUrl,
         mostrar_instagram_tienda: Boolean(igUsuario && igUrl)
       };
+    }
+
+    function obtenerNombreContactoPublicoTienda(nodoObj = STATE.nodo) {
+      return obtenerPerfilContactoPublicoTienda(nodoObj).nombre_contacto_efectivo;
     }
 
     function obtenerWhatsappPublicoEfectivoTienda(nodoObj = STATE.nodo) {
@@ -4441,9 +4449,10 @@
       const nodo = STATE.nodo || {};
       const telWa = obtenerWhatsappPublicoEfectivoTienda(nodo);
       if (!telWa) return '';
+      const nombreContacto = obtenerNombreContactoPublicoTienda(nodo);
       const saludo = esPerfilEcommerceTienda(nodo)
-        ? `Hola ${nodo.gestor_nombre || ''}! Te escribo desde la tienda online de ${nodo.nombre_marca || 'la marca'}.`
-        : `Hola ${nodo.gestor_nombre || ''}! Te escribo desde la tienda vecinal de ${nodo.nombre_marca || 'nuestro barrio'}.`;
+        ? `Hola ${nombreContacto}! Te escribo desde la tienda online de ${nodo.nombre_marca || 'la marca'}.`
+        : `Hola ${nombreContacto}! Te escribo desde la tienda vecinal de ${nodo.nombre_marca || 'nuestro barrio'}.`;
       return `https://wa.me/${telWa}?text=${encodeURIComponent(saludo)}`;
     }
 
@@ -4452,7 +4461,7 @@
     function sincronizarEnlacesCoordinarGestor() {
       const href = obtenerUrlWhatsappCoordinarGestor();
       const esEc = esPerfilEcommerceTienda(STATE.nodo);
-      const gestorNombre = String(STATE.nodo?.gestor_nombre || (esEc ? 'la tienda' : 'el referente')).trim();
+      const gestorNombre = String(obtenerNombreContactoPublicoTienda(STATE.nodo) || (esEc ? 'la tienda' : 'el referente')).trim();
       for (const idEl of ['bnav-coordinar', 'desk-nav-coordinar', 'drawer-wa-gestor-link']) {
         const el = document.getElementById(idEl);
         if (!el) continue;
@@ -4622,7 +4631,8 @@
       const infoLocal = obtenerInfoRetiroLocalTienda(nodo);
       const nombreMarca = nodo.nombre_marca || 'Tienda';
       const barrio = nodo.barrio_zona || 'Tu barrio';
-      const gestorNombre = nodo.gestor_nombre || (esEc || esLocal ? nombreMarca : 'Referente barrial');
+      const perfDrawer = obtenerPerfilContactoPublicoTienda(nodo);
+      const gestorNombre = perfDrawer.nombre_contacto_efectivo || (esEc || esLocal ? nombreMarca : 'Referente barrial');
       const iconoUrl = obtenerLogoIconoNodo(nodo);
       const siglas = String(nombreMarca).split(/\s+/).map(w => w[0] || '').join('').substring(0, 2).toUpperCase();
       const waHref = obtenerUrlWhatsappCoordinarGestor();
@@ -4673,7 +4683,7 @@
             <div style="font-size:0.72rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted);">
               Atención directa · ${esc(nombreMarca)}
             </div>
-            <div style="font-size:0.98rem; font-weight:900; color:var(--text); margin-top:3px;">
+            <div style="font-size:0.98rem; font-weight:900; color:var(--text); margin-top:3px;" data-testid="drawer-contacto-nombre">
               Consultas con ${esc(gestorNombre)}
             </div>
             <div style="font-size:0.78rem; font-weight:700; color:var(--muted); margin-top:2px; margin-bottom:10px;">
@@ -4791,8 +4801,8 @@
             <div style="font-size:0.72rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted);">
               Atención del local · ${esc(nombreMarca)}
             </div>
-            <div style="font-size:0.96rem; font-weight:900; color:var(--text); margin-top:3px;">
-              Consultas con ${esc(infoLocal.nombre_punto)}
+            <div style="font-size:0.96rem; font-weight:900; color:var(--text); margin-top:3px;" data-testid="drawer-contacto-nombre">
+              Consultas con ${esc(perfDrawer.usa_nombre_contacto_personalizado ? gestorNombre : infoLocal.nombre_punto)}
             </div>
             <div style="font-size:0.78rem; font-weight:700; color:var(--muted); margin-top:2px; margin-bottom:10px;">
               Consultas sobre productos, disponibilidad y retiro en mostrador.
@@ -4880,7 +4890,7 @@
           <div style="font-size:0.72rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted);">
             Referente de ${esc(barrio)}
           </div>
-          <div style="font-size:0.98rem; font-weight:900; color:var(--text); margin-top:3px;">
+          <div style="font-size:0.98rem; font-weight:900; color:var(--text); margin-top:3px;" data-testid="drawer-contacto-nombre">
             Coordinar con ${esc(gestorNombre)}
           </div>
           <div style="font-size:0.78rem; font-weight:700; color:var(--muted); margin-top:2px; margin-bottom:10px;">

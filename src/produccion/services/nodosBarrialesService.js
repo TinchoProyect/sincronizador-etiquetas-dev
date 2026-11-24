@@ -319,17 +319,98 @@ function normalizarInstagramUsuario(raw = '') {
 
 /**
  * Normaliza la estructura JSONB `config_perfil_publico` de un Nodo (100% opcional).
+ * Soporta:
+ *  - `nombre_contacto_tienda`: nombre público de atención al cliente (vacío => fallback a `gestor_nombre`).
+ *  - `whatsapp_lineas`: hasta 5 líneas comerciales adicionales guardadas `{ id, numero, display, etiqueta }`.
+ *  - `whatsapp_activo_modo`: `'BASE'` (usa `gestor_telefono` de LAMDA) | `'ADICIONAL'` (usa `whatsapp_activo_numero`).
+ *  - Mantiene `whatsapp_tienda` en espejo con el número adicional activo (compatibilidad hacia atrás).
+ *  - Email oficial de marca e Instagram (lógica intacta).
  * Cuando `estricto === true` (guardado desde Panel Gestor o ABM), lanza Error HTTP 400 ante cualquier formato inválido.
  */
 function normalizarConfigPerfilPublico(raw = {}, opciones = {}) {
     const estricto = Boolean(opciones?.estricto);
     const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
 
-    const resWa = normalizarWhatsappArgentina(src.whatsapp_tienda ?? '');
-    if (estricto && !resWa.ok) {
-        const err = new Error(resWa.error);
+    const nombreContacto = String(src.nombre_contacto_tienda ?? '').trim().slice(0, 80);
+
+    // 1. Normalizar lista de líneas comerciales adicionales (hasta 5, deduplicadas por número canónico)
+    const lineasNorm = [];
+    const numerosVistos = new Set();
+    const tieneArrayLineas = Array.isArray(src.whatsapp_lineas);
+
+    if (tieneArrayLineas) {
+        for (let i = 0; i < src.whatsapp_lineas.length && lineasNorm.length < 5; i++) {
+            const item = src.whatsapp_lineas[i];
+            if (!item || typeof item !== 'object') continue;
+            const rawNum = item.numero ?? item.whatsapp ?? '';
+            if (!String(rawNum || '').trim()) continue;
+            const resItem = normalizarWhatsappArgentina(rawNum);
+            if (!resItem.ok) {
+                if (estricto) {
+                    const err = new Error(resItem.error);
+                    err.statusCode = 400;
+                    throw err;
+                }
+                continue;
+            }
+            if (!resItem.valor || numerosVistos.has(resItem.valor)) continue;
+            numerosVistos.add(resItem.valor);
+            const etq = String(item.etiqueta || '').trim().slice(0, 48) || `WhatsApp Tienda ${lineasNorm.length + 1}`;
+            const idLimpio = String(item.id || `wa_${lineasNorm.length + 1}`).replace(/[^a-z0-9_-]/gi, '').slice(0, 24) || `wa_${lineasNorm.length + 1}`;
+            lineasNorm.push({
+                id: idLimpio,
+                numero: resItem.valor,
+                display: resItem.display,
+                etiqueta: etq
+            });
+        }
+    }
+
+    // Compatibilidad hacia atrás si llegó `whatsapp_tienda` suelto sin `whatsapp_lineas`
+    const resWaLegacy = normalizarWhatsappArgentina(src.whatsapp_tienda ?? '');
+    if (estricto && !resWaLegacy.ok) {
+        const err = new Error(resWaLegacy.error);
         err.statusCode = 400;
         throw err;
+    }
+    if (!tieneArrayLineas && resWaLegacy.ok && resWaLegacy.valor && !numerosVistos.has(resWaLegacy.valor)) {
+        numerosVistos.add(resWaLegacy.valor);
+        lineasNorm.push({
+            id: 'wa_1',
+            numero: resWaLegacy.valor,
+            display: resWaLegacy.display,
+            etiqueta: 'WhatsApp Tienda'
+        });
+    }
+
+    // 2. Resolver cuál línea queda explícitamente ACTIVA ('BASE' vs 'ADICIONAL')
+    let modoActivo = String(src.whatsapp_activo_modo || '').trim().toUpperCase();
+    let numActivoRaw = String(src.whatsapp_activo_numero ?? '').trim();
+    if (!modoActivo) {
+        // Fallback legacy: si había `whatsapp_tienda` sin modo explícito => ADICIONAL
+        if (!tieneArrayLineas && resWaLegacy.ok && resWaLegacy.valor) {
+            modoActivo = 'ADICIONAL';
+            numActivoRaw = resWaLegacy.valor;
+        } else {
+            modoActivo = 'BASE';
+        }
+    }
+
+    let whatsappActivoModo = 'BASE';
+    let whatsappActivoNumero = '';
+    let whatsappActivoDisplay = '';
+
+    if (modoActivo === 'ADICIONAL' && lineasNorm.length > 0) {
+        const resAct = normalizarWhatsappArgentina(numActivoRaw);
+        const elegido = (resAct.ok && resAct.valor)
+            ? (lineasNorm.find(l => l.numero === resAct.valor) || null)
+            : null;
+        const lineaElegida = elegido || (numActivoRaw ? null : lineasNorm[0]);
+        if (lineaElegida) {
+            whatsappActivoModo = 'ADICIONAL';
+            whatsappActivoNumero = lineaElegida.numero;
+            whatsappActivoDisplay = lineaElegida.display;
+        }
     }
 
     const resEm = normalizarEmailPerfilNodo(src.email_tienda ?? '');
@@ -351,8 +432,12 @@ function normalizarConfigPerfilPublico(raw = {}, opciones = {}) {
     const igUrl = resIg.ok ? resIg.url : '';
 
     return {
-        whatsapp_tienda: resWa.ok ? resWa.valor : '',
-        whatsapp_tienda_display: resWa.ok ? resWa.display : '',
+        nombre_contacto_tienda: nombreContacto,
+        whatsapp_lineas: lineasNorm,
+        whatsapp_activo_modo: whatsappActivoModo,
+        whatsapp_activo_numero: whatsappActivoNumero,
+        whatsapp_tienda: whatsappActivoNumero,
+        whatsapp_tienda_display: whatsappActivoDisplay,
         mostrar_whatsapp_tienda: src.mostrar_whatsapp_tienda !== undefined ? Boolean(src.mostrar_whatsapp_tienda) : true,
         email_tienda: emailVal,
         mostrar_email_tienda: Boolean(emailVal) && Boolean(src.mostrar_email_tienda),
@@ -367,17 +452,21 @@ function normalizarConfigPerfilPublico(raw = {}, opciones = {}) {
 
 /**
  * Resuelve los canales públicos efectivos para la Tienda del Vecino, Seguimiento y Mi Cuenta:
+ * - `nombre_contacto_efectivo`: usa `nombre_contacto_tienda` si se personalizó, o fallback a `gestor_nombre`.
  * - Si `mostrar_whatsapp_tienda` está apagado => oculta WhatsApp (`''`).
- * - Si el nodo configuró `whatsapp_tienda` dedicado => usa ese número (sin exponer jamás el teléfono personal/logístico `gestor_telefono`).
- * - Si no configuró WhatsApp dedicado => fallback transparente al `gestor_telefono` actual.
+ * - Si `whatsapp_activo_modo === 'ADICIONAL'` y tiene línea activa => usa esa línea (jamás expone `gestor_telefono`).
+ * - Si `whatsapp_activo_modo === 'BASE'` => usa la línea base `gestor_telefono` registrada en LAMDA.
  * - Solo expone Email e Instagram si el nodo activó sus perillas de visibilidad pública.
  */
 function construirPerfilContactoPublicoTienda(nodoLike = {}) {
     const perfil = normalizarConfigPerfilPublico(nodoLike?.config_perfil_publico);
+    const nombreBase = String(nodoLike?.gestor_nombre || '').trim();
+    const nombreEfectivo = perfil.nombre_contacto_tienda || nombreBase;
+
     let whatsappEfectivo = '';
     if (perfil.mostrar_whatsapp_tienda) {
-        if (perfil.whatsapp_tienda) {
-            whatsappEfectivo = perfil.whatsapp_tienda;
+        if (perfil.whatsapp_activo_modo === 'ADICIONAL' && perfil.whatsapp_activo_numero) {
+            whatsappEfectivo = perfil.whatsapp_activo_numero;
         } else {
             const fallbackNorm = normalizarWhatsappArgentina(nodoLike?.gestor_telefono || '');
             whatsappEfectivo = fallbackNorm.ok && fallbackNorm.valor
@@ -390,10 +479,13 @@ function construirPerfilContactoPublicoTienda(nodoLike = {}) {
         : '';
 
     return {
+        nombre_contacto_efectivo: nombreEfectivo,
+        usa_nombre_contacto_personalizado: Boolean(perfil.nombre_contacto_tienda),
+        whatsapp_activo_modo: perfil.whatsapp_activo_modo,
         whatsapp_tienda_efectivo: whatsappEfectivo,
         whatsapp_tienda_display: dispEfectivo,
         mostrar_whatsapp_tienda: Boolean(perfil.mostrar_whatsapp_tienda && whatsappEfectivo),
-        usa_whatsapp_dedicado: Boolean(perfil.whatsapp_tienda),
+        usa_whatsapp_dedicado: Boolean(perfil.whatsapp_activo_modo === 'ADICIONAL' && perfil.whatsapp_activo_numero),
         email_tienda: (perfil.mostrar_email_tienda && perfil.email_tienda) ? perfil.email_tienda : '',
         mostrar_email_tienda: Boolean(perfil.mostrar_email_tienda && perfil.email_tienda),
         instagram_usuario: (perfil.mostrar_instagram_tienda && perfil.instagram_usuario) ? perfil.instagram_usuario : '',
@@ -9905,6 +9997,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             config_retiro_local: configRetiroLocalNodo,
             config_video_bienvenida: configVideoBienvenidaNodo,
             config_perfil_publico: configPerfilGestorNodo,
+            nombre_contacto_efectivo: perfilPublicoTienda.nombre_contacto_efectivo,
             whatsapp_tienda_efectivo: perfilPublicoTienda.whatsapp_tienda_efectivo,
             diccionario_textos: diccionarioTextosNodo,
             mostrar_ingredientes_tienda: mostrarIngredientesNodo,
@@ -9923,7 +10016,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             bajada_marca: nodo.bajada_marca || null,
             subtitulo_marca: nodo.subtitulo_marca,
             modo_vidriera_tienda: modoVidrieraNodo,
-            gestor_nombre: nodo.gestor_nombre,
+            gestor_nombre: perfilPublicoTienda.nombre_contacto_efectivo,
+            nombre_contacto_efectivo: perfilPublicoTienda.nombre_contacto_efectivo,
             gestor_telefono: perfilPublicoTienda.whatsapp_tienda_efectivo,
             whatsapp_tienda_efectivo: perfilPublicoTienda.whatsapp_tienda_efectivo,
             barrio_zona: nodo.barrio_zona,
@@ -10163,7 +10257,7 @@ async function actualizarConfiguracionGestorNodo(nodoId, payload = {}) {
         [
             payload.nombre_marca || actual.nombre_marca,
             payload.subtitulo_marca ?? actual.subtitulo_marca,
-            payload.gestor_nombre || actual.gestor_nombre,
+            actual.gestor_nombre,   // Blindaje: el nombre titular administrativo en LAMDA nunca se sobrescribe desde Panel Gestor
             actual.gestor_telefono, // Blindaje: el teléfono titular/operativo LAMDA nunca se sobrescribe desde Panel Gestor
             payload.barrio_zona ?? actual.barrio_zona,
             payload.direccion_retiro ?? actual.direccion_retiro,
@@ -10207,7 +10301,7 @@ async function actualizarPerfilContactoGestorNodo(nodoId, payload = {}) {
     }
 
     const resAct = await db.query(
-        `SELECT id, slug, nombre_marca, gestor_telefono, COALESCE(config_perfil_publico, '{}'::jsonb) AS config_perfil_publico
+        `SELECT id, slug, nombre_marca, gestor_nombre, gestor_telefono, COALESCE(config_perfil_publico, '{}'::jsonb) AS config_perfil_publico
          FROM public.nodos_maestro
          WHERE id = $1
          LIMIT 1`,
@@ -10225,8 +10319,12 @@ async function actualizarPerfilContactoGestorNodo(nodoId, payload = {}) {
         ? payload.config_perfil_publico
         : (payload || {});
 
-    const nuevoPerfil = normalizarConfigPerfilPublico({
+    const patchPerfil = {
         ...prev,
+        ...(fuente.nombre_contacto_tienda !== undefined ? { nombre_contacto_tienda: fuente.nombre_contacto_tienda } : {}),
+        ...(Array.isArray(fuente.whatsapp_lineas) ? { whatsapp_lineas: fuente.whatsapp_lineas } : {}),
+        ...(fuente.whatsapp_activo_modo !== undefined ? { whatsapp_activo_modo: fuente.whatsapp_activo_modo } : {}),
+        ...(fuente.whatsapp_activo_numero !== undefined ? { whatsapp_activo_numero: fuente.whatsapp_activo_numero } : {}),
         ...(fuente.whatsapp_tienda !== undefined ? { whatsapp_tienda: fuente.whatsapp_tienda } : {}),
         ...(fuente.mostrar_whatsapp_tienda !== undefined ? { mostrar_whatsapp_tienda: Boolean(fuente.mostrar_whatsapp_tienda) } : {}),
         ...(fuente.email_tienda !== undefined ? { email_tienda: fuente.email_tienda } : {}),
@@ -10236,14 +10334,23 @@ async function actualizarPerfilContactoGestorNodo(nodoId, payload = {}) {
         ...(fuente.mostrar_instagram_tienda !== undefined ? { mostrar_instagram_tienda: Boolean(fuente.mostrar_instagram_tienda) } : {}),
         ...(fuente.incluir_instagram_en_difusion !== undefined ? { incluir_instagram_en_difusion: Boolean(fuente.incluir_instagram_en_difusion) } : {}),
         updated_at: new Date().toISOString()
-    }, { estricto: true });
+    };
+
+    // Compatibilidad si alguien manda solo `whatsapp_tienda` sin el nuevo array `whatsapp_lineas`
+    if (!Array.isArray(fuente.whatsapp_lineas) && fuente.whatsapp_tienda !== undefined && fuente.whatsapp_activo_modo === undefined) {
+        delete patchPerfil.whatsapp_lineas;
+        delete patchPerfil.whatsapp_activo_modo;
+        delete patchPerfil.whatsapp_activo_numero;
+    }
+
+    const nuevoPerfil = normalizarConfigPerfilPublico(patchPerfil, { estricto: true });
 
     const upd = await db.query(
         `UPDATE public.nodos_maestro
          SET config_perfil_publico = $1::jsonb,
              updated_at = NOW()
          WHERE id = $2
-         RETURNING id, slug, nombre_marca, gestor_telefono, config_perfil_publico`,
+         RETURNING id, slug, nombre_marca, gestor_nombre, gestor_telefono, config_perfil_publico`,
         [JSON.stringify(nuevoPerfil), nid]
     );
 
@@ -10990,7 +11097,7 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
                 titular: nodo.titular_display || cfgCanalPedido.titular_recaudador,
                 cuil: nodo.cuil_display || cfgCanalPedido.cuil_recaudador,
                 numero_cuenta: nodo.numero_cuenta_display || cfgCanalPedido.numero_cuenta_recaudador,
-                gestor_nombre: nodo.gestor_nombre,
+                gestor_nombre: construirPerfilContactoPublicoTienda(nodo).nombre_contacto_efectivo,
                 gestor_telefono: construirPerfilContactoPublicoTienda(nodo).whatsapp_tienda_efectivo,
                 direccion_retiro: nodo.direccion_retiro
             }
@@ -17783,7 +17890,8 @@ async function _armarRespuestaSeguimientoMarcaBlanca(pedidoRow, nodoRow) {
             nombre_marca: nodoRow.nombre_marca,
             bajada_marca: nodoRow.bajada_marca || null,
             subtitulo_marca: nodoRow.subtitulo_marca || (perfilOp === 'REDES' ? 'Tienda Oficial · Envíos a Todo el País' : (perfilOp === 'LOCALES' ? 'Retiro en Local · Compra Online' : 'Comunidad Barrial - Entrega Fresca')),
-            gestor_nombre: nodoRow.gestor_nombre,
+            gestor_nombre: perfilPubSeg.nombre_contacto_efectivo,
+            nombre_contacto_efectivo: perfilPubSeg.nombre_contacto_efectivo,
             gestor_telefono: perfilPubSeg.whatsapp_tienda_efectivo,
             whatsapp_tienda_efectivo: perfilPubSeg.whatsapp_tienda_efectivo,
             config_perfil_publico: perfilPubSeg,
@@ -18042,7 +18150,8 @@ async function consultarSeguimientoPublicoPorWhatsapp(slug, payload = {}) {
         nombre_marca: primera.nombre_marca,
         bajada_marca: primera.bajada_marca || null,
         subtitulo_marca: primera.subtitulo_marca || (perfilOpWa === 'REDES' ? 'Tienda Oficial · Envíos a Todo el País' : (perfilOpWa === 'LOCALES' ? 'Retiro en Local · Compra Online' : 'Comunidad Barrial - Entrega Fresca')),
-        gestor_nombre: primera.gestor_nombre || '',
+        gestor_nombre: perfilPubWa.nombre_contacto_efectivo,
+        nombre_contacto_efectivo: perfilPubWa.nombre_contacto_efectivo,
         gestor_telefono: perfilPubWa.whatsapp_tienda_efectivo,
         whatsapp_tienda_efectivo: perfilPubWa.whatsapp_tienda_efectivo,
         config_perfil_publico: perfilPubWa,
@@ -19668,11 +19777,16 @@ async function obtenerContactosOmnicanalNodo(idOrSlug) {
     }
 
     const perfilPublicoOmni = normalizarConfigPerfilPublico(nm.config_perfil_publico);
-    if (perfilPublicoOmni.whatsapp_tienda) {
+    const nombreComercialOmni = perfilPublicoOmni.nombre_contacto_tienda || nm.nombre_marca || nm.gestor_nombre || 'Tienda';
+    for (const lineaWa of (perfilPublicoOmni.whatsapp_lineas || [])) {
+        const esActivaEnTienda = perfilPublicoOmni.whatsapp_activo_modo === 'ADICIONAL'
+            && perfilPublicoOmni.whatsapp_activo_numero === lineaWa.numero;
         registrarWa({
-            numero: perfilPublicoOmni.whatsapp_tienda,
-            nombre: nm.nombre_marca || nm.gestor_nombre || 'Tienda',
-            cargo: 'WhatsApp Atención Tienda',
+            numero: lineaWa.numero,
+            nombre: nombreComercialOmni,
+            cargo: esActivaEnTienda
+                ? `${lineaWa.etiqueta || 'WhatsApp Tienda'} · ACTIVO en Tienda`
+                : `${lineaWa.etiqueta || 'WhatsApp Tienda'} (guardado)`,
             origen: `Mi Perfil Tienda (${nm.codigo_nodo})`,
             preferido: mapaWa.size === 0
         });
@@ -19680,7 +19794,7 @@ async function obtenerContactosOmnicanalNodo(idOrSlug) {
     if (perfilPublicoOmni.email_tienda && perfilPublicoOmni.usar_email_para_lamda) {
         registrarEmail({
             email: perfilPublicoOmni.email_tienda,
-            nombre: nm.nombre_marca || nm.gestor_nombre || 'Tienda',
+            nombre: nombreComercialOmni,
             cargo: 'Email Oficial Tienda',
             origen: `Mi Perfil Tienda (${nm.codigo_nodo})`,
             preferido: mapaEmail.size === 0
@@ -19850,7 +19964,8 @@ async function obtenerPortalCuentaVecinoMarcaBlanca(slug, portalToken) {
         nombre_marca: row.nombre_marca,
         bajada_marca: row.bajada_marca || null,
         subtitulo_marca: row.subtitulo_marca || 'Comunidad Barrial - Entrega Fresca',
-        gestor_nombre: row.gestor_nombre || '',
+        gestor_nombre: perfilPubMiCuenta.nombre_contacto_efectivo,
+        nombre_contacto_efectivo: perfilPubMiCuenta.nombre_contacto_efectivo,
         gestor_telefono: perfilPubMiCuenta.whatsapp_tienda_efectivo,
         whatsapp_tienda_efectivo: perfilPubMiCuenta.whatsapp_tienda_efectivo,
         config_perfil_publico: perfilPubMiCuenta,

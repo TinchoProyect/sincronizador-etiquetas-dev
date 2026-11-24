@@ -2375,11 +2375,13 @@
             <div>
               <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Titular / Referente *</label>
               <input type="text" id="abm-centro-gestor" value="${esc(editNodo?.gestor_nombre || '')}" placeholder="Ej: Agustín Chiste"
+                oninput="refrescarResumenBasePerfilAbmCentro()"
                 style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem;" />
             </div>
             <div>
               <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;" title="Teléfono interno/logístico del titular con LAMDA (y respaldo automático si la tienda no configura un WhatsApp comercial separado)">Tel. Titular / Operativo LAMDA</label>
               <input type="text" id="abm-centro-telefono" value="${esc(editNodo?.gestor_telefono || '')}" placeholder="Ej: 549221..."
+                oninput="refrescarResumenBasePerfilAbmCentro()"
                 style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem;" />
             </div>
           </div>
@@ -2673,11 +2675,246 @@
       return { vacio: false, ok: true, usuario, url: `https://www.instagram.com/${usuario}/`, error: '' };
     }
 
-    function renderizarHtmlSeccionPerfilPublicoAbm(nodo) {
+    let _abmPerfilWaDraft = { lineas: [], modo: 'BASE', activoNumero: '' };
+
+    function inicializarDraftWhatsappPerfilAbm(nodo) {
       const perf = (nodo?.config_perfil_publico && typeof nodo.config_perfil_publico === 'object')
         ? nodo.config_perfil_publico
         : {};
-      const waParsed = parsearWhatsappArAbmCentro(perf.whatsapp_tienda || '');
+      const lineas = [];
+      const vistos = new Set();
+      if (Array.isArray(perf.whatsapp_lineas)) {
+        for (const item of perf.whatsapp_lineas) {
+          const p = parsearWhatsappArAbmCentro(typeof item === 'string' ? item : (item?.numero || ''));
+          if (!p.vacio && p.ok && !vistos.has(p.valor)) {
+            vistos.add(p.valor);
+            lineas.push({
+              id: String(item?.id || `wa_${p.valor}`).slice(0, 48),
+              numero: p.valor,
+              display: p.display,
+              etiqueta: String(item?.etiqueta || '').trim().slice(0, 40)
+            });
+          }
+          if (lineas.length >= 5) break;
+        }
+      } else if (perf.whatsapp_tienda) {
+        const leg = parsearWhatsappArAbmCentro(perf.whatsapp_tienda);
+        if (!leg.vacio && leg.ok) {
+          vistos.add(leg.valor);
+          lineas.push({ id: `wa_${leg.valor}`, numero: leg.valor, display: leg.display, etiqueta: 'WhatsApp Tienda' });
+        }
+      }
+
+      const modoRaw = String(perf.whatsapp_activo_modo || '').trim().toUpperCase();
+      const activoRaw = parsearWhatsappArAbmCentro(perf.whatsapp_activo_numero || perf.whatsapp_tienda || '');
+      let modo = 'BASE';
+      let activoNumero = '';
+      if (modoRaw === 'BASE') {
+        modo = 'BASE';
+        activoNumero = '';
+      } else if (activoRaw.ok && !activoRaw.vacio && lineas.some(l => l.numero === activoRaw.valor)) {
+        modo = 'ADICIONAL';
+        activoNumero = activoRaw.valor;
+      } else if (modoRaw === 'ADICIONAL' && lineas.length > 0) {
+        modo = 'ADICIONAL';
+        activoNumero = lineas[0].numero;
+      }
+      _abmPerfilWaDraft = { lineas, modo, activoNumero };
+    }
+
+    function obtenerTelefonoBaseAbmCentro(nodoFallback = null) {
+      const el = document.getElementById('abm-centro-telefono');
+      const raw = el ? el.value : (nodoFallback?.gestor_telefono || '');
+      const parsed = parsearWhatsappArAbmCentro(raw);
+      return {
+        raw: String(raw || '').trim(),
+        numero: parsed.ok && !parsed.vacio ? parsed.valor : String(raw || '').replace(/\D+/g, ''),
+        display: parsed.ok && !parsed.vacio ? parsed.display : (String(raw || '').trim() || 'Sin teléfono titular cargado')
+      };
+    }
+
+    function renderizarListaLineasWhatsappAbmHtml(nodoFallback = null) {
+      const baseTel = obtenerTelefonoBaseAbmCentro(nodoFallback);
+      const baseActiva = _abmPerfilWaDraft.modo !== 'ADICIONAL' || !_abmPerfilWaDraft.activoNumero;
+
+      const cardBase = `
+        <div data-testid="abm-perfil-wa-card-base" style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:8px 10px; border-radius:9px; border:${baseActiva ? '1.5px solid #16a34a' : '1px solid #cbd5e1'}; background:${baseActiva ? '#f0fdf4' : '#f8fafc'};">
+          <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+            <input type="radio" name="abm-perfil-wa-activa" id="abm-perfil-wa-radio-base" value="BASE" ${baseActiva ? 'checked' : ''}
+              onchange="seleccionarLineaWhatsappAbmCentro('BASE', '')" style="accent-color:#16a34a; cursor:pointer;" />
+            <div>
+              <div style="font-size:0.79rem; font-weight:900; color:#0f172a; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span data-testid="abm-perfil-wa-base-display">${esc(baseTel.display)}</span>
+                ${baseActiva
+                  ? '<span data-testid="abm-perfil-wa-badge-activo-base" style="font-size:0.65rem; font-weight:900; padding:2px 6px; border-radius:999px; background:#dcfce7; color:#15803d; border:1px solid #86efac;">✅ ACTIVO EN TIENDA</span>'
+                  : '<span style="font-size:0.65rem; font-weight:800; padding:2px 6px; border-radius:999px; background:#e2e8f0; color:#475569;">En espera</span>'}
+              </div>
+              <div style="font-size:0.69rem; color:#475569; font-weight:700;">Línea base · Tel. Titular / Operativo LAMDA (inmutable desde Panel Gestor)</div>
+            </div>
+          </div>
+          ${!baseActiva ? `
+            <button type="button" data-testid="btn-abm-activar-wa-base" onclick="seleccionarLineaWhatsappAbmCentro('BASE', '')"
+              style="padding:4px 9px; border-radius:7px; border:1px solid #16a34a; background:#fff; color:#15803d; font-size:0.71rem; font-weight:800; cursor:pointer;">
+              Usar en tienda
+            </button>
+          ` : ''}
+        </div>
+      `;
+
+      const cardsAdicionales = (_abmPerfilWaDraft.lineas || []).map((linea) => {
+        const esActiva = _abmPerfilWaDraft.modo === 'ADICIONAL' && _abmPerfilWaDraft.activoNumero === linea.numero;
+        const etq = linea.etiqueta || 'WhatsApp Comercial';
+        return `
+          <div data-testid="abm-perfil-wa-card-${esc(linea.numero)}" style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; padding:8px 10px; border-radius:9px; border:${esActiva ? '1.5px solid #0284c7' : '1px solid #cbd5e1'}; background:${esActiva ? '#f0f9ff' : '#ffffff'};">
+            <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+              <input type="radio" name="abm-perfil-wa-activa" value="${esc(linea.numero)}" ${esActiva ? 'checked' : ''}
+                onchange="seleccionarLineaWhatsappAbmCentro('ADICIONAL', '${esc(linea.numero)}')" style="accent-color:#0284c7; cursor:pointer;" />
+              <div>
+                <div style="font-size:0.79rem; font-weight:900; color:#0f172a; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                  <span>${esc(linea.display)}</span>
+                  ${esActiva
+                    ? `<span data-testid="abm-perfil-wa-badge-activo-${esc(linea.numero)}" style="font-size:0.65rem; font-weight:900; padding:2px 6px; border-radius:999px; background:#e0f2fe; color:#0369a1; border:1px solid #7dd3fc;">✅ ACTIVO EN TIENDA</span>`
+                    : '<span style="font-size:0.65rem; font-weight:800; padding:2px 6px; border-radius:999px; background:#f1f5f9; color:#475569;">Guardado</span>'}
+                </div>
+                <div style="font-size:0.69rem; color:#475569; font-weight:700;">${esc(etq)} · Línea comercial de la tienda</div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:5px;">
+              ${!esActiva ? `
+                <button type="button" data-testid="btn-abm-activar-wa-${esc(linea.numero)}" onclick="seleccionarLineaWhatsappAbmCentro('ADICIONAL', '${esc(linea.numero)}')"
+                  style="padding:4px 9px; border-radius:7px; border:1px solid #0284c7; background:#fff; color:#0369a1; font-size:0.71rem; font-weight:800; cursor:pointer;">
+                  Usar en tienda
+                </button>
+              ` : ''}
+              <button type="button" data-testid="btn-abm-quitar-wa-${esc(linea.numero)}" onclick="quitarLineaWhatsappAbmCentro('${esc(linea.numero)}')" title="Quitar esta línea comercial"
+                style="padding:4px 8px; border-radius:7px; border:1px solid #fecaca; background:#fef2f2; color:#b91c1c; font-size:0.71rem; font-weight:800; cursor:pointer;">
+                🗑️
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      return `${cardBase}${cardsAdicionales}`;
+    }
+
+    function refrescarListaWhatsappAbmCentro() {
+      const cont = document.getElementById('abm-perfil-wa-lineas-lista');
+      if (cont) cont.innerHTML = renderizarListaLineasWhatsappAbmHtml();
+    }
+
+    function seleccionarLineaWhatsappAbmCentro(modo, numero = '') {
+      if (modo === 'ADICIONAL' && _abmPerfilWaDraft.lineas.some(l => l.numero === numero)) {
+        _abmPerfilWaDraft.modo = 'ADICIONAL';
+        _abmPerfilWaDraft.activoNumero = numero;
+      } else {
+        _abmPerfilWaDraft.modo = 'BASE';
+        _abmPerfilWaDraft.activoNumero = '';
+      }
+      refrescarListaWhatsappAbmCentro();
+    }
+
+    function agregarLineaWhatsappAbmCentro() {
+      const waEl = document.getElementById('abm-perfil-wa');
+      const etqEl = document.getElementById('abm-perfil-wa-etiqueta');
+      const waSt = document.getElementById('abm-perfil-wa-estado');
+      const parsed = parsearWhatsappArAbmCentro(waEl?.value || '');
+      if (parsed.vacio || !parsed.ok) {
+        if (waSt) {
+          waSt.style.color = '#b91c1c';
+          waSt.textContent = `⚠️ ${parsed.error || 'Ingresá 10 dígitos de celular AR antes de agregar.'}`;
+        }
+        if (waEl) waEl.focus();
+        return;
+      }
+      const baseTel = obtenerTelefonoBaseAbmCentro();
+      if (baseTel.numero && baseTel.numero === parsed.valor) {
+        _abmPerfilWaDraft.modo = 'BASE';
+        _abmPerfilWaDraft.activoNumero = '';
+        if (waEl) waEl.value = '';
+        if (etqEl) etqEl.value = '';
+        refrescarListaWhatsappAbmCentro();
+        if (waSt) {
+          waSt.style.color = '#15803d';
+          waSt.textContent = '✅ Ese número coincide con la línea base; quedó marcada como activa en tienda.';
+        }
+        return;
+      }
+      const etiqueta = String(etqEl?.value || '').trim().slice(0, 40) || 'WhatsApp Comercial';
+      const yaIdx = _abmPerfilWaDraft.lineas.findIndex(l => l.numero === parsed.valor);
+      if (yaIdx >= 0) {
+        _abmPerfilWaDraft.lineas[yaIdx].etiqueta = etiqueta;
+      } else {
+        if (_abmPerfilWaDraft.lineas.length >= 5) {
+          if (waSt) {
+            waSt.style.color = '#b91c1c';
+            waSt.textContent = '⚠️ Podés guardar hasta 5 líneas comerciales por tienda.';
+          }
+          return;
+        }
+        _abmPerfilWaDraft.lineas.push({
+          id: `wa_${parsed.valor}`,
+          numero: parsed.valor,
+          display: parsed.display,
+          etiqueta
+        });
+      }
+      _abmPerfilWaDraft.modo = 'ADICIONAL';
+      _abmPerfilWaDraft.activoNumero = parsed.valor;
+      if (waEl) waEl.value = '';
+      if (etqEl) etqEl.value = '';
+      refrescarListaWhatsappAbmCentro();
+      if (waSt) {
+        waSt.style.color = '#15803d';
+        waSt.textContent = `✅ Línea ${parsed.display} agregada y activada. Guardá cambios para aplicar.`;
+      }
+    }
+
+    function quitarLineaWhatsappAbmCentro(numero) {
+      _abmPerfilWaDraft.lineas = (_abmPerfilWaDraft.lineas || []).filter(l => l.numero !== numero);
+      if (_abmPerfilWaDraft.modo === 'ADICIONAL' && _abmPerfilWaDraft.activoNumero === numero) {
+        _abmPerfilWaDraft.modo = 'BASE';
+        _abmPerfilWaDraft.activoNumero = '';
+      }
+      refrescarListaWhatsappAbmCentro();
+    }
+
+    function restablecerNombreContactoBaseAbmCentro() {
+      const el = document.getElementById('abm-perfil-nombre-contacto');
+      if (el) el.value = '';
+      refrescarResumenBasePerfilAbmCentro();
+    }
+
+    function refrescarResumenBasePerfilAbmCentro() {
+      const gestorInput = document.getElementById('abm-centro-gestor');
+      const nombreCustomEl = document.getElementById('abm-perfil-nombre-contacto');
+      const estadoNombreEl = document.getElementById('abm-perfil-nombre-estado');
+      const btnResetNombre = document.getElementById('btn-abm-perfil-nombre-base');
+      const baseNombre = String(gestorInput?.value || '').trim() || 'Titular del nodo';
+      const custom = String(nombreCustomEl?.value || '').trim();
+      if (nombreCustomEl) {
+        nombreCustomEl.placeholder = `Vacío = usa "${baseNombre}" (Titular)`;
+      }
+      if (estadoNombreEl) {
+        if (custom) {
+          estadoNombreEl.style.color = '#0369a1';
+          estadoNombreEl.textContent = `✅ Visible en tienda: "${custom}" · En LAMDA sigue como titular "${baseNombre}".`;
+        } else {
+          estadoNombreEl.style.color = '#15803d';
+          estadoNombreEl.textContent = `✅ Visible en tienda hoy: "${baseNombre}" (nombre por defecto del titular).`;
+        }
+      }
+      if (btnResetNombre) btnResetNombre.style.display = custom ? 'inline-flex' : 'none';
+      refrescarListaWhatsappAbmCentro();
+    }
+
+    function renderizarHtmlSeccionPerfilPublicoAbm(nodo) {
+      inicializarDraftWhatsappPerfilAbm(nodo);
+      const perf = (nodo?.config_perfil_publico && typeof nodo.config_perfil_publico === 'object')
+        ? nodo.config_perfil_publico
+        : {};
+      const nombreContacto = String(perf.nombre_contacto_tienda || '').trim();
+      const baseNombre = String(nodo?.gestor_nombre || '').trim() || 'Titular del nodo';
       const mostrarWa = perf.mostrar_whatsapp_tienda !== undefined ? Boolean(perf.mostrar_whatsapp_tienda) : true;
       const emailTienda = String(perf.email_tienda || '').trim();
       const mostrarEmail = Boolean(emailTienda && perf.mostrar_email_tienda);
@@ -2691,27 +2928,63 @@
           <div style="margin-bottom:10px;">
             <div style="font-size:0.86rem; font-weight:900; color:#0c4a6e;">👤 Mi Perfil Público y Contacto de la Tienda (100% Opcional · Espejo Panel Gestor)</div>
             <div style="font-size:0.74rem; color:#0369a1; margin-top:2px;">
-              Canales comerciales autogestionables por el nodo. No alteran el teléfono operativo/logístico ni los datos fiscales de Cuenta Madre.
+              Nombre público de atención y canales comerciales autogestionables por el nodo. No alteran el titular ni el teléfono operativo/logístico de Cuenta Madre.
             </div>
           </div>
 
-          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
-            <!-- WhatsApp Comercial Tienda -->
-            <div style="background:#fff; border:1px solid #e0f2fe; border-radius:10px; padding:10px;">
-              <label style="display:block; font-size:0.74rem; font-weight:900; color:#0f172a; margin-bottom:4px;">💬 WhatsApp Atención Tienda</label>
-              <div style="display:flex; align-items:center; border:1px solid var(--border-strong); border-radius:8px; overflow:hidden; background:#fff;">
-                <span style="padding:6px 8px; background:#f8fafc; border-right:1px solid var(--border); font-size:0.74rem; font-weight:900; color:#0369a1; white-space:nowrap;">+54 9</span>
-                <input type="text" id="abm-perfil-wa" value="${esc(waParsed.inputFormateado || '')}" placeholder="Vacío = usa Tel. Titular"
-                  oninput="actualizarValidacionPerfilAbmCentro(false)" onblur="actualizarValidacionPerfilAbmCentro(true)"
-                  style="flex:1; min-width:0; border:none; outline:none; padding:6px 8px; font-size:0.8rem; font-weight:700;" />
-              </div>
-              <div id="abm-perfil-wa-estado" style="font-size:0.7rem; font-weight:700; color:var(--muted); margin-top:4px; min-height:16px;"></div>
-              <label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:0.73rem; font-weight:700; cursor:pointer;">
+          <!-- 1. Nombre de Contacto Público en Tienda -->
+          <div style="background:#fff; border:1px solid #e0f2fe; border-radius:10px; padding:10px; margin-bottom:10px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+              <label for="abm-perfil-nombre-contacto" style="font-size:0.74rem; font-weight:900; color:#0f172a;">🏷️ Nombre de Contacto Público en Tienda</label>
+              <button type="button" id="btn-abm-perfil-nombre-base" onclick="restablecerNombreContactoBaseAbmCentro()"
+                style="display:${nombreContacto ? 'inline-flex' : 'none'}; align-items:center; gap:4px; padding:2px 8px; border-radius:6px; border:1px solid #cbd5e1; background:#f8fafc; color:#334155; font-size:0.7rem; font-weight:800; cursor:pointer;">
+                ↺ Usar nombre titular
+              </button>
+            </div>
+            <input type="text" id="abm-perfil-nombre-contacto" maxlength="80" value="${esc(nombreContacto)}"
+              placeholder="Vacío = usa &quot;${esc(baseNombre)}&quot; (Titular)"
+              oninput="refrescarResumenBasePerfilAbmCentro()"
+              style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; font-weight:700;" />
+            <div id="abm-perfil-nombre-estado" style="font-size:0.71rem; font-weight:700; color:${nombreContacto ? '#0369a1' : '#15803d'}; margin-top:4px;">
+              ${nombreContacto
+                ? `✅ Visible en tienda: "${esc(nombreContacto)}" · En LAMDA sigue como titular "${esc(baseNombre)}".`
+                : `✅ Visible en tienda hoy: "${esc(baseNombre)}" (nombre por defecto del titular).`}
+            </div>
+          </div>
+
+          <!-- 2. WhatsApp Atención Tienda (Multi-Línea con Línea Base siempre visible) -->
+          <div style="background:#fff; border:1px solid #e0f2fe; border-radius:10px; padding:10px; margin-bottom:10px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+              <label style="font-size:0.74rem; font-weight:900; color:#0f172a;">💬 WhatsApp de Atención en Tienda (elegí la línea activa)</label>
+              <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.73rem; font-weight:700; cursor:pointer;">
                 <input type="checkbox" id="abm-perfil-wa-mostrar" ${mostrarWa ? 'checked' : ''} />
                 <span>Mostrar WhatsApp en tienda</span>
               </label>
             </div>
+            <div id="abm-perfil-wa-lineas-lista" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
+              ${renderizarListaLineasWhatsappAbmHtml(nodo)}
+            </div>
+            <div style="background:#f8fafc; border:1px dashed #bae6fd; border-radius:8px; padding:8px;">
+              <div style="font-size:0.71rem; font-weight:800; color:#0369a1; margin-bottom:5px;">➕ Sumar línea comercial adicional (opcional · máx. 5)</div>
+              <div style="display:grid; grid-template-columns:1.25fr 1fr auto; gap:6px; align-items:center;">
+                <div style="display:flex; align-items:center; border:1px solid var(--border-strong); border-radius:8px; overflow:hidden; background:#fff;">
+                  <span style="padding:6px 8px; background:#f8fafc; border-right:1px solid var(--border); font-size:0.74rem; font-weight:900; color:#0369a1; white-space:nowrap;">+54 9</span>
+                  <input type="text" id="abm-perfil-wa" value="" placeholder="Ej: 221 555-4433"
+                    oninput="actualizarValidacionPerfilAbmCentro(false)" onblur="actualizarValidacionPerfilAbmCentro(true)"
+                    style="flex:1; min-width:0; border:none; outline:none; padding:6px 8px; font-size:0.8rem; font-weight:700;" />
+                </div>
+                <input type="text" id="abm-perfil-wa-etiqueta" maxlength="40" value="" placeholder="Etiqueta (ej: Ventas Tienda)"
+                  style="width:100%; padding:6px 8px; border-radius:8px; border:1px solid var(--border-strong); background:#fff; font-size:0.78rem; font-weight:700;" />
+                <button type="button" id="btn-abm-perfil-agregar-wa" onclick="agregarLineaWhatsappAbmCentro()"
+                  style="padding:6px 11px; border-radius:8px; border:1px solid #0284c7; background:#0284c7; color:#fff; font-size:0.75rem; font-weight:800; cursor:pointer; white-space:nowrap;">
+                  + Agregar
+                </button>
+              </div>
+              <div id="abm-perfil-wa-estado" style="font-size:0.7rem; font-weight:700; color:var(--muted); margin-top:4px; min-height:15px;"></div>
+            </div>
+          </div>
 
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
             <!-- Email Oficial de Marca -->
             <div style="background:#fff; border:1px solid #e0f2fe; border-radius:10px; padding:10px;">
               <label style="display:block; font-size:0.74rem; font-weight:900; color:#0f172a; margin-bottom:4px;">✉️ Email Oficial de Marca</label>
@@ -2763,7 +3036,7 @@
       if (formatear && !wa.vacio && wa.ok) waEl.value = wa.inputFormateado;
       if (waSt) {
         waSt.style.color = wa.vacio ? 'var(--muted)' : (wa.ok ? '#15803d' : '#b91c1c');
-        waSt.textContent = wa.vacio ? 'Fallback automático al Tel. Titular.' : (wa.ok ? `✅ ${wa.display}` : `⚠️ ${wa.error}`);
+        waSt.textContent = wa.vacio ? 'Ingresá 10 dígitos sin 0 ni 15 para sumar un WhatsApp comercial.' : (wa.ok ? `✅ Listo para agregar: ${wa.display}` : `⚠️ ${wa.error}`);
       }
 
       const em = parsearEmailAbmCentro(emEl.value);
@@ -3162,10 +3435,43 @@
 
       const perfWa = parsearWhatsappArAbmCentro(document.getElementById('abm-perfil-wa')?.value || '');
       if (!perfWa.ok) return mostrarError(`WhatsApp Atención Tienda: ${perfWa.error}`);
+      if (!perfWa.vacio && perfWa.ok) {
+        const baseTel = obtenerTelefonoBaseAbmCentro();
+        if (baseTel.numero && baseTel.numero === perfWa.valor) {
+          _abmPerfilWaDraft.modo = 'BASE';
+          _abmPerfilWaDraft.activoNumero = '';
+        } else {
+          const etqPend = String(document.getElementById('abm-perfil-wa-etiqueta')?.value || '').trim().slice(0, 40) || 'WhatsApp Comercial';
+          const yaIdx = _abmPerfilWaDraft.lineas.findIndex(l => l.numero === perfWa.valor);
+          if (yaIdx >= 0) {
+            _abmPerfilWaDraft.lineas[yaIdx].etiqueta = etqPend;
+          } else if (_abmPerfilWaDraft.lineas.length < 5) {
+            _abmPerfilWaDraft.lineas.push({
+              id: `wa_${perfWa.valor}`,
+              numero: perfWa.valor,
+              display: perfWa.display,
+              etiqueta: etqPend
+            });
+          }
+          _abmPerfilWaDraft.modo = 'ADICIONAL';
+          _abmPerfilWaDraft.activoNumero = perfWa.valor;
+        }
+      }
       const perfEm = parsearEmailAbmCentro(document.getElementById('abm-perfil-email')?.value || '');
       if (!perfEm.ok) return mostrarError(`Email Oficial de Marca: ${perfEm.error}`);
       const perfIg = parsearInstagramAbmCentro(document.getElementById('abm-perfil-ig')?.value || '');
       if (!perfIg.ok) return mostrarError(`Instagram de Marca: ${perfIg.error}`);
+
+      const nombreContactoTienda = String(document.getElementById('abm-perfil-nombre-contacto')?.value || '').trim().slice(0, 80);
+      const waLineasPayload = (_abmPerfilWaDraft.lineas || []).map(l => ({
+        id: l.id || `wa_${l.numero}`,
+        numero: l.numero,
+        etiqueta: String(l.etiqueta || '').trim().slice(0, 40)
+      }));
+      const waActivoModoPayload = (_abmPerfilWaDraft.modo === 'ADICIONAL' && waLineasPayload.some(l => l.numero === _abmPerfilWaDraft.activoNumero))
+        ? 'ADICIONAL'
+        : 'BASE';
+      const waActivoNumeroPayload = waActivoModoPayload === 'ADICIONAL' ? _abmPerfilWaDraft.activoNumero : '';
 
       const payload = {
         nombre_marca: nombreMarca,
@@ -3175,7 +3481,11 @@
         gestor_telefono: document.getElementById('abm-centro-telefono')?.value?.trim() || '',
         gestor_email: nodoPrev?.gestor_email || '',
         config_perfil_publico: {
-          whatsapp_tienda: perfWa.valor,
+          nombre_contacto_tienda: nombreContactoTienda,
+          whatsapp_lineas: waLineasPayload,
+          whatsapp_activo_modo: waActivoModoPayload,
+          whatsapp_activo_numero: waActivoNumeroPayload,
+          whatsapp_tienda: waActivoNumeroPayload,
           mostrar_whatsapp_tienda: Boolean(document.getElementById('abm-perfil-wa-mostrar')?.checked ?? true),
           email_tienda: perfEm.valor,
           mostrar_email_tienda: Boolean(perfEm.valor && document.getElementById('abm-perfil-email-tienda')?.checked),
