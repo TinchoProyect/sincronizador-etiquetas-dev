@@ -6,6 +6,7 @@
  */
 
 const pool = require('../usuarios/pool');
+const nodosCaptacionCrm = require('./nodosCaptacionCrmService');
 
 let tablasVerificadas = false;
 let cacheClientesBunker = null;
@@ -37,6 +38,7 @@ const TIPOS_MENSAJE_PROTOCOLO_IGNORADOS = new Set([
 const CATEGORIAS_CONTACTO_VALIDAS = new Set([
     'CLIENTE_BUNKER',
     'PROSPECTO',
+    'PROSPECTO_NODO',
     'PROVEEDOR',
     'PERSONAL',
     'IGNORADO_BOT'
@@ -226,6 +228,11 @@ async function determinarCategoriaContactoAutomatica({
         return 'IGNORADO_BOT';
     }
 
+    // 2b. Señal explícita de Captación de Nodos (contacto externo sin ficha Búnker) -> PROSPECTO_NODO activo
+    if (nodosCaptacionCrm.esTextoSenalNodosParaCategoria(cuerpo, mediaFilename)) {
+        return 'PROSPECTO_NODO';
+    }
+
     // 3. Propagación por nombre a 2dos teléfonos de personas marcadas como OCULTO / PERSONAL (ej. Edit Agustina)
     if (modoPrivacidad === 'OCULTO' || coincidePersonaAisladaPorNombre(aislados.gruposTokensPersona, pushname, contactoNombre)) {
         return 'PERSONAL';
@@ -366,6 +373,15 @@ async function asegurarTablasCrmWhatsapp() {
 
             CREATE INDEX IF NOT EXISTS idx_crm_wa_chats_rol_operativo
             ON public.crm_whatsapp_chats(rol_operativo);
+
+            ALTER TABLE public.crm_whatsapp_chats
+            ADD COLUMN IF NOT EXISTS frente_activo VARCHAR(30) NOT NULL DEFAULT 'AUTO';
+
+            ALTER TABLE public.crm_whatsapp_chats
+            ADD COLUMN IF NOT EXISTS nodo_captacion_json JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+            CREATE INDEX IF NOT EXISTS idx_crm_wa_chats_frente_activo
+            ON public.crm_whatsapp_chats(frente_activo, categoria_contacto);
         `);
         await pool.query(`
             ALTER TABLE public.factura_cuenta_corriente_movimientos
@@ -385,6 +401,9 @@ async function asegurarTablasCrmWhatsapp() {
         });
         await clasificarRolesOperativosExistentesIdempotente().catch(errRol => {
             console.warn('⚠️ [CRM-WHATSAPP-DB] Error clasificando roles operativos iniciales:', errRol.message);
+        });
+        await clasificarFrenteNodosExistentesIdempotente().catch(errNodos => {
+            console.warn('⚠️ [CRM-WHATSAPP-DB] Error clasificando hilos de Captación de Nodos iniciales:', errNodos.message);
         });
     } catch (error) {
         console.error('❌ [CRM-WHATSAPP-DB] Error verificando tablas:', error.message);
@@ -716,9 +735,13 @@ async function registrarMensajeWhatsapp({
             // Resolver categoría automática solo si el operador no fijó una categoría manual
             let nuevaCategoria = chatActual.categoria_contacto || 'SIN_CLASIFICAR';
             let nuevoModoPriv = chatActual.modo_privacidad || 'ACTIVO';
+            const esSenalNodosMsg = nodosCaptacionCrm.esTextoSenalNodosParaCategoria(textoResumenEfectivo, mediaFilename);
             const esPdfComercialEnvio = Boolean(fromMe) && esContactoProspectoPorTexto('', '', textoResumenEfectivo, mediaFilename);
             if (!chatActual.categoria_manual) {
-                if (nuevaCategoria === 'SIN_CLASIFICAR' || (bunkerIdFinal && nuevaCategoria !== 'CLIENTE_BUNKER' && nuevaCategoria !== 'PERSONAL') || (esPdfComercialEnvio && nuevaCategoria === 'PERSONAL' && !bunkerIdFinal)) {
+                if (!bunkerIdFinal && esSenalNodosMsg && ['SIN_CLASIFICAR', 'PERSONAL', 'PROSPECTO'].includes(nuevaCategoria)) {
+                    nuevaCategoria = 'PROSPECTO_NODO';
+                    nuevoModoPriv = 'ACTIVO';
+                } else if (nuevaCategoria === 'SIN_CLASIFICAR' || (bunkerIdFinal && nuevaCategoria !== 'CLIENTE_BUNKER' && nuevaCategoria !== 'PERSONAL') || (esPdfComercialEnvio && nuevaCategoria === 'PERSONAL' && !bunkerIdFinal)) {
                     nuevaCategoria = await determinarCategoriaContactoAutomatica({
                         telefono: infoTel.limpio,
                         pushname: pushnameWa || chatActual.pushname_wa,
@@ -733,12 +756,33 @@ async function registrarMensajeWhatsapp({
                 }
                 if (nuevaCategoria === 'IGNORADO_BOT') {
                     nuevoModoPriv = 'OCULTO';
-                } else if (nuevaCategoria === 'PROSPECTO' && esPdfComercialEnvio && nuevoModoPriv === 'OCULTO') {
+                } else if ((nuevaCategoria === 'PROSPECTO' && esPdfComercialEnvio && nuevoModoPriv === 'OCULTO')
+                    || (nuevaCategoria === 'PROSPECTO_NODO' && nuevoModoPriv === 'OCULTO')) {
                     nuevoModoPriv = 'ACTIVO';
                 }
             }
 
-            if (esMasReciente || tieneUnreadExplicito || nuevaCategoria !== chatActual.categoria_contacto) {
+            // Actualizar metadatos de frente Nodos si entra/sale señal explícita de Nodos (sin pisar si fue bloqueado en MAYORISTA)
+            let nuevoNodoJson = (chatActual.nodo_captacion_json && typeof chatActual.nodo_captacion_json === 'object')
+                ? { ...chatActual.nodo_captacion_json }
+                : {};
+            let cambioNodoJson = false;
+            if (esSenalNodosMsg && String(chatActual.frente_activo || 'AUTO').toUpperCase() !== 'MAYORISTA') {
+                const esPdfNodo = /(proyecto.*nodo|propuesta.*nodo|nodo.*lamda)/i.test(String(mediaFilename || ''));
+                if (!nuevoNodoJson.activo) {
+                    nuevoNodoJson.activo = true;
+                    nuevoNodoJson.origen = nuevoNodoJson.origen || 'auto_hilo';
+                    nuevoNodoJson.etapa = nuevoNodoJson.etapa || (esPdfNodo ? 'PROPUESTA_ENVIADA' : 'INVITACION_INICIAL');
+                    nuevoNodoJson.actualizado_en = new Date().toISOString();
+                    cambioNodoJson = true;
+                } else if (esPdfNodo && (!nuevoNodoJson.etapa || nuevoNodoJson.etapa === 'INVITACION_INICIAL')) {
+                    nuevoNodoJson.etapa = 'PROPUESTA_ENVIADA';
+                    nuevoNodoJson.actualizado_en = new Date().toISOString();
+                    cambioNodoJson = true;
+                }
+            }
+
+            if (esMasReciente || tieneUnreadExplicito || nuevaCategoria !== chatActual.categoria_contacto || cambioNodoJson) {
                 let nuevoEsperando = tieneUnreadExplicito
                     ? esNoLeidoExplicito
                     : (fromMe ? false : (esMensajeNuevo ? true : Boolean(chatActual.esperando_respuesta)));
@@ -775,6 +819,7 @@ async function registrarMensajeWhatsapp({
                         ultimo_mensaje_at = CASE WHEN $15::boolean THEN $14 ELSE ultimo_mensaje_at END,
                         categoria_contacto = $16,
                         modo_privacidad = $17,
+                        nodo_captacion_json = $18::jsonb,
                         updated_at = NOW()
                     WHERE chat_id = $1
                 `, [
@@ -794,11 +839,13 @@ async function registrarMensajeWhatsapp({
                     fechaMsg,
                     esMasReciente,
                     nuevaCategoria,
-                    nuevoModoPriv
+                    nuevoModoPriv,
+                    JSON.stringify(nuevoNodoJson)
                 ]);
             }
         } else {
-            // Crear el chat por primera vez con categoría automática (Negocio vs Personal / Proveedor / Bot)
+            // Crear el chat por primera vez con categoría automática (Negocio / Nodos vs Personal / Proveedor / Bot)
+            const esSenalNodosMsg = nodosCaptacionCrm.esTextoSenalNodosParaCategoria(textoResumenEfectivo, mediaFilename);
             const esPdfComercialEnvio = Boolean(fromMe) && esContactoProspectoPorTexto('', '', textoResumenEfectivo, mediaFilename);
             const categoriaInicial = await determinarCategoriaContactoAutomatica({
                 telefono: infoTel.limpio,
@@ -820,6 +867,14 @@ async function registrarMensajeWhatsapp({
             const noLeidosInicial = categoriaInicial === 'IGNORADO_BOT'
                 ? 0
                 : (tieneUnreadExplicito ? cantNoLeidosExplicito : (fromMe ? 0 : 1));
+            const nodoJsonInicial = (categoriaInicial === 'PROSPECTO_NODO' || esSenalNodosMsg)
+                ? {
+                    activo: true,
+                    etapa: /(proyecto.*nodo|propuesta.*nodo|nodo.*lamda)/i.test(String(mediaFilename || '')) ? 'PROPUESTA_ENVIADA' : 'INVITACION_INICIAL',
+                    origen: 'auto_hilo',
+                    actualizado_en: new Date().toISOString()
+                }
+                : {};
 
             await pool.query(`
                 INSERT INTO public.crm_whatsapp_chats (
@@ -827,9 +882,10 @@ async function registrarMensajeWhatsapp({
                     bunker_cliente_id, cliente_nombre, codigo_bunker_cliente,
                     contacto_nombre, contacto_cargo, pushname_wa,
                     es_cliente_bunker, modo_privacidad, categoria_contacto,
+                    nodo_captacion_json,
                     esperando_respuesta, no_leidos,
                     ultimo_mensaje_texto, ultimo_mensaje_from_me, ultimo_mensaje_ack, ultimo_mensaje_at
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16, $17, $18, $19)
             `, [
                 chatId,
                 infoTel.limpio,
@@ -843,6 +899,7 @@ async function registrarMensajeWhatsapp({
                 esClienteFinal,
                 modoPrivInicial,
                 categoriaInicial,
+                JSON.stringify(nodoJsonInicial),
                 esperandoInicial,
                 noLeidosInicial,
                 textoResumenEfectivo,
@@ -1262,17 +1319,21 @@ async function clasificarChatsExistentesIdempotente() {
     `);
     const chatsConPdfComercial = new Set(pdfComRes.rows.map(r => r.chat_id));
 
-    // 3. Evaluar chats no manuales (o SIN_CLASIFICAR)
+    // 3. Evaluar chats no manuales (o SIN_CLASIFICAR), preservando siempre PROSPECTO_NODO activos
     const chatsRes = await pool.query(`
         SELECT id, chat_id, telefono_normalizado, bunker_cliente_id, es_cliente_bunker,
                cliente_nombre, contacto_nombre, pushname_wa, modo_privacidad,
-               categoria_contacto, categoria_manual, ultimo_mensaje_texto, esperando_respuesta
+               categoria_contacto, categoria_manual, ultimo_mensaje_texto, esperando_respuesta,
+               frente_activo, nodo_captacion_json
         FROM public.crm_whatsapp_chats
-        WHERE categoria_manual = false OR categoria_contacto = 'SIN_CLASIFICAR'
+        WHERE (categoria_manual = false OR categoria_contacto = 'SIN_CLASIFICAR')
+          AND categoria_contacto <> 'PROSPECTO_NODO'
+          AND COALESCE(frente_activo, 'AUTO') <> 'NODOS'
+          AND NOT (bunker_cliente_id IS NULL AND COALESCE((nodo_captacion_json->>'activo')::boolean, false) = true)
     `);
 
     let actualizados = 0;
-    const resumen = { CLIENTE_BUNKER: 0, PROSPECTO: 0, PROVEEDOR: 0, PERSONAL: 0, IGNORADO_BOT: 0 };
+    const resumen = { CLIENTE_BUNKER: 0, PROSPECTO: 0, PROSPECTO_NODO: 0, PROVEEDOR: 0, PERSONAL: 0, IGNORADO_BOT: 0 };
 
     for (const ch of chatsRes.rows) {
         const catNueva = await determinarCategoriaContactoAutomatica({
@@ -1296,6 +1357,8 @@ async function clasificarChatsExistentesIdempotente() {
             nuevoModo = 'OCULTO';
             nuevoEsp = false;
             limpiarNoLeidos = true;
+        } else if (catNueva === 'PROSPECTO_NODO') {
+            nuevoModo = 'ACTIVO';
         } else if (catNueva === 'PERSONAL') {
             nuevoModo = 'OCULTO';
             if (!ch.bunker_cliente_id) {
@@ -1790,6 +1853,87 @@ async function sincronizarRolOperativoEnBunkerWhatsapp(bunkerClienteId, telefono
     }
 }
 
+/**
+ * Backfill idempotente de hilos existentes que ya hablan de Captación de Nodos
+ * (o coordinación explícita de reuniones) para poblar la solapa 🌐 Nodos sin pisar
+ * configuraciones manuales ni chats marcados como MAYORISTA.
+ */
+async function clasificarFrenteNodosExistentesIdempotente() {
+    const resChats = await pool.query(`
+        SELECT id, chat_id, bunker_cliente_id, cliente_nombre, contacto_nombre, pushname_wa,
+               categoria_contacto, categoria_manual, modo_privacidad, frente_activo, nodo_captacion_json
+        FROM public.crm_whatsapp_chats
+        WHERE categoria_contacto <> 'IGNORADO_BOT'
+          AND COALESCE(frente_activo, 'AUTO') = 'AUTO'
+          AND COALESCE((nodo_captacion_json->>'activo')::boolean, false) = false
+          AND ultimo_mensaje_at IS NOT NULL
+        ORDER BY ultimo_mensaje_at DESC NULLS LAST
+        LIMIT 250
+    `);
+
+    let actualizados = 0;
+    for (const ch of resChats.rows) {
+        const mRes = await pool.query(`
+            SELECT id, from_me, cuerpo, tipo_mensaje, media_filename, fecha_mensaje
+            FROM public.crm_whatsapp_mensajes
+            WHERE chat_id = $1
+            ORDER BY fecha_mensaje DESC, id DESC
+            LIMIT 14
+        `, [ch.chat_id]);
+        if (mRes.rows.length === 0) continue;
+
+        const msgs = mRes.rows.reverse();
+        const det = nodosCaptacionCrm.detectarContextoHiloNodosWa({
+            mensajesRecientes: msgs,
+            categoriaContacto: ch.categoria_contacto,
+            frenteActivo: ch.frente_activo,
+            nodoCaptacionJson: ch.nodo_captacion_json,
+            clienteNombre: ch.cliente_nombre || '',
+            contactoNombre: ch.contacto_nombre || ch.pushname_wa || '',
+            bunkerClienteId: ch.bunker_cliente_id
+        });
+        if (!det.detectadoAutoPorHilo) continue;
+
+        const nuevoJson = {
+            ...(ch.nodo_captacion_json && typeof ch.nodo_captacion_json === 'object' ? ch.nodo_captacion_json : {}),
+            activo: true,
+            etapa: det.etapaInferida || 'INVITACION_INICIAL',
+            perfil_sugerido: det.perfilInferido || '',
+            origen: 'auto_hilo',
+            motivo_deteccion: det.motivoDeteccion || '',
+            actualizado_en: new Date().toISOString()
+        };
+
+        const promoverExterno = !ch.bunker_cliente_id
+            && !ch.categoria_manual
+            && ['PERSONAL', 'SIN_CLASIFICAR', 'PROSPECTO'].includes(String(ch.categoria_contacto || '').toUpperCase());
+
+        if (promoverExterno) {
+            await pool.query(`
+                UPDATE public.crm_whatsapp_chats
+                SET nodo_captacion_json = $2::jsonb,
+                    categoria_contacto = 'PROSPECTO_NODO',
+                    modo_privacidad = 'ACTIVO',
+                    updated_at = NOW()
+                WHERE id = $1
+            `, [ch.id, JSON.stringify(nuevoJson)]);
+        } else {
+            await pool.query(`
+                UPDATE public.crm_whatsapp_chats
+                SET nodo_captacion_json = $2::jsonb,
+                    updated_at = NOW()
+                WHERE id = $1
+            `, [ch.id, JSON.stringify(nuevoJson)]);
+        }
+        actualizados++;
+    }
+
+    if (actualizados > 0) {
+        console.log(`🌐 [CRM-WHATSAPP-DB] Hilos de Captación de Nodos detectados automáticamente: ${actualizados}/${resChats.rows.length}.`);
+    }
+    return { revisados: resChats.rows.length, actualizados };
+}
+
 module.exports = {
     TIPOS_MENSAJE_PROTOCOLO_IGNORADOS,
     CATEGORIAS_CONTACTO_VALIDAS,
@@ -1803,6 +1947,7 @@ module.exports = {
     determinarCategoriaContactoAutomatica,
     inferirRolOperativoDeterminista,
     clasificarRolesOperativosExistentesIdempotente,
+    clasificarFrenteNodosExistentesIdempotente,
     sincronizarRolOperativoEnBunkerWhatsapp,
     registrarMensajeWhatsapp,
     verificarAudioYaTranscrito,

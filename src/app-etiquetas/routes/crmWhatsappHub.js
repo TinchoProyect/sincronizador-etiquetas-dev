@@ -12,6 +12,7 @@ const pool = require('../../usuarios/pool');
 const crmWhatsappDb = require('../../services/crmWhatsappDbService');
 const whatsappAudioTranscriber = require('../../services/whatsappAudioTranscriberService');
 const agenteHibridoLlm = require('../../services/whatsappAgenteHibridoLlmService');
+const nodosCaptacionCrm = require('../../services/nodosCaptacionCrmService');
 const { calcularComposicionSaldo } = require('../../logistica/services/composicionSaldoService');
 const salvavidasService = require('../../logistica/services/salvavidasService');
 const historialPreciosService = require('../../produccion/services/historialPreciosService');
@@ -1243,7 +1244,7 @@ router.get('/crm/whatsapp/alertas-pizarra', async (req, res) => {
                 ultimo_mensaje_at
             FROM public.crm_whatsapp_chats
             WHERE esperando_respuesta = true
-              AND categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO')
+              AND categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO', 'PROSPECTO_NODO')
               AND modo_privacidad = 'ACTIVO'
               AND (silenciado_hasta IS NULL OR silenciado_hasta <= NOW())
             ORDER BY ultimo_mensaje_at DESC
@@ -1254,18 +1255,18 @@ router.get('/crm/whatsapp/alertas-pizarra', async (req, res) => {
             SELECT
                 COUNT(*) FILTER (
                     WHERE esperando_respuesta = true 
-                      AND categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO')
+                      AND categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO', 'PROSPECTO_NODO')
                       AND modo_privacidad = 'ACTIVO'
                       AND (silenciado_hasta IS NULL OR silenciado_hasta <= NOW())
                 )::int AS clientes_sin_responder,
                 COUNT(*) FILTER (
                     WHERE esperando_respuesta = true 
-                      AND categoria_contacto = 'PROSPECTO'
+                      AND categoria_contacto IN ('PROSPECTO', 'PROSPECTO_NODO')
                       AND modo_privacidad = 'ACTIVO'
                       AND (silenciado_hasta IS NULL OR silenciado_hasta <= NOW())
                 )::int AS no_agendados_sin_responder,
                 COUNT(*) FILTER (
-                    WHERE categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO')
+                    WHERE categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO', 'PROSPECTO_NODO')
                       AND modo_privacidad != 'OCULTO'
                 )::int AS total_chats_visibles,
                 COUNT(*) FILTER (
@@ -1465,6 +1466,10 @@ function unificarYEnriquecerFilasChats(rawRows = []) {
                 }
                 if (!existente.etiqueta_crm && r.etiqueta_crm) existente.etiqueta_crm = r.etiqueta_crm;
                 if (!existente.nota_rapida && r.nota_rapida) existente.nota_rapida = r.nota_rapida;
+                if (String(r.frente_activo || '').toUpperCase() === 'NODOS') existente.frente_activo = 'NODOS';
+                if (!existente.nodo_captacion_json?.activo && r.nodo_captacion_json?.activo) {
+                    existente.nodo_captacion_json = r.nodo_captacion_json;
+                }
                 const fechaEx = existente.ultimo_mensaje_at ? new Date(existente.ultimo_mensaje_at).getTime() : 0;
                 const fechaR = r.ultimo_mensaje_at ? new Date(r.ultimo_mensaje_at).getTime() : 0;
                 if (fechaR > fechaEx) {
@@ -1491,12 +1496,23 @@ function unificarYEnriquecerFilasChats(rawRows = []) {
     return filasUnificadas;
 }
 
+const SQL_CONDICION_FRENTE_NODOS = `
+    c.modo_privacidad != 'OCULTO'
+    AND COALESCE(c.frente_activo, 'AUTO') <> 'MAYORISTA'
+    AND (
+        c.categoria_contacto = 'PROSPECTO_NODO'
+        OR COALESCE(c.frente_activo, 'AUTO') = 'NODOS'
+        OR COALESCE((c.nodo_captacion_json->>'activo')::boolean, false) = true
+        OR c.etiqueta_crm IN ('PROSPECTO_NODO', 'REUNION_NODO')
+    )
+`;
+
 async function calcularContadoresTabsConsolaWa() {
     const res = await pool.query(`
         SELECT
             COUNT(DISTINCT COALESCE(c.bunker_cliente_id::text, 'raw_' || c.id::text)) FILTER (
                 WHERE c.esperando_respuesta = true
-                  AND c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO')
+                  AND c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO', 'PROSPECTO_NODO')
                   AND c.modo_privacidad = 'ACTIVO'
                   AND (c.silenciado_hasta IS NULL OR c.silenciado_hasta <= NOW())
             )::int AS por_atender,
@@ -1504,6 +1520,9 @@ async function calcularContadoresTabsConsolaWa() {
                 WHERE c.categoria_contacto = 'CLIENTE_BUNKER'
                   AND c.modo_privacidad != 'OCULTO'
             )::int AS clientes,
+            COUNT(DISTINCT COALESCE(c.bunker_cliente_id::text, 'raw_' || c.id::text)) FILTER (
+                WHERE ${SQL_CONDICION_FRENTE_NODOS}
+            )::int AS nodos,
             COUNT(*) FILTER (
                 WHERE c.categoria_contacto IN ('PROSPECTO', 'PROVEEDOR', 'PERSONAL', 'IGNORADO_BOT', 'SIN_CLASIFICAR')
                    OR c.modo_privacidad IN ('SILENCIADO_PIZARRA', 'OCULTO')
@@ -1511,7 +1530,7 @@ async function calcularContadoresTabsConsolaWa() {
             )::int AS otros
         FROM public.crm_whatsapp_chats c
     `);
-    return res.rows[0] || { por_atender: 0, clientes: 0, otros: 0 };
+    return res.rows[0] || { por_atender: 0, clientes: 0, nodos: 0, otros: 0 };
 }
 
 /**
@@ -1564,7 +1583,7 @@ router.get('/crm/whatsapp/bandeja-hoy', async (req, res) => {
             LEFT JOIN entregas_wa ew ON ew.chat_id = c.chat_id
             LEFT JOIN ms ON ms.chat_id = c.chat_id
             LEFT JOIN public.crm_cliente_sintesis_memoria sm ON sm.cliente_bunker_id = c.bunker_cliente_id
-            WHERE c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO')
+            WHERE c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO', 'PROSPECTO_NODO')
               AND c.modo_privacidad != 'OCULTO'
             ORDER BY
                 c.esperando_respuesta DESC,
@@ -1578,11 +1597,11 @@ router.get('/crm/whatsapp/bandeja-hoy', async (req, res) => {
         ]);
         const rows = unificarYEnriquecerFilasChats(result.rows);
 
-        // 1. Carril Entrante: Clientes Búnker y Prospectos esperando respuesta activa
+        // 1. Carril Entrante: Clientes Búnker, Prospectos y Prospectos Nodo esperando respuesta activa
         const entrantes = rows
             .filter(r =>
                 r.esperando_respuesta === true &&
-                ['CLIENTE_BUNKER', 'PROSPECTO'].includes(r.categoria_contacto) &&
+                ['CLIENTE_BUNKER', 'PROSPECTO', 'PROSPECTO_NODO'].includes(r.categoria_contacto) &&
                 r.modo_privacidad === 'ACTIVO' &&
                 !r.esta_silenciado_temporal
             )
@@ -1700,6 +1719,7 @@ router.get('/crm/whatsapp/bandeja-hoy', async (req, res) => {
             contadores_tabs: {
                 por_atender: entrantes.length,
                 clientes: Number(contadoresTabs.clientes || clientesUnicos.length),
+                nodos: Number(contadoresTabs.nodos || 0),
                 otros: Number(contadoresTabs.otros || 0)
             }
         });
@@ -1731,16 +1751,20 @@ router.get('/crm/whatsapp/chats', async (req, res) => {
 
         let whereClause = `WHERE 1=1`;
         if (filtro === 'SIN_RESPONDER') {
-            whereClause += ` AND c.esperando_respuesta = true AND c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO') AND c.modo_privacidad = 'ACTIVO' AND (c.silenciado_hasta IS NULL OR c.silenciado_hasta <= NOW())`;
+            whereClause += ` AND c.esperando_respuesta = true AND c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO', 'PROSPECTO_NODO') AND c.modo_privacidad = 'ACTIVO' AND (c.silenciado_hasta IS NULL OR c.silenciado_hasta <= NOW())`;
         } else if (filtro === 'CLIENTES') {
             if (q.length > 0) {
-                whereClause += ` AND c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO') AND c.modo_privacidad != 'OCULTO'`;
+                whereClause += ` AND c.categoria_contacto IN ('CLIENTE_BUNKER', 'PROSPECTO', 'PROSPECTO_NODO') AND c.modo_privacidad != 'OCULTO'`;
             } else {
                 whereClause += ` AND c.categoria_contacto = 'CLIENTE_BUNKER' AND c.modo_privacidad != 'OCULTO'`;
             }
+        } else if (filtro === 'NODOS') {
+            whereClause += ` AND (${SQL_CONDICION_FRENTE_NODOS})`;
         } else if (filtro === 'OTROS') {
             if (subfiltro === 'PROSPECTO') {
                 whereClause += ` AND c.categoria_contacto = 'PROSPECTO'`;
+            } else if (subfiltro === 'PROSPECTO_NODO') {
+                whereClause += ` AND c.categoria_contacto = 'PROSPECTO_NODO'`;
             } else if (subfiltro === 'PROVEEDOR') {
                 whereClause += ` AND c.categoria_contacto = 'PROVEEDOR'`;
             } else if (subfiltro === 'PERSONAL_BOTS') {
@@ -1748,13 +1772,13 @@ router.get('/crm/whatsapp/chats', async (req, res) => {
             } else if (['PERSONAL', 'IGNORADO_BOT', 'SIN_CLASIFICAR'].includes(subfiltro)) {
                 whereClause += ` AND c.categoria_contacto = '${subfiltro}'`;
             } else {
-                whereClause += ` AND (c.categoria_contacto IN ('PROSPECTO', 'PROVEEDOR', 'PERSONAL', 'IGNORADO_BOT', 'SIN_CLASIFICAR') OR c.modo_privacidad IN ('SILENCIADO_PIZARRA', 'OCULTO') OR (c.silenciado_hasta IS NOT NULL AND c.silenciado_hasta > NOW()))`;
+                whereClause += ` AND (c.categoria_contacto IN ('PROSPECTO', 'PROSPECTO_NODO', 'PROVEEDOR', 'PERSONAL', 'IGNORADO_BOT', 'SIN_CLASIFICAR') OR c.modo_privacidad IN ('SILENCIADO_PIZARRA', 'OCULTO') OR (c.silenciado_hasta IS NOT NULL AND c.silenciado_hasta > NOW()))`;
             }
         } else if (filtro === 'NO_AGENDADOS') {
-            whereClause += ` AND c.categoria_contacto IN ('PROVEEDOR', 'PROSPECTO', 'SIN_CLASIFICAR') AND c.es_cliente_bunker = false AND c.modo_privacidad != 'OCULTO'`;
+            whereClause += ` AND c.categoria_contacto IN ('PROVEEDOR', 'PROSPECTO', 'PROSPECTO_NODO', 'SIN_CLASIFICAR') AND c.es_cliente_bunker = false AND c.modo_privacidad != 'OCULTO'`;
         } else if (filtro === 'PRIVADOS') {
             whereClause += ` AND (c.categoria_contacto IN ('PERSONAL', 'IGNORADO_BOT') OR c.modo_privacidad IN ('SILENCIADO_PIZARRA', 'OCULTO') OR (c.silenciado_hasta IS NOT NULL AND c.silenciado_hasta > NOW()))`;
-        } else if (['CLIENTE_BUNKER', 'PROSPECTO', 'PROVEEDOR', 'PERSONAL', 'IGNORADO_BOT'].includes(filtro)) {
+        } else if (['CLIENTE_BUNKER', 'PROSPECTO', 'PROSPECTO_NODO', 'PROVEEDOR', 'PERSONAL', 'IGNORADO_BOT'].includes(filtro)) {
             whereClause += ` AND c.categoria_contacto = '${filtro}'`;
         } else {
             whereClause += ` AND c.categoria_contacto <> 'IGNORADO_BOT' AND c.modo_privacidad != 'OCULTO'`;
@@ -1811,7 +1835,7 @@ router.get('/crm/whatsapp/chats', async (req, res) => {
         ]);
         let rows = unificarYEnriquecerFilasChats(result.rows);
 
-        // Aplicar subfiltro comercial en CLIENTES después de unificar
+        // Aplicar subfiltro comercial en CLIENTES o en NODOS después de unificar
         if (filtro === 'CLIENTES') {
             if (subfiltro === 'CON_DEUDA') {
                 rows = rows
@@ -1830,6 +1854,34 @@ router.get('/crm/whatsapp/chats', async (req, res) => {
                         return tb - ta;
                     });
             }
+        } else if (filtro === 'NODOS') {
+            const prioridadEtapa = (r) => {
+                const et = String(r.nodo_captacion_json?.etapa || 'INVITACION_INICIAL').toUpperCase();
+                return nodosCaptacionCrm.ETAPAS_CAPTACION_NODO[et]?.prioridad || 3;
+            };
+            if (subfiltro === 'REUNION') {
+                rows = rows.filter(r => ['REUNION_A_COORDINAR', 'REUNION_AGENDADA'].includes(String(r.nodo_captacion_json?.etapa || '').toUpperCase()));
+            } else if (subfiltro === 'PROPUESTA') {
+                rows = rows.filter(r => ['PROPUESTA_ENVIADA', 'EN_EVALUACION'].includes(String(r.nodo_captacion_json?.etapa || '').toUpperCase()));
+            } else if (subfiltro === 'INVITACION') {
+                rows = rows.filter(r => {
+                    const et = String(r.nodo_captacion_json?.etapa || '').toUpperCase();
+                    return !et || et === 'INVITACION_INICIAL';
+                });
+            } else if (subfiltro === 'EXTERNOS') {
+                rows = rows.filter(r => !r.bunker_cliente_id);
+            }
+            rows.sort((a, b) => {
+                const wA = a.esperando_respuesta ? 1 : 0;
+                const wB = b.esperando_respuesta ? 1 : 0;
+                if (wA !== wB) return wB - wA;
+                const pA = prioridadEtapa(a);
+                const pB = prioridadEtapa(b);
+                if (pA !== pB) return pA - pB;
+                const tA = a.ultimo_mensaje_at ? new Date(a.ultimo_mensaje_at).getTime() : 0;
+                const tB = b.ultimo_mensaje_at ? new Date(b.ultimo_mensaje_at).getTime() : 0;
+                return tB - tA;
+            });
         }
 
         // Filtrado acumulativo (Política Universal de Búsqueda LAMDA: espacios = AND)
@@ -2287,9 +2339,9 @@ router.get('/crm/whatsapp/chats/:id/detalle', async (req, res) => {
             }
         }
 
-        // Si entre los últimos 6 mensajes hay algún audio (entrante o saliente de Martín) sin transcribir ("🎤 Mensaje de audio"), transcribirlo en caliente
-        const ultimos6 = mensajesUnicos.slice(-6);
-        const audiosSinTranscribir = ultimos6.filter(m =>
+        // Si entre los últimos 10 mensajes hay algún audio (entrante o saliente de Martín) sin transcribir ("🎤 Mensaje de audio"), transcribirlo en caliente
+        const ultimos10 = mensajesUnicos.slice(-10);
+        const audiosSinTranscribir = ultimos10.filter(m =>
             (m.tipo_mensaje === 'ptt' || m.tipo_mensaje === 'audio') &&
             (!m.cuerpo || String(m.cuerpo).trim() === '🎤 Mensaje de audio')
         );
@@ -2327,6 +2379,27 @@ router.get('/crm/whatsapp/chats/:id/detalle', async (req, res) => {
             ? sugerirRolOperativoPorHistorial(mensajesUnicos)
             : null;
 
+        // Frente Captación de Nodos: detección determinista del hilo + tiendas reales + caché aislado por chat
+        const contextoNodosDetalle = nodosCaptacionCrm.detectarContextoHiloNodosWa({
+            mensajesRecientes: mensajesUnicos,
+            categoriaContacto: chat.categoria_contacto,
+            frenteActivo: chat.frente_activo,
+            nodoCaptacionJson: chat.nodo_captacion_json,
+            clienteNombre: chat.cliente_nombre || '',
+            contactoNombre: chat.contacto_nombre || chat.pushname_wa || '',
+            bunkerClienteId: chat.bunker_cliente_id
+        });
+        const nodosReferencia = await nodosCaptacionCrm.obtenerReferenciasNodosActivos().catch(() => nodosCaptacionCrm.REFERENCIAS_NODOS_FALLBACK);
+        const ultimoMsgIdDetalle = mensajesUnicos.length > 0 ? Number(mensajesUnicos[mensajesUnicos.length - 1].id || 0) : 0;
+        const nodoJsonChat = (chat.nodo_captacion_json && typeof chat.nodo_captacion_json === 'object') ? chat.nodo_captacion_json : {};
+        const razNodosGuardado = (
+            contextoNodosDetalle.esFrenteNodos &&
+            nodoJsonChat.razonamiento_nodos_json &&
+            nodoJsonChat.razonamiento_nodos_json.usando_ia_real &&
+            Number(nodoJsonChat.ultimo_msg_id_razonado_nodos || 0) === ultimoMsgIdDetalle &&
+            ultimoMsgIdDetalle > 0
+        ) ? nodoJsonChat.razonamiento_nodos_json : null;
+
         // Fase 3.5: Hermanos del mismo cliente Búnker (para Guardrail de Cobranza y salto 1-clic a Pagos/Dueño)
         let otrosContactosCliente = [];
         if (chat.bunker_cliente_id) {
@@ -2358,7 +2431,10 @@ router.get('/crm/whatsapp/chats/:id/detalle', async (req, res) => {
             chat,
             mensajes: mensajesUnicos,
             rayos_x: rayosX,
-            otros_contactos_cliente: otrosContactosCliente
+            otros_contactos_cliente: otrosContactosCliente,
+            contexto_nodos: contextoNodosDetalle,
+            nodos_referencia: nodosReferencia,
+            razonamiento_nodos_guardado: razNodosGuardado
         });
     } catch (error) {
         console.error('❌ [CRM-WA-HUB] Error en detalle de chat:', error.message);
@@ -2790,7 +2866,12 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
             rol_operativo,
             apodo_preferido,
             nota_trato,
-            descartar_apodo
+            descartar_apodo,
+            frente_activo,
+            nodo_captacion_activo,
+            nodo_etapa,
+            nodo_perfil,
+            nodo_nota
         } = req.body;
 
         const chatRes = await pool.query('SELECT * FROM public.crm_whatsapp_chats WHERE id = $1 LIMIT 1', [chatPk]);
@@ -2806,12 +2887,12 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
         let nuevoEsperando = Boolean(actual.esperando_respuesta);
         let nuevoNoLeidos = parseInt(actual.no_leidos || 0, 10);
 
-        const categoriasPermitidas = new Set(['CLIENTE_BUNKER', 'PROSPECTO', 'PROVEEDOR', 'PERSONAL', 'IGNORADO_BOT']);
+        const categoriasPermitidas = new Set(['CLIENTE_BUNKER', 'PROSPECTO', 'PROSPECTO_NODO', 'PROVEEDOR', 'PERSONAL', 'IGNORADO_BOT']);
         if (categoria_contacto !== undefined && categoriasPermitidas.has(String(categoria_contacto).toUpperCase())) {
             nuevaCategoria = String(categoria_contacto).toUpperCase();
             nuevaCategoriaManual = true;
             if (modo_privacidad === undefined) {
-                if (nuevaCategoria === 'CLIENTE_BUNKER' || nuevaCategoria === 'PROSPECTO') {
+                if (nuevaCategoria === 'CLIENTE_BUNKER' || nuevaCategoria === 'PROSPECTO' || nuevaCategoria === 'PROSPECTO_NODO') {
                     nuevoModo = 'ACTIVO';
                     nuevoSilenciadoHasta = null;
                 } else if (nuevaCategoria === 'PROVEEDOR') {
@@ -2933,6 +3014,81 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
             cambioRolOTrato = true;
         }
 
+        // Frente Captación de Nodos: frente_activo + nodo_captacion_json (aislado por chat)
+        let nuevoFrenteActivo = String(actual.frente_activo || 'AUTO').trim().toUpperCase();
+        if (!nodosCaptacionCrm.FRENTES_ACTIVOS_VALIDOS.has(nuevoFrenteActivo)) nuevoFrenteActivo = 'AUTO';
+        const nodoCaptActual = (actual.nodo_captacion_json && typeof actual.nodo_captacion_json === 'object')
+            ? { ...actual.nodo_captacion_json }
+            : {};
+        let cambioConfigNodos = false;
+
+        if (frente_activo !== undefined) {
+            const frClean = String(frente_activo || 'AUTO').trim().toUpperCase();
+            if (nodosCaptacionCrm.FRENTES_ACTIVOS_VALIDOS.has(frClean)) {
+                nuevoFrenteActivo = frClean;
+                cambioConfigNodos = true;
+            }
+        }
+        if (nuevaCategoria === 'PROSPECTO_NODO') {
+            if (!nodoCaptActual.activo) {
+                nodoCaptActual.activo = true;
+                nodoCaptActual.etapa = nodoCaptActual.etapa || 'INVITACION_INICIAL';
+                nodoCaptActual.origen = 'manual';
+                cambioConfigNodos = true;
+            }
+            if (nuevoFrenteActivo === 'MAYORISTA') {
+                nuevoFrenteActivo = 'NODOS';
+                cambioConfigNodos = true;
+            }
+        }
+        if (nodo_captacion_activo !== undefined) {
+            const actBool = Boolean(nodo_captacion_activo);
+            nodoCaptActual.activo = actBool;
+            nodoCaptActual.origen = 'manual';
+            if (actBool) {
+                if (!nodoCaptActual.etapa) nodoCaptActual.etapa = 'INVITACION_INICIAL';
+                if (frente_activo === undefined) nuevoFrenteActivo = 'NODOS';
+                if (nuevoModo === 'OCULTO') nuevoModo = 'ACTIVO';
+                if (!nuevoBunkerId && ['PERSONAL', 'SIN_CLASIFICAR'].includes(nuevaCategoria)) {
+                    nuevaCategoria = 'PROSPECTO_NODO';
+                    nuevaCategoriaManual = true;
+                }
+            } else if (frente_activo === undefined) {
+                nuevoFrenteActivo = nuevoBunkerId ? 'MAYORISTA' : 'AUTO';
+            }
+            cambioConfigNodos = true;
+        } else if (nuevoFrenteActivo === 'NODOS') {
+            nodoCaptActual.activo = true;
+            nodoCaptActual.origen = 'manual';
+            if (!nodoCaptActual.etapa) nodoCaptActual.etapa = 'INVITACION_INICIAL';
+            if (nuevoModo === 'OCULTO') nuevoModo = 'ACTIVO';
+        } else if (nuevoFrenteActivo === 'MAYORISTA' && frente_activo !== undefined) {
+            nodoCaptActual.activo = false;
+        }
+        if (nodo_etapa !== undefined) {
+            const etClean = String(nodo_etapa || '').trim().toUpperCase();
+            if (nodosCaptacionCrm.ETAPAS_CAPTACION_VALIDAS.has(etClean)) {
+                nodoCaptActual.etapa = etClean;
+                nodoCaptActual.activo = true;
+                cambioConfigNodos = true;
+            }
+        }
+        if (nodo_perfil !== undefined) {
+            const pfClean = String(nodo_perfil || '').trim().toUpperCase();
+            nodoCaptActual.perfil_sugerido = nodosCaptacionCrm.PERFILES_NODO_VALIDOS.has(pfClean) ? pfClean : '';
+            cambioConfigNodos = true;
+        }
+        if (nodo_nota !== undefined) {
+            nodoCaptActual.nota_nodos = String(nodo_nota || '').trim().slice(0, 320);
+            cambioConfigNodos = true;
+        }
+        if (cambioConfigNodos || cambioRolOTrato) {
+            nodoCaptActual.actualizado_en = new Date().toISOString();
+            // Invalidar caché de razonamiento de Nodos para re-razonar con la nueva etapa/nota/frente
+            delete nodoCaptActual.razonamiento_nodos_json;
+            nodoCaptActual.ultimo_msg_id_razonado_nodos = 0;
+        }
+
         const updRes = await pool.query(`
             UPDATE public.crm_whatsapp_chats
             SET modo_privacidad = $2,
@@ -2954,6 +3110,8 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
                 rol_manual = $18,
                 apodo_preferido = $19,
                 memoria_trato_json = $20::jsonb,
+                frente_activo = $21,
+                nodo_captacion_json = $22::jsonb,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING *
@@ -2977,7 +3135,9 @@ router.patch('/crm/whatsapp/chats/:id/config', async (req, res) => {
             nuevoRolOperativo,
             nuevoRolManual,
             nuevoApodoPref,
-            JSON.stringify(memTratoActual)
+            JSON.stringify(memTratoActual),
+            nuevoFrenteActivo,
+            JSON.stringify(nodoCaptActual)
         ]);
 
         // Sincronizar rol_operativo bidireccionalmente con bunker_clientes.whatsapp_facturas
@@ -4121,11 +4281,11 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
                     };
                 }
 
-                // Traer las últimas 25 burbujas del chat para tener el contexto completo de conversaciones de ayer/esta semana
+                // Traer las últimas 25 burbujas del chat (incluyendo media_filename para detectar PDFs de Propuesta Nodos)
                 const ult25Res = await pool.query(`
-                    SELECT id, msg_id, chat_id, from_me, cuerpo, tipo_mensaje, ack, origen_envio, fecha_mensaje
+                    SELECT id, msg_id, chat_id, from_me, cuerpo, tipo_mensaje, media_filename, ack, origen_envio, fecha_mensaje
                     FROM (
-                        SELECT id, msg_id, chat_id, from_me, cuerpo, tipo_mensaje, ack, origen_envio, fecha_mensaje
+                        SELECT id, msg_id, chat_id, from_me, cuerpo, tipo_mensaje, media_filename, ack, origen_envio, fecha_mensaje
                         FROM public.crm_whatsapp_mensajes
                         WHERE chat_id = ANY($1)
                         ORDER BY fecha_mensaje DESC, id DESC
@@ -4135,9 +4295,9 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
                 `, [chatIdsUnificados]);
                 mensajesRecientesChat = ult25Res.rows;
 
-                // Si entre las últimas 6 burbujas hay algún audio (entrante o saliente de Martín) sin transcribir, transcribirlo antes de armar la respuesta
-                const ult6Sint = mensajesRecientesChat.slice(-6);
-                const audiosSinTrSint = ult6Sint.filter(m =>
+                // Si entre los últimos 10 mensajes hay algún audio (entrante o saliente de Martín) sin transcribir, transcribirlo antes de armar la respuesta
+                const ult10Sint = mensajesRecientesChat.slice(-10);
+                const audiosSinTrSint = ult10Sint.filter(m =>
                     (m.tipo_mensaje === 'ptt' || m.tipo_mensaje === 'audio') &&
                     (!m.cuerpo || String(m.cuerpo).trim() === '🎤 Mensaje de audio')
                 );
@@ -4244,7 +4404,8 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
             try {
                 const rChP = await pool.query(`
                     SELECT id, bunker_cliente_id, codigo_bunker_cliente, telefono_normalizado,
-                           contacto_nombre, contacto_cargo, rol_operativo, apodo_preferido
+                           contacto_nombre, contacto_cargo, rol_operativo, apodo_preferido,
+                           categoria_contacto, frente_activo, nodo_captacion_json
                     FROM public.crm_whatsapp_chats
                     WHERE id = $1
                     LIMIT 1
@@ -4260,24 +4421,56 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
             asegurarTokenSiNoIngreso: true
         }).catch(() => null);
 
+        // Evaluar contexto del frente Captación de Nodos para evitar servir caché mayorista viejo (ej. REACTIVACION_PORTAL)
+        const detNodosSint = nodosCaptacionCrm.detectarContextoHiloNodosWa({
+            mensajesRecientes: mensajesRecientesChat,
+            categoriaContacto: chatRowPortal?.categoria_contacto || 'CLIENTE_BUNKER',
+            frenteActivo: chatRowPortal?.frente_activo || 'AUTO',
+            nodoCaptacionJson: chatRowPortal?.nodo_captacion_json || null,
+            clienteNombre: cli.cliente_nombre || '',
+            contactoNombre: chatRowPortal?.contacto_nombre || '',
+            bunkerClienteId: clienteId
+        });
+
         const ultimoMsgIdActual = mensajesRecientesChat.length > 0
             ? Number(mensajesRecientesChat[mensajesRecientesChat.length - 1].id || 0)
             : 0;
-        const razGuardadoRaw = existente?.razonamiento_ia_json || null;
-        const coincideChatYPortal = !razGuardadoRaw ? false : (
-            (!chatId || !razGuardadoRaw._chat_id_razonado || Number(razGuardadoRaw._chat_id_razonado) === Number(chatId)) &&
-            (!estadoPortalB2B?.tipo_acceso_portal || !razGuardadoRaw._tipo_acceso_portal || razGuardadoRaw._tipo_acceso_portal === estadoPortalB2B.tipo_acceso_portal)
-        );
-        const razonamientoIaGuardado = (
-            !forzarCompleta &&
-            !huboCambios &&
-            existente &&
-            razGuardadoRaw &&
-            razGuardadoRaw.usando_ia_real &&
-            coincideChatYPortal &&
-            Number(existente.ultimo_msg_id_razonado || 0) === ultimoMsgIdActual &&
-            ultimoMsgIdActual > 0
-        ) ? razGuardadoRaw : null;
+        let razonamientoIaGuardado = null;
+        if (detNodosSint.esFrenteNodos) {
+            // En frente Nodos usar EXCLUSIVAMENTE el caché aislado por chat (nunca el mayorista de crm_cliente_sintesis_memoria)
+            const nodoJsonSint = (chatRowPortal?.nodo_captacion_json && typeof chatRowPortal.nodo_captacion_json === 'object')
+                ? chatRowPortal.nodo_captacion_json
+                : {};
+            const razNodosRaw = nodoJsonSint.razonamiento_nodos_json || null;
+            if (
+                !forzarCompleta &&
+                !huboCambios &&
+                razNodosRaw &&
+                razNodosRaw.usando_ia_real &&
+                agenteHibridoLlm.esAgenteEspecialistaNodos(razNodosRaw.agente_utilizado) &&
+                Number(nodoJsonSint.ultimo_msg_id_razonado_nodos || 0) === ultimoMsgIdActual &&
+                ultimoMsgIdActual > 0
+            ) {
+                razonamientoIaGuardado = razNodosRaw;
+            }
+        } else {
+            const razGuardadoRaw = existente?.razonamiento_ia_json || null;
+            const coincideChatYPortal = !razGuardadoRaw ? false : (
+                (!chatId || !razGuardadoRaw._chat_id_razonado || Number(razGuardadoRaw._chat_id_razonado) === Number(chatId)) &&
+                (!estadoPortalB2B?.tipo_acceso_portal || !razGuardadoRaw._tipo_acceso_portal || razGuardadoRaw._tipo_acceso_portal === estadoPortalB2B.tipo_acceso_portal) &&
+                !agenteHibridoLlm.esAgenteEspecialistaNodos(razGuardadoRaw.agente_utilizado)
+            );
+            razonamientoIaGuardado = (
+                !forzarCompleta &&
+                !huboCambios &&
+                existente &&
+                razGuardadoRaw &&
+                razGuardadoRaw.usando_ia_real &&
+                coincideChatYPortal &&
+                Number(existente.ultimo_msg_id_razonado || 0) === ultimoMsgIdActual &&
+                ultimoMsgIdActual > 0
+            ) ? razGuardadoRaw : null;
+        }
 
         const duracionMs = Date.now() - t0;
         res.json({
@@ -4294,6 +4487,7 @@ router.get('/crm/whatsapp/clientes/:clienteId/sintesis-hibrida', async (req, res
             comportamiento_pago: compPago,
             contacto_hilo: chatId ? (contactosHilo[String(chatId)] || null) : null,
             mensajes_recientes: mensajesRecientesChat,
+            contexto_nodos: detNodosSint,
             razonamiento_ia_guardado: razonamientoIaGuardado,
             ia_cognitiva: agenteHibridoLlm.obtenerModoCredencialGemini()
         });
@@ -4592,22 +4786,41 @@ router.post('/crm/whatsapp/chats/:chatId/habilitar-armador-pedido', async (req, 
 });
 
 /**
+ * GET /api/crm/whatsapp/nodos/referencias
+ * Retorna las tiendas reales de referencia (dominio oficial https://tienda.lamdaser.com/tienda/<slug>)
+ * y el catálogo de etapas válidas de captación para la Consola CRM.
+ */
+router.get('/crm/whatsapp/nodos/referencias', async (req, res) => {
+    try {
+        const referencias = await nodosCaptacionCrm.obtenerReferenciasNodosActivos();
+        res.json({
+            success: true,
+            dominio_oficial: nodosCaptacionCrm.DOMINIO_TIENDA_NODOS_OFICIAL,
+            referencias,
+            etapas: nodosCaptacionCrm.ETAPAS_CAPTACION_NODO
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
  * POST /api/crm/whatsapp/asistente-hibrido/razonar
- * Fase 3: Ejecuta el Motor de 2 Carriles (Entrante / Saliente) y 8 Agentes Especializados (Gemini 2.5 Flash)
+ * Fase 3 + Captación de Nodos: Ejecuta el Motor de 2 Carriles y 10 Agentes Especializados (Gemini 2.5 Flash)
  * enriquecido server-side con la Capa Determinista de LAMDA (CC + tramo_real, Logística real, Portal B2B por Rol,
- * catálogo y comprobantes leídos).
+ * o Base de Conocimiento de Nodos + Tiendas reales https://tienda.lamdaser.com/tienda/<slug>).
  */
 router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
     try {
         const body = req.body || {};
-        const mensajesArr = Array.isArray(body.mensajesRecientes) ? body.mensajesRecientes : [];
+        let mensajesArr = Array.isArray(body.mensajesRecientes) ? body.mensajesRecientes.slice() : [];
         const cliIdNum = parseInt(body.clienteId, 10) || 0;
         const chatIdNum = parseInt(body.chatId, 10) || 0;
         const agenteObjNorm = String(body.agenteObjetivo || 'AUTO').trim().toUpperCase();
         const carrilReq = body.carril ? String(body.carril).trim().toUpperCase() : '';
         const instruccionOperador = String(body.instruccionOperador || '').trim();
 
-        // Fase 3.5 + Portal por Rol: Resolver deterministamente rol_operativo, apodo_preferido, memoria_trato y otros contactos desde crm_whatsapp_chats
+        // Resolver deterministamente rol_operativo, trato, categoría, frente_activo y nodo_captacion_json desde crm_whatsapp_chats
         let rolOperativo = body.rolOperativo || null;
         let contactoCargo = body.contactoCargo || '';
         let apodoConfirmadoMartin = body.apodoConfirmadoMartin || '';
@@ -4618,8 +4831,9 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
         if (chatIdNum > 0) {
             try {
                 const chMeta = await pool.query(`
-                    SELECT id, bunker_cliente_id, codigo_bunker_cliente, telefono_normalizado,
-                           contacto_nombre, rol_operativo, contacto_cargo, apodo_preferido, memoria_trato_json
+                    SELECT id, chat_id, bunker_cliente_id, codigo_bunker_cliente, telefono_normalizado,
+                           cliente_nombre, contacto_nombre, pushname_wa, rol_operativo, contacto_cargo,
+                           apodo_preferido, memoria_trato_json, categoria_contacto, frente_activo, nodo_captacion_json
                     FROM public.crm_whatsapp_chats
                     WHERE id = $1
                     LIMIT 1
@@ -4640,65 +4854,133 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
                         `, [rowCh.bunker_cliente_id, chatIdNum]);
                         otrosContactosCliente = ocRes.rows;
                     }
+                    // Si el frontend no envió mensajes o les falta media_filename, completar desde BD
+                    if (rowCh.chat_id && (mensajesArr.length === 0 || mensajesArr.some(m => m && m.id && m.media_filename === undefined))) {
+                        const mDbRes = await pool.query(`
+                            SELECT id, msg_id, from_me, cuerpo, tipo_mensaje, media_filename, fecha_mensaje
+                            FROM (
+                                SELECT id, msg_id, from_me, cuerpo, tipo_mensaje, media_filename, fecha_mensaje
+                                FROM public.crm_whatsapp_mensajes
+                                WHERE chat_id = $1
+                                ORDER BY fecha_mensaje DESC, id DESC
+                                LIMIT 16
+                            ) sub
+                            ORDER BY fecha_mensaje ASC, id ASC
+                        `, [rowCh.chat_id]);
+                        if (mensajesArr.length === 0) {
+                            mensajesArr = mDbRes.rows;
+                        } else if (mDbRes.rows.length > 0) {
+                            const mapFn = new Map(mDbRes.rows.map(r => [Number(r.id), r.media_filename]));
+                            mensajesArr = mensajesArr.map(m => {
+                                if (m && m.id && m.media_filename === undefined && mapFn.has(Number(m.id))) {
+                                    return { ...m, media_filename: mapFn.get(Number(m.id)) };
+                                }
+                                return m;
+                            });
+                        }
+                    }
                 }
             } catch (_) {}
         }
 
         const effectiveCliId = cliIdNum || Number(chatRowDb?.bunker_cliente_id || 0);
-        if (effectiveCliId > 0) {
-            try {
-                const rCli = await pool.query(`
-                    SELECT id, cliente_nombre, razon_social, codigo_bunker_cliente, lomas_soft_id,
-                           cuit_cuil, whatsapp_facturas, email_portal, email_portal_nombre, email_portal_cargo
-                    FROM public.bunker_clientes
-                    WHERE id = $1
-                    LIMIT 1
-                `, [effectiveCliId]);
-                if (rCli.rows.length > 0) cliRowDb = rCli.rows[0];
-            } catch (_) {}
-        }
+        const categoriaEfectiva = String(body.categoriaContacto || chatRowDb?.categoria_contacto || (effectiveCliId > 0 ? 'CLIENTE_BUNKER' : 'PROSPECTO_NODO')).trim().toUpperCase();
+        const frenteEfectivo = String(body.frenteActivo || chatRowDb?.frente_activo || 'AUTO').trim().toUpperCase();
+        const nodoCaptacionEfectivo = (body.nodoCaptacionJson && typeof body.nodoCaptacionJson === 'object')
+            ? body.nodoCaptacionJson
+            : (chatRowDb?.nodo_captacion_json && typeof chatRowDb.nodo_captacion_json === 'object' ? chatRowDb.nodo_captacion_json : {});
 
-        // Resolver deterministamente acceso Portal B2B según rol_operativo del chat
-        let accesoPortal = null;
-        if (cliRowDb) {
-            const chatParaPortal = chatRowDb
-                ? { ...chatRowDb, rol_operativo: rolOperativo || chatRowDb.rol_operativo }
-                : (rolOperativo ? { id: chatIdNum, rol_operativo: rolOperativo } : null);
-            accesoPortal = await resolverAccesoPortalParaChatWa({
-                cli: cliRowDb,
-                chat: chatParaPortal,
-                otrosContactos: otrosContactosCliente,
-                forzarNuevaInvitacion: false,
-                asegurarTokenSiNoIngreso: false
+        const detNodos = nodosCaptacionCrm.detectarContextoHiloNodosWa({
+            mensajesRecientes: mensajesArr,
+            categoriaContacto: categoriaEfectiva,
+            frenteActivo: frenteEfectivo,
+            nodoCaptacionJson: nodoCaptacionEfectivo,
+            comprobanteLeido: body.comprobanteLeido || null,
+            clienteNombre: body.clienteNombre || chatRowDb?.cliente_nombre || '',
+            contactoNombre: body.contactoNombre || chatRowDb?.contacto_nombre || chatRowDb?.pushname_wa || '',
+            bunkerClienteId: effectiveCliId || null
+        });
+
+        const correEspecialistaNodos = agenteHibridoLlm.esAgenteEspecialistaNodos(agenteObjNorm)
+            || (agenteObjNorm === 'AUTO' && detNodos.esFrenteNodos);
+
+        let nodosReferencia = null;
+        let nodoExistenteContacto = null;
+        if (correEspecialistaNodos) {
+            nodosReferencia = await nodosCaptacionCrm.obtenerReferenciasNodosActivos().catch(() => nodosCaptacionCrm.REFERENCIAS_NODOS_FALLBACK);
+            nodoExistenteContacto = await nodosCaptacionCrm.buscarNodoExistenteDeContacto({
+                bunkerClienteId: effectiveCliId || null,
+                telefonoNormalizado: chatRowDb?.telefono_normalizado || ''
             }).catch(() => null);
         }
 
-        const tipoAccesoPortal = accesoPortal?.tipo_acceso_portal
-            || String(body.tipoAccesoPortal || '').trim().toUpperCase()
-            || (Boolean(body.yaIngresoPortal) ? 'TITULAR_ACTIVO' : 'TITULAR_INVITACION_INICIAL');
-        const aprobadorNombrePortal = accesoPortal?.delegacion_armador?.aprobador_nombre
-            || accesoPortal?.aprobador_sugerido?.nombre
-            || String(body.aprobadorNombre || '').trim();
-        const requiereValidacion4DigitosPortal = Boolean(accesoPortal?.delegacion_armador?.requiere_validacion_4_digitos);
-        const linkPortalEfectivo = tipoAccesoPortal === 'ENCARGADO_ARMADOR_PEDIDO'
-            ? (accesoPortal?.link_armador_pedido || '')
-            : (tipoAccesoPortal === 'ENCARGADO_ARMADOR_PENDIENTE'
-                ? ''
-                : (accesoPortal?.link_invitacion_corto || accesoPortal?.link_portal_general || body.linkPortalCliente || ''));
-        const yaIngresoPortalEfectivo = tipoAccesoPortal === 'TITULAR_ACTIVO';
+        // Solo cargar ficha Búnker, Portal B2B y CC/Logística cuando NO estamos en especialista de Nodos
+        let accesoPortal = null;
+        let enriquecido = {
+            estadoCuentaDeterminista: body.estadoCuentaDeterminista || {},
+            contextoLogistico: body.contextoLogistico || null,
+            diasSinCompra: body.diasSinCompra ?? null
+        };
+        if (!correEspecialistaNodos) {
+            if (effectiveCliId > 0) {
+                try {
+                    const rCli = await pool.query(`
+                        SELECT id, cliente_nombre, razon_social, codigo_bunker_cliente, lomas_soft_id,
+                               cuit_cuil, whatsapp_facturas, email_portal, email_portal_nombre, email_portal_cargo
+                        FROM public.bunker_clientes
+                        WHERE id = $1
+                        LIMIT 1
+                    `, [effectiveCliId]);
+                    if (rCli.rows.length > 0) cliRowDb = rCli.rows[0];
+                } catch (_) {}
+            }
+
+            if (cliRowDb) {
+                const chatParaPortal = chatRowDb
+                    ? { ...chatRowDb, rol_operativo: rolOperativo || chatRowDb.rol_operativo }
+                    : (rolOperativo ? { id: chatIdNum, rol_operativo: rolOperativo } : null);
+                accesoPortal = await resolverAccesoPortalParaChatWa({
+                    cli: cliRowDb,
+                    chat: chatParaPortal,
+                    otrosContactos: otrosContactosCliente,
+                    forzarNuevaInvitacion: false,
+                    asegurarTokenSiNoIngreso: false
+                }).catch(() => null);
+            }
+
+            enriquecido = await enriquecerContextoDeterministaRazonamientoWa({
+                clienteId: effectiveCliId,
+                estadoCuentaBase: body.estadoCuentaDeterminista || {},
+                contextoLogisticoBase: body.contextoLogistico || null,
+                diasSinCompraBase: body.diasSinCompra ?? null
+            });
+        }
+
+        const tipoAccesoPortal = correEspecialistaNodos
+            ? 'NO_APLICA_NODO'
+            : (accesoPortal?.tipo_acceso_portal
+                || String(body.tipoAccesoPortal || '').trim().toUpperCase()
+                || (Boolean(body.yaIngresoPortal) ? 'TITULAR_ACTIVO' : 'TITULAR_INVITACION_INICIAL'));
+        const aprobadorNombrePortal = correEspecialistaNodos
+            ? ''
+            : (accesoPortal?.delegacion_armador?.aprobador_nombre
+                || accesoPortal?.aprobador_sugerido?.nombre
+                || String(body.aprobadorNombre || '').trim());
+        const requiereValidacion4DigitosPortal = !correEspecialistaNodos && Boolean(accesoPortal?.delegacion_armador?.requiere_validacion_4_digitos);
+        const linkPortalEfectivo = correEspecialistaNodos
+            ? ''
+            : (tipoAccesoPortal === 'ENCARGADO_ARMADOR_PEDIDO'
+                ? (accesoPortal?.link_armador_pedido || '')
+                : (tipoAccesoPortal === 'ENCARGADO_ARMADOR_PENDIENTE'
+                    ? ''
+                    : (accesoPortal?.link_invitacion_corto || accesoPortal?.link_portal_general || body.linkPortalCliente || '')));
+        const yaIngresoPortalEfectivo = !correEspecialistaNodos && tipoAccesoPortal === 'TITULAR_ACTIVO';
 
         const esTelefonoCompartido = Boolean(body.esTelefonoCompartido || String(rolOperativo || '').toUpperCase() === 'COMPARTIDO');
 
-        const enriquecido = await enriquecerContextoDeterministaRazonamientoWa({
-            clienteId: effectiveCliId,
-            estadoCuentaBase: body.estadoCuentaDeterminista || {},
-            contextoLogisticoBase: body.contextoLogistico || null,
-            diasSinCompraBase: body.diasSinCompra ?? null
-        });
-
         const resultado = await agenteHibridoLlm.razonarAsistenciaHibridaClienteWa({
-            clienteNombre: body.clienteNombre || '',
-            contactoNombre: body.contactoNombre || '',
+            clienteNombre: body.clienteNombre || chatRowDb?.cliente_nombre || '',
+            contactoNombre: body.contactoNombre || chatRowDb?.contacto_nombre || chatRowDb?.pushname_wa || '',
             apodoSugerido: apodoConfirmadoMartin || (esTelefonoCompartido ? '' : (body.apodoSugerido || '')),
             apodoConfirmadoMartin,
             notaTrato,
@@ -4707,12 +4989,12 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
             esTelefonoCompartido,
             otrosContactosCliente,
             mensajesRecientes: mensajesArr,
-            catalogoCompacto: Array.isArray(body.catalogoCompacto) ? body.catalogoCompacto : [],
-            habitualesCliente: Array.isArray(body.habitualesCliente) ? body.habitualesCliente : [],
-            estadoCuentaDeterminista: enriquecido.estadoCuentaDeterminista,
-            contextoLogistico: enriquecido.contextoLogistico,
+            catalogoCompacto: correEspecialistaNodos ? [] : (Array.isArray(body.catalogoCompacto) ? body.catalogoCompacto : []),
+            habitualesCliente: correEspecialistaNodos ? [] : (Array.isArray(body.habitualesCliente) ? body.habitualesCliente : []),
+            estadoCuentaDeterminista: correEspecialistaNodos ? {} : enriquecido.estadoCuentaDeterminista,
+            contextoLogistico: correEspecialistaNodos ? {} : enriquecido.contextoLogistico,
             comprobanteLeido: body.comprobanteLeido || null,
-            diasSinCompra: enriquecido.diasSinCompra,
+            diasSinCompra: correEspecialistaNodos ? null : enriquecido.diasSinCompra,
             linkPortalCliente: linkPortalEfectivo,
             yaIngresoPortal: yaIngresoPortalEfectivo,
             tipoAccesoPortal,
@@ -4721,37 +5003,72 @@ router.post('/crm/whatsapp/asistente-hibrido/razonar', async (req, res) => {
             carril: carrilReq,
             agenteObjetivo: agenteObjNorm,
             instruccionOperador,
+            categoriaContacto: categoriaEfectiva,
+            frenteActivo: frenteEfectivo,
+            nodoCaptacionJson: nodoCaptacionEfectivo,
+            bunkerClienteId: effectiveCliId || null,
+            nodosReferencia,
+            nodoExistenteContacto,
+            contextoNodosPrecalculado: detNodos,
             forzarRecalculo: Boolean(body.forzarRecalculo)
         });
 
         if (resultado && typeof resultado === 'object') {
             resultado._chat_id_razonado = chatIdNum || null;
             resultado._tipo_acceso_portal = tipoAccesoPortal;
+            resultado._frente_razonado = agenteHibridoLlm.esAgenteEspecialistaNodos(resultado.agente_utilizado) ? 'NODOS' : 'MAYORISTA';
         }
 
-        // Solo persistir caché automático en BD cuando fue AUTO sin instrucción ad-hoc ni especialista forzado
+        // Persistencia aislada por frente:
+        // - Si corrió especialista NODOS: cachea en crm_whatsapp_chats.nodo_captacion_json (clientes y NO-clientes, sin tocar memoria mayorista)
+        // - Si corrió especialista MAYORISTA: mantiene comportamiento exacto en crm_cliente_sintesis_memoria
         const ultMsgId = mensajesArr.length > 0 ? Number(mensajesArr[mensajesArr.length - 1].id || 0) : 0;
         const esCorridaDefaultAuto = (agenteObjNorm === 'AUTO' || !agenteObjNorm) && !instruccionOperador && !body.comprobanteLeido;
-        if (effectiveCliId > 0 && esCorridaDefaultAuto && resultado && resultado.usando_ia_real) {
-            await asegurarTablaSintesisMemoriaCliente().catch(() => {});
-            await pool.query(`
-                UPDATE public.crm_cliente_sintesis_memoria
-                SET razonamiento_ia_json = $1::jsonb,
-                    ultimo_msg_id_razonado = $2,
-                    ultima_actualizacion_en = NOW()
-                WHERE cliente_bunker_id = $3
-            `, [JSON.stringify(resultado), ultMsgId, effectiveCliId]).catch(() => {});
+        if (esCorridaDefaultAuto && resultado && resultado.usando_ia_real) {
+            if (agenteHibridoLlm.esAgenteEspecialistaNodos(resultado.agente_utilizado)) {
+                if (chatIdNum > 0) {
+                    const nodoJsonUpd = {
+                        ...nodoCaptacionEfectivo,
+                        activo: true,
+                        etapa: nodoCaptacionEfectivo.etapa || detNodos.etapaInferida || 'INVITACION_INICIAL',
+                        perfil_sugerido: nodoCaptacionEfectivo.perfil_sugerido || detNodos.perfilInferido || '',
+                        origen: nodoCaptacionEfectivo.origen || 'auto_hilo',
+                        motivo_deteccion: detNodos.motivoDeteccion || nodoCaptacionEfectivo.motivo_deteccion || '',
+                        razonamiento_nodos_json: resultado,
+                        ultimo_msg_id_razonado_nodos: ultMsgId,
+                        actualizado_en: new Date().toISOString()
+                    };
+                    await pool.query(`
+                        UPDATE public.crm_whatsapp_chats
+                        SET nodo_captacion_json = $2::jsonb,
+                            updated_at = NOW()
+                        WHERE id = $1
+                    `, [chatIdNum, JSON.stringify(nodoJsonUpd)]).catch(() => {});
+                }
+            } else if (effectiveCliId > 0) {
+                await asegurarTablaSintesisMemoriaCliente().catch(() => {});
+                await pool.query(`
+                    UPDATE public.crm_cliente_sintesis_memoria
+                    SET razonamiento_ia_json = $1::jsonb,
+                        ultimo_msg_id_razonado = $2,
+                        ultima_actualizacion_en = NOW()
+                    WHERE cliente_bunker_id = $3
+                `, [JSON.stringify(resultado), ultMsgId, effectiveCliId]).catch(() => {});
+            }
         }
 
         res.json({
             success: true,
             razonamiento: resultado,
+            nodos_referencia: nodosReferencia || undefined,
+            contexto_nodos: detNodos,
             contexto_determinista: {
-                tramo_real: enriquecido.estadoCuentaDeterminista?.tramo_real || 'EN_TERMINO',
-                saldo_total: Number(enriquecido.estadoCuentaDeterminista?.saldo_total || 0),
-                logistica_estado: enriquecido.contextoLogistico?.estado_normalizado || 'SIN_PEDIDO_ACTIVO',
-                dias_sin_compra: enriquecido.diasSinCompra,
-                tipo_acceso_portal: tipoAccesoPortal
+                tramo_real: correEspecialistaNodos ? 'NO_APLICA_NODO' : (enriquecido.estadoCuentaDeterminista?.tramo_real || 'EN_TERMINO'),
+                saldo_total: correEspecialistaNodos ? 0 : Number(enriquecido.estadoCuentaDeterminista?.saldo_total || 0),
+                logistica_estado: correEspecialistaNodos ? 'NO_APLICA_NODO' : (enriquecido.contextoLogistico?.estado_normalizado || 'SIN_PEDIDO_ACTIVO'),
+                dias_sin_compra: correEspecialistaNodos ? null : enriquecido.diasSinCompra,
+                tipo_acceso_portal: tipoAccesoPortal,
+                frente_efectivo: agenteHibridoLlm.esAgenteEspecialistaNodos(resultado?.agente_utilizado) ? 'NODOS' : 'MAYORISTA'
             }
         });
     } catch (error) {

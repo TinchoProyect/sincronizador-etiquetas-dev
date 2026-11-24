@@ -13,9 +13,10 @@
 
     let estadoConsola = {
         abierta: false,
-        filtroActivo: 'CLIENTES', // 'SIN_RESPONDER' | 'CLIENTES' | 'OTROS'
+        filtroActivo: 'CLIENTES', // 'SIN_RESPONDER' | 'CLIENTES' | 'NODOS' | 'OTROS'
         subfiltroClientes: 'TODOS', // 'TODOS' | 'CON_DEUDA' | 'SIN_COMPRA_30D' | 'ENTREGADO_RECIENTE'
-        subfiltroOtros: 'TODOS', // 'TODOS' | 'PROSPECTO' | 'PROVEEDOR' | 'PERSONAL_BOTS'
+        subfiltroNodos: 'TODOS', // 'TODOS' | 'REUNION' | 'PROPUESTA' | 'INVITACION' | 'EXTERNOS'
+        subfiltroOtros: 'TODOS', // 'TODOS' | 'PROSPECTO' | 'PROSPECTO_NODO' | 'PROVEEDOR' | 'PERSONAL_BOTS'
         tabCol3Activa: 'ASISTENTE', // 'ASISTENTE' | 'FICHA'
         carrilAsistente: 'ENTRANTE', // 'ENTRANTE' | 'SALIENTE'
         vistaBandejaHoy: false,
@@ -23,6 +24,7 @@
         contadoresTabs: {
             por_atender: 0,
             clientes: 0,
+            nodos: 0,
             otros: 0
         },
         busqueda: '',
@@ -47,11 +49,38 @@
     const CATEGORIAS_CONTACTO_UI = {
         CLIENTE_BUNKER: { label: '🏢 Cliente Búnker', corto: '🏢 Cliente', bg: '#dcfce7', color: '#166534', border: '#86efac' },
         PROSPECTO:      { label: '🌱 Prospecto',      corto: '🌱 Prospecto', bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
+        PROSPECTO_NODO: { label: '🌐 Prospecto Nodo', corto: '🌐 Prosp. Nodo', bg: '#ede9fe', color: '#5b21b6', border: '#c4b5fd' },
         PROVEEDOR:      { label: '🚚 Proveedor',      corto: '🚚 Proveedor', bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
         PERSONAL:       { label: '🔒 Personal',       corto: '🔒 Personal',  bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
         IGNORADO_BOT:   { label: '🚫 Ignorar / Bot',  corto: '🚫 Bot',       bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
         SIN_CLASIFICAR: { label: '❓ Sin clasificar', corto: '❓ Otro',      bg: '#f8fafc', color: '#475569', border: '#cbd5e1' }
     };
+
+    const ETAPAS_CAPTACION_NODO_UI = {
+        INVITACION_INICIAL:  { label: '👋 Invitación',         corto: 'Invitación',         bg: '#f5f3ff', color: '#6d28d9', border: '#ddd6fe' },
+        PROPUESTA_ENVIADA:   { label: '📄 Propuesta enviada',  corto: 'Propuesta enviada',  bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
+        REUNION_A_COORDINAR: { label: '📅 Reunión a coordinar',corto: 'Reunión a coordinar',bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
+        REUNION_AGENDADA:    { label: '🤝 Reunión agendada',   corto: 'Reunión agendada',   bg: '#dcfce7', color: '#166534', border: '#86efac' },
+        EN_EVALUACION:       { label: '🧐 En evaluación',      corto: 'En evaluación',      bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
+        PAUSADO:             { label: '⏸️ Pausado',            corto: 'Pausado',            bg: '#f1f5f9', color: '#475569', border: '#cbd5e1' },
+        ACTIVO_COMO_NODO:    { label: '✅ Nodo activo',        corto: 'Nodo activo',        bg: '#d1fae5', color: '#065f46', border: '#6ee7b7' }
+    };
+
+    function esAgenteNodosHubWa(codigo) {
+        const c = String(codigo || '').trim().toUpperCase();
+        return c === 'NODOS_RESPUESTA' || c === 'NODOS_SEGUIMIENTO';
+    }
+
+    function esChatEnSeguimientoNodosHubWa(chat) {
+        if (!chat) return false;
+        const frente = String(chat.frente_activo || 'AUTO').trim().toUpperCase();
+        if (frente === 'MAYORISTA') return false;
+        if (frente === 'NODOS') return true;
+        if (String(chat.categoria_contacto || '').trim().toUpperCase() === 'PROSPECTO_NODO') return true;
+        if (chat.nodo_captacion_json && chat.nodo_captacion_json.activo) return true;
+        if (['PROSPECTO_NODO', 'REUNION_NODO'].includes(String(chat.etiqueta_crm || '').trim().toUpperCase())) return true;
+        return false;
+    }
 
     const ROLES_OPERATIVOS_UI = {
         DUENO_TITULAR:   { icon: '👑', label: '👑 Dueño / Titular',     corto: '👑 Dueño',      bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
@@ -88,7 +117,9 @@
         'PEDIDO_PENDIENTE': { label: '🟢 Pedido por cargar', bg: '#dcfce7', color: '#166534' },
         'ESPERANDO_PAGO': { label: '🟡 Esperando comprobante/pago', bg: '#fef9c3', color: '#854d0e' },
         'PRESUPUESTO': { label: '🔵 Presupuesto enviado', bg: '#dbeafe', color: '#1e40af' },
-        'RECLAMO': { label: '🔴 Reclamo / Revisar', bg: '#fee2e2', color: '#991b1b' }
+        'RECLAMO': { label: '🔴 Reclamo / Revisar', bg: '#fee2e2', color: '#991b1b' },
+        'PROSPECTO_NODO': { label: '🌐 Prospecto Nodo', bg: '#ede9fe', color: '#5b21b6' },
+        'REUNION_NODO': { label: '📅 Reunión Nodo', bg: '#fef3c7', color: '#92400e' }
     };
 
     const STORAGE_KEY_BORRADORES = 'lamda_wa_borradores_v1';
@@ -423,9 +454,9 @@
             }
             .wa-filter-tabs {
                 display: grid;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
+                grid-template-columns: repeat(2, minmax(0, 1fr));
                 gap: 4px;
-                padding: 6px 7px;
+                padding: 5px 6px;
                 background: #f1f5f9;
                 border-bottom: 1px solid #e2e8f0;
                 flex-shrink: 0;
@@ -434,10 +465,10 @@
                 border: 1px solid #cbd5e1;
                 background: #ffffff;
                 color: #334155;
-                font-size: 0.68rem;
+                font-size: 0.71rem;
                 font-weight: 800;
-                padding: 5px 5px;
-                border-radius: 8px;
+                padding: 4.5px 6px;
+                border-radius: 7px;
                 cursor: pointer;
                 white-space: nowrap;
                 display: inline-flex;
@@ -1514,13 +1545,12 @@
                     display: none !important;
                 }
                 .wa-filter-tabs {
-                    flex-wrap: wrap;
+                    grid-template-columns: repeat(2, minmax(0, 1fr));
                     padding: 6px 8px;
                 }
                 .wa-filter-tab {
-                    flex: 1 1 calc(50% - 4px);
                     padding: 6px 4px;
-                    font-size: 0.74rem;
+                    font-size: 0.72rem;
                 }
                 .wa-conv-header {
                     padding: 8px 10px !important;
@@ -2137,6 +2167,9 @@
                     });
                 }
                 if (typeof window.actualizarAlertasPizarra === 'function') window.actualizarAlertasPizarra();
+                if (nuevaCategoria === 'PROSPECTO_NODO') {
+                    estadoConsola._asistenteChatRenderizadoId = 0;
+                }
                 if (estadoConsola.abierta) {
                     await cargarListaChatsConsola(false);
                     if (estadoConsola.chatActivoId === chatPk) await seleccionarChatConsola(chatPk, false);
@@ -2146,6 +2179,218 @@
             console.error('Error cambiando categoría de contacto:', err);
         }
     };
+
+    window.activarRapidoProspectoNodoChatWa = async function (chatPk) {
+        try {
+            const res = await fetch(`/api/crm/whatsapp/chats/${chatPk}/config`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    nodo_captacion_activo: true,
+                    frente_activo: 'NODOS',
+                    nodo_etapa: 'INVITACION_INICIAL'
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.success) {
+                estadoConsola._firmaListaChats = '';
+                estadoConsola._firmaDetalleChat = '';
+                estadoConsola._asistenteChatRenderizadoId = 0;
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({
+                        toast: true,
+                        position: 'top-end',
+                        icon: 'success',
+                        title: '🌐 Activado en Captación de Nodos',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
+                }
+                if (typeof window.actualizarAlertasPizarra === 'function') window.actualizarAlertasPizarra();
+                await cargarListaChatsConsola(false);
+                if (Number(estadoConsola.chatActivoId) === Number(chatPk)) {
+                    await seleccionarChatConsola(chatPk, false);
+                }
+            }
+        } catch (err) {
+            console.error('Error activando Prospecto Nodo:', err);
+        }
+    };
+
+    window.abrirModalConfigModoNodoChatWa = async function (chatPk) {
+        const chatActual = (estadoConsola.detalleActivo?.chat && Number(estadoConsola.detalleActivo.chat.id) === Number(chatPk))
+            ? estadoConsola.detalleActivo.chat
+            : ((estadoConsola.chats || []).find(c => Number(c.id) === Number(chatPk)) || {});
+        const detActual = estadoConsola.detalleActivo?.contexto_nodos || {};
+        const nodoJson = (chatActual.nodo_captacion_json && typeof chatActual.nodo_captacion_json === 'object')
+            ? chatActual.nodo_captacion_json
+            : {};
+        const enNodos = esChatEnSeguimientoNodosHubWa(chatActual) || Boolean(detActual.enSeguimientoNodos);
+        const etapaAct = String(nodoJson.etapa || detActual.etapaInferida || 'INVITACION_INICIAL').toUpperCase();
+        const perfilAct = String(nodoJson.perfil_sugerido || detActual.perfilInferido || (chatActual.bunker_cliente_id ? 'LOCALES' : 'VECINOS')).toUpperCase();
+        const notaAct = String(nodoJson.nota_nodos || '').trim();
+        const frenteAct = String(chatActual.frente_activo || 'AUTO').toUpperCase();
+
+        if (typeof Swal === 'undefined') {
+            await window.activarRapidoProspectoNodoChatWa(chatPk);
+            return;
+        }
+
+        const opcionesEtapaHtml = Object.entries(ETAPAS_CAPTACION_NODO_UI).map(([k, v]) =>
+            `<option value="${k}" ${etapaAct === k ? 'selected' : ''}>${v.label}</option>`
+        ).join('');
+
+        const res = await Swal.fire({
+            title: '🌐 Frente Captación de Nodos',
+            width: '460px',
+            html: `
+                <div style="text-align:left; font-size:0.82rem; color:#334155; display:flex; flex-direction:column; gap:10px;">
+                    <div style="background:#f5f3ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:0.76rem; color:#4c1d95; line-height:1.35;">
+                        ${chatActual.bunker_cliente_id
+                            ? '🏢 <strong>Cliente actual de LAMDA:</strong> conserva su ficha Búnker, CC e historial mayorista. Si te manda un pedido o comprobante, el asistente lo atiende sin perder el seguimiento de Nodo.'
+                            : '🌱 <strong>Contacto externo (sin ficha Búnker):</strong> al activarlo queda visible en <strong>📥 Atender</strong> y en la solapa <strong>🌐 Nodos</strong> con Copiloto exclusivo de Nodos.'}
+                    </div>
+                    <div>
+                        <label style="font-weight:800; display:block; margin-bottom:4px;">Modo de asistencia en este chat:</label>
+                        <select id="swal-wa-nodo-frente" style="width:100%; padding:7px 9px; border:1px solid #cbd5e1; border-radius:7px; font-size:0.83rem;">
+                            <option value="NODOS" ${(enNodos && frenteAct !== 'AUTO') || !enNodos ? 'selected' : ''}>🌐 Activo — Captación / Seguimiento de Nodo</option>
+                            <option value="AUTO" ${enNodos && frenteAct === 'AUTO' ? 'selected' : ''}>🧠 Automático — Detecta por contexto del hilo</option>
+                            ${chatActual.bunker_cliente_id ? `<option value="MAYORISTA" ${frenteAct === 'MAYORISTA' ? 'selected' : ''}>🏢 Solo Mayorista tradicional (pausar Nodos)</option>` : ''}
+                        </select>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                        <div>
+                            <label style="font-weight:800; display:block; margin-bottom:4px;">Etapa actual:</label>
+                            <select id="swal-wa-nodo-etapa" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:7px; font-size:0.8rem;">
+                                ${opcionesEtapaHtml}
+                            </select>
+                        </div>
+                        <div>
+                            <label style="font-weight:800; display:block; margin-bottom:4px;">Perfil sugerido:</label>
+                            <select id="swal-wa-nodo-perfil" style="width:100%; padding:6px 8px; border:1px solid #cbd5e1; border-radius:7px; font-size:0.8rem;">
+                                <option value="VECINOS" ${perfilAct === 'VECINOS' ? 'selected' : ''}>🏠 Vecinos (ej. Paraíso)</option>
+                                <option value="REDES" ${perfilAct === 'REDES' ? 'selected' : ''}>📱 Redes (ej. MANSO)</option>
+                                <option value="LOCALES" ${perfilAct === 'LOCALES' ? 'selected' : ''}>🏪 Locales (ej. MORO)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-weight:800; display:block; margin-bottom:4px;">Nota breve para el Copiloto (opcional):</label>
+                        <input id="swal-wa-nodo-nota" type="text" value="${escaparHtml(notaAct)}" placeholder="Ej: Le mandé audio proponiendo Nodo, quedamos en juntarnos esta semana" style="width:100%; padding:7px 9px; border:1px solid #cbd5e1; border-radius:7px; box-sizing:border-box; font-size:0.81rem;">
+                    </div>
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '💾 Guardar y actualizar Copiloto',
+            confirmButtonColor: '#6d28d9',
+            cancelButtonText: 'Cancelar',
+            preConfirm: () => ({
+                frente: document.getElementById('swal-wa-nodo-frente')?.value || 'NODOS',
+                etapa: document.getElementById('swal-wa-nodo-etapa')?.value || 'INVITACION_INICIAL',
+                perfil: document.getElementById('swal-wa-nodo-perfil')?.value || 'VECINOS',
+                nota: (document.getElementById('swal-wa-nodo-nota')?.value || '').trim()
+            })
+        });
+
+        if (!res.isConfirmed || !res.value) return;
+        const v = res.value;
+        const payload = {
+            frente_activo: v.frente,
+            nodo_captacion_activo: v.frente !== 'MAYORISTA',
+            nodo_etapa: v.etapa,
+            nodo_perfil: v.perfil,
+            nodo_nota: v.nota
+        };
+
+        try {
+            const r = await fetch(`/api/crm/whatsapp/chats/${chatPk}/config`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const j = await r.json().catch(() => ({}));
+            if (r.ok && j.success) {
+                estadoConsola._firmaListaChats = '';
+                estadoConsola._firmaDetalleChat = '';
+                estadoConsola._asistenteChatRenderizadoId = 0;
+                if (window._cacheSintesisMemoriaClientesWa && chatActual.bunker_cliente_id) {
+                    window._cacheSintesisMemoriaClientesWa.delete(Number(chatActual.bunker_cliente_id));
+                }
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'success',
+                    title: v.frente === 'MAYORISTA' ? '🏢 Vuelto a modo Mayorista' : `🌐 Modo Nodo actualizado (${ETAPAS_CAPTACION_NODO_UI[v.etapa]?.corto || v.etapa})`,
+                    timer: 2200,
+                    showConfirmButton: false
+                });
+                await cargarListaChatsConsola(false);
+                if (Number(estadoConsola.chatActivoId) === Number(chatPk)) {
+                    await seleccionarChatConsola(chatPk, false);
+                }
+            }
+        } catch (err) {
+            console.error('Error guardando configuración de Modo Nodo:', err);
+        }
+    };
+
+    window.insertarDemoTiendaNodoEnBurbuja2Wa = function (perfil = 'VECINOS', slug = '') {
+        const st = estadoAsistenteComercialWa;
+        if (!st) return;
+        const txtDemo = typeof window.construirBloqueDemoNodoDeterministaWa === 'function'
+            ? window.construirBloqueDemoNodoDeterministaWa(perfil, slug, st.nodosReferencia)
+            : `https://tienda.lamdaser.com/tienda/${encodeURIComponent(slug || 'paraiso')}`;
+        const area2 = document.getElementById('wa-asist-com-burbuja2');
+        const chkB2 = document.getElementById('wa-asist-com-chk-burbuja2');
+        const wrapB2 = document.getElementById('wa-asist-com-burbuja2-wrap');
+        if (chkB2) chkB2.checked = true;
+        if (wrapB2) wrapB2.style.display = 'block';
+        if (area2) {
+            area2.value = txtDemo;
+            area2.rows = Math.min(5, Math.max(3, txtDemo.split('\n').length + 1));
+        }
+        window.actualizarIndicadorLongitudAsistenteComercialWa();
+    };
+
+    function actualizarVisibilidadModoNodosCol3Wa(st) {
+        if (!st) return;
+        const agenteAct = String(st.agenteEspecialistaActivo || st.resultadoMesa?.proactivo?.agenteUtilizado || 'AUTO').toUpperCase();
+        const esNodos = esAgenteNodosHubWa(agenteAct);
+
+        const bannerSinLista = document.getElementById('wa-asist-banner-sin-lista');
+        const secPdf = document.getElementById('wa-asist-pdf-section');
+        const secProd = document.getElementById('wa-asist-prod-section');
+        const lblB2 = document.getElementById('lbl-wa-asist-b2-titulo');
+        const lblB3 = document.getElementById('lbl-wa-asist-b3-titulo');
+        const inpPrompt = document.getElementById('wa-asist-com-ia-prompt');
+        const chkPdf = document.getElementById('wa-asist-com-chk-pdf');
+        const chkPdfCc = document.getElementById('wa-asist-com-chk-pdf-cc');
+
+        if (bannerSinLista) bannerSinLista.style.display = (esNodos || !st.clienteId) ? 'none' : 'flex';
+        if (secPdf) secPdf.style.display = esNodos ? 'none' : 'flex';
+        if (secProd) secProd.style.display = esNodos ? 'none' : 'flex';
+        if (esNodos) {
+            if (chkPdf) chkPdf.checked = false;
+            if (chkPdfCc) chkPdfCc.checked = false;
+        }
+
+        const tipoAccesoCol3 = resolverTipoAccesoPortalHubWa(st);
+        const esEmpCol3 = tipoAccesoCol3 === 'ENCARGADO_ARMADOR_PEDIDO' || tipoAccesoCol3 === 'ENCARGADO_ARMADOR_PENDIENTE';
+        if (lblB2) {
+            lblB2.textContent = esNodos
+                ? '2️⃣ Tienda Ejemplo Nodo (opcional)'
+                : (esEmpCol3 ? '2️⃣ Precios / Link Armador' : '2️⃣ Precios / Link Portal');
+        }
+        if (lblB3) {
+            lblB3.textContent = esNodos ? '3️⃣ Cierre opcional' : '3️⃣ Cierre / Saldo';
+        }
+        if (inpPrompt) {
+            inpPrompt.placeholder = esNodos
+                ? 'Instrucción IA (ej: proponer jueves a la tarde o sumar tienda de Moro)...'
+                : 'Instrucción IA (ej: sumá nuez x 5kg)...';
+        }
+        refrescarControlesModoPortalBurbuja2Wa();
+    }
 
     window.toggleMenuAtajosConsolaWa = function (btn, event) {
         if (event) event.stopPropagation();
@@ -2522,7 +2767,7 @@
                             <input type="text" id="wa-hub-search-input" placeholder="🔍 Buscar cliente, Nº Legacy, CB-0014 o contacto..." oninput="window.filtrarBusquedaConsolaWa(this.value)" style="width: 100%; padding: 7px 9px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.81rem; box-sizing: border-box;">
                         </div>
                         <div id="wa-hub-filter-tabs" class="wa-filter-tabs">
-                            <button type="button" class="wa-filter-tab" data-filtro="SIN_RESPONDER" onclick="window.cambiarFiltroConsolaWa('SIN_RESPONDER')" title="Clientes Búnker y Prospectos esperando respuesta">
+                            <button type="button" class="wa-filter-tab" data-filtro="SIN_RESPONDER" onclick="window.cambiarFiltroConsolaWa('SIN_RESPONDER')" title="Clientes Búnker, Prospectos y Prospectos Nodo esperando respuesta">
                                 <span>📥 Atender</span>
                                 <span id="wa-tab-cnt-por-atender" class="wa-tab-cnt">0</span>
                             </button>
@@ -2530,7 +2775,11 @@
                                 <span>🏢 Clientes</span>
                                 <span id="wa-tab-cnt-clientes" class="wa-tab-cnt">0</span>
                             </button>
-                            <button type="button" class="wa-filter-tab" data-filtro="OTROS" onclick="window.cambiarFiltroConsolaWa('OTROS')" title="Prospectos, Proveedores, Personal y Bots">
+                            <button type="button" class="wa-filter-tab" data-filtro="NODOS" onclick="window.cambiarFiltroConsolaWa('NODOS')" title="Captación y seguimiento de Nodos (clientes actuales y contactos externos)">
+                                <span>🌐 Nodos</span>
+                                <span id="wa-tab-cnt-nodos" class="wa-tab-cnt">0</span>
+                            </button>
+                            <button type="button" class="wa-filter-tab" data-filtro="OTROS" onclick="window.cambiarFiltroConsolaWa('OTROS')" title="Prospectos mayoristas, Proveedores, Personal y Bots">
                                 <span>🗂️ Otros</span>
                                 <span id="wa-tab-cnt-otros" class="wa-tab-cnt">0</span>
                             </button>
@@ -2699,12 +2948,14 @@
     function actualizarContadoresTabsUiWa(contadores) {
         if (!contadores) return;
         estadoConsola.contadoresTabs = {
-            por_atender: Number(contadores.por_atender || 0),
-            clientes: Number(contadores.clientes || 0),
-            otros: Number(contadores.otros || 0)
+            por_atender: Number(contadores.por_atender ?? estadoConsola.contadoresTabs.por_atender ?? 0),
+            clientes: Number(contadores.clientes ?? estadoConsola.contadoresTabs.clientes ?? 0),
+            nodos: Number(contadores.nodos ?? estadoConsola.contadoresTabs.nodos ?? 0),
+            otros: Number(contadores.otros ?? estadoConsola.contadoresTabs.otros ?? 0)
         };
         const elAt = document.getElementById('wa-tab-cnt-por-atender');
         const elCl = document.getElementById('wa-tab-cnt-clientes');
+        const elNd = document.getElementById('wa-tab-cnt-nodos');
         const elOt = document.getElementById('wa-tab-cnt-otros');
         if (elAt) {
             elAt.textContent = String(estadoConsola.contadoresTabs.por_atender);
@@ -2712,6 +2963,7 @@
             else elAt.classList.remove('has-alert');
         }
         if (elCl) elCl.textContent = String(estadoConsola.contadoresTabs.clientes);
+        if (elNd) elNd.textContent = String(estadoConsola.contadoresTabs.nodos);
         if (elOt) elOt.textContent = String(estadoConsola.contadoresTabs.otros);
     }
 
@@ -2736,12 +2988,28 @@
                     ${ch.label}
                 </button>
             `).join('');
+        } else if (estadoConsola.filtroActivo === 'NODOS') {
+            bar.style.display = 'flex';
+            const act = estadoConsola.subfiltroNodos || 'TODOS';
+            const chips = [
+                { id: 'TODOS', label: 'Todos' },
+                { id: 'REUNION', label: '📅 Reunión' },
+                { id: 'PROPUESTA', label: '📄 Propuesta' },
+                { id: 'INVITACION', label: '👋 Invitación' },
+                { id: 'EXTERNOS', label: '🌱 Externos' }
+            ];
+            bar.innerHTML = chips.map(ch => `
+                <button type="button" class="wa-subfilter-chip ${act === ch.id ? 'active' : ''}" data-subfiltro="${ch.id}" onclick="window.cambiarSubfiltroConsolaWa('${ch.id}')">
+                    ${ch.label}
+                </button>
+            `).join('');
         } else if (estadoConsola.filtroActivo === 'OTROS') {
             bar.style.display = 'flex';
             const act = estadoConsola.subfiltroOtros || 'TODOS';
             const chips = [
                 { id: 'TODOS', label: 'Todos' },
                 { id: 'PROSPECTO', label: '🌱 Prospectos' },
+                { id: 'PROSPECTO_NODO', label: '🌐 Prosp. Nodo' },
                 { id: 'PROVEEDOR', label: '🚚 Proveedores' },
                 { id: 'PERSONAL_BOTS', label: '🔒 Personal / Bots' }
             ];
@@ -2759,6 +3027,8 @@
     window.cambiarSubfiltroConsolaWa = async function (nuevoSubfiltro) {
         if (estadoConsola.filtroActivo === 'CLIENTES') {
             estadoConsola.subfiltroClientes = nuevoSubfiltro || 'TODOS';
+        } else if (estadoConsola.filtroActivo === 'NODOS') {
+            estadoConsola.subfiltroNodos = nuevoSubfiltro || 'TODOS';
         } else if (estadoConsola.filtroActivo === 'OTROS') {
             estadoConsola.subfiltroOtros = nuevoSubfiltro || 'TODOS';
         }
@@ -3509,23 +3779,35 @@
             ? formatearTiempoRelativo(c.ultimo_mensaje_at || g.maxFechaRealIso)
             : '';
 
-        // Badges de telemetría comercial (solo cuando aplican, compactos y de lectura inmediata)
+        // Badges de telemetría comercial o Captación de Nodos (limpios y de lectura inmediata)
         const badgesTelemetria = [];
-        if (Number(g.saldo_pendiente || 0) > 100) {
-            badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;" title="Saldo pendiente en Cuenta Corriente">💰 ${formatearMontoCortoArsWa(g.saldo_pendiente)}</span>`);
+        const enVistaNodos = estadoConsola.filtroActivo === 'NODOS';
+        const chatEnNodos = esChatEnSeguimientoNodosHubWa(c);
+        if (chatEnNodos) {
+            const etKey = String(c.nodo_captacion_json?.etapa || 'INVITACION_INICIAL').toUpperCase();
+            const etMeta = ETAPAS_CAPTACION_NODO_UI[etKey] || ETAPAS_CAPTACION_NODO_UI.INVITACION_INICIAL;
+            badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:${etMeta.bg}; color:${etMeta.color}; border:1px solid ${etMeta.border};" title="Etapa Captación Nodo: ${escaparHtml(etMeta.corto)}">${etMeta.label}</span>`);
+            if (enVistaNodos && !c.bunker_cliente_id) {
+                badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#f5f3ff; color:#6d28d9; border:1px solid #ddd6fe;" title="Contacto externo sin ficha Búnker">Externo</span>`);
+            }
         }
-        if (g.dias_sin_compra !== null && Number(g.dias_sin_compra) > 30) {
-            badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;" title="Días desde la última compra">🔄 ${g.dias_sin_compra}d</span>`);
-        }
-        if (g.entregado_reciente) {
-            badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#f0fdfa; color:#0f766e; border:1px solid #99f6e4;" title="Pedido entregado en las últimas 48h">🚚 48h</span>`);
+        if (!enVistaNodos) {
+            if (Number(g.saldo_pendiente || 0) > 100) {
+                badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;" title="Saldo pendiente en Cuenta Corriente">💰 ${formatearMontoCortoArsWa(g.saldo_pendiente)}</span>`);
+            }
+            if (!chatEnNodos && g.dias_sin_compra !== null && Number(g.dias_sin_compra) > 30) {
+                badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;" title="Días desde la última compra">🔄 ${g.dias_sin_compra}d</span>`);
+            }
+            if (g.entregado_reciente) {
+                badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:#f0fdfa; color:#0f766e; border:1px solid #99f6e4;" title="Pedido entregado en las últimas 48h">🚚 48h</span>`);
+            }
         }
         const idsTodosGrupo = g.contactos.map(ct => ct.id).join(',');
         if (g.contactos.length > 1) {
             badgesTelemetria.push(`<button type="button" class="wa-multi-contacts-btn" aria-haspopup="true" aria-expanded="false" onclick="window.togglePopoverContactosGrupoWa(this, '${idsTodosGrupo}', event)" title="Ver y abrir cualquiera de los ${g.contactos.length} contactos de ${titulo}">👥 ${g.contactos.length} contactos ▾</button>`);
         }
         const etq = ETIQUETAS_CRM[c.etiqueta_crm || ''];
-        if (c.etiqueta_crm && etq) {
+        if (c.etiqueta_crm && etq && !['PROSPECTO_NODO', 'REUNION_NODO'].includes(c.etiqueta_crm)) {
             badgesTelemetria.push(`<span class="wa-kpi-chip-sm" style="background:${etq.bg}; color:${etq.color};">${etq.label.split(' ')[0]}</span>`);
         }
 
@@ -3581,7 +3863,9 @@
         try {
             const subfiltroActual = estadoConsola.filtroActivo === 'CLIENTES'
                 ? (estadoConsola.subfiltroClientes || 'TODOS')
-                : (estadoConsola.filtroActivo === 'OTROS' ? (estadoConsola.subfiltroOtros || 'TODOS') : 'TODOS');
+                : (estadoConsola.filtroActivo === 'NODOS'
+                    ? (estadoConsola.subfiltroNodos || 'TODOS')
+                    : (estadoConsola.filtroActivo === 'OTROS' ? (estadoConsola.subfiltroOtros || 'TODOS') : 'TODOS'));
 
             const params = new URLSearchParams({
                 filtro: estadoConsola.filtroActivo,
@@ -3625,6 +3909,8 @@
                         ex.antiguedad_deuda_dias = Math.max(Number(ex.antiguedad_deuda_dias || 0), Number(r.antiguedad_deuda_dias || 0));
                         if (!ex.etiqueta_crm && r.etiqueta_crm) ex.etiqueta_crm = r.etiqueta_crm;
                         if (!ex.nota_rapida && r.nota_rapida) ex.nota_rapida = r.nota_rapida;
+                        if (String(r.frente_activo || '').toUpperCase() === 'NODOS') ex.frente_activo = 'NODOS';
+                        if (!ex.nodo_captacion_json?.activo && r.nodo_captacion_json?.activo) ex.nodo_captacion_json = r.nodo_captacion_json;
                         const fEx = ex.ultimo_mensaje_at ? new Date(ex.ultimo_mensaje_at).getTime() : 0;
                         const fR = r.ultimo_mensaje_at ? new Date(r.ultimo_mensaje_at).getTime() : 0;
                         if (fR > fEx) {
@@ -3653,7 +3939,7 @@
                 subfiltroActual,
                 estadoConsola.busqueda,
                 chatsUnificados.map(c =>
-                    `${c.id}:${c.no_leidos || 0}:${c.esperando_respuesta ? 1 : 0}:${c.ultimo_mensaje_ack || 0}:${c.categoria_contacto || ''}:${c.modo_privacidad || ''}:${c.ultimo_mensaje_at || ''}:${Math.round(Number(c.saldo_pendiente || 0))}:${String(c.ultimo_mensaje_texto || '').slice(0, 40)}`
+                    `${c.id}:${c.no_leidos || 0}:${c.esperando_respuesta ? 1 : 0}:${c.ultimo_mensaje_ack || 0}:${c.categoria_contacto || ''}:${c.modo_privacidad || ''}:${c.frente_activo || ''}:${c.nodo_captacion_json?.etapa || ''}:${c.ultimo_mensaje_at || ''}:${Math.round(Number(c.saldo_pendiente || 0))}:${String(c.ultimo_mensaje_texto || '').slice(0, 40)}`
                 ).join(';')
             ].join('||');
             if (silencioso && firmaListaActual === estadoConsola._firmaListaChats) {
@@ -3664,7 +3950,9 @@
             if (estadoConsola.chats.length === 0) {
                 const msgVacio = estadoConsola.filtroActivo === 'SIN_RESPONDER'
                     ? '✅ Al día — 0 mensajes comerciales sin responder.'
-                    : `No hay contactos en esta vista${estadoConsola.busqueda ? ` para <strong>"${escaparHtml(estadoConsola.busqueda)}"</strong>` : ''}.`;
+                    : (estadoConsola.filtroActivo === 'NODOS'
+                        ? '🌐 No hay chats de Captación de Nodos en este filtro todavía.'
+                        : `No hay contactos en esta vista${estadoConsola.busqueda ? ` para <strong>"${escaparHtml(estadoConsola.busqueda)}"</strong>` : ''}.`);
                 listEl.innerHTML = `
                     <div style="padding: 28px 16px; text-align: center; color: #64748b; font-size: 0.83rem;">
                         <p style="margin-bottom: 10px; font-weight: 600;">${msgVacio}</p>
@@ -3741,9 +4029,13 @@
                 g.maxFechaRealIso = g.maxFechaRealMs > 0 ? new Date(g.maxFechaRealMs).toISOString() : null;
             });
 
-            // 3. Ordenar lista plana según subfiltro comercial o actividad real
+            // 3. Ordenar lista plana según subfiltro comercial, prioridad Nodos o actividad real
             let html = '';
-            if (estadoConsola.filtroActivo === 'CLIENTES' && subfiltroActual === 'CON_DEUDA') {
+            if (estadoConsola.filtroActivo === 'NODOS') {
+                // Respetar el orden por prioridad de seguimiento/etapa resuelto en backend
+                listaGrupos.sort((a, b) => a.ordenAparicion - b.ordenAparicion);
+                html = listaGrupos.map(renderizarTarjetaPlanaGrupoWa).join('');
+            } else if (estadoConsola.filtroActivo === 'CLIENTES' && subfiltroActual === 'CON_DEUDA') {
                 listaGrupos.sort((a, b) => (b.antiguedad_deuda_dias - a.antiguedad_deuda_dias) || (b.saldo_pendiente - a.saldo_pendiente));
                 html = listaGrupos.map(renderizarTarjetaPlanaGrupoWa).join('');
             } else if (estadoConsola.filtroActivo === 'CLIENTES' && subfiltroActual === 'SIN_COMPRA_30D') {
@@ -3953,7 +4245,8 @@
             const necesitaCargarCopiloto = !mismoChat || Number(estadoConsola._asistenteChatRenderizadoId) !== chatPkNum;
             if (necesitaCargarCopiloto) {
                 const catChat = data.chat?.categoria_contacto || (data.chat?.es_cliente_bunker ? 'CLIENTE_BUNKER' : 'SIN_CLASIFICAR');
-                const esChatComercial = catChat === 'CLIENTE_BUNKER' || catChat === 'PROSPECTO';
+                const esNodosChat = esChatEnSeguimientoNodosHubWa(data.chat) || Boolean(data.contexto_nodos?.enSeguimientoNodos);
+                const esChatComercial = catChat === 'CLIENTE_BUNKER' || catChat === 'PROSPECTO' || catChat === 'PROSPECTO_NODO' || esNodosChat;
                 const paneAsist = document.getElementById('wa-xray-pane-asistente');
 
                 if (esChatComercial) {
@@ -3976,11 +4269,16 @@
                                 <div style="font-size: 1.8rem; margin-bottom: 6px;">✨</div>
                                 <div style="font-weight: 800; font-size: 0.88rem; color: #0f172a; margin-bottom: 4px;">Contacto clasificado como ${escaparHtml(catMeta.label)}</div>
                                 <p style="font-size: 0.76rem; color: #64748b; margin: 0 0 12px; line-height: 1.4;">
-                                    El Asistente Comercial se activa automáticamente solo en Clientes Búnker y Prospectos para ahorrar ruido y créditos IA.
+                                    El Asistente Comercial se activa automáticamente en Clientes Búnker, Prospectos y Prospectos de Nodo.
                                 </p>
-                                <button type="button" onclick="window.abrirAsistenteComercialConversacionWa({ chatId: ${chatPkNum}, modoInlineCol3: true })" style="background: #0f766e; color: #ffffff; border: none; padding: 7px 13px; border-radius: 7px; font-size: 0.76rem; font-weight: 800; cursor: pointer;">
-                                    ✨ Cargar Asistente igualmente
-                                </button>
+                                <div style="display:flex; flex-direction:column; gap:7px; align-items:center;">
+                                    <button type="button" id="btn-wa-activar-prospecto-nodo-col3" onclick="window.activarRapidoProspectoNodoChatWa(${chatPkNum})" style="background: #6d28d9; color: #ffffff; border: none; padding: 7px 13px; border-radius: 7px; font-size: 0.76rem; font-weight: 800; cursor: pointer;">
+                                        🌐 Activar como Prospecto Nodo
+                                    </button>
+                                    <button type="button" onclick="window.abrirAsistenteComercialConversacionWa({ chatId: ${chatPkNum}, modoInlineCol3: true })" style="background: #0f766e; color: #ffffff; border: none; padding: 6px 12px; border-radius: 7px; font-size: 0.74rem; font-weight: 700; cursor: pointer;">
+                                        ✨ Cargar Asistente igualmente
+                                    </button>
+                                </div>
                             </div>
                         `;
                     }
@@ -4041,6 +4339,16 @@
                 }).join('')}
                </div>`
             : '';
+
+        // Botón rápido 1-clic de Frente Captación de Nodos (disponible tanto en Clientes Búnker como en externos)
+        const enNodosHdr = esChatEnSeguimientoNodosHubWa(chat) || Boolean(estadoConsola.detalleActivo?.contexto_nodos?.enSeguimientoNodos);
+        const etapaNodoHdrKey = String(chat.nodo_captacion_json?.etapa || estadoConsola.detalleActivo?.contexto_nodos?.etapaInferida || 'INVITACION_INICIAL').toUpperCase();
+        const etapaNodoHdrMeta = ETAPAS_CAPTACION_NODO_UI[etapaNodoHdrKey] || ETAPAS_CAPTACION_NODO_UI.INVITACION_INICIAL;
+        const botonModoNodoHtml = `
+            <button type="button" id="btn-wa-modo-nodo-hdr" onclick="window.abrirModalConfigModoNodoChatWa(${chat.id})" title="${enNodosHdr ? `Frente Captación Nodo activo (${escaparHtml(etapaNodoHdrMeta.corto)}) — clic para editar etapa/nota o cambiar frente` : 'Activar asistencia de Captación de Nodos en este chat'}" style="background: ${enNodosHdr ? '#ede9fe' : '#f8fafc'}; border: 1px solid ${enNodosHdr ? '#a78bfa' : '#cbd5e1'}; color: ${enNodosHdr ? '#5b21b6' : '#475569'}; padding: 4px 8px; border-radius: 6px; font-size: 0.71rem; font-weight: 800; cursor: pointer; white-space: nowrap;">
+                ${enNodosHdr ? `🌐 Nodo · ${escaparHtml(etapaNodoHdrMeta.corto)}` : '🌐 Modo Nodo'}
+            </button>
+        `;
 
         // Fase 3.5: Selector rápido 1-clic de Rol Operativo (solo para chats comerciales)
         const esChatComercialRol = catActualKey === 'CLIENTE_BUNKER' || catActualKey === 'PROSPECTO';
@@ -4191,6 +4499,7 @@
                                 ✓ Visto
                             </button>
                         ` : ''}
+                        ${botonModoNodoHtml}
                         ${selectorRolHtml}
                         <div id="wa-categoria-wrap" class="wa-categoria-wrap">
                             <button type="button" id="btn-wa-categoria-menu" aria-haspopup="true" aria-expanded="false" onclick="window.toggleMenuCategoriaConsolaWa(this, event)" style="background: ${catBtnBg}; border: 1px solid ${catBtnBorder}; color: ${catBtnColor}; padding: 4px 9px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Clasificar contacto en 1 clic">
@@ -4202,6 +4511,9 @@
                                 </button>
                                 <button type="button" class="wa-categoria-item ${catActualKey === 'PROSPECTO' ? 'active' : ''}" data-cat="PROSPECTO" onclick="window.cambiarCategoriaRapidaWa(${chat.id}, 'PROSPECTO')">
                                     <span>🌱 Prospecto</span>${catActualKey === 'PROSPECTO' ? '<span>✓</span>' : ''}
+                                </button>
+                                <button type="button" class="wa-categoria-item ${catActualKey === 'PROSPECTO_NODO' ? 'active' : ''}" data-cat="PROSPECTO_NODO" onclick="window.cambiarCategoriaRapidaWa(${chat.id}, 'PROSPECTO_NODO')">
+                                    <span>🌐 Prospecto Nodo</span>${catActualKey === 'PROSPECTO_NODO' ? '<span>✓</span>' : ''}
                                 </button>
                                 <button type="button" class="wa-categoria-item ${catActualKey === 'PROVEEDOR' ? 'active' : ''}" data-cat="PROVEEDOR" onclick="window.cambiarCategoriaRapidaWa(${chat.id}, 'PROVEEDOR')">
                                     <span>🚚 Proveedor</span>${catActualKey === 'PROVEEDOR' ? '<span>✓</span>' : ''}
@@ -8639,21 +8951,21 @@
             );
         }
 
-        // 3b. Si en los últimos 6 mensajes hay algún audio (entrante o saliente de Martín) aún sin transcribir, transcribirlo en caliente antes de correr el asistente
+        // 3b. Si en los últimos 10 mensajes hay algún audio (entrante o saliente de Martín) aún sin transcribir, transcribirlo en caliente antes de correr el asistente
         let pasoIdxAgente = 1;
         if (chatId > 0 && Array.isArray(mensajesChat) && mensajesChat.length > 0) {
-            const ult6Aud = mensajesChat.slice(-6).filter(m =>
+            const ult10Aud = mensajesChat.slice(-10).filter(m =>
                 (m.tipo_mensaje === 'ptt' || m.tipo_mensaje === 'audio') &&
                 (!m.cuerpo || String(m.cuerpo).trim() === '🎤 Mensaje de audio')
             );
-            if (ult6Aud.length > 0) {
+            if (ult10Aud.length > 0) {
                 if (stepperCargaCol3) {
                     pasoIdxAgente = 2;
-                    stepperCargaCol3.avanzar(1, `Escuchando ${ult6Aud.length} audio(s) reciente(s)...`, [
+                    stepperCargaCol3.avanzar(1, `Escuchando ${ult10Aud.length} audio(s) reciente(s)...`, [
                         '📂 Leyendo ficha, cuenta y entregas',
                         '🎧 Revisando audios recientes',
                         '🧠 Agente analizando conversación y redactando',
-                        '✨ Aplicando precios y formato LAMDA'
+                        '✨ Aplicando formato LAMDA'
                     ]);
                 }
                 try {
@@ -8661,7 +8973,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            msgIds: ult6Aud.map(m => m.msg_id).filter(Boolean),
+                            msgIds: ult10Aud.map(m => m.msg_id).filter(Boolean),
                             maxAudios: 4,
                             incluirSalientes: true
                         })
@@ -8708,7 +9020,22 @@
             estadoConsola._autoEjecutarAgenteTrasAbrir = null;
         }
 
-        // 4b. Ejecutar razonamiento híbrido IA (2 Carriles x 8 Especialistas) sobre la base determinista
+        // Contexto del frente Captación de Nodos (para Clientes Búnker y Contactos Externos sin ficha Búnker)
+        const categoriaContactoChat = String(chatObj?.categoria_contacto || (clienteId ? 'CLIENTE_BUNKER' : 'PROSPECTO_NODO')).trim().toUpperCase();
+        const frenteActivoChat = String(chatObj?.frente_activo || 'AUTO').trim().toUpperCase();
+        const nodoCaptacionJsonChat = (chatObj?.nodo_captacion_json && typeof chatObj.nodo_captacion_json === 'object')
+            ? chatObj.nodo_captacion_json
+            : {};
+        let contextoNodos = sintesisMemoria?.contexto_nodos || estadoConsola.detalleActivo?.contexto_nodos || null;
+        let nodosReferencia = Array.isArray(estadoConsola.detalleActivo?.nodos_referencia) ? estadoConsola.detalleActivo.nodos_referencia : null;
+        const razNodosGuardadoDetalle = estadoConsola.detalleActivo?.razonamiento_nodos_guardado || null;
+        const esFrenteNodosInicial = Boolean(
+            contextoNodos?.esFrenteNodos
+            || frenteActivoChat === 'NODOS'
+            || categoriaContactoChat === 'PROSPECTO_NODO'
+        );
+
+        // 4b. Ejecutar razonamiento híbrido IA (2 Carriles x 10 Especialistas) sobre la base determinista
         let razonamientoIa = null;
         let errorCriticoIa = '';
         let articulosPdfSugeridosIa = [];
@@ -8723,15 +9050,21 @@
             ? (estadoAsistenteComercialWa.comprobanteLeido || null)
             : null;
 
-        if (!saltoAgentePendiente && !forzarRelectura && !comprobantePrevioMismoChat && sintesisMemoria && sintesisMemoria.razonamiento_ia_guardado && sintesisMemoria.razonamiento_ia_guardado.usando_ia_real) {
-            razonamientoIa = sintesisMemoria.razonamiento_ia_guardado;
+        const razGuardadoCandidato = sintesisMemoria?.razonamiento_ia_guardado?.usando_ia_real
+            ? sintesisMemoria.razonamiento_ia_guardado
+            : (esFrenteNodosInicial && razNodosGuardadoDetalle?.usando_ia_real ? razNodosGuardadoDetalle : null);
+
+        if (!saltoAgentePendiente && !forzarRelectura && !comprobantePrevioMismoChat && razGuardadoCandidato) {
+            razonamientoIa = razGuardadoCandidato;
         } else if (sintesisMemoria && sintesisMemoria.ia_cognitiva && sintesisMemoria.ia_cognitiva.disponible === false) {
             errorCriticoIa = 'El servicio de Inteligencia Artificial no tiene credenciales activas configuradas en el servidor.';
-        } else if (Array.isArray(mensajesChat) && (mensajesChat.length > 0 || saltoAgentePendiente)) {
+        } else if (Array.isArray(mensajesChat) && (mensajesChat.length > 0 || saltoAgentePendiente || esFrenteNodosInicial)) {
             const saldoCtxNum = Number(rayosX?.cuenta_corriente?.saldo_actual || 0);
-            const subCtxIa = saldoCtxNum > 100
-                ? `Revisando Lista #${listaId} y saldo de $${Math.round(saldoCtxNum).toLocaleString('es-AR')}...`
-                : `Revisando Lista #${listaId} y últimos mensajes del hilo...`;
+            const subCtxIa = esFrenteNodosInicial
+                ? 'Analizando conversación en modo Captación de Nodos...'
+                : (saldoCtxNum > 100
+                    ? `Revisando Lista #${listaId} y saldo de $${Math.round(saldoCtxNum).toLocaleString('es-AR')}...`
+                    : `Revisando Lista #${listaId} y últimos mensajes del hilo...`);
             const ctrlIa = new AbortController();
             if (stepperCargaCol3) {
                 stepperCargaCol3.setAbortCtrl(ctrlIa);
@@ -8740,18 +9073,20 @@
             try {
                 if (typeof Swal !== 'undefined' && Swal.isVisible()) {
                     Swal.update({
-                        title: '🧠 Asistente Analizando Conversación...',
+                        title: esFrenteNodosInicial ? '🌐 Asistente Nodos Analizando...' : '🧠 Asistente Analizando Conversación...',
                         html: subCtxIa
                     });
                     Swal.showLoading();
                 }
-                const catalogoCompactoIa = todosArticulos.slice(0, 320).map(a => ({
-                    codigo: a.codigo_unico || a.id,
-                    nombre: a.nombre,
-                    kilos_unidad: Number(a.kilos_unidad || a.peso_bulto || 1),
-                    familia: a.familia_b2b || a.familia_nombre || '',
-                    stock_disponible: Number(a.stock_real || 0)
-                }));
+                const catalogoCompactoIa = esFrenteNodosInicial
+                    ? []
+                    : todosArticulos.slice(0, 320).map(a => ({
+                        codigo: a.codigo_unico || a.id,
+                        nombre: a.nombre,
+                        kilos_unidad: Number(a.kilos_unidad || a.peso_bulto || 1),
+                        familia: a.familia_b2b || a.familia_nombre || '',
+                        stock_disponible: Number(a.stock_real || 0)
+                    }));
                 const timerIa = setTimeout(() => ctrlIa.abort(), 35000);
                 let respIa = null;
                 try {
@@ -8771,19 +9106,22 @@
                             contactoCargo: contactoCargoChat,
                             esTelefonoCompartido: esTelefonoCompartidoChat,
                             otrosContactosCliente,
+                            categoriaContacto: categoriaContactoChat,
+                            frenteActivo: frenteActivoChat,
+                            nodoCaptacionJson: nodoCaptacionJsonChat,
                             carril: carrilAutoInicial,
                             agenteObjetivo: agenteObjInicial,
                             comprobanteLeido: comprobantePrevioMismoChat,
-                            contextoLogistico: rayosX?.logistica_resumen || null,
-                            diasSinCompra: sintesisMemoria?.ciclo_compra?.dias_desde_ultima_compra ?? null,
+                            contextoLogistico: esFrenteNodosInicial ? null : (rayosX?.logistica_resumen || null),
+                            diasSinCompra: esFrenteNodosInicial ? null : (sintesisMemoria?.ciclo_compra?.dias_desde_ultima_compra ?? null),
                             mensajesRecientes: mensajesChat.slice(-14),
                             catalogoCompacto: catalogoCompactoIa,
-                            habitualesCliente: articulosHabituales.slice(0, 20).map(h => ({
+                            habitualesCliente: esFrenteNodosInicial ? [] : articulosHabituales.slice(0, 20).map(h => ({
                                 codigo: h.codigo_unico || h.id,
                                 nombre: h.nombre,
                                 kg: Number(h.kilos_unidad || 1)
                             })),
-                            estadoCuentaDeterminista: {
+                            estadoCuentaDeterminista: esFrenteNodosInicial ? {} : {
                                 saldo_total: rayosX?.cuenta_corriente?.saldo_actual || 0,
                                 tiene_saldo_a_favor: Number(rayosX?.cuenta_corriente?.saldo_actual || 0) < -10,
                                 facturas_pendientes: (rayosX?.ultimas_facturas || []).filter(f => Number(f.saldo_pendiente || 0) > 10).length,
@@ -8798,14 +9136,14 @@
                                     })),
                                 comportamiento_pago: sintesisMemoria?.comportamiento_pago || {}
                             },
-                            linkPortalCliente: tipoAccesoPortal === 'ENCARGADO_ARMADOR_PEDIDO'
+                            linkPortalCliente: esFrenteNodosInicial ? '' : (tipoAccesoPortal === 'ENCARGADO_ARMADOR_PEDIDO'
                                 ? (delegacionArmador?.link || '')
                                 : (tipoAccesoPortal === 'ENCARGADO_ARMADOR_PENDIENTE'
                                     ? ''
-                                    : ((!yaIngresoPortal && linkActivacionCorto) ? linkActivacionCorto : URL_PORTAL_B2B_OFICIAL)),
-                            yaIngresoPortal,
-                            tipoAccesoPortal,
-                            aprobadorNombre: delegacionArmador?.aprobador_nombre || aprobadorSugerido?.nombre || '',
+                                    : ((!yaIngresoPortal && linkActivacionCorto) ? linkActivacionCorto : URL_PORTAL_B2B_OFICIAL))),
+                            yaIngresoPortal: !esFrenteNodosInicial && yaIngresoPortal,
+                            tipoAccesoPortal: esFrenteNodosInicial ? 'NO_APLICA_NODO' : tipoAccesoPortal,
+                            aprobadorNombre: esFrenteNodosInicial ? '' : (delegacionArmador?.aprobador_nombre || aprobadorSugerido?.nombre || ''),
                             forzarRecalculo: forzarRelectura || Boolean(saltoAgentePendiente)
                         })
                     });
@@ -8819,18 +9157,24 @@
 
                 if (respIa && respIa.success && respIa.razonamiento && respIa.razonamiento.usando_ia_real) {
                     razonamientoIa = respIa.razonamiento;
+                    if (Array.isArray(respIa.nodos_referencia) && respIa.nodos_referencia.length > 0) {
+                        nodosReferencia = respIa.nodos_referencia;
+                    }
+                    if (respIa.contexto_nodos) {
+                        contextoNodos = respIa.contexto_nodos;
+                    }
                 } else {
                     errorCriticoIa = respIa?.error || respIa?.razonamiento?.motivo_fallback || 'El servicio de IA no respondió. Podés reintentar o redactar directo.';
-                    if (sintesisMemoria?.razonamiento_ia_guardado?.usando_ia_real) {
-                        razonamientoIa = sintesisMemoria.razonamiento_ia_guardado;
+                    if (razGuardadoCandidato) {
+                        razonamientoIa = razGuardadoCandidato;
                     }
                 }
             } catch (errIa) {
                 errorCriticoIa = errIa?.name === 'AbortError'
                     ? 'Análisis cancelado o demorado. Podés reintentar o redactar directo en el borrador.'
                     : (errIa?.message || 'No se pudo conectar con el asistente IA.');
-                if (sintesisMemoria?.razonamiento_ia_guardado?.usando_ia_real) {
-                    razonamientoIa = sintesisMemoria.razonamiento_ia_guardado;
+                if (razGuardadoCandidato) {
+                    razonamientoIa = razGuardadoCandidato;
                 }
                 console.error('❌ [WA-ASISTENTE-HIBRIDO-IA] Error en conexión IA:', errIa);
             }
@@ -8913,6 +9257,11 @@
             notaTrato: notaTratoChat,
             memoriaTratoJson: memoriaTratoChat,
             otrosContactosCliente,
+            categoriaContacto: categoriaContactoChat,
+            frenteActivo: frenteActivoChat,
+            nodoCaptacionJson: nodoCaptacionJsonChat,
+            contextoNodos,
+            nodosReferencia,
             _ignorarGuardrailRol: false,
             _borradorOriginalB1: '',
             nombreCorto,
@@ -9185,16 +9534,29 @@
             `;
         }
 
-        // Píldoras de Especialistas del Motor Backend Fase 3 (4 Entrante + Auto / 4 Saliente)
+        // Píldoras de Especialistas del Motor Backend (5 Entrante + Auto / 5 Saliente — incluye Captación de Nodos)
+        const esAgenteNodosUi = esAgenteNodosHubWa(agenteActivo);
+        const enSeguimientoNodosUi = Boolean(
+            esAgenteNodosUi
+            || st.frenteActivo === 'NODOS'
+            || st.categoriaContacto === 'PROSPECTO_NODO'
+            || st.nodoCaptacionJson?.activo
+            || st.contextoNodos?.enSeguimientoNodos
+        );
+        const etapaNodoUiKey = String(st.nodoCaptacionJson?.etapa || st.contextoNodos?.etapaInferida || 'INVITACION_INICIAL').toUpperCase();
+        const etapaNodoUiMeta = ETAPAS_CAPTACION_NODO_UI[etapaNodoUiKey] || ETAPAS_CAPTACION_NODO_UI.INVITACION_INICIAL;
+
         const pildoras = carril === 'ENTRANTE'
             ? [
-                { id: 'AUTO', label: '🧠 Auto', title: 'Clasificador automático del Carril Entrante' },
+                { id: 'AUTO', label: '🧠 Auto', title: 'Clasificador automático del Carril Entrante (detecta Nodos y Mayorista)' },
+                { id: 'NODOS_RESPUESTA', label: '🌐 Nodos', title: 'Captación de Nodos: dudas del modelo, diseño, marca, costos base, compra sin clave y reuniones' },
                 { id: 'VENTAS_COTIZADOR', label: '💲 Ventas', title: 'Especialista en cotizaciones, fracciones vs. bultos y exclusiones' },
                 { id: 'COBRANZA_COMPROBANTES', label: '💳 Cobranza', title: 'Saldo exacto, acuse de comprobante leído y CBU Galicia' },
                 { id: 'LOGISTICA_ENTREGAS', label: '🚚 Logística', title: 'Estado real del último pedido, hoja de ruta y chofer' },
                 { id: 'RECLAMO_DEVOLUCION', label: '🛠️ Reclamo', title: 'Contención sobria sin inventar montos + acceso a Factura / NC' }
             ]
             : [
+                { id: 'NODOS_SEGUIMIENTO', label: '🌐 Nodos', title: 'Invitación a Nodo, seguimiento de propuesta enviada y coordinación de reuniones' },
                 { id: 'CUENTA_CORRIENTE', label: '💰 Cuenta Corriente', title: 'Gestión proactiva de saldo adaptada al tramo real (En término / Gracia / Comodín / Financiado)' },
                 { id: 'REACTIVACION_PORTAL', label: '🔄 Reactivación', title: 'Anclada en artículos habituales reales y Portal B2B (Invitación vs. Link)' },
                 { id: 'POST_ENTREGA', label: '📦 Post-Entrega', title: 'Chequeo breve sobre la mercadería entregada real' },
@@ -9203,6 +9565,8 @@
 
         const etiquetasEspecialistas = {
             AUTO: 'Auto',
+            NODOS_RESPUESTA: 'Nodos · Respuesta',
+            NODOS_SEGUIMIENTO: 'Nodos · Seguimiento',
             VENTAS_COTIZADOR: 'Ventas',
             COBRANZA_COMPROBANTES: 'Cobranza',
             LOGISTICA_ENTREGAS: 'Logística',
@@ -9214,6 +9578,35 @@
         };
         const badgeEspActivo = etiquetasEspecialistas[agenteActivo] || agenteActivo;
         const diagTxt = String(proactivo.diagnosticoEjecutivoAgente || ag1.tituloIntencion || '').trim();
+
+        const microResumenContenidoHtml = esAgenteNodosUi
+            ? `
+                <strong style="color:#5b21b6;">🌐 Captación Nodo</strong>
+                <span style="color:#cbd5e1;">·</span>
+                <span style="background:${etapaNodoUiMeta.bg}; color:${etapaNodoUiMeta.color}; border:1px solid ${etapaNodoUiMeta.border}; border-radius:999px; padding:0.5px 6px; font-size:0.65rem; font-weight:800;">${escaparHtml(etapaNodoUiMeta.corto)}</span>
+                <span style="color:#cbd5e1;">·</span>
+                <span style="color:#475569; font-weight:700;">${st.clienteId ? 'Cliente LAMDA' : 'Contacto externo'}</span>
+                ${st.chatId ? `<button type="button" onclick="window.abrirModalConfigModoNodoChatWa(${st.chatId})" title="Editar etapa, perfil o nota de Nodos" style="background:#f5f3ff; border:1px solid #ddd6fe; color:#5b21b6; border-radius:5px; padding:0.5px 5px; font-size:0.64rem; font-weight:800; cursor:pointer;">✏️ Etapa</button>` : ''}
+            `
+            : `
+                <strong style="color:#065f46;">Lista #${escaparHtml(st.listaId || 1)}</strong>
+                <span style="color:#cbd5e1;">·</span>
+                ${saldoTxt}
+                <span style="color:#cbd5e1;">·</span>
+                <span style="color:#475569; font-weight:700;">${escaparHtml(compraTxt)}</span>
+                <span style="color:#cbd5e1;">·</span>
+                ${portalTxt}
+            `;
+
+        // Chip de convivencia limpio cuando un Cliente Búnker en seguimiento Nodo atiende un mensaje mayorista
+        const chipConvivenciaNodosHtml = (!esAgenteNodosUi && enSeguimientoNodosUi)
+            ? `
+                <div id="wa-copilot-convivencia-nodo-chip" style="display:flex; justify-content:space-between; align-items:center; gap:6px; background:#f5f3ff; border:1px solid #ddd6fe; border-left:3px solid #7c3aed; border-radius:7px; padding:4px 8px; font-size:0.68rem; color:#4c1d95;">
+                    <span>🌐 En seguimiento Nodo (<strong>${escaparHtml(etapaNodoUiMeta.corto)}</strong>) · atendiendo consulta mayorista</span>
+                    <button type="button" onclick="window.ejecutarAgenteEspecializadoCol3Wa('${carril}', '${carril === 'ENTRANTE' ? 'NODOS_RESPUESTA' : 'NODOS_SEGUIMIENTO'}')" style="background:#6d28d9; color:#ffffff; border:none; border-radius:5px; padding:2px 7px; font-size:0.64rem; font-weight:800; cursor:pointer; white-space:nowrap;">🌐 Volver a Nodos</button>
+                </div>
+            `
+            : '';
 
         return `
             <div style="display: flex; flex-direction: column; gap: 6px;">
@@ -9227,34 +9620,29 @@
                     </button>
                 </div>
 
-                <!-- Micro-resumen 1 línea de datos duros + Re-analizar -->
+                <!-- Micro-resumen 1 línea de datos duros (Nodos o Mayorista) + Re-analizar -->
                 <div class="wa-copilot-microbar">
                     <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap; min-width:0; flex:1; line-height:1.3;">
-                        <strong style="color:#065f46;">Lista #${escaparHtml(st.listaId || 1)}</strong>
-                        <span style="color:#cbd5e1;">·</span>
-                        ${saldoTxt}
-                        <span style="color:#cbd5e1;">·</span>
-                        <span style="color:#475569; font-weight:700;">${escaparHtml(compraTxt)}</span>
-                        <span style="color:#cbd5e1;">·</span>
-                        ${portalTxt}
+                        ${microResumenContenidoHtml}
                     </div>
                     <div style="display:flex; gap:3px; flex-shrink:0;">
                         ${(!apodoPrefUi && !notaTratoUi && st.chatId) ? `<button type="button" onclick="window.editarTratoContactoChatWa(${st.chatId})" title="Definir apodo o nota de trato para este contacto" style="background:#f5f3ff; border:1px solid #ddd6fe; color:#5b21b6; border-radius:5px; padding:2px 5px; font-size:0.66rem; font-weight:800; cursor:pointer;">✨</button>` : ''}
                         <button type="button" onclick="window.rotarVarianteSaludoAsistenteWa()" title="Generar otra variante con el especialista activo" style="background:#ffffff; border:1px solid #cbd5e1; color:#1d4ed8; border-radius:5px; padding:2px 6px; font-size:0.68rem; font-weight:800; cursor:pointer;">🎲</button>
-                        <button type="button" onclick="window.forzarRelecturaProfundaClienteWa()" title="Re-analizar contexto del cliente en vivo" style="background:#ffffff; border:1px solid #86efac; color:#065f46; border-radius:5px; padding:2px 6px; font-size:0.68rem; font-weight:800; cursor:pointer;">🔄</button>
+                        <button type="button" onclick="window.forzarRelecturaProfundaClienteWa()" title="Re-analizar contexto del chat en vivo" style="background:#ffffff; border:1px solid #86efac; color:#065f46; border-radius:5px; padding:2px 6px; font-size:0.68rem; font-weight:800; cursor:pointer;">🔄</button>
                     </div>
                 </div>
 
+                ${chipConvivenciaNodosHtml}
                 ${chipTratoHtml}
-                ${bloqueGuardrailRolHtml}
+                ${esAgenteNodosUi ? '' : bloqueGuardrailRolHtml}
                 ${alertaErrHtml}
-                ${bloqueComprobanteHtml}
-                ${bloqueGestionFacturaHtml}
+                ${esAgenteNodosUi ? '' : bloqueComprobanteHtml}
+                ${esAgenteNodosUi ? '' : bloqueGestionFacturaHtml}
 
                 <div id="wa-copilot-inline-stepper-host" style="display:${cargandoEsp ? 'block' : 'none'};"></div>
                 ${!cargandoEsp && diagTxt ? `
-                    <div style="background:#f0f9ff; border:1px solid #bae6fd; border-left:3px solid #0284c7; border-radius:7px; padding:5px 8px; font-size:0.71rem; color:#0f172a; line-height:1.3;" title="${escaparHtml(diagTxt)}">
-                        <strong style="color:#0369a1;">🧠 ${escaparHtml(badgeEspActivo)}:</strong> ${escaparHtml(diagTxt.length > 140 ? diagTxt.slice(0, 137) + '…' : diagTxt)}
+                    <div style="background:${esAgenteNodosUi ? '#f5f3ff' : '#f0f9ff'}; border:1px solid ${esAgenteNodosUi ? '#ddd6fe' : '#bae6fd'}; border-left:3px solid ${esAgenteNodosUi ? '#7c3aed' : '#0284c7'}; border-radius:7px; padding:5px 8px; font-size:0.71rem; color:#0f172a; line-height:1.3;" title="${escaparHtml(diagTxt)}">
+                        <strong style="color:${esAgenteNodosUi ? '#5b21b6' : '#0369a1'};">${esAgenteNodosUi ? '🌐' : '🧠'} ${escaparHtml(badgeEspActivo)}:</strong> ${escaparHtml(diagTxt.length > 140 ? diagTxt.slice(0, 137) + '…' : diagTxt)}
                     </div>
                 ` : ''}
 
@@ -9319,6 +9707,8 @@
         const agenteNorm = String(agenteCodigo || 'AUTO').toUpperCase();
         const nombresEsp = {
             AUTO: 'Auto',
+            NODOS_RESPUESTA: 'Nodos · Respuesta',
+            NODOS_SEGUIMIENTO: 'Nodos · Seguimiento',
             VENTAS_COTIZADOR: 'Ventas',
             COBRANZA_COMPROBANTES: 'Cobranza',
             LOGISTICA_ENTREGAS: 'Logística',
@@ -9338,16 +9728,19 @@
         st._especialistaInflight = true;
 
         renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa || window.ejecutarMesaAgentesComercialesWa(st));
+        actualizarVisibilidadModoNodosCol3Wa(st);
 
         const ctrlEsp = new AbortController();
         const hostStepper = document.getElementById('wa-copilot-inline-stepper-host');
         const ag3Ctx = st.resultadoMesa?.ag3 || {};
-        const subContexto = (agenteNorm === 'CUENTA_CORRIENTE' || agenteNorm === 'COBRANZA_COMPROBANTES')
-            ? (ag3Ctx.tieneSaldo ? `Consultando saldo ${ag3Ctx.saldoFmt} y facturas abiertas...` : 'Revisando movimientos de cuenta corriente...')
-            : (agenteNorm === 'VENTAS_COTIZADOR' ? `Buscando artículos y precios en Lista #${st.listaId || 1}...`
-                : (agenteNorm === 'LOGISTICA_ENTREGAS' || agenteNorm === 'POST_ENTREGA'
-                    ? 'Verificando estado real del último pedido y entrega...'
-                    : `Redactando sugerencia en estilo LAMDA...`));
+        const subContexto = esAgenteNodosHubWa(agenteNorm)
+            ? 'Consultando modelo de Nodos, historial y referencias reales...'
+            : ((agenteNorm === 'CUENTA_CORRIENTE' || agenteNorm === 'COBRANZA_COMPROBANTES')
+                ? (ag3Ctx.tieneSaldo ? `Consultando saldo ${ag3Ctx.saldoFmt} y facturas abiertas...` : 'Revisando movimientos de cuenta corriente...')
+                : (agenteNorm === 'VENTAS_COTIZADOR' ? `Buscando artículos y precios en Lista #${st.listaId || 1}...`
+                    : (agenteNorm === 'LOGISTICA_ENTREGAS' || agenteNorm === 'POST_ENTREGA'
+                        ? 'Verificando estado real del último pedido y entrega...'
+                        : `Redactando sugerencia en estilo LAMDA...`)));
 
         const stepperEsp = hostStepper
             ? iniciarStepperCopilotoCol3Wa({
@@ -9428,6 +9821,7 @@
             st._especialistaInflight = false;
             st.resultadoMesa = window.ejecutarMesaAgentesComercialesWa(st);
             renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa);
+            actualizarVisibilidadModoNodosCol3Wa(st);
         }
     };
 
@@ -9439,16 +9833,28 @@
         const cambioReal = st.carrilAsistente !== target;
         st.carrilAsistente = target;
 
+        const enFrenteNodosActual = Boolean(
+            esAgenteNodosHubWa(st.agenteEspecialistaActivo)
+            || st.frenteActivo === 'NODOS'
+            || st.categoriaContacto === 'PROSPECTO_NODO'
+            || st.contextoNodos?.esFrenteNodos
+        );
+
         if (target === 'SALIENTE') {
-            const ag3 = st.resultadoMesa?.ag3 || {};
-            const ag2 = st.resultadoMesa?.ag2 || {};
-            const rolOp = String(st.rolOperativo || '').toUpperCase();
-            const rolNoCobranza = rolOp === 'COMPRAS_PEDIDOS' || rolOp === 'RECEPCION_LOCAL';
-            const sugSaliente = (ag3.tieneSaldo && !rolNoCobranza)
-                ? 'CUENTA_CORRIENTE'
-                : (ag2.logisticaResumen?.entregado_reciente_48h
-                    ? 'POST_ENTREGA'
-                    : ((ag2.diasDesdeUltimaCompra !== null && Number(ag2.diasDesdeUltimaCompra) > 30) ? 'REACTIVACION_PORTAL' : 'SALUDO_PUNTUAL'));
+            let sugSaliente = 'SALUDO_PUNTUAL';
+            if (enFrenteNodosActual) {
+                sugSaliente = 'NODOS_SEGUIMIENTO';
+            } else {
+                const ag3 = st.resultadoMesa?.ag3 || {};
+                const ag2 = st.resultadoMesa?.ag2 || {};
+                const rolOp = String(st.rolOperativo || '').toUpperCase();
+                const rolNoCobranza = rolOp === 'COMPRAS_PEDIDOS' || rolOp === 'RECEPCION_LOCAL';
+                sugSaliente = (ag3.tieneSaldo && !rolNoCobranza)
+                    ? 'CUENTA_CORRIENTE'
+                    : (ag2.logisticaResumen?.entregado_reciente_48h
+                        ? 'POST_ENTREGA'
+                        : ((ag2.diasDesdeUltimaCompra !== null && Number(ag2.diasDesdeUltimaCompra) > 30) ? 'REACTIVACION_PORTAL' : 'SALUDO_PUNTUAL'));
+            }
             if (cambioReal) {
                 window.ejecutarAgenteEspecializadoCol3Wa('SALIENTE', sugSaliente);
                 return;
@@ -9458,6 +9864,7 @@
             return;
         }
         renderizarBoxMesaAgentesSegunModoWa(st, st.resultadoMesa || window.ejecutarMesaAgentesComercialesWa(st));
+        actualizarVisibilidadModoNodosCol3Wa(st);
     };
 
     /**
@@ -9651,8 +10058,10 @@
         const cantFiltradosPdfCustom = Array.isArray(st.articulosPdfConfiguradosEnModal) ? st.articulosPdfConfiguradosEnModal.length : 0;
         const alcanceActualPdf = st.alcancePdfAdjunto || 'LISTA_COMPLETA';
 
+        const esModoNodosCol3 = esAgenteNodosHubWa(st.agenteEspecialistaActivo || resultadoMesa?.proactivo?.agenteUtilizado);
+        const mostrarBannerSinLista = (st.tieneListaAsignada === false) && Boolean(st.clienteId) && !esModoNodosCol3;
         const bannerSinListaAsignadaHtml = st.tieneListaAsignada === false
-            ? `<div style="background: #fef2f2; border: 1.5px solid #ef4444; border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px;">
+            ? `<div id="wa-asist-banner-sin-lista" style="display: ${mostrarBannerSinLista ? 'flex' : 'none'}; background: #fef2f2; border: 1.5px solid #ef4444; border-radius: 8px; padding: 6px 8px; flex-direction: column; gap: 4px;">
                    <div style="font-size: 0.71rem; font-weight: 800; color: #991b1b;">⚠️ Sin Lista de Precios asignada en Búnker:</div>
                    <select onchange="window.cambiarListaPrecioManualAsistenteWa(this.value)" style="width: 100%; padding: 3px 6px; border-radius: 5px; border: 1px solid #dc2626; font-size: 0.72rem; font-weight: 800; background: #ffffff; color: #7f1d1d;">
                        ${(st.listasDisponibles || []).map(l => `<option value="${Number(l.id)}" ${Number(l.id) === Number(listaId) ? 'selected' : ''}>Lista #${Number(l.id)} — ${escaparHtml(l.nombre)}</option>`).join('')}
@@ -9688,18 +10097,18 @@
                 <!-- Burbuja 1 (Editor amplio con auto-resize dinámico 120px..240px) -->
                 <textarea id="wa-asist-com-textarea" class="wa-copilot-draft-textarea" rows="5" oninput="window.actualizarIndicadorLongitudAsistenteComercialWa()" placeholder="Redactá o ajustá el mensaje sugerido...">${escaparHtml(textoBurbuja1Inicial)}</textarea>
 
-                <!-- Burbuja 2 (Precios / Link Portal según Rol Operativo) -->
+                <!-- Burbuja 2 (Tienda Ejemplo Nodo o Precios / Link Portal según Rol Operativo) -->
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px; flex-wrap: wrap;">
                         <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 0.71rem; font-weight: 800; color: #0369a1; cursor: pointer;">
                             <input type="checkbox" id="wa-asist-com-chk-burbuja2" ${mostrarB2Inicial ? 'checked' : ''} onchange="window.toggleSegundaBurbujaAsistenteWa(this.checked)">
-                            <span>${esEmpCol3 ? '2️⃣ Precios / Link Armador' : '2️⃣ Precios / Link Portal'}</span>
+                            <span id="lbl-wa-asist-b2-titulo">${esModoNodosCol3 ? '2️⃣ Tienda Ejemplo Nodo (opcional)' : (esEmpCol3 ? '2️⃣ Precios / Link Armador' : '2️⃣ Precios / Link Portal')}</span>
                         </label>
                         <div id="wa-asist-com-b2-portal-controls" style="display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;"></div>
                     </div>
                     <div id="wa-asist-com-chips-b2" style="display: flex; flex-wrap: wrap; gap: 3px;"></div>
                     <div id="wa-asist-com-burbuja2-wrap" style="display: ${mostrarB2Inicial ? 'block' : 'none'};">
-                        <textarea id="wa-asist-com-burbuja2" rows="2" oninput="window.actualizarIndicadorLongitudAsistenteComercialWa()" placeholder="Link del portal o precios puntuales (burbuja separada)..." style="width: 100%; padding: 5px 8px; border-radius: 7px; border: 1px solid #7dd3fc; font-size: 0.78rem; font-family: inherit; box-sizing: border-box; resize: vertical; background: #ffffff; color: #0f172a;">${escaparHtml(textoBurbuja2Inicial)}</textarea>
+                        <textarea id="wa-asist-com-burbuja2" rows="2" oninput="window.actualizarIndicadorLongitudAsistenteComercialWa()" placeholder="${esModoNodosCol3 ? 'Link de tienda ejemplo (https://tienda.lamdaser.com/tienda/...) en burbuja separada...' : 'Link del portal o precios puntuales (burbuja separada)...'}" style="width: 100%; padding: 5px 8px; border-radius: 7px; border: 1px solid #7dd3fc; font-size: 0.78rem; font-family: inherit; box-sizing: border-box; resize: vertical; background: #ffffff; color: #0f172a;">${escaparHtml(textoBurbuja2Inicial)}</textarea>
                     </div>
                 </div>
 
@@ -9707,18 +10116,18 @@
                 <div style="display: flex; flex-direction: column; gap: 3px;">
                     <label style="display: inline-flex; align-items: center; gap: 5px; font-size: 0.71rem; font-weight: 800; color: #0f766e; cursor: pointer;">
                         <input type="checkbox" id="wa-asist-com-chk-burbuja3" ${mostrarB3Inicial ? 'checked' : ''} onchange="window.toggleTerceraBurbujaAsistenteWa(this.checked)">
-                        <span>3️⃣ Cierre / Saldo</span>
+                        <span id="lbl-wa-asist-b3-titulo">${esModoNodosCol3 ? '3️⃣ Cierre opcional' : '3️⃣ Cierre / Saldo'}</span>
                     </label>
                     <div id="wa-asist-com-burbuja3-wrap" style="display: ${mostrarB3Inicial ? 'block' : 'none'};">
-                        <textarea id="wa-asist-com-burbuja3" rows="${textoBurbuja3Inicial.split('\n').length > 1 ? Math.min(4, textoBurbuja3Inicial.split('\n').length + 1) : 1}" oninput="window.actualizarIndicadorLongitudAsistenteComercialWa()" placeholder="Cierre corto o comentario de saldo..." style="width: 100%; padding: 5px 8px; border-radius: 7px; border: 1px solid #5eead4; font-size: 0.78rem; font-family: inherit; box-sizing: border-box; resize: vertical; background: #ffffff; color: #0f172a;">${escaparHtml(textoBurbuja3Inicial)}</textarea>
+                        <textarea id="wa-asist-com-burbuja3" rows="${textoBurbuja3Inicial.split('\n').length > 1 ? Math.min(4, textoBurbuja3Inicial.split('\n').length + 1) : 1}" oninput="window.actualizarIndicadorLongitudAsistenteComercialWa()" placeholder="Cierre corto..." style="width: 100%; padding: 5px 8px; border-radius: 7px; border: 1px solid #5eead4; font-size: 0.78rem; font-family: inherit; box-sizing: border-box; resize: vertical; background: #ffffff; color: #0f172a;">${escaparHtml(textoBurbuja3Inicial)}</textarea>
                     </div>
                 </div>
 
-                <!-- Selector Rápido de PDF + Personalizar PDF completo bajo demanda -->
-                <div style="display: flex; flex-direction: column; gap: 5px; padding-top: 6px; border-top: 1px dashed #cbd5e1;">
+                <!-- Selector Rápido de PDF + Personalizar PDF completo bajo demanda (oculto en modo Nodos) -->
+                <div id="wa-asist-pdf-section" style="display: ${esModoNodosCol3 ? 'none' : 'flex'}; flex-direction: column; gap: 5px; padding-top: 6px; border-top: 1px dashed #cbd5e1;">
                     <div style="display: flex; align-items: center; gap: 5px; background: #fffbeb; border: 1px solid #f59e0b; padding: 4px 6px; border-radius: 7px;">
                         <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-weight: 800; font-size: 0.7rem; color: #b45309; white-space: nowrap;">
-                            <input type="checkbox" id="wa-asist-com-chk-pdf" ${chkPdfInicial ? 'checked' : ''} onchange="window.toggleAdjuntarPdfAsistenteWa(this.checked)">
+                            <input type="checkbox" id="wa-asist-com-chk-pdf" ${(!esModoNodosCol3 && chkPdfInicial) ? 'checked' : ''} onchange="window.toggleAdjuntarPdfAsistenteWa(this.checked)">
                             <span id="lbl-wa-asist-com-chk-pdf">📄 PDF:</span>
                         </label>
                         <select id="wa-asist-com-sel-alcance-pdf" onchange="window.cambiarAlcancePdfDirectoAsistenteWa(this.value)" style="flex: 1; min-width: 0; padding: 2px 5px; border-radius: 5px; border: 1px solid #fcd34d; background: #ffffff; color: #78350f; font-size: 0.7rem; font-weight: 800; cursor: pointer;">
@@ -9737,7 +10146,7 @@
                         </button>
                         ${(resultadoMesa?.ag3?.cuentaId || rayosX?.cuenta_corriente?.cuenta_id) ? `
                             <label style="display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-weight: 800; font-size: 0.68rem; color: #6d28d9; background: #faf5ff; border: 1px solid #d8b4fe; padding: 2.5px 7px; border-radius: 6px; white-space: nowrap;">
-                                <input type="checkbox" id="wa-asist-com-chk-pdf-cc" ${chkPdfCcInicial ? 'checked' : ''}>
+                                <input type="checkbox" id="wa-asist-com-chk-pdf-cc" ${(!esModoNodosCol3 && chkPdfCcInicial) ? 'checked' : ''}>
                                 <span>📄 Resumen CC PDF</span>
                             </label>
                         ` : ''}
@@ -9749,15 +10158,15 @@
                     <button type="button" id="btn-wa-asist-com-voz" onclick="window.toggleDictadoVozInstruccionAgenteWa()" style="background: #7c3aed; color: #ffffff; border: none; padding: 5px 8px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer; flex-shrink: 0;" title="Dictar instrucción por voz al Asistente">
                         🎙️
                     </button>
-                    <input type="text" id="wa-asist-com-ia-prompt" onkeydown="if(event.key==='Enter'){event.preventDefault();window.pedirRedaccionIaEnVivoAsistenteWa();}" placeholder="Instrucción IA (ej: sumá nuez x 5kg)..." style="flex: 1; min-width: 0; padding: 5px 7px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.74rem; background: #ffffff; box-sizing: border-box;">
+                    <input type="text" id="wa-asist-com-ia-prompt" onkeydown="if(event.key==='Enter'){event.preventDefault();window.pedirRedaccionIaEnVivoAsistenteWa();}" placeholder="${esModoNodosCol3 ? 'Instrucción IA (ej: proponer jueves a la tarde o sumar tienda de Moro)...' : 'Instrucción IA (ej: sumá nuez x 5kg)...'}" style="flex: 1; min-width: 0; padding: 5px 7px; border-radius: 6px; border: 1px solid #cbd5e1; font-size: 0.74rem; background: #ffffff; box-sizing: border-box;">
                     <button type="button" id="btn-wa-asist-com-ia-run" onclick="window.pedirRedaccionIaEnVivoAsistenteWa()" style="background: #0284c7; color: #ffffff; border: none; padding: 5px 9px; border-radius: 6px; font-size: 0.71rem; font-weight: 800; cursor: pointer; white-space: nowrap; flex-shrink: 0;">
                         ✨ Adaptar
                     </button>
                 </div>
             </div>
 
-            <!-- 3. Selector Rápido Inline de Artículos / Precios (1 columna limpia) -->
-            <div class="wa-copilot-prod-box">
+            <!-- 3. Selector Rápido Inline de Artículos / Precios (oculto en modo Nodos) -->
+            <div id="wa-asist-prod-section" class="wa-copilot-prod-box" style="display: ${esModoNodosCol3 ? 'none' : 'flex'};">
                 <div style="display: flex; justify-content: space-between; align-items: center; gap: 4px;">
                     <span style="font-weight: 800; font-size: 0.73rem; color: #0f172a;">🛒 Productos &amp; Precios (Lista #${escaparHtml(listaId)})</span>
                     <span id="wa-asist-com-count-filtrados" style="font-size: 0.65rem; font-weight: 800; color: #0369a1; background: #e0f2fe; padding: 1px 6px; border-radius: 999px;"></span>
@@ -9845,7 +10254,7 @@
         if (!borradorPrevio) {
             sincronizarCoherenciaEntreBurbujasWa();
         }
-        refrescarControlesModoPortalBurbuja2Wa();
+        actualizarVisibilidadModoNodosCol3Wa(st);
         actualizarEstilosPasosAsistenteComercialWa();
         renderizarGridProductosAsistenteComercialWa();
         renderizarChipsSeleccionadosBurbuja2Wa();
@@ -10651,6 +11060,24 @@
         const st = estadoAsistenteComercialWa;
         const boxCtrl = document.getElementById('wa-asist-com-b2-portal-controls');
         if (!st || !boxCtrl) return;
+
+        // En modo Captación de Nodos: botones rápidos 1-clic a las tiendas ejemplo oficiales (https://tienda.lamdaser.com/tienda/<slug>)
+        const agenteActB2 = String(st.agenteEspecialistaActivo || st.resultadoMesa?.proactivo?.agenteUtilizado || '').toUpperCase();
+        if (esAgenteNodosHubWa(agenteActB2)) {
+            boxCtrl.innerHTML = `
+                <button type="button" data-demo-nodo="paraiso" onclick="window.insertarDemoTiendaNodoEnBurbuja2Wa('VECINOS', 'paraiso')" title="Insertar tienda ejemplo Paraíso (Barrio / Vecinos) — https://tienda.lamdaser.com/tienda/paraiso" style="padding: 1.5px 6px; border-radius: 5px; font-size: 0.64rem; font-weight: 800; cursor: pointer; border: 1px solid #86efac; background: #f0fdf4; color: #166534;">
+                    🏠 Paraíso
+                </button>
+                <button type="button" data-demo-nodo="manso" onclick="window.insertarDemoTiendaNodoEnBurbuja2Wa('REDES', 'manso')" title="Insertar tienda ejemplo MANSO (Redes / Contactos) — https://tienda.lamdaser.com/tienda/manso" style="padding: 1.5px 6px; border-radius: 5px; font-size: 0.64rem; font-weight: 800; cursor: pointer; border: 1px solid #c4b5fd; background: #f5f3ff; color: #5b21b6;">
+                    📱 MANSO
+                </button>
+                <button type="button" data-demo-nodo="moro" onclick="window.insertarDemoTiendaNodoEnBurbuja2Wa('LOCALES', 'moro')" title="Insertar tienda ejemplo MORO (Comercios / Locales) — https://tienda.lamdaser.com/tienda/moro" style="padding: 1.5px 6px; border-radius: 5px; font-size: 0.64rem; font-weight: 800; cursor: pointer; border: 1px solid #fde68a; background: #fffbeb; color: #92400e;">
+                    🏪 MORO
+                </button>
+            `;
+            return;
+        }
+
         const tipoAcceso = resolverTipoAccesoPortalHubWa(st);
         const delArm = st.delegacionArmador || st.estadoPortalB2B?.delegacion_armador || null;
         const esInv = tipoAcceso === 'TITULAR_INVITACION_INICIAL' || st.modoLink === 'INVITACION_INICIAL' || st.modoLink === 'ACTIVACION_CORTA';
@@ -11038,6 +11465,23 @@
         const pdfActivo = Boolean(chkPdf && chkPdf.checked);
         const alcancePdf = selAlcPdf?.value || st?.alcancePdfAdjunto || 'LISTA_COMPLETA';
         const descPdf = describirAlcancePdfNaturalWa(alcancePdf);
+
+        const agenteSync = String(st?.agenteEspecialistaActivo || st?.resultadoMesa?.proactivo?.agenteUtilizado || '').toUpperCase();
+        const esModoNodosSync = esAgenteNodosHubWa(agenteSync) || /tienda\.lamdaser\.com\/tienda\//i.test(String(area2?.value || ''));
+
+        if (esModoNodosSync) {
+            // En modo Nodos jamás insertar Portal B2B ni pegar puentes de lista de precios en Burbuja 1
+            if (b2Activa && area2 && !String(area2.value || '').trim()) {
+                const perfilDef = String(st?.nodoCaptacionJson?.perfil_sugerido || st?.contextoNodos?.perfilInferido || (st?.clienteId ? 'LOCALES' : 'VECINOS')).toUpperCase();
+                const bloqueDemo = typeof window.construirBloqueDemoNodoDeterministaWa === 'function'
+                    ? window.construirBloqueDemoNodoDeterministaWa(perfilDef, '', st?.nodosReferencia)
+                    : 'https://tienda.lamdaser.com/tienda/paraiso';
+                area2.value = bloqueDemo;
+                area2.rows = Math.min(5, Math.max(3, bloqueDemo.split('\n').length + 1));
+            }
+            window.actualizarIndicadorLongitudAsistenteComercialWa();
+            return;
+        }
 
         if (b2Activa && area2 && !String(area2.value || '').trim()) {
             const bloquePortal = obtenerBloquePortalDeterministaWa(st);

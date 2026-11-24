@@ -7134,6 +7134,26 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "'{}'::jsonb"
+      },
+      "frente_activo": {
+        "ordinal_position": 31,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'AUTO'::character varying"
+      },
+      "nodo_captacion_json": {
+        "ordinal_position": 32,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'{}'::jsonb"
       }
     },
     "crm_whatsapp_mensajes": {

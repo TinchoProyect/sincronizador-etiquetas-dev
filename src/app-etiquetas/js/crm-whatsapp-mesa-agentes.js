@@ -19,6 +19,44 @@
 
     const STORAGE_KEY_IA_CONFIG = 'lamda_crm_wa_ia_config_v1';
     const URL_PORTAL_OFICIAL = 'https://proud-darkness-ac3d.miserrano75.workers.dev';
+    const DOMINIO_TIENDA_NODOS_OFICIAL = 'https://tienda.lamdaser.com';
+    const REFERENCIAS_DEMO_NODOS_FALLBACK = [
+        { slug: 'paraiso', nombre_marca: 'Paraíso', perfil_operativo: 'VECINOS', perfil_label: 'Barrio / Vecinos', url_tienda: `${DOMINIO_TIENDA_NODOS_OFICIAL}/tienda/paraiso` },
+        { slug: 'manso', nombre_marca: 'MANSO', perfil_operativo: 'REDES', perfil_label: 'Redes / Contactos', url_tienda: `${DOMINIO_TIENDA_NODOS_OFICIAL}/tienda/manso` },
+        { slug: 'moro', nombre_marca: 'MORO', perfil_operativo: 'LOCALES', perfil_label: 'Comercios / Locales', url_tienda: `${DOMINIO_TIENDA_NODOS_OFICIAL}/tienda/moro` }
+    ];
+
+    function esEspecialistaNodosMesaWa(codigo) {
+        const c = String(codigo || '').trim().toUpperCase();
+        return c === 'NODOS_RESPUESTA' || c === 'NODOS_SEGUIMIENTO';
+    }
+    window.esEspecialistaNodosMesaWa = esEspecialistaNodosMesaWa;
+
+    function construirBloqueDemoNodoDeterministaWa(perfil = 'VECINOS', slug = '', nodosReferencia = null) {
+        const lista = Array.isArray(nodosReferencia) && nodosReferencia.length > 0
+            ? nodosReferencia
+            : REFERENCIAS_DEMO_NODOS_FALLBACK;
+        const slugNorm = String(slug || '').trim().toLowerCase();
+        const perfilNorm = String(perfil || '').trim().toUpperCase();
+        let elegido = null;
+        if (slugNorm) {
+            elegido = lista.find(n => String(n.slug || '').toLowerCase() === slugNorm) || null;
+        }
+        if (!elegido && perfilNorm) {
+            elegido = lista.find(n => String(n.perfil_operativo || '').toUpperCase() === perfilNorm) || null;
+        }
+        if (!elegido) elegido = lista[0] || REFERENCIAS_DEMO_NODOS_FALLBACK[0];
+        const cleanSlug = String(elegido.slug || 'paraiso').trim().replace(/^\/+|\/+$/g, '');
+        const url = `${DOMINIO_TIENDA_NODOS_OFICIAL}/tienda/${encodeURIComponent(cleanSlug)}`;
+        const perfilTxt = elegido.perfil_label || (elegido.perfil_operativo === 'LOCALES' ? 'Comercios / Locales' : (elegido.perfil_operativo === 'REDES' ? 'Redes / Contactos' : 'Barrio / Vecinos'));
+        const nombre = elegido.nombre_marca || cleanSlug;
+        return limpiarSignosAperturaWa([
+            `Te dejo un ejemplo en vivo de cómo queda una tienda de Nodo (${perfilTxt} — *${nombre}*):`,
+            url,
+            `Podés chusmearla tranquilo desde el celu y probar el carrito sin confirmar el pedido al final. Tené en cuenta que los precios que figuran ahí ya tienen cargado el margen minorista que definió ese nodo.`
+        ].join('\n'));
+    }
+    window.construirBloqueDemoNodoDeterministaWa = construirBloqueDemoNodoDeterministaWa;
 
     function resolverUrlModulo3004(ruta) {
         const clean = ruta.startsWith('/') ? ruta : `/${ruta}`;
@@ -468,7 +506,12 @@
             sugerirAdjuntarPdfCc = Boolean(raz.sugerir_adjuntar_pdf_cc);
             habilitarGestionFactura = Boolean(raz.habilitar_gestion_factura);
 
-            if (raz.tipo_burbuja2_determinista === 'PRECIOS_SELECCIONADOS') {
+            if (raz.tipo_burbuja2_determinista === 'LINK_DEMO_NODO') {
+                burbuja2 = limpiarSignosAperturaWa(
+                    raz.burbuja2_demo_nodo_texto
+                    || construirBloqueDemoNodoDeterministaWa(raz.perfil_nodo_demo_sugerido || st?.contextoNodos?.perfilInferido || 'VECINOS', '', st?.nodosReferencia)
+                );
+            } else if (raz.tipo_burbuja2_determinista === 'PRECIOS_SELECCIONADOS') {
                 const codsSet = new Set((raz.codigos_articulos_seleccionados || []).map(c => String(c || '').toUpperCase()));
                 const artsSel = (st?.catalogoArticulos || []).filter(a =>
                     codsSet.has(String(a.codigo_unico || '').toUpperCase()) || codsSet.has(String(a.id || '').toUpperCase())
@@ -487,7 +530,15 @@
             const saludo = st?.charlaEnCurso
                 ? (apodo ? `${apodo}, ` : '')
                 : (apodo ? `Hola ${apodo}, ${infoContacto.saludoMomento}! ` : `Hola, ${infoContacto.saludoMomento}! `);
-            burbuja1 = limpiarSignosAperturaWa(`${saludo}Cómo venís esta semana? Cualquier cosa avisame.`);
+            const esFallbackNodos = Boolean(
+                esEspecialistaNodosMesaWa(modoResuelto)
+                || st?.frenteActivo === 'NODOS'
+                || st?.categoriaContacto === 'PROSPECTO_NODO'
+                || st?.contextoNodos?.esFrenteNodos
+            );
+            burbuja1 = esFallbackNodos
+                ? limpiarSignosAperturaWa(`${saludo}Cómo venís esta semana? Cuando tengas un hueco coordinamos para charlar tranquilo sobre el proyecto de Nodos.`)
+                : limpiarSignosAperturaWa(`${saludo}Cómo venís esta semana? Cualquier cosa avisame.`);
             diagnosticoEjecutivoAgente = st?.errorCriticoIa
                 ? 'Modo contingencia: Gemini no respondió. Elegí un especialista o reintentá.'
                 : 'Listo para ejecutar el especialista seleccionado.';
@@ -571,13 +622,16 @@
         }
         const timer = setTimeout(() => ctrl.abort(), 32000);
         try {
-            const catalogoCompactoIa = (st?.catalogoArticulos || []).slice(0, 320).map(a => ({
-                codigo: a.codigo_unico || a.id,
-                nombre: a.nombre,
-                kilos_unidad: Number(a.kilos_unidad || a.peso_bulto || 1),
-                familia: a.familia_b2b || a.familia_nombre || '',
-                stock_disponible: Number(a.stock_real || 0)
-            }));
+            const esObjNodos = esEspecialistaNodosMesaWa(agenteObjetivo);
+            const catalogoCompactoIa = esObjNodos
+                ? []
+                : (st?.catalogoArticulos || []).slice(0, 320).map(a => ({
+                    codigo: a.codigo_unico || a.id,
+                    nombre: a.nombre,
+                    kilos_unidad: Number(a.kilos_unidad || a.peso_bulto || 1),
+                    familia: a.familia_b2b || a.familia_nombre || '',
+                    stock_disponible: Number(a.stock_real || 0)
+                }));
 
             const apodoConf = String(st?.apodoPreferido || '').trim();
             const rolOp = st?.rolOperativo || null;
@@ -599,35 +653,38 @@
                     contactoCargo: st?.contactoCargoChat || '',
                     esTelefonoCompartido: esComp,
                     otrosContactosCliente: Array.isArray(st?.otrosContactosCliente) ? st.otrosContactosCliente : [],
+                    categoriaContacto: st?.categoriaContacto || '',
+                    frenteActivo: st?.frenteActivo || 'AUTO',
+                    nodoCaptacionJson: st?.nodoCaptacionJson || null,
                     carril: carrilObjetivo || undefined,
                     agenteObjetivo,
                     comprobanteLeido,
-                    diasSinCompra: st?.sintesisMemoria?.ciclo_compra?.dias_desde_ultima_compra ?? null,
-                    contextoLogistico: st?.rayosX?.logistica_resumen || null,
+                    diasSinCompra: esObjNodos ? null : (st?.sintesisMemoria?.ciclo_compra?.dias_desde_ultima_compra ?? null),
+                    contextoLogistico: esObjNodos ? null : (st?.rayosX?.logistica_resumen || null),
                     mensajesRecientes: (st?.mensajesCompleta || st?.mensajesRecientes || []).slice(-14),
                     catalogoCompacto: catalogoCompactoIa,
-                    habitualesCliente: (st?.articulosHabituales || []).slice(0, 20).map(h => ({
+                    habitualesCliente: esObjNodos ? [] : (st?.articulosHabituales || []).slice(0, 20).map(h => ({
                         codigo: h.codigo_unico || h.id,
                         nombre: h.nombre,
                         kg: Number(h.kilos_unidad || 1)
                     })),
-                    estadoCuentaDeterminista: {
+                    estadoCuentaDeterminista: esObjNodos ? {} : {
                         saldo_total: st?.rayosX?.cuenta_corriente?.saldo_actual || 0,
                         tiene_saldo_a_favor: Number(st?.rayosX?.cuenta_corriente?.saldo_actual || 0) < -10,
                         pedidos_activos_en_curso: (st?.rayosX?.pedidos_recientes || [])
                             .filter(p => !/entregad|anulad|cancelad|baja/i.test(`${p.estado || ''} ${p.secuencia || ''} ${p.estado_logistico || ''}`))
                             .map(p => ({ id: p.id, estado: p.estado, secuencia: p.secuencia, total: p.total }))
                     },
-                    linkPortalCliente: resolverTipoAccesoPortalMesa(st) === 'ENCARGADO_ARMADOR_PEDIDO'
+                    linkPortalCliente: esObjNodos ? '' : (resolverTipoAccesoPortalMesa(st) === 'ENCARGADO_ARMADOR_PEDIDO'
                         ? String(st?.delegacionArmador?.link || st?.estadoPortalB2B?.link_armador_pedido || '')
                         : (resolverTipoAccesoPortalMesa(st) === 'ENCARGADO_ARMADOR_PENDIENTE'
                             ? ''
                             : ((!st?.yaIngresoPortal && st?.linkActivacionCorto)
                                 ? st.linkActivacionCorto
-                                : (st?.urlPortalBase || URL_PORTAL_OFICIAL))),
-                    yaIngresoPortal: resolverTipoAccesoPortalMesa(st) === 'TITULAR_ACTIVO',
-                    tipoAccesoPortal: resolverTipoAccesoPortalMesa(st),
-                    aprobadorNombre: String(st?.delegacionArmador?.aprobador_nombre || st?.aprobadorSugerido?.nombre || '').trim(),
+                                : (st?.urlPortalBase || URL_PORTAL_OFICIAL)))),
+                    yaIngresoPortal: !esObjNodos && resolverTipoAccesoPortalMesa(st) === 'TITULAR_ACTIVO',
+                    tipoAccesoPortal: esObjNodos ? 'NO_APLICA_NODO' : resolverTipoAccesoPortalMesa(st),
+                    aprobadorNombre: esObjNodos ? '' : String(st?.delegacionArmador?.aprobador_nombre || st?.aprobadorSugerido?.nombre || '').trim(),
                     instruccionOperador: instClean,
                     forzarRecalculo: Boolean(opciones.forzarRecalculo || instClean || agenteObjetivo !== 'AUTO')
                 })
@@ -641,6 +698,12 @@
             const raz = data.razonamiento;
             st.razonamientoIa = raz;
             st.errorCriticoIa = '';
+            if (Array.isArray(data.nodos_referencia) && data.nodos_referencia.length > 0) {
+                st.nodosReferencia = data.nodos_referencia;
+            }
+            if (data.contexto_nodos) {
+                st.contextoNodos = data.contexto_nodos;
+            }
             st.carrilAsistente = raz.carril_utilizado || carrilObjetivo || st.carrilAsistente;
             st.agenteEspecialistaActivo = raz.agente_utilizado || agenteObjetivo;
             st.sugerirAdjuntarPdfIa = Boolean(raz.sugerir_adjuntar_pdf);
@@ -658,7 +721,12 @@
             }
 
             let b2 = '';
-            if (raz.tipo_burbuja2_determinista === 'PRECIOS_SELECCIONADOS') {
+            if (raz.tipo_burbuja2_determinista === 'LINK_DEMO_NODO') {
+                b2 = limpiarSignosAperturaWa(
+                    raz.burbuja2_demo_nodo_texto
+                    || construirBloqueDemoNodoDeterministaWa(raz.perfil_nodo_demo_sugerido || st?.contextoNodos?.perfilInferido || 'VECINOS', '', st?.nodosReferencia)
+                );
+            } else if (raz.tipo_burbuja2_determinista === 'PRECIOS_SELECCIONADOS') {
                 const codsSet = new Set((raz.codigos_articulos_seleccionados || []).map(c => String(c || '').toUpperCase()));
                 const artsSel = (st.catalogoArticulos || []).filter(a =>
                     codsSet.has(String(a.codigo_unico || '').toUpperCase()) || codsSet.has(String(a.id || '').toUpperCase())

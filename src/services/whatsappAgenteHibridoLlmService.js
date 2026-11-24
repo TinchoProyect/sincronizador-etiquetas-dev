@@ -24,15 +24,22 @@ const fs = require('fs');
 const path = require('path');
 const { google } = require('googleapis');
 const iaMonitor = require('./iaCreditoMonitorService');
+const nodosCaptacionCrm = require('./nodosCaptacionCrmService');
 
 let _vertexAuthClient = null;
 let _ultimoUsageGemini = null;
 const _cacheRazonamientoHibrido = new Map();
 
 const CARRILES_AGENTES_WA = {
-    ENTRANTE: ['VENTAS_COTIZADOR', 'COBRANZA_COMPROBANTES', 'LOGISTICA_ENTREGAS', 'RECLAMO_DEVOLUCION'],
-    SALIENTE: ['CUENTA_CORRIENTE', 'REACTIVACION_PORTAL', 'POST_ENTREGA', 'SALUDO_PUNTUAL']
+    ENTRANTE: ['VENTAS_COTIZADOR', 'COBRANZA_COMPROBANTES', 'LOGISTICA_ENTREGAS', 'RECLAMO_DEVOLUCION', 'NODOS_RESPUESTA'],
+    SALIENTE: ['CUENTA_CORRIENTE', 'REACTIVACION_PORTAL', 'POST_ENTREGA', 'SALUDO_PUNTUAL', 'NODOS_SEGUIMIENTO']
 };
+
+const AGENTES_NODOS_SET = new Set(['NODOS_RESPUESTA', 'NODOS_SEGUIMIENTO']);
+
+function esAgenteEspecialistaNodos(agente) {
+    return AGENTES_NODOS_SET.has(String(agente || '').trim().toUpperCase());
+}
 
 const DATOS_BANCARIOS_LAMDA = {
     banco: 'Banco Galicia',
@@ -456,6 +463,7 @@ async function leerComprobanteImagenConGemini({ imageBuffer, mimeType = 'image/j
 
 /**
  * Clasificador liviano de Carril y Agente Especialista cuando agenteObjetivo === 'AUTO'
+ * Incorpora detección de Captación de Nodos + convivencia limpia con señales mayoristas entrantes.
  */
 function resolverCarrilYAgenteEspecialista({
     carrilSolicitado = '',
@@ -465,7 +473,14 @@ function resolverCarrilYAgenteEspecialista({
     contextoLogistico = {},
     diasSinCompra = null,
     comprobanteLeido = null,
-    rolOperativo = null
+    rolOperativo = null,
+    contextoNodos = null,
+    categoriaContacto = '',
+    frenteActivo = 'AUTO',
+    nodoCaptacionJson = null,
+    bunkerClienteId = null,
+    clienteNombre = '',
+    contactoNombre = ''
 }) {
     const arrMsgs = Array.isArray(mensajesRecientes) ? mensajesRecientes : [];
     const ultMsg = arrMsgs.length > 0 ? arrMsgs[arrMsgs.length - 1] : null;
@@ -480,7 +495,7 @@ function resolverCarrilYAgenteEspecialista({
     const objNorm = String(agenteObjetivo || 'AUTO').trim().toUpperCase();
     let carril = String(carrilSolicitado || '').trim().toUpperCase();
 
-    // Si el operador eligió explícitamente un especialista, respetar su carril automáticamente
+    // 1. Si el operador eligió explícitamente un especialista, respetar su elección y carril siempre
     if (CARRILES_AGENTES_WA.ENTRANTE.includes(objNorm)) {
         return { carril: 'ENTRANTE', agente: objNorm };
     }
@@ -492,7 +507,29 @@ function resolverCarrilYAgenteEspecialista({
         carril = (ultMsg && !ultMsg.from_me) ? 'ENTRANTE' : 'SALIENTE';
     }
 
+    // 2. Evaluar Frente Captación de Nodos (respeta señal mayorista entrante inequívoca en clientes Búnker)
+    const detNodos = contextoNodos || nodosCaptacionCrm.detectarContextoHiloNodosWa({
+        mensajesRecientes: arrMsgs,
+        categoriaContacto,
+        frenteActivo,
+        nodoCaptacionJson,
+        comprobanteLeido,
+        clienteNombre,
+        contactoNombre,
+        bunkerClienteId
+    });
+
+    if (detNodos && detNodos.esFrenteNodos) {
+        return {
+            carril,
+            agente: carril === 'ENTRANTE' ? 'NODOS_RESPUESTA' : 'NODOS_SEGUIMIENTO'
+        };
+    }
+
     if (carril === 'ENTRANTE') {
+        if (detNodos?.cedeAMayoristaPorUltimoEntrante && detNodos?.senalMayoristaEntrante?.agenteSugerido) {
+            return { carril: 'ENTRANTE', agente: detNodos.senalMayoristaEntrante.agenteSugerido };
+        }
         // 1. Reclamo / devolución / diferencia en factura o mercadería
         if (/\b(reclamo|error\s+en|mal\s+estado|fe[oa]s?|vencid|hongos?|bichos?|devoluc|nota\s+de\s+credito|diferencia\s+en|falt[oó]|faltaron|me\s+cobraron\s+de\s+m[aá]s|vino\s+roto|vino\s+mal)\b/i.test(txtEntranteNorm)) {
             return { carril: 'ENTRANTE', agente: 'RECLAMO_DEVOLUCION' };
@@ -511,7 +548,7 @@ function resolverCarrilYAgenteEspecialista({
         return { carril: 'ENTRANTE', agente: 'VENTAS_COTIZADOR' };
     }
 
-    // CARRIL SALIENTE (Proactivo)
+    // CARRIL SALIENTE (Proactivo mayorista)
     const saldo = Number(estadoCuentaDeterminista?.saldo_total || 0);
     const rolNoCobranza = rolOperativo === 'COMPRAS_PEDIDOS' || rolOperativo === 'RECEPCION_LOCAL';
     if (saldo > 100 && !rolNoCobranza) {
@@ -527,8 +564,8 @@ function resolverCarrilYAgenteEspecialista({
 }
 
 /**
- * Construye el prompt corto, enfocado y libre de contradicciones para cada uno de los 8 especialistas
- * incorporando reglas de Trato Aprendido (apodoConfirmadoMartin), Teléfono Compartido y Rol Operativo.
+ * Construye el prompt corto, enfocado y libre de contradicciones para cada uno de los 10 especialistas
+ * (8 Mayorista B2B + 2 Captación y Seguimiento de Nodos LAMDA).
  */
 function construirPromptEspecialistaWa({
     carril,
@@ -541,8 +578,57 @@ function construirPromptEspecialistaWa({
     tipoAccesoPortal = '',
     aprobadorNombre = '',
     requiereValidacion4Digitos = false,
-    yaHablamosHoy
+    yaHablamosHoy,
+    nodosReferencia = null
 }) {
+    if (esAgenteEspecialistaNodos(agente)) {
+        const reglasBaseNodos = [
+            'Sos el copiloto personal de Martín (dueño de LAMDA) en WhatsApp para invitar, explicar, responder dudas y coordinar reuniones del Proyecto de Nodos Comerciales de LAMDA.',
+            'REGLAS INNEGOCIABLES:',
+            '- Tono real de Martín: argentino rioplatense cercano, claro, humano, sobrio y breve (cero humo corporativo, cero tono de vendedor insistente). CERO signos de apertura "¿" ni "¡".',
+            '- PROHIBIDO usar la palabra "interés" o "intereses": siempre decir "financiación" si alguna vez surgiera el tema.',
+            '- AISLAMIENTO COMERCIAL ESTRICTO: PROHIBIDO mencionar saldos de Cuenta Corriente, cobranzas, reposición de stock mayorista viejo ni links del Portal B2B mayorista. Este mensaje es 100% sobre el Proyecto de Nodos / reunión.',
+            '- DOMINIO OFICIAL DE TIENDAS DE NODOS: Si alguna vez mencionás el dominio de tiendas, es SIEMPRE https://tienda.lamdaser.com/tienda/<slug> (JAMÁS menciones logistica.lamdaser.com).',
+            yaHablamosHoy
+                ? '- YA HABLAMOS HOY con esta persona: NO vuelvas a saludar con "Hola X, buen día". Continuá directo al pie.'
+                : '- Si abrís conversación hoy, usá el saludo acorde a la franja horaria de Argentina indicada.',
+            '- Si existe "instruccion_operador_prioritaria", obedecela con prioridad absoluta.',
+            '- Mantené "codigos_articulos_seleccionados": [], "codigos_articulos_pdf_sugeridos": [], "sugerir_adjuntar_pdf": false, "sugerir_adjuntar_pdf_cc": false, "habilitar_gestion_factura": false.'
+        ];
+
+        if (apodoConfirmadoMartin) {
+            reglasBaseNodos.push(`- TRATO CONFIRMADO POR MARTÍN: Martín llama a este interlocutor "${apodoConfirmadoMartin}". Usá SIEMPRE "${apodoConfirmadoMartin}" e ignorá otros nombres de agenda.${notaTrato ? ` Nota de trato: ${notaTrato}.` : ''}`);
+        } else if (esTelefonoCompartido || rolOperativo === 'COMPARTIDO') {
+            reglasBaseNodos.push('- TELÉFONO COMPARTIDO: Usá saludo neutro/plural salvo que alguien se haya presentado por nombre en los últimos mensajes.');
+        } else if (notaTrato) {
+            reglasBaseNodos.push(`- NOTA DE TRATO DE MARTÍN: ${notaTrato}.`);
+        }
+
+        const bloqueConocimiento = nodosCaptacionCrm.construirBloqueConocimientoModeloNodos(nodosReferencia);
+
+        const bloqueNodos = agente === 'NODOS_RESPUESTA'
+            ? [
+                'ESPECIALISTA ACTIVO: 📥 ENTRANTE · NODOS_RESPUESTA (Captación y Dudas de Nodos).',
+                '- Respondé con claridad, calidez y precisión a lo que planteó la persona apoyándote en el CONOCIMIENTO REAL DEL MODELO DE NODOS (sin recitarlo todo junto: contestá puntual lo que preguntó).',
+                '- Si pregunta por marca/paquetes, dejá claro que los paquetes salen de planta con la etiqueta térmica de su marca y que LAMDA no se esconde (jugamos en equipo: LAMDA en defensa poniendo stock/fraccionado/respaldo y ellos de goleador con su marca y su gente).',
+                '- Si pregunta por inversión/costos/márgenes, explicá que no requiere inversión inicial en stock y que desde su Panel de Gestor ve el costo base de depósito en vivo y fija libremente su margen.',
+                '- Si pregunta por la web o cómo compra su gente, explicá que es llave en mano con su marca/logo/colores (estética profunda en conjunto con LAMDA, día a día 100% autónomo; combos/presentaciones nuevas con aprobación y cotización base de LAMDA) y compra desde el celu sin contraseñas ni registros largos.',
+                '- Si propone día u horario para reunirse, confirmá con buena onda y dejá el paso claro.',
+                '- BURBUJA 2 (LINK_DEMO_NODO): Activá tipo_burbuja2_determinista="LINK_DEMO_NODO" y elegí "perfil_nodo_demo_sugerido" ("VECINOS", "REDES" o "LOCALES" según su perfil) ÚNICAMENTE si la persona pidió ver un ejemplo/web/catálogo o si lo pidió el operador. En ese caso NO pegues la URL dentro de burbuja1_dialogo porque la Capa Determinista la estampa limpia en Burbuja 2. Si NO pidió ver ejemplo, dejá tipo_burbuja2_determinista="VACIA".',
+                '- Mantené burbuja3_cierre="" salvo que haga falta un cierre muy breve aparte.'
+            ]
+            : [
+                'ESPECIALISTA ACTIVO: 📤 SALIENTE · NODOS_SEGUIMIENTO (Invitación, Reunión y Retome de Nodos).',
+                '- Leé con atención "historial_reciente_whatsapp" y "contexto_nodos_determinista" (etapa_actual, nota_nodos, evidencias, adjuntos como PDFs enviados).',
+                '- Si ya se envió un PDF ejecutivo (ej. "Propuesta Ejecutiva Proyecto Nodos") o quedaron en hablar en la semana porque estaba ocupado/en feria, redactá un retome breve, amable y cero invasivo preguntando si pudo mirarlo y proponiendo coordinar un ratito esta semana para verlo en vivo.',
+                '- Si quedaron en coordinar día y horario al volver de viaje o para esta semana/la semana que viene, escribí un toque cálido y concreto retomando exactamente ese compromiso (sin inventar temas que no existan).',
+                '- Si es un primer acercamiento o invitación inicial, presentá en 2-3 líneas naturales la idea de armar su propia tienda online de frutos secos/alimentos saludables con su marca y cero inversión en stock, trabajando en equipo con LAMDA, e invitá a charlar 15 minutos o tomar un café.',
+                '- Si hay un "[audio enviado por Martín sin transcripción disponible]" justo antes de que el interlocutor dijera "fijamos un día y horario para juntarnos la semana que viene", asumí que el audio fue la propuesta/invitación de Martín y retomá directo la coordinación de día y horario con naturalidad.',
+                '- BURBUJA 2: En saludos iniciales y coordinación de reuniones dejá SIEMPRE tipo_burbuja2_determinista="VACIA" y burbuja3_cierre="" para que el mensaje salga en 1 sola burbuja corta, humana y enfocada en concretar la charla. Solo usá tipo_burbuja2_determinista="LINK_DEMO_NODO" (y "perfil_nodo_demo_sugerido") si "instruccion_operador_prioritaria" lo pide explícitamente.'
+            ];
+
+        return [...reglasBaseNodos, '', bloqueConocimiento, '', ...bloqueNodos].join('\n');
+    }
     const tipoPortalNorm = String(tipoAccesoPortal || '').trim().toUpperCase();
     const esArmadorActivo = tipoPortalNorm === 'ENCARGADO_ARMADOR_PEDIDO';
     const esArmadorPendiente = tipoPortalNorm === 'ENCARGADO_ARMADOR_PENDIENTE';
@@ -657,7 +743,7 @@ function construirPromptEspecialistaWa({
 }
 
 /**
- * 🧠 MOTOR COGNITIVO POR 2 CARRILES (Entrante / Saliente)
+ * 🧠 MOTOR COGNITIVO POR 2 CARRILES (Entrante / Saliente — 8 Mayorista + 2 Captación Nodos)
  */
 async function razonarAsistenciaHibridaClienteWa({
     clienteNombre = '',
@@ -684,6 +770,13 @@ async function razonarAsistenciaHibridaClienteWa({
     carril = '',
     agenteObjetivo = 'AUTO',
     comprobanteLeido = null,
+    categoriaContacto = '',
+    frenteActivo = 'AUTO',
+    nodoCaptacionJson = null,
+    bunkerClienteId = null,
+    nodosReferencia = null,
+    nodoExistenteContacto = null,
+    contextoNodosPrecalculado = null,
     forzarRecalculo = false
 }) {
     const cred = obtenerModoCredencialGemini();
@@ -702,6 +795,17 @@ async function razonarAsistenciaHibridaClienteWa({
             : (yaIngresoPortal ? 'TITULAR_ACTIVO' : 'TITULAR_INVITACION_INICIAL'));
     const aprobadorClean = String(aprobadorNombre || '').trim();
 
+    const detNodos = contextoNodosPrecalculado || nodosCaptacionCrm.detectarContextoHiloNodosWa({
+        mensajesRecientes,
+        categoriaContacto,
+        frenteActivo,
+        nodoCaptacionJson,
+        comprobanteLeido,
+        clienteNombre,
+        contactoNombre,
+        bunkerClienteId
+    });
+
     const { carril: carrilFinal, agente: agenteFinal } = resolverCarrilYAgenteEspecialista({
         carrilSolicitado: carril,
         agenteObjetivo,
@@ -710,16 +814,34 @@ async function razonarAsistenciaHibridaClienteWa({
         contextoLogistico,
         diasSinCompra,
         comprobanteLeido,
-        rolOperativo: rolNorm
+        rolOperativo: rolNorm,
+        contextoNodos: detNodos,
+        categoriaContacto,
+        frenteActivo,
+        nodoCaptacionJson,
+        bunkerClienteId,
+        clienteNombre,
+        contactoNombre
     });
+
+    const esAgenteNodos = esAgenteEspecialistaNodos(agenteFinal);
+    const refsNodos = esAgenteNodos
+        ? (Array.isArray(nodosReferencia) && nodosReferencia.length > 0
+            ? nodosReferencia
+            : await nodosCaptacionCrm.obtenerReferenciasNodosActivos())
+        : null;
 
     const ultMsg = mensajesRecientes.length > 0 ? mensajesRecientes[mensajesRecientes.length - 1] : null;
     const instClean = String(instruccionOperador || '').trim();
+    const notaNodosClean = String(nodoCaptacionJson?.nota_nodos || '').trim();
+    const etapaNodosClean = String(nodoCaptacionJson?.etapa || detNodos?.etapaInferida || '').trim();
+    const perfilNodosClean = String(nodoCaptacionJson?.perfil_sugerido || detNodos?.perfilInferido || '').trim();
+
     const cacheKey = [
         clienteNombre,
         contactoNombre,
         rolNorm || '',
-        tipoPortalNorm,
+        esAgenteNodos ? `NODOS:${etapaNodosClean}:${perfilNodosClean}:${notaNodosClean}` : tipoPortalNorm,
         aprobadorClean,
         apodoConfirmadoClean,
         notaTratoClean,
@@ -727,6 +849,7 @@ async function razonarAsistenciaHibridaClienteWa({
         agenteFinal,
         ultMsg?.id || ultMsg?.msg_id || mensajesRecientes.length,
         String(ultMsg?.cuerpo || '').slice(0, 60),
+        String(ultMsg?.media_filename || ''),
         yaIngresoPortal ? 'P1' : 'P0',
         comprobanteLeido?.nro_operacion || '',
         instClean
@@ -763,20 +886,33 @@ async function razonarAsistenciaHibridaClienteWa({
         notaTrato: notaTratoClean,
         rolOperativo: rolNorm,
         esTelefonoCompartido: esCompartidoReal,
-        tipoAccesoPortal: tipoPortalNorm,
+        tipoAccesoPortal: esAgenteNodos ? 'NO_APLICA_NODO' : tipoPortalNorm,
         aprobadorNombre: aprobadorClean,
         requiereValidacion4Digitos: Boolean(requiereValidacion4Digitos),
-        yaHablamosHoy
+        yaHablamosHoy,
+        nodosReferencia: refsNodos
     });
 
     const historialFormateado = mensajesRecientes.slice(-14).map(m => {
-        const quien = m.from_me ? 'NOSOTROS (Martín/LAMDA)' : `CLIENTE (${apodoSugerido || contactoNombre || clienteNombre})`;
+        const quien = m.from_me
+            ? 'NOSOTROS (Martín/LAMDA)'
+            : `${esAgenteNodos ? 'INTERLOCUTOR' : 'CLIENTE'} (${apodoEfectivo || contactoNombre || clienteNombre || 'Contacto'})`;
         const fecha = m.fecha_mensaje || m.creado_en || '';
-        return `[${fecha}] ${quien}: ${String(m.cuerpo || '').replace(/\s+/g, ' ').trim()}`;
+        const cuerpoRaw = String(m.cuerpo || '').replace(/\s+/g, ' ').trim();
+        const fnRaw = String(m.media_filename || '').trim();
+        const esAudioSinTr = (m.tipo_mensaje === 'ptt' || m.tipo_mensaje === 'audio')
+            && (!cuerpoRaw || cuerpoRaw === '🎤 Mensaje de audio');
+        let cuerpoFinal = esAudioSinTr
+            ? (m.from_me ? '[audio enviado por Martín sin transcripción disponible]' : '[audio del interlocutor sin transcripción disponible]')
+            : cuerpoRaw;
+        if (fnRaw && !cuerpoFinal.includes(fnRaw)) {
+            cuerpoFinal = `[Adjunto: ${fnRaw}] ${cuerpoFinal}`.trim();
+        }
+        return `[${fecha}] ${quien}: ${cuerpoFinal}`;
     }).join('\n');
 
-    // Solo inyectar catálogo cuando el agente realmente lo necesita (ahorra tokens y mejora velocidad/foco)
-    const necesitaCatalogo = agenteFinal === 'VENTAS_COTIZADOR' || agenteFinal === 'REACTIVACION_PORTAL' || instClean.length > 0;
+    // Solo inyectar catálogo cuando el agente mayorista realmente lo necesita (NUNCA en especialistas de Nodos)
+    const necesitaCatalogo = !esAgenteNodos && (agenteFinal === 'VENTAS_COTIZADOR' || agenteFinal === 'REACTIVACION_PORTAL' || instClean.length > 0);
     let catalogoComercialLimpio = [];
     if (necesitaCatalogo) {
         const catalogoFiltradoBase = (Array.isArray(catalogoCompacto) ? catalogoCompacto : [])
@@ -817,43 +953,82 @@ async function razonarAsistenciaHibridaClienteWa({
             .map(c => `${c.codigo} | ${c.nombre} | ${c.kilos_unidad || 1}kg | stock:${Number(c.stock_disponible || 0) > 0 ? c.stock_disponible : 0}`);
     }
 
-    const habitualesLimpios = (Array.isArray(habitualesCliente) ? habitualesCliente : [])
-        .slice(0, 12)
-        .map(h => `${h.codigo || h.articulo_id || ''} | ${h.nombre || h.descripcion || ''}`);
+    const habitualesLimpios = !esAgenteNodos
+        ? (Array.isArray(habitualesCliente) ? habitualesCliente : [])
+            .slice(0, 12)
+            .map(h => `${h.codigo || h.articulo_id || ''} | ${h.nombre || h.descripcion || ''}`)
+        : [];
 
     const ctxHorario = obtenerContextoHorarioArgentina();
-    const payloadContexto = {
-        carril_activo: carrilFinal,
-        especialista_activo: agenteFinal,
-        hora_local_argentina: `${ctxHorario.fechaHoraTxt} (${ctxHorario.franja} — saludo: "${ctxHorario.saludoObligatorio}")`,
-        ya_hablamos_hoy: yaHablamosHoy,
-        instruccion_operador_prioritaria: instClean || null,
-        cliente: {
-            razon_social: clienteNombre,
-            contacto_agenda: contactoNombre,
-            apodo_confianza: apodoEfectivo,
-            apodo_confirmado_por_martin: apodoConfirmadoClean || null,
-            nota_trato: notaTratoClean || null,
-            rol_operativo: rolNorm || 'SIN_DEFINIR',
-            cargo_agenda: contactoCargo || null,
-            es_telefono_compartido: esCompartidoReal,
-            otros_contactos_cliente: Array.isArray(otrosContactosCliente) && otrosContactosCliente.length > 0
-                ? otrosContactosCliente.slice(0, 6).map(c => ({ nombre: c.contacto_nombre || c.nombre || '', rol: c.rol_operativo || c.contacto_cargo || '' }))
-                : undefined,
-            dias_sin_compra: diasSinCompra,
-            tipo_acceso_portal: tipoPortalNorm,
-            aprobador_pedido_nombre: aprobadorClean || null,
-            link_portal_disponible: tipoPortalNorm !== 'ENCARGADO_ARMADOR_PENDIENTE' && Boolean(linkPortalCliente),
-            ya_ingreso_portal_anteriormente: tipoPortalNorm === 'TITULAR_ACTIVO'
-        },
-        cuenta_corriente_determinista: estadoCuentaDeterminista,
-        contexto_logistico_determinista: contextoLogistico || {},
-        comprobante_leido: comprobanteLeido || null,
-        datos_bancarios_lamda: (agenteFinal === 'COBRANZA_COMPROBANTES' || agenteFinal === 'CUENTA_CORRIENTE') ? DATOS_BANCARIOS_LAMDA : undefined,
-        articulos_habituales_cliente: habitualesLimpios,
-        historial_reciente_whatsapp: historialFormateado,
-        catalogo_bunker_codigo_nombre_kg_stock: catalogoComercialLimpio.length > 0 ? catalogoComercialLimpio : undefined
-    };
+    const payloadContexto = esAgenteNodos
+        ? {
+            carril_activo: carrilFinal,
+            especialista_activo: agenteFinal,
+            hora_local_argentina: `${ctxHorario.fechaHoraTxt} (${ctxHorario.franja} — saludo: "${ctxHorario.saludoObligatorio}")`,
+            ya_hablamos_hoy: yaHablamosHoy,
+            instruccion_operador_prioritaria: instClean || null,
+            interlocutor: {
+                nombre_o_negocio: clienteNombre || contactoNombre || 'Contacto',
+                contacto_agenda: contactoNombre || null,
+                apodo_confianza: apodoEfectivo || null,
+                apodo_confirmado_por_martin: apodoConfirmadoClean || null,
+                nota_trato: notaTratoClean || null,
+                es_cliente_actual_lamda: Boolean(bunkerClienteId),
+                es_telefono_compartido: esCompartidoReal
+            },
+            contexto_nodos_determinista: {
+                etapa_actual: etapaNodosClean || 'INVITACION_INICIAL',
+                perfil_sugerido: perfilNodosClean || (bunkerClienteId ? 'LOCALES' : 'VECINOS'),
+                nota_nodos: notaNodosClean || null,
+                motivo_deteccion: detNodos?.motivoDeteccion || '',
+                evidencias_hilo: Array.isArray(detNodos?.evidencias) ? detNodos.evidencias : [],
+                interlocutor_pidio_ver_ejemplo: Boolean(detNodos?.pideVerEjemplo),
+                ya_es_gestor_de_nodo: nodoExistenteContacto ? {
+                    nombre_marca: nodoExistenteContacto.nombre_marca,
+                    slug: nodoExistenteContacto.slug,
+                    url_tienda: nodoExistenteContacto.url_tienda
+                } : null,
+                tiendas_ejemplo_reales: (refsNodos || []).slice(0, 4).map(n => ({
+                    nombre: n.nombre_marca,
+                    perfil: n.perfil_operativo,
+                    perfil_label: n.perfil_label,
+                    url_oficial: n.url_tienda
+                }))
+            },
+            historial_reciente_whatsapp: historialFormateado
+        }
+        : {
+            carril_activo: carrilFinal,
+            especialista_activo: agenteFinal,
+            hora_local_argentina: `${ctxHorario.fechaHoraTxt} (${ctxHorario.franja} — saludo: "${ctxHorario.saludoObligatorio}")`,
+            ya_hablamos_hoy: yaHablamosHoy,
+            instruccion_operador_prioritaria: instClean || null,
+            cliente: {
+                razon_social: clienteNombre,
+                contacto_agenda: contactoNombre,
+                apodo_confianza: apodoEfectivo,
+                apodo_confirmado_por_martin: apodoConfirmadoClean || null,
+                nota_trato: notaTratoClean || null,
+                rol_operativo: rolNorm || 'SIN_DEFINIR',
+                cargo_agenda: contactoCargo || null,
+                es_telefono_compartido: esCompartidoReal,
+                otros_contactos_cliente: Array.isArray(otrosContactosCliente) && otrosContactosCliente.length > 0
+                    ? otrosContactosCliente.slice(0, 6).map(c => ({ nombre: c.contacto_nombre || c.nombre || '', rol: c.rol_operativo || c.contacto_cargo || '' }))
+                    : undefined,
+                dias_sin_compra: diasSinCompra,
+                tipo_acceso_portal: tipoPortalNorm,
+                aprobador_pedido_nombre: aprobadorClean || null,
+                link_portal_disponible: tipoPortalNorm !== 'ENCARGADO_ARMADOR_PENDIENTE' && Boolean(linkPortalCliente),
+                ya_ingreso_portal_anteriormente: tipoPortalNorm === 'TITULAR_ACTIVO'
+            },
+            cuenta_corriente_determinista: estadoCuentaDeterminista,
+            contexto_logistico_determinista: contextoLogistico || {},
+            comprobante_leido: comprobanteLeido || null,
+            datos_bancarios_lamda: (agenteFinal === 'COBRANZA_COMPROBANTES' || agenteFinal === 'CUENTA_CORRIENTE') ? DATOS_BANCARIOS_LAMDA : undefined,
+            articulos_habituales_cliente: habitualesLimpios,
+            historial_reciente_whatsapp: historialFormateado,
+            catalogo_bunker_codigo_nombre_kg_stock: catalogoComercialLimpio.length > 0 ? catalogoComercialLimpio : undefined
+        };
 
     const responseSchema = {
         type: 'OBJECT',
@@ -886,11 +1061,15 @@ async function razonarAsistenciaHibridaClienteWa({
             },
             tipo_burbuja2_determinista: {
                 type: 'STRING',
-                description: 'PRECIOS_SELECCIONADOS, LINK_PORTAL, LINK_SEGUIMIENTO_ORDEN o VACIA'
+                description: 'PRECIOS_SELECCIONADOS, LINK_PORTAL, LINK_SEGUIMIENTO_ORDEN, LINK_DEMO_NODO o VACIA'
+            },
+            perfil_nodo_demo_sugerido: {
+                type: 'STRING',
+                description: 'Solo cuando tipo_burbuja2_determinista es LINK_DEMO_NODO: VECINOS, REDES o LOCALES (vacío en el resto)'
             },
             burbuja3_cierre: {
                 type: 'STRING',
-                description: 'Cierre breve estilo Martín (vacío si es SALUDO_PUNTUAL o mensaje único corto)'
+                description: 'Cierre breve estilo Martín (vacío si es SALUDO_PUNTUAL, NODOS_SEGUIMIENTO o mensaje único corto)'
             }
         },
         required: [
@@ -906,6 +1085,7 @@ async function razonarAsistenciaHibridaClienteWa({
             'conceptos_excluidos',
             'burbuja1_dialogo',
             'tipo_burbuja2_determinista',
+            'perfil_nodo_demo_sugerido',
             'burbuja3_cierre'
         ]
     };
@@ -924,7 +1104,12 @@ async function razonarAsistenciaHibridaClienteWa({
 
     // Clavijas deterministas por especialista (garantizan cumplimiento estricto de negocio)
     let tipoB2Final = String(parsed.tipo_burbuja2_determinista || 'VACIA').trim().toUpperCase();
-    let b3Final = aplicarClavijasTextoDeterministaWa(parsed.burbuja3_cierre || '');
+    let b1Final = aplicarClavijasTextoDeterministaWa(parsed.burbuja1_dialogo || '')
+        .replace(/https?:\/\/logistica\.lamdaser\.com\/tienda\//gi, 'https://tienda.lamdaser.com/tienda/')
+        .replace(/\blogistica\.lamdaser\.com\/tienda\//gi, 'tienda.lamdaser.com/tienda/');
+    let b3Final = aplicarClavijasTextoDeterministaWa(parsed.burbuja3_cierre || '')
+        .replace(/https?:\/\/logistica\.lamdaser\.com\/tienda\//gi, 'https://tienda.lamdaser.com/tienda/')
+        .replace(/\blogistica\.lamdaser\.com\/tienda\//gi, 'tienda.lamdaser.com/tienda/');
     let sugerirPdfFinal = Boolean(parsed.sugerir_adjuntar_pdf);
     let sugerirPdfCcFinal = Boolean(parsed.sugerir_adjuntar_pdf_cc);
     let habilitarGestionFacturaFinal = agenteFinal === 'RECLAMO_DEVOLUCION'
@@ -935,8 +1120,49 @@ async function razonarAsistenciaHibridaClienteWa({
     let codsPdf = Array.isArray(parsed.codigos_articulos_pdf_sugeridos)
         ? parsed.codigos_articulos_pdf_sugeridos.map(c => String(c || '').trim()).filter(Boolean)
         : [];
+    let perfilNodoDemoFinal = '';
+    let burbuja2DemoNodoTexto = '';
 
-    if (agenteFinal === 'SALUDO_PUNTUAL' && !instClean) {
+    if (esAgenteNodos) {
+        // Aislamiento duro de Nodos: cero mezcla de precios mayoristas, PDFs de lista/CC ni Portal B2B
+        codsSel = [];
+        codsPdf = [];
+        sugerirPdfFinal = false;
+        sugerirPdfCcFinal = false;
+        habilitarGestionFacturaFinal = false;
+
+        const operadorPidióDemo = /\b(link|ejemplo|demo|tienda|paraiso|manso|moro|muestra|ver\s+como\s+queda|web)\b/i.test(instClean);
+        const correspondeLinkDemo = tipoB2Final === 'LINK_DEMO_NODO' && (
+            operadorPidióDemo
+            || (agenteFinal === 'NODOS_RESPUESTA' && Boolean(detNodos?.pideVerEjemplo))
+        );
+
+        if (correspondeLinkDemo) {
+            const perfilRaw = String(parsed.perfil_nodo_demo_sugerido || perfilNodosClean || 'VECINOS').trim().toUpperCase();
+            perfilNodoDemoFinal = nodosCaptacionCrm.PERFILES_NODO_VALIDOS.has(perfilRaw) ? perfilRaw : (perfilNodosClean || 'VECINOS');
+            // Si el operador pidió explícitamente una marca en su instrucción, respetarla
+            let slugForzado = '';
+            if (/\bparaiso|para[ií]so\b/i.test(instClean)) { slugForzado = 'paraiso'; perfilNodoDemoFinal = 'VECINOS'; }
+            else if (/\bmanso\b/i.test(instClean)) { slugForzado = 'manso'; perfilNodoDemoFinal = 'REDES'; }
+            else if (/\bmoro\b/i.test(instClean)) { slugForzado = 'moro'; perfilNodoDemoFinal = 'LOCALES'; }
+            tipoB2Final = 'LINK_DEMO_NODO';
+            burbuja2DemoNodoTexto = aplicarClavijasTextoDeterministaWa(
+                nodosCaptacionCrm.formatearBurbuja2DemoNodo({
+                    perfil: perfilNodoDemoFinal,
+                    slug: slugForzado,
+                    nodosReferencia: refsNodos
+                })
+            );
+        } else {
+            tipoB2Final = 'VACIA';
+            perfilNodoDemoFinal = '';
+            burbuja2DemoNodoTexto = '';
+        }
+
+        if (agenteFinal === 'NODOS_SEGUIMIENTO' && !instClean) {
+            b3Final = '';
+        }
+    } else if (agenteFinal === 'SALUDO_PUNTUAL' && !instClean) {
         tipoB2Final = 'VACIA';
         b3Final = '';
         sugerirPdfFinal = false;
@@ -954,11 +1180,16 @@ async function razonarAsistenciaHibridaClienteWa({
         sugerirPdfCcFinal = true;
     }
 
-    // Blindaje determinista de link Portal por Rol (cero fugas de link titular hacia empleados)
-    if (tipoPortalNorm === 'ENCARGADO_ARMADOR_PENDIENTE' && (tipoB2Final === 'LINK_PORTAL' || tipoB2Final === 'LINK_SEGUIMIENTO_ORDEN')) {
-        tipoB2Final = 'VACIA';
-    } else if (tipoPortalNorm === 'ENCARGADO_ARMADOR_PEDIDO' && tipoB2Final === 'LINK_SEGUIMIENTO_ORDEN') {
-        tipoB2Final = 'VACIA';
+    // Blindaje determinista de link Portal por Rol (cero fugas de link titular hacia empleados ni en Nodos)
+    if (!esAgenteNodos) {
+        if (tipoB2Final === 'LINK_DEMO_NODO') {
+            tipoB2Final = 'VACIA';
+        }
+        if (tipoPortalNorm === 'ENCARGADO_ARMADOR_PENDIENTE' && (tipoB2Final === 'LINK_PORTAL' || tipoB2Final === 'LINK_SEGUIMIENTO_ORDEN')) {
+            tipoB2Final = 'VACIA';
+        } else if (tipoPortalNorm === 'ENCARGADO_ARMADOR_PEDIDO' && tipoB2Final === 'LINK_SEGUIMIENTO_ORDEN') {
+            tipoB2Final = 'VACIA';
+        }
     }
 
     const resultadoBlindado = {
@@ -966,7 +1197,8 @@ async function razonarAsistenciaHibridaClienteWa({
         modo_credencial: cred.modo,
         carril_utilizado: carrilFinal,
         agente_utilizado: agenteFinal,
-        tipo_acceso_portal: tipoPortalNorm,
+        frente_utilizado: esAgenteNodos ? 'NODOS' : 'MAYORISTA',
+        tipo_acceso_portal: esAgenteNodos ? 'NO_APLICA_NODO' : tipoPortalNorm,
         _usage: _ultimoUsageGemini || null,
         situacion_dialogo: String(parsed.situacion_dialogo || agenteFinal).trim(),
         titulo_intencion: aplicarClavijasTextoDeterministaWa(parsed.titulo_intencion || ''),
@@ -980,9 +1212,19 @@ async function razonarAsistenciaHibridaClienteWa({
         conceptos_excluidos: Array.isArray(parsed.conceptos_excluidos)
             ? parsed.conceptos_excluidos.map(c => String(c || '').trim().toLowerCase()).filter(Boolean)
             : [],
-        burbuja1_dialogo: aplicarClavijasTextoDeterministaWa(parsed.burbuja1_dialogo || ''),
+        burbuja1_dialogo: b1Final,
         tipo_burbuja2_determinista: tipoB2Final,
-        burbuja3_cierre: b3Final
+        perfil_nodo_demo_sugerido: perfilNodoDemoFinal,
+        burbuja2_demo_nodo_texto: burbuja2DemoNodoTexto,
+        burbuja3_cierre: b3Final,
+        contexto_nodos_detectado: detNodos ? {
+            es_frente_nodos: Boolean(detNodos.esFrenteNodos),
+            en_seguimiento_nodos: Boolean(detNodos.enSeguimientoNodos),
+            etapa_inferida: detNodos.etapaInferida,
+            perfil_inferido: detNodos.perfilInferido,
+            motivo_deteccion: detNodos.motivoDeteccion,
+            cede_a_mayorista_por_ultimo_entrante: Boolean(detNodos.cedeAMayoristaPorUltimoEntrante)
+        } : null
     };
 
     _cacheRazonamientoHibrido.set(cacheKey, { ts: Date.now(), data: resultadoBlindado });
@@ -991,6 +1233,8 @@ async function razonarAsistenciaHibridaClienteWa({
 
 module.exports = {
     CARRILES_AGENTES_WA,
+    AGENTES_NODOS_SET,
+    esAgenteEspecialistaNodos,
     DATOS_BANCARIOS_LAMDA,
     obtenerModoCredencialGemini,
     aplicarClavijasTextoDeterministaWa,
