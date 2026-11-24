@@ -462,6 +462,8 @@ window.construirHtmlPlanTrabajoDeposito = function(plan) {
   const mostrarFundamentalsExternaPdf = Boolean(esMismaFechaHoy && infHoy.fundamentals_externa_hoy_vigente === true);
   const mostrarPlan3JornadasPdf = Boolean(esMismaFechaHoy && infHoy.plan_3_jornadas_vigente === true);
   const mostrarFundamentals3JornadasPdf = Boolean(esMismaFechaHoy && infHoy.fundamentals_3_jornadas_vigente === true);
+  const mostrarPedidosProveedoresPdf = Boolean(esMismaFechaHoy && infHoy.pedidos_proveedores_hoy_vigente === true);
+  const mostrarFundamentalsProveedoresPdf = Boolean(esMismaFechaHoy && infHoy.fundamentals_proveedores_hoy_vigente === true);
   const vCache = hoyLocalStr.replace(/-/g, '');
 
   return `
@@ -494,11 +496,21 @@ window.construirHtmlPlanTrabajoDeposito = function(plan) {
           </span>` : ''}
           ${mostrarPlan3JornadasPdf ? `
           <span class="pizarra-pdf-pair">
-            <a href="${infHoy.url_plan_3_jornadas || `/documentos/Plan_Semanal_3_Jornadas_Deposito.pdf?v=${vCache}`}" target="_blank" rel="noopener" class="pizarra-btn-pdf-semanal" title="Abrir Plan Operativo de 3 Jornadas para la Semana">
+            <a href="${infHoy.url_plan_3_jornadas || `/documentos/Plan_Semanal_3_Jornadas_Deposito.pdf?v=${vCache}`}" target="_blank" rel="noopener" class="pizarra-btn-pdf-semanal" title="Abrir Plan Operativo de Jornadas Hacia Adelante hasta completar el Ideal">
               📅 Plan 3 Jornadas (PDF)
             </a>
             ${mostrarFundamentals3JornadasPdf ? `
-            <a href="${infHoy.url_fundamentals_3_jornadas || `/documentos/Fundamentals_Semanal_3_Jornadas_Deposito.pdf?v=${vCache}`}" target="_blank" rel="noopener" class="pizarra-btn-clip-anexo clip-semanal" title="Anexo de Fundamentals y Auditoría Empírica — Plan Semanal 3 Jornadas (PDF)">
+            <a href="${infHoy.url_fundamentals_3_jornadas || `/documentos/Fundamentals_Semanal_3_Jornadas_Deposito.pdf?v=${vCache}`}" target="_blank" rel="noopener" class="pizarra-btn-clip-anexo clip-semanal" title="Anexo de Fundamentals y Auditoría Empírica — Jornadas Hacia Adelante (PDF)">
+              📎
+            </a>` : ''}
+          </span>` : ''}
+          ${mostrarPedidosProveedoresPdf ? `
+          <span class="pizarra-pdf-pair">
+            <a href="${infHoy.url_pedidos_proveedores_hoy || `/documentos/Plan_Pedidos_Proveedores_Hoy.pdf?v=${vCache}`}" target="_blank" rel="noopener" class="pizarra-btn-pdf-proveedores" title="Abrir informe operativo de Pedidos a Proveedores agrupado por Proveedor (Vence hoy)">
+              🛒 Pedidos Proveedores (PDF)
+            </a>
+            ${mostrarFundamentalsProveedoresPdf ? `
+            <a href="${infHoy.url_fundamentals_proveedores_hoy || `/documentos/Fundamentals_Pedidos_Proveedores_Hoy.pdf?v=${vCache}`}" target="_blank" rel="noopener" class="pizarra-btn-clip-anexo clip-proveedores" title="Anexo de Fundamentals y Auditoría Empírica — Pedidos a Proveedores (PDF)">
               📎
             </a>` : ''}
           </span>` : ''}

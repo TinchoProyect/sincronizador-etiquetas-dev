@@ -103,6 +103,8 @@ function verificarVigenciaInformesHoy() {
   const fundamentalsExterna = evaluarArchivoDiario('Fundamentals_Retiro_Produccion_Externa_Hoy.pdf');
   const plan3Jornadas = evaluarArchivoDiario('Plan_Semanal_3_Jornadas_Deposito.pdf');
   const fundamentals3Jornadas = evaluarArchivoDiario('Fundamentals_Semanal_3_Jornadas_Deposito.pdf');
+  const pedidosProveedores = evaluarArchivoDiario('Plan_Pedidos_Proveedores_Hoy.pdf');
+  const fundamentalsProveedores = evaluarArchivoDiario('Fundamentals_Pedidos_Proveedores_Hoy.pdf');
 
   return {
     fecha_hoy: hoyStr,
@@ -117,7 +119,11 @@ function verificarVigenciaInformesHoy() {
     plan_3_jornadas_vigente: plan3Jornadas.vigente,
     url_plan_3_jornadas: plan3Jornadas.vigente ? `/documentos/Plan_Semanal_3_Jornadas_Deposito.pdf?v=${plan3Jornadas.mtimeMs}` : null,
     fundamentals_3_jornadas_vigente: fundamentals3Jornadas.vigente,
-    url_fundamentals_3_jornadas: fundamentals3Jornadas.vigente ? `/documentos/Fundamentals_Semanal_3_Jornadas_Deposito.pdf?v=${fundamentals3Jornadas.mtimeMs}` : null
+    url_fundamentals_3_jornadas: fundamentals3Jornadas.vigente ? `/documentos/Fundamentals_Semanal_3_Jornadas_Deposito.pdf?v=${fundamentals3Jornadas.mtimeMs}` : null,
+    pedidos_proveedores_hoy_vigente: pedidosProveedores.vigente,
+    url_pedidos_proveedores_hoy: pedidosProveedores.vigente ? `/documentos/Plan_Pedidos_Proveedores_Hoy.pdf?v=${pedidosProveedores.mtimeMs}` : null,
+    fundamentals_proveedores_hoy_vigente: fundamentalsProveedores.vigente,
+    url_fundamentals_proveedores_hoy: fundamentalsProveedores.vigente ? `/documentos/Fundamentals_Pedidos_Proveedores_Hoy.pdf?v=${fundamentalsProveedores.mtimeMs}` : null
   };
 }
 

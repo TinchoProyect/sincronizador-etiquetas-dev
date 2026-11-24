@@ -3397,6 +3397,14 @@ footer {
   background: #115e59;
 }
 
+.pizarra-btn-clip-anexo.clip-proveedores {
+  background: #7c2d12;
+  border-color: #c2410c;
+}
+.pizarra-btn-clip-anexo.clip-proveedores:hover {
+  background: #9a3412;
+}
+
 .pizarra-btn-pdf-hoy {
   display: inline-flex;
   align-items: center;
@@ -3457,6 +3465,27 @@ footer {
 
 .pizarra-btn-pdf-semanal:hover {
   background: #0d9488;
+  transform: translateY(-1px);
+}
+
+.pizarra-btn-pdf-proveedores {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #9a3412;
+  color: #ffffff !important;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1px solid #c2410c;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.pizarra-btn-pdf-proveedores:hover {
+  background: #c2410c;
   transform: translateY(-1px);
 }
 
@@ -3760,7 +3789,8 @@ footer {
 
   .pizarra-btn-pdf-hoy,
   .pizarra-btn-pdf-externa,
-  .pizarra-btn-pdf-semanal {
+  .pizarra-btn-pdf-semanal,
+  .pizarra-btn-pdf-proveedores {
     padding: 7px 9px;
     font-size: 0.76rem;
     flex: 1;
