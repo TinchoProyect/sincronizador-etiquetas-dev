@@ -10,6 +10,8 @@ const nodosService = require('../services/nodosBarrialesService');
 const nodosAnaliticaService = require('../services/nodosAnaliticaService');
 const nodosPwaService = require('../services/nodosPwaService');
 const nodosFotosService = require('../services/nodosFotosService');
+const lamdaImagenesBaseService = require('../services/lamdaImagenesBaseService');
+const dbProduccion = require('../config/database');
 
 const uploadFotoNodoMemoria = multer({
     storage: multer.memoryStorage(),
@@ -1002,6 +1004,103 @@ router.post('/ofertas-gestor/:id/fotos/importar-sugerida', autenticarGestorSiPub
         res.json({ ok: true, ...resultado });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error importando foto sugerida de oferta:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * ============================================================================
+ * CONTROL POR GRUPO DE PRODUCTO BASE (PANEL GESTOR) + IMÁGENES BASE LAMDA (ADMIN)
+ * ============================================================================
+ */
+router.patch('/gestor/:nodoId/grupos/publicacion', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para modificar otro Nodo.' });
+        }
+        const resultado = await nodosService.actualizarPublicacionGrupoGestor(req.params.nodoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error actualizando publicación de grupo:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.patch('/gestor/:nodoId/grupos/config', autenticarGestorSiPublicoOToken, async (req, res) => {
+    try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para modificar otro Nodo.' });
+        }
+        const resultado = await nodosService.actualizarConfigGrupoVidrieraGestor(req.params.nodoId, req.body || {});
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error actualizando configuración de grupo:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/gestor/:nodoId/grupos/foto', autenticarGestorSiPublicoOToken, middlewareSubidaFotoOpcional, async (req, res) => {
+    try {
+        if (req.nodoAuth && Number(req.params.nodoId) !== Number(req.nodoAuth.id)) {
+            return res.status(403).json({ ok: false, error: 'No autorizado para modificar otro Nodo.' });
+        }
+        if (!req.file || !req.file.buffer) {
+            return res.status(400).json({ ok: false, error: 'Debés adjuntar una foto para el producto.' });
+        }
+        const claveBase = req.body && req.body.clave_producto_base;
+        const resultado = await nodosService.subirFotoPropiaGrupoGestor(req.params.nodoId, claveBase, req.file.buffer);
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error subiendo foto propia de grupo:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.get('/admin/imagenes-base', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const soloCatalogoNodos = String(req.query.solo_nodos || '').toLowerCase() === 'true';
+        const busqueda = String(req.query.q || '').trim();
+        const data = await lamdaImagenesBaseService.listarProductosBaseConImagenes(dbProduccion, {
+            soloCatalogoNodos,
+            busqueda
+        });
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error listando imágenes base LAMDA:', error);
+        res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/admin/imagenes-base', bloquearEnDominioPublicoTienda, middlewareSubidaFotoOpcional, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        if (!req.file || !req.file.buffer) {
+            return res.status(400).json({ ok: false, error: 'Debés adjuntar una imagen.' });
+        }
+        const body = req.body || {};
+        const resultado = await lamdaImagenesBaseService.guardarImagenBaseLamda(dbProduccion, {
+            tipo_ancla: body.tipo_ancla,
+            ingrediente_id: body.ingrediente_id || null,
+            clave_producto_base: body.clave_producto_base || null,
+            articulo_sku: body.articulo_sku || null,
+            titulo_referencia: body.titulo_referencia || null,
+            buffer: req.file.buffer
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error guardando imagen base LAMDA:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.delete('/admin/imagenes-base/:id', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const eliminada = await lamdaImagenesBaseService.eliminarImagenBaseLamda(dbProduccion, req.params.id);
+        res.json({ ok: true, eliminada });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error eliminando imagen base LAMDA:', error);
         res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });

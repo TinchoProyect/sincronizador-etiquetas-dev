@@ -38,10 +38,13 @@ const recibosMarcaBlancaService = require('./nodosRecibosMarcaBlancaService');
 const {
     normalizarArrayVideosBd,
     normalizarModoPortada,
+    normalizarImagenOrigenModo,
     construirGaleriaYPortadaOferta,
     normalizarConfigVideoBienvenida
 } = require('./nodosFotosService');
 const combosCompuestosService = require('./combosCompuestosService');
+const jerarquiaBunkerHelper = require('../../shared/jerarquiaBunkerHelper');
+const lamdaImagenesBaseService = require('./lamdaImagenesBaseService');
 
 function normalizarModoVidrieraTienda(raw) {
     const val = String(raw || '').trim().toUpperCase();
@@ -4788,6 +4791,68 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
 
             CREATE INDEX IF NOT EXISTS idx_nodos_envios_postales_nodo_estado
                 ON public.nodos_pedidos_envios_postales (nodo_id, estado_envio, id DESC);
+
+            CREATE TABLE IF NOT EXISTS public.lamda_imagenes_base (
+                id SERIAL PRIMARY KEY,
+                tipo_ancla VARCHAR(24) NOT NULL CHECK (tipo_ancla IN ('INGREDIENTE', 'PRODUCTO_BASE', 'ARTICULO_SKU')),
+                ingrediente_id INTEGER REFERENCES public.ingredientes(id) ON DELETE CASCADE,
+                clave_producto_base VARCHAR(240),
+                articulo_sku VARCHAR(80),
+                foto_id VARCHAR(64) NOT NULL,
+                url VARCHAR(255) NOT NULL,
+                url_original VARCHAR(255),
+                width INTEGER,
+                height INTEGER,
+                bytes INTEGER,
+                origen_tipo VARCHAR(24) NOT NULL DEFAULT 'UPLOAD_LAMDA',
+                origen_foto_lote_id INTEGER,
+                titulo_referencia VARCHAR(160),
+                activo BOOLEAN NOT NULL DEFAULT true,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS unq_lamda_img_base_ingrediente_activo
+                ON public.lamda_imagenes_base (ingrediente_id)
+                WHERE activo = true AND tipo_ancla = 'INGREDIENTE' AND ingrediente_id IS NOT NULL;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS unq_lamda_img_base_producto_activo
+                ON public.lamda_imagenes_base (clave_producto_base)
+                WHERE activo = true AND tipo_ancla = 'PRODUCTO_BASE' AND clave_producto_base IS NOT NULL;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS unq_lamda_img_base_sku_activo
+                ON public.lamda_imagenes_base (UPPER(articulo_sku))
+                WHERE activo = true AND tipo_ancla = 'ARTICULO_SKU' AND articulo_sku IS NOT NULL;
+
+            CREATE TABLE IF NOT EXISTS public.nodos_grupos_vidriera (
+                id SERIAL PRIMARY KEY,
+                nodo_id INTEGER NOT NULL REFERENCES public.nodos_maestro(id) ON DELETE CASCADE,
+                clave_producto_base VARCHAR(240) NOT NULL,
+                nombre_vidriera_grupo TEXT,
+                categoria_vidriera_grupo TEXT,
+                imagen_origen_modo VARCHAR(20) NOT NULL DEFAULT 'LAMDA_BASE'
+                    CHECK (imagen_origen_modo IN ('LAMDA_BASE', 'PROPIA', 'SIN_IMAGEN')),
+                foto_propia_grupo JSONB,
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS unq_nodos_grupos_vidriera_nodo_clave
+                ON public.nodos_grupos_vidriera (nodo_id, clave_producto_base);
+
+            ALTER TABLE public.nodos_ofertas_gestor
+                ADD COLUMN IF NOT EXISTS imagen_origen_modo VARCHAR(20) NOT NULL DEFAULT 'HEREDAR_GRUPO';
+
+            UPDATE public.nodos_ofertas_gestor
+            SET imagen_origen_modo = CASE
+                WHEN UPPER(COALESCE(portada_modo, 'AUTO')) = 'OCULTA' THEN 'SIN_IMAGEN'
+                WHEN jsonb_array_length(COALESCE(fotos_vidriera, '[]'::jsonb)) > 0 THEN 'PROPIA'
+                ELSE 'HEREDAR_GRUPO'
+            END
+            WHERE imagen_origen_modo = 'HEREDAR_GRUPO'
+              AND (
+                  UPPER(COALESCE(portada_modo, 'AUTO')) = 'OCULTA'
+                  OR jsonb_array_length(COALESCE(fotos_vidriera, '[]'::jsonb)) > 0
+              );
         `);
 
         // Garantizar de forma idempotente todos los índices UNIQUE del módulo Nodos
@@ -6849,7 +6914,9 @@ async function obtenerEstadoCompletoNodos() {
         familiasRes,
         plantaInfo,
         combosEstado,
-        mapaCombos
+        mapaCombos,
+        mapaJerarquiaB2B,
+        mapaImagenesBase
     ] = await Promise.all([
         db.query(`
             SELECT nm.*,
@@ -6881,6 +6948,11 @@ async function obtenerEstadoCompletoNodos() {
                    COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS bunker_descripcion_generada,
                    COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
                    COALESCE(bf.nombre, nac.familia_bunker_nombre, 'Frutos Secos') AS bunker_familia_nombre,
+                   ba.familia_id AS bunker_familia_id,
+                   ba.propiedades_dinamicas AS bunker_propiedades_dinamicas,
+                   ba.descripcion AS bunker_descripcion,
+                   ba.es_pack AS bunker_es_pack,
+                   ba.pack_unidades AS bunker_pack_unidades,
                    ba.rubro AS bunker_rubro,
                    ba.sub_rubro AS bunker_sub_rubro,
                    ing.codigo AS ingrediente_origen_codigo,
@@ -6994,7 +7066,9 @@ async function obtenerEstadoCompletoNodos() {
         `),
         obtenerPresentacionesPlantaLamda(),
         combosCompuestosService.obtenerEstadoCombosPizarra(),
-        combosCompuestosService.obtenerMapaCombosYStockArmable(db)
+        combosCompuestosService.obtenerMapaCombosYStockArmable(db),
+        jerarquiaBunkerHelper.cargarMapaJerarquiaB2B(db),
+        lamdaImagenesBaseService.obtenerMapaImagenesBaseActivas(db)
     ]);
 
     if (fuentes) {
@@ -7006,15 +7080,34 @@ async function obtenerEstadoCompletoNodos() {
     const catalogoEnriquecido = catalogoRes.rows.map(c => {
         const keyC = combosCompuestosService.normalizarSku(c.sku_nodo);
         const infoC = mapaCombos.get(keyC);
-        if (c.es_combo || infoC) {
+        const esComboCat = Boolean(c.es_combo || infoC);
+        const jer = jerarquiaBunkerHelper.resolverJerarquiaArticuloBunker(c, mapaJerarquiaB2B);
+        const { nombre_base_oficial, presentacion_corta } = jerarquiaBunkerHelper.extraerNombreBaseYPresentacion(c);
+        const claveProductoBase = jerarquiaBunkerHelper.construirClaveProductoBase(
+            { ...c, articulo_catalogo_id: c.id, es_combo: esComboCat },
+            jer
+        );
+        const imagenBaseLamda = lamdaImagenesBaseService.resolverImagenBaseLamdaParaArticulo(
+            { ...c, clave_producto_base: claveProductoBase },
+            mapaImagenesBase
+        );
+        const baseObj = {
+            ...c,
+            jerarquia_b2b: jer,
+            clave_producto_base: claveProductoBase,
+            nombre_base_oficial,
+            presentacion_corta,
+            imagen_base_lamda: imagenBaseLamda
+        };
+        if (esComboCat) {
             return {
-                ...c,
+                ...baseObj,
                 es_combo: true,
                 stock_armable: infoC ? infoC.stock_armable : 0,
                 componentes_combo: infoC ? infoC.componentes : []
             };
         }
-        return c;
+        return baseObj;
     });
 
     return {
@@ -9084,7 +9177,7 @@ async function sincronizarCatalogoNodoDesdeBunker(articuloId, runnerOpt = null) 
             : 0;
 
         const nomenclaturaBunker = ba.descripcion_generada || row?.nomenclatura_bunker || ba.descripcion || skuExacto;
-        const artPrincipalBunker = ba.descripcion || row?.articulo_principal_bunker || nomenclaturaBunker;
+        const artPrincipalBunker = String(propDin.articulo_principal || '').trim() || ba.descripcion || row?.articulo_principal_bunker || nomenclaturaBunker;
         const familiaBunkerId = ba.familia_id ? Number(ba.familia_id) : (row?.familia_bunker_id || null);
         const familiaBunkerNombre = ba.familia_nombre_db || row?.familia_bunker_nombre || ba.rubro || 'Frutos Secos';
 
@@ -9140,7 +9233,7 @@ async function sincronizarCatalogoNodoDesdeBunker(articuloId, runnerOpt = null) 
                     articulo_principal_bunker, compartido_mayorista, listas_mayoristas_compartidas,
                     activo, estado
                  ) VALUES (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,3.5,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,true,'APROBADO'
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,4.0,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,true,'APROBADO'
                  )
                  RETURNING *`,
                 [
@@ -9441,6 +9534,20 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
         ? (String(payload.portada_media_id || '').trim() || null)
         : (row.portada_media_id ? String(row.portada_media_id).trim() : null);
 
+    let imagenOrigenModo = row.imagen_origen_modo
+        ? normalizarImagenOrigenModo(row.imagen_origen_modo, { permitirHeredar: true })
+        : 'HEREDAR_GRUPO';
+    if (payload.imagen_origen_modo !== undefined) {
+        imagenOrigenModo = normalizarImagenOrigenModo(payload.imagen_origen_modo, { permitirHeredar: true });
+    } else if (payload.portada_modo !== undefined) {
+        if (portadaModo === 'OCULTA') imagenOrigenModo = 'SIN_IMAGEN';
+        else if (portadaModo === 'CUSTOM') imagenOrigenModo = 'PROPIA';
+    }
+
+    const portadaModoFinal = imagenOrigenModo === 'SIN_IMAGEN'
+        ? 'OCULTA'
+        : (imagenOrigenModo === 'LAMDA_BASE' ? 'AUTO' : portadaModo);
+
     const upd = await db.query(
         `UPDATE public.nodos_ofertas_gestor SET
             precio_base_nodo_snapshot = $1,
@@ -9455,9 +9562,10 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
             narrativa_tienda = $10,
             portada_modo = $11,
             portada_media_id = $12,
+            imagen_origen_modo = $13,
             alerta_cambio_costo = false,
             updated_at = NOW()
-         WHERE id = $13
+         WHERE id = $14
          RETURNING *`,
         [
             baseActual,
@@ -9470,13 +9578,217 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
             nombreVidrieraPersonalizado,
             categoriaVidrieraPersonalizada,
             narrativaTienda,
-            portadaModo,
-            portadaModo === 'CUSTOM' ? portadaMediaId : null,
+            portadaModoFinal,
+            portadaModoFinal === 'CUSTOM' ? portadaMediaId : null,
+            imagenOrigenModo,
             Number(ofertaId)
         ]
     );
 
     return upd.rows[0];
+}
+
+async function _obtenerOfertasConClaveBaseNodo(runner, nodoId) {
+    const mapaJer = await jerarquiaBunkerHelper.cargarMapaJerarquiaB2B(runner);
+    const res = await runner.query(
+        `SELECT nog.*,
+                nac.sku_nodo,
+                nac.nombre_publico,
+                nac.nomenclatura_bunker,
+                nac.familia_bunker_id,
+                nac.familia_bunker_nombre,
+                nac.articulo_principal_bunker,
+                nac.ingrediente_origen_id,
+                nac.kilos_unidad,
+                nac.precio_base_nodo_final,
+                COALESCE(nac.es_combo, ba.es_combo, false) AS es_combo,
+                ba.familia_id AS bunker_familia_id,
+                bf.nombre AS bunker_familia_nombre,
+                ba.descripcion AS bunker_descripcion,
+                ba.descripcion_generada,
+                ba.es_pack AS bunker_es_pack,
+                ba.pack_unidades AS bunker_pack_unidades,
+                ba.propiedades_dinamicas AS bunker_propiedades_dinamicas
+         FROM public.nodos_ofertas_gestor nog
+         JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
+         LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
+         LEFT JOIN public.bunker_familias bf ON bf.id = COALESCE(ba.familia_id, nac.familia_bunker_id)
+         WHERE nog.nodo_id = $1
+           AND nac.activo = true`,
+        [Number(nodoId)]
+    );
+
+    return res.rows.map(o => {
+        const jer = jerarquiaBunkerHelper.resolverJerarquiaArticuloBunker(o, mapaJer);
+        const clave_producto_base = jerarquiaBunkerHelper.construirClaveProductoBase(o, jer);
+        return { ...o, jerarquia_b2b: jer, clave_producto_base };
+    });
+}
+
+async function actualizarPublicacionGrupoGestor(nodoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+    const nId = Number(nodoId);
+    const claveBase = String(payload.clave_producto_base || '').trim();
+    const familiaIdFiltro = payload.familia_id !== undefined && payload.familia_id !== null && payload.familia_id !== ''
+        ? Number(payload.familia_id)
+        : null;
+    if (payload.publicado_tienda === undefined) {
+        const err = new Error('Indicá publicado_tienda (true/false).');
+        err.statusCode = 400;
+        throw err;
+    }
+    const publicado = Boolean(payload.publicado_tienda);
+
+    const nodoChk = await db.query('SELECT id, activo FROM public.nodos_maestro WHERE id = $1 LIMIT 1', [nId]);
+    if (nodoChk.rows.length === 0) throw Object.assign(new Error('Nodo no encontrado.'), { statusCode: 404 });
+    if (nodoChk.rows[0].activo === false) throw Object.assign(new Error('Nodo archivado.'), { statusCode: 403 });
+
+    const ofertas = await _obtenerOfertasConClaveBaseNodo(db, nId);
+    const idsAfectados = ofertas
+        .filter(o => {
+            if (claveBase) return o.clave_producto_base === claveBase;
+            if (familiaIdFiltro !== null) return Number(o.jerarquia_b2b?.familia_id || 0) === familiaIdFiltro;
+            return false;
+        })
+        .map(o => Number(o.id));
+
+    if (idsAfectados.length === 0) {
+        const err = new Error('No se encontraron presentaciones para ese grupo en el Nodo.');
+        err.statusCode = 404;
+        throw err;
+    }
+
+    const upd = await db.query(
+        `UPDATE public.nodos_ofertas_gestor
+         SET publicado_tienda = $1,
+             updated_at = NOW()
+         WHERE nodo_id = $2
+           AND id = ANY($3::int[])
+         RETURNING id, publicado_tienda`,
+        [publicado, nId, idsAfectados]
+    );
+
+    return {
+        clave_producto_base: claveBase || null,
+        familia_id: familiaIdFiltro,
+        publicado_tienda: publicado,
+        actualizadas: upd.rowCount,
+        ofertas: upd.rows
+    };
+}
+
+async function actualizarConfigGrupoVidrieraGestor(nodoId, payload = {}) {
+    await asegurarEsquemaNodosBarriales();
+    const nId = Number(nodoId);
+    const claveBase = String(payload.clave_producto_base || '').trim();
+    if (!claveBase) {
+        throw Object.assign(new Error('clave_producto_base requerida.'), { statusCode: 400 });
+    }
+
+    const nodoRes = await db.query(
+        `SELECT id, activo,
+                COALESCE(alicuota_iva_margen_pct, 21.00) AS alicuota_iva_margen_pct,
+                COALESCE(alicuota_iibb_margen_pct, 4.00) AS alicuota_iibb_margen_pct
+         FROM public.nodos_maestro
+         WHERE id = $1
+         LIMIT 1`,
+        [nId]
+    );
+    if (nodoRes.rows.length === 0) throw Object.assign(new Error('Nodo no encontrado.'), { statusCode: 404 });
+    if (nodoRes.rows[0].activo === false) throw Object.assign(new Error('Nodo archivado.'), { statusCode: 403 });
+    const nodo = nodoRes.rows[0];
+
+    const curRes = await db.query(
+        `SELECT * FROM public.nodos_grupos_vidriera WHERE nodo_id = $1 AND clave_producto_base = $2 LIMIT 1`,
+        [nId, claveBase]
+    );
+    const prev = curRes.rows[0] || {};
+
+    const nombreGrupo = payload.nombre_vidriera_grupo !== undefined
+        ? (String(payload.nombre_vidriera_grupo || '').trim().slice(0, 140) || null)
+        : (prev.nombre_vidriera_grupo || null);
+    const categoriaGrupo = payload.categoria_vidriera_grupo !== undefined
+        ? (String(payload.categoria_vidriera_grupo || '').trim().slice(0, 100) || null)
+        : (prev.categoria_vidriera_grupo || null);
+    const imagenOrigenModo = payload.imagen_origen_modo !== undefined
+        ? normalizarImagenOrigenModo(payload.imagen_origen_modo, { permitirHeredar: false })
+        : normalizarImagenOrigenModo(prev.imagen_origen_modo || 'LAMDA_BASE', { permitirHeredar: false });
+
+    const ups = await db.query(
+        `INSERT INTO public.nodos_grupos_vidriera (
+            nodo_id, clave_producto_base, nombre_vidriera_grupo, categoria_vidriera_grupo, imagen_origen_modo, updated_at
+         ) VALUES ($1,$2,$3,$4,$5,NOW())
+         ON CONFLICT (nodo_id, clave_producto_base)
+         DO UPDATE SET
+            nombre_vidriera_grupo = EXCLUDED.nombre_vidriera_grupo,
+            categoria_vidriera_grupo = EXCLUDED.categoria_vidriera_grupo,
+            imagen_origen_modo = EXCLUDED.imagen_origen_modo,
+            updated_at = NOW()
+         RETURNING *`,
+        [nId, claveBase, nombreGrupo, categoriaGrupo, imagenOrigenModo]
+    );
+
+    const ofertasGrupo = (await _obtenerOfertasConClaveBaseNodo(db, nId))
+        .filter(o => o.clave_producto_base === claveBase);
+    const idsGrupo = ofertasGrupo.map(o => Number(o.id));
+
+    if (idsGrupo.length > 0 && (payload.imagen_origen_modo !== undefined || payload.resetear_overrides_imagen_ofertas)) {
+        await db.query(
+            `UPDATE public.nodos_ofertas_gestor
+             SET imagen_origen_modo = 'HEREDAR_GRUPO',
+                 portada_modo = CASE WHEN $3 = 'SIN_IMAGEN' THEN 'OCULTA' ELSE 'AUTO' END,
+                 updated_at = NOW()
+             WHERE nodo_id = $1 AND id = ANY($2::int[])`,
+            [nId, idsGrupo, imagenOrigenModo]
+        );
+    }
+
+    if (payload.margen_gestor_pct_uniforme !== undefined && payload.margen_gestor_pct_uniforme !== null && payload.margen_gestor_pct_uniforme !== '') {
+        for (const ofRow of ofertasGrupo) {
+            const calcU = calcularPrecioYGananciaNetaOfertaNodo({
+                costoBaseLamda: Number(ofRow.precio_base_nodo_final || ofRow.precio_base_nodo_snapshot || 0),
+                margenPct: payload.margen_gestor_pct_uniforme,
+                ivaPct: nodo.alicuota_iva_margen_pct,
+                iibbPct: nodo.alicuota_iibb_margen_pct,
+                modo: 'margen'
+            });
+            await db.query(
+                `UPDATE public.nodos_ofertas_gestor
+                 SET margen_gestor_pct = $1,
+                     precio_venta_vecino = $2,
+                     ganancia_unitaria_gestor = $3,
+                     updated_at = NOW()
+                 WHERE id = $4`,
+                [calcU.margen_pct, calcU.precio_tienda, calcU.ganancia_neta_nodo, ofRow.id]
+            );
+        }
+    }
+
+    return { grupo_config: ups.rows[0], presentaciones_afectadas: idsGrupo.length };
+}
+
+async function subirFotoPropiaGrupoGestor(nodoId, claveProductoBase, fileBuffer) {
+    await asegurarEsquemaNodosBarriales();
+    const nId = Number(nodoId);
+    const res = await lamdaImagenesBaseService.guardarFotoPropiaGrupoGestor(db, {
+        nodoId: nId,
+        claveProductoBase,
+        buffer: fileBuffer
+    });
+    const ofertasGrupo = (await _obtenerOfertasConClaveBaseNodo(db, nId))
+        .filter(o => o.clave_producto_base === String(claveProductoBase || '').trim());
+    const ids = ofertasGrupo.map(o => Number(o.id));
+    if (ids.length > 0) {
+        await db.query(
+            `UPDATE public.nodos_ofertas_gestor
+             SET imagen_origen_modo = 'HEREDAR_GRUPO',
+                 portada_modo = 'AUTO',
+                 updated_at = NOW()
+             WHERE nodo_id = $1 AND id = ANY($2::int[])`,
+            [nId, ids]
+        );
+    }
+    return { ...res, presentaciones_afectadas: ids.length };
 }
 
 // ============================================================================
@@ -9750,12 +10062,17 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
 
     const mostrarIngredientesNodo = nodo.mostrar_ingredientes_tienda !== false;
 
-    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes, ingredientesSolicitables, familiasBunkerOficiales, catDisponibleRes, catalogoIngredientes] = await Promise.all([
+    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes, ingredientesSolicitables, familiasBunkerOficiales, catDisponibleRes, catalogoIngredientes, gruposVidrieraRes, mapaJerarquiaB2B, mapaImagenesBase] = await Promise.all([
         db.query(
             `SELECT nog.*,
                     nac.sku_nodo,
                     COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) AS nombre_oficial_lamda,
                     COALESCE(bf.nombre, ba.rubro, nac.familia_bunker_nombre, nac.categoria_familiar) AS categoria_oficial_lamda,
+                    ba.familia_id AS bunker_familia_id,
+                    ba.propiedades_dinamicas AS bunker_propiedades_dinamicas,
+                    ba.descripcion AS bunker_descripcion,
+                    ba.es_pack AS bunker_es_pack,
+                    ba.pack_unidades AS bunker_pack_unidades,
                     ba.rubro AS bunker_rubro,
                     ba.sub_rubro AS bunker_subrubro,
                     nac.nombre_publico,
@@ -9896,8 +10213,18 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             : Promise.resolve({ rows: [] }),
         (mostrarIngredientesNodo || esVistaGestor)
             ? construirCatalogoIngredientesComerciales().catch(() => null)
-            : Promise.resolve(null)
+            : Promise.resolve(null),
+        db.query('SELECT * FROM public.nodos_grupos_vidriera WHERE nodo_id = $1', [nodo.id]),
+        jerarquiaBunkerHelper.cargarMapaJerarquiaB2B(db),
+        lamdaImagenesBaseService.obtenerMapaImagenesBaseActivas(db)
     ]);
+
+    const gruposVidrieraMap = new Map();
+    for (const gv of (gruposVidrieraRes?.rows || [])) {
+        if (gv.clave_producto_base) {
+            gruposVidrieraMap.set(String(gv.clave_producto_base), gv);
+        }
+    }
 
     const mapaCombosPortal = await combosCompuestosService.obtenerMapaCombosYStockArmable(db).catch(() => new Map());
 
@@ -10079,6 +10406,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 const u = String(f.url);
                 if (u.toLowerCase().includes('_orig.webp')) return false;
                 if (/^\/media\/nodos\/\d+\/\d+\/[a-z0-9_-]+\.webp(\?.*)?$/i.test(u)) return true;
+                if (/^\/media\/nodos\/grupos\/\d+\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp(\?.*)?$/i.test(u)) return true;
+                if (permitirRutasCatalogoBase && /^\/media\/nodos\/catalogo-base\/(?:ingrediente|producto_base|articulo_sku)\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp(\?.*)?$/i.test(u)) return true;
                 if (permitirRutasCatalogoBase && /^\/(?:media\/nodos|img)\/[a-z0-9/_.-]+\.(?:webp|png|jpe?g)(\?.*)?$/i.test(u)) return true;
                 return false;
             })
@@ -10119,23 +10448,71 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             const nombreVidrieraEfectivo = nombreVidrieraPers || nombreOficialLamda;
             const categoriaVidrieraEfectiva = categoriaVidrieraPers || categoriaOficialLamda;
             const narrativaTienda = o.narrativa_tienda ? String(o.narrativa_tienda).trim().slice(0, 600) : null;
+            const infoComboOferta = mapaCombosPortal.get(combosCompuestosService.normalizarSku(o.sku_nodo));
+            const esComboEfectivo = Boolean(o.es_combo || infoComboOferta);
+            const jerarquiaB2B = jerarquiaBunkerHelper.resolverJerarquiaArticuloBunker(o, mapaJerarquiaB2B);
+            const { nombre_base_oficial, presentacion_corta } = jerarquiaBunkerHelper.extraerNombreBaseYPresentacion(o);
+            const claveProductoBase = jerarquiaBunkerHelper.construirClaveProductoBase({ ...o, es_combo: esComboEfectivo }, jerarquiaB2B);
+            const grupoCfg = gruposVidrieraMap.get(claveProductoBase) || null;
+            const imagenBaseLamda = lamdaImagenesBaseService.resolverImagenBaseLamdaParaArticulo(
+                { ...o, clave_producto_base: claveProductoBase },
+                mapaImagenesBase
+            );
+
+            const nombreGrupoPers = grupoCfg?.nombre_vidriera_grupo ? String(grupoCfg.nombre_vidriera_grupo).trim() : '';
+            const catGrupoPers = grupoCfg?.categoria_vidriera_grupo ? String(grupoCfg.categoria_vidriera_grupo).trim() : '';
+            const nombreBaseVidriera = nombreGrupoPers || nombre_base_oficial;
+            const categoriaVidrieraEfectivaPortal = categoriaVidrieraPers || catGrupoPers || categoriaOficialLamda;
+            const nombreVidrieraEfectivoPortal = nombreVidrieraPers || (nombreGrupoPers ? `${nombreGrupoPers} (${presentacion_corta})` : nombreOficialLamda);
+
             const fotosPropias = normalizarFotosGestor(o.fotos_vidriera, false);
             const fotosBase = normalizarFotosGestor(o.fotos_catalogo_base, true);
+            const fotoPropiaGrupoNorm = (grupoCfg?.foto_propia_grupo && grupoCfg.foto_propia_grupo.url)
+                ? normalizarFotosGestor([grupoCfg.foto_propia_grupo], false)[0] || null
+                : null;
             const videosPropios = normalizarArrayVideosBd(o.videos_vidriera);
+
+            const modoOfertaRaw = normalizarImagenOrigenModo(o.imagen_origen_modo, { permitirHeredar: true });
+            const modoGrupoRaw = normalizarImagenOrigenModo(grupoCfg?.imagen_origen_modo || 'LAMDA_BASE', { permitirHeredar: false });
+            let imagenOrigenModoEfectivo = modoOfertaRaw !== 'HEREDAR_GRUPO' ? modoOfertaRaw : modoGrupoRaw;
+            if (modoOfertaRaw === 'HEREDAR_GRUPO' && !grupoCfg) {
+                if (normalizarModoPortada(o.portada_modo) === 'OCULTA') {
+                    imagenOrigenModoEfectivo = 'SIN_IMAGEN';
+                } else if (fotosPropias.length > 0 || videosPropios.length > 0) {
+                    imagenOrigenModoEfectivo = 'PROPIA';
+                } else {
+                    imagenOrigenModoEfectivo = 'LAMDA_BASE';
+                }
+            }
+
             const galeriaInfo = construirGaleriaYPortadaOferta({
                 fotosPropias,
                 fotosBase,
                 videosPropios,
                 portadaModo: o.portada_modo,
-                portadaMediaId: o.portada_media_id
+                portadaMediaId: o.portada_media_id,
+                imagenOrigenModo: imagenOrigenModoEfectivo,
+                fotoBaseLamda: imagenBaseLamda,
+                fotoPropiaGrupo: fotoPropiaGrupoNorm
             });
-            const infoComboOferta = mapaCombosPortal.get(combosCompuestosService.normalizarSku(o.sku_nodo));
-            const esComboEfectivo = Boolean(o.es_combo || infoComboOferta);
             return {
                 ...o,
                 es_combo: esComboEfectivo,
                 stock_armable: esComboEfectivo ? (infoComboOferta ? infoComboOferta.stock_armable : 0) : null,
                 componentes_combo: esComboEfectivo && infoComboOferta ? infoComboOferta.componentes : [],
+                clave_producto_base: claveProductoBase,
+                jerarquia_b2b: jerarquiaB2B,
+                nombre_base_oficial,
+                nombre_base_vidriera: nombreBaseVidriera,
+                nombre_vidriera_grupo: nombreGrupoPers || null,
+                categoria_vidriera_grupo: catGrupoPers || null,
+                presentacion_corta,
+                imagen_base_lamda: imagenBaseLamda,
+                foto_propia_grupo: fotoPropiaGrupoNorm,
+                imagen_origen_modo: modoOfertaRaw,
+                imagen_origen_modo_grupo: modoGrupoRaw,
+                imagen_origen_modo_efectivo: galeriaInfo.imagen_origen_modo_efectivo,
+                mostrar_imagen: Boolean(galeriaInfo.mostrar_imagen),
                 nombre_publico: nombreOficialLamda,
                 categoria_familiar: categoriaOficialLamda,
                 nombre_oficial_lamda: nombreOficialLamda,
@@ -10143,8 +10520,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 categoria_oficial_lamda: categoriaOficialLamda,
                 nombre_vidriera_personalizado: nombreVidrieraPers || null,
                 categoria_vidriera_personalizada: categoriaVidrieraPers || null,
-                nombre_vidriera_efectivo: nombreVidrieraEfectivo,
-                categoria_vidriera_efectiva: categoriaVidrieraEfectiva,
+                nombre_vidriera_efectivo: nombreVidrieraEfectivoPortal,
+                categoria_vidriera_efectiva: categoriaVidrieraEfectivaPortal,
                 narrativa_tienda: narrativaTienda,
                 alias_sugerido_previo: aliasSugeridoPorCatId.get(Number(o.articulo_catalogo_id)) || null,
                 linea_negocio: desglose ? Number(desglose.linea_negocio || 0) || null : null,
@@ -10184,31 +10561,39 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 o.mostrar_ingredientes !== false &&
                 (o.tiene_desglose_ingredientes || componentesVidriera.length >= 2)
             );
-            const fotosEfectivas = (Array.isArray(o.fotos_vidriera) && o.fotos_vidriera.length > 0)
-                ? o.fotos_vidriera
-                : (Array.isArray(o.fotos_catalogo_base) ? o.fotos_catalogo_base : []);
-            const fotosPublicas = fotosEfectivas.map((f, idx) => ({
-                id: f.id,
-                url: f.url,
-                width: f.width,
-                height: f.height,
-                orden: idx + 1
-            }));
-            const videosPublicos = (Array.isArray(o.videos_vidriera) ? o.videos_vidriera : []).map((v, idx) => ({
-                id: v.id,
-                tipo: 'video',
-                url: v.url,
-                poster_url: v.poster_url || '',
-                width: v.width,
-                height: v.height,
-                duration_sec: v.duration_sec || 0,
-                tiene_audio: Boolean(v.tiene_audio),
-                orden: idx + 1
-            }));
+            const galeriaPub = Array.isArray(o.galeria_multimedia) ? o.galeria_multimedia : [];
+            const mostrarImgPub = Boolean(o.mostrar_imagen) && o.imagen_origen_modo_efectivo !== 'SIN_IMAGEN';
+            const fotosPublicas = mostrarImgPub
+                ? galeriaPub.filter(it => it.tipo === 'foto').map((f, idx) => ({
+                    id: f.id,
+                    url: f.url,
+                    width: f.width,
+                    height: f.height,
+                    orden: idx + 1
+                }))
+                : [];
+            const videosPublicos = (mostrarImgPub && o.imagen_origen_modo_efectivo === 'PROPIA')
+                ? (Array.isArray(o.videos_vidriera) ? o.videos_vidriera : []).map((v, idx) => ({
+                    id: v.id,
+                    tipo: 'video',
+                    url: v.url,
+                    poster_url: v.poster_url || '',
+                    width: v.width,
+                    height: v.height,
+                    duration_sec: v.duration_sec || 0,
+                    tiene_audio: Boolean(v.tiene_audio),
+                    orden: idx + 1
+                }))
+                : [];
             return {
                 oferta_id: o.id,
                 articulo_catalogo_id: o.articulo_catalogo_id,
                 sku_nodo: o.sku_nodo,
+                clave_producto_base: o.clave_producto_base,
+                jerarquia_b2b: o.jerarquia_b2b,
+                nombre_base_oficial: o.nombre_base_oficial,
+                nombre_base_vidriera: o.nombre_base_vidriera,
+                presentacion_corta: o.presentacion_corta,
                 nombre_publico: o.nombre_vidriera_efectivo,
                 categoria_familiar: o.categoria_vidriera_efectiva,
                 narrativa_tienda: o.narrativa_tienda || null,
@@ -10223,9 +10608,12 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 destacado_tienda: Boolean(o.destacado_tienda),
                 mostrar_ingredientes: habilitarBotonIng,
                 ingredientes_comerciales: habilitarBotonIng ? o.ingredientes_comerciales : [],
+                imagen_origen_modo: o.imagen_origen_modo_efectivo || 'LAMDA_BASE',
+                mostrar_imagen: mostrarImgPub,
+                imagen_base_lamda: o.imagen_base_lamda || null,
                 portada_modo: o.portada_modo || 'AUTO',
-                portada_activa: o.portada_activa || null,
-                galeria_multimedia: Array.isArray(o.galeria_multimedia) ? o.galeria_multimedia : [],
+                portada_activa: mostrarImgPub ? (o.portada_activa || null) : null,
+                galeria_multimedia: mostrarImgPub ? galeriaPub : [],
                 videos_vidriera: videosPublicos,
                 fotos_vidriera: fotosPublicas
             };
@@ -21246,6 +21634,9 @@ module.exports = {
     recalcularCascadaCatalogoNodos,
     sincronizarCatalogoNodoDesdeBunker,
     actualizarOfertaGestor,
+    actualizarPublicacionGrupoGestor,
+    actualizarConfigGrupoVidrieraGestor,
+    subirFotoPropiaGrupoGestor,
     calcularProximaEntregaNodo,
     obtenerCatalogoIngredientesSolicitablesGestor,
     obtenerDatosPortalNodo,

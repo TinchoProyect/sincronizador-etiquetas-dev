@@ -406,6 +406,17 @@ app.use('/api/produccion', createProxyMiddleware({
     }
 }));
 
+// Alias espejo para Admin de Imágenes Base Elementales Nodos (:3002)
+app.use('/api/nodos/admin/imagenes-base', createProxyMiddleware({
+    target: 'http://127.0.0.1:3002',
+    changeOrigin: true,
+    pathRewrite: (_p, req) => '/api/produccion/nodos/admin/imagenes-base' + (req.url === '/' ? '' : req.url),
+    onError: (err, _req, res) => {
+        console.error('[LOGISTICA] ❌ Error en Proxy Imágenes Base Nodos:', err.message);
+        res.status(503).json({ ok: false, error: 'Módulo de imágenes base Nodos fuera de línea.' });
+    }
+}));
+
 // Proxy para vistas móviles y operativas de Nodos (puerto 3002)
 ['/tienda', '/gestor', '/gestor-nodo', '/seguimiento', '/sw-nodo-pwa.js', '/img/nodos', '/media/nodos', '/deposito-nodos', '/liquidacion-nodos', '/centro-nodos'].forEach((nodoPrefix) => {
     app.use(nodoPrefix, (req, res, next) => {

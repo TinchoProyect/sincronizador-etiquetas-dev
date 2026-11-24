@@ -1000,6 +1000,42 @@
             return cumpleBusquedaUniversalLamda(bolsa, q);
         });
 
+        const gruposCatalogo = [];
+        const gruposMap = new Map();
+        for (const cat of filasCatalogo) {
+            const jer = cat.jerarquia_b2b || {};
+            const famNombre = jer.familia_nombre || cat.bunker_familia_nombre || cat.categoria_familiar || 'Almacén';
+            const claveBase = cat.clave_producto_base || `sku_${cat.sku_nodo}`;
+            const nombreBase = cat.nombre_base_oficial || cat.bunker_descripcion_generada || cat.nombre_publico || cat.sku_nodo;
+            const rutaCorta = Array.isArray(jer.ruta_compacta) && jer.ruta_compacta.length > 0
+                ? jer.ruta_compacta.join(' › ')
+                : famNombre;
+            if (!gruposMap.has(claveBase)) {
+                const g = {
+                    clave_producto_base: claveBase,
+                    familia_nombre: famNombre,
+                    ruta_corta: rutaCorta,
+                    nombre_base_oficial: nombreBase,
+                    ingrediente_origen_id: cat.ingrediente_origen_id ? Number(cat.ingrediente_origen_id) : null,
+                    ingrediente_codigo: cat.ingrediente_origen_codigo || null,
+                    es_combo: Boolean(cat.es_combo),
+                    imagen_base_lamda: cat.imagen_base_lamda || null,
+                    items: []
+                };
+                gruposMap.set(claveBase, g);
+                gruposCatalogo.push(g);
+            }
+            const gObj = gruposMap.get(claveBase);
+            if (!gObj.imagen_base_lamda && cat.imagen_base_lamda) {
+                gObj.imagen_base_lamda = cat.imagen_base_lamda;
+            }
+            gObj.items.push(cat);
+        }
+        gruposCatalogo.sort((a, b) =>
+            a.familia_nombre.localeCompare(b.familia_nombre, 'es-AR') ||
+            a.nombre_base_oficial.localeCompare(b.nombre_base_oficial, 'es-AR')
+        );
+
         return `
             <div style="display:flex; flex-direction:column; gap:14px;">
                 <!-- BANNER DE ARQUITECTURA DE CASCADA: BÚNKER -> NODO -> VECINO -->
@@ -1010,7 +1046,7 @@
                                 🏛️ Lista Oficial Búnker: ${escaparHtml(listaBunkerNodos.nombre_lista)} (ID #${listaBunkerNodos.id || '-'})
                             </span>
                             <span style="font-size:0.75rem; color:#94a3b8;">
-                                Idioma Técnico Oficial LAMDA (<code>[SKU] descripcion_generada</code>) · Cada Nodo personaliza su nombre de vidriera en su propio panel
+                                Organigrama unificado B2B · Imagen Base Elemental única por Producto Base (${gruposCatalogo.length} grupos · ${filasCatalogo.length} presentaciones)
                             </span>
                         </div>
                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:2px;">
@@ -1022,10 +1058,16 @@
                             `).join('') || '<span style="font-size:0.72rem; color:#94a3b8;">Bonificación por Canasto (-3% / -5%) + Financiación Cta. Cte. 7 días (0%)</span>'}
                         </div>
                     </div>
-                    <a href="/pages/listado-bunker.html" target="_blank"
-                        style="text-decoration:none; padding:8px 13px; border-radius:8px; font-weight:800; font-size:0.78rem; background:rgba(16,185,129,0.2); border:1px solid #10b981; color:#6ee7b7; display:inline-flex; align-items:center; gap:6px;">
-                        🏛️ Abrir Búnker de Artículos ↗
-                    </a>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <a href="http://localhost:3005/pages/configuracion-jerarquia-b2b.html" target="_blank"
+                            style="text-decoration:none; padding:8px 12px; border-radius:8px; font-weight:800; font-size:0.76rem; background:rgba(192,132,252,0.16); border:1px solid rgba(192,132,252,0.45); color:#e9d5ff; display:inline-flex; align-items:center; gap:5px;">
+                            🌿 Jerarquía e Imágenes Base ↗
+                        </a>
+                        <a href="/pages/listado-bunker.html" target="_blank"
+                            style="text-decoration:none; padding:8px 13px; border-radius:8px; font-weight:800; font-size:0.78rem; background:rgba(16,185,129,0.2); border:1px solid #10b981; color:#6ee7b7; display:inline-flex; align-items:center; gap:6px;">
+                            🏛️ Abrir Búnker de Artículos ↗
+                        </a>
+                    </div>
                 </div>
 
                 <div class="card" style="padding:12px 16px; background:#151e2e; border:1px solid #2e3c51; border-radius:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
@@ -1064,7 +1106,50 @@
                             </tr>
                         </thead>
                         <tbody>
-                            ${filasCatalogo.map(cat => {
+                            ${gruposCatalogo.map(grupo => {
+                                const imgBase = grupo.imagen_base_lamda;
+                                const tipoAncla = grupo.es_combo
+                                    ? 'ARTICULO_SKU'
+                                    : (grupo.ingrediente_origen_id ? 'INGREDIENTE' : 'PRODUCTO_BASE');
+                                const skuCombo = grupo.es_combo ? (grupo.items[0]?.sku_nodo || '') : '';
+                                const headerHtml = `
+                                    <tr style="background:rgba(15, 23, 42, 0.92); border-top:2px solid #2e3c51; border-bottom:1px solid #1e293b;" data-pizarra-grupo-clave="${escaparHtml(grupo.clave_producto_base)}">
+                                        <td colspan="8" style="padding:9px 10px;">
+                                            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                                                <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                                                    ${imgBase
+                                                        ? `<img src="${escaparHtml(imgBase.url)}" alt="${escaparHtml(grupo.nombre_base_oficial)}" style="width:42px; height:42px; border-radius:8px; object-fit:cover; border:1px solid rgba(56,189,248,0.45);" />`
+                                                        : `<div style="width:42px; height:42px; border-radius:8px; border:1px dashed #334155; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:1rem;">🖼️</div>`
+                                                    }
+                                                    <div>
+                                                        <div style="font-size:0.7rem; color:#c084fc; font-weight:700;">🌿 ${escaparHtml(grupo.ruta_corta)}</div>
+                                                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                                            <strong style="color:#f8fafc; font-size:0.92rem;">${escaparHtml(grupo.nombre_base_oficial)}</strong>
+                                                            <span style="font-size:0.7rem; padding:1px 7px; border-radius:999px; background:rgba(16,185,129,0.16); color:#34d399; border:1px solid rgba(16,185,129,0.35); font-weight:700;">
+                                                                ${imgBase ? `Heredada por ${grupo.items.length} presentaci${grupo.items.length === 1 ? 'ón' : 'ones'}` : `${grupo.items.length} presentaci${grupo.items.length === 1 ? 'ón' : 'ones'} sin foto base`}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                                                    <button type="button"
+                                                        onclick="window.NodosPizarra.subirImagenBaseLamda('${escaparHtml(grupo.clave_producto_base)}', '${tipoAncla}', ${Number(grupo.ingrediente_origen_id || 0)}, '${escaparHtml(skuCombo)}', decodeURIComponent('${encodeURIComponent(grupo.nombre_base_oficial)}'))"
+                                                        style="padding:5px 10px; border-radius:7px; border:1px solid rgba(56,189,248,0.5); background:rgba(56,189,248,0.14); color:#bae6fd; font-size:0.74rem; font-weight:700; cursor:pointer;">
+                                                        ${imgBase ? '🔄 Cambiar Foto Base' : '📷 Cargar Foto Base'}
+                                                    </button>
+                                                    ${imgBase ? `
+                                                        <button type="button"
+                                                            onclick="window.NodosPizarra.eliminarImagenBaseLamda(${Number(imgBase.id)})"
+                                                            style="padding:5px 8px; border-radius:7px; border:1px solid rgba(239,68,68,0.4); background:rgba(239,68,68,0.12); color:#fca5a5; font-size:0.74rem; font-weight:700; cursor:pointer;" title="Quitar imagen base LAMDA">
+                                                            🗑️
+                                                        </button>
+                                                    ` : ''}
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                `;
+                                const rowsHtml = grupo.items.slice().sort((a, b) => Number(a.kilos_unidad || 0) - Number(b.kilos_unidad || 0)).map(cat => {
                                 const meta = FLUJO_META[cat.flujo_lamda] || FLUJO_META[2];
                                 const esCompartido = Boolean(cat.compartido_mayorista);
                                 const nomOficial = cat.bunker_descripcion_generada || cat.nombre_publico || cat.sku_nodo;
@@ -1154,6 +1239,8 @@
                                         </td>
                                     </tr>
                                 `;
+                            }).join('');
+                                return headerHtml + rowsHtml;
                             }).join('')}
                         </tbody>
                     </table>
@@ -4649,6 +4736,48 @@
         editarArticuloCatalogoEnMesa,
         limpiarMesaCotizacion,
         aprobarYPublicarEnPadronNodos,
+        subirImagenBaseLamda: (claveBase, tipoAncla, ingId, skuCombo, tituloRef) => {
+            let inp = document.getElementById('pizarra-input-img-base-file');
+            if (!inp) {
+                inp = document.createElement('input');
+                inp.type = 'file';
+                inp.id = 'pizarra-input-img-base-file';
+                inp.accept = 'image/*';
+                inp.style.display = 'none';
+                document.body.appendChild(inp);
+            }
+            inp.value = '';
+            inp.onchange = async () => {
+                const file = inp.files && inp.files[0];
+                if (!file) return;
+                const fd = new FormData();
+                fd.append('foto', file);
+                fd.append('tipo_ancla', tipoAncla);
+                if (Number(ingId) > 0) fd.append('ingrediente_id', String(ingId));
+                fd.append('clave_producto_base', claveBase);
+                if (skuCombo) fd.append('articulo_sku', skuCombo);
+                if (tituloRef) fd.append('titulo_referencia', tituloRef);
+                try {
+                    const resp = await fetch('/api/produccion/nodos/admin/imagenes-base', { method: 'POST', body: fd });
+                    const data = await resp.json();
+                    if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo cargar la imagen base');
+                    await cargarDatosNodosBarriales(true);
+                } catch (err) {
+                    alert('Error subiendo imagen base: ' + err.message);
+                }
+            };
+            inp.click();
+        },
+        eliminarImagenBaseLamda: async (imagenId) => {
+            try {
+                const resp = await fetch(`/api/produccion/nodos/admin/imagenes-base/${Number(imagenId)}`, { method: 'DELETE' });
+                const data = await resp.json();
+                if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo quitar la imagen base');
+                await cargarDatosNodosBarriales(true);
+            } catch (err) {
+                alert('Error eliminando imagen base: ' + err.message);
+            }
+        },
         abrirModalNuevaPropuesta,
         sincronizarCascadaSeisFlujos,
         filtrarFuentesRapidas: (val) => {

@@ -141,6 +141,24 @@ exports.actualizarTermino = async (req, res) => {
         await client.query('COMMIT');
         client.release();
 
+        try {
+            const skusRes = await req.db.query(
+                `SELECT DISTINCT ba.articulo_id
+                 FROM public.bunker_articulos ba
+                 JOIN public.nodos_articulos_catalogo nac ON UPPER(nac.sku_nodo) = UPPER(ba.articulo_id)
+                 WHERE ba.propiedades_dinamicas::text ILIKE $1`,
+                [`%${termClean}%`]
+            );
+            if (skusRes.rows.length > 0) {
+                const { sincronizarCatalogoNodoDesdeBunker } = require('../../produccion/services/nodosBarrialesService');
+                for (const r of skusRes.rows) {
+                    await sincronizarCatalogoNodoDesdeBunker(r.articulo_id);
+                }
+            }
+        } catch (syncErr) {
+            console.warn('[DICCIONARIO->NODOS] Aviso sincronizando término en Nodos:', syncErr.message);
+        }
+
         console.log(`🚨 [VIGÍA BACKEND UPDATE TÉRMINO EXITO]: ID=${termIdNum} actualizado a "${termClean}" [${abrevClean}]`);
         res.json({ success: true, data: result.rows[0] });
     } catch (error) {

@@ -413,6 +413,24 @@ exports.actualizarFamilia = async (req, res) => {
         await client.query('COMMIT');
         client.release();
 
+        try {
+            const skusRes = await req.db.query(
+                `SELECT ba.articulo_id
+                 FROM public.bunker_articulos ba
+                 JOIN public.nodos_articulos_catalogo nac ON UPPER(nac.sku_nodo) = UPPER(ba.articulo_id)
+                 WHERE ba.familia_id = $1`,
+                [famIdNum]
+            );
+            if (skusRes.rows.length > 0) {
+                const { sincronizarCatalogoNodoDesdeBunker } = require('../../produccion/services/nodosBarrialesService');
+                for (const r of skusRes.rows) {
+                    await sincronizarCatalogoNodoDesdeBunker(r.articulo_id);
+                }
+            }
+        } catch (syncErr) {
+            console.warn('[TAXONOMIA->NODOS] Aviso sincronizando familia en Nodos:', syncErr.message);
+        }
+
         console.log(`🚨 [VIGÍA BACKEND ACTUALIZAR FAMILIA]: Modificada exitosamente ID=${famIdNum} Nombre="${updatedFam.nombre}" Código="${updatedFam.codigo_familia}"`);
         res.json({ success: true, message: `Familia "${updatedFam.nombre}" actualizada exitosamente.`, data: updatedFam });
     } catch (error) {
@@ -564,6 +582,24 @@ exports.reasignarYEliminarFamilia = async (req, res) => {
 
         await client.query('COMMIT');
         client.release();
+
+        try {
+            const skusRes = await req.db.query(
+                `SELECT ba.articulo_id
+                 FROM public.bunker_articulos ba
+                 JOIN public.nodos_articulos_catalogo nac ON UPPER(nac.sku_nodo) = UPPER(ba.articulo_id)
+                 WHERE ba.familia_id = $1`,
+                [destinoId]
+            );
+            if (skusRes.rows.length > 0) {
+                const { sincronizarCatalogoNodoDesdeBunker } = require('../../produccion/services/nodosBarrialesService');
+                for (const r of skusRes.rows) {
+                    await sincronizarCatalogoNodoDesdeBunker(r.articulo_id);
+                }
+            }
+        } catch (syncErr) {
+            console.warn('[TAXONOMIA->NODOS] Aviso sincronizando reasignación en Nodos:', syncErr.message);
+        }
 
         console.log(`🚨 [VIGÍA BACKEND REASIGNAR Y ELIMINAR FAMILIA]: Eliminada "${famOrigen.nombre}" (ID=${origenId}). Reasignados ${skusReasignados} SKUs y ${relacionesReasignadas} relaciones a "${famDestino.nombre}" (ID=${destinoId}).`);
 

@@ -1,6 +1,6 @@
 {
-  "tableCount": 173,
-  "uniqueIndexCount": 252,
+  "tableCount": 175,
+  "uniqueIndexCount": 258,
   "tables": {
     "abrir_caja_aprendizaje": {
       "codigo_caja": {
@@ -10960,6 +10960,178 @@
         "column_default": null
       }
     },
+    "lamda_imagenes_base": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('lamda_imagenes_base_id_seq'::regclass)"
+      },
+      "tipo_ancla": {
+        "ordinal_position": 2,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 24,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "ingrediente_id": {
+        "ordinal_position": 3,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "clave_producto_base": {
+        "ordinal_position": 4,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 240,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "articulo_sku": {
+        "ordinal_position": 5,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "foto_id": {
+        "ordinal_position": 6,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 64,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "url": {
+        "ordinal_position": 7,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 255,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "url_original": {
+        "ordinal_position": 8,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 255,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "width": {
+        "ordinal_position": 9,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "height": {
+        "ordinal_position": 10,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "bytes": {
+        "ordinal_position": 11,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "origen_tipo": {
+        "ordinal_position": 12,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 24,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'UPLOAD_LAMDA'::character varying"
+      },
+      "origen_foto_lote_id": {
+        "ordinal_position": 13,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "titulo_referencia": {
+        "ordinal_position": 14,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 160,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "activo": {
+        "ordinal_position": 15,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "true"
+      },
+      "created_at": {
+        "ordinal_position": 16,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      "updated_at": {
+        "ordinal_position": 17,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      }
+    },
     "lineas_orden": {
       "id": {
         "ordinal_position": 1,
@@ -12556,6 +12728,88 @@
         "column_default": "false"
       }
     },
+    "nodos_grupos_vidriera": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('nodos_grupos_vidriera_id_seq'::regclass)"
+      },
+      "nodo_id": {
+        "ordinal_position": 2,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "clave_producto_base": {
+        "ordinal_position": 3,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 240,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "nombre_vidriera_grupo": {
+        "ordinal_position": 4,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "categoria_vidriera_grupo": {
+        "ordinal_position": 5,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "imagen_origen_modo": {
+        "ordinal_position": 6,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 20,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'LAMDA_BASE'::character varying"
+      },
+      "foto_propia_grupo": {
+        "ordinal_position": 7,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "updated_at": {
+        "ordinal_position": 8,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      }
+    },
     "nodos_liquidaciones_lote": {
       "id": {
         "ordinal_position": 1,
@@ -14024,6 +14278,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "imagen_origen_modo": {
+        "ordinal_position": 20,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 20,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'HEREDAR_GRUPO'::character varying"
       }
     },
     "nodos_pedidos_avisos_pago": {
@@ -23354,6 +23618,56 @@
       "sig": "knex_migrations::(id)[pred=]"
     },
     {
+      "table_name": "lamda_imagenes_base",
+      "index_name": "unq_lamda_img_base_producto_activo",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX unq_lamda_img_base_producto_activo ON public.lamda_imagenes_base USING btree (clave_producto_base) WHERE ((activo = true) AND ((tipo_ancla)::text = 'PRODUCTO_BASE'::text) AND (clave_producto_base IS NOT NULL))",
+      "index_predicate": "((activo = true) AND ((tipo_ancla)::text = 'PRODUCTO_BASE'::text) AND (clave_producto_base IS NOT NULL))",
+      "key_columns": [
+        "clave_producto_base"
+      ],
+      "has_expression_key": false,
+      "sig": "lamda_imagenes_base::(clave_producto_base)[pred=((activo = true) and ((tipo_ancla)::text = 'producto_base'::text) and (clave_producto_base is not null))]"
+    },
+    {
+      "table_name": "lamda_imagenes_base",
+      "index_name": "lamda_imagenes_base_pkey",
+      "is_primary": true,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX lamda_imagenes_base_pkey ON public.lamda_imagenes_base USING btree (id)",
+      "index_predicate": "",
+      "key_columns": [
+        "id"
+      ],
+      "has_expression_key": false,
+      "sig": "lamda_imagenes_base::(id)[pred=]"
+    },
+    {
+      "table_name": "lamda_imagenes_base",
+      "index_name": "unq_lamda_img_base_ingrediente_activo",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX unq_lamda_img_base_ingrediente_activo ON public.lamda_imagenes_base USING btree (ingrediente_id) WHERE ((activo = true) AND ((tipo_ancla)::text = 'INGREDIENTE'::text) AND (ingrediente_id IS NOT NULL))",
+      "index_predicate": "((activo = true) AND ((tipo_ancla)::text = 'INGREDIENTE'::text) AND (ingrediente_id IS NOT NULL))",
+      "key_columns": [
+        "ingrediente_id"
+      ],
+      "has_expression_key": false,
+      "sig": "lamda_imagenes_base::(ingrediente_id)[pred=((activo = true) and ((tipo_ancla)::text = 'ingrediente'::text) and (ingrediente_id is not null))]"
+    },
+    {
+      "table_name": "lamda_imagenes_base",
+      "index_name": "unq_lamda_img_base_sku_activo",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX unq_lamda_img_base_sku_activo ON public.lamda_imagenes_base USING btree (upper((articulo_sku)::text)) WHERE ((activo = true) AND ((tipo_ancla)::text = 'ARTICULO_SKU'::text) AND (articulo_sku IS NOT NULL))",
+      "index_predicate": "((activo = true) AND ((tipo_ancla)::text = 'ARTICULO_SKU'::text) AND (articulo_sku IS NOT NULL))",
+      "key_columns": [],
+      "has_expression_key": false,
+      "sig": "lamda_imagenes_base::(upper((articulo_sku)::text))[pred=((activo = true) and ((tipo_ancla)::text = 'articulo_sku'::text) and (articulo_sku is not null))]"
+    },
+    {
       "table_name": "lineas_orden",
       "index_name": "lineas_orden_pkey",
       "is_primary": true,
@@ -23574,6 +23888,33 @@
       ],
       "has_expression_key": false,
       "sig": "nodos_configuracion_canal::(id)[pred=]"
+    },
+    {
+      "table_name": "nodos_grupos_vidriera",
+      "index_name": "nodos_grupos_vidriera_pkey",
+      "is_primary": true,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX nodos_grupos_vidriera_pkey ON public.nodos_grupos_vidriera USING btree (id)",
+      "index_predicate": "",
+      "key_columns": [
+        "id"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_grupos_vidriera::(id)[pred=]"
+    },
+    {
+      "table_name": "nodos_grupos_vidriera",
+      "index_name": "unq_nodos_grupos_vidriera_nodo_clave",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX unq_nodos_grupos_vidriera_nodo_clave ON public.nodos_grupos_vidriera USING btree (nodo_id, clave_producto_base)",
+      "index_predicate": "",
+      "key_columns": [
+        "nodo_id",
+        "clave_producto_base"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_grupos_vidriera::(nodo_id, clave_producto_base)[pred=]"
     },
     {
       "table_name": "nodos_liquidaciones_lote",

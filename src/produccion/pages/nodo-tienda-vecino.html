@@ -2482,6 +2482,170 @@
       gap: 8px;
       font-size: 0.78rem;
     }
+
+    /* Organigrama Determinista en Acordeones (Familia -> Sub-ramas B2B -> Producto Base -> Presentaciones) */
+    #products-grid.tienda-organigrama-host {
+      display: flex !important;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .tienda-fam-acc {
+      border: 1.5px solid var(--border);
+      border-radius: 16px;
+      background: var(--card);
+      overflow: hidden;
+      box-shadow: 0 3px 10px rgba(62, 37, 25, 0.04);
+    }
+    .tienda-fam-head {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 15px;
+      background: linear-gradient(135deg, var(--surface-warm) 0%, var(--card) 100%);
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      font-family: inherit;
+      color: var(--text);
+    }
+    .tienda-fam-head:hover {
+      background: var(--surface-warm);
+    }
+    .tienda-fam-body {
+      padding: 10px 12px 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .tienda-subrama-acc {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #fffdfb;
+      overflow: hidden;
+    }
+    .tienda-subrama-head {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--surface-warm);
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.84rem;
+      font-weight: 800;
+      color: var(--brand-dark);
+    }
+    .tienda-subrama-body {
+      padding: 8px;
+      border-top: 1px dashed var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .tienda-prod-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .tienda-prod-list.is-cuadricula {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(162px, 1fr));
+      gap: 10px;
+    }
+    @media (min-width: 720px) {
+      .tienda-prod-list.is-cuadricula {
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      }
+    }
+    .tienda-prod-acc {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #ffffff;
+      overflow: hidden;
+      transition: border-color 0.16s, box-shadow 0.16s;
+      min-width: 0;
+    }
+    .tienda-prod-acc.is-open {
+      border-color: var(--brand);
+      box-shadow: 0 6px 18px rgba(62, 37, 25, 0.08);
+    }
+    .tienda-prod-list.is-cuadricula .tienda-prod-acc.is-open {
+      grid-column: 1 / -1;
+    }
+    .tienda-prod-acc.prod-card-destacado {
+      border: 2px solid var(--brand);
+      box-shadow: 0 6px 18px var(--brand-light);
+    }
+    .tienda-prod-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .tienda-prod-list.is-cuadricula .tienda-prod-acc:not(.is-open) .tienda-prod-head {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      padding: 10px;
+    }
+    .tienda-prod-thumb-side {
+      width: 66px;
+      height: 66px;
+      border-radius: 11px;
+      object-fit: cover;
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      background: var(--surface-warm);
+    }
+    .tienda-prod-thumb-grid {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      border-radius: 10px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      background: var(--surface-warm);
+    }
+    .tienda-prod-body {
+      padding: 0 12px 12px;
+      border-top: 1px dashed var(--border);
+      padding-top: 10px;
+      background: #fffdfb;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .tienda-pres-chip {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: var(--surface-warm);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .tienda-cart-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 0.7rem;
+      font-weight: 900;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: var(--brand-soft);
+      color: var(--brand-dark);
+      border: 1px solid var(--brand-border);
+    }
   </style>
 </head>
 <body>
@@ -2706,6 +2870,9 @@
       proximaEntrega: null,
       productos: [],
       categoriaActiva: 'TODAS',
+      familiasColapsadas: new Set(),
+      subRamasColapsadas: new Set(),
+      productosAbiertos: new Set(),
       carrito: {}, // { oferta_id: cantidad }
       modalidadEntrega: 'RETIRO_NODO',
       medioPago: 'TRANSFERENCIA',
@@ -3381,6 +3548,8 @@
     }
 
     function obtenerPresentacionItem(it) {
+      const corta = String(it?.presentacion_corta || '').trim();
+      if (corta) return corta;
       const etq = String(it?.presentacion_etiqueta || '').trim();
       if (etq) return etq;
       const kg = Number(it?.kilos_unidad || 0);
@@ -3399,7 +3568,8 @@
     }
 
     function claveGrupoProductoTienda(p) {
-      const nom = normalizarTextoBusqueda(p?.nombre_publico || '');
+      if (p && p.clave_producto_base) return String(p.clave_producto_base);
+      const nom = normalizarTextoBusqueda(p?.nombre_base_vidriera || p?.nombre_publico || '');
       if (!nom) return `oferta_${Number(p?.oferta_id || 0)}`;
       const cat = normalizarTextoBusqueda(p?.categoria_familiar || 'almacen natural');
       return `${cat}||${nom}`;
@@ -4584,6 +4754,8 @@
       if (btn) {
         btn.classList.toggle('is-active', true);
       }
+      // Regla estricta del buscador: jamás auto-expandir acordeones al buscar
+      STATE.productosAbiertos.clear();
       renderCatalogo();
       programarTelemetriaBusquedaLupa(val);
     }
@@ -4595,6 +4767,7 @@
       if (inp) inp.value = '';
       if (wrap) wrap.classList.remove('open');
       if (btn) btn.classList.remove('is-active');
+      STATE.productosAbiertos.clear();
       renderCatalogo();
     }
 
@@ -5489,6 +5662,9 @@
     }
 
     function obtenerGaleriaMultimediaProducto(p) {
+      if (p?.mostrar_imagen === false || String(p?.imagen_origen_modo || '').toUpperCase() === 'SIN_IMAGEN') {
+        return [];
+      }
       if (Array.isArray(p?.galeria_multimedia) && p.galeria_multimedia.length > 0) {
         return p.galeria_multimedia;
       }
@@ -5555,10 +5731,124 @@
       videos.forEach(v => _coverVideoObserver.observe(v));
     }
 
+    function toggleAcordeonFamiliaTienda(famKey) {
+      if (STATE.familiasColapsadas.has(famKey)) STATE.familiasColapsadas.delete(famKey);
+      else STATE.familiasColapsadas.add(famKey);
+      renderCatalogo();
+    }
+
+    function toggleAcordeonSubramaTienda(ramaKey) {
+      if (STATE.subRamasColapsadas.has(ramaKey)) STATE.subRamasColapsadas.delete(ramaKey);
+      else STATE.subRamasColapsadas.add(ramaKey);
+      renderCatalogo();
+    }
+
+    function toggleAcordeonProductoTienda(claveBase) {
+      if (STATE.productosAbiertos.has(claveBase)) STATE.productosAbiertos.delete(claveBase);
+      else STATE.productosAbiertos.add(claveBase);
+      renderCatalogo();
+    }
+
+    function _slugSafeTienda(txt, fallback = 'item') {
+      const c = normalizarTextoBusqueda(txt).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      return c || fallback;
+    }
+
+    function _construirOrganigramaTienda(grupos = []) {
+      const familiasMap = new Map();
+      for (const g of grupos) {
+        const famNombre = String(g.categoria_familiar || 'Almacén Natural').trim();
+        const famKey = `fam_${_slugSafeTienda(famNombre)}`;
+        if (!familiasMap.has(famKey)) {
+          familiasMap.set(famKey, {
+            familia_key: famKey,
+            familia_nombre: famNombre,
+            gruposDirectos: [],
+            subramasMap: new Map()
+          });
+        }
+        const fObj = familiasMap.get(famKey);
+        const subNiveles = (g.sub_niveles || []).filter(s => {
+          const ns = normalizarTextoBusqueda(s);
+          return ns &&
+            ns !== normalizarTextoBusqueda(famNombre) &&
+            ns !== normalizarTextoBusqueda(g.nombre_base_vidriera || g.nombre_base_oficial);
+        });
+
+        if (subNiveles.length === 0) {
+          fObj.gruposDirectos.push(g);
+          continue;
+        }
+
+        let curMap = fObj.subramasMap;
+        let curNode = null;
+        for (let i = 0; i < subNiveles.length; i++) {
+          const lbl = subNiveles[i];
+          const rKey = `${famKey}__${subNiveles.slice(0, i + 1).map(_slugSafeTienda).join('_')}`;
+          if (!curMap.has(rKey)) {
+            curMap.set(rKey, { rama_key: rKey, label: lbl, subramasMap: new Map(), grupos: [], subramas: [] });
+          }
+          curNode = curMap.get(rKey);
+          curMap = curNode.subramasMap;
+        }
+        if (curNode) curNode.grupos.push(g);
+      }
+
+      const compactarRama = (r) => {
+        const subramas = Array.from(r.subramasMap.values()).map(compactarRama)
+          .sort((a, b) => a.label.localeCompare(b.label, 'es-AR'));
+        const gruposOrd = r.grupos.slice()
+          .sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
+        const nodo = { rama_key: r.rama_key, label: r.label, subramas, grupos: gruposOrd };
+        // Compactar ramas de un solo hijo
+        while (nodo.grupos.length === 0 && nodo.subramas.length === 1) {
+          const u = nodo.subramas[0];
+          const pN = normalizarTextoBusqueda(nodo.label);
+          const hN = normalizarTextoBusqueda(u.label);
+          nodo.label = (pN === hN || hN.includes(pN)) ? u.label : `${nodo.label} › ${u.label}`;
+          nodo.grupos = u.grupos;
+          nodo.subramas = u.subramas;
+        }
+        return nodo;
+      };
+
+      const contarGruposRama = (r) => (r.grupos?.length || 0) + (r.subramas || []).reduce((acc, s) => acc + contarGruposRama(s), 0);
+
+      return Array.from(familiasMap.values()).map(f => {
+        let subramas = Array.from(f.subramasMap.values()).map(compactarRama)
+          .sort((a, b) => a.label.localeCompare(b.label, 'es-AR'));
+        const gruposDirectos = f.gruposDirectos.slice()
+          .sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
+
+        // Insertar sub-acordeones intermedios SOLO cuando haya >= 2 sub-ramas distintas publicadas en esta Familia
+        const contarSubNodosReales = subramas.length + (gruposDirectos.length > 0 && subramas.length > 0 ? 1 : 0);
+        if (contarSubNodosReales < 2 && subramas.length === 1) {
+          const recolectar = (r, out = []) => {
+            out.push(...(r.grupos || []));
+            (r.subramas || []).forEach(sr => recolectar(sr, out));
+            return out;
+          };
+          gruposDirectos.push(...recolectar(subramas[0]));
+          gruposDirectos.sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
+          subramas = [];
+        }
+
+        const totalProductos = gruposDirectos.length + subramas.reduce((acc, s) => acc + contarGruposRama(s), 0);
+        return {
+          familia_key: f.familia_key,
+          familia_nombre: f.familia_nombre,
+          grupos_directos: gruposDirectos,
+          subramas,
+          total_productos: totalProductos
+        };
+      }).sort((a, b) => a.familia_nombre.localeCompare(b.familia_nombre, 'es-AR'));
+    }
+
     function renderCatalogo() {
       const grid = document.getElementById('products-grid');
       const modoVidriera = obtenerModoVidrieraTienda();
       grid.dataset.modoVidriera = modoVidriera;
+      grid.classList.add('tienda-organigrama-host');
       grid.classList.toggle('modo-portadas', modoVidriera === 'PORTADAS');
       grid.classList.toggle('modo-cuadricula', modoVidriera === 'CUADRICULA');
       grid.classList.toggle('modo-lista-compacta', modoVidriera === 'LISTA_COMPACTA');
@@ -5566,7 +5856,7 @@
       if (STATE.productos.length === 0) {
         const esEc = esPerfilEcommerceTienda(STATE.nodo);
         grid.innerHTML = `
-          <div style="grid-column: 1/-1; background:var(--card); border:1px solid var(--border); border-radius:16px; padding:34px 20px; text-align:center;">
+          <div style="background:var(--card); border:1px solid var(--border); border-radius:16px; padding:34px 20px; text-align:center;">
             <div style="font-size:1.02rem; font-weight:900; color:var(--text); margin-bottom:6px;">Próximamente disponibles</div>
             <div style="font-size:0.88rem; color:var(--muted); max-width:440px; margin:0 auto;">
               ${esEc
@@ -5580,21 +5870,23 @@
 
       const qNorm = normalizarTextoBusqueda(document.getElementById('search-box')?.value || '');
       const terms = qNorm.split(/\s+/).filter(Boolean);
+      const enBusqueda = terms.length > 0;
 
       const filtrados = STATE.productos.filter(p => {
         if (STATE.categoriaActiva !== 'TODAS' && claveCategoriaTienda(p.categoria_familiar) !== STATE.categoriaActiva) return false;
-        if (terms.length === 0) return true;
+        if (!enBusqueda) return true;
         const ingTxt = Array.isArray(p.ingredientes_comerciales) ? p.ingredientes_comerciales.join(' ') : '';
         const compTxt = Array.isArray(p.componentes_vidriera) ? p.componentes_vidriera.map(c => c.nombre || '').join(' ') : '';
+        const rutaTxt = Array.isArray(p.jerarquia_b2b?.ruta_compacta) ? p.jerarquia_b2b.ruta_compacta.join(' ') : '';
         const presTxt = obtenerPresentacionItem(p);
         const bolsa = normalizarTextoBusqueda(
-          `${p.nombre_publico || ''} ${p.categoria_familiar || ''} ${presTxt} ${p.sku_nodo || ''} ${p.narrativa_tienda || ''} ${ingTxt} ${compTxt}`
+          `${p.nombre_publico || ''} ${p.nombre_base_vidriera || ''} ${p.nombre_base_oficial || ''} ${p.categoria_familiar || ''} ${rutaTxt} ${presTxt} ${p.sku_nodo || ''} ${p.narrativa_tienda || ''} ${ingTxt} ${compTxt}`
         );
         return terms.every(t => bolsa.includes(t));
       });
 
       if (filtrados.length === 0) {
-        grid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; padding:36px; color:var(--muted); font-weight:700;">No encontramos productos con ese filtro.</div>`;
+        grid.innerHTML = `<div style="text-align:center; padding:36px; color:var(--muted); font-weight:700;">No encontramos productos con ese filtro.</div>`;
         return;
       }
 
@@ -5602,11 +5894,18 @@
       const mapaGrupos = new Map();
       for (const p of filtrados) {
         const clave = claveGrupoProductoTienda(p);
+        const subNiveles = (Array.isArray(p.jerarquia_b2b?.ruta_compacta) && p.jerarquia_b2b.ruta_compacta.length > 1)
+          ? p.jerarquia_b2b.ruta_compacta.slice(1)
+          : [];
         if (!mapaGrupos.has(clave)) {
           mapaGrupos.set(clave, {
             clave,
-            categoria_familiar: p.categoria_familiar || 'Almacén Natural',
-            nombre_publico: p.nombre_publico,
+            categoria_familiar: p.categoria_familiar || p.jerarquia_b2b?.familia_nombre || 'Almacén Natural',
+            nombre_base_oficial: p.nombre_base_oficial || p.nombre_publico,
+            nombre_base_vidriera: p.nombre_base_vidriera || p.nombre_publico,
+            nombre_publico: p.nombre_base_vidriera || p.nombre_base_oficial || p.nombre_publico,
+            sub_niveles: subNiveles,
+            ruta_b2b_corta: subNiveles.join(' › '),
             destacado_tienda: Boolean(p.destacado_tienda),
             presentaciones: []
           });
@@ -5617,6 +5916,25 @@
       }
 
       const grupos = Array.from(mapaGrupos.values());
+      for (const g of grupos) {
+        g.presentaciones.sort((a, b) => {
+          const ka = Number(a.kilos_unidad || 0);
+          const kb = Number(b.kilos_unidad || 0);
+          if (ka !== kb) return ka - kb;
+          const pa = Number(a.precio_venta_vecino || 0);
+          const pb = Number(b.precio_venta_vecino || 0);
+          if (pa !== pb) return pa - pb;
+          return Number(a.oferta_id || 0) - Number(b.oferta_id || 0);
+        });
+        if (!enBusqueda && !STATE._scrollOfertaHecho && (STATE.ofertaEnfocadaId || STATE.skuEnfocado)) {
+          const enf = g.presentaciones.some(p =>
+            (STATE.ofertaEnfocadaId && Number(p.oferta_id) === Number(STATE.ofertaEnfocadaId)) ||
+            (STATE.skuEnfocado && String(p.sku_nodo || '').trim().toLowerCase() === String(STATE.skuEnfocado || '').trim().toLowerCase())
+          );
+          if (enf) STATE.productosAbiertos.add(g.clave);
+        }
+      }
+
       const renderBotonFotosCompacto = (ofertaObj) => {
         const galeria = obtenerGaleriaMultimediaProducto(ofertaObj);
         const tieneNarrativa = Boolean(String(ofertaObj?.narrativa_tienda || '').trim());
@@ -5627,74 +5945,22 @@
         return `<button type="button" class="btn-ver-fotos-item" data-btn-fotos-oferta="${Number(ofertaObj.oferta_id)}" aria-label="Ver detalle multimedia" title="Ver fotos, videos o descripción" onclick="event.stopPropagation(); abrirVisorFotosProducto(${Number(ofertaObj.oferta_id)})"><span>${icono}</span>${n > 1 ? `<span class="btn-ver-fotos-count">${n}</span>` : ''}</button>`;
       };
 
-      const renderPortadaInteractivaHtml = (portada, ofertaTarget, claseTamano) => {
-        if (!portada || !ofertaTarget) return '';
-        const galeria = obtenerGaleriaMultimediaProducto(ofertaTarget);
-        const total = galeria.length;
-        const oid = Number(ofertaTarget.oferta_id);
-        if (portada.tipo === 'video') {
-          const durTxt = Math.max(1, Math.round(Number(portada.duration_sec || 1))) + 's';
-          return `
-            <button type="button" class="prod-cover-btn ${claseTamano}" data-testid="portada-card-${oid}"
-              aria-label="Abrir galería de ${esc(ofertaTarget.nombre_publico)}"
-              onclick="abrirVisorFotosProducto(${oid})">
-              <video class="prod-cover-video" data-cover-video="1"
-                src="${esc(portada.url)}"
-                ${portada.poster_url ? `poster="${esc(portada.poster_url)}"` : ''}
-                muted loop playsinline preload="none"></video>
-              <span class="prod-cover-video-pill">▶ ${durTxt}</span>
-              ${total > 1 ? `<span class="prod-cover-badge">+${total - 1}</span>` : ''}
-            </button>
-          `;
-        }
-        return `
-          <button type="button" class="prod-cover-btn ${claseTamano}" data-testid="portada-card-${oid}"
-            aria-label="Abrir galería de ${esc(ofertaTarget.nombre_publico)}"
-            onclick="abrirVisorFotosProducto(${oid})">
-            <img class="prod-cover-img" src="${esc(portada.url)}" alt="${esc(ofertaTarget.nombre_publico)}" loading="lazy" />
-            ${total > 1 ? `<span class="prod-cover-badge">1/${total}</span>` : ''}
-          </button>
-        `;
-      };
-
-      const renderFilaPresentacion = (p, mostrarBotonFotoEnFila = false, esModoCuadricula = false) => {
+      const renderFilaPresentacion = (p) => {
         const cant = Number(STATE.carrito[p.oferta_id] || 0);
         const pres = obtenerPresentacionItem(p) || 'Unidad';
         const esPresEnfocada = Boolean(
           (STATE.ofertaEnfocadaId && Number(p.oferta_id) === Number(STATE.ofertaEnfocadaId)) ||
           (STATE.skuEnfocado && String(p.sku_nodo || '').trim().toLowerCase() === String(STATE.skuEnfocado || '').trim().toLowerCase())
         );
-        const btnFotoFila = mostrarBotonFotoEnFila ? renderBotonFotosCompacto(p) : '';
-        if (esModoCuadricula) {
-          return `
-            <div class="prod-pres-row${esPresEnfocada ? ' prod-pres-destacado' : ''}">
-              <div class="prod-pres-top-grid">
-                <span class="prod-pres-label">${esc(pres)}</span>
-                <span class="prod-pres-price">${fmt(p.precio_venta_vecino)}</span>
-              </div>
-              <div class="prod-pres-actions">
-                ${cant === 0
-                  ? `<button type="button" class="btn-add btn-add-compact" onclick="modificarCarrito(${Number(p.oferta_id)}, 1)">+ Agregar</button>`
-                  : `<div class="stepper stepper-compact">
-                       <button type="button" onclick="modificarCarrito(${Number(p.oferta_id)}, -1)">−</button>
-                       <span>${cant}</span>
-                       <button type="button" onclick="modificarCarrito(${Number(p.oferta_id)}, 1)">+</button>
-                     </div>`
-                }
-              </div>
-            </div>
-          `;
-        }
         return `
-          <div class="prod-pres-row${esPresEnfocada ? ' prod-pres-destacado' : ''}">
+          <div class="prod-pres-row${esPresEnfocada ? ' prod-pres-destacado' : ''}" data-tienda-sku="${esc(p.sku_nodo || '')}">
             <div class="prod-pres-label-wrap">
               <div class="prod-pres-label">${esc(pres)}</div>
-              ${btnFotoFila}
             </div>
             <div class="prod-pres-actions">
               <span class="prod-pres-price">${fmt(p.precio_venta_vecino)}</span>
               ${cant === 0
-                ? `<button type="button" class="btn-add btn-add-compact" onclick="modificarCarrito(${Number(p.oferta_id)}, 1)">+ Agregar</button>`
+                ? `<button type="button" class="btn-add btn-add-compact" data-testid="btn-agregar-${Number(p.oferta_id)}" onclick="modificarCarrito(${Number(p.oferta_id)}, 1)">+ Agregar</button>`
                 : `<div class="stepper stepper-compact">
                      <button type="button" onclick="modificarCarrito(${Number(p.oferta_id)}, -1)">−</button>
                      <span>${cant}</span>
@@ -5706,16 +5972,8 @@
         `;
       };
 
-      grid.innerHTML = grupos.map(g => {
-        g.presentaciones.sort((a, b) => {
-          const ka = Number(a.kilos_unidad || 0);
-          const kb = Number(b.kilos_unidad || 0);
-          if (ka !== kb) return ka - kb;
-          const pa = Number(a.precio_venta_vecino || 0);
-          const pb = Number(b.precio_venta_vecino || 0);
-          if (pa !== pb) return pa - pb;
-          return Number(a.oferta_id || 0) - Number(b.oferta_id || 0);
-        });
+      const renderAcordeonProductoBase = (g, { mostrarFamiliaEnHeader = false } = {}) => {
+        const estaAbierto = STATE.productosAbiertos.has(g.clave);
         const esCardEnfocada = g.presentaciones.some(p =>
           (STATE.ofertaEnfocadaId && Number(p.oferta_id) === Number(STATE.ofertaEnfocadaId)) ||
           (STATE.skuEnfocado && String(p.sku_nodo || '').trim().toLowerCase() === String(STATE.skuEnfocado || '').trim().toLowerCase())
@@ -5730,97 +5988,149 @@
           : null;
         const ofertaCombo = g.presentaciones.find(x => x.es_combo && Array.isArray(x.componentes_vidriera) && x.componentes_vidriera.length > 0) || null;
         const resumenComboHtml = ofertaCombo
-          ? `<div style="font-size:0.73rem; color:var(--text); background:var(--surface-warm); border:1px solid var(--border); border-radius:8px; padding:4px 8px; margin-top:4px; line-height:1.35;"><strong>🎁 Incluye:</strong> ${ofertaCombo.componentes_vidriera.map(c => `${Number(c.cantidad || 1)}x ${esc(c.nombre)}`).join(' · ')}</div>`
+          ? `<div style="font-size:0.73rem; color:var(--text); background:var(--surface-warm); border:1px solid var(--border); border-radius:8px; padding:4px 8px; line-height:1.35;"><strong>🎁 Incluye:</strong> ${ofertaCombo.componentes_vidriera.map(c => `${Number(c.cantidad || 1)}x ${esc(c.nombre)}`).join(' · ')}</div>`
           : '';
-        const ofertaPortada = g.presentaciones.find(x => x.portada_activa && x.portada_modo !== 'OCULTA') || null;
-        const portadaActiva = ofertaPortada ? ofertaPortada.portada_activa : null;
-        const ofertaDetalle = ofertaPortada ||
+
+        const ofertaConImagen = g.presentaciones.find(x =>
+          x.mostrar_imagen !== false &&
+          String(x.imagen_origen_modo || '').toUpperCase() !== 'SIN_IMAGEN' &&
+          x.portada_activa?.url
+        ) || null;
+        const portadaUrl = (modoVidriera !== 'LISTA_COMPACTA' && ofertaConImagen) ? ofertaConImagen.portada_activa.url : '';
+        const ofertaDetalle = ofertaConImagen ||
           g.presentaciones.find(x => obtenerGaleriaMultimediaProducto(x).length > 0 || String(x.narrativa_tienda || '').trim()) ||
           g.presentaciones[0];
         const narrativaGrupo = g.presentaciones.map(x => String(x.narrativa_tienda || '').trim()).find(Boolean) || '';
-        const esPresentacionUnica = g.presentaciones.length === 1;
 
-        if (modoVidriera === 'CUADRICULA') {
-          const mostrarChipDetalleSinPortada = !portadaActiva && (obtenerGaleriaMultimediaProducto(ofertaDetalle).length > 0 || Boolean(narrativaGrupo));
-          return `
-            <div class="prod-card${esCardEnfocada ? ' prod-card-destacado' : ''}"${esCardEnfocada ? ' id="prod-card-enfocada"' : ''}>
-              <div style="display:flex; flex-direction:column; gap:7px; min-width:0;">
-                ${esCardEnfocada ? '<div class="badge-oferta-enfocada">✨ Destacado</div>' : ''}
-                ${portadaActiva
-                  ? renderPortadaInteractivaHtml(portadaActiva, ofertaPortada, 'is-grid')
-                  : `
-                    <div class="prod-grid-typo-cover" ${mostrarChipDetalleSinPortada ? `style="cursor:pointer;" onclick="abrirVisorFotosProducto(${Number(ofertaDetalle.oferta_id)})"` : ''}>
-                      <div class="prod-cat">${esc(g.categoria_familiar)}</div>
-                      <div class="prod-title" style="margin:2px 0 0 0;">${esc(g.nombre_publico)}</div>
+        const minPrecio = Math.min(...g.presentaciones.map(p => Number(p.precio_venta_vecino || 0)));
+        const cantEnCarrito = g.presentaciones.reduce((acc, p) => acc + Number(STATE.carrito[p.oferta_id] || 0), 0);
+        const presChips = g.presentaciones.map(p => obtenerPresentacionItem(p)).filter(Boolean);
+        const precioTexto = g.presentaciones.length > 1 ? `Desde ${fmt(minPrecio)}` : fmt(minPrecio);
+        const esGridCardCerrada = (modoVidriera === 'CUADRICULA' && !estaAbierto);
+
+        return `
+          <div class="tienda-prod-acc${estaAbierto ? ' is-open' : ''}${esCardEnfocada ? ' prod-card-destacado' : ''}"
+               data-testid="tienda-prod-acc-${esc(g.clave)}"
+               data-clave-producto="${esc(g.clave)}"
+               data-open="${estaAbierto ? 'true' : 'false'}"
+               ${esCardEnfocada ? 'id="prod-card-enfocada"' : ''}>
+            <div class="tienda-prod-head" onclick="toggleAcordeonProductoTienda('${esc(g.clave)}')" role="button" tabindex="0" aria-expanded="${estaAbierto ? 'true' : 'false'}">
+              ${portadaUrl ? `
+                <img class="${esGridCardCerrada ? 'tienda-prod-thumb-grid' : 'tienda-prod-thumb-side'}"
+                     src="${esc(portadaUrl)}" alt="${esc(g.nombre_publico)}" loading="lazy" />
+              ` : ''}
+              <div style="flex:1; min-width:0;">
+                ${(mostrarFamiliaEnHeader || g.ruta_b2b_corta) ? `
+                  <div style="font-size:0.68rem; font-weight:800; color:var(--brand-dark); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                    ${mostrarFamiliaEnHeader ? esc(g.categoria_familiar) : ''}${mostrarFamiliaEnHeader && g.ruta_b2b_corta ? ' · ' : ''}${g.ruta_b2b_corta ? esc(g.ruta_b2b_corta) : ''}
+                  </div>
+                ` : ''}
+                <div class="prod-title" style="margin:1px 0 3px 0; font-size:0.96rem; font-weight:900; color:var(--text); line-height:1.22;">
+                  ${esc(g.nombre_publico)}
+                </div>
+                <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
+                  ${presChips.map(ch => `<span class="tienda-pres-chip">${esc(ch)}</span>`).join('')}
+                  ${cantEnCarrito > 0 ? `<span class="tienda-cart-pill">🛒 ${cantEnCarrito}</span>` : ''}
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-shrink:0;">
+                <div style="text-align:right;">
+                  <div style="font-size:0.92rem; font-weight:900; color:var(--brand-dark);">${precioTexto}</div>
+                </div>
+                <span style="font-size:0.86rem; font-weight:900; color:var(--muted); width:22px; text-align:center;">${estaAbierto ? '▾' : '▸'}</span>
+              </div>
+            </div>
+
+            ${estaAbierto ? `
+              <div class="tienda-prod-body" data-testid="tienda-prod-body-${esc(g.clave)}">
+                ${(ofertaDetalle && (obtenerGaleriaMultimediaProducto(ofertaDetalle).length > 0 || narrativaGrupo || ofertaIng)) ? `
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                      ${renderBotonFotosCompacto(ofertaDetalle)}
+                      ${ofertaIng ? `<button type="button" class="btn-ver-ing" onclick="event.stopPropagation(); abrirModalIngredientesProducto(${Number(ofertaIng.oferta_id)})">🥣 ¿Qué contiene?</button>` : ''}
                     </div>
-                  `
-                }
-                ${portadaActiva ? `
-                  <div style="min-width:0;">
-                    <div class="prod-cat">${esc(g.categoria_familiar)}</div>
-                    <div class="prod-title">${esc(g.nombre_publico)}</div>
                   </div>
                 ` : ''}
                 ${resumenComboHtml}
                 ${narrativaGrupo ? `
-                  <button type="button" class="prod-narrativa-snippet"
-                    onclick="abrirVisorFotosProducto(${Number(ofertaDetalle.oferta_id)})">
+                  <button type="button" class="prod-narrativa-snippet" onclick="abrirVisorFotosProducto(${Number(ofertaDetalle.oferta_id)})">
                     ${esc(narrativaGrupo)}
                   </button>
                 ` : ''}
-                ${(ofertaIng || mostrarChipDetalleSinPortada) ? `
-                  <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
-                    ${mostrarChipDetalleSinPortada ? renderBotonFotosCompacto(ofertaDetalle) : ''}
-                    ${ofertaIng ? `<button type="button" class="btn-ver-ing" style="font-size:0.69rem; padding:3px 8px;" onclick="event.stopPropagation(); abrirModalIngredientesProducto(${Number(ofertaIng.oferta_id)})">🥣 ¿Qué contiene?</button>` : ''}
+                <div class="prod-pres-list">
+                  ${g.presentaciones.map(p => renderFilaPresentacion(p)).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      };
+
+      const renderRamaB2B = (rama) => {
+        const cerrada = STATE.subRamasColapsadas.has(rama.rama_key);
+        const listaClase = `tienda-prod-list${modoVidriera === 'CUADRICULA' ? ' is-cuadricula' : ''}`;
+        return `
+          <div class="tienda-subrama-acc" data-rama-key="${esc(rama.rama_key)}" data-open="${cerrada ? 'false' : 'true'}">
+            <button type="button" class="tienda-subrama-head" onclick="toggleAcordeonSubramaTienda('${esc(rama.rama_key)}')" aria-expanded="${cerrada ? 'false' : 'true'}">
+              <span>${esc(rama.label)}</span>
+              <span>${cerrada ? '▸' : '▾'}</span>
+            </button>
+            ${!cerrada ? `
+              <div class="tienda-subrama-body">
+                ${(rama.subramas || []).map(sr => renderRamaB2B(sr)).join('')}
+                ${(rama.grupos && rama.grupos.length > 0) ? `
+                  <div class="${listaClase}">
+                    ${rama.grupos.map(g => renderAcordeonProductoBase(g, { mostrarFamiliaEnHeader: false })).join('')}
                   </div>
                 ` : ''}
               </div>
-              <div class="prod-pres-list">
-                ${g.presentaciones.map(p => renderFilaPresentacion(p, false, true)).join('')}
-              </div>
-            </div>
-          `;
-        }
+            ` : ''}
+          </div>
+        `;
+      };
 
-        const mostrarPortadaLateral = modoVidriera === 'PORTADAS' && Boolean(portadaActiva);
-        const btnFotoCabecera = (!mostrarPortadaLateral && esPresentacionUnica) ? renderBotonFotosCompacto(g.presentaciones[0]) : '';
-
-        return `
-          <div class="prod-card${esCardEnfocada ? ' prod-card-destacado' : ''}"${esCardEnfocada ? ' id="prod-card-enfocada"' : ''}>
-            ${esCardEnfocada ? '<div class="badge-oferta-enfocada">✨ Producto compartido</div>' : ''}
-            <div class="${mostrarPortadaLateral ? 'prod-portada-side-row' : ''}">
-              ${mostrarPortadaLateral ? renderPortadaInteractivaHtml(portadaActiva, ofertaPortada, 'is-side') : ''}
-              <div style="flex:1; min-width:0;">
-                <div class="prod-card-head">
-                  <div class="prod-head-info">
-                    <div class="prod-cat">${esc(g.categoria_familiar)}</div>
-                    <div class="prod-title">${esc(g.nombre_publico)}</div>
-                  </div>
-                  ${(btnFotoCabecera || ofertaIng) ? `
-                    <div class="prod-head-actions">
-                      ${btnFotoCabecera}
-                      ${ofertaIng
-                        ? `<button type="button" class="btn-ver-ing" onclick="event.stopPropagation(); abrirModalIngredientesProducto(${Number(ofertaIng.oferta_id)})">🥣 ¿Qué contiene?</button>`
-                        : ''
-                      }
+      if (enBusqueda) {
+        const listaClase = `tienda-prod-list${modoVidriera === 'CUADRICULA' ? ' is-cuadricula' : ''}`;
+        const ordBusq = grupos.slice().sort((a, b) =>
+          a.categoria_familiar.localeCompare(b.categoria_familiar, 'es-AR') ||
+          a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR')
+        );
+        grid.innerHTML = `
+          <div style="font-size:0.78rem; color:var(--muted); font-weight:800; padding:0 2px;">
+            ${ordBusq.length} producto${ordBusq.length === 1 ? '' : 's'} coincidente${ordBusq.length === 1 ? '' : 's'} — tocá uno para ver sus presentaciones
+          </div>
+          <div class="${listaClase}" data-testid="tienda-busqueda-grupos">
+            ${ordBusq.map(g => renderAcordeonProductoBase(g, { mostrarFamiliaEnHeader: true })).join('')}
+          </div>
+        `;
+      } else {
+        const arbolFamilias = _construirOrganigramaTienda(grupos);
+        const listaClase = `tienda-prod-list${modoVidriera === 'CUADRICULA' ? ' is-cuadricula' : ''}`;
+        grid.innerHTML = arbolFamilias.map(fam => {
+          const famCerrada = STATE.familiasColapsadas.has(fam.familia_key);
+          return `
+            <div class="tienda-fam-acc" data-testid="tienda-fam-acc-${esc(fam.familia_key)}" data-open="${famCerrada ? 'false' : 'true'}">
+              <button type="button" class="tienda-fam-head" onclick="toggleAcordeonFamiliaTienda('${esc(fam.familia_key)}')" aria-expanded="${famCerrada ? 'false' : 'true'}">
+                <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                  <span style="font-size:0.9rem; font-weight:900; color:var(--brand-dark);">${famCerrada ? '▸' : '▾'}</span>
+                  <span style="font-weight:900; font-size:1.02rem; color:var(--text);">${esc(fam.familia_nombre)}</span>
+                  <span class="tienda-pres-chip">${fam.total_productos}</span>
+                </div>
+              </button>
+              ${!famCerrada ? `
+                <div class="tienda-fam-body">
+                  ${(fam.subramas || []).map(sr => renderRamaB2B(sr)).join('')}
+                  ${(fam.grupos_directos && fam.grupos_directos.length > 0) ? `
+                    <div class="${listaClase}">
+                      ${fam.grupos_directos.map(g => renderAcordeonProductoBase(g, { mostrarFamiliaEnHeader: false })).join('')}
                     </div>
                   ` : ''}
                 </div>
-                ${resumenComboHtml}
-                ${narrativaGrupo ? `
-                  <button type="button" class="prod-narrativa-snippet"
-                    onclick="abrirVisorFotosProducto(${Number(ofertaDetalle.oferta_id)})">
-                    ${esc(narrativaGrupo)}
-                  </button>
-                ` : ''}
-              </div>
+              ` : ''}
             </div>
-            <div class="prod-pres-list">
-              ${g.presentaciones.map(p => renderFilaPresentacion(p, !esPresentacionUnica && !mostrarPortadaLateral, false)).join('')}
-            </div>
-          </div>
-        `;
-      }).join('');
+          `;
+        }).join('');
+      }
 
       inicializarObservadorVideosPortadaTienda();
 
@@ -5929,7 +6239,7 @@
               🥣 ¿Qué contiene este producto?
             </div>
             <h3 style="margin:4px 0 6px 0; font-size:1.12rem; font-weight:900; color:var(--text); line-height:1.25;">
-              ${esc(p.nombre_publico)}
+              ${esc(p.nombre_base_vidriera || p.nombre_publico)}
             </h3>
             ${unica && presentacionUnica ? `<span class="prod-pres">${esc(presentacionUnica)}</span>` : ''}
           </div>
@@ -10100,7 +10410,7 @@
             <div style="min-width:0; flex:1;">
               <div class="prod-cat">${esc(prod.categoria_familiar || '')}</div>
               <div style="font-size:1.03rem; font-weight:900; color:var(--text); line-height:1.25; margin-top:2px;">
-                ${esc(prod.nombre_publico)}
+                ${esc(prod.nombre_base_vidriera || prod.nombre_publico)}
               </div>
             </div>
             ${ofertaIng ? `
@@ -10181,7 +10491,7 @@
       if (!track || !overlay) return;
 
       if (mediaItems.length > 0) {
-        if (stage) stage.style.minHeight = '';
+        if (stage) { stage.style.display = ''; stage.style.minHeight = ''; }
         track.innerHTML = mediaItems.map((it, idx) => {
           if (it.tipo === 'video') {
             return `
@@ -10200,11 +10510,8 @@
           `;
         }).join('');
       } else {
-        track.innerHTML = `
-          <div class="visor-foto-slide" data-slide-idx="0" style="padding:24px; text-align:center;">
-            <div style="color:#cbd5e1; font-size:0.9rem; font-weight:800;">📖 Historia y detalle del producto</div>
-          </div>
-        `;
+        if (stage) stage.style.display = 'none';
+        track.innerHTML = '';
       }
 
       overlay.classList.add('is-open');

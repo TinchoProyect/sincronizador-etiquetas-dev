@@ -1,6 +1,7 @@
 const { pool } = require('../../facturacion/config/database');
 const { fork } = require('child_process');
 const path = require('path');
+const { invalidarCacheJerarquiaB2B } = require('../../shared/jerarquiaBunkerHelper');
 
 /**
  * GET /api/logistica/b2b-jerarquia
@@ -343,6 +344,8 @@ exports.guardarJerarquiaB2B = async (req, res) => {
                 reglas_nivel_5 = EXCLUDED.reglas_nivel_5,
                 updated_at = NOW()
         `, [famId, artPrinc, ejeN3ToSave, JSON.stringify(cleanReglasN4), JSON.stringify(cleanReglasN5)]);
+
+        invalidarCacheJerarquiaB2B();
 
         res.json({
             success: true,

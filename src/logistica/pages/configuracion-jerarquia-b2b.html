@@ -83,6 +83,17 @@
       box-shadow: 0 4px 15px var(--accent-glow);
     }
 
+    .btn-img-base { background: rgba(15, 23, 42, 0.85); color: #bae6fd; border: 1px solid rgba(56, 189, 248, 0.45); border-radius: 8px; padding: 0.65rem 1.05rem; font-weight: 700; font-size: 0.86rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.45rem; transition: all 0.2s; }
+    .btn-img-base:hover { background: rgba(56, 189, 248, 0.16); border-color: #38bdf8; }
+    .img-base-modal-overlay { display: none; position: fixed; inset: 0; z-index: 9000; background: rgba(2, 6, 23, 0.78); backdrop-filter: blur(4px); align-items: center; justify-content: center; padding: 1rem; }
+    .img-base-modal-overlay.open { display: flex; }
+    .img-base-modal-card { width: 100%; max-width: 960px; max-height: 90vh; background: var(--bg-card); border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 14px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55); }
+    .img-base-modal-head { padding: 1rem 1.25rem; border-bottom: 1px solid var(--border-glass); display: flex; justify-content: space-between; align-items: center; gap: 1rem; background: rgba(15, 23, 42, 0.75); }
+    .img-base-modal-body { padding: 1rem 1.25rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.85rem; }
+    .img-base-row { display: flex; align-items: center; gap: 0.9rem; padding: 0.7rem 0.85rem; border-radius: 10px; background: rgba(15, 23, 42, 0.65); border: 1px solid var(--border-glass); flex-wrap: wrap; }
+    .img-base-thumb { width: 60px; height: 60px; border-radius: 9px; object-fit: cover; border: 1px solid rgba(255, 255, 255, 0.14); background: #0b1220; flex-shrink: 0; }
+    .img-base-placeholder { width: 60px; height: 60px; border-radius: 9px; border: 1px dashed rgba(148, 163, 184, 0.35); background: rgba(15, 23, 42, 0.8); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 1.25rem; flex-shrink: 0; }
+    .header-actions-row { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; }
     /* Sección de Configuración de IVA */
     .iva-section-card {
       background: var(--bg-card);
@@ -474,9 +485,7 @@
         <h1>🌿 Jerarquía y Subcategorías B2B</h1>
         <p>Configuración de taxonomía en 5 niveles en cascada y modalidad de IVA por lista para el catálogo de clientes</p>
       </div>
-      <button class="btn-sync" onclick="sincronizarCatalogo()">
-        <span>🔄 Sincronizar Catálogo Ahora</span>
-      </button>
+      <div class="header-actions-row"><button class="btn-img-base" id="btn-abrir-imagenes-base-b2b" onclick="abrirModalImagenesBase()"><span>🖼️ Imágenes Base Elementales</span></button><button class="btn-sync" onclick="sincronizarCatalogo()"><span>🔄 Sincronizar Catálogo Ahora</span></button></div>
     </div>
 
     <!-- Sección de Configuración de Modalidad de IVA por Lista -->
@@ -735,7 +744,13 @@
                     <div class="art-block">
                       <div class="art-row">
                         <div class="art-info">
-                          <div class="art-name">${art.articulo_principal}</div>
+                          <div style="display:flex; align-items:center; gap:0.55rem; flex-wrap:wrap;">
+                            <div class="art-name">${art.articulo_principal}</div>
+                            <button type="button" onclick="event.stopPropagation(); abrirModalImagenesBase(decodeURIComponent('${encodeURIComponent(art.articulo_principal || '')}'))"
+                              style="padding:0.18rem 0.5rem; border-radius:6px; border:1px solid rgba(56,189,248,0.4); background:rgba(56,189,248,0.12); color:#bae6fd; font-size:0.72rem; font-weight:700; cursor:pointer;">
+                              🖼️ Fotos base
+                            </button>
+                          </div>
                           <div class="art-detected-ejes">
                             ${art.ejes_disponibles.length > 0 
                               ? `Ejes detectados: ` + art.ejes_disponibles.map(e => `<strong>${e.eje}</strong> (${e.valores.length})`).join(' · ')
@@ -1168,6 +1183,167 @@
 
     cargarListasIva();
     cargarJerarquia();
+    let imgBaseData = [];
+    let imgBaseFiltro = '';
+    let imgBaseSoloNodos = false;
+
+    function _escHtmlB2B(v) {
+      return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function asegurarDomModalImagenesBase() {
+      if (document.getElementById('modal-imagenes-base')) return;
+      const div = document.createElement('div');
+      div.innerHTML = `
+        <input type="file" id="input-img-base-file" accept="image/*" style="display:none;" />
+        <div id="modal-imagenes-base" class="img-base-modal-overlay" onclick="if(event.target===this)cerrarModalImagenesBase()">
+          <div class="img-base-modal-card">
+            <div class="img-base-modal-head">
+              <div>
+                <h2 style="margin:0; font-size:1.08rem; font-weight:800; color:#f8fafc;">🖼️ Imágenes Base Elementales LAMDA</h2>
+                <p style="margin:0.2rem 0 0; font-size:0.78rem; color:#94a3b8;">
+                  Cargá 1 foto limpia por Producto Base / Materia Prima y se hereda automáticamente a todas sus presentaciones (200g, 500g, 1kg, packs) y Nodos.
+                </p>
+              </div>
+              <button type="button" onclick="cerrarModalImagenesBase()" style="background:#0f172a; border:1px solid rgba(148,163,184,0.3); color:#cbd5e1; border-radius:8px; padding:0.4rem 0.7rem; cursor:pointer; font-weight:700;">✕ Cerrar</button>
+            </div>
+            <div style="padding:0.75rem 1.25rem; border-bottom:1px solid var(--border-glass); display:flex; gap:0.65rem; flex-wrap:wrap; align-items:center; background:rgba(15,23,42,0.45);">
+              <input type="text" id="img-base-search" class="search-input" style="flex:1; min-width:220px; padding:0.55rem 0.85rem; font-size:0.85rem;"
+                placeholder="Buscar por producto base, familia, SKU o ingrediente (ej: Grana Sol, Nuez, Zapallo)..."
+                oninput="imgBaseFiltro = this.value; renderModalImagenesBase();" />
+              <label style="display:inline-flex; align-items:center; gap:0.4rem; font-size:0.8rem; color:#cbd5e1; cursor:pointer;">
+                <input type="checkbox" id="img-base-solo-nodos" onchange="imgBaseSoloNodos = this.checked; cargarImagenesBase();" />
+                Solo publicados en Nodos
+              </label>
+              <span id="img-base-resumen" style="font-size:0.76rem; color:#94a3b8; font-weight:700;"></span>
+            </div>
+            <div class="img-base-modal-body" id="img-base-lista-body">
+              <div style="text-align:center; padding:2rem; color:#94a3b8;">Cargando productos base...</div>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(div);
+    }
+
+    async function abrirModalImagenesBase(filtroInicial = '') {
+      asegurarDomModalImagenesBase();
+      imgBaseFiltro = String(filtroInicial || '');
+      const inp = document.getElementById('img-base-search');
+      if (inp) inp.value = imgBaseFiltro;
+      document.getElementById('modal-imagenes-base').classList.add('open');
+      await cargarImagenesBase();
+    }
+
+    function cerrarModalImagenesBase() {
+      const m = document.getElementById('modal-imagenes-base');
+      if (m) m.classList.remove('open');
+    }
+
+    async function cargarImagenesBase() {
+      const body = document.getElementById('img-base-lista-body');
+      if (body) body.innerHTML = '<div style="text-align:center; padding:2rem; color:#94a3b8;">Cargando catálogo determinista LAMDA...</div>';
+      try {
+        const resp = await fetch(`/api/produccion/nodos/admin/imagenes-base?solo_nodos=${imgBaseSoloNodos ? 'true' : 'false'}`);
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'Error cargando imágenes base');
+        imgBaseData = data.productos_base || [];
+        renderModalImagenesBase();
+      } catch (err) {
+        if (body) body.innerHTML = `<div style="color:#f87171; padding:1rem;">Error: ${_escHtmlB2B(err.message)}</div>`;
+      }
+    }
+
+    function renderModalImagenesBase() {
+      const body = document.getElementById('img-base-lista-body');
+      const resEl = document.getElementById('img-base-resumen');
+      if (!body) return;
+      const qNorm = String(imgBaseFiltro || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      const terms = qNorm ? qNorm.split(/\s+/).filter(Boolean) : [];
+      const filtrados = imgBaseData.filter(g => {
+        if (terms.length === 0) return true;
+        const bolsa = [
+          g.familia_nombre, g.articulo_principal, ...(g.ruta_compacta || []),
+          g.nombre_base_oficial, g.ingrediente_nombre, g.ingrediente_codigo,
+          ...(g.presentaciones || []).map(p => `${p.sku_nodo} ${p.presentacion_corta}`)
+        ].filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        return terms.every(t => bolsa.includes(t));
+      });
+      const conFoto = filtrados.filter(g => Boolean(g.imagen_base)).length;
+      if (resEl) resEl.textContent = `${filtrados.length} productos base · ${conFoto} con foto base`;
+      if (filtrados.length === 0) {
+        body.innerHTML = '<div style="text-align:center; padding:2rem; color:#64748b;">No se encontraron productos base con ese filtro.</div>';
+        return;
+      }
+      body.innerHTML = filtrados.map(g => {
+        const img = g.imagen_base;
+        const rutaTxt = (g.ruta_compacta || []).join(' › ');
+        const skusPreview = (g.presentaciones || []).slice(0, 6).map(p => `${p.sku_nodo} (${p.presentacion_corta})`).join(' · ');
+        const tipoAncla = g.tipo_ancla_default || (g.ingrediente_id ? 'INGREDIENTE' : 'PRODUCTO_BASE');
+        return `
+          <div class="img-base-row" data-img-base-clave="${_escHtmlB2B(g.clave_producto_base)}">
+            ${img ? `<img class="img-base-thumb" src="${_escHtmlB2B(img.url)}" alt="${_escHtmlB2B(g.nombre_base_oficial)}" />` : `<div class="img-base-placeholder">🖼️</div>`}
+            <div style="flex:1; min-width:220px;">
+              <div style="font-size:0.72rem; color:#c084fc; font-weight:700;">${_escHtmlB2B(rutaTxt)}</div>
+              <div style="font-size:0.95rem; font-weight:800; color:#f8fafc; margin:0.1rem 0;">${_escHtmlB2B(g.nombre_base_oficial)}</div>
+              <div style="font-size:0.74rem; color:#94a3b8;">
+                ${g.ingrediente_id ? `Ancla Ingrediente [${_escHtmlB2B(g.ingrediente_codigo || g.ingrediente_id)}]` : 'Ancla Taxonómica Producto Base'}
+                · <strong style="color:#34d399;">Heredada por ${g.total_presentaciones} presentación${g.total_presentaciones === 1 ? '' : 'es'}</strong>
+                ${g.en_nodos_count > 0 ? `<span style="color:#38bdf8;"> (${g.en_nodos_count} en Nodos)</span>` : ''}
+              </div>
+              <div style="font-size:0.7rem; color:#64748b; margin-top:0.2rem; font-family:monospace;">${_escHtmlB2B(skusPreview)}${g.presentaciones.length > 6 ? ' ...' : ''}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.45rem; flex-shrink:0;">
+              <button type="button" data-btn-subir-base="${_escHtmlB2B(g.clave_producto_base)}"
+                onclick="dispararSubidaImagenBase('${_escHtmlB2B(g.clave_producto_base)}', '${_escHtmlB2B(tipoAncla)}', ${Number(g.ingrediente_id || 0)}, '${_escHtmlB2B(g.sku_principal_combo || '')}', decodeURIComponent('${encodeURIComponent(g.nombre_base_oficial || '')}'))"
+                style="padding:0.45rem 0.78rem; border-radius:7px; border:1px solid rgba(56,189,248,0.5); background:rgba(56,189,248,0.14); color:#bae6fd; font-size:0.77rem; font-weight:700; cursor:pointer;">
+                ${img ? '🔄 Cambiar foto' : '📤 Subir foto base'}
+              </button>
+              ${img ? `<button type="button" onclick="quitarImagenBase(${Number(img.id)})" style="padding:0.45rem 0.65rem; border-radius:7px; border:1px solid rgba(239,68,68,0.4); background:rgba(239,68,68,0.12); color:#fca5a5; font-size:0.77rem; font-weight:700; cursor:pointer;">🗑️</button>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function dispararSubidaImagenBase(claveBase, tipoAncla, ingId, skuCombo, tituloRef) {
+      const inp = document.getElementById('input-img-base-file');
+      if (!inp) return;
+      inp.value = '';
+      inp.onchange = async () => {
+        const file = inp.files && inp.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('foto', file);
+        fd.append('tipo_ancla', tipoAncla);
+        if (ingId > 0) fd.append('ingrediente_id', String(ingId));
+        fd.append('clave_producto_base', claveBase);
+        if (skuCombo) fd.append('articulo_sku', skuCombo);
+        if (tituloRef) fd.append('titulo_referencia', tituloRef);
+        try {
+          const resp = await fetch('/api/produccion/nodos/admin/imagenes-base', { method: 'POST', body: fd });
+          const data = await resp.json();
+          if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo subir la imagen');
+          mostrarToast(`Foto base guardada (${data.presentaciones_heredadas || 1} presentaciones)`);
+          await cargarImagenesBase();
+        } catch (err) {
+          Swal.fire('Error', err.message, 'error');
+        }
+      };
+      inp.click();
+    }
+
+    async function quitarImagenBase(imagenId) {
+      try {
+        const resp = await fetch(`/api/produccion/nodos/admin/imagenes-base/${Number(imagenId)}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo eliminar');
+        mostrarToast('Imagen base eliminada');
+        await cargarImagenesBase();
+      } catch (err) {
+        Swal.fire('Error', err.message, 'error');
+      }
+    }
   </script>
 </body>
 </html>

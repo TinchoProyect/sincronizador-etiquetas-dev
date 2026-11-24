@@ -55,7 +55,11 @@ app.use((req, res, next) => {
         (req.method === 'GET' || req.method === 'HEAD') &&
         !pLower.endsWith('_orig.webp') &&
         !pLower.endsWith('_tmp.mp4') &&
-        /^\/media\/nodos\/\d+\/(?:\d+|bienvenida)\/[a-z0-9_-]+\.(?:webp|mp4)$/i.test(p);
+        (
+            /^\/media\/nodos\/\d+\/(?:\d+|bienvenida)\/[a-z0-9_-]+\.(?:webp|mp4)$/i.test(p) ||
+            /^\/media\/nodos\/catalogo-base\/(?:ingrediente|producto_base|articulo_sku)\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp$/i.test(p) ||
+            /^\/media\/nodos\/grupos\/\d+\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp$/i.test(p)
+        );
 
     const esImagenMarcaPublicaNodo =
         (req.method === 'GET' || req.method === 'HEAD') &&
@@ -80,7 +84,7 @@ app.use((req, res, next) => {
     const esApiNodoPermitida =
         esBeaconTelemetriaTienda ||
         esRecursoPwaNodo ||
-        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|comprobante-pago\/\d+|ofertas-gestor\/\d+(\/fotos(\/preview|\/importar-sugerida|\/[a-z0-9_-]+)?|\/fotos-orden|\/videos(\/[a-z0-9_-]+)?|\/portada)?|gestor\/\d+\/(config-logistica|perfil-contacto|sumar-catalogo|compartir-kit|compradores|geocodificar|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/(estado-entrega|reenviar-recibo-whatsapp)|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(?:-combos)?(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|pedidos\/[^/]+\/(aviso-pago|estado-pago)|cotizar-cp|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/(etiqueta|recibo-marca-blanca\.png)|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
+        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|comprobante-pago\/\d+|ofertas-gestor\/\d+(\/fotos(\/preview|\/importar-sugerida|\/[a-z0-9_-]+)?|\/fotos-orden|\/videos(\/[a-z0-9_-]+)?|\/portada)?|gestor\/\d+\/(config-logistica|perfil-contacto|sumar-catalogo|compartir-kit|compradores|geocodificar|grupos\/(publicacion|config|foto)|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/(estado-entrega|reenviar-recibo-whatsapp)|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(?:-combos)?(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|pedidos\/[^/]+\/(aviso-pago|estado-pago)|cotizar-cp|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/(etiqueta|recibo-marca-blanca\.png)|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
 
     if (esVistaPermitida || esApiNodoPermitida) {
         return next();
@@ -136,6 +140,7 @@ const nodosBarrialesRouter = require('./routes/nodosBarrialesRoutes');
 app.use('/api/tiempos', tiemposRouter);
 app.use('/api/produccion/tiempos', tiemposRouter);
 app.use('/api/produccion/nodos', nodosBarrialesRouter);
+app.use('/api/nodos', nodosBarrialesRouter);
 app.use('/api/produccion', produccionRoutes);
 
 function escHtmlAttrNodos(v) {
@@ -384,7 +389,11 @@ app.use('/media/nodos', (req, res, next) => {
     }
     const subPath = String(req.path || '');
     const subLower = subPath.toLowerCase();
-    if (subLower.endsWith('_orig.webp') || subLower.endsWith('_tmp.mp4') || !/^\/\d+\/(?:\d+|bienvenida)\/[a-z0-9_-]+\.(?:webp|mp4)$/i.test(subPath)) {
+    const esRutaMediaValida =
+        /^\/\d+\/(?:\d+|bienvenida)\/[a-z0-9_-]+\.(?:webp|mp4)$/i.test(subPath) ||
+        /^\/catalogo-base\/(?:ingrediente|producto_base|articulo_sku)\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp$/i.test(subPath) ||
+        /^\/grupos\/\d+\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp$/i.test(subPath);
+    if (subLower.endsWith('_orig.webp') || subLower.endsWith('_tmp.mp4') || !esRutaMediaValida) {
         return res.status(403).json({ ok: false, error: 'Acceso restringido al recurso multimedia.' });
     }
     res.setHeader('X-Content-Type-Options', 'nosniff');

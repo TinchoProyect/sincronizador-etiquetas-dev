@@ -387,11 +387,76 @@ function normalizarModoPortada(rawModo) {
     return 'AUTO';
 }
 
-function construirGaleriaYPortadaOferta({ fotosPropias = [], fotosBase = [], videosPropios = [], portadaModo = 'AUTO', portadaMediaId = null }) {
-    const fotosEf = (Array.isArray(fotosPropias) && fotosPropias.length > 0)
-        ? fotosPropias
-        : (Array.isArray(fotosBase) ? fotosBase : []);
+function normalizarImagenOrigenModo(rawModo, { permitirHeredar = false } = {}) {
+    const m = String(rawModo || '').trim().toUpperCase();
+    if (permitirHeredar && m === 'HEREDAR_GRUPO') return 'HEREDAR_GRUPO';
+    if (m === 'LAMDA_BASE' || m === 'PROPIA' || m === 'SIN_IMAGEN') return m;
+    if (m === 'OCULTA') return 'SIN_IMAGEN';
+    if (m === 'CUSTOM') return 'PROPIA';
+    return permitirHeredar ? 'HEREDAR_GRUPO' : 'LAMDA_BASE';
+}
+
+function construirGaleriaYPortadaOferta({
+    fotosPropias = [],
+    fotosBase = [],
+    videosPropios = [],
+    portadaModo = 'AUTO',
+    portadaMediaId = null,
+    imagenOrigenModo = null,
+    fotoBaseLamda = null,
+    fotoPropiaGrupo = null
+}) {
+    const modoNorm = normalizarModoPortada(portadaModo);
     const videosEf = Array.isArray(videosPropios) ? videosPropios : [];
+    const propiasArr = Array.isArray(fotosPropias) ? fotosPropias : [];
+    const grupoArr = (fotoPropiaGrupo && typeof fotoPropiaGrupo === 'object' && fotoPropiaGrupo.url)
+        ? [fotoPropiaGrupo]
+        : [];
+    const lamdaBaseArr = (fotoBaseLamda && typeof fotoBaseLamda === 'object' && fotoBaseLamda.url)
+        ? [{
+            id: fotoBaseLamda.foto_id || `ib-${fotoBaseLamda.id || 'base'}`,
+            url: String(fotoBaseLamda.url),
+            width: fotoBaseLamda.width ? Number(fotoBaseLamda.width) : null,
+            height: fotoBaseLamda.height ? Number(fotoBaseLamda.height) : null,
+            origen_lamda_base: true
+        }]
+        : (Array.isArray(fotosBase) ? fotosBase : []);
+
+    // Modo explícito de origen de imagen (LAMDA_BASE | PROPIA | SIN_IMAGEN)
+    let origenModoEfectivo = null;
+    if (imagenOrigenModo) {
+        const clean = String(imagenOrigenModo).trim().toUpperCase();
+        if (clean === 'SIN_IMAGEN' || clean === 'LAMDA_BASE' || clean === 'PROPIA') {
+            origenModoEfectivo = clean;
+        }
+    }
+    if (!origenModoEfectivo) {
+        if (modoNorm === 'OCULTA') origenModoEfectivo = 'SIN_IMAGEN';
+        else if (propiasArr.length > 0 || grupoArr.length > 0 || videosEf.length > 0) origenModoEfectivo = 'PROPIA';
+        else origenModoEfectivo = 'LAMDA_BASE';
+    }
+
+    if (origenModoEfectivo === 'SIN_IMAGEN') {
+        return {
+            portada_modo_efectivo: 'OCULTA',
+            imagen_origen_modo_efectivo: 'SIN_IMAGEN',
+            mostrar_imagen: false,
+            portada_media_id_efectivo: null,
+            portada_activa: null,
+            galeria_multimedia: []
+        };
+    }
+
+    let fotosEf = [];
+    let videosActivos = [];
+    if (origenModoEfectivo === 'PROPIA') {
+        fotosEf = propiasArr.length > 0 ? propiasArr : grupoArr;
+        videosActivos = videosEf;
+    } else {
+        // 'LAMDA_BASE': prioriza la Imagen Base Elemental heredada de LAMDA
+        fotosEf = lamdaBaseArr;
+        videosActivos = [];
+    }
 
     const itemsBase = [
         ...fotosEf.map((f, idx) => ({
@@ -403,9 +468,10 @@ function construirGaleriaYPortadaOferta({ fotosPropias = [], fotosBase = [], vid
             height: Number(f.height || 0) || null,
             duration_sec: null,
             tiene_audio: false,
+            origen_lamda_base: Boolean(f.origen_lamda_base),
             orden: idx + 1
         })),
-        ...videosEf.map((v, idx) => ({
+        ...videosActivos.map((v, idx) => ({
             id: String(v.id),
             tipo: 'video',
             url: String(v.url),
@@ -418,13 +484,12 @@ function construirGaleriaYPortadaOferta({ fotosPropias = [], fotosBase = [], vid
         }))
     ];
 
-    const modoNorm = normalizarModoPortada(portadaModo);
     const idNorm = portadaMediaId ? String(portadaMediaId).trim() : '';
 
     let portadaActiva = null;
     if (modoNorm === 'OCULTA') {
         portadaActiva = null;
-    } else if (modoNorm === 'CUSTOM' && idNorm) {
+    } else if (modoNorm === 'CUSTOM' && idNorm && origenModoEfectivo === 'PROPIA') {
         portadaActiva = itemsBase.find(it => it.id === idNorm) || itemsBase[0] || null;
     } else {
         portadaActiva = itemsBase[0] || null;
@@ -440,7 +505,9 @@ function construirGaleriaYPortadaOferta({ fotosPropias = [], fotosBase = [], vid
     }
 
     return {
-        portada_modo_efectivo: modoNorm,
+        portada_modo_efectivo: portadaActiva ? (modoNorm === 'OCULTA' ? 'AUTO' : modoNorm) : 'AUTO',
+        imagen_origen_modo_efectivo: origenModoEfectivo,
+        mostrar_imagen: Boolean(portadaActiva || galeriaOrdenada.length > 0),
         portada_media_id_efectivo: portadaActiva ? portadaActiva.id : null,
         portada_activa: portadaActiva,
         galeria_multimedia: galeriaOrdenada
@@ -646,6 +713,8 @@ async function agregarFotoOferta({ ofertaId, nodoAuthId = null, fileBuffer, rota
         await client.query(
             `UPDATE public.nodos_ofertas_gestor
              SET fotos_vidriera = $1::jsonb,
+                 imagen_origen_modo = 'PROPIA',
+                 portada_modo = CASE WHEN UPPER(COALESCE(portada_modo, 'AUTO')) = 'OCULTA' THEN 'AUTO' ELSE portada_modo END,
                  updated_at = NOW()
              WHERE id = $2`,
             [JSON.stringify(nuevoAlbum), ofertaRow.id]
@@ -854,6 +923,8 @@ async function reordenarFotosOferta({ ofertaId, nodoAuthId = null, ordenIds = nu
         await client.query(
             `UPDATE public.nodos_ofertas_gestor
              SET fotos_vidriera = $1::jsonb,
+                 imagen_origen_modo = 'PROPIA',
+                 portada_modo = CASE WHEN UPPER(COALESCE(portada_modo, 'AUTO')) = 'OCULTA' THEN 'AUTO' ELSE portada_modo END,
                  updated_at = NOW()
              WHERE id = $2`,
             [JSON.stringify(nuevoAlbum), ofertaRow.id]
@@ -1737,6 +1808,7 @@ module.exports = {
     normalizarArrayFotosBd,
     normalizarArrayVideosBd,
     normalizarModoPortada,
+    normalizarImagenOrigenModo,
     construirGaleriaYPortadaOferta,
     previsualizarFotoOferta,
     agregarFotoOferta,

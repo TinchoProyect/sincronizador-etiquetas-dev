@@ -895,6 +895,152 @@
       gap: 8px;
       flex-wrap: wrap;
     }
+    /* Acordeones deterministas B2B + Selector 3-way de imagen en Mi Oferta */
+    .gestor-fam-acc {
+      border: 1.5px solid var(--border);
+      border-radius: 14px;
+      background: #ffffff;
+      margin-bottom: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(62, 37, 25, 0.04);
+    }
+    .gestor-fam-head {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 11px 13px;
+      background: linear-gradient(135deg, #fffdfb, var(--surface-warm));
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .gestor-fam-head:hover {
+      background: #f9f3eb;
+    }
+    .gestor-fam-body {
+      padding: 9px 10px;
+      border-top: 1px solid var(--border);
+      background: #fcfaf7;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .gestor-grp-acc {
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      background: #ffffff;
+      overflow: hidden;
+    }
+    .gestor-grp-acc.has-active {
+      border-color: #86efac;
+      border-left: 4px solid #16a34a;
+    }
+    .gestor-grp-acc.all-paused {
+      background: #faf8f5;
+      border-style: dashed;
+      border-left: 4px solid #94a3b8;
+    }
+    .gestor-grp-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 9px;
+      padding: 9px 11px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .gestor-grp-thumb {
+      width: 44px;
+      height: 44px;
+      border-radius: 9px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      background: var(--surface-warm);
+      flex-shrink: 0;
+    }
+    .gestor-grp-thumb-ph {
+      width: 44px;
+      height: 44px;
+      border-radius: 9px;
+      border: 1px dashed var(--border);
+      background: var(--surface-warm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .gestor-grp-body {
+      padding: 10px 11px 12px;
+      border-top: 1px dashed var(--border);
+      background: #fffdfb;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .gestor-img-mode-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .gestor-img-mode-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      padding: 7px 5px;
+      border-radius: 9px;
+      border: 1.5px solid var(--border);
+      background: #ffffff;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.74rem;
+      font-weight: 800;
+      cursor: pointer;
+      text-align: center;
+    }
+    .gestor-img-mode-btn.is-active {
+      border-color: var(--brand);
+      background: var(--brand-soft);
+      color: var(--brand-dark);
+    }
+    .gestor-pres-row {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 10px;
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .gestor-pres-row.is-unpublished {
+      background: #f8f5f0;
+      border-style: dashed;
+      opacity: 0.92;
+    }
+    .gestor-pres-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .gestor-pres-fin-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      align-items: end;
+    }
+    @media (max-width: 520px) {
+      .gestor-pres-fin-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
     .oferta-status-pill {
       display: inline-flex;
       align-items: center;
@@ -1597,13 +1743,16 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: 6px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
       padding: 4px;
       border-radius: 12px;
       background: var(--surface-warm);
       border: 1px solid var(--border);
       width: 100%;
       max-width: 100%;
+    }
+    .prop-mode-tab-historial {
+      display: none;
     }
     .prop-mode-tab {
       min-width: 0;
@@ -1681,6 +1830,106 @@
       pointer-events: none;
       user-select: none;
       box-shadow: none;
+    }
+    .prop-step-card.is-collapsed-summary {
+      padding: 9px 12px;
+    }
+    .prop-step-card.is-collapsed-summary .prop-step-head {
+      margin-bottom: 0;
+    }
+    .prop-familias-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 7px;
+    }
+    .prop-familia-pill {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 9px 10px;
+      border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: #fffdfb;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 800;
+      text-align: left;
+      cursor: pointer;
+      min-width: 0;
+    }
+    .prop-familia-pill:hover,
+    .prop-familia-pill.is-selected {
+      border-color: var(--brand);
+      background: var(--brand-soft);
+      color: var(--brand-dark);
+    }
+    .prop-gramajes-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .prop-ing-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .prop-ing-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      padding: 9px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.81rem;
+      font-weight: 700;
+      text-align: left;
+      cursor: pointer;
+      min-width: 0;
+    }
+    .prop-ing-btn:hover,
+    .prop-ing-btn.is-selected {
+      border-color: var(--brand);
+      background: var(--brand-soft);
+    }
+    .prop-details-compact {
+      margin-bottom: 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface-warm);
+      padding: 6px 10px;
+    }
+    .prop-details-compact > summary {
+      cursor: pointer;
+      font-size: 0.76rem;
+      font-weight: 800;
+      color: var(--text);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .prop-details-compact > summary::-webkit-details-marker {
+      display: none;
+    }
+    .prop-step-change-btn {
+      padding: 3px 9px;
+      font-size: 0.72rem;
+      font-weight: 800;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #ffffff;
+      color: var(--brand-dark);
+      cursor: pointer;
+      flex-shrink: 0;
     }
     .prop-step-head {
       display: flex;
@@ -2108,10 +2357,22 @@
       transform: scale(0.985);
     }
 
-    @media (max-width: 760px) {
+    @media (max-width: 819px) {
       .propuestas-grid {
         grid-template-columns: minmax(0, 1fr) !important;
-        gap: 12px;
+        gap: 10px;
+      }
+      .prop-mode-tabs {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .prop-mode-tab-historial {
+        display: flex;
+      }
+      .propuestas-grid.is-mobile-historial .propuestas-col-form-body {
+        display: none;
+      }
+      .propuestas-grid:not(.is-mobile-historial) .propuestas-col-historial {
+        display: none;
       }
     }
 
@@ -2143,9 +2404,15 @@
         grid-template-columns: minmax(0, 1fr);
         gap: 8px;
       }
+      .prop-gramajes-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .prop-familias-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
       .prop-mode-tab {
-        font-size: 0.78rem;
-        padding: 7px 5px;
+        font-size: 0.74rem;
+        padding: 7px 4px;
       }
     }
   </style>
@@ -2235,6 +2502,10 @@
       ofertasEstadoTab: '', // 'ACTIVOS' | 'DESACTIVADOS' | 'TODOS'
       ofertasCategoriaSel: 'TODAS',
       ofertasBusquedaTexto: '',
+      ofertasExpandedFamilias: new Set(),
+      ofertasExpandedGrupos: new Set(),
+      ofertasExpandedPresentacionesDetalle: new Set(),
+      _pendienteFotoGrupoClave: '',
       nodo: null,
       modoLaboratorio: false,
       telefonoPruebas: '5492216615746',
@@ -2259,18 +2530,24 @@
       familiasBunkerOficiales: [],
       propCategoriaSel: '',
       propFiltroTexto: '',
+      propRapidoTexto: '',
       propIngredienteIdSel: 0,
       propIngredienteInicializadoId: 0,
       propKilosSel: 0,
+      propPaso3Confirmado: false,
+      propMostrarPesoManual: false,
       propPesoManualTexto: '',
       propUnidadPesoManual: 'g',
       propPrecioObjetivoTexto: '',
       propNombreTexto: '',
+      propAliasVidrieraTexto: '',
       propNombreEditadoManual: false,
       propComentarioTexto: '',
       propConfirmacionReciente: '',
-      propModo: 'fraccion', // 'fraccion' | 'combo'
+      propModo: 'fraccion', // 'fraccion' | 'combo' | 'historial'
       propComboItems: [],   // [{ sku_nodo, cantidad }]
+      propComboPaso1Confirmado: false,
+      propComboFamAbiertas: new Set(),
       propComboFiltro: '',
       propComboAlias: '',
       propComboCat: '',
@@ -2391,6 +2668,10 @@
 
     function esc(s) {
       return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function escJs(s) {
+      return esc(String(s ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\r?\n/g, ' '));
     }
 
     let _timerAvisoFlotante = null;
@@ -4621,6 +4902,8 @@
             const bolsa = normalizarTextoGestor([
               of.sku_nodo,
               of.nombre_oficial_lamda,
+              of.nombre_base_oficial,
+              of.nombre_base_vidriera,
               of.nombre_publico,
               of.nombre_vidriera_personalizado,
               of.nombre_vidriera_efectivo,
@@ -4628,8 +4911,10 @@
               of.categoria_familiar,
               of.categoria_vidriera_personalizada,
               of.categoria_vidriera_efectiva,
+              ...(Array.isArray(of.jerarquia_b2b?.ruta_compacta) ? of.jerarquia_b2b.ruta_compacta : []),
               of.bunker_rubro,
               of.bunker_subrubro,
+              of.presentacion_corta,
               of.presentacion_etiqueta,
               of.narrativa_tienda,
               ...(Array.isArray(of.ingredientes_comerciales) ? of.ingredientes_comerciales : [])
@@ -4849,14 +5134,438 @@
       `;
     }
 
+    function _claveGrupoOfertaGestor(of) {
+      if (of && of.clave_producto_base) return String(of.clave_producto_base);
+      return `sku_${String(of?.sku_nodo || of?.id || '0').replace(/[^a-z0-9_-]/gi, '_')}`;
+    }
+
+    function _construirGruposYFamiliasOfertasGestor(ofertasList = []) {
+      const gruposMap = new Map();
+      for (const of of ofertasList) {
+        const clave = _claveGrupoOfertaGestor(of);
+        const jer = of.jerarquia_b2b || {};
+        const famNombre = String(jer.familia_nombre || of.categoria_oficial_lamda || of.categoria_familiar || 'Almacén').trim();
+        const famKey = `fam_${Number(jer.familia_id || 0)}_${normalizarTextoGestor(famNombre).replace(/[^a-z0-9]+/g, '_')}`;
+        const rutaCorta = (Array.isArray(jer.ruta_compacta) && jer.ruta_compacta.length > 1)
+          ? jer.ruta_compacta.slice(1).join(' › ')
+          : '';
+        if (!gruposMap.has(clave)) {
+          gruposMap.set(clave, {
+            clave_producto_base: clave,
+            familia_key: famKey,
+            familia_id: Number(jer.familia_id || 0),
+            familia_nombre: famNombre,
+            ruta_b2b_corta: rutaCorta,
+            nombre_base_oficial: String(of.nombre_base_oficial || of.nombre_oficial_lamda || of.nombre_publico || '').trim(),
+            nombre_vidriera_grupo: String(of.nombre_vidriera_grupo || '').trim(),
+            categoria_vidriera_grupo: String(of.categoria_vidriera_grupo || '').trim(),
+            nombre_base_vidriera: String(of.nombre_base_vidriera || of.nombre_base_oficial || of.nombre_oficial_lamda || '').trim(),
+            imagen_base_lamda: of.imagen_base_lamda || null,
+            foto_propia_grupo: of.foto_propia_grupo || null,
+            imagen_origen_modo_grupo: String(of.imagen_origen_modo_grupo || of.imagen_origen_modo_efectivo || 'LAMDA_BASE').toUpperCase(),
+            presentaciones: []
+          });
+        }
+        const g = gruposMap.get(clave);
+        if (!g.imagen_base_lamda && of.imagen_base_lamda) g.imagen_base_lamda = of.imagen_base_lamda;
+        if (!g.foto_propia_grupo && of.foto_propia_grupo) g.foto_propia_grupo = of.foto_propia_grupo;
+        g.presentaciones.push(of);
+      }
+
+      const familiasMap = new Map();
+      for (const g of gruposMap.values()) {
+        g.presentaciones.sort((a, b) => Number(a.kilos_unidad || 0) - Number(b.kilos_unidad || 0) || Number(a.id) - Number(b.id));
+        g.activas = g.presentaciones.filter(x => Boolean(x.publicado_tienda)).length;
+        g.total = g.presentaciones.length;
+        g.alguno_activo = g.activas > 0;
+        const rep = g.presentaciones.find(x => x.portada_activa?.url) || g.presentaciones[0];
+        g.portada_url = rep?.portada_activa?.url || (g.imagen_origen_modo_grupo === 'LAMDA_BASE' ? g.imagen_base_lamda?.url : (g.imagen_origen_modo_grupo === 'PROPIA' ? g.foto_propia_grupo?.url : null)) || null;
+
+        if (!familiasMap.has(g.familia_key)) {
+          familiasMap.set(g.familia_key, {
+            familia_key: g.familia_key,
+            familia_id: g.familia_id,
+            familia_nombre: g.familia_nombre,
+            grupos: [],
+            total_presentaciones: 0,
+            activas_presentaciones: 0
+          });
+        }
+        const f = familiasMap.get(g.familia_key);
+        f.grupos.push(g);
+        f.total_presentaciones += g.total;
+        f.activas_presentaciones += g.activas;
+      }
+
+      const familias = Array.from(familiasMap.values()).map(f => {
+        f.grupos.sort((a, b) => a.nombre_base_oficial.localeCompare(b.nombre_base_oficial, 'es-AR'));
+        return f;
+      }).sort((a, b) => a.familia_nombre.localeCompare(b.familia_nombre, 'es-AR'));
+
+      const gruposOrdenados = Array.from(gruposMap.values()).sort((a, b) =>
+        a.familia_nombre.localeCompare(b.familia_nombre, 'es-AR') ||
+        a.nombre_base_oficial.localeCompare(b.nombre_base_oficial, 'es-AR')
+      );
+
+      return { familias, grupos: gruposOrdenados };
+    }
+
+    function toggleAcordeonFamiliaGestor(famKey) {
+      if (GSTATE.ofertasExpandedFamilias.has(famKey)) GSTATE.ofertasExpandedFamilias.delete(famKey);
+      else GSTATE.ofertasExpandedFamilias.add(famKey);
+      const listEl = document.getElementById('ofertas-lista-container');
+      if (listEl) listEl.innerHTML = renderizarListadoTarjetasOfertasHtml();
+    }
+
+    function toggleAcordeonGrupoGestor(claveBase) {
+      if (GSTATE.ofertasExpandedGrupos.has(claveBase)) GSTATE.ofertasExpandedGrupos.delete(claveBase);
+      else GSTATE.ofertasExpandedGrupos.add(claveBase);
+      const listEl = document.getElementById('ofertas-lista-container');
+      if (listEl) listEl.innerHTML = renderizarListadoTarjetasOfertasHtml();
+    }
+
+    function toggleDetallePresentacionGestor(ofertaId) {
+      const idNum = Number(ofertaId);
+      if (GSTATE.ofertasExpandedPresentacionesDetalle.has(idNum)) {
+        GSTATE.ofertasExpandedPresentacionesDetalle.delete(idNum);
+      } else {
+        GSTATE.ofertasExpandedPresentacionesDetalle.add(idNum);
+      }
+      const listEl = document.getElementById('ofertas-lista-container');
+      if (listEl) listEl.innerHTML = renderizarListadoTarjetasOfertasHtml();
+    }
+
+    async function cambiarPublicacionGrupoGestor(claveBase, publicar, ctrlEl) {
+      if (!GSTATE.nodo?.id || !claveBase) return;
+      if (ctrlEl) ctrlEl.disabled = true;
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/grupos/publicacion`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clave_producto_base: claveBase, publicado_tienda: Boolean(publicar) })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          if (ctrlEl) { ctrlEl.disabled = false; ctrlEl.checked = !publicar; }
+          mostrarAvisoPantallaGestor('No se pudo actualizar el grupo: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return;
+        }
+        await cargarPanelGestor();
+        mostrarAvisoPantallaGestor(
+          publicar
+            ? `🟢 Producto activado completo (${data.actualizadas || 1} presentaciones visibles).`
+            : `⏸️ Producto pausado completo (${data.actualizadas || 1} presentaciones ocultas).`,
+          'ok'
+        );
+      } catch (_) {
+        if (ctrlEl) { ctrlEl.disabled = false; ctrlEl.checked = !publicar; }
+        mostrarAvisoPantallaGestor('Falla de red al actualizar la publicación del grupo.', 'error');
+      }
+    }
+
+    async function guardarConfigGrupoVidrieraGestor(claveBase, patchObj) {
+      if (!GSTATE.nodo?.id || !claveBase) return false;
+      try {
+        const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/grupos/config`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clave_producto_base: claveBase, ...patchObj })
+        });
+        const data = await leerRespuestaJsonSegura(resp);
+        if (!resp.ok || !data.ok) {
+          mostrarAvisoPantallaGestor('No se pudo guardar configuración del producto: ' + (data.error || `HTTP ${resp.status}`), 'error');
+          return false;
+        }
+        await cargarPanelGestor();
+        return true;
+      } catch (_) {
+        mostrarAvisoPantallaGestor('Falla de red al guardar configuración del grupo.', 'error');
+        return false;
+      }
+    }
+
+    async function seleccionarModoImagenGrupoGestor(claveBase, modo) {
+      const ok = await guardarConfigGrupoVidrieraGestor(claveBase, {
+        imagen_origen_modo: modo,
+        resetear_overrides_imagen_ofertas: true
+      });
+      if (ok) {
+        const msg = modo === 'LAMDA_BASE'
+          ? '🏛️ Imagen configurada para mostrar la foto por defecto de LAMDA.'
+          : (modo === 'PROPIA'
+            ? '📷 Modo de foto propia seleccionado.'
+            : '🚫 Imagen oculta para todo el producto y sus presentaciones.');
+        mostrarAvisoPantallaGestor(msg, 'ok');
+      }
+    }
+
+    function dispararSubidaFotoGrupoGestor(claveBase) {
+      GSTATE._pendienteFotoGrupoClave = claveBase;
+      let inp = document.getElementById('input-foto-grupo-gestor');
+      if (!inp) {
+        inp = document.createElement('input');
+        inp.type = 'file';
+        inp.id = 'input-foto-grupo-gestor';
+        inp.accept = 'image/*';
+        inp.style.display = 'none';
+        document.body.appendChild(inp);
+      }
+      inp.value = '';
+      inp.onchange = async () => {
+        const file = inp.files && inp.files[0];
+        const clave = GSTATE._pendienteFotoGrupoClave;
+        GSTATE._pendienteFotoGrupoClave = '';
+        if (!file || !clave || !GSTATE.nodo?.id) return;
+        const fd = new FormData();
+        fd.append('clave_producto_base', clave);
+        fd.append('foto', file);
+        try {
+          const resp = await fetchGestor(`/api/produccion/nodos/gestor/${GSTATE.nodo.id}/grupos/foto`, {
+            method: 'POST',
+            body: fd
+          });
+          const data = await leerRespuestaJsonSegura(resp);
+          if (!resp.ok || !data.ok) {
+            mostrarAvisoPantallaGestor('No se pudo subir la foto del producto: ' + (data.error || `HTTP ${resp.status}`), 'error');
+            return;
+          }
+          await cargarPanelGestor();
+          mostrarAvisoPantallaGestor('📷 Foto propia aplicada a todas las presentaciones del producto.', 'ok');
+        } catch (_) {
+          mostrarAvisoPantallaGestor('Error de red al subir la foto del producto.', 'error');
+        }
+      };
+      inp.click();
+    }
+
+    function renderizarFilaPresentacionGrupoHtml(of) {
+      const skuOficial = String(of.sku_nodo || '').trim();
+      const estaActivo = Boolean(of.publicado_tienda);
+      const presCorta = String(of.presentacion_corta || of.presentacion_etiqueta || `${Math.round(Number(of.kilos_unidad || 0) * 1000)}g`).trim();
+      const detalleAbierto = GSTATE.ofertasExpandedPresentacionesDetalle.has(Number(of.id));
+      const nombreVidrieraPers = String(of.nombre_vidriera_personalizado || '').trim();
+      const nombreOficialLamda = String(of.nombre_oficial_lamda || of.nombre_publico || '').trim();
+      const modoOferta = String(of.imagen_origen_modo || 'HEREDAR_GRUPO').toUpperCase();
+
+      return `
+        <div class="gestor-pres-row ${estaActivo ? 'is-published' : 'is-unpublished'}" data-oferta-card-id="${of.id}">
+          <div class="gestor-pres-top">
+            <div style="display:flex; align-items:center; gap:7px; flex-wrap:wrap; min-width:0;">
+              <label class="oferta-toggle-switch" title="Mostrar u ocultar esta presentación">
+                <input type="checkbox" role="switch" aria-checked="${estaActivo ? 'true' : 'false'}"
+                  data-btn-pub-oferta="${of.id}"
+                  ${estaActivo ? 'checked' : ''}
+                  onchange="cambiarEstadoPublicacionOferta(${of.id}, this.checked, this)" />
+                <span class="oferta-toggle-slider"></span>
+              </label>
+              <strong style="font-size:0.9rem; color:var(--text);">${esc(presCorta)}</strong>
+              ${skuOficial ? `<span style="font-family:monospace; font-size:0.71rem; font-weight:800; padding:1px 6px; border-radius:5px; background:var(--surface-warm); border:1px solid var(--border); color:var(--brand-dark);">[${esc(skuOficial)}]</span>` : ''}
+              ${of.es_combo && of.stock_armable !== null ? `<span style="font-size:0.7rem; color:var(--ok); font-weight:800;">Stock: ${Number(of.stock_armable)}</span>` : ''}
+            </div>
+            <div style="display:flex; align-items:center; gap:5px; flex-shrink:0;">
+              ${estaActivo ? `
+                <button type="button" class="btn-soft" style="font-size:0.72rem; padding:4px 8px; min-height:28px;"
+                  onclick="abrirModalDifusionTienda(${Number(of.id)})">📣</button>
+              ` : ''}
+              <button type="button" class="btn-soft" style="font-size:0.72rem; padding:4px 9px; min-height:28px;"
+                data-btn-pres-detalle="${of.id}"
+                onclick="toggleDetallePresentacionGestor(${of.id})">
+                ${detalleAbierto ? 'Cerrar ▴' : '⋯ Opciones'}
+              </button>
+            </div>
+          </div>
+
+          <div class="gestor-pres-fin-grid">
+            <div>
+              <div style="font-size:0.66rem; color:var(--muted); font-weight:800;">Base LAMDA</div>
+              <div style="font-size:0.86rem; font-weight:800; color:var(--text);">${fmt(of.precio_base_nodo_final)}</div>
+            </div>
+            <div>
+              <label style="display:block; font-size:0.66rem; color:var(--muted); font-weight:800;">Margen %</label>
+              <div class="oferta-fin-affix-wrap">
+                <input type="number" step="0.01" min="0" inputmode="decimal"
+                  class="oferta-fin-input has-suffix" style="min-height:34px; padding:4px 22px 4px 7px; font-size:0.84rem;"
+                  data-oferta-input-margen="${of.id}"
+                  value="${Number(Number(of.margen_gestor_pct || 0).toFixed(2))}"
+                  oninput="alEditarMargenOfertaEnVivo(${of.id}, ${Number(of.precio_base_nodo_final || 0)}, this.value)"
+                  onchange="guardarMargenOfertaGestor(${of.id}, ${Number(of.precio_base_nodo_final || 0)}, this.value)" />
+                <span class="oferta-fin-affix is-suffix">%</span>
+              </div>
+            </div>
+            <div>
+              <label style="display:block; font-size:0.66rem; color:var(--ok); font-weight:800;">Gano limpio</label>
+              <div class="oferta-fin-affix-wrap">
+                <span class="oferta-fin-affix is-prefix">$</span>
+                <input type="number" step="1" min="0" inputmode="numeric"
+                  class="oferta-fin-input has-prefix" style="min-height:34px; padding:4px 7px 4px 18px; font-size:0.84rem;"
+                  data-oferta-input-ganancia="${of.id}"
+                  value="${Math.round(Number(of.ganancia_unitaria_gestor || 0))}"
+                  oninput="alEditarGananciaLimpiaOfertaEnVivo(${of.id}, ${Number(of.precio_base_nodo_final || 0)}, this.value)"
+                  onchange="guardarGananciaLimpiaOfertaGestor(${of.id}, ${Number(of.precio_base_nodo_final || 0)}, this.value)" />
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:0.66rem; color:var(--brand-dark); font-weight:800;">En tienda</div>
+              <div data-oferta-precio-tienda="${of.id}" style="font-size:0.96rem; font-weight:900; color:var(--brand-dark);">${fmt(of.precio_venta_vecino)}</div>
+            </div>
+          </div>
+
+          ${detalleAbierto ? `
+            <div style="border-top:1px dashed var(--border); padding-top:8px; display:flex; flex-direction:column; gap:8px;">
+              <div>
+                <label style="display:block; font-size:0.71rem; color:var(--muted); font-weight:800; margin-bottom:2px;">Nombre puntual en tienda (opcional para esta presentación)</label>
+                <input type="text" class="input-sm" style="width:100%;"
+                  data-oferta-nombre-vidriera="${of.id}"
+                  value="${esc(nombreVidrieraPers)}"
+                  placeholder="${esc(nombreOficialLamda)} (usa nombre del grupo u oficial)"
+                  onchange="guardarCambioOferta(${of.id}, { nombre_vidriera_personalizado: this.value })" />
+              </div>
+              <div>
+                <div style="font-size:0.71rem; color:var(--muted); font-weight:800; margin-bottom:4px;">Imagen específica de esta presentación:</div>
+                <select class="input-sm" style="width:100%;" onchange="guardarCambioOferta(${of.id}, { imagen_origen_modo: this.value })">
+                  <option value="HEREDAR_GRUPO" ${modoOferta === 'HEREDAR_GRUPO' ? 'selected' : ''}>Seguir configuración del producto (${esc(of.imagen_origen_modo_grupo || 'LAMDA_BASE')})</option>
+                  <option value="LAMDA_BASE" ${modoOferta === 'LAMDA_BASE' ? 'selected' : ''}>🏛️ Usar foto por defecto LAMDA</option>
+                  <option value="PROPIA" ${modoOferta === 'PROPIA' ? 'selected' : ''}>📷 Usar álbum propio de esta presentación</option>
+                  <option value="SIN_IMAGEN" ${modoOferta === 'SIN_IMAGEN' ? 'selected' : ''}>🚫 No mostrar imagen</option>
+                </select>
+              </div>
+              ${of.tiene_desglose_ingredientes ? `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; background:var(--surface-warm); padding:6px 8px; border-radius:8px; font-size:0.74rem;">
+                  <span>🥣 ${(of.ingredientes_comerciales || []).map(esc).join(', ')}</span>
+                  <label class="switch-label" style="flex-shrink:0;">
+                    <input type="checkbox" ${of.mostrar_ingredientes !== false ? 'checked' : ''}
+                      onchange="guardarCambioOferta(${of.id}, { mostrar_ingredientes: this.checked })" />
+                    <span>Mostrar</span>
+                  </label>
+                </div>
+              ` : ''}
+              ${renderizarAcordeonNarrativaOferta(of)}
+              ${renderizarBloqueAlbumOferta(of)}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function renderizarAcordeonGrupoOfertaHtml(g, { mostrarFamiliaBadge = false } = {}) {
+      const clave = g.clave_producto_base;
+      const estaAbierto = GSTATE.ofertasExpandedGrupos.has(clave);
+      const modoImg = g.imagen_origen_modo_grupo || 'LAMDA_BASE';
+      const lamdaUrl = g.imagen_base_lamda?.url || '';
+      const propiaUrl = g.foto_propia_grupo?.url || g.presentaciones.find(x => (x.fotos_vidriera || []).length > 0)?.fotos_vidriera?.[0]?.url || '';
+      const previewChips = g.presentaciones.map(x => x.presentacion_corta || x.presentacion_etiqueta).filter(Boolean).join(' · ');
+      const esNombreCustom = Boolean(g.nombre_vidriera_grupo && g.nombre_vidriera_grupo.toLowerCase() !== g.nombre_base_oficial.toLowerCase());
+      const thumbUrl = modoImg === 'SIN_IMAGEN' ? '' : (g.portada_url || (modoImg === 'LAMDA_BASE' ? lamdaUrl : propiaUrl) || '');
+
+      return `
+        <div class="gestor-grp-acc ${g.alguno_activo ? 'has-active' : 'all-paused'}" data-clave-grupo="${esc(clave)}" data-open="${estaAbierto ? 'true' : 'false'}">
+          <div class="gestor-grp-head" onclick="toggleAcordeonGrupoGestor('${esc(clave)}')" data-testid="grp-head-${esc(clave)}">
+            <div style="display:flex; align-items:center; gap:9px; min-width:0; flex:1;">
+              ${thumbUrl
+                ? `<img class="gestor-grp-thumb" src="${esc(thumbUrl)}" alt="${esc(g.nombre_base_oficial)}" loading="lazy" />`
+                : `<div class="gestor-grp-thumb-ph" title="${modoImg === 'SIN_IMAGEN' ? 'Sin imagen activa' : 'Sin foto cargada'}">${modoImg === 'SIN_IMAGEN' ? '🚫' : '🖼️'}</div>`
+              }
+              <div style="min-width:0; flex:1;">
+                <div style="font-size:0.68rem; color:var(--brand-dark); font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                  ${mostrarFamiliaBadge ? `${esc(g.familia_nombre)}${g.ruta_b2b_corta ? ` › ${esc(g.ruta_b2b_corta)}` : ''}` : (g.ruta_b2b_corta ? esc(g.ruta_b2b_corta) : esc(g.familia_nombre))}
+                </div>
+                <div style="font-weight:900; font-size:0.93rem; color:var(--text); line-height:1.2;">
+                  ${esc(g.nombre_base_oficial)}
+                </div>
+                <div style="font-size:0.72rem; color:var(--muted); margin-top:2px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                  <span>${esc(previewChips)}</span>
+                  <span>· <strong style="color:${g.activas > 0 ? '#166534' : '#64748b'};">${g.activas}/${g.total} activa${g.total === 1 ? '' : 's'}</strong></span>
+                  ${esNombreCustom ? `<span style="color:var(--brand-dark); font-weight:800;">· 🏷️ "${esc(g.nombre_vidriera_grupo)}"</span>` : ''}
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;" onclick="event.stopPropagation()">
+              <label class="oferta-toggle-switch" title="Activar o pausar todas las presentaciones de este producto">
+                <input type="checkbox" role="switch"
+                  data-testid="switch-grupo-${esc(clave)}"
+                  ${g.alguno_activo ? 'checked' : ''}
+                  onchange="cambiarPublicacionGrupoGestor('${esc(clave)}', this.checked, this)" />
+                <span class="oferta-toggle-slider"></span>
+              </label>
+              <button type="button" aria-expanded="${estaAbierto ? 'true' : 'false'}"
+                onclick="toggleAcordeonGrupoGestor('${esc(clave)}')"
+                style="border:1px solid var(--border); background:var(--surface-warm); color:var(--text); width:30px; height:30px; border-radius:8px; font-weight:900; cursor:pointer;">
+                ${estaAbierto ? '▾' : '▸'}
+              </button>
+            </div>
+          </div>
+
+          ${estaAbierto ? `
+            <div class="gestor-grp-body" data-testid="grp-body-${esc(clave)}">
+              <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(190px, 1fr)); gap:8px; padding:8px 10px; border-radius:10px; background:#fffaf5; border:1px dashed var(--brand-border);">
+                <div>
+                  <label style="display:block; font-size:0.7rem; color:var(--brand-dark); font-weight:800; margin-bottom:3px;">🏪 Nombre en mi tienda (todas las presentaciones)</label>
+                  <input type="text" class="input-sm" style="width:100%;"
+                    data-grupo-nombre="${esc(clave)}"
+                    value="${esc(g.nombre_vidriera_grupo)}"
+                    placeholder="${esc(g.nombre_base_oficial)} (oficial LAMDA)"
+                    onchange="guardarConfigGrupoVidrieraGestor('${esc(clave)}', { nombre_vidriera_grupo: this.value })" />
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.7rem; color:var(--muted); font-weight:800; margin-bottom:3px;">Categoría en mi tienda (opcional)</label>
+                  <input type="text" class="input-sm" style="width:100%;"
+                    list="datalist-familias-oficiales-lamda"
+                    value="${esc(g.categoria_vidriera_grupo)}"
+                    placeholder="${esc(g.familia_nombre)} (por defecto)"
+                    onchange="guardarConfigGrupoVidrieraGestor('${esc(clave)}', { categoria_vidriera_grupo: this.value })" />
+                </div>
+              </div>
+
+              <div style="padding:8px 10px; border-radius:10px; background:#f8fafc; border:1px solid var(--border);">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px; flex-wrap:wrap;">
+                  <span style="font-size:0.74rem; font-weight:900; color:var(--text);">🖼️ Imagen en tu tienda para este producto</span>
+                  ${modoImg === 'LAMDA_BASE'
+                    ? `<span style="font-size:0.69rem; color:${lamdaUrl ? '#166534' : 'var(--muted)'}; font-weight:800;">${lamdaUrl ? '✓ Heredando foto base LAMDA' : 'LAMDA aún no cargó foto base'}</span>`
+                    : (modoImg === 'PROPIA'
+                      ? `<button type="button" class="btn-soft" style="font-size:0.71rem; padding:3px 9px; min-height:28px;" onclick="dispararSubidaFotoGrupoGestor('${esc(clave)}')">📤 ${propiaUrl ? 'Cambiar foto del producto' : 'Subir foto del producto'}</button>`
+                      : `<span style="font-size:0.69rem; color:#92400e; font-weight:800;">Sin imagen en tienda</span>`)
+                  }
+                </div>
+                <div class="gestor-img-mode-grid" data-testid="img-mode-group-${esc(clave)}">
+                  <button type="button" data-img-mode="LAMDA_BASE"
+                    class="gestor-img-mode-btn${modoImg === 'LAMDA_BASE' ? ' is-active' : ''}"
+                    onclick="seleccionarModoImagenGrupoGestor('${esc(clave)}', 'LAMDA_BASE')">
+                    <span>🏛️ Foto LAMDA</span>
+                    <span style="font-size:0.65rem; font-weight:700;">${lamdaUrl ? 'Disponible' : 'Sin cargar'}</span>
+                  </button>
+                  <button type="button" data-img-mode="PROPIA"
+                    class="gestor-img-mode-btn${modoImg === 'PROPIA' ? ' is-active' : ''}"
+                    onclick="seleccionarModoImagenGrupoGestor('${esc(clave)}', 'PROPIA')">
+                    <span>📷 Mi foto</span>
+                    <span style="font-size:0.65rem; font-weight:700;">${propiaUrl ? 'Cargada' : 'Personalizada'}</span>
+                  </button>
+                  <button type="button" data-img-mode="SIN_IMAGEN"
+                    class="gestor-img-mode-btn${modoImg === 'SIN_IMAGEN' ? ' is-active' : ''}"
+                    onclick="seleccionarModoImagenGrupoGestor('${esc(clave)}', 'SIN_IMAGEN')">
+                    <span>🚫 Sin imagen</span>
+                    <span style="font-size:0.65rem; font-weight:700;">Oculta</span>
+                  </button>
+                </div>
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:7px;">
+                ${g.presentaciones.map(p => renderizarFilaPresentacionGrupoHtml(p)).join('')}
+              </div>
+              <div style="font-size:0.7rem; color:var(--muted);">${esc(obtenerLeyendaFiscalMargenGestor())}</div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
     function renderizarListadoTarjetasOfertasHtml() {
       const filtradas = obtenerOfertasFiltradasGestor();
       const total = (GSTATE.ofertas || []).length;
       const activos = (GSTATE.ofertas || []).filter(o => Boolean(o.publicado_tienda)).length;
       const desactivados = total - activos;
       const tab = GSTATE.ofertasEstadoTab || 'TODOS';
-      const hayFiltroExtra = (GSTATE.ofertasCategoriaSel && GSTATE.ofertasCategoriaSel !== 'TODAS') ||
-        Boolean(String(GSTATE.ofertasBusquedaTexto || '').trim());
+      const tieneBusqueda = Boolean(String(GSTATE.ofertasBusquedaTexto || '').trim());
+      const hayFiltroExtra = (GSTATE.ofertasCategoriaSel && GSTATE.ofertasCategoriaSel !== 'TODAS') || tieneBusqueda;
 
       if (filtradas.length === 0) {
         if (!hayFiltroExtra && tab === 'ACTIVOS' && activos === 0 && desactivados > 0) {
@@ -4905,9 +5614,11 @@
         `;
       }
 
+      const { familias, grupos } = _construirGruposYFamiliasOfertasGestor(filtradas);
+
       const resumenFiltroHtml = hayFiltroExtra ? `
         <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:9px; font-size:0.78rem; color:var(--muted); font-weight:800;">
-          <span>Mostrando ${filtradas.length} de ${total} artículos</span>
+          <span>Mostrando ${grupos.length} producto${grupos.length === 1 ? '' : 's'} (${filtradas.length} presentaciones)</span>
           <button type="button" onclick="limpiarFiltrosOfertasGestor()"
             style="border:none; background:transparent; color:var(--brand-dark); font-family:inherit; font-size:0.77rem; font-weight:900; cursor:pointer; text-decoration:underline; padding:0;">
             Limpiar filtros
@@ -4915,7 +5626,42 @@
         </div>
       ` : '';
 
-      return resumenFiltroHtml + filtradas.map(of => renderizarTarjetaOfertaIndividualHtml(of)).join('');
+      // Regla estricta del Buscador: sin auto-desplegar acordeones; muestra Productos Base coincidentes CERRADOS para 1 toque
+      if (tieneBusqueda) {
+        return resumenFiltroHtml + `
+          <div style="display:flex; flex-direction:column; gap:8px;" data-testid="gestor-ofertas-busqueda-grupos">
+            ${grupos.map(g => renderizarAcordeonGrupoOfertaHtml(g, { mostrarFamiliaBadge: true })).join('')}
+          </div>
+        `;
+      }
+
+      // Vista por defecto: Acordeón Familia (CERRADA por defecto) -> Acordeón Producto Base (CERRADO por defecto)
+      return resumenFiltroHtml + familias.map(fam => {
+        const famAbierta = GSTATE.ofertasExpandedFamilias.has(fam.familia_key);
+        return `
+          <div class="gestor-fam-acc" data-fam-key="${esc(fam.familia_key)}" data-open="${famAbierta ? 'true' : 'false'}">
+            <button type="button" class="gestor-fam-head" data-testid="fam-head-${esc(fam.familia_key)}"
+              aria-expanded="${famAbierta ? 'true' : 'false'}"
+              onclick="toggleAcordeonFamiliaGestor('${esc(fam.familia_key)}')">
+              <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+                <span style="font-size:0.85rem; color:var(--brand-dark); font-weight:900;">${famAbierta ? '▾' : '▸'}</span>
+                <span style="font-weight:900; font-size:0.95rem; color:var(--text);">${esc(fam.familia_nombre)}</span>
+                <span style="font-size:0.72rem; font-weight:800; padding:2px 8px; border-radius:999px; background:#ffffff; border:1px solid var(--border); color:var(--muted);">
+                  ${fam.grupos.length} producto${fam.grupos.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <span style="font-size:0.74rem; font-weight:800; color:${fam.activas_presentaciones > 0 ? '#166534' : 'var(--muted)'};">
+                ${fam.activas_presentaciones}/${fam.total_presentaciones} activas
+              </span>
+            </button>
+            ${famAbierta ? `
+              <div class="gestor-fam-body">
+                ${fam.grupos.map(g => renderizarAcordeonGrupoOfertaHtml(g, { mostrarFamiliaBadge: false })).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
     }
 
     function refrescarControlesOfertasEnDom() {
@@ -4943,6 +5689,9 @@
 
     function filtrarTextoOfertasGestor(valor) {
       GSTATE.ofertasBusquedaTexto = String(valor || '');
+      // Regla estricta: al buscar, jamás auto-desplegar acordeones
+      GSTATE.ofertasExpandedFamilias.clear();
+      GSTATE.ofertasExpandedGrupos.clear();
       const listEl = document.getElementById('ofertas-lista-container');
       if (listEl) listEl.innerHTML = renderizarListadoTarjetasOfertasHtml();
       const clearBtn = document.getElementById('ofertas-clear-search');
@@ -5421,82 +6170,56 @@
     }
 
     function renderResumenExistentesLamdaHtml(ingObj) {
-      if (!ingObj) {
-        return `
-          <div style="font-size:0.75rem; color:var(--muted); margin-bottom:7px;">
-            Elegí primero familia/rubro y producto oficial LAMDA arriba para consultar las presentaciones existentes y definir una nueva fracción.
-          </div>
-        `;
-      }
+      if (!ingObj) return '';
       const pres = Array.isArray(ingObj?.presentaciones_lamda) ? ingObj.presentaciones_lamda : [];
-      if (pres.length === 0) {
-        return `
-          <div style="font-size:0.75rem; color:var(--muted); margin-bottom:7px;">
-            Este ingrediente aún no tiene presentaciones fraccionadas en el Búnker LAMDA; podés pedir el gramaje que necesites.
-          </div>
-        `;
-      }
+      if (pres.length === 0) return '';
       const badges = pres.map(p => {
         const enMiOferta = (GSTATE.ofertas || []).some(
           o => Number(o.ingrediente_origen_id) === Number(ingObj.id) && Math.abs(Number(o.kilos_unidad) - Number(p.kilos_unidad)) < 0.003
         );
-        const sub = enMiOferta
-          ? ' (en tu oferta)'
-          : p.en_catalogo_nodos
-            ? ' (cotizada)'
-            : '';
+        const sub = enMiOferta ? ' (en tu oferta)' : p.en_catalogo_nodos ? ' (cotizada)' : '';
         const labelOf = p.label_oficial || (p.sku ? `[${p.sku}] ${p.descripcion_generada || p.etiqueta}` : p.etiqueta);
-        return `<span style="display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:999px; background:#edf7f1; border:1px solid rgba(31,111,74,0.28); color:var(--ok); font-weight:800; font-size:0.72rem; max-width:100%; overflow-wrap:anywhere;">✓ ${esc(labelOf)}${esc(sub)}</span>`;
+        return `<span style="display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:999px; background:#edf7f1; border:1px solid rgba(31,111,74,0.28); color:var(--ok); font-weight:800; font-size:0.71rem; max-width:100%; overflow-wrap:anywhere;">✓ ${esc(labelOf)}${esc(sub)}</span>`;
       }).join(' ');
 
       return `
-        <div style="margin-bottom:8px; padding:8px 10px; border-radius:10px; background:#f8faf8; border:1px solid rgba(31,111,74,0.18); font-size:0.76rem; line-height:1.45;">
-          <div style="color:var(--text); font-weight:800; margin-bottom:4px;">Artículos fraccionados existentes en Búnker LAMDA:</div>
-          <div style="display:flex; flex-wrap:wrap; gap:5px;">${badges}</div>
-          <div style="color:var(--muted); font-size:0.72rem; margin-top:4px;">
-            Esas presentaciones ya existen; para pedir una <strong>nueva fracción</strong> elegí abajo otro gramaje distinto.
-          </div>
-        </div>
+        <details class="prop-details-compact">
+          <summary>📦 Ya existen en Búnker (${pres.length}) <span>▾</span></summary>
+          <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:5px;">${badges}</div>
+        </details>
       `;
     }
 
     function renderOpcionesGramajePropuestaHtml(ingObj, kilosActuales, bloqueado = false) {
-      if (bloqueado || !ingObj) {
-        const vistaPrevia = ['100 g', '250 g', '500 g', '1 kg'];
-        return vistaPrevia.map(label => `
-          <button type="button" class="btn-soft" disabled style="cursor:not-allowed;">
-            ${esc(label)}
-          </button>
-        `).join('');
-      }
+      if (bloqueado || !ingObj) return '';
 
       const kg = Number(kilosActuales || 0);
       const opciones = obtenerOpcionesGramajeIngrediente(ingObj);
 
-      return opciones.map(op => {
-        const activo = kg > 0 && Math.abs(kg - op.val) < 0.003;
+      const pills = opciones.map(op => {
+        const activo = kg > 0 && Math.abs(kg - op.val) < 0.003 && !GSTATE.propMostrarPesoManual;
         const est = evaluarEstadoGramajeParaGestor(ingObj, op.val);
 
         let sufijo = '';
-        let estiloExtra = '';
+        let estiloExtra = 'padding:8px 6px; font-size:0.78rem; text-align:center;';
 
         if (est.tipo === 'EN_OFERTA_NODO' || est.tipo === 'EN_CATALOGO_NODOS') {
-          sufijo = ' · ✓ Cotizada';
-          estiloExtra = activo
+          sufijo = ' ✓';
+          estiloExtra += activo
             ? 'background:var(--ok-soft); border-color:var(--ok); color:var(--ok); font-weight:800;'
-            : 'background:#f4faf6; border-color:rgba(31,111,74,0.28); color:var(--ok); opacity:0.9;';
+            : 'background:#f4faf6; border-color:rgba(31,111,74,0.28); color:var(--ok);';
         } else if (est.tipo === 'YA_EXISTE_LAMDA') {
-          sufijo = est.propuestaPendiente ? ' · ⏳ Pedida' : ' · ✓ Ya existe';
-          estiloExtra = activo
+          sufijo = est.propuestaPendiente ? ' ⏳' : ' ✓ Búnker';
+          estiloExtra += activo
             ? 'background:#eef5f0; border-color:var(--ok); color:var(--ok); font-weight:800;'
             : 'background:#f5f6f4; border-color:#d6d3ce; color:#57534e;';
         } else if (est.tipo === 'YA_SOLICITADA') {
-          sufijo = ' · ⏳ Solicitada';
-          estiloExtra = activo
+          sufijo = ' ⏳';
+          estiloExtra += activo
             ? 'background:var(--warn-soft); border-color:rgba(180,83,9,0.45); color:var(--warn); font-weight:800;'
             : 'background:#fffbeb; border-color:rgba(180,83,9,0.26); color:var(--warn);';
         } else if (activo) {
-          estiloExtra = 'background:var(--brand-soft); border-color:var(--brand); color:var(--brand-dark); font-weight:800;';
+          estiloExtra += 'background:var(--brand-soft); border-color:var(--brand); color:var(--brand-dark); font-weight:800;';
         }
 
         return `
@@ -5507,6 +6230,16 @@
           </button>
         `;
       }).join('');
+
+      const btnOtro = `
+        <button type="button" class="btn-soft"
+          onclick="activarPesoManualPropuestaGestor()"
+          style="padding:8px 6px; font-size:0.78rem; text-align:center; ${GSTATE.propMostrarPesoManual ? 'background:var(--brand-soft); border-color:var(--brand); color:var(--brand-dark); font-weight:800;' : ''}">
+          ✏️ Otro
+        </button>
+      `;
+
+      return pills + btnOtro;
     }
 
     function renderAvisoEstadoGramajeHtml(ingObj, kilos) {
@@ -5619,15 +6352,20 @@
     function reiniciarFormularioPropuestaGestor({ conservarConfirmacion = false } = {}) {
       GSTATE.propCategoriaSel = '';
       GSTATE.propFiltroTexto = '';
+      GSTATE.propRapidoTexto = '';
       GSTATE.propIngredienteIdSel = 0;
       GSTATE.propIngredienteInicializadoId = 0;
       GSTATE.propKilosSel = 0;
+      GSTATE.propPaso3Confirmado = false;
+      GSTATE.propMostrarPesoManual = false;
       GSTATE.propPesoManualTexto = '';
       GSTATE.propUnidadPesoManual = 'g';
       GSTATE.propPrecioObjetivoTexto = '';
       GSTATE.propAliasVidrieraTexto = '';
       GSTATE.propComentarioTexto = '';
       GSTATE.propComboItems = [];
+      GSTATE.propComboPaso1Confirmado = false;
+      GSTATE.propComboFamAbiertas = new Set();
       GSTATE.propComboFiltro = '';
       GSTATE.propComboAlias = '';
       GSTATE.propComboCat = '';
@@ -5660,7 +6398,8 @@
       const paso3Habilitado = paso2Completo;
       const kilos = paso3Habilitado ? Number(GSTATE.propKilosSel || 0) : 0;
       const estGramaje = (paso3Habilitado && kilos > 0) ? evaluarEstadoGramajeParaGestor(ingSel, kilos) : null;
-      const paso3Valido = Boolean(paso3Habilitado && kilos > 0 && estGramaje && estGramaje.tipo === 'NUEVA_DISPONIBLE');
+      const paso3MedidaDisponible = Boolean(paso3Habilitado && kilos > 0 && estGramaje && estGramaje.tipo === 'NUEVA_DISPONIBLE');
+      const paso3Valido = Boolean(paso3MedidaDisponible && GSTATE.propPaso3Confirmado);
       const paso4Habilitado = paso3Valido;
 
       const clasePaso1 = !paso1Completo ? 'is-current' : 'is-done';
@@ -5676,6 +6415,7 @@
         paso3Habilitado,
         kilos,
         estGramaje,
+        paso3MedidaDisponible,
         paso3Valido,
         paso4Habilitado,
         clasePaso1,
@@ -5739,136 +6479,31 @@
         btn.style.opacity = ev.paso4Habilitado ? '1' : '0.46';
         btn.textContent = 'Enviar solicitud';
       }
-      const aliasEl = document.getElementById('prop-alias-vidriera');
-      if (aliasEl) {
-        aliasEl.disabled = !ev.paso4Habilitado;
-        if (!ev.paso4Habilitado) aliasEl.value = '';
-      }
       const resBox = document.getElementById('prop-resumen-seleccion');
       if (resBox) {
         resBox.innerHTML = renderResumenPaso4PropuestaHtml(ev);
       }
-      const step1 = document.getElementById('prop-step-1');
-      if (step1) step1.className = `prop-step-card ${ev.clasePaso1}`;
-      const step2 = document.getElementById('prop-step-2');
-      if (step2) step2.className = `prop-step-card ${ev.clasePaso2}`;
-      const step3 = document.getElementById('prop-step-3');
-      if (step3) step3.className = `prop-step-card ${ev.clasePaso3}`;
-      const step4 = document.getElementById('prop-step-4');
-      if (step4) step4.className = `prop-step-card ${ev.clasePaso4}`;
-
-      const b1 = document.getElementById('prop-step-1-badge');
-      if (b1) b1.innerHTML = renderBadgeEstadoPasoPropuesta(ev.clasePaso1, GSTATE.propCategoriaSel || 'Elegida', 'Paso 1 activo');
-      const b2 = document.getElementById('prop-step-2-badge');
-      if (b2) b2.innerHTML = renderBadgeEstadoPasoPropuesta(ev.clasePaso2, 'Ingrediente elegido', 'Elegí un ingrediente');
-      const b3 = document.getElementById('prop-step-3-badge');
-      if (b3) b3.innerHTML = renderBadgeEstadoPasoPropuesta(ev.clasePaso3, ev.kilos > 0 ? formatearPesoCortoGestor(ev.kilos) : 'Definida', 'Definí el gramaje');
-      const b4 = document.getElementById('prop-step-4-badge');
-      if (b4) b4.innerHTML = renderBadgeEstadoPasoPropuesta(ev.clasePaso4, 'Listo', 'Listo para enviar');
     }
 
     function actualizarControlesPropuestaEnVivo() {
       const ev = evaluarPasosPropuestaGestor();
-      const totalCat = ev.paso1Completo
-        ? (GSTATE.ingredientesDisponibles || []).filter(i => String(i.familia_bunker_nombre || i.categoria_lamda || i.categoria_gestor || '') === String(GSTATE.propCategoriaSel || ''))
-        : [];
-      const filtrados = ev.paso1Completo
-        ? obtenerIngredientesFiltradosGestor(GSTATE.propCategoriaSel, GSTATE.propFiltroTexto)
-        : [];
+      const ingSel = ev.ingSel;
 
-      if (ev.paso1Completo && GSTATE.propIngredienteIdSel && !filtrados.some(i => Number(i.id) === Number(GSTATE.propIngredienteIdSel))) {
-        GSTATE.propIngredienteIdSel = 0;
-        GSTATE.propKilosSel = 0;
-        GSTATE.propPesoManualTexto = '';
-        GSTATE.propAliasVidrieraTexto = '';
+      const ingListBox = document.getElementById('prop-ing-list-body');
+      if (ingListBox && ev.paso2Habilitado && !ev.paso2Completo) {
+        const filtrados = obtenerIngredientesFiltradosGestor(GSTATE.propCategoriaSel, GSTATE.propFiltroTexto);
+        ingListBox.innerHTML = renderListaBotonesIngredientesGestorHtml(filtrados, GSTATE.propIngredienteIdSel);
       }
 
-      const evSync = evaluarPasosPropuestaGestor();
-      const ingSel = evSync.ingSel;
-
-      const wrapFiltro = document.getElementById('prop-filtro-wrap');
-      const inputFiltro = document.getElementById('prop-filtro-ingrediente');
-      if (wrapFiltro) {
-        wrapFiltro.style.display = (evSync.paso2Habilitado && totalCat.length > 8) ? 'block' : 'none';
-      }
-      if (inputFiltro) {
-        inputFiltro.disabled = !evSync.paso2Habilitado;
-      }
-
-      const selIng = document.getElementById('prop-ingrediente');
-      if (selIng) {
-        selIng.disabled = !evSync.paso2Habilitado;
-        if (!evSync.paso2Habilitado) {
-          selIng.innerHTML = `<option value="">Elegí primero familia oficial...</option>`;
-        } else if (filtrados.length === 0) {
-          selIng.innerHTML = `<option value="">Sin coincidencias en ${esc(GSTATE.propCategoriaSel)}</option>`;
-        } else {
-          selIng.innerHTML = `
-            <option value="" ${!ingSel ? 'selected' : ''}>Seleccioná ingrediente LAMDA (${filtrados.length})...</option>
-            ${renderizarOpcionesIngredientesAgrupadasHtml(filtrados, GSTATE.propIngredienteIdSel)}
-          `;
-        }
-      }
-
-      const resumenExistBox = document.getElementById('prop-resumen-existentes');
-      if (resumenExistBox) {
-        resumenExistBox.innerHTML = renderResumenExistentesLamdaHtml(ingSel);
-      }
-
-      const gramajesBox = document.getElementById('prop-gramajes-box');
-      if (gramajesBox) {
-        gramajesBox.innerHTML = renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel, !evSync.paso3Habilitado);
-      }
-
-      const selUnidad = document.getElementById('prop-peso-unidad');
-      if (selUnidad) {
-        selUnidad.disabled = !evSync.paso3Habilitado;
-        if (selUnidad.value !== GSTATE.propUnidadPesoManual) {
-          selUnidad.value = GSTATE.propUnidadPesoManual;
-        }
-      }
-
-      const inputPeso = document.getElementById('prop-peso-manual');
-      if (inputPeso) {
-        inputPeso.disabled = !evSync.paso3Habilitado;
-        if (document.activeElement !== inputPeso) {
-          inputPeso.value = evSync.paso3Habilitado
-            ? formatearValorInputPesoManual(GSTATE.propKilosSel, GSTATE.propUnidadPesoManual)
-            : '';
-          inputPeso.placeholder = GSTATE.propUnidadPesoManual === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350';
-        }
-      }
-
-      const inputTarget = document.getElementById('prop-target');
-      if (inputTarget) {
-        inputTarget.disabled = !evSync.paso3Habilitado;
-        if (!evSync.paso3Habilitado) inputTarget.value = '';
-      }
-
-      const inputComentario = document.getElementById('prop-comentario');
-      if (inputComentario) {
-        inputComentario.disabled = !evSync.paso3Habilitado;
-        if (!evSync.paso3Habilitado) inputComentario.value = '';
-      }
-
-      const inputAlias = document.getElementById('prop-alias-vidriera');
-      if (inputAlias) {
-        inputAlias.disabled = !evSync.paso4Habilitado;
-        if (!evSync.paso4Habilitado) inputAlias.value = '';
-      }
-
-      const confBox = document.getElementById('prop-confirmacion-reciente');
-      if (confBox) {
-        confBox.innerHTML = GSTATE.propConfirmacionReciente ? `
-          <div style="padding:11px 13px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.35); color:var(--ok); font-size:0.82rem; font-weight:700; line-height:1.4; margin-bottom:12px;">
-            ${esc(GSTATE.propConfirmacionReciente)}
-          </div>
-        ` : '';
+      const btnConfManual = document.getElementById('btn-prop-confirmar-manual');
+      if (btnConfManual) {
+        btnConfManual.disabled = !ev.paso3MedidaDisponible;
+        btnConfManual.style.opacity = ev.paso3MedidaDisponible ? '1' : '0.45';
       }
 
       const avisoBox = document.getElementById('prop-aviso-existente');
       if (avisoBox) {
-        avisoBox.innerHTML = evSync.paso3Habilitado
+        avisoBox.innerHTML = ev.paso3Habilitado && GSTATE.propKilosSel > 0
           ? renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel)
           : '';
       }
@@ -5876,31 +6511,137 @@
       sincronizarBotonEnvioPropuestaDom();
     }
 
+    function renderResultadosBusquedaRapidaPropuestaHtml(texto) {
+      const terms = normalizarTextoGestor(texto).split(/\s+/).filter(Boolean);
+      if (terms.length === 0) return '';
+      const matches = (GSTATE.ingredientesDisponibles || []).filter(i => {
+        const bolsa = normalizarTextoGestor(
+          `${i.id} ${i.codigo || ''} ${i.nombre_oficial || ''} ${i.label_oficial || ''} ${i.familia_bunker_nombre || ''} ${i.articulo_principal_bunker || ''}`
+        );
+        return terms.every(t => bolsa.includes(t));
+      }).slice(0, 12);
+      if (matches.length === 0) {
+        return `<div style="padding:8px; font-size:0.78rem; color:var(--muted);">Sin ingredientes LAMDA para "${esc(texto)}".</div>`;
+      }
+      return `
+        <div class="prop-ing-list" style="margin-top:6px;">
+          ${matches.map(i => `
+            <button type="button" class="prop-ing-btn" onclick="seleccionarIngredienteRapidoPropuestaGestor(${Number(i.id)})">
+              <span style="min-width:0; overflow-wrap:anywhere;">
+                <strong>${esc(i.label_oficial || i.nombre_oficial)}</strong>
+                <span style="display:block; font-size:0.71rem; color:var(--muted);">${esc(i.familia_bunker_nombre || 'Sin familia')}${i.articulo_principal_bunker ? ` › ${esc(i.articulo_principal_bunker)}` : ''}</span>
+              </span>
+              <span style="color:var(--brand-dark); font-weight:900; flex-shrink:0;">Elegir →</span>
+            </button>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function alBuscarRapidoPropuestaGestor(texto) {
+      GSTATE.propRapidoTexto = String(texto || '');
+      const box = document.getElementById('prop-rapido-resultados');
+      if (box) box.innerHTML = renderResultadosBusquedaRapidaPropuestaHtml(GSTATE.propRapidoTexto);
+    }
+
+    function seleccionarIngredienteRapidoPropuestaGestor(ingId) {
+      const ing = (GSTATE.ingredientesDisponibles || []).find(i => Number(i.id) === Number(ingId));
+      if (!ing) return;
+      GSTATE.propCategoriaSel = String(ing.familia_bunker_nombre || ing.categoria_lamda || ing.categoria_gestor || '').trim();
+      GSTATE.propIngredienteIdSel = Number(ing.id);
+      GSTATE.propFiltroTexto = '';
+      GSTATE.propRapidoTexto = '';
+      GSTATE.propKilosSel = 0;
+      GSTATE.propPaso3Confirmado = false;
+      GSTATE.propMostrarPesoManual = false;
+      GSTATE.propPesoManualTexto = '';
+      GSTATE.propPrecioObjetivoTexto = '';
+      GSTATE.propAliasVidrieraTexto = '';
+      GSTATE.propComentarioTexto = '';
+      GSTATE.propConfirmacionReciente = '';
+      renderVistaGestor();
+      acompanarScrollPasoGestor('prop-step-3');
+    }
+
+    function renderListaBotonesIngredientesGestorHtml(filtrados = [], selectedId = 0) {
+      if (!filtrados || filtrados.length === 0) {
+        return `<div style="padding:10px; font-size:0.78rem; color:var(--muted); text-align:center;">No hay ingredientes LAMDA que coincidan con ese filtro.</div>`;
+      }
+      const gruposMap = new Map();
+      for (const item of filtrados) {
+        const rawAncla = String(item.articulo_principal_bunker || '').trim() || 'Otros';
+        const clave = normalizarTextoGestor(rawAncla) || 'otros';
+        if (!gruposMap.has(clave)) gruposMap.set(clave, { label: rawAncla, items: [] });
+        gruposMap.get(clave).items.push(item);
+      }
+      return Array.from(gruposMap.values())
+        .sort((a, b) => a.label.localeCompare(b.label, 'es'))
+        .map(g => {
+          const itemsOrd = g.items.slice().sort((a, b) => String(a.nombre_oficial || '').localeCompare(String(b.nombre_oficial || ''), 'es'));
+          return `
+            <div style="margin-top:4px;">
+              <div style="font-size:0.71rem; font-weight:900; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted); margin:2px 0 4px 2px;">${esc(g.label)} (${itemsOrd.length})</div>
+              <div class="prop-ing-list">
+                ${itemsOrd.map(i => `
+                  <button type="button" class="prop-ing-btn ${Number(i.id) === Number(selectedId) ? 'is-selected' : ''}"
+                    onclick="alCambiarIngredientePropuestaGestor(${Number(i.id)})">
+                    <span style="min-width:0; overflow-wrap:anywhere;">${esc(i.label_oficial || i.nombre_claro)}</span>
+                    <span style="color:var(--muted); font-size:0.74rem; flex-shrink:0;">(${Array.isArray(i.presentaciones_lamda) ? i.presentaciones_lamda.length : 0}) →</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }).join('');
+    }
+
+    function retrocederPasoPropuestaGestor(pasoDestino) {
+      GSTATE.propConfirmacionReciente = '';
+      if (pasoDestino <= 1) {
+        GSTATE.propCategoriaSel = '';
+        GSTATE.propFiltroTexto = '';
+        GSTATE.propRapidoTexto = '';
+        GSTATE.propIngredienteIdSel = 0;
+        GSTATE.propKilosSel = 0;
+        GSTATE.propPaso3Confirmado = false;
+        GSTATE.propMostrarPesoManual = false;
+        GSTATE.propPesoManualTexto = '';
+        GSTATE.propPrecioObjetivoTexto = '';
+        GSTATE.propAliasVidrieraTexto = '';
+        GSTATE.propComentarioTexto = '';
+      } else if (pasoDestino === 2) {
+        GSTATE.propFiltroTexto = '';
+        GSTATE.propIngredienteIdSel = 0;
+        GSTATE.propKilosSel = 0;
+        GSTATE.propPaso3Confirmado = false;
+        GSTATE.propMostrarPesoManual = false;
+        GSTATE.propPesoManualTexto = '';
+        GSTATE.propPrecioObjetivoTexto = '';
+        GSTATE.propAliasVidrieraTexto = '';
+        GSTATE.propComentarioTexto = '';
+      } else if (pasoDestino === 3) {
+        GSTATE.propPaso3Confirmado = false;
+      }
+      renderVistaGestor();
+      acompanarScrollPasoGestor(`prop-step-${pasoDestino}`);
+    }
+
     function alCambiarCategoriaPropuestaGestor(nuevaCat) {
       GSTATE.propCategoriaSel = String(nuevaCat || '').trim();
       GSTATE.propFiltroTexto = '';
+      GSTATE.propRapidoTexto = '';
       GSTATE.propIngredienteIdSel = 0;
       GSTATE.propIngredienteInicializadoId = 0;
       GSTATE.propKilosSel = 0;
+      GSTATE.propPaso3Confirmado = false;
+      GSTATE.propMostrarPesoManual = false;
       GSTATE.propPesoManualTexto = '';
       GSTATE.propUnidadPesoManual = 'g';
       GSTATE.propPrecioObjetivoTexto = '';
       GSTATE.propAliasVidrieraTexto = '';
       GSTATE.propComentarioTexto = '';
       GSTATE.propConfirmacionReciente = '';
-
-      const inputFiltro = document.getElementById('prop-filtro-ingrediente');
-      if (inputFiltro) inputFiltro.value = '';
-      const inputPeso = document.getElementById('prop-peso-manual');
-      if (inputPeso) inputPeso.value = '';
-      const inputTarget = document.getElementById('prop-target');
-      if (inputTarget) inputTarget.value = '';
-      const inputAlias = document.getElementById('prop-alias-vidriera');
-      if (inputAlias) inputAlias.value = '';
-      const inputComentario = document.getElementById('prop-comentario');
-      if (inputComentario) inputComentario.value = '';
-
-      actualizarControlesPropuestaEnVivo();
+      renderVistaGestor();
       if (GSTATE.propCategoriaSel) {
         acompanarScrollPasoGestor('prop-step-2');
       }
@@ -5915,20 +6656,14 @@
     function alCambiarIngredientePropuestaGestor(ingId) {
       GSTATE.propIngredienteIdSel = Number(ingId || 0);
       GSTATE.propKilosSel = 0;
+      GSTATE.propPaso3Confirmado = false;
+      GSTATE.propMostrarPesoManual = false;
       GSTATE.propPesoManualTexto = '';
       GSTATE.propUnidadPesoManual = 'g';
       GSTATE.propAliasVidrieraTexto = '';
       GSTATE.propConfirmacionReciente = '';
-
-      const ingSel = obtenerIngredienteSeleccionadoGestor();
-
-      const inputPeso = document.getElementById('prop-peso-manual');
-      if (inputPeso) inputPeso.value = '';
-      const inputAlias = document.getElementById('prop-alias-vidriera');
-      if (inputAlias) inputAlias.value = '';
-
-      actualizarControlesPropuestaEnVivo();
-      if (ingSel) {
+      renderVistaGestor();
+      if (GSTATE.propIngredienteIdSel) {
         acompanarScrollPasoGestor('prop-step-3');
       }
     }
@@ -5938,46 +6673,49 @@
       if (!ingSel) return;
       GSTATE.propConfirmacionReciente = '';
       GSTATE.propKilosSel = Number(kilos || 0);
+      GSTATE.propMostrarPesoManual = false;
       GSTATE.propUnidadPesoManual = Number(GSTATE.propKilosSel) >= 1 ? 'kg' : 'g';
       GSTATE.propPesoManualTexto = formatearValorInputPesoManual(GSTATE.propKilosSel, GSTATE.propUnidadPesoManual);
 
-      const selUnidad = document.getElementById('prop-peso-unidad');
-      if (selUnidad) selUnidad.value = GSTATE.propUnidadPesoManual;
-      const inputPeso = document.getElementById('prop-peso-manual');
-      if (inputPeso) {
-        inputPeso.value = GSTATE.propPesoManualTexto;
-        inputPeso.placeholder = GSTATE.propUnidadPesoManual === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350';
-      }
-      actualizarControlesPropuestaEnVivo();
+      const est = evaluarEstadoGramajeParaGestor(ingSel, GSTATE.propKilosSel);
+      GSTATE.propPaso3Confirmado = Boolean(GSTATE.propKilosSel > 0 && est && est.tipo === 'NUEVA_DISPONIBLE');
 
-      const ev = evaluarPasosPropuestaGestor();
-      if (ev.paso4Habilitado) {
+      renderVistaGestor();
+      if (GSTATE.propPaso3Confirmado) {
         acompanarScrollPasoGestor('prop-step-4');
-      } else if (ev.kilos > 0) {
+      } else {
         acompanarScrollPasoGestor('prop-aviso-existente');
       }
+    }
+
+    function activarPesoManualPropuestaGestor() {
+      GSTATE.propMostrarPesoManual = true;
+      GSTATE.propPaso3Confirmado = false;
+      renderVistaGestor();
+      setTimeout(() => {
+        const inp = document.getElementById('prop-peso-manual');
+        if (inp) inp.focus();
+      }, 40);
+    }
+
+    function confirmarPesoManualPropuestaGestor() {
+      const ev = evaluarPasosPropuestaGestor();
+      if (!ev.paso3MedidaDisponible) return;
+      GSTATE.propPaso3Confirmado = true;
+      renderVistaGestor();
+      acompanarScrollPasoGestor('prop-step-4');
     }
 
     function alEscribirPesoManualGestor(texto) {
       const ingSel = obtenerIngredienteSeleccionadoGestor();
       if (!ingSel) return;
       GSTATE.propConfirmacionReciente = '';
+      GSTATE.propPaso3Confirmado = false;
       GSTATE.propPesoManualTexto = texto;
       const unidad = document.getElementById('prop-peso-unidad')?.value || GSTATE.propUnidadPesoManual || 'g';
       const kilos = parsearKilosDesdeTextoManual(texto, unidad);
-
       GSTATE.propKilosSel = kilos > 0 ? kilos : 0;
-      const gramajesBox = document.getElementById('prop-gramajes-box');
-      if (gramajesBox) {
-        gramajesBox.innerHTML = renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel, false);
-      }
-      const avisoBox = document.getElementById('prop-aviso-existente');
-      if (avisoBox) {
-        avisoBox.innerHTML = GSTATE.propKilosSel > 0
-          ? renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel)
-          : '';
-      }
-      sincronizarBotonEnvioPropuestaDom();
+      actualizarControlesPropuestaEnVivo();
     }
 
     function alSalirPesoManualGestor() {
@@ -6016,7 +6754,9 @@
     }
 
     function cambiarModoPropuestaGestor(nuevoModo) {
-      GSTATE.propModo = nuevoModo === 'combo' ? 'combo' : 'fraccion';
+      if (nuevoModo === 'combo') GSTATE.propModo = 'combo';
+      else if (nuevoModo === 'historial') GSTATE.propModo = 'historial';
+      else GSTATE.propModo = 'fraccion';
       GSTATE.propConfirmacionReciente = '';
       renderVistaGestor();
     }
@@ -6049,13 +6789,13 @@
           base_subtotal: Number((Number(base.precio_base_nodo_final || 0) * cant).toFixed(2))
         });
       }
-      const paso1Completo = itemsDet.length >= 2;
-      const firma = paso1Completo ? construirFirmaComboGestor(itemsDet) : '';
+      const paso1Listo = itemsDet.length >= 2;
+      const firma = paso1Listo ? construirFirmaComboGestor(itemsDet) : '';
       const kilosTot = Number(itemsDet.reduce((s, x) => s + x.kilos_subtotal, 0).toFixed(3));
       const sumaBasesRef = Number(itemsDet.reduce((s, x) => s + x.base_subtotal, 0).toFixed(0));
 
       let estadoFirma = { tipo: 'NUEVA_DISPONIBLE' };
-      if (paso1Completo && firma) {
+      if (paso1Listo && firma) {
         const yaCot = (GSTATE.combosCotizadosCatalogo || []).find(c => String(c.firma_combo || '') === firma);
         if (yaCot) {
           estadoFirma = yaCot.en_mi_oferta
@@ -6071,6 +6811,7 @@
         }
       }
 
+      const paso1Completo = Boolean(paso1Listo && GSTATE.propComboPaso1Confirmado);
       const paso2Habilitado = paso1Completo;
       const paso2Valido = Boolean(paso2Habilitado && estadoFirma.tipo === 'NUEVA_DISPONIBLE');
       const paso3Habilitado = paso2Valido;
@@ -6084,6 +6825,7 @@
       return {
         itemsDet,
         paso1Completo,
+        paso1ListoParaAvanzar: itemsDet.length >= 2,
         firma,
         kilosTot,
         sumaBasesRef,
@@ -6098,10 +6840,37 @@
       };
     }
 
+    function confirmarPaso1ComboPropuestaGestor() {
+      if ((GSTATE.propComboItems || []).length < 2) return;
+      GSTATE.propComboPaso1Confirmado = true;
+      renderVistaGestor();
+      acompanarScrollPasoGestor('prop-cmb-step-2');
+    }
+
+    function retrocederPasoComboPropuestaGestor() {
+      GSTATE.propComboPaso1Confirmado = false;
+      GSTATE.propComboTarget = '';
+      GSTATE.propComboComentario = '';
+      GSTATE.propComboAlias = '';
+      GSTATE.propComboCat = '';
+      GSTATE.propConfirmacionReciente = '';
+      renderVistaGestor();
+      acompanarScrollPasoGestor('prop-cmb-step-1');
+    }
+
+    function toggleFamiliaComboPropuestaGestor(familiaKey) {
+      const k = String(familiaKey || '').trim();
+      if (!k) return;
+      if (!(GSTATE.propComboFamAbiertas instanceof Set)) GSTATE.propComboFamAbiertas = new Set();
+      if (GSTATE.propComboFamAbiertas.has(k)) GSTATE.propComboFamAbiertas.delete(k);
+      else GSTATE.propComboFamAbiertas.add(k);
+      const listEl = document.getElementById('prop-cmb-elegibles-list');
+      if (listEl) listEl.innerHTML = renderListaElegiblesComboGestorHtml();
+    }
+
     function modificarItemComboPropuestaGestor(skuNodo, delta) {
       const skuClean = String(skuNodo || '').trim();
       if (!skuClean) return;
-      const teniaDos = (GSTATE.propComboItems || []).length >= 2;
       const idx = GSTATE.propComboItems.findIndex(x => x.sku_nodo.toUpperCase() === skuClean.toUpperCase());
       if (idx >= 0) {
         const nueva = GSTATE.propComboItems[idx].cantidad + Number(delta || 0);
@@ -6112,6 +6881,7 @@
       }
       // Reinicio en cascada si al quitar un artículo deja de cumplirse el Paso 1 (< 2 SKUs)
       if (GSTATE.propComboItems.length < 2) {
+        GSTATE.propComboPaso1Confirmado = false;
         GSTATE.propComboTarget = '';
         GSTATE.propComboComentario = '';
         GSTATE.propComboAlias = '';
@@ -6119,9 +6889,6 @@
       }
       GSTATE.propConfirmacionReciente = '';
       renderVistaGestor();
-      if (!teniaDos && GSTATE.propComboItems.length >= 2) {
-        acompanarScrollPasoGestor('prop-cmb-step-2');
-      }
     }
 
     function filtrarElegiblesComboGestor(texto) {
@@ -6141,16 +6908,24 @@
       if (filtrados.length === 0) {
         return `<div style="padding:10px; font-size:0.78rem; color:var(--muted); text-align:center;">No encontramos artículos con ese término.</div>`;
       }
-      return filtrados.slice(0, 45).map(a => {
+
+      const famMap = new Map();
+      for (const a of filtrados) {
+        const fam = String(a.categoria_oficial_lamda || 'Varios').trim() || 'Varios';
+        if (!famMap.has(fam)) famMap.set(fam, []);
+        famMap.get(fam).push(a);
+      }
+
+      const renderItemRow = a => {
         const cantSel = selMap.get(String(a.sku_nodo).toUpperCase()) || 0;
         return `
           <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; padding:7px 9px; border-radius:9px; border:1px solid ${cantSel > 0 ? 'var(--brand)' : 'var(--border)'}; background:${cantSel > 0 ? 'var(--brand-soft)' : '#ffffff'}; min-width:0; max-width:100%;">
             <div style="min-width:0; flex:1; overflow-wrap:anywhere;">
-              <div style="font-size:0.8rem; font-weight:800; color:var(--text); line-height:1.25;">
-                <code style="font-size:0.72rem; color:var(--brand-dark);">[${esc(a.sku_nodo)}]</code> ${esc(a.nombre_oficial_lamda)}
+              <div style="font-size:0.79rem; font-weight:800; color:var(--text); line-height:1.25;">
+                <code style="font-size:0.71rem; color:var(--brand-dark);">[${esc(a.sku_nodo)}]</code> ${esc(a.nombre_oficial_lamda)}
               </div>
-              <div style="font-size:0.71rem; color:var(--muted);">
-                ${esc(a.categoria_oficial_lamda)} · Costo Base ref.: <strong>${fmt(a.precio_base_nodo_final)}</strong>
+              <div style="font-size:0.7rem; color:var(--muted);">
+                Costo Base ref.: <strong>${fmt(a.precio_base_nodo_final)}</strong>
               </div>
             </div>
             ${cantSel === 0 ? `
@@ -6168,7 +6943,30 @@
             `}
           </div>
         `;
-      }).join('');
+      };
+
+      if (terms.length > 0 && filtrados.length <= 16) {
+        return `<div style="display:flex; flex-direction:column; gap:6px;">${filtrados.map(renderItemRow).join('')}</div>`;
+      }
+
+      const abiertas = GSTATE.propComboFamAbiertas instanceof Set ? GSTATE.propComboFamAbiertas : new Set();
+      return Array.from(famMap.entries())
+        .sort((a, b) => a[0].localeCompare(b[0], 'es'))
+        .map(([fam, items]) => {
+          const isOpen = abiertas.has(fam) || famMap.size === 1;
+          const selEnFam = items.reduce((acc, it) => acc + (selMap.get(String(it.sku_nodo).toUpperCase()) ? 1 : 0), 0);
+          return `
+            <div style="border:1px solid var(--border); border-radius:10px; background:#fffdfb; overflow:hidden;">
+              <button type="button"
+                onclick="toggleFamiliaComboPropuestaGestor('${escJs(fam)}')"
+                style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:${isOpen ? 'var(--surface-warm)' : '#fffdfb'}; border:none; font-family:inherit; font-size:0.8rem; font-weight:800; color:var(--text); cursor:pointer; text-align:left;">
+                <span>${esc(fam)} (${items.length})${selEnFam > 0 ? ` · <span style="color:var(--brand-dark);">${selEnFam} eleg.</span>` : ''}</span>
+                <span style="font-size:0.75rem; color:var(--muted);">${isOpen ? '▾' : '▸'}</span>
+              </button>
+              ${isOpen ? `<div style="padding:7px; display:flex; flex-direction:column; gap:6px;">${items.map(renderItemRow).join('')}</div>` : ''}
+            </div>
+          `;
+        }).join('');
     }
 
     function alEditarCamposComboGestor() {
@@ -6308,129 +7106,143 @@
         }
       }
 
+      const resumenCombo = ev.itemsDet.map(it => `${it.cantidad}x ${it.sku_nodo}`).join(' · ');
+
       return `
         <div class="prop-steps-stack">
           <!-- PASO 1: SELECCIONAR 2 O MÁS ARTÍCULOS EXISTENTES -->
-          <div id="prop-cmb-step-1" class="prop-step-card ${ev.clasePaso1}">
+          <div id="prop-cmb-step-1" class="prop-step-card ${ev.clasePaso1} ${ev.paso1Completo ? 'is-collapsed-summary' : ''}">
             <div class="prop-step-head">
               <div class="prop-step-title-wrap">
-                <span class="prop-step-num">1</span>
-                <span class="prop-step-title">Elegir 2 o más artículos oficiales</span>
+                <span class="prop-step-num">${ev.paso1Completo ? '✓' : '1'}</span>
+                <span class="prop-step-title">
+                  ${ev.paso1Completo ? esc(`${ev.itemsDet.length} artículos (${formatearPesoCortoGestor(ev.kilosTot)})`) : 'Elegir 2 o más artículos oficiales'}
+                </span>
               </div>
-              <div>
-                ${renderBadgeEstadoPasoPropuesta(ev.clasePaso1, `${ev.itemsDet.length} artículos`, 'Elegí al menos 2')}
+              <div style="display:flex; align-items:center; gap:6px;">
+                ${ev.paso1Completo
+                  ? `<button type="button" class="prop-step-change-btn" onclick="retrocederPasoComboPropuestaGestor()">Cambiar</button>`
+                  : renderBadgeEstadoPasoPropuesta(ev.clasePaso1, `${ev.itemsDet.length} artículos`, 'Elegí mín. 2')}
               </div>
             </div>
 
-            ${ev.itemsDet.length > 0 ? `
-              <div style="margin-bottom:9px; padding:8px 10px; border-radius:10px; background:var(--surface-warm); border:1px solid var(--border);">
-                <div style="font-size:0.73rem; font-weight:800; color:var(--brand-dark); margin-bottom:5px;">
-                  Seleccionados en tu combo (${ev.itemsDet.length} SKUs · ${formatearPesoCortoGestor(ev.kilosTot)}):
-                </div>
-                <div style="display:flex; flex-direction:column; gap:5px;">
-                  ${ev.itemsDet.map(it => `
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:0.78rem; min-width:0;">
-                      <span style="min-width:0; flex:1; overflow-wrap:anywhere;"><strong>${it.cantidad}x</strong> [${esc(it.sku_nodo)}] ${esc(it.nombre_oficial_lamda)}</span>
-                      <div style="display:inline-flex; gap:4px; flex-shrink:0;">
-                        <button type="button" class="btn-soft" style="padding:2px 7px;" onclick="modificarItemComboPropuestaGestor('${esc(it.sku_nodo)}', -1)">−</button>
-                        <button type="button" class="btn-soft" style="padding:2px 7px;" onclick="modificarItemComboPropuestaGestor('${esc(it.sku_nodo)}', 1)">+</button>
+            ${!ev.paso1Completo ? `
+              ${ev.itemsDet.length > 0 ? `
+                <div style="margin-bottom:8px; padding:7px 9px; border-radius:10px; background:var(--surface-warm); border:1px solid var(--border);">
+                  <div style="font-size:0.72rem; font-weight:800; color:var(--brand-dark); margin-bottom:4px;">
+                    En combo: ${esc(resumenCombo)} (${formatearPesoCortoGestor(ev.kilosTot)})
+                  </div>
+                  <div style="display:flex; flex-direction:column; gap:4px;">
+                    ${ev.itemsDet.map(it => `
+                      <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:0.76rem; min-width:0;">
+                        <span style="min-width:0; flex:1; overflow-wrap:anywhere;"><strong>${it.cantidad}x</strong> [${esc(it.sku_nodo)}] ${esc(it.nombre_oficial_lamda)}</span>
+                        <div style="display:inline-flex; gap:4px; flex-shrink:0;">
+                          <button type="button" class="btn-soft" style="padding:2px 7px;" onclick="modificarItemComboPropuestaGestor('${esc(it.sku_nodo)}', -1)">−</button>
+                          <button type="button" class="btn-soft" style="padding:2px 7px;" onclick="modificarItemComboPropuestaGestor('${esc(it.sku_nodo)}', 1)">+</button>
+                        </div>
                       </div>
-                    </div>
-                  `).join('')}
+                    `).join('')}
+                  </div>
                 </div>
+              ` : ''}
+
+              <input type="text" class="input-sm" style="width:100%; margin-bottom:7px;"
+                value="${esc(GSTATE.propComboFiltro)}"
+                placeholder="🔍 Buscar artículo por nombre o SKU..."
+                oninput="filtrarElegiblesComboGestor(this.value)" />
+
+              <div id="prop-cmb-elegibles-list" style="display:flex; flex-direction:column; gap:6px;">
+                ${renderListaElegiblesComboGestorHtml()}
+              </div>
+
+              <div style="margin-top:9px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <span style="font-size:0.75rem; font-weight:800; color:var(--muted);">
+                  Elegidos: <strong>${ev.itemsDet.length}</strong> / mín. 2
+                </span>
+                <button type="button" class="btn-primary"
+                  ${ev.paso1ListoParaAvanzar ? '' : 'disabled'}
+                  style="padding:8px 12px; font-size:0.8rem; opacity:${ev.paso1ListoParaAvanzar ? '1' : '0.45'};"
+                  onclick="confirmarPaso1ComboPropuestaGestor()">
+                  Continuar al Paso 2 →
+                </button>
               </div>
             ` : ''}
-
-            <input type="text" class="input-sm" style="width:100%; margin-bottom:7px;"
-              value="${esc(GSTATE.propComboFiltro)}"
-              placeholder="🔍 Buscar artículo por nombre o código SKU..."
-              oninput="filtrarElegiblesComboGestor(this.value)" />
-
-            <div id="prop-cmb-elegibles-list" style="display:flex; flex-direction:column; gap:6px; max-height:240px; overflow-y:auto;">
-              ${renderListaElegiblesComboGestorHtml()}
-            </div>
           </div>
 
-          <!-- PASO 2: PRESENTACIÓN Y NOTAS DE ARMADO -->
-          <div id="prop-cmb-step-2" class="prop-step-card ${ev.clasePaso2}">
+          <!-- PASO 2: VALIDACIÓN DE COMBINACIÓN -->
+          <div id="prop-cmb-step-2" class="prop-step-card ${ev.clasePaso2} ${ev.clasePaso2 !== 'is-current' ? 'is-collapsed-summary' : ''}" ${!ev.paso2Habilitado ? 'aria-disabled="true"' : ''}>
             <div class="prop-step-head">
               <div class="prop-step-title-wrap">
-                <span class="prop-step-num">2</span>
-                <span class="prop-step-title">Presentación y referencia</span>
+                <span class="prop-step-num">${ev.paso2Valido ? '✓' : '2'}</span>
+                <span class="prop-step-title">${ev.paso2Valido ? `Combinación nueva válida · Ref. ${fmt(ev.sumaBasesRef)}` : 'Validación de combinación'}</span>
               </div>
               <div>
-                ${renderBadgeEstadoPasoPropuesta(ev.clasePaso2, 'Verificado', 'Validando combinación')}
+                ${renderBadgeEstadoPasoPropuesta(ev.clasePaso2, 'Disponible', 'Revisar aviso')}
               </div>
             </div>
 
-            ${avisoPaso2Html}
-
-            <div class="prop-two-col-grid" style="margin-top:${avisoPaso2Html ? '8px' : '0'};">
-              <div>
-                <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Suma bases individuales (ref.)</label>
-                <input type="text" class="input-sm" style="width:100%; background:var(--surface-warm); font-weight:800;" disabled
-                  value="${ev.paso2Habilitado ? fmt(ev.sumaBasesRef) : '—'}" />
-              </div>
-              <div>
-                <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Precio venta pensado ($ opc.)</label>
-                <input type="text" inputmode="numeric" id="prop-cmb-target" class="input-sm" style="width:100%;"
-                  ${!ev.paso2Valido ? 'disabled' : ''}
-                  value="${esc(ev.paso2Valido ? GSTATE.propComboTarget : '')}"
-                  oninput="alEditarCamposComboGestor()"
-                  placeholder="Opcional" />
-              </div>
-            </div>
-
-            <div style="margin-top:8px;">
-              <label style="display:block; font-size:0.73rem; font-weight:800; margin-bottom:3px;">Notas o presentación especial (opcional)</label>
-              <input type="text" id="prop-cmb-comentario" class="input-sm" style="width:100%;"
-                ${!ev.paso2Valido ? 'disabled' : ''}
-                value="${esc(ev.paso2Valido ? GSTATE.propComboComentario : '')}"
-                oninput="alEditarCamposComboGestor()"
-                placeholder="Ej: Para desayuno familiar o caja regalo" />
-            </div>
+            ${ev.clasePaso2 === 'is-current' ? avisoPaso2Html : ''}
           </div>
 
           <!-- PASO 3: NOMBRE COMERCIAL EN MI TIENDA Y ENVÍO -->
-          <div id="prop-cmb-step-3" class="prop-step-card ${ev.clasePaso3}">
+          <div id="prop-cmb-step-3" class="prop-step-card ${ev.clasePaso3} ${!ev.paso3Habilitado ? 'is-collapsed-summary' : ''}" ${!ev.paso3Habilitado ? 'aria-disabled="true"' : ''}>
             <div class="prop-step-head">
               <div class="prop-step-title-wrap">
                 <span class="prop-step-num">3</span>
                 <span class="prop-step-title">Nombre en mi tienda y envío</span>
               </div>
               <div>
-                ${renderBadgeEstadoPasoPropuesta(ev.clasePaso3, 'Listo', 'Definí el nombre')}
+                ${renderBadgeEstadoPasoPropuesta(ev.clasePaso3, 'Listo', 'Paso activo')}
               </div>
             </div>
 
-            <div style="margin-bottom:8px;">
-              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Nombre comercial sugerido para mi vidriera *</label>
-              <input type="text" id="prop-cmb-alias" class="input-sm" style="width:100%;"
-                data-testid="input-gestor-combo-alias"
-                ${!ev.paso3Habilitado ? 'disabled' : ''}
-                value="${esc(ev.paso3Habilitado ? GSTATE.propComboAlias : '')}"
-                oninput="alEditarCamposComboGestor()"
-                placeholder="Ej: Combo Desayuno Energético" />
-            </div>
+            ${ev.paso3Habilitado ? `
+              <div style="margin-bottom:8px;">
+                <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Nombre comercial sugerido para mi vidriera *</label>
+                <input type="text" id="prop-cmb-alias" class="input-sm" style="width:100%;"
+                  data-testid="input-gestor-combo-alias"
+                  value="${esc(GSTATE.propComboAlias)}"
+                  oninput="alEditarCamposComboGestor()"
+                  placeholder="Ej: Combo Desayuno Energético" />
+              </div>
 
-            <div style="margin-bottom:10px;">
-              <label style="display:block; font-size:0.73rem; color:var(--muted); font-weight:800; margin-bottom:3px;">Categoría en mi tienda (opcional)</label>
-              <input type="text" id="prop-cmb-cat" class="input-sm" style="width:100%;"
-                list="datalist-familias-oficiales-lamda"
-                ${!ev.paso3Habilitado ? 'disabled' : ''}
-                value="${esc(ev.paso3Habilitado ? GSTATE.propComboCat : '')}"
-                oninput="alEditarCamposComboGestor()"
-                placeholder="Ej: Combos y Packs" />
-              ${renderizarDatalistFamiliasOficialesHtml()}
-            </div>
+              <details class="prop-details-compact">
+                <summary>➕ Opcionales (categoría, precio ref. ${fmt(ev.sumaBasesRef)}, nota) <span>▾</span></summary>
+                <div style="margin-top:8px; display:flex; flex-direction:column; gap:7px;">
+                  <div>
+                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:800; margin-bottom:3px;">Categoría en mi tienda (opcional)</label>
+                    <input type="text" id="prop-cmb-cat" class="input-sm" style="width:100%;"
+                      list="datalist-familias-oficiales-lamda"
+                      value="${esc(GSTATE.propComboCat)}"
+                      oninput="alEditarCamposComboGestor()"
+                      placeholder="Ej: Combos y Packs" />
+                    ${renderizarDatalistFamiliasOficialesHtml()}
+                  </div>
+                  <div>
+                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:3px;">Precio venta pensado ($ opc. · Suma bases: ${fmt(ev.sumaBasesRef)})</label>
+                    <input type="text" inputmode="numeric" id="prop-cmb-target" class="input-sm" style="width:100%;"
+                      value="${esc(GSTATE.propComboTarget)}"
+                      oninput="alEditarCamposComboGestor()"
+                      placeholder="Opcional" />
+                  </div>
+                  <div>
+                    <label style="display:block; font-size:0.72rem; font-weight:800; margin-bottom:3px;">Notas o presentación especial (opcional)</label>
+                    <input type="text" id="prop-cmb-comentario" class="input-sm" style="width:100%;"
+                      value="${esc(GSTATE.propComboComentario)}"
+                      oninput="alEditarCamposComboGestor()"
+                      placeholder="Ej: Para desayuno familiar o caja regalo" />
+                  </div>
+                </div>
+              </details>
 
-            <button type="button" id="btn-enviar-combo-gestor" class="btn-primary"
-              data-testid="btn-gestor-enviar-combo"
-              ${ev.puedeEnviar ? '' : 'disabled'}
-              style="width:100%; opacity:${ev.puedeEnviar ? '1' : '0.46'};"
-              onclick="enviarPropuestaComboGestor()">
-              Enviar solicitud de Combo
-            </button>
+              <button type="button" id="btn-enviar-combo-gestor" class="btn-primary"
+                data-testid="btn-gestor-enviar-combo"
+                ${ev.puedeEnviar ? '' : 'disabled'}
+                style="width:100%; opacity:${ev.puedeEnviar ? '1' : '0.46'};"
+                onclick="enviarPropuestaComboGestor()">
+                Enviar solicitud de Combo
+              </button>
+            ` : ''}
           </div>
         </div>
       `;
@@ -6454,192 +7266,208 @@
         : [];
       const ingSel = ev.ingSel;
       const esModoCombo = GSTATE.propModo === 'combo';
+      const esModoHistorial = GSTATE.propModo === 'historial';
+      const esModoFraccion = !esModoCombo && !esModoHistorial;
       const totalSolicitudes = (GSTATE.propuestas?.length || 0) + (GSTATE.propuestasCombos?.length || 0);
+      const avisoGramajeHtml = ev.paso3Habilitado && GSTATE.propKilosSel > 0
+        ? renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel)
+        : '';
 
       return `
-        <div class="propuestas-grid">
-          <div class="card">
+        <div class="propuestas-grid ${esModoHistorial ? 'is-mobile-historial' : ''}">
+          <div class="card propuestas-col-form">
             <div class="prop-mode-tabs">
               <button type="button" data-testid="tab-propuesta-fraccion"
-                class="prop-mode-tab ${!esModoCombo ? 'is-active' : ''}"
+                class="prop-mode-tab ${esModoFraccion ? 'is-active' : ''}"
                 onclick="cambiarModoPropuestaGestor('fraccion')">
-                ⚖️ Fracción individual
+                ⚖️ Fracción
               </button>
               <button type="button" data-testid="tab-propuesta-combo"
                 class="prop-mode-tab ${esModoCombo ? 'is-active' : ''}"
                 onclick="cambiarModoPropuestaGestor('combo')">
-                🎁 Armar Combo / Pack
+                🎁 Combo
+              </button>
+              <button type="button" data-testid="tab-propuesta-historial"
+                class="prop-mode-tab prop-mode-tab-historial ${esModoHistorial ? 'is-active' : ''}"
+                onclick="cambiarModoPropuestaGestor('historial')">
+                📋 Solicitudes (${totalSolicitudes})
               </button>
             </div>
 
-            <h3 style="margin:0 0 6px 0; font-size:1rem;">${esModoCombo ? 'Solicitar Cotización de Combo / Pack' : 'Solicitar Nueva Fracción'}</h3>
-            <p style="margin:0 0 12px 0; font-size:0.8rem; color:var(--muted);">
-              ${esModoCombo
-                ? 'Combiná 2 o más artículos ya cotizados para proponer un pack cerrado. Una vez aprobado su Costo Base aparecerá en <strong>Mi Oferta y Márgenes</strong> para fijarle tu margen, fotos y videos.'
-                : 'Completá los pasos en orden seleccionando el ingrediente oficial LAMDA. Cuando se cotice su Precio Base aparecerá en <strong>Mi Oferta y Márgenes</strong> con su SKU oficial.'}
-            </p>
-
-            <div id="prop-confirmacion-reciente">
-              ${GSTATE.propConfirmacionReciente ? `
-                <div style="padding:11px 13px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.35); color:var(--ok); font-size:0.82rem; font-weight:700; line-height:1.4; margin-bottom:12px;">
-                  ${esc(GSTATE.propConfirmacionReciente)}
-                </div>
-              ` : ''}
-            </div>
-
-            ${esModoCombo ? renderFormularioPropuestaComboHtml() : `
-            <div class="prop-steps-stack">
-              <!-- PASO 1: FAMILIA OFICIAL LAMDA (bunker_familias) -->
-              <div id="prop-step-1" class="prop-step-card ${ev.clasePaso1}">
-                <div class="prop-step-head">
-                  <div class="prop-step-title-wrap">
-                    <span class="prop-step-num">1</span>
-                    <span class="prop-step-title">Seleccionar Familia Oficial LAMDA</span>
+            <div class="propuestas-col-form-body">
+              <div id="prop-confirmacion-reciente">
+                ${GSTATE.propConfirmacionReciente ? `
+                  <div style="padding:10px 12px; border-radius:11px; background:var(--ok-soft); border:1px solid rgba(31,111,74,0.35); color:var(--ok); font-size:0.8rem; font-weight:700; line-height:1.4; margin-bottom:10px;">
+                    ${esc(GSTATE.propConfirmacionReciente)}
                   </div>
-                  <div id="prop-step-1-badge">
-                    ${renderBadgeEstadoPasoPropuesta(ev.clasePaso1, GSTATE.propCategoriaSel || 'Elegida', 'Paso 1 activo')}
-                  </div>
-                </div>
-                <select id="prop-categoria" class="input-sm" style="width:100%;" onchange="alCambiarCategoriaPropuestaGestor(this.value)">
-                  <option value="" ${!ev.paso1Completo ? 'selected' : ''}>Seleccioná familia oficial...</option>
-                  ${categoriasUnicas.map(cat => {
-                    const count = disponibles.filter(i => String(i.familia_bunker_nombre || i.categoria_lamda || i.categoria_gestor || '') === cat).length;
-                    return `<option value="${esc(cat)}" ${cat === GSTATE.propCategoriaSel ? 'selected' : ''}>${esc(cat)} (${count})</option>`;
-                  }).join('')}
-                </select>
+                ` : ''}
               </div>
 
-              <!-- PASO 2: INGREDIENTE / PRODUCTO OFICIAL LAMDA (AGRUPADO POR SUSTANTIVO ANCLA) -->
-              <div id="prop-step-2" class="prop-step-card ${ev.clasePaso2}">
-                <div class="prop-step-head">
-                  <div class="prop-step-title-wrap">
-                    <span class="prop-step-num">2</span>
-                    <span class="prop-step-title">Seleccionar Ingrediente / Producto LAMDA</span>
-                  </div>
-                  <div id="prop-step-2-badge">
-                    ${renderBadgeEstadoPasoPropuesta(ev.clasePaso2, 'Ingrediente elegido', 'Elegí un ingrediente')}
-                  </div>
-                </div>
-                <div id="prop-filtro-wrap" style="display:${(ev.paso2Habilitado && totalEnCat.length > 8) ? 'block' : 'none'}; margin-bottom:6px;">
-                  <input type="text" id="prop-filtro-ingrediente" class="input-sm" style="width:100%; font-size:0.82rem;"
-                    ${!ev.paso2Habilitado ? 'disabled' : ''}
-                    value="${esc(GSTATE.propFiltroTexto)}"
-                    oninput="alFiltrarIngredientesPropuestaGestor(this.value)"
-                    placeholder="Filtrar por sustantivo, código o nombre dentro de esta familia..." />
-                </div>
-                <select id="prop-ingrediente" class="input-sm" style="width:100%;"
-                  ${!ev.paso2Habilitado ? 'disabled' : ''}
-                  onchange="alCambiarIngredientePropuestaGestor(this.value)">
-                  ${!ev.paso2Habilitado
-                    ? `<option value="">Elegí primero familia oficial...</option>`
-                    : `
-                      <option value="" ${!ingSel ? 'selected' : ''}>Seleccioná ingrediente LAMDA (${filtrados.length})...</option>
-                      ${renderizarOpcionesIngredientesAgrupadasHtml(filtrados, GSTATE.propIngredienteIdSel)}
-                    `}
-                </select>
-              </div>
-
-              <!-- PASO 3: FRACCIÓN / GRAMAJE Y NOTA OPCIONAL -->
-              <div id="prop-step-3" class="prop-step-card ${ev.clasePaso3}">
-                <div class="prop-step-head">
-                  <div class="prop-step-title-wrap">
-                    <span class="prop-step-num">3</span>
-                    <span class="prop-step-title">Definir Fracción / Gramaje</span>
-                  </div>
-                  <div id="prop-step-3-badge">
-                    ${renderBadgeEstadoPasoPropuesta(ev.clasePaso3, ev.kilos > 0 ? formatearPesoCortoGestor(ev.kilos) : 'Definida', 'Definí el gramaje')}
-                  </div>
-                </div>
-
-                <div id="prop-resumen-existentes">
-                  ${renderResumenExistentesLamdaHtml(ingSel)}
-                </div>
-
-                <div id="prop-gramajes-box" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                  ${renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel, !ev.paso3Habilitado)}
-                </div>
-
-                <div class="prop-peso-precio-grid">
-                  <div>
-                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Otro peso manual</label>
-                    <div style="display:flex; gap:5px; align-items:stretch; min-width:0;">
-                      <input type="text" inputmode="decimal" autocomplete="off" id="prop-peso-manual" class="input-sm"
-                        style="flex:1; min-width:0;"
-                        ${!ev.paso3Habilitado ? 'disabled' : ''}
-                        value="${esc(ev.paso3Habilitado ? formatearValorInputPesoManual(GSTATE.propKilosSel, GSTATE.propUnidadPesoManual) : '')}"
-                        placeholder="${GSTATE.propUnidadPesoManual === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350'}"
-                        oninput="alEscribirPesoManualGestor(this.value)"
-                        onblur="alSalirPesoManualGestor()" />
-                      <select id="prop-peso-unidad" class="input-sm"
-                        style="width:74px; flex-shrink:0; padding-left:7px; padding-right:4px; font-weight:800; background:var(--surface-warm);"
-                        ${!ev.paso3Habilitado ? 'disabled' : ''}
-                        onchange="alCambiarUnidadPesoManualGestor(this.value)">
-                        <option value="g" ${GSTATE.propUnidadPesoManual === 'g' ? 'selected' : ''}>g</option>
-                        <option value="kg" ${GSTATE.propUnidadPesoManual === 'kg' ? 'selected' : ''}>kg</option>
-                      </select>
+              ${esModoCombo ? renderFormularioPropuestaComboHtml() : `
+              <div class="prop-steps-stack">
+                <!-- PASO 1: FAMILIA OFICIAL LAMDA O BÚSQUEDA DIRECTA -->
+                <div id="prop-step-1" class="prop-step-card ${ev.clasePaso1} ${ev.paso1Completo ? 'is-collapsed-summary' : ''}">
+                  <div class="prop-step-head">
+                    <div class="prop-step-title-wrap">
+                      <span class="prop-step-num">${ev.paso1Completo ? '✓' : '1'}</span>
+                      <span class="prop-step-title">${ev.paso1Completo ? esc(GSTATE.propCategoriaSel) : 'Familia oficial o búsqueda directa'}</span>
+                    </div>
+                    <div id="prop-step-1-badge" style="display:flex; align-items:center; gap:6px;">
+                      ${ev.paso1Completo
+                        ? `<button type="button" class="prop-step-change-btn" data-testid="btn-prop-cambiar-paso-1" onclick="retrocederPasoPropuestaGestor(1)">Cambiar</button>`
+                        : renderBadgeEstadoPasoPropuesta(ev.clasePaso1, 'Elegida', 'Paso 1 activo')}
                     </div>
                   </div>
-                  <div>
-                    <label style="display:block; font-size:0.72rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Precio estimado ($ opc.)</label>
-                    <input type="text" inputmode="numeric" id="prop-target" class="input-sm" style="width:100%;"
-                      ${!ev.paso3Habilitado ? 'disabled' : ''}
-                      value="${esc(ev.paso3Habilitado ? GSTATE.propPrecioObjetivoTexto : '')}"
-                      oninput="alEditarMetaPropuestaGestor()"
-                      placeholder="Opcional" />
+                  ${!ev.paso1Completo ? `
+                    <input type="text" id="prop-rapido-ingrediente" class="input-sm"
+                      style="width:100%; margin-bottom:8px;"
+                      value="${esc(GSTATE.propRapidoTexto)}"
+                      oninput="alBuscarRapidoPropuestaGestor(this.value)"
+                      placeholder="🔍 Buscar producto LAMDA directo (ej: Zapallo, Nuez)..." />
+                    <div id="prop-rapido-resultados">${renderResultadosBusquedaRapidaPropuestaHtml(GSTATE.propRapidoTexto)}</div>
+                    <div class="prop-familias-grid">
+                      ${categoriasUnicas.map(cat => {
+                        const count = disponibles.filter(i => String(i.familia_bunker_nombre || i.categoria_lamda || i.categoria_gestor || '') === cat).length;
+                        return `
+                          <button type="button" class="prop-familia-pill"
+                            onclick="alCambiarCategoriaPropuestaGestor('${escJs(cat)}')">
+                            <span style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(cat)}</span>
+                            <span style="font-size:0.72rem; color:var(--muted); flex-shrink:0;">(${count})</span>
+                          </button>
+                        `;
+                      }).join('')}
+                    </div>
+                  ` : ''}
+                </div>
+
+                <!-- PASO 2: INGREDIENTE OFICIAL LAMDA -->
+                <div id="prop-step-2" class="prop-step-card ${ev.clasePaso2} ${ev.clasePaso2 !== 'is-current' ? 'is-collapsed-summary' : ''}" ${!ev.paso2Habilitado ? 'aria-disabled="true"' : ''}>
+                  <div class="prop-step-head">
+                    <div class="prop-step-title-wrap">
+                      <span class="prop-step-num">${ev.paso2Completo ? '✓' : '2'}</span>
+                      <span class="prop-step-title">${ev.paso2Completo && ingSel ? esc(ingSel.label_oficial || ingSel.nombre_claro) : 'Ingrediente oficial LAMDA'}</span>
+                    </div>
+                    <div id="prop-step-2-badge" style="display:flex; align-items:center; gap:6px;">
+                      ${ev.paso2Completo
+                        ? `<button type="button" class="prop-step-change-btn" data-testid="btn-prop-cambiar-paso-2" onclick="retrocederPasoPropuestaGestor(2)">Cambiar</button>`
+                        : renderBadgeEstadoPasoPropuesta(ev.clasePaso2, 'Elegido', `Elegí (${filtrados.length})`)}
+                    </div>
                   </div>
+                  ${ev.clasePaso2 === 'is-current' ? `
+                    ${totalEnCat.length > 5 ? `
+                      <input type="text" id="prop-filtro-ingrediente" class="input-sm" style="width:100%; margin-bottom:7px;"
+                        value="${esc(GSTATE.propFiltroTexto)}"
+                        oninput="alFiltrarIngredientesPropuestaGestor(this.value)"
+                        placeholder="Filtrar por código, sustantivo o nombre..." />
+                    ` : ''}
+                    <div id="prop-ing-list-body">
+                      ${renderListaBotonesIngredientesGestorHtml(filtrados, GSTATE.propIngredienteIdSel)}
+                    </div>
+                  ` : ''}
                 </div>
 
-                <div>
-                  <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Nota operativa opcional</label>
-                  <input type="text" id="prop-comentario" class="input-sm" style="width:100%;"
-                    ${!ev.paso3Habilitado ? 'disabled' : ''}
-                    value="${esc(ev.paso3Habilitado ? GSTATE.propComentarioTexto : '')}"
-                    oninput="alEditarMetaPropuestaGestor()"
-                    placeholder="Ej: Bolsita individual para merienda" />
+                <!-- PASO 3: FRACCIÓN / GRAMAJE -->
+                <div id="prop-step-3" class="prop-step-card ${ev.clasePaso3} ${ev.clasePaso3 !== 'is-current' ? 'is-collapsed-summary' : ''}" ${!ev.paso3Habilitado ? 'aria-disabled="true"' : ''}>
+                  <div class="prop-step-head">
+                    <div class="prop-step-title-wrap">
+                      <span class="prop-step-num">${ev.paso3Valido ? '✓' : '3'}</span>
+                      <span class="prop-step-title">${ev.paso3Valido ? `Fracción: ${esc(formatearPesoCortoGestor(ev.kilos))}` : 'Definir Fracción / Gramaje'}</span>
+                    </div>
+                    <div id="prop-step-3-badge" style="display:flex; align-items:center; gap:6px;">
+                      ${ev.paso3Valido
+                        ? `<button type="button" class="prop-step-change-btn" data-testid="btn-prop-cambiar-paso-3" onclick="retrocederPasoPropuestaGestor(3)">Cambiar</button>`
+                        : renderBadgeEstadoPasoPropuesta(ev.clasePaso3, 'Definida', 'Definí gramaje')}
+                    </div>
+                  </div>
+                  ${ev.clasePaso3 === 'is-current' ? `
+                    <div id="prop-resumen-existentes">${renderResumenExistentesLamdaHtml(ingSel)}</div>
+                    <div id="prop-gramajes-box" class="prop-gramajes-grid">
+                      ${renderOpcionesGramajePropuestaHtml(ingSel, GSTATE.propKilosSel, false)}
+                    </div>
+                    ${GSTATE.propMostrarPesoManual ? `
+                      <div style="display:flex; gap:6px; align-items:stretch; flex-wrap:wrap; margin-bottom:8px;">
+                        <input type="text" inputmode="decimal" autocomplete="off" id="prop-peso-manual" class="input-sm"
+                          style="flex:1; min-width:110px;"
+                          value="${esc(GSTATE.propPesoManualTexto || formatearValorInputPesoManual(GSTATE.propKilosSel, GSTATE.propUnidadPesoManual))}"
+                          placeholder="${GSTATE.propUnidadPesoManual === 'kg' ? 'Ej: 0.35 o 2' : 'Ej: 350'}"
+                          oninput="alEscribirPesoManualGestor(this.value)"
+                          onblur="alSalirPesoManualGestor()" />
+                        <select id="prop-peso-unidad" class="input-sm"
+                          style="width:72px; flex-shrink:0; font-weight:800; background:var(--surface-warm);"
+                          onchange="alCambiarUnidadPesoManualGestor(this.value)">
+                          <option value="g" ${GSTATE.propUnidadPesoManual === 'g' ? 'selected' : ''}>g</option>
+                          <option value="kg" ${GSTATE.propUnidadPesoManual === 'kg' ? 'selected' : ''}>kg</option>
+                        </select>
+                        <button type="button" id="btn-prop-confirmar-manual" class="btn-primary"
+                          ${ev.paso3MedidaDisponible ? '' : 'disabled'}
+                          style="padding:7px 12px; font-size:0.78rem; opacity:${ev.paso3MedidaDisponible ? '1' : '0.45'};"
+                          onclick="confirmarPesoManualPropuestaGestor()">
+                          Confirmar →
+                        </button>
+                      </div>
+                    ` : ''}
+                    <div id="prop-aviso-existente" style="margin-top:${avisoGramajeHtml ? '6px' : '0'};">
+                      ${avisoGramajeHtml}
+                    </div>
+                  ` : ''}
                 </div>
 
-                <div id="prop-aviso-existente" style="margin-top:8px;">
-                  ${ev.paso3Habilitado ? renderAvisoEstadoGramajeHtml(ingSel, GSTATE.propKilosSel) : ''}
+                <!-- PASO 4: CONFIRMACIÓN Y ENVÍO -->
+                <div id="prop-step-4" class="prop-step-card ${ev.clasePaso4} ${!ev.paso4Habilitado ? 'is-collapsed-summary' : ''}" ${!ev.paso4Habilitado ? 'aria-disabled="true"' : ''}>
+                  <div class="prop-step-head">
+                    <div class="prop-step-title-wrap">
+                      <span class="prop-step-num">4</span>
+                      <span class="prop-step-title">Confirmación y envío</span>
+                    </div>
+                    <div id="prop-step-4-badge">
+                      ${renderBadgeEstadoPasoPropuesta(ev.clasePaso4, 'Listo', 'Listo para enviar')}
+                    </div>
+                  </div>
+                  ${ev.paso4Habilitado ? `
+                    <div id="prop-resumen-seleccion">
+                      ${renderResumenPaso4PropuestaHtml(ev)}
+                    </div>
+                    <details class="prop-details-compact">
+                      <summary>➕ Opcionales (precio ref., nota operativa, alias vidriera) <span>▾</span></summary>
+                      <div style="margin-top:8px; display:flex; flex-direction:column; gap:7px;">
+                        <div class="prop-two-col-grid">
+                          <div>
+                            <label style="display:block; font-size:0.71rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Precio estimado ($ opc.)</label>
+                            <input type="text" inputmode="numeric" id="prop-target" class="input-sm" style="width:100%;"
+                              value="${esc(GSTATE.propPrecioObjetivoTexto)}"
+                              oninput="alEditarMetaPropuestaGestor()"
+                              placeholder="Opcional" />
+                          </div>
+                          <div>
+                            <label style="display:block; font-size:0.71rem; color:var(--muted); font-weight:700; margin-bottom:2px;">Alias vidriera (opc.)</label>
+                            <input type="text" id="prop-alias-vidriera" class="input-sm" style="width:100%;"
+                              value="${esc(GSTATE.propAliasVidrieraTexto || '')}"
+                              oninput="alEditarMetaPropuestaGestor()"
+                              placeholder="Si queda vacío usa LAMDA" />
+                          </div>
+                        </div>
+                        <div>
+                          <label style="display:block; font-size:0.71rem; font-weight:800; margin-bottom:2px;">Nota operativa opcional</label>
+                          <input type="text" id="prop-comentario" class="input-sm" style="width:100%;"
+                            value="${esc(GSTATE.propComentarioTexto)}"
+                            oninput="alEditarMetaPropuestaGestor()"
+                            placeholder="Ej: Bolsita individual para merienda" />
+                        </div>
+                      </div>
+                    </details>
+                    <button type="button" id="btn-enviar-propuesta-gestor" class="btn-primary"
+                      style="width:100%;"
+                      onclick="enviarNuevaPropuestaGestor()">
+                      Enviar solicitud
+                    </button>
+                  ` : ''}
                 </div>
               </div>
-
-              <!-- PASO 4: ALIAS DE VIDRIERA OPCIONAL + RESUMEN TÉCNICO Y ENVIAR SOLICITUD -->
-              <div id="prop-step-4" class="prop-step-card ${ev.clasePaso4}">
-                <div class="prop-step-head">
-                  <div class="prop-step-title-wrap">
-                    <span class="prop-step-num">4</span>
-                    <span class="prop-step-title">Confirmación y envío</span>
-                  </div>
-                  <div id="prop-step-4-badge">
-                    ${renderBadgeEstadoPasoPropuesta(ev.clasePaso4, 'Listo', 'Listo para enviar')}
-                  </div>
-                </div>
-
-                <div style="margin-bottom:10px;">
-                  <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Alias sugerido para mi vidriera (opcional)</label>
-                  <input type="text" id="prop-alias-vidriera" class="input-sm" style="width:100%;"
-                    ${!ev.paso4Habilitado ? 'disabled' : ''}
-                    value="${esc(ev.paso4Habilitado ? (GSTATE.propAliasVidrieraTexto || '') : '')}"
-                    oninput="alEditarMetaPropuestaGestor()"
-                    placeholder="Opcional: ej. Mix Selección Paraíso (si queda vacío usa el nombre oficial LAMDA)" />
-                </div>
-
-                <div id="prop-resumen-seleccion">
-                  ${renderResumenPaso4PropuestaHtml(ev)}
-                </div>
-
-                <button type="button" id="btn-enviar-propuesta-gestor" class="btn-primary"
-                  ${ev.paso4Habilitado ? '' : 'disabled'}
-                  style="width:100%; opacity:${ev.paso4Habilitado ? '1' : '0.46'};"
-                  onclick="enviarNuevaPropuestaGestor()">
-                  Enviar solicitud
-                </button>
-              </div>
+              `}
             </div>
-            `}
           </div>
 
-          <div class="card">
+          <div class="card propuestas-col-historial">
             <h3 style="margin:0 0 12px 0; font-size:1rem;">Mis Solicitudes (${totalSolicitudes})</h3>
             <div style="display:flex; flex-direction:column; gap:10px;">
               ${totalSolicitudes === 0 ? `
@@ -6784,10 +7612,12 @@
         btn.textContent = 'Enviando solicitud...';
       }
 
-      const comentarioInput = (document.getElementById('prop-comentario')?.value || '').trim();
+      const comentarioInput = String((document.getElementById('prop-comentario')?.value ?? GSTATE.propComentarioTexto) || '').trim();
       const comentarioFinal = solicitarHabilitacionExistente && !comentarioInput
         ? 'Solicitud para habilitar presentación estándar de LAMDA en mi tienda.'
         : comentarioInput;
+
+      const targetNum = Number((document.getElementById('prop-target')?.value ?? GSTATE.propPrecioObjetivoTexto) || 0);
 
       const payload = {
         nodo_solicitante_id: GSTATE.nodo.id,
@@ -6795,11 +7625,11 @@
         flujo_sugerido: Number(ingSel.flujo || 2),
         familia_bunker_id: Number(ingSel.familia_bunker_id || 0) || null,
         articulo_principal_bunker: ingSel.articulo_principal_bunker || null,
-        categoria_sugerida: ingSel.familia_bunker_nombre || ingSel.categoria_lamda || ingSel.categoria_gestor || document.getElementById('prop-categoria')?.value || 'Frutos Secos',
+        categoria_sugerida: ingSel.familia_bunker_nombre || ingSel.categoria_lamda || ingSel.categoria_gestor || GSTATE.propCategoriaSel || 'Frutos Secos',
         nombre_sugerido: nombreConPeso,
         alias_vidriera_sugerido: aliasVidrieraInput || null,
         kilos_sugeridos: kilos,
-        precio_objetivo_vecino: Number(document.getElementById('prop-target')?.value || 0),
+        precio_objetivo_vecino: Number.isFinite(targetNum) ? targetNum : 0,
         comentario_gestor: comentarioFinal,
         solicitar_habilitacion_existente: solicitarHabilitacionExistente
       };
