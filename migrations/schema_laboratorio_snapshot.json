@@ -1560,6 +1560,16 @@
         "numeric_scale": 0,
         "is_nullable": "YES",
         "column_default": "(date_part('year'::text, CURRENT_DATE))::integer"
+      },
+      "destinatarios_saldo_config": {
+        "ordinal_position": 33,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "bunker_combos_componentes": {

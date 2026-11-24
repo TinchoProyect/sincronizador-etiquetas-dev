@@ -139,7 +139,17 @@ const enviarResumenCuenta = async (req, res) => {
     console.log(`📧 [EMAIL-CTRL] Petición de envío de resumen de cuenta corriente por Email`);
 
     try {
-        const { cliente, destinatarios, pdfBase64, fechaCorte, saldoActual, avisoSaldoExcedidoHtml } = req.body;
+        const {
+            cliente,
+            destinatarios,
+            pdfBase64,
+            fechaCorte,
+            saldoActual,
+            saldoResumen,
+            avisoSaldoExcedidoHtml,
+            portalAccesoHtml,
+            portalAcceso
+        } = req.body;
 
         if (!destinatarios || !destinatarios.trim()) {
             return res.status(400).json({
@@ -158,14 +168,23 @@ const enviarResumenCuenta = async (req, res) => {
         }
 
         const pdfBuffer = Buffer.from(pdfBase64, 'base64');
-        const resultado = await emailService.enviarResumenCuentaPdf(cliente, pdfBuffer, destinatarios, fechaCorte, saldoActual, { avisoSaldoExcedidoHtml });
+        const resultado = await emailService.enviarResumenCuentaPdf(
+            cliente,
+            pdfBuffer,
+            destinatarios,
+            fechaCorte,
+            saldoActual,
+            { avisoSaldoExcedidoHtml, saldoResumen, portalAccesoHtml, portalAcceso }
+        );
 
         res.json({
             success: true,
             message: 'Envío de correo electrónico del resumen de cuenta corriente procesado.',
             data: {
                 destinatarios: resultado.recipients.join(', '),
-                messageId: resultado.messageId
+                messageId: resultado.messageId,
+                simulated: Boolean(resultado.simulated),
+                ...(resultado.simulated ? { subject: resultado.subject, htmlPreview: resultado.htmlBody } : {})
             }
         });
 

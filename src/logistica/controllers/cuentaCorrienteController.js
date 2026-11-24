@@ -13,6 +13,7 @@ const ClientesBunkerModel = require('../models/clientesBunkerModel');
 try {
     delete require.cache[require.resolve('../services/composicionSaldoService')];
     delete require.cache[require.resolve('../services/salvavidasService')];
+    delete require.cache[require.resolve('../services/portalB2BAccesoService')];
     const cachedPagosEfectivo = require.cache[require.resolve('../services/pagosEfectivoService')]?.exports;
     delete require.cache[require.resolve('../services/pagosEfectivoService')];
     const freshPagosEfectivo = require('../services/pagosEfectivoService');
@@ -23,6 +24,56 @@ try {
 } catch (e) {}
 const composicionSaldoService = require('../services/composicionSaldoService');
 const salvavidasService = require('../services/salvavidasService');
+const {
+    resolverUrlPortalB2BOficial,
+    sanitizarEmailReal,
+    normalizarTelefonoCanonicoAR,
+    resolverDestinatariosSaldoCliente,
+    calcularResumenSaldoConsolidado,
+    resolverAccesoPortalCliente,
+    construirMensajeWhatsappSaldo,
+    construirBloquePortalEmailHtml
+} = require('../services/portalB2BAccesoService');
+
+function parseBoolExplicito(val) {
+    if (val === true || val === 'true' || val === '1' || val === 1) return true;
+    if (val === false || val === 'false' || val === '0' || val === 0) return false;
+    return undefined;
+}
+
+/**
+ * Resuelve los parámetros efectivos de generación del PDF respetando `cuentaObj.configuracion_reporte`
+ * cuando `respetar_configuracion_reporte` está activo (ej. envío masivo semanal).
+ */
+function resolverParametrosReporteConConfig(req, cuentaObj) {
+    const cfg = (cuentaObj && cuentaObj.configuracion_reporte && typeof cuentaObj.configuracion_reporte === 'object')
+        ? cuentaObj.configuracion_reporte
+        : {};
+    const respetarCfg = parseBoolExplicito(req.body?.respetar_configuracion_reporte) === true
+        || parseBoolExplicito(req.query?.respetar_configuracion_reporte) === true;
+
+    const reqDetallado = parseBoolExplicito(req.body?.detallado ?? req.query?.detallado);
+    const reqDesdeCero = parseBoolExplicito(req.body?.desde_ultimo_cero ?? req.query?.desde_ultimo_cero);
+    const reqDetallarBal = parseBoolExplicito(req.body?.detallar_balance ?? req.query?.detallar_balance);
+    const reqModoCorte = req.body?.modo_corte || req.query?.modo_corte || null;
+    const reqDesdeMovId = req.body?.desde_movimiento_id || req.query?.desde_movimiento_id || null;
+
+    if (respetarCfg) {
+        const detallado = reqDetallado === true ? true : (reqDetallado === false ? false : Boolean(cfg.detallado));
+        const desde_ultimo_cero = reqDesdeCero !== undefined ? reqDesdeCero : Boolean(cfg.desde_ultimo_cero);
+        const modo_corte = reqModoCorte || cfg.modo_corte || (desde_ultimo_cero ? 'ultimo_cero' : 'todo');
+        const detallar_balance = reqDetallarBal !== undefined ? reqDetallarBal : (cfg.detallar_balance !== false);
+        const desde_movimiento_id = reqDesdeMovId || cfg.desde_movimiento_id || null;
+        return { detallado, desde_ultimo_cero, modo_corte, detallar_balance, desde_movimiento_id, uso_config_guardada: true };
+    }
+
+    const detallado = reqDetallado === true;
+    const desde_ultimo_cero = reqDesdeCero === true;
+    const detallar_balance = reqDetallarBal !== false;
+    const modo_corte = reqModoCorte || (desde_ultimo_cero ? 'ultimo_cero' : 'todo');
+    const desde_movimiento_id = reqDesdeMovId || null;
+    return { detallado, desde_ultimo_cero, modo_corte, detallar_balance, desde_movimiento_id, uso_config_guardada: false };
+}
 
 /**
  * Obtener listado de cuentas corrientes asociadas a un cliente (por código búnker)
@@ -375,13 +426,6 @@ exports.generarReportePdf = async (req, res) => {
 exports.enviarReporteWhatsapp = async (req, res) => {
     try {
         const { id } = req.params;
-        const detallado = req.query.detallado === 'true' || req.body.detallado === 'true';
-        const desde_ultimo_cero = req.query.desde_ultimo_cero === 'true' || req.body.desde_ultimo_cero === 'true';
-        const detallar_balance = req.query.detallar_balance !== 'false' && req.body.detallar_balance !== false;
-        const modo_corte = req.query.modo_corte || req.body.modo_corte || (desde_ultimo_cero ? 'ultimo_cero' : 'todo');
-        const desde_movimiento_id = req.query.desde_movimiento_id || req.body.desde_movimiento_id || null;
-        
-        console.log(`📱 [CC-CONTROLLER] Petición de envío de WhatsApp para CC ID: ${id} (Detallado: ${detallado}, Modo corte: ${modo_corte}, Desde mov ID: ${desde_movimiento_id}, Detallar Balance: ${detallar_balance})`);
 
         // 1. Obtener datos de la cuenta corriente
         const ccRes = await pool.query(
@@ -392,6 +436,16 @@ exports.enviarReporteWhatsapp = async (req, res) => {
             return res.status(404).json({ success: false, error: 'Cuenta corriente no encontrada.' });
         }
         const cuentaObj = ccRes.rows[0];
+
+        const {
+            detallado,
+            desde_ultimo_cero,
+            modo_corte,
+            detallar_balance,
+            desde_movimiento_id
+        } = resolverParametrosReporteConConfig(req, cuentaObj);
+        
+        console.log(`📱 [CC-CONTROLLER] Petición de envío de WhatsApp para CC ID: ${id} (Detallado: ${detallado}, Modo corte: ${modo_corte}, Desde mov ID: ${desde_movimiento_id}, Detallar Balance: ${detallar_balance})`);
         
         // 2. Obtener movimientos
         const movimientos = await CuentaCorrienteService.obtenerMovimientos(parseInt(id));
@@ -420,7 +474,7 @@ exports.enviarReporteWhatsapp = async (req, res) => {
         // 4. Calcular composición determinista y simulación Salvavidas si aplica
         let composicionInfo = null;
         let salvavidasInfo = null;
-        if (detallar_balance) {
+        if (detallar_balance || parseFloat(cuentaObj.saldo) > 0.005) {
             try {
                 composicionInfo = await composicionSaldoService.calcularComposicionSaldo(cuentaObj.id, pool);
                 salvavidasInfo = await salvavidasService.calcularSimulacionCuenta(cuentaObj.id, { persistir_sombra: false }, pool);
@@ -428,33 +482,22 @@ exports.enviarReporteWhatsapp = async (req, res) => {
                 console.warn('⚠️ [CC-CONTROLLER] Error al calcular composicion/salvavidas para WhatsApp:', compErr.message);
             }
         }
+        const saldoInfo = calcularResumenSaldoConsolidado(cuentaObj, salvavidasInfo, detallar_balance);
 
-        // 5. Resolver números telefónicos de WhatsApp en la ficha del cliente
-        let whatsappDestinos = '';
+        // 5. Resolver números telefónicos de WhatsApp (normalizados)
+        let whatsappLista = [];
         let tieneDestinatariosBody = false;
         if (req.body && req.body.destinatarios !== undefined) {
             tieneDestinatariosBody = true;
-            if (Array.isArray(req.body.destinatarios)) {
-                whatsappDestinos = req.body.destinatarios.filter(n => n && String(n).trim()).join(', ');
-            } else {
-                whatsappDestinos = String(req.body.destinatarios).trim();
-            }
+            const rawList = Array.isArray(req.body.destinatarios)
+                ? req.body.destinatarios
+                : String(req.body.destinatarios || '').split(',');
+            whatsappLista = Array.from(new Set(rawList.map(normalizarTelefonoCanonicoAR).filter(Boolean)));
+        } else {
+            const resDest = resolverDestinatariosSaldoCliente(clienteObj);
+            whatsappLista = resDest.whatsapp;
         }
-
-        if (!tieneDestinatariosBody && clienteObj.whatsapp_facturas) {
-            const val = clienteObj.whatsapp_facturas.trim();
-            if (val.startsWith('[')) {
-                try {
-                    const contactos = JSON.parse(val);
-                    whatsappDestinos = contactos.map(c => c.numero).filter(n => n && n.trim()).join(', ');
-                } catch (err) {
-                    console.error('❌ [CC-CONTROLLER] Error parseando JSON de contactos:', err.message);
-                    whatsappDestinos = val;
-                }
-            } else {
-                whatsappDestinos = val;
-            }
-        }
+        const whatsappDestinos = whatsappLista.join(', ');
 
         if (!whatsappDestinos || !whatsappDestinos.trim()) {
             if (tieneDestinatariosBody) {
@@ -467,7 +510,7 @@ exports.enviarReporteWhatsapp = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 error: 'Sin contacto',
-                message: 'El cliente no tiene números de WhatsApp configurados en su ficha. Edite los contactos en el panel de clientes.'
+                message: 'El cliente no tiene números de WhatsApp configurados para reportes de saldo. Configúrelos desde Destinatarios (👥).'
             });
         }
 
@@ -476,7 +519,34 @@ exports.enviarReporteWhatsapp = async (req, res) => {
         const pdfBuffer = await generarPdfBuffer(cuentaObj, movimientosOrdenados, clienteObj, detallado, composicionInfo, detallar_balance, salvavidasInfo);
         const pdfBase64 = pdfBuffer.toString('base64');
 
-        // 7. Enviar al microservicio en Facturación con timeout controlado de 8 segundos
+        // 7. Resolver acceso/invitación del Portal B2B y armar cuerpo WhatsApp con Saldo Consolidado
+        const ultimoMov = movimientosOrdenados[0];
+        const esChequeReciente = ultimoMov && (
+            ultimoMov.tipo_comprobante === 'COBRO_CHEQUE' ||
+            obtenerMedioPago(ultimoMov) === 'Cheque'
+        );
+
+        let filename = `cuenta_corriente_${clienteObj.codigo_bunker_cliente}.pdf`;
+        if (esChequeReciente) {
+            filename = `comprobante_cheque_${clienteObj.codigo_bunker_cliente}.pdf`;
+        }
+
+        let portalInfo = null;
+        let mensajeTexto = req.body.mensajeTexto;
+        if (!mensajeTexto || !mensajeTexto.trim()) {
+            portalInfo = await resolverAccesoPortalCliente(
+                clienteObj,
+                { asegurarInvitacion: true, horasVigencia: 168, horasMinReutilizar: 48 },
+                pool
+            );
+            mensajeTexto = construirMensajeWhatsappSaldo({
+                saldoInfo,
+                portalInfo,
+                esChequeReciente
+            });
+        }
+
+        // 8. Enviar al microservicio en Facturación con timeout controlado de 8 segundos
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
             controller.abort();
@@ -484,30 +554,8 @@ exports.enviarReporteWhatsapp = async (req, res) => {
 
         try {
             console.log(`📱 [CC-CONTROLLER] Invocando microservicio de WhatsApp para enviar reporte a: ${whatsappDestinos}`);
-            
-            const ultimoMov = movimientosOrdenados[0];
-            const esChequeReciente = ultimoMov && (
-                ultimoMov.tipo_comprobante === 'COBRO_CHEQUE' ||
-                obtenerMedioPago(ultimoMov) === 'Cheque'
-            );
 
-            let filename = `cuenta_corriente_${clienteObj.codigo_bunker_cliente}.pdf`;
-            if (esChequeReciente) {
-                filename = `comprobante_cheque_${clienteObj.codigo_bunker_cliente}.pdf`;
-            }
-
-            let mensajeTexto = req.body.mensajeTexto;
-            if (!mensajeTexto || !mensajeTexto.trim()) {
-                // El detalle grueso (comprobantes, plazos, pagos parciales, beneficios de lista y CBU) va íntegro dentro del PDF.
-                // El cuerpo del mensaje de WhatsApp se mantiene corto y directo.
-                mensajeTexto = `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\nPortal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/\nCualquier duda avisame!`;
-
-                if (esChequeReciente) {
-                    mensajeTexto = `Te adjunto en PDF el comprobante de validación de cheque y el resumen de tu cuenta corriente.\nPortal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/\nCualquier duda avisame!`;
-                }
-            }
-
-            const response = await fetch('http://localhost:3004/facturacion/whatsapp/enviar-documento', {
+            const response = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/enviar-documento', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -534,7 +582,15 @@ exports.enviarReporteWhatsapp = async (req, res) => {
             res.json({
                 success: true,
                 message: 'El reporte de cuenta corriente ha sido enviado por WhatsApp con éxito.',
-                data: data.data
+                data: data.data,
+                meta: {
+                    destinatarios: whatsappDestinos,
+                    saldoResumen: saldoInfo,
+                    portalAcceso: portalInfo,
+                    mensajeTexto,
+                    parametrosReporte: { detallado, modo_corte, desde_ultimo_cero, detallar_balance },
+                    movimientosIncluidos: movimientosOrdenados.length
+                }
             });
 
         } catch (fetchError) {
@@ -688,6 +744,8 @@ function construirAvisoSaldoExcedidoHtml(composicionInfo, saldoTotal, salvavidas
 
     if (capasSim && salvavidasInfo.reglas_aplicadas && salvavidasInfo.reglas_aplicadas.habilitado) {
         const reglas = salvavidasInfo.reglas_aplicadas;
+        const modoSwitch = reglas.modo_switch || 'ACTIVO';
+        const esSombra = modoSwitch === 'SOMBRA';
         const diasEst = reglas.dias_ventana_estandar || 7;
         const diasGracia = reglas.dias_gracia_natural || 3;
         const diasTopeGracia = reglas.dias_tope_sin_comodin || 10;
@@ -695,6 +753,7 @@ function construirAvisoSaldoExcedidoHtml(composicionInfo, saldoTotal, salvavidas
         const tasaPct = reglas.tasa_servicio_financiero || 3;
         const comodinesDisp = reglas.cortesias_disponibles_anio ?? 3;
         const cupoAnual = reglas.cupo_cortesias_anual ?? 3;
+        const finCalcConIva = Number(salvavidasInfo.financiacion_calculada_con_iva ?? salvavidasInfo.financiacion_total_con_iva ?? 0);
 
         const listItems = capasSim.map(cs => {
             const doc = limpiarDocWhatsapp(cs.descripcion);
@@ -704,7 +763,9 @@ function construirAvisoSaldoExcedidoHtml(composicionInfo, saldoTotal, salvavidas
             const f14d = formatFechaCortaAR(cs.fecha_vto_comodin);
             let badgeHtml = '';
             if (cs.ventana_codigo === 'ASISTENCIA_FORMALIZADA') {
-                badgeHtml = `<span style="color:#b45309;font-weight:700;">🛡️ Día ${cs.antiguedad_dias} · Financiación Activa (+${formatMontoWhatsapp(cs.interes_financiacion)} + IVA ${formatMontoWhatsapp(cs.iva_financiacion)} = ${formatMontoWhatsapp(cs.interes_financiacion_con_iva)})</span>`;
+                badgeHtml = esSombra
+                    ? `<span style="color:#92400e;font-weight:700;">🌓 Día ${cs.antiguedad_dias} · Simulación Informativa (+${formatMontoWhatsapp(cs.interes_financiacion)} + IVA ${formatMontoWhatsapp(cs.iva_financiacion)} = ${formatMontoWhatsapp(cs.interes_financiacion_con_iva)})</span>`
+                    : `<span style="color:#b45309;font-weight:700;">🛡️ Día ${cs.antiguedad_dias} · Financiación Activa (+${formatMontoWhatsapp(cs.interes_financiacion)} + IVA ${formatMontoWhatsapp(cs.iva_financiacion)} = ${formatMontoWhatsapp(cs.interes_financiacion_con_iva)})</span>`;
             } else if (cs.ventana_codigo === 'ASISTENCIA_CORTESIA') {
                 badgeHtml = `<span style="color:#0369a1;font-weight:700;">🎟️ Día ${cs.antiguedad_dias}/${diasComodin} · Comodín Trimestral (0% financiación)</span>`;
             } else if (cs.ventana_codigo === 'GRACIA_NATURAL') {
@@ -718,17 +779,25 @@ function construirAvisoSaldoExcedidoHtml(composicionInfo, saldoTotal, salvavidas
             </li>`;
         }).join('');
 
-        const totalBoxHtml = salvavidasInfo.financiacion_total_con_iva > 0
-            ? `<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #fcd34d;font-size:13.5px;color:#78350f;">
+        let totalBoxHtml = '';
+        if (!esSombra && salvavidasInfo.financiacion_total_con_iva > 0) {
+            totalBoxHtml = `<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #fcd34d;font-size:13.5px;color:#78350f;">
                 <strong>Capital Comprobantes:</strong> ${formatMontoWhatsapp(saldoTotal)} + <strong>Financiación ${tasaPct}% + IVA:</strong> ${formatMontoWhatsapp(salvavidasInfo.financiacion_total_con_iva)}<br/>
                 <strong style="color:#dc2626;font-size:15px;">Total Real Actualizado a Pagar Hoy (c/IVA): ${formatMontoWhatsapp(salvavidasInfo.saldo_total_proyectado_con_iva)}</strong>
-               </div>`
-            : `<div style="margin-top:8px;font-size:12.5px;color:#047857;font-weight:700;">✅ Financiación actual: $ 0,00 (100% bonificada dentro de plazos).</div>`;
+               </div>`;
+        } else if (esSombra && finCalcConIva > 0) {
+            totalBoxHtml = `<div style="margin-top:10px;padding-top:8px;border-top:1px dashed #fcd34d;font-size:13px;color:#78350f;">
+                <strong>Saldo de Capital Exigible Hoy:</strong> ${formatMontoWhatsapp(saldoTotal)}<br/>
+                <span style="color:#92400e;">🌓 Simulación Informativa ${tasaPct}% + IVA: +${formatMontoWhatsapp(finCalcConIva)} <em>(sin aplicación efectiva hoy)</em>.</span>
+               </div>`;
+        } else {
+            totalBoxHtml = `<div style="margin-top:8px;font-size:12.5px;color:#047857;font-weight:700;">✅ Financiación actual: $ 0,00 (100% bonificada dentro de plazos).</div>`;
+        }
 
         return `
         <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 14px 16px; margin: 20px 0;">
             <div style="font-size: 12px; font-weight: 700; color: #b45309; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
-                📌 Diagnóstico de Cuenta y Esquema de Financiación LAMDA (Comodines Año: ${comodinesDisp}/${cupoAnual} disp.)
+                📌 Diagnóstico de Cuenta y Esquema de Financiación LAMDA${esSombra ? ' (Modo Informativo)' : ''} (Comodines Año: ${comodinesDisp}/${cupoAnual} disp.)
             </div>
             <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #1e293b; line-height: 1.45;">${listItems}</ul>
             ${totalBoxHtml}
@@ -794,7 +863,7 @@ exports.obtenerMensajePredeterminadoWhatsapp = async (req, res) => {
         // 3. Calcular composición determinista de saldo y simulación Salvavidas
         let composicionInfo = null;
         let salvavidasInfo = null;
-        if (detallarBalance) {
+        if (detallarBalance || parseFloat(cuentaObj.saldo) > 0.005) {
             try {
                 composicionInfo = await composicionSaldoService.calcularComposicionSaldo(parseInt(id), pool);
                 salvavidasInfo = await salvavidasService.calcularSimulacionCuenta(parseInt(id), { persistir_sombra: false }, pool);
@@ -803,15 +872,28 @@ exports.obtenerMensajePredeterminadoWhatsapp = async (req, res) => {
             }
         }
 
-        // Toda la explicación gruesa (saldo, comprobantes, 4 etapas, pagos parciales, 5% OFF con saldo $0 y CBU) va adentro del PDF.
-        // El cuerpo del mensaje de WhatsApp se mantiene corto: indica que se adjunta el PDF y deja el link del portal.
-        let mensajeTexto = `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\nPortal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/\nCualquier duda avisame!`;
+        const clienteObj = await ClientesBunkerModel.obtenerPorCodigoBunker(cuentaObj.codigo_bunker_cliente);
+        const saldoInfo = calcularResumenSaldoConsolidado(cuentaObj, salvavidasInfo, detallarBalance);
+        const portalInfo = await resolverAccesoPortalCliente(
+            clienteObj,
+            { asegurarInvitacion: true, horasVigencia: 168, horasMinReutilizar: 48 },
+            pool
+        );
 
-        if (esChequeReciente) {
-            mensajeTexto = `Te adjunto en PDF el comprobante de validación de cheque y el resumen de tu cuenta corriente.\nPortal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/\nCualquier duda avisame!`;
-        }
+        const mensajeTexto = construirMensajeWhatsappSaldo({
+            saldoInfo,
+            portalInfo,
+            esChequeReciente
+        });
 
-        res.json({ success: true, mensajeTexto, composicion: composicionInfo, salvavidas: salvavidasInfo });
+        res.json({
+            success: true,
+            mensajeTexto,
+            saldoResumen: saldoInfo,
+            portalAcceso: portalInfo,
+            composicion: composicionInfo,
+            salvavidas: salvavidasInfo
+        });
     } catch (error) {
         console.error('❌ [CC-CONTROLLER] Error en obtenerMensajePredeterminadoWhatsapp:', error);
         res.status(500).json({ success: false, error: 'Error obteniendo mensaje predeterminado.' });
@@ -988,13 +1070,6 @@ exports.actualizarConfiguracionReporte = async (req, res) => {
 exports.enviarReporteEmail = async (req, res) => {
     try {
         const { id } = req.params;
-        const detallado = req.query.detallado === 'true' || req.body.detallado === 'true';
-        const desde_ultimo_cero = req.query.desde_ultimo_cero === 'true' || req.body.desde_ultimo_cero === 'true';
-        const detallar_balance = req.query.detallar_balance !== 'false' && req.body.detallar_balance !== false && req.body.detallar_balance !== 'false';
-        const modo_corte = req.query.modo_corte || req.body.modo_corte || (desde_ultimo_cero ? 'ultimo_cero' : 'todo');
-        const desde_movimiento_id = req.query.desde_movimiento_id || req.body.desde_movimiento_id || null;
-        
-        console.log(`📧 [CC-CONTROLLER] Petición de envío de Email para CC ID: ${id} (Detallado: ${detallado}, Modo corte: ${modo_corte}, Desde mov ID: ${desde_movimiento_id}, Detallar Balance: ${detallar_balance})`);
 
         // 1. Obtener datos de la cuenta corriente
         const ccRes = await pool.query(
@@ -1005,6 +1080,16 @@ exports.enviarReporteEmail = async (req, res) => {
             return res.status(404).json({ success: false, error: 'Cuenta corriente no encontrada.' });
         }
         const cuentaObj = ccRes.rows[0];
+
+        const {
+            detallado,
+            desde_ultimo_cero,
+            modo_corte,
+            detallar_balance,
+            desde_movimiento_id
+        } = resolverParametrosReporteConConfig(req, cuentaObj);
+        
+        console.log(`📧 [CC-CONTROLLER] Petición de envío de Email para CC ID: ${id} (Detallado: ${detallado}, Modo corte: ${modo_corte}, Desde mov ID: ${desde_movimiento_id}, Detallar Balance: ${detallar_balance})`);
         
         // 2. Obtener movimientos
         const movimientos = await CuentaCorrienteService.obtenerMovimientos(parseInt(id));
@@ -1035,6 +1120,7 @@ exports.enviarReporteEmail = async (req, res) => {
                 console.error('⚠️ [CC-CONTROLLER] Error al calcular composición/salvavidas de saldo para email:', errComposicion.message);
             }
         }
+        const saldoInfo = calcularResumenSaldoConsolidado(cuentaObj, salvavidasInfo, detallar_balance);
         const avisoSaldoExcedidoHtml = construirAvisoSaldoExcedidoHtml(composicionInfo, parseFloat(cuentaObj.saldo), salvavidasInfo);
         
         // 3. Obtener cliente
@@ -1043,45 +1129,33 @@ exports.enviarReporteEmail = async (req, res) => {
             return res.status(404).json({ success: false, error: 'Cliente no encontrado.' });
         }
 
-        // 4. Resolver destinatarios de Correo Electrónico
-        let emailDestinos = '';
+        // 4. Resolver destinatarios reales de Correo Electrónico (filtrando placeholders @lamdaclientes.com y basura)
+        let emailLista = [];
         let tieneDestinatariosBody = false;
         if (req.body && req.body.destinatarios !== undefined) {
             tieneDestinatariosBody = true;
-            if (Array.isArray(req.body.destinatarios)) {
-                emailDestinos = req.body.destinatarios.filter(n => n && String(n).trim()).join(', ');
-            } else {
-                emailDestinos = String(req.body.destinatarios).trim();
-            }
+            const rawList = Array.isArray(req.body.destinatarios)
+                ? req.body.destinatarios
+                : String(req.body.destinatarios || '').split(',');
+            emailLista = Array.from(new Set(rawList.map(sanitizarEmailReal).filter(Boolean)));
+        } else {
+            const resDest = resolverDestinatariosSaldoCliente(clienteObj);
+            emailLista = resDest.email;
         }
-
-        if (!tieneDestinatariosBody && clienteObj.email_facturas) {
-            const val = clienteObj.email_facturas.trim();
-            if (val.startsWith('[')) {
-                try {
-                    const contactos = JSON.parse(val);
-                    emailDestinos = contactos.map(c => c.email).filter(e => e && e.trim()).join(', ');
-                } catch (err) {
-                    console.error('❌ [CC-CONTROLLER] Error parseando JSON de contactos email:', err.message);
-                    emailDestinos = val;
-                }
-            } else {
-                emailDestinos = val;
-            }
-        }
+        const emailDestinos = emailLista.join(', ');
 
         if (!emailDestinos || !emailDestinos.trim()) {
             if (tieneDestinatariosBody) {
                 return res.json({
                     success: true,
-                    message: 'No se seleccionaron destinatarios de correo. Envío omitido.',
+                    message: 'No se seleccionaron destinatarios de correo válidos. Envío omitido.',
                     data: { destinatarios: '' }
                 });
             }
             return res.status(400).json({
                 success: false,
                 error: 'Sin contacto de correo',
-                message: 'El cliente no tiene direcciones de correo configuradas en su ficha. Edite los contactos en el panel de clientes.'
+                message: 'El cliente no tiene direcciones de correo válidas configuradas para reportes de saldo. Configúrelas desde Destinatarios (👥).'
             });
         }
 
@@ -1089,6 +1163,14 @@ exports.enviarReporteEmail = async (req, res) => {
         console.log(`📄 [CC-CONTROLLER] Generando PDF de cuenta corriente en memoria para ${clienteObj.codigo_bunker_cliente}...`);
         const pdfBuffer = await generarPdfBuffer(cuentaObj, movimientosOrdenados, clienteObj, detallado, composicionInfo, detallar_balance, salvavidasInfo);
         const pdfBase64 = pdfBuffer.toString('base64');
+
+        // 5b. Resolver bloque inteligente de acceso/invitación al Portal B2B (7 días si nunca ingresó)
+        const portalInfo = await resolverAccesoPortalCliente(
+            clienteObj,
+            { asegurarInvitacion: true, horasVigencia: 168, horasMinReutilizar: 48 },
+            pool
+        );
+        const portalAccesoHtml = construirBloquePortalEmailHtml(portalInfo);
 
         // 6. Enviar al microservicio en Facturación con timeout controlado de 10 segundos
         const controller = new AbortController();
@@ -1100,12 +1182,9 @@ exports.enviarReporteEmail = async (req, res) => {
             console.log(`📧 [CC-CONTROLLER] Invocando microservicio de Correo para enviar reporte a: ${emailDestinos}`);
             
             const fechaCorte = new Date().toLocaleDateString('es-AR');
-            const saldoBase = parseFloat(cuentaObj.saldo || 0);
-            const saldoActual = (salvavidasInfo && salvavidasInfo.financiacion_total_con_iva > 0)
-                ? parseFloat(salvavidasInfo.saldo_total_proyectado_con_iva)
-                : saldoBase;
+            const saldoActual = saldoInfo.saldoConsolidado;
 
-            const response = await fetch('http://localhost:3004/facturacion/email/cuentas-corrientes/enviar', {
+            const response = await fetch('http://127.0.0.1:3004/facturacion/email/cuentas-corrientes/enviar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1118,7 +1197,10 @@ exports.enviarReporteEmail = async (req, res) => {
                     pdfBase64: pdfBase64,
                     fechaCorte,
                     saldoActual,
-                    avisoSaldoExcedidoHtml
+                    saldoResumen: saldoInfo,
+                    avisoSaldoExcedidoHtml,
+                    portalAccesoHtml,
+                    portalAcceso: portalInfo
                 }),
                 signal: controller.signal
             });
@@ -1138,7 +1220,14 @@ exports.enviarReporteEmail = async (req, res) => {
             res.json({
                 success: true,
                 message: 'El reporte de cuenta corriente ha sido enviado por Correo Electrónico con éxito.',
-                data: data.data
+                data: data.data,
+                meta: {
+                    destinatarios: emailDestinos,
+                    saldoResumen: saldoInfo,
+                    portalAcceso: portalInfo,
+                    parametrosReporte: { detallado, modo_corte, desde_ultimo_cero, detallar_balance },
+                    movimientosIncluidos: movimientosOrdenados.length
+                }
             });
 
         } catch (fetchError) {
@@ -4402,7 +4491,7 @@ function dibujarPoliticasFinanciacionPDF(doc, ctx) {
 
     // Pie institucional
     doc.fontSize(7.2).font('Helvetica-Oblique').fillColor('#64748b').text(
-        'Administración y Finanzas LAMDA — Portal de Clientes B2B (https://portal-lamda-b2b.idadesarrollo.workers.dev/) · Tel/WA: 221-6615746',
+        `Administración y Finanzas LAMDA — Portal de Clientes B2B (${resolverUrlPortalB2BOficial()}) · Tel/WA: 221-6615746`,
         leftColumn,
         yPos,
         { align: 'center', width: contentWidth }
@@ -4562,7 +4651,7 @@ exports.enviarComprobanteWhatsapp = async (req, res) => {
                 mensajeTexto = `Te adjunto en PDF el recibo de pago (${nroRecibo}). Muchas gracias!`;
             } else {
                 const nroFac = mov.numero_comprobante || `#${mov.id}`;
-                mensajeTexto = `Te adjunto en PDF el comprobante (${nroFac}) de tu cuenta corriente.\nPortal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/\nCualquier duda avisame!`;
+                mensajeTexto = `Te adjunto en PDF el comprobante (${nroFac}) de tu cuenta corriente.\nPortal de pedidos y precios: ${resolverUrlPortalB2BOficial()}\nCualquier duda avisame!`;
             }
         }
 
@@ -4637,7 +4726,7 @@ exports.enviarComprobanteWhatsapp = async (req, res) => {
             const docItem = colaDocumentos[i];
             const textoEnvio = (i === 0) ? mensajeTexto : docItem.caption;
 
-            const response = await fetch('http://localhost:3004/facturacion/whatsapp/enviar-documento', {
+            const response = await fetch('http://127.0.0.1:3004/facturacion/whatsapp/enviar-documento', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -5065,5 +5154,140 @@ exports.enviarComprobantesEmailMulti = async (req, res) => {
             success: false,
             error: error.message || 'Error interno al enviar comprobantes por Email.'
         });
+    }
+};
+
+/**
+ * Previsualizar en solo lectura un lote de clientes antes de disparar "Enviar Reportes (Saldo)".
+ * Devuelve por cada cliente:
+ *  - Saldo Consolidado exacto (coincidente con el PDF y respetando Modo Sombra / Excluido / Activo)
+ *  - Canales y destinatarios efectivos resueltos desde BD (advirtiendo múltiples contactos sin preferencia)
+ *  - Modo de enlace Portal B2B (Invitación 7 días si nunca ingresó vs. Link directo si ya ingresó)
+ *  - Corte de movimientos guardado en configuracion_reporte
+ *
+ * POST /api/logistica/bunker/cuentas-corrientes/previsualizar-lote-saldos
+ */
+exports.previsualizarLoteSaldos = async (req, res) => {
+    try {
+        const rawIds = Array.isArray(req.body?.cliente_ids) ? req.body.cliente_ids : [];
+        const ids = Array.from(new Set(rawIds.map(x => parseInt(x, 10)).filter(n => Number.isInteger(n) && n > 0)));
+        if (ids.length === 0) {
+            return res.status(400).json({ success: false, error: 'Debe enviar al menos un cliente_id para previsualizar.' });
+        }
+
+        const q = `
+            WITH cc_principal AS (
+                SELECT DISTINCT ON (codigo_bunker_cliente)
+                    codigo_bunker_cliente,
+                    id AS cuenta_corriente_id,
+                    saldo,
+                    configuracion_reporte
+                FROM public.factura_cuentas_corrientes
+                WHERE codigo_bunker_cliente IS NOT NULL
+                  AND COALESCE(estado, 'ACTIVA') <> 'ARCHIVADA_UNIFICADA'
+                ORDER BY codigo_bunker_cliente,
+                         CASE WHEN nombre_cuenta = 'Cuenta Principal' THEN 0 ELSE 1 END,
+                         id ASC
+            )
+            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id,
+                   c.whatsapp_facturas, c.email_facturas, c.destinatarios_saldo_config,
+                   c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.salvavidas_modo,
+                   cc.cuenta_corriente_id, cc.saldo, cc.configuracion_reporte
+            FROM public.bunker_clientes c
+            LEFT JOIN cc_principal cc ON cc.codigo_bunker_cliente = c.codigo_bunker_cliente
+            WHERE c.id = ANY($1::integer[])
+        `;
+        const rowsRes = await pool.query(q, [ids]);
+        const byId = new Map(rowsRes.rows.map(r => [Number(r.id), r]));
+
+        const detalladoForzado = parseBoolExplicito(req.body?.detallado) === true;
+
+        const items = await Promise.all(ids.map(async (cid) => {
+            const cli = byId.get(cid);
+            if (!cli) {
+                return {
+                    cliente_id: cid,
+                    encontrado: false,
+                    error: 'Cliente no encontrado en base de datos.'
+                };
+            }
+
+            const cfgRep = (cli.configuracion_reporte && typeof cli.configuracion_reporte === 'object')
+                ? cli.configuracion_reporte
+                : {};
+            const detallarBalance = cfgRep.detallar_balance !== false;
+            const desdeUltimoCero = Boolean(cfgRep.desde_ultimo_cero);
+            const modoCorte = cfgRep.modo_corte || (desdeUltimoCero ? 'ultimo_cero' : 'todo');
+            const detalladoEfectivo = detalladoForzado ? true : Boolean(cfgRep.detallado);
+
+            let salvavidasInfo = null;
+            if (cli.cuenta_corriente_id && (detallarBalance || parseFloat(cli.saldo || 0) > 0.005)) {
+                try {
+                    salvavidasInfo = await salvavidasService.calcularSimulacionCuenta(
+                        Number(cli.cuenta_corriente_id),
+                        { persistir_sombra: false },
+                        pool
+                    );
+                } catch (_) {}
+            }
+
+            const saldoResumen = calcularResumenSaldoConsolidado(
+                { saldo: cli.saldo || 0 },
+                salvavidasInfo,
+                detallarBalance
+            );
+            const destRes = resolverDestinatariosSaldoCliente(cli);
+            const portalAcceso = await resolverAccesoPortalCliente(
+                cli,
+                { asegurarInvitacion: false, horasVigencia: 168, horasMinReutilizar: 48 },
+                pool
+            );
+
+            // Mapear etiquetas legibles (nombre/cargo) para cada número y correo seleccionado
+            const wpNameMap = new Map((destRes.contactos_wp_disponibles || []).map(c => [c.numero, c.nombre || c.cargo || '']));
+            const emNameMap = new Map((destRes.contactos_email_disponibles || []).map(e => [e.email, e.nombre || e.cargo || '']));
+
+            return {
+                encontrado: true,
+                cliente_id: Number(cli.id),
+                codigo_bunker_cliente: cli.codigo_bunker_cliente,
+                cliente_nombre: cli.cliente_nombre,
+                razon_social: cli.razon_social,
+                cuenta_corriente_id: cli.cuenta_corriente_id ? Number(cli.cuenta_corriente_id) : null,
+                saldoResumen,
+                destinatarios: {
+                    configurado_explicitamente: destRes.configurado_explicitamente,
+                    origen: destRes.origen,
+                    requiere_definicion: destRes.requiere_definicion,
+                    solo_pdf: destRes.solo_pdf,
+                    total_contactos_disponibles: destRes.total_contactos_disponibles,
+                    whatsapp: destRes.whatsapp,
+                    whatsapp_detalle: destRes.whatsapp.map(num => ({ numero: num, etiqueta: wpNameMap.get(num) || '' })),
+                    email: destRes.email,
+                    email_detalle: destRes.email.map(em => ({ email: em, etiqueta: emNameMap.get(em) || '' }))
+                },
+                portalAcceso,
+                configuracion_reporte: {
+                    detallado: detalladoEfectivo,
+                    desde_ultimo_cero: desdeUltimoCero,
+                    modo_corte: modoCorte,
+                    detallar_balance: detallarBalance
+                }
+            };
+        }));
+
+        const resumen = {
+            total: items.length,
+            listos: items.filter(i => i.encontrado && i.cuenta_corriente_id && !i.destinatarios?.requiere_definicion).length,
+            requieren_definicion: items.filter(i => i.encontrado && i.destinatarios?.requiere_definicion).length,
+            sin_cuenta: items.filter(i => !i.encontrado || !i.cuenta_corriente_id).length,
+            invitaciones_portal: items.filter(i => i.encontrado && i.portalAcceso?.modo === 'INVITACION_INICIAL').length,
+            accesos_directos: items.filter(i => i.encontrado && i.portalAcceso?.modo === 'ACCESO_DIRECTO').length
+        };
+
+        res.json({ success: true, items, resumen });
+    } catch (error) {
+        console.error('❌ [CC-CONTROLLER] Error en previsualizarLoteSaldos:', error);
+        res.status(500).json({ success: false, error: 'Error al previsualizar el lote de envíos de saldo.' });
     }
 };

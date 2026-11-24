@@ -5,9 +5,11 @@ const router = express.Router();
 const ctrlPath = require.resolve('../controllers/cuentaCorrienteController');
 const salvavidasPath = require.resolve('../services/salvavidasService');
 const compSaldoPath = require.resolve('../services/composicionSaldoService');
+const portalAccesoPath = require.resolve('../services/portalB2BAccesoService');
 let lastCtrlMtime = fs.statSync(ctrlPath).mtimeMs;
 let lastSalvMtime = fs.statSync(salvavidasPath).mtimeMs;
 let lastCompMtime = fs.statSync(compSaldoPath).mtimeMs;
+let lastPortalMtime = fs.statSync(portalAccesoPath).mtimeMs;
 let cuentaCorrienteController = require('../controllers/cuentaCorrienteController');
 
 function getCtrl() {
@@ -15,15 +17,18 @@ function getCtrl() {
         const m1 = fs.statSync(ctrlPath).mtimeMs;
         const m2 = fs.statSync(salvavidasPath).mtimeMs;
         const m3 = fs.statSync(compSaldoPath).mtimeMs;
-        if (m1 !== lastCtrlMtime || m2 !== lastSalvMtime || m3 !== lastCompMtime) {
+        const m4 = fs.statSync(portalAccesoPath).mtimeMs;
+        if (m1 !== lastCtrlMtime || m2 !== lastSalvMtime || m3 !== lastCompMtime || m4 !== lastPortalMtime) {
             delete require.cache[compSaldoPath];
             delete require.cache[salvavidasPath];
+            delete require.cache[portalAccesoPath];
             delete require.cache[ctrlPath];
             cuentaCorrienteController = require('../controllers/cuentaCorrienteController');
             lastCtrlMtime = m1;
             lastSalvMtime = m2;
             lastCompMtime = m3;
-            console.log('♻️ [CC-ROUTES] Controlador, Composición de Saldo y Salvavidas recargados en caliente.');
+            lastPortalMtime = m4;
+            console.log('♻️ [CC-ROUTES] Controlador, Composición de Saldo, Salvavidas y Portal B2B recargados en caliente.');
         }
     } catch (e) {}
     return cuentaCorrienteController;
@@ -57,6 +62,9 @@ router.get('/:id/politicas-financiacion-pdf', (req, res, next) => getCtrl().gene
 
 // Simular imputación de un pago entrante (Capital vs. Interés de Financiación / Opción de Bonificación)
 router.get('/:id/simular-imputacion-pago', (req, res, next) => getCtrl().simularImputacionPagoCuenta(req, res, next));
+
+// Previsualizar lote de envío de reportes de saldo (solo lectura)
+router.post('/previsualizar-lote-saldos', (req, res, next) => getCtrl().previsualizarLoteSaldos(req, res, next));
 
 // Enviar múltiples comprobantes por WhatsApp / Email
 router.post('/movimientos/whatsapp-multi', (req, res, next) => getCtrl().enviarComprobantesWhatsappMulti(req, res, next));

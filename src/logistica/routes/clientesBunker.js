@@ -40,6 +40,9 @@ router.put('/:id', clientesBunkerController.actualizar);
 // Actualizar solo contactos de WhatsApp de un cliente (acoplamiento flexible)
 router.patch('/:id/whatsapp-contacts', clientesBunkerController.actualizarContactosWhatsapp);
 
+// Guardar permanentemente destinatarios y canales de Reportes de Saldo por cliente
+router.put('/:id/destinatarios-saldo', clientesBunkerController.actualizarDestinatariosSaldo);
+
 // Actualizar las listas de precios Bunker asociadas a un cliente
 router.put('/:id/listas', clientesBunkerController.actualizarListas);
 

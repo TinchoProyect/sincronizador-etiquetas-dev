@@ -2041,7 +2041,7 @@ const ClientesMobileController = {
                     `Hola *${c.cliente_nombre || 'Cliente'}*, te compartimos el resumen actualizado de tu Cuenta Corriente en *LAMDA*:\n\n` +
                     `💳 *Saldo Total Consolidado: ${this.formatearMonedaMobile(totalConsolidadoReal)}*\n` +
                     (tieneSalvavidasActivo ? `_(Capital comprobantes: ${this.formatearMonedaMobile(saldoContable)} + Salvavidas 3% + IVA: ${this.formatearMonedaMobile(interesTotalConIva)})_\n` : '') +
-                    `\n🔗 *Portal de Pedidos y Cuenta Corriente:*\nhttps://portal-lamda-b2b.idadesarrollo.workers.dev/`
+                    `\n🔗 *Portal de Pedidos y Cuenta Corriente:*\nhttps://proud-darkness-ac3d.miserrano75.workers.dev`
                 );
 
             const bloquePolFin = this.construirBloquePoliticaFinanciacionWAMobile(salvavidasInfo);

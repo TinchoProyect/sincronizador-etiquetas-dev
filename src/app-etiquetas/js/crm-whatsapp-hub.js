@@ -5747,7 +5747,7 @@
         if (config.chkPdf) {
             burbujas.push(
                 `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\n` +
-                `Portal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/\n` +
+                `Portal de pedidos y precios: https://proud-darkness-ac3d.miserrano75.workers.dev\n` +
                 `Cualquier duda avisame!`
             );
             return burbujas;
@@ -5986,7 +5986,7 @@
             if (chkPdf && contextoPoliticasWaActual.cuentaId) {
                 const captionCorto = usarPrimeraBurbujaComoCaptionPdf
                     ? burbujas[0]
-                    : `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\nPortal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/\nCualquier duda avisame!`;
+                    : `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\nPortal de pedidos y precios: https://proud-darkness-ac3d.miserrano75.workers.dev\nCualquier duda avisame!`;
                 const respPdf = await fetch(`/api/logistica/bunker/cuentas-corrientes/${contextoPoliticasWaActual.cuentaId}/whatsapp`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -6107,7 +6107,7 @@
             if (chkPdf && contextoPoliticasWaActual.cuentaId) {
                 const captionCorto = usarPrimeraBurbujaComoCaptionPdf
                     ? burbujas[0]
-                    : `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\nPortal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/\nCualquier duda avisame!`;
+                    : `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\nPortal de pedidos y precios: https://proud-darkness-ac3d.miserrano75.workers.dev\nCualquier duda avisame!`;
                 const respPdf = await fetch(`/api/logistica/bunker/cuentas-corrientes/${contextoPoliticasWaActual.cuentaId}/whatsapp`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },

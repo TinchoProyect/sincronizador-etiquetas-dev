@@ -12,6 +12,14 @@ const { pool } = require('../config/database');
 const { createClient } = require('@supabase/supabase-js');
 const { sincronizarTodoElDirectorioB2B } = require('../services/b2bDirectorySyncService');
 const nodosBarrialesService = require('../../produccion/services/nodosBarrialesService');
+const {
+    esModoLaboratorioBloqueadoB2B,
+    esEmailPlaceholderInterno,
+    sanitizarEmailReal,
+    normalizarTelefonoCanonicoAR,
+    normalizarConfigDestinatariosSaldo,
+    resolverDestinatariosSaldoCliente
+} = require('../services/portalB2BAccesoService');
 
 let _esquemaNodosReadyPromise = null;
 let _esquemaNodosReadyDone = false;
@@ -30,7 +38,7 @@ function asegurarEsquemaNodosOnce() {
 const SUPABASE_URL = process.env.SUPABASE_B2B_URL;
 const SUPABASE_KEY = process.env.SUPABASE_B2B_SERVICE_KEY;
 
-const supabaseAdmin = (SUPABASE_URL && SUPABASE_KEY) 
+const supabaseAdmin = (!esModoLaboratorioBloqueadoB2B() && SUPABASE_URL && SUPABASE_KEY) 
     ? createClient(SUPABASE_URL, SUPABASE_KEY, {
         auth: { autoRefreshToken: false, persistSession: false }
       })
@@ -324,7 +332,7 @@ exports.crear = async (req, res) => {
             categoria_monotributo: categoria_monotributo ? categoria_monotributo.trim() : null,
             actividad_principal: actividad_principal ? actividad_principal.trim() : null,
             whatsapp_facturas: whatsapp_facturas ? whatsapp_facturas.trim() : null,
-            email_facturas: email_facturas ? email_facturas.trim() : null,
+            email_facturas: email_facturas ? sanitizarJsonEmailFacturasPreservandoFlags(email_facturas.trim()) : null,
             canal_envio_preferido: canal_envio_preferido ? canal_envio_preferido.trim() : 'whatsapp',
             email_portal: email_portal ? email_portal.trim() : null,
             email_portal_nombre: email_portal_nombre ? email_portal_nombre.trim() : null,
@@ -472,7 +480,7 @@ exports.actualizar = async (req, res) => {
             categoria_monotributo: categoria_monotributo ? categoria_monotributo.trim() : null,
             actividad_principal: actividad_principal ? actividad_principal.trim() : null,
             whatsapp_facturas: whatsapp_facturas ? whatsapp_facturas.trim() : null,
-            email_facturas: email_facturas ? email_facturas.trim() : null,
+            email_facturas: email_facturas ? sanitizarJsonEmailFacturasPreservandoFlags(email_facturas.trim()) : null,
             canal_envio_preferido: canal_envio_preferido ? canal_envio_preferido.trim() : 'whatsapp',
             email_portal: email_portal ? email_portal.trim() : null,
             email_portal_nombre: email_portal_nombre ? email_portal_nombre.trim() : null,
@@ -598,7 +606,9 @@ exports.actualizar = async (req, res) => {
         }
 
         console.log(`✅ [CLIENTES-BUNKER] Cliente actualizado exitosamente: "${clienteActualizado.cliente_nombre}" (ID: ${id})`);
-        sincronizarTodoElDirectorioB2B(supabaseAdmin).catch(() => {});
+        if (supabaseAdmin) {
+            sincronizarTodoElDirectorioB2B(supabaseAdmin).catch(() => {});
+        }
         res.json({ 
             success: true, 
             data: clienteActualizado, 
@@ -810,12 +820,43 @@ exports.actualizarListas = async (req, res) => {
 };
 
 /**
- * Actualizar solo contactos de WhatsApp de un cliente (acoplamiento flexible)
+ * Sanitiza un string JSON de email_facturas preservando todos los flags legítimos
+ * y descartando correos internos ficticios (@lamdaclientes.com) o entradas malformadas ("[]").
+ */
+function sanitizarJsonEmailFacturasPreservandoFlags(rawStr) {
+    if (rawStr === undefined) return undefined;
+    if (rawStr === null) return null;
+    const str = String(rawStr).trim();
+    if (!str) return null;
+    if (str.startsWith('[')) {
+        try {
+            const parsed = JSON.parse(str);
+            if (!Array.isArray(parsed)) return null;
+            const seen = new Set();
+            const cleaned = [];
+            for (const item of parsed) {
+                if (!item || typeof item !== 'object') continue;
+                const em = sanitizarEmailReal(item.email);
+                if (!em || seen.has(em)) continue;
+                seen.add(em);
+                cleaned.push({ ...item, email: em });
+            }
+            return cleaned.length > 0 ? JSON.stringify(cleaned) : '[]';
+        } catch (_) {
+            return str;
+        }
+    }
+    const parts = str.split(',').map(sanitizarEmailReal).filter(Boolean);
+    return parts.length > 0 ? parts.join(', ') : null;
+}
+
+/**
+ * Actualizar solo contactos de WhatsApp / Email de un cliente (acoplamiento flexible)
  */
 exports.actualizarContactosWhatsapp = async (req, res) => {
     try {
         const { id } = req.params;
-        const { whatsapp_facturas, email_facturas, canal_envio_preferido } = req.body;
+        const { whatsapp_facturas, email_facturas, canal_envio_preferido, destinatarios_saldo_config } = req.body;
 
         console.log(`📱 [CLIENTES-BUNKER] Actualizando destinatarios de facturación para cliente ID: ${id}...`);
 
@@ -829,11 +870,16 @@ exports.actualizarContactosWhatsapp = async (req, res) => {
         }
         if (email_facturas !== undefined) {
             fields.push(`email_facturas = $${idx++}`);
-            values.push(email_facturas);
+            values.push(sanitizarJsonEmailFacturasPreservandoFlags(email_facturas));
         }
         if (canal_envio_preferido !== undefined) {
             fields.push(`canal_envio_preferido = $${idx++}`);
             values.push(canal_envio_preferido);
+        }
+        if (destinatarios_saldo_config !== undefined) {
+            const cfgNorm = normalizarConfigDestinatariosSaldo(destinatarios_saldo_config);
+            fields.push(`destinatarios_saldo_config = $${idx++}::jsonb`);
+            values.push(cfgNorm ? JSON.stringify(cfgNorm) : null);
         }
 
         if (fields.length === 0) {
@@ -858,6 +904,137 @@ exports.actualizarContactosWhatsapp = async (req, res) => {
     } catch (error) {
         console.error(`❌ [CLIENTES-BUNKER] Error al actualizar destinatarios de facturación:`, error);
         res.status(500).json({ success: false, error: 'Error al actualizar destinatarios de facturación.' });
+    }
+};
+
+/**
+ * Guardar permanentemente la selección de destinatarios y canales para Reportes de Saldo
+ * PUT /api/logistica/bunker/clientes/:id/destinatarios-saldo
+ *
+ * - Persiste en bunker_clientes.destinatarios_saldo_config (JSONB).
+ * - Sincroniza únicamente `default_resumen` en whatsapp_facturas y email_facturas
+ *   SIN alterar jamás `default_factura`, `default_presupuesto`, `default_difusion` ni `enviar_alerta`.
+ * - Filtra cualquier correo placeholder interno (@lamdaclientes.com) y normaliza teléfonos con prefijo 549.
+ */
+exports.actualizarDestinatariosSaldo = async (req, res) => {
+    try {
+        const clienteId = parseInt(req.params.id, 10);
+        if (isNaN(clienteId)) {
+            return res.status(400).json({ success: false, error: 'ID de cliente inválido.' });
+        }
+
+        const clienteActual = await ClientesBunkerModel.obtenerPorId(clienteId);
+        if (!clienteActual) {
+            return res.status(404).json({ success: false, error: 'El cliente especificado no existe.' });
+        }
+
+        const rawWps = Array.isArray(req.body?.whatsapp) ? req.body.whatsapp : [];
+        const rawEmails = Array.isArray(req.body?.email) ? req.body.email : [];
+
+        const wpsNorm = Array.from(new Set(rawWps.map(normalizarTelefonoCanonicoAR).filter(Boolean)));
+        const emailsNorm = Array.from(new Set(rawEmails.map(sanitizarEmailReal).filter(Boolean)));
+
+        // Validar si se intentó pasar un correo placeholder interno explícitamente
+        const emailsRechazados = rawEmails
+            .map(e => String(e || '').trim())
+            .filter(e => e && esEmailPlaceholderInterno(e));
+        if (emailsRechazados.length > 0 && emailsNorm.length === 0 && wpsNorm.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'No se pueden configurar correos internos ficticios (@lamdaclientes.com) ni direcciones inválidas.'
+            });
+        }
+
+        const wpSet = new Set(wpsNorm);
+        const emailSet = new Set(emailsNorm);
+
+        // 1. Sincronizar solo `default_resumen` en whatsapp_facturas preservando todos los demás flags y metadatos
+        let nextWhatsappFacturas = clienteActual.whatsapp_facturas;
+        if (clienteActual.whatsapp_facturas && String(clienteActual.whatsapp_facturas).trim()) {
+            const rawStr = String(clienteActual.whatsapp_facturas).trim();
+            let arrWp = [];
+            if (rawStr.startsWith('[')) {
+                try {
+                    const parsed = JSON.parse(rawStr);
+                    if (Array.isArray(parsed)) arrWp = parsed;
+                } catch (_) {}
+            } else {
+                arrWp = rawStr.split(',').map(n => ({ numero: n.trim(), nombre: '', cargo: '', enviar_alerta: true }));
+            }
+
+            if (arrWp.length > 0) {
+                const seenWp = new Set();
+                const syncedWp = [];
+                for (const c of arrWp) {
+                    if (!c || typeof c !== 'object') continue;
+                    const numCanon = normalizarTelefonoCanonicoAR(c.numero);
+                    if (!numCanon || seenWp.has(numCanon)) continue;
+                    seenWp.add(numCanon);
+                    syncedWp.push({
+                        ...c,
+                        numero: numCanon,
+                        default_resumen: wpSet.has(numCanon)
+                    });
+                }
+                nextWhatsappFacturas = JSON.stringify(syncedWp);
+            }
+        }
+
+        // 2. Sincronizar solo `default_resumen` en email_facturas preservando todos los demás flags y limpiando placeholders/basura
+        let nextEmailFacturas = clienteActual.email_facturas;
+        if (clienteActual.email_facturas && String(clienteActual.email_facturas).trim()) {
+            const rawStr = String(clienteActual.email_facturas).trim();
+            let arrEm = [];
+            if (rawStr.startsWith('[')) {
+                try {
+                    const parsed = JSON.parse(rawStr);
+                    if (Array.isArray(parsed)) arrEm = parsed;
+                } catch (_) {}
+            } else {
+                arrEm = rawStr.split(',').map(e => ({ email: e.trim(), nombre: '', cargo: '', enviar_alerta: true }));
+            }
+
+            const seenEm = new Set();
+            const syncedEm = [];
+            for (const e of arrEm) {
+                if (!e || typeof e !== 'object') continue;
+                const emClean = sanitizarEmailReal(e.email);
+                if (!emClean || seenEm.has(emClean)) continue;
+                seenEm.add(emClean);
+                syncedEm.push({
+                    ...e,
+                    email: emClean,
+                    default_resumen: emailSet.has(emClean)
+                });
+            }
+            nextEmailFacturas = JSON.stringify(syncedEm);
+        }
+
+        const nuevaConfig = {
+            configurado: true,
+            whatsapp: wpsNorm,
+            email: emailsNorm,
+            actualizado_en: new Date().toISOString()
+        };
+
+        const clienteActualizado = await ClientesBunkerModel.actualizarDestinatariosSaldo(clienteId, {
+            destinatarios_saldo_config: nuevaConfig,
+            whatsapp_facturas: nextWhatsappFacturas,
+            email_facturas: nextEmailFacturas
+        });
+
+        console.log(`✅ [CLIENTES-BUNKER] Destinatarios de saldo guardados permanentemente para ${clienteActual.codigo_bunker_cliente}: WA=[${wpsNorm.join(', ')}] | Email=[${emailsNorm.join(', ')}]`);
+
+        res.json({
+            success: true,
+            data: clienteActualizado,
+            destinatarios_saldo_config: nuevaConfig,
+            resumen_destinatarios: resolverDestinatariosSaldoCliente(clienteActualizado),
+            message: 'Destinatarios de reportes de saldo guardados permanentemente.'
+        });
+    } catch (error) {
+        console.error('❌ [CLIENTES-BUNKER] Error al guardar destinatarios de saldo:', error);
+        res.status(500).json({ success: false, error: 'Error al guardar los destinatarios de saldo del cliente.' });
     }
 };
 

@@ -13,6 +13,8 @@ function asegurarIndicesClientesBunker() {
         _indicesClientesPromise = (async () => {
             try {
                 await pool.query(`
+                    ALTER TABLE public.bunker_clientes
+                        ADD COLUMN IF NOT EXISTS destinatarios_saldo_config JSONB DEFAULT NULL;
                     CREATE INDEX IF NOT EXISTS idx_portal_inv_cliente_usado
                         ON public.portal_invitaciones (cliente_id) WHERE usado = true;
                     CREATE INDEX IF NOT EXISTS idx_bunker_clp_cliente_id
@@ -74,7 +76,8 @@ class ClientesBunkerModel {
                 SELECT DISTINCT ON (codigo_bunker_cliente)
                     codigo_bunker_cliente,
                     id AS cuenta_corriente_id,
-                    saldo
+                    saldo,
+                    configuracion_reporte
                 FROM public.factura_cuentas_corrientes
                 WHERE codigo_bunker_cliente IS NOT NULL
                   AND COALESCE(estado, 'ACTIVA') <> 'ARCHIVADA_UNIFICADA'
@@ -189,8 +192,8 @@ class ClientesBunkerModel {
                 LEFT JOIN efvo_nodos_agg ea ON ea.nodo_id = nm.id
                 WHERE COALESCE(nm.activo, true) = true
             )
-            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.preferencia_facturacion, COALESCE(c.ver_stock, false) as ver_stock, COALESCE(c.salvavidas_modo, 'HEREDAR_LISTA') as salvavidas_modo, c.created_at, c.updated_at,
-                   cc.saldo, cc.cuenta_corriente_id,
+            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.destinatarios_saldo_config, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.preferencia_facturacion, COALESCE(c.ver_stock, false) as ver_stock, COALESCE(c.salvavidas_modo, 'HEREDAR_LISTA') as salvavidas_modo, c.created_at, c.updated_at,
+                   cc.saldo, cc.cuenta_corriente_id, cc.configuracion_reporte,
                    (ia.cliente_id IS NOT NULL) as onboarding_completado,
                    COALESCE(la.listas_precios, '[]'::json) as listas_precios,
                    TRIM(COALESCE(da_bunker.domicilios_texto, '') || ' ' || COALESCE(da_legacy.domicilios_texto, '')) as domicilios_busqueda,
@@ -266,8 +269,8 @@ class ClientesBunkerModel {
      */
     static async obtenerPorId(id) {
         const query = `
-            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.preferencia_facturacion, COALESCE(c.ver_stock, false) as ver_stock, COALESCE(c.salvavidas_modo, 'HEREDAR_LISTA') as salvavidas_modo, c.created_at, c.updated_at,
-                   cc.saldo, cc.id as cuenta_corriente_id,
+            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.destinatarios_saldo_config, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.preferencia_facturacion, COALESCE(c.ver_stock, false) as ver_stock, COALESCE(c.salvavidas_modo, 'HEREDAR_LISTA') as salvavidas_modo, c.created_at, c.updated_at,
+                   cc.saldo, cc.id as cuenta_corriente_id, cc.configuracion_reporte,
                    EXISTS (
                        SELECT 1 FROM public.portal_invitaciones i 
                        WHERE i.cliente_id = c.codigo_bunker_cliente AND i.usado = true
@@ -307,7 +310,7 @@ class ClientesBunkerModel {
      */
     static async obtenerPorCodigoBunker(codigo) {
         const query = `
-            SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, created_at, updated_at
+            SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, destinatarios_saldo_config, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, created_at, updated_at
             FROM public.bunker_clientes
             WHERE codigo_bunker_cliente = $1
         `;
@@ -695,6 +698,38 @@ class ClientesBunkerModel {
         `;
         const result = await pool.query(query, [clienteId]);
         return result.rows;
+    }
+
+    /**
+     * Persistir de forma permanente la configuración de destinatarios y canales para Reportes de Saldo
+     * (columna destinatarios_saldo_config JSONB), opcionalmente sincronizando default_resumen
+     * en whatsapp_facturas / email_facturas sin alterar default_factura ni otras preferencias.
+     */
+    static async actualizarDestinatariosSaldo(id, { destinatarios_saldo_config, whatsapp_facturas, email_facturas }) {
+        const fields = ['destinatarios_saldo_config = $1::jsonb'];
+        const values = [JSON.stringify(destinatarios_saldo_config)];
+        let idx = 2;
+
+        if (whatsapp_facturas !== undefined) {
+            fields.push(`whatsapp_facturas = $${idx++}`);
+            values.push(whatsapp_facturas);
+        }
+        if (email_facturas !== undefined) {
+            fields.push(`email_facturas = $${idx++}`);
+            values.push(email_facturas);
+        }
+
+        fields.push('updated_at = CURRENT_TIMESTAMP');
+        values.push(parseInt(id, 10));
+
+        const query = `
+            UPDATE public.bunker_clientes
+            SET ${fields.join(', ')}
+            WHERE id = $${idx}
+            RETURNING *
+        `;
+        const result = await pool.query(query, values);
+        return result.rows.length ? result.rows[0] : null;
     }
 }
 

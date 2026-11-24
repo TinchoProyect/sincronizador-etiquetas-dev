@@ -2208,6 +2208,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         let mensajePredeterminado = '';
+        let portalAccesoPredet = null;
         try {
             const paramsMsg = new URLSearchParams();
             if (detallado) paramsMsg.set('detallado', 'true');
@@ -2220,9 +2221,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const dataMsg = await resMsg.json();
             if (dataMsg.success) {
                 mensajePredeterminado = dataMsg.mensajeTexto;
+                portalAccesoPredet = dataMsg.portalAcceso || null;
                 
                 // Formatear saldo con convención de millares: punto (.) y decimales: coma (,)
-                const numSaldo = parseFloat(cuentaSeleccionada.saldo) || 0;
+                const numSaldo = parseFloat(dataMsg.saldoResumen?.saldoConsolidado ?? cuentaSeleccionada.saldo) || 0;
                 const parts = Math.abs(numSaldo).toFixed(2).split('.');
                 const formattedInt = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
                 const sign = numSaldo < 0 ? '-' : '';
@@ -2233,6 +2235,25 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) {
             console.error('❌ [CC-FRONT] Error cargando mensaje predeterminado:', err);
         }
+
+        // Helpers locales de sanitización (sin placeholders @lamdaclientes.com y normalización 549)
+        const esEmailInternoCC = (em) => {
+            const c = String(em || '').trim().toLowerCase();
+            if (!c || c === '[]' || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(c)) return true;
+            return c.endsWith('@lamdaclientes.com') || c.endsWith('@b2b.lamdaser.com') || c.endsWith('@lamda.com.ar');
+        };
+        const normTelCC = (raw) => {
+            let d = String(raw || '').replace(/\D/g, '').trim();
+            if (!d) return '';
+            if (d.startsWith('00')) d = d.slice(2);
+            if (d.startsWith('540')) d = '549' + d.slice(3);
+            else if (d.startsWith('54') && !d.startsWith('549') && d.length >= 12) d = '549' + d.slice(2);
+            else if (!d.startsWith('549')) {
+                if (d.startsWith('0') && d.length > 1) d = d.slice(1);
+                if (d.length === 10) d = '549' + d;
+            }
+            return d.length >= 8 ? d : '';
+        };
 
         // Recuperar y parsear contactos de WhatsApp
         let contacts = [];
@@ -2252,16 +2273,15 @@ document.addEventListener('DOMContentLoaded', () => {
             })).filter(c => c.numero);
         }
         contacts = contacts.map(c => ({
-            id: c.id,
-            numero: c.numero ? c.numero.replace(/\D/g, '') : '',
+            ...c,
+            numero: normTelCC(c.numero),
             nombre: c.nombre || '',
             cargo: c.cargo || '',
             enviar_alerta: c.enviar_alerta !== false,
-            default_resumen: c.default_resumen === true || c.default === true,
-            default: c.default_resumen === true || c.default === true
+            default_resumen: c.default_resumen === true
         })).filter(c => c.numero.length > 0);
 
-        // Recuperar y parsear contactos de Email
+        // Recuperar y parsear contactos de Email reales (descartando placeholders y basura)
         let emails = [];
         const rawEmail = (cliente.email_facturas || '').trim();
         if (rawEmail.startsWith('[')) {
@@ -2270,21 +2290,63 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch(e) {}
         }
         if (!Array.isArray(emails) || emails.length === 0) {
-            if (rawEmail) {
+            if (rawEmail && !rawEmail.startsWith('[')) {
                 emails = rawEmail.split(',').map(e => ({
                     email: e.trim(),
                     nombre: '',
                     cargo: '',
-                    default_factura: true
+                    default_resumen: false
                 })).filter(e => e.email);
             }
         }
         emails = emails.map(e => ({
-            email: e.email ? e.email.trim() : '',
+            ...e,
+            email: e.email ? e.email.trim().toLowerCase() : '',
             nombre: e.nombre || '',
             cargo: e.cargo || '',
-            default_factura: e.default_factura !== false
-        })).filter(e => e.email.length > 0);
+            default_resumen: e.default_resumen === true
+        })).filter(e => e.email.length > 0 && !esEmailInternoCC(e.email));
+
+        if (emails.length === 0 && cliente.email_portal && !esEmailInternoCC(cliente.email_portal)) {
+            emails.push({
+                email: cliente.email_portal.trim().toLowerCase(),
+                nombre: cliente.email_portal_nombre || cliente.cliente_nombre || '',
+                cargo: cliente.email_portal_cargo || 'Portal B2B',
+                default_resumen: false,
+                es_fallback_portal: true
+            });
+        }
+
+        // Resolver selección inicial desde configuración permanente de BD (`destinatarios_saldo_config`)
+        const cfgSaldoDb = (cliente.destinatarios_saldo_config && cliente.destinatarios_saldo_config.configurado === true)
+            ? cliente.destinatarios_saldo_config
+            : null;
+        let preSelWpSet = new Set();
+        let preSelEmSet = new Set();
+        if (cfgSaldoDb) {
+            (cfgSaldoDb.whatsapp || []).map(normTelCC).filter(Boolean).forEach(n => {
+                preSelWpSet.add(n);
+                if (!contacts.some(c => c.numero === n)) {
+                    contacts.push({ numero: n, nombre: 'Guardado (extra)', cargo: '', default_resumen: true });
+                }
+            });
+            (cfgSaldoDb.email || []).map(e => String(e || '').trim().toLowerCase()).filter(e => !esEmailInternoCC(e)).forEach(em => {
+                preSelEmSet.add(em);
+                if (!emails.some(x => x.email === em)) {
+                    emails.push({ email: em, nombre: 'Guardado (extra)', cargo: '', default_resumen: true });
+                }
+            });
+        } else {
+            const wpsRes = contacts.filter(c => c.default_resumen === true).map(c => c.numero);
+            const emsRes = emails.filter(e => e.default_resumen === true).map(e => e.email);
+            if (wpsRes.length > 0 || emsRes.length > 0) {
+                wpsRes.forEach(n => preSelWpSet.add(n));
+                emsRes.forEach(em => preSelEmSet.add(em));
+            } else if ((contacts.length + emails.length) === 1) {
+                contacts.forEach(c => preSelWpSet.add(c.numero));
+                emails.forEach(e => preSelEmSet.add(e.email));
+            }
+        }
 
         if (contacts.length === 0 && emails.length === 0) {
             Swal.fire({
@@ -2323,7 +2385,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         } else {
             contacts.forEach((c, index) => {
-                const isChecked = c.default_resumen === true;
+                const isChecked = preSelWpSet.has(c.numero);
                 const formattedNum = c.numero.replace(/\D/g, '');
                 let displayNum = c.numero;
                 if (formattedNum.length === 10) {
@@ -2372,7 +2434,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         } else {
             emails.forEach((e, index) => {
-                const isChecked = e.default_factura === true;
+                const isChecked = preSelEmSet.has(e.email);
                 const labelText = e.nombre 
                     ? `<strong>${e.nombre}</strong>${e.cargo ? ` <span style="font-size: 9px; background: #f3e8ff; color: #6b21a8; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${e.cargo}</span>` : ''}`
                     : `Contacto #${index + 1}`;
@@ -2415,72 +2477,73 @@ document.addEventListener('DOMContentLoaded', () => {
         async function guardarPreferenciasYContactos(selectedWpsList, selectedEmailsList) {
             if (!cliente || !cliente.id) return;
 
-            // 1. Mapear existentes sincronizando default_resumen y default
-            const updatedWps = contacts.map((c, idx) => {
-                const isSel = selectedWpsList.includes(c.numero);
-                return {
-                    ...c,
-                    id: c.id || `cont_${Date.now().toString(36)}_${idx}`,
-                    enviar_alerta: c.enviar_alerta !== false,
-                    default_resumen: isSel,
-                    default: isSel
-                };
-            });
+            const wpsNorm = Array.from(new Set(selectedWpsList.map(normTelCC).filter(Boolean)));
+            const emailsClean = Array.from(new Set(
+                selectedEmailsList.map(em => String(em || '').trim().toLowerCase()).filter(em => !esEmailInternoCC(em))
+            ));
 
-            // Si hay números adicionales que no existían en la lista previa, agregarlos
-            const existingNums = new Set(updatedWps.map(c => c.numero));
-            selectedWpsList.forEach(num => {
+            // Si el usuario ingresó teléfonos o correos nuevos que no estaban en la ficha, agregarlos preservando todos los flags existentes
+            const existingNums = new Set(contacts.map(c => c.numero));
+            let contactosFichaActualizados = false;
+            wpsNorm.forEach(num => {
                 if (num && !existingNums.has(num)) {
-                    updatedWps.push({
+                    contacts.push({
                         id: `cont_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`,
                         numero: num,
                         nombre: 'Contacto Adicional',
                         cargo: '',
                         enviar_alerta: true,
-                        default_resumen: true,
-                        default: true
+                        default_factura: false,
+                        default_resumen: true
                     });
                     existingNums.add(num);
+                    contactosFichaActualizados = true;
                 }
             });
 
-            // 2. Mapear correos existentes
-            const updatedEmails = emails.map(e => {
-                const isSel = selectedEmailsList.includes(e.email);
-                return {
-                    ...e,
-                    default_factura: isSel
-                };
-            });
-
-            // Si hay correos adicionales que no existían en la lista previa, agregarlos
-            const existingEmails = new Set(updatedEmails.map(e => e.email.toLowerCase()));
-            selectedEmailsList.forEach(em => {
-                if (em && !existingEmails.has(em.toLowerCase())) {
-                    updatedEmails.push({
+            const existingEmails = new Set(emails.filter(e => !e.es_fallback_portal).map(e => e.email.toLowerCase()));
+            emailsClean.forEach(em => {
+                if (em && !existingEmails.has(em)) {
+                    emails.push({
                         id: `email_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 6)}`,
                         email: em,
                         nombre: 'Contacto Adicional',
                         cargo: '',
-                        default_factura: true
+                        default_factura: false,
+                        default_resumen: true
                     });
-                    existingEmails.add(em.toLowerCase());
+                    existingEmails.add(em);
+                    contactosFichaActualizados = true;
                 }
             });
 
-            contacts = updatedWps;
-            emails = updatedEmails;
-            cliente.whatsapp_facturas = JSON.stringify(updatedWps);
-            cliente.email_facturas = JSON.stringify(updatedEmails);
+            if (contactosFichaActualizados) {
+                const fichaEmailsOnly = emails.filter(e => !e.es_fallback_portal);
+                await fetch(`/api/logistica/bunker/clientes/${cliente.id}/whatsapp-contacts`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        whatsapp_facturas: JSON.stringify(contacts),
+                        email_facturas: JSON.stringify(fichaEmailsOnly)
+                    })
+                });
+            }
 
-            await fetch(`/api/logistica/bunker/clientes/${cliente.id}/whatsapp-contacts`, {
-                method: 'PATCH',
+            // Persistir permanentemente en destinatarios_saldo_config (sin alterar default_factura ni otras preferencias)
+            const resSaldoCfg = await fetch(`/api/logistica/bunker/clientes/${cliente.id}/destinatarios-saldo`, {
+                method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    whatsapp_facturas: cliente.whatsapp_facturas,
-                    email_facturas: cliente.email_facturas
+                body: JSON.stringify({
+                    whatsapp: wpsNorm,
+                    email: emailsClean
                 })
             });
+            const dataSaldoCfg = await resSaldoCfg.json().catch(() => ({}));
+            if (resSaldoCfg.ok && dataSaldoCfg.data) {
+                cliente.destinatarios_saldo_config = dataSaldoCfg.data.destinatarios_saldo_config;
+                cliente.whatsapp_facturas = dataSaldoCfg.data.whatsapp_facturas;
+                cliente.email_facturas = dataSaldoCfg.data.email_facturas;
+            }
 
             // Guardar también la configuración del reporte como predeterminada
             await guardarConfiguracionReportePredeterminada(detallado, modoCorte === 'ultimo_cero' || modoCorte === true, detallarBalance, modoCorte, desdeMovId);
@@ -2758,22 +2821,37 @@ document.addEventListener('DOMContentLoaded', () => {
             }));
         }
 
-        try {
-            const results = await Promise.all(attempts);
+        const settled = await Promise.allSettled(attempts);
+        const canalesOk = [];
+        const canalesErr = [];
+        settled.forEach(s => {
+            if (s.status === 'fulfilled') canalesOk.push(s.value);
+            else canalesErr.push(s.reason?.message || 'Error de envío');
+        });
+
+        if (canalesOk.length > 0 && canalesErr.length === 0) {
             Swal.fire({
                 icon: 'success',
                 title: 'Envío Exitoso',
-                text: `El reporte se ha enviado correctamente a través de: ${results.join(' y ')}.`,
+                text: `El reporte se ha enviado correctamente a través de: ${canalesOk.join(' y ')}.`,
                 confirmButtonColor: '#6b21a8'
             }).then(() => {
                 abrirPrevisualizador(detallado, modoCorte, detallarBalance, desdeMovId);
             });
-        } catch (error) {
-            console.error('❌ [CC-FRONT] Error al enviar reporte:', error);
+        } else if (canalesOk.length > 0 && canalesErr.length > 0) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Envío Parcial por Canal',
+                html: `<div style="text-align:left; font-size:13px;"><div style="color:#15803d; margin-bottom:6px;">✅ <strong>Enviado con éxito:</strong> ${canalesOk.join(', ')}</div><div style="color:#dc2626;">❌ <strong>Error en otro canal:</strong> ${canalesErr.join(' | ')}</div></div>`,
+                confirmButtonColor: '#6b21a8'
+            }).then(() => {
+                abrirPrevisualizador(detallado, modoCorte, detallarBalance, desdeMovId);
+            });
+        } else {
             Swal.fire({
                 icon: 'error',
                 title: 'Falla al Enviar',
-                text: error.message || 'No se pudo enviar el reporte en este momento.',
+                text: canalesErr.join(' | ') || 'No se pudo enviar el reporte en este momento.',
                 confirmButtonColor: '#6b21a8'
             }).then(() => {
                 abrirPrevisualizador(detallado, modoCorte, detallarBalance, desdeMovId);
@@ -3335,7 +3413,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return `Te adjunto en PDF el recibo de pago (${nroCompStr}). Muchas gracias!\n\n${saldoStatusText}`;
             } else {
-                return `Te adjunto en PDF el comprobante (${nroCompStr}) de tu cuenta corriente.\n${saldoStatusText}\nPortal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/\nCualquier duda avisame!`;
+                return `Te adjunto en PDF el comprobante (${nroCompStr}) de tu cuenta corriente.\n${saldoStatusText}\nPortal de pedidos y precios: https://proud-darkness-ac3d.miserrano75.workers.dev\nCualquier duda avisame!`;
             }
         };
 
@@ -3680,7 +3758,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (cantPagos > 0 && cantFacturas === 0 && cantNC === 0) {
                 return `Te adjunto en PDF ${tipoDocTxt}. Muchas gracias!`;
             }
-            return `Te adjunto en PDF ${tipoDocTxt}.\nPortal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/\nCualquier duda avisame!`;
+            return `Te adjunto en PDF ${tipoDocTxt}.\nPortal de pedidos y precios: https://proud-darkness-ac3d.miserrano75.workers.dev\nCualquier duda avisame!`;
         };
 
         const defaultMessage = construirMensajeDinamicoMulti();
@@ -4359,12 +4437,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!chkPortal) {
             baseMsg = baseMsg
                 .split('\n')
-                .filter(l => !/portal\s+de\s+pedidos|https?:\/\//i.test(l))
+                .filter(l => !/portal\s+de\s+pedidos|activar\s+tu\s+acceso|código\s+de\s+activación|activá\s+tu\s+primer\s+ingreso|https?:\/\//i.test(l))
                 .join('\n')
+                .replace(/\n{3,}/g, '\n\n')
                 .trim();
         } else if (!/https?:\/\//i.test(baseMsg)) {
             const lineas = baseMsg.split('\n');
-            lineas.splice(Math.max(1, lineas.length - 1), 0, 'Portal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/');
+            lineas.splice(Math.max(1, lineas.length - 1), 0, '🌐 *Portal de pedidos y precios:* https://proud-darkness-ac3d.miserrano75.workers.dev');
             baseMsg = lineas.join('\n');
         }
 
@@ -4463,8 +4542,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const reglas = salvavidas?.reglas_aplicadas || {};
         const listaId = politicaInfo?.lista_id || cliente?.lista_asignada_id || '-';
         const listaNombre = politicaInfo?.lista_nombre || reglas.lista_nombre || 'Mayorista LAMDA';
+        const modoSwitchCC = reglas.modo_switch || (reglas.habilitado === false ? 'EXCLUIDO' : 'ACTIVO');
         const saldoCapital = Number(salvavidas?.saldo_contable_real ?? cuentaSeleccionada?.saldo ?? 0);
-        const montoFin = Number(salvavidas?.financiacion_total_con_iva ?? 0);
+        const montoFin = (modoSwitchCC === 'ACTIVO' && reglas.habilitado !== false)
+            ? Number(salvavidas?.financiacion_total_con_iva ?? 0)
+            : 0;
         const saldoReal = montoFin > 0 ? Number(salvavidas?.saldo_total_proyectado_con_iva || (saldoCapital + montoFin)) : saldoCapital;
         const saldoFmt = saldoReal.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
         const desgloseCF = montoFin > 0
@@ -4499,7 +4581,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const armarTextoSugeridoCC = () => {
             const chkPdf = Boolean(document.getElementById('cc-pol-chk-pdf')?.checked);
             if (chkPdf) {
-                return `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\nPortal de pedidos y precios: https://portal-lamda-b2b.idadesarrollo.workers.dev/\nCualquier duda avisame!`;
+                return `Te adjunto el resumen actualizado de tu cuenta corriente en PDF.\n\n💰 *Saldo consolidado actual:* *${saldoFmt}*${desgloseCF}\n\n🌐 *Portal de pedidos y precios:* https://proud-darkness-ac3d.miserrano75.workers.dev\n\nCualquier duda avisame!`;
             }
             const chkFin = document.getElementById('cc-pol-chk-fin') ? document.getElementById('cc-pol-chk-fin').checked : true;
             const chkLista = document.getElementById('cc-pol-chk-lista') ? document.getElementById('cc-pol-chk-lista').checked : true;

@@ -391,142 +391,300 @@ document.addEventListener('DOMContentLoaded', () => {
         chkSeleccionarTodos.checked = todosChequeados;
     }
 
-    function obtenerContactosSeleccionados(clienteId) {
-        const saved = localStorage.getItem('lamda_clientes_contactos_seleccionados');
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                if (parsed && parsed[String(clienteId)]) {
-                    return parsed[String(clienteId)];
-                }
-            } catch (e) {
-                console.error('Error parseando lamda_clientes_contactos_seleccionados:', e);
-            }
-        }
-        return null;
+    // --- HELPERS CANÓNICOS DE CONTACTOS Y DESTINATARIOS DE SALDO (PERSISTENCIA EN POSTGRESQL) ---
+    const EMAIL_PLACEHOLDER_DOMAINS = ['@lamdaclientes.com', '@b2b.lamdaser.com', '@lamda.com.ar'];
+    const EMAIL_VALID_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+    function esEmailPlaceholderInterno(email) {
+        const clean = String(email || '').trim().toLowerCase();
+        if (!clean || clean === '[]' || clean === '{}') return true;
+        if (!EMAIL_VALID_REGEX.test(clean)) return true;
+        return EMAIL_PLACEHOLDER_DOMAINS.some(dom => clean.endsWith(dom));
     }
 
-    function guardarContactosSeleccionados(clienteId, numerosArray) {
-        const saved = localStorage.getItem('lamda_clientes_contactos_seleccionados');
-        let parsed = {};
-        if (saved) {
-            try {
-                parsed = JSON.parse(saved) || {};
-            } catch (e) {
-                console.error('Error parseando lamda_clientes_contactos_seleccionados:', e);
-            }
+    function sanitizarEmailReal(raw) {
+        const clean = String(raw || '').trim().toLowerCase();
+        if (!clean || esEmailPlaceholderInterno(clean)) return '';
+        return clean;
+    }
+
+    function normalizarTelefonoCanonicoAR(raw) {
+        let digits = String(raw || '').replace(/\D/g, '').trim();
+        if (!digits) return '';
+        if (digits.startsWith('00')) digits = digits.slice(2);
+        if (digits.startsWith('540')) {
+            digits = '549' + digits.slice(3);
+        } else if (digits.startsWith('549')) {
+            let rest = digits.slice(3);
+            if (rest.startsWith('0')) rest = rest.slice(1);
+            rest = stripLocal15(rest);
+            digits = '549' + rest;
+        } else if (digits.startsWith('54') && digits.length >= 12) {
+            let rest = digits.slice(2);
+            if (rest.startsWith('0')) rest = rest.slice(1);
+            rest = stripLocal15(rest);
+            digits = '549' + rest;
+        } else {
+            if (digits.startsWith('0') && digits.length > 1) digits = digits.slice(1);
+            digits = stripLocal15(digits);
+            if (digits.length === 10) digits = '549' + digits;
         }
-        parsed[String(clienteId)] = numerosArray;
-        localStorage.setItem('lamda_clientes_contactos_seleccionados', JSON.stringify(parsed));
+        return digits.length >= 8 ? digits : '';
+    }
+
+    function formatearTelefonoDisplayAR(rawNum) {
+        const canon = normalizarTelefonoCanonicoAR(rawNum) || String(rawNum || '').replace(/\D/g, '');
+        if (!canon) return String(rawNum || '');
+        if (canon.length === 13 && canon.startsWith('549')) {
+            return formatArgentinePhone(canon);
+        }
+        if (canon.length === 10) {
+            return formatArgentinePhone('549' + canon);
+        }
+        return formatArgentinePhone(canon) || String(rawNum || '');
     }
 
     function obtenerContactosDeCliente(cliente) {
-        const whatsappString = cliente.whatsapp_facturas || '';
+        const whatsappString = (cliente?.whatsapp_facturas || '').trim();
         let contactos = [];
-        if (whatsappString.trim().startsWith('[')) {
+        if (whatsappString.startsWith('[')) {
             try {
-                contactos = JSON.parse(whatsappString);
+                const parsed = JSON.parse(whatsappString);
+                if (Array.isArray(parsed)) contactos = parsed;
             } catch (e) {
                 console.error('Error parseando whatsapp_facturas:', e);
             }
-        } else if (whatsappString.trim().length > 0) {
+        } else if (whatsappString.length > 0) {
             contactos = whatsappString.split(',').map(n => ({ numero: n.trim(), nombre: '', cargo: '', default_factura: true, default_resumen: true }));
         }
-        return contactos.map(c => ({
-            numero: c.numero ? c.numero.replace(/\D/g, '') : '',
-            nombre: c.nombre || '',
-            cargo: c.cargo || '',
-            default_factura: c.default_factura !== false,
-            default_resumen: c.default_resumen === true || c.default === true
-        })).filter(c => c.numero.length > 0);
+        const seen = new Set();
+        const out = [];
+        for (const c of contactos) {
+            if (!c || typeof c !== 'object') continue;
+            const numCanon = normalizarTelefonoCanonicoAR(c.numero);
+            if (!numCanon || seen.has(numCanon)) continue;
+            seen.add(numCanon);
+            out.push({
+                ...c,
+                numero: numCanon,
+                nombre: (c.nombre || '').trim(),
+                cargo: (c.cargo || '').trim(),
+                default_factura: c.default_factura !== false,
+                default_resumen: c.default_resumen === true
+            });
+        }
+        return out;
     }
 
-    function obtenerEmailsDeCliente(cliente) {
-        const emailString = cliente.email_facturas || '';
+    function obtenerEmailsDeCliente(cliente, { incluirFallbackPortal = true } = {}) {
+        const emailString = (cliente?.email_facturas || '').trim();
         let emails = [];
-        if (emailString && emailString.trim().startsWith('[')) {
+        if (emailString.startsWith('[')) {
             try {
-                emails = JSON.parse(emailString);
+                const parsed = JSON.parse(emailString);
+                if (Array.isArray(parsed)) emails = parsed;
             } catch (e) {
                 console.error('Error parseando email_facturas:', e);
             }
-        } else if (emailString && emailString.trim().length > 0) {
+        } else if (emailString.length > 0) {
             emails = emailString.split(',').map(e => ({ email: e.trim(), nombre: '', cargo: '', default_factura: true }));
         }
 
-        // 🚀 FALLBACK AUTOMÁTICO: Si no hay emails en email_facturas, recuperar email_portal si está disponible
-        if (emails.length === 0 && cliente.email_portal && cliente.email_portal.trim().length > 0) {
-            emails.push({
-                email: cliente.email_portal.trim(),
-                nombre: cliente.email_portal_nombre || cliente.cliente_nombre || '',
-                cargo: cliente.email_portal_cargo || 'Portal B2B',
-                default_factura: true
+        const seen = new Set();
+        const out = [];
+        for (const e of emails) {
+            if (!e || typeof e !== 'object') continue;
+            const emClean = sanitizarEmailReal(e.email);
+            if (!emClean || seen.has(emClean)) continue;
+            seen.add(emClean);
+            out.push({
+                ...e,
+                email: emClean,
+                nombre: (e.nombre || '').trim(),
+                cargo: (e.cargo || '').trim(),
+                default_factura: e.default_factura !== false,
+                default_resumen: e.default_resumen === true
             });
         }
 
-        return emails.map(e => ({
-            email: e.email ? e.email.trim() : '',
-            nombre: e.nombre || '',
-            cargo: e.cargo || '',
-            default_factura: e.default_factura !== false
-        })).filter(e => e.email.length > 0);
+        // Fallback seguro a email_portal SOLO si es un email real (nunca @lamdaclientes.com ni malformado)
+        if (incluirFallbackPortal && out.length === 0 && cliente?.email_portal) {
+            const portalEmailReal = sanitizarEmailReal(cliente.email_portal);
+            if (portalEmailReal && !seen.has(portalEmailReal)) {
+                out.push({
+                    email: portalEmailReal,
+                    nombre: (cliente.email_portal_nombre || cliente.cliente_nombre || '').trim(),
+                    cargo: (cliente.email_portal_cargo || 'Portal B2B').trim(),
+                    default_factura: false,
+                    default_resumen: false,
+                    es_fallback_portal: true
+                });
+            }
+        }
+        return out;
     }
 
-    async function abrirConfiguracionContactosBulk(clienteId, clienteNombre, forceOpen) {
+    /**
+     * Resuelve de manera 100% determinista los destinatarios de Reporte de Saldo de un cliente
+     * desde la base de datos (sin localStorage):
+     *  1) Si existe destinatarios_saldo_config.configurado === true -> usa esa configuración permanente.
+     *  2) Si hay contactos con default_resumen === true -> usa esos.
+     *  3) Si no hay marca previa y hay exactamente 1 contacto real -> lo sugiere.
+     *  4) Si hay múltiples contactos sin preferencia de resumen -> requiere_definicion = true.
+     */
+    function resolverDestinatariosSaldoClienteUI(cliente) {
+        const contactosWp = obtenerContactosDeCliente(cliente);
+        const contactosEmail = obtenerEmailsDeCliente(cliente);
+
+        const cfg = cliente?.destinatarios_saldo_config;
+        if (cfg && typeof cfg === 'object' && cfg.configurado === true) {
+            const wps = Array.from(new Set((Array.isArray(cfg.whatsapp) ? cfg.whatsapp : []).map(normalizarTelefonoCanonicoAR).filter(Boolean)));
+            const emails = Array.from(new Set((Array.isArray(cfg.email) ? cfg.email : []).map(sanitizarEmailReal).filter(Boolean)));
+            return {
+                configurado: true,
+                origen: 'guardado_db',
+                whatsapp: wps,
+                email: emails,
+                requiere_definicion: false,
+                solo_pdf: wps.length === 0 && emails.length === 0,
+                total_disponibles: contactosWp.length + contactosEmail.length
+            };
+        }
+
+        const wpsResumen = contactosWp.filter(c => c.default_resumen === true).map(c => c.numero);
+        const emailsResumen = contactosEmail.filter(e => e.default_resumen === true).map(e => e.email);
+        if (wpsResumen.length > 0 || emailsResumen.length > 0) {
+            return {
+                configurado: false,
+                origen: 'default_resumen',
+                whatsapp: wpsResumen,
+                email: emailsResumen,
+                requiere_definicion: false,
+                solo_pdf: false,
+                total_disponibles: contactosWp.length + contactosEmail.length
+            };
+        }
+
+        const totalDisp = contactosWp.length + contactosEmail.length;
+        if (totalDisp === 1) {
+            return {
+                configurado: false,
+                origen: 'unico_contacto',
+                whatsapp: contactosWp.map(c => c.numero),
+                email: contactosEmail.map(e => e.email),
+                requiere_definicion: false,
+                solo_pdf: false,
+                total_disponibles: 1
+            };
+        }
+
+        if (totalDisp > 1) {
+            return {
+                configurado: false,
+                origen: 'multiple_sin_definir',
+                whatsapp: [],
+                email: [],
+                requiere_definicion: true,
+                solo_pdf: false,
+                total_disponibles: totalDisp
+            };
+        }
+
+        return {
+            configurado: false,
+            origen: 'sin_contactos',
+            whatsapp: [],
+            email: [],
+            requiere_definicion: true,
+            solo_pdf: false,
+            total_disponibles: 0
+        };
+    }
+
+    function construirBadgeDestinatariosSaldo(cliente) {
+        const res = resolverDestinatariosSaldoClienteUI(cliente);
+        const nWp = res.whatsapp.length;
+        const nEm = res.email.length;
+
+        if (res.configurado) {
+            if (nWp > 0 && nEm > 0) {
+                return `<span class="badge-dest-saldo" style="font-size:9.5px; font-weight:800; padding:1px 5px; border-radius:999px; background:#ede9fe; color:#5b21b6; border:1px solid #c4b5fd; white-space:nowrap;" title="Guardado permanentemente: ${nWp} WhatsApp + ${nEm} Correo">📱${nWp}·📧${nEm}</span>`;
+            }
+            if (nEm > 0) {
+                return `<span class="badge-dest-saldo" style="font-size:9.5px; font-weight:800; padding:1px 5px; border-radius:999px; background:#f3e8ff; color:#6b21a8; border:1px solid #d8b4fe; white-space:nowrap;" title="Guardado permanentemente: Solo Email (${res.email.join(', ')})">📧${nEm}</span>`;
+            }
+            if (nWp > 0) {
+                return `<span class="badge-dest-saldo" style="font-size:9.5px; font-weight:800; padding:1px 5px; border-radius:999px; background:#dcfce7; color:#15803d; border:1px solid #86efac; white-space:nowrap;" title="Guardado permanentemente: Solo WhatsApp (${nWp})">📱${nWp}</span>`;
+            }
+            return `<span class="badge-dest-saldo" style="font-size:9.5px; font-weight:700; padding:1px 5px; border-radius:999px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; white-space:nowrap;" title="Guardado permanentemente: Sin envío digital (solo PDF)">📄</span>`;
+        }
+
+        if (res.origen === 'multiple_sin_definir') {
+            return `<span class="badge-dest-saldo" style="font-size:9.5px; font-weight:800; padding:1px 5px; border-radius:999px; background:#fef3c7; color:#b45309; border:1px solid #fcd34d; white-space:nowrap;" title="Múltiples contactos sin preferencia de saldo definida — Haga clic en 👥 para configurar">⚠️</span>`;
+        }
+
+        if (nWp > 0 || nEm > 0) {
+            const txt = (nWp > 0 && nEm > 0) ? `📱${nWp}·📧${nEm}` : (nEm > 0 ? `📧${nEm}` : `📱${nWp}`);
+            const labelOrigen = res.origen === 'default_resumen' ? 'Predeterminado de resumen' : 'Único contacto sugerido';
+            return `<span class="badge-dest-saldo" style="font-size:9.5px; font-weight:600; padding:1px 5px; border-radius:999px; background:#f8fafc; color:#64748b; border:1px dashed #cbd5e1; white-space:nowrap;" title="${labelOrigen} (clic en 👥 para personalizar y fijar)">${txt}</span>`;
+        }
+
+        return '';
+    }
+
+    async function abrirConfiguracionContactosBulk(clienteId, clienteNombre, options = {}) {
         const cliente = todosLosClientes.find(c => String(c.id) === String(clienteId));
         if (!cliente) return false;
 
         const contactosWp = obtenerContactosDeCliente(cliente);
         const contactosEmail = obtenerEmailsDeCliente(cliente);
+        const resActual = resolverDestinatariosSaldoClienteUI(cliente);
 
-        if (contactosWp.length === 0 && contactosEmail.length === 0) {
-            Swal.fire({
-                icon: 'warning',
-                title: 'Sin contactos',
-                text: 'El cliente no posee contactos de WhatsApp ni de Correo configurados.',
-                confirmButtonColor: '#6b21a8'
-            });
-            return false;
-        }
+        let selectedWps = [...resActual.whatsapp];
+        let selectedEmails = [...resActual.email];
 
-        let preSeleccionados = obtenerContactosSeleccionados(clienteId);
-        let selectedWps = [];
-        let selectedEmails = [];
+        // Detectar contactos guardados extra (que no están en whatsapp_facturas / email_facturas actuales)
+        const fichaWpSet = new Set(contactosWp.map(c => c.numero));
+        const fichaEmSet = new Set(contactosEmail.map(e => e.email));
+        const extrasWp = selectedWps.filter(num => !fichaWpSet.has(num));
+        const extrasEmail = selectedEmails.filter(em => !fichaEmSet.has(em));
 
-        if (preSeleccionados) {
-            if (Array.isArray(preSeleccionados)) {
-                selectedWps = preSeleccionados;
-                selectedEmails = contactosEmail.filter(e => e.default_factura).map(e => e.email);
-            } else if (preSeleccionados.whatsapp && preSeleccionados.email) {
-                selectedWps = preSeleccionados.whatsapp;
-                selectedEmails = preSeleccionados.email;
-            }
-        } else {
-            selectedWps = contactosWp.filter(c => c.default_factura).map(c => c.numero);
-            selectedEmails = contactosEmail.filter(e => e.default_factura).map(e => e.email);
-            if (selectedWps.length === 0 && selectedEmails.length === 0) {
-                selectedWps = contactosWp.map(c => c.numero);
-                selectedEmails = contactosEmail.map(e => e.email);
-            }
-        }
+        const estadoGuardadoBanner = resActual.configurado
+            ? `<div style="margin-bottom: 10px; padding: 7px 10px; border-radius: 6px; background: #ecfdf5; border: 1px solid #86efac; font-size: 11.5px; color: #065f46; display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+                   <span>💾 <strong>Configuración permanente guardada en base de datos</strong> (solo aplica a Reportes de Saldo; no altera Facturación ARCA).</span>
+               </div>`
+            : (resActual.origen === 'multiple_sin_definir'
+                ? `<div style="margin-bottom: 10px; padding: 7px 10px; border-radius: 6px; background: #fffbeb; border: 1px solid #fcd34d; font-size: 11.5px; color: #92400e;">
+                       ⚠️ <strong>Sin preferencia guardada aún:</strong> este cliente tiene múltiples contactos. Tildá exactamente a quiénes y por qué canal querés enviarle los reportes de saldo.
+                   </div>`
+                : `<div style="margin-bottom: 10px; padding: 7px 10px; border-radius: 6px; background: #f8fafc; border: 1px solid #cbd5e1; font-size: 11.5px; color: #475569;">
+                       ℹ️ <strong>Al confirmar se guarda permanentemente en la base de datos</strong> para todos tus navegadores y PCs (no altera Facturación ARCA).
+                   </div>`);
 
         let htmlContent = `
             <div style="text-align: left; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                <p style="margin-bottom: 12px; font-size: 14px; color: #4b5563; font-weight: 500;">
-                    Seleccione los contactos a los que desea enviar el saldo de <strong>${clienteNombre}</strong>:
+                <p style="margin: 0 0 8px 0; font-size: 14px; color: #1e293b; font-weight: 600;">
+                    Destinatarios de Reporte de Saldo — <span style="color: #6b21a8;">${escHtmlNodo(clienteNombre || cliente.cliente_nombre)}</span>
                 </p>
+                ${estadoGuardadoBanner}
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px;">
+                    <button type="button" id="btn-quick-solo-wp" style="padding: 4px 10px; font-size: 11px; font-weight: 700; border-radius: 999px; border: 1px solid #86efac; background: #f0fdf4; color: #15803d; cursor: pointer;">📱 Solo WhatsApp</button>
+                    <button type="button" id="btn-quick-solo-email" style="padding: 4px 10px; font-size: 11px; font-weight: 700; border-radius: 999px; border: 1px solid #d8b4fe; background: #faf5ff; color: #6b21a8; cursor: pointer;">📧 Solo Email</button>
+                    <button type="button" id="btn-quick-todos" style="padding: 4px 10px; font-size: 11px; font-weight: 700; border-radius: 999px; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer;">✅ Todos</button>
+                    <button type="button" id="btn-quick-limpiar" style="padding: 4px 10px; font-size: 11px; font-weight: 700; border-radius: 999px; border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; cursor: pointer;">🧹 Destildar todo</button>
+                </div>
         `;
 
         // Sección WhatsApp
         htmlContent += `
-            <div style="margin-bottom: 15px;">
-                <div style="font-size: 12px; font-weight: 600; color: #10b981; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px; display: flex; align-items: center; gap: 4px;">
+            <div style="margin-bottom: 14px;">
+                <div style="font-size: 12px; font-weight: 700; color: #10b981; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px; display: flex; align-items: center; gap: 4px;">
                     <span>📱 WhatsApp</span>
                 </div>
-                <div id="swal-bulk-wp-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; padding: 2px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                <div id="swal-bulk-wp-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 155px; overflow-y: auto; padding: 4px; border: 1px solid #e2e8f0; border-radius: 6px;">
         `;
 
-        if (contactosWp.length === 0) {
+        if (contactosWp.length === 0 && extrasWp.length === 0) {
             htmlContent += `
                 <div class="empty-placeholder" style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
                     No hay contactos de WhatsApp cargados para este cliente.
@@ -535,26 +693,29 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             contactosWp.forEach((c, index) => {
                 const isChecked = selectedWps.includes(c.numero) ? 'checked' : '';
-                const formattedNum = c.numero.replace(/\D/g, '');
-                let displayNum = c.numero;
-                if (formattedNum.length === 10) {
-                    displayNum = `(${formattedNum.substring(0,3)}) ${formattedNum.substring(3,6)}-${formattedNum.substring(6,10)}`;
-                } else if (formattedNum.length === 13 && formattedNum.startsWith('549')) {
-                    displayNum = `+54 9 (${formattedNum.substring(3,6)}) ${formattedNum.substring(6,9)}-${formattedNum.substring(9,13)}`;
-                } else if (formattedNum.length === 11 && formattedNum.startsWith('54')) {
-                    displayNum = `+54 (${formattedNum.substring(2,5)}) ${formattedNum.substring(5,8)}-${formattedNum.substring(8,11)}`;
-                }
-
-                const labelText = c.nombre 
-                    ? `<strong>${c.nombre}</strong>${c.cargo ? ` <span style="font-size: 9px; background: #e0f2fe; color: #0369a1; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${c.cargo}</span>` : ''}`
+                const displayNum = formatearTelefonoDisplayAR(c.numero);
+                const labelText = c.nombre
+                    ? `<strong>${escHtmlNodo(c.nombre)}</strong>${c.cargo ? ` <span style="font-size: 9px; background: #e0f2fe; color: #0369a1; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${escHtmlNodo(c.cargo)}</span>` : ''}`
                     : `Contacto #${index + 1}`;
 
                 htmlContent += `
                     <label style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; cursor: pointer; transition: background 0.2s; margin-bottom: 0;">
-                        <input type="checkbox" class="swal-bulk-contacto-wp-chk" value="${c.numero}" ${isChecked} style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #10b981;">
+                        <input type="checkbox" class="swal-bulk-contacto-wp-chk" value="${escHtmlNodo(c.numero)}" ${isChecked} style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #10b981;">
                         <div style="flex: 1;">
                             <div style="font-size: 12px; color: #1f2937; margin-bottom: 1px;">${labelText}</div>
-                            <div style="font-size: 11px; color: #6b7280;">📱 ${displayNum}</div>
+                            <div style="font-size: 11px; color: #6b7280;">📱 ${escHtmlNodo(displayNum)}</div>
+                        </div>
+                    </label>
+                `;
+            });
+            extrasWp.forEach((num) => {
+                const displayNum = formatearTelefonoDisplayAR(num);
+                htmlContent += `
+                    <label style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 1px dashed #10b981; border-radius: 6px; background: #ecfdf5; cursor: pointer; margin-bottom: 0;">
+                        <input type="checkbox" class="swal-bulk-contacto-wp-chk" value="${escHtmlNodo(num)}" checked style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #10b981;">
+                        <div style="flex: 1;">
+                            <div style="font-size: 12px; color: #065f46; margin-bottom: 1px;"><strong>Número guardado</strong> <span style="font-size: 9px; background: #d1fae5; color: #047857; padding: 1px 4px; border-radius: 3px; font-weight: 700;">EXTRA</span></div>
+                            <div style="font-size: 11px; color: #047857;">📱 ${escHtmlNodo(displayNum)}</div>
                         </div>
                     </label>
                 `;
@@ -563,8 +724,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         htmlContent += `
                 </div>
-                <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #cbd5e1;">
-                    <div style="font-size: 11px; font-weight: 600; color: #10b981; margin-bottom: 4px;">➕ O ingrese un número de WhatsApp específico para este envío:</div>
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #cbd5e1;">
+                    <div style="font-size: 11px; font-weight: 600; color: #10b981; margin-bottom: 4px;">➕ O agregar un número específico para reportes de saldo:</div>
                     <input type="text" id="swal-bulk-whatsapp-manual" placeholder="ej: (221) 563-1117" style="width: 100%; font-size: 13px; height: 32px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0 8px; box-sizing: border-box;">
                 </div>
             </div>
@@ -572,32 +733,46 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Sección Email
         htmlContent += `
-            <div style="margin-bottom: 15px;">
-                <div style="font-size: 12px; font-weight: 600; color: #8b5cf6; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">
+            <div style="margin-bottom: 14px;">
+                <div style="font-size: 12px; font-weight: 700; color: #8b5cf6; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">
                     <span>📧 Correo Electrónico</span>
                 </div>
-                <div id="swal-bulk-email-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 150px; overflow-y: auto; padding: 2px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                <div id="swal-bulk-email-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 155px; overflow-y: auto; padding: 4px; border: 1px solid #e2e8f0; border-radius: 6px;">
         `;
 
-        if (contactosEmail.length === 0) {
+        if (contactosEmail.length === 0 && extrasEmail.length === 0) {
             htmlContent += `
                 <div class="empty-placeholder" style="padding: 10px; font-size: 12px; color: #94a3b8; text-align: center;">
-                    No hay contactos de correo cargados para este cliente.
+                    No hay correos reales cargados en la ficha de este cliente. Podés cargar uno abajo o ingresarlo directamente.
                 </div>
             `;
         } else {
             contactosEmail.forEach((e, index) => {
                 const isChecked = selectedEmails.includes(e.email) ? 'checked' : '';
-                const labelText = e.nombre 
-                    ? `<strong>${e.nombre}</strong>${e.cargo ? ` <span style="font-size: 9px; background: #f3e8ff; color: #6b21a8; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${e.cargo}</span>` : ''}`
+                const labelText = e.nombre
+                    ? `<strong>${escHtmlNodo(e.nombre)}</strong>${e.cargo ? ` <span style="font-size: 9px; background: #f3e8ff; color: #6b21a8; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${escHtmlNodo(e.cargo)}</span>` : ''}`
                     : `Contacto #${index + 1}`;
+                const badgePortal = e.es_fallback_portal
+                    ? ` <span style="font-size: 9px; background: #e0e7ff; color: #4338ca; padding: 1px 4px; border-radius: 3px; font-weight: 700; margin-left: 4px;">PORTAL B2B</span>`
+                    : '';
 
                 htmlContent += `
                     <label style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb; cursor: pointer; transition: background 0.2s; margin-bottom: 0;">
-                        <input type="checkbox" class="swal-bulk-contacto-email-chk" value="${e.email}" ${isChecked} style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #8b5cf6;">
+                        <input type="checkbox" class="swal-bulk-contacto-email-chk" value="${escHtmlNodo(e.email)}" ${isChecked} style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #8b5cf6;">
                         <div style="flex: 1;">
-                            <div style="font-size: 12px; color: #1f2937; margin-bottom: 1px;">${labelText}</div>
-                            <div style="font-size: 11px; color: #6b7280; word-break: break-all;">📧 ${e.email}</div>
+                            <div style="font-size: 12px; color: #1f2937; margin-bottom: 1px;">${labelText}${badgePortal}</div>
+                            <div style="font-size: 11px; color: #6b7280; word-break: break-all;">📧 ${escHtmlNodo(e.email)}</div>
+                        </div>
+                    </label>
+                `;
+            });
+            extrasEmail.forEach((em) => {
+                htmlContent += `
+                    <label style="display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 1px dashed #8b5cf6; border-radius: 6px; background: #f5f3ff; cursor: pointer; margin-bottom: 0;">
+                        <input type="checkbox" class="swal-bulk-contacto-email-chk" value="${escHtmlNodo(em)}" checked style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #8b5cf6;">
+                        <div style="flex: 1;">
+                            <div style="font-size: 12px; color: #5b21b6; margin-bottom: 1px;"><strong>Correo guardado</strong> <span style="font-size: 9px; background: #ede9fe; color: #6d28d9; padding: 1px 4px; border-radius: 3px; font-weight: 700;">EXTRA</span></div>
+                            <div style="font-size: 11px; color: #6d28d9; word-break: break-all;">📧 ${escHtmlNodo(em)}</div>
                         </div>
                     </label>
                 `;
@@ -606,17 +781,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         htmlContent += `
                 </div>
-                <div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed #cbd5e1;">
-                    <div style="font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 4px;">➕ O ingrese un correo específico para este envío:</div>
-                    <input type="email" id="swal-bulk-email-manual" placeholder="ej: diana@belgian.com" style="width: 100%; font-size: 13px; height: 32px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0 8px; box-sizing: border-box;">
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px dashed #cbd5e1;">
+                    <div style="font-size: 11px; font-weight: 600; color: #6b21a8; margin-bottom: 4px;">➕ O agregar un correo específico para reportes de saldo:</div>
+                    <input type="email" id="swal-bulk-email-manual" placeholder="ej: administracion@cliente.com" style="width: 100%; font-size: 13px; height: 32px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0 8px; box-sizing: border-box;">
                 </div>
             </div>
 
             <!-- Sección: Cargar Nuevo Contacto Directo a la Ficha -->
-            <div style="margin-top: 14px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;">
+            <div style="margin-top: 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;">
                 <div id="toggle-nuevo-contacto-bulk" style="padding: 9px 12px; background: #f1f5f9; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none;">
                     <span style="font-size: 12px; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 6px;">
-                        <span style="color: #6366f1;">➕</span> Cargar nuevo contacto para este cliente
+                        <span style="color: #6366f1;">➕</span> Cargar nuevo contacto permanente en la ficha del cliente
                     </span>
                     <span id="icon-toggle-nuevo-contacto" style="font-size: 11px; color: #64748b; font-weight: 600;">▼ Desplegar</span>
                 </div>
@@ -624,16 +799,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div style="display: flex; gap: 8px;">
                         <div style="flex: 1;">
                             <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 2px;">Nombre:</label>
-                            <input type="text" id="swal-bulk-nuevo-nombre" placeholder="Ej: Micaela" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
+                            <input type="text" id="swal-bulk-nuevo-nombre" placeholder="Ej: Administración" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
                         </div>
                         <div style="flex: 1;">
                             <label style="display: block; font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 2px;">Cargo / Rol:</label>
-                            <input type="text" id="swal-bulk-nuevo-cargo" placeholder="Ej: Dueña, Administración" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
+                            <input type="text" id="swal-bulk-nuevo-cargo" placeholder="Ej: Pagos, Dueña" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
                         </div>
                     </div>
                     <div style="display: flex; gap: 8px;">
                         <div style="flex: 1;">
-                            <label style="display: block; font-size: 11px; font-weight: 600; color: #10b981; margin-bottom: 2px;">📱 WhatsApp (con máscara):</label>
+                            <label style="display: block; font-size: 11px; font-weight: 600; color: #10b981; margin-bottom: 2px;">📱 WhatsApp (opcional):</label>
                             <input type="text" id="swal-bulk-nuevo-wp" placeholder="(221) 305-1684" style="width: 100%; font-size: 12px; height: 30px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 0 8px; box-sizing: border-box;">
                         </div>
                         <div style="flex: 1;">
@@ -647,7 +822,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span>Alerta Logística 🚚</span>
                         </label>
                         <button type="button" id="btn-guardar-nuevo-contacto-bulk" style="background: #10b981; color: white; border: none; border-radius: 5px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
-                            <span>💾</span> Guardar en ficha y seleccionar
+                            <span>💾</span> Guardar en ficha y tildar
                         </button>
                     </div>
                     <div id="swal-bulk-nuevo-feedback" style="display: none; font-size: 11.5px; font-weight: 600; padding: 6px 10px; border-radius: 4px; text-align: center; margin-top: 4px;"></div>
@@ -657,16 +832,35 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         const result = await Swal.fire({
-            title: 'Seleccionar Destinatarios',
+            title: 'Seleccionar Destinatarios (Saldos)',
             html: htmlContent,
             icon: 'info',
-            width: '620px',
+            width: '650px',
             showCancelButton: true,
-            confirmButtonText: '💾 Confirmar',
+            confirmButtonText: '💾 Guardar Permanentemente',
             cancelButtonText: 'Cancelar',
             confirmButtonColor: 'var(--purple-primary)',
             cancelButtonColor: '#64748b',
+            showLoaderOnConfirm: true,
             didOpen: (popup) => {
+                // Atajos rápidos de canal
+                popup.querySelector('#btn-quick-solo-wp')?.addEventListener('click', () => {
+                    popup.querySelectorAll('.swal-bulk-contacto-wp-chk').forEach(el => { el.checked = true; });
+                    popup.querySelectorAll('.swal-bulk-contacto-email-chk').forEach(el => { el.checked = false; });
+                });
+                popup.querySelector('#btn-quick-solo-email')?.addEventListener('click', () => {
+                    popup.querySelectorAll('.swal-bulk-contacto-wp-chk').forEach(el => { el.checked = false; });
+                    popup.querySelectorAll('.swal-bulk-contacto-email-chk').forEach(el => { el.checked = true; });
+                });
+                popup.querySelector('#btn-quick-todos')?.addEventListener('click', () => {
+                    popup.querySelectorAll('.swal-bulk-contacto-wp-chk').forEach(el => { el.checked = true; });
+                    popup.querySelectorAll('.swal-bulk-contacto-email-chk').forEach(el => { el.checked = true; });
+                });
+                popup.querySelector('#btn-quick-limpiar')?.addEventListener('click', () => {
+                    popup.querySelectorAll('.swal-bulk-contacto-wp-chk').forEach(el => { el.checked = false; });
+                    popup.querySelectorAll('.swal-bulk-contacto-email-chk').forEach(el => { el.checked = false; });
+                });
+
                 // 1. Máscara telefónica en número manual
                 const manualWpInput = popup.querySelector('#swal-bulk-whatsapp-manual');
                 if (manualWpInput) {
@@ -712,7 +906,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
 
-                // 4. Guardar nuevo contacto directamente en Bunker
+                // 4. Guardar nuevo contacto directamente en ficha Búnker preservando todos los flags existentes
                 const btnGuardarNuevo = popup.querySelector('#btn-guardar-nuevo-contacto-bulk');
                 const feedbackEl = popup.querySelector('#swal-bulk-nuevo-feedback');
                 if (btnGuardarNuevo) {
@@ -723,29 +917,31 @@ document.addEventListener('DOMContentLoaded', () => {
                         const nombreVal = (popup.querySelector('#swal-bulk-nuevo-nombre')?.value || '').trim();
                         const cargoVal = (popup.querySelector('#swal-bulk-nuevo-cargo')?.value || '').trim();
                         const rawWp = (popup.querySelector('#swal-bulk-nuevo-wp')?.value || '').trim();
-                        const cleanPhone = cleanInputForFormatting(rawWp);
-                        const emailVal = (popup.querySelector('#swal-bulk-nuevo-email')?.value || '').trim();
+                        const canonPhone = normalizarTelefonoCanonicoAR(rawWp);
+                        const rawEmailVal = (popup.querySelector('#swal-bulk-nuevo-email')?.value || '').trim();
+                        const emailClean = sanitizarEmailReal(rawEmailVal);
                         const alertaVal = popup.querySelector('#swal-bulk-nuevo-alerta')?.checked !== false;
 
-                        if (!cleanPhone && !emailVal) {
+                        const showErr = (msg) => {
                             if (feedbackEl) {
                                 feedbackEl.style.display = 'block';
                                 feedbackEl.style.background = '#fef2f2';
                                 feedbackEl.style.color = '#991b1b';
                                 feedbackEl.style.border = '1px solid #fecaca';
-                                feedbackEl.textContent = 'Debe ingresar al menos un número de WhatsApp o un correo electrónico.';
+                                feedbackEl.textContent = msg;
                             }
+                        };
+
+                        if (rawEmailVal && !emailClean) {
+                            showErr('Ingresá un correo electrónico real y válido (no se admiten direcciones internas @lamdaclientes.com).');
                             return;
                         }
-
-                        if (cleanPhone && cleanPhone.length < 8) {
-                            if (feedbackEl) {
-                                feedbackEl.style.display = 'block';
-                                feedbackEl.style.background = '#fef2f2';
-                                feedbackEl.style.color = '#991b1b';
-                                feedbackEl.style.border = '1px solid #fecaca';
-                                feedbackEl.textContent = 'El número de WhatsApp ingresado no parece ser un número válido.';
-                            }
+                        if (rawWp && !canonPhone) {
+                            showErr('El número de WhatsApp ingresado no parece ser válido.');
+                            return;
+                        }
+                        if (!canonPhone && !emailClean) {
+                            showErr('Debe ingresar al menos un número de WhatsApp o un correo electrónico válido.');
                             return;
                         }
 
@@ -753,42 +949,39 @@ document.addEventListener('DOMContentLoaded', () => {
                         btnGuardarNuevo.innerHTML = '<span>⏳</span> Guardando...';
 
                         try {
-                            let curWps = obtenerContactosDeCliente(cliente);
-                            let curEmails = obtenerEmailsDeCliente(cliente);
+                            // Leer contactos reales existentes SIN incluir fallback de email_portal ni perder flags previos
+                            const curWps = obtenerContactosDeCliente(cliente);
+                            const curEmails = obtenerEmailsDeCliente(cliente, { incluirFallbackPortal: false });
 
                             let wpAdded = null;
-                            if (cleanPhone) {
-                                const alreadyExists = curWps.some(c => c.numero && c.numero.replace(/\D/g, '') === cleanPhone);
+                            if (canonPhone) {
+                                const alreadyExists = curWps.some(c => c.numero === canonPhone);
                                 if (!alreadyExists) {
                                     wpAdded = {
                                         id: `cont_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 4)}`,
-                                        numero: cleanPhone,
+                                        numero: canonPhone,
                                         nombre: nombreVal,
                                         cargo: cargoVal,
                                         enviar_alerta: alertaVal,
-                                        default_factura: true,
-                                        default_resumen: true,
-                                        default_presupuesto: true,
-                                        default: true
+                                        default_factura: false,
+                                        default_resumen: true
                                     };
                                     curWps.push(wpAdded);
                                 }
                             }
 
                             let emailAdded = null;
-                            if (emailVal && emailVal.includes('@')) {
-                                const alreadyExists = curEmails.some(em => em.email && em.email.toLowerCase() === emailVal.toLowerCase());
+                            if (emailClean) {
+                                const alreadyExists = curEmails.some(em => em.email === emailClean);
                                 if (!alreadyExists) {
                                     emailAdded = {
                                         id: `em_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 4)}`,
-                                        email: emailVal,
+                                        email: emailClean,
                                         nombre: nombreVal,
                                         cargo: cargoVal,
                                         enviar_alerta: alertaVal,
-                                        default_factura: true,
-                                        default_resumen: true,
-                                        default_presupuesto: true,
-                                        default: true
+                                        default_factura: false,
+                                        default_resumen: true
                                     };
                                     curEmails.push(emailAdded);
                                 }
@@ -809,8 +1002,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                 throw new Error(`Error en el servidor al guardar el contacto (${res.status})`);
                             }
 
-                            cliente.whatsapp_facturas = payload.whatsapp_facturas;
-                            cliente.email_facturas = payload.email_facturas;
+                            const dataPatch = await res.json();
+                            cliente.whatsapp_facturas = dataPatch?.data?.whatsapp_facturas ?? payload.whatsapp_facturas;
+                            cliente.email_facturas = dataPatch?.data?.email_facturas ?? payload.email_facturas;
 
                             // Actualizar DOM en vivo en el modal
                             if (wpAdded) {
@@ -819,18 +1013,18 @@ document.addEventListener('DOMContentLoaded', () => {
                                     const emptyPlaceholder = wpContainer.querySelector('.empty-placeholder');
                                     if (emptyPlaceholder) emptyPlaceholder.remove();
 
-                                    const formattedDisplay = formatArgentinePhone(cleanPhone);
-                                    const labelText = wpAdded.nombre 
-                                        ? `<strong>${wpAdded.nombre}</strong>${wpAdded.cargo ? ` <span style="font-size: 9px; background: #e0f2fe; color: #0369a1; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${wpAdded.cargo}</span>` : ''}`
+                                    const formattedDisplay = formatearTelefonoDisplayAR(canonPhone);
+                                    const labelText = wpAdded.nombre
+                                        ? `<strong>${escHtmlNodo(wpAdded.nombre)}</strong>${wpAdded.cargo ? ` <span style="font-size: 9px; background: #e0f2fe; color: #0369a1; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${escHtmlNodo(wpAdded.cargo)}</span>` : ''}`
                                         : 'Contacto nuevo';
 
                                     const newLabel = document.createElement('label');
                                     newLabel.style = 'display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 1px solid #10b981; border-radius: 6px; background: #ecfdf5; cursor: pointer; transition: background 0.2s; margin-bottom: 0;';
                                     newLabel.innerHTML = `
-                                        <input type="checkbox" class="swal-bulk-contacto-wp-chk" value="${wpAdded.numero}" checked style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #10b981;">
+                                        <input type="checkbox" class="swal-bulk-contacto-wp-chk" value="${escHtmlNodo(wpAdded.numero)}" checked style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #10b981;">
                                         <div style="flex: 1;">
                                             <div style="font-size: 12px; color: #1f2937; margin-bottom: 1px;">${labelText}</div>
-                                            <div style="font-size: 11px; color: #059669; font-weight: 600;">📱 ${formattedDisplay}</div>
+                                            <div style="font-size: 11px; color: #059669; font-weight: 600;">📱 ${escHtmlNodo(formattedDisplay)}</div>
                                         </div>
                                     `;
                                     wpContainer.prepend(newLabel);
@@ -843,27 +1037,21 @@ document.addEventListener('DOMContentLoaded', () => {
                                     const emptyPlaceholder = emailContainer.querySelector('.empty-placeholder');
                                     if (emptyPlaceholder) emptyPlaceholder.remove();
 
-                                    const labelText = emailAdded.nombre 
-                                        ? `<strong>${emailAdded.nombre}</strong>${emailAdded.cargo ? ` <span style="font-size: 9px; background: #f3e8ff; color: #6b21a8; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${emailAdded.cargo}</span>` : ''}`
+                                    const labelText = emailAdded.nombre
+                                        ? `<strong>${escHtmlNodo(emailAdded.nombre)}</strong>${emailAdded.cargo ? ` <span style="font-size: 9px; background: #f3e8ff; color: #6b21a8; padding: 1px 4px; border-radius: 3px; font-weight: 600; text-transform: uppercase; margin-left: 4px;">${escHtmlNodo(emailAdded.cargo)}</span>` : ''}`
                                         : 'Contacto nuevo';
 
                                     const newLabel = document.createElement('label');
                                     newLabel.style = 'display: flex; align-items: flex-start; gap: 10px; padding: 8px; border: 1px solid #8b5cf6; border-radius: 6px; background: #f5f3ff; cursor: pointer; transition: background 0.2s; margin-bottom: 0;';
                                     newLabel.innerHTML = `
-                                        <input type="checkbox" class="swal-bulk-contacto-email-chk" value="${emailAdded.email}" checked style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #8b5cf6;">
+                                        <input type="checkbox" class="swal-bulk-contacto-email-chk" value="${escHtmlNodo(emailAdded.email)}" checked style="margin-top: 2px; cursor: pointer; width: 15px; height: 15px; accent-color: #8b5cf6;">
                                         <div style="flex: 1;">
                                             <div style="font-size: 12px; color: #1f2937; margin-bottom: 1px;">${labelText}</div>
-                                            <div style="font-size: 11px; color: #7c3aed; font-weight: 600; word-break: break-all;">📧 ${emailAdded.email}</div>
+                                            <div style="font-size: 11px; color: #7c3aed; font-weight: 600; word-break: break-all;">📧 ${escHtmlNodo(emailAdded.email)}</div>
                                         </div>
                                     `;
                                     emailContainer.prepend(newLabel);
                                 }
-                            }
-
-                            // Actualizar botón de la tabla
-                            const btnCfg = cuerpoTablaClientes.querySelector(`.btn-config-contactos-cliente[data-id="${clienteId}"]`);
-                            if (btnCfg) {
-                                btnCfg.title = `Configurar destinatarios específicos (${curWps.length} WhatsApp, ${curEmails.length} Correo)`;
                             }
 
                             if (feedbackEl) {
@@ -871,10 +1059,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                 feedbackEl.style.background = '#d1fae5';
                                 feedbackEl.style.color = '#065f46';
                                 feedbackEl.style.border = '1px solid #a7f3d0';
-                                feedbackEl.textContent = '✔️ ¡Contacto guardado en la ficha del cliente y preseleccionado!';
+                                feedbackEl.textContent = '✔️ Contacto guardado en la ficha y tildado. Ahora presioná "Guardar Permanentemente" para fijar tu selección.';
                             }
 
-                            // Limpiar inputs
                             popup.querySelector('#swal-bulk-nuevo-nombre').value = '';
                             popup.querySelector('#swal-bulk-nuevo-cargo').value = '';
                             popup.querySelector('#swal-bulk-nuevo-wp').value = '';
@@ -882,62 +1069,98 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             setTimeout(() => {
                                 btnGuardarNuevo.disabled = false;
-                                btnGuardarNuevo.innerHTML = '<span>💾</span> Guardar en ficha y seleccionar';
-                            }, 2000);
-
+                                btnGuardarNuevo.innerHTML = '<span>💾</span> Guardar en ficha y tildar';
+                            }, 1600);
                         } catch (err) {
                             console.error('Error guardando nuevo contacto:', err);
-                            if (feedbackEl) {
-                                feedbackEl.style.display = 'block';
-                                feedbackEl.style.background = '#fef2f2';
-                                feedbackEl.style.color = '#991b1b';
-                                feedbackEl.style.border = '1px solid #fecaca';
-                                feedbackEl.textContent = 'Error al guardar: ' + err.message;
-                            }
+                            showErr('Error al guardar: ' + err.message);
                             btnGuardarNuevo.disabled = false;
-                            btnGuardarNuevo.innerHTML = '<span>💾</span> Guardar en ficha y seleccionar';
+                            btnGuardarNuevo.innerHTML = '<span>💾</span> Guardar en ficha y tildar';
                         }
                     });
                 }
             },
-            preConfirm: () => {
-                const wps = Array.from(document.querySelectorAll('.swal-bulk-contacto-wp-chk:checked')).map(el => el.value);
-                const emails = Array.from(document.querySelectorAll('.swal-bulk-contacto-email-chk:checked')).map(el => el.value);
-                const manualWp = (document.getElementById('swal-bulk-whatsapp-manual')?.value || '').replace(/\D/g, '').trim();
-                if (manualWp && manualWp.length >= 8 && !wps.includes(manualWp)) {
-                    wps.push(manualWp);
+            preConfirm: async () => {
+                const wps = Array.from(document.querySelectorAll('.swal-bulk-contacto-wp-chk:checked'))
+                    .map(el => normalizarTelefonoCanonicoAR(el.value))
+                    .filter(Boolean);
+                const emails = Array.from(document.querySelectorAll('.swal-bulk-contacto-email-chk:checked'))
+                    .map(el => sanitizarEmailReal(el.value))
+                    .filter(Boolean);
+
+                const rawManualWp = (document.getElementById('swal-bulk-whatsapp-manual')?.value || '').trim();
+                if (rawManualWp) {
+                    const canonManualWp = normalizarTelefonoCanonicoAR(rawManualWp);
+                    if (!canonManualWp) {
+                        Swal.showValidationMessage('El número de WhatsApp adicional no es válido.');
+                        return false;
+                    }
+                    if (!wps.includes(canonManualWp)) wps.push(canonManualWp);
                 }
-                const manualEmail = (document.getElementById('swal-bulk-email-manual')?.value || '').trim();
-                if (manualEmail && manualEmail.includes('@') && !emails.includes(manualEmail)) {
-                    emails.push(manualEmail);
+
+                const rawManualEmail = (document.getElementById('swal-bulk-email-manual')?.value || '').trim();
+                if (rawManualEmail) {
+                    const cleanManualEm = sanitizarEmailReal(rawManualEmail);
+                    if (!cleanManualEm) {
+                        Swal.showValidationMessage('El correo electrónico adicional no es válido o es un dominio interno ficticio.');
+                        return false;
+                    }
+                    if (!emails.includes(cleanManualEm)) emails.push(cleanManualEm);
                 }
-                return {
-                    whatsapp: wps,
-                    email: emails
-                };
+
+                const uniqueWps = Array.from(new Set(wps));
+                const uniqueEmails = Array.from(new Set(emails));
+
+                try {
+                    const resp = await fetch(`/api/logistica/bunker/clientes/${clienteId}/destinatarios-saldo`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            whatsapp: uniqueWps,
+                            email: uniqueEmails
+                        })
+                    });
+                    const data = await resp.json();
+                    if (!resp.ok || !data.success) {
+                        throw new Error(data.error || data.message || `Error HTTP ${resp.status}`);
+                    }
+                    return data;
+                } catch (err) {
+                    Swal.showValidationMessage(`No se pudo guardar en la base de datos: ${err.message}`);
+                    return false;
+                }
             }
         });
 
-        if (result.isConfirmed) {
-            guardarContactosSeleccionados(clienteId, result.value);
-            clientesSeleccionadosIds.add(Number(clienteId));
-            
-            const chk = cuerpoTablaClientes.querySelector(`.chk-cliente[data-id="${clienteId}"]`);
-            if (chk) chk.checked = true;
-            
-            actualizarBarraAccionesLote();
-            actualizarEstadoChkTodos();
-            return true;
-        } else {
-            if (forceOpen) {
-                clientesSeleccionadosIds.delete(Number(clienteId));
-                const chk = cuerpoTablaClientes.querySelector(`.chk-cliente[data-id="${clienteId}"]`);
-                if (chk) chk.checked = false;
-                actualizarBarraAccionesLote();
-                actualizarEstadoChkTodos();
+        if (result.isConfirmed && result.value) {
+            const savedData = result.value.data || {};
+            cliente.destinatarios_saldo_config = savedData.destinatarios_saldo_config || result.value.destinatarios_saldo_config;
+            if (savedData.whatsapp_facturas !== undefined) cliente.whatsapp_facturas = savedData.whatsapp_facturas;
+            if (savedData.email_facturas !== undefined) cliente.email_facturas = savedData.email_facturas;
+            cliente._searchIndex = null;
+
+            ordenarYRenderizar();
+
+            if (!options.silencioso) {
+                const cfgFin = cliente.destinatarios_saldo_config || {};
+                const resumenCanal = (cfgFin.whatsapp?.length > 0 && cfgFin.email?.length > 0)
+                    ? `WhatsApp (${cfgFin.whatsapp.length}) + Email (${cfgFin.email.length})`
+                    : (cfgFin.email?.length > 0
+                        ? `Solo Email (${cfgFin.email.join(', ')})`
+                        : (cfgFin.whatsapp?.length > 0 ? `Solo WhatsApp (${cfgFin.whatsapp.length})` : 'Sin envío digital (solo PDF)'));
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'success',
+                    title: `${cliente.cliente_nombre}`,
+                    text: `Guardado permanentemente: ${resumenCanal}`,
+                    showConfirmButton: false,
+                    timer: 2600
+                });
             }
-            return false;
+            return true;
         }
+        return false;
     }
 
     // Estado de ordenamiento para las columnas Saldo ('none' | 'desc' | 'asc') y Financiación ('none' | 'activo_desc' | 'sombra_desc')
@@ -1388,6 +1611,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (contacto.default_resumen !== undefined) card.dataset.defaultResumen = contacto.default_resumen;
         if (contacto.default_difusion !== undefined) card.dataset.defaultDifusion = contacto.default_difusion;
         if (contacto.default_presupuesto !== undefined) card.dataset.defaultPresupuesto = contacto.default_presupuesto;
+        if (contacto.default_informe_precios !== undefined) card.dataset.defaultInformePrecios = contacto.default_informe_precios;
+        if (contacto.default_nc !== undefined) card.dataset.defaultNc = contacto.default_nc;
         if (contacto.default !== undefined) card.dataset.default = contacto.default;
         card.style.border = '1px solid #cbd5e1';
         card.style.padding = '8px';
@@ -1543,16 +1768,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const contacts = cards.map((card, idx) => {
             const name = card.querySelector('.whatsapp-contact-name').value.trim();
             const role = card.querySelector('.whatsapp-contact-role').value.trim();
-            let number = card.querySelector('.whatsapp-contact-number').value.replace(/\D/g, '').trim();
+            const number = normalizarTelefonoCanonicoAR(card.querySelector('.whatsapp-contact-number').value);
             const alertaCheckbox = card.querySelector('.whatsapp-contact-alerta');
             const alerta = alertaCheckbox ? Boolean(alertaCheckbox.checked) : true;
             const contactId = card.dataset.contactId || `cont_${Date.now().toString(36)}_${idx}`;
-
-            if (number.length === 10) {
-                number = '549' + number;
-            } else if (number.startsWith('54') && !number.startsWith('549')) {
-                number = '549' + number.substring(2);
-            }
 
             return {
                 id: contactId,
@@ -1560,10 +1779,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 nombre: name,
                 cargo: role,
                 enviar_alerta: alerta,
-                default_factura: card.dataset.defaultFactura !== undefined ? card.dataset.defaultFactura === 'true' : true,
-                default_resumen: card.dataset.defaultResumen !== undefined ? card.dataset.defaultResumen === 'true' : true,
+                ...(card.dataset.defaultFactura !== undefined ? { default_factura: card.dataset.defaultFactura === 'true' } : { default_factura: true }),
+                ...(card.dataset.defaultResumen !== undefined ? { default_resumen: card.dataset.defaultResumen === 'true' } : {}),
                 ...(card.dataset.defaultDifusion !== undefined ? { default_difusion: card.dataset.defaultDifusion === 'true' } : {}),
                 ...(card.dataset.defaultPresupuesto !== undefined ? { default_presupuesto: card.dataset.defaultPresupuesto === 'true' } : {}),
+                ...(card.dataset.defaultInformePrecios !== undefined ? { default_informe_precios: card.dataset.defaultInformePrecios === 'true' } : {}),
+                ...(card.dataset.defaultNc !== undefined ? { default_nc: card.dataset.defaultNc === 'true' } : {}),
                 ...(card.dataset.default !== undefined ? { default: card.dataset.default === 'true' } : {})
             };
         }).filter(c => c.numero.length > 0);
@@ -1636,6 +1857,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function crearFilaEmail(contacto = { email: '', nombre: '', cargo: '', enviar_alerta: true }) {
         const card = document.createElement('div');
         card.className = 'email-contact-card';
+        card.dataset.contactId = contacto.id || `em_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 4)}`;
+        if (contacto.default_factura !== undefined) card.dataset.defaultFactura = contacto.default_factura;
+        if (contacto.default_resumen !== undefined) card.dataset.defaultResumen = contacto.default_resumen;
+        if (contacto.default_difusion !== undefined) card.dataset.defaultDifusion = contacto.default_difusion;
+        if (contacto.default_presupuesto !== undefined) card.dataset.defaultPresupuesto = contacto.default_presupuesto;
+        if (contacto.default_informe_precios !== undefined) card.dataset.defaultInformePrecios = contacto.default_informe_precios;
+        if (contacto.default_nc !== undefined) card.dataset.defaultNc = contacto.default_nc;
+        if (contacto.default !== undefined) card.dataset.default = contacto.default;
         card.style.border = '1px solid #cbd5e1';
         card.style.padding = '8px';
         card.style.borderRadius = '6px';
@@ -1766,10 +1995,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (str.startsWith('[')) {
             try {
                 const contacts = JSON.parse(str);
-                if (Array.isArray(contacts) && contacts.length > 0) {
-                    contacts.forEach(c => {
-                        crearFilaEmail(c);
-                    });
+                if (Array.isArray(contacts)) {
+                    const validContacts = contacts.filter(c => c && sanitizarEmailReal(c.email));
+                    if (validContacts.length > 0) {
+                        validContacts.forEach(c => {
+                            crearFilaEmail({ ...c, email: sanitizarEmailReal(c.email) });
+                        });
+                        return;
+                    }
+                    crearFilaEmail({ email: '', nombre: '', cargo: '', enviar_alerta: true });
                     return;
                 }
             } catch (err) {
@@ -1778,7 +2012,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Fallback para strings separados por comas tradicionales
-        const emails = str.split(',').map(e => e.trim()).filter(e => e.length > 0);
+        const emails = str.split(',').map(sanitizarEmailReal).filter(Boolean);
+        if (emails.length === 0) {
+            crearFilaEmail({ email: '', nombre: '', cargo: '', enviar_alerta: true });
+            return;
+        }
         emails.forEach(email => {
             crearFilaEmail({ email: email, nombre: '', cargo: '', enviar_alerta: true });
         });
@@ -1786,18 +2024,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function actualizarHiddenEmail() {
         const cards = Array.from(emailInputsContainer.querySelectorAll('.email-contact-card'));
-        const contacts = cards.map(card => {
+        const contacts = cards.map((card, idx) => {
             const name = card.querySelector('.email-contact-name').value.trim();
             const role = card.querySelector('.email-contact-role').value.trim();
-            const email = card.querySelector('.email-contact-address').value.trim();
+            const email = sanitizarEmailReal(card.querySelector('.email-contact-address').value);
             const alertaCheckbox = card.querySelector('.email-contact-alerta');
             const alerta = alertaCheckbox ? alertaCheckbox.checked : true;
+            const contactId = card.dataset.contactId || `em_${Date.now().toString(36)}_${idx}`;
 
             return {
+                id: contactId,
                 email: email,
                 nombre: name,
                 cargo: role,
-                enviar_alerta: alerta
+                enviar_alerta: alerta,
+                ...(card.dataset.defaultFactura !== undefined ? { default_factura: card.dataset.defaultFactura === 'true' } : {}),
+                ...(card.dataset.defaultResumen !== undefined ? { default_resumen: card.dataset.defaultResumen === 'true' } : {}),
+                ...(card.dataset.defaultDifusion !== undefined ? { default_difusion: card.dataset.defaultDifusion === 'true' } : {}),
+                ...(card.dataset.defaultPresupuesto !== undefined ? { default_presupuesto: card.dataset.defaultPresupuesto === 'true' } : {}),
+                ...(card.dataset.defaultInformePrecios !== undefined ? { default_informe_precios: card.dataset.defaultInformePrecios === 'true' } : {}),
+                ...(card.dataset.defaultNc !== undefined ? { default_nc: card.dataset.defaultNc === 'true' } : {}),
+                ...(card.dataset.default !== undefined ? { default: card.dataset.default === 'true' } : {})
             };
         }).filter(c => c.email.length > 0);
 
@@ -2080,13 +2327,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
 
-            // Procesar contactos para la columna de selección
+            // Procesar contactos y configuración permanente de destinatarios para la columna de selección
             const contactosWp = obtenerContactosDeCliente(cliente);
             const contactosEmail = obtenerEmailsDeCliente(cliente);
+            const destSaldoRes = resolverDestinatariosSaldoClienteUI(cliente);
             const numWp = contactosWp.length;
             const numEmail = contactosEmail.length;
-            const tieneContactos = numWp > 0 || numEmail > 0;
-            const totalConts = numWp + numEmail;
+            const tieneContactos = numWp > 0 || numEmail > 0 || destSaldoRes.whatsapp.length > 0 || destSaldoRes.email.length > 0;
+            const badgeDestSaldo = construirBadgeDestinatariosSaldo(cliente);
+            const btnConfigDestHtml = `
+                <button type="button" class="btn-config-contactos-cliente" data-id="${cliente.id}" data-nombre="${escHtmlNodo(cliente.cliente_nombre)}" style="background: none; border: none; cursor: pointer; padding: 2px; font-size: 1.08em; display: inline-flex; align-items: center; justify-content: center; line-height: 1; vertical-align: middle;" title="Configurar destinatarios permanentes de saldo (${numWp} WhatsApp, ${numEmail} Correo)">👥</button>
+            `;
             
             const tieneDeuda = saldoNum > 0;
             const isChecked = clientesSeleccionadosIds.has(cliente.id) ? 'checked' : '';
@@ -2095,28 +2346,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!tieneContactos) {
                 cellSeleccion = `
                     <div style="display: inline-flex; align-items: center; gap: 4px; justify-content: center; vertical-align: middle;">
-                        <input type="checkbox" class="chk-cliente" disabled title="Debe configurar al menos un contacto (WhatsApp o Correo) en la ficha del cliente" style="width: 18px; height: 18px; opacity: 0.4; cursor: not-allowed; margin: 0; vertical-align: middle;">
-                        <span style="font-size: 0.9em; cursor: help; vertical-align: middle;" title="Sin contactos. Edite el cliente.">⚠️</span>
+                        <input type="checkbox" class="chk-cliente" disabled title="Debe configurar al menos un contacto (WhatsApp o Correo) desde 👥 o la ficha del cliente" style="width: 18px; height: 18px; opacity: 0.4; cursor: not-allowed; margin: 0; vertical-align: middle;">
+                        ${btnConfigDestHtml}
+                        <span style="font-size: 0.85em; cursor: help; vertical-align: middle;" title="Sin contactos reales cargados. Haga clic en 👥 para cargar.">⚠️</span>
                     </div>
                 `;
             } else if (!tieneDeuda) {
                 cellSeleccion = `
                     <div style="display: inline-flex; align-items: center; gap: 4px; justify-content: center; vertical-align: middle;">
                         <input type="checkbox" class="chk-cliente" disabled title="Sin deuda activa" style="width: 18px; height: 18px; opacity: 0.4; cursor: not-allowed; margin: 0; vertical-align: middle;">
-                    </div>
-                `;
-            } else if (totalConts === 1) {
-                cellSeleccion = `
-                    <div style="display: inline-flex; align-items: center; gap: 4px; justify-content: center; vertical-align: middle;">
-                        <input type="checkbox" class="chk-cliente" data-id="${cliente.id}" data-codigo="${cliente.codigo_bunker_cliente}" ${isChecked} style="width: 18px; height: 18px; accent-color: var(--purple-primary); cursor: pointer; margin: 0; vertical-align: middle;">
+                        ${btnConfigDestHtml}
+                        ${badgeDestSaldo}
                     </div>
                 `;
             } else {
-                // Múltiples contactos: requiere indicador
                 cellSeleccion = `
-                    <div style="display: inline-flex; align-items: center; gap: 6px; justify-content: center; vertical-align: middle;">
-                        <input type="checkbox" class="chk-cliente" data-id="${cliente.id}" data-codigo="${cliente.codigo_bunker_cliente}" ${isChecked} style="width: 18px; height: 18px; accent-color: var(--purple-primary); cursor: pointer; margin: 0; vertical-align: middle;">
-                        <button type="button" class="btn-config-contactos-cliente" data-id="${cliente.id}" data-nombre="${cliente.cliente_nombre}" style="background: none; border: none; cursor: pointer; padding: 2px; font-size: 1.1em; display: inline-flex; align-items: center; justify-content: center; line-height: 1; vertical-align: middle;" title="Configurar destinatarios específicos (${numWp} WhatsApp, ${numEmail} Correo)">👥</button>
+                    <div style="display: inline-flex; align-items: center; gap: 5px; justify-content: center; vertical-align: middle;">
+                        <input type="checkbox" class="chk-cliente" data-id="${cliente.id}" data-codigo="${escHtmlNodo(cliente.codigo_bunker_cliente)}" ${isChecked} style="width: 18px; height: 18px; accent-color: var(--purple-primary); cursor: pointer; margin: 0; vertical-align: middle;">
+                        ${btnConfigDestHtml}
+                        ${badgeDestSaldo}
                     </div>
                 `;
             }
@@ -3939,32 +4187,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- LÓGICA DE SELECCIÓN Y ACCIONES MASIVAS ---
 
-    // Delegación de eventos en cuerpoTablaClientes para checkboxes individuales y botones de contacto
+    // Delegación de eventos en cuerpoTablaClientes para checkboxes individuales y botones de configuración de destinatarios
     cuerpoTablaClientes.addEventListener('change', (e) => {
         if (e.target && e.target.classList.contains('chk-cliente')) {
             const chk = e.target;
             const id = Number(chk.getAttribute('data-id'));
-            const checked = chk.checked;
-            
-            if (checked) {
+            if (chk.checked) {
                 clientesSeleccionadosIds.add(id);
-                
-                const cliente = todosLosClientes.find(c => c.id === id);
-                if (cliente) {
-                    const contactosWp = obtenerContactosDeCliente(cliente);
-                    const contactosEmail = obtenerEmailsDeCliente(cliente);
-                    const totalConts = contactosWp.length + contactosEmail.length;
-                    if (totalConts > 1) {
-                        const preSeleccionados = obtenerContactosSeleccionados(id);
-                        if (!preSeleccionados) {
-                            abrirConfiguracionContactosBulk(id, cliente.cliente_nombre, true);
-                        }
-                    }
-                }
             } else {
                 clientesSeleccionadosIds.delete(id);
             }
-            
             actualizarBarraAccionesLote();
             actualizarEstadoChkTodos();
         }
@@ -3974,9 +4206,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const btn = e.target.closest('.btn-config-contactos-cliente');
         if (btn) {
             e.preventDefault();
+            e.stopPropagation();
             const id = Number(btn.getAttribute('data-id'));
             const nombre = btn.getAttribute('data-nombre');
-            abrirConfiguracionContactosBulk(id, nombre, false);
+            abrirConfiguracionContactosBulk(id, nombre, { silencioso: false });
         }
     });
 
@@ -3985,56 +4218,17 @@ document.addEventListener('DOMContentLoaded', () => {
         chkSeleccionarTodos.addEventListener('change', () => {
             const checked = chkSeleccionarTodos.checked;
             const checkboxesVisibles = cuerpoTablaClientes.querySelectorAll('.chk-cliente:not(:disabled)');
-            
+
             checkboxesVisibles.forEach(chk => {
                 chk.checked = checked;
                 const id = Number(chk.getAttribute('data-id'));
                 if (checked) {
                     clientesSeleccionadosIds.add(id);
-                    
-                    const cliente = todosLosClientes.find(c => c.id === id);
-                    if (cliente) {
-                        const contactosWp = obtenerContactosDeCliente(cliente);
-                        const contactosEmail = obtenerEmailsDeCliente(cliente);
-                        const totalConts = contactosWp.length + contactosEmail.length;
-                        if (totalConts > 1) {
-                            let preSeleccionados = obtenerContactosSeleccionados(id);
-                            if (!preSeleccionados) {
-                                const rawWpStr = (cliente.whatsapp_facturas || '').trim();
-                                const rawEmailStr = (cliente.email_facturas || '').trim();
-                                let hasWpConfig = false;
-                                let hasEmailConfig = false;
-                                if (rawWpStr.startsWith('[')) {
-                                    try {
-                                        const parsed = JSON.parse(rawWpStr);
-                                        hasWpConfig = Array.isArray(parsed) && parsed.some(c => c.default_factura !== undefined);
-                                    } catch(e) {}
-                                }
-                                if (rawEmailStr.startsWith('[')) {
-                                    try {
-                                        const parsed = JSON.parse(rawEmailStr);
-                                        hasEmailConfig = Array.isArray(parsed) && parsed.some(e => e.default_factura !== undefined);
-                                    } catch(e) {}
-                                }
-                                const isConfigured = hasWpConfig || hasEmailConfig;
-
-                                const defaultSel = {
-                                    whatsapp: contactosWp.filter(c => c.default_factura).map(c => c.numero),
-                                    email: contactosEmail.filter(e => e.default_factura).map(e => e.email)
-                                };
-                                if (!isConfigured && defaultSel.whatsapp.length === 0 && defaultSel.email.length === 0) {
-                                    defaultSel.whatsapp = contactosWp.map(c => c.numero);
-                                    defaultSel.email = contactosEmail.map(e => e.email);
-                                }
-                                guardarContactosSeleccionados(id, defaultSel);
-                            }
-                        }
-                    }
                 } else {
                     clientesSeleccionadosIds.delete(id);
                 }
             });
-            
+
             actualizarBarraAccionesLote();
         });
     }
@@ -4052,197 +4246,380 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Botón de envío masivo por WhatsApp (Redirigido a Omnicanal)
-    if (btnBulkWhatsapp) {
-        btnBulkWhatsapp.addEventListener('click', async () => {
-            const idsArray = Array.from(clientesSeleccionadosIds);
-            if (idsArray.length === 0) return;
+    async function abrirPrevisualizacionYEnvioLoteSaldos() {
+        const idsArray = Array.from(clientesSeleccionadosIds);
+        if (idsArray.length === 0) return;
 
-            const confirmacion = await Swal.fire({
-                title: '¿Confirmar envío masivo?',
-                text: `Se procesará el despacho de saldos de cuenta corriente para los ${idsArray.length} clientes seleccionados según los canales configurados.`,
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonColor: 'var(--purple-primary)',
-                cancelButtonColor: '#64748b',
-                confirmButtonText: 'Sí, enviar',
-                cancelButtonText: 'Cancelar'
+        const detalladoForzado = Boolean(chkBulkDetallado && chkBulkDetallado.checked);
+
+        Swal.fire({
+            title: 'Preparando vista previa del lote...',
+            html: `Consultando saldos consolidados, destinatarios guardados y estado de Portal B2B para <strong>${idsArray.length}</strong> cliente(s)...`,
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        let previewData = null;
+        try {
+            const resp = await fetch('/api/logistica/bunker/cuentas-corrientes/previsualizar-lote-saldos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    cliente_ids: idsArray,
+                    detallado: detalladoForzado
+                })
             });
-
-            if (!confirmacion.isConfirmed) return;
-
-            let cancelBulkSend = false;
+            const data = await resp.json();
+            if (!resp.ok || !data.success) {
+                throw new Error(data.error || data.message || `HTTP ${resp.status}`);
+            }
+            previewData = data;
+        } catch (err) {
+            console.error('Error previsualizando lote de saldos:', err);
             Swal.fire({
-                title: 'Enviando Reportes...',
-                html: `Enviando reporte <strong>1</strong> de <strong>${idsArray.length}</strong>...`,
-                allowOutsideClick: false,
-                allowEscapeKey: false,
-                showCancelButton: true,
-                cancelButtonText: 'Cancelar Envío',
-                cancelButtonColor: '#dc2626',
-                didOpen: () => {
-                    Swal.showLoading();
-                    const cancelBtn = Swal.getCancelButton();
-                    if (cancelBtn) {
-                        cancelBtn.addEventListener('click', () => {
-                            cancelBulkSend = true;
-                        });
-                    }
-                }
+                icon: 'error',
+                title: 'No se pudo preparar la vista previa',
+                text: err.message || 'Error de conexión con el servidor.',
+                confirmButtonColor: '#ef4444'
             });
+            return;
+        }
 
-            const exitos = [];
-            const fallos = [];
+        const items = Array.isArray(previewData.items) ? previewData.items : [];
+        const resMeta = previewData.resumen || {};
+        const itemsListos = items.filter(it => it.encontrado && it.cuenta_corriente_id && !it.destinatarios?.requiere_definicion);
+        const itemsPendientes = items.filter(it => it.encontrado && it.destinatarios?.requiere_definicion);
 
-            for (let i = 0; i < idsArray.length; i++) {
-                if (cancelBulkSend) break;
+        const filasHtml = items.map(it => {
+            if (!it.encontrado) {
+                return `<tr><td colspan="5" style="padding:8px; color:#dc2626;">ID ${it.cliente_id}: ${escHtmlNodo(it.error || 'No encontrado')}</td></tr>`;
+            }
+            const s = it.saldoResumen || {};
+            const d = it.destinatarios || {};
+            const p = it.portalAcceso || {};
+            const cfgR = it.configuracion_reporte || {};
 
-                const clienteId = idsArray[i];
-                const cliente = todosLosClientes.find(c => c.id === clienteId);
-                
-                if (!cliente) {
-                    fallos.push({ nombre: `ID ${clienteId}`, razon: 'Cliente no encontrado en memoria.' });
-                    continue;
-                }
-
-                if (!cliente.cuenta_corriente_id) {
-                    fallos.push({ nombre: cliente.cliente_nombre, razon: 'No posee cuenta corriente configurada.' });
-                    continue;
-                }
-
-                let selected = obtenerContactosSeleccionados(clienteId);
-                let wps = [];
-                let emails = [];
-
-                if (selected) {
-                    if (Array.isArray(selected)) {
-                        wps = selected;
-                        emails = obtenerEmailsDeCliente(cliente).filter(e => e.default_factura).map(e => e.email);
-                    } else if (selected.whatsapp && selected.email) {
-                        wps = selected.whatsapp;
-                        emails = selected.email;
-                    }
-                } else {
-                    wps = obtenerContactosDeCliente(cliente).filter(c => c.default_resumen).map(c => c.numero);
-                    emails = obtenerEmailsDeCliente(cliente).filter(e => e.default_factura).map(e => e.email);
-                    
-                    const rawWpStr = (cliente.whatsapp_facturas || '').trim();
-                    const rawEmailStr = (cliente.email_facturas || '').trim();
-                    let hasWpConfig = false;
-                    let hasEmailConfig = false;
-                    
-                    if (rawWpStr.startsWith('[')) {
-                        try {
-                            const parsed = JSON.parse(rawWpStr);
-                            hasWpConfig = Array.isArray(parsed) && parsed.some(c => c.default_resumen !== undefined);
-                        } catch(e) {}
-                    }
-                    if (rawEmailStr.startsWith('[')) {
-                        try {
-                            const parsed = JSON.parse(rawEmailStr);
-                            hasEmailConfig = Array.isArray(parsed) && parsed.some(e => e.default_factura !== undefined);
-                        } catch(e) {}
-                    }
-                    const isConfigured = hasWpConfig || hasEmailConfig;
-
-                    if (!isConfigured && wps.length === 0 && emails.length === 0) {
-                        wps = obtenerContactosDeCliente(cliente).map(c => c.numero);
-                        emails = obtenerEmailsDeCliente(cliente).map(e => e.email);
-                    }
-                }
-
-                // Determinar canales a despachar
-                const sendWp = wps.length > 0;
-                const sendEmail = emails.length > 0;
-                const detallado = chkBulkDetallado && chkBulkDetallado.checked;
-
-                if (!sendWp && !sendEmail) {
-                    // Descarga manual
-                    const queryParam = detallado ? '?detallado=true' : '';
-                    window.open(`/api/logistica/bunker/cuentas-corrientes/${cliente.cuenta_corriente_id}/reporte-pdf${queryParam}`, '_blank');
-                    exitos.push({ nombre: cliente.cliente_nombre + ' (Descarga manual)' });
-                    continue;
-                }
-
-                // Actualizar cargador con el cliente actual
-                Swal.getHtmlContainer().innerHTML = `Enviando reporte <strong>${exitos.length + fallos.length + 1}</strong> de <strong>${idsArray.length}</strong>...<br><small style="color: #64748b;">Cliente: ${cliente.cliente_nombre}</small>`;
-
-                // Disparar envíos
-                let attempts = [];
-                if (sendWp) {
-                    const url = `/api/logistica/bunker/cuentas-corrientes/${cliente.cuenta_corriente_id}/whatsapp`;
-                    attempts.push(fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ destinatarios: wps.join(', '), detallado })
-                    }).then(async r => {
-                        const data = await r.json();
-                        if (!r.ok || !data.success) throw new Error(data.message || data.error || 'Fallo WhatsApp');
-                        return 'WhatsApp';
-                    }));
-                }
-                if (sendEmail) {
-                    const url = `/api/logistica/bunker/cuentas-corrientes/${cliente.cuenta_corriente_id}/email`;
-                    attempts.push(fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ destinatarios: emails.join(', '), detallado })
-                    }).then(async r => {
-                        const data = await r.json();
-                        if (!r.ok || !data.success) throw new Error(data.message || data.error || 'Fallo Correo');
-                        return 'Correo';
-                    }));
-                }
-
-                try {
-                    const results = await Promise.all(attempts);
-                    exitos.push({ nombre: cliente.cliente_nombre + ` (${results.join(' + ')})` });
-                } catch (err) {
-                    fallos.push({ nombre: cliente.cliente_nombre, razon: err.message || 'Error de red' });
-                }
+            let saldoBadge = `<div style="font-weight:800; color:${s.estado === 'DEUDOR' ? '#b91c1c' : '#047857'}; font-size:12.5px;">${escHtmlNodo(s.saldoConsolidadoFmt || '$ 0,00')}</div>`;
+            if (s.tieneFinanciacionActiva) {
+                saldoBadge += `<div style="font-size:10px; color:#9a3412; font-weight:700;">🛡️ Cap. ${escHtmlNodo(s.saldoCapitalFmt)} + Fin. ${escHtmlNodo(s.financiacionActivaFmt)}</div>`;
+            } else if (s.tieneFinanciacionSombra) {
+                saldoBadge += `<div style="font-size:10px; color:#92400e;">🌓 Sombra (sin cargo hoy)</div>`;
+            } else if (s.estado === 'A_FAVOR') {
+                saldoBadge += `<div style="font-size:10px; color:#047857;">A favor</div>`;
             }
 
-            // Limpiar selección al finalizar
-            clientesSeleccionadosIds.clear();
-            cuerpoTablaClientes.querySelectorAll('.chk-cliente').forEach(chk => {
-                chk.checked = false;
-            });
-            if (chkSeleccionarTodos) chkSeleccionarTodos.checked = false;
-            if (chkBulkDetallado) chkBulkDetallado.checked = false;
-            actualizarBarraAccionesLote();
+            let destHtml = '';
+            if (!it.cuenta_corriente_id) {
+                destHtml = `<span style="color:#dc2626; font-size:11px; font-weight:700;">❌ Sin cuenta corriente</span>`;
+            } else if (d.requiere_definicion) {
+                const motivo = d.origen === 'sin_contactos'
+                    ? 'Sin contactos reales cargados'
+                    : `Múltiples contactos (${d.total_contactos_disponibles}) sin preferencia de saldo`;
+                destHtml = `
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; padding:5px 8px;">
+                        <span style="font-size:11px; font-weight:700; color:#92400e;">⚠️ ${escHtmlNodo(motivo)}</span>
+                        <button type="button" class="btn-preview-config-cliente" data-id="${it.cliente_id}" data-nombre="${escHtmlNodo(it.cliente_nombre)}" style="background:#7c3aed; color:#fff; border:none; border-radius:5px; padding:3px 8px; font-size:10.5px; font-weight:700; cursor:pointer; white-space:nowrap;">👥 Configurar</button>
+                    </div>
+                `;
+            } else if (d.solo_pdf) {
+                destHtml = `
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:6px;">
+                        <span style="font-size:11px; color:#475569; font-weight:700;">📄 Sin envío digital (solo PDF)</span>
+                        <button type="button" class="btn-preview-config-cliente" data-id="${it.cliente_id}" data-nombre="${escHtmlNodo(it.cliente_nombre)}" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; border-radius:4px; padding:2px 6px; font-size:10px; cursor:pointer;">✏️</button>
+                    </div>
+                `;
+            } else {
+                const lines = [];
+                (d.whatsapp_detalle || []).forEach(w => {
+                    const lbl = w.etiqueta ? `<strong>${escHtmlNodo(w.etiqueta)}</strong> · ` : '';
+                    lines.push(`<div style="font-size:11px; color:#065f46;">📱 ${lbl}${escHtmlNodo(formatearTelefonoDisplayAR(w.numero))}</div>`);
+                });
+                (d.email_detalle || []).forEach(em => {
+                    const lbl = em.etiqueta ? `<strong>${escHtmlNodo(em.etiqueta)}</strong> · ` : '';
+                    lines.push(`<div style="font-size:11px; color:#5b21b6; word-break:break-all;">📧 ${lbl}${escHtmlNodo(em.email)}</div>`);
+                });
+                const tagOrigen = d.configurado_explicitamente
+                    ? `<span style="font-size:9.5px; background:#dcfce7; color:#166534; padding:1px 5px; border-radius:4px; font-weight:700;">💾 Guardado</span>`
+                    : `<span style="font-size:9.5px; background:#f1f5f9; color:#475569; padding:1px 5px; border-radius:4px; font-weight:600;">${d.origen === 'default_resumen' ? 'Predet. resumen' : 'Único contacto'}</span>`;
+                destHtml = `
+                    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:6px;">
+                        <div>${lines.join('')}<div style="margin-top:2px;">${tagOrigen}</div></div>
+                        <button type="button" class="btn-preview-config-cliente" data-id="${it.cliente_id}" data-nombre="${escHtmlNodo(it.cliente_nombre)}" style="background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; border-radius:4px; padding:2px 6px; font-size:10px; cursor:pointer; flex-shrink:0;" title="Modificar destinatarios guardados">✏️</button>
+                    </div>
+                `;
+            }
 
-            // Resumen de la operación
-            let summaryHtml = `
-                <div style="text-align: left; font-family: 'Inter', sans-serif;">
-                    <p style="margin-bottom: 12px; font-size: 14px; color: #1e293b;">
-                        El envío masivo ha finalizado.
-                    </p>
-                    <div style="margin-bottom: 8px;">
-                        <strong>Enviados con éxito:</strong> <span style="color: #16a34a; font-weight: bold;">${exitos.length}</span>
-                    </div>
-                    ${exitos.length > 0 ? `
-                    <ul style="max-height: 120px; overflow-y: auto; font-size: 13px; color: #475569; padding-left: 20px; margin-bottom: 16px;">
-                        ${exitos.map(e => `<li>${e.nombre}</li>`).join('')}
-                    </ul>` : ''}
-                    
-                    <div style="margin-bottom: 8px;">
-                        <strong>Fallidos o omitidos:</strong> <span style="color: #dc2626; font-weight: bold;">${fallos.length}</span>
-                    </div>
-                    ${fallos.length > 0 ? `
-                    <ul style="max-height: 120px; overflow-y: auto; font-size: 13px; color: #dc2626; padding-left: 20px; margin-bottom: 16px;">
-                        ${fallos.map(f => `<li><strong>${f.nombre}</strong>: ${f.razon}</li>`).join('')}
-                    </ul>` : ''}
-                </div>
+            const portalHtml = p.modo === 'INVITACION_INICIAL'
+                ? `<span style="display:inline-block; background:#f5f3ff; color:#6d28d9; border:1px solid #c4b5fd; border-radius:999px; padding:2px 7px; font-size:10.5px; font-weight:800; white-space:nowrap;" title="Nunca ingresó al Portal B2B — se enviará link de invitación válido 7 días">🔑 Invitación 7d</span>`
+                : `<span style="display:inline-block; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; border-radius:999px; padding:2px 7px; font-size:10.5px; font-weight:700; white-space:nowrap;" title="Ya ingresó al Portal B2B — se enviará enlace directo habitual">🌐 Link directo</span>`;
+
+            const corteTxt = cfgR.modo_corte === 'ultimo_cero' || cfgR.desde_ultimo_cero
+                ? 'Desde último $0'
+                : 'Historial completo';
+            const pdfHtml = `<div style="font-size:10.5px; color:#475569; font-weight:600;">${corteTxt}${cfgR.detallado ? '<br><span style="color:#6d28d9;">+ Detallado</span>' : ''}</div>`;
+
+            return `
+                <tr style="border-bottom: 1px solid #e2e8f0; ${d.requiere_definicion ? 'background:#fffdf5;' : ''}">
+                    <td style="padding:8px 6px; vertical-align:top;">
+                        <div style="font-weight:700; color:#0f172a; font-size:12px;">${escHtmlNodo(it.cliente_nombre)}</div>
+                        <div style="font-size:10.5px; color:#64748b;">${escHtmlNodo(it.codigo_bunker_cliente)}</div>
+                    </td>
+                    <td style="padding:8px 6px; text-align:right; vertical-align:top; white-space:nowrap;">${saldoBadge}</td>
+                    <td style="padding:8px 6px; vertical-align:top;">${destHtml}</td>
+                    <td style="padding:8px 6px; text-align:center; vertical-align:top;">${portalHtml}</td>
+                    <td style="padding:8px 6px; text-align:center; vertical-align:top;">${pdfHtml}</td>
+                </tr>
             `;
+        }).join('');
 
-            Swal.fire({
-                title: cancelBulkSend ? 'Envío Interrumpido' : 'Resumen de Envío Masivo',
-                html: summaryHtml,
-                icon: fallos.length > 0 ? 'warning' : 'success',
-                confirmButtonText: 'Entendido',
-                confirmButtonColor: 'var(--purple-primary)'
-            });
+        const avisoPendientesHtml = itemsPendientes.length > 0
+            ? `<div style="margin-bottom: 10px; padding: 9px 12px; border-radius: 8px; background: #fffbeb; border: 1px solid #f59e0b; color: #92400e; font-size: 12px; text-align: left;">
+                   ⚠️ <strong>${itemsPendientes.length} cliente(s) tienen múltiples contactos sin preferencia de saldo definida</strong> (o sin contactos). Configuralos desde el botón <strong>👥 Configurar</strong> aquí mismo para evitar envíos accidentales a todos los teléfonos del comercio. Si avanzás sin configurarlos, esos clientes serán <strong>omitidos</strong>.
+               </div>`
+            : '';
+
+        const previewModalHtml = `
+            <div style="text-align: left; font-family: 'Inter', 'Segoe UI', sans-serif;">
+                <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; font-size:11.5px;">
+                    <span style="background:#f1f5f9; color:#1e293b; padding:3px 9px; border-radius:999px; font-weight:700;">📋 Seleccionados: ${resMeta.total || items.length}</span>
+                    <span style="background:#dcfce7; color:#166534; padding:3px 9px; border-radius:999px; font-weight:700;">✅ Listos: ${itemsListos.length}</span>
+                    ${itemsPendientes.length > 0 ? `<span style="background:#fef3c7; color:#b45309; padding:3px 9px; border-radius:999px; font-weight:800;">⚠️ Pendientes: ${itemsPendientes.length}</span>` : ''}
+                    <span style="background:#f5f3ff; color:#6d28d9; padding:3px 9px; border-radius:999px; font-weight:700;">🔑 Invitaciones Portal: ${resMeta.invitaciones_portal || 0}</span>
+                    <span style="background:#eff6ff; color:#1d4ed8; padding:3px 9px; border-radius:999px; font-weight:700;">🌐 Link directo: ${resMeta.accesos_directos || 0}</span>
+                </div>
+                ${avisoPendientesHtml}
+                <div style="max-height: 360px; overflow-y: auto; border: 1px solid #cbd5e1; border-radius: 8px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                        <thead style="position: sticky; top: 0; background: #f8fafc; border-bottom: 2px solid #cbd5e1; z-index: 2;">
+                            <tr>
+                                <th style="padding: 8px 6px; text-align: left; color: #475569; font-size: 11px; text-transform: uppercase;">Cliente</th>
+                                <th style="padding: 8px 6px; text-align: right; color: #475569; font-size: 11px; text-transform: uppercase;">Saldo Consolidado</th>
+                                <th style="padding: 8px 6px; text-align: left; color: #475569; font-size: 11px; text-transform: uppercase;">Canales y Destinatarios</th>
+                                <th style="padding: 8px 6px; text-align: center; color: #475569; font-size: 11px; text-transform: uppercase;">Portal B2B</th>
+                                <th style="padding: 8px 6px; text-align: center; color: #475569; font-size: 11px; text-transform: uppercase;">Corte PDF</th>
+                            </tr>
+                        </thead>
+                        <tbody>${filasHtml}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        let reabrirPreviewPorCliente = null;
+        const confirmBtnLabel = itemsListos.length === 0
+            ? 'Configurá destinatarios primero'
+            : (itemsPendientes.length > 0
+                ? `📤 Enviar solo los ${itemsListos.length} listos`
+                : `📤 Confirmar y Enviar (${itemsListos.length})`);
+
+        const confirmacion = await Swal.fire({
+            title: 'Vista Previa — Envío de Reportes de Saldo',
+            html: previewModalHtml,
+            width: '920px',
+            showCancelButton: true,
+            showConfirmButton: itemsListos.length > 0,
+            confirmButtonColor: 'var(--purple-primary)',
+            cancelButtonColor: '#64748b',
+            confirmButtonText: confirmBtnLabel,
+            cancelButtonText: 'Cancelar',
+            didOpen: (popup) => {
+                popup.querySelectorAll('.btn-preview-config-cliente').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        reabrirPreviewPorCliente = {
+                            id: Number(btn.getAttribute('data-id')),
+                            nombre: btn.getAttribute('data-nombre')
+                        };
+                        Swal.close();
+                    });
+                });
+            }
         });
+
+        // Si el usuario tocó "👥 Configurar" dentro de la vista previa, abrimos el modal del cliente y luego refrescamos la vista previa
+        if (reabrirPreviewPorCliente) {
+            await abrirConfiguracionContactosBulk(reabrirPreviewPorCliente.id, reabrirPreviewPorCliente.nombre, { silencioso: true });
+            return abrirPrevisualizacionYEnvioLoteSaldos();
+        }
+
+        if (!confirmacion.isConfirmed || itemsListos.length === 0) return;
+
+        let cancelBulkSend = false;
+        Swal.fire({
+            title: 'Enviando Reportes...',
+            html: `Enviando reporte <strong>1</strong> de <strong>${itemsListos.length}</strong>...`,
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showCancelButton: true,
+            cancelButtonText: 'Cancelar Envío',
+            cancelButtonColor: '#dc2626',
+            didOpen: () => {
+                Swal.showLoading();
+                const cancelBtn = Swal.getCancelButton();
+                if (cancelBtn) {
+                    cancelBtn.addEventListener('click', () => {
+                        cancelBulkSend = true;
+                    });
+                }
+            }
+        });
+
+        const resultadosClientes = [];
+        let totalCanalesOk = 0;
+        let totalCanalesError = 0;
+
+        for (let i = 0; i < itemsListos.length; i++) {
+            if (cancelBulkSend) break;
+
+            const item = itemsListos[i];
+            const wps = item.destinatarios?.whatsapp || [];
+            const emails = item.destinatarios?.email || [];
+            const sendWp = wps.length > 0;
+            const sendEmail = emails.length > 0;
+
+            Swal.getHtmlContainer().innerHTML = `Enviando reporte <strong>${i + 1}</strong> de <strong>${itemsListos.length}</strong>...<br><small style="color: #64748b;">Cliente: ${escHtmlNodo(item.cliente_nombre)} (${escHtmlNodo(item.saldoResumen?.saldoConsolidadoFmt || '')})</small>`;
+
+            if (!sendWp && !sendEmail) {
+                resultadosClientes.push({
+                    nombre: item.cliente_nombre,
+                    codigo: item.codigo_bunker_cliente,
+                    saldoFmt: item.saldoResumen?.saldoConsolidadoFmt || '',
+                    portalModo: item.portalAcceso?.modo || '',
+                    canales: [{ canal: 'PDF', ok: true, detalle: 'Sin envío digital configurado (omitido)' }]
+                });
+                continue;
+            }
+
+            const bodyBase = {
+                respetar_configuracion_reporte: true,
+                ...(detalladoForzado ? { detallado: true } : {})
+            };
+
+            const tareas = [];
+            if (sendWp) {
+                const urlWp = `/api/logistica/bunker/cuentas-corrientes/${item.cuenta_corriente_id}/whatsapp`;
+                tareas.push({
+                    canal: 'WhatsApp',
+                    destinos: wps.join(', '),
+                    promise: fetch(urlWp, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...bodyBase, destinatarios: wps.join(', ') })
+                    }).then(async r => {
+                        const data = await r.json();
+                        if (!r.ok || !data.success) throw new Error(data.message || data.error || `HTTP ${r.status}`);
+                        return data;
+                    })
+                });
+            }
+            if (sendEmail) {
+                const urlEm = `/api/logistica/bunker/cuentas-corrientes/${item.cuenta_corriente_id}/email`;
+                tareas.push({
+                    canal: 'Correo',
+                    destinos: emails.join(', '),
+                    promise: fetch(urlEm, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ...bodyBase, destinatarios: emails.join(', ') })
+                    }).then(async r => {
+                        const data = await r.json();
+                        if (!r.ok || !data.success) throw new Error(data.message || data.error || `HTTP ${r.status}`);
+                        return data;
+                    })
+                });
+            }
+
+            // Resiliencia independiente por canal: si falla Email, WhatsApp ya enviado sigue figurando como exitoso
+            const settled = await Promise.allSettled(tareas.map(t => t.promise));
+            const canalesRes = settled.map((s, idx) => {
+                const metaTarea = tareas[idx];
+                if (s.status === 'fulfilled') {
+                    totalCanalesOk++;
+                    const simFlag = s.value?.data?.simulated ? ' (Simulado Lab)' : '';
+                    return {
+                        canal: metaTarea.canal,
+                        ok: true,
+                        detalle: `${metaTarea.destinos}${simFlag}`
+                    };
+                } else {
+                    totalCanalesError++;
+                    return {
+                        canal: metaTarea.canal,
+                        ok: false,
+                        detalle: `${metaTarea.destinos} — ${s.reason?.message || 'Error de envío'}`
+                    };
+                }
+            });
+
+            resultadosClientes.push({
+                nombre: item.cliente_nombre,
+                codigo: item.codigo_bunker_cliente,
+                saldoFmt: item.saldoResumen?.saldoConsolidadoFmt || '',
+                portalModo: item.portalAcceso?.modo || '',
+                canales: canalesRes
+            });
+        }
+
+        // Registrar también los omitidos por falta de definición
+        const omitidosHtml = itemsPendientes.length > 0
+            ? `<div style="margin-top: 12px; padding: 8px 10px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; font-size: 12px; color: #92400e;">
+                   <strong>Omitidos sin definir (${itemsPendientes.length}):</strong> ${itemsPendientes.map(x => escHtmlNodo(x.cliente_nombre)).join(', ')}
+               </div>`
+            : '';
+
+        // Limpiar selección al finalizar
+        clientesSeleccionadosIds.clear();
+        cuerpoTablaClientes.querySelectorAll('.chk-cliente').forEach(chk => {
+            chk.checked = false;
+        });
+        if (chkSeleccionarTodos) chkSeleccionarTodos.checked = false;
+        if (chkBulkDetallado) chkBulkDetallado.checked = false;
+        actualizarBarraAccionesLote();
+
+        const filasResultado = resultadosClientes.map(rc => {
+            const canalesBadges = rc.canales.map(c =>
+                c.ok
+                    ? `<div style="color:#15803d; font-size:11.5px;">✅ <strong>${c.canal}:</strong> ${escHtmlNodo(c.detalle)}</div>`
+                    : `<div style="color:#dc2626; font-size:11.5px;">❌ <strong>${c.canal}:</strong> ${escHtmlNodo(c.detalle)}</div>`
+            ).join('');
+            const badgePortal = rc.portalModo === 'INVITACION_INICIAL' ? '🔑 Invitación 7d' : '🌐 Directo';
+            return `
+                <li style="margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #f1f5f9;">
+                    <div style="font-weight: 700; color: #0f172a; font-size: 12.5px;">
+                        ${escHtmlNodo(rc.nombre)} <span style="color:#64748b; font-weight:500;">(${escHtmlNodo(rc.codigo)})</span> · <span style="color:#6b21a8;">${escHtmlNodo(rc.saldoFmt)}</span> · <span style="font-size:11px; color:#475569;">${badgePortal}</span>
+                    </div>
+                    ${canalesBadges}
+                </li>
+            `;
+        }).join('');
+
+        const summaryHtml = `
+            <div style="text-align: left; font-family: 'Inter', sans-serif;">
+                <div style="display:flex; gap:10px; margin-bottom:12px; font-size:13px;">
+                    <span style="background:#dcfce7; color:#166534; padding:4px 10px; border-radius:6px; font-weight:700;">✅ Canales OK: ${totalCanalesOk}</span>
+                    <span style="background:${totalCanalesError > 0 ? '#fee2e2' : '#f1f5f9'}; color:${totalCanalesError > 0 ? '#b91c1c' : '#64748b'}; padding:4px 10px; border-radius:6px; font-weight:700;">❌ Canales Fallidos: ${totalCanalesError}</span>
+                </div>
+                <ul style="max-height: 260px; overflow-y: auto; list-style: none; padding: 0; margin: 0;">
+                    ${filasResultado}
+                </ul>
+                ${omitidosHtml}
+            </div>
+        `;
+
+        Swal.fire({
+            title: cancelBulkSend ? 'Envío Interrumpido' : 'Resumen de Envío Masivo por Canal',
+            html: summaryHtml,
+            width: '680px',
+            icon: totalCanalesError > 0 ? 'warning' : 'success',
+            confirmButtonText: 'Entendido',
+            confirmButtonColor: 'var(--purple-primary)'
+        });
+    }
+
+    // Botón de envío masivo (Vista Previa + Despacho Omnicanal Resiliente)
+    if (btnBulkWhatsapp) {
+        btnBulkWhatsapp.addEventListener('click', abrirPrevisualizacionYEnvioLoteSaldos);
     }
 
     // --- LÓGICA DE GESTIÓN MULTIDOMICILIO Y PREDETERMINADOS ---

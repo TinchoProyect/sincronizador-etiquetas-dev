@@ -58,7 +58,9 @@ const enviarEmail = async ({ to, subject, htmlBody, attachments = [] }) => {
             success: true,
             simulated: true,
             messageId: `sim-lab-${Date.now()}`,
-            recipients
+            recipients,
+            subject,
+            htmlBody
         };
     }
 
@@ -123,6 +125,7 @@ const obtenerPlantillaHtml = ({
     mensajePrincipal,
     datosDetalle = [],
     avisoSaldoExcedidoHtml = '',
+    portalAccesoHtml = '',
     imagenInlineHtml = '',
     notaAdjunto = 'En el adjunto de este correo electrónico encontrará el comprobante correspondiente en formato PDF.',
     piePagina,
@@ -234,6 +237,8 @@ const obtenerPlantillaHtml = ({
                 ${imagenInlineHtml || ''}
 
                 ${avisoSaldoExcedidoHtml || ''}
+
+                ${portalAccesoHtml || ''}
                 
                 ${mostrarTransferencia ? `
                 <div class="transfer-box" style="margin-top: 24px; padding: 16px; border: 1px dashed #7c3aed; border-radius: 8px; background-color: #faf5ff;">
@@ -324,18 +329,73 @@ const enviarFacturaPdf = async (factura, pdfBuffer, destinatarios, nroComprobant
  * @param {Object} [opciones={}] - Opciones adicionales (ej: avisoSaldoExcedidoHtml)
  */
 const enviarResumenCuentaPdf = async (cliente, pdfBuffer, destinatarios, fechaCorte, saldoActual, opciones = {}) => {
-    const { avisoSaldoExcedidoHtml = '' } = opciones;
+    const {
+        avisoSaldoExcedidoHtml = '',
+        saldoResumen = null,
+        portalAccesoHtml = ''
+    } = opciones;
     const clienteNombre = cliente.cliente_nombre || cliente.razon_social || 'Cliente';
     const subject = `LAMDA - Estado de Cuenta y Resumen de Saldo al ${fechaCorte}`;
-    
-    const mensajePrincipal = `Le hacemos llegar el resumen detallado de su cuenta corriente a la fecha de corte indicada.`;
-    
+
+    const formatMontoAR = (v) => {
+        const num = Math.abs(Number(v) || 0);
+        const parts = num.toFixed(2).split('.');
+        const formattedInt = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        return `$ ${formattedInt},${parts[1]}`;
+    };
+
+    const saldoNum = (saldoResumen && typeof saldoResumen.saldoConsolidado === 'number')
+        ? saldoResumen.saldoConsolidado
+        : (parseFloat(saldoActual) || 0);
+    const saldoFmt = (saldoResumen && saldoResumen.saldoConsolidadoFmt)
+        ? saldoResumen.saldoConsolidadoFmt
+        : formatMontoAR(saldoNum);
+    const tieneFinActiva = Boolean(saldoResumen && saldoResumen.tieneFinanciacionActiva && Number(saldoResumen.financiacionActivaConIva || 0) > 0.005);
+    const estadoSaldo = saldoResumen?.estado || (saldoNum > 0.005 ? 'DEUDOR' : (saldoNum < -0.005 ? 'A_FAVOR' : 'AL_DIA'));
+
+    let mensajePrincipal = '';
+    let labelSaldoDetalle = 'Saldo Consolidado Actual';
+    let valorSaldoDetalle = saldoFmt;
+
+    if (estadoSaldo === 'DEUDOR') {
+        if (tieneFinActiva) {
+            const capFmt = saldoResumen.saldoCapitalFmt || formatMontoAR(saldoResumen.saldoCapital);
+            const finFmt = saldoResumen.financiacionActivaFmt || formatMontoAR(saldoResumen.financiacionActivaConIva);
+            mensajePrincipal = `Le hacemos llegar el resumen detallado de su cuenta corriente al ${fechaCorte}. Su <strong style="color: #b91c1c; font-size: 16px;">saldo consolidado actual es de ${saldoFmt}</strong> <span style="font-size: 13px; color: #64748b;">(Capital: ${capFmt} + Financiación c/IVA: ${finFmt})</span>.`;
+            labelSaldoDetalle = 'Saldo Consolidado Actual (c/IVA)';
+            valorSaldoDetalle = `<span style="color: #b91c1c; font-size: 15px;">${saldoFmt}</span>`;
+        } else {
+            mensajePrincipal = `Le hacemos llegar el resumen detallado de su cuenta corriente al ${fechaCorte}. Su <strong style="color: #b91c1c; font-size: 16px;">saldo consolidado actual es de ${saldoFmt}</strong>.`;
+            labelSaldoDetalle = 'Saldo Consolidado Actual';
+            valorSaldoDetalle = `<span style="color: #b91c1c; font-size: 15px;">${saldoFmt}</span>`;
+        }
+    } else if (estadoSaldo === 'A_FAVOR') {
+        mensajePrincipal = `Le hacemos llegar el resumen detallado de su cuenta corriente al ${fechaCorte}. Actualmente registra un <strong style="color: #047857; font-size: 16px;">saldo consolidado a favor de ${saldoFmt}</strong>.`;
+        labelSaldoDetalle = 'Saldo Consolidado (A Favor)';
+        valorSaldoDetalle = `<span style="color: #047857; font-size: 15px;">${saldoFmt} a favor</span>`;
+    } else {
+        mensajePrincipal = `Le hacemos llegar el resumen detallado de su cuenta corriente al ${fechaCorte}. Su cuenta corriente se encuentra <strong style="color: #047857; font-size: 16px;">al día ($ 0,00)</strong>.`;
+        labelSaldoDetalle = 'Saldo Consolidado Actual';
+        valorSaldoDetalle = `<span style="color: #047857; font-size: 15px;">$ 0,00 (Al día)</span>`;
+    }
+
     const datosDetalle = [
         { label: 'Cliente', value: clienteNombre },
         { label: 'Código de cliente', value: cliente.codigo_bunker_cliente || 'N/A' },
-        { label: 'Fecha de Corte', value: fechaCorte },
-        { label: 'Saldo Pendiente', value: `$${parseFloat(saldoActual).toLocaleString('es-AR', { minimumFractionDigits: 2 })}` }
+        { label: 'Fecha de Corte', value: fechaCorte }
     ];
+
+    if (estadoSaldo === 'DEUDOR' && tieneFinActiva) {
+        datosDetalle.push({
+            label: 'Capital de Comprobantes',
+            value: saldoResumen.saldoCapitalFmt || formatMontoAR(saldoResumen.saldoCapital)
+        });
+        datosDetalle.push({
+            label: 'Financiación Activa (c/IVA)',
+            value: `+ ${saldoResumen.financiacionActivaFmt || formatMontoAR(saldoResumen.financiacionActivaConIva)}`
+        });
+    }
+    datosDetalle.push({ label: labelSaldoDetalle, value: valorSaldoDetalle });
 
     const htmlBody = obtenerPlantillaHtml({
         titulo: 'Estado de Cuenta Corriente',
@@ -343,6 +403,7 @@ const enviarResumenCuentaPdf = async (cliente, pdfBuffer, destinatarios, fechaCo
         mensajePrincipal,
         datosDetalle,
         avisoSaldoExcedidoHtml,
+        portalAccesoHtml,
         piePagina: 'LAMDA Logística y Finanzas | Av. 19 Nº 406 | Tel: 221-6615746'
     });
 
