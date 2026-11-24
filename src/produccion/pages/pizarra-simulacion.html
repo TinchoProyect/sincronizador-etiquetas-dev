@@ -886,6 +886,165 @@
       border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
     }
 
+    /* LDN 3 REDISEÑO LIMPIO Y AUDITABLE */
+    .ldn3-header-unified {
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 0.76rem;
+    }
+
+    .ldn3-header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .ldn3-filter-pills {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .ldn3-filter-pill {
+      background: rgba(255, 255, 255, 0.05);
+      color: #cbd5e1;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      padding: 4px 9px;
+      border-radius: 999px;
+      font-size: 0.71rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .ldn3-filter-pill:hover {
+      background: rgba(168, 85, 247, 0.16);
+      border-color: rgba(168, 85, 247, 0.45);
+      color: #f3e8ff;
+    }
+
+    .ldn3-filter-pill.active {
+      background: rgba(168, 85, 247, 0.28);
+      border-color: #a855f7;
+      color: #ffffff;
+      font-weight: 700;
+      box-shadow: 0 0 8px rgba(168, 85, 247, 0.25);
+    }
+
+    .ldn3-chain-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .ldn3-chain-node {
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 0.70rem;
+    }
+
+    .ldn3-chain-node.pending {
+      border-color: rgba(245, 158, 11, 0.45);
+      background: rgba(245, 158, 11, 0.08);
+    }
+
+    .ldn3-audit-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.71rem;
+      background: rgba(0, 0, 0, 0.22);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .ldn3-audit-table th {
+      background: rgba(30, 41, 59, 0.9);
+      color: #94a3b8;
+      font-weight: 700;
+      padding: 5px 6px;
+      text-align: right;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+      white-space: nowrap;
+    }
+
+    .ldn3-audit-table th:first-child {
+      text-align: left;
+    }
+
+    .ldn3-audit-table td {
+      padding: 5px 6px;
+      text-align: right;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      vertical-align: middle;
+    }
+
+    .ldn3-audit-table td:first-child {
+      text-align: left;
+    }
+
+    .ldn3-collapsible-section {
+      margin-top: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.35);
+      overflow: hidden;
+    }
+
+    .ldn3-collapsible-section > summary {
+      padding: 8px 12px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #cbd5e1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      user-select: none;
+      list-style: none;
+    }
+
+    .ldn3-collapsible-section > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .ldn3-collapsible-body {
+      padding: 8px 10px 4px 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .ldn3-group-header {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 7px 11px;
+      margin-top: 4px;
+      border-radius: 6px;
+      background: rgba(168, 85, 247, 0.10);
+      border: 1px solid rgba(168, 85, 247, 0.32);
+      border-left: 3px solid #a855f7;
+      font-size: 0.76rem;
+    }
+
+    .ldn3-group-header.pending {
+      background: rgba(245, 158, 11, 0.10);
+      border-color: rgba(245, 158, 11, 0.38);
+      border-left-color: #f59e0b;
+    }
+
     /* SECCIÓN TOSTADEROS */
     .tostadero-row {
       background-color: rgba(255, 255, 255, 0.01);
@@ -1652,7 +1811,7 @@
       }
     }
   </style>
-  <script src="/js/components/accordion-ldn1.js?v=2.0.15"></script>
+  <script src="/js/components/accordion-ldn1.js?v=2.0.16"></script>
   <script src="/js/components/modalGestionCostos.js?v=2.0.15"></script>
 </head>
 
@@ -2602,6 +2761,26 @@
     }
     window.inicializarPizarra = inicializarPizarra;
 
+    // Helper único: detecta si la receta de un artículo ya incluye empaque (es_insumo o Unidades) para evitar doble conteo con bunker_lista_insumos
+    function articuloTieneEmpaqueEnRecetaPizarra(data, recetaIdOrArtSku) {
+      if (!data || !recetaIdOrArtSku) return false;
+      let recetaId = null;
+      if (typeof recetaIdOrArtSku === 'number') {
+        recetaId = recetaIdOrArtSku;
+      } else {
+        const skuLower = String(recetaIdOrArtSku).trim().toLowerCase();
+        const recObj = (data.recetas || []).find(r => String(r.articulo_numero || '').trim().toLowerCase() === skuLower);
+        recetaId = recObj ? (recObj.receta_id || recObj.id) : null;
+      }
+      if (!recetaId) return false;
+      const ingsRec = (data.recetaIngredientes || []).filter(ri => ri.receta_id === recetaId);
+      return ingsRec.some(ri => {
+        const ingObj = (data.ingredientes || []).find(i => i.id === ri.ingrediente_id);
+        return Boolean(ingObj && (ingObj.es_insumo === true || String(ingObj.unidad_medida || '').trim().toLowerCase() === 'unidades'));
+      });
+    }
+    window.articuloTieneEmpaqueEnRecetaPizarra = articuloTieneEmpaqueEnRecetaPizarra;
+
     // MOTOR CENTRAL UNIFICADO DE CASCADA Y SIMULACIÓN (SINGLE SOURCE OF TRUTH)
     function ejecutarCascadaUnificada() {
       const data = window.pizarraSimulacionMaster;
@@ -2694,7 +2873,7 @@
         if (!art) return;
 
         const insumos = insumosListasMap.get(la.id) || [];
-        const costoInsumos = insumos.reduce((sum, ins) => sum + (ins.incluido ? (parseFloat(ins.cantidad) * parseFloat(ins.costo_unitario_capturado)) : 0), 0);
+        let costoInsumos = insumos.reduce((sum, ins) => sum + (ins.incluido ? (parseFloat(ins.cantidad) * parseFloat(ins.costo_unitario_capturado)) : 0), 0);
 
         let costoBaseSinInsumosSim = 0;
         const tieneRecetaPropia = art.tiene_receta !== undefined ? art.tiene_receta : comprobarSiTieneReceta(art.articulo_id);
@@ -2703,6 +2882,10 @@
           const costoArtKilo = articulosSim[art.articulo_id] || 0;
           const artKilos = parseFloat(art.kilos_unidad) > 0 ? parseFloat(art.kilos_unidad) : 1;
           costoBaseSinInsumosSim = (costoArtKilo * artKilos);
+          // Evitar doble conteo de bolsa entre receta_ingredientes y bunker_lista_insumos
+          if (articuloTieneEmpaqueEnRecetaPizarra(data, art.articulo_id)) {
+            costoInsumos = 0;
+          }
         } else if (art.pack_hijo_codigo) {
           const hijo = data.articulosBunker.find(h => (h.articulo_id || '').trim().toLowerCase() === (art.pack_hijo_codigo || '').trim().toLowerCase());
           const hijoKilos = hijo && parseFloat(hijo.kilos_unidad) > 0 ? parseFloat(hijo.kilos_unidad) : 1;
@@ -2717,7 +2900,10 @@
 
           const laHijo = data.articulosListas.find(c => c.lista_id === la.lista_id && (c.articulo_numero || '').trim().toLowerCase() === (art.pack_hijo_codigo || '').trim().toLowerCase());
           const insumosHijo = laHijo ? (insumosListasMap.get(laHijo.id) || []) : [];
-          const costoInsumosHijo = insumosHijo.reduce((sum, ins) => sum + (ins.incluido ? (parseFloat(ins.cantidad) * parseFloat(ins.costo_unitario_capturado)) : 0), 0);
+          const hijoTieneEmpaqueEnReceta = articuloTieneEmpaqueEnRecetaPizarra(data, art.pack_hijo_codigo);
+          const costoInsumosHijo = hijoTieneEmpaqueEnReceta
+            ? 0
+            : insumosHijo.reduce((sum, ins) => sum + (ins.incluido ? (parseFloat(ins.cantidad) * parseFloat(ins.costo_unitario_capturado)) : 0), 0);
           const costoTiempoHijo = (laHijo && laHijo.mano_obra_activa !== false) ? (parseFloat(laHijo.costo_tiempo) || 0) : 0;
           
           const costoHijoBultoSim = (costoHijoKilo * hijoKilos) + costoInsumosHijo + costoTiempoHijo;
@@ -6546,10 +6732,19 @@
         }
         window.verTodosArticulosLDN3 = false;
         window.soloMixesCoincidentes = true;
+        window.filtroMixesLDN3 = null; // Auto-selecciona 'pendientes' si hay mixes desactualizados
         mixSeleccionadoId = null;
         abiertoMixId = null;
         ingredienteSimpleSeleccionadoId = null;
         if (articulosTitle) articulosTitle.innerHTML = '🧪 Artículos [LDN 3]: Mixes y Mezclas Internas';
+
+        // Replegar por defecto el acordeón de Contraste Multilista al ingresar a LDN 3 para reducir ruido visual
+        const contrastSectionLDN3 = document.getElementById('contrast-section');
+        if (contrastSectionLDN3) {
+          contrastSectionLDN3.classList.remove('open');
+          const iconContrast = contrastSectionLDN3.querySelector('.accordion-icon');
+          if (iconContrast) iconContrast.innerText = '▶️';
+        }
         
         // Configurar El Timón exclusivamente para LDN 3 (Mixes, AP, Ingredientes Simples)
         const leftTitle = document.getElementById('left-panel-title');
@@ -6863,9 +7058,10 @@
     }
 
     function calcularPrecioFinal(costoBase, margen, costoTiempo, ivaPorcentaje, modoIva) {
+      const modoNorm = String(modoIva || '').toUpperCase();
       let ivaAplicado = ivaPorcentaje;
-      if (modoIva === 'MEDIO') ivaAplicado = ivaPorcentaje / 2;
-      else if (modoIva === 'SIN') ivaAplicado = 0;
+      if (modoNorm === 'MEDIO') ivaAplicado = ivaPorcentaje / 2;
+      else if (modoNorm === 'SIN' || modoNorm === 'EXENTO') ivaAplicado = 0;
       
       const ivaCoeff = 1 + (ivaAplicado / 100);
       return (costoBase * (1 + (margen / 100)) + costoTiempo) * ivaCoeff;
@@ -6874,9 +7070,10 @@
     function calcularMargenGanancia(costoBase, precioFinal, costoTiempo, ivaPorcentaje, modoIva) {
       if (costoBase <= 0) return 0;
       
+      const modoNorm = String(modoIva || '').toUpperCase();
       let ivaAplicado = ivaPorcentaje;
-      if (modoIva === 'MEDIO') ivaAplicado = ivaPorcentaje / 2;
-      else if (modoIva === 'SIN') ivaAplicado = 0;
+      if (modoNorm === 'MEDIO') ivaAplicado = ivaPorcentaje / 2;
+      else if (modoNorm === 'SIN' || modoNorm === 'EXENTO') ivaAplicado = 0;
       
       const ivaCoeff = 1 + (ivaAplicado / 100);
       const precioS_iva = precioFinal / ivaCoeff;
@@ -7072,15 +7269,171 @@
       return riMix ? Number(riMix.ingrediente_id) : null;
     }
 
+    function calcVarPctLDN3(nuevo, anterior) {
+      const a = Number(anterior) || 0;
+      const n = Number(nuevo) || 0;
+      if (a <= 0) return null;
+      return Number((((n - a) / a) * 100).toFixed(2));
+    }
+
+    function renderBadgeVarPctLDN3(varPct, diffAbs = 0) {
+      if (varPct === null || varPct === undefined || isNaN(varPct)) {
+        return '<span style="font-size:0.64rem; color:#64748b;">—</span>';
+      }
+      if (Math.abs(diffAbs) <= TOLERANCIA_REDONDEO_LDN4 && Math.abs(varPct) < 0.05) {
+        return '<span style="font-size:0.64rem; color:#34d399; font-weight:700;">0,0%</span>';
+      }
+      const esSuba = varPct > 0;
+      const color = esSuba ? '#f87171' : '#34d399';
+      const bg = esSuba ? 'rgba(239,68,68,0.16)' : 'rgba(16,185,129,0.16)';
+      const border = esSuba ? 'rgba(239,68,68,0.38)' : 'rgba(16,185,129,0.38)';
+      const signo = esSuba ? '+' : '';
+      return `<span style="font-size:0.64rem; font-weight:800; color:${color}; background:${bg}; border:1px solid ${border}; padding:1px 5px; border-radius:4px; white-space:nowrap;">${signo}${varPct.toFixed(1).replace('.', ',')}%</span>`;
+    }
+
+    function renderCadenaInternaMixLDN3(audit) {
+      if (!audit) return '';
+      const mixVar = renderBadgeVarPctLDN3(audit.varMixPct, audit.diffMix);
+      const apNodeHtml = (audit.aps && audit.aps.length > 0)
+        ? audit.aps.map(a => `
+            <div style="margin-top:2px;">
+              <strong style="color:#38bdf8;">[${a.articulo_numero}]</strong>
+              <span style="color:#94a3b8;">$${a.costoApBultoBd.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span> ➔
+              <strong style="color:${a.apPendiente ? '#fbbf24' : '#34d399'};">$${a.costoApBultoSim.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+              ${renderBadgeVarPctLDN3(a.varApPct, a.costoApBultoSim - a.costoApBultoBd)}
+              <div style="font-size:0.63rem; color:#94a3b8;">MO $${a.moAp.toFixed(0)} · Neto $${a.costoNetoAP.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</div>
+            </div>
+          `).join('')
+        : '<div style="color:#64748b;">Sin AP directo</div>';
+
+      const simpleNodeHtml = (audit.simples && audit.simples.length > 0)
+        ? audit.simples.map(s => `
+            <div style="margin-top:2px;">
+              <strong style="color:#e9d5ff;">[#${s.id}] ${s.nombre}</strong>
+              <div>
+                <span style="color:#94a3b8;">$${s.costoSimpleBd.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span> ➔
+                <strong style="color:${s.simplePendiente ? '#fbbf24' : '#34d399'};">$${s.costoSimpleSim.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+                ${renderBadgeVarPctLDN3(s.varSimplePct, s.costoSimpleSim - s.costoSimpleBd)}
+              </div>
+            </div>
+          `).join('')
+        : '<div style="color:#64748b;">Sin Simple directo</div>';
+
+      return `
+        <div class="ldn3-chain-strip">
+          <div class="ldn3-chain-node ${audit.mixPendiente ? 'pending' : ''}">
+            <div style="font-weight:700; color:#c084fc; font-size:0.66rem; margin-bottom:2px;">1° FÓRMULA MIX ${audit.mixPendiente ? '🟡' : '🟢'}</div>
+            <div>
+              <span style="color:#94a3b8;">$${audit.costoMixBd.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span> ➔
+              <strong style="color:${audit.mixPendiente ? '#fbbf24' : '#34d399'};">$${audit.costoMixSim.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
+              ${mixVar}
+            </div>
+            <div style="font-size:0.63rem; color:#94a3b8;">Batch ${(audit.totalKilosBatch || 0).toFixed(1)} kg</div>
+          </div>
+          <div class="ldn3-chain-node ${(audit.aps || []).some(a => a.apPendiente) ? 'pending' : ''}">
+            <div style="font-weight:700; color:#38bdf8; font-size:0.66rem; margin-bottom:2px;">2° ${audit.esPreMezcla ? 'BULTO PRE-MEZCLA' : 'ARTÍCULO PUENTE'} ${(audit.aps || []).some(a => a.apPendiente) ? '🟡' : '🟢'}</div>
+            ${apNodeHtml}
+          </div>
+          ${!audit.esPreMezcla ? `
+            <div class="ldn3-chain-node ${(audit.simples || []).some(s => s.simplePendiente) ? 'pending' : ''}">
+              <div style="font-weight:700; color:#a855f7; font-size:0.66rem; margin-bottom:2px;">3° INGREDIENTE SIMPLE ${(audit.simples || []).some(s => s.simplePendiente) ? '🟡' : '🟢'}</div>
+              ${simpleNodeHtml}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function renderTablaAuditoriaFraccionesLDN3(fraccsDetalle = [], opts = {}) {
+      if (!Array.isArray(fraccsDetalle) || fraccsDetalle.length === 0) {
+        return '<div style="font-size:0.72rem; color:#94a3b8; padding:6px 8px; background:rgba(0,0,0,0.2); border-radius:6px;">Sin presentaciones comerciales derivadas en Búnker.</div>';
+      }
+      const compacto = Boolean(opts.compacto);
+      const filasHtml = fraccsDetalle.map(f => {
+        const badgePack = f.esPack
+          ? `<span style="font-size:0.60rem; background:rgba(168,85,247,0.22); color:#d8b4fe; border:1px solid rgba(168,85,247,0.4); padding:0 4px; border-radius:3px; margin-left:4px;">Pack ${f.packUnits}x</span>`
+          : '';
+        const l8Cell = f.hasL8
+          ? `
+            <div style="font-size:0.67rem; color:#94a3b8;">$${f.pL8Bd.toLocaleString('es-AR', {minimumFractionDigits: 2})}</div>
+            <div style="font-weight:700; color:#38bdf8;">$${f.pL8Sim.toLocaleString('es-AR', {minimumFractionDigits: 2})} ${renderBadgeVarPctLDN3(f.varL8Pct, f.diffL8)}</div>
+          `
+          : '<span style="color:#475569; font-size:0.66rem;">—</span>';
+        const estadoBadge = f.estaAlDia
+          ? '<span style="background:rgba(16,185,129,0.18); color:#34d399; border:1px solid rgba(16,185,129,0.35); padding:1px 5px; border-radius:4px; font-size:0.63rem; font-weight:700;">🟢 Al día</span>'
+          : `<span style="background:rgba(245,158,11,0.20); color:#fbbf24; border:1px solid rgba(245,158,11,0.45); padding:1px 5px; border-radius:4px; font-size:0.63rem; font-weight:700;">🟡 ${f.listasDesactualizadas > 0 ? f.listasDesactualizadas + 'L' : 'Pend.'}</span>`;
+        return `
+          <tr style="${!f.estaAlDia ? 'background:rgba(245,158,11,0.05);' : ''}">
+            <td>
+              <div style="font-weight:700; color:${f.esPack ? '#d8b4fe' : '#f1f5f9'};">${f.sku}${badgePack}</div>
+              ${!compacto ? `<div style="font-size:0.64rem; color:#94a3b8;">${f.nombre} (${f.kilos.toFixed(2)} kg)</div>` : `<div style="font-size:0.62rem; color:#94a3b8;">${f.kilos.toFixed(2)} kg</div>`}
+            </td>
+            <td>
+              <div style="font-size:0.65rem; color:#94a3b8;">$${f.costoBd.toLocaleString('es-AR', {minimumFractionDigits: 2})}</div>
+              <div style="font-weight:700; color:${Math.abs(f.diffCosto) > TOLERANCIA_REDONDEO_LDN4 ? '#fbbf24' : '#34d399'};">$${f.costoSim.toLocaleString('es-AR', {minimumFractionDigits: 2})} ${renderBadgeVarPctLDN3(f.varCostoPct, f.diffCosto)}</div>
+            </td>
+            <td>
+              <div style="font-size:0.65rem; color:#94a3b8;">$${f.pL1Bd.toLocaleString('es-AR', {minimumFractionDigits: 2})}</div>
+              <div style="font-weight:700; color:${Math.abs(f.diffL1) > TOLERANCIA_REDONDEO_LDN4 ? '#fbbf24' : '#e2e8f0'};">$${f.pL1Sim.toLocaleString('es-AR', {minimumFractionDigits: 2})} ${renderBadgeVarPctLDN3(f.varL1Pct, f.diffL1)}</div>
+            </td>
+            <td>${l8Cell}</td>
+            <td style="text-align:center;">${estadoBadge}</td>
+          </tr>
+        `;
+      }).join('');
+
+      return `
+        <div style="overflow-x:auto; max-height:${compacto ? '240px' : '300px'}; overflow-y:auto;">
+          <table class="ldn3-audit-table">
+            <thead>
+              <tr>
+                <th>SKU / Presentación</th>
+                <th>Costo BD ➔ Nuevo</th>
+                <th>Lista 1 BD ➔ Nuevo</th>
+                <th>L8 / Nodos</th>
+                <th style="text-align:center;">Estado</th>
+              </tr>
+            </thead>
+            <tbody>${filasHtml}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function resolverMixIdDeArticuloLDN3(art) {
+      const data = window.pizarraSimulacionMaster;
+      if (!data || !art) return null;
+      const lista1Id = (data.listasPrecios && data.listasPrecios[0]) ? data.listasPrecios[0].id : 1;
+      const esPack = Boolean((art.es_pack === true || parseInt(art.pack_unidades) > 1) && art.pack_hijo_codigo);
+      const skuRef = esPack ? art.pack_hijo_codigo : art.articulo_id;
+      const casc = calcularCascadaArticuloLista(skuRef, lista1Id);
+      if (casc && casc.esCascadaLDN3 && casc.mixId) return Number(casc.mixId);
+
+      // Fallback estructural por recetas/simples
+      const skuLower = String(skuRef || '').trim().toLowerCase();
+      const rec = (data.recetas || []).find(r => String(r.articulo_numero || '').trim().toLowerCase() === skuLower);
+      if (!rec) return null;
+      const ris = (data.recetaIngredientes || []).filter(ri => ri.receta_id === rec.id);
+      for (const ri of ris) {
+        if (composicionMixMap.has(ri.ingrediente_id)) return Number(ri.ingrediente_id);
+        const mId = resolverMixPadreDeSimpleLDN3(ri.ingrediente_id);
+        if (mId) return Number(mId);
+      }
+      return null;
+    }
+
     function auditarEstadoSincronizacionMixLDN3(mixId) {
       const data = window.pizarraSimulacionMaster;
       const mId = Number(mixId);
       const mixObj = (data?.ingredientes || []).find(i => Number(i.id) === mId);
       if (!data || !mixObj) {
         return {
-          mixId: mId, estaAlDia: true, enPausa: false, esPreMezcla: false,
+          mixId: mId, mixNombre: '', totalKilosBatch: 0,
+          estaAlDia: true, enPausa: false, esPreMezcla: false,
           totalCambios: 0, motivos: [], detallesAntesDespues: [],
-          aguasAbajoPendiente: false, aguasAbajoLabel: '', fraccsCount: 0
+          aguasAbajoPendiente: false, aguasAbajoLabel: '',
+          costoMixSim: 0, costoMixBd: 0, diffMix: 0, varMixPct: null, mixPendiente: false,
+          aps: [], simples: [], fraccsDetalle: [], fraccsCount: 0, fraccsPendientesCount: 0
         };
       }
 
@@ -7099,6 +7452,7 @@
       const costoMixSim = Number(costoMixRaw.toFixed(2));
       const costoMixBd = Number((parseFloat(mixObj.costo_patron) || 0).toFixed(2));
       const diffMix = Number((costoMixSim - costoMixBd).toFixed(2));
+      const varMixPct = calcVarPctLDN3(costoMixSim, costoMixBd);
       const mixPendiente = Math.abs(diffMix) > TOLERANCIA_REDONDEO_LDN4;
 
       const esPreMezcla = (mId === 109 || mId === 132 || mId === 134);
@@ -7141,10 +7495,12 @@
 
         aps.push({
           articulo_numero: r.articulo_numero,
+          descripcion: apArt?.descripcion_generada || apArt?.descripcion || r.descripcion || r.articulo_numero,
           kilosAP,
           moAp,
           costoApBultoSim,
           costoApBultoBd,
+          varApPct: calcVarPctLDN3(costoApBultoSim, costoApBultoBd),
           costoApKiloSim,
           costoNetoAP,
           apPendiente
@@ -7168,11 +7524,12 @@
           apCodigo: apMatch ? apMatch.articulo_numero : ing.articulo_vinculado_numero,
           costoSimpleSim,
           costoSimpleBd,
+          varSimplePct: calcVarPctLDN3(costoSimpleSim, costoSimpleBd),
           simplePendiente
         });
       });
 
-      // Nivel 4: Fracciones unitarias y Packs Padre en Búnker
+      // Nivel 4: Fracciones unitarias y Packs Padre en Búnker (cero descartes silenciosos por bandera vieja)
       const simpleIds = new Set(simples.map(s => s.id));
       const recArtIds = new Set();
       (data.recetas || []).forEach(r => {
@@ -7182,18 +7539,27 @@
         }
       });
       const fraccs = (data.articulosBunker || []).filter(a => {
-        if (a.solo_produccion_externa === true || a.no_producido_por_lambda === true || a.propiedades_dinamicas?.obsoleto === true) return false;
+        if (a.solo_produccion_externa === true || a.propiedades_dinamicas?.obsoleto === true) return false;
+        if (Number(a.familia_id || a.propiedades_dinamicas?.familia_id || 0) === 42) return false;
         const sku = String(a.articulo_id || '').trim().toLowerCase();
         if (apCodigosLower.has(sku) || sku.startsWith('prod ap') || sku === 'mpb' || sku.startsWith('mpgdf') || sku.startsWith('mpgds')) return false;
         if (recArtIds.has(sku)) return true;
         if (a.pack_hijo_codigo && recArtIds.has(String(a.pack_hijo_codigo).trim().toLowerCase())) return true;
         return false;
       });
+      fraccs.sort((a, b) => {
+        const pA = (a.es_pack === true || parseInt(a.pack_unidades) > 1 || Boolean(a.pack_hijo_codigo)) ? 1 : 0;
+        const pB = (b.es_pack === true || parseInt(b.pack_unidades) > 1 || Boolean(b.pack_hijo_codigo)) ? 1 : 0;
+        if (pA !== pB) return pA - pB;
+        return (parseFloat(a.kilos_unidad) || 0) - (parseFloat(b.kilos_unidad) || 0);
+      });
 
       // Si no es Pre-Mezcla y no tiene ninguna oferta comercial activa en Búnker (#77 Mix BK, #107 Mix Almafrut) -> Estructura en pausa
       if (!esPreMezcla && fraccs.length === 0) {
         return {
           mixId: mId,
+          mixNombre: mixObj.nombre,
+          totalKilosBatch,
           estaAlDia: true,
           enPausa: true,
           esPreMezcla: false,
@@ -7204,15 +7570,21 @@
           aguasAbajoLabel: '',
           costoMixSim,
           costoMixBd,
+          diffMix,
+          varMixPct,
+          mixPendiente,
           aps,
           simples,
-          fraccsCount: 0
+          fraccsDetalle: [],
+          fraccsCount: 0,
+          fraccsPendientesCount: 0
         };
       }
 
       let fraccionesDesactualizadas = 0;
       let packsDesactualizados = 0;
       const detallesAntesDespues = [];
+      const fraccsDetalle = [];
 
       if (mixPendiente) {
         detallesAntesDespues.push(`Mix [#${mId}]: $${costoMixBd.toFixed(2)} ➔ $${costoMixSim.toFixed(2)}/kg`);
@@ -7228,11 +7600,64 @@
         }
       });
 
+      const listas = data.listasPrecios || [];
+      const lista1Obj = listas.find(l => Number(l.id) === 1) || listas[0];
+      const lista1Id = lista1Obj ? lista1Obj.id : 1;
+      const listaNodosObj = listas.find(l => String(l?.canal_comercial || '').toUpperCase() === 'NODOS') || listas.find(l => Number(l.id) === 8);
+      const lista8Id = listaNodosObj ? listaNodosObj.id : null;
+
       if (!esPreMezcla) {
         fraccs.forEach(f => {
           const auditHijo = auditarArticuloHijoLDN4(f);
+          const esPack = f.es_pack === true || parseInt(f.pack_unidades) > 1 || Boolean(f.pack_hijo_codigo);
+          const skuLower = String(f.articulo_id || '').trim().toLowerCase();
+          const kilos = parseFloat(f.kilos_unidad) > 0 ? parseFloat(f.kilos_unidad) : 1;
+
+          const la1 = (data.articulosListas || []).find(c => c.lista_id === lista1Id && String(c.articulo_numero || '').trim().toLowerCase() === skuLower);
+          const casc1 = calcularCascadaArticuloLista(f.articulo_id, lista1Id);
+          const pL1Bd = Number((parseFloat(la1?.precio_final) || 0).toFixed(2));
+          const pL1Sim = Number((casc1 ? casc1.precioFinalCalculado : pL1Bd).toFixed(2));
+          const diffL1 = Number((pL1Sim - pL1Bd).toFixed(2));
+
+          let hasL8 = false, pL8Bd = 0, pL8Sim = 0, diffL8 = 0, varL8Pct = null;
+          if (lista8Id) {
+            const la8 = (data.articulosListas || []).find(c => c.lista_id === lista8Id && String(c.articulo_numero || '').trim().toLowerCase() === skuLower);
+            if (la8 && la8.disponible !== false) {
+              hasL8 = true;
+              const casc8 = calcularCascadaArticuloLista(f.articulo_id, lista8Id);
+              pL8Bd = Number((parseFloat(la8.precio_final) || 0).toFixed(2));
+              pL8Sim = Number((casc8 ? casc8.precioFinalCalculado : pL8Bd).toFixed(2));
+              diffL8 = Number((pL8Sim - pL8Bd).toFixed(2));
+              varL8Pct = calcVarPctLDN3(pL8Sim, pL8Bd);
+            }
+          }
+
+          fraccsDetalle.push({
+            art: f,
+            sku: f.articulo_id,
+            nombre: f.descripcion_generada || f.descripcion || f.articulo_id,
+            kilos,
+            esPack,
+            packUnits: parseInt(f.pack_unidades) || 1,
+            packHijo: f.pack_hijo_codigo || null,
+            costoBd: auditHijo.costoBultoBD,
+            costoSim: auditHijo.costoBultoSim,
+            diffCosto: auditHijo.diffCosto,
+            varCostoPct: calcVarPctLDN3(auditHijo.costoBultoSim, auditHijo.costoBultoBD),
+            pL1Bd,
+            pL1Sim,
+            diffL1,
+            varL1Pct: calcVarPctLDN3(pL1Sim, pL1Bd),
+            hasL8,
+            pL8Bd,
+            pL8Sim,
+            diffL8,
+            varL8Pct,
+            listasDesactualizadas: auditHijo.listasDesactualizadas,
+            estaAlDia: auditHijo.estaAlDia
+          });
+
           if (!auditHijo.estaAlDia) {
-            const esPack = f.es_pack === true || parseInt(f.pack_unidades) > 1 || Boolean(f.pack_hijo_codigo);
             if (esPack) packsDesactualizados++;
             else fraccionesDesactualizadas++;
             detallesAntesDespues.push(`[${f.articulo_id}]: $${auditHijo.costoBultoBD.toFixed(2)} ➔ $${auditHijo.costoBultoSim.toFixed(2)}${auditHijo.listasDesactualizadas > 0 ? ` (${auditHijo.listasDesactualizadas}L)` : ''}`);
@@ -7270,6 +7695,8 @@
 
       return {
         mixId: mId,
+        mixNombre: mixObj.nombre,
+        totalKilosBatch,
         estaAlDia: totalCambios === 0,
         enPausa: false,
         esPreMezcla,
@@ -7281,9 +7708,14 @@
         aguasAbajoLabel,
         costoMixSim,
         costoMixBd,
+        diffMix,
+        varMixPct,
+        mixPendiente,
         aps,
         simples,
-        fraccsCount: fraccs.length
+        fraccsDetalle,
+        fraccsCount: fraccs.length,
+        fraccsPendientesCount: fraccionesDesactualizadas + packsDesactualizados
       };
     }
     window.auditarEstadoSincronizacionMixLDN3 = auditarEstadoSincronizacionMixLDN3;
@@ -7305,38 +7737,50 @@
         Swal.fire({
           icon: 'info',
           title: '✓ Todos los Mixes Comerciales al Día',
-          text: 'Los 6 circuitos comerciales de Mixes ya coinciden al centavo con PostgreSQL.',
+          text: 'Todos los circuitos comerciales activos de Mixes coinciden al centavo con PostgreSQL.',
           background: '#151e2e',
           color: '#f3f4f6'
         });
         return;
       }
 
-      const resumenItemsHtml = mixesDesactualizados.map(({ ing, aud }) => `
-        <div style="padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 0.78rem;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <strong style="color:#e9d5ff;">🧪 [#${ing.id}] ${ing.nombre}</strong>
-            <span style="color:#fbbf24; font-size:0.72rem; font-weight:700;">${aud.totalCambios} cambio(s): ${aud.resumenDetalle}</span>
-          </div>
-          <div style="font-size:0.70rem; color:#94a3b8; margin-top:2px;">
-            ${aud.detallesAntesDespues.slice(0, 4).join(' · ')}${aud.detallesAntesDespues.length > 4 ? ` · (+${aud.detallesAntesDespues.length - 4} más)` : ''}
-          </div>
-        </div>
+      const totalPresentaciones = mixesDesactualizados.reduce((acc, item) => acc + item.aud.fraccsCount, 0);
+      const filasResumenHtml = mixesDesactualizados.map(({ ing, aud }) => `
+        <tr>
+          <td style="font-weight:700; color:#e9d5ff;">🧪 [#${ing.id}] ${ing.nombre}</td>
+          <td>
+            <span style="color:#94a3b8;">$${aud.costoMixBd.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span> ➔
+            <strong style="color:#fbbf24;">$${aud.costoMixSim.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+            ${renderBadgeVarPctLDN3(aud.varMixPct, aud.diffMix)}
+          </td>
+          <td style="text-align:center; color:#cbd5e1;">${aud.fraccsCount} SKUs</td>
+          <td style="text-align:center;"><span style="color:#fbbf24; font-weight:700;">${aud.totalCambios} (${aud.resumenDetalle})</span></td>
+        </tr>
       `).join('');
 
       const confirmGlobal = await Swal.fire({
-        title: `⚡ Actualizar ${mixesDesactualizados.length} Circuito(s) de Mixes`,
+        title: `⚡ Impactar ${mixesDesactualizados.length} Circuito(s) de Mixes`,
         html: `
-          <div style="text-align:left; font-size:0.82rem; color:#e2e8f0;">
-            <p style="margin:0 0 8px 0; color:#cbd5e1;">Se ejecutará la cascada atómica completa (<strong>Mix ➔ AP ➔ Simple ➔ Fracciones y Packs ➔ Listas 1..8 y Nodos</strong>) en los siguientes circuitos activos:</p>
-            <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(168,85,247,0.3); border-radius:6px; max-height:260px; overflow-y:auto;">
-              ${resumenItemsHtml}
+          <div style="text-align:left; font-size:0.80rem; color:#e2e8f0;">
+            <p style="margin:0 0 8px 0; color:#cbd5e1;">Se impactará atómicamente <strong>Mix ➔ AP ➔ Simple ➔ ${totalPresentaciones} Presentaciones/Packs ➔ Listas 1..8 y Nodos</strong> preservando márgenes y alícuotas de IVA reales:</p>
+            <div style="max-height:280px; overflow-y:auto;">
+              <table class="ldn3-audit-table">
+                <thead>
+                  <tr>
+                    <th>Mix Comercial</th>
+                    <th>Costo Fórmula /kg (BD ➔ Nuevo)</th>
+                    <th style="text-align:center;">Derivados</th>
+                    <th style="text-align:center;">Pendientes</th>
+                  </tr>
+                </thead>
+                <tbody>${filasResumenHtml}</tbody>
+              </table>
             </div>
           </div>
         `,
-        width: '660px',
+        width: '740px',
         showCancelButton: true,
-        confirmButtonText: `🚀 Actualizar los ${mixesDesactualizados.length} Circuitos`,
+        confirmButtonText: `🚀 Confirmar e Impactar ${mixesDesactualizados.length} Circuito(s)`,
         cancelButtonText: 'Cancelar',
         confirmButtonColor: '#7c3aed',
         cancelButtonColor: '#4b5563',
@@ -7348,8 +7792,8 @@
 
       try {
         Swal.fire({
-          title: 'Actualizando todos los circuitos de Mixes...',
-          text: 'Impactando Fórmula, AP, Simple, Fracciones y Packs en PostgreSQL.',
+          title: 'Impactando circuitos de Mixes en PostgreSQL...',
+          text: 'Sincronizando Fórmula, AP, Simple, Fracciones, Packs y verificando cierre real contra BD.',
           allowOutsideClick: false,
           didOpen: () => Swal.showLoading()
         });
@@ -7358,21 +7802,35 @@
           await sincronizarCascadaCompletaMixLDN3(item.ing.id, { silencioso: true });
         }
 
-        recalcularCascada();
-        renderizarMixes();
-        renderizarArticulosPuente();
-        renderizarIngredientesSimples();
-        renderizarArticulosBunker();
-        if (window.articuloSeleccionadoId) renderizarGrillaMultilista();
-        actualizarBannerCambios();
+        // Recargar estado fresco desde PostgreSQL para verificación real post-impacto
+        await inicializarPizarra(true);
+
+        let pendientesPostBD = 0;
+        const freshData = window.pizarraSimulacionMaster;
+        (freshData?.ingredientes || []).forEach(ing => {
+          if (!composicionMixMap.has(ing.id)) return;
+          const audPost = auditarEstadoSincronizacionMixLDN3(ing.id);
+          if (!audPost.enPausa && !audPost.esPreMezcla && !audPost.estaAlDia) {
+            pendientesPostBD++;
+          }
+        });
 
         Swal.fire({
-          icon: 'success',
-          title: '🎉 ¡Todos los Mixes Comerciales al Día!',
-          html: `Se sincronizaron atómicamente <strong>${mixesDesactualizados.length} circuito(s) completos de Mixes</strong> en PostgreSQL.`,
-          timer: 2800,
+          icon: pendientesPostBD === 0 ? 'success' : 'warning',
+          title: pendientesPostBD === 0 ? '🎉 ¡Todos los Mixes Comerciales Cerrados!' : 'Impacto Completado con Pendientes Residuales',
+          html: `
+            <div style="text-align:left; font-size:0.84rem;">
+              <div style="margin-bottom:6px;">Se impactaron <strong>${mixesDesactualizados.length} circuito(s) completos de Mixes</strong> en PostgreSQL.</div>
+              <div style="padding:8px 10px; border-radius:6px; background:${pendientesPostBD === 0 ? 'rgba(16,185,129,0.14)' : 'rgba(245,158,11,0.16)'}; border:1px solid ${pendientesPostBD === 0 ? 'rgba(16,185,129,0.4)' : 'rgba(245,158,11,0.45)'}; color:${pendientesPostBD === 0 ? '#6ee7b7' : '#fbbf24'}; font-weight:700;">
+                ${pendientesPostBD === 0
+                  ? '✅ Verificación real contra PostgreSQL: 0 mixes ni presentaciones pendientes.'
+                  : `⚠️ Tras recargar desde PostgreSQL quedaron ${pendientesPostBD} mix(es) con diferencias pendientes.`
+                }
+              </div>
+            </div>
+          `,
           showConfirmButton: true,
-          confirmButtonColor: '#10b981',
+          confirmButtonColor: pendientesPostBD === 0 ? '#10b981' : '#f59e0b',
           background: '#151e2e',
           color: '#f3f4f6'
         });
@@ -7759,7 +8217,22 @@
       return Array.from(ids);
     }
 
-    // 2. Mixes (Carros de Producción Interna — LDN 3)
+    function setFiltroMixesLDN3(modo) {
+      window.filtroMixesLDN3 = modo;
+      window.soloMixesCoincidentes = (modo === 'insumo');
+      mixSeleccionadoId = null;
+      abiertoMixId = null;
+      ingredienteSimpleSeleccionadoId = null;
+      window.verTodosArticulosLDN3 = false;
+      renderizarMixes();
+      if (typeof actualizarBadgesTimonLDN3 === 'function') actualizarBadgesTimonLDN3();
+      renderizarArticulosPuente();
+      renderizarIngredientesSimples();
+      renderizarArticulosBunker();
+    }
+    window.setFiltroMixesLDN3 = setFiltroMixesLDN3;
+
+    // 2. Mixes (Carros de Producción Interna — LDN 3 · Vista Limpia y Auditable)
     function renderizarMixes() {
       const searchInput = document.getElementById('search-mixes');
       const query = searchInput ? searchInput.value.toLowerCase() : '';
@@ -7772,19 +8245,16 @@
       const ingredientes = data.ingredientes || [];
       const idsInsumosSeleccionados = obtenerIdsInsumosDeArticuloSeleccionado();
 
-      // Recopilar todos los ingredientes con fórmula (mixes)
       const listaMixes = [];
+      const auditoriasPorMix = new Map();
       ingredientes.forEach(ing => {
         const componentes = composicionMixMap.get(ing.id);
         if (!componentes || componentes.length === 0) return;
-        
-        const totalKilosBatch = componentes.reduce((sum, c) => sum + (parseFloat(c.cantidad) || 0), 0);
 
-        // Verificar por ID si contiene el insumo seleccionado
-        const contieneInsumo = idsInsumosSeleccionados.length > 0 && 
+        const totalKilosBatch = componentes.reduce((sum, c) => sum + (parseFloat(c.cantidad) || 0), 0);
+        const contieneInsumo = idsInsumosSeleccionados.length > 0 &&
           componentes.some(comp => idsInsumosSeleccionados.includes(comp.ingrediente_id));
-        
-        // Calcular participación exacta del insumo seleccionado
+
         let participacionInsumo = 0;
         if (contieneInsumo) {
           const compMatches = componentes.filter(comp => idsInsumosSeleccionados.includes(comp.ingrediente_id));
@@ -7792,291 +8262,311 @@
           participacionInsumo = totalKilosBatch > 0 ? (cantInsumo / totalKilosBatch) * 100 : 0;
         }
 
+        const aud = auditarEstadoSincronizacionMixLDN3(ing.id);
+        auditoriasPorMix.set(ing.id, aud);
+
         listaMixes.push({
           ingrediente: ing,
-          componentes: componentes,
-          totalKilosBatch: totalKilosBatch,
-          contieneInsumo: contieneInsumo,
-          participacionInsumo: participacionInsumo
+          componentes,
+          totalKilosBatch,
+          contieneInsumo,
+          participacionInsumo,
+          aud
         });
       });
 
-      // Ordenar: primero los que contienen el insumo seleccionado (de mayor a menor participación), luego el resto alfabéticamente
-      listaMixes.sort((a, b) => {
-        if (a.contieneInsumo && !b.contieneInsumo) return -1;
-        if (!a.contieneInsumo && b.contieneInsumo) return 1;
-        if (a.contieneInsumo && b.contieneInsumo) {
-          return b.participacionInsumo - a.participacionInsumo;
-        }
-        return a.ingrediente.nombre.localeCompare(b.ingrediente.nombre);
-      });
+      const mixesComerciales = listaMixes.filter(m => !m.aud.enPausa && !m.aud.esPreMezcla);
+      const mixesPreMezclas = listaMixes.filter(m => m.aud.esPreMezcla);
+      const mixesEnPausa = listaMixes.filter(m => m.aud.enPausa);
 
-      let count = 0;
-      let countCoincidentes = 0;
+      const mixesPendientes = mixesComerciales.filter(m => !m.aud.estaAlDia);
+      const mixesComercialesConInsumo = mixesComerciales.filter(m => m.contieneInsumo);
+      const preMezclasPendientesCount = mixesPreMezclas.filter(m => !m.aud.estaAlDia || m.aud.aguasAbajoPendiente).length;
 
-      // Cabecera global siempre visible de [LDN 3]: estado de los circuitos comerciales vigentes
-      const auditoriasPorMix = new Map();
-      let mixesComercialesActivos = 0;
-      let mixesComercialesDesactualizados = 0;
-      listaMixes.forEach(m => {
-        const aud = auditarEstadoSincronizacionMixLDN3(m.ingrediente.id);
-        auditoriasPorMix.set(m.ingrediente.id, aud);
-        if (!aud.enPausa && !aud.esPreMezcla) {
-          mixesComercialesActivos++;
-          if (!aud.estaAlDia) mixesComercialesDesactualizados++;
-        }
-      });
-
-      const globalHeaderBar = document.createElement('div');
-      globalHeaderBar.style.cssText = `
-        padding: 8px 12px;
-        margin-bottom: 10px;
-        background: ${mixesComercialesDesactualizados > 0 ? 'rgba(245, 158, 11, 0.10)' : 'rgba(16, 185, 129, 0.10)'};
-        border: 1px solid ${mixesComercialesDesactualizados > 0 ? 'rgba(245, 158, 11, 0.40)' : 'rgba(16, 185, 129, 0.35)'};
-        border-radius: 6px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-        font-size: 0.76rem;
-      `;
-      globalHeaderBar.innerHTML = `
-        <div style="color: ${mixesComercialesDesactualizados > 0 ? '#fbbf24' : '#34d399'}; font-weight: 700;">
-          ${mixesComercialesDesactualizados > 0
-            ? `🟡 ${mixesComercialesDesactualizados} de ${mixesComercialesActivos} mixes comerciales con cambios pendientes en BD`
-            : `🟢 Los ${mixesComercialesActivos} mixes comerciales vigentes están al día en BD`
-          }
-        </div>
-        <div>
-          ${mixesComercialesDesactualizados > 0
-            ? `<button type="button" id="btn-ldn3-actualizar-todos-mixes" class="btn" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff; border: none; padding: 4px 10px; border-radius: 4px; font-size: 0.72rem; cursor: pointer; font-weight: 800; box-shadow: 0 2px 8px rgba(245, 158, 11, 0.35);" onclick="sincronizarTodosLosMixesDesactualizadosLDN3()">⚡ Actualizar Todos los Mixes Desactualizados (${mixesComercialesDesactualizados})</button>`
-            : `<button type="button" id="btn-ldn3-actualizar-todos-mixes" class="btn" disabled style="background: rgba(16, 185, 129, 0.14); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.38); padding: 4px 10px; border-radius: 4px; font-size: 0.72rem; cursor: default; font-weight: 700;">✓ Todo actualizado</button>`
-          }
-        </div>
-      `;
-      container.appendChild(globalHeaderBar);
-
-      // Banner superior informativo si hay artículo/insumo seleccionado o mix en foco
-      const countContienen = listaMixes.filter(m => m.contieneInsumo).length;
-      if (idsInsumosSeleccionados.length > 0 || mixSeleccionadoId) {
-        if (window.soloMixesCoincidentes === undefined) {
-          window.soloMixesCoincidentes = (countContienen > 0);
-        }
-
-        let bannerTitle = '';
-        let bannerSub = '';
-        let bannerAction = '';
-
-        if (mixSeleccionadoId) {
-          const mixObj = ingredientes.find(i => i.id === mixSeleccionadoId);
-          const audSel = auditoriasPorMix.get(mixSeleccionadoId) || auditarEstadoSincronizacionMixLDN3(mixSeleccionadoId);
-          bannerTitle = `🧪 Mix en foco: <strong style="color: #fff;">${mixObj ? mixObj.nombre : '#' + mixSeleccionadoId}</strong>`;
-          bannerSub = audSel.enPausa
-            ? 'Estructura preservada en pausa sin fracciones comerciales activas en Búnker'
-            : (audSel.estaAlDia ? 'Circuito completo sincronizado al centavo en PostgreSQL' : `${audSel.totalCambios} cambio(s) pendiente(s): ${audSel.resumenDetalle}`);
-          bannerAction = audSel.enPausa
-            ? ''
-            : (!audSel.estaAlDia
-                ? `<button type="button" class="btn" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff; border: none; padding: 3px 9px; border-radius: 4px; font-size: 0.72rem; cursor: pointer; font-weight: 800;" onclick="sincronizarCascadaCompletaMixLDN3(${mixSeleccionadoId})">⚡ Actualizar Circuito Completo</button>`
-                : `<button type="button" class="btn" disabled style="background: rgba(16,185,129,0.14); color: #34d399; border: 1px solid rgba(16,185,129,0.38); padding: 3px 9px; border-radius: 4px; font-size: 0.72rem; cursor: default; font-weight: 700;">✓ Todo actualizado</button>`);
+      // Selección inteligente de filtro por defecto: Solo Pendientes > Con Insumo > Todos Activos
+      if (!window.filtroMixesLDN3) {
+        if (mixesPendientes.length > 0) {
+          window.filtroMixesLDN3 = 'pendientes';
+        } else if (mixesComercialesConInsumo.length > 0) {
+          window.filtroMixesLDN3 = 'insumo';
         } else {
-          const insumoNombres = idsInsumosSeleccionados.map(id => {
-            const ingObj = ingredientes.find(i => i.id === id);
-            return ingObj ? ingObj.nombre : `#${id}`;
-          }).join(', ');
-          bannerTitle = `🎯 Insumo seleccionado: <strong style="color: #fff;">${insumoNombres}</strong>`;
-          bannerSub = countContienen > 0 ? `Se detectó en <strong>${countContienen}</strong> fórmulas de mixes de producción interna` : 'No forma parte de ninguna fórmula de mix actual';
-          bannerAction = '';
+          window.filtroMixesLDN3 = 'todos';
         }
-
-        const infoBanner = document.createElement('div');
-        infoBanner.className = 'mix-info-banner';
-        infoBanner.style.cssText = `
-          padding: 8px 12px;
-          margin-bottom: 12px;
-          background: rgba(168, 85, 247, 0.1);
-          border: 1px solid rgba(168, 85, 247, 0.3);
-          border-left: 3px solid #a855f7;
-          border-radius: 6px;
-          font-size: 0.78rem;
-          color: #e9d5ff;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 10px;
-          flex-wrap: wrap;
-        `;
-        infoBanner.innerHTML = `
-          <div>
-            <span>${bannerTitle}</span>
-            <div style="font-size: 0.7rem; color: #c084fc; margin-top: 2px;">
-              ${bannerSub}
-            </div>
-          </div>
-          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            ${bannerAction}
-            <span style="background: rgba(168, 85, 247, 0.25); color: #f3e8ff; padding: 2px 8px; border-radius: 12px; font-weight: 700; font-size: 0.72rem;">
-              ${countContienen} / ${listaMixes.length} mixes
-            </span>
-            ${countContienen > 0 ? `
-              <button type="button" class="btn" style="background: rgba(168, 85, 247, 0.25); color: #f3e8ff; border: 1px solid rgba(168, 85, 247, 0.5); padding: 3px 8px; border-radius: 4px; font-size: 0.72rem; cursor: pointer; font-weight: 600;" onclick="toggleSoloMixesCoincidentes()">
-                ${window.soloMixesCoincidentes ? '👁️ Ver Todos (' + listaMixes.length + ')' : '🎯 Ver Solo Coincidentes (' + countContienen + ')'}
-              </button>
-            ` : ''}
-          </div>
-        `;
-        container.appendChild(infoBanner);
+      }
+      if (window.filtroMixesLDN3 === 'insumo' && mixesComercialesConInsumo.length === 0) {
+        window.filtroMixesLDN3 = mixesPendientes.length > 0 ? 'pendientes' : 'todos';
       }
 
-      const mixesAExhibir = (window.soloMixesCoincidentes && countContienen > 0)
-        ? listaMixes.filter(m => m.contieneInsumo)
-        : listaMixes;
+      const insumoNombres = idsInsumosSeleccionados.map(id => {
+        const ingObj = ingredientes.find(i => i.id === id);
+        return ingObj ? ingObj.nombre : `#${id}`;
+      }).join(', ');
 
-      // Ordenar: activos/pre-mezclas primero, mixes en pausa al final
-      mixesAExhibir.sort((a, b) => {
-        const audA = auditoriasPorMix.get(a.ingrediente.id);
-        const audB = auditoriasPorMix.get(b.ingrediente.id);
-        const pausaA = audA?.enPausa ? 1 : 0;
-        const pausaB = audB?.enPausa ? 1 : 0;
-        if (pausaA !== pausaB) return pausaA - pausaB;
-        if (a.contieneInsumo && !b.contieneInsumo) return -1;
-        if (!a.contieneInsumo && b.contieneInsumo) return 1;
-        return 0;
-      });
+      // CABECERA ÚNICA CONSOLIDADA (Estado + Acción Global + Filtros Rápidos)
+      const headerEl = document.createElement('div');
+      headerEl.id = 'ldn3-unified-header';
+      headerEl.className = 'ldn3-header-unified';
+      headerEl.style.background = mixesPendientes.length > 0 ? 'rgba(245, 158, 11, 0.09)' : 'rgba(16, 185, 129, 0.09)';
+      headerEl.style.border = `1px solid ${mixesPendientes.length > 0 ? 'rgba(245, 158, 11, 0.38)' : 'rgba(16, 185, 129, 0.35)'}`;
 
-      mixesAExhibir.forEach(mixItem => {
+      const insumoChipHtml = idsInsumosSeleccionados.length > 0
+        ? `<div style="font-size:0.70rem; color:#d8b4fe; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+             <span>🎯 Insumo en foco: <strong style="color:#fff;">${insumoNombres}</strong></span>
+             <span style="background:rgba(168,85,247,0.22); border:1px solid rgba(168,85,247,0.45); padding:1px 6px; border-radius:10px; font-weight:700;">
+               ${mixesComercialesConInsumo.length} mix(es) comerciales
+             </span>
+           </div>`
+        : '';
+
+      headerEl.innerHTML = `
+        <div class="ldn3-header-top">
+          <div style="color:${mixesPendientes.length > 0 ? '#fbbf24' : '#34d399'}; font-weight:800;">
+            ${mixesPendientes.length > 0
+              ? `🟡 ${mixesPendientes.length} de ${mixesComerciales.length} mixes comerciales con cambios pendientes`
+              : `🟢 Los ${mixesComerciales.length} mixes comerciales vigentes están al día en BD`
+            }
+          </div>
+          <div>
+            ${mixesPendientes.length > 0
+              ? `<button type="button" id="btn-ldn3-actualizar-todos-mixes" class="btn" style="background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color:#fff; border:none; padding:5px 10px; border-radius:5px; font-size:0.72rem; cursor:pointer; font-weight:800; box-shadow:0 2px 8px rgba(245,158,11,0.35);" onclick="sincronizarTodosLosMixesDesactualizadosLDN3()">⚡ Revisar e Impactar Pendientes (${mixesPendientes.length})</button>`
+              : `<button type="button" id="btn-ldn3-actualizar-todos-mixes" class="btn" disabled style="background:rgba(16,185,129,0.14); color:#34d399; border:1px solid rgba(16,185,129,0.38); padding:4px 10px; border-radius:5px; font-size:0.72rem; cursor:default; font-weight:700;">✓ Todo al día</button>`
+            }
+          </div>
+        </div>
+        ${insumoChipHtml}
+        <div class="ldn3-filter-pills">
+          <button type="button" class="ldn3-filter-pill ${window.filtroMixesLDN3 === 'pendientes' ? 'active' : ''}" data-ldn3-filter="pendientes" onclick="setFiltroMixesLDN3('pendientes')">
+            🟡 Solo Pendientes (${mixesPendientes.length})
+          </button>
+          ${mixesComercialesConInsumo.length > 0 ? `
+            <button type="button" class="ldn3-filter-pill ${window.filtroMixesLDN3 === 'insumo' ? 'active' : ''}" data-ldn3-filter="insumo" onclick="setFiltroMixesLDN3('insumo')">
+              🎯 Con Insumo (${mixesComercialesConInsumo.length})
+            </button>
+          ` : ''}
+          <button type="button" class="ldn3-filter-pill ${window.filtroMixesLDN3 === 'todos' ? 'active' : ''}" data-ldn3-filter="todos" onclick="setFiltroMixesLDN3('todos')">
+            📋 Todos Activos (${mixesComerciales.length})
+          </button>
+        </div>
+      `;
+      container.appendChild(headerEl);
+
+      // Función constructora de tarjeta compacta plegada por defecto
+      const construirTarjetaMix = (mixItem) => {
         const ing = mixItem.ingrediente;
         const componentes = mixItem.componentes;
         const totalKilosBatch = mixItem.totalKilosBatch;
         const contieneInsumo = mixItem.contieneInsumo;
-
-        if (query && !ing.nombre.toLowerCase().includes(query)) return;
-
-        count++;
-        if (contieneInsumo) countCoincidentes++;
-
-        const auditMix = auditoriasPorMix.get(ing.id) || auditarEstadoSincronizacionMixLDN3(ing.id);
-        const costoPatronMixBD = auditMix.costoMixBd;
-        const costoFormulaSim = auditMix.costoMixSim;
+        const auditMix = mixItem.aud;
         const isModified = !auditMix.enPausa && !auditMix.estaAlDia;
+        const isOpen = (abiertoMixId === ing.id);
 
-        // Identificar si este Mix es una Pre-Mezcla de otra Línea de Negocio (LDN 5 Barritas o LDN 6 Granolas)
+        const card = document.createElement('div');
+        card.className = `mix-card${isOpen ? ' open' : ''}${contieneInsumo ? ' mix-card-destacado' : ''}`;
+        card.id = `mix-card-${ing.id}`;
+        if (auditMix.enPausa) {
+          card.style.cssText = 'opacity:0.74; border:1px dashed rgba(148,163,184,0.35); margin-bottom:8px;';
+        } else if (isModified) {
+          card.style.cssText = 'border:1px solid rgba(245,158,11,0.48); background:rgba(245,158,11,0.03); margin-bottom:8px;';
+        } else if (contieneInsumo) {
+          card.style.cssText = 'border:1px solid rgba(168,85,247,0.45); background:rgba(168,85,247,0.03); margin-bottom:8px;';
+        } else {
+          card.style.cssText = 'margin-bottom:8px;';
+        }
+
         let badgeRutaLdnHtml = '';
         let btnRutaLdnHtml = '';
         if (ing.id === 109) {
-          badgeRutaLdnHtml = `<span style="font-size: 0.65rem; background: rgba(251, 146, 60, 0.2); color: #fb923c; border: 1px solid rgba(251, 146, 60, 0.45); padding: 1px 6px; border-radius: 3px; font-weight: 700;" title="Esta mezcla alimenta al Artículo Puente MPB para producir Barritas en LDN 5">🍫 Pre-Mezcla [LDN 5] Barritas</span>`;
-          btnRutaLdnHtml = `<button type="button" class="btn" style="padding: 4px 8px; font-size: 0.72rem; font-weight: 700; background: rgba(251, 146, 60, 0.2); color: #fb923c; border: 1px solid #fb923c; border-radius: 4px; cursor: pointer;" onclick="event.stopPropagation(); cambiarContextoLDN(5);" title="Ir a [LDN 5] Barritas para auditar e impactar la barra comercial BF24X50">🍫 Ir a [LDN 5] Barritas</button>`;
+          badgeRutaLdnHtml = `<span style="font-size:0.64rem; background:rgba(251,146,60,0.2); color:#fb923c; border:1px solid rgba(251,146,60,0.45); padding:1px 6px; border-radius:3px; font-weight:700;">🍫 Pre-Mezcla LDN 5</span>`;
+          btnRutaLdnHtml = `<button type="button" class="btn" style="padding:4px 8px; font-size:0.71rem; font-weight:700; background:rgba(251,146,60,0.2); color:#fb923c; border:1px solid #fb923c; border-radius:4px; cursor:pointer;" onclick="event.stopPropagation(); cambiarContextoLDN(5);">🍫 Ir a LDN 5</button>`;
         } else if (ing.id === 132 || ing.id === 134) {
           const varGranola = ing.id === 134 ? 'FLOR' : 'SOL';
-          badgeRutaLdnHtml = `<span style="font-size: 0.65rem; background: rgba(244, 114, 182, 0.2); color: #f472b6; border: 1px solid rgba(244, 114, 182, 0.45); padding: 1px 6px; border-radius: 3px; font-weight: 700;" title="Esta mezcla alimenta al Artículo Puente ${ing.id === 134 ? 'MPGDFX6,9' : 'MPGDSX7'} para producir Granolas en LDN 6">🥣 Pre-Mezcla [LDN 6] Granolas</span>`;
-          btnRutaLdnHtml = `<button type="button" class="btn" style="padding: 4px 8px; font-size: 0.72rem; font-weight: 700; background: rgba(244, 114, 182, 0.2); color: #f472b6; border: 1px solid #f472b6; border-radius: 4px; cursor: pointer;" onclick="event.stopPropagation(); granolaSeleccionadaLDN6 = '${varGranola}'; cambiarContextoLDN(6);" title="Ir a [LDN 6] Granolas para auditar e impactar las fracciones de ${ing.id === 134 ? 'Grana Flor' : 'Grana Sol'}">🥣 Ir a [LDN 6] Granolas</button>`;
+          badgeRutaLdnHtml = `<span style="font-size:0.64rem; background:rgba(244,114,182,0.2); color:#f472b6; border:1px solid rgba(244,114,182,0.45); padding:1px 6px; border-radius:3px; font-weight:700;">🥣 Pre-Mezcla LDN 6</span>`;
+          btnRutaLdnHtml = `<button type="button" class="btn" style="padding:4px 8px; font-size:0.71rem; font-weight:700; background:rgba(244,114,182,0.2); color:#f472b6; border:1px solid #f472b6; border-radius:4px; cursor:pointer;" onclick="event.stopPropagation(); granolaSeleccionadaLDN6 = '${varGranola}'; cambiarContextoLDN(6);">🥣 Ir a LDN 6</button>`;
         }
 
-        const card = document.createElement('div');
-        const isDestacado = contieneInsumo;
-        card.className = `mix-card` + (abiertoMixId === ing.id || isDestacado ? ' open' : '') + (isDestacado ? ' mix-card-destacado' : '');
-        card.id = `mix-card-${ing.id}`;
+        const badgeIncidencia = contieneInsumo
+          ? `<span style="font-size:0.64rem; font-weight:700; background:rgba(168,85,247,0.22); color:#e9d5ff; border:1px solid rgba(168,85,247,0.45); padding:1px 5px; border-radius:4px;">🎯 ${mixItem.participacionInsumo.toFixed(1)}%</span>`
+          : '';
 
-        if (auditMix.enPausa) {
-          card.style.cssText = 'opacity: 0.76; border: 1px dashed rgba(148, 163, 184, 0.35);';
-        } else if (isDestacado) {
-          card.style.cssText = 'border: 1px solid rgba(168, 85, 247, 0.6); box-shadow: 0 0 8px rgba(168, 85, 247, 0.2); background: rgba(168, 85, 247, 0.04);';
-        }
-        
-        let componentesHTML = '';
-        componentes.forEach(comp => {
+        const statusDot = auditMix.enPausa ? '⏸' : (isModified ? '🟡' : '🟢');
+        const badgeEstadoCompacto = auditMix.enPausa
+          ? `<span style="font-size:0.64rem; color:#94a3b8;">En pausa</span>`
+          : (isModified
+              ? `<span style="font-size:0.64rem; background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid rgba(245,158,11,0.45); padding:1px 5px; border-radius:4px; font-weight:700;">${auditMix.totalCambios} pend. · ${auditMix.resumenDetalle}</span>`
+              : `<span style="font-size:0.64rem; color:#34d399; font-weight:700;">Al día (${auditMix.fraccsCount} SKUs)</span>`);
+
+        const btnAccionHeader = auditMix.enPausa
+          ? ''
+          : (isModified
+              ? `<button type="button" class="btn" style="padding:3px 8px; font-size:0.69rem; font-weight:800; background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color:#fff; border:none; border-radius:4px; cursor:pointer; white-space:nowrap;" onclick="event.stopPropagation(); sincronizarCascadaCompletaMixLDN3(${ing.id})">⚡ Revisar e Impactar</button>`
+              : `<span style="font-size:0.66rem; color:#34d399; font-weight:700; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); padding:2px 6px; border-radius:4px; white-space:nowrap;">✓ Al día</span>`);
+
+        // Ingredientes dentro de un <details> colapsado por defecto (cero sobrecarga visual)
+        const componentesHTML = componentes.map(comp => {
           const compInfo = ingredientesSim[comp.ingrediente_id];
           const cantComp = parseFloat(comp.cantidad) || 0;
           const participacionPercent = totalKilosBatch > 0 ? ((cantComp / totalKilosBatch) * 100).toFixed(1) : (cantComp * 100).toFixed(1);
-          const isComponenteSeleccionado = idsInsumosSeleccionados.includes(comp.ingrediente_id);
-
-          const rowStyle = isComponenteSeleccionado 
-            ? 'background: rgba(168, 85, 247, 0.18); border-left: 3px solid #a855f7; padding: 4px 6px; border-radius: 4px; font-weight: 600;' 
-            : 'padding: 2px 0;';
-
-          componentesHTML += `
+          const isCompSel = idsInsumosSeleccionados.includes(comp.ingrediente_id);
+          const rowStyle = isCompSel
+            ? 'background:rgba(168,85,247,0.18); border-left:3px solid #a855f7; padding:3px 6px; border-radius:4px; font-weight:600;'
+            : 'padding:2px 0;';
+          return `
             <div class="mix-ingredient-row" style="${rowStyle}">
-              <span>${isComponenteSeleccionado ? '✨ ' : ''}${compInfo?.nombre || 'Ingrediente #' + comp.ingrediente_id}</span>
-              <span style="font-weight:600; color: ${isComponenteSeleccionado ? '#c084fc' : 'inherit'};">
-                ${participacionPercent}% ($${(compInfo?.costo_sim || 0).toFixed(2)}/kg)
+              <span>${isCompSel ? '🎯 ' : ''}${compInfo?.nombre || 'Ingrediente #' + comp.ingrediente_id}</span>
+              <span style="font-weight:600; color:${isCompSel ? '#d8b4fe' : 'inherit'};">
+                ${participacionPercent}% ($${(compInfo?.costo_sim || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg)
               </span>
             </div>
           `;
-        });
-
-        const badgeDestacado = isDestacado 
-          ? `<span style="font-size: 0.68rem; font-weight: 700; background: rgba(168, 85, 247, 0.25); color: #e9d5ff; border: 1px solid rgba(168, 85, 247, 0.5); padding: 2px 6px; border-radius: 4px; margin-left: 6px;">✨ Contiene Insumo (${mixItem.participacionInsumo.toFixed(1)}%)</span>` 
-          : '';
-
-        const statusPillBD = auditMix.enPausa
-          ? '<span style="font-size:0.65rem; background:rgba(100,116,139,0.22); color:#cbd5e1; border:1px solid rgba(148,163,184,0.4); padding:1px 6px; border-radius:3px; font-weight:700;">⏸ Sin oferta activa (Estructura en pausa)</span>'
-          : (isModified
-              ? `<span style="font-size:0.65rem; background:rgba(245,158,11,0.25); color:#fbbf24; border:1px solid rgba(245,158,11,0.5); padding:1px 6px; border-radius:3px; font-weight:700;" title="${auditMix.detallesAntesDespues.join(' | ')}">🟡 Desactualizado (${auditMix.totalCambios} cambio${auditMix.totalCambios !== 1 ? 's' : ''})</span>`
-              : '<span style="font-size:0.65rem; background:rgba(16,185,129,0.2); color:#34d399; border:1px solid rgba(16,185,129,0.4); padding:1px 6px; border-radius:3px; font-weight:700;">🟢 Al día en BD</span>');
+        }).join('');
 
         const avisoAguasAbajoHtml = auditMix.aguasAbajoPendiente
           ? `<div style="margin-top:6px; padding:5px 8px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.4); border-radius:4px; font-size:0.70rem; color:#fbbf24; font-weight:700;">${auditMix.aguasAbajoLabel}</div>`
           : '';
 
-        const detalleCambiosHtml = (!auditMix.enPausa && isModified && auditMix.detallesAntesDespues.length > 0)
-          ? `<div style="margin-top:6px; padding:6px 8px; background:rgba(245,158,11,0.09); border:1px solid rgba(245,158,11,0.30); border-radius:4px; font-size:0.69rem; color:#fde68a; line-height:1.45;">
-               <div style="font-weight:800; color:#fbbf24; margin-bottom:2px;">Detalle Antes ➔ Después (${auditMix.resumenDetalle}):</div>
-               ${auditMix.detallesAntesDespues.map(d => `<div>• ${d}</div>`).join('')}
-             </div>`
-          : '';
-
-        const botonAccionCircuitoHtml = auditMix.enPausa
-          ? `<span style="font-size:0.70rem; color:#94a3b8; font-style:italic;">Estructura preservada sin venta activa</span>`
-          : (isModified
-              ? `<button type="button" class="btn" style="padding: 4px 10px; font-size: 0.72rem; font-weight: 800; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff; border: none; border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px; box-shadow: 0 2px 6px rgba(245,158,11,0.35);" onclick="event.stopPropagation(); sincronizarCascadaCompletaMixLDN3(${ing.id})" title="${auditMix.esPreMezcla ? 'Sincronizar atómicamente Fórmula + Bulto Pre-Mezcla en Depósito' : 'Sincronizar atómicamente Mix -> AP -> Simple -> Fracciones y Packs -> Listas 1..8'}">
-                   ⚡ ${auditMix.esPreMezcla ? 'Actualizar Pre-Mezcla' : 'Actualizar Circuito Completo'}
-                 </button>`
-              : `<button type="button" class="btn" disabled style="padding: 4px 10px; font-size: 0.72rem; font-weight: 700; background: rgba(16, 185, 129, 0.14); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.38); border-radius: 4px; cursor: default;">
-                   ✓ Todo actualizado
-                 </button>`);
+        const varMixBadge = renderBadgeVarPctLDN3(auditMix.varMixPct, auditMix.diffMix);
 
         card.innerHTML = `
-          <div class="mix-card-header" onclick="toggleMixCollapse(${ing.id})" style="${isDestacado ? 'background: rgba(168, 85, 247, 0.12);' : ''}">
-            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-              <span class="mix-title" style="${isDestacado ? 'color: #f3e8ff; font-weight: 700;' : ''}">🧪 ${ing.nombre}</span>
-              ${badgeDestacado}
+          <div class="mix-card-header" onclick="toggleMixCollapse(${ing.id})" style="gap:8px; flex-wrap:wrap; ${isModified ? 'background:rgba(245,158,11,0.06);' : ''}">
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; flex:1;">
+              <span class="mix-chevron" style="font-size:0.72rem; color:#94a3b8; width:12px;">${isOpen ? '▾' : '▸'}</span>
+              <span>${statusDot}</span>
+              <span class="mix-title" style="color:${contieneInsumo ? '#f3e8ff' : 'var(--text-primary)'};">${ing.nombre}</span>
+              ${badgeIncidencia}
               ${badgeRutaLdnHtml}
-              ${statusPillBD}
+              ${badgeEstadoCompacto}
             </div>
-            <div class="mix-price-badge">
-              <span class="price-old" title="Costo patrón guardado en BD">$${costoPatronMixBD.toFixed(2)}</span>
-              <span class="price-new ${isModified ? 'modified' : ''}" title="Costo fórmula simulado">$${costoFormulaSim.toFixed(2)}</span>
-              <span style="font-size:0.65rem; color:var(--text-muted);">/ kg</span>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <div class="mix-price-badge" title="Costo Fórmula /kg (BD ➔ Nuevo)">
+                <span class="price-old" style="text-decoration:${auditMix.mixPendiente ? 'line-through' : 'none'};">$${auditMix.costoMixBd.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+                <span style="color:#64748b;">➔</span>
+                <span class="price-new ${isModified ? 'modified' : ''}">$${auditMix.costoMixSim.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</span>
+                ${varMixBadge}
+              </div>
+              ${btnAccionHeader}
             </div>
           </div>
-          <div class="mix-card-body" style="padding: 8px 12px;">
-            ${componentesHTML}
-            ${detalleCambiosHtml}
+          <div class="mix-card-body" style="padding:10px 12px;">
+            ${!auditMix.enPausa ? renderCadenaInternaMixLDN3(auditMix) : ''}
+            ${!auditMix.enPausa && !auditMix.esPreMezcla ? `
+              <div style="margin-bottom:8px;">
+                <div style="font-size:0.71rem; font-weight:700; color:#cbd5e1; margin-bottom:4px;">📦 Presentaciones Comerciales y Packs (${auditMix.fraccsCount})</div>
+                ${renderTablaAuditoriaFraccionesLDN3(auditMix.fraccsDetalle, { compacto: true })}
+              </div>
+            ` : ''}
+            <details style="margin-top:6px; background:rgba(0,0,0,0.18); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:5px 8px;">
+              <summary style="cursor:pointer; font-size:0.71rem; font-weight:700; color:#cbd5e1; user-select:none;">
+                🧪 Ver ingredientes de la fórmula (${componentes.length} insumos · Batch ${totalKilosBatch.toFixed(1)} kg)
+              </summary>
+              <div style="margin-top:6px;">${componentesHTML}</div>
+            </details>
             ${avisoAguasAbajoHtml}
-            <div style="display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 8px; border-top: 1px dashed rgba(255, 255, 255, 0.08); padding-top: 6px; flex-wrap: wrap;">
+            <div style="display:flex; justify-content:flex-end; align-items:center; gap:6px; margin-top:8px; border-top:1px dashed rgba(255,255,255,0.08); padding-top:6px; flex-wrap:wrap;">
               ${btnRutaLdnHtml || (!auditMix.enPausa ? `
-                <button type="button" class="btn" style="padding: 4px 8px; font-size: 0.72rem; font-weight: 600; background: rgba(168, 85, 247, 0.2); color: #e9d5ff; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 4px; cursor: pointer;" onclick="event.stopPropagation(); seleccionarMixParaFracciones(${ing.id})">
-                  👉 Fracciones
+                <button type="button" class="btn" style="padding:4px 8px; font-size:0.71rem; font-weight:600; background:rgba(168,85,247,0.18); color:#e9d5ff; border:1px solid rgba(168,85,247,0.4); border-radius:4px; cursor:pointer;" onclick="event.stopPropagation(); seleccionarMixParaFracciones(${ing.id})">
+                  👉 Enfocar en Panel Derecho
                 </button>
               ` : '')}
-              ${botonAccionCircuitoHtml}
+              ${!auditMix.enPausa && isModified ? `
+                <button type="button" class="btn" style="padding:4px 10px; font-size:0.72rem; font-weight:800; background:linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color:#fff; border:none; border-radius:4px; cursor:pointer;" onclick="event.stopPropagation(); sincronizarCascadaCompletaMixLDN3(${ing.id})">
+                  ⚡ Revisar e Impactar en BD
+                </button>
+              ` : ''}
             </div>
           </div>
         `;
-        container.appendChild(card);
+        return card;
+      };
+
+      // Filtrar mixes comerciales según píldora activa y búsqueda de texto
+      let comercialesFiltrados = mixesComerciales.slice();
+      if (window.filtroMixesLDN3 === 'pendientes') {
+        comercialesFiltrados = comercialesFiltrados.filter(m => !m.aud.estaAlDia);
+      } else if (window.filtroMixesLDN3 === 'insumo') {
+        comercialesFiltrados = comercialesFiltrados.filter(m => m.contieneInsumo);
+      }
+      if (query) {
+        comercialesFiltrados = comercialesFiltrados.filter(m => m.ingrediente.nombre.toLowerCase().includes(query));
+      }
+
+      // Ordenar: pendientes primero, luego mayor incidencia del insumo, luego alfabético
+      comercialesFiltrados.sort((a, b) => {
+        const pA = a.aud.estaAlDia ? 1 : 0;
+        const pB = b.aud.estaAlDia ? 1 : 0;
+        if (pA !== pB) return pA - pB;
+        if (a.contieneInsumo !== b.contieneInsumo) return a.contieneInsumo ? -1 : 1;
+        if (a.contieneInsumo && b.contieneInsumo && b.participacionInsumo !== a.participacionInsumo) {
+          return b.participacionInsumo - a.participacionInsumo;
+        }
+        return a.ingrediente.nombre.localeCompare(b.ingrediente.nombre);
       });
 
-      if (count === 0) {
-        container.innerHTML = '<div class="empty-state">No se encontraron mixes.</div>';
+      if (comercialesFiltrados.length > 0) {
+        comercialesFiltrados.forEach(m => container.appendChild(construirTarjetaMix(m)));
+      } else {
+        const emptyMsg = document.createElement('div');
+        emptyMsg.style.cssText = 'padding:16px 12px; text-align:center; border-radius:8px; background:rgba(16,185,129,0.06); border:1px dashed rgba(16,185,129,0.3); font-size:0.78rem; color:#6ee7b7;';
+        if (window.filtroMixesLDN3 === 'pendientes' && mixesPendientes.length === 0) {
+          emptyMsg.innerHTML = `
+            <div style="font-weight:700; margin-bottom:6px;">🟢 No hay mixes comerciales pendientes de actualización.</div>
+            <button type="button" class="ldn3-filter-pill" onclick="setFiltroMixesLDN3('todos')">📋 Ver los ${mixesComerciales.length} Mixes Activos</button>
+          `;
+        } else {
+          emptyMsg.innerHTML = 'No se encontraron mixes con el filtro aplicado.';
+        }
+        container.appendChild(emptyMsg);
+      }
+
+      // SECCIÓN PLEGABLE: Pre-Mezclas para otras líneas (LDN 5 Barritas / LDN 6 Granolas)
+      const preMezclasFiltradas = query
+        ? mixesPreMezclas.filter(m => m.ingrediente.nombre.toLowerCase().includes(query))
+        : mixesPreMezclas;
+      if (preMezclasFiltradas.length > 0) {
+        const detPre = document.createElement('details');
+        detPre.className = 'ldn3-collapsible-section';
+        detPre.id = 'ldn3-section-premezclas';
+        detPre.innerHTML = `
+          <summary>
+            <span>📦 Pre-Mezclas para otras líneas — LDN 5 / LDN 6 (${preMezclasFiltradas.length})</span>
+            ${preMezclasPendientesCount > 0
+              ? `<span style="background:rgba(245,158,11,0.2); color:#fbbf24; border:1px solid rgba(245,158,11,0.45); padding:1px 7px; border-radius:10px; font-size:0.68rem;">🟡 ${preMezclasPendientesCount} con cambios</span>`
+              : `<span style="color:#34d399; font-size:0.68rem;">🟢 Al día</span>`
+            }
+          </summary>
+          <div class="ldn3-collapsible-body"></div>
+        `;
+        const bodyPre = detPre.querySelector('.ldn3-collapsible-body');
+        preMezclasFiltradas.forEach(m => bodyPre.appendChild(construirTarjetaMix(m)));
+        container.appendChild(detPre);
+      }
+
+      // SECCIÓN PLEGABLE: Mixes en Pausa / Sin oferta comercial activa
+      const pausaFiltrados = query
+        ? mixesEnPausa.filter(m => m.ingrediente.nombre.toLowerCase().includes(query))
+        : mixesEnPausa;
+      if (pausaFiltrados.length > 0) {
+        const detPausa = document.createElement('details');
+        detPausa.className = 'ldn3-collapsible-section';
+        detPausa.id = 'ldn3-section-pausa';
+        detPausa.innerHTML = `
+          <summary style="color:#94a3b8;">
+            <span>⏸ Mixes en Pausa — Sin oferta comercial activa (${pausaFiltrados.length})</span>
+            <span style="font-size:0.68rem; color:#64748b;">Solo referencia</span>
+          </summary>
+          <div class="ldn3-collapsible-body"></div>
+        `;
+        const bodyPausa = detPausa.querySelector('.ldn3-collapsible-body');
+        pausaFiltrados.forEach(m => bodyPausa.appendChild(construirTarjetaMix(m)));
+        container.appendChild(detPausa);
       }
 
       if (window.VigíaPizarra) {
-        window.VigíaPizarra.logEvent('MIXES_LDN3', `Detectados ${listaMixes.length} ingredientes con fórmula. ${countCoincidentes} contienen el insumo #${idsInsumosSeleccionados.join(', #')}`, {
+        window.VigíaPizarra.logEvent('MIXES_LDN3', `Detectados ${listaMixes.length} mixes (${mixesComerciales.length} comerciales, ${mixesPendientes.length} pendientes).`, {
           articuloSeleccionadoId,
           idsInsumosSeleccionados,
-          totalMixes: listaMixes.length,
-          mixesCoincidentes: listaMixes.filter(m => m.contieneInsumo).map(m => ({ id: m.ingrediente.id, nombre: m.ingrediente.nombre, participacion: m.participacionInsumo }))
+          filtro: window.filtroMixesLDN3,
+          totalComerciales: mixesComerciales.length,
+          pendientes: mixesPendientes.length
         });
       }
     }
@@ -8087,12 +8577,24 @@
     function toggleMixCollapse(mixId) {
       const card = document.getElementById(`mix-card-${mixId}`);
       if (abiertoMixId === mixId) {
-        if (card) card.classList.remove('open');
+        if (card) {
+          card.classList.remove('open');
+          const chev = card.querySelector('.mix-chevron');
+          if (chev) chev.innerText = '▸';
+        }
         abiertoMixId = null;
         mixSeleccionadoId = null;
       } else {
-        document.querySelectorAll('.mix-card').forEach(c => c.classList.remove('open'));
-        if (card) card.classList.add('open');
+        document.querySelectorAll('.mix-card').forEach(c => {
+          c.classList.remove('open');
+          const chev = c.querySelector('.mix-chevron');
+          if (chev) chev.innerText = '▸';
+        });
+        if (card) {
+          card.classList.add('open');
+          const chev = card.querySelector('.mix-chevron');
+          if (chev) chev.innerText = '▾';
+        }
         abiertoMixId = mixId;
         mixSeleccionadoId = mixId;
       }
@@ -8540,8 +9042,8 @@
               </div>
             `;
           }
-        } else if (idsInsumosSeleccionados.length > 0) {
-          // Caso 3: Insumo activo (ej. Nuez Cuarto Extra Light), pero aún no se seleccionó un mix individual
+        } else if (idsInsumosSeleccionados.length > 0 && window.filtroMixesLDN3 === 'insumo') {
+          // Caso 3: Filtro explícito "Con Insumo" activo (ej. Nuez Mariposa Extra Light)
           const matchingMixIds = new Set();
           ingredientes.forEach(ing => {
             const comps = composicionMixMap.get(ing.id);
@@ -8838,6 +9340,53 @@
       const aplicarFiltroTexto = (contextoLDN === 1);
       const searchTerms = (aplicarFiltroTexto && query) ? query.trim().split(/\s+/).filter(t => t.length > 0) : [];
 
+      // En LDN 3: si el filtro activo es 'pendientes' y no hay mix específico ni verTodos, enfocar en mixes pendientes
+      let ldn3MixGroupOrder = null;
+      const ldn3MixIdPorSku = new Map();
+      if (contextoLDN === 3 && !window.verTodosArticulosLDN3) {
+        articulosAMostrar.forEach(a => {
+          const mId = resolverMixIdDeArticuloLDN3(a);
+          ldn3MixIdPorSku.set(a.articulo_id, mId);
+        });
+        if (!mixSeleccionadoId && !ingredienteSimpleSeleccionadoId && window.filtroMixesLDN3 === 'pendientes') {
+          const pendientesSet = new Set();
+          (data.ingredientes || []).forEach(ing => {
+            if (!composicionMixMap.has(ing.id)) return;
+            const audM = auditarEstadoSincronizacionMixLDN3(ing.id);
+            if (!audM.enPausa && !audM.esPreMezcla && !audM.estaAlDia) pendientesSet.add(Number(ing.id));
+          });
+          if (pendientesSet.size > 0) {
+            articulosAMostrar = articulosAMostrar.filter(a => pendientesSet.has(Number(ldn3MixIdPorSku.get(a.articulo_id))));
+          }
+        }
+        // Ordenar agrupando por Mix (primero mixes pendientes, luego por nombre; dentro de cada mix: fracciones antes que packs)
+        const audCache = new Map();
+        const getAudM = (mId) => {
+          if (!mId) return null;
+          if (!audCache.has(mId)) audCache.set(mId, auditarEstadoSincronizacionMixLDN3(mId));
+          return audCache.get(mId);
+        };
+        articulosAMostrar = articulosAMostrar.slice().sort((a, b) => {
+          const mA = ldn3MixIdPorSku.get(a.articulo_id) || 0;
+          const mB = ldn3MixIdPorSku.get(b.articulo_id) || 0;
+          if (mA !== mB) {
+            const audA = getAudM(mA);
+            const audB = getAudM(mB);
+            const pendA = (audA && !audA.estaAlDia) ? 0 : 1;
+            const pendB = (audB && !audB.estaAlDia) ? 0 : 1;
+            if (pendA !== pendB) return pendA - pendB;
+            const nA = audA?.mixNombre || 'ZZZ';
+            const nB = audB?.mixNombre || 'ZZZ';
+            return nA.localeCompare(nB);
+          }
+          const pA = (a.es_pack === true || parseInt(a.pack_unidades) > 1 || Boolean(a.pack_hijo_codigo)) ? 1 : 0;
+          const pB = (b.es_pack === true || parseInt(b.pack_unidades) > 1 || Boolean(b.pack_hijo_codigo)) ? 1 : 0;
+          if (pA !== pB) return pA - pB;
+          return (parseFloat(a.kilos_unidad) || 0) - (parseFloat(b.kilos_unidad) || 0);
+        });
+        ldn3MixGroupOrder = { ultimoMixId: Symbol('init'), getAudM };
+      }
+
       articulosAMostrar.forEach(art => {
         let matchQuery = true;
         if (searchTerms.length > 0) {
@@ -8848,6 +9397,36 @@
           matchQuery = searchTerms.every(term => searchableText.includes(term) || (art.articulo_id || '').toLowerCase().includes(term));
         }
         if (!matchQuery) return;
+
+        // Encabezado de agrupación visual por Mix en panel derecho de LDN 3
+        if (ldn3MixGroupOrder) {
+          const mId = ldn3MixIdPorSku.get(art.articulo_id) || null;
+          if (mId !== ldn3MixGroupOrder.ultimoMixId) {
+            ldn3MixGroupOrder.ultimoMixId = mId;
+            const audM = ldn3MixGroupOrder.getAudM(mId);
+            const countEnGrupo = articulosAMostrar.filter(x => (ldn3MixIdPorSku.get(x.articulo_id) || null) === mId).length;
+            const grpHeader = document.createElement('div');
+            grpHeader.className = `ldn3-group-header${audM && !audM.estaAlDia ? ' pending' : ''}`;
+            const tituloMix = audM ? `🧪 ${audM.mixNombre}` : '📦 Otros Artículos';
+            const estadoGrupo = audM
+              ? (audM.estaAlDia
+                  ? `<span style="color:#34d399; font-weight:700; font-size:0.70rem;">🟢 Al día · $${audM.costoMixSim.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</span>`
+                  : `<span style="color:#fbbf24; font-weight:700; font-size:0.70rem;">🟡 ${audM.totalCambios} cambio(s) · $${audM.costoMixBd.toLocaleString('es-AR', {minimumFractionDigits: 2})} ➔ $${audM.costoMixSim.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</span> ${renderBadgeVarPctLDN3(audM.varMixPct, audM.diffMix)}`)
+              : '';
+            const btnGrupo = (audM && !audM.enPausa && !audM.estaAlDia)
+              ? `<button type="button" class="btn" style="padding:3px 8px; font-size:0.68rem; font-weight:800; background:linear-gradient(135deg, #f59e0b, #d97706); color:#fff; border:none; border-radius:4px; cursor:pointer;" onclick="sincronizarCascadaCompletaMixLDN3(${mId})">⚡ Revisar e Impactar</button>`
+              : '';
+            grpHeader.innerHTML = `
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                <strong style="color:#f3e8ff;">${tituloMix}</strong>
+                <span style="font-size:0.68rem; color:#94a3b8;">(${countEnGrupo} presentación${countEnGrupo !== 1 ? 'es' : ''})</span>
+                ${estadoGrupo}
+              </div>
+              <div>${btnGrupo}</div>
+            `;
+            containerTradicional.appendChild(grpHeader);
+          }
+        }
 
         count++;
         const card = document.createElement('div');
@@ -8877,6 +9456,7 @@
         if ([3, 4, 5, 6].includes(contextoLDN)) {
           const audit4 = auditarArticuloHijoLDN4(art);
           const deltaMostrar = Math.abs(audit4.diffCosto) > TOLERANCIA_REDONDEO_LDN4 ? audit4.diffCosto : audit4.maxDiffPrecio;
+          const varCostoCard = calcVarPctLDN3(audit4.costoBultoSim, audit4.costoBultoBD);
           const etiquetaDelta = Math.abs(deltaMostrar) > TOLERANCIA_REDONDEO_LDN4
             ? ` (${deltaMostrar >= 0 ? '+' : ''}$${deltaMostrar.toFixed(2)})`
             : '';
@@ -8886,7 +9466,7 @@
               <div>
                 ${audit4.estaAlDia
                   ? `<span style="color: #34d399; font-weight: 700;" title="Costo y listas comerciales sincronizados con BD: $${audit4.costoBultoBD.toFixed(2)}">🟢 Al día en BD: $${audit4.costoBultoBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>`
-                  : `<span style="color: #fbbf24; font-weight: 700;" title="En BD: $${audit4.costoBultoBD.toFixed(2)} vs Simulado: $${audit4.costoBultoSim.toFixed(2)} (${audit4.listasDesactualizadas} lista(s) con dif. > $0,02)">🟡 Desactualizado · Sim: $${audit4.costoBultoSim.toLocaleString('es-AR', {minimumFractionDigits: 2})} <span style="font-size: 0.64rem; color: #94a3b8;">(BD: $${audit4.costoBultoBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}${audit4.listasDesactualizadas > 0 ? ` · ${audit4.listasDesactualizadas}L` : ''})</span></span>`
+                  : `<span style="color: #fbbf24; font-weight: 700;" title="En BD: $${audit4.costoBultoBD.toFixed(2)} vs Simulado: $${audit4.costoBultoSim.toFixed(2)} (${audit4.listasDesactualizadas} lista(s) con dif. > $0,02)">🟡 $${audit4.costoBultoBD.toLocaleString('es-AR', {minimumFractionDigits: 2})} ➔ $${audit4.costoBultoSim.toLocaleString('es-AR', {minimumFractionDigits: 2})} ${renderBadgeVarPctLDN3(varCostoCard, audit4.diffCosto)} <span style="font-size: 0.64rem; color: #94a3b8;">${audit4.listasDesactualizadas > 0 ? `· ${audit4.listasDesactualizadas}L` : ''}</span></span>`
                 }
               </div>
               <div style="display: inline-flex; align-items: center; gap: 4px;">
@@ -9204,11 +9784,15 @@
       const art = data.articulosBunker.find(a => (a.articulo_id || '').trim().toLowerCase() === (articuloId || '').trim().toLowerCase());
       const kilos = (art && parseFloat(art.kilos_unidad) > 0) ? parseFloat(art.kilos_unidad) : 1;
       const rec = data.recetas.find(r => (r.articulo_numero || '').trim().toLowerCase() === (articuloId || '').trim().toLowerCase());
+      const esPackPadre = Boolean(art && (art.es_pack === true || (art.pack_unidades && parseInt(art.pack_unidades) > 1)) && Boolean(art.pack_hijo_codigo) && !rec);
 
       const laFracc = data.articulosListas.find(la => (la.articulo_numero || '').trim().toLowerCase() === (articuloId || '').trim().toLowerCase() && la.lista_id === listaId);
       const moFracc = (laFracc && laFracc.mano_obra_activa !== false) ? (parseFloat(laFracc.costo_tiempo) || 0) : 0;
       const insumos = laFracc ? (insumosListasMap.get(laFracc.id) || []) : [];
-      const costoInsumosPackaging = insumos.reduce((sum, ins) => sum + (ins.incluido ? (parseFloat(ins.cantidad) * parseFloat(ins.costo_unitario_capturado)) : 0), 0);
+      const tieneEmpaqueEnReceta = Boolean(rec && !esPackPadre && articuloTieneEmpaqueEnRecetaPizarra(data, rec.receta_id || rec.id));
+      const costoInsumosPackaging = tieneEmpaqueEnReceta
+        ? 0
+        : insumos.reduce((sum, ins) => sum + (ins.incluido ? (parseFloat(ins.cantidad) * parseFloat(ins.costo_unitario_capturado)) : 0), 0);
 
       const keySimArt = `${listaId}_${articuloId}`;
       const laSimArt = (typeof listasArticulosSim !== 'undefined') ? listasArticulosSim[keySimArt] : null;
@@ -9216,9 +9800,15 @@
         ? parseFloat(laSimArt.margen_simulado)
         : (parseFloat(laFracc?.margen_ganancia) || 0);
 
-      let ivaVal = parseFloat(laFracc?.iva) || 21;
-      if (laFracc?.modo_iva === 'MEDIO') ivaVal = ivaVal / 2;
-      else if (laFracc?.modo_iva === 'SIN') ivaVal = 0;
+      const ivaBaseLista = (laFracc && laFracc.iva !== null && laFracc.iva !== undefined && !isNaN(parseFloat(laFracc.iva)))
+        ? parseFloat(laFracc.iva)
+        : ((art && art.porcentaje_iva !== null && art.porcentaje_iva !== undefined && !isNaN(parseFloat(art.porcentaje_iva)))
+            ? parseFloat(art.porcentaje_iva)
+            : 21);
+      const modoIvaNorm = String(laFracc?.modo_iva || '').toUpperCase();
+      let ivaVal = ivaBaseLista;
+      if (modoIvaNorm === 'MEDIO') ivaVal = ivaBaseLista / 2;
+      else if (modoIvaNorm === 'SIN' || modoIvaNorm === 'EXENTO') ivaVal = 0;
 
       // Detectar si pertenece a una cadena LDN 6 (Granolas), LDN 5 (Barritas), LDN 4 (Tostadero) o LDN 3 (Mix)
       let esCascadaLDN6 = false;
@@ -9318,7 +9908,6 @@
       }
 
       let costoInsumoBase = 0;
-      const esPackPadre = art && (art.es_pack === true || (art.pack_unidades && parseInt(art.pack_unidades) > 1)) && Boolean(art.pack_hijo_codigo) && !rec;
       if (esPackPadre && art.pack_hijo_codigo) {
         let hijoSku = (art.pack_hijo_codigo || '').trim();
         if ((!hijoSku || hijoSku.toUpperCase() === 'GFGNFX1') && art.articulo_id === 'GDF5x1') hijoSku = 'GDFX1';
@@ -9338,7 +9927,10 @@
         } else {
           const laHijo = data.articulosListas.find(c => c.lista_id === listaId && (c.articulo_numero || '').trim().toLowerCase() === (hijoSku || '').trim().toLowerCase());
           const insumosHijo = laHijo ? (insumosListasMap.get(laHijo.id) || []) : [];
-          const costoInsumosHijo = insumosHijo.reduce((sum, ins) => sum + (ins.incluido ? (parseFloat(ins.cantidad) * parseFloat(ins.costo_unitario_capturado)) : 0), 0);
+          const hijoTieneEmpaqueEnReceta = articuloTieneEmpaqueEnRecetaPizarra(data, hijoSku);
+          const costoInsumosHijo = hijoTieneEmpaqueEnReceta
+            ? 0
+            : insumosHijo.reduce((sum, ins) => sum + (ins.incluido ? (parseFloat(ins.cantidad) * parseFloat(ins.costo_unitario_capturado)) : 0), 0);
           const costoTiempoHijo = (laHijo && laHijo.mano_obra_activa !== false) ? (parseFloat(laHijo.costo_tiempo) || 0) : 0;
           const costoHijoKilo = (laHijo && laHijo.costo_base_sobrescrito) ? parseFloat(laHijo.costo_base_sobrescrito) : calcularCostoBaseKiloArticulo(hijoSku);
           const costoHijoBultoSim = (costoHijoKilo * hijoKilos) + costoInsumosHijo + costoTiempoHijo;
@@ -9418,6 +10010,7 @@
         costoTotalOperativoBulto,
         margen,
         precioSinIva,
+        ivaBaseLista,
         ivaVal,
         precioFinalCalculado,
         precioActualBD,
@@ -10899,7 +11492,10 @@
             const precioCalc = parseFloat(cascada.precioFinalCalculado.toFixed(2));
             const costoKilo = parseFloat((cascada.costoBaseSinInsumosLista / (parseFloat(f.kilos_unidad) || 1)).toFixed(4));
             const mo = parseFloat(cascada.moFracc.toFixed(4));
-            const iva = parseFloat(cascada.ivaVal.toFixed(2));
+            const ivaBase = (cascada.ivaBaseLista !== undefined && !isNaN(cascada.ivaBaseLista))
+              ? cascada.ivaBaseLista
+              : ((laActual && laActual.iva !== null && laActual.iva !== undefined && !isNaN(parseFloat(laActual.iva))) ? parseFloat(laActual.iva) : 21);
+            const iva = parseFloat(ivaBase.toFixed(2));
 
             const dispActual = laActual && laActual.disponible !== undefined ? laActual.disponible : (laSim ? laSim.disponible : true);
 
@@ -11535,7 +12131,8 @@
       }
 
       const fraccs = esPreMezcla ? [] : (data.articulosBunker || []).filter(a => {
-        if (a.solo_produccion_externa === true || a.no_producido_por_lambda === true || a.propiedades_dinamicas?.obsoleto === true) return false;
+        if (a.solo_produccion_externa === true || a.propiedades_dinamicas?.obsoleto === true) return false;
+        if (Number(a.familia_id || a.propiedades_dinamicas?.familia_id || 0) === 42) return false;
         const sku = String(a.articulo_id || '').trim().toLowerCase();
         if (apCodigosLower.has(sku) || sku.startsWith('prod ap') || sku === 'mpb' || sku.startsWith('mpgdf') || sku.startsWith('mpgds')) return false;
         if (recArtIds.has(sku)) return true;
@@ -11545,91 +12142,38 @@
 
       if (!esSilencioso) {
         const auditActual = auditarEstadoSincronizacionMixLDN3(mixId);
-        const apsHtml = aps.length > 0 
-          ? aps.map(a => `
-              <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 2px 0;">
-                <span>[${a.articulo_numero}] ${a.descripcion}</span>
-                <span style="color: #38bdf8; font-weight: 600;">Bulto $${a.costoApBultoRed2.toFixed(2)} + MO $${a.moAp.toFixed(2)} = <strong>$${a.costoNetoAP.toFixed(2)}/kg</strong></span>
-              </div>
-            `).join('')
-          : '<div style="color: var(--text-muted); font-size: 0.74rem;">Sin Artículos Puente directos</div>';
-
-        const simplesHtml = simples.length > 0
-          ? simples.map(s => `
-              <div style="display: flex; justify-content: space-between; font-size: 0.78rem; padding: 2px 0;">
-                <span>[#${s.ing.id}] ${s.ing.nombre} (Vinc: [${s.apCodigo}])</span>
-                <span style="color: #c084fc; font-weight: 700;">$${s.costoObjetivo.toFixed(2)}/kg</span>
-              </div>
-            `).join('')
-          : '<div style="color: var(--text-muted); font-size: 0.74rem;">Sin Ingredientes Simples directos</div>';
-
-        const fraccsHtml = fraccs.length > 0
-          ? fraccs.map(f => `
-              <span style="background: rgba(168, 85, 247, 0.2); border: 1px solid rgba(168, 85, 247, 0.4); padding: 2px 6px; border-radius: 4px; font-size: 0.72rem; color: #e9d5ff;">
-                ${f.articulo_id} (${parseFloat(f.kilos_unidad || 1).toFixed(2)}kg)
-              </span>
-            `).join(' ')
-          : '<div style="color: var(--text-muted); font-size: 0.74rem;">Pre-Mezcla interna de depósito (sin venta fraccionada directa en LDN 3)</div>';
-
-        const antesDespuesHtml = auditActual.detallesAntesDespues.length > 0
-          ? `<div style="margin-bottom:10px; padding:6px 8px; background:rgba(245,158,11,0.10); border:1px solid rgba(245,158,11,0.32); border-radius:6px; font-size:0.72rem; color:#fde68a; max-height:95px; overflow-y:auto;">
-               <div style="font-weight:800; color:#fbbf24; margin-bottom:2px;">Cambios detectados (${auditActual.totalCambios}):</div>
-               ${auditActual.detallesAntesDespues.map(d => `<div>• ${d}</div>`).join('')}
-             </div>`
-          : '';
-
         const modalHtml = `
-          <div style="text-align: left; font-size: 0.84rem; color: #e2e8f0;">
-            <div style="padding: 8px 12px; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; margin-bottom: 12px;">
-              <span style="color: #c084fc; font-weight: 700;">⚡ ${esPreMezcla ? 'Sincronización Atómica de Pre-Mezcla' : 'Cascada Atómica Completa [LDN 3]'}</span>
-              <div style="font-size: 0.73rem; color: #cbd5e1; margin-top: 2px;">
-                Impacta en una sola acción ${esPreMezcla ? 'Fórmula + Bulto de Depósito' : 'Mix ➔ AP ➔ Simple ➔ Fracciones y Packs ➔ Listas 1..8 y Nodos'}.
+          <div style="text-align: left; font-size: 0.80rem; color: #e2e8f0;">
+            <div style="padding: 8px 12px; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+              <div>
+                <span style="color: #c084fc; font-weight: 800;">⚡ ${esPreMezcla ? 'Sincronización Atómica de Pre-Mezcla' : 'Auditoría e Impacto Atómico [LDN 3]'}</span>
+                <div style="font-size: 0.72rem; color: #cbd5e1; margin-top: 2px;">
+                  <strong>[#${mixObj.id}] ${mixObj.nombre}</strong> · ${esPreMezcla ? 'Fórmula ➔ Bulto Depósito' : 'Mix ➔ AP ➔ Simple ➔ Presentaciones y Packs ➔ Listas 1..8 y Nodos'}
+                </div>
               </div>
+              <span style="background:${auditActual.estaAlDia ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.22)'}; color:${auditActual.estaAlDia ? '#34d399' : '#fbbf24'}; border:1px solid ${auditActual.estaAlDia ? 'rgba(16,185,129,0.4)' : 'rgba(245,158,11,0.45)'}; padding:2px 8px; border-radius:12px; font-size:0.71rem; font-weight:700;">
+                ${auditActual.estaAlDia ? '🟢 Al día en BD' : `🟡 ${auditActual.totalCambios} cambio(s): ${auditActual.resumenDetalle}`}
+              </span>
             </div>
 
-            ${antesDespuesHtml}
-
-            <div style="margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
-              <div style="font-weight: 700; color: #a855f7; font-size: 0.8rem; margin-bottom: 4px;">
-                1️⃣ NIVEL 1 — FÓRMULA DE MIX (public.ingredientes)
-              </div>
-              <div style="display: flex; justify-content: space-between; font-size: 0.78rem;">
-                <span>[#${mixObj.id}] ${mixObj.nombre} (Batch ${totalKilosBatch.toFixed(1)} kg)</span>
-                <strong style="color: #34d399;">$${costoMixCalculado.toFixed(2)}/kg</strong>
-              </div>
-            </div>
-
-            <div style="margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
-              <div style="font-weight: 700; color: #38bdf8; font-size: 0.8rem; margin-bottom: 4px;">
-                2️⃣ NIVEL 2 — ${esPreMezcla ? 'BULTO PRE-MEZCLA DEPÓSITO' : 'ARTÍCULO PUENTE'} (bunker_articulos + listas)
-              </div>
-              ${apsHtml}
-            </div>
+            <div style="font-size:0.72rem; font-weight:700; color:#cbd5e1; margin-bottom:4px;">🔗 Cadena Interna (Niveles 1 a ${esPreMezcla ? '2' : '3'}):</div>
+            ${renderCadenaInternaMixLDN3(auditActual)}
 
             ${!esPreMezcla ? `
-              <div style="margin-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">
-                <div style="font-weight: 700; color: #c084fc; font-size: 0.8rem; margin-bottom: 4px;">
-                  3️⃣ NIVEL 3 — INGREDIENTE SIMPLE (public.ingredientes)
+              <div style="margin-top:8px;">
+                <div style="font-size:0.72rem; font-weight:700; color:#fbbf24; margin-bottom:4px;">
+                  4️⃣ Presentaciones Comerciales y Packs (${auditActual.fraccsDetalle.length} SKUs · preserva márgenes e IVA real):
                 </div>
-                ${simplesHtml}
-              </div>
-
-              <div>
-                <div style="font-weight: 700; color: #fbbf24; font-size: 0.8rem; margin-bottom: 6px;">
-                  4️⃣ NIVEL 4 — FRACCIONES COMERCIALES Y PACKS (${fraccs.length} artículos)
-                </div>
-                <div style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 90px; overflow-y: auto;">
-                  ${fraccsHtml}
-                </div>
+                ${renderTablaAuditoriaFraccionesLDN3(auditActual.fraccsDetalle, { compacto: false })}
               </div>
             ` : ''}
           </div>
         `;
 
         const confirmRes = await Swal.fire({
-          title: esPreMezcla ? '¿Actualizar Pre-Mezcla en BD?' : '¿Actualizar Circuito Completo?',
+          title: esPreMezcla ? '¿Impactar Pre-Mezcla en PostgreSQL?' : '¿Confirmar Impacto Atómico en PostgreSQL?',
           html: modalHtml,
-          width: '640px',
+          width: '780px',
           showCancelButton: true,
           confirmButtonText: '⚡ Confirmar e Impactar en BD',
           cancelButtonText: 'Cancelar',
@@ -11645,19 +12189,23 @@
       try {
         if (!esSilencioso) {
           Swal.fire({
-            title: 'Sincronizando Circuito Completo...',
-            text: 'Impactando Mix, Artículos Puente, Ingredientes Simples y Fracciones en PostgreSQL.',
+            title: 'Impactando Circuito Completo en PostgreSQL...',
+            text: 'Guardando Mix, AP, Simple, Presentaciones y verificando cierre real contra BD.',
             allowOutsideClick: false,
             didOpen: () => Swal.showLoading()
           });
         }
 
         // PASO 1: Guardar Fórmula del Mix en BD (NUMERIC(10,2))
-        await fetch(`/api/produccion/ingredientes/${mixId}`, {
+        const resMix = await fetch(`/api/produccion/ingredientes/${mixId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ costo_patron: costoMixCalculado })
         });
+        if (!resMix.ok) {
+          const errMix = await resMix.json().catch(() => ({}));
+          throw new Error(errMix.detalle || errMix.error || `Error al actualizar Fórmula Mix #${mixId}`);
+        }
         mixObj.costo_patron = costoMixCalculado;
         if (ingredientesSim[mixId]) ingredientesSim[mixId].costo_sim = esPreMezcla && Number(mixId) !== 109 ? costoMixRaw : costoMixCalculado;
 
@@ -11669,10 +12217,13 @@
             const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && (c.articulo_numero || '').trim().toLowerCase() === apLower);
             if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
             const margenAP = laActual ? parseFloat(laActual.margen_ganancia || 0) : 0;
-            const ivaAP = laActual ? parseFloat(laActual.iva || 21) : 21;
-            const factorIvaAp = laActual?.modo_iva === 'SIN' || laActual?.modo_iva === 'EXENTO'
+            const ivaAP = (laActual && laActual.iva !== null && laActual.iva !== undefined && !isNaN(parseFloat(laActual.iva)))
+              ? parseFloat(laActual.iva)
+              : 21;
+            const modoIvaAp = String(laActual?.modo_iva || '').toUpperCase();
+            const factorIvaAp = (modoIvaAp === 'SIN' || modoIvaAp === 'EXENTO')
               ? 1
-              : (laActual?.modo_iva === 'MEDIO' ? (1 + (ivaAP / 200)) : (1 + (ivaAP / 100)));
+              : (modoIvaAp === 'MEDIO' ? (1 + (ivaAP / 200)) : (1 + (ivaAP / 100)));
             const moListaAp = (laActual && laActual.mano_obra_activa === false) ? 0 : ap.moAp;
             const pFinalAP = parseFloat(((ap.costoApBultoRed2 * (1 + margenAP / 100) + moListaAp) * factorIvaAp).toFixed(2));
             if (laActual) {
@@ -11692,11 +12243,15 @@
             });
           });
           if (updatesAP.length > 0) {
-            await fetch('/api/produccion/simulacion/aplicar-precios', {
+            const resAp = await fetch('/api/produccion/simulacion/aplicar-precios', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ actualizaciones: updatesAP })
             });
+            if (!resAp.ok) {
+              const errAp = await resAp.json().catch(() => ({}));
+              throw new Error(errAp.detalle || errAp.error || `Error al actualizar Artículo Puente [${ap.articulo_numero}]`);
+            }
           }
           const artB = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toLowerCase() === apLower);
           if (artB) artB.costo_base = ap.costoApBultoRed2;
@@ -11704,11 +12259,15 @@
 
         // PASO 3: Guardar Ingredientes Simples en BD (NUMERIC(10,2))
         for (const sim of simples) {
-          await fetch(`/api/produccion/ingredientes/${sim.ing.id}`, {
+          const resSim = await fetch(`/api/produccion/ingredientes/${sim.ing.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ costo_patron: sim.costoObjetivo })
           });
+          if (!resSim.ok) {
+            const errSim = await resSim.json().catch(() => ({}));
+            throw new Error(errSim.detalle || errSim.error || `Error al actualizar Ingrediente Simple #${sim.ing.id}`);
+          }
           sim.ing.costo_patron = sim.costoObjetivo;
           if (ingredientesSim[sim.ing.id]) {
             ingredientesSim[sim.ing.id]._manualOverride = false;
@@ -11719,7 +12278,7 @@
         // Recalcular cascada en memoria antes de calcular precios finales de las Fracciones Comerciales
         recalcularCascada();
 
-        // PASO 4: Recalcular y actualizar todas las Fracciones Comerciales y Packs Padre (sin duplicar bolsa exterior)
+        // PASO 4: Recalcular y actualizar todas las Fracciones Comerciales y Packs Padre (sin duplicar bolsa exterior ni alterar IVA base)
         const listas = data.listasPrecios || [];
         const updatesFraccs = [];
         fraccs.sort((a, b) => (a.pack_hijo_codigo ? 1 : 0) - (b.pack_hijo_codigo ? 1 : 0));
@@ -11744,7 +12303,10 @@
             const precioCalc = parseFloat(cascada.precioFinalCalculado.toFixed(2));
             const costoKilo = parseFloat((cascada.costoBaseSinInsumosLista / (parseFloat(f.kilos_unidad) || 1)).toFixed(4));
             const mo = parseFloat(cascada.moFracc.toFixed(4));
-            const iva = parseFloat(cascada.ivaVal.toFixed(2));
+            const ivaBase = (cascada.ivaBaseLista !== undefined && !isNaN(cascada.ivaBaseLista))
+              ? cascada.ivaBaseLista
+              : ((laActual && laActual.iva !== null && laActual.iva !== undefined && !isNaN(parseFloat(laActual.iva))) ? parseFloat(laActual.iva) : 21);
+            const iva = parseFloat(ivaBase.toFixed(2));
             const dispActual = laActual && laActual.disponible !== undefined ? laActual.disponible : (laSim ? laSim.disponible : true);
 
             updatesFraccs.push({
@@ -11784,33 +12346,38 @@
             body: JSON.stringify({ actualizaciones: updatesFraccs })
           });
           if (!resFracc.ok) {
-            const err = await resFracc.json();
+            const err = await resFracc.json().catch(() => ({}));
             throw new Error(err.detalle || 'Error al aplicar precios de fracciones');
           }
         }
 
         if (!esSilencioso) {
-          recalcularCascada();
-          renderizarMixes();
-          renderizarArticulosPuente();
-          renderizarIngredientesSimples();
-          renderizarArticulosBunker();
-          if (window.articuloSeleccionadoId) renderizarGrillaMultilista();
-          actualizarBannerCambios();
+          // Verificación real post-impacto recargando el estado fresco desde PostgreSQL
+          await inicializarPizarra(true);
+          const postAudit = auditarEstadoSincronizacionMixLDN3(mixId);
+          const cierreOk = postAudit.estaAlDia;
 
           Swal.fire({
-            icon: 'success',
-            title: esPreMezcla ? '✅ Pre-Mezcla Sincronizada' : '🎉 ¡Circuito Completo Sincronizado!',
+            icon: cierreOk ? 'success' : 'warning',
+            title: cierreOk
+              ? (esPreMezcla ? '✅ Pre-Mezcla Cerrada en BD' : '🎉 ¡Circuito Completo Cerrado en BD!')
+              : 'Impacto Guardado con Diferencias Residuales',
             html: `
-              <div style="font-size: 0.85rem; text-align: left;">
-                <div>✅ <strong>Mix #${mixId} (${mixObj.nombre}):</strong> $${costoMixCalculado.toFixed(2)}/kg en BD</div>
-                <div>✅ <strong>${aps.length} ${esPreMezcla ? 'Bulto(s) Pre-Mezcla' : 'Artículo(s) Puente'}:</strong> actualizados en bunker_articulos y listas</div>
-                ${!esPreMezcla ? `<div>✅ <strong>${simples.length} Ingrediente(s) Simple(s):</strong> fijados con costo neto en BD</div>` : ''}
-                ${!esPreMezcla ? `<div>✅ <strong>${fraccs.length} Presentaciones y Packs:</strong> actualizados en ${updatesFraccs.length} listas</div>` : ''}
+              <div style="font-size: 0.82rem; text-align: left; color: #e2e8f0;">
+                <div style="margin-bottom:4px;">✅ <strong>Mix #${mixId} (${mixObj.nombre}):</strong> $${costoMixCalculado.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</div>
+                <div style="margin-bottom:4px;">✅ <strong>${aps.length} ${esPreMezcla ? 'Bulto(s) Pre-Mezcla' : 'Artículo(s) Puente'}:</strong> actualizados en Búnker y listas</div>
+                ${!esPreMezcla ? `<div style="margin-bottom:4px;">✅ <strong>${simples.length} Ingrediente(s) Simple(s):</strong> fijados con costo neto</div>` : ''}
+                ${!esPreMezcla ? `<div style="margin-bottom:8px;">✅ <strong>${fraccs.length} Presentaciones y Packs:</strong> actualizados en ${updatesFraccs.length} registros de listas</div>` : ''}
+                <div style="padding:8px 10px; border-radius:6px; background:${cierreOk ? 'rgba(16,185,129,0.14)' : 'rgba(245,158,11,0.16)'}; border:1px solid ${cierreOk ? 'rgba(16,185,129,0.4)' : 'rgba(245,158,11,0.45)'}; color:${cierreOk ? '#6ee7b7' : '#fbbf24'}; font-weight:700;">
+                  ${cierreOk
+                    ? `✅ Verificado contra PostgreSQL: 0 diferencias pendientes (${postAudit.fraccsCount} presentaciones al día).`
+                    : `⚠️ Verificación post-BD detectó ${postAudit.totalCambios} pendiente(s): ${postAudit.resumenDetalle}.`
+                  }
+                </div>
               </div>
             `,
-            confirmButtonText: 'Genial, Continuar',
-            confirmButtonColor: '#7c3aed',
+            confirmButtonText: 'Continuar',
+            confirmButtonColor: cierreOk ? '#10b981' : '#f59e0b',
             background: '#151e2e',
             color: '#f3f4f6'
           });
@@ -11951,196 +12518,52 @@
     }
     window.obtenerArticulosFraccionesMixesLDN3 = obtenerArticulosFraccionesMixesLDN3;
 
+    // MOTOR ÚNICO DE AUDITORÍA E IMPACTO LDN 3 (unificado sobre auditarEstadoSincronizacionMixLDN3 y sincronizarCascadaCompletaMixLDN3)
     function auditarEstadoFraccionesMixesLDN3() {
       const data = window.pizarraSimulacionMaster;
-      if (!data) return { total: 0, pendientes: 0, alDia: 0, todosAlDia: false, rowsData: [], upstreamMixes: [] };
+      if (!data) return { total: 0, pendientes: 0, fraccionesPendientes: 0, mixesPendientesCount: 0, alDia: 0, todosAlDia: true, rowsData: [], upstreamMixes: [] };
 
-      const articulos = obtenerArticulosFraccionesMixesLDN3();
-      const listas = data.listasPrecios || [];
-      const lista1Id = listas[0] ? listas[0].id : 1;
-
-      const targetMixIds = new Set();
+      const targetMixIds = [];
       if (typeof mixSeleccionadoId !== 'undefined' && mixSeleccionadoId) {
-        targetMixIds.add(Number(mixSeleccionadoId));
-      } else if (typeof ingredienteSimpleSeleccionadoId !== 'undefined' && ingredienteSimpleSeleccionadoId) {
-        const simObj = (data.ingredientes || []).find(i => i.id === ingredienteSimpleSeleccionadoId);
-        if (simObj && simObj.articulo_vinculado_numero) {
-          const apClean = String(simObj.articulo_vinculado_numero).trim().toLowerCase();
-          (data.recetas || []).forEach(r => {
-            if (String(r.articulo_numero || '').trim().toLowerCase() === apClean) {
-              (data.recetaIngredientes || []).forEach(ri => {
-                if (ri.receta_id === r.id && composicionMixMap.has(ri.ingrediente_id)) {
-                  targetMixIds.add(Number(ri.ingrediente_id));
-                }
-              });
-            }
-          });
-        }
-      } else if (!window.verTodosArticulosLDN3) {
-        const idsInsumos = typeof obtenerIdsInsumosDeArticuloSeleccionado === 'function' ? obtenerIdsInsumosDeArticuloSeleccionado() : [];
-        if (idsInsumos.length > 0) {
-          (data.ingredientes || []).forEach(ing => {
-            const comps = composicionMixMap.get(ing.id);
-            if (comps && comps.some(c => idsInsumos.includes(c.ingrediente_id))) {
-              targetMixIds.add(Number(ing.id));
-            }
-          });
-        }
+        targetMixIds.push(Number(mixSeleccionadoId));
+      } else {
+        (data.ingredientes || []).forEach(ing => {
+          if (!composicionMixMap.has(ing.id)) return;
+          const aud = auditarEstadoSincronizacionMixLDN3(ing.id);
+          if (!aud.enPausa && !aud.esPreMezcla) targetMixIds.push(Number(ing.id));
+        });
       }
 
-      const rowsData = articulos.map(art => {
-        const kilos = parseFloat(art.kilos_unidad) > 0 ? parseFloat(art.kilos_unidad) : 1;
-        const cascada1 = calcularCascadaArticuloLista(art.articulo_id, lista1Id);
-        if (cascada1 && cascada1.esCascadaLDN3 && cascada1.mixId) {
-          targetMixIds.add(Number(cascada1.mixId));
-        }
-
-        const costoBultoSim = cascada1 ? cascada1.costoNetoBulto : (parseFloat(art.costo_base) || 0);
-        const costoSinInsSim = cascada1 ? cascada1.costoBaseSinInsumosLista : costoBultoSim;
-        let costoSinInsBD = parseFloat(art.costo_base) || 0;
-
-        const la1 = (data.articulosListas || []).find(l => (l.articulo_numero || '').trim().toLowerCase() === art.articulo_id.trim().toLowerCase() && l.lista_id === lista1Id);
-        if (la1 && la1.costo_base_sobrescrito !== null && parseFloat(la1.costo_base_sobrescrito) > 0) {
-          const costoKiloBD = parseFloat(la1.costo_base_sobrescrito);
-          const costoBultoFromLa = costoKiloBD * kilos;
-          if (Math.abs(costoSinInsSim - costoBultoFromLa) < 0.05 || Math.abs(costoSinInsSim - costoSinInsBD) >= 0.05) {
-            costoSinInsBD = costoBultoFromLa;
-          }
-        }
-        const costoBultoBD = costoSinInsBD + (cascada1 ? (cascada1.costoInsumosPackaging || 0) : 0);
-
-        let hayDifPrecios = false;
-        const pActual1 = la1 ? parseFloat(la1.precio_final) : 0;
-        const pNuevo1 = cascada1 ? cascada1.precioFinalCalculado : 0;
-
-        listas.forEach(l => {
-          const cL = calcularCascadaArticuloLista(art.articulo_id, l.id);
-          const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && (c.articulo_numero || '').trim().toLowerCase() === art.articulo_id.trim().toLowerCase());
-          const pAct = laActual ? parseFloat(laActual.precio_final) : 0;
-          const pNue = cL ? cL.precioFinalCalculado : 0;
-          if (Math.abs(pNue - pAct) > 0.1) hayDifPrecios = true;
-        });
-
-        const diffCosto = Math.abs(costoBultoSim - costoBultoBD);
-        const estaSincronizado = diffCosto < 0.05 && costoBultoBD > 0 && !hayDifPrecios;
-
-        return {
-          art,
-          sku: art.articulo_id,
-          nombre: art.descripcion_generada || art.descripcion || art.articulo_id,
-          kilos,
-          costoBultoBD,
-          costoBultoSim,
-          diffCosto,
-          pActual1,
-          pNuevo1,
-          diffPrecio1: pNuevo1 - pActual1,
-          estaSincronizado
-        };
-      });
-
-      // Auditar Niveles 1 (Fórmula Mix), 2 (Artículo Puente) y 3 (Ingrediente Simple) de los mixes involucrados
+      const rowsData = [];
       const upstreamMixes = [];
       targetMixIds.forEach(mId => {
-        const mixObj = (data.ingredientes || []).find(i => i.id === mId);
-        if (!mixObj) return;
-        const comps = composicionMixMap.get(mId) || [];
-        let cBatch = 0, kBatch = 0;
-        comps.forEach(c => {
-          const cIng = ingredientesSim[c.ingrediente_id];
-          const cObj = (data.ingredientes || []).find(i => i.id === c.ingrediente_id);
-          const cUnit = cIng ? cIng.costo_sim : (cObj ? parseFloat(cObj.costo_patron) || 0 : 0);
-          const cant = parseFloat(c.cantidad) || 0;
-          cBatch += cant * cUnit;
-          kBatch += cant;
-        });
-        const costoMixBD = parseFloat(mixObj.costo_patron) || 0;
-        const costoMixSim = kBatch > 0 ? (cBatch / kBatch) : (ingredientesSim[mId] ? ingredientesSim[mId].costo_sim : costoMixBD);
-        const mixPendiente = Math.abs(costoMixSim - costoMixBD) >= 0.01;
-
-        const aps = [];
-        (data.recetas || []).forEach(r => {
-          const matchRi = (data.recetaIngredientes || []).filter(ri => ri.receta_id === r.id && ri.ingrediente_id === mId);
-          if (matchRi.length > 0) {
-            const apCodeClean = String(r.articulo_numero || '').trim().toLowerCase();
-            const apArt = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toLowerCase() === apCodeClean);
-            const kilosAP = parseFloat(apArt?.kilos_unidad) > 0 ? parseFloat(apArt.kilos_unidad) : 1;
-            const laAP = (data.articulosListas || []).find(la => (la.articulo_numero || '').trim().toLowerCase() === apCodeClean && (la.es_patron || la.lista_id === 1));
-            const moAp = (laAP && laAP.mano_obra_activa !== false) ? (parseFloat(laAP.costo_tiempo) || 0) : 0;
-
-            // Calcular costo de receta del AP por kilo (Mix + otros insumos de receta como Bolsa, dividido por kilosAP)
-            let costoRecetaAPBulto = 0;
-            (data.recetaIngredientes || []).filter(ri => ri.receta_id === r.id).forEach(ri => {
-              const cantRi = parseFloat(ri.cantidad) || 0;
-              if (ri.ingrediente_id === mId) {
-                costoRecetaAPBulto += cantRi * costoMixSim;
-              } else {
-                const oSim = ingredientesSim[ri.ingrediente_id];
-                const oObj = (data.ingredientes || []).find(i => i.id === ri.ingrediente_id);
-                const oUnit = oSim ? oSim.costo_sim : (oObj ? parseFloat(oObj.costo_patron) || 0 : 0);
-                costoRecetaAPBulto += cantRi * oUnit;
-              }
-            });
-            const costoApKiloBaseSim = costoRecetaAPBulto > 0 ? (costoRecetaAPBulto / kilosAP) : costoMixSim;
-            const moApKilo = kilosAP > 0 ? (moAp / kilosAP) : moAp;
-            const costoNetoAP = costoApKiloBaseSim + moApKilo;
-
-            const costoApBaseBD = (laAP && laAP.costo_base_sobrescrito !== null && parseFloat(laAP.costo_base_sobrescrito) > 0)
-              ? parseFloat(laAP.costo_base_sobrescrito)
-              : ((parseFloat(apArt?.costo_base) || 0) / kilosAP);
-            const apPendiente = Math.abs(costoApKiloBaseSim - costoApBaseBD) >= 0.05;
-            aps.push({
-              articulo_numero: r.articulo_numero,
-              descripcion: apArt?.descripcion_generada || apArt?.descripcion || r.descripcion,
-              kilosAP,
-              moAp,
-              costoApKiloBaseSim,
-              costoApBaseBD,
-              costoNetoAP,
-              apPendiente
-            });
-          }
-        });
-
-        const apCodigosLower = new Set(aps.map(a => a.articulo_numero.trim().toLowerCase()));
-        const simples = [];
-        (data.ingredientes || []).forEach(ing => {
-          if (composicionMixMap.has(ing.id)) return;
-          const vinc = String(ing.articulo_vinculado_numero || '').trim().toLowerCase();
-          let isLinked = apCodigosLower.has(vinc);
-          let linkedApCode = vinc;
-          if (!isLinked && Array.isArray(ing.articulos_vinculados)) {
-            const matchV = ing.articulos_vinculados.find(v => apCodigosLower.has(String(v.codigo || v.bunker_articulo_id || '').trim().toLowerCase()));
-            if (matchV) {
-              isLinked = true;
-              linkedApCode = String(matchV.codigo || matchV.bunker_articulo_id).trim().toLowerCase();
-            }
-          }
-          if (isLinked) {
-            const apMatch = aps.find(a => a.articulo_numero.trim().toLowerCase() === linkedApCode);
-            const costoObjetivo = apMatch ? apMatch.costoNetoAP : costoMixSim;
-            const costoSimpleBD = parseFloat(ing.costo_patron) || 0;
-            const simplePendiente = Math.abs(costoObjetivo - costoSimpleBD) >= 0.05;
-            simples.push({
-              ing,
-              costoSimpleBD,
-              costoObjetivo,
-              apCodigo: apMatch ? apMatch.articulo_numero : vinc,
-              simplePendiente
-            });
-          }
-        });
-
-        const tieneEslabonPendiente = mixPendiente || aps.some(a => a.apPendiente) || simples.some(s => s.simplePendiente);
+        const aud = auditarEstadoSincronizacionMixLDN3(mId);
+        if (!aud || aud.enPausa) return;
+        const mixObj = (data.ingredientes || []).find(i => Number(i.id) === mId);
         upstreamMixes.push({
           mixId: mId,
           mixObj,
-          costoMixBD,
-          costoMixSim,
-          mixPendiente,
-          aps,
-          simples,
-          tieneEslabonPendiente
+          costoMixBD: aud.costoMixBd,
+          costoMixSim: aud.costoMixSim,
+          mixPendiente: aud.mixPendiente,
+          aps: aud.aps,
+          simples: aud.simples,
+          tieneEslabonPendiente: aud.mixPendiente || aud.aps.some(a => a.apPendiente) || aud.simples.some(s => s.simplePendiente)
+        });
+        (aud.fraccsDetalle || []).forEach(f => {
+          rowsData.push({
+            art: f.art,
+            sku: f.sku,
+            nombre: f.nombre,
+            kilos: f.kilos,
+            costoBultoBD: f.costoBd,
+            costoBultoSim: f.costoSim,
+            diffCosto: Math.abs(f.diffCosto),
+            pActual1: f.pL1Bd,
+            pNuevo1: f.pL1Sim,
+            diffPrecio1: f.diffL1,
+            estaSincronizado: f.estaAlDia
+          });
         });
       });
 
@@ -12164,357 +12587,10 @@
     window.auditarEstadoFraccionesMixesLDN3 = auditarEstadoFraccionesMixesLDN3;
 
     async function actualizarTodasFraccionesDeMixesLDN3() {
-      const data = window.pizarraSimulacionMaster;
-      if (!data) return;
-
-      const estado = auditarEstadoFraccionesMixesLDN3();
-      if (estado.total === 0 && (!estado.upstreamMixes || estado.upstreamMixes.length === 0)) {
-        Swal.fire({
-          icon: 'info',
-          title: 'Sin Fracciones Comerciales',
-          text: 'No se detectaron fracciones comerciales de mixes para impactar.',
-          background: '#151e2e',
-          color: '#f3f4f6'
-        });
-        return;
+      if (typeof mixSeleccionadoId !== 'undefined' && mixSeleccionadoId) {
+        return sincronizarCascadaCompletaMixLDN3(mixSeleccionadoId);
       }
-
-      const { rowsData, todosAlDia, pendientes, upstreamMixes = [] } = estado;
-
-      const upstreamSectionHtml = upstreamMixes.length > 0
-        ? `
-          <div style="margin-bottom: 12px; padding: 8px 10px; background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px;">
-            <div style="font-size: 0.75rem; font-weight: 700; color: #e9d5ff; margin-bottom: 6px;">
-              🔗 Eslabones de Producción Interna Asociados (Niveles 1° Mix ➔ 2° Art. Puente ➔ 3° Ing. Simple):
-            </div>
-            ${upstreamMixes.map(m => {
-              const apStr = m.aps.length > 0
-                ? m.aps.map(a => `[${a.articulo_numero}] (+MO $${a.moAp.toFixed(0)} = $${a.costoNetoAP.toLocaleString('es-AR', {minimumFractionDigits: 2})})`).join(', ')
-                : 'Sin AP';
-              const simStr = m.simples.length > 0
-                ? m.simples.map(s => `[#${s.ing.id}] $${s.costoObjetivo.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg`).join(', ')
-                : 'Sin Simple';
-              return `
-                <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 5px 6px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 0.72rem;">
-                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1;">
-                    <input type="checkbox" class="audit-check-upstream-mix" data-mix-id="${m.mixId}" checked style="cursor: pointer; width: 14px; height: 14px;">
-                    <div>
-                      <strong style="color: #c084fc;">1° 🧪 ${m.mixObj.nombre}:</strong>
-                      <span style="color: #94a3b8; text-decoration: ${m.mixPendiente ? 'line-through' : 'none'};">$${m.costoMixBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
-                      ➔ <strong style="color: #34d399;">$${m.costoMixSim.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
-                      <div style="font-size: 0.66rem; color: #94a3b8; margin-top: 1px;">
-                        2° 🌉 AP: <span style="color: #38bdf8;">${apStr}</span> &nbsp;|&nbsp; 3° 🧱 Simple: <span style="color: #e9d5ff;">${simStr}</span>
-                      </div>
-                    </div>
-                  </label>
-                  <div>
-                    ${m.tieneEslabonPendiente
-                      ? '<span style="background: rgba(245,158,11,0.2); color:#fbbf24; padding: 2px 5px; border-radius: 3px; font-size: 0.64rem; font-weight: 700;">🟡 BD Pendiente</span>'
-                      : '<span style="background: rgba(16,185,129,0.2); color:#34d399; padding: 2px 5px; border-radius: 3px; font-size: 0.64rem; font-weight: 700;">🟢 Al día</span>'
-                    }
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        `
-        : '';
-
-      const tableRowsHtml = rowsData.map(row => `
-        <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.74rem;">
-          <td style="padding: 6px 4px; text-align: center;">
-            <input type="checkbox" class="audit-check-mix-sku" data-sku="${row.sku}" ${!todosAlDia && row.estaSincronizado ? '' : 'checked'} style="cursor: pointer; width: 15px; height: 15px;">
-          </td>
-          <td style="padding: 6px 6px; font-weight: 700; color: #c084fc;">
-            ${row.sku}
-            <div style="font-size: 0.66rem; color: #94a3b8; font-weight: normal;">${row.nombre}</div>
-          </td>
-          <td style="padding: 6px 4px; text-align: right; color: #94a3b8;">$${row.costoBultoBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-          <td style="padding: 6px 4px; text-align: right; font-weight: 700; color: #34d399;">$${row.costoBultoSim.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-          <td style="padding: 6px 4px; text-align: right; color: #fbbf24;">$${row.pNuevo1.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-          <td style="padding: 6px 4px; text-align: right; font-weight: 700; color: ${Math.abs(row.diffPrecio1) < 0.1 ? '#34d399' : (row.diffPrecio1 >= 0 ? '#f87171' : '#34d399')};">
-            ${Math.abs(row.diffPrecio1) < 0.1 ? '🟢 Al día' : ((row.diffPrecio1 >= 0 ? '+' : '') + '$' + row.diffPrecio1.toLocaleString('es-AR', {minimumFractionDigits: 2}))}
-          </td>
-          <td style="padding: 6px 4px; text-align: center;">
-            ${row.estaSincronizado 
-              ? `<span style="background: rgba(16,185,129,0.2); color:#34d399; padding: 2px 5px; border-radius: 3px; font-size: 0.65rem; font-weight: 700;">🟢 Al día</span>` 
-              : `<span style="background: rgba(245,158,11,0.2); color:#fbbf24; padding: 2px 5px; border-radius: 3px; font-size: 0.65rem; font-weight: 700;">🟡 Pendiente</span>`
-            }
-          </td>
-        </tr>
-      `).join('');
-
-      const bannerHtml = todosAlDia
-        ? `
-          <div style="padding: 8px 12px; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px; font-size: 0.74rem; color: #6ee7b7; margin-bottom: 10px;">
-            🟢 <strong>Cadena de Mixes 100% Sincronizada:</strong> Tanto las recetas de mix, sus artículos puente, ingredientes simples y las <strong>${rowsData.length}</strong> fracciones comerciales coinciden con la base de datos oficial.
-          </div>
-        `
-        : `
-          <div style="padding: 8px 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 6px; font-size: 0.74rem; color: #fbbf24; margin-bottom: 10px;">
-            ⚠️ <strong>Variaciones Detectadas:</strong> Al impactar, se guardarán en PostgreSQL tanto los eslabones previos (<strong>1° Mix ➔ 2° Art. Puente ➔ 3° Ing. Simple</strong>) como las <strong>4° Fracciones Comerciales</strong> seleccionadas.
-          </div>
-        `;
-
-      const modalHtml = `
-        <div style="text-align: left; font-size: 0.82rem; color: #e2e8f0; max-height: 65vh; overflow-y: auto;">
-          ${bannerHtml}
-          ${upstreamSectionHtml}
-
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.75rem;">
-            <span style="font-weight: 700; color: #e2e8f0;">4° 📦 Fracciones Comerciales Auditadas (${rowsData.length}):</span>
-            <div>
-              <button type="button" onclick="document.querySelectorAll('.audit-check-mix-sku').forEach(c => c.checked = true)" style="background: none; border: none; color: #38bdf8; cursor: pointer; text-decoration: underline; font-size: 0.72rem; margin-right: 8px;">Marcar Todos</button>
-              <button type="button" onclick="document.querySelectorAll('.audit-check-mix-sku').forEach(c => c.checked = false)" style="background: none; border: none; color: #94a3b8; cursor: pointer; text-decoration: underline; font-size: 0.72rem;">Desmarcar Todos</button>
-            </div>
-          </div>
-
-          <table style="width: 100%; border-collapse: collapse; text-align: left; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(0,0,0,0.25);">
-            <thead style="position: sticky; top: 0; background: #1e293b; color: #94a3b8; font-size: 0.70rem; border-bottom: 1px solid rgba(255,255,255,0.15);">
-              <tr>
-                <th style="padding: 6px 4px; text-align: center; width: 30px;">✓</th>
-                <th style="padding: 6px 6px;">SKU / Presentación</th>
-                <th style="padding: 6px 4px; text-align: right;">Costo BD</th>
-                <th style="padding: 6px 4px; text-align: right;">Costo Sim</th>
-                <th style="padding: 6px 4px; text-align: right;">P. Vta L1</th>
-                <th style="padding: 6px 4px; text-align: right;">Dif L1</th>
-                <th style="padding: 6px 4px; text-align: center;">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tableRowsHtml}
-            </tbody>
-          </table>
-        </div>
-      `;
-
-      const confirmResult = await Swal.fire({
-        title: todosAlDia ? 'Auditoría: Cadena de Mixes al Día' : `⚡ Auditoría de Impacto Mixes (${pendientes} pendientes)`,
-        html: modalHtml,
-        width: '740px',
-        background: '#151e2e',
-        color: '#f3f4f6',
-        showCancelButton: true,
-        confirmButtonColor: todosAlDia ? '#10b981' : '#7c3aed',
-        cancelButtonColor: todosAlDia ? '#475569' : '#64748b',
-        confirmButtonText: todosAlDia ? '✓ Cerrar (Ya al Día)' : '⚡ Impactar Cadena y Fracciones en BD',
-        cancelButtonText: todosAlDia ? '⚡ Forzar Re-Impacto en BD' : 'Cancelar'
-      });
-
-      if (todosAlDia) {
-        if (confirmResult.isConfirmed) return;
-        if (confirmResult.dismiss !== Swal.DismissReason.cancel) return;
-      } else {
-        if (!confirmResult.isConfirmed) return;
-      }
-
-      const checkedInputs = document.querySelectorAll('.audit-check-mix-sku:checked');
-      const selectedSkus = Array.from(checkedInputs).map(i => i.getAttribute('data-sku'));
-      const checkedMixInputs = document.querySelectorAll('.audit-check-upstream-mix:checked');
-      const selectedMixIds = new Set(Array.from(checkedMixInputs).map(i => Number(i.getAttribute('data-mix-id'))));
-
-      if (selectedSkus.length === 0 && selectedMixIds.size === 0) {
-        Swal.fire({
-          icon: 'warning',
-          title: 'Sin Elementos Seleccionados',
-          text: 'No seleccionaste ningún mix ni fracción para impactar.',
-          background: '#151e2e',
-          color: '#f3f4f6'
-        });
-        return;
-      }
-
-      const container = document.querySelector('.dashboard-container');
-      const savedScrollTop = container ? container.scrollTop : (window.scrollY || 0);
-
-      try {
-        Swal.fire({
-          title: `Impactando Cadena y Fracciones en BD...`,
-          text: 'Sincronizando Fórmula de Mix, Artículo Puente, Ingrediente Simple y Fracciones Comerciales.',
-          allowOutsideClick: false,
-          didOpen: () => Swal.showLoading()
-        });
-
-        const listas = data.listasPrecios || [];
-        const actualizaciones = [];
-        let mixesActualizadosCount = 0;
-
-        // PASO A: Persistir Niveles 1 (Fórmula Mix), 2 (Artículo Puente) y 3 (Ingrediente Simple) de los Mixes tildados
-        for (const m of upstreamMixes) {
-          if (!selectedMixIds.has(m.mixId)) continue;
-          mixesActualizadosCount++;
-
-          // 1° Nivel: Fórmula del Mix en public.ingredientes
-          await fetch(`/api/produccion/ingredientes/${m.mixId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ costo_patron: parseFloat(m.costoMixSim.toFixed(4)) })
-          });
-          m.mixObj.costo_patron = parseFloat(m.costoMixSim.toFixed(4));
-          if (ingredientesSim[m.mixId]) ingredientesSim[m.mixId].costo_sim = m.costoMixSim;
-
-          // 2° Nivel: Artículos Puente en bunker_articulos y articulos_listas
-          for (const ap of m.aps) {
-            const apLower = ap.articulo_numero.trim().toLowerCase();
-            const cKiloBase = ap.costoApKiloBaseSim !== undefined ? ap.costoApKiloBaseSim : m.costoMixSim;
-            const kAP = ap.kilosAP || 1;
-            listas.forEach(l => {
-              const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && (c.articulo_numero || '').trim().toLowerCase() === apLower);
-              const margenAP = laActual ? parseFloat(laActual.margen_ganancia || 0) : 0;
-              const ivaAP = laActual ? parseFloat(laActual.iva || 21) : 21;
-              const pFinalAP = parseFloat((((cKiloBase * kAP) * (1 + margenAP / 100) + ap.moAp) * (1 + ivaAP / 100)).toFixed(2));
-              actualizaciones.push({
-                lista_id: l.id,
-                articulo_numero: ap.articulo_numero,
-                margen_ganancia: margenAP,
-                costo_base_sobrescrito: parseFloat(cKiloBase.toFixed(4)),
-                costo_tiempo: parseFloat(ap.moAp.toFixed(4)),
-                iva: ivaAP,
-                precio_final: pFinalAP,
-                disponible: laActual ? laActual.disponible !== false : false
-              });
-              if (laActual) {
-                laActual.costo_base_sobrescrito = parseFloat(cKiloBase.toFixed(4));
-                laActual.costo_tiempo = parseFloat(ap.moAp.toFixed(4));
-                laActual.precio_final = pFinalAP;
-              }
-              const keySimAP = `${l.id}_${ap.articulo_numero}`;
-              if (listasArticulosSim[keySimAP]) {
-                listasArticulosSim[keySimAP].costo_base_simulado = cKiloBase * kAP;
-                listasArticulosSim[keySimAP].precio_simulado = pFinalAP;
-                listasArticulosSim[keySimAP].precio_inicial_simulado = pFinalAP;
-              }
-            });
-            const artB = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toLowerCase() === apLower);
-            if (artB) artB.costo_base = parseFloat((cKiloBase * kAP).toFixed(4));
-          }
-
-          // 3° Nivel: Ingredientes Simples en public.ingredientes
-          for (const sim of m.simples) {
-            await fetch(`/api/produccion/ingredientes/${sim.ing.id}`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ costo_patron: parseFloat(sim.costoObjetivo.toFixed(4)) })
-            });
-            sim.ing.costo_patron = parseFloat(sim.costoObjetivo.toFixed(4));
-            if (ingredientesSim[sim.ing.id]) ingredientesSim[sim.ing.id].costo_sim = sim.costoObjetivo;
-          }
-        }
-
-        // Recalcular cascada en memoria tras PASO A para que PASO B lea los costos actualizados de Mixes y Simples
-        recalcularCascada();
-
-        // PASO B: Persistir Nivel 4 (Fracciones Comerciales seleccionadas, ordenando hijos antes que packs padres)
-        selectedSkus.sort((skuA, skuB) => {
-          const artA = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toLowerCase() === skuA.trim().toLowerCase());
-          const artB = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toLowerCase() === skuB.trim().toLowerCase());
-          return (artA?.pack_hijo_codigo ? 1 : 0) - (artB?.pack_hijo_codigo ? 1 : 0);
-        });
-        selectedSkus.forEach(sku => {
-          const art = (data.articulosBunker || []).find(a => (a.articulo_id || '').trim().toLowerCase() === sku.trim().toLowerCase());
-          if (!art) return;
-          const kilos = parseFloat(art.kilos_unidad) > 0 ? parseFloat(art.kilos_unidad) : 1;
-          const cascada1 = calcularCascadaArticuloLista(sku, (listas[0] ? listas[0].id : 1));
-          if (cascada1) {
-            art.costo_base = cascada1.costoBaseSinInsumosLista;
-          }
-
-          listas.forEach(l => {
-            const key = `${l.id}_${sku}`;
-            const laSim = listasArticulosSim[key];
-            const laActual = (data.articulosListas || []).find(c => c.lista_id === l.id && (c.articulo_numero || '').trim().toLowerCase() === sku.trim().toLowerCase());
-            if (String(l?.canal_comercial || '').toUpperCase() === 'NODOS' && (!laActual || laActual.disponible === false)) return;
-
-            const cascada = calcularCascadaArticuloLista(sku, l.id);
-            if (!cascada) return;
-
-            const margen = (laSim && laSim.margen_simulado !== undefined)
-              ? parseFloat(laSim.margen_simulado.toFixed(4))
-              : (laActual && laActual.margen_ganancia !== undefined ? parseFloat(parseFloat(laActual.margen_ganancia).toFixed(4)) : (cascada ? parseFloat(cascada.margen.toFixed(4)) : 0));
-
-            const precioCalc = parseFloat(cascada.precioFinalCalculado.toFixed(2));
-            const costoKilo = parseFloat((cascada.costoBaseSinInsumosLista / kilos).toFixed(4));
-            const mo = parseFloat(cascada.moFracc.toFixed(4));
-            const iva = parseFloat(cascada.ivaVal.toFixed(2));
-            const dispActual = laActual && laActual.disponible !== undefined ? laActual.disponible : (laSim ? laSim.disponible : true);
-
-            actualizaciones.push({
-              lista_id: l.id,
-              articulo_numero: sku,
-              margen_ganancia: margen,
-              costo_base_sobrescrito: costoKilo,
-              costo_tiempo: mo,
-              iva: iva,
-              precio_final: precioCalc,
-              disponible: dispActual,
-              modo_calculo: null,
-              modo_iva: null
-            });
-
-            if (laSim) {
-              laSim.costo_base_simulado = cascada.costoNetoBulto;
-              laSim.costo_base_sin_insumos_simulado = cascada.costoBaseSinInsumosLista;
-              laSim.precio_simulado = precioCalc;
-              laSim.precio_inicial_simulado = precioCalc;
-              laSim.margen_simulado = margen;
-              laSim.margen_inicial_simulado = margen;
-            }
-            if (laActual) {
-              laActual.precio_final = precioCalc;
-              laActual.margen_ganancia = margen;
-              laActual.costo_base_sobrescrito = costoKilo;
-              laActual.costo_tiempo = mo;
-            }
-          });
-        });
-
-        if (actualizaciones.length > 0) {
-          const res = await fetch('/api/produccion/simulacion/aplicar-precios', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ actualizaciones })
-          });
-          if (!res.ok) {
-            const errData = await res.json();
-            throw new Error(errData.detalle || 'Error al aplicar actualización de precios en BD.');
-          }
-        }
-
-        recalcularCascada();
-        actualizarBannerCambios();
-        if (typeof actualizarBadgesTimonLDN3 === 'function') actualizarBadgesTimonLDN3();
-        renderizarMixes();
-        renderizarArticulosPuente();
-        renderizarIngredientesSimples();
-        renderizarArticulosBunker();
-        if (articuloSeleccionadoId) {
-          renderizarGrillaMultilista();
-        }
-
-        requestAnimationFrame(() => {
-          if (container) container.scrollTop = savedScrollTop;
-        });
-
-        Swal.fire({
-          icon: 'success',
-          title: '¡Cadena de Mixes y Fracciones Actualizada!',
-          html: `Se sincronizaron en PostgreSQL <strong>${mixesActualizadosCount} fórmula(s) de mix (con su Artículo Puente e Ingrediente Simple)</strong> y <strong>${selectedSkus.length} fracciones comerciales</strong> preservando los márgenes de venta.`,
-          timer: 2800,
-          showConfirmButton: true,
-          confirmButtonColor: '#7c3aed',
-          background: '#151e2e',
-          color: '#f3f4f6'
-        });
-
-      } catch (err) {
-        Swal.fire({
-          icon: 'error',
-          title: 'Error al Actualizar Fracciones',
-          text: err.message,
-          background: '#151e2e',
-          color: '#f3f4f6'
-        });
-      }
+      return sincronizarTodosLosMixesDesactualizadosLDN3();
     }
     window.actualizarTodasFraccionesDeMixesLDN3 = actualizarTodasFraccionesDeMixesLDN3;
 
@@ -12858,7 +12934,10 @@
               ? parseFloat(costoBaseApPersistido.toFixed(4))
               : parseFloat((cascada.costoBaseSinInsumosLista / kilosArt).toFixed(4));
             const mo = parseFloat(cascada.moFracc.toFixed(4));
-            const iva = parseFloat(cascada.ivaVal.toFixed(2));
+            const ivaBase = (cascada.ivaBaseLista !== undefined && !isNaN(cascada.ivaBaseLista))
+              ? cascada.ivaBaseLista
+              : ((laActual && laActual.iva !== null && laActual.iva !== undefined && !isNaN(parseFloat(laActual.iva))) ? parseFloat(laActual.iva) : 21);
+            const iva = parseFloat(ivaBase.toFixed(2));
 
             const dispActual = laActual && laActual.disponible !== undefined ? laActual.disponible : (laSim ? laSim.disponible : true);
 
@@ -13314,7 +13393,10 @@
             const precioCalc = parseFloat(cascada.precioFinalCalculado.toFixed(2));
             const costoKilo = parseFloat((cascada.costoBaseSinInsumosLista / kItem).toFixed(4));
             const moVal = parseFloat(cascada.moFracc.toFixed(4));
-            const iva = parseFloat(cascada.ivaVal.toFixed(2));
+            const ivaBase = (cascada.ivaBaseLista !== undefined && !isNaN(cascada.ivaBaseLista))
+              ? cascada.ivaBaseLista
+              : ((laActual && laActual.iva !== null && laActual.iva !== undefined && !isNaN(parseFloat(laActual.iva))) ? parseFloat(laActual.iva) : 21);
+            const iva = parseFloat(ivaBase.toFixed(2));
 
             const dispActual = laActual && laActual.disponible !== undefined ? laActual.disponible : (laSim ? laSim.disponible : true);
 
@@ -13724,7 +13806,10 @@
             const precioCalc = parseFloat(cascada.precioFinalCalculado.toFixed(2));
             const costoKilo = parseFloat((cascada.costoBaseSinInsumosLista / (parseFloat(f.kilos_unidad) || 1)).toFixed(4));
             const mo = parseFloat(cascada.moFracc.toFixed(4));
-            const iva = parseFloat(cascada.ivaVal.toFixed(2));
+            const ivaBase = (cascada.ivaBaseLista !== undefined && !isNaN(cascada.ivaBaseLista))
+              ? cascada.ivaBaseLista
+              : ((laActual && laActual.iva !== null && laActual.iva !== undefined && !isNaN(parseFloat(laActual.iva))) ? parseFloat(laActual.iva) : 21);
+            const iva = parseFloat(ivaBase.toFixed(2));
 
             const dispActual = laActual && laActual.disponible !== undefined ? laActual.disponible : (laSim ? laSim.disponible : true);
 

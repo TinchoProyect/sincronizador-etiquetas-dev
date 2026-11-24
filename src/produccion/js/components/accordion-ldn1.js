@@ -1596,24 +1596,39 @@ function renderizarArticulosBunkerLDN1() {
             let costoKiloBaseSobrescrito = 0;
             let empaqueDesgloseHtml = '';
             let insListaAplicado = 0;
+            const tieneEmpaqueEnReceta = insumosEmpaqueReceta.length > 0;
 
             if (esPack && art.pack_hijo_codigo) {
                 const hijoObj = todos.find(a => (a.articulo_id || '').toLowerCase() === (art.pack_hijo_codigo || '').toLowerCase());
                 const kilosHijo = parseFloat(hijoObj?.kilos_unidad) || 1;
                 const packUnidades = parseInt(art.pack_unidades) || 10;
-                
-                // 1. Insumos propios del pack en bunker_lista_insumos (ej: Bolsa 30x40 para el pack)
+
+                // 1. Insumos propios del pack en bunker_lista_insumos (ej: Bolsa 30x40 exterior para el pack)
                 const costoInsumosPackPropio = costoInsumosListaPropia;
                 const nombresInsumosPack = nombresInsumosListaPropia;
                 insListaAplicado = costoInsumosPackPropio;
 
-                // 2. Mano de obra de fraccionar las unidades hijas
+                // 2. Mano de obra e insumos de lista del hijo (sin duplicar si el hijo ya tiene bolsa en receta)
                 const laHijos = (master.articulosListas || []).filter(l => (l.articulo_numero || '').trim().toLowerCase() === (art.pack_hijo_codigo || '').trim().toLowerCase());
                 const laHijo = (laArt ? laHijos.find(l => l.lista_id === laArt.lista_id) : null) || laHijos.find(l => l.es_patron) || laHijos[0];
                 const moHijo = (laHijo && laHijo.mano_obra_activa !== false) ? (parseFloat(laHijo.costo_tiempo) || 0) : 0;
+                let insListaHijo = 0;
+                if (!tieneEmpaqueEnReceta && laHijo) {
+                    insListaHijo = (master.insumosListas || [])
+                        .filter(ins => ins.lista_articulo_id === laHijo.id && (ins.incluido === true || ins.incluido === 'true'))
+                        .reduce((sum, ins) => sum + (parseFloat(ins.cantidad || 0) * parseFloat(ins.costo_unitario_capturado || ins.costo_unitario_en_vivo || 0)), 0);
+                }
 
-                // 3. Costo del hijo (Materia prima + insumo receta del hijo + mano de obra del hijo)
-                const costoBultoHijo = (costoKiloMatPrima * kilosHijo) + costoInsumosRecetaVal + moHijo;
+                // 3. Costo del hijo usando estrictamente ri.cantidad de la receta (unificado con Modal y Backend)
+                const costoMatPrimaHijo = rIngsAlimentos.length > 0
+                    ? rIngsAlimentos.reduce((sum, ri) => {
+                        const iObj = ingredientesList.find(i => i.id === ri.ingrediente_id);
+                        const cKg = iObj ? window.obtenerContextoCostoIngrediente(iObj.id).costoVivoSim : costoKiloMatPrima;
+                        return sum + ((parseFloat(ri.cantidad) || 0) * cKg);
+                    }, 0)
+                    : (tieneEmpaqueEnReceta ? 0 : (costoKiloMatPrima * kilosHijo));
+
+                const costoBultoHijo = costoMatPrimaHijo + costoInsumosRecetaVal + insListaHijo + moHijo;
                 costoBaseTotalBulto = (costoBultoHijo * packUnidades) + costoInsumosPackPropio;
                 costoKiloBaseSobrescrito = costoBaseTotalBulto / (kilosUnidad || 1);
 
@@ -1642,14 +1657,23 @@ function renderizarArticulosBunkerLDN1() {
                     `;
                 }
             } else {
-                const costoMatPrimaBulto = costoKiloMatPrima * (kilosUnidad || 1);
-                insListaAplicado = costoInsumosRecetaVal === 0 ? costoInsumosListaPropia : 0;
+                // Fórmula unificada con Modal y Backend: usar estrictamente ri.cantidad de la receta (nunca kilosUnidad cuando existe receta)
+                const cantRecetaAlim = rIngsAlimentos.reduce((sum, ri) => sum + (parseFloat(ri.cantidad) || 0), 0);
+                const costoMatPrimaBulto = rIngsAlimentos.length > 0
+                    ? rIngsAlimentos.reduce((sum, ri) => {
+                        const iObj = ingredientesList.find(i => i.id === ri.ingrediente_id);
+                        const cKg = iObj ? window.obtenerContextoCostoIngrediente(iObj.id).costoVivoSim : costoKiloMatPrima;
+                        return sum + ((parseFloat(ri.cantidad) || 0) * cKg);
+                    }, 0)
+                    : (tieneEmpaqueEnReceta ? 0 : (costoKiloMatPrima * (kilosUnidad || 1)));
+                const kilosMostrarMp = rIngsAlimentos.length > 0 ? cantRecetaAlim : (kilosUnidad || 1);
+                insListaAplicado = !tieneEmpaqueEnReceta ? costoInsumosListaPropia : 0;
                 costoBaseTotalBulto = costoMatPrimaBulto + costoInsumosRecetaVal + insListaAplicado;
                 costoKiloBaseSobrescrito = costoBaseTotalBulto / (kilosUnidad || 1);
 
                 empaqueDesgloseHtml = `
-                    <div style="font-size: 0.68rem; color: #cbd5e1; margin-top: 3px; display: flex; justify-content: space-between; align-items: center;" title="Materia prima: ${kilosUnidad.toFixed(2)} kg × $${costoKiloMatPrima.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg">
-                        <span>🌱 Mat. Prima (${kilosUnidad.toFixed(2)}kg):</span>
+                    <div style="font-size: 0.68rem; color: #cbd5e1; margin-top: 3px; display: flex; justify-content: space-between; align-items: center;" title="Materia prima por receta: ${kilosMostrarMp.toFixed(2)} kg × $${costoKiloMatPrima.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg">
+                        <span>🌱 Mat. Prima (${kilosMostrarMp.toFixed(2)}kg):</span>
                         <strong>$${costoMatPrimaBulto.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
                     </div>
                 `;
@@ -1664,6 +1688,19 @@ function renderizarArticulosBunkerLDN1() {
                     `;
                 }
             }
+
+            const diagnosticosCard = (typeof window.diagnosticarAnomaliasArticuloLDN2 === 'function')
+                ? window.diagnosticarAnomaliasArticuloLDN2(art, {
+                    esPack,
+                    tieneRecetaPropia,
+                    recetaItems: ingredientesDeReceta,
+                    costoInsumosListaPropia,
+                    laArts
+                })
+                : [];
+            const badgesDiagnosticoHtml = (typeof window.renderBadgesDiagnosticoLDN2 === 'function')
+                ? window.renderBadgesDiagnosticoLDN2(diagnosticosCard)
+                : '';
 
             // SEMÁFORO DE CERTEZA VISUAL: Base de Datos vs Simulación en Memoria
             // Nota: costo_base y costo_base_sobrescrito en PostgreSQL NO incrustan bunker_lista_insumos propios (ej: Bolsa 30x40 de ATyS10x150),
@@ -1767,6 +1804,7 @@ function renderizarArticulosBunkerLDN1() {
                 </div>
                 ${empaqueDesgloseHtml}
                 ${infoCostoBaseHtml}
+                ${badgesDiagnosticoHtml}
                 ${badgeOfrecidoHtml}
                 ${semaforoHtml}
                 ${btnQuirurgicoHtml}
@@ -2457,6 +2495,138 @@ window.abrirEdicionManualCostoIva = async function(articuloId) {
     }
 };
 
+// Diagnóstico transparente de anomalías estructurales o fiscales en LDN 2 (no adivina, señala para corregir con dato real)
+window.diagnosticarAnomaliasArticuloLDN2 = function(art, opts = {}) {
+    const master = window.pizarraSimulacionMaster || {};
+    const diags = [];
+    if (!art) return diags;
+
+    const skuLower = String(art.articulo_id || '').trim().toLowerCase();
+    const kilos = parseFloat(art.kilos_unidad) > 0 ? parseFloat(art.kilos_unidad) : 1;
+    const ingredientesList = master.ingredientes || [];
+    const esPack = opts.esPack !== undefined
+        ? Boolean(opts.esPack)
+        : Boolean(art.es_pack === true || (art.pack_hijo_codigo && parseInt(art.pack_unidades) > 1));
+    const recetasArt = (master.recetas || []).filter(r => String(r.articulo_numero || '').trim().toLowerCase() === skuLower);
+    const tieneRecetaPropia = opts.tieneRecetaPropia !== undefined
+        ? Boolean(opts.tieneRecetaPropia)
+        : (art.tiene_receta === true || recetasArt.length > 0);
+    const recetaItems = Array.isArray(opts.recetaItems)
+        ? opts.recetaItems
+        : (master.recetaIngredientes || []).filter(ri => recetasArt.some(r => r.id === ri.receta_id));
+    const laArts = Array.isArray(opts.laArts)
+        ? opts.laArts
+        : (master.articulosListas || []).filter(l => String(l.articulo_numero || '').trim().toLowerCase() === skuLower);
+    let costoInsumosListaPropia = opts.costoInsumosListaPropia !== undefined ? parseFloat(opts.costoInsumosListaPropia || 0) : 0;
+    if (opts.costoInsumosListaPropia === undefined && laArts.length > 0) {
+        const laRef = laArts.find(l => Number(l.lista_id) === 1) || laArts[0];
+        const insLista = (master.insumosListas || []).filter(ins => ins.lista_articulo_id === laRef.id && ins.incluido);
+        costoInsumosListaPropia = insLista.reduce((s, ins) => s + (parseFloat(ins.cantidad || 0) * parseFloat(ins.costo_unitario_capturado || 0)), 0);
+    }
+
+    // 1. Bandera contradictoria: tiene receta activa pero bunker_articulos.no_producido_por_lambda = true
+    if (tieneRecetaPropia && art.no_producido_por_lambda === true) {
+        diags.push({
+            tipo: 'NO_PROD_CON_RECETA',
+            icono: '⚠️',
+            texto: 'Reventa c/Receta',
+            severidad: 'warn',
+            detalle: 'Marcado no_producido_por_lambda=true en Búnker pero posee receta activa (se propaga por receta; conviene desmarcar Reventa en Búnker).'
+        });
+    }
+
+    // 2. IVA especial preservado (10.5% / 0%)
+    const ivaArt = art.porcentaje_iva !== null && art.porcentaje_iva !== undefined ? parseFloat(art.porcentaje_iva) : 21;
+    if (isFinite(ivaArt) && Math.abs(ivaArt - 21) >= 0.01) {
+        diags.push({
+            tipo: 'IVA_ESPECIAL',
+            icono: '🏷️',
+            texto: `IVA ${ivaArt.toLocaleString('es-AR')}%`,
+            severidad: 'info',
+            detalle: `Alícuota reducida/exenta (${ivaArt}%) protegida contra sobrescritura durante la propagación.`
+        });
+    }
+
+    // 3. Receta ≠ Kilos (solo fracción directa)
+    const alimItems = recetaItems.filter(ri => {
+        const iObj = ingredientesList.find(i => i.id === ri.ingrediente_id);
+        return iObj && !iObj.es_insumo && iObj.unidad_medida !== 'Unidades';
+    });
+    const insItems = recetaItems.filter(ri => {
+        const iObj = ingredientesList.find(i => i.id === ri.ingrediente_id);
+        return iObj && (iObj.es_insumo || iObj.unidad_medida === 'Unidades');
+    });
+
+    if (!esPack && alimItems.length > 0) {
+        const sumAlimCant = alimItems.reduce((s, ri) => s + (parseFloat(ri.cantidad) || 0), 0);
+        if (Math.abs(sumAlimCant - kilos) > 0.001) {
+            diags.push({
+                tipo: 'RECETA_DIFIERE_KILOS',
+                icono: '⚠️',
+                texto: `Receta ${sumAlimCant.toFixed(2)}kg ≠ Bulto ${kilos.toFixed(2)}kg`,
+                severidad: 'danger',
+                detalle: `La receta consume ${sumAlimCant.toFixed(2)} kg pero el artículo figura con kilos_unidad = ${kilos.toFixed(2)} kg. Revisar peso real en Búnker o Receta.`
+            });
+        }
+    }
+
+    // 4. Insumo / materia prima en $0 en la receta
+    const itemsEnCero = recetaItems
+        .map(ri => ingredientesList.find(i => i.id === ri.ingrediente_id))
+        .filter(iObj => iObj && (parseFloat(iObj.costo_patron) || 0) <= 0);
+    if (itemsEnCero.length > 0) {
+        const nombresCero = [...new Set(itemsEnCero.map(i => i.nombre))].join(', ');
+        diags.push({
+            tipo: 'INSUMO_CERO',
+            icono: '⚠️',
+            texto: 'Insumo en $0',
+            severidad: 'danger',
+            detalle: `Ingrediente/empaque con costo_patron = $0 en receta: ${nombresCero}.`
+        });
+    }
+
+    // 5. Doble bolsa (bolsa en receta + bunker_lista_insumos en fracción directa)
+    if (!esPack && insItems.length > 0 && costoInsumosListaPropia > 0.01) {
+        diags.push({
+            tipo: 'DOBLE_BOLSA',
+            icono: '⚠️',
+            texto: 'Doble bolsa (Receta+Lista)',
+            severidad: 'warn',
+            detalle: `Posee empaque en receta y además $${costoInsumosListaPropia.toFixed(2)} en bunker_lista_insumos (el motor evita duplicarlo; conviene limpiar la lista).`
+        });
+    }
+
+    // 6. M.O. inactiva con costo_tiempo > 0
+    const listasMoOff = laArts.filter(l => l.mano_obra_activa === false && (parseFloat(l.costo_tiempo) || 0) > 0);
+    if (listasMoOff.length > 0) {
+        diags.push({
+            tipo: 'MO_INACTIVA',
+            icono: 'ℹ️',
+            texto: 'M.O. desactivada',
+            severidad: 'muted',
+            detalle: `${listasMoOff.length} lista(s) tienen mano_obra_activa=false pese a tener costo_tiempo cargado.`
+        });
+    }
+
+    return diags;
+};
+
+window.renderBadgesDiagnosticoLDN2 = function(diags, compacto = false) {
+    if (!Array.isArray(diags) || diags.length === 0) return '';
+    const palette = {
+        danger: 'background: rgba(239, 68, 68, 0.16); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.42);',
+        warn: 'background: rgba(245, 158, 11, 0.16); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.42);',
+        info: 'background: rgba(14, 165, 233, 0.16); color: #7dd3fc; border: 1px solid rgba(14, 165, 233, 0.42);',
+        muted: 'background: rgba(148, 163, 184, 0.14); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.32);'
+    };
+    const pills = diags.map(d => `
+        <span style="${palette[d.severidad] || palette.muted} padding: ${compacto ? '1px 4px' : '1px 6px'}; border-radius: 3px; font-size: ${compacto ? '0.60rem' : '0.63rem'}; font-weight: 700; display: inline-flex; align-items: center; gap: 2px; line-height: 1.25;" title="${String(d.detalle || '').replace(/"/g, '&quot;')}">
+            ${d.icono} ${d.texto}
+        </span>
+    `).join('');
+    return `<div style="display: flex; flex-wrap: wrap; gap: 3px; margin-top: ${compacto ? '3px' : '4px'};">${pills}</div>`;
+};
+
 // Auditoría Unificada de Costo + Listas Activas (Evita contradicción entre tarjetas LDN 2 y botón Propagar)
 window.auditarEstadoListasArticuloPizarra = function(art, costoBaseTotalSim, insListaAplicado, costoOficialBD, ingContexto = null) {
     const master = window.pizarraSimulacionMaster || {};
@@ -2470,6 +2640,12 @@ window.auditarEstadoListasArticuloPizarra = function(art, costoBaseTotalSim, ins
     let listasPendientesCount = 0;
     let precioLista1BD = 0;
     let precioLista1Nuevo = 0;
+    let precioLista6BD = 0;
+    let precioLista6Nuevo = 0;
+    let dispLista6 = false;
+    let precioLista8BD = 0;
+    let precioLista8Nuevo = 0;
+    let dispLista8 = false;
     const listasOfrecidas = [];
 
     listas.forEach((l, idx) => {
@@ -2510,6 +2686,16 @@ window.auditarEstadoListasArticuloPizarra = function(art, costoBaseTotalSim, ins
             precioLista1BD = precioBD;
             precioLista1Nuevo = precioObj;
         }
+        if (Number(l.id) === 6 || String(l.nombre || '').toLowerCase().includes('consumidor')) {
+            precioLista6BD = precioBD;
+            precioLista6Nuevo = precioObj;
+            dispLista6 = Boolean(laActual && laActual.disponible !== false);
+        }
+        if (esNodos || Number(l.id) === 8) {
+            precioLista8BD = precioBD;
+            precioLista8Nuevo = precioObj;
+            dispLista8 = Boolean(laActual && laActual.disponible !== false);
+        }
 
         if (!laActual) {
             listasPendientesCount++;
@@ -2535,11 +2721,18 @@ window.auditarEstadoListasArticuloPizarra = function(art, costoBaseTotalSim, ins
         listasPendientesCount,
         listasOfrecidas,
         precioLista1BD,
-        precioLista1Nuevo
+        precioLista1Nuevo,
+        precioLista6BD,
+        precioLista6Nuevo,
+        dispLista6,
+        precioLista8BD,
+        precioLista8Nuevo,
+        dispLista8
     };
 };
 
 // Función Helper Determinista: Obtiene las fracciones directas Y sus Packs Padres derivados (Línea 2)
+// Alineada 100% con el backend: excluye Familia 42, obsoletos y solo_produccion_externa; permite fracciones con receta activa aunque arrastren no_producido_por_lambda=true.
 window.obtenerArticulosMonoIngredientesDeIngrediente = function(ingredienteId) {
     const master = window.pizarraSimulacionMaster;
     if (!master || !master.articulosBunker) return [];
@@ -2549,13 +2742,11 @@ window.obtenerArticulosMonoIngredientesDeIngrediente = function(ingredienteId) {
     const recetaIngredientesList = master.recetaIngredientes || [];
     const ingredientesList = master.ingredientes || [];
 
-    const ingObj = ingredientesList.find(i => i.id === ingredienteId);
-    const bultoCerradoOrigen = (ingObj?.articulo_vinculado_numero || '').trim().toLowerCase();
-
     // 1. Fracciones con receta directa (nota: si art.tiene_receta === true, ya es una presentación transformada en LDN 2, nunca un bulto cerrado sin receta de LDN 1)
     const fraccionesDirectas = todos.filter(art => {
         if (art.tiene_receta !== true) return false;
         if (Number(art.familia_id) === 42) return false;
+        if (art.solo_produccion_externa === true || art.propiedades_dinamicas?.obsoleto === true) return false;
 
         const descStr = (art.descripcion_generada || art.descripcion || '').toLowerCase();
         const codeStr = (art.articulo_id || '').trim().toLowerCase();
@@ -2585,6 +2776,7 @@ window.obtenerArticulosMonoIngredientesDeIngrediente = function(ingredienteId) {
         if (!art.es_pack && (!art.pack_unidades || parseInt(art.pack_unidades) <= 1)) return false;
         if (!art.pack_hijo_codigo) return false;
         if (art.tiene_receta === true) return false;
+        if (Number(art.familia_id) === 42 || art.solo_produccion_externa === true || art.propiedades_dinamicas?.obsoleto === true) return false;
         const hijoSku = (art.pack_hijo_codigo || '').trim().toLowerCase();
         return hijoSku && skusHijosSet.has(hijoSku) && hijoSku !== art.articulo_id.trim().toLowerCase();
     });
@@ -2636,16 +2828,18 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
         let moHijosTotal = 0;
         let empaqueNombres = 'Sin empaque';
         let insListaAplicado = 0;
+        let recetaItemsParaDiag = [];
 
         if (esPack && art.pack_hijo_codigo) {
             const hijo = (master.articulosBunker || []).find(a => (a.articulo_id || '').toLowerCase() === (art.pack_hijo_codigo || '').toLowerCase());
             const kilosHijo = parseFloat(hijo?.kilos_unidad) || 1;
             const unidades = parseInt(art.pack_unidades) || 10;
-            
+
             const recHijo = (master.recetas || []).filter(r => (r.articulo_numero || '').trim().toLowerCase() === (art.pack_hijo_codigo || '').trim().toLowerCase());
             const recIdsHijo = recHijo.map(r => r.id);
             const ingRecHijo = (master.recetaIngredientes || []).filter(ri => recIdsHijo.includes(ri.receta_id));
-            
+            recetaItemsParaDiag = ingRecHijo;
+
             const alimHijo = ingRecHijo.filter(ri => {
                 const iObj = master.ingredientes.find(i => i.id === ri.ingrediente_id);
                 return iObj && !iObj.es_insumo && iObj.unidad_medida !== 'Unidades';
@@ -2661,8 +2855,7 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
 
             const costoMatPrimaHijoUnit = alimHijo.length > 0
                 ? alimHijo.reduce((s, ri) => {
-                    const iObj = master.ingredientes.find(i => i.id === ri.ingrediente_id);
-                    const cant = parseFloat(ri.cantidad) || kilosHijo;
+                    const cant = parseFloat(ri.cantidad) || 0;
                     const cKg = Number(ri.ingrediente_id) === Number(ingredienteId)
                         ? costoKiloActivo
                         : window.obtenerContextoCostoIngrediente(ri.ingrediente_id).costoVivoSim;
@@ -2674,15 +2867,22 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
             const laHijos = (master.articulosListas || []).filter(l => (l.articulo_numero || '').trim().toLowerCase() === (art.pack_hijo_codigo || '').trim().toLowerCase());
             const laHijo = (laArt ? laHijos.find(l => l.lista_id === laArt.lista_id) : null) || laHijos.find(l => l.es_patron) || laHijos[0];
             const moHijo = (laHijo && laHijo.mano_obra_activa !== false) ? (parseFloat(laHijo.costo_tiempo) || 0) : 0;
+            let insListaHijo = 0;
+            if (insHijo.length === 0 && laHijo) {
+                insListaHijo = (master.insumosListas || [])
+                    .filter(ins => ins.lista_articulo_id === laHijo.id && (ins.incluido === true || ins.incluido === 'true'))
+                    .reduce((s, ins) => s + (parseFloat(ins.cantidad || 0) * parseFloat(ins.costo_unitario_capturado || ins.costo_unitario_en_vivo || 0)), 0);
+            }
             moHijosTotal = moHijo * unidades;
 
-            costoEmpaque = costoEmpaqueHijos + costoInsumosListaPropia;
+            costoEmpaque = costoEmpaqueHijos + (insListaHijo * unidades) + costoInsumosListaPropia;
             costoMatPrima = costoMatPrimaHijoUnit * unidades;
-            empaqueNombres = `${unidades}x Hijos ($${costoEmpaqueHijos.toFixed(2)})` + (costoInsumosListaPropia > 0 ? ` + Pack ${nombresInsumosListaPropia} ($${costoInsumosListaPropia.toFixed(2)})` : '');
+            empaqueNombres = `${unidades}x Hijos ($${(costoEmpaqueHijos + (insListaHijo * unidades)).toFixed(2)})` + (costoInsumosListaPropia > 0 ? ` + Pack ${nombresInsumosListaPropia} ($${costoInsumosListaPropia.toFixed(2)})` : '');
         } else {
             const recIds = recArt.map(r => r.id);
             const ingRec = (master.recetaIngredientes || []).filter(ri => recIds.includes(ri.receta_id));
-            
+            recetaItemsParaDiag = ingRec;
+
             const alimRec = ingRec.filter(ri => {
                 const iObj = master.ingredientes.find(i => i.id === ri.ingrediente_id);
                 return iObj && !iObj.es_insumo && iObj.unidad_medida !== 'Unidades';
@@ -2695,12 +2895,12 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
                 const iObj = master.ingredientes.find(i => i.id === ri.ingrediente_id);
                 return s + (parseFloat(ri.cantidad || 0) * parseFloat(iObj?.costo_patron || 0));
             }, 0);
-            insListaAplicado = costoEmpaqueReceta === 0 ? costoInsumosListaPropia : 0;
+            insListaAplicado = insRec.length === 0 ? costoInsumosListaPropia : 0;
             costoEmpaque = costoEmpaqueReceta + insListaAplicado;
 
             costoMatPrima = alimRec.length > 0
                 ? alimRec.reduce((s, ri) => {
-                    const cant = parseFloat(ri.cantidad) || kilos;
+                    const cant = parseFloat(ri.cantidad) || 0;
                     const cKg = Number(ri.ingrediente_id) === Number(ingredienteId)
                         ? costoKiloActivo
                         : window.obtenerContextoCostoIngrediente(ri.ingrediente_id).costoVivoSim;
@@ -2736,13 +2936,22 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
         const modoIva1 = String(laArt?.modo_iva || 'COMPLETO').toUpperCase();
         let ivaEf1 = ivaLista1;
         if (modoIva1 === 'MEDIO') ivaEf1 = ivaLista1 / 2;
-        else if (modoIva1 === 'SIN') ivaEf1 = 0;
+        else if (modoIva1 === 'SIN' || modoIva1 === 'EXENTO') ivaEf1 = 0;
 
         const auditListas = window.auditarEstadoListasArticuloPizarra(art, costoBaseTotal, insListaAplicado, costoOficialBD, ctxIng);
         const precioLista1BD = auditListas.precioLista1BD || parseFloat(laArt?.precio_final || 0);
         const precioLista1Nuevo = auditListas.precioLista1Nuevo || Number((((costoBaseTotal * (1 + (margenLista1 / 100))) + costoTiempo) * (1 + (ivaEf1 / 100))).toFixed(2));
         const diff = Math.abs(costoBaseTotal - costoOficialBD);
+        const varCostoPct = costoOficialBD > 0 ? ((costoBaseTotal - costoOficialBD) / costoOficialBD) * 100 : null;
+        const varL1Pct = precioLista1BD > 0 ? ((precioLista1Nuevo - precioLista1BD) / precioLista1BD) * 100 : null;
         const estaSincronizado = auditListas.alDiaEnTodasListas;
+        const diagnosticos = window.diagnosticarAnomaliasArticuloLDN2(art, {
+            esPack,
+            tieneRecetaPropia,
+            recetaItems: recetaItemsParaDiag,
+            costoInsumosListaPropia,
+            laArts
+        });
 
         return {
             sku: art.articulo_id,
@@ -2758,8 +2967,18 @@ window.auditarEstadoFraccionesMono = function(ingredienteId) {
             costoBaseTotal,
             costoKiloBase,
             costoOficialBD,
+            varCostoPct,
             precioLista1BD,
             precioLista1Nuevo,
+            varL1Pct,
+            precioLista6BD: auditListas.precioLista6BD,
+            precioLista6Nuevo: auditListas.precioLista6Nuevo,
+            dispLista6: auditListas.dispLista6,
+            precioLista8BD: auditListas.precioLista8BD,
+            precioLista8Nuevo: auditListas.precioLista8Nuevo,
+            dispLista8: auditListas.dispLista8,
+            ivaReal: art.porcentaje_iva !== null && art.porcentaje_iva !== undefined ? parseFloat(art.porcentaje_iva) : 21,
+            diagnosticos,
             diff,
             estaSincronizado
         };
@@ -2825,7 +3044,7 @@ window.impactarFraccionQuirurgica = async function(sku, ingredienteId) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 ingrediente_id: ingredienteId,
-                porcentaje_iva: ivaVal,
+                forzar_iva: false,
                 articulos_target_ids: [sku],
                 nuevo_costo_patron: ctxIng ? ctxIng.costoVivoSim : undefined,
                 ap_codigo: (ctxIng && ctxIng.esTostaderoLDN4) ? ctxIng.apCodigo : undefined,
@@ -2842,12 +3061,19 @@ window.impactarFraccionQuirurgica = async function(sku, ingredienteId) {
             window.renderizarArticulosBunkerLDN1();
         }
 
+        const omitidosHtml = Array.isArray(resData.omitidos) && resData.omitidos.length > 0
+            ? `<div style="margin-top:8px; padding:6px 8px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.4); border-radius:5px; font-size:0.75rem; color:#fcd34d; text-align:left;"><strong>⚠️ Omitidos (${resData.omitidos.length}):</strong><br>${resData.omitidos.map(o => `• [${o.sku}] ${o.motivo}`).join('<br>')}</div>`
+            : '';
+        const advHtml = Array.isArray(resData.advertencias) && resData.advertencias.length > 0
+            ? `<div style="margin-top:8px; padding:6px 8px; background:rgba(14,165,233,0.14); border:1px solid rgba(14,165,233,0.4); border-radius:5px; font-size:0.74rem; color:#7dd3fc; text-align:left;"><strong>ℹ️ Aviso técnico:</strong><br>${resData.advertencias.map(a => `• [${a.sku}] ${a.motivo}`).join('<br>')}</div>`
+            : '';
+
         Swal.fire({
-            icon: 'success',
-            title: 'Impactado Exitosamente',
-            text: `El artículo [${sku}] quedó grabado y sincronizado en PostgreSQL.`,
-            timer: 2000,
-            showConfirmButton: false,
+            icon: (omitidosHtml ? 'warning' : 'success'),
+            title: omitidosHtml ? 'Impacto con Observaciones' : 'Impactado Exitosamente',
+            html: `<div style="font-size:0.84rem; color:#e2e8f0;">El artículo <strong>[${sku}]</strong> quedó grabado y sincronizado en PostgreSQL.${omitidosHtml}${advHtml}</div>`,
+            timer: (omitidosHtml || advHtml) ? undefined : 2200,
+            showConfirmButton: Boolean(omitidosHtml || advHtml),
             background: '#151e2e',
             color: '#f3f4f6'
         });
@@ -3082,7 +3308,26 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
 
     const { rowsData, todosAlDia, pendientes } = estadoMono;
 
-    const tableRowsHtml = rowsData.map((row) => `
+    const fmtVarPill = (pct) => {
+        if (pct === null || pct === undefined || !isFinite(pct) || Math.abs(pct) < 0.05) {
+            return `<span style="font-size:0.64rem; color:#94a3b8; margin-left:4px;">0,0%</span>`;
+        }
+        const color = pct > 0 ? '#fca5a5' : '#6ee7b7';
+        const bg = pct > 0 ? 'rgba(239,68,68,0.16)' : 'rgba(16,185,129,0.16)';
+        return `<span style="font-size:0.63rem; font-weight:800; color:${color}; background:${bg}; padding:1px 4px; border-radius:3px; margin-left:4px;">${pct > 0 ? '+' : ''}${pct.toFixed(1).replace('.', ',')}%</span>`;
+    };
+
+    const tableRowsHtml = rowsData.map((row) => {
+        const diagHtml = typeof window.renderBadgesDiagnosticoLDN2 === 'function'
+            ? window.renderBadgesDiagnosticoLDN2(row.diagnosticos, true)
+            : '';
+        const l6Html = row.dispLista6
+            ? `<div style="font-size:0.64rem; color:#6ee7b7; margin-top:2px;">CF (L6): <span style="color:#94a3b8;">$${(row.precioLista6BD || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</span> → <strong>$${(row.precioLista6Nuevo || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong></div>`
+            : '';
+        const l8Html = row.dispLista8
+            ? `<div style="font-size:0.64rem; color:#c084fc; margin-top:2px;">Nodos (L8): <span style="color:#94a3b8;">$${(row.precioLista8BD || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</span> → <strong>$${(row.precioLista8Nuevo || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong></div>`
+            : '';
+        return `
         <tr style="border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 0.73rem;">
             <td style="padding: 6px 4px; text-align: center;">
                 <input type="checkbox" class="audit-check-sku" data-sku="${row.sku}" ${!todosAlDia && row.estaSincronizado ? '' : 'checked'} style="cursor: pointer; width: 15px; height: 15px;">
@@ -3092,33 +3337,44 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
                     <span>${row.sku}</span>
                     <button type="button" onclick="window.abrirRadiografiaCostosArticulo('${row.sku}')" style="background: rgba(56,189,248,0.15); border: 1px solid rgba(56,189,248,0.4); color: #38bdf8; border-radius: 3px; padding: 1px 4px; font-size: 0.62rem; cursor: pointer;" title="Ver radiografía detallada de costos">📊</button>
                 </div>
-                ${row.esPack ? `<span style="display:block; font-size:0.65rem; color:#e9d5ff;">📦 Pack (${row.packInfo})</span>` : ''}
+                <div style="font-size:0.65rem; font-weight:500; color:#cbd5e1; margin-top:1px;">${row.nombre}</div>
+                ${row.esPack ? `<span style="display:block; font-size:0.63rem; color:#e9d5ff;">📦 Pack (${row.packInfo})</span>` : ''}
+                ${diagHtml}
             </td>
-            <td style="padding: 6px 4px; color: #94a3b8;">${row.kilos.toFixed(2)} kg</td>
-            <td style="padding: 6px 4px; text-align: right; color: #e2e8f0;">$${row.costoMatPrima.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-            <td style="padding: 6px 4px; text-align: right; color: #fbbf24;" title="${row.empaqueNombres}">$${row.costoEmpaque.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
-            <td style="padding: 6px 4px; text-align: right; color: #38bdf8;" title="${row.esPack ? `MO de ${row.packInfo}: $${(row.moHijosTotal || 0).toFixed(2)} (incluida en Base Bulto) | MO Armado Pack: $${row.costoTiempo.toFixed(2)}` : 'Mano de obra de fraccionamiento'}">
+            <td style="padding: 6px 4px; color: #94a3b8; white-space:nowrap;">${row.kilos.toFixed(2)} kg</td>
+            <td style="padding: 6px 4px; text-align: right; color: #e2e8f0; white-space:nowrap;">$${row.costoMatPrima.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+            <td style="padding: 6px 4px; text-align: right; color: #fbbf24; white-space:nowrap;" title="${row.empaqueNombres}">$${row.costoEmpaque.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
+            <td style="padding: 6px 4px; text-align: right; color: #38bdf8; white-space:nowrap;" title="${row.esPack ? `MO de ${row.packInfo}: $${(row.moHijosTotal || 0).toFixed(2)} (incluida en Base Bulto) | MO Armado Pack: $${row.costoTiempo.toFixed(2)}` : 'Mano de obra de fraccionamiento'}">
                 $${(row.esPack ? (row.moHijosTotal || 0) : row.costoTiempo).toLocaleString('es-AR', {minimumFractionDigits: 2})}
-                ${row.esPack && row.moHijosTotal > 0 ? `<span style="display:block; font-size:0.60rem; color:#93c5fd;">(Hijos en Base)</span>` : ''}
+                ${row.esPack && row.moHijosTotal > 0 ? `<span style="display:block; font-size:0.59rem; color:#93c5fd;">(Hijos en Base)</span>` : ''}
             </td>
-            <td style="padding: 6px 4px; text-align: right;">
-                <span style="color:#94a3b8; font-size:0.68rem;">$${row.costoOficialBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
-                <span style="color:#64748b; margin:0 2px;">→</span>
-                <strong style="color:#a7f3d0;">$${row.costoBaseTotal.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+            <td style="padding: 6px 4px; text-align: right; white-space:nowrap;">
+                <div>
+                    <span style="color:#94a3b8; font-size:0.68rem;">$${row.costoOficialBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+                    <span style="color:#64748b; margin:0 2px;">→</span>
+                    <strong style="color:#a7f3d0;">$${row.costoBaseTotal.toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+                </div>
+                <div>${fmtVarPill(row.varCostoPct)}</div>
             </td>
-            <td style="padding: 6px 4px; text-align: right;">
-                <span style="color:#94a3b8; font-size:0.68rem;">$${(row.precioLista1BD || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
-                <span style="color:#64748b; margin:0 2px;">→</span>
-                <strong style="color:#38bdf8;">$${(row.precioLista1Nuevo || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+            <td style="padding: 6px 4px; text-align: right; white-space:nowrap;">
+                <div>
+                    <span style="color:#94a3b8; font-size:0.68rem;">L1: $${(row.precioLista1BD || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
+                    <span style="color:#64748b; margin:0 2px;">→</span>
+                    <strong style="color:#38bdf8;">$${(row.precioLista1Nuevo || 0).toLocaleString('es-AR', {minimumFractionDigits: 2})}</strong>
+                    ${fmtVarPill(row.varL1Pct)}
+                </div>
+                ${l6Html}
+                ${l8Html}
             </td>
-            <td style="padding: 6px 4px; text-align: center;">
-                ${row.estaSincronizado 
-                    ? `<span style="background: rgba(16,185,129,0.2); color:#34d399; padding: 2px 5px; border-radius: 3px; font-size: 0.65rem; font-weight: 700;">🟢 Al día</span>` 
+            <td style="padding: 6px 4px; text-align: center; white-space:nowrap;">
+                ${row.estaSincronizado
+                    ? `<span style="background: rgba(16,185,129,0.2); color:#34d399; padding: 2px 5px; border-radius: 3px; font-size: 0.65rem; font-weight: 700;">🟢 Al día</span>`
                     : `<span style="background: rgba(245,158,11,0.2); color:#fbbf24; padding: 2px 5px; border-radius: 3px; font-size: 0.65rem; font-weight: 700;" title="Grabado en BD: $${row.costoOficialBD.toFixed(2)}">🟡 Pendiente</span>`
                 }
             </td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
 
     const bannerHtml = todosAlDia
         ? `
@@ -3128,7 +3384,7 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
         `
         : `
             <div style="padding: 8px 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 6px; font-size: 0.74rem; color: #fbbf24; margin-bottom: 10px;">
-                ⚠️ <strong>Variación Detectada (Vista Antes vs Después):</strong> Se actualizarán en una única transacción el Ingrediente${ctxIng.apCodigo ? `, su Puente [${ctxIng.apCodigo}]` : ''} y <strong>${pendientes > 0 ? pendientes : rowsData.length}</strong> presentación(es)/pack(s) seleccionados, conservando insumos de empaque y márgenes de cada lista.
+                ⚠️ <strong>Variación Detectada (Vista Antes vs Después):</strong> Se actualizarán en una única transacción el Ingrediente${ctxIng.apCodigo ? `, su Puente [${ctxIng.apCodigo}]` : ''} y <strong>${pendientes > 0 ? pendientes : rowsData.length}</strong> presentación(es)/pack(s) seleccionados, preservando la alícuota real de IVA de cada presentación (10,5% / 21% / 0%), empaque y márgenes.
             </div>
         `;
 
@@ -3138,12 +3394,12 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
                 <span style="color:#94a3b8;">Patrón BD: $${costoPatronBD.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</span>
                 <span style="color:#64748b; margin:0 4px;">→</span>
                 <strong style="color:#fbbf24;">Nuevo: $${costoAPropagar.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong>
-                <span style="font-size:0.68rem; color:#94a3b8; margin-left:4px;">(IVA ${ivaVal}%)</span>
+                <span style="font-size:0.68rem; color:#94a3b8; margin-left:4px;">(IVA ref. ${ivaVal}%)</span>
             </div>
         `
         : `
             <div style="color: #38bdf8; font-weight: 700; font-size: 0.78rem;">
-                Patrón BD / A Propagar: $${costoAPropagar.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg (IVA ${ivaVal}%)
+                Patrón BD / A Propagar: $${costoAPropagar.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg <span style="font-size:0.68rem; color:#94a3b8;">(IVA ref. ${ivaVal}% · preserva alícuota propia)</span>
             </div>
         `;
 
@@ -3167,18 +3423,18 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
                 </div>
             </div>
 
-            <div style="max-height: 260px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(0,0,0,0.25);">
+            <div style="max-height: 310px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: rgba(0,0,0,0.25);">
                 <table style="width: 100%; border-collapse: collapse; text-align: left;">
                     <thead style="position: sticky; top: 0; background: #1e293b; color: #94a3b8; font-size: 0.68rem; border-bottom: 1px solid rgba(255,255,255,0.15);">
                         <tr>
                             <th style="padding: 6px 4px; text-align: center; width: 28px;">✓</th>
-                            <th style="padding: 6px 4px;">SKU</th>
+                            <th style="padding: 6px 4px;">SKU / Presentación</th>
                             <th style="padding: 6px 4px;">Peso</th>
                             <th style="padding: 6px 4px; text-align: right;">Mat. Prima</th>
                             <th style="padding: 6px 4px; text-align: right;">Empaque</th>
                             <th style="padding: 6px 4px; text-align: right;">M.O.</th>
-                            <th style="padding: 6px 4px; text-align: right;">Costo Base (BD → Nuevo)</th>
-                            <th style="padding: 6px 4px; text-align: right;">Lista 1 (BD → Nuevo)</th>
+                            <th style="padding: 6px 4px; text-align: right;">Costo Base (BD → Nuevo · Var %)</th>
+                            <th style="padding: 6px 4px; text-align: right;">Listas Clave (BD → Nuevo)</th>
                             <th style="padding: 6px 4px; text-align: center;">Estado</th>
                         </tr>
                     </thead>
@@ -3193,7 +3449,7 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
     const confirmResult = await Swal.fire({
         title: todosAlDia ? `Auditoría: Fracciones al Día` : `⚡ Auditoría y Propagación (${pendientes > 0 ? pendientes : rowsData.length} a sincronizar)`,
         html: modalHtml,
-        width: '860px',
+        width: '960px',
         background: '#151e2e',
         color: '#f3f4f6',
         showCancelButton: true,
@@ -3267,7 +3523,7 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 ingrediente_id: ingredienteId,
-                porcentaje_iva: ivaVal,
+                forzar_iva: false,
                 articulos_target_ids: selectedSkus,
                 nuevo_costo_patron: costoAPropagar,
                 ap_codigo: ctxIng.esTostaderoLDN4 ? ctxIng.apCodigo : undefined,
@@ -3278,7 +3534,11 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
         console.log(`[VIGÍA-PROPAGACIÓN] ⚡ INICIO: Propagando Ingrediente [#${ing.id}] (${ing.nombre}) a $${costoAPropagar.toFixed(2)}/kg para SKUs seleccionados:`, selectedSkus);
 
         const resData = await res.json();
-        if (!resData.success) throw new Error(resData.message || 'Error al propagar ingrediente.');
+        if (!resData.success) {
+            const err = new Error(resData.message || 'Error al propagar ingrediente.');
+            err.omitidos = resData.omitidos || [];
+            throw err;
+        }
 
         console.log(`[VIGÍA-PROPAGACIÓN] 🔄 RESPUESTA SERVIDOR: ${resData.message}`);
 
@@ -3304,23 +3564,44 @@ window.propagarIngredienteAFraccionesMono = async function(ingredienteId) {
             }
         }
 
-        console.log(`[VIGÍA-PROPAGACIÓN] ✅ ÉXITO: Sincronización en BD y memoria completada sin falsos estados Simulado.`);
+        const estadoPost = window.auditarEstadoFraccionesMono(ingredienteId);
+        const omitidosList = Array.isArray(resData.omitidos) ? resData.omitidos : [];
+        const advList = Array.isArray(resData.advertencias) ? resData.advertencias : [];
+        const hayObs = omitidosList.length > 0 || advList.length > 0 || estadoPost.pendientes > 0;
+
+        const verifHtml = estadoPost.pendientes === 0
+            ? `<div style="margin-top:8px; padding:6px 10px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.4); border-radius:5px; font-size:0.76rem; color:#6ee7b7;">✅ <strong>Verificado contra PostgreSQL:</strong> 0 pendientes (${estadoPost.total}/${estadoPost.total} fracciones al día).</div>`
+            : `<div style="margin-top:8px; padding:6px 10px; background:rgba(245,158,11,0.14); border:1px solid rgba(245,158,11,0.4); border-radius:5px; font-size:0.76rem; color:#fcd34d;">🟡 <strong>Quedan ${estadoPost.pendientes} pendiente(s)</strong> (ej. artículos destildados o con revisión requerida).</div>`;
+
+        const omitidosHtml = omitidosList.length > 0
+            ? `<div style="margin-top:8px; padding:6px 10px; background:rgba(239,68,68,0.14); border:1px solid rgba(239,68,68,0.4); border-radius:5px; font-size:0.74rem; color:#fca5a5; text-align:left;"><strong>⚠️ SKUs omitidos por el motor (${omitidosList.length}):</strong><br>${omitidosList.map(o => `• <strong>[${o.sku}]</strong> ${o.motivo}`).join('<br>')}</div>`
+            : '';
+
+        const advHtml = advList.length > 0
+            ? `<div style="margin-top:8px; padding:6px 10px; background:rgba(14,165,233,0.14); border:1px solid rgba(14,165,233,0.4); border-radius:5px; font-size:0.74rem; color:#7dd3fc; text-align:left;"><strong>ℹ️ Observaciones técnicas (${advList.length}):</strong><br>${advList.map(a => `• <strong>[${a.sku}]</strong> ${a.motivo}`).join('<br>')}</div>`
+            : '';
+
+        console.log(`[VIGÍA-PROPAGACIÓN] ✅ ÉXITO: Sincronización en BD y memoria completada. Pendientes post-rehidratación: ${estadoPost.pendientes}.`);
 
         Swal.fire({
-            icon: 'success',
-            title: 'Propagación Completada',
-            text: resData.message,
-            timer: 2500,
-            showConfirmButton: false,
+            icon: omitidosList.length > 0 ? 'warning' : 'success',
+            title: omitidosList.length > 0 ? 'Propagación con SKUs Omitidos' : 'Propagación Completada',
+            html: `<div style="font-size:0.82rem; color:#e2e8f0; text-align:left;"><div>${resData.message}</div>${verifHtml}${omitidosHtml}${advHtml}</div>`,
+            timer: hayObs ? undefined : 2600,
+            showConfirmButton: hayObs,
+            confirmButtonColor: '#10b981',
             background: '#151e2e',
             color: '#f3f4f6'
         });
 
     } catch (err) {
+        const omitidosErrHtml = Array.isArray(err.omitidos) && err.omitidos.length > 0
+            ? `<div style="margin-top:8px; padding:6px 10px; background:rgba(239,68,68,0.14); border:1px solid rgba(239,68,68,0.4); border-radius:5px; font-size:0.74rem; color:#fca5a5; text-align:left;">${err.omitidos.map(o => `• <strong>[${o.sku}]</strong> ${o.motivo}`).join('<br>')}</div>`
+            : '';
         Swal.fire({
             icon: 'error',
             title: 'Error de Propagación',
-            text: err.message,
+            html: `<div style="font-size:0.82rem; color:#e2e8f0;">${err.message}${omitidosErrHtml}</div>`,
             background: '#151e2e',
             color: '#f3f4f6'
         });

@@ -151,7 +151,39 @@ async function obtenerIngredientes() {
                 i.stock_actual,
                 COALESCE(i.stock_bultos, 0) as stock_bultos,
                 i.articulo_vinculado_numero,
-                21.00 as porcentaje_iva,
+                COALESCE(
+                    (
+                        SELECT ba_v.porcentaje_iva
+                        FROM public.bunker_articulos ba_v
+                        WHERE i.articulo_vinculado_numero IS NOT NULL
+                          AND LOWER(TRIM(ba_v.articulo_id)) = LOWER(TRIM(i.articulo_vinculado_numero))
+                          AND ba_v.porcentaje_iva IS NOT NULL
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT ba_j.porcentaje_iva
+                        FROM public.ingrediente_bunker_articulos iba_j
+                        JOIN public.bunker_articulos ba_j
+                          ON LOWER(TRIM(ba_j.articulo_id)) = LOWER(TRIM(iba_j.bunker_articulo_id))
+                        WHERE iba_j.ingrediente_id = i.id
+                          AND ba_j.porcentaje_iva IS NOT NULL
+                        ORDER BY iba_j.created_at DESC
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT ba_f.porcentaje_iva
+                        FROM public.receta_ingredientes ri_f
+                        JOIN public.recetas r_f ON r_f.id = ri_f.receta_id
+                        JOIN public.bunker_articulos ba_f
+                          ON LOWER(TRIM(ba_f.articulo_id)) = LOWER(TRIM(r_f.articulo_numero))
+                        WHERE ri_f.ingrediente_id = i.id
+                          AND COALESCE(i.es_insumo, false) = false
+                          AND COALESCE(ba_f.familia_id, 0) <> 42
+                          AND ba_f.porcentaje_iva IS NOT NULL
+                        LIMIT 1
+                    ),
+                    21.00
+                ) as porcentaje_iva,
                 i.sector_id,
                 s.nombre as sector_nombre,
                 s.descripcion as sector_descripcion,
