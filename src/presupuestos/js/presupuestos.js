@@ -3021,11 +3021,14 @@ async function ejecutarSincronizacionBorrador(presupuestoId) {
 window.crearFacturaBorrador = async function (presupuestoId) {
     if (!presupuestoId) return;
 
+    const TOPE_CF_SIN_IDENTIFICAR_ARCA = 10000000; // RG 5700/2025 ARCA
     let preferencia = 'PREGUNTAR';
     let clienteId = null;
     let clienteNombre = '';
     let clienteCuit = '';
     let clienteDni = '';
+    let clienteCondicionIva = 'Consumidor Final';
+    let totalPresupuesto = 0;
 
     // 1. Mostrar loader de obtención de datos
     if (typeof Swal !== 'undefined') {
@@ -3050,6 +3053,8 @@ window.crearFacturaBorrador = async function (presupuestoId) {
                 clienteNombre = resData.data.concepto || 'Cliente';
                 clienteCuit = (resData.data.cuit || '').trim();
                 clienteDni = (resData.data.dni || '').trim();
+                clienteCondicionIva = (resData.data.condicion_iva || 'Consumidor Final').trim();
+                totalPresupuesto = parseFloat(resData.data.total_final) || 0;
             }
         }
     } catch (err) {
@@ -3061,22 +3066,29 @@ window.crearFacturaBorrador = async function (presupuestoId) {
         Swal.close();
     }
 
-    const tieneDocumentoFiscal = (clienteCuit && clienteCuit.length >= 10) || 
-                                 (clienteDni && clienteDni !== '0' && clienteDni.length >= 7);
+    const cuitDigitos = clienteCuit.replace(/\D/g, '');
+    const dniDigitos = clienteDni.replace(/\D/g, '');
+    const esConsumidorFinal = clienteCondicionIva.toLowerCase().includes('consumidor') || clienteCondicionIva.toLowerCase().includes('final');
+    const tieneDocumentoFiscal = cuitDigitos.length >= 10 || (dniDigitos.length >= 7 && !/^0+$/.test(dniDigitos));
+    const superaTopeCfSinDoc = esConsumidorFinal && !tieneDocumentoFiscal && totalPresupuesto >= TOPE_CF_SIN_IDENTIFICAR_ARCA;
+    const puedeFacturarCfSinDoc = esConsumidorFinal && !tieneDocumentoFiscal && !superaTopeCfSinDoc;
+    const habilitadoArca = tieneDocumentoFiscal || puedeFacturarCfSinDoc;
 
     // 2. Evaluar preferencia
-    if (preferencia === 'ARCA' && tieneDocumentoFiscal) {
+    if (preferencia === 'ARCA' && habilitadoArca) {
         ejecutarFacturacionBorrador(presupuestoId, 'arca');
     } else if (preferencia === 'INTERNO') {
         ejecutarFacturacionBorrador(presupuestoId, 'interno');
-    } else if (preferencia === 'ARCA' && !tieneDocumentoFiscal) {
-        // El cliente tenía ARCA guardado pero no posee CUIT/DNI
+    } else if (preferencia === 'ARCA' && !habilitadoArca) {
+        const motivoBloqueo = superaTopeCfSinDoc
+            ? `El importe supera el tope de <strong>$${TOPE_CF_SIN_IDENTIFICAR_ARCA.toLocaleString('es-AR')}</strong> (RG 5700/2025 ARCA) para Consumidor Final sin identificar y el cliente no posee DNI/CUIL registrado.`
+            : `El cliente <strong>${clienteNombre}</strong> (${clienteCondicionIva}) tiene configurada facturación oficial ARCA, pero <strong>no posee CUIT registrado</strong>.`;
         if (typeof Swal !== 'undefined') {
             Swal.fire({
-                title: 'Cliente sin CUIT para AFIP',
+                title: superaTopeCfSinDoc ? 'DNI o CUIL requerido por importe' : 'Cliente sin CUIT para ARCA',
                 html: `
-                    <p>El cliente <strong>${clienteNombre}</strong> tiene configurada facturación oficial ARCA, pero <strong>no posee CUIT/CUIL/DNI registrado</strong>.</p>
-                    <p style="margin-top: 10px; color: #555;">¿Deseas enviarlo como <strong>Presupuesto Aprobado (Interno)</strong>?</p>
+                    <p>${motivoBloqueo}</p>
+                    <p style="margin-top: 10px; color: #555;">¿Deseás enviarlo como <strong>Presupuesto Aprobado (Interno)</strong>?</p>
                 `,
                 icon: 'warning',
                 showCancelButton: true,
@@ -3094,25 +3106,37 @@ window.crearFacturaBorrador = async function (presupuestoId) {
         }
     } else {
         // Si es PREGUNTAR, consultar al usuario preseleccionando la opción óptima
-        const radioArcaChecked = tieneDocumentoFiscal ? 'checked' : '';
-        const radioInternoChecked = !tieneDocumentoFiscal ? 'checked' : '';
-        const advertenciaDoc = !tieneDocumentoFiscal ? `
-            <div style="background-color: #fff3cd; color: #856404; padding: 10px 12px; border-radius: 6px; font-size: 0.9em; margin-bottom: 14px; border-left: 4px solid #ffc107; line-height: 1.4;">
-                ⚠️ <strong>Sin CUIT/DNI:</strong> Este cliente no tiene documento fiscal registrado. AFIP rechazará la factura oficial. <strong>Se recomienda Presupuestos Aprobados (Interno).</strong>
-            </div>
-        ` : '';
+        const radioArcaChecked = habilitadoArca ? 'checked' : '';
+        const radioInternoChecked = !habilitadoArca ? 'checked' : '';
+        let avisoDoc = '';
+        if (puedeFacturarCfSinDoc) {
+            avisoDoc = `
+                <div style="background-color: #eff6ff; color: #1e40af; padding: 10px 12px; border-radius: 6px; font-size: 0.9em; margin-bottom: 14px; border-left: 4px solid #3b82f6; line-height: 1.4;">
+                    ℹ️ <strong>Consumidor Final sin DNI/CUIL:</strong> ARCA permite emitir Factura B sin identificar (<code>DocTipo 99</code>) hasta <strong>$${TOPE_CF_SIN_IDENTIFICAR_ARCA.toLocaleString('es-AR')}</strong> (RG 5700/2025). Podés enviarlo a <strong>ARCA</strong> o como <strong>Interno</strong>.
+                </div>
+            `;
+        } else if (!habilitadoArca) {
+            const textoWarn = superaTopeCfSinDoc
+                ? `⚠️ <strong>Supera tope sin identificar ($${TOPE_CF_SIN_IDENTIFICAR_ARCA.toLocaleString('es-AR')}):</strong> ARCA exige DNI o CUIL para Factura B por este importe (RG 5700/2025). Cargá el documento en Clientes Búnker o envialo a <strong>Presupuestos Aprobados (Interno)</strong>.`
+                : `⚠️ <strong>Sin CUIT registrado:</strong> Para emitir comprobante oficial ARCA como <strong>${clienteCondicionIva}</strong> se requiere CUIT. <strong>Se recomienda Presupuestos Aprobados (Interno).</strong>`;
+            avisoDoc = `
+                <div style="background-color: #fff3cd; color: #856404; padding: 10px 12px; border-radius: 6px; font-size: 0.9em; margin-bottom: 14px; border-left: 4px solid #ffc107; line-height: 1.4;">
+                    ${textoWarn}
+                </div>
+            `;
+        }
 
         if (typeof Swal !== 'undefined') {
             Swal.fire({
                 title: '¿Cómo deseas facturar?',
                 html: `
                     <div style="text-align: left; margin-top: 15px;">
-                        ${advertenciaDoc}
+                        ${avisoDoc}
                         <p style="margin-bottom: 15px; font-size: 1.05em;">Selecciona el destino para el presupuesto de <strong>${clienteNombre}</strong>:</p>
                         
                         <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
                             <input type="radio" id="fact-dest-interno" name="fact-dest" value="interno" ${radioInternoChecked} style="cursor: pointer; width: 18px; height: 18px;">
-                            <label for="fact-dest-interno" style="cursor: pointer; font-weight: 600; font-size: 1em; color: ${!tieneDocumentoFiscal ? '#2e7d32' : 'inherit'};">Presupuestos Aprobados (Interno) ${!tieneDocumentoFiscal ? '⭐ Recomendado' : ''}</label>
+                            <label for="fact-dest-interno" style="cursor: pointer; font-weight: 600; font-size: 1em; color: ${!habilitadoArca ? '#2e7d32' : 'inherit'};">Presupuestos Aprobados (Interno) ${!habilitadoArca ? '⭐ Recomendado' : ''}</label>
                         </div>
                         <div style="margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
                             <input type="radio" id="fact-dest-arca" name="fact-dest" value="arca" ${radioArcaChecked} style="cursor: pointer; width: 18px; height: 18px;">
@@ -3158,7 +3182,7 @@ window.crearFacturaBorrador = async function (presupuestoId) {
             });
         } else {
             // Fallback con confirm tradicional
-            if (!tieneDocumentoFiscal) {
+            if (!habilitadoArca) {
                 ejecutarFacturacionBorrador(presupuestoId, 'interno');
             } else if (confirm(`¿Enviar presupuesto de ${clienteNombre} a Factura Oficial Arca? (Aceptar = Oficial, Cancelar = Interno/Presupuesto Aprobado)`)) {
                 ejecutarFacturacionBorrador(presupuestoId, 'arca');

@@ -141,43 +141,68 @@ const ClientesMobileController = {
         return calculated === cuitDig;
     },
 
+    clasificarDocumentoFiscal(valor) {
+        const raw = String(valor || '').replace(/[^0-9]/g, '');
+        if (raw.length === 0) return { tipo: 'VACIO', valido: true, raw: '', dni: null, cuit: null };
+        if (raw.length >= 7 && raw.length <= 8) return { tipo: 'DNI', valido: true, raw, dni: raw, cuit: null };
+        if (raw.length === 11 && this.validarCuit(raw)) {
+            const esFisica = /^(20|23|24|27)\d{9}$/.test(raw);
+            const dniRaw = esFisica ? raw.substring(2, 10).replace(/^0+/, '') : '';
+            const dniDetectado = /^\d{7,8}$/.test(dniRaw) ? dniRaw : null;
+            return { tipo: 'CUIT', valido: true, raw, dni: dniDetectado, cuit: raw, esFisica };
+        }
+        return { tipo: 'INVALIDO', valido: false, raw, dni: null, cuit: null };
+    },
+
     validarYMostrarCuit() {
         const input = document.getElementById('txt-cuit');
         const helper = document.getElementById('helper-cuit');
         const btnArca = document.getElementById('btn-consultar-arca');
+        const selCond = document.getElementById('sel-condicion-iva');
         if (!input) return true;
 
-        const val = input.value.trim();
-        const raw = val.replace(/[^0-9]/g, '');
+        const cls = this.clasificarDocumentoFiscal(input.value.trim());
 
-        if (!val) {
+        if (cls.tipo === 'VACIO') {
             input.classList.remove('input-valid', 'input-invalid');
-            if (helper) { helper.innerText = 'Identificación tributaria de 11 dígitos.'; helper.className = 'form-helper'; }
+            if (helper) { helper.innerText = 'Opcional para Consumidor Final (< $10M). Acepta DNI (7–8 dígitos) o CUIT/CUIL (11 dígitos).'; helper.className = 'form-helper'; }
             if (btnArca) btnArca.disabled = true;
             return true;
         }
 
-        const esValido = this.validarCuit(val);
-
-        if (!esValido || raw.length !== 11) {
-            input.classList.remove('input-valid');
-            input.classList.add('input-invalid');
-            if (helper) {
-                helper.innerText = '❌ CUIT inválido (Módulo 11)';
-                helper.className = 'form-helper text-danger';
-            }
-            if (btnArca) btnArca.disabled = true;
-            return false;
-        } else {
+        if (cls.tipo === 'DNI') {
             input.classList.remove('input-invalid');
             input.classList.add('input-valid');
             if (helper) {
-                helper.innerText = '✅ CUIT matemáticamente válido';
+                helper.innerText = `✅ DNI válido (${cls.dni}). Padrón ARCA solo consulta CUIT/CUIL de 11 dígitos; podés guardar directo.`;
+                helper.className = 'form-helper text-success';
+            }
+            if (selCond && !selCond.value) selCond.value = 'Consumidor Final';
+            if (btnArca) btnArca.disabled = true;
+            return true;
+        }
+
+        if (cls.tipo === 'CUIT') {
+            input.classList.remove('input-invalid');
+            input.classList.add('input-valid');
+            if (helper) {
+                helper.innerText = cls.dni
+                    ? `✅ CUIT/CUIL válido (DNI detectado: ${cls.dni})`
+                    : '✅ CUIT/CUIL matemáticamente válido';
                 helper.className = 'form-helper text-success';
             }
             if (btnArca) btnArca.disabled = false;
             return true;
         }
+
+        input.classList.remove('input-valid');
+        input.classList.add('input-invalid');
+        if (helper) {
+            helper.innerText = '❌ Documento inválido: ingresá DNI (7–8 dígitos), CUIT/CUIL (11 dígitos) o dejalo vacío.';
+            helper.className = 'form-helper text-danger';
+        }
+        if (btnArca) btnArca.disabled = true;
+        return false;
     },
 
     // =========================================================
@@ -214,9 +239,10 @@ const ClientesMobileController = {
 
             const datos = result.data;
 
-            // Autocompletar campos
+            // Autocompletar campos sin pisar nombre/razón ya cargados si ARCA no trajo razón social
             const txtRazon = document.getElementById('txt-razon');
             const txtNombre = document.getElementById('txt-nombre');
+            const txtDniOculto = document.getElementById('txt-dni-oculto');
             const selCondicion = document.getElementById('sel-condicion-iva');
             const txtDomFiscal = document.getElementById('txt-domicilio-fiscal');
             const txtProvincia = document.getElementById('txt-provincia');
@@ -224,16 +250,32 @@ const ClientesMobileController = {
             const txtCatMonotributo = document.getElementById('txt-categoria-monotributo');
             const txtActividad = document.getElementById('txt-actividad-principal');
 
-            if (txtRazon) txtRazon.value = datos.razon_social || '';
-            if (txtNombre && !txtNombre.value.trim()) txtNombre.value = datos.razon_social || '';
+            if (datos.razon_social) {
+                if (txtRazon) txtRazon.value = datos.razon_social;
+                if (txtNombre && !txtNombre.value.trim()) txtNombre.value = datos.razon_social;
+            }
+            if (txtDniOculto && datos.dni) txtDniOculto.value = datos.dni;
             if (selCondicion && datos.condicion_iva) selCondicion.value = datos.condicion_iva;
             if (txtDomFiscal && datos.domicilio_fiscal) txtDomFiscal.value = datos.domicilio_fiscal;
             if (txtProvincia && datos.provincia) txtProvincia.value = datos.provincia;
-            if (txtEstado) txtEstado.value = datos.estado_clave || 'ACTIVO';
+            if (txtEstado) txtEstado.value = datos.estado_clave || (datos.sin_inscripcion_arca ? 'SIN INSCRIPCIÓN ACTIVA' : 'ACTIVO');
             if (txtCatMonotributo) txtCatMonotributo.value = datos.categoria_monotributo || 'N/A';
             if (txtActividad) txtActividad.value = datos.actividad_principal || 'N/A';
 
-            if (datos.advertencia_fiscal) {
+            if (datos.sin_inscripcion_arca) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'CUIL sin inscripción activa en ARCA (Consumidor Final)',
+                    html: `
+                        <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 10px; border-radius: 4px; text-align: left; font-size: 12.5px; color: #92400e;">
+                            <strong>No es una caída de ARCA:</strong> este CUIL es válido pero no posee inscripción impositiva activa en Padrón A5.<br><br>
+                            ✅ Se asignó <strong>Consumidor Final</strong>${datos.dni ? ` (DNI ${datos.dni} detectado)` : ''}. Podés seguir guardando la ficha.
+                        </div>
+                    `,
+                    confirmButtonText: 'Entendido, continuar carga',
+                    confirmButtonColor: '#6b21a8'
+                });
+            } else if (datos.advertencia_fiscal) {
                 Swal.fire({
                     icon: 'warning',
                     title: 'Datos Recuperados con Advertencia',
@@ -965,6 +1007,18 @@ const ClientesMobileController = {
             if (inputRazon) inputRazon.value = nombreParam;
         }
 
+        const selIva = document.getElementById('sel-condicion-iva');
+        if (selIva) selIva.value = 'Consumidor Final';
+        const txtDniOculto = document.getElementById('txt-dni-oculto');
+        if (txtDniOculto) txtDniOculto.value = '';
+        const txtEmailPortal = document.getElementById('txt-email-portal');
+        if (txtEmailPortal) txtEmailPortal.value = '';
+        const txtEmailPortalNombre = document.getElementById('txt-email-portal-nombre');
+        if (txtEmailPortalNombre) txtEmailPortalNombre.value = '';
+        const txtEmailPortalCargo = document.getElementById('txt-email-portal-cargo');
+        if (txtEmailPortalCargo) txtEmailPortalCargo.value = '';
+        this.validarYMostrarCuit();
+
         if (telefonoParam) {
             this.contactosWhatsapp = [{
                 id: `wa_${Date.now()}`,
@@ -1015,8 +1069,10 @@ const ClientesMobileController = {
             document.getElementById('txt-nombre').value = c.cliente_nombre || '';
             document.getElementById('txt-razon').value = c.razon_social || '';
             document.getElementById('txt-lomas-id').value = c.lomas_soft_id || '';
-            document.getElementById('txt-cuit').value = c.cuit_cuil || '';
-            document.getElementById('sel-condicion-iva').value = c.condicion_iva || '';
+            document.getElementById('txt-cuit').value = c.cuit_cuil || c.dni || '';
+            const txtDniOculto = document.getElementById('txt-dni-oculto');
+            if (txtDniOculto) txtDniOculto.value = c.dni || '';
+            document.getElementById('sel-condicion-iva').value = c.condicion_iva || 'Consumidor Final';
             document.getElementById('txt-domicilio-fiscal').value = c.domicilio_fiscal || '';
             document.getElementById('txt-provincia').value = c.provincia || '';
             document.getElementById('txt-estado-clave').value = c.estado_clave || '';
@@ -1109,11 +1165,11 @@ const ClientesMobileController = {
 
     async guardarClienteFormulario(confirmarExcepcionCuit = false) {
         const nombre = (document.getElementById('txt-nombre')?.value || '').trim();
-        const razon = (document.getElementById('txt-razon')?.value || '').trim();
+        const razon = (document.getElementById('txt-razon')?.value || '').trim() || nombre;
         const codigo = (document.getElementById('txt-codigo')?.value || '').trim();
         const lomasId = (document.getElementById('txt-lomas-id')?.value || '').trim();
-        const cuit = (document.getElementById('txt-cuit')?.value || '').trim();
-        const condicion = document.getElementById('sel-condicion-iva')?.value || null;
+        const docInput = (document.getElementById('txt-cuit')?.value || '').trim();
+        const condicion = document.getElementById('sel-condicion-iva')?.value || 'Consumidor Final';
         const domFiscal = (document.getElementById('txt-domicilio-fiscal')?.value || '').trim();
         const provincia = (document.getElementById('txt-provincia')?.value || '').trim();
         const estadoClave = (document.getElementById('txt-estado-clave')?.value || '').trim();
@@ -1123,15 +1179,22 @@ const ClientesMobileController = {
         const emailPortalNombre = (document.getElementById('txt-email-portal-nombre')?.value || '').trim();
         const emailPortalCargo = (document.getElementById('txt-email-portal-cargo')?.value || '').trim();
 
-        if (!nombre || !razon) {
-            Swal.fire('Campos requeridos', 'Por favor complete el Nombre Comercial y la Razón Social.', 'warning');
+        if (!nombre) {
+            Swal.fire('Campos requeridos', 'Por favor complete el Nombre Comercial.', 'warning');
             return;
         }
 
-        if (cuit && !this.validarCuit(cuit)) {
-            Swal.fire('CUIT Inválido', 'El CUIT ingresado no es válido según algoritmo oficial Módulo 11.', 'warning');
+        const docClasif = this.clasificarDocumentoFiscal(docInput);
+        if (!docClasif.valido) {
+            Swal.fire('Documento inválido', 'Ingresá un DNI (7–8 dígitos), un CUIT/CUIL válido (11 dígitos) o dejalo vacío.', 'warning');
             return;
         }
+
+        const esCF = condicion.toLowerCase().includes('consumidor');
+        const cuitPayload = docClasif.tipo === 'CUIT' ? docClasif.cuit : null;
+        const dniPayload = docClasif.tipo === 'DNI'
+            ? docClasif.dni
+            : (docClasif.tipo === 'CUIT' && docClasif.esFisica && esCF ? docClasif.dni : null);
 
         // Sanitizar contactos de WhatsApp
         const waFiltrados = this.contactosWhatsapp
@@ -1161,8 +1224,10 @@ const ClientesMobileController = {
             cliente_nombre: nombre,
             razon_social: razon,
             lomas_soft_id: lomasId || null,
-            cuit_cuil: cuit || null,
-            condicion_iva: condicion || null,
+            cuit_cuil: cuitPayload,
+            dni: dniPayload,
+            documento: docClasif.raw || null,
+            condicion_iva: condicion,
             domicilio_fiscal: domFiscal || null,
             provincia: provincia || null,
             estado_clave: estadoClave || null,
@@ -1201,7 +1266,7 @@ const ClientesMobileController = {
 
                     const confirm = await Swal.fire({
                         title: '¿Confirmar excepción de CUIT?',
-                        text: `El CUIT "${cuit}" ya está registrado para "${data.clienteNombre}". ¿Desea guardarlo de todas formas como excepción?`,
+                        text: `El CUIT "${docInput}" ya está registrado para "${data.clienteNombre}". ¿Desea guardarlo de todas formas como excepción?`,
                         icon: 'warning',
                         showCancelButton: true,
                         confirmButtonColor: '#7c3aed',

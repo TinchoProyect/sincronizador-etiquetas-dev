@@ -42,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Campos del Formulario
     const txtId = document.getElementById('cliente-id');
+    const txtDniOculto = document.getElementById('txt-dni-oculto');
     const txtCodigo = document.getElementById('txt-codigo');
     const txtNombre = document.getElementById('txt-nombre');
     const txtRazon = document.getElementById('txt-razon');
@@ -1255,6 +1256,7 @@ document.addEventListener('DOMContentLoaded', () => {
             c.razon_social,
             c.lomas_soft_id,
             c.cuit_cuil,
+            c.dni,
             c.condicion_iva,
             c.domicilio_fiscal,
             c.provincia,
@@ -1270,6 +1272,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const digitsBase = [
             c.cuit_cuil,
+            c.dni,
             c.lomas_soft_id,
             c.whatsapp_facturas,
             ni ? ni.gestor_telefono : ''
@@ -3257,6 +3260,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Pizarra limpia del formulario
             formCliente.reset();
             txtId.value = '';
+            if (txtDniOculto) txtDniOculto.value = '';
+            if (txtEmailPortal) txtEmailPortal.value = '';
             if (chkVerStock) chkVerStock.checked = false;
 
             // Ocultar botones auxiliares del Autocomplete Lomas Soft
@@ -3265,13 +3270,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const lomasSugerencias = document.getElementById('lomas-sugerencias');
             if (lomasSugerencias) lomasSugerencias.style.display = 'none';
 
-            // Limpiar estilos y estados del validador de CUIT
+            // Limpiar estilos y estados del validador de documento
             if (txtCuit) {
                 txtCuit.style.borderColor = '';
                 txtCuit.style.boxShadow = '';
             }
             if (helperCuit) {
-                helperCuit.textContent = 'Identificación tributaria de 11 dígitos.';
+                helperCuit.textContent = 'Opcional para Consumidor Final (< $10.000.000). Acepta DNI (7–8 dígitos) o CUIT/CUIL (11 dígitos).';
                 helperCuit.style.color = '';
             }
             if (btnConsultarArca) {
@@ -3284,7 +3289,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 300);
     }
 
-    // --- 4.5 VALIDADOR FISCAL EN CALIENTE (MÓDULO 11) ---
+    // --- 4.5 VALIDADOR FISCAL EN CALIENTE (DNI 7-8 O CUIT/CUIL MÓDULO 11) ---
     /**
      * Validador oficial de CUIT/CUIL basado en ponderadores de Módulo 11 (Adaptación de Blueprint ARCA).
      * @param {string} cuit - CUIT a validar.
@@ -3314,17 +3319,35 @@ document.addEventListener('DOMContentLoaded', () => {
         return calculated === cuitDig;
     }
 
+    function clasificarDocumentoFiscalInput(valor) {
+        const raw = String(valor || '').replace(/[^0-9]/g, '');
+        if (raw.length === 0) {
+            return { tipo: 'VACIO', valido: true, raw: '', dni: null, cuit: null };
+        }
+        if (raw.length >= 7 && raw.length <= 8) {
+            return { tipo: 'DNI', valido: true, raw, dni: raw, cuit: null };
+        }
+        if (raw.length === 11 && validarCuit(raw)) {
+            const esFisica = /^(20|23|24|27)\d{9}$/.test(raw);
+            const dniRaw = esFisica ? raw.substring(2, 10).replace(/^0+/, '') : '';
+            const dniDetectado = /^\d{7,8}$/.test(dniRaw) ? dniRaw : null;
+            return { tipo: 'CUIT', valido: true, raw, dni: dniDetectado, cuit: raw, esFisica };
+        }
+        return { tipo: 'INVALIDO', valido: false, raw, dni: null, cuit: null };
+    }
+
     /**
-     * Valida visualmente en caliente el CUIT/CUIL pintando el borde y controlando el botón Guardar.
+     * Valida visualmente en caliente el documento (vacío, DNI 7-8 o CUIT/CUIL 11) pintando el borde
+     * y controlando los botones Guardar y Consultar ARCA sin bloquear DNIs de Consumidor Final.
      */
     function validarYMostrarCuit() {
-        const cuit = txtCuit.value;
-        const isValid = validarCuit(cuit);
+        const valor = txtCuit.value;
+        const cls = clasificarDocumentoFiscalInput(valor);
         
-        if (cuit.trim() === '') {
+        if (cls.tipo === 'VACIO') {
             txtCuit.style.borderColor = '';
             txtCuit.style.boxShadow = '';
-            helperCuit.textContent = 'Identificación tributaria de 11 dígitos.';
+            helperCuit.textContent = 'Opcional para Consumidor Final (< $10.000.000). Acepta DNI (7–8 dígitos) o CUIT/CUIL (11 dígitos).';
             helperCuit.style.color = '';
             btnGuardarCliente.disabled = false;
             btnGuardarCliente.style.opacity = '';
@@ -3333,20 +3356,27 @@ document.addEventListener('DOMContentLoaded', () => {
             return true;
         }
         
-        if (!isValid) {
-            txtCuit.style.borderColor = '#ef4444';
-            txtCuit.style.boxShadow = '0 0 0 3px rgba(239, 68, 68, 0.15)';
-            helperCuit.textContent = '❌ CUIT/CUIL inválido según algoritmo oficial (Módulo 11).';
-            helperCuit.style.color = '#ef4444';
-            btnGuardarCliente.disabled = true;
-            btnGuardarCliente.style.opacity = '0.5';
-            btnGuardarCliente.style.cursor = 'not-allowed';
-            if (btnConsultarArca) btnConsultarArca.disabled = true;
-            return false;
-        } else {
+        if (cls.tipo === 'DNI') {
             txtCuit.style.borderColor = '#10b981';
             txtCuit.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.15)';
-            helperCuit.textContent = '✅ CUIT/CUIL válido.';
+            helperCuit.textContent = `✅ DNI válido (${cls.dni}). Padrón ARCA solo consulta CUIT/CUIL de 11 dígitos; podés guardar directo.`;
+            helperCuit.style.color = '#10b981';
+            if (selCondicionIva && !selCondicionIva.value) {
+                selCondicionIva.value = 'Consumidor Final';
+            }
+            btnGuardarCliente.disabled = false;
+            btnGuardarCliente.style.opacity = '';
+            btnGuardarCliente.style.cursor = '';
+            if (btnConsultarArca) btnConsultarArca.disabled = true;
+            return true;
+        }
+
+        if (cls.tipo === 'CUIT') {
+            txtCuit.style.borderColor = '#10b981';
+            txtCuit.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.15)';
+            helperCuit.textContent = cls.dni
+                ? `✅ CUIT/CUIL válido (DNI detectado: ${cls.dni}).`
+                : '✅ CUIT/CUIL válido.';
             helperCuit.style.color = '#10b981';
             btnGuardarCliente.disabled = false;
             btnGuardarCliente.style.opacity = '';
@@ -3354,9 +3384,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btnConsultarArca) btnConsultarArca.disabled = false;
             return true;
         }
+
+        txtCuit.style.borderColor = '#ef4444';
+        txtCuit.style.boxShadow = '0 0 0 3px rgba(239, 68, 68, 0.15)';
+        helperCuit.textContent = '❌ Documento inválido: ingresá un DNI (7–8 dígitos), un CUIT/CUIL válido (11 dígitos Módulo 11) o dejalo vacío.';
+        helperCuit.style.color = '#ef4444';
+        btnGuardarCliente.disabled = true;
+        btnGuardarCliente.style.opacity = '0.5';
+        btnGuardarCliente.style.cursor = 'not-allowed';
+        if (btnConsultarArca) btnConsultarArca.disabled = true;
+        return false;
     }
 
-    // Escuchadores de eventos para validación en vivo del CUIT
+    // Escuchadores de eventos para validación en vivo del documento
     txtCuit.addEventListener('input', validarYMostrarCuit);
     txtCuit.addEventListener('blur', validarYMostrarCuit);
 
@@ -3364,7 +3404,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnConsultarArca) {
         btnConsultarArca.addEventListener('click', async () => {
             const cuit = txtCuit.value.trim().replace(/[^0-9]/g, '');
-            if (!cuit || !validarCuit(cuit)) return;
+            if (!cuit || cuit.length !== 11 || !validarCuit(cuit)) return;
 
             try {
                 // Estado de carga en el botón
@@ -3396,12 +3436,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const datos = result.data;
                 console.log('🔌 [ARCA-FRONT] Datos fiscales recuperados:', datos);
 
-                // Rellenar campos del Drawer
-                txtRazon.value = datos.razon_social || '';
-                
-                // Si el Nombre Comercial está vacío, sugerir la razón social
-                if (!txtNombre.value.trim()) {
-                    txtNombre.value = datos.razon_social || '';
+                // Rellenar campos del Drawer sin pisar lo que el operador ya tipeó si ARCA no trajo razón social
+                if (datos.razon_social) {
+                    txtRazon.value = datos.razon_social;
+                    if (!txtNombre.value.trim()) {
+                        txtNombre.value = datos.razon_social;
+                    }
+                }
+
+                if (datos.dni && txtDniOculto) {
+                    txtDniOculto.value = datos.dni;
                 }
 
                 if (datos.condicion_iva) {
@@ -3417,7 +3461,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (txtEstadoClave) {
-                    txtEstadoClave.value = datos.estado_clave || 'ACTIVO';
+                    txtEstadoClave.value = datos.estado_clave || (datos.sin_inscripcion_arca ? 'SIN INSCRIPCIÓN ACTIVA' : 'ACTIVO');
                 }
 
                 if (txtCategoriaMonotributo) {
@@ -3428,7 +3472,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     txtActividadPrincipal.value = datos.actividad_principal || 'N/A';
                 }
 
-                if (datos.advertencia_fiscal) {
+                if (datos.sin_inscripcion_arca) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'CUIL sin inscripción activa en ARCA (Consumidor Final)',
+                        html: `
+                            <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px; border-radius: 6px; text-align: left; font-size: 13px; color: #92400e; line-height: 1.45;">
+                                <strong>No es un error de sistema:</strong> este CUIL es válido pero no registra constancia impositiva activa en Padrón A5 de ARCA.<br><br>
+                                ✅ Se configuró automáticamente como <strong>Consumidor Final</strong>${datos.dni ? ` y se extrajo el <strong>DNI ${datos.dni}</strong>` : ''}.<br>
+                                Podés continuar completando el nombre y guardar la ficha normalmente.
+                            </div>
+                        `,
+                        confirmButtonText: 'Entendido, continuar carga',
+                        confirmButtonColor: '#6b21a8'
+                    });
+                } else if (datos.advertencia_fiscal) {
                     Swal.fire({
                         icon: 'warning',
                         title: 'Datos Recuperados con Advertencia',
@@ -3485,8 +3543,11 @@ document.addEventListener('DOMContentLoaded', () => {
     btnNuevoCliente.addEventListener('click', () => {
         // Enforce Pizarra Limpia
         txtId.value = '';
+        if (txtDniOculto) txtDniOculto.value = '';
         formCliente.reset();
+        if (selCondicionIva) selCondicionIva.value = 'Consumidor Final';
         if (selPreferenciaFacturacion) selPreferenciaFacturacion.value = 'PREGUNTAR';
+        if (txtEmailPortal) txtEmailPortal.value = '';
         renderWhatsappInputs('');
         renderEmailInputs('');
         if (selCanalPreferido) selCanalPreferido.value = 'whatsapp';
@@ -3515,7 +3576,7 @@ document.addEventListener('DOMContentLoaded', () => {
             txtCuit.style.boxShadow = '';
         }
         if (helperCuit) {
-            helperCuit.textContent = 'Identificación tributaria de 11 dígitos.';
+            helperCuit.textContent = 'Opcional para Consumidor Final (< $10.000.000). Acepta DNI (7–8 dígitos) o CUIT/CUIL (11 dígitos).';
             helperCuit.style.color = '';
         }
         if (btnConsultarArca) {
@@ -3544,9 +3605,10 @@ document.addEventListener('DOMContentLoaded', () => {
         txtRazon.value = cliente.razon_social;
         txtLomasId.value = cliente.lomas_soft_id || '';
         
-        // Cargar inputs fiscales (Fase 1 y 3 Fiscal)
-        txtCuit.value = cliente.cuit_cuil || '';
-        selCondicionIva.value = cliente.condicion_iva || '';
+        // Cargar inputs fiscales (DNI / CUIT-CUIL unificado)
+        txtCuit.value = cliente.cuit_cuil || cliente.dni || '';
+        if (txtDniOculto) txtDniOculto.value = cliente.dni || '';
+        selCondicionIva.value = cliente.condicion_iva || 'Consumidor Final';
         if (selPreferenciaFacturacion) selPreferenciaFacturacion.value = cliente.preferencia_facturacion || 'PREGUNTAR';
         txtDomicilioFiscal.value = cliente.domicilio_fiscal || '';
         txtProvincia.value = cliente.provincia || '';
@@ -3614,10 +3676,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const id = txtId.value;
         const codigo = txtCodigo.value.trim();
         const nombre = txtNombre.value.trim();
-        const razon = txtRazon.value.trim();
+        const razon = txtRazon.value.trim() || nombre;
         const lomasId = txtLomasId.value.trim();
-        const cuit = txtCuit.value.trim();
-        const condicionIva = selCondicionIva.value;
+        const docInput = txtCuit.value.trim();
+        const condicionIva = selCondicionIva.value || 'Consumidor Final';
         const preferenciaFacturacion = selPreferenciaFacturacion ? selPreferenciaFacturacion.value : 'PREGUNTAR';
         const domicilioFiscal = txtDomicilioFiscal.value.trim();
         const provincia = txtProvincia.value.trim();
@@ -3637,26 +3699,33 @@ document.addEventListener('DOMContentLoaded', () => {
         // ARQUITECTURA LAMDA: El Código Búnker es autogenerado por el backend durante la creación,
         // por lo tanto, solo es obligatorio verificar su presencia para flujos de edición/actualización.
         const esEdicion = !!id;
-        if ((esEdicion && !codigo) || !nombre || !razon) {
+        if ((esEdicion && !codigo) || !nombre) {
             Swal.fire({
                 icon: 'warning',
                 title: 'Campos requeridos',
-                text: 'Por favor complete todos los campos obligatorios (*).',
+                text: 'Por favor complete el Nombre Comercial (*).',
                 confirmButtonColor: '#6b21a8'
             });
             return;
         }
 
-        // Validar CUIT en caliente client-side antes de enviar
-        if (cuit && !validarCuit(cuit)) {
+        // Validar documento unificado (vacío, DNI 7-8 o CUIT/CUIL 11)
+        const docClasif = clasificarDocumentoFiscalInput(docInput);
+        if (!docClasif.valido) {
             Swal.fire({
                 icon: 'warning',
-                title: 'CUIT/CUIL inválido',
-                text: 'El CUIT/CUIL no es válido matemáticamente. Por favor corríjalo antes de guardar.',
+                title: 'Documento inválido',
+                text: 'Ingresá un DNI (7 u 8 dígitos), un CUIT/CUIL válido de 11 dígitos o dejalo vacío para Consumidor Final.',
                 confirmButtonColor: '#6b21a8'
             });
             return;
         }
+
+        const esCF = condicionIva.toLowerCase().includes('consumidor');
+        const cuitPayload = docClasif.tipo === 'CUIT' ? docClasif.cuit : null;
+        const dniPayload = docClasif.tipo === 'DNI'
+            ? docClasif.dni
+            : (docClasif.tipo === 'CUIT' && docClasif.esFisica && esCF ? docClasif.dni : null);
 
         // Si es creación, pasamos null para gatillar la autogeneración de secuencia CB-XXXX en el servidor
         const payload = {
@@ -3664,8 +3733,10 @@ document.addEventListener('DOMContentLoaded', () => {
             cliente_nombre: nombre,
             razon_social: razon,
             lomas_soft_id: lomasId,
-            cuit_cuil: cuit || null,
-            condicion_iva: condicionIva || null,
+            cuit_cuil: cuitPayload,
+            dni: dniPayload,
+            documento: docClasif.raw || null,
+            condicion_iva: condicionIva,
             preferencia_facturacion: preferenciaFacturacion,
             domicilio_fiscal: domicilioFiscal || null,
             provincia: provincia || null,
@@ -3709,7 +3780,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     const confirmacion = await Swal.fire({
                         title: '¿Confirmar excepción de CUIT?',
-                        text: `El CUIT/CUIL "${cuit}" ya está registrado para el cliente "${data.clienteNombre}". ¿Desea guardarlo de todas formas como una excepción?`,
+                        text: `El CUIT/CUIL "${docInput}" ya está registrado para el cliente "${data.clienteNombre}". ¿Desea guardarlo de todas formas como una excepción?`,
                         icon: 'warning',
                         showCancelButton: true,
                         confirmButtonColor: '#6b21a8',

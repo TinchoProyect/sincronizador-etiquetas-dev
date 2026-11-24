@@ -136,7 +136,7 @@ setImmediate(() => {
  */
 function validarCuit(cuit) {
     if (!cuit) return true; // Tolerancia a nulos/vacíos
-    const raw = cuit.replace(/[^0-9]/g, '');
+    const raw = String(cuit).replace(/[^0-9]/g, '');
     if (raw.length === 0) return true; // Tolerancia a campos vacíos
     if (raw.length !== 11) return false;
 
@@ -156,6 +156,122 @@ function validarCuit(cuit) {
     if (calculated === 10) return false;
     
     return calculated === cuitDig;
+}
+
+function esCuitPersonaFisica(cuit11) {
+    return /^(20|23|24|27)\d{9}$/.test(String(cuit11 || '').replace(/[^0-9]/g, ''));
+}
+
+function extraerDniDesdeCuit(cuit11) {
+    const raw = String(cuit11 || '').replace(/[^0-9]/g, '');
+    if (!esCuitPersonaFisica(raw)) return null;
+    const dni = raw.substring(2, 10).replace(/^0+/, '');
+    return /^\d{7,8}$/.test(dni) ? dni : null;
+}
+
+function validarDni(dni) {
+    if (!dni) return true;
+    const raw = String(dni).replace(/[^0-9]/g, '');
+    if (raw.length === 0) return true;
+    return /^\d{7,8}$/.test(raw);
+}
+
+/**
+ * Normaliza documento fiscal desde los campos cuit_cuil, dni o documento unificado.
+ * - Vacío: permitido (Consumidor Final sin documento)
+ * - 7–8 dígitos: DNI válido
+ * - 11 dígitos (Módulo 11): CUIT/CUIL válido (y si es persona física Consumidor Final, extrae DNI si falta)
+ */
+function normalizarDocumentoFiscal({ cuit_cuil, dni, documento, condicion_iva }) {
+    let cuitClean = cuit_cuil !== undefined && cuit_cuil !== null ? String(cuit_cuil).replace(/[^0-9]/g, '') : '';
+    let dniClean = dni !== undefined && dni !== null ? String(dni).replace(/[^0-9]/g, '') : '';
+    const docClean = documento !== undefined && documento !== null ? String(documento).replace(/[^0-9]/g, '') : '';
+
+    // Si vino por campo unificado `documento`
+    if (docClean.length > 0) {
+        if (docClean.length >= 7 && docClean.length <= 8) {
+            dniClean = docClean;
+            if (!cuitClean) cuitClean = '';
+        } else if (docClean.length === 11) {
+            cuitClean = docClean;
+        } else {
+            return {
+                valido: false,
+                error: 'El documento ingresado no es válido. Ingresá un DNI (7 u 8 dígitos), un CUIT/CUIL de 11 dígitos o dejalo vacío para Consumidor Final.'
+            };
+        }
+    }
+
+    // Compatibilidad: si el frontend envió 7–8 dígitos en `cuit_cuil`, reclasificar limpiamente como DNI
+    if (cuitClean.length >= 7 && cuitClean.length <= 8 && dniClean.length === 0) {
+        dniClean = cuitClean;
+        cuitClean = '';
+    }
+
+    if (cuitClean.length > 0 && !validarCuit(cuitClean)) {
+        return {
+            valido: false,
+            error: 'El CUIT/CUIL ingresado no es válido (debe tener 11 dígitos válidos según Módulo 11, o 7–8 dígitos si es DNI).'
+        };
+    }
+
+    if (dniClean.length > 0 && !validarDni(dniClean)) {
+        return {
+            valido: false,
+            error: 'El DNI ingresado no es válido (debe tener 7 u 8 dígitos).'
+        };
+    }
+
+    const condNorm = String(condicion_iva || 'Consumidor Final').trim().toLowerCase();
+    const esConsumidorFinal = !condNorm || condNorm.includes('consumidor');
+
+    // Si es persona física (20/23/24/27) Consumidor Final con CUIL y sin DNI explícito, autocompletar DNI extraído
+    if (cuitClean.length === 11 && dniClean.length === 0 && esConsumidorFinal && esCuitPersonaFisica(cuitClean)) {
+        const extraido = extraerDniDesdeCuit(cuitClean);
+        if (extraido) dniClean = extraido;
+    }
+
+    return {
+        valido: true,
+        cuit_cuil: cuitClean.length > 0 ? cuitClean : null,
+        dni: dniClean.length > 0 ? dniClean : null
+    };
+}
+
+/**
+ * Traduce errores PostgreSQL 23505 (UNIQUE violation) en respuestas HTTP 409 legibles para el operador.
+ */
+function traducirErrorUniquePg(error) {
+    if (!error || error.code !== '23505') return null;
+    const constraint = String(error.constraint || '');
+    const detail = String(error.detail || '');
+
+    if (constraint.includes('email_portal')) {
+        return {
+            status: 409,
+            code: 'EMAIL_PORTAL_DUPLICADO',
+            error: `El correo de acceso al Portal B2B ya está asignado a otro cliente (${detail || 'correo duplicado'}). Verificá la sección "Acceso al Portal B2B".`
+        };
+    }
+    if (constraint.includes('lomas_soft_id')) {
+        return {
+            status: 409,
+            code: 'LOMAS_ID_DUPLICADO',
+            error: `El ID externo de Lomas Soft ya está asociado a otro cliente (${detail || 'ID duplicado'}).`
+        };
+    }
+    if (constraint.includes('codigo_bunker_cliente')) {
+        return {
+            status: 409,
+            code: 'CODIGO_BUNKER_DUPLICADO',
+            error: `El código Búnker ya está registrado por otro cliente (${detail || 'código duplicado'}).`
+        };
+    }
+    return {
+        status: 409,
+        code: 'REGISTRO_DUPLICADO',
+        error: `Ya existe otro cliente con ese dato único (${constraint || detail || 'clave duplicada'}).`
+    };
 }
 
 /**
@@ -224,6 +340,17 @@ exports.sugerirLegacy = async (req, res) => {
                 maxNum = num;
             }
         });
+
+        // Verificar también el máximo existente en public.clientes (< 9000) para garantizar cero colisiones en UPSERT
+        try {
+            const rLegacy = await pool.query(`SELECT COALESCE(MAX(cliente_id), 0) AS max_legacy FROM public.clientes WHERE cliente_id < 9000`);
+            const maxLegacy = parseInt(rLegacy.rows[0]?.max_legacy || 0, 10);
+            if (!isNaN(maxLegacy) && maxLegacy > maxNum) {
+                maxNum = maxLegacy;
+            }
+        } catch (errLeg) {
+            console.warn('⚠️ [CLIENTES-BUNKER] No se pudo consultar MAX(cliente_id) en public.clientes:', errLeg.message);
+        }
         
         // Si el máximo encontrado es mayor a 0, sumamos 1. Si no, empezamos en la base 100.
         let sugerido = maxNum > 0 ? maxNum + 1 : 100;
@@ -244,56 +371,71 @@ exports.sugerirLegacy = async (req, res) => {
  */
 exports.crear = async (req, res) => {
     try {
-        const { codigo_bunker_cliente, cliente_nombre, razon_social, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, confirmarCuitDuplicado, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion } = req.body;
-        let { lomas_soft_id, cuit_cuil } = req.body;
+        const { codigo_bunker_cliente, cliente_nombre, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, confirmarCuitDuplicado, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, documento } = req.body;
+        let { lomas_soft_id, cuit_cuil, dni, razon_social } = req.body;
 
         const prefFacturacion = ['ARCA', 'INTERNO', 'PREGUNTAR'].includes(preferencia_facturacion)
             ? preferencia_facturacion
             : 'PREGUNTAR';
 
-        // 1. Validaciones de presencia de campos obligatorios humanos
-        if (!cliente_nombre || !cliente_nombre.trim()) {
+        // 1. Validaciones de presencia: único campo humano obligatorio es cliente_nombre
+        if (!cliente_nombre || !String(cliente_nombre).trim()) {
             return res.status(400).json({ success: false, error: 'El nombre comercial del cliente es requerido.' });
         }
-        if (!razon_social || !razon_social.trim()) {
-            return res.status(400).json({ success: false, error: 'La razón social es requerida.' });
-        }
+        const nombreLimpio = String(cliente_nombre).trim();
+        const razonSocialLimpia = (razon_social && String(razon_social).trim())
+            ? String(razon_social).trim()
+            : nombreLimpio;
+        const condicionIvaFinal = (condicion_iva && String(condicion_iva).trim())
+            ? String(condicion_iva).trim()
+            : 'Consumidor Final';
 
-        // 2. Validación de CUIT/CUIL vía Módulo 11 (Fase 1 Fiscal)
-        if (!validarCuit(cuit_cuil)) {
-            return res.status(400).json({ success: false, error: 'El CUIT/CUIL ingresado no es válido (Fallo de algoritmo Módulo 11).' });
+        // 2. Validación y clasificación inteligente de documento (vacío / DNI 7-8 / CUIT-CUIL 11)
+        const docRes = normalizarDocumentoFiscal({
+            cuit_cuil,
+            dni,
+            documento,
+            condicion_iva: condicionIvaFinal
+        });
+        if (!docRes.valido) {
+            return res.status(400).json({ success: false, error: docRes.error });
         }
+        cuit_cuil = docRes.cuit_cuil;
+        dni = docRes.dni;
 
         // 3. Sanitización preventiva de lomas_soft_id (ID externo)
         if (lomas_soft_id === undefined || lomas_soft_id === null || (typeof lomas_soft_id === 'string' && !lomas_soft_id.trim())) {
             lomas_soft_id = null;
         } else {
-            lomas_soft_id = lomas_soft_id.trim();
+            lomas_soft_id = String(lomas_soft_id).trim();
             // Alinear códigos numéricos (como los autogenerados de 3 dígitos) a 4 dígitos para compatibilidad legacy
             if (/^[0-9]+$/.test(lomas_soft_id)) {
                 lomas_soft_id = lomas_soft_id.padStart(4, '0');
             }
         }
 
-        // 4. Sanitización de cuit_cuil
-        if (cuit_cuil === undefined || cuit_cuil === null || (typeof cuit_cuil === 'string' && !cuit_cuil.trim())) {
-            cuit_cuil = null;
-        } else {
-            cuit_cuil = cuit_cuil.trim().replace(/[^0-9]/g, '');
-            if (cuit_cuil.length === 0) {
-                cuit_cuil = null;
-            }
+        // 4. Sanitización de email_portal
+        const emailPortalLimpio = (email_portal && String(email_portal).trim())
+            ? String(email_portal).trim().toLowerCase()
+            : null;
+        if (emailPortalLimpio && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailPortalLimpio)) {
+            return res.status(400).json({ success: false, error: `El correo de acceso al Portal B2B "${emailPortalLimpio}" no tiene un formato válido.` });
         }
 
         // 5. Sanitizar y validar código local solo si fue provisto
         let codigoLimpio = null;
-        if (codigo_bunker_cliente && codigo_bunker_cliente.trim()) {
-            codigoLimpio = codigo_bunker_cliente.trim().toUpperCase();
+        if (codigo_bunker_cliente && String(codigo_bunker_cliente).trim()) {
+            codigoLimpio = String(codigo_bunker_cliente).trim().toUpperCase();
             
             // Control de unicidad de código búnker local
             const clienteExistenteCodigo = await ClientesBunkerModel.obtenerPorCodigoBunker(codigoLimpio);
             if (clienteExistenteCodigo) {
-                return res.status(400).json({ success: false, error: `El código búnker "${codigoLimpio}" ya está registrado por otro cliente.` });
+                return res.status(409).json({
+                    success: false,
+                    code: 'CODIGO_BUNKER_DUPLICADO',
+                    clienteNombre: clienteExistenteCodigo.cliente_nombre,
+                    error: `El código búnker "${codigoLimpio}" ya está registrado por el cliente "${clienteExistenteCodigo.cliente_nombre}".`
+                });
             }
         }
 
@@ -301,7 +443,27 @@ exports.crear = async (req, res) => {
         if (lomas_soft_id !== null) {
             const clienteExistenteLomas = await ClientesBunkerModel.obtenerPorLomasSoftId(lomas_soft_id);
             if (clienteExistenteLomas) {
-                return res.status(400).json({ success: false, error: `El ID externo de Lomas Soft "${lomas_soft_id}" ya está asociado al cliente "${clienteExistenteLomas.cliente_nombre}".` });
+                return res.status(409).json({
+                    success: false,
+                    code: 'LOMAS_ID_DUPLICADO',
+                    clienteNombre: clienteExistenteLomas.cliente_nombre,
+                    codigoBunker: clienteExistenteLomas.codigo_bunker_cliente,
+                    error: `El ID externo de Lomas Soft "${lomas_soft_id}" ya está asociado al cliente "${clienteExistenteLomas.cliente_nombre}" (${clienteExistenteLomas.codigo_bunker_cliente}).`
+                });
+            }
+        }
+
+        // 6.5. Control preventivo de unicidad de email_portal (evita HTTP 500 por autofill/duplicado)
+        if (emailPortalLimpio !== null) {
+            const clienteExistenteEmail = await ClientesBunkerModel.obtenerPorEmailPortal(emailPortalLimpio);
+            if (clienteExistenteEmail) {
+                return res.status(409).json({
+                    success: false,
+                    code: 'EMAIL_PORTAL_DUPLICADO',
+                    clienteNombre: clienteExistenteEmail.cliente_nombre,
+                    codigoBunker: clienteExistenteEmail.codigo_bunker_cliente,
+                    error: `El correo de portal "${emailPortalLimpio}" ya está asignado al cliente "${clienteExistenteEmail.cliente_nombre}" (${clienteExistenteEmail.codigo_bunker_cliente}). Si no corresponde a este cliente, vaciá el campo "Email de Portal".`
+                });
             }
         }
 
@@ -313,7 +475,8 @@ exports.crear = async (req, res) => {
                     success: false, 
                     code: 'CUIT_DUPLICADO', 
                     clienteNombre: clienteExistenteCuit.cliente_nombre,
-                    error: `El CUIT/CUIL "${cuit_cuil}" ya está registrado por el cliente "${clienteExistenteCuit.cliente_nombre}".` 
+                    codigoBunker: clienteExistenteCuit.codigo_bunker_cliente,
+                    error: `El CUIT/CUIL "${cuit_cuil}" ya está registrado por el cliente "${clienteExistenteCuit.cliente_nombre}" (${clienteExistenteCuit.codigo_bunker_cliente}).` 
                 });
             }
         }
@@ -321,22 +484,23 @@ exports.crear = async (req, res) => {
         // 8. Persistencia
         const nuevoCliente = await ClientesBunkerModel.crear({
             codigo_bunker_cliente: codigoLimpio,
-            cliente_nombre: cliente_nombre.trim(),
-            razon_social: razon_social.trim(),
+            cliente_nombre: nombreLimpio,
+            razon_social: razonSocialLimpia,
             lomas_soft_id,
             cuit_cuil,
-            condicion_iva: condicion_iva ? condicion_iva.trim() : null,
-            domicilio_fiscal: domicilio_fiscal ? domicilio_fiscal.trim() : null,
-            provincia: provincia ? provincia.trim() : null,
-            estado_clave: estado_clave ? estado_clave.trim() : null,
-            categoria_monotributo: categoria_monotributo ? categoria_monotributo.trim() : null,
-            actividad_principal: actividad_principal ? actividad_principal.trim() : null,
-            whatsapp_facturas: whatsapp_facturas ? whatsapp_facturas.trim() : null,
-            email_facturas: email_facturas ? sanitizarJsonEmailFacturasPreservandoFlags(email_facturas.trim()) : null,
-            canal_envio_preferido: canal_envio_preferido ? canal_envio_preferido.trim() : 'whatsapp',
-            email_portal: email_portal ? email_portal.trim() : null,
-            email_portal_nombre: email_portal_nombre ? email_portal_nombre.trim() : null,
-            email_portal_cargo: email_portal_cargo ? email_portal_cargo.trim() : null,
+            dni,
+            condicion_iva: condicionIvaFinal,
+            domicilio_fiscal: domicilio_fiscal ? String(domicilio_fiscal).trim() : null,
+            provincia: provincia ? String(provincia).trim() : null,
+            estado_clave: estado_clave ? String(estado_clave).trim() : null,
+            categoria_monotributo: categoria_monotributo ? String(categoria_monotributo).trim() : null,
+            actividad_principal: actividad_principal ? String(actividad_principal).trim() : null,
+            whatsapp_facturas: whatsapp_facturas ? String(whatsapp_facturas).trim() : null,
+            email_facturas: email_facturas ? sanitizarJsonEmailFacturasPreservandoFlags(String(email_facturas).trim()) : null,
+            canal_envio_preferido: canal_envio_preferido ? String(canal_envio_preferido).trim() : 'whatsapp',
+            email_portal: emailPortalLimpio,
+            email_portal_nombre: email_portal_nombre ? String(email_portal_nombre).trim() : null,
+            email_portal_cargo: email_portal_cargo ? String(email_portal_cargo).trim() : null,
             preferencia_facturacion: prefFacturacion,
             ver_stock: req.body.ver_stock === true || req.body.ver_stock === 'true'
         });
@@ -369,10 +533,17 @@ exports.crear = async (req, res) => {
         }
 
         console.log(`✅ [CLIENTES-BUNKER] Cliente creado exitosamente: "${nuevoCliente.cliente_nombre}" (ID: ${nuevoCliente.id}, Código: ${nuevoCliente.codigo_bunker_cliente})`);
-        sincronizarTodoElDirectorioB2B(supabaseAdmin).catch(() => {});
+        if (supabaseAdmin) {
+            sincronizarTodoElDirectorioB2B(pool).catch(() => {});
+        }
         res.status(201).json({ success: true, data: nuevoCliente, message: 'Cliente guardado exitosamente.' });
 
     } catch (error) {
+        const dup = traducirErrorUniquePg(error);
+        if (dup) {
+            console.warn(`⚠️ [CLIENTES-BUNKER] Colisión de unicidad al crear cliente (${dup.code}):`, error.detail || error.message);
+            return res.status(dup.status).json({ success: false, code: dup.code, error: dup.error });
+        }
         console.error('❌ [CLIENTES-BUNKER] Error al crear cliente:', error);
         res.status(500).json({ success: false, error: 'Error al registrar el cliente en la base de datos.' });
     }
@@ -384,8 +555,8 @@ exports.crear = async (req, res) => {
 exports.actualizar = async (req, res) => {
     try {
         const { id } = req.params;
-        const { codigo_bunker_cliente, cliente_nombre, razon_social, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, confirmarCuitDuplicado, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion } = req.body;
-        let { lomas_soft_id, cuit_cuil } = req.body;
+        const { codigo_bunker_cliente, cliente_nombre, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, confirmarCuitDuplicado, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, documento } = req.body;
+        let { lomas_soft_id, cuit_cuil, dni, razon_social } = req.body;
 
         const prefFacturacion = ['ARCA', 'INTERNO', 'PREGUNTAR'].includes(preferencia_facturacion)
             ? preferencia_facturacion
@@ -398,55 +569,90 @@ exports.actualizar = async (req, res) => {
         }
 
         // 2. Validaciones de presencia
-        if (!codigo_bunker_cliente || !codigo_bunker_cliente.trim()) {
+        if (!codigo_bunker_cliente || !String(codigo_bunker_cliente).trim()) {
             return res.status(400).json({ success: false, error: 'El código búnker es requerido.' });
         }
-        if (!cliente_nombre || !cliente_nombre.trim()) {
+        if (!cliente_nombre || !String(cliente_nombre).trim()) {
             return res.status(400).json({ success: false, error: 'El nombre comercial es requerido.' });
         }
-        if (!razon_social || !razon_social.trim()) {
-            return res.status(400).json({ success: false, error: 'La razón social es requerida.' });
-        }
+        const nombreLimpio = String(cliente_nombre).trim();
+        const razonSocialLimpia = (razon_social && String(razon_social).trim())
+            ? String(razon_social).trim()
+            : nombreLimpio;
+        const condicionIvaFinal = (condicion_iva && String(condicion_iva).trim())
+            ? String(condicion_iva).trim()
+            : (clientePrevio.condicion_iva || 'Consumidor Final');
 
-        // 3. Validación de CUIT/CUIL vía Módulo 11 (Fase 1 Fiscal)
-        if (!validarCuit(cuit_cuil)) {
-            return res.status(400).json({ success: false, error: 'El CUIT/CUIL ingresado no es válido (Fallo de algoritmo Módulo 11).' });
+        // 3. Validación y clasificación inteligente de documento (vacío / DNI 7-8 / CUIT-CUIL 11)
+        const docRes = normalizarDocumentoFiscal({
+            cuit_cuil,
+            dni,
+            documento,
+            condicion_iva: condicionIvaFinal
+        });
+        if (!docRes.valido) {
+            return res.status(400).json({ success: false, error: docRes.error });
         }
+        cuit_cuil = docRes.cuit_cuil;
+        dni = docRes.dni;
 
         // 4. Sanitización de lomas_soft_id
         if (lomas_soft_id === undefined || lomas_soft_id === null || (typeof lomas_soft_id === 'string' && !lomas_soft_id.trim())) {
             lomas_soft_id = null;
         } else {
-            lomas_soft_id = lomas_soft_id.trim();
+            lomas_soft_id = String(lomas_soft_id).trim();
             // Alinear códigos numéricos (como los autogenerados de 3 dígitos) a 4 dígitos para compatibilidad legacy
             if (/^[0-9]+$/.test(lomas_soft_id)) {
                 lomas_soft_id = lomas_soft_id.padStart(4, '0');
             }
         }
 
-        // 5. Sanitización de cuit_cuil
-        if (cuit_cuil === undefined || cuit_cuil === null || (typeof cuit_cuil === 'string' && !cuit_cuil.trim())) {
-            cuit_cuil = null;
-        } else {
-            cuit_cuil = cuit_cuil.trim().replace(/[^0-9]/g, '');
-            if (cuit_cuil.length === 0) {
-                cuit_cuil = null;
-            }
+        // 5. Sanitización de email_portal
+        const emailPortalLimpio = (email_portal && String(email_portal).trim())
+            ? String(email_portal).trim().toLowerCase()
+            : null;
+        if (emailPortalLimpio && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailPortalLimpio)) {
+            return res.status(400).json({ success: false, error: `El correo de acceso al Portal B2B "${emailPortalLimpio}" no tiene un formato válido.` });
         }
 
-        const codigoLimpio = codigo_bunker_cliente.trim().toUpperCase();
+        const codigoLimpio = String(codigo_bunker_cliente).trim().toUpperCase();
 
         // 6. Control de unicidad de código búnker (excluyendo el registro actual)
         const clienteExistenteCodigo = await ClientesBunkerModel.obtenerPorCodigoBunker(codigoLimpio);
         if (clienteExistenteCodigo && clienteExistenteCodigo.id != id) {
-            return res.status(400).json({ success: false, error: `El código búnker "${codigoLimpio}" ya está registrado por otro cliente.` });
+            return res.status(409).json({
+                success: false,
+                code: 'CODIGO_BUNKER_DUPLICADO',
+                clienteNombre: clienteExistenteCodigo.cliente_nombre,
+                error: `El código búnker "${codigoLimpio}" ya está registrado por el cliente "${clienteExistenteCodigo.cliente_nombre}".`
+            });
         }
 
         // 7. Control de unicidad de lomas_soft_id (excluyendo el registro actual)
         if (lomas_soft_id !== null) {
             const clienteExistenteLomas = await ClientesBunkerModel.obtenerPorLomasSoftId(lomas_soft_id);
             if (clienteExistenteLomas && clienteExistenteLomas.id != id) {
-                return res.status(400).json({ success: false, error: `El ID externo de Lomas Soft "${lomas_soft_id}" ya está asociado al cliente "${clienteExistenteLomas.cliente_nombre}".` });
+                return res.status(409).json({
+                    success: false,
+                    code: 'LOMAS_ID_DUPLICADO',
+                    clienteNombre: clienteExistenteLomas.cliente_nombre,
+                    codigoBunker: clienteExistenteLomas.codigo_bunker_cliente,
+                    error: `El ID externo de Lomas Soft "${lomas_soft_id}" ya está asociado al cliente "${clienteExistenteLomas.cliente_nombre}" (${clienteExistenteLomas.codigo_bunker_cliente}).`
+                });
+            }
+        }
+
+        // 7.5. Control de unicidad de email_portal (excluyendo el registro actual)
+        if (emailPortalLimpio !== null) {
+            const clienteExistenteEmail = await ClientesBunkerModel.obtenerPorEmailPortal(emailPortalLimpio);
+            if (clienteExistenteEmail && Number(clienteExistenteEmail.id) !== Number(id)) {
+                return res.status(409).json({
+                    success: false,
+                    code: 'EMAIL_PORTAL_DUPLICADO',
+                    clienteNombre: clienteExistenteEmail.cliente_nombre,
+                    codigoBunker: clienteExistenteEmail.codigo_bunker_cliente,
+                    error: `El correo de portal "${emailPortalLimpio}" ya está asignado al cliente "${clienteExistenteEmail.cliente_nombre}" (${clienteExistenteEmail.codigo_bunker_cliente}).`
+                });
             }
         }
 
@@ -461,7 +667,8 @@ exports.actualizar = async (req, res) => {
                     success: false, 
                     code: 'CUIT_DUPLICADO', 
                     clienteNombre: otro.cliente_nombre,
-                    error: `El CUIT/CUIL "${cuit_cuil}" ya está asociado al cliente "${otro.cliente_nombre}".` 
+                    codigoBunker: otro.codigo_bunker_cliente,
+                    error: `El CUIT/CUIL "${cuit_cuil}" ya está asociado al cliente "${otro.cliente_nombre}" (${otro.codigo_bunker_cliente}).` 
                 });
             }
         }
@@ -469,22 +676,23 @@ exports.actualizar = async (req, res) => {
         // 9. Actualización
         const clienteActualizado = await ClientesBunkerModel.actualizar(id, {
             codigo_bunker_cliente: codigoLimpio,
-            cliente_nombre: cliente_nombre.trim(),
-            razon_social: razon_social.trim(),
+            cliente_nombre: nombreLimpio,
+            razon_social: razonSocialLimpia,
             lomas_soft_id,
             cuit_cuil,
-            condicion_iva: condicion_iva ? condicion_iva.trim() : null,
-            domicilio_fiscal: domicilio_fiscal ? domicilio_fiscal.trim() : null,
-            provincia: provincia ? provincia.trim() : null,
-            estado_clave: estado_clave ? estado_clave.trim() : null,
-            categoria_monotributo: categoria_monotributo ? categoria_monotributo.trim() : null,
-            actividad_principal: actividad_principal ? actividad_principal.trim() : null,
-            whatsapp_facturas: whatsapp_facturas ? whatsapp_facturas.trim() : null,
-            email_facturas: email_facturas ? sanitizarJsonEmailFacturasPreservandoFlags(email_facturas.trim()) : null,
-            canal_envio_preferido: canal_envio_preferido ? canal_envio_preferido.trim() : 'whatsapp',
-            email_portal: email_portal ? email_portal.trim() : null,
-            email_portal_nombre: email_portal_nombre ? email_portal_nombre.trim() : null,
-            email_portal_cargo: email_portal_cargo ? email_portal_cargo.trim() : null,
+            dni,
+            condicion_iva: condicionIvaFinal,
+            domicilio_fiscal: domicilio_fiscal ? String(domicilio_fiscal).trim() : null,
+            provincia: provincia ? String(provincia).trim() : null,
+            estado_clave: estado_clave ? String(estado_clave).trim() : null,
+            categoria_monotributo: categoria_monotributo ? String(categoria_monotributo).trim() : null,
+            actividad_principal: actividad_principal ? String(actividad_principal).trim() : null,
+            whatsapp_facturas: whatsapp_facturas ? String(whatsapp_facturas).trim() : null,
+            email_facturas: email_facturas ? sanitizarJsonEmailFacturasPreservandoFlags(String(email_facturas).trim()) : null,
+            canal_envio_preferido: canal_envio_preferido ? String(canal_envio_preferido).trim() : 'whatsapp',
+            email_portal: emailPortalLimpio,
+            email_portal_nombre: email_portal_nombre ? String(email_portal_nombre).trim() : null,
+            email_portal_cargo: email_portal_cargo ? String(email_portal_cargo).trim() : null,
             preferencia_facturacion: prefFacturacion,
             ver_stock: req.body.ver_stock === true || req.body.ver_stock === 'true'
         });
@@ -607,7 +815,7 @@ exports.actualizar = async (req, res) => {
 
         console.log(`✅ [CLIENTES-BUNKER] Cliente actualizado exitosamente: "${clienteActualizado.cliente_nombre}" (ID: ${id})`);
         if (supabaseAdmin) {
-            sincronizarTodoElDirectorioB2B(supabaseAdmin).catch(() => {});
+            sincronizarTodoElDirectorioB2B(pool).catch(() => {});
         }
         res.json({ 
             success: true, 
@@ -619,6 +827,11 @@ exports.actualizar = async (req, res) => {
         });
 
     } catch (error) {
+        const dup = traducirErrorUniquePg(error);
+        if (dup) {
+            console.warn(`⚠️ [CLIENTES-BUNKER] Colisión de unicidad al actualizar cliente ID ${req.params.id} (${dup.code}):`, error.detail || error.message);
+            return res.status(dup.status).json({ success: false, code: dup.code, error: dup.error });
+        }
         console.error(`❌ [CLIENTES-BUNKER] Error al actualizar cliente con ID ${req.params.id}:`, error);
         res.status(500).json({ success: false, error: 'Error al modificar los datos del cliente.' });
     }
@@ -678,17 +891,23 @@ exports.consultarArca = async (req, res) => {
     } catch (error) {
         console.error('❌ [CLIENTES-BUNKER] Error en consulta a padrón de ARCA:', error.message);
         
-        // Contención de excepciones de red, timeouts o servicios caídos de AFIP
+        // Contención de excepciones de red, timeouts, constancia o servicios caídos de ARCA
+        let statusCode = 502;
         let mensajeError = 'No se pudo completar la consulta externa con ARCA.';
         if (error.message.includes('no fue encontrado')) {
+            statusCode = 404;
             mensajeError = 'El contribuyente (CUIT) no se encuentra registrado en el padrón de ARCA.';
+        } else if (error.message.includes('Fallo de Padrón ARCA')) {
+            statusCode = 422;
+            mensajeError = error.message;
         } else if (error.message.includes('timeout') || error.code === 'ECONNABORTED') {
+            statusCode = 504;
             mensajeError = 'Tiempo de espera agotado. Los servidores de ARCA no responden.';
         } else if (error.message.includes('Fallo del Web Service ARCA')) {
             mensajeError = error.message; // Pasar el mensaje de error de ARCA
         }
         
-        res.status(502).json({
+        res.status(statusCode).json({
             success: false,
             error: mensajeError,
             details: error.message

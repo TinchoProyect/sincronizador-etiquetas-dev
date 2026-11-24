@@ -4923,17 +4923,9 @@ window.enviarDirectoABandejaFacturas = async function() {
 
         if (!docNro) {
             const rawCuit = String(clienteSeleccionado?.cuit || '').replace(/\D/g, '');
+            const rawDni = String(clienteSeleccionado?.dni || '').replace(/\D/g, '');
+            const dniValido = /^\d{7,8}$/.test(rawDni) && !/^0+$/.test(rawDni) ? rawDni : '';
             const condStr = String(clienteSeleccionado?.condicion_iva || '').toLowerCase();
-            if (rawCuit.length === 11) {
-                docTipo = 80;
-                docNro = rawCuit;
-            } else if (rawCuit.length >= 7) {
-                docTipo = 96;
-                docNro = rawCuit;
-            } else {
-                docTipo = 99;
-                docNro = '0';
-            }
 
             if (condStr.includes('inscripto')) {
                 condicionIvaId = 1;
@@ -4947,6 +4939,37 @@ window.enviarDirectoABandejaFacturas = async function() {
             } else {
                 condicionIvaId = 5;
                 tipoCbte = 6;
+            }
+
+            if (condicionIvaId === 5) {
+                // Consumidor Final: priorizar DNI (96) > CUIL (86) > 99 / 0
+                if (dniValido) {
+                    docTipo = 96;
+                    docNro = dniValido;
+                } else if (rawCuit.length === 11) {
+                    docTipo = 86;
+                    docNro = rawCuit;
+                } else if (rawCuit.length >= 7 && rawCuit.length <= 8 && !/^0+$/.test(rawCuit)) {
+                    docTipo = 96;
+                    docNro = rawCuit;
+                } else {
+                    docTipo = 99;
+                    docNro = '0';
+                }
+            } else {
+                if (rawCuit.length === 11) {
+                    docTipo = 80;
+                    docNro = rawCuit;
+                } else if (dniValido) {
+                    docTipo = 96;
+                    docNro = dniValido;
+                } else if (rawCuit.length >= 7 && rawCuit.length <= 8 && !/^0+$/.test(rawCuit)) {
+                    docTipo = 96;
+                    docNro = rawCuit;
+                } else {
+                    docTipo = 99;
+                    docNro = '0';
+                }
             }
         }
 

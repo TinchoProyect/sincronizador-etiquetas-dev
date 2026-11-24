@@ -573,7 +573,7 @@ const emitirAfip = async (factura) => {
                 console.log(`🔄 [FACTURACION-SERVICE] Contador local sincronizado en ${cbteNroOficial}`);
             }
 
-            // 5. Actualizar factura
+            // 5. Actualizar factura (sincronizando también doc_tipo, doc_nro y condicion_iva_id efectivos enviados a ARCA)
             const queryUpdate = `
                 UPDATE factura_facturas
                 SET 
@@ -583,8 +583,11 @@ const emitirAfip = async (factura) => {
                     resultado = $4,
                     estado = $5,
                     fecha_emision = CASE WHEN estado = 'PENDIENTE_FACTURACION' THEN CURRENT_DATE ELSE fecha_emision END,
-                    updated_at = $6
-                WHERE id = $7
+                    doc_tipo = COALESCE($6, doc_tipo),
+                    doc_nro = COALESCE($7, doc_nro),
+                    condicion_iva_id = COALESCE($8, condicion_iva_id),
+                    updated_at = $9
+                WHERE id = $10
                 RETURNING *
             `;
 
@@ -596,6 +599,9 @@ const emitirAfip = async (factura) => {
                 desdeFormatoAFIP(resultadoCAE.cae_vto),
                 resultadoCAE.resultado,
                 estado,
+                resultadoCAE.doc_tipo_efectivo !== undefined ? resultadoCAE.doc_tipo_efectivo : null,
+                resultadoCAE.doc_nro_efectivo !== undefined ? String(resultadoCAE.doc_nro_efectivo) : null,
+                resultadoCAE.condicion_iva_efectiva !== undefined ? resultadoCAE.condicion_iva_efectiva : null,
                 paraBD(),
                 factura.id
             ]);
@@ -862,8 +868,9 @@ const obtenerPorId = async (id) => {
             SELECT 
                 f.*,
                 bc.id as bunker_cliente_id,
-                COALESCE(NULLIF(TRIM(bc.razon_social), ''), NULLIF(TRIM(bc.cliente_nombre), ''), NULLIF(TRIM(c.apellido), '')) as razon_social,
-                COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), ''), NULLIF(TRIM(c.dni), '')) as cliente_cuit,
+                COALESCE(NULLIF(TRIM(bc.razon_social), ''), NULLIF(TRIM(bc.cliente_nombre), ''), NULLIF(TRIM(c.apellido), ''), NULLIF(TRIM(c.nombre), '')) as razon_social,
+                COALESCE(NULLIF(TRIM(bc.dni), ''), NULLIF(NULLIF(TRIM(c.dni), '0'), '')) as cliente_dni,
+                COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), ''), NULLIF(TRIM(bc.dni), ''), NULLIF(NULLIF(TRIM(c.dni), '0'), '')) as cliente_cuit,
                 COALESCE(NULLIF(TRIM(bc.domicilio_fiscal), ''), NULLIF(TRIM(c.domicilio), '')) as cliente_domicilio,
                 COALESCE(NULLIF(TRIM(bc.provincia), ''), NULLIF(TRIM(c.provincia), '')) as cliente_provincia,
                 COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), '')) as cliente_condicion_iva,
@@ -875,7 +882,7 @@ const obtenerPorId = async (id) => {
             LEFT JOIN clientes c ON f.cliente_id = c.cliente_id
             LEFT JOIN bunker_clientes bc ON 
                 (CASE 
-                    WHEN bc.lomas_soft_id ~ '^\\d+$' THEN bc.lomas_soft_id::integer 
+                    WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10 THEN bc.lomas_soft_id::integer 
                     ELSE NULL 
                 END) = f.cliente_id
             LEFT JOIN presupuestos p ON f.presupuesto_id = p.id

@@ -41,9 +41,13 @@ const PTO_VTA = parseInt(process.env.AFIP_PTO_VTA || '32');
 // Activar AFIP real o usar stubs (En Modo Laboratorio se desactiva emisión fiscal real)
 const USE_REAL = IS_MODO_LABORATORIO ? false : (process.env.AFIP_USE_REAL === 'true');
 
+// Tope normativo ARCA (RG 5700/2025) para ventas a Consumidor Final sin identificar (DocTipo = 99, DocNro = 0)
+const TOPE_CF_SIN_IDENTIFICAR = Number(process.env.AFIP_TOPE_CF_SIN_IDENTIFICAR) || 10000000;
+
 console.log(`🔧 [FACTURACION-AFIP] CUIT: ${CUIT}`);
 console.log(`🔧 [FACTURACION-AFIP] Punto de Venta: ${PTO_VTA}`);
 console.log(`🔧 [FACTURACION-AFIP] Usar AFIP Real: ${USE_REAL}`);
+console.log(`🔧 [FACTURACION-AFIP] Tope CF sin identificar (RG 5700/2025): $${TOPE_CF_SIN_IDENTIFICAR.toLocaleString('es-AR')}`);
 
 /**
  * URLs de Web Services de AFIP
@@ -312,6 +316,7 @@ module.exports = {
     MONEDAS,
     TIPOS_CBTE_SOPORTADOS,
     IS_MODO_LABORATORIO,
+    TOPE_CF_SIN_IDENTIFICAR,
     obtenerConfiguracion,
     validarConfiguracion
 };

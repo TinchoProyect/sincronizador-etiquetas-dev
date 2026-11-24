@@ -252,9 +252,29 @@ const construirPDF = async (doc, factura, items) => {
         // Domicilio Fiscal (debajo de Razón Social)
         doc.text(`Domicilio Fiscal: ${factura.cliente_domicilio || 'S/D'}`, leftColumn + 10, clientY + 16, { width: contentWidth / 2 - 20 });
         
-        // Documento (CUIT/DNI)
-        const tipoDoc = factura.doc_tipo === 80 ? 'CUIT' : factura.doc_tipo === 96 ? 'DNI' : 'Doc';
-        doc.text(`${tipoDoc}: ${factura.cliente_cuit || factura.doc_nro || 'S/D'}`, middleColumn + 10, clientY);
+        // Documento (CUIT / CUIL / DNI / Consumidor Final sin identificar)
+        const docTipoNum = Number(factura.doc_tipo);
+        const docNroLimpio = String(factura.doc_nro ?? '').trim();
+        const tieneDocNroReal = docNroLimpio !== '' && docNroLimpio !== '0';
+        let tipoDocLabel = 'Documento';
+        let valorDocDisplay = 'Consumidor Final (Sin identificar)';
+        if (docTipoNum === 80) {
+            tipoDocLabel = 'CUIT';
+            valorDocDisplay = (tieneDocNroReal ? docNroLimpio : '') || factura.cliente_cuit || 'S/D';
+        } else if (docTipoNum === 86) {
+            tipoDocLabel = 'CUIL';
+            valorDocDisplay = (tieneDocNroReal ? docNroLimpio : '') || factura.cliente_cuit || 'S/D';
+        } else if (docTipoNum === 96) {
+            tipoDocLabel = 'DNI';
+            valorDocDisplay = (tieneDocNroReal ? docNroLimpio : '') || factura.cliente_dni || 'S/D';
+        } else if (docTipoNum === 99 || !tieneDocNroReal) {
+            tipoDocLabel = 'Documento';
+            valorDocDisplay = 'Consumidor Final (Sin identificar)';
+        } else {
+            tipoDocLabel = 'Documento';
+            valorDocDisplay = docNroLimpio;
+        }
+        doc.text(`${tipoDocLabel}: ${valorDocDisplay}`, middleColumn + 10, clientY);
         
         // Condición IVA
         if (!isPuesto90) {

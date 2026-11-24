@@ -946,8 +946,9 @@
             <button class="drawer-close" id="btn-cerrar-drawer">&times;</button>
         </div>
         <div class="drawer-body">
-            <form id="form-cliente">
+            <form id="form-cliente" autocomplete="off">
                 <input type="hidden" id="cliente-id" value="">
+                <input type="hidden" id="txt-dni-oculto" value="">
                 
                 <!-- Código Búnker (Autogenerado en Servidor: Solo Lectura para el Usuario) -->
                 <div class="form-group">
@@ -959,15 +960,15 @@
                 <!-- Nombre Comercial -->
                 <div class="form-group">
                     <label class="form-label" for="txt-nombre">Nombre Comercial / Fantasía <span class="required">*</span></label>
-                    <input type="text" id="txt-nombre" class="form-control" placeholder="Ej: Supermercado El Búnker" required>
-                    <span class="form-helper">Nombre identificativo rápido para el mostrador.</span>
+                    <input type="text" id="txt-nombre" class="form-control" placeholder="Ej: Victoria Di Francesco o Supermercado El Búnker" autocomplete="off" required>
+                    <span class="form-helper">Único campo obligatorio. Para Consumidor Final alcanza con el nombre.</span>
                 </div>
 
                 <!-- Razón Social -->
                 <div class="form-group">
-                    <label class="form-label" for="txt-razon">Razón Social <span class="required">*</span></label>
-                    <input type="text" id="txt-razon" class="form-control" placeholder="Ej: Distribuidora Búnker S.R.L." required>
-                    <span class="form-helper">Denominación fiscal y societaria oficial.</span>
+                    <label class="form-label" for="txt-razon">Razón Social <span style="font-weight: 400; color: #64748b; font-size: 0.85em;">(opcional)</span></label>
+                    <input type="text" id="txt-razon" class="form-control" placeholder="Si se deja vacía usa el Nombre Comercial" autocomplete="off">
+                    <span class="form-helper">Denominación fiscal y societaria oficial. Si la dejás vacía hereda automáticamente el Nombre Comercial.</span>
                 </div>
 
                 <!-- ID Externo Lomas Soft (Opcional) -->
@@ -984,29 +985,28 @@
                     </span>
                 </div>
 
-                <!-- CUIT/CUIL (Fase 1 Fiscal) -->
+                <!-- Documento Fiscal Unificado: DNI / CUIL / CUIT (Opcional) -->
                 <div class="form-group">
-                    <label class="form-label" for="txt-cuit">CUIT/CUIL</label>
+                    <label class="form-label" for="txt-cuit">DNI / CUIL / CUIT <span style="font-weight: 400; color: #64748b; font-size: 0.85em;">(opcional)</span></label>
                     <div style="display: flex; gap: 8px;">
-                        <input type="text" id="txt-cuit" class="form-control" placeholder="Ej: 30-12345678-9" maxlength="14" autocomplete="off" style="flex-grow: 1;">
+                        <input type="text" id="txt-cuit" name="lamda_cliente_documento_fiscal" class="form-control" placeholder="Ej: 44785036 (DNI) o 27-44785036-8 (CUIL/CUIT)" maxlength="14" autocomplete="off" style="flex-grow: 1;">
                         <button type="button" id="btn-consultar-arca" class="btn-premium" style="background-color: #3b82f6; color: white; padding: 8px 12px; white-space: nowrap; font-size: 0.85em; display: inline-flex; align-items: center; justify-content: center; gap: 4px;" disabled>
                             ⚡ Consultar ARCA
                         </button>
                     </div>
-                    <span class="form-helper" id="helper-cuit">Identificación tributaria de 11 dígitos.</span>
+                    <span class="form-helper" id="helper-cuit">Opcional para Consumidor Final (&lt; $10.000.000). Acepta DNI (7–8 dígitos) o CUIT/CUIL (11 dígitos).</span>
                 </div>
 
                 <!-- Condición de IVA (Fase 1 Fiscal) -->
                 <div class="form-group">
                     <label class="form-label" for="sel-condicion-iva">Condición de IVA</label>
                     <select id="sel-condicion-iva" class="form-control">
-                        <option value="">-- Seleccionar Condición --</option>
+                        <option value="Consumidor Final" selected>Consumidor Final</option>
                         <option value="Responsable Inscripto">Responsable Inscripto</option>
                         <option value="Monotributo">Monotributo</option>
                         <option value="Exento">Exento</option>
-                        <option value="Consumidor Final">Consumidor Final</option>
                     </select>
-                    <span class="form-helper">Categoría tributaria registrada.</span>
+                    <span class="form-helper">Categoría tributaria registrada (por defecto: Consumidor Final).</span>
                 </div>
 
                 <!-- Destino Predeterminado de Facturación -->
@@ -1092,16 +1092,16 @@
                     <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;">
                         <div>
                             <label class="form-label" for="txt-email-portal" style="font-size: 0.85em; color: #475569;">Email de Portal (Usuario B2B)</label>
-                            <input type="email" id="txt-email-portal" class="form-control" placeholder="No registrado" style="font-size: 12px; height: 32px; padding: 4px 8px;">
+                            <input type="text" inputmode="email" id="txt-email-portal" name="lamda_b2b_portal_user_no_autofill" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" class="form-control" placeholder="No registrado" style="font-size: 12px; height: 32px; padding: 4px 8px;">
                         </div>
                         <div style="display: flex; gap: 8px;">
                             <div style="flex: 1;">
                                 <label class="form-label" for="txt-email-portal-nombre" style="font-size: 0.85em; color: #475569;">Nombre de Contacto</label>
-                                <input type="text" id="txt-email-portal-nombre" class="form-control" placeholder="Ej: Nicolás" style="font-size: 12px; height: 32px; padding: 4px 8px;">
+                                <input type="text" id="txt-email-portal-nombre" name="lamda_b2b_portal_contact_name" autocomplete="off" class="form-control" placeholder="Ej: Nicolás" style="font-size: 12px; height: 32px; padding: 4px 8px;">
                             </div>
                             <div style="flex: 1;">
                                 <label class="form-label" for="txt-email-portal-cargo" style="font-size: 0.85em; color: #475569;">Cargo de Contacto</label>
-                                <input type="text" id="txt-email-portal-cargo" class="form-control" placeholder="Ej: Compras" style="font-size: 12px; height: 32px; padding: 4px 8px;">
+                                <input type="text" id="txt-email-portal-cargo" name="lamda_b2b_portal_contact_role" autocomplete="off" class="form-control" placeholder="Ej: Compras" style="font-size: 12px; height: 32px; padding: 4px 8px;">
                             </div>
                         </div>
 

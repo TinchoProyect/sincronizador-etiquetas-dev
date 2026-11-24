@@ -5,7 +5,7 @@
 
 const Afip = require('@afipsdk/afip.js');
 const { pool } = require('../config/database');
-const { ENTORNO, CUIT, CERTIFICADOS, ALICUOTAS_IVA, IS_MODO_LABORATORIO } = require('../config/afip');
+const { ENTORNO, CUIT, CERTIFICADOS, ALICUOTAS_IVA, IS_MODO_LABORATORIO, TOPE_CF_SIN_IDENTIFICAR } = require('../config/afip');
 
 function esModoLaboratorioAfip() {
     return Boolean(
@@ -39,6 +39,9 @@ const obtenerFacturaParaCAE = async (facturaId) => {
         const query = `
             SELECT 
                 f.*,
+                MAX(COALESCE(NULLIF(TRIM(bc.dni), ''), NULLIF(NULLIF(TRIM(c.dni), '0'), ''))) as cliente_dni,
+                MAX(COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), ''))) as cliente_cuit,
+                MAX(COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), ''))) as cliente_condicion_iva,
                 json_agg(
                     json_build_object(
                         'descripcion', i.descripcion,
@@ -52,6 +55,13 @@ const obtenerFacturaParaCAE = async (facturaId) => {
                 (SELECT row_to_json(fa) FROM factura_facturas fa WHERE fa.id = f.factura_asociada_id) as factura_asociada
             FROM factura_facturas f
             LEFT JOIN factura_factura_items i ON f.id = i.factura_id
+            LEFT JOIN public.clientes c ON c.cliente_id = f.cliente_id
+            LEFT JOIN public.bunker_clientes bc ON (
+                CASE
+                    WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10 THEN bc.lomas_soft_id::integer
+                    ELSE NULL
+                END
+            ) = f.cliente_id
             WHERE f.id = $1
             GROUP BY f.id
         `;
@@ -186,29 +196,63 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
 
         // --- REGLA 2: TIPOS DE DOCUMENTO Y LÍMITES (DocTipo y DocNro) ---
         let docTipo = factura.doc_tipo ? parseInt(factura.doc_tipo, 10) : 99;
-        let docNro = factura.doc_nro || 0;
-
-        // Limpieza de DocNro para garantizar que sea un número entero puro (sin guiones ni puntos)
-        docNro = parseInt(String(docNro).replace(/\D/g, ''), 10) || 0;
+        const docNroStr = String(factura.doc_nro ?? '0').replace(/\D/g, '');
+        let docNro = parseInt(docNroStr, 10) || 0;
 
         if (isFacturaB) {
-            if (condicionIva === 5) { // Si es Consumidor Final
-                if (docTipo === 80) { // Si trajo CUIT por error en la BD
-                    docTipo = 99; // Se fuerza a Sin Identificar porque AFIP no permite CUIT para Consumidor Final
-                    docNro = 0;
-                } else if (docNro > 0) {
-                    // Si tiene documento, exigimos que sea 96 (DNI), nunca otro
+            if (condicionIva === 5) { // Consumidor Final (CondicionIVAReceptorId = 5)
+                const dniClienteLimpio = String(factura.cliente_dni || '').replace(/\D/g, '');
+                const dniClienteValido = /^\d{7,8}$/.test(dniClienteLimpio) && !/^0+$/.test(dniClienteLimpio)
+                    ? parseInt(dniClienteLimpio, 10)
+                    : 0;
+
+                if (docTipo === 96 && docNro > 0 && /^\d{7,8}$/.test(String(docNro))) {
+                    // DNI válido ya seleccionado → conservar 96
                     docTipo = 96;
+                } else if (docTipo === 86 && /^\d{11}$/.test(docNroStr)) {
+                    // Priorizar DNI si la ficha tiene ambos; si solo tiene CUIL, preservar DocTipo = 86
+                    if (dniClienteValido > 0) {
+                        docTipo = 96;
+                        docNro = dniClienteValido;
+                    } else {
+                        docTipo = 86;
+                        docNro = parseInt(docNroStr, 10);
+                    }
+                } else if (docTipo === 80 && /^\d{11}$/.test(docNroStr)) {
+                    // Borrador legacy con DocTipo 80 en Consumidor Final:
+                    // 1) Priorizar DNI si existe; 2) Si es CUIL persona física (20/23/24/27) -> 86; 3) sino 99 / 0
+                    if (dniClienteValido > 0) {
+                        docTipo = 96;
+                        docNro = dniClienteValido;
+                    } else if (/^(20|23|24|27)\d{9}$/.test(docNroStr)) {
+                        docTipo = 86;
+                        docNro = parseInt(docNroStr, 10);
+                    } else {
+                        docTipo = 99;
+                        docNro = 0;
+                    }
+                } else if (docNro > 0 && /^\d{7,8}$/.test(String(docNro))) {
+                    docTipo = 96;
+                } else if (docNro > 0 && /^\d{11}$/.test(docNroStr)) {
+                    if (dniClienteValido > 0) {
+                        docTipo = 96;
+                        docNro = dniClienteValido;
+                    } else {
+                        docTipo = 86;
+                        docNro = parseInt(docNroStr, 10);
+                    }
                 } else {
-                    // Si no tiene, debe ser 99 y DocNro 0
+                    // Sin documento válido -> 99 y DocNro 0
                     docTipo = 99;
                     docNro = 0;
                 }
             }
 
-            // Tope Normativo Anónimo 
-            if (docTipo === 99 && factura.imp_total >= 344000) {
-                throw new Error('AFIP exige DNI o CUIT para ventas a Consumidor Final superiores al límite normativo (344,000 ARS). Por favor edite el presupuesto e ingrese el DNI del cliente.');
+            // Tope Normativo Anónimo ARCA (RG 5700/2025: $10.000.000)
+            if (docTipo === 99 && (parseFloat(factura.imp_total) || 0) >= TOPE_CF_SIN_IDENTIFICAR) {
+                throw new Error(
+                    `ARCA exige DNI o CUIL para ventas a Consumidor Final iguales o superiores a $${TOPE_CF_SIN_IDENTIFICAR.toLocaleString('es-AR')} (RG 5700/2025). Por favor cargá el DNI o CUIL del cliente.`
+                );
             }
         }
 
@@ -342,7 +386,10 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
                 cbte_nro: nextVoucher,
                 resultado: 'A',
                 observaciones: ['MODO LABORATORIO: CAE DE PRUEBA SIMULADO LOCALMENTE (SIN EMISIÓN FISCAL EN ARCA)'],
-                simulado_laboratorio: true
+                simulado_laboratorio: true,
+                doc_tipo_efectivo: payload.DocTipo,
+                doc_nro_efectivo: String(payload.DocNro),
+                condicion_iva_efectiva: payload.CondicionIVAReceptorId
             };
             await guardarLogWSFE(facturaId, 'createVoucher_LAB_SIMULADO', payload, { CAE: caeSimulado, CAEFchVto: vtoDate, simulado: true }, resultadoSimulado);
             return resultadoSimulado;
@@ -402,7 +449,10 @@ const solicitarCAE = async (facturaId, entorno = 'HOMO') => {
             cae_vto: vtoLimpio.length === 8 ? `${vtoLimpio.substring(0, 4)}-${vtoLimpio.substring(4, 6)}-${vtoLimpio.substring(6, 8)}` : vto,
             cbte_nro: usarExistente ? lastVoucher : nextVoucher,
             resultado: 'A',
-            observaciones: []
+            observaciones: [],
+            doc_tipo_efectivo: payload.DocTipo,
+            doc_nro_efectivo: String(payload.DocNro),
+            condicion_iva_efectiva: payload.CondicionIVAReceptorId
         };
 
         await guardarLogWSFE(facturaId, 'createVoucher', payload, res, resultadoParseado);

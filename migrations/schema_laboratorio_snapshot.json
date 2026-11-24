@@ -1570,6 +1570,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "dni": {
+        "ordinal_position": 34,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 20,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "NULL::character varying"
       }
     },
     "bunker_combos_componentes": {

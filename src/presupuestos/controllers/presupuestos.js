@@ -156,9 +156,15 @@ const obtenerPresupuestos = async (req, res) => {
                     WHEN p.estado IN ('Orden de Retiro', 'Retirado', 'Pendiente de Retiro', 'Recibido', 'En Auditoría', 'Conciliado') THEN 'Orden de Retiro'
                     ELSE p.tipo_comprobante 
                 END as categoria,
-                c.condicion_iva,
+                COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), ''), 'Consumidor Final') as condicion_iva,
                 p.id_cliente as cliente_id,
-                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto,
+                COALESCE(
+                    NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(c.nombre), ''), NULLIF(TRIM(c.apellido), ''))), ''),
+                    NULLIF(TRIM(bc.cliente_nombre), ''),
+                    NULLIF(TRIM(bc.razon_social), ''),
+                    NULLIF(TRIM(c.otros), ''),
+                    'Sin cliente'
+                ) as concepto,
                 COALESCE((
                     SELECT ROUND(SUM( 
                         (d.cantidad * COALESCE(d.precio1, d.valor1 * (1 + COALESCE(d.camp2, 0.21)), 0)) 
@@ -218,7 +224,23 @@ const obtenerPresupuestos = async (req, res) => {
                     LIMIT 1
                 ) AS factura_asociada_id
             FROM public.presupuestos p
-            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
+            LEFT JOIN public.clientes c ON c.cliente_id = (
+                CASE WHEN TRIM(p.id_cliente) ~ '^[0-9]+$' AND LENGTH(TRIM(p.id_cliente)) < 10
+                     THEN TRIM(p.id_cliente)::integer
+                     ELSE NULL END
+            )
+            LEFT JOIN public.bunker_clientes bc ON (
+                (
+                    CASE WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10
+                         THEN bc.lomas_soft_id::integer
+                         ELSE NULL END
+                ) = (
+                    CASE WHEN TRIM(p.id_cliente) ~ '^[0-9]+$' AND LENGTH(TRIM(p.id_cliente)) < 10
+                         THEN TRIM(p.id_cliente)::integer
+                         ELSE NULL END
+                )
+                OR bc.codigo_bunker_cliente = TRIM(p.id_cliente)
+            )
             LEFT JOIN (
                 SELECT presupuesto_id, MAX(id) as last_draft_id, MAX(COALESCE(updated_at, created_at)) as draft_date
                 FROM public.factura_facturas
@@ -254,19 +276,19 @@ const obtenerPresupuestos = async (req, res) => {
 
         // Filtro de cliente mejorado - Filtro cliente + Typeahead + Fechas – 2024-12-19
         if (finalClienteId) {
-            // Filtro por ID de cliente exacto (número de 3 cifras)
+            // Filtro por ID de cliente exacto (resuelve tanto public.clientes como bunker_clientes)
             paramCount++;
-            query += ` AND c.cliente_id = $${paramCount}`;
+            query += ` AND (c.cliente_id = $${paramCount} OR (CASE WHEN TRIM(p.id_cliente) ~ '^[0-9]+$' AND LENGTH(TRIM(p.id_cliente)) < 10 THEN TRIM(p.id_cliente)::integer ELSE NULL END) = $${paramCount})`;
             params.push(parseInt(finalClienteId));
         } else if (clienteName) {
-            // Filtro por nombre/apellido/razon_social del cliente
+            // Filtro por nombre/apellido/razon_social del cliente (clientes + bunker_clientes)
             paramCount++;
-            query += ` AND LOWER(COALESCE(c.nombre, '') || ' ' || COALESCE(c.apellido, '') || ' ' || COALESCE(c.otros, '') || ' ' || COALESCE(c.razon_social, '')) LIKE LOWER($${paramCount})`;
+            query += ` AND LOWER(COALESCE(c.nombre, '') || ' ' || COALESCE(c.apellido, '') || ' ' || COALESCE(c.otros, '') || ' ' || COALESCE(bc.cliente_nombre, '') || ' ' || COALESCE(bc.razon_social, '')) LIKE LOWER($${paramCount})`;
             params.push(`%${clienteName}%`);
         } else if (concepto) {
             // Filtro legacy por concepto (mantener compatibilidad)
             paramCount++;
-            query += ` AND (LOWER(c.nombre) LIKE LOWER($${paramCount}) OR LOWER(c.apellido) LIKE LOWER($${paramCount}) OR LOWER(c.otros) LIKE LOWER($${paramCount}))`;
+            query += ` AND (LOWER(COALESCE(c.nombre, '')) LIKE LOWER($${paramCount}) OR LOWER(COALESCE(c.apellido, '')) LIKE LOWER($${paramCount}) OR LOWER(COALESCE(c.otros, '')) LIKE LOWER($${paramCount}) OR LOWER(COALESCE(bc.cliente_nombre, '')) LIKE LOWER($${paramCount}) OR LOWER(COALESCE(bc.razon_social, '')) LIKE LOWER($${paramCount}))`;
             params.push(`%${concepto}%`);
         }
 
@@ -572,7 +594,23 @@ const obtenerPresupuestos = async (req, res) => {
         let countQuery = `
             SELECT COUNT(*) as total
             FROM public.presupuestos p
-            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
+            LEFT JOIN public.clientes c ON c.cliente_id = (
+                CASE WHEN TRIM(p.id_cliente) ~ '^[0-9]+$' AND LENGTH(TRIM(p.id_cliente)) < 10
+                     THEN TRIM(p.id_cliente)::integer
+                     ELSE NULL END
+            )
+            LEFT JOIN public.bunker_clientes bc ON (
+                (
+                    CASE WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10
+                         THEN bc.lomas_soft_id::integer
+                         ELSE NULL END
+                ) = (
+                    CASE WHEN TRIM(p.id_cliente) ~ '^[0-9]+$' AND LENGTH(TRIM(p.id_cliente)) < 10
+                         THEN TRIM(p.id_cliente)::integer
+                         ELSE NULL END
+                )
+                OR bc.codigo_bunker_cliente = TRIM(p.id_cliente)
+            )
             WHERE p.activo = true AND (p.archivado IS NULL OR p.archivado = false)
         `;
 
@@ -603,15 +641,15 @@ const obtenerPresupuestos = async (req, res) => {
         // Aplicar mismo filtro de cliente para el conteo - Filtro cliente + Typeahead + Fechas – 2024-12-19
         if (finalClienteId) {
             countParamCount++;
-            countQuery += ` AND c.cliente_id = $${countParamCount}`;
+            countQuery += ` AND (c.cliente_id = $${countParamCount} OR (CASE WHEN TRIM(p.id_cliente) ~ '^[0-9]+$' AND LENGTH(TRIM(p.id_cliente)) < 10 THEN TRIM(p.id_cliente)::integer ELSE NULL END) = $${countParamCount})`;
             countParams.push(parseInt(finalClienteId));
         } else if (clienteName) {
             countParamCount++;
-            countQuery += ` AND LOWER(COALESCE(c.nombre, '') || ' ' || COALESCE(c.apellido, '') || ' ' || COALESCE(c.otros, '') || ' ' || COALESCE(c.razon_social, '')) LIKE LOWER($${countParamCount})`;
+            countQuery += ` AND LOWER(COALESCE(c.nombre, '') || ' ' || COALESCE(c.apellido, '') || ' ' || COALESCE(c.otros, '') || ' ' || COALESCE(bc.cliente_nombre, '') || ' ' || COALESCE(bc.razon_social, '')) LIKE LOWER($${countParamCount})`;
             countParams.push(`%${clienteName}%`);
         } else if (concepto) {
             countParamCount++;
-            countQuery += ` AND (LOWER(c.nombre) LIKE LOWER($${countParamCount}) OR LOWER(c.apellido) LIKE LOWER($${countParamCount}) OR LOWER(c.otros) LIKE LOWER($${countParamCount}))`;
+            countQuery += ` AND (LOWER(COALESCE(c.nombre, '')) LIKE LOWER($${countParamCount}) OR LOWER(COALESCE(c.apellido, '')) LIKE LOWER($${countParamCount}) OR LOWER(COALESCE(c.otros, '')) LIKE LOWER($${countParamCount}) OR LOWER(COALESCE(bc.cliente_nombre, '')) LIKE LOWER($${countParamCount}) OR LOWER(COALESCE(bc.razon_social, '')) LIKE LOWER($${countParamCount}))`;
             countParams.push(`%${concepto}%`);
         }
 
@@ -963,36 +1001,93 @@ const obtenerSugerenciasClientes = async (req, res) => {
         const limitParam = parseInt(req.query.limit, 10);
         const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 100) : 10;
 
-        // ¿Buscan por ID numérico corto?
-        if (/^\d{1,6}$/.test(qRaw)) {
-            const query = `
-        SELECT DISTINCT
-          c.cliente_id,
-          c.nombre,
-          c.apellido,
-          c.otros,
-          c.condicion_iva,
-          COUNT(p.id) AS total_presupuestos
-        FROM public.clientes c
-        LEFT JOIN public.presupuestos p
-          ON p.id_cliente = CAST(c.cliente_id AS text) AND p.activo = true
-        WHERE c.cliente_id = $1
-        GROUP BY c.cliente_id, c.nombre, c.apellido, c.otros, c.condicion_iva
-        ORDER BY total_presupuestos DESC, c.nombre
-        LIMIT $2
-      `;
-            const params = [parseInt(qRaw, 10), limit];
+        // CTE unificada public.clientes + public.bunker_clientes (garantiza que cualquier alta Búnker aparezca)
+        const cteClientesUnificados = `
+            WITH clientes_unificados AS (
+                SELECT
+                    COALESCE(
+                        c.cliente_id,
+                        CASE WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10 THEN bc.lomas_soft_id::integer ELSE NULL END
+                    ) AS cliente_id,
+                    COALESCE(NULLIF(TRIM(c.nombre), ''), NULLIF(TRIM(bc.cliente_nombre), ''), NULLIF(TRIM(bc.razon_social), '')) AS nombre,
+                    COALESCE(
+                        NULLIF(TRIM(c.apellido), ''),
+                        CASE
+                            WHEN NULLIF(TRIM(bc.razon_social), '') IS NOT NULL
+                             AND LOWER(TRIM(bc.razon_social)) <> LOWER(TRIM(COALESCE(c.nombre, bc.cliente_nombre, '')))
+                            THEN TRIM(bc.razon_social)
+                            ELSE NULL
+                        END
+                    ) AS apellido,
+                    c.otros,
+                    COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), ''), 'Consumidor Final') AS condicion_iva,
+                    COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), ''), '') AS cuit,
+                    COALESCE(NULLIF(TRIM(bc.dni), ''), NULLIF(NULLIF(TRIM(c.dni), '0'), ''), '') AS dni,
+                    COALESCE(bc.codigo_bunker_cliente, '') AS codigo_bunker_cliente,
+                    COALESCE(bc.cliente_nombre, '') AS bunker_nombre,
+                    COALESCE(bc.razon_social, '') AS bunker_razon
+                FROM public.clientes c
+                FULL OUTER JOIN public.bunker_clientes bc ON (
+                    CASE
+                        WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10 THEN bc.lomas_soft_id::integer
+                        ELSE NULL
+                    END
+                ) = c.cliente_id
+                WHERE COALESCE(
+                    c.cliente_id,
+                    CASE WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10 THEN bc.lomas_soft_id::integer ELSE NULL END
+                ) IS NOT NULL
+            )
+        `;
 
-            const result = await req.db.query(query, params);
-            const sugerencias = result.rows.map(cliente => ({
+        const formatearSugerencia = (cliente) => {
+            const nombreLimpio = (cliente.nombre || '').trim();
+            const apellidoLimpio = (cliente.apellido || '').trim();
+            const etiqueta = apellidoLimpio && apellidoLimpio.toLowerCase() !== nombreLimpio.toLowerCase()
+                ? `${nombreLimpio} ${apellidoLimpio}`.trim()
+                : (nombreLimpio || apellidoLimpio || cliente.bunker_nombre || cliente.bunker_razon || 'Sin nombre');
+            return {
                 id: cliente.cliente_id,
-                text: `${cliente.cliente_id.toString().padStart(3, '0')} — ${cliente.nombre || ''} ${cliente.apellido || ''}`.trim(),
+                text: `${cliente.cliente_id.toString().padStart(3, '0')} — ${etiqueta}`.trim(),
                 nombre: cliente.nombre,
                 apellido: cliente.apellido,
                 otros: cliente.otros,
                 condicion_iva: cliente.condicion_iva,
-                total_presupuestos: parseInt(cliente.total_presupuestos)
-            }));
+                cuit: cliente.cuit || '',
+                dni: cliente.dni || '',
+                codigo_bunker_cliente: cliente.codigo_bunker_cliente || null,
+                total_presupuestos: parseInt(cliente.total_presupuestos) || 0
+            };
+        };
+
+        // ¿Buscan por ID numérico corto?
+        if (/^\d{1,6}$/.test(qRaw)) {
+            const query = `
+                ${cteClientesUnificados}
+                SELECT
+                    cu.cliente_id,
+                    cu.nombre,
+                    cu.apellido,
+                    cu.otros,
+                    cu.condicion_iva,
+                    cu.cuit,
+                    cu.dni,
+                    cu.codigo_bunker_cliente,
+                    cu.bunker_nombre,
+                    cu.bunker_razon,
+                    COUNT(p.id) AS total_presupuestos
+                FROM clientes_unificados cu
+                LEFT JOIN public.presupuestos p
+                  ON (CASE WHEN TRIM(p.id_cliente) ~ '^[0-9]+$' AND LENGTH(TRIM(p.id_cliente)) < 10 THEN TRIM(p.id_cliente)::integer ELSE NULL END) = cu.cliente_id
+                 AND p.activo = true
+                WHERE cu.cliente_id = $1
+                GROUP BY cu.cliente_id, cu.nombre, cu.apellido, cu.otros, cu.condicion_iva, cu.cuit, cu.dni, cu.codigo_bunker_cliente, cu.bunker_nombre, cu.bunker_razon
+                ORDER BY total_presupuestos DESC, cu.nombre
+                LIMIT $2
+            `;
+            const params = [parseInt(qRaw, 10), limit];
+            const result = await req.db.query(query, params);
+            const sugerencias = result.rows.map(formatearSugerencia);
 
             return res.json({
                 success: true,
@@ -1003,7 +1098,7 @@ const obtenerSugerenciasClientes = async (req, res) => {
             });
         }
 
-        // Texto libre → múltiples términos (AND), buscando en nombre + apellido + otros
+        // Texto libre → múltiples términos (AND), buscando en nombre + apellido + otros + Búnker + CUIT + DNI + CB-XXXX
         const tokens = qRaw
             .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
             .toLowerCase()
@@ -1014,39 +1109,46 @@ const obtenerSugerenciasClientes = async (req, res) => {
         const params = [];
         const andConds = tokens.map(t => {
             p += 1; const ph = `$${p}`; params.push(`%${t}%`);
-            return `(LOWER(c.nombre) ILIKE ${ph} OR LOWER(c.apellido) ILIKE ${ph} OR LOWER(c.otros) ILIKE ${ph})`;
+            return `(
+                LOWER(COALESCE(cu.nombre, '')) ILIKE ${ph}
+                OR LOWER(COALESCE(cu.apellido, '')) ILIKE ${ph}
+                OR LOWER(COALESCE(cu.otros, '')) ILIKE ${ph}
+                OR LOWER(COALESCE(cu.bunker_nombre, '')) ILIKE ${ph}
+                OR LOWER(COALESCE(cu.bunker_razon, '')) ILIKE ${ph}
+                OR LOWER(COALESCE(cu.codigo_bunker_cliente, '')) ILIKE ${ph}
+                OR COALESCE(cu.cuit, '') ILIKE ${ph}
+                OR COALESCE(cu.dni, '') ILIKE ${ph}
+            )`;
         });
 
         p += 1; params.push(limit);
 
         const query = `
-      SELECT DISTINCT
-        c.cliente_id,
-        c.nombre,
-        c.apellido,
-        c.otros,
-        c.condicion_iva,
-        COUNT(pres.id) AS total_presupuestos
-      FROM public.clientes c
-      LEFT JOIN public.presupuestos pres
-        ON pres.id_cliente = CAST(c.cliente_id AS text) AND pres.activo = true
-      WHERE ${andConds.join(' AND ')}
-      GROUP BY c.cliente_id, c.nombre, c.apellido, c.otros, c.condicion_iva
-      ORDER BY total_presupuestos DESC, c.nombre
-      LIMIT $${p}
-    `;
+            ${cteClientesUnificados}
+            SELECT
+                cu.cliente_id,
+                cu.nombre,
+                cu.apellido,
+                cu.otros,
+                cu.condicion_iva,
+                cu.cuit,
+                cu.dni,
+                cu.codigo_bunker_cliente,
+                cu.bunker_nombre,
+                cu.bunker_razon,
+                COUNT(pres.id) AS total_presupuestos
+            FROM clientes_unificados cu
+            LEFT JOIN public.presupuestos pres
+              ON (CASE WHEN TRIM(pres.id_cliente) ~ '^[0-9]+$' AND LENGTH(TRIM(pres.id_cliente)) < 10 THEN TRIM(pres.id_cliente)::integer ELSE NULL END) = cu.cliente_id
+             AND pres.activo = true
+            WHERE ${andConds.join(' AND ')}
+            GROUP BY cu.cliente_id, cu.nombre, cu.apellido, cu.otros, cu.condicion_iva, cu.cuit, cu.dni, cu.codigo_bunker_cliente, cu.bunker_nombre, cu.bunker_razon
+            ORDER BY total_presupuestos DESC, cu.nombre
+            LIMIT $${p}
+        `;
 
         const result = await req.db.query(query, params);
-
-        const sugerencias = result.rows.map(cliente => ({
-            id: cliente.cliente_id,
-            text: `${cliente.cliente_id.toString().padStart(3, '0')} — ${cliente.nombre || ''} ${cliente.apellido || ''}`.trim(),
-            nombre: cliente.nombre,
-            apellido: cliente.apellido,
-            otros: cliente.otros,
-            condicion_iva: cliente.condicion_iva,
-            total_presupuestos: parseInt(cliente.total_presupuestos)
-        }));
+        const sugerencias = result.rows.map(formatearSugerencia);
 
         return res.json({
             success: true,
@@ -2166,10 +2268,24 @@ const obtenerPresupuestoPorId = async (req, res) => {
                 COALESCE(p.descuento, 0) AS descuento,
                 p.formato_impresion,
                 p.activo,
-                COALESCE(c.nombre || ' ' || c.apellido, bc.razon_social, bc.cliente_nombre, c.nombre, c.apellido, c.otros, 'Sin cliente') as concepto,
-                COALESCE(bc.cuit_cuil, c.cuit, '') as cuit,
-                COALESCE(c.dni, '') as dni,
-                COALESCE(bc.condicion_iva, c.condicion_iva, 'Consumidor Final') as condicion_iva,
+                COALESCE(
+                    NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(c.nombre), ''), NULLIF(TRIM(c.apellido), ''))), ''),
+                    NULLIF(TRIM(bc.razon_social), ''),
+                    NULLIF(TRIM(bc.cliente_nombre), ''),
+                    NULLIF(TRIM(c.otros), ''),
+                    'Sin cliente'
+                ) as concepto,
+                COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), ''), '') as cuit,
+                COALESCE(NULLIF(TRIM(bc.dni), ''), NULLIF(NULLIF(TRIM(c.dni), '0'), ''), '') as dni,
+                COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), ''), 'Consumidor Final') as condicion_iva,
+                COALESCE((
+                    SELECT ROUND(SUM(
+                        (d.cantidad * COALESCE(d.precio1, d.valor1 * (1 + COALESCE(d.camp2, 0.21)), 0))
+                        * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END) - (COALESCE(d.descuento_adicional, 0) / 100.0))
+                    ), 2)
+                    FROM public.presupuestos_detalles d
+                    WHERE d.id_presupuesto = p.id
+                ), 0) AS total_final,
                 COALESCE(c.telefono, c.celular, '') as telefono,
                 COALESCE(c.email, '') as email,
                 COALESCE(bc.preferencia_facturacion, c.preferencia_facturacion, 'PREGUNTAR') AS preferencia_facturacion,
@@ -2232,12 +2348,22 @@ const obtenerPresupuestoPorId = async (req, res) => {
                 COALESCE(bc.canal_envio_preferido, 'ambos') AS canal_envio_preferido
             FROM public.presupuestos p
             LEFT JOIN public.clientes c ON (
-                CASE WHEN p.id_cliente ~ '^[0-9]+$' THEN c.cliente_id = CAST(p.id_cliente AS integer) ELSE false END
+                CASE WHEN TRIM(p.id_cliente) ~ '^[0-9]+$' AND LENGTH(TRIM(p.id_cliente)) < 10
+                     THEN c.cliente_id = TRIM(p.id_cliente)::integer
+                     ELSE false END
             )
             LEFT JOIN public.bunker_clientes bc ON (
-                (c.cliente_id IS NOT NULL AND (bc.lomas_soft_id = LPAD(c.cliente_id::text, 4, '0') OR bc.lomas_soft_id = c.cliente_id::text OR bc.id = c.cliente_id))
-                OR (p.id_cliente ~ '^[0-9]+$' AND (bc.lomas_soft_id = LPAD(p.id_cliente, 4, '0') OR bc.lomas_soft_id = p.id_cliente))
-                OR bc.codigo_bunker_cliente = p.id_cliente
+                (
+                    CASE WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10
+                         THEN bc.lomas_soft_id::integer
+                         ELSE NULL END
+                ) = COALESCE(
+                    c.cliente_id,
+                    CASE WHEN TRIM(p.id_cliente) ~ '^[0-9]+$' AND LENGTH(TRIM(p.id_cliente)) < 10
+                         THEN TRIM(p.id_cliente)::integer
+                         ELSE NULL END
+                )
+                OR bc.codigo_bunker_cliente = TRIM(p.id_cliente)
             )
             WHERE p.id = $1 AND p.activo = true
         `;
@@ -2746,11 +2872,33 @@ const obtenerDetallesPresupuesto = async (req, res) => {
                 p.nota,
                 p.estado,
                 p.id_cliente,
-                COALESCE(c.nombre || ' ' || c.apellido, c.nombre, c.apellido, c.otros, 'Sin cliente') as cliente_nombre,
-                c.condicion_iva,
+                COALESCE(
+                    NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(c.nombre), ''), NULLIF(TRIM(c.apellido), ''))), ''),
+                    NULLIF(TRIM(bc.cliente_nombre), ''),
+                    NULLIF(TRIM(bc.razon_social), ''),
+                    NULLIF(TRIM(c.otros), ''),
+                    'Sin cliente'
+                ) as cliente_nombre,
+                COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), ''), 'Consumidor Final') as condicion_iva,
                 f.pto_vta
             FROM public.presupuestos p
-            LEFT JOIN public.clientes c ON c.cliente_id = CAST(NULLIF(TRIM(p.id_cliente), '') AS integer)
+            LEFT JOIN public.clientes c ON c.cliente_id = (
+                CASE WHEN TRIM(p.id_cliente) ~ '^[0-9]+$' AND LENGTH(TRIM(p.id_cliente)) < 10
+                     THEN TRIM(p.id_cliente)::integer
+                     ELSE NULL END
+            )
+            LEFT JOIN public.bunker_clientes bc ON (
+                (
+                    CASE WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10
+                         THEN bc.lomas_soft_id::integer
+                         ELSE NULL END
+                ) = (
+                    CASE WHEN TRIM(p.id_cliente) ~ '^[0-9]+$' AND LENGTH(TRIM(p.id_cliente)) < 10
+                         THEN TRIM(p.id_cliente)::integer
+                         ELSE NULL END
+                )
+                OR bc.codigo_bunker_cliente = TRIM(p.id_cliente)
+            )
             LEFT JOIN (
                 SELECT presupuesto_id, pto_vta,
                        ROW_NUMBER() OVER(PARTITION BY presupuesto_id ORDER BY id DESC) as rn
@@ -3204,47 +3352,81 @@ const obtenerDatosCliente = async (req, res) => {
         console.log(`📊 [PRESUPUESTOS] ${requestId} - Buscando cliente ID: ${id_cliente}`);
 
         const query = `
+            WITH clientes_unificados AS (
+                SELECT
+                    COALESCE(
+                        c.cliente_id,
+                        CASE WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10 THEN bc.lomas_soft_id::integer ELSE NULL END
+                    ) AS id_cliente,
+                    COALESCE(NULLIF(TRIM(c.nombre), ''), NULLIF(TRIM(bc.cliente_nombre), ''), NULLIF(TRIM(bc.razon_social), '')) AS nombre,
+                    COALESCE(NULLIF(TRIM(c.apellido), ''), NULLIF(TRIM(bc.razon_social), '')) AS apellido,
+                    COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), ''), 'Consumidor Final') AS condicion_iva,
+                    COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), ''), '') AS cuit,
+                    COALESCE(NULLIF(TRIM(bc.dni), ''), NULLIF(NULLIF(TRIM(c.dni), '0'), ''), '') AS dni,
+                    COALESCE(bc.preferencia_facturacion, c.preferencia_facturacion, 'PREGUNTAR') AS preferencia_facturacion,
+                    c.lista_precios AS legacy_lista_precios,
+                    bc.id AS bunker_cliente_id,
+                    bc.codigo_bunker_cliente,
+                    bc.lomas_soft_id,
+                    (bc.id IS NOT NULL) AS en_bunker
+                FROM public.clientes c
+                FULL OUTER JOIN public.bunker_clientes bc ON (
+                    CASE
+                        WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10 THEN bc.lomas_soft_id::integer
+                        ELSE NULL
+                    END
+                ) = c.cliente_id
+            )
             SELECT 
-                c.cliente_id as id_cliente,
-                c.nombre,
-                c.apellido,
-                c.condicion_iva,
-                c.lista_precios as legacy_lista_precios,
-                bc.id as bunker_cliente_id,
-                bc.codigo_bunker_cliente,
-                (bc.id IS NOT NULL) as en_bunker,
+                cu.id_cliente,
+                cu.nombre,
+                cu.apellido,
+                cu.condicion_iva,
+                cu.cuit,
+                cu.dni,
+                cu.preferencia_facturacion,
+                cu.legacy_lista_precios,
+                cu.bunker_cliente_id,
+                cu.codigo_bunker_cliente,
+                cu.en_bunker,
                 COALESCE(
                     (SELECT JSON_AGG(JSON_BUILD_OBJECT('id', lp.id, 'nombre', lp.nombre))
                      FROM public.bunker_cliente_listas_precios clp
                      JOIN public.bunker_listas_precios lp ON lp.id = clp.bunker_lista_precio_id
-                     WHERE clp.bunker_cliente_id = bc.id),
+                     WHERE clp.bunker_cliente_id = cu.bunker_cliente_id),
                     '[]'::json
                 ) as bunker_listas,
                 (SELECT lp.nombre
                  FROM public.bunker_cliente_listas_precios clp
                  JOIN public.bunker_listas_precios lp ON lp.id = clp.bunker_lista_precio_id
-                 WHERE clp.bunker_cliente_id = bc.id
+                 WHERE clp.bunker_cliente_id = cu.bunker_cliente_id
                  LIMIT 1) as bunker_lista_nombre,
                 (SELECT clp.bunker_lista_precio_id
                  FROM public.bunker_cliente_listas_precios clp
-                 WHERE clp.bunker_cliente_id = bc.id
+                 WHERE clp.bunker_cliente_id = cu.bunker_cliente_id
                  LIMIT 1) as bunker_lista_id,
                 EXISTS (
                     SELECT 1 
                     FROM public.bunker_cliente_listas_precios clp
-                    WHERE clp.bunker_cliente_id = bc.id
+                    WHERE clp.bunker_cliente_id = cu.bunker_cliente_id
                 ) as tiene_listas_bunker
-            FROM public.clientes c
-            LEFT JOIN public.bunker_clientes bc ON (
-                bc.lomas_soft_id = LPAD(c.cliente_id::text, 4, '0') 
-                OR bc.lomas_soft_id = c.cliente_id::text 
-                OR bc.id = c.cliente_id
-            )
-            WHERE c.cliente_id = $1
+            FROM clientes_unificados cu
+            WHERE cu.id_cliente = (
+                      CASE WHEN TRIM($1::text) ~ '^[0-9]+$' AND LENGTH(TRIM($1::text)) < 10
+                           THEN TRIM($1::text)::integer
+                           ELSE NULL END
+                  )
+               OR cu.codigo_bunker_cliente = TRIM($1::text)
+               OR cu.lomas_soft_id = TRIM($1::text)
+            ORDER BY
+                CASE
+                    WHEN cu.id_cliente = (CASE WHEN TRIM($1::text) ~ '^[0-9]+$' AND LENGTH(TRIM($1::text)) < 10 THEN TRIM($1::text)::integer ELSE NULL END) THEN 0
+                    ELSE 1
+                END ASC
             LIMIT 1
         `;
 
-        const result = await req.db.query(query, [parseInt(id_cliente)]);
+        const result = await req.db.query(query, [String(id_cliente).trim()]);
 
         if (result.rows.length === 0) {
             console.log(`⚠️ [PRESUPUESTOS] ${requestId} - Cliente no encontrado: ${id_cliente}`);

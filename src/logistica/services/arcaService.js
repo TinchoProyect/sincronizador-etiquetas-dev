@@ -426,15 +426,54 @@ async function consultarPadron(cuit) {
         throw new Error(`Fallo del Web Service ARCA: [${faultCode}] ${faultString}`);
     }
 
-    const personaReturn = body?.getPersonaResponse?.personaReturn;
+    const personaReturn = body?.getPersonaResponse?.personaReturn || body?.getPersona_v2Response?.personaReturn;
     
     if (!personaReturn || (!personaReturn.datosGenerales && !personaReturn.errorConstancia)) {
         throw new Error('El contribuyente no fue encontrado en los registros de ARCA.');
     }
 
-    // Si viene un error interno en la constancia de AFIP
+    // Si viene un error interno en la constancia de AFIP (ej. CUIL de Consumidor Final sin impuestos activos en Padrón A5)
     if (personaReturn.errorConstancia) {
-        const errMsg = personaReturn.errorConstancia.descripcionError || 'Error al consultar constancia en AFIP.';
+        const errConst = personaReturn.errorConstancia;
+        const rawErr = errConst.error || errConst.descripcionError || errConst.mensaje;
+        const errMsg = Array.isArray(rawErr)
+            ? rawErr.filter(Boolean).join(' | ')
+            : String(rawErr || 'El documento no posee constancia de inscripción activa en ARCA.');
+
+        const esPersonaFisica = /^(20|23|24|27)\d{9}$/.test(cuitLimpio);
+
+        // Si es persona física con CUIL matemáticamente válido y no posee constancia activa en Padrón A5,
+        // devolvemos una respuesta controlada e informativa para Consumidor Final (nunca HTTP 502 de caída).
+        if (esPersonaFisica) {
+            const partesNombreParcial = [];
+            const apellidoParcial = errConst.apellido || personaReturn.datosGenerales?.apellido || '';
+            const nombreParcial = errConst.nombre || personaReturn.datosGenerales?.nombre || '';
+            if (apellidoParcial) partesNombreParcial.push(String(apellidoParcial).trim());
+            if (nombreParcial) partesNombreParcial.push(String(nombreParcial).trim());
+            const razonParcial = partesNombreParcial.join(', ');
+
+            const domParcialObj = personaReturn.datosGenerales?.domicilioFiscal || null;
+            const domicilioParcial = domParcialObj ? formatearDomicilio(domParcialObj) : '';
+            const provinciaParcial = domParcialObj?.descripcionProvincia || '';
+            const dniRaw = cuitLimpio.substring(2, 10).replace(/^0+/, '');
+            const dniExtraido = /^\d{7,8}$/.test(dniRaw) ? dniRaw : null;
+
+            console.log(`ℹ️ [ARCA-SERVICE] CUIL ${cuitLimpio} sin constancia activa en Padrón A5 (${errMsg}). Clasificado como Consumidor Final (DNI: ${dniExtraido || 'N/D'}).`);
+            return {
+                sin_inscripcion_arca: true,
+                razon_social: razonParcial,
+                condicion_iva: 'Consumidor Final',
+                dni: dniExtraido,
+                domicilio_fiscal: domicilioParcial,
+                provincia: provinciaParcial,
+                estado_clave: personaReturn.datosGenerales?.estadoClave ? String(personaReturn.datosGenerales.estadoClave).trim() : 'SIN INSCRIPCIÓN ACTIVA',
+                categoria_monotributo: null,
+                actividad_principal: null,
+                detalle_arca: errMsg,
+                advertencia_fiscal: `Este CUIL es válido, pero no registra inscripción impositiva activa en Padrón A5 de ARCA (${errMsg}). Corresponde a Consumidor Final${dniExtraido ? ` (DNI detectado: ${dniExtraido})` : ''}; podés continuar guardando la ficha normalmente.`
+            };
+        }
+
         throw new Error(`Fallo de Padrón ARCA: ${errMsg}`);
     }
 
@@ -524,10 +563,16 @@ async function consultarPadron(cuit) {
         }
     }
 
+    const esPersonaFisicaFinal = /^(20|23|24|27)\d{9}$/.test(cuitLimpio);
+    const dniRawFinal = esPersonaFisicaFinal ? cuitLimpio.substring(2, 10).replace(/^0+/, '') : '';
+    const dniFinal = (esPersonaFisicaFinal && /^\d{7,8}$/.test(dniRawFinal)) ? dniRawFinal : null;
+
     console.log(`✅ [ARCA-SERVICE] Datos del CUIT ${cuitLimpio} mapeados con éxito: "${razonSocial}" (IVA: ${condicionIva}, Estado: ${estadoClave}, Cat: ${categoriaMonotributo})`);
     return {
+        sin_inscripcion_arca: false,
         razon_social: razonSocial,
         condicion_iva: condicionIva,
+        dni: dniFinal,
         domicilio_fiscal: domicilioFiscal,
         provincia: provincia,
         estado_clave: estadoClave,

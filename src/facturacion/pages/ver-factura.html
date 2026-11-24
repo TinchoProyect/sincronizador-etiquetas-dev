@@ -918,8 +918,16 @@
                             <span class="field-value">${factura.razon_social || 'Consumidor Final'}</span>
                         </div>
                         <div class="client-field">
-                            <span class="field-label">${factura.doc_tipo === 80 ? 'CUIT' : factura.doc_tipo === 96 ? 'DNI' : 'Documento'}:</span>
-                            <span class="field-value">${factura.cliente_cuit || factura.doc_nro || 'S/D'}</span>
+                            <span class="field-label">${Number(factura.doc_tipo) === 80 ? 'CUIT' : Number(factura.doc_tipo) === 86 ? 'CUIL' : Number(factura.doc_tipo) === 96 ? 'DNI' : 'Documento'}:</span>
+                            <span class="field-value">${(() => {
+                                const dt = Number(factura.doc_tipo);
+                                const nro = String(factura.doc_nro ?? '').trim();
+                                const tieneNro = nro !== '' && nro !== '0';
+                                if (dt === 80 || dt === 86) return (tieneNro ? nro : '') || factura.cliente_cuit || 'S/D';
+                                if (dt === 96) return (tieneNro ? nro : '') || factura.cliente_dni || 'S/D';
+                                if (dt === 99 || !tieneNro) return 'Consumidor Final (Sin identificar)';
+                                return nro;
+                            })()}</span>
                         </div>
                         <div class="client-field">
                             <span class="field-label">Condición IVA:</span>

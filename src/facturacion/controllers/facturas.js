@@ -322,8 +322,9 @@ const listarFacturas = async (req, res) => {
             SELECT 
                 f.*,
                 bc.id as bunker_cliente_id,
-                COALESCE(NULLIF(TRIM(bc.razon_social), ''), NULLIF(TRIM(bc.cliente_nombre), ''), NULLIF(TRIM(c.apellido), '')) as razon_social,
-                COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), ''), NULLIF(TRIM(c.dni), '')) as cliente_cuit,
+                COALESCE(NULLIF(TRIM(bc.razon_social), ''), NULLIF(TRIM(bc.cliente_nombre), ''), NULLIF(TRIM(c.apellido), ''), NULLIF(TRIM(c.nombre), '')) as razon_social,
+                COALESCE(NULLIF(TRIM(bc.dni), ''), NULLIF(NULLIF(TRIM(c.dni), '0'), '')) as cliente_dni,
+                COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), ''), NULLIF(TRIM(bc.dni), ''), NULLIF(NULLIF(TRIM(c.dni), '0'), '')) as cliente_cuit,
                 COALESCE(NULLIF(TRIM(bc.domicilio_fiscal), ''), NULLIF(TRIM(c.domicilio), '')) as cliente_domicilio,
                 COALESCE(NULLIF(TRIM(bc.provincia), ''), NULLIF(TRIM(c.provincia), '')) as cliente_provincia,
                 COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), '')) as cliente_condicion_iva,

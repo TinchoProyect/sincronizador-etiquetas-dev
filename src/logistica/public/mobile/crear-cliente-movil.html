@@ -80,8 +80,9 @@
 
     <!-- FORMULARIO PRINCIPAL -->
     <main style="padding: 1rem 1rem 6rem;">
-        <form id="form-cliente-movil" onsubmit="return false;">
+        <form id="form-cliente-movil" onsubmit="return false;" autocomplete="off">
             <input type="hidden" id="txt-codigo" value="">
+            <input type="hidden" id="txt-dni-oculto" value="">
 
             <!-- TARJETA RESUMEN CUENTA CORRIENTE (Solo en modo edición) -->
             <div id="banner-saldo-edicion" style="display: none; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 1px solid #334155; border-radius: 0.85rem; padding: 0.75rem 1rem; margin-bottom: 1rem; justify-content: space-between; align-items: center;">
@@ -109,39 +110,38 @@
                     <h2 class="form-section-title">🏛️ 1. Identificación Fiscal & ARCA</h2>
                 </div>
 
-                <!-- CUIT / CUIL + Botón ARCA -->
+                <!-- DNI / CUIL / CUIT + Botón ARCA -->
                 <div class="form-group-mobile">
-                    <label class="form-label-mobile" for="txt-cuit">CUIT / CUIL (11 Dígitos)</label>
+                    <label class="form-label-mobile" for="txt-cuit">DNI / CUIL / CUIT <span style="font-weight:400; color:#94a3b8;">(opcional)</span></label>
                     <div style="display: flex; gap: 0.4rem;">
-                        <input type="tel" id="txt-cuit" class="wizard-input-mobile" placeholder="Ej: 30712345678" maxlength="14" autocomplete="off" style="flex: 1;">
+                        <input type="tel" id="txt-cuit" name="lamda_mobile_cliente_doc" class="wizard-input-mobile" placeholder="Ej: 44785036 (DNI) o 27447850368" maxlength="14" autocomplete="off" style="flex: 1;">
                         <button type="button" id="btn-consultar-arca" class="btn-arca-mobile" disabled>
                             ⚡ Consultar ARCA
                         </button>
                     </div>
-                    <span id="helper-cuit" class="form-helper">Identificación tributaria de 11 dígitos.</span>
-                </div>
-
-                <!-- Razón Social -->
-                <div class="form-group-mobile">
-                    <label class="form-label-mobile" for="txt-razon">Razón Social <span class="req">*</span></label>
-                    <input type="text" id="txt-razon" class="wizard-input-mobile" placeholder="Denominación fiscal oficial" required>
+                    <span id="helper-cuit" class="form-helper">Opcional para Consumidor Final (&lt; $10M). Acepta DNI (7–8 dígitos) o CUIT/CUIL (11 dígitos).</span>
                 </div>
 
                 <!-- Nombre Comercial / Fantasía -->
                 <div class="form-group-mobile">
                     <label class="form-label-mobile" for="txt-nombre">Nombre Comercial / Fantasía <span class="req">*</span></label>
-                    <input type="text" id="txt-nombre" class="wizard-input-mobile" placeholder="Nombre comercial para mostrador/calle" required>
+                    <input type="text" id="txt-nombre" class="wizard-input-mobile" placeholder="Nombre del cliente o comercio" autocomplete="off" required>
+                </div>
+
+                <!-- Razón Social -->
+                <div class="form-group-mobile">
+                    <label class="form-label-mobile" for="txt-razon">Razón Social <span style="font-weight:400; color:#94a3b8;">(opcional)</span></label>
+                    <input type="text" id="txt-razon" class="wizard-input-mobile" placeholder="Si se deja vacía usa el Nombre Comercial" autocomplete="off">
                 </div>
 
                 <!-- Condición de IVA -->
                 <div class="form-group-mobile">
                     <label class="form-label-mobile" for="sel-condicion-iva">Condición de IVA</label>
                     <select id="sel-condicion-iva" class="wizard-input-mobile">
-                        <option value="">-- Seleccionar Condición --</option>
+                        <option value="Consumidor Final" selected>Consumidor Final</option>
                         <option value="Responsable Inscripto">Responsable Inscripto</option>
                         <option value="Monotributo">Monotributo</option>
                         <option value="Exento">Exento</option>
-                        <option value="Consumidor Final">Consumidor Final</option>
                     </select>
                 </div>
 
@@ -247,16 +247,16 @@
                 <!-- Acceso al Portal B2B -->
                 <div style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.75rem; margin-top: 0.75rem;">
                     <label class="form-label-mobile" for="txt-email-portal">Email de Acceso Portal B2B</label>
-                    <input type="email" id="txt-email-portal" class="wizard-input-mobile" placeholder="usuario@portalb2b.com">
+                    <input type="text" inputmode="email" id="txt-email-portal" name="lamda_mobile_portal_user_no_autofill" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" class="wizard-input-mobile" placeholder="usuario@portalb2b.com">
                 </div>
                 <div style="display: flex; gap: 0.4rem; margin-top: 0.5rem;">
                     <div style="flex: 1;">
                         <label class="form-label-mobile" for="txt-email-portal-nombre">Contacto Portal</label>
-                        <input type="text" id="txt-email-portal-nombre" class="wizard-input-mobile" placeholder="Ej: Juan">
+                        <input type="text" id="txt-email-portal-nombre" name="lamda_mobile_portal_contact_name" autocomplete="off" class="wizard-input-mobile" placeholder="Ej: Juan">
                     </div>
                     <div style="flex: 1;">
                         <label class="form-label-mobile" for="txt-email-portal-cargo">Cargo</label>
-                        <input type="text" id="txt-email-portal-cargo" class="wizard-input-mobile" placeholder="Ej: Compras">
+                        <input type="text" id="txt-email-portal-cargo" name="lamda_mobile_portal_contact_role" autocomplete="off" class="wizard-input-mobile" placeholder="Ej: Compras">
                     </div>
                 </div>
             </section>

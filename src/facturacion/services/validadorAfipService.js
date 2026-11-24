@@ -4,7 +4,7 @@
  */
 
 const { pool } = require('../config/database');
-const { TIPOS_COMPROBANTE, TIPOS_DOCUMENTO, TIPOS_CONCEPTO } = require('../config/afip');
+const { TIPOS_COMPROBANTE, TIPOS_DOCUMENTO, TIPOS_CONCEPTO, TOPE_CF_SIN_IDENTIFICAR } = require('../config/afip');
 
 console.log('🔍 [VALIDADOR-AFIP] Cargando servicio de validación...');
 
@@ -168,7 +168,7 @@ function validarCabecera(factura) {
             campo: 'mon_cotiz',
             mensaje: 'Falta cotización de moneda'
         });
-    } else if (factura.moneda === 'PES' && factura.mon_cotiz !== 1) {
+    } else if (factura.moneda === 'PES' && Math.abs(parseFloat(factura.mon_cotiz) - 1) > 0.0001) {
         faltantes.push({
             campo: 'mon_cotiz',
             mensaje: 'Cotización debe ser 1 para pesos'
@@ -335,38 +335,47 @@ function validarDocumentoReceptor(factura) {
         return faltantes;
     }
     
-    if (!factura.doc_tipo) {
+    const docTipoNum = parseInt(factura.doc_tipo, 10);
+    const docNroStr = factura.doc_nro !== null && factura.doc_nro !== undefined ? String(factura.doc_nro).replace(/[-\s]/g, '') : '';
+
+    if (!docTipoNum) {
         faltantes.push({
             campo: 'doc_tipo',
             mensaje: 'Falta tipo de documento del receptor'
         });
-    } else if (!TIPOS_DOCUMENTO[factura.doc_tipo]) {
+    } else if (!TIPOS_DOCUMENTO[docTipoNum]) {
         faltantes.push({
             campo: 'doc_tipo',
-            mensaje: `Tipo de documento ${factura.doc_tipo} no válido`
+            mensaje: `Tipo de documento ${docTipoNum} no válido`
         });
     }
-    
-    if (!factura.doc_nro) {
+
+    if (docTipoNum === 99) {
+        const impTotalNum = parseFloat(factura.imp_total) || 0;
+        if (impTotalNum >= TOPE_CF_SIN_IDENTIFICAR) {
+            faltantes.push({
+                campo: 'doc_nro',
+                mensaje: `ARCA (RG 5700/2025) exige DNI o CUIL para operaciones con Consumidor Final iguales o superiores a $${TOPE_CF_SIN_IDENTIFICAR.toLocaleString('es-AR')}`
+            });
+        }
+    } else if (!docNroStr) {
         faltantes.push({
             campo: 'doc_nro',
             mensaje: 'Falta número de documento del receptor'
         });
     } else {
         // Validar formato según tipo
-        const docNro = factura.doc_nro.replace(/[-\s]/g, '');
-        
-        if (factura.doc_tipo === 80) {
-            // CUIT: debe tener 11 dígitos
-            if (!/^\d{11}$/.test(docNro) && docNro !== '0') {
+        if (docTipoNum === 80 || docTipoNum === 86) {
+            // CUIT/CUIL: debe tener 11 dígitos
+            if (!/^\d{11}$/.test(docNroStr)) {
                 faltantes.push({
                     campo: 'doc_nro',
-                    mensaje: 'CUIT debe tener 11 dígitos'
+                    mensaje: `${docTipoNum === 86 ? 'CUIL' : 'CUIT'} debe tener 11 dígitos`
                 });
             }
-        } else if (factura.doc_tipo === 96) {
-            // DNI: debe tener 7-8 dígitos
-            if (!/^\d{7,8}$/.test(docNro) && docNro !== '0') {
+        } else if (docTipoNum === 96) {
+            // DNI: debe tener 7-8 dígitos y no ser solo ceros
+            if (!/^\d{7,8}$/.test(docNroStr) || /^0+$/.test(docNroStr)) {
                 faltantes.push({
                     campo: 'doc_nro',
                     mensaje: 'DNI debe tener 7 u 8 dígitos'

@@ -15,6 +15,10 @@ function asegurarIndicesClientesBunker() {
                 await pool.query(`
                     ALTER TABLE public.bunker_clientes
                         ADD COLUMN IF NOT EXISTS destinatarios_saldo_config JSONB DEFAULT NULL;
+                    ALTER TABLE public.bunker_clientes
+                        ADD COLUMN IF NOT EXISTS dni VARCHAR(20) DEFAULT NULL;
+                    CREATE INDEX IF NOT EXISTS idx_bunker_clientes_dni
+                        ON public.bunker_clientes (dni) WHERE dni IS NOT NULL;
                     CREATE INDEX IF NOT EXISTS idx_portal_inv_cliente_usado
                         ON public.portal_invitaciones (cliente_id) WHERE usado = true;
                     CREATE INDEX IF NOT EXISTS idx_bunker_clp_cliente_id
@@ -192,7 +196,7 @@ class ClientesBunkerModel {
                 LEFT JOIN efvo_nodos_agg ea ON ea.nodo_id = nm.id
                 WHERE COALESCE(nm.activo, true) = true
             )
-            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.destinatarios_saldo_config, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.preferencia_facturacion, COALESCE(c.ver_stock, false) as ver_stock, COALESCE(c.salvavidas_modo, 'HEREDAR_LISTA') as salvavidas_modo, c.created_at, c.updated_at,
+            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.dni, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.destinatarios_saldo_config, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.preferencia_facturacion, COALESCE(c.ver_stock, false) as ver_stock, COALESCE(c.salvavidas_modo, 'HEREDAR_LISTA') as salvavidas_modo, c.created_at, c.updated_at,
                    cc.saldo, cc.cuenta_corriente_id, cc.configuracion_reporte,
                    (ia.cliente_id IS NOT NULL) as onboarding_completado,
                    COALESCE(la.listas_precios, '[]'::json) as listas_precios,
@@ -240,6 +244,7 @@ class ClientesBunkerModel {
                     OR c.razon_social ILIKE $1 
                     OR c.lomas_soft_id ILIKE $1
                     OR c.cuit_cuil ILIKE $1
+                    OR c.dni ILIKE $1
                     OR c.whatsapp_facturas ILIKE $1
                     OR c.email_facturas ILIKE $1
                     OR c.email_portal ILIKE $1
@@ -269,7 +274,7 @@ class ClientesBunkerModel {
      */
     static async obtenerPorId(id) {
         const query = `
-            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.destinatarios_saldo_config, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.preferencia_facturacion, COALESCE(c.ver_stock, false) as ver_stock, COALESCE(c.salvavidas_modo, 'HEREDAR_LISTA') as salvavidas_modo, c.created_at, c.updated_at,
+            SELECT c.id, c.codigo_bunker_cliente, c.cliente_nombre, c.razon_social, c.lomas_soft_id, c.cuit_cuil, c.dni, c.condicion_iva, c.domicilio_fiscal, c.provincia, c.estado_clave, c.categoria_monotributo, c.actividad_principal, c.whatsapp_facturas, c.email_facturas, c.destinatarios_saldo_config, c.canal_envio_preferido, c.email_portal, c.email_portal_nombre, c.email_portal_cargo, c.preferencia_facturacion, COALESCE(c.ver_stock, false) as ver_stock, COALESCE(c.salvavidas_modo, 'HEREDAR_LISTA') as salvavidas_modo, c.created_at, c.updated_at,
                    cc.saldo, cc.id as cuenta_corriente_id, cc.configuracion_reporte,
                    EXISTS (
                        SELECT 1 FROM public.portal_invitaciones i 
@@ -310,7 +315,7 @@ class ClientesBunkerModel {
      */
     static async obtenerPorCodigoBunker(codigo) {
         const query = `
-            SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, destinatarios_saldo_config, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, created_at, updated_at
+            SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, dni, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, destinatarios_saldo_config, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, created_at, updated_at
             FROM public.bunker_clientes
             WHERE codigo_bunker_cliente = $1
         `;
@@ -326,7 +331,7 @@ class ClientesBunkerModel {
     static async obtenerPorLomasSoftId(lomasSoftId) {
         if (!lomasSoftId) return null;
         const query = `
-            SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, created_at, updated_at
+            SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, dni, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, created_at, updated_at
             FROM public.bunker_clientes
             WHERE lomas_soft_id = $1
         `;
@@ -356,13 +361,31 @@ class ClientesBunkerModel {
     static async obtenerPorCuit(cuit) {
         if (!cuit) return null;
         const query = `
-            SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, created_at, updated_at
+            SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, dni, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, created_at, updated_at
             FROM public.bunker_clientes
             WHERE cuit_cuil = $1
             ORDER BY id ASC
             LIMIT 1
         `;
         const result = await pool.query(query, [cuit]);
+        return result.rows.length ? result.rows[0] : null;
+    }
+
+    /**
+     * Obtener un cliente por su email_portal para pre-validación de unicidad (HTTP 409)
+     * @param {string} email - Email de acceso al portal B2B
+     * @returns {Promise<Object|null>} Cliente encontrado o null
+     */
+    static async obtenerPorEmailPortal(email) {
+        if (!email || !String(email).trim()) return null;
+        const query = `
+            SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, dni, email_portal
+            FROM public.bunker_clientes
+            WHERE LOWER(TRIM(email_portal)) = LOWER(TRIM($1))
+            ORDER BY id ASC
+            LIMIT 1
+        `;
+        const result = await pool.query(query, [String(email).trim()]);
         return result.rows.length ? result.rows[0] : null;
     }
 
@@ -418,20 +441,134 @@ class ClientesBunkerModel {
     }
 
     /**
+     * Sincronizar en espejo un registro de public.bunker_clientes hacia public.clientes
+     * (UPSERT idempotente por cliente_id = lomas_soft_id::integer).
+     * Evita la duplicación "Victoria Victoria" cuando razon_social == cliente_nombre.
+     */
+    static async sincronizarConClientesLegacy(clienteRow, dbClient = null, { preservarExistentes = false } = {}) {
+        const db = dbClient || pool;
+        const rawLomas = String(clienteRow?.lomas_soft_id || '').trim();
+        if (!/^\d+$/.test(rawLomas) || rawLomas.length >= 10) {
+            return { synced: false, reason: 'sin_lomas_soft_id_numerico' };
+        }
+        const clienteIdInt = parseInt(rawLomas, 10);
+        if (!Number.isFinite(clienteIdInt) || clienteIdInt <= 0) {
+            return { synced: false, reason: 'cliente_id_invalido' };
+        }
+
+        const cn = String(clienteRow.cliente_nombre || '').trim();
+        const rs = String(clienteRow.razon_social || '').trim();
+        let nombreLegacy = cn || rs || `Cliente ${clienteIdInt}`;
+        let apellidoLegacy = null;
+        if (cn && rs && rs.toLowerCase() !== cn.toLowerCase()) {
+            if (rs.toLowerCase().startsWith(cn.toLowerCase() + ' ')) {
+                nombreLegacy = cn;
+                apellidoLegacy = rs.slice(cn.length).trim() || null;
+            } else {
+                nombreLegacy = cn;
+                apellidoLegacy = rs;
+            }
+        }
+
+        const extraerContacto = (raw, campo) => {
+            if (!raw) return null;
+            const s = String(raw).trim();
+            if (!s) return null;
+            if (s.startsWith('[')) {
+                try {
+                    const arr = JSON.parse(s);
+                    if (Array.isArray(arr)) {
+                        const encontrado = arr.find(x => x && String(x[campo] || '').trim());
+                        if (encontrado) return String(encontrado[campo]).trim();
+                    }
+                } catch (_) { /* texto plano */ }
+                return null;
+            }
+            return s;
+        };
+
+        const cuitDigits = String(clienteRow.cuit_cuil || '').replace(/\D/g, '');
+        const cuitLegacy = cuitDigits.length === 11 ? cuitDigits : null;
+        const dniDigits = String(clienteRow.dni || '').replace(/\D/g, '');
+        const dniLegacy = /^\d{7,8}$/.test(dniDigits) && !/^0+$/.test(dniDigits) ? dniDigits : null;
+        const condicionLegacy = String(clienteRow.condicion_iva || '').trim() || 'Consumidor Final';
+        const domicilioLegacy = String(clienteRow.domicilio_fiscal || '').trim() || null;
+        const provinciaLegacy = String(clienteRow.provincia || '').trim() || null;
+        const celularLegacy = extraerContacto(clienteRow.whatsapp_facturas, 'numero');
+        const emailLegacy = extraerContacto(clienteRow.email_facturas, 'email') || (String(clienteRow.email_portal || '').trim() || null);
+        const prefFacturacion = ['ARCA', 'INTERNO', 'PREGUNTAR'].includes(clienteRow.preferencia_facturacion)
+            ? clienteRow.preferencia_facturacion
+            : 'PREGUNTAR';
+
+        const upsertSql = `
+            INSERT INTO public.clientes (
+                cliente_id, nombre, apellido, cuit, dni, condicion_iva,
+                domicilio, provincia, celular, email, preferencia_facturacion,
+                created_at, updated_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6,
+                $7, $8, $9, $10, $11,
+                NOW(), NOW()
+            )
+            ON CONFLICT (cliente_id) DO UPDATE SET
+                nombre = CASE
+                    WHEN $12::boolean THEN COALESCE(NULLIF(TRIM(public.clientes.nombre), ''), EXCLUDED.nombre)
+                    ELSE COALESCE(NULLIF(TRIM(EXCLUDED.nombre), ''), public.clientes.nombre)
+                END,
+                apellido = CASE
+                    WHEN $12::boolean THEN COALESCE(NULLIF(TRIM(public.clientes.apellido), ''), EXCLUDED.apellido)
+                    ELSE EXCLUDED.apellido
+                END,
+                cuit = CASE
+                    WHEN $12::boolean THEN COALESCE(NULLIF(TRIM(public.clientes.cuit), ''), EXCLUDED.cuit)
+                    ELSE EXCLUDED.cuit
+                END,
+                dni = CASE
+                    WHEN $12::boolean THEN COALESCE(NULLIF(NULLIF(TRIM(public.clientes.dni), ''), '0'), EXCLUDED.dni)
+                    ELSE EXCLUDED.dni
+                END,
+                condicion_iva = CASE
+                    WHEN $12::boolean THEN COALESCE(NULLIF(TRIM(public.clientes.condicion_iva), ''), EXCLUDED.condicion_iva)
+                    ELSE COALESCE(NULLIF(TRIM(EXCLUDED.condicion_iva), ''), public.clientes.condicion_iva)
+                END,
+                domicilio = COALESCE(NULLIF(TRIM(EXCLUDED.domicilio), ''), public.clientes.domicilio),
+                provincia = COALESCE(NULLIF(TRIM(EXCLUDED.provincia), ''), public.clientes.provincia),
+                celular = COALESCE(NULLIF(TRIM(EXCLUDED.celular), ''), public.clientes.celular),
+                email = COALESCE(NULLIF(TRIM(EXCLUDED.email), ''), public.clientes.email),
+                preferencia_facturacion = COALESCE(NULLIF(TRIM(EXCLUDED.preferencia_facturacion), ''), public.clientes.preferencia_facturacion),
+                updated_at = NOW()
+            RETURNING cliente_id, (xmax = 0) AS insertado
+        `;
+
+        const res = await db.query(upsertSql, [
+            clienteIdInt,
+            nombreLegacy,
+            apellidoLegacy,
+            cuitLegacy,
+            dniLegacy,
+            condicionLegacy,
+            domicilioLegacy,
+            provinciaLegacy,
+            celularLegacy,
+            emailLegacy,
+            prefFacturacion,
+            Boolean(preservarExistentes)
+        ]);
+
+        return {
+            synced: true,
+            cliente_id: res.rows[0]?.cliente_id || clienteIdInt,
+            insertado: Boolean(res.rows[0]?.insertado)
+        };
+    }
+
+    /**
      * Crear un nuevo cliente en el sistema local
      * @param {Object} datos - Atributos del cliente
-     * @param {string} [datos.codigo_bunker_cliente] - Código local (autogenerado si se omite)
-     * @param {string} datos.cliente_nombre - Nombre de fantasía o comercial
-     * @param {string} datos.razon_social - Razón social legal
-     * @param {string|null} datos.lomas_soft_id - Código externo (saneado a null si viene vacío)
-     * @param {string|null} datos.cuit_cuil - CUIT/CUIL del cliente (sanitizado a solo números)
-     * @param {string|null} datos.condicion_iva - Condición de IVA del cliente
-     * @param {string|null} datos.domicilio_fiscal - Domicilio fiscal legal
-     * @param {string|null} datos.provincia - Provincia de jurisdicción
      * @returns {Promise<Object>} Cliente insertado
      */
     static async crear(datos) {
-        let { codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, ver_stock } = datos;
+        let { codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, dni, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, ver_stock } = datos;
         
         // Si no se suministra un código o viene vacío, lo autogeneramos dinámicamente
         if (!codigo_bunker_cliente || !codigo_bunker_cliente.trim()) {
@@ -440,16 +577,18 @@ class ClientesBunkerModel {
             codigo_bunker_cliente = codigo_bunker_cliente.trim().toUpperCase();
         }
 
-        // Sanitización preventiva del CUIT/CUIL a solo dígitos para evitar conflictos en BD
-        const cuitSanitizado = cuit_cuil ? cuit_cuil.replace(/[^0-9]/g, '') : null;
+        // Sanitización preventiva del CUIT/CUIL y DNI a solo dígitos para evitar conflictos en BD
+        const cuitSanitizado = cuit_cuil ? String(cuit_cuil).replace(/[^0-9]/g, '') || null : null;
+        const dniDigits = dni ? String(dni).replace(/[^0-9]/g, '') : '';
+        const dniSanitizado = /^\d{7,8}$/.test(dniDigits) && !/^0+$/.test(dniDigits) ? dniDigits : null;
 
         const prefFacturacion = ['ARCA', 'INTERNO', 'PREGUNTAR'].includes(preferencia_facturacion) 
             ? preferencia_facturacion 
             : 'PREGUNTAR';
 
         const query = `
-            INSERT INTO public.bunker_clientes (codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, ver_stock)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+            INSERT INTO public.bunker_clientes (codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, dni, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, ver_stock)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
             RETURNING *
         `;
         const result = await pool.query(query, [
@@ -457,8 +596,9 @@ class ClientesBunkerModel {
             cliente_nombre, 
             razon_social, 
             lomas_soft_id, 
-            cuitSanitizado, 
-            condicion_iva || null, 
+            cuitSanitizado,
+            dniSanitizado,
+            condicion_iva || 'Consumidor Final', 
             domicilio_fiscal || null, 
             provincia || null, 
             estado_clave || null,
@@ -474,19 +614,16 @@ class ClientesBunkerModel {
             !!ver_stock
         ]);
 
-        // Sincronizar en espejo con public.clientes si tiene lomas_soft_id numérico
-        if (lomas_soft_id && /^\d+$/.test(lomas_soft_id.trim())) {
-            try {
-                await pool.query(
-                    `UPDATE public.clientes SET preferencia_facturacion = $1 WHERE cliente_id = $2`,
-                    [prefFacturacion, parseInt(lomas_soft_id.trim(), 10)]
-                );
-            } catch (errSync) {
-                console.warn('⚠️ [CLIENTES-BUNKER] Error sincronizando preferencia_facturacion en tabla clientes:', errSync.message);
-            }
+        const nuevoCliente = result.rows[0];
+
+        // Sincronizar en espejo (UPSERT) con public.clientes si tiene lomas_soft_id numérico
+        try {
+            await this.sincronizarConClientesLegacy(nuevoCliente);
+        } catch (errSync) {
+            console.warn('⚠️ [CLIENTES-BUNKER] Error sincronizando espejo en public.clientes (alta):', errSync.message);
         }
 
-        return result.rows[0];
+        return nuevoCliente;
     }
 
     /**
@@ -496,10 +633,12 @@ class ClientesBunkerModel {
      * @returns {Promise<Object>} Cliente actualizado
      */
     static async actualizar(id, datos) {
-        const { codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, ver_stock } = datos;
+        const { codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id, cuit_cuil, dni, condicion_iva, domicilio_fiscal, provincia, estado_clave, categoria_monotributo, actividad_principal, whatsapp_facturas, email_facturas, canal_envio_preferido, email_portal, email_portal_nombre, email_portal_cargo, preferencia_facturacion, ver_stock } = datos;
         
-        // Sanitización preventiva del CUIT/CUIL a solo dígitos
-        const cuitSanitizado = cuit_cuil ? cuit_cuil.replace(/[^0-9]/g, '') : null;
+        // Sanitización preventiva del CUIT/CUIL y DNI a solo dígitos
+        const cuitSanitizado = cuit_cuil ? String(cuit_cuil).replace(/[^0-9]/g, '') || null : null;
+        const dniDigits = dni ? String(dni).replace(/[^0-9]/g, '') : '';
+        const dniSanitizado = /^\d{7,8}$/.test(dniDigits) && !/^0+$/.test(dniDigits) ? dniDigits : null;
 
         const prefFacturacion = ['ARCA', 'INTERNO', 'PREGUNTAR'].includes(preferencia_facturacion) 
             ? preferencia_facturacion 
@@ -512,22 +651,23 @@ class ClientesBunkerModel {
                 razon_social = $3,
                 lomas_soft_id = $4,
                 cuit_cuil = $5,
-                condicion_iva = $6,
-                domicilio_fiscal = $7,
-                provincia = $8,
-                estado_clave = $9,
-                categoria_monotributo = $10,
-                actividad_principal = $11,
-                whatsapp_facturas = $12,
-                email_facturas = $13,
-                canal_envio_preferido = $14,
-                email_portal = $15,
-                email_portal_nombre = $16,
-                email_portal_cargo = $17,
-                preferencia_facturacion = $18,
-                ver_stock = $19,
+                dni = $6,
+                condicion_iva = $7,
+                domicilio_fiscal = $8,
+                provincia = $9,
+                estado_clave = $10,
+                categoria_monotributo = $11,
+                actividad_principal = $12,
+                whatsapp_facturas = $13,
+                email_facturas = $14,
+                canal_envio_preferido = $15,
+                email_portal = $16,
+                email_portal_nombre = $17,
+                email_portal_cargo = $18,
+                preferencia_facturacion = $19,
+                ver_stock = $20,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE id = $20
+            WHERE id = $21
             RETURNING *
         `;
         const result = await pool.query(query, [
@@ -535,8 +675,9 @@ class ClientesBunkerModel {
             cliente_nombre, 
             razon_social, 
             lomas_soft_id, 
-            cuitSanitizado, 
-            condicion_iva || null, 
+            cuitSanitizado,
+            dniSanitizado,
+            condicion_iva || 'Consumidor Final', 
             domicilio_fiscal || null, 
             provincia || null, 
             estado_clave || null,
@@ -553,19 +694,18 @@ class ClientesBunkerModel {
             id
         ]);
 
-        // Sincronizar en espejo con public.clientes si tiene lomas_soft_id numérico
-        if (lomas_soft_id && /^\d+$/.test(lomas_soft_id.trim())) {
+        const actualizado = result.rows[0];
+
+        // Sincronizar en espejo (UPSERT) con public.clientes si tiene lomas_soft_id numérico
+        if (actualizado) {
             try {
-                await pool.query(
-                    `UPDATE public.clientes SET preferencia_facturacion = $1 WHERE cliente_id = $2`,
-                    [prefFacturacion, parseInt(lomas_soft_id.trim(), 10)]
-                );
+                await this.sincronizarConClientesLegacy(actualizado);
             } catch (errSync) {
-                console.warn('⚠️ [CLIENTES-BUNKER] Error sincronizando preferencia_facturacion en tabla clientes:', errSync.message);
+                console.warn('⚠️ [CLIENTES-BUNKER] Error sincronizando espejo en public.clientes (edición):', errSync.message);
             }
         }
 
-        return result.rows[0];
+        return actualizado;
     }
 
     /**

@@ -6,7 +6,7 @@
 const { pool } = require('../config/database');
 const { fechaActual } = require('../config/timezone');
 const { porcentajeToCodigoAfip, calcularIva } = require('../utils/iva-helper');
-const { PTO_VTA } = require('../config/afip');
+const { PTO_VTA, TOPE_CF_SIN_IDENTIFICAR } = require('../config/afip');
 const { calcularCostoIntegradoArticulo } = require('./costoIntegradoService');
 
 console.log('🔍 [PRESUPUESTO-FACTURA] Cargando servicio de conversión...');
@@ -70,44 +70,70 @@ async function obtenerDatosPresupuesto(presupuestoId) {
         const presupuesto = presupuestoResult.rows[0];
         console.log(`✅ [PRESUPUESTO-FACTURA] Presupuesto encontrado: ${presupuesto.id_presupuesto_ext}`);
 
-        // Obtener cliente (priorizando datos fiscales de bunker_clientes)
+        // Obtener cliente resolviendo unificadamente public.clientes + public.bunker_clientes
+        // (priorizando datos fiscales de bunker_clientes y tolerando altas directas en Búnker)
         const clienteQuery = `
-            SELECT 
-                c.id,
-                c.cliente_id,
-                c.lista_precios,
-                c.zona,
-                c.vendedor,
-                c.telefono,
-                c.telefono_2,
-                c.celular,
-                c.email,
-                c.limite_cta,
-                c.nacimiento,
-                c.pais,
-                c.dni,
-                c.created_at,
-                c.updated_at,
-                c.modalidad_default,
-                c.dia_preferido_reparto,
-                CASE 
-                    WHEN bc.id IS NOT NULL THEN NULL 
-                    ELSE c.nombre 
-                END as nombre,
-                COALESCE(bc.razon_social, bc.cliente_nombre, c.apellido) as apellido,
-                COALESCE(bc.cuit_cuil, c.cuit) as cuit,
-                COALESCE(bc.condicion_iva, c.condicion_iva) as condicion_iva,
-                COALESCE(bc.domicilio_fiscal, c.domicilio) as domicilio,
-                COALESCE(bc.provincia, c.provincia) as provincia
-            FROM clientes c
-            LEFT JOIN bunker_clientes bc ON 
-                (CASE 
-                    WHEN bc.lomas_soft_id ~ '^\\d+$' THEN bc.lomas_soft_id::integer 
-                    ELSE NULL 
-                END) = c.cliente_id
-            WHERE c.cliente_id = $1
+            WITH clientes_unificados AS (
+                SELECT
+                    c.id,
+                    COALESCE(
+                        c.cliente_id,
+                        CASE WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10 THEN bc.lomas_soft_id::integer ELSE NULL END
+                    ) AS cliente_id,
+                    bc.id AS bunker_cliente_id,
+                    bc.codigo_bunker_cliente,
+                    bc.lomas_soft_id,
+                    c.lista_precios,
+                    c.zona,
+                    c.vendedor,
+                    c.telefono,
+                    c.telefono_2,
+                    c.celular,
+                    c.email,
+                    c.limite_cta,
+                    c.nacimiento,
+                    c.pais,
+                    COALESCE(NULLIF(TRIM(bc.dni), ''), NULLIF(NULLIF(TRIM(c.dni), '0'), '')) AS dni,
+                    c.created_at,
+                    c.updated_at,
+                    c.modalidad_default,
+                    c.dia_preferido_reparto,
+                    CASE
+                        WHEN bc.id IS NOT NULL THEN NULL
+                        ELSE c.nombre
+                    END AS nombre,
+                    COALESCE(NULLIF(TRIM(bc.razon_social), ''), NULLIF(TRIM(bc.cliente_nombre), ''), c.apellido) AS apellido,
+                    COALESCE(NULLIF(TRIM(bc.cuit_cuil), ''), NULLIF(TRIM(c.cuit), '')) AS cuit,
+                    COALESCE(NULLIF(TRIM(bc.condicion_iva), ''), NULLIF(TRIM(c.condicion_iva), ''), 'Consumidor Final') AS condicion_iva,
+                    COALESCE(NULLIF(TRIM(bc.domicilio_fiscal), ''), NULLIF(TRIM(c.domicilio), '')) AS domicilio,
+                    COALESCE(NULLIF(TRIM(bc.provincia), ''), NULLIF(TRIM(c.provincia), '')) AS provincia
+                FROM public.clientes c
+                FULL OUTER JOIN public.bunker_clientes bc ON (
+                    CASE
+                        WHEN bc.lomas_soft_id ~ '^[0-9]+$' AND LENGTH(bc.lomas_soft_id) < 10 THEN bc.lomas_soft_id::integer
+                        ELSE NULL
+                    END
+                ) = c.cliente_id
+            )
+            SELECT *
+            FROM clientes_unificados
+            WHERE cliente_id = (
+                      CASE WHEN TRIM($1::text) ~ '^[0-9]+$' AND LENGTH(TRIM($1::text)) < 10
+                           THEN TRIM($1::text)::integer
+                           ELSE NULL END
+                  )
+               OR codigo_bunker_cliente = TRIM($1::text)
+               OR lomas_soft_id = TRIM($1::text)
+               OR (TRIM($1::text) ~ '^[0-9]+$' AND LENGTH(TRIM($1::text)) <= 4 AND lomas_soft_id = LPAD(TRIM($1::text), 4, '0'))
+            ORDER BY
+                CASE
+                    WHEN cliente_id = (CASE WHEN TRIM($1::text) ~ '^[0-9]+$' AND LENGTH(TRIM($1::text)) < 10 THEN TRIM($1::text)::integer ELSE NULL END) THEN 0
+                    WHEN codigo_bunker_cliente = TRIM($1::text) THEN 1
+                    ELSE 2
+                END ASC
+            LIMIT 1
         `;
-        const clienteResult = await pool.query(clienteQuery, [presupuesto.id_cliente]);
+        const clienteResult = await pool.query(clienteQuery, [String(presupuesto.id_cliente ?? '').trim()]);
 
         if (clienteResult.rows.length === 0) {
             throw new Error(`Cliente ${presupuesto.id_cliente} no encontrado`);
@@ -177,6 +203,11 @@ function determinarCondicionIvaAfip(condicionIva) {
 
 /**
  * Determinar tipo y número de documento
+ * Regla de prioridad para Consumidor Final (CondicionIVAReceptorId = 5):
+ *   1) Si posee DNI válido (7–8 dígitos), priorizar DocTipo = 96 (incluso si también tiene CUIL/CUIT guardado).
+ *   2) Si solo posee CUIT/CUIL de 11 dígitos válido, usar DocTipo = 86 (CUIL) sin pisarlo ni borrarlo.
+ *   3) Si no posee documento, usar DocTipo = 99 / DocNro = '0' (permitido por ARCA RG 5700/2025 debajo de $10.000.000).
+ * Para RI / Monotributo / Exento / otros: prioridad CUIT (80) > CUIL (86) > DNI (96) > 99.
  */
 function determinarDocumento(cliente) {
     console.log(`🔍 [PRESUPUESTO-FACTURA] Determinando documento para cliente:`, {
@@ -187,44 +218,58 @@ function determinarDocumento(cliente) {
         dni: cliente.dni
     });
 
-    // Prioridad: CUIT > CUIL > DNI > Consumidor Final
-    let docTipo = 99; // Default: Consumidor Final
+    const condStr = String(cliente.condicion_iva || 'Consumidor Final').toLowerCase();
+    const esConsumidorFinal = condStr.includes('consumidor') || condStr.includes('final');
+
+    const cuitLimpio = String(cliente.cuit || '').replace(/\D/g, '');
+    const cuilLimpio = String(cliente.cuil || '').replace(/\D/g, '');
+    const dniLimpio = String(cliente.dni || '').replace(/\D/g, '');
+    const dniValido = /^\d{7,8}$/.test(dniLimpio) && !/^0+$/.test(dniLimpio) ? dniLimpio : '';
+
+    let docTipo = 99;
     let docNro = '0';
     let motivo = 'Cliente sin documento válido';
 
-    // 1. Si tiene CUIT (Responsable Inscripto, Monotributo, Exento)
-    if (cliente.cuit && cliente.cuit.trim()) {
-        const cuitLimpio = cliente.cuit.replace(/[-\s]/g, '');
-        if (cuitLimpio.length === 11 && /^\d+$/.test(cuitLimpio)) {
-            docTipo = 80; // CUIT
-            docNro = cuitLimpio;
-            motivo = 'CUIT válido encontrado';
-        }
-    }
-
-    // 2. Si tiene CUIL (menos común, pero posible)
-    if (docTipo === 99 && cliente.cuil && cliente.cuil.trim()) {
-        const cuilLimpio = cliente.cuil.replace(/[-\s]/g, '');
-        if (cuilLimpio.length === 11 && /^\d+$/.test(cuilLimpio)) {
-            docTipo = 86; // CUIL
+    if (esConsumidorFinal) {
+        // 1. Priorizar DNI (96) cuando exista
+        if (dniValido) {
+            docTipo = 96;
+            docNro = dniValido;
+            motivo = 'Consumidor Final: DNI válido priorizado (DocTipo 96)';
+        } else if (/^\d{11}$/.test(cuilLimpio)) {
+            docTipo = 86;
             docNro = cuilLimpio;
-            motivo = 'CUIL válido encontrado';
+            motivo = 'Consumidor Final: CUIL válido encontrado (DocTipo 86)';
+        } else if (/^\d{11}$/.test(cuitLimpio)) {
+            docTipo = 86;
+            docNro = cuitLimpio;
+            motivo = 'Consumidor Final: CUIL/CUIT de 11 dígitos preservado como CUIL (DocTipo 86)';
+        } else if (/^\d{7,8}$/.test(cuitLimpio) && !/^0+$/.test(cuitLimpio)) {
+            docTipo = 96;
+            docNro = cuitLimpio;
+            motivo = 'Consumidor Final: DNI en campo cuit (DocTipo 96)';
+        } else {
+            docTipo = 99;
+            docNro = '0';
+            motivo = 'Consumidor Final sin documento (DocTipo 99 / DocNro 0)';
         }
-    }
-
-    // 3. Si tiene DNI (No Responsable)
-    if (docTipo === 99 && cliente.dni && cliente.dni.trim()) {
-        const dniLimpio = cliente.dni.replace(/[-\s]/g, '');
-        if (dniLimpio.length >= 7 && dniLimpio.length <= 8 && /^\d+$/.test(dniLimpio)) {
-            docTipo = 96; // DNI
-            docNro = dniLimpio;
-            motivo = 'DNI válido encontrado';
+    } else {
+        // Responsable Inscripto, Monotributo, Exento, etc.: CUIT (80) > CUIL (86) > DNI (96) > 99
+        if (/^\d{11}$/.test(cuitLimpio)) {
+            docTipo = 80;
+            docNro = cuitLimpio;
+            motivo = 'CUIT válido encontrado (DocTipo 80)';
+        } else if (/^\d{11}$/.test(cuilLimpio)) {
+            docTipo = 86;
+            docNro = cuilLimpio;
+            motivo = 'CUIL válido encontrado (DocTipo 86)';
+        } else if (dniValido) {
+            docTipo = 96;
+            docNro = dniValido;
+            motivo = 'DNI válido encontrado (DocTipo 96)';
+        } else {
+            motivo = 'Cliente sin CUIT/CUIL/DNI válido';
         }
-    }
-
-    // 4. Solo usar 99 si realmente no hay documento
-    if (docTipo === 99) {
-        motivo = 'Cliente sin CUIT/CUIL/DNI válido - Consumidor Final';
     }
 
     console.log(`📋 [PRESUPUESTO-FACTURA] Documento determinado: Tipo ${docTipo}, Nro "${docNro}", Motivo: ${motivo}`);
@@ -250,7 +295,7 @@ function mapearAlicuotaIva(ivaPresupuesto) {
 /**
  * Mapear cabecera de factura con todos los campos obligatorios para AFIP
  */
-function mapearCabecera(presupuesto, cliente, requiereAfip = true) {
+function mapearCabecera(presupuesto, cliente, requiereAfip = true, impTotalEstimado = null) {
     console.log(`📋 [PRESUPUESTO-FACTURA] Mapeando cabecera...`);
 
     const condicionIva = cliente.condicion_iva || 'Consumidor Final';
@@ -275,13 +320,28 @@ function mapearCabecera(presupuesto, cliente, requiereAfip = true) {
             docNro = '0';
         }
     } else {
-        // Validar datos obligatorios del receptor
-        if (!docTipo || !docNro || docNro === '0') {
-            throw new Error(`Cliente sin documento válido. CUIT/CUIL/DNI requerido para facturación AFIP`);
-        }
-
         if (!condicionIvaId) {
             throw new Error(`Condición IVA inválida para el cliente`);
+        }
+
+        const esConsumidorFinal = condicionIvaId === 5;
+        const esComprobanteB = [6, 8, 11, 13].includes(tipoCbte);
+        const sinDocumento = !docTipo || docTipo === 99 || !docNro || docNro === '0';
+
+        if (sinDocumento) {
+            if (esConsumidorFinal && esComprobanteB) {
+                // ARCA RG 5700/2025: Consumidor Final sin identificar (DocTipo = 99, DocNro = '0')
+                // permitido mientras el importe total sea menor a TOPE_CF_SIN_IDENTIFICAR ($10.000.000)
+                docTipo = 99;
+                docNro = '0';
+                if (impTotalEstimado !== null && Number(impTotalEstimado) >= TOPE_CF_SIN_IDENTIFICAR) {
+                    throw new Error(
+                        `Para emitir Factura B a Consumidor Final por un importe igual o superior a $${TOPE_CF_SIN_IDENTIFICAR.toLocaleString('es-AR')} (RG 5700/2025 ARCA), el cliente debe tener DNI o CUIL registrado.`
+                    );
+                }
+            } else {
+                throw new Error(`El cliente (${condicionIva}) requiere CUIT/CUIL válido para emitir comprobante oficial ARCA.`);
+            }
         }
     }
 
@@ -548,29 +608,19 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
             throw new Error(`Ya existe una factura activa para el presupuesto ${presupuestoId} (ID: ${existeResult.rows[0].id})`);
         }
 
-        // 3. Mapear cabecera (valida datos obligatorios si requiereAfip es true)
-        const cabecera = mapearCabecera(presupuesto, cliente, requiereAfip !== false);
-
-        if (ptoVta !== null) {
-            cabecera.pto_vta = ptoVta;
-        }
-        if (requiereAfip !== null) {
-            cabecera.requiere_afip = requiereAfip;
-        }
-
-        // 4. Obtener descuento del presupuesto (fracción decimal, ej. 0.05 = 5%)
+        // 3. Obtener descuento del presupuesto (fracción decimal, ej. 0.05 = 5%)
         const rawDesc = parseFloat(presupuesto.descuento) || 0;
         const descuentoFraccional = rawDesc > 1 ? rawDesc / 100 : rawDesc;
         console.log(`💰 [PRESUPUESTO-FACTURA] Descuento del presupuesto: ${(descuentoFraccional * 100).toFixed(2)}%`);
 
-        // 5. Mapear items aplicando el descuento y calculando costo integrado Búnker
+        // 4. Mapear items aplicando el descuento y calculando costo integrado Búnker
         const clienteListaId = cliente.lista_precios ? parseInt(cliente.lista_precios) : 1;
         const items = await mapearItems(client, detalles, descuentoFraccional, clienteListaId);
 
-        // 6. Calcular totales
+        // 5. Calcular totales antes de validar tope normativo CF sin identificar
         const totales = calcularTotales(items);
 
-        // 7. Validar totales coherentes
+        // 6. Validar totales coherentes
         if (totales.imp_total <= 0) {
             throw new Error('El importe total debe ser mayor a cero');
         }
@@ -580,6 +630,16 @@ async function facturarPresupuesto(presupuestoId, ptoVta = null, requiereAfip = 
         }
 
         console.log(`💰 [PRESUPUESTO-FACTURA] Totales validados - Total: $${totales.imp_total.toFixed(2)}`);
+
+        // 7. Mapear cabecera (valida datos obligatorios y tope RG 5700/2025 si requiereAfip es true)
+        const cabecera = mapearCabecera(presupuesto, cliente, requiereAfip !== false, totales.imp_total);
+
+        if (ptoVta !== null) {
+            cabecera.pto_vta = ptoVta;
+        }
+        if (requiereAfip !== null) {
+            cabecera.requiere_afip = requiereAfip;
+        }
 
         // 8. Trazabilidad Dual: Buscar Factura Asociada si es una Orden de Retiro / Administrativa NC
         let facturaAsociadaId = null;
@@ -802,7 +862,7 @@ async function sincronizarBorrador(presupuestoId) {
 
         // 2. Verificar si existe factura borrador activa para este presupuesto
         const existeQuery = `
-            SELECT id, estado FROM factura_facturas
+            SELECT id, estado, requiere_afip, pto_vta FROM factura_facturas
             WHERE presupuesto_id = $1 AND estado = 'BORRADOR'
             LIMIT 1
         `;
@@ -821,22 +881,19 @@ async function sincronizarBorrador(presupuestoId) {
         const facturaId = factura.id;
         console.log(`✅ [PRESUPUESTO-FACTURA] Factura BORRADOR encontrada: ${facturaId}`);
 
-        // 3. Mapear nueva cabecera (valida datos obligatorios)
-        const cabecera = mapearCabecera(presupuesto, cliente);
-
-        // 4. Obtener descuento del presupuesto
+        // 3. Obtener descuento del presupuesto
         const rawDesc = parseFloat(presupuesto.descuento) || 0;
         const descuentoFraccional = rawDesc > 1 ? rawDesc / 100 : rawDesc;
         console.log(`💰 [PRESUPUESTO-FACTURA] Descuento a aplicar en sincronización: ${(descuentoFraccional * 100).toFixed(2)}%`);
 
-        // 5. Mapear nuevos items aplicando el descuento y calculando costo integrado Búnker
+        // 4. Mapear nuevos items aplicando el descuento y calculando costo integrado Búnker
         const clienteListaId = cliente.lista_precios ? parseInt(cliente.lista_precios) : 1;
         const items = await mapearItems(client, detalles, descuentoFraccional, clienteListaId);
 
-        // 6. Calcular nuevos totales
+        // 5. Calcular nuevos totales
         const totales = calcularTotales(items);
 
-        // 7. Validar totales coherentes
+        // 6. Validar totales coherentes
         if (totales.imp_total <= 0) {
             throw new Error('El importe total debe ser mayor a cero');
         }
@@ -846,6 +903,14 @@ async function sincronizarBorrador(presupuestoId) {
         }
 
         console.log(`💰 [PRESUPUESTO-FACTURA] Totales recalculados validados - Total: $${totales.imp_total.toFixed(2)}`);
+
+        // 7. Mapear nueva cabecera preservando requiere_afip y pto_vta originales del borrador
+        const requiereAfipBorrador = factura.requiere_afip !== false;
+        const cabecera = mapearCabecera(presupuesto, cliente, requiereAfipBorrador, totales.imp_total);
+        if (factura.pto_vta) {
+            cabecera.pto_vta = factura.pto_vta;
+        }
+        cabecera.requiere_afip = requiereAfipBorrador;
 
         // 8. Actualizar Factura (Cabecera)
         console.log(`📝 [PRESUPUESTO-FACTURA] Actualizando factura BORRADOR...`);
