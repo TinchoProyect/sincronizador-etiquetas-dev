@@ -2273,7 +2273,7 @@ function detectarPackDesdeHermano(hermano = {}, ingId = null) {
     if (Number(ingId) === 141) {
         return {
             es_pack_hermano: true,
-            pack_unidades_hermano: 20,
+            pack_unidades_hermano: kHerm > 0 ? Math.max(1, Math.round(kHerm / 0.05)) : 20,
             peso_unitario_kg: 0.05
         };
     }
@@ -5974,8 +5974,14 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             const ingComercialFinal = anatomia.ingrediente_comercial_id || row.ingrediente_origen_id || null;
 
             const costoEnvaseUnitarioReal = Number(row.env_costo_db || 45.96);
+            const cantFlowpacksNorm = Math.max(
+                1,
+                Number(anatomia.pack_unidades) > 1
+                    ? Number(anatomia.pack_unidades)
+                    : Math.round(Number(row.kilos_unidad || 0.30) / 0.05)
+            );
             const costoEnvaseExtra = esBarritaPack6
-                ? Number((Number(anatomia.pack_unidades || 6) * costoFlowpack181).toFixed(2))
+                ? Number((cantFlowpacksNorm * costoFlowpack181).toFixed(2))
                 : 0;
             const segundosFinales = esGranolaExistente
                 ? Number(anatomia.segundos_nativos || 45)
@@ -9133,7 +9139,8 @@ async function recalcularCascadaCatalogoNodos(costosSimuladosIngredientes = {}) 
                 : Number(row.env_costo_db || 45.96);
 
             const esBarritaPack6 = String(row.sku_nodo || '').toUpperCase() === 'BF6X50' || ingId === 141;
-            const costoEnvaseExtra = esBarritaPack6 ? Number((6 * costoFlowpack181).toFixed(2)) : 0;
+            const cantFlowpacksCasc = Math.max(1, Math.round(Number(row.kilos_unidad || 0.30) / 0.05));
+            const costoEnvaseExtra = esBarritaPack6 ? Number((cantFlowpacksCasc * costoFlowpack181).toFixed(2)) : 0;
 
             const calc = calcularEstructuraCostosNodo({
                 costo_insumo_kg: costoInsumoVivo,

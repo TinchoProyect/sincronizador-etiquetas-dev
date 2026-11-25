@@ -130,22 +130,26 @@ async function main() {
                 console.log(`🔎 Migración BF24X150G -> BF3X50 (${nuevaDesc}, 3 flowpacks #181)${calcNuevo ? `, nuevo precio_base_nodo_final=$${calcNuevo.precio_base_nodo_final}` : ''}`);
 
                 if (apply) {
-                    // 1. Tabla legacy articulos
+                    // 1. Tabla legacy articulos (sin depender de constraint UNIQUE en numero)
                     const artOld = await client.query(`SELECT * FROM public.articulos WHERE UPPER(numero) = 'BF24X150G' LIMIT 1`);
-                    if (artOld.rows[0]) {
-                        const ao = artOld.rows[0];
+                    const ao = artOld.rows[0] || null;
+                    const cbFinal = (ao?.codigo_barras && ao.codigo_barras !== ao.numero && ao.codigo_barras !== 'BF24X150G')
+                        ? ao.codigo_barras
+                        : 'BF3X50';
+                    const artNewChk = await client.query(`SELECT numero FROM public.articulos WHERE UPPER(numero) = 'BF3X50' LIMIT 1`);
+                    if (artNewChk.rows.length > 0) {
+                        await client.query(
+                            `UPDATE public.articulos
+                             SET nombre = $1, codigo_barras = $2
+                             WHERE UPPER(numero) = 'BF3X50'`,
+                            [nuevaDesc, cbFinal]
+                        );
+                    } else if (ao) {
                         await client.query(
                             `INSERT INTO public.articulos (numero, nombre, codigo_barras)
-                             VALUES ('BF3X50', $1, 'BF3X50')
-                             ON CONFLICT (numero) DO UPDATE SET nombre = EXCLUDED.nombre`,
-                            [nuevaDesc]
+                             VALUES ('BF3X50', $1, $2)`,
+                            [nuevaDesc, cbFinal]
                         );
-                        if (ao.codigo_barras && ao.codigo_barras !== ao.numero) {
-                            await client.query(
-                                `UPDATE public.articulos SET codigo_barras = $1 WHERE UPPER(numero) = 'BF3X50'`,
-                                [ao.codigo_barras === 'BF24X150G' ? 'BF3X50' : ao.codigo_barras]
-                            );
-                        }
                     }
 
                     // 2. bunker_articulos
