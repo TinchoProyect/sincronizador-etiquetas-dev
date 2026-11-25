@@ -1117,10 +1117,24 @@
                     <button class="btn-filter-reset" id="btn-limpiar-filtros-cheques"><i class="fa-solid fa-rotate-left"></i> Limpiar</button>
                 </div>
 
+                <!-- Banner de Contingencia por Caché Local -->
+                <div id="cheques-cache-warning-banner" style="display: none; background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.45); border-radius: 12px; padding: 14px 18px; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: flex-start; gap: 12px; flex: 1; min-width: 240px;">
+                        <i class="fa-solid fa-triangle-exclamation" style="color: #fbbf24; font-size: 20px; margin-top: 2px;"></i>
+                        <div style="font-size: 13px; line-height: 1.45;">
+                            <div id="cheques-cache-warning-text" style="font-weight: 700; color: #fde68a;">Datos de contingencia (caché local offline)</div>
+                            <div id="cheques-cache-warning-date" style="color: #fcd34d; opacity: 0.92; margin-top: 2px;">--</div>
+                        </div>
+                    </div>
+                    <button type="button" id="btn-reintentar-cheques-cache" class="btn-back" style="background: rgba(245, 158, 11, 0.22); border-color: rgba(245, 158, 11, 0.5); color: #fef3c7; padding: 8px 14px; font-size: 13px;">
+                        <i class="fa-solid fa-rotate"></i> Reintentar conexión
+                    </button>
+                </div>
+
                 <!-- Listado de Cheques -->
                 <div class="movements-container">
                     <div class="movements-header">
-                        <h3>📂 Cheques en Cartera (Online Supabase)</h3>
+                        <h3 id="cheques-origen-titulo">📂 Cheques en Cartera (Online Supabase)</h3>
                         <span class="movements-count" id="cheques-count">0 cheques</span>
                     </div>
                     <div class="table-wrapper">
@@ -1143,9 +1157,12 @@
                         </table>
                         <!-- Empty State para Cheques -->
                         <div id="empty-state-cheques" class="empty-state" style="display: none;">
-                            <i class="fa-solid fa-money-check empty-state-icon"></i>
-                            <h4>Sin cheques en cartera</h4>
-                            <p>No se encontraron cheques registrados en cartera que coincidan con los filtros.</p>
+                            <i id="empty-state-cheques-icon" class="fa-solid fa-money-check empty-state-icon"></i>
+                            <h4 id="empty-state-cheques-title">Sin cheques en cartera</h4>
+                            <p id="empty-state-cheques-desc">No se encontraron cheques registrados en cartera que coincidan con los filtros.</p>
+                            <button type="button" id="btn-reintentar-cheques-error" class="btn-filter-reset" style="display: none; align-self: center; margin-top: 6px; background: rgba(139, 92, 246, 0.15); color: #c084fc; border-color: rgba(139, 92, 246, 0.4);">
+                                <i class="fa-solid fa-rotate"></i> Reintentar sincronización
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1230,6 +1247,6 @@
     </main>
 
     <!-- Script de lógica de negocio -->
-    <script src="cuentas-bancarias.js?v=2.2"></script>
+    <script src="cuentas-bancarias.js?v=2.3"></script>
 </body>
 </html>

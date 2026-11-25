@@ -1,12 +1,6 @@
 const path = require('path');
-const _preLabAfip = process.env.LAMDA_MODO_LABORATORIO || process.env.MODO_LABORATORIO;
-const _preDbAfip = process.env.DB_NAME;
-require('dotenv').config({ path: path.join(__dirname, '..', '.env'), override: true });
-if (_preLabAfip === 'true' || _preLabAfip === '1' || _preDbAfip === 'etiquetas_pruebas') {
-    process.env.LAMDA_MODO_LABORATORIO = 'true';
-    process.env.MODO_LABORATORIO = 'true';
-    process.env.DB_NAME = 'etiquetas_pruebas';
-}
+const { cargarEntornoFacturacion } = require('./loadEnv');
+cargarEntornoFacturacion();
 
 console.log('🔍 [FACTURACION-AFIP] Cargando configuración de AFIP...');
 

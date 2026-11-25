@@ -1,7 +1,7 @@
 const { pool } = require('../config/database');
 const cuentasBancariasService = require('../services/cuentasBancariasService');
 const geminiService = require('../services/geminiService');
-const { supabaseFetch } = require('../../produccion/utils/supabaseHelper');
+const { supabaseFetch, extraerMetaCacheSupabase } = require('../../produccion/utils/supabaseHelper');
 const {
     sqlExcluirSubcuentasNodosUnificadas,
     agregarReferenciaNodoADescripcion,
@@ -997,18 +997,26 @@ async function listarCheques(req, res, next) {
         if (!response.ok) {
             throw new Error(`Error en Supabase: ${await response.text()}`);
         }
+        const cacheMetaCheques = extraerMetaCacheSupabase(response);
         
         const chequesSupabase = await response.json();
         
         if (chequesSupabase.length === 0) {
             return res.json({
                 success: true,
-                data: []
+                data: [],
+                meta: {
+                    origen: cacheMetaCheques.fromCache ? 'CACHE_CONTINGENCIA' : 'SUPABASE_LIVE',
+                    desde_cache: Boolean(cacheMetaCheques.fromCache),
+                    cache_actualizado_en: cacheMetaCheques.cachedAt || null,
+                    motivo_contingencia: cacheMetaCheques.reason || null
+                }
             });
         }
         
         // Obtener nombres comerciales de los proveedores involucrados para cruzarlos en memoria (evitando el límite de 1000 filas)
         let proveedoresMap = new Map();
+        let cacheMetaProv = null;
         if (estadoParam === 'ENDOSADO' || estadoParam === 'TODOS') {
             const proveedorIds = [...new Set(chequesSupabase.map(ch => ch.proveedor_endosado_id).filter(Boolean))];
             if (proveedorIds.length > 0) {
@@ -1016,6 +1024,7 @@ async function listarCheques(req, res, next) {
                     const urlProv = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/proveedores?select=id,nombre&id=in.(${proveedorIds.join(',')})`;
                     const responseProv = await supabaseFetch(urlProv, { headers });
                     if (responseProv.ok) {
+                        cacheMetaProv = extraerMetaCacheSupabase(responseProv);
                         const proveedores = await responseProv.json();
                         proveedores.forEach(p => {
                             proveedoresMap.set(p.id, p.nombre);
@@ -1113,13 +1122,55 @@ async function listarCheques(req, res, next) {
             return String(b.numero_cheque || '').localeCompare(String(a.numero_cheque || ''));
         });
 
+        const desdeCache = Boolean(cacheMetaCheques.fromCache || cacheMetaProv?.fromCache);
+        const cacheActualizadoEn = cacheMetaCheques.cachedAt || cacheMetaProv?.cachedAt || null;
+        const motivoContingencia = cacheMetaCheques.reason || cacheMetaProv?.reason || null;
+        const meta = {
+            origen: desdeCache ? 'CACHE_CONTINGENCIA' : 'SUPABASE_LIVE',
+            desde_cache: desdeCache,
+            cache_actualizado_en: cacheActualizadoEn,
+            motivo_contingencia: motivoContingencia
+        };
+
         res.json({
             success: true,
-            data: dataResult
+            data: dataResult,
+            meta
         });
     } catch (error) {
         console.error('❌ [BANCARIO-CONTROLLER] Error al listar cheques en cartera:', error.message);
-        next(error);
+        if (error.code === 'SUPABASE_AUTH_ERROR' || error.statusCode === 401 || error.statusCode === 403) {
+            return res.status(502).json({
+                success: false,
+                code: 'SUPABASE_AUTH_ERROR',
+                upstream_status: error.statusCode || 401,
+                error: 'Error de autenticación con Supabase',
+                message: `Supabase rechazó las credenciales o permisos configurados (HTTP ${error.statusCode || 401}). Verificá SUPABASE_SERVICE_KEY en el .env raíz del servidor.`
+            });
+        }
+        const msgLower = String(error.message || '').toLowerCase();
+        const esFalloConectividad =
+            error.name === 'AbortError' ||
+            error.code === 'SUPABASE_UPSTREAM_ERROR' ||
+            msgLower.includes('fetch failed') ||
+            msgLower.includes('econnrefused') ||
+            msgLower.includes('enotfound') ||
+            msgLower.includes('etimedout');
+        if (esFalloConectividad) {
+            return res.status(503).json({
+                success: false,
+                code: 'SUPABASE_UNAVAILABLE',
+                error: 'Supabase no disponible',
+                message: `No se pudo sincronizar con Supabase y no hay caché local de respaldo (${error.name === 'AbortError' ? 'tiempo de espera agotado' : error.message}).`
+            });
+        }
+        const statusCode = (error.statusCode >= 400 && error.statusCode < 600) ? error.statusCode : 500;
+        return res.status(statusCode).json({
+            success: false,
+            code: error.code || 'CHEQUES_SYNC_ERROR',
+            error: 'Error al sincronizar cheques',
+            message: error.message || 'Ocurrió un error interno al consultar la cartera de cheques.'
+        });
     }
 }
 
@@ -1358,6 +1409,15 @@ async function vincularCheque(req, res, next) {
     } catch (error) {
         await dbClient.query('ROLLBACK');
         console.error('❌ [BANCARIO-CONTROLLER] Error al vincular cheque:', error.message);
+        if (error.code === 'SUPABASE_AUTH_ERROR' || error.statusCode === 401 || error.statusCode === 403) {
+            return res.status(502).json({
+                success: false,
+                code: 'SUPABASE_AUTH_ERROR',
+                upstream_status: error.statusCode || 401,
+                error: 'Error de autenticación con Supabase',
+                message: `Supabase rechazó las credenciales o permisos configurados (HTTP ${error.statusCode || 401}). Verificá SUPABASE_SERVICE_KEY en el .env raíz del servidor.`
+            });
+        }
         next(error);
     } finally {
         dbClient.release();

@@ -7,6 +7,7 @@ let clientesBunker = [];
 let rawMovements = [];
 let rawCheques = [];
 let currentChequesEstado = 'EN_CARTERA';
+let chequesRequestSeq = 0;
 let rawTotalCount = 0;
 let filtroSentido = 'TODOS'; // 'TODOS', 'DEBITO', 'CREDITO'
 let sortField = 'none'; // 'fecha', 'debito', 'credito', 'none'
@@ -713,6 +714,20 @@ function configurarFiltros() {
             chequeBusquedaInput.value = '';
             chequeEstadoSelect.value = 'TODOS';
             aplicarFiltrosYRenderizarCheques();
+        });
+    }
+
+    const btnReintentarCache = document.getElementById('btn-reintentar-cheques-cache');
+    if (btnReintentarCache) {
+        btnReintentarCache.addEventListener('click', () => {
+            cargarCheques();
+        });
+    }
+
+    const btnReintentarError = document.getElementById('btn-reintentar-cheques-error');
+    if (btnReintentarError) {
+        btnReintentarError.addEventListener('click', () => {
+            cargarCheques();
         });
     }
 }
@@ -2344,36 +2359,195 @@ window.desvincularClienteConfirmado = desvincularClienteConfirmado;
 window.abrirBuscadorClientes = abrirBuscadorClientes;
 
 /**
+ * Formatea la fecha y antigüedad legible de una copia en caché de contingencia
+ */
+function formatearAntiguedadCache(isoDate) {
+    if (!isoDate) return 'fecha desconocida';
+    const d = new Date(isoDate);
+    if (isNaN(d.getTime())) return String(isoDate);
+    const fechaFmt = d.toLocaleString('es-AR');
+    const diffMs = Math.max(0, Date.now() - d.getTime());
+    const diffMin = Math.floor(diffMs / 60000);
+    let ago = '';
+    if (diffMin < 1) ago = 'hace instantes';
+    else if (diffMin < 60) ago = `hace ${diffMin} min`;
+    else if (diffMin < 1440) {
+        const horas = Math.floor(diffMin / 60);
+        ago = `hace ${horas} h`;
+    } else {
+        const dias = Math.floor(diffMin / 1440);
+        ago = `hace ${dias} día${dias === 1 ? '' : 's'}`;
+    }
+    return `${fechaFmt} (${ago})`;
+}
+
+/**
+ * Muestra u oculta el banner de contingencia cuando el backend responde desde caché local
+ */
+function actualizarBannerContingenciaCheques(meta) {
+    const banner = document.getElementById('cheques-cache-warning-banner');
+    const textElem = document.getElementById('cheques-cache-warning-text');
+    const dateElem = document.getElementById('cheques-cache-warning-date');
+    const titleElem = document.getElementById('cheques-origen-titulo');
+
+    if (meta && meta.desde_cache) {
+        if (banner) banner.style.display = 'flex';
+        if (textElem) {
+            textElem.textContent = '⚠️ Mostrando datos de contingencia (caché local offline por caída temporal de Supabase)';
+        }
+        if (dateElem) {
+            const fechaTexto = formatearAntiguedadCache(meta.cache_actualizado_en);
+            const motivo = meta.motivo_contingencia ? ` · Motivo: ${meta.motivo_contingencia}` : '';
+            dateElem.textContent = `Última actualización en caché: ${fechaTexto}${motivo}`;
+        }
+        if (titleElem) {
+            titleElem.textContent = '📂 Cheques en Cartera (⚠️ Caché de Contingencia)';
+        }
+    } else {
+        if (banner) banner.style.display = 'none';
+        if (titleElem) {
+            titleElem.textContent = '📂 Cheques en Cartera (Online Supabase)';
+        }
+    }
+}
+
+/**
+ * Limpia la vista actual de cheques para evitar mostrar registros residuales de otra solapa
+ */
+function limpiarVistaChequesPorEstado({ esError = false, titulo = '', detalle = '' } = {}) {
+    rawCheques = [];
+    const tbody = document.getElementById('cheques-tbody');
+    if (tbody) tbody.innerHTML = '';
+
+    const countElem = document.getElementById('cheques-count');
+    if (countElem) {
+        countElem.textContent = esError ? 'Error al sincronizar' : 'Sincronizando...';
+    }
+
+    const labelTotal = currentChequesEstado === 'ENDOSADO'
+        ? 'Total Endosado'
+        : (currentChequesEstado === 'TODOS' ? 'Total Histórico' : 'Total en Cartera');
+    const sidebarTitle = document.querySelector('#sidebar-seccion-cheques .balance-card h4');
+    if (sidebarTitle) sidebarTitle.textContent = labelTotal;
+
+    const totalAmountElem = document.getElementById('cheques-total-amount');
+    if (totalAmountElem) totalAmountElem.textContent = currencyFormatter.format(0);
+
+    const totalCountElem = document.getElementById('cheques-total-count');
+    if (totalCountElem) {
+        totalCountElem.textContent = esError ? 'Sin datos sincronizados' : 'Sincronizando...';
+    }
+
+    const banner = document.getElementById('cheques-cache-warning-banner');
+    if (banner) banner.style.display = 'none';
+
+    const titleElem = document.getElementById('cheques-origen-titulo');
+    if (titleElem) {
+        titleElem.textContent = esError
+            ? '📂 Cheques en Cartera (Error de Sincronización)'
+            : '📂 Cheques en Cartera (Online Supabase)';
+    }
+
+    const emptyState = document.getElementById('empty-state-cheques');
+    const emptyIcon = document.getElementById('empty-state-cheques-icon');
+    const emptyTitle = document.getElementById('empty-state-cheques-title');
+    const emptyDesc = document.getElementById('empty-state-cheques-desc');
+    const retryBtn = document.getElementById('btn-reintentar-cheques-error');
+
+    if (esError && emptyState) {
+        if (emptyIcon) {
+            emptyIcon.className = 'fa-solid fa-triangle-exclamation empty-state-icon';
+            emptyIcon.style.color = 'var(--error)';
+            emptyIcon.style.opacity = '0.9';
+        }
+        if (emptyTitle) emptyTitle.textContent = titulo || 'No se pudieron sincronizar los cheques';
+        if (emptyDesc) emptyDesc.textContent = detalle || 'Ocurrió un error al consultar el servidor.';
+        if (retryBtn) retryBtn.style.display = 'inline-flex';
+        emptyState.style.display = 'flex';
+    } else if (emptyState) {
+        if (retryBtn) retryBtn.style.display = 'none';
+        emptyState.style.display = 'none';
+    }
+}
+
+/**
  * Obtiene el listado de cheques desde el backend
  */
 async function cargarCheques() {
+    const reqSeq = ++chequesRequestSeq;
+    limpiarVistaChequesPorEstado({ esError: false });
+
     try {
         mostrarLoading(true, 'Sincronizando cartera con Supabase...');
-        const response = await fetch(`${API_BASE_URL}/cheques?estado=${currentChequesEstado}`);
-        if (!response.ok) {
-            throw new Error(`Error ${response.status} al cargar cheques`);
-        }
-        
-        const result = await response.json();
-        if (result.success) {
-            rawCheques = result.data || [];
-            aplicarFiltrosYRenderizarCheques();
-        } else {
+        let response;
+        try {
+            response = await fetch(`${API_BASE_URL}/cheques?estado=${currentChequesEstado}`);
+        } catch (networkError) {
+            if (reqSeq !== chequesRequestSeq) return;
+            console.error('Error de red al sincronizar cheques:', networkError);
+            const titulo = 'Error de Conexión (Red)';
+            const detalle = 'No se pudo establecer conexión de red con el servidor de Facturación para sincronizar cheques.';
+            limpiarVistaChequesPorEstado({ esError: true, titulo, detalle });
             Swal.fire({
                 icon: 'error',
-                title: 'Error al Sincronizar',
-                text: result.error || 'No se pudieron recuperar los cheques.'
+                title: titulo,
+                text: detalle
+            });
+            return;
+        }
+
+        if (reqSeq !== chequesRequestSeq) return;
+
+        let result = null;
+        try {
+            result = await response.json();
+        } catch (parseErr) {
+            result = null;
+        }
+
+        if (reqSeq !== chequesRequestSeq) return;
+
+        if (!response.ok) {
+            let titulo = (result && result.error) ? result.error : `Error del Servidor (HTTP ${response.status})`;
+            let detalle = (result && (result.message || result.error))
+                ? (result.message || result.error)
+                : `El servidor respondió con estado HTTP ${response.status} al sincronizar cheques.`;
+
+            if (result && result.code === 'SUPABASE_AUTH_ERROR') {
+                titulo = 'Error de Autenticación con Supabase';
+            } else if (result && result.code === 'SUPABASE_UNAVAILABLE') {
+                titulo = 'Supabase No Disponible';
+            }
+
+            limpiarVistaChequesPorEstado({ esError: true, titulo, detalle });
+            Swal.fire({
+                icon: 'error',
+                title: titulo,
+                text: detalle
+            });
+            return;
+        }
+
+        if (result && result.success) {
+            rawCheques = result.data || [];
+            actualizarBannerContingenciaCheques(result.meta || null);
+            aplicarFiltrosYRenderizarCheques();
+        } else {
+            const titulo = (result && result.error) ? result.error : 'Error al Sincronizar';
+            const detalle = (result && (result.message || result.error))
+                ? (result.message || result.error)
+                : 'No se pudieron recuperar los cheques.';
+            limpiarVistaChequesPorEstado({ esError: true, titulo, detalle });
+            Swal.fire({
+                icon: 'error',
+                title: titulo,
+                text: detalle
             });
         }
-    } catch (error) {
-        console.error('Error cargando cheques:', error);
-        Swal.fire({
-            icon: 'error',
-            title: 'Error de Red',
-            text: 'No se pudo conectar con el backend para sincronizar cheques.'
-        });
     } finally {
-        mostrarLoading(false);
+        if (reqSeq === chequesRequestSeq) {
+            mostrarLoading(false);
+        }
     }
 }
 
@@ -2443,6 +2617,18 @@ function renderCheques(cheques) {
     countElem.textContent = countText;
     
     if (cheques.length === 0) {
+        const emptyIcon = document.getElementById('empty-state-cheques-icon');
+        const emptyTitle = document.getElementById('empty-state-cheques-title');
+        const emptyDesc = document.getElementById('empty-state-cheques-desc');
+        const retryBtn = document.getElementById('btn-reintentar-cheques-error');
+        if (emptyIcon) {
+            emptyIcon.className = 'fa-solid fa-money-check empty-state-icon';
+            emptyIcon.style.color = '';
+            emptyIcon.style.opacity = '';
+        }
+        if (emptyTitle) emptyTitle.textContent = 'Sin cheques en cartera';
+        if (emptyDesc) emptyDesc.textContent = 'No se encontraron cheques registrados en cartera que coincidan con los filtros.';
+        if (retryBtn) retryBtn.style.display = 'none';
         emptyState.style.display = 'flex';
         return;
     }
@@ -2538,20 +2724,31 @@ async function abrirBuscadorClientesParaCheque(chequeId, numeroCheque) {
 async function vincularChequeConfirmado(chequeId, clienteId, opcionesAjuste = {}) {
     try {
         mostrarLoading(true, 'Guardando vinculación contable...');
-        const response = await fetch(`${API_BASE_URL}/cheques/${chequeId}/vincular`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ 
-                clienteId,
-                aplicarAjuste: opcionesAjuste.aplicarAjuste || false,
-                montoAjuste: opcionesAjuste.montoAjuste || 0
-            })
-        });
+        let response;
+        try {
+            response = await fetch(`${API_BASE_URL}/cheques/${chequeId}/vincular`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    clienteId,
+                    aplicarAjuste: opcionesAjuste.aplicarAjuste || false,
+                    montoAjuste: opcionesAjuste.montoAjuste || 0
+                })
+            });
+        } catch (networkErr) {
+            console.error('Error de red al vincular cheque:', networkErr);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error de Conexión (Red)',
+                text: 'No se pudo establecer conexión de red con el servidor para vincular el cheque.'
+            });
+            return;
+        }
         
-        const result = await response.json();
-        if (result.success) {
+        const result = await response.json().catch(() => null);
+        if (response.ok && result && result.success) {
             Swal.fire({
                 icon: 'success',
                 title: 'Vínculo Registrado',
@@ -2563,16 +2760,16 @@ async function vincularChequeConfirmado(chequeId, clienteId, opcionesAjuste = {}
         } else {
             Swal.fire({
                 icon: 'error',
-                title: 'Error de Servidor',
-                text: result.error || 'Ocurrió un fallo al vincular el cheque.'
+                title: (result && result.error) || `Error del Servidor (HTTP ${response.status})`,
+                text: (result && (result.message || result.error)) || 'Ocurrió un fallo al vincular el cheque.'
             });
         }
     } catch (e) {
         console.error('Error al vincular cheque:', e);
         Swal.fire({
             icon: 'error',
-            title: 'Error de Conexión',
-            text: 'No se pudo comunicar con el servidor.'
+            title: 'Error de Vinculación',
+            text: e.message || 'Ocurrió un fallo inesperado al vincular el cheque.'
         });
     } finally {
         mostrarLoading(false);
@@ -2597,16 +2794,27 @@ async function desvincularChequeConfirmado(chequeId, numeroCheque, razonSocial) 
     if (result.isConfirmed) {
         try {
             mostrarLoading(true, 'Removiendo crédito contable...');
-            const response = await fetch(`${API_BASE_URL}/cheques/${chequeId}/desvincular`, {
-                method: 'PUT'
-            });
+            let response;
+            try {
+                response = await fetch(`${API_BASE_URL}/cheques/${chequeId}/desvincular`, {
+                    method: 'PUT'
+                });
+            } catch (networkErr) {
+                console.error('Error de red al desvincular cheque:', networkErr);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error de Conexión (Red)',
+                    text: 'No se pudo establecer conexión de red con el servidor.'
+                });
+                return;
+            }
             
-            const result = await response.json();
-            if (result.success) {
+            const resJson = await response.json().catch(() => null);
+            if (response.ok && resJson && resJson.success) {
                 Swal.fire({
                     icon: 'success',
                     title: 'Desvinculación Completa',
-                    text: result.message,
+                    text: resJson.message,
                     confirmButtonColor: '#8b5cf6',
                     timer: 2000
                 });
@@ -2614,16 +2822,16 @@ async function desvincularChequeConfirmado(chequeId, numeroCheque, razonSocial) 
             } else {
                 Swal.fire({
                     icon: 'error',
-                    title: 'Error al Desvincular',
-                    text: result.error || 'Ocurrió un fallo al desasociar el cheque.'
+                    title: (resJson && resJson.error) || `Error al Desvincular (HTTP ${response.status})`,
+                    text: (resJson && (resJson.message || resJson.error)) || 'Ocurrió un fallo al desasociar el cheque.'
                 });
             }
         } catch (e) {
             console.error('Error al desvincular cheque:', e);
             Swal.fire({
                 icon: 'error',
-                title: 'Error de Red',
-                text: 'No se pudo establecer conexión con el servidor.'
+                title: 'Error al Desvincular',
+                text: e.message || 'Ocurrió un error inesperado al desasociar el cheque.'
             });
         } finally {
             mostrarLoading(false);
