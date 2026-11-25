@@ -1,6 +1,6 @@
 {
-  "tableCount": 175,
-  "uniqueIndexCount": 258,
+  "tableCount": 176,
+  "uniqueIndexCount": 260,
   "tables": {
     "abrir_caja_aprendizaje": {
       "codigo_caja": {
@@ -10960,6 +10960,188 @@
         "column_default": null
       }
     },
+    "lamda_biblioteca_imagenes": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('lamda_biblioteca_imagenes_id_seq'::regclass)"
+      },
+      "familia_id": {
+        "ordinal_position": 2,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "familia_slug": {
+        "ordinal_position": 3,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'general'::character varying"
+      },
+      "articulo_principal_norm": {
+        "ordinal_position": 4,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 160,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "etiqueta": {
+        "ordinal_position": 5,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 180,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "foto_id": {
+        "ordinal_position": 6,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 64,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "url": {
+        "ordinal_position": 7,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 255,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "url_original": {
+        "ordinal_position": 8,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 255,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "width": {
+        "ordinal_position": 9,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "height": {
+        "ordinal_position": 10,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "bytes": {
+        "ordinal_position": 11,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "origen_tipo": {
+        "ordinal_position": 12,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 24,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'IA_GEMINI'::character varying"
+      },
+      "modelo_ia": {
+        "ordinal_position": 13,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "preset_estilo": {
+        "ordinal_position": 14,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "prompt_usado": {
+        "ordinal_position": 15,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "activo": {
+        "ordinal_position": 16,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "true"
+      },
+      "created_at": {
+        "ordinal_position": 17,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      "updated_at": {
+        "ordinal_position": 18,
+        "data_type": "timestamp without time zone",
+        "udt_name": "timestamp",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      }
+    },
     "lamda_imagenes_base": {
       "id": {
         "ordinal_position": 1,
@@ -11130,6 +11312,36 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "now()"
+      },
+      "familia_id": {
+        "ordinal_position": 18,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "articulo_principal_norm": {
+        "ordinal_position": 19,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 160,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "biblioteca_imagen_id": {
+        "ordinal_position": 20,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "lineas_orden": {
@@ -23618,6 +23830,19 @@
       "sig": "knex_migrations::(id)[pred=]"
     },
     {
+      "table_name": "lamda_biblioteca_imagenes",
+      "index_name": "lamda_biblioteca_imagenes_pkey",
+      "is_primary": true,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX lamda_biblioteca_imagenes_pkey ON public.lamda_biblioteca_imagenes USING btree (id)",
+      "index_predicate": "",
+      "key_columns": [
+        "id"
+      ],
+      "has_expression_key": false,
+      "sig": "lamda_biblioteca_imagenes::(id)[pred=]"
+    },
+    {
       "table_name": "lamda_imagenes_base",
       "index_name": "unq_lamda_img_base_producto_activo",
       "is_primary": false,
@@ -23629,6 +23854,20 @@
       ],
       "has_expression_key": false,
       "sig": "lamda_imagenes_base::(clave_producto_base)[pred=((activo = true) and ((tipo_ancla)::text = 'producto_base'::text) and (clave_producto_base is not null))]"
+    },
+    {
+      "table_name": "lamda_imagenes_base",
+      "index_name": "unq_lamda_img_base_ancla_principal_activo",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX unq_lamda_img_base_ancla_principal_activo ON public.lamda_imagenes_base USING btree (familia_id, articulo_principal_norm) WHERE ((activo = true) AND ((tipo_ancla)::text = 'ANCLA_PRINCIPAL'::text) AND (familia_id IS NOT NULL) AND (articulo_principal_norm IS NOT NULL))",
+      "index_predicate": "((activo = true) AND ((tipo_ancla)::text = 'ANCLA_PRINCIPAL'::text) AND (familia_id IS NOT NULL) AND (articulo_principal_norm IS NOT NULL))",
+      "key_columns": [
+        "familia_id",
+        "articulo_principal_norm"
+      ],
+      "has_expression_key": false,
+      "sig": "lamda_imagenes_base::(familia_id, articulo_principal_norm)[pred=((activo = true) and ((tipo_ancla)::text = 'ancla_principal'::text) and (familia_id is not null) and (articulo_principal_norm is not null))]"
     },
     {
       "table_name": "lamda_imagenes_base",

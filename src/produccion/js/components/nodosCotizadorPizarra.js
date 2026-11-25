@@ -1011,9 +1011,13 @@
                 ? jer.ruta_compacta.join(' › ')
                 : famNombre;
             if (!gruposMap.has(claveBase)) {
+                const famIdVal = Number(jer.familia_id || cat.bunker_familia_id || 0) || null;
+                const artPVal = String(jer.articulo_principal || cat.bunker_articulo_principal || famNombre).trim();
                 const g = {
                     clave_producto_base: claveBase,
+                    familia_id: famIdVal,
                     familia_nombre: famNombre,
+                    articulo_principal: artPVal,
                     ruta_corta: rutaCorta,
                     nombre_base_oficial: nombreBase,
                     ingrediente_origen_id: cat.ingrediente_origen_id ? Number(cat.ingrediente_origen_id) : null,
@@ -1126,22 +1130,22 @@
                                                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                                             <strong style="color:#f8fafc; font-size:0.92rem;">${escaparHtml(grupo.nombre_base_oficial)}</strong>
                                                             <span style="font-size:0.7rem; padding:1px 7px; border-radius:999px; background:rgba(16,185,129,0.16); color:#34d399; border:1px solid rgba(16,185,129,0.35); font-weight:700;">
-                                                                ${imgBase ? `Heredada por ${grupo.items.length} presentaci${grupo.items.length === 1 ? 'ón' : 'ones'}` : `${grupo.items.length} presentaci${grupo.items.length === 1 ? 'ón' : 'ones'} sin foto base`}
+                                                                ${imgBase ? `${imgBase.heredada_de_ancla ? `Heredada del rubro ${escaparHtml(grupo.articulo_principal)} · ` : ''}${grupo.items.length} presentaci${grupo.items.length === 1 ? 'ón' : 'ones'}` : `${grupo.items.length} presentaci${grupo.items.length === 1 ? 'ón' : 'ones'} sin foto base`}
                                                             </span>
                                                         </div>
                                                     </div>
                                                 </div>
                                                 <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                                                     <button type="button"
-                                                        onclick="window.NodosPizarra.subirImagenBaseLamda('${escaparHtml(grupo.clave_producto_base)}', '${tipoAncla}', ${Number(grupo.ingrediente_origen_id || 0)}, '${escaparHtml(skuCombo)}', decodeURIComponent('${encodeURIComponent(grupo.nombre_base_oficial)}'))"
+                                                        onclick="window.NodosPizarra.abrirEstudioFotoBase({ clave_producto_base: '${escaparHtml(grupo.clave_producto_base)}', familia_id: ${Number(grupo.familia_id || 0)}, familia_nombre: decodeURIComponent('${encodeURIComponent(grupo.familia_nombre || '')}'), articulo_principal: decodeURIComponent('${encodeURIComponent(grupo.articulo_principal || '')}'), nombre_base_oficial: decodeURIComponent('${encodeURIComponent(grupo.nombre_base_oficial || '')}'), tipo_ancla: '${tipoAncla}', ingrediente_id: ${Number(grupo.ingrediente_origen_id || 0)}, sku_combo: '${escaparHtml(skuCombo)}', imagen_actual: ${imgBase ? `decodeURIComponent('${encodeURIComponent(JSON.stringify(imgBase))}')` : 'null'} })"
                                                         style="padding:5px 10px; border-radius:7px; border:1px solid rgba(56,189,248,0.5); background:rgba(56,189,248,0.14); color:#bae6fd; font-size:0.74rem; font-weight:700; cursor:pointer;">
-                                                        ${imgBase ? '🔄 Cambiar Foto Base' : '📷 Cargar Foto Base'}
+                                                        🖼️ Estudio / Foto Base
                                                     </button>
-                                                    ${imgBase ? `
+                                                    ${imgBase && !imgBase.heredada_de_ancla ? `
                                                         <button type="button"
                                                             onclick="window.NodosPizarra.eliminarImagenBaseLamda(${Number(imgBase.id)})"
-                                                            style="padding:5px 8px; border-radius:7px; border:1px solid rgba(239,68,68,0.4); background:rgba(239,68,68,0.12); color:#fca5a5; font-size:0.74rem; font-weight:700; cursor:pointer;" title="Quitar imagen base LAMDA">
-                                                            🗑️
+                                                            style="padding:5px 8px; border-radius:7px; border:1px solid rgba(239,68,68,0.4); background:rgba(239,68,68,0.12); color:#fca5a5; font-size:0.74rem; font-weight:700; cursor:pointer;" title="Quitar excepción puntual">
+                                                            ↩️
                                                         </button>
                                                     ` : ''}
                                                 </div>
@@ -4736,7 +4740,212 @@
         editarArticuloCatalogoEnMesa,
         limpiarMesaCotizacion,
         aprobarYPublicarEnPadronNodos,
-        subirImagenBaseLamda: (claveBase, tipoAncla, ingId, skuCombo, tituloRef) => {
+        abrirEstudioFotoBase: async (ctx) => {
+            if (typeof ctx.imagen_actual === 'string') {
+                try { ctx.imagen_actual = JSON.parse(ctx.imagen_actual); } catch (_) { ctx.imagen_actual = null; }
+            }
+            let modal = document.getElementById('pizarra-estudio-img-base-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'pizarra-estudio-img-base-modal';
+                modal.style.cssText = 'position:fixed; inset:0; z-index:9500; background:rgba(2,6,23,0.78); display:flex; align-items:center; justify-content:center; padding:16px;';
+                document.body.appendChild(modal);
+            }
+            const state = {
+                destino: ctx.familia_id && ctx.articulo_principal ? 'ancla' : 'variedad',
+                modo: 'biblioteca',
+                preset: 'cuenco_neutro',
+                calidad: 'estandar',
+                preview: null,
+                bibItems: [],
+                generating: false
+            };
+
+            const loadBib = async () => {
+                const qs = new URLSearchParams();
+                if (ctx.familia_id) qs.set('familia_id', String(ctx.familia_id));
+                const r = await fetch(`/api/produccion/nodos/admin/imagenes-base/biblioteca?${qs.toString()}`);
+                const d = await r.json();
+                state.bibItems = d.ok ? (d.items || []) : [];
+                render();
+            };
+
+            const buildPrompt = () => {
+                const subj = state.destino === 'ancla' ? ctx.articulo_principal : ctx.nombre_base_oficial;
+                const mapP = {
+                    cuenco_neutro: 'Fotografía gastronómica profesional a 45° en cuenco cerámico claro sobre superficie neutra cálida, luz natural suave.',
+                    granel_cenital: 'Fotografía gastronómica cenital 90° a granel sobre piedra o madera clara con luz difusa.',
+                    fondo_blanco: 'Fotografía editorial minimalista de catálogo sobre fondo blanco puro limpio.'
+                };
+                return `${mapP[state.preset] || mapP.cuenco_neutro} Producto único: "${subj}" (${ctx.familia_nombre}). Sin envases, sin bolsas, sin marcas ni texto.`;
+            };
+
+            const buildTargetPayload = () => state.destino === 'ancla'
+                ? {
+                    tipo_ancla: 'ANCLA_PRINCIPAL',
+                    familia_id: ctx.familia_id,
+                    familia_nombre: ctx.familia_nombre,
+                    articulo_principal: ctx.articulo_principal,
+                    titulo_referencia: `${ctx.familia_nombre} › ${ctx.articulo_principal}`
+                }
+                : {
+                    tipo_ancla: ctx.tipo_ancla,
+                    familia_id: ctx.familia_id,
+                    familia_nombre: ctx.familia_nombre,
+                    articulo_principal: ctx.articulo_principal,
+                    ingrediente_id: ctx.ingrediente_id || null,
+                    clave_producto_base: ctx.clave_producto_base,
+                    articulo_sku: ctx.sku_combo || null,
+                    titulo_referencia: ctx.nombre_base_oficial
+                };
+
+            const render = () => {
+                modal.style.display = 'flex';
+                modal.innerHTML = `
+                    <div style="width:100%; max-width:760px; max-height:90vh; overflow-y:auto; background:#1e293b; border:1px solid #334155; border-radius:14px; padding:16px; color:#f8fafc; display:flex; flex-direction:column; gap:12px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                            <div>
+                                <div style="font-weight:800; font-size:1rem;">🖼️ Estudio de Foto Base LAMDA</div>
+                                <div style="font-size:0.76rem; color:#94a3b8;">${escaparHtml(ctx.familia_nombre)} › ${escaparHtml(ctx.articulo_principal)} · ${escaparHtml(ctx.nombre_base_oficial)}</div>
+                            </div>
+                            <button type="button" id="piz-ib-close" style="background:#0f172a; border:1px solid #334155; color:#cbd5e1; border-radius:7px; padding:5px 10px; cursor:pointer; font-weight:700;">✕</button>
+                        </div>
+
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:0.78rem;">
+                            <span style="color:#94a3b8; font-weight:700;">Aplicar a:</span>
+                            ${ctx.familia_id && ctx.articulo_principal ? `
+                                <button type="button" id="piz-dest-ancla" style="padding:4px 10px; border-radius:999px; border:1px solid ${state.destino==='ancla'?'#c084fc':'#334155'}; background:${state.destino==='ancla'?'rgba(142,71,133,0.35)':'#0f172a'}; color:#f8fafc; cursor:pointer; font-weight:700;">
+                                    🌿 Todo el rubro (${escaparHtml(ctx.articulo_principal)})
+                                </button>
+                            ` : ''}
+                            <button type="button" id="piz-dest-var" style="padding:4px 10px; border-radius:999px; border:1px solid ${state.destino==='variedad'?'#38bdf8':'#334155'}; background:${state.destino==='variedad'?'rgba(56,189,248,0.22)':'#0f172a'}; color:#f8fafc; cursor:pointer; font-weight:700;">
+                                🎨 Solo ${escaparHtml(ctx.nombre_base_oficial)}
+                            </button>
+                        </div>
+
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button type="button" id="piz-tab-bib" style="padding:6px 11px; border-radius:8px; border:1px solid rgba(56,189,248,0.5); background:${state.modo==='biblioteca'?'rgba(56,189,248,0.2)':'#0f172a'}; color:#bae6fd; font-weight:700; font-size:0.78rem; cursor:pointer;">📚 Biblioteca LAMDA</button>
+                            <button type="button" id="piz-tab-ia" style="padding:6px 11px; border-radius:8px; border:1px solid rgba(192,132,252,0.5); background:${state.modo==='ia'?'rgba(142,71,133,0.35)':'#0f172a'}; color:#f5d0fe; font-weight:700; font-size:0.78rem; cursor:pointer;">✨ Generar con IA</button>
+                            <button type="button" id="piz-btn-pc" style="padding:6px 11px; border-radius:8px; border:1px solid #334155; background:#0f172a; color:#cbd5e1; font-weight:700; font-size:0.78rem; cursor:pointer;">📤 Subir desde PC</button>
+                        </div>
+
+                        ${state.modo === 'biblioteca' ? `
+                            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(135px, 1fr)); gap:8px;">
+                                ${state.bibItems.length === 0 ? `<div style="grid-column:1/-1; padding:18px; text-align:center; color:#94a3b8; font-size:0.78rem;">Biblioteca vacía para esta familia. Probá generar con IA o subir desde PC.</div>` : state.bibItems.map(it => `
+                                    <div style="border:1px solid #334155; border-radius:9px; padding:6px; background:#0f172a; display:flex; flex-direction:column; gap:5px;">
+                                        <img src="${escaparHtml(it.url)}" style="width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:6px;" />
+                                        <div style="font-size:0.72rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escaparHtml(it.etiqueta)}</div>
+                                        <button type="button" data-piz-usar="${it.id}" style="padding:4px; border-radius:6px; border:1px solid rgba(56,189,248,0.45); background:rgba(56,189,248,0.16); color:#bae6fd; font-size:0.72rem; font-weight:700; cursor:pointer;">✓ Usar</button>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : `
+                            <div style="display:flex; flex-direction:column; gap:8px; background:#0f172a; padding:10px; border-radius:10px; border:1px solid #334155;">
+                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                    ${[['cuenco_neutro','🥣 Cuenco 45°'],['granel_cenital','🪨 Cenital'],['fondo_blanco','⬜ Fondo blanco']].map(([k,l]) => `
+                                        <button type="button" data-piz-preset="${k}" style="padding:4px 9px; border-radius:999px; border:1px solid ${state.preset===k?'#c084fc':'#334155'}; background:${state.preset===k?'rgba(142,71,133,0.35)':'#1e293b'}; color:#f8fafc; font-size:0.73rem; cursor:pointer;">${l}</button>
+                                    `).join('')}
+                                    <select id="piz-ia-calidad" style="margin-left:auto; background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:6px; padding:3px 7px; font-size:0.74rem;">
+                                        <option value="estandar" ${state.calidad==='estandar'?'selected':''}>⚡ Estándar (Nano Banana 2)</option>
+                                        <option value="pro" ${state.calidad==='pro'?'selected':''}>💎 Pro (gemini-3-pro-image)</option>
+                                    </select>
+                                </div>
+                                <textarea id="piz-ia-prompt" rows="2" style="width:100%; background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:7px; padding:6px; font-size:0.76rem;">${escaparHtml(buildPrompt())}</textarea>
+                                <div>
+                                    <button type="button" id="piz-ia-gen" ${state.generating?'disabled':''} style="padding:6px 12px; border-radius:8px; border:1px solid #c084fc; background:rgba(142,71,133,0.45); color:#f5d0fe; font-weight:700; font-size:0.78rem; cursor:pointer;">
+                                        ${state.generating ? '⏳ Generando...' : '✨ Generar previsualización'}
+                                    </button>
+                                </div>
+                                ${state.preview ? `
+                                    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding-top:6px;">
+                                        <img src="${state.preview.preview_data_url}" style="width:110px; height:110px; border-radius:8px; object-fit:cover;" />
+                                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                            <button type="button" id="piz-ia-confirm" style="padding:6px 12px; border-radius:8px; border:1px solid #10b981; background:rgba(16,185,129,0.22); color:#a7f3d0; font-weight:700; font-size:0.78rem; cursor:pointer;">✅ Guardar y Aplicar</button>
+                                        </div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `}
+                    </div>
+                `;
+
+                modal.querySelector('#piz-ib-close').onclick = () => { modal.style.display = 'none'; };
+                const dA = modal.querySelector('#piz-dest-ancla');
+                if (dA) dA.onclick = () => { state.destino = 'ancla'; render(); };
+                modal.querySelector('#piz-dest-var').onclick = () => { state.destino = 'variedad'; render(); };
+                modal.querySelector('#piz-tab-bib').onclick = () => { state.modo = 'biblioteca'; loadBib(); };
+                modal.querySelector('#piz-tab-ia').onclick = () => { state.modo = 'ia'; render(); };
+                modal.querySelector('#piz-btn-pc').onclick = () => {
+                    const pTarget = buildTargetPayload();
+                    window.NodosPizarra.subirImagenBaseLamda(
+                        pTarget.clave_producto_base || '', pTarget.tipo_ancla, pTarget.ingrediente_id || 0,
+                        pTarget.articulo_sku || '', pTarget.titulo_referencia, pTarget.familia_id, pTarget.familia_nombre, pTarget.articulo_principal,
+                        () => { modal.style.display = 'none'; }
+                    );
+                };
+                modal.querySelectorAll('[data-piz-usar]').forEach(btn => {
+                    btn.onclick = async () => {
+                        const r = await fetch('/api/produccion/nodos/admin/imagenes-base/asignar-biblioteca', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ biblioteca_imagen_id: Number(btn.getAttribute('data-piz-usar')), ...buildTargetPayload() })
+                        });
+                        const d = await r.json();
+                        if (!r.ok || !d.ok) return alert(d.error || 'Error asignando foto');
+                        modal.style.display = 'none';
+                        await cargarDatosNodosBarriales(true);
+                    };
+                });
+                modal.querySelectorAll('[data-piz-preset]').forEach(btn => {
+                    btn.onclick = () => { state.preset = btn.getAttribute('data-piz-preset'); render(); };
+                });
+                const calEl = modal.querySelector('#piz-ia-calidad');
+                if (calEl) calEl.onchange = () => { state.calidad = calEl.value; };
+                const genBtn = modal.querySelector('#piz-ia-gen');
+                if (genBtn) genBtn.onclick = async () => {
+                    state.generating = true;
+                    const pTxt = modal.querySelector('#piz-ia-prompt')?.value || '';
+                    render();
+                    try {
+                        const r = await fetch('/api/produccion/nodos/admin/imagenes-base/generar-ia', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                familia_nombre: ctx.familia_nombre,
+                                articulo_principal: ctx.articulo_principal,
+                                nombre_variante: state.destino === 'variedad' ? ctx.nombre_base_oficial : '',
+                                preset_estilo: state.preset,
+                                calidad: state.calidad,
+                                prompt_personalizado: pTxt
+                            })
+                        });
+                        const d = await r.json();
+                        if (!r.ok || !d.ok) throw new Error(d.error || 'Error IA');
+                        state.preview = d;
+                    } catch (e) {
+                        alert(e.message);
+                    } finally {
+                        state.generating = false;
+                        render();
+                    }
+                };
+                const confBtn = modal.querySelector('#piz-ia-confirm');
+                if (confBtn) confBtn.onclick = async () => {
+                    const r = await fetch('/api/produccion/nodos/admin/imagenes-base/confirmar-ia', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ preview_token: state.preview.preview_token, ...buildTargetPayload(), aplicar_al_ancla: true })
+                    });
+                    const d = await r.json();
+                    if (!r.ok || !d.ok) return alert(d.error || 'Error confirmando IA');
+                    modal.style.display = 'none';
+                    await cargarDatosNodosBarriales(true);
+                };
+            };
+
+            await loadBib();
+        },
+        subirImagenBaseLamda: (claveBase, tipoAncla, ingId, skuCombo, tituloRef, famId = 0, famNom = '', artPrincipal = '', onDone = null) => {
             let inp = document.getElementById('pizarra-input-img-base-file');
             if (!inp) {
                 inp = document.createElement('input');
@@ -4753,14 +4962,18 @@
                 const fd = new FormData();
                 fd.append('foto', file);
                 fd.append('tipo_ancla', tipoAncla);
+                if (Number(famId) > 0) fd.append('familia_id', String(famId));
+                if (famNom) fd.append('familia_nombre', famNom);
+                if (artPrincipal) fd.append('articulo_principal', artPrincipal);
                 if (Number(ingId) > 0) fd.append('ingrediente_id', String(ingId));
-                fd.append('clave_producto_base', claveBase);
+                if (claveBase) fd.append('clave_producto_base', claveBase);
                 if (skuCombo) fd.append('articulo_sku', skuCombo);
                 if (tituloRef) fd.append('titulo_referencia', tituloRef);
                 try {
                     const resp = await fetch('/api/produccion/nodos/admin/imagenes-base', { method: 'POST', body: fd });
                     const data = await resp.json();
                     if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo cargar la imagen base');
+                    if (typeof onDone === 'function') onDone();
                     await cargarDatosNodosBarriales(true);
                 } catch (err) {
                     alert('Error subiendo imagen base: ' + err.message);

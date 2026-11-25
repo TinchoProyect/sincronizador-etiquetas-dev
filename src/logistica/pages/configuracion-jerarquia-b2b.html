@@ -93,6 +93,26 @@
     .img-base-row { display: flex; align-items: center; gap: 0.9rem; padding: 0.7rem 0.85rem; border-radius: 10px; background: rgba(15, 23, 42, 0.65); border: 1px solid var(--border-glass); flex-wrap: wrap; }
     .img-base-thumb { width: 60px; height: 60px; border-radius: 9px; object-fit: cover; border: 1px solid rgba(255, 255, 255, 0.14); background: #0b1220; flex-shrink: 0; }
     .img-base-placeholder { width: 60px; height: 60px; border-radius: 9px; border: 1px dashed rgba(148, 163, 184, 0.35); background: rgba(15, 23, 42, 0.8); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 1.25rem; flex-shrink: 0; }
+    .img-base-hero-card { padding: 1rem; border-radius: 12px; background: linear-gradient(135deg, rgba(142, 71, 133, 0.14), rgba(15, 23, 42, 0.85)); border: 1px solid rgba(192, 132, 252, 0.32); display: flex; flex-direction: column; gap: 0.85rem; }
+    .img-base-hero-top { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .img-base-hero-thumb { width: 92px; height: 92px; border-radius: 12px; object-fit: cover; border: 1px solid rgba(255,255,255,0.18); background: #0b1220; flex-shrink: 0; }
+    .img-base-hero-ph { width: 92px; height: 92px; border-radius: 12px; border: 1.5px dashed rgba(148, 163, 184, 0.45); background: rgba(15,23,42,0.85); display: flex; align-items: center; justify-content: center; font-size: 2rem; color: #64748b; flex-shrink: 0; }
+    .img-base-actions-bar { display: flex; align-items: center; gap: 0.55rem; flex-wrap: wrap; }
+    .btn-ib-primary { padding: 0.5rem 0.9rem; border-radius: 8px; border: 1px solid rgba(192, 132, 252, 0.55); background: linear-gradient(135deg, rgba(142,71,133,0.45), rgba(168,85,247,0.35)); color: #f5d0fe; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; }
+    .btn-ib-cyan { padding: 0.5rem 0.9rem; border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.5); background: rgba(56, 189, 248, 0.14); color: #bae6fd; font-size: 0.8rem; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; }
+    .btn-ib-sec { padding: 0.48rem 0.8rem; border-radius: 8px; border: 1px solid rgba(148, 163, 184, 0.32); background: rgba(15, 23, 42, 0.65); color: #cbd5e1; font-size: 0.77rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 0.35rem; }
+    .img-base-panel { padding: 0.9rem; border-radius: 11px; background: rgba(2, 6, 23, 0.55); border: 1px solid rgba(148, 163, 184, 0.2); display: flex; flex-direction: column; gap: 0.75rem; }
+    .img-base-lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.65rem; }
+    .img-base-lib-card { border-radius: 10px; border: 1px solid var(--border-glass); background: rgba(15, 23, 42, 0.8); padding: 0.5rem; display: flex; flex-direction: column; gap: 0.45rem; }
+    .img-base-lib-card img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 7px; background: #090d16; }
+    .img-base-preset-row { display: flex; gap: 0.45rem; flex-wrap: wrap; }
+    .img-base-preset-pill { padding: 0.38rem 0.7rem; border-radius: 999px; border: 1px solid rgba(148, 163, 184, 0.3); background: rgba(15, 23, 42, 0.75); color: #cbd5e1; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+    .img-base-preset-pill.is-active { border-color: #c084fc; background: rgba(142, 71, 133, 0.35); color: #f5d0fe; }
+    .img-base-excep-details { border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.2); background: rgba(15, 23, 42, 0.5); padding: 0.65rem 0.85rem; }
+    .img-base-excep-details > summary { cursor: pointer; font-weight: 700; font-size: 0.84rem; color: #e2e8f0; display: flex; align-items: center; justify-content: space-between; list-style: none; }
+    .img-base-excep-details > summary::-webkit-details-marker { display: none; }
+    .img-base-fam-acc { border-radius: 10px; border: 1px solid var(--border-glass); background: rgba(15, 23, 42, 0.55); overflow: hidden; }
+    .img-base-fam-head { padding: 0.65rem 0.85rem; background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--border-glass); font-weight: 800; font-size: 0.86rem; color: #e9d5ff; display: flex; justify-content: space-between; align-items: center; }
     .header-actions-row { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; }
     /* Sección de Configuración de IVA */
     .iva-section-card {
@@ -746,7 +766,7 @@
                         <div class="art-info">
                           <div style="display:flex; align-items:center; gap:0.55rem; flex-wrap:wrap;">
                             <div class="art-name">${art.articulo_principal}</div>
-                            <button type="button" onclick="event.stopPropagation(); abrirModalImagenesBase(decodeURIComponent('${encodeURIComponent(art.articulo_principal || '')}'))"
+                            <button type="button" data-btn-foto-rubro="${Number(fam.familia_id || 0)}__${_escHtmlB2B(art.articulo_principal || '')}" onclick="event.stopPropagation(); abrirModalImagenesBase({ familiaId: ${Number(fam.familia_id || 0)}, familiaNombre: decodeURIComponent('${encodeURIComponent(fam.familia_nombre || '')}'), articuloPrincipal: decodeURIComponent('${encodeURIComponent(art.articulo_principal || '')}') })"
                               style="padding:0.18rem 0.5rem; border-radius:6px; border:1px solid rgba(56,189,248,0.4); background:rgba(56,189,248,0.12); color:#bae6fd; font-size:0.72rem; font-weight:700; cursor:pointer;">
                               🖼️ Fotos base
                             </button>
@@ -1183,12 +1203,45 @@
 
     cargarListasIva();
     cargarJerarquia();
-    let imgBaseData = [];
+    let imgBaseAnclas = [];
     let imgBaseFiltro = '';
     let imgBaseSoloNodos = false;
+    let imgBaseIncluirInternas = false;
+    let imgBaseFocal = null; // { familiaId, familiaNombre, articuloPrincipal }
+    let imgBaseSubPanel = ''; // '' | 'biblioteca' | 'ia'
+    let imgBaseTargetExcepcion = null; // null => ANCLA_PRINCIPAL, or variedad object
+    let imgBaseBibItems = [];
+    let imgBaseBibScope = 'rubro'; // 'rubro' | 'familia' | 'todas'
+    let imgBaseBibSearch = '';
+    let imgBaseEstilos = [];
+    let imgBaseIaPreset = 'cuenco_neutro';
+    let imgBaseIaCalidad = 'estandar';
+    let imgBaseIaPrompt = '';
+    let imgBaseIaPromptCustom = false;
+    let imgBaseIaGenerating = false;
+    let imgBaseIaPreview = null; // { preview_token, preview_data_url, modelo_usado, ... }
 
     function _escHtmlB2B(v) {
       return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function _normTxtB2B(v) {
+      return String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    }
+
+    function _construirPromptDefaultB2B() {
+      const sujeto = imgBaseTargetExcepcion
+        ? imgBaseTargetExcepcion.nombre_base_oficial
+        : (imgBaseFocal?.articuloPrincipal || 'ingrediente natural');
+      const fam = imgBaseFocal?.familiaNombre || '';
+      const estMap = {
+        cuenco_neutro: 'Fotografía gastronómica profesional en plano a 45 grados del ingrediente real servido en un cuenco cerámico artesanal minimalista claro sobre superficie neutra cálida mate, luz natural suave.',
+        granel_cenital: 'Fotografía gastronómica profesional en plano cenital (90°) del ingrediente real a granel dispuesto limpiamente sobre piedra o madera clara natural con iluminación difusa.',
+        fondo_blanco: 'Fotografía profesional de catálogo editorial del ingrediente real agrupado prolijamente sobre fondo blanco limpio puro con sombra muy sutil.'
+      };
+      const base = estMap[imgBaseIaPreset] || estMap.cuenco_neutro;
+      const ctx = fam && _normTxtB2B(fam) !== _normTxtB2B(sujeto) ? ` (rubro: ${fam})` : '';
+      return `${base} Producto protagonista único: "${sujeto}"${ctx}. Sin envases, sin bolsas, sin etiquetas, sin marcas ni texto sobreimpreso.`;
     }
 
     function asegurarDomModalImagenesBase() {
@@ -1200,25 +1253,29 @@
           <div class="img-base-modal-card">
             <div class="img-base-modal-head">
               <div>
-                <h2 style="margin:0; font-size:1.08rem; font-weight:800; color:#f8fafc;">🖼️ Imágenes Base Elementales LAMDA</h2>
-                <p style="margin:0.2rem 0 0; font-size:0.78rem; color:#94a3b8;">
-                  Cargá 1 foto limpia por Producto Base / Materia Prima y se hereda automáticamente a todas sus presentaciones (200g, 500g, 1kg, packs) y Nodos.
+                <h2 id="img-base-modal-title" style="margin:0; font-size:1.08rem; font-weight:800; color:#f8fafc;">🖼️ Imágenes Base Elementales LAMDA</h2>
+                <p id="img-base-modal-subtitle" style="margin:0.2rem 0 0; font-size:0.78rem; color:#94a3b8;">
+                  1 foto por Rubro (Familia + Sustantivo Ancla) hereda automáticamente a todas sus variedades y gramajes, con Biblioteca interna y Estudio IA.
                 </p>
               </div>
               <button type="button" onclick="cerrarModalImagenesBase()" style="background:#0f172a; border:1px solid rgba(148,163,184,0.3); color:#cbd5e1; border-radius:8px; padding:0.4rem 0.7rem; cursor:pointer; font-weight:700;">✕ Cerrar</button>
             </div>
-            <div style="padding:0.75rem 1.25rem; border-bottom:1px solid var(--border-glass); display:flex; gap:0.65rem; flex-wrap:wrap; align-items:center; background:rgba(15,23,42,0.45);">
+            <div id="img-base-toolbar" style="padding:0.75rem 1.25rem; border-bottom:1px solid var(--border-glass); display:flex; gap:0.65rem; flex-wrap:wrap; align-items:center; background:rgba(15,23,42,0.45);">
               <input type="text" id="img-base-search" class="search-input" style="flex:1; min-width:220px; padding:0.55rem 0.85rem; font-size:0.85rem;"
-                placeholder="Buscar por producto base, familia, SKU o ingrediente (ej: Grana Sol, Nuez, Zapallo)..."
+                placeholder="Buscar rubro o variedad (ej: Almendra, Arroz, Maíz, Nuez)..."
                 oninput="imgBaseFiltro = this.value; renderModalImagenesBase();" />
-              <label style="display:inline-flex; align-items:center; gap:0.4rem; font-size:0.8rem; color:#cbd5e1; cursor:pointer;">
+              <label style="display:inline-flex; align-items:center; gap:0.4rem; font-size:0.79rem; color:#cbd5e1; cursor:pointer;">
                 <input type="checkbox" id="img-base-solo-nodos" onchange="imgBaseSoloNodos = this.checked; cargarImagenesBase();" />
-                Solo publicados en Nodos
+                Solo en Nodos
+              </label>
+              <label style="display:inline-flex; align-items:center; gap:0.4rem; font-size:0.79rem; color:#94a3b8; cursor:pointer;">
+                <input type="checkbox" id="img-base-incluir-internas" onchange="imgBaseIncluirInternas = this.checked; cargarImagenesBase();" />
+                Incluir familias internas
               </label>
               <span id="img-base-resumen" style="font-size:0.76rem; color:#94a3b8; font-weight:700;"></span>
             </div>
             <div class="img-base-modal-body" id="img-base-lista-body">
-              <div style="text-align:center; padding:2rem; color:#94a3b8;">Cargando productos base...</div>
+              <div style="text-align:center; padding:2rem; color:#94a3b8;">Cargando catálogo determinista LAMDA...</div>
             </div>
           </div>
         </div>
@@ -1226,9 +1283,27 @@
       document.body.appendChild(div);
     }
 
-    async function abrirModalImagenesBase(filtroInicial = '') {
+    async function abrirModalImagenesBase(focalOpt = null) {
       asegurarDomModalImagenesBase();
-      imgBaseFiltro = String(filtroInicial || '');
+      imgBaseSubPanel = '';
+      imgBaseTargetExcepcion = null;
+      imgBaseIaPreview = null;
+      imgBaseIaPromptCustom = false;
+      imgBaseFiltro = '';
+
+      if (focalOpt && typeof focalOpt === 'object' && focalOpt.articuloPrincipal) {
+        imgBaseFocal = {
+          familiaId: Number(focalOpt.familiaId || 0) || 0,
+          familiaNombre: String(focalOpt.familiaNombre || '').trim(),
+          articuloPrincipal: String(focalOpt.articuloPrincipal || '').trim()
+        };
+      } else if (typeof focalOpt === 'string' && focalOpt.trim()) {
+        imgBaseFocal = null;
+        imgBaseFiltro = focalOpt.trim();
+      } else {
+        imgBaseFocal = null;
+      }
+
       const inp = document.getElementById('img-base-search');
       if (inp) inp.value = imgBaseFiltro;
       document.getElementById('modal-imagenes-base').classList.add('open');
@@ -1240,91 +1315,302 @@
       if (m) m.classList.remove('open');
     }
 
+    async function volverAGlobalImagenesBase() {
+      imgBaseFocal = null;
+      imgBaseSubPanel = '';
+      imgBaseTargetExcepcion = null;
+      imgBaseIaPreview = null;
+      await cargarImagenesBase();
+    }
+
+    async function abrirRubroFocalImagenesBase(familiaId, familiaNombre, articuloPrincipal) {
+      imgBaseFocal = {
+        familiaId: Number(familiaId || 0) || 0,
+        familiaNombre: String(familiaNombre || '').trim(),
+        articuloPrincipal: String(articuloPrincipal || '').trim()
+      };
+      imgBaseSubPanel = '';
+      imgBaseTargetExcepcion = null;
+      imgBaseIaPreview = null;
+      imgBaseIaPromptCustom = false;
+      await cargarImagenesBase();
+    }
+
     async function cargarImagenesBase() {
       const body = document.getElementById('img-base-lista-body');
+      const toolbar = document.getElementById('img-base-toolbar');
+      if (toolbar) toolbar.style.display = imgBaseFocal ? 'none' : 'flex';
       if (body) body.innerHTML = '<div style="text-align:center; padding:2rem; color:#94a3b8;">Cargando catálogo determinista LAMDA...</div>';
+
       try {
-        const resp = await fetch(`/api/produccion/nodos/admin/imagenes-base?solo_nodos=${imgBaseSoloNodos ? 'true' : 'false'}`);
+        const params = new URLSearchParams();
+        params.set('solo_nodos', imgBaseSoloNodos ? 'true' : 'false');
+        params.set('incluir_internas', imgBaseIncluirInternas ? 'true' : 'false');
+        if (imgBaseFocal) {
+          if (imgBaseFocal.familiaId > 0) params.set('familia_id', String(imgBaseFocal.familiaId));
+          if (imgBaseFocal.articuloPrincipal) params.set('articulo_principal', imgBaseFocal.articuloPrincipal);
+        }
+        const resp = await fetch(`/api/produccion/nodos/admin/imagenes-base?${params.toString()}`);
         const data = await resp.json();
         if (!resp.ok || !data.ok) throw new Error(data.error || 'Error cargando imágenes base');
-        imgBaseData = data.productos_base || [];
+        imgBaseAnclas = data.anclas_principales || [];
+        imgBaseEstilos = data.estilos_ia || [];
         renderModalImagenesBase();
       } catch (err) {
         if (body) body.innerHTML = `<div style="color:#f87171; padding:1rem;">Error: ${_escHtmlB2B(err.message)}</div>`;
       }
     }
 
-    function renderModalImagenesBase() {
-      const body = document.getElementById('img-base-lista-body');
-      const resEl = document.getElementById('img-base-resumen');
-      if (!body) return;
-      const qNorm = String(imgBaseFiltro || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-      const terms = qNorm ? qNorm.split(/\s+/).filter(Boolean) : [];
-      const filtrados = imgBaseData.filter(g => {
-        if (terms.length === 0) return true;
-        const bolsa = [
-          g.familia_nombre, g.articulo_principal, ...(g.ruta_compacta || []),
-          g.nombre_base_oficial, g.ingrediente_nombre, g.ingrediente_codigo,
-          ...(g.presentaciones || []).map(p => `${p.sku_nodo} ${p.presentacion_corta}`)
-        ].filter(Boolean).join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-        return terms.every(t => bolsa.includes(t));
-      });
-      const conFoto = filtrados.filter(g => Boolean(g.imagen_base)).length;
-      if (resEl) resEl.textContent = `${filtrados.length} productos base · ${conFoto} con foto base`;
-      if (filtrados.length === 0) {
-        body.innerHTML = '<div style="text-align:center; padding:2rem; color:#64748b;">No se encontraron productos base con ese filtro.</div>';
-        return;
+    async function cargarBibliotecaLamdaModal() {
+      const params = new URLSearchParams();
+      if (imgBaseFocal && imgBaseBibScope !== 'todas') {
+        if (imgBaseFocal.familiaId > 0) params.set('familia_id', String(imgBaseFocal.familiaId));
+        if (imgBaseBibScope === 'rubro' && imgBaseFocal.articuloPrincipal) {
+          params.set('articulo_principal', imgBaseFocal.articuloPrincipal);
+        }
       }
-      body.innerHTML = filtrados.map(g => {
-        const img = g.imagen_base;
-        const rutaTxt = (g.ruta_compacta || []).join(' › ');
-        const skusPreview = (g.presentaciones || []).slice(0, 6).map(p => `${p.sku_nodo} (${p.presentacion_corta})`).join(' · ');
-        const tipoAncla = g.tipo_ancla_default || (g.ingrediente_id ? 'INGREDIENTE' : 'PRODUCTO_BASE');
-        return `
-          <div class="img-base-row" data-img-base-clave="${_escHtmlB2B(g.clave_producto_base)}">
-            ${img ? `<img class="img-base-thumb" src="${_escHtmlB2B(img.url)}" alt="${_escHtmlB2B(g.nombre_base_oficial)}" />` : `<div class="img-base-placeholder">🖼️</div>`}
-            <div style="flex:1; min-width:220px;">
-              <div style="font-size:0.72rem; color:#c084fc; font-weight:700;">${_escHtmlB2B(rutaTxt)}</div>
-              <div style="font-size:0.95rem; font-weight:800; color:#f8fafc; margin:0.1rem 0;">${_escHtmlB2B(g.nombre_base_oficial)}</div>
-              <div style="font-size:0.74rem; color:#94a3b8;">
-                ${g.ingrediente_id ? `Ancla Ingrediente [${_escHtmlB2B(g.ingrediente_codigo || g.ingrediente_id)}]` : 'Ancla Taxonómica Producto Base'}
-                · <strong style="color:#34d399;">Heredada por ${g.total_presentaciones} presentación${g.total_presentaciones === 1 ? '' : 'es'}</strong>
-                ${g.en_nodos_count > 0 ? `<span style="color:#38bdf8;"> (${g.en_nodos_count} en Nodos)</span>` : ''}
-              </div>
-              <div style="font-size:0.7rem; color:#64748b; margin-top:0.2rem; font-family:monospace;">${_escHtmlB2B(skusPreview)}${g.presentaciones.length > 6 ? ' ...' : ''}</div>
-            </div>
-            <div style="display:flex; align-items:center; gap:0.45rem; flex-shrink:0;">
-              <button type="button" data-btn-subir-base="${_escHtmlB2B(g.clave_producto_base)}"
-                onclick="dispararSubidaImagenBase('${_escHtmlB2B(g.clave_producto_base)}', '${_escHtmlB2B(tipoAncla)}', ${Number(g.ingrediente_id || 0)}, '${_escHtmlB2B(g.sku_principal_combo || '')}', decodeURIComponent('${encodeURIComponent(g.nombre_base_oficial || '')}'))"
-                style="padding:0.45rem 0.78rem; border-radius:7px; border:1px solid rgba(56,189,248,0.5); background:rgba(56,189,248,0.14); color:#bae6fd; font-size:0.77rem; font-weight:700; cursor:pointer;">
-                ${img ? '🔄 Cambiar foto' : '📤 Subir foto base'}
-              </button>
-              ${img ? `<button type="button" onclick="quitarImagenBase(${Number(img.id)})" style="padding:0.45rem 0.65rem; border-radius:7px; border:1px solid rgba(239,68,68,0.4); background:rgba(239,68,68,0.12); color:#fca5a5; font-size:0.77rem; font-weight:700; cursor:pointer;">🗑️</button>` : ''}
-            </div>
-          </div>
-        `;
-      }).join('');
+      if (imgBaseBibSearch.trim()) params.set('q', imgBaseBibSearch.trim());
+      try {
+        const resp = await fetch(`/api/produccion/nodos/admin/imagenes-base/biblioteca?${params.toString()}`);
+        const data = await resp.json();
+        if (resp.ok && data.ok) {
+          imgBaseBibItems = data.items || [];
+        }
+      } catch (_) {}
+      renderModalImagenesBase();
     }
 
-    function dispararSubidaImagenBase(claveBase, tipoAncla, ingId, skuCombo, tituloRef) {
+    function obtenerDestinoActualB2B() {
+      const ancla = imgBaseAnclas[0] || null;
+      if (imgBaseTargetExcepcion && ancla) {
+        const v = (ancla.variedades || []).find(x => x.clave_producto_base === imgBaseTargetExcepcion.clave_producto_base) || imgBaseTargetExcepcion;
+        return {
+          esExcepcion: true,
+          ancla,
+          variedad: v,
+          tipo_ancla: v.tipo_ancla_default || (v.ingrediente_id ? 'INGREDIENTE' : 'PRODUCTO_BASE'),
+          familia_id: ancla.familia_id,
+          familia_nombre: ancla.familia_nombre,
+          articulo_principal: ancla.articulo_principal,
+          ingrediente_id: v.ingrediente_id || null,
+          clave_producto_base: v.clave_producto_base || null,
+          claves_secundarias: v.claves_secundarias || [],
+          articulo_sku: v.sku_principal_combo || null,
+          titulo_referencia: v.nombre_base_oficial,
+          label_destino: `Excepción puntual: ${v.nombre_base_oficial}`
+        };
+      }
+      if (ancla) {
+        return {
+          esExcepcion: false,
+          ancla,
+          variedad: null,
+          tipo_ancla: 'ANCLA_PRINCIPAL',
+          familia_id: ancla.familia_id,
+          familia_nombre: ancla.familia_nombre,
+          articulo_principal: ancla.articulo_principal,
+          ingrediente_id: null,
+          clave_producto_base: null,
+          claves_secundarias: [],
+          articulo_sku: null,
+          titulo_referencia: `${ancla.familia_nombre} › ${ancla.articulo_principal}`,
+          label_destino: `Rubro completo: ${ancla.familia_nombre} › ${ancla.articulo_principal} (cubre ${ancla.total_variedades} variedades)`
+        };
+      }
+      return null;
+    }
+
+    async function abrirSubPanelB2B(modo, variedadExcepcion = null) {
+      imgBaseTargetExcepcion = variedadExcepcion;
+      imgBaseSubPanel = (imgBaseSubPanel === modo && !variedadExcepcion) ? '' : modo;
+      if (modo === 'ia') {
+        imgBaseIaPreview = null;
+        if (!imgBaseIaPromptCustom || variedadExcepcion) {
+          imgBaseIaPrompt = _construirPromptDefaultB2B();
+          imgBaseIaPromptCustom = false;
+        }
+        renderModalImagenesBase();
+      } else if (modo === 'biblioteca') {
+        imgBaseBibScope = 'rubro';
+        await cargarBibliotecaLamdaModal();
+      } else {
+        renderModalImagenesBase();
+      }
+    }
+
+    function abrirSubPanelExcepcionPorClaveB2B(modo, claveBase) {
+      const ancla = imgBaseAnclas[0];
+      const v = ancla?.variedades?.find(x => x.clave_producto_base === claveBase) || null;
+      abrirSubPanelB2B(modo, v);
+    }
+
+    function seleccionarPresetIaB2B(presetId) {
+      imgBaseIaPreset = presetId;
+      if (!imgBaseIaPromptCustom) {
+        imgBaseIaPrompt = _construirPromptDefaultB2B();
+      }
+      renderModalImagenesBase();
+    }
+
+    async function generarPreviewIaB2B() {
+      if (imgBaseIaGenerating) return;
+      const dest = obtenerDestinoActualB2B();
+      if (!dest) return;
+      imgBaseIaGenerating = true;
+      renderModalImagenesBase();
+      try {
+        const promptInput = document.getElementById('ia-prompt-input')?.value || imgBaseIaPrompt;
+        imgBaseIaPrompt = promptInput;
+        const resp = await fetch('/api/produccion/nodos/admin/imagenes-base/generar-ia', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            familia_nombre: dest.familia_nombre,
+            articulo_principal: dest.articulo_principal,
+            nombre_variante: dest.esExcepcion ? dest.variedad.nombre_base_oficial : '',
+            preset_estilo: imgBaseIaPreset,
+            calidad: imgBaseIaCalidad,
+            prompt_personalizado: promptInput
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'Error generando previsualización');
+        imgBaseIaPreview = data;
+      } catch (err) {
+        Swal.fire('Error IA', err.message, 'error');
+      } finally {
+        imgBaseIaGenerating = false;
+        renderModalImagenesBase();
+      }
+    }
+
+    async function confirmarPreviewIaB2B(aplicarAlAncla = true) {
+      if (!imgBaseIaPreview?.preview_token) return;
+      const dest = obtenerDestinoActualB2B();
+      if (!dest) return;
+      try {
+        const resp = await fetch('/api/produccion/nodos/admin/imagenes-base/confirmar-ia', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            preview_token: imgBaseIaPreview.preview_token,
+            familia_id: dest.familia_id,
+            familia_nombre: dest.familia_nombre,
+            articulo_principal: dest.articulo_principal,
+            etiqueta: dest.esExcepcion ? dest.variedad.nombre_base_oficial : dest.articulo_principal,
+            tipo_ancla: dest.tipo_ancla,
+            ingrediente_id: dest.ingrediente_id,
+            clave_producto_base: dest.clave_producto_base,
+            claves_secundarias: dest.claves_secundarias,
+            articulo_sku: dest.articulo_sku,
+            titulo_referencia: dest.titulo_referencia,
+            aplicar_al_ancla: Boolean(aplicarAlAncla)
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar en Biblioteca');
+        imgBaseIaPreview = null;
+        imgBaseSubPanel = '';
+        imgBaseTargetExcepcion = null;
+        mostrarToast(aplicarAlAncla ? 'Foto IA guardada en Biblioteca y aplicada' : 'Foto IA guardada en Biblioteca LAMDA');
+        await cargarImagenesBase();
+      } catch (err) {
+        Swal.fire('Error', err.message, 'error');
+      }
+    }
+
+    async function asignarBibliotecaB2B(bibId) {
+      const dest = obtenerDestinoActualB2B();
+      if (!dest) return;
+      try {
+        const resp = await fetch('/api/produccion/nodos/admin/imagenes-base/asignar-biblioteca', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            biblioteca_imagen_id: Number(bibId),
+            tipo_ancla: dest.tipo_ancla,
+            familia_id: dest.familia_id,
+            articulo_principal: dest.articulo_principal,
+            ingrediente_id: dest.ingrediente_id,
+            clave_producto_base: dest.clave_producto_base,
+            claves_secundarias: dest.claves_secundarias,
+            articulo_sku: dest.articulo_sku,
+            titulo_referencia: dest.titulo_referencia
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo asignar la foto');
+        imgBaseSubPanel = '';
+        imgBaseTargetExcepcion = null;
+        mostrarToast('Foto asignada desde Biblioteca LAMDA');
+        await cargarImagenesBase();
+      } catch (err) {
+        Swal.fire('Error', err.message, 'error');
+      }
+    }
+
+    async function eliminarBibliotecaItemB2B(bibId) {
+      try {
+        const resp = await fetch(`/api/produccion/nodos/admin/imagenes-base/biblioteca/${Number(bibId)}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo eliminar');
+        mostrarToast('Imagen eliminada de Biblioteca LAMDA');
+        await cargarBibliotecaLamdaModal();
+        await cargarImagenesBase();
+      } catch (err) {
+        Swal.fire('Error', err.message, 'error');
+      }
+    }
+
+    function dispararSubidaDesdePcB2B(claveExcepcion = null, soloBiblioteca = false) {
       const inp = document.getElementById('input-img-base-file');
       if (!inp) return;
+      const ancla = imgBaseAnclas[0] || null;
+      const vEx = claveExcepcion && ancla ? ancla.variedades.find(x => x.clave_producto_base === claveExcepcion) : imgBaseTargetExcepcion;
       inp.value = '';
       inp.onchange = async () => {
         const file = inp.files && inp.files[0];
         if (!file) return;
         const fd = new FormData();
         fd.append('foto', file);
-        fd.append('tipo_ancla', tipoAncla);
-        if (ingId > 0) fd.append('ingrediente_id', String(ingId));
-        fd.append('clave_producto_base', claveBase);
-        if (skuCombo) fd.append('articulo_sku', skuCombo);
-        if (tituloRef) fd.append('titulo_referencia', tituloRef);
+        if (ancla?.familia_id) fd.append('familia_id', String(ancla.familia_id));
+        if (ancla?.familia_nombre) fd.append('familia_nombre', ancla.familia_nombre);
+        if (ancla?.articulo_principal) fd.append('articulo_principal', ancla.articulo_principal);
+
+        if (soloBiblioteca) {
+          fd.append('etiqueta', vEx ? vEx.nombre_base_oficial : (ancla?.articulo_principal || 'Imagen LAMDA'));
+          try {
+            const resp = await fetch('/api/produccion/nodos/admin/imagenes-base/biblioteca', { method: 'POST', body: fd });
+            const data = await resp.json();
+            if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar en biblioteca');
+            mostrarToast('Imagen agregada a Biblioteca LAMDA');
+            await cargarBibliotecaLamdaModal();
+          } catch (err) {
+            Swal.fire('Error', err.message, 'error');
+          }
+          return;
+        }
+
+        if (vEx) {
+          const tAncla = vEx.tipo_ancla_default || (vEx.ingrediente_id ? 'INGREDIENTE' : 'PRODUCTO_BASE');
+          fd.append('tipo_ancla', tAncla);
+          if (vEx.ingrediente_id) fd.append('ingrediente_id', String(vEx.ingrediente_id));
+          fd.append('clave_producto_base', vEx.clave_producto_base);
+          if (Array.isArray(vEx.claves_secundarias) && vEx.claves_secundarias.length > 0) {
+            fd.append('claves_secundarias', vEx.claves_secundarias.join(','));
+          }
+          if (vEx.sku_principal_combo) fd.append('articulo_sku', vEx.sku_principal_combo);
+          fd.append('titulo_referencia', vEx.nombre_base_oficial);
+        } else if (ancla) {
+          fd.append('tipo_ancla', 'ANCLA_PRINCIPAL');
+          fd.append('titulo_referencia', `${ancla.familia_nombre} › ${ancla.articulo_principal}`);
+        }
         try {
           const resp = await fetch('/api/produccion/nodos/admin/imagenes-base', { method: 'POST', body: fd });
           const data = await resp.json();
           if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo subir la imagen');
-          mostrarToast(`Foto base guardada (${data.presentaciones_heredadas || 1} presentaciones)`);
+          imgBaseTargetExcepcion = null;
+          mostrarToast('Imagen guardada en Biblioteca y aplicada');
           await cargarImagenesBase();
         } catch (err) {
           Swal.fire('Error', err.message, 'error');
@@ -1333,16 +1619,317 @@
       inp.click();
     }
 
-    async function quitarImagenBase(imagenId) {
+    async function quitarImagenBase(imagenId, clavesSecCsv = '') {
       try {
-        const resp = await fetch(`/api/produccion/nodos/admin/imagenes-base/${Number(imagenId)}`, { method: 'DELETE' });
+        const qs = clavesSecCsv ? `?claves_secundarias=${encodeURIComponent(clavesSecCsv)}` : '';
+        const resp = await fetch(`/api/produccion/nodos/admin/imagenes-base/${Number(imagenId)}${qs}`, { method: 'DELETE' });
         const data = await resp.json();
-        if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo eliminar');
-        mostrarToast('Imagen base eliminada');
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'No se pudo quitar');
+        mostrarToast('Asignación quitada (la imagen sigue en Biblioteca)');
         await cargarImagenesBase();
       } catch (err) {
         Swal.fire('Error', err.message, 'error');
       }
+    }
+
+    function renderSubPanelEstudioB2B(dest) {
+      if (!imgBaseSubPanel || !dest) return '';
+      if (imgBaseSubPanel === 'biblioteca') {
+        return `
+          <div class="img-base-panel" data-testid="panel-biblioteca-lamda">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+              <div>
+                <div style="font-size:0.86rem; font-weight:800; color:#bae6fd;">📚 Biblioteca Interna LAMDA</div>
+                <div style="font-size:0.73rem; color:#94a3b8;">Aplicando sobre: <strong style="color:#f8fafc;">${_escHtmlB2B(dest.label_destino)}</strong></div>
+              </div>
+              <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+                <button type="button" class="btn-ib-sec" onclick="dispararSubidaDesdePcB2B(null, true)">📤 Subir a Biblioteca</button>
+                <button type="button" class="btn-ib-sec" onclick="imgBaseSubPanel=''; renderModalImagenesBase();">✕</button>
+              </div>
+            </div>
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+              <button type="button" class="img-base-preset-pill ${imgBaseBibScope==='rubro'?'is-active':''}" onclick="imgBaseBibScope='rubro'; cargarBibliotecaLamdaModal();">Este rubro</button>
+              <button type="button" class="img-base-preset-pill ${imgBaseBibScope==='familia'?'is-active':''}" onclick="imgBaseBibScope='familia'; cargarBibliotecaLamdaModal();">Esta familia</button>
+              <button type="button" class="img-base-preset-pill ${imgBaseBibScope==='todas'?'is-active':''}" onclick="imgBaseBibScope='todas'; cargarBibliotecaLamdaModal();">Toda la biblioteca</button>
+              <input type="text" class="search-input" style="flex:1; min-width:160px; padding:0.35rem 0.65rem; font-size:0.78rem;"
+                value="${_escHtmlB2B(imgBaseBibSearch)}" placeholder="Filtrar biblioteca..."
+                oninput="imgBaseBibSearch=this.value; cargarBibliotecaLamdaModal();" />
+            </div>
+            ${imgBaseBibItems.length === 0 ? `
+              <div style="padding:1.25rem; text-align:center; border-radius:9px; border:1px dashed rgba(148,163,184,0.28); color:#94a3b8; font-size:0.8rem;">
+                Todavía no hay imágenes en esta vista de Biblioteca. Generá una con <strong>✨ Estudio IA</strong> o subí desde PC.
+              </div>
+            ` : `
+              <div class="img-base-lib-grid">
+                ${imgBaseBibItems.map(it => `
+                  <div class="img-base-lib-card" data-bib-id="${it.id}">
+                    <img src="${_escHtmlB2B(it.url)}" alt="${_escHtmlB2B(it.etiqueta)}" />
+                    <div style="font-size:0.76rem; font-weight:700; color:#f8fafc; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${_escHtmlB2B(it.etiqueta)}">${_escHtmlB2B(it.etiqueta)}</div>
+                    <div style="font-size:0.67rem; color:#94a3b8;">
+                      ${it.origen_tipo === 'IA_GEMINI' ? '✨ IA' : '📤 PC'}${it.usos_activos > 0 ? ` · En ${it.usos_activos} uso(s)` : ''}
+                    </div>
+                    <div style="display:flex; gap:0.35rem; margin-top:auto;">
+                      <button type="button" data-btn-usar-bib="${it.id}" class="btn-ib-cyan" style="flex:1; justify-content:center; padding:0.35rem 0.45rem; font-size:0.73rem;"
+                        onclick="asignarBibliotecaB2B(${it.id})">✓ Usar esta foto</button>
+                      <button type="button" class="btn-ib-sec" style="padding:0.35rem 0.45rem; color:#fca5a5;" title="Borrar de Biblioteca"
+                        onclick="eliminarBibliotecaItemB2B(${it.id})">🗑️</button>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            `}
+          </div>
+        `;
+      }
+
+      if (imgBaseSubPanel === 'ia') {
+        const presets = [
+          { id: 'cuenco_neutro', lbl: '🥣 Cuenco cerámico 45°' },
+          { id: 'granel_cenital', lbl: '🪨 A granel cenital' },
+          { id: 'fondo_blanco', lbl: '⬜ Fondo blanco limpio' }
+        ];
+        return `
+          <div class="img-base-panel" data-testid="panel-estudio-ia-lamda">
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+              <div>
+                <div style="font-size:0.86rem; font-weight:800; color:#f5d0fe;">✨ Estudio IA Gastronómico (Gemini)</div>
+                <div style="font-size:0.73rem; color:#94a3b8;">
+                  Destino: <strong style="color:#f8fafc;">${_escHtmlB2B(dest.label_destino)}</strong>
+                  ${dest.esExcepcion ? `<button type="button" class="btn-ib-sec" style="margin-left:0.4rem; padding:0.15rem 0.45rem; font-size:0.68rem;" onclick="imgBaseTargetExcepcion=null; imgBaseIaPrompt=_construirPromptDefaultB2B(); renderModalImagenesBase();">Cambiar a Rubro</button>` : ''}
+                </div>
+              </div>
+              <button type="button" class="btn-ib-sec" onclick="imgBaseSubPanel=''; renderModalImagenesBase();">✕</button>
+            </div>
+
+            <div>
+              <div style="font-size:0.72rem; font-weight:700; color:#cbd5e1; margin-bottom:0.35rem;">Estética visual (sin envases ni marcas):</div>
+              <div class="img-base-preset-row">
+                ${presets.map(p => `
+                  <button type="button" class="img-base-preset-pill ${imgBaseIaPreset===p.id?'is-active':''}" onclick="seleccionarPresetIaB2B('${p.id}')">${p.lbl}</button>
+                `).join('')}
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+              <span style="font-size:0.72rem; font-weight:700; color:#cbd5e1;">Modelo / Calidad:</span>
+              <select class="eje-select" style="min-width:220px; padding:0.35rem 0.6rem; font-size:0.78rem;"
+                onchange="imgBaseIaCalidad = this.value;">
+                <option value="estandar" ${imgBaseIaCalidad==='estandar'?'selected':''}>⚡ Estándar — Nano Banana 2 (Recomendado)</option>
+                <option value="pro" ${imgBaseIaCalidad==='pro'?'selected':''}>💎 Pro — gemini-3-pro-image (Alta precisión)</option>
+              </select>
+            </div>
+
+            <div>
+              <label style="display:block; font-size:0.72rem; font-weight:700; color:#cbd5e1; margin-bottom:0.25rem;">Prompt editable:</label>
+              <textarea id="ia-prompt-input" rows="2" class="search-input" style="font-size:0.78rem; padding:0.45rem 0.65rem; resize:vertical;"
+                oninput="imgBaseIaPrompt = this.value; imgBaseIaPromptCustom = true;">${_escHtmlB2B(imgBaseIaPrompt)}</textarea>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+              <button type="button" id="btn-ia-generar-preview" class="btn-ib-primary" ${imgBaseIaGenerating ? 'disabled' : ''} onclick="generarPreviewIaB2B()">
+                ${imgBaseIaGenerating ? '⏳ Generando imagen en Gemini...' : '✨ Generar previsualización'}
+              </button>
+            </div>
+
+            ${imgBaseIaPreview ? `
+              <div data-testid="ia-preview-card" style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap; padding:0.75rem; border-radius:10px; background:rgba(15,23,42,0.85); border:1px solid rgba(52,211,153,0.4);">
+                <img src="${imgBaseIaPreview.preview_data_url}" alt="Previsualización IA" style="width:130px; height:130px; border-radius:10px; object-fit:cover; border:1px solid rgba(255,255,255,0.2);" />
+                <div style="flex:1; min-width:200px; display:flex; flex-direction:column; gap:0.5rem;">
+                  <div style="font-size:0.8rem; font-weight:800; color:#34d399;">✓ Previsualización lista · ${_escHtmlB2B(imgBaseIaPreview.modelo_usado)}</div>
+                  <div style="font-size:0.72rem; color:#94a3b8;">Verificá que no tenga envases ni texto antes de guardarla en la Biblioteca del proyecto.</div>
+                  <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                    <button type="button" id="btn-ia-confirmar-aplicar" class="btn-ib-cyan" style="border-color:rgba(52,211,153,0.55); color:#a7f3d0; background:rgba(16,185,129,0.22);"
+                      onclick="confirmarPreviewIaB2B(true)">✅ Guardar en Biblioteca y Aplicar</button>
+                    <button type="button" class="btn-ib-sec" onclick="confirmarPreviewIaB2B(false)">📥 Solo Biblioteca</button>
+                    <button type="button" class="btn-ib-sec" onclick="generarPreviewIaB2B()">🔄 Regenerar</button>
+                  </div>
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }
+      return '';
+    }
+
+    function renderModalImagenesBase() {
+      const body = document.getElementById('img-base-lista-body');
+      const resEl = document.getElementById('img-base-resumen');
+      const titleEl = document.getElementById('img-base-modal-title');
+      const subEl = document.getElementById('img-base-modal-subtitle');
+      if (!body) return;
+
+      if (imgBaseFocal) {
+        if (titleEl) titleEl.textContent = `🖼️ ${imgBaseFocal.familiaNombre || 'Rubro'} › ${imgBaseFocal.articuloPrincipal}`;
+        if (subEl) subEl.textContent = 'Foto base del rubro por defecto y excepciones visuales opcionales filtradas por ID exacto.';
+
+        const ancla = imgBaseAnclas[0] || null;
+        if (!ancla) {
+          body.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+              <button type="button" class="btn-ib-sec" onclick="volverAGlobalImagenesBase()">← Ver todos los rubros</button>
+            </div>
+            <div style="text-align:center; padding:2rem; color:#94a3b8;">No se encontraron artículos activos para este rubro.</div>
+          `;
+          return;
+        }
+
+        const dest = obtenerDestinoActualB2B();
+        const imgRubro = ancla.imagen_ancla;
+        body.innerHTML = `
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:0.6rem; flex-wrap:wrap;">
+            <button type="button" class="btn-ib-sec" onclick="volverAGlobalImagenesBase()">← Ver todos los rubros</button>
+            <span style="font-size:0.74rem; color:#94a3b8;">Filtro estricto por Familia #${ancla.familia_id} · ${_escHtmlB2B(ancla.articulo_principal)}</span>
+          </div>
+
+          <div class="img-base-hero-card" data-testid="hero-ancla-principal" data-ancla-key="${_escHtmlB2B(ancla.ancla_key)}">
+            <div class="img-base-hero-top">
+              ${imgRubro
+                ? `<img class="img-base-hero-thumb" src="${_escHtmlB2B(imgRubro.url)}" alt="${_escHtmlB2B(ancla.articulo_principal)}" />`
+                : `<div class="img-base-hero-ph">🖼️</div>`}
+              <div style="flex:1; min-width:220px;">
+                <div style="font-size:0.72rem; font-weight:800; color:#c084fc; text-transform:uppercase; letter-spacing:0.03em;">
+                  Foto Base del Rubro (${_escHtmlB2B(ancla.familia_nombre)})
+                </div>
+                <div style="font-size:1.12rem; font-weight:800; color:#f8fafc; margin:0.15rem 0;">${_escHtmlB2B(ancla.articulo_principal)}</div>
+                <div style="font-size:0.78rem; color:#34d399; font-weight:700;">
+                  Cubre ${ancla.total_variedades} variedad${ancla.total_variedades===1?'':'es'} · ${ancla.total_presentaciones} presentacion${ancla.total_presentaciones===1?'':'es'}
+                  ${ancla.en_nodos_count > 0 ? `<span style="color:#38bdf8;"> (${ancla.en_nodos_count} en Nodos)</span>` : ''}
+                </div>
+                ${imgRubro
+                  ? `<div style="font-size:0.71rem; color:#cbd5e1; margin-top:0.2rem;">✓ Foto principal activa para todo el rubro ${ancla.excepciones_count > 0 ? `(${ancla.excepciones_count} excepción puntual)` : ''}</div>`
+                  : `<div style="font-size:0.71rem; color:#94a3b8; margin-top:0.2rem;">Cargá una única foto aquí para cubrir todas las variedades naturales del rubro.</div>`}
+              </div>
+              ${imgRubro ? `
+                <button type="button" class="btn-ib-sec" style="color:#fca5a5; border-color:rgba(239,68,68,0.35);"
+                  onclick="quitarImagenBase(${Number(imgRubro.id)})">🗑️ Quitar del rubro</button>
+              ` : ''}
+            </div>
+
+            <div class="img-base-actions-bar">
+              <button type="button" id="btn-tab-biblioteca-lamda" class="btn-ib-cyan" onclick="abrirSubPanelB2B('biblioteca', null)">
+                📚 Elegir de Biblioteca LAMDA
+              </button>
+              <button type="button" id="btn-tab-estudio-ia" class="btn-ib-primary" onclick="abrirSubPanelB2B('ia', null)">
+                ✨ Generar foto con IA
+              </button>
+              <button type="button" data-btn-subir-pc-ancla="true" class="btn-ib-sec" onclick="dispararSubidaDesdePcB2B(null, false)">
+                📤 Subir desde mi PC
+              </button>
+            </div>
+          </div>
+
+          ${renderSubPanelEstudioB2B(dest)}
+
+          <details class="img-base-excep-details" data-testid="details-excepciones-visuales">
+            <summary>
+              <span>🎨 Excepciones visuales opcionales (${ancla.variedades.length} variedades${ancla.excepciones_count > 0 ? ` · ${ancla.excepciones_count} con foto distinta` : ''})</span>
+              <span style="font-size:0.74rem; color:#94a3b8;">Tocá para diferenciar solo variantes visualmente distintas ▾</span>
+            </summary>
+            <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.55rem;" data-testid="lista-excepciones-variedades">
+              ${ancla.variedades.map(v => {
+                const skusTxt = v.presentaciones.slice(0, 5).map(p => `${p.sku_nodo} (${p.presentacion_corta})`).join(' · ');
+                const secCsv = (v.claves_secundarias || []).join(',');
+                const imgEff = v.imagen_efectiva;
+                return `
+                  <div class="img-base-row" data-variedad-familia="${Number(v.familia_id || 0)}" data-variedad-clave="${_escHtmlB2B(v.clave_producto_base)}">
+                    ${imgEff
+                      ? `<img class="img-base-thumb" src="${_escHtmlB2B(imgEff.url)}" alt="${_escHtmlB2B(v.nombre_base_oficial)}" style="width:48px; height:48px;" />`
+                      : `<div class="img-base-placeholder" style="width:48px; height:48px; font-size:1rem;">🖼️</div>`}
+                    <div style="flex:1; min-width:200px;">
+                      <div style="display:flex; align-items:center; gap:0.45rem; flex-wrap:wrap;">
+                        <strong style="font-size:0.86rem; color:#f8fafc;">${_escHtmlB2B(v.nombre_base_oficial)}</strong>
+                        ${v.tiene_excepcion_propia
+                          ? `<span style="font-size:0.68rem; padding:1px 7px; border-radius:999px; background:rgba(192,132,252,0.2); border:1px solid rgba(192,132,252,0.45); color:#e9d5ff; font-weight:700;">🎨 Excepción propia</span>`
+                          : (imgEff
+                            ? `<span style="font-size:0.68rem; padding:1px 7px; border-radius:999px; background:rgba(16,185,129,0.16); border:1px solid rgba(16,185,129,0.35); color:#6ee7b7; font-weight:700;">✓ Hereda de ${_escHtmlB2B(ancla.articulo_principal)}</span>`
+                            : `<span style="font-size:0.68rem; color:#64748b;">Sin foto</span>`)}
+                      </div>
+                      <div style="font-size:0.69rem; color:#94a3b8; font-family:monospace; margin-top:2px;">
+                        ${_escHtmlB2B(skusTxt)}${v.presentaciones.length > 5 ? ' ...' : ''} (${v.presentaciones.length} pres.)
+                      </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap; flex-shrink:0;">
+                      <button type="button" class="btn-ib-cyan" style="padding:0.35rem 0.65rem; font-size:0.73rem;"
+                        data-btn-excepcion-bib="${_escHtmlB2B(v.clave_producto_base)}"
+                        onclick="abrirSubPanelExcepcionPorClaveB2B('biblioteca', '${_escHtmlB2B(v.clave_producto_base)}')">📚 Biblioteca</button>
+                      <button type="button" class="btn-ib-primary" style="padding:0.35rem 0.65rem; font-size:0.73rem;"
+                        data-btn-excepcion-ia="${_escHtmlB2B(v.clave_producto_base)}"
+                        onclick="abrirSubPanelExcepcionPorClaveB2B('ia', '${_escHtmlB2B(v.clave_producto_base)}')">✨ IA</button>
+                      <button type="button" class="btn-ib-sec" style="padding:0.35rem 0.6rem; font-size:0.72rem;"
+                        onclick="dispararSubidaDesdePcB2B('${_escHtmlB2B(v.clave_producto_base)}', false)">📤 PC</button>
+                      ${v.tiene_excepcion_propia && v.imagen_propia ? `
+                        <button type="button" class="btn-ib-sec" style="padding:0.35rem 0.6rem; font-size:0.72rem; color:#fde68a; border-color:rgba(245,158,11,0.4);"
+                          data-btn-volver-heredar="${_escHtmlB2B(v.clave_producto_base)}"
+                          onclick="quitarImagenBase(${Number(v.imagen_propia.id)}, '${_escHtmlB2B(secCsv)}')">↩️ Volver a heredar</button>
+                      ` : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </details>
+        `;
+        return;
+      }
+
+      if (titleEl) titleEl.textContent = '🖼️ Imágenes Base Elementales LAMDA';
+      if (subEl) subEl.textContent = 'Catálogo agrupado por Familias y Rubros (~45 anclas principales). Tocá un rubro para asignar su foto base, usar la Biblioteca o generar con IA.';
+
+      const terms = _normTxtB2B(imgBaseFiltro).split(/\s+/).filter(Boolean);
+      const filtradas = imgBaseAnclas.filter(a => {
+        if (terms.length === 0) return true;
+        const bolsa = _normTxtB2B([
+          a.familia_nombre, a.articulo_principal,
+          ...(a.variedades || []).map(v => `${v.nombre_base_oficial} ${v.presentaciones.map(p => p.sku_nodo).join(' ')}`)
+        ].filter(Boolean).join(' '));
+        return terms.every(t => bolsa.includes(t));
+      });
+
+      const conFoto = filtradas.filter(a => Boolean(a.imagen_ancla)).length;
+      if (resEl) resEl.textContent = `${filtradas.length} rubros · ${conFoto} con foto base`;
+      if (filtradas.length === 0) {
+        body.innerHTML = '<div style="text-align:center; padding:2rem; color:#64748b;">No se encontraron rubros con ese filtro.</div>';
+        return;
+      }
+
+      const famsMap = new Map();
+      for (const a of filtradas) {
+        const fk = `${a.familia_id || 0}__${a.familia_nombre}`;
+        if (!famsMap.has(fk)) famsMap.set(fk, { familia_nombre: a.familia_nombre, rubros: [] });
+        famsMap.get(fk).rubros.push(a);
+      }
+
+      body.innerHTML = Array.from(famsMap.values()).map(f => `
+        <div class="img-base-fam-acc">
+          <div class="img-base-fam-head">
+            <span>🌿 ${_escHtmlB2B(f.familia_nombre)}</span>
+            <span style="font-size:0.73rem; color:#94a3b8;">${f.rubros.length} rubro${f.rubros.length===1?'':'s'}</span>
+          </div>
+          <div style="padding:0.6rem; display:flex; flex-direction:column; gap:0.5rem;">
+            ${f.rubros.map(a => {
+              const img = a.imagen_efectiva;
+              return `
+                <div class="img-base-row" data-img-base-ancla="${_escHtmlB2B(a.ancla_key)}" style="padding:0.55rem 0.75rem;">
+                  ${img ? `<img class="img-base-thumb" src="${_escHtmlB2B(img.url)}" alt="${_escHtmlB2B(a.articulo_principal)}" />` : `<div class="img-base-placeholder">🖼️</div>`}
+                  <div style="flex:1; min-width:200px;">
+                    <div style="font-size:0.92rem; font-weight:800; color:#f8fafc;">${_escHtmlB2B(a.articulo_principal)}</div>
+                    <div style="font-size:0.73rem; color:#94a3b8;">
+                      Cubre <strong style="color:#34d399;">${a.total_variedades} variedad${a.total_variedades===1?'':'es'}</strong> · ${a.total_presentaciones} presentaciones
+                      ${a.excepciones_count > 0 ? ` · <span style="color:#e9d5ff;">${a.excepciones_count} excepción(es)</span>` : ''}
+                      ${a.en_nodos_count > 0 ? ` · <span style="color:#38bdf8;">${a.en_nodos_count} en Nodos</span>` : ''}
+                    </div>
+                  </div>
+                  <button type="button" class="btn-ib-cyan"
+                    onclick="abrirRubroFocalImagenesBase(${Number(a.familia_id || 0)}, decodeURIComponent('${encodeURIComponent(a.familia_nombre || '')}'), decodeURIComponent('${encodeURIComponent(a.articulo_principal || '')}'))">
+                    🎨 Gestionar foto base →
+                  </button>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `).join('');
     }
   </script>
 </body>

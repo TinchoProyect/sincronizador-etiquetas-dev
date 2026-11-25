@@ -1060,15 +1060,144 @@ router.get('/admin/imagenes-base', bloquearEnDominioPublicoTienda, async (req, r
     try {
         await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
         const soloCatalogoNodos = String(req.query.solo_nodos || '').toLowerCase() === 'true';
+        const incluirInternas = String(req.query.incluir_internas || '').toLowerCase() === 'true';
         const busqueda = String(req.query.q || '').trim();
+        const familiaId = req.query.familia_id ? Number(req.query.familia_id) : null;
+        const articuloPrincipal = String(req.query.articulo_principal || '').trim();
         const data = await lamdaImagenesBaseService.listarProductosBaseConImagenes(dbProduccion, {
             soloCatalogoNodos,
-            busqueda
+            busqueda,
+            familiaId,
+            articuloPrincipal,
+            incluirInternas
         });
         res.json({ ok: true, ...data });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error listando imágenes base LAMDA:', error);
         res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
+router.get('/admin/imagenes-base/biblioteca', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const familiaId = req.query.familia_id ? Number(req.query.familia_id) : null;
+        const articuloPrincipal = String(req.query.articulo_principal || '').trim();
+        const busqueda = String(req.query.q || '').trim();
+        const data = await lamdaImagenesBaseService.listarBibliotecaImagenesLamda(dbProduccion, {
+            familiaId,
+            articuloPrincipal,
+            busqueda
+        });
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error listando biblioteca de imágenes LAMDA:', error);
+        res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/admin/imagenes-base/biblioteca', bloquearEnDominioPublicoTienda, middlewareSubidaFotoOpcional, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        if (!req.file || !req.file.buffer) {
+            return res.status(400).json({ ok: false, error: 'Debés adjuntar una imagen.' });
+        }
+        const body = req.body || {};
+        const item = await lamdaImagenesBaseService.guardarEnBibliotecaLamda(dbProduccion, {
+            familia_id: body.familia_id || null,
+            familia_nombre: body.familia_nombre || null,
+            articulo_principal: body.articulo_principal || null,
+            etiqueta: body.etiqueta || body.titulo_referencia || body.articulo_principal || 'Imagen LAMDA',
+            buffer: req.file.buffer,
+            origen_tipo: 'UPLOAD_PC'
+        });
+        res.json({ ok: true, biblioteca_item: item });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error subiendo imagen a biblioteca LAMDA:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.delete('/admin/imagenes-base/biblioteca/:id', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const eliminada = await lamdaImagenesBaseService.eliminarImagenBibliotecaLamda(dbProduccion, req.params.id);
+        res.json({ ok: true, eliminada });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error eliminando imagen de biblioteca LAMDA:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/admin/imagenes-base/asignar-biblioteca', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const body = req.body || {};
+        const clavesSec = Array.isArray(body.claves_secundarias)
+            ? body.claves_secundarias
+            : (body.claves_secundarias ? String(body.claves_secundarias).split(',').map(s => s.trim()).filter(Boolean) : []);
+        const resultado = await lamdaImagenesBaseService.asignarImagenBibliotecaAAncla(dbProduccion, {
+            biblioteca_imagen_id: body.biblioteca_imagen_id,
+            tipo_ancla: body.tipo_ancla || 'ANCLA_PRINCIPAL',
+            familia_id: body.familia_id || null,
+            articulo_principal: body.articulo_principal || null,
+            ingrediente_id: body.ingrediente_id || null,
+            clave_producto_base: body.clave_producto_base || null,
+            claves_secundarias: clavesSec,
+            articulo_sku: body.articulo_sku || null,
+            titulo_referencia: body.titulo_referencia || null
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error asignando imagen de biblioteca LAMDA:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/admin/imagenes-base/generar-ia', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const body = req.body || {};
+        const preview = await lamdaImagenesBaseService.generarPreviewImagenBaseIA({
+            familia_nombre: body.familia_nombre || '',
+            articulo_principal: body.articulo_principal || '',
+            nombre_variante: body.nombre_variante || '',
+            preset_estilo: body.preset_estilo || 'cuenco_neutro',
+            calidad: body.calidad || 'estandar',
+            prompt_personalizado: body.prompt_personalizado || ''
+        });
+        res.json({ ok: true, ...preview });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error generando imagen base IA:', error);
+        res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/admin/imagenes-base/confirmar-ia', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const body = req.body || {};
+        const clavesSec = Array.isArray(body.claves_secundarias)
+            ? body.claves_secundarias
+            : (body.claves_secundarias ? String(body.claves_secundarias).split(',').map(s => s.trim()).filter(Boolean) : []);
+        const resultado = await lamdaImagenesBaseService.confirmarPreviewImagenBaseIA(dbProduccion, {
+            preview_token: body.preview_token,
+            familia_id: body.familia_id || null,
+            familia_nombre: body.familia_nombre || null,
+            articulo_principal: body.articulo_principal || null,
+            etiqueta: body.etiqueta || body.titulo_referencia || null,
+            tipo_ancla: body.tipo_ancla || 'ANCLA_PRINCIPAL',
+            ingrediente_id: body.ingrediente_id || null,
+            clave_producto_base: body.clave_producto_base || null,
+            claves_secundarias: clavesSec,
+            articulo_sku: body.articulo_sku || null,
+            titulo_referencia: body.titulo_referencia || null,
+            aplicar_al_ancla: body.aplicar_al_ancla !== false
+        });
+        res.json({ ok: true, ...resultado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error confirmando imagen base IA:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -1079,10 +1208,17 @@ router.post('/admin/imagenes-base', bloquearEnDominioPublicoTienda, middlewareSu
             return res.status(400).json({ ok: false, error: 'Debés adjuntar una imagen.' });
         }
         const body = req.body || {};
+        const clavesSec = body.claves_secundarias
+            ? String(body.claves_secundarias).split(',').map(s => s.trim()).filter(Boolean)
+            : [];
         const resultado = await lamdaImagenesBaseService.guardarImagenBaseLamda(dbProduccion, {
-            tipo_ancla: body.tipo_ancla,
+            tipo_ancla: body.tipo_ancla || 'ANCLA_PRINCIPAL',
+            familia_id: body.familia_id || null,
+            familia_nombre: body.familia_nombre || null,
+            articulo_principal: body.articulo_principal || null,
             ingrediente_id: body.ingrediente_id || null,
             clave_producto_base: body.clave_producto_base || null,
+            claves_secundarias: clavesSec,
             articulo_sku: body.articulo_sku || null,
             titulo_referencia: body.titulo_referencia || null,
             buffer: req.file.buffer
@@ -1097,7 +1233,13 @@ router.post('/admin/imagenes-base', bloquearEnDominioPublicoTienda, middlewareSu
 router.delete('/admin/imagenes-base/:id', bloquearEnDominioPublicoTienda, async (req, res) => {
     try {
         await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
-        const eliminada = await lamdaImagenesBaseService.eliminarImagenBaseLamda(dbProduccion, req.params.id);
+        const rawSec = req.query.claves_secundarias || (req.body && req.body.claves_secundarias) || '';
+        const clavesSec = Array.isArray(rawSec)
+            ? rawSec
+            : String(rawSec).split(',').map(s => s.trim()).filter(Boolean);
+        const eliminada = await lamdaImagenesBaseService.eliminarImagenBaseLamda(dbProduccion, req.params.id, {
+            claves_secundarias: clavesSec
+        });
         res.json({ ok: true, eliminada });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error eliminando imagen base LAMDA:', error);

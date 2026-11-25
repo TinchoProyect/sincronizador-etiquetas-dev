@@ -94,7 +94,8 @@ function leerLedgerDisco() {
             CUENTAS_BANCARIAS: { nombre: 'Cuentas Bancarias y Conciliación', tokens: 0, costoUsd: 0, llamadas: 0 },
             PRODUCCION_LOTES: { nombre: 'Producción / Recepción de Lotes', tokens: 0, costoUsd: 0, llamadas: 0 },
             COMERCIAL_CRM: { nombre: 'Asistente Comercial / CRM', tokens: 0, costoUsd: 0, llamadas: 0 },
-            AUDIOS: { nombre: 'Transcripción de Audios', tokens: 0, costoUsd: 0, llamadas: 0 }
+            AUDIOS: { nombre: 'Transcripción de Audios', tokens: 0, costoUsd: 0, llamadas: 0 },
+            IMAGENES_BASE_IA: { nombre: 'Estudio IA Imágenes Base', tokens: 0, costoUsd: 0, llamadas: 0 }
         },
         historialReciente: []
     };

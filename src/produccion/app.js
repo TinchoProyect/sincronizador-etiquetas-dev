@@ -57,7 +57,8 @@ app.use((req, res, next) => {
         !pLower.endsWith('_tmp.mp4') &&
         (
             /^\/media\/nodos\/\d+\/(?:\d+|bienvenida)\/[a-z0-9_-]+\.(?:webp|mp4)$/i.test(p) ||
-            /^\/media\/nodos\/catalogo-base\/(?:ingrediente|producto_base|articulo_sku)\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp$/i.test(p) ||
+            /^\/media\/nodos\/catalogo-base\/(?:ancla_principal|ingrediente|producto_base|articulo_sku)\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp$/i.test(p) ||
+            /^\/media\/nodos\/biblioteca-lamda\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp$/i.test(p) ||
             /^\/media\/nodos\/grupos\/\d+\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp$/i.test(p)
         );
 
@@ -391,7 +392,8 @@ app.use('/media/nodos', (req, res, next) => {
     const subLower = subPath.toLowerCase();
     const esRutaMediaValida =
         /^\/\d+\/(?:\d+|bienvenida)\/[a-z0-9_-]+\.(?:webp|mp4)$/i.test(subPath) ||
-        /^\/catalogo-base\/(?:ingrediente|producto_base|articulo_sku)\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp$/i.test(subPath) ||
+        /^\/catalogo-base\/(?:ancla_principal|ingrediente|producto_base|articulo_sku)\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp$/i.test(subPath) ||
+        /^\/biblioteca-lamda\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp$/i.test(subPath) ||
         /^\/grupos\/\d+\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp$/i.test(subPath);
     if (subLower.endsWith('_orig.webp') || subLower.endsWith('_tmp.mp4') || !esRutaMediaValida) {
         return res.status(403).json({ ok: false, error: 'Acceso restringido al recurso multimedia.' });

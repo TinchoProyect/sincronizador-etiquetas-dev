@@ -4839,7 +4839,43 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             CREATE UNIQUE INDEX IF NOT EXISTS unq_nodos_grupos_vidriera_nodo_clave
                 ON public.nodos_grupos_vidriera (nodo_id, clave_producto_base);
 
+            ALTER TABLE public.lamda_imagenes_base
+                ADD COLUMN IF NOT EXISTS familia_id INTEGER,
+                ADD COLUMN IF NOT EXISTS articulo_principal_norm VARCHAR(160),
+                ADD COLUMN IF NOT EXISTS biblioteca_imagen_id INTEGER;
+
+            CREATE TABLE IF NOT EXISTS public.lamda_biblioteca_imagenes (
+                id SERIAL PRIMARY KEY,
+                familia_id INTEGER REFERENCES public.bunker_familias(id) ON DELETE SET NULL,
+                familia_slug VARCHAR(80) NOT NULL DEFAULT 'general',
+                articulo_principal_norm VARCHAR(160),
+                etiqueta VARCHAR(180) NOT NULL,
+                foto_id VARCHAR(64) NOT NULL,
+                url VARCHAR(255) NOT NULL,
+                url_original VARCHAR(255),
+                width INTEGER,
+                height INTEGER,
+                bytes INTEGER,
+                origen_tipo VARCHAR(24) NOT NULL DEFAULT 'IA_GEMINI',
+                modelo_ia VARCHAR(80),
+                preset_estilo VARCHAR(40),
+                prompt_usado TEXT,
+                activo BOOLEAN NOT NULL DEFAULT true,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_lamda_biblioteca_fam_art
+                ON public.lamda_biblioteca_imagenes (familia_id, articulo_principal_norm)
+                WHERE activo = true;
+
+            CREATE UNIQUE INDEX IF NOT EXISTS unq_lamda_img_base_ancla_principal_activo
+                ON public.lamda_imagenes_base (familia_id, articulo_principal_norm)
+                WHERE activo = true AND tipo_ancla = 'ANCLA_PRINCIPAL' AND familia_id IS NOT NULL AND articulo_principal_norm IS NOT NULL;
+
             DO $$
+            DECLARE
+                v_chk_def TEXT;
             BEGIN
                 IF NOT EXISTS (
                     SELECT 1 FROM pg_constraint
@@ -4851,14 +4887,52 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                         FOREIGN KEY (ingrediente_id) REFERENCES public.ingredientes(id) ON DELETE CASCADE;
                 END IF;
 
+                SELECT pg_get_constraintdef(oid) INTO v_chk_def
+                FROM pg_constraint
+                WHERE conname = 'lamda_imagenes_base_tipo_ancla_check'
+                  AND conrelid = 'public.lamda_imagenes_base'::regclass
+                LIMIT 1;
+
+                IF v_chk_def IS NULL THEN
+                    ALTER TABLE public.lamda_imagenes_base
+                        ADD CONSTRAINT lamda_imagenes_base_tipo_ancla_check
+                        CHECK (tipo_ancla IN ('ANCLA_PRINCIPAL', 'INGREDIENTE', 'PRODUCTO_BASE', 'ARTICULO_SKU'));
+                ELSIF v_chk_def NOT LIKE '%ANCLA_PRINCIPAL%' THEN
+                    ALTER TABLE public.lamda_imagenes_base
+                        DROP CONSTRAINT lamda_imagenes_base_tipo_ancla_check;
+                    ALTER TABLE public.lamda_imagenes_base
+                        ADD CONSTRAINT lamda_imagenes_base_tipo_ancla_check
+                        CHECK (tipo_ancla IN ('ANCLA_PRINCIPAL', 'INGREDIENTE', 'PRODUCTO_BASE', 'ARTICULO_SKU'));
+                END IF;
+
                 IF NOT EXISTS (
                     SELECT 1 FROM pg_constraint
-                    WHERE conname = 'lamda_imagenes_base_tipo_ancla_check'
+                    WHERE conname = 'lamda_imagenes_base_familia_id_fkey'
                       AND conrelid = 'public.lamda_imagenes_base'::regclass
                 ) THEN
                     ALTER TABLE public.lamda_imagenes_base
-                        ADD CONSTRAINT lamda_imagenes_base_tipo_ancla_check
-                        CHECK (tipo_ancla IN ('INGREDIENTE', 'PRODUCTO_BASE', 'ARTICULO_SKU'));
+                        ADD CONSTRAINT lamda_imagenes_base_familia_id_fkey
+                        FOREIGN KEY (familia_id) REFERENCES public.bunker_familias(id) ON DELETE CASCADE;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'lamda_imagenes_base_biblioteca_id_fkey'
+                      AND conrelid = 'public.lamda_imagenes_base'::regclass
+                ) THEN
+                    ALTER TABLE public.lamda_imagenes_base
+                        ADD CONSTRAINT lamda_imagenes_base_biblioteca_id_fkey
+                        FOREIGN KEY (biblioteca_imagen_id) REFERENCES public.lamda_biblioteca_imagenes(id) ON DELETE SET NULL;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'lamda_biblioteca_imagenes_familia_id_fkey'
+                      AND conrelid = 'public.lamda_biblioteca_imagenes'::regclass
+                ) THEN
+                    ALTER TABLE public.lamda_biblioteca_imagenes
+                        ADD CONSTRAINT lamda_biblioteca_imagenes_familia_id_fkey
+                        FOREIGN KEY (familia_id) REFERENCES public.bunker_familias(id) ON DELETE SET NULL;
                 END IF;
 
                 IF NOT EXISTS (
@@ -7131,7 +7205,7 @@ async function obtenerEstadoCompletoNodos() {
             jer
         );
         const imagenBaseLamda = lamdaImagenesBaseService.resolverImagenBaseLamdaParaArticulo(
-            { ...c, clave_producto_base: claveProductoBase },
+            { ...c, jerarquia_b2b: jer, clave_producto_base: claveProductoBase },
             mapaImagenesBase
         );
         const baseObj = {
@@ -10450,7 +10524,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 if (u.toLowerCase().includes('_orig.webp')) return false;
                 if (/^\/media\/nodos\/\d+\/\d+\/[a-z0-9_-]+\.webp(\?.*)?$/i.test(u)) return true;
                 if (/^\/media\/nodos\/grupos\/\d+\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp(\?.*)?$/i.test(u)) return true;
-                if (permitirRutasCatalogoBase && /^\/media\/nodos\/catalogo-base\/(?:ingrediente|producto_base|articulo_sku)\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp(\?.*)?$/i.test(u)) return true;
+                if (permitirRutasCatalogoBase && /^\/media\/nodos\/(?:catalogo-base\/(?:ancla_principal|ingrediente|producto_base|articulo_sku)|biblioteca-lamda)\/[a-z0-9_-]+\/[a-z0-9_-]+\.webp(\?.*)?$/i.test(u)) return true;
                 if (permitirRutasCatalogoBase && /^\/(?:media\/nodos|img)\/[a-z0-9/_.-]+\.(?:webp|png|jpe?g)(\?.*)?$/i.test(u)) return true;
                 return false;
             })
@@ -10498,7 +10572,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             const claveProductoBase = jerarquiaBunkerHelper.construirClaveProductoBase({ ...o, es_combo: esComboEfectivo }, jerarquiaB2B);
             const grupoCfg = gruposVidrieraMap.get(claveProductoBase) || null;
             const imagenBaseLamda = lamdaImagenesBaseService.resolverImagenBaseLamdaParaArticulo(
-                { ...o, clave_producto_base: claveProductoBase },
+                { ...o, jerarquia_b2b: jerarquiaB2B, clave_producto_base: claveProductoBase },
                 mapaImagenesBase
             );
 
