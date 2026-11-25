@@ -2514,17 +2514,28 @@
       background: var(--surface-warm);
     }
     .tienda-fam-body {
-      padding: 10px 12px 12px;
+      padding: 8px 10px 10px;
       border-top: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
+    }
+    @media (min-width: 720px) {
+      .tienda-fam-body {
+        padding: 10px 12px 12px;
+        gap: 10px;
+      }
     }
     .tienda-subrama-acc {
       border: 1px solid var(--border);
       border-radius: 12px;
       background: #fffdfb;
       overflow: hidden;
+    }
+    .tienda-subrama-acc.has-rubro-photo {
+      border-color: var(--brand-border);
+      background: #ffffff;
+      box-shadow: 0 2px 8px rgba(62, 37, 25, 0.04);
     }
     .tienda-subrama-head {
       width: 100%;
@@ -2542,26 +2553,73 @@
       font-weight: 800;
       color: var(--brand-dark);
     }
+    .tienda-subrama-head.has-rubro-photo {
+      padding: 9px 11px;
+      gap: 10px;
+      background: linear-gradient(135deg, var(--surface-warm) 0%, #ffffff 100%);
+      user-select: none;
+    }
+    .tienda-rubro-thumb-btn {
+      position: relative;
+      padding: 0;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      border-radius: 11px;
+      line-height: 0;
+    }
+    .tienda-rubro-thumb {
+      width: 56px;
+      height: 56px;
+      border-radius: 11px;
+      object-fit: cover;
+      border: 1px solid var(--border);
+      background: var(--surface-warm);
+      display: block;
+    }
+    @media (min-width: 720px) {
+      .tienda-rubro-thumb {
+        width: 64px;
+        height: 64px;
+      }
+    }
+    .tienda-rubro-zoom-badge {
+      position: absolute;
+      bottom: 3px;
+      right: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.72);
+      color: #ffffff;
+      font-size: 0.6rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
     .tienda-subrama-body {
-      padding: 8px;
+      padding: 6px 8px 8px;
       border-top: 1px dashed var(--border);
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
     .tienda-prod-list {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 7px;
     }
     .tienda-prod-list.is-cuadricula {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(162px, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
     }
     @media (min-width: 720px) {
       .tienda-prod-list.is-cuadricula {
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+        gap: 10px;
       }
     }
     .tienda-prod-acc {
@@ -2576,7 +2634,9 @@
       border-color: var(--brand);
       box-shadow: 0 6px 18px rgba(62, 37, 25, 0.08);
     }
-    .tienda-prod-list.is-cuadricula .tienda-prod-acc.is-open {
+    .tienda-prod-list.is-cuadricula .tienda-prod-acc.is-open,
+    .tienda-prod-list.is-cuadricula .tienda-prod-acc.no-thumb,
+    .tienda-prod-list.is-cuadricula .tienda-subrama-acc {
       grid-column: 1 / -1;
     }
     .tienda-prod-acc.prod-card-destacado {
@@ -2592,28 +2652,62 @@
       cursor: pointer;
       user-select: none;
     }
-    .tienda-prod-list.is-cuadricula .tienda-prod-acc:not(.is-open) .tienda-prod-head {
+    .tienda-prod-acc.is-compact-row .tienda-prod-head {
+      padding: 8px 10px;
+      gap: 8px;
+    }
+    .tienda-prod-list.is-cuadricula .tienda-prod-acc:not(.is-open):not(.no-thumb) .tienda-prod-head {
       flex-direction: column;
       align-items: stretch;
-      gap: 8px;
-      padding: 10px;
+      gap: 7px;
+      padding: 8px;
+    }
+    .tienda-prod-list.is-cuadricula .tienda-prod-acc.no-thumb:not(.is-open) .tienda-prod-head {
+      flex-direction: row;
+      align-items: center;
+      padding: 9px 11px;
     }
     .tienda-prod-thumb-side {
-      width: 66px;
-      height: 66px;
-      border-radius: 11px;
+      width: 56px;
+      height: 56px;
+      border-radius: 10px;
       object-fit: cover;
       flex-shrink: 0;
       border: 1px solid var(--border);
       background: var(--surface-warm);
+      display: block;
+    }
+    @media (min-width: 720px) {
+      .tienda-prod-thumb-side {
+        width: 66px;
+        height: 66px;
+        border-radius: 11px;
+      }
+    }
+    .tienda-prod-thumb-diff {
+      width: 52px;
+      height: 52px;
+      border-radius: 10px;
+      object-fit: cover;
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      background: var(--surface-warm);
+      display: block;
     }
     .tienda-prod-thumb-grid {
       width: 100%;
       aspect-ratio: 4 / 3;
+      max-height: 124px;
       border-radius: 10px;
       object-fit: cover;
       border: 1px solid var(--border);
       background: var(--surface-warm);
+      display: block;
+    }
+    @media (min-width: 720px) {
+      .tienda-prod-thumb-grid {
+        max-height: 156px;
+      }
     }
     .tienda-prod-body {
       padding: 0 12px 12px;
@@ -5754,7 +5848,47 @@
       return c || fallback;
     }
 
-    function _construirOrganigramaTienda(grupos = []) {
+    function _resolverFotoCompartidaRama(gruposDescendientes = [], modoVidriera = 'PORTADAS') {
+      if (modoVidriera === 'LISTA_COMPACTA' || !Array.isArray(gruposDescendientes) || gruposDescendientes.length < 2) {
+        return null;
+      }
+      const porUrl = new Map();
+      let anclaHeredada = null;
+      for (const g of gruposDescendientes) {
+        if (!g.portada_url || !g.oferta_imagen?.oferta_id) continue;
+        const u = g.portada_url;
+        if (!porUrl.has(u)) {
+          porUrl.set(u, { url: u, oferta_id: g.oferta_imagen.oferta_id, count: 0, heredada: false, nonPropiaCount: 0 });
+        }
+        const entry = porUrl.get(u);
+        entry.count += 1;
+        if (g.imagen_origen_modo !== 'PROPIA') entry.nonPropiaCount += 1;
+        if (g.imagen_heredada_de_ancla) {
+          entry.heredada = true;
+          if (!anclaHeredada) {
+            anclaHeredada = { url: u, oferta_id: g.oferta_imagen.oferta_id };
+          }
+        }
+      }
+
+      let mejorRepetida = null;
+      for (const entry of porUrl.values()) {
+        if (entry.count >= 2 && (entry.nonPropiaCount >= 1 || entry.count >= 2)) {
+          if (!mejorRepetida || (entry.heredada && !mejorRepetida.heredada) || entry.count > mejorRepetida.count) {
+            mejorRepetida = entry;
+          }
+        }
+      }
+      if (mejorRepetida) {
+        return { url: mejorRepetida.url, oferta_id: mejorRepetida.oferta_id };
+      }
+      if (anclaHeredada) {
+        return anclaHeredada;
+      }
+      return null;
+    }
+
+    function _construirOrganigramaTienda(grupos = [], modoVidriera = 'PORTADAS') {
       const familiasMap = new Map();
       for (const g of grupos) {
         const famNombre = String(g.categoria_familiar || 'Almacén Natural').trim();
@@ -5812,25 +5946,57 @@
         return nodo;
       };
 
+      const recolectarGruposRama = (r, out = []) => {
+        out.push(...(r.grupos || []));
+        (r.subramas || []).forEach(sr => recolectarGruposRama(sr, out));
+        return out;
+      };
       const contarGruposRama = (r) => (r.grupos?.length || 0) + (r.subramas || []).reduce((acc, s) => acc + contarGruposRama(s), 0);
 
+      const enriquecerRamaConFoto = (r) => {
+        const desc = recolectarGruposRama(r);
+        const totalPres = desc.reduce((acc, x) => acc + (x.presentaciones?.length || 0), 0);
+        const minPrecio = desc.length > 0 ? Math.min(...desc.map(x => Number(x.min_precio || 0))) : 0;
+        const fotoCompartida = _resolverFotoCompartidaRama(desc, modoVidriera);
+        return {
+          ...r,
+          subramas: (r.subramas || []).map(sr => enriquecerRamaConFoto(sr)),
+          total_grupos: desc.length,
+          total_presentaciones: totalPres,
+          min_precio: minPrecio,
+          foto_compartida: fotoCompartida
+        };
+      };
+
       return Array.from(familiasMap.values()).map(f => {
-        let subramas = Array.from(f.subramasMap.values()).map(compactarRama)
+        let subramasRaw = Array.from(f.subramasMap.values()).map(compactarRama)
           .sort((a, b) => a.label.localeCompare(b.label, 'es-AR'));
         const gruposDirectos = f.gruposDirectos.slice()
           .sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
 
-        // Insertar sub-acordeones intermedios SOLO cuando haya >= 2 sub-ramas distintas publicadas en esta Familia
-        const contarSubNodosReales = subramas.length + (gruposDirectos.length > 0 && subramas.length > 0 ? 1 : 0);
-        if (contarSubNodosReales < 2 && subramas.length === 1) {
-          const recolectar = (r, out = []) => {
-            out.push(...(r.grupos || []));
-            (r.subramas || []).forEach(sr => recolectar(sr, out));
-            return out;
-          };
-          gruposDirectos.push(...recolectar(subramas[0]));
+        // Compactar sub-ramas redundantes dentro de cada rubro y evitar cajas separadas de 1 solo producto
+        const subramas = [];
+        for (const r of subramasRaw) {
+          const todosDesc = recolectarGruposRama(r).sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
+          if (todosDesc.length === 1) {
+            gruposDirectos.push(todosDesc[0]);
+            continue;
+          }
+          const maxHijo = (r.subramas || []).length > 0 ? Math.max(...r.subramas.map(sr => contarGruposRama(sr))) : 0;
+          const mantenerSubAcordeones = (r.subramas || []).length >= 2 && (todosDesc.length >= 4 || maxHijo >= 2);
+          if (r.subramas && r.subramas.length > 0 && !mantenerSubAcordeones) {
+            r.grupos = todosDesc;
+            r.subramas = [];
+          }
+          subramas.push(enriquecerRamaConFoto(r));
+        }
+        gruposDirectos.sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
+
+        // Disolver único sub-acordeón si no tiene foto compartida ni aporta separación real
+        if (subramas.length === 1 && gruposDirectos.length === 0 && !subramas[0].foto_compartida) {
+          gruposDirectos.push(...recolectarGruposRama(subramas[0]));
           gruposDirectos.sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
-          subramas = [];
+          subramas.length = 0;
         }
 
         const totalProductos = gruposDirectos.length + subramas.reduce((acc, s) => acc + contarGruposRama(s), 0);
@@ -5897,10 +6063,12 @@
         const subNiveles = (Array.isArray(p.jerarquia_b2b?.ruta_compacta) && p.jerarquia_b2b.ruta_compacta.length > 1)
           ? p.jerarquia_b2b.ruta_compacta.slice(1)
           : [];
+        const artPrincipal = String(p.jerarquia_b2b?.articulo_principal || '').trim();
         if (!mapaGrupos.has(clave)) {
           mapaGrupos.set(clave, {
             clave,
             categoria_familiar: p.categoria_familiar || p.jerarquia_b2b?.familia_nombre || 'Almacén Natural',
+            articulo_principal: artPrincipal,
             nombre_base_oficial: p.nombre_base_oficial || p.nombre_publico,
             nombre_base_vidriera: p.nombre_base_vidriera || p.nombre_publico,
             nombre_publico: p.nombre_base_vidriera || p.nombre_base_oficial || p.nombre_publico,
@@ -5926,6 +6094,24 @@
           if (pa !== pb) return pa - pb;
           return Number(a.oferta_id || 0) - Number(b.oferta_id || 0);
         });
+        const ofertaConImagen = g.presentaciones.find(x =>
+          x.mostrar_imagen !== false &&
+          String(x.imagen_origen_modo || '').toUpperCase() !== 'SIN_IMAGEN' &&
+          x.portada_activa?.url
+        ) || null;
+        g.oferta_imagen = ofertaConImagen;
+        g.portada_url = ofertaConImagen ? String(ofertaConImagen.portada_activa.url || '').trim() : '';
+        g.imagen_origen_modo = ofertaConImagen ? String(ofertaConImagen.imagen_origen_modo || 'LAMDA_BASE').toUpperCase() : 'SIN_IMAGEN';
+        g.imagen_heredada_de_ancla = Boolean(
+          ofertaConImagen &&
+          g.imagen_origen_modo !== 'PROPIA' &&
+          ofertaConImagen.imagen_base_lamda?.heredada_de_ancla === true
+        );
+        g.biblioteca_imagen_id = ofertaConImagen?.imagen_base_lamda?.biblioteca_imagen_id
+          ? Number(ofertaConImagen.imagen_base_lamda.biblioteca_imagen_id)
+          : null;
+        g.min_precio = Math.min(...g.presentaciones.map(p => Number(p.precio_venta_vecino || 0)));
+
         if (!enBusqueda && !STATE._scrollOfertaHecho && (STATE.ofertaEnfocadaId || STATE.skuEnfocado)) {
           const enf = g.presentaciones.some(p =>
             (STATE.ofertaEnfocadaId && Number(p.oferta_id) === Number(STATE.ofertaEnfocadaId)) ||
@@ -5972,7 +6158,27 @@
         `;
       };
 
-      const renderAcordeonProductoBase = (g, { mostrarFamiliaEnHeader = false } = {}) => {
+      const calcularSubtituloGrupo = (g, rubroPadreLabel = '') => {
+        const niveles = Array.isArray(g.sub_niveles) ? g.sub_niveles : [];
+        if (!rubroPadreLabel) return niveles.join(' · ');
+        const normPadre = normalizarTextoBusqueda(rubroPadreLabel);
+        const normBase = normalizarTextoBusqueda(g.nombre_publico);
+        const filtradosNiv = niveles.filter((niv, idx) => {
+          const nn = normalizarTextoBusqueda(niv);
+          if (idx === 0 && (nn === normPadre || normPadre.includes(nn))) return false;
+          if (nn === normBase) return false;
+          return Boolean(nn);
+        });
+        return filtradosNiv.join(' · ');
+      };
+
+      const renderAcordeonProductoBase = (g, {
+        mostrarFamiliaEnHeader = false,
+        fotoCompartidaPadreUrl = '',
+        rubroPadreLabel = '',
+        enBloqueRubro = false,
+        forzarFilaCompacta = false
+      } = {}) => {
         const estaAbierto = STATE.productosAbiertos.has(g.clave);
         const esCardEnfocada = g.presentaciones.some(p =>
           (STATE.ofertaEnfocadaId && Number(p.oferta_id) === Number(STATE.ofertaEnfocadaId)) ||
@@ -5991,41 +6197,56 @@
           ? `<div style="font-size:0.73rem; color:var(--text); background:var(--surface-warm); border:1px solid var(--border); border-radius:8px; padding:4px 8px; line-height:1.35;"><strong>🎁 Incluye:</strong> ${ofertaCombo.componentes_vidriera.map(c => `${Number(c.cantidad || 1)}x ${esc(c.nombre)}`).join(' · ')}</div>`
           : '';
 
-        const ofertaConImagen = g.presentaciones.find(x =>
-          x.mostrar_imagen !== false &&
-          String(x.imagen_origen_modo || '').toUpperCase() !== 'SIN_IMAGEN' &&
-          x.portada_activa?.url
-        ) || null;
-        const portadaUrl = (modoVidriera !== 'LISTA_COMPACTA' && ofertaConImagen) ? ofertaConImagen.portada_activa.url : '';
-        const ofertaDetalle = ofertaConImagen ||
+        const portadaUrlRaw = (modoVidriera !== 'LISTA_COMPACTA' && g.portada_url) ? g.portada_url : '';
+        const ocultaPorFotoPadre = Boolean(portadaUrlRaw && fotoCompartidaPadreUrl && portadaUrlRaw === fotoCompartidaPadreUrl);
+        const portadaUrl = ocultaPorFotoPadre ? '' : portadaUrlRaw;
+
+        const ofertaDetalle = g.oferta_imagen ||
           g.presentaciones.find(x => obtenerGaleriaMultimediaProducto(x).length > 0 || String(x.narrativa_tienda || '').trim()) ||
           g.presentaciones[0];
         const narrativaGrupo = g.presentaciones.map(x => String(x.narrativa_tienda || '').trim()).find(Boolean) || '';
 
-        const minPrecio = Math.min(...g.presentaciones.map(p => Number(p.precio_venta_vecino || 0)));
+        const minPrecio = Number.isFinite(g.min_precio) ? g.min_precio : Math.min(...g.presentaciones.map(p => Number(p.precio_venta_vecino || 0)));
         const cantEnCarrito = g.presentaciones.reduce((acc, p) => acc + Number(STATE.carrito[p.oferta_id] || 0), 0);
         const presChips = g.presentaciones.map(p => obtenerPresentacionItem(p)).filter(Boolean);
         const precioTexto = g.presentaciones.length > 1 ? `Desde ${fmt(minPrecio)}` : fmt(minPrecio);
-        const esGridCardCerrada = (modoVidriera === 'CUADRICULA' && !estaAbierto);
+        const esGridCardCerrada = (modoVidriera === 'CUADRICULA' && !estaAbierto && !forzarFilaCompacta && !enBloqueRubro);
+        const subtituloDiff = calcularSubtituloGrupo(g, rubroPadreLabel);
+        const tieneThumb = Boolean(portadaUrl);
+
+        let thumbHtml = '';
+        if (tieneThumb) {
+          const thumbClase = enBloqueRubro
+            ? 'tienda-prod-thumb-diff'
+            : (esGridCardCerrada ? 'tienda-prod-thumb-grid' : 'tienda-prod-thumb-side');
+          const oidFoto = Number(g.oferta_imagen?.oferta_id || ofertaDetalle?.oferta_id || 0);
+          thumbHtml = (enBloqueRubro || !esGridCardCerrada) && oidFoto > 0
+            ? `<button type="button" class="tienda-rubro-thumb-btn" data-testid="btn-zoom-prod-foto-${esc(g.clave)}" onclick="event.stopPropagation(); abrirVisorFotosProducto(${oidFoto})" aria-label="Ampliar foto de ${esc(g.nombre_publico)}"><img class="${thumbClase}" src="${esc(portadaUrl)}" alt="${esc(g.nombre_publico)}" loading="lazy" /></button>`
+            : `<img class="${thumbClase}" src="${esc(portadaUrl)}" alt="${esc(g.nombre_publico)}" loading="lazy" />`;
+        }
+
+        const extraClases = [
+          estaAbierto ? 'is-open' : '',
+          esCardEnfocada ? 'prod-card-destacado' : '',
+          !tieneThumb ? 'no-thumb' : '',
+          (enBloqueRubro && !tieneThumb) ? 'is-compact-row' : ''
+        ].filter(Boolean).join(' ');
 
         return `
-          <div class="tienda-prod-acc${estaAbierto ? ' is-open' : ''}${esCardEnfocada ? ' prod-card-destacado' : ''}"
+          <div class="tienda-prod-acc ${extraClases}"
                data-testid="tienda-prod-acc-${esc(g.clave)}"
                data-clave-producto="${esc(g.clave)}"
                data-open="${estaAbierto ? 'true' : 'false'}"
                ${esCardEnfocada ? 'id="prod-card-enfocada"' : ''}>
             <div class="tienda-prod-head" onclick="toggleAcordeonProductoTienda('${esc(g.clave)}')" role="button" tabindex="0" aria-expanded="${estaAbierto ? 'true' : 'false'}">
-              ${portadaUrl ? `
-                <img class="${esGridCardCerrada ? 'tienda-prod-thumb-grid' : 'tienda-prod-thumb-side'}"
-                     src="${esc(portadaUrl)}" alt="${esc(g.nombre_publico)}" loading="lazy" />
-              ` : ''}
+              ${thumbHtml}
               <div style="flex:1; min-width:0;">
-                ${(mostrarFamiliaEnHeader || g.ruta_b2b_corta) ? `
+                ${(mostrarFamiliaEnHeader || subtituloDiff) ? `
                   <div style="font-size:0.68rem; font-weight:800; color:var(--brand-dark); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                    ${mostrarFamiliaEnHeader ? esc(g.categoria_familiar) : ''}${mostrarFamiliaEnHeader && g.ruta_b2b_corta ? ' · ' : ''}${g.ruta_b2b_corta ? esc(g.ruta_b2b_corta) : ''}
+                    ${mostrarFamiliaEnHeader ? esc(g.categoria_familiar) : ''}${mostrarFamiliaEnHeader && subtituloDiff ? ' · ' : ''}${subtituloDiff ? esc(subtituloDiff) : ''}
                   </div>
                 ` : ''}
-                <div class="prod-title" style="margin:1px 0 3px 0; font-size:0.96rem; font-weight:900; color:var(--text); line-height:1.22;">
+                <div class="prod-title" style="margin:1px 0 3px 0; font-size:0.93rem; font-weight:900; color:var(--text); line-height:1.22;">
                   ${esc(g.nombre_publico)}
                 </div>
                 <div style="display:flex; align-items:center; gap:5px; flex-wrap:wrap;">
@@ -6033,11 +6254,11 @@
                   ${cantEnCarrito > 0 ? `<span class="tienda-cart-pill">🛒 ${cantEnCarrito}</span>` : ''}
                 </div>
               </div>
-              <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-shrink:0;">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; flex-shrink:0;">
                 <div style="text-align:right;">
-                  <div style="font-size:0.92rem; font-weight:900; color:var(--brand-dark);">${precioTexto}</div>
+                  <div style="font-size:0.9rem; font-weight:900; color:var(--brand-dark);">${precioTexto}</div>
                 </div>
-                <span style="font-size:0.86rem; font-weight:900; color:var(--muted); width:22px; text-align:center;">${estaAbierto ? '▾' : '▸'}</span>
+                <span style="font-size:0.86rem; font-weight:900; color:var(--muted); width:20px; text-align:center;">${estaAbierto ? '▾' : '▸'}</span>
               </div>
             </div>
 
@@ -6066,21 +6287,74 @@
         `;
       };
 
-      const renderRamaB2B = (rama) => {
+      const resolverClaseListaProductos = (listaGrupos = [], fotoCompartidaPadreUrl = '') => {
+        if (modoVidriera !== 'CUADRICULA' || fotoCompartidaPadreUrl) return 'tienda-prod-list';
+        const conFotoUnica = listaGrupos.filter(g => g.portada_url && g.portada_url !== fotoCompartidaPadreUrl).length;
+        return conFotoUnica >= 2 ? 'tienda-prod-list is-cuadricula' : 'tienda-prod-list';
+      };
+
+      const renderRamaB2B = (rama, { fotoCompartidaPadreUrl = '', rubroPadreLabel = '', mostrarFamiliaEnEncabezado = false } = {}) => {
         const cerrada = STATE.subRamasColapsadas.has(rama.rama_key);
-        const listaClase = `tienda-prod-list${modoVidriera === 'CUADRICULA' ? ' is-cuadricula' : ''}`;
-        return `
-          <div class="tienda-subrama-acc" data-rama-key="${esc(rama.rama_key)}" data-open="${cerrada ? 'false' : 'true'}">
+        const fotoRubro = (modoVidriera !== 'LISTA_COMPACTA' && rama.foto_compartida?.url) ? rama.foto_compartida : null;
+        const fotoParaHijos = fotoRubro?.url || fotoCompartidaPadreUrl || '';
+        const etiquetaRubro = rama.label || rubroPadreLabel;
+        const listaClase = resolverClaseListaProductos(rama.grupos || [], fotoParaHijos);
+        const forzarCompacta = Boolean(fotoParaHijos) || listaClase === 'tienda-prod-list';
+
+        const headHtml = fotoRubro
+          ? `
+            <div class="tienda-subrama-head has-rubro-photo"
+                 data-testid="tienda-rubro-head-${esc(rama.rama_key)}"
+                 role="button" tabindex="0"
+                 onclick="toggleAcordeonSubramaTienda('${esc(rama.rama_key)}')"
+                 aria-expanded="${cerrada ? 'false' : 'true'}">
+              <button type="button" class="tienda-rubro-thumb-btn"
+                      data-testid="btn-zoom-rubro-foto"
+                      onclick="event.stopPropagation(); abrirVisorFotosProducto(${Number(fotoRubro.oferta_id)})"
+                      aria-label="Ampliar foto de ${esc(rama.label)}"
+                      title="Ver foto ampliada">
+                <img class="tienda-rubro-thumb" src="${esc(fotoRubro.url)}" alt="${esc(rama.label)}" loading="lazy" />
+                <span class="tienda-rubro-zoom-badge" aria-hidden="true">🔍</span>
+              </button>
+              <div style="flex:1; min-width:0;">
+                ${mostrarFamiliaEnEncabezado && rama.familia_nombre ? `
+                  <div style="font-size:0.68rem; font-weight:800; color:var(--brand-dark);">${esc(rama.familia_nombre)}</div>
+                ` : ''}
+                <div style="font-size:0.96rem; font-weight:900; color:var(--text); line-height:1.2;">${esc(rama.label)}</div>
+                <div style="font-size:0.74rem; color:var(--muted); font-weight:700; margin-top:2px;">
+                  ${Number(rama.total_grupos || 0)} opciones · ${Number(rama.total_presentaciones || 0)} pres.
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                <div style="text-align:right; font-size:0.86rem; font-weight:900; color:var(--brand-dark);">
+                  Desde ${fmt(rama.min_precio || 0)}
+                </div>
+                <span style="font-size:0.86rem; font-weight:900; color:var(--muted); width:20px; text-align:center;">${cerrada ? '▸' : '▾'}</span>
+              </div>
+            </div>
+          `
+          : `
             <button type="button" class="tienda-subrama-head" onclick="toggleAcordeonSubramaTienda('${esc(rama.rama_key)}')" aria-expanded="${cerrada ? 'false' : 'true'}">
               <span>${esc(rama.label)}</span>
               <span>${cerrada ? '▸' : '▾'}</span>
             </button>
+          `;
+
+        return `
+          <div class="tienda-subrama-acc${fotoRubro ? ' has-rubro-photo' : ''}" data-rama-key="${esc(rama.rama_key)}" data-open="${cerrada ? 'false' : 'true'}">
+            ${headHtml}
             ${!cerrada ? `
               <div class="tienda-subrama-body">
-                ${(rama.subramas || []).map(sr => renderRamaB2B(sr)).join('')}
+                ${(rama.subramas || []).map(sr => renderRamaB2B(sr, { fotoCompartidaPadreUrl: fotoParaHijos, rubroPadreLabel: etiquetaRubro })).join('')}
                 ${(rama.grupos && rama.grupos.length > 0) ? `
                   <div class="${listaClase}">
-                    ${rama.grupos.map(g => renderAcordeonProductoBase(g, { mostrarFamiliaEnHeader: false })).join('')}
+                    ${rama.grupos.map(g => renderAcordeonProductoBase(g, {
+                      mostrarFamiliaEnHeader: false,
+                      fotoCompartidaPadreUrl: fotoParaHijos,
+                      rubroPadreLabel: etiquetaRubro,
+                      enBloqueRubro: Boolean(fotoRubro),
+                      forzarFilaCompacta: forzarCompacta
+                    })).join('')}
                   </div>
                 ` : ''}
               </div>
@@ -6090,24 +6364,94 @@
       };
 
       if (enBusqueda) {
-        const listaClase = `tienda-prod-list${modoVidriera === 'CUADRICULA' ? ' is-cuadricula' : ''}`;
         const ordBusq = grupos.slice().sort((a, b) =>
           a.categoria_familiar.localeCompare(b.categoria_familiar, 'es-AR') ||
           a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR')
         );
+        const bucketsRubro = new Map();
+        const sueltos = [];
+        for (const g of ordBusq) {
+          if (g.articulo_principal) {
+            const bk = `${normalizarTextoBusqueda(g.categoria_familiar)}::${normalizarTextoBusqueda(g.articulo_principal)}`;
+            if (!bucketsRubro.has(bk)) {
+              bucketsRubro.set(bk, { key: bk, familia_nombre: g.categoria_familiar, label: g.articulo_principal, items: [] });
+            }
+            bucketsRubro.get(bk).items.push(g);
+          } else {
+            sueltos.push(g);
+          }
+        }
+
+        const bloquesBusq = [];
+        for (const b of bucketsRubro.values()) {
+          const fotoComp = _resolverFotoCompartidaRama(b.items, modoVidriera);
+          if (b.items.length >= 2 && fotoComp) {
+            const totalPres = b.items.reduce((acc, x) => acc + (x.presentaciones?.length || 0), 0);
+            const minPrecio = Math.min(...b.items.map(x => Number(x.min_precio || 0)));
+            bloquesBusq.push(`
+              <div class="tienda-subrama-acc has-rubro-photo" data-testid="tienda-busqueda-rubro-${esc(_slugSafeTienda(b.label))}" data-open="true">
+                <div class="tienda-subrama-head has-rubro-photo" style="cursor:default;">
+                  <button type="button" class="tienda-rubro-thumb-btn"
+                          data-testid="btn-zoom-rubro-foto"
+                          onclick="event.stopPropagation(); abrirVisorFotosProducto(${Number(fotoComp.oferta_id)})"
+                          aria-label="Ampliar foto de ${esc(b.label)}"
+                          title="Ver foto ampliada">
+                    <img class="tienda-rubro-thumb" src="${esc(fotoComp.url)}" alt="${esc(b.label)}" loading="lazy" />
+                    <span class="tienda-rubro-zoom-badge" aria-hidden="true">🔍</span>
+                  </button>
+                  <div style="flex:1; min-width:0;">
+                    <div style="font-size:0.68rem; font-weight:800; color:var(--brand-dark);">${esc(b.familia_nombre)}</div>
+                    <div style="font-size:0.96rem; font-weight:900; color:var(--text); line-height:1.2;">${esc(b.label)}</div>
+                    <div style="font-size:0.74rem; color:var(--muted); font-weight:700; margin-top:2px;">
+                      ${b.items.length} opciones coincidentes · ${totalPres} pres.
+                    </div>
+                  </div>
+                  <div style="text-align:right; font-size:0.86rem; font-weight:900; color:var(--brand-dark); flex-shrink:0;">
+                    Desde ${fmt(minPrecio)}
+                  </div>
+                </div>
+                <div class="tienda-subrama-body">
+                  <div class="tienda-prod-list">
+                    ${b.items.map(g => renderAcordeonProductoBase(g, {
+                      mostrarFamiliaEnHeader: false,
+                      fotoCompartidaPadreUrl: fotoComp.url,
+                      rubroPadreLabel: b.label,
+                      enBloqueRubro: true,
+                      forzarFilaCompacta: true
+                    })).join('')}
+                  </div>
+                </div>
+              </div>
+            `);
+          } else {
+            sueltos.push(...b.items);
+          }
+        }
+        sueltos.sort((a, b) =>
+          a.categoria_familiar.localeCompare(b.categoria_familiar, 'es-AR') ||
+          a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR')
+        );
+        const listaClaseSueltos = resolverClaseListaProductos(sueltos, '');
+
         grid.innerHTML = `
           <div style="font-size:0.78rem; color:var(--muted); font-weight:800; padding:0 2px;">
             ${ordBusq.length} producto${ordBusq.length === 1 ? '' : 's'} coincidente${ordBusq.length === 1 ? '' : 's'} — tocá uno para ver sus presentaciones
           </div>
-          <div class="${listaClase}" data-testid="tienda-busqueda-grupos">
-            ${ordBusq.map(g => renderAcordeonProductoBase(g, { mostrarFamiliaEnHeader: true })).join('')}
-          </div>
+          ${bloquesBusq.join('')}
+          ${sueltos.length > 0 ? `
+            <div class="${listaClaseSueltos}" data-testid="tienda-busqueda-grupos">
+              ${sueltos.map(g => renderAcordeonProductoBase(g, {
+                mostrarFamiliaEnHeader: true,
+                forzarFilaCompacta: listaClaseSueltos === 'tienda-prod-list'
+              })).join('')}
+            </div>
+          ` : ''}
         `;
       } else {
-        const arbolFamilias = _construirOrganigramaTienda(grupos);
-        const listaClase = `tienda-prod-list${modoVidriera === 'CUADRICULA' ? ' is-cuadricula' : ''}`;
+        const arbolFamilias = _construirOrganigramaTienda(grupos, modoVidriera);
         grid.innerHTML = arbolFamilias.map(fam => {
           const famCerrada = STATE.familiasColapsadas.has(fam.familia_key);
+          const listaClaseDir = resolverClaseListaProductos(fam.grupos_directos || [], '');
           return `
             <div class="tienda-fam-acc" data-testid="tienda-fam-acc-${esc(fam.familia_key)}" data-open="${famCerrada ? 'false' : 'true'}">
               <button type="button" class="tienda-fam-head" onclick="toggleAcordeonFamiliaTienda('${esc(fam.familia_key)}')" aria-expanded="${famCerrada ? 'false' : 'true'}">
@@ -6121,8 +6465,11 @@
                 <div class="tienda-fam-body">
                   ${(fam.subramas || []).map(sr => renderRamaB2B(sr)).join('')}
                   ${(fam.grupos_directos && fam.grupos_directos.length > 0) ? `
-                    <div class="${listaClase}">
-                      ${fam.grupos_directos.map(g => renderAcordeonProductoBase(g, { mostrarFamiliaEnHeader: false })).join('')}
+                    <div class="${listaClaseDir}">
+                      ${fam.grupos_directos.map(g => renderAcordeonProductoBase(g, {
+                        mostrarFamiliaEnHeader: false,
+                        forzarFilaCompacta: listaClaseDir === 'tienda-prod-list'
+                      })).join('')}
                     </div>
                   ` : ''}
                 </div>
