@@ -65,6 +65,75 @@ async function fetchWithRetry(url, options = {}, retries = 3, delay = 1000) {
   throw new Error(`Agotados los ${retries} reintentos de conexión con Supabase.`);
 }
 
+function esNodoAutorizadoParaSyncB2B() {
+  return !esModoLaboratorioOSinCredencialesB2B();
+}
+
+function evaluarAusenciaLocalPedidoB2B(pedido = {}, maxLocalId = 0, nowMs = Date.now()) {
+  const syncMsg = String(pedido.sync_mensaje || '').trim();
+  const matchLocalId = /ID\s+Local:\s*(\d+)/i.exec(syncMsg);
+  const idLocalSupa = matchLocalId ? Number(matchLocalId[1]) : 0;
+  const maxLocalNum = Number(maxLocalId) || 0;
+
+  if (idLocalSupa > 0 && idLocalSupa > maxLocalNum) {
+    return {
+      permitirCancelarRemoto: false,
+      motivo: `ID local remoto (#${idLocalSupa}) supera MAX(id) local (#${maxLocalNum}): posible desfase/réplica`
+    };
+  }
+  if (/Sincronizado desde central/i.test(syncMsg)) {
+    return {
+      permitirCancelarRemoto: false,
+      motivo: 'Pedido originado en servidor central; no puede cancelarse por ausencia en otro nodo'
+    };
+  }
+  const createdMs = pedido.created_at ? Date.parse(pedido.created_at) : NaN;
+  const VENTANA_SEGURIDAD_MS = 72 * 60 * 60 * 1000;
+  if (Number.isFinite(createdMs) && (nowMs - createdMs) < VENTANA_SEGURIDAD_MS) {
+    return {
+      permitirCancelarRemoto: false,
+      motivo: 'Pedido reciente (< 72h) ausente localmente: bloqueada cancelación automática en Supabase'
+    };
+  }
+  return {
+    permitirCancelarRemoto: false,
+    motivo: 'Política de preservación activa: nunca cancelar pedidos en Supabase por simple ausencia local'
+  };
+}
+
+function esPresupuestoInmuneACancelacionRemota(row = {}) {
+  if (!row || typeof row !== 'object') {
+    return { inmune: false, motivo: '' };
+  }
+  if (row.factura_id || row.esta_facturado === true || String(row.comprobante_lomasoft || '').trim()) {
+    return {
+      inmune: true,
+      motivo: `Presupuesto #${row.id} ya posee comprobante/factura asociada (factura_id=${row.factura_id || 'N/A'})`
+    };
+  }
+  if (row.tiene_movimientos_cc === true) {
+    return {
+      inmune: true,
+      motivo: `Presupuesto #${row.id} tiene movimientos imputados en Cuenta Corriente`
+    };
+  }
+  const estadoNorm = String(row.estado || '').trim().toUpperCase();
+  if (['ENTREGADO', 'FACTURADO', 'CONCILIADO', 'RETIRADO'].includes(estadoNorm)) {
+    return {
+      inmune: true,
+      motivo: `Presupuesto #${row.id} en estado consolidado "${row.estado}"`
+    };
+  }
+  const logisticoNorm = String(row.estado_logistico || '').trim().toUpperCase();
+  if (['ENTREGADO', 'ENTREGADO_DEPOSITO', 'EN_CAMINO', 'EN_REPARTO', 'DESPACHADO'].includes(logisticoNorm) || row.fecha_entrega_real) {
+    return {
+      inmune: true,
+      motivo: `Presupuesto #${row.id} con despacho/entrega confirmada (estado_logistico=${row.estado_logistico})`
+    };
+  }
+  return { inmune: false, motivo: '' };
+}
+
 function esFilaLocalEnStandby(row) {
   const secuencia = (row.secuencia || '').toLowerCase().trim();
   const estadoComprobante = (row.estado || '').toUpperCase().trim();
@@ -412,6 +481,10 @@ async function asegurarClienteSombra(db, idClienteRaw) {
 }
 
 async function subirPedidoEspecifico(localClient, idLocal) {
+  if (!esNodoAutorizadoParaSyncB2B()) {
+    console.warn(`🛡️ [B2B-GUARD] subirPedidoEspecifico(#${idLocal}) omitido: nodo no autorizado.`);
+    return null;
+  }
   try {
     // 1. Validar si ya está mapeado
     const checkMap = await localClient.query(
@@ -761,7 +834,8 @@ async function subirPedidosLocales(localClient) {
 }
 
 async function sincronizarEstados(opts = {}) {
-  if (esModoLaboratorioOSinCredencialesB2B()) {
+  if (!esNodoAutorizadoParaSyncB2B()) {
+    console.log('🛡️ [B2B-GUARD] Sincronización de estados B2B omitida: nodo en Modo Laboratorio, Standby o Windows no primario.');
     return { skipped: true, reason: 'modo_laboratorio_o_standby', cancelados: 0, cambiosEstado: 0 };
   }
 
@@ -772,6 +846,18 @@ async function sincronizarEstados(opts = {}) {
   
   try {
     localClient = await activePool.connect();
+
+    // Guard #1.b: Si PostgreSQL local tiene candado Read-Only (nodo Standby), abortar sin tocar Supabase
+    const roRes = await localClient.query(
+      `SELECT current_setting('default_transaction_read_only', true) AS def_ro,
+              current_setting('transaction_read_only', true) AS tx_ro`
+    );
+    const defRo = String(roRes.rows[0]?.def_ro || '').trim().toLowerCase();
+    const txRo = String(roRes.rows[0]?.tx_ro || '').trim().toLowerCase();
+    if (defRo === 'on' || txRo === 'on') {
+      console.warn('🛡️ [B2B-GUARD] Base PostgreSQL local en modo Read-Only (Standby). Abortando sync B2B sin tocar Supabase.');
+      return { skipped: true, reason: 'postgres_read_only_standby', cancelados: 0, cambiosEstado: 0 };
+    }
     
     // Crear tabla de mapeo local si no existe
     await localClient.query(`
@@ -789,11 +875,14 @@ async function sincronizarEstados(opts = {}) {
     if (!opts.silent) {
       console.log('\n🔄 Fase 2: Sincronizando estados de pedidos recientes de Supabase...');
     }
+    const maxIdRes = await localClient.query(`SELECT COALESCE(MAX(id), 0)::bigint AS max_id FROM public.presupuestos`);
+    const maxLocalPresupuestoId = Number(maxIdRes.rows[0]?.max_id || 0);
+
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const dateStr = thirtyDaysAgo.toISOString();
     
-    let selectFields = 'id,estado,sync_estado,sync_mensaje,facturado,total,subtotal,iva,recibido_por_nombre,recibido_por_apellido,recibido_por_telefono,recibido_fecha,motivo_reclamo_recepcion,foto_reclamo_1,foto_reclamo_2,comentarios_recepcion,reclamado_fecha,entregado_chofer_nombre,entregado_chofer_fecha';
+    let selectFields = 'id,created_at,estado,sync_estado,sync_mensaje,facturado,total,subtotal,iva,recibido_por_nombre,recibido_por_apellido,recibido_por_telefono,recibido_fecha,motivo_reclamo_recepcion,foto_reclamo_1,foto_reclamo_2,comentarios_recepcion,reclamado_fecha,entregado_chofer_nombre,entregado_chofer_fecha';
     let url = `${SUPABASE_URL}/rest/v1/clientes_b2b_pedidos_cabecera?created_at=gte.${dateStr}&select=${selectFields}`;
     
     let response;
@@ -826,7 +915,7 @@ async function sincronizarEstados(opts = {}) {
     }
 
     if (fallbackToNoFacturado) {
-      selectFields = 'id,estado,sync_estado,sync_mensaje,total,subtotal,iva,recibido_por_nombre,recibido_por_apellido,recibido_por_telefono,recibido_fecha,motivo_reclamo_recepcion,foto_reclamo_1,foto_reclamo_2,comentarios_recepcion,reclamado_fecha,entregado_chofer_nombre,entregado_chofer_fecha';
+      selectFields = 'id,created_at,estado,sync_estado,sync_mensaje,total,subtotal,iva,recibido_por_nombre,recibido_por_apellido,recibido_por_telefono,recibido_fecha,motivo_reclamo_recepcion,foto_reclamo_1,foto_reclamo_2,comentarios_recepcion,reclamado_fecha,entregado_chofer_nombre,entregado_chofer_fecha';
       url = `${SUPABASE_URL}/rest/v1/clientes_b2b_pedidos_cabecera?created_at=gte.${dateStr}&select=${selectFields}`;
       response = await fetchWithRetry(url, {
         method: 'GET',
@@ -855,62 +944,47 @@ async function sincronizarEstados(opts = {}) {
         );
         
         let resLocal;
+        const sqlSelectLocal = `
+            SELECT p.id, p.estado, p.secuencia, p.informe_generado, p.estado_logistico, p.activo, p.archivado,
+                   p.factura_id, p.id_ruta, p.fecha_entrega_real, p.comprobante_lomasoft, p.origen_numero_factura,
+                   COALESCE(sums.total_bruto, 0) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) as total_local,
+                   COALESCE(sums.total_neto, 0) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) as subtotal_local,
+                   COALESCE(sums.total_iva, 0) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) as iva_local,
+                   EXISTS (
+                       SELECT 1 FROM public.factura_facturas f 
+                       WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')
+                   ) as esta_facturado,
+                   EXISTS (
+                       SELECT 1 FROM public.factura_cuenta_corriente_movimientos m
+                       WHERE m.presupuesto_id = p.id
+                          OR (p.factura_id IS NOT NULL AND m.comprobante_id = CAST(p.factura_id AS text) AND m.tipo_comprobante = 'FACTURA')
+                   ) as tiene_movimientos_cc
+            FROM public.presupuestos p
+            LEFT JOIN (
+                SELECT 
+                    id_presupuesto,
+                    SUM(cantidad * precio1) as total_bruto,
+                    SUM(cantidad * valor1) as total_neto,
+                    SUM(cantidad * (precio1 - valor1)) as total_iva
+                FROM public.presupuestos_detalles
+                GROUP BY id_presupuesto
+            ) sums ON sums.id_presupuesto = p.id
+        `;
         if (resMap.rows.length > 0) {
-          // Si hay mapeo, buscar por el ID local primario
           resLocal = await localClient.query(
-            `SELECT p.id, p.estado, p.secuencia, p.informe_generado, p.estado_logistico, p.activo, p.archivado,
-                    COALESCE(sums.total_bruto, 0) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) as total_local,
-                    COALESCE(sums.total_neto, 0) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) as subtotal_local,
-                    COALESCE(sums.total_iva, 0) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) as iva_local,
-                    EXISTS (
-                        SELECT 1 FROM public.factura_facturas f 
-                        WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')
-                    ) as esta_facturado
-             FROM public.presupuestos p
-             LEFT JOIN (
-                 SELECT 
-                     id_presupuesto,
-                     SUM(cantidad * precio1) as total_bruto,
-                     SUM(cantidad * valor1) as total_neto,
-                     SUM(cantidad * (precio1 - valor1)) as total_iva
-                 FROM public.presupuestos_detalles
-                 GROUP BY id_presupuesto
-             ) sums ON sums.id_presupuesto = p.id
-             WHERE p.id = $1 LIMIT 1`,
+            `${sqlSelectLocal} WHERE p.id = $1 LIMIT 1`,
             [resMap.rows[0].local_presupuesto_id]
           );
         } else {
-          // Si no hay mapeo, buscar por id_presupuesto_ext (pedido que nació en B2B)
           resLocal = await localClient.query(
-            `SELECT p.id, p.estado, p.secuencia, p.informe_generado, p.estado_logistico, p.activo, p.archivado,
-                    COALESCE(sums.total_bruto, 0) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) as total_local,
-                    COALESCE(sums.total_neto, 0) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) as subtotal_local,
-                    COALESCE(sums.total_iva, 0) * (1 - (CASE WHEN COALESCE(p.descuento, 0) > 1 THEN p.descuento / 100.0 ELSE COALESCE(p.descuento, 0) END)) as iva_local,
-                    EXISTS (
-                        SELECT 1 FROM public.factura_facturas f 
-                        WHERE f.presupuesto_id = p.id AND f.estado IN ('APROBADA', 'APROBADA_LOCAL')
-                    ) as esta_facturado
-             FROM public.presupuestos p
-             LEFT JOIN (
-                 SELECT 
-                     id_presupuesto,
-                     SUM(cantidad * precio1) as total_bruto,
-                     SUM(cantidad * valor1) as total_neto,
-                     SUM(cantidad * (precio1 - valor1)) as total_iva
-                 FROM public.presupuestos_detalles
-                 GROUP BY id_presupuesto
-             ) sums ON sums.id_presupuesto = p.id
-             WHERE p.id_presupuesto_ext = $1 LIMIT 1`,
+            `${sqlSelectLocal} WHERE p.id_presupuesto_ext = $1 LIMIT 1`,
             [pedido.id]
           );
         }
 
         if (resLocal.rows.length === 0) {
-          console.log(`⚠️ Pedido B2B ${pedido.id.slice(0, 8)} no encontrado en base de datos local.`);
-          if (pedido.estado !== 'Cancelado') {
-            console.log(`🔄 Marcando pedido ${pedido.id.slice(0, 8)} como Cancelado en Supabase.`);
-            await actualizarEstadoSupabase(pedido.id, 'Cancelado', false);
-          }
+          const evalAus = evaluarAusenciaLocalPedidoB2B(pedido, maxLocalPresupuestoId);
+          console.warn(`🛡️ [B2B-GUARD] Pedido B2B ${pedido.id.slice(0, 8)} ausente localmente — NO se cancela en Supabase (${evalAus.motivo}).`);
           continue;
         }
 
@@ -948,6 +1022,13 @@ async function sincronizarEstados(opts = {}) {
         if (estadoSupabase === 'CANCELADO' || estadoSupabase === 'CANCELLED') {
           // Si ya está archivado localmente, simplemente continuamos
           if (row.archivado === true) {
+            continue;
+          }
+
+          // Guard #3: Jamás anular automáticamente un pedido ya facturado, cobrado, entregado o despachado
+          const inmuneCheck = esPresupuestoInmuneACancelacionRemota(row);
+          if (inmuneCheck.inmune) {
+            console.warn(`🛡️ [B2B-GUARD-INMUNE] Se bloqueó anulación remota desde Supabase para Pedido #${row.id} (${pedido.id.slice(0, 8)}): ${inmuneCheck.motivo}.`);
             continue;
           }
 
@@ -1071,6 +1152,9 @@ if (require.main === module) {
     asegurarClienteSombra,
     sincronizarEstados,
     mapLocalStatusToSupabase,
+    esNodoAutorizadoParaSyncB2B,
+    evaluarAusenciaLocalPedidoB2B,
+    esPresupuestoInmuneACancelacionRemota,
     localPool
   };
 }
