@@ -1013,11 +1013,15 @@
             if (!gruposMap.has(claveBase)) {
                 const famIdVal = Number(jer.familia_id || cat.bunker_familia_id || 0) || null;
                 const artPVal = String(jer.articulo_principal || cat.bunker_articulo_principal || famNombre).trim();
+                const subSegs = [jer.sub_categoria, jer.sub_sub_categoria, jer.sub_sub_sub_categoria]
+                    .map(s => String(s || '').trim())
+                    .filter(Boolean);
                 const g = {
                     clave_producto_base: claveBase,
                     familia_id: famIdVal,
                     familia_nombre: famNombre,
                     articulo_principal: artPVal,
+                    subrama_labels: subSegs,
                     ruta_corta: rutaCorta,
                     nombre_base_oficial: nombreBase,
                     ingrediente_origen_id: cat.ingrediente_origen_id ? Number(cat.ingrediente_origen_id) : null,
@@ -1130,14 +1134,14 @@
                                                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                                             <strong style="color:#f8fafc; font-size:0.92rem;">${escaparHtml(grupo.nombre_base_oficial)}</strong>
                                                             <span style="font-size:0.7rem; padding:1px 7px; border-radius:999px; background:rgba(16,185,129,0.16); color:#34d399; border:1px solid rgba(16,185,129,0.35); font-weight:700;">
-                                                                ${imgBase ? `${imgBase.heredada_de_ancla ? `Heredada del rubro ${escaparHtml(grupo.articulo_principal)} · ` : ''}${grupo.items.length} presentaci${grupo.items.length === 1 ? 'ón' : 'ones'}` : `${grupo.items.length} presentaci${grupo.items.length === 1 ? 'ón' : 'ones'} sin foto base`}
+                                                                ${imgBase ? `${imgBase.heredada_de_ancla ? (imgBase.tipo_ancla === 'SUBRAMA_JERARQUIA' ? `Heredada de sub-rama (${escaparHtml(imgBase.ruta_subrama_norm || imgBase.titulo_referencia || '')}) · ` : `Heredada del rubro ${escaparHtml(grupo.articulo_principal)} · `) : ''}${grupo.items.length} presentaci${grupo.items.length === 1 ? 'ón' : 'ones'}` : `${grupo.items.length} presentaci${grupo.items.length === 1 ? 'ón' : 'ones'} sin foto base`}
                                                             </span>
                                                         </div>
                                                     </div>
                                                 </div>
                                                 <div style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                                                     <button type="button"
-                                                        onclick="window.NodosPizarra.abrirEstudioFotoBase({ clave_producto_base: '${escaparHtml(grupo.clave_producto_base)}', familia_id: ${Number(grupo.familia_id || 0)}, familia_nombre: decodeURIComponent('${encodeURIComponent(grupo.familia_nombre || '')}'), articulo_principal: decodeURIComponent('${encodeURIComponent(grupo.articulo_principal || '')}'), nombre_base_oficial: decodeURIComponent('${encodeURIComponent(grupo.nombre_base_oficial || '')}'), tipo_ancla: '${tipoAncla}', ingrediente_id: ${Number(grupo.ingrediente_origen_id || 0)}, sku_combo: '${escaparHtml(skuCombo)}', imagen_actual: ${imgBase ? `decodeURIComponent('${encodeURIComponent(JSON.stringify(imgBase))}')` : 'null'} })"
+                                                        onclick="window.NodosPizarra.abrirEstudioFotoBase({ clave_producto_base: '${escaparHtml(grupo.clave_producto_base)}', familia_id: ${Number(grupo.familia_id || 0)}, familia_nombre: decodeURIComponent('${encodeURIComponent(grupo.familia_nombre || '')}'), articulo_principal: decodeURIComponent('${encodeURIComponent(grupo.articulo_principal || '')}'), subrama_labels: JSON.parse(decodeURIComponent('${encodeURIComponent(JSON.stringify(grupo.subrama_labels || []))}')), nombre_base_oficial: decodeURIComponent('${encodeURIComponent(grupo.nombre_base_oficial || '')}'), tipo_ancla: '${tipoAncla}', ingrediente_id: ${Number(grupo.ingrediente_origen_id || 0)}, sku_combo: '${escaparHtml(skuCombo)}', imagen_actual: ${imgBase ? `decodeURIComponent('${encodeURIComponent(JSON.stringify(imgBase))}')` : 'null'} })"
                                                         style="padding:5px 10px; border-radius:7px; border:1px solid rgba(56,189,248,0.5); background:rgba(56,189,248,0.14); color:#bae6fd; font-size:0.74rem; font-weight:700; cursor:pointer;">
                                                         🖼️ Estudio / Foto Base
                                                     </button>
@@ -4751,8 +4755,9 @@
                 modal.style.cssText = 'position:fixed; inset:0; z-index:9500; background:rgba(2,6,23,0.78); display:flex; align-items:center; justify-content:center; padding:16px;';
                 document.body.appendChild(modal);
             }
+            const subLabels = Array.isArray(ctx.subrama_labels) ? ctx.subrama_labels.filter(Boolean) : [];
             const state = {
-                destino: ctx.familia_id && ctx.articulo_principal ? 'ancla' : 'variedad',
+                destino: subLabels.length > 0 ? 'subrama' : (ctx.familia_id && ctx.articulo_principal ? 'ancla' : 'variedad'),
                 modo: 'biblioteca',
                 preset: 'cuenco_neutro',
                 calidad: 'estandar',
@@ -4771,24 +4776,47 @@
             };
 
             const buildPrompt = () => {
-                const subj = state.destino === 'ancla' ? ctx.articulo_principal : ctx.nombre_base_oficial;
+                const subj = state.destino === 'subrama'
+                    ? `${ctx.articulo_principal} › ${subLabels.join(' › ')}`
+                    : (state.destino === 'ancla' ? ctx.articulo_principal : ctx.nombre_base_oficial);
                 const mapP = {
                     cuenco_neutro: 'Fotografía gastronómica profesional a 45° en cuenco cerámico claro sobre superficie neutra cálida, luz natural suave.',
                     granel_cenital: 'Fotografía gastronómica cenital 90° a granel sobre piedra o madera clara con luz difusa.',
                     fondo_blanco: 'Fotografía editorial minimalista de catálogo sobre fondo blanco puro limpio.'
                 };
-                return `${mapP[state.preset] || mapP.cuenco_neutro} Producto único: "${subj}" (${ctx.familia_nombre}). Sin envases, sin bolsas, sin marcas ni texto.`;
+                const subjClean = String(subj || '')
+                    .replace(/\bRELDO\b/gi, 'Repelado').replace(/\bCHLER\b/gi, 'Chandler').replace(/\bEXLIGHT\b/gi, 'Extra Light')
+                    .replace(/\bTOST\/SAL\b/gi, 'Tostado y Salado').replace(/\bS\/PIEL\b/gi, 'Sin piel');
+                const n = subjClean.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+                const notas = [];
+                if (/\bcon cascara\b/.test(n)) notas.push('Frutos enteros CON su cáscara natural intacta.');
+                else if (/\b(repelado|peladas|pelado|sin cascara|sin piel)\b/.test(n)) notas.push('Granos o frutos completamente pelados, SIN cáscara ni vainas.');
+                if (/\bcrudo\b/.test(n) && /\bmani\b/.test(n)) notas.push('Granos crudos con su fina piel rojiza natural, sin cáscara dura.');
+                return `${mapP[state.preset] || mapP.cuenco_neutro} Producto único: "${subjClean}" (${ctx.familia_nombre}). ${notas.join(' ')} Sin envases, sin bolsas, sin marcas ni texto.`.trim();
             };
 
-            const buildTargetPayload = () => state.destino === 'ancla'
-                ? {
-                    tipo_ancla: 'ANCLA_PRINCIPAL',
-                    familia_id: ctx.familia_id,
-                    familia_nombre: ctx.familia_nombre,
-                    articulo_principal: ctx.articulo_principal,
-                    titulo_referencia: `${ctx.familia_nombre} › ${ctx.articulo_principal}`
+            const buildTargetPayload = () => {
+                if (state.destino === 'subrama' && subLabels.length > 0) {
+                    return {
+                        tipo_ancla: 'SUBRAMA_JERARQUIA',
+                        familia_id: ctx.familia_id,
+                        familia_nombre: ctx.familia_nombre,
+                        articulo_principal: ctx.articulo_principal,
+                        ruta_subrama: subLabels.join('>'),
+                        ruta_subrama_labels: subLabels,
+                        titulo_referencia: `${ctx.articulo_principal} › ${subLabels.join(' › ')}`
+                    };
                 }
-                : {
+                if (state.destino === 'ancla') {
+                    return {
+                        tipo_ancla: 'ANCLA_PRINCIPAL',
+                        familia_id: ctx.familia_id,
+                        familia_nombre: ctx.familia_nombre,
+                        articulo_principal: ctx.articulo_principal,
+                        titulo_referencia: `${ctx.familia_nombre} › ${ctx.articulo_principal}`
+                    };
+                }
+                return {
                     tipo_ancla: ctx.tipo_ancla,
                     familia_id: ctx.familia_id,
                     familia_nombre: ctx.familia_nombre,
@@ -4798,6 +4826,7 @@
                     articulo_sku: ctx.sku_combo || null,
                     titulo_referencia: ctx.nombre_base_oficial
                 };
+            };
 
             const render = () => {
                 modal.style.display = 'flex';
@@ -4813,6 +4842,11 @@
 
                         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; font-size:0.78rem;">
                             <span style="color:#94a3b8; font-weight:700;">Aplicar a:</span>
+                            ${subLabels.length > 0 ? `
+                                <button type="button" id="piz-dest-subrama" style="padding:4px 10px; border-radius:999px; border:1px solid ${state.destino==='subrama'?'#34d399':'#334155'}; background:${state.destino==='subrama'?'rgba(16,185,129,0.22)':'#0f172a'}; color:#f8fafc; cursor:pointer; font-weight:700;">
+                                    🌿 Sub-rama (${escaparHtml(subLabels.join(' › '))})
+                                </button>
+                            ` : ''}
                             ${ctx.familia_id && ctx.articulo_principal ? `
                                 <button type="button" id="piz-dest-ancla" style="padding:4px 10px; border-radius:999px; border:1px solid ${state.destino==='ancla'?'#c084fc':'#334155'}; background:${state.destino==='ancla'?'rgba(142,71,133,0.35)':'#0f172a'}; color:#f8fafc; cursor:pointer; font-weight:700;">
                                     🌿 Todo el rubro (${escaparHtml(ctx.articulo_principal)})
@@ -4870,6 +4904,8 @@
                 `;
 
                 modal.querySelector('#piz-ib-close').onclick = () => { modal.style.display = 'none'; };
+                const dS = modal.querySelector('#piz-dest-subrama');
+                if (dS) dS.onclick = () => { state.destino = 'subrama'; render(); };
                 const dA = modal.querySelector('#piz-dest-ancla');
                 if (dA) dA.onclick = () => { state.destino = 'ancla'; render(); };
                 modal.querySelector('#piz-dest-var').onclick = () => { state.destino = 'variedad'; render(); };
@@ -4880,7 +4916,7 @@
                     window.NodosPizarra.subirImagenBaseLamda(
                         pTarget.clave_producto_base || '', pTarget.tipo_ancla, pTarget.ingrediente_id || 0,
                         pTarget.articulo_sku || '', pTarget.titulo_referencia, pTarget.familia_id, pTarget.familia_nombre, pTarget.articulo_principal,
-                        () => { modal.style.display = 'none'; }
+                        () => { modal.style.display = 'none'; }, pTarget.ruta_subrama || ''
                     );
                 };
                 modal.querySelectorAll('[data-piz-usar]').forEach(btn => {
@@ -4913,6 +4949,7 @@
                             body: JSON.stringify({
                                 familia_nombre: ctx.familia_nombre,
                                 articulo_principal: ctx.articulo_principal,
+                                ruta_subrama_labels: state.destino === 'subrama' ? subLabels : [],
                                 nombre_variante: state.destino === 'variedad' ? ctx.nombre_base_oficial : '',
                                 preset_estilo: state.preset,
                                 calidad: state.calidad,
@@ -4945,7 +4982,7 @@
 
             await loadBib();
         },
-        subirImagenBaseLamda: (claveBase, tipoAncla, ingId, skuCombo, tituloRef, famId = 0, famNom = '', artPrincipal = '', onDone = null) => {
+        subirImagenBaseLamda: (claveBase, tipoAncla, ingId, skuCombo, tituloRef, famId = 0, famNom = '', artPrincipal = '', onDone = null, rutaSubrama = '') => {
             let inp = document.getElementById('pizarra-input-img-base-file');
             if (!inp) {
                 inp = document.createElement('input');
@@ -4965,6 +5002,7 @@
                 if (Number(famId) > 0) fd.append('familia_id', String(famId));
                 if (famNom) fd.append('familia_nombre', famNom);
                 if (artPrincipal) fd.append('articulo_principal', artPrincipal);
+                if (rutaSubrama) fd.append('ruta_subrama', rutaSubrama);
                 if (Number(ingId) > 0) fd.append('ingrediente_id', String(ingId));
                 if (claveBase) fd.append('clave_producto_base', claveBase);
                 if (skuCombo) fd.append('articulo_sku', skuCombo);

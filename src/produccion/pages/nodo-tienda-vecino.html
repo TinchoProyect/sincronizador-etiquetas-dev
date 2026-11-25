@@ -5848,7 +5848,7 @@
       return c || fallback;
     }
 
-    function _resolverFotoCompartidaRama(gruposDescendientes = [], modoVidriera = 'PORTADAS') {
+    function _resolverFotoCompartidaRama(gruposDescendientes = [], modoVidriera = 'PORTADAS', { nivelRama = 1, rutaSubramaRama = '' } = {}) {
       if (modoVidriera === 'LISTA_COMPACTA' || !Array.isArray(gruposDescendientes) || gruposDescendientes.length < 2) {
         return null;
       }
@@ -5856,6 +5856,13 @@
       let anclaHeredada = null;
       for (const g of gruposDescendientes) {
         if (!g.portada_url || !g.oferta_imagen?.oferta_id) continue;
+        const esSubramaImg = g.imagen_tipo_ancla === 'SUBRAMA_JERARQUIA' && Boolean(g.imagen_ruta_subrama);
+        const subramaPermitida = !esSubramaImg || (
+          Boolean(rutaSubramaRama) &&
+          (rutaSubramaRama === g.imagen_ruta_subrama || rutaSubramaRama.startsWith(g.imagen_ruta_subrama + '>'))
+        );
+        if (!subramaPermitida) continue;
+
         const u = g.portada_url;
         if (!porUrl.has(u)) {
           porUrl.set(u, { url: u, oferta_id: g.oferta_imagen.oferta_id, count: 0, heredada: false, nonPropiaCount: 0 });
@@ -5865,7 +5872,7 @@
         if (g.imagen_origen_modo !== 'PROPIA') entry.nonPropiaCount += 1;
         if (g.imagen_heredada_de_ancla) {
           entry.heredada = true;
-          if (!anclaHeredada) {
+          if (!esSubramaImg && nivelRama === 1 && g.imagen_tipo_ancla === 'ANCLA_PRINCIPAL' && !anclaHeredada) {
             anclaHeredada = { url: u, oferta_id: g.oferta_imagen.oferta_id };
           }
         }
@@ -5919,8 +5926,17 @@
         for (let i = 0; i < subNiveles.length; i++) {
           const lbl = subNiveles[i];
           const rKey = `${famKey}__${subNiveles.slice(0, i + 1).map(_slugSafeTienda).join('_')}`;
+          const rutaSub = i >= 1 ? subNiveles.slice(1, i + 1).map(normalizarTextoBusqueda).join('>') : '';
           if (!curMap.has(rKey)) {
-            curMap.set(rKey, { rama_key: rKey, label: lbl, subramasMap: new Map(), grupos: [], subramas: [] });
+            curMap.set(rKey, {
+              rama_key: rKey,
+              label: lbl,
+              nivel_rama: i + 1,
+              ruta_subrama_norm: rutaSub,
+              subramasMap: new Map(),
+              grupos: [],
+              subramas: []
+            });
           }
           curNode = curMap.get(rKey);
           curMap = curNode.subramasMap;
@@ -5933,13 +5949,22 @@
           .sort((a, b) => a.label.localeCompare(b.label, 'es-AR'));
         const gruposOrd = r.grupos.slice()
           .sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
-        const nodo = { rama_key: r.rama_key, label: r.label, subramas, grupos: gruposOrd };
-        // Compactar ramas de un solo hijo
+        const nodo = {
+          rama_key: r.rama_key,
+          label: r.label,
+          nivel_rama: r.nivel_rama || 1,
+          ruta_subrama_norm: r.ruta_subrama_norm || '',
+          subramas,
+          grupos: gruposOrd
+        };
+        // Compactar ramas de un solo hijo manteniendo el nivel_rama más específico
         while (nodo.grupos.length === 0 && nodo.subramas.length === 1) {
           const u = nodo.subramas[0];
           const pN = normalizarTextoBusqueda(nodo.label);
           const hN = normalizarTextoBusqueda(u.label);
           nodo.label = (pN === hN || hN.includes(pN)) ? u.label : `${nodo.label} › ${u.label}`;
+          nodo.nivel_rama = u.nivel_rama || nodo.nivel_rama;
+          nodo.ruta_subrama_norm = u.ruta_subrama_norm || nodo.ruta_subrama_norm;
           nodo.grupos = u.grupos;
           nodo.subramas = u.subramas;
         }
@@ -5957,7 +5982,10 @@
         const desc = recolectarGruposRama(r);
         const totalPres = desc.reduce((acc, x) => acc + (x.presentaciones?.length || 0), 0);
         const minPrecio = desc.length > 0 ? Math.min(...desc.map(x => Number(x.min_precio || 0))) : 0;
-        const fotoCompartida = _resolverFotoCompartidaRama(desc, modoVidriera);
+        const fotoCompartida = _resolverFotoCompartidaRama(desc, modoVidriera, {
+          nivelRama: r.nivel_rama || 1,
+          rutaSubramaRama: r.ruta_subrama_norm || ''
+        });
         return {
           ...r,
           subramas: (r.subramas || []).map(sr => enriquecerRamaConFoto(sr)),
@@ -5974,7 +6002,7 @@
         const gruposDirectos = f.gruposDirectos.slice()
           .sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
 
-        // Compactar sub-ramas redundantes dentro de cada rubro y evitar cajas separadas de 1 solo producto
+        // Compactar sub-ramas redundantes dentro de cada rubro y respetar sub-ramas con foto diferenciada
         const subramas = [];
         for (const r of subramasRaw) {
           const todosDesc = recolectarGruposRama(r).sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
@@ -5983,17 +6011,41 @@
             continue;
           }
           const maxHijo = (r.subramas || []).length > 0 ? Math.max(...r.subramas.map(sr => contarGruposRama(sr))) : 0;
-          const mantenerSubAcordeones = (r.subramas || []).length >= 2 && (todosDesc.length >= 4 || maxHijo >= 2);
+          const tieneSubramasConFotoPropia = (r.subramas || []).some(sr => {
+            const dSr = recolectarGruposRama(sr);
+            return Boolean(_resolverFotoCompartidaRama(dSr, modoVidriera, {
+              nivelRama: sr.nivel_rama || 2,
+              rutaSubramaRama: sr.ruta_subrama_norm || ''
+            })) || dSr.some(x => x.imagen_tipo_ancla === 'SUBRAMA_JERARQUIA');
+          });
+          const mantenerSubAcordeones = (r.subramas || []).length >= 2 && (todosDesc.length >= 4 || maxHijo >= 2 || tieneSubramasConFotoPropia);
           if (r.subramas && r.subramas.length > 0 && !mantenerSubAcordeones) {
             r.grupos = todosDesc;
             r.subramas = [];
+          } else if (mantenerSubAcordeones && (r.subramas || []).length > 0) {
+            const subHijas = [];
+            for (const sr of r.subramas) {
+              const descSr = recolectarGruposRama(sr);
+              if (descSr.length === 1) {
+                r.grupos.push(descSr[0]);
+              } else {
+                const maxNieto = (sr.subramas || []).length > 0 ? Math.max(...sr.subramas.map(ss => contarGruposRama(ss))) : 0;
+                if (sr.subramas && sr.subramas.length > 0 && !(sr.subramas.length >= 2 && (descSr.length >= 4 || maxNieto >= 2))) {
+                  sr.grupos = descSr.sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
+                  sr.subramas = [];
+                }
+                subHijas.push(sr);
+              }
+            }
+            r.subramas = subHijas;
+            r.grupos.sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
           }
           subramas.push(enriquecerRamaConFoto(r));
         }
         gruposDirectos.sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
 
-        // Disolver único sub-acordeón si no tiene foto compartida ni aporta separación real
-        if (subramas.length === 1 && gruposDirectos.length === 0 && !subramas[0].foto_compartida) {
+        // Disolver único sub-acordeón si no tiene foto compartida ni sub-ramas con foto diferenciada
+        if (subramas.length === 1 && gruposDirectos.length === 0 && !subramas[0].foto_compartida && (subramas[0].subramas || []).length === 0) {
           gruposDirectos.push(...recolectarGruposRama(subramas[0]));
           gruposDirectos.sort((a, b) => a.nombre_publico.localeCompare(b.nombre_publico, 'es-AR'));
           subramas.length = 0;
@@ -6102,6 +6154,8 @@
         g.oferta_imagen = ofertaConImagen;
         g.portada_url = ofertaConImagen ? String(ofertaConImagen.portada_activa.url || '').trim() : '';
         g.imagen_origen_modo = ofertaConImagen ? String(ofertaConImagen.imagen_origen_modo || 'LAMDA_BASE').toUpperCase() : 'SIN_IMAGEN';
+        g.imagen_tipo_ancla = ofertaConImagen ? String(ofertaConImagen.imagen_base_lamda?.tipo_ancla || '').toUpperCase() : '';
+        g.imagen_ruta_subrama = ofertaConImagen ? String(ofertaConImagen.imagen_base_lamda?.ruta_subrama_norm || '').trim() : '';
         g.imagen_heredada_de_ancla = Boolean(
           ofertaConImagen &&
           g.imagen_origen_modo !== 'PROPIA' &&
@@ -6372,9 +6426,20 @@
         const sueltos = [];
         for (const g of ordBusq) {
           if (g.articulo_principal) {
-            const bk = `${normalizarTextoBusqueda(g.categoria_familiar)}::${normalizarTextoBusqueda(g.articulo_principal)}`;
+            const subCompat = (g.imagen_tipo_ancla === 'SUBRAMA_JERARQUIA' && g.imagen_ruta_subrama)
+              ? g.imagen_ruta_subrama
+              : '';
+            const bk = `${normalizarTextoBusqueda(g.categoria_familiar)}::${normalizarTextoBusqueda(g.articulo_principal)}::${subCompat}`;
             if (!bucketsRubro.has(bk)) {
-              bucketsRubro.set(bk, { key: bk, familia_nombre: g.categoria_familiar, label: g.articulo_principal, items: [] });
+              const lblBucket = subCompat ? `${g.articulo_principal} › ${subCompat.split('>').join(' › ')}` : g.articulo_principal;
+              bucketsRubro.set(bk, {
+                key: bk,
+                familia_nombre: g.categoria_familiar,
+                label: lblBucket,
+                nivelRama: subCompat ? 2 : 1,
+                rutaSubramaRama: subCompat,
+                items: []
+              });
             }
             bucketsRubro.get(bk).items.push(g);
           } else {
@@ -6384,7 +6449,10 @@
 
         const bloquesBusq = [];
         for (const b of bucketsRubro.values()) {
-          const fotoComp = _resolverFotoCompartidaRama(b.items, modoVidriera);
+          const fotoComp = _resolverFotoCompartidaRama(b.items, modoVidriera, {
+            nivelRama: b.nivelRama,
+            rutaSubramaRama: b.rutaSubramaRama
+          });
           if (b.items.length >= 2 && fotoComp) {
             const totalPres = b.items.reduce((acc, x) => acc + (x.presentaciones?.length || 0), 0);
             const minPrecio = Math.min(...b.items.map(x => Number(x.min_precio || 0)));

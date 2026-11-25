@@ -1064,11 +1064,13 @@ router.get('/admin/imagenes-base', bloquearEnDominioPublicoTienda, async (req, r
         const busqueda = String(req.query.q || '').trim();
         const familiaId = req.query.familia_id ? Number(req.query.familia_id) : null;
         const articuloPrincipal = String(req.query.articulo_principal || '').trim();
+        const rutaSubrama = String(req.query.ruta_subrama || '').trim();
         const data = await lamdaImagenesBaseService.listarProductosBaseConImagenes(dbProduccion, {
             soloCatalogoNodos,
             busqueda,
             familiaId,
             articuloPrincipal,
+            rutaSubrama,
             incluirInternas
         });
         res.json({ ok: true, ...data });
@@ -1141,6 +1143,7 @@ router.post('/admin/imagenes-base/asignar-biblioteca', bloquearEnDominioPublicoT
             tipo_ancla: body.tipo_ancla || 'ANCLA_PRINCIPAL',
             familia_id: body.familia_id || null,
             articulo_principal: body.articulo_principal || null,
+            ruta_subrama: body.ruta_subrama || null,
             ingrediente_id: body.ingrediente_id || null,
             clave_producto_base: body.clave_producto_base || null,
             claves_secundarias: clavesSec,
@@ -1161,6 +1164,7 @@ router.post('/admin/imagenes-base/generar-ia', bloquearEnDominioPublicoTienda, a
         const preview = await lamdaImagenesBaseService.generarPreviewImagenBaseIA({
             familia_nombre: body.familia_nombre || '',
             articulo_principal: body.articulo_principal || '',
+            ruta_subrama_labels: body.ruta_subrama_labels || body.ruta_subrama || [],
             nombre_variante: body.nombre_variante || '',
             preset_estilo: body.preset_estilo || 'cuenco_neutro',
             calidad: body.calidad || 'estandar',
@@ -1185,6 +1189,7 @@ router.post('/admin/imagenes-base/confirmar-ia', bloquearEnDominioPublicoTienda,
             familia_id: body.familia_id || null,
             familia_nombre: body.familia_nombre || null,
             articulo_principal: body.articulo_principal || null,
+            ruta_subrama: body.ruta_subrama || null,
             etiqueta: body.etiqueta || body.titulo_referencia || null,
             tipo_ancla: body.tipo_ancla || 'ANCLA_PRINCIPAL',
             ingrediente_id: body.ingrediente_id || null,
@@ -1216,6 +1221,7 @@ router.post('/admin/imagenes-base', bloquearEnDominioPublicoTienda, middlewareSu
             familia_id: body.familia_id || null,
             familia_nombre: body.familia_nombre || null,
             articulo_principal: body.articulo_principal || null,
+            ruta_subrama: body.ruta_subrama || null,
             ingrediente_id: body.ingrediente_id || null,
             clave_producto_base: body.clave_producto_base || null,
             claves_secundarias: clavesSec,

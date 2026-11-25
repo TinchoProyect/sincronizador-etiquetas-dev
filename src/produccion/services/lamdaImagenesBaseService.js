@@ -61,10 +61,16 @@ function generarIdMediaBase(prefijo = 'ib') {
 
 function normalizarTipoAncla(raw) {
     const t = String(raw || '').trim().toUpperCase();
-    if (t === 'ANCLA_PRINCIPAL' || t === 'INGREDIENTE' || t === 'PRODUCTO_BASE' || t === 'ARTICULO_SKU') {
+    if (
+        t === 'ANCLA_PRINCIPAL' ||
+        t === 'SUBRAMA_JERARQUIA' ||
+        t === 'INGREDIENTE' ||
+        t === 'PRODUCTO_BASE' ||
+        t === 'ARTICULO_SKU'
+    ) {
         return t;
     }
-    const err = new Error('tipo_ancla inválido. Usá ANCLA_PRINCIPAL, INGREDIENTE, PRODUCTO_BASE o ARTICULO_SKU.');
+    const err = new Error('tipo_ancla inválido. Usá ANCLA_PRINCIPAL, SUBRAMA_JERARQUIA, INGREDIENTE, PRODUCTO_BASE o ARTICULO_SKU.');
     err.statusCode = 400;
     throw err;
 }
@@ -79,11 +85,39 @@ function sanitizarSegmentoPath(val, fallback = 'item') {
     return clean || fallback;
 }
 
+function extraerSegmentosSubrama(raw) {
+    if (Array.isArray(raw)) {
+        return raw.map(s => String(s || '').trim()).filter(Boolean).slice(0, 3);
+    }
+    const txt = String(raw || '').trim();
+    if (!txt) return [];
+    return txt
+        .split(/\s*(?:>|›|___)\s*/)
+        .map(s => String(s || '').trim())
+        .filter(Boolean)
+        .slice(0, 3);
+}
+
+function normalizarRutaSubrama(raw) {
+    const segs = extraerSegmentosSubrama(raw)
+        .map(s => jh.normalizarClaveTexto(s))
+        .filter(Boolean);
+    return segs.join('>');
+}
+
 function construirClaveAnclaPrincipal(familiaId, articuloPrincipal) {
     const fam = Number(familiaId || 0) || 0;
     const artNorm = jh.normalizarClaveTexto(articuloPrincipal);
     if (!fam || !artNorm) return '';
     return `${fam}::${artNorm}`;
+}
+
+function construirClaveSubrama(familiaId, articuloPrincipal, rutaSubrama) {
+    const fam = Number(familiaId || 0) || 0;
+    const artNorm = jh.normalizarClaveTexto(articuloPrincipal);
+    const rutaNorm = normalizarRutaSubrama(rutaSubrama);
+    if (!fam || !artNorm || !rutaNorm) return '';
+    return `${fam}::${artNorm}::${rutaNorm}`;
 }
 
 function obtenerRutasArchivoBiblioteca(familiaNombreOrSlug, fotoId) {
@@ -150,7 +184,7 @@ async function procesarYGuardarWebp(buffer, pubPath, origPath) {
 async function obtenerMapaImagenesBaseActivas(db) {
     const res = await db.query(`
         SELECT id, tipo_ancla, ingrediente_id, clave_producto_base, articulo_sku,
-               familia_id, articulo_principal_norm, biblioteca_imagen_id,
+               familia_id, articulo_principal_norm, ruta_subrama_norm, biblioteca_imagen_id,
                foto_id, url, width, height, bytes, origen_tipo, origen_foto_lote_id,
                titulo_referencia, created_at, updated_at
         FROM public.lamda_imagenes_base
@@ -161,6 +195,7 @@ async function obtenerMapaImagenesBaseActivas(db) {
     const porIngredienteId = new Map();
     const porClaveBase = new Map();
     const porSku = new Map();
+    const porSubrama = new Map();
     const porAnclaPrincipal = new Map();
 
     for (const row of res.rows) {
@@ -172,6 +207,7 @@ async function obtenerMapaImagenesBaseActivas(db) {
             articulo_sku: row.articulo_sku || null,
             familia_id: row.familia_id ? Number(row.familia_id) : null,
             articulo_principal_norm: row.articulo_principal_norm || null,
+            ruta_subrama_norm: row.ruta_subrama_norm || null,
             biblioteca_imagen_id: row.biblioteca_imagen_id ? Number(row.biblioteca_imagen_id) : null,
             foto_id: row.foto_id,
             url: row.url,
@@ -191,38 +227,55 @@ async function obtenerMapaImagenesBaseActivas(db) {
         } else if (row.tipo_ancla === 'PRODUCTO_BASE' && row.clave_producto_base) {
             const cbKey = String(row.clave_producto_base).trim();
             if (!porClaveBase.has(cbKey)) porClaveBase.set(cbKey, entry);
+        } else if (row.tipo_ancla === 'SUBRAMA_JERARQUIA' && row.familia_id && row.articulo_principal_norm && row.ruta_subrama_norm) {
+            const srKey = construirClaveSubrama(row.familia_id, row.articulo_principal_norm, row.ruta_subrama_norm);
+            if (srKey && !porSubrama.has(srKey)) porSubrama.set(srKey, entry);
         } else if (row.tipo_ancla === 'ANCLA_PRINCIPAL' && row.familia_id && row.articulo_principal_norm) {
             const anclaKey = construirClaveAnclaPrincipal(row.familia_id, row.articulo_principal_norm);
             if (anclaKey && !porAnclaPrincipal.has(anclaKey)) porAnclaPrincipal.set(anclaKey, entry);
         }
     }
 
-    return { porIngredienteId, porClaveBase, porSku, porAnclaPrincipal };
+    return { porIngredienteId, porClaveBase, porSku, porSubrama, porAnclaPrincipal };
+}
+
+function resolverSubramaDesdeMapa(famId, artPrincipal, segmentosRaw = [], mapaImagenes = null) {
+    if (!mapaImagenes || !mapaImagenes.porSubrama || !famId || !artPrincipal) return null;
+    const cleanSegs = segmentosRaw.map(s => String(s || '').trim()).filter(Boolean).slice(0, 3);
+    for (let len = cleanSegs.length; len >= 1; len--) {
+        const subSegs = cleanSegs.slice(0, len);
+        const srKey = construirClaveSubrama(famId, artPrincipal, subSegs);
+        if (srKey && mapaImagenes.porSubrama.has(srKey)) {
+            return {
+                entry: mapaImagenes.porSubrama.get(srKey),
+                nivel: len === 3 ? 'SUBRAMA_N5' : (len === 2 ? 'SUBRAMA_N4' : 'SUBRAMA_N3')
+            };
+        }
+    }
+    return null;
 }
 
 /**
- * Cascada determinista de 4 niveles:
- *   1. ARTICULO_SKU (excepción puntual de SKU/combo)
- *   2. INGREDIENTE (excepción visual de variedad/ingrediente)
- *   3. PRODUCTO_BASE (excepción visual taxonómica)
- *   4. ANCLA_PRINCIPAL (foto base del rubro: Familia + Sustantivo Ancla)
+ * Cascada determinista de 7 escalones:
+ *   1. ARTICULO_SKU -> 2. INGREDIENTE -> 3. PRODUCTO_BASE
+ *   4. SUBRAMA_N5 -> 5. SUBRAMA_N4 -> 6. SUBRAMA_N3 -> 7. ANCLA_PRINCIPAL
  */
 function resolverImagenBaseLamdaParaArticulo(art = {}, mapaImagenes = null) {
     if (!mapaImagenes) return null;
 
     const skuKey = String(art.sku_nodo || art.articulo_id || '').trim().toUpperCase();
     if (skuKey && mapaImagenes.porSku && mapaImagenes.porSku.has(skuKey)) {
-        return { ...mapaImagenes.porSku.get(skuKey), heredada_de_ancla: false };
+        return { ...mapaImagenes.porSku.get(skuKey), heredada_de_ancla: false, nivel_herencia: 'ARTICULO_SKU' };
     }
 
     const ingId = Number(art.ingrediente_origen_id || art.ing_id || 0);
     if (ingId > 0 && mapaImagenes.porIngredienteId && mapaImagenes.porIngredienteId.has(ingId)) {
-        return { ...mapaImagenes.porIngredienteId.get(ingId), heredada_de_ancla: false };
+        return { ...mapaImagenes.porIngredienteId.get(ingId), heredada_de_ancla: false, nivel_herencia: 'INGREDIENTE' };
     }
 
     const claveBase = String(art.clave_producto_base || '').trim();
     if (claveBase && mapaImagenes.porClaveBase && mapaImagenes.porClaveBase.has(claveBase)) {
-        return { ...mapaImagenes.porClaveBase.get(claveBase), heredada_de_ancla: false };
+        return { ...mapaImagenes.porClaveBase.get(claveBase), heredada_de_ancla: false, nivel_herencia: 'PRODUCTO_BASE' };
     }
 
     const famId = Number(
@@ -238,9 +291,28 @@ function resolverImagenBaseLamdaParaArticulo(art = {}, mapaImagenes = null) {
         art.articulo_principal ??
         ''
     ).trim();
+
+    const segsSub = [
+        art.jerarquia_b2b?.sub_categoria,
+        art.jerarquia_b2b?.sub_sub_categoria,
+        art.jerarquia_b2b?.sub_sub_sub_categoria
+    ].filter(s => s && String(s).trim() !== '');
+    const matchSub = resolverSubramaDesdeMapa(famId, artPrincipal, segsSub, mapaImagenes);
+    if (matchSub && matchSub.entry) {
+        return {
+            ...matchSub.entry,
+            heredada_de_ancla: true,
+            nivel_herencia: matchSub.nivel
+        };
+    }
+
     const anclaKey = construirClaveAnclaPrincipal(famId, artPrincipal);
     if (anclaKey && mapaImagenes.porAnclaPrincipal && mapaImagenes.porAnclaPrincipal.has(anclaKey)) {
-        return { ...mapaImagenes.porAnclaPrincipal.get(anclaKey), heredada_de_ancla: true };
+        return {
+            ...mapaImagenes.porAnclaPrincipal.get(anclaKey),
+            heredada_de_ancla: true,
+            nivel_herencia: 'ANCLA_PRINCIPAL'
+        };
     }
 
     return null;
@@ -271,10 +343,12 @@ async function listarProductosBaseConImagenes(db, {
     busqueda = '',
     familiaId = null,
     articuloPrincipal = '',
+    rutaSubrama = '',
     incluirInternas = false
 } = {}) {
     const famIdFiltro = Number(familiaId || 0) || 0;
     const artPrincipalFiltroNorm = jh.normalizarClaveTexto(articuloPrincipal);
+    const rutaSubramaFiltro = normalizarRutaSubrama(rutaSubrama);
 
     const [mapaJer, mapaImg, artRes] = await Promise.all([
         jh.cargarMapaJerarquiaB2B(db),
@@ -402,19 +476,54 @@ async function listarProductosBaseConImagenes(db, {
                 articulo_principal: jer.articulo_principal || jer.familia_nombre,
                 articulo_principal_norm: artPNorm,
                 imagen_ancla: imagenAncla,
+                subramasMap: new Map(),
                 variedadesMap: new Map(),
                 total_presentaciones: 0,
                 en_nodos_count: 0
             });
         }
         const anclaObj = anclasMap.get(anclaKey);
+        const segsSubRow = [
+            jer.sub_categoria,
+            jer.sub_sub_categoria,
+            jer.sub_sub_sub_categoria
+        ].filter(s => s && String(s).trim() !== '');
+        const varNormRow = (!row.es_combo && ingId > 0)
+            ? `ing_${ingId}`
+            : (jh.normalizarClaveTexto(nombre_base_oficial) || claveBase);
+
+        for (let len = 1; len <= segsSubRow.length; len++) {
+            const subSegs = segsSubRow.slice(0, len);
+            const rNorm = normalizarRutaSubrama(subSegs);
+            if (!rNorm) continue;
+            if (!anclaObj.subramasMap.has(rNorm)) {
+                anclaObj.subramasMap.set(rNorm, {
+                    ruta_subrama_norm: rNorm,
+                    ruta_subrama_labels: subSegs.slice(),
+                    label_display: subSegs[subSegs.length - 1],
+                    nivel: 2 + len,
+                    variedadesSet: new Set(),
+                    total_presentaciones: 0,
+                    en_nodos_count: 0
+                });
+            }
+            const srObj = anclaObj.subramasMap.get(rNorm);
+            srObj.variedadesSet.add(varNormRow);
+            srObj.total_presentaciones += 1;
+            if (enNodos) srObj.en_nodos_count += 1;
+        }
+
+        const rutaSubRowNorm = normalizarRutaSubrama(segsSubRow);
+        if (rutaSubramaFiltro) {
+            const coincideSub = rutaSubRowNorm === rutaSubramaFiltro || rutaSubRowNorm.startsWith(`${rutaSubramaFiltro}>`);
+            if (!coincideSub) continue;
+        }
+
         anclaObj.total_presentaciones += 1;
         if (enNodos) anclaObj.en_nodos_count += 1;
 
         // Unificar bulto + fracción + presentaciones del mismo ingrediente en una sola fila de variedad
-        const varNorm = (!row.es_combo && ingId > 0)
-            ? `ing_${ingId}`
-            : (jh.normalizarClaveTexto(nombre_base_oficial) || claveBase);
+        const varNorm = varNormRow;
         if (!anclaObj.variedadesMap.has(varNorm)) {
             anclaObj.variedadesMap.set(varNorm, {
                 variedad_key: varNorm,
@@ -425,6 +534,8 @@ async function listarProductosBaseConImagenes(db, {
                 articulo_principal: jer.articulo_principal || jer.familia_nombre,
                 articulo_principal_norm: artPNorm,
                 ruta_compacta: jer.ruta_compacta,
+                ruta_subrama_labels: segsSubRow,
+                ruta_subrama_norm: rutaSubRowNorm,
                 nombre_base_oficial,
                 _tieneNombreDeNodo: Boolean(enNodos),
                 es_combo: Boolean(row.es_combo),
@@ -491,10 +602,49 @@ async function listarProductosBaseConImagenes(db, {
     );
 
     let anclasPrincipales = Array.from(anclasMap.values()).map(a => {
+        const subramas = Array.from(a.subramasMap.values()).map(sr => {
+            const srKey = construirClaveSubrama(a.familia_id, a.articulo_principal, sr.ruta_subrama_norm);
+            const imgPropia = srKey ? (mapaImg.porSubrama.get(srKey) || null) : null;
+            const parentSegs = sr.ruta_subrama_labels.slice(0, -1);
+            const matchParent = parentSegs.length > 0
+                ? resolverSubramaDesdeMapa(a.familia_id, a.articulo_principal, parentSegs, mapaImg)
+                : null;
+            const imgHeredada = (matchParent && matchParent.entry) ? matchParent.entry : (a.imagen_ancla || null);
+            const imgEfectiva = imgPropia || imgHeredada || null;
+            let heredaDeLabel = a.articulo_principal;
+            if (matchParent && matchParent.entry) {
+                const pLabels = sr.ruta_subrama_labels.slice(0, matchParent.nivel === 'SUBRAMA_N4' ? 2 : 1);
+                heredaDeLabel = pLabels.join(' › ');
+            }
+            return {
+                ruta_subrama_norm: sr.ruta_subrama_norm,
+                ruta_subrama_labels: sr.ruta_subrama_labels,
+                label_display: sr.label_display,
+                nivel: sr.nivel,
+                total_variedades: sr.variedadesSet.size,
+                total_presentaciones: sr.total_presentaciones,
+                en_nodos_count: sr.en_nodos_count,
+                tiene_foto_propia: Boolean(imgPropia),
+                imagen_propia: imgPropia,
+                imagen_heredada: imgHeredada,
+                imagen_efectiva: imgEfectiva,
+                hereda_de_label: heredaDeLabel
+            };
+        }).sort((x, y) =>
+            x.ruta_subrama_labels.join(' > ').localeCompare(y.ruta_subrama_labels.join(' > '), 'es-AR')
+        );
+
         const variedades = Array.from(a.variedadesMap.values()).map(v => {
             v.presentaciones.sort((x, y) => x.kilos_unidad - y.kilos_unidad || x.sku_nodo.localeCompare(y.sku_nodo));
             const imagenPropia = resolverExcepcionDirectaVariedad(v, mapaImg);
-            const imagenEfectiva = imagenPropia || a.imagen_ancla || null;
+            const matchSub = resolverSubramaDesdeMapa(a.familia_id, a.articulo_principal, v.ruta_subrama_labels || [], mapaImg);
+            const imagenSub = (matchSub && matchSub.entry) ? matchSub.entry : null;
+            const imagenEfectiva = imagenPropia || imagenSub || a.imagen_ancla || null;
+            let heredaDeLabel = a.articulo_principal;
+            if (matchSub && matchSub.entry) {
+                const lenUsado = matchSub.nivel === 'SUBRAMA_N5' ? 3 : (matchSub.nivel === 'SUBRAMA_N4' ? 2 : 1);
+                heredaDeLabel = (v.ruta_subrama_labels || []).slice(0, lenUsado).join(' › ') || a.articulo_principal;
+            }
             const { _tieneNombreDeNodo, ...vClean } = v;
             return {
                 ...vClean,
@@ -502,12 +652,18 @@ async function listarProductosBaseConImagenes(db, {
                 total_presentaciones: v.presentaciones.length,
                 tiene_excepcion_propia: Boolean(imagenPropia),
                 imagen_propia: imagenPropia,
+                imagen_heredada_subrama: imagenSub,
+                hereda_de_label: heredaDeLabel,
                 imagen_efectiva: imagenEfectiva
             };
         }).sort((x, y) => x.nombre_base_oficial.localeCompare(y.nombre_base_oficial, 'es-AR'));
 
         const excepcionesCount = variedades.filter(v => v.tiene_excepcion_propia).length;
-        const imagenEfectivaAncla = a.imagen_ancla || variedades.find(v => v.imagen_propia)?.imagen_propia || null;
+        const subramasPropiasCount = subramas.filter(s => s.tiene_foto_propia).length;
+        const imagenEfectivaAncla = a.imagen_ancla ||
+            subramas.find(s => s.imagen_propia)?.imagen_propia ||
+            variedades.find(v => v.imagen_propia)?.imagen_propia ||
+            null;
 
         return {
             ancla_key: a.ancla_key,
@@ -522,6 +678,8 @@ async function listarProductosBaseConImagenes(db, {
             total_presentaciones: a.total_presentaciones,
             en_nodos_count: a.en_nodos_count,
             excepciones_count: excepcionesCount,
+            subramas_con_foto_count: subramasPropiasCount,
+            subramas,
             variedades
         };
     });
@@ -702,6 +860,7 @@ async function insertarAsignacionImagenBaseEnTx(client, {
     tipoNorm,
     famIdNum = null,
     artPNorm = null,
+    rutaSubramaNorm = null,
     ingIdNum = null,
     claveBaseClean = null,
     skuClean = null,
@@ -717,6 +876,15 @@ async function insertarAsignacionImagenBaseEnTx(client, {
                AND familia_id = $1 AND articulo_principal_norm = $2
              RETURNING url`,
             [famIdNum, artPNorm]
+        );
+    } else if (tipoNorm === 'SUBRAMA_JERARQUIA') {
+        prevRes = await client.query(
+            `UPDATE public.lamda_imagenes_base
+             SET activo = false, updated_at = NOW()
+             WHERE activo = true AND tipo_ancla = 'SUBRAMA_JERARQUIA'
+               AND familia_id = $1 AND articulo_principal_norm = $2 AND ruta_subrama_norm = $3
+             RETURNING url`,
+            [famIdNum, artPNorm, rutaSubramaNorm]
         );
     } else if (tipoNorm === 'INGREDIENTE') {
         prevRes = await client.query(
@@ -748,10 +916,10 @@ async function insertarAsignacionImagenBaseEnTx(client, {
     const ins = await client.query(
         `INSERT INTO public.lamda_imagenes_base (
             tipo_ancla, ingrediente_id, clave_producto_base, articulo_sku,
-            familia_id, articulo_principal_norm, biblioteca_imagen_id,
+            familia_id, articulo_principal_norm, ruta_subrama_norm, biblioteca_imagen_id,
             foto_id, url, url_original, width, height, bytes,
             origen_tipo, titulo_referencia, activo
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,true)
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true)
          RETURNING *`,
         [
             tipoNorm,
@@ -760,6 +928,7 @@ async function insertarAsignacionImagenBaseEnTx(client, {
             skuClean,
             famIdNum,
             artPNorm,
+            rutaSubramaNorm,
             Number(bibRow.id),
             bibRow.foto_id,
             bibRow.url,
@@ -779,6 +948,7 @@ async function asignarImagenBibliotecaAAncla(db, {
     tipo_ancla,
     familia_id = null,
     articulo_principal = null,
+    ruta_subrama = null,
     ingrediente_id = null,
     clave_producto_base = null,
     claves_secundarias = [],
@@ -803,6 +973,7 @@ async function asignarImagenBibliotecaAAncla(db, {
 
     let famIdNum = familia_id ? Number(familia_id) : null;
     let artPNorm = articulo_principal ? jh.normalizarClaveTexto(articulo_principal) : null;
+    let rutaSubramaNorm = ruta_subrama ? normalizarRutaSubrama(ruta_subrama) : null;
     let ingIdNum = ingrediente_id ? Number(ingrediente_id) : null;
     let claveBaseClean = clave_producto_base ? sanitizarSegmentoPath(clave_producto_base, '') : null;
     let skuClean = articulo_sku ? String(articulo_sku).trim().toUpperCase() : null;
@@ -810,6 +981,16 @@ async function asignarImagenBibliotecaAAncla(db, {
     if (tipoNorm === 'ANCLA_PRINCIPAL') {
         if (!Number.isInteger(famIdNum) || famIdNum <= 0 || !artPNorm) {
             const err = new Error('familia_id y articulo_principal son requeridos para ancla ANCLA_PRINCIPAL.');
+            err.statusCode = 400;
+            throw err;
+        }
+        rutaSubramaNorm = null;
+        ingIdNum = null;
+        claveBaseClean = null;
+        skuClean = null;
+    } else if (tipoNorm === 'SUBRAMA_JERARQUIA') {
+        if (!Number.isInteger(famIdNum) || famIdNum <= 0 || !artPNorm || !rutaSubramaNorm) {
+            const err = new Error('familia_id, articulo_principal y ruta_subrama son requeridos para ancla SUBRAMA_JERARQUIA.');
             err.statusCode = 400;
             throw err;
         }
@@ -830,6 +1011,7 @@ async function asignarImagenBibliotecaAAncla(db, {
         }
         titulo_referencia = titulo_referencia || `[${ingChk.rows[0].codigo || ingIdNum}] ${ingChk.rows[0].nombre}`;
         claveBaseClean = claveBaseClean || `ing_${ingIdNum}`;
+        rutaSubramaNorm = null;
         skuClean = null;
     } else if (tipoNorm === 'PRODUCTO_BASE') {
         if (!claveBaseClean) {
@@ -837,6 +1019,7 @@ async function asignarImagenBibliotecaAAncla(db, {
             err.statusCode = 400;
             throw err;
         }
+        rutaSubramaNorm = null;
         ingIdNum = null;
         skuClean = null;
     } else {
@@ -845,6 +1028,7 @@ async function asignarImagenBibliotecaAAncla(db, {
             err.statusCode = 400;
             throw err;
         }
+        rutaSubramaNorm = null;
         ingIdNum = null;
     }
 
@@ -861,6 +1045,7 @@ async function asignarImagenBibliotecaAAncla(db, {
             tipoNorm,
             famIdNum,
             artPNorm,
+            rutaSubramaNorm,
             ingIdNum,
             claveBaseClean,
             skuClean,
@@ -875,6 +1060,7 @@ async function asignarImagenBibliotecaAAncla(db, {
                 tipoNorm: 'PRODUCTO_BASE',
                 famIdNum,
                 artPNorm,
+                rutaSubramaNorm: null,
                 ingIdNum: null,
                 claveBaseClean: secClave,
                 skuClean: null,
@@ -896,7 +1082,8 @@ async function asignarImagenBibliotecaAAncla(db, {
 
     const listado = await listarProductosBaseConImagenes(db, {
         familiaId: famIdNum || undefined,
-        articuloPrincipal: artPNorm || undefined
+        articuloPrincipal: artPNorm || undefined,
+        rutaSubrama: tipoNorm === 'SUBRAMA_JERARQUIA' ? rutaSubramaNorm : undefined
     });
     const anclaAfectada = listado.anclas_principales[0] || null;
 
@@ -913,6 +1100,7 @@ async function guardarImagenBaseLamda(db, {
     familia_id = null,
     familia_nombre = null,
     articulo_principal = null,
+    ruta_subrama = null,
     ingrediente_id = null,
     clave_producto_base = null,
     claves_secundarias = [],
@@ -935,6 +1123,7 @@ async function guardarImagenBaseLamda(db, {
         tipo_ancla,
         familia_id,
         articulo_principal,
+        ruta_subrama,
         ingrediente_id,
         clave_producto_base,
         claves_secundarias,
@@ -982,22 +1171,89 @@ async function eliminarImagenBaseLamda(db, imagenId, { claves_secundarias = [] }
     return eliminada;
 }
 
+function limpiarTextoComercialParaPrompt(raw) {
+    return String(raw || '')
+        .replace(/\bRELDO\b/gi, 'Repelado')
+        .replace(/\bCHLER\b/gi, 'Chandler')
+        .replace(/\bEXLIGHT\b/gi, 'Extra Light')
+        .replace(/\bVGNA\b/gi, 'Virginia')
+        .replace(/\bMPSA\b/gi, 'Mariposa')
+        .replace(/\bS\/PIEL\b/gi, 'Sin piel')
+        .replace(/\bC\/CASCARA\b/gi, 'Con cáscara')
+        .replace(/\bS\/CASCARA\b/gi, 'Sin cáscara')
+        .replace(/\bTOST\/SAL\b/gi, 'Tostado y Salado')
+        .replace(/\bF\/SCOS\b/gi, 'Frutos Secos')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function inferirDescriptoresVisualesPrompt(tokensTxt) {
+    const norm = jh.normalizarClaveTexto(tokensTxt);
+    const notas = [];
+    if (/\bcon cascara\b/.test(norm)) {
+        notas.push('Frutos enteros CON su cáscara natural intacta, sin pelar.');
+    } else if (/\b(repelado|peladas|pelado|sin cascara|sin piel)\b/.test(norm)) {
+        notas.push('Granos o frutos completamente pelados, SIN cáscara, SIN vainas ni restos de piel.');
+    }
+    if (/\bcrudo\b/.test(norm) && /\bmani\b/.test(norm)) {
+        notas.push('Granos de maní crudos sin tostar con su fina piel natural rojiza/rosada, sin cáscara dura exterior.');
+    }
+    if (/\bmariposa\b/.test(norm)) {
+        notas.push('En mitades enteras bien formadas tipo mariposa.');
+    }
+    if (/\b(cuarto|partida|picada)\b/.test(norm)) {
+        notas.push('En cuartos o trozos irregulares naturales (no mitades enteras).');
+    }
+    if (/\b(fileteada|laminada)\b/.test(norm)) {
+        notas.push('Cortadas en láminas finas fileteadas.');
+    }
+    if (/\bpecan\b/.test(norm)) {
+        notas.push('Nuez pecán alargada con surcos característicos.');
+    }
+    if (/\b(tostado|tostada)\b/.test(norm)) {
+        notas.push('Aspecto dorado tostado apetitoso.');
+    }
+    if (/\bsalado\b/.test(norm) && !/\bsin sal\b/.test(norm)) {
+        notas.push('Con ligeros cristales finos de sal superficial.');
+    } else if (/\bsin sal\b/.test(norm)) {
+        notas.push('Al natural sin cristales de sal.');
+    }
+    if (/\bextra light\b|\blight\b/.test(norm)) {
+        notas.push('De tono claro dorado pálido (extra light).');
+    } else if (/\bambar\b/.test(norm)) {
+        notas.push('De tono ámbar dorado intenso.');
+    }
+    if (/\brubia\b/.test(norm)) {
+        notas.push('De color dorado claro rubio.');
+    } else if (/\bnegra\b/.test(norm)) {
+        notas.push('De color oscuro intenso natural.');
+    }
+    return notas;
+}
+
 function construirPromptImagenBase({
     familia_nombre = '',
     articulo_principal = '',
+    ruta_subrama_labels = [],
     nombre_variante = '',
     preset_estilo = 'cuenco_neutro'
 } = {}) {
     const estilo = ESTILOS_IA_IMAGEN_BASE[preset_estilo] || ESTILOS_IA_IMAGEN_BASE.cuenco_neutro;
-    const sujeto = String(nombre_variante || articulo_principal || 'ingrediente natural').trim();
+    const subSegs = extraerSegmentosSubrama(ruta_subrama_labels).map(limpiarTextoComercialParaPrompt);
+    const artClean = limpiarTextoComercialParaPrompt(articulo_principal);
+    const varClean = limpiarTextoComercialParaPrompt(nombre_variante);
+    const rutaVisual = [artClean, ...subSegs].filter(Boolean).join(' › ');
+    const sujeto = varClean || rutaVisual || 'ingrediente natural';
     const fam = String(familia_nombre || '').trim();
-    const contextoFam = fam && jh.normalizarClaveTexto(fam) !== jh.normalizarClaveTexto(sujeto)
+    const contextoFam = fam && jh.normalizarClaveTexto(fam) !== jh.normalizarClaveTexto(artClean || sujeto)
         ? ` (rubro: ${fam})`
         : '';
+    const notasVisuales = inferirDescriptoresVisualesPrompt(`${fam} ${artClean} ${subSegs.join(' ')} ${varClean}`);
 
     return [
         estilo.descripcion_prompt,
         `Producto protagonista único: "${sujeto}"${contextoFam}.`,
+        ...notasVisuales,
         'Mostrar únicamente el alimento natural real con fidelidad botánica y textura apetitosa, nitidez alta, encuadre centrado.',
         'Regla estricta: SIN envases, SIN bolsas plásticas, SIN frascos, SIN cajas, SIN etiquetas, SIN marcas comerciales, SIN logos, SIN texto sobreimpreso, SIN manos ni cubiertos.'
     ].join(' ');
@@ -1023,6 +1279,7 @@ function extraerImagenBase64DesdeGemini(data = {}) {
 async function generarPreviewImagenBaseIA({
     familia_nombre = '',
     articulo_principal = '',
+    ruta_subrama_labels = [],
     nombre_variante = '',
     preset_estilo = 'cuenco_neutro',
     calidad = 'estandar',
@@ -1051,6 +1308,7 @@ async function generarPreviewImagenBaseIA({
     const promptFinal = String(prompt_personalizado || '').trim() || construirPromptImagenBase({
         familia_nombre,
         articulo_principal,
+        ruta_subrama_labels,
         nombre_variante,
         preset_estilo
     });
@@ -1149,6 +1407,7 @@ async function confirmarPreviewImagenBaseIA(db, {
     familia_id = null,
     familia_nombre = null,
     articulo_principal = null,
+    ruta_subrama = null,
     etiqueta = null,
     tipo_ancla = 'ANCLA_PRINCIPAL',
     ingrediente_id = null,
@@ -1195,6 +1454,7 @@ async function confirmarPreviewImagenBaseIA(db, {
         tipo_ancla,
         familia_id,
         articulo_principal,
+        ruta_subrama,
         ingrediente_id,
         clave_producto_base,
         claves_secundarias,
@@ -1263,6 +1523,7 @@ async function guardarFotoPropiaGrupoGestor(db, { nodoId, claveProductoBase, buf
 
 module.exports = {
     ESTILOS_IA_IMAGEN_BASE,
+    normalizarRutaSubrama,
     obtenerMapaImagenesBaseActivas,
     resolverImagenBaseLamdaParaArticulo,
     listarProductosBaseConImagenes,

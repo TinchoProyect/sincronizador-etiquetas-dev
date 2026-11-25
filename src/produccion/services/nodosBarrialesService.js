@@ -4842,6 +4842,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
             ALTER TABLE public.lamda_imagenes_base
                 ADD COLUMN IF NOT EXISTS familia_id INTEGER,
                 ADD COLUMN IF NOT EXISTS articulo_principal_norm VARCHAR(160),
+                ADD COLUMN IF NOT EXISTS ruta_subrama_norm VARCHAR(260),
                 ADD COLUMN IF NOT EXISTS biblioteca_imagen_id INTEGER;
 
             CREATE TABLE IF NOT EXISTS public.lamda_biblioteca_imagenes (
@@ -4873,6 +4874,10 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ON public.lamda_imagenes_base (familia_id, articulo_principal_norm)
                 WHERE activo = true AND tipo_ancla = 'ANCLA_PRINCIPAL' AND familia_id IS NOT NULL AND articulo_principal_norm IS NOT NULL;
 
+            CREATE UNIQUE INDEX IF NOT EXISTS unq_lamda_img_base_subrama_activo
+                ON public.lamda_imagenes_base (familia_id, articulo_principal_norm, ruta_subrama_norm)
+                WHERE activo = true AND tipo_ancla = 'SUBRAMA_JERARQUIA' AND familia_id IS NOT NULL AND articulo_principal_norm IS NOT NULL AND ruta_subrama_norm IS NOT NULL;
+
             DO $$
             DECLARE
                 v_chk_def TEXT;
@@ -4896,13 +4901,13 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 IF v_chk_def IS NULL THEN
                     ALTER TABLE public.lamda_imagenes_base
                         ADD CONSTRAINT lamda_imagenes_base_tipo_ancla_check
-                        CHECK (tipo_ancla IN ('ANCLA_PRINCIPAL', 'INGREDIENTE', 'PRODUCTO_BASE', 'ARTICULO_SKU'));
-                ELSIF v_chk_def NOT LIKE '%ANCLA_PRINCIPAL%' THEN
+                        CHECK (tipo_ancla IN ('ANCLA_PRINCIPAL', 'SUBRAMA_JERARQUIA', 'INGREDIENTE', 'PRODUCTO_BASE', 'ARTICULO_SKU'));
+                ELSIF v_chk_def NOT LIKE '%SUBRAMA_JERARQUIA%' THEN
                     ALTER TABLE public.lamda_imagenes_base
                         DROP CONSTRAINT lamda_imagenes_base_tipo_ancla_check;
                     ALTER TABLE public.lamda_imagenes_base
                         ADD CONSTRAINT lamda_imagenes_base_tipo_ancla_check
-                        CHECK (tipo_ancla IN ('ANCLA_PRINCIPAL', 'INGREDIENTE', 'PRODUCTO_BASE', 'ARTICULO_SKU'));
+                        CHECK (tipo_ancla IN ('ANCLA_PRINCIPAL', 'SUBRAMA_JERARQUIA', 'INGREDIENTE', 'PRODUCTO_BASE', 'ARTICULO_SKU'));
                 END IF;
 
                 IF NOT EXISTS (
