@@ -2426,9 +2426,45 @@ router.get('/crm/whatsapp/chats/:id/detalle', async (req, res) => {
             } catch (_) {}
         }
 
+        let marcadoLeidoAuto = false;
+        const solicitarMarcarLeido = String(req.query.marcar_leido || '') === '1';
+        if (
+            solicitarMarcarLeido
+            && (chat.esperando_respuesta === true || Number(chat.no_leidos || 0) !== 0)
+            && !chat.marcado_pendiente_manual
+        ) {
+            try {
+                const updLeido = await pool.query(`
+                    UPDATE public.crm_whatsapp_chats
+                    SET esperando_respuesta = false,
+                        no_leidos = 0,
+                        marcado_pendiente_manual = false,
+                        atendido_hasta_at = GREATEST(NOW(), COALESCE(ultimo_mensaje_at, NOW())),
+                        updated_at = NOW()
+                    WHERE id = $1
+                    RETURNING atendido_hasta_at
+                `, [chatPk]);
+                chat.esperando_respuesta = false;
+                chat.no_leidos = 0;
+                chat.marcado_pendiente_manual = false;
+                if (updLeido.rows[0]?.atendido_hasta_at) {
+                    chat.atendido_hasta_at = updLeido.rows[0].atendido_hasta_at;
+                }
+                marcadoLeidoAuto = true;
+                fetch('http://127.0.0.1:3004/facturacion/whatsapp/sincronizar-chats', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ marcarVistoChatId: chat.chat_id })
+                }).catch(() => {});
+            } catch (eAutoRead) {
+                console.warn('⚠️ [CRM-WA-HUB] No se pudo marcar chat leído al abrir:', eAutoRead.message);
+            }
+        }
+
         res.json({
             success: true,
             chat,
+            marcado_leido_auto: marcadoLeidoAuto,
             mensajes: mensajesUnicos,
             rayos_x: rayosX,
             otros_contactos_cliente: otrosContactosCliente,
@@ -2653,11 +2689,13 @@ router.post('/crm/whatsapp/chats/:id/enviar', async (req, res) => {
             });
         }
 
-        // Asegurar apagado inmediato de alerta en BD
+        // Asegurar apagado inmediato de alerta en BD con marca de agua de atención
         await pool.query(`
             UPDATE public.crm_whatsapp_chats
             SET esperando_respuesta = false,
                 no_leidos = 0,
+                marcado_pendiente_manual = false,
+                atendido_hasta_at = NOW(),
                 ultimo_mensaje_texto = $2,
                 ultimo_mensaje_from_me = true,
                 ultimo_mensaje_at = NOW(),
@@ -2731,6 +2769,8 @@ router.post('/crm/whatsapp/enviar-directo', async (req, res) => {
             UPDATE public.crm_whatsapp_chats
             SET esperando_respuesta = false,
                 no_leidos = 0,
+                marcado_pendiente_manual = false,
+                atendido_hasta_at = NOW(),
                 ultimo_mensaje_texto = $2,
                 ultimo_mensaje_from_me = true,
                 ultimo_mensaje_at = NOW(),
@@ -2794,6 +2834,8 @@ router.post('/crm/whatsapp/enviar-documento', async (req, res) => {
                 UPDATE public.crm_whatsapp_chats
                 SET esperando_respuesta = false,
                     no_leidos = 0,
+                    marcado_pendiente_manual = false,
+                    atendido_hasta_at = NOW(),
                     ultimo_mensaje_texto = $2,
                     ultimo_mensaje_from_me = true,
                     ultimo_mensaje_at = NOW(),
@@ -2812,15 +2854,18 @@ router.post('/crm/whatsapp/enviar-documento', async (req, res) => {
 /**
  * POST /api/crm/whatsapp/chats/:id/marcar-atendido
  * Apaga manualmente la alerta de "Esperando respuesta" sin necesidad de enviar un mensaje
- * (ej: cuando el cliente solo dice "Ok, gracias!")
+ * y deja marca de agua temporal para que el monitor cada 6s no vuelva a encenderla.
  */
 router.post('/crm/whatsapp/chats/:id/marcar-atendido', async (req, res) => {
     try {
+        await crmWhatsappDb.asegurarTablasCrmWhatsapp();
         const chatPk = parseInt(req.params.id);
         const result = await pool.query(`
             UPDATE public.crm_whatsapp_chats
             SET esperando_respuesta = false,
                 no_leidos = 0,
+                marcado_pendiente_manual = false,
+                atendido_hasta_at = GREATEST(NOW(), COALESCE(ultimo_mensaje_at, NOW())),
                 updated_at = NOW()
             WHERE id = $1
             RETURNING *
@@ -2841,6 +2886,37 @@ router.post('/crm/whatsapp/chats/:id/marcar-atendido', async (req, res) => {
         res.json({ success: true, data: chat });
     } catch (error) {
         console.error('❌ [CRM-WA-HUB] Error marcando chat atendido:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+/**
+ * POST /api/crm/whatsapp/chats/:id/marcar-pendiente
+ * Permite al operador volver a marcar manualmente una conversación como "Pendiente de respuesta"
+ * (respetado por el monitor de 6s hasta que se abra/atienda o se responda).
+ */
+router.post('/crm/whatsapp/chats/:id/marcar-pendiente', async (req, res) => {
+    try {
+        await crmWhatsappDb.asegurarTablasCrmWhatsapp();
+        const chatPk = parseInt(req.params.id);
+        const result = await pool.query(`
+            UPDATE public.crm_whatsapp_chats
+            SET esperando_respuesta = true,
+                no_leidos = GREATEST(COALESCE(no_leidos, 0), 1),
+                marcado_pendiente_manual = true,
+                atendido_hasta_at = NULL,
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING *
+        `, [chatPk]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Chat no encontrado' });
+        }
+
+        res.json({ success: true, data: result.rows[0] });
+    } catch (error) {
+        console.error('❌ [CRM-WA-HUB] Error marcando chat pendiente:', error.message);
         res.status(500).json({ success: false, error: error.message });
     }
 });

@@ -7164,6 +7164,26 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "'{}'::jsonb"
+      },
+      "atendido_hasta_at": {
+        "ordinal_position": 33,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "marcado_pendiente_manual": {
+        "ordinal_position": 34,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
       }
     },
     "crm_whatsapp_mensajes": {
@@ -12667,7 +12687,7 @@
         "numeric_precision": 10,
         "numeric_scale": 2,
         "is_nullable": "NO",
-        "column_default": "35.00"
+        "column_default": "300.00"
       },
       "tarifa_colaborador_id": {
         "ordinal_position": 14,
@@ -16699,7 +16719,7 @@
         "numeric_precision": 10,
         "numeric_scale": 2,
         "is_nullable": "YES",
-        "column_default": "35.00"
+        "column_default": "300.00"
       },
       "precio_objetivo_vecino": {
         "ordinal_position": 12,

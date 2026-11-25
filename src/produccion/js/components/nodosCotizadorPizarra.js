@@ -32,7 +32,7 @@
         busquedaClienteAbm: '',
         clienteMadreSeleccionadoId: null,
         flujoSeleccionadoMesa: 2,
-        unidadTiempoMesa: 'seg',
+        unidadTiempoMesa: 'min',
         propuestaActivaId: null,
         catalogoEditandoId: null,
         omitirAutoOrigenInicial: false,
@@ -549,6 +549,26 @@
                         `).join('')}
                     </div>
 
+                    <!-- FORMATO DE PRESENTACIÓN ESTRUCTURADO (BOLSA ÚNICA vs PACK MULTIPACK) -->
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; padding:7px 10px; border-radius:8px; background:rgba(15,23,42,0.65); border:1px solid #263244;">
+                        <span style="font-size:0.73rem; color:#94a3b8; font-weight:700;">Formato:</span>
+                        <select id="cot-modo-presentacion" onchange="window.NodosPizarra.alCambiarPresentacionMesa(true)"
+                            style="padding:5px 8px; border-radius:6px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.76rem; font-weight:700;">
+                            <option value="BOLSA">Bolsa única</option>
+                            <option value="PACK">Pack multipack (N × Xg)</option>
+                        </select>
+                        <div id="cot-pack-params-wrap" style="display:none; align-items:center; gap:6px;">
+                            <input type="number" id="cot-pack-unidades" min="2" step="1" value="3"
+                                oninput="window.NodosPizarra.alCambiarPresentacionMesa(false)"
+                                style="width:58px; padding:5px 6px; border-radius:6px; border:1px solid #0284c7; background:#0f172a; color:#7dd3fc; font-weight:800; font-size:0.78rem; text-align:center;">
+                            <span style="font-size:0.74rem; color:#cbd5e1; font-weight:700;">un. ×</span>
+                            <input type="number" id="cot-pack-peso-unit-g" min="5" step="5" value="50"
+                                oninput="window.NodosPizarra.alCambiarPresentacionMesa(false)"
+                                style="width:66px; padding:5px 6px; border-radius:6px; border:1px solid #0284c7; background:#0f172a; color:#7dd3fc; font-weight:800; font-size:0.78rem; text-align:center;">
+                            <span style="font-size:0.74rem; color:#cbd5e1; font-weight:700;">g c/u</span>
+                        </div>
+                    </div>
+
                     <!-- CONEXIÓN EN VIVO CON DICCIONARIO OFICIAL BÚNKER / RECETA -->
                     <div id="cot-bunker-receta-badge" style="display:none; margin-bottom:10px; padding:8px 11px; border-radius:8px; font-size:0.76rem; font-weight:700; line-height:1.45;"></div>
 
@@ -615,7 +635,7 @@
                             </label>
                             <div style="display:flex; gap:5px; align-items:stretch;">
                                 <input type="text" inputmode="decimal" autocomplete="off" id="cot-segundos-mo"
-                                    value="${ESTADO_NODOS.unidadTiempoMesa === 'min' ? '0.58' : '35'}"
+                                    value="${ESTADO_NODOS.unidadTiempoMesa === 'min' ? '5' : '300'}"
                                     oninput="window.NodosPizarra.recalcularEnVivo()"
                                     style="flex:1; min-width:0; padding:8px; border-radius:7px; border:1px solid #334155; background:#0f172a; color:#f8fafc; font-size:0.83rem;">
                                 <select id="cot-unidad-tiempo-mo" onchange="window.NodosPizarra.alCambiarUnidadTiempoMesa(this.value)"
@@ -750,17 +770,18 @@
 
     function obtenerSegundosDesdeMesa(unidadOverride) {
         const segEl = document.getElementById('cot-segundos-mo');
-        if (!segEl) return 35;
+        if (!segEl) return 300;
         const limpio = String(segEl.value ?? '').trim().replace(',', '.');
         if (!limpio || limpio === '.') return 0;
         const num = Number(limpio);
         if (!Number.isFinite(num) || num < 0) return 0;
-        const unidad = unidadOverride || document.getElementById('cot-unidad-tiempo-mo')?.value || ESTADO_NODOS.unidadTiempoMesa || 'seg';
+        const unidad = unidadOverride || document.getElementById('cot-unidad-tiempo-mo')?.value || ESTADO_NODOS.unidadTiempoMesa || 'min';
         return unidad === 'min' ? Math.round(num * 60) : Math.round(num);
     }
 
     function fijarSegundosEnMesa(segundosTotales, autoUnidad = true) {
-        const seg = Math.max(0, Number(segundosTotales) || 35);
+        const rawNum = Number(segundosTotales);
+        const seg = Number.isFinite(rawNum) && rawNum > 0 ? rawNum : 300;
         if (autoUnidad) {
             ESTADO_NODOS.unidadTiempoMesa = elegirUnidadTiempoInicial(seg);
         }
@@ -803,7 +824,11 @@
         const ingSelId = Number(origenSelect?.value || 0);
         const env181 = (ESTADO_NODOS.fuentes.envases || []).find(e => Number(e.id) === 181);
         const costoFlowpackUnit = Number(env181?.costo_unitario || 18.16);
-        const packUnidades = ingSelId === 141 ? Math.max(1, Math.round(kilosUnidad / 0.05)) : 1;
+        const modoPres = document.getElementById('cot-modo-presentacion')?.value || 'BOLSA';
+        const unidPackInput = Math.max(2, Math.round(Number(document.getElementById('cot-pack-unidades')?.value || 1)));
+        const packUnidades = ingSelId === 141
+            ? (modoPres === 'PACK' ? unidPackInput : Math.max(1, Math.round(kilosUnidad / 0.05)))
+            : 1;
         const costoEnvaseExtra = ingSelId === 141 ? (packUnidades * costoFlowpackUnit) : 0;
         const costoEnvaseUnitario = costoEnvaseContenedor + costoEnvaseExtra;
         const unidadTiempoActual = document.getElementById('cot-unidad-tiempo-mo')?.value || ESTADO_NODOS.unidadTiempoMesa || 'seg';
@@ -2375,11 +2400,23 @@
 
         try {
             const selCasoB = ESTADO_NODOS.casoBSeleccion || {};
+            const modoPresEl = document.getElementById('cot-modo-presentacion');
+            const packUnidEl = document.getElementById('cot-pack-unidades');
+            const packPesoEl = document.getElementById('cot-pack-peso-unit-g');
             const bodyReq = {
                 ingrediente_origen_id: ingId,
                 kilos_unidad: kilos,
                 flujo_lamda: ESTADO_NODOS.flujoSeleccionadoMesa
             };
+            if (opciones.desdePresentacion && modoPresEl) {
+                bodyReq.modo_presentacion = modoPresEl.value;
+                if (modoPresEl.value === 'PACK') {
+                    bodyReq.pack_unidades = Math.max(2, Math.round(Number(packUnidEl?.value || 3)));
+                    bodyReq.peso_unitario_gramos = Math.max(5, Math.round(Number(packPesoEl?.value || 50)));
+                } else {
+                    bodyReq.pack_unidades = 1;
+                }
+            }
             if (opciones.desdeCasoB || esModoCasoBAnatomia(ESTADO_NODOS.anatomiaActualMesa)) {
                 if (selCasoB.familia_id) {
                     bodyReq.familia_bunker_id = selCasoB.familia_id;
@@ -2435,6 +2472,22 @@
             if (bunkerNomEl) {
                 bunkerNomEl.value = anat.nomenclatura_bunker || '';
             }
+            if (!opciones.desdePresentacion) {
+                const modoPresSync = document.getElementById('cot-modo-presentacion');
+                const packWrapSync = document.getElementById('cot-pack-params-wrap');
+                const packUnidSync = document.getElementById('cot-pack-unidades');
+                const packPesoSync = document.getElementById('cot-pack-peso-unit-g');
+                const esPackAnat = Boolean(anat.es_pack) && Number(anat.pack_unidades || 1) > 1;
+                if (modoPresSync) modoPresSync.value = esPackAnat ? 'PACK' : 'BOLSA';
+                if (packWrapSync) packWrapSync.style.display = esPackAnat ? 'inline-flex' : 'none';
+                if (esPackAnat) {
+                    if (packUnidSync) packUnidSync.value = String(Number(anat.pack_unidades));
+                    const pUnitG = Number(anat.peso_unitario_gramos || 0) > 0
+                        ? Number(anat.peso_unitario_gramos)
+                        : Math.max(5, Math.round((kilos * 1000) / Number(anat.pack_unidades)));
+                    if (packPesoSync) packPesoSync.value = String(pUnitG);
+                }
+            }
             if (catEl) {
                 catEl.value = anat.familia_nombre || 'Sin Familia en Búnker';
             }
@@ -2482,6 +2535,35 @@
         } catch (err) {
             console.warn('[NodosPizarra] No se pudo previsualizar anatomía:', err);
         }
+    }
+
+    async function alCambiarPresentacionMesa(esToggle = false) {
+        const modoEl = document.getElementById('cot-modo-presentacion');
+        const wrapEl = document.getElementById('cot-pack-params-wrap');
+        const unidEl = document.getElementById('cot-pack-unidades');
+        const pesoEl = document.getElementById('cot-pack-peso-unit-g');
+        const kilosEl = document.getElementById('cot-kilos-unidad');
+        if (!modoEl) return;
+
+        const esPack = modoEl.value === 'PACK';
+        if (wrapEl) wrapEl.style.display = esPack ? 'inline-flex' : 'none';
+
+        if (esPack && kilosEl) {
+            let pUnitG = Math.max(5, Math.round(Number(pesoEl?.value || 50)));
+            let u = Math.max(2, Math.round(Number(unidEl?.value || 3)));
+            if (esToggle) {
+                const kgActual = Number(kilosEl.value || 0.15);
+                if (kgActual > 0 && pUnitG > 0 && Math.round((kgActual * 1000) / pUnitG) >= 2) {
+                    u = Math.round((kgActual * 1000) / pUnitG);
+                    if (unidEl) unidEl.value = String(u);
+                }
+            }
+            const nuevosKg = Math.max(0.01, (u * pUnitG) / 1000);
+            kilosEl.value = nuevosKg.toFixed(2);
+        }
+
+        await sincronizarAnatomiaMesaConBackend({ desdePresentacion: true });
+        recalcularMesaCotizacionEnVivo();
     }
 
     function alCambiarKilosUnidadMesa() {
@@ -2663,7 +2745,11 @@
             rubroSecPropEl.textContent = [anclaProp ? `Ancla: ${anclaProp}` : '', rubroProp ? `Rubro Búnker: ${rubroProp}` : ''].filter(Boolean).join(' · ');
         }
         if (envEl && prop.insumo_envase_sugerido_id) envEl.value = String(prop.insumo_envase_sugerido_id);
-        if (prop.segundos_estimados) fijarSegundosEnMesa(prop.segundos_estimados, true);
+        const esPropPendiente = String(prop.estado || '').toUpperCase().includes('PENDIENTE');
+        const segProp = (prop.segundos_estimados && !(esPropPendiente && Number(prop.segundos_estimados) === 35))
+            ? Number(prop.segundos_estimados)
+            : 300;
+        fijarSegundosEnMesa(segProp, true);
 
         recalcularMesaCotizacionEnVivo();
         await sincronizarAnatomiaMesaConBackend();
@@ -2710,7 +2796,7 @@
             rubroSecCatEl.textContent = [anclaCat, rubroCat].filter(Boolean).join(' · ');
         }
         if (envEl && cat.insumo_envase_id) envEl.value = String(cat.insumo_envase_id);
-        fijarSegundosEnMesa(cat.segundos_fraccionamiento || 35, true);
+        fijarSegundosEnMesa(cat.segundos_fraccionamiento || 300, true);
         if (margenL) margenL.value = Number(cat.margen_lamda_pct || 22);
         if (iibbEl) iibbEl.value = Number(cat.iibb_pct || 4);
         if (margenG) margenG.value = Number(cat.margen_sugerido_gestor_pct || 28);
@@ -2724,7 +2810,7 @@
         ESTADO_NODOS.propuestaActivaId = null;
         ESTADO_NODOS.catalogoEditandoId = null;
         ESTADO_NODOS.anatomiaActualMesa = null;
-        ESTADO_NODOS.unidadTiempoMesa = 'seg';
+        ESTADO_NODOS.unidadTiempoMesa = 'min';
         renderizarVistaNodosCompleta();
     }
 
@@ -2813,6 +2899,16 @@
             const tarifaOpt = tarifaSelect?.selectedOptions?.[0];
 
             const kilos = Number(document.getElementById('cot-kilos-unidad')?.value || 0.25);
+            const modoPresPayload = document.getElementById('cot-modo-presentacion')?.value || (anat?.es_pack ? 'PACK' : 'BOLSA');
+            const packUnidPayload = modoPresPayload === 'PACK'
+                ? Math.max(2, Math.round(Number(document.getElementById('cot-pack-unidades')?.value || anat?.pack_unidades || 3)))
+                : 1;
+            const packPesoUnitPayload = modoPresPayload === 'PACK'
+                ? Math.max(5, Math.round(Number(document.getElementById('cot-pack-peso-unit-g')?.value || anat?.peso_unitario_gramos || 50)))
+                : Math.round(kilos * 1000);
+            const presentacionEtiquetaPayload = (modoPresPayload === 'PACK' && packUnidPayload > 1)
+                ? `Pack x ${packUnidPayload} (${packPesoUnitPayload}g c/u)`
+                : (kilos >= 1 ? `Bolsa ${kilos}kg` : `Bolsa ${Math.round(kilos * 1000)}g`);
             const aliasVidrieraNodo = String(document.getElementById('cot-alias-vidriera-nodo')?.value || '').trim();
             const payload = {
                 catalogo_id: ESTADO_NODOS.catalogoEditandoId || null,
@@ -2823,7 +2919,10 @@
                 alias_vidriera_nodo: aliasVidrieraNodo || null,
                 compartido_mayorista: document.getElementById('cot-compartido-mayorista')?.value === 'true',
                 categoria_familiar: document.getElementById('cot-categoria')?.value || 'FRUTOS SECOS',
-                presentacion_etiqueta: kilos >= 1 ? `Bolsa ${kilos}kg` : `Bolsa ${Math.round(kilos * 1000)}g`,
+                presentacion_etiqueta: presentacionEtiquetaPayload,
+                modo_presentacion: modoPresPayload,
+                pack_unidades: packUnidPayload,
+                peso_unitario_gramos: packPesoUnitPayload,
                 flujo_lamda: ESTADO_NODOS.flujoSeleccionadoMesa,
                 origen_tipo: esArtBunker ? 'ARTICULO_BUNKER' : (ESTADO_NODOS.flujoSeleccionadoMesa === 3 ? 'MIX' : ESTADO_NODOS.flujoSeleccionadoMesa >= 4 ? 'UP_EXTERNA' : 'INGREDIENTE'),
                 ingrediente_origen_id: ingredienteOrigenId,
@@ -2832,7 +2931,7 @@
                 kilos_unidad: kilos,
                 insumo_envase_id: insumoEnvaseId,
                 costo_envase_unitario: Number(envOpt?.getAttribute('data-costo') || 0),
-                segundos_fraccionamiento: Math.max(1, obtenerSegundosDesdeMesa() || 35),
+                segundos_fraccionamiento: Math.max(1, obtenerSegundosDesdeMesa() || 300),
                 tarifa_colaborador_id: tarifaSelect?.value ? Number(tarifaSelect.value) : null,
                 valor_hora_aplicado: Number(tarifaOpt?.getAttribute('data-valor-hora') || 7000),
                 margen_lamda_pct: Number(document.getElementById('cot-margen-lamda')?.value || 22),
@@ -4764,6 +4863,8 @@
                 promptText: '',
                 promptCustom: false,
                 incluirReglaSinEnvases: true,
+                incluirFidelidadReceta: true,
+                fidelidad: null,
                 promptsGuardados: [],
                 promptGuardadoId: null,
                 calidad: 'estandar',
@@ -4772,12 +4873,31 @@
                 generating: false
             };
 
+            const loadFidelidad = async () => {
+                const pT = buildTargetPayload();
+                const qf = new URLSearchParams();
+                if (pT.familia_id) qf.set('familia_id', String(pT.familia_id));
+                if (pT.articulo_principal) qf.set('articulo_principal', pT.articulo_principal);
+                if (pT.ruta_subrama) qf.set('ruta_subrama', pT.ruta_subrama);
+                if (pT.ingrediente_id) qf.set('ingrediente_id', String(pT.ingrediente_id));
+                if (pT.articulo_sku) qf.set('articulo_sku', pT.articulo_sku);
+                if (state.destino === 'variedad' && ctx.nombre_base_oficial) qf.set('nombre_variante', ctx.nombre_base_oficial);
+                const rF = await fetch(`/api/produccion/nodos/admin/imagenes-base/ingredientes-receta?${qf.toString()}`).catch(() => null);
+                if (rF && rF.ok) {
+                    const df = await rF.json().catch(() => null);
+                    state.fidelidad = (df && df.ok && df.fidelidad?.tiene_receta) ? df.fidelidad : null;
+                } else {
+                    state.fidelidad = null;
+                }
+            };
+
             const loadBib = async () => {
                 const qs = new URLSearchParams();
                 if (ctx.familia_id) qs.set('familia_id', String(ctx.familia_id));
                 const [rBib, rPrompts] = await Promise.all([
                     fetch(`/api/produccion/nodos/admin/imagenes-base/biblioteca?${qs.toString()}`),
-                    fetch('/api/produccion/nodos/admin/imagenes-base/prompts').catch(() => null)
+                    fetch('/api/produccion/nodos/admin/imagenes-base/prompts').catch(() => null),
+                    loadFidelidad()
                 ]);
                 const d = await rBib.json();
                 state.bibItems = d.ok ? (d.items || []) : [];
@@ -4917,6 +5037,15 @@
                                 <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.73rem; color:#cbd5e1;">
                                     <input type="checkbox" id="piz-chk-sin-envases" ${state.incluirReglaSinEnvases?'checked':''} /> Sin envases ni marcas
                                 </label>
+                                ${state.fidelidad && state.fidelidad.tiene_receta ? `
+                                    <div style="padding:6px 8px; border-radius:7px; border:1px solid rgba(52,211,153,0.35); background:rgba(16,185,129,0.08); font-size:0.71rem;">
+                                        <label style="display:inline-flex; align-items:center; gap:6px; color:#a7f3d0; font-weight:800;">
+                                            <input type="checkbox" id="piz-chk-fidelidad-receta" ${state.incluirFidelidadReceta?'checked':''} />
+                                            🧪 Fidelidad estricta de receta: ${escaparHtml(state.fidelidad.ingredientes_reales.join(', '))}
+                                        </label>
+                                        ${state.fidelidad.ingredientes_prohibidos?.length > 0 ? `<div style="color:#fca5a5; margin-top:3px;"><strong>Prohibido inventar:</strong> ${escaparHtml(state.fidelidad.ingredientes_prohibidos.join(', '))}</div>` : ''}
+                                    </div>
+                                ` : ''}
                                 <div>
                                     <button type="button" id="piz-ia-gen" ${state.generating?'disabled':''} style="padding:6px 12px; border-radius:8px; border:1px solid #c084fc; background:rgba(142,71,133,0.45); color:#f5d0fe; font-weight:700; font-size:0.78rem; cursor:pointer;">
                                         ${state.generating ? '⏳ Generando...' : '✨ Generar previsualización'}
@@ -4937,10 +5066,10 @@
 
                 modal.querySelector('#piz-ib-close').onclick = () => { modal.style.display = 'none'; };
                 const dS = modal.querySelector('#piz-dest-subrama');
-                if (dS) dS.onclick = () => { state.destino = 'subrama'; render(); };
+                if (dS) dS.onclick = async () => { state.destino = 'subrama'; await loadFidelidad(); render(); };
                 const dA = modal.querySelector('#piz-dest-ancla');
-                if (dA) dA.onclick = () => { state.destino = 'ancla'; render(); };
-                modal.querySelector('#piz-dest-var').onclick = () => { state.destino = 'variedad'; render(); };
+                if (dA) dA.onclick = async () => { state.destino = 'ancla'; await loadFidelidad(); render(); };
+                modal.querySelector('#piz-dest-var').onclick = async () => { state.destino = 'variedad'; await loadFidelidad(); render(); };
                 modal.querySelector('#piz-tab-bib').onclick = () => { state.modo = 'biblioteca'; loadBib(); };
                 modal.querySelector('#piz-tab-ia').onclick = () => { state.modo = 'ia'; render(); };
                 modal.querySelector('#piz-btn-pc').onclick = () => {
@@ -5017,6 +5146,8 @@
                 };
                 const chkSinEnv = modal.querySelector('#piz-chk-sin-envases');
                 if (chkSinEnv) chkSinEnv.onchange = () => { state.incluirReglaSinEnvases = chkSinEnv.checked; };
+                const chkFid = modal.querySelector('#piz-chk-fidelidad-receta');
+                if (chkFid) chkFid.onchange = () => { state.incluirFidelidadReceta = chkFid.checked; };
                 const calEl = modal.querySelector('#piz-ia-calidad');
                 if (calEl) calEl.onchange = () => { state.calidad = calEl.value; };
                 const genBtn = modal.querySelector('#piz-ia-gen');
@@ -5026,17 +5157,22 @@
                     state.promptText = pTxt;
                     render();
                     try {
+                        const pTargetGen = buildTargetPayload();
                         const r = await fetch('/api/produccion/nodos/admin/imagenes-base/generar-ia', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
+                                familia_id: ctx.familia_id || null,
                                 familia_nombre: ctx.familia_nombre,
                                 articulo_principal: ctx.articulo_principal,
                                 ruta_subrama_labels: state.destino === 'subrama' ? subLabels : [],
                                 nombre_variante: state.destino === 'variedad' ? ctx.nombre_base_oficial : '',
+                                ingrediente_id: pTargetGen.ingrediente_id || null,
+                                articulo_sku: pTargetGen.articulo_sku || null,
                                 preset_estilo: state.preset,
                                 modo_prompt: state.modoPrompt,
                                 incluir_regla_sin_envases: state.incluirReglaSinEnvases,
+                                incluir_fidelidad_ingredientes: state.incluirFidelidadReceta,
                                 prompt_guardado_id: state.promptGuardadoId,
                                 calidad: state.calidad,
                                 prompt_personalizado: pTxt
@@ -5117,6 +5253,7 @@
         },
         abrirModalNuevaPropuesta,
         sincronizarCascadaSeisFlujos,
+        alCambiarPresentacionMesa,
         filtrarFuentesRapidas: (val) => {
             ESTADO_NODOS.busquedaFuentes = val;
             const box = document.getElementById('nodos-lista-fuentes-rapidas');

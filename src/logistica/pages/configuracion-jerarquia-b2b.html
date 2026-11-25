@@ -1252,6 +1252,7 @@
     let imgBaseIaPrompt = '';
     let imgBaseIaPromptCustom = false;
     let imgBaseIaReglaSinEnvases = true;
+    let imgBaseIaFidelidadReceta = true;
     let imgBaseIaRefs = []; // hasta 2 { dataUrl, mimeType, data, name }
     let imgBasePrompts = [];
     let imgBasePromptGuardadoId = null;
@@ -1561,7 +1562,8 @@
           claves_secundarias: v.claves_secundarias || [],
           articulo_sku: v.sku_principal_combo || null,
           titulo_referencia: v.nombre_base_oficial,
-          label_destino: `Excepción puntual: ${v.nombre_base_oficial}`
+          label_destino: `Excepción puntual: ${v.nombre_base_oficial}`,
+          fidelidad_ingredientes: v.fidelidad_ingredientes || null
         };
       }
       const subSegs = imgBaseTargetSubrama
@@ -1587,7 +1589,8 @@
           claves_secundarias: [],
           articulo_sku: null,
           titulo_referencia: `${ancla.articulo_principal} › ${subSegs.join(' › ')}`,
-          label_destino: `Sub-rama: ${ancla.articulo_principal} › ${subSegs.join(' › ')} (cubre ${cantVar} variedades)`
+          label_destino: `Sub-rama: ${ancla.articulo_principal} › ${subSegs.join(' › ')} (cubre ${cantVar} variedades)`,
+          fidelidad_ingredientes: srMatch?.fidelidad_ingredientes || null
         };
       }
       if (ancla) {
@@ -1607,7 +1610,8 @@
           claves_secundarias: [],
           articulo_sku: null,
           titulo_referencia: `${ancla.familia_nombre} › ${ancla.articulo_principal}`,
-          label_destino: `Rubro completo: ${ancla.familia_nombre} › ${ancla.articulo_principal} (cubre ${ancla.total_variedades} variedades)`
+          label_destino: `Rubro completo: ${ancla.familia_nombre} › ${ancla.articulo_principal} (cubre ${ancla.total_variedades} variedades)`,
+          fidelidad_ingredientes: ancla.fidelidad_ingredientes || null
         };
       }
       return null;
@@ -1878,15 +1882,19 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            familia_id: dest.familia_id,
             familia_nombre: dest.familia_nombre,
             articulo_principal: dest.articulo_principal,
             ruta_subrama_labels: dest.ruta_subrama_labels || [],
             nombre_variante: dest.esExcepcion ? dest.variedad.nombre_base_oficial : '',
+            ingrediente_id: dest.ingrediente_id || null,
+            articulo_sku: dest.articulo_sku || null,
             preset_estilo: imgBaseIaPreset,
             modo_prompt: imgBaseIaModo,
             calidad: imgBaseIaCalidad,
             prompt_personalizado: promptInput,
             incluir_regla_sin_envases: imgBaseIaReglaSinEnvases,
+            incluir_fidelidad_ingredientes: imgBaseIaFidelidadReceta,
             prompt_guardado_id: imgBasePromptGuardadoId,
             imagenes_referencia: imgBaseIaRefs.map(r => ({ mimeType: r.mimeType, data: r.data }))
           })
@@ -2189,6 +2197,25 @@
                 Sin envases ni marcas
               </label>
             </div>
+
+            ${dest.fidelidad_ingredientes && dest.fidelidad_ingredientes.tiene_receta ? `
+              <div data-testid="ia-fidelidad-receta-box" style="padding:0.5rem 0.65rem; border-radius:9px; border:1px solid rgba(52,211,153,0.35); background:rgba(16,185,129,0.08); display:flex; flex-direction:column; gap:0.35rem;">
+                <label style="display:inline-flex; align-items:center; gap:0.45rem; font-size:0.75rem; font-weight:800; color:#a7f3d0; cursor:pointer;">
+                  <input type="checkbox" id="ia-chk-fidelidad-receta" ${imgBaseIaFidelidadReceta?'checked':''} onchange="imgBaseIaFidelidadReceta = this.checked;" />
+                  🧪 Fidelidad estricta de receta (BD): usar solo ingredientes reales
+                </label>
+                <div style="display:flex; flex-wrap:wrap; gap:0.28rem;">
+                  ${dest.fidelidad_ingredientes.ingredientes_reales.map(ing => `
+                    <span style="background:rgba(16,185,129,0.18); color:#d1fae5; border:1px solid rgba(52,211,153,0.35); border-radius:999px; padding:1px 7px; font-size:0.69rem; font-weight:700;">✓ ${_escHtmlB2B(ing)}</span>
+                  `).join('')}
+                </div>
+                ${dest.fidelidad_ingredientes.ingredientes_prohibidos?.length > 0 ? `
+                  <div style="font-size:0.69rem; color:#fca5a5;">
+                    <strong>Prohibido inventar:</strong> ${_escHtmlB2B(dest.fidelidad_ingredientes.ingredientes_prohibidos.join(', '))}
+                  </div>
+                ` : ''}
+              </div>
+            ` : ''}
 
             <div>
               <label style="display:block; font-size:0.72rem; font-weight:700; color:#cbd5e1; margin-bottom:0.25rem;">

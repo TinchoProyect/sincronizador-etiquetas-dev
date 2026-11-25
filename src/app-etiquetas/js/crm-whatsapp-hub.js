@@ -2634,6 +2634,25 @@
     };
 
     /**
+     * Volver a marcar manualmente un chat como "Pendiente de respuesta"
+     */
+    window.marcarChatPendienteWa = async function (chatPk) {
+        try {
+            const res = await fetch(`/api/crm/whatsapp/chats/${chatPk}/marcar-pendiente`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                if (typeof window.actualizarAlertasPizarra === 'function') window.actualizarAlertasPizarra();
+                if (estadoConsola.abierta) {
+                    await cargarListaChatsConsola();
+                    if (estadoConsola.chatActivoId === chatPk) await seleccionarChatConsola(chatPk, false);
+                }
+            }
+        } catch (err) {
+            console.error('Error marcando chat pendiente:', err);
+        }
+    };
+
+    /**
      * Cambiar privacidad rápidamente desde la Pizarra o desde la Consola
      * (Resuelve el caso de un contacto que es cliente pero con el que estás hablando temas personales)
      */
@@ -4179,12 +4198,26 @@
         });
 
         try {
-            const res = await fetch(`/api/crm/whatsapp/chats/${chatPkNum}/detalle`);
+            const urlDetalle = scrollAlFinal
+                ? `/api/crm/whatsapp/chats/${chatPkNum}/detalle?marcar_leido=1`
+                : `/api/crm/whatsapp/chats/${chatPkNum}/detalle`;
+            const res = await fetch(urlDetalle);
             const data = await res.json();
             if (!data.success) return;
 
             // Guard anti-race si el usuario cambió rápido de chat
             if (Number(estadoConsola.chatActivoId) !== chatPkNum) return;
+
+            if (data.marcado_leido_auto) {
+                if (typeof window.actualizarAlertasPizarra === 'function') {
+                    window.actualizarAlertasPizarra();
+                } else {
+                    window.consultarAlertasWhatsappCrm().catch(() => {});
+                }
+                if (estadoConsola.abierta) {
+                    cargarListaChatsConsola().catch(() => {});
+                }
+            }
 
             // Polling inteligente de 6s: comparar firma ligera antes de tocar el DOM
             const msgsArr = Array.isArray(data.mensajes) ? data.mensajes : [];
@@ -4495,10 +4528,14 @@
                     </div>
                     <div style="display: flex; gap: 5px; align-items: center; flex-wrap: nowrap; flex-shrink: 0;">
                         ${chat.esperando_respuesta ? `
-                            <button type="button" onclick="window.marcarChatAtendidoWa(${chat.id})" style="background: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 4px 9px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer; white-space: nowrap;">
+                            <button type="button" onclick="window.marcarChatAtendidoWa(${chat.id})" style="background: #dcfce7; border: 1px solid #86efac; color: #166534; padding: 4px 9px; border-radius: 6px; font-size: 0.72rem; font-weight: 800; cursor: pointer; white-space: nowrap;" title="Marcar conversación como atendida/leída">
                                 ✓ Visto
                             </button>
-                        ` : ''}
+                        ` : `
+                            <button type="button" onclick="window.marcarChatPendienteWa(${chat.id})" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #475569; padding: 4px 8px; border-radius: 6px; font-size: 0.71rem; font-weight: 700; cursor: pointer; white-space: nowrap;" title="Volver a marcar como pendiente de respuesta en Pizarra">
+                                📌 Pendiente
+                            </button>
+                        `}
                         ${botonModoNodoHtml}
                         ${selectorRolHtml}
                         <div id="wa-categoria-wrap" class="wa-categoria-wrap">

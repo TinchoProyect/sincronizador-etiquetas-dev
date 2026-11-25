@@ -155,6 +155,7 @@
         promptTexto: '',
         promptCustom: false,
         incluirReglaSinEnvases: true,
+        incluirFidelidadReceta: true,
         calidad: 'estandar',
         referencias: [null, null],
         promptsGuardados: [],
@@ -256,7 +257,8 @@
                         imagen_actual: v.imagen_efectiva,
                         imagen_propia: v.imagen_propia,
                         tiene_propia: Boolean(v.tiene_excepcion_propia && v.imagen_propia),
-                        hereda_de: v.hereda_de_label || ancla.articulo_principal
+                        hereda_de: v.hereda_de_label || ancla.articulo_principal,
+                        fidelidad_ingredientes: v.fidelidad_ingredientes || null
                     };
                 }
             }
@@ -283,7 +285,8 @@
                         imagen_actual: sr.imagen_efectiva,
                         imagen_propia: sr.imagen_propia,
                         tiene_propia: Boolean(sr.tiene_foto_propia && sr.imagen_propia),
-                        hereda_de: sr.hereda_de_label || ancla.articulo_principal
+                        hereda_de: sr.hereda_de_label || ancla.articulo_principal,
+                        fidelidad_ingredientes: sr.fidelidad_ingredientes || null
                     };
                 }
             }
@@ -305,7 +308,8 @@
                 imagen_actual: ancla.imagen_efectiva,
                 imagen_propia: ancla.imagen_ancla,
                 tiene_propia: Boolean(ancla.imagen_ancla),
-                hereda_de: null
+                hereda_de: null,
+                fidelidad_ingredientes: ancla.fidelidad_ingredientes || null
             };
         },
 
@@ -642,15 +646,19 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        familia_id: dest.familia_id,
                         familia_nombre: dest.familia_nombre,
                         articulo_principal: dest.articulo_principal,
                         ruta_subrama_labels: dest.ruta_subrama_labels || [],
                         nombre_variante: dest.modo === 'variedad' ? dest.variedad.nombre_base_oficial : '',
+                        ingrediente_id: dest.ingrediente_id || null,
+                        articulo_sku: dest.articulo_sku || null,
                         preset_estilo: this.preset,
                         modo_prompt: this.modoPrompt,
                         calidad: this.calidad,
                         prompt_personalizado: promptActual,
                         incluir_regla_sin_envases: this.incluirReglaSinEnvases,
+                        incluir_fidelidad_ingredientes: this.incluirFidelidadReceta,
                         prompt_guardado_id: this.promptGuardadoId,
                         imagenes_referencia: refsPayload
                     })
@@ -1098,6 +1106,26 @@
                             onchange="FotosCatalogoController.incluirReglaSinEnvases = this.checked;" style="width:18px; height:18px;" />
                         Agregar regla estricta: sin envases, bolsas ni marcas
                     </label>
+
+                    ${dest.fidelidad_ingredientes && dest.fidelidad_ingredientes.tiene_receta ? `
+                        <div data-testid="fc-fidelidad-receta-box" style="background:rgba(16,185,129,0.08); border:1px solid rgba(52,211,153,0.35); border-radius:0.8rem; padding:0.65rem 0.75rem; display:flex; flex-direction:column; gap:0.4rem;">
+                            <label style="display:flex; align-items:center; gap:0.55rem; font-size:0.82rem; font-weight:800; color:#a7f3d0; cursor:pointer;">
+                                <input type="checkbox" id="fc-chk-fidelidad-receta" ${this.incluirFidelidadReceta ? 'checked' : ''}
+                                    onchange="FotosCatalogoController.incluirFidelidadReceta = this.checked;" style="width:18px; height:18px;" />
+                                🧪 Fidelidad estricta de receta (BD)
+                            </label>
+                            <div style="display:flex; flex-wrap:wrap; gap:0.3rem;">
+                                ${dest.fidelidad_ingredientes.ingredientes_reales.map(ing => `
+                                    <span style="background:rgba(16,185,129,0.18); color:#d1fae5; border:1px solid rgba(52,211,153,0.35); border-radius:999px; padding:0.12rem 0.5rem; font-size:0.72rem; font-weight:700;">✓ ${esc(ing)}</span>
+                                `).join('')}
+                            </div>
+                            ${dest.fidelidad_ingredientes.ingredientes_prohibidos?.length > 0 ? `
+                                <div style="font-size:0.72rem; color:#fca5a5; line-height:1.35;">
+                                    <strong>Prohibido inventar:</strong> ${esc(dest.fidelidad_ingredientes.ingredientes_prohibidos.join(', '))}
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : ''}
 
                     <div>
                         <label style="display:block; font-size:0.76rem; font-weight:700; color:#94a3b8; margin-bottom:0.25rem;">Modelo Gemini:</label>

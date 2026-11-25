@@ -1332,6 +1332,8 @@ const sincronizarNoLeidosRapido = async () => {
                         }
 
                         if (mensajes.length === 0 && tuvoSoloProtocolo) continue;
+                        const ultimoM = mensajes.length > 0 ? mensajes[mensajes.length - 1] : null;
+                        if (ultimoM && ultimoM.fromMe === true && unreadVal !== -1) continue;
 
                         lista.push({
                             chatId: phoneChatId,
@@ -1402,7 +1404,18 @@ const sincronizarChatsRecientes = async ({ maxChats = 45, mensajesPorChat = 30, 
 
     if (marcarVistoChatId) {
         try {
-            await client.pupPage.evaluate((targetPhoneId) => {
+            let apiSeenOk = false;
+            try {
+                if (typeof client.sendSeen === 'function') {
+                    await client.sendSeen(marcarVistoChatId);
+                    apiSeenOk = true;
+                }
+            } catch (errApiSeen) {
+                console.warn(`⚠️ [WHATSAPP-SERVICE] client.sendSeen(${marcarVistoChatId}) falló: ${errApiSeen.message}`);
+            }
+
+            const evalRes = await client.pupPage.evaluate(async (targetPhoneId) => {
+                const info = { matched: 0, seenSent: false, err: null };
                 try {
                     const mod = window.require('WAWebChatCollection');
                     const rawChats = (mod && mod.ChatCollection && typeof mod.ChatCollection.getModelsArray === 'function')
@@ -1417,19 +1430,36 @@ const sincronizarChatsRecientes = async ({ maxChats = 45, mensajesPorChat = 30, 
                             phoneChatId = c.contact.phoneNumber._serialized || (c.contact.phoneNumber.user ? `${c.contact.phoneNumber.user}@c.us` : rawId);
                         }
                         if (rawId === targetPhoneId || phoneChatId === targetPhoneId) {
+                            info.matched++;
                             c.unreadCount = 0;
                             c.markedUnread = false;
                             try {
                                 const seenMod = window.require('WAWebSendSeen');
                                 if (seenMod && typeof seenMod.sendSeen === 'function') {
-                                    seenMod.sendSeen(c);
+                                    await seenMod.sendSeen(c);
+                                    info.seenSent = true;
                                 }
-                            } catch (eS) {}
+                            } catch (eS) {
+                                info.err = eS?.message || String(eS);
+                            }
+                            try {
+                                const cmdMod = window.require('WAWebCmd');
+                                if (cmdMod && cmdMod.Cmd && typeof cmdMod.Cmd.markChatUnread === 'function') {
+                                    await cmdMod.Cmd.markChatUnread(c, false);
+                                }
+                            } catch (_) {}
                         }
                     }
-                } catch (e) {}
+                } catch (e) {
+                    info.err = e?.message || String(e);
+                }
+                return info;
             }, marcarVistoChatId);
-            return { success: true, marcadoVisto: true };
+
+            if (evalRes?.err) {
+                console.warn(`⚠️ [WHATSAPP-SERVICE] marcarVisto pupPage(${marcarVistoChatId}): ${evalRes.err}`);
+            }
+            return { success: true, marcadoVisto: true, apiSeenOk, ...evalRes };
         } catch (eV) {
             if (esErrorContextoPuppeteerRoto(eV)) {
                 reciclarMotorSinPerderSesion(`marcarVisto: ${eV.message}`).catch(() => {});

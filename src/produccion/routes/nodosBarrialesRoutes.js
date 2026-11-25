@@ -1249,6 +1249,25 @@ router.delete('/admin/imagenes-base/prompts/:id', bloquearEnDominioPublicoTienda
     }
 });
 
+router.get('/admin/imagenes-base/ingredientes-receta', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const rutaStr = String(req.query.ruta_subrama || '').trim();
+        const fidelidad = await lamdaImagenesBaseService.resolverFidelidadIngredientesParaDestino(dbProduccion, {
+            familia_id: req.query.familia_id ? Number(req.query.familia_id) : null,
+            articulo_principal: String(req.query.articulo_principal || '').trim(),
+            ruta_subrama: rutaStr,
+            nombre_variante: String(req.query.nombre_variante || '').trim(),
+            ingrediente_id: req.query.ingrediente_id ? Number(req.query.ingrediente_id) : null,
+            articulo_sku: String(req.query.articulo_sku || '').trim() || null
+        });
+        res.json({ ok: true, fidelidad });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error resolviendo fidelidad de ingredientes:', error);
+        res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
 router.post('/admin/imagenes-base/generar-ia', bloquearEnDominioPublicoTienda, middlewareSubidaReferenciasIaOpcional, async (req, res) => {
     try {
         await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
@@ -1268,15 +1287,19 @@ router.post('/admin/imagenes-base/generar-ia', bloquearEnDominioPublicoTienda, m
         }
         const preview = await lamdaImagenesBaseService.generarPreviewImagenBaseIA({
             db: dbProduccion,
+            familia_id: body.familia_id ? Number(body.familia_id) : null,
             familia_nombre: body.familia_nombre || '',
             articulo_principal: body.articulo_principal || '',
             ruta_subrama_labels: rutaLabels,
             nombre_variante: body.nombre_variante || '',
+            ingrediente_id: body.ingrediente_id ? Number(body.ingrediente_id) : null,
+            articulo_sku: body.articulo_sku || null,
             preset_estilo: body.preset_estilo || 'cuenco_neutro',
             modo_prompt: body.modo_prompt || null,
             calidad: body.calidad || 'estandar',
             prompt_personalizado: body.prompt_personalizado || '',
             incluir_regla_sin_envases: body.incluir_regla_sin_envases !== undefined ? body.incluir_regla_sin_envases : true,
+            incluir_fidelidad_ingredientes: body.incluir_fidelidad_ingredientes !== undefined ? body.incluir_fidelidad_ingredientes : true,
             prompt_guardado_id: body.prompt_guardado_id || null,
             imagenes_referencia: imagenesRef || []
         });

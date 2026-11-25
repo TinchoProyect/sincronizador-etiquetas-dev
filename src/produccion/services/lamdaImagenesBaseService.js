@@ -8,6 +8,10 @@ const sharp = require('sharp');
 const { obtenerDirectorioMediaNodos } = require('./nodosFotosService');
 const jh = require('../../shared/jerarquiaBunkerHelper');
 const iaMonitor = require('../../services/iaCreditoMonitorService');
+const {
+    construirCatalogoIngredientesComerciales,
+    obtenerDesgloseIngredientesParaItem
+} = require('./desgloseIngredientesComercialService');
 
 const MAX_BASE_DIM = 1080;
 const PREVIEW_TTL_MS = 15 * 60 * 1000;
@@ -73,6 +77,216 @@ const ESTILOS_IA_IMAGEN_BASE = {
 
 const REGLA_SIN_ENVASES_TXT = 'Regla estricta: SIN envases, SIN bolsas plásticas, SIN frascos, SIN cajas, SIN etiquetas, SIN marcas comerciales, SIN logos, SIN texto sobreimpreso.';
 const INSTRUCCION_REFERENCIA_VISUAL_TXT = 'REFERENCIA VISUAL REAL ADJUNTA: Usá las fotografías reales adjuntas únicamente como referencia fiel de la morfología, textura, ingredientes visibles, corte, color y proporciones exactas de nuestro producto. Eliminá por completo el fondo casero y la iluminación amateur, generando una fotografía gastronómica limpia y profesional según la indicación siguiente.';
+
+const IDS_PREMEZCLAS_INTERMEDIAS_IA = new Set([109, 132, 133, 134, 135, 136, 140]);
+const SKUS_PREMEZCLAS_INTERMEDIAS_IA = new Set(['MPB', 'MPGDSX7', 'MPGDFX6,9']);
+
+const CATALOGO_EXCLUSION_ANTI_ALUCINACION_IA = [
+    { label: 'almendras', check: (ings) => ings.some(n => /\balmendr/.test(n)) },
+    { label: 'nueces', check: (ings) => ings.some(n => /\bnuez\b|\bnueces\b/.test(n)) },
+    { label: 'castañas de cajú', check: (ings) => ings.some(n => /\bcastana|\bcaju\b/.test(n)) },
+    { label: 'avellanas', check: (ings) => ings.some(n => /\bavellan/.test(n)) },
+    { label: 'maní', check: (ings) => ings.some(n => /\bmani\b/.test(n)) },
+    { label: 'pistachos', check: (ings) => ings.some(n => /\bpistach/.test(n)) },
+    {
+        label: 'pasas de uva negras/oscuras',
+        check: (ings) => ings.some(n => /pasas? de uva/.test(n) && !/\brubia/.test(n))
+    },
+    {
+        label: 'pasas de uva rubias',
+        check: (ings) => ings.some(n => (/pasas? de uva/.test(n) && /\brubia/.test(n)) || /^pasas? de uva$/.test(n))
+    },
+    { label: 'arándanos rojos / frutos rojos', check: (ings) => ings.some(n => /\barandan|\bframbuesa|\bmora\b|\bfresa|\bfrutilla/.test(n)) },
+    { label: 'chips o trozos de chocolate', check: (ings) => ings.some(n => /\bchocolate|\bcacao\b/.test(n)) },
+    {
+        label: 'coco en escamas / rallado',
+        check: (ings) => ings.some(n => /\bcoco\b/.test(n) && !/\baceite de coco\b/.test(n))
+    },
+    { label: 'chips de banana', check: (ings) => ings.some(n => /\bbanana\b/.test(n)) },
+    { label: 'semillas de zapallo (verdes)', check: (ings) => ings.some(n => /\bzapallo\b|\bcalabaza\b/.test(n)) },
+    { label: 'semillas de girasol', check: (ings) => ings.some(n => /\bgirasol\b/.test(n)) },
+    { label: 'semillas de chía / sésamo / lino', check: (ings) => ings.some(n => /\bchia\b|\bsesamo\b|\blino\b/.test(n)) },
+    { label: 'papaya / kiwi / ananá confitado', check: (ings) => ings.some(n => /\bpapaya\b|\bkiwi\b|\banana\b/.test(n)) }
+];
+
+function calcularFidelidadIngredientes(ingredientesRealesRaw = []) {
+    const vistos = new Set();
+    const reales = [];
+    for (const raw of (ingredientesRealesRaw || [])) {
+        const nom = String(typeof raw === 'string' ? raw : (raw?.nombre_comercial || raw?.nombre || '')).trim();
+        if (!nom) continue;
+        const n = jh.normalizarClaveTexto(nom);
+        if (!n || /\b(bolsa|caja|etiqueta|envase|flowpack|carton|tarro|pote|frasco)\b/.test(n)) continue;
+        if (vistos.has(n)) continue;
+        vistos.add(n);
+        reales.push(nom);
+    }
+    if (reales.length < 2) {
+        return {
+            tiene_receta: false,
+            ingredientes_reales: [],
+            ingredientes_prohibidos: [],
+            firma_receta: ''
+        };
+    }
+    const normas = reales.map(r => jh.normalizarClaveTexto(r));
+    const prohibidos = [];
+    for (const cand of CATALOGO_EXCLUSION_ANTI_ALUCINACION_IA) {
+        if (!cand.check(normas)) {
+            prohibidos.push(cand.label);
+        }
+    }
+    const firma_receta = [...normas].sort().join('|');
+    return {
+        tiene_receta: true,
+        ingredientes_reales: reales,
+        ingredientes_prohibidos: prohibidos,
+        firma_receta
+    };
+}
+
+function construirTextoFidelidadIngredientesPrompt(fidelidad) {
+    if (!fidelidad || !fidelidad.tiene_receta || !Array.isArray(fidelidad.ingredientes_reales) || fidelidad.ingredientes_reales.length < 2) {
+        return '';
+    }
+    const listaReales = fidelidad.ingredientes_reales.join(', ');
+    const partePos = `FIDELIDAD ESTRICTA DE RECETA: Mostrar ÚNICAMENTE los ingredientes reales visibles de este producto: ${listaReales}.`;
+    const prohibidos = Array.isArray(fidelidad.ingredientes_prohibidos) ? fidelidad.ingredientes_prohibidos : [];
+    const parteNeg = prohibidos.length > 0
+        ? `PROHIBIDO INVENTAR O AGREGAR ingredientes que NO están en la receta (NO incluir en absoluto: ${prohibidos.join(', ')}).`
+        : '';
+    return [partePos, parteNeg].filter(Boolean).join(' ');
+}
+
+function resolverFidelidadParaListaItemsSync(itemsDesglose = []) {
+    const validos = (itemsDesglose || [])
+        .map(d => calcularFidelidadIngredientes(d?.ingredientes || []))
+        .filter(f => f.tiene_receta);
+    if (validos.length === 0) return null;
+    const primeraFirma = validos[0].firma_receta;
+    if (!validos.every(v => v.firma_receta === primeraFirma)) {
+        return null;
+    }
+    return validos[0];
+}
+
+async function resolverFidelidadIngredientesParaDestino(db, {
+    familia_id = null,
+    articulo_principal = '',
+    ruta_subrama = '',
+    ruta_subrama_labels = [],
+    nombre_variante = '',
+    ingrediente_id = null,
+    articulo_sku = null,
+    presentaciones_skus = []
+} = {}, catalogoPrecompilado = null) {
+    const vacio = {
+        tiene_receta: false,
+        ingredientes_reales: [],
+        ingredientes_prohibidos: [],
+        firma_receta: ''
+    };
+    if (!db) return vacio;
+
+    const catalogo = catalogoPrecompilado || await construirCatalogoIngredientesComerciales(db).catch(() => null);
+    if (!catalogo) return vacio;
+
+    const skusCandidatos = new Set(
+        (Array.isArray(presentaciones_skus) ? presentaciones_skus : [])
+            .concat(articulo_sku ? [articulo_sku] : [])
+            .map(s => String(s || '').trim())
+            .filter(Boolean)
+    );
+
+    const famIdNum = Number(familia_id || 0);
+    const artPNorm = jh.normalizarClaveTexto(articulo_principal);
+    const ingIdNum = Number(ingrediente_id || 0);
+    const subLabelsArr = Array.isArray(ruta_subrama_labels) && ruta_subrama_labels.length > 0
+        ? ruta_subrama_labels.map(s => String(s || '').trim()).filter(Boolean)
+        : String(ruta_subrama || '').split(/\s*(?:>|›)\s*/).map(s => s.trim()).filter(Boolean);
+    const rutaSubNorm = subLabelsArr.map(s => jh.normalizarClaveTexto(s)).filter(Boolean).join('>');
+    const varNorm = jh.normalizarClaveTexto(nombre_variante);
+
+    if (skusCandidatos.size === 0 && (ingIdNum > 0 || (famIdNum > 0 && artPNorm))) {
+        const resBa = await db.query(
+            `SELECT ba.articulo_id AS sku_nodo,
+                    ba.descripcion,
+                    ba.descripcion_generada,
+                    ba.familia_id,
+                    ba.propiedades_dinamicas,
+                    ba.es_combo,
+                    bf.nombre AS familia_nombre,
+                    COALESCE(r.id, 0) AS receta_id,
+                    (SELECT MIN(ri.ingrediente_id)
+                     FROM public.receta_ingredientes ri
+                     JOIN public.ingredientes ing2 ON ing2.id = ri.ingrediente_id
+                     WHERE ri.receta_id = r.id AND COALESCE(ing2.es_insumo, false) = false) AS ing_id_receta
+             FROM public.bunker_articulos ba
+             JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+             LEFT JOIN public.recetas r ON UPPER(r.articulo_numero) = UPPER(ba.articulo_id)
+             WHERE COALESCE(ba.familia_id, 0) > 0
+               AND UPPER(ba.articulo_id) NOT LIKE 'NB-%'
+               AND UPPER(ba.articulo_id) NOT LIKE 'EMB-%'
+               AND ($1::int = 0 OR ba.familia_id = $1::int)`,
+            [famIdNum]
+        ).catch(() => ({ rows: [] }));
+
+        const filasFiltradasPremezcla = resBa.rows.filter(row => {
+            const skuU = String(row.sku_nodo || '').toUpperCase();
+            return !IDS_PREMEZCLAS_INTERMEDIAS_IA.has(Number(row.ing_id_receta || 0))
+                && !SKUS_PREMEZCLAS_INTERMEDIAS_IA.has(skuU);
+        });
+        const filasEvaluar = (filasFiltradasPremezcla.length > 0 && !SKUS_PREMEZCLAS_INTERMEDIAS_IA.has(String(articulo_sku || '').toUpperCase()) && !IDS_PREMEZCLAS_INTERMEDIAS_IA.has(ingIdNum))
+            ? filasFiltradasPremezcla
+            : resBa.rows;
+
+        for (const row of filasEvaluar) {
+            const jer = jh.extraerJerarquiaB2B(row, row.familia_nombre);
+            if (!jer || FAMILIAS_INTERNAS_EXCLUIDAS_NORM.has(jh.normalizarClaveTexto(jer.familia_nombre))) continue;
+            if (ingIdNum > 0) {
+                if (Number(row.ing_id_receta || 0) === ingIdNum) {
+                    skusCandidatos.add(row.sku_nodo);
+                }
+                continue;
+            }
+            if (artPNorm && jh.normalizarClaveTexto(jer.articulo_principal) !== artPNorm) continue;
+            const segs = [jer.sub_categoria, jer.sub_sub_categoria, jer.sub_sub_sub_categoria]
+                .filter(s => s && String(s).trim() !== '')
+                .map(s => jh.normalizarClaveTexto(s));
+            const rowRutaNorm = segs.join('>');
+            if (rutaSubNorm && rowRutaNorm !== rutaSubNorm && !rowRutaNorm.startsWith(`${rutaSubNorm}>`)) continue;
+            if (varNorm) {
+                const descNorm = jh.normalizarClaveTexto(row.descripcion_generada || row.descripcion || '');
+                if (!descNorm.includes(varNorm) && !varNorm.split(' ').every(w => w.length < 3 || descNorm.includes(w))) continue;
+            }
+            skusCandidatos.add(row.sku_nodo);
+        }
+    }
+
+    const desgloses = [];
+    for (const sku of skusCandidatos) {
+        const d = await obtenerDesgloseIngredientesParaItem(
+            { articulo_codigo: sku, sku_nodo: sku, ingrediente_origen_id: ingIdNum || undefined },
+            catalogo,
+            db
+        ).catch(() => null);
+        if (d && Array.isArray(d.ingredientes) && d.ingredientes.length >= 2) {
+            desgloses.push(d);
+        }
+    }
+    if (desgloses.length === 0 && ingIdNum > 0) {
+        const dIng = await obtenerDesgloseIngredientesParaItem(
+            { ingrediente_origen_id: ingIdNum },
+            catalogo,
+            db
+        ).catch(() => null);
+        if (dIng && Array.isArray(dIng.ingredientes) && dIng.ingredientes.length >= 2) {
+            desgloses.push(dIng);
+        }
+    }
+
+    return resolverFidelidadParaListaItemsSync(desgloses) || vacio;
+}
 
 const _previewsIaCache = new Map();
 
@@ -737,6 +951,76 @@ async function listarProductosBaseConImagenes(db, {
         a.articulo_principal.localeCompare(b.articulo_principal, 'es-AR')
     );
 
+    const catalogoIng = await construirCatalogoIngredientesComerciales(db).catch(() => null);
+    if (catalogoIng) {
+        const fidelidadPorSku = new Map();
+        const obtenerFidelidadSku = async (sku, ingIdOpt) => {
+            const k = `${String(sku || '').toUpperCase()}#${Number(ingIdOpt || 0)}`;
+            if (fidelidadPorSku.has(k)) return fidelidadPorSku.get(k);
+            const d = await obtenerDesgloseIngredientesParaItem(
+                { articulo_codigo: sku || undefined, sku_nodo: sku || undefined, ingrediente_origen_id: ingIdOpt || undefined },
+                catalogoIng,
+                db
+            ).catch(() => null);
+            const f = (d && Array.isArray(d.ingredientes) && d.ingredientes.length >= 2)
+                ? calcularFidelidadIngredientes(d.ingredientes)
+                : null;
+            const resF = (f && f.tiene_receta) ? f : null;
+            fidelidadPorSku.set(k, resF);
+            return resF;
+        };
+
+        for (const a of anclasPrincipales) {
+            for (const v of a.variedades) {
+                const candF = [];
+                if (v.presentaciones && v.presentaciones.length > 0) {
+                    const f = await obtenerFidelidadSku(v.presentaciones[0].sku_nodo, v.ingrediente_id);
+                    if (f) candF.push(f);
+                } else if (v.sku_principal_combo || v.ingrediente_id) {
+                    const f = await obtenerFidelidadSku(v.sku_principal_combo, v.ingrediente_id);
+                    if (f) candF.push(f);
+                }
+                v.fidelidad_ingredientes = (candF.length > 0) ? candF[0] : null;
+            }
+
+            for (const sr of a.subramas) {
+                const varsSrRaw = a.variedades.filter(v =>
+                    v.ruta_subrama_norm === sr.ruta_subrama_norm ||
+                    v.ruta_subrama_norm.startsWith(`${sr.ruta_subrama_norm}>`)
+                );
+                const varsComercialesSr = varsSrRaw.filter(v =>
+                    !IDS_PREMEZCLAS_INTERMEDIAS_IA.has(Number(v.ingrediente_id || 0)) &&
+                    !(v.presentaciones || []).every(p => SKUS_PREMEZCLAS_INTERMEDIAS_IA.has(String(p.sku_nodo || '').toUpperCase()))
+                );
+                const varsSr = varsComercialesSr.length > 0 ? varsComercialesSr : varsSrRaw;
+                const todasTienen = varsSr.length > 0 && varsSr.every(v => v.fidelidad_ingredientes && v.fidelidad_ingredientes.tiene_receta);
+                if (todasTienen) {
+                    const firma0 = varsSr[0].fidelidad_ingredientes.firma_receta;
+                    sr.fidelidad_ingredientes = varsSr.every(v => v.fidelidad_ingredientes.firma_receta === firma0)
+                        ? varsSr[0].fidelidad_ingredientes
+                        : null;
+                } else {
+                    sr.fidelidad_ingredientes = null;
+                }
+            }
+
+            const varsComercialesAncla = a.variedades.filter(v =>
+                !IDS_PREMEZCLAS_INTERMEDIAS_IA.has(Number(v.ingrediente_id || 0)) &&
+                !(v.presentaciones || []).every(p => SKUS_PREMEZCLAS_INTERMEDIAS_IA.has(String(p.sku_nodo || '').toUpperCase()))
+            );
+            const varsAnclaEval = varsComercialesAncla.length > 0 ? varsComercialesAncla : a.variedades;
+            const todasAncla = varsAnclaEval.length > 0 && varsAnclaEval.every(v => v.fidelidad_ingredientes && v.fidelidad_ingredientes.tiene_receta);
+            if (todasAncla) {
+                const firma0 = varsAnclaEval[0].fidelidad_ingredientes.firma_receta;
+                a.fidelidad_ingredientes = varsAnclaEval.every(v => v.fidelidad_ingredientes.firma_receta === firma0)
+                    ? varsAnclaEval[0].fidelidad_ingredientes
+                    : null;
+            } else {
+                a.fidelidad_ingredientes = null;
+            }
+        }
+    }
+
     const resumen = {
         total_anclas_principales: anclasPrincipales.length,
         anclas_con_foto: anclasPrincipales.filter(a => Boolean(a.imagen_ancla)).length,
@@ -1396,6 +1680,8 @@ function armarPromptYPartesGemini({
     modo_prompt = null,
     prompt_personalizado = '',
     incluir_regla_sin_envases = true,
+    incluir_fidelidad_ingredientes = true,
+    fidelidad_ingredientes = null,
     referencias = []
 } = {}) {
     const subSegs = extraerSegmentosSubrama(ruta_subrama_labels).map(limpiarTextoComercialParaPrompt);
@@ -1404,6 +1690,7 @@ function armarPromptYPartesGemini({
     const sujeto = varClean || [artClean, ...subSegs].filter(Boolean).join(' › ') || 'producto natural';
     const fam = String(familia_nombre || '').trim();
     const sinEnvasesBool = incluir_regla_sin_envases !== false && String(incluir_regla_sin_envases).toLowerCase() !== 'false';
+    const fidelidadBool = incluir_fidelidad_ingredientes !== false && String(incluir_fidelidad_ingredientes).toLowerCase() !== 'false';
 
     const rawPrompt = String(prompt_personalizado || '').trim();
     const rawModo = String(modo_prompt || '').trim().toLowerCase();
@@ -1444,10 +1731,17 @@ function armarPromptYPartesGemini({
         });
     }
 
+    const fidelidadActiva = fidelidadBool && fidelidad_ingredientes && fidelidad_ingredientes.tiene_receta
+        ? fidelidad_ingredientes
+        : null;
+    const bloqueFidelidad = fidelidadActiva ? construirTextoFidelidadIngredientesPrompt(fidelidadActiva) : '';
+
     const refs = Array.isArray(referencias) ? referencias : [];
-    const promptEnviado = refs.length > 0
-        ? `${INSTRUCCION_REFERENCIA_VISUAL_TXT}\n\n${promptUsuarioFinal}`
-        : promptUsuarioFinal;
+    const segmentosEnvio = [];
+    if (refs.length > 0) segmentosEnvio.push(INSTRUCCION_REFERENCIA_VISUAL_TXT);
+    segmentosEnvio.push(promptUsuarioFinal);
+    if (bloqueFidelidad) segmentosEnvio.push(bloqueFidelidad);
+    const promptEnviado = segmentosEnvio.filter(Boolean).join('\n\n');
 
     const parts = [
         ...refs.map(r => ({ inlineData: { mimeType: r.mimeType, data: r.data } })),
@@ -1468,6 +1762,7 @@ function armarPromptYPartesGemini({
         promptUsuarioFinal,
         presetEfectivo,
         modoEfectivo,
+        fidelidadAplicada: fidelidadActiva,
         parts
     };
 }
@@ -1491,15 +1786,20 @@ function extraerImagenBase64DesdeGemini(data = {}) {
 
 async function generarPreviewImagenBaseIA({
     db = null,
+    familia_id = null,
     familia_nombre = '',
     articulo_principal = '',
     ruta_subrama_labels = [],
     nombre_variante = '',
+    ingrediente_id = null,
+    articulo_sku = null,
     preset_estilo = 'cuenco_neutro',
     modo_prompt = null,
     calidad = 'estandar',
     prompt_personalizado = '',
     incluir_regla_sin_envases = true,
+    incluir_fidelidad_ingredientes = true,
+    fidelidad_ingredientes = null,
     prompt_guardado_id = null,
     imagenes_referencia = []
 } = {}) {
@@ -1518,12 +1818,26 @@ async function generarPreviewImagenBaseIA({
         throw err;
     }
 
+    const fidelidadBool = incluir_fidelidad_ingredientes !== false && String(incluir_fidelidad_ingredientes).toLowerCase() !== 'false';
+    let fidelidadResuelta = fidelidad_ingredientes;
+    if (fidelidadBool && !fidelidadResuelta && db) {
+        fidelidadResuelta = await resolverFidelidadIngredientesParaDestino(db, {
+            familia_id,
+            articulo_principal,
+            ruta_subrama_labels,
+            nombre_variante,
+            ingrediente_id,
+            articulo_sku
+        }).catch(() => null);
+    }
+
     const referenciasNorm = await normalizarImagenesReferencia(imagenes_referencia);
     const {
         promptEnviado,
         promptUsuarioFinal,
         presetEfectivo,
         modoEfectivo,
+        fidelidadAplicada,
         parts
     } = armarPromptYPartesGemini({
         familia_nombre,
@@ -1534,6 +1848,8 @@ async function generarPreviewImagenBaseIA({
         modo_prompt,
         prompt_personalizado,
         incluir_regla_sin_envases,
+        incluir_fidelidad_ingredientes: fidelidadBool,
+        fidelidad_ingredientes: fidelidadResuelta,
         referencias: referenciasNorm
     });
 
@@ -1644,6 +1960,7 @@ async function generarPreviewImagenBaseIA({
         prompt_enviado_ia: promptEnviado,
         uso_referencias_count: referenciasNorm.length,
         prompt_guardado_id: promptGuardadoIdNum,
+        fidelidad_ingredientes: fidelidadAplicada || null,
         width: normalizedWebp.info.width || null,
         height: normalizedWebp.info.height || null,
         bytes: normalizedWebp.info.size || null
@@ -1948,6 +2265,9 @@ module.exports = {
     eliminarImagenBaseLamda,
     construirPromptImagenBase,
     interpolarPromptGuardado,
+    calcularFidelidadIngredientes,
+    construirTextoFidelidadIngredientesPrompt,
+    resolverFidelidadIngredientesParaDestino,
     normalizarImagenesReferencia,
     armarPromptYPartesGemini,
     generarPreviewImagenBaseIA,

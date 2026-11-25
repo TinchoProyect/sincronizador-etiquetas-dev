@@ -380,6 +380,12 @@ async function asegurarTablasCrmWhatsapp() {
             ALTER TABLE public.crm_whatsapp_chats
             ADD COLUMN IF NOT EXISTS nodo_captacion_json JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+            ALTER TABLE public.crm_whatsapp_chats
+            ADD COLUMN IF NOT EXISTS atendido_hasta_at TIMESTAMPTZ NULL;
+
+            ALTER TABLE public.crm_whatsapp_chats
+            ADD COLUMN IF NOT EXISTS marcado_pendiente_manual BOOLEAN NOT NULL DEFAULT false;
+
             CREATE INDEX IF NOT EXISTS idx_crm_wa_chats_frente_activo
             ON public.crm_whatsapp_chats(frente_activo, categoria_contacto);
         `);
@@ -783,16 +789,77 @@ async function registrarMensajeWhatsapp({
             }
 
             if (esMasReciente || tieneUnreadExplicito || nuevaCategoria !== chatActual.categoria_contacto || cambioNodoJson) {
-                let nuevoEsperando = tieneUnreadExplicito
-                    ? esNoLeidoExplicito
-                    : (fromMe ? false : (esMensajeNuevo ? true : Boolean(chatActual.esperando_respuesta)));
-                let nuevoNoLeidos = tieneUnreadExplicito
-                    ? cantNoLeidosExplicito
-                    : (fromMe ? 0 : (esMensajeNuevo ? (parseInt(chatActual.no_leidos || 0) + 1) : parseInt(chatActual.no_leidos || 0)));
+                const atendidoHastaMs = chatActual.atendido_hasta_at ? new Date(chatActual.atendido_hasta_at).getTime() : 0;
+                const marcadoPendManual = Boolean(chatActual.marcado_pendiente_manual);
+                const msgPosteriorAAtendido = !atendidoHastaMs || fechaMsg.getTime() > (atendidoHastaMs + 1000);
+                const ultimoEsSalienteSinEntrante = Boolean(chatActual.ultimo_mensaje_from_me) && !esMasReciente && Boolean(fromMe);
+
+                let nuevoEsperando;
+                let nuevoNoLeidos;
+                let nuevoAtendidoHasta = chatActual.atendido_hasta_at || null;
+                let nuevoMarcadoPendManual = marcadoPendManual;
+
+                if (fromMe) {
+                    if (esMasReciente) {
+                        nuevoEsperando = false;
+                        nuevoNoLeidos = 0;
+                        nuevoMarcadoPendManual = false;
+                        if (!atendidoHastaMs || fechaMsg.getTime() > atendidoHastaMs) {
+                            nuevoAtendidoHasta = fechaMsg;
+                        }
+                    } else if (tieneUnreadExplicito) {
+                        // Nunca encender alerta si el último real del hilo ya es saliente (salvo pendiente manual explícito)
+                        if (marcadoPendManual) {
+                            nuevoEsperando = true;
+                            nuevoNoLeidos = Math.max(1, parseInt(chatActual.no_leidos || 0, 10));
+                        } else if (ultimoEsSalienteSinEntrante || (!msgPosteriorAAtendido && atendidoHastaMs > 0)) {
+                            nuevoEsperando = false;
+                            nuevoNoLeidos = 0;
+                        } else {
+                            nuevoEsperando = esNoLeidoExplicito;
+                            nuevoNoLeidos = cantNoLeidosExplicito;
+                        }
+                    } else {
+                        nuevoEsperando = Boolean(chatActual.esperando_respuesta);
+                        nuevoNoLeidos = parseInt(chatActual.no_leidos || 0, 10);
+                    }
+                } else {
+                    if (tieneUnreadExplicito) {
+                        if (marcadoPendManual) {
+                            nuevoEsperando = true;
+                            nuevoNoLeidos = Math.max(1, Number(cantNoLeidosExplicito || chatActual.no_leidos || 1));
+                        } else if (atendidoHastaMs > 0 && !msgPosteriorAAtendido) {
+                            // Ya atendido en LAMDA hasta este timestamp: no rebotar por unread residual de WhatsApp Web
+                            nuevoEsperando = false;
+                            nuevoNoLeidos = 0;
+                        } else {
+                            nuevoEsperando = esNoLeidoExplicito;
+                            nuevoNoLeidos = cantNoLeidosExplicito;
+                            if (nuevoEsperando && msgPosteriorAAtendido) {
+                                nuevoMarcadoPendManual = false;
+                            }
+                        }
+                    } else if (esMensajeNuevo) {
+                        if (atendidoHastaMs > 0 && !msgPosteriorAAtendido && !marcadoPendManual) {
+                            nuevoEsperando = false;
+                            nuevoNoLeidos = 0;
+                        } else {
+                            nuevoEsperando = true;
+                            nuevoNoLeidos = parseInt(chatActual.no_leidos || 0, 10) + 1;
+                            if (msgPosteriorAAtendido) {
+                                nuevoMarcadoPendManual = false;
+                            }
+                        }
+                    } else {
+                        nuevoEsperando = Boolean(chatActual.esperando_respuesta);
+                        nuevoNoLeidos = parseInt(chatActual.no_leidos || 0, 10);
+                    }
+                }
 
                 if (nuevaCategoria === 'IGNORADO_BOT') {
                     nuevoEsperando = false;
                     nuevoNoLeidos = 0;
+                    nuevoMarcadoPendManual = false;
                 }
 
                 await pool.query(`
@@ -820,6 +887,8 @@ async function registrarMensajeWhatsapp({
                         categoria_contacto = $16,
                         modo_privacidad = $17,
                         nodo_captacion_json = $18::jsonb,
+                        atendido_hasta_at = $19,
+                        marcado_pendiente_manual = $20,
                         updated_at = NOW()
                     WHERE chat_id = $1
                 `, [
@@ -840,7 +909,9 @@ async function registrarMensajeWhatsapp({
                     esMasReciente,
                     nuevaCategoria,
                     nuevoModoPriv,
-                    JSON.stringify(nuevoNodoJson)
+                    JSON.stringify(nuevoNodoJson),
+                    nuevoAtendidoHasta,
+                    nuevoMarcadoPendManual
                 ]);
             }
         } else {
@@ -1597,9 +1668,47 @@ async function sincronizarEstadoNoLeidosDesdeWa(listaNoLeidosWa = []) {
                 continue;
             }
 
-            chatIdsNoLeidos.push(item.chatId);
+            const chatActualRes = await pool.query(
+                `SELECT id, esperando_respuesta, atendido_hasta_at, marcado_pendiente_manual,
+                        ultimo_mensaje_from_me, ultimo_mensaje_at
+                 FROM public.crm_whatsapp_chats
+                 WHERE chat_id = $1
+                 LIMIT 1`,
+                [item.chatId]
+            );
+            const chatActual = chatActualRes.rows[0] || null;
+            const atendidoHastaMs = chatActual?.atendido_hasta_at ? new Date(chatActual.atendido_hasta_at).getTime() : 0;
+            const marcadoPendManual = Boolean(chatActual?.marcado_pendiente_manual);
 
             const ordenados = [...mensajesReales].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+            const ultimoReal = ordenados.length > 0 ? ordenados[ordenados.length - 1] : null;
+            const ultimoEntrante = [...ordenados].reverse().find(m => !m.fromMe) || null;
+
+            const ultimoEsSalienteYaRespondido = Boolean(
+                ultimoReal
+                    ? ultimoReal.fromMe === true
+                    : (chatActual && chatActual.ultimo_mensaje_from_me === true)
+            ) && item.unreadCount !== -1 && !marcadoPendManual;
+
+            const refTsMs = ultimoEntrante?.timestamp
+                ? (ultimoEntrante.timestamp * 1000)
+                : (item.timestampChat
+                    ? (item.timestampChat * 1000)
+                    : (chatActual?.ultimo_mensaje_at ? new Date(chatActual.ultimo_mensaje_at).getTime() : 0));
+
+            const suprimidoPorAtendido = Boolean(
+                atendidoHastaMs > 0
+                && !marcadoPendManual
+                && (refTsMs === 0 || refTsMs <= (atendidoHastaMs + 1000))
+            );
+
+            if (!ultimoEsSalienteYaRespondido && !suprimidoPorAtendido) {
+                chatIdsNoLeidos.push(item.chatId);
+            }
+
+            const unreadEfectivoSync = (ultimoEsSalienteYaRespondido || suprimidoPorAtendido)
+                ? 0
+                : item.unreadCount;
 
             if (ordenados.length > 0) {
                 for (let i = 0; i < ordenados.length; i++) {
@@ -1618,10 +1727,10 @@ async function sincronizarEstadoNoLeidosDesdeWa(listaNoLeidosWa = []) {
                         pushnameWa: item.pushnameWa,
                         origenEnvio: 'sincronizacion',
                         timestampMs: m.timestamp ? m.timestamp * 1000 : Date.now(),
-                        unreadCountWa: esUltimo ? item.unreadCount : undefined
+                        unreadCountWa: esUltimo ? unreadEfectivoSync : undefined
                     });
                 }
-            } else {
+            } else if (!ultimoEsSalienteYaRespondido && !suprimidoPorAtendido) {
                 const cant = item.unreadCount === -1 ? -1 : (item.unreadCount > 0 ? item.unreadCount : 1);
                 const upd = await pool.query(`
                     UPDATE public.crm_whatsapp_chats
@@ -1649,7 +1758,7 @@ async function sincronizarEstadoNoLeidosDesdeWa(listaNoLeidosWa = []) {
             }
         }
 
-        // Apagar todos los que en WhatsApp ya fueron vistos (unreadCount === 0)
+        // Apagar todos los que en WhatsApp ya fueron vistos (unreadCount === 0), salvo los marcados manualmente como pendientes
         if (chatIdsNoLeidos.length > 0) {
             await pool.query(`
                 UPDATE public.crm_whatsapp_chats
@@ -1657,6 +1766,7 @@ async function sincronizarEstadoNoLeidosDesdeWa(listaNoLeidosWa = []) {
                     no_leidos = 0,
                     updated_at = NOW()
                 WHERE esperando_respuesta = true
+                  AND COALESCE(marcado_pendiente_manual, false) = false
                   AND NOT (chat_id = ANY($1::text[]))
             `, [chatIdsNoLeidos]);
         } else {
@@ -1666,6 +1776,7 @@ async function sincronizarEstadoNoLeidosDesdeWa(listaNoLeidosWa = []) {
                     no_leidos = 0,
                     updated_at = NOW()
                 WHERE esperando_respuesta = true
+                  AND COALESCE(marcado_pendiente_manual, false) = false
             `);
         }
 

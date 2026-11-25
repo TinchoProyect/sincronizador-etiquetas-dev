@@ -2226,61 +2226,150 @@ async function resolverDesgloseIngredientesOfertaNodo(runner, oferta, catalogoIn
     return mejor;
 }
 
+function detectarPackDesdeHermano(hermano = {}, ingId = null) {
+    const kHerm = Number(hermano.kilos_unidad || 0);
+    const idHerm = String(hermano.articulo_id || '').trim();
+    const descHerm = String(hermano.descripcion_generada || hermano.descripcion || idHerm).trim();
+
+    if (Boolean(hermano.es_pack) && Number(hermano.pack_unidades) > 1 && !hermano.pack_hijo_codigo) {
+        const u = Number(hermano.pack_unidades);
+        return {
+            es_pack_hermano: true,
+            pack_unidades_hermano: u,
+            peso_unitario_kg: (kHerm > 0 ? kHerm : (u * 0.05)) / u
+        };
+    }
+
+    if (!hermano.pack_hijo_codigo) {
+        const mDesc = descHerm.match(/\b(\d+)\s*x\s*(\d+(?:[.,]\d+)?)\s*(kg|g|grs?)\b/i);
+        if (mDesc) {
+            const u = Number(mDesc[1]);
+            const valPeso = Number(String(mDesc[2]).replace(',', '.'));
+            const uni = String(mDesc[3] || '').toLowerCase();
+            const pesoUnitKg = uni.startsWith('k') ? valPeso : (valPeso / 1000);
+            if (u > 1 && pesoUnitKg > 0 && kHerm > 0 && Math.abs((u * pesoUnitKg) - kHerm) <= Math.max(0.05, kHerm * 0.05)) {
+                return {
+                    es_pack_hermano: true,
+                    pack_unidades_hermano: u,
+                    peso_unitario_kg: pesoUnitKg
+                };
+            }
+        }
+        const mSku = idHerm.match(/(\d+)[xX](\d+)([gG])?$/);
+        if (mSku && Number(mSku[1]) > 1) {
+            const u = Number(mSku[1]);
+            const pesoNum = Number(mSku[2]);
+            const pesoUnitKg = mSku[3] ? (pesoNum / 1000) : (pesoNum >= 10 ? pesoNum / 1000 : pesoNum);
+            if (pesoUnitKg > 0 && kHerm > 0 && Math.abs((u * pesoUnitKg) - kHerm) <= Math.max(0.05, kHerm * 0.05)) {
+                return {
+                    es_pack_hermano: true,
+                    pack_unidades_hermano: u,
+                    peso_unitario_kg: pesoUnitKg
+                };
+            }
+        }
+    }
+
+    if (Number(ingId) === 141) {
+        return {
+            es_pack_hermano: true,
+            pack_unidades_hermano: 20,
+            peso_unitario_kg: 0.05
+        };
+    }
+
+    return {
+        es_pack_hermano: false,
+        pack_unidades_hermano: 1,
+        peso_unitario_kg: null
+    };
+}
+
 /**
  * Deriva determinísticamente el SKU nativo LAMDA (sin prefijos NB- ni EMB-) y la nomenclatura
  * posicional exacta a partir de un artículo hermano canónico de public.bunker_articulos.
  */
-function derivarSkuYNomenclaturaDesdeHermano(hermano = {}, kilosUnidad = 0.25, packUnidadesOverride = null) {
+function derivarSkuYNomenclaturaDesdeHermano(hermano = {}, kilosUnidad = 0.25, packUnidadesOverride = null, opciones = {}) {
     const kilos = Math.max(0.001, Number(kilosUnidad || 0.25));
     const gramos = Math.round(kilos * 1000);
     const sufijoPeso = (gramos >= 1000 && gramos % 1000 === 0) ? `${gramos / 1000}kg` : `${gramos}g`;
     const idHermano = String(hermano.articulo_id || '').trim();
     const descHermano = String(hermano.descripcion_generada || hermano.descripcion || idHermano).trim();
 
-    const hermanoEsPackDirecto = Boolean(hermano.es_pack) && Number(hermano.pack_unidades) > 1 && !hermano.pack_hijo_codigo;
-    if (hermanoEsPackDirecto) {
-        const pesoUnitarioKg = Number(hermano.kilos_unidad || 1.2) / Number(hermano.pack_unidades || 24);
-        const packUnidades = (packUnidadesOverride && Number(packUnidadesOverride) > 1)
-            ? Number(packUnidadesOverride)
-            : Math.max(1, Math.round(kilos / (pesoUnitarioKg || 0.05)));
-        const gramosUnit = Math.round((pesoUnitarioKg || 0.05) * 1000);
+    const modoPres = opciones.modo_presentacion ? String(opciones.modo_presentacion).trim().toUpperCase() : null;
+    const pesoUnitOverrideG = Number(opciones.peso_unitario_gramos || 0);
+    const packInfo = detectarPackDesdeHermano(hermano, opciones.ingrediente_id || null);
 
-        if (Math.abs(Number(hermano.kilos_unidad) - kilos) < 0.0005 && Number(hermano.pack_unidades) === packUnidades) {
+    const usarPack = (modoPres === 'PACK')
+        || (modoPres !== 'BOLSA' && packInfo.es_pack_hermano);
+
+    if (usarPack) {
+        const pesoUnitarioKg = pesoUnitOverrideG > 0
+            ? (pesoUnitOverrideG / 1000)
+            : (packInfo.peso_unitario_kg || 0.05);
+        const packUnidades = (packUnidadesOverride && Number(packUnidadesOverride) > 1)
+            ? Math.round(Number(packUnidadesOverride))
+            : Math.max(1, Math.round(kilos / (pesoUnitarioKg || 0.05)));
+        const gramosUnit = pesoUnitOverrideG > 0
+            ? Math.round(pesoUnitOverrideG)
+            : Math.max(1, Math.round((pesoUnitarioKg || 0.05) * 1000));
+
+        if (packUnidades > 1) {
+            const hermanoTieneMismoPack = (Boolean(hermano.es_pack) || packInfo.es_pack_hermano)
+                && Math.abs(Number(hermano.kilos_unidad) - kilos) < 0.0005
+                && Number(packInfo.pack_unidades_hermano || hermano.pack_unidades) === packUnidades;
+
+            if (hermanoTieneMismoPack) {
+                return {
+                    sku_nativo: idHermano,
+                    nomenclatura_bunker: descHermano,
+                    es_pack: true,
+                    pack_unidades: packUnidades,
+                    peso_unitario_gramos: gramosUnit,
+                    pack_hijo_codigo: hermano.pack_hijo_codigo || null,
+                    expresado_en_gramos: true,
+                    presentacion_etiqueta: `Pack x ${packUnidades} (${gramosUnit}g c/u)`
+                };
+            }
+
+            let skuDerivado;
+            if (/\d+[xX]\d+[gG]?$/.test(idHermano)) {
+                skuDerivado = idHermano.replace(/\d+[xX]\d+[gG]?$/, `${packUnidades}X${gramosUnit}`);
+            } else if (/([xX])(\d+(?:[.,]\d+)?[A-Za-z]?|K|KG)$/i.test(idHermano)) {
+                skuDerivado = idHermano.replace(/([xX])(\d+(?:[.,]\d+)?[A-Za-z]?|K|KG)$/i, `${packUnidades}X${gramosUnit}`);
+            } else {
+                skuDerivado = `${idHermano.replace(/\d+.*$/, '')}${packUnidades}X${gramosUnit}`;
+            }
+
+            let nomDerivada;
+            if (/\b\d+\s*x\s*\d+(?:[.,]\d+)?\s*(?:kg|g|grs?)\b/i.test(descHermano)) {
+                nomDerivada = descHermano.replace(/\b\d+\s*x\s*\d+(?:[.,]\d+)?\s*(?:kg|g|grs?)\b/i, `${packUnidades} x ${gramosUnit}g`);
+            } else if (/x\s*\d+(?:[.,]\d+)?\s*(?:kg|g|grs?)\s*$/i.test(descHermano)) {
+                nomDerivada = descHermano.replace(/x\s*\d+(?:[.,]\d+)?\s*(?:kg|g|grs?)\s*$/i, `${packUnidades} x ${gramosUnit}g`);
+            } else {
+                nomDerivada = `${descHermano} ${packUnidades} x ${gramosUnit}g`;
+            }
+
             return {
-                sku_nativo: idHermano,
-                nomenclatura_bunker: descHermano,
+                sku_nativo: skuDerivado,
+                nomenclatura_bunker: nomDerivada,
                 es_pack: true,
                 pack_unidades: packUnidades,
-                pack_hijo_codigo: hermano.pack_hijo_codigo || null,
+                peso_unitario_gramos: gramosUnit,
+                pack_hijo_codigo: null,
                 expresado_en_gramos: true,
-                presentacion_etiqueta: `Pack ${packUnidades} u. (${gramos}g)`
+                presentacion_etiqueta: `Pack x ${packUnidades} (${gramosUnit}g c/u)`
             };
         }
-
-        const skuDerivado = /\d+([xX]\d+)$/.test(idHermano)
-            ? idHermano.replace(/\d+([xX]\d+)$/, `${packUnidades}$1`)
-            : `${idHermano.replace(/\d+.*$/, '')}${packUnidades}X${gramosUnit}`;
-        const nomDerivada = /\b\d+\s*x\s*\d+\s*g\b/i.test(descHermano)
-            ? descHermano.replace(/\b\d+\s*x\s*\d+\s*g\b/i, `${packUnidades} x ${gramosUnit}g`)
-            : `${descHermano.replace(/\s+x\s+.*$/i, '')} ${packUnidades} x ${gramosUnit}g`;
-
-        return {
-            sku_nativo: skuDerivado,
-            nomenclatura_bunker: nomDerivada,
-            es_pack: true,
-            pack_unidades: packUnidades,
-            pack_hijo_codigo: null,
-            expresado_en_gramos: true,
-            presentacion_etiqueta: `Pack ${packUnidades} u. (${gramos}g)`
-        };
     }
 
-    if (Math.abs(Number(hermano.kilos_unidad) - kilos) < 0.0005 && Number(hermano.pack_unidades || 1) === 1) {
+    if (Math.abs(Number(hermano.kilos_unidad) - kilos) < 0.0005 && !packInfo.es_pack_hermano && Number(hermano.pack_unidades || 1) === 1) {
         return {
             sku_nativo: idHermano,
             nomenclatura_bunker: descHermano,
             es_pack: Boolean(hermano.es_pack),
             pack_unidades: Number(hermano.pack_unidades || 1),
+            peso_unitario_gramos: gramos,
             pack_hijo_codigo: hermano.pack_hijo_codigo || null,
             expresado_en_gramos: hermano.expresado_en_gramos !== undefined ? Boolean(hermano.expresado_en_gramos) : (kilos < 1),
             presentacion_etiqueta: `Bolsa ${sufijoPeso}`
@@ -2307,9 +2396,15 @@ function derivarSkuYNomenclaturaDesdeHermano(hermano = {}, kilosUnidad = 0.25, p
         skuDerivado = `CCTSx${gramos}`;
     } else if (gramos >= 1000 && gramos % 1000 === 0) {
         const kgEntero = gramos / 1000;
-        skuDerivado = /([xX])(\d+(?:[.,]\d+)?[A-Za-z]?|K|KG)$/i.test(idHermano)
-            ? idHermano.replace(/([xX])(\d+(?:[.,]\d+)?[A-Za-z]?|K|KG)$/i, `$1${kgEntero}`)
-            : `${idHermano}X${kgEntero}`;
+        if (/\d+([xX]\d+[gG]?)$/.test(idHermano) && packInfo.es_pack_hermano) {
+            skuDerivado = idHermano.replace(/\d+([xX]\d+[gG]?)$/, `X${kgEntero}`);
+        } else {
+            skuDerivado = /([xX])(\d+(?:[.,]\d+)?[A-Za-z]?|K|KG)$/i.test(idHermano)
+                ? idHermano.replace(/([xX])(\d+(?:[.,]\d+)?[A-Za-z]?|K|KG)$/i, `$1${kgEntero}`)
+                : `${idHermano}X${kgEntero}`;
+        }
+    } else if (/\d+([xX]\d+[gG]?)$/.test(idHermano) && packInfo.es_pack_hermano) {
+        skuDerivado = idHermano.replace(/\d+([xX]\d+[gG]?)$/, `X${gramos}G`);
     } else if (/([xX])\d+([gG])$/.test(idHermano)) {
         skuDerivado = idHermano.replace(/([xX])\d+([gG])$/, `$1${gramos}$2`);
     } else if (/([xX])\d+$/.test(idHermano) && Number(hermano.kilos_unidad) < 1) {
@@ -2320,8 +2415,8 @@ function derivarSkuYNomenclaturaDesdeHermano(hermano = {}, kilosUnidad = 0.25, p
         skuDerivado = `${idHermano}X${gramos}G`;
     }
 
-    const nomDerivada = /x\s*\d+(?:[.,]\d+)?\s*(?:kg|g|grs?)\s*$/i.test(descHermano)
-        ? descHermano.replace(/x\s*\d+(?:[.,]\d+)?\s*(?:kg|g|grs?)\s*$/i, `x ${sufijoPeso}`)
+    const nomDerivada = /(?:\b\d+\s*)?x\s*\d+(?:[.,]\d+)?\s*(?:kg|g|grs?)\s*$/i.test(descHermano)
+        ? descHermano.replace(/(?:\b\d+\s*)?x\s*\d+(?:[.,]\d+)?\s*(?:kg|g|grs?)\s*$/i, `x ${sufijoPeso}`)
         : `${descHermano} x ${sufijoPeso}`;
 
     return {
@@ -2329,6 +2424,7 @@ function derivarSkuYNomenclaturaDesdeHermano(hermano = {}, kilosUnidad = 0.25, p
         nomenclatura_bunker: nomDerivada,
         es_pack: false,
         pack_unidades: 1,
+        peso_unitario_gramos: gramos,
         pack_hijo_codigo: null,
         expresado_en_gramos: kilos < 1,
         presentacion_etiqueta: `Bolsa ${sufijoPeso}`
@@ -2498,8 +2594,16 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                 ? Math.round(Number(propDir.asistente_minutos) * 60)
                 : null;
             const descOficial = dirArt.descripcion_generada || dirArt.descripcion || dirArt.articulo_id;
-            const presEtiqueta = Boolean(dirArt.es_pack) && Number(dirArt.pack_unidades || 1) > 1
-                ? `Pack ${dirArt.pack_unidades} u. (${gramos}g)`
+            const packInfoDir = detectarPackDesdeHermano(dirArt, ingIdEfectivo);
+            const esPackDir = Boolean(dirArt.es_pack) || (packInfoDir.es_pack_hermano && Number(packInfoDir.pack_unidades_hermano || 1) > 1);
+            const packUnidDir = Boolean(dirArt.es_pack) && Number(dirArt.pack_unidades || 1) > 1
+                ? Number(dirArt.pack_unidades)
+                : (packInfoDir.es_pack_hermano ? Number(packInfoDir.pack_unidades_hermano) : 1);
+            const gramosUnitDir = esPackDir && packUnidDir > 1
+                ? Math.max(1, Math.round((gramos) / packUnidDir))
+                : gramos;
+            const presEtiqueta = esPackDir && packUnidDir > 1
+                ? `Pack x ${packUnidDir} (${gramosUnitDir}g c/u)`
                 : `Bolsa ${sufijoPeso}`;
 
             return {
@@ -2525,8 +2629,9 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                 nomenclatura_bunker: descOficial,
                 nombre_publico_limpio: descOficial,
                 presentacion_etiqueta: art.presentacion_etiqueta || presEtiqueta,
-                es_pack: Boolean(dirArt.es_pack),
-                pack_unidades: Number(dirArt.pack_unidades || 1),
+                es_pack: esPackDir,
+                pack_unidades: packUnidDir,
+                peso_unitario_gramos: gramosUnitDir,
                 pack_hijo_codigo: dirArt.pack_hijo_codigo || null,
                 expresado_en_gramos: Boolean(dirArt.expresado_en_gramos),
                 segundos_nativos: segundosDir,
@@ -2625,7 +2730,11 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
 
     if (hermanos.length > 0) {
         const hermanoRef = hermanos[0];
-        const derivado = derivarSkuYNomenclaturaDesdeHermano(hermanoRef, kilos, art.pack_unidades);
+        const derivado = derivarSkuYNomenclaturaDesdeHermano(hermanoRef, kilos, art.pack_unidades, {
+            modo_presentacion: art.modo_presentacion || null,
+            peso_unitario_gramos: art.peso_unitario_gramos || null,
+            ingrediente_id: ingId
+        });
 
         const exactoEnHermanos = hermanos.find(
             h => !/^(NB-|EMB-)/i.test(String(h.articulo_id || ''))
@@ -2728,6 +2837,7 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
             presentacion_etiqueta: art.presentacion_etiqueta || derivado.presentacion_etiqueta,
             es_pack: derivado.es_pack,
             pack_unidades: derivado.pack_unidades,
+            peso_unitario_gramos: derivado.peso_unitario_gramos || (derivado.es_pack && derivado.pack_unidades > 1 ? Math.round(gramos / derivado.pack_unidades) : gramos),
             pack_hijo_codigo: exactoEnHermanos ? (exactoEnHermanos.pack_hijo_codigo || null) : null,
             expresado_en_gramos: derivado.expresado_en_gramos,
             segundos_nativos: segundosNativos,
@@ -2844,12 +2954,19 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                     sufijo_wip: null
                 };
 
+                const modoPresB = String(art.modo_presentacion || '').trim().toUpperCase();
+                const esPackB = modoPresB === 'PACK' && Number(art.pack_unidades || 1) > 1;
+                const packUnidB = esPackB ? Math.round(Number(art.pack_unidades)) : 1;
+                const gramosUnitB = esPackB
+                    ? (Number(art.peso_unitario_gramos || 0) > 0 ? Math.round(Number(art.peso_unitario_gramos)) : Math.max(1, Math.round(gramos / packUnidB)))
+                    : gramos;
+
                 const descGenerada = ensamblarDescripcionOficialBunker({
                     ...propsEst,
                     posiciones: posicionesConstruidas,
                     kilos_unidad: kilos,
-                    es_pack: false,
-                    pack_unidades: 1
+                    es_pack: esPackB,
+                    pack_unidades: packUnidB
                 });
 
                 const skuExplicito = String(art.sku_nodo || '').trim();
@@ -2857,7 +2974,9 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                     { ...propsEst, posiciones: posicionesConstruidas },
                     ingResuelto?.articulo_vinculado_numero || ''
                 );
-                const sufijoSku = (gramos >= 1000 && gramos % 1000 === 0) ? `X${gramos / 1000}` : `X${gramos}G`;
+                const sufijoSku = esPackB
+                    ? `${packUnidB}X${gramosUnitB}`
+                    : ((gramos >= 1000 && gramos % 1000 === 0) ? `X${gramos / 1000}` : `X${gramos}G`);
                 const skuConstruido = (skuExplicito && !/^NB-/i.test(skuExplicito) && !/^EMB-/i.test(skuExplicito))
                     ? skuExplicito
                     : `${prefSku}${sufijoSku}`;
@@ -2885,9 +3004,10 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                     articulo_principal: principalRow.termino,
                     nomenclatura_bunker: descGenerada,
                     nombre_publico_limpio: descGenerada,
-                    presentacion_etiqueta: art.presentacion_etiqueta || `Bolsa ${sufijoPeso}`,
-                    es_pack: false,
-                    pack_unidades: 1,
+                    presentacion_etiqueta: art.presentacion_etiqueta || (esPackB ? `Pack x ${packUnidB} (${gramosUnitB}g c/u)` : `Bolsa ${sufijoPeso}`),
+                    es_pack: esPackB,
+                    pack_unidades: packUnidB,
+                    peso_unitario_gramos: gramosUnitB,
                     pack_hijo_codigo: null,
                     expresado_en_gramos: kilos < 1,
                     segundos_nativos: null,
@@ -2968,7 +3088,7 @@ function calcularEstructuraCostosNodo(params = {}) {
     const costoEnvaseUnitario = Math.max(0, Number(params.costo_envase_unitario) || 0);
     const cantidadEnvases = Math.max(0, Number(params.cantidad_envases_unidad ?? 1));
     const costoEnvaseExtra = Math.max(0, Number(params.costo_envase_extra ?? 0));
-    const segundosFraccionamiento = Math.max(0, Number(params.segundos_fraccionamiento ?? 35));
+    const segundosFraccionamiento = Math.max(0, Number(params.segundos_fraccionamiento ?? 300));
     const valorHoraAplicado = Math.max(0, Number(params.valor_hora_aplicado ?? 7000));
     const margenLamdaPct = Math.max(0, Number(params.margen_lamda_pct ?? 22));
     const ivaPct = Math.max(0, Number(params.iva_pct ?? 21));
@@ -4431,7 +4551,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 kilos_unidad NUMERIC(10,4) NOT NULL DEFAULT 0.2500,
                 insumo_envase_id INTEGER REFERENCES public.ingredientes(id) ON DELETE SET NULL,
                 cantidad_envases_unidad NUMERIC(8,2) NOT NULL DEFAULT 1.00,
-                segundos_fraccionamiento NUMERIC(10,2) NOT NULL DEFAULT 35.00,
+                segundos_fraccionamiento NUMERIC(10,2) NOT NULL DEFAULT 300.00,
                 tarifa_colaborador_id INTEGER REFERENCES public.colaboradores_tarifas(id) ON DELETE SET NULL,
                 valor_hora_aplicado NUMERIC(12,2) NOT NULL DEFAULT 7000.00,
                 costo_insumo_kg NUMERIC(14,2) NOT NULL DEFAULT 0.00,
@@ -4466,7 +4586,7 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 articulo_bunker_sugerido_codigo VARCHAR(80),
                 kilos_sugeridos NUMERIC(10,4) NOT NULL DEFAULT 0.2500,
                 insumo_envase_sugerido_id INTEGER REFERENCES public.ingredientes(id) ON DELETE SET NULL,
-                segundos_estimados NUMERIC(10,2) DEFAULT 35.00,
+                segundos_estimados NUMERIC(10,2) DEFAULT 300.00,
                 precio_objetivo_vecino NUMERIC(14,2),
                 comentario_gestor TEXT,
                 respuesta_lamda TEXT,
@@ -4475,6 +4595,12 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 created_at TIMESTAMP DEFAULT NOW(),
                 updated_at TIMESTAMP DEFAULT NOW()
             );
+
+            ALTER TABLE public.nodos_articulos_catalogo
+                ALTER COLUMN segundos_fraccionamiento SET DEFAULT 300.00;
+
+            ALTER TABLE public.nodos_propuestas_fracciones
+                ALTER COLUMN segundos_estimados SET DEFAULT 300.00;
 
             CREATE TABLE IF NOT EXISTS public.nodos_ofertas_gestor (
                 id SERIAL PRIMARY KEY,
@@ -8330,7 +8456,7 @@ async function crearPropuestaFraccion(payload = {}) {
             payload.articulo_bunker_sugerido_codigo || null,
             kilos,
             payload.insumo_envase_sugerido_id ? Number(payload.insumo_envase_sugerido_id) : null,
-            Number(payload.segundos_estimados || 35),
+            Number(payload.segundos_estimados || 300),
             payload.precio_objetivo_vecino ? Number(payload.precio_objetivo_vecino) : null,
             payload.comentario_gestor || ''
         ]
@@ -8526,7 +8652,13 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
         if (Number(ingredienteOrigenFinalId) === 141 && !costoEnvaseExtra) {
             const env181Res = await client.query('SELECT COALESCE(costo_patron, 18.16) AS costo FROM public.ingredientes WHERE id = 181 LIMIT 1');
             const costo181 = Number(env181Res.rows[0]?.costo || 18.16);
-            costoEnvaseExtra = Number((Number(anatomia.pack_unidades || 6) * costo181).toFixed(2));
+            const cantFlowpacks = Math.max(
+                1,
+                Number(anatomia.pack_unidades) > 1
+                    ? Number(anatomia.pack_unidades)
+                    : Math.round(Number(payload.kilos_unidad || 0.25) / 0.05)
+            );
+            costoEnvaseExtra = Number((cantFlowpacks * costo181).toFixed(2));
         }
 
         // 4. Resolver costo por kilo del insumo comercial puente
@@ -8537,7 +8669,7 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
 
         const calc = calcularEstructuraCostosNodo({
             ...payload,
-            segundos_fraccionamiento: payload.segundos_fraccionamiento || anatomia.segundos_nativos || 35,
+            segundos_fraccionamiento: payload.segundos_fraccionamiento || anatomia.segundos_nativos || 300,
             costo_insumo_kg: costoInsumoKg,
             costo_envase_unitario: costoEnvaseUnitario,
             costo_envase_extra: costoEnvaseExtra
@@ -12791,7 +12923,12 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
 
                 // 2) Si es Pack de Barritas (#141), agregar primero los flowpacks individuales (#181 Bolsa 8 x 15)
                 if (Number(ingComercialId) === 141) {
-                    const cantFlowpacks = Number(anatomia.pack_unidades || 6);
+                    const cantFlowpacks = Math.max(
+                        1,
+                        Number(anatomia.pack_unidades) > 1
+                            ? Number(anatomia.pack_unidades)
+                            : Math.round(kilos / 0.05)
+                    );
                     await q.query(
                         `INSERT INTO public.receta_ingredientes (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
                          VALUES ($1, $2, $3, 'Unidades', $4)`,
