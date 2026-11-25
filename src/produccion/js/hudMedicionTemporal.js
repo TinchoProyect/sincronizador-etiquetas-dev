@@ -586,6 +586,12 @@ class HudMedicionTemporal {
         this._ultimoCarroConsultadoFoto = null;
         this.carroId = null;
         this.modoActivo = false;
+        this.etapaActual = 0;
+        this.carroAsentado = false;
+        this.pausado = false;
+        this.tiempoPausaMs = 0;
+        this.acumuladoEtapaMs = 0;
+        this.inicioTimestamp = null;
         this.ocultarHUD();
         this.actualizarBotonToggleHeader();
     }
@@ -676,6 +682,9 @@ class HudMedicionTemporal {
                 }
                 await this.activarParaCarro(this.carroId, { silenciarModalFoto: true });
             } else if (result.isDenied) {
+                const carroIdDesechado = this.carroId;
+                const estabaAsentado = Boolean(this.carroAsentado || data?.asentado);
+
                 // Desechar medición sin afectar el carro
                 await fetch(`/api/tiempos/carro/${this.carroId}/cancelar-medicion`, {
                     method: 'POST',
@@ -685,16 +694,22 @@ class HudMedicionTemporal {
                 sessionStorage.removeItem(`medicionConfirmadaSesion_${this.carroId}`);
                 this.modoActivo = false;
                 this.etapaActual = 0;
+                this.carroAsentado = false;
+                this.pausado = false;
                 this.ocultarHUD();
                 this.actualizarBotonToggleHeader();
 
-                Swal.fire({
+                await Swal.fire({
                     icon: 'info',
                     title: 'Medición desechada',
                     text: 'Se descartó el cronómetro de tiempos. El carro y sus artículos siguen listos para terminar de producir normalmente.',
                     timer: 2800,
                     showConfirmButton: false
                 });
+
+                if (estabaAsentado && typeof window.consumirOfertaFraccionadoPostAsentado === 'function') {
+                    await window.consumirOfertaFraccionadoPostAsentado(carroIdDesechado);
+                }
             } else {
                 // Dejar en pausa por ahora: si no estaba en pausa en BD, ponerlo en pausa para congelar la foto temporal
                 if (!this.pausado) {
@@ -1055,11 +1070,13 @@ class HudMedicionTemporal {
     async avanzarEtapaBackend(targetEtapa) {
         if (this.etapaActual === targetEtapa && targetEtapa === 4) return;
 
-        try {
-            sessionStorage.setItem(`medicionConfirmadaSesion_${this.carroId}`, 'true');
-            this._ultimoCarroConsultadoFoto = String(this.carroId);
+        const carroIdObjetivo = this.carroId;
 
-            const res = await fetch(`/api/tiempos/carro/${this.carroId}/avanzar-etapa`, {
+        try {
+            sessionStorage.setItem(`medicionConfirmadaSesion_${carroIdObjetivo}`, 'true');
+            this._ultimoCarroConsultadoFoto = String(carroIdObjetivo);
+
+            const res = await fetch(`/api/tiempos/carro/${carroIdObjetivo}/avanzar-etapa`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -1077,25 +1094,37 @@ class HudMedicionTemporal {
             const data = await res.json();
             this.etapaActual = data.etapa_actual;
 
-            // Si finalizó (Etapa 4), mostrar modal de felicitación con desglose matemático
-            if (targetEtapa === 4 && data.prorrateo) {
-                this.mostrarResumenFinalizacion(data.prorrateo);
-            }
+            // Actualizar/ocultar HUD primero para evitar solapamiento visual con modales finales
+            await this.activarParaCarro(carroIdObjetivo, { silenciarModalFoto: true });
 
-            await this.activarParaCarro(this.carroId, { silenciarModalFoto: true });
+            if (targetEtapa === 4) {
+                if (data.prorrateo) {
+                    await this.mostrarResumenFinalizacion(data.prorrateo, carroIdObjetivo);
+                } else {
+                    this.ocultarHUD();
+                    this.actualizarBotonToggleHeader();
+                    if (typeof window.actualizarVisibilidadBotones === 'function') {
+                        await window.actualizarVisibilidadBotones();
+                    }
+                    if (typeof window.consumirOfertaFraccionadoPostAsentado === 'function') {
+                        await window.consumirOfertaFraccionadoPostAsentado(carroIdObjetivo);
+                    }
+                }
+            }
         } catch (e) {
             console.error('[HUD-MEDICION] Error al avanzar etapa:', e);
             Swal.fire('Error', e.message || 'No se pudo avanzar de etapa', 'error');
         }
     }
 
-    mostrarResumenFinalizacion(prorrateo) {
+    async mostrarResumenFinalizacion(prorrateo, carroIdParam = null) {
+        const carroIdObjetivo = carroIdParam || this.carroId;
         const minTot = prorrateo.totalMinutosNetos ? prorrateo.totalMinutosNetos.toFixed(1) : '0.0';
         const minUnit = prorrateo.minutosUnitariosTotal ? prorrateo.minutosUnitariosTotal.toFixed(2) : '0.00';
         const uTot = prorrateo.totalUnidades || 0;
         const arts = prorrateo.articulosCount || 0;
 
-        Swal.fire({
+        await Swal.fire({
             icon: 'success',
             title: '¡Métricas Registradas Exitosamente!',
             html: `
@@ -1109,13 +1138,16 @@ class HudMedicionTemporal {
             `,
             confirmButtonText: '🏁 Finalizar y Cerrar',
             confirmButtonColor: '#10b981'
-        }).then(() => {
-            this.ocultarHUD();
-            this.actualizarBotonToggleHeader();
-            if (typeof window.actualizarVisibilidadBotones === 'function') {
-                window.actualizarVisibilidadBotones();
-            }
         });
+
+        this.ocultarHUD();
+        this.actualizarBotonToggleHeader();
+        if (typeof window.actualizarVisibilidadBotones === 'function') {
+            await window.actualizarVisibilidadBotones();
+        }
+        if (typeof window.consumirOfertaFraccionadoPostAsentado === 'function') {
+            await window.consumirOfertaFraccionadoPostAsentado(carroIdObjetivo);
+        }
     }
 
     async togglePausa() {
@@ -1170,6 +1202,8 @@ class HudMedicionTemporal {
         });
 
         if (result.isConfirmed) {
+            const carroIdCancelado = this.carroId;
+            const estabaAsentado = Boolean(this.carroAsentado);
             try {
                 await fetch(`/api/tiempos/carro/${this.carroId}/cancelar-medicion`, {
                     method: 'POST',
@@ -1180,10 +1214,16 @@ class HudMedicionTemporal {
                 sessionStorage.removeItem(`medicionConfirmadaSesion_${this.carroId}`);
                 this.modoActivo = false;
                 this.etapaActual = 0;
+                this.carroAsentado = false;
+                this.pausado = false;
                 this.ocultarHUD();
                 this.actualizarBotonToggleHeader();
 
-                Swal.fire('Medición Cancelada', 'El carro volvió a su estado normal de trabajo.', 'info');
+                await Swal.fire('Medición Cancelada', 'El carro volvió a su estado normal de trabajo.', 'info');
+
+                if (estabaAsentado && typeof window.consumirOfertaFraccionadoPostAsentado === 'function') {
+                    await window.consumirOfertaFraccionadoPostAsentado(carroIdCancelado);
+                }
             } catch (e) {
                 console.error('[HUD-MEDICION] Error al cancelar medición:', e);
             }

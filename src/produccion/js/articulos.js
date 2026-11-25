@@ -1007,10 +1007,15 @@ export async function agregarAlCarro(articulo_numero, descripcion, btnElement) {
             await mostrarResumenIngredientes(ingredientes);
             console.log('✅ [AGREGAR] Resumen de ingredientes actualizado');
 
-            // 3. FORZAR recarga de mixes
-            const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
-            mostrarResumenMixes(mixes);
-            console.log('✅ [AGREGAR] Resumen de mixes actualizado');
+            // 3. FORZAR recarga de mixes solo en carros externos
+            if (window._carroActivoInfo?.tipo_carro === 'externa') {
+                const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+                mostrarResumenMixes(mixes);
+                console.log('✅ [AGREGAR] Resumen de mixes actualizado');
+            } else {
+                const seccionMixes = document.getElementById('resumen-mixes');
+                if (seccionMixes) seccionMixes.style.display = 'none';
+            }
 
             // 4. 🎯 FORZAR ACTUALIZACIÓN DE ARTÍCULOS EXTERNOS (CRÍTICO)
             const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
@@ -2038,10 +2043,15 @@ export async function agregarMultiplesAlCarroInterno() {
                 await mostrarArticulosDelCarro();
 
                 const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
-                mostrarResumenIngredientes(ingredientes);
+                await mostrarResumenIngredientes(ingredientes);
 
-                const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
-                mostrarResumenMixes(mixes);
+                if (window._carroActivoInfo?.tipo_carro === 'externa') {
+                    const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+                    mostrarResumenMixes(mixes);
+                } else {
+                    const seccionMixes = document.getElementById('resumen-mixes');
+                    if (seccionMixes) seccionMixes.style.display = 'none';
+                }
 
                 const articulos = await obtenerResumenArticulosCarro(carroId, colaborador.id);
                 if (articulos && articulos.length > 0) {

@@ -1668,7 +1668,7 @@ function recolectarPendientesPreparacionCarro(esExterno, lineaNegocio, cantArtic
     });
 
     const seccionMixes = document.getElementById('resumen-mixes');
-    if (seccionMixes && getComputedStyle(seccionMixes).display !== 'none') {
+    if (esExterno && seccionMixes && getComputedStyle(seccionMixes).display !== 'none') {
         seccionMixes.querySelectorAll('tr.stock-faltante').forEach(tr => {
             registrarPrimerElemento(tr);
             const celdas = tr.querySelectorAll('td');
@@ -1686,7 +1686,7 @@ function recolectarPendientesPreparacionCarro(esExterno, lineaNegocio, cantArtic
     }
 
     const seccionArticulosUp = document.getElementById('resumen-articulos');
-    if (seccionArticulosUp && getComputedStyle(seccionArticulosUp).display !== 'none') {
+    if (esExterno && seccionArticulosUp && getComputedStyle(seccionArticulosUp).display !== 'none') {
         seccionArticulosUp.querySelectorAll('tr.stock-faltante').forEach(tr => {
             registrarPrimerElemento(tr);
             const celdas = tr.querySelectorAll('td');
@@ -1866,6 +1866,14 @@ export async function marcarCarroPreparado(carroIdParam) {
             }
             restaurarBotonPreparado(btnCarroPreparado);
             return false;
+        }
+
+        if (!esExterno) {
+            const seccionMixesEl = document.getElementById('resumen-mixes');
+            if (seccionMixesEl) seccionMixesEl.style.display = 'none';
+        }
+        if (typeof window.asegurarResumenIngredientesActualizado === 'function') {
+            await window.asegurarResumenIngredientesActualizado();
         }
 
         const { pendientes, primerElementoFaltante } = recolectarPendientesPreparacionCarro(esExterno, lineaNegocio, cantArticulosBackend);
@@ -2704,8 +2712,22 @@ export async function finalizarProduccion(carroIdParam) {
         console.log('✅ [FINALIZADO] Actualización completa de UI finalizada');
 
         // 4. 🚀 LANZADOR DETERMINISTA POST-ASENTADO (AP Tostaderos Línea 4 y Puente Mix Línea 3)
+        // Si el carro tiene métricas temporales en curso (Etapa < 4), diferir el modal derivado
+        // hasta que el operario finalice la Etapa 3 y cierre el resumen de Etapa 4 en el HUD.
         try {
-            await ofrecerCarroFraccionadoPostAsentado(resultData, colaborador);
+            const tieneMedicionTemporalEnCurso = Boolean(
+                tipoCarro === 'interna' &&
+                window.hudMedicion &&
+                window.hudMedicion.modoActivo &&
+                Number(window.hudMedicion.etapaActual || 0) < 4
+            );
+
+            if (tieneMedicionTemporalEnCurso) {
+                guardarOfertaFraccionadoPostAsentadoPendiente(carroId, resultData, colaborador);
+                console.log(`⏱️ [FRACCIONADO-POST-ASENTADO] Oferta encolada para Carro #${carroId} hasta cerrar métricas (Etapa 4).`);
+            } else {
+                await ofrecerCarroFraccionadoPostAsentado(resultData, colaborador);
+            }
         } catch (errPostFracc) {
             console.warn('⚠️ [FRACCIONADO-POST-ASENTADO] No se pudo desplegar asistente post-asentado:', errPostFracc);
         }
@@ -2718,6 +2740,101 @@ export async function finalizarProduccion(carroIdParam) {
         mostrarNotificacion(`Error: ${error.message}`, true);
     }
 }
+
+const _ofertasPostAsentadoPendientes = new Map();
+const _ofertasPostAsentadoEnCurso = new Set();
+
+function claveStorageOfertaPostAsentado(carroId) {
+    return `postAsentadoPendiente_${String(carroId)}`;
+}
+
+function guardarOfertaFraccionadoPostAsentadoPendiente(carroId, resultData, colaborador) {
+    if (!carroId || !resultData?.asentado_resumen) return;
+    const key = String(carroId);
+    const payload = {
+        carroId: key,
+        resultData,
+        colaborador: colaborador ? {
+            id: colaborador.id,
+            nombre: colaborador.nombre,
+            nombre_completo: colaborador.nombre_completo
+        } : null
+    };
+    _ofertasPostAsentadoPendientes.set(key, payload);
+    try {
+        sessionStorage.setItem(claveStorageOfertaPostAsentado(key), JSON.stringify(payload));
+    } catch (_) {}
+}
+
+function obtenerOfertaFraccionadoPostAsentadoPendiente(carroId) {
+    if (!carroId) return null;
+    const key = String(carroId);
+    if (_ofertasPostAsentadoPendientes.has(key)) {
+        return _ofertasPostAsentadoPendientes.get(key);
+    }
+    try {
+        const raw = sessionStorage.getItem(claveStorageOfertaPostAsentado(key));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.resultData) {
+            _ofertasPostAsentadoPendientes.set(key, parsed);
+            return parsed;
+        }
+    } catch (_) {}
+    return null;
+}
+
+function limpiarOfertaFraccionadoPostAsentadoPendiente(carroId) {
+    if (!carroId) return;
+    const key = String(carroId);
+    _ofertasPostAsentadoPendientes.delete(key);
+    try {
+        sessionStorage.removeItem(claveStorageOfertaPostAsentado(key));
+    } catch (_) {}
+}
+
+function tieneOfertaFraccionadoPostAsentadoPendiente(carroId) {
+    return Boolean(obtenerOfertaFraccionadoPostAsentadoPendiente(carroId));
+}
+
+async function consumirOfertaFraccionadoPostAsentado(carroIdParam) {
+    const carroId = carroIdParam || document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+    if (!carroId) return false;
+    const key = String(carroId);
+    if (_ofertasPostAsentadoEnCurso.has(key)) return false;
+
+    const payload = obtenerOfertaFraccionadoPostAsentadoPendiente(key);
+    if (!payload) return false;
+
+    // Eliminar antes de abrir el modal para garantizar disparo único
+    limpiarOfertaFraccionadoPostAsentadoPendiente(key);
+    _ofertasPostAsentadoEnCurso.add(key);
+
+    try {
+        let colab = payload.colaborador;
+        if (!colab || !colab.id) {
+            try {
+                const rawColab = localStorage.getItem('colaboradorActivo');
+                colab = rawColab ? JSON.parse(rawColab) : null;
+            } catch (_) {
+                colab = null;
+            }
+        }
+        if (!colab || !colab.id) return false;
+
+        await ofrecerCarroFraccionadoPostAsentado(payload.resultData, colab);
+        return true;
+    } catch (err) {
+        console.warn('⚠️ [FRACCIONADO-POST-ASENTADO] Error al consumir oferta pendiente:', err);
+        return false;
+    } finally {
+        _ofertasPostAsentadoEnCurso.delete(key);
+    }
+}
+
+window.limpiarOfertaFraccionadoPostAsentadoPendiente = limpiarOfertaFraccionadoPostAsentadoPendiente;
+window.tieneOfertaFraccionadoPostAsentadoPendiente = tieneOfertaFraccionadoPostAsentadoPendiente;
+window.consumirOfertaFraccionadoPostAsentado = consumirOfertaFraccionadoPostAsentado;
 
 /**
  * Lanzador determinista post-asentado:
@@ -3002,6 +3119,9 @@ async function ofrecerCarroFraccionadoPostAsentado(resultData, colaborador) {
 
     if (modalRes.isConfirmed && modalRes.value && modalRes.value.carro_id) {
         const nuevoCarroId = modalRes.value.carro_id;
+        if (typeof window.invalidarCacheCarro === 'function') {
+            window.invalidarCacheCarro();
+        }
         if (typeof window.actualizarEstadoCarro === 'function') {
             await window.actualizarEstadoCarro();
         }

@@ -454,18 +454,23 @@ async function confirmarSustitucion() {
                 console.log('📊 Obteniendo ingredientes actualizados del servidor...');
                 const ingredientes = await window.obtenerResumenIngredientesCarro(carroId, colaborador.id);
                 console.log('📊 Ingredientes recibidos:', ingredientes.length);
-                window.mostrarResumenIngredientes(ingredientes);
+                await window.mostrarResumenIngredientes(ingredientes);
                 console.log('✅ Resumen de ingredientes actualizado DIRECTAMENTE');
             }
 
-            // También actualizar resumen de mixes DIRECTAMENTE
-            if (typeof window.obtenerResumenMixesCarro === 'function' &&
-                typeof window.mostrarResumenMixes === 'function') {
-                console.log('🧪 Obteniendo mixes actualizados del servidor...');
-                const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
-                console.log('🧪 Mixes recibidos:', mixes.length);
-                window.mostrarResumenMixes(mixes);
-                console.log('✅ Resumen de mixes actualizado DIRECTAMENTE');
+            // También actualizar resumen de mixes DIRECTAMENTE solo en carros externos
+            if (window._carroActivoInfo?.tipo_carro === 'externa') {
+                if (typeof window.obtenerResumenMixesCarro === 'function' &&
+                    typeof window.mostrarResumenMixes === 'function') {
+                    console.log('🧪 Obteniendo mixes actualizados del servidor...');
+                    const mixes = await window.obtenerResumenMixesCarro(carroId, colaborador.id);
+                    console.log('🧪 Mixes recibidos:', mixes.length);
+                    window.mostrarResumenMixes(mixes);
+                    console.log('✅ Resumen de mixes actualizado DIRECTAMENTE');
+                }
+            } else {
+                const seccionMixes = document.getElementById('resumen-mixes');
+                if (seccionMixes) seccionMixes.style.display = 'none';
             }
         }
 

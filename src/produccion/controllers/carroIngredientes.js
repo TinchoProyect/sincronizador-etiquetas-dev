@@ -939,7 +939,7 @@ async function obtenerMixesCarro(carroId, usuarioId) {
         console.log(`- Total de mixes después de consolidar: ${mixesConsolidados.length} `);
         console.log(`===============================================\n`);
 
-        return mixesConsolidados;
+        return mixesConStock;
 
     } catch (error) {
         console.error('Error al obtener mixes del carro:', error);

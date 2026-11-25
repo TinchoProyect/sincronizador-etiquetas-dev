@@ -449,11 +449,16 @@ window.editarIngredienteCompuesto = async (mixId) => {
 
                 // Actualizar resumen de ingredientes
                 const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
-                mostrarResumenIngredientes(ingredientes);
+                await mostrarResumenIngredientes(ingredientes);
 
-                // Actualizar resumen de mixes
-                const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
-                mostrarResumenMixes(mixes);
+                // Actualizar resumen de mixes solo en carros externos
+                if (window._carroActivoInfo?.tipo_carro === 'externa') {
+                    const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+                    mostrarResumenMixes(mixes);
+                } else {
+                    const seccionMixes = document.getElementById('resumen-mixes');
+                    if (seccionMixes) seccionMixes.style.display = 'none';
+                }
 
                 // Actualizar lista desplegable de artículos del carro
                 if (typeof mostrarArticulosDelCarro === 'function') {
@@ -977,47 +982,66 @@ document.addEventListener('click', async (e) => {
     }
 });
 
-// Función de debounce para evitar múltiples llamadas
-function debounce(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
+// Schedulers con flush explícito para evitar lecturas de DOM desactualizado al confirmar carro
+let _cantidadUpdateTimer = null;
+let _cantidadUpdateArgs = null;
+let _cantidadUpdateEnVuelo = null;
+
+async function ejecutarActualizacionCantidad(numeroArticulo, nuevaCantidad, inputElement) {
+    const tarea = (async () => {
+        try {
+            // Actualizar UI inmediatamente
+            const articuloContainer = inputElement.closest('.articulo-container');
+            const ingredientesContainer = articuloContainer?.nextElementSibling;
+            if (ingredientesContainer && ingredientesContainer.classList.contains('ingredientes-expandidos')) {
+                const rows = ingredientesContainer.querySelectorAll('tbody tr');
+                rows.forEach(row => {
+                    const cantidadCell = row.cells[1];
+                    const cantidadBase = parseFloat(cantidadCell.dataset.base || cantidadCell.textContent);
+                    const cantidadCalculada = Number((cantidadBase * nuevaCantidad).toPrecision(10));
+                    cantidadCell.textContent = cantidadCalculada.toFixed(2);
+                    cantidadCell.dataset.valor = cantidadCalculada;
+                });
+            }
+
+            // Hacer la llamada al servidor en segundo plano
+            await modificarCantidadArticulo(numeroArticulo, nuevaCantidad);
+            // Actualizar resumen de artículos externos también
+            await actualizarResumenArticulos();
+            recalcularEstimacionesEnCaliente();
+        } catch (error) {
+            console.error('Error:', error);
+            mostrarError(error.message);
+            if (inputElement) {
+                inputElement.value = inputElement.dataset.lastValue || 1;
+            }
+        }
+    })();
+
+    _cantidadUpdateEnVuelo = tarea;
+    try {
+        await tarea;
+    } finally {
+        if (_cantidadUpdateEnVuelo === tarea) {
+            _cantidadUpdateEnVuelo = null;
+        }
+    }
 }
 
-// Debounced version of the update function
-const debouncedUpdateCantidad = debounce(async (numeroArticulo, nuevaCantidad, inputElement) => {
-    try {
-        // Actualizar UI inmediatamente
-        const articuloContainer = inputElement.closest('.articulo-container');
-        const ingredientesContainer = articuloContainer.nextElementSibling;
-        if (ingredientesContainer && ingredientesContainer.classList.contains('ingredientes-expandidos')) {
-            const rows = ingredientesContainer.querySelectorAll('tbody tr');
-            rows.forEach(row => {
-                const cantidadCell = row.cells[1];
-                const cantidadBase = parseFloat(cantidadCell.dataset.base || cantidadCell.textContent);
-                const cantidadCalculada = Number((cantidadBase * nuevaCantidad).toPrecision(10));
-                cantidadCell.textContent = cantidadCalculada.toFixed(2);
-                cantidadCell.dataset.valor = cantidadCalculada;
-            });
-        }
-
-        // Hacer la llamada al servidor en segundo plano
-        await modificarCantidadArticulo(numeroArticulo, nuevaCantidad);
-        // Actualizar resumen de artículos externos también
-        await actualizarResumenArticulos();
-        recalcularEstimacionesEnCaliente();
-    } catch (error) {
-        console.error('Error:', error);
-        mostrarError(error.message);
-        inputElement.value = inputElement.dataset.lastValue || 1;
+function debouncedUpdateCantidad(numeroArticulo, nuevaCantidad, inputElement) {
+    _cantidadUpdateArgs = { numeroArticulo, nuevaCantidad, inputElement };
+    if (_cantidadUpdateTimer) {
+        clearTimeout(_cantidadUpdateTimer);
     }
-}, 300);
+    _cantidadUpdateTimer = setTimeout(() => {
+        _cantidadUpdateTimer = null;
+        const args = _cantidadUpdateArgs;
+        _cantidadUpdateArgs = null;
+        if (args) {
+            ejecutarActualizacionCantidad(args.numeroArticulo, args.nuevaCantidad, args.inputElement);
+        }
+    }, 300);
+}
 
 document.addEventListener('change', (e) => {
     if (e.target.classList.contains('input-cantidad-articulo')) {
@@ -1033,26 +1057,97 @@ document.addEventListener('change', (e) => {
     }
 });
 
-// Función para actualizar el resumen de ingredientes con debounce
-const debouncedActualizarResumen = debounce(async () => {
-    const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
-    const colaboradorData = localStorage.getItem('colaboradorActivo');
+let _resumenRefreshTimer = null;
+let _resumenRefreshPendiente = false;
+let _resumenRefreshEnVuelo = null;
 
-    if (carroId && colaboradorData) {
-        const colaborador = JSON.parse(colaboradorData);
-        const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
-        mostrarResumenIngredientes(ingredientes);
-
-        // También actualizar el resumen de mixes
-        const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
-        mostrarResumenMixes(mixes);
+async function ejecutarActualizacionResumenInmediata() {
+    if (_resumenRefreshTimer) {
+        clearTimeout(_resumenRefreshTimer);
+        _resumenRefreshTimer = null;
     }
-}, 500);
+    _resumenRefreshPendiente = false;
 
-// Función para actualizar el resumen de ingredientes
-export async function actualizarResumenIngredientes() {
-    debouncedActualizarResumen();
+    if (_resumenRefreshEnVuelo) {
+        await _resumenRefreshEnVuelo;
+        if (!_resumenRefreshPendiente) return;
+        _resumenRefreshPendiente = false;
+    }
+
+    const tarea = (async () => {
+        const carroId = document.getElementById('workspace-container')?.dataset?.carroId || sessionStorage.getItem('carroActivo');
+        const colaboradorData = localStorage.getItem('colaboradorActivo');
+
+        if (carroId && colaboradorData) {
+            const colaborador = JSON.parse(colaboradorData);
+            const ingredientes = await obtenerResumenIngredientesCarro(carroId, colaborador.id);
+            await mostrarResumenIngredientes(ingredientes);
+
+            // Actualizar resumen de mixes solo en carros externos
+            if (window._carroActivoInfo?.tipo_carro === 'externa') {
+                const mixes = await obtenerResumenMixesCarro(carroId, colaborador.id);
+                mostrarResumenMixes(mixes);
+            } else {
+                const seccionMixes = document.getElementById('resumen-mixes');
+                if (seccionMixes) seccionMixes.style.display = 'none';
+            }
+        }
+    })();
+
+    _resumenRefreshEnVuelo = tarea;
+    try {
+        await tarea;
+    } finally {
+        if (_resumenRefreshEnVuelo === tarea) {
+            _resumenRefreshEnVuelo = null;
+        }
+    }
 }
+
+// Función para actualizar el resumen de ingredientes con debounce y soporte de flush
+export async function actualizarResumenIngredientes() {
+    _resumenRefreshPendiente = true;
+    if (_resumenRefreshTimer) {
+        clearTimeout(_resumenRefreshTimer);
+    }
+    _resumenRefreshTimer = setTimeout(() => {
+        _resumenRefreshTimer = null;
+        ejecutarActualizacionResumenInmediata();
+    }, 500);
+}
+
+/**
+ * Garantiza que cualquier cambio de cantidad o refresco de ingredientes en cola
+ * haya terminado y actualizado el DOM antes de validar faltantes.
+ */
+export async function asegurarResumenIngredientesActualizado(forzar = false) {
+    if (_cantidadUpdateTimer) {
+        clearTimeout(_cantidadUpdateTimer);
+        _cantidadUpdateTimer = null;
+        const args = _cantidadUpdateArgs;
+        _cantidadUpdateArgs = null;
+        if (args) {
+            await ejecutarActualizacionCantidad(args.numeroArticulo, args.nuevaCantidad, args.inputElement);
+        }
+    }
+    if (_cantidadUpdateEnVuelo) {
+        await _cantidadUpdateEnVuelo;
+    }
+
+    const contenedor = document.getElementById('tabla-resumen-ingredientes');
+    const domCargando = Boolean(contenedor && /Cargando\.\.\./i.test(contenedor.textContent || ''));
+
+    if (_resumenRefreshPendiente || forzar || domCargando) {
+        await ejecutarActualizacionResumenInmediata();
+    }
+    if (_resumenRefreshEnVuelo) {
+        await _resumenRefreshEnVuelo;
+    }
+}
+if (typeof window.actualizarResumenIngredientes !== 'function') {
+    window.actualizarResumenIngredientes = actualizarResumenIngredientes;
+}
+window.asegurarResumenIngredientesActualizado = asegurarResumenIngredientesActualizado;
 
 // Función para actualizar el resumen de artículos vinculados (carros externos)
 export async function actualizarResumenArticulos() {
@@ -1106,7 +1201,7 @@ async function eliminarArticuloDelCarro(numeroArticulo) {
         }
 
         eliminarArticuloDelDOM(numeroArticulo);
-        debouncedActualizarResumen();
+        await actualizarResumenIngredientes();
         // También actualizar el resumen de artículos para carros externos
         await actualizarResumenArticulos();
         mostrarNotificacionEliminacion(numeroArticulo);
@@ -1258,8 +1353,8 @@ async function modificarCantidadArticulo(numeroArticulo, nuevaCantidad) {
         // Actualizar solo los ingredientes del artículo modificado
         await actualizarIngredientesArticulo(numeroArticulo, nuevaCantidad);
 
-        // Actualizar resumen de ingredientes
-        await actualizarResumenIngredientes();
+        // Actualizar resumen de ingredientes inmediatamente (evita carrera al pulsar preparar)
+        await ejecutarActualizacionResumenInmediata();
 
     } catch (error) {
         console.error('Error:', error);
@@ -2015,6 +2110,13 @@ export async function seleccionarCarro(carroId) {
             throw new Error('No se puede seleccionar este carro');
         }
 
+        // Si estábamos midiendo otro carro, auto-pausar y limpiar estado del HUD antes de cambiar de carro
+        if (window.hudMedicion && window.hudMedicion.carroId && String(window.hudMedicion.carroId) !== String(carroId)) {
+            if (typeof window.hudMedicion.alDeseleccionarCarro === 'function') {
+                await window.hudMedicion.alDeseleccionarCarro();
+            }
+        }
+
         // --- Establecer carro activo ---
         sessionStorage.setItem('carroActivo', String(carroId));
         const wsContainer = document.getElementById('workspace-container');
@@ -2313,6 +2415,10 @@ export async function eliminarCarro(carroId) {
 
         if (!response.ok) {
             throw new Error('No se pudo eliminar el carro');
+        }
+
+        if (typeof window.limpiarOfertaFraccionadoPostAsentadoPendiente === 'function') {
+            window.limpiarOfertaFraccionadoPostAsentadoPendiente(carroId);
         }
 
         // Si el carro eliminado era el activo, limpiarlo COMPLETAMENTE
@@ -2810,6 +2916,7 @@ export async function mostrarResumenIngredientes(ingredientes) {
             const response = await fetch(`/api/produccion/carro/${carroId}/estado`);
             if (response.ok) {
                 const data = await response.json();
+                window._carroActivoInfo = data;
                 estadoCarro = data.estado;
                 tipoCarro = data.tipo_carro || 'interna';
                 lineaNegocio = data.linea_negocio;
@@ -2937,6 +3044,21 @@ export function mostrarResumenMixes(mixes) {
     const contenedor = document.getElementById('tabla-resumen-mixes');
     if (!contenedor) return;
 
+    const seccionMixes = document.getElementById('resumen-mixes');
+    const tipoCarroActivo = window._carroActivoInfo?.tipo_carro
+        || window.carroActivoMetadata?.tipo_carro
+        || (document.body.classList.contains('contexto-externo') ? 'externa' : 'interna');
+
+    // En producción interna los ingredientes de los mixes ya se expanden y validan en #resumen-ingredientes.
+    // Mantener #resumen-mixes oculto evita mostrar filas virtuales con stock_actual = 0 como faltantes.
+    if (tipoCarroActivo !== 'externa') {
+        contenedor.innerHTML = '';
+        if (seccionMixes) {
+            seccionMixes.style.display = 'none';
+        }
+        return;
+    }
+
     console.log('\n🧪 VERIFICACIÓN FINAL DEL INFORME DE MIXES');
     console.log('==========================================');
     console.log('Array final de mixes recibido para mostrar en la UI:');
@@ -2952,7 +3074,6 @@ export function mostrarResumenMixes(mixes) {
         console.log('⚠️ No hay mixes para mostrar en el informe');
     }
 
-    const seccionMixes = document.getElementById('resumen-mixes');
     if (!mixes || mixes.length === 0) {
         contenedor.innerHTML = '<p>No hay ingredientes compuestos para mostrar</p>';
         if (seccionMixes) {
@@ -3836,7 +3957,7 @@ export async function mostrarArticulosDelCarro() {
 
             // ⏱️ Sincronizar HUD de medición temporal si está disponible
             if (window.hudMedicion && carroId) {
-                window.hudMedicion.activarParaCarro(carroId);
+                await window.hudMedicion.activarParaCarro(carroId);
             }
         } else {
             console.error('No se encontró el contenedor lista-articulos');
@@ -5246,9 +5367,14 @@ window.abrirModalAjusteDesdeCarro = async function (ingredienteId, nombreIngredi
             const ingredientes = await obtenerResumenIngredientesCarro(carroIdActual, colaboradorActual.id);
             await mostrarResumenIngredientes(ingredientes);
 
-            // Actualizar resumen de mixes
-            const mixes = await obtenerResumenMixesCarro(carroIdActual, colaboradorActual.id);
-            mostrarResumenMixes(mixes);
+            // Actualizar resumen de mixes solo en carros externos
+            if (window._carroActivoInfo?.tipo_carro === 'externa') {
+                const mixes = await obtenerResumenMixesCarro(carroIdActual, colaboradorActual.id);
+                mostrarResumenMixes(mixes);
+            } else {
+                const seccionMixes = document.getElementById('resumen-mixes');
+                if (seccionMixes) seccionMixes.style.display = 'none';
+            }
 
             console.log('✅ [CARRO-AJUSTE] Resumen actualizado correctamente');
         }
@@ -5290,8 +5416,13 @@ document.addEventListener('recetaActualizada', async (event) => {
             const ingredientes = await obtenerResumenIngredientesCarro(carroIdActual, colaboradorActual.id);
             await mostrarResumenIngredientes(ingredientes);
             
-            const mixes = await obtenerResumenMixesCarro(carroIdActual, colaboradorActual.id);
-            mostrarResumenMixes(mixes);
+            if (window._carroActivoInfo?.tipo_carro === 'externa') {
+                const mixes = await obtenerResumenMixesCarro(carroIdActual, colaboradorActual.id);
+                mostrarResumenMixes(mixes);
+            } else {
+                const seccionMixes = document.getElementById('resumen-mixes');
+                if (seccionMixes) seccionMixes.style.display = 'none';
+            }
             
             const articulos = await obtenerResumenArticulosCarro(carroIdActual, colaboradorActual.id);
             if (articulos && articulos.length > 0) {

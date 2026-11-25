@@ -1821,19 +1821,24 @@ async function eliminarIngresoManual(ingresoId) {
 
       // PASO 2: Actualizar la UI con los datos frescos
       console.log('🎨 PASO 2: Actualizando UI con datos frescos...');
-      mostrarResumenIngredientes(ingredientesActualizados);
+      await mostrarResumenIngredientes(ingredientesActualizados);
 
       console.log('✅ Resumen de ingredientes recalculado y actualizado correctamente');
 
-      // PASO 3: También actualizar resumen de mixes si existe
-      console.log('🧪 PASO 3: Actualizando resumen de mixes...');
-      try {
-        const { obtenerResumenMixesCarro, mostrarResumenMixes } = await import('./carro.js');
-        const mixesActualizados = await obtenerResumenMixesCarro(carroId, colaborador.id);
-        mostrarResumenMixes(mixesActualizados);
-        console.log('✅ Resumen de mixes también actualizado');
-      } catch (mixError) {
-        console.warn('⚠️ No se pudo actualizar resumen de mixes:', mixError);
+      // PASO 3: También actualizar resumen de mixes solo en carros externos
+      if (window._carroActivoInfo?.tipo_carro === 'externa') {
+        console.log('🧪 PASO 3: Actualizando resumen de mixes...');
+        try {
+          const { obtenerResumenMixesCarro, mostrarResumenMixes } = await import('./carro.js');
+          const mixesActualizados = await obtenerResumenMixesCarro(carroId, colaborador.id);
+          mostrarResumenMixes(mixesActualizados);
+          console.log('✅ Resumen de mixes también actualizado');
+        } catch (mixError) {
+          console.warn('⚠️ No se pudo actualizar resumen de mixes:', mixError);
+        }
+      } else {
+        const seccionMixes = document.getElementById('resumen-mixes');
+        if (seccionMixes) seccionMixes.style.display = 'none';
       }
 
       console.log('✅ RECÁLCULO COMPLETO FINALIZADO EXITOSAMENTE');
