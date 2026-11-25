@@ -4760,6 +4760,12 @@
                 destino: subLabels.length > 0 ? 'subrama' : (ctx.familia_id && ctx.articulo_principal ? 'ancla' : 'variedad'),
                 modo: 'biblioteca',
                 preset: 'cuenco_neutro',
+                modoPrompt: 'preset',
+                promptText: '',
+                promptCustom: false,
+                incluirReglaSinEnvases: true,
+                promptsGuardados: [],
+                promptGuardadoId: null,
                 calidad: 'estandar',
                 preview: null,
                 bibItems: [],
@@ -4769,19 +4775,30 @@
             const loadBib = async () => {
                 const qs = new URLSearchParams();
                 if (ctx.familia_id) qs.set('familia_id', String(ctx.familia_id));
-                const r = await fetch(`/api/produccion/nodos/admin/imagenes-base/biblioteca?${qs.toString()}`);
-                const d = await r.json();
+                const [rBib, rPrompts] = await Promise.all([
+                    fetch(`/api/produccion/nodos/admin/imagenes-base/biblioteca?${qs.toString()}`),
+                    fetch('/api/produccion/nodos/admin/imagenes-base/prompts').catch(() => null)
+                ]);
+                const d = await rBib.json();
                 state.bibItems = d.ok ? (d.items || []) : [];
+                if (rPrompts && rPrompts.ok) {
+                    const dp = await rPrompts.json().catch(() => null);
+                    if (dp && dp.ok) state.promptsGuardados = dp.items || [];
+                }
                 render();
             };
 
             const buildPrompt = () => {
+                if (state.preset === 'libre') return '';
                 const subj = state.destino === 'subrama'
                     ? `${ctx.articulo_principal} › ${subLabels.join(' › ')}`
                     : (state.destino === 'ancla' ? ctx.articulo_principal : ctx.nombre_base_oficial);
                 const mapP = {
                     cuenco_neutro: 'Fotografía gastronómica profesional a 45° en cuenco cerámico claro sobre superficie neutra cálida, luz natural suave.',
                     granel_cenital: 'Fotografía gastronómica cenital 90° a granel sobre piedra o madera clara con luz difusa.',
+                    macro_editorial: 'Fotografía macro gastronómica de ultra detalle y enfoque selectivo del producto real con iluminación lateral cinematográfica.',
+                    mesa_cinematografica: 'Fotografía editorial gastronómica con el producto esparcido sobre mesa de madera cálida o piedra mate (sin cuenco), luz lateral suave.',
+                    producto_elaborado: 'Fotografía gastronómica comercial de estudio del producto elaborado entero y con un corte mostrando su interior sobre superficie limpia (sin cuenco).',
                     fondo_blanco: 'Fotografía editorial minimalista de catálogo sobre fondo blanco puro limpio.'
                 };
                 const subjClean = String(subj || '')
@@ -4792,8 +4809,11 @@
                 if (/\bcon cascara\b/.test(n)) notas.push('Frutos enteros CON su cáscara natural intacta.');
                 else if (/\b(repelado|peladas|pelado|sin cascara|sin piel)\b/.test(n)) notas.push('Granos o frutos completamente pelados, SIN cáscara ni vainas.');
                 if (/\bcrudo\b/.test(n) && /\bmani\b/.test(n)) notas.push('Granos crudos con su fina piel rojiza natural, sin cáscara dura.');
-                return `${mapP[state.preset] || mapP.cuenco_neutro} Producto único: "${subjClean}" (${ctx.familia_nombre}). ${notas.join(' ')} Sin envases, sin bolsas, sin marcas ni texto.`.trim();
+                const regla = state.incluirReglaSinEnvases ? 'Sin envases, sin bolsas, sin marcas ni texto.' : '';
+                return `${mapP[state.preset] || mapP.cuenco_neutro} Producto único: "${subjClean}" (${ctx.familia_nombre}). ${notas.join(' ')} ${regla}`.trim();
             };
+
+            state.promptText = buildPrompt();
 
             const buildTargetPayload = () => {
                 if (state.destino === 'subrama' && subLabels.length > 0) {
@@ -4869,14 +4889,17 @@
                                     <div style="border:1px solid #334155; border-radius:9px; padding:6px; background:#0f172a; display:flex; flex-direction:column; gap:5px;">
                                         <img src="${escaparHtml(it.url)}" style="width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:6px;" />
                                         <div style="font-size:0.72rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escaparHtml(it.etiqueta)}</div>
-                                        <button type="button" data-piz-usar="${it.id}" style="padding:4px; border-radius:6px; border:1px solid rgba(56,189,248,0.45); background:rgba(56,189,248,0.16); color:#bae6fd; font-size:0.72rem; font-weight:700; cursor:pointer;">✓ Usar</button>
+                                        <div style="display:flex; gap:4px;">
+                                            <button type="button" data-piz-usar="${it.id}" style="flex:1; padding:4px; border-radius:6px; border:1px solid rgba(56,189,248,0.45); background:rgba(56,189,248,0.16); color:#bae6fd; font-size:0.72rem; font-weight:700; cursor:pointer;">✓ Usar</button>
+                                            ${it.prompt_usado ? `<button type="button" data-piz-prompt-bib="${it.id}" title="Reusar prompt" style="padding:4px 7px; border-radius:6px; border:1px solid rgba(192,132,252,0.45); background:rgba(142,71,133,0.22); color:#f5d0fe; font-size:0.72rem; cursor:pointer;">📋</button>` : ''}
+                                        </div>
                                     </div>
                                 `).join('')}
                             </div>
                         ` : `
                             <div style="display:flex; flex-direction:column; gap:8px; background:#0f172a; padding:10px; border-radius:10px; border:1px solid #334155;">
                                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                    ${[['cuenco_neutro','🥣 Cuenco 45°'],['granel_cenital','🪨 Cenital'],['fondo_blanco','⬜ Fondo blanco']].map(([k,l]) => `
+                                    ${[['libre','✍️ Libre'],['cuenco_neutro','🥣 Cuenco 45°'],['granel_cenital','🪨 Cenital'],['macro_editorial','🔍 Macro'],['mesa_cinematografica','🎬 Mesa'],['producto_elaborado','🍫 Elaborado'],['fondo_blanco','⬜ Blanco']].map(([k,l]) => `
                                         <button type="button" data-piz-preset="${k}" style="padding:4px 9px; border-radius:999px; border:1px solid ${state.preset===k?'#c084fc':'#334155'}; background:${state.preset===k?'rgba(142,71,133,0.35)':'#1e293b'}; color:#f8fafc; font-size:0.73rem; cursor:pointer;">${l}</button>
                                     `).join('')}
                                     <select id="piz-ia-calidad" style="margin-left:auto; background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:6px; padding:3px 7px; font-size:0.74rem;">
@@ -4884,7 +4907,16 @@
                                         <option value="pro" ${state.calidad==='pro'?'selected':''}>💎 Pro (gemini-3-pro-image)</option>
                                     </select>
                                 </div>
-                                <textarea id="piz-ia-prompt" rows="2" style="width:100%; background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:7px; padding:6px; font-size:0.76rem;">${escaparHtml(buildPrompt())}</textarea>
+                                ${state.promptsGuardados.length > 0 ? `
+                                    <select id="piz-prompt-guardado" style="width:100%; background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:7px; padding:5px 8px; font-size:0.75rem;">
+                                        <option value="">📌 Elegir prompt guardado (${state.promptsGuardados.length})...</option>
+                                        ${state.promptsGuardados.map(pg => `<option value="${pg.id}" ${Number(state.promptGuardadoId)===Number(pg.id)?'selected':''}>${pg.es_favorito?'⭐ ':''}${escaparHtml(pg.nombre)}</option>`).join('')}
+                                    </select>
+                                ` : ''}
+                                <textarea id="piz-ia-prompt" rows="3" style="width:100%; background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:7px; padding:6px; font-size:0.76rem;" placeholder="Describí la escena deseada...">${escaparHtml(state.promptText)}</textarea>
+                                <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.73rem; color:#cbd5e1;">
+                                    <input type="checkbox" id="piz-chk-sin-envases" ${state.incluirReglaSinEnvases?'checked':''} /> Sin envases ni marcas
+                                </label>
                                 <div>
                                     <button type="button" id="piz-ia-gen" ${state.generating?'disabled':''} style="padding:6px 12px; border-radius:8px; border:1px solid #c084fc; background:rgba(142,71,133,0.45); color:#f5d0fe; font-weight:700; font-size:0.78rem; cursor:pointer;">
                                         ${state.generating ? '⏳ Generando...' : '✨ Generar previsualización'}
@@ -4932,15 +4964,66 @@
                         await cargarDatosNodosBarriales(true);
                     };
                 });
-                modal.querySelectorAll('[data-piz-preset]').forEach(btn => {
-                    btn.onclick = () => { state.preset = btn.getAttribute('data-piz-preset'); render(); };
+                modal.querySelectorAll('[data-piz-prompt-bib]').forEach(btn => {
+                    btn.onclick = () => {
+                        const it = state.bibItems.find(x => Number(x.id) === Number(btn.getAttribute('data-piz-prompt-bib')));
+                        if (!it || !it.prompt_usado) return;
+                        state.modo = 'ia';
+                        state.modoPrompt = 'libre';
+                        state.preset = it.preset_estilo || 'libre';
+                        state.promptText = it.prompt_usado;
+                        state.promptCustom = true;
+                        render();
+                    };
                 });
+                modal.querySelectorAll('[data-piz-preset]').forEach(btn => {
+                    btn.onclick = () => {
+                        const pId = btn.getAttribute('data-piz-preset');
+                        state.preset = pId;
+                        state.promptGuardadoId = null;
+                        if (pId === 'libre') {
+                            state.modoPrompt = 'libre';
+                            if (!state.promptCustom) state.promptText = '';
+                        } else {
+                            state.modoPrompt = 'preset';
+                            state.promptCustom = false;
+                            state.promptText = buildPrompt();
+                        }
+                        render();
+                    };
+                });
+                const pgSel = modal.querySelector('#piz-prompt-guardado');
+                if (pgSel) pgSel.onchange = () => {
+                    const pg = state.promptsGuardados.find(x => Number(x.id) === Number(pgSel.value));
+                    if (!pg) return;
+                    state.promptGuardadoId = Number(pg.id);
+                    state.modoPrompt = 'guardado';
+                    state.preset = pg.preset_base || 'libre';
+                    state.incluirReglaSinEnvases = pg.regla_sin_envases !== false;
+                    state.promptText = String(pg.prompt_texto || '')
+                        .replace(/\{\{\s*PRODUCTO\s*\}\}/gi, ctx.articulo_principal || ctx.nombre_base_oficial || 'producto')
+                        .replace(/\{\{\s*RUBRO\s*\}\}/gi, ctx.familia_nombre || 'Almacén');
+                    state.promptCustom = true;
+                    render();
+                };
+                const promptTa = modal.querySelector('#piz-ia-prompt');
+                if (promptTa) promptTa.oninput = () => {
+                    state.promptText = promptTa.value;
+                    state.promptCustom = true;
+                    if (state.modoPrompt === 'preset' && state.preset !== 'libre') {
+                        state.modoPrompt = 'libre';
+                        state.preset = 'libre';
+                    }
+                };
+                const chkSinEnv = modal.querySelector('#piz-chk-sin-envases');
+                if (chkSinEnv) chkSinEnv.onchange = () => { state.incluirReglaSinEnvases = chkSinEnv.checked; };
                 const calEl = modal.querySelector('#piz-ia-calidad');
                 if (calEl) calEl.onchange = () => { state.calidad = calEl.value; };
                 const genBtn = modal.querySelector('#piz-ia-gen');
                 if (genBtn) genBtn.onclick = async () => {
                     state.generating = true;
-                    const pTxt = modal.querySelector('#piz-ia-prompt')?.value || '';
+                    const pTxt = modal.querySelector('#piz-ia-prompt')?.value ?? state.promptText ?? '';
+                    state.promptText = pTxt;
                     render();
                     try {
                         const r = await fetch('/api/produccion/nodos/admin/imagenes-base/generar-ia', {
@@ -4952,6 +5035,9 @@
                                 ruta_subrama_labels: state.destino === 'subrama' ? subLabels : [],
                                 nombre_variante: state.destino === 'variedad' ? ctx.nombre_base_oficial : '',
                                 preset_estilo: state.preset,
+                                modo_prompt: state.modoPrompt,
+                                incluir_regla_sin_envases: state.incluirReglaSinEnvases,
+                                prompt_guardado_id: state.promptGuardadoId,
                                 calidad: state.calidad,
                                 prompt_personalizado: pTxt
                             })

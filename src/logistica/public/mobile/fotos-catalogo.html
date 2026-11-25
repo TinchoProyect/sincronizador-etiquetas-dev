@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <script src="/lamda-cloud-runtime.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Fotos Tiendas (IA) - LAMDA</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="icon" type="image/png" href="/img/isotipo_L_LAMDA.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+    <link rel="apple-touch-icon" href="/img/isotipo_L_LAMDA.png">
+    <meta name="apple-mobile-web-app-title" content="LAMDA">
+    <meta name="application-name" content="LAMDA">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/mobile.css?v=50">
+    <link rel="stylesheet" href="css/comercial.css?v=50">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="/env-config.js?v=2"></script>
+    <style>
+        html, body {
+            overflow-x: hidden !important;
+            max-width: 100vw;
+            box-sizing: border-box;
+        }
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+        .fc-page {
+            background: #0f172a;
+            min-height: 100vh;
+            color: #f8fafc;
+            padding-bottom: 5.5rem;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .fc-header {
+            background: linear-gradient(135deg, #1e1b4b 0%, #581c87 100%);
+            border-bottom: 1px solid rgba(192, 132, 252, 0.35);
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            padding: 0.75rem 0.9rem;
+        }
+        .fc-header-inner {
+            max-width: 680px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+        }
+        .fc-btn-icon {
+            min-width: 44px;
+            min-height: 44px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: rgba(15, 23, 42, 0.55);
+            color: #f8fafc;
+            font-size: 1.05rem;
+            font-weight: 800;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+            padding: 0 0.7rem;
+            cursor: pointer;
+            text-decoration: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .fc-btn-icon:active { transform: scale(0.96); }
+        .fc-stats-strip {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.5rem;
+            padding: 0.75rem 0.9rem 0.35rem;
+            max-width: 680px;
+            margin: 0 auto;
+        }
+        .fc-stat-pill {
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(71, 85, 105, 0.55);
+            border-radius: 0.85rem;
+            padding: 0.55rem 0.5rem;
+            text-align: center;
+        }
+        .fc-stat-val { font-size: 1.15rem; font-weight: 900; line-height: 1.1; }
+        .fc-stat-lbl { font-size: 0.68rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; margin-top: 2px; }
+        .fc-search-box {
+            position: sticky;
+            top: 61px;
+            z-index: 35;
+            background: rgba(15, 23, 42, 0.96);
+            backdrop-filter: blur(10px);
+            padding: 0.65rem 0.9rem;
+            border-bottom: 1px solid #1e293b;
+        }
+        .fc-search-inner { max-width: 680px; margin: 0 auto; }
+        .fc-input {
+            width: 100%;
+            background: #1e293b;
+            border: 1px solid #475569;
+            border-radius: 0.85rem;
+            padding: 0.75rem 0.95rem;
+            color: #f8fafc;
+            font-size: 0.95rem;
+            font-weight: 500;
+            outline: none;
+        }
+        .fc-input:focus {
+            border-color: #c084fc;
+            box-shadow: 0 0 0 3px rgba(192, 132, 252, 0.2);
+        }
+        .fc-chips-row {
+            display: flex;
+            gap: 0.45rem;
+            overflow-x: auto;
+            padding-top: 0.6rem;
+            scrollbar-width: none;
+        }
+        .fc-chips-row::-webkit-scrollbar { display: none; }
+        .fc-chip {
+            flex-shrink: 0;
+            min-height: 38px;
+            background: #1e293b;
+            color: #cbd5e1;
+            border: 1px solid #334155;
+            border-radius: 999px;
+            padding: 0.42rem 0.85rem;
+            font-size: 0.8rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+        .fc-chip.active {
+            background: rgba(168, 85, 247, 0.25);
+            color: #f3e8ff;
+            border-color: #c084fc;
+        }
+        .fc-main {
+            max-width: 680px;
+            margin: 0 auto;
+            padding: 0.75rem 0.9rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .fc-fam-acc {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 1rem;
+            overflow: hidden;
+        }
+        .fc-fam-head {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.65);
+            border: none;
+            color: #f8fafc;
+            padding: 0.85rem 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            font-size: 0.95rem;
+            font-weight: 800;
+            cursor: pointer;
+            text-align: left;
+        }
+        .fc-rubro-row {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 0.9rem;
+            border-top: 1px solid rgba(71, 85, 105, 0.35);
+            cursor: pointer;
+        }
+        .fc-rubro-row:active { background: rgba(148, 163, 184, 0.08); }
+        .fc-thumb {
+            width: 56px;
+            height: 56px;
+            border-radius: 0.75rem;
+            object-fit: cover;
+            border: 1px solid #475569;
+            flex-shrink: 0;
+            background: #0f172a;
+        }
+        .fc-thumb-ph {
+            width: 56px;
+            height: 56px;
+            border-radius: 0.75rem;
+            border: 1px dashed #475569;
+            background: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.35rem;
+            color: #64748b;
+            flex-shrink: 0;
+        }
+        .fc-card {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 1rem;
+            padding: 0.95rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .fc-tabs-3 {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.45rem;
+        }
+        .fc-tab-btn {
+            min-height: 46px;
+            border-radius: 0.8rem;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: #cbd5e1;
+            font-size: 0.8rem;
+            font-weight: 800;
+            cursor: pointer;
+            padding: 0.45rem 0.35rem;
+        }
+        .fc-tab-btn.active {
+            background: linear-gradient(135deg, #7c3aed 0%, #9333ea 100%);
+            border-color: #d8b4fe;
+            color: #ffffff;
+        }
+        .fc-btn-primary {
+            min-height: 48px;
+            width: 100%;
+            border-radius: 0.85rem;
+            border: 1px solid rgba(216, 180, 254, 0.5);
+            background: linear-gradient(135deg, #7c3aed 0%, #a21caf 100%);
+            color: #ffffff;
+            font-size: 0.95rem;
+            font-weight: 800;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.45rem;
+            padding: 0.65rem 1rem;
+        }
+        .fc-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+        .fc-btn-success {
+            min-height: 46px;
+            border-radius: 0.8rem;
+            border: 1px solid rgba(52, 211, 153, 0.5);
+            background: rgba(16, 185, 129, 0.22);
+            color: #a7f3d0;
+            font-size: 0.86rem;
+            font-weight: 800;
+            cursor: pointer;
+            padding: 0.55rem 0.85rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+        }
+        .fc-btn-sec {
+            min-height: 44px;
+            border-radius: 0.8rem;
+            border: 1px solid #475569;
+            background: #0f172a;
+            color: #e2e8f0;
+            font-size: 0.82rem;
+            font-weight: 700;
+            cursor: pointer;
+            padding: 0.45rem 0.75rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+        }
+        .fc-refs-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.6rem;
+        }
+        .fc-ref-slot {
+            background: #0f172a;
+            border: 1px dashed #475569;
+            border-radius: 0.85rem;
+            padding: 0.6rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.45rem;
+            align-items: center;
+            text-align: center;
+        }
+        .fc-ref-img {
+            width: 100%;
+            height: 112px;
+            object-fit: cover;
+            border-radius: 0.65rem;
+            border: 1px solid #334155;
+        }
+        .fc-preset-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+        }
+        .fc-preset-pill {
+            min-height: 38px;
+            padding: 0.38rem 0.72rem;
+            border-radius: 999px;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: #cbd5e1;
+            font-size: 0.78rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .fc-preset-pill.active {
+            background: rgba(168, 85, 247, 0.28);
+            border-color: #d8b4fe;
+            color: #ffffff;
+        }
+        .fc-lib-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.6rem;
+        }
+        .fc-lib-card {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 0.85rem;
+            padding: 0.55rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            min-width: 0;
+        }
+        .fc-lib-card img {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            object-fit: cover;
+            border-radius: 0.6rem;
+        }
+        .fc-dest-row {
+            display: flex;
+            gap: 0.45rem;
+            overflow-x: auto;
+            padding-bottom: 0.2rem;
+            scrollbar-width: none;
+        }
+        .fc-dest-row::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="fc-page">
+    <header class="fc-header">
+        <div class="fc-header-inner">
+            <div style="display:flex; align-items:center; gap:0.55rem; min-width:0;">
+                <button type="button" class="fc-btn-icon" onclick="window.abrirSidebar(event)" aria-label="Menú">☰</button>
+                <div style="min-width:0;">
+                    <div style="font-size:1.04rem; font-weight:900; color:#ffffff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">✨ Fotos Tiendas (IA)</div>
+                    <div style="font-size:0.72rem; color:#e9d5ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Catálogo Base, Estudio IA y Prompts</div>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.4rem; flex-shrink:0;">
+                <button type="button" class="fc-btn-icon" id="btn-fc-mis-prompts" onclick="FotosCatalogoController.abrirGestorPrompts()" title="Biblioteca de Prompts">📌 Prompts</button>
+                <a href="home.html" class="fc-btn-icon" aria-label="Inicio">🏠</a>
+            </div>
+        </div>
+    </header>
+
+    <section class="fc-stats-strip" id="fc-stats-strip">
+        <div class="fc-stat-pill">
+            <div class="fc-stat-val" id="fc-stat-total" style="color:#e9d5ff;">-</div>
+            <div class="fc-stat-lbl">Rubros</div>
+        </div>
+        <div class="fc-stat-pill">
+            <div class="fc-stat-val" id="fc-stat-con" style="color:#34d399;">-</div>
+            <div class="fc-stat-lbl">Con Foto</div>
+        </div>
+        <div class="fc-stat-pill">
+            <div class="fc-stat-val" id="fc-stat-sin" style="color:#fbbf24;">-</div>
+            <div class="fc-stat-lbl">Sin Foto</div>
+        </div>
+    </section>
+
+    <section class="fc-search-box" id="fc-search-box">
+        <div class="fc-search-inner">
+            <input type="search" id="fc-search-input" class="fc-input"
+                placeholder="Buscar rubro, barrita, almendra, sub-rama o SKU..."
+                oninput="FotosCatalogoController.onBuscar(this.value)" />
+            <div class="fc-chips-row">
+                <button type="button" class="fc-chip active" data-fc-filtro="todos" onclick="FotosCatalogoController.setFiltro('todos', this)">🌐 Todos</button>
+                <button type="button" class="fc-chip" data-fc-filtro="sin_foto" onclick="FotosCatalogoController.setFiltro('sin_foto', this)">⚠️ Sin foto</button>
+                <button type="button" class="fc-chip" data-fc-filtro="en_nodos" onclick="FotosCatalogoController.setFiltro('en_nodos', this)">🏪 Solo en Nodos</button>
+                <button type="button" class="fc-chip" onclick="FotosCatalogoController.cargarCatalogo(true)">🔄 Actualizar</button>
+            </div>
+        </div>
+    </section>
+
+    <main class="fc-main" id="fc-main-container">
+        <div style="text-align:center; padding:2.5rem 1rem; color:#94a3b8;">Cargando catálogo de Tiendas LAMDA...</div>
+    </main>
+
+    <!-- Inputs ocultos para cámara / galería de referencias (slots 0 y 1) y foto directa -->
+    <input type="file" id="fc-input-ref-cam" accept="image/*" capture="environment" style="display:none;" />
+    <input type="file" id="fc-input-ref-gal" accept="image/*" style="display:none;" />
+    <input type="file" id="fc-input-direct-cam" accept="image/*" capture="environment" style="display:none;" />
+    <input type="file" id="fc-input-direct-gal" accept="image/*" style="display:none;" />
+
+    <script src="js/mobile.js?v=61"></script>
+    <script src="js/controllers/FotosCatalogoController.js?v=1"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch(() => {});
+        }
+        document.addEventListener('DOMContentLoaded', () => {
+            if (!verificarSesion()) return;
+            if (typeof window.inicializarSidebarUniversal === 'function') {
+                window.inicializarSidebarUniversal();
+            }
+            FotosCatalogoController.init();
+        });
+    </script>
+</body>
+</html>

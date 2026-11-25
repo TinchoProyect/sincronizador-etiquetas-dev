@@ -829,6 +829,7 @@ window.inicializarSidebarUniversal = () => {
     const isCrearCliente = currentPath.includes('crear-cliente-movil.html');
     const isProspectos = currentPath.includes('prospectos.html');
     const isFotosDeposito = currentPath.includes('fotos-deposito.html');
+    const isFotosCatalogo = currentPath.includes('fotos-catalogo.html');
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
     if (!sidebar) {
@@ -887,6 +888,12 @@ window.inicializarSidebarUniversal = () => {
                 <span class="sidebar-icon">📸</span>
                 <span>Fotos Depósito (B2B)</span>
                 <span class="sidebar-badge" style="border-color:rgba(13,148,136,0.4); color:#99f6e4; background:rgba(13,148,136,0.15);">Lotes</span>
+            </a>
+
+            <a href="fotos-catalogo.html" class="sidebar-item ${isFotosCatalogo ? 'active-module' : ''}">
+                <span class="sidebar-icon">✨</span>
+                <span>Fotos Tiendas (IA)</span>
+                <span class="sidebar-badge" style="border-color:rgba(192,132,252,0.45); color:#f5d0fe; background:rgba(147,51,234,0.22);">Tiendas</span>
             </a>
 
             <div class="sidebar-nav-title">Accesos Directos</div>

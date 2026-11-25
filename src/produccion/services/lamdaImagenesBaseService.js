@@ -20,22 +20,59 @@ const FAMILIAS_INTERNAS_EXCLUIDAS_NORM = new Set([
 ]);
 
 const ESTILOS_IA_IMAGEN_BASE = {
+    libre: {
+        id: 'libre',
+        label: 'Prompt libre',
+        emoji: '✍️',
+        es_libre: true,
+        descripcion_prompt: ''
+    },
     cuenco_neutro: {
         id: 'cuenco_neutro',
         label: 'Cuenco cerámico 45°',
+        emoji: '🥣',
+        es_libre: false,
         descripcion_prompt: 'Fotografía gastronómica profesional en plano a 45 grados del ingrediente real servido en un cuenco cerámico artesanal minimalista de tono claro, apoyado sobre una superficie neutra cálida mate con luz natural suave de estudio.'
     },
     granel_cenital: {
         id: 'granel_cenital',
         label: 'A granel cenital',
+        emoji: '🪨',
+        es_libre: false,
         descripcion_prompt: 'Fotografía gastronómica profesional en plano cenital (vista superior 90 grados) del ingrediente real a granel dispuesto de forma orgánica y prolija sobre piedra natural clara o madera clara suave, con iluminación natural difusa.'
+    },
+    macro_editorial: {
+        id: 'macro_editorial',
+        label: 'Macro cinematográfico',
+        emoji: '🔍',
+        es_libre: false,
+        descripcion_prompt: 'Fotografía macro gastronómica de ultra detalle y enfoque selectivo (shallow depth of field) del producto real, resaltando vetas, crocancia, textura natural e iluminación lateral cinematográfica suave.'
+    },
+    mesa_cinematografica: {
+        id: 'mesa_cinematografica',
+        label: 'Mesa editorial',
+        emoji: '🎬',
+        es_libre: false,
+        descripcion_prompt: 'Fotografía editorial gastronómica con el producto real esparcido de forma natural y armónica directamente sobre una mesa de madera cálida o piedra mate (sin cuenco ni recipiente), luz lateral cinematográfica suave.'
+    },
+    producto_elaborado: {
+        id: 'producto_elaborado',
+        label: 'Producto elaborado',
+        emoji: '🍫',
+        es_libre: false,
+        descripcion_prompt: 'Fotografía gastronómica comercial de estudio del producto elaborado real (por ejemplo barritas, bocados o granola) presentado entero y con un corte o detalle que muestre su interior, ingredientes visibles y textura real sobre superficie limpia (sin cuenco), luz lateral definida.'
     },
     fondo_blanco: {
         id: 'fondo_blanco',
         label: 'Fondo blanco limpio',
+        emoji: '⬜',
+        es_libre: false,
         descripcion_prompt: 'Fotografía profesional de catálogo e-commerce del ingrediente real agrupado en una pequeña pila limpia sobre fondo blanco puro minimalista, iluminación suave de estudio y sombra natural muy sutil.'
     }
 };
+
+const REGLA_SIN_ENVASES_TXT = 'Regla estricta: SIN envases, SIN bolsas plásticas, SIN frascos, SIN cajas, SIN etiquetas, SIN marcas comerciales, SIN logos, SIN texto sobreimpreso.';
+const INSTRUCCION_REFERENCIA_VISUAL_TXT = 'REFERENCIA VISUAL REAL ADJUNTA: Usá las fotografías reales adjuntas únicamente como referencia fiel de la morfología, textura, ingredientes visibles, corte, color y proporciones exactas de nuestro producto. Eliminá por completo el fondo casero y la iluminación amateur, generando una fotografía gastronómica limpia y profesional según la indicación siguiente.';
 
 const _previewsIaCache = new Map();
 
@@ -727,7 +764,9 @@ async function guardarEnBibliotecaLamda(db, {
     origen_tipo = 'UPLOAD_PC',
     modelo_ia = null,
     preset_estilo = null,
-    prompt_usado = null
+    prompt_usado = null,
+    uso_referencias_count = 0,
+    prompt_guardado_id = null
 }) {
     let famIdNum = familia_id ? Number(familia_id) : null;
     let famNomClean = String(familia_nombre || '').trim();
@@ -741,14 +780,17 @@ async function guardarEnBibliotecaLamda(db, {
     const metaImg = await procesarYGuardarWebp(buffer, rutas.pubPath, rutas.origPath);
     const artPNorm = articulo_principal ? jh.normalizarClaveTexto(articulo_principal) : null;
     const etiquetaFinal = String(etiqueta || articulo_principal || famNomClean || 'Imagen LAMDA').trim().slice(0, 180);
+    const refsCountNum = Math.max(0, Math.min(2, Number(uso_referencias_count) || 0));
+    const promptIdNum = Number(prompt_guardado_id || 0) > 0 ? Number(prompt_guardado_id) : null;
 
     try {
         const ins = await db.query(
             `INSERT INTO public.lamda_biblioteca_imagenes (
                 familia_id, familia_slug, articulo_principal_norm, etiqueta,
                 foto_id, url, url_original, width, height, bytes,
-                origen_tipo, modelo_ia, preset_estilo, prompt_usado, activo
-             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,true)
+                origen_tipo, modelo_ia, preset_estilo, prompt_usado,
+                uso_referencias_count, prompt_guardado_id, activo
+             ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true)
              RETURNING *`,
             [
                 famIdNum,
@@ -764,7 +806,9 @@ async function guardarEnBibliotecaLamda(db, {
                 String(origen_tipo || 'UPLOAD_PC').slice(0, 24),
                 modelo_ia ? String(modelo_ia).slice(0, 80) : null,
                 preset_estilo ? String(preset_estilo).slice(0, 40) : null,
-                prompt_usado ? String(prompt_usado).slice(0, 2000) : null
+                prompt_usado ? String(prompt_usado).slice(0, 4000) : null,
+                refsCountNum,
+                promptIdNum
             ]
         );
         return ins.rows[0];
@@ -1236,8 +1280,12 @@ function construirPromptImagenBase({
     articulo_principal = '',
     ruta_subrama_labels = [],
     nombre_variante = '',
-    preset_estilo = 'cuenco_neutro'
+    preset_estilo = 'cuenco_neutro',
+    incluir_regla_sin_envases = true
 } = {}) {
+    if (String(preset_estilo || '').trim() === 'libre') {
+        return '';
+    }
     const estilo = ESTILOS_IA_IMAGEN_BASE[preset_estilo] || ESTILOS_IA_IMAGEN_BASE.cuenco_neutro;
     const subSegs = extraerSegmentosSubrama(ruta_subrama_labels).map(limpiarTextoComercialParaPrompt);
     const artClean = limpiarTextoComercialParaPrompt(articulo_principal);
@@ -1250,13 +1298,178 @@ function construirPromptImagenBase({
         : '';
     const notasVisuales = inferirDescriptoresVisualesPrompt(`${fam} ${artClean} ${subSegs.join(' ')} ${varClean}`);
 
-    return [
+    const partes = [
         estilo.descripcion_prompt,
         `Producto protagonista único: "${sujeto}"${contextoFam}.`,
         ...notasVisuales,
-        'Mostrar únicamente el alimento natural real con fidelidad botánica y textura apetitosa, nitidez alta, encuadre centrado.',
-        'Regla estricta: SIN envases, SIN bolsas plásticas, SIN frascos, SIN cajas, SIN etiquetas, SIN marcas comerciales, SIN logos, SIN texto sobreimpreso, SIN manos ni cubiertos.'
-    ].join(' ');
+        'Mostrar únicamente el producto natural/elaborado real con fidelidad visual y textura apetitosa, nitidez alta, encuadre centrado.'
+    ];
+    if (incluir_regla_sin_envases !== false) {
+        partes.push(REGLA_SIN_ENVASES_TXT);
+    }
+    return partes.filter(Boolean).join(' ');
+}
+
+function interpolarPromptGuardado(texto, { producto = '', rubro = '' } = {}) {
+    return String(texto || '')
+        .replace(/\{\{\s*PRODUCTO\s*\}\}/gi, String(producto || '').trim() || 'producto natural')
+        .replace(/\{\{\s*RUBRO\s*\}\}/gi, String(rubro || '').trim() || 'Almacén')
+        .replace(/[ \t]+/g, ' ')
+        .trim();
+}
+
+async function normalizarImagenesReferencia(rawList = []) {
+    if (!rawList || (Array.isArray(rawList) && rawList.length === 0)) {
+        return [];
+    }
+    if (!Array.isArray(rawList)) {
+        const err = new Error('imagenes_referencia debe ser una lista de hasta 2 fotografías.');
+        err.statusCode = 400;
+        throw err;
+    }
+    if (rawList.length > 2) {
+        const err = new Error('Podés adjuntar como máximo 2 fotografías de referencia.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const normalizadas = [];
+    for (let idx = 0; idx < rawList.length; idx++) {
+        const item = rawList[idx];
+        let rawBuf = null;
+        if (Buffer.isBuffer(item)) {
+            rawBuf = item;
+        } else if (item && Buffer.isBuffer(item.buffer)) {
+            rawBuf = item.buffer;
+        } else {
+            const rawStr = typeof item === 'string'
+                ? item.trim()
+                : String(item?.data || item?.dataUrl || item?.base64 || '').trim();
+            if (!rawStr) continue;
+            const matchDataUrl = /^data:image\/[a-z0-9.+-]+;base64,(.+)$/i.exec(rawStr);
+            const b64 = matchDataUrl ? matchDataUrl[1] : rawStr;
+            rawBuf = Buffer.from(b64, 'base64');
+        }
+
+        if (!rawBuf || rawBuf.length === 0) {
+            const err = new Error(`La foto de referencia #${idx + 1} está vacía o es inválida.`);
+            err.statusCode = 400;
+            throw err;
+        }
+        if (rawBuf.length > 10 * 1024 * 1024) {
+            const err = new Error(`La foto de referencia #${idx + 1} supera los 10 MB permitidos.`);
+            err.statusCode = 400;
+            throw err;
+        }
+
+        try {
+            const outBuf = await sharp(rawBuf, { failOnError: true })
+                .rotate()
+                .resize(1280, 1280, { fit: 'inside', withoutEnlargement: true })
+                .jpeg({ quality: 85 })
+                .toBuffer();
+            normalizadas.push({
+                mimeType: 'image/jpeg',
+                data: outBuf.toString('base64'),
+                bytes: outBuf.length
+            });
+        } catch (sharpErr) {
+            const err = new Error(`La foto de referencia #${idx + 1} no es una imagen válida (${sharpErr.message}).`);
+            err.statusCode = 400;
+            throw err;
+        }
+    }
+    return normalizadas;
+}
+
+function yaContieneReglaSinEnvases(texto) {
+    const norm = jh.normalizarClaveTexto(texto);
+    return norm.includes('sin envase') || norm.includes('sin bolsas') || norm.includes('sin marcas');
+}
+
+function armarPromptYPartesGemini({
+    familia_nombre = '',
+    articulo_principal = '',
+    ruta_subrama_labels = [],
+    nombre_variante = '',
+    preset_estilo = 'cuenco_neutro',
+    modo_prompt = null,
+    prompt_personalizado = '',
+    incluir_regla_sin_envases = true,
+    referencias = []
+} = {}) {
+    const subSegs = extraerSegmentosSubrama(ruta_subrama_labels).map(limpiarTextoComercialParaPrompt);
+    const artClean = limpiarTextoComercialParaPrompt(articulo_principal);
+    const varClean = limpiarTextoComercialParaPrompt(nombre_variante);
+    const sujeto = varClean || [artClean, ...subSegs].filter(Boolean).join(' › ') || 'producto natural';
+    const fam = String(familia_nombre || '').trim();
+    const sinEnvasesBool = incluir_regla_sin_envases !== false && String(incluir_regla_sin_envases).toLowerCase() !== 'false';
+
+    const rawPrompt = String(prompt_personalizado || '').trim();
+    const rawModo = String(modo_prompt || '').trim().toLowerCase();
+    const presetNorm = String(preset_estilo || '').trim();
+
+    let modoEfectivo = 'preset';
+    if (presetNorm === 'libre' || rawModo === 'libre') {
+        modoEfectivo = 'libre';
+    } else if (rawModo === 'guardado') {
+        modoEfectivo = 'guardado';
+    } else if (rawPrompt && rawModo !== 'preset') {
+        modoEfectivo = 'libre';
+    }
+
+    if (modoEfectivo === 'libre' && !rawPrompt) {
+        const err = new Error('En modo Prompt libre debés escribir la descripción deseada.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    let promptUsuarioFinal = '';
+    if (rawPrompt) {
+        promptUsuarioFinal = interpolarPromptGuardado(rawPrompt, { producto: sujeto, rubro: fam || artClean });
+        if (sinEnvasesBool && !yaContieneReglaSinEnvases(promptUsuarioFinal)) {
+            promptUsuarioFinal = `${promptUsuarioFinal} ${REGLA_SIN_ENVASES_TXT}`.trim();
+        }
+    } else {
+        const presetUsar = (presetNorm && presetNorm !== 'libre' && ESTILOS_IA_IMAGEN_BASE[presetNorm])
+            ? presetNorm
+            : 'cuenco_neutro';
+        promptUsuarioFinal = construirPromptImagenBase({
+            familia_nombre,
+            articulo_principal,
+            ruta_subrama_labels,
+            nombre_variante,
+            preset_estilo: presetUsar,
+            incluir_regla_sin_envases: sinEnvasesBool
+        });
+    }
+
+    const refs = Array.isArray(referencias) ? referencias : [];
+    const promptEnviado = refs.length > 0
+        ? `${INSTRUCCION_REFERENCIA_VISUAL_TXT}\n\n${promptUsuarioFinal}`
+        : promptUsuarioFinal;
+
+    const parts = [
+        ...refs.map(r => ({ inlineData: { mimeType: r.mimeType, data: r.data } })),
+        { text: promptEnviado }
+    ];
+
+    let presetEfectivo = 'cuenco_neutro';
+    if (modoEfectivo === 'libre') {
+        presetEfectivo = 'libre';
+    } else if (modoEfectivo === 'guardado') {
+        presetEfectivo = 'guardado';
+    } else if (presetNorm && ESTILOS_IA_IMAGEN_BASE[presetNorm]) {
+        presetEfectivo = presetNorm;
+    }
+
+    return {
+        promptEnviado,
+        promptUsuarioFinal,
+        presetEfectivo,
+        modoEfectivo,
+        parts
+    };
 }
 
 function extraerImagenBase64DesdeGemini(data = {}) {
@@ -1277,13 +1490,18 @@ function extraerImagenBase64DesdeGemini(data = {}) {
 }
 
 async function generarPreviewImagenBaseIA({
+    db = null,
     familia_nombre = '',
     articulo_principal = '',
     ruta_subrama_labels = [],
     nombre_variante = '',
     preset_estilo = 'cuenco_neutro',
+    modo_prompt = null,
     calidad = 'estandar',
-    prompt_personalizado = ''
+    prompt_personalizado = '',
+    incluir_regla_sin_envases = true,
+    prompt_guardado_id = null,
+    imagenes_referencia = []
 } = {}) {
     limpiarPreviewsExpirados();
 
@@ -1300,18 +1518,31 @@ async function generarPreviewImagenBaseIA({
         throw err;
     }
 
+    const referenciasNorm = await normalizarImagenesReferencia(imagenes_referencia);
+    const {
+        promptEnviado,
+        promptUsuarioFinal,
+        presetEfectivo,
+        modoEfectivo,
+        parts
+    } = armarPromptYPartesGemini({
+        familia_nombre,
+        articulo_principal,
+        ruta_subrama_labels,
+        nombre_variante,
+        preset_estilo,
+        modo_prompt,
+        prompt_personalizado,
+        incluir_regla_sin_envases,
+        referencias: referenciasNorm
+    });
+
     const calidadNorm = String(calidad || '').trim().toLowerCase() === 'pro' ? 'pro' : 'estandar';
     const modelos = calidadNorm === 'pro'
         ? ['gemini-3-pro-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image']
         : ['gemini-3.1-flash-image', 'gemini-2.5-flash-image'];
 
-    const promptFinal = String(prompt_personalizado || '').trim() || construirPromptImagenBase({
-        familia_nombre,
-        articulo_principal,
-        ruta_subrama_labels,
-        nombre_variante,
-        preset_estilo
-    });
+    const timeoutMs = referenciasNorm.length > 0 ? 60000 : 45000;
 
     let ultimoError = 'No se pudo generar imagen con Gemini.';
     let rawSuccess = null;
@@ -1324,9 +1555,9 @@ async function generarPreviewImagenBaseIA({
             const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;
             try {
                 const resp = await axios.post(endpoint, {
-                    contents: [{ parts: [{ text: promptFinal }] }],
+                    contents: [{ parts }],
                     generationConfig: { responseModalities: ['IMAGE'] }
-                }, { timeout: 45000 });
+                }, { timeout: timeoutMs });
 
                 const extracted = extraerImagenBase64DesdeGemini(resp.data);
                 if (extracted) {
@@ -1371,6 +1602,16 @@ async function generarPreviewImagenBaseIA({
         modelo: modeloUsado
     });
 
+    const promptGuardadoIdNum = Number(prompt_guardado_id || 0) > 0 ? Number(prompt_guardado_id) : null;
+    if (db && promptGuardadoIdNum) {
+        await db.query(
+            `UPDATE public.lamda_biblioteca_prompts
+             SET usos_count = COALESCE(usos_count, 0) + 1, updated_at = NOW()
+             WHERE id = $1 AND activo = true`,
+            [promptGuardadoIdNum]
+        ).catch(() => {});
+    }
+
     const rawBuf = Buffer.from(imgData.base64, 'base64');
     const normalizedWebp = await sharp(rawBuf, { failOnError: true })
         .rotate()
@@ -1385,8 +1626,11 @@ async function generarPreviewImagenBaseIA({
         height: normalizedWebp.info.height || null,
         bytes: normalizedWebp.info.size || null,
         modelo_usado: modeloUsado,
-        preset_estilo,
-        prompt_usado: promptFinal,
+        preset_estilo: presetEfectivo,
+        modo_prompt: modoEfectivo,
+        prompt_usado: promptUsuarioFinal,
+        uso_referencias_count: referenciasNorm.length,
+        prompt_guardado_id: promptGuardadoIdNum,
         createdAt: Date.now()
     });
 
@@ -1394,8 +1638,12 @@ async function generarPreviewImagenBaseIA({
         preview_token: previewToken,
         preview_data_url: `data:image/webp;base64,${normalizedWebp.data.toString('base64')}`,
         modelo_usado: modeloUsado,
-        preset_estilo,
-        prompt_usado: promptFinal,
+        preset_estilo: presetEfectivo,
+        modo_prompt: modoEfectivo,
+        prompt_usado: promptUsuarioFinal,
+        prompt_enviado_ia: promptEnviado,
+        uso_referencias_count: referenciasNorm.length,
+        prompt_guardado_id: promptGuardadoIdNum,
         width: normalizedWebp.info.width || null,
         height: normalizedWebp.info.height || null,
         bytes: normalizedWebp.info.size || null
@@ -1435,7 +1683,9 @@ async function confirmarPreviewImagenBaseIA(db, {
         origen_tipo: 'IA_GEMINI',
         modelo_ia: cached.modelo_usado,
         preset_estilo: cached.preset_estilo,
-        prompt_usado: cached.prompt_usado
+        prompt_usado: cached.prompt_usado,
+        uso_referencias_count: cached.uso_referencias_count || 0,
+        prompt_guardado_id: cached.prompt_guardado_id || null
     });
 
     _previewsIaCache.delete(tok);
@@ -1461,6 +1711,168 @@ async function confirmarPreviewImagenBaseIA(db, {
         articulo_sku,
         titulo_referencia: titulo_referencia || bibItem.etiqueta
     });
+}
+
+async function listarPromptsGuardados(db, { busqueda = '', categoria = '' } = {}) {
+    const qNorm = jh.normalizarClaveTexto(busqueda);
+    const terms = qNorm ? qNorm.split(/\s+/).filter(Boolean) : [];
+    const catClean = String(categoria || '').trim().toUpperCase();
+
+    const params = [];
+    let whereExtra = '';
+    if (catClean && catClean !== 'TODAS') {
+        params.push(catClean);
+        whereExtra = ` AND UPPER(categoria) = $${params.length}`;
+    }
+
+    const res = await db.query(
+        `SELECT id, nombre, categoria, prompt_texto, preset_base, regla_sin_envases,
+                es_favorito, usos_count, created_by, activo, created_at, updated_at
+         FROM public.lamda_biblioteca_prompts
+         WHERE activo = true${whereExtra}
+         ORDER BY es_favorito DESC, usos_count DESC, id DESC`,
+        params
+    );
+
+    let items = res.rows.map(r => ({
+        ...r,
+        id: Number(r.id),
+        usos_count: Number(r.usos_count || 0),
+        es_favorito: Boolean(r.es_favorito),
+        regla_sin_envases: r.regla_sin_envases !== false
+    }));
+
+    if (terms.length > 0) {
+        items = items.filter(it => {
+            const bolsa = jh.normalizarClaveTexto([it.nombre, it.categoria, it.prompt_texto, it.preset_base].filter(Boolean).join(' '));
+            return terms.every(t => bolsa.includes(t));
+        });
+    }
+
+    return { items, total: items.length };
+}
+
+async function crearPromptGuardado(db, {
+    nombre,
+    categoria = 'GENERAL',
+    prompt_texto,
+    preset_base = 'libre',
+    regla_sin_envases = true,
+    es_favorito = false,
+    created_by = null
+} = {}) {
+    const nomClean = String(nombre || '').trim().slice(0, 120);
+    const txtClean = String(prompt_texto || '').trim().slice(0, 4000);
+    if (!nomClean) {
+        const err = new Error('El nombre del prompt es obligatorio.');
+        err.statusCode = 400;
+        throw err;
+    }
+    if (!txtClean) {
+        const err = new Error('El texto del prompt es obligatorio.');
+        err.statusCode = 400;
+        throw err;
+    }
+    const catClean = String(categoria || 'GENERAL').trim().toUpperCase().slice(0, 40) || 'GENERAL';
+    const presetClean = String(preset_base || 'libre').trim().slice(0, 40) || 'libre';
+
+    const ins = await db.query(
+        `INSERT INTO public.lamda_biblioteca_prompts (
+            nombre, categoria, prompt_texto, preset_base, regla_sin_envases, es_favorito, created_by, activo
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,true)
+         RETURNING *`,
+        [
+            nomClean,
+            catClean,
+            txtClean,
+            presetClean,
+            regla_sin_envases !== false,
+            Boolean(es_favorito),
+            created_by ? String(created_by).trim().slice(0, 80) : null
+        ]
+    );
+    return ins.rows[0];
+}
+
+async function actualizarPromptGuardado(db, id, {
+    nombre,
+    categoria,
+    prompt_texto,
+    preset_base,
+    regla_sin_envases,
+    es_favorito
+} = {}) {
+    const idNum = Number(id);
+    if (!Number.isInteger(idNum) || idNum <= 0) {
+        const err = new Error('ID de prompt inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const curRes = await db.query(
+        `SELECT * FROM public.lamda_biblioteca_prompts WHERE id = $1 AND activo = true LIMIT 1`,
+        [idNum]
+    );
+    if (curRes.rows.length === 0) {
+        const err = new Error('Prompt guardado no encontrado.');
+        err.statusCode = 404;
+        throw err;
+    }
+    const cur = curRes.rows[0];
+
+    const nomFinal = nombre !== undefined ? String(nombre || '').trim().slice(0, 120) : cur.nombre;
+    const txtFinal = prompt_texto !== undefined ? String(prompt_texto || '').trim().slice(0, 4000) : cur.prompt_texto;
+    if (!nomFinal || !txtFinal) {
+        const err = new Error('Nombre y texto del prompt no pueden quedar vacíos.');
+        err.statusCode = 400;
+        throw err;
+    }
+
+    const catFinal = categoria !== undefined
+        ? (String(categoria || 'GENERAL').trim().toUpperCase().slice(0, 40) || 'GENERAL')
+        : cur.categoria;
+    const presetFinal = preset_base !== undefined
+        ? (String(preset_base || 'libre').trim().slice(0, 40) || 'libre')
+        : cur.preset_base;
+    const reglaFinal = regla_sin_envases !== undefined ? Boolean(regla_sin_envases) : cur.regla_sin_envases;
+    const favFinal = es_favorito !== undefined ? Boolean(es_favorito) : cur.es_favorito;
+
+    const upd = await db.query(
+        `UPDATE public.lamda_biblioteca_prompts
+         SET nombre = $2,
+             categoria = $3,
+             prompt_texto = $4,
+             preset_base = $5,
+             regla_sin_envases = $6,
+             es_favorito = $7,
+             updated_at = NOW()
+         WHERE id = $1 AND activo = true
+         RETURNING *`,
+        [idNum, nomFinal, catFinal, txtFinal, presetFinal, reglaFinal, favFinal]
+    );
+    return upd.rows[0];
+}
+
+async function eliminarPromptGuardado(db, id) {
+    const idNum = Number(id);
+    if (!Number.isInteger(idNum) || idNum <= 0) {
+        const err = new Error('ID de prompt inválido.');
+        err.statusCode = 400;
+        throw err;
+    }
+    const del = await db.query(
+        `UPDATE public.lamda_biblioteca_prompts
+         SET activo = false, updated_at = NOW()
+         WHERE id = $1 AND activo = true
+         RETURNING *`,
+        [idNum]
+    );
+    if (del.rows.length === 0) {
+        const err = new Error('Prompt guardado no encontrado o ya eliminado.');
+        err.statusCode = 404;
+        throw err;
+    }
+    return del.rows[0];
 }
 
 async function guardarFotoPropiaGrupoGestor(db, { nodoId, claveProductoBase, buffer }) {
@@ -1523,6 +1935,7 @@ async function guardarFotoPropiaGrupoGestor(db, { nodoId, claveProductoBase, buf
 
 module.exports = {
     ESTILOS_IA_IMAGEN_BASE,
+    REGLA_SIN_ENVASES_TXT,
     normalizarRutaSubrama,
     obtenerMapaImagenesBaseActivas,
     resolverImagenBaseLamdaParaArticulo,
@@ -1534,7 +1947,14 @@ module.exports = {
     guardarImagenBaseLamda,
     eliminarImagenBaseLamda,
     construirPromptImagenBase,
+    interpolarPromptGuardado,
+    normalizarImagenesReferencia,
+    armarPromptYPartesGemini,
     generarPreviewImagenBaseIA,
     confirmarPreviewImagenBaseIA,
+    listarPromptsGuardados,
+    crearPromptGuardado,
+    actualizarPromptGuardado,
+    eliminarPromptGuardado,
     guardarFotoPropiaGrupoGestor
 };

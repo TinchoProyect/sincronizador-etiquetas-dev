@@ -21,6 +21,14 @@ const uploadFotoNodoMemoria = multer({
     }
 });
 
+const uploadReferenciasIaMemoria = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 10 * 1024 * 1024,
+        files: 2
+    }
+});
+
 const uploadVideoNodoDisco = multer({
     storage: multer.diskStorage({
         destination: (_req, _file, cb) => cb(null, os.tmpdir()),
@@ -97,6 +105,26 @@ function middlewareSubidaFotoOpcional(req, res, next) {
                 error: esTamano
                     ? 'La foto supera el límite máximo permitido (12 MB).'
                     : ('Error recibiendo imagen: ' + err.message)
+            });
+        }
+        return next();
+    });
+}
+
+function middlewareSubidaReferenciasIaOpcional(req, res, next) {
+    const contentType = String(req.headers['content-type'] || '').toLowerCase();
+    if (!contentType.includes('multipart/form-data')) {
+        return next();
+    }
+    return uploadReferenciasIaMemoria.array('referencias', 2)(req, res, (err) => {
+        if (err) {
+            const esTamano = err.code === 'LIMIT_FILE_SIZE';
+            const esLimite = err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE';
+            return res.status(400).json({
+                ok: false,
+                error: esTamano
+                    ? 'Cada foto de referencia puede pesar como máximo 10 MB.'
+                    : (esLimite ? 'Podés adjuntar como máximo 2 fotografías de referencia.' : ('Error recibiendo referencias: ' + err.message))
             });
         }
         return next();
@@ -1105,13 +1133,14 @@ router.post('/admin/imagenes-base/biblioteca', bloquearEnDominioPublicoTienda, m
             return res.status(400).json({ ok: false, error: 'Debés adjuntar una imagen.' });
         }
         const body = req.body || {};
+        const origenPermitido = String(body.origen_tipo || '').trim().toUpperCase() === 'UPLOAD_MOVIL' ? 'UPLOAD_MOVIL' : 'UPLOAD_PC';
         const item = await lamdaImagenesBaseService.guardarEnBibliotecaLamda(dbProduccion, {
             familia_id: body.familia_id || null,
             familia_nombre: body.familia_nombre || null,
             articulo_principal: body.articulo_principal || null,
             etiqueta: body.etiqueta || body.titulo_referencia || body.articulo_principal || 'Imagen LAMDA',
             buffer: req.file.buffer,
-            origen_tipo: 'UPLOAD_PC'
+            origen_tipo: origenPermitido
         });
         res.json({ ok: true, biblioteca_item: item });
     } catch (error) {
@@ -1157,18 +1186,99 @@ router.post('/admin/imagenes-base/asignar-biblioteca', bloquearEnDominioPublicoT
     }
 });
 
-router.post('/admin/imagenes-base/generar-ia', bloquearEnDominioPublicoTienda, async (req, res) => {
+router.get('/admin/imagenes-base/prompts', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const busqueda = String(req.query.q || '').trim();
+        const categoria = String(req.query.categoria || '').trim();
+        const data = await lamdaImagenesBaseService.listarPromptsGuardados(dbProduccion, { busqueda, categoria });
+        res.json({ ok: true, ...data });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error listando prompts guardados:', error);
+        res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/admin/imagenes-base/prompts', bloquearEnDominioPublicoTienda, async (req, res) => {
     try {
         await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
         const body = req.body || {};
+        const prompt = await lamdaImagenesBaseService.crearPromptGuardado(dbProduccion, {
+            nombre: body.nombre,
+            categoria: body.categoria || 'GENERAL',
+            prompt_texto: body.prompt_texto,
+            preset_base: body.preset_base || 'libre',
+            regla_sin_envases: body.regla_sin_envases !== false,
+            es_favorito: Boolean(body.es_favorito),
+            created_by: body.created_by || req.user?.usuario || null
+        });
+        res.json({ ok: true, prompt });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error creando prompt guardado:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.put('/admin/imagenes-base/prompts/:id', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const body = req.body || {};
+        const prompt = await lamdaImagenesBaseService.actualizarPromptGuardado(dbProduccion, req.params.id, {
+            nombre: body.nombre,
+            categoria: body.categoria,
+            prompt_texto: body.prompt_texto,
+            preset_base: body.preset_base,
+            regla_sin_envases: body.regla_sin_envases,
+            es_favorito: body.es_favorito
+        });
+        res.json({ ok: true, prompt });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error actualizando prompt guardado:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.delete('/admin/imagenes-base/prompts/:id', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const eliminado = await lamdaImagenesBaseService.eliminarPromptGuardado(dbProduccion, req.params.id);
+        res.json({ ok: true, eliminado });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error eliminando prompt guardado:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/admin/imagenes-base/generar-ia', bloquearEnDominioPublicoTienda, middlewareSubidaReferenciasIaOpcional, async (req, res) => {
+    try {
+        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
+        const body = req.body || {};
+        let rutaLabels = body.ruta_subrama_labels || body.ruta_subrama || [];
+        if (typeof rutaLabels === 'string') {
+            try {
+                const parsed = JSON.parse(rutaLabels);
+                if (Array.isArray(parsed)) rutaLabels = parsed;
+            } catch (_) {}
+        }
+        let imagenesRef = Array.isArray(req.files) && req.files.length > 0
+            ? req.files.map(f => ({ buffer: f.buffer, mimeType: f.mimetype }))
+            : body.imagenes_referencia;
+        if (typeof imagenesRef === 'string') {
+            try { imagenesRef = JSON.parse(imagenesRef); } catch (_) { imagenesRef = []; }
+        }
         const preview = await lamdaImagenesBaseService.generarPreviewImagenBaseIA({
+            db: dbProduccion,
             familia_nombre: body.familia_nombre || '',
             articulo_principal: body.articulo_principal || '',
-            ruta_subrama_labels: body.ruta_subrama_labels || body.ruta_subrama || [],
+            ruta_subrama_labels: rutaLabels,
             nombre_variante: body.nombre_variante || '',
             preset_estilo: body.preset_estilo || 'cuenco_neutro',
+            modo_prompt: body.modo_prompt || null,
             calidad: body.calidad || 'estandar',
-            prompt_personalizado: body.prompt_personalizado || ''
+            prompt_personalizado: body.prompt_personalizado || '',
+            incluir_regla_sin_envases: body.incluir_regla_sin_envases !== undefined ? body.incluir_regla_sin_envases : true,
+            prompt_guardado_id: body.prompt_guardado_id || null,
+            imagenes_referencia: imagenesRef || []
         });
         res.json({ ok: true, ...preview });
     } catch (error) {
@@ -1216,6 +1326,7 @@ router.post('/admin/imagenes-base', bloquearEnDominioPublicoTienda, middlewareSu
         const clavesSec = body.claves_secundarias
             ? String(body.claves_secundarias).split(',').map(s => s.trim()).filter(Boolean)
             : [];
+        const origenPermitido = String(body.origen_tipo || '').trim().toUpperCase() === 'UPLOAD_MOVIL' ? 'UPLOAD_MOVIL' : 'UPLOAD_PC';
         const resultado = await lamdaImagenesBaseService.guardarImagenBaseLamda(dbProduccion, {
             tipo_ancla: body.tipo_ancla || 'ANCLA_PRINCIPAL',
             familia_id: body.familia_id || null,
@@ -1227,6 +1338,7 @@ router.post('/admin/imagenes-base', bloquearEnDominioPublicoTienda, middlewareSu
             claves_secundarias: clavesSec,
             articulo_sku: body.articulo_sku || null,
             titulo_referencia: body.titulo_referencia || null,
+            origen_tipo: origenPermitido,
             buffer: req.file.buffer
         });
         res.json({ ok: true, ...resultado });

@@ -4870,6 +4870,29 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                 ON public.lamda_biblioteca_imagenes (familia_id, articulo_principal_norm)
                 WHERE activo = true;
 
+            CREATE TABLE IF NOT EXISTS public.lamda_biblioteca_prompts (
+                id SERIAL PRIMARY KEY,
+                nombre VARCHAR(120) NOT NULL,
+                categoria VARCHAR(40) NOT NULL DEFAULT 'GENERAL',
+                prompt_texto TEXT NOT NULL,
+                preset_base VARCHAR(40) NOT NULL DEFAULT 'libre',
+                regla_sin_envases BOOLEAN NOT NULL DEFAULT true,
+                es_favorito BOOLEAN NOT NULL DEFAULT false,
+                usos_count INTEGER NOT NULL DEFAULT 0,
+                created_by VARCHAR(80),
+                activo BOOLEAN NOT NULL DEFAULT true,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_lamda_biblioteca_prompts_activo
+                ON public.lamda_biblioteca_prompts (es_favorito DESC, usos_count DESC, id DESC)
+                WHERE activo = true;
+
+            ALTER TABLE public.lamda_biblioteca_imagenes
+                ADD COLUMN IF NOT EXISTS uso_referencias_count SMALLINT NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS prompt_guardado_id INTEGER;
+
             CREATE UNIQUE INDEX IF NOT EXISTS unq_lamda_img_base_ancla_principal_activo
                 ON public.lamda_imagenes_base (familia_id, articulo_principal_norm)
                 WHERE activo = true AND tipo_ancla = 'ANCLA_PRINCIPAL' AND familia_id IS NOT NULL AND articulo_principal_norm IS NOT NULL;
@@ -4938,6 +4961,16 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
                     ALTER TABLE public.lamda_biblioteca_imagenes
                         ADD CONSTRAINT lamda_biblioteca_imagenes_familia_id_fkey
                         FOREIGN KEY (familia_id) REFERENCES public.bunker_familias(id) ON DELETE SET NULL;
+                END IF;
+
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'lamda_biblioteca_imagenes_prompt_guardado_id_fkey'
+                      AND conrelid = 'public.lamda_biblioteca_imagenes'::regclass
+                ) THEN
+                    ALTER TABLE public.lamda_biblioteca_imagenes
+                        ADD CONSTRAINT lamda_biblioteca_imagenes_prompt_guardado_id_fkey
+                        FOREIGN KEY (prompt_guardado_id) REFERENCES public.lamda_biblioteca_prompts(id) ON DELETE SET NULL;
                 END IF;
 
                 IF NOT EXISTS (
