@@ -44,6 +44,18 @@
             .trim();
     }
 
+    function compactarSegmentos(segs = []) {
+        const out = [];
+        for (const raw of (segs || [])) {
+            const clean = String(raw || '').trim();
+            if (!clean) continue;
+            if (out.length === 0 || normTxt(out[out.length - 1]) !== normTxt(clean)) {
+                out.push(clean);
+            }
+        }
+        return out;
+    }
+
     function limpiarTextoPrompt(v) {
         return String(v ?? '')
             .replace(/\bRELDO\b/gi, 'Repelado')
@@ -266,6 +278,7 @@
                 const sr = (ancla.subramas || []).find(s => s.ruta_subrama_norm === this.destinoSubramaNorm);
                 if (sr) {
                     const labels = sr.ruta_subrama_labels || [];
+                    const rutaCompacta = compactarSegmentos([ancla.articulo_principal, ...labels]);
                     return {
                         modo: 'subrama',
                         ancla,
@@ -280,8 +293,8 @@
                         clave_producto_base: null,
                         claves_secundarias: [],
                         articulo_sku: null,
-                        titulo_referencia: `${ancla.articulo_principal} › ${labels.join(' › ')}`,
-                        producto_prompt: limpiarTextoPrompt(`${ancla.articulo_principal} ${labels.join(' ')}`),
+                        titulo_referencia: rutaCompacta.join(' › '),
+                        producto_prompt: limpiarTextoPrompt(rutaCompacta.join(' ')),
                         imagen_actual: sr.imagen_efectiva,
                         imagen_propia: sr.imagen_propia,
                         tiene_propia: Boolean(sr.tiene_foto_propia && sr.imagen_propia),
@@ -1143,11 +1156,24 @@
 
                     ${this.previewIa ? `
                         <div style="background:#0f172a; border:1px solid rgba(52,211,153,0.45); border-radius:0.9rem; padding:0.85rem; display:flex; flex-direction:column; gap:0.7rem;">
-                            <div style="font-size:0.84rem; font-weight:800; color:#34d399;">
-                                ✓ Previsualización lista · ${esc(this.previewIa.modelo_usado)}
-                                ${this.previewIa.uso_referencias_count > 0 ? ` · ${this.previewIa.uso_referencias_count} ref.` : ''}
+                            <div style="display:flex; flex-direction:column; gap:0.35rem;">
+                                <div style="font-size:0.84rem; font-weight:800; color:#34d399;">
+                                    ✓ Previsualización lista · ${esc(this.previewIa.modelo_usado)}
+                                    ${this.previewIa.uso_referencias_count > 0 ? ` · ${this.previewIa.uso_referencias_count} ref.` : ''}
+                                </div>
+                                ${this.previewIa.fidelidad_ingredientes && this.previewIa.fidelidad_ingredientes.tiene_receta ? `
+                                    <div data-testid="fc-preview-fidelidad-badge" style="display:inline-flex; align-items:center; gap:0.35rem; align-self:flex-start; background:rgba(16,185,129,0.18); border:1px solid rgba(52,211,153,0.45); color:#a7f3d0; border-radius:999px; padding:0.18rem 0.65rem; font-size:0.74rem; font-weight:800;">
+                                        🧪 ✓ Fidelidad de receta aplicada (${this.previewIa.fidelidad_ingredientes.ingredientes_reales.length} ingredientes)
+                                    </div>
+                                ` : ''}
                             </div>
                             <img src="${this.previewIa.preview_data_url}" alt="Previsualización IA" style="width:100%; max-height:320px; object-fit:contain; border-radius:0.75rem; background:#020617;" />
+                            ${this.previewIa.prompt_enviado_ia ? `
+                                <details style="background:rgba(30,41,59,0.75); border:1px solid #334155; border-radius:0.65rem; padding:0.5rem 0.65rem;">
+                                    <summary style="font-size:0.76rem; font-weight:700; color:#cbd5e1; cursor:pointer;">🔍 Ver prompt final enviado a Gemini</summary>
+                                    <div style="margin-top:0.45rem; font-size:0.74rem; line-height:1.4; color:#e2e8f0; white-space:pre-wrap; word-break:break-word;">${esc(this.previewIa.prompt_enviado_ia)}</div>
+                                </details>
+                            ` : ''}
                             <div style="display:flex; flex-direction:column; gap:0.45rem;">
                                 <button type="button" class="fc-btn-success" onclick="FotosCatalogoController.confirmarIa(true)">✅ Guardar en Biblioteca y Aplicar a Tiendas</button>
                                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.45rem;">

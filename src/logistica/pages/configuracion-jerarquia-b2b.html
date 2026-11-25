@@ -1283,6 +1283,18 @@
         .trim();
     }
 
+    function _compactarSegmentosB2B(segs = []) {
+      const out = [];
+      for (const raw of (segs || [])) {
+        const clean = String(raw || '').trim();
+        if (!clean) continue;
+        if (out.length === 0 || _normTxtB2B(out[out.length - 1]) !== _normTxtB2B(clean)) {
+          out.push(clean);
+        }
+      }
+      return out;
+    }
+
     function _inferirDescriptoresVisualesB2B(txt) {
       const n = _normTxtB2B(txt);
       const notas = [];
@@ -1357,7 +1369,7 @@
         ? (imgBaseTargetSubrama.ruta_subrama_labels || []).map(_limpiarTextoPromptB2B)
         : (Array.isArray(imgBaseFocal?.rutaSubrama) ? imgBaseFocal.rutaSubrama.map(_limpiarTextoPromptB2B) : []);
       const varClean = imgBaseTargetExcepcion ? _limpiarTextoPromptB2B(imgBaseTargetExcepcion.nombre_base_oficial) : '';
-      const rutaVisual = [artClean, ...subSegs].filter(Boolean).join(' › ');
+      const rutaVisual = _compactarSegmentosB2B([artClean, ...subSegs]).join(' › ');
       const sujeto = varClean || rutaVisual || 'ingrediente natural';
       const fam = imgBaseFocal?.familiaNombre || '';
       const estMap = {
@@ -1573,6 +1585,7 @@
         const rutaStr = subSegs.join('>');
         const srMatch = (ancla.subramas || []).find(s => _normTxtB2B(s.ruta_subrama_labels.join('>')) === _normTxtB2B(rutaStr));
         const cantVar = srMatch ? srMatch.total_variedades : ancla.total_variedades;
+        const tituloCompacto = _compactarSegmentosB2B([ancla.articulo_principal, ...subSegs]).join(' › ');
         return {
           esExcepcion: false,
           esSubrama: true,
@@ -1588,8 +1601,8 @@
           clave_producto_base: null,
           claves_secundarias: [],
           articulo_sku: null,
-          titulo_referencia: `${ancla.articulo_principal} › ${subSegs.join(' › ')}`,
-          label_destino: `Sub-rama: ${ancla.articulo_principal} › ${subSegs.join(' › ')} (cubre ${cantVar} variedades)`,
+          titulo_referencia: tituloCompacto,
+          label_destino: `Sub-rama: ${tituloCompacto} (cubre ${cantVar} variedades)`,
           fidelidad_ingredientes: srMatch?.fidelidad_ingredientes || null
         };
       }
@@ -2233,11 +2246,24 @@
             </div>
 
             ${imgBaseIaPreview ? `
-              <div data-testid="ia-preview-card" style="display:flex; gap:1rem; align-items:center; flex-wrap:wrap; padding:0.75rem; border-radius:10px; background:rgba(15,23,42,0.85); border:1px solid rgba(52,211,153,0.4);">
+              <div data-testid="ia-preview-card" style="display:flex; gap:1rem; align-items:flex-start; flex-wrap:wrap; padding:0.75rem; border-radius:10px; background:rgba(15,23,42,0.85); border:1px solid rgba(52,211,153,0.4);">
                 <img src="${imgBaseIaPreview.preview_data_url}" alt="Previsualización IA" style="width:130px; height:130px; border-radius:10px; object-fit:cover; border:1px solid rgba(255,255,255,0.2);" />
                 <div style="flex:1; min-width:200px; display:flex; flex-direction:column; gap:0.5rem;">
-                  <div style="font-size:0.8rem; font-weight:800; color:#34d399;">✓ Previsualización lista · ${_escHtmlB2B(imgBaseIaPreview.modelo_usado)}${imgBaseIaPreview.uso_referencias_count>0?` · ${imgBaseIaPreview.uso_referencias_count} ref.`:''}</div>
+                  <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                    <div style="font-size:0.8rem; font-weight:800; color:#34d399;">✓ Previsualización lista · ${_escHtmlB2B(imgBaseIaPreview.modelo_usado)}${imgBaseIaPreview.uso_referencias_count>0?` · ${imgBaseIaPreview.uso_referencias_count} ref.`:''}</div>
+                    ${imgBaseIaPreview.fidelidad_ingredientes && imgBaseIaPreview.fidelidad_ingredientes.tiene_receta ? `
+                      <span data-testid="ia-preview-fidelidad-badge" style="font-size:0.7rem; font-weight:800; padding:2px 9px; border-radius:999px; background:rgba(16,185,129,0.2); border:1px solid rgba(52,211,153,0.45); color:#a7f3d0;">
+                        🧪 ✓ Fidelidad de receta aplicada (${imgBaseIaPreview.fidelidad_ingredientes.ingredientes_reales.length} ingredientes)
+                      </span>
+                    ` : ''}
+                  </div>
                   <div style="font-size:0.72rem; color:#94a3b8;">Verificá que no tenga envases ni texto antes de guardarla en la Biblioteca del proyecto.</div>
+                  ${imgBaseIaPreview.prompt_enviado_ia ? `
+                    <details style="background:rgba(30,41,59,0.75); border:1px solid rgba(148,163,184,0.25); border-radius:7px; padding:0.4rem 0.6rem;">
+                      <summary style="font-size:0.72rem; font-weight:700; color:#cbd5e1; cursor:pointer;">🔍 Ver prompt final enviado a Gemini</summary>
+                      <div style="margin-top:0.35rem; font-size:0.71rem; line-height:1.4; color:#e2e8f0; white-space:pre-wrap; word-break:break-word;">${_escHtmlB2B(imgBaseIaPreview.prompt_enviado_ia)}</div>
+                    </details>
+                  ` : ''}
                   <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
                     <button type="button" id="btn-ia-confirmar-aplicar" class="btn-ib-cyan" style="border-color:rgba(52,211,153,0.55); color:#a7f3d0; background:rgba(16,185,129,0.22);"
                       onclick="confirmarPreviewIaB2B(true)">✅ Guardar en Biblioteca y Aplicar</button>
@@ -2265,8 +2291,8 @@
         const enSubramaFocal = rutaFocal.length > 0;
         if (titleEl) {
           titleEl.textContent = enSubramaFocal
-            ? `🖼️ ${imgBaseFocal.familiaNombre || 'Rubro'} › ${imgBaseFocal.articuloPrincipal} › ${rutaFocal.join(' › ')}`
-            : `🖼️ ${imgBaseFocal.familiaNombre || 'Rubro'} › ${imgBaseFocal.articuloPrincipal}`;
+            ? `🖼️ ${_compactarSegmentosB2B([imgBaseFocal.familiaNombre || 'Rubro', imgBaseFocal.articuloPrincipal, ...rutaFocal]).join(' › ')}`
+            : `🖼️ ${_compactarSegmentosB2B([imgBaseFocal.familiaNombre || 'Rubro', imgBaseFocal.articuloPrincipal]).join(' › ')}`;
         }
         if (subEl) {
           subEl.textContent = enSubramaFocal
@@ -2298,7 +2324,7 @@
         const heroSubtituloNivel = enSubramaFocal
           ? `Foto de Sub-rama Nivel ${2 + rutaFocal.length} (${ancla.familia_nombre} › ${ancla.articulo_principal})`
           : `Foto Base del Rubro (${ancla.familia_nombre})`;
-        const heroTitulo = enSubramaFocal ? `${ancla.articulo_principal} › ${rutaFocal.join(' › ')}` : ancla.articulo_principal;
+        const heroTitulo = enSubramaFocal ? _compactarSegmentosB2B([ancla.articulo_principal, ...rutaFocal]).join(' › ') : ancla.articulo_principal;
         const heroTestKey = enSubramaFocal ? `${ancla.ancla_key}__${srFocalNorm.replace(/[^a-z0-9]+/g, '_')}` : ancla.ancla_key;
 
         const breadcrumbHtml = `
