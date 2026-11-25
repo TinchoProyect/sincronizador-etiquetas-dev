@@ -10,17 +10,25 @@ router.get('/', pagosEfectivoController.listarSobres);
 // Forzar sincronización bidireccional inmediata con Portal B2B (Supabase)
 router.post('/sincronizar', pagosEfectivoController.sincronizarSobres);
 
-// Obtener un sobre por ID o Código
-router.get('/:id', pagosEfectivoController.obtenerSobre);
+// Endpoints públicos locales (espejo de RPCs Supabase para Laboratorio / operación por token)
+router.get('/publico/:token', pagosEfectivoController.obtenerSobrePublico);
+router.post('/publico/:token/delegar', pagosEfectivoController.delegarSobrePublico);
+router.post('/publico/:token/completar', pagosEfectivoController.completarSobrePublico);
 
-// Aprobar y Acreditar sobre en Cuenta Corriente
-router.post('/:id/acreditar', pagosEfectivoController.aprobarYAcreditar);
+// Despacho omnicanal (Motor WhatsApp :3004 y/o Email SMTP)
+router.post('/enviar-solicitud-omnicanal', pagosEfectivoController.enviarSolicitudOmnicanal);
 
 // Enviar invitación / derivación por correo electrónico
 router.post('/enviar-email-derivacion', pagosEfectivoController.enviarEmailDerivacion);
 
 // Crear sobre derivado de pago en efectivo (desde app móvil o panel administrativo)
 router.post('/crear-sobre-derivado', pagosEfectivoController.crearSobreDerivado);
+
+// Obtener un sobre por ID o Código
+router.get('/:id', pagosEfectivoController.obtenerSobre);
+
+// Aprobar y Acreditar sobre en Cuenta Corriente
+router.post('/:id/acreditar', pagosEfectivoController.aprobarYAcreditar);
 
 // Cambiar estado (recepción chofer, recepción mostrador, observación)
 router.patch('/:id/estado', pagosEfectivoController.actualizarEstado);

@@ -4,6 +4,7 @@
  */
 
 const crypto = require('crypto');
+const QRCode = require('qrcode');
 const { createClient } = require('@supabase/supabase-js');
 const { pool, ejecutarTransaccion } = require('../config/database');
 const CuentaCorrienteService = require('./cuentaCorrienteService');
@@ -31,6 +32,95 @@ function puedeSincronizarSupabaseEnVivo() {
 }
 
 const CLOUDFLARE_PORTAL_URL = process.env.B2B_PORTAL_URL || 'https://proud-darkness-ac3d.miserrano75.workers.dev';
+const DENOMINACIONES_OFICIALES_ARS = new Set(['10', '20', '50', '100', '200', '500', '1000', '2000', '10000', '20000']);
+
+function parsearListaContactosJson(rawValue, tipo = 'whatsapp') {
+    if (!rawValue) return [];
+    const keyCampo = tipo === 'email' ? 'email' : 'numero';
+    const validarValor = (val) => {
+        const s = String(val || '').trim();
+        if (!s || s === '[]' || s === '{}') return '';
+        if (tipo === 'email') return s.includes('@') ? s : '';
+        return s.replace(/\D/g, '').length >= 6 ? s : '';
+    };
+
+    if (Array.isArray(rawValue)) {
+        return rawValue
+            .map((item) => {
+                if (typeof item === 'string') {
+                    const v = validarValor(item);
+                    return v ? { [keyCampo]: v, nombre: '', cargo: '' } : null;
+                }
+                if (item && typeof item === 'object') {
+                    const v = validarValor(item[keyCampo] || item.telefono || item.celular || item.value);
+                    return v ? { ...item, [keyCampo]: v } : null;
+                }
+                return null;
+            })
+            .filter(Boolean);
+    }
+
+    const rawStr = String(rawValue).trim();
+    if (!rawStr || rawStr === '[]' || rawStr === '{}' || rawStr.toLowerCase() === 'null') return [];
+
+    if (rawStr.startsWith('[') || rawStr.startsWith('{')) {
+        try {
+            const parsed = JSON.parse(rawStr);
+            if (Array.isArray(parsed)) {
+                return parsearListaContactosJson(parsed, tipo);
+            }
+            if (parsed && typeof parsed === 'object') {
+                return parsearListaContactosJson([parsed], tipo);
+            }
+        } catch (_) {
+            // Caer a parseo plano si el JSON está malformado
+        }
+    }
+
+    return rawStr
+        .split(/[,;]+/)
+        .map((s) => validarValor(s))
+        .filter(Boolean)
+        .map((v) => ({ [keyCampo]: v, nombre: '', cargo: '' }));
+}
+
+function construirUrlPublicaEnsobrado(token, rol = 'DUENO') {
+    const cleanToken = String(token || '').trim();
+    if (!cleanToken) return '';
+    return rol === 'COLABORADOR'
+        ? `${CLOUDFLARE_PORTAL_URL}/#ensobrado/colab/${cleanToken}`
+        : `${CLOUDFLARE_PORTAL_URL}/#ensobrado/${cleanToken}`;
+}
+
+function validarYCalcularDesgloseBilletes(desglose, montoObjetivo) {
+    if (!desglose || typeof desglose !== 'object' || Array.isArray(desglose)) {
+        return { ok: false, code: 'DESGLOSE_INVALIDO', error: 'Debes informar el desglose de billetes.' };
+    }
+    let suma = 0;
+    const limpio = {};
+    for (const [k, rawCant] of Object.entries(desglose)) {
+        const keyStr = String(k).trim();
+        if (!DENOMINACIONES_OFICIALES_ARS.has(keyStr)) {
+            return { ok: false, code: 'DENOMINACION_INVALIDA', error: `Denominación de billete inválida: ${keyStr}` };
+        }
+        const cantNum = Number(rawCant || 0);
+        if (!Number.isInteger(cantNum) || cantNum < 0) {
+            return { ok: false, code: 'CANTIDAD_INVALIDA', error: `Cantidad inválida para billetes de $${keyStr}.` };
+        }
+        if (cantNum > 0) {
+            limpio[keyStr] = cantNum;
+            suma += Number(keyStr) * cantNum;
+        }
+    }
+    if (Math.abs(suma - montoObjetivo) > 0.009) {
+        return {
+            ok: false,
+            code: 'ARQUEO_NO_COINCIDE',
+            error: `La suma de billetes ($${suma.toLocaleString('es-AR')}) no coincide con el monto a declarar ($${montoObjetivo.toLocaleString('es-AR')}).`
+        };
+    }
+    return { ok: true, suma, desgloseLimpio: limpio };
+}
 
 class PagosEfectivoService {
     static _syncPromise = null;
@@ -129,6 +219,14 @@ class PagosEfectivoService {
                 p.colaborador_nombre,
                 p.colaborador_telefono,
                 p.colaborador_email,
+                p.token_publico,
+                p.token_colaborador,
+                p.monto_sugerido_inicial,
+                p.monto_bloqueado,
+                p.monto_fijado_por,
+                p.monto_fijado_at,
+                p.delegado_at,
+                COALESCE(p.cliente_nombre_snapshot, c.cliente_nombre, c.razon_social, p.cliente_id) AS cliente_nombre_snapshot,
                 p.id_ruta,
                 p.orden_entrega,
                 p.id_domicilio_entrega,
@@ -819,6 +917,7 @@ class PagosEfectivoService {
 
         const codigoBunkerCanónico = clienteBunker.codigo_bunker_cliente || clienteId;
         const nombreTitular = clienteBunker.razon_social || clienteBunker.cliente_nombre || codigoBunkerCanónico;
+        const nombreSnapshot = clienteBunker.cliente_nombre || clienteBunker.razon_social || codigoBunkerCanónico;
 
         // 2. Generar código correlativo de sobre único (ej: SOB-XXXXXX)
         let codigoSobre = '';
@@ -832,34 +931,44 @@ class PagosEfectivoService {
             if (check.rows.length === 0) exists = false;
         }
 
-        // 3. Generar token público UUID criptográfico
+        // 3. Generar token público UUID criptográfico (Nivel Dueño / Titular)
         const tokenPublico = crypto.randomUUID ? crypto.randomUUID() : (crypto.randomBytes(16).toString('hex'));
 
-        const montoNum = parseFloat(montoDeclarado) || 0;
+        let montoNum = null;
+        if (montoDeclarado !== null && montoDeclarado !== undefined && String(montoDeclarado).trim() !== '') {
+            const parsedMonto = parseFloat(montoDeclarado);
+            if (!Number.isFinite(parsedMonto) || parsedMonto <= 0) {
+                throw new Error('Si indicás un monto sugerido, debe ser mayor a $0.');
+            }
+            montoNum = Math.round(parsedMonto * 100) / 100;
+        }
+        const montoSugeridoInicial = montoNum;
         const nombreColab = (colaboradorNombre || '').trim() || clienteBunker.cliente_nombre || 'Titular / Encargado';
-        
-        let telColab = (colaboradorTelefono || '').trim();
-        if (!telColab && clienteBunker.whatsapp_facturas) {
-            try {
-                const parsedW = typeof clienteBunker.whatsapp_facturas === 'string' && clienteBunker.whatsapp_facturas.startsWith('[')
-                    ? JSON.parse(clienteBunker.whatsapp_facturas)
-                    : null;
-                telColab = parsedW && parsedW.length > 0 ? parsedW[0].numero : clienteBunker.whatsapp_facturas;
-            } catch (e) {
-                telColab = clienteBunker.whatsapp_facturas;
+
+        const contactosWa = parsearListaContactosJson(clienteBunker.whatsapp_facturas, 'whatsapp');
+        const contactosEmail = parsearListaContactosJson(clienteBunker.email_facturas, 'email');
+        if (clienteBunker.email_portal && String(clienteBunker.email_portal).includes('@')) {
+            const ep = String(clienteBunker.email_portal).trim();
+            if (!contactosEmail.some(e => String(e.email || '').toLowerCase() === ep.toLowerCase())) {
+                contactosEmail.push({
+                    email: ep,
+                    nombre: clienteBunker.email_portal_nombre || 'Portal B2B',
+                    cargo: clienteBunker.email_portal_cargo || 'Acceso Portal'
+                });
             }
         }
 
+        let telColab = (colaboradorTelefono || '').trim();
+        if (!telColab && contactosWa.length > 0) {
+            telColab = contactosWa[0].numero || '';
+        }
+
         let emailColab = (colaboradorEmail || '').trim();
-        if (!emailColab && clienteBunker.email_facturas) {
-            try {
-                const parsedE = typeof clienteBunker.email_facturas === 'string' && clienteBunker.email_facturas.startsWith('[')
-                    ? JSON.parse(clienteBunker.email_facturas)
-                    : null;
-                emailColab = parsedE && parsedE.length > 0 ? parsedE[0].email : clienteBunker.email_facturas;
-            } catch (e) {
-                emailColab = clienteBunker.email_facturas;
-            }
+        if (emailColab === '[]' || !emailColab.includes('@')) {
+            emailColab = '';
+        }
+        if (!emailColab && contactosEmail.length > 0) {
+            emailColab = contactosEmail[0].email || '';
         }
 
         const obsBase = (observaciones || '').trim();
@@ -874,18 +983,22 @@ class PagosEfectivoService {
                 codigo_sobre, cliente_id, monto_declarado, desglose_billetes,
                 modalidad_entrega, estado, observaciones_cliente, token_publico,
                 colaborador_nombre, colaborador_telefono, colaborador_email,
-                derivado_por, fecha_derivacion, sincronizado_supabase, fecha_creacion, fecha_actualizacion
+                derivado_por, fecha_derivacion, monto_sugerido_inicial,
+                monto_bloqueado, cliente_nombre_snapshot,
+                sincronizado_supabase, fecha_creacion, fecha_actualizacion
             ) VALUES (
                 $1, $2, $3, '{}'::jsonb,
                 'CHOFER', 'PENDIENTE_ENSOBRADO', $4, $5,
                 $6, $7, $8,
-                $9, NOW(), true, NOW(), NOW()
+                $9, NOW(), $10,
+                false, $11,
+                true, NOW(), NOW()
             )
             RETURNING *;
         `;
         const resLocal = await pool.query(insertLocalSql, [
             codigoSobre, codigoBunkerCanónico, montoNum, obs, tokenPublico,
-            nombreColab, telColab, emailColab, origen
+            nombreColab, telColab || null, emailColab || null, origen, montoSugeridoInicial, nombreSnapshot
         ]);
         const sobreCreado = resLocal.rows[0];
 
@@ -897,7 +1010,7 @@ class PagosEfectivoService {
                     .insert([{
                         codigo_sobre: codigoSobre,
                         cliente_id: codigoBunkerCanónico,
-                        monto_declarado: montoNum > 0 ? montoNum : 1,
+                        monto_declarado: montoNum,
                         desglose_billetes: {},
                         foto_frente_url: null,
                         foto_dorso_url: null,
@@ -906,10 +1019,13 @@ class PagosEfectivoService {
                         observaciones_cliente: obs,
                         token_publico: tokenPublico,
                         colaborador_nombre: nombreColab,
-                        colaborador_telefono: telColab,
-                        colaborador_email: emailColab,
+                        colaborador_telefono: telColab || null,
+                        colaborador_email: emailColab || null,
                         derivado_por: origen,
                         fecha_derivacion: new Date().toISOString(),
+                        monto_sugerido_inicial: montoSugeridoInicial,
+                        monto_bloqueado: false,
+                        cliente_nombre_snapshot: nombreSnapshot,
                         sincronizado_local: true
                     }]);
                 if (supaErr) {
@@ -922,7 +1038,12 @@ class PagosEfectivoService {
             }
         }
 
-        const urlEnsobrado = `${CLOUDFLARE_PORTAL_URL}/#ensobrado/${tokenPublico}`;
+        const urlEnsobrado = construirUrlPublicaEnsobrado(tokenPublico, 'DUENO');
+        const qrDataUrl = await QRCode.toDataURL(urlEnsobrado, {
+            width: 280,
+            margin: 2,
+            errorCorrectionLevel: 'M'
+        });
 
         console.log(`✅ [PAGOS-EFECTIVO-SERVICE] Sobre derivado creado: ${codigoSobre} para ${codigoBunkerCanónico} (${nombreTitular}) -> ${urlEnsobrado}`);
 
@@ -936,6 +1057,9 @@ class PagosEfectivoService {
             codigo_sobre: codigoSobre,
             token_publico: tokenPublico,
             url_ensobrado: urlEnsobrado,
+            qr_data_url: qrDataUrl,
+            monto_declarado: montoNum,
+            monto_sugerido_inicial: montoSugeridoInicial,
             cliente: {
                 id: clienteBunker.id,
                 codigo_bunker: codigoBunkerCanónico,
@@ -944,9 +1068,288 @@ class PagosEfectivoService {
                 cuit: clienteBunker.cuit_cuil,
                 saldo: clienteBunker.saldo || 0,
                 whatsapp: telColab,
-                email: emailColab
+                email: emailColab,
+                contactos_whatsapp: contactosWa,
+                contactos_email: contactosEmail
             }
         };
+    }
+
+    /**
+     * Consulta pública por token (espejo local PostgreSQL de ensobrado_publico_obtener).
+     * Discrimina rol DUENO (token_publico) vs COLABORADOR (token_colaborador) sin exponer token_publico al colaborador.
+     */
+    static async obtenerSobrePublicoPorToken(token) {
+        const cleanToken = String(token || '').trim();
+        if (!cleanToken) {
+            return { ok: false, status: 400, code: 'TOKEN_INVALIDO', error: 'No se proporcionó un token válido.' };
+        }
+
+        const res = await pool.query(`
+            SELECT p.*,
+                   COALESCE(NULLIF(TRIM(p.cliente_nombre_snapshot), ''), bc.cliente_nombre, bc.razon_social, p.cliente_id) AS cliente_nombre_resuelto
+            FROM public.factura_pagos_efectivo p
+            LEFT JOIN LATERAL (
+                SELECT cliente_nombre, razon_social
+                FROM public.bunker_clientes
+                WHERE codigo_bunker_cliente = p.cliente_id
+                   OR (lomas_soft_id IS NOT NULL AND ltrim(lomas_soft_id, '0') = ltrim(p.cliente_id, '0'))
+                ORDER BY (codigo_bunker_cliente = p.cliente_id) DESC, id ASC
+                LIMIT 1
+            ) bc ON true
+            WHERE p.token_publico = $1
+               OR p.token_colaborador = $1
+            LIMIT 1
+        `, [cleanToken]);
+
+        if (res.rows.length === 0) {
+            return { ok: false, status: 404, code: 'NO_ENCONTRADO', error: 'El enlace es inválido o el sobre ya no se encuentra disponible.' };
+        }
+
+        const s = res.rows[0];
+        const rol = s.token_publico === cleanToken ? 'DUENO' : 'COLABORADOR';
+
+        return {
+            ok: true,
+            rol_acceso: rol,
+            puede_editar_monto: rol === 'DUENO' && s.estado === 'PENDIENTE_ENSOBRADO',
+            puede_delegar: rol === 'DUENO' && s.estado === 'PENDIENTE_ENSOBRADO',
+            sobre: {
+                id: s.id,
+                codigo_sobre: s.codigo_sobre,
+                cliente_id: s.cliente_id,
+                cliente_nombre: s.cliente_nombre_resuelto || s.cliente_id,
+                monto_declarado: s.monto_declarado !== null && s.monto_declarado !== undefined ? Number(s.monto_declarado) : null,
+                monto_sugerido_inicial: s.monto_sugerido_inicial !== null && s.monto_sugerido_inicial !== undefined ? Number(s.monto_sugerido_inicial) : null,
+                monto_bloqueado: Boolean(s.monto_bloqueado) || rol === 'COLABORADOR',
+                monto_fijado_por: s.monto_fijado_por || null,
+                monto_fijado_at: s.monto_fijado_at || null,
+                delegado_at: s.delegado_at || null,
+                modalidad_entrega: s.modalidad_entrega,
+                estado: s.estado,
+                observaciones_cliente: s.observaciones_cliente || null,
+                colaborador_nombre: s.colaborador_nombre || null,
+                derivado_por: s.derivado_por || null,
+                token_colaborador: rol === 'DUENO' ? (s.token_colaborador || null) : null
+            }
+        };
+    }
+
+    /**
+     * Delegar preparación a un colaborador fijando el monto exacto sobre el mismo sobre (solo token_publico).
+     */
+    static async delegarSobreDesdeDueno({ tokenDueno, monto, colaboradorNombre, nota, fijadoPor }) {
+        const cleanToken = String(tokenDueno || '').trim();
+        if (!cleanToken) {
+            return { ok: false, status: 400, code: 'TOKEN_INVALIDO', error: 'Token de titular requerido.' };
+        }
+
+        const montoNum = parseFloat(monto);
+        if (!Number.isFinite(montoNum) || montoNum <= 0) {
+            return { ok: false, status: 400, code: 'MONTO_INVALIDO', error: 'Debes definir un monto mayor a $0 para delegar el sobre.' };
+        }
+        const montoRedondeado = Math.round(montoNum * 100) / 100;
+
+        return await ejecutarTransaccion(async (client) => {
+            const res = await client.query(
+                `SELECT p.*,
+                        COALESCE(NULLIF(TRIM(p.cliente_nombre_snapshot), ''), bc.cliente_nombre, bc.razon_social, p.cliente_id) AS cliente_nombre_resuelto
+                 FROM public.factura_pagos_efectivo p
+                 LEFT JOIN LATERAL (
+                    SELECT cliente_nombre, razon_social
+                    FROM public.bunker_clientes
+                    WHERE codigo_bunker_cliente = p.cliente_id
+                       OR (lomas_soft_id IS NOT NULL AND ltrim(lomas_soft_id, '0') = ltrim(p.cliente_id, '0'))
+                    ORDER BY (codigo_bunker_cliente = p.cliente_id) DESC, id ASC
+                    LIMIT 1
+                 ) bc ON true
+                 WHERE p.token_publico = $1
+                 FOR UPDATE OF p`,
+                [cleanToken]
+            );
+
+            if (res.rows.length === 0) {
+                return {
+                    ok: false,
+                    status: 403,
+                    code: 'SOLO_DUENO',
+                    error: 'Solo el titular del enlace principal puede fijar el monto o delegar el sobre.'
+                };
+            }
+
+            const s = res.rows[0];
+            if (s.estado !== 'PENDIENTE_ENSOBRADO') {
+                return {
+                    ok: false,
+                    status: 409,
+                    code: 'YA_PROCESADO',
+                    estado: s.estado,
+                    error: `Este sobre ya pasó a estado ${s.estado} y no puede modificarse.`
+                };
+            }
+
+            const tokColab = s.token_colaborador || (crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex'));
+            const clienteNombre = s.cliente_nombre_resuelto || s.cliente_id;
+            const fijadoPorFinal = String(fijadoPor || '').trim() || clienteNombre || 'Titular';
+            const colabFinal = String(colaboradorNombre || '').trim() || s.colaborador_nombre || 'Colaborador';
+            const notaFinal = nota !== undefined && nota !== null ? (String(nota).trim() || null) : s.observaciones_cliente;
+
+            const upd = await client.query(
+                `UPDATE public.factura_pagos_efectivo
+                 SET monto_declarado = $1,
+                     monto_bloqueado = TRUE,
+                     monto_fijado_por = $2,
+                     monto_fijado_at = NOW(),
+                     token_colaborador = $3,
+                     delegado_at = COALESCE(delegado_at, NOW()),
+                     colaborador_nombre = $4,
+                     observaciones_cliente = $5,
+                     cliente_nombre_snapshot = COALESCE(NULLIF(TRIM(cliente_nombre_snapshot), ''), $6),
+                     sincronizado_supabase = false,
+                     fecha_actualizacion = NOW()
+                 WHERE id = $7
+                 RETURNING *`,
+                [montoRedondeado, fijadoPorFinal, tokColab, colabFinal, notaFinal, clienteNombre, s.id]
+            );
+
+            const actualizado = upd.rows[0];
+            return {
+                ok: true,
+                rol_acceso: 'DUENO',
+                codigo_sobre: actualizado.codigo_sobre,
+                cliente_id: actualizado.cliente_id,
+                cliente_nombre: clienteNombre,
+                monto_declarado: Number(actualizado.monto_declarado),
+                monto_bloqueado: true,
+                monto_fijado_por: actualizado.monto_fijado_por,
+                monto_fijado_at: actualizado.monto_fijado_at,
+                delegado_at: actualizado.delegado_at,
+                colaborador_nombre: actualizado.colaborador_nombre,
+                observaciones_cliente: actualizado.observaciones_cliente,
+                estado: actualizado.estado,
+                token_colaborador: actualizado.token_colaborador
+            };
+        });
+    }
+
+    /**
+     * Completar sobre público (Dueño o Colaborador) con validación de gobernanza y arqueo exacto.
+     */
+    static async completarSobrePublico({ token, monto, desgloseBilletes, fotoFrenteUrl, fotoDorsoUrl, modalidadEntrega = 'CHOFER', colaboradorNombre, observaciones }) {
+        const cleanToken = String(token || '').trim();
+        if (!cleanToken) {
+            return { ok: false, status: 400, code: 'TOKEN_INVALIDO', error: 'Token requerido.' };
+        }
+
+        const modalidad = String(modalidadEntrega || 'CHOFER').trim().toUpperCase();
+        if (!['CHOFER', 'LOCAL'].includes(modalidad)) {
+            return { ok: false, status: 400, code: 'MODALIDAD_INVALIDA', error: 'Modalidad de entrega inválida.' };
+        }
+
+        const frente = String(fotoFrenteUrl || '').trim();
+        const dorso = String(fotoDorsoUrl || '').trim();
+        if (!frente || !dorso) {
+            return { ok: false, status: 400, code: 'FOTOS_REQUERIDAS', error: 'Las fotos de frente y dorso del sobre sellado son obligatorias.' };
+        }
+
+        return await ejecutarTransaccion(async (client) => {
+            const res = await client.query(
+                `SELECT * FROM public.factura_pagos_efectivo WHERE token_publico = $1 OR token_colaborador = $1 FOR UPDATE`,
+                [cleanToken]
+            );
+            if (res.rows.length === 0) {
+                return { ok: false, status: 404, code: 'NO_ENCONTRADO', error: 'El sobre solicitado no existe.' };
+            }
+
+            const s = res.rows[0];
+            if (s.estado !== 'PENDIENTE_ENSOBRADO') {
+                return {
+                    ok: false,
+                    status: 409,
+                    code: 'YA_PROCESADO',
+                    estado: s.estado,
+                    error: `Este sobre ya fue cerrado previamente (estado: ${s.estado}).`
+                };
+            }
+
+            const rol = s.token_publico === cleanToken ? 'DUENO' : 'COLABORADOR';
+            let montoFinal = null;
+
+            if (rol === 'COLABORADOR') {
+                const montoFijado = s.monto_declarado !== null && s.monto_declarado !== undefined ? Number(s.monto_declarado) : 0;
+                if (!Number.isFinite(montoFijado) || montoFijado <= 0) {
+                    return { ok: false, status: 409, code: 'SIN_MONTO_FIJO', error: 'El titular aún no definió un monto fijo para este sobre.' };
+                }
+                if (monto !== null && monto !== undefined && String(monto).trim() !== '') {
+                    const montoIntento = parseFloat(monto);
+                    if (!Number.isFinite(montoIntento) || Math.abs(montoIntento - montoFijado) > 0.009) {
+                        return {
+                            ok: false,
+                            status: 409,
+                            code: 'MONTO_BLOQUEADO',
+                            error: 'El monto fue fijado por el titular y no puede modificarse.'
+                        };
+                    }
+                }
+                montoFinal = Math.round(montoFijado * 100) / 100;
+            } else {
+                const parsed = parseFloat(monto);
+                if (!Number.isFinite(parsed) || parsed <= 0) {
+                    return { ok: false, status: 400, code: 'MONTO_INVALIDO', error: 'Debes indicar un monto mayor a $0.' };
+                }
+                montoFinal = Math.round(parsed * 100) / 100;
+            }
+
+            const valArqueo = validarYCalcularDesgloseBilletes(desgloseBilletes, montoFinal);
+            if (!valArqueo.ok) {
+                return { ok: false, status: 400, code: valArqueo.code, error: valArqueo.error };
+            }
+
+            const colabFinal = String(colaboradorNombre || '').trim() || s.colaborador_nombre || (rol === 'DUENO' ? 'Titular' : 'Colaborador');
+            const notaBase = String(observaciones || '').trim();
+            const notaFinal = [
+                notaBase ? `Nota: ${notaBase}` : (s.observaciones_cliente || null),
+                `Preparado por ${rol === 'DUENO' ? 'titular' : 'colaborador'}: ${colabFinal}`
+            ].filter(Boolean).join(' | ');
+
+            const upd = await client.query(
+                `UPDATE public.factura_pagos_efectivo
+                 SET monto_declarado = $1,
+                     desglose_billetes = $2::jsonb,
+                     foto_frente_url = $3,
+                     foto_dorso_url = $4,
+                     modalidad_entrega = $5,
+                     estado = 'PREPARADO',
+                     observaciones_cliente = $6,
+                     colaborador_nombre = $7,
+                     sincronizado_supabase = false,
+                     fecha_actualizacion = NOW()
+                 WHERE id = $8
+                 RETURNING *`,
+                [
+                    montoFinal,
+                    JSON.stringify(valArqueo.desgloseLimpio),
+                    frente,
+                    dorso,
+                    modalidad,
+                    notaFinal,
+                    colabFinal,
+                    s.id
+                ]
+            );
+
+            const actualizado = upd.rows[0];
+            return {
+                ok: true,
+                rol_acceso: rol,
+                estado: actualizado.estado,
+                codigo_sobre: actualizado.codigo_sobre,
+                cliente_id: actualizado.cliente_id,
+                monto_declarado: Number(actualizado.monto_declarado),
+                modalidad_entrega: actualizado.modalidad_entrega,
+                colaborador_nombre: actualizado.colaborador_nombre
+            };
+        });
     }
 }
 

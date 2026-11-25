@@ -2686,40 +2686,26 @@ const ClientesMobileController = {
         if (!c) return;
 
         const saldoNum = parseFloat(c.saldo || 0);
-        const defaultMonto = saldoNum > 0 ? saldoNum : '';
-        
-        let defaultTel = '';
-        if (c.whatsapp_facturas) {
-            try {
-                const parsed = JSON.parse(c.whatsapp_facturas);
-                if (Array.isArray(parsed) && parsed.length > 0) defaultTel = parsed[0].numero;
-            } catch(e) {
-                defaultTel = c.whatsapp_facturas;
-            }
-        }
-
-        let defaultEmail = '';
-        if (c.email_facturas) {
-            try {
-                const parsed = JSON.parse(c.email_facturas);
-                if (Array.isArray(parsed) && parsed.length > 0) defaultEmail = parsed[0].email;
-            } catch(e) {
-                defaultEmail = c.email_facturas;
-            }
-        }
-
+        const defaultMonto = saldoNum > 0 ? String(Math.round(saldoNum * 100) / 100) : '';
         const formattedSaldo = `$ ${Math.abs(saldoNum).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+        const escapeHtml = (val) => String(val ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
         const { value: formValues } = await Swal.fire({
-            title: `<div style="color:#f8fafc; font-size:1.15rem; font-weight:800;">📦 Generar Ensobrado de Efectivo</div>`,
+            title: `<div style="color:#f8fafc; font-size:1.12rem; font-weight:800;">📦 Generar Ensobrado de Efectivo</div>`,
             background: '#1e293b',
             color: '#f8fafc',
             html: `
-                <div style="text-align:left; font-size:0.85rem; color:#cbd5e1; margin-bottom:0.75rem;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:0.6rem 0.85rem; border-radius:0.65rem; border:1px solid rgba(255,255,255,0.08); margin-bottom:0.75rem;">
+                <div style="text-align:left; font-size:0.85rem; color:#cbd5e1; margin-bottom:0.5rem;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:0.65rem 0.85rem; border-radius:0.65rem; border:1px solid rgba(255,255,255,0.1); margin-bottom:0.85rem;">
                         <div>
-                            <div style="font-weight:800; color:#f8fafc; font-size:0.92rem;">${c.cliente_nombre}</div>
-                            <div style="font-size:0.72rem; color:#94a3b8;">Cód: ${c.codigo_bunker_cliente || 'S/C'}</div>
+                            <div style="font-weight:800; color:#f8fafc; font-size:0.94rem;">${escapeHtml(c.cliente_nombre)}</div>
+                            <div style="font-size:0.72rem; color:#94a3b8;">Cód: ${escapeHtml(c.codigo_bunker_cliente || c.lomas_soft_id || 'S/C')}</div>
                         </div>
                         <div style="text-align:right;">
                             <div style="font-size:0.62rem; color:#94a3b8; font-weight:800; text-transform:uppercase;">Saldo C/C</div>
@@ -2729,25 +2715,33 @@ const ClientesMobileController = {
                         </div>
                     </div>
 
-                    <label style="display:block; font-size:0.75rem; font-weight:700; color:#cbd5e1; margin-bottom:0.25rem;">
-                        💵 Monto a Solicitar / Ensobrar ($) <span style="color:#ef4444;">*</span>
+                    <label style="display:block; font-size:0.78rem; font-weight:800; color:#f8fafc; margin-bottom:0.3rem;">
+                        💵 Monto Sugerido en Efectivo <span style="color:#38bdf8; font-weight:700;">(Opcional)</span>
                     </label>
-                    <input type="number" id="swal-monto-ensobrado" class="wizard-input-mobile" placeholder="Ej: 50000" value="${defaultMonto}" style="width:100%; margin-bottom:0.65rem; box-sizing:border-box;">
+                    <input type="number" inputmode="decimal" min="1" step="any" id="swal-monto-ensobrado" class="wizard-input-mobile" placeholder="Dejar vacío para que lo defina el cliente" value="${escapeHtml(defaultMonto)}" style="width:100%; margin-bottom:0.45rem; box-sizing:border-box; font-size:1.05rem; font-weight:800;">
+
+                    <div style="display:flex; gap:0.45rem; flex-wrap:wrap; margin-bottom:0.55rem;">
+                        <button type="button" id="btn-ensobrado-sin-monto" style="flex:1; min-width:150px; background:#0f172a; border:1px solid #475569; color:#e2e8f0; padding:0.45rem 0.65rem; border-radius:0.55rem; font-size:0.74rem; font-weight:700; cursor:pointer;">
+                            🔓 Sin monto fijo (libre)
+                        </button>
+                        ${saldoNum > 0 ? `
+                        <button type="button" id="btn-ensobrado-usar-saldo" style="flex:1; min-width:150px; background:rgba(13,148,136,0.2); border:1px solid #14b8a6; color:#5eead4; padding:0.45rem 0.65rem; border-radius:0.55rem; font-size:0.74rem; font-weight:700; cursor:pointer;">
+                            💰 Usar saldo (${formattedSaldo})
+                        </button>` : ''}
+                    </div>
+                    <p style="font-size:0.72rem; color:#94a3b8; line-height:1.35; margin:0 0 0.8rem 0;">
+                        El titular que reciba el enlace podrá definir o cambiar este importe libremente, o fijarlo para delegar el armado a su colaborador.
+                    </p>
 
                     <label style="display:block; font-size:0.75rem; font-weight:700; color:#cbd5e1; margin-bottom:0.25rem;">
-                        👤 Nombre Contacto / Encargado (Opcional)
+                        👤 Contacto / Referencia (Opcional)
                     </label>
-                    <input type="text" id="swal-nombre-colab" class="wizard-input-mobile" placeholder="Nombre o titular del comercio" value="${c.cliente_nombre || ''}" style="width:100%; margin-bottom:0.65rem; box-sizing:border-box;">
-
-                    <label style="display:block; font-size:0.75rem; font-weight:700; color:#cbd5e1; margin-bottom:0.25rem;">
-                        💬 WhatsApp de Destino (Opcional)
-                    </label>
-                    <input type="tel" id="swal-tel-colab" class="wizard-input-mobile" placeholder="Ej: 5492216615746" value="${defaultTel}" style="width:100%; margin-bottom:0.65rem; box-sizing:border-box;">
+                    <input type="text" id="swal-nombre-colab" class="wizard-input-mobile" placeholder="Titular o encargado" value="${escapeHtml(c.cliente_nombre || '')}" style="width:100%; margin-bottom:0.65rem; box-sizing:border-box;">
 
                     <label style="display:block; font-size:0.75rem; font-weight:700; color:#cbd5e1; margin-bottom:0.25rem;">
                         📝 Concepto / Observaciones (Opcional)
                     </label>
-                    <input type="text" id="swal-obs-ensobrado" class="wizard-input-mobile" placeholder="Ej: Pago de saldo / Factura" style="width:100%; box-sizing:border-box;">
+                    <input type="text" id="swal-obs-ensobrado" class="wizard-input-mobile" placeholder="Ej: Pago a cuenta / Saldo factura" style="width:100%; box-sizing:border-box;">
                 </div>
             `,
             showCancelButton: true,
@@ -2756,16 +2750,36 @@ const ClientesMobileController = {
             confirmButtonColor: '#0d9488',
             cancelButtonColor: '#64748b',
             focusConfirm: false,
+            didOpen: () => {
+                const inputMonto = document.getElementById('swal-monto-ensobrado');
+                const btnSin = document.getElementById('btn-ensobrado-sin-monto');
+                const btnSaldo = document.getElementById('btn-ensobrado-usar-saldo');
+                if (btnSin && inputMonto) {
+                    btnSin.onclick = () => {
+                        inputMonto.value = '';
+                        inputMonto.focus();
+                    };
+                }
+                if (btnSaldo && inputMonto && saldoNum > 0) {
+                    btnSaldo.onclick = () => {
+                        inputMonto.value = String(Math.round(saldoNum * 100) / 100);
+                    };
+                }
+            },
             preConfirm: () => {
-                const monto = parseFloat(document.getElementById('swal-monto-ensobrado').value);
-                if (!monto || monto <= 0) {
-                    Swal.showValidationMessage('Por favor ingresá un monto válido mayor a $0.');
-                    return false;
+                const rawMonto = (document.getElementById('swal-monto-ensobrado').value || '').trim();
+                let monto = null;
+                if (rawMonto !== '') {
+                    const parsed = parseFloat(rawMonto);
+                    if (!Number.isFinite(parsed) || parsed <= 0) {
+                        Swal.showValidationMessage('Si ingresás un monto sugerido debe ser mayor a $0, o dejalo vacío para monto libre.');
+                        return false;
+                    }
+                    monto = Math.round(parsed * 100) / 100;
                 }
                 return {
-                    monto: monto,
+                    monto,
                     nombre: document.getElementById('swal-nombre-colab').value.trim(),
-                    tel: document.getElementById('swal-tel-colab').value.trim(),
                     obs: document.getElementById('swal-obs-ensobrado').value.trim()
                 };
             }
@@ -2789,7 +2803,6 @@ const ClientesMobileController = {
                     cliente_id: c.codigo_bunker_cliente || c.id,
                     monto_declarado: formValues.monto,
                     colaborador_nombre: formValues.nombre,
-                    colaborador_telefono: formValues.tel,
                     observaciones: formValues.obs,
                     derivado_por: 'Chofer / Móvil LAMDA'
                 })
@@ -2802,65 +2815,131 @@ const ClientesMobileController = {
 
             const urlEnsobrado = data.url_ensobrado;
             const codigoSobre = data.codigo_sobre;
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(urlEnsobrado)}`;
-            const montoFormateado = formValues.monto.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const qrDataUrl = data.qr_data_url || '';
+            const montoSugeridoNum = data.monto_declarado !== null && data.monto_declarado !== undefined
+                ? parseFloat(data.monto_declarado)
+                : null;
+            const montoTexto = (montoSugeridoNum && montoSugeridoNum > 0)
+                ? `$ ${montoSugeridoNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (sugerido, editable)`
+                : 'A definir por el titular';
 
-            const mensajeWA = 
+            const contactosWa = Array.isArray(data.cliente?.contactos_whatsapp) ? data.cliente.contactos_whatsapp : [];
+            const contactosEmail = Array.isArray(data.cliente?.contactos_email) ? data.cliente.contactos_email : [];
+
+            const waCheckboxesHtml = contactosWa.length > 0
+                ? contactosWa.map((w, idx) => `
+                    <label style="display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0.55rem; background:#0f172a; border:1px solid #334155; border-radius:0.5rem; margin-bottom:0.3rem; cursor:pointer; font-size:0.78rem;">
+                        <input type="checkbox" class="ens-chk-wa-dest" value="${escapeHtml(w.numero)}" ${w.default_efectivo || idx === 0 ? 'checked' : ''} style="width:1rem; height:1rem; accent-color:#10b981;">
+                        <span style="color:#f8fafc; font-weight:700;">${escapeHtml(w.numero)}</span>
+                        ${(w.nombre || w.cargo) ? `<span style="color:#94a3b8; font-size:0.72rem;">(${escapeHtml([w.nombre, w.cargo].filter(Boolean).join(' · '))})</span>` : ''}
+                    </label>
+                `).join('')
+                : `<div style="font-size:0.74rem; color:#94a3b8; margin-bottom:0.35rem;">Sin números precargados en la ficha. Podés ingresar uno manual abajo.</div>`;
+
+            const emailCheckboxesHtml = contactosEmail.length > 0
+                ? contactosEmail.map((em, idx) => `
+                    <label style="display:flex; align-items:center; gap:0.5rem; padding:0.4rem 0.55rem; background:#0f172a; border:1px solid #334155; border-radius:0.5rem; margin-bottom:0.3rem; cursor:pointer; font-size:0.78rem;">
+                        <input type="checkbox" class="ens-chk-email-dest" value="${escapeHtml(em.email)}" ${em.default_efectivo || idx === 0 ? 'checked' : ''} style="width:1rem; height:1rem; accent-color:#38bdf8;">
+                        <span style="color:#f8fafc; font-weight:700; word-break:break-all;">${escapeHtml(em.email)}</span>
+                        ${(em.nombre || em.cargo) ? `<span style="color:#94a3b8; font-size:0.72rem;">(${escapeHtml([em.nombre, em.cargo].filter(Boolean).join(' · '))})</span>` : ''}
+                    </label>
+                `).join('')
+                : `<div style="font-size:0.74rem; color:#94a3b8; margin-bottom:0.35rem;">Sin correos precargados en la ficha. Podés ingresar uno manual abajo.</div>`;
+
+            const mensajeDefault =
                 `📦 *SOLICITUD DE ENSOBRADO DE EFECTIVO - LAMDA*\n` +
                 `━━━━━━━━━━━━━━━━━━━━\n` +
                 `🏢 *Cliente:* ${c.cliente_nombre}\n` +
-                `💵 *Monto Solicitado:* $ ${montoFormateado}\n` +
-                `🏷️ *Código de Sobre:* ${codigoSobre}\n\n` +
-                `👉 Para cargar el conteo de billetes y fotos del sobre sellado, ingresá acá:\n` +
-                `${urlEnsobrado}\n\n` +
-                `_Al completar el formulario, el sobre queda registrado para su retiro._`;
+                `💵 *Importe:* ${montoTexto}\n` +
+                `🏷️ *Código de Sobre:* ${codigoSobre}\n` +
+                (formValues.obs ? `📝 *Concepto:* ${formValues.obs}\n` : '') +
+                `\n👉 Ingresá acá para definir/confirmar el monto, armar el sobre o delegarlo a un colaborador:\n` +
+                `${urlEnsobrado}`;
 
-            const linkWA = `https://wa.me/${formValues.tel ? formValues.tel.replace(/\D/g, '') : ''}?text=${encodeURIComponent(mensajeWA)}`;
+            const asuntoDefault = `📦 Solicitud de Ensobrado de Efectivo [${codigoSobre}] - ${c.cliente_nombre}`;
+            const defaultCheckWa = contactosWa.length > 0;
+            const defaultCheckEmail = !defaultCheckWa && contactosEmail.length > 0;
 
-            Swal.fire({
-                title: `<div style="color:#34d399; font-size:1.15rem; font-weight:900;">📦 Sobre Generado: ${codigoSobre}</div>`,
+            await Swal.fire({
+                title: `<div style="color:#34d399; font-size:1.1rem; font-weight:900;">📦 Sobre ${escapeHtml(codigoSobre)} Listo</div>`,
                 background: '#1e293b',
                 color: '#f8fafc',
+                width: '520px',
                 html: `
-                    <div style="text-align:center;">
-                        <div style="font-size:0.85rem; color:#94a3b8; margin-bottom:0.75rem;">
-                            Cliente: <strong style="color:#f8fafc;">${c.cliente_nombre}</strong> • Monto: <strong style="color:#34d399;">$ ${montoFormateado}</strong>
+                    <div style="text-align:center; font-size:0.84rem; color:#cbd5e1;">
+                        <div style="margin-bottom:0.65rem;">
+                            <strong style="color:#f8fafc;">${escapeHtml(c.cliente_nombre)}</strong> •
+                            <span style="display:inline-block; background:${montoSugeridoNum ? 'rgba(16,185,129,0.16)' : 'rgba(56,189,248,0.16)'}; color:${montoSugeridoNum ? '#6ee7b7' : '#7dd3fc'}; padding:0.15rem 0.55rem; border-radius:999px; font-weight:800; font-size:0.76rem;">
+                                ${escapeHtml(montoTexto)}
+                            </span>
                         </div>
 
-                        <!-- Código QR Escaneable -->
-                        <div style="display:inline-block; background:#ffffff; padding:0.65rem; border-radius:0.85rem; box-shadow:0 4px 15px rgba(0,0,0,0.3); margin-bottom:0.6rem;">
-                            <img src="${qrUrl}" alt="QR Ensobrado" style="width:190px; height:190px; display:block;" />
-                        </div>
+                        ${qrDataUrl ? `
+                        <div style="display:inline-block; background:#ffffff; padding:0.65rem; border-radius:0.85rem; box-shadow:0 4px 15px rgba(0,0,0,0.35); margin-bottom:0.5rem;">
+                            <img src="${qrDataUrl}" alt="QR Ensobrado" style="width:190px; height:190px; display:block;" />
+                        </div>` : ''}
 
-                        <div style="font-size:0.72rem; color:#cbd5e1; margin-bottom:0.9rem;">
-                            📱 Escaneá el código QR en pantalla o compartí el enlace directo:
-                        </div>
-
-                        <!-- Acciones de Compartir -->
-                        <div style="display:flex; flex-direction:column; gap:0.5rem; text-align:left;">
-                            <a href="${linkWA}" target="_blank" class="btn-modal-link" style="background:#059669; color:white; padding:0.65rem 1rem; border-radius:0.75rem; font-weight:700; text-decoration:none; display:flex; align-items:center; justify-content:center; gap:0.5rem;">
-                                💬 Enviar Solicitud por WhatsApp
+                        <div style="display:flex; gap:0.45rem; margin-bottom:0.9rem;">
+                            <button type="button" id="btn-copy-ensobrado-link" style="flex:1; background:#334155; color:#f8fafc; padding:0.55rem 0.75rem; border-radius:0.65rem; font-weight:700; border:none; cursor:pointer; font-size:0.8rem;">
+                                📋 Copiar Enlace
+                            </button>
+                            <a href="${escapeHtml(urlEnsobrado)}" target="_blank" style="flex:1; background:#0f172a; border:1px solid #475569; color:#cbd5e1; padding:0.55rem 0.75rem; border-radius:0.65rem; font-weight:700; text-decoration:none; font-size:0.8rem; display:flex; align-items:center; justify-content:center;">
+                                🌐 Abrir Enlace
                             </a>
+                        </div>
 
-                            <div style="display:flex; gap:0.4rem;">
-                                <button type="button" id="btn-copy-ensobrado-link" class="btn-modal-link" style="flex:1; background:#334155; color:#f8fafc; padding:0.55rem 0.75rem; border-radius:0.65rem; font-weight:700; border:none; cursor:pointer; font-size:0.8rem; display:flex; align-items:center; justify-content:center; gap:0.35rem;">
-                                    📋 Copiar Enlace
-                                </button>
-                                <a href="${urlEnsobrado}" target="_blank" class="btn-modal-link" style="flex:1; background:#1e293b; border:1px solid #475569; color:#cbd5e1; padding:0.55rem 0.75rem; border-radius:0.65rem; font-weight:700; text-decoration:none; font-size:0.8rem; display:flex; align-items:center; justify-content:center; gap:0.35rem;">
-                                    🌐 Abrir Enlace
-                                </a>
+                        <div style="text-align:left; background:#0f172a; border:1px solid #334155; border-radius:0.75rem; padding:0.75rem;">
+                            <div style="font-size:0.78rem; font-weight:800; color:#f8fafc; margin-bottom:0.5rem;">
+                                📤 Enviar Solicitud al Cliente (Motor LAMDA)
                             </div>
+
+                            <div style="display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:0.65rem;">
+                                <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.78rem; font-weight:700; color:#6ee7b7; cursor:pointer;">
+                                    <input type="checkbox" id="ens-chk-canal-wa" ${defaultCheckWa ? 'checked' : ''} style="width:1rem; height:1rem; accent-color:#10b981;">
+                                    WhatsApp (:3004)
+                                </label>
+                                <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.78rem; font-weight:700; color:#7dd3fc; cursor:pointer;">
+                                    <input type="checkbox" id="ens-chk-canal-email" ${defaultCheckEmail ? 'checked' : ''} style="width:1rem; height:1rem; accent-color:#0284c7;">
+                                    Email SMTP
+                                </label>
+                                <label style="display:flex; align-items:center; gap:0.35rem; font-size:0.74rem; color:#cbd5e1; cursor:pointer;">
+                                    <input type="checkbox" id="ens-chk-qr-wa" checked style="width:0.95rem; height:0.95rem; accent-color:#14b8a6;">
+                                    Adjuntar QR PNG
+                                </label>
+                            </div>
+
+                            <div id="ens-box-wa" style="margin-bottom:0.6rem; display:${defaultCheckWa ? 'block' : 'none'};">
+                                <div style="font-size:0.72rem; font-weight:700; color:#94a3b8; margin-bottom:0.25rem;">Destinatarios WhatsApp:</div>
+                                ${waCheckboxesHtml}
+                                <input type="tel" id="ens-input-wa-manual" class="wizard-input-mobile" placeholder="+ Otro WhatsApp manual (ej: 2215551234)" style="width:100%; margin-top:0.25rem; box-sizing:border-box; font-size:0.78rem;">
+                            </div>
+
+                            <div id="ens-box-email" style="margin-bottom:0.6rem; display:${defaultCheckEmail ? 'block' : 'none'};">
+                                <div style="font-size:0.72rem; font-weight:700; color:#94a3b8; margin-bottom:0.25rem;">Destinatarios Email:</div>
+                                ${emailCheckboxesHtml}
+                                <input type="email" id="ens-input-email-manual" class="wizard-input-mobile" placeholder="+ Otro Email manual (ej: admin@comercio.com)" style="width:100%; margin-top:0.25rem; margin-bottom:0.4rem; box-sizing:border-box; font-size:0.78rem;">
+                                <input type="text" id="ens-input-asunto" class="wizard-input-mobile" value="${escapeHtml(asuntoDefault)}" placeholder="Asunto del correo" style="width:100%; box-sizing:border-box; font-size:0.78rem;">
+                            </div>
+
+                            <label style="display:block; font-size:0.72rem; font-weight:700; color:#94a3b8; margin-bottom:0.25rem;">Vista previa editable del mensaje:</label>
+                            <textarea id="ens-textarea-msg" rows="5" style="width:100%; box-sizing:border-box; background:#1e293b; color:#f8fafc; border:1px solid #475569; border-radius:0.55rem; padding:0.5rem; font-size:0.76rem; line-height:1.38;">${escapeHtml(mensajeDefault)}</textarea>
+
+                            <div id="ens-omnicanal-feedback" style="display:none; margin-top:0.55rem; padding:0.5rem 0.65rem; border-radius:0.5rem; font-size:0.76rem; font-weight:700;"></div>
+
+                            <button type="button" id="btn-enviar-ensobrado-omnicanal" style="width:100%; margin-top:0.65rem; background:#059669; color:#ffffff; border:none; border-radius:0.65rem; padding:0.68rem 1rem; font-weight:800; font-size:0.86rem; cursor:pointer;">
+                                🚀 Enviar Solicitud Ahora
+                            </button>
                         </div>
                     </div>
                 `,
                 showConfirmButton: true,
-                confirmButtonText: 'Listo',
-                confirmButtonColor: '#0d9488',
+                confirmButtonText: 'Cerrar',
+                confirmButtonColor: '#475569',
                 didOpen: () => {
                     const btnCopy = document.getElementById('btn-copy-ensobrado-link');
                     if (btnCopy) {
                         btnCopy.onclick = () => {
-                            navigator.clipboard.writeText(urlEnsobrado);
+                            navigator.clipboard?.writeText(urlEnsobrado);
                             btnCopy.innerText = '✅ ¡Enlace Copiado!';
                             btnCopy.style.background = '#059669';
                             setTimeout(() => {
@@ -2869,12 +2948,113 @@ const ClientesMobileController = {
                             }, 2500);
                         };
                     }
+
+                    const chkWa = document.getElementById('ens-chk-canal-wa');
+                    const chkEmail = document.getElementById('ens-chk-canal-email');
+                    const boxWa = document.getElementById('ens-box-wa');
+                    const boxEmail = document.getElementById('ens-box-email');
+                    const syncVisibilidad = () => {
+                        if (boxWa) boxWa.style.display = chkWa?.checked ? 'block' : 'none';
+                        if (boxEmail) boxEmail.style.display = chkEmail?.checked ? 'block' : 'none';
+                    };
+                    if (chkWa) chkWa.addEventListener('change', syncVisibilidad);
+                    if (chkEmail) chkEmail.addEventListener('change', syncVisibilidad);
+
+                    const btnEnviar = document.getElementById('btn-enviar-ensobrado-omnicanal');
+                    const feedbackEl = document.getElementById('ens-omnicanal-feedback');
+                    if (btnEnviar) {
+                        btnEnviar.onclick = async () => {
+                            const usarWa = Boolean(chkWa?.checked);
+                            const usarEmail = Boolean(chkEmail?.checked);
+                            const waSeleccionados = Array.from(document.querySelectorAll('.ens-chk-wa-dest:checked')).map(el => el.value.trim()).filter(Boolean);
+                            const waManual = (document.getElementById('ens-input-wa-manual')?.value || '').trim();
+                            if (waManual) waSeleccionados.push(waManual);
+
+                            const emailSeleccionados = Array.from(document.querySelectorAll('.ens-chk-email-dest:checked')).map(el => el.value.trim()).filter(Boolean);
+                            const emailManual = (document.getElementById('ens-input-email-manual')?.value || '').trim();
+                            if (emailManual) emailSeleccionados.push(emailManual);
+
+                            const mensajeEditado = (document.getElementById('ens-textarea-msg')?.value || '').trim();
+                            const asuntoEditado = (document.getElementById('ens-input-asunto')?.value || '').trim();
+                            const adjuntarQrWa = document.getElementById('ens-chk-qr-wa')?.checked !== false;
+
+                            const showFb = (ok, text) => {
+                                if (!feedbackEl) return;
+                                feedbackEl.style.display = 'block';
+                                feedbackEl.style.background = ok ? 'rgba(16,185,129,0.18)' : 'rgba(239,68,68,0.2)';
+                                feedbackEl.style.color = ok ? '#6ee7b7' : '#fca5a5';
+                                feedbackEl.innerText = text;
+                            };
+
+                            if (!usarWa && !usarEmail) {
+                                showFb(false, '⚠️ Activá al menos un canal (WhatsApp o Email).');
+                                return;
+                            }
+                            if (usarWa && waSeleccionados.length === 0) {
+                                showFb(false, '⚠️ Seleccioná o ingresá un número de WhatsApp.');
+                                return;
+                            }
+                            if (usarEmail && emailSeleccionados.length === 0) {
+                                showFb(false, '⚠️ Seleccioná o ingresá un Email de destino.');
+                                return;
+                            }
+
+                            btnEnviar.disabled = true;
+                            const origTxt = btnEnviar.innerText;
+                            btnEnviar.innerText = '⏳ Enviando...';
+                            if (feedbackEl) feedbackEl.style.display = 'none';
+
+                            try {
+                                const envRes = await fetch('/api/logistica/pagos-efectivo/enviar-solicitud-omnicanal', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        codigo_sobre: codigoSobre,
+                                        url_ensobrado: urlEnsobrado,
+                                        qr_data_url: qrDataUrl,
+                                        cliente_nombre: c.cliente_nombre,
+                                        monto_sugerido: montoSugeridoNum,
+                                        canales: { whatsapp: usarWa, email: usarEmail },
+                                        destinatarios_whatsapp: waSeleccionados,
+                                        destinatarios_email: emailSeleccionados,
+                                        asunto_email: asuntoEditado,
+                                        mensaje_whatsapp: mensajeEditado,
+                                        mensaje_email: mensajeEditado,
+                                        adjuntar_qr_wa: adjuntarQrWa
+                                    })
+                                });
+                                const envData = await envRes.json().catch(() => ({}));
+                                const partes = [];
+                                if (envData.resultados?.whatsapp) {
+                                    partes.push(envData.resultados.whatsapp.success
+                                        ? `✅ WhatsApp enviado (${waSeleccionados.join(', ')})`
+                                        : `❌ WhatsApp: ${envData.resultados.whatsapp.error}`);
+                                }
+                                if (envData.resultados?.email) {
+                                    const simTag = envData.resultados.email.simulated ? ' [Simulado Lab]' : '';
+                                    partes.push(envData.resultados.email.success
+                                        ? `✅ Email enviado${simTag} (${emailSeleccionados.join(', ')})`
+                                        : `❌ Email: ${envData.resultados.email.error}`);
+                                }
+                                if (!envRes.ok || !envData.success) {
+                                    throw new Error(partes.join(' | ') || envData.error || 'Error enviando solicitud');
+                                }
+                                showFb(true, partes.join(' | '));
+                                btnEnviar.innerText = '✅ ¡Solicitud Enviada!';
+                            } catch (errEnv) {
+                                showFb(false, errEnv.message);
+                                btnEnviar.innerText = origTxt;
+                            } finally {
+                                btnEnviar.disabled = false;
+                            }
+                        };
+                    }
                 }
             });
 
         } catch (err) {
             console.error('Error generando ensobrado:', err);
-            Swal.fire('Error', err.message, 'error');
+            Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: '#1e293b', color: '#f8fafc' });
         }
     },
 

@@ -26,8 +26,10 @@ import {
   Share2,
   Copy,
   ExternalLink,
-  Mail
+  Mail,
+  QrCode
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import { registrarAccesoTelemetria } from '../utils/telemetria';
@@ -492,12 +494,24 @@ export default function PagosEfectivo({ profile, onNavigateToCC, onNavigateToHom
       });
 
       const tokenPublico = crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(36).substring(2) + Date.now().toString(36));
+      const tieneMontoFijo = formValues.monto > 0;
+      const tokenColaborador = tieneMontoFijo
+        ? (crypto.randomUUID ? crypto.randomUUID() : (Math.random().toString(36).substring(2) + Date.now().toString(36)))
+        : null;
+      const titularNombreSnap = profile.nombre_empresa || profile.nombre_completo || 'Titular';
+      const nowIso = new Date().toISOString();
 
-      // Insertar en Supabase con estado PENDIENTE_ENSOBRADO
+      // Insertar en Supabase con estado PENDIENTE_ENSOBRADO (sin placeholder de $1 cuando es monto libre)
       const nuevoSobreDerivado = {
         codigo_sobre: nuevoCodigo,
         cliente_id: profile.cliente_id,
-        monto_declarado: formValues.monto > 0 ? formValues.monto : 1, // Placeholder
+        monto_declarado: tieneMontoFijo ? formValues.monto : null,
+        monto_sugerido_inicial: tieneMontoFijo ? formValues.monto : null,
+        monto_bloqueado: tieneMontoFijo,
+        monto_fijado_por: tieneMontoFijo ? titularNombreSnap : null,
+        monto_fijado_at: tieneMontoFijo ? nowIso : null,
+        delegado_at: tieneMontoFijo ? nowIso : null,
+        cliente_nombre_snapshot: titularNombreSnap,
         desglose_billetes: {},
         foto_frente_url: null,
         foto_dorso_url: null,
@@ -505,11 +519,12 @@ export default function PagosEfectivo({ profile, onNavigateToCC, onNavigateToHom
         estado: 'PENDIENTE_ENSOBRADO',
         observaciones_cliente: formValues.nota || null,
         token_publico: tokenPublico,
+        token_colaborador: tokenColaborador,
         colaborador_nombre: formValues.nombre,
         colaborador_telefono: formValues.tel || null,
         colaborador_email: formValues.email || null,
-        derivado_por: profile.nombre_empresa || profile.nombre_completo || 'Titular',
-        fecha_derivacion: new Date().toISOString(),
+        derivado_por: titularNombreSnap,
+        fecha_derivacion: nowIso,
         sincronizado_local: false
       };
 
@@ -520,12 +535,15 @@ export default function PagosEfectivo({ profile, onNavigateToCC, onNavigateToHom
 
       if (error) throw error;
 
-      // Enlace público para el colaborador
+      // Enlace público para el colaborador (bloqueado si tiene monto fijo) o enlace abierto
       const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const baseAppUrl = isLocalHost ? 'https://proud-darkness-ac3d.miserrano75.workers.dev' : window.location.origin;
-      const urlEnsobrado = `${baseAppUrl}/#ensobrado/${tokenPublico}`;
-      const titularStr = profile.nombre_empresa || profile.nombre_completo || 'Titular';
-      const montoTexto = formValues.monto > 0 ? `$ ${formValues.monto.toLocaleString('es-AR')}` : 'el pago correspondiente';
+      const urlEnsobrado = tokenColaborador
+        ? `${baseAppUrl}/#ensobrado/colab/${tokenColaborador}`
+        : `${baseAppUrl}/#ensobrado/${tokenPublico}`;
+      const qrDataUrl = await QRCode.toDataURL(urlEnsobrado, { width: 260, margin: 2, errorCorrectionLevel: 'M' }).catch(() => '');
+      const titularStr = titularNombreSnap;
+      const montoTexto = formValues.monto > 0 ? `$ ${formValues.monto.toLocaleString('es-AR')} (monto fijo)` : 'el pago correspondiente';
 
       // 1. Si ingresó correo electrónico, intentar enviar email automático por el servidor
       let emailEnviado = false;
@@ -585,7 +603,12 @@ export default function PagosEfectivo({ profile, onNavigateToCC, onNavigateToHom
         title: '<span style="color: #16a34a; font-weight: 800;">¡Enlace de Derivación Generado!</span>',
         html: `
           <div style="text-align: center; font-size: 0.9rem; color: #334155;">
-            <p>Se asignó el sobre <strong style="color: #8e4785;">${nuevoCodigo}</strong> a <strong>${formValues.nombre}</strong>.</p>
+            <p>Se asignó el sobre <strong style="color: #8e4785;">${nuevoCodigo}</strong> a <strong>${formValues.nombre}</strong>${tieneMontoFijo ? ' (🔒 monto fijo no editable)' : ''}.</p>
+            ${qrDataUrl ? `
+              <div style="display:inline-block; background:#ffffff; padding:0.6rem; border-radius:10px; border:1px solid #cbd5e1; margin:0.5rem 0;">
+                <img src="${qrDataUrl}" alt="QR Delegación" style="width:200px; height:200px; display:block;" />
+              </div>
+            ` : ''}
             ${emailEnviado ? `
               <div style="background: #dcfce7; color: #166534; border: 1px solid #86efac; border-radius: 8px; padding: 0.5rem; margin: 0.75rem 0; font-size: 0.82rem; font-weight: 600;">
                 ✅ Correo electrónico enviado automáticamente a <strong>${formValues.email}</strong>.
@@ -629,7 +652,9 @@ export default function PagosEfectivo({ profile, onNavigateToCC, onNavigateToHom
   const handleReenviarEmail = async (sobre) => {
     const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     const baseAppUrl = isLocalHost ? 'https://proud-darkness-ac3d.miserrano75.workers.dev' : window.location.origin;
-    const linkPublico = sobre.token_publico ? `${baseAppUrl}/#ensobrado/${sobre.token_publico}` : '';
+    const linkPublico = sobre.token_colaborador
+      ? `${baseAppUrl}/#ensobrado/colab/${sobre.token_colaborador}`
+      : (sobre.token_publico ? `${baseAppUrl}/#ensobrado/${sobre.token_publico}` : '');
     const titularStr = profile.nombre_empresa || profile.nombre_completo || 'Titular';
     const emailDest = sobre.colaborador_email || '';
 
@@ -761,7 +786,9 @@ export default function PagosEfectivo({ profile, onNavigateToCC, onNavigateToHom
       'CANCELADO': '<span style="background: #f1f5f9; color: #64748b; padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: 700;">⚪ CANCELADO</span>'
     };
 
-    const linkPublico = sobre.token_publico ? `${window.location.origin}/#ensobrado/${sobre.token_publico}` : '';
+    const linkPublico = sobre.token_colaborador
+      ? `${window.location.origin}/#ensobrado/colab/${sobre.token_colaborador}`
+      : (sobre.token_publico ? `${window.location.origin}/#ensobrado/${sobre.token_publico}` : '');
 
     Swal.fire({
       title: `<span style="color: #8e4785; font-weight: 700;">Detalle de Sobre ${sobre.codigo_sobre}</span>`,
@@ -923,6 +950,34 @@ export default function PagosEfectivo({ profile, onNavigateToCC, onNavigateToHom
       `Consulta sobre el estado de retiro / recepción del sobre.`
     );
     window.open(`https://api.whatsapp.com/send?phone=${WHATSAPP_EMPRESA}&text=${mensajeWA}`, '_blank');
+  };
+
+  // Mostrar QR grande local de un sobre pendiente sin duplicarlo
+  const handleMostrarQrSobre = async (sobre, linkPublico) => {
+    if (!linkPublico) return;
+    try {
+      const qrDataUrl = await QRCode.toDataURL(linkPublico, { width: 280, margin: 3, errorCorrectionLevel: 'M' });
+      const montoTxt = parseFloat(sobre.monto_declarado) > 0 ? formatCurrency(sobre.monto_declarado) : 'A definir';
+      Swal.fire({
+        title: `<span style="color:#8e4785; font-weight:800;">QR Sobre ${sobre.codigo_sobre}</span>`,
+        html: `
+          <div style="text-align:center; font-size:0.88rem; color:#334155;">
+            <p style="margin-bottom:0.6rem;">
+              ${sobre.colaborador_nombre ? `Delegado a <strong>${sobre.colaborador_nombre}</strong> • ` : ''}
+              <strong>${montoTxt}</strong> ${sobre.monto_bloqueado ? '🔒 (Monto fijo)' : ''}
+            </p>
+            <div style="display:inline-block; background:#ffffff; padding:0.75rem; border-radius:12px; border:1px solid #cbd5e1; margin-bottom:0.65rem;">
+              <img src="${qrDataUrl}" alt="QR Sobre" style="width:240px; height:240px; display:block;" />
+            </div>
+            <div style="font-size:0.74rem; color:#64748b;">El colaborador escanea este QR con su celular y arma el sobre directo.</div>
+          </div>
+        `,
+        confirmButtonText: 'Cerrar',
+        confirmButtonColor: '#8e4785'
+      });
+    } catch (e) {
+      Swal.fire('Error', 'No se pudo generar el QR en este dispositivo.', 'error');
+    }
   };
 
   // Filtrado de sobres activos vs cancelados
@@ -1898,7 +1953,9 @@ export default function PagosEfectivo({ profile, onNavigateToCC, onNavigateToHom
 
                 const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
                 const baseAppUrl = isLocalHost ? 'https://proud-darkness-ac3d.miserrano75.workers.dev' : window.location.origin;
-                const linkPublico = s.token_publico ? `${baseAppUrl}/#ensobrado/${s.token_publico}` : '';
+                const linkPublico = s.token_colaborador
+                  ? `${baseAppUrl}/#ensobrado/colab/${s.token_colaborador}`
+                  : (s.token_publico ? `${baseAppUrl}/#ensobrado/${s.token_publico}` : '');
 
                 return (
                   <div
@@ -2001,6 +2058,14 @@ export default function PagosEfectivo({ profile, onNavigateToCC, onNavigateToHom
                             title="Reenviar Link WhatsApp"
                           >
                             <MessageSquare size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleMostrarQrSobre(s, linkPublico)}
+                            style={{ background: 'rgba(13, 148, 136, 0.2)', border: '1px solid #14b8a6', color: '#5eead4', padding: '0.45rem 0.65rem', borderRadius: '6px', fontSize: '0.78rem', cursor: 'pointer' }}
+                            title="Mostrar Código QR Grande"
+                          >
+                            <QrCode size={13} />
                           </button>
                           <button
                             type="button"

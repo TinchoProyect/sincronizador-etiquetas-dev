@@ -957,7 +957,7 @@ async function sincronizarEstados(opts = {}) {
                    EXISTS (
                        SELECT 1 FROM public.factura_cuenta_corriente_movimientos m
                        WHERE m.presupuesto_id = p.id
-                          OR (p.factura_id IS NOT NULL AND m.comprobante_id = CAST(p.factura_id AS text) AND m.tipo_comprobante = 'FACTURA')
+                          OR (p.factura_id IS NOT NULL AND m.comprobante_id = p.factura_id::bigint AND m.tipo_comprobante = 'FACTURA')
                    ) as tiene_movimientos_cc
             FROM public.presupuestos p
             LEFT JOIN (

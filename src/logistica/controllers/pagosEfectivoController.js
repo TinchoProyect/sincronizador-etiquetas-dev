@@ -277,7 +277,7 @@ exports.crearSobreDerivado = async (req, res) => {
 
         const resultado = await PagosEfectivoService.crearSobreDerivado({
             clienteId: cliente_id,
-            montoDeclarado: monto_declarado,
+            montoDeclarado: monto_declarado === undefined ? null : monto_declarado,
             colaboradorNombre: colaborador_nombre,
             colaboradorTelefono: colaborador_telefono,
             colaboradorEmail: colaborador_email,
@@ -296,5 +296,279 @@ exports.crearSobreDerivado = async (req, res) => {
             success: false,
             error: error.message
         });
+    }
+};
+
+/**
+ * Despacho omnicanal administrativo (Motor WhatsApp :3004 y/o Email SMTP)
+ * POST /api/logistica/pagos-efectivo/enviar-solicitud-omnicanal
+ */
+exports.enviarSolicitudOmnicanal = async (req, res) => {
+    try {
+        const {
+            codigo_sobre,
+            url_ensobrado,
+            qr_data_url,
+            cliente_nombre,
+            monto_sugerido,
+            canales = {},
+            destinatarios_whatsapp = [],
+            destinatarios_email = [],
+            asunto_email,
+            mensaje_whatsapp,
+            mensaje_email,
+            adjuntar_qr_wa = true
+        } = req.body || {};
+
+        if (!url_ensobrado || !codigo_sobre) {
+            return res.status(400).json({
+                success: false,
+                error: 'Faltan parámetros obligatorios (codigo_sobre, url_ensobrado).'
+            });
+        }
+
+        const usarWa = Boolean(canales.whatsapp);
+        const usarEmail = Boolean(canales.email);
+        if (!usarWa && !usarEmail) {
+            return res.status(400).json({
+                success: false,
+                error: 'Seleccioná al menos un canal de envío (WhatsApp o Email).'
+            });
+        }
+
+        const waList = (Array.isArray(destinatarios_whatsapp) ? destinatarios_whatsapp : String(destinatarios_whatsapp || '').split(','))
+            .map(v => String(v || '').trim())
+            .filter(v => v.replace(/\D/g, '').length >= 8);
+
+        const emailList = (Array.isArray(destinatarios_email) ? destinatarios_email : String(destinatarios_email || '').split(','))
+            .map(v => String(v || '').trim())
+            .filter(v => v.includes('@'));
+
+        if (usarWa && waList.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Seleccioná o ingresá al menos un número de WhatsApp válido.'
+            });
+        }
+
+        if (usarEmail && emailList.length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: 'Seleccioná o ingresá al menos una dirección de Email válida.'
+            });
+        }
+
+        const resultados = { whatsapp: null, email: null };
+
+        if (usarWa) {
+            const factBaseUrl = (process.env.FACTURACION_API_URL || `http://127.0.0.1:${process.env.FACTURACION_PORT || 3004}`).replace(/\/+$/, '');
+            const cleanQrBase64 = String(qr_data_url || '').replace(/^data:image\/png;base64,/i, '').trim();
+            const textoWa = String(mensaje_whatsapp || '').trim() || `📦 Solicitud de ensobrado ${codigo_sobre}: ${url_ensobrado}`;
+
+            try {
+                const endpoint = (adjuntar_qr_wa && cleanQrBase64)
+                    ? `${factBaseUrl}/facturacion/whatsapp/enviar-imagen`
+                    : `${factBaseUrl}/facturacion/whatsapp/enviar-mensaje`;
+                const payload = (adjuntar_qr_wa && cleanQrBase64)
+                    ? {
+                        destinatarios: waList.join(', '),
+                        base64Data: cleanQrBase64,
+                        mimeType: 'image/png',
+                        filename: `QR_Ensobrado_${codigo_sobre}.png`,
+                        mensajeTexto: textoWa
+                    }
+                    : {
+                        destinatarios: waList.join(', '),
+                        mensajeTexto: textoWa
+                    };
+
+                const waRes = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const waData = await waRes.json().catch(() => ({}));
+                if (!waRes.ok || !waData.success) {
+                    throw new Error(waData.message || waData.error || `HTTP ${waRes.status}`);
+                }
+                resultados.whatsapp = {
+                    success: true,
+                    destinatarios: waList,
+                    data: waData.data || waData
+                };
+            } catch (waErr) {
+                resultados.whatsapp = {
+                    success: false,
+                    destinatarios: waList,
+                    error: waErr.message
+                };
+            }
+        }
+
+        if (usarEmail) {
+            try {
+                const emailService = require('../../facturacion/services/emailService');
+                const titularStr = String(cliente_nombre || 'Cliente').trim();
+                const montoNum = monto_sugerido !== null && monto_sugerido !== undefined && String(monto_sugerido).trim() !== ''
+                    ? parseFloat(monto_sugerido)
+                    : null;
+                const montoHtml = (montoNum && montoNum > 0)
+                    ? `$ ${montoNum.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (sugerido / editable por titular)`
+                    : 'A definir libremente por el titular';
+
+                const subject = String(asunto_email || '').trim()
+                    || `📦 Solicitud de Ensobrado de Efectivo [${codigo_sobre}] - ${titularStr}`;
+
+                const cuerpoTexto = String(mensaje_email || '').trim();
+                const cuerpoHtml = cuerpoTexto
+                    ? cuerpoTexto.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')
+                    : `Te enviamos el acceso directo para preparar el sobre de efectivo <strong>${codigo_sobre}</strong>.`;
+
+                const cleanQrBase64 = String(qr_data_url || '').replace(/^data:image\/png;base64,/i, '').trim();
+                const attachments = cleanQrBase64
+                    ? [{
+                        filename: `QR_Ensobrado_${codigo_sobre}.png`,
+                        content: Buffer.from(cleanQrBase64, 'base64'),
+                        cid: 'qr_ensobrado_lamda'
+                    }]
+                    : [];
+
+                const htmlBody = `
+                    <!DOCTYPE html>
+                    <html lang="es">
+                    <head><meta charset="UTF-8"></head>
+                    <body style="font-family:'Segoe UI',sans-serif; background:#f1f5f9; color:#0f172a; padding:20px;">
+                        <div style="max-width:580px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; border-top:6px solid #0d9488; box-shadow:0 4px 12px rgba(0,0,0,0.06);">
+                            <div style="padding:20px 24px; background:#f0fdfa; border-bottom:1px solid #ccfbf1;">
+                                <h2 style="margin:0; color:#0f766e; font-size:19px;">📦 Solicitud de Ensobrado de Efectivo</h2>
+                                <div style="font-size:12px; color:#64748b; margin-top:4px;">${titularStr} • Código ${codigo_sobre}</div>
+                            </div>
+                            <div style="padding:22px 24px; font-size:14px; line-height:1.55; color:#334155;">
+                                <p style="margin-top:0;">${cuerpoHtml}</p>
+                                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 14px; margin:16px 0;">
+                                    <div><strong>Código de sobre:</strong> ${codigo_sobre}</div>
+                                    <div><strong>Importe:</strong> ${montoHtml}</div>
+                                </div>
+                                ${cleanQrBase64 ? `
+                                <div style="text-align:center; margin:16px 0;">
+                                    <img src="cid:qr_ensobrado_lamda" alt="QR Ensobrado" style="width:180px; height:180px; border:1px solid #e2e8f0; border-radius:8px; padding:6px; background:#ffffff;" />
+                                </div>` : ''}
+                                <div style="text-align:center; margin:18px 0;">
+                                    <a href="${url_ensobrado}" target="_blank" style="display:inline-block; background:#0d9488; color:#ffffff; text-decoration:none; padding:12px 22px; border-radius:8px; font-weight:700;">
+                                        👉 Abrir Asistente de Ensobrado
+                                    </a>
+                                </div>
+                                <p style="font-size:12px; color:#64748b; word-break:break-all;">Enlace directo: ${url_ensobrado}</p>
+                            </div>
+                        </div>
+                    </body>
+                    </html>
+                `;
+
+                const emailRes = await emailService.enviarEmail({
+                    to: emailList.join(', '),
+                    subject,
+                    htmlBody,
+                    attachments
+                });
+
+                resultados.email = {
+                    success: true,
+                    destinatarios: emailList,
+                    simulated: Boolean(emailRes.simulated),
+                    messageId: emailRes.messageId || null
+                };
+            } catch (emailErr) {
+                resultados.email = {
+                    success: false,
+                    destinatarios: emailList,
+                    error: emailErr.message
+                };
+            }
+        }
+
+        const waOk = !usarWa || Boolean(resultados.whatsapp?.success);
+        const emailOk = !usarEmail || Boolean(resultados.email?.success);
+        const alMenosUnoOk = Boolean((usarWa && resultados.whatsapp?.success) || (usarEmail && resultados.email?.success));
+
+        return res.status(alMenosUnoOk ? 200 : 500).json({
+            success: alMenosUnoOk,
+            parcial: alMenosUnoOk && (!waOk || !emailOk),
+            resultados
+        });
+    } catch (error) {
+        console.error('❌ [PAGOS-EFECTIVO-CTRL] Error en enviarSolicitudOmnicanal:', error.message);
+        return res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+exports.obtenerSobrePublico = async (req, res) => {
+    try {
+        const { token } = req.params;
+        const resultado = await PagosEfectivoService.obtenerSobrePublicoPorToken(token);
+        if (!resultado.ok) {
+            return res.status(resultado.status || 404).json(resultado);
+        }
+        return res.json(resultado);
+    } catch (error) {
+        console.error('❌ [PAGOS-EFECTIVO-CTRL] Error en obtenerSobrePublico:', error.message);
+        return res.status(500).json({ ok: false, error: error.message });
+    }
+};
+
+exports.delegarSobrePublico = async (req, res) => {
+    try {
+        const { token } = req.params;
+        const { monto, colaborador_nombre, nota, fijado_por } = req.body || {};
+        const resultado = await PagosEfectivoService.delegarSobreDesdeDueno({
+            tokenDueno: token,
+            monto,
+            colaboradorNombre: colaborador_nombre,
+            nota,
+            fijadoPor: fijado_por
+        });
+        if (!resultado.ok) {
+            return res.status(resultado.status || 400).json(resultado);
+        }
+        return res.json(resultado);
+    } catch (error) {
+        console.error('❌ [PAGOS-EFECTIVO-CTRL] Error en delegarSobrePublico:', error.message);
+        return res.status(500).json({ ok: false, error: error.message });
+    }
+};
+
+exports.completarSobrePublico = async (req, res) => {
+    try {
+        const { token } = req.params;
+        const {
+            monto,
+            desglose_billetes,
+            foto_frente_url,
+            foto_dorso_url,
+            modalidad_entrega,
+            colaborador_nombre,
+            observaciones
+        } = req.body || {};
+
+        const resultado = await PagosEfectivoService.completarSobrePublico({
+            token,
+            monto,
+            desgloseBilletes: desglose_billetes,
+            fotoFrenteUrl: foto_frente_url,
+            fotoDorsoUrl: foto_dorso_url,
+            modalidadEntrega: modalidad_entrega,
+            colaboradorNombre: colaborador_nombre,
+            observaciones
+        });
+        if (!resultado.ok) {
+            return res.status(resultado.status || 400).json(resultado);
+        }
+        return res.json(resultado);
+    } catch (error) {
+        console.error('❌ [PAGOS-EFECTIVO-CTRL] Error en completarSobrePublico:', error.message);
+        return res.status(500).json({ ok: false, error: error.message });
     }
 };

@@ -53,11 +53,22 @@ pool.query('SELECT NOW()', async (err, res) => {
 
             await pool.query(`
                 ALTER TABLE public.factura_pagos_efectivo 
+                ALTER COLUMN monto_declarado DROP NOT NULL,
                 ADD COLUMN IF NOT EXISTS id_ruta INTEGER REFERENCES public.rutas(id) ON DELETE SET NULL,
                 ADD COLUMN IF NOT EXISTS orden_entrega INTEGER DEFAULT 999,
-                ADD COLUMN IF NOT EXISTS id_domicilio_entrega INTEGER REFERENCES public.clientes_domicilios(id) ON DELETE SET NULL;
+                ADD COLUMN IF NOT EXISTS id_domicilio_entrega INTEGER REFERENCES public.clientes_domicilios(id) ON DELETE SET NULL,
+                ADD COLUMN IF NOT EXISTS token_colaborador TEXT,
+                ADD COLUMN IF NOT EXISTS monto_sugerido_inicial NUMERIC(12, 2),
+                ADD COLUMN IF NOT EXISTS monto_bloqueado BOOLEAN NOT NULL DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS monto_fijado_por TEXT,
+                ADD COLUMN IF NOT EXISTS monto_fijado_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS delegado_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS cliente_nombre_snapshot TEXT;
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_factura_pagos_efectivo_token_colaborador
+                    ON public.factura_pagos_efectivo(token_colaborador)
+                    WHERE token_colaborador IS NOT NULL;
             `);
-            console.log('✅ [LOGISTICA] Columnas id_ruta, orden_entrega e id_domicilio_entrega verificadas/agregadas a factura_pagos_efectivo');
+            console.log('✅ [LOGISTICA] Columnas y gobernanza doble-token verificadas/agregadas a factura_pagos_efectivo');
 
             // Crear tabla de clientes búnker si no existe
             await pool.query(`

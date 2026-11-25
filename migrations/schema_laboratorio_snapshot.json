@@ -1,6 +1,6 @@
 {
   "tableCount": 177,
-  "uniqueIndexCount": 262,
+  "uniqueIndexCount": 263,
   "tables": {
     "abrir_caja_aprendizaje": {
       "codigo_caja": {
@@ -9170,7 +9170,7 @@
         "character_maximum_length": null,
         "numeric_precision": 15,
         "numeric_scale": 2,
-        "is_nullable": "NO",
+        "is_nullable": "YES",
         "column_default": null
       },
       "desglose_billetes": {
@@ -9430,6 +9430,76 @@
         "character_maximum_length": null,
         "numeric_precision": 32,
         "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "token_colaborador": {
+        "ordinal_position": 31,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "monto_sugerido_inicial": {
+        "ordinal_position": 32,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 12,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "monto_bloqueado": {
+        "ordinal_position": 33,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "monto_fijado_por": {
+        "ordinal_position": 34,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "monto_fijado_at": {
+        "ordinal_position": 35,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "delegado_at": {
+        "ordinal_position": 36,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "cliente_nombre_snapshot": {
+        "ordinal_position": 37,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
       }
@@ -23631,6 +23701,19 @@
       ],
       "has_expression_key": false,
       "sig": "factura_pagos_efectivo::(id)[pred=]"
+    },
+    {
+      "table_name": "factura_pagos_efectivo",
+      "index_name": "idx_factura_pagos_efectivo_token_colaborador",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX idx_factura_pagos_efectivo_token_colaborador ON public.factura_pagos_efectivo USING btree (token_colaborador) WHERE (token_colaborador IS NOT NULL)",
+      "index_predicate": "(token_colaborador IS NOT NULL)",
+      "key_columns": [
+        "token_colaborador"
+      ],
+      "has_expression_key": false,
+      "sig": "factura_pagos_efectivo::(token_colaborador)[pred=(token_colaborador is not null)]"
     },
     {
       "table_name": "faltantes_pendientes_compra",

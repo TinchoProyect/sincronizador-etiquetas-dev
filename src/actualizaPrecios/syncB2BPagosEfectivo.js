@@ -132,7 +132,9 @@ async function sincronizarPagosEfectivo(opts = {}) {
 
     const queryLocalesPendientes = `
       SELECT id, codigo_sobre, cliente_id, estado, modalidad_entrega, local_movimiento_id,
-             recibo_url, observaciones_admin, monto_auditado, fecha_auditoria
+             recibo_url, observaciones_admin, monto_auditado, fecha_auditoria,
+             monto_declarado, token_colaborador, monto_sugerido_inicial, monto_bloqueado,
+             monto_fijado_por, monto_fijado_at, delegado_at, cliente_nombre_snapshot
       FROM public.factura_pagos_efectivo
       WHERE sincronizado_supabase = false;
     `;
@@ -149,6 +151,14 @@ async function sincronizarPagosEfectivo(opts = {}) {
           local_movimiento_id: sobLoc.local_movimiento_id || null,
           recibo_url: sobLoc.recibo_url || null,
           observaciones_admin: sobLoc.observaciones_admin || null,
+          monto_declarado: sobLoc.monto_declarado !== null && sobLoc.monto_declarado !== undefined ? Number(sobLoc.monto_declarado) : null,
+          token_colaborador: sobLoc.token_colaborador || null,
+          monto_sugerido_inicial: sobLoc.monto_sugerido_inicial !== null && sobLoc.monto_sugerido_inicial !== undefined ? Number(sobLoc.monto_sugerido_inicial) : null,
+          monto_bloqueado: Boolean(sobLoc.monto_bloqueado),
+          monto_fijado_por: sobLoc.monto_fijado_por || null,
+          monto_fijado_at: sobLoc.monto_fijado_at || null,
+          delegado_at: sobLoc.delegado_at || null,
+          cliente_nombre_snapshot: sobLoc.cliente_nombre_snapshot || null,
           sincronizado_local: true,
           updated_at: new Date().toISOString()
         };
@@ -228,18 +238,23 @@ async function sincronizarPagosEfectivo(opts = {}) {
                 foto_frente_url, foto_dorso_url, modalidad_entrega, estado,
                 observaciones_cliente, token_publico, colaborador_nombre,
                 colaborador_telefono, colaborador_email, derivado_por, fecha_derivacion,
+                token_colaborador, monto_sugerido_inicial, monto_bloqueado,
+                monto_fijado_por, monto_fijado_at, delegado_at, cliente_nombre_snapshot,
                 sincronizado_supabase, fecha_creacion, fecha_actualizacion
               ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8,
                 $9, $10, $11, $12, $13, $14, $15,
-                true, COALESCE($16::timestamp, NOW()), NOW()
+                $16, $17, $18, $19, $20, $21, $22,
+                true, COALESCE($23::timestamp, NOW()), NOW()
               )
               ON CONFLICT (codigo_sobre) DO NOTHING;
             `;
+            const montoDeclaradoInsert = (sob.monto_declarado !== null && sob.monto_declarado !== undefined) ? Number(sob.monto_declarado) : null;
+            const montoSugeridoInsert = (sob.monto_sugerido_inicial !== null && sob.monto_sugerido_inicial !== undefined) ? Number(sob.monto_sugerido_inicial) : null;
             await localClient.query(queryInsert, [
               sob.codigo_sobre,
               sob.cliente_id,
-              sob.monto_declarado || 0,
+              montoDeclaradoInsert,
               JSON.stringify(sob.desglose_billetes || {}),
               sob.foto_frente_url || null,
               sob.foto_dorso_url || null,
@@ -252,10 +267,17 @@ async function sincronizarPagosEfectivo(opts = {}) {
               sob.colaborador_email || null,
               sob.derivado_por || null,
               sob.fecha_derivacion || null,
+              sob.token_colaborador || null,
+              montoSugeridoInsert,
+              Boolean(sob.monto_bloqueado),
+              sob.monto_fijado_por || null,
+              sob.monto_fijado_at || null,
+              sob.delegado_at || null,
+              sob.cliente_nombre_snapshot || null,
               sob.created_at || null
             ]);
             bajadosCount++;
-            console.log(`📥 [SYNC-PAGOS-EFECTIVO] Sobre ${sob.codigo_sobre} (${sob.cliente_id} • $${sob.monto_declarado} • ${sob.modalidad_entrega}) incorporado en BD local.`);
+            console.log(`📥 [SYNC-PAGOS-EFECTIVO] Sobre ${sob.codigo_sobre} (${sob.cliente_id} • $${sob.monto_declarado ?? 'A definir'} • ${sob.modalidad_entrega}) incorporado en BD local.`);
           } else if (pendienteMarcarSupa) {
             // Ya existe localmente pero el cliente lo actualizó en el Portal -> UPDATE sin inflar SERIAL
             const queryUpdate = `
@@ -274,14 +296,23 @@ async function sincronizarPagosEfectivo(opts = {}) {
                 colaborador_email = $12,
                 derivado_por = $13,
                 fecha_derivacion = $14,
+                token_colaborador = $15,
+                monto_sugerido_inicial = COALESCE($16, monto_sugerido_inicial),
+                monto_bloqueado = $17,
+                monto_fijado_por = $18,
+                monto_fijado_at = $19,
+                delegado_at = $20,
+                cliente_nombre_snapshot = COALESCE($21, cliente_nombre_snapshot),
                 fecha_actualizacion = NOW()
               WHERE codigo_sobre = $1
                 AND estado != 'ACREDITADO'
                 AND sincronizado_supabase = true;
             `;
+            const montoDeclaradoUpd = (sob.monto_declarado !== null && sob.monto_declarado !== undefined) ? Number(sob.monto_declarado) : null;
+            const montoSugeridoUpd = (sob.monto_sugerido_inicial !== null && sob.monto_sugerido_inicial !== undefined) ? Number(sob.monto_sugerido_inicial) : null;
             await localClient.query(queryUpdate, [
               sob.codigo_sobre,
-              sob.monto_declarado || 0,
+              montoDeclaradoUpd,
               JSON.stringify(sob.desglose_billetes || {}),
               sob.foto_frente_url || null,
               sob.foto_dorso_url || null,
@@ -293,7 +324,14 @@ async function sincronizarPagosEfectivo(opts = {}) {
               sob.colaborador_telefono || null,
               sob.colaborador_email || null,
               sob.derivado_por || null,
-              sob.fecha_derivacion || null
+              sob.fecha_derivacion || null,
+              sob.token_colaborador || null,
+              montoSugeridoUpd,
+              Boolean(sob.monto_bloqueado),
+              sob.monto_fijado_por || null,
+              sob.monto_fijado_at || null,
+              sob.delegado_at || null,
+              sob.cliente_nombre_snapshot || null
             ]);
             bajadosCount++;
             console.log(`🔄 [SYNC-PAGOS-EFECTIVO] Sobre ${sob.codigo_sobre} actualizado desde Portal B2B.`);
