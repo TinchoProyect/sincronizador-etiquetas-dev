@@ -85,7 +85,7 @@ function esEmailPlaceholder(email) {
 }
 
 function esTokenValidoFormato(token) {
-    return /^[a-f0-9-]{16,80}$/i.test(String(token || '').trim());
+    return /^[a-z0-9_-]{8,80}$/i.test(String(token || '').trim());
 }
 
 function sanitizarHora(val) {

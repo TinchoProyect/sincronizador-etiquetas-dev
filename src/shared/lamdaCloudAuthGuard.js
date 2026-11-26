@@ -232,9 +232,9 @@ function esRutaPublicaAllowlist(reqOrPath) {
 
     // 3A. Autogestión Pública de Domicilio de Entrega por token único (strict allowlist)
     if (
-        (reqMethod === 'GET' && /^\/mi-domicilio\/[a-f0-9-]{16,80}$/i.test(reqPathLower)) ||
-        (reqMethod === 'GET' && /^\/api\/public\/domicilio\/[a-f0-9-]{16,80}(?:\/geocodificar(?:-inverso)?)?$/i.test(reqPathLower)) ||
-        (reqMethod === 'POST' && /^\/api\/public\/domicilio\/[a-f0-9-]{16,80}\/confirmar$/i.test(reqPathLower))
+        (reqMethod === 'GET' && /^\/mi-domicilio\/[a-z0-9_-]{8,80}$/i.test(reqPathLower)) ||
+        (reqMethod === 'GET' && /^\/api\/public\/domicilio\/[a-z0-9_-]{8,80}(?:\/geocodificar(?:-inverso)?)?$/i.test(reqPathLower)) ||
+        (reqMethod === 'POST' && /^\/api\/public\/domicilio\/[a-z0-9_-]{8,80}\/confirmar$/i.test(reqPathLower))
     ) {
         return true;
     }

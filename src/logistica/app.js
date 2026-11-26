@@ -511,7 +511,7 @@ console.log('[LOGISTICA] ✅ Rutas de Domicilios montadas en /api/logistica/domi
 // Rutas públicas tokenizadas de Autogestión de Domicilio del Cliente
 app.get('/mi-domicilio/:token', (req, res) => {
     const cleanToken = String(req.params.token || '').trim();
-    if (!/^[a-f0-9-]{16,80}$/i.test(cleanToken)) {
+    if (!/^[a-z0-9_-]{8,80}$/i.test(cleanToken)) {
         return res.status(404).send('Enlace de domicilio inválido.');
     }
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
