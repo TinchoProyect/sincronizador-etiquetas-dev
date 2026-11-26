@@ -508,6 +508,18 @@ app.use(createB2BAutoSyncMiddleware('logistica'));
 app.use('/api/logistica/domicilios', require('./routes/domicilios'));
 console.log('[LOGISTICA] ✅ Rutas de Domicilios montadas en /api/logistica/domicilios');
 
+// Rutas públicas tokenizadas de Autogestión de Domicilio del Cliente
+app.get('/mi-domicilio/:token', (req, res) => {
+    const cleanToken = String(req.params.token || '').trim();
+    if (!/^[a-f0-9-]{16,80}$/i.test(cleanToken)) {
+        return res.status(404).send('Enlace de domicilio inválido.');
+    }
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    return res.sendFile(path.join(staticPath, 'public', 'mi-domicilio.html'));
+});
+app.use('/api/public/domicilio', require('./routes/domicilioPublico'));
+console.log('[LOGISTICA] ✅ Rutas públicas de Autogestión de Domicilios montadas en /mi-domicilio/:token y /api/public/domicilio');
+
 // Rutas de Rutas
 app.use('/api/logistica/rutas', require('./routes/rutas'));
 console.log('[LOGISTICA] ✅ Rutas de Rutas montadas en /api/logistica/rutas');

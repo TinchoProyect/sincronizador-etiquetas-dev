@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover">
+    <meta name="theme-color" content="#6d28d9">
+    <title>Cargar Domicilio de Entrega — LAMDA</title>
+    <link rel="icon" type="image/png" href="/img/isotipo_L_LAMDA.png">
+    <link rel="apple-touch-icon" href="/img/isotipo_L_LAMDA.png">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+    <link rel="stylesheet" href="/css/mi-domicilio-publico.css?v=1.0.0">
+</head>
+<body>
+    <div id="app-shell" class="dom-shell">
+        <!-- CABECERA WIZARD -->
+        <header id="wizard-header" class="dom-header">
+            <div class="dom-header-row">
+                <button type="button" id="btn-step-back" class="dom-btn-back hidden" aria-label="Volver al paso anterior">
+                    ← Volver
+                </button>
+                <div class="dom-brand-wrap">
+                    <img src="/img/isotipo_L_LAMDA.png" alt="LAMDA" class="dom-brand-logo">
+                    <div class="dom-brand-text">
+                        <span class="dom-brand-name">LAMDA Logística</span>
+                        <span id="header-subtitulo" class="dom-brand-sub">Domicilio de Entrega</span>
+                    </div>
+                </div>
+                <span id="step-badge" class="dom-step-badge hidden">Paso 1 de 3</span>
+            </div>
+            <div id="progress-track" class="dom-progress-track hidden" aria-hidden="true">
+                <div id="progress-fill" class="dom-progress-fill" style="width: 33.33%;"></div>
+            </div>
+        </header>
+
+        <!-- ESTADO: CARGANDO -->
+        <main id="view-loading" class="dom-main dom-center-card">
+            <div class="dom-spinner"></div>
+            <p class="dom-muted">Preparando tu asistente de ubicación...</p>
+        </main>
+
+        <!-- ESTADO: ERROR / EXPIRADA / REVOCADA -->
+        <main id="view-estado-bloqueado" class="dom-main dom-center-card hidden">
+            <div class="dom-status-card">
+                <div id="estado-bloqueado-icon" class="dom-status-emoji">⚠️</div>
+                <h1 id="estado-bloqueado-titulo" class="dom-status-title">Enlace no disponible</h1>
+                <p id="estado-bloqueado-desc" class="dom-status-desc"></p>
+                <div class="dom-status-tip">
+                    Si necesitás cargar o actualizar tu dirección de entrega, pedile un nuevo enlace a tu vendedor de LAMDA por WhatsApp.
+                </div>
+            </div>
+        </main>
+
+        <!-- ESTADO: COMPROBANTE COMPLETADO (SOLO LECTURA) -->
+        <main id="view-completada" class="dom-main dom-center-card hidden">
+            <div class="dom-status-card dom-status-ok">
+                <div class="dom-status-emoji">✅</div>
+                <h1 class="dom-status-title">¡Listo! Domicilio registrado</h1>
+                <p id="comp-saludo" class="dom-status-desc">
+                    Ya guardamos tu dirección y ubicación exacta para tus próximas entregas de LAMDA.
+                </p>
+                <div id="comp-resumen-box" class="dom-receipt-box"></div>
+                <p class="dom-receipt-foot">
+                    Podés cerrar esta ventana. Este enlace ya quedó utilizado por seguridad.
+                </p>
+            </div>
+        </main>
+
+        <!-- WIZARD ACTIVO (3 PASOS) -->
+        <main id="view-wizard" class="dom-main hidden">
+            <!-- PASO 1: MAPA & GPS -->
+            <section id="step-1" class="dom-step-panel">
+                <div class="dom-hero-greeting">
+                    <h1 id="lbl-saludo-cliente" class="dom-title">Hola 👋</h1>
+                    <p id="lbl-subtitulo-modo" class="dom-subtitle">
+                        Indicá en el mapa el punto exacto donde entregamos tu pedido.
+                    </p>
+                    <div id="box-nota-operador" class="dom-note-banner hidden"></div>
+                </div>
+
+                <button type="button" id="btn-usar-gps" class="dom-btn-gps">
+                    <span class="dom-gps-icon">🎯</span>
+                    <span id="btn-gps-label">Usar mi ubicación actual (GPS)</span>
+                </button>
+                <div id="gps-status-pill" class="dom-gps-pill hidden"></div>
+
+                <!-- Buscador de dirección -->
+                <div class="dom-search-box">
+                    <div class="dom-search-row">
+                        <input
+                            type="text"
+                            id="inp-buscar-mapa"
+                            class="dom-input dom-search-input"
+                            placeholder="Buscar calle y altura (ej: 58 774, La Plata)"
+                            autocomplete="off"
+                            enterkeyhint="search"
+                        >
+                        <button type="button" id="btn-buscar-mapa" class="dom-btn-search">
+                            Buscar
+                        </button>
+                    </div>
+                    <div id="search-results-dropdown" class="dom-search-results hidden"></div>
+                </div>
+
+                <!-- Mapa Leaflet con pin central fijo -->
+                <div class="dom-map-wrapper">
+                    <div id="leaflet-map-canvas" class="dom-map-canvas">
+                        <div class="dom-map-loading">Cargando mapa...</div>
+                    </div>
+                    <div class="dom-map-center-pin" aria-hidden="true">
+                        <div class="dom-pin-head">📍</div>
+                        <div class="dom-pin-shadow"></div>
+                    </div>
+                    <div class="dom-map-layer-toggle" role="group" aria-label="Tipo de mapa">
+                        <button type="button" id="btn-capa-calle" class="dom-layer-btn active">🗺️ Callejero</button>
+                        <button type="button" id="btn-capa-satelite" class="dom-layer-btn">🛰️ Satélite</button>
+                    </div>
+                </div>
+
+                <div id="map-pin-info" class="dom-pin-info">
+                    Mové el mapa o tocá tu ubicación para clavar el pin en el portón o puerta.
+                </div>
+
+                <button type="button" id="btn-fallback-sin-mapa" class="dom-link-fallback">
+                    No puedo usar el mapa, cargar dirección escrita →
+                </button>
+            </section>
+
+            <!-- PASO 2: DIRECCIÓN ESCRITA Y TIPO / ALIAS -->
+            <section id="step-2" class="dom-step-panel hidden">
+                <h2 class="dom-title-sm">Confirmá los datos de la dirección</h2>
+                <p class="dom-subtitle">Revisá la calle, altura y agregá las entre calles para que el chofer llegue directo.</p>
+
+                <div id="box-alias-existentes" class="dom-info-banner hidden"></div>
+
+                <div class="dom-field-group">
+                    <label class="dom-label">Tipo de lugar</label>
+                    <div id="chips-tipo-lugar" class="dom-chips-grid">
+                        <button type="button" class="dom-chip" data-tipo="CASA" data-alias="Casa">🏠 Casa</button>
+                        <button type="button" class="dom-chip" data-tipo="COMERCIO" data-alias="Comercio / Local">🏪 Comercio</button>
+                        <button type="button" class="dom-chip" data-tipo="DEPOSITO" data-alias="Depósito">🏭 Depósito</button>
+                        <button type="button" class="dom-chip" data-tipo="OTRO" data-alias="Otro punto">🏢 Otro</button>
+                    </div>
+                </div>
+
+                <div class="dom-field-group">
+                    <label class="dom-label" for="inp-alias">Nombre o Alias del lugar <span class="req">*</span></label>
+                    <input type="text" id="inp-alias" class="dom-input" placeholder="Ej: Local Centro, Casa, Depósito Ruta 2" maxlength="80" autocomplete="off">
+                </div>
+
+                <div class="dom-grid-calle-num">
+                    <div class="dom-field-group">
+                        <label class="dom-label" for="inp-calle">Calle / Av. / Diagonal <span class="req">*</span></label>
+                        <input type="text" id="inp-calle" class="dom-input" placeholder="Ej: Calle 58 o Diag. 74" maxlength="140" autocomplete="street-address">
+                    </div>
+                    <div class="dom-field-group">
+                        <label class="dom-label" for="inp-numero">Altura / N° <span class="req" id="req-numero">*</span></label>
+                        <input type="text" id="inp-numero" class="dom-input" placeholder="Ej: 774" maxlength="20" inputmode="text">
+                    </div>
+                </div>
+
+                <label class="dom-check-row">
+                    <input type="checkbox" id="chk-sin-numero">
+                    <span>Es esquina, quinta o lote sin número exacto</span>
+                </label>
+
+                <div class="dom-grid-2">
+                    <div class="dom-field-group">
+                        <label class="dom-label" for="inp-entre-calles">Entre calles / Esquina</label>
+                        <input type="text" id="inp-entre-calles" class="dom-input" placeholder="Ej: 10 y 11" maxlength="100">
+                    </div>
+                    <div class="dom-field-group">
+                        <label class="dom-label" for="inp-piso-depto">Piso / Depto / Timbre</label>
+                        <input type="text" id="inp-piso-depto" class="dom-input" placeholder="Ej: PB, Local B" maxlength="60">
+                    </div>
+                </div>
+
+                <div class="dom-grid-2">
+                    <div class="dom-field-group">
+                        <label class="dom-label" for="inp-localidad">Localidad / Barrio <span class="req">*</span></label>
+                        <input type="text" id="inp-localidad" class="dom-input" placeholder="Ej: La Plata" maxlength="100" autocomplete="address-level2">
+                    </div>
+                    <div class="dom-field-group">
+                        <label class="dom-label" for="inp-provincia">Provincia</label>
+                        <input type="text" id="inp-provincia" class="dom-input" value="Buenos Aires" placeholder="Buenos Aires" maxlength="100" autocomplete="address-level1">
+                    </div>
+                </div>
+
+                <div class="dom-field-group">
+                    <label class="dom-label" for="inp-cp">Código Postal (opcional)</label>
+                    <input type="text" id="inp-cp" class="dom-input" placeholder="Ej: 1900" maxlength="12" inputmode="numeric" autocomplete="postal-code">
+                </div>
+
+                <div class="dom-preview-dir">
+                    <span class="dom-preview-label">Dirección resultante:</span>
+                    <strong id="lbl-preview-direccion">—</strong>
+                </div>
+            </section>
+
+            <!-- PASO 3: RECEPCIÓN, HORARIOS Y CONFIRMACIÓN -->
+            <section id="step-3" class="dom-step-panel hidden">
+                <h2 class="dom-title-sm">Último paso: recepción y referencias</h2>
+                <p class="dom-subtitle">Ayudanos a coordinar la entrega sin demoras.</p>
+
+                <div class="dom-field-group">
+                    <label class="dom-label">Horario habitual para recibir</label>
+                    <div id="chips-horario" class="dom-chips-grid">
+                        <button type="button" class="dom-chip" data-desde="08:00" data-hasta="13:00" data-mode="preset">🌅 Mañana (08 a 13)</button>
+                        <button type="button" class="dom-chip" data-desde="13:00" data-hasta="18:00" data-mode="preset">🌇 Tarde (13 a 18)</button>
+                        <button type="button" class="dom-chip" data-desde="09:00" data-hasta="18:00" data-mode="preset">🕘 Corrido (09 a 18)</button>
+                        <button type="button" class="dom-chip" data-desde="" data-hasta="" data-mode="custom">⏱️ Otro horario</button>
+                        <button type="button" class="dom-chip active" data-desde="" data-hasta="" data-mode="none">👌 Sin preferencia</button>
+                    </div>
+                </div>
+
+                <div id="box-horario-custom" class="dom-grid-2 hidden">
+                    <div class="dom-field-group">
+                        <label class="dom-label" for="inp-hora-desde">Desde</label>
+                        <input type="time" id="inp-hora-desde" class="dom-input">
+                    </div>
+                    <div class="dom-field-group">
+                        <label class="dom-label" for="inp-hora-hasta">Hasta</label>
+                        <input type="time" id="inp-hora-hasta" class="dom-input">
+                    </div>
+                </div>
+
+                <div class="dom-field-group">
+                    <label class="dom-label" for="inp-instrucciones">Referencias para el chofer (opcional)</label>
+                    <textarea id="inp-instrucciones" class="dom-textarea" rows="3" placeholder="Ej: Portón gris, rejas negras, tocar timbre lateral, preguntar por Fabián..." maxlength="400"></textarea>
+                </div>
+
+                <div class="dom-field-group">
+                    <label class="dom-label" for="inp-telefono-recibe">Teléfono de quien recibe (opcional)</label>
+                    <input type="tel" id="inp-telefono-recibe" class="dom-input" placeholder="Ej: 221 555-1234" maxlength="40" autocomplete="tel">
+                </div>
+
+                <div class="dom-summary-card">
+                    <div class="dom-summary-head">📋 Resumen de tu domicilio</div>
+                    <div id="step-3-summary-body" class="dom-summary-body"></div>
+                </div>
+
+                <div id="submit-error-box" class="dom-error-banner hidden"></div>
+            </section>
+        </main>
+
+        <!-- BARRA INFERIOR FIJA -->
+        <footer id="wizard-footer" class="dom-footer hidden">
+            <button type="button" id="btn-step-next" class="dom-btn-primary" disabled>
+                Confirmar punto y continuar →
+            </button>
+        </footer>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="/js/mi-domicilio-publico.js?v=1.0.0"></script>
+</body>
+</html>

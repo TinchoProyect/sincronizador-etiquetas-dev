@@ -1055,18 +1055,25 @@
 
                 <!-- Domicilios de Entrega (Multidomicilio) -->
                 <div class="form-group" style="border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 15px;">
-                    <label class="form-label" style="font-weight: bold; color: #1e293b; display: flex; justify-content: space-between; align-items: center;">
+                    <label class="form-label" style="font-weight: bold; color: #1e293b; display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap;">
                         <span style="display: flex; align-items: center; gap: 6px;">📍 Domicilios de Entrega</span>
-                        <button type="button" id="btn-add-domicilio" class="btn-premium" style="background-color: #6b21a8; color: white; padding: 4px 10px; font-size: 0.8em; border-radius: 4px;">
-                            ➕ Agregar Domicilio
-                        </button>
+                        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                            <button type="button" id="btn-pedir-domicilio-cliente" class="btn-premium" style="background-color: #059669; color: white; padding: 4px 10px; font-size: 0.8em; border-radius: 4px; border: none; cursor: pointer;" title="Generar enlace público para que el cliente cargue su domicilio y pin en el mapa">
+                                📲 Pedir al Cliente (Link / WA)
+                            </button>
+                            <button type="button" id="btn-add-domicilio" class="btn-premium" style="background-color: #6b21a8; color: white; padding: 4px 10px; font-size: 0.8em; border-radius: 4px;">
+                                ➕ Agregar Domicilio
+                            </button>
+                        </div>
                     </label>
-                    <span class="form-helper" style="margin-bottom: 8px; display: block;">Direcciones de logística para asignación automática de hojas de ruta. Marque una como predeterminada ⭐.</span>
+                    <span class="form-helper" style="margin-bottom: 8px; display: block;">Direcciones de logística para asignación automática de hojas de ruta. Marque una como predeterminada ⭐ o envíe un link por WhatsApp para que el cliente lo complete.</span>
                     
                     <!-- Contenedor / Lista de Domicilios -->
                     <div id="domicilios-lista-container" style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;">
                         <!-- Carga dinámica -->
                     </div>
+                    <!-- Enlaces pendientes de autogestión -->
+                    <div id="domicilios-solicitudes-pendientes-container" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;"></div>
                 </div>
 
                 <!-- Email de Facturación (Omnicanal) -->
@@ -1195,6 +1202,10 @@
 
             <!-- Cuerpo Scrolleable -->
             <div style="padding: 20px 24px; overflow-y: auto; flex-grow: 1; display: flex; flex-direction: column; gap: 14px;">
+                <div id="banner-modal-dom-autogestion" style="display: none; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 8px 12px; align-items: center; justify-content: space-between; gap: 8px;">
+                    <span style="font-size: 12px; color: #065f46; font-weight: 600;">¿Preferís que el cliente cargue su dirección y pin desde su celular?</span>
+                    <button type="button" id="btn-modal-dom-pedir-link" style="background: #059669; color: white; border: none; border-radius: 6px; padding: 5px 10px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;">📲 Enviar Link por WA</button>
+                </div>
                 
                 <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 240px;">
@@ -1364,9 +1375,11 @@
     <script src="/env-config.js?v=2"></script>
     <!-- Módulo de Mapa Interactivo -->
     <script src="../js/modules/mapaInteractivo.js?v=1.2.0"></script>
+    <!-- Modal Omnicanal Solicitud de Domicilio -->
+    <script src="../js/modules/solicitudDomicilioModal.js?v=1.0.0"></script>
     <!-- Modal Omnicanal Interno de Nodos Barriales (:3004 WhatsApp + SMTP Email) -->
     <script src="/api/produccion/nodos/comunicaciones-modal.js?v=1.0.0"></script>
     <!-- Script de lógica frontend -->
-    <script src="../js/listado-clientes.js?v=1.4.0"></script>
+    <script src="../js/listado-clientes.js?v=1.5.0"></script>
 </body>
 </html>

@@ -215,16 +215,22 @@
 
             <!-- SECCIÓN 3: DOMICILIOS DE ENTREGA (MULTIDOMICILIO & GPS) -->
             <section class="form-section-card">
-                <div class="form-section-header">
+                <div class="form-section-header" style="gap: 0.4rem; flex-wrap: wrap;">
                     <h2 class="form-section-title">📍 3. Domicilios de Entrega</h2>
-                    <button type="button" id="btn-add-domicilio-mobile" style="background:#7c3aed; color:white; border:none; border-radius:0.4rem; padding:0.2rem 0.6rem; font-size:0.75rem; font-weight:800; cursor:pointer;">
-                        ➕ Domicilio
-                    </button>
+                    <div style="display: flex; gap: 0.35rem; align-items: center;">
+                        <button type="button" id="btn-pedir-domicilio-mobile" style="background:#059669; color:white; border:none; border-radius:0.4rem; padding:0.24rem 0.55rem; font-size:0.74rem; font-weight:800; cursor:pointer;">
+                            📲 Pedir por Link
+                        </button>
+                        <button type="button" id="btn-add-domicilio-mobile" style="background:#7c3aed; color:white; border:none; border-radius:0.4rem; padding:0.24rem 0.55rem; font-size:0.74rem; font-weight:800; cursor:pointer;">
+                            ➕ Domicilio
+                        </button>
+                    </div>
                 </div>
-                <p style="font-size:0.75rem; color:#94a3b8; margin:0 0 0.6rem;">Direcciones para la hoja de ruta y repartos en calle.</p>
+                <p style="font-size:0.75rem; color:#94a3b8; margin:0 0 0.6rem;">Direcciones para la hoja de ruta y repartos en calle. También podés enviar un link por WhatsApp para que lo cargue el cliente.</p>
                 <div id="domicilios-cards-container">
                     <!-- Carga dinámica -->
                 </div>
+                <div id="domicilios-solicitudes-pendientes-mobile" style="margin-top:0.55rem; display:flex; flex-direction:column; gap:0.4rem;"></div>
             </section>
 
             <!-- SECCIÓN 4: FILIACIÓN LEGACY & PORTAL B2B -->
@@ -356,7 +362,8 @@
 
     <!-- SCRIPTS -->
     <script src="js/mobile.js?v=14"></script>
-    <script src="js/controllers/ClientesMobileController.js?v=28"></script>
+    <script src="/js/modules/solicitudDomicilioModal.js?v=1.0.0"></script>
+    <script src="js/controllers/ClientesMobileController.js?v=29"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             ClientesMobileController.initFormulario();

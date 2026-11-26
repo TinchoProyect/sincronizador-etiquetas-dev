@@ -4,213 +4,234 @@
  */
 
 const { pool } = require('../config/database');
+const ClientesBunkerModel = require('./clientesBunkerModel');
 
 class DomiciliosModel {
-    
     /**
-     * Obtener todos los IDs posibles asociados a un cliente (bunker_clientes.id, lomas_soft_id, clientes.id, clientes.cliente_id)
-     * @param {string|number} id_cliente - ID, código búnker o ID legacy del cliente
-     * @returns {Promise<{intIds: number[], strIds: string[]}>} Lista de IDs numéricos y cadenas
+     * Resuelve de forma determinista y sin colisiones la identidad de un cliente
+     * (Búnker y/o Legacy) a partir de su PK Búnker, código CB-XXXX, lomas_soft_id o PK/cliente_id legacy.
+     *
+     * @param {string|number} id_cliente
+     * @returns {Promise<{bunkerClienteId: number|null, codigoBunker: string|null, clienteNombre: string|null, legacyClientesPk: number|null, legacyClienteId: number|null, intIds: number[], strIds: string[]}>}
      */
-    /**
-     * Obtener estrictamente los IDs propios asociados a UN cliente Búnker (su lomas_soft_id o su bunker_clientes.id si no tiene legacy)
-     * para evitar cualquier cruzamiento con otros clientes legacy que compartan la misma secuencia de PK.
-     * @param {string|number} id_cliente - ID interno (PK), código Búnker o ID legacy (lomas_soft_id)
-     * @returns {Promise<{intIds: number[], strIds: string[]}>} Colección estricta de IDs propios del cliente
-     */
-    static async obtenerTodosLosIdsCliente(id_cliente) {
-        if (id_cliente === undefined || id_cliente === null) {
-            return { intIds: [], strIds: [] };
-        }
+    static async resolverIdentidadCliente(id_cliente) {
+        const vacio = {
+            bunkerClienteId: null,
+            codigoBunker: null,
+            clienteNombre: null,
+            legacyClientesPk: null,
+            legacyClienteId: null,
+            intIds: [],
+            strIds: []
+        };
+        if (id_cliente === undefined || id_cliente === null) return vacio;
 
         const rawStr = String(id_cliente).trim();
-        if (!rawStr) return { intIds: [], strIds: [] };
+        if (!rawStr) return vacio;
 
         const intVal = parseInt(rawStr, 10);
-        const hasInt = !isNaN(intVal);
+        const hasInt = /^\d+$/.test(rawStr) && !isNaN(intVal) && rawStr.length < 10;
 
-        const bunkerIds = new Set();
-        const legacyIds = new Set();
-        const lomasSoftIds = new Set();
-
-        // 1. Intentar buscar en bunker_clientes por ID primario o código de Búnker
-        let queryBunker = `
-            SELECT id, codigo_bunker_cliente, lomas_soft_id 
-            FROM public.bunker_clientes 
-            WHERE codigo_bunker_cliente = $1
-        `;
-        const paramsBunker = [rawStr];
-        if (hasInt) {
-            queryBunker += ` OR id = $2`;
-            paramsBunker.push(intVal);
-        }
-
-        let encontradoBunkerDirecto = false;
+        let bunkerRow = null;
         try {
+            let queryBunker = `
+                SELECT id, codigo_bunker_cliente, cliente_nombre, razon_social, lomas_soft_id,
+                       cuit_cuil, dni, condicion_iva, domicilio_fiscal, provincia,
+                       whatsapp_facturas, email_facturas, email_portal, preferencia_facturacion
+                FROM public.bunker_clientes
+                WHERE codigo_bunker_cliente = $1
+                   OR lomas_soft_id = $1
+            `;
+            const paramsBunker = [rawStr];
+            if (hasInt) {
+                queryBunker += `
+                   OR id = $2
+                   OR (lomas_soft_id ~ '^[0-9]+$' AND LENGTH(lomas_soft_id) < 10 AND lomas_soft_id::integer = $2)
+                `;
+                paramsBunker.push(intVal);
+            }
+            queryBunker += `
+                ORDER BY
+                    CASE
+                        WHEN codigo_bunker_cliente = $1 THEN 0
+                        WHEN lomas_soft_id = $1 THEN 1
+                        ${hasInt ? 'WHEN id = $2 THEN 2' : ''}
+                        ELSE 3
+                    END ASC
+                LIMIT 1
+            `;
             const resBunker = await pool.query(queryBunker, paramsBunker);
             if (resBunker.rowCount > 0) {
-                encontradoBunkerDirecto = true;
-                resBunker.rows.forEach(r => {
-                    if (r.id) bunkerIds.add(parseInt(r.id, 10));
-                    if (r.lomas_soft_id) {
-                        const cleanLomas = r.lomas_soft_id.trim();
-                        lomasSoftIds.add(cleanLomas);
-                        const lomasInt = parseInt(cleanLomas, 10);
-                        if (!isNaN(lomasInt)) lomasSoftIds.add(String(lomasInt));
-                    }
-                });
+                bunkerRow = resBunker.rows[0];
             }
         } catch (e) {
-            console.error('[DOMICILIOS-MODEL] Error al consultar bunker_clientes por PK:', e.message);
-        }
-
-        // 2. Si se encontró por PK de Búnker, buscar en legacy clientes ÚNICAMENTE usando los lomasSoftIds resueltos
-        if (encontradoBunkerDirecto) {
-            if (lomasSoftIds.size > 0) {
-                try {
-                    const arrLomas = Array.from(lomasSoftIds);
-                    const queryLegacy = `
-                        SELECT id, cliente_id 
-                        FROM clientes 
-                        WHERE cliente_id::text = ANY($1::text[])
-                           OR cliente_id::text = ANY(SELECT ltrim(x, '0') FROM unnest($1::text[]) x)
-                    `;
-                    const resLegacy = await pool.query(queryLegacy, [arrLomas]);
-                    resLegacy.rows.forEach(r => {
-                        if (r.id) legacyIds.add(parseInt(r.id, 10));
-                        if (r.cliente_id) {
-                            const cleanCId = String(r.cliente_id).trim();
-                            lomasSoftIds.add(cleanCId);
-                            const cleanCIdInt = parseInt(cleanCId, 10);
-                            if (!isNaN(cleanCIdInt)) lomasSoftIds.add(String(cleanCIdInt));
-                        }
-                    });
-                } catch (e) {
-                    console.error('[DOMICILIOS-MODEL] Error al consultar clientes legacy por lomasSoftId:', e.message);
-                }
-            }
-        } else {
-            // 3. Si no se encontró por Búnker directo, el input es un identificador legacy (PK o cliente_id)
-            try {
-                const queryLegacy = `
-                    SELECT id, cliente_id 
-                    FROM clientes 
-                    WHERE id = $1 OR cliente_id = $1 OR cliente_id::text = $2
-                `;
-                const paramsLegacy = [hasInt ? intVal : -1, rawStr];
-                const resLegacy = await pool.query(queryLegacy, paramsLegacy);
-                resLegacy.rows.forEach(r => {
-                    if (r.id) legacyIds.add(parseInt(r.id, 10));
-                    if (r.cliente_id) {
-                        const cleanCId = String(r.cliente_id).trim();
-                        lomasSoftIds.add(cleanCId);
-                        const cleanCIdInt = parseInt(cleanCId, 10);
-                        if (!isNaN(cleanCIdInt)) lomasSoftIds.add(String(cleanCIdInt));
-                    }
-                });
-            } catch (e) {
-                console.error('[DOMICILIOS-MODEL] Error al consultar clientes legacy por ID legacy:', e.message);
-            }
-
-            // Mapear de vuelta a bunker_clientes
-            if (lomasSoftIds.size > 0) {
-                try {
-                    const arrLomas = Array.from(lomasSoftIds);
-                    const resBunkerBack = await pool.query(
-                        `SELECT id, lomas_soft_id 
-                         FROM public.bunker_clientes 
-                         WHERE lomas_soft_id = ANY($1::text[]) 
-                            OR (lomas_soft_id ~ '^[0-9]+$' AND lomas_soft_id::integer = ANY($2::int[]))`,
-                        [arrLomas, arrLomas.map(x => parseInt(x, 10)).filter(x => !isNaN(x))]
-                    );
-                    resBunkerBack.rows.forEach(r => {
-                        if (r.id) bunkerIds.add(parseInt(r.id, 10));
-                    });
-                } catch (e) {
-                    console.error('[DOMICILIOS-MODEL] Error en retro-búsqueda bunker_clientes:', e.message);
-                }
-            }
+            console.error('[DOMICILIOS-MODEL] Error al consultar bunker_clientes en resolverIdentidadCliente:', e.message);
         }
 
         const intIdsSet = new Set();
         const strIdsSet = new Set();
+        let legacyClientesPk = null;
+        let legacyClienteId = null;
 
-        bunkerIds.forEach(id => {
-            intIdsSet.add(id);
-            strIdsSet.add(String(id));
-        });
-        legacyIds.forEach(id => {
-            intIdsSet.add(id);
-            strIdsSet.add(String(id));
-        });
+        if (bunkerRow) {
+            const rawLomas = String(bunkerRow.lomas_soft_id || '').trim();
+            if (/^\d+$/.test(rawLomas) && rawLomas.length < 10) {
+                const lomasInt = parseInt(rawLomas, 10);
+                if (lomasInt > 0) {
+                    try {
+                        let resLegacy = await pool.query(
+                            `SELECT id, cliente_id FROM public.clientes WHERE cliente_id = $1 LIMIT 1`,
+                            [lomasInt]
+                        );
+                        if (resLegacy.rowCount === 0) {
+                            await ClientesBunkerModel.sincronizarConClientesLegacy(bunkerRow, pool, { preservarExistentes: true });
+                            resLegacy = await pool.query(
+                                `SELECT id, cliente_id FROM public.clientes WHERE cliente_id = $1 LIMIT 1`,
+                                [lomasInt]
+                            );
+                        }
+                        if (resLegacy.rowCount > 0) {
+                            legacyClientesPk = parseInt(resLegacy.rows[0].id, 10);
+                            legacyClienteId = parseInt(resLegacy.rows[0].cliente_id, 10);
+                            intIdsSet.add(legacyClientesPk);
+                            intIdsSet.add(legacyClienteId);
+                            strIdsSet.add(String(legacyClientesPk));
+                            strIdsSet.add(String(legacyClienteId));
+                            strIdsSet.add(rawLomas);
+                        }
+                    } catch (e) {
+                        console.error('[DOMICILIOS-MODEL] Error resolviendo espejo legacy para Búnker:', e.message);
+                    }
+                }
+            }
 
-        intIdsSet.add(intVal);
-        strIdsSet.add(rawStr);
+            // Compatibilidad histórica controlada: filas legadas sin bunker_cliente_id que usaron bunker_clientes.id
+            // siempre que ese ID no pertenezca a una fila legacy de OTRO cliente Búnker
+            let idBunkerChocaConOtroLegacy = false;
+            try {
+                const chkCol = await pool.query(
+                    `SELECT bc.id
+                     FROM public.clientes c
+                     JOIN public.bunker_clientes bc
+                       ON bc.lomas_soft_id IS NOT NULL
+                      AND bc.lomas_soft_id ~ '^[0-9]+$'
+                      AND LENGTH(bc.lomas_soft_id) < 10
+                      AND bc.lomas_soft_id::integer = c.cliente_id
+                     WHERE c.id = $1
+                       AND bc.id <> $2
+                     LIMIT 1`,
+                    [bunkerRow.id, bunkerRow.id]
+                );
+                idBunkerChocaConOtroLegacy = chkCol.rowCount > 0;
+            } catch (_) {}
 
-        return {
-            intIds: Array.from(intIdsSet).filter(x => !isNaN(x)),
-            strIds: Array.from(strIdsSet).filter(Boolean)
-        };
-    }
+            if (!idBunkerChocaConOtroLegacy) {
+                intIdsSet.add(parseInt(bunkerRow.id, 10));
+                strIdsSet.add(String(bunkerRow.id));
+            }
+            if (bunkerRow.codigo_bunker_cliente) {
+                strIdsSet.add(String(bunkerRow.codigo_bunker_cliente).trim());
+            }
 
-    /**
-     * Obtener ID interno del cliente para relaciones de base de datos
-     * @param {string|number} id_cliente - ID del cliente (puede ser cliente_id, codigo_bunker_cliente, etc.)
-     * @returns {Promise<number|null>} ID interno del cliente
-     */
-    static async obtenerIdInternoCliente(id_cliente) {
-        if (id_cliente === undefined || id_cliente === null) return null;
-        
-        const rawStr = String(id_cliente).trim();
-        if (!rawStr) return null;
-        
-        const clienteIdInt = parseInt(rawStr, 10);
-        
-        // 1. Buscar en public.bunker_clientes (por id, codigo_bunker_cliente o lomas_soft_id)
-        let queryBunker = `
-            SELECT id, lomas_soft_id 
-            FROM public.bunker_clientes 
-            WHERE codigo_bunker_cliente = $1 
-               OR lomas_soft_id = $1
-        `;
-        const paramsBunker = [rawStr];
-        if (!isNaN(clienteIdInt)) {
-            queryBunker += ` OR id = $2 OR (lomas_soft_id ~ '^[0-9]+$' AND lomas_soft_id::integer = $2)`;
-            paramsBunker.push(clienteIdInt);
+            return {
+                bunkerClienteId: parseInt(bunkerRow.id, 10),
+                codigoBunker: bunkerRow.codigo_bunker_cliente || null,
+                clienteNombre: bunkerRow.cliente_nombre || bunkerRow.razon_social || null,
+                legacyClientesPk,
+                legacyClienteId,
+                intIds: Array.from(intIdsSet).filter(x => Number.isFinite(x)),
+                strIds: Array.from(strIdsSet).filter(Boolean)
+            };
         }
 
+        // Fallback legacy puro (no existe en bunker_clientes)
         try {
-            const resBunker = await pool.query(queryBunker, paramsBunker);
-            if (resBunker.rowCount > 0) {
-                const r = resBunker.rows[0];
-                return r.id;
+            const resLegacy = await pool.query(
+                `SELECT id, cliente_id, nombre, apellido FROM public.clientes WHERE id = $1 OR cliente_id = $1 OR cliente_id::text = $2 LIMIT 1`,
+                [hasInt ? intVal : -1, rawStr]
+            );
+            if (resLegacy.rowCount > 0) {
+                const row = resLegacy.rows[0];
+                legacyClientesPk = parseInt(row.id, 10);
+                legacyClienteId = parseInt(row.cliente_id, 10);
+                intIdsSet.add(legacyClientesPk);
+                intIdsSet.add(legacyClienteId);
+                strIdsSet.add(String(legacyClientesPk));
+                strIdsSet.add(String(legacyClienteId));
+                return {
+                    bunkerClienteId: null,
+                    codigoBunker: null,
+                    clienteNombre: [row.nombre, row.apellido].filter(Boolean).join(' ').trim() || null,
+                    legacyClientesPk,
+                    legacyClienteId,
+                    intIds: Array.from(intIdsSet).filter(x => Number.isFinite(x)),
+                    strIds: Array.from(strIdsSet).filter(Boolean)
+                };
             }
         } catch (e) {
-            console.error('[DOMICILIOS-MODEL] Error al consultar bunker_clientes en obtenerIdInternoCliente:', e.message);
+            console.error('[DOMICILIOS-MODEL] Error en búsqueda legacy:', e.message);
         }
 
-        // 2. Buscar en clientes legacy si no está en bunker_clientes
-        if (!isNaN(clienteIdInt)) {
-            try {
-                const resLegacy = await pool.query('SELECT id, cliente_id FROM clientes WHERE id = $1 OR cliente_id = $1', [clienteIdInt]);
-                if (resLegacy.rowCount > 0) {
-                    return resLegacy.rows[0].cliente_id || resLegacy.rows[0].id;
-                }
-            } catch (e) {
-                console.error('[DOMICILIOS-MODEL] Error al consultar clientes legacy en obtenerIdInternoCliente:', e.message);
-            }
-            // Fallback de resguardo: retornar el ID numérico recibido
-            return clienteIdInt;
-        }
-
-        return null;
+        return vacio;
     }
 
     /**
-     * Obtener todos los domicilios con filtros opcionales
-     * @param {Object} filtros - Filtros de búsqueda
-     * @returns {Promise<Array>} Lista de domicilios
+     * Compatibilidad con llamadores existentes que esperan intIds y strIds
      */
+    static async obtenerTodosLosIdsCliente(id_cliente) {
+        const ident = await this.resolverIdentidadCliente(id_cliente);
+        return { intIds: ident.intIds, strIds: ident.strIds };
+    }
+
+    /**
+     * Compatibilidad con llamadores existentes: retorna PK legacy si existe o PK Búnker
+     */
+    static async obtenerIdInternoCliente(id_cliente) {
+        const ident = await this.resolverIdentidadCliente(id_cliente);
+        return ident.legacyClientesPk || ident.bunkerClienteId || null;
+    }
+
+    /**
+     * Construye condición SQL segura para filtrar domicilios de un cliente sin colisiones
+     */
+    static _construirFiltroClienteSql(ident, paramStartIndex = 1) {
+        const params = [];
+        let idx = paramStartIndex;
+
+        if (ident.bunkerClienteId) {
+            params.push(ident.bunkerClienteId);
+            const bunkerParam = `$${idx++}`;
+            if (ident.intIds.length > 0 || ident.strIds.length > 0) {
+                params.push(ident.intIds, ident.strIds);
+                const intParam = `$${idx++}`;
+                const strParam = `$${idx++}`;
+                return {
+                    clause: `(cd.bunker_cliente_id = ${bunkerParam} OR (cd.bunker_cliente_id IS NULL AND (cd.id_cliente = ANY(${intParam}::int[]) OR cd.id_cliente::text = ANY(${strParam}::text[]))))`,
+                    params,
+                    nextIndex: idx
+                };
+            }
+            return {
+                clause: `cd.bunker_cliente_id = ${bunkerParam}`,
+                params,
+                nextIndex: idx
+            };
+        }
+
+        if (ident.intIds.length > 0 || ident.strIds.length > 0) {
+            params.push(ident.intIds, ident.strIds);
+            const intParam = `$${idx++}`;
+            const strParam = `$${idx++}`;
+            return {
+                clause: `(cd.bunker_cliente_id IS NULL AND (cd.id_cliente = ANY(${intParam}::int[]) OR cd.id_cliente::text = ANY(${strParam}::text[])))`,
+                params,
+                nextIndex: idx
+            };
+        }
+
+        return { clause: '1=0', params: [], nextIndex: idx };
+    }
+
     /**
      * Obtener todos los domicilios con filtros opcionales
      * @param {Object} filtros - Filtros de búsqueda
@@ -218,20 +239,26 @@ class DomiciliosModel {
      */
     static async obtenerTodos(filtros = {}) {
         const { id_cliente, activo = true, es_predeterminado } = filtros;
-        
+
         let query = `
             SELECT 
                 cd.id,
                 cd.id_cliente,
-                (
-                    SELECT COALESCE(bc.cliente_nombre, c.nombre)
-                    FROM public.bunker_clientes bc 
-                    LEFT JOIN clientes c ON c.cliente_id::text = bc.lomas_soft_id
-                    WHERE bc.id = cd.id_cliente 
-                       OR (bc.lomas_soft_id ~ '^[0-9]+$' AND cd.id_cliente = bc.lomas_soft_id::integer)
-                    LIMIT 1
+                cd.bunker_cliente_id,
+                COALESCE(
+                    bc_dir.cliente_nombre,
+                    (
+                        SELECT COALESCE(bc.cliente_nombre, c.nombre)
+                        FROM public.bunker_clientes bc 
+                        LEFT JOIN clientes c ON c.cliente_id::text = LTRIM(bc.lomas_soft_id, '0')
+                        WHERE (bc.lomas_soft_id ~ '^[0-9]+$' AND c.id = cd.id_cliente)
+                           OR bc.id = cd.id_cliente
+                        LIMIT 1
+                    ),
+                    c_dir.nombre
                 ) as cliente_nombre,
                 cd.alias,
+                cd.tipo_lugar,
                 cd.direccion,
                 cd.localidad,
                 cd.provincia,
@@ -244,45 +271,49 @@ class DomiciliosModel {
                 cd.instrucciones_entrega,
                 cd.horario_atencion_desde,
                 cd.horario_atencion_hasta,
+                cd.origen_carga,
+                cd.verificado_por_cliente,
+                cd.fecha_verificacion_cliente,
+                cd.solicitud_id,
+                cd.gps_precision_metros,
                 cd.activo,
                 cd.fecha_creacion,
                 cd.fecha_modificacion
             FROM clientes_domicilios cd
+            LEFT JOIN public.bunker_clientes bc_dir ON bc_dir.id = cd.bunker_cliente_id
+            LEFT JOIN public.clientes c_dir ON c_dir.id = cd.id_cliente
             WHERE 1=1
         `;
-        
+
         const params = [];
         let paramIndex = 1;
-        
-        if (id_cliente) {
-            const { intIds, strIds } = await this.obtenerTodosLosIdsCliente(id_cliente);
-            if (intIds.length > 0 || strIds.length > 0) {
-                query += ` AND (cd.id_cliente = ANY($${paramIndex}::int[]) OR cd.id_cliente::text = ANY($${paramIndex + 1}::text[]))`;
-                params.push(intIds, strIds);
-                paramIndex += 2;
-            } else {
-                query += ` AND 1=0`;
-            }
+
+        if (id_cliente !== undefined && id_cliente !== null && String(id_cliente).trim() !== '') {
+            const ident = await this.resolverIdentidadCliente(id_cliente);
+            const built = this._construirFiltroClienteSql(ident, paramIndex);
+            query += ` AND ${built.clause}`;
+            params.push(...built.params);
+            paramIndex = built.nextIndex;
         }
-        
+
         if (activo !== undefined) {
             query += ` AND cd.activo = $${paramIndex}`;
             params.push(activo);
             paramIndex++;
         }
-        
+
         if (es_predeterminado !== undefined) {
             query += ` AND cd.es_predeterminado = $${paramIndex}`;
             params.push(es_predeterminado);
             paramIndex++;
         }
-        
+
         query += ` ORDER BY cd.es_predeterminado DESC, cd.alias ASC, cd.id ASC`;
-        
+
         const resultado = await pool.query(query, params);
         return resultado.rows;
     }
-    
+
     /**
      * Obtener un domicilio por ID
      * @param {number} id - ID del domicilio
@@ -293,8 +324,10 @@ class DomiciliosModel {
             SELECT 
                 cd.id,
                 cd.id_cliente,
-                c.nombre as cliente_nombre,
+                cd.bunker_cliente_id,
+                COALESCE(bc.cliente_nombre, c.nombre) as cliente_nombre,
                 cd.alias,
+                cd.tipo_lugar,
                 cd.direccion,
                 cd.localidad,
                 cd.provincia,
@@ -307,67 +340,93 @@ class DomiciliosModel {
                 cd.instrucciones_entrega,
                 cd.horario_atencion_desde,
                 cd.horario_atencion_hasta,
+                cd.origen_carga,
+                cd.verificado_por_cliente,
+                cd.fecha_verificacion_cliente,
+                cd.solicitud_id,
+                cd.gps_precision_metros,
                 cd.activo,
                 cd.fecha_creacion,
                 cd.fecha_modificacion
             FROM clientes_domicilios cd
+            LEFT JOIN public.bunker_clientes bc ON bc.id = cd.bunker_cliente_id
             LEFT JOIN clientes c ON cd.id_cliente = c.id
             WHERE cd.id = $1
         `;
-        
+
         const resultado = await pool.query(query, [id]);
         return resultado.rows[0] || null;
     }
-    
+
     /**
      * Crear un nuevo domicilio
      * @param {Object} datos - Datos del domicilio
+     * @param {Object|null} dbClient - Cliente de transacción opcional
      * @returns {Promise<Object>} Domicilio creado
      */
-    static async crear(datos) {
+    static async crear(datos, dbClient = null) {
+        const db = dbClient || pool;
         const {
-            id_cliente,
+            id_cliente = null,
+            bunker_cliente_id = null,
             alias,
+            tipo_lugar = null,
             direccion,
-            localidad,
-            provincia,
-            codigo_postal,
-            latitud,
-            longitud,
+            localidad = null,
+            provincia = null,
+            codigo_postal = null,
+            latitud = null,
+            longitud = null,
             coordenadas_validadas = false,
             es_predeterminado = false,
-            telefono_contacto,
-            instrucciones_entrega,
-            horario_atencion_desde,
-            horario_atencion_hasta
+            telefono_contacto = null,
+            instrucciones_entrega = null,
+            horario_atencion_desde = null,
+            horario_atencion_hasta = null,
+            origen_carga = 'INTERNO',
+            verificado_por_cliente = false,
+            fecha_verificacion_cliente = null,
+            solicitud_id = null,
+            gps_precision_metros = null
         } = datos;
-        
-        const { intIds, strIds } = await this.obtenerTodosLosIdsCliente(id_cliente);
-        let esPredeterminadoFinal = es_predeterminado;
-        
-        // Si no se especificó predeterminado, verificar si es el primer domicilio activo del cliente
-        if (!esPredeterminadoFinal) {
-            const countRes = await pool.query(
-                'SELECT COUNT(*) FROM clientes_domicilios WHERE (id_cliente = ANY($1::int[]) OR id_cliente::text = ANY($2::text[])) AND activo = TRUE',
-                [intIds, strIds]
+
+        const identRef = bunker_cliente_id || id_cliente;
+        const ident = await this.resolverIdentidadCliente(identRef);
+        const bunkerIdFinal = bunker_cliente_id || ident.bunkerClienteId || null;
+        const legacyPkFinal = ident.legacyClientesPk || (bunkerIdFinal ? null : id_cliente);
+
+        const filtro = this._construirFiltroClienteSql(
+            bunkerIdFinal
+                ? { ...ident, bunkerClienteId: bunkerIdFinal }
+                : ident,
+            1
+        );
+
+        let esPredeterminadoFinal = Boolean(es_predeterminado);
+
+        if (!esPredeterminadoFinal && filtro.clause !== '1=0') {
+            const countRes = await db.query(
+                `SELECT COUNT(*) FROM clientes_domicilios cd WHERE ${filtro.clause} AND cd.activo = TRUE`,
+                filtro.params
             );
             if (parseInt(countRes.rows[0].count, 10) === 0) {
                 esPredeterminadoFinal = true;
             }
         }
-        
-        // Si es predeterminado, desmarcar otros domicilios del mismo cliente
-        if (esPredeterminadoFinal) {
-            await pool.query(
-                'UPDATE clientes_domicilios SET es_predeterminado = FALSE WHERE (id_cliente = ANY($1::int[]) OR id_cliente::text = ANY($2::text[]))',
-                [intIds, strIds]
+
+        if (esPredeterminadoFinal && filtro.clause !== '1=0') {
+            await db.query(
+                `UPDATE clientes_domicilios cd SET es_predeterminado = FALSE WHERE ${filtro.clause}`,
+                filtro.params
             );
         }
-        
+
         const query = `
             INSERT INTO clientes_domicilios (
                 id_cliente,
+                bunker_cliente_id,
                 alias,
+                tipo_lugar,
                 direccion,
                 localidad,
                 provincia,
@@ -380,94 +439,58 @@ class DomiciliosModel {
                 instrucciones_entrega,
                 horario_atencion_desde,
                 horario_atencion_hasta,
+                origen_carga,
+                verificado_por_cliente,
+                fecha_verificacion_cliente,
+                solicitud_id,
+                gps_precision_metros,
                 activo,
                 fecha_creacion,
                 fecha_modificacion
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, TRUE, NOW(), NOW())
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, TRUE, NOW(), NOW())
             RETURNING *
         `;
-        
+
         const params = [
-            id_cliente,
+            legacyPkFinal,
+            bunkerIdFinal,
             alias,
+            tipo_lugar,
             direccion,
             localidad,
             provincia,
             codigo_postal,
             latitud,
             longitud,
-            coordenadas_validadas,
+            Boolean(coordenadas_validadas),
             esPredeterminadoFinal,
             telefono_contacto,
             instrucciones_entrega,
             horario_atencion_desde,
-            horario_atencion_hasta
+            horario_atencion_hasta,
+            origen_carga || 'INTERNO',
+            Boolean(verificado_por_cliente),
+            fecha_verificacion_cliente,
+            solicitud_id,
+            gps_precision_metros
         ];
-        
-        const resultado = await pool.query(query, params);
+
+        const resultado = await db.query(query, params);
         return resultado.rows[0];
     }
-    
+
     /**
      * Actualizar un domicilio existente
      * @param {number} id - ID del domicilio
      * @param {Object} datos - Datos a actualizar
+     * @param {Object|null} dbClient - Cliente de transacción opcional
      * @returns {Promise<Object>} Domicilio actualizado
      */
-    static async actualizar(id, datos) {
+    static async actualizar(id, datos, dbClient = null) {
+        const db = dbClient || pool;
         const {
             alias,
-            direccion,
-            localidad,
-            provincia,
-            codigo_postal,
-            latitud,
-            longitud,
-            coordenadas_validadas,
-            es_predeterminado,
-            telefono_contacto,
-            instrucciones_entrega,
-            horario_atencion_desde,
-            horario_atencion_hasta
-        } = datos;
-        
-        // Obtener domicilio actual para saber el id_cliente
-        const domicilioActual = await this.obtenerPorId(id);
-        if (!domicilioActual) {
-            throw new Error('Domicilio no encontrado');
-        }
-        
-        // Si se marca como predeterminado, desmarcar otros del mismo cliente
-        if (es_predeterminado) {
-            const { intIds, strIds } = await this.obtenerTodosLosIdsCliente(domicilioActual.id_cliente);
-            await pool.query(
-                'UPDATE clientes_domicilios SET es_predeterminado = FALSE WHERE (id_cliente = ANY($1::int[]) OR id_cliente::text = ANY($2::text[])) AND id != $3',
-                [intIds, strIds, id]
-            );
-        }
-        
-        const query = `
-            UPDATE clientes_domicilios SET
-                alias = COALESCE($1, alias),
-                direccion = COALESCE($2, direccion),
-                localidad = COALESCE($3, localidad),
-                provincia = COALESCE($4, provincia),
-                codigo_postal = COALESCE($5, codigo_postal),
-                latitud = COALESCE($6, latitud),
-                longitud = COALESCE($7, longitud),
-                coordenadas_validadas = COALESCE($8, coordenadas_validadas),
-                es_predeterminado = COALESCE($9, es_predeterminado),
-                telefono_contacto = COALESCE($10, telefono_contacto),
-                instrucciones_entrega = COALESCE($11, instrucciones_entrega),
-                horario_atencion_desde = COALESCE($12, horario_atencion_desde),
-                horario_atencion_hasta = COALESCE($13, horario_atencion_hasta),
-                fecha_modificacion = NOW()
-            WHERE id = $14
-            RETURNING *
-        `;
-        
-        const params = [
-            alias,
+            tipo_lugar,
             direccion,
             localidad,
             provincia,
@@ -480,13 +503,83 @@ class DomiciliosModel {
             instrucciones_entrega,
             horario_atencion_desde,
             horario_atencion_hasta,
+            origen_carga,
+            verificado_por_cliente,
+            fecha_verificacion_cliente,
+            solicitud_id,
+            gps_precision_metros
+        } = datos;
+
+        const domicilioActual = await this.obtenerPorId(id);
+        if (!domicilioActual) {
+            throw new Error('Domicilio no encontrado');
+        }
+
+        if (es_predeterminado) {
+            const refCliente = domicilioActual.bunker_cliente_id || domicilioActual.id_cliente;
+            const ident = await this.resolverIdentidadCliente(refCliente);
+            const filtro = this._construirFiltroClienteSql(ident, 1);
+            if (filtro.clause !== '1=0') {
+                await db.query(
+                    `UPDATE clientes_domicilios cd SET es_predeterminado = FALSE WHERE (${filtro.clause}) AND cd.id != $${filtro.nextIndex}`,
+                    [...filtro.params, id]
+                );
+            }
+        }
+
+        const query = `
+            UPDATE clientes_domicilios SET
+                alias = COALESCE($1, alias),
+                tipo_lugar = COALESCE($2, tipo_lugar),
+                direccion = COALESCE($3, direccion),
+                localidad = COALESCE($4, localidad),
+                provincia = COALESCE($5, provincia),
+                codigo_postal = COALESCE($6, codigo_postal),
+                latitud = COALESCE($7, latitud),
+                longitud = COALESCE($8, longitud),
+                coordenadas_validadas = COALESCE($9, coordenadas_validadas),
+                es_predeterminado = COALESCE($10, es_predeterminado),
+                telefono_contacto = COALESCE($11, telefono_contacto),
+                instrucciones_entrega = COALESCE($12, instrucciones_entrega),
+                horario_atencion_desde = COALESCE($13, horario_atencion_desde),
+                horario_atencion_hasta = COALESCE($14, horario_atencion_hasta),
+                origen_carga = COALESCE($15, origen_carga),
+                verificado_por_cliente = COALESCE($16, verificado_por_cliente),
+                fecha_verificacion_cliente = COALESCE($17, fecha_verificacion_cliente),
+                solicitud_id = COALESCE($18, solicitud_id),
+                gps_precision_metros = COALESCE($19, gps_precision_metros),
+                fecha_modificacion = NOW()
+            WHERE id = $20
+            RETURNING *
+        `;
+
+        const params = [
+            alias ?? null,
+            tipo_lugar ?? null,
+            direccion ?? null,
+            localidad ?? null,
+            provincia ?? null,
+            codigo_postal ?? null,
+            latitud ?? null,
+            longitud ?? null,
+            coordenadas_validadas ?? null,
+            es_predeterminado ?? null,
+            telefono_contacto ?? null,
+            instrucciones_entrega ?? null,
+            horario_atencion_desde ?? null,
+            horario_atencion_hasta ?? null,
+            origen_carga ?? null,
+            verificado_por_cliente ?? null,
+            fecha_verificacion_cliente ?? null,
+            solicitud_id ?? null,
+            gps_precision_metros ?? null,
             id
         ];
-        
-        const resultado = await pool.query(query, params);
+
+        const resultado = await db.query(query, params);
         return resultado.rows[0];
     }
-    
+
     /**
      * Eliminar un domicilio (soft delete)
      * @param {number} id - ID del domicilio
@@ -499,64 +592,21 @@ class DomiciliosModel {
             WHERE id = $1
             RETURNING id
         `;
-        
+
         const resultado = await pool.query(query, [id]);
         return resultado.rowCount > 0;
     }
-    
-    /**
-     * Verificar si un cliente existe y obtener su ID interno
-     * @param {string|number} id_cliente - ID del cliente (puede ser cliente_id o id)
-     * @returns {Promise<number|null>} ID interno del cliente o null si no existe
-     */
-    static async obtenerIdInternoCliente(id_cliente) {
-        if (id_cliente === undefined || id_cliente === null) return null;
-        
-        const rawStr = String(id_cliente).trim();
-        if (!rawStr) return null;
-        
-        const clienteIdInt = parseInt(rawStr, 10);
-        
-        // 1. Si es numérico, buscar primero en clientes (legacy por id o cliente_id)
-        if (!isNaN(clienteIdInt)) {
-            const resLegacy = await pool.query('SELECT id FROM clientes WHERE id = $1 OR cliente_id = $1', [clienteIdInt]);
-            if (resLegacy.rowCount > 0) {
-                return resLegacy.rows[0].id;
-            }
 
-            // Buscar en public.bunker_clientes (por id o lomas_soft_id numérico)
-            const resBunkerInt = await pool.query(
-                "SELECT id FROM public.bunker_clientes WHERE id = $1 OR (lomas_soft_id ~ '^[0-9]+$' AND lomas_soft_id::integer = $1)",
-                [clienteIdInt]
-            );
-            if (resBunkerInt.rowCount > 0) {
-                return resBunkerInt.rows[0].id;
-            }
-        }
-
-        // 2. Si es una cadena (ej: 'CB-0001' o '0745'), buscar en public.bunker_clientes
-        const resBunkerStr = await pool.query(
-            'SELECT id FROM public.bunker_clientes WHERE codigo_bunker_cliente = $1 OR lomas_soft_id = $1',
-            [rawStr]
-        );
-        if (resBunkerStr.rowCount > 0) {
-            return resBunkerStr.rows[0].id;
-        }
-
-        console.log(`[DOMICILIOS-MODEL] ⚠️ Cliente "${id_cliente}" no encontrado en ninguna tabla`);
-        return null;
-    }
-    
     /**
      * Verificar si un cliente existe
      * @param {string|number} id_cliente - ID del cliente
      * @returns {Promise<boolean>} True si existe
      */
     static async clienteExiste(id_cliente) {
-        const idInterno = await this.obtenerIdInternoCliente(id_cliente);
-        return idInterno !== null;
+        const ident = await this.resolverIdentidadCliente(id_cliente);
+        return Boolean(ident.bunkerClienteId || ident.legacyClientesPk);
     }
-    
+
     /**
      * Validar coordenadas (rango Argentina)
      * @param {number} latitud - Latitud
@@ -564,8 +614,9 @@ class DomiciliosModel {
      * @returns {boolean} True si las coordenadas son válidas
      */
     static validarCoordenadasArgentina(latitud, longitud) {
-        // Argentina: lat -55 a -21, lng -73 a -53
         return (
+            Number.isFinite(latitud) &&
+            Number.isFinite(longitud) &&
             latitud >= -55 && latitud <= -21 &&
             longitud >= -73 && longitud <= -53
         );

@@ -509,12 +509,15 @@ exports.crear = async (req, res) => {
         const { domicilios } = req.body;
         if (Array.isArray(domicilios) && domicilios.length > 0) {
             console.log(`📍 [CLIENTES-BUNKER] Guardando ${domicilios.length} domicilio(s) precargado(s) para el cliente ID: ${nuevoCliente.id}`);
+            const identAlta = await DomiciliosModel.resolverIdentidadCliente(nuevoCliente.id);
             for (let i = 0; i < domicilios.length; i++) {
                 const dom = domicilios[i];
                 if (dom.alias && dom.direccion) {
                     await DomiciliosModel.crear({
-                        id_cliente: nuevoCliente.id,
+                        id_cliente: identAlta.legacyClientesPk,
+                        bunker_cliente_id: nuevoCliente.id,
                         alias: dom.alias.trim(),
+                        tipo_lugar: dom.tipo_lugar ? String(dom.tipo_lugar).trim() : null,
                         direccion: dom.direccion.trim(),
                         localidad: dom.localidad ? dom.localidad.trim() : null,
                         provincia: dom.provincia ? dom.provincia.trim() : null,

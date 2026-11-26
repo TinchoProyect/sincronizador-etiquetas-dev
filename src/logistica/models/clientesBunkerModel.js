@@ -101,6 +101,17 @@ class ClientesBunkerModel {
                 JOIN public.bunker_listas_precios lp ON lp.id = clp.bunker_lista_precio_id
                 GROUP BY clp.bunker_cliente_id
             ),
+            doms_bunker_id_agg AS (
+                SELECT cd.bunker_cliente_id,
+                       STRING_AGG(
+                           TRIM(COALESCE(cd.alias, '') || ' ' || COALESCE(cd.direccion, '') || ' ' || COALESCE(cd.localidad, '')),
+                           ' | '
+                       ) AS domicilios_texto
+                FROM public.clientes_domicilios cd
+                WHERE cd.bunker_cliente_id IS NOT NULL
+                  AND COALESCE(cd.activo, true) = true
+                GROUP BY cd.bunker_cliente_id
+            ),
             doms_agg AS (
                 SELECT cd.id_cliente,
                        STRING_AGG(
@@ -108,6 +119,9 @@ class ClientesBunkerModel {
                            ' | '
                        ) AS domicilios_texto
                 FROM public.clientes_domicilios cd
+                WHERE cd.bunker_cliente_id IS NULL
+                  AND cd.id_cliente IS NOT NULL
+                  AND COALESCE(cd.activo, true) = true
                 GROUP BY cd.id_cliente
             ),
             vecinos_agg AS (
@@ -200,12 +214,13 @@ class ClientesBunkerModel {
                    cc.saldo, cc.cuenta_corriente_id, cc.configuracion_reporte,
                    (ia.cliente_id IS NOT NULL) as onboarding_completado,
                    COALESCE(la.listas_precios, '[]'::json) as listas_precios,
-                   TRIM(COALESCE(da_bunker.domicilios_texto, '') || ' ' || COALESCE(da_legacy.domicilios_texto, '')) as domicilios_busqueda,
+                   TRIM(COALESCE(da_bunker_id.domicilios_texto, '') || ' ' || COALESCE(da_bunker.domicilios_texto, '') || ' ' || COALESCE(da_legacy.domicilios_texto, '')) as domicilios_busqueda,
                    na.nodo_info
             FROM public.bunker_clientes c
             LEFT JOIN cc_principal cc ON cc.codigo_bunker_cliente = c.codigo_bunker_cliente
             LEFT JOIN inv_activas ia ON ia.cliente_id = c.codigo_bunker_cliente
             LEFT JOIN listas_agg la ON la.bunker_cliente_id = c.id
+            LEFT JOIN doms_bunker_id_agg da_bunker_id ON da_bunker_id.bunker_cliente_id = c.id
             LEFT JOIN doms_agg da_bunker ON da_bunker.id_cliente = c.id
             LEFT JOIN doms_agg da_legacy
               ON c.lomas_soft_id ~ '^[0-9]+$'
@@ -251,6 +266,7 @@ class ClientesBunkerModel {
                     OR c.email_portal_nombre ILIKE $1
                     OR c.email_portal_cargo ILIKE $1
                     OR c.domicilio_fiscal ILIKE $1
+                    OR COALESCE(da_bunker_id.domicilios_texto, '') ILIKE $1
                     OR COALESCE(da_bunker.domicilios_texto, '') ILIKE $1
                     OR COALESCE(da_legacy.domicilios_texto, '') ILIKE $1
                     OR COALESCE(na.nodo_busqueda_texto, '') ILIKE $1

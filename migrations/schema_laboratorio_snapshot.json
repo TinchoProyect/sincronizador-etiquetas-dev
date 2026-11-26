@@ -1,6 +1,6 @@
 {
-  "tableCount": 177,
-  "uniqueIndexCount": 263,
+  "tableCount": 178,
+  "uniqueIndexCount": 265,
   "tables": {
     "abrir_caja_aprendizaje": {
       "codigo_caja": {
@@ -5426,7 +5426,7 @@
         "character_maximum_length": null,
         "numeric_precision": 32,
         "numeric_scale": 0,
-        "is_nullable": "NO",
+        "is_nullable": "YES",
         "column_default": null
       },
       "alias": {
@@ -5597,6 +5597,288 @@
         "numeric_precision": null,
         "numeric_scale": null,
         "is_nullable": "YES",
+        "column_default": "now()"
+      },
+      "bunker_cliente_id": {
+        "ordinal_position": 20,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "origen_carga": {
+        "ordinal_position": 21,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'INTERNO'::character varying"
+      },
+      "verificado_por_cliente": {
+        "ordinal_position": 22,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "fecha_verificacion_cliente": {
+        "ordinal_position": 23,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "solicitud_id": {
+        "ordinal_position": 24,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "gps_precision_metros": {
+        "ordinal_position": 25,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "tipo_lugar": {
+        "ordinal_position": 26,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 40,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": "NULL::character varying"
+      }
+    },
+    "clientes_domicilios_solicitudes": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('clientes_domicilios_solicitudes_id_seq'::regclass)"
+      },
+      "token_publico": {
+        "ordinal_position": 2,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "bunker_cliente_id": {
+        "ordinal_position": 3,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "codigo_bunker_cliente": {
+        "ordinal_position": 4,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 50,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "cliente_nombre_snapshot": {
+        "ordinal_position": 5,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 255,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "modo": {
+        "ordinal_position": 6,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 30,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'ALTA_NUEVA'::character varying"
+      },
+      "domicilio_objetivo_id": {
+        "ordinal_position": 7,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "marcar_predeterminado": {
+        "ordinal_position": 8,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
+      },
+      "estado": {
+        "ordinal_position": 9,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 20,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'PENDIENTE'::character varying"
+      },
+      "nota_operador": {
+        "ordinal_position": 10,
+        "data_type": "text",
+        "udt_name": "text",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "creado_por": {
+        "ordinal_position": 11,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "expires_at": {
+        "ordinal_position": 12,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "usado_at": {
+        "ordinal_position": 13,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "revocada_at": {
+        "ordinal_position": 14,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "revocada_por": {
+        "ordinal_position": 15,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 120,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "domicilio_creado_id": {
+        "ordinal_position": 16,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "ultimo_envio_at": {
+        "ordinal_position": 17,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "ultimo_envio_canales": {
+        "ordinal_position": 18,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "payload_recibido": {
+        "ordinal_position": 19,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "created_at": {
+        "ordinal_position": 20,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      "updated_at": {
+        "ordinal_position": 21,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
         "column_default": "now()"
       }
     },
@@ -23119,6 +23401,32 @@
       ],
       "has_expression_key": false,
       "sig": "categorias_ingredientes::(nombre)[pred=]"
+    },
+    {
+      "table_name": "clientes_domicilios_solicitudes",
+      "index_name": "clientes_domicilios_solicitudes_pkey",
+      "is_primary": true,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX clientes_domicilios_solicitudes_pkey ON public.clientes_domicilios_solicitudes USING btree (id)",
+      "index_predicate": "",
+      "key_columns": [
+        "id"
+      ],
+      "has_expression_key": false,
+      "sig": "clientes_domicilios_solicitudes::(id)[pred=]"
+    },
+    {
+      "table_name": "clientes_domicilios_solicitudes",
+      "index_name": "clientes_domicilios_solicitudes_token_publico_key",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX clientes_domicilios_solicitudes_token_publico_key ON public.clientes_domicilios_solicitudes USING btree (token_publico)",
+      "index_predicate": "",
+      "key_columns": [
+        "token_publico"
+      ],
+      "has_expression_key": false,
+      "sig": "clientes_domicilios_solicitudes::(token_publico)[pred=]"
     },
     {
       "table_name": "clientes_domicilios",

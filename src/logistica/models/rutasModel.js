@@ -270,12 +270,18 @@ class RutasModel {
                     SELECT cd_sub.id 
                     FROM public.clientes_domicilios cd_sub
                     WHERE (
-                        cd_sub.id_cliente = bc.id
-                        OR cd_sub.id_cliente = c.id
-                        OR cd_sub.id_cliente::text = bc.lomas_soft_id
-                        OR cd_sub.id_cliente::text = c.cliente_id::text
+                        (bc.id IS NOT NULL AND cd_sub.bunker_cliente_id = bc.id)
+                        OR (
+                            cd_sub.bunker_cliente_id IS NULL
+                            AND (
+                                cd_sub.id_cliente = bc.id
+                                OR cd_sub.id_cliente = c.id
+                                OR cd_sub.id_cliente::text = bc.lomas_soft_id
+                                OR cd_sub.id_cliente::text = c.cliente_id::text
+                            )
+                        )
                     ) AND cd_sub.activo = true
-                    ORDER BY cd_sub.es_predeterminado DESC, cd_sub.fecha_creacion ASC, cd_sub.id ASC
+                    ORDER BY (bc.id IS NOT NULL AND cd_sub.bunker_cliente_id = bc.id) DESC, cd_sub.es_predeterminado DESC, cd_sub.fecha_creacion ASC, cd_sub.id ASC
                     LIMIT 1
                 )
             )

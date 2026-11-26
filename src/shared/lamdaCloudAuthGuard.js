@@ -212,7 +212,9 @@ function esRutaPublicaAllowlist(reqOrPath) {
         '/api/system/auth/sync-cookie',
         '/api/system/auth/logout',
         '/api/system/print-queue/agent-pull',
-        '/api/admin/db-snapshot-pruebas'
+        '/api/admin/db-snapshot-pruebas',
+        '/js/mi-domicilio-publico.js',
+        '/css/mi-domicilio-publico.css'
     ]);
 
     if (exactPublicPaths.has(reqPathLower)) {
@@ -224,6 +226,15 @@ function esRutaPublicaAllowlist(reqOrPath) {
     if (
         reqMethod === 'GET' &&
         /^\/api\/logistica\/(movil\/)?public-qr-resolve\/[^/]+$/i.test(reqPathLower)
+    ) {
+        return true;
+    }
+
+    // 3A. Autogestión Pública de Domicilio de Entrega por token único (strict allowlist)
+    if (
+        (reqMethod === 'GET' && /^\/mi-domicilio\/[a-f0-9-]{16,80}$/i.test(reqPathLower)) ||
+        (reqMethod === 'GET' && /^\/api\/public\/domicilio\/[a-f0-9-]{16,80}(?:\/geocodificar(?:-inverso)?)?$/i.test(reqPathLower)) ||
+        (reqMethod === 'POST' && /^\/api\/public\/domicilio\/[a-f0-9-]{16,80}\/confirmar$/i.test(reqPathLower))
     ) {
         return true;
     }

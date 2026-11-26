@@ -122,20 +122,21 @@ async function crearDomicilio(req, res) {
             });
         }
         
-        // Obtener ID interno del cliente (convierte cliente_id a id)
-        const idInternoCliente = await DomiciliosModel.obtenerIdInternoCliente(id_cliente);
-        if (!idInternoCliente) {
+        // Resolver identidad canónica del cliente (Búnker y/o Legacy sin colisiones)
+        const identCliente = await DomiciliosModel.resolverIdentidadCliente(id_cliente);
+        if (!identCliente.bunkerClienteId && !identCliente.legacyClientesPk) {
             console.log(`[DOMICILIOS] ⚠️ Cliente ${id_cliente} no existe`);
             return res.status(404).json({
                 success: false,
                 error: 'Cliente no encontrado'
             });
         }
-        
-        console.log(`[DOMICILIOS] Cliente validado: cliente_id=${id_cliente} -> id_interno=${idInternoCliente}`);
-        
+
+        console.log(`[DOMICILIOS] Cliente validado: input=${id_cliente} -> bunker_id=${identCliente.bunkerClienteId}, legacy_pk=${identCliente.legacyClientesPk}`);
+
         // Validar coordenadas si están presentes
-        if (latitud && longitud) {
+        if (latitud !== undefined && latitud !== null && latitud !== '' &&
+            longitud !== undefined && longitud !== null && longitud !== '') {
             const coordenadasValidas = DomiciliosModel.validarCoordenadasArgentina(
                 parseFloat(latitud),
                 parseFloat(longitud)
@@ -150,17 +151,19 @@ async function crearDomicilio(req, res) {
                 });
             }
         }
-        
-        // Crear domicilio usando el ID interno
+
+        // Crear domicilio con vínculo determinista
         const nuevoDomicilio = await DomiciliosModel.crear({
-            id_cliente: idInternoCliente,
+            id_cliente: identCliente.legacyClientesPk,
+            bunker_cliente_id: identCliente.bunkerClienteId,
             alias,
+            tipo_lugar: req.body.tipo_lugar || null,
             direccion,
             localidad,
             provincia,
             codigo_postal,
-            latitud: latitud ? parseFloat(latitud) : null,
-            longitud: longitud ? parseFloat(longitud) : null,
+            latitud: (latitud !== undefined && latitud !== null && latitud !== '') ? parseFloat(latitud) : null,
+            longitud: (longitud !== undefined && longitud !== null && longitud !== '') ? parseFloat(longitud) : null,
             coordenadas_validadas: coordenadas_validadas || false,
             es_predeterminado: es_predeterminado || false,
             telefono_contacto,
@@ -198,6 +201,7 @@ async function actualizarDomicilio(req, res) {
         
         const {
             alias,
+            tipo_lugar,
             direccion,
             localidad,
             provincia,
@@ -213,7 +217,8 @@ async function actualizarDomicilio(req, res) {
         } = req.body;
         
         // Validar coordenadas si están presentes
-        if (latitud && longitud) {
+        if (latitud !== undefined && latitud !== null && latitud !== '' &&
+            longitud !== undefined && longitud !== null && longitud !== '') {
             const coordenadasValidas = DomiciliosModel.validarCoordenadasArgentina(
                 parseFloat(latitud),
                 parseFloat(longitud)
@@ -231,12 +236,13 @@ async function actualizarDomicilio(req, res) {
         // Actualizar domicilio
         const domicilioActualizado = await DomiciliosModel.actualizar(parseInt(id), {
             alias,
+            tipo_lugar,
             direccion,
             localidad,
             provincia,
             codigo_postal,
-            latitud: latitud ? parseFloat(latitud) : undefined,
-            longitud: longitud ? parseFloat(longitud) : undefined,
+            latitud: (latitud !== undefined && latitud !== null && latitud !== '') ? parseFloat(latitud) : undefined,
+            longitud: (longitud !== undefined && longitud !== null && longitud !== '') ? parseFloat(longitud) : undefined,
             coordenadas_validadas,
             es_predeterminado,
             telefono_contacto,

@@ -17,6 +17,19 @@ const {
     eliminarDomicilio
 } = require('../controllers/domiciliosController');
 
+const {
+    listarSolicitudes,
+    crearSolicitud,
+    revocarSolicitud,
+    enviarSolicitudOmnicanal
+} = require('../controllers/domicilioSolicitudesController');
+
+// Rutas de solicitudes públicas de autogestión (DEBEN ir antes de GET /:id)
+router.get('/solicitudes', listarSolicitudes);
+router.post('/solicitudes', crearSolicitud);
+router.post('/solicitudes/:id/revocar', revocarSolicitud);
+router.post('/solicitudes/:id/enviar-omnicanal', enviarSolicitudOmnicanal);
+
 /**
  * @route GET /api/logistica/domicilios
  * @desc Obtener todos los domicilios con filtros opcionales

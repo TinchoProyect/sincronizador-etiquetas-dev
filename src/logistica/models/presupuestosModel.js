@@ -41,15 +41,22 @@ async function autoAsignarDomicilios(pool) {
                     cd.es_predeterminado
                 FROM presupuestos_huerfanos ph
                 INNER JOIN clientes_domicilios cd ON (
-                    cd.id_cliente = ph.bc_id
-                    OR cd.id_cliente = ph.c_id
-                    OR cd.id_cliente::text = ph.lomas_soft_id
-                    OR cd.id_cliente::text = ph.cliente_id::text
-                    OR cd.id_cliente::text = ph.id_cliente
+                    (ph.bc_id IS NOT NULL AND cd.bunker_cliente_id = ph.bc_id)
+                    OR (
+                        cd.bunker_cliente_id IS NULL
+                        AND (
+                            cd.id_cliente = ph.c_id
+                            OR (ph.bc_id IS NOT NULL AND cd.id_cliente = ph.bc_id)
+                            OR cd.id_cliente::text = ph.lomas_soft_id
+                            OR cd.id_cliente::text = ph.cliente_id::text
+                            OR cd.id_cliente::text = ph.id_cliente
+                        )
+                    )
                 )
                 WHERE cd.activo = true
                 ORDER BY 
                     ph.presupuesto_id,
+                    (ph.bc_id IS NOT NULL AND cd.bunker_cliente_id = ph.bc_id) DESC,
                     cd.es_predeterminado DESC,
                     cd.fecha_creacion ASC
             )
@@ -107,14 +114,21 @@ async function autoAsignarDomicilios(pool) {
                     cd.alias
                 FROM sobres_huerfanos sh
                 LEFT JOIN public.clientes_domicilios cd ON (
-                    cd.id_cliente = sh.bc_id
-                    OR cd.id_cliente = sh.c_id
-                    OR cd.id_cliente::text = sh.lomas_soft_id
-                    OR cd.id_cliente::text = sh.cliente_id::text
-                    OR cd.id_cliente::text = sh.raw_cliente_id
+                    (sh.bc_id IS NOT NULL AND cd.bunker_cliente_id = sh.bc_id)
+                    OR (
+                        cd.bunker_cliente_id IS NULL
+                        AND (
+                            cd.id_cliente = sh.c_id
+                            OR (sh.bc_id IS NOT NULL AND cd.id_cliente = sh.bc_id)
+                            OR cd.id_cliente::text = sh.lomas_soft_id
+                            OR cd.id_cliente::text = sh.cliente_id::text
+                            OR cd.id_cliente::text = sh.raw_cliente_id
+                        )
+                    )
                 ) AND cd.activo = true
                 ORDER BY 
                     sh.sobre_id,
+                    (sh.bc_id IS NOT NULL AND cd.bunker_cliente_id = sh.bc_id) DESC,
                     cd.es_predeterminado DESC,
                     cd.fecha_creacion ASC,
                     cd.id ASC
@@ -357,12 +371,18 @@ async function obtenerPresupuestosDisponibles(pool) {
                 SELECT cd_sub.id 
                 FROM public.clientes_domicilios cd_sub
                 WHERE (
-                    cd_sub.id_cliente = bc.id
-                    OR cd_sub.id_cliente = c.id
-                    OR cd_sub.id_cliente::text = bc.lomas_soft_id
-                    OR cd_sub.id_cliente::text = c.cliente_id::text
+                    (bc.id IS NOT NULL AND cd_sub.bunker_cliente_id = bc.id)
+                    OR (
+                        cd_sub.bunker_cliente_id IS NULL
+                        AND (
+                            cd_sub.id_cliente = bc.id
+                            OR cd_sub.id_cliente = c.id
+                            OR cd_sub.id_cliente::text = bc.lomas_soft_id
+                            OR cd_sub.id_cliente::text = c.cliente_id::text
+                        )
+                    )
                 ) AND cd_sub.activo = true
-                ORDER BY cd_sub.es_predeterminado DESC, cd_sub.fecha_creacion ASC, cd_sub.id ASC
+                ORDER BY (bc.id IS NOT NULL AND cd_sub.bunker_cliente_id = bc.id) DESC, cd_sub.es_predeterminado DESC, cd_sub.fecha_creacion ASC, cd_sub.id ASC
                 LIMIT 1
             )
         )
@@ -578,12 +598,18 @@ async function obtenerPresupuestosPorRuta(pool, rutaId) {
                 SELECT cd_sub.id 
                 FROM public.clientes_domicilios cd_sub
                 WHERE (
-                    cd_sub.id_cliente = bc.id
-                    OR cd_sub.id_cliente = c.id
-                    OR cd_sub.id_cliente::text = bc.lomas_soft_id
-                    OR cd_sub.id_cliente::text = c.cliente_id::text
+                    (bc.id IS NOT NULL AND cd_sub.bunker_cliente_id = bc.id)
+                    OR (
+                        cd_sub.bunker_cliente_id IS NULL
+                        AND (
+                            cd_sub.id_cliente = bc.id
+                            OR cd_sub.id_cliente = c.id
+                            OR cd_sub.id_cliente::text = bc.lomas_soft_id
+                            OR cd_sub.id_cliente::text = c.cliente_id::text
+                        )
+                    )
                 ) AND cd_sub.activo = true
-                ORDER BY cd_sub.es_predeterminado DESC, cd_sub.fecha_creacion ASC, cd_sub.id ASC
+                ORDER BY (bc.id IS NOT NULL AND cd_sub.bunker_cliente_id = bc.id) DESC, cd_sub.es_predeterminado DESC, cd_sub.fecha_creacion ASC, cd_sub.id ASC
                 LIMIT 1
             )
         )

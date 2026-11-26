@@ -272,7 +272,53 @@ pool.query('SELECT NOW()', async (err, res) => {
             await pool.query("ALTER TABLE public.bunker_prospectos ADD COLUMN IF NOT EXISTS en_pool_logistica BOOLEAN DEFAULT false;");
             await pool.query("ALTER TABLE public.bunker_prospectos ADD COLUMN IF NOT EXISTS cliente_activo_id INTEGER;");
             await pool.query("ALTER TABLE public.bunker_prospectos ADD COLUMN IF NOT EXISTS cliente_domicilio_id INTEGER;");
-            console.log('✅ [LOGISTICA] Vista v_presupuestos_detalles_resueltos e índices verificados/creados');
+
+            // [MIGRACIÓN 44] Autogestión de Domicilios por Enlace Público + Saneamiento bunker_cliente_id
+            await pool.query(`
+                ALTER TABLE public.clientes_domicilios
+                    ALTER COLUMN id_cliente DROP NOT NULL;
+                ALTER TABLE public.clientes_domicilios
+                    ADD COLUMN IF NOT EXISTS bunker_cliente_id INTEGER REFERENCES public.bunker_clientes(id) ON DELETE CASCADE,
+                    ADD COLUMN IF NOT EXISTS origen_carga VARCHAR(30) NOT NULL DEFAULT 'INTERNO',
+                    ADD COLUMN IF NOT EXISTS verificado_por_cliente BOOLEAN NOT NULL DEFAULT FALSE,
+                    ADD COLUMN IF NOT EXISTS fecha_verificacion_cliente TIMESTAMPTZ DEFAULT NULL,
+                    ADD COLUMN IF NOT EXISTS solicitud_id INTEGER DEFAULT NULL,
+                    ADD COLUMN IF NOT EXISTS gps_precision_metros INTEGER DEFAULT NULL,
+                    ADD COLUMN IF NOT EXISTS tipo_lugar VARCHAR(40) DEFAULT NULL;
+                CREATE INDEX IF NOT EXISTS idx_clientes_domicilios_bunker_cliente_id
+                    ON public.clientes_domicilios (bunker_cliente_id)
+                    WHERE bunker_cliente_id IS NOT NULL;
+
+                CREATE TABLE IF NOT EXISTS public.clientes_domicilios_solicitudes (
+                    id SERIAL PRIMARY KEY,
+                    token_publico VARCHAR(80) UNIQUE NOT NULL,
+                    bunker_cliente_id INTEGER NOT NULL REFERENCES public.bunker_clientes(id) ON DELETE CASCADE,
+                    codigo_bunker_cliente VARCHAR(50) NOT NULL,
+                    cliente_nombre_snapshot VARCHAR(255) NOT NULL,
+                    modo VARCHAR(30) NOT NULL DEFAULT 'ALTA_NUEVA',
+                    domicilio_objetivo_id INTEGER REFERENCES public.clientes_domicilios(id) ON DELETE SET NULL,
+                    marcar_predeterminado BOOLEAN NOT NULL DEFAULT FALSE,
+                    estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+                    nota_operador TEXT,
+                    creado_por VARCHAR(120),
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    usado_at TIMESTAMPTZ,
+                    revocada_at TIMESTAMPTZ,
+                    revocada_por VARCHAR(120),
+                    domicilio_creado_id INTEGER REFERENCES public.clientes_domicilios(id) ON DELETE SET NULL,
+                    ultimo_envio_at TIMESTAMPTZ,
+                    ultimo_envio_canales JSONB,
+                    payload_recibido JSONB,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_dom_solicitudes_bunker_estado
+                    ON public.clientes_domicilios_solicitudes (bunker_cliente_id, estado);
+                CREATE INDEX IF NOT EXISTS idx_dom_solicitudes_expires
+                    ON public.clientes_domicilios_solicitudes (expires_at)
+                    WHERE estado = 'PENDIENTE';
+            `);
+            console.log('✅ [LOGISTICA] Vista v_presupuestos_detalles_resueltos, índices y migración 44 verificados/creados');
         } catch (alterErr) {
             console.error('❌ [LOGISTICA] Error al realizar ALTER TABLE o vinculaciones en base de datos:', alterErr.message);
         }

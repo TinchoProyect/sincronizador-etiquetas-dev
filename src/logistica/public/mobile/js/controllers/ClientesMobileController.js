@@ -570,18 +570,26 @@ const ClientesMobileController = {
         this.domiciliosMemoria.forEach((dom, idx) => {
             const card = document.createElement('div');
             card.className = `domicilio-card-mobile ${dom.es_predeterminado ? 'is-default' : ''}`;
+            const esAutogestion = dom.origen_carga === 'AUTOGESTION_CLIENTE' || dom.verificado_por_cliente === true;
+            const horarioTxt = (dom.horario_atencion_desde || dom.horario_atencion_hasta)
+                ? `🕒 ${String(dom.horario_atencion_desde || '').slice(0, 5)} a ${String(dom.horario_atencion_hasta || '').slice(0, 5)}`
+                : '';
 
             card.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                    <div style="min-width:0;">
-                        <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.4rem;">
+                    <div style="min-width:0; flex:1;">
+                        <div style="display:flex; align-items:center; gap:0.35rem; flex-wrap:wrap;">
                             <span style="font-weight:800; color:#f8fafc; font-size:0.95rem;">${dom.alias || 'Sucursal Principal'}</span>
                             ${dom.es_predeterminado ? '<span class="badge-predeterminado">⭐ Predeterminado</span>' : ''}
+                            ${esAutogestion ? '<span style="font-size:0.68rem; background:rgba(16,185,129,0.2); color:#6ee7b7; border:1px solid rgba(16,185,129,0.45); padding:0.1rem 0.45rem; border-radius:999px; font-weight:800;">✅ Cargado por cliente</span>' : ''}
                         </div>
-                        <p style="margin:0.25rem 0 0; font-size:0.85rem; color:#cbd5e1; line-height:1.3;">📍 ${dom.direccion || 'Sin dirección'}</p>
-                        ${dom.latitud && dom.longitud ? `<span style="font-size:0.72rem; color:#34d399; font-weight:700;">📡 Coordenadas GPS fijadas</span>` : ''}
+                        <p style="margin:0.25rem 0 0; font-size:0.85rem; color:#cbd5e1; line-height:1.3;">📍 ${dom.direccion || 'Sin dirección'}${dom.localidad ? ` (${dom.localidad})` : ''}</p>
+                        ${dom.latitud && dom.longitud ? `<span style="font-size:0.72rem; color:#34d399; font-weight:700; display:block; margin-top:0.15rem;">📡 Coordenadas GPS fijadas</span>` : ''}
+                        ${horarioTxt ? `<span style="font-size:0.72rem; color:#94a3b8; display:block;">${horarioTxt}</span>` : ''}
+                        ${dom.instrucciones_entrega ? `<span style="font-size:0.72rem; color:#c084fc; font-style:italic; display:block;">📝 ${dom.instrucciones_entrega}</span>` : ''}
                     </div>
-                    <div style="display:flex; gap:0.3rem;">
+                    <div style="display:flex; gap:0.3rem; flex-shrink:0;">
+                        ${(this.clienteIdEdicion && dom.id) ? `<button type="button" class="btn-action-dom" onclick="ClientesMobileController.pedirDomicilioPorLinkMobile('${this.clienteIdEdicion}', { modo: 'ACTUALIZAR_EXISTENTE', domicilioObjetivoId: '${dom.id}', domicilioObjetivoAlias: '${String(dom.alias || '').replace(/'/g, '')}' })" title="Enviar link para actualizar ubicación" style="color:#34d399;">📲</button>` : ''}
                         <button type="button" class="btn-action-dom" onclick="ClientesMobileController.abrirModalDomicilio(${idx})" title="Editar">✏️</button>
                         <button type="button" class="btn-action-dom text-danger" onclick="ClientesMobileController.eliminarDomicilio(${idx})" title="Eliminar">🗑️</button>
                     </div>
@@ -1141,9 +1149,9 @@ const ClientesMobileController = {
             }
             this.renderEmailCards();
 
-            // Cargar Domicilios
+            // Cargar Domicilios (endpoint canónico con query param id_cliente)
             try {
-                const resDom = await fetch(`/api/logistica/domicilios/cliente/${id}`);
+                const resDom = await fetch(`/api/logistica/domicilios?id_cliente=${encodeURIComponent(id)}`);
                 const dataDom = await resDom.json();
                 if (dataDom.success && Array.isArray(dataDom.data)) {
                     this.domiciliosMemoria = dataDom.data;
@@ -1152,6 +1160,7 @@ const ClientesMobileController = {
                 console.error('Error cargando domicilios:', e);
             }
             this.renderDomiciliosCards();
+            this.cargarSolicitudesDomicilioMobile(id);
 
             this.validarYMostrarCuit();
 
@@ -1312,6 +1321,50 @@ const ClientesMobileController = {
                 } catch (convErr) {
                     console.error('[PROSPECTO] Error asociando conversión:', convErr);
                 }
+            }
+
+            const nuevoId = data.data && data.data.id;
+            const nuevoNombre = (data.data && data.data.cliente_nombre) || nombre;
+            const abrirPostSaveLink = Boolean(this._postSavePedirDomicilio);
+            this._postSavePedirDomicilio = false;
+
+            if ((abrirPostSaveLink || (!esEdicion && this.domiciliosMemoria.length === 0)) && nuevoId && window.SolicitudDomicilioModal) {
+                if (abrirPostSaveLink) {
+                    await window.SolicitudDomicilioModal.abrir({
+                        clienteId: nuevoId,
+                        clienteNombre: nuevoNombre,
+                        modo: 'ALTA_NUEVA',
+                        theme: 'dark',
+                        onDone: () => {
+                            window.location.href = `crear-cliente-movil.html?id=${encodeURIComponent(nuevoId)}`;
+                        }
+                    });
+                    return;
+                }
+                const postRes = await Swal.fire({
+                    icon: 'success',
+                    title: this.fromProspectoId ? '¡Prospecto Convertido!' : 'Cliente Registrado',
+                    html: `<strong>${nuevoNombre}</strong> guardado sin domicilio.<br><small style="color:#94a3b8;">¿Querés mandarle un link por WhatsApp para que cargue su dirección y ubicación?</small>`,
+                    background: '#1e293b',
+                    color: '#f8fafc',
+                    showCancelButton: true,
+                    confirmButtonText: '📲 Pedir Domicilio por Link',
+                    cancelButtonText: 'Volver al listado',
+                    confirmButtonColor: '#059669',
+                    cancelButtonColor: '#64748b'
+                });
+                if (postRes.isConfirmed) {
+                    await window.SolicitudDomicilioModal.abrir({
+                        clienteId: nuevoId,
+                        clienteNombre: nuevoNombre,
+                        modo: 'ALTA_NUEVA',
+                        theme: 'dark',
+                        onDone: () => { window.location.href = 'clientes.html'; }
+                    });
+                    return;
+                }
+                window.location.href = 'clientes.html';
+                return;
             }
 
             Swal.fire({
@@ -1581,6 +1634,9 @@ const ClientesMobileController = {
                     ` : ''}
                     <button class="btn-modal-link" style="background:#7c3aed; color:white; padding:0.65rem 1rem; border-radius:0.75rem; font-weight:700; border:none; cursor:pointer; display:flex; align-items:center; gap:0.5rem;" onclick="Swal.close(); ClientesMobileController.abrirModalListasBunker('${c.id}')">
                         🏷️ Asignar Lista Búnker
+                    </button>
+                    <button class="btn-modal-link" style="background:#059669; color:white; padding:0.65rem 1rem; border-radius:0.75rem; font-weight:700; border:none; cursor:pointer; display:flex; align-items:center; gap:0.5rem;" onclick="Swal.close(); ClientesMobileController.pedirDomicilioPorLinkMobile('${c.id}')">
+                        📍 Pedir Domicilio de Entrega (WA / Link / QR)
                     </button>
                     <button class="btn-modal-link" style="background:#0d9488; color:white; padding:0.65rem 1rem; border-radius:0.75rem; font-weight:700; border:none; cursor:pointer; display:flex; align-items:center; gap:0.5rem;" onclick="Swal.close(); ClientesMobileController.generarEnsobradoEfectivo('${c.id}')">
                         📦 Generar Ensobrado de Efectivo (QR / Link)
@@ -3467,6 +3523,11 @@ const ClientesMobileController = {
             btnAddDom.addEventListener('click', () => this.abrirModalDomicilio());
         }
 
+        const btnPedirDom = document.getElementById('btn-pedir-domicilio-mobile');
+        if (btnPedirDom) {
+            btnPedirDom.addEventListener('click', () => this.pedirDomicilioPorLinkEnFormulario());
+        }
+
         // Auto composición de dirección en modal de domicilio
         ['modal-dom-calle', 'modal-dom-num', 'modal-dom-entre'].forEach(id => {
             const el = document.getElementById(id);
@@ -3502,6 +3563,107 @@ const ClientesMobileController = {
         }
 
         this.setupLomasSoftTypeahead();
+    },
+
+    async cargarSolicitudesDomicilioMobile(clienteId) {
+        const cont = document.getElementById('domicilios-solicitudes-pendientes-mobile');
+        if (!cont || !clienteId) return;
+        try {
+            const res = await fetch(`/api/logistica/domicilios/solicitudes?id_cliente=${encodeURIComponent(clienteId)}`);
+            const data = await res.json();
+            if (!data.success) return;
+            const pend = (data.solicitudes || []).filter(s => s.estado === 'PENDIENTE');
+            if (pend.length === 0) {
+                cont.innerHTML = '';
+                return;
+            }
+            cont.innerHTML = pend.map(s => `
+                <div style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.35); border-radius:0.65rem; padding:0.55rem 0.7rem; display:flex; justify-content:space-between; align-items:center; gap:0.4rem; flex-wrap:wrap; font-size:0.75rem;">
+                    <span style="color:#6ee7b7; font-weight:800;">🔗 Link activo (${s.modo === 'ACTUALIZAR_EXISTENTE' ? 'Actualizar' : 'Nuevo'})</span>
+                    <div style="display:flex; gap:0.3rem;">
+                        <button type="button" onclick="ClientesMobileController.reenviarSolicitudDomicilioMobile(${s.id})" style="background:#059669; color:#fff; border:none; border-radius:0.4rem; padding:0.2rem 0.5rem; font-size:0.72rem; font-weight:700; cursor:pointer;">📤 Reenviar</button>
+                        <button type="button" onclick="ClientesMobileController.revocarSolicitudDomicilioMobile(${s.id})" style="background:#7f1d1d; color:#fecaca; border:none; border-radius:0.4rem; padding:0.2rem 0.5rem; font-size:0.72rem; font-weight:700; cursor:pointer;">🚫</button>
+                    </div>
+                </div>
+            `).join('');
+            this._solicitudesPendientesMobile = pend;
+            this._solicitudesClienteMobile = data.cliente || null;
+        } catch (_) {}
+    },
+
+    async reenviarSolicitudDomicilioMobile(solId) {
+        const sol = (this._solicitudesPendientesMobile || []).find(s => Number(s.id) === Number(solId));
+        if (!sol || !window.SolicitudDomicilioModal) return;
+        await window.SolicitudDomicilioModal.abrirParaSolicitudExistente({
+            solicitud: sol,
+            cliente: this._solicitudesClienteMobile || { cliente_nombre: document.getElementById('txt-nombre')?.value || 'Cliente' },
+            theme: 'dark',
+            onDone: () => {
+                if (this.clienteIdEdicion) this.cargarSolicitudesDomicilioMobile(this.clienteIdEdicion);
+            }
+        });
+    },
+
+    async revocarSolicitudDomicilioMobile(solId) {
+        if (!window.SolicitudDomicilioModal) return;
+        try {
+            await window.SolicitudDomicilioModal.revocar(solId);
+            if (this.clienteIdEdicion) await this.cargarSolicitudesDomicilioMobile(this.clienteIdEdicion);
+        } catch (e) {
+            Swal.fire('Error', e.message, 'error');
+        }
+    },
+
+    async pedirDomicilioPorLinkMobile(clienteId, opts = {}) {
+        if (!window.SolicitudDomicilioModal) return;
+        const c = (this.clientes || []).find(x => String(x.id) === String(clienteId));
+        const nombre = opts.clienteNombre || c?.cliente_nombre || document.getElementById('txt-nombre')?.value || 'Cliente';
+        await window.SolicitudDomicilioModal.abrir({
+            clienteId,
+            clienteNombre: nombre,
+            modo: opts.modo || 'ALTA_NUEVA',
+            domicilioObjetivoId: opts.domicilioObjetivoId || null,
+            domicilioObjetivoAlias: opts.domicilioObjetivoAlias || '',
+            theme: 'dark',
+            onDone: () => {
+                if (this.clienteIdEdicion) {
+                    this.cargarFichaParaEditar(this.clienteIdEdicion);
+                }
+            }
+        });
+    },
+
+    async pedirDomicilioPorLinkEnFormulario() {
+        if (this.clienteIdEdicion) {
+            return this.pedirDomicilioPorLinkMobile(this.clienteIdEdicion);
+        }
+        const nombre = (document.getElementById('txt-nombre')?.value || '').trim();
+        if (!nombre) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Completá el Nombre Comercial',
+                text: 'Ingresá primero el Nombre Comercial del cliente para guardar la ficha y enviarle el link.',
+                background: '#1e293b',
+                color: '#f8fafc',
+                confirmButtonColor: '#7c3aed'
+            });
+            return;
+        }
+        const conf = await Swal.fire({
+            icon: 'question',
+            title: 'Guardar ficha y enviar link',
+            text: `¿Guardamos primero la ficha de "${nombre}" y abrimos el envío del link de domicilio?`,
+            background: '#1e293b',
+            color: '#f8fafc',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, guardar y enviar link',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#059669'
+        });
+        if (conf.isConfirmed) {
+            this._postSavePedirDomicilio = true;
+            await this.guardarClienteFormulario();
+        }
     }
 };
 

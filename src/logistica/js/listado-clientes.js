@@ -3590,7 +3590,9 @@ document.addEventListener('DOMContentLoaded', () => {
         abrirDrawer('➕ Registrar Nuevo Cliente');
         domiciliosMemoria = [];
         domiciliosClienteActual = [];
+        solicitudesDomicilioActual = [];
         renderizarListaDomicilios();
+        renderizarSolicitudesDomicilioPendientes();
     });
 
     // --- 5. ABRIR FICHA DE CLIENTE PARA EDICIÓN ---
@@ -3629,9 +3631,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (txtEmailPortalCargo) txtEmailPortalCargo.value = cliente.email_portal_cargo || '';
         if (chkVerStock) chkVerStock.checked = cliente.ver_stock === true;
 
-        // Cargar domicilios de entrega del cliente
+        // Cargar domicilios de entrega del cliente y solicitudes pendientes
         domiciliosMemoria = [];
         cargarDomiciliosDeCliente(cliente.id);
+        cargarSolicitudesDomicilioCliente(cliente.id);
 
         // Sincronizar el botón de limpieza del autocomplete
         const btnLimpiarLomas = document.getElementById('btn-limpiar-lomas');
@@ -3813,31 +3816,56 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Notificación exitosa
-            Swal.fire({
-                icon: 'success',
-                title: esEdicion ? 'Ficha actualizada' : 'Cliente registrado',
-                text: data.message || 'La operación se completó exitosamente.',
-                timer: 2000,
-                showConfirmButton: false
-            });
+            const nuevoClienteId = data.data && data.data.id;
+            const nuevoClienteNombre = (data.data && data.data.cliente_nombre) || nombre;
+            const sinDomiciliosEnAlta = !esEdicion && domiciliosMemoria.length === 0 && nuevoClienteId;
 
             cerrarDrawer();
             cargarClientes(buscadorInput.value.trim());
 
             // Si proviene de la conversión de un prospecto de CRM, marcarlo formalmente como CONVERTIDO
-            if (prospectoConversionId && data.data && data.data.id) {
+            if (prospectoConversionId && nuevoClienteId) {
                 try {
                     await fetch(`/api/logistica/prospectos/${prospectoConversionId}/convertir`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ bunker_cliente_id: data.data.id })
+                        body: JSON.stringify({ bunker_cliente_id: nuevoClienteId })
                     });
-                    console.log(`[PROSPECTO] Prospecto #${prospectoConversionId} convertido formalmente a Cliente #${data.data.id}`);
+                    console.log(`[PROSPECTO] Prospecto #${prospectoConversionId} convertido formalmente a Cliente #${nuevoClienteId}`);
                     prospectoConversionId = null;
                 } catch (convErr) {
                     console.error('[PROSPECTO] Error registrando conversión:', convErr);
                 }
+            }
+
+            if (sinDomiciliosEnAlta && window.SolicitudDomicilioModal) {
+                const postAlta = await Swal.fire({
+                    icon: 'success',
+                    title: 'Cliente registrado',
+                    html: `<strong>${nuevoClienteNombre}</strong> quedó guardado sin domicilio de entrega.<br><small style="color:#64748b;">¿Querés mandarle un link por WhatsApp para que cargue su dirección y ubicación en el mapa?</small>`,
+                    showCancelButton: true,
+                    confirmButtonText: '📲 Pedir Domicilio (Link / WA)',
+                    cancelButtonText: 'Listo',
+                    confirmButtonColor: '#059669',
+                    cancelButtonColor: '#64748b'
+                });
+                if (postAlta.isConfirmed) {
+                    await window.SolicitudDomicilioModal.abrir({
+                        clienteId: nuevoClienteId,
+                        clienteNombre: nuevoClienteNombre,
+                        modo: 'ALTA_NUEVA',
+                        theme: 'light'
+                    });
+                }
+            } else {
+                // Notificación exitosa
+                Swal.fire({
+                    icon: 'success',
+                    title: esEdicion ? 'Ficha actualizada' : 'Cliente registrado',
+                    text: data.message || 'La operación se completó exitosamente.',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
             }
 
         } catch (error) {
@@ -4696,10 +4724,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- LÓGICA DE GESTIÓN MULTIDOMICILIO Y PREDETERMINADOS ---
     let domiciliosMemoria = [];
     let domiciliosClienteActual = [];
+    let solicitudesDomicilioActual = [];
+    let solicitudesClienteInfoActual = null;
     let mapaModalInstance = null;
 
     const domiciliosListaContainer = document.getElementById('domicilios-lista-container');
+    const domiciliosSolicitudesContainer = document.getElementById('domicilios-solicitudes-pendientes-container');
     const btnAddDomicilio = document.getElementById('btn-add-domicilio');
+    const btnPedirDomicilioCliente = document.getElementById('btn-pedir-domicilio-cliente');
+    const bannerModalDomAutogestion = document.getElementById('banner-modal-dom-autogestion');
+    const btnModalDomPedirLink = document.getElementById('btn-modal-dom-pedir-link');
     const modalDomicilioOverlay = document.getElementById('modal-domicilio-overlay');
     const modalDomicilio = document.getElementById('modal-domicilio');
     const modalDomicilioTitulo = document.getElementById('modal-domicilio-titulo');
@@ -4878,8 +4912,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     </span>
                 ` : '';
 
+                const esAutogestion = dom.origen_carga === 'AUTOGESTION_CLIENTE' || dom.verificado_por_cliente === true;
+                const tooltipAuto = [
+                    dom.fecha_verificacion_cliente ? `Cargado el ${new Date(dom.fecha_verificacion_cliente).toLocaleString('es-AR')}` : 'Cargado por autogestión del cliente',
+                    dom.gps_precision_metros ? `Precisión GPS ±${dom.gps_precision_metros}m` : ''
+                ].filter(Boolean).join(' · ');
+                const badgeAutogestion = esAutogestion ? `
+                    <span style="background-color: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; padding: 1px 7px; border-radius: 999px; font-size: 0.72em; font-weight: 700;" title="${tooltipAuto}">
+                        ✅ Cargado por cliente
+                    </span>
+                ` : '';
+
                 let detalleUbicacion = [dom.direccion, dom.localidad, dom.provincia].filter(Boolean).join(', ');
-                let detalleHorario = (dom.horario_atencion_desde || dom.horario_atencion_hasta) ? ` 🕒 ${dom.horario_atencion_desde || ''} a ${dom.horario_atencion_hasta || ''}` : '';
+                let detalleHorario = (dom.horario_atencion_desde || dom.horario_atencion_hasta) ? ` 🕒 ${String(dom.horario_atencion_desde || '').slice(0, 5)} a ${String(dom.horario_atencion_hasta || '').slice(0, 5)}` : '';
                 let detalleTel = dom.telefono_contacto ? ` 📞 ${dom.telefono_contacto}` : '';
 
                 card.innerHTML = `
@@ -4887,9 +4932,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div style="font-weight: 600; font-size: 0.9em; color: #1e293b; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                             <span>📍 ${dom.alias || 'Domicilio de Entrega'}</span>
                             ${badgePredeterminado}
+                            ${badgeAutogestion}
                             ${badgeCoords}
                         </div>
                         <div style="display: flex; gap: 4px;">
+                            ${(esEdicionCliente && dom.id) ? `<button type="button" class="btn-pedir-actualizar-domicilio btn-action" data-id="${dom.id}" style="width: 26px; height: 26px; font-size: 12px; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 6px; cursor: pointer;" title="Enviar link al cliente para actualizar/geolocalizar este domicilio">📲</button>` : ''}
                             <button type="button" class="btn-edit-domicilio btn-action btn-edit" data-index="${index}" data-id="${dom.id || ''}" style="width: 26px; height: 26px; font-size: 12px;" title="Editar Domicilio">✏️</button>
                             <button type="button" class="btn-delete-domicilio btn-action btn-delete" data-index="${index}" data-id="${dom.id || ''}" style="width: 26px; height: 26px; font-size: 12px;" title="Eliminar Domicilio">🗑️</button>
                         </div>
@@ -4898,6 +4945,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${(detalleTel || detalleHorario) ? `<div style="font-size: 0.8em; color: #64748b;">${detalleTel}${detalleHorario}</div>` : ''}
                     ${dom.instrucciones_entrega ? `<div style="font-size: 0.8em; color: #7c3aed; font-style: italic;">📝 ${dom.instrucciones_entrega}</div>` : ''}
                 `;
+
+                const btnPedirAct = card.querySelector('.btn-pedir-actualizar-domicilio');
+                if (btnPedirAct) {
+                    btnPedirAct.addEventListener('click', () => {
+                        if (!window.SolicitudDomicilioModal) return;
+                        window.SolicitudDomicilioModal.abrir({
+                            clienteId: txtId.value,
+                            clienteNombre: txtNombre.value.trim(),
+                            modo: 'ACTUALIZAR_EXISTENTE',
+                            domicilioObjetivoId: dom.id,
+                            domicilioObjetivoAlias: dom.alias || '',
+                            theme: 'light',
+                            onDone: () => {
+                                cargarDomiciliosDeCliente(txtId.value);
+                                cargarSolicitudesDomicilioCliente(txtId.value);
+                            }
+                        });
+                    });
+                }
 
                 const btnSetPred = card.querySelector('.btn-set-predeterminado');
                 if (btnSetPred) {
@@ -5126,6 +5192,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (modalDomicilioOverlay) modalDomicilioOverlay.style.display = 'block';
         modalDomicilio.style.display = 'flex';
+        if (bannerModalDomAutogestion) {
+            bannerModalDomAutogestion.style.display = esEdicionCliente ? 'flex' : 'none';
+        }
 
         // Inicializar o refrescar el mapa interactivo una vez visible el modal
         setTimeout(() => {
@@ -5356,9 +5425,126 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    async function cargarSolicitudesDomicilioCliente(clienteId) {
+        if (!domiciliosSolicitudesContainer || !clienteId) return;
+        try {
+            const res = await fetch(`/api/logistica/domicilios/solicitudes?id_cliente=${encodeURIComponent(clienteId)}`);
+            const data = await res.json();
+            if (data.success) {
+                solicitudesDomicilioActual = data.solicitudes || [];
+                solicitudesClienteInfoActual = data.cliente || null;
+                renderizarSolicitudesDomicilioPendientes();
+            }
+        } catch (err) {
+            console.warn('No se pudieron cargar enlaces pendientes de domicilio:', err);
+        }
+    }
+
+    function renderizarSolicitudesDomicilioPendientes() {
+        if (!domiciliosSolicitudesContainer) return;
+        const pendientes = (solicitudesDomicilioActual || []).filter(s => s.estado === 'PENDIENTE');
+        if (pendientes.length === 0) {
+            domiciliosSolicitudesContainer.innerHTML = '';
+            return;
+        }
+        domiciliosSolicitudesContainer.innerHTML = pendientes.map(s => {
+            const venceStr = s.expires_at ? new Date(s.expires_at).toLocaleDateString('es-AR') : '7 días';
+            const labelModo = s.modo === 'ACTUALIZAR_EXISTENTE'
+                ? `Actualizar "${s.domicilio_objetivo_alias || 'domicilio'}"`
+                : 'Nuevo domicilio';
+            return `
+                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:8px 10px; display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; font-size:0.8em;">
+                    <div>
+                        <strong style="color:#166534;">🔗 Enlace pendiente (${labelModo})</strong>
+                        <span style="color:#475569; margin-left:6px;">Vence ${venceStr}</span>
+                    </div>
+                    <div style="display:flex; gap:5px;">
+                        <button type="button" class="btn-sol-dom-copy" data-url="${s.url_publica}" style="background:#ffffff; border:1px solid #cbd5e1; color:#1e293b; border-radius:5px; padding:2px 8px; font-size:11px; font-weight:700; cursor:pointer;">📋 Copiar</button>
+                        <button type="button" class="btn-sol-dom-reenviar" data-id="${s.id}" style="background:#059669; border:none; color:#ffffff; border-radius:5px; padding:2px 8px; font-size:11px; font-weight:700; cursor:pointer;">📤 Reenviar</button>
+                        <button type="button" class="btn-sol-dom-revocar" data-id="${s.id}" style="background:#fef2f2; border:1px solid #fecaca; color:#dc2626; border-radius:5px; padding:2px 8px; font-size:11px; font-weight:700; cursor:pointer;">🚫 Revocar</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        domiciliosSolicitudesContainer.querySelectorAll('.btn-sol-dom-copy').forEach(btn => {
+            btn.addEventListener('click', () => {
+                navigator.clipboard?.writeText(btn.dataset.url || '');
+                btn.textContent = '✅ Copiado';
+                setTimeout(() => { btn.textContent = '📋 Copiar'; }, 1800);
+            });
+        });
+        domiciliosSolicitudesContainer.querySelectorAll('.btn-sol-dom-reenviar').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const sol = pendientes.find(x => String(x.id) === String(btn.dataset.id));
+                if (!sol || !window.SolicitudDomicilioModal) return;
+                window.SolicitudDomicilioModal.abrirParaSolicitudExistente({
+                    solicitud: sol,
+                    cliente: solicitudesClienteInfoActual || { cliente_nombre: txtNombre.value.trim() },
+                    theme: 'light',
+                    onDone: () => {
+                        cargarDomiciliosDeCliente(txtId.value);
+                        cargarSolicitudesDomicilioCliente(txtId.value);
+                    }
+                });
+            });
+        });
+        domiciliosSolicitudesContainer.querySelectorAll('.btn-sol-dom-revocar').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (!window.SolicitudDomicilioModal) return;
+                try {
+                    await window.SolicitudDomicilioModal.revocar(btn.dataset.id);
+                    await cargarSolicitudesDomicilioCliente(txtId.value);
+                } catch (e) {
+                    Swal.fire('Error', e.message, 'error');
+                }
+            });
+        });
+    }
+
+    async function dispararPedidoDomicilioDesdeDrawer({ modo = 'ALTA_NUEVA', domicilioObjetivoId = null, domicilioObjetivoAlias = '' } = {}) {
+        if (!window.SolicitudDomicilioModal) return;
+        if (!txtId || !txtId.value) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Guardá la ficha primero',
+                text: 'Completá al menos el Nombre Comercial y tocá "Guardar Cliente": apenas se cree la ficha te vamos a ofrecer enviarle el enlace por WhatsApp.',
+                confirmButtonColor: '#6b21a8'
+            });
+            return;
+        }
+        await window.SolicitudDomicilioModal.abrir({
+            clienteId: txtId.value,
+            clienteNombre: txtNombre ? txtNombre.value.trim() : '',
+            modo,
+            domicilioObjetivoId,
+            domicilioObjetivoAlias,
+            theme: 'light',
+            onDone: () => {
+                cargarDomiciliosDeCliente(txtId.value);
+                cargarSolicitudesDomicilioCliente(txtId.value);
+            }
+        });
+    }
+
     // Event listeners para modal de domicilios
     if (btnAddDomicilio) {
         btnAddDomicilio.addEventListener('click', () => abrirModalDomicilio());
+    }
+    if (btnPedirDomicilioCliente) {
+        btnPedirDomicilioCliente.addEventListener('click', () => dispararPedidoDomicilioDesdeDrawer({ modo: 'ALTA_NUEVA' }));
+    }
+    if (btnModalDomPedirLink) {
+        btnModalDomPedirLink.addEventListener('click', () => {
+            const domIdActual = txtDomId ? txtDomId.value : '';
+            const domAliasActual = txtDomAlias ? txtDomAlias.value.trim() : '';
+            cerrarModalDomicilio();
+            dispararPedidoDomicilioDesdeDrawer({
+                modo: domIdActual ? 'ACTUALIZAR_EXISTENTE' : 'ALTA_NUEVA',
+                domicilioObjetivoId: domIdActual || null,
+                domicilioObjetivoAlias: domAliasActual
+            });
+        });
     }
     if (btnCerrarModalDomicilio) {
         btnCerrarModalDomicilio.addEventListener('click', cerrarModalDomicilio);
