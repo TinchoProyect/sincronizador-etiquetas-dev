@@ -38,22 +38,33 @@ function esModoLaboratorioB2B() {
 
   const isLab = dbName === 'etiquetas_pruebas' || flagLab === 'true' || flagLab === '1' || modoLab === 'true' || modoLab === '1';
   const isPruebaNube = flagNube === 'true' || flagNube === '1' || safeRedirect === 'true' || safeRedirect === '1';
-  const isStandbyBridge = lamdaRole === 'galpon_bridge_only';
+  const isStandbyRole = lamdaRole === 'galpon_bridge_only'
+    || lamdaRole.includes('standby')
+    || lamdaRole.includes('bridge')
+    || lamdaRole.includes('replica')
+    || lamdaRole.includes('lab');
+  const esWindows = String(process.env.LAMDA_FORCE_PLATFORM || process.platform || '').trim().toLowerCase() === 'win32';
+  const permiteWindowsActivo = String(process.env.LAMDA_PERMITE_SYNC_B2B_LOCAL_ACTIVO || '').trim().toLowerCase() === 'true';
 
-  const esProduccionTitularActiva = !isLab && !isPruebaNube && !isStandbyBridge && dbName === 'etiquetas' && flagNube === 'false';
+  const esProduccionTitularActiva = !isLab && !isPruebaNube && !isStandbyRole && !esWindows && dbName === 'etiquetas' && flagNube === 'false';
   const daemonDisabled = String(process.env.DAEMON_B2B_DISABLED || '').trim().toLowerCase();
   if ((daemonDisabled === 'true' || daemonDisabled === '1') && !esProduccionTitularActiva) {
     return true;
   }
-  if (isStandbyBridge) {
+  if (isStandbyRole) {
     return true;
   }
   const supaUrl = String(process.env.SUPABASE_B2B_URL || '').trim().toLowerCase();
   const supaKey = String(process.env.SUPABASE_B2B_SERVICE_KEY || '').trim();
   const sinSupaValido = !supaUrl || !supaKey || supaUrl.includes('127.0.0.1') || supaKey === 'modo_laboratorio_desconectado';
 
-  // CANDADO INQUEBRANTABLE: Jamás permitir que Modo Laboratorio ni Modo Prueba Nube toquen el Supabase de Producción
+  // CANDADO INQUEBRANTABLE #1: Jamás permitir que Modo Laboratorio ni Modo Prueba Nube toquen el Supabase de Producción
   if ((isLab || isPruebaNube) && supaUrl.includes(PROD_SUPABASE_ID)) {
+    return true;
+  }
+  // CANDADO INQUEBRANTABLE #2: Ninguna máquina Windows (Notebook o PcAlmacen Standby) puede sincronizar contra Supabase de Producción sin opt-in explícito
+  if (esWindows && !permiteWindowsActivo && supaUrl.includes(PROD_SUPABASE_ID)) {
+    console.warn('🛡️ [B2B-DAEMON] Sync B2B bloqueado en nodo Windows no primario para proteger Supabase de Producción.');
     return true;
   }
   const sandboxHabilitado = String(process.env.LAMDA_B2B_SANDBOX_ENABLED || '').trim().toLowerCase() === 'true';
@@ -172,6 +183,10 @@ async function runInitialSync() {
   startActiveLoops();
 }
 
-runInitialSync().catch(err => {
-  console.error('💥 Error crítico en el bucle principal del B2B Daemon:', err);
-});
+if (require.main === module) {
+  runInitialSync().catch(err => {
+    console.error('💥 Error crítico en el bucle principal del B2B Daemon:', err);
+  });
+} else {
+  module.exports = { esModoLaboratorioB2B };
+}

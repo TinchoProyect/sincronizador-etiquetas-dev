@@ -118,17 +118,37 @@ function esPresupuestoInmuneACancelacionRemota(row = {}) {
     };
   }
   const estadoNorm = String(row.estado || '').trim().toUpperCase();
-  if (['ENTREGADO', 'FACTURADO', 'CONCILIADO', 'RETIRADO'].includes(estadoNorm)) {
+  if (['ENTREGADO', 'FACTURADO', 'CONCILIADO', 'RETIRADO', 'ENVIADO A FACTURACIÓN', 'ENVIADO A FACTURACION'].includes(estadoNorm)) {
     return {
       inmune: true,
       motivo: `Presupuesto #${row.id} en estado consolidado "${row.estado}"`
     };
   }
   const logisticoNorm = String(row.estado_logistico || '').trim().toUpperCase();
-  if (['ENTREGADO', 'ENTREGADO_DEPOSITO', 'EN_CAMINO', 'EN_REPARTO', 'DESPACHADO'].includes(logisticoNorm) || row.fecha_entrega_real) {
+  if (['ENTREGADO', 'ENTREGADO_DEPOSITO', 'EN_CAMINO', 'EN_REPARTO', 'DESPACHADO', 'ASIGNADO', 'ESPERANDO_MOSTRADOR'].includes(logisticoNorm) || row.fecha_entrega_real) {
     return {
       inmune: true,
       motivo: `Presupuesto #${row.id} con despacho/entrega confirmada (estado_logistico=${row.estado_logistico})`
+    };
+  }
+  const secuenciaNorm = String(row.secuencia || '').trim().toUpperCase();
+  if (['ARMAR_PEDIDO', 'PREPARADO', 'LISTO', 'PEDIDO_LISTO', 'RETIRA_DEPOSITO', 'RETIRADO', 'ENTREGADO', 'IMPRIMIR_MODIFICADO'].includes(secuenciaNorm)) {
+    return {
+      inmune: true,
+      motivo: `Presupuesto #${row.id} ya tiene avance operativo en depósito (secuencia=${row.secuencia})`
+    };
+  }
+  const informeNorm = String(row.informe_generado || '').trim().toLowerCase();
+  if (row.tiene_snapshot_impresion === true || informeNorm === 'generado') {
+    return {
+      inmune: true,
+      motivo: `Presupuesto #${row.id} ya fue impreso para armado en depósito (snapshot/informe registrado)`
+    };
+  }
+  if (row.id_ruta || row.carro_id) {
+    return {
+      inmune: true,
+      motivo: `Presupuesto #${row.id} ya tiene ruta/carro operativo asignado (id_ruta=${row.id_ruta || 'N/A'}, carro_id=${row.carro_id || 'N/A'})`
     };
   }
   return { inmune: false, motivo: '' };
@@ -958,7 +978,12 @@ async function sincronizarEstados(opts = {}) {
                        SELECT 1 FROM public.factura_cuenta_corriente_movimientos m
                        WHERE m.presupuesto_id = p.id
                           OR (p.factura_id IS NOT NULL AND m.comprobante_id = p.factura_id::bigint AND m.tipo_comprobante = 'FACTURA')
-                   ) as tiene_movimientos_cc
+                   ) as tiene_movimientos_cc,
+                   EXISTS (
+                       SELECT 1 FROM public.presupuestos_snapshots ps
+                       WHERE ps.id_presupuesto = p.id
+                          OR (p.id_presupuesto_ext IS NOT NULL AND ps.id_presupuesto_ext = p.id_presupuesto_ext)
+                   ) as tiene_snapshot_impresion
             FROM public.presupuestos p
             LEFT JOIN (
                 SELECT 

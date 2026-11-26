@@ -279,10 +279,40 @@ if ($cfProcs.Count -gt 1) {
         Stop-Process -Id $cfProcs[$i].ProcessId -Force -ErrorAction SilentlyContinue
     }
 }
+Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue | Where-Object {
+    $_.ProcessId -gt 4 -and $_.ProcessId -ne ${myPid} -and
+    ($_.CommandLine -like '*daemonB2B*' -or $_.CommandLine -like '*syncB2B*') -and
+    $_.CommandLine -notlike '*lamdaSwitchGuiServer.js*'
+} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 `;
     try {
         runHiddenPsEncoded(ps, 15000);
     } catch (_) {}
+}
+
+/**
+ * Fija `default_transaction_read_only` ('on' u 'off') sobre la base local `etiquetas` en PcAlmacen.
+ */
+async function asegurarPostgresLocalReadOnly(estado = 'on') {
+    const modo = String(estado || 'on').trim().toLowerCase() === 'off' ? 'off' : 'on';
+    const localPass = process.env.DB_PASSWORD || 'postgres';
+    const localUser = process.env.DB_USER || 'postgres';
+    const localHost = process.env.DB_HOST || 'localhost';
+    const localPort = parseInt(process.env.DB_PORT || '5432', 10);
+    const adminClient = new Client({
+        host: localHost,
+        port: localPort,
+        user: localUser,
+        password: localPass,
+        database: 'postgres'
+    });
+    adminClient.on('error', () => {});
+    await adminClient.connect();
+    try {
+        await adminClient.query(`ALTER DATABASE etiquetas SET default_transaction_read_only = ${modo};`);
+    } finally {
+        try { await adminClient.end(); } catch (_) {}
+    }
 }
 
 async function consultarEstadoDetallado5Puertos() {
@@ -676,13 +706,7 @@ async function ejecutarSwitchHaciaNube() {
 
     console.log('🔒 [PASO 4/4] Apagando los 5 servicios locales (3000..3005), activando Read-Only en PcAlmacen y dejando Puente Zebra (3099)...');
     detenerCincoServiciosLocales();
-    const adminClient = new Client({ host: localHost, port: parseInt(localPort, 10), user: localUser, password: localPass, database: 'postgres' });
-    await adminClient.connect();
-    try {
-        await adminClient.query('ALTER DATABASE etiquetas SET default_transaction_read_only = on;');
-    } finally {
-        await adminClient.end();
-    }
+    await asegurarPostgresLocalReadOnly('on');
     if (!localHealth.zebraBridge3099Active) {
         iniciarPuenteZebraEnBackground();
         await new Promise(r => setTimeout(r, 1500));
@@ -777,6 +801,7 @@ module.exports = {
     obtenerEstadoDnsCloudflare,
     conmutarDnsCloudflareHaciaTunel,
     detenerCincoServiciosLocales,
+    asegurarPostgresLocalReadOnly,
     asegurarCincoServiciosLocalesEncendidos,
     consultarEstadoDetallado5Puertos,
     mostrarDiagnosticoPreVuelo,

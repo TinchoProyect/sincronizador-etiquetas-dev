@@ -31,6 +31,7 @@ const {
     obtenerEstadoDnsCloudflare,
     conmutarDnsCloudflareHaciaTunel,
     detenerCincoServiciosLocales,
+    asegurarPostgresLocalReadOnly,
     asegurarCincoServiciosLocalesEncendidos,
     consultarEstadoDetallado5Puertos,
     sincronizarTicketsTaLocalHaciaNube,
@@ -277,14 +278,7 @@ async function flujoSwitchHaciaNube() {
 
         updateStep(3, 'running', 'Cerrando los 5 servicios locales (3000..3005) y aplicando Read-Only en PcAlmacen...', 92);
         detenerCincoServiciosLocales();
-        const adminClient = new Client({ host: localHost, port: parseInt(localPort, 10), user: localUser, password: localPass, database: 'postgres' });
-        adminClient.on('error', () => {});
-        await adminClient.connect();
-        try {
-            await adminClient.query('ALTER DATABASE etiquetas SET default_transaction_read_only = on;');
-        } finally {
-            try { await adminClient.end(); } catch (_) {}
-        }
+        await asegurarPostgresLocalReadOnly('on');
         updateStep(3, 'done', '5 servicios locales apagados, Base Local en Read-Only y Puente Zebra (3099) activo', 100);
 
         // Cierre inmediato al 100% sin bloquear la pantalla esperando re-sondeo SSH
@@ -1104,9 +1098,11 @@ async function ejecutarArranqueVisualSistema() {
             launcherState.percent = 45;
 
             launcherState.steps[1].status = 'running';
-            launcherState.steps[1].detail = 'Asegurando apagado de puertos locales en PcAlmacen y Puente Zebra activo...';
+            launcherState.steps[1].detail = 'Cerrando servicios locales/B2B huérfanos y blindando PostgreSQL local en Read-Only...';
             detenerCincoServiciosLocales();
+            try { await asegurarPostgresLocalReadOnly('on'); } catch (_) {}
             launcherState.steps[1].status = 'done';
+            launcherState.steps[1].detail = 'Puertos locales y B2B huérfanos apagados · PostgreSQL local Read-Only · Puente Zebra activo';
             launcherState.percent = 75;
 
             launcherState.steps[2].status = 'done';
