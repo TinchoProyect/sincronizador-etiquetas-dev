@@ -2556,11 +2556,22 @@
         })
       });
       const data = await resp.json().catch(() => null);
-      if (!data?.ok) return;
+      const stEl = document.getElementById('abm-centro-zpl-status');
+      if (!resp.ok || !data?.ok) {
+        if (stEl) {
+          stEl.style.color = '#fca5a5';
+          stEl.textContent = `❌ Error convirtiendo logo ZPL: ${data?.error || resp.statusText || 'Error desconocido'}`;
+        }
+        return;
+      }
       const prevEl = document.getElementById('abm-centro-logo-mono-img');
-      if (prevEl) prevEl.src = data.logo_mono_preview_base64;
+      if (prevEl) prevEl.src = data.logo_mono_preview_base64 || '';
       const gfaEl = document.getElementById('abm-centro-logo-gfa');
-      if (gfaEl) gfaEl.value = data.logo_zpl_gfa;
+      if (gfaEl) gfaEl.value = data.logo_zpl_gfa || '';
+      if (stEl) {
+        stEl.style.color = '#6ee7b7';
+        stEl.textContent = `✓ ZPL 1-bit listo (${data.width || '?'}×${data.height || '?'} px · ${(data.logo_zpl_gfa || '').length} chars ^GFA)`;
+      }
       simularEtiquetaZebraAbmCentro('estandar_pagado');
     }
 
@@ -2599,11 +2610,18 @@
         body: JSON.stringify(payload)
       });
       const data = await resp.json().catch(() => null);
-      if (!data?.ok) return;
+      const stEl = document.getElementById('abm-centro-zpl-status');
+      if (!resp.ok || !data?.ok) {
+        if (stEl) {
+          stEl.style.color = '#fca5a5';
+          stEl.textContent = `❌ Error simulando etiqueta Zebra: ${data?.error || resp.statusText || 'Error desconocido'}`;
+        }
+        return;
+      }
       const rollo = document.getElementById('abm-centro-rollo-img');
-      if (rollo) rollo.src = data.preview_rollo_base64;
+      if (rollo) rollo.src = data.preview_rollo_base64 || '';
       const zplArea = document.getElementById('abm-centro-rollo-zpl');
-      if (zplArea) zplArea.value = data.zpl;
+      if (zplArea) zplArea.value = data.zpl || '';
     }
 
     async function guardarConfigCuentaCanalAbmCentro() {
@@ -3092,9 +3110,10 @@
                 <div><label style="display:block; font-size:0.7rem; color:#94a3b8;">Umbral (<span id="abm-centro-threshold-lbl">${Number(zplCfgIni.threshold || 138)}</span>)</label><input type="range" id="abm-centro-logo-threshold" min="40" max="220" value="${Number(zplCfgIni.threshold || 138)}" oninput="CSTATE.abmDraft.brandingTouched=true; document.getElementById('abm-centro-threshold-lbl').textContent=this.value; regenerarLogoZplAbmCentro()" style="width:100%;" /></div>
               </div>
             </div>
-            <div style="display:flex; gap:8px; margin-bottom:8px;">
+            <div style="display:flex; gap:8px; margin-bottom:8px; align-items:center; flex-wrap:wrap;">
               <button type="button" class="btn" style="background:#064e3b; color:#6ee7b7; border-color:#10b981;" onclick="simularEtiquetaZebraAbmCentro('estandar_pagado')">🖨️ Simular Rollo 4 Ítems</button>
               <button type="button" class="btn" style="background:#78350f; color:#fcd34d; border-color:#f59e0b;" onclick="simularEtiquetaZebraAbmCentro('largo_continuacion')">📑 Simular Rollo Largo (2 Hojas)</button>
+              <span id="abm-centro-zpl-status" style="font-size:0.74rem; font-weight:700; color:#94a3b8; margin-left:auto;"></span>
             </div>
             <div style="background:#1e293b; border-radius:8px; padding:10px; text-align:center;"><img id="abm-centro-rollo-img" src="" alt="Preview Etiqueta Zebra" style="max-width:100%; height:auto; border-radius:6px;" /></div>
             <details style="margin-top:8px;">
