@@ -28,11 +28,14 @@
 const defaultPool = require('../config/database');
 
 const normSku = (s) => String(s || '').trim().toUpperCase();
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
-const round3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
-const round4 = (n) => Math.round((Number(n) || 0) * 10000) / 10000;
+const round2 = (n) => {
+    const val = Number(n) || 0;
+    return Math.round((val + Math.sign(val) * 1e-11) * 100) / 100;
+};
+const round3 = (n) => Number((Number(n) || 0).toFixed(3));
+const round4 = (n) => Number((Number(n) || 0).toFixed(4));
 
-function calcularPrecioB2BLista(listaRow, kilosUnidad, costoBaseKilo, insumosTotal, overrideUsoCostoBase = null) {
+function calcularPrecioB2BLista(listaRow, kilosUnidad, costoBaseKilo, insumosTotal, overrideUsoCostoBase = null, opciones = {}) {
     if (String(listaRow.modo_calculo || 'AUTOMATIC').toUpperCase() === 'MANUAL') {
         return {
             omitido_manual: true,
@@ -49,13 +52,19 @@ function calcularPrecioB2BLista(listaRow, kilosUnidad, costoBaseKilo, insumosTot
     const baseBulto = (cBaseKg * kilos) + Number(insumosTotal || 0);
     const mo = listaRow.mano_obra_activa === false ? 0 : Number(listaRow.costo_tiempo || 0);
     const margen = Number(listaRow.margen_ganancia || 0);
-    const ivaBase = Number(listaRow.iva || 0);
+    const ivaArt = opciones.porcentajeIvaArticulo !== undefined && opciones.porcentajeIvaArticulo !== null
+        ? Number(opciones.porcentajeIvaArticulo)
+        : null;
+    const ivaBase = Number(listaRow.iva ?? ivaArt ?? 21);
     const modoIva = String(listaRow.modo_iva || 'COMPLETO').trim().toUpperCase();
+    // En BD bunker_lista_articulos.iva guarda la alícuota ya aplicada (art.porcentaje_iva / 2 cuando es MEDIO).
     const ivaPct = modoIva === 'MEDIO'
-        ? (ivaBase / 2)
+        ? ((ivaArt !== null ? ivaArt : ivaBase) / 2)
         : (['SIN', 'EXENTO', 'NO'].includes(modoIva) ? 0 : ivaBase);
     const neto = baseBulto * (1 + (margen / 100)) + mo;
-    const precioFinal = round2(neto * (1 + (ivaPct / 100)));
+    const rawConIva = neto * (1 + (ivaPct / 100));
+    const esCanalNodos = String(opciones.canalComercial || '').trim().toUpperCase() === 'NODOS';
+    const precioFinal = esCanalNodos ? Math.round(rawConIva) : round2(rawConIva);
     return {
         omitido_manual: false,
         precio_final: precioFinal,
@@ -176,11 +185,11 @@ async function cargarSnapshotGrafo(runner = defaultPool) {
         `),
         q.query(`
             SELECT id, lista_id, articulo_numero,
-                   COALESCE(margen_ganancia, 0)::numeric(10,2) AS margen_ganancia,
+                   COALESCE(margen_ganancia, 0) AS margen_ganancia,
                    costo_base_sobrescrito,
-                   COALESCE(costo_tiempo, 0)::numeric(12,2) AS costo_tiempo,
-                   COALESCE(iva, 21)::numeric(6,2) AS iva,
-                   COALESCE(precio_final, 0)::numeric(14,2) AS precio_final,
+                   COALESCE(costo_tiempo, 0) AS costo_tiempo,
+                   COALESCE(iva, 21) AS iva,
+                   COALESCE(precio_final, 0) AS precio_final,
                    COALESCE(modo_calculo, 'AUTOMATIC') AS modo_calculo,
                    COALESCE(modo_iva, 'COMPLETO') AS modo_iva,
                    COALESCE(es_patron, false) AS es_patron,
@@ -1121,6 +1130,7 @@ async function simularCascada(runner = defaultPool, disparador = {}) {
             suma += c * comp.cantidad;
         }
         if (!blocked) {
+            artUnrounded.set(comboKey, suma);
             artCost.set(comboKey, round2(suma));
         }
     }
@@ -1144,14 +1154,19 @@ async function simularCascada(runner = defaultPool, disparador = {}) {
             if (bloqueadosCostoCero.has(skuKey)) continue;
             const insTotal = resolverInsumosLista(snapshot, la, artCost);
 
-            // Si cambió el costo del artículo padre y el sobrescrito seguía al costo viejo, actualizamos el base efectivo
+            // Si cambió el costo del artículo padre y tenía sobrescrito previo, actualizamos costo_base_sobrescrito
             let overrideBaseKg = null;
-            if (!subgrafo.full && cambioBaseArt) {
+            if (!subgrafo.full && cambioBaseArt && la.costo_base_sobrescrito !== null) {
                 overrideBaseKg = baseKiloSobNew;
             }
-            const resLista = calcularPrecioB2BLista(la, kilos, baseKiloCalc, insTotal, overrideBaseKg);
-            const nuevoSob = (overrideBaseKg !== null && la.costo_base_sobrescrito !== null) ? baseKiloSobNew : la.costo_base_sobrescrito;
-            const diffPrecio = Math.abs(resLista.precio_final - la.precio_final);
+            const canalLista = snapshot.listaById.get(la.lista_id)?.canal_comercial || 'MAYORISTA';
+            const resLista = calcularPrecioB2BLista(la, kilos, baseKiloCalc, insTotal, overrideBaseKg, {
+                porcentajeIvaArticulo: art.porcentaje_iva,
+                canalComercial: canalLista
+            });
+            const nuevoSob = overrideBaseKg !== null ? baseKiloSobNew : la.costo_base_sobrescrito;
+            const precioBdCmp = String(canalLista).toUpperCase() === 'NODOS' ? Math.round(la.precio_final) : round2(la.precio_final);
+            const diffPrecio = Math.abs(resLista.precio_final - precioBdCmp);
             if (subgrafo.full || diffPrecio > 0.009 || (nuevoSob !== la.costo_base_sobrescrito)) {
                 cambiosListas.push({
                     lista_articulo_id: la.id,
@@ -1159,9 +1174,9 @@ async function simularCascada(runner = defaultPool, disparador = {}) {
                     articulo_numero: la.articulo_numero,
                     costo_base_sobrescrito_actual: la.costo_base_sobrescrito,
                     costo_base_sobrescrito_nuevo: nuevoSob,
-                    precio_actual: la.precio_final,
+                    precio_actual: precioBdCmp,
                     precio_nuevo: resLista.precio_final,
-                    diff_precio: round2(resLista.precio_final - la.precio_final),
+                    diff_precio: round2(resLista.precio_final - precioBdCmp),
                     insumos_total: insTotal
                 });
             }
