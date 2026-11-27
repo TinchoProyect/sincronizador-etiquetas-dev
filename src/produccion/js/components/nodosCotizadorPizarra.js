@@ -5,6 +5,22 @@
  * ============================================================================
  */
 (function () {
+    function resolverUrlModuloLamda(puertoLocal, rutaRelativa = '/') {
+        const ruta = rutaRelativa.startsWith('/') ? rutaRelativa : ('/' + rutaRelativa);
+        if (typeof window.LAMDA_RESOLVE_URL === 'function') {
+            const resuelta = window.LAMDA_RESOLVE_URL(`http://localhost:${puertoLocal}${ruta}`);
+            if (resuelta) return resuelta;
+        }
+        const host = (window.location && window.location.hostname) ? window.location.hostname : '';
+        const proto = (window.location && window.location.protocol) ? window.location.protocol : 'http:';
+        const portActual = (window.location && window.location.port) ? String(window.location.port) : '';
+        const esDesarrolloDirectoPuerto = ['3000', '3002', '3003', '3004', '3005'].includes(portActual);
+        if (host && esDesarrolloDirectoPuerto) {
+            return `${proto}//${host}:${puertoLocal}${ruta}`;
+        }
+        return ruta;
+    }
+
     const ESTADO_NODOS = {
         inicializado: false,
         cargando: false,
@@ -298,11 +314,13 @@
                             ⚡ Actualizar Costos
                         </button>
 
+                        ${ESTADO_NODOS.modoLaboratorio ? `
                         <button onclick="window.NodosPizarra.ponerACeroPruebas()"
                             title="Limpiar todos los Nodos, pedidos, canastos y clientes de prueba para iniciar desde cero"
                             style="padding:8px 12px; border-radius:8px; font-weight:700; font-size:0.8rem; cursor:pointer; border:1px solid rgba(244,63,94,0.5); background:rgba(244,63,94,0.16); color:#fda4af;">
                             🧹 Puesta a Cero Pruebas
                         </button>
+                        ` : ''}
                     </div>
                 </div>
 
@@ -1092,7 +1110,7 @@
                         </div>
                     </div>
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <a href="http://localhost:3005/pages/configuracion-jerarquia-b2b.html" target="_blank"
+                        <a href="${resolverUrlModuloLamda(3005, '/pages/configuracion-jerarquia-b2b.html')}" target="_blank"
                             style="text-decoration:none; padding:8px 12px; border-radius:8px; font-weight:800; font-size:0.76rem; background:rgba(192,132,252,0.16); border:1px solid rgba(192,132,252,0.45); color:#e9d5ff; display:inline-flex; align-items:center; gap:5px;">
                             🌿 Jerarquía e Imágenes Base ↗
                         </a>
@@ -1473,7 +1491,7 @@
             return `
                 <div style="padding:12px; text-align:center; color:#94a3b8; font-size:0.78rem;">
                     No se encontraron clientes con <strong>"${escaparHtml(ESTADO_NODOS.busquedaClienteAbm)}"</strong>.
-                    <a href="http://localhost:3005/pages/listado-clientes.html" target="_blank" style="color:#38bdf8; font-weight:700; margin-left:6px; text-decoration:underline;">➕ Dar de alta en Clientes Búnker ↗</a>
+                    <a href="${resolverUrlModuloLamda(3005, '/pages/listado-clientes.html')}" target="_blank" style="color:#38bdf8; font-weight:700; margin-left:6px; text-decoration:underline;">➕ Dar de alta en Clientes Búnker ↗</a>
                 </div>
             `;
         }
@@ -1705,7 +1723,7 @@
                                 <label style="font-size:0.78rem; color:#38bdf8; font-weight:800;">
                                     1️⃣ Seleccionar Cliente Titular en el Padrón General de LAMDA
                                 </label>
-                                <a href="http://localhost:3005/pages/listado-clientes.html" target="_blank"
+                                <a href="${resolverUrlModuloLamda(3005, '/pages/listado-clientes.html')}" target="_blank"
                                     style="font-size:0.74rem; color:#6ee7b7; font-weight:700; text-decoration:none; padding:3px 9px; border-radius:6px; background:rgba(16,185,129,0.14); border:1px solid rgba(16,185,129,0.35);">
                                     ➕ ¿Persona nueva? Dar de alta primero en Clientes Búnker ↗
                                 </a>
@@ -4770,6 +4788,7 @@
     }
 
     async function ponerACeroDatosPruebasNodos() {
+        if (!ESTADO_NODOS.modoLaboratorio) return;
         let conservarBase = true;
         if (window.Swal) {
             const conf = await Swal.fire({

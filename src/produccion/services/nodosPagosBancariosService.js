@@ -56,6 +56,10 @@ const MAX_COMPROBANTE_BYTES = 5 * 1024 * 1024; // 5 MB
 
 let _esquemaPagosInicializado = false;
 
+function marcarEsquemaPagosListo(estado = true) {
+    _esquemaPagosInicializado = Boolean(estado);
+}
+
 function esModoLaboratorioPagosNodos() {
     const flagLab = String(process.env.LAMDA_MODO_LABORATORIO || process.env.MODO_LABORATORIO || '').trim().toLowerCase();
     const dbName = String(process.env.DB_NAME || '').trim().toLowerCase();
@@ -184,14 +188,9 @@ function esPedidoHabilitadoArmadoDepositoNodos(ped = {}) {
 }
 
 /**
- * Inicializa de forma 100% idempotente las tablas y columnas de cobros bancarios de Nodos,
- * asegura la cuenta oficial de Banco Galicia en `fin_cuentas_bancarias` y vincula `nodos_configuracion_canal (id = 1)`.
+ * Ejecuta las sentencias DDL de cobros bancarios sobre el runner/client provisto por el bootstrap centralizado.
  */
-async function asegurarEsquemaPagosBancariosNodos(runner = null, opciones = {}) {
-    if (_esquemaPagosInicializado && !opciones.forzar && !runner) {
-        return;
-    }
-
+async function ejecutarMigracionPagosBancariosNodos(runner = null) {
     const ownClient = !runner;
     const client = runner || await db.connect();
     try {
@@ -480,6 +479,14 @@ async function asegurarEsquemaPagosBancariosNodos(runner = null, opciones = {}) 
             client.release();
         }
     }
+}
+
+async function asegurarEsquemaPagosBancariosNodos(runner = null, opciones = {}) {
+    if (_esquemaPagosInicializado && !opciones.forzar) {
+        return;
+    }
+    const { inicializarEsquemaEtapa1Nodos } = require('../migrations/asegurarEsquemaEtapa1Nodos');
+    return inicializarEsquemaEtapa1Nodos({ forzar: Boolean(opciones && opciones.forzar), log: false });
 }
 
 async function obtenerConfiguracionBancariaCanalNodos(runner = null) {
@@ -2044,6 +2051,8 @@ module.exports = {
     validarBufferComprobantePago,
     esPedidoPagoConfirmadoNodos,
     esPedidoHabilitadoArmadoDepositoNodos,
+    ejecutarMigracionPagosBancariosNodos,
+    marcarEsquemaPagosListo,
     asegurarEsquemaPagosBancariosNodos,
     obtenerConfiguracionBancariaCanalNodos,
     obtenerResumenPagosPorPedidosIds,

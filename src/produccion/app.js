@@ -295,11 +295,6 @@ async function validarYServirVistaNodoPublica(req, res, fileName) {
     const slugSolicitado = String(req.params.nodoSlug || req.query.nodo || '').trim();
     const esExterno = esAccesoExternoNodos(req);
 
-    try {
-        const nodosService = require('./services/nodosBarrialesService');
-        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
-    } catch (_) {}
-
     if (!slugSolicitado) {
         if (esExterno) {
             return res.status(404).send(`<!DOCTYPE html>
@@ -426,8 +421,6 @@ app.get('/sw-nodo-pwa.js', (req, res) => {
 app.get('/seguimiento/:trackingToken', async (req, res) => {
     const cleanTok = String(req.params.trackingToken || '').trim();
     try {
-        const nodosService = require('./services/nodosBarrialesService');
-        await nodosService.asegurarEsquemaNodosBarriales({ sembrarDemo: false });
         const { rows } = await db.query(
             `SELECT npv.codigo_pedido, npv.tracking_token,
                     nm.id, nm.slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca,
@@ -1817,23 +1810,25 @@ httpServer.listen(PORT, () => {
             console.warn('⚠️ [STARTUP-MANTENIMIENTO-DESCARTE] Advertencia al verificar esquema DESCARTE:', errDesc.message);
         });
 
-    // Esquema Nodos (incluyendo fotos_vidriera / fotos_catalogo_base) y aprovisionamiento + perfiles idempotentes de Paraíso, MANSO y MORO
-    // Escalonado 2.5s con reintento ante deadlock (40P01) cuando PM2 reinicia simultáneamente LOGISTICA y PRODUCCION
+    // Bootstrap centralizado de esquema e integridad referencial de Nodos + aprovisionamiento y perfiles idempotentes
+    // Serializado con advisory lock PostgreSQL (sin DDL en rutas HTTP)
+    const { inicializarEsquemaEtapa1Nodos } = require('./migrations/asegurarEsquemaEtapa1Nodos');
     const { provisionarNodoManso } = require('./scripts/provisionarNodoManso');
     const { provisionarNodoMoro } = require('./scripts/provisionarNodoMoro');
     const { migrarPerfilesOperativosNodos } = require('./scripts/migrarPerfilesOperativosNodos');
     const ejecutarBootstrapNodosConReintento = async (intento = 1) => {
         try {
+            await inicializarEsquemaEtapa1Nodos({ log: true });
             await provisionarNodoManso({ log: true });
             await provisionarNodoMoro({ log: true });
             await migrarPerfilesOperativosNodos({ log: true });
         } catch (errManso) {
             if (intento < 3 && (errManso?.code === '40P01' || /deadlock/i.test(String(errManso?.message || '')))) {
-                console.warn(`⏳ [STARTUP-NODOS] Deadlock concurrencia DDL en arranque (intento ${intento}/3); reintentando en ${intento * 2}s...`);
+                console.warn(`⏳ [STARTUP-NODOS] Deadlock concurrencia en arranque (intento ${intento}/3); reintentando en ${intento * 2}s...`);
                 setTimeout(() => ejecutarBootstrapNodosConReintento(intento + 1), intento * 2000);
                 return;
             }
-            console.warn('⚠️ [STARTUP-NODOS] Advertencia verificando aprovisionamiento/perfiles idempotentes de Nodos:', errManso.message);
+            console.warn('⚠️ [STARTUP-NODOS] Advertencia verificando bootstrap/aprovisionamiento idempotente de Nodos:', errManso.message);
         }
     };
     setTimeout(() => ejecutarBootstrapNodosConReintento(1), 2500);

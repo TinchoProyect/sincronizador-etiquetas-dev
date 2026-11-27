@@ -490,15 +490,15 @@
       </div>
       <div class="topbar-actions">
         <button type="button" id="btn-top-nueva-tienda" class="btn-top" style="background:#16a34a; border-color:#15803d; color:#fff; font-weight:900;" onclick="abrirModalAbmTiendaCentro(null, null)">➕ Nueva Tienda / 🧬 Clonar</button>
-        <a href="http://localhost:3000/" id="btn-top-menu-principal" class="btn-top">← Menú Principal</a>
-        <a href="http://localhost:3002/pages/pizarra-simulacion.html?tab=nodos" id="btn-top-pizarra-nodos" class="btn-top">
+        <a href="/" id="btn-top-menu-principal" class="btn-top">← Menú Principal</a>
+        <a href="/pages/pizarra-simulacion.html?tab=nodos" id="btn-top-pizarra-nodos" class="btn-top">
           🎛️ Alta de Nodos y Pizarra
           <span id="badge-centro-solicitudes-pendientes" data-testid="badge-centro-solicitudes-pendientes"
             style="display:none; padding:1px 7px; border-radius:999px; background:#f59e0b; color:#0f172a; font-size:0.72rem; font-weight:900; line-height:1.35;">0</span>
         </a>
         <a href="/deposito-nodos" id="btn-top-mesa-armado" class="btn-top">📦 Mesa de Armado</a>
         <a href="/liquidacion-nodos" id="btn-top-liquidacion-nodos" class="btn-top">💰 Liquidación y Cobros</a>
-        <a href="http://localhost:3005/pages/listado-clientes.html" id="btn-top-clientes-bunker" class="btn-top">📒 Clientes Búnker</a>
+        <a href="/pages/listado-clientes.html" id="btn-top-clientes-bunker" class="btn-top">📒 Clientes Búnker</a>
         <button type="button" class="btn-top primary" onclick="recargarVistaActiva()">🔄 Actualizar</button>
       </div>
     </div>
@@ -618,14 +618,18 @@
 
     function resolverUrlModuloLamda(puertoLocal, rutaRelativa = '/') {
       const ruta = rutaRelativa.startsWith('/') ? rutaRelativa : ('/' + rutaRelativa);
-      const baseLocal = `http://localhost:${puertoLocal}${ruta}`;
       if (typeof window.LAMDA_RESOLVE_URL === 'function') {
-        const resuelta = window.LAMDA_RESOLVE_URL(baseLocal);
-        if (resuelta && resuelta !== baseLocal) return resuelta;
+        const resuelta = window.LAMDA_RESOLVE_URL(`http://localhost:${puertoLocal}${ruta}`);
+        if (resuelta) return resuelta;
       }
-      const host = (window.location && window.location.hostname) ? window.location.hostname : 'localhost';
+      const host = (window.location && window.location.hostname) ? window.location.hostname : '';
       const proto = (window.location && window.location.protocol) ? window.location.protocol : 'http:';
-      return `${proto}//${host}:${puertoLocal}${ruta}`;
+      const portActual = (window.location && window.location.port) ? String(window.location.port) : '';
+      const esDesarrolloDirectoPuerto = ['3000', '3002', '3003', '3004', '3005'].includes(portActual);
+      if (host && esDesarrolloDirectoPuerto) {
+        return `${proto}//${host}:${puertoLocal}${ruta}`;
+      }
+      return ruta;
     }
 
     function inicializarEnlacesNavegacionInterna() {

@@ -1,6 +1,6 @@
 {
   "tableCount": 179,
-  "uniqueIndexCount": 266,
+  "uniqueIndexCount": 268,
   "tables": {
     "abrir_caja_aprendizaje": {
       "codigo_caja": {
@@ -14238,7 +14238,7 @@
         "character_maximum_length": null,
         "numeric_precision": 32,
         "numeric_scale": 0,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": null
       },
       "codigo_bunker_cliente": {
@@ -14428,7 +14428,7 @@
         "character_maximum_length": null,
         "numeric_precision": 32,
         "numeric_scale": 0,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": null
       },
       "cliente_madre_bunker_id": {
@@ -14438,7 +14438,7 @@
         "character_maximum_length": null,
         "numeric_precision": 32,
         "numeric_scale": 0,
-        "is_nullable": "YES",
+        "is_nullable": "NO",
         "column_default": null
       },
       "codigo_bunker_cliente_madre": {
@@ -14710,6 +14710,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "'{}'::jsonb"
+      },
+      "cliente_operativo_id": {
+        "ordinal_position": 59,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": null
       }
     },
     "nodos_movimientos_cta_cte": {
@@ -24913,6 +24923,32 @@
       ],
       "has_expression_key": false,
       "sig": "nodos_lotes_estacion::(nodo_id, fecha_entrega_label)[pred=]"
+    },
+    {
+      "table_name": "nodos_maestro",
+      "index_name": "unq_nodos_maestro_bunker_cliente_id",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX unq_nodos_maestro_bunker_cliente_id ON public.nodos_maestro USING btree (bunker_cliente_id)",
+      "index_predicate": "",
+      "key_columns": [
+        "bunker_cliente_id"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_maestro::(bunker_cliente_id)[pred=]"
+    },
+    {
+      "table_name": "nodos_maestro",
+      "index_name": "unq_nodos_maestro_cliente_operativo_id",
+      "is_primary": false,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX unq_nodos_maestro_cliente_operativo_id ON public.nodos_maestro USING btree (cliente_operativo_id)",
+      "index_predicate": "",
+      "key_columns": [
+        "cliente_operativo_id"
+      ],
+      "has_expression_key": false,
+      "sig": "nodos_maestro::(cliente_operativo_id)[pred=]"
     },
     {
       "table_name": "nodos_maestro",

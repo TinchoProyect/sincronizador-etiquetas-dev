@@ -2,6 +2,10 @@ const db = require('../config/database');
 
 let _esquemaAnaliticaReady = false;
 
+function marcarEsquemaAnaliticaListo(estado = true) {
+    _esquemaAnaliticaReady = Boolean(estado);
+}
+
 const TIPOS_EVENTO_TIENDA_PERMITIDOS = new Set([
     'vista_tienda',
     'vista_seguimiento',
@@ -151,8 +155,7 @@ function sanitizarSnapshotCarrito(rawSnapshot) {
     return limpio;
 }
 
-async function asegurarEsquemaAnaliticaNodos(clientOrDb = null) {
-    if (_esquemaAnaliticaReady && !clientOrDb) return;
+async function ejecutarMigracionAnaliticaNodos(clientOrDb = null) {
     const runner = clientOrDb || db;
 
     await runner.query(`
@@ -266,6 +269,12 @@ async function asegurarEsquemaAnaliticaNodos(clientOrDb = null) {
     if (!clientOrDb) {
         _esquemaAnaliticaReady = true;
     }
+}
+
+async function asegurarEsquemaAnaliticaNodos() {
+    if (_esquemaAnaliticaReady) return;
+    const { inicializarEsquemaEtapa1Nodos } = require('../migrations/asegurarEsquemaEtapa1Nodos');
+    return inicializarEsquemaEtapa1Nodos({ log: false });
 }
 
 async function resolverNodoBasico(slugOrId, runner = db) {
@@ -2021,6 +2030,8 @@ module.exports = {
     TIPOS_EVENTO_TIENDA_PERMITIDOS,
     detectarAgenteOSistemaNodo,
     detectarOrigenTraficoNodo,
+    ejecutarMigracionAnaliticaNodos,
+    marcarEsquemaAnaliticaListo,
     asegurarEsquemaAnaliticaNodos,
     vincularVisitanteConVecino,
     registrarEventoTelemetriaTienda,

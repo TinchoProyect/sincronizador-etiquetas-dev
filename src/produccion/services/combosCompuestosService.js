@@ -16,7 +16,11 @@
 
 const db = require('../config/database');
 
-let _esquemaCombosListoPromise = null;
+let _esquemaCombosListo = false;
+
+function marcarEsquemaCombosListo(estado = true) {
+    _esquemaCombosListo = Boolean(estado);
+}
 
 function normalizarSku(sku) {
     return String(sku || '').trim().toUpperCase();
@@ -328,17 +332,10 @@ async function asegurarTaxonomiaOficialCombosBunker(runner) {
     };
 }
 
-async function asegurarEsquemaCombosCompuestos(runner = null) {
-    if (runner) {
-        return ejecutarMigracionCombosCompuestos(runner);
-    }
-    if (!_esquemaCombosListoPromise) {
-        _esquemaCombosListoPromise = ejecutarMigracionCombosCompuestos(db).catch((err) => {
-            _esquemaCombosListoPromise = null;
-            throw err;
-        });
-    }
-    return _esquemaCombosListoPromise;
+async function asegurarEsquemaCombosCompuestos() {
+    if (_esquemaCombosListo) return;
+    const { inicializarEsquemaEtapa1Nodos } = require('../migrations/asegurarEsquemaEtapa1Nodos');
+    return inicializarEsquemaEtapa1Nodos({ log: false });
 }
 
 async function resolverAsegurarTerminoDefinicionCombo(runner, textoDefinicionRaw, abrevSugeridaRaw = '') {
@@ -2022,9 +2019,11 @@ async function recalcularCombosAfectadosPorCambio(runner = null, {
 /**
  * Tablero integral para Pizarra ([LDN 8] Combos y Sub-pestaña 4 de Cotizador Nodos)
  */
-async function obtenerEstadoCombosPizarra() {
+async function obtenerEstadoCombosPizarra(opciones = {}) {
     await asegurarEsquemaCombosCompuestos();
-    const mapaCombos = await obtenerMapaCombosYStockArmable(db);
+    const mapaCombos = (opciones && opciones.mapaCombos instanceof Map)
+        ? opciones.mapaCombos
+        : await obtenerMapaCombosYStockArmable(db);
 
     const [combosCatRes, propuestasRes, propItemsRes, articulosElegiblesRes, envasesRes, tarifasRes, nodosRes, listasMayoristasRes] = await Promise.all([
         db.query(`
@@ -2480,6 +2479,8 @@ async function revertirEgresoStockCanastoLaboratorio(client, { codigoCanasto }) 
 module.exports = {
     normalizarSku,
     construirFirmaComposicionCombo,
+    ejecutarMigracionCombosCompuestos,
+    marcarEsquemaCombosListo,
     asegurarEsquemaCombosCompuestos,
     asegurarTaxonomiaOficialCombosBunker,
     validarYEnriquecerComponentesCombo,

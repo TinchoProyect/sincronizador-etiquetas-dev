@@ -62,7 +62,7 @@
         );
         if (!canasto) return;
 
-        const clienteIdNum = 9000 + Number(canasto.nodo_id);
+        const clienteIdNum = Number(canasto.cliente_id_logistica || (9000 + Number(canasto.nodo_id)));
         const sec = String(canasto.presup_secuencia || canasto.secuencia_operativa_lamda || 'Imprimir').trim();
         let seccionId = 'pedidos-imprimir-section';
         let contenedorId = 'pedidos-imprimir';

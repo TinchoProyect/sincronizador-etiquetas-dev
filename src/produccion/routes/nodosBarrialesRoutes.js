@@ -2146,11 +2146,18 @@ router.post('/deposito/canastos/:canastoId/entregar-gestor', async (req, res) =>
  */
 router.post('/deposito/canastos/:canastoId/reabrir-prueba', bloquearEnHostPublicoTienda, async (req, res) => {
     try {
+        if (esSolicitudPublicaNodos(req) || !esModoLaboratorioWaSegura()) {
+            return res.status(403).json({
+                ok: false,
+                error: 'Operación /reabrir-prueba bloqueada fuera del Laboratorio aislado.'
+            });
+        }
         const tablero = await nodosService.reabrirCanastoParaPruebaLaboratorio(req.params.canastoId);
         res.json({ ok: true, tablero });
     } catch (error) {
+        const statusCode = Number(error.statusCode) || 400;
         console.error('❌ [NodosRoutes] Error en POST /deposito/canastos/:canastoId/reabrir-prueba:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(statusCode).json({ ok: false, error: error.message });
     }
 });
 
