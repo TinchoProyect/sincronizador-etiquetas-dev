@@ -2,6 +2,7 @@ const pool = require('../config/database');
 const { normalizarOfertaProveedor } = require('../utils/unitNormalizer');
 const { supabaseFetch } = require('../utils/supabaseHelper');
 const produccionPropiaCostosService = require('./produccionPropiaCostosService');
+const recepcionesPendientesSupabaseService = require('./recepcionesPendientesSupabaseService');
 let iaMonitor = null;
 try {
     iaMonitor = require('../../services/iaCreditoMonitorService');
@@ -26,6 +27,7 @@ class ConciliacionArticulosService {
         this.cacheTimestamp = 0;
         this.CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutos de vigencia en memoria local para rápida sincronización
         this.refreshingPromise = null;
+        this.ultimoEstadoSupabase = { ok: true, tipo: 'SUPABASE_LIVE', mensaje: null };
     }
 
     /**
@@ -141,6 +143,7 @@ class ConciliacionArticulosService {
         const nowMs = Date.now();
 
         if (!forzarRefresco && this.cacheTablaMaestra) {
+            this.ultimoEstadoSupabase = { ok: true, tipo: 'SUPABASE_LIVE', mensaje: null };
             if (nowMs - this.cacheTimestamp < this.CACHE_TTL_MS) {
                 return this.cacheTablaMaestra;
             }
@@ -165,9 +168,18 @@ class ConciliacionArticulosService {
     }
 
     async _ejecutarBarridoSupabase() {
+        this.ultimoEstadoSupabase = { ok: true, tipo: 'SUPABASE_LIVE', mensaje: null };
         const key = (process.env.SUPABASE_SERVICE_KEY || '').trim();
         if (!key) {
-            console.warn('⚠️ [CONCILIACION] SUPABASE_SERVICE_KEY no configurada. Usando fallback de BD local.');
+            console.warn('⚠️ [CONCILIACION] SUPABASE_SERVICE_KEY no configurada.');
+            this.ultimoEstadoSupabase = {
+                ok: false,
+                tipo: 'AUTH_ERROR',
+                status: 500,
+                mensaje: 'Falta configurar SUPABASE_SERVICE_KEY en el .env raíz del servidor.'
+            };
+            this.cacheTablaMaestra = null;
+            this.cacheTimestamp = 0;
             return null;
         }
 
@@ -186,10 +198,44 @@ class ConciliacionArticulosService {
                 response = await supabaseFetch(url, { headers }, 1, 300, 6000);
             } catch (fetchErr) {
                 console.error(`⚠️ Error Supabase REST en offset ${offset}:`, fetchErr.message);
+                if (fetchErr.code === 'SUPABASE_AUTH_ERROR' || fetchErr.statusCode === 401 || fetchErr.statusCode === 403) {
+                    this.ultimoEstadoSupabase = {
+                        ok: false,
+                        tipo: 'AUTH_ERROR',
+                        status: fetchErr.statusCode || 401,
+                        mensaje: `Supabase rechazó SUPABASE_SERVICE_KEY (HTTP ${fetchErr.statusCode || 401}). Verificá el .env raíz del servidor.`
+                    };
+                    this.cacheTablaMaestra = null;
+                    this.cacheTimestamp = 0;
+                    return null;
+                }
+                this.ultimoEstadoSupabase = {
+                    ok: false,
+                    tipo: 'CONTINGENCIA_RED',
+                    status: fetchErr.statusCode || 503,
+                    mensaje: fetchErr.message || 'Sin conexión con Supabase; mostrando respaldo local.'
+                };
                 break;
             }
             if (!response.ok) {
                 console.error(`⚠️ Error Supabase REST (${response.status}):`, await response.text());
+                if (response.status === 401 || response.status === 403) {
+                    this.ultimoEstadoSupabase = {
+                        ok: false,
+                        tipo: 'AUTH_ERROR',
+                        status: response.status,
+                        mensaje: `Supabase rechazó SUPABASE_SERVICE_KEY (HTTP ${response.status}). Verificá el .env raíz del servidor.`
+                    };
+                    this.cacheTablaMaestra = null;
+                    this.cacheTimestamp = 0;
+                    return null;
+                }
+                this.ultimoEstadoSupabase = {
+                    ok: false,
+                    tipo: 'CONTINGENCIA_RED',
+                    status: response.status,
+                    mensaje: `Error HTTP ${response.status} al consultar Supabase.`
+                };
                 break;
             }
 
@@ -2097,6 +2143,7 @@ class ConciliacionArticulosService {
                 );
                 if (resIngVinc.rows.length > 0) {
                     artLamda.ingrediente_id = artLamda.ingrediente_id || resIngVinc.rows[0].id;
+                    artLamda.ingredientes_vinculados_ids = resIngVinc.rows.map(r => String(r.id));
                     artLamda.ingrediente_vinculado_nombre = resIngVinc.rows.map(r => r.nombre).join(' • ');
                 }
             } catch (eVinc) {
@@ -2149,6 +2196,7 @@ class ConciliacionArticulosService {
                     artLamda = {
                         articulo_id: `ING-${ingredienteObj.id}`,
                         ingrediente_id: ingredienteObj.id,
+                        ingredientes_vinculados_ids: [String(ingredienteObj.id)],
                         es_ingrediente: true,
                         descripcion: ingredienteObj.nombre,
                         descripcion_generada: `${ingredienteObj.nombre} (Insumo de Fábrica)`,
@@ -2262,9 +2310,11 @@ class ConciliacionArticulosService {
         }
 
         let ofertasRaw = await this.obtenerTablaMaestraSupabase(opcionesAdicionales.forzar_refresco || false);
-        const totalEscaneadas = ofertasRaw ? ofertasRaw.length : 0;
-
-        if (!ofertasRaw || ofertasRaw.length === 0) {
+        const esErrorAuthSupa = Boolean(this.ultimoEstadoSupabase && this.ultimoEstadoSupabase.tipo === 'AUTH_ERROR');
+        if (esErrorAuthSupa) {
+            // Prohibido enmascarar 401/403 cayendo a la tabla local vieja public.articulos_proveedor
+            ofertasRaw = [];
+        } else if (!ofertasRaw || ofertasRaw.length === 0) {
             const resMaestra = await pool.query(`
                 SELECT ap.id, ap.proveedor_id, ap.codigo_proveedor, ap.descripcion_proveedor, 
                        ap.precio_costo, ap.fecha_actualizacion, ap.updated_at,
@@ -2275,6 +2325,7 @@ class ConciliacionArticulosService {
             `);
             ofertasRaw = resMaestra.rows.map(r => normalizarOfertaProveedor(r, kilosUnidad));
         }
+        const totalEscaneadas = ofertasRaw ? ofertasRaw.length : 0;
 
         // EVALUACIÓN DEL FILTRO COMPUESTO UNIFICADO
         const paso1Capturados = ofertasRaw.filter(oferta => {
@@ -2451,24 +2502,88 @@ class ConciliacionArticulosService {
         // ARQUITECTURA DE 4 CAPAS SELLADA: LOTES, HABITUAL, OPERADOR Y CHOFER IA
         // =========================================================================
 
-        // 1. CAPA LOTES DE DEPÓSITO (Trazabilidad física de entradas)
+        // 1. CAPA LOTES DE DEPÓSITO (Trazabilidad física de entradas + recepciones pendientes de vincular)
         let lotesDeposito = [];
+        let lotesPendientesCoincidentes = [];
+        let pendRes = null;
+        let estadoSupabaseFinal = this.ultimoEstadoSupabase
+            ? { ...this.ultimoEstadoSupabase }
+            : { ok: true, tipo: 'SUPABASE_LIVE', mensaje: null };
+
+        const cleanIngIdStr = String(artLamda.ingrediente_id || cleanArtId.replace(/^ING-?/i, '').trim());
+        const ingredientesIds = (Array.isArray(artLamda.ingredientes_vinculados_ids) && artLamda.ingredientes_vinculados_ids.length > 0)
+            ? artLamda.ingredientes_vinculados_ids
+            : (cleanIngIdStr && /^\d+$/.test(cleanIngIdStr) ? [cleanIngIdStr] : []);
+
         try {
-            const cleanIngIdStr = String(artLamda.ingrediente_id || cleanArtId.replace(/^ING-?/i, '').trim());
             const resLotes = await pool.query(`
                 SELECT d.destino_id, d.costo_kilo_al_momento, v.lote_id_supabase, v.lote_codigo_corto, v.fecha_vinculacion,
                        v.impuesto_iva, v.costo_bruto_ingresado, v.cantidad_total_lote,
-                       v.proveedor_nombre, v.articulo_descripcion, v.producto_codigo, v.numero_remito
+                       v.proveedor_nombre, v.articulo_descripcion, v.producto_codigo, v.numero_remito,
+                       d.cantidad_asignada, d.kilos_asignados
                 FROM public.bunker_lotes_destinos d
                 JOIN public.bunker_lotes_vinculos v ON d.vinculo_id = v.id
-                WHERE d.destino_id = $1 OR d.destino_id = $2 OR d.destino_id IN (
-                    SELECT CAST(id AS TEXT) FROM public.ingredientes WHERE articulo_vinculado_numero = $1
-                )
+                WHERE UPPER(BTRIM(d.destino_id)) = UPPER(BTRIM($1))
+                   OR BTRIM(d.destino_id) = ANY($2::text[])
+                   OR BTRIM(d.destino_id) IN (
+                       SELECT CAST(i.id AS TEXT)
+                       FROM public.ingredientes i
+                       WHERE UPPER(BTRIM(COALESCE(i.articulo_vinculado_numero, ''))) = UPPER(BTRIM($1))
+                       UNION
+                       SELECT CAST(iba.ingrediente_id AS TEXT)
+                       FROM public.ingrediente_bunker_articulos iba
+                       WHERE UPPER(BTRIM(COALESCE(iba.bunker_articulo_id, ''))) = UPPER(BTRIM($1))
+                   )
                 ORDER BY v.fecha_vinculacion DESC
-            `, [cleanArtId, cleanIngIdStr]);
-            lotesDeposito = resLotes.rows;
+            `, [cleanArtId, ingredientesIds]);
+            lotesDeposito = resLotes.rows.map(r => ({
+                ...r,
+                pendiente_vincular: false,
+                estado_vinculacion: 'VINCULADO',
+                origen_lote: 'BUNKER_VINCULADO'
+            }));
         } catch (errLotes) {
             console.error('⚠️ [CONCILIACION] Error al consultar lotes locales:', errLotes.message);
+        }
+
+        // Incorporar recepciones físicas recientes en Supabase aún no vinculadas en /recepcion-lotes
+        try {
+            pendRes = await recepcionesPendientesSupabaseService.obtenerRecepcionesPendientesSupabase(pool, {
+                forzarRefresco: Boolean(opcionesAdicionales.forzar_refresco)
+            });
+            if (pendRes.authError) {
+                if (estadoSupabaseFinal.ok || estadoSupabaseFinal.tipo !== 'AUTH_ERROR') {
+                    estadoSupabaseFinal = {
+                        ok: false,
+                        tipo: 'AUTH_ERROR',
+                        status: pendRes.statusCode || 401,
+                        mensaje: pendRes.mensaje
+                    };
+                }
+            } else if (pendRes.ok && Array.isArray(pendRes.items) && pendRes.items.length > 0) {
+                const historialMapeos = await recepcionesPendientesSupabaseService.cargarHistorialMapeosProveedores(pool);
+                lotesPendientesCoincidentes = recepcionesPendientesSupabaseService.filtrarPendientesParaDestino(
+                    pendRes.items,
+                    historialMapeos,
+                    { articuloId: cleanArtId, ingredientesIds }
+                );
+                if (lotesPendientesCoincidentes.length > 0) {
+                    const existentesIds = new Set(lotesDeposito.map(l => String(l.lote_id_supabase || '')));
+                    const nuevosPendientes = lotesPendientesCoincidentes.filter(
+                        p => !existentesIds.has(String(p.lote_id_supabase || ''))
+                    );
+                    lotesDeposito = [...nuevosPendientes, ...lotesDeposito];
+                }
+            } else if (!pendRes.ok && estadoSupabaseFinal.ok) {
+                estadoSupabaseFinal = {
+                    ok: false,
+                    tipo: 'CONTINGENCIA_RED',
+                    status: pendRes.statusCode || 503,
+                    mensaje: pendRes.mensaje
+                };
+            }
+        } catch (errPend) {
+            console.warn('⚠️ [CONCILIACION] Error no bloqueante al consultar recepciones pendientes Supabase:', errPend.message);
         }
 
         const loteReciente = lotesDeposito.length > 0 ? lotesDeposito[0] : null;
@@ -2579,6 +2694,9 @@ class ConciliacionArticulosService {
 
             // === ARQUITECTURA DE 5 CAPAS DETERMINISTAS ===
             capa_lotes: lotesDeposito,
+            supabase_estado: estadoSupabaseFinal,
+            lotes_pendientes_vincular_count: lotesPendientesCoincidentes.length,
+            lotes_pendientes_globales_count: pendRes?.totalPendientes || 0,
             capa_habitual: capaHabitual,
             capa_operador: {
                 exactos: nivel1Final,

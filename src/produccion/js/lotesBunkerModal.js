@@ -62,6 +62,8 @@ const BunkerModal = {
         
         document.getElementById('bm-costo-bruto').value = (vu * kilosPorBultoFisico * bultosPendientes).toFixed(2);
         document.getElementById('bm-cantidad-total').value = kilosPendientes.toFixed(2);
+        const ivaInput = document.getElementById('bm-iva');
+        if (ivaInput) ivaInput.value = item.iva_porcentaje ?? 21;
         
         document.getElementById('bm-destinos-container').innerHTML = '';
         document.getElementById('bm-validacion-manual').checked = false;
@@ -70,6 +72,25 @@ const BunkerModal = {
         
         // Auto-crear el primer destino con el 100% del saldo pendiente disponible
         this.agregarDestino();
+
+        // Preseleccionar destino habitual si existe sugerencia aprendida del historial del proveedor
+        const sug = (window.LotesSugerenciasDestinoCache && lote.id) ? window.LotesSugerenciasDestinoCache[lote.id] : null;
+        const destContainer = document.getElementById('bm-destinos-container');
+        const prevBanner = document.getElementById('bm-sugerencia-banner');
+        if (prevBanner) prevBanner.remove();
+        if (sug && this.destinos[0]) {
+            this.destinos[0].tipo_destino = sug.tipo_destino;
+            this.destinos[0].id = String(sug.id);
+            this.destinos[0].descripcion = sug.descripcion;
+            this.renderDestinos();
+            if (destContainer && destContainer.parentNode) {
+                const banner = document.createElement('div');
+                banner.id = 'bm-sugerencia-banner';
+                banner.style.cssText = 'background:#ecfdf5; border:1px solid #10b981; color:#065f46; padding:8px 12px; border-radius:6px; margin-bottom:10px; font-size:0.85em; font-weight:600;';
+                banner.innerHTML = `✨ Destino preseleccionado automáticamente: <b>[${sug.id}] ${sug.descripcion}</b> <span style="font-weight:400; color:#047857;">(${sug.origen_texto}) — podés cambiarlo si corresponde.</span>`;
+                destContainer.parentNode.insertBefore(banner, destContainer);
+            }
+        }
         
         const checkValidacion = document.getElementById('bm-validacion-manual');
         if (checkValidacion) {

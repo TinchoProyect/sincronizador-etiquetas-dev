@@ -30,6 +30,9 @@ const BunkerModalBatch = {
 
             const vu = parseFloat(item.valor_unitario_ref) || 0;
             const costRemanente = vu * kilosPorBultoFisico * bultosPendientes;
+            const sug = (window.LotesSugerenciasDestinoCache && lote.id)
+                ? window.LotesSugerenciasDestinoCache[lote.id]
+                : null;
 
             return {
                 idTemp: uniqueLoteTempId,
@@ -45,9 +48,11 @@ const BunkerModalBatch = {
                 destinos: [
                     {
                         idTemp: defaultDestIdTemp,
-                        tipo_destino: 'INGREDIENTE_PRODUCCION', // Por defecto "Ingredientes"
-                        id: '',
-                        descripcion: '',
+                        tipo_destino: sug ? sug.tipo_destino : 'INGREDIENTE_PRODUCCION',
+                        id: sug ? String(sug.id) : '',
+                        descripcion: sug ? sug.descripcion : '',
+                        esSugerido: Boolean(sug),
+                        sugerenciaOrigen: sug ? sug.origen_texto : '',
                         cantidad_asignada: bultosPendientes,
                         kilos_asignados: kilosPendientes
                     }
@@ -350,11 +355,12 @@ const BunkerModalBatch = {
                     const select = document.getElementById(`sel-destino-${destIdTemp}`);
                     if (!select) return;
 
-                    const currentVal = select.value;
+                    const currentVal = dest.id ? String(dest.id) : select.value;
                     select.innerHTML = '<option value="">-- Seleccionar Destino --</option>';
 
                     // Filtrar en frontend por el tipo pre-asignado a este renglón
                     const filteredData = result.data.filter(item => item.tipo_destino === dest.tipo_destino);
+                    let matchedSelected = false;
 
                     filteredData.forEach(item => {
                         const opt = document.createElement('option');
@@ -381,9 +387,25 @@ const BunkerModalBatch = {
                         // Inyección de descripción obligatoria prioritaria y saldo en caliente limpio
                         opt.textContent = `[${locationName}] ${displayDesc} (${stockText})`;
                         
-                        if (item.id == currentVal) opt.selected = true;
+                        if (currentVal && String(item.id) == String(currentVal)) {
+                            opt.selected = true;
+                            matchedSelected = true;
+                        }
                         select.appendChild(opt);
                     });
+
+                    // Si había una preselección sugerida y no vino en el subconjunto filtrado, preservarla explícitamente
+                    if (currentVal && !matchedSelected && dest.descripcion) {
+                        const prefix = dest.tipo_destino === 'ARTICULO_BUNKER' ? 'Depósito Búnker' : 'Almacén Ingredientes';
+                        const fallbackOpt = document.createElement('option');
+                        fallbackOpt.value = currentVal;
+                        fallbackOpt.dataset.tipo = dest.tipo_destino;
+                        fallbackOpt.dataset.desc = dest.descripcion;
+                        fallbackOpt.textContent = `[${prefix}] ${dest.descripcion}`;
+                        fallbackOpt.selected = true;
+                        select.appendChild(fallbackOpt);
+                    }
+                    this.verificarBotonGuardar();
                 }
             }
         } catch (e) {
@@ -437,10 +459,11 @@ const BunkerModalBatch = {
                     <input type="text" id="input-buscar-${d.idTemp}" placeholder="🔍 Buscar..." style="padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 11px;" onkeyup="BunkerModalBatch.buscarDestinoRemotoBatch(this.value, '${loteIdTemp}', '${d.idTemp}')">
                 </div>
                 
-                <div style="flex: 3; display: flex; flex-direction: column;">
-                    <select id="sel-destino-${d.idTemp}" style="padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 11px; width: 100%;" onchange="BunkerModalBatch.actualizarDestinoDataBatch('${loteIdTemp}', '${d.idTemp}')">
+                <div style="flex: 3; display: flex; flex-direction: column; gap: 2px;">
+                    <select id="sel-destino-${d.idTemp}" style="padding: 4px; border: 1px solid ${d.esSugerido && d.id ? '#10b981' : '#cbd5e1'}; border-radius: 4px; font-size: 11px; width: 100%;" onchange="BunkerModalBatch.actualizarDestinoDataBatch('${loteIdTemp}', '${d.idTemp}')">
                         <option value="">-- Seleccionar --</option>
                     </select>
+                    ${d.esSugerido && d.id ? `<span style="font-size: 10px; color: #047857; font-weight: 700;" title="${(d.sugerenciaOrigen || '').replace(/"/g, '&quot;')}">✨ Auto-sugerido (${d.id})</span>` : ''}
                 </div>
                 
                 <div style="display: flex; gap: 4px; align-items: center; background: #f8fafc; padding: 4px; border-radius: 4px; border: 1px solid #e2e8f0;">

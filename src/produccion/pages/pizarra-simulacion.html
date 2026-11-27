@@ -1846,6 +1846,8 @@
 
     <!-- LADO DERECHO: ACCIONES COMPACTAS (ICONOS) -->
     <div class="header-actions" style="display: flex; gap: 8px; align-items: center; flex-shrink: 0;">
+      <button class="btn btn-secondary" id="btn-lotes-pendientes-header" style="display: none; padding: 5px 11px; font-size: 0.76rem; height: 34px; border-radius: 6px; font-weight: 700; white-space: nowrap; align-items: center; gap: 6px;" title="Lotes recibidos en depósito pendientes de vincular">
+      </button>
       <button class="btn btn-secondary btn-icon-header" onclick="window.location.href='/pages/gestion-cambios-precios.html'" title="Gestión de Notificaciones y Variaciones a Clientes">
         🔔
       </button>
@@ -2742,6 +2744,8 @@
           articulosBunker: data.articulosBunker.length,
           listasPrecios: data.listasPrecios.length
         });
+
+        cargarResumenLotesPendientesHeader();
         
         if (!silencioso) {
           Swal.close();
@@ -2760,6 +2764,59 @@
       }
     }
     window.inicializarPizarra = inicializarPizarra;
+
+    async function cargarResumenLotesPendientesHeader() {
+      const btn = document.getElementById('btn-lotes-pendientes-header');
+      if (!btn) return;
+      try {
+        const res = await fetch('/api/produccion/lotes/pendientes-resumen');
+        let data = null;
+        try { data = await res.json(); } catch (_) {}
+
+        if (res.status === 502 || (data && data.auth_error)) {
+          const msgAuth = data?.mensaje || 'Supabase Proveedores rechazó SUPABASE_SERVICE_KEY (HTTP 401/403).';
+          btn.style.display = 'inline-flex';
+          btn.style.background = 'rgba(239, 68, 68, 0.18)';
+          btn.style.borderColor = '#ef4444';
+          btn.style.color = '#fecaca';
+          btn.innerHTML = '⚠️ Supabase 401';
+          btn.title = msgAuth;
+          btn.onclick = () => {
+            if (typeof Swal !== 'undefined') {
+              Swal.fire({
+                icon: 'error',
+                title: 'Error de Autenticación con Supabase',
+                text: msgAuth,
+                background: '#151e2e',
+                color: '#f3f4f6'
+              });
+            }
+          };
+          return;
+        }
+
+        const totalPend = Number(data?.total_pendientes || 0);
+        if (totalPend > 0) {
+          const remitosResumen = Array.isArray(data.resumen_remitos)
+            ? data.resumen_remitos.map(r => `${r.numero_remito} — ${r.proveedor_nombre} (${r.items_count} ítems)`).join('\n')
+            : '';
+          const urlRec = window.LAMDA_RESOLVE_URL
+            ? window.LAMDA_RESOLVE_URL('http://localhost:3002/pages/recepcion-lotes.html')
+            : '/pages/recepcion-lotes.html';
+          btn.style.display = 'inline-flex';
+          btn.style.background = 'rgba(245, 158, 11, 0.18)';
+          btn.style.borderColor = 'rgba(245, 158, 11, 0.65)';
+          btn.style.color = '#fde68a';
+          btn.innerHTML = `📦 ${totalPend} lote${totalPend !== 1 ? 's' : ''} s/vincular`;
+          btn.title = remitosResumen || `${totalPend} recepciones físicas en Supabase pendientes de vincular a stock`;
+          btn.onclick = () => window.open(urlRec, '_blank');
+        } else {
+          btn.style.display = 'none';
+        }
+      } catch (e) {
+        console.warn('No se pudo consultar resumen de lotes pendientes:', e);
+      }
+    }
 
     // Helper único: detecta si la receta de un artículo ya incluye empaque (es_insumo o Unidades) para evitar doble conteo con bunker_lista_insumos
     function articuloTieneEmpaqueEnRecetaPizarra(data, recetaIdOrArtSku) {

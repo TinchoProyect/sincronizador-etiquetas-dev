@@ -484,22 +484,50 @@ app.get(['/centro-nodos', '/centro-nodos/:nodoSlug'], (req, res) => {
 });
 
 // ✅ PROXY A SUPABASE (BYPASS DE CORS)
-// Para que el frontend pueda leer los datos sin que Supabase rechace el Personal Access Token (sb_secret)
+// Para que el frontend pueda leer los datos sin que Supabase rechace la key de servicio
 app.get('/api/supabase/lotes', async (req, res) => {
     try {
-        const url = 'https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,envio_tipo,costo_logistico_estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref,valor_unitario_ref,cant_bult,cant_valor)&order=created_at.desc&limit=100';
-        const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
-        const debugLogs = [];
-        debugLogs.push(`🔑 [Supabase Proxy] Service Key Length: ${key.length}, Starts with: ${key.substring(0, 10)}...`);
+        const key = (process.env.SUPABASE_SERVICE_KEY || '').trim();
+        if (!key || key === 'MISSING_ENV_KEY') {
+            return res.status(500).json({
+                success: false,
+                code: 'SUPABASE_KEY_MISSING',
+                error: 'Falta configurar SUPABASE_SERVICE_KEY en el .env raíz del servidor.'
+            });
+        }
+
         const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
         let lotes = null;
+        let fallbackReason = null;
+
         try {
-            const response = await supabaseFetch(url, { headers }, 1, 300, 6000);
-            if (response.ok) {
-                lotes = await response.json();
+            const collected = [];
+            let offset = 0;
+            const pageSize = 250;
+            while (collected.length < 500) {
+                const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,created_at,cantidad_recibida,cantidad_esperada,costo_unitario,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,envio_tipo,costo_logistico_estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref,valor_unitario_ref,cant_bult,cant_valor)&order=created_at.desc&limit=${pageSize}&offset=${offset}`;
+                const response = await supabaseFetch(url, { headers }, 1, 300, 6000);
+                const rows = await response.json();
+                if (!Array.isArray(rows) || rows.length === 0) break;
+                collected.push(...rows);
+                if (rows.length < pageSize) break;
+                offset += pageSize;
             }
+            lotes = collected;
         } catch (supaErr) {
-            debugLogs.push(`?? [Supabase Proxy] Fallback a bunker_lotes_vinculos local: ${supaErr.message}`);
+            const isAuthErr = supaErr.code === 'SUPABASE_AUTH_ERROR' || supaErr.statusCode === 401 || supaErr.statusCode === 403;
+            if (isAuthErr) {
+                console.error(`🔒 [Supabase Proxy] Rechazo HTTP ${supaErr.statusCode || 401} en /api/supabase/lotes:`, supaErr.message);
+                return res.status(502).json({
+                    success: false,
+                    code: 'SUPABASE_AUTH_ERROR',
+                    upstream_status: supaErr.statusCode || 401,
+                    error: 'Error de autenticación con Supabase Proveedores',
+                    message: `Supabase rechazó SUPABASE_SERVICE_KEY (HTTP ${supaErr.statusCode || 401}). Verificá el .env raíz del servidor.`
+                });
+            }
+            fallbackReason = supaErr.message || 'NETWORK_ERROR';
+            console.warn(`⚠️ [Supabase Proxy] Fallback a bunker_lotes_vinculos local por corte de red: ${fallbackReason}`);
         }
 
         if (!Array.isArray(lotes)) {
@@ -545,6 +573,11 @@ app.get('/api/supabase/lotes', async (req, res) => {
                     iva_porcentaje: parseFloat(r.impuesto_iva) || 21
                 }
             }));
+            res.setHeader('X-Lamda-Supabase-Fallback', 'LOCAL_BUNKER_LOTES');
+            res.setHeader(
+                'X-Lamda-Supabase-Fallback-Reason',
+                String(fallbackReason || 'NETWORK_ERROR').replace(/[^\x20-\x7E]+/g, ' ').trim().slice(0, 160)
+            );
             return res.json(fbMapped);
         }
         
@@ -554,7 +587,6 @@ app.get('/api/supabase/lotes', async (req, res) => {
         // Extraer IDs únicos de proveedores y pedidos
         const proveedoresIds = [...new Set(lotes.map(l => l.recepciones_fisicas_cabecera?.pedidos_b2b_cabecera?.proveedor_id).filter(Boolean))];
         const pedidosIds = [...new Set(lotes.map(l => l.recepciones_fisicas_cabecera?.pedido_id).filter(Boolean))];
-        debugLogs.push(`📡 [Supabase Proxy] Unique suppliers found: [${proveedoresIds.join(', ')}]`);
         
         // 1. Obtener Tabla Maestra para cant_bult y cant_valor (Paginación en Bucle para evitar límite de 1000 de Supabase)
         let masterMap = {};
@@ -564,23 +596,23 @@ app.get('/api/supabase/lotes', async (req, res) => {
             let hasMore = true;
             while (hasMore) {
                 const masterUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=datos_maestros&proveedor_id=in.(${proveedoresIds.join(',')})&limit=1000&offset=${offset}`;
-                const masterRes = await fetch(masterUrl, { headers });
-                debugLogs.push(`📡 [Supabase Proxy] Fetching master table status: ${masterRes.status}`);
-                if (masterRes.ok) {
-                    const rows = await masterRes.json();
-                    masterData = masterData.concat(rows);
-                    if (rows.length < 1000) {
-                        hasMore = false;
+                try {
+                    const masterRes = await supabaseFetch(masterUrl, { headers }, 1, 300, 6000);
+                    if (masterRes.ok) {
+                        const rows = await masterRes.json();
+                        masterData = masterData.concat(rows);
+                        if (rows.length < 1000) {
+                            hasMore = false;
+                        } else {
+                            offset += 1000;
+                        }
                     } else {
-                        offset += 1000;
+                        hasMore = false;
                     }
-                } else {
-                    debugLogs.push(`❌ [Supabase Proxy] Fetch master failed: ${await masterRes.text()}`);
+                } catch (_) {
                     hasMore = false;
                 }
             }
-
-            debugLogs.push(`📡 [Supabase Proxy] Total master rows fetched: ${masterData.length}`);
 
             masterData.forEach(row => {
                 if (row.datos_maestros && row.datos_maestros.codigo) {
@@ -592,73 +624,59 @@ app.get('/api/supabase/lotes', async (req, res) => {
                     };
                 }
             });
-            debugLogs.push(`📡 [Supabase Proxy] Mapped items count in masterMap: ${Object.keys(masterMap).length}`);
         }
-        
-        // Write debug logs to a local file
-        require('fs').writeFileSync(path.join(__dirname, 'proxy_debug.log'), debugLogs.join('\n') + '\n');
         
         // 2. Obtener Facturas para IVA Real (Heurística de Alícuotas)
         let facturasMap = {};
         if (pedidosIds.length > 0) {
             const facturasUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/facturas_raw?select=pedido_b2b_id,importe_iva_21,importe_iva_105,match_report&pedido_b2b_id=in.(${pedidosIds.join(',')})`;
-            const facturasRes = await fetch(facturasUrl, { headers });
-            if (facturasRes.ok) {
-                const facturasData = await facturasRes.json();
-                facturasData.forEach(fac => {
-                    if (fac.pedido_b2b_id && fac.match_report) {
-                        const i21 = Number(fac.importe_iva_21) || 0;
-                        const i105 = Number(fac.importe_iva_105) || 0;
-                        
-                        let ivaBase = null;
-                        // Motor Heurístico:
-                        if (i21 === 0 && i105 === 0) ivaBase = 0;           // Factura Pura 0%
-                        else if (i105 > 0 && i21 === 0) ivaBase = 10.5;     // Factura Pura 10.5%
-                        else if (i21 > 0 && i105 === 0) ivaBase = 21;       // Factura Pura 21%
-                        
-                        if (!facturasMap[fac.pedido_b2b_id]) facturasMap[fac.pedido_b2b_id] = {};
-                        
-                        const matchItems = Array.isArray(fac.match_report)
-                            ? fac.match_report
-                            : (typeof fac.match_report === 'object' && fac.match_report !== null
-                                ? Object.values(fac.match_report)
-                                : []);
+            try {
+                const facturasRes = await supabaseFetch(facturasUrl, { headers }, 1, 300, 6000);
+                if (facturasRes.ok) {
+                    const facturasData = await facturasRes.json();
+                    facturasData.forEach(fac => {
+                        if (fac.pedido_b2b_id && fac.match_report) {
+                            const i21 = Number(fac.importe_iva_21) || 0;
+                            const i105 = Number(fac.importe_iva_105) || 0;
+                            
+                            let ivaBase = null;
+                            if (i21 === 0 && i105 === 0) ivaBase = 0;
+                            else if (i105 > 0 && i21 === 0) ivaBase = 10.5;
+                            else if (i21 > 0 && i105 === 0) ivaBase = 21;
+                            
+                            if (!facturasMap[fac.pedido_b2b_id]) facturasMap[fac.pedido_b2b_id] = {};
+                            
+                            const matchItems = Array.isArray(fac.match_report)
+                                ? fac.match_report
+                                : (typeof fac.match_report === 'object' && fac.match_report !== null
+                                    ? Object.values(fac.match_report)
+                                    : []);
 
-                        matchItems.forEach(mr => {
-                            if (!mr || typeof mr !== 'object') return;
-                            const cod = String(mr.pedido?.codigo || '').trim().toLowerCase();
-                            if (cod) {
-                                if (ivaBase !== null) {
+                            matchItems.forEach(mr => {
+                                if (!mr || typeof mr !== 'object') return;
+                                const cod = String(mr.pedido?.codigo || '').trim().toLowerCase();
+                                if (cod && ivaBase !== null) {
                                     facturasMap[fac.pedido_b2b_id][cod] = ivaBase;
-                                } else {
-                                    // Factura Mixta: No asignamos un IVA duro del 21% por defecto en el mapa de facturas.
-                                    // Esto permite que el sistema respete el IVA configurado en la tabla_maestra_operativa (masterInfo.iva).
-                                    // Si no hay IVA en la tabla maestra, el código de contingencia inferior aplicará el 21%.
                                 }
-                            }
-                        });
-                    }
-                });
-            }
+                            });
+                        }
+                    });
+                }
+            } catch (_) {}
         }
 
-        // 3. Deduplicación Reductora en Node.js (Agrupación por SKU)
+        // 3. Deduplicación conservando cada recepción e ítem de pedido distinto (sin colapsar fechas+SKU)
         const uniqueMap = new Map();
         lotes.forEach(lote => {
-            const cod = String(lote.pedidos_b2b_items?.producto_codigo || '').trim().toLowerCase();
-            if (!cod) return;
-            
-            // Agrupamos por fecha (YYYY-MM-DD) y por SKU, emulando la vista vw_inventario_consolidado
-            // pero reteniendo la metadata del lote físico agrupado por día.
-            const fechaStr = (lote.recepciones_fisicas_cabecera?.fecha_recepcion || new Date().toISOString()).split('T')[0];
-            const dedupeKey = fechaStr + '_' + cod;
+            const cabId = lote.recepciones_fisicas_cabecera?.id || '';
+            const itemId = lote.pedidos_b2b_items?.id || '';
+            const dedupeKey = (cabId && itemId) ? `${cabId}_${itemId}` : String(lote.id);
             
             if (!uniqueMap.has(dedupeKey)) {
-                // Clonamos para no mutar el lote original al sumar
                 uniqueMap.set(dedupeKey, { ...lote });
             } else {
                 const existing = uniqueMap.get(dedupeKey);
-                existing.cantidad_recibida += Number(lote.cantidad_recibida);
+                existing.cantidad_recibida = Number(existing.cantidad_recibida || 0) + Number(lote.cantidad_recibida || 0);
             }
         });
         const dedupedLotes = Array.from(uniqueMap.values());
@@ -684,26 +702,26 @@ app.get('/api/supabase/lotes', async (req, res) => {
             const cod = String(item.producto_codigo || '').trim().toLowerCase();
             const masterInfo = masterMap[cod] || { cantBult: null, cantValor: null, iva: null };
             
-            // IVA Real Inferido desde Facturas
             let ivaReal = masterInfo.iva;
             if (cabecera.pedido_id && facturasMap[cabecera.pedido_id] && facturasMap[cabecera.pedido_id][cod] !== undefined) {
                 ivaReal = facturasMap[cabecera.pedido_id][cod];
             }
-            
-            // Contingencia Fiscal (Fallback 21% para lotes huérfanos de factura)
             if (ivaReal === null || ivaReal === undefined) {
                 ivaReal = 21;
             }
             
-            // Aplicar overrides locales si existen
             const override = overridesMap[lote.id];
             const finalCantBult = override ? override.cantBult : (item.cant_bult !== undefined && item.cant_bult !== null ? item.cant_bult : masterInfo.cantBult);
             const finalCantValor = override ? override.cantValor : (item.cant_valor !== undefined && item.cant_valor !== null ? item.cant_valor : masterInfo.cantValor);
+            const valUnitarioFinal = (item.valor_unitario_ref !== undefined && item.valor_unitario_ref !== null && Number(item.valor_unitario_ref) > 0)
+                ? item.valor_unitario_ref
+                : (lote.costo_unitario ?? item.valor_unitario_ref ?? 0);
 
             return {
                 ...lote,
                 pedidos_b2b_items: {
                     ...item,
+                    valor_unitario_ref: valUnitarioFinal,
                     cant_bult: finalCantBult,
                     cant_valor: finalCantValor,
                     iva_porcentaje: ivaReal
@@ -721,19 +739,36 @@ app.get('/api/supabase/lotes', async (req, res) => {
 app.get('/api/supabase/lotes/:id_corto', async (req, res) => {
     try {
         const id_corto = req.params.id_corto.trim();
+        const key = (process.env.SUPABASE_SERVICE_KEY || '').trim();
+        if (!key || key === 'MISSING_ENV_KEY') {
+            return res.status(500).json({
+                success: false,
+                code: 'SUPABASE_KEY_MISSING',
+                error: 'Falta configurar SUPABASE_SERVICE_KEY en el .env raíz del servidor.'
+            });
+        }
         // Generar rango mínimo y máximo del UUID para evitar usar ilike que falla en Postgres para tipos uuid
         const minUuid = id_corto + '-0000-0000-0000-000000000000';
         const maxUuid = id_corto + '-ffff-ffff-ffff-ffffffffffff';
         
         const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/recepciones_fisicas_items?select=id,cantidad_recibida,cantidad_esperada,recepciones_fisicas_cabecera(id,fecha_recepcion,numero_remito,pedido_id,estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_codigo,producto_descripcion,unidad_ref,cant_bult,cant_valor)&id=gte.${minUuid}&id=lte.${maxUuid}&limit=1`;
-        const key = (process.env.SUPABASE_SERVICE_KEY || 'MISSING_ENV_KEY').trim();
         let data = [];
         try {
             const response = await supabaseFetch(url, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }, 1, 300, 6000);
             if (response.ok) {
                 data = await response.json();
             }
-        } catch (_) {}
+        } catch (supaErr) {
+            if (supaErr.code === 'SUPABASE_AUTH_ERROR' || supaErr.statusCode === 401 || supaErr.statusCode === 403) {
+                return res.status(502).json({
+                    success: false,
+                    code: 'SUPABASE_AUTH_ERROR',
+                    upstream_status: supaErr.statusCode || 401,
+                    error: 'Error de autenticación con Supabase Proveedores',
+                    message: `Supabase rechazó SUPABASE_SERVICE_KEY (HTTP ${supaErr.statusCode || 401}).`
+                });
+            }
+        }
         if (!Array.isArray(data) || data.length === 0) {
             const fbRes = await db.query(
                 `SELECT id, lote_id_supabase, costo_bruto_ingresado, costo_kilo_calculado, cantidad_total_lote,

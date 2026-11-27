@@ -1,3 +1,9 @@
+const {
+    cargarHistorialMapeosProveedores,
+    sugerirDestinoParaRecepcion,
+    invalidarCachePendientes
+} = require('../../produccion/services/recepcionesPendientesSupabaseService');
+
 class LotesBunkerService {
     /**
      * Busca artículos en el Búnker y también Ingredientes para ofrecer como destinos al vincular un lote.
@@ -253,6 +259,7 @@ class LotesBunkerService {
             }
 
             await client.query('COMMIT');
+            try { invalidarCachePendientes(); } catch (_) {}
             try {
                 const FotosLotesService = require('./fotosLotesService');
                 await FotosLotesService.evaluarCaducidadAutomaticaLotes(db);
@@ -446,6 +453,7 @@ class LotesBunkerService {
             }
 
             await client.query('COMMIT');
+            try { invalidarCachePendientes(); } catch (_) {}
             try {
                 const FotosLotesService = require('./fotosLotesService');
                 await FotosLotesService.evaluarCaducidadAutomaticaLotes(db);
@@ -723,6 +731,7 @@ class LotesBunkerService {
             );
 
             await client.query('COMMIT');
+            try { invalidarCachePendientes(); } catch (_) {}
             return { success: true };
         } catch (error) {
             await client.query('ROLLBACK');
@@ -814,6 +823,37 @@ class LotesBunkerService {
         } catch (error) {
             console.warn('⚠️ [AUTO-APRENDIZAJE LOTES] Error no bloqueante al auto-vincular ingrediente:', error.message);
         }
+    }
+
+    /**
+     * Sugiere destinos Búnker/Ingrediente para un listado de lotes pendientes de Supabase
+     * reutilizando el matcher determinista de recepcionesPendientesSupabaseService.
+     */
+    static async sugerirDestinosLotes(db, lotesItems = []) {
+        if (!Array.isArray(lotesItems) || lotesItems.length === 0) {
+            return {};
+        }
+        const historialMapeos = await cargarHistorialMapeosProveedores(db);
+        const sugerencias = {};
+
+        for (const item of lotesItems) {
+            if (!item || !item.lote_id_supabase) continue;
+            const bult = parseFloat(item.cant_bult) || 1;
+            const val = parseFloat(item.cant_valor) || 1;
+            const kilosPorBulto = parseFloat(item.kilos_por_bulto) || (bult * val);
+
+            const sug = sugerirDestinoParaRecepcion({
+                proveedor_nombre: item.proveedor_nombre || '',
+                producto_codigo: item.producto_codigo || '',
+                articulo_descripcion: item.articulo_descripcion || '',
+                kilos_por_bulto: kilosPorBulto
+            }, historialMapeos);
+
+            if (sug) {
+                sugerencias[String(item.lote_id_supabase)] = sug;
+            }
+        }
+        return sugerencias;
     }
 }
 

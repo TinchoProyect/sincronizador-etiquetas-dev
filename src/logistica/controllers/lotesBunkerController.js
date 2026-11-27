@@ -1,4 +1,5 @@
 const LotesBunkerService = require('../services/lotesBunkerService');
+const { supabaseFetch } = require('../../produccion/utils/supabaseHelper');
 
 exports.buscarDestinos = async (req, res) => {
     console.log(`[VIGÍA BACKEND] -> Request recibido en /buscar. Query (q): "${req.query.q || ''}"`);
@@ -120,7 +121,14 @@ exports.obtenerAuditoriaCostos = async (req, res) => {
     try {
         const { loteId } = req.params;
         const url = "https://wofttcnpipozwupmpuul.supabase.co";
-        const key = (process.env.SUPABASE_SERVICE_KEY || 'sb_secret_B29ym1JcTqTIe8dWnvpmZg_ByV_ZxcL').trim();
+        const key = (process.env.SUPABASE_SERVICE_KEY || '').trim();
+        if (!key) {
+            return res.status(500).json({
+                success: false,
+                code: 'SUPABASE_KEY_MISSING',
+                error: 'Falta configurar SUPABASE_SERVICE_KEY en el .env raíz.'
+            });
+        }
         
         const headers = {
             'apikey': key,
@@ -129,7 +137,7 @@ exports.obtenerAuditoriaCostos = async (req, res) => {
 
         // 1. Consultar la vista vw_inventario_consolidado
         const viewUrl = `${url}/rest/v1/vw_inventario_consolidado?id=eq.${loteId}`;
-        const resView = await fetch(viewUrl, { headers });
+        const resView = await supabaseFetch(viewUrl, { headers }, 1, 300, 6000);
         let landedData = null;
         if (resView.ok) {
             const arr = await resView.json();
@@ -138,7 +146,7 @@ exports.obtenerAuditoriaCostos = async (req, res) => {
 
         // 2. Consultar el detalle de auditoría / trazabilidad de fletes
         const auditUrl = `${url}/rest/v1/recepciones_fisicas_items?id=eq.${loteId}&select=id,costo_unitario,recepciones_fisicas_cabecera(id,numero_remito,envio_tipo,costo_logistico_estado,pedidos_b2b_cabecera(id,proveedor_id,proveedores(id,nombre))),pedidos_b2b_items(id,producto_descripcion),costos_adicionales_distribucion(id,tipo_costo,monto_adicional_asignado,facturas_raw(id,tipo_comprobante,punto_venta,numero_comprobante,importe_total,proveedores(id,nombre)))`;
-        const resAudit = await fetch(auditUrl, { headers });
+        const resAudit = await supabaseFetch(auditUrl, { headers }, 1, 300, 6000);
         let auditData = null;
         if (resAudit.ok) {
             const arr = await resAudit.json();
@@ -152,6 +160,13 @@ exports.obtenerAuditoriaCostos = async (req, res) => {
         });
     } catch (error) {
         console.error('❌ [BUNKER-LOTES] Error obteniendo auditoría de costos:', error);
+        if (error.code === 'SUPABASE_AUTH_ERROR' || error.statusCode === 401 || error.statusCode === 403) {
+            return res.status(502).json({
+                success: false,
+                code: 'SUPABASE_AUTH_ERROR',
+                error: 'Supabase rechazó SUPABASE_SERVICE_KEY (HTTP 401/403).'
+            });
+        }
         res.status(500).json({ success: false, error: 'Error interno obteniendo auditoría de costos.' });
     }
 };
@@ -163,7 +178,14 @@ exports.sincronizarCostoLote = async (req, res) => {
     try {
         const { loteId } = req.params;
         const url = "https://wofttcnpipozwupmpuul.supabase.co";
-        const key = (process.env.SUPABASE_SERVICE_KEY || 'sb_secret_B29ym1JcTqTIe8dWnvpmZg_ByV_ZxcL').trim();
+        const key = (process.env.SUPABASE_SERVICE_KEY || '').trim();
+        if (!key) {
+            return res.status(500).json({
+                success: false,
+                code: 'SUPABASE_KEY_MISSING',
+                error: 'Falta configurar SUPABASE_SERVICE_KEY en el .env raíz.'
+            });
+        }
         
         const headers = {
             'apikey': key,
@@ -172,7 +194,7 @@ exports.sincronizarCostoLote = async (req, res) => {
 
         // 1. Obtener costo de vw_inventario_consolidado en Supabase
         const viewUrl = `${url}/rest/v1/vw_inventario_consolidado?id=eq.${loteId}`;
-        const resView = await fetch(viewUrl, { headers });
+        const resView = await supabaseFetch(viewUrl, { headers }, 1, 300, 6000);
         if (!resView.ok) {
             throw new Error(`Error en Supabase: ${await resView.text()}`);
         }
@@ -258,6 +280,30 @@ exports.sincronizarCostoLote = async (req, res) => {
 
     } catch(error) {
         console.error('❌ [BUNKER-LOTES] Error sincronizando costo:', error);
+        if (error.code === 'SUPABASE_AUTH_ERROR' || error.statusCode === 401 || error.statusCode === 403) {
+            return res.status(502).json({
+                success: false,
+                code: 'SUPABASE_AUTH_ERROR',
+                error: 'Supabase rechazó SUPABASE_SERVICE_KEY (HTTP 401/403).'
+            });
+        }
         res.status(500).json({ success: false, error: error.message || 'Error interno sincronizando costo.' });
+    }
+};
+
+/**
+ * Sugiere automáticamente destinos Búnker/Ingrediente para lotes pendientes según historial del proveedor.
+ */
+exports.sugerirDestinosLotes = async (req, res) => {
+    try {
+        const { lotes } = req.body || {};
+        if (!Array.isArray(lotes)) {
+            return res.status(400).json({ success: false, error: 'Se requiere un array `lotes`.' });
+        }
+        const data = await LotesBunkerService.sugerirDestinosLotes(req.db, lotes);
+        return res.json({ success: true, data });
+    } catch (error) {
+        console.error('❌ [BUNKER-LOTES] Error sugiriendo destinos de lotes:', error);
+        return res.status(500).json({ success: false, error: 'Error interno al calcular sugerencias de destino.' });
     }
 };

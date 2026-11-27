@@ -172,6 +172,50 @@ router.post('/conciliacion/articulos/confirmar', (req, res) => conciliacionCtrl.
 router.post('/simulacion/sincronizar-ingrediente', (req, res) => conciliacionCtrl.sincronizarIngredienteDesdeArticulo(req, res));
 router.post('/simulacion/propagar-ingrediente-a-fracciones', (req, res) => conciliacionCtrl.propagarIngredienteAFracciones(req, res));
 
+// Resumen de recepciones físicas en Supabase aún pendientes de vincular al Búnker
+const recepcionesPendientesService = require('../services/recepcionesPendientesSupabaseService');
+router.get('/lotes/pendientes-resumen', async (req, res) => {
+    try {
+        const result = await recepcionesPendientesService.obtenerRecepcionesPendientesSupabase(req.db, {
+            forzarRefresco: req.query.refresh === '1'
+        });
+        if (result.authError) {
+            return res.status(502).json({
+                success: false,
+                ok: false,
+                auth_error: true,
+                error_code: result.errorCode || 'SUPABASE_AUTH_ERROR',
+                mensaje: result.mensaje,
+                total_pendientes: 0,
+                remitos_pendientes: 0,
+                resumen_remitos: []
+            });
+        }
+        return res.json({
+            success: true,
+            ok: result.ok,
+            auth_error: false,
+            error_code: result.errorCode || null,
+            mensaje: result.mensaje || null,
+            total_pendientes: result.totalPendientes || 0,
+            remitos_pendientes: result.remitosPendientes || 0,
+            resumen_remitos: result.resumenRemitos || []
+        });
+    } catch (err) {
+        console.error('❌ [PRODUCCION] Error en GET /lotes/pendientes-resumen:', err);
+        return res.status(500).json({
+            success: false,
+            ok: false,
+            auth_error: false,
+            error_code: 'INTERNAL_ERROR',
+            mensaje: err.message || 'Error consultando lotes pendientes en Supabase.',
+            total_pendientes: 0,
+            remitos_pendientes: 0,
+            resumen_remitos: []
+        });
+    }
+});
+
 // Rutas para el Salvavidas de Producción
 const salvavidasController = require('../controllers/salvavidas');
 router.post('/salvavidas/ajuste-fantasma', salvavidasController.registrarAjusteFantasma);

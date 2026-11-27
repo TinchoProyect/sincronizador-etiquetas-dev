@@ -13,6 +13,7 @@ let criterioOrdenMemoria = 'FECHA';
 let excluirCeroMemoria = true;
 let opcionesConciliacionActual = {};
 let estadoSimulacionPropiaModal = null;
+let lotesRenderizadosActuales = [];
 
 function inicializarEstadoSimulacionPropia(capaPropia) {
     if (!capaPropia || !capaPropia.habilitada || capaPropia.tipo_ficha !== 'LDN4_TOSTADERO') {
@@ -873,6 +874,9 @@ function renderizarContenidoConciliacion(data) {
             const dest = (l.destino_id || '').toString();
             return dest === art.articulo_id || (ingIdStr && dest === ingIdStr);
         }).sort((a, b) => new Date(b.fecha_vinculacion || 0) - new Date(a.fecha_vinculacion || 0));
+    lotesRenderizadosActuales = lotesHistoria;
+    const lotesPendientesCount = lotesHistoria.filter(l => Boolean(l.pendiente_vincular)).length;
+    const supabaseEstado = data.supabase_estado || { ok: true, tipo: 'SUPABASE_LIVE', mensaje: null };
 
     // 2. Capa Proveedor Habitual
     const capaHabitual = data.capa_habitual || [];
@@ -943,9 +947,24 @@ function renderizarContenidoConciliacion(data) {
     // CONTENIDO DE CADA PESTAÑA INDEPENDIENTE
     // =========================================================================
     if (tabActiva === 'LOTES') {
+        const urlRecepcionLotes = window.LAMDA_RESOLVE_URL
+            ? window.LAMDA_RESOLVE_URL('http://localhost:3002/pages/recepcion-lotes.html')
+            : '/pages/recepcion-lotes.html';
+        const bannerPendientesHtml = lotesPendientesCount > 0 ? `
+            <div style="background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.45); border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <div style="font-size: 0.84rem; color: #fde68a; line-height: 1.4;">
+                    ⏳ <strong>Hay ${lotesPendientesCount} recepción(es) física(s) ya conformada(s) en depósito (Supabase) pendiente(s) de vincular a stock.</strong><br>
+                    <span style="color: #cbd5e1; font-size: 0.78rem;">Podés tomar su costo ahora para la Pizarra de Costos o abrir Recepción de Lotes para asignar los bultos al stock local.</span>
+                </div>
+                <button type="button" onclick="window.open('${urlRecepcionLotes}', '_blank')" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #111827; border: none; padding: 7px 14px; border-radius: 6px; font-size: 0.78rem; font-weight: 800; cursor: pointer; white-space: nowrap;">
+                    🔗 Ir a Recepción de Lotes ↗
+                </button>
+            </div>
+        ` : '';
+
         tabContentHtml = `
             <div style="background: rgba(168, 85, 247, 0.03); padding: 18px; border-radius: 12px; border: 1px dashed rgba(168, 85, 247, 0.25);">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <h3 style="margin: 0; font-size: 1.1rem; color: #c084fc; display: flex; align-items: center; gap: 8px;">
                             📦 CAPA 1: Trazabilidad de Depósito (Entradas Físicas por Escáner)
@@ -958,6 +977,8 @@ function renderizarContenidoConciliacion(data) {
                         💡 Entradas reales congeladas con costo bruto, proveedor y remito verificados en depósito
                     </span>
                 </div>
+
+                ${bannerPendientesHtml}
 
                 ${lotesHistoria.length === 0 ? `
                     <div style="background: #1e293b; border: 1px dashed #475569; padding: 32px; border-radius: 8px; color: #94a3b8; text-align: center; font-size: 0.92rem;">
@@ -1398,7 +1419,14 @@ function renderizarContenidoConciliacion(data) {
         </div>
     ` : '';
 
+    const alertaSupabaseHtml = (!supabaseEstado.ok) ? `
+        <div style="margin-bottom: 14px; padding: 11px 16px; border-radius: 8px; background: ${supabaseEstado.tipo === 'AUTH_ERROR' ? 'rgba(239, 68, 68, 0.14)' : 'rgba(245, 158, 11, 0.14)'}; border: 1px solid ${supabaseEstado.tipo === 'AUTH_ERROR' ? '#ef4444' : '#f59e0b'}; color: ${supabaseEstado.tipo === 'AUTH_ERROR' ? '#fecaca' : '#fde68a'}; font-size: 0.82rem; font-weight: 600; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <span>${supabaseEstado.tipo === 'AUTH_ERROR' ? '🔒' : '⚠️'} <strong>${supabaseEstado.tipo === 'AUTH_ERROR' ? 'Error de Autenticación con Supabase:' : 'Aviso de Contingencia Supabase:'}</strong> ${supabaseEstado.mensaje || 'No se pudo consultar la nube de Proveedores.'}</span>
+        </div>
+    ` : '';
+
     contentArea.innerHTML = `
+        ${alertaSupabaseHtml}
         <!-- RESUMEN DE FLUJOS Y CONTADORES METRICOS -->
         <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; background: #1e293b; padding: 10px 16px; border-radius: 8px; border: 1px solid #334155;">
             <div style="display: flex; align-items: center; gap: 12px; font-size: 0.8rem; color: #94a3b8;">
@@ -1417,7 +1445,7 @@ function renderizarContenidoConciliacion(data) {
         <!-- NAVEGACIÓN POR PESTAÑAS (TABS) -->
         <div style="display: flex; gap: 8px; border-bottom: 2px solid #334155; margin-bottom: 18px; overflow-x: auto;">
             <button class="tab-conciliacion-btn ${tabActiva === 'LOTES' ? 'active' : ''}" onclick="cambiarTabConciliacion('LOTES')">
-                📦 1. Lotes de Depósito <span class="tab-counter-badge">${lotesHistoria.length}</span>
+                📦 1. Lotes de Depósito <span class="tab-counter-badge">${lotesHistoria.length}</span>${lotesPendientesCount > 0 ? `<span style="background: rgba(245, 158, 11, 0.28); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.55); padding: 1px 7px; border-radius: 10px; font-size: 0.7rem; font-weight: 800;">+${lotesPendientesCount} pend.</span>` : ''}
             </button>
             <button class="tab-conciliacion-btn ${tabActiva === 'HABITUAL' ? 'active' : ''}" onclick="cambiarTabConciliacion('HABITUAL')">
                 🎯 2. Proveedor Habitual <span class="tab-counter-badge">${capaHabitual.length}</span>
@@ -2106,12 +2134,14 @@ function crearTarjetaLote(lote, articuloId, kilosUnidadArt, index) {
     const costoKilo = parseFloat(lote.costo_kilo_al_momento || lote.costo_kilo_calculado || 0);
     const costoBulto = costoKilo * kilosUnidad;
     const porcentajeIva = parseFloat(lote.impuesto_iva || 21);
-    const fechaStr = lote.fecha_vinculacion ? new Date(lote.fecha_vinculacion).toLocaleDateString('es-AR') : 'N/D';
+    const fechaRaw = lote.fecha_recepcion || lote.fecha_vinculacion;
+    const fechaStr = fechaRaw ? new Date(fechaRaw).toLocaleDateString('es-AR') : 'N/D';
+    const esPendiente = Boolean(lote.pendiente_vincular);
     
     let diasTranscurridos = 'Reciente';
-    if (lote.fecha_vinculacion) {
-        const diffMs = new Date() - new Date(lote.fecha_vinculacion);
-        const dias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (fechaRaw) {
+        const diffMs = new Date() - new Date(fechaRaw);
+        const dias = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
         diasTranscurridos = dias === 0 ? 'Hoy' : `hace ${dias} día${dias !== 1 ? 's' : ''}`;
     }
 
@@ -2120,30 +2150,41 @@ function crearTarjetaLote(lote, articuloId, kilosUnidadArt, index) {
     const artDesc = lote.articulo_descripcion || 'Ingreso de mercadería';
     const remito = lote.numero_remito ? ` • Remito: ${lote.numero_remito}` : '';
     const prodCod = lote.producto_codigo ? ` [${lote.producto_codigo}]` : '';
+    const cantBultosTxt = (parseFloat(lote.cantidad_asignada || lote.cantidad_recibida || 0) > 0)
+        ? ` • ${parseFloat(lote.cantidad_asignada || lote.cantidad_recibida)} cj (${parseFloat(lote.kilos_asignados || lote.cantidad_total_lote || 0)} kg)`
+        : '';
 
-    const provEscaped = (provNombre || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
-    const artDescEscaped = (artDesc || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    const baseRecepUrl = window.LAMDA_RESOLVE_URL
+        ? window.LAMDA_RESOLVE_URL('http://localhost:3002/pages/recepcion-lotes.html')
+        : '/pages/recepcion-lotes.html';
+    const urlVincularLote = `${baseRecepUrl}?remito=${encodeURIComponent(lote.numero_remito || '')}&lote=${encodeURIComponent(lote.lote_id_supabase || '')}`;
+
+    const borderStyle = esPendiente
+        ? 'border: 1.5px solid rgba(245, 158, 11, 0.72); background: linear-gradient(180deg, rgba(245, 158, 11, 0.08), #1e293b);'
+        : 'border: 1px solid rgba(168, 85, 247, 0.4); background: #1e293b;';
+
+    const topBadgeHtml = esPendiente
+        ? `<span style="background: rgba(245, 158, 11, 0.22); color: #fde68a; font-weight: 800; font-size: 0.74rem; padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.55);">⏳ Recibido en Depósito — Pendiente de vincular a stock (${loteIdClean})</span>`
+        : `<span style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-weight: 700; font-size: 0.76rem; padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(168, 85, 247, 0.4);">🏷️ Lote #${index + 1} (${loteIdClean})</span>`;
 
     return `
-        <div style="background: #1e293b; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+        <div style="${borderStyle} border-radius: 10px; padding: 16px; display: flex; flex-direction: column; justify-content: space-between; gap: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
             <div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <span style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-weight: 700; font-size: 0.76rem; padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(168, 85, 247, 0.4);">
-                        🏷️ Lote #${index + 1} (${loteIdClean})
-                    </span>
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;">
+                    ${topBadgeHtml}
                     <span style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-weight: 600; font-size: 0.74rem; padding: 3px 8px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.3);">
                         📅 ${diasTranscurridos} (${fechaStr})
                     </span>
                 </div>
                 <div style="font-size: 0.95rem; font-weight: 700; color: #f3f4f6; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-                    <span style="color: #c084fc;">🏢 Proveedor:</span>
+                    <span style="color: ${esPendiente ? '#fbbf24' : '#c084fc'};">🏢 Proveedor:</span>
                     <span style="color: #38bdf8;">${provNombre}</span>
                 </div>
                 <div style="font-size: 0.85rem; font-weight: 600; color: #e2e8f0; margin-bottom: 4px;">
                     📦 Insumo: <span style="color: #fde047;">${artDesc}${prodCod}</span>
                 </div>
                 <div style="font-size: 0.74rem; color: #94a3b8; line-height: 1.4;">
-                    Ingreso físico recepcionado por escáner en depósito${remito}
+                    ${esPendiente ? 'Recepción física conformada en Supabase (aún sin vincular a stock Búnker)' : 'Ingreso físico recepcionado por escáner en depósito'}${remito}${cantBultosTxt}
                 </div>
             </div>
 
@@ -2158,23 +2199,33 @@ function crearTarjetaLote(lote, articuloId, kilosUnidadArt, index) {
                 </div>
             </div>
 
-            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.74rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.74rem;">
                 <span style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(245, 158, 11, 0.3);">
                     IVA ${porcentajeIva}%
                 </span>
-                <button onclick="seleccionarCostoLoteTarjeta(${index})" 
-                    style="background: #a855f7; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s;"
-                    title="Actualizar explícitamente el costo de simulación con este lote">
-                    📥 Tomar Costo de Lote
-                </button>
+                <div style="display: flex; gap: 6px; align-items: center; margin-left: auto;">
+                    ${esPendiente ? `
+                    <button type="button" onclick="window.open('${urlVincularLote}', '_blank')"
+                        style="background: rgba(245, 158, 11, 0.18); color: #fde68a; border: 1px solid rgba(245, 158, 11, 0.5); padding: 6px 10px; border-radius: 6px; font-size: 0.76rem; font-weight: 700; cursor: pointer;"
+                        title="Abrir Recepción de Lotes para vincular este ingreso al stock local">
+                        🔗 Vincular Stock
+                    </button>
+                    ` : ''}
+                    <button onclick="seleccionarCostoLoteTarjeta(${index})" 
+                        style="background: ${esPendiente ? '#d97706' : '#a855f7'}; color: white; border: none; padding: 6px 14px; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s;"
+                        title="Actualizar explícitamente el costo de simulación con este lote">
+                        📥 Tomar Costo de Lote
+                    </button>
+                </div>
             </div>
         </div>
     `;
 }
 
 async function seleccionarCostoLoteTarjeta(index) {
-    if (!datosEstadoActualConciliacion || !Array.isArray(datosEstadoActualConciliacion.historial_lotes_recientes)) return;
-    const lote = datosEstadoActualConciliacion.historial_lotes_recientes[index];
+    const lote = (Array.isArray(lotesRenderizadosActuales) && lotesRenderizadosActuales[index])
+        || (datosEstadoActualConciliacion?.capa_lotes?.[index])
+        || (datosEstadoActualConciliacion?.historial_lotes_recientes?.[index]);
     if (!lote) return;
     const art = datosEstadoActualConciliacion.articulo_lamda;
     const costoKilo = parseFloat(lote.costo_kilo_al_momento || lote.costo_kilo_calculado || 0);
@@ -2185,11 +2236,12 @@ async function seleccionarCostoLoteTarjeta(index) {
         porcentajeIva,
         lote.lote_id_supabase || '',
         lote.proveedor_nombre || '',
-        lote.articulo_descripcion || ''
+        lote.articulo_descripcion || '',
+        Boolean(lote.pendiente_vincular)
     );
 }
 
-window.aplicarCostoLoteSimulacion = async function(articuloId, costoKilo, porcentajeIva, loteIdSupabase = '', provNombre = '', artDesc = '') {
+window.aplicarCostoLoteSimulacion = async function(articuloId, costoKilo, porcentajeIva, loteIdSupabase = '', provNombre = '', artDesc = '', esPendienteVincular = false) {
     const isIng = String(articuloId).startsWith('ING-') || Boolean(datosEstadoActualConciliacion?.articulo_lamda?.es_ingrediente);
     const cleanIngId = isIng ? (datosEstadoActualConciliacion?.articulo_lamda?.ingrediente_id || parseInt(String(articuloId).replace(/^ING-?/i, ''), 10)) : null;
 
@@ -2260,6 +2312,7 @@ window.aplicarCostoLoteSimulacion = async function(articuloId, costoKilo, porcen
                     <div style="margin-bottom: 6px;"><span style="color: #c084fc; font-weight: 700;">🏢 Proveedor:</span> <strong>${provNombre || 'Depósito'}</strong></div>
                     <div style="margin-bottom: 8px;"><span style="color: #fde047; font-weight: 700;">📦 Insumo:</span> <strong>${artDesc || articuloId}</strong></div>
                     <div>Se aplicó en memoria RAM el costo de <strong>$${costoKilo.toLocaleString('es-AR', {minimumFractionDigits: 2})}/kg</strong> con IVA <strong>${porcentajeIva}%</strong>.</div>
+                    ${esPendienteVincular ? `<div style="margin-top: 8px; padding: 6px 10px; border-radius: 6px; background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.4); color: #fde68a; font-size: 0.80rem;">⏳ Lote pendiente de vincular en Recepción de Lotes: esta acción actualiza el costo en Pizarra/BD; el stock físico se suma al vincular el remito.</div>` : ''}
                     <div style="margin-top: 10px; color: #38bdf8; font-weight: 600;">¿Deseas impactar en la Base de Datos y actualizar los costos de producción ahora mismo?</div>
                 </div>
             `,

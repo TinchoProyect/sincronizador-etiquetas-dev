@@ -94,6 +94,45 @@ window.cargarLotes = async function() {
             window.LotesSupabaseCache[l.id] = l;
         });
 
+        // Consultar sugerencias deterministas de destino para lotes pendientes/parciales
+        window.LotesSugerenciasDestinoCache = {};
+        const lotesParaSugerir = lotes.filter(l => {
+            const st = estadosLotes[l.id]?.estado || 'PENDIENTE';
+            return st === 'PENDIENTE' || st === 'ASIGNADO_PARCIAL';
+        });
+        if (lotesParaSugerir.length > 0) {
+            try {
+                const payloadSug = lotesParaSugerir.map(l => ({
+                    lote_id_supabase: l.id,
+                    proveedor_nombre: l.recepciones_fisicas_cabecera?.pedidos_b2b_cabecera?.proveedores?.nombre || '',
+                    producto_codigo: l.pedidos_b2b_items?.producto_codigo || '',
+                    articulo_descripcion: l.pedidos_b2b_items?.producto_descripcion || '',
+                    cant_bult: l.pedidos_b2b_items?.cant_bult || 1,
+                    cant_valor: l.pedidos_b2b_items?.cant_valor || 1
+                }));
+                const resSug = await fetch('http://localhost:3005/api/logistica/bunker/lotes_vinculos/sugerencias', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lotes: payloadSug })
+                });
+                if (resSug.ok) {
+                    const dataSug = await resSug.json();
+                    if (dataSug.success && dataSug.data) {
+                        window.LotesSugerenciasDestinoCache = dataSug.data;
+                    }
+                }
+            } catch (eSug) {
+                console.warn('No se pudieron pre-cargar sugerencias de destino:', eSug);
+            }
+        }
+
+        if (window.SupabaseLotesMeta && window.SupabaseLotesMeta.fallback) {
+            const warnBanner = document.createElement('div');
+            warnBanner.style.cssText = 'background:#fef3c7; border:1px solid #f59e0b; color:#92400e; padding:12px 16px; border-radius:8px; margin-bottom:16px; font-size:0.92em; font-weight:600;';
+            warnBanner.innerHTML = `⚠️ <b>Modo contingencia local:</b> No se pudo conectar con Supabase Proveedores (${window.SupabaseLotesMeta.reason || 'red'}). Se muestran únicamente lotes ya vinculados en base local.`;
+            container.appendChild(warnBanner);
+        }
+
         // Agrupación de lotes
         const agruparPorMesYDia = (lotesArray) => {
             const grupos = {};
@@ -275,8 +314,15 @@ window.cargarLotes = async function() {
                         ? `<button class="btn-imprimir" style="background: linear-gradient(to right, #6366f1, #4f46e5); margin-left: 10px;" onclick="window.imprimirArticuloYLote('${fullId}', '${idCorto}', ${bultosDefaultLote})" title="Imprimir Par (Destino y Lote)">${btnImprimirText}</button>`
                         : '';
 
+                    const sugerenciaDestino = (canVincular && window.LotesSugerenciasDestinoCache)
+                        ? window.LotesSugerenciasDestinoCache[fullId]
+                        : null;
+                    const sugerenciaBadge = sugerenciaDestino
+                        ? `<div style="margin-top:4px; font-size:0.78em; color:#047857; background:#ecfdf5; border:1px solid #a7f3d0; padding:3px 8px; border-radius:4px; display:inline-block; font-weight:600;">✨ Destino sugerido: [${sugerenciaDestino.id}] ${sugerenciaDestino.descripcion}</div>`
+                        : '';
+
                     filasHtml += `
-                        <div class="lote-card">
+                        <div class="lote-card" data-lote-id="${fullId}" data-remito="${(cabecera.numero_remito || '').replace(/"/g, '&quot;')}" data-estado="${estadoData.estado}">
                             <div class="lote-card-header">
                                 <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px;">
                                     ${selectCheckbox}
@@ -303,6 +349,7 @@ window.cargarLotes = async function() {
                                     <div>
                                         <div class="lote-label">Producto</div>
                                         <div class="lote-value text-producto">${item.producto_codigo || ''} - ${item.producto_descripcion || 'Sin descripción'}</div>
+                                        ${sugerenciaBadge}
                                     </div>
                                     <div>
                                         <div class="lote-label">Presentación (Bultos x Cant)</div>
@@ -354,10 +401,50 @@ window.cargarLotes = async function() {
         loading.style.display = 'none';
         container.style.display = 'block';
 
+        // Auto-expandir día objetivo (?lote= / ?remito=) o primer día con lotes pendientes
+        try {
+            const params = new URLSearchParams(window.location.search || '');
+            const targetLote = (params.get('lote') || '').trim();
+            const targetRemito = (params.get('remito') || '').trim();
+            let targetCard = null;
+            if (targetLote) {
+                targetCard = container.querySelector(`.lote-card[data-lote-id="${targetLote}"]`);
+            }
+            if (!targetCard && targetRemito) {
+                const cards = Array.from(container.querySelectorAll('.lote-card'));
+                targetCard = cards.find(c => (c.dataset.remito || '').trim() === targetRemito) || null;
+            }
+            if (!targetCard) {
+                targetCard = container.querySelector('.lote-card[data-estado="PENDIENTE"], .lote-card[data-estado="ASIGNADO_PARCIAL"]');
+            }
+            if (targetCard) {
+                const dayEl = targetCard.closest('.accordion-day');
+                const monthEl = targetCard.closest('.accordion-month');
+                if (monthEl) monthEl.classList.add('active');
+                if (dayEl) dayEl.classList.add('active');
+                if (targetLote || targetRemito) {
+                    const matching = targetRemito
+                        ? Array.from(container.querySelectorAll('.lote-card')).filter(c => (c.dataset.remito || '').trim() === targetRemito)
+                        : [targetCard];
+                    matching.forEach(c => {
+                        c.style.border = '2px solid #f59e0b';
+                        c.style.boxShadow = '0 0 0 3px rgba(245, 158, 11, 0.2)';
+                    });
+                    setTimeout(() => targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' }), 150);
+                }
+            }
+        } catch (_) {}
+
     } catch (error) {
         console.error(error);
-        Swal.fire('Error', 'No se pudieron cargar los lotes desde la nube.', 'error');
-        loading.innerHTML = '<p style="color: red;">Error de conexión con Supabase.</p>';
+        const esErrorAuth = error.code === 'SUPABASE_AUTH_ERROR' || error.httpStatus === 502;
+        const msgDetalle = esErrorAuth
+            ? `Supabase Proveedores rechazó las credenciales configuradas (${error.message}). Verificá SUPABASE_SERVICE_KEY en el .env raíz del servidor.`
+            : (error.message || 'No se pudieron cargar los lotes desde la nube.');
+        Swal.fire(esErrorAuth ? 'Error de Autenticación Supabase' : 'Error', msgDetalle, 'error');
+        loading.style.display = 'none';
+        container.style.display = 'block';
+        container.innerHTML = `<div style="background:#fee2e2; border:1px solid #ef4444; color:#991b1b; padding:18px; border-radius:8px; font-weight:600;">🔒 ${msgDetalle}</div>`;
     }
 };
 

@@ -123,6 +123,7 @@ router.post('/lotes/:loteId/sincronizar-costo', lotesBunkerController.sincroniza
 
 // Consultar estado de asignación múltiple (Trazabilidad)
 router.post('/lotes_vinculos/estados', lotesBunkerController.consultarEstadosLotes);
+router.post('/lotes_vinculos/sugerencias', lotesBunkerController.sugerirDestinosLotes);
 
 // Abrir una caja cerrada y pasar su peso al stock libre de ingredientes
 router.post('/lotes_vinculos/abrir_caja', lotesBunkerController.abrirCajaDestino);
