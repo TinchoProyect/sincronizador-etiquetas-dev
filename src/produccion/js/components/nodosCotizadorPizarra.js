@@ -41,6 +41,8 @@
     const ESTADO_NODOS = {
         inicializado: false,
         cargando: false,
+        refrescando: false,
+        ultimaActualizacionHora: '',
         subTabActiva: 'matriz', // 'matriz' | 'entrada_a' | 'entrada_b'
         perspectivaMatriz: 'producto', // 'producto' | 'nodo'
         nodos: [],
@@ -347,6 +349,51 @@
         }
     }
 
+    async function refrescarModuloNodosConFeedback() {
+        if (ESTADO_NODOS.refrescando) return;
+        ESTADO_NODOS.refrescando = true;
+        const btn = document.getElementById('btn-nodos-refrescar');
+        const statusEl = document.getElementById('nodos-refrescar-status');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = '⏳ Actualizando...';
+            btn.style.opacity = '0.75';
+        }
+        if (statusEl) {
+            statusEl.style.display = 'inline-block';
+            statusEl.style.color = '#38bdf8';
+            statusEl.textContent = 'Sincronizando resumen, catálogo, solicitudes y radar...';
+        }
+        try {
+            await Promise.all([
+                cargarResumenModular(),
+                cargarCatalogoModular(),
+                cargarSolicitudesModular(),
+                cargarPresentacionesPlantaModular(true),
+                (typeof window.refrescarRadarCostos === 'function'
+                    ? window.refrescarRadarCostos()
+                    : Promise.resolve(null))
+            ]);
+            ESTADO_NODOS.inicializado = true;
+            ESTADO_NODOS.ultimaActualizacionHora = new Date().toLocaleTimeString('es-AR', { hour12: false });
+            ESTADO_NODOS.refrescando = false;
+            renderizarVistaNodosCompleta();
+        } catch (err) {
+            ESTADO_NODOS.refrescando = false;
+            console.error('❌ [NodosPizarra] Error refrescando módulo:', err);
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = '🔄 Refrescar';
+                btn.style.opacity = '1';
+            }
+            if (statusEl) {
+                statusEl.style.display = 'inline-block';
+                statusEl.style.color = '#fda4af';
+                statusEl.textContent = `❌ ${err.message || 'Error al actualizar'}`;
+            }
+        }
+    }
+
     // =========================================================================
     // RENDER PRINCIPAL (SIN ABM DUPLICADO — ENLACE DIRECTO A /centro-nodos)
     // =========================================================================
@@ -394,10 +441,13 @@
                             🧹 Puesta a Cero (Lab)
                         </button>
                     ` : ''}
-                    <button type="button" onclick="window.NodosPizarra.inicializar(true)"
+                    <button id="btn-nodos-refrescar" type="button" onclick="window.NodosPizarra.refrescarTodo()" ${ESTADO_NODOS.refrescando ? 'disabled' : ''}
                         style="padding:7px 11px; border-radius:8px; font-size:0.77rem; font-weight:700; border:1px solid #334155; background:#1e293b; color:#e2e8f0; cursor:pointer;">
-                        🔄 Refrescar
+                        ${ESTADO_NODOS.refrescando ? '⏳ Actualizando...' : '🔄 Refrescar'}
                     </button>
+                    <span id="nodos-refrescar-status" style="display:${ESTADO_NODOS.ultimaActualizacionHora ? 'inline-block' : 'none'}; font-size:0.73rem; font-weight:700; color:#6ee7b7; padding:4px 9px; border-radius:999px; background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3);">
+                        ${ESTADO_NODOS.ultimaActualizacionHora ? `✓ Actualizado ${escaparHtml(ESTADO_NODOS.ultimaActualizacionHora)}` : ''}
+                    </span>
                 </div>
             </div>
 
@@ -1973,6 +2023,7 @@
     // =========================================================================
     window.NodosPizarra = {
         inicializar: cargarDatosNodosBarriales,
+        refrescarTodo: refrescarModuloNodosConFeedback,
         ponerACeroPruebas: ponerACeroDatosPruebasNodos,
         cambiarSubTab: cambiarSubTabNodos,
         cambiarPerspectivaMatriz: (p) => {

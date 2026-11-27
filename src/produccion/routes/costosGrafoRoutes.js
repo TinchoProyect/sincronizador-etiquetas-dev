@@ -28,6 +28,11 @@ function normalizarPayloadCascada(body = {}) {
     const opciones = {
         ldns_seleccionadas: Array.isArray(filtrosSrc.ldns_seleccionadas) ? filtrosSrc.ldns_seleccionadas : undefined,
         listas_seleccionadas: Array.isArray(filtrosSrc.listas_seleccionadas) ? filtrosSrc.listas_seleccionadas : undefined,
+        ninguna_lista_b2b: Boolean(filtrosSrc.ninguna_lista_b2b),
+        articulos_excluidos: Array.isArray(filtrosSrc.articulos_excluidos) ? filtrosSrc.articulos_excluidos : undefined,
+        min_diff_precio: filtrosSrc.min_diff_precio !== undefined && filtrosSrc.min_diff_precio !== null
+            ? Number(filtrosSrc.min_diff_precio)
+            : undefined,
         incluir_canal_nodos: filtrosSrc.incluir_canal_nodos !== undefined ? Boolean(filtrosSrc.incluir_canal_nodos) : true,
         incluir_manuales_ids: Array.isArray(filtrosSrc.incluir_manuales_ids) ? filtrosSrc.incluir_manuales_ids : undefined,
         sobrescribir_manuales: Boolean(filtrosSrc.sobrescribir_manuales),

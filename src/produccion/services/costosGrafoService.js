@@ -852,15 +852,33 @@ async function simularCascada(runner = defaultPool, disparador = {}, opciones = 
 
     const filtroLdns = normalizarSetLdnsFilter(opts.ldns_seleccionadas ?? disparador.ldns_seleccionadas);
     const filtroListas = normalizarSetListasFilter(opts.listas_seleccionadas ?? disparador.listas_seleccionadas);
+    const ningunaListaB2B = Boolean(opts.ninguna_lista_b2b || disparador.ninguna_lista_b2b);
     const incluirCanalNodos = opts.incluir_canal_nodos !== undefined
         ? Boolean(opts.incluir_canal_nodos)
         : (disparador.incluir_canal_nodos !== undefined ? Boolean(disparador.incluir_canal_nodos) : true);
     const sobrescribirManuales = Boolean(opts.sobrescribir_manuales || disparador.sobrescribir_manuales);
+    const articulosExcluidosSet = new Set(
+        (Array.isArray(opts.articulos_excluidos) ? opts.articulos_excluidos : (Array.isArray(disparador.articulos_excluidos) ? disparador.articulos_excluidos : []))
+            .map(normSku)
+            .filter(Boolean)
+    );
+    const minDiffPrecio = Number.isFinite(Number(opts.min_diff_precio ?? disparador.min_diff_precio))
+        && Number(opts.min_diff_precio ?? disparador.min_diff_precio) > 0
+        ? Number(opts.min_diff_precio ?? disparador.min_diff_precio)
+        : 0;
     const incluirManualesSet = new Set(
         (Array.isArray(opts.incluir_manuales_ids) ? opts.incluir_manuales_ids : (Array.isArray(disparador.incluir_manuales_ids) ? disparador.incluir_manuales_ids : []))
             .map(Number)
             .filter(n => n > 0)
     );
+
+    const obtenerNombreOficialArt = (skuRaw, fallback = '') => {
+        const k = normSku(skuRaw);
+        const art = snapshot.artBySku.get(k);
+        const dg = art && String(art.descripcion_generada || '').trim();
+        const d = art && String(art.descripcion || '').trim();
+        return dg || d || String(fallback || skuRaw || '').trim();
+    };
 
     const skuPasaFiltroLdn = (skuK) => {
         if (!filtroLdns) return true;
@@ -884,12 +902,22 @@ async function simularCascada(runner = defaultPool, disparador = {}, opciones = 
     const alertasCostoCero = [];
     const alertasMapSeen = new Set();
     const registrarCostoCero = (sku, ingId, nombre, contexto) => {
-        const k = `${normSku(sku)}#${ingId}`;
-        bloqueadosCostoCero.add(normSku(sku));
+        const skuStr = String(sku || '');
+        const k = `${normSku(skuStr)}#${ingId}`;
+        bloqueadosCostoCero.add(normSku(skuStr));
         if (!alertasMapSeen.has(k)) {
             alertasMapSeen.add(k);
+            let artNombre = obtenerNombreOficialArt(skuStr, '');
+            if (!artNombre || artNombre === skuStr) {
+                const mixMatch = /^MIX-(\d+)$/i.exec(skuStr);
+                if (mixMatch) {
+                    const mixIng = snapshot.ingById.get(Number(mixMatch[1]));
+                    if (mixIng && mixIng.nombre) artNombre = `Mix Interno: ${mixIng.nombre}`;
+                }
+            }
             alertasCostoCero.push({
-                sku: String(sku),
+                sku: skuStr,
+                articulo_nombre: artNombre || skuStr,
                 ingrediente_id: Number(ingId),
                 nombre: String(nombre || `#${ingId}`),
                 contexto,
@@ -1261,7 +1289,16 @@ async function simularCascada(runner = defaultPool, disparador = {}, opciones = 
             );
 
             if (!ldnPermitida) continue;
-            if (filtroListas && !filtroListas.has(la.lista_id)) continue;
+            if (articulosExcluidosSet.has(skuKey)) continue;
+            const esListaCanalNodos = String(canalLista).toUpperCase() === 'NODOS';
+            if (esListaCanalNodos) {
+                if (!incluirCanalNodos) continue;
+            } else {
+                if (ningunaListaB2B) continue;
+                if (filtroListas && !filtroListas.has(la.lista_id)) continue;
+            }
+
+            const descOficialArt = obtenerNombreOficialArt(la.articulo_numero);
 
             if (esManual && !(sobrescribirManuales || incluirManualesSet.has(la.id))) {
                 if (diffPrecio > 0.009 || !subgrafo.full) {
@@ -1272,6 +1309,7 @@ async function simularCascada(runner = defaultPool, disparador = {}, opciones = 
                         canal_comercial: canalLista,
                         ldn: ldnSku,
                         articulo_numero: la.articulo_numero,
+                        descripcion_generada: descOficialArt,
                         modo_calculo: 'MANUAL',
                         disponible: Boolean(la.disponible),
                         precio_actual: precioBdCmp,
@@ -1290,6 +1328,7 @@ async function simularCascada(runner = defaultPool, disparador = {}, opciones = 
                     canal_comercial: canalLista,
                     ldn: ldnSku,
                     articulo_numero: la.articulo_numero,
+                    descripcion_generada: descOficialArt,
                     kilos_unidad: art.kilos_unidad,
                     costo_anterior: viejoCostoBulto,
                     costo_nuevo: nuevoCostoBulto,
@@ -1321,7 +1360,10 @@ async function simularCascada(runner = defaultPool, disparador = {}, opciones = 
                 continue;
             }
             if (!skuPasaFiltroLdn(skuKey)) continue;
+            if (articulosExcluidosSet.has(skuKey)) continue;
             if (bloqueadosCostoCero.has(skuKey)) continue;
+
+            const descOficialCat = obtenerNombreOficialArt(cat.sku_nodo, cat.nombre_publico);
 
             const ldnCat = clasificarLdnArticulo(snapshot, skuKey);
             let nuevoCostoKg = cat.costo_insumo_kg;
@@ -1356,6 +1398,7 @@ async function simularCascada(runner = defaultPool, disparador = {}, opciones = 
                 cambiosCatalogoNodos.push({
                     catalogo_id: cat.id,
                     sku_nodo: cat.sku_nodo,
+                    descripcion_generada: descOficialCat,
                     ldn: ldnCat,
                     costo_insumo_kg_actual: cat.costo_insumo_kg,
                     costo_insumo_kg_nuevo: nuevoCostoKg,
@@ -1372,9 +1415,6 @@ async function simularCascada(runner = defaultPool, disparador = {}, opciones = 
 
             const ofertas = snapshot.ofertasPorCatalogoId.get(cat.id) || [];
             for (const ofe of ofertas) {
-                if (filtroListas && ofe.lista_precio_bunker_id && !filtroListas.has(ofe.lista_precio_bunker_id) && !filtroListas.has(defaultNodosListId)) {
-                    continue;
-                }
                 const usaListaDiferenciadaNodo = Boolean(
                     ofe.lista_precio_bunker_id && Number(ofe.lista_precio_bunker_id) !== Number(defaultNodosListId)
                 );
@@ -1403,6 +1443,7 @@ async function simularCascada(runner = defaultPool, disparador = {}, opciones = 
                         lista_precio_bunker_id: ofe.lista_precio_bunker_id,
                         catalogo_id: cat.id,
                         sku_nodo: cat.sku_nodo,
+                        descripcion_generada: descOficialCat,
                         ldn: ldnCat,
                         precio_base_nodo_snapshot_actual: ofe.precio_base_nodo_snapshot,
                         precio_base_nodo_snapshot_nuevo: baseEscalon1Nodo,
@@ -1439,11 +1480,13 @@ async function simularCascada(runner = defaultPool, disparador = {}, opciones = 
     for (const [skuK, nuevoBase] of artCost.entries()) {
         const origArt = snapshot.artBySku.get(skuK);
         if (!origArt) continue;
+        if (articulosExcluidosSet.has(skuK)) continue;
         const ldnArt = clasificarLdnArticulo(snapshot, skuK);
         if (filtroLdns && !filtroLdns.has(ldnArt)) continue;
         if (Math.abs(nuevoBase - origArt.costo_base) > 0.009) {
             cambiosArticulos.push({
                 articulo_id: origArt.articulo_id,
+                descripcion_generada: obtenerNombreOficialArt(origArt.articulo_id),
                 ldn: ldnArt,
                 kilos_unidad: origArt.kilos_unidad,
                 costo_base_actual: origArt.costo_base,
@@ -1453,8 +1496,9 @@ async function simularCascada(runner = defaultPool, disparador = {}, opciones = 
         }
     }
 
+    const umbralDiffListas = minDiffPrecio > 0 ? minDiffPrecio : 0.009;
     const listasB2BFinal = subgrafo.full
-        ? cambiosListas.filter(l => Math.abs(l.diff_precio) > 0.009)
+        ? cambiosListas.filter(l => Math.abs(l.diff_precio) > umbralDiffListas)
         : cambiosListas;
     const catNodosFinal = subgrafo.full
         ? cambiosCatalogoNodos.filter(c => Math.abs(c.precio_base_nodo_final_nuevo - c.precio_base_nodo_final_actual) > 0.009)
