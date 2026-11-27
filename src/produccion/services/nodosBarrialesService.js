@@ -6343,12 +6343,17 @@ async function ejecutarMigracionEsquemaNodosBarriales(runner = null, opciones = 
                     ? Number(anatomia.pack_unidades)
                     : Math.round(Number(row.kilos_unidad || 0.30) / 0.05)
             );
-            const costoEnvaseExtra = esBarritaPack6
+            const esPackLdn5 = Boolean(anatomia.es_pack && Number(anatomia.pack_unidades) > 1) && (
+                Number(row.flujo_lamda) === 5
+                || Boolean(ingComercialFinal && (await client.query(
+                    `SELECT 1 FROM public.articulos_produccion_externa_relacion WHERE linea_negocio = 5 AND ingrediente_espejo_id = $1 LIMIT 1`,
+                    [ingComercialFinal]
+                )).rowCount > 0)
+            );
+            const costoEnvaseExtra = esPackLdn5
                 ? Number((cantFlowpacksNorm * costoFlowpack181).toFixed(2))
                 : 0;
-            const segundosFinales = esGranolaExistente
-                ? Number(anatomia.segundos_nativos || 45)
-                : Number(row.segundos_fraccionamiento || 35);
+            const segundosFinales = Number(anatomia.segundos_nativos || row.segundos_fraccionamiento || 35);
 
             const calc = calcularEstructuraCostosNodo({
                 costo_insumo_kg: Number(anatomia.ingrediente_comercial_costo_kg || row.ing_costo_db || row.costo_insumo_kg),

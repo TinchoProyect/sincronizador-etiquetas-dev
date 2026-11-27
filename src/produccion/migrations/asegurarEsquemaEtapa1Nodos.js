@@ -482,15 +482,15 @@ async function inicializarEsquemaEtapa1Nodos(opciones = {}) {
             const { nodosService, combosService, analiticaService, pagosService } = obtenerServiciosNodos();
 
             await client.query('BEGIN');
+            await ejecutarMigracionEsquemaEtapa2Nodos(client);
+            await ejecutarMigracionEsquemaEtapa5Nodos(client);
             // Nota: ejecutarMigracionEsquemaNodosBarriales ya invoca ejecutarMigracionCombosCompuestos(client) antes de normalizar nodos_articulos_catalogo con es_combo.
             await nodosService.ejecutarMigracionEsquemaNodosBarriales(client, { sembrarDemo });
             await analiticaService.ejecutarMigracionAnaliticaNodos(client);
             await pagosService.ejecutarMigracionPagosBancariosNodos(client);
             await aplicarIntegridadReferencialEtapa1(client);
-            await ejecutarMigracionEsquemaEtapa2Nodos(client);
             await ejecutarMigracionEsquemaEtapa3Nodos(client);
             await ejecutarMigracionEsquemaEtapa4Nodos(client);
-            await ejecutarMigracionEsquemaEtapa5Nodos(client);
             await client.query('COMMIT');
 
             marcarTodosLosServiciosListos();
