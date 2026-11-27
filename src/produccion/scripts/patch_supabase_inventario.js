@@ -1,3 +1,5 @@
+console.error('🔒 [SUPABASE-READONLY-GUARD] Script histórico deshabilitado permanentemente: wofttcnpipozwupmpuul.supabase.co es un origen externo de SOLO CONSULTA (GET/HEAD).');
+process.exit(1);
 require('dotenv').config({path: '.env'});
 if (process.env.DB_NAME === 'etiquetas_pruebas' || process.env.LAMDA_MODO_LABORATORIO === 'true') { console.error('🔒 [MODO LABORATORIO] Bloqueado.'); process.exit(1); }
 const fs = require('fs');

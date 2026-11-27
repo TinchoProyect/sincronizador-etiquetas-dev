@@ -1584,7 +1584,7 @@ class BunkerService {
                 const headers = { 'apikey': key, 'Authorization': `Bearer ${key}` };
                 const queryUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,datos_maestros&id=in.(${uuidInsumos.join(',')})`;
                 
-                const resBatch = await fetch(queryUrl, { headers });
+                const resBatch = await supabaseFetch(queryUrl, { headers }, 1, 300, 6000);
                 if (resBatch.ok) {
                     const data = await resBatch.json();
                     data.forEach(row => {

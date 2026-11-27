@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const axios = require('axios');
+const { supabaseFetch } = require('../utils/supabaseHelper');
 
 //Temporizacion - Mari
 const tiemposCtrl = require('../controllers/tiemposCarro');
@@ -6597,10 +6598,10 @@ router.get('/simulacion/proveedores-semanticos', async (req, res) => {
         
         while (hasMore && cotizaciones.length < 5000) {
             const url = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=id,proveedor_id,nombre_proveedor,timestamp_extraccion,datos_maestros&limit=1000&offset=${offset}`;
-            const response = await axios.get(url, { headers });
-            if (!response.data) throw new Error("Error de conexión al obtener cotizaciones de Supabase");
-            
-            const rows = response.data;
+            const response = await supabaseFetch(url, { headers }, 1, 300, 6000);
+            if (!response.ok) throw new Error(`Error de conexión al obtener cotizaciones de Supabase (HTTP ${response.status})`);
+            const rows = await response.json();
+            if (!Array.isArray(rows)) throw new Error("Error de formato al obtener cotizaciones de Supabase");
             cotizaciones = cotizaciones.concat(rows);
             
             if (rows.length < 1000) {

@@ -77,6 +77,93 @@ function extraerMetaCacheSupabase(response) {
     };
 }
 
+const READONLY_SUPABASE_HOSTS = new Set([
+    'wofttcnpipozwupmpuul.supabase.co'
+]);
+
+/**
+ * Determina si una URL apunta a un host externo de Supabase de solo consulta.
+ * @param {string} rawUrl
+ * @returns {boolean}
+ */
+function esHostSupabaseSoloLectura(rawUrl) {
+    const str = String(rawUrl || '').trim();
+    if (!str) return false;
+    try {
+        const parsed = new URL(str);
+        const host = parsed.hostname.toLowerCase();
+        if (READONLY_SUPABASE_HOSTS.has(host)) return true;
+        for (const protectedHost of READONLY_SUPABASE_HOSTS) {
+            if (host.endsWith(`.${protectedHost}`)) return true;
+        }
+        return false;
+    } catch (_) {
+        const lower = str.toLowerCase();
+        for (const protectedHost of READONLY_SUPABASE_HOSTS) {
+            if (lower.includes(protectedHost)) return true;
+        }
+        return false;
+    }
+}
+
+/**
+ * Extrae el header X-HTTP-Method-Override si el caller intentara tunelizar escrituras sobre GET/POST.
+ */
+function extraerMetodoOverride(headers) {
+    if (!headers) return null;
+    if (typeof headers.get === 'function') {
+        return headers.get('x-http-method-override') || headers.get('X-HTTP-Method-Override') || null;
+    }
+    if (typeof headers === 'object') {
+        for (const [k, v] of Object.entries(headers)) {
+            if (String(k).toLowerCase() === 'x-http-method-override' && v) {
+                return String(v);
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Candado duro arquitectónico: bloquea inmediatamente antes de salir a red cualquier operación
+ * distinta de GET o HEAD hacia wofttcnpipozwupmpuul.supabase.co (tanto en Producción como en Laboratorio).
+ */
+function assertSupabaseReadOnlyPolicy(url, options = {}) {
+    const method = String((options && options.method) || 'GET').trim().toUpperCase();
+    const overrideMethod = extraerMetodoOverride(options && options.headers);
+    const overrideUpper = overrideMethod ? String(overrideMethod).trim().toUpperCase() : null;
+    const esSoloLectura = esHostSupabaseSoloLectura(url);
+
+    if (esSoloLectura) {
+        const metodoProhibido = (method !== 'GET' && method !== 'HEAD')
+            ? method
+            : (overrideUpper && overrideUpper !== 'GET' && overrideUpper !== 'HEAD' ? `OVERRIDE:${overrideUpper}` : null);
+        if (metodoProhibido) {
+            const err = new Error(
+                `🔒 [SUPABASE-READONLY-GUARD] Bloqueo duro: operación ${metodoProhibido} prohibida hacia origen externo de solo consulta (wofttcnpipozwupmpuul.supabase.co). Solo se permiten métodos GET/HEAD.`
+            );
+            err.code = 'SUPABASE_READONLY_VIOLATION';
+            err.httpStatus = 403;
+            err.statusCode = 403;
+            err.noRetry = true;
+            err.noCacheFallback = true;
+            throw err;
+        }
+    }
+
+    const isLab = String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas'
+        || String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true';
+    if (isLab && method !== 'GET' && method !== 'HEAD') {
+        const err = new Error(`🔒 [SUPABASE-COSTOS-GUARD] Operación de escritura (${method}) hacia Supabase Costos/Lotes bloqueada en Modo Laboratorio.`);
+        err.code = 'SUPABASE_LAB_READONLY_VIOLATION';
+        err.httpStatus = 403;
+        err.statusCode = 403;
+        err.noRetry = true;
+        err.noCacheFallback = true;
+        throw err;
+    }
+}
+
 /**
  * Realiza un fetch con reintentos, abort-timeout y fallback a caché en disco.
  * Los rechazos de autenticación/permisos (401/403) y otros 4xx (excepto 429)
@@ -89,11 +176,7 @@ function extraerMetaCacheSupabase(response) {
  * @returns {Promise<Response>} Retorna una respuesta compatible o lanza error
  */
 async function supabaseFetch(url, options = {}, retries = 3, delay = 500, timeoutMs = 8000) {
-    const method = String(options.method || 'GET').toUpperCase();
-    const isLab = String(process.env.DB_NAME || '').trim().toLowerCase() === 'etiquetas_pruebas' || String(process.env.LAMDA_MODO_LABORATORIO || '').trim().toLowerCase() === 'true';
-    if (isLab && method !== 'GET' && method !== 'HEAD') {
-        throw new Error(`🔒 [SUPABASE-COSTOS-GUARD] Operación de escritura (${method}) hacia Supabase Costos/Lotes bloqueada en Modo Laboratorio.`);
-    }
+    assertSupabaseReadOnlyPolicy(url, options);
     const cachePath = getCachePath(url);
     
     for (let attempt = 0; attempt <= retries; attempt++) {
@@ -222,5 +305,8 @@ async function supabaseFetch(url, options = {}, retries = 3, delay = 500, timeou
 
 module.exports = {
     supabaseFetch,
-    extraerMetaCacheSupabase
+    extraerMetaCacheSupabase,
+    assertSupabaseReadOnlyPolicy,
+    esHostSupabaseSoloLectura,
+    READONLY_SUPABASE_HOSTS
 };

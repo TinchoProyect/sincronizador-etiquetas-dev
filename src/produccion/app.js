@@ -822,7 +822,7 @@ app.get('/api/supabase/lotes/:id_corto', async (req, res) => {
             let masterInfo = { cantBult: null, cantValor: null, iva: null };
             if (provId && cod) {
                 const masterUrl = `https://wofttcnpipozwupmpuul.supabase.co/rest/v1/tabla_maestra_operativa?select=datos_maestros&proveedor_id=eq.${provId}`;
-                const masterRes = await fetch(masterUrl, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } });
+                const masterRes = await supabaseFetch(masterUrl, { headers: { 'apikey': key, 'Authorization': `Bearer ${key}` } }, 1, 300, 6000);
                 if (masterRes.ok) {
                     const rows = await masterRes.json();
                     const matchingRow = rows.find(r => r.datos_maestros && String(r.datos_maestros.codigo).trim().toLowerCase() === cod);
