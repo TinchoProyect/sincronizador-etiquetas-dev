@@ -772,10 +772,24 @@ async function registrarEventoTelemetriaTienda(slugOrId, payload = {}, reqMeta =
 async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {}) {
     await asegurarEsquemaAnaliticaNodos();
 
-    const [nodosRes, pendFraccRes, pendCombosRes] = await Promise.all([
+    const [nodosRes, pendFraccRes, pendCombosRes, listasNodosRes, cfgCanalRes] = await Promise.all([
         db.query(`
         SELECT
-            nm.*,
+            nm.id, nm.codigo_nodo, nm.slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca,
+            nm.gestor_nombre, nm.gestor_telefono, nm.gestor_email, nm.barrio_zona, nm.direccion_retiro,
+            nm.latitud, nm.longitud, nm.bunker_cliente_id, nm.codigo_bunker_cliente,
+            nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre, nm.usar_cuenta_madre_unificada,
+            nm.cuenta_bancaria_id, nm.lista_precio_bunker_id, nm.cliente_operativo_id,
+            nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display, nm.cuil_display, nm.numero_cuenta_display,
+            nm.usa_cuenta_compartida, nm.permitir_retiro_nodo, nm.permitir_reparto_propio, nm.permitir_envio_barrial,
+            nm.permitir_encomienda, nm.cargo_envio_barrial, nm.margen_gestor_default_pct,
+            nm.alicuota_iva_margen_pct, nm.alicuota_iibb_margen_pct, nm.cobro_efectivo_entrega,
+            nm.config_ventanas_corte, nm.mostrar_ingredientes_tienda, nm.color_primario, nm.activo,
+            nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local,
+            nm.config_video_bienvenida, nm.config_perfil_publico, nm.diccionario_textos, nm.plantilla_origen_id,
+            nm.tema_visual,
+            (nm.logo_original_base64 IS NOT NULL AND LENGTH(nm.logo_original_base64) > 0) AS tiene_logo_imagen,
+            (nm.logo_zpl_gfa IS NOT NULL AND LENGTH(nm.logo_zpl_gfa) > 0) AS tiene_logo_zpl,
             bc_propia.codigo_bunker_cliente AS propia_codigo_bc,
             bc_propia.cliente_nombre AS propia_nombre_bc,
             bc_propia.razon_social AS propia_razon_social_bc,
@@ -923,7 +937,11 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
         db.query(`SELECT COUNT(*)::int AS cnt FROM public.nodos_propuestas_fracciones WHERE estado = 'PENDIENTE_COTIZACION'`)
             .catch(() => ({ rows: [{ cnt: 0 }] })),
         db.query(`SELECT COUNT(*)::int AS cnt FROM public.nodos_propuestas_combos WHERE estado = 'PENDIENTE_COTIZACION'`)
-            .catch(() => ({ rows: [{ cnt: 0 }] }))
+            .catch(() => ({ rows: [{ cnt: 0 }] })),
+        db.query(`SELECT id, nombre, descripcion, activa, COALESCE(canal_comercial, 'MAYORISTA') AS canal_comercial FROM public.bunker_listas_precios WHERE UPPER(COALESCE(canal_comercial, '')) = 'NODOS' ORDER BY id ASC`)
+            .catch(() => ({ rows: [] })),
+        db.query(`SELECT id, cuenta_bancaria_id, banco_recaudador, alias_recaudador, cbu_recaudador, titular_recaudador, updated_at FROM public.nodos_configuracion_canal WHERE id = 1 LIMIT 1`)
+            .catch(() => ({ rows: [] }))
     ]);
 
     const pendFracc = Number(pendFraccRes.rows[0]?.cnt || 0);
@@ -987,8 +1005,28 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
             gestor_email: r.gestor_email || '',
             barrio_zona: r.barrio_zona || '',
             direccion_retiro: r.direccion_retiro || '',
+            latitud: r.latitud !== null && r.latitud !== undefined ? Number(r.latitud) : null,
+            longitud: r.longitud !== null && r.longitud !== undefined ? Number(r.longitud) : null,
+            lista_precio_bunker_id: r.lista_precio_bunker_id ? Number(r.lista_precio_bunker_id) : null,
+            cliente_operativo_id: r.cliente_operativo_id ? Number(r.cliente_operativo_id) : null,
+            config_ventanas_corte: Array.isArray(r.config_ventanas_corte) ? r.config_ventanas_corte : [],
             color_primario: r.color_primario || '#16a34a',
-            tema_visual: require('./nodosBarrialesService').enriquecerTemaVisualConVersionAssets(r.tema_visual),
+            tiene_logo_imagen: Boolean(r.tiene_logo_imagen),
+            tiene_logo_zpl: Boolean(r.tiene_logo_zpl),
+            tema_visual: (() => {
+                const tv = require('./nodosBarrialesService').enriquecerTemaVisualConVersionAssets(r.tema_visual);
+                if (!tv || typeof tv !== 'object') return tv;
+                const limpio = { ...tv };
+                if (limpio.logos && typeof limpio.logos === 'object') {
+                    const logosLimpios = {};
+                    for (const [k, v] of Object.entries(limpio.logos)) {
+                        if (typeof v === 'string' && v.startsWith('data:')) continue;
+                        logosLimpios[k] = v;
+                    }
+                    limpio.logos = logosLimpios;
+                }
+                return limpio;
+            })(),
             activo: r.activo !== false,
             perfil_operativo: perfilCanon,
             cobro_efectivo_entrega: cobroEfvoVal,
@@ -1018,7 +1056,12 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
             alicuota_iibb_margen_pct: Number(r.alicuota_iibb_margen_pct ?? 4),
             mostrar_ingredientes_tienda: r.mostrar_ingredientes_tienda !== false,
             usa_cuenta_compartida: r.usa_cuenta_compartida !== false,
+            banco_display: r.banco_display || '',
             alias_bancario_display: r.alias_bancario_display || '',
+            cbu_display: r.cbu_display || '',
+            titular_display: r.titular_display || '',
+            cuil_display: r.cuil_display || '',
+            numero_cuenta_display: r.numero_cuenta_display || '',
             contabilidad: {
                 usar_cuenta_madre_unificada: usaMadre,
                 modalidad: usaMadre ? 'CUENTA_MADRE_UNIFICADA' : 'SUBCUENTA_PROPIA',
@@ -1083,6 +1126,8 @@ async function obtenerResumenCentroNodos({ calcularProximaEntregaFn = null } = {
             combos: pendCombos,
             total: pendFracc + pendCombos
         },
+        listas_precios_nodos: listasNodosRes.rows || [],
+        config_cuenta_canal: cfgCanalRes.rows[0] || null,
         nodos
     };
 }

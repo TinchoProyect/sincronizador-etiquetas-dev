@@ -22,6 +22,10 @@ const {
     esquemaEtapa3YaAplicado,
     ejecutarMigracionEsquemaEtapa3Nodos
 } = require('./asegurarEsquemaEtapa3Nodos');
+const {
+    esquemaEtapa4YaAplicado,
+    ejecutarMigracionEsquemaEtapa4Nodos
+} = require('./asegurarEsquemaEtapa4Nodos');
 
 const ADVISORY_LOCK_KEY_ETAPA1 = 884201;
 
@@ -153,7 +157,9 @@ async function esquemaEtapa1YaAplicado(client) {
     if (!etapa1Ok) return false;
     const etapa2Ok = await esquemaEtapa2YaAplicado(client);
     if (!etapa2Ok) return false;
-    return esquemaEtapa3YaAplicado(client);
+    const etapa3Ok = await esquemaEtapa3YaAplicado(client);
+    if (!etapa3Ok) return false;
+    return esquemaEtapa4YaAplicado(client);
 }
 
 /**
@@ -477,6 +483,7 @@ async function inicializarEsquemaEtapa1Nodos(opciones = {}) {
             await aplicarIntegridadReferencialEtapa1(client);
             await ejecutarMigracionEsquemaEtapa2Nodos(client);
             await ejecutarMigracionEsquemaEtapa3Nodos(client);
+            await ejecutarMigracionEsquemaEtapa4Nodos(client);
             await client.query('COMMIT');
 
             marcarTodosLosServiciosListos();

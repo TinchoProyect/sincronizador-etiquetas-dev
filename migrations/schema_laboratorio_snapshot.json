@@ -15224,6 +15224,16 @@
         "numeric_scale": 2,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "habilitado_lamda": {
+        "ordinal_position": 22,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "true"
       }
     },
     "nodos_pedidos_avisos_pago": {

@@ -85,7 +85,7 @@ app.use((req, res, next) => {
     const esApiNodoPermitida =
         esBeaconTelemetriaTienda ||
         esRecursoPwaNodo ||
-        /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|comprobante-pago\/\d+|ofertas-gestor\/\d+(\/fotos(\/preview|\/importar-sugerida|\/[a-z0-9_-]+)?|\/fotos-orden|\/videos(\/[a-z0-9_-]+)?|\/portada)?|gestor\/\d+\/(config-logistica|perfil-contacto|sumar-catalogo|compartir-kit|compradores|geocodificar|grupos\/(publicacion|config|foto)|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/(estado-entrega|reenviar-recibo-whatsapp)|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(?:-combos)?(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|pedidos\/[^/]+\/(aviso-pago|estado-pago)|cotizar-cp|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/(etiqueta|recibo-marca-blanca\.png)|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p);
+        (req.method !== 'PATCH' && /^\/api\/produccion\/nodos\/(ping-movil|portal\/[^/]+|seguimiento\/[^/]+|comprobante-pago\/\d+|ofertas-gestor\/\d+(\/fotos(\/preview|\/importar-sugerida|\/[a-z0-9_-]+)?|\/fotos-orden|\/videos(\/[a-z0-9_-]+)?|\/portada)?|gestor\/\d+\/(config-logistica|perfil-contacto|sumar-catalogo|compartir-kit|compradores|geocodificar|grupos\/(publicacion|config|foto)|lotes\/\d+\/confirmar-recepcion|pedidos\/\d+\/(estado-entrega|reenviar-recibo-whatsapp)|reparto\/(sugerir-orden|orden|seleccion|iniciar|radar|pedidos\/\d+\/coordenadas))|propuestas(?:-combos)?(\/\d+\/anular)?|tienda\/[^/]+\/(pedido|pedidos\/[^/]+\/(aviso-pago|estado-pago)|cotizar-cp|seguimiento\/[^/]+|seguimiento-whatsapp|buscar-seguimiento|mi-cuenta\/[^/]+)|pedidos\/\d+\/(etiqueta|recibo-marca-blanca\.png)|liquidacion\/tablero|liquidacion\/pedidos\/\d+\/conciliar-pago)\/?$/i.test(p));
 
     if (esVistaPermitida || esApiNodoPermitida) {
         return next();
@@ -1835,6 +1835,30 @@ httpServer.listen(PORT, () => {
     };
     setTimeout(() => ejecutarBootstrapNodosConReintento(1), 2500);
     
+    // Housekeeping periódico no solapado de reservas PENDIENTE_TRANSFERENCIA vencidas (TTL configurable)
+    let _housekeepingReservasNodosEnCurso = false;
+    const ejecutarHousekeepingReservasNodos = async () => {
+        if (_housekeepingReservasNodosEnCurso) return;
+        _housekeepingReservasNodosEnCurso = true;
+        try {
+            const nodosBarrialesService = require('./services/nodosBarrialesService');
+            if (typeof nodosBarrialesService.liberarReservasVencidasNodos === 'function') {
+                const resLib = await nodosBarrialesService.liberarReservasVencidasNodos();
+                if (resLib && Number(resLib.liberadas || 0) > 0) {
+                    console.log(`🧹 [HOUSEKEEPING-NODOS] Reservas vencidas liberadas: ${resLib.liberadas}`);
+                }
+            }
+        } catch (errHk) {
+            console.warn('⚠️ [HOUSEKEEPING-NODOS] Error liberando reservas vencidas:', errHk.message);
+        } finally {
+            _housekeepingReservasNodosEnCurso = false;
+        }
+    };
+    const timerHousekeepingNodos = setInterval(ejecutarHousekeepingReservasNodos, 180000);
+    if (typeof timerHousekeepingNodos.unref === 'function') {
+        timerHousekeepingNodos.unref();
+    }
+
     // Warmup asíncrono de Tabla Maestra en memoria para eliminación total de latencia inicial en Conciliación IA
     const conciliacionArticulosService = require('./services/conciliacionArticulosService');
     conciliacionArticulosService.obtenerTablaMaestraSupabase().catch(err => {

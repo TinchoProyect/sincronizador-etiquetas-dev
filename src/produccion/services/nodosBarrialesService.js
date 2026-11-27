@@ -2967,13 +2967,21 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
         const famRow = famRowRes.rows[0] || null;
         if (famRow) {
             const pRes = await q.query(
-                `SELECT id, termino, abreviatura
-                 FROM public.bunker_diccionario
-                 WHERE id = $1
-                   AND LOWER(categoria) = 'articulo_principal'
-                   AND COALESCE(obsoleto, false) = false
+                `SELECT d.id, d.termino, d.abreviatura
+                 FROM public.bunker_diccionario d
+                 WHERE d.id = $1
+                   AND COALESCE(d.obsoleto, false) = false
+                   AND (
+                       LOWER(d.categoria) = 'articulo_principal'
+                       OR EXISTS (
+                           SELECT 1
+                           FROM public.bunker_relacion_atributo_principal r
+                           WHERE r.familia_id = $2
+                             AND r.articulo_principal_id = d.id
+                       )
+                   )
                  LIMIT 1`,
-                [artPrincipalId]
+                [artPrincipalId, famBunkerId]
             );
             const principalRow = pRes.rows[0] || null;
 
@@ -4031,14 +4039,39 @@ async function sincronizarHerenciaFiscalYContactosDesdeMadre(runner, bunkerClien
         ]
     );
 
-    // 3. Heredar domicilio geolocalizado en clientes_domicilios hacia id_cliente = bunker_cliente_id del Nodo si no posee uno
+    // 3. Heredar domicilio geolocalizado en clientes_domicilios hacia id_cliente (public.clientes.id) + bunker_cliente_id del Nodo si no posee uno
     if (bcMadre) {
+        let cliOpId = Number(datosNodo.cliente_operativo_id || 0) || null;
+        if (cliOpId) {
+            const chkOp = await q.query('SELECT id FROM public.clientes WHERE id = $1 LIMIT 1', [cliOpId]);
+            if (chkOp.rows.length === 0) cliOpId = null;
+        }
+        if (!cliOpId) {
+            const opByLomas = await q.query(
+                `SELECT c.id
+                 FROM public.bunker_clientes bc
+                 JOIN public.clientes c
+                   ON c.cliente_id::text = TRIM(bc.lomas_soft_id)
+                   OR ltrim(c.cliente_id::text, '0') = ltrim(TRIM(bc.lomas_soft_id), '0')
+                 WHERE bc.id = $1
+                   AND bc.lomas_soft_id IS NOT NULL
+                   AND TRIM(bc.lomas_soft_id) <> ''
+                 LIMIT 1`,
+                [idNodoBc]
+            );
+            if (opByLomas.rows.length > 0) cliOpId = Number(opByLomas.rows[0].id);
+        }
+
         const domNodoRes = await q.query(
-            'SELECT id FROM public.clientes_domicilios WHERE id_cliente = $1 AND COALESCE(activo, true) = true LIMIT 1',
-            [idNodoBc]
+            `SELECT id
+             FROM public.clientes_domicilios
+             WHERE (bunker_cliente_id = $1 OR ($2::int IS NOT NULL AND id_cliente = $2::int))
+               AND COALESCE(activo, true) = true
+             LIMIT 1`,
+            [idNodoBc, cliOpId]
         );
         if (domNodoRes.rows.length === 0) {
-            const idsMadreCand = [Number(bcMadre.id)];
+            const idsMadreCand = [];
             if (bcMadre.lomas_soft_id) {
                 const cleanLomas = String(bcMadre.lomas_soft_id).trim();
                 if (cleanLomas) {
@@ -4048,27 +4081,29 @@ async function sincronizarHerenciaFiscalYContactosDesdeMadre(runner, bunkerClien
                         [cleanLomas]
                     );
                     for (const lr of legRes.rows) {
-                        if (lr.id) idsMadreCand.unshift(Number(lr.id));
+                        if (lr.id) idsMadreCand.push(Number(lr.id));
                     }
                 }
             }
             const domMadreRes = await q.query(
                 `SELECT *
                  FROM public.clientes_domicilios
-                 WHERE id_cliente = ANY($1::int[]) AND COALESCE(activo, true) = true
+                 WHERE (bunker_cliente_id = $1 OR (cardinality($2::int[]) > 0 AND id_cliente = ANY($2::int[])))
+                   AND COALESCE(activo, true) = true
                  ORDER BY COALESCE(es_predeterminado, false) DESC, id ASC
                  LIMIT 1`,
-                [idsMadreCand]
+                [Number(bcMadre.id), idsMadreCand]
             );
             if (domMadreRes.rows.length > 0) {
                 const dm = domMadreRes.rows[0];
                 await q.query(
                     `INSERT INTO public.clientes_domicilios (
-                        id_cliente, alias, direccion, localidad, provincia, codigo_postal,
+                        id_cliente, bunker_cliente_id, alias, direccion, localidad, provincia, codigo_postal,
                         latitud, longitud, instrucciones_entrega, horario_atencion_desde, horario_atencion_hasta,
                         telefono_contacto, es_predeterminado, activo, coordenadas_validadas
-                     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,true,true,$13)`,
+                     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true,true,$14)`,
                     [
+                        cliOpId,
                         idNodoBc,
                         dm.alias ? `${dm.alias} (${nombreMarca || 'Nodo'})` : `Sede ${nombreMarca || 'Nodo'}`,
                         String(datosNodo.direccion_retiro || '').trim() || dm.direccion,
@@ -7495,8 +7530,25 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
 /**
  * Obtiene el estado completo del ecosistema de Nodos Barriales para la Pizarra
  */
-async function obtenerEstadoCompletoNodos() {
+async function obtenerEstadoCompletoNodos(opciones = {}) {
     await asegurarEsquemaNodosBarriales();
+    const incluirBranding = Boolean(opciones?.incluirBranding);
+    const colsBranding = incluirBranding
+        ? 'nm.*'
+        : `nm.id, nm.codigo_nodo, nm.slug, nm.slug_historico, nm.nombre_marca, nm.bajada_marca, nm.subtitulo_marca,
+           nm.gestor_nombre, nm.gestor_telefono, nm.gestor_email, nm.barrio_zona, nm.direccion_retiro,
+           nm.latitud, nm.longitud, nm.bunker_cliente_id, nm.codigo_bunker_cliente,
+           nm.cliente_madre_bunker_id, nm.codigo_bunker_cliente_madre, nm.usar_cuenta_madre_unificada,
+           nm.cuenta_bancaria_id, nm.lista_precio_bunker_id, nm.cliente_operativo_id,
+           nm.banco_display, nm.alias_bancario_display, nm.cbu_display, nm.titular_display, nm.cuil_display, nm.numero_cuenta_display,
+           nm.usa_cuenta_compartida, nm.permitir_retiro_nodo, nm.permitir_reparto_propio, nm.permitir_envio_barrial,
+           nm.permitir_encomienda, nm.cargo_envio_barrial, nm.margen_gestor_default_pct,
+           nm.alicuota_iva_margen_pct, nm.alicuota_iibb_margen_pct, nm.cobro_efectivo_entrega,
+           nm.config_ventanas_corte, nm.mostrar_ingredientes_tienda, nm.color_primario, nm.activo,
+           nm.perfil_operativo, nm.modulos_activos, nm.config_paqueteria, nm.config_retiro_local,
+           nm.diccionario_textos, nm.plantilla_origen_id, nm.tema_visual, nm.logo_zpl_config,
+           (nm.logo_original_base64 IS NOT NULL AND LENGTH(nm.logo_original_base64) > 0) AS tiene_logo_imagen,
+           (nm.logo_zpl_gfa IS NOT NULL AND LENGTH(nm.logo_zpl_gfa) > 0) AS tiene_logo_zpl`;
 
     const mapaCombosPromise = combosCompuestosService.obtenerMapaCombosYStockArmable(db);
     const [
@@ -7516,7 +7568,7 @@ async function obtenerEstadoCompletoNodos() {
         mapaImagenesBase
     ] = await Promise.all([
         db.query(`
-            SELECT nm.*,
+            SELECT ${colsBranding},
                    fb.banco AS banco_nombre,
                    fb.alias AS banco_alias_oficial,
                    fb.cbu AS banco_cbu_oficial,
@@ -7969,6 +8021,15 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
             },
             existenteRow?.cliente_operativo_id || null
         );
+        if (clienteOperativo?.cliente_operativo_id && vinculoContable?.bunker_cliente_id) {
+            await client.query(
+                `UPDATE public.clientes_domicilios
+                 SET id_cliente = $1
+                 WHERE bunker_cliente_id = $2
+                   AND id_cliente IS NULL`,
+                [Number(clienteOperativo.cliente_operativo_id), Number(vinculoContable.bunker_cliente_id)]
+            );
+        }
 
         const ventanas = Array.isArray(payload.config_ventanas_corte) && payload.config_ventanas_corte.length > 0
             ? payload.config_ventanas_corte
@@ -8299,8 +8360,9 @@ async function guardarNodoMaestro(payload = {}, idExistente = null) {
                     await client.query(
                         `INSERT INTO public.nodos_ofertas_gestor (
                             nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
-                            margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
-                        ) VALUES ($1,$2,$3,$4,$5,$6,true)`,
+                            margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor,
+                            habilitado_lamda, publicado_tienda
+                        ) VALUES ($1,$2,$3,$4,$5,$6,true,false)`,
                         [nodoGuardado.id, c.id, base, calcNuevo.margen_pct, calcNuevo.precio_tienda, calcNuevo.ganancia_neta_nodo]
                     );
                 }
@@ -8530,14 +8592,15 @@ async function clonarNodoMaestro(origenId, payload = {}) {
                 `INSERT INTO public.nodos_ofertas_gestor (
                     nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
                     margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor,
-                    publicado_tienda, destacado_tienda, mostrar_ingredientes, fotos_vidriera
-                 ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'[]'::jsonb)
+                    habilitado_lamda, publicado_tienda, destacado_tienda, mostrar_ingredientes, fotos_vidriera
+                 ) VALUES ($1,$2,$3,$4,$5,$6,true,false,$7,$8,'[]'::jsonb)
                  ON CONFLICT (nodo_id, articulo_catalogo_id) DO UPDATE SET
                     precio_base_nodo_snapshot = EXCLUDED.precio_base_nodo_snapshot,
                     margen_gestor_pct = EXCLUDED.margen_gestor_pct,
                     precio_venta_vecino = EXCLUDED.precio_venta_vecino,
                     ganancia_unitaria_gestor = EXCLUDED.ganancia_unitaria_gestor,
-                    publicado_tienda = EXCLUDED.publicado_tienda,
+                    habilitado_lamda = true,
+                    publicado_tienda = false,
                     destacado_tienda = EXCLUDED.destacado_tienda,
                     mostrar_ingredientes = EXCLUDED.mostrar_ingredientes,
                     fotos_vidriera = '[]'::jsonb,
@@ -8549,7 +8612,6 @@ async function clonarNodoMaestro(origenId, payload = {}) {
                     margen,
                     pVenta,
                     gan,
-                    Boolean(refOf.publicado_tienda),
                     Boolean(refOf.destacado_tienda),
                     refOf.mostrar_ingredientes !== false
                 ]
@@ -8928,6 +8990,37 @@ async function anularODescartarPropuestaFraccion(propuestaId, opciones = {}) {
  * dentro de Mi Oferta y Márgenes (public.nodos_ofertas_gestor) de un Nodo específico,
  * dejándolo inicialmente oculto para que el Gestor ajuste su ganancia y lo publique.
  */
+async function obtenerSkusDeshabilitadosParaNodo(runner, nodoId) {
+    const q = runner || db;
+    const nid = Number(nodoId || 0);
+    const res = await q.query(
+        `SELECT UPPER(BTRIM(nac.sku_nodo)) AS sku
+         FROM public.nodos_articulos_catalogo nac
+         LEFT JOIN public.nodos_ofertas_gestor nog
+           ON nog.articulo_catalogo_id = nac.id
+          AND nog.nodo_id = $1
+         WHERE nac.activo = false
+            OR nog.habilitado_lamda = false`,
+        [nid]
+    );
+    const set = new Set();
+    for (const r of res.rows) {
+        if (r.sku) set.add(String(r.sku).trim().toUpperCase());
+    }
+    return set;
+}
+
+function esComboHabilitadoParaNodo(skuCombo, mapaCombos, skusDeshabilitadosSet) {
+    if (!skusDeshabilitadosSet || skusDeshabilitadosSet.size === 0) return true;
+    const skuNorm = String(skuCombo || '').trim().toUpperCase();
+    const info = mapaCombos && typeof mapaCombos.get === 'function' ? mapaCombos.get(skuNorm) : null;
+    if (!info || !Array.isArray(info.componentes) || info.componentes.length === 0) return true;
+    return info.componentes.every(c => {
+        const compSku = String(c.sku || c.componente_articulo_id || '').trim().toUpperCase();
+        return compSku && !skusDeshabilitadosSet.has(compSku);
+    });
+}
+
 async function sumarArticuloCatalogoANodo(nodoId, catalogoId) {
     await asegurarEsquemaNodosBarriales();
     const nId = Number(nodoId);
@@ -8936,7 +9029,7 @@ async function sumarArticuloCatalogoANodo(nodoId, catalogoId) {
         throw new Error('Identificador de Nodo o de artículo de catálogo inválido.');
     }
 
-    const [nodoRes, catRes] = await Promise.all([
+    const [nodoRes, catRes, ofertaExistRes] = await Promise.all([
         db.query(
             `SELECT id, margen_gestor_default_pct, activo,
                     COALESCE(alicuota_iva_margen_pct, 21.00) AS alicuota_iva_margen_pct,
@@ -8944,7 +9037,8 @@ async function sumarArticuloCatalogoANodo(nodoId, catalogoId) {
              FROM public.nodos_maestro WHERE id = $1 LIMIT 1`,
             [nId]
         ),
-        db.query('SELECT * FROM public.nodos_articulos_catalogo WHERE id = $1 AND activo = true LIMIT 1', [cId])
+        db.query('SELECT * FROM public.nodos_articulos_catalogo WHERE id = $1 LIMIT 1', [cId]),
+        db.query('SELECT * FROM public.nodos_ofertas_gestor WHERE nodo_id = $1 AND articulo_catalogo_id = $2 LIMIT 1', [nId, cId])
     ]);
     if (nodoRes.rows.length === 0) throw new Error('Nodo no encontrado.');
     if (nodoRes.rows[0].activo === false) {
@@ -8952,10 +9046,31 @@ async function sumarArticuloCatalogoANodo(nodoId, catalogoId) {
         err.statusCode = 403;
         throw err;
     }
-    if (catRes.rows.length === 0) throw new Error('El artículo seleccionado no está activo en el Catálogo Base de Nodos.');
+    if (catRes.rows.length === 0 || catRes.rows[0].activo !== true) {
+        const err = new Error('El artículo seleccionado está deshabilitado globalmente en el Catálogo Base de LAMDA.');
+        err.statusCode = 409;
+        throw err;
+    }
+    if (ofertaExistRes.rows[0] && ofertaExistRes.rows[0].habilitado_lamda === false) {
+        const err = new Error('Este artículo se encuentra deshabilitado por LAMDA para tu Nodo.');
+        err.statusCode = 409;
+        throw err;
+    }
+
+    const cat = catRes.rows[0];
+    if (cat.es_combo) {
+        const [mapaCombos, skusDeshab] = await Promise.all([
+            combosCompuestosService.obtenerMapaCombosYStockArmable(db, [cat.sku_nodo]),
+            obtenerSkusDeshabilitadosParaNodo(db, nId)
+        ]);
+        if (!esComboHabilitadoParaNodo(cat.sku_nodo, mapaCombos, skusDeshab)) {
+            const err = new Error('Este Combo contiene un artículo componente deshabilitado actualmente por LAMDA.');
+            err.statusCode = 409;
+            throw err;
+        }
+    }
 
     const nodo = nodoRes.rows[0];
-    const cat = catRes.rows[0];
     const base = Number(cat.precio_base_nodo_final || 0);
     const margenDef = Number(nodo.margen_gestor_default_pct || cat.margen_sugerido_gestor_pct || 28);
     const calcSum = calcularPrecioYGananciaNetaOfertaNodo({
@@ -8980,8 +9095,9 @@ async function sumarArticuloCatalogoANodo(nodoId, catalogoId) {
         resOf = await db.query(
             `INSERT INTO public.nodos_ofertas_gestor (
                 nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
-                margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor, publicado_tienda
-             ) VALUES ($1, $2, $3, $4, $5, $6, false)
+                margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor,
+                habilitado_lamda, publicado_tienda
+             ) VALUES ($1, $2, $3, $4, $5, $6, true, false)
              RETURNING *`,
             [nId, cId, base, margenDef, precioVecino, ganancia]
         );
@@ -9481,10 +9597,26 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             );
         }
 
-        // Propagar / actualizar en nodos_ofertas_gestor para todos los Nodos activos mediante upsert determinístico.
-        // Cada Nodo recibe el artículo con su SKU y nombre oficial LAMDA por defecto; si la solicitud traía un nombre
-        // de vidriera personalizado para el Nodo solicitante, se registra únicamente en su oferta de vidriera.
-        const publicadoInicial = Boolean(payload.publicar_inmediato_tienda === true);
+        // Propagar / actualizar en nodos_ofertas_gestor respetando los 3 Niveles de Disponibilidad:
+        // - Nivel 2 (`habilitado_lamda`): por defecto true en todos los nodos activos salvo que venga `nodos_habilitados_ids` explícito.
+        // - Nivel 3 (`publicado_tienda`): por defecto false (soberano del gestor) salvo los IDs indicados en `nodos_publicados_ids`
+        //   o `publicar_inmediato_tienda === true` (retrocompatibilidad).
+        const tieneFiltroHabilitados = Array.isArray(payload.nodos_habilitados_ids);
+        const setHabilitados = new Set(
+            (tieneFiltroHabilitados ? payload.nodos_habilitados_ids : [])
+                .map(Number)
+                .filter(id => Number.isFinite(id) && id > 0)
+        );
+        if (tieneFiltroHabilitados && nodoSolicitantePropId) {
+            setHabilitados.add(Number(nodoSolicitantePropId));
+        }
+        const tieneListaPublicados = Array.isArray(payload.nodos_publicados_ids);
+        const setPublicados = new Set(
+            (tieneListaPublicados ? payload.nodos_publicados_ids : [])
+                .map(Number)
+                .filter(id => Number.isFinite(id) && id > 0)
+        );
+        const publicadoInicialLegacy = Boolean(payload.publicar_inmediato_tienda === true);
         const nodosActivos = await client.query(
             `SELECT id, margen_gestor_default_pct,
                     COALESCE(alicuota_iva_margen_pct, 21.00) AS alicuota_iva_margen_pct,
@@ -9492,6 +9624,11 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
              FROM public.nodos_maestro WHERE activo = true`
         );
         for (const nodo of nodosActivos.rows) {
+            const nid = Number(nodo.id);
+            const habilitadoLamda = tieneFiltroHabilitados ? setHabilitados.has(nid) : true;
+            const publicadoInicial = habilitadoLamda && (
+                tieneListaPublicados ? setPublicados.has(nid) : publicadoInicialLegacy
+            );
             const margenDef = Number(nodo.margen_gestor_default_pct || calc.margen_sugerido_gestor_pct || 28);
             const calcDef = calcularPrecioYGananciaNetaOfertaNodo({
                 costoBaseLamda: calc.precio_base_nodo_final,
@@ -9502,16 +9639,16 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
             });
             const precioVecino = calcDef.precio_tienda;
             const ganancia = calcDef.ganancia_neta_nodo;
-            const aliasVidrieraParaNodo = (nodoSolicitantePropId && Number(nodo.id) === nodoSolicitantePropId && aliasVidrieraSolicitante)
+            const aliasVidrieraParaNodo = (nodoSolicitantePropId && nid === nodoSolicitantePropId && aliasVidrieraSolicitante)
                 ? aliasVidrieraSolicitante
                 : null;
 
             const exOferta = await client.query(
-                `SELECT id, precio_base_nodo_snapshot, margen_gestor_pct
+                `SELECT id, precio_base_nodo_snapshot, margen_gestor_pct, habilitado_lamda, publicado_tienda
                  FROM public.nodos_ofertas_gestor
                  WHERE nodo_id = $1 AND articulo_catalogo_id = $2
                  LIMIT 1 FOR UPDATE`,
-                [nodo.id, articuloRow.id]
+                [nid, articuloRow.id]
             );
             if (exOferta.rows.length > 0) {
                 const ofPrev = exOferta.rows[0];
@@ -9526,6 +9663,10 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                 const nuevoPVecino = calcOf.precio_tienda;
                 const nuevaGan = calcOf.ganancia_neta_nodo;
                 const cambioCosto = Number(ofPrev.precio_base_nodo_snapshot || 0) !== Number(calc.precio_base_nodo_final || 0);
+                const habFinal = tieneFiltroHabilitados ? habilitadoLamda : (ofPrev.habilitado_lamda !== false);
+                const pubFinal = !habFinal
+                    ? false
+                    : (tieneListaPublicados && setPublicados.has(nid) ? true : Boolean(ofPrev.publicado_tienda));
                 await client.query(
                     `UPDATE public.nodos_ofertas_gestor SET
                         alerta_cambio_costo = $2,
@@ -9533,18 +9674,20 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                         precio_venta_vecino = $4,
                         ganancia_unitaria_gestor = $5,
                         nombre_vidriera_personalizado = COALESCE($6, nombre_vidriera_personalizado),
+                        habilitado_lamda = $7,
+                        publicado_tienda = $8,
                         updated_at = NOW()
                      WHERE id = $1`,
-                    [ofPrev.id, cambioCosto, calc.precio_base_nodo_final, nuevoPVecino, nuevaGan, aliasVidrieraParaNodo]
+                    [ofPrev.id, cambioCosto, calc.precio_base_nodo_final, nuevoPVecino, nuevaGan, aliasVidrieraParaNodo, habFinal, pubFinal]
                 );
             } else {
                 await client.query(
                     `INSERT INTO public.nodos_ofertas_gestor (
                         nodo_id, articulo_catalogo_id, precio_base_nodo_snapshot,
                         margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor,
-                        publicado_tienda, nombre_vidriera_personalizado
-                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-                    [nodo.id, articuloRow.id, calc.precio_base_nodo_final, margenDef, precioVecino, ganancia, publicadoInicial, aliasVidrieraParaNodo]
+                        habilitado_lamda, publicado_tienda, nombre_vidriera_personalizado
+                    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+                    [nid, articuloRow.id, calc.precio_base_nodo_final, margenDef, precioVecino, ganancia, habilitadoLamda, publicadoInicial, aliasVidrieraParaNodo]
                 );
             }
         }
@@ -10211,11 +10354,14 @@ async function sincronizarCatalogoNodoDesdeBunker(articuloId, runnerOpt = null) 
 /**
  * Actualiza el margen del gestor y el estado de publicación en su tienda vecinal
  */
-async function actualizarOfertaGestor(ofertaId, payload = {}) {
+async function actualizarOfertaGestor(ofertaId, payload = {}, opciones = {}) {
     await asegurarEsquemaNodosBarriales();
+    const esAdmin = Boolean(opciones && opciones.esAdmin);
 
     const cur = await db.query(
-        `SELECT nog.*, nac.precio_base_nodo_final, nm.activo AS nodo_activo,
+        `SELECT nog.*, nac.precio_base_nodo_final, nac.activo AS catalogo_activo,
+                nac.sku_nodo,
+                nm.activo AS nodo_activo,
                 COALESCE(nm.alicuota_iva_margen_pct, 21.00) AS alicuota_iva_margen_pct,
                 COALESCE(nm.alicuota_iibb_margen_pct, 4.00) AS alicuota_iibb_margen_pct
          FROM public.nodos_ofertas_gestor nog
@@ -10225,7 +10371,9 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
         [Number(ofertaId)]
     );
     if (cur.rows.length === 0) {
-        throw new Error('Oferta de Nodo no encontrada.');
+        const err = new Error('Oferta de Nodo no encontrada.');
+        err.statusCode = 404;
+        throw err;
     }
     if (cur.rows[0].nodo_activo === false) {
         const err = new Error('Este Nodo se encuentra archivado y no permite editar ofertas.');
@@ -10234,6 +10382,22 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
     }
 
     const row = cur.rows[0];
+    if (!esAdmin && payload.habilitado_lamda !== undefined && Boolean(payload.habilitado_lamda) !== Boolean(row.habilitado_lamda !== false)) {
+        const err = new Error('El interruptor de disponibilidad LAMDA solo puede ser modificado por Administración.');
+        err.statusCode = 403;
+        throw err;
+    }
+
+    const habilitadoLamda = (esAdmin && payload.habilitado_lamda !== undefined)
+        ? Boolean(payload.habilitado_lamda)
+        : (row.habilitado_lamda !== false);
+
+    if (!esAdmin && payload.publicado_tienda === true && (row.catalogo_activo === false || !habilitadoLamda)) {
+        const err = new Error('Este artículo se encuentra deshabilitado por LAMDA y no puede publicarse en la tienda.');
+        err.statusCode = 409;
+        throw err;
+    }
+
     const baseActual = Number(row.precio_base_nodo_final || row.precio_base_nodo_snapshot || 0);
     const ivaMargenPct = Number(row.alicuota_iva_margen_pct ?? 21);
     const iibbMargenPct = Number(row.alicuota_iibb_margen_pct ?? 4);
@@ -10264,7 +10428,6 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
             modo: 'margen'
         });
     } else {
-        // Si solo cambia publicado_tienda / destacado_tienda / nombre_vidriera_personalizado, preservar el precio actual y sincronizar ganancia limpia
         calcOferta = calcularPrecioYGananciaNetaOfertaNodo({
             costoBaseLamda: baseActual,
             precioTienda: row.precio_venta_vecino,
@@ -10277,9 +10440,14 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
     const margenPct = calcOferta.margen_pct;
     const precioVecino = calcOferta.precio_tienda;
     const gananciaUnitaria = calcOferta.ganancia_neta_nodo;
-    const publicado = payload.publicado_tienda !== undefined
+    let publicado = payload.publicado_tienda !== undefined
         ? Boolean(payload.publicado_tienda)
         : Boolean(row.publicado_tienda);
+    if (!habilitadoLamda && payload.habilitado_lamda === false) {
+        // Si LAMDA apaga Nivel 2 y el caller no pidió mantenerlo, preservar publicado_tienda histórico
+        // (las consultas /tienda y crearPedido filtran explícitamente habilitado_lamda = true).
+        publicado = payload.publicado_tienda !== undefined ? Boolean(payload.publicado_tienda) : Boolean(row.publicado_tienda);
+    }
     const destacado = payload.destacado_tienda !== undefined
         ? Boolean(payload.destacado_tienda)
         : Boolean(row.destacado_tienda);
@@ -10322,24 +10490,26 @@ async function actualizarOfertaGestor(ofertaId, payload = {}) {
             margen_gestor_pct = $2,
             precio_venta_vecino = $3,
             ganancia_unitaria_gestor = $4,
-            publicado_tienda = $5,
-            destacado_tienda = $6,
-            mostrar_ingredientes = $7,
-            nombre_vidriera_personalizado = $8,
-            categoria_vidriera_personalizada = $9,
-            narrativa_tienda = $10,
-            portada_modo = $11,
-            portada_media_id = $12,
-            imagen_origen_modo = $13,
+            habilitado_lamda = $5,
+            publicado_tienda = $6,
+            destacado_tienda = $7,
+            mostrar_ingredientes = $8,
+            nombre_vidriera_personalizado = $9,
+            categoria_vidriera_personalizada = $10,
+            narrativa_tienda = $11,
+            portada_modo = $12,
+            portada_media_id = $13,
+            imagen_origen_modo = $14,
             alerta_cambio_costo = false,
             updated_at = NOW()
-         WHERE id = $14
+         WHERE id = $15
          RETURNING *`,
         [
             baseActual,
             margenPct,
             precioVecino,
             gananciaUnitaria,
+            habilitadoLamda,
             publicado,
             destacado,
             mostrarIngredientes,
@@ -10773,6 +10943,9 @@ async function obtenerCatalogoIngredientesSolicitablesGestor() {
 async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opciones = {}) {
     await asegurarEsquemaNodosBarriales();
     const esVistaGestor = String(opciones?.vista || '').trim().toLowerCase() === 'gestor';
+    if (esVistaGestor) {
+        await liberarReservasVencidasNodos().catch(() => {});
+    }
     const cleanSlug = String(slug || '').trim();
     const strictSlug = Boolean(opciones?.strictSlug);
 
@@ -10845,7 +11018,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
 
     const mostrarIngredientesNodo = nodo.mostrar_ingredientes_tienda !== false;
 
-    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes, ingredientesSolicitables, familiasBunkerOficiales, catDisponibleRes, catalogoIngredientes, gruposVidrieraRes, mapaJerarquiaB2B, mapaImagenesBase] = await Promise.all([
+    const [ofertasRes, propuestasRes, pedidosRes, itemsPedidosRes, movsRes, ingredientesSolicitables, familiasBunkerOficiales, catDisponibleRes, catalogoIngredientes, gruposVidrieraRes, mapaJerarquiaB2B, mapaImagenesBase, skusDeshabilitadosNodo] = await Promise.all([
         db.query(
             `SELECT nog.*,
                     nac.sku_nodo,
@@ -10875,6 +11048,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
              LEFT JOIN public.bunker_familias bf ON bf.id = COALESCE(ba.familia_id, nac.familia_bunker_id)
              WHERE nog.nodo_id = $1
                AND nac.activo = true
+               AND COALESCE(nog.habilitado_lamda, true) = true
                AND nac.precio_base_nodo_final > 0
              ORDER BY nog.destacado_tienda DESC,
                       COALESCE(bf.nombre, ba.rubro, nac.familia_bunker_nombre, nac.categoria_familiar) ASC,
@@ -10999,7 +11173,8 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             : Promise.resolve(null),
         db.query('SELECT * FROM public.nodos_grupos_vidriera WHERE nodo_id = $1', [nodo.id]),
         jerarquiaBunkerHelper.cargarMapaJerarquiaB2B(db),
-        lamdaImagenesBaseService.obtenerMapaImagenesBaseActivas(db)
+        lamdaImagenesBaseService.obtenerMapaImagenesBaseActivas(db),
+        obtenerSkusDeshabilitadosParaNodo(db, nodo.id)
     ]);
 
     const gruposVidrieraMap = new Map();
@@ -11050,7 +11225,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                         nac.precio_base_nodo_final,
                         EXISTS (
                             SELECT 1 FROM public.nodos_ofertas_gestor nog
-                            WHERE nog.nodo_id = $1 AND nog.articulo_catalogo_id = nac.id
+                            WHERE nog.nodo_id = $1 AND nog.articulo_catalogo_id = nac.id AND COALESCE(nog.habilitado_lamda, true) = true
                         ) AS en_mi_oferta
                  FROM public.nodos_articulos_catalogo nac
                  JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
@@ -11059,6 +11234,10 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                    AND COALESCE(nac.es_combo, false) = false
                    AND COALESCE(ba.es_combo, false) = false
                    AND nac.precio_base_nodo_final > 0
+                   AND NOT EXISTS (
+                       SELECT 1 FROM public.nodos_ofertas_gestor nog_off
+                       WHERE nog_off.nodo_id = $1 AND nog_off.articulo_catalogo_id = nac.id AND nog_off.habilitado_lamda = false
+                   )
                  ORDER BY en_mi_oferta DESC,
                           COALESCE(bf.nombre, ba.rubro, nac.familia_bunker_nombre, 'Almacén') ASC,
                           COALESCE(ba.descripcion_generada, nac.nomenclatura_bunker, nac.nombre_publico) ASC`,
@@ -11074,13 +11253,17 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                         nac.firma_combo,
                         EXISTS (
                             SELECT 1 FROM public.nodos_ofertas_gestor nog
-                            WHERE nog.nodo_id = $1 AND nog.articulo_catalogo_id = nac.id
+                            WHERE nog.nodo_id = $1 AND nog.articulo_catalogo_id = nac.id AND COALESCE(nog.habilitado_lamda, true) = true
                         ) AS en_mi_oferta
                  FROM public.nodos_articulos_catalogo nac
                  LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
                  WHERE nac.activo = true
                    AND COALESCE(nac.es_combo, false) = true
-                   AND nac.firma_combo IS NOT NULL`,
+                   AND nac.firma_combo IS NOT NULL
+                   AND NOT EXISTS (
+                       SELECT 1 FROM public.nodos_ofertas_gestor nog_off
+                       WHERE nog_off.nodo_id = $1 AND nog_off.articulo_catalogo_id = nac.id AND nog_off.habilitado_lamda = false
+                   )`,
                 [nodo.id]
             )
         ]);
@@ -11108,10 +11291,12 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             ...el,
             etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(el.sku_nodo, el.nombre_oficial_lamda)
         }));
-        combosCotizadosCatalogo = combosCatActivosRes.rows.map(cc => ({
-            ...cc,
-            etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(cc.sku_nodo, cc.nombre_oficial_lamda)
-        }));
+        combosCotizadosCatalogo = combosCatActivosRes.rows
+            .filter(cc => esComboHabilitadoParaNodo(cc.sku_nodo, mapaCombosPortal, skusDeshabilitadosNodo))
+            .map(cc => ({
+                ...cc,
+                etiqueta_oficial_lamda: formatearEtiquetaTecnicaArticulo(cc.sku_nodo, cc.nombre_oficial_lamda)
+            }));
     }
 
     const aliasSugeridoPorCatId = new Map();
@@ -11215,8 +11400,12 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
             }));
     };
 
-    const ofertasConDesglose = await Promise.all(
+    const ofertasConDesglose = (await Promise.all(
         ofertasRes.rows.map(async (o) => {
+            const infoComboCheck = mapaCombosPortal.get(combosCompuestosService.normalizarSku(o.sku_nodo));
+            if ((o.es_combo || infoComboCheck) && !esComboHabilitadoParaNodo(o.sku_nodo, mapaCombosPortal, skusDeshabilitadosNodo)) {
+                return null;
+            }
             const desglose = catalogoIngredientes
                 ? await resolverDesgloseIngredientesOfertaNodo(db, o, catalogoIngredientes)
                 : null;
@@ -11331,7 +11520,7 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
                 galeria_multimedia: galeriaInfo.galeria_multimedia
             };
         })
-    );
+    )).filter(Boolean);
 
     const mapaNombreVidrieraPorSku = new Map();
     for (const o of ofertasConDesglose) {
@@ -11599,16 +11788,22 @@ async function obtenerDatosPortalNodo(slug = '', fechaHoraSimulada = null, opcio
         ofertas_publicadas: ofertasPublicadas,
         todas_ofertas_gestor: esVistaGestor ? ofertasConDesglose : [],
         catalogo_base_disponible: esVistaGestor
-            ? catDisponibleRes.rows.map(c => {
-                const ic = mapaCombosPortal.get(combosCompuestosService.normalizarSku(c.sku_nodo));
-                const esC = Boolean(c.es_combo || ic);
-                return {
-                    ...c,
-                    es_combo: esC,
-                    stock_armable: esC && ic ? ic.stock_armable : null,
-                    componentes_combo: esC && ic ? ic.componentes : []
-                };
-            })
+            ? catDisponibleRes.rows
+                .filter(c => {
+                    const ic = mapaCombosPortal.get(combosCompuestosService.normalizarSku(c.sku_nodo));
+                    const esC = Boolean(c.es_combo || ic);
+                    return !esC || esComboHabilitadoParaNodo(c.sku_nodo, mapaCombosPortal, skusDeshabilitadosNodo);
+                })
+                .map(c => {
+                    const ic = mapaCombosPortal.get(combosCompuestosService.normalizarSku(c.sku_nodo));
+                    const esC = Boolean(c.es_combo || ic);
+                    return {
+                        ...c,
+                        es_combo: esC,
+                        stock_armable: esC && ic ? ic.stock_armable : null,
+                        componentes_combo: esC && ic ? ic.componentes : []
+                    };
+                })
             : [],
         propuestas_nodo: esVistaGestor ? propuestasEnriquecidas : [],
         propuestas_combos_nodo: esVistaGestor ? propuestasCombosEnriquecidas : [],
@@ -12032,7 +12227,7 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
         const proxima = calcularProximaEntregaNodo(nodo.config_ventanas_corte, payload.fecha_hora_simulada || null);
         const entregaAsignada = proxima.asignada;
 
-        // Consultar las ofertas publicadas del Nodo ancladas a SKU + nomenclatura oficial de LAMDA
+        // Consultar las ofertas publicadas del Nodo ancladas a SKU + nomenclatura oficial de LAMDA (respetando 3 Niveles de Disponibilidad)
         const ofertasRes = await client.query(
             `SELECT nog.*,
                     nac.sku_nodo,
@@ -12045,14 +12240,20 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
              FROM public.nodos_ofertas_gestor nog
              JOIN public.nodos_articulos_catalogo nac ON nac.id = nog.articulo_catalogo_id
              LEFT JOIN public.bunker_articulos ba ON UPPER(ba.articulo_id) = UPPER(nac.sku_nodo)
-             WHERE nog.nodo_id = $1`,
+             WHERE nog.nodo_id = $1
+               AND nac.activo = true
+               AND COALESCE(nog.habilitado_lamda, true) = true
+               AND COALESCE(nog.publicado_tienda, false) = true`,
             [nodo.id]
         );
         const mapaOfertas = new Map(ofertasRes.rows.map(o => [Number(o.id), o]));
         const hayAlgunComboPedido = ofertasRes.rows.some(o => Boolean(o.es_combo));
-        const mapaCombosSnapshot = hayAlgunComboPedido
-            ? await combosCompuestosService.obtenerMapaCombosYStockArmable(client)
-            : new Map();
+        const [mapaCombosSnapshot, skusDeshabilitadosTienda] = hayAlgunComboPedido
+            ? await Promise.all([
+                combosCompuestosService.obtenerMapaCombosYStockArmable(client),
+                obtenerSkusDeshabilitadosParaNodo(client, nodo.id)
+            ])
+            : [new Map(), new Set()];
 
         let subtotalProductosVecino = 0;
         let totalBaseLamda = 0;
@@ -12064,7 +12265,16 @@ async function crearPedidoVecinoTienda(slug, payload = {}) {
         for (const itemReq of itemsCarrito) {
             const cant = Math.max(1, Math.round(Number(itemReq.cantidad) || 1));
             const of = mapaOfertas.get(Number(itemReq.oferta_id));
-            if (!of) continue;
+            if (!of) {
+                const errDisp = new Error(`Uno de los productos seleccionados (#${itemReq.oferta_id}) ya no está disponible o publicado en esta tienda.`);
+                errDisp.statusCode = 409;
+                throw errDisp;
+            }
+            if (of.es_combo && !esComboHabilitadoParaNodo(of.sku_nodo, mapaCombosSnapshot, skusDeshabilitadosTienda)) {
+                const errComboDisp = new Error(`El Combo [${of.sku_nodo}] contiene un componente actualmente deshabilitado por LAMDA.`);
+                errComboDisp.statusCode = 409;
+                throw errComboDisp;
+            }
 
             const pUnitVecino = Number(of.precio_venta_vecino);
             const pUnitBaseLamda = Number(of.precio_base_nodo_final || of.precio_base_nodo_snapshot);
@@ -14395,6 +14605,7 @@ async function obtenerEstadoCircuitoOperativoLamda() {
  */
 async function obtenerTableroMesaArmadoDeposito(filtros = {}) {
     await asegurarEsquemaNodosBarriales();
+    await liberarReservasVencidasNodos().catch(() => {});
     await sincronizarCanastosEstacionNodos();
 
     const nodoIdFiltro = filtros.nodo_id ? Number(filtros.nodo_id) : 0;
@@ -15619,6 +15830,7 @@ function calcularCuadroLiquidacionCanasto(canasto, pedidos = []) {
  */
 async function obtenerTableroLiquidacionCobros(filtros = {}) {
     await asegurarEsquemaNodosBarriales();
+    await liberarReservasVencidasNodos().catch(() => {});
     await sincronizarCanastosEstacionNodos();
 
     const nodoIdFiltro = filtros.nodo_id ? Number(filtros.nodo_id) : 0;
@@ -22280,6 +22492,10 @@ async function eliminarNodoPruebaLaboratorio(nodoId, opciones = {}) {
         // 6. Eliminar ficha hija CB-NODO-xxx en bunker_clientes protegiendo estrictamente cliente_madre_bunker_id
         if (bunkerClienteHijoId && codigoCbHijo && /^CB-NODO-/i.test(codigoCbHijo) && bunkerClienteHijoId !== clienteMadreBunkerId) {
             await client.query(
+                `DELETE FROM public.clientes_domicilios WHERE bunker_cliente_id = $1::int`,
+                [bunkerClienteHijoId]
+            );
+            await client.query(
                 `DELETE FROM public.bunker_cliente_listas_precios WHERE bunker_cliente_id = $1::int`,
                 [bunkerClienteHijoId]
             );
@@ -22617,5 +22833,19 @@ module.exports = {
     versionarUrlAssetNodo,
     enriquecerTemaVisualConVersionAssets,
     obtenerFamiliasComercialesBunkerOficiales,
-    resolverTaxonomiaOficialIngredienteBunker
+    resolverTaxonomiaOficialIngredienteBunker,
+    resolverIdentidadTecnicaIngrediente,
+    obtenerPresentacionesPlantaLamda,
+    obtenerSkusDeshabilitadosParaNodo,
+    esComboHabilitadoParaNodo,
+    calcularPrecioYGananciaNetaOfertaNodo,
+    normalizarAlicuotaFiscalNodo,
+    obtenerResumenNodosEscalable: (...args) => require('./nodosGobernanzaEscalableService').obtenerResumenNodosEscalable(...args),
+    obtenerCatalogoNodosEscalable: (...args) => require('./nodosGobernanzaEscalableService').obtenerCatalogoNodosEscalable(...args),
+    cambiarEstadoActivoCatalogoNodo: (...args) => require('./nodosGobernanzaEscalableService').cambiarEstadoActivoCatalogoNodo(...args),
+    actualizarOfertasNodosMasivo: (...args) => require('./nodosGobernanzaEscalableService').actualizarOfertasNodosMasivo(...args),
+    obtenerPresentacionesPlantaNodosEscalable: (...args) => require('./nodosGobernanzaEscalableService').obtenerPresentacionesPlantaNodosEscalable(...args),
+    obtenerSolicitudesNodosEscalable: (...args) => require('./nodosGobernanzaEscalableService').obtenerSolicitudesNodosEscalable(...args),
+    buscarClientesBunkerNodos: (...args) => require('./nodosGobernanzaEscalableService').buscarClientesBunkerNodos(...args),
+    obtenerBrandingNodoPorId: (...args) => require('./nodosGobernanzaEscalableService').obtenerBrandingNodoPorId(...args)
 };

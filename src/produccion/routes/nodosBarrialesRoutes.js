@@ -408,11 +408,98 @@ async function obtenerBaseUrlAccesibleCelular(req) {
  */
 router.get('/inicializar', async (req, res) => {
     try {
-        const data = await nodosService.obtenerEstadoCompletoNodos();
+        const data = await nodosService.obtenerEstadoCompletoNodos({
+            incluirBranding: String(req.query?.incluir_branding || '').toLowerCase() === 'true'
+        });
         res.json({ ok: true, ...data });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en GET /inicializar:', error);
         res.status(500).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * ============================================================================
+ * API MODULAR ESCALABLE ETAPA 4 (SIN BASE64/ZPL EN LISTADOS)
+ * ============================================================================
+ */
+router.get('/resumen', bloquearEnDominioPublicoTienda, async (_req, res) => {
+    try {
+        const data = await nodosService.obtenerResumenNodosEscalable();
+        res.json(data);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /resumen:', error);
+        res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
+router.get('/catalogo', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        const data = await nodosService.obtenerCatalogoNodosEscalable(req.query || {});
+        res.json(data);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /catalogo:', error);
+        res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
+router.patch('/catalogo/:id', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        const articulo = await nodosService.cambiarEstadoActivoCatalogoNodo(req.params.id, req.body || {});
+        res.json({ ok: true, articulo });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en PATCH /catalogo/:id:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.post('/catalogo/:id/nodos', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        const resultado = await nodosService.actualizarOfertasNodosMasivo(req.params.id, req.body || {});
+        res.json(resultado);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en POST /catalogo/:id/nodos:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+router.get('/presentaciones-planta', bloquearEnDominioPublicoTienda, async (_req, res) => {
+    try {
+        const data = await nodosService.obtenerPresentacionesPlantaNodosEscalable();
+        res.json(data);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /presentaciones-planta:', error);
+        res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
+router.get('/solicitudes', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        const data = await nodosService.obtenerSolicitudesNodosEscalable(req.query || {});
+        res.json(data);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /solicitudes:', error);
+        res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
+router.get('/clientes-bunker', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        const data = await nodosService.buscarClientesBunkerNodos(req.query || {});
+        res.json(data);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /clientes-bunker:', error);
+        res.status(error.statusCode || 500).json({ ok: false, error: error.message });
+    }
+});
+
+router.get(['/nodos/:id/branding', '/maestro/:id/branding'], bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        const data = await nodosService.obtenerBrandingNodoPorId(req.params.id);
+        res.json(data);
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en GET /nodos/:id/branding:', error);
+        res.status(error.statusCode || 404).json({ ok: false, error: error.message });
     }
 });
 
@@ -818,16 +905,32 @@ router.post('/recalcular-cascada', async (req, res) => {
 /**
  * PUT /api/produccion/nodos/ofertas-gestor/:id
  * Actualiza el margen del gestor y/o el estado de publicación para sus vecinos
+ * (bloquea mutación de `habilitado_lamda` si la petición proviene de Gestor o host público).
  */
 router.put('/ofertas-gestor/:id', autenticarGestorSiPublicoOToken, async (req, res) => {
     try {
         if (req.nodoAuth) {
             await nodosService.asegurarOfertaPerteneceANodo(req.params.id, req.nodoAuth.id);
         }
-        const oferta = await nodosService.actualizarOfertaGestor(req.params.id, req.body || {});
+        const esAdmin = !esSolicitudPublicaNodos(req) && !req.nodoAuth && !extraerTokenGestorRequest(req);
+        const oferta = await nodosService.actualizarOfertaGestor(req.params.id, req.body || {}, { esAdmin });
         res.json({ ok: true, oferta });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error actualizando oferta gestor:', error);
+        res.status(error.statusCode || 400).json({ ok: false, error: error.message });
+    }
+});
+
+/**
+ * PATCH /api/produccion/nodos/ofertas-gestor/:id
+ * Edición atómica por celda desde Pizarra LAMDA (Nivel 2 `habilitado_lamda`, Nivel 3 `publicado_tienda`, márgenes/precios).
+ */
+router.patch('/ofertas-gestor/:id', bloquearEnDominioPublicoTienda, async (req, res) => {
+    try {
+        const oferta = await nodosService.actualizarOfertaGestor(req.params.id, req.body || {}, { esAdmin: true });
+        res.json({ ok: true, oferta });
+    } catch (error) {
+        console.error('❌ [NodosRoutes] Error en PATCH /ofertas-gestor/:id:', error);
         res.status(error.statusCode || 400).json({ ok: false, error: error.message });
     }
 });

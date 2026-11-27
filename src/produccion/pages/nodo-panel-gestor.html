@@ -7619,12 +7619,18 @@
 
       const targetNum = Number((document.getElementById('prop-target')?.value ?? GSTATE.propPrecioObjetivoTexto) || 0);
 
+      const articuloSugeridoCodigo = solicitarHabilitacionExistente
+        ? (est.articuloLamda?.sku || est.articuloLamda?.codigo || est.articuloLamda?.articulo_id || null)
+        : null;
+
       const payload = {
         nodo_solicitante_id: GSTATE.nodo.id,
+        tipo_solicitud: solicitarHabilitacionExistente ? 'HABILITAR_SKU_EXISTENTE' : 'NUEVA_FRACCION',
         ingrediente_sugerido_id: Number(ingSel.id),
         flujo_sugerido: Number(ingSel.flujo || 2),
         familia_bunker_id: Number(ingSel.familia_bunker_id || 0) || null,
         articulo_principal_bunker: ingSel.articulo_principal_bunker || null,
+        articulo_bunker_sugerido_codigo: articuloSugeridoCodigo,
         categoria_sugerida: ingSel.familia_bunker_nombre || ingSel.categoria_lamda || ingSel.categoria_gestor || GSTATE.propCategoriaSel || 'Frutos Secos',
         nombre_sugerido: nombreConPeso,
         alias_vidriera_sugerido: aliasVidrieraInput || null,

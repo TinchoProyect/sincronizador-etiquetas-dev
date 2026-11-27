@@ -5,7 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Centro de Nodos — Sistema LAMDA</title>
   <script src="/lamda-cloud-runtime.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <style>
+    .abm-tabs-bar { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:10px; }
+    .abm-tab-btn { padding:7px 12px; border-radius:8px; border:1px solid var(--border-strong); background:#f8fafc; color:#334155; font-size:0.79rem; font-weight:800; cursor:pointer; }
+    .abm-tab-btn.active { background:#0f172a; color:#f8fafc; border-color:#0f172a; }
+    .abm-tab-panel { display:none; }
+    .abm-tab-panel.active { display:block; }
+    .centro-geo-wrap { position:relative; }
+    .centro-geo-dropdown { position:absolute; left:0; right:0; top:calc(100% + 4px); background:#fff; border:1px solid #0284c7; border-radius:8px; box-shadow:0 10px 25px rgba(15,23,42,0.18); z-index:9999; max-height:220px; overflow-y:auto; display:none; }
+    .centro-geo-item { padding:8px 11px; border-bottom:1px solid #e2e8f0; cursor:pointer; font-size:0.79rem; display:flex; justify-content:space-between; gap:8px; }
+    .centro-geo-item:hover { background:#eff6ff; }
     :root {
       --bg: #f1f5f9;
       --card: #ffffff;
@@ -793,18 +804,27 @@
       }
 
       CSTATE.nodos = Array.isArray(data.nodos) ? data.nodos : [];
+      CSTATE.listasPreciosNodos = Array.isArray(data.listas_precios_nodos) ? data.listas_precios_nodos : [];
+      CSTATE.configCuentaCanal = data.config_cuenta_canal || CSTATE.configCuentaCanal || {
+        banco_recaudador: 'Banco Galicia',
+        alias_recaudador: 'LAMDA.SER.MARTIN',
+        titular_recaudador: 'Martín Ignacio Serrano',
+        cbu_recaudador: '0070373230004007844141'
+      };
       CSTATE.modoLaboratorio = Boolean(data.modo_laboratorio);
       CSTATE.solicitudesPendientes = data.solicitudes_pendientes || { fracciones: 0, combos: 0, total: 0 };
       renderizarBadgeSolicitudesPendientesCentro();
       renderizarPillsNodosRadar();
 
-      if (seleccionarInicial && CSTATE.nodos.length > 0 && !CSTATE.nodoSeleccionadoId) {
+      const nodosActivosLista = CSTATE.nodos.filter(n => n.activo !== false);
+      const listaParaSel = nodosActivosLista.length > 0 ? nodosActivosLista : CSTATE.nodos;
+      if (seleccionarInicial && listaParaSel.length > 0 && !CSTATE.nodoSeleccionadoId) {
         const params = new URLSearchParams(window.location.search);
         const qNodo = (params.get('nodo') || '').trim().toLowerCase();
         const match = qNodo
           ? CSTATE.nodos.find(n => n.slug.toLowerCase() === qNodo || String(n.id) === qNodo || n.codigo_nodo.toLowerCase() === qNodo)
           : null;
-        CSTATE.nodoSeleccionadoId = match ? match.id : CSTATE.nodos[0].id;
+        CSTATE.nodoSeleccionadoId = match ? match.id : listaParaSel[0].id;
       }
 
       renderizarTarjetasSelectorNodos();
@@ -815,12 +835,22 @@
 
     function renderizarTarjetasSelectorNodos() {
       const strip = document.getElementById('nodos-cards-strip');
+      const archivadosCount = CSTATE.nodos.filter(n => n.activo === false).length;
+      const visibles = CSTATE.mostrarArchivados ? CSTATE.nodos : CSTATE.nodos.filter(n => n.activo !== false);
       if (!CSTATE.nodos.length) {
         strip.innerHTML = `<div class="panel-card" style="grid-column:1/-1; text-align:center;">No hay nodos registrados.</div>`;
         return;
       }
+      const barraArchivados = archivadosCount > 0 ? `
+        <div style="grid-column:1/-1; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:-4px;">
+          <span style="font-size:0.78rem; color:var(--muted); font-weight:700;">Mostrando ${visibles.length} de ${CSTATE.nodos.length} tiendas/nodos (${archivadosCount} archivado${archivadosCount === 1 ? '' : 's'})</span>
+          <label style="display:inline-flex; align-items:center; gap:6px; font-size:0.78rem; font-weight:800; color:#475569; cursor:pointer; padding:4px 10px; background:#fff; border:1px solid var(--border); border-radius:8px;">
+            <input type="checkbox" ${CSTATE.mostrarArchivados ? 'checked' : ''} onchange="CSTATE.mostrarArchivados = Boolean(this.checked); renderizarTarjetasSelectorNodos();" />
+            <span>Mostrar archivados (${archivadosCount})</span>
+          </label>
+        </div>` : '';
 
-      strip.innerHTML = CSTATE.nodos.map(n => {
+      strip.innerHTML = barraArchivados + visibles.map(n => {
         const sel = Number(n.id) === Number(CSTATE.nodoSeleccionadoId);
         const usaMadre = n.contabilidad.usar_cuenta_madre_unificada;
         const perfilN = normalizarPerfilCentro(n.perfil_operativo);
@@ -991,6 +1021,10 @@
                 <button type="button" id="btn-ficha-clonar-tienda" class="btn" style="flex:1; justify-content:center; padding:8px 10px; font-size:0.78rem; background:#f0fdf4; border-color:#86efac; color:#166534; font-weight:800;"
                   onclick="abrirModalAbmTiendaCentro(null, ${Number(n.id)})">
                   🧬 Clonar ${esc(n.nombre_marca)}
+                </button>
+                <button type="button" id="btn-ficha-estado-nodo" class="btn" style="padding:8px 10px; font-size:0.76rem; background:${n.activo !== false ? '#fffbeb' : '#ecfdf5'}; border-color:${n.activo !== false ? '#fcd34d' : '#86efac'}; color:${n.activo !== false ? '#92400e' : '#166534'}; font-weight:800;"
+                  onclick="alternarEstadoArchivadoNodoCentro(${Number(n.id)}, ${n.activo === false ? 'true' : 'false'}, '${esc(n.nombre_marca)}')">
+                  ${n.activo !== false ? '📦 Archivar' : '♻️ Reactivar'}
                 </button>
                 ${(CSTATE.modoLaboratorio && Number(n.id) > 2) ? `
                   <button type="button" id="btn-ficha-eliminar-lab" class="btn" style="padding:8px 10px; font-size:0.76rem; background:#fef2f2; border-color:#fecaca; color:#b91c1c; font-weight:800;"
@@ -2236,23 +2270,46 @@
       };
     }
 
-    async function asegurarClientesBunkerCargadosCentro() {
-      if (Array.isArray(CSTATE.clientesBunker) && CSTATE.clientesBunker.length > 0) return CSTATE.clientesBunker;
-      const resp = await fetch('/api/produccion/nodos/inicializar', { cache: 'no-store' });
-      const data = await resp.json();
-      if (Array.isArray(data?.fuentes?.clientes_bunker) && data.fuentes.clientes_bunker.length > 0) {
-        CSTATE.clientesBunker = data.fuentes.clientes_bunker;
-        return CSTATE.clientesBunker;
+    async function asegurarClientesBunkerCargadosCentro(q = '', idExacto = 0) {
+      const qs = new URLSearchParams();
+      if (q && String(q).trim()) qs.set('q', String(q).trim());
+      if (idExacto) qs.set('id', String(idExacto));
+      qs.set('limit', '35');
+      const resp = await fetch(`/api/produccion/nodos/clientes-bunker?${qs.toString()}`, { cache: 'no-store' });
+      const data = await resp.json().catch(() => null);
+      if (resp.ok && data?.ok && Array.isArray(data.clientes)) {
+        const mapById = new Map((CSTATE.clientesBunker || []).map(c => [Number(c.id), c]));
+        for (const c of data.clientes) mapById.set(Number(c.id), c);
+        CSTATE.clientesBunker = Array.from(mapById.values());
+        return data.clientes;
       }
-      const respAlt = await fetch('/api/logistica/bunker/clientes', { cache: 'no-store' });
-      const dataAlt = await respAlt.json();
-      CSTATE.clientesBunker = Array.isArray(dataAlt?.clientes) ? dataAlt.clientes : (Array.isArray(dataAlt) ? dataAlt : []);
-      return CSTATE.clientesBunker;
+      return CSTATE.clientesBunker || [];
+    }
+
+    async function cargarBrandingNodoOnDemandCentro(nodoId) {
+      const nid = Number(nodoId || 0);
+      if (!nid) return null;
+      const resp = await fetch(`/api/produccion/nodos/nodos/${nid}/branding`, { cache: 'no-store' });
+      const data = await resp.json().catch(() => null);
+      if (resp.ok && data?.ok && data.branding) return data.branding;
+      return null;
+    }
+
+    function cambiarTabAbmCentro(tabId) {
+      document.querySelectorAll('.abm-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.abmTab === tabId));
+      document.querySelectorAll('.abm-tab-panel').forEach(p => p.classList.toggle('active', p.dataset.abmPanel === tabId));
+      if (tabId === 'ubicacion' && CSTATE.abmDraft?.leafletMap) {
+        setTimeout(() => { try { CSTATE.abmDraft.leafletMap.invalidateSize(); } catch (_) {} }, 120);
+      }
     }
 
     function cerrarModalAbmTiendaCentro() {
       const m = document.getElementById('abm-tienda-centro-modal');
       if (m) m.style.display = 'none';
+      if (CSTATE.abmDraft?.leafletMap) {
+        try { CSTATE.abmDraft.leafletMap.remove(); } catch (_) {}
+        CSTATE.abmDraft.leafletMap = null;
+      }
     }
 
     function _armarSlugSugeridoCentro(txt) {
@@ -2264,17 +2321,333 @@
         .replace(/^-+|-+$/g, '');
     }
 
+    function _renderOpcionesClientesMadreCentro(clientes, selId) {
+      const lista = Array.isArray(clientes) ? clientes : [];
+      return `<option value="">— Seleccionar Cliente Titular en Búnker (${lista.length}) —</option>` +
+        lista.map(c => `
+          <option value="${Number(c.id)}" ${Number(selId) === Number(c.id) ? 'selected' : ''}>
+            [${esc(c.codigo_bunker_cliente || ('ID-' + c.id))}]${c.lomas_soft_id ? ` (#${esc(c.lomas_soft_id)})` : ''} ${esc(c.razon_social || c.cliente_nombre || 'Cliente')}
+          </option>
+        `).join('');
+    }
+
+    function alSeleccionarClienteMadreAbmCentro(cliIdRaw) {
+      const cliId = Number(cliIdRaw || 0);
+      const cli = (CSTATE.clientesBunker || []).find(c => Number(c.id) === cliId) || null;
+      const boxRes = document.getElementById('abm-centro-cliente-resumen');
+      const boxDoms = document.getElementById('abm-centro-domicilios-chips');
+      if (!cli) {
+        if (boxRes) boxRes.innerHTML = '';
+        if (boxDoms) boxDoms.innerHTML = '';
+        return;
+      }
+      if (boxRes) {
+        boxRes.innerHTML = `<div style="margin-top:6px; padding:7px 10px; border-radius:8px; background:#eff6ff; border:1px solid #bfdbfe; font-size:0.76rem; color:#1e3a8a;">
+          ✅ Titular: <strong>[${esc(cli.codigo_bunker_cliente)}]</strong> ${esc(cli.razon_social || cli.cliente_nombre)} · Saldo CC: <strong>${fmtMoneda(cli.saldo_cta_cte || 0)}</strong>
+        </div>`;
+      }
+      const doms = Array.isArray(cli.domicilios_registrados) ? cli.domicilios_registrados : [];
+      if (boxDoms) {
+        boxDoms.innerHTML = doms.length > 0
+          ? `<span style="font-size:0.72rem; font-weight:800; color:var(--muted);">Domicilios del cliente:</span> ` + doms.map((d, idx) => `
+              <button type="button" class="btn" style="padding:3px 8px; font-size:0.72rem;"
+                onclick="aplicarDomicilioClienteAbmCentro(${Number(cli.id)}, ${idx})">
+                📍 ${esc(d.alias || 'Entrega')}: ${esc(d.direccion || '')} (${esc(d.localidad || '')})
+              </button>`).join('')
+          : '';
+      }
+      if (!CSTATE.abmDraft?.editarId) {
+        const gNom = document.getElementById('abm-centro-gestor');
+        const gTel = document.getElementById('abm-centro-telefono');
+        const gDir = document.getElementById('abm-centro-direccion');
+        const gBar = document.getElementById('abm-centro-barrio');
+        if (gNom && !gNom.value.trim()) gNom.value = cli.cliente_nombre || cli.razon_social || '';
+        if (gTel && !gTel.value.trim()) gTel.value = cli.whatsapp_facturas || cli.domicilio_entrega_telefono || '';
+        if (gDir && !gDir.value.trim() && cli.domicilio_entrega_direccion) gDir.value = cli.domicilio_entrega_direccion;
+        if (gBar && !gBar.value.trim() && cli.domicilio_entrega_localidad) gBar.value = cli.domicilio_entrega_localidad;
+        if (cli.domicilio_entrega_latitud && cli.domicilio_entrega_longitud) {
+          posicionarPinMapaAbmCentro(Number(cli.domicilio_entrega_latitud), Number(cli.domicilio_entrega_longitud), false);
+        }
+      }
+    }
+
+    function aplicarDomicilioClienteAbmCentro(cliId, idx) {
+      const cli = (CSTATE.clientesBunker || []).find(c => Number(c.id) === Number(cliId));
+      const dom = cli?.domicilios_registrados?.[Number(idx)];
+      if (!dom) return;
+      const dirEl = document.getElementById('abm-centro-direccion');
+      const barEl = document.getElementById('abm-centro-barrio');
+      if (dirEl && dom.direccion) dirEl.value = dom.direccion;
+      if (barEl && dom.localidad) barEl.value = dom.localidad;
+      if (dom.latitud && dom.longitud) {
+        posicionarPinMapaAbmCentro(Number(dom.latitud), Number(dom.longitud), false);
+      }
+    }
+
+    function inicializarMapaLeafletAbmCentro(latIni, lngIni) {
+      const canvas = document.getElementById('abm-centro-leaflet-map');
+      if (!canvas || !window.L) return;
+      if (CSTATE.abmDraft?.leafletMap) {
+        try { CSTATE.abmDraft.leafletMap.remove(); } catch (_) {}
+      }
+      const hasCoords = Number.isFinite(Number(latIni)) && Number.isFinite(Number(lngIni)) && Number(latIni) !== 0;
+      const lat = hasCoords ? Number(latIni) : -34.92145;
+      const lng = hasCoords ? Number(lngIni) : -57.95453;
+      const map = L.map(canvas).setView([lat, lng], hasCoords ? 15 : 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap',
+        maxZoom: 19
+      }).addTo(map);
+      const marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+      marker.on('dragend', () => {
+        const pos = marker.getLatLng();
+        posicionarPinMapaAbmCentro(pos.lat, pos.lng, true);
+      });
+      map.on('click', (ev) => {
+        posicionarPinMapaAbmCentro(ev.latlng.lat, ev.latlng.lng, true);
+      });
+      CSTATE.abmDraft.leafletMap = map;
+      CSTATE.abmDraft.leafletMarker = marker;
+    }
+
+    async function posicionarPinMapaAbmCentro(lat, lng, hacerReverse = false) {
+      const latEl = document.getElementById('abm-centro-latitud');
+      const lngEl = document.getElementById('abm-centro-longitud');
+      if (latEl) latEl.value = Number(lat).toFixed(6);
+      if (lngEl) lngEl.value = Number(lng).toFixed(6);
+      if (CSTATE.abmDraft?.leafletMarker && CSTATE.abmDraft?.leafletMap) {
+        CSTATE.abmDraft.leafletMarker.setLatLng([lat, lng]);
+        CSTATE.abmDraft.leafletMap.setView([lat, lng], Math.max(14, CSTATE.abmDraft.leafletMap.getZoom() || 15));
+      }
+      if (hacerReverse) {
+        try {
+          const r = await fetch(`/api/produccion/nodos/geocodificar-inverso?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`);
+          const d = await r.json();
+          if (d.ok && d.resultado) {
+            const barEl = document.getElementById('abm-centro-barrio');
+            const dirEl = document.getElementById('abm-centro-direccion');
+            if (barEl && d.resultado.localidad && !barEl.value.trim()) barEl.value = d.resultado.localidad;
+            if (dirEl && d.resultado.direccion && !dirEl.value.trim()) dirEl.value = d.resultado.direccion;
+          }
+        } catch (_) {}
+      }
+    }
+
+    async function buscarGeoMapaAbmCentro(textoOverride = null) {
+      const q = (textoOverride !== null ? textoOverride : document.getElementById('abm-centro-geo-q')?.value) || '';
+      const drop = document.getElementById('abm-centro-geo-drop');
+      if (!q.trim()) return;
+      const resp = await fetch(`/api/produccion/nodos/geocodificar-ar?q=${encodeURIComponent(q.trim())}`);
+      const data = await resp.json().catch(() => null);
+      const lista = Array.isArray(data?.resultados) ? data.resultados : (data?.resultado ? [data.resultado] : []);
+      if (!drop) {
+        if (lista[0]) posicionarPinMapaAbmCentro(lista[0].lat, lista[0].lng, false);
+        return;
+      }
+      if (lista.length === 0) {
+        drop.style.display = 'block';
+        drop.innerHTML = `<div style="padding:8px 10px; font-size:0.78rem; color:#64748b;">Sin resultados para "${esc(q)}"</div>`;
+        return;
+      }
+      CSTATE.abmDraft.geoResultados = lista;
+      drop.style.display = 'block';
+      drop.innerHTML = lista.slice(0, 6).map((r, i) => `
+        <div class="centro-geo-item" onclick="elegirResultadoGeoAbmCentro(${i})">
+          <span>📍 ${esc(r.direccion_formateada || r.label || r.direccion || '')}</span>
+          <span style="color:#0284c7; font-weight:800;">${esc(r.localidad || r.provincia || '')}</span>
+        </div>
+      `).join('');
+    }
+
+    function elegirResultadoGeoAbmCentro(idx) {
+      const r = CSTATE.abmDraft?.geoResultados?.[Number(idx)];
+      const drop = document.getElementById('abm-centro-geo-drop');
+      if (drop) drop.style.display = 'none';
+      if (!r) return;
+      const dirEl = document.getElementById('abm-centro-direccion');
+      const barEl = document.getElementById('abm-centro-barrio');
+      if (dirEl && (r.calle_altura || r.direccion_formateada)) dirEl.value = r.calle_altura || r.direccion_formateada;
+      if (barEl && (r.barrio || r.localidad)) barEl.value = r.barrio || r.localidad;
+      posicionarPinMapaAbmCentro(Number(r.lat), Number(r.lng), false);
+    }
+
+    function renderizarListaVentanasCorteAbmCentro(ventanas = []) {
+      const box = document.getElementById('abm-centro-ventanas-list');
+      if (!box) return;
+      const lista = (Array.isArray(ventanas) && ventanas.length > 0)
+        ? ventanas
+        : [{ dia_entrega: 'Miércoles', cierre_dia: 'Martes', cierre_hora: '14:00', ventana_retiro: '17:00 a 20:00 hs' }];
+      box.innerHTML = lista.map((v, idx) => `
+        <div class="abm-ventana-row" style="display:grid; grid-template-columns:1fr 1fr 0.7fr 1.2fr auto; gap:8px; align-items:center; background:#fff; padding:7px 9px; border-radius:8px; border:1px solid var(--border); margin-bottom:6px;">
+          <input type="text" class="v-dia-ent" value="${esc(v.dia_entrega || 'Miércoles')}" placeholder="Día entrega" style="padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px; font-size:0.8rem; font-weight:700;" />
+          <input type="text" class="v-cierre-dia" value="${esc(v.cierre_dia || 'Martes')}" placeholder="Día cierre" style="padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px; font-size:0.8rem;" />
+          <input type="text" class="v-cierre-hora" value="${esc(v.cierre_hora || '14:00')}" placeholder="14:00" style="padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px; font-size:0.8rem; font-family:monospace;" />
+          <input type="text" class="v-retiro" value="${esc(v.ventana_retiro || '17:00 a 20:00 hs')}" placeholder="17:00 a 20:00 hs" style="padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px; font-size:0.8rem;" />
+          <button type="button" class="btn" style="padding:4px 8px; font-size:0.75rem; color:#b91c1c;" onclick="this.closest('.abm-ventana-row').remove()">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function agregarVentanaCorteAbmCentro() {
+      const box = document.getElementById('abm-centro-ventanas-list');
+      if (!box) return;
+      const div = document.createElement('div');
+      div.className = 'abm-ventana-row';
+      div.style.cssText = 'display:grid; grid-template-columns:1fr 1fr 0.7fr 1.2fr auto; gap:8px; align-items:center; background:#fff; padding:7px 9px; border-radius:8px; border:1px solid var(--border); margin-bottom:6px;';
+      div.innerHTML = `
+        <input type="text" class="v-dia-ent" value="Sábado" placeholder="Día entrega" style="padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px; font-size:0.8rem; font-weight:700;" />
+        <input type="text" class="v-cierre-dia" value="Jueves" placeholder="Día cierre" style="padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px; font-size:0.8rem;" />
+        <input type="text" class="v-cierre-hora" value="18:00" placeholder="18:00" style="padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px; font-size:0.8rem; font-family:monospace;" />
+        <input type="text" class="v-retiro" value="10:00 a 13:00 hs" placeholder="10:00 a 13:00 hs" style="padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px; font-size:0.8rem;" />
+        <button type="button" class="btn" style="padding:4px 8px; font-size:0.75rem; color:#b91c1c;" onclick="this.closest('.abm-ventana-row').remove()">✕</button>
+      `;
+      box.appendChild(div);
+    }
+
+    function subirArchivoLogoAbmCentro(event) {
+      const file = event?.target?.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        CSTATE.abmDraft.logoSubidoBase64 = e.target.result;
+        CSTATE.abmDraft.limpiarLogoOriginal = false;
+        CSTATE.abmDraft.brandingTouched = true;
+        const imgCol = document.getElementById('abm-centro-logo-color-img');
+        if (imgCol) { imgCol.src = e.target.result; imgCol.style.display = 'block'; }
+        const thEl = document.getElementById('abm-centro-logo-threshold');
+        if (thEl && Number(thEl.value) < 160) {
+          thEl.value = 180;
+          const lbl = document.getElementById('abm-centro-threshold-lbl');
+          if (lbl) lbl.textContent = '180';
+        }
+        regenerarLogoZplAbmCentro();
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function quitarLogoImagenAbmCentro() {
+      CSTATE.abmDraft.logoSubidoBase64 = null;
+      CSTATE.abmDraft.limpiarLogoOriginal = true;
+      CSTATE.abmDraft.brandingTouched = true;
+      const imgCol = document.getElementById('abm-centro-logo-color-img');
+      if (imgCol) { imgCol.src = ''; imgCol.style.display = 'none'; }
+      regenerarLogoZplAbmCentro();
+    }
+
+    async function regenerarLogoZplAbmCentro() {
+      const nombreMarca = document.getElementById('abm-centro-marca')?.value || 'NODO';
+      const iniciales = document.getElementById('abm-centro-logo-iniciales')?.value || '';
+      const mode = document.getElementById('abm-centro-logo-mode')?.value || 'threshold';
+      const threshold = Number(document.getElementById('abm-centro-logo-threshold')?.value || 138);
+      const zplCfg = CSTATE.abmDraft?.logoZplConfig || {};
+      const resp = await fetch('/api/produccion/nodos/convertir-logo-zpl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: CSTATE.abmDraft?.logoSubidoBase64 || null,
+          nombreMarca,
+          iniciales,
+          mode,
+          threshold,
+          width: zplCfg.width || undefined,
+          height: zplCfg.height || undefined,
+          padding: zplCfg.padding,
+          invert: Boolean(zplCfg.invert)
+        })
+      });
+      const data = await resp.json().catch(() => null);
+      if (!data?.ok) return;
+      const prevEl = document.getElementById('abm-centro-logo-mono-img');
+      if (prevEl) prevEl.src = data.logo_mono_preview_base64;
+      const gfaEl = document.getElementById('abm-centro-logo-gfa');
+      if (gfaEl) gfaEl.value = data.logo_zpl_gfa;
+      simularEtiquetaZebraAbmCentro('estandar_pagado');
+    }
+
+    async function simularEtiquetaZebraAbmCentro(modo = 'estandar_pagado') {
+      const esLargo = modo === 'largo_continuacion';
+      const payload = {
+        nombre_marca: document.getElementById('abm-centro-marca')?.value || 'NODO',
+        bajada_marca: document.getElementById('abm-centro-bajada')?.value || '',
+        subtitulo_marca: document.getElementById('abm-centro-subtitulo')?.value || '',
+        logo_zpl_gfa: document.getElementById('abm-centro-logo-gfa')?.value || '',
+        logo_mono_preview_base64: document.getElementById('abm-centro-logo-mono-img')?.src || '',
+        logo_zpl_config: CSTATE.abmDraft?.logoZplConfig || undefined,
+        pedido_codigo: esLargo ? 'NB-1089' : 'NB-1042',
+        vecino_nombre: esLargo ? 'VALERIA SANCHEZ' : 'MARIA LAURA GOMEZ',
+        vecino_telefono: '221-554-8910',
+        modalidad_entrega: 'RETIRO EN NODO (17:00 A 20:00 HS)',
+        direccion_barrial: document.getElementById('abm-centro-direccion')?.value || 'Punto de Retiro',
+        estado_pago: esLargo ? 'COBRAR EFECTIVO' : 'PAGADO (TRANSFERENCIA)',
+        monto_cobrar: esLargo ? 46800 : 0,
+        bultos_texto: 'BOLSA 1/1',
+        items: [
+          { cantidad: 2, descripcion: 'Almendra Nonpareil Californiana x 250g' },
+          { cantidad: 1, descripcion: 'Mix Frutos Secos Familiar x 500g' },
+          { cantidad: 1, descripcion: 'Granola de Sol Crocante x 500g' },
+          ...(esLargo ? [
+            { cantidad: 2, descripcion: 'Pack Familiar 6 Barritas Energeticas' },
+            { cantidad: 1, descripcion: 'Nuez Mariposa Extra Light x 250g' },
+            { cantidad: 1, descripcion: 'Arandanos Pasas Premium x 250g' },
+            { cantidad: 2, descripcion: 'Coco en Escamas Natural x 200g' }
+          ] : [])
+        ]
+      };
+      const resp = await fetch('/api/produccion/nodos/preview-etiqueta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await resp.json().catch(() => null);
+      if (!data?.ok) return;
+      const rollo = document.getElementById('abm-centro-rollo-img');
+      if (rollo) rollo.src = data.preview_rollo_base64;
+      const zplArea = document.getElementById('abm-centro-rollo-zpl');
+      if (zplArea) zplArea.value = data.zpl;
+    }
+
+    async function guardarConfigCuentaCanalAbmCentro() {
+      const alias = document.getElementById('abm-canal-edit-alias')?.value?.trim();
+      const banco = document.getElementById('abm-canal-edit-banco')?.value?.trim();
+      const titular = document.getElementById('abm-canal-edit-titular')?.value?.trim();
+      const cbu = document.getElementById('abm-canal-edit-cbu')?.value?.trim();
+      if (!alias) return alert('Ingresá el alias compartido del Canal Nodos.');
+      const resp = await fetch('/api/produccion/nodos/config-cuenta-canal', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias_recaudador: alias, banco_recaudador: banco, titular_recaudador: titular, cbu_recaudador: cbu })
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok || !data?.ok) return alert(data?.error || 'Error actualizando cuenta compartida.');
+      CSTATE.configCuentaCanal = data.config_cuenta_canal || { alias_recaudador: alias, banco_recaudador: banco, titular_recaudador: titular, cbu_recaudador: cbu };
+      const lbl = document.getElementById('abm-centro-canal-resumen');
+      if (lbl) lbl.textContent = `${CSTATE.configCuentaCanal.banco_recaudador || ''} · Alias: ${CSTATE.configCuentaCanal.alias_recaudador || alias}`;
+      if (document.getElementById('abm-centro-cuenta-compartida')?.checked) {
+        const alEl = document.getElementById('abm-centro-alias-display');
+        if (alEl) alEl.value = alias;
+      }
+      alert('✅ Cuenta compartida actualizada para los Nodos adheridos.');
+    }
+
+    async function alternarEstadoArchivadoNodoCentro(nodoId, activar, nombreMarca) {
+      const accion = activar ? 'reactivar' : 'archivar';
+      if (!confirm(`¿Seguro que deseás ${accion} la tienda "${nombreMarca}"?`)) return;
+      const resp = await fetch(`/api/produccion/nodos/maestro/${Number(nodoId)}/estado`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activo: Boolean(activar) })
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok || !data?.ok) return alert(data?.error || `No se pudo ${accion} el nodo.`);
+      await cargarResumenNodos(false);
+      await seleccionarNodoFicha(Number(nodoId), false);
+    }
+
     async function abrirModalAbmTiendaCentro(editarNodoId = null, clonarOrigenId = null) {
       const modal = document.getElementById('abm-tienda-centro-modal');
       const box = document.getElementById('abm-tienda-centro-content');
       modal.style.display = 'flex';
-      box.innerHTML = `<div style="padding:26px; text-align:center; font-weight:800; color:var(--muted);">⏳ Cargando padrón Búnker y configuración de perfiles...</div>`;
-
-      try {
-        await asegurarClientesBunkerCargadosCentro();
-      } catch (_) {
-        CSTATE.clientesBunker = CSTATE.clientesBunker || [];
-      }
+      box.innerHTML = `<div style="padding:26px; text-align:center; font-weight:800; color:var(--muted);">⏳ Cargando padrón Búnker, branding y configuración del Nodo...</div>`;
 
       const editNodo = editarNodoId
         ? CSTATE.nodos.find(x => Number(x.id) === Number(editarNodoId)) || null
@@ -2282,6 +2655,14 @@
       const origenClon = (!editNodo && clonarOrigenId)
         ? CSTATE.nodos.find(x => Number(x.id) === Number(clonarOrigenId)) || null
         : null;
+
+      let brandingCargado = null;
+      try {
+        const reqs = [asegurarClientesBunkerCargadosCentro('', editNodo?.contabilidad?.cliente_madre_bunker_id || 0)];
+        if (editNodo?.id) reqs.push(cargarBrandingNodoOnDemandCentro(editNodo.id));
+        const resps = await Promise.all(reqs);
+        if (editNodo?.id && resps[1]) brandingCargado = resps[1];
+      } catch (_) {}
 
       const baseRef = editNodo || origenClon || null;
       const perfilInicial = normalizarPerfilCentro(baseRef?.perfil_operativo || 'VECINOS');
@@ -2303,14 +2684,34 @@
           : paqDef.tarifario_zonas
       };
 
+      const zplCfgIni = (brandingCargado?.logo_zpl_config && typeof brandingCargado.logo_zpl_config === 'object')
+        ? brandingCargado.logo_zpl_config
+        : { mode: 'threshold', threshold: 138, iniciales: (editNodo?.nombre_marca || 'ND').slice(0, 2).toUpperCase() };
+
       CSTATE.abmDraft = {
         editarId: editNodo ? Number(editNodo.id) : null,
         clonarOrigenId: origenClon ? Number(origenClon.id) : '',
-        logoSubidoBase64: null
+        logoSubidoBase64: brandingCargado?.logo_original_base64 || null,
+        limpiarLogoOriginal: false,
+        brandingTouched: false,
+        logoZplConfig: zplCfgIni,
+        temaVisual: brandingCargado?.tema_visual || editNodo?.tema_visual || {},
+        leafletMap: null,
+        leafletMarker: null,
+        geoResultados: []
       };
 
       const clienteMadrePreId = editNodo?.contabilidad?.cliente_madre_bunker_id || '';
       const usarUnificadaPre = editNodo ? Boolean(editNodo.contabilidad?.usar_cuenta_madre_unificada) : true;
+      const listasNodos = CSTATE.listasPreciosNodos || [];
+      const listaPreSel = editNodo?.lista_precio_bunker_id || (listasNodos[0]?.id || '');
+      const cfgCanal = CSTATE.configCuentaCanal || {
+        banco_recaudador: 'Banco Galicia',
+        alias_recaudador: 'LAMDA.SER.MARTIN',
+        titular_recaudador: 'Martín Ignacio Serrano',
+        cbu_recaudador: '0070373230004007844141'
+      };
+      const ventanasIni = brandingCargado?.config_ventanas_corte || editNodo?.config_ventanas_corte || [];
 
       const switchesDefs = [
         { key: 'retiro_punto', label: '🏪 Punto de retiro presencial', desc: 'Retiro sin cargo en local comercial o punto del gestor' },
@@ -2328,337 +2729,382 @@
       ];
 
       box.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:12px;">
           <div>
             <h3 style="margin:0; font-size:1.15rem; font-weight:900;">
               ${editNodo
-                ? `⚙️ Configurar Tienda · Capa A (Perfil) + Capa B (Perillas) · ${esc(editNodo.nombre_marca)}`
-                : '➕ Nueva Tienda / Marca (Perfiles Base + Perillas Abiertas)'}
+                ? `⚙️ ABM Unificado · ${esc(editNodo.nombre_marca)} (${esc(editNodo.codigo_nodo)})`
+                : '➕ Nueva Tienda / Marca (ABM Unificado LAMDA)'}
             </h3>
-            <div style="font-size:0.8rem; color:var(--muted); margin-top:3px;">
+            <div style="font-size:0.79rem; color:var(--muted); margin-top:3px;">
               ${editNodo
-                ? `Código ${esc(editNodo.codigo_nodo)} · /tienda/${esc(editNodo.slug)}`
-                : 'Elegí un perfil base (VECINOS, REDES o LOCALES) y personalizá cualquier perilla individual sin cambiar de perfil.'}
+                ? `Subcuenta <code>${esc(editNodo.contabilidad?.codigo_subcuenta_nodo || 'CB-NODO')}</code> · /tienda/${esc(editNodo.slug)}`
+                : 'Identidad, Cliente Madre (1:N), Mapa AR, Operativa, Horarios, Recaudación y Logo ZPL en un solo lugar.'}
             </div>
           </div>
           <button type="button" class="btn" onclick="cerrarModalAbmTiendaCentro()">✕ Cerrar</button>
         </div>
 
-        ${!editNodo ? `
-          <div style="background:linear-gradient(135deg, #f0fdf4 0%, #ecfeff 100%); border:1.5px solid #86efac; border-radius:12px; padding:12px 14px; margin-bottom:14px;">
-            <label for="abm-centro-clonar-select" style="display:block; font-size:0.82rem; font-weight:900; color:#14532d; margin-bottom:6px;">
-              🧬 Crear clonando configuración operativa de:
-            </label>
-            <select id="abm-centro-clonar-select" onchange="onCambioClonarPlantillaCentro(this.value)"
-              style="width:100%; padding:9px 11px; border-radius:9px; border:1px solid #4ade80; font-family:inherit; font-size:0.86rem; font-weight:800; background:#fff;">
-              <option value="">— Sin plantilla (configuración manual desde cero) —</option>
-              ${CSTATE.nodos.map(nd => {
-                const pfN = normalizarPerfilCentro(nd.perfil_operativo);
-                const pfLbl = pfN === 'REDES' ? '🚀 REDES · Tienda Online' : (pfN === 'LOCALES' ? '🏪 LOCALES · Pick-up Point' : '🏡 VECINOS · Barrial');
-                return `
-                  <option value="${Number(nd.id)}" ${Number(origenClon?.id || 0) === Number(nd.id) ? 'selected' : ''}>
-                    ${esc(nd.nombre_marca)} (${pfLbl})
-                  </option>
-                `;
-              }).join('')}
-            </select>
-            <label style="display:flex; align-items:center; gap:7px; margin-top:8px; font-size:0.79rem; font-weight:700; color:#166534; cursor:pointer;">
-              <input type="checkbox" id="abm-centro-clonar-ofertas" checked />
-              <span>Clonar catálogo publicado y % de márgenes de la plantilla (sin copiar fotos privadas ni cuentas contables)</span>
-            </label>
-          </div>
-        ` : ''}
-
-        <!-- 1. CAPA A — PERFIL OPERATIVO BASE (3 MOLDES) -->
-        <div style="margin-bottom:14px;">
-          <div style="font-size:0.79rem; font-weight:900; text-transform:uppercase; color:var(--muted); margin-bottom:6px;">
-            1. Capa A — Perfil Operativo Base (precarga perillas por defecto)
-          </div>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px;">
-            <label id="card-perfil-VECINOS" data-perfil-card="VECINOS" style="display:flex; align-items:flex-start; gap:9px; padding:11px 13px; border-radius:11px; border:2px solid ${perfilInicial === 'VECINOS' ? '#16a34a' : 'var(--border)'}; background:${perfilInicial === 'VECINOS' ? '#f0fdf4' : '#fff'}; cursor:pointer;">
-              <input type="radio" name="abm-centro-perfil" value="VECINOS" ${perfilInicial === 'VECINOS' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('VECINOS')" style="margin-top:3px;" />
-              <div>
-                <div style="font-weight:900; font-size:0.88rem;">🏡 VECINOS</div>
-                <div style="font-size:0.74rem; color:var(--muted);">Gestor barrial: canasto en depósito + retiro o Hoja de Ruta propia (ej. Paraíso).</div>
-              </div>
-            </label>
-            <label id="card-perfil-REDES" data-perfil-card="REDES" style="display:flex; align-items:flex-start; gap:9px; padding:11px 13px; border-radius:11px; border:2px solid ${perfilInicial === 'REDES' ? '#d97706' : 'var(--border)'}; background:${perfilInicial === 'REDES' ? '#fffbeb' : '#fff'}; cursor:pointer;">
-              <input type="radio" name="abm-centro-perfil" value="REDES" ${perfilInicial === 'REDES' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('REDES')" style="margin-top:3px;" />
-              <div>
-                <div style="font-weight:900; font-size:0.88rem;">🚀 REDES</div>
-                <div style="font-size:0.74rem; color:var(--muted);">Creador / marca online 24/7: fulfillment LAMDA + Correo Argentino / Andreani (ej. MANSO).</div>
-              </div>
-            </label>
-            <label id="card-perfil-LOCALES" data-perfil-card="LOCALES" style="display:flex; align-items:flex-start; gap:9px; padding:11px 13px; border-radius:11px; border:2px solid ${perfilInicial === 'LOCALES' ? '#1e293b' : 'var(--border)'}; background:${perfilInicial === 'LOCALES' ? '#f1f5f9' : '#fff'}; cursor:pointer;">
-              <input type="radio" name="abm-centro-perfil" value="LOCALES" ${perfilInicial === 'LOCALES' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('LOCALES')" style="margin-top:3px;" />
-              <div>
-                <div style="font-weight:900; font-size:0.88rem;">🏪 LOCALES</div>
-                <div style="font-size:0.74rem; color:var(--muted);">Comercio Pick-up Point: camioneta LAMDA al local, cero envío a domicilio, mostrador ágil (ej. Moro).</div>
-              </div>
-            </label>
-          </div>
+        <div class="abm-tabs-bar">
+          <button type="button" class="abm-tab-btn active" data-abm-tab="identidad" onclick="cambiarTabAbmCentro('identidad')">1. Identidad y Cliente Madre</button>
+          <button type="button" class="abm-tab-btn" data-abm-tab="ubicacion" onclick="cambiarTabAbmCentro('ubicacion')">2. Ubicación y Mapa AR</button>
+          <button type="button" class="abm-tab-btn" data-abm-tab="operativa" onclick="cambiarTabAbmCentro('operativa')">3. Perfil, Entrega y Horarios</button>
+          <button type="button" class="abm-tab-btn" data-abm-tab="recaudacion" onclick="cambiarTabAbmCentro('recaudacion')">4. Banco, Lista y Contacto</button>
+          <button type="button" class="abm-tab-btn" data-abm-tab="branding" onclick="cambiarTabAbmCentro('branding')">5. Logo y Etiqueta Zebra ZPL</button>
         </div>
 
-        <!-- 2. IDENTIDAD Y TITULAR CONTABLE -->
-        <div style="background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:13px 14px; margin-bottom:14px;">
-          <div style="font-size:0.79rem; font-weight:900; text-transform:uppercase; color:var(--muted); margin-bottom:9px;">
-            2. Identidad de Marca y Titular Contable (Aislado por Tienda)
-          </div>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(195px, 1fr)); gap:10px;">
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Nombre de la Marca *</label>
-              <input type="text" id="abm-centro-marca" value="${esc(editNodo?.nombre_marca || '')}" placeholder="Ej: MORO / NUEVA MARCA"
-                oninput="if(!CSTATE.abmDraft.editarId){ document.getElementById('abm-centro-slug').value = _armarSlugSugeridoCentro(this.value); }"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem; font-weight:800;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Slug URL (/tienda/...) *</label>
-              <input type="text" id="abm-centro-slug" value="${esc(editNodo?.slug || '')}" placeholder="ej: moro"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:monospace; font-size:0.84rem;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Titular / Referente *</label>
-              <input type="text" id="abm-centro-gestor" value="${esc(editNodo?.gestor_nombre || '')}" placeholder="Ej: Agustín Chiste"
-                oninput="refrescarResumenBasePerfilAbmCentro()"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;" title="Teléfono interno/logístico del titular con LAMDA (y respaldo automático si la tienda no configura un WhatsApp comercial separado)">Tel. Titular / Operativo LAMDA</label>
-              <input type="text" id="abm-centro-telefono" value="${esc(editNodo?.gestor_telefono || '')}" placeholder="Ej: 549221..."
-                oninput="refrescarResumenBasePerfilAbmCentro()"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem;" />
-            </div>
-          </div>
-
-          <div style="display:grid; grid-template-columns:1.4fr 1.1fr 0.75fr 0.7fr 0.7fr 0.55fr; gap:10px; margin-top:10px;">
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Subtítulo público de la tienda</label>
-              <input type="text" id="abm-centro-subtitulo" value="${esc(editNodo?.subtitulo_marca || SUBTITULOS_DEFAULT_CENTRO[perfilInicial])}"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.83rem;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;" title="Se muestra centrado arriba de la tira de rubros en la tienda (opcional, ej: FRUTOS SECOS)">Línea sobre rubros</label>
-              <input type="text" id="abm-centro-subtitulo-catalogo" value="${esc(editNodo?.diccionario_textos?.subtitulo_catalogo || '')}" placeholder="Ej: FRUTOS SECOS"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.83rem; font-weight:700;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Margen inicial (%)</label>
-              <input type="number" step="0.5" id="abm-centro-margen" value="${Number(baseRef?.margen_gestor_default_pct ?? 28)}"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem; font-weight:800;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;" title="Alícuota de IVA retenida por LAMDA sobre el excedente comercial del nodo">IVA s/margen (%)</label>
-              <input type="number" step="0.5" min="0" max="50" id="abm-centro-iva-margen" value="${Number(baseRef?.alicuota_iva_margen_pct ?? 21)}"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem; font-weight:800;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;" title="Alícuota de Ingresos Brutos retenida por LAMDA sobre el excedente comercial del nodo">IIBB s/margen (%)</label>
-              <input type="number" step="0.25" min="0" max="20" id="abm-centro-iibb-margen" value="${Number(baseRef?.alicuota_iibb_margen_pct ?? 4)}"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.85rem; font-weight:800;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Color</label>
-              <input type="color" id="abm-centro-color" value="${esc(baseRef?.color_primario || '#4F1F27')}"
-                style="width:100%; height:36px; padding:2px; border-radius:8px; border:1px solid var(--border-strong); cursor:pointer;" />
-            </div>
-          </div>
-
-          <div id="abm-centro-barrial-fields" style="display:${modBase.retiro_punto || modBase.reparto_zonal ? 'grid' : 'none'}; grid-template-columns:1fr 1.4fr 0.8fr; gap:10px; margin-top:10px;">
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Barrio / Zona local</label>
-              <input type="text" id="abm-centro-barrio" value="${esc(editNodo?.barrio_zona || '')}" placeholder="Ej: City Bell"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Dirección punto de retiro</label>
-              <input type="text" id="abm-centro-direccion" value="${esc(editNodo?.direccion_retiro || '')}" placeholder="Ej: Cantilo 452"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Envío barrial ($)</label>
-              <input type="number" step="100" id="abm-centro-cargo-barrial" value="${Number(editNodo?.cargo_envio_barrial || 0)}"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
-            </div>
-          </div>
-
-          <div style="margin-top:10px; padding-top:10px; border-top:1px dashed var(--border); display:grid; grid-template-columns:1fr 1.4fr; gap:10px; align-items:end;">
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">🔎 Filtrar Cliente Titular en Padrón Búnker</label>
-              <input type="text" id="abm-centro-filtro-cliente" placeholder="Escribí nombre, razón social o CB-..."
-                oninput="filtrarClientesBunkerModalCentro(this.value)"
-                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Cliente Titular Madre (bunker_clientes) *</label>
-              <select id="abm-centro-cliente-madre" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.84rem; font-weight:700; background:#fff;">
-                <option value="">— Seleccionar Cliente Titular en Búnker —</option>
-                ${(CSTATE.clientesBunker || []).map(c => `
-                  <option value="${Number(c.id)}" ${Number(clienteMadrePreId) === Number(c.id) ? 'selected' : ''}>
-                    [${esc(c.codigo_bunker_cliente || ('ID-' + c.id))}] ${esc(c.cliente_nombre || c.razon_social || 'Cliente')}
-                  </option>
-                `).join('')}
+        <!-- TAB 1: IDENTIDAD Y CLIENTE MADRE -->
+        <div class="abm-tab-panel active" data-abm-panel="identidad">
+          ${!editNodo ? `
+            <div style="background:linear-gradient(135deg, #f0fdf4 0%, #ecfeff 100%); border:1.5px solid #86efac; border-radius:12px; padding:11px 14px; margin-bottom:12px;">
+              <label for="abm-centro-clonar-select" style="display:block; font-size:0.81rem; font-weight:900; color:#14532d; margin-bottom:5px;">
+                🧬 Crear clonando configuración operativa de:
+              </label>
+              <select id="abm-centro-clonar-select" onchange="onCambioClonarPlantillaCentro(this.value)"
+                style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid #4ade80; font-family:inherit; font-size:0.84rem; font-weight:800; background:#fff;">
+                <option value="">— Sin plantilla (configuración manual desde cero) —</option>
+                ${CSTATE.nodos.map(nd => {
+                  const pfN = normalizarPerfilCentro(nd.perfil_operativo);
+                  return `<option value="${Number(nd.id)}" ${Number(origenClon?.id || 0) === Number(nd.id) ? 'selected' : ''}>${esc(nd.nombre_marca)} (${pfN})</option>`;
+                }).join('')}
               </select>
+              <label style="display:flex; align-items:center; gap:7px; margin-top:7px; font-size:0.78rem; font-weight:700; color:#166534; cursor:pointer;">
+                <input type="checkbox" id="abm-centro-clonar-ofertas" checked />
+                <span>Clonar catálogo y % de márgenes de la plantilla (nacen habilitados en /gestor sin autopublicar)</span>
+              </label>
             </div>
-          </div>
-          <label style="display:inline-flex; align-items:center; gap:7px; margin-top:8px; font-size:0.79rem; font-weight:800; color:#4c1d95; cursor:pointer;">
-            <input type="checkbox" id="abm-centro-usar-madre-unificada" ${usarUnificadaPre ? 'checked' : ''} />
-            <span>🔗 Usar Cuenta Madre Unificada (imputar liquidaciones en la cuenta principal del titular manteniendo subcuenta oculta)</span>
-          </label>
-        </div>
+          ` : ''}
 
-        <!-- 3. CAPA B — PERILLAS INDIVIDUALES ABIERTAS -->
-        <div style="background:#fff; border:1px solid var(--border); border-radius:12px; padding:13px 14px; margin-bottom:14px;">
-          <div style="font-size:0.79rem; font-weight:900; text-transform:uppercase; color:var(--muted); margin-bottom:8px;">
-            3. Capa B — Perillas Individuales Abiertas (<code>modulos_activos</code> · overrides por nodo)
-          </div>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(225px, 1fr)); gap:8px; margin-bottom:12px;">
-            ${switchesDefs.map(sw => `
-              <label style="display:flex; align-items:flex-start; gap:8px; padding:8px 10px; border-radius:9px; border:1px solid var(--border); background:#f8fafc; cursor:pointer;">
-                <input type="checkbox" id="abm-mod-${sw.key}" data-mod-key="${sw.key}" ${modBase[sw.key] ? 'checked' : ''}
-                  onchange="sincronizarVisibilidadPanelesAbmCentro()" style="margin-top:3px;" />
-                <div>
-                  <div style="font-size:0.8rem; font-weight:800;">${sw.label}</div>
-                  <div style="font-size:0.71rem; color:var(--muted); line-height:1.25;">${sw.desc}</div>
+          <div style="background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:13px 14px; margin-bottom:12px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(185px, 1fr)); gap:10px;">
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Nombre de la Marca *</label>
+                <input type="text" id="abm-centro-marca" value="${esc(editNodo?.nombre_marca || '')}" placeholder="Ej: Paraíso / MANSO"
+                  oninput="if(!CSTATE.abmDraft.editarId){ document.getElementById('abm-centro-slug').value = _armarSlugSugeridoCentro(this.value); }"
+                  style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.85rem; font-weight:800;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Bajada Oficial de Marca</label>
+                <input type="text" id="abm-centro-bajada" value="${esc(editNodo?.bajada_marca || '')}" placeholder="Ej: Alimentos saludables"
+                  style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.84rem;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Slug URL (/tienda/...) *</label>
+                <input type="text" id="abm-centro-slug" value="${esc(editNodo?.slug || '')}" placeholder="ej: paraiso"
+                  style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:monospace; font-size:0.84rem;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Titular / Gestor *</label>
+                <input type="text" id="abm-centro-gestor" value="${esc(editNodo?.gestor_nombre || '')}" placeholder="Nombre y Apellido"
+                  oninput="refrescarResumenBasePerfilAbmCentro()"
+                  style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.85rem;" />
+              </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1.2fr 1fr 0.8fr 0.7fr 0.55fr; gap:10px; margin-top:10px;">
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Subtítulo público / Etiqueta</label>
+                <input type="text" id="abm-centro-subtitulo" value="${esc(editNodo?.subtitulo_marca || SUBTITULOS_DEFAULT_CENTRO[perfilInicial])}"
+                  style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Línea sobre rubros</label>
+                <input type="text" id="abm-centro-subtitulo-catalogo" value="${esc(editNodo?.diccionario_textos?.subtitulo_catalogo || '')}" placeholder="Ej: FRUTOS SECOS"
+                  style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem; font-weight:700;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Tel. Operativo LAMDA</label>
+                <input type="text" id="abm-centro-telefono" value="${esc(editNodo?.gestor_telefono || '')}" placeholder="549221..."
+                  oninput="refrescarResumenBasePerfilAbmCentro()"
+                  style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Color Marca</label>
+                <input type="color" id="abm-centro-color" value="${esc(baseRef?.color_primario || '#a2553b')}"
+                  style="width:100%; height:36px; padding:2px; border-radius:8px; border:1px solid var(--border-strong); cursor:pointer;" />
+              </div>
+              <div style="display:flex; flex-direction:column; justify-content:flex-end;">
+                <div style="display:flex; gap:3px; flex-wrap:wrap;">
+                  ${['#4F1F27','#D36344','#a2553b','#9DAD5A','#2b5b84'].map(hx => `<button type="button" onclick="document.getElementById('abm-centro-color').value='${hx}'" title="${hx}" style="width:16px; height:16px; border-radius:50%; border:1px solid #cbd5e1; background:${hx}; cursor:pointer; padding:0;"></button>`).join('')}
                 </div>
-              </label>
-            `).join('')}
-          </div>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px; padding-top:10px; border-top:1px dashed var(--border);">
-            <div>
-              <label for="abm-mod-abastecimiento_modo" style="display:block; font-size:0.75rem; font-weight:900; color:var(--text); margin-bottom:4px;">🚐 Abastecimiento LAMDA → Nodo</label>
-              <select id="abm-mod-abastecimiento_modo" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.83rem; font-weight:800; background:#fff;">
-                <option value="retiro_deposito" ${modBase.abastecimiento_modo === 'retiro_deposito' ? 'selected' : ''}>🏃 Retira Gestor en Depósito LAMDA (Retira_Deposito)</option>
-                <option value="camioneta_lamda" ${modBase.abastecimiento_modo === 'camioneta_lamda' ? 'selected' : ''}>🚐 Envía Camioneta LAMDA al Local (Pedido_Listo → :3005)</option>
-                <option value="despacho_correo" ${modBase.abastecimiento_modo === 'despacho_correo' ? 'selected' : ''}>📮 Despacho Directo Individual a Correo</option>
-              </select>
+              </div>
             </div>
-            <div>
-              <label for="abm-mod-etiqueta_zpl_formato" style="display:block; font-size:0.75rem; font-weight:900; color:var(--text); margin-bottom:4px;">🏷️ Formato Etiqueta Térmica Zebra 203 dpi</label>
-              <select id="abm-mod-etiqueta_zpl_formato" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:inherit; font-size:0.83rem; font-weight:800; background:#fff;">
-                <option value="vecinal" ${modBase.etiqueta_zpl_formato === 'vecinal' ? 'selected' : ''}>🏡 Estándar Vecinal (Par 50×80)</option>
-                <option value="mostrador_local" ${modBase.etiqueta_zpl_formato === 'mostrador_local' ? 'selected' : ''}>🏪 Mostrador Comercio (Nombre gigante + RETIRA EN MOSTRADOR)</option>
-                <option value="postal_fulfillment" ${modBase.etiqueta_zpl_formato === 'postal_fulfillment' ? 'selected' : ''}>📦 Fulfillment Postal Nacional (Guía Correo)</option>
-              </select>
+
+            <div style="margin-top:12px; padding-top:10px; border-top:1px dashed var(--border);">
+              <div style="display:grid; grid-template-columns:1fr 1.5fr; gap:10px; align-items:end;">
+                <div>
+                  <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">🔎 Buscar Cliente Titular Madre (1:N · server-side)</label>
+                  <input type="text" id="abm-centro-filtro-cliente" placeholder="N° Lomas, CB-..., Nombre o Razón Social..."
+                    oninput="filtrarClientesBunkerModalCentro(this.value)"
+                    style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Cliente Titular Madre (bunker_clientes) *</label>
+                  <select id="abm-centro-cliente-madre" onchange="alSeleccionarClienteMadreAbmCentro(this.value)"
+                    style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.84rem; font-weight:700; background:#fff;">
+                    ${_renderOpcionesClientesMadreCentro(CSTATE.clientesBunker, clienteMadrePreId)}
+                  </select>
+                </div>
+              </div>
+              <div id="abm-centro-cliente-resumen"></div>
+              <div id="abm-centro-domicilios-chips" style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;"></div>
+              <label style="display:inline-flex; align-items:center; gap:7px; margin-top:8px; font-size:0.79rem; font-weight:800; color:#4c1d95; cursor:pointer;">
+                <input type="checkbox" id="abm-centro-usar-madre-unificada" ${usarUnificadaPre ? 'checked' : ''} />
+                <span>🔗 Unificar Cuenta Corriente en el Cliente Madre (mantiene subcuenta <code>${esc(editNodo?.contabilidad?.codigo_subcuenta_nodo || 'CB-NODO-xxx')}</code> archivada)</span>
+              </label>
             </div>
           </div>
         </div>
 
-        <!-- 3B. CONFIGURACIÓN DEL LOCAL / PUNTO DE RETIRO -->
-        <div id="abm-centro-retiro-local-box" style="display:${modBase.retiro_punto ? 'block' : 'none'}; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:12px; padding:13px 14px; margin-bottom:14px;">
-          <div style="font-size:0.79rem; font-weight:900; text-transform:uppercase; color:#1e293b; margin-bottom:9px;">
-            🏪 Configuración del Local / Punto de Retiro (<code>config_retiro_local</code>)
-          </div>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px;">
-            <div>
-              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Nombre del Local / Punto</label>
-              <input type="text" id="abm-local-nombre-punto" value="${esc(cfgLocalRef.nombre_punto || editNodo?.nombre_marca || '')}" placeholder="Ej: Moro Almacén de Bebidas"
-                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; font-weight:700; background:#fff;" />
+        <!-- TAB 2: UBICACIÓN Y MAPA AR -->
+        <div class="abm-tab-panel" data-abm-panel="ubicacion">
+          <div style="background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:13px 14px; margin-bottom:12px;">
+            <div style="display:grid; grid-template-columns:1fr 1.5fr 0.6fr 0.6fr; gap:10px; margin-bottom:10px;">
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Barrio / Localidad</label>
+                <input type="text" id="abm-centro-barrio" value="${esc(editNodo?.barrio_zona || '')}" placeholder="Ej: City Bell"
+                  style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Dirección punto de retiro</label>
+                <input type="text" id="abm-centro-direccion" value="${esc(editNodo?.direccion_retiro || '')}" placeholder="Calle, altura, ciudad"
+                  style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Latitud</label>
+                <input type="number" step="0.000001" id="abm-centro-latitud" value="${editNodo?.latitud != null ? Number(editNodo.latitud) : ''}" placeholder="-34.92..."
+                  style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:monospace; font-size:0.8rem;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Longitud</label>
+                <input type="number" step="0.000001" id="abm-centro-longitud" value="${editNodo?.longitud != null ? Number(editNodo.longitud) : ''}" placeholder="-57.95..."
+                  style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-family:monospace; font-size:0.8rem;" />
+              </div>
             </div>
-            <div>
-              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Dirección corta (títulos / tracking)</label>
-              <input type="text" id="abm-local-dir-corta" value="${esc(cfgLocalRef.direccion_corta || editNodo?.direccion_retiro || '')}" placeholder="Ej: Av. 7 N° 202 (esq. 36)"
-                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; font-weight:700; background:#fff;" />
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px; flex-wrap:wrap;">
+              <div class="centro-geo-wrap" style="flex:1; min-width:240px;">
+                <input type="text" id="abm-centro-geo-q" placeholder="🔎 Buscar dirección argentina (GeoRef AR / OSM)..."
+                  onkeydown="if(event.key==='Enter'){event.preventDefault(); buscarGeoMapaAbmCentro();}"
+                  style="width:100%; padding:7px 10px; border-radius:8px; border:1px solid #0284c7; font-size:0.82rem;" />
+                <div id="abm-centro-geo-drop" class="centro-geo-dropdown"></div>
+              </div>
+              <button type="button" class="btn solid-blue" onclick="buscarGeoMapaAbmCentro()">🔍 Buscar en Mapa</button>
+              <button type="button" class="btn" onclick="buscarGeoMapaAbmCentro(document.getElementById('abm-centro-direccion')?.value || '')">📍 Ubicar Dirección Escrita</button>
             </div>
-            <div>
-              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Dirección completa</label>
-              <input type="text" id="abm-local-dir-completa" value="${esc(cfgLocalRef.direccion_completa || editNodo?.direccion_retiro || '')}" placeholder="Ej: Av. 7 N° 202 esquina 36, Centro, La Plata"
-                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; background:#fff;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Días de atención</label>
-              <input type="text" id="abm-local-dias" value="${esc(cfgLocalRef.dias_atencion || '')}" placeholder="Ej: Lunes a Viernes"
-                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; font-weight:700; background:#fff;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Horario comercial de retiro</label>
-              <input type="text" id="abm-local-horario" value="${esc(cfgLocalRef.horario_atencion || '')}" placeholder="Ej: 10:00 a 21:00 hs"
-                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; font-weight:700; background:#fff;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Días de bajada camioneta LAMDA</label>
-              <input type="text" id="abm-local-abast-dias" value="${esc(cfgLocalRef.abastecimiento_dias_label || '')}" placeholder="Ej: Martes y Viernes"
-                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; background:#fff;" />
-            </div>
-          </div>
-          <div style="margin-top:8px;">
-            <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">Indicaciones en mostrador para el cliente</label>
-            <input type="text" id="abm-local-referencias" value="${esc(cfgLocalRef.referencias_mostrador || '')}" placeholder="Ej: Retirá por mostrador indicando tu apellido o número de pedido"
-              style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; background:#fff;" />
+            <div id="abm-centro-leaflet-map" style="width:100%; height:280px; border-radius:10px; border:1px solid var(--border-strong); background:#e2e8f0;"></div>
           </div>
         </div>
 
-        <!-- 4. CONFIGURACIÓN DE PAQUETERÍA NACIONAL -->
-        <div id="abm-centro-paqueteria-box" style="display:${modBase.envio_paqueteria ? 'block' : 'none'}; background:#fffbeb; border:1px solid #fcd34d; border-radius:12px; padding:13px 14px; margin-bottom:14px;">
-          <div style="font-size:0.79rem; font-weight:900; text-transform:uppercase; color:#92400e; margin-bottom:9px;">
-            4. Operadores Postales, Envío Gratis y Tarifario por Zonas de CP (<code>config_paqueteria</code>)
-          </div>
-          <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:10px; font-size:0.81rem; font-weight:800;">
-            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
-              <input type="checkbox" id="abm-paq-op-ca" ${paqInicial.operadores_habilitados.includes('CORREO_ARGENTINO') ? 'checked' : ''} />
-              <span>📮 Correo Argentino</span>
-            </label>
-            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
-              <input type="checkbox" id="abm-paq-op-and" ${paqInicial.operadores_habilitados.includes('ANDREANI') ? 'checked' : ''} />
-              <span>🚚 Andreani</span>
-            </label>
-            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
-              <input type="checkbox" id="abm-paq-domicilio" ${paqInicial.permitir_domicilio !== false ? 'checked' : ''} />
-              <span>📦 Envío a Domicilio</span>
-            </label>
-            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
-              <input type="checkbox" id="abm-paq-sucursal" ${paqInicial.permitir_sucursal_correo !== false ? 'checked' : ''} />
-              <span>🏢 Retiro en Sucursal Correo</span>
-            </label>
-          </div>
-
-          <div style="display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:10px; margin-bottom:10px; align-items:end;">
-            <div>
-              <label style="display:block; font-size:0.74rem; font-weight:800; color:#78350f; margin-bottom:3px;">Leyenda SLA de Despacho</label>
-              <input type="text" id="abm-paq-sla" value="${esc(paqInicial.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles')}"
-                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid #f59e0b; background:#fff; font-size:0.82rem; font-weight:700;" />
+        <!-- TAB 3: PERFIL, ENTREGA Y HORARIOS -->
+        <div class="abm-tab-panel" data-abm-panel="operativa">
+          <div style="margin-bottom:12px;">
+            <div style="font-size:0.78rem; font-weight:900; text-transform:uppercase; color:var(--muted); margin-bottom:6px;">
+              Perfil Operativo Base (precarga perillas)
             </div>
-            <div>
-              <label style="display:flex; align-items:center; gap:6px; font-size:0.76rem; font-weight:800; color:#78350f; cursor:pointer; margin-bottom:5px;">
-                <input type="checkbox" id="abm-paq-gratis-activo" ${paqInicial.envio_gratis_activo ? 'checked' : ''} />
-                <span>Bonificar envío desde monto</span>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:10px;">
+              <label id="card-perfil-VECINOS" data-perfil-card="VECINOS" style="display:flex; align-items:flex-start; gap:9px; padding:10px 12px; border-radius:10px; border:2px solid ${perfilInicial === 'VECINOS' ? '#16a34a' : 'var(--border)'}; background:${perfilInicial === 'VECINOS' ? '#f0fdf4' : '#fff'}; cursor:pointer;">
+                <input type="radio" name="abm-centro-perfil" value="VECINOS" ${perfilInicial === 'VECINOS' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('VECINOS')" style="margin-top:3px;" />
+                <div><div style="font-weight:900; font-size:0.86rem;">🏡 VECINOS</div><div style="font-size:0.73rem; color:var(--muted);">Canasto consolidado + retiro o Hoja de Ruta propia.</div></div>
               </label>
-              <input type="number" step="1000" id="abm-paq-gratis-monto" value="${Number(paqInicial.envio_gratis_desde_monto ?? 45000)}"
-                style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid #f59e0b; background:#fff; font-size:0.83rem; font-weight:800;" />
-            </div>
-            <div>
-              <label style="display:block; font-size:0.74rem; font-weight:800; color:#78350f; margin-bottom:3px;">Operador Preseleccionado</label>
-              <select id="abm-paq-op-default" style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid #f59e0b; background:#fff; font-size:0.82rem; font-weight:800;">
-                <option value="CORREO_ARGENTINO" ${paqInicial.operador_default === 'CORREO_ARGENTINO' ? 'selected' : ''}>Correo Argentino</option>
-                <option value="ANDREANI" ${paqInicial.operador_default === 'ANDREANI' ? 'selected' : ''}>Andreani</option>
-              </select>
+              <label id="card-perfil-REDES" data-perfil-card="REDES" style="display:flex; align-items:flex-start; gap:9px; padding:10px 12px; border-radius:10px; border:2px solid ${perfilInicial === 'REDES' ? '#d97706' : 'var(--border)'}; background:${perfilInicial === 'REDES' ? '#fffbeb' : '#fff'}; cursor:pointer;">
+                <input type="radio" name="abm-centro-perfil" value="REDES" ${perfilInicial === 'REDES' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('REDES')" style="margin-top:3px;" />
+                <div><div style="font-weight:900; font-size:0.86rem;">🚀 REDES</div><div style="font-size:0.73rem; color:var(--muted);">Fulfillment 24/7 + Correo Argentino / Andreani.</div></div>
+              </label>
+              <label id="card-perfil-LOCALES" data-perfil-card="LOCALES" style="display:flex; align-items:flex-start; gap:9px; padding:10px 12px; border-radius:10px; border:2px solid ${perfilInicial === 'LOCALES' ? '#1e293b' : 'var(--border)'}; background:${perfilInicial === 'LOCALES' ? '#f1f5f9' : '#fff'}; cursor:pointer;">
+                <input type="radio" name="abm-centro-perfil" value="LOCALES" ${perfilInicial === 'LOCALES' ? 'checked' : ''} onchange="onCambioPerfilOperativoCentro('LOCALES')" style="margin-top:3px;" />
+                <div><div style="font-weight:900; font-size:0.86rem;">🏪 LOCALES</div><div style="font-size:0.73rem; color:var(--muted);">Pick-up Point en local + camioneta LAMDA.</div></div>
+              </label>
             </div>
           </div>
 
-          <div style="display:flex; flex-direction:column; gap:6px;">
+          <div style="background:#fff; border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:12px;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; margin-bottom:10px;">
+              ${switchesDefs.map(sw => `
+                <label style="display:flex; align-items:flex-start; gap:8px; padding:7px 9px; border-radius:8px; border:1px solid var(--border); background:#f8fafc; cursor:pointer;">
+                  <input type="checkbox" id="abm-mod-${sw.key}" data-mod-key="${sw.key}" ${modBase[sw.key] ? 'checked' : ''}
+                    onchange="sincronizarVisibilidadPanelesAbmCentro()" style="margin-top:3px;" />
+                  <div><div style="font-size:0.78rem; font-weight:800;">${sw.label}</div><div style="font-size:0.69rem; color:var(--muted);">${sw.desc}</div></div>
+                </label>
+              `).join('')}
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 0.7fr; gap:10px; padding-top:10px; border-top:1px dashed var(--border);">
+              <div>
+                <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">🚐 Abastecimiento LAMDA → Nodo</label>
+                <select id="abm-mod-abastecimiento_modo" style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.81rem; font-weight:700; background:#fff;">
+                  <option value="retiro_deposito" ${modBase.abastecimiento_modo === 'retiro_deposito' ? 'selected' : ''}>🏃 Retira Gestor en Depósito</option>
+                  <option value="camioneta_lamda" ${modBase.abastecimiento_modo === 'camioneta_lamda' ? 'selected' : ''}>🚐 Camioneta LAMDA al Local</option>
+                  <option value="despacho_correo" ${modBase.abastecimiento_modo === 'despacho_correo' ? 'selected' : ''}>📮 Despacho Directo Correo</option>
+                </select>
+              </div>
+              <div>
+                <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">🏷️ Formato Etiqueta Zebra</label>
+                <select id="abm-mod-etiqueta_zpl_formato" style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.81rem; font-weight:700; background:#fff;">
+                  <option value="vecinal" ${modBase.etiqueta_zpl_formato === 'vecinal' ? 'selected' : ''}>🏡 Estándar Vecinal</option>
+                  <option value="mostrador_local" ${modBase.etiqueta_zpl_formato === 'mostrador_local' ? 'selected' : ''}>🏪 Mostrador Comercio</option>
+                  <option value="postal_fulfillment" ${modBase.etiqueta_zpl_formato === 'postal_fulfillment' ? 'selected' : ''}>📦 Fulfillment Postal</option>
+                </select>
+              </div>
+              <div>
+                <label style="display:block; font-size:0.74rem; font-weight:800; margin-bottom:3px;">🛵 Envío Barrial ($)</label>
+                <input type="number" step="100" id="abm-centro-cargo-barrial" value="${Number(editNodo?.cargo_envio_barrial || 0)}"
+                  style="width:100%; padding:7px 9px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.82rem; font-weight:800;" />
+              </div>
+            </div>
+            <label style="display:inline-flex; align-items:center; gap:7px; margin-top:9px; font-size:0.78rem; font-weight:800; color:#065f46; cursor:pointer;">
+              <input type="checkbox" id="abm-centro-mostrar-ingredientes" ${baseRef?.mostrar_ingredientes_tienda !== false ? 'checked' : ''} />
+              <span>🥣 Mostrar botón "¿Qué contiene?" en Mixes, Granolas y Combos en la Tienda</span>
+            </label>
+          </div>
+
+          <div id="abm-centro-barrial-fields" style="display:none;"></div>
+
+          <div style="background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <span style="font-size:0.79rem; font-weight:900;">📅 Ventanas de Corte y Retiro (<code>config_ventanas_corte</code>)</span>
+              <button type="button" class="btn" style="padding:4px 10px; font-size:0.74rem;" onclick="agregarVentanaCorteAbmCentro()">➕ Agregar Ventana</button>
+            </div>
+            <div id="abm-centro-ventanas-list"></div>
+          </div>
+
+          <div id="abm-centro-retiro-local-box" style="display:${modBase.retiro_punto ? 'block' : 'none'}; background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:12px; padding:12px 14px; margin-bottom:12px;">
+            <div style="font-size:0.78rem; font-weight:900; margin-bottom:8px;">🏪 Punto de Retiro (<code>config_retiro_local</code>)</div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:8px;">
+              <input type="text" id="abm-local-nombre-punto" value="${esc(cfgLocalRef.nombre_punto || editNodo?.nombre_marca || '')}" placeholder="Nombre del Local" style="padding:7px 9px; border-radius:7px; border:1px solid var(--border-strong); font-size:0.81rem;" />
+              <input type="text" id="abm-local-dir-corta" value="${esc(cfgLocalRef.direccion_corta || editNodo?.direccion_retiro || '')}" placeholder="Dirección corta" style="padding:7px 9px; border-radius:7px; border:1px solid var(--border-strong); font-size:0.81rem;" />
+              <input type="text" id="abm-local-dir-completa" value="${esc(cfgLocalRef.direccion_completa || editNodo?.direccion_retiro || '')}" placeholder="Dirección completa" style="padding:7px 9px; border-radius:7px; border:1px solid var(--border-strong); font-size:0.81rem;" />
+              <input type="text" id="abm-local-dias" value="${esc(cfgLocalRef.dias_atencion || '')}" placeholder="Días atención" style="padding:7px 9px; border-radius:7px; border:1px solid var(--border-strong); font-size:0.81rem;" />
+              <input type="text" id="abm-local-horario" value="${esc(cfgLocalRef.horario_atencion || '')}" placeholder="Horario comercial" style="padding:7px 9px; border-radius:7px; border:1px solid var(--border-strong); font-size:0.81rem;" />
+              <input type="text" id="abm-local-abast-dias" value="${esc(cfgLocalRef.abastecimiento_dias_label || '')}" placeholder="Días bajada LAMDA" style="padding:7px 9px; border-radius:7px; border:1px solid var(--border-strong); font-size:0.81rem;" />
+            </div>
+            <input type="text" id="abm-local-referencias" value="${esc(cfgLocalRef.referencias_mostrador || '')}" placeholder="Indicaciones en mostrador para el cliente" style="width:100%; margin-top:8px; padding:7px 9px; border-radius:7px; border:1px solid var(--border-strong); font-size:0.81rem;" />
+          </div>
+
+          <div id="abm-centro-paqueteria-box" style="display:${modBase.envio_paqueteria ? 'block' : 'none'}; background:#fffbeb; border:1px solid #fcd34d; border-radius:12px; padding:12px 14px; margin-bottom:12px;">
+            <div style="font-size:0.78rem; font-weight:900; color:#92400e; margin-bottom:8px;">📦 Paquetería Nacional y Tarifario CP</div>
+            <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:8px; font-size:0.8rem; font-weight:800;">
+              <label><input type="checkbox" id="abm-paq-op-ca" ${paqInicial.operadores_habilitados.includes('CORREO_ARGENTINO') ? 'checked' : ''} /> Correo Argentino</label>
+              <label><input type="checkbox" id="abm-paq-op-and" ${paqInicial.operadores_habilitados.includes('ANDREANI') ? 'checked' : ''} /> Andreani</label>
+              <label><input type="checkbox" id="abm-paq-domicilio" ${paqInicial.permitir_domicilio !== false ? 'checked' : ''} /> Domicilio</label>
+              <label><input type="checkbox" id="abm-paq-sucursal" ${paqInicial.permitir_sucursal_correo !== false ? 'checked' : ''} /> Sucursal</label>
+            </div>
+            <div style="display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:8px; margin-bottom:8px;">
+              <input type="text" id="abm-paq-sla" value="${esc(paqInicial.sla_despacho_label || 'Despacho en 24 a 48 hs hábiles')}" style="padding:6px 8px; border-radius:7px; border:1px solid #f59e0b; font-size:0.8rem;" />
+              <div style="display:flex; gap:5px; align-items:center;"><input type="checkbox" id="abm-paq-gratis-activo" ${paqInicial.envio_gratis_activo ? 'checked' : ''} /><input type="number" step="1000" id="abm-paq-gratis-monto" value="${Number(paqInicial.envio_gratis_desde_monto ?? 45000)}" style="width:100%; padding:6px 8px; border-radius:7px; border:1px solid #f59e0b; font-size:0.8rem;" /></div>
+              <select id="abm-paq-op-default" style="padding:6px 8px; border-radius:7px; border:1px solid #f59e0b; font-size:0.8rem;"><option value="CORREO_ARGENTINO" ${paqInicial.operador_default === 'CORREO_ARGENTINO' ? 'selected' : ''}>Correo Argentino</option><option value="ANDREANI" ${paqInicial.operador_default === 'ANDREANI' ? 'selected' : ''}>Andreani</option></select>
+            </div>
             ${paqInicial.tarifario_zonas.map((z, idx) => `
-              <div class="abm-zona-row" data-zona-codigo="${esc(z.codigo)}" data-zona-plazo="${esc(z.plazo_dias || '3 a 6 días hábiles')}"
-                style="display:grid; grid-template-columns:1.3fr 1.4fr 0.8fr 0.8fr; gap:8px; align-items:center; background:#fff; padding:7px 9px; border-radius:8px; border:1px solid #fde68a;">
-                <input type="text" class="z-nombre" value="${esc(z.nombre)}" style="padding:6px 8px; border-radius:6px; border:1px solid var(--border); font-size:0.79rem; font-weight:800;" />
-                <input type="text" class="z-prefijos" value="${esc(Array.isArray(z.cp_prefijos) ? z.cp_prefijos.join(',') : (z.cp_prefijos || '*'))}" title="Prefijos de CP separados por coma (o * para resto del país)" style="padding:6px 8px; border-radius:6px; border:1px solid var(--border); font-family:monospace; font-size:0.76rem;" />
-                <div>
-                  <span style="font-size:0.68rem; font-weight:800; color:var(--muted);">Domicilio $</span>
-                  <input type="number" step="100" class="z-dom" value="${Number(z.domicilio || 0)}" style="width:100%; padding:5px 7px; border-radius:6px; border:1px solid var(--border); font-size:0.8rem; font-weight:800;" />
-                </div>
-                <div>
-                  <span style="font-size:0.68rem; font-weight:800; color:var(--muted);">Sucursal $</span>
-                  <input type="number" step="100" class="z-suc" value="${Number(z.sucursal || 0)}" style="width:100%; padding:5px 7px; border-radius:6px; border:1px solid var(--border); font-size:0.8rem; font-weight:800;" />
-                </div>
+              <div class="abm-zona-row" data-zona-codigo="${esc(z.codigo)}" data-zona-plazo="${esc(z.plazo_dias || '3 a 6 días hábiles')}" style="display:grid; grid-template-columns:1.3fr 1.4fr 0.7fr 0.7fr; gap:7px; margin-bottom:5px;">
+                <input type="text" class="z-nombre" value="${esc(z.nombre)}" style="padding:5px 7px; border-radius:6px; border:1px solid #fde68a; font-size:0.78rem;" />
+                <input type="text" class="z-prefijos" value="${esc(Array.isArray(z.cp_prefijos) ? z.cp_prefijos.join(',') : (z.cp_prefijos || '*'))}" style="padding:5px 7px; border-radius:6px; border:1px solid #fde68a; font-family:monospace; font-size:0.75rem;" />
+                <input type="number" step="100" class="z-dom" value="${Number(z.domicilio || 0)}" style="padding:5px 7px; border-radius:6px; border:1px solid #fde68a; font-size:0.78rem;" />
+                <input type="number" step="100" class="z-suc" value="${Number(z.sucursal || 0)}" style="padding:5px 7px; border-radius:6px; border:1px solid #fde68a; font-size:0.78rem;" />
               </div>
             `).join('')}
           </div>
         </div>
 
-        <div id="abm-perfil-publico-section" style="margin-bottom:14px;">
-          ${renderizarHtmlSeccionPerfilPublicoAbm(editNodo)}
+        <!-- TAB 4: RECAUDACIÓN, LISTA PRECIOS, FISCAL Y PERFIL PÚBLICO -->
+        <div class="abm-tab-panel" data-abm-panel="recaudacion">
+          <div style="background:#f8fafc; border:1px solid var(--border); border-radius:12px; padding:13px 14px; margin-bottom:12px;">
+            <div style="display:grid; grid-template-columns:1.4fr 0.7fr 0.7fr 0.7fr; gap:10px; margin-bottom:12px;">
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Lista de Precios Búnker (<code>NODOS</code>) *</label>
+                <select id="abm-centro-lista-precio" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-size:0.83rem; font-weight:700; background:#fff;">
+                  ${listasNodos.length > 0
+                    ? listasNodos.map(lp => `<option value="${Number(lp.id)}" ${Number(listaPreSel) === Number(lp.id) ? 'selected' : ''}>#${Number(lp.id)} · ${esc(lp.nombre)}</option>`).join('')
+                    : `<option value="">Lista Base Nodos (automática)</option>`}
+                </select>
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">Margen inicial (%)</label>
+                <input type="number" step="0.5" id="abm-centro-margen" value="${Number(baseRef?.margen_gestor_default_pct ?? 28)}" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-weight:800;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">IVA s/margen (%)</label>
+                <input type="number" step="0.5" id="abm-centro-iva-margen" value="${Number(baseRef?.alicuota_iva_margen_pct ?? 21)}" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-weight:800;" />
+              </div>
+              <div>
+                <label style="display:block; font-size:0.75rem; font-weight:800; margin-bottom:3px;">IIBB s/margen (%)</label>
+                <input type="number" step="0.25" id="abm-centro-iibb-margen" value="${Number(baseRef?.alicuota_iibb_margen_pct ?? 4)}" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid var(--border-strong); font-weight:800;" />
+              </div>
+            </div>
+
+            <div style="border-top:1px dashed var(--border); padding-top:10px;">
+              <div style="font-size:0.78rem; font-weight:900; margin-bottom:6px;">🏦 Cuenta Recaudadora / Alias Visible al Vecino</div>
+              <label style="display:inline-flex; align-items:center; gap:7px; font-size:0.79rem; font-weight:700; margin-bottom:8px; cursor:pointer;">
+                <input type="checkbox" id="abm-centro-cuenta-compartida" ${(editNodo?.usa_cuenta_compartida !== false) ? 'checked' : ''}
+                  onchange="if(this.checked){ document.getElementById('abm-centro-alias-display').value = CSTATE.configCuentaCanal?.alias_recaudador || ''; }" />
+                <span>Usar Cuenta Compartida Canal Nodos (<code id="abm-centro-canal-resumen">${esc(cfgCanal.banco_recaudador || '')} · Alias: ${esc(cfgCanal.alias_recaudador || '')}</code>)</span>
+              </label>
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:8px;">
+                <div><label style="display:block; font-size:0.71rem; font-weight:800;">Alias Display</label><input type="text" id="abm-centro-alias-display" value="${esc(editNodo?.alias_bancario_display || cfgCanal.alias_recaudador || '')}" style="width:100%; padding:7px; border:1px solid #0284c7; border-radius:7px; font-family:monospace; font-weight:800;" /></div>
+                <div><label style="display:block; font-size:0.71rem; font-weight:800;">Banco Display</label><input type="text" id="abm-centro-banco-display" value="${esc(brandingCargado?.banco_display || editNodo?.banco_display || cfgCanal.banco_recaudador || '')}" style="width:100%; padding:7px; border:1px solid var(--border-strong); border-radius:7px;" /></div>
+                <div><label style="display:block; font-size:0.71rem; font-weight:800;">CBU Display</label><input type="text" id="abm-centro-cbu-display" value="${esc(brandingCargado?.cbu_display || editNodo?.cbu_display || cfgCanal.cbu_recaudador || '')}" style="width:100%; padding:7px; border:1px solid var(--border-strong); border-radius:7px; font-family:monospace;" /></div>
+                <div><label style="display:block; font-size:0.71rem; font-weight:800;">Titular Display</label><input type="text" id="abm-centro-titular-display" value="${esc(brandingCargado?.titular_display || editNodo?.titular_display || cfgCanal.titular_recaudador || '')}" style="width:100%; padding:7px; border:1px solid var(--border-strong); border-radius:7px;" /></div>
+              </div>
+              <details style="margin-top:8px; background:#fff; border:1px solid var(--border); border-radius:8px; padding:7px 10px;">
+                <summary style="cursor:pointer; font-size:0.75rem; font-weight:800; color:#1e40af;">⚙️ Editar Cuenta Compartida Global del Canal Nodos</summary>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr auto; gap:7px; margin-top:8px; align-items:end;">
+                  <input type="text" id="abm-canal-edit-alias" value="${esc(cfgCanal.alias_recaudador || '')}" placeholder="Alias Canal" style="padding:6px; border:1px solid var(--border-strong); border-radius:6px; font-family:monospace; font-size:0.78rem;" />
+                  <input type="text" id="abm-canal-edit-banco" value="${esc(cfgCanal.banco_recaudador || '')}" placeholder="Banco" style="padding:6px; border:1px solid var(--border-strong); border-radius:6px; font-size:0.78rem;" />
+                  <input type="text" id="abm-canal-edit-titular" value="${esc(cfgCanal.titular_recaudador || '')}" placeholder="Titular" style="padding:6px; border:1px solid var(--border-strong); border-radius:6px; font-size:0.78rem;" />
+                  <input type="text" id="abm-canal-edit-cbu" value="${esc(cfgCanal.cbu_recaudador || '')}" placeholder="CBU" style="padding:6px; border:1px solid var(--border-strong); border-radius:6px; font-family:monospace; font-size:0.78rem;" />
+                  <button type="button" class="btn solid-blue" style="padding:6px 10px; font-size:0.76rem;" onclick="guardarConfigCuentaCanalAbmCentro()">💾 Aplicar Canal</button>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <div id="abm-perfil-publico-section" style="margin-bottom:12px;">
+            ${renderizarHtmlSeccionPerfilPublicoAbm(editNodo)}
+          </div>
+          <div id="abm-video-bienvenida-section" style="margin-bottom:12px;">
+            ${renderizarHtmlSeccionVideoBienvenidaAbm(editNodo)}
+          </div>
         </div>
 
-        <div id="abm-video-bienvenida-section" style="margin-bottom:14px;">
-          ${renderizarHtmlSeccionVideoBienvenidaAbm(editNodo)}
+        <!-- TAB 5: LOGO & ZEBRA ZPL -->
+        <div class="abm-tab-panel" data-abm-panel="branding">
+          <div style="background:#0f172a; color:#f8fafc; border-radius:12px; padding:14px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+              <div>
+                <div style="font-weight:900; font-size:0.9rem;">🖼️ Logo Móvil + Etiqueta Térmica Zebra 203 dpi</div>
+                <div style="font-size:0.74rem; color:#94a3b8;">Conversión 1-bit y previsualización real en rollo de 2 columnas.</div>
+              </div>
+              <div style="display:flex; gap:7px; flex-wrap:wrap;">
+                <label class="btn" style="background:#1e293b; border-color:#38bdf8; color:#bae6fd; cursor:pointer;">
+                  📂 Subir Logo <input type="file" accept="image/*" style="display:none;" onchange="subirArchivoLogoAbmCentro(event)" />
+                </label>
+                <button type="button" class="btn" style="background:#1e293b; border-color:#f87171; color:#fca5a5;" onclick="quitarLogoImagenAbmCentro()">🗑️ Sello Siglas</button>
+                <button type="button" class="btn" style="background:#1e293b; border-color:#10b981; color:#6ee7b7;" onclick="regenerarLogoZplAbmCentro()">⚡ Actualizar Vista</button>
+              </div>
+            </div>
+            <div style="display:grid; grid-template-columns:160px 160px 1fr; gap:10px; align-items:center; margin-bottom:10px;">
+              <div style="background:#faf7f3; border-radius:8px; padding:6px; height:64px; display:flex; align-items:center; justify-content:center;">
+                <img id="abm-centro-logo-color-img" src="${esc(brandingCargado?.logo_original_base64 || '')}" style="max-width:100%; max-height:52px; object-fit:contain; display:${brandingCargado?.logo_original_base64 ? 'block' : 'none'};" />
+              </div>
+              <div style="background:#fff; border-radius:8px; padding:6px; height:64px; display:flex; align-items:center; justify-content:center;">
+                <img id="abm-centro-logo-mono-img" src="${esc(brandingCargado?.logo_mono_preview_base64 || '')}" style="max-width:100%; max-height:54px; object-fit:contain; image-rendering:pixelated;" />
+              </div>
+              <div style="display:grid; grid-template-columns:90px 1fr 1fr; gap:8px;">
+                <div><label style="display:block; font-size:0.7rem; color:#94a3b8;">Siglas</label><input type="text" id="abm-centro-logo-iniciales" maxlength="3" value="${esc(zplCfgIni.iniciales || '')}" oninput="CSTATE.abmDraft.brandingTouched=true; regenerarLogoZplAbmCentro()" style="width:100%; padding:6px; border-radius:6px; border:1px solid #334155; background:#1e293b; color:#fff; font-weight:800;" /></div>
+                <div><label style="display:block; font-size:0.7rem; color:#94a3b8;">Modo</label><select id="abm-centro-logo-mode" onchange="CSTATE.abmDraft.brandingTouched=true; regenerarLogoZplAbmCentro()" style="width:100%; padding:6px; border-radius:6px; border:1px solid #334155; background:#1e293b; color:#fff;"><option value="threshold" ${zplCfgIni.mode !== 'dither' ? 'selected' : ''}>Trazo Nítido</option><option value="dither" ${zplCfgIni.mode === 'dither' ? 'selected' : ''}>Dither</option></select></div>
+                <div><label style="display:block; font-size:0.7rem; color:#94a3b8;">Umbral (<span id="abm-centro-threshold-lbl">${Number(zplCfgIni.threshold || 138)}</span>)</label><input type="range" id="abm-centro-logo-threshold" min="40" max="220" value="${Number(zplCfgIni.threshold || 138)}" oninput="CSTATE.abmDraft.brandingTouched=true; document.getElementById('abm-centro-threshold-lbl').textContent=this.value; regenerarLogoZplAbmCentro()" style="width:100%;" /></div>
+              </div>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:8px;">
+              <button type="button" class="btn" style="background:#064e3b; color:#6ee7b7; border-color:#10b981;" onclick="simularEtiquetaZebraAbmCentro('estandar_pagado')">🖨️ Simular Rollo 4 Ítems</button>
+              <button type="button" class="btn" style="background:#78350f; color:#fcd34d; border-color:#f59e0b;" onclick="simularEtiquetaZebraAbmCentro('largo_continuacion')">📑 Simular Rollo Largo (2 Hojas)</button>
+            </div>
+            <div style="background:#1e293b; border-radius:8px; padding:10px; text-align:center;"><img id="abm-centro-rollo-img" src="" alt="Preview Etiqueta Zebra" style="max-width:100%; height:auto; border-radius:6px;" /></div>
+            <details style="margin-top:8px;">
+              <summary style="cursor:pointer; font-size:0.75rem; color:#94a3b8;">🔧 Ver ZPL técnico (^GFA y Rollo)</summary>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px;">
+                <textarea id="abm-centro-logo-gfa" rows="4" readonly style="width:100%; background:#020617; color:#34d399; font-family:monospace; font-size:0.68rem;">${esc(brandingCargado?.logo_zpl_gfa || '')}</textarea>
+                <textarea id="abm-centro-rollo-zpl" rows="4" readonly style="width:100%; background:#020617; color:#38bdf8; font-family:monospace; font-size:0.68rem;"></textarea>
+              </div>
+            </details>
+          </div>
         </div>
 
         <div id="abm-centro-feedback" style="display:none; margin-bottom:10px; padding:10px 12px; border-radius:9px; font-size:0.83rem; font-weight:800;"></div>
@@ -2666,11 +3112,17 @@
         <div style="display:flex; justify-content:flex-end; gap:10px;">
           <button type="button" class="btn" onclick="cerrarModalAbmTiendaCentro()">Cancelar</button>
           <button type="button" id="abm-centro-btn-submit" class="btn solid-green" style="padding:10px 18px; font-size:0.88rem;" onclick="guardarAbmTiendaCentro()">
-            ${editNodo ? '💾 Guardar Cambios de Perfil y Módulos' : '🚀 Crear Tienda y Configurar Cuenta'}
+            ${editNodo ? '💾 Guardar Cambios del Nodo' : '🚀 Crear Tienda y Configurar Cuenta'}
           </button>
         </div>
       `;
-      setTimeout(() => actualizarValidacionPerfilAbmCentro(false), 0);
+      setTimeout(() => {
+        actualizarValidacionPerfilAbmCentro(false);
+        renderizarListaVentanasCorteAbmCentro(ventanasIni);
+        if (clienteMadrePreId) alSeleccionarClienteMadreAbmCentro(clienteMadrePreId);
+        inicializarMapaLeafletAbmCentro(editNodo?.latitud, editNodo?.longitud);
+        regenerarLogoZplAbmCentro();
+      }, 40);
     }
 
     function parsearWhatsappArAbmCentro(raw = '') {
@@ -3401,22 +3853,18 @@
       abrirModalAbmTiendaCentro(null, Number(origenIdVal));
     }
 
+    let _timerFiltroClientesCentro = null;
     function filtrarClientesBunkerModalCentro(qRaw) {
-      const q = String(qRaw || '').trim().toLowerCase();
+      clearTimeout(_timerFiltroClientesCentro);
+      const q = String(qRaw || '').trim();
       const sel = document.getElementById('abm-centro-cliente-madre');
-      if (!sel) return;
-      const valActual = sel.value;
-      const filtrados = (CSTATE.clientesBunker || []).filter(c => {
-        if (!q) return true;
-        const bolsa = `${c.codigo_bunker_cliente || ''} ${c.cliente_nombre || ''} ${c.razon_social || ''} ${c.cuit || ''}`.toLowerCase();
-        return bolsa.includes(q);
-      });
-      sel.innerHTML = `<option value="">— Seleccionar Cliente Titular en Búnker (${filtrados.length}) —</option>` +
-        filtrados.map(c => `
-          <option value="${Number(c.id)}" ${String(valActual) === String(c.id) ? 'selected' : ''}>
-            [${esc(c.codigo_bunker_cliente || ('ID-' + c.id))}] ${esc(c.cliente_nombre || c.razon_social || 'Cliente')}
-          </option>
-        `).join('');
+      const valActual = sel ? sel.value : '';
+      _timerFiltroClientesCentro = setTimeout(async () => {
+        const lista = await asegurarClientesBunkerCargadosCentro(q, 0);
+        const selPost = document.getElementById('abm-centro-cliente-madre');
+        if (!selPost) return;
+        selPost.innerHTML = _renderOpcionesClientesMadreCentro(lista, valActual);
+      }, 220);
     }
 
     async function guardarAbmTiendaCentro() {
@@ -3474,6 +3922,16 @@
         plazo_dias: r.getAttribute('data-zona-plazo') || '3 a 6 días hábiles'
       }));
 
+      const ventanasRows = Array.from(document.querySelectorAll('.abm-ventana-row'));
+      const configVentanasCorte = ventanasRows
+        .map(r => ({
+          dia_entrega: r.querySelector('.v-dia-ent')?.value?.trim() || '',
+          cierre_dia: r.querySelector('.v-cierre-dia')?.value?.trim() || '',
+          cierre_hora: r.querySelector('.v-cierre-hora')?.value?.trim() || '14:00',
+          ventana_retiro: r.querySelector('.v-retiro')?.value?.trim() || ''
+        }))
+        .filter(v => v.dia_entrega);
+
       const cliObj = (CSTATE.clientesBunker || []).find(c => Number(c.id) === clienteMadreId);
       const nodoPrev = editarId ? (CSTATE.nodos || []).find(n => Number(n.id) === Number(editarId)) : null;
 
@@ -3517,13 +3975,29 @@
         : 'BASE';
       const waActivoNumeroPayload = waActivoModoPayload === 'ADICIONAL' ? _abmPerfilWaDraft.activoNumero : '';
 
+      const latRaw = document.getElementById('abm-centro-latitud')?.value;
+      const lngRaw = document.getElementById('abm-centro-longitud')?.value;
+      const listaSelRaw = document.getElementById('abm-centro-lista-precio')?.value;
+      const usaCompartida = Boolean(document.getElementById('abm-centro-cuenta-compartida')?.checked ?? true);
+
       const payload = {
         nombre_marca: nombreMarca,
+        bajada_marca: document.getElementById('abm-centro-bajada')?.value?.trim() || null,
         slug,
         subtitulo_marca: document.getElementById('abm-centro-subtitulo')?.value?.trim() || '',
         gestor_nombre: gestorNombre,
         gestor_telefono: document.getElementById('abm-centro-telefono')?.value?.trim() || '',
         gestor_email: nodoPrev?.gestor_email || '',
+        latitud: (latRaw !== '' && latRaw !== undefined && Number.isFinite(Number(latRaw))) ? Number(latRaw) : (nodoPrev?.latitud ?? null),
+        longitud: (lngRaw !== '' && lngRaw !== undefined && Number.isFinite(Number(lngRaw))) ? Number(lngRaw) : (nodoPrev?.longitud ?? null),
+        lista_precio_bunker_id: listaSelRaw ? Number(listaSelRaw) : (nodoPrev?.lista_precio_bunker_id || undefined),
+        mostrar_ingredientes_tienda: Boolean(document.getElementById('abm-centro-mostrar-ingredientes')?.checked ?? true),
+        config_ventanas_corte: configVentanasCorte.length > 0 ? configVentanasCorte : undefined,
+        usa_cuenta_compartida: usaCompartida,
+        alias_bancario_display: document.getElementById('abm-centro-alias-display')?.value?.trim() || '',
+        banco_display: document.getElementById('abm-centro-banco-display')?.value?.trim() || '',
+        cbu_display: document.getElementById('abm-centro-cbu-display')?.value?.trim() || '',
+        titular_display: document.getElementById('abm-centro-titular-display')?.value?.trim() || '',
         config_perfil_publico: {
           nombre_contacto_tienda: nombreContactoTienda,
           whatsapp_lineas: waLineasPayload,
@@ -3579,7 +4053,17 @@
           envio_gratis_activo: Boolean(document.getElementById('abm-paq-gratis-activo')?.checked),
           envio_gratis_desde_monto: Math.max(0, Number(document.getElementById('abm-paq-gratis-monto')?.value || 0)),
           tarifario_zonas: tarifarioZonas
-        }
+        },
+        ...(CSTATE.abmDraft?.brandingTouched || !editarId ? {
+          logo_original_base64: CSTATE.abmDraft?.logoSubidoBase64 || null,
+          limpiar_logo_original: Boolean(CSTATE.abmDraft?.limpiarLogoOriginal),
+          logo_zpl_config: {
+            ...(CSTATE.abmDraft?.logoZplConfig || {}),
+            iniciales: document.getElementById('abm-centro-logo-iniciales')?.value || '',
+            mode: document.getElementById('abm-centro-logo-mode')?.value || 'threshold',
+            threshold: Number(document.getElementById('abm-centro-logo-threshold')?.value || 138)
+          }
+        } : {})
       };
 
       const url = editarId
@@ -3612,7 +4096,7 @@
         mostrarError(err.message || 'Error de comunicación con el servidor.');
         if (btn) {
           btn.disabled = false;
-          btn.textContent = editarId ? '💾 Guardar Cambios de Perfil y Módulos' : '🚀 Crear Tienda y Configurar Cuenta';
+          btn.textContent = editarId ? '💾 Guardar Cambios del Nodo' : '🚀 Crear Tienda y Configurar Cuenta';
         }
       }
     }
@@ -3649,6 +4133,6 @@
       }
     });
   </script>
-  <script src="/api/produccion/nodos/comunicaciones-modal.js?v=1.1.0"></script>
+  <script src="/api/produccion/nodos/comunicaciones-modal.js?v=1.2.0_etapa4"></script>
 </body>
 </html>

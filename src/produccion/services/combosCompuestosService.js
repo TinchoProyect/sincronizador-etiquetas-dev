@@ -1491,44 +1491,52 @@ async function cotizarYAprobarCombo(payload = {}) {
             validado.firma_composicion
         ]);
 
-        // 8. Habilitar en tiendas solicitantes + tiendas seleccionadas explícitamente (por defecto todas las tiendas activas como en fracciones)
-        const nodosDestinoMap = new Map();
+        // 8. Habilitar en tiendas según nodos_habilitados_ids / nodos_publicados_ids (Nivel 2 y Nivel 3).
+        // Por defecto (si no se envía nodos_habilitados_ids), TODOS los nodos activos reciben habilitado_lamda = true
+        // y publicado_tienda = false (salvo los nodos incluidos en nodos_publicados_ids).
+        const propsMetaPorNodo = new Map();
         for (const pr of propsCoincidentesRes.rows) {
-            nodosDestinoMap.set(Number(pr.nodo_solicitante_id), {
+            propsMetaPorNodo.set(Number(pr.nodo_solicitante_id), {
                 alias_vidriera: pr.alias_vidriera_sugerido || null,
                 categoria_vidriera: pr.categoria_vidriera_sugerida || null
             });
         }
-        if (Array.isArray(payload.nodos_habilitados_ids)) {
-            for (const rawNid of payload.nodos_habilitados_ids) {
-                const nid = Number(rawNid);
-                if (nid > 0 && !nodosDestinoMap.has(nid)) {
-                    nodosDestinoMap.set(nid, { alias_vidriera: null, categoria_vidriera: null });
-                }
-            }
+        const tieneFiltroHabilitados = Array.isArray(payload.nodos_habilitados_ids);
+        const setHabilitados = new Set(
+            (tieneFiltroHabilitados ? payload.nodos_habilitados_ids : [])
+                .map(Number)
+                .filter(id => Number.isFinite(id) && id > 0)
+        );
+        for (const pr of propsCoincidentesRes.rows) {
+            if (tieneFiltroHabilitados) setHabilitados.add(Number(pr.nodo_solicitante_id));
         }
-        if (payload.habilitar_en_todas_tiendas !== false && !Array.isArray(payload.nodos_habilitados_ids)) {
-            const allNodos = await client.query('SELECT id FROM public.nodos_maestro WHERE COALESCE(activo, true) = true');
-            for (const nr of allNodos.rows) {
-                const nid = Number(nr.id);
-                if (!nodosDestinoMap.has(nid)) {
-                    nodosDestinoMap.set(nid, { alias_vidriera: null, categoria_vidriera: null });
-                }
-            }
-        }
+        const tieneListaPublicados = Array.isArray(payload.nodos_publicados_ids);
+        const setPublicados = new Set(
+            (tieneListaPublicados ? payload.nodos_publicados_ids : [])
+                .map(Number)
+                .filter(id => Number.isFinite(id) && id > 0)
+        );
 
-        for (const [nid, metaTienda] of nodosDestinoMap.entries()) {
-            const nodoFiscalRes = await client.query(`
-                SELECT id,
-                       COALESCE(margen_gestor_default_pct, 25.00)::numeric(6,2) AS margen_def,
-                       COALESCE(alicuota_iva_margen_pct, 21.00)::numeric(5,2) AS iva_margen,
-                       COALESCE(alicuota_iibb_margen_pct, 4.00)::numeric(5,2) AS iibb_margen
-                FROM public.nodos_maestro
-                WHERE id = $1
-                LIMIT 1
-            `, [nid]);
-            if (nodoFiscalRes.rowCount === 0) continue;
-            const nf = nodoFiscalRes.rows[0];
+        const allNodosRes = await client.query(`
+            SELECT id,
+                   COALESCE(margen_gestor_default_pct, 25.00)::numeric(6,2) AS margen_def,
+                   COALESCE(alicuota_iva_margen_pct, 21.00)::numeric(5,2) AS iva_margen,
+                   COALESCE(alicuota_iibb_margen_pct, 4.00)::numeric(5,2) AS iibb_margen
+            FROM public.nodos_maestro
+            WHERE COALESCE(activo, true) = true
+        `);
+
+        for (const nf of allNodosRes.rows) {
+            const nid = Number(nf.id);
+            const metaTienda = propsMetaPorNodo.get(nid) || { alias_vidriera: null, categoria_vidriera: null };
+            const habilitadoLamda = tieneFiltroHabilitados
+                ? setHabilitados.has(nid)
+                : (payload.habilitar_en_todas_tiendas !== false);
+            const publicarAhora = habilitadoLamda && (
+                tieneListaPublicados
+                    ? setPublicados.has(nid)
+                    : Boolean(payload.publicar_inmediato_tienda === true)
+            );
 
             const ofExRes = await client.query(`
                 SELECT * FROM public.nodos_ofertas_gestor
@@ -1545,6 +1553,10 @@ async function cotizarYAprobarCombo(payload = {}) {
                     nf.iibb_margen
                 );
                 const cambioCosto = Math.abs(Number(ofActual.precio_base_nodo_snapshot || 0) - Number(estructura.precio_base_nodo_final)) >= 1;
+                const habFinal = tieneFiltroHabilitados ? habilitadoLamda : (ofActual.habilitado_lamda !== false);
+                const pubFinal = !habFinal
+                    ? false
+                    : (tieneListaPublicados && setPublicados.has(nid) ? true : Boolean(ofActual.publicado_tienda));
                 await client.query(`
                     UPDATE public.nodos_ofertas_gestor
                     SET precio_base_nodo_snapshot = $1,
@@ -1553,8 +1565,10 @@ async function cotizarYAprobarCombo(payload = {}) {
                         nombre_vidriera_personalizado = COALESCE(public.nodos_ofertas_gestor.nombre_vidriera_personalizado, $4),
                         categoria_vidriera_personalizada = COALESCE(public.nodos_ofertas_gestor.categoria_vidriera_personalizada, $5),
                         alerta_cambio_costo = CASE WHEN $6 THEN true ELSE public.nodos_ofertas_gestor.alerta_cambio_costo END,
+                        habilitado_lamda = $7,
+                        publicado_tienda = $8,
                         updated_at = NOW()
-                    WHERE id = $7
+                    WHERE id = $9
                 `, [
                     estructura.precio_base_nodo_final,
                     calcPrecio.precio_venta_vecino,
@@ -1562,6 +1576,8 @@ async function cotizarYAprobarCombo(payload = {}) {
                     metaTienda.alias_vidriera,
                     metaTienda.categoria_vidriera,
                     cambioCosto,
+                    habFinal,
+                    pubFinal,
                     ofActual.id
                 ]);
             } else {
@@ -1574,15 +1590,17 @@ async function cotizarYAprobarCombo(payload = {}) {
                 );
                 await client.query(`
                     INSERT INTO public.nodos_ofertas_gestor (
-                        nodo_id, articulo_catalogo_id, publicado_tienda, destacado_tienda,
+                        nodo_id, articulo_catalogo_id, habilitado_lamda, publicado_tienda, destacado_tienda,
                         margen_gestor_pct, precio_venta_vecino, ganancia_unitaria_gestor,
                         precio_base_nodo_snapshot, alerta_cambio_costo,
                         nombre_vidriera_personalizado, categoria_vidriera_personalizada,
                         mostrar_ingredientes, updated_at
-                    ) VALUES ($1, $2, false, false, $3, $4, $5, $6, false, $7, $8, true, NOW())
+                    ) VALUES ($1, $2, $3, $4, false, $5, $6, $7, $8, false, $9, $10, true, NOW())
                 `, [
                     nid,
                     catalogoRow.id,
+                    habilitadoLamda,
+                    publicarAhora,
                     margenInicialGestor,
                     calcPrecio.precio_venta_vecino,
                     calcPrecio.ganancia_unitaria_gestor,
