@@ -625,6 +625,92 @@ async function sanearMetadatosYBasura(client) {
     };
 }
 
+async function sanearFlujosAutoritativosNodos(client) {
+    const ctxClasif = await nodosBarrialesService.cargarContextoClasificacionIngredientes(client);
+    const ingRes = await client.query(`
+        SELECT id, codigo, nombre, articulo_vinculado_numero,
+               COALESCE(rol_ingrediente, 'MATERIA_PRIMA') AS rol_ingrediente,
+               COALESCE(es_insumo, false) AS es_insumo
+        FROM public.ingredientes
+    `);
+    const ingMap = new Map(ingRes.rows.map(r => [Number(r.id), r]));
+
+    const catRes = await client.query(`
+        SELECT id, sku_nodo, articulo_bunker_origen_codigo, flujo_lamda, origen_tipo,
+               ingrediente_origen_id, COALESCE(es_combo, false) AS es_combo
+        FROM public.nodos_articulos_catalogo
+        WHERE COALESCE(es_combo, false) = false
+        ORDER BY id ASC
+    `);
+
+    const catalogoCorregido = [];
+    for (const row of catRes.rows) {
+        const ingId = row.ingrediente_origen_id ? Number(row.ingrediente_origen_id) : null;
+        const clasif = (ingId && ingMap.has(ingId))
+            ? nodosBarrialesService.clasificarIngredienteEnFlujo(ingMap.get(ingId), ctxClasif.idsCompuestosSet, ctxClasif.ctxRelaciones)
+            : await nodosBarrialesService.resolverFlujoYOrigenAutoritativoNodo(client, {
+                ingredienteId: ingId,
+                articuloBunkerCodigo: row.articulo_bunker_origen_codigo || row.sku_nodo
+            });
+
+        const flujoEsperado = Number(clasif.flujo);
+        const origenEsperado = String(clasif.origen_tipo || 'INGREDIENTE').toUpperCase();
+        if (Number(row.flujo_lamda) !== flujoEsperado || String(row.origen_tipo || '').toUpperCase() !== origenEsperado) {
+            await client.query(
+                `UPDATE public.nodos_articulos_catalogo
+                 SET flujo_lamda = $1, origen_tipo = $2, updated_at = NOW()
+                 WHERE id = $3`,
+                [flujoEsperado, origenEsperado, row.id]
+            );
+            catalogoCorregido.push({
+                id: Number(row.id),
+                sku_nodo: row.sku_nodo,
+                antes: `LDN ${row.flujo_lamda} / ${row.origen_tipo}`,
+                despues: `LDN ${flujoEsperado} / ${origenEsperado}`
+            });
+        }
+    }
+
+    const propRes = await client.query(`
+        SELECT id, codigo_propuesta, flujo_sugerido, ingrediente_sugerido_id, articulo_bunker_sugerido_codigo
+        FROM public.nodos_propuestas_fracciones
+        ORDER BY id ASC
+    `);
+    const propuestasCorregidas = [];
+    for (const p of propRes.rows) {
+        const ingId = p.ingrediente_sugerido_id ? Number(p.ingrediente_sugerido_id) : null;
+        if (!ingId && !p.articulo_bunker_sugerido_codigo) continue;
+        const clasif = (ingId && ingMap.has(ingId))
+            ? nodosBarrialesService.clasificarIngredienteEnFlujo(ingMap.get(ingId), ctxClasif.idsCompuestosSet, ctxClasif.ctxRelaciones)
+            : await nodosBarrialesService.resolverFlujoYOrigenAutoritativoNodo(client, {
+                ingredienteId: ingId,
+                articuloBunkerCodigo: p.articulo_bunker_sugerido_codigo
+            });
+        const flujoEsperado = Number(clasif.flujo);
+        if (Number(p.flujo_sugerido) !== flujoEsperado) {
+            await client.query(
+                `UPDATE public.nodos_propuestas_fracciones
+                 SET flujo_sugerido = $1, updated_at = NOW()
+                 WHERE id = $2`,
+                [flujoEsperado, p.id]
+            );
+            propuestasCorregidas.push({
+                id: Number(p.id),
+                codigo_propuesta: p.codigo_propuesta,
+                antes: `LDN ${p.flujo_sugerido}`,
+                despues: `LDN ${flujoEsperado}`
+            });
+        }
+    }
+
+    return {
+        catalogo_auditado: catRes.rowCount,
+        catalogo_corregidos: catalogoCorregido,
+        propuestas_auditadas: propRes.rowCount,
+        propuestas_corregidas: propuestasCorregidas
+    };
+}
+
 function imprimirTablaAntesDespues(resultado) {
     console.log('\n==================== RESUMEN ANTES -> DESPUÉS ====================');
 
@@ -707,6 +793,18 @@ function imprimirTablaAntesDespues(resultado) {
             campo: 'registros en recetas',
             antes: `${resultado.otros.recetas_basura.antes_encontradas.length} recetas (0 refs activas)`,
             despues: `${resultado.otros.recetas_basura.eliminadas.length} eliminadas -> 0 restantes`
+        },
+        {
+            entidad: 'Flujos autoritativos (nodos_articulos_catalogo)',
+            campo: `auditados=${resultado.flujos_autoritativos.catalogo_auditado}`,
+            antes: `${resultado.flujos_autoritativos.catalogo_corregidos.length} desfasados (${resultado.flujos_autoritativos.catalogo_corregidos.map(x => `${x.sku_nodo}:${x.antes}`).join(', ') || '0'})`,
+            despues: '0 desfasados (100% grafo relacional)'
+        },
+        {
+            entidad: 'Flujos autoritativos (nodos_propuestas_fracciones)',
+            campo: `auditados=${resultado.flujos_autoritativos.propuestas_auditadas}`,
+            antes: `${resultado.flujos_autoritativos.propuestas_corregidas.length} desfasados (${resultado.flujos_autoritativos.propuestas_corregidas.map(x => `${x.codigo_propuesta}:${x.antes}`).join(', ') || '0'})`,
+            despues: '0 desfasados (100% grafo relacional)'
         }
     ]);
     console.log('\nRecetas legacy huérfanas SOLO REPORTADAS (sin borrar):', resultado.otros.recetas_legacy_reportadas_sin_borrar);
@@ -731,6 +829,7 @@ async function run() {
         const gdfx200g = await sanearGdfx200g(client);
         const romx500 = await sanearRomx500(client);
         const otros = await sanearMetadatosYBasura(client);
+        const flujos_autoritativos = await sanearFlujosAutoritativosNodos(client);
 
         const protegidosDespues = (await client.query(`
             SELECT id, codigo, nombre, costo_patron, articulo_vinculado_numero, rol_ingrediente
@@ -745,7 +844,8 @@ async function run() {
             guardrail_ingredientes_35_59_74_117_intactos: true,
             gdfx200g,
             romx500,
-            otros
+            otros,
+            flujos_autoritativos
         };
         imprimirTablaAntesDespues(resumen);
 

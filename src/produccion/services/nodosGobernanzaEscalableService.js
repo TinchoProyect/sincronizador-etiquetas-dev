@@ -773,25 +773,22 @@ async function actualizarOfertasNodosMasivo(catalogoId, payload = {}, runner = n
 async function obtenerPresentacionesPlantaNodosEscalable(runner = null) {
     const q = runner || db;
     const nodosBarrialesService = require('./nodosBarrialesService');
-    const [plantaInfo, ingRes, compRes, upRelRes, mixPadresRes, artDirectosRes, envasesRes, tarifasRes, familiasRes, taxonomiaBunkerMap, catalogoSkusRes] = await Promise.all([
+    const [plantaInfo, ingRes, ctxClasif, mixPadresRes, artDirectosRes, envasesRes, tarifasRes, familiasRes, taxonomiaBunkerMap, catalogoSkusRes] = await Promise.all([
         nodosBarrialesService.obtenerPresentacionesPlantaLamda(q),
         q.query(`
             SELECT i.id, i.codigo, i.nombre, COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_patron,
                    i.articulo_vinculado_numero, COALESCE(i.es_insumo, false) AS es_insumo,
                    COALESCE(i.rol_ingrediente, 'MATERIA_PRIMA') AS rol_ingrediente,
-                   COALESCE(i.habilitado_solicitud_nodos, true) AS habilitado_solicitud_nodos
+                   COALESCE(i.habilitado_solicitud_nodos, true) AS habilitado_solicitud_nodos,
+                   COALESCE(i.activo, true) AS activo
             FROM public.ingredientes i
             WHERE COALESCE(i.es_insumo, false) = false
+              AND COALESCE(i.activo, true) = true
               AND COALESCE(i.rol_ingrediente, 'MATERIA_PRIMA') IN ('MATERIA_PRIMA', 'PUENTE_ELABORADO')
               AND COALESCE(i.habilitado_solicitud_nodos, true) = true
             ORDER BY i.nombre ASC
         `),
-        q.query('SELECT DISTINCT mix_id AS ingrediente_padre_id FROM public.ingrediente_composicion'),
-        q.query(`
-            SELECT ingrediente_espejo_id, articulo_premezcla_codigo, linea_negocio,
-                   modo_rendimiento, peso_unitario_salida_kg, unidades_por_tanda_default
-            FROM public.articulos_produccion_externa_relacion
-        `),
+        nodosBarrialesService.cargarContextoClasificacionIngredientes(q),
         q.query(`
             SELECT DISTINCT ON (ing_s.id)
                    ing_s.id AS simple_id,
@@ -852,11 +849,7 @@ async function obtenerPresentacionesPlantaNodosEscalable(runner = null) {
         `)
     ]);
 
-    const idsCompuestosSet = new Set(compRes.rows.map(r => Number(r.ingrediente_padre_id)));
-    const ctxRelaciones = {
-        porEspejo: new Map(upRelRes.rows.filter(r => r.ingrediente_espejo_id).map(r => [Number(r.ingrediente_espejo_id), r])),
-        porPremezcla: new Map(upRelRes.rows.filter(r => r.articulo_premezcla_codigo).map(r => [String(r.articulo_premezcla_codigo).trim().toUpperCase(), r]))
-    };
+    const { idsCompuestosSet, ctxRelaciones } = ctxClasif;
     const mapaMixPadres = new Map(
         mixPadresRes.rows.map(r => {
             const codP = r.padre_codigo && String(r.padre_codigo).trim() !== '' ? String(r.padre_codigo).trim() : `#${r.padre_id}`;
@@ -1070,13 +1063,28 @@ async function obtenerSolicitudesNodosEscalable(filtros = {}, runner = null) {
         };
     });
 
+    const nodosBarrialesService = require('./nodosBarrialesService');
+    const propuestasFracciones = fraccRes.rows.map(r => {
+        const codIng = r.ingrediente_sugerido_codigo !== null && r.ingrediente_sugerido_codigo !== undefined && String(r.ingrediente_sugerido_codigo).trim() !== ''
+            ? String(r.ingrediente_sugerido_codigo).trim()
+            : (r.ingrediente_sugerido_id ? `#${r.ingrediente_sugerido_id}` : '');
+        const nomIng = String(r.ingrediente_sugerido_nombre || '').trim();
+        return {
+            ...r,
+            ingrediente_label_oficial: r.ingrediente_sugerido_id && nomIng
+                ? `[${codIng}] ${nomIng}`
+                : null,
+            peso_sugerido_label: nodosBarrialesService.formatearPesoCortoLdn(r.kilos_sugeridos)
+        };
+    });
+
     const cntRow = cntRes.rows[0] || {};
     const pendF = Number(cntRow.pendientes_fracciones || 0);
     const pendC = Number(cntRow.pendientes_combos || 0);
 
     return {
         ok: true,
-        propuestas: fraccRes.rows,
+        propuestas: propuestasFracciones,
         propuestas_combos: propuestasCombos,
         contadores: {
             pendientes_fracciones: pendF,

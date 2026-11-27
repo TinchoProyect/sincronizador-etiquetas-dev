@@ -1331,7 +1331,7 @@
             const ordenNum = Number(cat.orden_posicional || cat.orden_posicion || 1);
             const slotKey = `pos_${ordenNum}`;
             const nombreCat = String(cat.categoria || cat.nombre_categoria || '').trim();
-            const esSlotPeso = /GRAMAJE|PRESENTAC|PESO|FRACCION|ENVASE|UNIDAD/i.test(nombreCat);
+            const esSlotPeso = Boolean(cat.es_eje_presentacion);
             const valorActual = sel.posiciones?.[slotKey]?.termino_id || '';
             const optsTerminos = [
                 esSlotPeso ? `<option value="">⚡ Automático por peso (${escaparHtml(etiquetaPeso)})</option>` : `<option value="">— Sin atributo pos_${ordenNum} —</option>`,
@@ -1544,8 +1544,7 @@
                 modo_presentacion: df.modoPresentacion,
                 pack_unidades: df.packUnidades,
                 peso_unitario_gramos: df.packPesoUnitG,
-                flujo_lamda: Number(ea.flujoSeleccionadoMesa || 2),
-                origen_tipo: esArtBunker ? 'ARTICULO_BUNKER' : (ea.flujoSeleccionadoMesa === 3 ? 'MIX' : ea.flujoSeleccionadoMesa >= 4 ? 'UP_EXTERNA' : 'INGREDIENTE'),
+                origen_tipo: esArtBunker ? 'ARTICULO_BUNKER' : undefined,
                 ingrediente_origen_id: ingId,
                 articulo_bunker_origen_codigo: artCod,
                 costo_insumo_kg: Number(df.costoKg || 0),
@@ -1638,6 +1637,8 @@
                 ${fracc.map(p => {
                     const pend = p.estado === 'PENDIENTE_COTIZACION';
                     const esHab = p.tipo_solicitud === 'HABILITAR_SKU_EXISTENTE';
+                    const pesoCardTxt = p.peso_sugerido_label || ((Number(p.kilos_sugeridos || 0) >= 1) ? `${Number(Number(p.kilos_sugeridos).toFixed(2))}kg` : `${Math.round(Number(p.kilos_sugeridos || 0) * 1000)}g`);
+                    const tituloCard = p.ingrediente_label_oficial || p.nombre_sugerido;
                     return `
                         <div class="card" style="padding:12px 14px; background:#151e2e; border:1px solid ${pend ? '#f59e0b' : '#334155'}; border-radius:11px;">
                             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
@@ -1647,9 +1648,9 @@
                                 </div>
                                 <span style="font-size:0.7rem; font-weight:800; color:${pend ? '#fbbf24' : '#34d399'};">${escaparHtml(p.estado)}</span>
                             </div>
-                            <div style="font-weight:800; font-size:0.86rem; color:#f8fafc; margin-top:6px;">${escaparHtml(p.nombre_sugerido)}</div>
+                            <div style="font-weight:800; font-size:0.86rem; color:#f8fafc; margin-top:6px;">${escaparHtml(tituloCard)}</div>
                             <div style="font-size:0.73rem; color:#94a3b8; margin-top:3px;">
-                                Nodo: <strong style="color:#e2e8f0;">${escaparHtml(p.nodo_solicitante_nombre || '')}</strong> · ${(Number(p.kilos_sugeridos || 0) * 1000).toFixed(0)}g
+                                Nodo: <strong style="color:#e2e8f0;">${escaparHtml(p.nodo_solicitante_nombre || '')}</strong> · ${escaparHtml(pesoCardTxt)}
                                 ${p.articulo_bunker_sugerido_codigo ? ` · SKU: <code>${escaparHtml(p.articulo_bunker_sugerido_codigo)}</code>` : ''}
                             </div>
                             ${p.alias_vidriera_sugerido ? `<div style="font-size:0.72rem; color:#38bdf8; margin-top:3px;">Alias vidriera: "${escaparHtml(p.alias_vidriera_sugerido)}"</div>` : ''}
@@ -1758,8 +1759,12 @@
         ea.formDraft.costoKg = obtenerCostoVivoIngredientePizarra(prop.ingrediente_sugerido_id, prop.ingrediente_sugerido_costo_kg || 0);
         ea.formDraft.kilosUnidad = Number(prop.kilos_sugeridos || 0.25);
         ea.formDraft.aliasVidriera = prop.alias_vidriera_sugerido || '';
+        const pesoPropTxt = prop.peso_sugerido_label || (Number(prop.kilos_sugeridos || 0.25) >= 1 ? `${Number(Number(prop.kilos_sugeridos).toFixed(2))}kg` : `${Math.round(Number(prop.kilos_sugeridos || 0.25) * 1000)}g`);
+        const labelPropSinPeso = prop.ingrediente_label_oficial || itemIng?.label_oficial || '';
         ea.formDraft.tituloContexto = `📥 Cotizando Solicitud ${prop.codigo_propuesta} (${prop.nodo_solicitante_nombre || 'Nodo'})`;
-        ea.formDraft.subtituloContexto = `${prop.ingrediente_label_oficial || prop.nombre_sugerido} · ${(Number(prop.kilos_sugeridos || 0.25) * 1000).toFixed(0)}g`;
+        ea.formDraft.subtituloContexto = labelPropSinPeso
+            ? `${labelPropSinPeso} · ${pesoPropTxt}`
+            : String(prop.nombre_sugerido || '');
         if (prop.nodo_solicitante_id) {
             ea.nodosHabilitadosIds.add(Number(prop.nodo_solicitante_id));
         }

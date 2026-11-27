@@ -175,14 +175,13 @@ async function ejecutarMigracionEsquemaEtapa2Nodos(client) {
             ADD COLUMN IF NOT EXISTS tarifa_colaborador_id INTEGER REFERENCES public.colaboradores_tarifas(id) ON DELETE SET NULL;
     `);
 
-    // 5. Backfill estructural de rol_ingrediente y habilitado_solicitud_nodos (cero arrays de IDs hardcodeados)
+    // 5. Backfill estructural de rol_ingrediente preservando habilitado_solicitud_nodos como bandera explícita de BD (cero ILIKE por nombre)
     await client.query(`
         WITH clasificacion AS (
             SELECT i.id,
                    CASE
                        WHEN COALESCE(i.es_insumo, false) = true THEN 'INSUMO_EMPAQUE'
-                       WHEN EXISTS (SELECT 1 FROM public.ingrediente_composicion ic WHERE ic.mix_id = i.id)
-                            OR i.nombre ILIKE '%Fuera de Servicio%' THEN 'FORMULA_INTERNA'
+                       WHEN EXISTS (SELECT 1 FROM public.ingrediente_composicion ic WHERE ic.mix_id = i.id) THEN 'FORMULA_INTERNA'
                        WHEN EXISTS (
                            SELECT 1 FROM public.articulos_produccion_externa_relacion ap
                            WHERE UPPER(BTRIM(ap.articulo_kilo_codigo)) = UPPER(BTRIM(COALESCE(i.articulo_vinculado_numero, '')))
@@ -216,23 +215,15 @@ async function ejecutarMigracionEsquemaEtapa2Nodos(client) {
                              SELECT 1 FROM public.articulos_produccion_externa_relacion aper2
                              WHERE UPPER(BTRIM(aper2.articulo_produccion_codigo)) = UPPER(BTRIM(rec_com.articulo_numero))
                          )
-                   ) AS tiene_receta_comercial_propia,
-                   EXISTS (
-                       SELECT 1 FROM public.bunker_articulos ba_ap
-                       WHERE UPPER(BTRIM(ba_ap.articulo_id)) = UPPER(BTRIM(COALESCE(i.articulo_vinculado_numero, '')))
-                         AND ba_ap.descripcion_generada ILIKE '%Para Mix%'
-                   ) AS ap_para_mix,
-                   i.nombre
+                   ) AS tiene_receta_comercial_propia
             FROM public.ingredientes i
         )
         UPDATE public.ingredientes ing
         SET rol_ingrediente = c.nuevo_rol,
             habilitado_solicitud_nodos = CASE
                 WHEN c.nuevo_rol IN ('INSUMO_EMPAQUE', 'FORMULA_INTERNA') THEN false
-                WHEN c.nombre ILIKE '%Test E2E%' THEN false
-                WHEN c.nombre ILIKE '%Para Mix%' OR c.ap_para_mix = true THEN false
                 WHEN c.usado_en_fase_externa = true AND c.tiene_receta_comercial_propia = false THEN false
-                ELSE true
+                ELSE COALESCE(ing.habilitado_solicitud_nodos, true)
             END
         FROM clasificacion c
         WHERE ing.id = c.id;

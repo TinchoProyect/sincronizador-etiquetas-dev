@@ -6440,7 +6440,7 @@
       const baseTecnica = String(ingSel.label_oficial || ingSel.nombre_claro || ingSel.nombre_oficial || '').trim();
       if (!kilos || Number(kilos) <= 0) return baseTecnica;
       const etiquetaPeso = formatearPesoCortoGestor(kilos).replace(/\s+/g, '');
-      return /\bx\s*\d+/i.test(baseTecnica) ? baseTecnica : `${baseTecnica} x ${etiquetaPeso}`;
+      return `${baseTecnica} x ${etiquetaPeso}`;
     }
 
     function renderResumenPaso4PropuestaHtml(ev) {
@@ -7525,9 +7525,8 @@
                 const badgeBg = esAprobada ? 'var(--ok-soft)' : esDescartada ? '#f3f4f6' : 'var(--warn-soft)';
                 const badgeColor = esAprobada ? 'var(--ok)' : esDescartada ? 'var(--muted)' : 'var(--warn)';
                 const badgeLabel = esAprobada ? 'Cotizada' : esDescartada ? 'Descartada' : 'En cotización';
-                const tituloTecnico = p.ingrediente_label_oficial
-                  ? `${p.ingrediente_label_oficial} x ${gramosTxt.replace(/\s+/g, '')}`
-                  : p.nombre_sugerido;
+                const tituloTecnico = p.ingrediente_label_oficial || p.nombre_sugerido;
+                const pesoMostrar = p.peso_sugerido_label || gramosTxt;
 
                 return `
                   <div style="padding:12px; border-radius:12px; border:1px solid var(--border); background:#fffdfb; min-width:0; max-width:100%; overflow-wrap:anywhere;">
@@ -7538,7 +7537,7 @@
                       </span>
                     </div>
                     <div style="font-size:0.78rem; color:var(--muted); margin-top:4px;">
-                      ${esc(p.familia_bunker_nombre || p.categoria_sugerida || 'Frutos Secos')}${p.articulo_principal_bunker ? ` › <strong>${esc(p.articulo_principal_bunker)}</strong>` : ''} · <strong>${esc(gramosTxt)}</strong>
+                      ${esc(p.familia_bunker_nombre || p.categoria_sugerida || 'Frutos Secos')}${p.articulo_principal_bunker ? ` › <strong>${esc(p.articulo_principal_bunker)}</strong>` : ''} · <strong>${esc(pesoMostrar)}</strong>
                       · ${esHabilitacion ? `Presentación oficial LAMDA (${esc(p.articulo_bunker_sugerido_codigo)})` : 'Nueva fracción'}
                       ${p.precio_objetivo_vecino ? ` · Est: ${fmt(p.precio_objetivo_vecino)}` : ''}
                     </div>
@@ -7627,7 +7626,6 @@
         nodo_solicitante_id: GSTATE.nodo.id,
         tipo_solicitud: solicitarHabilitacionExistente ? 'HABILITAR_SKU_EXISTENTE' : 'NUEVA_FRACCION',
         ingrediente_sugerido_id: Number(ingSel.id),
-        flujo_sugerido: Number(ingSel.flujo || 2),
         familia_bunker_id: Number(ingSel.familia_bunker_id || 0) || null,
         articulo_principal_bunker: ingSel.articulo_principal_bunker || null,
         articulo_bunker_sugerido_codigo: articuloSugeridoCodigo,

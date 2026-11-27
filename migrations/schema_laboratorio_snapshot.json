@@ -2070,6 +2070,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "CURRENT_TIMESTAMP"
+      },
+      "es_eje_presentacion": {
+        "ordinal_position": 6,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
       }
     },
     "bunker_familia_ejes": {
@@ -10792,6 +10802,36 @@
         "numeric_scale": null,
         "is_nullable": "NO",
         "column_default": "true"
+      },
+      "activo": {
+        "ordinal_position": 17,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "true"
+      },
+      "capacidad_max_kg": {
+        "ordinal_position": 18,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 3,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "es_envase_fraccionamiento": {
+        "ordinal_position": 19,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
       }
     },
     "ingredientes_ajustes": {

@@ -235,10 +235,15 @@ function calcularFidelidadIngredientes(ingredientesRealesRaw = []) {
     const vistos = new Set();
     const reales = [];
     for (const raw of (ingredientesRealesRaw || [])) {
+        if (raw && typeof raw === 'object') {
+            if (raw.es_insumo === true || String(raw.rol_ingrediente || '').trim().toUpperCase() === 'INSUMO_EMPAQUE') {
+                continue;
+            }
+        }
         const nom = String(typeof raw === 'string' ? raw : (raw?.nombre_comercial || raw?.nombre || '')).trim();
         if (!nom) continue;
         const n = jh.normalizarClaveTexto(nom);
-        if (!n || /\b(bolsa|caja|etiqueta|envase|flowpack|carton|tarro|pote|frasco)\b/.test(n)) continue;
+        if (!n) continue;
         if (vistos.has(n)) continue;
         vistos.add(n);
         reales.push(nom);
