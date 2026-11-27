@@ -1277,8 +1277,14 @@ const registrarMovimientosStockFactura = async (factura, client) => {
                         LEFT JOIN public.presupuestos p ON p.id = $1
                         WHERE bc.usuario_id IS NOT NULL
                           AND (
-                              (p.id IS NOT NULL AND COALESCE(NULLIF(LTRIM(TRIM(bc.lomas_soft_id::text), '0'), ''), '0') = COALESCE(NULLIF(LTRIM(TRIM(p.id_cliente::text), '0'), ''), '0'))
-                              OR ($2::text IS NOT NULL AND $2::text <> '' AND COALESCE(NULLIF(LTRIM(TRIM(bc.lomas_soft_id::text), '0'), ''), '0') = COALESCE(NULLIF(LTRIM(TRIM($2::text), '0'), ''), '0'))
+                              (p.id IS NOT NULL AND (
+                                  COALESCE(NULLIF(LTRIM(TRIM(bc.lomas_soft_id::text), '0'), ''), '0') = COALESCE(NULLIF(LTRIM(TRIM(p.id_cliente::text), '0'), ''), '0')
+                                  OR UPPER(TRIM(COALESCE(bc.codigo_bunker_cliente, ''))) = UPPER(TRIM(COALESCE(p.id_cliente::text, '')))
+                              ))
+                              OR ($2::text IS NOT NULL AND $2::text <> '' AND (
+                                  COALESCE(NULLIF(LTRIM(TRIM(bc.lomas_soft_id::text), '0'), ''), '0') = COALESCE(NULLIF(LTRIM(TRIM($2::text), '0'), ''), '0')
+                                  OR UPPER(TRIM(COALESCE(bc.codigo_bunker_cliente, ''))) = UPPER(TRIM($2::text))
+                              ))
                           )
                         ORDER BY (p.id IS NOT NULL) DESC
                         LIMIT 1

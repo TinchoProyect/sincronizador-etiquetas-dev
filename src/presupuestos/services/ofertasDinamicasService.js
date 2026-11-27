@@ -8,6 +8,11 @@ const pool = require('../../usuarios/pool');
  * Single Source of Truth para Cotizadores, Presupuestos, CRM y Portal B2B.
  */
 class OfertasDinamicasService {
+    static _cacheOfertasActivas = { data: null, expiresAt: 0 };
+
+    static invalidarCacheOfertas() {
+        this._cacheOfertasActivas = { data: null, expiresAt: 0 };
+    }
 
     /**
      * Obtiene todas las ofertas configuradas con sus artículos, listas y excepciones
@@ -380,6 +385,7 @@ class OfertasDinamicasService {
             }
 
             await client.query('COMMIT');
+            this.invalidarCacheOfertas();
             return await this.obtenerOfertaPorId(ofertaId, client);
         } catch (err) {
             await client.query('ROLLBACK');
@@ -400,6 +406,7 @@ class OfertasDinamicasService {
             RETURNING *
         `;
         const res = await db.query(query, [id, nuevoEstado]);
+        this.invalidarCacheOfertas();
         return res.rows.length > 0 ? res.rows[0] : null;
     }
 
@@ -408,7 +415,129 @@ class OfertasDinamicasService {
      */
     static async eliminarOferta(id, db = pool) {
         const res = await db.query(`DELETE FROM public.bunker_ofertas_dinamicas WHERE id = $1 RETURNING id`, [id]);
+        this.invalidarCacheOfertas();
         return res.rows.length > 0;
+    }
+
+    /**
+     * Consulta liviana 100% solo lectura de ofertas activas (sin UPDATE ni json_agg histórico ni N+1),
+     * cacheada en memoria por 30s para no frenar el autocompletado de presupuestos.
+     */
+    static async obtenerOfertasActivasLigero(db = pool) {
+        const ahora = Date.now();
+        if (this._cacheOfertasActivas && Array.isArray(this._cacheOfertasActivas.data) && ahora < this._cacheOfertasActivas.expiresAt) {
+            return this._cacheOfertasActivas.data;
+        }
+
+        const resCab = await db.query(`
+            SELECT *
+            FROM public.bunker_ofertas_dinamicas
+            WHERE activo = true
+              AND estado = 'ACTIVA'
+              AND (fecha_fin IS NULL OR fecha_fin >= NOW())
+            ORDER BY id DESC
+        `);
+
+        if (resCab.rows.length === 0) {
+            this._cacheOfertasActivas = { data: [], expiresAt: ahora + 30000 };
+            return [];
+        }
+
+        const ids = resCab.rows.map(r => r.id);
+        const [resCuotaPres, resCuotaMan, resArt, resListas, resExc] = await Promise.all([
+            db.query(`
+                SELECT
+                    oa.oferta_id,
+                    COALESCE(SUM(CASE WHEN p.estado IN ('Facturado', 'Entregado') OR p.secuencia = 'Entregado'
+                        THEN pd.cantidad * oa.factor_conversion_cuota ELSE 0 END), 0) AS kilos_consumidos,
+                    COALESCE(SUM(CASE WHEN NOT (p.estado IN ('Facturado', 'Entregado') OR p.secuencia = 'Entregado')
+                        THEN pd.cantidad * oa.factor_conversion_cuota ELSE 0 END), 0) AS kilos_reservados,
+                    COALESCE(SUM(pd.cantidad * oa.factor_conversion_cuota), 0) AS kilos_totales
+                FROM public.bunker_ofertas_dinamicas od
+                JOIN public.bunker_oferta_articulos oa ON oa.oferta_id = od.id
+                JOIN public.articulos a ON (a.numero = oa.articulo_numero OR a.codigo_barras = oa.articulo_numero)
+                JOIN public.presupuestos_detalles pd ON (pd.articulo = a.codigo_barras OR pd.articulo = a.numero)
+                JOIN public.presupuestos p ON p.id = pd.id_presupuesto
+                WHERE od.id = ANY($1::int[])
+                  AND p.activo = true
+                  AND p.estado NOT IN ('Anulado por el Cliente', 'ANULADO', 'Cancelado', 'Eliminado', 'Sin Confirmar', 'Standby', 'Muestra de Fraccionados')
+                  AND COALESCE(p.secuencia, '') NOT IN ('Standby', 'Sin_Confirmar')
+                  AND COALESCE(p.fecha_actualizacion, p.fecha) >= od.fecha_inicio
+                  AND (od.fecha_fin IS NULL OR COALESCE(p.fecha_actualizacion, p.fecha) <= od.fecha_fin)
+                GROUP BY oa.oferta_id
+            `, [ids]),
+            db.query(`
+                SELECT oferta_id, COALESCE(SUM(cuota_debitada), 0) AS manual_debitada
+                FROM public.bunker_oferta_consumos
+                WHERE oferta_id = ANY($1::int[]) AND presupuesto_id IS NULL
+                GROUP BY oferta_id
+            `, [ids]),
+            db.query(`
+                SELECT oferta_id, articulo_numero, factor_conversion_cuota, precio_fijo_oferta
+                FROM public.bunker_oferta_articulos
+                WHERE oferta_id = ANY($1::int[])
+                ORDER BY articulo_numero ASC
+            `, [ids]),
+            db.query(`
+                SELECT oferta_id, bunker_lista_precio_id
+                FROM public.bunker_oferta_listas
+                WHERE oferta_id = ANY($1::int[])
+            `, [ids]),
+            db.query(`
+                SELECT oferta_id, cliente_id, tipo_excepcion
+                FROM public.bunker_oferta_excepciones
+                WHERE oferta_id = ANY($1::int[])
+            `, [ids])
+        ]);
+
+        const presByOfr = new Map(resCuotaPres.rows.map(r => [r.oferta_id, r]));
+        const manByOfr = new Map(resCuotaMan.rows.map(r => [r.oferta_id, parseFloat(r.manual_debitada) || 0]));
+        const artByOfr = new Map();
+        for (const r of resArt.rows) {
+            if (!artByOfr.has(r.oferta_id)) artByOfr.set(r.oferta_id, []);
+            artByOfr.get(r.oferta_id).push(r);
+        }
+        const lstByOfr = new Map();
+        for (const r of resListas.rows) {
+            if (!lstByOfr.has(r.oferta_id)) lstByOfr.set(r.oferta_id, []);
+            lstByOfr.get(r.oferta_id).push(r);
+        }
+        const excByOfr = new Map();
+        for (const r of resExc.rows) {
+            if (!excByOfr.has(r.oferta_id)) excByOfr.set(r.oferta_id, []);
+            excByOfr.get(r.oferta_id).push(r);
+        }
+
+        const vigentes = [];
+        for (const ofr of resCab.rows) {
+            const pRow = presByOfr.get(ofr.id);
+            const manDeb = manByOfr.get(ofr.id) || 0;
+            const kilosReservados = pRow ? (parseFloat(pRow.kilos_reservados) || 0) : 0;
+            const kilosConsumidos = pRow ? (parseFloat(pRow.kilos_consumidos) || 0) : 0;
+            const kilosTotales = (pRow ? (parseFloat(pRow.kilos_totales) || 0) : 0) + manDeb;
+            const cuotaTotal = parseFloat(ofr.cuota_total) || 0;
+            const cuotaDisponible = Math.max(0, cuotaTotal - kilosTotales);
+
+            if ((ofr.condicion_cierre === 'HASTA_AGOTAR_STOCK' || ofr.condicion_cierre === 'AMBAS' || !['HASTA_AGOTAR_STOCK', 'FECHA_LIMITE', 'AMBAS'].includes(ofr.condicion_cierre)) && cuotaDisponible <= 0) {
+                continue;
+            }
+
+            vigentes.push({
+                ...ofr,
+                cuota_total: cuotaTotal,
+                kilos_reservados: kilosReservados,
+                kilos_consumidos: kilosConsumidos,
+                cuota_comprometida_total: kilosTotales,
+                cuota_disponible: cuotaDisponible,
+                cuota_consumida: kilosTotales,
+                articulos: artByOfr.get(ofr.id) || [],
+                listas: lstByOfr.get(ofr.id) || [],
+                excepciones: excByOfr.get(ofr.id) || []
+            });
+        }
+
+        this._cacheOfertasActivas = { data: vigentes, expiresAt: ahora + 30000 };
+        return vigentes;
     }
 
     /**
@@ -416,10 +545,11 @@ class OfertasDinamicasService {
      * Retorna un mapa indexado por articulo_numero con las condiciones y descuentos
      */
     static async obtenerOfertasActivasParaContexto({ clienteId = null, listaPrecioId = null }, db = pool) {
-        const ofertas = await this.obtenerOfertas(db, true);
+        const ofertas = await this.obtenerOfertasActivasLigero(db);
         const mapOfertasPorArticulo = {};
 
-        const numClienteId = clienteId ? parseInt(String(clienteId).replace(/[^0-9]/g, ''), 10) : null;
+        const rawCli = String(clienteId || '').trim();
+        const numClienteId = /^\d+$/.test(rawCli) ? parseInt(rawCli, 10) : null;
         const numListaId = listaPrecioId ? parseInt(listaPrecioId, 10) : null;
 
         for (const ofr of ofertas) {
@@ -516,6 +646,7 @@ class OfertasDinamicasService {
             }
 
             await client.query('COMMIT');
+            this.invalidarCacheOfertas();
             return true;
         } catch (err) {
             await client.query('ROLLBACK');

@@ -514,13 +514,40 @@
         }
 
         // Verificar si el cliente tiene listas de precios Búnker para mostrar/ocultar el switch
-        const clienteIdForBunker = parseInt(presupuestoData.id_cliente, 10) || 0;
-        if (clienteIdForBunker > 0) {
+        const rawClienteForBunker = String(presupuestoData.id_cliente || '').trim();
+        const clienteIdForBunker = /^\d+$/.test(rawClienteForBunker) ? parseInt(rawClienteForBunker, 10) : 0;
+        if (clienteIdForBunker > 0 || rawClienteForBunker.length > 0) {
             try {
-                const res = await fetch(`/api/presupuestos/clientes/${clienteIdForBunker}`);
+                const res = await fetch(`/api/presupuestos/clientes/${encodeURIComponent(rawClienteForBunker)}`);
                 if (res.ok) {
                     const body = await res.json();
                     const clienteData = body?.data;
+                    if (clienteData) {
+                        window.__clienteBunkerMeta = {
+                            id_cliente: clienteData.id_cliente ?? (clienteIdForBunker || null),
+                            codigo_bunker_cliente: clienteData.codigo_bunker_cliente || null,
+                            lomas_soft_id: clienteData.lomas_soft_id || null,
+                            usuario_id: clienteData.usuario_id || null,
+                            bunker_lista_id: clienteData.bunker_lista_id || null,
+                            bunker_lista_nombre: clienteData.bunker_lista_nombre || null,
+                            tiene_listas_bunker: Boolean(clienteData.tiene_listas_bunker)
+                        };
+                        if (window.Detalles) {
+                            window.Detalles.clienteSeleccionado = {
+                                ...(window.Detalles.clienteSeleccionado || {}),
+                                cliente_id: clienteData.id_cliente ?? (clienteIdForBunker || null),
+                                codigo_bunker_cliente: clienteData.codigo_bunker_cliente || null,
+                                lomas_soft_id: clienteData.lomas_soft_id || null,
+                                usuario_id: clienteData.usuario_id || null,
+                                bunker_lista_id: clienteData.bunker_lista_id || null,
+                                bunker_lista_nombre: clienteData.bunker_lista_nombre || null
+                            };
+                        }
+                        const preloadBunker = Boolean(clienteData.tiene_listas_bunker ? (switchInput ? switchInput.checked : true) : usarPreciosBunker);
+                        if (window.Detalles?.precargarCatalogoCliente) {
+                            window.Detalles.precargarCatalogoCliente(rawClienteForBunker, preloadBunker).catch(() => {});
+                        }
+                    }
                     const wrapper = document.getElementById('bunker-switch-wrapper');
                     const switchInputEl = document.getElementById('usar_precios_bunker');
                     const labelEl = document.getElementById('bunker-switch-label');
@@ -703,6 +730,11 @@
             if (isChildIngredient) {
                 row.classList.add('child-row');
                 row.dataset.childOf = activeParentRowId;
+                const parentRowEl = document.getElementById(activeParentRowId);
+                if (parentRowEl) {
+                    parentRowEl.dataset.isParent = 'true';
+                    parentRowEl.dataset.parentRowId = activeParentRowId;
+                }
                 if (artInput) {
                     artInput.readOnly = true;
                     artInput.style.backgroundColor = '#f1f5f9';
@@ -812,6 +844,18 @@
             }
 
             console.log(`✅ [PRESUPUESTOS-EDIT] Detalle ${idx} renderizado correctamente`);
+        }
+
+        // Enlazar botón de Kit aplicado para filas padre ya existentes en el presupuesto sin duplicar hijas
+        if (typeof window.gestionarKitArticuloSeleccionado === 'function') {
+            const existingParents = tbody.querySelectorAll('tr[data-is-parent="true"]');
+            for (const pRow of existingParents) {
+                const pInput = pRow.querySelector('input[name*="[articulo]"]');
+                const pCode = pInput ? (pInput.dataset.articuloNumero || pInput.dataset.codigoBarras || pInput.value) : '';
+                if (pInput && pCode) {
+                    await window.gestionarKitArticuloSeleccionado(pRow, pInput, pCode, { skipAutoInject: true });
+                }
+            }
         }
 
         // Recalcular totales finales
@@ -951,7 +995,7 @@
 
         // BUSCAR PRECIOS AUTOMÁTICAMENTE (igual que en creación) - Integrado con precios Búnker
         const usarPreciosBunker = document.getElementById('usar_precios_bunker')?.checked || false;
-        const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
+        const clienteId = (typeof getClienteIdActivo === 'function' ? getClienteIdActivo() : (window.__clienteBunkerMeta?.id_cliente || document.getElementById('id_cliente')?.value || '0')) || '0';
 
         const fetchPrecios = async (params) => {
             const url = `/api/presupuestos/precios?${params.toString()}`;
@@ -1062,55 +1106,8 @@
             // -------------------------------------------------------------
             const articuloBaseParaKit = articuloNumero || input.dataset.articuloNumero || codigoBarras || description || element.dataset.id;
             console.log('[KIT-FRONT-DEBUG] Evaluando Kit para (Edit):', {articuloNumero, codigoBarras, description, seleccionado: articuloBaseParaKit});
-            if (articuloBaseParaKit) {
-                try {
-                    const kitRes = await fetch(`/api/produccion/recetas/hibridas/nativa/${encodeURIComponent(articuloBaseParaKit)}`);
-                    if (kitRes.ok) {
-                        const kitData = await kitRes.json();
-                        if (kitData.enlazado && kitData.ingredientes && kitData.ingredientes.length > 0) {
-                            console.log('[KIT] Artículo base tiene UP enlazada. Agregando botón de Kit en Edit.');
-                            const tdArticulo = input.closest('td');
-                            if (tdArticulo) {
-                                const btnPrev = tdArticulo.querySelector('.btn-kit-toggle');
-                                if (btnPrev) btnPrev.remove();
-
-                                const btnKit = document.createElement('button');
-                                btnKit.type = 'button';
-                                btnKit.className = 'btn-kit-toggle';
-                                btnKit.dataset.recetaId = kitData.receta_id;
-                                btnKit.dataset.ingredientes = JSON.stringify(kitData.ingredientes);
-                                btnKit.dataset.multiplicadorBase = kitData.multiplicador_base || 1;
-                                btnKit.dataset.isAdded = "false";
-                                btnKit.innerHTML = '📦 Añadir Kit Insumos';
-                                
-                                // Vinculamos la cantidad base
-                                btnKit.onclick = function() {
-                                    if (this.dataset.isAdded === "true") return; // Ya agregado
-                                    this.dataset.isAdded = "true";
-                                    this.style.display = 'none'; // Ocultar botón tras agregar
-                                    
-                                    // Determinar ID de fila padre
-                                    const targetRow = input.closest('tr');
-                                    if (!targetRow.id) targetRow.id = 'row_' + Math.random().toString(36).substr(2, 9);
-                                    const parentRowId = targetRow.id;
-                                    
-                                    const baseQtyInput = targetRow.querySelector('input[name*="[cantidad]"]');
-                                    const baseQty = baseQtyInput ? (parseFloat(String(baseQtyInput.value).replace(',','.')) || 1) : 1;
-                                    
-                                    if (typeof window.inyectarFilasHijasKit === 'function') {
-                                        window.inyectarFilasHijasKit(targetRow, kitData.ingredientes, parentRowId, baseQty);
-                                    } else {
-                                        console.error('[KIT] Error: window.inyectarFilasHijasKit no está definido en Edit');
-                                    }
-                                };
-
-                                tdArticulo.appendChild(btnKit);
-                            }
-                        }
-                    }
-                } catch(e) {
-                    console.error('[KIT] Error al buscar UP del artículo base', e);
-                }
+            if (articuloBaseParaKit && row && typeof window.gestionarKitArticuloSeleccionado === 'function') {
+                await window.gestionarKitArticuloSeleccionado(row, input, articuloBaseParaKit);
             }
             // Foco preservado: no forzar focus a valor1Input para respetar la interacción del operador
             console.log('✅ [PRESUPUESTOS-EDIT] Precios actualizados automáticamente');

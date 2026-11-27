@@ -100,10 +100,17 @@ function enfocarCampoCodigoBarras() {
 }
 
 function getClienteIdActivo() {
-    if (clienteSeleccionado && clienteSeleccionado.cliente_id) {
-        return String(clienteSeleccionado.cliente_id);
+    if (clienteSeleccionado) {
+        if (clienteSeleccionado.cliente_id) return String(clienteSeleccionado.cliente_id);
+        if (clienteSeleccionado.codigo_bunker_cliente) return String(clienteSeleccionado.codigo_bunker_cliente).trim().toUpperCase();
+    }
+    const meta = window.__clienteBunkerMeta;
+    if (meta) {
+        if (meta.id_cliente) return String(meta.id_cliente);
+        if (meta.codigo_bunker_cliente) return String(meta.codigo_bunker_cliente).trim().toUpperCase();
     }
     const raw = (document.getElementById('id_cliente')?.value || '').trim();
+    if (/^cb-[a-z0-9-]+$/i.test(raw)) return raw.toUpperCase();
     const m = raw.match(/^\d+/);
     return m ? m[0] : '0';
 }
@@ -435,6 +442,13 @@ function removerDetalle(arg) {
     if (tbody.children.length <= 1) {
         console.log('⚠️ Última fila detectada: Limpiando inputs en lugar de eliminar.');
 
+        if (row.dataset.isParent === 'true' && row.dataset.parentRowId) {
+            tbody.querySelectorAll(`tr.child-row[data-child-of="${row.dataset.parentRowId}"]`).forEach(crow => crow.remove());
+        }
+        delete row.dataset.isParent;
+        delete row.dataset.parentRowId;
+        row.querySelectorAll('.btn-kit-toggle, .switch-oferta-container').forEach(el => el.remove());
+
         // Limpiar inputs
         const inputs = row.querySelectorAll('input');
         inputs.forEach(input => {
@@ -446,10 +460,15 @@ function removerDetalle(arg) {
                 } else {
                     input.value = '';
                 }
+                input.readOnly = false;
+                input.style.backgroundColor = '';
+                input.style.fontWeight = '';
+                input.style.color = '';
                 // Limpiar dataset custom
                 delete input.dataset.codigoBarras;
                 delete input.dataset.articuloNumero;
                 delete input.dataset.origenValidado;
+                delete input.dataset.ignoreHistorico;
             }
         });
 
@@ -460,6 +479,8 @@ function removerDetalle(arg) {
         // Reset visuales de precio
         const displays = row.querySelectorAll('.precio-calculado, .subtotal-display');
         displays.forEach(d => d.value = '$ 0,00');
+
+        recalcTotales();
 
         // Foco
         const firstInput = row.querySelector('input[type="text"]');
@@ -1557,15 +1578,24 @@ function seleccionarCliente(element) {
 
     // Guardar cliente seleccionado
     clienteSeleccionado = {
-        cliente_id: parseInt(clienteId, 10),
+        cliente_id: /^\d+$/.test(String(clienteId)) ? parseInt(clienteId, 10) : null,
         numero_fmt: numeroFormateado,
         nombre: nombreCompleto,
         cuit: cuit,
         condicion_iva: condicion_iva
     };
+    window.__clienteBunkerMeta = {
+        id_cliente: clienteSeleccionado.cliente_id,
+        codigo_bunker_cliente: /^cb-/i.test(String(clienteId || '')) ? String(clienteId).toUpperCase() : null,
+        lomas_soft_id: /^\d+$/.test(String(clienteId)) ? String(clienteId).padStart(4, '0') : null,
+        usuario_id: null,
+        bunker_lista_id: null,
+        bunker_lista_nombre: null
+    };
 
     // Limpiar caché local de artículos para garantizar precios y promociones actualizadas del cliente
     window.__articulosSearchCache = {};
+    window.__catalogoArticulosCtx = { key: null, items: [], loaded: false, loadingPromise: null };
 
     // Hook para Modo Retiro (Fase 2)
     if (typeof hookSeleccionCliente === 'function') {
@@ -1605,6 +1635,27 @@ function seleccionarCliente(element) {
                 const label = document.getElementById('bunker-switch-label');
                 const badge = document.getElementById('bunker-lista-badge');
 
+                if (clienteData) {
+                    window.__clienteBunkerMeta = {
+                        id_cliente: clienteData.id_cliente ?? clienteSeleccionado?.cliente_id ?? null,
+                        codigo_bunker_cliente: clienteData.codigo_bunker_cliente || null,
+                        lomas_soft_id: clienteData.lomas_soft_id || null,
+                        usuario_id: clienteData.usuario_id || null,
+                        bunker_lista_id: clienteData.bunker_lista_id || null,
+                        bunker_lista_nombre: clienteData.bunker_lista_nombre || null,
+                        tiene_listas_bunker: Boolean(clienteData.tiene_listas_bunker)
+                    };
+                    if (clienteSeleccionado) {
+                        Object.assign(clienteSeleccionado, {
+                            codigo_bunker_cliente: clienteData.codigo_bunker_cliente || null,
+                            lomas_soft_id: clienteData.lomas_soft_id || null,
+                            usuario_id: clienteData.usuario_id || null,
+                            bunker_lista_id: clienteData.bunker_lista_id || null,
+                            bunker_lista_nombre: clienteData.bunker_lista_nombre || null
+                        });
+                    }
+                }
+
                 if (wrapper) wrapper.style.display = 'inline-flex';
 
                 if (clienteData?.tiene_listas_bunker) {
@@ -1628,6 +1679,8 @@ function seleccionarCliente(element) {
                         wrapper.style.background = '#f0fdf4';
                         wrapper.style.borderColor = '#bbf7d0';
                     }
+                    // Precargar en segundo plano el catálogo completo de la lista del cliente para búsqueda <1ms
+                    precargarCatalogoCliente(clienteId, true).catch(() => {});
                     // Si ya había artículos en la grilla antes de seleccionar el cliente, recalcular con precios Búnker
                     if (typeof window.conmutarModoBunker === 'function') {
                         await window.conmutarModoBunker();
@@ -1653,6 +1706,7 @@ function seleccionarCliente(element) {
                         wrapper.style.background = '#fffbeb';
                         wrapper.style.borderColor = '#fde68a';
                     }
+                    precargarCatalogoCliente(clienteId, false).catch(() => {});
                     // Si ya había artículos en la grilla, forzar recálculo a Legacy
                     if (typeof window.conmutarModoBunker === 'function') {
                         await window.conmutarModoBunker();
@@ -1712,9 +1766,10 @@ window.conmutarModoBunker = async function() {
         }
     }
 
-    const clienteIdInput = document.getElementById('id_cliente');
-    const clienteId = clienteIdInput ? parseInt(clienteIdInput.value, 10) || 0 : 0;
-    if (clienteId <= 0) return;
+    const clienteId = getClienteIdActivo();
+    if (!clienteId || clienteId === '0') return;
+
+    precargarCatalogoCliente(clienteId, usarPreciosBunker).catch(() => {});
 
     const tbody = document.getElementById('detalles-tbody');
     if (!tbody) return;
@@ -1850,33 +1905,154 @@ function normalizarTexto(texto) {
         .replace(/\s+/g, ' ') // Normalizar espacios múltiples a uno solo
         .trim();
 }
-// === Cache opcional de artículos + helpers ===
+// === Caché e indexador de catálogo de artículos por (cliente, modo Búnker) ===
 window.__articulosCache = window.__articulosCache || [];
 window.__articulosCacheLoaded = window.__articulosCacheLoaded || false;
+window.__catalogoArticulosCtx = window.__catalogoArticulosCtx || { key: null, items: [], loaded: false, loadingPromise: null };
 
-async function precargarArticulosAll() {
-    // Precarga global deshabilitada: la API de sugerencias requiere ?q=
-    // Devolvemos vacío para no generar errores ni peticiones innecesarias.
-    return [];
+function indexarArticuloBusqueda(a) {
+    if (!a || typeof a !== 'object') return '';
+    if (typeof a._searchText === 'string' && a._searchText.length > 0) return a._searchText;
+
+    const tokens = [];
+
+    // 1. Descripciones y nomenclador
+    if (a.descripcion_generada) tokens.push(a.descripcion_generada);
+    if (a.descripcion && a.descripcion !== a.descripcion_generada) tokens.push(a.descripcion);
+    if (a.description && a.description !== a.descripcion_generada) tokens.push(a.description);
+    if (a.descripcion_legacy) tokens.push(a.descripcion_legacy);
+
+    // 2. Identificadores clave
+    if (a.articulo_numero) tokens.push(a.articulo_numero);
+    if (a.codigo_barras) tokens.push(a.codigo_barras);
+    if (a.articulo_id) tokens.push(a.articulo_id);
+
+    // 3. Taxonomía de familia y rubros
+    const famNombre = a.familia_nombre || a.familia || a.nombre_familia || a.propiedades_dinamicas?.familia_nombre;
+    if (famNombre) tokens.push(famNombre);
+    if (a.rubro) tokens.push(a.rubro);
+    if (a.sub_rubro) tokens.push(a.sub_rubro);
+
+    // 4. Atributos descriptivos completos (incluyendo silenciosos y abreviaturas)
+    let pd = a.propiedades_dinamicas;
+    if (typeof pd === 'string') {
+        try { pd = JSON.parse(pd); } catch (e) { pd = null; }
+    }
+
+    if (pd && typeof pd === 'object') {
+        if (pd.articulo_principal) tokens.push(pd.articulo_principal);
+        if (pd.familia_nombre) tokens.push(pd.familia_nombre);
+
+        const posObj = pd.posiciones || pd;
+        if (posObj && typeof posObj === 'object') {
+            Object.keys(posObj).forEach(key => {
+                if (key.startsWith('asistente_') || key.startsWith('rendimiento_') || key.startsWith('tostadero_') || key.startsWith('_meta')) return;
+                const item = posObj[key];
+                if (item && typeof item === 'object') {
+                    if (item.valor) {
+                        tokens.push(item.valor);
+                        if (/\s+/.test(item.valor)) {
+                            tokens.push(item.valor.replace(/\s+/g, ''));
+                        }
+                        const words = String(item.valor).split(/\s+/);
+                        words.forEach(w => {
+                            if (w.length > 4) {
+                                if (w.endsWith('o') || w.endsWith('os')) {
+                                    tokens.push(w.slice(0, -1) + 'a');
+                                    tokens.push(w.slice(0, -1) + 'as');
+                                } else if (w.endsWith('a') || w.endsWith('as')) {
+                                    tokens.push(w.slice(0, -1) + 'o');
+                                    tokens.push(w.slice(0, -1) + 'os');
+                                }
+                            }
+                        });
+                    }
+                    if (item.abreviatura) tokens.push(item.abreviatura);
+                    if (item.eje) tokens.push(item.eje);
+                } else if (typeof item === 'string' && key !== 'articulo_principal' && key !== 'familia_nombre') {
+                    tokens.push(item);
+                }
+            });
+        }
+    }
+
+    const indexed = tokens
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+
+    a._searchText = indexed;
+    return indexed;
 }
 
+async function precargarCatalogoCliente(clienteIdOverride, usarBunkerOverride) {
+    if (window.location.protocol === 'file:') return [];
+    const cid = String(clienteIdOverride !== undefined && clienteIdOverride !== null ? clienteIdOverride : getClienteIdActivo() || '0').trim() || '0';
+    const usarBunker = Boolean(
+        usarBunkerOverride !== undefined && usarBunkerOverride !== null
+            ? usarBunkerOverride
+            : (document.getElementById('usar_precios_bunker')?.checked || false)
+    );
+    const ctxKey = `${cid}_${usarBunker ? 'bkr' : 'leg'}`;
+    const ctx = window.__catalogoArticulosCtx;
+
+    if (ctx && ctx.key === ctxKey) {
+        if (ctx.loaded) return ctx.items;
+        if (ctx.loadingPromise) return ctx.loadingPromise;
+    }
+
+    window.__articulosSearchCache = {};
+    const nextCtx = { key: ctxKey, items: [], loaded: false, loadingPromise: null };
+    window.__catalogoArticulosCtx = nextCtx;
+
+    nextCtx.loadingPromise = (async () => {
+        try {
+            const url = `/api/presupuestos/articulos/sugerencias?all=true&limit=3000&cliente_id=${encodeURIComponent(cid)}&usar_precios_bunker=${usarBunker ? 'true' : 'false'}`;
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const body = await resp.json();
+            const arr = Array.isArray(body) ? body : (body.data || body.items || []);
+            for (let i = 0; i < arr.length; i++) {
+                indexarArticuloBusqueda(arr[i]);
+            }
+            if (window.__catalogoArticulosCtx === nextCtx) {
+                nextCtx.items = arr;
+                nextCtx.loaded = true;
+            }
+            console.log(`⚡ [ARTICULOS-PRELOAD] Catálogo indexado (${ctxKey}): ${arr.length} artículos`);
+            return arr;
+        } catch (err) {
+            console.warn(`⚠️ [ARTICULOS-PRELOAD] Falló precarga (${ctxKey}):`, err.message);
+            if (window.__catalogoArticulosCtx === nextCtx) {
+                nextCtx.loaded = false;
+                nextCtx.loadingPromise = null;
+            }
+            return [];
+        }
+    })();
+
+    return nextCtx.loadingPromise;
+}
+
+async function precargarArticulosAll() {
+    return precargarCatalogoCliente();
+}
+
+const _articuloSortCollator = typeof Intl !== 'undefined' && Intl.Collator ? new Intl.Collator('es', { sensitivity: 'base' }) : null;
+
 /**
- * Filtrar artículos localmente con lógica de TOKENS ESTRICTOS
- * NUEVA LÓGICA: Búsqueda exacta de subcadenas preservando caracteres especiales
- * 
- * Ejemplo: "nuez cas/36+" genera tokens ["nuez", "cas/36+"]
- * - Debe encontrar artículos que contengan AMBOS tokens como subcadenas exactas
- * - "Nuez/Cas/34-36" NO coincide porque "cas/36+" no está presente (tiene "34-36" en su lugar)
- * - "Nuez Cas/36+ x 5" SÍ coincide porque contiene ambos tokens exactos
+ * Filtrar artículos localmente con lógica de TOKENS ESTRICTOS (O(N) sobre _searchText pre-indexado)
  */
 function filtrarArticulosLocal(query, items) {
     const rawTokens = normalizarTexto(query).split(/\s+/).filter(Boolean);
+    if (rawTokens.length === 0) return [];
 
     // Parsear tokens distinguiendo números aislados marcados con almohadilla (#)
     const terms = [];
     for (let i = 0; i < rawTokens.length; i++) {
         const t = rawTokens[i];
-        // Caso: token "#" y el anterior era un número
         if (t === '#' && terms.length > 0) {
             const prev = terms[terms.length - 1];
             if (typeof prev === 'string' && /^\d+([.,]\d+)?$/.test(prev)) {
@@ -1885,14 +2061,12 @@ function filtrarArticulosLocal(query, items) {
                 continue;
             }
         }
-        // Caso: token "#" y el siguiente es un número
         if (t === '#' && i + 1 < rawTokens.length && /^\d+([.,]\d+)?$/.test(rawTokens[i + 1])) {
             const num = rawTokens[i + 1];
             i++;
             terms.push({ type: 'isolated_num', value: num, regex: new RegExp(`(?<!\\d)${num.replace('.', '\\.')}(?!\\d)`, 'i') });
             continue;
         }
-        // Caso: número pegado con almohadilla: "1#" o "#1"
         const m1 = t.match(/^(\d+([.,]\d+)?)#$/);
         const m2 = t.match(/^#(\d+([.,]\d+)?)$/);
         if (m1) {
@@ -1907,118 +2081,18 @@ function filtrarArticulosLocal(query, items) {
         }
     }
 
-    console.log('[ARTICULOS-FILTER] Iniciando filtrado ESTRICTO...', {
-        modo: typeof modoBusqueda !== 'undefined' ? modoBusqueda : 'descripcion',
-        query_original: query,
-        query_normalizado: normalizarTexto(query),
-        tokens_generados: terms,
-        items_recibidos: items.length
-    });
-
     const out = (items || []).filter(a => {
-        let cumple = false;
-
         if (typeof modoBusqueda !== 'undefined' && modoBusqueda === 'codigo') {
             const codigoBarras = (a.codigo_barras || '').toString().toLowerCase();
-            const queryLower = query.toLowerCase();
-            cumple = codigoBarras.includes(queryLower);
-
-            if (items.indexOf(a) < 3) {
-                console.log('[ARTICULOS-FILTER] [MODO-CODIGO] Evaluando artículo:', {
-                    descripcion: a.description ?? a.descripcion,
-                    codigo_barras: a.codigo_barras,
-                    query_buscado: queryLower,
-                    cumple: cumple
-                });
-            }
-        } else {
-            const tokens = [];
-
-            // 1. Descripciones y nomenclador
-            if (a.descripcion_generada) tokens.push(a.descripcion_generada);
-            if (a.descripcion && a.descripcion !== a.descripcion_generada) tokens.push(a.descripcion);
-            if (a.description && a.description !== a.descripcion_generada) tokens.push(a.description);
-            if (a.descripcion_legacy) tokens.push(a.descripcion_legacy);
-
-            // 2. Identificadores clave
-            if (a.articulo_numero) tokens.push(a.articulo_numero);
-            if (a.codigo_barras) tokens.push(a.codigo_barras);
-            if (a.articulo_id) tokens.push(a.articulo_id);
-
-            // 3. Taxonomía de familia y rubros
-            const famNombre = a.familia_nombre || a.familia || a.nombre_familia || a.propiedades_dinamicas?.familia_nombre;
-            if (famNombre) tokens.push(famNombre);
-            if (a.rubro) tokens.push(a.rubro);
-            if (a.sub_rubro) tokens.push(a.sub_rubro);
-
-            // 4. Atributos descriptivos completos (incluyendo silenciosos y abreviaturas)
-            let pd = a.propiedades_dinamicas;
-            if (typeof pd === 'string') {
-                try { pd = JSON.parse(pd); } catch (e) {}
-            }
-
-            if (pd && typeof pd === 'object') {
-                if (pd.articulo_principal) tokens.push(pd.articulo_principal);
-                if (pd.familia_nombre) tokens.push(pd.familia_nombre);
-
-                const posObj = pd.posiciones || pd;
-                if (posObj && typeof posObj === 'object') {
-                    Object.keys(posObj).forEach(key => {
-                        if (key.startsWith('asistente_') || key.startsWith('rendimiento_') || key.startsWith('tostadero_') || key.startsWith('_meta')) return;
-                        const item = posObj[key];
-                        if (item && typeof item === 'object') {
-                            if (item.valor) {
-                                tokens.push(item.valor);
-                                if (/\s+/.test(item.valor)) {
-                                    tokens.push(item.valor.replace(/\s+/g, ''));
-                                }
-                                const words = String(item.valor).split(/\s+/);
-                                words.forEach(w => {
-                                    if (w.length > 4) {
-                                        if (w.endsWith('o') || w.endsWith('os')) {
-                                            tokens.push(w.slice(0, -1) + 'a');
-                                            tokens.push(w.slice(0, -1) + 'as');
-                                        } else if (w.endsWith('a') || w.endsWith('as')) {
-                                            tokens.push(w.slice(0, -1) + 'o');
-                                            tokens.push(w.slice(0, -1) + 'os');
-                                        }
-                                    }
-                                });
-                            }
-                            if (item.abreviatura) tokens.push(item.abreviatura);
-                            if (item.eje) tokens.push(item.eje);
-                        } else if (typeof item === 'string' && key !== 'articulo_principal' && key !== 'familia_nombre') {
-                            tokens.push(item);
-                        }
-                    });
-                }
-            }
-
-            const searchableText = tokens
-                .filter(Boolean)
-                .join(' ')
-                .toLowerCase()
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '');
-
-            cumple = terms.every(term => {
-                if (typeof term === 'object' && term.type === 'isolated_num') {
-                    return term.regex.test(searchableText);
-                }
-                return searchableText.includes(term);
-            });
-
-            if (items.indexOf(a) < 3) {
-                console.log('[ARTICULOS-FILTER] [MODO-DESCRIPCION] Evaluando artículo:', {
-                    descripcion_original: a.description ?? a.descripcion,
-                    searchable_text: searchableText,
-                    tokens_buscados: terms,
-                    cumple_todos: cumple
-                });
-            }
+            return codigoBarras.includes(query.toLowerCase());
         }
-
-        return cumple;
+        const searchableText = a._searchText || indexarArticuloBusqueda(a);
+        return terms.every(term => {
+            if (typeof term === 'object' && term.type === 'isolated_num') {
+                return term.regex.test(searchableText);
+            }
+            return searchableText.includes(term);
+        });
     });
 
     // Orden: stock>0 primero, luego descripción
@@ -2028,16 +2102,9 @@ function filtrarArticulosLocal(query, items) {
         if (pa !== pb) return pa - pb;
         const la = (A.description ?? A.descripcion ?? '').toString();
         const lb = (B.description ?? B.descripcion ?? '').toString();
-        return la.localeCompare(lb);
+        return _articuloSortCollator ? _articuloSortCollator.compare(la, lb) : (la < lb ? -1 : (la > lb ? 1 : 0));
     });
 
-    console.log('[ARTICULOS-FILTER] Filtrado ESTRICTO completado:', {
-        modo: typeof modoBusqueda !== 'undefined' ? modoBusqueda : 'descripcion',
-        query_original: query,
-        total_resultados: out.length
-    });
-
-    // Limite visual para sugerencias
     return out.slice(0, 50);
 }
 // ===== FUNCIONES DE AUTOCOMPLETAR DE ARTÍCULOS =====
@@ -2125,20 +2192,7 @@ window.__articulosSearchCache = window.__articulosSearchCache || {};
 const handleArticuloInput = debounce(async function (event) {
     const input = event.target;
     const rawValue = input.value || '';
-    
-    // REQUERIMIENTO ESTRICTO #026: La búsqueda solo debe gatillarse cuando se presiona la tecla espacio.
-    if (!rawValue.includes(' ') && modoBusqueda !== 'codigo') {
-        if (window.__articulosCurrentRequest) {
-            window.__articulosCurrentRequest.abort();
-            window.__articulosCurrentRequest = null;
-        }
-        ocultarSugerenciasArticulo();
-        return;
-    }
-
     const query = rawValue.trim();
-
-    console.log(`[ARTICULOS] Búsqueda de artículo: "${query}"`);
 
     // Cancelar request anterior si existe
     if (window.__articulosCurrentRequest) {
@@ -2146,84 +2200,83 @@ const handleArticuloInput = debounce(async function (event) {
         window.__articulosCurrentRequest = null;
     }
 
-    if (query.length < 1) {
+    // EN MODO CÓDIGO: No mostrar sugerencias, solo esperar Enter
+    if (modoBusqueda === 'codigo') {
         ocultarSugerenciasArticulo();
         return;
     }
 
-    // EN MODO CÓDIGO: No mostrar sugerencias, solo esperar Enter
-    if (modoBusqueda === 'codigo') {
-        console.log('[MODO-CODIGO] Input detectado, esperando Enter para procesar');
+    // Filtrado instantáneo en vivo desde 2 caracteres (sin exigir barra espaciadora al final)
+    if (query.length < 2) {
+        ocultarSugerenciasArticulo();
         return;
     }
 
     try {
-        mostrarLoadingArticulo(input);
-
         let items = [];
-        // 1) Si hay cache completa, filtrar localmente (trae TODAS las coincidencias)
+        const usarPreciosBunker = document.getElementById('usar_precios_bunker')?.checked || false;
+        const clienteId = getClienteIdActivo() || '0';
+        const ctxKey = `${clienteId}_${usarPreciosBunker ? 'bkr' : 'leg'}`;
+        const ctx = window.__catalogoArticulosCtx;
+
+        // 1) Si existe caché global legacy o catálogo precargado del cliente, filtrar en <1ms
         if (window.__articulosCacheLoaded && Array.isArray(window.__articulosCache) && window.__articulosCache.length) {
             items = filtrarArticulosLocal(query, window.__articulosCache);
+        } else if (ctx && ctx.key === ctxKey && ctx.loaded) {
+            items = filtrarArticulosLocal(query, ctx.items);
+        } else if (ctx && ctx.key === ctxKey && ctx.loadingPromise) {
+            mostrarLoadingArticulo(input);
+            await ctx.loadingPromise;
+            if ((input.value || '').trim() !== query) return;
+            items = filtrarArticulosLocal(query, ctx.items || []);
         } else {
-            // 2) Fallback: pedir al endpoint existente por query
+            // 2) Fallback: esperar petición rápida mientras dispara precarga del catálogo en segundo plano
+            mostrarLoadingArticulo(input);
             const isFileProtocol = window.location.protocol === 'file:';
             if (isFileProtocol) {
                 const sim = await simularBusquedaArticulos(query);
                 items = filtrarArticulosLocal(query, sim.data || []);
             } else {
-                // CORRECCIÓN: Usar solo el primer término para el servidor (más amplio)
-                // y luego filtrar localmente con AND estricto (limpiando # para la búsqueda base en BD)
+                precargarCatalogoCliente(clienteId, usarPreciosBunker).catch(() => {});
                 const primerTermino = (query.split(/\s+/)[0] || query).replace(/#/g, '').trim();
                 const queryParaServidor = (primerTermino || query.replace(/#/g, '').trim()).toLowerCase();
-
-                const usarPreciosBunker = document.getElementById('usar_precios_bunker')?.checked || false;
-                const clienteId = getClienteIdActivo() || 0;
                 const cacheKey = `${clienteId}_${usarPreciosBunker ? 'bkr' : 'leg'}_${queryParaServidor}`;
 
                 if (window.__articulosSearchCache[cacheKey]) {
-                    console.log(`[ARTICULOS] Caché local encontrada para "${cacheKey}". Filtrando sin fetch.`);
                     items = filtrarArticulosLocal(query, window.__articulosSearchCache[cacheKey]);
                 } else {
-                    console.log(`[ARTICULOS] Fetch para servidor: "${queryParaServidor}" (cliente: ${clienteId}, bkr: ${usarPreciosBunker})`);
-
                     const controller = new AbortController();
                     window.__articulosCurrentRequest = controller;
 
-                    let url = `/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=500&cliente_id=${clienteId}`;
+                    let url = `/api/presupuestos/articulos/sugerencias?q=${encodeURIComponent(queryParaServidor)}&limit=500&cliente_id=${encodeURIComponent(clienteId)}`;
                     if (usarPreciosBunker) url += '&usar_precios_bunker=true';
-                    
-                    const response = await fetch(url, {
-                        signal: controller.signal
-                    });
-                    
+
+                    const response = await fetch(url, { signal: controller.signal });
                     if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
                     const body = await response.json();
                     const arr = Array.isArray(body) ? body : (body.data || body.items || []);
+                    for (let i = 0; i < arr.length; i++) indexarArticuloBusqueda(arr[i]);
 
                     window.__articulosSearchCache[cacheKey] = arr;
-
-                    // Aplicar filtro local con TODOS los términos del query original
                     items = filtrarArticulosLocal(query, arr);
                 }
             }
         }
 
-        console.log(`[ARTICULOS] Sugerencias preparadas: ${items.length} artículos`);
         mostrarSugerenciasArticulo(input, items);
 
     } catch (error) {
         if (error.name === 'AbortError') {
-            console.log('🔄 [ARTICULOS] Request cancelado para evitar superposición');
             return;
         }
         console.error('Error al buscar artículos:', error);
         mostrarErrorArticulo(input, 'Error al buscar artículos');
     } finally {
         if (window.__articulosCurrentRequest && !window.__articulosCurrentRequest.signal.aborted) {
-             window.__articulosCurrentRequest = null;
+            window.__articulosCurrentRequest = null;
         }
     }
-}, 300);
+}, 50);
 
 /**
  * Simular búsqueda de artículos para modo desarrollo
@@ -2626,7 +2679,7 @@ async function agregarArticuloAlDetalle(articulo, inputOriginal) {
     }
 
     // Obtener precios del backend
-    const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
+    const clienteId = getClienteIdActivo() || '0';
     const detalleId = getDetalleIdFromInput(cantidadInput || targetInput);
 
     try {
@@ -2676,52 +2729,9 @@ async function agregarArticuloAlDetalle(articulo, inputOriginal) {
     // LÓGICA DE SSOT: VERIFICAR SI EL ARTÍCULO TIENE KIT NATIVO (UP)
     // -------------------------------------------------------------
     const articuloBaseParaKit = articuloNumero || targetInput.dataset.articuloNumero || codigoBarras || description;
-    console.log('[KIT-FRONT-DEBUG] Evaluando Kit para (Modo Código):', {articuloNumero, codigoBarras, description, seleccionado: articuloBaseParaKit});
-    if (articuloBaseParaKit) {
-        try {
-            const kitRes = await fetch(`/api/produccion/recetas/hibridas/nativa/${encodeURIComponent(articuloBaseParaKit)}`);
-            if (kitRes.ok) {
-                const kitData = await kitRes.json();
-                if (kitData.enlazado && kitData.ingredientes && kitData.ingredientes.length > 0) {
-                    console.log('[KIT] Artículo base tiene UP enlazada. Agregando botón de Kit (Modo Código).');
-                    const tdArticulo = targetInput.closest('td');
-                    if (tdArticulo) {
-                        const btnPrev = tdArticulo.querySelector('.btn-kit-toggle');
-                        if (btnPrev) btnPrev.remove();
-
-                        const btnKit = document.createElement('button');
-                        btnKit.type = 'button';
-                        btnKit.className = 'btn-kit-toggle';
-                        btnKit.dataset.recetaId = kitData.receta_id;
-                        btnKit.dataset.ingredientes = JSON.stringify(kitData.ingredientes);
-                        btnKit.dataset.multiplicadorBase = kitData.multiplicador_base || 1;
-                        btnKit.dataset.isAdded = "false";
-                        btnKit.innerHTML = '📦 Añadir Kit Insumos';
-
-                        btnKit.onclick = function() {
-                            if (this.dataset.isAdded === "true") return;
-                            this.dataset.isAdded = "true";
-                            this.style.display = 'none';
-                            
-                            if (!targetRow.id) targetRow.id = 'row_' + Math.random().toString(36).substr(2, 9);
-                            const parentRowId = targetRow.id;
-                            
-                            const baseQtyInput = targetRow.querySelector('input[name*="[cantidad]"]');
-                            const baseQty = baseQtyInput ? (parseFloat(String(baseQtyInput.value).replace(',','.')) || 1) : 1;
-                            
-                            if (typeof window.inyectarFilasHijasKit === 'function') {
-                                window.inyectarFilasHijasKit(targetRow, kitData.ingredientes, parentRowId, baseQty);
-                            } else {
-                                console.error('[KIT] Error: window.inyectarFilasHijasKit no está definido');
-                            }
-                        };
-                        tdArticulo.appendChild(btnKit);
-                    }
-                }
-            }
-        } catch(e) {
-            console.error('[KIT] Error al buscar UP del artículo base', e);
-        }
+    console.log('[KIT-FRONT-DEBUG] Evaluando Kit para (Modo Código):', { articuloNumero, codigoBarras, description, seleccionado: articuloBaseParaKit });
+    if (articuloBaseParaKit && typeof window.gestionarKitArticuloSeleccionado === 'function') {
+        await window.gestionarKitArticuloSeleccionado(targetRow, targetInput, articuloBaseParaKit);
     }
 
     // Efecto visual: resaltar fila brevemente
@@ -3416,7 +3426,7 @@ function seleccionarArticulo(input, element) {
     recalcTotales();
 
     // --- pedir precios ---
-    const clienteId = parseInt(getClienteIdActivo(), 10) || 0;
+    const clienteId = getClienteIdActivo() || '0';
 
     const fetchPrecios = async (params) => {
         const url = `/api/presupuestos/precios?${params.toString()}`;
@@ -3493,57 +3503,9 @@ function seleccionarArticulo(input, element) {
         // LÓGICA DE SSOT: VERIFICAR SI EL ARTÍCULO TIENE KIT NATIVO (UP)
         // -------------------------------------------------------------
         const articuloBaseParaKit = articuloNumero || input.dataset.articuloNumero || codigoBarras || description || element.dataset.id;
-        console.log('[KIT-FRONT-DEBUG] Evaluando Kit para:', {articuloNumero, dataArticuloNumero: input.dataset.articuloNumero, codigoBarras, description, seleccionado: articuloBaseParaKit});
-        if (articuloBaseParaKit) {
-            try {
-                const kitRes = await fetch(`/api/produccion/recetas/hibridas/nativa/${encodeURIComponent(articuloBaseParaKit)}`);
-                if (kitRes.ok) {
-                    const kitData = await kitRes.json();
-                    if (kitData.enlazado && kitData.ingredientes && kitData.ingredientes.length > 0) {
-                        console.log('[KIT] Artículo base tiene UP enlazada. Agregando botón de Kit.');
-                        const tdArticulo = input.closest('td');
-                        if (tdArticulo) {
-                            const btnPrev = tdArticulo.querySelector('.btn-kit-toggle');
-                            if (btnPrev) btnPrev.remove();
-
-                            const btnKit = document.createElement('button');
-                            btnKit.type = 'button';
-                            btnKit.className = 'btn-kit-toggle';
-                            btnKit.dataset.recetaId = kitData.receta_id;
-                            btnKit.dataset.ingredientes = JSON.stringify(kitData.ingredientes);
-                            btnKit.dataset.multiplicadorBase = kitData.multiplicador_base || 1;
-                            btnKit.dataset.isAdded = "false";
-                            btnKit.innerHTML = '📦 Añadir Kit Insumos';
-                            
-
-                            // Vinculamos la cantidad base
-                            btnKit.onclick = function() {
-                                if (this.dataset.isAdded === "true") return; // Ya agregado
-                                this.dataset.isAdded = "true";
-                                this.style.display = 'none'; // Ocultar botón tras agregar
-                                
-                                // Determinar ID de fila padre
-                                const targetRow = input.closest('tr');
-                                if (!targetRow.id) targetRow.id = 'row_' + Math.random().toString(36).substr(2, 9);
-                                const parentRowId = targetRow.id;
-                                
-                                const baseQtyInput = targetRow.querySelector('input[name*="[cantidad]"]');
-                                const baseQty = baseQtyInput ? (parseFloat(String(baseQtyInput.value).replace(',','.')) || 1) : 1;
-                                
-                                if (typeof window.inyectarFilasHijasKit === 'function') {
-                                    window.inyectarFilasHijasKit(targetRow, kitData.ingredientes, parentRowId, baseQty);
-                                } else {
-                                    console.error('[KIT] Error: window.inyectarFilasHijasKit no está definido');
-                                }
-                            };
-
-                            tdArticulo.appendChild(btnKit);
-                        }
-                    }
-                }
-            } catch(e) {
-                console.error('[KIT] Error al buscar UP del artículo base', e);
-            }
+        console.log('[KIT-FRONT-DEBUG] Evaluando Kit para:', { articuloNumero, dataArticuloNumero: input.dataset.articuloNumero, codigoBarras, description, seleccionado: articuloBaseParaKit });
+        if (articuloBaseParaKit && row && typeof window.gestionarKitArticuloSeleccionado === 'function') {
+            await window.gestionarKitArticuloSeleccionado(row, input, articuloBaseParaKit);
         }
         // Foco preservado: no forzar focus a valor1Input para respetar la interacción del operador
     })();
@@ -4650,39 +4612,72 @@ window.cerrarModalOrigen = function (usarManual = false) {
 };
 
 // --------------------------------------------------------------------------------------
-// KIT DE INSUMOS ANIDADOS (SSOT)
+// KIT DE INSUMOS ANIDADOS (SSOT + AUTO-INYECCIÓN PARA COLABORADOR / MATÍAS)
 // --------------------------------------------------------------------------------------
+window.esClienteAutoKitSatelite = function() {
+    const meta = window.__clienteBunkerMeta || {};
+    if (Number(meta.usuario_id) > 0) return true;
+    if (String(meta.codigo_bunker_cliente || '').trim().toUpperCase() === 'CB-0006') return true;
+    if (Number(meta.bunker_lista_id) === 3) return true;
+
+    const badgeText = String(document.getElementById('bunker-lista-badge')?.dataset?.listaNombre || document.getElementById('bunker-lista-badge')?.textContent || '').toLowerCase();
+    if (badgeText.includes('matias')) return true;
+
+    const cid = String(typeof getClienteIdActivo === 'function' ? getClienteIdActivo() : (document.getElementById('id_cliente')?.value || '')).trim();
+    const cidUpper = cid.toUpperCase();
+    if (cidUpper === 'CB-0006') return true;
+    const normNum = cid.replace(/^0+/, '');
+    if (normNum === '583') return true;
+
+    if (typeof clienteSeleccionado !== 'undefined' && clienteSeleccionado) {
+        if (Number(clienteSeleccionado.usuario_id) > 0) return true;
+        if (String(clienteSeleccionado.codigo_bunker_cliente || '').trim().toUpperCase() === 'CB-0006') return true;
+        if (String(clienteSeleccionado.cliente_id || '') === '583') return true;
+    }
+    return false;
+};
+
 window.inyectarFilasHijasKit = function(parentRow, ingredientesKit, parentRowId, baseQty) {
-    const tbody = document.getElementById('detalles-tbody');
-    
+    const tbody = document.getElementById('detalles-tbody') || parentRow.closest('tbody');
+    if (!tbody || !parentRow) return;
+
     parentRow.dataset.isParent = "true";
     parentRow.dataset.parentRowId = parentRowId;
 
-    ingredientesKit.forEach(ing => {
+    // Guardia de idempotencia: no duplicar si ya existen filas hijas para este padre
+    if (tbody.querySelectorAll(`tr.child-row[data-child-of="${parentRowId}"]`).length > 0) {
+        return;
+    }
+
+    let anchorRow = parentRow;
+    (ingredientesKit || []).forEach(ing => {
         agregarDetalle();
-        
+
         const rows = tbody.querySelectorAll('tr');
         const newRow = rows[rows.length - 1];
-        
+        if (anchorRow && anchorRow !== newRow) {
+            anchorRow.insertAdjacentElement('afterend', newRow);
+        }
+        anchorRow = newRow;
+
         newRow.classList.add('child-row');
         newRow.dataset.childOf = parentRowId;
 
-        // Limpiar estilos innecesarios
         const targetInput = newRow.querySelector('input[name*="[articulo]"]');
         if (targetInput) {
             targetInput.value = ing.descripcion;
-            targetInput.dataset.articuloNumero = ing.articulo_id || '';
-            targetInput.dataset.codigoBarras = ing.articulo_id || ''; // Requerido por handleSubmit
-            targetInput.readOnly = true; // El artículo no se puede cambiar, pero cantidades sí
+            targetInput.dataset.articuloNumero = ing.articulo_id != null ? String(ing.articulo_id) : '';
+            targetInput.dataset.codigoBarras = ing.articulo_id != null ? String(ing.articulo_id) : '';
+            targetInput.readOnly = true;
             targetInput.style.backgroundColor = '#f1f5f9';
             targetInput.style.fontWeight = 'bold';
             targetInput.style.color = '#475569';
-            targetInput.dataset.ignoreHistorico = "true"; // Opcional, para no buscar historial del insumo
+            targetInput.dataset.ignoreHistorico = "true";
         }
 
         const cantidadInput = newRow.querySelector('input[name*="[cantidad]"]');
         if (cantidadInput) {
-            const qtyCalculada = parseFloat(ing.cantidad_por_kilo_base) * baseQty;
+            const qtyCalculada = (parseFloat(ing.cantidad_por_kilo_base) || 0) * (Number(baseQty) || 1);
             setCantidad(cantidadInput, qtyCalculada);
             cantidadInput.dataset.baseRatio = ing.cantidad_por_kilo_base;
         }
@@ -4700,16 +4695,16 @@ window.inyectarFilasHijasKit = function(parentRow, ingredientesKit, parentRowId,
             valor1Input.readOnly = true;
         }
 
-        // Remover el listener del input artículo para no abrir buscador
-        const newTargetId = getDetalleIdFromInput(targetInput);
+        const newTargetId = targetInput ? getDetalleIdFromInput(targetInput) : null;
         if (newTargetId != null) {
             calcularPrecio(newTargetId);
         }
     });
 
-    // Sincronizar cantidad del padre con los hijos
+    // Sincronizar cantidad del padre con los hijos (solo enlazar una vez por parentRowId)
     const parentQtyInput = parentRow.querySelector('input[name*="[cantidad]"]');
-    if (parentQtyInput) {
+    if (parentQtyInput && parentQtyInput.dataset.kitSyncBound !== parentRowId) {
+        parentQtyInput.dataset.kitSyncBound = parentRowId;
         parentQtyInput.addEventListener('input', function() {
             const currentParentQty = parseFloat(String(this.value).replace(',', '.')) || 1;
             const childRows = tbody.querySelectorAll(`tr.child-row[data-child-of="${parentRowId}"]`);
@@ -4718,12 +4713,92 @@ window.inyectarFilasHijasKit = function(parentRow, ingredientesKit, parentRowId,
                 if (cQtyInput && cQtyInput.dataset.baseRatio) {
                     const ratio = parseFloat(cQtyInput.dataset.baseRatio);
                     setCantidad(cQtyInput, currentParentQty * ratio);
-                    
                     const cid = getDetalleIdFromInput(cQtyInput);
                     if (cid != null) calcularPrecio(cid);
                 }
             });
+            if (typeof recalcTotales === 'function') recalcTotales();
         });
+    }
+
+    if (typeof recalcTotales === 'function') recalcTotales();
+};
+
+window.gestionarKitArticuloSeleccionado = async function(targetRow, targetInput, articuloBaseParaKit, { skipAutoInject = false } = {}) {
+    if (!targetRow || !targetInput || !articuloBaseParaKit) return;
+    const tbody = document.getElementById('detalles-tbody') || targetRow.closest('tbody');
+    const tdArticulo = targetInput.closest('td');
+
+    // Limpiar kit previo si esta fila ya tenía otro artículo base con hijos
+    if (tbody && targetRow.dataset.parentRowId && targetRow.dataset.isOriginalBudgetRow !== 'true') {
+        tbody.querySelectorAll(`tr.child-row[data-child-of="${targetRow.dataset.parentRowId}"]`).forEach(crow => crow.remove());
+        delete targetRow.dataset.isParent;
+    }
+    if (tdArticulo) {
+        tdArticulo.querySelector('.btn-kit-toggle')?.remove();
+    }
+
+    try {
+        const kitRes = await fetch(`/api/produccion/recetas/hibridas/nativa/${encodeURIComponent(articuloBaseParaKit)}`);
+        if (!kitRes.ok) return;
+        const kitData = await kitRes.json();
+        if (!kitData.enlazado || !Array.isArray(kitData.ingredientes) || kitData.ingredientes.length === 0) return;
+
+        if (!targetRow.id) targetRow.id = 'row_' + Math.random().toString(36).substr(2, 9);
+        const parentRowId = targetRow.id;
+
+        if (!tdArticulo) return;
+        const btnKit = document.createElement('button');
+        btnKit.type = 'button';
+        btnKit.className = 'btn-kit-toggle';
+        btnKit.dataset.recetaId = kitData.receta_id || '';
+        btnKit.dataset.upCodigo = kitData.up_codigo || '';
+        btnKit.dataset.ingredientes = JSON.stringify(kitData.ingredientes);
+        btnKit.dataset.multiplicadorBase = kitData.multiplicador_base || kitData.factor_conversion || 1;
+
+        const actualizarEstadoBotonKit = (activo) => {
+            btnKit.dataset.isAdded = activo ? 'true' : 'false';
+            if (activo) {
+                btnKit.innerHTML = '✅ Kit Insumos aplicado (Quitar)';
+                btnKit.style.backgroundColor = '#047857';
+            } else {
+                btnKit.innerHTML = '📦 Añadir Kit Insumos';
+                btnKit.style.backgroundColor = '';
+            }
+        };
+
+        btnKit.onclick = function() {
+            const yaAgregado = this.dataset.isAdded === 'true';
+            if (yaAgregado) {
+                if (tbody) {
+                    tbody.querySelectorAll(`tr.child-row[data-child-of="${parentRowId}"]`).forEach(crow => crow.remove());
+                }
+                delete targetRow.dataset.isParent;
+                actualizarEstadoBotonKit(false);
+                if (typeof recalcTotales === 'function') recalcTotales();
+                return;
+            }
+            const baseQtyInput = targetRow.querySelector('input[name*="[cantidad]"]');
+            const baseQty = baseQtyInput ? (parseFloat(String(baseQtyInput.value).replace(',', '.')) || 1) : 1;
+            window.inyectarFilasHijasKit(targetRow, kitData.ingredientes, parentRowId, baseQty);
+            actualizarEstadoBotonKit(true);
+        };
+
+        tdArticulo.appendChild(btnKit);
+
+        const yaTieneHijos = tbody && tbody.querySelectorAll(`tr.child-row[data-child-of="${parentRowId}"]`).length > 0;
+        if (yaTieneHijos) {
+            actualizarEstadoBotonKit(true);
+        } else if (!skipAutoInject && typeof window.esClienteAutoKitSatelite === 'function' && window.esClienteAutoKitSatelite()) {
+            const baseQtyInput = targetRow.querySelector('input[name*="[cantidad]"]');
+            const baseQty = baseQtyInput ? (parseFloat(String(baseQtyInput.value).replace(',', '.')) || 1) : 1;
+            window.inyectarFilasHijasKit(targetRow, kitData.ingredientes, parentRowId, baseQty);
+            actualizarEstadoBotonKit(true);
+        } else {
+            actualizarEstadoBotonKit(false);
+        }
+    } catch (e) {
+        console.error('[KIT] Error al buscar UP del artículo base', e);
     }
 };
 
@@ -4738,7 +4813,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const parentId = node.dataset.parentRowId;
                         const childRows = tbody.querySelectorAll(`tr.child-row[data-child-of="${parentId}"]`);
                         childRows.forEach(crow => crow.remove());
-                        calcularTotales();
+                        if (typeof recalcTotales === 'function') recalcTotales();
                     }
                 });
             });

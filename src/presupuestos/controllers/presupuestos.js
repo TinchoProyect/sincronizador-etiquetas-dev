@@ -1,6 +1,39 @@
 console.log('🔍 [PRESUPUESTOS] Cargando controlador de presupuestos...');
 const { normalizarStockComercial, esSkuPremezclaInterna } = require('../../shared/stockComercialHelper');
 
+let _jerarquiaB2BCache = { map: null, expiresAt: 0 };
+
+async function obtenerJerarquiaB2BMap(db) {
+    const ahora = Date.now();
+    if (_jerarquiaB2BCache.map && ahora < _jerarquiaB2BCache.expiresAt) {
+        return _jerarquiaB2BCache.map;
+    }
+    const jerarquiaMap = new Map();
+    try {
+        const jRes = await db.query(`
+            SELECT familia_id, articulo_principal, eje_nivel_3, reglas_nivel_4, reglas_nivel_5
+            FROM public.bunker_portal_b2b_jerarquia
+            WHERE eje_nivel_3 IS NOT NULL AND TRIM(eje_nivel_3) != ''
+        `);
+        for (const jRow of jRes.rows) {
+            const famId = jRow.familia_id !== null && jRow.familia_id !== undefined ? jRow.familia_id : 0;
+            const artP = String(jRow.articulo_principal || '').trim().toLowerCase();
+            const rawEjeN3 = jRow.eje_nivel_3 ? String(jRow.eje_nivel_3).trim().toLowerCase() : '';
+            const ejesN3 = rawEjeN3 ? rawEjeN3.split(',').map(s => s.trim()).filter(Boolean) : [];
+            jerarquiaMap.set(`${famId}___${artP}`, {
+                eje_nivel_3: rawEjeN3,
+                ejes_nivel_3: ejesN3,
+                reglas_nivel_4: jRow.reglas_nivel_4 && typeof jRow.reglas_nivel_4 === 'object' ? jRow.reglas_nivel_4 : {},
+                reglas_nivel_5: jRow.reglas_nivel_5 && typeof jRow.reglas_nivel_5 === 'object' ? jRow.reglas_nivel_5 : {}
+            });
+        }
+    } catch (_) {
+        // Tabla opcional o vacía
+    }
+    _jerarquiaB2BCache = { map: jerarquiaMap, expiresAt: ahora + 60000 };
+    return jerarquiaMap;
+}
+
 /**
  * Resuelve un presupuesto por ID o id_presupuesto_ext
  * @param {Object} client - Cliente de PostgreSQL
@@ -1178,9 +1211,9 @@ const obtenerSugerenciasArticulos = async (req, res) => {
         const qClienteRaw = String(req.query.cliente_id || '').trim();
         const qClienteLower = qClienteRaw.toLowerCase();
         const esProspectoQuery = qClienteLower === 'prospecto' || qClienteLower === 'libre';
-        let clienteId = parseInt(qClienteRaw, 10);
-        if (isNaN(clienteId)) clienteId = 0;
+        let clienteId = /^\d+$/.test(qClienteRaw) ? parseInt(qClienteRaw, 10) : 0;
         const isAllRequested = req.query.all === 'true' || req.query.catalogo === 'true' || qRaw === '*' || qRaw.toLowerCase() === 'all';
+        const excluirPremezclas = req.query.excluir_premezclas === 'true' || req.query.excluir_premezclas === '1';
 
         if (!qRaw && !isAllRequested) {
             return res.json({
@@ -1196,9 +1229,46 @@ const obtenerSugerenciasArticulos = async (req, res) => {
         const limitParam = parseInt(req.query.limit, 10);
         const limit = Number.isFinite(limitParam) ? Math.min(Math.max(limitParam, 1), 3000) : (isAll ? 3000 : 50);
 
-        // Recuperar Lista de Precios basada en cliente_id
-        let lista = 1;
+        // Si no se especifica, y clienteId > 0 o se especifica lista_id o es prospecto, usar precios Bunker por defecto
+        const usarBunker = req.query.usar_precios_bunker !== 'false' && (clienteId > 0 || !!req.query.lista_id || !!req.query.lista_bunker_id || esProspectoQuery || qClienteRaw.length > 0);
 
+        let listaBunkerId = (req.query.lista_id || req.query.lista_bunker_id) ? parseInt(req.query.lista_id || req.query.lista_bunker_id, 10) : null;
+        let clienteIdParaOfertas = clienteId > 0 ? clienteId : qClienteRaw;
+
+        if (!esProspectoQuery && (clienteId > 0 || qClienteRaw.length > 0)) {
+            const clientPId = clienteId > 0 ? String(clienteId).padStart(4, '0') : null;
+            const clientIntId = clienteId > 0 ? clienteId : null;
+
+            try {
+                const rBunkerCliente = await req.db.query(`
+                    SELECT bc.lomas_soft_id, bclp.bunker_lista_precio_id
+                    FROM public.bunker_clientes bc
+                    LEFT JOIN public.bunker_cliente_listas_precios bclp ON bclp.bunker_cliente_id = bc.id
+                    WHERE UPPER(TRIM(COALESCE(bc.codigo_bunker_cliente, ''))) = UPPER($1)
+                       OR bc.lomas_soft_id = $1
+                       OR ($2::text IS NOT NULL AND bc.lomas_soft_id = $2)
+                       OR ($3::integer IS NOT NULL AND bc.id = $3::integer)
+                    ORDER BY (bclp.bunker_lista_precio_id IS NOT NULL) DESC
+                    LIMIT 1
+                `, [qClienteRaw, clientPId, clientIntId]);
+
+                if (rBunkerCliente.rows.length > 0) {
+                    const rowBc = rBunkerCliente.rows[0];
+                    if (usarBunker && !listaBunkerId && rowBc.bunker_lista_precio_id) {
+                        listaBunkerId = parseInt(rowBc.bunker_lista_precio_id, 10);
+                    }
+                    if (clienteId === 0 && rowBc.lomas_soft_id && /^\d+$/.test(String(rowBc.lomas_soft_id).trim())) {
+                        clienteId = parseInt(String(rowBc.lomas_soft_id).trim(), 10);
+                        clienteIdParaOfertas = clienteId;
+                    }
+                }
+            } catch (e) {
+                console.warn('[PRESUPUESTOS] Error buscando lista bunker personalizada:', e.message);
+            }
+        }
+
+        // Recuperar Lista de Precios legacy basada en cliente_id
+        let lista = 1;
         if (clienteId > 0) {
             try {
                 const rLista = await req.db.query('SELECT lista_precios FROM public.clientes WHERE cliente_id = $1 LIMIT 1', [clienteId]);
@@ -1208,6 +1278,18 @@ const obtenerSugerenciasArticulos = async (req, res) => {
                 }
             } catch (e) {
                 console.warn('[PRESUPUESTOS] Error al leer lista_precios en sugerencias móviles:', e.message);
+            }
+        }
+
+        if (usarBunker && !listaBunkerId) {
+            if (!esProspectoQuery && (clienteId > 0 || qClienteRaw.length > 0)) {
+                if (lista === 4) listaBunkerId = 6; // Consumidor Final
+                else if (lista === 2) listaBunkerId = 2; // Mayorista
+                else if (lista === 3) listaBunkerId = 7; // Gastronómicos
+                else if (lista === 1) listaBunkerId = 1; // Lista Nico
+                else listaBunkerId = 5; // Dietética por defecto
+            } else {
+                listaBunkerId = 5; // Dietética por defecto para consultas libres / prospectos
             }
         }
 
@@ -1229,60 +1311,17 @@ const obtenerSugerenciasArticulos = async (req, res) => {
         // Si parece código de barras (solo dígitos 8–14), lo priorizamos como igualdad exacta
         const isBarcode = /^\d{8,14}$/.test(qRaw);
 
-        // Si no se especifica, y clienteId > 0 o se especifica lista_id o es prospecto, usar precios Bunker por defecto
-        const usarBunker = req.query.usar_precios_bunker !== 'false' && (clienteId > 0 || !!req.query.lista_id || !!req.query.lista_bunker_id || esProspectoQuery || qClienteRaw.length > 0);
-
-        let listaBunkerId = (req.query.lista_id || req.query.lista_bunker_id) ? parseInt(req.query.lista_id || req.query.lista_bunker_id, 10) : null;
-        if (usarBunker && !listaBunkerId) {
-            if (!esProspectoQuery && (clienteId > 0 || qClienteRaw.length > 0)) {
-                const clientPId = String(clienteId > 0 ? clienteId : qClienteRaw).padStart(4, '0');
-                const clientRawId = qClienteRaw;
-                const clientIntId = clienteId > 0 ? clienteId : null;
-
-                try {
-                    // 1. Buscar lista asignada específicamente en bunker_cliente_listas_precios
-                    const rBunkerList = await req.db.query(`
-                        SELECT bclp.bunker_lista_precio_id
-                        FROM public.bunker_clientes bc
-                        INNER JOIN public.bunker_cliente_listas_precios bclp ON bclp.bunker_cliente_id = bc.id
-                        WHERE bc.codigo_bunker_cliente ILIKE $1
-                           OR bc.lomas_soft_id = $1
-                           OR bc.lomas_soft_id = $2 
-                           OR ($3::integer IS NOT NULL AND bc.id = $3::integer)
-                        LIMIT 1
-                    `, [clientRawId, clientPId, clientIntId]);
-
-                    if (rBunkerList.rows.length && rBunkerList.rows[0].bunker_lista_precio_id) {
-                        listaBunkerId = parseInt(rBunkerList.rows[0].bunker_lista_precio_id, 10);
-                    }
-                } catch (e) {
-                    console.warn('[PRESUPUESTOS] Error buscando lista bunker personalizada:', e.message);
-                }
-
-                // 2. Si no tiene lista bunker personalizada, mapear según lista_precios del cliente o fallback a Dietética (5)
-                if (!listaBunkerId) {
-                    if (lista === 4) listaBunkerId = 6; // Consumidor Final
-                    else if (lista === 2) listaBunkerId = 2; // Mayorista
-                    else if (lista === 3) listaBunkerId = 7; // Gastronómicos
-                    else if (lista === 1) listaBunkerId = 1; // Lista Nico
-                    else listaBunkerId = 5; // Dietética por defecto
-                }
-            } else {
-                listaBunkerId = 5; // Dietética por defecto para consultas libres / prospectos
-            }
-        }
-
         // Armado dinámico del WHERE con placeholders (incluye atributos completos, silenciosos y taxonomía)
         const fields = usarBunker
             ? [
-                'COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion)',
+                'COALESCE(ba.descripcion_generada, ba.descripcion, src1.descripcion, src2.descripcion)',
                 'bla.articulo_numero',
-                'COALESCE(src.codigo_barras, ba.articulo_id, bla.articulo_numero)',
+                'COALESCE(src1.codigo_barras, src2.codigo_barras, ba.articulo_id, bla.articulo_numero)',
                 'CAST(ba.propiedades_dinamicas AS TEXT)',
                 'COALESCE(bf.nombre, \'\')',
                 'COALESCE(ba.rubro, \'\')',
                 'COALESCE(ba.sub_rubro, \'\')',
-                'COALESCE(src.descripcion, \'\')'
+                'COALESCE(src1.descripcion, src2.descripcion, \'\')'
               ]
             : [
                 'src.descripcion', 
@@ -1299,7 +1338,9 @@ const obtenerSugerenciasArticulos = async (req, res) => {
 
         if (isBarcode) {
             p += 1;
-            const barcodeField = usarBunker ? 'COALESCE(src.codigo_barras, ba.articulo_id, bla.articulo_numero)' : 'src.codigo_barras';
+            const barcodeField = usarBunker
+                ? 'COALESCE(src1.codigo_barras, src2.codigo_barras, ba.articulo_id, bla.articulo_numero)'
+                : 'src.codigo_barras';
             whereParts.push(`${barcodeField} = $${p}`);
             params.push(qRaw);
         }
@@ -1328,15 +1369,10 @@ const obtenerSugerenciasArticulos = async (req, res) => {
         let sql;
 
         const cteReservas = `
-      WITH reservas_crudas AS (
-        SELECT
-          COALESCE(src_res.articulo_numero, ba_res.articulo_id, a_res.numero, pd.articulo) AS articulo_numero,
-          SUM(pd.cantidad) AS cantidad_reservada
+      WITH pedidos_activos AS (
+        SELECT pd.articulo, SUM(pd.cantidad) AS cant
         FROM public.presupuestos_detalles pd
         JOIN public.presupuestos p ON p.id = pd.id_presupuesto
-        LEFT JOIN public.stock_real_consolidado src_res ON (src_res.articulo_numero = pd.articulo OR src_res.codigo_barras = pd.articulo)
-        LEFT JOIN public.bunker_articulos ba_res ON (ba_res.articulo_id = pd.articulo OR ba_res.codigo_barras = pd.articulo)
-        LEFT JOIN public.articulos a_res ON (a_res.numero = pd.articulo OR a_res.codigo_barras = pd.articulo)
         WHERE p.activo = true
           AND COALESCE(p.archivado, false) = false
           AND COALESCE(p.tipo_comprobante, '') != 'Orden de Retiro'
@@ -1346,7 +1382,36 @@ const obtenerSugerenciasArticulos = async (req, res) => {
           AND p.factura_id IS NULL
           AND p.id_factura_lomasoft IS NULL
           AND (p.comprobante_lomasoft IS NULL OR p.comprobante_lomasoft = '')
-        GROUP BY COALESCE(src_res.articulo_numero, ba_res.articulo_id, a_res.numero, pd.articulo)
+        GROUP BY pd.articulo
+      ),
+      reservas_crudas AS MATERIALIZED (
+        SELECT
+          COALESCE(src1_r.articulo_numero, src2_r.articulo_numero, ba1_r.articulo_id, ba2_r.articulo_id, a1_r.numero, a2_r.numero, pa.articulo) AS articulo_numero,
+          SUM(pa.cant) AS cantidad_reservada
+        FROM pedidos_activos pa
+        LEFT JOIN public.stock_real_consolidado src1_r ON src1_r.articulo_numero = pa.articulo
+        LEFT JOIN public.stock_real_consolidado src2_r ON src2_r.codigo_barras = pa.articulo
+        LEFT JOIN public.bunker_articulos ba1_r ON ba1_r.articulo_id = pa.articulo
+        LEFT JOIN public.bunker_articulos ba2_r ON ba2_r.codigo_barras = pa.articulo
+        LEFT JOIN public.articulos a1_r ON a1_r.numero = pa.articulo
+        LEFT JOIN public.articulos a2_r ON a2_r.codigo_barras = pa.articulo
+        GROUP BY 1
+      ),
+      reservas_padres AS MATERIALIZED (
+        SELECT bp.pack_hijo_codigo, SUM(rc.cantidad_reservada * COALESCE(bp.pack_unidades, 1)) AS reservado_en_packs
+        FROM public.bunker_articulos bp
+        JOIN reservas_crudas rc ON rc.articulo_numero = bp.articulo_id
+        WHERE (bp.es_pack = true OR bp.pack_unidades > 1)
+          AND bp.pack_hijo_codigo IS NOT NULL
+        GROUP BY bp.pack_hijo_codigo
+      ),
+      stock_por_barras AS MATERIALIZED (
+        SELECT DISTINCT ON (codigo_barras)
+          codigo_barras, articulo_numero, descripcion, stock_consolidado,
+          kilos_unidad, es_pack, pack_unidades, pack_hijo_codigo
+        FROM public.stock_real_consolidado
+        WHERE codigo_barras IS NOT NULL AND codigo_barras <> ''
+        ORDER BY codigo_barras, articulo_numero
       )
         `;
 
@@ -1358,274 +1423,162 @@ const obtenerSugerenciasArticulos = async (req, res) => {
             whereClause += (whereClause ? ' AND ' : 'WHERE ') + `bla.lista_id = $${pListaBunkerId} AND COALESCE(bla.disponible, false) = true AND COALESCE(bla.precio_final, 0) > 0`;
 
             sql = `
-      ${cteReservas}
-      SELECT
-        COALESCE(src.codigo_barras, ba.articulo_id, bla.articulo_numero) AS codigo_barras,
-        COALESCE(ba.articulo_id, src.articulo_numero, bla.articulo_numero) AS articulo_numero,
-        COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion) AS descripcion,
-        -- Stock Físico (Consolidado)
-        CASE
-          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
-               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
-          THEN
-            COALESCE(src.stock_consolidado, 0) + FLOOR(COALESCE(src_hijo.stock_consolidado, 0) / COALESCE(src.pack_unidades, ba.pack_unidades, 1))
+      ${cteReservas},
+      base_bunker AS (
+        SELECT
+          COALESCE(src1.codigo_barras, src2.codigo_barras, ba.articulo_id, bla.articulo_numero) AS codigo_barras,
+          COALESCE(ba.articulo_id, src1.articulo_numero, src2.articulo_numero, bla.articulo_numero) AS articulo_numero,
+          COALESCE(ba.descripcion_generada, ba.descripcion, src1.descripcion, src2.descripcion) AS descripcion,
+          COALESCE(src1.stock_consolidado, src2.stock_consolidado, 0) AS raw_stock_base,
+          COALESCE(src_h1.stock_consolidado, src_h2.stock_consolidado, 0) AS raw_stock_hijo,
+          COALESCE(res_art.cantidad_reservada, 0) AS raw_res_art,
+          COALESCE(res_hijo.cantidad_reservada, 0) AS raw_res_hijo,
+          COALESCE(rp1.reservado_en_packs, 0) + COALESCE(rp2.reservado_en_packs, 0) AS raw_res_padres,
+          COALESCE(src1.es_pack, src2.es_pack, ba.es_pack, false) AS es_pack,
+          COALESCE(src1.pack_unidades, src2.pack_unidades, ba.pack_unidades, 1) AS pack_unidades,
+          COALESCE(src1.pack_hijo_codigo, src2.pack_hijo_codigo, ba.pack_hijo_codigo) AS pack_hijo_codigo,
+          COALESCE(bla.precio_final / (1 + COALESCE(bla.iva, ba.porcentaje_iva, 21) / 100.0), 0) AS precio_venta,
+          COALESCE(bla.precio_final, 0) AS precio_final,
+          COALESCE(bla.iva, ba.porcentaje_iva, 21) AS iva,
+          COALESCE(ba.kilos_unidad, src1.kilos_unidad, src2.kilos_unidad, 1.0) AS kilos_unidad,
+          ba.familia_id,
+          ba.rubro,
+          ba.sub_rubro,
+          bf.nombre AS familia_nombre,
+          ba.propiedades_dinamicas AS propiedades_dinamicas,
+          COALESCE(src1.descripcion, src2.descripcion) AS descripcion_legacy
+        FROM public.bunker_lista_articulos bla
+        LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = bla.articulo_numero
+        LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
+        LEFT JOIN public.stock_real_consolidado src1 ON src1.articulo_numero = bla.articulo_numero
+        LEFT JOIN stock_por_barras src2 ON src2.codigo_barras = bla.articulo_numero AND src1.articulo_numero IS NULL
+        LEFT JOIN public.stock_real_consolidado src_h1 ON src_h1.articulo_numero = COALESCE(src1.pack_hijo_codigo, src2.pack_hijo_codigo, ba.pack_hijo_codigo)
+        LEFT JOIN stock_por_barras src_h2 ON src_h2.codigo_barras = COALESCE(src1.pack_hijo_codigo, src2.pack_hijo_codigo, ba.pack_hijo_codigo) AND src_h1.articulo_numero IS NULL
+        LEFT JOIN reservas_crudas res_art ON res_art.articulo_numero = COALESCE(ba.articulo_id, src1.articulo_numero, src2.articulo_numero, bla.articulo_numero)
+        LEFT JOIN reservas_crudas res_hijo ON res_hijo.articulo_numero = COALESCE(src_h1.articulo_numero, src_h2.articulo_numero)
+        LEFT JOIN reservas_padres rp1 ON rp1.pack_hijo_codigo = COALESCE(ba.articulo_id, src1.articulo_numero, src2.articulo_numero, bla.articulo_numero)
+        LEFT JOIN reservas_padres rp2 ON rp2.pack_hijo_codigo = COALESCE(src1.codigo_barras, src2.codigo_barras)
+                                      AND COALESCE(src1.codigo_barras, src2.codigo_barras) <> COALESCE(ba.articulo_id, src1.articulo_numero, src2.articulo_numero, bla.articulo_numero)
+        ${whereClause}
+      ),
+      calc_bunker AS (
+        SELECT
+          *,
+          (es_pack = true OR pack_hijo_codigo IS NOT NULL) AND pack_unidades > 1 AS es_pack_eff
+        FROM base_bunker
+      ),
+      res_bunker AS (
+        SELECT
+          codigo_barras,
+          articulo_numero,
+          descripcion,
+          CASE WHEN es_pack_eff THEN raw_stock_base + FLOOR(raw_stock_hijo / pack_unidades) ELSE raw_stock_base END AS stock_fisico,
+          CASE WHEN es_pack_eff THEN raw_res_art + CEIL(raw_res_hijo / pack_unidades::numeric) ELSE raw_res_art + raw_res_padres END AS stock_reservado,
+          CASE WHEN es_pack_eff THEN
+            GREATEST(0, raw_stock_base - raw_res_art) + FLOOR(GREATEST(0, raw_stock_hijo - (raw_res_hijo + (raw_res_art * pack_unidades))) / pack_unidades)
           ELSE
-            COALESCE(src.stock_consolidado, 0)
-        END AS stock_fisico,
-        -- Stock Reservado (en pedidos activos)
-        CASE
-          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
-               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
-          THEN
-            COALESCE(res_art.cantidad_reservada, 0) + CEIL(COALESCE(res_hijo.cantidad_reservada, 0) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)::numeric)
-          ELSE
-            COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)
-        END AS stock_reservado,
-        -- Stock Disponible Real
-        CASE
-          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
-               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
-          THEN
-            GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(res_art.cantidad_reservada, 0)) +
-            FLOOR(
-              GREATEST(0, 
-                COALESCE(src_hijo.stock_consolidado, 0) - (
-                  COALESCE(res_hijo.cantidad_reservada, 0) + (COALESCE(res_art.cantidad_reservada, 0) * COALESCE(src.pack_unidades, ba.pack_unidades, 1))
-                )
-              ) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)
-            )
-          ELSE
-            GREATEST(0, COALESCE(src.stock_consolidado, 0) - (COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)))
-        END AS stock_disponible,
-        -- Stock consolidado (disponible para retrocompatibilidad)
-        CASE
-          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
-               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
-          THEN
-            GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(res_art.cantidad_reservada, 0)) +
-            FLOOR(
-              GREATEST(0, 
-                COALESCE(src_hijo.stock_consolidado, 0) - (
-                  COALESCE(res_hijo.cantidad_reservada, 0) + (COALESCE(res_art.cantidad_reservada, 0) * COALESCE(src.pack_unidades, ba.pack_unidades, 1))
-                )
-              ) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)
-            )
-          ELSE
-            GREATEST(0, COALESCE(src.stock_consolidado, 0) - (COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)))
-        END AS stock_consolidado,
-        COALESCE(bla.precio_final / (1 + COALESCE(bla.iva, ba.porcentaje_iva, 21) / 100.0), 0) AS precio_venta,
-        COALESCE(bla.precio_final, 0) AS precio_final,
-        COALESCE(bla.iva, ba.porcentaje_iva, 21) AS iva,
-        COALESCE(ba.kilos_unidad, src.kilos_unidad, 1.0) AS kilos_unidad,
-        COALESCE(src.es_pack, ba.es_pack, false) AS es_pack,
-        COALESCE(src.pack_unidades, ba.pack_unidades, 1) AS pack_unidades,
-        COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) AS pack_hijo_codigo,
-        ba.familia_id,
-        ba.rubro,
-        ba.sub_rubro,
-        bf.nombre AS familia_nombre,
-        ba.propiedades_dinamicas AS propiedades_dinamicas,
-        src.descripcion AS descripcion_legacy
-      FROM public.bunker_lista_articulos bla
-      LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = bla.articulo_numero
-      LEFT JOIN public.bunker_familias bf ON bf.id = ba.familia_id
-      LEFT JOIN public.stock_real_consolidado src ON (src.articulo_numero = bla.articulo_numero OR src.codigo_barras = bla.articulo_numero)
-      LEFT JOIN public.stock_real_consolidado src_sub ON (
-          src_sub.articulo_numero = COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo)
-          OR src_sub.codigo_barras = COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo)
+            GREATEST(0, raw_stock_base - (raw_res_art + raw_res_padres))
+          END AS stock_disponible,
+          precio_venta, precio_final, iva, kilos_unidad,
+          es_pack, pack_unidades, pack_hijo_codigo,
+          familia_id, rubro, sub_rubro, familia_nombre, propiedades_dinamicas, descripcion_legacy
+        FROM calc_bunker
       )
-      LEFT JOIN LATERAL (
-          SELECT src_sub.stock_consolidado, src_sub.articulo_numero
-          LIMIT 1
-      ) src_hijo ON true
-      LEFT JOIN reservas_crudas res_art ON (res_art.articulo_numero = COALESCE(ba.articulo_id, src.articulo_numero, bla.articulo_numero))
-      LEFT JOIN reservas_crudas res_hijo ON (res_hijo.articulo_numero = src_hijo.articulo_numero)
-      LEFT JOIN LATERAL (
-          SELECT SUM(rc_padre.cantidad_reservada * COALESCE(bp.pack_unidades, 1)) AS reservado_en_packs
-          FROM public.bunker_articulos bp
-          JOIN reservas_crudas rc_padre ON rc_padre.articulo_numero = bp.articulo_id
-          WHERE (bp.es_pack = true OR bp.pack_unidades > 1)
-            AND (bp.pack_hijo_codigo = COALESCE(ba.articulo_id, src.articulo_numero, bla.articulo_numero)
-                 OR bp.pack_hijo_codigo = COALESCE(src.codigo_barras, ba.articulo_id, bla.articulo_numero))
-      ) res_padres ON true
-      ${whereClause}
+      SELECT
+        *,
+        stock_disponible AS stock_consolidado
+      FROM res_bunker
       ORDER BY
-        CASE
-          WHEN (
-            CASE
-              WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
-                   AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
-              THEN
-                GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(res_art.cantidad_reservada, 0)) +
-                FLOOR(
-                  GREATEST(0, 
-                    COALESCE(src_hijo.stock_consolidado, 0) - (
-                      COALESCE(res_hijo.cantidad_reservada, 0) + (COALESCE(res_art.cantidad_reservada, 0) * COALESCE(src.pack_unidades, ba.pack_unidades, 1))
-                    )
-                  ) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)
-                )
-              ELSE
-                GREATEST(0, COALESCE(src.stock_consolidado, 0) - (COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)))
-            END
-          ) > 0 THEN 0 ELSE 1 END ASC,
-        COALESCE(ba.descripcion_generada, ba.descripcion, src.descripcion) ASC
+        CASE WHEN stock_disponible > 0 THEN 0 ELSE 1 END ASC,
+        descripcion ASC
       LIMIT $${p + 1}
     `;
         } else {
             sql = `
-      ${cteReservas}
-      SELECT
-        src.codigo_barras,
-        src.articulo_numero,
-        src.descripcion,
-        -- Stock Físico (Consolidado)
-        CASE
-          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
-               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
-          THEN
-            COALESCE(src.stock_consolidado, 0) + FLOOR(COALESCE(src_hijo.stock_consolidado, 0) / COALESCE(src.pack_unidades, ba.pack_unidades, 1))
+      ${cteReservas},
+      base_legacy AS (
+        SELECT
+          src.codigo_barras,
+          src.articulo_numero,
+          src.descripcion,
+          COALESCE(src.stock_consolidado, 0) AS raw_stock_base,
+          COALESCE(src_h1.stock_consolidado, src_h2.stock_consolidado, 0) AS raw_stock_hijo,
+          COALESCE(res_art.cantidad_reservada, 0) AS raw_res_art,
+          COALESCE(res_hijo.cantidad_reservada, 0) AS raw_res_hijo,
+          COALESCE(rp1.reservado_en_packs, 0) + COALESCE(rp2.reservado_en_packs, 0) AS raw_res_padres,
+          COALESCE(src.es_pack, ba.es_pack, false) AS es_pack,
+          COALESCE(src.pack_unidades, ba.pack_unidades, 1) AS pack_unidades,
+          COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) AS pack_hijo_codigo,
+          COALESCE(${colPrecio}, 0) AS precio_venta,
+          COALESCE(pa.iva, 21) AS iva,
+          COALESCE(src.kilos_unidad, 1.0) AS kilos_unidad,
+          ba.familia_id,
+          ba.rubro,
+          ba.sub_rubro,
+          ba.propiedades_dinamicas AS propiedades_dinamicas,
+          src.descripcion AS descripcion_legacy
+        FROM public.stock_real_consolidado src
+        LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(src.descripcion)
+        LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = src.articulo_numero
+        LEFT JOIN public.stock_real_consolidado src_h1 ON src_h1.articulo_numero = COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo)
+        LEFT JOIN stock_por_barras src_h2 ON src_h2.codigo_barras = COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) AND src_h1.articulo_numero IS NULL
+        LEFT JOIN reservas_crudas res_art ON res_art.articulo_numero = COALESCE(ba.articulo_id, src.articulo_numero)
+        LEFT JOIN reservas_crudas res_hijo ON res_hijo.articulo_numero = COALESCE(src_h1.articulo_numero, src_h2.articulo_numero)
+        LEFT JOIN reservas_padres rp1 ON rp1.pack_hijo_codigo = COALESCE(ba.articulo_id, src.articulo_numero)
+        LEFT JOIN reservas_padres rp2 ON rp2.pack_hijo_codigo = src.codigo_barras
+                                      AND src.codigo_barras <> COALESCE(ba.articulo_id, src.articulo_numero)
+        ${whereClause}
+      ),
+      calc_legacy AS (
+        SELECT
+          *,
+          (es_pack = true OR pack_hijo_codigo IS NOT NULL) AND pack_unidades > 1 AS es_pack_eff
+        FROM base_legacy
+      ),
+      res_legacy AS (
+        SELECT
+          codigo_barras,
+          articulo_numero,
+          descripcion,
+          CASE WHEN es_pack_eff THEN raw_stock_base + FLOOR(raw_stock_hijo / pack_unidades) ELSE raw_stock_base END AS stock_fisico,
+          CASE WHEN es_pack_eff THEN raw_res_art + CEIL(raw_res_hijo / pack_unidades::numeric) ELSE raw_res_art + raw_res_padres END AS stock_reservado,
+          CASE WHEN es_pack_eff THEN
+            GREATEST(0, raw_stock_base - raw_res_art) + FLOOR(GREATEST(0, raw_stock_hijo - (raw_res_hijo + (raw_res_art * pack_unidades))) / pack_unidades)
           ELSE
-            COALESCE(src.stock_consolidado, 0)
-        END AS stock_fisico,
-        -- Stock Reservado (en pedidos activos)
-        CASE
-          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
-               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
-          THEN
-            COALESCE(res_art.cantidad_reservada, 0) + CEIL(COALESCE(res_hijo.cantidad_reservada, 0) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)::numeric)
-          ELSE
-            COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)
-        END AS stock_reservado,
-        -- Stock Disponible Real
-        CASE
-          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
-               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
-          THEN
-            GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(res_art.cantidad_reservada, 0)) +
-            FLOOR(
-              GREATEST(0, 
-                COALESCE(src_hijo.stock_consolidado, 0) - (
-                  COALESCE(res_hijo.cantidad_reservada, 0) + (COALESCE(res_art.cantidad_reservada, 0) * COALESCE(src.pack_unidades, ba.pack_unidades, 1))
-                )
-              ) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)
-            )
-          ELSE
-            GREATEST(0, COALESCE(src.stock_consolidado, 0) - (COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)))
-        END AS stock_disponible,
-        -- Stock consolidado (disponible para retrocompatibilidad)
-        CASE
-          WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
-               AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
-          THEN
-            GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(res_art.cantidad_reservada, 0)) +
-            FLOOR(
-              GREATEST(0, 
-                COALESCE(src_hijo.stock_consolidado, 0) - (
-                  COALESCE(res_hijo.cantidad_reservada, 0) + (COALESCE(res_art.cantidad_reservada, 0) * COALESCE(src.pack_unidades, ba.pack_unidades, 1))
-                )
-              ) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)
-            )
-          ELSE
-            GREATEST(0, COALESCE(src.stock_consolidado, 0) - (COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)))
-        END AS stock_consolidado,
-        COALESCE(${colPrecio}, 0) AS precio_venta,
-        COALESCE(pa.iva, 21) AS iva,
-        COALESCE(src.kilos_unidad, 1.0) AS kilos_unidad,
-        COALESCE(src.es_pack, ba.es_pack, false) AS es_pack,
-        COALESCE(src.pack_unidades, ba.pack_unidades, 1) AS pack_unidades,
-        COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) AS pack_hijo_codigo,
-        ba.familia_id,
-        ba.rubro,
-        ba.sub_rubro,
-        ba.propiedades_dinamicas AS propiedades_dinamicas,
-        src.descripcion AS descripcion_legacy
-      FROM public.stock_real_consolidado src
-      LEFT JOIN public.precios_articulos pa ON LOWER(pa.descripcion) = LOWER(src.descripcion)
-      LEFT JOIN public.bunker_articulos ba ON ba.articulo_id = src.articulo_numero
-      LEFT JOIN public.stock_real_consolidado src_sub ON (
-          src_sub.articulo_numero = COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo)
-          OR src_sub.codigo_barras = COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo)
+            GREATEST(0, raw_stock_base - (raw_res_art + raw_res_padres))
+          END AS stock_disponible,
+          precio_venta, iva, kilos_unidad,
+          es_pack, pack_unidades, pack_hijo_codigo,
+          familia_id, rubro, sub_rubro, propiedades_dinamicas, descripcion_legacy
+        FROM calc_legacy
       )
-      LEFT JOIN LATERAL (
-          SELECT src_sub.stock_consolidado, src_sub.articulo_numero
-          LIMIT 1
-      ) src_hijo ON true
-      LEFT JOIN reservas_crudas res_art ON (res_art.articulo_numero = COALESCE(ba.articulo_id, src.articulo_numero))
-      LEFT JOIN reservas_crudas res_hijo ON (res_hijo.articulo_numero = src_hijo.articulo_numero)
-      LEFT JOIN LATERAL (
-          SELECT SUM(rc_padre.cantidad_reservada * COALESCE(bp.pack_unidades, 1)) AS reservado_en_packs
-          FROM public.bunker_articulos bp
-          JOIN reservas_crudas rc_padre ON rc_padre.articulo_numero = bp.articulo_id
-          WHERE (bp.es_pack = true OR bp.pack_unidades > 1)
-            AND (bp.pack_hijo_codigo = COALESCE(ba.articulo_id, src.articulo_numero)
-                 OR bp.pack_hijo_codigo = src.codigo_barras)
-      ) res_padres ON true
-      ${whereClause}
+      SELECT
+        *,
+        stock_disponible AS stock_consolidado
+      FROM res_legacy
       ORDER BY
-        CASE
-          WHEN (
-            CASE
-              WHEN (COALESCE(src.es_pack, ba.es_pack, false) = true OR COALESCE(src.pack_hijo_codigo, ba.pack_hijo_codigo) IS NOT NULL)
-                   AND COALESCE(src.pack_unidades, ba.pack_unidades, 1) > 1
-              THEN
-                GREATEST(0, COALESCE(src.stock_consolidado, 0) - COALESCE(res_art.cantidad_reservada, 0)) +
-                FLOOR(
-                  GREATEST(0, 
-                    COALESCE(src_hijo.stock_consolidado, 0) - (
-                      COALESCE(res_hijo.cantidad_reservada, 0) + (COALESCE(res_art.cantidad_reservada, 0) * COALESCE(src.pack_unidades, ba.pack_unidades, 1))
-                    )
-                  ) / COALESCE(src.pack_unidades, ba.pack_unidades, 1)
-                )
-              ELSE
-                GREATEST(0, COALESCE(src.stock_consolidado, 0) - (COALESCE(res_art.cantidad_reservada, 0) + COALESCE(res_padres.reservado_en_packs, 0)))
-            END
-          ) > 0 THEN 0 ELSE 1 END ASC,
-        src.descripcion ASC
+        CASE WHEN stock_disponible > 0 THEN 0 ELSE 1 END ASC,
+        descripcion ASC
       LIMIT $${p + 1}
     `;
         }
         params.push(limit);
 
-        const result = await req.db.query(sql, params);
-
-        // Cargar reglas de jerarquía B2B si existen
-        let jerarquiaMap = new Map();
-        try {
-            const jRes = await req.db.query(`
-                SELECT familia_id, articulo_principal, eje_nivel_3, reglas_nivel_4, reglas_nivel_5 
-                FROM public.bunker_portal_b2b_jerarquia 
-                WHERE eje_nivel_3 IS NOT NULL AND TRIM(eje_nivel_3) != ''
-            `);
-            for (const jRow of jRes.rows) {
-                const famId = jRow.familia_id !== null && jRow.familia_id !== undefined ? jRow.familia_id : 0;
-                const artP = String(jRow.articulo_principal || '').trim().toLowerCase();
-                const rawEjeN3 = jRow.eje_nivel_3 ? String(jRow.eje_nivel_3).trim().toLowerCase() : '';
-                const ejesN3 = rawEjeN3 ? rawEjeN3.split(',').map(s => s.trim()).filter(Boolean) : [];
-                jerarquiaMap.set(`${famId}___${artP}`, {
-                    eje_nivel_3: rawEjeN3,
-                    ejes_nivel_3: ejesN3,
-                    reglas_nivel_4: jRow.reglas_nivel_4 && typeof jRow.reglas_nivel_4 === 'object' ? jRow.reglas_nivel_4 : {},
-                    reglas_nivel_5: jRow.reglas_nivel_5 && typeof jRow.reglas_nivel_5 === 'object' ? jRow.reglas_nivel_5 : {}
-                });
-            }
-        } catch (jErr) {
-            // Tabla opcional o vacía
-        }
-
-        // Cargar ofertas dinámicas activas para este contexto (cliente y lista de precios)
-        let mapaOfertas = {};
-        try {
-            const OfertasDinamicasService = require('../services/ofertasDinamicasService');
-            mapaOfertas = await OfertasDinamicasService.obtenerOfertasActivasParaContexto({
-                clienteId: clienteId || qClienteRaw,
+        const OfertasDinamicasService = require('../services/ofertasDinamicasService');
+        const [result, jerarquiaMap, mapaOfertas] = await Promise.all([
+            req.db.query(sql, params),
+            obtenerJerarquiaB2BMap(req.db),
+            OfertasDinamicasService.obtenerOfertasActivasParaContexto({
+                clienteId: clienteIdParaOfertas,
                 listaPrecioId: listaBunkerId || lista
-            }, req.db);
-        } catch (eOfertas) {
-            console.warn('[PRESUPUESTOS] Advertencia al obtener ofertas dinámicas para sugerencias:', eOfertas.message);
-        }
+            }, req.db).catch((eOfertas) => {
+                console.warn('[PRESUPUESTOS] Advertencia al obtener ofertas dinámicas para sugerencias:', eOfertas.message);
+                return {};
+            })
+        ]);
 
         const sugerencias = result.rows
-            .filter(a => !esSkuPremezclaInterna(a))
+            .filter(a => (usarBunker && !excluirPremezclas) ? true : !esSkuPremezclaInterna(a))
             .map(a => {
             let props = a.propiedades_dinamicas;
             if (props && typeof props === 'string') {
@@ -1847,7 +1800,8 @@ const obtenerSugerenciasArticulos = async (req, res) => {
  */
 const obtenerPrecioArticuloCliente = async (req, res) => {
     try {
-        const idCliente = parseInt(req.query.cliente_id, 10) || 0;
+        const rawClienteId = String(req.query.cliente_id || '').trim();
+        let idCliente = /^\d+$/.test(rawClienteId) ? parseInt(rawClienteId, 10) : 0;
         const codigoBarras = (req.query.codigo_barras || req.query.articulo_codigo || '').trim();
         const articuloNumero = (req.query.articulo_numero || req.query.articulo_codigo || '').trim();
         let descripcion = (req.query.descripcion || '').trim();
@@ -1863,20 +1817,29 @@ const obtenerPrecioArticuloCliente = async (req, res) => {
         // 1) Resolver finanzas y estructura Búnker del artículo (para precios o rentabilidad)
         const usarPreciosBunker = req.query.usar_precios_bunker === 'true' || req.query.usar_precios_bunker === true;
         let listaId = req.query.lista_id ? parseInt(req.query.lista_id, 10) : null;
-        if (!listaId && idCliente > 0) {
+        if (idCliente > 0 || rawClienteId.length > 0) {
             try {
+                const paddedId = idCliente > 0 ? String(idCliente).padStart(4, '0') : null;
+                const intId = idCliente > 0 ? idCliente : null;
                 const queryList = `
-                    SELECT bclp.bunker_lista_precio_id 
-                    FROM public.bunker_cliente_listas_precios bclp
-                    JOIN public.bunker_clientes bc ON bc.id = bclp.bunker_cliente_id
-                    WHERE bc.lomas_soft_id = LPAD($1, 4, '0')
+                    SELECT bc.lomas_soft_id, bclp.bunker_lista_precio_id 
+                    FROM public.bunker_clientes bc
+                    LEFT JOIN public.bunker_cliente_listas_precios bclp ON bclp.bunker_cliente_id = bc.id
+                    WHERE UPPER(TRIM(COALESCE(bc.codigo_bunker_cliente, ''))) = UPPER($1)
                        OR bc.lomas_soft_id = $1
-                       OR (CASE WHEN $1 ~ '^[0-9]+$' AND LENGTH($1) < 10 THEN bc.id = $1::integer ELSE false END)
+                       OR ($2::text IS NOT NULL AND bc.lomas_soft_id = $2)
+                       OR ($3::integer IS NOT NULL AND bc.id = $3::integer)
+                    ORDER BY (bclp.bunker_lista_precio_id IS NOT NULL) DESC
                     LIMIT 1
                 `;
-                const rList = await req.db.query(queryList, [String(idCliente)]);
+                const rList = await req.db.query(queryList, [rawClienteId, paddedId, intId]);
                 if (rList.rows.length > 0) {
-                    listaId = rList.rows[0].bunker_lista_precio_id;
+                    if (!listaId && rList.rows[0].bunker_lista_precio_id) {
+                        listaId = rList.rows[0].bunker_lista_precio_id;
+                    }
+                    if (idCliente === 0 && rList.rows[0].lomas_soft_id && /^\d+$/.test(String(rList.rows[0].lomas_soft_id).trim())) {
+                        idCliente = parseInt(String(rList.rows[0].lomas_soft_id).trim(), 10);
+                    }
                 }
             } catch (errList) {
                 console.warn('⚠️ [PRESUPUESTOS] Error buscando lista Bunker del cliente:', errList.message);
@@ -3368,6 +3331,7 @@ const obtenerDatosCliente = async (req, res) => {
                     bc.id AS bunker_cliente_id,
                     bc.codigo_bunker_cliente,
                     bc.lomas_soft_id,
+                    bc.usuario_id,
                     (bc.id IS NOT NULL) AS en_bunker
                 FROM public.clientes c
                 FULL OUTER JOIN public.bunker_clientes bc ON (
@@ -3388,6 +3352,8 @@ const obtenerDatosCliente = async (req, res) => {
                 cu.legacy_lista_precios,
                 cu.bunker_cliente_id,
                 cu.codigo_bunker_cliente,
+                cu.lomas_soft_id,
+                cu.usuario_id,
                 cu.en_bunker,
                 COALESCE(
                     (SELECT JSON_AGG(JSON_BUILD_OBJECT('id', lp.id, 'nombre', lp.nombre))
@@ -3416,7 +3382,7 @@ const obtenerDatosCliente = async (req, res) => {
                            THEN TRIM($1::text)::integer
                            ELSE NULL END
                   )
-               OR cu.codigo_bunker_cliente = TRIM($1::text)
+               OR UPPER(TRIM(COALESCE(cu.codigo_bunker_cliente, ''))) = UPPER(TRIM($1::text))
                OR cu.lomas_soft_id = TRIM($1::text)
             ORDER BY
                 CASE
