@@ -384,7 +384,68 @@ const CLIENT_RUNTIME_SCRIPT = `
     var orphanModalEl = null;
     var lastOrphanAlert = null;
 
+    function isPrintOrHeadlessContext() {
+        try {
+            var search = (window.location && window.location.search) ? String(window.location.search).toLowerCase() : '';
+            if (search.indexOf('headless_pdf=1') !== -1) return true;
+            var pathLow = (window.location && window.location.pathname) ? String(window.location.pathname).toLowerCase() : '';
+            if (
+                pathLow.endsWith('/imprimir-presupuesto.html') ||
+                pathLow.endsWith('/ver-factura.html') ||
+                pathLow.endsWith('/imprimir-historial.html')
+            ) {
+                return true;
+            }
+            if (typeof navigator !== 'undefined') {
+                if (navigator.webdriver === true) return true;
+                if (/HeadlessChrome/i.test(navigator.userAgent || '')) return true;
+            }
+            if (typeof window.matchMedia === 'function' && window.matchMedia('print').matches) {
+                return true;
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    function ensureRuntimePrintGuardStyle() {
+        try {
+            if (!document.head || document.getElementById('lamda-runtime-print-guard')) return;
+            var styleEl = document.createElement('style');
+            styleEl.id = 'lamda-runtime-print-guard';
+            styleEl.textContent =
+                '@media print { ' +
+                '#lamda-system-top-banners, ' +
+                '#lamda-local-emergency-banner, ' +
+                '#lamda-subtle-env-watermark, ' +
+                '#lamda-zebra-queue-banner, ' +
+                '#lamda-orphan-audit-banner, ' +
+                '#lamda-lab-mode-banner { display: none !important; visibility: hidden !important; } ' +
+                'body { padding-top: 0 !important; } ' +
+                '}';
+            document.head.appendChild(styleEl);
+        } catch (e) {}
+    }
+
+    function removeAllRuntimeOverlays() {
+        var ids = [
+            'lamda-system-top-banners',
+            'lamda-local-emergency-banner',
+            'lamda-subtle-env-watermark',
+            'lamda-zebra-queue-banner',
+            'lamda-orphan-audit-banner',
+            'lamda-lab-mode-banner'
+        ];
+        for (var i = 0; i < ids.length; i++) {
+            var el = document.getElementById(ids[i]);
+            if (el) el.remove();
+        }
+        try {
+            if (document.body) document.body.style.paddingTop = '';
+        } catch (e) {}
+    }
+
     function ensureTopContainer() {
+        if (isPrintOrHeadlessContext()) return null;
         var container = document.getElementById('lamda-system-top-banners');
         if (!container && document.body) {
             container = document.createElement('div');
@@ -412,7 +473,7 @@ const CLIENT_RUNTIME_SCRIPT = `
     }
 
     function renderLabBanner(status) {
-        if (!status || !status.isLaboratorio) {
+        if (isPrintOrHeadlessContext() || !status || !status.isLaboratorio) {
             if (labBannerEl) {
                 labBannerEl.remove();
                 labBannerEl = null;
@@ -522,6 +583,13 @@ const CLIENT_RUNTIME_SCRIPT = `
     }
 
     function renderZebraBanner(zebraQueue) {
+        if (isPrintOrHeadlessContext()) {
+            if (zebraBannerEl) {
+                zebraBannerEl.remove();
+                zebraBannerEl = null;
+            }
+            return;
+        }
         var count = (zebraQueue && zebraQueue.pendingPrintCount) ? zebraQueue.pendingPrintCount : 0;
         lastZebraItems = (zebraQueue && zebraQueue.items) ? zebraQueue.items : [];
         if (count <= 0) {
@@ -568,7 +636,7 @@ const CLIENT_RUNTIME_SCRIPT = `
 
     // 5B. Sello de agua sutil de entorno (L · Local vs N · Nube) — Cero intrusivo (pointer-events: none)
     function renderSubtleEnvironmentWatermark(status) {
-        if (!document.body) return;
+        if (!document.body || isPrintOrHeadlessContext()) return;
         var host = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : '';
         var isLab = Boolean((status && status.isLaboratorio) || window.__LAMDA_IS_LABORATORIO__);
         var isCloud = Boolean((status && status.isCloudMode) || (host && host !== 'localhost' && host !== '127.0.0.1'));
@@ -621,6 +689,14 @@ const CLIENT_RUNTIME_SCRIPT = `
     function renderLocalEmergencyBanner(status) {
         if (!document.body) return;
         var isLab = isStrictLaboratorioMode();
+        if (isPrintOrHeadlessContext() || !status || status.isCloudMode !== false || isLab) {
+            if (localEmergencyBannerEl) {
+                localEmergencyBannerEl.remove();
+                localEmergencyBannerEl = null;
+            }
+            try { document.body.style.paddingTop = ''; } catch (_) {}
+            return;
+        }
         var host = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : '';
         var isLanOrLocal = Boolean(
             host === 'localhost' ||
@@ -628,10 +704,10 @@ const CLIENT_RUNTIME_SCRIPT = `
             host.indexOf('192.168.') === 0 ||
             host.indexOf('10.') === 0 ||
             /^172\\.(1[6-9]|2\\d|3[01])\\./.test(host) ||
-            (host && host.indexOf('lamdaser.com') === -1 && status && status.isCloudMode === false)
+            (host && host.indexOf('lamdaser.com') === -1 && status.isCloudMode === false)
         );
 
-        if (isLab || !isLanOrLocal) {
+        if (!isLanOrLocal) {
             if (localEmergencyBannerEl) {
                 localEmergencyBannerEl.remove();
                 localEmergencyBannerEl = null;
@@ -687,7 +763,7 @@ const CLIENT_RUNTIME_SCRIPT = `
     }
 
     function checkCloudReachabilityIfLocal(status) {
-        if (isStrictLaboratorioMode() || localReachCheckRunning) return;
+        if (!status || status.isCloudMode !== false || isStrictLaboratorioMode() || isPrintOrHeadlessContext() || localReachCheckRunning) return;
         var host = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : '';
         var isLocal = (host === 'localhost' || host === '127.0.0.1' || host.indexOf('192.168.') === 0 || host.indexOf('10.') === 0);
         if (!isLocal) return;
@@ -761,7 +837,7 @@ const CLIENT_RUNTIME_SCRIPT = `
     }
 
     function renderOrphanAuditBanner(orphanAlert) {
-        if (isStrictLaboratorioMode() || !orphanAlert || !orphanAlert.total_registros_huerfanos) {
+        if (isPrintOrHeadlessContext() || isStrictLaboratorioMode() || !orphanAlert || !orphanAlert.total_registros_huerfanos) {
             if (orphanBannerEl) {
                 orphanBannerEl.remove();
                 orphanBannerEl = null;
@@ -1036,7 +1112,12 @@ const CLIENT_RUNTIME_SCRIPT = `
     };
 
     function initCloudDomEnhancements() {
+        ensureRuntimePrintGuardStyle();
         rewriteAllDomLinks(document);
+        if (isPrintOrHeadlessContext()) {
+            removeAllRuntimeOverlays();
+            return;
+        }
         setupPwaManifestAndButtons();
         renderSubtleEnvironmentWatermark(window.__LAMDA_ENV_STATUS__ || null);
         pollSystemStatus();
@@ -1062,7 +1143,7 @@ const CLIENT_RUNTIME_SCRIPT = `
 })();
 `;
 
-function injectScriptTagInHtml(htmlContent, servicePort = 3005) {
+function injectScriptTagInHtml(htmlContent, servicePort = 3005, options = {}) {
     if (typeof htmlContent !== 'string') return htmlContent;
     let outHtml = htmlContent;
     const portNum = Number(servicePort);
@@ -1071,6 +1152,13 @@ function injectScriptTagInHtml(htmlContent, servicePort = 3005) {
             /\b(src|href)=(["'])\/(js|css)\//gi,
             `$1=$2/gw/${portNum}/$3/`
         );
+    }
+    if (options && options.stripRuntimeScript) {
+        outHtml = outHtml.replace(/<script\b[^>]*\bsrc=["'][^"']*\/lamda-cloud-runtime\.js(?:\?[^"']*)?["'][^>]*>\s*<\/script>/gi, '');
+        return outHtml;
+    }
+    if (options && options.skipRuntimeInjection) {
+        return outHtml;
     }
     if (outHtml.includes('/lamda-cloud-runtime.js')) return outHtml;
     const hasManifest = /rel=["']manifest["']/i.test(outHtml);
@@ -1808,6 +1896,15 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
     // 4. Inyección transparente de <script src="/lamda-cloud-runtime.js"></script> y reescritura /gw/300X/(js|css)/ en respuestas HTML (incluyendo express.static)
     app.use((req, res, next) => {
         const reqPathClean = String(req.path || req.url || '').split('?')[0].toLowerCase();
+        const isHeadlessPdfReq = String((req.query && req.query.headless_pdf) || '').trim() === '1'
+            || String(req.headers['x-lamda-pdf-render'] || '').trim() === '1';
+        const isPrintableViewPath = reqPathClean.endsWith('/imprimir-presupuesto.html')
+            || reqPathClean.endsWith('/ver-factura.html')
+            || reqPathClean.endsWith('/imprimir-historial.html');
+        const htmlInjectOpts = {
+            stripRuntimeScript: isHeadlessPdfReq,
+            skipRuntimeInjection: isHeadlessPdfReq || isPrintableViewPath
+        };
         const rawHostHeader = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim().toLowerCase().replace(/:\d+$/, '');
         const publicNodosHost = String(process.env.NODOS_PUBLIC_HOST || 'tienda.lamdaser.com').trim().toLowerCase().replace(/:\d+$/, '');
         if (
@@ -1837,7 +1934,7 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             try {
                 const contentType = String(res.getHeader('Content-Type') || '');
                 if (typeof body === 'string' && (contentType.includes('text/html') || /^\s*<!DOCTYPE html/i.test(body) || /^\s*<html/i.test(body))) {
-                    body = injectScriptTagInHtml(body, servicePort);
+                    body = injectScriptTagInHtml(body, servicePort, htmlInjectOpts);
                 }
             } catch (_) {}
             return originalSend(body);
@@ -1848,7 +1945,7 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
                 try {
                     const rawHtml = fs.readFileSync(filePath, 'utf8');
                     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-                    return originalSend(injectScriptTagInHtml(rawHtml, servicePort));
+                    return originalSend(injectScriptTagInHtml(rawHtml, servicePort, htmlInjectOpts));
                 } catch (_) {}
             }
             return originalSendFile(filePath, options, fn);
@@ -1874,7 +1971,7 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
                             htmlChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk), typeof encoding === 'string' ? encoding : 'utf8'));
                         }
                         const rawStr = Buffer.concat(htmlChunks).toString('utf8');
-                        const modifiedStr = injectScriptTagInHtml(rawStr, servicePort);
+                        const modifiedStr = injectScriptTagInHtml(rawStr, servicePort, htmlInjectOpts);
                         const outBuf = Buffer.from(modifiedStr, 'utf8');
                         if (!res.headersSent) {
                             res.setHeader('Content-Length', outBuf.length);

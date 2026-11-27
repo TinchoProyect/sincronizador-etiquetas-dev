@@ -18,14 +18,32 @@ async function generarPDFPresupuestoBuffer(id, queryParams) {
         });
 
         const page = await browser.newPage();
-        
+        await page.setExtraHTTPHeaders({ 'X-Lamda-Pdf-Render': '1' });
+
         // Construir la URL local del servidor central (3003) para renderizar la plantilla HTML
-        let pdfUrl = `http://localhost:3003/pages/imprimir-presupuesto.html?id=${id}&formato=${formato || ''}${(sololista === 'true' || sololista === true) ? '&sololista=true' : ''}${(faltantes === 'false' || faltantes === false) ? '&faltantes=false' : ''}${(promos === 'true' || promos === true) ? '&promos=true' : ''}${(pagos === 'true' || pagos === true) ? '&pagos=true' : ''}${(intereses === 'true' || intereses === true) ? '&intereses=true' : ''}`;
-        
+        let pdfUrl = `http://localhost:3003/pages/imprimir-presupuesto.html?id=${id}&formato=${formato || ''}${(sololista === 'true' || sololista === true) ? '&sololista=true' : ''}${(faltantes === 'false' || faltantes === false) ? '&faltantes=false' : ''}${(promos === 'true' || promos === true) ? '&promos=true' : ''}${(pagos === 'true' || pagos === true) ? '&pagos=true' : ''}${(intereses === 'true' || intereses === true) ? '&intereses=true' : ''}&headless_pdf=1`;
+
         console.log(`📄 [PDF-BUFFER] Navegando (Headless) a: ${pdfUrl}`);
-        
+
         await page.goto(pdfUrl, { waitUntil: 'networkidle0', timeout: 35000 });
         await page.emulateMediaType('print');
+
+        await page.evaluate(() => {
+            [
+                'lamda-system-top-banners',
+                'lamda-local-emergency-banner',
+                'lamda-subtle-env-watermark',
+                'lamda-zebra-queue-banner',
+                'lamda-orphan-audit-banner',
+                'lamda-lab-mode-banner'
+            ].forEach((elId) => {
+                const el = document.getElementById(elId);
+                if (el) el.remove();
+            });
+            if (document.body) {
+                document.body.style.paddingTop = '';
+            }
+        });
 
         const pdfBuffer = await page.pdf({
             format: 'A4',
