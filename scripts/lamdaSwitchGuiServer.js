@@ -47,6 +47,143 @@ const {
     obtenerSecretoPresenciaZebra
 } = require('../src/services/zebraPrintBridgeService');
 
+const {
+    ejecutarAuditoriaHuerfanasContraNube
+} = require('./auditarOperacionesHuerfanasLocal');
+
+const CONTINGENCIA_FLAG_PATH = path.join(ROOT_DIR, 'data', 'contingencia_local_activa.json');
+
+function leerContingenciaLocalActiva() {
+    try {
+        if (!fs.existsSync(CONTINGENCIA_FLAG_PATH)) return null;
+        return JSON.parse(fs.readFileSync(CONTINGENCIA_FLAG_PATH, 'utf8'));
+    } catch (_) {
+        return { activa: true };
+    }
+}
+
+function marcarContingenciaLocalActiva(motivo = 'CONFIRMACION_HUMANA_OFFLINE') {
+    try {
+        const dir = path.dirname(CONTINGENCIA_FLAG_PATH);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(CONTINGENCIA_FLAG_PATH, JSON.stringify({
+            activa: true,
+            iniciadaEn: new Date().toISOString(),
+            motivo
+        }, null, 2), 'utf8');
+    } catch (_) {}
+}
+
+function limpiarContingenciaLocalActiva() {
+    try {
+        if (fs.existsSync(CONTINGENCIA_FLAG_PATH)) fs.unlinkSync(CONTINGENCIA_FLAG_PATH);
+    } catch (_) {}
+}
+
+let auditoriaHuerfanasEnCurso = false;
+let ultimaAuditoriaHuerfanasMs = 0;
+
+function dispararAuditoriaHuerfanasEnSegundoPlano(motivo = 'RECONEXION') {
+    const ahora = Date.now();
+    if (auditoriaHuerfanasEnCurso || (ahora - ultimaAuditoriaHuerfanasMs) < 10 * 60 * 1000) {
+        return;
+    }
+    auditoriaHuerfanasEnCurso = true;
+    ultimaAuditoriaHuerfanasMs = ahora;
+    ejecutarAuditoriaHuerfanasContraNube({
+        sinceDate: '2026-11-09',
+        pushToCloud: true,
+        persistReportOnCloud: true,
+        silent: true
+    }).then((rep) => {
+        if (rep && rep.cloudSynced) {
+            limpiarContingenciaLocalActiva();
+            const tot = rep.comparacionNube ? Number(rep.comparacionNube.totalRegistrosHuerfanos || 0) : 0;
+            console.log(`🔎 [ORPHAN-AUDIT:${motivo}] Verificado vs Cloud: ${tot} registro(s) huérfano(s).`);
+        }
+    }).catch((err) => {
+        console.warn(`⚠️ [ORPHAN-AUDIT:${motivo}] Error en auditoría de reconexión:`, err.message);
+    }).finally(() => {
+        auditoriaHuerfanasEnCurso = false;
+    });
+}
+
+function probeCloudHttpsHealth(timeoutMs = 4000) {
+    return new Promise((resolve) => {
+        try {
+            const https = require('https');
+            const target = `${CLOUD_API_URL}/health`;
+            const reqH = https.get(target, { timeout: timeoutMs }, (resp) => {
+                resp.resume();
+                resolve({ ok: resp.statusCode >= 200 && resp.statusCode < 500, statusCode: resp.statusCode });
+            });
+            reqH.on('error', (err) => resolve({ ok: false, statusCode: 0, error: err.message }));
+            reqH.on('timeout', () => { reqH.destroy(); resolve({ ok: false, statusCode: 0, error: 'Timeout' }); });
+        } catch (err) {
+            resolve({ ok: false, statusCode: 0, error: err.message });
+        }
+    });
+}
+
+/**
+ * Comprueba DNS Cloudflare y conectividad HTTPS contra Nube con reintentos tolerantes.
+ * Jamás asume modo Local por error de red/timeout; solo devuelve LOCAL_TITULAR_CONFIRMADO
+ * cuando Cloudflare confirma explícitamente que el túnel local es el titular activo.
+ */
+async function verificarConectividadYTitularidadNubeConReintentos({
+    intentos = 3,
+    esperaMs = 2000,
+    dnsFn = null,
+    probeFn = null
+} = {}) {
+    const checkDns = typeof dnsFn === 'function' ? dnsFn : obtenerEstadoDnsCloudflare;
+    const checkHttps = typeof probeFn === 'function' ? probeFn : probeCloudHttpsHealth;
+    const errores = [];
+
+    for (let i = 0; i < intentos; i++) {
+        const [dnsRes, httpsRes] = await Promise.all([
+            Promise.resolve().then(() => checkDns()).catch((e) => ({ __err: e.message })),
+            Promise.resolve().then(() => checkHttps(4000)).catch((e) => ({ ok: false, error: e.message }))
+        ]);
+
+        const dnsOk = Boolean(dnsRes && !dnsRes.__err);
+        if (dnsOk && dnsRes.isLocalTitular === true) {
+            return {
+                estado: 'LOCAL_TITULAR_CONFIRMADO',
+                detail: 'Titular Activo confirmado en Cloudflare: L · LOCAL (PcAlmacen)',
+                dns: dnsRes,
+                https: httpsRes,
+                intentosRealizados: i + 1
+            };
+        }
+
+        const cloudHttpsOk = Boolean(httpsRes && httpsRes.ok);
+        if ((dnsOk && dnsRes.isNubeTitular === true) || (cloudHttpsOk && (!dnsOk || !dnsRes.isLocalTitular))) {
+            return {
+                estado: 'NUBE_ONLINE',
+                detail: dnsOk && dnsRes.isNubeTitular
+                    ? 'Titular Activo detectado: N · NUBE (34.39.187.220)'
+                    : `Conexión HTTPS con Nube verificada (${CLOUD_API_URL})`,
+                dns: dnsOk ? dnsRes : null,
+                https: httpsRes,
+                intentosRealizados: i + 1
+            };
+        }
+
+        errores.push(`Intento ${i + 1}: DNS=${dnsOk ? dnsRes.titular : (dnsRes?.__err || 'error')}, HTTPS=${httpsRes?.error || httpsRes?.statusCode || 'sin respuesta'}`);
+        if (i < intentos - 1 && esperaMs > 0) {
+            await new Promise(r => setTimeout(r, esperaMs));
+        }
+    }
+
+    return {
+        estado: 'SIN_CONEXION_NUBE',
+        detail: `No se pudo contactar a Internet / Nube LAMDA tras ${intentos} intentos.`,
+        errores,
+        intentosRealizados: intentos
+    };
+}
+
 const GUI_PORT = 3098;
 const ZEBRA_PORT = 3099;
 const TUNNEL_LOCAL_ID = 'd72f6c10-9fdc-4130-a0fb-ebadefb7006b';
@@ -68,6 +205,7 @@ let switchState = {
 
 let launcherState = {
     running: false,
+    offlineBlocked: false,
     mode: 'LOCAL',
     percent: 10,
     phaseText: 'Verificando modo activo del sistema...',
@@ -279,6 +417,8 @@ async function flujoSwitchHaciaNube() {
         updateStep(3, 'running', 'Cerrando los 5 servicios locales (3000..3005) y aplicando Read-Only en PcAlmacen...', 92);
         detenerCincoServiciosLocales();
         await asegurarPostgresLocalReadOnly('on');
+        limpiarContingenciaLocalActiva();
+        dispararAuditoriaHuerfanasEnSegundoPlano('SWITCH_A_NUBE');
         updateStep(3, 'done', '5 servicios locales apagados, Base Local en Read-Only y Puente Zebra (3099) activo', 100);
 
         // Cierre inmediato al 100% sin bloquear la pantalla esperando re-sondeo SSH
@@ -1065,18 +1205,23 @@ function renderHtmlApp() {
 </html>`;
 }
 
-async function ejecutarArranqueVisualSistema() {
+async function ejecutarArranqueVisualSistema({ confirmarContingenciaLocal = false } = {}) {
     if (launcherState.running) return;
     launcherState = {
         running: true,
+        offlineBlocked: false,
         percent: 10,
-        title: 'Detectando entorno activo (Local / Nube)...',
-        detail: 'Consultando estado de Cloudflare y servicios...',
+        title: confirmarContingenciaLocal
+            ? 'Activando Contingencia Local de Emergencia...'
+            : 'Verificando conexión con la Nube LAMDA...',
+        detail: confirmarContingenciaLocal
+            ? 'Confirmación humana recibida. Preparando entorno local fuera de línea...'
+            : 'Consultando estado en Cloudflare y servidor Cloud (hasta 3 reintentos)...',
         targetUrl: null,
         error: null,
         portsDetail: [],
         steps: [
-            { title: 'Verificando modo activo del Sistema LAMDA (L · Local vs N · Nube)', status: 'running', detail: 'Consultando configuración...' },
+            { title: 'Verificando conectividad real a Internet y titularidad (N · Nube vs L · Local)', status: 'running', detail: 'Probando conexión con la Nube...' },
             { title: 'Comprobando Base de Datos y permisos de escritura', status: 'pending', detail: '' },
             { title: 'Iniciando y verificando los 5 módulos de trabajo (3000..3005)', status: 'pending', detail: '' },
             { title: 'Abriendo Pantalla Principal del Sistema LAMDA', status: 'pending', detail: '' }
@@ -1084,29 +1229,29 @@ async function ejecutarArranqueVisualSistema() {
     };
 
     try {
-        let isNube = false;
-        try {
-            const dns = await obtenerEstadoDnsCloudflare();
-            isNube = Boolean(dns && dns.isNubeTitular);
-        } catch (_) {
-            isNube = false;
+        let diag = null;
+        if (!confirmarContingenciaLocal) {
+            diag = await verificarConectividadYTitularidadNubeConReintentos({ intentos: 3, esperaMs: 2000 });
         }
 
-        if (isNube) {
+        if (diag && diag.estado === 'NUBE_ONLINE') {
             launcherState.steps[0].status = 'done';
-            launcherState.steps[0].detail = 'Titular Activo detectado: N · NUBE (34.39.187.220)';
+            launcherState.steps[0].detail = diag.detail;
             launcherState.percent = 45;
 
             launcherState.steps[1].status = 'running';
             launcherState.steps[1].detail = 'Cerrando servicios locales/B2B huérfanos y blindando PostgreSQL local en Read-Only...';
             detenerCincoServiciosLocales();
             try { await asegurarPostgresLocalReadOnly('on'); } catch (_) {}
+            if (leerContingenciaLocalActiva()) {
+                dispararAuditoriaHuerfanasEnSegundoPlano('RECONEXION_ARRANQUE_NUBE');
+            }
             launcherState.steps[1].status = 'done';
-            launcherState.steps[1].detail = 'Puertos locales y B2B huérfanos apagados · PostgreSQL local Read-Only · Puente Zebra activo';
+            launcherState.steps[1].detail = 'Puertos locales apagados · PostgreSQL local Read-Only · Puente Zebra activo';
             launcherState.percent = 75;
 
             launcherState.steps[2].status = 'done';
-            launcherState.steps[2].detail = '5 servicios PM2 en la Nube verificados ONLINE';
+            launcherState.steps[2].detail = 'Servicios PM2 en la Nube verificados ONLINE';
             launcherState.percent = 92;
 
             launcherState.steps[3].status = 'done';
@@ -1119,11 +1264,34 @@ async function ejecutarArranqueVisualSistema() {
             return;
         }
 
-        // Modo LOCAL (PcAlmacen)
+        if (!confirmarContingenciaLocal && (!diag || diag.estado !== 'LOCAL_TITULAR_CONFIRMADO')) {
+            launcherState.steps[0].status = 'error';
+            launcherState.steps[0].detail = (diag && diag.detail) || 'Sin conexión a Internet o Nube inaccesible.';
+            launcherState.offlineBlocked = true;
+            launcherState.running = false;
+            launcherState.percent = 10;
+            launcherState.targetUrl = null;
+            launcherState.title = 'SIN CONEXIÓN A INTERNET / NUBE LAMDA';
+            launcherState.detail = 'Se bloqueó el ingreso automático a localhost para evitar operar en base local sin advertirlo. Reintentá la conexión o confirmá explícitamente Contingencia Local.';
+            launcherState.error = (diag && Array.isArray(diag.errores) && diag.errores.length > 0)
+                ? diag.errores.join(' | ')
+                : 'No hay respuesta de Internet ni de 34.39.187.220.';
+            return;
+        }
+
+        // Ingreso en LOCAL: o bien Cloudflare confirmó Titular Local, o bien el operador confirmó explícitamente Contingencia Local
+        if (confirmarContingenciaLocal) {
+            marcarContingenciaLocalActiva('CONFIRMACION_HUMANA_OFFLINE');
+        }
+
         launcherState.steps[0].status = 'done';
-        launcherState.steps[0].detail = 'Titular Activo detectado: L · LOCAL (PcAlmacen)';
+        launcherState.steps[0].detail = confirmarContingenciaLocal
+            ? '⚠️ Contingencia Local de Emergencia confirmada manualmente por el operador'
+            : 'Titular Activo confirmado en Cloudflare: L · LOCAL (PcAlmacen)';
         launcherState.percent = 22;
-        launcherState.title = 'Preparando Sistema Local en PcAlmacen...';
+        launcherState.title = confirmarContingenciaLocal
+            ? 'Iniciando Contingencia Local de Emergencia (Base Local)...'
+            : 'Preparando Sistema Local en PcAlmacen...';
 
         // Paso 2: Asegurar PostgreSQL local en Escritura: ON
         launcherState.steps[1].status = 'running';
@@ -1179,7 +1347,9 @@ async function ejecutarArranqueVisualSistema() {
         launcherState.title = '¡Sistema LAMDA 100% ONLINE!';
         launcherState.detail = 'Abriendo Pantalla Principal...';
         launcherState.percent = 100;
-        launcherState.targetUrl = 'http://localhost:3000/?desktop_app=1';
+        launcherState.targetUrl = confirmarContingenciaLocal
+            ? 'http://localhost:3000/?desktop_app=1&emergencia_local=1'
+            : 'http://localhost:3000/?desktop_app=1';
         launcherState.running = false;
     } catch (err) {
         const idx = launcherState.steps.findIndex(s => s.status === 'running');
@@ -1336,17 +1506,64 @@ function renderHtmlLauncher() {
 
     <div id="errBox" class="err-box">
       <div id="errText"></div>
-      <button class="retry-btn" onclick="iniciarArranque()">🔄 Reintentar arranque</button>
+      <button class="retry-btn" onclick="iniciarArranque()">🔄 Reintentar conexión a la Nube</button>
+    </div>
+
+    <div id="offlineBox" style="display:none;margin-top:16px;padding:16px;border-radius:12px;background:rgba(153,27,27,0.28);border:2px solid #ef4444;color:#fef2f2;">
+      <div style="font-size:16px;font-weight:900;color:#fca5a5;margin-bottom:6px;">🚫 SIN CONEXIÓN A INTERNET / NUBE LAMDA</div>
+      <div style="font-size:13px;line-height:1.45;color:#fde68a;margin-bottom:12px;">
+        El sistema <strong>no pudo conectarse con la Nube (logistica.lamdaser.com)</strong> tras 3 reintentos.
+        Para proteger tus stocks, recepciones y facturas, <strong>se bloqueó el ingreso automático a la base local</strong>.
+      </div>
+      <div id="offlineDetail" style="font-size:11.5px;color:#fecaca;background:rgba(0,0,0,0.3);padding:8px 10px;border-radius:6px;margin-bottom:12px;word-break:break-word;"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button class="retry-btn" style="margin-top:0;background:#10b981;color:#022c22;font-weight:900;flex:1;" onclick="iniciarArranque()">🔄 Reintentar conexión a la Nube</button>
+        <button type="button" style="background:rgba(245,158,11,0.2);color:#fde68a;border:1px solid #f59e0b;padding:8px 14px;border-radius:8px;font-weight:800;cursor:pointer;" onclick="mostrarConfirmacionContingencia()">🆘 Entrar en Contingencia Local de Emergencia</button>
+      </div>
+      <div id="offlineConfirmPanel" style="display:none;margin-top:12px;padding:12px;border-radius:8px;background:rgba(0,0,0,0.45);border:1px solid #f59e0b;">
+        <div style="font-size:12px;color:#fef08a;font-weight:700;margin-bottom:8px;">
+          ⚠️ ADVERTENCIA: Al entrar en Contingencia Local operarás FUERA DE LÍNEA en el PostgreSQL de PcAlmacen. Los movimientos NO subirán automáticamente a la Nube hasta reconectar y sincronizar.
+        </div>
+        <label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#fff;cursor:pointer;margin-bottom:10px;">
+          <input type="checkbox" id="chkConfirmContingencia" style="margin-top:2px;transform:scale(1.15);" onchange="document.getElementById('btnConfirmContingencia').disabled = !this.checked;">
+          <span>Entiendo que trabajaré fuera de línea en base local y que las operaciones quedarán pendientes de conciliar al volver Internet.</span>
+        </label>
+        <button type="button" id="btnConfirmContingencia" disabled onclick="confirmarContingenciaLocal()" style="width:100%;background:#dc2626;color:#fff;border:none;padding:9px 14px;border-radius:7px;font-weight:900;cursor:pointer;">
+          Confirmar Contingencia Local
+        </button>
+      </div>
     </div>
   </div>
 
 <script>
   let startTs = Date.now();
   let timer = null;
+  let autoRetryOfflineTimer = null;
+
+  function mostrarConfirmacionContingencia() {
+    document.getElementById('offlineConfirmPanel').style.display = 'block';
+  }
+
+  async function confirmarContingenciaLocal() {
+    if (!document.getElementById('chkConfirmContingencia').checked) return;
+    if (autoRetryOfflineTimer) { clearInterval(autoRetryOfflineTimer); autoRetryOfflineTimer = null; }
+    startTs = Date.now();
+    document.getElementById('offlineBox').style.display = 'none';
+    document.getElementById('errBox').style.display = 'none';
+    await fetch('/api/launcher-confirm-emergency-local', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmado: true })
+    });
+    if (timer) clearInterval(timer);
+    timer = setInterval(consultarProgreso, 350);
+  }
 
   async function iniciarArranque() {
+    if (autoRetryOfflineTimer) { clearInterval(autoRetryOfflineTimer); autoRetryOfflineTimer = null; }
     startTs = Date.now();
     document.getElementById('errBox').style.display = 'none';
+    document.getElementById('offlineBox').style.display = 'none';
     await fetch('/api/launcher-start', { method: 'POST' });
     if (timer) clearInterval(timer);
     timer = setInterval(consultarProgreso, 350);
@@ -1382,9 +1599,20 @@ function renderHtmlLauncher() {
 
       if (st.targetUrl && !st.running && !st.error) {
         clearInterval(timer);
+        if (autoRetryOfflineTimer) { clearInterval(autoRetryOfflineTimer); autoRetryOfflineTimer = null; }
         setTimeout(() => {
           window.location.replace(st.targetUrl);
         }, 250);
+      } else if (st.offlineBlocked && !st.running) {
+        clearInterval(timer);
+        document.getElementById('offlineBox').style.display = 'block';
+        document.getElementById('offlineDetail').textContent = st.error || 'Sin respuesta de la Nube.';
+        if (!autoRetryOfflineTimer) {
+          autoRetryOfflineTimer = setInterval(() => {
+            const confirmOpen = document.getElementById('offlineConfirmPanel').style.display === 'block';
+            if (!confirmOpen) iniciarArranque();
+          }, 12000);
+        }
       } else if (st.error) {
         clearInterval(timer);
         document.getElementById('errBox').style.display = 'block';
@@ -1399,12 +1627,22 @@ function renderHtmlLauncher() {
 </html>`;
 }
 
+let ultimoEstadoRedNube = null;
+
 async function cicloPuenteZebraHaciaNube() {
     try {
         const headers = { 'Accept': 'application/json' };
         if (PRINT_TOKEN) headers['x-lamda-print-token'] = PRINT_TOKEN;
         const resp = await fetch(`${CLOUD_API_URL}/api/system/print-queue/agent-pull`, { headers });
-        if (!resp.ok) return;
+        if (!resp.ok) {
+            ultimoEstadoRedNube = 'offline';
+            return;
+        }
+        if (ultimoEstadoRedNube === 'offline' || leerContingenciaLocalActiva()) {
+            dispararAuditoriaHuerfanasEnSegundoPlano('PUENTE_RECONEXION_NUBE');
+        }
+        ultimoEstadoRedNube = 'online';
+
         const data = await resp.json();
         const jobs = (data && Array.isArray(data.jobs)) ? data.jobs : [];
         for (const job of jobs) {
@@ -1423,7 +1661,9 @@ async function cicloPuenteZebraHaciaNube() {
                 });
             }
         }
-    } catch (_) {}
+    } catch (_) {
+        ultimoEstadoRedNube = 'offline';
+    }
 }
 
 function iniciarGuiServidor() {
@@ -1447,6 +1687,23 @@ function iniciarGuiServidor() {
             ejecutarArranqueVisualSistema();
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             return res.end(JSON.stringify({ ok: true }));
+        }
+
+        if (req.method === 'POST' && urlPath === '/api/launcher-confirm-emergency-local') {
+            let body = '';
+            req.on('data', c => { body += c; });
+            req.on('end', () => {
+                let parsed = {};
+                try { parsed = JSON.parse(body || '{}'); } catch (_) {}
+                if (parsed.confirmado !== true) {
+                    res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+                    return res.end(JSON.stringify({ ok: false, error: 'Se requiere confirmación humana explícita.' }));
+                }
+                ejecutarArranqueVisualSistema({ confirmarContingenciaLocal: true });
+                res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+                return res.end(JSON.stringify({ ok: true }));
+            });
+            return;
         }
 
         if (req.method === 'GET' && urlPath === '/api/launcher-progress') {
@@ -1530,3 +1787,11 @@ function iniciarGuiServidor() {
 if (require.main === module) {
     iniciarGuiServidor();
 }
+
+module.exports = {
+    verificarConectividadYTitularidadNubeConReintentos,
+    ejecutarArranqueVisualSistema,
+    probeCloudHttpsHealth,
+    renderHtmlLauncher,
+    obtenerEstadoLauncher: () => launcherState
+};

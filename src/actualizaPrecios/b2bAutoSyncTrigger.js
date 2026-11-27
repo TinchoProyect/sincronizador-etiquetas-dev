@@ -203,7 +203,7 @@ function createB2BAutoSyncMiddleware(moduleName = 'app') {
           const url = String(req.originalUrl || req.url || '').toLowerCase();
 
           // Ignorar endpoints de solo lectura/impresión/reportes que usan POST
-          if (/imprimir|exportar-pdf|\/pdf|\/sync-b2b|lotes_vinculos\/estados|\/login|\/auth|\/telemetria|\/whatsapp|\/email|generar-vinculo/i.test(url)) {
+          if (/imprimir|exportar-pdf|\/pdf|\/sync-b2b|lotes_vinculos\/(estados|sugerencias)|\/api\/system\/(orphan-audit|cloud-reachability)|\/login|\/auth|\/telemetria|\/whatsapp|\/email|generar-vinculo/i.test(url)) {
             return;
           }
 

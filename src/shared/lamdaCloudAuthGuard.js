@@ -212,6 +212,8 @@ function esRutaPublicaAllowlist(reqOrPath) {
         '/api/system/auth/sync-cookie',
         '/api/system/auth/logout',
         '/api/system/print-queue/agent-pull',
+        '/api/system/orphan-audit/compare',
+        '/api/system/cloud-reachability',
         '/api/admin/db-snapshot-pruebas',
         '/js/mi-domicilio-publico.js',
         '/css/mi-domicilio-publico.css'

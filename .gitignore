@@ -140,6 +140,8 @@ src/produccion/cache/
 src/logistica/public/uploads/
 data/nodos-fotos/
 data/nodos-comprobantes/
+data/reporte_operaciones_huerfanas_local.json
+data/contingencia_local_activa.json
 
 # Scripts scratch locales
 src/scratch_*.js

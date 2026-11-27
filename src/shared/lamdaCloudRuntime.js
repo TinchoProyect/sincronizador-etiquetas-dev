@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const {
     esModoLaboratorio,
     esModoCloudOLinux,
@@ -33,6 +34,12 @@ const {
     emitirCookieSesionCloud,
     verificarTokenOExtraerUsuario
 } = require('./lamdaCloudAuthGuard');
+const {
+    compararInventarioContraDestino,
+    guardarReporteAuditoriaHuerfanas,
+    obtenerUltimaAlertaHuerfanasPendiente,
+    marcarAlertaHuerfanasRevisada
+} = require('./orphanAuditService');
 
 const CLIENT_RUNTIME_SCRIPT = `
 (function() {
@@ -363,13 +370,19 @@ const CLIENT_RUNTIME_SCRIPT = `
     }
     syncAuthCookieIfPresent();
 
-    // 5. Franja de MODO LABORATORIO + Bandeja de Cola Zebra Retenida
+    // 5. Franja de MODO LABORATORIO + Alerta Base Local Emergencia + Alerta Huérfanas + Bandeja Zebra Retenida
     var labBannerEl = null;
     var labBannerShownOnce = false;
     var labBannerDismissTimer = null;
     var zebraBannerEl = null;
     var zebraModalEl = null;
     var lastZebraItems = [];
+    var localEmergencyBannerEl = null;
+    var localCloudReachableState = null;
+    var localReachCheckRunning = false;
+    var orphanBannerEl = null;
+    var orphanModalEl = null;
+    var lastOrphanAlert = null;
 
     function ensureTopContainer() {
         var container = document.getElementById('lamda-system-top-banners');
@@ -605,6 +618,194 @@ const CLIENT_RUNTIME_SCRIPT = `
         wm.textContent = label;
     }
 
+    function renderLocalEmergencyBanner(status) {
+        if (!document.body) return;
+        var isLab = isStrictLaboratorioMode();
+        var host = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : '';
+        var isLanOrLocal = Boolean(
+            host === 'localhost' ||
+            host === '127.0.0.1' ||
+            host.indexOf('192.168.') === 0 ||
+            host.indexOf('10.') === 0 ||
+            /^172\\.(1[6-9]|2\\d|3[01])\\./.test(host) ||
+            (host && host.indexOf('lamdaser.com') === -1 && status && status.isCloudMode === false)
+        );
+
+        if (isLab || !isLanOrLocal) {
+            if (localEmergencyBannerEl) {
+                localEmergencyBannerEl.remove();
+                localEmergencyBannerEl = null;
+                try { document.body.style.paddingTop = ''; } catch (_) {}
+            }
+            return;
+        }
+
+        if (document.title && document.title.indexOf('[BASE LOCAL]') === -1) {
+            document.title = '⚠️ [BASE LOCAL] ' + document.title;
+        }
+
+        var container = ensureTopContainer();
+        if (!container) return;
+        if (!localEmergencyBannerEl) {
+            localEmergencyBannerEl = document.createElement('div');
+            localEmergencyBannerEl.id = 'lamda-local-emergency-banner';
+            localEmergencyBannerEl.style.cssText = [
+                'background: repeating-linear-gradient(135deg, #991b1b, #991b1b 20px, #b91c1c 20px, #b91c1c 40px);',
+                'color: #fef2f2;',
+                'padding: 8px 16px;',
+                'font-size: 13px;',
+                'font-weight: 800;',
+                'border-bottom: 3px solid #fbbf24;',
+                'box-shadow: 0 4px 14px rgba(0,0,0,0.45);',
+                'display: flex;',
+                'align-items: center;',
+                'justify-content: center;',
+                'gap: 12px;',
+                'flex-wrap: wrap;',
+                'pointer-events: auto;'
+            ].join('');
+            container.insertBefore(localEmergencyBannerEl, container.firstChild);
+        }
+
+        var netHtml = '<span style="background:rgba(0,0,0,0.35);color:#fde68a;padding:3px 9px;border-radius:6px;font-size:12px;">⏳ Verificando regreso de Internet...</span>';
+        if (localCloudReachableState === true) {
+            netHtml = '<a href="https://logistica.lamdaser.com/?desktop_app=1" style="background:#10b981;color:#022c22;padding:4px 12px;border-radius:6px;font-weight:900;text-decoration:none;border:2px solid #a7f3d0;box-shadow:0 0 12px rgba(16,185,129,0.7);">🌐 ¡Volvió Internet! Pasá a la Nube →</a>' +
+                '<span style="font-size:11px;color:#fef08a;">(Recordá sincronizar en LAMDA Switch antes de operar en Nube)</span>';
+        } else if (localCloudReachableState === false) {
+            netHtml = '<span style="background:rgba(0,0,0,0.4);color:#fecaca;padding:3px 9px;border-radius:6px;font-size:12px;">📡 Nube sin conexión</span>';
+        }
+
+        localEmergencyBannerEl.innerHTML =
+            '<span style="background:#fbbf24;color:#450a0a;padding:2px 8px;border-radius:4px;font-weight:900;">⚠️ MODO EMERGENCIA SIN INTERNET (BASE LOCAL)</span>' +
+            '<span>Los cambios <u>NO están subiendo a la Nube</u></span>' +
+            netHtml;
+
+        try {
+            var h = localEmergencyBannerEl.offsetHeight || 42;
+            document.body.style.paddingTop = h + 'px';
+        } catch (_) {}
+    }
+
+    function checkCloudReachabilityIfLocal(status) {
+        if (isStrictLaboratorioMode() || localReachCheckRunning) return;
+        var host = (window.location && window.location.hostname) ? window.location.hostname.toLowerCase() : '';
+        var isLocal = (host === 'localhost' || host === '127.0.0.1' || host.indexOf('192.168.') === 0 || host.indexOf('10.') === 0);
+        if (!isLocal) return;
+        localReachCheckRunning = true;
+        var fetcher = originalFetch || fetch;
+        fetcher('/api/system/cloud-reachability', { headers: { 'Accept': 'application/json' } })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(res) {
+                if (res && typeof res.cloudReachable === 'boolean') {
+                    localCloudReachableState = res.cloudReachable;
+                    renderLocalEmergencyBanner(status);
+                }
+            })
+            .catch(function() {})
+            .finally(function() { localReachCheckRunning = false; });
+    }
+
+    function openOrphanDetailModal() {
+        if (orphanModalEl) orphanModalEl.remove();
+        var al = lastOrphanAlert;
+        if (!al) return;
+        var tables = Array.isArray(al.resumen_json) ? al.resumen_json : [];
+        var sectionsHtml = '';
+        for (var i = 0; i < tables.length; i++) {
+            var t = tables[i];
+            var rows = Array.isArray(t.registros) ? t.registros : [];
+            var itemsHtml = '';
+            for (var j = 0; j < rows.length; j++) {
+                var r = rows[j];
+                var dt = r.fecha ? new Date(r.fecha).toLocaleString('es-AR') : '-';
+                itemsHtml += '<tr style="border-bottom:1px solid #334155;">' +
+                    '<td style="padding:6px 8px;font-family:monospace;color:#fbbf24;">' + (r.pk || '-') + '</td>' +
+                    '<td style="padding:6px 8px;color:#cbd5e1;font-size:12px;">' + dt + '</td>' +
+                    '<td style="padding:6px 8px;color:#fca5a5;font-size:11px;">' + (r.motivo || 'NO_EXISTE_EN_NUBE') + '</td>' +
+                    '<td style="padding:6px 8px;color:#f8fafc;font-size:11px;word-break:break-word;">' + JSON.stringify(r.resumen || {}) + '</td>' +
+                    '</tr>';
+            }
+            sectionsHtml +=
+                '<div style="margin-bottom:14px;border:1px solid #334155;border-radius:8px;overflow:hidden;">' +
+                    '<div style="background:#1e293b;padding:8px 12px;font-weight:800;color:#fde68a;font-size:13px;">' +
+                        (t.etiqueta || t.tabla) + ' (<code>' + t.tabla + '</code>) — ' + (t.cantidadHuerfanos || rows.length) + ' huérfano(s)' +
+                    '</div>' +
+                    '<table style="width:100%;border-collapse:collapse;font-size:12px;text-align:left;">' +
+                        '<thead><tr style="border-bottom:1px solid #475569;color:#94a3b8;">' +
+                            '<th style="padding:6px 8px;">ID/Clave</th><th style="padding:6px 8px;">Fecha</th><th style="padding:6px 8px;">Tipo</th><th style="padding:6px 8px;">Detalle</th>' +
+                        '</tr></thead>' +
+                        '<tbody>' + itemsHtml + '</tbody>' +
+                    '</table>' +
+                '</div>';
+        }
+        orphanModalEl = document.createElement('div');
+        orphanModalEl.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.8);z-index:2147483647;display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui,-apple-system,sans-serif;';
+        orphanModalEl.innerHTML =
+            '<div style="background:#0f172a;color:#f8fafc;border:2px solid #f59e0b;border-radius:12px;max-width:860px;width:100%;max-height:84vh;display:flex;flex-direction:column;box-shadow:0 24px 50px rgba(0,0,0,0.7);">' +
+                '<div style="padding:14px 18px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center;">' +
+                    '<div style="font-weight:900;font-size:15px;color:#fde68a;">🚨 Operaciones Locales Huérfanas en ' + (al.estacion_id || 'PcAlmacen') + ' (' + (al.total_registros_huerfanos || 0) + ')</div>' +
+                    '<button id="lamda-orphan-modal-close" style="background:transparent;border:none;color:#94a3b8;font-size:20px;cursor:pointer;">✕</button>' +
+                '</div>' +
+                '<div style="padding:14px 18px;overflow-y:auto;flex:1;">' + sectionsHtml + '</div>' +
+                '<div style="padding:12px 18px;border-top:1px solid #334155;display:flex;justify-content:flex-end;gap:10px;">' +
+                    '<button id="lamda-orphan-modal-ack" style="background:#059669;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-weight:800;cursor:pointer;">✅ Marcar Revisado</button>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(orphanModalEl);
+        document.getElementById('lamda-orphan-modal-close').onclick = function() { orphanModalEl.remove(); orphanModalEl = null; };
+        document.getElementById('lamda-orphan-modal-ack').onclick = function() {
+            fetch('/api/system/orphan-audit/ack/' + al.id, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+                .then(function() { if (orphanModalEl) { orphanModalEl.remove(); orphanModalEl = null; } pollSystemStatus(); })
+                .catch(function() {});
+        };
+    }
+
+    function renderOrphanAuditBanner(orphanAlert) {
+        if (isStrictLaboratorioMode() || !orphanAlert || !orphanAlert.total_registros_huerfanos) {
+            if (orphanBannerEl) {
+                orphanBannerEl.remove();
+                orphanBannerEl = null;
+            }
+            lastOrphanAlert = null;
+            return;
+        }
+        lastOrphanAlert = orphanAlert;
+        var container = ensureTopContainer();
+        if (!container) return;
+        if (!orphanBannerEl) {
+            orphanBannerEl = document.createElement('div');
+            orphanBannerEl.id = 'lamda-orphan-audit-banner';
+            orphanBannerEl.style.cssText = [
+                'background: linear-gradient(90deg, #7c2d12, #b45309);',
+                'color: #fffbeb;',
+                'padding: 7px 16px;',
+                'font-size: 12.5px;',
+                'font-weight: 800;',
+                'border-bottom: 2px solid #fbbf24;',
+                'display: flex;',
+                'align-items: center;',
+                'justify-content: center;',
+                'gap: 10px;',
+                'flex-wrap: wrap;',
+                'pointer-events: auto;'
+            ].join('');
+            container.appendChild(orphanBannerEl);
+        }
+        orphanBannerEl.innerHTML =
+            '<span>🚨 <strong>' + (orphanAlert.estacion_id || 'PcAlmacen') + '</strong> registró <span style="background:#fef3c7;color:#78350f;padding:1px 7px;border-radius:999px;font-weight:900;">' + orphanAlert.total_registros_huerfanos + '</span> operación(es) local(es) huérfana(s) sin subir a la Nube (' + orphanAlert.total_tablas_con_diferencias + ' tabla/s)</span>' +
+            '<button id="lamda-btn-orphan-view" style="background:#1e293b;color:#fde68a;border:1px solid #fbbf24;padding:3px 10px;border-radius:5px;font-weight:800;cursor:pointer;font-size:12px;">👁️ Ver Detalle</button>' +
+            '<button id="lamda-btn-orphan-ack" style="background:#065f46;color:#ecfdf5;border:1px solid #34d399;padding:3px 10px;border-radius:5px;font-weight:800;cursor:pointer;font-size:12px;">✅ Marcar Revisado</button>';
+
+        var btnViewOrp = document.getElementById('lamda-btn-orphan-view');
+        var btnAckOrp = document.getElementById('lamda-btn-orphan-ack');
+        if (btnViewOrp) btnViewOrp.onclick = openOrphanDetailModal;
+        if (btnAckOrp) btnAckOrp.onclick = function() {
+            fetch('/api/system/orphan-audit/ack/' + orphanAlert.id, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
+                .then(function() { pollSystemStatus(); })
+                .catch(function() {});
+        };
+    }
+
     function pollSystemStatus() {
         fetch('/api/system/env-status', { headers: { 'Accept': 'application/json' } })
             .then(function(r) { return r.ok ? r.json() : null; })
@@ -612,8 +813,11 @@ const CLIENT_RUNTIME_SCRIPT = `
                 if (!data) return;
                 window.__LAMDA_ENV_STATUS__ = data;
                 renderLabBanner(data);
+                renderLocalEmergencyBanner(data);
+                renderOrphanAuditBanner(data.orphanAuditAlert || null);
                 renderSubtleEnvironmentWatermark(data);
                 renderZebraBanner(data.zebraQueue);
+                checkCloudReachabilityIfLocal(data);
                 if (data.canProbeLocalBridge) {
                     pollLocalZebraPresence(!hasActivePhysicalPresence());
                 }
@@ -1048,6 +1252,12 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             bridgeActiveRecently &&
             (!bridgeIp || !clientIp || bridgeIp === clientIp || clientIp === '127.0.0.1' || clientIp === '::1')
         );
+        let orphanAuditAlert = null;
+        if (esModoCloudOLinux() && !isLaboratorio) {
+            try {
+                orphanAuditAlert = await obtenerUltimaAlertaHuerfanasPendiente();
+            } catch (_) {}
+        }
         res.json({
             ok: true,
             servicePort,
@@ -1062,7 +1272,8 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
             dbName: process.env.DB_NAME || 'etiquetas',
             afipEnv: (isLaboratorio || isPruebaNube) ? 'HOMO' : (process.env.AFIP_ENV || 'PROD'),
             whatsappModoEspejo: String(process.env.WHATSAPP_MODO_ESPEJO || '').toLowerCase() === 'true',
-            zebraQueue
+            zebraQueue,
+            orphanAuditAlert
         });
     });
 
@@ -1516,6 +1727,82 @@ function attachLamdaCloudRuntime(app, servicePort = 3000) {
         } catch (err) {
             res.status(500).json({ ok: false, error: err.message });
         }
+    });
+
+    // 3D. Auditoría de Operaciones Locales Huérfanas (PcAlmacen -> Cloud) y Detector de Conectividad Cloud
+    app.post('/api/system/orphan-audit/compare', async (req, res) => {
+        try {
+            const tokenHeader = String(req.headers['x-lamda-print-token'] || '').trim();
+            const expectedToken = String(process.env.LAMDA_PRINT_BRIDGE_TOKEN || obtenerSecretoPresenciaZebra()).trim();
+            let authorized = false;
+            if (tokenHeader && expectedToken) {
+                const bufA = Buffer.from(tokenHeader, 'utf8');
+                const bufB = Buffer.from(expectedToken, 'utf8');
+                if (bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)) {
+                    authorized = true;
+                }
+            }
+            if (!authorized && verificarTokenOExtraerUsuario(req)) {
+                authorized = true;
+            }
+            if (!authorized) {
+                return res.status(401).json({ ok: false, error: 'No autorizado para comparar auditoría de huérfanas.' });
+            }
+
+            const payload = req.body || {};
+            const resultado = await compararInventarioContraDestino(null, payload);
+            let saved = null;
+            if (payload.persist !== false) {
+                saved = await guardarReporteAuditoriaHuerfanas(null, resultado);
+            }
+            return res.json({
+                ...resultado,
+                reportId: saved ? saved.id : null
+            });
+        } catch (err) {
+            return res.status(500).json({ ok: false, error: err.message });
+        }
+    });
+
+    app.get('/api/system/orphan-audit/latest', async (req, res) => {
+        try {
+            const alert = await obtenerUltimaAlertaHuerfanasPendiente();
+            return res.json({ ok: true, alert: alert || null });
+        } catch (err) {
+            return res.status(500).json({ ok: false, error: err.message });
+        }
+    });
+
+    app.post('/api/system/orphan-audit/ack/:id', async (req, res) => {
+        try {
+            const user = verificarTokenOExtraerUsuario(req);
+            const updated = await marcarAlertaHuerfanasRevisada(null, req.params.id, (user && (user.usuario || user.id)) || 'OPERADOR');
+            if (!updated) {
+                return res.status(404).json({ ok: false, error: 'Reporte de auditoría no encontrado.' });
+            }
+            return res.json({ ok: true, updated });
+        } catch (err) {
+            return res.status(500).json({ ok: false, error: err.message });
+        }
+    });
+
+    app.get('/api/system/cloud-reachability', async (req, res) => {
+        const https = require('https');
+        const targetUrl = String(process.env.LAMDA_CLOUD_PRINT_URL || 'https://logistica.lamdaser.com').replace(/\/+$/, '') + '/health';
+        const checkedAt = new Date().toISOString();
+        const probe = await new Promise((resolve) => {
+            try {
+                const reqH = https.get(targetUrl, { timeout: 3500 }, (resp) => {
+                    resp.resume();
+                    resolve({ cloudReachable: resp.statusCode >= 200 && resp.statusCode < 500, statusCode: resp.statusCode });
+                });
+                reqH.on('error', () => resolve({ cloudReachable: false, statusCode: 0 }));
+                reqH.on('timeout', () => { reqH.destroy(); resolve({ cloudReachable: false, statusCode: 0 }); });
+            } catch (_) {
+                resolve({ cloudReachable: false, statusCode: 0 });
+            }
+        });
+        return res.json({ ok: true, checkedAt, ...probe });
     });
 
     // 4. Inyección transparente de <script src="/lamda-cloud-runtime.js"></script> y reescritura /gw/300X/(js|css)/ en respuestas HTML (incluyendo express.static)

@@ -1,6 +1,6 @@
 {
-  "tableCount": 178,
-  "uniqueIndexCount": 265,
+  "tableCount": 179,
+  "uniqueIndexCount": 266,
   "tables": {
     "abrir_caja_aprendizaje": {
       "codigo_caja": {
@@ -21448,6 +21448,108 @@
         "column_default": null
       }
     },
+    "sistema_auditoria_huerfanas_local": {
+      "id": {
+        "ordinal_position": 1,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "nextval('sistema_auditoria_huerfanas_local_id_seq'::regclass)"
+      },
+      "estacion_id": {
+        "ordinal_position": 2,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'PCALMACEN'::character varying"
+      },
+      "desde_fecha": {
+        "ordinal_position": 3,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": null
+      },
+      "total_tablas_con_diferencias": {
+        "ordinal_position": 4,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      "total_registros_huerfanos": {
+        "ordinal_position": 5,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "0"
+      },
+      "resumen_json": {
+        "ordinal_position": 6,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'[]'::jsonb"
+      },
+      "estado": {
+        "ordinal_position": 7,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 20,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'PENDIENTE'::character varying"
+      },
+      "creado_en": {
+        "ordinal_position": 8,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "now()"
+      },
+      "resuelto_en": {
+        "ordinal_position": 9,
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "resuelto_por": {
+        "ordinal_position": 10,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 100,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      }
+    },
     "sitio_institucional_eventos": {
       "id": {
         "ordinal_position": 1,
@@ -25754,6 +25856,19 @@
       ],
       "has_expression_key": false,
       "sig": "sectores_ingredientes::(id)[pred=]"
+    },
+    {
+      "table_name": "sistema_auditoria_huerfanas_local",
+      "index_name": "sistema_auditoria_huerfanas_local_pkey",
+      "is_primary": true,
+      "is_unique": true,
+      "index_def": "CREATE UNIQUE INDEX sistema_auditoria_huerfanas_local_pkey ON public.sistema_auditoria_huerfanas_local USING btree (id)",
+      "index_predicate": "",
+      "key_columns": [
+        "id"
+      ],
+      "has_expression_key": false,
+      "sig": "sistema_auditoria_huerfanas_local::(id)[pred=]"
     },
     {
       "table_name": "sitio_institucional_eventos",
