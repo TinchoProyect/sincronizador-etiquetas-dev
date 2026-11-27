@@ -15,6 +15,7 @@
  */
 
 const db = require('../config/database');
+const BunkerService = require('../../logistica/services/bunkerService');
 
 let _esquemaCombosListo = false;
 
@@ -1248,97 +1249,32 @@ async function cotizarYAprobarCombo(payload = {}) {
             codigoBarras = cbEx.rows[0]?.codigo_barras || await generarCodigoBarrasUnicoCombo(client);
         }
 
-        // 1. Upsert en public.articulos
-        const artEx = await client.query('SELECT numero FROM public.articulos WHERE UPPER(BTRIM(numero)) = UPPER(BTRIM($1)) LIMIT 1', [skuOficial]);
-        if (artEx.rowCount > 0) {
-            await client.query(`
-                UPDATE public.articulos
-                SET nombre = $1,
-                    codigo_barras = COALESCE(codigo_barras, $2)
-                WHERE UPPER(BTRIM(numero)) = UPPER(BTRIM($3))
-            `, [descripcionOficial, codigoBarras, skuOficial]);
-        } else {
-            await client.query(`
-                INSERT INTO public.articulos (numero, nombre, codigo_barras, stock_ventas)
-                VALUES ($1, $2, $3, 0)
-            `, [skuOficial, descripcionOficial, codigoBarras]);
-        }
-
-        // 2. Upsert en public.bunker_articulos (FAM-COMBOS, es_combo = true, 0 estructura_desfasada)
-        await client.query(`
-            INSERT INTO public.bunker_articulos (
-                articulo_id, codigo_barras, familia_id, rubro, sub_rubro,
-                descripcion, descripcion_generada, propiedades_dinamicas,
-                kilos_unidad, expresado_en_gramos, expresado_en_unidades,
-                es_pack, pack_unidades, pack_hijo_codigo,
-                es_combo, firma_combo, no_producido_por_lambda,
-                costo_base, porcentaje_iva,
-                updated_at
-            ) VALUES (
-                $1, $2, $3, $4, 'Combos Comerciales',
-                $5, $5, $6::jsonb,
-                $7, $8, false,
-                false, 1, NULL,
-                true, $9, false,
-                $10, $11,
-                NOW()
-            )
-            ON CONFLICT (articulo_id) DO UPDATE SET
-                familia_id = EXCLUDED.familia_id,
-                rubro = EXCLUDED.rubro,
-                sub_rubro = EXCLUDED.sub_rubro,
-                descripcion = EXCLUDED.descripcion,
-                descripcion_generada = EXCLUDED.descripcion_generada,
-                propiedades_dinamicas = EXCLUDED.propiedades_dinamicas,
-                kilos_unidad = EXCLUDED.kilos_unidad,
-                expresado_en_gramos = EXCLUDED.expresado_en_gramos,
-                expresado_en_unidades = false,
-                es_pack = false,
-                pack_unidades = 1,
-                pack_hijo_codigo = NULL,
-                es_combo = true,
-                firma_combo = EXCLUDED.firma_combo,
-                costo_base = EXCLUDED.costo_base,
-                porcentaje_iva = EXCLUDED.porcentaje_iva,
-                updated_at = NOW()
-        `, [
-            skuOficial,
-            codigoBarras,
-            anatomia.familia_id,
-            anatomia.rubro,
-            descripcionOficial,
-            JSON.stringify(anatomia.propiedades_dinamicas),
-            kilosTotales,
-            kilosTotales < 1,
-            validado.firma_composicion,
-            estructura.costo_puro_total,
-            estructura.iva_pct
-        ]);
-
-        // 3. Upsert en public.stock_real_consolidado (virtual armable: no_producido_por_lambda = true, es_combo = true)
-        await client.query(`
-            INSERT INTO public.stock_real_consolidado (
-                articulo_numero, descripcion, codigo_barras,
-                stock_lomasoft, stock_movimientos, stock_ajustes, stock_consolidado,
-                no_producido_por_lambda, solo_produccion_externa,
-                kilos_unidad, es_pack, pack_hijo_codigo, pack_unidades, es_combo, ultima_actualizacion
-            ) VALUES (
-                $1, $2, $3,
-                0, 0, 0, 0,
-                true, false,
-                $4, false, NULL, 1, true, NOW()
-            )
-            ON CONFLICT (articulo_numero) DO UPDATE SET
-                descripcion = EXCLUDED.descripcion,
-                codigo_barras = COALESCE(public.stock_real_consolidado.codigo_barras, EXCLUDED.codigo_barras),
-                kilos_unidad = EXCLUDED.kilos_unidad,
-                es_pack = false,
-                pack_hijo_codigo = NULL,
-                pack_unidades = 1,
-                es_combo = true,
-                no_producido_por_lambda = true,
-                ultima_actualizacion = NOW()
-        `, [skuOficial, descripcionOficial, codigoBarras, kilosTotales]);
+        // 1-3. Alta/actualización canónica vía puerta única BunkerService.crearArticuloCanonico
+        await BunkerService.crearArticuloCanonico(client, {
+            articulo_id: skuOficial,
+            codigo_barras: codigoBarras,
+            familia_id: anatomia.familia_id,
+            rubro: anatomia.rubro,
+            sub_rubro: 'Combos Comerciales',
+            descripcion: descripcionOficial,
+            descripcion_generada: descripcionOficial,
+            propiedades_dinamicas: anatomia.propiedades_dinamicas,
+            kilos_unidad: kilosTotales,
+            expresado_en_gramos: kilosTotales < 1,
+            expresado_en_unidades: false,
+            es_pack: false,
+            pack_unidades: 1,
+            pack_hijo_codigo: null,
+            es_combo: true,
+            firma_combo: validado.firma_composicion,
+            no_producido_por_lambda: true,
+            solo_produccion_externa: false,
+            costo_base: estructura.costo_puro_total,
+            porcentaje_iva: estructura.iva_pct,
+            minutos_mano_obra: estructura.minutos_armado_mo ?? null,
+            tarifa_colaborador_id: estructura.tarifa_colaborador_id || null,
+            actualizar_si_existe: true
+        });
 
         // 4. Sincronizar componentes hijos en public.bunker_combos_componentes
         await client.query('DELETE FROM public.bunker_combos_componentes WHERE combo_articulo_id = $1', [skuOficial]);

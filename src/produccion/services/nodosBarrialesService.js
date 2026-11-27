@@ -33,6 +33,7 @@ const {
     asegurarEsquemaAnaliticaNodos,
     vincularVisitanteConVecino
 } = require('./nodosAnaliticaService');
+const BunkerService = require('../../logistica/services/bunkerService');
 const pagosBancariosService = require('./nodosPagosBancariosService');
 const recibosMarcaBlancaService = require('./nodosRecibosMarcaBlancaService');
 const {
@@ -1546,18 +1547,53 @@ async function geocodificarInversoArgentina(latRaw, lngRaw) {
 
 /**
  * Clasifica un ingrediente o artículo en uno de los 6 Flujos del Modelo de Dominio LAMDA
+ * priorizando metadata relacional de BD (articulos_produccion_externa_relacion, rol_ingrediente,
+ * ingrediente_composicion) sin depender de arrays fijos de IDs.
  */
-function clasificarIngredienteEnFlujo(ing, idsCompuestosSet = new Set()) {
+function clasificarIngredienteEnFlujo(ing, idsCompuestosSet = new Set(), ctxRelaciones = null) {
     const id = Number(ing.id);
     const nombreLower = String(ing.nombre || '').toLowerCase();
     const artVinc = String(ing.articulo_vinculado_numero || '').trim().toUpperCase();
+    const rol = String(ing.rol_ingrediente || '').trim().toUpperCase();
+
+    const relUp = ctxRelaciones && ctxRelaciones.porEspejo instanceof Map
+        ? ctxRelaciones.porEspejo.get(id)
+        : null;
+    const relPre = (ctxRelaciones && ctxRelaciones.porPremezcla instanceof Map && artVinc)
+        ? ctxRelaciones.porPremezcla.get(artVinc)
+        : null;
+    const rel = relUp || relPre || null;
+
+    if (rel) {
+        const ldn = Number(rel.linea_negocio || 0);
+        if (ldn === 6) {
+            return {
+                flujo: 6,
+                flujo_nombre: '[LDN 6] Granolas (Doble Mezcla + UP)',
+                origen_tipo: 'UP_EXTERNA'
+            };
+        }
+        if (ldn === 5) {
+            return {
+                flujo: 5,
+                flujo_nombre: '[LDN 5] Barritas (Mezcla Interna + UP)',
+                origen_tipo: 'UP_EXTERNA'
+            };
+        }
+        if (ldn === 4) {
+            return {
+                flujo: 4,
+                flujo_nombre: '[LDN 4] Tostaderos (UP Externa Simple)',
+                origen_tipo: 'UP_EXTERNA'
+            };
+        }
+    }
 
     // Flujo 6: Doble Mezcla / Granola Compleja (excluir prefijos GSC de Garbanzo)
     if (
-        [122, 131, 132, 134].includes(id) ||
         nombreLower.includes('grana') ||
         /^GS(X|GN)/i.test(artVinc) ||
-        /^(GF(X|GN)|GDF)/i.test(artVinc)
+        /^(GF(X|GN)|GDF|MPGD)/i.test(artVinc)
     ) {
         return {
             flujo: 6,
@@ -1568,7 +1604,6 @@ function clasificarIngredienteEnFlujo(ing, idsCompuestosSet = new Set()) {
 
     // Flujo 5: Barritas (Mezcla Interna + UP Externa)
     if (
-        [109, 140, 141].includes(id) ||
         nombreLower.includes('barrit') ||
         artVinc.startsWith('BF') ||
         artVinc === 'MPB'
@@ -1582,8 +1617,8 @@ function clasificarIngredienteEnFlujo(ing, idsCompuestosSet = new Set()) {
 
     // Flujo 4: Tostaderos (Unidad Productiva Externa Simple)
     if (
-        [18, 38, 41, 56, 57, 123, 166].includes(id) ||
-        nombreLower.includes('tostad')
+        nombreLower.includes('tostad') ||
+        /UP/i.test(artVinc)
     ) {
         return {
             flujo: 4,
@@ -1595,7 +1630,7 @@ function clasificarIngredienteEnFlujo(ing, idsCompuestosSet = new Set()) {
     // Flujo 3: Mixes (Mezclas Internas a Fracciones - excluye MFB/MFQ/MFD de Maíz Frito)
     if (
         idsCompuestosSet.has(id) ||
-        [92, 148, 149, 150, 151, 154, 155, 158, 159].includes(id) ||
+        rol === 'PUENTE_ELABORADO' ||
         nombreLower.includes('mix') ||
         artVinc.startsWith('MFS') ||
         artVinc.startsWith('MCT') ||
@@ -1650,12 +1685,12 @@ function normalizarTextoTextoLibreTaxonomia(val) {
     return typeof val === 'string' ? val.trim() : '';
 }
 
-function resolverIdentidadTecnicaIngrediente(ing = {}, familiaNombreDb = null, categoriaFallbackOpcional = null, idsCompuestosSet = new Set()) {
+function resolverIdentidadTecnicaIngrediente(ing = {}, familiaNombreDb = null, categoriaFallbackOpcional = null, idsCompuestosSet = new Set(), ctxRelaciones = null) {
     const id = Number(ing.id || 0);
     const setCompuestos = idsCompuestosSet instanceof Set
         ? idsCompuestosSet
         : (categoriaFallbackOpcional instanceof Set ? categoriaFallbackOpcional : new Set());
-    const clasif = clasificarIngredienteEnFlujo(ing, setCompuestos);
+    const clasif = clasificarIngredienteEnFlujo(ing, setCompuestos, ctxRelaciones);
     const nombreOficial = String(ing.nombre || '').trim();
     const codigoOficial = ing.codigo !== undefined && ing.codigo !== null && String(ing.codigo).trim() !== ''
         ? String(ing.codigo).trim()
@@ -1680,7 +1715,7 @@ function resolverIdentidadTecnicaIngrediente(ing = {}, familiaNombreDb = null, c
         flujo: clasif.flujo,
         flujo_nombre: clasif.flujo_nombre,
         origen_tipo: clasif.origen_tipo,
-        es_pack_barritas: Boolean(id === 141 || clasif.flujo === 5)
+        es_pack_barritas: Boolean(clasif.flujo === 5)
     };
 }
 
@@ -2097,19 +2132,21 @@ async function obtenerDiccionarioBunkerCotizador(familiaId = null, articuloPrinc
  * cualquier ingrediente intermedio (fórmula de Mix en ingrediente_composicion o pre-mezcla de UP)
  * hacia su Ingrediente Puente Simple comercial que consumen las presentaciones de bunker_articulos:
  *   ingrediente_origen -> receta_ingredientes -> recetas.articulo_numero -> ingredientes.articulo_vinculado_numero
- * Ejemplos relacionales exactos en etiquetas_pruebas:
- *   #30 (Mix Frutos Secos Con Pasas) -> receta 'MFSXK' -> #149 (Mix Frutos Secos Con Pasas (Simple))
- *   #31 (Mix Premium (Mix)) -> receta 'MFSPXK' -> #150 (Mix Premium (Simple))
- *   #109 (Pre-Mezcla Barritas) -> 'MPB' (#140) -> 'BF' -> #141 (Barrita 20 x 50 (1kg))
+/**
+ * Resuelve determinísticamente en 1 solo salto acotado el ingrediente comercial puente
+ * ÚNICAMENTE cuando el ingrediente recibido tiene `rol_ingrediente = 'FORMULA_INTERNA'`
+ * (Mix Padre o Pre-Mezcla intermedia), eliminando saltos ciegos de 3 hops sobre MATERIA_PRIMA
+ * (evita secuestros como Dátiles -> Mix Energía).
  */
-async function resolverIngredienteComercialDeterminista(runner, ingredienteId) {
+async function resolverIngredientePorRolDeterminista(runner, ingredienteId) {
     const q = runner || db;
     const idNum = Number(ingredienteId || 0);
     if (!idNum) return null;
 
     const curRes = await q.query(
         `SELECT id, codigo, nombre, COALESCE(costo_patron, 0)::numeric(14,2) AS costo_patron,
-                articulo_vinculado_numero, categoria_id
+                articulo_vinculado_numero, categoria_id,
+                COALESCE(rol_ingrediente, 'MATERIA_PRIMA') AS rol_ingrediente
          FROM public.ingredientes
          WHERE id = $1
          LIMIT 1`,
@@ -2118,25 +2155,51 @@ async function resolverIngredienteComercialDeterminista(runner, ingredienteId) {
     if (curRes.rows.length === 0) return null;
     let actual = curRes.rows[0];
 
-    for (let hop = 0; hop < 3; hop++) {
-        const puenteRes = await q.query(
-            `SELECT ing_dest.id, ing_dest.codigo, ing_dest.nombre,
-                    COALESCE(ing_dest.costo_patron, 0)::numeric(14,2) AS costo_patron,
-                    ing_dest.articulo_vinculado_numero, ing_dest.categoria_id
-             FROM public.receta_ingredientes ri
-             JOIN public.recetas r ON r.id = ri.receta_id
-             JOIN public.ingredientes ing_dest ON UPPER(ing_dest.articulo_vinculado_numero) = UPPER(r.articulo_numero)
-             WHERE ri.ingrediente_id = $1
-               AND ing_dest.id <> $1
-               AND COALESCE(ing_dest.es_insumo, false) = false
-             ORDER BY ing_dest.id ASC
-             LIMIT 1`,
-            [actual.id]
-        );
-        if (puenteRes.rows.length > 0) {
-            actual = puenteRes.rows[0];
-        } else {
-            break;
+    if (String(actual.rol_ingrediente || '').toUpperCase() === 'FORMULA_INTERNA') {
+        let puenteEncontrado = null;
+
+        // 1a. Si es pre-mezcla declarada en articulos_produccion_externa_relacion, saltar 1 vez a su ingrediente_espejo_id
+        if (actual.articulo_vinculado_numero) {
+            const upRes = await q.query(
+                `SELECT ing_dest.id, ing_dest.codigo, ing_dest.nombre,
+                        COALESCE(ing_dest.costo_patron, 0)::numeric(14,2) AS costo_patron,
+                        ing_dest.articulo_vinculado_numero, ing_dest.categoria_id,
+                        COALESCE(ing_dest.rol_ingrediente, 'PUENTE_ELABORADO') AS rol_ingrediente
+                 FROM public.articulos_produccion_externa_relacion aper
+                 JOIN public.ingredientes ing_dest ON ing_dest.id = aper.ingrediente_espejo_id
+                 WHERE UPPER(BTRIM(aper.articulo_premezcla_codigo)) = UPPER(BTRIM($1))
+                   AND ing_dest.id <> $2
+                   AND COALESCE(ing_dest.es_insumo, false) = false
+                 ORDER BY ing_dest.id ASC
+                 LIMIT 1`,
+                [actual.articulo_vinculado_numero, actual.id]
+            );
+            puenteEncontrado = upRes.rows[0] || null;
+        }
+
+        // 1b. Si no es UP directa (p.ej. Mix Maestro en composición), saltar 1 vez solo hacia PUENTE_ELABORADO
+        if (!puenteEncontrado) {
+            const puenteRes = await q.query(
+                `SELECT ing_dest.id, ing_dest.codigo, ing_dest.nombre,
+                        COALESCE(ing_dest.costo_patron, 0)::numeric(14,2) AS costo_patron,
+                        ing_dest.articulo_vinculado_numero, ing_dest.categoria_id,
+                        COALESCE(ing_dest.rol_ingrediente, 'PUENTE_ELABORADO') AS rol_ingrediente
+                 FROM public.receta_ingredientes ri
+                 JOIN public.recetas r ON r.id = ri.receta_id
+                 JOIN public.ingredientes ing_dest ON UPPER(ing_dest.articulo_vinculado_numero) = UPPER(r.articulo_numero)
+                 WHERE ri.ingrediente_id = $1
+                   AND ing_dest.id <> $1
+                   AND COALESCE(ing_dest.es_insumo, false) = false
+                   AND COALESCE(ing_dest.rol_ingrediente, '') = 'PUENTE_ELABORADO'
+                 ORDER BY ing_dest.id ASC
+                 LIMIT 1`,
+                [actual.id]
+            );
+            puenteEncontrado = puenteRes.rows[0] || null;
+        }
+
+        if (puenteEncontrado) {
+            actual = puenteEncontrado;
         }
     }
 
@@ -2147,9 +2210,12 @@ async function resolverIngredienteComercialDeterminista(runner, ingredienteId) {
         label_oficial: formatearEtiquetaTecnicaIngrediente(actual),
         costo_patron: Number(actual.costo_patron || 0),
         articulo_vinculado_numero: actual.articulo_vinculado_numero || null,
-        categoria_id: actual.categoria_id ? Number(actual.categoria_id) : null
+        categoria_id: actual.categoria_id ? Number(actual.categoria_id) : null,
+        rol_ingrediente: String(actual.rol_ingrediente || 'MATERIA_PRIMA')
     };
 }
+
+const resolverIngredienteComercialDeterminista = resolverIngredientePorRolDeterminista;
 
 /**
  * Resuelve el desglose comercial de ingredientes para una oferta de Nodo Barrial,
@@ -2230,7 +2296,7 @@ async function resolverDesgloseIngredientesOfertaNodo(runner, oferta, catalogoIn
     return mejor;
 }
 
-function detectarPackDesdeHermano(hermano = {}, ingId = null) {
+function detectarPackDesdeHermano(hermano = {}, ingId = null, upRelacionRow = null) {
     const kHerm = Number(hermano.kilos_unidad || 0);
     const idHerm = String(hermano.articulo_id || '').trim();
     const descHerm = String(hermano.descripcion_generada || hermano.descripcion || idHerm).trim();
@@ -2274,11 +2340,16 @@ function detectarPackDesdeHermano(hermano = {}, ingId = null) {
         }
     }
 
-    if (Number(ingId) === 141) {
+    if (
+        upRelacionRow &&
+        String(upRelacionRow.modo_rendimiento || '').toUpperCase() === 'UNIDADES_POR_TANDA' &&
+        Number(upRelacionRow.peso_unitario_salida_kg) > 0
+    ) {
+        const pesoSalida = Number(upRelacionRow.peso_unitario_salida_kg);
         return {
             es_pack_hermano: true,
-            pack_unidades_hermano: kHerm > 0 ? Math.max(1, Math.round(kHerm / 0.05)) : 20,
-            peso_unitario_kg: 0.05
+            pack_unidades_hermano: kHerm > 0 ? Math.max(1, Math.round(kHerm / pesoSalida)) : 20,
+            peso_unitario_kg: pesoSalida
         };
     }
 
@@ -2302,7 +2373,7 @@ function derivarSkuYNomenclaturaDesdeHermano(hermano = {}, kilosUnidad = 0.25, p
 
     const modoPres = opciones.modo_presentacion ? String(opciones.modo_presentacion).trim().toUpperCase() : null;
     const pesoUnitOverrideG = Number(opciones.peso_unitario_gramos || 0);
-    const packInfo = detectarPackDesdeHermano(hermano, opciones.ingrediente_id || null);
+    const packInfo = detectarPackDesdeHermano(hermano, opciones.ingrediente_id || null, opciones.upRelacionRow || null);
 
     const usarPack = (modoPres === 'PACK')
         || (modoPres !== 'BOLSA' && packInfo.es_pack_hermano);
@@ -2541,9 +2612,11 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
         : [];
     const compartidoInput = art.compartido_mayorista !== undefined ? Boolean(art.compartido_mayorista) : (listasMayoristasInput.length > 0);
 
-    // Caso 0: Artículo nativo existente en public.bunker_articulos con el mismo peso unitario
-    const skuCandidato = String(art.sku_nodo || '').trim();
+    // Caso 0: Artículo nativo existente en public.bunker_articulos (SKU-First prioritario)
+    const skuCandidato = String(art.sku_nodo || art.articulo_id || art.articulo_bunker_origen_codigo || '').trim();
+    const tienePesoExplicito = art.kilos_unidad !== undefined && art.kilos_unidad !== null && Number(art.kilos_unidad) > 0;
     if (
+        !art.forzar_nueva_fraccion &&
         skuCandidato &&
         !skuCandidato.toUpperCase().startsWith('NB-') &&
         !skuCandidato.toUpperCase().startsWith('EMB-') &&
@@ -2558,7 +2631,10 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
             [skuCandidato]
         );
         const dirArt = dirRes.rows[0] || null;
-        if (dirArt && Math.abs(Number(dirArt.kilos_unidad || kilos) - kilos) < 0.002) {
+        if (dirArt && (!tienePesoExplicito || Math.abs(Number(dirArt.kilos_unidad || kilos) - kilos) < 0.002)) {
+            const kilosDir = Number(dirArt.kilos_unidad || kilos) > 0 ? Number(dirArt.kilos_unidad || kilos) : kilos;
+            const gramosDir = Math.round(kilosDir * 1000);
+            const sufijoPesoDir = (gramosDir >= 1000 && gramosDir % 1000 === 0) ? `${gramosDir / 1000}kg` : `${gramosDir}g`;
             const recDirRes = await q.query(
                 `SELECT ri.ingrediente_id, ri.cantidad,
                         ing.codigo AS ing_codigo, ing.nombre AS ing_nombre,
@@ -2576,7 +2652,7 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
             let ingAlimentoRow = null;
             for (const rItem of recDirRes.rows) {
                 if (rItem.es_insumo) {
-                    if (Number(rItem.ingrediente_id) !== 181 && !insumoEnvaseRecetaId) {
+                    if (!insumoEnvaseRecetaId && Number(rItem.cantidad || 1) <= 1.05) {
                         insumoEnvaseRecetaId = Number(rItem.ingrediente_id);
                     }
                 } else if (!ingAlimentoRow || Number(rItem.cantidad || 0) > Number(ingAlimentoRow.cantidad || 0)) {
@@ -2588,6 +2664,16 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
             if (!mixPadre && artVincEfectivo) {
                 mixPadre = await resolverMixPadreFlujo3(q, { id: ingIdEfectivo, articulo_vinculado_numero: artVincEfectivo }).catch(() => null);
             }
+            const upDirRes = ingIdEfectivo
+                ? await q.query(
+                    `SELECT modo_rendimiento, peso_unitario_salida_kg
+                     FROM public.articulos_produccion_externa_relacion
+                     WHERE ingrediente_espejo_id = $1
+                     LIMIT 1`,
+                    [ingIdEfectivo]
+                )
+                : { rows: [] };
+            const upDirRow = upDirRes.rows[0] || null;
 
             const famIdDir = Number(dirArt.familia_id || 1);
             const propDir = (dirArt.propiedades_dinamicas && typeof dirArt.propiedades_dinamicas === 'object')
@@ -2598,19 +2684,20 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                 ? Math.round(Number(propDir.asistente_minutos) * 60)
                 : null;
             const descOficial = dirArt.descripcion_generada || dirArt.descripcion || dirArt.articulo_id;
-            const packInfoDir = detectarPackDesdeHermano(dirArt, ingIdEfectivo);
+            const packInfoDir = detectarPackDesdeHermano(dirArt, ingIdEfectivo, upDirRow);
             const esPackDir = Boolean(dirArt.es_pack) || (packInfoDir.es_pack_hermano && Number(packInfoDir.pack_unidades_hermano || 1) > 1);
             const packUnidDir = Boolean(dirArt.es_pack) && Number(dirArt.pack_unidades || 1) > 1
                 ? Number(dirArt.pack_unidades)
                 : (packInfoDir.es_pack_hermano ? Number(packInfoDir.pack_unidades_hermano) : 1);
             const gramosUnitDir = esPackDir && packUnidDir > 1
-                ? Math.max(1, Math.round((gramos) / packUnidDir))
-                : gramos;
+                ? Math.max(1, Math.round(gramosDir / packUnidDir))
+                : gramosDir;
             const presEtiqueta = esPackDir && packUnidDir > 1
                 ? `Pack x ${packUnidDir} (${gramosUnitDir}g c/u)`
-                : `Bolsa ${sufijoPeso}`;
+                : `Bolsa ${sufijoPesoDir}`;
 
             return {
+                modo_resolucion: 'CASO_0_SKU_EXACTO',
                 existe_en_bunker: true,
                 tiene_hermano_bunker: true,
                 requiere_diccionario_bunker: false,
@@ -2639,7 +2726,7 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                 pack_hijo_codigo: dirArt.pack_hijo_codigo || null,
                 expresado_en_gramos: Boolean(dirArt.expresado_en_gramos),
                 segundos_nativos: segundosDir,
-                insumo_envase_id: insumoEnvaseRecetaId || (ingIdEfectivo ? recomendarEnvasePorKilos(kilos) : null),
+                insumo_envase_id: insumoEnvaseRecetaId || (ingIdEfectivo ? recomendarEnvasePorKilos(kilosDir) : null),
                 envase_origen_receta: Boolean(insumoEnvaseRecetaId),
                 compartido_mayorista: compartidoInput,
                 listas_mayoristas_compartidas: listasMayoristasInput,
@@ -2734,10 +2821,21 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
 
     if (hermanos.length > 0) {
         const hermanoRef = hermanos[0];
+        const upCasoARes = ingId
+            ? await q.query(
+                `SELECT modo_rendimiento, peso_unitario_salida_kg
+                 FROM public.articulos_produccion_externa_relacion
+                 WHERE ingrediente_espejo_id = $1
+                 LIMIT 1`,
+                [ingId]
+            )
+            : { rows: [] };
+        const upCasoARow = upCasoARes.rows[0] || null;
         const derivado = derivarSkuYNomenclaturaDesdeHermano(hermanoRef, kilos, art.pack_unidades, {
             modo_presentacion: art.modo_presentacion || null,
             peso_unitario_gramos: art.peso_unitario_gramos || null,
-            ingrediente_id: ingId
+            ingrediente_id: ingId,
+            upRelacionRow: upCasoARow
         });
 
         const exactoEnHermanos = hermanos.find(
@@ -2854,37 +2952,29 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
         };
     }
 
-    // Caso B: Sin hermano previo en public.bunker_articulos -> Construcción determinista por selectores del Diccionario Búnker (PK IDs)
+    // Caso B: Sin hermano previo en public.bunker_articulos -> Construcción estricta por selectores del Diccionario Búnker (PK IDs)
     const famBunkerId = Number(art.familia_bunker_id || art.familia_id || 0);
     const artPrincipalId = Number(art.articulo_principal_id || 0);
-    const artPrincipalTextoDirecto = String(art.articulo_principal_bunker || '').trim();
     const rubroInput = String(art.rubro_bunker || art.rubro || '').trim().toUpperCase();
     const subRubroInput = String(art.sub_rubro_bunker || art.sub_rubro || '').trim().toUpperCase();
 
-    if (famBunkerId > 0 && (artPrincipalId > 0 || artPrincipalTextoDirecto)) {
+    if (famBunkerId > 0 && artPrincipalId > 0) {
         const famRowRes = await q.query(
             `SELECT id, nombre, abreviatura FROM public.bunker_familias WHERE id = $1 LIMIT 1`,
             [famBunkerId]
         );
         const famRow = famRowRes.rows[0] || null;
         if (famRow) {
-            let principalRow = null;
-            if (artPrincipalId > 0) {
-                const pRes = await q.query(
-                    `SELECT id, termino, abreviatura FROM public.bunker_diccionario WHERE id = $1 LIMIT 1`,
-                    [artPrincipalId]
-                );
-                principalRow = pRes.rows[0] || null;
-            } else if (artPrincipalTextoDirecto) {
-                const pRes = await q.query(
-                    `SELECT id, termino, abreviatura FROM public.bunker_diccionario
-                     WHERE LOWER(categoria) = 'articulo_principal'
-                       AND LOWER(termino) = LOWER($1)
-                     LIMIT 1`,
-                    [artPrincipalTextoDirecto]
-                );
-                principalRow = pRes.rows[0] || { id: null, termino: artPrincipalTextoDirecto, abreviatura: '' };
-            }
+            const pRes = await q.query(
+                `SELECT id, termino, abreviatura
+                 FROM public.bunker_diccionario
+                 WHERE id = $1
+                   AND LOWER(categoria) = 'articulo_principal'
+                   AND COALESCE(obsoleto, false) = false
+                 LIMIT 1`,
+                [artPrincipalId]
+            );
+            const principalRow = pRes.rows[0] || null;
 
             if (principalRow) {
                 const catsFamRes = await q.query(
@@ -2940,6 +3030,47 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                     };
                 }
 
+                if (catsFamRes.rows.length > 0 && Object.keys(posicionesConstruidas).length === 0) {
+                    return {
+                        modo_resolucion: 'CASO_B_PENDIENTE',
+                        existe_en_bunker: false,
+                        tiene_hermano_bunker: false,
+                        requiere_diccionario_bunker: true,
+                        mensaje_validacion_diccionario: `La familia "${famRow.nombre}" exige seleccionar al menos un atributo del Diccionario Búnker (prohibido posiciones vacías).`,
+                        hermano_referencia_sku: null,
+                        hermano_origen_sku: null,
+                        ingrediente_comercial_id: ingId,
+                        ingrediente_comercial_codigo: ingResuelto?.codigo || null,
+                        ingrediente_comercial_nombre: ingResuelto?.nombre || art.ing_origen_nombre || null,
+                        ingrediente_comercial_label: ingResuelto ? ingResuelto.label_oficial : null,
+                        ingrediente_comercial_costo_kg: ingResuelto?.costo_patron || Number(art.costo_insumo_kg || 0),
+                        articulo_vinculado_numero: ingResuelto?.articulo_vinculado_numero || null,
+                        articulo_puente_numero: ingResuelto?.articulo_vinculado_numero || null,
+                        mix_padre: mixPadre,
+                        sku_nativo: '',
+                        familia_id: Number(famRow.id),
+                        familia_nombre: famRow.nombre,
+                        rubro: rubroInput || null,
+                        sub_rubro: subRubroInput || null,
+                        articulo_principal_id: Number(principalRow.id),
+                        articulo_principal: principalRow.termino,
+                        nomenclatura_bunker: '',
+                        nombre_publico_limpio: '',
+                        presentacion_etiqueta: `Bolsa ${sufijoPeso}`,
+                        es_pack: false,
+                        pack_unidades: 1,
+                        pack_hijo_codigo: null,
+                        expresado_en_gramos: kilos < 1,
+                        segundos_nativos: null,
+                        insumo_envase_id: recomendarEnvasePorKilos(kilos),
+                        envase_origen_receta: false,
+                        compartido_mayorista: compartidoInput,
+                        listas_mayoristas_compartidas: listasMayoristasInput,
+                        propiedades_estructurales: null,
+                        posiciones: {}
+                    };
+                }
+
                 const incluirFam = art.incluir_familia !== undefined ? Boolean(art.incluir_familia) : Boolean(famRow.abreviatura);
                 const modoFamRaw = String(art.modo_display_familia || (famRow.abreviatura ? 'ABREVIADO' : 'COMPLETO')).toUpperCase();
                 const modoFam = modoFamRaw.startsWith('ABREV') ? 'ABREVIADO' : 'COMPLETO';
@@ -2950,6 +3081,7 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                     posicion_familia: String(art.posicion_familia || 'ANTES').toUpperCase(),
                     abreviatura_familia: famRow.abreviatura || '',
                     modo_display_familia: modoFam,
+                    articulo_principal_id: Number(principalRow.id),
                     articulo_principal: principalRow.termino,
                     abreviatura_principal: principalRow.abreviatura || '',
                     silencioso_principal: Boolean(art.silencioso_principal),
@@ -3005,6 +3137,7 @@ async function resolverAnatomiaNativaArticuloNodo(runner, art = {}) {
                     familia_nombre: famRow.nombre,
                     rubro: rubroInput || famRow.nombre.toUpperCase(),
                     sub_rubro: subRubroInput || null,
+                    articulo_principal_id: Number(principalRow.id),
                     articulo_principal: principalRow.termino,
                     nomenclatura_bunker: descGenerada,
                     nombre_publico_limpio: descGenerada,
@@ -6881,21 +7014,26 @@ async function asegurarEsquemaNodosBarriales(opciones = {}) {
  * utilizando únicamente ingredientes simples puente y hermanos nativos deterministas.
  */
 async function obtenerFuentesCostoSeisFlujos() {
-    const [ingRes, compRes, mixPadresRes, artDirectosRes, envasesRes, tarifasRes, cuentasRes, clientesRes, taxonomiaBunkerMap, cfgCanalRes] = await Promise.all([
+    const [ingRes, compRes, upRelRes, mixPadresRes, artDirectosRes, envasesRes, tarifasRes, cuentasRes, clientesRes, taxonomiaBunkerMap, cfgCanalRes] = await Promise.all([
         db.query(`
             SELECT i.id, i.codigo, i.nombre, COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_patron,
-                   i.articulo_vinculado_numero, COALESCE(i.es_insumo, false) AS es_insumo
+                   i.articulo_vinculado_numero, COALESCE(i.es_insumo, false) AS es_insumo,
+                   COALESCE(i.rol_ingrediente, 'MATERIA_PRIMA') AS rol_ingrediente,
+                   COALESCE(i.habilitado_solicitud_nodos, true) AS habilitado_solicitud_nodos
             FROM public.ingredientes i
             WHERE COALESCE(i.es_insumo, false) = false
-              AND i.id < 8000
-              AND i.nombre NOT ILIKE '%Fuera de Servicio%'
-              AND i.nombre NOT ILIKE '%Para Mix%'
-              AND i.nombre NOT ILIKE '%Test E2E%'
+              AND COALESCE(i.rol_ingrediente, 'MATERIA_PRIMA') IN ('MATERIA_PRIMA', 'PUENTE_ELABORADO')
+              AND COALESCE(i.habilitado_solicitud_nodos, true) = true
             ORDER BY i.nombre ASC
         `),
         db.query(`
             SELECT DISTINCT mix_id AS ingrediente_padre_id
             FROM public.ingrediente_composicion
+        `),
+        db.query(`
+            SELECT ingrediente_espejo_id, articulo_premezcla_codigo, linea_negocio,
+                   modo_rendimiento, peso_unitario_salida_kg, unidades_por_tanda_default
+            FROM public.articulos_produccion_externa_relacion
         `),
         db.query(`
             SELECT DISTINCT ON (ing_s.id)
@@ -7000,7 +7138,18 @@ async function obtenerFuentesCostoSeisFlujos() {
     ]);
 
     const idsCompuestosSet = new Set(compRes.rows.map(r => Number(r.ingrediente_padre_id)));
-    const idsPreMezclasIntermedias = new Set([109, 132, 133, 134, 135, 136, 140]);
+    const ctxRelaciones = {
+        porEspejo: new Map(
+            upRelRes.rows
+                .filter(r => r.ingrediente_espejo_id)
+                .map(r => [Number(r.ingrediente_espejo_id), r])
+        ),
+        porPremezcla: new Map(
+            upRelRes.rows
+                .filter(r => r.articulo_premezcla_codigo)
+                .map(r => [String(r.articulo_premezcla_codigo).trim().toUpperCase(), r])
+        )
+    };
     const mapaMixPadres = new Map(
         mixPadresRes.rows.map(r => {
             const codP = r.padre_codigo !== null && r.padre_codigo !== undefined && String(r.padre_codigo).trim() !== ''
@@ -7022,7 +7171,6 @@ async function obtenerFuentesCostoSeisFlujos() {
         .filter(ing => {
             const idNum = Number(ing.id);
             if (idsCompuestosSet.has(idNum)) return false;
-            if (idsPreMezclasIntermedias.has(idNum)) return false;
             return true;
         })
         .map(ing => {
@@ -7032,7 +7180,8 @@ async function obtenerFuentesCostoSeisFlujos() {
                 ing,
                 tax ? tax.familia_bunker_nombre : null,
                 null,
-                idsCompuestosSet
+                idsCompuestosSet,
+                ctxRelaciones
             );
             const mixPadre = mapaMixPadres.get(idNum) || null;
             return {
@@ -7124,7 +7273,7 @@ async function obtenerFuentesCostoSeisFlujos() {
  */
 async function obtenerPresentacionesPlantaLamda(runner = null) {
     const q = runner || db;
-    const [plantaRes, catNodosRes, compRes] = await Promise.all([
+    const [plantaRes, catNodosRes, compRes, upTandaRes] = await Promise.all([
         q.query(`
             SELECT
                 ba.articulo_id,
@@ -7177,7 +7326,12 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
               AND COALESCE(ba.familia_id, 0) NOT IN (41, 42, 46, 47)
               AND (
                   (COALESCE(ba.es_pack, false) = false AND COALESCE(ba.kilos_unidad, 1) <= 1.05)
-                  OR (ri.ingrediente_id = 141 AND COALESCE(ba.kilos_unidad, 1) <= 1.25)
+                  OR (EXISTS (
+                      SELECT 1
+                      FROM public.articulos_produccion_externa_relacion aper
+                      WHERE aper.ingrediente_espejo_id = ri.ingrediente_id
+                        AND aper.modo_rendimiento = 'UNIDADES_POR_TANDA'
+                  ) AND COALESCE(ba.kilos_unidad, 1) <= 1.25)
               )
             ORDER BY ri.ingrediente_id ASC,
                      ba.kilos_unidad ASC,
@@ -7192,10 +7346,19 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
               AND ingrediente_origen_id IS NOT NULL
             ORDER BY ingrediente_origen_id ASC, kilos_unidad ASC
         `),
-        q.query('SELECT DISTINCT mix_id AS ingrediente_padre_id FROM public.ingrediente_composicion')
+        q.query('SELECT DISTINCT mix_id AS ingrediente_padre_id FROM public.ingrediente_composicion'),
+        q.query(`
+            SELECT ingrediente_espejo_id, peso_unitario_salida_kg
+            FROM public.articulos_produccion_externa_relacion
+            WHERE modo_rendimiento = 'UNIDADES_POR_TANDA'
+              AND ingrediente_espejo_id IS NOT NULL
+        `)
     ]);
 
     const idsCompuestosSet = new Set(compRes.rows.map(r => Number(r.ingrediente_padre_id)));
+    const upTandaPesoPorIngMap = new Map(
+        upTandaRes.rows.map(r => [Number(r.ingrediente_espejo_id), Number(r.peso_unitario_salida_kg || 0.05)])
+    );
     const porIngredienteGestor = new Map();
     const disponiblesParaAdmin = [];
 
@@ -7289,14 +7452,17 @@ async function obtenerPresentacionesPlantaLamda(runner = null) {
         const ingId = Number(cat.ingrediente_origen_id);
         const kilos = Number(Number(cat.kilos_unidad || 0).toFixed(4));
         const descCat = cat.nomenclatura_bunker || cat.nombre_publico || cat.sku_nodo;
+        const pesoUnitTandaKg = upTandaPesoPorIngMap.get(ingId) || 0;
+        const esPackTanda = pesoUnitTandaKg > 0;
+        const packUnidTanda = esPackTanda ? Math.max(1, Math.round(kilos / pesoUnitTandaKg)) : 1;
         registrarEnMapaGestor(ingId, {
             sku: cat.sku_nodo,
             descripcion_generada: descCat,
             label_oficial: formatearEtiquetaTecnicaArticulo(cat.sku_nodo, descCat),
             kilos_unidad: kilos,
-            es_pack: ingId === 141,
-            pack_unidades: ingId === 141 ? Math.max(1, Math.round((kilos * 1000) / 50)) : 1,
-            etiqueta: formatearEtiquetaPeso(kilos, ingId === 141, ingId === 141 ? Math.max(1, Math.round((kilos * 1000) / 50)) : 1),
+            es_pack: esPackTanda,
+            pack_unidades: packUnidTanda,
+            etiqueta: formatearEtiquetaPeso(kilos, esPackTanda, packUnidTanda),
             ya_produce_lamda: true,
             en_catalogo_nodos: true,
             catalogo_id: Number(cat.id),
@@ -8515,7 +8681,9 @@ async function crearPropuestaFraccion(payload = {}) {
         const [ingRes, taxRes] = await Promise.all([
             db.query(
                 `SELECT i.id, i.codigo, i.nombre, i.articulo_vinculado_numero,
-                        COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_patron
+                        COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_patron,
+                        COALESCE(i.rol_ingrediente, 'MATERIA_PRIMA') AS rol_ingrediente,
+                        COALESCE(i.habilitado_solicitud_nodos, true) AS habilitado_solicitud_nodos
                  FROM public.ingredientes i
                  WHERE i.id = $1 AND COALESCE(i.es_insumo, false) = false
                  LIMIT 1`,
@@ -8527,6 +8695,12 @@ async function crearPropuestaFraccion(payload = {}) {
             throw new Error('El ingrediente seleccionado no existe en el padrón oficial de LAMDA.');
         }
         ingRow = ingRes.rows[0];
+        const rolIng = String(ingRow.rol_ingrediente || 'MATERIA_PRIMA').toUpperCase();
+        if (!['MATERIA_PRIMA', 'PUENTE_ELABORADO'].includes(rolIng) || ingRow.habilitado_solicitud_nodos !== true) {
+            const e = new Error('Este ingrediente corresponde a una fórmula o insumo interno no habilitado para solicitudes directas de Nodos.');
+            e.statusCode = 400;
+            throw e;
+        }
         taxonomiaOficial = taxRes;
         if (!taxonomiaOficial || !taxonomiaOficial.familia_bunker_id) {
             throw new Error('Este ingrediente aún no está vinculado a una Familia Oficial del Búnker LAMDA. Vinculalo primero en el Búnker antes de solicitar fracciones.');
@@ -8574,8 +8748,9 @@ async function crearPropuestaFraccion(payload = {}) {
             }
         }
 
-        // 3. Verificar si LAMDA ya produce esta presentación unitaria en Planta / Búnker
+        // 3. Verificar si LAMDA ya produce esta presentación unitaria en Planta / Búnker (SKU-First)
         const anatomia = await resolverAnatomiaNativaArticuloNodo(db, {
+            sku_nodo: payload.articulo_bunker_sugerido_codigo || null,
             ingrediente_origen_id: ingId,
             kilos_unidad: kilos,
             flujo_lamda: Number(payload.flujo_sugerido || 2)
@@ -8801,25 +8976,36 @@ async function sumarArticuloCatalogoANodo(nodoId, catalogoId) {
 async function cotizarYAprobarArticuloNodo(payload = {}) {
     await asegurarEsquemaNodosBarriales();
 
+    const throwBadReq = (msg) => {
+        const err = new Error(msg);
+        err.statusCode = 400;
+        return err;
+    };
+
     const client = await db.connect();
     try {
         await client.query('BEGIN');
 
-        // 1. Resolver determinísticamente el ingrediente comercial simple (Puente) si es Mix o Pre-Mezcla
-        const ingComercial = await resolverIngredienteComercialDeterminista(client, payload.ingrediente_origen_id);
-        const ingredienteOrigenFinalId = ingComercial.id || (payload.ingrediente_origen_id ? Number(payload.ingrediente_origen_id) : null);
+        // 1. Resolver por rol en 1 salto acotado ÚNICAMENTE si es FORMULA_INTERNA (jamás secuestra MATERIA_PRIMA)
+        const ingComercial = await resolverIngredientePorRolDeterminista(client, payload.ingrediente_origen_id);
+        const ingredienteOrigenFinalId = (ingComercial && ingComercial.id)
+            ? ingComercial.id
+            : (payload.ingrediente_origen_id ? Number(payload.ingrediente_origen_id) : null);
 
-        // 2. Resolver Anatomía Nativa LAMDA (Caso 0: existente, Caso A: clon de hermano Búnker, Caso B: Diccionario relacional Búnker)
+        // 2. Resolver Anatomía Nativa LAMDA (Caso 0 SKU-First, Caso A: clon hermano Búnker, Caso B: Diccionario PK Búnker)
         const anatomia = await resolverAnatomiaNativaArticuloNodo(client, {
             ...payload,
             ingrediente_origen_id: ingredienteOrigenFinalId
         });
 
         if (anatomia.requiere_diccionario_bunker) {
-            throw new Error('Este artículo nuevo no posee hermanos previos en el Búnker. Completá los selectores relacionales del Diccionario Búnker (Familia, Sustantivo Ancla y Rubro/Subrubro) antes de aprobar.');
+            throw throwBadReq(
+                anatomia.mensaje_validacion_diccionario
+                || 'Este artículo nuevo no posee hermanos previos en el Búnker. Completá los selectores relacionales del Diccionario Búnker (Familia, Sustantivo Ancla por ID y Posiciones válidas) antes de aprobar.'
+            );
         }
 
-        // 3. Validar determinísticamente por ID el envase primario (es_insumo = true) y flowpack individual (#181 si es Pack de Barritas)
+        // 3. Validar determinísticamente por ID el envase primario (es_insumo = true) y flowpack UP si aplica (UNIDADES_POR_TANDA)
         const origenTipoFinal = String(payload.origen_tipo || 'INGREDIENTE').toUpperCase();
         const insumoEnvaseIdFinal = payload.insumo_envase_id
             ? Number(payload.insumo_envase_id)
@@ -8835,30 +9021,64 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
                 [insumoEnvaseIdFinal]
             );
             if (envRes.rows.length === 0 || !envRes.rows[0].es_insumo) {
-                throw new Error('El envase / bolsa seleccionado no corresponde a un insumo válido del padrón de LAMDA (es_insumo = true).');
+                throw throwBadReq('El envase / bolsa seleccionado no corresponde a un insumo válido del padrón de LAMDA (es_insumo = true).');
             }
             costoEnvaseUnitario = Number(envRes.rows[0].costo_patron || costoEnvaseUnitario);
         } else if (origenTipoFinal === 'INGREDIENTE' && !anatomia.existe_en_bunker) {
-            throw new Error('Debés seleccionar un envase / bolsa oficial del padrón de insumos de LAMDA.');
+            throw throwBadReq('Debés seleccionar un envase / bolsa oficial del padrón de insumos de LAMDA.');
         }
 
+        const upTandaRes = ingredienteOrigenFinalId
+            ? await client.query(
+                `SELECT aper.modo_rendimiento, aper.peso_unitario_salida_kg,
+                        (
+                            SELECT ing_ins.id
+                            FROM public.receta_ingredientes ri_food
+                            JOIN public.recetas r ON r.id = ri_food.receta_id
+                            JOIN public.receta_ingredientes ri_ins ON ri_ins.receta_id = r.id
+                            JOIN public.ingredientes ing_ins ON ing_ins.id = ri_ins.ingrediente_id AND COALESCE(ing_ins.es_insumo, false) = true
+                            WHERE ri_food.ingrediente_id = aper.ingrediente_espejo_id
+                              AND ri_ins.cantidad > 1
+                            ORDER BY ri_ins.cantidad DESC, ri_ins.id ASC
+                            LIMIT 1
+                        ) AS flowpack_insumo_id,
+                        (
+                            SELECT COALESCE(ing_ins.costo_patron, 0)
+                            FROM public.receta_ingredientes ri_food
+                            JOIN public.recetas r ON r.id = ri_food.receta_id
+                            JOIN public.receta_ingredientes ri_ins ON ri_ins.receta_id = r.id
+                            JOIN public.ingredientes ing_ins ON ing_ins.id = ri_ins.ingrediente_id AND COALESCE(ing_ins.es_insumo, false) = true
+                            WHERE ri_food.ingrediente_id = aper.ingrediente_espejo_id
+                              AND ri_ins.cantidad > 1
+                            ORDER BY ri_ins.cantidad DESC, ri_ins.id ASC
+                            LIMIT 1
+                        ) AS flowpack_costo
+                 FROM public.articulos_produccion_externa_relacion aper
+                 WHERE aper.ingrediente_espejo_id = $1
+                   AND aper.modo_rendimiento = 'UNIDADES_POR_TANDA'
+                 LIMIT 1`,
+                [ingredienteOrigenFinalId]
+            )
+            : { rows: [] };
+        const upTanda = upTandaRes.rows[0] || null;
+
         let costoEnvaseExtra = Number(payload.costo_envase_extra || 0);
-        if (Number(ingredienteOrigenFinalId) === 141 && !costoEnvaseExtra) {
-            const env181Res = await client.query('SELECT COALESCE(costo_patron, 18.16) AS costo FROM public.ingredientes WHERE id = 181 LIMIT 1');
-            const costo181 = Number(env181Res.rows[0]?.costo || 18.16);
+        if (upTanda && !costoEnvaseExtra) {
+            const pesoUnitKg = Number(upTanda.peso_unitario_salida_kg || 0.05);
+            const costoFlowpack = Number(upTanda.flowpack_costo || 0);
             const cantFlowpacks = Math.max(
                 1,
                 Number(anatomia.pack_unidades) > 1
                     ? Number(anatomia.pack_unidades)
-                    : Math.round(Number(payload.kilos_unidad || 0.25) / 0.05)
+                    : Math.round(Number(payload.kilos_unidad || 0.25) / Math.max(0.001, pesoUnitKg))
             );
-            costoEnvaseExtra = Number((cantFlowpacks * costo181).toFixed(2));
+            costoEnvaseExtra = Number((cantFlowpacks * costoFlowpack).toFixed(2));
         }
 
         // 4. Resolver costo por kilo del insumo comercial puente
         let costoInsumoKg = Number(payload.costo_insumo_kg ?? 0);
         if (ingredienteOrigenFinalId && (!costoInsumoKg || Number(ingredienteOrigenFinalId) !== Number(payload.ingrediente_origen_id))) {
-            costoInsumoKg = Number(ingComercial.costo_patron || costoInsumoKg || 0);
+            costoInsumoKg = Number((ingComercial && ingComercial.costo_patron) || costoInsumoKg || 0);
         }
 
         const calc = calcularEstructuraCostosNodo({
@@ -8872,34 +9092,44 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
         // 5. Código SKU y Nomenclatura Oficial LAMDA deterministas (prohibidos prefijos NB- / EMB- y texto libre)
         const skuEntrada = String(payload.sku_nodo || '').trim();
         if (/^(NB-|EMB-)/i.test(skuEntrada)) {
-            throw new Error(`El código SKU "${skuEntrada}" no respeta el estándar oficial LAMDA (prohibidos prefijos NB- o EMB-).`);
+            throw throwBadReq(`El código SKU "${skuEntrada}" no respeta el estándar oficial LAMDA (prohibidos prefijos NB- o EMB-).`);
         }
         const skuNodo = skuEntrada || String(anatomia.sku_nativo || '').trim();
         if (!skuNodo || /^(NB-|EMB-)/i.test(skuNodo)) {
-            throw new Error('No se pudo derivar un código SKU oficial válido del Diccionario Búnker.');
+            throw throwBadReq('No se pudo derivar un código SKU oficial válido del Diccionario Búnker.');
         }
 
         const nomenclaturaOficial = String(anatomia.nomenclatura_bunker || '').trim();
         if (!nomenclaturaOficial) {
-            throw new Error('La nomenclatura oficial del artículo debe derivarse estrictamente del Diccionario Búnker.');
+            throw throwBadReq('La nomenclatura oficial del artículo debe derivarse estrictamente del Diccionario Búnker.');
         }
         if (!anatomia.familia_id || !anatomia.articulo_principal) {
-            throw new Error('El artículo debe quedar vinculado a una Familia y un Sustantivo Ancla válidos del Diccionario Búnker.');
+            throw throwBadReq('El artículo debe quedar vinculado a una Familia y un Sustantivo Ancla válidos del Diccionario Búnker.');
         }
 
-        const listasCompEntrada = Array.isArray(payload.listas_mayoristas_compartidas)
+        let listasCompEntrada = Array.isArray(payload.listas_mayoristas_compartidas)
             ? payload.listas_mayoristas_compartidas.map(Number).filter(Boolean)
             : [];
-        const esGranolaExistente = ['GSX500G', 'GDFX500G'].includes(String(skuNodo).toUpperCase());
-        const listasCompFinales = (esGranolaExistente && listasCompEntrada.length === 0)
-            ? [1, 2, 3, 5, 6, 7]
-            : listasCompEntrada;
-        const compartidoFinal = esGranolaExistente ? true : Boolean(payload.compartido_mayorista);
+        if (listasCompEntrada.length === 0 && anatomia.existe_en_bunker) {
+            const listasExistRes = await client.query(
+                `SELECT la.lista_id
+                 FROM public.bunker_lista_articulos la
+                 JOIN public.bunker_listas_precios lp ON lp.id = la.lista_id
+                 WHERE UPPER(la.articulo_numero) = UPPER($1)
+                   AND COALESCE(lp.canal_comercial, 'MAYORISTA') = 'MAYORISTA'
+                   AND la.disponible = true
+                 ORDER BY la.lista_id ASC`,
+                [skuNodo]
+            );
+            listasCompEntrada = listasExistRes.rows.map(r => Number(r.lista_id)).filter(Boolean);
+        }
+        const listasCompFinales = listasCompEntrada;
+        const compartidoFinal = listasCompFinales.length > 0 ? true : Boolean(payload.compartido_mayorista);
 
         let presentacionEtiqueta = String(payload.presentacion_etiqueta || '').trim();
         if (!presentacionEtiqueta) {
             if (Boolean(anatomia.es_pack) && Number(anatomia.pack_unidades || 1) > 1) {
-                presentacionEtiqueta = Number(ingredienteOrigenFinalId) === 141
+                presentacionEtiqueta = upTanda
                     ? `Pack x ${anatomia.pack_unidades} (${Math.round((calc.kilos_unidad * 1000) / Number(anatomia.pack_unidades))}g c/u)`
                     : `Pack x ${anatomia.pack_unidades} un.`;
             } else if (calc.kilos_unidad < 1) {
@@ -8910,6 +9140,42 @@ async function cotizarYAprobarArticuloNodo(payload = {}) {
         }
 
         const categoriaOficial = String(anatomia.familia_nombre || payload.categoria_familiar || 'Frutos Secos').trim();
+
+        // Alta canónica previa en public.bunker_articulos/articulos/stock_real_consolidado
+        // para garantizar integridad referencial con fk_nodos_cat_sku_bunker antes del INSERT en nodos_articulos_catalogo
+        if (!anatomia.existe_en_bunker) {
+            const propPreAlta = {
+                ...(anatomia.propiedades_estructurales && typeof anatomia.propiedades_estructurales === 'object' ? anatomia.propiedades_estructurales : {}),
+                posiciones: (anatomia.posiciones && typeof anatomia.posiciones === 'object') ? anatomia.posiciones : {},
+                canal_nodos_barriales: true,
+                sku_nodo: skuNodo,
+                compartido_mayorista: compartidoFinal,
+                listas_mayoristas_compartidas: listasCompFinales
+            };
+            const costoMatEnvPre = Number((Number(calc.costo_insumo_fraccion || 0) + Number(calc.costo_envase_aplicado || 0)).toFixed(2));
+            await BunkerService.crearArticuloCanonico(client, {
+                articulo_id: skuNodo,
+                codigo_barras: skuNodo,
+                familia_id: anatomia.familia_id,
+                articulo_principal_id: anatomia.articulo_principal_id || anatomia.propiedades_estructurales?.articulo_principal_id || null,
+                modo_creacion: anatomia.modo_resolucion || null,
+                exigir_diccionario_estricto: anatomia.modo_resolucion === 'CASO_B_DICCIONARIO',
+                descripcion: anatomia.articulo_principal || nomenclaturaOficial,
+                descripcion_generada: nomenclaturaOficial,
+                kilos_unidad: calc.kilos_unidad,
+                costo_base: costoMatEnvPre,
+                porcentaje_iva: calc.iva_pct,
+                rubro: anatomia.rubro || null,
+                sub_rubro: anatomia.sub_rubro || null,
+                es_pack: Boolean(anatomia.es_pack),
+                pack_unidades: Number(anatomia.pack_unidades || 1),
+                expresado_en_gramos: Boolean(anatomia.expresado_en_gramos),
+                propiedades_dinamicas: propPreAlta,
+                minutos_mano_obra: Number((Number(calc.segundos_fraccionamiento || 300) / 60).toFixed(4)),
+                tarifa_colaborador_id: payload.tarifa_colaborador_id ? Number(payload.tarifa_colaborador_id) : null,
+                actualizar_si_existe: false
+            });
+        }
 
         let articuloRow;
         if (payload.catalogo_id) {
@@ -10391,36 +10657,50 @@ function calcularProximaEntregaNodo(configVentanas = [], fechaReferenciaInput = 
  * sin diccionarios intermedios y sin exponer costos ni fórmulas internas.
  */
 async function obtenerCatalogoIngredientesSolicitablesGestor() {
-    const [ingRes, compRes, taxonomiaBunkerMap, plantaInfo] = await Promise.all([
+    const [ingRes, compRes, upRelRes, taxonomiaBunkerMap, plantaInfo] = await Promise.all([
         db.query(`
             SELECT i.id, i.codigo, i.nombre, i.articulo_vinculado_numero,
-                   COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_patron
+                   COALESCE(i.costo_patron, 0)::numeric(14,2) AS costo_patron,
+                   COALESCE(i.rol_ingrediente, 'MATERIA_PRIMA') AS rol_ingrediente,
+                   COALESCE(i.habilitado_solicitud_nodos, true) AS habilitado_solicitud_nodos
             FROM public.ingredientes i
             WHERE COALESCE(i.es_insumo, false) = false
-              AND i.id < 8000
-              AND i.nombre NOT ILIKE '%Fuera de Servicio%'
-              AND i.nombre NOT ILIKE '%Para Mix%'
-              AND i.nombre NOT ILIKE '%Test E2E%'
+              AND COALESCE(i.rol_ingrediente, 'MATERIA_PRIMA') IN ('MATERIA_PRIMA', 'PUENTE_ELABORADO')
+              AND COALESCE(i.habilitado_solicitud_nodos, true) = true
             ORDER BY i.id ASC
         `),
         db.query(`
             SELECT DISTINCT mix_id AS ingrediente_padre_id
             FROM public.ingrediente_composicion
         `),
+        db.query(`
+            SELECT ingrediente_espejo_id, articulo_premezcla_codigo, linea_negocio,
+                   modo_rendimiento, peso_unitario_salida_kg, unidades_por_tanda_default
+            FROM public.articulos_produccion_externa_relacion
+        `),
         resolverTaxonomiaOficialIngredienteBunker(db),
         obtenerPresentacionesPlantaLamda()
     ]);
 
     const idsCompuestosSet = new Set(compRes.rows.map(r => Number(r.ingrediente_padre_id)));
-    // Excluir pre-mezclas e insumos internos de UP externa (se exponen sus ingredientes puente terminados: #122, #131, #141, etc.)
-    const idsIntermediosExcluidos = new Set([109, 132, 133, 134, 135, 136, 140]);
+    const ctxRelaciones = {
+        porEspejo: new Map(
+            upRelRes.rows
+                .filter(r => r.ingrediente_espejo_id)
+                .map(r => [Number(r.ingrediente_espejo_id), r])
+        ),
+        porPremezcla: new Map(
+            upRelRes.rows
+                .filter(r => r.articulo_premezcla_codigo)
+                .map(r => [String(r.articulo_premezcla_codigo).trim().toUpperCase(), r])
+        )
+    };
     const mapaPresGestor = plantaInfo ? plantaInfo.porIngredienteGestor : new Map();
 
     return ingRes.rows
         .filter(ing => {
             const idNum = Number(ing.id);
             if (idsCompuestosSet.has(idNum)) return false;
-            if (idsIntermediosExcluidos.has(idNum)) return false;
             // Pilar 1: 100% determinista sobre bunker_familias oficiales + costo comercial activo
             const tax = taxonomiaBunkerMap.get(idNum);
             if (!tax || !tax.familia_bunker_id || !tax.familia_bunker_nombre) return false;
@@ -10434,7 +10714,8 @@ async function obtenerCatalogoIngredientesSolicitablesGestor() {
                 ing,
                 tax.familia_bunker_nombre,
                 null,
-                idsCompuestosSet
+                idsCompuestosSet,
+                ctxRelaciones
             );
             return {
                 id: idNum,
@@ -12846,11 +13127,28 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
     `);
     const listasActivas = listasPreciosRes.rows;
 
-    // Resolver usuario_id oficial de colaboradores_tarifas para asistente_colaborador_id (estándar nativo LAMDA = 5)
+    // Resolver usuario_id oficial de colaboradores_tarifas y reglas UP de rendimiento por tanda
     const tarifasMapRes = await q.query(`SELECT id, usuario_id FROM public.colaboradores_tarifas`);
     const tarifaToUsuarioMap = new Map(tarifasMapRes.rows.map(r => [Number(r.id), Number(r.usuario_id || 5)]));
-    const env181InfoRes = await q.query(`SELECT id, nombre, COALESCE(costo_patron, 18.16) AS costo_patron FROM public.ingredientes WHERE id = 181 LIMIT 1`);
-    const env181Info = env181InfoRes.rows[0] || { id: 181, nombre: 'Bolsa 8 x 15', costo_patron: 18.16 };
+    const upTandaFlowpackRes = await q.query(`
+        SELECT DISTINCT ON (aper.ingrediente_espejo_id)
+               aper.ingrediente_espejo_id,
+               aper.modo_rendimiento,
+               aper.peso_unitario_salida_kg,
+               ing_ins.id AS flowpack_id,
+               ing_ins.nombre AS flowpack_nombre,
+               COALESCE(ing_ins.costo_patron, 0) AS flowpack_costo
+        FROM public.articulos_produccion_externa_relacion aper
+        LEFT JOIN public.receta_ingredientes ri_food ON ri_food.ingrediente_id = aper.ingrediente_espejo_id
+        LEFT JOIN public.receta_ingredientes ri_ins ON ri_ins.receta_id = ri_food.receta_id AND ri_ins.cantidad > 1
+        LEFT JOIN public.ingredientes ing_ins ON ing_ins.id = ri_ins.ingrediente_id AND COALESCE(ing_ins.es_insumo, false) = true
+        WHERE aper.modo_rendimiento = 'UNIDADES_POR_TANDA'
+          AND aper.ingrediente_espejo_id IS NOT NULL
+        ORDER BY aper.ingrediente_espejo_id, ri_ins.cantidad DESC NULLS LAST
+    `);
+    const upTandaPorIngMap = new Map(
+        upTandaFlowpackRes.rows.map(r => [Number(r.ingrediente_espejo_id), r])
+    );
 
     // 2.a) Auto-incorporar al catálogo de Nodos cualquier artículo que haya sido habilitado (disponible = true)
     // directamente en Lista Base Nodos Barriales desde Artículos y Diccionario Búnker.
@@ -12939,79 +13237,90 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
             ? Number((costoMateriaYEnvase / kilos).toFixed(2))
             : costoMateriaYEnvase;
 
-        const artCheck = await q.query('SELECT numero FROM public.articulos WHERE UPPER(numero) = UPPER($1) OR UPPER(codigo_barras) = UPPER($1) LIMIT 1', [sku]);
-        if (artCheck.rows.length === 0) {
-            await q.query(
-                `INSERT INTO public.articulos (numero, codigo_barras, nombre)
-                 VALUES ($1,$1,$2)`,
-                [sku, descTecnicaBunker]
-            );
-        } else if (esEdicionDesdeCotizador && !existeNativoPreviamente) {
-            await q.query(
-                `UPDATE public.articulos SET nombre = $2, codigo_barras = $1 WHERE UPPER(numero) = UPPER($1) OR UPPER(codigo_barras) = UPPER($1)`,
-                [sku, descTecnicaBunker]
-            );
-        }
-
         const baCheck = await q.query('SELECT articulo_id FROM public.bunker_articulos WHERE UPPER(articulo_id) = UPPER($1) LIMIT 1', [sku]);
-        if (baCheck.rows.length === 0) {
-            await q.query(
-                `INSERT INTO public.bunker_articulos (
-                    articulo_id, codigo_barras, descripcion, descripcion_generada,
-                    kilos_unidad, costo_base, porcentaje_iva, rubro, sub_rubro,
-                    familia_id, no_producido_por_lambda, es_pack, pack_unidades,
-                    expresado_en_gramos, propiedades_dinamicas
-                 ) VALUES ($1,$1,$2,$3,$4,$5,$6,$7,$8,$9,false,$10,$11,$12,$13)`,
-                [
-                    sku,
-                    anatomia.articulo_principal || art.articulo_principal_bunker || descTecnicaBunker,
-                    descTecnicaBunker,
-                    kilos,
-                    costoMateriaYEnvase,
-                    Number(art.iva_pct ?? 21),
-                    anatomia.rubro || null,
-                    anatomia.sub_rubro || null,
-                    anatomia.familia_id || art.familia_bunker_id || null,
-                    Boolean(anatomia.es_pack),
-                    Number(anatomia.pack_unidades || 1),
-                    Boolean(anatomia.expresado_en_gramos),
-                    JSON.stringify(propDinamicasCompletas)
-                ]
-            );
-        } else if (esEdicionDesdeCotizador && !existeNativoPreviamente) {
-            await q.query(
-                `UPDATE public.bunker_articulos SET
-                    descripcion = $2,
-                    descripcion_generada = $3,
-                    kilos_unidad = $4,
-                    costo_base = $5,
-                    porcentaje_iva = $6,
-                    rubro = COALESCE($7, rubro),
-                    sub_rubro = COALESCE($8, sub_rubro),
-                    familia_id = COALESCE($9, familia_id),
-                    es_pack = $10,
-                    pack_unidades = $11,
-                    expresado_en_gramos = $12,
-                    propiedades_dinamicas = ((COALESCE(propiedades_dinamicas, '{}'::jsonb) - 'alias_comercial_vecino' - 'alias_vecino_nodo') || $13::jsonb)
-                 WHERE UPPER(articulo_id) = UPPER($1)`,
-                [
-                    sku,
-                    anatomia.articulo_principal || art.articulo_principal_bunker || descTecnicaBunker,
-                    descTecnicaBunker,
-                    kilos,
-                    costoMateriaYEnvase,
-                    Number(art.iva_pct ?? 21),
-                    anatomia.rubro || null,
-                    anatomia.sub_rubro || null,
-                    anatomia.familia_id || art.familia_bunker_id || null,
-                    Boolean(anatomia.es_pack),
-                    Number(anatomia.pack_unidades || 1),
-                    Boolean(anatomia.expresado_en_gramos),
-                    JSON.stringify(propDinamicasCompletas)
-                ]
-            );
+        const ingComercialId = anatomia.ingrediente_comercial_id || art.ingrediente_origen_id;
+        const artSugeridoPuente = anatomia.articulo_vinculado_numero || art.ing_articulo_vinculado_numero || null;
+        const debeCrearOActualizarCanonico = baCheck.rows.length === 0 || (esEdicionDesdeCotizador && !existeNativoPreviamente);
+
+        if (debeCrearOActualizarCanonico) {
+            let itemsRecetaCanonicos = [];
+            if (ingComercialId) {
+                itemsRecetaCanonicos.push({
+                    ingrediente_id: Number(ingComercialId),
+                    nombre_ingrediente: anatomia.ingrediente_comercial_nombre || art.ing_origen_nombre || descTecnicaBunker,
+                    unidad_medida: 'Kilo',
+                    cantidad: kilos,
+                    fase_produccion: 'interna'
+                });
+                const upTandaMeta = upTandaPorIngMap.get(Number(ingComercialId));
+                if (upTandaMeta && upTandaMeta.flowpack_id) {
+                    const pesoUnitKg = Number(upTandaMeta.peso_unitario_salida_kg || 0.05);
+                    const cantFlowpacks = Math.max(
+                        1,
+                        Number(anatomia.pack_unidades) > 1
+                            ? Number(anatomia.pack_unidades)
+                            : Math.round(kilos / Math.max(0.001, pesoUnitKg))
+                    );
+                    itemsRecetaCanonicos.push({
+                        ingrediente_id: Number(upTandaMeta.flowpack_id),
+                        nombre_ingrediente: upTandaMeta.flowpack_nombre || 'Flowpack',
+                        unidad_medida: 'Unidades',
+                        cantidad: cantFlowpacks,
+                        fase_produccion: 'interna'
+                    });
+                }
+                if (art.insumo_envase_id) {
+                    itemsRecetaCanonicos.push({
+                        ingrediente_id: Number(art.insumo_envase_id),
+                        nombre_ingrediente: art.env_nombre || 'Envase Primario',
+                        unidad_medida: 'Unidades',
+                        cantidad: Number(art.cantidad_envases_unidad || 1),
+                        fase_produccion: 'interna'
+                    });
+                }
+            }
+
+            let debeEscribirItemsReceta = itemsRecetaCanonicos.length > 0;
+            if (debeEscribirItemsReceta && !(esEdicionDesdeCotizador && !existeNativoPreviamente)) {
+                const recEx = await q.query('SELECT id FROM public.recetas WHERE UPPER(articulo_numero) = UPPER($1) LIMIT 1', [sku]);
+                if (recEx.rows.length > 0) {
+                    const cntR = await q.query('SELECT COUNT(*)::int AS cnt FROM public.receta_ingredientes WHERE receta_id = $1', [recEx.rows[0].id]);
+                    if (Number(cntR.rows[0]?.cnt || 0) > 0) {
+                        debeEscribirItemsReceta = false;
+                    }
+                }
+            }
+
+            await BunkerService.crearArticuloCanonico(q, {
+                articulo_id: sku,
+                codigo_barras: sku,
+                familia_id: anatomia.familia_id || art.familia_bunker_id,
+                articulo_principal_id: anatomia.articulo_principal_id || anatomia.propiedades_estructurales?.articulo_principal_id || null,
+                modo_creacion: anatomia.modo_resolucion || null,
+                exigir_diccionario_estricto: anatomia.modo_resolucion === 'CASO_B_DICCIONARIO',
+                descripcion: anatomia.articulo_principal || art.articulo_principal_bunker || descTecnicaBunker,
+                descripcion_generada: descTecnicaBunker,
+                kilos_unidad: kilos,
+                costo_base: costoMateriaYEnvase,
+                porcentaje_iva: Number(art.iva_pct ?? 21),
+                rubro: anatomia.rubro || null,
+                sub_rubro: anatomia.sub_rubro || null,
+                no_producido_por_lambda: false,
+                es_pack: Boolean(anatomia.es_pack),
+                pack_unidades: Number(anatomia.pack_unidades || 1),
+                expresado_en_gramos: Boolean(anatomia.expresado_en_gramos),
+                propiedades_dinamicas: propDinamicasCompletas,
+                minutos_mano_obra: minutosFracc,
+                tarifa_colaborador_id: art.tarifa_colaborador_id ? Number(art.tarifa_colaborador_id) : null,
+                actualizar_si_existe: Boolean(esEdicionDesdeCotizador && !existeNativoPreviamente),
+                receta: ingComercialId ? {
+                    articulo_sugerido_numero: artSugeridoPuente,
+                    reemplazar_ingredientes: Boolean(debeEscribirItemsReceta),
+                    ingredientes: debeEscribirItemsReceta ? itemsRecetaCanonicos : []
+                } : null
+            });
         } else {
-            // Artículo nativo existente en Búnker: preservar intactos su costo_base, tiempos de asistente y taxonomía,
+            // Artículo nativo existente en Búnker: preservar intactos su costo_base, tiempos de asistente, receta y taxonomía,
             // limpiando cualquier alias comercial viejo y manteniendo únicamente metadatos técnicos de canal.
             const patchProps = esEdicionDesdeCotizador
                 ? { asistente_minutos: minutosFracc, asistente_colaborador_id: usuarioColabId, ...propMetadataNodo }
@@ -13022,93 +13331,19 @@ async function sincronizarNodosConCircuitoOperativoLamda(runner = null, opciones
                  WHERE UPPER(articulo_id) = UPPER($1)`,
                 [sku, JSON.stringify(patchProps)]
             );
-        }
-
-        // Stock inicial real en stock_real_consolidado (0 unidades cuando se da de alta una fracción nueva; jamás inyectar stock artificial):
-        const srcCheck = await q.query('SELECT articulo_numero FROM public.stock_real_consolidado WHERE UPPER(articulo_numero) = UPPER($1) OR UPPER(codigo_barras) = UPPER($1) LIMIT 1', [sku]);
-        if (srcCheck.rows.length === 0) {
-            await q.query(
-                `INSERT INTO public.stock_real_consolidado (
-                    articulo_numero, codigo_barras, descripcion, stock_lomasoft, stock_movimientos,
-                    stock_ajustes, stock_consolidado, kilos_unidad, no_producido_por_lambda, solo_produccion_externa, es_pack
-                 ) VALUES ($1,$1,$2,0,0,0,0,$3,false,false,$4)`,
-                [sku, descTecnicaBunker, kilos, Boolean(anatomia.es_pack)]
-            );
-        } else {
             await q.query(
                 `UPDATE public.stock_real_consolidado
                  SET kilos_unidad = COALESCE(NULLIF(kilos_unidad, 0), $1)
                  WHERE UPPER(articulo_numero) = UPPER($2) OR UPPER(codigo_barras) = UPPER($2)`,
                 [kilos, sku]
             );
-        }
-
-        // Asegurar Receta Nativa en public.recetas + public.receta_ingredientes (con articulo_sugerido_numero puente)
-        const ingComercialId = anatomia.ingrediente_comercial_id || art.ingrediente_origen_id;
-        const artSugeridoPuente = anatomia.articulo_vinculado_numero || art.ing_articulo_vinculado_numero || null;
-        if (ingComercialId) {
-            const recCheck = await q.query('SELECT id FROM public.recetas WHERE UPPER(articulo_numero) = UPPER($1) LIMIT 1', [sku]);
-            let recetaId;
-            if (recCheck.rows.length === 0) {
-                const insRec = await q.query(
-                    `INSERT INTO public.recetas (articulo_numero, descripcion, articulo_sugerido_numero, fecha_creacion, enlazado_externo)
-                     VALUES ($1, $2, $3, NOW(), false)
-                     RETURNING id`,
-                    [sku, descTecnicaBunker, artSugeridoPuente]
-                );
-                recetaId = insRec.rows[0].id;
-            } else {
-                recetaId = recCheck.rows[0].id;
+            if (ingComercialId && artSugeridoPuente) {
                 await q.query(
                     `UPDATE public.recetas
-                     SET articulo_sugerido_numero = COALESCE($2, articulo_sugerido_numero),
-                         descripcion = CASE WHEN $3::boolean THEN $4 ELSE descripcion END
-                     WHERE id = $1`,
-                    [recetaId, artSugeridoPuente, Boolean(esEdicionDesdeCotizador && !existeNativoPreviamente), descTecnicaBunker]
+                     SET articulo_sugerido_numero = COALESCE(articulo_sugerido_numero, $2)
+                     WHERE UPPER(articulo_numero) = UPPER($1)`,
+                    [sku, artSugeridoPuente]
                 );
-            }
-
-            const recItemsCntRes = await q.query('SELECT COUNT(*)::int AS cnt FROM public.receta_ingredientes WHERE receta_id = $1', [recetaId]);
-            const tieneItemsReceta = Number(recItemsCntRes.rows[0]?.cnt || 0) > 0;
-
-            if (!tieneItemsReceta || (esEdicionDesdeCotizador && !existeNativoPreviamente)) {
-                await q.query('DELETE FROM public.receta_ingredientes WHERE receta_id = $1', [recetaId]);
-
-                // 1) Ingrediente alimenticio simple (Puente)
-                await q.query(
-                    `INSERT INTO public.receta_ingredientes (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
-                     VALUES ($1, $2, $3, 'Kilo', $4)`,
-                    [recetaId, ingComercialId, anatomia.ingrediente_comercial_nombre || art.ing_origen_nombre || descTecnicaBunker, kilos]
-                );
-
-                // 2) Si es Pack de Barritas (#141), agregar primero los flowpacks individuales (#181 Bolsa 8 x 15)
-                if (Number(ingComercialId) === 141) {
-                    const cantFlowpacks = Math.max(
-                        1,
-                        Number(anatomia.pack_unidades) > 1
-                            ? Number(anatomia.pack_unidades)
-                            : Math.round(kilos / 0.05)
-                    );
-                    await q.query(
-                        `INSERT INTO public.receta_ingredientes (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
-                         VALUES ($1, $2, $3, 'Unidades', $4)`,
-                        [recetaId, env181Info.id, env181Info.nombre, cantFlowpacks]
-                    );
-                }
-
-                // 3) Envase contenedor / bolsa primaria
-                if (art.insumo_envase_id) {
-                    await q.query(
-                        `INSERT INTO public.receta_ingredientes (receta_id, ingrediente_id, nombre_ingrediente, unidad_medida, cantidad)
-                         VALUES ($1, $2, $3, 'Unidades', $4)`,
-                        [
-                            recetaId,
-                            Number(art.insumo_envase_id),
-                            art.env_nombre || (Number(art.insumo_envase_id) === 179 ? 'Bolsa 20 x 25' : 'Bolsa 15 x 18'),
-                            Number(art.cantidad_envases_unidad || 1)
-                        ]
-                    );
-                }
             }
         }
 
@@ -22098,6 +22333,8 @@ module.exports = {
     desglosarRetencionFiscalExcedente,
     calcularPrecioYGananciaNetaOfertaNodo,
     obtenerEstadoCompletoNodos,
+    obtenerPresentacionesPlantaLamda,
+    obtenerFuentesCostoSeisFlujos,
     guardarNodoMaestro,
     clonarNodoMaestro,
     normalizarPerfilOperativoNodo,

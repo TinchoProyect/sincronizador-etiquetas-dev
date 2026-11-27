@@ -78,8 +78,46 @@ const ESTILOS_IA_IMAGEN_BASE = {
 const REGLA_SIN_ENVASES_TXT = 'Regla estricta: SIN envases, SIN bolsas plásticas, SIN frascos, SIN cajas, SIN etiquetas, SIN marcas comerciales, SIN logos, SIN texto sobreimpreso.';
 const INSTRUCCION_REFERENCIA_VISUAL_TXT = 'REFERENCIA VISUAL REAL ADJUNTA (PRIORIDAD ABSOLUTA): Usá las fotografías reales adjuntas como verdad física de morfología, color, proporción e ingredientes visibles reales, por encima de cualquier arquetipo genérico. Eliminá por completo el fondo casero y la iluminación amateur, conservando únicamente los ingredientes presentes en las fotos de referencia y la receta; NO agregues frutos secos, semillas ni frutas ajenas.';
 
-const IDS_PREMEZCLAS_INTERMEDIAS_IA = new Set([109, 132, 133, 134, 135, 136, 140]);
-const SKUS_PREMEZCLAS_INTERMEDIAS_IA = new Set(['MPB', 'MPGDSX7', 'MPGDFX6,9']);
+const IDS_PREMEZCLAS_INTERMEDIAS_FALLBACK_IA = new Set([109, 132, 134, 135, 136, 140]);
+const SKUS_PREMEZCLAS_INTERMEDIAS_FALLBACK_IA = new Set(['MPB', 'MPGDSX7', 'MPGDFX6,9']);
+
+async function obtenerContextoPremezclasIntermediasIA(db) {
+    if (!db || typeof db.query !== 'function') {
+        return {
+            ids: IDS_PREMEZCLAS_INTERMEDIAS_FALLBACK_IA,
+            skus: SKUS_PREMEZCLAS_INTERMEDIAS_FALLBACK_IA
+        };
+    }
+    try {
+        const res = await db.query(`
+            SELECT id, articulo_vinculado_numero
+            FROM public.ingredientes
+            WHERE COALESCE(rol_ingrediente, 'MATERIA_PRIMA') = 'FORMULA_INTERNA'
+               OR id IN (
+                   SELECT (elem->>'ingrediente_id')::int
+                   FROM public.articulos_produccion_externa_relacion aper,
+                        LATERAL jsonb_array_elements(COALESCE(aper.insumos_fase_externa_json, '[]'::jsonb)) elem
+                   WHERE elem->>'ingrediente_id' ~ '^[0-9]+$'
+               )
+        `);
+        const upRes = await db.query(`
+            SELECT DISTINCT UPPER(BTRIM(articulo_premezcla_codigo)) AS sku_pre
+            FROM public.articulos_produccion_externa_relacion
+            WHERE articulo_premezcla_codigo IS NOT NULL AND BTRIM(articulo_premezcla_codigo) <> ''
+        `);
+        const ids = new Set(res.rows.map(r => Number(r.id)).filter(Boolean));
+        const skus = new Set(upRes.rows.map(r => String(r.sku_pre || '').toUpperCase()).filter(Boolean));
+        return {
+            ids: ids.size > 0 ? ids : IDS_PREMEZCLAS_INTERMEDIAS_FALLBACK_IA,
+            skus: skus.size > 0 ? skus : SKUS_PREMEZCLAS_INTERMEDIAS_FALLBACK_IA
+        };
+    } catch (_) {
+        return {
+            ids: IDS_PREMEZCLAS_INTERMEDIAS_FALLBACK_IA,
+            skus: SKUS_PREMEZCLAS_INTERMEDIAS_FALLBACK_IA
+        };
+    }
+}
 
 const DESCRIPTORES_MORFOLOGICOS_SOLIDOS_IA = [
     { match: (n) => /^avena$/.test(n) || /\bavena\b/.test(n), desc: 'copos de avena arrollada tostados dorados en clusters crujientes' },
@@ -309,6 +347,10 @@ async function resolverFidelidadIngredientesParaDestino(db, {
         : String(ruta_subrama || '').split(/\s*(?:>|›)\s*/).map(s => s.trim()).filter(Boolean);
     const rutaSubNorm = subLabelsArr.map(s => jh.normalizarClaveTexto(s)).filter(Boolean).join('>');
     const varNorm = jh.normalizarClaveTexto(nombre_variante);
+
+    const intermediosCtx = await obtenerContextoPremezclasIntermediasIA(db);
+    const IDS_PREMEZCLAS_INTERMEDIAS_IA = intermediosCtx.ids;
+    const SKUS_PREMEZCLAS_INTERMEDIAS_IA = intermediosCtx.skus;
 
     if (skusCandidatos.size === 0 && ingIdNum > 0 && !IDS_PREMEZCLAS_INTERMEDIAS_IA.has(ingIdNum)) {
         const dIngDirecta = await obtenerDesgloseIngredientesParaItem(
@@ -1092,7 +1134,12 @@ async function listarProductosBaseConImagenes(db, {
         a.articulo_principal.localeCompare(b.articulo_principal, 'es-AR')
     );
 
-    const catalogoIng = await construirCatalogoIngredientesComerciales(db).catch(() => null);
+    const [catalogoIng, intermediosCatCtx] = await Promise.all([
+        construirCatalogoIngredientesComerciales(db).catch(() => null),
+        obtenerContextoPremezclasIntermediasIA(db)
+    ]);
+    const IDS_PREMEZCLAS_INTERMEDIAS_IA = intermediosCatCtx.ids;
+    const SKUS_PREMEZCLAS_INTERMEDIAS_IA = intermediosCatCtx.skus;
     if (catalogoIng) {
         const fidelidadPorSku = new Map();
         const obtenerFidelidadSku = async (sku, ingIdOpt) => {

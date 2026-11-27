@@ -459,7 +459,7 @@ router.post(['/previsualizar-anatomia', '/cotizar-preview'], async (req, res) =>
         res.json({ ok: true, anatomia });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error en POST /previsualizar-anatomia:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(Number(error.statusCode) || 400).json({ ok: false, error: error.message });
     }
 });
 
@@ -711,7 +711,7 @@ router.post('/cotizar-aprobar', async (req, res) => {
         res.json({ ok: true, ...resultado });
     } catch (error) {
         console.error('❌ [NodosRoutes] Error cotizando/aprobando artículo de Nodo:', error);
-        res.status(400).json({ ok: false, error: error.message });
+        res.status(Number(error.statusCode) || 400).json({ ok: false, error: error.message });
     }
 });
 

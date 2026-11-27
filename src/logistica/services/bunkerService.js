@@ -1461,6 +1461,325 @@ class BunkerService {
         }
     }
 
+    static normalizarEjeCanonico(txt) {
+        return String(txt || '')
+            .trim()
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]/g, '');
+    }
+
+    /**
+     * Puerta única de alta y actualización canónica en `public.bunker_articulos`, `public.articulos`,
+     * `public.stock_real_consolidado` y `public.recetas` / `public.receta_ingredientes`.
+     * Garantiza `estructura_desfasada = false`, rechaza texto libre o `posiciones: {}` vacías en Caso B
+     * y preserva el stock físico existente sin inyectar inventario sintético.
+     */
+    static async crearArticuloCanonico(runner, payload = {}) {
+        const isClient = runner && typeof runner.release === 'function';
+        const ownClient = !isClient;
+        const client = ownClient ? await runner.connect() : runner;
+
+        const throwBad = (msg, code = 400) => {
+            const err = new Error(msg);
+            err.statusCode = code;
+            throw err;
+        };
+
+        try {
+            if (ownClient) await client.query('BEGIN');
+
+            const sku = String(payload.articulo_id || '').trim();
+            if (!sku) throwBad('El código SKU (articulo_id) es obligatorio.');
+            if (/^NB-/i.test(sku)) {
+                throwBad(`El código SKU "${sku}" no puede usar el prefijo heredado NB-.`);
+            }
+            if (payload.permitir_emb !== true && /^EMB-/i.test(sku)) {
+                throwBad(`El código SKU "${sku}" no admite prefijo EMB- en esta vía canónica.`);
+            }
+
+            const familiaId = Number(payload.familia_id || 0);
+            if (!Number.isInteger(familiaId) || familiaId <= 0) {
+                throwBad('Debe seleccionar una Familia válida de public.bunker_familias.');
+            }
+            const famRes = await client.query(
+                `SELECT id, nombre, abreviatura FROM public.bunker_familias WHERE id = $1 AND COALESCE(activo, true) = true LIMIT 1`,
+                [familiaId]
+            );
+            if (famRes.rows.length === 0) {
+                throwBad(`La familia #${familiaId} no existe o está inactiva en public.bunker_familias.`);
+            }
+
+            const ejesRes = await client.query(
+                `SELECT id, categoria, orden_posicional
+                 FROM public.bunker_familia_categorias
+                 WHERE familia_id = $1
+                 ORDER BY orden_posicional ASC, id ASC`,
+                [familiaId]
+            );
+            const ejesValidosSet = new Set(ejesRes.rows.map(r => BunkerService.normalizarEjeCanonico(r.categoria)));
+
+            let propsDin = payload.propiedades_dinamicas || {};
+            if (typeof propsDin === 'string') {
+                try { propsDin = JSON.parse(propsDin); } catch (_) { propsDin = {}; }
+            }
+            if (!propsDin || typeof propsDin !== 'object' || Array.isArray(propsDin)) {
+                propsDin = {};
+            }
+
+            const modoCreacion = String(payload.modo_creacion || '').trim().toUpperCase();
+            const esCasoBEstricto = modoCreacion === 'CASO_B_DICCIONARIO' || payload.exigir_diccionario_estricto === true;
+            const posiciones = (propsDin.posiciones && typeof propsDin.posiciones === 'object' && !Array.isArray(propsDin.posiciones))
+                ? propsDin.posiciones
+                : ((payload.posiciones && typeof payload.posiciones === 'object' && !Array.isArray(payload.posiciones)) ? payload.posiciones : {});
+            propsDin.posiciones = posiciones;
+
+            if (esCasoBEstricto) {
+                const rubroClean = String(payload.rubro || '').trim();
+                if (!rubroClean) {
+                    throwBad('En Caso B (Diccionario Búnker) el Rubro oficial es obligatorio.');
+                }
+                const artPrincipalId = Number(payload.articulo_principal_id || propsDin.articulo_principal_id || 0);
+                if (!Number.isInteger(artPrincipalId) || artPrincipalId <= 0) {
+                    throwBad('En Caso B se exige seleccionar un Sustantivo Ancla por PK válido del Diccionario Búnker (prohibido texto libre).');
+                }
+                const priCheck = await client.query(
+                    `SELECT id, termino FROM public.bunker_diccionario
+                     WHERE id = $1 AND COALESCE(obsoleto, false) = false LIMIT 1`,
+                    [artPrincipalId]
+                );
+                if (priCheck.rows.length === 0) {
+                    throwBad(`El sustantivo ancla #${artPrincipalId} no existe o está obsoleto en public.bunker_diccionario.`);
+                }
+                propsDin.articulo_principal_id = Number(priCheck.rows[0].id);
+                if (!propsDin.articulo_principal) {
+                    propsDin.articulo_principal = priCheck.rows[0].termino;
+                }
+
+                const entradasPos = Object.values(posiciones).filter(p => p && typeof p === 'object');
+                if (ejesValidosSet.size > 0 && entradasPos.length === 0) {
+                    throwBad('En Caso B la familia seleccionada exige al menos un eje posicional del Diccionario Búnker (prohibido posiciones: {}).');
+                }
+                for (const p of entradasPos) {
+                    const ejeNorm = BunkerService.normalizarEjeCanonico(p.eje);
+                    if (!ejeNorm || !ejesValidosSet.has(ejeNorm)) {
+                        throwBad(`El eje posicional "${p.eje || ''}" no pertenece a la plantilla de la familia #${familiaId}.`);
+                    }
+                    const termId = Number(p.termino_id || 0);
+                    if (!Number.isInteger(termId) || termId <= 0) {
+                        throwBad(`Cada posición del Diccionario en Caso B exige termino_id válido de public.bunker_diccionario (prohibido texto libre en "${p.eje || 'eje'}").`);
+                    }
+                    const tChk = await client.query(
+                        `SELECT id FROM public.bunker_diccionario WHERE id = $1 AND COALESCE(obsoleto, false) = false LIMIT 1`,
+                        [termId]
+                    );
+                    if (tChk.rows.length === 0) {
+                        throwBad(`El término #${termId} de "${p.eje}" no existe o está obsoleto en public.bunker_diccionario.`);
+                    }
+                }
+            } else {
+                for (const p of Object.values(posiciones)) {
+                    if (!p || typeof p !== 'object' || !p.eje) continue;
+                    const ejeNorm = BunkerService.normalizarEjeCanonico(p.eje);
+                    if (!ejesValidosSet.has(ejeNorm)) {
+                        throwBad(`El eje posicional "${p.eje}" generaría estructura_desfasada en la familia #${familiaId}.`);
+                    }
+                }
+            }
+
+            const descripcionGenerada = String(payload.descripcion_generada || payload.descripcion || '').trim();
+            const descripcion = String(payload.descripcion || propsDin.articulo_principal || descripcionGenerada).trim();
+            if (!descripcionGenerada || !descripcion) {
+                throwBad('La descripción técnica oficial del artículo es obligatoria.');
+            }
+
+            const codigoBarras = String(payload.codigo_barras || sku).trim() || sku;
+            const kilosUnidad = Number(payload.kilos_unidad ?? 1);
+            const costoBase = Number(payload.costo_base ?? 0);
+            const porcentajeIva = Number(payload.porcentaje_iva ?? 21);
+            const rubroVal = payload.rubro ? String(payload.rubro).trim() : null;
+            const subRubroVal = payload.sub_rubro ? String(payload.sub_rubro).trim() : null;
+            const noProd = Boolean(payload.no_producido_por_lambda);
+            const soloExt = Boolean(payload.solo_produccion_externa);
+            const esPack = Boolean(payload.es_pack);
+            const packUnidades = Math.max(1, parseInt(payload.pack_unidades, 10) || 1);
+            const packHijoCodigo = payload.pack_hijo_codigo ? String(payload.pack_hijo_codigo).trim() : null;
+            const esCombo = Boolean(payload.es_combo);
+            const firmaCombo = payload.firma_combo ? String(payload.firma_combo).trim() : null;
+            const expresadoGramos = payload.expresado_en_gramos !== undefined ? Boolean(payload.expresado_en_gramos) : (kilosUnidad < 1);
+            const expresadoUnidades = Boolean(payload.expresado_en_unidades);
+            const minutosMO = payload.minutos_mano_obra !== undefined && payload.minutos_mano_obra !== null
+                ? Number(payload.minutos_mano_obra)
+                : (propsDin.asistente_minutos !== undefined && propsDin.asistente_minutos !== null ? Number(propsDin.asistente_minutos) : null);
+            const tarifaColabId = payload.tarifa_colaborador_id ? Number(payload.tarifa_colaborador_id) : null;
+
+            // 1. public.articulos
+            const artEx = await client.query(
+                `SELECT numero FROM public.articulos WHERE UPPER(BTRIM(numero)) = UPPER(BTRIM($1)) LIMIT 1`,
+                [sku]
+            );
+            if (artEx.rows.length === 0) {
+                await client.query(
+                    `INSERT INTO public.articulos (numero, codigo_barras, nombre) VALUES ($1, $2, $3)`,
+                    [sku, codigoBarras, descripcionGenerada]
+                );
+            } else if (payload.actualizar_si_existe !== false) {
+                await client.query(
+                    `UPDATE public.articulos
+                     SET nombre = $2,
+                         codigo_barras = COALESCE(NULLIF(codigo_barras, ''), $3)
+                     WHERE UPPER(BTRIM(numero)) = UPPER(BTRIM($1))`,
+                    [sku, descripcionGenerada, codigoBarras]
+                );
+            }
+
+            // 2. public.bunker_articulos
+            const baRes = await client.query(
+                `INSERT INTO public.bunker_articulos (
+                    articulo_id, codigo_barras, descripcion, descripcion_generada,
+                    kilos_unidad, costo_base, porcentaje_iva, moneda, redondeo, mantener_utilidad,
+                    rubro, sub_rubro, familia_id, no_producido_por_lambda,
+                    es_pack, pack_unidades, pack_hijo_codigo,
+                    es_combo, firma_combo, expresado_en_gramos, expresado_en_unidades,
+                    propiedades_dinamicas, minutos_mano_obra, tarifa_colaborador_id, updated_at
+                ) VALUES (
+                    $1,$2,$3,$4,
+                    $5,$6,$7,'($)Pesos','Ninguno',false,
+                    $8,$9,$10,$11,
+                    $12,$13,$14,
+                    $15,$16,$17,$18,
+                    $19::jsonb,$20,$21,NOW()
+                )
+                ON CONFLICT (articulo_id) DO UPDATE SET
+                    codigo_barras = COALESCE(public.bunker_articulos.codigo_barras, EXCLUDED.codigo_barras),
+                    descripcion = EXCLUDED.descripcion,
+                    descripcion_generada = EXCLUDED.descripcion_generada,
+                    kilos_unidad = EXCLUDED.kilos_unidad,
+                    costo_base = EXCLUDED.costo_base,
+                    porcentaje_iva = EXCLUDED.porcentaje_iva,
+                    rubro = COALESCE(EXCLUDED.rubro, public.bunker_articulos.rubro),
+                    sub_rubro = COALESCE(EXCLUDED.sub_rubro, public.bunker_articulos.sub_rubro),
+                    familia_id = EXCLUDED.familia_id,
+                    no_producido_por_lambda = EXCLUDED.no_producido_por_lambda,
+                    es_pack = EXCLUDED.es_pack,
+                    pack_unidades = EXCLUDED.pack_unidades,
+                    pack_hijo_codigo = EXCLUDED.pack_hijo_codigo,
+                    es_combo = EXCLUDED.es_combo,
+                    firma_combo = COALESCE(EXCLUDED.firma_combo, public.bunker_articulos.firma_combo),
+                    expresado_en_gramos = EXCLUDED.expresado_en_gramos,
+                    expresado_en_unidades = EXCLUDED.expresado_en_unidades,
+                    propiedades_dinamicas = EXCLUDED.propiedades_dinamicas,
+                    minutos_mano_obra = COALESCE(EXCLUDED.minutos_mano_obra, public.bunker_articulos.minutos_mano_obra),
+                    tarifa_colaborador_id = COALESCE(EXCLUDED.tarifa_colaborador_id, public.bunker_articulos.tarifa_colaborador_id),
+                    updated_at = NOW()
+                RETURNING *`,
+                [
+                    sku, codigoBarras, descripcion, descripcionGenerada,
+                    kilosUnidad, costoBase, porcentajeIva,
+                    rubroVal, subRubroVal, familiaId, noProd,
+                    esPack, packUnidades, packHijoCodigo,
+                    esCombo, firmaCombo, expresadoGramos, expresadoUnidades,
+                    JSON.stringify(propsDin), minutosMO, tarifaColabId
+                ]
+            );
+
+            // 3. public.stock_real_consolidado (jamás altera stock existente; inicia en 0 si es nuevo)
+            const srcEx = await client.query(
+                `SELECT articulo_numero FROM public.stock_real_consolidado
+                 WHERE UPPER(BTRIM(articulo_numero)) = UPPER(BTRIM($1)) LIMIT 1`,
+                [sku]
+            );
+            if (srcEx.rows.length === 0) {
+                await client.query(
+                    `INSERT INTO public.stock_real_consolidado (
+                        articulo_numero, descripcion, codigo_barras,
+                        stock_lomasoft, stock_movimientos, stock_ajustes, stock_consolidado,
+                        no_producido_por_lambda, solo_produccion_externa,
+                        kilos_unidad, es_pack, pack_hijo_codigo, pack_unidades, es_combo, ultima_actualizacion
+                    ) VALUES ($1,$2,$3,0,0,0,0,$4,$5,$6,$7,$8,$9,$10,NOW())`,
+                    [sku, descripcionGenerada, codigoBarras, noProd, soloExt, kilosUnidad, esPack, packHijoCodigo, packUnidades, esCombo]
+                );
+            } else {
+                await client.query(
+                    `UPDATE public.stock_real_consolidado
+                     SET descripcion = COALESCE(NULLIF($2, ''), descripcion),
+                         codigo_barras = COALESCE(NULLIF(codigo_barras, ''), $3),
+                         kilos_unidad = COALESCE(NULLIF(kilos_unidad, 0), $4),
+                         es_combo = $5,
+                         ultima_actualizacion = NOW()
+                     WHERE UPPER(BTRIM(articulo_numero)) = UPPER(BTRIM($1))`,
+                    [sku, descripcionGenerada, codigoBarras, kilosUnidad, esCombo]
+                );
+            }
+
+            // 4. Receta canónica opcional (para artículos fraccionados / elaborados)
+            let recetaId = null;
+            if (payload.receta && typeof payload.receta === 'object') {
+                const artSug = payload.receta.articulo_sugerido_numero
+                    ? String(payload.receta.articulo_sugerido_numero).trim()
+                    : null;
+                const recEx = await client.query(
+                    `SELECT id FROM public.recetas WHERE UPPER(BTRIM(articulo_numero)) = UPPER(BTRIM($1)) LIMIT 1`,
+                    [sku]
+                );
+                if (recEx.rows.length === 0) {
+                    const insRec = await client.query(
+                        `INSERT INTO public.recetas (articulo_numero, descripcion, articulo_sugerido_numero, fecha_creacion, enlazado_externo)
+                         VALUES ($1, $2, $3, NOW(), false)
+                         RETURNING id`,
+                        [sku, descripcionGenerada, artSug]
+                    );
+                    recetaId = insRec.rows[0].id;
+                } else {
+                    recetaId = recEx.rows[0].id;
+                    await client.query(
+                        `UPDATE public.recetas
+                         SET descripcion = $2,
+                             articulo_sugerido_numero = COALESCE($3, articulo_sugerido_numero)
+                         WHERE id = $1`,
+                        [recetaId, descripcionGenerada, artSug]
+                    );
+                }
+
+                const itemsRec = Array.isArray(payload.receta.ingredientes) ? payload.receta.ingredientes : [];
+                if (itemsRec.length > 0) {
+                    if (payload.receta.reemplazar_ingredientes !== false) {
+                        await client.query('DELETE FROM public.receta_ingredientes WHERE receta_id = $1', [recetaId]);
+                    }
+                    for (const it of itemsRec) {
+                        await client.query(
+                            `INSERT INTO public.receta_ingredientes (receta_id, nombre_ingrediente, unidad_medida, cantidad, ingrediente_id, fase_produccion)
+                             VALUES ($1, $2, $3, $4, $5, $6)`,
+                            [
+                                recetaId,
+                                String(it.nombre_ingrediente || 'Ingrediente').trim(),
+                                String(it.unidad_medida || 'Kilo').trim(),
+                                Number(it.cantidad || 0),
+                                Number(it.ingrediente_id),
+                                String(it.fase_produccion || 'interna').trim()
+                            ]
+                        );
+                    }
+                }
+            }
+
+            if (ownClient) await client.query('COMMIT');
+            return {
+                articulo: baRes.rows[0],
+                receta_id: recetaId,
+                estructura_desfasada: false
+            };
+        } catch (err) {
+            if (ownClient) {
+                try { await client.query('ROLLBACK'); } catch (_) {}
+            }
+            throw err;
+        } finally {
+            if (ownClient) client.release();
+        }
+    }
+
     /**
      * Eliminar artículo exclusivamente del Búnker
      */

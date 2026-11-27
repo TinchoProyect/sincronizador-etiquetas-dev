@@ -14,6 +14,10 @@
 
 const fs = require('fs');
 const db = require('../config/database');
+const {
+    esquemaEtapa2YaAplicado,
+    ejecutarMigracionEsquemaEtapa2Nodos
+} = require('./asegurarEsquemaEtapa2Nodos');
 
 const ADVISORY_LOCK_KEY_ETAPA1 = 884201;
 
@@ -133,7 +137,7 @@ async function esquemaEtapa1YaAplicado(client) {
     );
 
     const row = res.rows[0] || {};
-    return Boolean(
+    const etapa1Ok = Boolean(
         row.tablas_ok
         && row.col_cli_op_ok
         && row.col_madre_ok
@@ -142,6 +146,8 @@ async function esquemaEtapa1YaAplicado(client) {
         && Number(row.fks_presentes || 0) === FKS_REQUERIDAS_ETAPA1.length
         && Number(row.indices_presentes || 0) === INDICES_REQUERIDOS_ETAPA1.length
     );
+    if (!etapa1Ok) return false;
+    return esquemaEtapa2YaAplicado(client);
 }
 
 /**
@@ -463,6 +469,7 @@ async function inicializarEsquemaEtapa1Nodos(opciones = {}) {
             await analiticaService.ejecutarMigracionAnaliticaNodos(client);
             await pagosService.ejecutarMigracionPagosBancariosNodos(client);
             await aplicarIntegridadReferencialEtapa1(client);
+            await ejecutarMigracionEsquemaEtapa2Nodos(client);
             await client.query('COMMIT');
 
             marcarTodosLosServiciosListos();

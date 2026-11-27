@@ -300,6 +300,106 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "linea_negocio": {
+        "ordinal_position": 7,
+        "data_type": "smallint",
+        "udt_name": "int2",
+        "character_maximum_length": null,
+        "numeric_precision": 16,
+        "numeric_scale": 0,
+        "is_nullable": "NO",
+        "column_default": "4"
+      },
+      "modo_rendimiento": {
+        "ordinal_position": 8,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 24,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'MERMA_PORCENTUAL'::character varying"
+      },
+      "peso_unitario_salida_kg": {
+        "ordinal_position": 9,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 4,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "unidades_por_tanda_default": {
+        "ordinal_position": 10,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "articulo_premezcla_codigo": {
+        "ordinal_position": 11,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 80,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "ingrediente_espejo_id": {
+        "ordinal_position": 12,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "tarifa_maquila_default": {
+        "ordinal_position": 13,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 14,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "unidad_tarifa_maquila": {
+        "ordinal_position": 14,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 10,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'kg'::character varying"
+      },
+      "merma_default_pct": {
+        "ordinal_position": 15,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 8,
+        "numeric_scale": 2,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "insumos_fase_externa_json": {
+        "ordinal_position": 16,
+        "data_type": "jsonb",
+        "udt_name": "jsonb",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "articulos_proveedor": {
@@ -818,6 +918,26 @@
         "character_maximum_length": 500,
         "numeric_precision": null,
         "numeric_scale": null,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "minutos_mano_obra": {
+        "ordinal_position": 25,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 4,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "tarifa_colaborador_id": {
+        "ordinal_position": 26,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
         "is_nullable": "YES",
         "column_default": null
       }
@@ -2660,6 +2780,26 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "false"
+      },
+      "minutos_mano_obra": {
+        "ordinal_position": 19,
+        "data_type": "numeric",
+        "udt_name": "numeric",
+        "character_maximum_length": null,
+        "numeric_precision": 10,
+        "numeric_scale": 4,
+        "is_nullable": "YES",
+        "column_default": null
+      },
+      "tarifa_colaborador_id": {
+        "ordinal_position": 20,
+        "data_type": "integer",
+        "udt_name": "int4",
+        "character_maximum_length": null,
+        "numeric_precision": 32,
+        "numeric_scale": 0,
+        "is_nullable": "YES",
+        "column_default": null
       }
     },
     "bunker_lista_insumos": {
@@ -10438,6 +10578,16 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": "CURRENT_TIMESTAMP"
+      },
+      "es_vinculo_costo_primario": {
+        "ordinal_position": 4,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "false"
       }
     },
     "ingrediente_composicion": {
@@ -10622,6 +10772,26 @@
         "numeric_scale": null,
         "is_nullable": "YES",
         "column_default": null
+      },
+      "rol_ingrediente": {
+        "ordinal_position": 15,
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "character_maximum_length": 32,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "'MATERIA_PRIMA'::character varying"
+      },
+      "habilitado_solicitud_nodos": {
+        "ordinal_position": 16,
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "character_maximum_length": null,
+        "numeric_precision": null,
+        "numeric_scale": null,
+        "is_nullable": "NO",
+        "column_default": "true"
       }
     },
     "ingredientes_ajustes": {
